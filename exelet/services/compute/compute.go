@@ -90,14 +90,9 @@ func (s *Service) Start(ctx context.Context) error {
 
 	// Recover existing SSH proxies from disk
 	// This will find existing socat processes and adopt them, or restart dead ones
-	// Only recover if we're NOT going to restart instances - when EnableInstanceBootOnStartup
-	// is true, startInstance() will create fresh proxies with correct IPs after allocating
-	// new network interfaces
-	if !s.config.EnableInstanceBootOnStartup {
-		if err := s.proxyManager.RecoverProxies(instances); err != nil {
-			s.log.WarnContext(ctx, "failed to recover SSH proxies", "error", err)
-			// Don't fail startup, continue
-		}
+	if err := s.proxyManager.RecoverProxies(instances); err != nil {
+		s.log.WarnContext(ctx, "failed to recover SSH proxies", "error", err)
+		// Don't fail startup, continue
 	}
 
 	// Recover existing VMM processes (cloud-hypervisor and virtiofsd)
@@ -111,12 +106,14 @@ func (s *Service) Start(ctx context.Context) error {
 		// Don't fail startup, continue
 	}
 
-	// start instances if enabled
+	// start stopped instances if enabled
 	if s.config.EnableInstanceBootOnStartup {
-		s.log.InfoContext(ctx, "booting local instances")
+		s.log.InfoContext(ctx, "booting stopped instances")
 		for _, i := range instances {
-			if err := s.startInstance(ctx, i.ID); err != nil {
-				return err
+			if i.State == api.VMState_STOPPED {
+				if err := s.startInstance(ctx, i.ID); err != nil {
+					return err
+				}
 			}
 		}
 	}

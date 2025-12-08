@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"exe.dev/exelet/config"
@@ -72,6 +73,15 @@ func (v *VMM) loadVMConfig(id string) (*api.VMConfig, error) {
 }
 
 func (v *VMM) saveVMConfig(req *api.VMConfig) error {
+	// Filter out ip= args - network config is derived from NetworkInterface at runtime
+	var filteredArgs []string
+	for _, arg := range req.Args {
+		if !strings.HasPrefix(arg, "ip=") {
+			filteredArgs = append(filteredArgs, arg)
+		}
+	}
+	req.Args = filteredArgs
+
 	configPath := v.getVMConfigPath(req.ID)
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
 		return err

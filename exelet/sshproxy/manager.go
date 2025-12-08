@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"os"
 	"path/filepath"
 	"sync"
 
@@ -106,58 +105,53 @@ func (m *Manager) RecoverProxies(instances []*api.Instance) error {
 	defer m.mu.Unlock()
 
 	for _, instance := range instances {
-		instanceDir := filepath.Join(m.dataDir, "instances", instance.ID)
-
-		// Check if proxy metadata exists
-		metadataPath := filepath.Join(instanceDir, "process-sshproxy.json")
-		if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
-			// No proxy metadata, skip
+		// Skip stopped instances
+		if instance.State == api.VMState_STOPPED {
 			continue
 		}
 
-		// Create proxy object and load metadata
-		proxy := NewSSHProxy(instance.ID, 0, "", instanceDir, m.log)
-		if err := proxy.LoadFromDisk(); err != nil {
-			m.log.Warn("failed to load proxy metadata", "instance", instance.ID, "error", err)
+		// Get port and target IP from instance config
+		port := int(instance.SSHPort)
+		if port == 0 {
+			m.log.Warn("instance has no SSH port configured", "instance", instance.ID)
 			continue
 		}
 
-		// Get target IP from instance config
+		targetIP := ""
 		if instance.VMConfig != nil && instance.VMConfig.NetworkInterface != nil && instance.VMConfig.NetworkInterface.IP != nil {
-			// The IP is stored in CIDR format (e.g., "192.168.127.2/24"), extract just the IP
 			if ipStr := instance.VMConfig.NetworkInterface.IP.IPV4; ipStr != "" {
 				ipAddr, _, err := net.ParseCIDR(ipStr)
 				if err != nil {
 					m.log.Warn("failed to parse VM IP", "instance", instance.ID, "ip", ipStr, "error", err)
 					continue
 				}
-				proxy.TargetIP = ipAddr.String()
+				targetIP = ipAddr.String()
 			}
 		}
-
-		// Check instance state
-		if instance.State == api.VMState_STOPPED {
-			// Instance is stopped, kill any running proxy
-			if proxy.IsRunning() {
-				m.log.Info("stopping proxy for stopped instance", "instance", instance.ID, "pid", proxy.PID)
-				if err := proxy.Stop(); err != nil {
-					m.log.Error("failed to stop proxy", "instance", instance.ID, "error", err)
-				}
-			}
+		if targetIP == "" {
+			m.log.Warn("instance has no target IP configured", "instance", instance.ID)
 			continue
 		}
 
-		// Instance is running or starting, check if proxy is alive
+		instanceDir := filepath.Join(m.dataDir, "instances", instance.ID)
+		proxy := NewSSHProxy(instance.ID, port, targetIP, instanceDir, m.log)
+
+		// Try to load existing metadata (may not exist for older instances)
+		if err := proxy.LoadFromDisk(); err != nil {
+			m.log.Debug("no proxy metadata on disk", "instance", instance.ID)
+		}
+
+		// Check if proxy is alive (by PID if we have metadata, or by port)
 		if proxy.IsRunning() {
 			// Proxy is running, adopt it
 			m.log.Info("recovered running proxy", "instance", instance.ID, "port", proxy.Port, "pid", proxy.PID)
 			m.proxies[instance.ID] = proxy
 			m.ports[instance.ID] = proxy.Port
 		} else {
-			// Proxy is dead, restart it
-			m.log.Info("restarting dead proxy", "instance", instance.ID, "port", proxy.Port)
+			// Proxy is dead or no metadata, try to start/adopt
+			m.log.Info("starting proxy for running instance", "instance", instance.ID, "port", proxy.Port)
 			if err := proxy.Start(); err != nil {
-				m.log.Error("failed to restart proxy", "instance", instance.ID, "error", err)
+				m.log.Error("failed to start proxy", "instance", instance.ID, "error", err)
 				continue
 			}
 			m.proxies[instance.ID] = proxy
