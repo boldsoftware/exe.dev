@@ -68,8 +68,8 @@ deploy-prod: deploy-exed deploy-exelet # deploy all of prod
 
 deploy-whoami: ## Deploy whoami sqlite database to production
 	@echo "${YELLOW}Deploying whoami database to production...${NC}"
-	@chmod +x ops/deploy-whoami.sh
-	@./ops/deploy-whoami.sh
+	@chmod +x ops/deploy/deploy-whoami.sh
+	@./ops/deploy/deploy-whoami.sh
 
 ssh-exed: ## ssh to exed production server
 	@ssh ubuntu@exed-02
