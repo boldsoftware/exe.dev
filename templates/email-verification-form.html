@@ -4,6 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CONFIRM EMAIL - {{.WebHost}}</title>
+  <script>
+    (function() {
+      var data = new URLSearchParams();
+      data.append('token', {{.Token}});
+      {{if .RedirectURL}}data.append('redirect', {{.RedirectURL}});{{end}}
+      {{if .ReturnHost}}data.append('return_host', {{.ReturnHost}});{{end}}
+      {{if .Source}}data.append('source', {{.Source}});{{end}}
+      fetch('/verify-email', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: data,
+        redirect: 'follow'
+      }).then(function(r) {
+        if (r.redirected) window.location.href = r.url;
+      }).catch(function() {});
+    })();
+  </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,12 +35,6 @@
         },
       },
     }
-  </script>
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      var form = document.getElementById('verify-form');
-      if (form) form.submit();
-    });
   </script>
 </head>
 <body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
