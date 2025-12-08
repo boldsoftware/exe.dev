@@ -1541,6 +1541,227 @@ function makeAddChart<T extends TimeseriesBuilder>(
   };
 }
 
+// AWS CloudWatch Dashboard - metrics from YACE (Yet Another CloudWatch Exporter)
+function makeAwsCloudWatchDashboard() {
+  const dash = new DashboardBuilder("AWS CloudWatch");
+  dash
+    .uid("aws-cloudwatch-dashboard")
+    .tags(["generated", "aws", "cloudwatch"])
+    .refresh("5m")
+    .time({ from: "now-6h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "aws-cloudwatch-dashboard");
+
+  // README panel
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("")
+      .content(README_CONTENT)
+      .mode(TextMode.Markdown)
+      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
+  );
+
+  // ========== EC2 SECTION ==========
+  dash.withRow(
+    new RowBuilder("EC2 Instances").gridPos({ x: 0, y: 2, w: 24, h: 1 })
+  );
+
+  // EC2 CPU Utilization
+  const ec2CpuPanel = new TimeseriesBuilder()
+    .title("EC2 CPU Utilization")
+    .unit("percent")
+    .min(0)
+    .max(100)
+    .gridPos({ x: 0, y: 3, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_cpuutilization_average`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ec2CpuPanel);
+
+  // EC2 CPU Max
+  const ec2CpuMaxPanel = new TimeseriesBuilder()
+    .title("EC2 CPU Utilization (Max)")
+    .unit("percent")
+    .min(0)
+    .max(100)
+    .gridPos({ x: 12, y: 3, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_cpuutilization_maximum`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ec2CpuMaxPanel);
+
+  // EC2 Network In
+  const ec2NetInPanel = new TimeseriesBuilder()
+    .title("EC2 Network In (5m)")
+    .unit("bytes")
+    .min(0)
+    .gridPos({ x: 0, y: 11, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_networkin_sum`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ec2NetInPanel);
+
+  // EC2 Network Out
+  const ec2NetOutPanel = new TimeseriesBuilder()
+    .title("EC2 Network Out (5m)")
+    .unit("bytes")
+    .min(0)
+    .gridPos({ x: 12, y: 11, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_networkout_sum`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ec2NetOutPanel);
+
+  // EC2 Disk Read/Write
+  const ec2DiskPanel = new TimeseriesBuilder()
+    .title("EC2 Disk I/O (5m)")
+    .unit("bytes")
+    .min(0)
+    .gridPos({ x: 0, y: 19, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_diskreadbytes_sum`)
+        .legendFormat("{{tag_Name}} read")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_diskwritebytes_sum`)
+        .legendFormat("{{tag_Name}} write")
+    );
+  dash.withPanel(ec2DiskPanel);
+
+  // EC2 Status Check Failed
+  const ec2StatusPanel = new TimeseriesBuilder()
+    .title("EC2 Status Check Failed")
+    .min(0)
+    .gridPos({ x: 12, y: 19, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_statuscheckfailed_maximum`)
+        .legendFormat("{{tag_Name}}")
+    )
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "green" } as Threshold,
+          { value: 1, color: "red" } as Threshold,
+        ])
+    );
+  dash.withPanel(ec2StatusPanel);
+
+  // ========== EBS SECTION ==========
+  dash.withRow(
+    new RowBuilder("EBS Volumes").gridPos({ x: 0, y: 27, w: 24, h: 1 })
+  );
+
+  // EBS Read/Write Ops
+  const ebsOpsPanel = new TimeseriesBuilder()
+    .title("EBS IOPS (5m)")
+    .unit("ops")
+    .min(0)
+    .gridPos({ x: 0, y: 28, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_read_ops_sum`)
+        .legendFormat("{{tag_Name}} read")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_write_ops_sum`)
+        .legendFormat("{{tag_Name}} write")
+    );
+  dash.withPanel(ebsOpsPanel);
+
+  // EBS Read/Write Bytes
+  const ebsBytesPanel = new TimeseriesBuilder()
+    .title("EBS Throughput (5m)")
+    .unit("bytes")
+    .min(0)
+    .gridPos({ x: 12, y: 28, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_read_bytes_sum`)
+        .legendFormat("{{tag_Name}} read")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_write_bytes_sum`)
+        .legendFormat("{{tag_Name}} write")
+    );
+  dash.withPanel(ebsBytesPanel);
+
+  // EBS Latency (Total Read/Write Time)
+  const ebsLatencyPanel = new TimeseriesBuilder()
+    .title("EBS Latency (5m Total Time)")
+    .unit("s")
+    .min(0)
+    .gridPos({ x: 0, y: 36, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_total_read_time_sum`)
+        .legendFormat("{{tag_Name}} read")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_total_write_time_sum`)
+        .legendFormat("{{tag_Name}} write")
+    );
+  dash.withPanel(ebsLatencyPanel);
+
+  // EBS Burst Balance
+  const ebsBurstPanel = new TimeseriesBuilder()
+    .title("EBS Burst Balance")
+    .unit("percent")
+    .min(0)
+    .max(100)
+    .gridPos({ x: 12, y: 36, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_burst_balance_minimum`)
+        .legendFormat("{{tag_Name}}")
+    )
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "red" } as Threshold,
+          { value: 20, color: "yellow" } as Threshold,
+          { value: 50, color: "green" } as Threshold,
+        ])
+    );
+  dash.withPanel(ebsBurstPanel);
+
+  // ========== ROUTE53 SECTION ==========
+  dash.withRow(
+    new RowBuilder("Route53 DNS").gridPos({ x: 0, y: 44, w: 24, h: 1 })
+  );
+
+  // Route53 DNS Queries
+  const route53Panel = new TimeseriesBuilder()
+    .title("Route53 DNS Queries (5m)")
+    .min(0)
+    .gridPos({ x: 0, y: 45, w: 24, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_route53_dnsqueries_sum`)
+        .legendFormat("{{custom_tag_zone}}")
+    );
+  dash.withPanel(route53Panel);
+
+  return dash;
+}
+
 async function main() {
   if (TOKEN === undefined) {
     console.error(
@@ -1559,6 +1780,7 @@ async function main() {
   await createDashboard(makeGrpcMetricsDashboard());
   await createDashboard(makeGrafanaDashboard());
   await createDashboard(makeMonMonDashboard());
+  await createDashboard(makeAwsCloudWatchDashboard());
 
   // Create alerts after dashboards are created
   await createAlerts();

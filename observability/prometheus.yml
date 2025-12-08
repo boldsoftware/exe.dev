@@ -85,3 +85,9 @@ scrape_configs:
         labels:
           stage: 'staging'
     metrics_path: '/metrics'
+
+  - job_name: 'yace'
+    scheme: http
+    static_configs:
+      - targets: ["mon:5000"]
+    metrics_path: '/metrics'

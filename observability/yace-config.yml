@@ -1,0 +1,217 @@
+# YACE (Yet Another CloudWatch Exporter) configuration
+# Documentation: https://github.com/prometheus-community/yet-another-cloudwatch-exporter/blob/master/docs/configuration.md
+
+apiVersion: v1alpha1
+sts-region: us-west-2
+
+discovery:
+  # Export AWS resource tags as Prometheus labels
+  exportedTagsOnMetrics:
+    AWS/EC2:
+      - Name
+    AWS/EBS:
+      - Name
+
+  jobs:
+    # EC2 instances
+    - type: AWS/EC2
+      regions:
+        - us-west-2
+      metrics:
+        - name: CPUUtilization
+          statistics: [Average, Maximum]
+          period: 300
+          length: 300
+        - name: NetworkIn
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: NetworkOut
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: DiskReadBytes
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: DiskWriteBytes
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: StatusCheckFailed
+          statistics: [Maximum]
+          period: 300
+          length: 300
+
+    # EBS volumes
+    - type: AWS/EBS
+      regions:
+        - us-west-2
+      metrics:
+        - name: VolumeReadOps
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: VolumeWriteOps
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: VolumeReadBytes
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: VolumeWriteBytes
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: VolumeTotalReadTime
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: VolumeTotalWriteTime
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: BurstBalance
+          statistics: [Minimum]
+          period: 300
+          length: 300
+
+# Route53 DNS queries per hosted zone (static config, discovery not supported)
+# Note: Route53 metrics are only available in us-east-1
+static:
+  - name: route53-exe-staging-dev
+    namespace: AWS/Route53
+    regions:
+      - us-east-1
+    dimensions:
+      - name: HostedZoneId
+        value: Z081556933ZT77JWN6MNT
+    customTags:
+      - key: zone
+        value: exe-staging.dev
+    metrics:
+      - name: DNSQueries
+        statistics: [Sum]
+        period: 300
+        length: 300
+  - name: route53-exe-work
+    namespace: AWS/Route53
+    regions:
+      - us-east-1
+    dimensions:
+      - name: HostedZoneId
+        value: Z07441731J4YM88R6K0ET
+    customTags:
+      - key: zone
+        value: exe.work
+    metrics:
+      - name: DNSQueries
+        statistics: [Sum]
+        period: 300
+        length: 300
+  - name: route53-exe-dev
+    namespace: AWS/Route53
+    regions:
+      - us-east-1
+    dimensions:
+      - name: HostedZoneId
+        value: Z01611913VP1SIF2AMSIL
+    customTags:
+      - key: zone
+        value: exe.dev
+    metrics:
+      - name: DNSQueries
+        statistics: [Sum]
+        period: 300
+        length: 300
+  - name: route53-exe-staging-xyz
+    namespace: AWS/Route53
+    regions:
+      - us-east-1
+    dimensions:
+      - name: HostedZoneId
+        value: Z059938629286W680G4G0
+    customTags:
+      - key: zone
+        value: exe-staging.xyz
+    metrics:
+      - name: DNSQueries
+        statistics: [Sum]
+        period: 300
+        length: 300
+  - name: route53-exe-zone
+    namespace: AWS/Route53
+    regions:
+      - us-east-1
+    dimensions:
+      - name: HostedZoneId
+        value: Z00090711TNOBCQPVYG8S
+    customTags:
+      - key: zone
+        value: exe.zone
+    metrics:
+      - name: DNSQueries
+        statistics: [Sum]
+        period: 300
+        length: 300
+  - name: route53-exe-cloud
+    namespace: AWS/Route53
+    regions:
+      - us-east-1
+    dimensions:
+      - name: HostedZoneId
+        value: Z00011912023K2XA0FHR5
+    customTags:
+      - key: zone
+        value: exe.cloud
+    metrics:
+      - name: DNSQueries
+        statistics: [Sum]
+        period: 300
+        length: 300
+  - name: route53-exe-city
+    namespace: AWS/Route53
+    regions:
+      - us-east-1
+    dimensions:
+      - name: HostedZoneId
+        value: Z0958483TSZKAMLWY9J3
+    customTags:
+      - key: zone
+        value: exe.city
+    metrics:
+      - name: DNSQueries
+        statistics: [Sum]
+        period: 300
+        length: 300
+  - name: route53-exe-xyz
+    namespace: AWS/Route53
+    regions:
+      - us-east-1
+    dimensions:
+      - name: HostedZoneId
+        value: Z00707323IFXYDQ4X376F
+    customTags:
+      - key: zone
+        value: exe.xyz
+    metrics:
+      - name: DNSQueries
+        statistics: [Sum]
+        period: 300
+        length: 300
+  - name: route53-exe-new
+    namespace: AWS/Route53
+    regions:
+      - us-east-1
+    dimensions:
+      - name: HostedZoneId
+        value: Z09973702HSVLUN0VWGEA
+    customTags:
+      - key: zone
+        value: exe.new
+    metrics:
+      - name: DNSQueries
+        statistics: [Sum]
+        period: 300
+        length: 300
