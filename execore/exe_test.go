@@ -195,7 +195,7 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	bodyStr := string(body)
-	if !strings.Contains(bodyStr, "ssh") || !strings.Contains(bodyStr, "run this in your terminal") {
+	if !strings.Contains(bodyStr, "ssh") || !strings.Contains(bodyStr, "disk persists") {
 		t.Fatalf("GET / without cookies should show landing page, got:\n%s", bodyStr)
 	}
 
@@ -213,7 +213,7 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 
 	// Check that we see the dashboard, not the landing page
 	bodyStr = string(body)
-	if strings.Contains(bodyStr, "ssh exe.dev") || strings.Contains(bodyStr, "run this in your terminal") {
+	if strings.Contains(bodyStr, "disk persists") {
 		t.Fatalf("GET / after email verification shows landing page instead of dashboard:\n%s", bodyStr)
 	}
 }
