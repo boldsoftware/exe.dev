@@ -801,7 +801,21 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 		// Check database for HTTP auth token (without consuming it)
 		row, err := s.checkEmailVerificationToken(r.Context(), token)
 		if err != nil {
-			http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
+			data := struct {
+				Email         string
+				AuthURL       string
+				RedirectURL   string
+				ReturnHost    string
+				InvalidSecret bool
+				InvalidToken  bool
+			}{
+				AuthURL:      fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
+				RedirectURL:  r.URL.Query().Get("redirect"),
+				ReturnHost:   r.URL.Query().Get("return_host"),
+				InvalidToken: true,
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+			s.renderTemplate(w, "401.html", data)
 			return
 		}
 		email = row.Email
@@ -906,7 +920,21 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		userID, err := s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
 			s.slog().InfoContext(r.Context(), "invalid email verification token during verification", "error", err, "token", token, "remote_addr", r.RemoteAddr)
-			http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
+			data := struct {
+				Email         string
+				AuthURL       string
+				RedirectURL   string
+				ReturnHost    string
+				InvalidSecret bool
+				InvalidToken  bool
+			}{
+				AuthURL:      fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
+				RedirectURL:  r.FormValue("redirect"),
+				ReturnHost:   r.FormValue("return_host"),
+				InvalidToken: true,
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+			s.renderTemplate(w, "401.html", data)
 			return
 		}
 
@@ -1021,6 +1049,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 			RedirectURL   string
 			ReturnHost    string
 			InvalidSecret bool
+			InvalidToken  bool
 		}{
 			Email:       "",
 			AuthURL:     fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
@@ -1202,7 +1231,21 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		userID, err = s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
 			s.slog().InfoContext(r.Context(), "invalid email verification token during auth callback", "error", err, "token", token, "remote_addr", r.RemoteAddr)
-			http.Error(w, "Invalid or expired verification token", http.StatusUnauthorized)
+			data := struct {
+				Email         string
+				AuthURL       string
+				RedirectURL   string
+				ReturnHost    string
+				InvalidSecret bool
+				InvalidToken  bool
+			}{
+				AuthURL:      fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
+				RedirectURL:  r.URL.Query().Get("redirect"),
+				ReturnHost:   r.URL.Query().Get("return_host"),
+				InvalidToken: true,
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+			s.renderTemplate(w, "401.html", data)
 			return
 		}
 	} else {
@@ -1277,6 +1320,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 			RedirectURL   string
 			ReturnHost    string
 			InvalidSecret bool
+			InvalidToken  bool
 		}{
 			AuthURL:       fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
 			RedirectURL:   r.URL.Query().Get("redirect"),
@@ -1334,6 +1378,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 			RedirectURL   string
 			ReturnHost    string
 			InvalidSecret bool
+			InvalidToken  bool
 		}{
 			Email:       userEmail,
 			AuthURL:     fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
@@ -1375,6 +1420,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		RedirectURL   string
 		ReturnHost    string
 		InvalidSecret bool
+		InvalidToken  bool
 	}{
 		Email:       userEmail,
 		AuthURL:     fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),

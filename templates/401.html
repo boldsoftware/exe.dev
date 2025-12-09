@@ -35,6 +35,9 @@
     {{if .InvalidSecret}}
     <p class="text-zinc-500 text-lg mb-3">(invalid secret)</p>
     <h1 class="text-4xl font-semibold mb-8">Request another.</h1>
+    {{else if .InvalidToken}}
+    <p class="text-zinc-500 text-lg mb-3">(invalid token)</p>
+    <h1 class="text-4xl font-semibold mb-8">Request another.</h1>
     {{else}}
     <h1 class="text-4xl font-semibold mb-6">Access required.</h1>
     {{end}}

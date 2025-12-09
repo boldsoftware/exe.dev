@@ -399,6 +399,7 @@ func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request) {
 		RedirectURL   string
 		ReturnHost    string
 		InvalidSecret bool
+		InvalidToken  bool
 	}{
 		Email:       email,
 		AuthURL:     fmt.Sprintf("%s/auth", s.webBaseURL(r)),
