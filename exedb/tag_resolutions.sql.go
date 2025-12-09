@@ -9,6 +9,22 @@ import (
 	"context"
 )
 
+const deleteTagResolution = `-- name: DeleteTagResolution :exec
+DELETE FROM tag_resolutions
+WHERE registry = ? AND repository = ? AND tag = ?
+`
+
+type DeleteTagResolutionParams struct {
+	Registry   string `db:"registry" json:"registry"`
+	Repository string `db:"repository" json:"repository"`
+	Tag        string `db:"tag" json:"tag"`
+}
+
+func (q *Queries) DeleteTagResolution(ctx context.Context, arg DeleteTagResolutionParams) error {
+	_, err := q.exec(ctx, q.deleteTagResolutionStmt, deleteTagResolution, arg.Registry, arg.Repository, arg.Tag)
+	return err
+}
+
 const getTagResolution = `-- name: GetTagResolution :one
 SELECT registry, repository, tag, platform,
        COALESCE(index_digest, '') as index_digest, COALESCE(platform_digest, '') as platform_digest,

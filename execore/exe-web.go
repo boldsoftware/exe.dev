@@ -502,6 +502,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleHealth(w, r)
 	case "/pull-exeuntu-everywhere-517c8a904":
 		s.handlePullExeuntuEverywhere(w, r)
+	case "/clear-exeuntu-latest-cache-517c8a904":
+		s.handleClearExeuntuLatestCache(w, r)
 	case "/metrics":
 		requireLocalAccess(s.handleMetrics)(w, r)
 	case "/.well-known/ssh/knownhosts":
@@ -1997,5 +1999,35 @@ func (s *Server) handlePullExeuntuEverywhere(w http.ResponseWriter, r *http.Requ
 		"image":   image,
 		"success": allSucceeded,
 		"results": results,
+	})
+}
+
+// handleClearExeuntuLatestCache clears the tag resolver cache for the exeuntu:latest tag.
+// This should be called after pushing a new :latest tag to force fresh resolution.
+func (s *Server) handleClearExeuntuLatestCache(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if s.tagResolver == nil {
+		http.Error(w, "tag resolver not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	registry := "ghcr.io"
+	repository := "boldsoftware/exeuntu"
+	tag := "latest"
+
+	s.slog().InfoContext(ctx, "clearing tag resolver cache", "registry", registry, "repository", repository, "tag", tag)
+
+	err := s.tagResolver.DeleteTag(ctx, registry, repository, tag)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to clear tag resolver cache", "error", err)
+		http.Error(w, "failed to clear cache: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"cleared": fmt.Sprintf("%s/%s:%s", registry, repository, tag),
+		"success": true,
 	})
 }

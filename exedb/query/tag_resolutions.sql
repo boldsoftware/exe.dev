@@ -51,3 +51,7 @@ WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?;
 UPDATE tag_resolutions
 SET seen_on_hosts = seen_on_hosts + 1
 WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?;
+
+-- name: DeleteTagResolution :exec
+DELETE FROM tag_resolutions
+WHERE registry = ? AND repository = ? AND tag = ?;

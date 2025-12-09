@@ -204,6 +204,11 @@ jobs:
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}@sha256:%s ' *)
 
+      - name: Clear exeuntu:latest tag cache
+        run: |
+          curl -f --max-time 30 "https://exe.dev/clear-exeuntu-latest-cache-517c8a904"
+          curl -f --max-time 30 "https://exe-staging.dev/clear-exeuntu-latest-cache-517c8a904" || true
+
       - name: Inspect image
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:latest

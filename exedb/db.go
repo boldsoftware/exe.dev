@@ -87,6 +87,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteSSHKeyForUserStmt, err = db.PrepareContext(ctx, deleteSSHKeyForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteSSHKeyForUser: %w", err)
 	}
+	if q.deleteTagResolutionStmt, err = db.PrepareContext(ctx, deleteTagResolution); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTagResolution: %w", err)
+	}
 	if q.getAllBoxShareLinksByBoxIDStmt, err = db.PrepareContext(ctx, getAllBoxShareLinksByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllBoxShareLinksByBoxID: %w", err)
 	}
@@ -405,6 +408,11 @@ func (q *Queries) Close() error {
 	if q.deleteSSHKeyForUserStmt != nil {
 		if cerr := q.deleteSSHKeyForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteSSHKeyForUserStmt: %w", cerr)
+		}
+	}
+	if q.deleteTagResolutionStmt != nil {
+		if cerr := q.deleteTagResolutionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTagResolutionStmt: %w", cerr)
 		}
 	}
 	if q.getAllBoxShareLinksByBoxIDStmt != nil {
@@ -817,6 +825,7 @@ type Queries struct {
 	deletePendingBoxShareByBoxAndEmailStmt *sql.Stmt
 	deletePendingSSHKeyByTokenStmt         *sql.Stmt
 	deleteSSHKeyForUserStmt                *sql.Stmt
+	deleteTagResolutionStmt                *sql.Stmt
 	getAllBoxShareLinksByBoxIDStmt         *sql.Stmt
 	getAllUserEventsStmt                   *sql.Stmt
 	getAuthCookieInfoStmt                  *sql.Stmt
@@ -914,6 +923,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deletePendingBoxShareByBoxAndEmailStmt: q.deletePendingBoxShareByBoxAndEmailStmt,
 		deletePendingSSHKeyByTokenStmt:         q.deletePendingSSHKeyByTokenStmt,
 		deleteSSHKeyForUserStmt:                q.deleteSSHKeyForUserStmt,
+		deleteTagResolutionStmt:                q.deleteTagResolutionStmt,
 		getAllBoxShareLinksByBoxIDStmt:         q.getAllBoxShareLinksByBoxIDStmt,
 		getAllUserEventsStmt:                   q.getAllUserEventsStmt,
 		getAuthCookieInfoStmt:                  q.getAuthCookieInfoStmt,

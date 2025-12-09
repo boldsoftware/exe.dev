@@ -795,3 +795,15 @@ func (tr *TagResolver) IncrementSeenOnHosts(ctx context.Context, registry, repos
 		})
 	})
 }
+
+// DeleteTag removes a tag resolution from the cache, forcing a fresh lookup next time
+func (tr *TagResolver) DeleteTag(ctx context.Context, registry, repository, tag string) error {
+	return tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		return queries.DeleteTagResolution(ctx, exedb.DeleteTagResolutionParams{
+			Registry:   registry,
+			Repository: repository,
+			Tag:        tag,
+		})
+	})
+}
