@@ -514,7 +514,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleHealth(w, r)
 	case "/metrics":
 		requireLocalAccess(s.handleMetrics)(w, r)
-	case "/.well-known/knownhosts":
+	case "/.well-known/ssh/knownhosts":
 		s.handleKnownHosts(w, r)
 		return
 	case "/about":

@@ -161,7 +161,7 @@ func TestHandleKnownHostsSuccess(t *testing.T) {
 	s := newUnstartedServer(t)
 	ca := installTestHostCertificate(t, s)
 
-	req := httptest.NewRequest(http.MethodGet, "/.well-known/knownhosts", nil)
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/ssh/knownhosts", nil)
 	rr := httptest.NewRecorder()
 
 	s.handleKnownHosts(rr, req)
@@ -187,7 +187,7 @@ func TestHandleKnownHostsMissingCert(t *testing.T) {
 	t.Parallel()
 
 	s := newUnstartedServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/.well-known/knownhosts", nil)
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/ssh/knownhosts", nil)
 	rr := httptest.NewRecorder()
 
 	s.handleKnownHosts(rr, req)
