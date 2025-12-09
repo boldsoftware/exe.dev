@@ -17,14 +17,12 @@ import (
 	"time"
 
 	"exe.dev/bsdns/alley53"
-	"exe.dev/vouch"
 )
 
 // TestVanillaBox tests functionality of a vanilla box.
 // (Vanilla means no flags to new, no subsequent exe.dev-level modifications or mutations.)
 // Unifying these in a single test reduces box creation overhead.
 func TestVanillaBox(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -376,7 +374,6 @@ func TestVanillaBox(t *testing.T) {
 }
 
 func TestStandardAlpineBox(t *testing.T) {
-	vouch.For("evan")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -400,7 +397,6 @@ func TestStandardAlpineBox(t *testing.T) {
 }
 
 func TestBadBoxName(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -415,7 +411,6 @@ func TestBadBoxName(t *testing.T) {
 }
 
 func TestNewRejectsBoxMatchingSSHUsername(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -524,8 +519,6 @@ func TestNewWithPromptDefaultModel(t *testing.T) {
 
 func TestBoxRestartShutdown(t *testing.T) {
 	t.Skip("this is flaky in CI, to be investigated")
-
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -583,7 +576,6 @@ func TestBoxRestartShutdown(t *testing.T) {
 
 // TestNewWithEnvVars tests environment variable passing to boxes.
 func TestNewWithEnvVars(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -635,7 +627,6 @@ func TestNewWithEnvVars(t *testing.T) {
 }
 
 func TestNewWithInvalidEnvVarFormat(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -659,7 +650,6 @@ func TestNewWithInvalidEnvVarFormat(t *testing.T) {
 
 // TestNewBoxVariants tests various box creation flags that don't require deep verification.
 func TestNewBoxVariants(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)

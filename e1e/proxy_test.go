@@ -15,12 +15,9 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"exe.dev/vouch"
 )
 
 func TestHTTPProxy(t *testing.T) {
-	vouch.For("philip")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)

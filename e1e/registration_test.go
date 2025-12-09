@@ -13,11 +13,9 @@ import (
 	"testing"
 
 	"exe.dev/ghuser"
-	"exe.dev/vouch"
 )
 
 func TestNewKeyRegistration(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -42,7 +40,6 @@ func TestNewKeyRegistration(t *testing.T) {
 }
 
 func TestRegistrationHappensOnce(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -87,7 +84,6 @@ func TestRegistrationHappensOnce(t *testing.T) {
 }
 
 func TestRegisterMultipleKeys(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -121,7 +117,6 @@ func TestRegisterMultipleKeys(t *testing.T) {
 }
 
 func TestRegisterWebThenKey(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -181,7 +176,6 @@ func TestRegisterWebThenKey(t *testing.T) {
 }
 
 func TestRegisterGitHubKey(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -207,7 +201,6 @@ func TestRegisterGitHubKey(t *testing.T) {
 }
 
 func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -248,7 +241,6 @@ func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
 // character-by-character at the email prompt during registration.
 // (We had early issues with ssh input buffers.)
 func TestSSHTerminalInputDuringRegistration(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)

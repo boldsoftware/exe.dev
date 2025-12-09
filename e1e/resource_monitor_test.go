@@ -11,13 +11,11 @@ import (
 
 	"exe.dev/exelet/client"
 	api "exe.dev/pkg/api/exe/compute/v1"
-	"exe.dev/vouch"
 )
 
 // TestResourceMonitor tests all resource monitor metrics using a single VM.
 // Consolidating these tests saves VM creation overhead.
 func TestResourceMonitor(t *testing.T) {
-	vouch.For("philip")
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

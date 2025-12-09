@@ -13,12 +13,9 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"exe.dev/vouch"
 )
 
 func TestBoxSharing(t *testing.T) {
-	vouch.For("philip")
 	t.Parallel()
 	noGolden(t)
 
@@ -429,7 +426,6 @@ func proxyAssertWithQuery(t *testing.T, box string, exp proxyExpectation, query 
 
 // TestShareCommands tests the share command SSH interface and captures output for golden files
 func TestShareCommands(t *testing.T) {
-	vouch.For("philip")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -517,7 +513,6 @@ func TestShareCommands(t *testing.T) {
 // The user authenticates, and redirectAfterAuth should allow access to the public box
 // even though the user has no explicit share.
 func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
-	vouch.For("philip")
 	t.Parallel()
 	noGolden(t)
 

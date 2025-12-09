@@ -42,7 +42,6 @@ import (
 	"exe.dev/ctrhosttest"
 	"exe.dev/exelet/client"
 	api "exe.dev/pkg/api/exe/compute/v1"
-	"exe.dev/vouch"
 	"github.com/Netflix/go-expect"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
@@ -69,7 +68,6 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	vouch.For("josh")
 	flag.Parse()
 
 	// Enable all verbose flags if -vv is set

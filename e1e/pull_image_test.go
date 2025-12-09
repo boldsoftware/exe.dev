@@ -6,12 +6,9 @@ import (
 	"io"
 	"net/http"
 	"testing"
-
-	"exe.dev/vouch"
 )
 
 func TestPullExeuntuEverywhere(t *testing.T) {
-	vouch.For("philip")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 

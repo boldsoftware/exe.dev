@@ -14,14 +14,11 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-
-	"exe.dev/vouch"
 )
 
 func TestTerminalPermissions(t *testing.T) {
 	t.Skip("skipping CI - looks flakey (https://github.com/boldsoftware/exe/issues/87)")
 	e1eTestsOnlyRunOnce(t)
-	vouch.For("philip")
 	t.Parallel()
 	noGolden(t)
 

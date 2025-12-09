@@ -7,12 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"testing"
-
-	"exe.dev/vouch"
 )
 
 func TestRequiresSSHKey(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	// CI intermittently is missing a newline in this test.
 	// Failures look like golden file diffs like:
@@ -46,7 +43,6 @@ func TestRequiresSSHKey(t *testing.T) {
 }
 
 func TestExeDevRejectsSCP(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 
 	// The exact error varies depending on the local scp program.
