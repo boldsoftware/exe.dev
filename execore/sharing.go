@@ -64,6 +64,7 @@ const (
 	BoxAccessOwner
 	BoxAccessEmailShare
 	BoxAccessShareLink
+	BoxAccessPublic
 )
 
 // generateShareToken generates a cryptographically secure random token for share links
@@ -127,6 +128,12 @@ func (s *Server) hasUserAccessToBox(ctx context.Context, userID string, box *exe
 
 	if hasAccess {
 		return BoxAccessEmailShare, nil
+	}
+
+	// Check if box is public - any authenticated user can access public boxes
+	route := box.GetRoute()
+	if route.Share == "public" {
+		return BoxAccessPublic, nil
 	}
 
 	return BoxAccessNone, nil

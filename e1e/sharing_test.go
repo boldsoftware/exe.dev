@@ -507,3 +507,125 @@ func TestShareCommands(t *testing.T) {
 	_ = keyFile1
 	_ = email1
 }
+
+// TestPublicBoxAccessByLoggedInUser tests that a logged-in user can access a public box
+// even without an explicit share. This is a regression test for the bug where the
+// auth redirect flow would return 404 for users without shares, even for public boxes.
+//
+// Scenario: A box owner creates a public website but wants to identify visitors.
+// They add a "login" link that sends users through the auth dance:
+//   /auth?redirect=https://mybox.exe.dev/&return_host=mybox.exe.dev
+// The user authenticates, and redirectAfterAuth should allow access to the public box
+// even though the user has no explicit share.
+func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
+	vouch.For("philip")
+	t.Parallel()
+	noGolden(t)
+
+	// Owner creates a box
+	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, "owner@test-public-box.example")
+	box := newBox(t, ownerPTY, BoxOpts{Command: "/bin/bash"})
+	ownerPTY.disconnect()
+	waitForSSH(t, box, ownerKeyFile)
+
+	const boxInternalPort = 8080
+
+	// Create index.html to serve
+	makeIndex := boxSSHCommand(t, box, ownerKeyFile, "echo", "public-content", ">", "/home/exedev/index.html")
+	if err := makeIndex.Run(); err != nil {
+		t.Fatalf("failed to create index.html: %v\n", err)
+	}
+
+	// Start HTTP server in the box
+	httpdCmd := boxSSHCommand(t, box, ownerKeyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(boxInternalPort), "-h", "/home/exedev")
+	httpdCmd.Stdout = t.Output()
+	httpdCmd.Stderr = t.Output()
+	if err := httpdCmd.Start(); err != nil {
+		t.Fatalf("failed to start busybox HTTP server: %v\n", err)
+	}
+	t.Cleanup(func() {
+		httpdCmd.Process.Kill()
+		httpdCmd.Wait()
+	})
+
+	// Wait for server to be ready
+	waitCmd := boxSSHCommand(t, box, ownerKeyFile, "timeout", "20", "sh", "-c",
+		fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", boxInternalPort))
+	waitCmd.Stdout = t.Output()
+	waitCmd.Stderr = t.Output()
+	if err := waitCmd.Run(); err != nil {
+		t.Fatalf("failed to wait for busybox to serve: %v\n", err)
+	}
+
+	httpPort := Env.exed.HTTPPort
+
+	// Configure proxy port and set the box to PUBLIC
+	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
+	if err != nil {
+		t.Fatalf("failed to set proxy port: %v\n%s", err, out)
+	}
+	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "set-public", box)
+	if err != nil {
+		t.Fatalf("failed to set public visibility: %v\n%s", err, out)
+	}
+
+	// Register a guest user (no share to this box)
+	_, guestCookies, _, _ := registerForExeDevWithEmail(t, "guest@test-public-box.example")
+
+	// Simulate a "login to identify yourself" flow on a public box.
+	// The box owner might have a link like:
+	//   /auth?redirect=http://box.exe.cloud/&return_host=box.exe.cloud:port
+	// This sends the user through the auth dance even though the box is public.
+	// The bug was that redirectAfterAuth returned 404 for users without explicit shares.
+	returnHost := fmt.Sprintf("%s.exe.cloud:%d", box, httpPort)
+	redirectURL := fmt.Sprintf("http://%s/", returnHost)
+	authURL := fmt.Sprintf("http://localhost:%d/auth?redirect=%s&return_host=%s",
+		httpPort, url.QueryEscape(redirectURL), url.QueryEscape(returnHost))
+
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("failed to create cookie jar: %v", err)
+	}
+	setCookiesForJar(t, jar, fmt.Sprintf("http://localhost:%d", httpPort), guestCookies)
+	client := noRedirectClient(jar)
+
+	// Hit /auth with redirect params - this should trigger redirectAfterAuth
+	req, err := http.NewRequest("GET", authURL, nil)
+	if err != nil {
+		t.Fatalf("failed to create auth request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("failed to do auth request: %v", err)
+	}
+
+	// Should get a redirect (not a 404 error)
+	if resp.StatusCode == http.StatusNotFound {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		t.Fatalf("BUG: got 404 when accessing public box through auth dance. Body: %s", body)
+	}
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		t.Fatalf("expected redirect from /auth, got status %d. Body: %s", resp.StatusCode, body)
+	}
+	resp.Body.Close()
+
+	// Follow the redirect chain to complete the auth dance
+	location, err := resp.Location()
+	if err != nil {
+		t.Fatalf("failed to get redirect location: %v", err)
+	}
+	t.Logf("Auth redirected to: %s", location.String())
+
+	// The redirect should be to /auth/confirm (for non-owners) with the magic secret
+	if !strings.Contains(location.Path, "/auth/confirm") {
+		t.Fatalf("expected redirect to /auth/confirm, got %s", location.String())
+	}
+
+	// Cleanup
+	ownerCleanup := sshToExeDev(t, ownerKeyFile)
+	ownerCleanup.deleteBox(box)
+	ownerCleanup.disconnect()
+}
