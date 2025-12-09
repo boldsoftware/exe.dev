@@ -280,4 +280,3 @@ func (ss *SSHServer) scpFileToBox(client *ssh.Client, localPath, remotePath stri
 
 	return nil
 }
-

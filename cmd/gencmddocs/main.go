@@ -43,7 +43,7 @@ func run() error {
 		doc := generateCommandDoc(cmd, suborder)
 		filename := fmt.Sprintf("cli-%s.md", cmd.Name)
 		outputPath := filepath.Join(outputDir, filename)
-		if err := os.WriteFile(outputPath, []byte(doc), 0644); err != nil {
+		if err := os.WriteFile(outputPath, []byte(doc), 0o644); err != nil {
 			return fmt.Errorf("writing %s: %w", outputPath, err)
 		}
 		fmt.Printf("wrote %s\n", outputPath)
