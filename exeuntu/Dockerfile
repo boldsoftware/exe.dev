@@ -220,8 +220,12 @@ RUN mkdir -p /home/exedev/.local/bin && \
     chown -R exedev:exedev /home/exedev/.local && \
     ln -s /home/exedev/.local/bin/claude /usr/local/bin/claude
 
+# Custom nginx config and index page (nginx is installed but disabled by default)
+COPY nginx.conf /etc/nginx/sites-available/default
+COPY index.html /var/www/html/index.html
+
 # Expose the web server ports
-EXPOSE 8000 9999
+EXPOSE 80 8000 9999
 
 LABEL "exe.dev/login-user"="exedev"
 CMD ["/usr/local/bin/init"]
