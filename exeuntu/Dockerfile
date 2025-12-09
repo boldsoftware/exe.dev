@@ -165,8 +165,8 @@ RUN chmod +x /usr/local/bin/shelley && /usr/local/bin/shelley -help
 COPY --from=chrome /headless-shell /headless-shell
 ENV PATH="/usr/local/bin:/headless-shell:${PATH}"
 
-RUN mkdir -p /home/exedev/src /home/exedev/.config/shelley && \
-    chown exedev:exedev /home/exedev/src /home/exedev/.config /home/exedev/.config/shelley
+RUN mkdir -p /home/exedev /home/exedev/.config/shelley && \
+    chown exedev:exedev /home/exedev /home/exedev/.config /home/exedev/.config/shelley
 
 USER exedev
 
