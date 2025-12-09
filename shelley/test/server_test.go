@@ -907,6 +907,57 @@ func (m *inspectableLLMManager) HasModel(modelID string) bool {
 	return modelID == "predictable"
 }
 
+func TestVersionEndpoint(t *testing.T) {
+	// Create temp DB-backed server
+	ctx := context.Background()
+	tempDB := t.TempDir() + "/version_test.db"
+	database, err := db.New(db.Config{DSN: tempDB})
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	defer database.Close()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("Failed to migrate database: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger}, nil)
+	svr := server.NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "", nil)
+
+	mux := http.NewServeMux()
+	svr.RegisterRoutes(mux)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	// Request /version endpoint
+	resp, err := http.Get(ts.URL + "/version")
+	if err != nil {
+		t.Fatalf("GET /version failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(b))
+	}
+
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("expected application/json, got %q", ct)
+	}
+
+	// Parse the response
+	var versionInfo struct {
+		Commit     string `json:"commit"`
+		CommitTime string `json:"commit_time"`
+		Modified   bool   `json:"modified"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&versionInfo); err != nil {
+		t.Fatalf("Failed to decode version info: %v", err)
+	}
+
+	t.Logf("Version info: %+v", versionInfo)
+}
+
 func TestScreenshotRouteServesImage(t *testing.T) {
 	// Create temp DB-backed server
 	ctx := context.Background()

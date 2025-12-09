@@ -190,6 +190,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Generic read route restricted to safe paths
 	mux.HandleFunc("/api/read", s.handleRead)
 
+	// Version endpoint
+	mux.HandleFunc("/version", s.handleVersion)
+
 	// Debug routes
 	mux.HandleFunc("/debug/llm", s.handleDebugLLM)
 

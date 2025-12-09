@@ -19,6 +19,7 @@ import (
 	"shelley.exe.dev/models"
 	"shelley.exe.dev/server"
 	"shelley.exe.dev/templates"
+	"shelley.exe.dev/version"
 )
 
 type GlobalConfig struct {
@@ -60,6 +61,7 @@ func main() {
 		fmt.Fprintf(flag.CommandLine.Output(), "  serve [flags]                 Start the web server\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  models                        List supported models and env requirements\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  unpack-template <name> <dir>  Unpack a project template to a directory\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  version                       Print version information as JSON\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "\nUse '%s <command> -h' for command-specific help\n", os.Args[0])
 	}
 
@@ -80,6 +82,8 @@ func main() {
 		runModels(global, args[1:])
 	case "unpack-template":
 		runUnpackTemplate(args[1:])
+	case "version":
+		runVersion()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
 		flag.Usage()
@@ -278,6 +282,17 @@ func runUnpackTemplate(args []string) {
 	}
 
 	fmt.Printf("Template %q unpacked to %s\n", templateName, destDir)
+}
+
+// runVersion prints version information as JSON
+func runVersion() {
+	info := version.GetInfo()
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(info); err != nil {
+		fmt.Fprintf(os.Stderr, "Error encoding version: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func setupTools(ctx context.Context, llmProvider claudetool.LLMServiceProvider) ([]*llm.Tool, func()) {

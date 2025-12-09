@@ -20,6 +20,7 @@ import (
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/models"
 	"shelley.exe.dev/slug"
+	"shelley.exe.dev/version"
 )
 
 // handleRead serves files from limited allowed locations via /api/read?path=
@@ -815,4 +816,15 @@ a:hover {
 </body>
 </html>
 `)
+}
+
+// handleVersion returns version information as JSON
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(version.GetInfo())
 }
