@@ -341,11 +341,7 @@ func terminalRequestWithAuth(t *testing.T, boxName string, cookies []*http.Cooki
 		}
 		t.Logf("Following confirm redirect to %s", location.String())
 
-		// Auto-confirm by adding action=confirm
-		q := location.Query()
-		q.Set("action", "confirm")
-		location.RawQuery = q.Encode()
-
+		// Follow the /auth/confirm redirect - it redirects directly for users with access
 		req, err = localhostRequestWithHostHeader("GET", location.String(), nil)
 		if err != nil {
 			t.Fatalf("failed to make http request: %v", err)

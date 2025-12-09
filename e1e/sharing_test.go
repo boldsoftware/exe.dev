@@ -355,10 +355,7 @@ func proxyAssertWithQuery(t *testing.T, box string, exp proxyExpectation, query 
 		}
 		t.Logf("Got redirect to confirm page: %s", u.String())
 
-		// Now we scream through the confirm screen by adding "action=confirm" to the URL
-		q := u.Query()
-		q.Set("action", "confirm")
-		u.RawQuery = q.Encode()
+		// Follow redirect to /auth/confirm which should redirect to /__exe.dev/auth for users with access
 		req, err = http.NewRequest("GET", u.String(), nil)
 		if err != nil {
 			t.Errorf("failed to make http request: %v", err)
@@ -371,9 +368,9 @@ func proxyAssertWithQuery(t *testing.T, box string, exp proxyExpectation, query 
 		}
 		t.Logf("Last request was to: %s", req.URL.String())
 
-		// Now we should get a redirect to /__exe.dev/auth (303 See Other after confirm)
-		if resp.StatusCode != http.StatusSeeOther {
-			t.Errorf("expected StatusSeeOther (303) redirect after confirm, got status %d", resp.StatusCode)
+		// Should get a redirect to /__exe.dev/auth (307 for users with access)
+		if resp.StatusCode != http.StatusTemporaryRedirect {
+			t.Errorf("expected StatusTemporaryRedirect (307) redirect after confirm, got status %d", resp.StatusCode)
 		}
 		u, err = resp.Location()
 		if err != nil {

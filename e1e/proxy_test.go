@@ -1007,10 +1007,8 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 
 		// Check if we got /auth/confirm or directly to /__exe.dev/auth (owner skip)
 		if strings.Contains(u.String(), "/auth/confirm") {
-			// Not owner, need to manually confirm
-			q := u.Query()
-			q.Set("action", "confirm")
-			u.RawQuery = q.Encode()
+			// Follow the /auth/confirm redirect - it will redirect to /__exe.dev/auth for users with access
+			// or return 401 for users without access
 			req, err = localhostRequestWithHostHeader("GET", u.String(), nil)
 			if err != nil {
 				t.Errorf("failed to make http request: %v", err)
@@ -1022,8 +1020,12 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 				return
 			}
 			t.Logf("Last request was to: %s", req.URL.String())
-			if resp.StatusCode != http.StatusSeeOther {
-				t.Errorf("expected StatusSeeOther (303) redirect after confirmation, got status %d", resp.StatusCode)
+			// If we got the expected status (like 401), we're done
+			if resp.StatusCode == exp.httpCode {
+				return
+			}
+			if resp.StatusCode != http.StatusTemporaryRedirect {
+				t.Errorf("expected StatusTemporaryRedirect (307) redirect after confirm, got status %d", resp.StatusCode)
 			}
 			u, err = resp.Location()
 			if err != nil {
