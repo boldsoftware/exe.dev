@@ -20,6 +20,7 @@ type SystemPromptData struct {
 	Codebase         *CodebaseInfo
 	IsExeDev         bool
 	IsSudoAvailable  bool
+	Hostname         string // For exe.dev, the public hostname (e.g., "boxname.exe.xyz")
 }
 
 type GitInfo struct {
@@ -80,6 +81,17 @@ func collectSystemData() (*SystemPromptData, error) {
 
 	// Check sudo availability
 	data.IsSudoAvailable = isSudoAvailable()
+
+	// Get hostname for exe.dev
+	if data.IsExeDev {
+		if hostname, err := os.Hostname(); err == nil {
+			// If hostname doesn't contain dots, add .exe.xyz suffix
+			if !strings.Contains(hostname, ".") {
+				hostname = hostname + ".exe.xyz"
+			}
+			data.Hostname = hostname
+		}
+	}
 
 	return data, nil
 }
