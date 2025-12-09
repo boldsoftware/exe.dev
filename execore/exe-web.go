@@ -473,13 +473,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		return
-	case "/soon":
-		s.serveStaticFile(w, r, "soon.html")
-		return
-	case "/blog":
-		// Temporary redirect for blog to the coming soon page
-		http.Redirect(w, r, "/soon", http.StatusTemporaryRedirect)
-		return
 	case "/~", "/~/":
 		// User dashboard - require authentication
 		userID, err := s.validateAuthCookie(r)
@@ -786,6 +779,8 @@ func (s *Server) lookUpDeviceVerification(ctx context.Context, token string) (*e
 
 // showEmailVerificationForm shows a confirmation form for email verification
 func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Request, token, source string) {
+	q := r.URL.Query()
+
 	var (
 		email string
 		code  string
@@ -801,21 +796,7 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 		// Check database for HTTP auth token (without consuming it)
 		row, err := s.checkEmailVerificationToken(r.Context(), token)
 		if err != nil {
-			data := struct {
-				Email         string
-				AuthURL       string
-				RedirectURL   string
-				ReturnHost    string
-				InvalidSecret bool
-				InvalidToken  bool
-			}{
-				AuthURL:      fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
-				RedirectURL:  r.URL.Query().Get("redirect"),
-				ReturnHost:   r.URL.Query().Get("return_host"),
-				InvalidToken: true,
-			}
-			w.WriteHeader(http.StatusUnauthorized)
-			s.renderTemplate(w, "401.html", data)
+			s.render401(w, r, unauthorizedData{InvalidToken: true})
 			return
 		}
 		email = row.Email
@@ -838,8 +819,8 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 	}{
 		Env:         s.env,
 		Token:       token,
-		RedirectURL: r.URL.Query().Get("redirect"),
-		ReturnHost:  r.URL.Query().Get("return_host"),
+		RedirectURL: q.Get("redirect"),
+		ReturnHost:  q.Get("return_host"),
 		Email:       email,
 		PairingCode: code,
 		Source:      source,
@@ -920,21 +901,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		userID, err := s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
 			s.slog().InfoContext(r.Context(), "invalid email verification token during verification", "error", err, "token", token, "remote_addr", r.RemoteAddr)
-			data := struct {
-				Email         string
-				AuthURL       string
-				RedirectURL   string
-				ReturnHost    string
-				InvalidSecret bool
-				InvalidToken  bool
-			}{
-				AuthURL:      fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
-				RedirectURL:  r.FormValue("redirect"),
-				ReturnHost:   r.FormValue("return_host"),
-				InvalidToken: true,
-			}
-			w.WriteHeader(http.StatusUnauthorized)
-			s.renderTemplate(w, "401.html", data)
+			s.render401(w, r, unauthorizedData{InvalidToken: true})
 			return
 		}
 
@@ -1039,25 +1006,13 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	q := r.URL.Query()
+
 	// If this is a proxy auth flow (return_host is set), show 401 page
 	// instead of the generic "Request a link" form
-	returnHost := r.URL.Query().Get("return_host")
+	returnHost := q.Get("return_host")
 	if returnHost != "" {
-		data := struct {
-			Email         string
-			AuthURL       string
-			RedirectURL   string
-			ReturnHost    string
-			InvalidSecret bool
-			InvalidToken  bool
-		}{
-			Email:       "",
-			AuthURL:     fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
-			RedirectURL: r.URL.Query().Get("redirect"),
-			ReturnHost:  returnHost,
-		}
-		w.WriteHeader(http.StatusUnauthorized)
-		s.renderTemplate(w, "401.html", data)
+		s.render401(w, r, unauthorizedData{})
 		return
 	}
 
@@ -1065,7 +1020,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	data := authFormData{
 		Env:         s.env,
 		SSHCommand:  s.replSSHConnectionCommand(),
-		RedirectURL: r.URL.Query().Get("redirect"),
+		RedirectURL: q.Get("redirect"),
 		ReturnHost:  returnHost,
 	}
 	s.renderTemplate(w, "auth-form.html", data)
@@ -1231,21 +1186,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		userID, err = s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
 			s.slog().InfoContext(r.Context(), "invalid email verification token during auth callback", "error", err, "token", token, "remote_addr", r.RemoteAddr)
-			data := struct {
-				Email         string
-				AuthURL       string
-				RedirectURL   string
-				ReturnHost    string
-				InvalidSecret bool
-				InvalidToken  bool
-			}{
-				AuthURL:      fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
-				RedirectURL:  r.URL.Query().Get("redirect"),
-				ReturnHost:   r.URL.Query().Get("return_host"),
-				InvalidToken: true,
-			}
-			w.WriteHeader(http.StatusUnauthorized)
-			s.renderTemplate(w, "401.html", data)
+			s.render401(w, r, unauthorizedData{InvalidToken: true})
 			return
 		}
 	} else {
@@ -1313,22 +1254,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 
 	if !exists || time.Now().After(magicSecret.ExpiresAt) {
 		// Invalid or expired secret - show 401 page with email form
-		returnHost := r.URL.Query().Get("return_host")
-		data := struct {
-			Email         string
-			AuthURL       string
-			RedirectURL   string
-			ReturnHost    string
-			InvalidSecret bool
-			InvalidToken  bool
-		}{
-			AuthURL:       fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
-			RedirectURL:   r.URL.Query().Get("redirect"),
-			ReturnHost:    returnHost,
-			InvalidSecret: true,
-		}
-		w.WriteHeader(http.StatusUnauthorized)
-		s.renderTemplate(w, "401.html", data)
+		s.render401(w, r, unauthorizedData{InvalidSecret: true})
 		return
 	}
 
@@ -1370,22 +1296,11 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 			return queries.GetEmailByUserID(ctx, magicSecret.UserID)
 		})
 
-		data := struct {
-			Email         string
-			AuthURL       string
-			RedirectURL   string
-			ReturnHost    string
-			InvalidSecret bool
-			InvalidToken  bool
-		}{
+		s.render401(w, r, unauthorizedData{
 			Email:       userEmail,
-			AuthURL:     fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
 			RedirectURL: magicSecret.RedirectURL,
 			ReturnHost:  returnHost,
-		}
-
-		w.WriteHeader(http.StatusUnauthorized)
-		s.renderTemplate(w, "401.html", data)
+		})
 		return
 	}
 
@@ -1395,6 +1310,39 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
 		getScheme(r), returnHost, secret, url.QueryEscape(magicSecret.RedirectURL))
 	http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
+}
+
+// unauthorizedData holds the template data for the 401.html page
+type unauthorizedData struct {
+	Email         string
+	AuthURL       string
+	RedirectURL   string
+	ReturnHost    string
+	InvalidSecret bool
+	InvalidToken  bool
+}
+
+// render401 renders the 401.html unauthorized page.
+// It extracts redirect and return_host from the request query or form values,
+// using any non-empty values from data as overrides.
+func (s *Server) render401(w http.ResponseWriter, r *http.Request, data unauthorizedData) {
+	q := r.URL.Query()
+	if data.RedirectURL == "" {
+		data.RedirectURL = q.Get("redirect")
+		if data.RedirectURL == "" {
+			data.RedirectURL = r.FormValue("redirect")
+		}
+	}
+	if data.ReturnHost == "" {
+		data.ReturnHost = q.Get("return_host")
+		if data.ReturnHost == "" {
+			data.ReturnHost = r.FormValue("return_host")
+		}
+	}
+	data.AuthURL = fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host)
+
+	w.WriteHeader(http.StatusUnauthorized)
+	s.renderTemplate(w, "401.html", data)
 }
 
 // Helper functions for authentication and reverse proxy
