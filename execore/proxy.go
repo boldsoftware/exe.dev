@@ -693,14 +693,18 @@ func clientIPFromRemoteAddr(addr string) string {
 	return addr
 }
 
-// clearExeDevHeaders removes any exe.dev auth headers from the outbound proxy request.
-// This prevents clients from spoofing authentication state via custom headers.
+// clearExeDevHeaders removes any X-ExeDev-* headers from the outbound proxy request.
+// This prevents clients from spoofing authentication state via custom headers
+// and reserves the entire X-ExeDev- namespace for our use.
 func clearExeDevHeaders(req *http.Request) {
 	if req == nil {
 		return
 	}
-	req.Header.Del("X-ExeDev-UserID")
-	req.Header.Del("X-ExeDev-Email")
+	for key := range req.Header {
+		if strings.HasPrefix(strings.ToLower(key), "x-exedev-") {
+			req.Header.Del(key)
+		}
+	}
 }
 
 // checkShareLinkAccess checks if the request has a valid share link token

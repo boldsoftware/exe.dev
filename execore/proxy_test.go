@@ -452,7 +452,11 @@ func TestClearExeDevHeaders(t *testing.T) {
 	req.Header.Set("X-ExeDev-UserID", "spoofed-user")
 	req.Header.Set("X-ExeDev-Email", "spoofed@example.com")
 	req.Header.Add("X-ExeDev-Email", "second@example.com")
+	req.Header.Set("X-ExeDev-Arbitrary", "arbitrary-value")
+	req.Header.Set("X-ExeDev-Future-Header", "future-value")
+	req.Header.Set("x-exedev-lowercase", "lowercase-value") // test case insensitivity
 	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Custom-Header", "custom-value")
 
 	clearExeDevHeaders(req)
 
@@ -462,7 +466,19 @@ func TestClearExeDevHeaders(t *testing.T) {
 	if got := req.Header.Get("X-ExeDev-Email"); got != "" {
 		t.Fatalf("expected email header cleared, got %q", got)
 	}
+	if got := req.Header.Get("X-ExeDev-Arbitrary"); got != "" {
+		t.Fatalf("expected arbitrary X-ExeDev header cleared, got %q", got)
+	}
+	if got := req.Header.Get("X-ExeDev-Future-Header"); got != "" {
+		t.Fatalf("expected future X-ExeDev header cleared, got %q", got)
+	}
+	if got := req.Header.Get("x-exedev-lowercase"); got != "" {
+		t.Fatalf("expected lowercase X-ExeDev header cleared, got %q", got)
+	}
 	if got := req.Header.Get("X-Forwarded-Proto"); got != "https" {
 		t.Fatalf("expected unrelated headers untouched, got %q", got)
+	}
+	if got := req.Header.Get("X-Custom-Header"); got != "custom-value" {
+		t.Fatalf("expected other X- headers untouched, got %q", got)
 	}
 }
