@@ -26,6 +26,8 @@ type Env struct {
 
 	ShowHiddenDocs    bool // whether to load and display unpublished docs
 	AutoStartSSHPiper bool // whether to auto-start sshpiper for local workflows
+
+	NumShards int // number of IP shards available for box allocation, max 253
 }
 
 // Local returns an Env configured for convenient local human development.
@@ -51,6 +53,8 @@ func Local() Env {
 
 		ShowHiddenDocs:    true,
 		AutoStartSSHPiper: true,
+
+		NumShards: 25,
 	}
 }
 
@@ -78,6 +82,8 @@ func Test() Env {
 
 		ShowHiddenDocs:    true,
 		AutoStartSSHPiper: false,
+
+		NumShards: 25,
 	}
 }
 
@@ -102,6 +108,8 @@ func Staging() Env {
 
 		ShowHiddenDocs:    false,
 		AutoStartSSHPiper: false,
+
+		NumShards: 25,
 	}
 }
 
@@ -125,6 +133,8 @@ func Prod() Env {
 
 		ShowHiddenDocs:    false,
 		AutoStartSSHPiper: false,
+
+		NumShards: 25,
 	}
 }
 
@@ -134,3 +144,8 @@ func (e Env) String() string {
 
 func (e Env) BoxSub(sub string) string      { return sub + "." + e.BoxHost }
 func (e Env) BoxXtermSub(sub string) string { return sub + ".xterm." + e.BoxHost }
+
+// ShardIsValid reports whether shard is within the valid range for this stage.
+func (e Env) ShardIsValid(shard int) bool {
+	return shard >= 1 && shard <= e.NumShards
+}

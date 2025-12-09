@@ -1382,16 +1382,16 @@ func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, us
 		return 0, fmt.Errorf("failed to list IP shards for user %s: %w", userID, err)
 	}
 
-	used := make([]bool, publicips.MaxDomainShards+1)
+	used := make([]bool, s.env.NumShards+1)
 	for _, shard := range shards {
-		if !publicips.ShardIsValid(int(shard)) {
+		if !s.env.ShardIsValid(int(shard)) {
 			continue
 		}
 		used[int(shard)] = true
 	}
 
 	var assigned int
-	for candidate := 1; candidate <= publicips.MaxDomainShards; candidate++ {
+	for candidate := 1; candidate <= s.env.NumShards; candidate++ {
 		if !used[candidate] {
 			assigned = candidate
 			break
@@ -1413,7 +1413,7 @@ func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, us
 }
 
 func (s *Server) createBoxShardDNSRecord(ctx context.Context, boxName string, shard int) error {
-	if !publicips.ShardIsValid(shard) {
+	if !s.env.ShardIsValid(shard) {
 		return fmt.Errorf("invalid IP shard %d for box %s", shard, boxName)
 	}
 
@@ -1427,7 +1427,7 @@ func (s *Server) createBoxShardDNSRecord(ctx context.Context, boxName string, sh
 }
 
 func (s *Server) deleteBoxShardDNSRecord(ctx context.Context, boxName string, shard int) error {
-	if !publicips.ShardIsValid(shard) {
+	if !s.env.ShardIsValid(shard) {
 		return fmt.Errorf("invalid IP shard %d for box %s", shard, boxName)
 	}
 	if s.bsdns == nil {

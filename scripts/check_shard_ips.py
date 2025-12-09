@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Check that base domain and all shard subdomains have distinct IP addresses."""
+"""Check that base domain and all shard subdomains have distinct IP addresses.
+
+Usage: check_shard_ips.py [domain] [num_shards]
+  domain: Base domain to check (default: exe.xyz)
+  num_shards: Number of shards to check (default: 25)
+"""
 
 import socket
 import sys
@@ -16,6 +21,7 @@ def get_ip(hostname: str) -> str | None:
 
 def main():
     base_domain = sys.argv[1] if len(sys.argv) > 1 else "exe.xyz"
+    num_shards = int(sys.argv[2]) if len(sys.argv) > 2 else 25
 
     # Collect all hostnames and their IPs
     hosts_to_ips = {}
@@ -27,8 +33,8 @@ def main():
         sys.exit(1)
     hosts_to_ips[base_domain] = base_ip
 
-    # Check all shards (s001 through s025)
-    for i in range(1, 26):
+    # Check all shards (s001 through sNNN)
+    for i in range(1, num_shards + 1):
         shard_hostname = f"s{i:03d}.{base_domain}"
         shard_ip = get_ip(shard_hostname)
         if shard_ip is None:

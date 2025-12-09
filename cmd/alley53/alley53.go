@@ -26,6 +26,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	"exe.dev/domz"
 	"exe.dev/logging"
 	"exe.dev/publicips"
+	"exe.dev/stage"
 	"github.com/go4org/hashtriemap"
 )
 
@@ -47,17 +49,16 @@ const (
 
 	// boxHost is the domain suffix we handle.
 	boxHost = "exe.cloud"
-
-	// maxIPShard is the maximum shard number for box IPs.
-	// Shards 1-25 are for boxes; shard 0 is reserved for the DNS server.
-	maxIPShard = 25
 )
 
-func init() {
-	if maxIPShard > 253 {
-		panic("maxIPShard cannot exceed 253 (must fit in 127.21.0.0/24)")
+// numShards returns the number of IP shards for local development.
+var numShards = sync.OnceValue(func() int {
+	n := stage.Local().NumShards
+	if n > 253 {
+		panic("numShards cannot exceed 253 (must fit in 127.21.0.0/24)")
 	}
-}
+	return n
+})
 
 func main() {
 	if err := run(); err != nil {
@@ -148,10 +149,10 @@ type server struct {
 
 func newServer() *server {
 	s := &server{}
-	// Pre-register shard hostnames (s001-s025) so the exed server can
+	// Pre-register shard hostnames so the exed server can
 	// resolve them at startup to build the IP→shard map.
 	// This mirrors prod where Route53 has A records for s001.exe.xyz, etc.
-	for shard := 1; shard <= maxIPShard; shard++ {
+	for shard := 1; shard <= numShards(); shard++ {
 		name := publicips.ShardSub(shard)
 		ip := net.IPv4(127, 21, 0, byte(shard))
 		s.records.Store(name, ip)
@@ -522,14 +523,14 @@ type darwinPlatform struct{}
 
 func (darwinPlatform) Setup() error {
 	// Add loopback IP aliases one at a time (macOS requires individual aliases)
-	for n := 0; n <= maxIPShard; n++ {
+	for n := 0; n <= numShards(); n++ {
 		ip := fmt.Sprintf("127.21.0.%d", n)
 		if !darwinHasLoopbackAlias(ip) {
 			if err := runCmd("ifconfig", "lo0", "alias", ip); err != nil {
 				return fmt.Errorf("failed to add loopback alias %s: %w", ip, err)
 			}
 		}
-		fmt.Printf("\r%d of %d", n, maxIPShard)
+		fmt.Printf("\r%d of %d", n, numShards())
 	}
 	fmt.Println()
 
@@ -552,14 +553,14 @@ func (darwinPlatform) Teardown() error {
 	}
 
 	// Remove loopback IP aliases
-	for n := 0; n <= maxIPShard; n++ {
+	for n := 0; n <= numShards(); n++ {
 		ip := fmt.Sprintf("127.21.0.%d", n)
 		if darwinHasLoopbackAlias(ip) {
 			if err := runCmd("ifconfig", "lo0", "-alias", ip); err != nil {
 				slog.Warn("failed to remove loopback alias", "ip", ip, "error", err)
 			}
 		}
-		fmt.Printf("\r%d of %d", n, maxIPShard)
+		fmt.Printf("\r%d of %d", n, numShards())
 	}
 	fmt.Println()
 
