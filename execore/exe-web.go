@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -32,7 +31,6 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	"exe.dev/route53"
-	"exe.dev/sqlite"
 	"exe.dev/stage"
 	"exe.dev/tracing"
 
@@ -523,8 +521,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveStaticFile(w, r, "about.html")
 	case "/jobs":
 		s.serveStaticFile(w, r, "jobs.html")
-	case "/waitlist":
-		s.handleWaitlist(w, r)
 	case "/verify-email":
 		s.handleEmailVerificationHTTP(w, r)
 	case "/verify-device":
@@ -657,100 +653,6 @@ func (s *Server) handleKnownHosts(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, line)
 }
 
-// handleWaitlist handles POSTs from the coming soon waitlist form
-func (s *Server) handleWaitlist(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		if strings.Contains(r.Header.Get("Accept"), "application/json") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprint(w, `{"ok":false,"error":"invalid form"}`)
-		} else {
-			http.Error(w, "invalid form", http.StatusBadRequest)
-		}
-		return
-	}
-	email := strings.TrimSpace(r.FormValue("email"))
-	if email == "" {
-		if strings.Contains(r.Header.Get("Accept"), "application/json") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprint(w, `{"ok":false,"error":"missing email"}`)
-		} else {
-			http.Error(w, "missing email", http.StatusBadRequest)
-		}
-		return
-	}
-	// Determine remote IP
-	remoteIP := r.Header.Get("X-Forwarded-For")
-	if remoteIP == "" {
-		host, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err == nil {
-			remoteIP = host
-		} else {
-			remoteIP = r.RemoteAddr
-		}
-	}
-
-	// Collect selected meanings and encode as JSON object
-	meanings := r.Form["vm_meaning"]
-	var jsonPayload *string
-	if len(meanings) > 0 {
-		payload := map[string]any{
-			"meaning": meanings,
-		}
-		if b, err := json.Marshal(payload); err == nil {
-			s := string(b)
-			jsonPayload = &s
-		}
-	}
-
-	// Store in database and check if this is the first time this email appears
-	wasNew := false
-	err := s.db.Tx(r.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		var dummy int
-		err := tx.QueryRow("SELECT 1 FROM waitlist WHERE email = ? LIMIT 1", email).Scan(&dummy)
-		wasNew = errors.Is(err, sql.ErrNoRows)
-
-		if jsonPayload != nil {
-			_, err := tx.Exec("INSERT INTO waitlist (email, remote_ip, json) VALUES (?, ?, ?)", email, remoteIP, *jsonPayload)
-			return err
-		}
-		_, err = tx.Exec("INSERT INTO waitlist (email, remote_ip) VALUES (?, ?)", email, remoteIP)
-		return err
-	})
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "failed to insert waitlist entry", "err", err)
-		if strings.Contains(r.Header.Get("Accept"), "application/json") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprint(w, `{"ok":false,"error":"internal error"}`)
-		} else {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-		}
-		return
-	}
-
-	// Send confirmation email only on first add
-	if wasNew {
-		subject := fmt.Sprintf("You're on the %s waitlist", s.env.WebHost)
-		body := fmt.Sprintf("Hello,\n\nThanks for your interest in %[1]s. You're on the waitlist. We'll reach out as soon as we have space for you.\n\nIn the meantime, we're heads down building a great SSH-first experience.\n\n— %[1]s", s.env.WebHost)
-		if sendErr := s.sendEmail(email, subject, body); sendErr != nil {
-			s.slog().WarnContext(r.Context(), "failed to send waitlist email", "email", email, "err", sendErr)
-		}
-	}
-
-	// Return JSON for JS clients, otherwise redirect back to home
-	if strings.Contains(r.Header.Get("Accept"), "application/json") {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"ok":true}`)
-		return
-	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
 
 // showDeviceVerificationForm shows a confirmation form for device verification
 func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Request, token string) {
