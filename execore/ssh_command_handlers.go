@@ -749,6 +749,8 @@ done:
 		SSHUser:    boxName,
 		ProxyAddr:  ss.server.boxProxyAddress(boxName),
 		ProxyPort:  proxyPort,
+		VSCodeURL:  ss.server.vscodeURL(boxName),
+		XTermURL:   ss.server.xtermURL(boxName, ss.server.servingHTTPS()),
 	}
 	// TODO(philip): We should allow Shelley to run on all images, but injecting it,
 	// but, until that's done (https://github.com/boldsoftware/exe/issues/7), let's only
@@ -839,6 +841,8 @@ type newBoxDetails struct {
 	ProxyAddr  string `json:"https_url"`
 	ProxyPort  int    `json:"proxy_port"`
 	ShelleyURL string `json:"shelley_url,omitempty"`
+	VSCodeURL  string `json:"vscode_url,omitempty"`
+	XTermURL   string `json:"xterm_url,omitempty"`
 }
 
 func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.CommandContext) error {
