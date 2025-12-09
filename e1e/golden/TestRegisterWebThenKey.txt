@@ -15,7 +15,7 @@ Please enter your email address: TestRegisterWebThenKey@example.com
 
 
 Verification email sent to: TestRegisterWebThenKey@example.com
-Pairing code: 090614
+Pairing code: EMAIL_VERIFICATION_CODE
 Waiting for email verification...
 ✓ Email verified successfully!
 

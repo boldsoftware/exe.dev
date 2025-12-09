@@ -15,7 +15,7 @@ Please enter your email address: TestHelpCommandShowsNewOptions@example.com
 
 
 Verification email sent to: TestHelpCommandShowsNewOptions@example.com
-Pairing code: 612231
+Pairing code: EMAIL_VERIFICATION_CODE
 Waiting for email verification...
 ✓ Email verified successfully!
 

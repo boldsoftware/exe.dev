@@ -19,7 +19,7 @@ Email: also-fake-for-tests@example.combinatorics
 
 
 Verification email sent to: also-fake-for-tests@example.combinatorics
-Pairing code: 435945
+Pairing code: EMAIL_VERIFICATION_CODE
 Waiting for email verification...
 ✓ Email verified successfully!
 

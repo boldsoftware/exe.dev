@@ -15,7 +15,7 @@ Please enter your email address: TestShareCommands@example.com
 
 
 Verification email sent to: TestShareCommands@example.com
-Pairing code: 206424
+Pairing code: EMAIL_VERIFICATION_CODE
 Waiting for email verification...
 ✓ Email verified successfully!
 
