@@ -7,6 +7,7 @@ package exedb
 
 import (
 	"context"
+	"time"
 )
 
 const countBoxShareLinks = `-- name: CountBoxShareLinks :one
@@ -65,6 +66,56 @@ type DeleteBoxShareLinkByBoxAndTokenParams struct {
 func (q *Queries) DeleteBoxShareLinkByBoxAndToken(ctx context.Context, arg DeleteBoxShareLinkByBoxAndTokenParams) error {
 	_, err := q.exec(ctx, q.deleteBoxShareLinkByBoxAndTokenStmt, deleteBoxShareLinkByBoxAndToken, arg.BoxID, arg.ShareToken)
 	return err
+}
+
+const getAllBoxShareLinksByBoxID = `-- name: GetAllBoxShareLinksByBoxID :many
+SELECT bsl.id, bsl.box_id, bsl.share_token, bsl.created_by_user_id, bsl.created_at, bsl.last_used_at, bsl.use_count, u.email as created_by_email FROM box_share_links bsl
+JOIN users u ON bsl.created_by_user_id = u.user_id
+WHERE box_id = ?
+ORDER BY created_at DESC
+`
+
+type GetAllBoxShareLinksByBoxIDRow struct {
+	ID              int64      `db:"id" json:"id"`
+	BoxID           int64      `db:"box_id" json:"box_id"`
+	ShareToken      string     `db:"share_token" json:"share_token"`
+	CreatedByUserID string     `db:"created_by_user_id" json:"created_by_user_id"`
+	CreatedAt       *time.Time `db:"created_at" json:"created_at"`
+	LastUsedAt      *time.Time `db:"last_used_at" json:"last_used_at"`
+	UseCount        *int64     `db:"use_count" json:"use_count"`
+	CreatedByEmail  string     `db:"created_by_email" json:"created_by_email"`
+}
+
+func (q *Queries) GetAllBoxShareLinksByBoxID(ctx context.Context, boxID int64) ([]GetAllBoxShareLinksByBoxIDRow, error) {
+	rows, err := q.query(ctx, q.getAllBoxShareLinksByBoxIDStmt, getAllBoxShareLinksByBoxID, boxID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetAllBoxShareLinksByBoxIDRow{}
+	for rows.Next() {
+		var i GetAllBoxShareLinksByBoxIDRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoxID,
+			&i.ShareToken,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.LastUsedAt,
+			&i.UseCount,
+			&i.CreatedByEmail,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getBoxShareLinkByTokenAndBoxID = `-- name: GetBoxShareLinkByTokenAndBoxID :one

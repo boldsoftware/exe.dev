@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"runtime/debug"
+	"time"
 
 	"exe.dev/exedb"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
@@ -27,6 +28,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/", s.handleDebugIndex)
 	mux.HandleFunc("/debug/gitsha", s.handleDebugGitsha)
 	mux.HandleFunc("/debug/boxes", s.handleDebugBoxes)
+	mux.HandleFunc("/debug/boxes/{name}", s.handleDebugBoxDetails)
 	mux.HandleFunc("POST /debug/boxes/delete", s.handleDebugBoxDelete)
 
 	// pprof endpoints
@@ -203,7 +205,8 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 				fmt.Fprintf(w, "<table border='1' cellpadding='5' cellspacing='0'>\n")
 				fmt.Fprintf(w, "<tr><th>Name</th><th>ID</th><th>Status</th><th>Owner</th><th>Actions</th></tr>\n")
 				for _, c := range host.Containers {
-					fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><button class='delete-btn' data-box='%s'>Delete</button></td></tr>\n",
+					fmt.Fprintf(w, "<tr><td><a href='/debug/boxes/%s'>%s</a></td><td>%s</td><td>%s</td><td>%s</td><td><button class='delete-btn' data-box='%s'>Delete</button></td></tr>\n",
+						html.EscapeString(c.Name),
 						html.EscapeString(c.Name),
 						html.EscapeString(c.ID),
 						html.EscapeString(c.Status),
@@ -305,4 +308,223 @@ func (s *Server) handleDebugBoxDelete(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect back to the boxes page
 	http.Redirect(w, r, "/debug/boxes", http.StatusSeeOther)
+}
+
+// handleDebugBoxDetails displays detailed information about a specific box.
+func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	boxName := r.PathValue("name")
+
+	if boxName == "" {
+		http.Error(w, "box name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Look up the box
+	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxNamed(ctx, boxName)
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, fmt.Sprintf("box %q not found", boxName), http.StatusNotFound)
+			return
+		}
+		http.Error(w, fmt.Sprintf("failed to look up box: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Look up owner email
+	ownerEmail, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
+		return queries.GetEmailByUserID(ctx, box.CreatedByUserID)
+	})
+	if err != nil {
+		ownerEmail = box.CreatedByUserID // fallback to user ID
+	}
+
+	// Get sharing info
+	pendingShares, _ := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.PendingBoxShare, error) {
+		return queries.GetPendingBoxSharesByBoxID(ctx, int64(box.ID))
+	})
+	activeShares, _ := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetBoxSharesByBoxIDRow, error) {
+		return queries.GetBoxSharesByBoxID(ctx, int64(box.ID))
+	})
+	shareLinks, _ := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetAllBoxShareLinksByBoxIDRow, error) {
+		return queries.GetAllBoxShareLinksByBoxID(ctx, int64(box.ID))
+	})
+
+	route := box.GetRoute()
+
+	// Render HTML
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>Box: %s</title>
+<style>
+table { border-collapse: collapse; margin: 10px 0; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+th { background: #f5f5f5; }
+.section { margin: 20px 0; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+</style>
+</head><body>
+<h1>Box: %s</h1>
+<p><a href="/debug/boxes">&larr; Back to boxes</a></p>
+`, html.EscapeString(box.Name), html.EscapeString(box.Name))
+
+	// Basic info
+	fmt.Fprintf(w, `<div class="section">
+<h2>Basic Information</h2>
+<table>
+<tr><th>Name</th><td>%s</td></tr>
+<tr><th>ID</th><td>%d</td></tr>
+<tr><th>Status</th><td>%s</td></tr>
+<tr><th>Image</th><td>%s</td></tr>
+<tr><th>Container Host</th><td>%s</td></tr>
+<tr><th>Container ID</th><td>%s</td></tr>
+<tr><th>Owner</th><td>%s</td></tr>
+<tr><th>Owner User ID</th><td>%s</td></tr>
+<tr><th>Created At</th><td>%s</td></tr>
+<tr><th>Updated At</th><td>%s</td></tr>
+<tr><th>Last Started At</th><td>%s</td></tr>
+</table>
+</div>
+`,
+		html.EscapeString(box.Name),
+		box.ID,
+		html.EscapeString(box.Status),
+		html.EscapeString(box.Image),
+		html.EscapeString(box.Ctrhost),
+		html.EscapeString(ptrStr(box.ContainerID)),
+		html.EscapeString(ownerEmail),
+		html.EscapeString(box.CreatedByUserID),
+		formatTime(box.CreatedAt),
+		formatTime(box.UpdatedAt),
+		formatTime(box.LastStartedAt),
+	)
+
+	// Route/sharing config
+	fmt.Fprintf(w, `<div class="section">
+<h2>Routing Configuration</h2>
+<table>
+<tr><th>Proxy Port</th><td>%d</td></tr>
+<tr><th>Share Mode</th><td>%s</td></tr>
+</table>
+</div>
+`, route.Port, html.EscapeString(route.Share))
+
+	// SSH info
+	fmt.Fprintf(w, `<div class="section">
+<h2>SSH Configuration</h2>
+<table>
+<tr><th>SSH Port</th><td>%s</td></tr>
+<tr><th>SSH User</th><td>%s</td></tr>
+<tr><th>SSH Host</th><td>%s</td></tr>
+<tr><th>Has Server Identity Key</th><td>%v</td></tr>
+<tr><th>Has Client Private Key</th><td>%v</td></tr>
+<tr><th>Has Authorized Keys</th><td>%v</td></tr>
+</table>
+</div>
+`,
+		formatInt64Ptr(box.SSHPort),
+		html.EscapeString(ptrStr(box.SSHUser)),
+		html.EscapeString(box.SSHHost()),
+		len(box.SSHServerIdentityKey) > 0,
+		len(box.SSHClientPrivateKey) > 0,
+		box.SSHAuthorizedKeys != nil && *box.SSHAuthorizedKeys != "",
+	)
+
+	// Active shares
+	fmt.Fprintf(w, `<div class="section">
+<h2>Active Shares (%d)</h2>
+`, len(activeShares))
+	if len(activeShares) == 0 {
+		fmt.Fprintf(w, "<p>No active shares.</p>\n")
+	} else {
+		fmt.Fprintf(w, "<table>\n<tr><th>Email</th><th>Shared By</th><th>Message</th><th>Created At</th></tr>\n")
+		for _, share := range activeShares {
+			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+				html.EscapeString(share.SharedWithUserEmail),
+				html.EscapeString(share.SharedByUserID),
+				html.EscapeString(ptrStr(share.Message)),
+				formatTime(share.CreatedAt),
+			)
+		}
+		fmt.Fprintf(w, "</table>\n")
+	}
+	fmt.Fprintf(w, "</div>\n")
+
+	// Pending shares
+	fmt.Fprintf(w, `<div class="section">
+<h2>Pending Shares (%d)</h2>
+`, len(pendingShares))
+	if len(pendingShares) == 0 {
+		fmt.Fprintf(w, "<p>No pending shares.</p>\n")
+	} else {
+		fmt.Fprintf(w, "<table>\n<tr><th>Email</th><th>Shared By</th><th>Message</th><th>Created At</th></tr>\n")
+		for _, share := range pendingShares {
+			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+				html.EscapeString(share.SharedWithEmail),
+				html.EscapeString(share.SharedByUserID),
+				html.EscapeString(ptrStr(share.Message)),
+				formatTime(share.CreatedAt),
+			)
+		}
+		fmt.Fprintf(w, "</table>\n")
+	}
+	fmt.Fprintf(w, "</div>\n")
+
+	// Share links
+	fmt.Fprintf(w, `<div class="section">
+<h2>Share Links (%d)</h2>
+`, len(shareLinks))
+	if len(shareLinks) == 0 {
+		fmt.Fprintf(w, "<p>No share links.</p>\n")
+	} else {
+		fmt.Fprintf(w, "<table>\n<tr><th>Token</th><th>Created By</th><th>Created At</th><th>Last Used</th><th>Use Count</th></tr>\n")
+		for _, link := range shareLinks {
+			fmt.Fprintf(w, "<tr><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+				html.EscapeString(link.ShareToken),
+				html.EscapeString(link.CreatedByEmail),
+				formatTime(link.CreatedAt),
+				formatTime(link.LastUsedAt),
+				formatInt64Ptr(link.UseCount),
+			)
+		}
+		fmt.Fprintf(w, "</table>\n")
+	}
+	fmt.Fprintf(w, "</div>\n")
+
+	// Creation log
+	if box.CreationLog != nil && *box.CreationLog != "" {
+		fmt.Fprintf(w, `<div class="section">
+<h2>Creation Log</h2>
+<pre>%s</pre>
+</div>
+`, html.EscapeString(*box.CreationLog))
+	}
+
+	fmt.Fprintf(w, `<p><a href="/debug/boxes">&larr; Back to boxes</a></p>
+</body></html>
+`)
+}
+
+func ptrStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func formatTime(t *time.Time) string {
+	if t == nil {
+		return "-"
+	}
+	return t.Format(time.RFC3339)
+}
+
+func formatInt64Ptr(v *int64) string {
+	if v == nil {
+		return "-"
+	}
+	return fmt.Sprintf("%d", *v)
 }

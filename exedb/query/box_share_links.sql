@@ -30,3 +30,9 @@ WHERE share_token = ?;
 SELECT COUNT(*) as link_count
 FROM box_share_links
 WHERE box_id = ?;
+
+-- name: GetAllBoxShareLinksByBoxID :many
+SELECT bsl.*, u.email as created_by_email FROM box_share_links bsl
+JOIN users u ON bsl.created_by_user_id = u.user_id
+WHERE box_id = ?
+ORDER BY created_at DESC;
