@@ -145,4 +145,3 @@ func TestOpenRedirectAfterAuth(t *testing.T) {
 		t.Errorf("Open redirect vulnerability: redirected to external domain: %q", location)
 	}
 }
-
