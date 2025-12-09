@@ -2104,7 +2104,7 @@ func boxSSHCommandContext(ctx context.Context, boxname, keyFile string, args ...
 func waitForSSH(t *testing.T, boxName, keyFile string) {
 	// Wait for SSH to be responsive (systemd may take time to initialize).
 	var err error
-	for range 150 {
+	for range 300 {
 		err = boxSSHCommand(t, boxName, keyFile, "true").Run()
 		if err == nil {
 			return
