@@ -226,7 +226,7 @@ COPY index.html /var/www/html/index.html
 RUN chmod 644 /var/www/html/index.html
 
 # Expose the web server ports
-EXPOSE 80 8000 9999
+EXPOSE 8000 9999
 
 LABEL "exe.dev/login-user"="exedev"
 CMD ["/usr/local/bin/init"]
