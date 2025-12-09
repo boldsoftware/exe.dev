@@ -952,10 +952,11 @@ SSH:
 App:
 {{.ProxyAddr}}
 
-{{ if .ShelleyURL }}
+{{- if .ShelleyURL }}
+
 Shelley coding agent:
 {{.ShelleyURL}}
-{{ end }}
+{{- end }}
 
 XTerm:
 {{.XTermURL}}
