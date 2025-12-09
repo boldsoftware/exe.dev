@@ -56,7 +56,11 @@ def main():
             print(f"  {ip}: {', '.join(sorted(hosts))}")
         sys.exit(1)
 
-    print(f"OK: All {len(hosts_to_ips)} hostnames for {base_domain} have distinct IP addresses")
+    # Print all hostname to IP mappings
+    for host, ip in sorted(hosts_to_ips.items()):
+        print(f"{host} -> {ip}")
+
+    print(f"\nOK: All {len(hosts_to_ips)} hostnames for {base_domain} have distinct IP addresses")
     sys.exit(0)
 
 
