@@ -1,38 +1,90 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>exe.dev</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
-          },
-          keyframes: {
-            cursor: {
-              '0%, 49%': { opacity: '1' },
-              '50%, 100%': { opacity: '0' },
-            },
-          },
-          animation: {
-            cursor: 'cursor 1s infinite',
-          },
-        },
-      },
-    }
-  </script>
-</head>
-<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
-  <main class="w-full max-w-2xl">
-    <p class="text-6xl font-semibold tracking-widest">{{.SSHCommand}} <span class="animate-cursor select-none">_</span></p>
-    <p class="text-zinc-500 mt-8">(run this in your terminal)</p>
-  </main>
-</body>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      @keyframes cursor {
+        0%, 49% {
+          opacity: 1;
+        }
+        50%, 100% {
+          opacity: 0;
+        }
+      }
+
+      .glow {
+        transition: text-shadow 0.3s ease;
+      }
+
+      .glow:hover {
+        text-shadow:
+          0 0 20px rgba(0, 255, 0, 0.5),
+          0 0 40px rgba(0, 255, 0, 0.25),
+          0 0 60px rgba(0, 255, 0, 0.1);
+      }
+
+      @keyframes fadeOut {
+        from {
+          opacity: 1;
+        }
+        to {
+          opacity: 0;
+        }
+      }
+
+      body.htmx-swapping {
+        animation: fadeOut 0.3s ease-out forwards;
+      }
+
+      body.htmx-settling {
+        animation: fadeIn 0.3s ease-in forwards;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen grid grid-rows-[auto_1fr_auto] bg-white text-gray-900">
+    <nav class="flex justify-end px-6 py-4">
+      <a href="/auth" class="text-gray-400 hover:text-gray-600">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+        </svg>
+      </a>
+    </nav>
+    <main class="flex flex-col justify-center items-center px-4 py-8 space-y-8 font-mono">
+      <div class="relative w-full max-w-xl mx-auto text-center animate-[fadeIn_0.8s_ease-out_forwards]">
+        <div class="glow text-6xl">
+          <span>{{.SSHCommand}} <span class="animate-[cursor_1s_infinite] select-none">_</span></span>
+        </div>
+        <div class="mt-8 text-lg text-gray-500">
+            The disk persists. You have sudo.
+        </div>
+      </div>
+    </main>
+    <!-- Footer with stub links to privacy and terms, about, and discord -->
+    <footer class="text-sm text-gray-400 min-w-full py-4 px-6 flex justify-center gap-4">
+        <!-- <a href="/privacy" class="hover:underline">Privacy Policy</a> -->
+        <!-- <span>&bull;</span> -->
+        <!-- <a href="/terms" class="hover:underline">Terms of Service</a> -->
+        <!-- <span>&bull;</span> -->
+        <a href="/docs/what-is-exe" class="hover:underline">About</a>
+        <span>&bull;</span>
+        <a href="https://discord.gg/jc9WQUfaxf" class="hover:underline">Discord</a>
+    </footer>
+  </body>
 </html>
