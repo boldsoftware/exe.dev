@@ -124,12 +124,7 @@ header .btn .btn-text {
   header .btn {
     padding: 8px 12px;
   }
-  
-  /* Hide waitlist button on mobile */
-  header .btn-waitlist {
-    display: none;
-  }
-  
+
   /* Reduce gap between left and right sections on mobile */
   header .nav-left {
     gap: 16px;
