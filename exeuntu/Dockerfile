@@ -223,6 +223,7 @@ RUN mkdir -p /home/exedev/.local/bin && \
 # Custom nginx config and index page (nginx is installed but disabled by default)
 COPY nginx.conf /etc/nginx/sites-available/default
 COPY index.html /var/www/html/index.html
+RUN chmod 644 /var/www/html/index.html
 
 # Expose the web server ports
 EXPOSE 80 8000 9999
