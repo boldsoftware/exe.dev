@@ -5,7 +5,6 @@ import (
 	crand "crypto/rand"
 	"database/sql"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -21,44 +20,46 @@ import (
 	"exe.dev/xshelley"
 )
 
-// shelleyCommandFlags creates a FlagSet for the shelley command
-func shelleyCommandFlags() *flag.FlagSet {
-	fs := flag.NewFlagSet("shelley", flag.ContinueOnError)
-	fs.Bool("json", false, "output in JSON format")
-	return fs
+// shelleyCommand returns the command definition for the shelley command
+func (ss *SSHServer) shelleyCommand() *exemenu.Command {
+	return &exemenu.Command{
+		Name:        "shelley",
+		Description: "Manage Shelley agent on boxes",
+		Usage:       "shelley <subcommand> [args...]",
+		Handler:     ss.handleShelleyHelp,
+		Subcommands: []*exemenu.Command{
+			{
+				Name:              "install",
+				Description:       "Install or upgrade Shelley to the current version",
+				Usage:             "shelley install <box>",
+				Handler:           ss.handleShelleyInstall,
+				HasPositionalArgs: true,
+				CompleterFunc:     ss.completeBoxNames,
+			},
+		},
+	}
 }
 
-// handleShelleyCommand handles the "shelley" command and its subcommands
-func (ss *SSHServer) handleShelleyCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if len(cc.Args) == 0 {
-		// Show help when no subcommand is provided
-		cc.Writeln("Shelley is an agent that's pre-installed on exeuntu containers.")
-		cc.Writeln("")
-		cc.Writeln("Usage: shelley <subcommand>")
-		cc.Writeln("")
-		cc.Writeln("Available subcommands:")
-		cc.Writeln("  install <box>  Install/upgrade Shelley to the current version")
-		cc.Writeln("")
-		return nil
-	}
-
-	subcommand := cc.Args[0]
-	switch subcommand {
-	case "install":
-		return ss.handleShelleyInstall(ctx, cc)
-	default:
-		return cc.Errorf("unknown subcommand: %s", subcommand)
-	}
+// handleShelleyHelp shows help for the shelley command
+func (ss *SSHServer) handleShelleyHelp(ctx context.Context, cc *exemenu.CommandContext) error {
+	cc.Writeln("Shelley is an agent that's pre-installed on exeuntu containers.")
+	cc.Writeln("")
+	cc.Writeln("Usage: shelley <subcommand>")
+	cc.Writeln("")
+	cc.Writeln("Available subcommands:")
+	cc.Writeln("  install <box>  Install/upgrade Shelley to the current version")
+	cc.Writeln("")
+	return nil
 }
 
 // handleShelleyInstall handles "shelley install <box>"
 func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.CommandContext) error {
 	// Expect exactly one argument: the box name
-	if len(cc.Args) != 2 {
+	if len(cc.Args) != 1 {
 		return cc.Errorf("usage: shelley install <box>")
 	}
 
-	boxName := cc.Args[1]
+	boxName := cc.Args[0]
 
 	// Look up the box
 	box, err := ss.server.getBoxForUser(ctx, cc.PublicKey, boxName)
@@ -280,25 +281,3 @@ func (ss *SSHServer) scpFileToBox(client *ssh.Client, localPath, remotePath stri
 	return nil
 }
 
-// completeShelleyArgs provides completion for shelley subcommands and box names
-func (ss *SSHServer) completeShelleyArgs(compCtx *exemenu.CompletionContext, cc *exemenu.CommandContext) []string {
-	// If we're completing the first argument (subcommand)
-	if len(cc.Args) == 0 {
-		subcommands := []string{"install"}
-		var completions []string
-		prefix := compCtx.CurrentWord
-		for _, cmd := range subcommands {
-			if strings.HasPrefix(cmd, prefix) {
-				completions = append(completions, cmd)
-			}
-		}
-		return completions
-	}
-
-	// If we're completing the second argument for "install", complete box names
-	if len(cc.Args) == 1 && cc.Args[0] == "install" {
-		return ss.completeBoxNames(compCtx, cc)
-	}
-
-	return nil
-}

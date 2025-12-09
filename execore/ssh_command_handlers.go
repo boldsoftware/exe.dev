@@ -151,18 +151,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			FlagSetFunc:       jsonOnlyFlags("delete-ssh-key"),
 			HasPositionalArgs: true,
 		},
-		{
-			Name:              "shelley",
-			Description:       "Manage Shelley agent on boxes",
-			Usage:             "shelley <subcommand> [args...]",
-			Handler:           ss.handleShelleyCommand,
-			FlagSetFunc:       shelleyCommandFlags,
-			HasPositionalArgs: true,
-			CompleterFunc:     ss.completeShelleyArgs,
-			Examples: []string{
-				"shelley install mybox  # Install/upgrade Shelley to current version",
-			},
-		},
+		ss.shelleyCommand(),
 		{
 			Name:        "browser",
 			Description: "Generate a magic link to log in to the website",
