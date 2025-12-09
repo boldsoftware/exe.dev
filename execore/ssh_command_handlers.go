@@ -65,6 +65,7 @@ func newCommandFlags() *flag.FlagSet {
 	fs.String("command", "auto", "container command: auto, none, or a custom command")
 	fs.String("prompt", "", "initial prompt to send to Shelley after box creation (requires exeuntu image)")
 	fs.Bool("json", false, "output in JSON format")
+	fs.Bool("no-email", false, "do not send email notification")
 	// Hidden flag for testing
 	fs.String("prompt-model", shelleyDefaultModel, "")
 	// Environment variables (can be specified multiple times)
@@ -298,6 +299,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	command := cc.FlagSet.Lookup("command").Value.String()
 	prompt := cc.FlagSet.Lookup("prompt").Value.String()
 	model := cc.FlagSet.Lookup("prompt-model").Value.String()
+	noEmail := cc.FlagSet.Lookup("no-email").Value.String() == "true"
 
 	// Parse environment variables
 	var envVars []string
@@ -758,6 +760,10 @@ done:
 	// The strings.Contains check here is a miserable hack for e1e's TestNewWithPrompt. I am full of shame.
 	if image == "exeuntu" && (command == "auto" || strings.Contains(command, "/usr/local/bin/shelley")) {
 		details.ShelleyURL = ss.server.shelleyURL(boxName)
+	}
+
+	if !noEmail {
+		go ss.server.sendBoxCreatedEmail(user.Email, details)
 	}
 
 	if cc.WantJSON() {

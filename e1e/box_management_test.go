@@ -24,9 +24,16 @@ func TestVanillaBox(t *testing.T) {
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
-	pty, _, keyFile, _ := registerForExeDev(t)
+	pty, _, keyFile, email := registerForExeDev(t)
 	boxName := newBox(t, pty)
 	pty.disconnect()
+
+	t.Run("new_box_email_sent", func(t *testing.T) {
+		msg := Env.email.waitForEmail(t, email)
+		if !strings.Contains(msg.Subject, boxName) {
+			t.Errorf("expected email subject to contain box name %q, got %q", boxName, msg.Subject)
+		}
+	})
 
 	t.Run("no_second_hint", func(t *testing.T) {
 		noGolden(t)
@@ -623,4 +630,27 @@ func TestNewWithLongName(t *testing.T) {
 	cleanup := sshToExeDev(t, keyFile)
 	cleanup.deleteBox(boxName)
 	cleanup.disconnect()
+}
+
+func TestNewBoxNoEmailFlag(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, _, email := registerForExeDev(t)
+
+	// Poison the inbox.
+	// The email server will panic if email arrives to this email address before the process ends.
+	// This is a minor logical race, but it only allows false negatives, and it's worth it to avoid sleeping.
+	Env.email.poisonInbox(email)
+
+	boxName := boxName(t)
+	pty.sendLine(fmt.Sprintf("new --name=%s -no-email", boxName))
+	pty.wantRe("Creating .*" + boxName)
+	pty.want("Ready")
+	pty.wantPrompt()
+
+	pty.deleteBox(boxName)
+	pty.disconnect()
 }

@@ -37,6 +37,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go4org/hashtriemap"
+
 	"exe.dev/ctrhosttest"
 	"exe.dev/exelet/client"
 	api "exe.dev/pkg/api/exe/compute/v1"
@@ -1959,8 +1961,8 @@ type emailServer struct {
 	port     int
 	server   *http.Server
 	listener net.Listener
-	inboxMu  sync.Mutex                   // protects inbox
-	inbox    map[string]chan emailMessage // email address -> inbox channel
+	inbox    hashtriemap.HashTrieMap[string, chan emailMessage] // email address -> inbox channel
+	poisoned hashtriemap.HashTrieMap[string, bool]              // email addresses that should panic on receive
 }
 
 func newEmailServer() (*emailServer, error) {
@@ -1974,7 +1976,6 @@ func newEmailServer() (*emailServer, error) {
 	es := &emailServer{
 		port:     port,
 		listener: listener,
-		inbox:    make(map[string]chan emailMessage),
 	}
 
 	mux := http.NewServeMux()
@@ -2013,18 +2014,16 @@ func (es *emailServer) handleSendEmail(w http.ResponseWriter, r *http.Request) {
 		slog.InfoContext(r.Context(), "email received", "to", email.To, "subject", email.Subject, "body", email.Body)
 	}
 
+	if _, poisoned := es.poisoned.Load(email.To); poisoned {
+		panic(fmt.Sprintf("email sent to poisoned inbox %s: subject=%q", email.To, email.Subject))
+	}
+
 	es.inboxChannel(email.To) <- email
 }
 
+// inboxChannel returns the inbox channel for the given email address.
 func (es *emailServer) inboxChannel(email string) chan emailMessage {
-	es.inboxMu.Lock()
-	defer es.inboxMu.Unlock()
-
-	ch, exists := es.inbox[email]
-	if !exists {
-		ch = make(chan emailMessage, 16)
-		es.inbox[email] = ch
-	}
+	ch, _ := es.inbox.LoadOrStore(email, make(chan emailMessage, 16))
 	return ch
 }
 
@@ -2038,6 +2037,12 @@ func (es *emailServer) waitForEmail(t *testing.T, email string) emailMessage {
 		t.Fatalf("timeout waiting for email to %s", email)
 		return emailMessage{}
 	}
+}
+
+// poisonInbox marks an inbox as poisoned. Any email sent to this address will panic.
+// This is used to verify no email is sent without requiring a sleep-based timeout.
+func (es *emailServer) poisonInbox(email string) {
+	es.poisoned.Store(email, true)
 }
 
 // extractVerificationToken extracts the full verification URL from the email body

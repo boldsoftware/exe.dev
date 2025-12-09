@@ -32,6 +32,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	txttmpl "text/template"
 	"time"
 
 	"exe.dev/boxname"
@@ -941,6 +942,43 @@ func (s *Server) sendFakeEmail(to, subject, body string) error {
 
 	s.slog().Info("fake email sent successfully via HTTP", "to", to, "subject", subject)
 	return nil
+}
+
+var boxCreatedEmailTemplate = txttmpl.Must(txttmpl.New("box-created").Parse(`You have created {{.BoxName}}.exe.xyz
+
+SSH:
+{{.SSHCommand}}
+
+App:
+{{.ProxyAddr}}
+
+{{ if .ShelleyURL }}
+Shelley coding agent:
+{{.ShelleyURL}}
+{{ end }}
+
+XTerm:
+{{.XTermURL}}
+
+VSCode:
+{{.VSCodeURL}}
+
+To prevent emails like this, pass the -no-email flag to new.
+`))
+
+// sendBoxCreatedEmail sends a confirmation email when a new box is created
+func (s *Server) sendBoxCreatedEmail(to string, details newBoxDetails) {
+	subject := fmt.Sprintf("exe.dev: created %s.exe.xyz", details.BoxName)
+
+	body := new(strings.Builder)
+	if err := boxCreatedEmailTemplate.Execute(body, details); err != nil {
+		s.slog().Warn("failed to render box created email", "error", err)
+		return
+	}
+
+	if err := s.sendEmail(to, subject, body.String()); err != nil {
+		s.slog().Warn("failed to send box created email", "to", to, "box", details.BoxName, "error", err)
+	}
 }
 
 // logAuthAttempt logs all SSH authentication attempts for debugging
