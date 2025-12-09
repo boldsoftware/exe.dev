@@ -14,7 +14,9 @@ import (
 	"exe.dev/vouch"
 )
 
-func TestResourceMonitorMetricsClearedAfterDeletion(t *testing.T) {
+// TestResourceMonitor tests all resource monitor metrics using a single VM.
+// Consolidating these tests saves VM creation overhead.
+func TestResourceMonitor(t *testing.T) {
 	vouch.For("philip")
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
@@ -48,128 +50,55 @@ func TestResourceMonitorMetricsClearedAfterDeletion(t *testing.T) {
 
 	ctx := Env.context(t)
 	instanceID := instanceIDByName(t, ctx, exeletClient, boxName)
-
-	metricsURL := Env.exelet.HTTPAddress + "/metrics"
-	label := fmt.Sprintf(`vm_id="%s"`, instanceID)
-
-	waitForMetric(t, metricsURL, label, true, 30*time.Second)
-
-	pty.deleteBox(boxName)
-
-	waitForMetric(t, metricsURL, label, false, 30*time.Second)
-}
-
-func TestResourceMonitorNetworkMetrics(t *testing.T) {
-	vouch.For("philip")
-	e1eTestsOnlyRunOnce(t)
-	noGolden(t)
-
-	if Env.exelet.HTTPAddress == "" {
-		t.Skip("exelet HTTP address is not available")
-	}
-
-	pty, _, keyFile, _ := registerForExeDev(t)
-	defer pty.disconnect()
-
-	boxName := newBox(t, pty)
-	defer pty.deleteBox(boxName)
-
-	// Wait for SSH to respond.
-	waitDeadline := time.Now().Add(2 * time.Minute)
-	for {
-		if err := boxSSHCommand(t, boxName, keyFile, "true").Run(); err == nil {
-			break
-		}
-		if time.Now().After(waitDeadline) {
-			t.Fatalf("box %s ssh did not become ready", boxName)
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	exeletClient, err := Env.initExeletClient()
-	if err != nil {
-		t.Fatalf("failed to init exelet client: %v", err)
-	}
-	defer exeletClient.Close()
-
-	ctx := Env.context(t)
-	instanceID := instanceIDByName(t, ctx, exeletClient, boxName)
-
 	metricsURL := Env.exelet.HTTPAddress + "/metrics"
 
-	// Wait for network metrics to appear
-	rxMetric := fmt.Sprintf(`exelet_vm_net_rx_bytes_total{vm_id="%s"`, instanceID)
-	txMetric := fmt.Sprintf(`exelet_vm_net_tx_bytes_total{vm_id="%s"`, instanceID)
+	t.Run("network_metrics", func(t *testing.T) {
+		// Wait for network metrics to appear
+		rxMetric := fmt.Sprintf(`exelet_vm_net_rx_bytes_total{vm_id="%s"`, instanceID)
+		txMetric := fmt.Sprintf(`exelet_vm_net_tx_bytes_total{vm_id="%s"`, instanceID)
 
-	waitForMetric(t, metricsURL, rxMetric, true, 30*time.Second)
-	waitForMetric(t, metricsURL, txMetric, true, 30*time.Second)
+		waitForMetric(t, metricsURL, rxMetric, true, 30*time.Second)
+		waitForMetric(t, metricsURL, txMetric, true, 30*time.Second)
 
-	// Generate some network traffic by running a command over SSH
-	if err := boxSSHCommand(t, boxName, keyFile, "echo hello").Run(); err != nil {
-		t.Fatalf("failed to run SSH command: %v", err)
-	}
-
-	// Wait a bit for metrics to update
-	time.Sleep(2 * time.Second)
-
-	// Verify metrics are still present and have non-zero values
-	body := fetchMetrics(t, metricsURL)
-	if !strings.Contains(body, rxMetric) {
-		t.Errorf("network RX metric not found after traffic generation")
-	}
-	if !strings.Contains(body, txMetric) {
-		t.Errorf("network TX metric not found after traffic generation")
-	}
-}
-
-func TestResourceMonitorDiskMetrics(t *testing.T) {
-	vouch.For("philip")
-	e1eTestsOnlyRunOnce(t)
-	noGolden(t)
-
-	if Env.exelet.HTTPAddress == "" {
-		t.Skip("exelet HTTP address is not available")
-	}
-
-	pty, _, keyFile, _ := registerForExeDev(t)
-	defer pty.disconnect()
-
-	boxName := newBox(t, pty)
-	defer pty.deleteBox(boxName)
-
-	// Wait for SSH to respond.
-	waitDeadline := time.Now().Add(2 * time.Minute)
-	for {
-		if err := boxSSHCommand(t, boxName, keyFile, "true").Run(); err == nil {
-			break
+		// Generate some network traffic by running a command over SSH
+		if err := boxSSHCommand(t, boxName, keyFile, "echo hello").Run(); err != nil {
+			t.Fatalf("failed to run SSH command: %v", err)
 		}
-		if time.Now().After(waitDeadline) {
-			t.Fatalf("box %s ssh did not become ready", boxName)
+
+		// Wait a bit for metrics to update
+		time.Sleep(2 * time.Second)
+
+		// Verify metrics are still present and have non-zero values
+		body := fetchMetrics(t, metricsURL)
+		if !strings.Contains(body, rxMetric) {
+			t.Errorf("network RX metric not found after traffic generation")
 		}
-		time.Sleep(500 * time.Millisecond)
-	}
+		if !strings.Contains(body, txMetric) {
+			t.Errorf("network TX metric not found after traffic generation")
+		}
+	})
 
-	exeletClient, err := Env.initExeletClient()
-	if err != nil {
-		t.Fatalf("failed to init exelet client: %v", err)
-	}
-	defer exeletClient.Close()
+	t.Run("disk_metrics", func(t *testing.T) {
+		// Disk metrics are polled every cycle when resource-monitor-interval < 30s (as in tests).
+		diskMetric := fmt.Sprintf(`exelet_vm_disk_used_bytes{vm_id="%s"`, instanceID)
 
-	ctx := Env.context(t)
-	instanceID := instanceIDByName(t, ctx, exeletClient, boxName)
+		waitForMetric(t, metricsURL, diskMetric, true, 30*time.Second)
 
-	metricsURL := Env.exelet.HTTPAddress + "/metrics"
+		// Verify the metric value is greater than 0 (disk should have some usage)
+		body := fetchMetrics(t, metricsURL)
+		if !strings.Contains(body, diskMetric) {
+			t.Errorf("disk metric not found")
+		}
+	})
 
-	// Disk metrics are polled every cycle when resource-monitor-interval < 30s (as in tests).
-	diskMetric := fmt.Sprintf(`exelet_vm_disk_used_bytes{vm_id="%s"`, instanceID)
+	t.Run("metrics_cleared_after_deletion", func(t *testing.T) {
+		label := fmt.Sprintf(`vm_id="%s"`, instanceID)
+		waitForMetric(t, metricsURL, label, true, 30*time.Second)
 
-	waitForMetric(t, metricsURL, diskMetric, true, 30*time.Second)
+		pty.deleteBox(boxName)
 
-	// Verify the metric value is greater than 0 (disk should have some usage)
-	body := fetchMetrics(t, metricsURL)
-	if !strings.Contains(body, diskMetric) {
-		t.Errorf("disk metric not found")
-	}
+		waitForMetric(t, metricsURL, label, false, 30*time.Second)
+	})
 }
 
 func instanceIDByName(t *testing.T, ctx context.Context, client *client.Client, name string) string {

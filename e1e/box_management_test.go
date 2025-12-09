@@ -581,6 +581,7 @@ func TestBoxRestartShutdown(t *testing.T) {
 	cleanup.disconnect()
 }
 
+// TestNewWithEnvVars tests environment variable passing to boxes.
 func TestNewWithEnvVars(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
@@ -588,9 +589,9 @@ func TestNewWithEnvVars(t *testing.T) {
 
 	pty, _, keyFile, _ := registerForExeDev(t)
 
-	// Create a box with environment variables
+	// Create a box with environment variables including simple values and special characters
 	boxName := boxName(t)
-	pty.sendLine(fmt.Sprintf("new --name=%s --env TEST_VAR1=value1 --env TEST_VAR2=value2 --env TEST_VAR3=value3", boxName))
+	pty.sendLine(fmt.Sprintf("new --name=%s --env TEST_VAR1=value1 --env TEST_VAR2=value2 --env 'GREETING=hello world' --env 'COMMAND=echo $HOME' --env 'QUOTE=it'\"'\"'s great'", boxName))
 	pty.wantRe("Creating .*" + boxName)
 	pty.want("Ready")
 	pty.wantPrompt()
@@ -601,19 +602,28 @@ func TestNewWithEnvVars(t *testing.T) {
 	box := sshToBox(t, boxName, keyFile)
 	box.wantPrompt()
 
-	// Check TEST_VAR1
+	// Check simple values
 	box.sendLine("echo $TEST_VAR1")
 	box.want("value1")
 	box.wantPrompt()
 
-	// Check TEST_VAR2
 	box.sendLine("echo $TEST_VAR2")
 	box.want("value2")
 	box.wantPrompt()
 
-	// Check TEST_VAR3
-	box.sendLine("echo $TEST_VAR3")
-	box.want("value3")
+	// Check GREETING (contains space)
+	box.sendLine("echo $GREETING")
+	box.want("hello world")
+	box.wantPrompt()
+
+	// Check COMMAND (contains special chars that should NOT be expanded)
+	box.sendLine("echo $COMMAND")
+	box.want("echo $HOME")
+	box.wantPrompt()
+
+	// Check QUOTE (contains single quote)
+	box.sendLine("echo $QUOTE")
+	box.want("it's great")
 	box.wantPrompt()
 
 	box.disconnect()
@@ -647,95 +657,33 @@ func TestNewWithInvalidEnvVarFormat(t *testing.T) {
 	cleanup.disconnect()
 }
 
-func TestNewWithEnvVarsContainingSpacesAndSpecialChars(t *testing.T) {
-	vouch.For("josh")
-	t.Parallel()
-	e1eTestsOnlyRunOnce(t)
-
-	pty, _, keyFile, _ := registerForExeDev(t)
-
-	// Create a box with environment variables containing spaces and special characters
-	boxName := boxName(t)
-	pty.sendLine(fmt.Sprintf("new --name=%s --env 'GREETING=hello world' --env 'COMMAND=echo $HOME' --env 'QUOTE=it'\"'\"'s great'", boxName))
-	pty.wantRe("Creating .*" + boxName)
-	pty.want("Ready")
-	pty.wantPrompt()
-	pty.disconnect()
-
-	// SSH into the box and verify the environment variables are set correctly
-	waitForSSH(t, boxName, keyFile)
-	box := sshToBox(t, boxName, keyFile)
-	box.wantPrompt()
-
-	// Check GREETING (contains space)
-	box.sendLine("echo $GREETING")
-	box.want("hello world")
-	box.wantPrompt()
-
-	// Check COMMAND (contains special chars that should NOT be expanded)
-	box.sendLine("echo $COMMAND")
-	box.want("echo $HOME")
-	box.wantPrompt()
-
-	// Check QUOTE (contains single quote)
-	box.sendLine("echo $QUOTE")
-	box.want("it's great")
-	box.wantPrompt()
-
-	box.disconnect()
-
-	// Clean up
-	cleanup := sshToExeDev(t, keyFile)
-	cleanup.deleteBox(boxName)
-	cleanup.disconnect()
-}
-
-func TestNewWithLongName(t *testing.T) {
-	vouch.For("josh")
-	t.Parallel()
-	e1eTestsOnlyRunOnce(t)
-
-	pty, _, keyFile, _ := registerForExeDev(t)
-
-	// Create a box with environment variables
-	boxName := boxName(t)
-	if len(boxName) < 63 {
-		boxName += strings.Repeat("a", 63-len(boxName))
-		Env.addCanonicalization(boxName, "BOX_NAME")
-	}
-	pty.sendLine(fmt.Sprintf("new --name=%s", boxName))
-	pty.wantRe("Creating .*" + boxName)
-	pty.want("Ready")
-	pty.wantPrompt()
-	pty.disconnect()
-
-	// Clean up
-	cleanup := sshToExeDev(t, keyFile)
-	cleanup.deleteBox(boxName)
-	cleanup.disconnect()
-}
-
-func TestNewBoxNoEmailFlag(t *testing.T) {
+// TestNewBoxVariants tests various box creation flags that don't require deep verification.
+func TestNewBoxVariants(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
-	pty, _, _, email := registerForExeDev(t)
+	pty, _, keyFile, email := registerForExeDev(t)
 
-	// Poison the inbox.
-	// The email server will panic if email arrives to this email address before the process ends.
-	// This is a minor logical race, but it only allows false negatives, and it's worth it to avoid sleeping.
+	// Test both long name (63 chars, DNS limit) and --no-email flag together.
+	// For no-email, poison the inbox - email server will panic if email arrives before process ends.
 	Env.email.poisonInbox(email)
 
 	boxName := boxName(t)
+	if len(boxName) < 63 {
+		boxName += strings.Repeat("a", 63-len(boxName))
+		Env.addCanonicalization(boxName, "BOX_NAME")
+	}
 	pty.sendLine(fmt.Sprintf("new --name=%s -no-email", boxName))
 	pty.wantRe("Creating .*" + boxName)
 	pty.want("Ready")
 	pty.wantPrompt()
 
-	pty.deleteBox(boxName)
-	pty.disconnect()
+	// Clean up
+	cleanup := sshToExeDev(t, keyFile)
+	cleanup.deleteBox(boxName)
+	cleanup.disconnect()
 }
 
 func truncate(s string, maxLen int) string {
