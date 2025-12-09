@@ -171,7 +171,7 @@ jobs:
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}@sha256:%s ' *)
 
-      - name: Pull image on exe.dev and staging-exe.dev
+      - name: Pull image on exe.dev and exe-staging.dev
         run: |
           TAG="main-$(echo ${{ github.sha }} | head -c 7)"
           echo "Pulling tag: $TAG"
@@ -180,7 +180,7 @@ jobs:
           curl -f --max-time 300 "https://exe.dev/pull-exeuntu-everywhere-517c8a904?tag=$TAG" &
           PROD_PID=$!
 
-          curl -f --max-time 300 "https://staging-exe.dev/pull-exeuntu-everywhere-517c8a904?tag=$TAG" &
+          curl -f --max-time 300 "https://exe-staging.dev/pull-exeuntu-everywhere-517c8a904?tag=$TAG" &
           STAGING_PID=$!
 
           # Wait for staging (don't fail if it errors)
