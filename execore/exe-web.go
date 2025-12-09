@@ -653,7 +653,6 @@ func (s *Server) handleKnownHosts(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, line)
 }
 
-
 // showDeviceVerificationForm shows a confirmation form for device verification
 func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Request, token string) {
 	pendingKey, verification, err := s.lookUpDeviceVerification(r.Context(), token)
