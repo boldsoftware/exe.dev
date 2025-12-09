@@ -1,6 +1,8 @@
 // Package stage organizes different staging environments: prod, staging, local, test, etc.
 package stage
 
+import "fmt"
+
 // An Env represents a deployment stage/environment.
 type Env struct {
 	// Note: there is intentionally no string Name or DevMode field here.
@@ -28,6 +30,16 @@ type Env struct {
 	AutoStartSSHPiper bool // whether to auto-start sshpiper for local workflows
 
 	NumShards int // number of IP shards available for box allocation, max 253
+}
+
+// BoxLogin returns the login string for a box in this environment.
+// For local env, it's "boxname@boxhost".
+// For non-local env, it's "boxname.boxhost".
+func (e Env) BoxLogin(boxName string) string {
+	if e.WebHost == "localhost" {
+		return fmt.Sprintf("%s@%s", boxName, e.BoxHost)
+	}
+	return fmt.Sprintf("%s.%s", boxName, e.BoxHost)
 }
 
 // Local returns an Env configured for convenient local human development.
