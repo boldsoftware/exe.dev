@@ -25,5 +25,5 @@ SSH
 ssh nan-tango@exe.dev
 ```
 
-Finally, follow the `https://<box-name>.exe.xyz/` provided. You're all set.
+Finally, follow the `https://boxname.exe.xyz/` provided. You're all set.
 When you're done, `ssh exe.dev rm <box-name>` to clean up.

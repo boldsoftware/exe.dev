@@ -52,9 +52,9 @@ application can reconstruct the original public request information:
 
 The following special URLs are available for authentication flows:
 
-- **Login**: `https://{your-box}.exe.xyz/__exe.dev/login?redirect={path}`
+- **Login**: `https://boxname.exe.xyz/__exe.dev/login?redirect={path}`
 
-- **Logout**: POST `https://{your-box}.exe.xyz/__exe.dev/logout`
+- **Logout**: POST `https://boxname.exe.xyz/__exe.dev/logout`
 
 ### Example: nginx configuration
 

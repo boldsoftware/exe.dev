@@ -13,7 +13,7 @@ You'll need to visit your DNS provider's configuration to update these.
 For non-apex domains like `app.example.com`, create a CNAME record:
 
 ```
-app.example.com  CNAME  mybox.exe.xyz
+app.example.com  CNAME  boxname.exe.xyz
 ```
 
 ## Apex Domains (ALIAS + CNAME)
@@ -27,5 +27,5 @@ For apex domains like `example.com`, you need two DNS records:
 
 2. **CNAME** record on `www` pointing to your box:
    ```
-   www.example.com  CNAME  mybox.exe.xyz
+   www.example.com  CNAME  boxname.exe.xyz
    ```

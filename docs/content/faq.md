@@ -47,7 +47,7 @@ Use `scp`. For example, `scp <local-file> <box-name>@exe.dev:`.
 
 # Q: Why is it `ssh name@exe.dev` and not `ssh name.exe.dev`?
 
-We can make `https://name.exe.xyz/` work because HTTP has a "Host:" header that
+We can make `https://boxname.exe.xyz/` work because HTTP has a "Host:" header that
 lets us direct traffic appropriately. The SSH protocol only has the IP address
 that's being connected to.
 
