@@ -44,7 +44,7 @@ func TestHostPolicyAcceptsApexARecord(t *testing.T) {
 			return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
 		}
 	}
-	s.lookupAFunc = func(_ context.Context, host string) ([]netip.Addr, error) {
+	s.lookupAFunc = func(_ context.Context, network, host string) ([]netip.Addr, error) {
 		switch host {
 		case "knownhosts.net", "knownhosts.exe.xyz":
 			return []netip.Addr{knownHostIP}, nil
@@ -96,7 +96,7 @@ func TestResolveBoxNameApexDomain(t *testing.T) {
 			return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
 		}
 	}
-	s.lookupAFunc = func(_ context.Context, host string) ([]netip.Addr, error) {
+	s.lookupAFunc = func(_ context.Context, network, host string) ([]netip.Addr, error) {
 		switch host {
 		case "knownhosts.net":
 			return []netip.Addr{netip.MustParseAddr("203.0.113.10")}, nil

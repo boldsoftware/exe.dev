@@ -170,7 +170,7 @@ type Server struct {
 
 	// Testing hooks
 	lookupCNAMEFunc func(context.Context, string) (string, error)
-	lookupAFunc     func(context.Context, string) ([]netip.Addr, error)
+	lookupAFunc     func(context.Context, string, string) ([]netip.Addr, error)
 	boxExistsFunc   func(context.Context, string) bool
 	stopCobble      func()
 

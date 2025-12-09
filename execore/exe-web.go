@@ -259,10 +259,15 @@ func (s *Server) lookupCNAME(ctx context.Context, host string) (string, error) {
 }
 
 func (s *Server) lookupA(ctx context.Context, host string) ([]netip.Addr, error) {
+	fn := net.DefaultResolver.LookupNetIP
 	if s.lookupAFunc != nil {
-		return s.lookupAFunc(ctx, host)
+		fn = s.lookupAFunc
 	}
-	return net.DefaultResolver.LookupNetIP(ctx, "ip4", host)
+	addrs, err := fn(ctx, "ip4", host)
+	for i, addr := range addrs {
+		addrs[i] = addr.Unmap()
+	}
+	return addrs, err
 }
 
 // validateHostForTLSCert checks if the given host is valid for TLS certificate issuance.
