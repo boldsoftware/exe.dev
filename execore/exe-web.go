@@ -1746,6 +1746,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			CreatedAt:       result.CreatedAt,
 			UpdatedAt:       result.UpdatedAt,
 			LastStartedAt:   result.LastStartedAt,
+			Routes:          result.Routes,
 		}
 		if result.ContainerID != "" {
 			box.ContainerID = &result.ContainerID

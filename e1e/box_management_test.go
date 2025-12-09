@@ -5,6 +5,10 @@ package e1e
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"os/exec"
 	"regexp"
@@ -24,7 +28,7 @@ func TestVanillaBox(t *testing.T) {
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
-	pty, _, keyFile, email := registerForExeDev(t)
+	pty, cookies, keyFile, email := registerForExeDev(t)
 	boxName := newBox(t, pty)
 	pty.disconnect()
 
@@ -284,6 +288,85 @@ func TestVanillaBox(t *testing.T) {
 		ptyHost.want(boxName)
 		ptyHost.wantPrompt()
 		ptyHost.disconnect()
+	})
+
+	t.Run("proxy_port_dashboard", func(t *testing.T) {
+		// Test that the dashboard correctly displays the proxy port and share setting
+		noGolden(t)
+
+		// Set custom proxy port (8000) and make it public
+		exeShell := sshToExeDev(t, keyFile)
+		exeShell.sendLine(fmt.Sprintf("share port %s 8000", boxName))
+		exeShell.want("Route updated successfully")
+		exeShell.wantPrompt()
+
+		exeShell.sendLine(fmt.Sprintf("share set-public %s", boxName))
+		exeShell.want("Route updated successfully")
+		exeShell.wantPrompt()
+		exeShell.disconnect()
+
+		// Fetch dashboard and check proxy port display
+		jar, err := cookiejar.New(nil)
+		if err != nil {
+			t.Fatalf("failed to create cookie jar: %v", err)
+		}
+		for _, cookie := range cookies {
+			cookie.Domain = "localhost"
+			jar.SetCookies(&url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", Env.exed.HTTPPort)}, []*http.Cookie{cookie})
+		}
+		client := &http.Client{
+			Jar:     jar,
+			Timeout: 10 * time.Second,
+		}
+		resp, err := client.Get(fmt.Sprintf("http://localhost:%d/", Env.exed.HTTPPort))
+		if err != nil {
+			t.Fatalf("failed to get dashboard: %v", err)
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("failed to read dashboard: %v", err)
+		}
+		dashboard := string(body)
+
+		// Check that the dashboard shows the correct proxy port (8000) and share setting (public)
+		if !strings.Contains(dashboard, "Port 8000") {
+			t.Errorf("Expected 'Port 8000' in dashboard, got dashboard content (truncated): %s", truncate(dashboard, 500))
+		}
+		if !strings.Contains(dashboard, "public") {
+			t.Errorf("Expected 'public' share setting in dashboard, got dashboard content (truncated): %s", truncate(dashboard, 500))
+		}
+
+		// Change to private and port 3000 to test another combination
+		exeShell = sshToExeDev(t, keyFile)
+		exeShell.sendLine(fmt.Sprintf("share port %s 3000", boxName))
+		exeShell.want("Route updated successfully")
+		exeShell.wantPrompt()
+
+		exeShell.sendLine(fmt.Sprintf("share set-private %s", boxName))
+		exeShell.want("Route updated successfully")
+		exeShell.wantPrompt()
+		exeShell.disconnect()
+
+		// Fetch dashboard again
+		resp, err = client.Get(fmt.Sprintf("http://localhost:%d/", Env.exed.HTTPPort))
+		if err != nil {
+			t.Fatalf("failed to get dashboard after update: %v", err)
+		}
+		defer resp.Body.Close()
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("failed to read dashboard after update: %v", err)
+		}
+		dashboard = string(body)
+
+		// Check the updated values
+		if !strings.Contains(dashboard, "Port 3000") {
+			t.Errorf("Expected 'Port 3000' in dashboard after update, got dashboard content (truncated): %s", truncate(dashboard, 500))
+		}
+		if !strings.Contains(dashboard, "private") {
+			t.Errorf("Expected 'private' share setting in dashboard after update, got dashboard content (truncated): %s", truncate(dashboard, 500))
+		}
 	})
 
 	// Cleanup
@@ -653,4 +736,11 @@ func TestNewBoxNoEmailFlag(t *testing.T) {
 
 	pty.deleteBox(boxName)
 	pty.disconnect()
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

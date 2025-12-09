@@ -41,7 +41,7 @@ UPDATE boxes SET container_id = ?, status = 'running' WHERE id = ?;
 SELECT m.id, m.name, m.status, COALESCE(m.image, '') as image,
        COALESCE(m.container_id, '') as container_id, m.created_by_user_id,
        m.created_at, m.updated_at, m.last_started_at,
-       COALESCE(m.creation_log, '') as creation_log
+       COALESCE(m.creation_log, '') as creation_log, m.routes
 FROM boxes m
 WHERE m.created_by_user_id = ? AND m.status != 'failed'
 ORDER BY m.updated_at DESC;
