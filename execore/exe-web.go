@@ -1308,7 +1308,30 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		return queries.BoxNamed(ctx, boxName)
 	})
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		// Box doesn't exist or error - show 401 page (don't reveal box existence)
+		// Clean up the magic secret since we're not going to use it
+		s.magicSecretsMu.Lock()
+		delete(s.magicSecrets, secret)
+		s.magicSecretsMu.Unlock()
+
+		userEmail, _ := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
+			return queries.GetEmailByUserID(ctx, magicSecret.UserID)
+		})
+
+		data := struct {
+			Email       string
+			AuthURL     string
+			RedirectURL string
+			ReturnHost  string
+		}{
+			Email:       userEmail,
+			AuthURL:     fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
+			RedirectURL: magicSecret.RedirectURL,
+			ReturnHost:  returnHost,
+		}
+
+		w.WriteHeader(http.StatusUnauthorized)
+		s.renderTemplate(w, "401.html", data)
 		return
 	}
 

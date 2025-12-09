@@ -27,11 +27,12 @@
 </head>
 <body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
   <main class="w-full max-w-2xl">
-    <h1 class="text-4xl font-semibold mb-6">Access required.</h1>
     {{if .Email}}
-    <p class="text-zinc-500 mb-4">You are logged in as: {{.Email}}</p>
-    <p class="text-zinc-500 mb-6">(If you believe you should have access, please contact the owner of this virtual machine.)</p>
+    <p class="text-zinc-500 text-lg mb-3">{{.Email}}</p>
+    <h1 class="text-4xl font-semibold mb-8">Access Denied.</h1>
+    <p class="text-zinc-500">(no one has given you permission, yet)</p>
     {{else}}
+    <h1 class="text-4xl font-semibold mb-6">Access required.</h1>
     <form method="POST" action="{{.AuthURL}}">
       <input type="hidden" name="redirect" value="{{.RedirectURL}}">
       <input type="hidden" name="return_host" value="{{.ReturnHost}}">
