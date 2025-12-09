@@ -2196,21 +2196,10 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) []*http.Cookie 
 
 	bodyStr := string(htmlBody)
 
-	// Try multiple patterns to extract the pairing code from the verification page
-	// Pattern 1: New template structure with tracking-widest class
-	// Pattern 2: Legacy class="code-value" pattern
-	codePatterns := []string{
-		`tracking-widest[^>]*>([0-9]{6})<`,
-		`class="code-value">([0-9]{6})<`,
-	}
-	for _, pattern := range codePatterns {
-		codeRe := regexp.MustCompile(pattern)
-		codeMatches := codeRe.FindStringSubmatch(bodyStr)
-		if len(codeMatches) >= 2 {
-			pairingCode := codeMatches[1]
-			Env.addCanonicalization(pairingCode, "EMAIL_VERIFICATION_CODE")
-			break
-		}
+	// Extract the pairing code from the verification page
+	codeRe := regexp.MustCompile(`tracking-widest[^>]*>([0-9]{6})<`)
+	if codeMatches := codeRe.FindStringSubmatch(bodyStr); len(codeMatches) >= 2 {
+		Env.addCanonicalization(codeMatches[1], "EMAIL_VERIFICATION_CODE")
 	}
 
 	// Extract hidden inputs so we can POST the same form fields back

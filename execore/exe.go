@@ -1078,10 +1078,6 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 // baseDomain extracts the base domain from a host
 func (s *Server) baseDomain(host string) string {
 	host = domz.StripPort(host)
-	// Normalize 127.0.0.1 to localhost for consistent cookie domain matching
-	if host == "127.0.0.1" {
-		host = "localhost"
-	}
 	if match := domz.FirstMatch(host, s.env.WebHost, s.env.BoxHost); match != "" {
 		return match
 	}

@@ -218,29 +218,6 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 	}
 }
 
-// TestBaseDomainNormalizesLocalhost tests that baseDomain normalizes 127.0.0.1 to localhost
-// so cookies work consistently regardless of whether users access via localhost or 127.0.0.1.
-func TestBaseDomainNormalizesLocalhost(t *testing.T) {
-	server := newTestServer(t)
-
-	testCases := []struct {
-		host     string
-		expected string
-	}{
-		{"localhost:8080", "localhost"},
-		{"127.0.0.1:8080", "localhost"},
-		{"localhost", "localhost"},
-		{"127.0.0.1", "localhost"},
-	}
-
-	for _, tc := range testCases {
-		got := server.baseDomain(tc.host)
-		if got != tc.expected {
-			t.Errorf("baseDomain(%q) = %q, want %q", tc.host, got, tc.expected)
-		}
-	}
-}
-
 // TestMetricsEndpoint tests that the /metrics endpoint returns Prometheus metrics
 func TestMetricsEndpoint(t *testing.T) {
 	server := newTestServer(t)
