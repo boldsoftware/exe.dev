@@ -1016,10 +1016,11 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	returnHost := r.URL.Query().Get("return_host")
 	if returnHost != "" {
 		data := struct {
-			Email       string
-			AuthURL     string
-			RedirectURL string
-			ReturnHost  string
+			Email         string
+			AuthURL       string
+			RedirectURL   string
+			ReturnHost    string
+			InvalidSecret bool
 		}{
 			Email:       "",
 			AuthURL:     fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
@@ -1267,14 +1268,23 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	magicSecret, exists := s.magicSecrets[secret]
 	s.magicSecretsMu.RUnlock()
 
-	if !exists {
-		http.Error(w, "Invalid secret", http.StatusUnauthorized)
-		return
-	}
-
-	// Check expiration
-	if time.Now().After(magicSecret.ExpiresAt) {
-		http.Error(w, "Secret expired", http.StatusUnauthorized)
+	if !exists || time.Now().After(magicSecret.ExpiresAt) {
+		// Invalid or expired secret - show 401 page with email form
+		returnHost := r.URL.Query().Get("return_host")
+		data := struct {
+			Email         string
+			AuthURL       string
+			RedirectURL   string
+			ReturnHost    string
+			InvalidSecret bool
+		}{
+			AuthURL:       fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
+			RedirectURL:   r.URL.Query().Get("redirect"),
+			ReturnHost:    returnHost,
+			InvalidSecret: true,
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		s.renderTemplate(w, "401.html", data)
 		return
 	}
 
@@ -1319,10 +1329,11 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		})
 
 		data := struct {
-			Email       string
-			AuthURL     string
-			RedirectURL string
-			ReturnHost  string
+			Email         string
+			AuthURL       string
+			RedirectURL   string
+			ReturnHost    string
+			InvalidSecret bool
 		}{
 			Email:       userEmail,
 			AuthURL:     fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
@@ -1359,10 +1370,11 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	})
 
 	data := struct {
-		Email       string
-		AuthURL     string
-		RedirectURL string
-		ReturnHost  string
+		Email         string
+		AuthURL       string
+		RedirectURL   string
+		ReturnHost    string
+		InvalidSecret bool
 	}{
 		Email:       userEmail,
 		AuthURL:     fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),

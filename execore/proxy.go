@@ -394,10 +394,11 @@ func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Email       string
-		AuthURL     string
-		RedirectURL string
-		ReturnHost  string
+		Email         string
+		AuthURL       string
+		RedirectURL   string
+		ReturnHost    string
+		InvalidSecret bool
 	}{
 		Email:       email,
 		AuthURL:     fmt.Sprintf("%s/auth", s.webBaseURL(r)),
