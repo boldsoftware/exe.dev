@@ -3,7 +3,7 @@ set -euo pipefail
 
 NAME="${NAME:-ci-ubuntu-$(date +%Y%m%d%H%M%S)}"
 VCPUS="${VCPUS:-4}"
-RAM_MB="${RAM_MB:-4096}"           # 4GiB
+RAM_MB="${RAM_MB:-16384}"          # 16GiB
 DISK_GB="${DISK_GB:-40}"           # thin-provisioned
 DATA_DISK_GB="${DATA_DISK_GB:-50}" # ZFS data disk
 BASE_IMG="${BASE_IMG:-/var/lib/libvirt/images/ubuntu-24.04-base.qcow2}"
