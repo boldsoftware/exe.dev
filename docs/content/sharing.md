@@ -14,7 +14,7 @@ with your friends. There are three mechanisms:
 
 2. Add specific e-mail addresses using `share add <box> <email>`. This will
 send the recipient an e-mail. They can then log into exe.dev with that e-mail,
-and access `https://box.exe.dev/`.
+and access `https://box.exe.xyz/`.
 
 3. Create a share link with `share add-link <box>`. The generated
 link will allow anyone access to the page, after they register and login.

@@ -6,7 +6,7 @@ subheading: "2. Features"
 
 Shelley is a coding agent. It is web-based, works on mobile, and, when you
 start an `exe.dev` box with the default `exeuntu` image, it is running on port
-9999, and you can access it securely at `https://NAME.exe.dev:9999/`.
+9999, and you can access it securely at `https://NAME.exe.xyz:9999/`.
 
 You can ask Shelley to install software (e.g., run a Marimo notebook on port
 8000), build a web site, browse the web, and anything in between. That said,

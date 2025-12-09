@@ -19,11 +19,11 @@ $ ssh exe.dev new --image=ghcr.io/marimo-team/marimo:latest-sql
 Creating nan-tango using image marimo-team/marimo:latest-sql...
 
 App (HTTPS proxy → :8080)
-https://nan-tango.exe.dev
+https://nan-tango.exe.xyz
 
 SSH
 ssh nan-tango@exe.dev
 ```
 
-Finally, follow the `https://<box-name>.exe.dev/` provided. You're all set.
+Finally, follow the `https://<box-name>.exe.xyz/` provided. You're all set.
 When you're done, `ssh exe.dev rm <box-name>` to clean up.

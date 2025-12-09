@@ -7,7 +7,7 @@ suborder: 1
 
 <img src="proxy.svg" alt="Diagram of HTTPS Proxy Flow" width="100%"/>
 
-`exe.dev` proxies traffic to https://boxname.exe.dev/ to your box seamlessly, handling
+`exe.dev` proxies traffic to https://boxname.exe.xyz/ to your box seamlessly, handling
 certificates, TLS termination, and optionally offering basic authentication.
 
 ## Configuring which port to proxy
@@ -23,7 +23,7 @@ This updates the proxy target while keeping the current visibility setting
 ## Private vs Public Proxies
 
 By default, only users with access to the box can access the HTTP proxy. Users
-accessing https://boxname.exe.dev/ for the first time will be redirected to log
+accessing https://boxname.exe.xyz/ for the first time will be redirected to log
 into `exe.dev`.
 
 To share your site publically, run `ssh exe.dev share set-public <boxname>`.
@@ -52,9 +52,9 @@ application can reconstruct the original public request information:
 
 The following special URLs are available for authentication flows:
 
-- **Login**: `https://{your-box}.exe.dev/__exe.dev/login?redirect={path}`
+- **Login**: `https://{your-box}.exe.xyz/__exe.dev/login?redirect={path}`
 
-- **Logout**: POST `https://{your-box}.exe.dev/__exe.dev/logout`
+- **Logout**: POST `https://{your-box}.exe.xyz/__exe.dev/logout`
 
 ### Example: nginx configuration
 
@@ -93,7 +93,7 @@ server {
 The proxy transparently forwards ports between 3000 and 9999.
 
 For example, if you are serving on port 3456 on your box,
-you can access that at https://boxname.exe.dev:3456/.
+you can access that at https://boxname.exe.xyz:3456/.
 
 You may only mark a single port public (with the `share set-public` and `share
 port` commands); these alternate ports can only be accessed by users with access
