@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -31,6 +32,7 @@ import (
 	"exe.dev/domz"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
+	storageapi "exe.dev/pkg/api/exe/storage/v1"
 	"exe.dev/route53"
 	"exe.dev/stage"
 	"exe.dev/tracing"
@@ -498,6 +500,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/health":
 		s.handleHealth(w, r)
+	case "/pull-exeuntu-everywhere-517c8a904":
+		s.handlePullExeuntuEverywhere(w, r)
 	case "/metrics":
 		requireLocalAccess(s.handleMetrics)(w, r)
 	case "/.well-known/ssh/knownhosts":
@@ -1919,3 +1923,79 @@ func isValidRedirectURL(redirectURL string) bool {
 	return path.IsAbs(u.Path)
 }
 
+// handlePullExeuntuEverywhere pulls the exeuntu image to all exelet hosts in parallel.
+func (s *Server) handlePullExeuntuEverywhere(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	tag := r.URL.Query().Get("tag")
+	if tag == "" {
+		http.Error(w, "missing required parameter: tag", http.StatusBadRequest)
+		return
+	}
+
+	image := fmt.Sprintf("ghcr.io/boldsoftware/exeuntu:%s", tag)
+	s.slog().InfoContext(ctx, "pulling image to all exelet hosts", "image", image)
+
+	if len(s.exeletClients) == 0 {
+		http.Error(w, "no exelet hosts configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	type pullResult struct {
+		Host   string `json:"host"`
+		Digest string `json:"digest,omitempty"`
+		Error  string `json:"error,omitempty"`
+	}
+
+	results := make([]pullResult, len(s.exeletAddrs))
+	var wg sync.WaitGroup
+
+	for i, addr := range s.exeletAddrs {
+		wg.Add(1)
+		go func(idx int, addr string) {
+			defer wg.Done()
+
+			result := pullResult{Host: addr}
+			ec, ok := s.exeletClients[addr]
+			if !ok {
+				result.Error = "client not found"
+				results[idx] = result
+				return
+			}
+
+			resp, err := ec.client.LoadFilesystem(ctx, &storageapi.LoadFilesystemRequest{Image: image})
+			if err != nil {
+				s.slog().ErrorContext(ctx, "failed to pull image", "host", addr, "image", image, "error", err)
+				result.Error = err.Error()
+			} else {
+				s.slog().InfoContext(ctx, "image pulled successfully", "host", addr, "image", image, "digest", resp.ID)
+				result.Digest = resp.ID
+			}
+			results[idx] = result
+		}(i, addr)
+	}
+
+	wg.Wait()
+
+	// Check if all succeeded
+	allSucceeded := true
+	for _, r := range results {
+		if r.Error != "" {
+			allSucceeded = false
+			break
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if !allSucceeded {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	enc.Encode(map[string]interface{}{
+		"image":   image,
+		"success": allSucceeded,
+		"results": results,
+	})
+}

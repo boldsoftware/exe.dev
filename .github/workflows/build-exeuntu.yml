@@ -60,14 +60,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: "1.25"
           cache-dependency-path: shelley/go.sum
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
           cache-dependency-path: shelley/ui/package-lock.json
 
       - name: Build shelley for target platform
@@ -156,17 +156,49 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract metadata for base image
-        id: meta
+      - name: Extract metadata for versioned tag
+        id: meta-versioned
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Create manifest list and push
+      - name: Create manifest list and push versioned tag
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}@sha256:%s ' *)
+
+      - name: Pull image on exe.dev and staging-exe.dev
+        run: |
+          TAG="main-$(echo ${{ github.sha }} | head -c 7)"
+          echo "Pulling tag: $TAG"
+
+          # Start both pulls in parallel
+          curl -f --max-time 300 "https://exe.dev/pull-exeuntu-everywhere-517c8a904?tag=$TAG" &
+          PROD_PID=$!
+
+          curl -f --max-time 300 "https://staging-exe.dev/pull-exeuntu-everywhere-517c8a904?tag=$TAG" &
+          STAGING_PID=$!
+
+          # Wait for staging (don't fail if it errors)
+          wait $STAGING_PID || echo "Staging pull failed (non-fatal)"
+
+          # Wait for prod
+          # TODO: make this fatal eventually
+          wait $PROD_PID || echo "Prod failed"
+
+      - name: Extract metadata for latest tag
+        id: meta-latest
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+
+      - name: Push latest tag
         working-directory: ${{ runner.temp }}/digests
         run: |
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
@@ -174,4 +206,4 @@ jobs:
 
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:latest
