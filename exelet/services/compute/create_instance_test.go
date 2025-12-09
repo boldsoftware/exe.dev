@@ -348,6 +348,113 @@ func TestCreatingStateAllowsRetry(t *testing.T) {
 	}
 }
 
+// TestCreatingInstanceReadAfterWrite verifies that immediately after saving an instance
+// config with CREATING state, getInstance returns the instance with CREATING state
+// (without querying VMM). This locks in the read-after-write behavior that allows
+// concurrent GetInstance calls to see the instance during creation.
+func TestCreatingInstanceReadAfterWrite(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	dataDir := t.TempDir()
+	cfg := &config.ExeletConfig{
+		Name:          "test",
+		ListenAddress: "127.0.0.1:0",
+		DataDir:       dataDir,
+		ProxyPortMin:  20000,
+		ProxyPortMax:  30000,
+	}
+
+	svc, err := New(cfg, log)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	computeSvc := svc.(*Service)
+
+	instanceID := "test-read-after-write"
+
+	// Step 1: Verify instance does not exist before write
+	_, err = computeSvc.loadInstanceConfig(instanceID)
+	if !errors.Is(err, api.ErrNotFound) {
+		t.Fatalf("instance should not exist before write, got: %v", err)
+	}
+
+	// Step 2: Create instance directory (as createInstance does)
+	instanceDir := computeSvc.getInstanceDir(instanceID)
+	if err := os.MkdirAll(instanceDir, 0o770); err != nil {
+		t.Fatalf("failed to create instance dir: %v", err)
+	}
+
+	// Step 3: Write instance config with CREATING state (simulating early persistence)
+	createdAt := int64(1234567890)
+	creatingInstance := &api.Instance{
+		ID:        instanceID,
+		Name:      "test-instance",
+		Image:     "test-image:latest",
+		State:     api.VMState_CREATING,
+		Node:      "test-node",
+		CreatedAt: createdAt,
+		UpdatedAt: createdAt,
+	}
+	if err := computeSvc.saveInstanceConfig(creatingInstance); err != nil {
+		t.Fatalf("saveInstanceConfig failed: %v", err)
+	}
+
+	// Step 4: Immediately read back using loadInstanceConfig and verify all fields
+	loaded, err := computeSvc.loadInstanceConfig(instanceID)
+	if err != nil {
+		t.Fatalf("loadInstanceConfig should succeed immediately after write: %v", err)
+	}
+
+	// Verify all fields are correctly persisted and read back
+	if loaded.ID != instanceID {
+		t.Errorf("ID mismatch: expected %q, got %q", instanceID, loaded.ID)
+	}
+	if loaded.Name != "test-instance" {
+		t.Errorf("Name mismatch: expected %q, got %q", "test-instance", loaded.Name)
+	}
+	if loaded.Image != "test-image:latest" {
+		t.Errorf("Image mismatch: expected %q, got %q", "test-image:latest", loaded.Image)
+	}
+	if loaded.State != api.VMState_CREATING {
+		t.Errorf("State mismatch: expected CREATING, got %v", loaded.State)
+	}
+	if loaded.Node != "test-node" {
+		t.Errorf("Node mismatch: expected %q, got %q", "test-node", loaded.Node)
+	}
+	if loaded.CreatedAt != createdAt {
+		t.Errorf("CreatedAt mismatch: expected %d, got %d", createdAt, loaded.CreatedAt)
+	}
+	if loaded.UpdatedAt != createdAt {
+		t.Errorf("UpdatedAt mismatch: expected %d, got %d", createdAt, loaded.UpdatedAt)
+	}
+
+	// Step 5: Verify VMConfig is nil (not set during early persistence)
+	if loaded.VMConfig != nil {
+		t.Error("VMConfig should be nil during CREATING state")
+	}
+
+	// Step 6: Verify SSHPort is 0 (not set during early persistence)
+	if loaded.SSHPort != 0 {
+		t.Errorf("SSHPort should be 0 during CREATING state, got %d", loaded.SSHPort)
+	}
+
+	// Step 7: Multiple reads should return consistent results
+	for i := 0; i < 3; i++ {
+		reread, err := computeSvc.loadInstanceConfig(instanceID)
+		if err != nil {
+			t.Fatalf("repeated read %d failed: %v", i, err)
+		}
+		if reread.State != api.VMState_CREATING {
+			t.Errorf("repeated read %d: expected CREATING state, got %v", i, reread.State)
+		}
+		if reread.ID != instanceID {
+			t.Errorf("repeated read %d: ID mismatch", i)
+		}
+	}
+}
+
 // TestRollbackCleansUpCreatingInstance tests that when instance creation fails,
 // the early-persisted config file is cleaned up along with the instance directory.
 func TestRollbackCleansUpCreatingInstance(t *testing.T) {
