@@ -514,7 +514,9 @@ func TestShareCommands(t *testing.T) {
 //
 // Scenario: A box owner creates a public website but wants to identify visitors.
 // They add a "login" link that sends users through the auth dance:
-//   /auth?redirect=https://mybox.exe.dev/&return_host=mybox.exe.dev
+//
+//	/auth?redirect=https://mybox.exe.dev/&return_host=mybox.exe.dev
+//
 // The user authenticates, and redirectAfterAuth should allow access to the public box
 // even though the user has no explicit share.
 func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
