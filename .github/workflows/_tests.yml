@@ -93,7 +93,7 @@ jobs:
           E1E_LOG_DIR=$(mktemp -d)
           export E1E_LOG_DIR
           echo "E1E_LOG_DIR=$E1E_LOG_DIR" >> "$GITHUB_ENV"
-          GITHUB_ACTIONS=false gotestsum --format testname -- -race -timeout=3m ./e1e
+          GITHUB_ACTIONS=false gotestsum --format testname -- -race -timeout=3m -failfast ./e1e
 
       - name: Check golden files unchanged
         run: |

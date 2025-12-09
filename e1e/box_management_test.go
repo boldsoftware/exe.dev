@@ -575,8 +575,14 @@ func TestBoxRestartShutdown(t *testing.T) {
 }
 
 // TestNewWithEnvVars tests environment variable passing to boxes.
+//
+// It is also a designated special test!
+// It is the only test in e1e that is not run in parallel.
+// We want one non-parallel test, which runs first, to take the "pulling exeuntu hit",
+// and generally to fail fast if something is very broken.
+// This one was picked by virtue of being pretty simple and short.
+// (The longer that test, the more we want it to be parallel, because Amdahl.)
 func TestNewWithEnvVars(t *testing.T) {
-	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
