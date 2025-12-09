@@ -111,6 +111,50 @@
         letter-spacing: -0.01em;
       }
 
+      .doc-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .doc-header h1 {
+        margin-bottom: 0;
+      }
+
+      .copy-md-btn {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        font-family: inherit;
+        font-size: 13px;
+        color: #666666;
+        background: #f5f5f5;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .copy-md-btn:hover {
+        color: #333333;
+        background: #eeeeee;
+        border-color: #cccccc;
+      }
+
+      .copy-md-btn.copied {
+        color: #2e7d32;
+        background: #e8f5e9;
+        border-color: #a5d6a7;
+      }
+
+      .copy-icon {
+        font-size: 14px;
+      }
+
       .doc-content {
         max-width: 800px;
         font-size: 16px;
@@ -257,6 +301,15 @@
         .back-to-list {
           display: inline-flex;
         }
+
+        .doc-header {
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .copy-md-btn {
+          align-self: flex-start;
+        }
       }
     </style>
   </head>
@@ -281,9 +334,15 @@
       <main class="main">
         {{with .Entry}}
         <a class="back-to-list" href="/docs/list">&larr; All docs</a>
-        <h1 class="doc-title">{{.Title}}{{if and $.ShowHidden (not .Published)}} [draft]{{end}}</h1>
+        <div class="doc-header">
+          <h1 class="doc-title">{{.Title}}{{if and $.ShowHidden (not .Published)}} [draft]{{end}}</h1>
+          <button class="copy-md-btn" onclick="copyMarkdown()" title="Copy as Markdown">
+            <span class="copy-icon">&#x2398;</span> Copy as Markdown
+          </button>
+        </div>
 
         <div class="doc-content">{{.Content}}</div>
+        <textarea id="doc-markdown" style="display:none">{{.Markdown}}</textarea>
         {{end}}
 
         <footer class="doc-footer">
@@ -291,5 +350,22 @@
       </main>
     </div>
 
+    <script>
+      function copyMarkdown() {
+        const el = document.getElementById('doc-markdown');
+        if (!el) return;
+        const markdown = el.value;
+        navigator.clipboard.writeText(markdown).then(function() {
+          const btn = document.querySelector('.copy-md-btn');
+          const originalText = btn.innerHTML;
+          btn.classList.add('copied');
+          btn.innerHTML = '<span class="copy-icon">&#x2713;</span> Copied!';
+          setTimeout(function() {
+            btn.classList.remove('copied');
+            btn.innerHTML = originalText;
+          }, 2000);
+        });
+      }
+    </script>
   </body>
 </html>
