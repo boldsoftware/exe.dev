@@ -24,6 +24,17 @@ RUN apt-get update && apt-get install -y \
     curl \
     cpio \
     kmod \
+    autoconf \
+    automake \
+    libtool \
+    python3 \
+    gawk \
+    libaio-dev \
+    libattr1-dev \
+    libblkid-dev \
+    uuid-dev \
+    zlib1g-dev \
+    libtirpc-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
@@ -34,9 +45,10 @@ RUN git clone --depth=1 --branch=${KATA_BRANCH} \
 
 WORKDIR /workspace/kata-containers/tools/packaging/kernel
 
-# Copy nftables config fragment and build script
+# Copy config fragments and build script
 COPY nftables.conf configs/fragments/nftables.conf
 COPY kvm.conf configs/fragments/kvm.conf
+COPY zfs.conf configs/fragments/zfs.conf
 COPY build-kernel.sh /usr/local/bin/
 
 RUN chmod +x /usr/local/bin/build-kernel.sh && \

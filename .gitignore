@@ -24,6 +24,7 @@ tmpkey*
 # exelet embedded fs
 exelet/fs/kernel
 exelet/fs/rovol
+exelet/kernel/output
 exeletd
 /exelet-ctl
 # welcomed

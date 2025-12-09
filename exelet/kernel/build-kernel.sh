@@ -1,12 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-# Build kernel using Kata's official build-kernel.sh with nftables fragment
+# Build kernel using Kata's official build-kernel.sh with nftables and ZFS support
 
 KERNEL_VERSION="${KERNEL_VERSION:-6.12.42}"
+ZFS_VERSION="${ZFS_VERSION:-zfs-2.2.8}"
 ARCH=$(uname -m)
 
-echo "Building kernel $KERNEL_VERSION for $ARCH..."
+echo "Building kernel $KERNEL_VERSION with ZFS $ZFS_VERSION for $ARCH..."
 
 cd /workspace/kata-containers/tools/packaging/kernel
 
@@ -23,13 +24,34 @@ fi
 
 echo "Found kernel source at: $KERNEL_SRC"
 
-# Apply nftables config fragment
+# Prepare kernel source for ZFS
+echo "Preparing kernel source..."
+cd "$KERNEL_SRC"
+make prepare
+
+# Clone and prepare ZFS for kernel builtin
+echo "Cloning OpenZFS $ZFS_VERSION..."
+cd /workspace
+git clone --depth=1 --branch="$ZFS_VERSION" https://github.com/openzfs/zfs.git
+
+echo "Configuring ZFS for kernel builtin..."
+cd /workspace/zfs
+autoreconf -fi
+./configure --enable-linux-builtin --with-linux="$KERNEL_SRC" --with-linux-obj="$KERNEL_SRC"
+
+echo "Copying ZFS into kernel tree..."
+./copy-builtin "$KERNEL_SRC"
+
+# Apply config fragments
 echo "Applying nftables config fragment..."
 cd "$KERNEL_SRC"
 scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packaging/kernel/configs/fragments/nftables.conf
 
 echo "Applying kvm config fragment..."
 scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packaging/kernel/configs/fragments/kvm.conf
+
+echo "Applying zfs config fragment..."
+scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packaging/kernel/configs/fragments/zfs.conf
 
 make olddefconfig
 
@@ -58,6 +80,14 @@ if grep -q "CONFIG_NF_TABLES=y" "/output/config-${KERNEL_VERSION}-nftables"; the
     echo "✓ nftables enabled in kernel config"
 else
     echo "✗ nftables NOT enabled - build failed" >&2
+    exit 1
+fi
+
+# Verify ZFS is enabled
+if grep -q "CONFIG_ZFS=y" "/output/config-${KERNEL_VERSION}-nftables"; then
+    echo "✓ ZFS enabled in kernel config"
+else
+    echo "✗ ZFS NOT enabled - build failed" >&2
     exit 1
 fi
 
