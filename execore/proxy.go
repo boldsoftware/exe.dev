@@ -376,21 +376,21 @@ func makeAuthURL(typ string, r *http.Request, q url.Values) string {
 	)
 }
 
-// renderAccessRequired renders the 401.html page for unauthorized access
+// renderAccessRequired renders the 401.html page for unauthorized access.
 // This is shown when a box doesn't exist OR when user doesn't have access
 // to avoid leaking box existence information.
 func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request) {
-	// Build redirect URL (current request URL)
-	redirectURL := *r.URL
-	redirectURL.Scheme = getScheme(r)
-	redirectURL.Host = cmp.Or(redirectURL.Host, r.Host)
-
-	// Try to get the user's email if they're logged in via proxy cookie
 	var email string
-	if userID, err := s.validateProxyAuthCookie(r); err == nil {
-		email, _ = withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
-			return queries.GetEmailByUserID(ctx, userID)
+	if uid, err := s.validateProxyAuthCookie(r); err == nil {
+		email, _ = withRxRes(s, r.Context(), func(ctx context.Context, q *exedb.Queries) (string, error) {
+			return q.GetEmailByUserID(ctx, uid)
 		})
+	}
+
+	u := &url.URL{
+		Scheme: getScheme(r),
+		Host:   r.Host,
+		Path:   r.URL.Path,
 	}
 
 	data := struct {
@@ -402,13 +402,13 @@ func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request) {
 		InvalidToken  bool
 	}{
 		Email:       email,
-		AuthURL:     fmt.Sprintf("%s/auth", s.webBaseURL(r)),
-		RedirectURL: redirectURL.String(),
+		AuthURL:     s.webBaseURL(r) + "/auth",
+		RedirectURL: u.String(),
 		ReturnHost:  r.Host,
 	}
 
 	w.WriteHeader(http.StatusUnauthorized)
-	_ = s.renderTemplate(w, "401.html", data)
+	s.renderTemplate(w, "401.html", data)
 }
 
 // redirectToAuth redirects the user to the /__exe.dev/login URL

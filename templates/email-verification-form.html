@@ -11,10 +11,10 @@
       f.action = '/verify-email';
       f.style.display = 'none';
       var fields = {
-        'token': {{.Token}}
-        {{if .RedirectURL}},'redirect': {{.RedirectURL}}{{end}}
-        {{if .ReturnHost}},'return_host': {{.ReturnHost}}{{end}}
-        {{if .Source}},'source': {{.Source}}{{end}}
+        'token': "{{.Token | js}}"
+        {{if .RedirectURL}},'redirect': "{{.RedirectURL | js}}"{{end}}
+        {{if .ReturnHost}},'return_host': "{{.ReturnHost | js}}"{{end}}
+        {{if .Source}},'source': "{{.Source | js}}"{{end}}
       };
       for (var k in fields) {
         var i = document.createElement('input');
