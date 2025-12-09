@@ -1,6 +1,6 @@
 ---
 title: exe.dev HTTP Proxies
-description: Publish to the Internet, both privately and publically
+description: Publish to the Internet, both privately and publicly
 subheading: "2. Features"
 suborder: 1
 ---
@@ -26,7 +26,7 @@ By default, only users with access to the box can access the HTTP proxy. Users
 accessing https://boxname.exe.xyz/ for the first time will be redirected to log
 into `exe.dev`.
 
-To share your site publically, run `ssh exe.dev share set-public <boxname>`.
+To share your site publicly, run `ssh exe.dev share set-public <boxname>`.
 Return it to private access with `ssh exe.dev share set-private <boxname>`.
 
 ## Using exe.dev authentication
