@@ -15,7 +15,7 @@ Please enter your email address: TestBadBoxName@example.com
 
 
 Verification email sent to: TestBadBoxName@example.com
-Pairing code: EMAIL_VERIFICATION_CODE
+Pairing code: 153499
 Waiting for email verification...
 ✓ Email verified successfully!
 

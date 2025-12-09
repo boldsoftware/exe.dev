@@ -19,11 +19,11 @@ func TestEmbeddedFiles(t *testing.T) {
 		contains     []string
 	}{
 		{
-			name:         "root redirects to /welcome",
+			name:         "root serves landing page",
 			path:         "/",
-			expectedCode: http.StatusTemporaryRedirect,
+			expectedCode: http.StatusOK,
 			contentType:  "text/html",
-			contains:     []string{},
+			contains:     []string{"<!doctype html>"},
 		},
 		{
 			name:         "favicon.ico is served",

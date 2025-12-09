@@ -15,7 +15,7 @@ Please enter your email address: TestExeDevAPI@example.com
 
 
 Verification email sent to: TestExeDevAPI@example.com
-Pairing code: EMAIL_VERIFICATION_CODE
+Pairing code: 642485
 Waiting for email verification...
 ✓ Email verified successfully!
 

@@ -127,13 +127,13 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 		t.Error("POST request should consume the verification token")
 	}
 
-	// Test 3: Invalid token should show error
+	// Test 3: Invalid token should show error (401 with branded page)
 	req = httptest.NewRequest("GET", "/verify-email?token=invalid", nil)
 	w = httptest.NewRecorder()
 	server.handleEmailVerificationHTTP(w, req)
 
-	if w.Code != http.StatusNotFound {
-		t.Errorf("Invalid token should return 404: got status %d", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Invalid token should return 401: got status %d", w.Code)
 	}
 }
 

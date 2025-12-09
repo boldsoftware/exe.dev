@@ -15,7 +15,7 @@ Please enter your email address: TestNewWithLongName@example.com
 
 
 Verification email sent to: TestNewWithLongName@example.com
-Pairing code: EMAIL_VERIFICATION_CODE
+Pairing code: 544698
 Waiting for email verification...
 ✓ Email verified successfully!
 

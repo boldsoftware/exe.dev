@@ -1355,10 +1355,8 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find the box by name. We don't check ownership here because:
-	// 1. The box might be shared with the user
-	// 2. We verify access rights below via hasUserAccessToBox
-	box, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+	// Verify the box exists (but don't reveal existence info)
+	_, err = withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.BoxNamed(ctx, boxName)
 	})
 	if err != nil {
@@ -1391,45 +1389,12 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user has access (owner or email share)
-	accessType, err := s.hasUserAccessToBox(r.Context(), magicSecret.UserID, &box)
-	hasAccess := err == nil && (accessType == BoxAccessOwner || accessType == BoxAccessEmailShare)
-
-	if hasAccess {
-		// User has access - skip confirmation and redirect directly
-		magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
-			getScheme(r), returnHost, secret, url.QueryEscape(magicSecret.RedirectURL))
-		http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
-		return
-	}
-
-	// User doesn't have access - show 401 page
-	// Clean up the magic secret since we're not going to use it
-	s.magicSecretsMu.Lock()
-	delete(s.magicSecrets, secret)
-	s.magicSecretsMu.Unlock()
-
-	// Get user email from database for the 401 page
-	userEmail, _ := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
-		return queries.GetEmailByUserID(ctx, magicSecret.UserID)
-	})
-
-	data := struct {
-		Email         string
-		AuthURL       string
-		RedirectURL   string
-		ReturnHost    string
-		InvalidSecret bool
-		InvalidToken  bool
-	}{
-		Email:       userEmail,
-		AuthURL:     fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
-		RedirectURL: magicSecret.RedirectURL,
-		ReturnHost:  returnHost,
-	}
-
-	w.WriteHeader(http.StatusUnauthorized)
-	s.renderTemplate(w, "401.html", data)
+	// Redirect authenticated user to the box.
+	// The proxy will validate access (owner, email share, or share link).
+	// If the user doesn't have access, the proxy will show the 401 page.
+	magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
+		getScheme(r), returnHost, secret, url.QueryEscape(magicSecret.RedirectURL))
+	http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
 }
 
 // Helper functions for authentication and reverse proxy

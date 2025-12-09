@@ -15,7 +15,7 @@ Please enter your email address: TestNewWithEnvVarsContainingSpacesAndSpecialCha
 
 
 Verification email sent to: TestNewWithEnvVarsContainingSpacesAndSpecialChars@example.com
-Pairing code: EMAIL_VERIFICATION_CODE
+Pairing code: 425416
 Waiting for email verification...
 ✓ Email verified successfully!
 

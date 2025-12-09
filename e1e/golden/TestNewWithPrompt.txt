@@ -15,7 +15,7 @@ Please enter your email address: TestNewWithPrompt@example.com
 
 
 Verification email sent to: TestNewWithPrompt@example.com
-Pairing code: EMAIL_VERIFICATION_CODE
+Pairing code: 491927
 Waiting for email verification...
 ✓ Email verified successfully!
 

@@ -30,14 +30,14 @@
     {{if .Email}}
     <p class="text-zinc-500 text-lg mb-3">{{.Email}}</p>
     <h1 class="text-4xl font-semibold mb-8">Access Denied.</h1>
-    <p class="text-zinc-500">(no one has given you permission, yet)</p>
+    <p class="text-zinc-500">(find someone you know that can let you in)</p>
     {{else}}
     {{if .InvalidSecret}}
-    <p class="text-zinc-500 text-lg mb-3">(invalid secret)</p>
-    <h1 class="text-4xl font-semibold mb-8">Request another.</h1>
+    <h1 class="text-4xl font-semibold mb-8">Invalid secret.</h1>
+    <p class="text-zinc-500 text-lg mb-3">(request another)</p>
     {{else if .InvalidToken}}
-    <p class="text-zinc-500 text-lg mb-3">(invalid token)</p>
-    <h1 class="text-4xl font-semibold mb-8">Request another.</h1>
+    <h1 class="text-4xl font-semibold mb-8">Invalid token.</h1>
+    <p class="text-zinc-500 text-lg mb-3">(request another)</p>
     {{else}}
     <h1 class="text-4xl font-semibold mb-6">Access required.</h1>
     {{end}}

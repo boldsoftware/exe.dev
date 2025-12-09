@@ -15,7 +15,7 @@ Please enter your email address: TestVanillaBox@example.com
 
 
 Verification email sent to: TestVanillaBox@example.com
-Pairing code: EMAIL_VERIFICATION_CODE
+Pairing code: 861355
 Waiting for email verification...
 ✓ Email verified successfully!
 

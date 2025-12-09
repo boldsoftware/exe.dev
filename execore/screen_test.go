@@ -176,8 +176,8 @@ func TestScreenFlow(t *testing.T) {
 		if status != 200 {
 			t.Errorf("GET /verify-email: expected 200, got %d", status)
 		}
-		if !strings.Contains(body, "Confirm login") {
-			t.Errorf("GET /verify-email: expected 'Confirm login' in body")
+		if !strings.Contains(body, "CONFIRM LOGIN") {
+			t.Errorf("GET /verify-email: expected 'CONFIRM LOGIN' in body")
 		}
 		screenshot("email_verification_form", body)
 
