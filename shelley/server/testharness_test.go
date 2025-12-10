@@ -20,13 +20,13 @@ import (
 
 // TestHarness provides a DSL-like interface for testing conversations.
 type TestHarness struct {
-	t        *testing.T
-	db       *db.DB
-	server   *Server
-	cleanup  func()
-	llm      *loop.PredictableService
-	convID   string
-	timeout  time.Duration
+	t       *testing.T
+	db      *db.DB
+	server  *Server
+	cleanup func()
+	llm     *loop.PredictableService
+	convID  string
+	timeout time.Duration
 }
 
 // NewTestHarness creates a new test harness with a predictable LLM and bash tool.
@@ -60,7 +60,7 @@ func (h *TestHarness) Close() {
 }
 
 // NewConversation starts a new conversation with the given message and options.
-func (h *TestHarness) NewConversation(msg string, cwd string) *TestHarness {
+func (h *TestHarness) NewConversation(msg, cwd string) *TestHarness {
 	h.t.Helper()
 
 	chatReq := ChatRequest{
