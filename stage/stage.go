@@ -33,16 +33,6 @@ type Env struct {
 	NumShards int // number of IP shards available for box allocation, max 253
 }
 
-// BoxLogin returns the login string for a box in this environment.
-// For local env, it's "boxname@boxhost".
-// For non-local env, it's "boxname.boxhost".
-func (e Env) BoxLogin(boxName string) string {
-	if e.SSHCommandUsesAt {
-		return fmt.Sprintf("%s@%s", boxName, e.BoxHost)
-	}
-	return fmt.Sprintf("%s.%s", boxName, e.BoxHost)
-}
-
 // Local returns an Env configured for convenient local human development.
 // It enables more expensive features (cobble, auto-starting sshpiper),
 // and provides convenience shortcuts like email links in the console/web.
@@ -165,4 +155,14 @@ func (e Env) BoxXtermSub(sub string) string { return sub + ".xterm." + e.BoxHost
 // ShardIsValid reports whether shard is within the valid range for this stage.
 func (e Env) ShardIsValid(shard int) bool {
 	return shard >= 1 && shard <= e.NumShards
+}
+
+// BoxLogin returns the login string for a box in this environment.
+// For local env, it's "boxname@boxhost".
+// For non-local env, it's "boxname.boxhost".
+func (e Env) BoxLogin(boxName string) string {
+	if e.SSHCommandUsesAt {
+		return fmt.Sprintf("%s@%s", boxName, e.BoxHost)
+	}
+	return fmt.Sprintf("%s.%s", boxName, e.BoxHost)
 }
