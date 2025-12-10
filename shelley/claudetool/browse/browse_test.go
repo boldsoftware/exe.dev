@@ -111,20 +111,12 @@ func TestBrowserInitialization(t *testing.T) {
 		tools.Close()
 	})
 
-	// Initialize the browser
-	err := tools.Initialize()
-	if err != nil {
-		// If browser automation is not available, skip the test
-		if strings.Contains(err.Error(), "browser automation not available") {
-			t.Skip("Browser automation not available in this environment")
-		} else {
-			t.Fatalf("Failed to initialize browser: %v", err)
-		}
-	}
-
-	// Get browser context to verify it's working
+	// Get browser context (this initializes the browser)
 	browserCtx, err := tools.GetBrowserContext()
 	if err != nil {
+		if strings.Contains(err.Error(), "failed to start browser") {
+			t.Skip("Browser automation not available in this environment")
+		}
 		t.Fatalf("Failed to get browser context: %v", err)
 	}
 
@@ -156,13 +148,6 @@ func TestNavigateTool(t *testing.T) {
 	t.Cleanup(func() {
 		tools.Close()
 	})
-
-	// Check if browser initialization works
-	if err := tools.Initialize(); err != nil {
-		if strings.Contains(err.Error(), "browser automation not available") {
-			t.Skip("Browser automation not available in this environment")
-		}
-	}
 
 	// Get the navigate tool
 	navTool := tools.NewNavigateTool()
@@ -323,20 +308,13 @@ func TestDefaultViewportSize(t *testing.T) {
 		tools.Close()
 	})
 
-	// Initialize browser (which should set default viewport to 1280x720)
-	err := tools.Initialize()
-	if err != nil {
-		if strings.Contains(err.Error(), "browser automation not available") {
-			t.Skip("Browser automation not available in this environment")
-		} else {
-			t.Fatalf("Failed to initialize browser: %v", err)
-		}
-	}
-
 	// Navigate to a simple page to ensure the browser is ready
 	navInput := json.RawMessage(`{"url": "about:blank"}`)
 	toolOut := tools.NewNavigateTool().Run(ctx, navInput)
 	if toolOut.Error != nil {
+		if strings.Contains(toolOut.Error.Error(), "browser automation not available") {
+			t.Skip("Browser automation not available in this environment")
+		}
 		t.Fatalf("Navigation error: %v", toolOut.Error)
 	}
 	content := toolOut.LLMContent
@@ -375,5 +353,55 @@ func TestDefaultViewportSize(t *testing.T) {
 	}
 	if response.Height != expectedHeight {
 		t.Errorf("Expected default height %v, got %v", expectedHeight, response.Height)
+	}
+}
+
+// TestBrowserIdleShutdownAndRestart verifies the browser shuts down after idle and can restart
+func TestBrowserIdleShutdownAndRestart(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Use a short idle timeout for testing
+	idleTimeout := 100 * time.Millisecond
+	tools := NewBrowseToolsWithIdleTimeout(ctx, idleTimeout)
+	t.Cleanup(func() {
+		tools.Close()
+	})
+
+	// First use - should start the browser
+	browserCtx1, err := tools.GetBrowserContext()
+	if err != nil {
+		if strings.Contains(err.Error(), "failed to start browser") {
+			t.Skip("Browser automation not available in this environment")
+		}
+		t.Fatalf("Failed to get browser context: %v", err)
+	}
+	if browserCtx1 == nil {
+		t.Fatal("Expected non-nil browser context")
+	}
+
+	// Wait for idle timeout to fire
+	time.Sleep(idleTimeout + 50*time.Millisecond)
+
+	// Second use - should start a new browser (old one was killed)
+	browserCtx2, err := tools.GetBrowserContext()
+	if err != nil {
+		t.Fatalf("Failed to get browser context after idle: %v", err)
+	}
+	if browserCtx2 == nil {
+		t.Fatal("Expected non-nil browser context after restart")
+	}
+
+	// The contexts should be different (new browser instance)
+	if browserCtx1 == browserCtx2 {
+		t.Error("Expected different browser context after idle shutdown")
+	}
+
+	// Verify the new browser actually works
+	navTool := tools.NewNavigateTool()
+	input := json.RawMessage(`{"url": "about:blank"}`)
+	toolOut := navTool.Run(ctx, input)
+	if toolOut.Error != nil {
+		t.Fatalf("Navigate failed after restart: %v", toolOut.Error)
 	}
 }

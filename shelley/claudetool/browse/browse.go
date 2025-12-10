@@ -24,16 +24,17 @@ import (
 // ScreenshotDir is the directory where screenshots are stored
 const ScreenshotDir = "/tmp/shelley-screenshots"
 
+// DefaultIdleTimeout is how long to wait before shutting down an idle browser
+const DefaultIdleTimeout = 30 * time.Minute
+
 // BrowseTools contains all browser tools and manages a shared browser instance
 type BrowseTools struct {
 	ctx              context.Context
-	cancel           context.CancelFunc
+	allocCtx         context.Context
+	allocCancel      context.CancelFunc
 	browserCtx       context.Context
 	browserCtxCancel context.CancelFunc
 	mux              sync.Mutex
-	initOnce         sync.Once
-	initialized      bool
-	initErr          error
 	// Map to track screenshots by ID and their creation time
 	screenshots      map[string]time.Time
 	screenshotsMutex sync.Mutex
@@ -41,104 +42,134 @@ type BrowseTools struct {
 	consoleLogs      []*runtime.EventConsoleAPICalled
 	consoleLogsMutex sync.Mutex
 	maxConsoleLogs   int
+	// Idle timeout management
+	idleTimeout time.Duration
+	idleTimer   *time.Timer
 }
 
 // NewBrowseTools creates a new set of browser automation tools
 func NewBrowseTools(ctx context.Context) *BrowseTools {
-	ctx, cancel := context.WithCancel(ctx)
+	return NewBrowseToolsWithIdleTimeout(ctx, DefaultIdleTimeout)
+}
 
+// NewBrowseToolsWithIdleTimeout creates browser tools with a custom idle timeout
+func NewBrowseToolsWithIdleTimeout(ctx context.Context, idleTimeout time.Duration) *BrowseTools {
 	// Ensure the screenshot directory exists
 	if err := os.MkdirAll(ScreenshotDir, 0o755); err != nil {
 		log.Printf("Failed to create screenshot directory: %v", err)
 	}
 
-	b := &BrowseTools{
+	return &BrowseTools{
 		ctx:            ctx,
-		cancel:         cancel,
 		screenshots:    make(map[string]time.Time),
 		consoleLogs:    make([]*runtime.EventConsoleAPICalled, 0),
 		maxConsoleLogs: 100,
+		idleTimeout:    idleTimeout,
+	}
+}
+
+// GetBrowserContext returns the browser context, initializing if needed and resetting the idle timer.
+func (b *BrowseTools) GetBrowserContext() (context.Context, error) {
+	b.mux.Lock()
+	defer b.mux.Unlock()
+
+	// If browser exists, reset idle timer and return
+	if b.browserCtx != nil {
+		b.resetIdleTimerLocked()
+		return b.browserCtx, nil
 	}
 
-	return b
-}
+	// Initialize a new browser
+	opts := chromedp.DefaultExecAllocatorOptions[:]
+	opts = append(opts, chromedp.NoSandbox)
+	opts = append(opts, chromedp.Flag("--disable-dbus", true))
+	opts = append(opts, chromedp.WSURLReadTimeout(60*time.Second))
 
-// Initialize starts the browser if it's not already running
-func (b *BrowseTools) Initialize() error {
-	b.mux.Lock()
-	defer b.mux.Unlock()
+	allocCtx, allocCancel := chromedp.NewExecAllocator(b.ctx, opts...)
+	browserCtx, browserCancel := chromedp.NewContext(
+		allocCtx,
+		chromedp.WithLogf(log.Printf),
+		chromedp.WithErrorf(log.Printf),
+		chromedp.WithBrowserOption(chromedp.WithDialTimeout(60*time.Second)),
+	)
 
-	b.initOnce.Do(func() {
-		// ChromeDP.ExecPath has a list of common places to find Chrome...
-		opts := chromedp.DefaultExecAllocatorOptions[:]
-		// This is the default when running as root, but we generally need it
-		// when running in a container, even when we aren't root (which is largely
-		// the case for tests).
-		opts = append(opts, chromedp.NoSandbox)
-		// Setting 'DBUS_SESSION_BUS_ADDRESS=""' or this flag allows tests to pass
-		// in GitHub runner contexts. It's a mystery why the failure isn't clear when this fails.
-		opts = append(opts, chromedp.Flag("--disable-dbus", true))
-		// This can be pretty slow in tests
-		opts = append(opts, chromedp.WSURLReadTimeout(60*time.Second))
-		allocCtx, _ := chromedp.NewExecAllocator(b.ctx, opts...)
-		browserCtx, browserCancel := chromedp.NewContext(
-			allocCtx,
-			chromedp.WithLogf(log.Printf), chromedp.WithErrorf(log.Printf), chromedp.WithBrowserOption(chromedp.WithDialTimeout(60*time.Second)),
-		)
-
-		b.browserCtx = browserCtx
-		b.browserCtxCancel = browserCancel
-
-		// Set up console log listener
-		chromedp.ListenTarget(browserCtx, func(ev any) {
-			switch e := ev.(type) {
-			case *runtime.EventConsoleAPICalled:
-				b.captureConsoleLog(e)
-			}
-		})
-
-		// Ensure the browser starts
-		if err := chromedp.Run(browserCtx); err != nil {
-			b.initErr = fmt.Errorf("failed to start browser (please apt get chromium or equivalent): %w", err)
-			return
+	// Set up console log listener
+	chromedp.ListenTarget(browserCtx, func(ev any) {
+		if e, ok := ev.(*runtime.EventConsoleAPICalled); ok {
+			b.captureConsoleLog(e)
 		}
-
-		// Set default viewport size to 1280x720 (16:9 widescreen)
-		if err := chromedp.Run(browserCtx, chromedp.EmulateViewport(1280, 720)); err != nil {
-			b.initErr = fmt.Errorf("failed to set default viewport: %w", err)
-			return
-		}
-
-		b.initialized = true
 	})
 
-	return b.initErr
+	// Start the browser
+	if err := chromedp.Run(browserCtx); err != nil {
+		allocCancel()
+		return nil, fmt.Errorf("failed to start browser (please apt get chromium or equivalent): %w", err)
+	}
+
+	// Set default viewport size to 1280x720 (16:9 widescreen)
+	if err := chromedp.Run(browserCtx, chromedp.EmulateViewport(1280, 720)); err != nil {
+		browserCancel()
+		allocCancel()
+		return nil, fmt.Errorf("failed to set default viewport: %w", err)
+	}
+
+	b.allocCtx = allocCtx
+	b.allocCancel = allocCancel
+	b.browserCtx = browserCtx
+	b.browserCtxCancel = browserCancel
+
+	b.resetIdleTimerLocked()
+
+	return b.browserCtx, nil
 }
 
-// Close shuts down the browser
-func (b *BrowseTools) Close() {
+// resetIdleTimerLocked resets or starts the idle timer. Caller must hold b.mux.
+func (b *BrowseTools) resetIdleTimerLocked() {
+	if b.idleTimer != nil {
+		b.idleTimer.Stop()
+	}
+	b.idleTimer = time.AfterFunc(b.idleTimeout, b.idleShutdown)
+}
+
+// idleShutdown is called when the idle timer fires
+func (b *BrowseTools) idleShutdown() {
 	b.mux.Lock()
 	defer b.mux.Unlock()
+
+	if b.browserCtx == nil {
+		return
+	}
+
+	log.Printf("Browser idle for %v, shutting down", b.idleTimeout)
+	b.closeBrowserLocked()
+}
+
+// closeBrowserLocked shuts down the browser. Caller must hold b.mux.
+func (b *BrowseTools) closeBrowserLocked() {
+	if b.idleTimer != nil {
+		b.idleTimer.Stop()
+		b.idleTimer = nil
+	}
 
 	if b.browserCtxCancel != nil {
 		b.browserCtxCancel()
 		b.browserCtxCancel = nil
 	}
 
-	if b.cancel != nil {
-		b.cancel()
+	if b.allocCancel != nil {
+		b.allocCancel()
+		b.allocCancel = nil
 	}
 
-	b.initialized = false
-	log.Println("Browser closed")
+	b.browserCtx = nil
+	b.allocCtx = nil
 }
 
-// GetBrowserContext returns the context for browser operations
-func (b *BrowseTools) GetBrowserContext() (context.Context, error) {
-	if err := b.Initialize(); err != nil {
-		return nil, err
-	}
-	return b.browserCtx, nil
+// Close shuts down the browser
+func (b *BrowseTools) Close() {
+	b.mux.Lock()
+	defer b.mux.Unlock()
+	b.closeBrowserLocked()
 }
 
 // NavigateTool definition
