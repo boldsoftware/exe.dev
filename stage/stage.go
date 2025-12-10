@@ -157,10 +157,10 @@ func (e Env) ShardIsValid(shard int) bool {
 	return shard >= 1 && shard <= e.NumShards
 }
 
-// BoxLogin returns the login string for a box in this environment.
+// BoxDest returns the SSH destination for a box in this environment.
 // For local env, it's "boxname@boxhost".
 // For non-local env, it's "boxname.boxhost".
-func (e Env) BoxLogin(boxName string) string {
+func (e Env) BoxDest(boxName string) string {
 	if e.SSHCommandUsesAt {
 		return fmt.Sprintf("%s@%s", boxName, e.BoxHost)
 	}

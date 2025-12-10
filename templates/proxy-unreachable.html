@@ -28,7 +28,7 @@
     {{else}}
     <h1 class="text-4xl font-semibold mb-6">Port {{.Port}} unbound.</h1>
     <div class="bg-zinc-100 rounded p-4">
-      <code class="text-sm">ssh {{.BoxName | .BoxLogin}} sudo systemctl enable --now nginx</code>
+      <code class="text-sm">ssh {{.BoxName | .BoxDest}} sudo systemctl enable --now nginx</code>
     </div>
     {{end}}
   </main>

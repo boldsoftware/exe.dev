@@ -1279,7 +1279,7 @@ func (s *Server) boxSSHConnectionCommand(boxName string) string {
 	if port := s.boxSSHPort(); port != 22 {
 		dashP = fmt.Sprintf("-p %d ", port)
 	}
-	return "ssh " + dashP + boxName + "@" + s.env.BoxHost
+	return "ssh " + dashP + s.env.BoxDest(boxName)
 }
 
 // replSSHConnectionCommand returns the SSH command to connect to the REPL server.
@@ -1312,7 +1312,7 @@ func (s *Server) vscodeURL(boxName string) string {
 	if s.boxSSHPort() != 22 {
 		colonP = fmt.Sprintf(":%d", s.boxSSHPort())
 	}
-	connStr := boxName + "@" + s.env.BoxHost + colonP
+	connStr := s.env.BoxDest(boxName) + colonP
 	return fmt.Sprintf("vscode://vscode-remote/ssh-remote+%s/home/exedev/src?windowId=_blank", connStr)
 }
 
