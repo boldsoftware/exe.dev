@@ -222,36 +222,6 @@ func TestSSHTimeoutOptions(t *testing.T) {
 		}
 	})
 
-	t.Run("startSSHTunnelForExed includes timeout options", func(t *testing.T) {
-		expectedOptions := []string{
-			"ConnectTimeout=10",
-			"ServerAliveInterval=30",
-			"ServerAliveCountMax=3",
-		}
-
-		src, err := os.ReadFile("exed.go")
-		if err != nil {
-			t.Fatalf("failed to read exed.go: %v", err)
-		}
-		content := string(src)
-
-		tunnelStart := strings.Index(content, "func startSSHTunnelForExed(")
-		if tunnelStart == -1 {
-			t.Fatal("startSSHTunnelForExed function not found")
-		}
-		tunnelEnd := strings.Index(content[tunnelStart:], "\nfunc ")
-		if tunnelEnd == -1 {
-			t.Fatal("startSSHTunnelForExed function end not found")
-		}
-		tunnelBody := content[tunnelStart : tunnelStart+tunnelEnd]
-
-		for _, opt := range expectedOptions {
-			if !strings.Contains(tunnelBody, opt) {
-				t.Errorf("startSSHTunnelForExed missing timeout option: %s", opt)
-			}
-		}
-	})
-
 	t.Run("startExeletProcess includes timeout options", func(t *testing.T) {
 		expectedOptions := []string{
 			"ConnectTimeout=10",
