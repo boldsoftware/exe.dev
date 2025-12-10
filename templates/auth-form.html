@@ -35,6 +35,41 @@
         class="w-full text-xl border-b-2 border-zinc-300 py-3 bg-transparent focus:outline-none focus:border-zinc-900 placeholder:text-zinc-400">
       <p class="text-zinc-400 text-sm mt-4">Press enter</p>
     </form>
+
+    <div id="passkey-section" class="mt-8 pt-8 border-t border-zinc-200" style="display: none;">
+      <button id="passkey-login-btn" onclick="loginWithPasskey()"
+        class="w-full py-3 px-4 border-2 border-zinc-900 text-zinc-900 font-medium hover:bg-zinc-900 hover:text-white transition-colors">
+        Sign in with Passkey
+      </button>
+      <p id="passkey-error" class="text-red-600 text-sm mt-2" style="display: none;"></p>
+    </div>
   </main>
+
+  <script src="/static/passkey.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      if (passkey.isSupported()) {
+        document.getElementById('passkey-section').style.display = 'block';
+      }
+    });
+
+    async function loginWithPasskey() {
+      const errorEl = document.getElementById('passkey-error');
+      const btn = document.getElementById('passkey-login-btn');
+
+      errorEl.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Authenticating...';
+
+      try {
+        await passkey.authenticate();
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Sign in with Passkey';
+      }
+    }
+  </script>
 </body>
 </html>

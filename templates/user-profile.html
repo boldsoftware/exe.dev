@@ -123,7 +123,78 @@
             background: #dc2626;
             color: white;
         }
-        
+
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .passkey-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8f8f8;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 12px;
+        }
+
+        .passkey-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .passkey-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .passkey-meta {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .passkeys-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .add-passkey-form {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .add-passkey-form input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 13px;
+        }
+
+        .add-passkey-form input:focus {
+            outline: none;
+            border-color: #999;
+        }
+
+        .passkey-error {
+            color: #dc2626;
+            font-size: 13px;
+            margin-top: 8px;
+            display: none;
+        }
+
+        .passkey-unsupported {
+            color: #666;
+            font-size: 13px;
+            font-style: italic;
+        }
+
         @media (max-width: 768px) {
             .main-container {
                 padding: 20px 12px;
@@ -168,10 +239,90 @@
             </div>
             {{end}}
         </div>
-        
+
+        <div class="section" id="passkeys-section">
+            <div class="section-title">Passkeys</div>
+            <div id="passkeys-unsupported" class="info-card" style="display: none;">
+                <div class="passkey-unsupported">Passkeys are not supported on this device or browser.</div>
+            </div>
+            <div id="passkeys-content">
+                {{if .Passkeys}}
+                <div class="passkeys-list">
+                    {{range .Passkeys}}
+                    <div class="passkey-item">
+                        <div class="passkey-info">
+                            <div class="passkey-name">{{.Name}}</div>
+                            <div class="passkey-meta">Added {{.CreatedAt}} · Last used {{.LastUsedAt}}</div>
+                        </div>
+                        <button class="btn btn-danger btn-small" onclick="deletePasskey({{.ID}})">Delete</button>
+                    </div>
+                    {{end}}
+                </div>
+                {{else}}
+                <div class="info-card">
+                    <div class="no-keys">No passkeys registered yet.</div>
+                </div>
+                {{end}}
+                <div class="add-passkey-form">
+                    <input type="text" id="passkey-name" placeholder="Passkey name (e.g., MacBook, iPhone)">
+                    <button class="btn" onclick="addPasskey()">Add Passkey</button>
+                </div>
+                <div class="passkey-error" id="passkey-error"></div>
+            </div>
+        </div>
+
         <div class="actions">
             <a href="/logout" class="btn btn-danger">Sign Out</a>
         </div>
     </div>
+
+    <script src="/static/passkey.js"></script>
+    <script>
+        // Generate a default passkey name based on platform
+        function getDefaultPasskeyName() {
+            const ua = navigator.userAgent;
+            if (/iPhone/.test(ua)) return 'iPhone';
+            if (/iPad/.test(ua)) return 'iPad';
+            if (/Macintosh/.test(ua)) return 'Mac';
+            if (/Windows/.test(ua)) return 'Windows';
+            if (/Android/.test(ua)) return 'Android';
+            if (/Linux/.test(ua)) return 'Linux';
+            return 'Passkey';
+        }
+
+        // Check passkey support on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            if (!passkey.isSupported()) {
+                document.getElementById('passkeys-unsupported').style.display = 'block';
+                document.getElementById('passkeys-content').style.display = 'none';
+            } else {
+                document.getElementById('passkey-name').placeholder = getDefaultPasskeyName();
+            }
+        });
+
+        async function addPasskey() {
+            const nameInput = document.getElementById('passkey-name');
+            const errorDiv = document.getElementById('passkey-error');
+            const name = nameInput.value.trim() || getDefaultPasskeyName();
+
+            errorDiv.style.display = 'none';
+            errorDiv.textContent = '';
+
+            try {
+                await passkey.register(name);
+                // Reload page to show the new passkey
+                window.location.reload();
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        function deletePasskey(id) {
+            if (confirm('Are you sure you want to delete this passkey?')) {
+                passkey.delete(id);
+            }
+        }
+    </script>
 </body>
 </html>

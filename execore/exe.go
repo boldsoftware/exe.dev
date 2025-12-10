@@ -104,6 +104,7 @@ type UserPageData struct {
 	SSHCommand  string
 	User        exedb.User
 	SSHKeys     []SSHKey
+	Passkeys    []PasskeyInfo
 	Boxes       []BoxDisplayInfo
 	SharedBoxes []SharedBoxDisplayInfo
 	ActivePage  string

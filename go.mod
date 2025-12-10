@@ -31,6 +31,7 @@ require (
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/dustin/go-humanize v1.0.1
 	github.com/gliderlabs/ssh v0.3.8
+	github.com/go-webauthn/webauthn v0.15.0
 	github.com/go4org/hashtriemap v0.0.0-20251130024219-545ba229f689
 	github.com/google/go-containerregistry v0.20.6
 	github.com/google/uuid v1.6.0
@@ -136,10 +137,14 @@ require (
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/go-sql-driver/mysql v1.9.3 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/go-webauthn/x v0.1.26 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/cel-go v0.26.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/go-tpm v0.9.6 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect

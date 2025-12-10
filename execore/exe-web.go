@@ -560,6 +560,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Handle passkey routes
+		if strings.HasPrefix(path, "/passkey/") {
+			s.handlePasskeyRoutes(w, r)
+			return
+		}
+
 		// Serve embedded static assets under /static/
 		if strings.HasPrefix(path, "/static/") {
 			filename := strings.TrimPrefix(path, "/static/")
@@ -1833,11 +1839,18 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		s.slog().ErrorContext(r.Context(), "Failed to get SSH keys for profile", "error", err, "email", user.Email)
 	}
 
+	// Get user's passkeys
+	passkeys, err := s.getPasskeysForUser(r.Context(), userID)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "Failed to get passkeys for profile", "error", err, "email", user.Email)
+	}
+
 	// Prepare template data
 	data := UserPageData{
 		Env:        s.env,
 		User:       user,
 		SSHKeys:    sshKeys,
+		Passkeys:   passkeys,
 		ActivePage: "profile",
 		IsLoggedIn: true,
 	}

@@ -100,6 +100,27 @@ type MobilePendingVm struct {
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
 }
 
+type Passkey struct {
+	ID           int64      `db:"id" json:"id"`
+	UserID       string     `db:"user_id" json:"user_id"`
+	CredentialID []byte     `db:"credential_id" json:"credential_id"`
+	PublicKey    []byte     `db:"public_key" json:"public_key"`
+	SignCount    int64      `db:"sign_count" json:"sign_count"`
+	Aaguid       []byte     `db:"aaguid" json:"aaguid"`
+	Name         string     `db:"name" json:"name"`
+	Flags        int64      `db:"flags" json:"flags"`
+	CreatedAt    *time.Time `db:"created_at" json:"created_at"`
+	LastUsedAt   *time.Time `db:"last_used_at" json:"last_used_at"`
+}
+
+type PasskeyChallenge struct {
+	Challenge   string     `db:"challenge" json:"challenge"`
+	SessionData []byte     `db:"session_data" json:"session_data"`
+	UserID      *string    `db:"user_id" json:"user_id"`
+	ExpiresAt   time.Time  `db:"expires_at" json:"expires_at"`
+	CreatedAt   *time.Time `db:"created_at" json:"created_at"`
+}
+
 type PendingBoxShare struct {
 	ID              int64      `db:"id" json:"id"`
 	BoxID           int64      `db:"box_id" json:"box_id"`

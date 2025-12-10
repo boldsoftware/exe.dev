@@ -36,6 +36,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.boxesForUserStmt, err = db.PrepareContext(ctx, boxesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query BoxesForUser: %w", err)
 	}
+	if q.cleanupExpiredPasskeyChallengesStmt, err = db.PrepareContext(ctx, cleanupExpiredPasskeyChallenges); err != nil {
+		return nil, fmt.Errorf("error preparing query CleanupExpiredPasskeyChallenges: %w", err)
+	}
 	if q.countBoxShareLinksStmt, err = db.PrepareContext(ctx, countBoxShareLinks); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxShareLinks: %w", err)
 	}
@@ -77,6 +80,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, deleteEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEmailVerificationByToken: %w", err)
+	}
+	if q.deletePasskeyStmt, err = db.PrepareContext(ctx, deletePasskey); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePasskey: %w", err)
+	}
+	if q.deletePasskeyChallengeStmt, err = db.PrepareContext(ctx, deletePasskeyChallenge); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePasskeyChallenge: %w", err)
 	}
 	if q.deletePendingBoxShareByBoxAndEmailStmt, err = db.PrepareContext(ctx, deletePendingBoxShareByBoxAndEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingBoxShareByBoxAndEmail: %w", err)
@@ -152,6 +161,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getIPShardByBoxNameStmt, err = db.PrepareContext(ctx, getIPShardByBoxName); err != nil {
 		return nil, fmt.Errorf("error preparing query GetIPShardByBoxName: %w", err)
+	}
+	if q.getPasskeyByCredentialIDStmt, err = db.PrepareContext(ctx, getPasskeyByCredentialID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPasskeyByCredentialID: %w", err)
+	}
+	if q.getPasskeyChallengeStmt, err = db.PrepareContext(ctx, getPasskeyChallenge); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPasskeyChallenge: %w", err)
+	}
+	if q.getPasskeysByUserIDStmt, err = db.PrepareContext(ctx, getPasskeysByUserID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPasskeysByUserID: %w", err)
 	}
 	if q.getPendingBoxSharesByBoxIDStmt, err = db.PrepareContext(ctx, getPendingBoxSharesByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingBoxSharesByBoxID: %w", err)
@@ -231,6 +249,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertOrReplaceEmailVerificationStmt, err = db.PrepareContext(ctx, insertOrReplaceEmailVerification); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertOrReplaceEmailVerification: %w", err)
 	}
+	if q.insertPasskeyStmt, err = db.PrepareContext(ctx, insertPasskey); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertPasskey: %w", err)
+	}
+	if q.insertPasskeyChallengeStmt, err = db.PrepareContext(ctx, insertPasskeyChallenge); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertPasskeyChallenge: %w", err)
+	}
 	if q.insertPendingSSHKeyStmt, err = db.PrepareContext(ctx, insertPendingSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPendingSSHKey: %w", err)
 	}
@@ -279,6 +303,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateBoxStatusStmt, err = db.PrepareContext(ctx, updateBoxStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxStatus: %w", err)
 	}
+	if q.updatePasskeySignCountStmt, err = db.PrepareContext(ctx, updatePasskeySignCount); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdatePasskeySignCount: %w", err)
+	}
 	if q.updateProxyBearerTokenLastUsedStmt, err = db.PrepareContext(ctx, updateProxyBearerTokenLastUsed); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateProxyBearerTokenLastUsed: %w", err)
 	}
@@ -323,6 +350,11 @@ func (q *Queries) Close() error {
 	if q.boxesForUserStmt != nil {
 		if cerr := q.boxesForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing boxesForUserStmt: %w", cerr)
+		}
+	}
+	if q.cleanupExpiredPasskeyChallengesStmt != nil {
+		if cerr := q.cleanupExpiredPasskeyChallengesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing cleanupExpiredPasskeyChallengesStmt: %w", cerr)
 		}
 	}
 	if q.countBoxShareLinksStmt != nil {
@@ -393,6 +425,16 @@ func (q *Queries) Close() error {
 	if q.deleteEmailVerificationByTokenStmt != nil {
 		if cerr := q.deleteEmailVerificationByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteEmailVerificationByTokenStmt: %w", cerr)
+		}
+	}
+	if q.deletePasskeyStmt != nil {
+		if cerr := q.deletePasskeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePasskeyStmt: %w", cerr)
+		}
+	}
+	if q.deletePasskeyChallengeStmt != nil {
+		if cerr := q.deletePasskeyChallengeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePasskeyChallengeStmt: %w", cerr)
 		}
 	}
 	if q.deletePendingBoxShareByBoxAndEmailStmt != nil {
@@ -518,6 +560,21 @@ func (q *Queries) Close() error {
 	if q.getIPShardByBoxNameStmt != nil {
 		if cerr := q.getIPShardByBoxNameStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getIPShardByBoxNameStmt: %w", cerr)
+		}
+	}
+	if q.getPasskeyByCredentialIDStmt != nil {
+		if cerr := q.getPasskeyByCredentialIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPasskeyByCredentialIDStmt: %w", cerr)
+		}
+	}
+	if q.getPasskeyChallengeStmt != nil {
+		if cerr := q.getPasskeyChallengeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPasskeyChallengeStmt: %w", cerr)
+		}
+	}
+	if q.getPasskeysByUserIDStmt != nil {
+		if cerr := q.getPasskeysByUserIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPasskeysByUserIDStmt: %w", cerr)
 		}
 	}
 	if q.getPendingBoxSharesByBoxIDStmt != nil {
@@ -650,6 +707,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertOrReplaceEmailVerificationStmt: %w", cerr)
 		}
 	}
+	if q.insertPasskeyStmt != nil {
+		if cerr := q.insertPasskeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertPasskeyStmt: %w", cerr)
+		}
+	}
+	if q.insertPasskeyChallengeStmt != nil {
+		if cerr := q.insertPasskeyChallengeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertPasskeyChallengeStmt: %w", cerr)
+		}
+	}
 	if q.insertPendingSSHKeyStmt != nil {
 		if cerr := q.insertPendingSSHKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertPendingSSHKeyStmt: %w", cerr)
@@ -730,6 +797,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxStatusStmt: %w", cerr)
 		}
 	}
+	if q.updatePasskeySignCountStmt != nil {
+		if cerr := q.updatePasskeySignCountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updatePasskeySignCountStmt: %w", cerr)
+		}
+	}
 	if q.updateProxyBearerTokenLastUsedStmt != nil {
 		if cerr := q.updateProxyBearerTokenLastUsedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateProxyBearerTokenLastUsedStmt: %w", cerr)
@@ -808,6 +880,7 @@ type Queries struct {
 	boxWithNameExistsStmt                  *sql.Stmt
 	boxWithOwnerNamedStmt                  *sql.Stmt
 	boxesForUserStmt                       *sql.Stmt
+	cleanupExpiredPasskeyChallengesStmt    *sql.Stmt
 	countBoxShareLinksStmt                 *sql.Stmt
 	countBoxSharesStmt                     *sql.Stmt
 	countPendingBoxSharesStmt              *sql.Stmt
@@ -822,6 +895,8 @@ type Queries struct {
 	deleteBoxShareByBoxAndUserStmt         *sql.Stmt
 	deleteBoxShareLinkByBoxAndTokenStmt    *sql.Stmt
 	deleteEmailVerificationByTokenStmt     *sql.Stmt
+	deletePasskeyStmt                      *sql.Stmt
+	deletePasskeyChallengeStmt             *sql.Stmt
 	deletePendingBoxShareByBoxAndEmailStmt *sql.Stmt
 	deletePendingSSHKeyByTokenStmt         *sql.Stmt
 	deleteSSHKeyForUserStmt                *sql.Stmt
@@ -847,6 +922,9 @@ type Queries struct {
 	getEmailVerificationByPartialTokenStmt *sql.Stmt
 	getEmailVerificationByTokenStmt        *sql.Stmt
 	getIPShardByBoxNameStmt                *sql.Stmt
+	getPasskeyByCredentialIDStmt           *sql.Stmt
+	getPasskeyChallengeStmt                *sql.Stmt
+	getPasskeysByUserIDStmt                *sql.Stmt
 	getPendingBoxSharesByBoxIDStmt         *sql.Stmt
 	getPendingBoxSharesByEmailStmt         *sql.Stmt
 	getPendingSSHKeyByTokenStmt            *sql.Stmt
@@ -873,6 +951,8 @@ type Queries struct {
 	insertDeletedBoxStmt                   *sql.Stmt
 	insertEmailVerificationStmt            *sql.Stmt
 	insertOrReplaceEmailVerificationStmt   *sql.Stmt
+	insertPasskeyStmt                      *sql.Stmt
+	insertPasskeyChallengeStmt             *sql.Stmt
 	insertPendingSSHKeyStmt                *sql.Stmt
 	insertProxyBearerTokenStmt             *sql.Stmt
 	insertSSHKeyStmt                       *sql.Stmt
@@ -889,6 +969,7 @@ type Queries struct {
 	updateBoxRoutesStmt                    *sql.Stmt
 	updateBoxSSHDetailsStmt                *sql.Stmt
 	updateBoxStatusStmt                    *sql.Stmt
+	updatePasskeySignCountStmt             *sql.Stmt
 	updateProxyBearerTokenLastUsedStmt     *sql.Stmt
 	updateTagResolutionCheckedStmt         *sql.Stmt
 	updateTagResolutionDigestStmt          *sql.Stmt
@@ -906,6 +987,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		boxWithNameExistsStmt:                  q.boxWithNameExistsStmt,
 		boxWithOwnerNamedStmt:                  q.boxWithOwnerNamedStmt,
 		boxesForUserStmt:                       q.boxesForUserStmt,
+		cleanupExpiredPasskeyChallengesStmt:    q.cleanupExpiredPasskeyChallengesStmt,
 		countBoxShareLinksStmt:                 q.countBoxShareLinksStmt,
 		countBoxSharesStmt:                     q.countBoxSharesStmt,
 		countPendingBoxSharesStmt:              q.countPendingBoxSharesStmt,
@@ -920,6 +1002,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteBoxShareByBoxAndUserStmt:         q.deleteBoxShareByBoxAndUserStmt,
 		deleteBoxShareLinkByBoxAndTokenStmt:    q.deleteBoxShareLinkByBoxAndTokenStmt,
 		deleteEmailVerificationByTokenStmt:     q.deleteEmailVerificationByTokenStmt,
+		deletePasskeyStmt:                      q.deletePasskeyStmt,
+		deletePasskeyChallengeStmt:             q.deletePasskeyChallengeStmt,
 		deletePendingBoxShareByBoxAndEmailStmt: q.deletePendingBoxShareByBoxAndEmailStmt,
 		deletePendingSSHKeyByTokenStmt:         q.deletePendingSSHKeyByTokenStmt,
 		deleteSSHKeyForUserStmt:                q.deleteSSHKeyForUserStmt,
@@ -945,6 +1029,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:        q.getEmailVerificationByTokenStmt,
 		getIPShardByBoxNameStmt:                q.getIPShardByBoxNameStmt,
+		getPasskeyByCredentialIDStmt:           q.getPasskeyByCredentialIDStmt,
+		getPasskeyChallengeStmt:                q.getPasskeyChallengeStmt,
+		getPasskeysByUserIDStmt:                q.getPasskeysByUserIDStmt,
 		getPendingBoxSharesByBoxIDStmt:         q.getPendingBoxSharesByBoxIDStmt,
 		getPendingBoxSharesByEmailStmt:         q.getPendingBoxSharesByEmailStmt,
 		getPendingSSHKeyByTokenStmt:            q.getPendingSSHKeyByTokenStmt,
@@ -971,6 +1058,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertDeletedBoxStmt:                   q.insertDeletedBoxStmt,
 		insertEmailVerificationStmt:            q.insertEmailVerificationStmt,
 		insertOrReplaceEmailVerificationStmt:   q.insertOrReplaceEmailVerificationStmt,
+		insertPasskeyStmt:                      q.insertPasskeyStmt,
+		insertPasskeyChallengeStmt:             q.insertPasskeyChallengeStmt,
 		insertPendingSSHKeyStmt:                q.insertPendingSSHKeyStmt,
 		insertProxyBearerTokenStmt:             q.insertProxyBearerTokenStmt,
 		insertSSHKeyStmt:                       q.insertSSHKeyStmt,
@@ -987,6 +1076,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxRoutesStmt:                    q.updateBoxRoutesStmt,
 		updateBoxSSHDetailsStmt:                q.updateBoxSSHDetailsStmt,
 		updateBoxStatusStmt:                    q.updateBoxStatusStmt,
+		updatePasskeySignCountStmt:             q.updatePasskeySignCountStmt,
 		updateProxyBearerTokenLastUsedStmt:     q.updateProxyBearerTokenLastUsedStmt,
 		updateTagResolutionCheckedStmt:         q.updateTagResolutionCheckedStmt,
 		updateTagResolutionDigestStmt:          q.updateTagResolutionDigestStmt,
