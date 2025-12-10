@@ -1,4 +1,5 @@
 ---
+# GENERATED; rebuild with go run ./cmd/gencmddocs
 title: "share"
 description: "Share HTTPS box access with others"
 subheading: "4. CLI Reference"

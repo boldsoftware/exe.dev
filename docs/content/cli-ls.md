@@ -1,4 +1,5 @@
 ---
+# GENERATED; rebuild with go run ./cmd/gencmddocs
 title: "ls"
 description: "List your boxes"
 subheading: "4. CLI Reference"

@@ -1,4 +1,5 @@
 ---
+# GENERATED; rebuild with go run ./cmd/gencmddocs
 title: "new"
 description: "Create a new box"
 subheading: "4. CLI Reference"

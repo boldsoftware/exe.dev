@@ -1,4 +1,5 @@
 ---
+# GENERATED; rebuild with go run ./cmd/gencmddocs
 title: "rm"
 description: "Delete a box"
 subheading: "4. CLI Reference"

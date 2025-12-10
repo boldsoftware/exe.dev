@@ -57,6 +57,7 @@ func generateCommandDoc(cmd *exemenu.Command, suborder int) string {
 
 	// Front matter
 	fmt.Fprintf(&buf, `---
+# GENERATED; rebuild with go run ./cmd/gencmddocs
 title: "%s"
 description: "%s"
 subheading: "4. CLI Reference"
