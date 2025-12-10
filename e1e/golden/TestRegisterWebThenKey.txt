@@ -32,9 +32,9 @@ Welcome to EXE.DEV!
 - new to create your first box
 - help to see a list of commands
 
-exe.dev ▶ whoami
+PROMPT ▶ whoami
 Email Address: TestRegisterWebThenKey@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-exe.dev ▶ exit
+PROMPT ▶ exit
 Goodbye!

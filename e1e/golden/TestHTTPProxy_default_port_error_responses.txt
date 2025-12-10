@@ -8,17 +8,17 @@ share port BOX_NAME 9091
 
 - help to see a list of commands
 
-exe.dev ▶ share port BOX_NAME 9091
+PROMPT ▶ share port BOX_NAME 9091
 ✓ Route updated successfully
   Port: 9091
   Share: public
 
-exe.dev ▶ share set-public BOX_NAME
+PROMPT ▶ share set-public BOX_NAME
 ✓ Route updated successfully
   Port: 9091
   Share: public
 
-exe.dev ▶ exit
+PROMPT ▶ exit
 Goodbye!
 
 
@@ -30,15 +30,15 @@ share port BOX_NAME 8080
 
 - help to see a list of commands
 
-exe.dev ▶ share port BOX_NAME 8080
+PROMPT ▶ share port BOX_NAME 8080
 ✓ Route updated successfully
   Port: 8080
   Share: public
 
-exe.dev ▶ share set-public BOX_NAME
+PROMPT ▶ share set-public BOX_NAME
 ✓ Route updated successfully
   Port: 8080
   Share: public
 
-exe.dev ▶ exit
+PROMPT ▶ exit
 Goodbye!

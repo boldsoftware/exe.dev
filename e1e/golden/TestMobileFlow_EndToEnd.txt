@@ -31,8 +31,8 @@ Welcome to EXE.DEV!
 
 - help to see a list of commands
 
-exe.dev ▶ rm BOX_NAME
+PROMPT ▶ rm BOX_NAME
 Deleting BOX_NAME...
 Box "BOX_NAME" deleted successfully
-exe.dev ▶ exit
+PROMPT ▶ exit
 Goodbye!

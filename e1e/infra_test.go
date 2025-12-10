@@ -575,6 +575,8 @@ func (t *testEnv) canonicalizeString(s string) string {
 	s = regexp.MustCompile(`(?s)(For support and documentation, "ssh exe\.dev" or visit https://exe\.dev/\n)\n(.+?)\n(exedev@)`).ReplaceAllString(s, "$1\nMOTD HINT\n\n$3")
 	// Canonicalize shelley.backup timestamps (format: YYYYMMDD-HHMMSS)
 	s = regexp.MustCompile(`shelley\.backup\.\d{8}-\d{6}`).ReplaceAllString(s, `shelley.backup.TIMESTAMP`)
+	// Canonicalize REPL prompt (host varies by environment)
+	s = regexp.MustCompile(`(?m)^[a-z0-9.-]+ ▶`).ReplaceAllString(s, `PROMPT ▶`)
 	return s
 }
 
@@ -1751,7 +1753,7 @@ func genSSHKey(t *testing.T) (path, publickey string) {
 
 const (
 	banner       = "~~~ EXE.DEV ~~~"
-	exeDevPrompt = "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m "
+	exeDevPrompt = "\033[1;36mlocalhost\033[0m \033[37m▶\033[0m "
 )
 
 type expectPty struct {

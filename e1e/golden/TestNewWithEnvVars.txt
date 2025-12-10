@@ -32,11 +32,11 @@ Welcome to EXE.DEV!
 - new to create your first box
 - help to see a list of commands
 
-exe.dev ▶ whoami
+PROMPT ▶ whoami
 Email Address: TestNewWithEnvVars@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-exe.dev ▶ new --name=BOX_NAME --env TEST_VAR1=value1 --env TEST_VAR2=value2 --env 'GREETING=hello world' --env 'COMMAND=echo $HOME' --env 'QUOTE=it'"'"'s great'
+PROMPT ▶ new --name=BOX_NAME --env TEST_VAR1=value1 --env TEST_VAR2=value2 --env 'GREETING=hello world' --env 'COMMAND=echo $HOME' --env 'QUOTE=it'"'"'s great'
 Creating BOX_NAME using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME!
 
@@ -49,7 +49,7 @@ http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 SSH
 ssh -p SSH_PORT BOX_NAME@exe.cloud
 
-exe.dev ▶ exit
+PROMPT ▶ exit
 Goodbye!
 
 
@@ -86,8 +86,8 @@ rm BOX_NAME
 
 - help to see a list of commands
 
-exe.dev ▶ rm BOX_NAME
+PROMPT ▶ rm BOX_NAME
 Deleting BOX_NAME...
 Box "BOX_NAME" deleted successfully
-exe.dev ▶ exit
+PROMPT ▶ exit
 Goodbye!

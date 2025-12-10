@@ -343,7 +343,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 	ss.server.recordUserEventBestEffort(s.Context(), user.UserID, userEventUsedREPL)
 
 	// Create a terminal using golang.org/x/term
-	terminal := term.NewTerminal(s, "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m ")
+	terminal := term.NewTerminal(s, fmt.Sprintf("\033[1;36m%s\033[0m \033[37m▶\033[0m ", ss.server.env.ReplHost))
 	var ctx context.Context = s.Context()
 
 	// Set the terminal size to the pty size, and keep it updated whenever the pty changes.

@@ -7,12 +7,12 @@
 
 - help to see a list of commands
 
-exe.dev ▶ shelley install BOX_NAME
+PROMPT ▶ shelley install BOX_NAME
 Installing Shelley on BOX_NAME...
 Backed up existing shelley to /usr/local/bin/shelley.backup.TIMESTAMP
 Copied shelley binary
 Installed shelley to /usr/local/bin/shelley
 Restarted shelley.service
 ✓ Shelley installation complete
-exe.dev ▶ exit
+PROMPT ▶ exit
 Goodbye!

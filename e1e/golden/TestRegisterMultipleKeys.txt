@@ -32,11 +32,11 @@ Welcome to EXE.DEV!
 - new to create your first box
 - help to see a list of commands
 
-exe.dev ▶ whoami
+PROMPT ▶ whoami
 Email Address: TestRegisterMultipleKeys@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-exe.dev ▶ exit
+PROMPT ▶ exit
 Goodbye!
 
 
@@ -70,12 +70,12 @@ Your new ssh key has been added to your existing account.
 - new to create your first box
 - help to see a list of commands
 
-exe.dev ▶ whoami
+PROMPT ▶ whoami
 Email Address: TestRegisterMultipleKeys@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
   Public Key: SSH_PUBKEY
-exe.dev ▶ exit
+PROMPT ▶ exit
 Goodbye!
 
 
@@ -109,11 +109,11 @@ Your new ssh key has been added to your existing account.
 - new to create your first box
 - help to see a list of commands
 
-exe.dev ▶ whoami
+PROMPT ▶ whoami
 Email Address: TestRegisterMultipleKeys@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
   Public Key: SSH_PUBKEY
   Public Key: SSH_PUBKEY
-exe.dev ▶ exit
+PROMPT ▶ exit
 Goodbye!

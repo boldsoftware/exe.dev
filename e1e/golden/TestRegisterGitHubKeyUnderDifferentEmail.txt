@@ -36,9 +36,9 @@ Welcome to EXE.DEV!
 - new to create your first box
 - help to see a list of commands
 
-exe.dev ▶ whoami
+PROMPT ▶ whoami
 Email Address: also-fake-for-tests@example.combinatorics
 SSH Keys:
   Public Key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB+zhJasLRGZPtFeAAtPiP+JnaaSOWb61BHilYsQumop ← current
-exe.dev ▶ exit
+PROMPT ▶ exit
 Goodbye!

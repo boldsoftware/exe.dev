@@ -32,14 +32,14 @@ Welcome to EXE.DEV!
 - new to create your first box
 - help to see a list of commands
 
-exe.dev ▶ whoami
+PROMPT ▶ whoami
 Email Address: TestExeDevAPI@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-exe.dev ▶ new --name=BOX_NAME
+PROMPT ▶ new --name=BOX_NAME
 Box name "BOX_NAME" is not available
-exe.dev ▶ whoami
+PROMPT ▶ whoami
 Email Address: TestExeDevAPI@example.com
 SSH Keys:
-exe.dev ▶ exit
+PROMPT ▶ exit
 Goodbye!
