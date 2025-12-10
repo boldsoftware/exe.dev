@@ -7,7 +7,10 @@ Usage: check_shard_ips.py [domain] [num_shards]
 """
 
 import socket
+import ssl
 import sys
+import urllib.error
+import urllib.request
 from collections import defaultdict
 
 
@@ -17,6 +20,22 @@ def get_ip(hostname: str) -> str | None:
         return socket.gethostbyname(hostname)
     except socket.gaierror:
         return None
+
+
+def check_https(hostname: str, timeout: float = 10) -> str | None:
+    """Check if HTTPS is responding on the hostname. Returns None on success, error message on failure."""
+    url = f"https://{hostname}/"
+    try:
+        ctx = ssl.create_default_context()
+        req = urllib.request.Request(url, method="HEAD")
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx):
+            pass
+        return None
+    except urllib.error.HTTPError:
+        # HTTP errors (401, 403, etc.) mean the server is responding
+        return None
+    except Exception as e:
+        return str(e)
 
 
 def main():
@@ -60,7 +79,30 @@ def main():
     for host, ip in sorted(hosts_to_ips.items()):
         print(f"{host} -> {ip}")
 
-    print(f"\nOK: All {len(hosts_to_ips)} hostnames for {base_domain} have distinct IP addresses")
+    print(
+        f"\nOK: All {len(hosts_to_ips)} hostnames for {base_domain} have distinct IP addresses"
+    )
+
+    # Check HTTPS connectivity for all shard hostnames
+    print(
+        f"\nChecking HTTPS connectivity for {num_shards} shards: ", end="", flush=True
+    )
+    https_errors = []
+    for i in range(1, num_shards + 1):
+        shard_hostname = f"s{i:03d}.{base_domain}"
+        err = check_https(shard_hostname)
+        if err:
+            https_errors.append((shard_hostname, err))
+        else:
+            print(".", end="", flush=True)
+    print()
+
+    if https_errors:
+        print(f"ERROR: {len(https_errors)} shard(s) failed HTTPS check:")
+        for host, err in https_errors:
+            print(f"  {host}: {err}")
+        sys.exit(1)
+
     sys.exit(0)
 
 
