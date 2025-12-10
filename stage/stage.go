@@ -34,15 +34,6 @@ type Env struct {
 	ProxyPorts []int // ports to listen on for proxying; empty means none
 }
 
-// portRange returns a slice of integers from start to end inclusive.
-func portRange(start, end int) []int {
-	ports := make([]int, 0, end-start+1)
-	for p := start; p <= end; p++ {
-		ports = append(ports, p)
-	}
-	return ports
-}
-
 // Local returns an Env configured for convenient local human development.
 // It enables more expensive features (cobble, auto-starting sshpiper),
 // and provides convenience shortcuts like email links in the console/web.
@@ -157,6 +148,15 @@ func Prod() Env {
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
 	}
+}
+
+// portRange returns a slice of integers from start to end inclusive.
+func portRange(start, end int) []int {
+	ports := make([]int, 0, end-start+1)
+	for p := start; p <= end; p++ {
+		ports = append(ports, p)
+	}
+	return ports
 }
 
 func (e Env) String() string {
