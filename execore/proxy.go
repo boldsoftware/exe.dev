@@ -176,6 +176,12 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 			hasAccess = true
 		}
 
+		// Check support access: user is root support and box has support_access_allowed
+		if !hasAccess && s.FindBoxForSupportUser(r.Context(), userID, boxName) != nil {
+			s.slog().InfoContext(r.Context(), "proxy support access granted", "box", boxName, "user_id", userID)
+			hasAccess = true
+		}
+
 		if !hasAccess {
 			// User is authenticated but doesn't have access
 			// Show 401 to avoid leaking box existence

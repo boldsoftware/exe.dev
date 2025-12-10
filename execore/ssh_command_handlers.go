@@ -170,6 +170,15 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			},
 		},
 		{
+			Name:              "grant-support-root",
+			Hidden:            true,
+			Description:       "Grant or revoke exe.dev support root access to a box",
+			Usage:             "grant-support-root <box-name> on|off",
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeBoxNames,
+			Handler:           ss.handleGrantSupportRootCommand,
+		},
+		{
 			Name:        "exit",
 			Description: "Exit",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
@@ -1065,6 +1074,55 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.Comma
 	cc.Writeln("")
 	cc.Writeln("\033[2mExpires in 15 minutes.\033[0m")
 	cc.Writeln("")
+	return nil
+}
+
+func (ss *SSHServer) handleGrantSupportRootCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	if len(cc.Args) != 2 {
+		return cc.Errorf("usage: grant-support-root <box-name> on|off")
+	}
+
+	boxName := cc.Args[0]
+	onOff := strings.ToLower(cc.Args[1])
+
+	var newValue int64
+	switch onOff {
+	case "on", "true", "1":
+		newValue = 1
+	case "off", "false", "0":
+		newValue = 0
+	default:
+		return cc.Errorf("invalid value %q: use on or off", cc.Args[1])
+	}
+
+	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
+			Name:            boxName,
+			CreatedByUserID: cc.User.ID,
+		})
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return cc.Errorf("box %q not found", boxName)
+	}
+	if err != nil {
+		return err
+	}
+
+	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.SetBoxSupportAccessAllowed(ctx, exedb.SetBoxSupportAccessAllowedParams{
+			SupportAccessAllowed: newValue,
+			ID:                   box.ID,
+		})
+	})
+	if err != nil {
+		return err
+	}
+
+	if newValue == 1 {
+		cc.Writeln("exe.dev support now has root access to box %q.", boxName)
+	} else {
+		cc.Writeln("exe.dev support root access to box %q has been revoked.", boxName)
+	}
 	return nil
 }
 

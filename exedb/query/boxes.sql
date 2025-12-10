@@ -85,3 +85,12 @@ DELETE FROM boxes WHERE id = ?;
 
 -- name: UpdateBoxRoutes :exec
 UPDATE boxes SET routes = ? WHERE name = ? AND created_by_user_id = ?;
+
+-- name: SetBoxSupportAccessAllowed :exec
+UPDATE boxes SET support_access_allowed = ? WHERE id = ?;
+
+-- name: GetBoxSupportAccessAllowed :one
+SELECT support_access_allowed FROM boxes WHERE id = ?;
+
+-- name: GetBoxByNameWithSupportAccess :one
+SELECT * FROM boxes WHERE name = ? AND support_access_allowed = 1;

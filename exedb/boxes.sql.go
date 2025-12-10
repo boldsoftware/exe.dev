@@ -11,7 +11,7 @@ import (
 )
 
 const boxNamed = `-- name: BoxNamed :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log FROM boxes WHERE name = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed FROM boxes WHERE name = ?
 `
 
 // This is not a secure API!
@@ -37,6 +37,7 @@ func (q *Queries) BoxNamed(ctx context.Context, name string) (Box, error) {
 		&i.SSHPort,
 		&i.SSHUser,
 		&i.CreationLog,
+		&i.SupportAccessAllowed,
 	)
 	return i, err
 }
@@ -53,7 +54,7 @@ func (q *Queries) BoxWithNameExists(ctx context.Context, name string) (int64, er
 }
 
 const boxWithOwnerNamed = `-- name: BoxWithOwnerNamed :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log FROM boxes WHERE name = ? AND boxes.created_by_user_id = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed FROM boxes WHERE name = ? AND boxes.created_by_user_id = ?
 `
 
 type BoxWithOwnerNamedParams struct {
@@ -82,12 +83,13 @@ func (q *Queries) BoxWithOwnerNamed(ctx context.Context, arg BoxWithOwnerNamedPa
 		&i.SSHPort,
 		&i.SSHUser,
 		&i.CreationLog,
+		&i.SupportAccessAllowed,
 	)
 	return i, err
 }
 
 const boxesForUser = `-- name: BoxesForUser :many
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed
 FROM boxes
 WHERE created_by_user_id = ?
 ORDER BY updated_at DESC, id DESC
@@ -120,6 +122,7 @@ func (q *Queries) BoxesForUser(ctx context.Context, createdByUserID string) ([]B
 			&i.SSHPort,
 			&i.SSHUser,
 			&i.CreationLog,
+			&i.SupportAccessAllowed,
 		); err != nil {
 			return nil, err
 		}
@@ -144,7 +147,7 @@ func (q *Queries) DeleteBox(ctx context.Context, id int) error {
 }
 
 const getBoxByNameAndAlloc = `-- name: GetBoxByNameAndAlloc :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log FROM boxes WHERE name = ? AND created_by_user_id = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed FROM boxes WHERE name = ? AND created_by_user_id = ?
 `
 
 type GetBoxByNameAndAllocParams struct {
@@ -173,6 +176,37 @@ func (q *Queries) GetBoxByNameAndAlloc(ctx context.Context, arg GetBoxByNameAndA
 		&i.SSHPort,
 		&i.SSHUser,
 		&i.CreationLog,
+		&i.SupportAccessAllowed,
+	)
+	return i, err
+}
+
+const getBoxByNameWithSupportAccess = `-- name: GetBoxByNameWithSupportAccess :one
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed FROM boxes WHERE name = ? AND support_access_allowed = 1
+`
+
+func (q *Queries) GetBoxByNameWithSupportAccess(ctx context.Context, name string) (Box, error) {
+	row := q.queryRow(ctx, q.getBoxByNameWithSupportAccessStmt, getBoxByNameWithSupportAccess, name)
+	var i Box
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Status,
+		&i.Image,
+		&i.Ctrhost,
+		&i.ContainerID,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastStartedAt,
+		&i.Routes,
+		&i.SSHServerIdentityKey,
+		&i.SSHAuthorizedKeys,
+		&i.SSHClientPrivateKey,
+		&i.SSHPort,
+		&i.SSHUser,
+		&i.CreationLog,
+		&i.SupportAccessAllowed,
 	)
 	return i, err
 }
@@ -242,8 +276,19 @@ func (q *Queries) GetBoxSSHDetails(ctx context.Context, id int) (GetBoxSSHDetail
 	return i, err
 }
 
+const getBoxSupportAccessAllowed = `-- name: GetBoxSupportAccessAllowed :one
+SELECT support_access_allowed FROM boxes WHERE id = ?
+`
+
+func (q *Queries) GetBoxSupportAccessAllowed(ctx context.Context, id int) (int64, error) {
+	row := q.queryRow(ctx, q.getBoxSupportAccessAllowedStmt, getBoxSupportAccessAllowed, id)
+	var support_access_allowed int64
+	err := row.Scan(&support_access_allowed)
+	return support_access_allowed, err
+}
+
 const getBoxesByHost = `-- name: GetBoxesByHost :many
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed
 FROM boxes b
 WHERE b.ctrhost = ? AND b.status != 'failed'
 `
@@ -275,6 +320,7 @@ func (q *Queries) GetBoxesByHost(ctx context.Context, ctrhost string) ([]Box, er
 			&i.SSHPort,
 			&i.SSHUser,
 			&i.CreationLog,
+			&i.SupportAccessAllowed,
 		); err != nil {
 			return nil, err
 		}
@@ -387,6 +433,20 @@ func (q *Queries) SSHKeyForBoxNamed(ctx context.Context, name string) ([]byte, e
 	var ssh_server_identity_key []byte
 	err := row.Scan(&ssh_server_identity_key)
 	return ssh_server_identity_key, err
+}
+
+const setBoxSupportAccessAllowed = `-- name: SetBoxSupportAccessAllowed :exec
+UPDATE boxes SET support_access_allowed = ? WHERE id = ?
+`
+
+type SetBoxSupportAccessAllowedParams struct {
+	SupportAccessAllowed int64 `db:"support_access_allowed" json:"support_access_allowed"`
+	ID                   int   `db:"id" json:"id"`
+}
+
+func (q *Queries) SetBoxSupportAccessAllowed(ctx context.Context, arg SetBoxSupportAccessAllowedParams) error {
+	_, err := q.exec(ctx, q.setBoxSupportAccessAllowedStmt, setBoxSupportAccessAllowed, arg.SupportAccessAllowed, arg.ID)
+	return err
 }
 
 const updateBoxContainerAndStatus = `-- name: UpdateBoxContainerAndStatus :exec

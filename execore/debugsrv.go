@@ -30,6 +30,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/boxes", s.handleDebugBoxes)
 	mux.HandleFunc("/debug/boxes/{name}", s.handleDebugBoxDetails)
 	mux.HandleFunc("POST /debug/boxes/delete", s.handleDebugBoxDelete)
+	mux.HandleFunc("/debug/users", s.handleDebugUsers)
+	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -72,6 +74,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/metrics">metrics</a></li>
     <li><a href="/debug/gitsha">gitsha</a></li>
     <li><a href="/debug/boxes">boxes</a> (<a href="/debug/boxes?format=json">json</a>)</li>
+    <li><a href="/debug/users">users</a> (<a href="/debug/users?format=json">json</a>)</li>
 </ul>
 <p>Git version: %s</p>
 </body></html>
@@ -506,6 +509,222 @@ pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
 	fmt.Fprintf(w, `<p><a href="/debug/boxes">&larr; Back to boxes</a></p>
 </body></html>
 `)
+}
+
+// handleDebugUsers displays a list of all users with their root support status.
+func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	users, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.User, error) {
+		return queries.ListAllUsers(ctx)
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list users: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Check if JSON format is requested
+	if r.URL.Query().Get("format") == "json" {
+		type userInfo struct {
+			UserID      string `json:"user_id"`
+			Email       string `json:"email"`
+			CreatedAt   string `json:"created_at,omitempty"`
+			RootSupport bool   `json:"root_support"`
+		}
+		var usersJSON []userInfo
+		for _, u := range users {
+			createdAt := ""
+			if u.CreatedAt != nil {
+				createdAt = u.CreatedAt.Format(time.RFC3339)
+			}
+			usersJSON = append(usersJSON, userInfo{
+				UserID:      u.UserID,
+				Email:       u.Email,
+				CreatedAt:   createdAt,
+				RootSupport: u.RootSupport == 1,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(usersJSON); err != nil {
+			s.slog().ErrorContext(ctx, "Failed to encode users", "error", err)
+		}
+		return
+	}
+
+	// HTML output
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>Users</title>
+<style>
+.toggle-btn { padding: 4px 8px; cursor: pointer; border-radius: 3px; border: 1px solid #ccc; }
+.toggle-btn.enabled { background: #28a745; color: white; border-color: #28a745; }
+.toggle-btn.disabled { background: #6c757d; color: white; border-color: #6c757d; }
+dialog { padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
+dialog::backdrop { background: rgba(0,0,0,0.5); }
+dialog input[type="text"] { width: 100%%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
+dialog button { margin-right: 10px; padding: 8px 16px; }
+dialog .confirm-btn { background: #28a745; color: white; border: none; cursor: pointer; }
+dialog .confirm-btn:disabled { background: #ccc; cursor: not-allowed; }
+dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: pointer; }
+</style>
+</head><body>
+<h1>Users</h1>
+<p><a href="/debug/users?format=json">View as JSON</a></p>
+`)
+
+	if len(users) == 0 {
+		fmt.Fprintf(w, "<p>No users found.</p>\n")
+	} else {
+		fmt.Fprintf(w, "<table border='1' cellpadding='5' cellspacing='0'>\n")
+		fmt.Fprintf(w, "<tr><th>Email</th><th>User ID</th><th>Created At</th><th>Root Support</th></tr>\n")
+		for _, u := range users {
+			createdAt := "-"
+			if u.CreatedAt != nil {
+				createdAt = u.CreatedAt.Format(time.RFC3339)
+			}
+			rootSupportStatus := "No"
+			btnClass := "disabled"
+			btnText := "Enable"
+			if u.RootSupport == 1 {
+				rootSupportStatus = "Yes"
+				btnClass = "enabled"
+				btnText = "Disable"
+			}
+			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s <button class='toggle-btn %s' data-email='%s' data-userid='%s' data-enabled='%v'>%s</button></td></tr>\n",
+				html.EscapeString(u.Email),
+				html.EscapeString(u.UserID),
+				html.EscapeString(createdAt),
+				html.EscapeString(rootSupportStatus),
+				btnClass,
+				html.EscapeString(u.Email),
+				html.EscapeString(u.UserID),
+				u.RootSupport == 1,
+				btnText,
+			)
+		}
+		fmt.Fprintf(w, "</table>\n")
+	}
+
+	fmt.Fprintf(w, `<dialog id="toggleDialog">
+<form method="post" action="/debug/users/toggle-root-support">
+<p id="dialogMessage"></p>
+<p><strong id="emailDisplay"></strong></p>
+<input type="hidden" name="user_id" id="userIdInput">
+<input type="hidden" name="enable" id="enableInput">
+<div id="confirmSection" style="display:none;">
+<p>Type the email address to confirm:</p>
+<input type="text" name="confirm_email" id="confirmInput" autocomplete="off" placeholder="Type email to confirm">
+</div>
+<p>
+<button type="submit" class="confirm-btn" id="confirmBtn">Confirm</button>
+<button type="button" class="cancel-btn" id="cancelBtn">Cancel</button>
+</p>
+</form>
+</dialog>
+<script>
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('toggle-btn')) {
+        var email = e.target.dataset.email;
+        var userId = e.target.dataset.userid;
+        var isEnabled = e.target.dataset.enabled === 'true';
+        var enabling = !isEnabled;
+
+        document.getElementById('emailDisplay').textContent = email;
+        document.getElementById('userIdInput').value = userId;
+        document.getElementById('enableInput').value = enabling ? '1' : '0';
+
+        var confirmSection = document.getElementById('confirmSection');
+        var confirmInput = document.getElementById('confirmInput');
+        var confirmBtn = document.getElementById('confirmBtn');
+
+        if (enabling) {
+            // Enabling: require email confirmation
+            document.getElementById('dialogMessage').textContent = 'Enable root support access for this user?';
+            confirmSection.style.display = 'block';
+            confirmInput.value = '';
+            confirmBtn.disabled = true;
+        } else {
+            // Disabling: no confirmation needed
+            document.getElementById('dialogMessage').textContent = 'Disable root support access for this user?';
+            confirmSection.style.display = 'none';
+            confirmBtn.disabled = false;
+        }
+
+        document.getElementById('toggleDialog').showModal();
+    }
+});
+document.getElementById('cancelBtn').addEventListener('click', function() {
+    document.getElementById('toggleDialog').close();
+});
+document.getElementById('confirmInput').addEventListener('input', function() {
+    var expected = document.getElementById('emailDisplay').textContent;
+    document.getElementById('confirmBtn').disabled = (this.value !== expected);
+});
+</script>
+<p><a href="/debug">Back to debug index</a></p>
+</body></html>
+`)
+}
+
+// handleDebugToggleRootSupport toggles the root support flag for a user.
+func (s *Server) handleDebugToggleRootSupport(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	enable := r.FormValue("enable")
+	confirmEmail := r.FormValue("confirm_email")
+
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	enabling := enable == "1"
+
+	// If enabling, require email confirmation
+	if enabling {
+		// Look up user to get their email
+		user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
+			return queries.GetUserWithDetails(ctx, userID)
+		})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to look up user: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		if confirmEmail != user.Email {
+			http.Error(w, "confirmation email does not match", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Update the root support flag
+	newValue := int64(0)
+	if enabling {
+		newValue = 1
+	}
+
+	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.SetUserRootSupport(ctx, exedb.SetUserRootSupportParams{
+			RootSupport: newValue,
+			UserID:      userID,
+		})
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to update root support: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	action := "disabled"
+	if enabling {
+		action = "enabled"
+	}
+	s.slog().InfoContext(ctx, "root support toggled via debug page", "user_id", userID, "action", action)
+
+	// Redirect back to the users page
+	http.Redirect(w, r, "/debug/users", http.StatusSeeOther)
 }
 
 func ptrStr(s *string) string {

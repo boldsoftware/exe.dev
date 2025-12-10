@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+grant-support-root BOX_NAME on
+
+- help to see a list of commands
+
+PROMPT ▶ grant-support-root BOX_NAME on
+exe.dev support now has root access to box "BOX_NAME".
+PROMPT ▶ exit
+Goodbye!

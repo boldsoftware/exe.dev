@@ -1267,6 +1267,34 @@ func (s *Server) FindBoxByIPShard(ctx context.Context, userID, localIP string) *
 	return &box
 }
 
+// FindBoxForSupportUser finds a box by name if the user is a root support user and the box has support access enabled.
+// Returns nil if the user is not a root support user or the box doesn't have support access enabled.
+func (s *Server) FindBoxForSupportUser(ctx context.Context, userID, boxName string) *exedb.Box {
+	if userID == "" || !boxname.Valid(boxName) {
+		return nil
+	}
+
+	// Check if user is a root support user
+	isRootSupport, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
+		return queries.GetUserRootSupport(ctx, userID)
+	})
+	if err != nil || isRootSupport != 1 {
+		return nil
+	}
+
+	// Look up box by name with support access enabled
+	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.GetBoxByNameWithSupportAccess(ctx, boxName)
+	})
+	if err != nil {
+		s.slog().InfoContext(ctx, "FindBoxForSupportUser: box not found or support access not enabled", "box", boxName, "error", err)
+		return nil
+	}
+
+	s.slog().InfoContext(ctx, "FindBoxForSupportUser: root support user accessing box with support access", "box", boxName, "user_id", userID)
+	return &box
+}
+
 func (s *Server) boxSSHPort() int {
 	if s.piperdPort != 22 {
 		return s.piperdPort

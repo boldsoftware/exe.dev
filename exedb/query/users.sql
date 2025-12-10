@@ -16,3 +16,12 @@ WHERE email = ?;
 
 -- name: GetEmailByUserID :one
 SELECT email FROM users WHERE user_id = ?;
+
+-- name: ListAllUsers :many
+SELECT * FROM users ORDER BY created_at DESC;
+
+-- name: SetUserRootSupport :exec
+UPDATE users SET root_support = ? WHERE user_id = ?;
+
+-- name: GetUserRootSupport :one
+SELECT root_support FROM users WHERE user_id = ?;

@@ -21,7 +21,7 @@ func (q *Queries) GetEmailByUserID(ctx context.Context, userID string) (string, 
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT user_id, email, created_at
+SELECT user_id, email, created_at, root_support
 FROM users
 WHERE email = ?
 `
@@ -29,7 +29,12 @@ WHERE email = ?
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
 	row := q.queryRow(ctx, q.getUserByEmailStmt, getUserByEmail, email)
 	var i User
-	err := row.Scan(&i.UserID, &i.Email, &i.CreatedAt)
+	err := row.Scan(
+		&i.UserID,
+		&i.Email,
+		&i.CreatedAt,
+		&i.RootSupport,
+	)
 	return i, err
 }
 
@@ -44,8 +49,19 @@ func (q *Queries) GetUserIDByEmail(ctx context.Context, email string) (string, e
 	return user_id, err
 }
 
+const getUserRootSupport = `-- name: GetUserRootSupport :one
+SELECT root_support FROM users WHERE user_id = ?
+`
+
+func (q *Queries) GetUserRootSupport(ctx context.Context, userID string) (int64, error) {
+	row := q.queryRow(ctx, q.getUserRootSupportStmt, getUserRootSupport, userID)
+	var root_support int64
+	err := row.Scan(&root_support)
+	return root_support, err
+}
+
 const getUserWithDetails = `-- name: GetUserWithDetails :one
-SELECT user_id, email, created_at
+SELECT user_id, email, created_at, root_support
 FROM users
 WHERE user_id = ?
 `
@@ -53,7 +69,12 @@ WHERE user_id = ?
 func (q *Queries) GetUserWithDetails(ctx context.Context, userID string) (User, error) {
 	row := q.queryRow(ctx, q.getUserWithDetailsStmt, getUserWithDetails, userID)
 	var i User
-	err := row.Scan(&i.UserID, &i.Email, &i.CreatedAt)
+	err := row.Scan(
+		&i.UserID,
+		&i.Email,
+		&i.CreatedAt,
+		&i.RootSupport,
+	)
 	return i, err
 }
 
@@ -68,5 +89,51 @@ type InsertUserParams struct {
 
 func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 	_, err := q.exec(ctx, q.insertUserStmt, insertUser, arg.UserID, arg.Email)
+	return err
+}
+
+const listAllUsers = `-- name: ListAllUsers :many
+SELECT user_id, email, created_at, root_support FROM users ORDER BY created_at DESC
+`
+
+func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
+	rows, err := q.query(ctx, q.listAllUsersStmt, listAllUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Email,
+			&i.CreatedAt,
+			&i.RootSupport,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setUserRootSupport = `-- name: SetUserRootSupport :exec
+UPDATE users SET root_support = ? WHERE user_id = ?
+`
+
+type SetUserRootSupportParams struct {
+	RootSupport int64  `db:"root_support" json:"root_support"`
+	UserID      string `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) SetUserRootSupport(ctx context.Context, arg SetUserRootSupportParams) error {
+	_, err := q.exec(ctx, q.setUserRootSupportStmt, setUserRootSupport, arg.RootSupport, arg.UserID)
 	return err
 }

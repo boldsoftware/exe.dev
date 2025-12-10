@@ -114,6 +114,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxByNameAndAllocStmt, err = db.PrepareContext(ctx, getBoxByNameAndAlloc); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxByNameAndAlloc: %w", err)
 	}
+	if q.getBoxByNameWithSupportAccessStmt, err = db.PrepareContext(ctx, getBoxByNameWithSupportAccess); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxByNameWithSupportAccess: %w", err)
+	}
 	if q.getBoxByUserAndShardStmt, err = db.PrepareContext(ctx, getBoxByUserAndShard); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxByUserAndShard: %w", err)
 	}
@@ -137,6 +140,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getBoxSharesByBoxIDStmt, err = db.PrepareContext(ctx, getBoxSharesByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxSharesByBoxID: %w", err)
+	}
+	if q.getBoxSupportAccessAllowedStmt, err = db.PrepareContext(ctx, getBoxSupportAccessAllowed); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxSupportAccessAllowed: %w", err)
 	}
 	if q.getBoxesByHostStmt, err = db.PrepareContext(ctx, getBoxesByHost); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesByHost: %w", err)
@@ -213,6 +219,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserIDBySSHKeyStmt, err = db.PrepareContext(ctx, getUserIDBySSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserIDBySSHKey: %w", err)
 	}
+	if q.getUserRootSupportStmt, err = db.PrepareContext(ctx, getUserRootSupport); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserRootSupport: %w", err)
+	}
 	if q.getUserWithDetailsStmt, err = db.PrepareContext(ctx, getUserWithDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserWithDetails: %w", err)
 	}
@@ -273,6 +282,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertUserStmt, err = db.PrepareContext(ctx, insertUser); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertUser: %w", err)
 	}
+	if q.listAllUsersStmt, err = db.PrepareContext(ctx, listAllUsers); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllUsers: %w", err)
+	}
 	if q.listIPShardsForUserStmt, err = db.PrepareContext(ctx, listIPShardsForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIPShardsForUser: %w", err)
 	}
@@ -281,6 +293,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.sSHKeyForBoxNamedStmt, err = db.PrepareContext(ctx, sSHKeyForBoxNamed); err != nil {
 		return nil, fmt.Errorf("error preparing query SSHKeyForBoxNamed: %w", err)
+	}
+	if q.setBoxSupportAccessAllowedStmt, err = db.PrepareContext(ctx, setBoxSupportAccessAllowed); err != nil {
+		return nil, fmt.Errorf("error preparing query SetBoxSupportAccessAllowed: %w", err)
+	}
+	if q.setUserRootSupportStmt, err = db.PrepareContext(ctx, setUserRootSupport); err != nil {
+		return nil, fmt.Errorf("error preparing query SetUserRootSupport: %w", err)
 	}
 	if q.updateAuthCookieLastUsedStmt, err = db.PrepareContext(ctx, updateAuthCookieLastUsed); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateAuthCookieLastUsed: %w", err)
@@ -482,6 +500,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxByNameAndAllocStmt: %w", cerr)
 		}
 	}
+	if q.getBoxByNameWithSupportAccessStmt != nil {
+		if cerr := q.getBoxByNameWithSupportAccessStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxByNameWithSupportAccessStmt: %w", cerr)
+		}
+	}
 	if q.getBoxByUserAndShardStmt != nil {
 		if cerr := q.getBoxByUserAndShardStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxByUserAndShardStmt: %w", cerr)
@@ -520,6 +543,11 @@ func (q *Queries) Close() error {
 	if q.getBoxSharesByBoxIDStmt != nil {
 		if cerr := q.getBoxSharesByBoxIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxSharesByBoxIDStmt: %w", cerr)
+		}
+	}
+	if q.getBoxSupportAccessAllowedStmt != nil {
+		if cerr := q.getBoxSupportAccessAllowedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxSupportAccessAllowedStmt: %w", cerr)
 		}
 	}
 	if q.getBoxesByHostStmt != nil {
@@ -647,6 +675,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserIDBySSHKeyStmt: %w", cerr)
 		}
 	}
+	if q.getUserRootSupportStmt != nil {
+		if cerr := q.getUserRootSupportStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserRootSupportStmt: %w", cerr)
+		}
+	}
 	if q.getUserWithDetailsStmt != nil {
 		if cerr := q.getUserWithDetailsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserWithDetailsStmt: %w", cerr)
@@ -747,6 +780,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertUserStmt: %w", cerr)
 		}
 	}
+	if q.listAllUsersStmt != nil {
+		if cerr := q.listAllUsersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllUsersStmt: %w", cerr)
+		}
+	}
 	if q.listIPShardsForUserStmt != nil {
 		if cerr := q.listIPShardsForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listIPShardsForUserStmt: %w", cerr)
@@ -760,6 +798,16 @@ func (q *Queries) Close() error {
 	if q.sSHKeyForBoxNamedStmt != nil {
 		if cerr := q.sSHKeyForBoxNamedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing sSHKeyForBoxNamedStmt: %w", cerr)
+		}
+	}
+	if q.setBoxSupportAccessAllowedStmt != nil {
+		if cerr := q.setBoxSupportAccessAllowedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setBoxSupportAccessAllowedStmt: %w", cerr)
+		}
+	}
+	if q.setUserRootSupportStmt != nil {
+		if cerr := q.setUserRootSupportStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setUserRootSupportStmt: %w", cerr)
 		}
 	}
 	if q.updateAuthCookieLastUsedStmt != nil {
@@ -906,6 +954,7 @@ type Queries struct {
 	getAuthCookieInfoStmt                  *sql.Stmt
 	getAuthTokenInfoStmt                   *sql.Stmt
 	getBoxByNameAndAllocStmt               *sql.Stmt
+	getBoxByNameWithSupportAccessStmt      *sql.Stmt
 	getBoxByUserAndShardStmt               *sql.Stmt
 	getBoxDetailsForSetupStmt              *sql.Stmt
 	getBoxIPShardStmt                      *sql.Stmt
@@ -914,6 +963,7 @@ type Queries struct {
 	getBoxShareLinkByTokenAndBoxIDStmt     *sql.Stmt
 	getBoxShareLinksByBoxIDStmt            *sql.Stmt
 	getBoxSharesByBoxIDStmt                *sql.Stmt
+	getBoxSupportAccessAllowedStmt         *sql.Stmt
 	getBoxesByHostStmt                     *sql.Stmt
 	getBoxesForUserDashboardStmt           *sql.Stmt
 	getBoxesSharedWithUserStmt             *sql.Stmt
@@ -939,6 +989,7 @@ type Queries struct {
 	getUserEmailCountForDateStmt           *sql.Stmt
 	getUserIDByEmailStmt                   *sql.Stmt
 	getUserIDBySSHKeyStmt                  *sql.Stmt
+	getUserRootSupportStmt                 *sql.Stmt
 	getUserWithDetailsStmt                 *sql.Stmt
 	getUserWithSSHKeyStmt                  *sql.Stmt
 	hasUserAccessToBoxStmt                 *sql.Stmt
@@ -959,9 +1010,12 @@ type Queries struct {
 	insertSSHKeyForEmailUserStmt           *sql.Stmt
 	insertTagResolutionHistoryStmt         *sql.Stmt
 	insertUserStmt                         *sql.Stmt
+	listAllUsersStmt                       *sql.Stmt
 	listIPShardsForUserStmt                *sql.Stmt
 	recordUserEventStmt                    *sql.Stmt
 	sSHKeyForBoxNamedStmt                  *sql.Stmt
+	setBoxSupportAccessAllowedStmt         *sql.Stmt
+	setUserRootSupportStmt                 *sql.Stmt
 	updateAuthCookieLastUsedStmt           *sql.Stmt
 	updateAuthTokenUsedAtStmt              *sql.Stmt
 	updateBoxContainerAndStatusStmt        *sql.Stmt
@@ -1013,6 +1067,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAuthCookieInfoStmt:                  q.getAuthCookieInfoStmt,
 		getAuthTokenInfoStmt:                   q.getAuthTokenInfoStmt,
 		getBoxByNameAndAllocStmt:               q.getBoxByNameAndAllocStmt,
+		getBoxByNameWithSupportAccessStmt:      q.getBoxByNameWithSupportAccessStmt,
 		getBoxByUserAndShardStmt:               q.getBoxByUserAndShardStmt,
 		getBoxDetailsForSetupStmt:              q.getBoxDetailsForSetupStmt,
 		getBoxIPShardStmt:                      q.getBoxIPShardStmt,
@@ -1021,6 +1076,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxShareLinkByTokenAndBoxIDStmt:     q.getBoxShareLinkByTokenAndBoxIDStmt,
 		getBoxShareLinksByBoxIDStmt:            q.getBoxShareLinksByBoxIDStmt,
 		getBoxSharesByBoxIDStmt:                q.getBoxSharesByBoxIDStmt,
+		getBoxSupportAccessAllowedStmt:         q.getBoxSupportAccessAllowedStmt,
 		getBoxesByHostStmt:                     q.getBoxesByHostStmt,
 		getBoxesForUserDashboardStmt:           q.getBoxesForUserDashboardStmt,
 		getBoxesSharedWithUserStmt:             q.getBoxesSharedWithUserStmt,
@@ -1046,6 +1102,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserEmailCountForDateStmt:           q.getUserEmailCountForDateStmt,
 		getUserIDByEmailStmt:                   q.getUserIDByEmailStmt,
 		getUserIDBySSHKeyStmt:                  q.getUserIDBySSHKeyStmt,
+		getUserRootSupportStmt:                 q.getUserRootSupportStmt,
 		getUserWithDetailsStmt:                 q.getUserWithDetailsStmt,
 		getUserWithSSHKeyStmt:                  q.getUserWithSSHKeyStmt,
 		hasUserAccessToBoxStmt:                 q.hasUserAccessToBoxStmt,
@@ -1066,9 +1123,12 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertSSHKeyForEmailUserStmt:           q.insertSSHKeyForEmailUserStmt,
 		insertTagResolutionHistoryStmt:         q.insertTagResolutionHistoryStmt,
 		insertUserStmt:                         q.insertUserStmt,
+		listAllUsersStmt:                       q.listAllUsersStmt,
 		listIPShardsForUserStmt:                q.listIPShardsForUserStmt,
 		recordUserEventStmt:                    q.recordUserEventStmt,
 		sSHKeyForBoxNamedStmt:                  q.sSHKeyForBoxNamedStmt,
+		setBoxSupportAccessAllowedStmt:         q.setBoxSupportAccessAllowedStmt,
+		setUserRootSupportStmt:                 q.setUserRootSupportStmt,
 		updateAuthCookieLastUsedStmt:           q.updateAuthCookieLastUsedStmt,
 		updateAuthTokenUsedAtStmt:              q.updateAuthTokenUsedAtStmt,
 		updateBoxContainerAndStatusStmt:        q.updateBoxContainerAndStatusStmt,

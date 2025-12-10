@@ -138,6 +138,7 @@ func (p *PiperPlugin) Serve(lis net.Listener) error {
 		PublicKeyCallback:           p.handlePublicKeyAuth,
 		KeyboardInteractiveCallback: p.handleKeyboardInteractive,
 		VerifyHostKeyCallback:       p.handleVerifyHostKey,
+		BannerCallback:              p.handleBanner,
 	}
 
 	s := grpc.NewServer()
@@ -167,6 +168,31 @@ func (p *PiperPlugin) handleNextAuthMethods(conn libplugin.ConnMetadata) ([]stri
 	slog.Debug("NextAuthMethods request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
 	// Always offer both publickey and keyboard-interactive
 	return []string{"publickey", "keyboard-interactive"}, nil
+}
+
+// supportAccessPrefix is the username prefix for support access.
+// Usage: ssh support+boxname@exe.cloud
+const supportAccessPrefix = "support+"
+
+// handleBanner returns an SSH banner shown before authentication.
+// We use this to show a privacy warning for support access attempts.
+func (p *PiperPlugin) handleBanner(conn libplugin.ConnMetadata) string {
+	username := conn.User()
+	if strings.HasPrefix(username, supportAccessPrefix) {
+		return `
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                           EXE.DEV SUPPORT ACCESS                         ║
+╠══════════════════════════════════════════════════════════════════════════╣
+║  You are connecting to another user's box.                               ║
+║                                                                          ║
+║  Respect their privacy.                                                  ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+
+`
+	}
+	return ""
 }
 
 // handleKeyboardInteractive provides a user-friendly message when public key auth fails
@@ -200,10 +226,14 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 
 	if !alreadyShown {
 		// First time - send helpful message about setting up SSH keys
-		_, err := client("",
-			"SSH keys are required to access exe.dev.\nPlease create a key with 'ssh-keygen -t ed25519' and try again.\n\nPress Enter to close this connection.",
-			"", false,
-		)
+		message := "SSH keys are required to access exe.dev.\nPlease create a key with 'ssh-keygen -t ed25519' and try again.\n\nPress Enter to close this connection."
+
+		// Special case: support access attempt failed
+		if supportBoxName, isSupport := strings.CutPrefix(conn.User(), supportAccessPrefix); isSupport {
+			message = fmt.Sprintf("Support access denied for box %q.\n\nEither:\n- You don't have support privileges, or\n- The box doesn't have support access enabled\n\nPress Enter to close this connection.", supportBoxName)
+		}
+
+		_, err := client("", message, "", false)
 		if err != nil {
 			slog.Debug("Keyboard interactive challenge failed", "component", "piper-plugin", "error", err)
 			return nil, err
@@ -249,15 +279,31 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	localAddress := cmp.Or(domz.StripPort(conn.LocalAddress()), "127.0.0.1")
 	slog.DebugContext(ctx, "piper public key auth user status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID, "local_address", localAddress)
 
+	// Check for support access: ssh support+boxname@exe.cloud
+	if supportBoxName, isSupport := strings.CutPrefix(username, supportAccessPrefix); isSupport {
+		if !registered {
+			slog.WarnContext(ctx, "piper public key auth: support access denied - unregistered user", "component", "piper-plugin", "box_name", supportBoxName)
+			return nil, fmt.Errorf("support access denied: unregistered ssh key")
+		}
+		slog.InfoContext(ctx, "piper public key auth: support access attempt", "component", "piper-plugin", "box_name", supportBoxName, "user_id", userID)
+		box := p.server.FindBoxForSupportUser(ctx, userID, supportBoxName)
+		if box == nil {
+			slog.WarnContext(ctx, "piper public key auth: support access denied", "component", "piper-plugin", "box_name", supportBoxName, "user_id", userID)
+			return nil, fmt.Errorf("support access denied: either you don't have support privileges, or box %q doesn't have support access enabled", supportBoxName)
+		}
+		slog.InfoContext(ctx, "piper public key auth: support access granted", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "support_user_id", userID)
+		return p.handleBoxAccess(box, userID, conn.UniqueID())
+	}
+
 	// Check if this is a direct box access attempt
 	if username != "" && registered {
 		slog.InfoContext(ctx, "piper public key auth checking for box by name", "component", "piper-plugin", "username", username, "user_id", userID)
 		if box := p.server.FindBoxByNameForUser(ctx, userID, username); box != nil {
 			slog.InfoContext(ctx, "piper public key auth found box by name, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "ctrhost", box.Ctrhost, "port", box.SSHPort)
 			return p.handleBoxAccess(box, userID, conn.UniqueID())
-		} else {
-			slog.InfoContext(ctx, "No box found with name", "component", "piper-plugin", "username", username, "user_id", userID)
 		}
+
+		slog.InfoContext(ctx, "No box found with name", "component", "piper-plugin", "username", username, "user_id", userID)
 	}
 
 	// IP-based box routing (like SNI but for SSH):

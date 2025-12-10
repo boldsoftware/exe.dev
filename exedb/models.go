@@ -44,6 +44,7 @@ type Box struct {
 	SSHPort              *int64     `db:"ssh_port" json:"ssh_port"`
 	SSHUser              *string    `db:"ssh_user" json:"ssh_user"`
 	CreationLog          *string    `db:"creation_log" json:"creation_log"`
+	SupportAccessAllowed int64      `db:"support_access_allowed" json:"support_access_allowed"`
 }
 
 type BoxIPShard struct {
@@ -200,9 +201,10 @@ type TagResolutionHistory struct {
 }
 
 type User struct {
-	UserID    string     `db:"user_id" json:"user_id"`
-	Email     string     `db:"email" json:"email"`
-	CreatedAt *time.Time `db:"created_at" json:"created_at"`
+	UserID      string     `db:"user_id" json:"user_id"`
+	Email       string     `db:"email" json:"email"`
+	CreatedAt   *time.Time `db:"created_at" json:"created_at"`
+	RootSupport int64      `db:"root_support" json:"root_support"`
 }
 
 type UserDailyEmailCount struct {
