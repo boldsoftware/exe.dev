@@ -259,9 +259,20 @@ function ChatInterface({
     setSelectedModelState(model);
     localStorage.setItem("shelley_selected_model", model);
   };
-  const [selectedCwd, setSelectedCwd] = useState<string>(() => {
+  const [selectedCwd, setSelectedCwdState] = useState<string>(() => {
+    // First check localStorage for a sticky cwd preference
+    const storedCwd = localStorage.getItem("shelley_selected_cwd");
+    if (storedCwd) {
+      return storedCwd;
+    }
+    // Fall back to server default
     return window.__SHELLEY_INIT__?.default_cwd || "";
   });
+  // Wrapper to persist cwd selection to localStorage
+  const setSelectedCwd = (cwd: string) => {
+    setSelectedCwdState(cwd);
+    localStorage.setItem("shelley_selected_cwd", cwd);
+  };
   const [cwdError, setCwdError] = useState<string | null>(null);
   const [editingModel, setEditingModel] = useState(false);
   const [editingCwd, setEditingCwd] = useState(false);
