@@ -95,8 +95,8 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Name:        "ls",
 			Description: "List your boxes",
 			Handler:     ss.handleListCommand,
-			FlagSetFunc: jsonOnlyFlags("list"),
-			Usage:       "list",
+			FlagSetFunc: jsonOnlyFlags("ls"),
+			Usage:       "ls",
 		},
 		{
 			Name:        "new",

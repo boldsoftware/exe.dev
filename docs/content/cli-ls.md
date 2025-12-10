@@ -12,7 +12,7 @@ List your boxes
 ## Usage
 
 ```
-list
+ls
 ```
 
 ## Options
