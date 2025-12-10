@@ -21,8 +21,17 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          cache-dependency-path: "**/go.sum"
-          cache: true
+          cache: false
+
+      - name: Cache Go modules and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.mod') }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.mod') }}-
 
       - name: Install tools
         run: |
