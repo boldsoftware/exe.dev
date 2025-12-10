@@ -1,6 +1,8 @@
 // Package db provides database operations for the Shelley AI coding agent.
 package db
 
+//go:generate go tool github.com/sqlc-dev/sqlc/cmd/sqlc generate -f ../sqlc.yaml
+
 import (
 	"context"
 	"crypto/rand"
