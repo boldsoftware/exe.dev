@@ -177,6 +177,15 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 				return io.EOF
 			},
 		},
+		{
+			Name:        "whereami",
+			Description: "Show the current server hostname",
+			Hidden:      true,
+			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
+				cc.Writeln("%s", ss.server.env.ReplHost)
+				return nil
+			},
+		},
 	}
 
 	for _, cmd := range commands {
