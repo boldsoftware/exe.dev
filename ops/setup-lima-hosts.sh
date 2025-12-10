@@ -123,9 +123,8 @@ delete_data_disk() {
     local instance="$1"
     local disk
     disk="$(data_disk_name "$instance")"
-    if limactl --tty=false disk delete "${disk}" >/dev/null 2>&1; then
-        return 0
-    fi
+    limactl --tty=false disk delete "${disk}" >/dev/null 2>&1 || true
+    # Always clean up the directory in case limactl left an empty one behind
     rm -rf "${LIMA_DIR}/_disks/${disk}" >/dev/null 2>&1 || true
 }
 
