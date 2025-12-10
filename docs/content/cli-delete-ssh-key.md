@@ -1,5 +1,5 @@
 ---
-# GENERATED; rebuild with go run ./cmd/gencmddocs
+# DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "delete-ssh-key"
 description: "Delete an SSH key"
 subheading: "4. CLI Reference"

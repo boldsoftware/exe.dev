@@ -1,5 +1,5 @@
 ---
-# GENERATED; rebuild with go run ./cmd/gencmddocs
+# DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "browser"
 description: "Generate a magic link to log in to the website"
 subheading: "4. CLI Reference"

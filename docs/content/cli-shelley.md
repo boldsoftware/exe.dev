@@ -1,5 +1,5 @@
 ---
-# GENERATED; rebuild with go run ./cmd/gencmddocs
+# DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "shelley"
 description: "Manage Shelley agent on boxes"
 subheading: "4. CLI Reference"
