@@ -30,7 +30,17 @@ type Env struct {
 	AutoStartSSHPiper bool // whether to auto-start sshpiper for local workflows
 	SSHCommandUsesAt  bool // whether ssh command logins use "box@host" format instead of "box.host" format
 
-	NumShards int // number of IP shards available for box allocation, max 253
+	NumShards  int   // number of IP shards available for box allocation, max 253
+	ProxyPorts []int // ports to listen on for proxying; empty means none
+}
+
+// portRange returns a slice of integers from start to end inclusive.
+func portRange(start, end int) []int {
+	ports := make([]int, 0, end-start+1)
+	for p := start; p <= end; p++ {
+		ports = append(ports, p)
+	}
+	return ports
 }
 
 // Local returns an Env configured for convenient local human development.
@@ -58,7 +68,8 @@ func Local() Env {
 		AutoStartSSHPiper: true,
 		SSHCommandUsesAt:  true,
 
-		NumShards: 25,
+		NumShards:  25,
+		ProxyPorts: []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 9999},
 	}
 }
 
@@ -88,7 +99,8 @@ func Test() Env {
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  true,
 
-		NumShards: 25,
+		NumShards:  25,
+		ProxyPorts: nil, // no proxy ports in tests to avoid conflicts
 	}
 }
 
@@ -115,7 +127,8 @@ func Staging() Env {
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  false,
 
-		NumShards: 25,
+		NumShards:  25,
+		ProxyPorts: portRange(3000, 9999),
 	}
 }
 
@@ -141,7 +154,8 @@ func Prod() Env {
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  false,
 
-		NumShards: 25,
+		NumShards:  25,
+		ProxyPorts: portRange(3000, 9999),
 	}
 }
 
