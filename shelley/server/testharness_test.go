@@ -1,0 +1,216 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"shelley.exe.dev/claudetool"
+	"shelley.exe.dev/db"
+	"shelley.exe.dev/db/generated"
+	"shelley.exe.dev/llm"
+	"shelley.exe.dev/loop"
+)
+
+// TestHarness provides a DSL-like interface for testing conversations.
+type TestHarness struct {
+	t        *testing.T
+	db       *db.DB
+	server   *Server
+	cleanup  func()
+	llm      *loop.PredictableService
+	convID   string
+	timeout  time.Duration
+}
+
+// NewTestHarness creates a new test harness with a predictable LLM and bash tool.
+func NewTestHarness(t *testing.T) *TestHarness {
+	t.Helper()
+
+	database, cleanup := setupTestDB(t)
+
+	predictableService := loop.NewPredictableService()
+	llmManager := &testLLMManager{service: predictableService}
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	bashTool := &claudetool.BashTool{}
+	tools := []*llm.Tool{bashTool.Tool()}
+
+	server := NewServer(database, llmManager, tools, logger, true, "", "predictable", nil)
+
+	return &TestHarness{
+		t:       t,
+		db:      database,
+		server:  server,
+		cleanup: cleanup,
+		llm:     predictableService,
+		timeout: 5 * time.Second,
+	}
+}
+
+// Close cleans up the test harness resources.
+func (h *TestHarness) Close() {
+	h.cleanup()
+}
+
+// NewConversation starts a new conversation with the given message and options.
+func (h *TestHarness) NewConversation(msg string, cwd string) *TestHarness {
+	h.t.Helper()
+
+	chatReq := ChatRequest{
+		Message: msg,
+		Model:   "predictable",
+		Cwd:     cwd,
+	}
+	chatBody, _ := json.Marshal(chatReq)
+
+	req := httptest.NewRequest("POST", "/api/conversations/new", strings.NewReader(string(chatBody)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.server.handleNewConversation(w, req)
+	if w.Code != http.StatusCreated {
+		h.t.Fatalf("NewConversation: expected status 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		ConversationID string `json:"conversation_id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		h.t.Fatalf("NewConversation: failed to parse response: %v", err)
+	}
+	h.convID = resp.ConversationID
+	return h
+}
+
+// Chat sends a message to the current conversation.
+func (h *TestHarness) Chat(msg string) *TestHarness {
+	h.t.Helper()
+
+	if h.convID == "" {
+		h.t.Fatal("Chat: no conversation started, call NewConversation first")
+	}
+
+	chatReq := ChatRequest{
+		Message: msg,
+		Model:   "predictable",
+	}
+	chatBody, _ := json.Marshal(chatReq)
+
+	req := httptest.NewRequest("POST", "/api/conversation/"+h.convID+"/chat", strings.NewReader(string(chatBody)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.server.handleChatConversation(w, req, h.convID)
+	if w.Code != http.StatusAccepted {
+		h.t.Fatalf("Chat: expected status 202, got %d: %s", w.Code, w.Body.String())
+	}
+	return h
+}
+
+// WaitToolResult waits for a tool result and returns its text content.
+func (h *TestHarness) WaitToolResult() string {
+	h.t.Helper()
+
+	if h.convID == "" {
+		h.t.Fatal("WaitToolResult: no conversation started")
+	}
+
+	deadline := time.Now().Add(h.timeout)
+	for time.Now().Before(deadline) {
+		var messages []generated.Message
+		err := h.db.Queries(context.Background(), func(q *generated.Queries) error {
+			var qerr error
+			messages, qerr = q.ListMessages(context.Background(), h.convID)
+			return qerr
+		})
+		if err != nil {
+			h.t.Fatalf("WaitToolResult: failed to get messages: %v", err)
+		}
+
+		for _, msg := range messages {
+			if msg.Type != string(db.MessageTypeUser) || msg.LlmData == nil {
+				continue
+			}
+
+			var llmMsg llm.Message
+			if err := json.Unmarshal([]byte(*msg.LlmData), &llmMsg); err != nil {
+				continue
+			}
+
+			for _, content := range llmMsg.Content {
+				if content.Type == llm.ContentTypeToolResult {
+					for _, result := range content.ToolResult {
+						if result.Type == llm.ContentTypeText && result.Text != "" {
+							return result.Text
+						}
+					}
+				}
+			}
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	h.t.Fatalf("WaitToolResult: timed out waiting for tool result")
+	return ""
+}
+
+// WaitResponse waits for the assistant's text response (end of turn).
+func (h *TestHarness) WaitResponse() string {
+	h.t.Helper()
+
+	if h.convID == "" {
+		h.t.Fatal("WaitResponse: no conversation started")
+	}
+
+	deadline := time.Now().Add(h.timeout)
+	for time.Now().Before(deadline) {
+		var messages []generated.Message
+		err := h.db.Queries(context.Background(), func(q *generated.Queries) error {
+			var qerr error
+			messages, qerr = q.ListMessages(context.Background(), h.convID)
+			return qerr
+		})
+		if err != nil {
+			h.t.Fatalf("WaitResponse: failed to get messages: %v", err)
+		}
+
+		// Look for the last assistant message with end_of_turn
+		for i := len(messages) - 1; i >= 0; i-- {
+			msg := messages[i]
+			if msg.Type != string(db.MessageTypeAgent) || msg.LlmData == nil {
+				continue
+			}
+
+			var llmMsg llm.Message
+			if err := json.Unmarshal([]byte(*msg.LlmData), &llmMsg); err != nil {
+				continue
+			}
+
+			if llmMsg.EndOfTurn {
+				for _, content := range llmMsg.Content {
+					if content.Type == llm.ContentTypeText {
+						return content.Text
+					}
+				}
+			}
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	h.t.Fatalf("WaitResponse: timed out waiting for response")
+	return ""
+}
+
+// ConversationID returns the current conversation ID.
+func (h *TestHarness) ConversationID() string {
+	return h.convID
+}

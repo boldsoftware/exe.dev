@@ -34,7 +34,12 @@ type CreateConversationParams struct {
 }
 
 func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversationParams) (Conversation, error) {
-	row := q.db.QueryRowContext(ctx, createConversation, arg.ConversationID, arg.Slug, arg.UserInitiated, arg.Cwd)
+	row := q.db.QueryRowContext(ctx, createConversation,
+		arg.ConversationID,
+		arg.Slug,
+		arg.UserInitiated,
+		arg.Cwd,
+	)
 	var i Conversation
 	err := row.Scan(
 		&i.ConversationID,
@@ -58,7 +63,7 @@ func (q *Queries) DeleteConversation(ctx context.Context, conversationID string)
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT conversation_id, slug, user_initiated, created_at, updated_at FROM conversations
+SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd FROM conversations
 WHERE conversation_id = ?
 `
 
@@ -71,12 +76,13 @@ func (q *Queries) GetConversation(ctx context.Context, conversationID string) (C
 		&i.UserInitiated,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Cwd,
 	)
 	return i, err
 }
 
 const getConversationBySlug = `-- name: GetConversationBySlug :one
-SELECT conversation_id, slug, user_initiated, created_at, updated_at FROM conversations
+SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd FROM conversations
 WHERE slug = ?
 `
 
@@ -89,12 +95,13 @@ func (q *Queries) GetConversationBySlug(ctx context.Context, slug *string) (Conv
 		&i.UserInitiated,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Cwd,
 	)
 	return i, err
 }
 
 const listConversations = `-- name: ListConversations :many
-SELECT conversation_id, slug, user_initiated, created_at, updated_at FROM conversations
+SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd FROM conversations
 ORDER BY updated_at DESC
 LIMIT ? OFFSET ?
 `
@@ -119,6 +126,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 			&i.UserInitiated,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Cwd,
 		); err != nil {
 			return nil, err
 		}
@@ -134,7 +142,7 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 }
 
 const searchConversations = `-- name: SearchConversations :many
-SELECT conversation_id, slug, user_initiated, created_at, updated_at FROM conversations
+SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd FROM conversations
 WHERE slug LIKE '%' || ? || '%'
 ORDER BY updated_at DESC
 LIMIT ? OFFSET ?
@@ -161,6 +169,7 @@ func (q *Queries) SearchConversations(ctx context.Context, arg SearchConversatio
 			&i.UserInitiated,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Cwd,
 		); err != nil {
 			return nil, err
 		}
@@ -179,7 +188,7 @@ const updateConversationSlug = `-- name: UpdateConversationSlug :one
 UPDATE conversations
 SET slug = ?, updated_at = CURRENT_TIMESTAMP
 WHERE conversation_id = ?
-RETURNING conversation_id, slug, user_initiated, created_at, updated_at
+RETURNING conversation_id, slug, user_initiated, created_at, updated_at, cwd
 `
 
 type UpdateConversationSlugParams struct {
@@ -196,6 +205,7 @@ func (q *Queries) UpdateConversationSlug(ctx context.Context, arg UpdateConversa
 		&i.UserInitiated,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Cwd,
 	)
 	return i, err
 }

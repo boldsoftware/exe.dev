@@ -28,3 +28,9 @@ type Message struct {
 	CreatedAt      time.Time `json:"created_at"`
 	DisplayData    *string   `json:"display_data"`
 }
+
+type Migration struct {
+	MigrationNumber int64      `json:"migration_number"`
+	MigrationName   string     `json:"migration_name"`
+	ExecutedAt      *time.Time `json:"executed_at"`
+}
