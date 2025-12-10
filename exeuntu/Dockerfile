@@ -185,9 +185,11 @@ RUN rm -rf /etc/update-motd.d/* /etc/motd && touch /home/exedev/.hushlogin && ch
 COPY motd-snippet.bash /tmp/motd-snippet.bash
 RUN cat /tmp/motd-snippet.bash >> /home/exedev/.bashrc && rm /tmp/motd-snippet.bash
 
-# Create systemd service for Shelley
+# Create systemd socket and service for Shelley (socket activation)
+COPY shelley.socket /etc/systemd/system/shelley.socket
 COPY shelley.service /etc/systemd/system/shelley.service
-RUN chmod 644 /etc/systemd/system/shelley.service && systemctl enable shelley.service
+RUN chmod 644 /etc/systemd/system/shelley.socket /etc/systemd/system/shelley.service && \
+    systemctl enable shelley.socket
 
 # TODO(crawshaw/philip): This is called init so that exetini decides
 # this wrapper script is an init, and exec's it rather than forking it.

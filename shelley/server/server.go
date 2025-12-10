@@ -462,6 +462,17 @@ func (s *Server) Cleanup() {
 
 // Start starts the HTTP server and handles the complete lifecycle
 func (s *Server) Start(port string) error {
+	listener, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		s.logger.Error("Failed to create listener", "error", err, "port_info", getPortOwnerInfo(port))
+		return err
+	}
+	return s.StartWithListener(listener)
+}
+
+// StartWithListener starts the HTTP server using the provided listener.
+// This is useful for systemd socket activation where the listener is created externally.
+func (s *Server) StartWithListener(listener net.Listener) error {
 	// Set up HTTP server with routes and middleware
 	mux := http.NewServeMux()
 	s.RegisterRoutes(mux)
@@ -471,7 +482,6 @@ func (s *Server) Start(port string) error {
 	handler = CORSMiddleware()(handler)
 
 	httpServer := &http.Server{
-		Addr:    ":" + port,
 		Handler: handler,
 	}
 
@@ -483,13 +493,6 @@ func (s *Server) Start(port string) error {
 			s.Cleanup()
 		}
 	}()
-
-	// Create listener to get actual port (important when port is "0")
-	listener, err := net.Listen("tcp", ":"+port)
-	if err != nil {
-		s.logger.Error("Failed to create listener", "error", err, "port_info", getPortOwnerInfo(port))
-		return err
-	}
 
 	// Get actual port from listener
 	actualPort := listener.Addr().(*net.TCPAddr).Port

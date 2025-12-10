@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -94,6 +96,7 @@ func main() {
 func runServe(global GlobalConfig, args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	port := fs.String("port", "9000", "Port to listen on")
+	systemdActivation := fs.Bool("systemd-activation", false, "Use systemd socket activation (listen on fd from systemd)")
 	fs.Parse(args)
 
 	logger := setupLogging(global.Debug)
@@ -116,9 +119,23 @@ func runServe(global GlobalConfig, args []string) {
 	tools, toolsCleanup := setupTools(ctx, llmManager)
 	defer toolsCleanup()
 
-	// Create and start server
+	// Create server
 	svr := server.NewServer(database, llmManager, tools, logger, global.PredictableOnly, llmConfig.TerminalURL, llmConfig.DefaultModel, llmConfig.Links)
-	if err := svr.Start(*port); err != nil {
+
+	var err error
+	if *systemdActivation {
+		listener, listenerErr := systemdListener()
+		if listenerErr != nil {
+			logger.Error("Failed to get systemd listener", "error", listenerErr)
+			os.Exit(1)
+		}
+		logger.Info("Using systemd socket activation")
+		err = svr.StartWithListener(listener)
+	} else {
+		err = svr.Start(*port)
+	}
+
+	if err != nil {
 		logger.Error("Server failed", "error", err)
 		os.Exit(1)
 	}
@@ -556,4 +573,55 @@ func printMessageToConsole(message llm.Message) {
 	// Print with emoji prefix and timestamp
 	timestamp := time.Now().Format("15:04:05")
 	fmt.Printf("%s [%s] %s\n\n", emojiPrefix, timestamp, out)
+}
+
+// systemdListener returns a net.Listener from systemd socket activation.
+// Systemd passes file descriptors starting at fd 3, with LISTEN_FDS indicating the count.
+func systemdListener() (net.Listener, error) {
+	// Check LISTEN_PID matches our PID (optional but recommended)
+	pidStr := os.Getenv("LISTEN_PID")
+	if pidStr != "" {
+		pid, err := strconv.Atoi(pidStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid LISTEN_PID: %w", err)
+		}
+		if pid != os.Getpid() {
+			return nil, fmt.Errorf("LISTEN_PID %d does not match current PID %d", pid, os.Getpid())
+		}
+	}
+
+	// Get the number of file descriptors passed
+	fdsStr := os.Getenv("LISTEN_FDS")
+	if fdsStr == "" {
+		return nil, fmt.Errorf("LISTEN_FDS not set; not running under systemd socket activation")
+	}
+	nfds, err := strconv.Atoi(fdsStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid LISTEN_FDS: %w", err)
+	}
+	if nfds < 1 {
+		return nil, fmt.Errorf("LISTEN_FDS=%d; expected at least 1", nfds)
+	}
+
+	// Systemd passes file descriptors starting at fd 3
+	const listenFDsStart = 3
+	fd := listenFDsStart
+
+	// Create a file from the descriptor
+	f := os.NewFile(uintptr(fd), "systemd-socket")
+	if f == nil {
+		return nil, fmt.Errorf("failed to create file from fd %d", fd)
+	}
+
+	// Create a listener from the file
+	listener, err := net.FileListener(f)
+	if err != nil {
+		f.Close()
+		return nil, fmt.Errorf("failed to create listener from fd %d: %w", fd, err)
+	}
+
+	// Close the original file; the listener now owns the descriptor
+	f.Close()
+
+	return listener, nil
 }
