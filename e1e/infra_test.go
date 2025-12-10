@@ -342,8 +342,6 @@ type exeletInstance struct {
 	CmdCancel    context.CancelFunc // cancel function for exelet context
 	DataDir      string             // temp directory for exelet data (local or remote path)
 	RemoteHost   string             // SSH host if running remotely (e.g., "lima-exe-ctr-tests")
-	TunnelCmd    *exec.Cmd          // SSH tunnel process if using reverse tunnel
-	TunnelCancel context.CancelFunc // cancel function for tunnel context
 	BridgeName   string             // bridge name for network isolation
 	ZFSDataset   string             // ZFS dataset for storage isolation
 	CoverDir     string             // remote directory for Go coverage artifacts (GOCOVERDIR)
@@ -685,15 +683,6 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 			e.exelet.Cmd.Wait()
 		}
 
-		// Stop SSH tunnel if running
-		if e.exelet.TunnelCancel != nil {
-			e.exelet.TunnelCancel()
-		}
-		if e.exelet.TunnelCmd != nil && e.exelet.TunnelCmd.Process != nil {
-			e.exelet.TunnelCmd.Process.Kill()
-			e.exelet.TunnelCmd.Wait()
-		}
-
 		// Download exelet coverage data BEFORE cleaning up remote resources
 		if e.exelet.CoverDir != "" {
 			var err error
@@ -944,13 +933,6 @@ func setup(ctrHost string) (*testEnv, error) {
 		slog.Info("email server listening", "port", es.port)
 	}
 
-	// resolve the gateway to pass to exed
-	gateway := resolveGateway(ctrHost)
-	if gateway == "" {
-		return env, fmt.Errorf("unable to resolve default gateway for %q", ctrHost)
-	}
-	slog.Info("resolved default gateway", "addr", gateway)
-
 	// We have a circular dependency: exelet needs to know exed's HTTP port,
 	// but exed needs to know exelet's address. Use the same proxy trick as for sshpiper.
 	// Start a TCP proxy for exed HTTP that we can give to exelet immediately.
@@ -964,56 +946,18 @@ func setup(ctrHost string) (*testEnv, error) {
 		slog.Info("exed HTTP proxy listening", "port", exedHTTPProxy.tcp.Port)
 	}
 
-	// Test if remote host can reach local proxy
-	// Usually local->ssh_ctr and ssh_ctr->local connectivity works. However, in some
-	// environments, such as coding agents that operate in containers, this connectivity
-	// does NOT work, and we set up an SSH tunnel for the exelet->exed communication
-	// as a band-aid.
-	host := parseSSHHost(ctrHost)
-	hasConnectivity := testRemoteToLocalConnectivity(host, gateway, exedHTTPProxy.tcp.Port)
-	slog.Info("tested remote->local connectivity", "host", host, "gateway", gateway, "port", exedHTTPProxy.tcp.Port, "reachable", hasConnectivity)
-	needsTunnel := !hasConnectivity
-
-	// Determine the exedURL for exelet
-	var exedProxyURL string
-	var tunnelCmd *exec.Cmd
-	var tunnelCancel context.CancelFunc
-
-	if needsTunnel {
-		slog.Info("remote->local connectivity not available, using SSH reverse tunnel")
-		// Use SSH reverse tunnel: exelet -> SSH tunnel -> TCP proxy -> exed
-		remotePort, cmd, cancel, err := startSSHTunnel(host, exedHTTPProxy.tcp.Port)
-		if err != nil {
-			return env, fmt.Errorf("failed to start SSH tunnel: %w", err)
-		}
-		tunnelCmd = cmd
-		tunnelCancel = cancel
-		exedProxyURL = fmt.Sprintf("http://localhost:%d", remotePort)
-		if *flagVerbosePorts {
-			slog.Info("using SSH tunnel for exelet->exed", "remote_port", remotePort, "proxy_port", exedHTTPProxy.tcp.Port)
-		}
-	} else {
-		// Use direct gateway access via TCP proxy
-		exedProxyURL = fmt.Sprintf("http://%s:%d", gateway, exedHTTPProxy.tcp.Port)
-	}
-
 	// Start exelet with the proxy port
-	exelet, err := startExelet(ctrHost, exedProxyURL, env.exeletSlogErrC)
+	exelet, err := startExelet(ctrHost, env.exeletSlogErrC)
 	if err != nil {
-		if tunnelCancel != nil {
-			tunnelCancel()
-		}
 		return env, err
 	}
-	exelet.TunnelCmd = tunnelCmd
-	exelet.TunnelCancel = tunnelCancel
 	env.exelet = *exelet
 	env.addCanonicalization(exelet.Address, "EXELET_ADDRESS")
 	env.addCanonicalization(exelet.HTTPAddress, "EXELET_HTTP_ADDRESS")
 
 	// TODO: build piperd concurrently with starting exed for faster startup
 	// Pass "0,0" to let the proxy listeners allocate their own port numbers
-	ei, err := startExed(ctrHost, es.port, sshProxy.tcp.Port, []int{0, 0}, exelet.Address, gateway, env.exedSlogErrC, env.exedGuidLogC)
+	ei, err := startExed(ctrHost, es.port, sshProxy.tcp.Port, []int{0, 0}, exelet.Address, env.exedSlogErrC, env.exedGuidLogC)
 	if err != nil {
 		return env, err
 	}
@@ -1148,78 +1092,9 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 	return instance, nil
 }
 
-// testRemoteToLocalConnectivity checks if the remote host can reach the local port via gateway.
-// Returns true if connectivity works, false otherwise.
-func testRemoteToLocalConnectivity(host, gateway string, port int) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	// Try to connect from remote host to gateway:port
-	testCmd := fmt.Sprintf("timeout 2 nc -z %s %d 2>/dev/null", gateway, port)
-	_, err := sshExec(ctx, host, testCmd)
-	return err == nil
-}
-
-// startSSHTunnel establishes an SSH reverse tunnel and returns the dynamically allocated remote port.
-// Uses -v flag to capture SSH debug output showing the allocated port.
-func startSSHTunnel(host string, localPort int) (remotePort int, tunnelCmd *exec.Cmd, cancel context.CancelFunc, err error) {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// Start SSH tunnel with -v to capture allocated port
-	tunnelCmd = exec.CommandContext(ctx, "ssh",
-		"-v", // verbose to see allocated port
-		"-N", // no command
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "ServerAliveInterval=30",
-		"-o", "ExitOnForwardFailure=yes",
-		"-R", fmt.Sprintf("0:localhost:%d", localPort),
-		host,
-	)
-
-	// Capture stderr to parse allocated port
-	stderrPipe, err := tunnelCmd.StderrPipe()
-	if err != nil {
-		cancel()
-		return 0, nil, nil, fmt.Errorf("failed to get stderr pipe: %w", err)
-	}
-
-	if err := tunnelCmd.Start(); err != nil {
-		cancel()
-		return 0, nil, nil, fmt.Errorf("failed to start SSH tunnel: %w", err)
-	}
-
-	// Parse stderr for "Allocated port X for remote forward"
-	scanner := bufio.NewScanner(stderrPipe)
-	portC := make(chan int, 1)
-	go func() {
-		re := regexp.MustCompile(`Allocated port (\d+) for remote forward`)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if matches := re.FindStringSubmatch(line); len(matches) > 1 {
-				if port, err := strconv.Atoi(matches[1]); err == nil {
-					portC <- port
-					return
-				}
-			}
-		}
-	}()
-
-	// Wait for port allocation (with timeout)
-	select {
-	case remotePort = <-portC:
-		slog.InfoContext(ctx, "SSH tunnel established", "remote_port", remotePort, "local_port", localPort)
-		return remotePort, tunnelCmd, cancel, nil
-	case <-time.After(5 * time.Second):
-		tunnelCmd.Process.Kill()
-		cancel()
-		return 0, nil, nil, fmt.Errorf("timeout waiting for SSH tunnel to allocate port")
-	}
-}
-
-func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletInstance, error) {
+func startExelet(ctrHost string, exeletSlogErrC chan string) (*exeletInstance, error) {
 	start := time.Now()
-	slog.Info("starting exelet", "exedURL", exedURL)
+	slog.Info("starting exelet")
 
 	// ctrHost is like "ssh://lima-exe-ctr-tests"
 	host := parseSSHHost(ctrHost)
@@ -1321,8 +1196,8 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 		return nil, fmt.Errorf("failed to create data/coverage directory %s: %w", dataDir, err)
 	}
 
-	remoteCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s" --proxy-port-min %d --proxy-port-max %d --resource-monitor-interval 5s --exed-url %s`,
-		coverDir, remoteBinaryPath, dataDir, dataDir, dataDir, zfsDataset, dataDir, bridgeName, encodedNetwork, proxyPortMin, proxyPortMax, exedURL)
+	remoteCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s" --proxy-port-min %d --proxy-port-max %d --resource-monitor-interval 5s`,
+		coverDir, remoteBinaryPath, dataDir, dataDir, dataDir, zfsDataset, dataDir, bridgeName, encodedNetwork, proxyPortMin, proxyPortMax)
 
 	// Start exelet via SSH (similar to how exed is started locally)
 	exeletCmd := exec.Command("ssh",
@@ -1474,7 +1349,7 @@ WaitLoop:
 	return instance, nil
 }
 
-func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts []int, exeletAddr, gateway string, exedSlogErrC, exedGuidLogC chan string) (*exedInstance, error) {
+func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts []int, exeletAddr string, exedSlogErrC, exedGuidLogC chan string) (*exedInstance, error) {
 	start := time.Now()
 	slog.Info("starting exed")
 	// Choose binary: use PREBUILT_EXED if provided, otherwise build a temp binary.
@@ -1531,7 +1406,6 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 		"-fake-email-server="+emailServerURL,
 		"-gh-whoami="+whoamiPath,
 		"-exelet-addresses="+exeletAddr,
-		"-gateway="+gateway,
 	)
 	// Convert extra proxy ports to comma-delimited string
 	extraPortsStr := ""
@@ -2450,29 +2324,6 @@ func e1eTestsOnlyRunOnce(t *testing.T) {
 //   - whose golden output isn't interesting/useful
 func noGolden(t *testing.T) {
 	skipGolden.Store(t.Name(), true)
-}
-
-// resolveGateway uses SSH to the given ctrhost to resolve its _gateway hostname.
-// If we're SSH'ing laptop->lima-exe-ctr, this gives us the address that lima-exe-ctr
-// can talk to laptop on.
-func resolveGateway(ctrhost string) string {
-	host := parseSSHHost(ctrhost)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "ssh",
-		"-o", "ConnectTimeout=3",
-		"-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "LogLevel=ERROR",
-		"-o", "UserKnownHostsFile=/dev/null",
-		host, "getent ahostsv4 _gateway 2>/dev/null | awk '{print $1; exit}'",
-	)
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
 }
 
 // startLinuxVM starts a VM on Linux to run the exelet.
