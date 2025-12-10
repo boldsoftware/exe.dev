@@ -89,6 +89,10 @@ jobs:
           # so that at least this step can be show/hidden easily.
           # If/when gotestsum gets fixed, we can merge this back into the main test step.
 
+          # Remove existing golden files so stale ones don't accumulate.
+          # Tests regenerate all needed golden files.
+          rm -f e1e/golden/*.txt
+
           # Create temp directory for e1e logs
           E1E_LOG_DIR=$(mktemp -d)
           export E1E_LOG_DIR
