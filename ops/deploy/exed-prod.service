@@ -20,7 +20,7 @@ EnvironmentFile=/etc/default/exed
 # GITHUB_TOKEN=
 
 # Use the latest timestamp version
-ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/exed.* | head -n1)" -gh-whoami /home/ubuntu/ghuser/whoami.sqlite3 -http= -https=:443 -ssh=:2223 -piper-plugin=:2224 -piperd-port=22 -db=/home/ubuntu/exe.db -exelet-addresses "tcp://exe-ctr-02:9080" -gateway "https://exe.dev"'
+ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/exed.* | head -n1)" -gh-whoami /home/ubuntu/ghuser/whoami.sqlite3 -http= -https=:443 -ssh=:2223 -piper-plugin=:2224 -piperd-port=22 -db=/home/ubuntu/exe.db -exelet-addresses "tcp://exe-ctr-02:9080"'
 
 Restart=always
 RestartSec=5

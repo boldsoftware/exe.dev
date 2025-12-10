@@ -41,9 +41,6 @@ func run() error {
 	exeletAddresses := flag.String("exelet-addresses", "", "Comma-separated list of exelet addresses (e.g., 'tcp://host1:8080,tcp://host2:8080')")
 	ghWhoAmIPath := flag.String("gh-whoami", "ghuser/whoami.sqlite3", "GitHub user key database path")
 	fakeHTTPEmail := flag.String("fake-email-server", "", "HTTP email server URL for sending emails (e.g., http://localhost:8025)")
-	// TODO(ian): Remove this unused flag. It's just here in case
-	// any scripts pass the option.
-	flag.String("gateway", "", "ignored")
 	openBrowser := flag.Bool("open", false, "Open web browser to HTTP server (dev mode only)")
 	profilePath := flag.String("profile", "", "Enable CPU profiling for 30 seconds, saving to /tmp/exed-profile-<timestamp>.prof or specified path")
 	startExelet := flag.Bool("start-exelet", false, "Build and start exelet on lima-exe-ctr (dev mode only)")
