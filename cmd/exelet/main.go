@@ -128,9 +128,9 @@ func main() {
 		// TODO(ian): Remove this unused flag when we are sure
 		// no script still uses it.
 		&cli.StringFlag{
-			Name:    "exed-url",
-			Usage:   "ignored",
-			Value:   "",
+			Name:  "exed-url",
+			Usage: "ignored",
+			Value: "",
 		},
 		&cli.DurationFlag{
 			Name:    "resource-monitor-interval",
