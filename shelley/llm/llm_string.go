@@ -17,12 +17,12 @@ const _MessageRole_name = "MessageRoleUserMessageRoleAssistant"
 var _MessageRole_index = [...]uint8{0, 15, 35}
 
 func (i MessageRole) String() string {
-	if i < 0 || i >= MessageRole(len(_MessageRole_index)-1) {
+	idx := int(i) - 0
+	if i < 0 || idx >= len(_MessageRole_index)-1 {
 		return "MessageRole(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _MessageRole_name[_MessageRole_index[i]:_MessageRole_index[i+1]]
+	return _MessageRole_name[_MessageRole_index[idx]:_MessageRole_index[idx+1]]
 }
-
 func _() {
 	// An "invalid array index" compiler error signifies that the constant values have changed.
 	// Re-run the stringer command to generate them again.
@@ -39,13 +39,12 @@ const _ContentType_name = "ContentTypeTextContentTypeThinkingContentTypeRedacted
 var _ContentType_index = [...]uint8{0, 15, 34, 61, 79, 100}
 
 func (i ContentType) String() string {
-	i -= 2
-	if i < 0 || i >= ContentType(len(_ContentType_index)-1) {
-		return "ContentType(" + strconv.FormatInt(int64(i+2), 10) + ")"
+	idx := int(i) - 2
+	if i < 2 || idx >= len(_ContentType_index)-1 {
+		return "ContentType(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _ContentType_name[_ContentType_index[i]:_ContentType_index[i+1]]
+	return _ContentType_name[_ContentType_index[idx]:_ContentType_index[idx+1]]
 }
-
 func _() {
 	// An "invalid array index" compiler error signifies that the constant values have changed.
 	// Re-run the stringer command to generate them again.
@@ -61,13 +60,12 @@ const _ToolChoiceType_name = "ToolChoiceTypeAutoToolChoiceTypeAnyToolChoiceTypeN
 var _ToolChoiceType_index = [...]uint8{0, 18, 35, 53, 71}
 
 func (i ToolChoiceType) String() string {
-	i -= 7
-	if i < 0 || i >= ToolChoiceType(len(_ToolChoiceType_index)-1) {
-		return "ToolChoiceType(" + strconv.FormatInt(int64(i+7), 10) + ")"
+	idx := int(i) - 7
+	if i < 7 || idx >= len(_ToolChoiceType_index)-1 {
+		return "ToolChoiceType(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _ToolChoiceType_name[_ToolChoiceType_index[i]:_ToolChoiceType_index[i+1]]
+	return _ToolChoiceType_name[_ToolChoiceType_index[idx]:_ToolChoiceType_index[idx+1]]
 }
-
 func _() {
 	// An "invalid array index" compiler error signifies that the constant values have changed.
 	// Re-run the stringer command to generate them again.
@@ -84,9 +82,9 @@ const _StopReason_name = "StopReasonStopSequenceStopReasonMaxTokensStopReasonEnd
 var _StopReason_index = [...]uint8{0, 22, 41, 58, 75, 92}
 
 func (i StopReason) String() string {
-	i -= 11
-	if i < 0 || i >= StopReason(len(_StopReason_index)-1) {
-		return "StopReason(" + strconv.FormatInt(int64(i+11), 10) + ")"
+	idx := int(i) - 11
+	if i < 11 || idx >= len(_StopReason_index)-1 {
+		return "StopReason(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _StopReason_name[_StopReason_index[i]:_StopReason_index[i+1]]
+	return _StopReason_name[_StopReason_index[idx]:_StopReason_index[idx+1]]
 }

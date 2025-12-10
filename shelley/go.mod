@@ -12,7 +12,7 @@ require (
 	github.com/samber/slog-http v1.8.2
 	github.com/sashabaranov/go-openai v1.41.1
 	go.skia.org/infra v0.0.0-20250421160028-59e18403fd4a
-	golang.org/x/sync v0.16.0
+	golang.org/x/sync v0.19.0
 	mvdan.cc/sh/v3 v3.12.0
 	sketch.dev v0.0.33
 	tailscale.com v1.84.3
@@ -55,10 +55,12 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.39.0 // indirect
+	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
-	golang.org/x/net v0.41.0 // indirect
-	golang.org/x/text v0.26.0 // indirect
+	golang.org/x/mod v0.31.0 // indirect
+	golang.org/x/net v0.48.0 // indirect
+	golang.org/x/text v0.32.0 // indirect
+	golang.org/x/tools v0.40.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250707201910-8d1bb00bc6a7 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250707201910-8d1bb00bc6a7 // indirect
 	google.golang.org/grpc v1.75.0 // indirect
@@ -76,9 +78,12 @@ require (
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
-	golang.org/x/term v0.34.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/term v0.38.0 // indirect
 	modernc.org/sqlite v1.38.2
 )
 
-tool github.com/sqlc-dev/sqlc/cmd/sqlc
+tool (
+	github.com/sqlc-dev/sqlc/cmd/sqlc
+	golang.org/x/tools/cmd/stringer
+)
