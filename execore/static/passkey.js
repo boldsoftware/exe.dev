@@ -106,8 +106,8 @@ async function registerPasskey(name) {
     return await finishResp.json();
 }
 
-// Authenticate with a passkey
-async function authenticateWithPasskey() {
+// Authenticate with a passkey (mediation can be 'optional' for button click, or 'conditional' for autofill)
+async function authenticateWithPasskey(mediation) {
     if (!isPasskeySupported()) {
         throw new Error('Passkeys are not supported on this device');
     }
@@ -136,6 +136,11 @@ async function authenticateWithPasskey() {
         }));
     }
 
+    // Set mediation mode
+    if (mediation) {
+        options.mediation = mediation;
+    }
+
     // Get the credential
     let credential;
     try {
@@ -145,6 +150,10 @@ async function authenticateWithPasskey() {
             throw new Error('Authentication was cancelled');
         }
         throw err;
+    }
+
+    if (!credential) {
+        throw new Error('No credential selected');
     }
 
     // Prepare the response
@@ -189,6 +198,15 @@ async function authenticateWithPasskey() {
     return result;
 }
 
+// Start conditional mediation (autofill) authentication
+// This should be called on page load; it will resolve when user selects a passkey from autofill
+async function startConditionalAuth() {
+    if (!await isConditionalUISupported()) {
+        return null;
+    }
+    return authenticateWithPasskey('conditional');
+}
+
 // Delete a passkey
 async function deletePasskey(id) {
     const form = document.createElement('form');
@@ -211,5 +229,6 @@ window.passkey = {
     isConditionalUISupported: isConditionalUISupported,
     register: registerPasskey,
     authenticate: authenticateWithPasskey,
+    startConditionalAuth: startConditionalAuth,
     delete: deletePasskey,
 };

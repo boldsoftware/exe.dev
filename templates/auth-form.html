@@ -31,25 +31,38 @@
       <input type="hidden" name="prompt" value="{{.Prompt}}">
       {{end}}
       <input type="email" name="email" placeholder="you@example.com" required autofocus
-        autocomplete="email" autocorrect="on" autocapitalize="none" spellcheck="false"
+        autocomplete="username webauthn" autocorrect="on" autocapitalize="none" spellcheck="false"
         class="w-full text-xl border-b-2 border-zinc-300 py-3 bg-transparent focus:outline-none focus:border-zinc-900 placeholder:text-zinc-400">
       <p class="text-zinc-400 text-sm mt-4">Press enter</p>
     </form>
 
-    <div id="passkey-section" class="mt-8 pt-8 border-t border-zinc-200" style="display: none;">
+    <p id="passkey-error" class="text-red-600 text-sm mt-4" style="display: none;"></p>
+
+    <div id="passkey-section" class="mt-6" style="display: none;">
       <button id="passkey-login-btn" onclick="loginWithPasskey()"
-        class="w-full py-3 px-4 border-2 border-zinc-900 text-zinc-900 font-medium hover:bg-zinc-900 hover:text-white transition-colors">
-        Sign in with Passkey
+        class="text-zinc-500 hover:text-zinc-900 text-sm underline underline-offset-2 transition-colors">
+        Sign in with passkey
       </button>
-      <p id="passkey-error" class="text-red-600 text-sm mt-2" style="display: none;"></p>
     </div>
   </main>
 
   <script src="/static/passkey.js"></script>
   <script>
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', async function() {
       if (passkey.isSupported()) {
+        // Start conditional mediation (autofill) if supported
         document.getElementById('passkey-section').style.display = 'block';
+        if (await passkey.isConditionalUISupported()) {
+          passkey.startConditionalAuth().catch(function(err) {
+            // NotAllowedError happens if user dismisses the autofill or clicks the button instead
+            if (err.name !== 'NotAllowedError') {
+              console.error('passkey conditional auth failed:', err);
+              var errorEl = document.getElementById('passkey-error');
+              errorEl.textContent = err.message;
+              errorEl.style.display = 'block';
+            }
+          });
+        }
       }
     });
 
