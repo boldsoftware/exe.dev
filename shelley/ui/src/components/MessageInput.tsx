@@ -86,7 +86,8 @@ function MessageInput({ onSend, disabled = false, autoFocus = false }: MessageIn
       // Process all dropped files
       for (let i = 0; i < event.dataTransfer.files.length; i++) {
         const file = event.dataTransfer.files[i];
-        const insertPosition = i === 0 ? (textareaRef.current?.selectionStart ?? message.length) : message.length;
+        const insertPosition =
+          i === 0 ? (textareaRef.current?.selectionStart ?? message.length) : message.length;
         await uploadFile(file, insertPosition);
         // Add a space between files
         if (i < event.dataTransfer.files.length - 1) {

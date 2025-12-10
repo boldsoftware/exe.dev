@@ -116,7 +116,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	filename := filepath.Join(browse.ScreenshotDir, fmt.Sprintf("upload_%s%s", hex.EncodeToString(randBytes), ext))
 
 	// Ensure the directory exists
-	if err := os.MkdirAll(browse.ScreenshotDir, 0755); err != nil {
+	if err := os.MkdirAll(browse.ScreenshotDir, 0o755); err != nil {
 		http.Error(w, "failed to create directory: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
