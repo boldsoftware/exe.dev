@@ -186,6 +186,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/conversations/new", s.handleNewConversation)
 	mux.HandleFunc("/api/conversation/", s.handleConversation)
 	mux.HandleFunc("/api/validate-cwd", s.handleValidateCwd)
+	mux.HandleFunc("/api/upload", s.handleUpload)
 
 	// Generic read route restricted to safe paths
 	mux.HandleFunc("/api/read", s.handleRead)

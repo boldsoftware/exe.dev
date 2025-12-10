@@ -1388,6 +1388,37 @@ button {
   background: var(--gray-600);
 }
 
+/* Drag and drop styles */
+.message-input-container {
+  position: relative;
+}
+
+.message-input-container.drag-over {
+  border-color: var(--primary);
+}
+
+.drag-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(37, 99, 235, 0.1);
+  border: 2px dashed var(--primary);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.drag-overlay-content {
+  background: var(--primary);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;

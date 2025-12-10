@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -73,6 +75,69 @@ func (s *Server) handleRead(w http.ResponseWriter, r *http.Request) {
 	// Reasonable short-term caching for assets, allow quick refresh during sessions
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	io.Copy(w, f)
+}
+
+// handleUpload handles file uploads via POST /api/upload
+// Files are saved to the ScreenshotDir with a random filename
+func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Limit to 10MB file size
+	r.Body = http.MaxBytesReader(w, r.Body, 10*1024*1024)
+
+	// Parse the multipart form
+	if err := r.ParseMultipartForm(10 * 1024 * 1024); err != nil {
+		http.Error(w, "failed to parse form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Get the file from the multipart form
+	file, handler, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "failed to get uploaded file: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Generate a unique ID (8 random bytes converted to 16 hex chars)
+	randBytes := make([]byte, 8)
+	if _, err := rand.Read(randBytes); err != nil {
+		http.Error(w, "failed to generate random filename: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get file extension from the original filename
+	ext := filepath.Ext(handler.Filename)
+
+	// Create a unique filename in the ScreenshotDir
+	filename := filepath.Join(browse.ScreenshotDir, fmt.Sprintf("upload_%s%s", hex.EncodeToString(randBytes), ext))
+
+	// Ensure the directory exists
+	if err := os.MkdirAll(browse.ScreenshotDir, 0755); err != nil {
+		http.Error(w, "failed to create directory: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Create the destination file
+	destFile, err := os.Create(filename)
+	if err != nil {
+		http.Error(w, "failed to create destination file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer destFile.Close()
+
+	// Copy the file contents to the destination file
+	if _, err := io.Copy(destFile, file); err != nil {
+		http.Error(w, "failed to save file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return the path to the saved file
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"path": filename})
 }
 
 // staticHandler serves files from the provided filesystem and disables caching for HTML/CSS/JS to avoid stale bundles
