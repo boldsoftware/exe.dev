@@ -205,13 +205,6 @@ jobs:
           echo "Current HEAD: $(git rev-parse HEAD)"
           echo "Origin main: $(git rev-parse origin/main)"
 
-          # Check if exeuntu/, shelley/, or the build workflow were modified BEFORE pushing
-          if git diff --name-only origin/main HEAD | grep -qE '^(exeuntu|shelley)/|^\.github/workflows/build-exeuntu\.yml$'; then
-            echo "exeuntu_or_shelley_changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "exeuntu_or_shelley_changed=false" >> $GITHUB_OUTPUT
-          fi
-
           # Check if main can be fast-forwarded to HEAD
           if git merge-base --is-ancestor origin/main HEAD; then
             echo "Fast-forward main to HEAD"
@@ -223,6 +216,14 @@ jobs:
             echo "Failed to rebase - conflicts detected"
             exit 1
           fi
+
+          # Check if exeuntu/, shelley/, or the build workflow were modified BEFORE pushing
+          if git diff --name-only origin/main HEAD | grep -qE '^(exeuntu|shelley)/|^\.github/workflows/build-exeuntu\.yml$'; then
+            echo "exeuntu_or_shelley_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "exeuntu_or_shelley_changed=false" >> $GITHUB_OUTPUT
+          fi
+
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Ensure GitHub CLI installed
