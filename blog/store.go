@@ -256,11 +256,10 @@ func (s *Store) Updated() time.Time {
 }
 
 type Handler struct {
-	store          *Store
-	showHidden     bool
-	showHiddenFunc func(*http.Request) bool
-	templates      *template.Template
-	atomTemplate   *template.Template
+	store        *Store
+	showHidden   bool
+	templates    *template.Template
+	atomTemplate *template.Template
 }
 
 // NewHandler creates a handler that uses the embedded templates.
@@ -282,14 +281,6 @@ func NewHandlerWithTemplates(store *Store, showHidden bool, templates, atom *tem
 	}
 }
 
-// SetShowHiddenFunc installs a per-request evaluator for showing unpublished entries.
-func (h *Handler) SetShowHiddenFunc(fn func(*http.Request) bool) {
-	if h == nil {
-		return
-	}
-	h.showHiddenFunc = fn
-}
-
 func (h *Handler) shouldShowHidden(r *http.Request) bool {
 	if h == nil {
 		return false
@@ -297,10 +288,20 @@ func (h *Handler) shouldShowHidden(r *http.Request) bool {
 	if h.showHidden {
 		return true
 	}
-	if h.showHiddenFunc != nil && r != nil {
-		return h.showHiddenFunc(r)
+	return CanPreviewUnpublished(r)
+}
+
+// CanPreviewUnpublished reports whether the request may view unpublished posts.
+func CanPreviewUnpublished(r *http.Request) bool {
+	if r == nil {
+		return false
 	}
-	return false
+	email := strings.TrimSpace(r.Header.Get("X-ExeDev-Email"))
+	if email == "" {
+		return false
+	}
+	email = strings.ToLower(email)
+	return strings.HasSuffix(email, "@bold.dev") || strings.HasSuffix(email, "@exe.dev") || email == "david@zentus.com"
 }
 
 func (h *Handler) entries(showHidden bool) []*Entry {

@@ -145,7 +145,7 @@ func TestLoadFromDirAndTemplates(t *testing.T) {
 	}
 }
 
-func TestHandlerShowHiddenFunc(t *testing.T) {
+func TestHandlerPreviewUnpublished(t *testing.T) {
 	now := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
 	pub := &Entry{
 		Path:      "/published-entry",
@@ -177,10 +177,6 @@ func TestHandlerShowHiddenFunc(t *testing.T) {
 		t.Fatal("expected handler")
 	}
 
-	handler.SetShowHiddenFunc(func(r *http.Request) bool {
-		return r.Header.Get("X-Test-Show-Hidden") == "1"
-	})
-
 	// List request without header should hide draft.
 	req := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
@@ -196,7 +192,7 @@ func TestHandlerShowHiddenFunc(t *testing.T) {
 
 	// List request with header should show draft label.
 	req = httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("X-Test-Show-Hidden", "1")
+	req.Header.Set("X-ExeDev-Email", "author@exe.dev")
 	w = httptest.NewRecorder()
 	if !handler.Handle(w, req) {
 		t.Fatal("handler did not handle / with header")
@@ -220,7 +216,7 @@ func TestHandlerShowHiddenFunc(t *testing.T) {
 
 	// Entry request with header should render successfully.
 	req = httptest.NewRequest("GET", draft.Path, nil)
-	req.Header.Set("X-Test-Show-Hidden", "1")
+	req.Header.Set("X-ExeDev-Email", "author@exe.dev")
 	w = httptest.NewRecorder()
 	if !handler.Handle(w, req) {
 		t.Fatal("handler did not handle unpublished entry with header")

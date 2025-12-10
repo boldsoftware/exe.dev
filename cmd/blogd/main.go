@@ -50,7 +50,6 @@ func main() {
 		if handler == nil {
 			panic("blog handler is nil")
 		}
-		handler.SetShowHiddenFunc(canPreviewUnpublished)
 		handleBlog = handler.Handle
 	}
 
@@ -169,16 +168,4 @@ func newLiveReloadHandler(log *slog.Logger, blogDir string) (func(http.ResponseW
 		}
 		return handler.Handle(w, r)
 	}, nil
-}
-
-func canPreviewUnpublished(r *http.Request) bool {
-	if r == nil {
-		return false
-	}
-	email := strings.TrimSpace(r.Header.Get("X-ExeDev-Email"))
-	if email == "" {
-		return false
-	}
-	email = strings.ToLower(email)
-	return strings.HasSuffix(email, "@bold.dev") || strings.HasSuffix(email, "@exe.dev")
 }
