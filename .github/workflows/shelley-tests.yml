@@ -74,6 +74,22 @@ jobs:
       - name: Build template tarballs
         run: make templates
 
+      - name: Verify go generate output unchanged
+        run: |
+          set -euo pipefail
+          echo "Running 'go generate ./...' to verify generated code is up-to-date..."
+          go generate ./...
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "❌ 'go generate ./...' produced uncommitted changes. Commit generated code." >&2
+            echo
+            echo "Changed files:" >&2
+            git status --porcelain >&2
+            echo
+            echo "Diff:" >&2
+            git diff >&2
+            exit 1
+          fi
+
       - name: Run Go tests
         run: go test -v -race ./...
 
