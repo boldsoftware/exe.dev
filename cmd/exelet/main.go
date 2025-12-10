@@ -125,11 +125,12 @@ func main() {
 			Value:   20000,
 			EnvVars: []string{"EXELET_PROXY_PORT_MAX"},
 		},
+		// TODO(ian): Remove this unused flag when we are sure
+		// no script still uses it.
 		&cli.StringFlag{
 			Name:    "exed-url",
-			Usage:   "URL of the exed HTTP(S) server (e.g., http://localhost:8080)",
+			Usage:   "ignored",
 			Value:   "",
-			EnvVars: []string{"EXELET_EXED_URL"},
 		},
 		&cli.DurationFlag{
 			Name:    "resource-monitor-interval",
@@ -168,7 +169,6 @@ func serveAction(clix *cli.Context) error {
 	httpAddr := clix.String("http-addr")
 	proxyPortMin := clix.Int("proxy-port-min")
 	proxyPortMax := clix.Int("proxy-port-max")
-	exedURL := clix.String("exed-url")
 	resourceMonitorInterval := clix.Duration("resource-monitor-interval")
 
 	cfg := &config.ExeletConfig{
@@ -183,7 +183,6 @@ func serveAction(clix *cli.Context) error {
 		EnableInstanceBootOnStartup: enableInstanceBootOnStartup,
 		ProxyPortMin:                proxyPortMin,
 		ProxyPortMax:                proxyPortMax,
-		ExedURL:                     exedURL,
 		ResourceMonitorInterval:     resourceMonitorInterval,
 	}
 
@@ -270,7 +269,7 @@ func serveAction(clix *cli.Context) error {
 	metadataListenAddr := natConfig.Router + ":80"
 	log.InfoContext(ctx, "metadata service will bind to bridge IP", "addr", metadataListenAddr)
 
-	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.ExedURL, metadataListenAddr)
+	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, metadataListenAddr)
 	if err != nil {
 		return err
 	}
