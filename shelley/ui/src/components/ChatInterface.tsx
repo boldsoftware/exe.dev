@@ -235,17 +235,30 @@ function ChatInterface({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const models = window.__SHELLEY_INIT__?.models || [];
-  const [selectedModel, setSelectedModel] = useState<string>(() => {
-    // Use the default_model from server initialization if available
+  const [selectedModel, setSelectedModelState] = useState<string>(() => {
+    // First check localStorage for a sticky model preference
+    const storedModel = localStorage.getItem("shelley_selected_model");
+    const initModels = window.__SHELLEY_INIT__?.models || [];
+    // Validate that the stored model exists and is ready
+    if (storedModel) {
+      const modelInfo = initModels.find((m) => m.id === storedModel);
+      if (modelInfo?.ready) {
+        return storedModel;
+      }
+    }
+    // Fall back to server default or first ready model
     const defaultModel = window.__SHELLEY_INIT__?.default_model;
     if (defaultModel) {
       return defaultModel;
     }
-    // Fall back to first ready model
-    const initModels = window.__SHELLEY_INIT__?.models || [];
     const firstReady = initModels.find((m) => m.ready);
     return firstReady?.id || "claude-sonnet-4.5";
   });
+  // Wrapper to persist model selection to localStorage
+  const setSelectedModel = (model: string) => {
+    setSelectedModelState(model);
+    localStorage.setItem("shelley_selected_model", model);
+  };
   const [selectedCwd, setSelectedCwd] = useState<string>(() => {
     return window.__SHELLEY_INIT__?.default_cwd || "";
   });
