@@ -28,6 +28,7 @@ type Env struct {
 
 	ShowHiddenDocs    bool // whether to load and display unpublished docs
 	AutoStartSSHPiper bool // whether to auto-start sshpiper for local workflows
+	SSHCommandUsesAt  bool // whether ssh command logins use "box@host" format instead of "box.host" format
 
 	NumShards int // number of IP shards available for box allocation, max 253
 }
@@ -36,7 +37,7 @@ type Env struct {
 // For local env, it's "boxname@boxhost".
 // For non-local env, it's "boxname.boxhost".
 func (e Env) BoxLogin(boxName string) string {
-	if e.WebHost == "localhost" {
+	if e.SSHCommandUsesAt {
 		return fmt.Sprintf("%s@%s", boxName, e.BoxHost)
 	}
 	return fmt.Sprintf("%s.%s", boxName, e.BoxHost)
@@ -65,6 +66,7 @@ func Local() Env {
 
 		ShowHiddenDocs:    true,
 		AutoStartSSHPiper: true,
+		SSHCommandUsesAt:  true,
 
 		NumShards: 25,
 	}
@@ -94,6 +96,7 @@ func Test() Env {
 
 		ShowHiddenDocs:    true,
 		AutoStartSSHPiper: false,
+		SSHCommandUsesAt:  true,
 
 		NumShards: 25,
 	}
@@ -120,6 +123,7 @@ func Staging() Env {
 
 		ShowHiddenDocs:    false,
 		AutoStartSSHPiper: false,
+		SSHCommandUsesAt:  false,
 
 		NumShards: 25,
 	}
@@ -145,6 +149,7 @@ func Prod() Env {
 
 		ShowHiddenDocs:    false,
 		AutoStartSSHPiper: false,
+		SSHCommandUsesAt:  false,
 
 		NumShards: 25,
 	}
