@@ -32,6 +32,11 @@ func randText() string {
 
 func takeScreenshot(t testing.TB, name, html string) {
 	t.Helper()
+	takeScreenshotWithSize(t, name, html, 1200, 900)
+}
+
+func takeScreenshotWithSize(t testing.TB, name, html string, width, height int) {
+	t.Helper()
 
 	dir := filepath.Join(os.TempDir(), "screenshots", screenshotRunID, t.Name())
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -50,7 +55,7 @@ func takeScreenshot(t testing.TB, name, html string) {
 		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 		"--headless",
 		"--screenshot="+pngPath,
-		"--window-size=1200,900",
+		fmt.Sprintf("--window-size=%d,%d", width, height),
 		"--force-device-scale-factor=2",
 		"file://"+htmlPath,
 	)
@@ -112,6 +117,14 @@ func TestScreenFlow(t *testing.T) {
 		}
 	}
 
+	screenshotMobile := func(name, body string) {
+		if *flagScreenshot {
+			screenshotCount++
+			safeName := fmt.Sprintf("%02d_%s_mobile", screenshotCount, name)
+			takeScreenshotWithSize(t, safeName, body, 375, 667) // iPhone SE size
+		}
+	}
+
 	// Test 0: Index page
 	t.Run("index", func(t *testing.T) {
 		status, body := get("/")
@@ -122,6 +135,7 @@ func TestScreenFlow(t *testing.T) {
 			t.Errorf("GET /: expected 'ssh' in body")
 		}
 		screenshot("index", body)
+		screenshotMobile("index", body)
 	})
 
 	// Test 1: Auth form page
