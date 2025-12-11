@@ -564,38 +564,25 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 	webURL := ss.server.webBaseURLNoRequest()
 
 	// Send invitation email
-	subject := fmt.Sprintf("%s shared a box with you on %s", cc.User.Email, ss.server.env.WebHost)
+	subject := fmt.Sprintf("%s shared %s with you using %s", cc.User.Email, webURL, ss.server.env.WebHost)
 	body := fmt.Sprintf(`Hi,
 
-%s has shared a box with you on %s.
+%s has shared %s with you using %s.
 
-`, cc.User.Email, ss.server.env.WebHost)
+`, cc.User.Email, webURL, ss.server.env.WebHost)
 
 	if message != "" {
 		body += fmt.Sprintf("Message from %s:\n\"%s\"\n\n", cc.User.Email, message)
 	}
 
-	if userExists {
-		body += fmt.Sprintf(`To access the box, visit:
+		body += fmt.Sprintf(`To access it, visit %s and log in with this e-mail address (%s)`,
+			boxURL, email)
+
+	body += fmt.Sprintf(`
+
+---
 %s
-
-You can also find it in your dashboard at %s/
-
----
-%s - Instant Linux machines
-`, boxURL, webURL, ss.server.env.WebHost)
-	} else {
-		body += fmt.Sprintf(`To access the box, sign up or log in at:
-%s/
-
-Once you're logged in with this email address (%s), you'll automatically have access to the shared box.
-
-Box URL: %s
-
----
-%s - Instant Linux machines
-`, webURL, email, boxURL, ss.server.env.WebHost)
-	}
+`, ss.server.env.WebHost)
 
 	if err := ss.server.sendEmail(email, subject, body); err != nil {
 		return fmt.Errorf("failed to send share invitation email: %w", err)

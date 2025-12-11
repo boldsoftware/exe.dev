@@ -93,7 +93,7 @@ func TestBoxSharing(t *testing.T) {
 		}
 
 		emailMsg := Env.email.waitForEmail(t, guestEmail)
-		if !strings.Contains(emailMsg.Body, "shared a box with you") {
+		if !strings.Contains(emailMsg.Body, "has shared") {
 			t.Fatalf("Expected share invitation email, got: %s", emailMsg.Body)
 		}
 		if !strings.Contains(emailMsg.Body, "Welcome") {
