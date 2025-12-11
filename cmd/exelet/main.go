@@ -126,9 +126,10 @@ func main() {
 			EnvVars: []string{"EXELET_PROXY_PORT_MAX"},
 		},
 		&cli.StringFlag{
-			Name:  "exed-url",
-			Usage: "URL of the exed HTTP(S) server (e.g., http://localhost:8080)",
-			Value: "",
+			Name:    "exed-url",
+			Usage:   "URL of the exed HTTP(S) server (e.g., http://localhost:8080)",
+			Value:   "",
+			EnvVars: []string{"EXELET_EXED_URL"},
 		},
 		&cli.DurationFlag{
 			Name:    "resource-monitor-interval",
