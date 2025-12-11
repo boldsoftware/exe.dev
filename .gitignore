@@ -32,7 +32,4 @@ exelet/kernel/output
 exeletd
 /exelet-ctl
 exelet-fs-*
-# welcomed
-exeuntu/welcome/welcomed
-
 ops/kernel-builder/output
