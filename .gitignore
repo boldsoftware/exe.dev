@@ -4,7 +4,10 @@ exe.db
 exe.db-wal
 exe.db-shm
 ghuser/whoami.sqlite3*
-.vscode/
+.vscode/*
+!.vscode/
+!.vscode/launch.json
+!.vscode/tasks.json
 node_modules/
 deps/sshpiper/sshpiperd
 deps/sshpiper/metrics

@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug exed",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/exed",
+      "cwd": "${workspaceFolder}",
+      "args": ["-dev=local"],
+      "env": {
+        "LOG_LEVEL": "debug"
+      }
+    },
+    // First run the following, and then you can attach:
+    // LOG_LEVEL=debug dlv debug ./cmd/exed --headless --listen=127.0.0.1:2345 --api-version=2 --accept-multiclient -- -dev=local -gh-whoami $(pwd)/ghuser/whoami.sqlite3 -start-exelet
+    {
+      "name": "Attach to Delve",
+      "type": "go",
+      "request": "attach",
+      "mode": "remote",
+      "host": "127.0.0.1",
+      "port": 2345,
+      "apiVersion": 2,
+      "showLog": true
+    }
+  ]
+}
