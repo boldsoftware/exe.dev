@@ -24,9 +24,11 @@ tmpkey*
 # exelet embedded fs
 exelet/fs/kernel
 exelet/fs/rovol
+exelet/fs/.hash
 exelet/kernel/output
 exeletd
 /exelet-ctl
+exelet-fs-*
 # welcomed
 exeuntu/welcome/welcomed
 

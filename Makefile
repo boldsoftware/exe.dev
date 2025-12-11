@@ -230,24 +230,34 @@ whoami-clean: ## Remove ghuser/whoami.sqlite3 so it can be re-downloaded
 		exit 1; \
 	fi
 
-exelet-fs: ## Download exelet-fs from Backblaze if it doesn't exist
-	@if [ ! -e exelet/fs/kernel ] || [ ! -e exelet/fs/rovol ]; then \
+# Compute hash of exelet/kernel and exelet/rovol directories using git tree hashes
+EXELET_FS_HASH := $(shell git rev-parse HEAD:exelet/kernel 2>/dev/null)$(shell git rev-parse HEAD:exelet/rovol 2>/dev/null)
+
+exelet-fs: ## Download exelet-fs from Backblaze if hash changed or doesn't exist
+	@CURRENT_HASH="$(EXELET_FS_HASH)"; \
+	STORED_HASH=""; \
+	if [ -f exelet/fs/.hash ]; then \
+		STORED_HASH=$$(cat exelet/fs/.hash); \
+	fi; \
+	if [ ! -e exelet/fs/kernel ] || [ ! -e exelet/fs/rovol ] || [ "$$CURRENT_HASH" != "$$STORED_HASH" ]; then \
 		if ! command -v b2 >/dev/null 2>&1; then \
 			echo "${RED}Error: b2 command not found${NC}"; \
 			echo "Please install the Backblaze B2 CLI (e.g. brew install b2-tools)"; \
 			exit 1; \
 		fi; \
-		echo "Downloading exelet-fs from Backblaze..."; \
+		echo "Downloading exelet-fs from Backblaze (hash: $$CURRENT_HASH)..."; \
+		rm -rf exelet/fs/kernel exelet/fs/rovol; \
 		export B2_APPLICATION_KEY_ID="004edb881590a7d0000000008"; \
 		export B2_APPLICATION_KEY="K004hvv/i5raZbvKXARk+H7sZLZ5XtQ"; \
 		export COLUMNS="$${COLUMNS:-80}"; \
 		export LINES="$${LINES:-24}"; \
 		b2 account authorize >/dev/null 2>&1 && \
-		b2 file download b2://bold-exe/exelet-fs-$(GOARCH).tar.gz .exelet-fs.tar.gz \
-			|| { echo "${RED}Failed to download exelet-fs-$(GOARCH).tar.gz ${NC}" && exit 1; }; \
+		b2 file download b2://bold-exe/exelet-fs-$(GOARCH)-$$CURRENT_HASH.tar.gz .exelet-fs.tar.gz \
+			|| { echo "${RED}Failed to download exelet-fs-$(GOARCH)-$$CURRENT_HASH.tar.gz${NC}" && exit 1; }; \
 		echo "Decompressing exelet-fs..."; \
-		tar zxf .exelet-fs.tar.gz -C exelet/fs && \
+		tar zxf .exelet-fs.tar.gz -C exelet/fs --exclude='._*' && \
 		rm .exelet-fs.tar.gz; \
+		echo "$$CURRENT_HASH" > exelet/fs/.hash; \
 		echo "✓ Downloaded and decompressed exelet-fs"; \
 	fi
 
@@ -259,13 +269,13 @@ protos:
 exelet: exelet-fs
 	@>&2 echo " -> building exelet ${COMMIT}${BUILD}"
 	@# exelet only runs in linux
-	@GOOS=linux go build -ldflags="-s -w" -o exeletd ./cmd/exelet
+	@GOOS=linux CGO_ENABLED=0 go build -ldflags="-s -w" -o exeletd ./cmd/exelet
 
 .PHONY: exelet-coverage
-exelet-coverage: exelet-kernel exelet-rovol
+exelet-coverage: exelet-fs
 	@>&2 echo " -> building exelet with coverage ${COMMIT}${BUILD}"
 	@# exelet only runs in linux
-	@cd ./cmd/exelet && GOOS=linux go build -cover -covermode=atomic -coverpkg=exe.dev/... -mod=mod -installsuffix cgo -ldflags "-w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exeletd .
+	@GOOS=linux CGO_ENABLED=0 go build -cover -covermode=atomic -coverpkg=exe.dev/... -ldflags="-s -w" -o exeletd ./cmd/exelet
 
 .PHONY: exelet-ctl
 exelet-ctl:
@@ -305,8 +315,21 @@ package-exelet-fs:
 	@docker buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=/tmp/exelet-fs/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
 	@>&2 echo " -> building exelet rovol"
 	@docker buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=/tmp/exelet-fs/rovol/ -f ./exelet/rovol/Dockerfile .
-	@>&2 echo " -> building exelet rovol"
-	@cd ./cmd/exe-init && CGO_ENABLED=0 GOOS=linux go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o /tmp/exelet-fs/rovol/bin/exe-init .
-	@cd /tmp/exelet-fs && tar czvf $(ROOT_DIR)/exelet-fs-$(GOARCH).tar.gz ./
+	@>&2 echo " -> building exe-init"
+	@cd ./cmd/exe-init && CGO_ENABLED=0 GOOS=linux go build -ldflags "-s -w" -o /tmp/exelet-fs/rovol/bin/exe-init .
+	@cd /tmp/exelet-fs && tar czvf $(ROOT_DIR)/exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz ./
+
+.PHONY: upload-exelet-fs
+upload-exelet-fs: package-exelet-fs ## Build and upload exelet-fs to Backblaze
+	@if ! command -v b2 >/dev/null 2>&1; then \
+		echo "${RED}Error: b2 command not found${NC}"; \
+		echo "Please install the Backblaze B2 CLI (e.g. brew install b2-tools)"; \
+		exit 1; \
+	fi
+	@>&2 echo " -> uploading exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz to Backblaze"
+	@echo " !! Be sure to have B2 write keys !!"
+	b2 file upload bold-exe exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz \
+		|| { echo "${RED}Failed to upload exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz${NC}" && exit 1; }
+	@echo "✓ Uploaded exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz"
 
 .DEFAULT_GOAL := help

@@ -24,6 +24,15 @@ jobs:
       - name: Tools Version
         run: go version
 
+      - name: Ensure b2 CLI available
+        run: |
+          if ! command -v b2 >/dev/null 2>&1; then
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="$HOME/.local/bin:$PATH"
+            uv tool install b2
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+          fi
+
       - name: Start ephemeral VM
         id: vm
         run: |
