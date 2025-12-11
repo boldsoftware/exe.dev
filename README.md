@@ -91,6 +91,7 @@ limactl shell exe-ctr -- sudo ./exeletd \
   --network-manager-address nat:///data/exelet/network \
   --runtime-address cloudhypervisor:///data/exelet/runtime \
   --listen-address tcp://:9080
+  --exed-url http://$(ssh lima-exe-ctr.local getent ahostsv4 _gateway | grep _gateway | awk '{ print $1; }'")
 ```
 
 The exelet serves debug endpoints (pprof, version, metrics) on port 9081 by default.
@@ -102,7 +103,8 @@ After you have setup a local exelet running and downloaded the whoami database (
 
 ```
 go run ./cmd/exed -dev=local -gh-whoami $(pwd)/ghuser/whoami.sqlite3 \
-  -exelet-addresses tcp://127.0.0.1:9080
+  -exelet-addresses tcp://127.0.0.1:9080 \
+  -gateway $(limactl shell exe-ctr -- getent ahostsv4 _gateway | grep _gateway | awk '{ print $1; }')
 ```
 
 ## Continuing local development...

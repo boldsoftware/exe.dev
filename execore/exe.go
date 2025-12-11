@@ -186,6 +186,9 @@ type Server struct {
 	// Database
 	db *sqlite.DB
 
+	// Gateway endpoint for Shelley
+	gateway string
+
 	// Image tag resolution
 	tagResolver *tagresolver.TagResolver
 
@@ -397,7 +400,7 @@ func runMigrations(slog *slog.Logger, dbPath string) error {
 }
 
 // NewServer creates a new Server instance with database and container management.
-func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, exeletAddresses []string, env stage.Env, metricsRegistry *prometheus.Registry) (*Server, error) {
+func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, exeletAddresses []string, gateway string, env stage.Env, metricsRegistry *prometheus.Registry) (*Server, error) {
 	// Run db migrations with a raw connection (not a pool).
 	if err := runMigrations(slog, dbPath); err != nil {
 		return nil, fmt.Errorf("failed to run database migrations: %w", err)
@@ -528,6 +531,11 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		return nil, err
 	}
 
+	// gateway for shelley - default to exe.dev if left blank
+	if gateway == "" {
+		gateway = env.WebHost
+	}
+
 	s := &Server{
 		env:                env,
 		httpLn:             httpLn,
@@ -546,6 +554,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		githubUser:         ghu,
 		postmarkClient:     postmarkClient,
 		fakeHTTPEmail:      fakeEmailServer,
+		gateway:            gateway,
 		PublicIPs:          map[netip.Addr]publicips.PublicIP{},
 
 		metricsRegistry: metricsRegistry,

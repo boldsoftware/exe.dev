@@ -1,13 +1,10 @@
 # Testing notes
 
-In dev mode, test the gateway with the X-Exedev-Box header:
+1. Set up a proxy: curl --insecure http://localhost:1234/
 
-```
-curl http://localhost:8080/_/gateway/anthropic/v1/messages \
-  --header "X-Exedev-Box: testbox" \
-  --header "content-type: application/json" \
-  --header "anthropic-version: 2023-06-01" \
-  --data '{
+2. Run this manually:
+
+curl http://localhost:1234/_/gateway/anthropic/v1/messages   --header "Authorization: $(sudo /usr/local/bin/generate-gateway-token)"   --header "content-type: application/json"   --header "anthropic-version: 2023-06-01"   --data '{
     "model": "claude-3-5-sonnet-20241022",
     "max_tokens": 1024,
     "messages": [
@@ -17,4 +14,3 @@ curl http://localhost:8080/_/gateway/anthropic/v1/messages \
       }
     ]
   }'
-```
