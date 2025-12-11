@@ -575,8 +575,8 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 		body += fmt.Sprintf("Message from %s:\n\"%s\"\n\n", cc.User.Email, message)
 	}
 
-		body += fmt.Sprintf(`To access it, visit %s and log in with this e-mail address (%s)`,
-			boxURL, email)
+	body += fmt.Sprintf(`To access it, visit %s and log in with this e-mail address (%s)`,
+		boxURL, email)
 
 	body += fmt.Sprintf(`
 
