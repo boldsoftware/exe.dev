@@ -318,7 +318,13 @@ func (s *Server) createTestBox(t *testing.T, userID, ctrhost, name, containerID,
 		t.Fatalf("failed to generate SSH keys: %v", err)
 	}
 
-	id, err := s.preCreateBox(t.Context(), userID, ctrhost, name, image)
+	id, err := s.preCreateBox(t.Context(), preCreateBoxOptions{
+		userID:  userID,
+		ctrhost: ctrhost,
+		name:    name,
+		image:   image,
+		noShard: false,
+	})
 	if err != nil {
 		t.Fatalf("failed to create box with test SSH keys: %v", err)
 	}

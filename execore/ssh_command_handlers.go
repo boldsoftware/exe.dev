@@ -67,7 +67,7 @@ func newCommandFlags() *flag.FlagSet {
 	fs.Bool("json", false, "output in JSON format")
 	fs.Bool("no-email", false, "do not send email notification")
 	fs.String("prompt-model", shelleyDefaultModel, "[hidden] override the prompt model") // for testing
-	fs.String("prompt-model", shelleyDefaultModel, "")
+	fs.Bool("no-shard", false, "[hidden] skip shard allocation")
 	// Environment variables (can be specified multiple times)
 	var envVars repeatedStringFlag
 	fs.Var(&envVars, "env", "environment variable in KEY=VALUE format (can be specified multiple times)")
@@ -298,6 +298,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	prompt := cc.FlagSet.Lookup("prompt").Value.String()
 	model := cc.FlagSet.Lookup("prompt-model").Value.String()
 	noEmail := cc.FlagSet.Lookup("no-email").Value.String() == "true"
+	noShard := cc.FlagSet.Lookup("no-shard").Value.String() == "true"
 
 	// Parse environment variables
 	var envVars []string
@@ -384,7 +385,13 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	if image == "exeuntu" {
 		imageToStore = "boldsoftware/exeuntu"
 	}
-	boxID, err := ss.server.preCreateBox(ctx, user.ID, exeletAddr, boxName, imageToStore)
+	boxID, err := ss.server.preCreateBox(ctx, preCreateBoxOptions{
+		userID:  user.ID,
+		ctrhost: exeletAddr,
+		name:    boxName,
+		image:   imageToStore,
+		noShard: noShard,
+	})
 	switch {
 	case errors.Is(err, errNoIPShardsAvailable):
 		// TODO: add CTA to upgrade plan

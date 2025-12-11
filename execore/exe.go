@@ -1346,10 +1346,18 @@ func (s *Server) vscodeURL(boxName string) string {
 }
 
 // preCreateBox creates a box entry before the container is created, returns the box ID
-func (s *Server) preCreateBox(ctx context.Context, userID, ctrhost, name, image string) (int, error) {
+type preCreateBoxOptions struct {
+	userID  string
+	ctrhost string
+	name    string
+	image   string
+	noShard bool
+}
+
+func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (int, error) {
 	// Validate box name
-	if !boxname.Valid(name) {
-		return 0, fmt.Errorf("invalid box name: %s", name)
+	if !boxname.Valid(opts.name) {
+		return 0, fmt.Errorf("invalid box name: %s", opts.name)
 	}
 
 	routes := exedb.DefaultRouteJSON()
@@ -1358,11 +1366,11 @@ func (s *Server) preCreateBox(ctx context.Context, userID, ctrhost, name, image 
 	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 		id, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
-			Ctrhost:         ctrhost,
-			Name:            name,
+			Ctrhost:         opts.ctrhost,
+			Name:            opts.name,
 			Status:          "creating",
-			Image:           image,
-			CreatedByUserID: userID,
+			Image:           opts.image,
+			CreatedByUserID: opts.userID,
 			Routes:          &routes,
 		})
 		if err != nil {
@@ -1370,7 +1378,11 @@ func (s *Server) preCreateBox(ctx context.Context, userID, ctrhost, name, image 
 		}
 		boxID = int(id)
 
-		shard, err := s.allocateIPShard(ctx, queries, userID, boxID)
+		if opts.noShard {
+			return nil
+		}
+
+		shard, err := s.allocateIPShard(ctx, queries, opts.userID, boxID)
 		if err != nil {
 			return err
 		}
@@ -1382,15 +1394,17 @@ func (s *Server) preCreateBox(ctx context.Context, userID, ctrhost, name, image 
 		return 0, err
 	}
 
-	if err := s.createBoxShardDNSRecord(ctx, name, assignedShard); err != nil {
-		cleanupErr := s.rollbackBoxPreCreation(ctx, boxID)
-		if cleanupErr != nil {
-			s.slog().ErrorContext(ctx, "failed to roll back box after DNS error", "box_id", boxID, "cleanup_error", cleanupErr, "dns_error", err)
+	if !opts.noShard {
+		if err := s.createBoxShardDNSRecord(ctx, opts.name, assignedShard); err != nil {
+			cleanupErr := s.rollbackBoxPreCreation(ctx, boxID)
+			if cleanupErr != nil {
+				s.slog().ErrorContext(ctx, "failed to roll back box after DNS error", "box_id", boxID, "cleanup_error", cleanupErr, "dns_error", err)
+			}
+			return 0, err
 		}
-		return 0, err
 	}
 
-	s.recordUserEventBestEffort(ctx, userID, userEventCreatedBox)
+	s.recordUserEventBestEffort(ctx, opts.userID, userEventCreatedBox)
 	return boxID, nil
 }
 
