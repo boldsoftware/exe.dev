@@ -620,7 +620,9 @@ func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey
 			// Use a tight deadline to quickly detect unbound ports
 			ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 			defer cancel()
-			conn, err := s.sshPool.DialContext(ctx, network, addr, sshHost, *box.SSHUser, int(*box.SSHPort), sshKey, cfg)
+			conn, err := s.sshPool.DialWithRetries(ctx, network, addr, sshHost, *box.SSHUser, int(*box.SSHPort), sshKey, cfg, []time.Duration{
+				10 * time.Millisecond,
+			})
 			if err != nil {
 				return nil, fmt.Errorf("SSH dial failed: %w", err)
 			}
