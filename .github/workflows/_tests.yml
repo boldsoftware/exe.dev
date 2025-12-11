@@ -78,6 +78,11 @@ jobs:
           go build -o /tmp/slogcontext ./tracing/linter/cmd/slogcontext
           go vet -vettool=/tmp/slogcontext ./...
 
+      - name: Verify completeinit linter passes
+        run: |
+          go build -o /tmp/completeinit ./completeinit/cmd/completeinit
+          go vet -vettool=/tmp/completeinit ./...
+
       - name: Run tests
         run: |
           PKGS=$(go list ./... | grep -v -E '^exe\.dev/(e1e|experiments/imageunpack)$')

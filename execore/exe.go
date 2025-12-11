@@ -1346,6 +1346,8 @@ func (s *Server) vscodeURL(boxName string) string {
 }
 
 // preCreateBox creates a box entry before the container is created, returns the box ID
+//
+//exe:completeinit
 type preCreateBoxOptions struct {
 	userID  string
 	ctrhost string

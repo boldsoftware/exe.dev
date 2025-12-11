@@ -28,6 +28,8 @@ const (
 )
 
 // creationStreamKey uniquely identifies a creation stream
+//
+//exe:completeinit
 type creationStreamKey struct {
 	userID   string
 	hostname string

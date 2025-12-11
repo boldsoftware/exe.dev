@@ -524,6 +524,8 @@ func (s *Server) readFromSSHSessionAndBroadcast(session *TerminalSession, stdout
 }
 
 // terminalAuthInfo holds authenticated user and box information
+//
+//exe:completeinit
 type terminalAuthInfo struct {
 	UserID  string
 	BoxName string
