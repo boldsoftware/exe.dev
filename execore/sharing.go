@@ -114,6 +114,18 @@ func (s *Server) hasUserAccessToBox(ctx context.Context, userID string, box *exe
 		return BoxAccessOwner, nil
 	}
 
+	// Try to resolve any pending shares for this user before checking access.
+	// This is a defensive measure to catch any edge cases where pending shares
+	// weren't resolved during login (e.g., if we miss a login path in the future).
+	user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
+		return queries.GetUserWithDetails(ctx, userID)
+	})
+	if err == nil && user.Email != "" {
+		if err := s.resolvePendingShares(ctx, user.Email, userID); err != nil {
+			return BoxAccessNone, fmt.Errorf("resolve pending shares: %w", err)
+		}
+	}
+
 	// Check if user has share access
 	hasAccess, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (bool, error) {
 		result, err := queries.HasUserAccessToBox(ctx, exedb.HasUserAccessToBoxParams{
@@ -250,7 +262,7 @@ func (s *Server) resolvePendingShares(ctx context.Context, email, userID string)
 		for _, ps := range pendingShares {
 			// Create active share
 			_, err := queries.CreateBoxShare(ctx, exedb.CreateBoxShareParams{
-				BoxID:            ps.ID,
+				BoxID:            ps.BoxID,
 				SharedWithUserID: userID,
 				SharedByUserID:   ps.SharedByUserID,
 				Message:          ps.Message,
@@ -264,12 +276,14 @@ func (s *Server) resolvePendingShares(ctx context.Context, email, userID string)
 
 			// Delete the pending share
 			err = queries.DeletePendingBoxShareByBoxAndEmail(ctx, exedb.DeletePendingBoxShareByBoxAndEmailParams{
-				BoxID:           ps.ID,
+				BoxID:           ps.BoxID,
 				SharedWithEmail: email,
 			})
 			if err != nil {
 				return err
 			}
+
+			s.slog().InfoContext(ctx, "resolved pending share", "user_id", userID, "box", ps.BoxName)
 		}
 		return nil
 	})

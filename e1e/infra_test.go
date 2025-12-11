@@ -2267,6 +2267,32 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) []*http.Cookie 
 	return cookies
 }
 
+// webLoginWithEmail performs a web-only login flow (no SSH involved).
+// This uses the /auth POST endpoint to trigger email verification.
+// Unlike registerForExeDevWithEmail, this doesn't create a user via SSH,
+// so it exercises the web-only user creation path.
+func webLoginWithEmail(t *testing.T, email string) []*http.Cookie {
+	t.Helper()
+
+	// POST to /auth with email to trigger the web login flow
+	authURL := fmt.Sprintf("http://localhost:%d/auth", Env.exed.HTTPPort)
+	resp, err := http.PostForm(authURL, url.Values{"email": {email}})
+	if err != nil {
+		t.Fatalf("failed to POST to /auth: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("POST /auth failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Wait for verification email
+	emailMsg := Env.email.waitForEmail(t, email)
+
+	// Click the verification link (same as SSH flow)
+	return clickVerifyLinkInEmail(t, emailMsg)
+}
+
 var boxCounter atomic.Int32
 
 // boxName creates a unique test-specific box name with e1e prefix for easy cleanup

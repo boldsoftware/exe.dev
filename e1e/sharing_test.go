@@ -623,3 +623,267 @@ func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
 	ownerCleanup.deleteBox(box)
 	ownerCleanup.disconnect()
 }
+
+// TestPendingShareResolvedOnRegistration tests that pending shares are converted to active
+// shares when a user registers with the email address that was shared with.
+//
+// Scenario:
+//  1. Owner creates a box
+//  2. Owner shares with "guest@example.com" (user doesn't exist yet) → creates pending share
+//  3. User registers with "guest@example.com" → pending share should be resolved
+//  4. Guest should be able to access the shared box
+//
+// This is a regression test for the bug where pending shares were only resolved in createUser()
+// but not when an existing user logged in via email verification.
+func TestPendingShareResolvedOnRegistration(t *testing.T) {
+	// Not running in parallel to avoid interference with other pending share tests
+	noGolden(t)
+
+	// Use unique email domains per test run to avoid conflicts with parallel tests
+	testID := time.Now().UnixNano()
+
+	// Owner creates a box
+	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, fmt.Sprintf("owner-%d@test-pending-share-ssh.example", testID))
+	box := newBox(t, ownerPTY, BoxOpts{Command: "/bin/bash"})
+	ownerPTY.disconnect()
+	waitForSSH(t, box, ownerKeyFile)
+
+	const boxInternalPort = 8080
+
+	// Create index.html to serve
+	makeIndex := boxSSHCommand(t, box, ownerKeyFile, "echo", "shared-content", ">", "/home/exedev/index.html")
+	if err := makeIndex.Run(); err != nil {
+		t.Fatalf("failed to create index.html: %v\n", err)
+	}
+
+	// Start HTTP server in the box
+	httpdCmd := boxSSHCommand(t, box, ownerKeyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(boxInternalPort), "-h", "/home/exedev")
+	httpdCmd.Stdout = t.Output()
+	httpdCmd.Stderr = t.Output()
+	if err := httpdCmd.Start(); err != nil {
+		t.Fatalf("failed to start busybox HTTP server: %v\n", err)
+	}
+	t.Cleanup(func() {
+		httpdCmd.Process.Kill()
+		httpdCmd.Wait()
+	})
+
+	// Wait for server to be ready
+	waitCmd := boxSSHCommand(t, box, ownerKeyFile, "timeout", "20", "sh", "-c",
+		fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", boxInternalPort))
+	waitCmd.Stdout = t.Output()
+	waitCmd.Stderr = t.Output()
+	if err := waitCmd.Run(); err != nil {
+		t.Fatalf("failed to wait for busybox to serve: %v\n", err)
+	}
+
+	httpPort := Env.exed.HTTPPort
+
+	// Configure proxy port and make it private
+	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
+	if err != nil {
+		t.Fatalf("failed to set proxy port: %v\n%s", err, out)
+	}
+	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "set-private", box)
+	if err != nil {
+		t.Fatalf("failed to set private visibility: %v\n%s", err, out)
+	}
+
+	// KEY STEP: Share with an email that doesn't exist yet
+	// This should create a PENDING share
+	guestEmail := fmt.Sprintf("guest-%d@test-pending-share-ssh.example", testID)
+	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "add", box, guestEmail)
+	if err != nil {
+		t.Fatalf("failed to share box: %v\n%s", err, out)
+	}
+	if want := "Invitation sent to " + guestEmail; !strings.Contains(string(out), want) {
+		t.Fatalf("Expected %q in output, got: %q", want, out)
+	}
+
+	// Wait for invitation email (confirms pending share was created)
+	emailMsg := Env.email.waitForEmail(t, guestEmail)
+	if !strings.Contains(emailMsg.Body, "has shared") {
+		t.Fatalf("Expected share invitation email, got: %s", emailMsg.Body)
+	}
+
+	// Verify the share is pending (check via share show --json)
+	shareOut, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "show", box, "--json")
+	if err != nil {
+		t.Fatalf("failed to run share show: %v\n%s", err, shareOut)
+	}
+	var shareInfo struct {
+		Users []struct {
+			Email  string `json:"email"`
+			Status string `json:"status"`
+		} `json:"users"`
+	}
+	if err := json.Unmarshal(shareOut, &shareInfo); err != nil {
+		t.Fatalf("failed to parse share info: %v\n%s", err, shareOut)
+	}
+	if len(shareInfo.Users) != 1 {
+		t.Fatalf("Expected 1 user share, got %d", len(shareInfo.Users))
+	}
+	if shareInfo.Users[0].Status != "pending" {
+		t.Fatalf("Expected pending share, got status %q", shareInfo.Users[0].Status)
+	}
+
+	// KEY STEP: Guest registers with the same email
+	// This should convert the pending share to an active share
+	guestPTY, guestCookies, _, _ := registerForExeDevWithEmail(t, guestEmail)
+	guestPTY.disconnect()
+
+	// Verify the share is now active
+	shareOut, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "show", box, "--json")
+	if err != nil {
+		t.Fatalf("failed to run share show after registration: %v\n%s", err, shareOut)
+	}
+	if err := json.Unmarshal(shareOut, &shareInfo); err != nil {
+		t.Fatalf("failed to parse share info after registration: %v\n%s", err, shareOut)
+	}
+	if len(shareInfo.Users) != 1 {
+		t.Fatalf("Expected 1 user share after registration, got %d", len(shareInfo.Users))
+	}
+	if shareInfo.Users[0].Status != "active" {
+		t.Errorf("BUG: Expected share to be 'active' after guest registration, but got %q", shareInfo.Users[0].Status)
+	}
+
+	// KEY STEP: Guest should be able to access the shared box
+	proxyAssert(t, box, proxyExpectation{
+		name:     "guest can access shared box after registration",
+		httpPort: httpPort,
+		cookies:  guestCookies,
+		httpCode: http.StatusOK,
+	})
+
+	// Cleanup
+	ownerCleanup := sshToExeDev(t, ownerKeyFile)
+	ownerCleanup.deleteBox(box)
+	ownerCleanup.disconnect()
+}
+
+// TestPendingShareResolvedOnWebLogin tests that pending shares are converted to active
+// shares when a user logs in via the web-only flow (no SSH).
+//
+// Scenario:
+//  1. Owner creates a box
+//  2. Owner shares with "guest@example.com" (user doesn't exist yet) → creates pending share
+//  3. User logs in via web (POST /auth + email verification) → pending share should be resolved
+//  4. Guest should be able to access the shared box
+//
+// This is a regression test for the bug where pending shares were not resolved during
+// web-only login (handleEmailVerificationHTTP for HTTP auth tokens).
+func TestPendingShareResolvedOnWebLogin(t *testing.T) {
+	// Not running in parallel to avoid interference with other pending share tests
+	noGolden(t)
+
+	// Use unique email domains per test run to avoid conflicts with parallel tests
+	testID := time.Now().UnixNano()
+
+	// Owner creates a box
+	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, fmt.Sprintf("owner-%d@test-pending-share-web.example", testID))
+	box := newBox(t, ownerPTY, BoxOpts{Command: "/bin/bash"})
+	ownerPTY.disconnect()
+	waitForSSH(t, box, ownerKeyFile)
+
+	const boxInternalPort = 8080
+
+	// Create index.html to serve
+	makeIndex := boxSSHCommand(t, box, ownerKeyFile, "echo", "shared-content", ">", "/home/exedev/index.html")
+	if err := makeIndex.Run(); err != nil {
+		t.Fatalf("failed to create index.html: %v\n", err)
+	}
+
+	// Start HTTP server in the box
+	httpdCmd := boxSSHCommand(t, box, ownerKeyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(boxInternalPort), "-h", "/home/exedev")
+	httpdCmd.Stdout = t.Output()
+	httpdCmd.Stderr = t.Output()
+	if err := httpdCmd.Start(); err != nil {
+		t.Fatalf("failed to start busybox HTTP server: %v\n", err)
+	}
+	t.Cleanup(func() {
+		httpdCmd.Process.Kill()
+		httpdCmd.Wait()
+	})
+
+	// Wait for server to be ready
+	waitCmd := boxSSHCommand(t, box, ownerKeyFile, "timeout", "20", "sh", "-c",
+		fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", boxInternalPort))
+	waitCmd.Stdout = t.Output()
+	waitCmd.Stderr = t.Output()
+	if err := waitCmd.Run(); err != nil {
+		t.Fatalf("failed to wait for busybox to serve: %v\n", err)
+	}
+
+	httpPort := Env.exed.HTTPPort
+
+	// Configure proxy port and make it private
+	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
+	if err != nil {
+		t.Fatalf("failed to set proxy port: %v\n%s", err, out)
+	}
+	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "set-private", box)
+	if err != nil {
+		t.Fatalf("failed to set private visibility: %v\n%s", err, out)
+	}
+
+	// Share with an email that doesn't exist yet - creates PENDING share
+	guestEmail := fmt.Sprintf("guest-%d@test-pending-share-web.example", testID)
+	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "add", box, guestEmail)
+	if err != nil {
+		t.Fatalf("failed to share box: %v\n%s", err, out)
+	}
+
+	// Consume the share invitation email
+	Env.email.waitForEmail(t, guestEmail)
+
+	// Verify the share is pending
+	shareOut, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "show", box, "--json")
+	if err != nil {
+		t.Fatalf("failed to run share show: %v\n%s", err, shareOut)
+	}
+	var shareInfo struct {
+		Users []struct {
+			Email  string `json:"email"`
+			Status string `json:"status"`
+		} `json:"users"`
+	}
+	if err := json.Unmarshal(shareOut, &shareInfo); err != nil {
+		t.Fatalf("failed to parse share info: %v\n%s", err, shareOut)
+	}
+	if len(shareInfo.Users) != 1 || shareInfo.Users[0].Status != "pending" {
+		t.Fatalf("Expected pending share, got %+v", shareInfo.Users)
+	}
+
+	// Guest logs in via WEB flow (not SSH)
+	// This triggers handleAuthEmailSubmission → creates user via createUserRecord (NOT createUser)
+	// Then handleEmailVerificationHTTP → validates token, creates cookie, but does NOT call resolvePendingShares
+	guestCookies := webLoginWithEmail(t, guestEmail)
+
+	// Verify the share status after web login
+	shareOut, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "show", box, "--json")
+	if err != nil {
+		t.Fatalf("failed to run share show after web login: %v\n%s", err, shareOut)
+	}
+	if err := json.Unmarshal(shareOut, &shareInfo); err != nil {
+		t.Fatalf("failed to parse share info after web login: %v\n%s", err, shareOut)
+	}
+	if len(shareInfo.Users) != 1 {
+		t.Fatalf("Expected 1 user share after web login, got %d", len(shareInfo.Users))
+	}
+	if shareInfo.Users[0].Status != "active" {
+		t.Errorf("BUG: Expected share to be 'active' after guest web login, but got %q", shareInfo.Users[0].Status)
+	}
+
+	// Guest should be able to access the shared box
+	proxyAssert(t, box, proxyExpectation{
+		name:     "guest can access shared box after web login",
+		httpPort: httpPort,
+		cookies:  guestCookies,
+		httpCode: http.StatusOK,
+	})
+
+	// Cleanup
+	ownerCleanup := sshToExeDev(t, ownerKeyFile)
+	ownerCleanup.deleteBox(box)
+	ownerCleanup.disconnect()
+}

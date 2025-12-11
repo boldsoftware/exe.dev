@@ -918,6 +918,14 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		})
 		if err == nil {
 			verifiedEmail = user.Email
+
+			// Resolve any pending shares for this email
+			// This handles the case where someone shared a box with this email before the user registered
+			if err := s.resolvePendingShares(r.Context(), user.Email, userID); err != nil {
+				s.slog().ErrorContext(r.Context(), "Failed to resolve pending shares during web login", "error", err, "email", user.Email)
+				http.Error(w, "Failed to resolve pending shares", http.StatusInternalServerError)
+				return
+			}
 		}
 
 		// Create HTTP auth cookie for this user
@@ -973,6 +981,7 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 	if err != nil || user == nil {
 		s.slog().InfoContext(ctx, "User doesn't exist, creating", "email", email)
 		// User doesn't exist - create them with their alloc
+		// Note: createUser calls resolvePendingShares internally
 		user, err = s.createUser(context.WithoutCancel(ctx), publicKey, email)
 		if err != nil {
 			return nil, fmt.Errorf("create user: %w", err)
@@ -980,6 +989,12 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 		s.slog().InfoContext(ctx, "Created new user", "email", email)
 	} else {
 		s.slog().DebugContext(ctx, "User already exists", "email", email)
+		// User already exists - still need to resolve pending shares
+		// This handles the case where a box was shared with an existing user's email
+		// after they registered, but before they logged in again
+		if err := s.resolvePendingShares(ctx, email, user.UserID); err != nil {
+			return nil, fmt.Errorf("resolve pending shares: %w", err)
+		}
 	}
 
 	// Store the SSH key as verified
