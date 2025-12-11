@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -89,7 +90,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              *httpAddr,
-		Handler:           mux,
+		Handler:           logRequests(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -168,4 +169,61 @@ func newLiveReloadHandler(log *slog.Logger, blogDir string) (func(http.ResponseW
 		}
 		return handler.Handle(w, r)
 	}, nil
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusRecorder) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *statusRecorder) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func logRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		recorder := &statusRecorder{ResponseWriter: w}
+		next.ServeHTTP(recorder, r)
+
+		status := recorder.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+
+		var xHeaders map[string][]string
+		for k, v := range r.Header {
+			if strings.HasPrefix(k, "X-") {
+				if xHeaders == nil {
+					xHeaders = make(map[string][]string)
+				}
+				xHeaders[k] = v
+			}
+		}
+
+		entry := struct {
+			Path       string              `json:"path"`
+			Method     string              `json:"method"`
+			Status     int                 `json:"status"`
+			RemoteAddr string              `json:"remote_addr"`
+			XHeaders   map[string][]string `json:"x_headers,omitempty"`
+		}{
+			Path:       r.URL.Path,
+			Method:     r.Method,
+			Status:     status,
+			RemoteAddr: r.RemoteAddr,
+			XHeaders:   xHeaders,
+		}
+
+		if err := json.NewEncoder(os.Stdout).Encode(entry); err != nil {
+			slog.Error("failed to log request", "error", err)
+		}
+	})
 }
