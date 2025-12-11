@@ -103,8 +103,7 @@ After you have setup a local exelet running and downloaded the whoami database (
 
 ```
 go run ./cmd/exed -dev=local -gh-whoami $(pwd)/ghuser/whoami.sqlite3 \
-  -exelet-addresses tcp://127.0.0.1:9080 \
-  -gateway $(limactl shell exe-ctr -- getent ahostsv4 _gateway | grep _gateway | awk '{ print $1; }')
+  -exelet-addresses tcp://127.0.0.1:9080
 ```
 
 ## Continuing local development...

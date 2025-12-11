@@ -125,8 +125,6 @@ func main() {
 			Value:   20000,
 			EnvVars: []string{"EXELET_PROXY_PORT_MAX"},
 		},
-		// TODO(ian): Remove this unused flag when we are sure
-		// no script still uses it.
 		&cli.StringFlag{
 			Name:  "exed-url",
 			Usage: "URL of the exed HTTP(S) server (e.g., http://localhost:8080)",

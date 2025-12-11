@@ -44,8 +44,9 @@ func run() error {
 	exeletAddresses := flag.String("exelet-addresses", "", "Comma-separated list of exelet addresses (e.g., 'tcp://host1:8080,tcp://host2:8080')")
 	ghWhoAmIPath := flag.String("gh-whoami", "ghuser/whoami.sqlite3", "GitHub user key database path")
 	fakeHTTPEmail := flag.String("fake-email-server", "", "HTTP email server URL for sending emails (e.g., http://localhost:8025)")
-	// TODO(philip): Once newer shelleys are deployed, we don't need this any more.
-	gateway := flag.String("gateway", "exe.dev", "Gateway endpoint for Shelley")
+	// TODO(ian): Remove this unused flag when we are sure
+	// no script still uses it.
+	flag.String("gateway", "", "unused")
 	openBrowser := flag.Bool("open", false, "Open web browser to HTTP server (dev mode only)")
 	profilePath := flag.String("profile", "", "Enable CPU profiling for 30 seconds, saving to /tmp/exed-profile-<timestamp>.prof or specified path")
 	startExelet := flag.Bool("start-exelet", false, "Build and start exelet on lima-exe-ctr (dev mode only)")
@@ -95,13 +96,10 @@ func run() error {
 		return fmt.Errorf("-start-exelet flag is only available in dev mode")
 	}
 
-	// Validate -start-exelet is incompatible with explicit addresses/gateway
+	// Validate -start-exelet is incompatible with explicit addresses
 	if *startExelet {
 		if *exeletAddresses != "" {
 			return fmt.Errorf("-start-exelet is incompatible with -exelet-addresses (addresses are auto-determined)")
-		}
-		if *gateway != "exe.dev" {
-			return fmt.Errorf("-start-exelet is incompatible with -gateway (gateway is auto-determined)")
 		}
 	}
 
@@ -118,9 +116,8 @@ func run() error {
 		}
 		slog.Info("exelet started successfully", "address", addr, "gateway", gw)
 
-		// Set the exelet-addresses and gateway
+		// Set the exelet-addresses
 		*exeletAddresses = addr
-		*gateway = gw
 	}
 
 	// Start CPU profiling if requested
@@ -187,7 +184,7 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
-	server, err := execore.NewServer(slog.Default(), *httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *fakeHTTPEmail, *piperdPort, *ghWhoAmIPath, exeletAddrs, *gateway, env, metricsRegistry)
+	server, err := execore.NewServer(slog.Default(), *httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *fakeHTTPEmail, *piperdPort, *ghWhoAmIPath, exeletAddrs, env, metricsRegistry)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}

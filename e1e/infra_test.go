@@ -1013,7 +1013,7 @@ func setup(ctrHost string) (*testEnv, error) {
 
 	// TODO: build piperd concurrently with starting exed for faster startup
 	// Pass "0,0" to let the proxy listeners allocate their own port numbers
-	ei, err := startExed(ctrHost, es.port, sshProxy.tcp.Port, []int{0, 0}, exelet.Address, gateway, env.exedSlogErrC, env.exedGuidLogC)
+	ei, err := startExed(ctrHost, es.port, sshProxy.tcp.Port, []int{0, 0}, exelet.Address, env.exedSlogErrC, env.exedGuidLogC)
 	if err != nil {
 		return env, err
 	}
@@ -1474,7 +1474,7 @@ WaitLoop:
 	return instance, nil
 }
 
-func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts []int, exeletAddr, gateway string, exedSlogErrC, exedGuidLogC chan string) (*exedInstance, error) {
+func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts []int, exeletAddr string, exedSlogErrC, exedGuidLogC chan string) (*exedInstance, error) {
 	start := time.Now()
 	slog.Info("starting exed")
 	// Choose binary: use PREBUILT_EXED if provided, otherwise build a temp binary.
@@ -1531,7 +1531,6 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 		"-fake-email-server="+emailServerURL,
 		"-gh-whoami="+whoamiPath,
 		"-exelet-addresses="+exeletAddr,
-		"-gateway="+gateway,
 	)
 	// Convert extra proxy ports to comma-delimited string
 	extraPortsStr := ""
