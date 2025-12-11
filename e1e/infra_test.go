@@ -335,18 +335,18 @@ type piperdInstance struct {
 }
 
 type exeletInstance struct {
-	Address     string             // e.g., "tcp://192.168.5.15:9080"
-	HTTPAddress string             // e.g., "http://192.168.5.15:9081"
-	Ctx         context.Context    // cancelled when Cmd exits
-	Cmd         *exec.Cmd          // SSH command running exelet
-	CmdCancel   context.CancelFunc // cancel function for exelet context
-	DataDir     string             // temp directory for exelet data (local or remote path)
-	RemoteHost  string             // SSH host if running remotely (e.g., "lima-exe-ctr-tests")
+	Address      string             // e.g., "tcp://192.168.5.15:9080"
+	HTTPAddress  string             // e.g., "http://192.168.5.15:9081"
+	Ctx          context.Context    // cancelled when Cmd exits
+	Cmd          *exec.Cmd          // SSH command running exelet
+	CmdCancel    context.CancelFunc // cancel function for exelet context
+	DataDir      string             // temp directory for exelet data (local or remote path)
+	RemoteHost   string             // SSH host if running remotely (e.g., "lima-exe-ctr-tests")
 	TunnelCmd    *exec.Cmd          // SSH tunnel process if using reverse tunnel
 	TunnelCancel context.CancelFunc // cancel function for tunnel context
-	BridgeName  string             // bridge name for network isolation
-	ZFSDataset  string             // ZFS dataset for storage isolation
-	CoverDir    string             // remote directory for Go coverage artifacts (GOCOVERDIR)
+	BridgeName   string             // bridge name for network isolation
+	ZFSDataset   string             // ZFS dataset for storage isolation
+	CoverDir     string             // remote directory for Go coverage artifacts (GOCOVERDIR)
 }
 
 func (e *testEnv) sshPort() int {
