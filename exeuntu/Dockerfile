@@ -209,6 +209,16 @@ RUN ARCH=$(uname -m) && \
     mv "/usr/local/bin/codex-${CODEX_ARCH}" /usr/local/bin/codex && \
     chmod +x /usr/local/bin/codex
 
+# Create config directories for LLM agents
+RUN mkdir -p /home/exedev/.claude /home/exedev/.codex /home/exedev/.shelley && \
+    chown -R exedev:exedev /home/exedev/.claude /home/exedev/.codex /home/exedev/.shelley
+
+# Copy LLM agent instructions to Claude, Codex, and Shelley config directories
+COPY AGENTS.md /home/exedev/.shelley/AGENTS.md
+RUN cp /home/exedev/.shelley/AGENTS.md /home/exedev/.claude/CLAUDE.md && \
+    cp /home/exedev/.shelley/AGENTS.md /home/exedev/.codex/AGENTS.md && \
+    chown exedev:exedev /home/exedev/.claude/CLAUDE.md /home/exedev/.codex/AGENTS.md /home/exedev/.shelley/AGENTS.md
+
 # Install Claude to the native location (~/.local/bin) so auto-upgrades work correctly.
 # Symlink to /usr/local/bin for system-wide PATH access.
 RUN mkdir -p /home/exedev/.local/bin && \
