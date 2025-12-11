@@ -15,6 +15,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"exe.dev/tslog"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -160,7 +161,7 @@ func TestPoolBasicConnection(t *testing.T) {
 		server := newTestSSHServer(t)
 		defer server.close()
 
-		pool := &Pool{TTL: 10 * time.Minute}
+		pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
 		defer pool.Close()
 
 		config, signer := newTestClientConfig(t)
@@ -182,7 +183,7 @@ func TestPooledConnDisconnectedResetsActive(t *testing.T) {
 		server := newTestSSHServer(t)
 		defer server.close()
 
-		pool := &Pool{TTL: time.Minute}
+		pool := &Pool{TTL: time.Minute, Logger: tslog.Slogger(t)}
 		defer pool.Close()
 
 		config, signer := newTestClientConfig(t)
@@ -224,7 +225,7 @@ func TestPooledConnTimersReleaseOnce(t *testing.T) {
 	server := newTestSSHServer(t)
 	defer server.close()
 
-	pool := &Pool{TTL: 25 * time.Millisecond}
+	pool := &Pool{TTL: 25 * time.Millisecond, Logger: tslog.Slogger(t)}
 	defer pool.Close()
 
 	config, signer := newTestClientConfig(t)
@@ -293,7 +294,7 @@ func TestPooledConnActiveCountsWithParallelUse(t *testing.T) {
 		server := newTestSSHServer(t)
 		defer server.close()
 
-		pool := &Pool{TTL: time.Minute}
+		pool := &Pool{TTL: time.Minute, Logger: tslog.Slogger(t)}
 		defer pool.Close()
 
 		config, signer := newTestClientConfig(t)
@@ -341,7 +342,7 @@ func TestPoolReuseConnection(t *testing.T) {
 		server := newTestSSHServer(t)
 		defer server.close()
 
-		pool := &Pool{TTL: 10 * time.Minute}
+		pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
 		defer pool.Close()
 
 		config, signer := newTestClientConfig(t)
@@ -376,7 +377,7 @@ func TestPoolDifferentKeys(t *testing.T) {
 		server := newTestSSHServer(t)
 		defer server.close()
 
-		pool := &Pool{TTL: 10 * time.Minute}
+		pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
 		defer pool.Close()
 
 		config1, signer1 := newTestClientConfig(t)
@@ -414,7 +415,7 @@ func TestPoolExpiration(t *testing.T) {
 
 	// Use a very short TTL for testing
 	ttl := 100 * time.Millisecond
-	pool := &Pool{TTL: ttl}
+	pool := &Pool{TTL: ttl, Logger: tslog.Slogger(t)}
 	defer pool.Close()
 
 	t.Log("early")
@@ -462,7 +463,7 @@ func TestPoolConcurrentAccess(t *testing.T) {
 		server := newTestSSHServer(t)
 		defer server.close()
 
-		pool := &Pool{TTL: 10 * time.Minute}
+		pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
 		defer pool.Close()
 
 		config, signer := newTestClientConfig(t)
@@ -511,7 +512,7 @@ func TestPoolConcurrentAccess(t *testing.T) {
 }
 
 func TestDialWithRetriesContextCancel(t *testing.T) {
-	pool := &Pool{TTL: time.Minute}
+	pool := &Pool{TTL: time.Minute, Logger: tslog.Slogger(t)}
 
 	config, signer := newTestClientConfig(t)
 	config.Timeout = 10 * time.Millisecond
@@ -522,15 +523,15 @@ func TestDialWithRetriesContextCancel(t *testing.T) {
 	time.AfterFunc(40*time.Millisecond, cancel)
 
 	retries := []time.Duration{200 * time.Millisecond}
-	conn, errs := pool.DialWithRetries(ctx, "tcp", "127.0.0.1:80", "127.0.0.1", config.User, 65000, signer, config, retries)
+	conn, err := pool.DialWithRetries(ctx, "tcp", "127.0.0.1:80", "127.0.0.1", config.User, 65000, signer, config, retries)
 	if conn != nil {
 		t.Fatal("expected nil connection on cancellation")
 	}
-	if len(errs) == 0 {
+	if err == nil {
 		t.Fatal("expected at least one error")
 	}
-	if err := ctx.Err(); !errors.Is(errs[len(errs)-1], err) {
-		t.Fatalf("expected final error %v, got %v", err, errs[len(errs)-1])
+	if err := ctx.Err(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected final error %v, got %v", err, context.Canceled)
 	}
 
 	elapsed := time.Since(start)
@@ -544,7 +545,7 @@ func TestPoolClose(t *testing.T) {
 		server := newTestSSHServer(t)
 		defer server.close()
 
-		pool := &Pool{TTL: 10 * time.Minute}
+		pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
 
 		config, signer := newTestClientConfig(t)
 
@@ -577,7 +578,7 @@ func TestPoolRecoversFromClosedClient(t *testing.T) {
 		server := newTestSSHServer(t)
 		defer server.close()
 
-		pool := &Pool{TTL: time.Minute}
+		pool := &Pool{TTL: time.Minute, Logger: tslog.Slogger(t)}
 		defer pool.Close()
 
 		config, signer := newTestClientConfig(t)
@@ -642,7 +643,7 @@ func TestTrackedConnDoubleClose(t *testing.T) {
 	server := newTestSSHServer(t)
 	defer server.close()
 
-	pool := &Pool{TTL: 20 * time.Millisecond}
+	pool := &Pool{TTL: 20 * time.Millisecond, Logger: tslog.Slogger(t)}
 	defer pool.Close()
 
 	config, signer := newTestClientConfig(t)
@@ -688,7 +689,7 @@ func TestPoolSoak(t *testing.T) {
 	server := newTestSSHServer(t)
 	defer server.close()
 
-	pool := &Pool{TTL: 40 * time.Millisecond}
+	pool := &Pool{TTL: 40 * time.Millisecond, Logger: tslog.Slogger(t)}
 	defer pool.Close()
 
 	config, signer := newTestClientConfig(t)

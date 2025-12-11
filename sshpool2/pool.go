@@ -1,3 +1,4 @@
+// Package sshpool2 provides a pool of SSH connections for dialing through SSH.
 package sshpool2
 
 import (
@@ -41,6 +42,8 @@ type pooledConn struct {
 	// It includes connections that have been closed but whose post-close TTL has not yet expired.
 	active int
 	timer  *time.Timer // timer to close the connection after last active released
+
+	log *slog.Logger
 }
 
 // trackedConn informs pc when the connection is closed.
@@ -111,7 +114,7 @@ func (pc *pooledConn) release() {
 
 	slog.Debug("closing SSH connection after last active connection released", "key", pc.key.String())
 	if err := pc.client.Close(); err != nil {
-		slog.Warn("error closing SSH connection", "key", pc.key.String(), "error", err)
+		pc.log.Warn("error closing SSH connection", "key", pc.key.String(), "error", err)
 	}
 	pc.pool.removeConn(pc)
 }
@@ -125,10 +128,19 @@ type Pool struct {
 	// a connection is closed just after being created but before being used.
 	TTL time.Duration
 
+	Logger *slog.Logger
+
 	sfGroup singleflight.Group[connKey, *pooledConn]
 
 	mu    sync.Mutex // guards following fields
 	conns map[connKey]*pooledConn
+}
+
+func (p *Pool) log() *slog.Logger {
+	if p.Logger != nil {
+		return p.Logger
+	}
+	return slog.Default()
 }
 
 func (p *Pool) ttl() time.Duration {
@@ -178,19 +190,19 @@ func (p *Pool) DialContext(ctx context.Context, network, addr, host, user string
 //   - broken pooled connections
 //
 // This retry loop covers all of these failure modes.
-func (p *Pool) DialWithRetries(ctx context.Context, network, addr, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig, retries []time.Duration) (net.Conn, []error) {
+func (p *Pool) DialWithRetries(ctx context.Context, network, addr, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig, retries []time.Duration) (net.Conn, error) {
 	retries = slices.Clone(retries)
 	retries = append(retries, 0) // final attempt has no sleep after it
 	var errs []error
 	for _, delay := range retries {
 		if err := ctx.Err(); err != nil {
 			errs = append(errs, err)
-			return nil, errs
+			return nil, errors.Join(errs...)
 		}
 
 		conn, err := p.DialContext(ctx, network, addr, host, user, port, signer, config)
 		if err == nil {
-			return conn, errs
+			return conn, errors.Join(errs...)
 		}
 		errs = append(errs, err)
 
@@ -203,7 +215,7 @@ func (p *Pool) DialWithRetries(ctx context.Context, network, addr, host, user st
 	if err := ctx.Err(); err != nil {
 		errs = append(errs, ctx.Err())
 	}
-	return nil, errs
+	return nil, errors.Join(errs...)
 }
 
 // connect establishes an SSH connection.
@@ -214,7 +226,7 @@ func (p *Pool) connect(key connKey, config *ssh.ClientConfig) (*pooledConn, erro
 	connected := pc.connect()
 	if connected {
 		pc.disconnected() // balance the connect() call
-		slog.Debug("reusing pooled SSH connection", "key", key.String())
+		p.log().Debug("reusing pooled SSH connection", "key", key.String())
 		return pc, nil
 	}
 
@@ -226,9 +238,9 @@ func (p *Pool) connect(key connKey, config *ssh.ClientConfig) (*pooledConn, erro
 	if err != nil {
 		return nil, fmt.Errorf("SSH dial failed: %w", err)
 	}
-	slog.Info("established new SSH connection in pool", "key", key.String())
+	p.log().Info("established new SSH connection in pool", "key", key.String())
 
-	pc = &pooledConn{client: client, key: key, pool: p}
+	pc = &pooledConn{client: client, key: key, pool: p, log: p.log()}
 	// Immediately mark as connected and then add a disconnect for balance.
 	// This starts the TTL clock running.
 	// Under normal operation, the connection will be used immediately after this.
@@ -252,11 +264,11 @@ func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, a
 	defer cancel()
 	conn, err := pc.client.DialContext(shortCtx, network, addr)
 	if err != nil {
-		slog.InfoContext(ctx, "dial failed", "err", err, "errtype", reflect.TypeOf(err))
+		p.log().InfoContext(ctx, "dial failed", "err", err, "errtype", reflect.TypeOf(err))
 		// Make a best-effort attempt to determine whether the dial failed because the underlying SSH connection is dead.
 		// If so, remove it from the pool, so that subsequent calls will create a new connection.
 		if isSSHConnError(err) {
-			slog.InfoContext(ctx, "dropping dead ssh connection", "key", pc.key.String(), "err", err)
+			p.log().InfoContext(ctx, "dropping dead ssh connection", "key", pc.key.String(), "err", err)
 			p.removeConn(pc)
 		}
 		pc.disconnected() // balance the connect() call
@@ -325,6 +337,11 @@ func (p *Pool) Close() error {
 
 	var errs []error
 	for _, pc := range p.conns {
+		pc.mu.Lock()
+		if pc.timer != nil {
+			pc.timer.Stop()
+		}
+		pc.mu.Unlock()
 		err := pc.client.Close()
 		errs = append(errs, err)
 	}
