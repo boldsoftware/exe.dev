@@ -35,7 +35,7 @@ X11UseLocalhost no
 
 # Keepalive
 ClientAliveInterval 60
-ClientAliveCountMax 3
+ClientAliveCountMax 60
 
 # Logging
 SyslogFacility AUTH
