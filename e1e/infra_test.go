@@ -1553,6 +1553,18 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 	if os.Getenv("CI") != "" {
 		exedCmd.Env = append(exedCmd.Env, "GITHUB_TOKEN=fake-but-not-empty")
 	}
+	// Ensure LLM gateway API keys are set for e1e tests. If real keys aren't provided,
+	// use fake keys so requests can reach the external APIs (which will reject them
+	// with auth errors, but that still proves the gateway path works end-to-end).
+	if os.Getenv("ANTHROPIC_API_KEY") == "" {
+		exedCmd.Env = append(exedCmd.Env, "ANTHROPIC_API_KEY=fake-key-for-e1e-test")
+	}
+	if os.Getenv("OPENAI_API_KEY") == "" {
+		exedCmd.Env = append(exedCmd.Env, "OPENAI_API_KEY=fake-key-for-e1e-test")
+	}
+	if os.Getenv("FIREWORKS_API_KEY") == "" {
+		exedCmd.Env = append(exedCmd.Env, "FIREWORKS_API_KEY=fake-key-for-e1e-test")
+	}
 	cmdOut, err := exedCmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)

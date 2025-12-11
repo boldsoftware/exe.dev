@@ -241,6 +241,75 @@ func TestVanillaBox(t *testing.T) {
 		// }
 	})
 
+	// Test LLM gateway proxies to external APIs.
+	// These tests confirm that the full communication path works:
+	// VM -> exelet metadata service -> exed LLM gateway -> external API
+	//
+	// These tests do NOT require valid API keys - they send malformed requests
+	// that will be rejected by the external APIs anyway. Getting an error response
+	// FROM the external API (not from our gateway) proves the gateway is working
+	// end-to-end. The e1e test infrastructure sets fake API keys if real ones
+	// aren't provided, so the gateway will forward requests to the external APIs.
+	//
+	// These tests DO require the external APIs (Anthropic, OpenAI, Fireworks) to be up and reachable.
+	t.Run("gateway_anthropic", func(t *testing.T) {
+		noGolden(t) // Response contains variable request_id
+		// Send a minimal request to Anthropic. Without valid messages, Anthropic will return
+		// an error, but the error response will contain a request_id field proving we reached them.
+		out, err := boxSSHCommand(t, boxName, keyFile, "curl", "--max-time", "30", "-s",
+			"http://169.254.169.254/gateway/llm/anthropic/v1/messages",
+			"-H", "content-type: application/json",
+			"-H", "anthropic-version: 2023-06-01",
+			"-d", `{}`).CombinedOutput()
+		response := string(out)
+		// Anthropic error responses include a request_id field like "request_id": "req_..."
+		// We check for request_id first - if present, we reached Anthropic regardless of curl exit code.
+		if !strings.Contains(response, `"request_id"`) {
+			if err != nil {
+				t.Fatalf("curl to anthropic gateway failed: %v\n%s", err, out)
+			}
+			t.Errorf("expected Anthropic error response with request_id, got: %s", response)
+		}
+	})
+
+	t.Run("gateway_openai", func(t *testing.T) {
+		noGolden(t) // Response may vary
+		// Send a minimal request to OpenAI. The error response proves we reached them.
+		// OpenAI returns errors with "error" object containing "type" and "message".
+		out, err := boxSSHCommand(t, boxName, keyFile, "curl", "--max-time", "30", "-s",
+			"http://169.254.169.254/gateway/llm/openai/v1/chat/completions",
+			"-H", "content-type: application/json",
+			"-d", `{}`).CombinedOutput()
+		response := string(out)
+		// OpenAI error responses include an "error" object with "type" field
+		// We check for the error response first - if present, we reached OpenAI regardless of curl exit code.
+		if !strings.Contains(response, `"error"`) || !strings.Contains(response, `"type"`) {
+			if err != nil {
+				t.Fatalf("curl to openai gateway failed: %v\n%s", err, out)
+			}
+			t.Errorf("expected OpenAI error response with error object, got: %s", response)
+		}
+	})
+
+	t.Run("gateway_fireworks", func(t *testing.T) {
+		noGolden(t) // Response may vary
+		// Send a minimal request to Fireworks. The error response proves we reached them.
+		// Fireworks uses OpenAI-compatible API format.
+		out, err := boxSSHCommand(t, boxName, keyFile, "curl", "--max-time", "30", "-s",
+			"http://169.254.169.254/gateway/llm/fireworks/inference/v1/chat/completions",
+			"-H", "content-type: application/json",
+			"-d", `{}`).CombinedOutput()
+		response := string(out)
+		// Fireworks error responses include an "error" object (OpenAI-compatible)
+		// We check for the error response first - if present, we reached Fireworks regardless of curl exit code.
+		if !strings.Contains(response, `"error"`) {
+			if err != nil {
+				t.Fatalf("curl to fireworks gateway failed: %v\n%s", err, out)
+			}
+			t.Errorf("expected Fireworks error response with error object, got: %s", response)
+		}
+	})
+
 	t.Run("shard_routing", func(t *testing.T) {
 		// shard_routing tests that `ssh boxname.exe.cloud` routes to the correct box.
 		// Skip if alley53 isn't running
