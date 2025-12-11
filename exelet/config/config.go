@@ -102,4 +102,6 @@ type ExeletConfig struct {
 	ExedURL string
 	// ResourceMonitorInterval controls how frequently the resource monitor polls VMs
 	ResourceMonitorInterval time.Duration
+	// InstanceDomain is the domain for instance hostnames (e.g., exe.xyz, exe-staging.xyz)
+	InstanceDomain string
 }

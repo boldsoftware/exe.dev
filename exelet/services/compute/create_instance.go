@@ -430,7 +430,7 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		}
 		ip = nIP.String()
 	}
-	if err := os.WriteFile(hostsPath, fmt.Appendf([]byte{}, hostsContents, ip, fmt.Sprintf("%s.%s", req.Name, config.DefaultInstanceDomain), req.Name), 0o644); err != nil {
+	if err := os.WriteFile(hostsPath, fmt.Appendf([]byte{}, hostsContents, ip, fmt.Sprintf("%s.%s", req.Name, s.config.InstanceDomain), req.Name), 0o644); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 

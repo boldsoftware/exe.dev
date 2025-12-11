@@ -136,6 +136,12 @@ func main() {
 			Value:   config.DefaultResourceMonitorInterval,
 			EnvVars: []string{"EXELET_RESOURCE_MONITOR_INTERVAL"},
 		},
+		&cli.StringFlag{
+			Name:    "instance-domain",
+			Usage:   "domain for instance hostnames (e.g., exe.xyz, exe-staging.xyz)",
+			Value:   config.DefaultInstanceDomain,
+			EnvVars: []string{"EXELET_INSTANCE_DOMAIN"},
+		},
 	}
 	app.Action = serveAction
 
@@ -169,6 +175,7 @@ func serveAction(clix *cli.Context) error {
 	proxyPortMax := clix.Int("proxy-port-max")
 	exedURL := clix.String("exed-url")
 	resourceMonitorInterval := clix.Duration("resource-monitor-interval")
+	instanceDomain := clix.String("instance-domain")
 
 	cfg := &config.ExeletConfig{
 		Name:                        name,
@@ -184,6 +191,7 @@ func serveAction(clix *cli.Context) error {
 		ProxyPortMax:                proxyPortMax,
 		ExedURL:                     exedURL,
 		ResourceMonitorInterval:     resourceMonitorInterval,
+		InstanceDomain:              instanceDomain,
 	}
 
 	opts := []exelet.ServerOpt{
