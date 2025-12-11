@@ -42,9 +42,18 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: shelley/go.mod
-          cache-dependency-path: |
-            shelley/go.sum
-          cache: true
+          cache: false
+
+      - name: Cache Go modules and build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-shelley-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('shelley/go.mod') }}-${{ hashFiles('shelley/go.sum') }}
+          restore-keys: |
+            go-shelley-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('shelley/go.mod') }}-
+            go-shelley-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Set up Node.js
         uses: actions/setup-node@v4

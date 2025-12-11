@@ -15,3 +15,9 @@ jobs:
     uses: ./.github/workflows/_tests.yml
     with:
       ref: main
+
+  shelley:
+    uses: ./.github/workflows/shelley-tests.yml
+    with:
+      ref: main
+      run_playwright: false
