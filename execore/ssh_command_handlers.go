@@ -66,7 +66,7 @@ func newCommandFlags() *flag.FlagSet {
 	fs.String("prompt", "", "initial prompt to send to Shelley after box creation (requires exeuntu image)")
 	fs.Bool("json", false, "output in JSON format")
 	fs.Bool("no-email", false, "do not send email notification")
-	// Hidden flag for testing
+	fs.String("prompt-model", shelleyDefaultModel, "[hidden] override the prompt model") // for testing
 	fs.String("prompt-model", shelleyDefaultModel, "")
 	// Environment variables (can be specified multiple times)
 	var envVars repeatedStringFlag

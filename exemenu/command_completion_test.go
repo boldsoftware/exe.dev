@@ -1,6 +1,7 @@
 package exemenu
 
 import (
+	"flag"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -196,6 +197,66 @@ func TestCompleteCommand(t *testing.T) {
 			line:     "help c",
 			cursor:   6,
 			expected: []string{"commands"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := commands.CompleteCommand(tt.line, tt.cursor, cc)
+			assert.ElementsMatch(t, tt.expected, result)
+		})
+	}
+}
+
+func TestCompleteFlagHidesHiddenFlags(t *testing.T) {
+	// Create a command with both visible and hidden flags
+	commands := &CommandTree{
+		Commands: []*Command{
+			{
+				Name: "test",
+				FlagSetFunc: func() *flag.FlagSet {
+					fs := flag.NewFlagSet("test", flag.ContinueOnError)
+					fs.String("visible", "", "this flag is visible")
+					fs.String("hidden", "", "[hidden] this flag is hidden")
+					fs.Bool("another-visible", false, "also visible")
+					fs.Bool("another-hidden", false, "[hidden] also hidden")
+					return fs
+				},
+			},
+		},
+	}
+
+	cc := &CommandContext{}
+
+	tests := []struct {
+		name     string
+		line     string
+		cursor   int
+		expected []string
+	}{
+		{
+			name:     "complete all flags starting with --",
+			line:     "test --",
+			cursor:   7,
+			expected: []string{"--visible", "--another-visible"},
+		},
+		{
+			name:     "complete flags starting with --v",
+			line:     "test --v",
+			cursor:   8,
+			expected: []string{"--visible"},
+		},
+		{
+			name:     "hidden flags should not appear",
+			line:     "test --h",
+			cursor:   8,
+			expected: []string{}, // --hidden should not appear
+		},
+		{
+			name:     "complete flags starting with --a",
+			line:     "test --a",
+			cursor:   8,
+			expected: []string{"--another-visible"},
 		},
 	}
 

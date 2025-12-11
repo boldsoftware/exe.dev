@@ -87,7 +87,7 @@ suborder: %d
 		fs := cmd.FlagSetFunc()
 		var flags []string
 		fs.VisitAll(func(f *flag.Flag) {
-			if f.Usage == "" {
+			if f.Usage == "" || strings.HasPrefix(f.Usage, "[hidden] ") {
 				return // Skip hidden flags
 			}
 			flags = append(flags, fmt.Sprintf("- `--%s`: %s", f.Name, f.Usage))
@@ -142,7 +142,7 @@ func writeSubcommandDoc(buf *bytes.Buffer, parentName string, sub *exemenu.Comma
 		fs := sub.FlagSetFunc()
 		var flags []string
 		fs.VisitAll(func(f *flag.Flag) {
-			if f.Usage == "" {
+			if f.Usage == "" || strings.HasPrefix(f.Usage, "[hidden] ") {
 				return
 			}
 			flags = append(flags, fmt.Sprintf("- `--%s`: %s", f.Name, f.Usage))

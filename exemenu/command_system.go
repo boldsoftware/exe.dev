@@ -79,8 +79,8 @@ func (c *Command) Help(cc *CommandContext) error {
 		if hasFlags {
 			tabw := tabwriter.NewWriter(cc.Output, 0, 0, 1, ' ', 0)
 			fs.VisitAll(func(f *flag.Flag) {
-				// Skip flags with empty usage (hidden flags)
-				if f.Usage == "" {
+				// Skip hidden flags
+				if f.Usage == "" || strings.HasPrefix(f.Usage, "[hidden] ") {
 					return
 				}
 				fmt.Fprintf(tabw, "  \033[1m--%s\033[0m\t%s\r\n", f.Name, f.Usage)
@@ -674,6 +674,10 @@ func (ct *CommandTree) completeFlag(cmd *Command, compCtx *CompletionContext, cc
 	flagSet := cmd.FlagSetFunc()
 
 	flagSet.VisitAll(func(f *flag.Flag) {
+		// Skip hidden flags
+		if f.Usage == "" || strings.HasPrefix(f.Usage, "[hidden] ") {
+			return
+		}
 		longFlag := "--" + f.Name
 		if strings.HasPrefix(longFlag, prefix) {
 			completions = append(completions, longFlag)
