@@ -2,6 +2,17 @@ package boxname
 
 import "testing"
 
+func TestBoxWordsHaveNoDuplicates(t *testing.T) {
+	t.Parallel()
+	wordSet := make(map[string]bool)
+	for _, word := range words {
+		if wordSet[word] {
+			t.Errorf("duplicate word found in boxname words: %q", word)
+		}
+		wordSet[word] = true
+	}
+}
+
 func TestGeneratedBoxNamesAreValid(t *testing.T) {
 	t.Parallel()
 	for range 10 {
