@@ -269,7 +269,7 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 	// Check if user is already authenticated
 	if _, err := s.validateAuthCookie(r); err == nil {
 		// User is authenticated, redirect to unified dashboard
-		http.Redirect(w, r, "/~", http.StatusSeeOther)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 
@@ -378,7 +378,7 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 	if userID, err := s.validateAuthCookie(r); err == nil {
 		// Start box creation in background
 		s.startBoxCreation(r.Context(), hostname, prompt, userID)
-		http.Redirect(w, r, "/~?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
+		http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
 		return
 	}
 
@@ -538,7 +538,7 @@ func (s *Server) handleMobileVerifyTokenEmailLink(w http.ResponseWriter, r *http
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			http.Redirect(w, r, "/~", http.StatusSeeOther)
+			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
 		s.slog().ErrorContext(r.Context(), "Failed to query pending mobile VM by token", "error", err)
@@ -548,10 +548,10 @@ func (s *Server) handleMobileVerifyTokenEmailLink(w http.ResponseWriter, r *http
 	if hostname != "" {
 		// Start box creation in background
 		s.startBoxCreation(r.Context(), hostname, prompt, userID)
-		http.Redirect(w, r, "/~?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
+		http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/~", http.StatusSeeOther)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // handleMobileVerifyTokenManualEntry handles token verification via manual entry form
@@ -595,7 +595,7 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			http.Redirect(w, r, "/~", http.StatusSeeOther)
+			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
 		s.slog().ErrorContext(r.Context(), "Failed to query pending mobile VM by user_id", "error", err)
@@ -605,10 +605,10 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 	if hostname != "" {
 		// Start box creation in background
 		s.startBoxCreation(r.Context(), hostname, prompt, userID)
-		http.Redirect(w, r, "/~?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
+		http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/~", http.StatusSeeOther)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // handleMobileVMList redirects to the unified dashboard
@@ -621,7 +621,7 @@ func (s *Server) handleMobileVMList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Redirect to unified dashboard
-	http.Redirect(w, r, "/~", http.StatusSeeOther)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // Helper functions for mobile

@@ -4,11 +4,7 @@
 <header>
   <div class="nav-container">
     <div class="nav-left">
-      {{if .IsLoggedIn}}
-      <a href="/~" class="nav-logo">
-      {{else}}
       <a href="/" class="nav-logo">
-      {{end}}
         <img src="/static/exy.png" alt="{{.WebHost}} logo" />
         {{.WebHost}}
       </a>
@@ -40,7 +36,7 @@
         <span class="btn-text">Boxes</span>
       </span>
       {{else}}
-      <a href="/~" class="btn">
+      <a href="/" class="btn">
         <svg
           viewBox="0 0 24 24"
           fill="none"

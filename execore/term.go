@@ -156,7 +156,7 @@ func (s *Server) withTerminalAuth(next http.HandlerFunc) http.HandlerFunc {
 		if err != nil {
 			// User doesn't have access to this box (or it doesn't exist)
 			// Show access denied page
-			dashboardURL := fmt.Sprintf("%s/~", s.webBaseURL(r))
+			dashboardURL := s.webBaseURL(r)
 			data := struct {
 				BoxName      string
 				DashboardURL string

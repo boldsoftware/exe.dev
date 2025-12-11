@@ -270,7 +270,7 @@ func TestScreenFlow(t *testing.T) {
 			DashboardURL string
 		}{
 			BoxName:      "testbox",
-			DashboardURL: "/~",
+			DashboardURL: "/",
 		}
 		server.renderTemplate(rec, "terminal-access-denied.html", data)
 

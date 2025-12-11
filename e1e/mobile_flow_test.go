@@ -148,7 +148,7 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	}
 
 	// 6) Dashboard page should show the box
-	dashURL := base + "/~"
+	dashURL := base + "/"
 	dashResp, err := client2.Get(dashURL)
 	if err != nil {
 		t.Fatalf("GET dashboard: %v", err)

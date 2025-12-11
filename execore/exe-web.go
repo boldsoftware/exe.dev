@@ -481,17 +481,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		return
-	case "/~", "/~/":
-		// User dashboard - require authentication
-		userID, err := s.validateAuthCookie(r)
-		if err != nil {
-			// Not authenticated, redirect to auth
-			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
-			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
-			return
-		}
-		s.handleUserDashboard(w, r, userID)
-		return
 	case "/user":
 		// User profile page - require authentication
 		userID, err := s.validateAuthCookie(r)

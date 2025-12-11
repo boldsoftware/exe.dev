@@ -30,7 +30,7 @@ Host exe.dev
 
 # Q: How do I connect VSCode to my box?
 
-On your dashboard, at [https://exe.dev/~](https://exe.dev/~), there are links
+On your dashboard, at [https://exe.dev/](https://exe.dev/), there are links
 to open in VSCode. This leverages VSCode's SSH remote features.
 The link is of the form:
 
