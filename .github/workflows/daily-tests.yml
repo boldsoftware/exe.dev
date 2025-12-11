@@ -1,0 +1,17 @@
+name: Daily Tests
+
+# Run test-non-e1e daily against main to populate the Go module and build cache.
+# GitHub Actions caches are branch-scoped, but branches can read caches from
+# parent branches like main. Running this daily ensures PRs and other branches
+# get cache hits from a warm main branch cache.
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # 9am UTC daily
+  workflow_dispatch:
+
+jobs:
+  test:
+    uses: ./.github/workflows/_tests.yml
+    with:
+      ref: main
