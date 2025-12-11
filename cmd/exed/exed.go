@@ -184,7 +184,20 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
-	server, err := execore.NewServer(slog.Default(), *httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *fakeHTTPEmail, *piperdPort, *ghWhoAmIPath, exeletAddrs, env, metricsRegistry)
+	server, err := execore.NewServer(execore.ServerConfig{
+		Logger:          slog.Default(),
+		HTTPAddr:        *httpAddr,
+		HTTPSAddr:       *httpsAddr,
+		SSHAddr:         *sshAddr,
+		PluginAddr:      *pluginAddr,
+		DBPath:          *dbPath,
+		FakeEmailServer: *fakeHTTPEmail,
+		PiperdPort:      *piperdPort,
+		GHWhoAmIPath:    *ghWhoAmIPath,
+		ExeletAddresses: exeletAddrs,
+		Env:             env,
+		MetricsRegistry: metricsRegistry,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}

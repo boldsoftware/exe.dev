@@ -26,7 +26,20 @@ func newUnstartedServer(t testing.TB) *Server {
 	dbPath := filepath.Join(t.TempDir(), "test.sqlite3")
 	env := stage.Test()
 	registry := prometheus.NewRegistry()
-	s, err := NewServer(tslog.Slogger(t), ":0", ":0", ":0", ":0", dbPath, "", 2222, "", nil, env, registry)
+	s, err := NewServer(ServerConfig{
+		Logger:          tslog.Slogger(t),
+		HTTPAddr:        ":0",
+		HTTPSAddr:       ":0",
+		SSHAddr:         ":0",
+		PluginAddr:      ":0",
+		DBPath:          dbPath,
+		FakeEmailServer: "",
+		PiperdPort:      2222,
+		GHWhoAmIPath:    "",
+		ExeletAddresses: nil,
+		Env:             env,
+		MetricsRegistry: registry,
+	})
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}

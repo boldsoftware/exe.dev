@@ -396,20 +396,39 @@ func runMigrations(slog *slog.Logger, dbPath string) error {
 	return nil
 }
 
+// ServerConfig contains all configuration for creating a new Server.
+//
+//exe:completeinit
+type ServerConfig struct {
+	Logger          *slog.Logger
+	HTTPAddr        string
+	HTTPSAddr       string
+	SSHAddr         string
+	PluginAddr      string
+	DBPath          string
+	FakeEmailServer string
+	PiperdPort      int
+	GHWhoAmIPath    string
+	ExeletAddresses []string
+	Env             stage.Env
+	MetricsRegistry *prometheus.Registry
+}
+
 // NewServer creates a new Server instance with database and container management.
-func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, exeletAddresses []string, env stage.Env, metricsRegistry *prometheus.Registry) (*Server, error) {
+func NewServer(cfg ServerConfig) (*Server, error) {
+	slog := cfg.Logger
 	// Run db migrations with a raw connection (not a pool).
-	if err := runMigrations(slog, dbPath); err != nil {
+	if err := runMigrations(slog, cfg.DBPath); err != nil {
 		return nil, fmt.Errorf("failed to run database migrations: %w", err)
 	}
 
 	const nReaders = 16
-	db, err := sqlite.New(dbPath, nReaders)
+	db, err := sqlite.New(cfg.DBPath, nReaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sqlite connection pool: %w", err)
 	}
 
-	slog.Debug("opened database connection pool", "dbPath", dbPath, "nReaders", nReaders)
+	slog.Debug("opened database connection pool", "dbPath", cfg.DBPath, "nReaders", nReaders)
 
 	// Initialize data subdirectory for container isolation
 	dataSubdir, err := exedb.InitDataSubdir(slog, db)
@@ -428,53 +447,53 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	}
 
 	// Initialize GitHub User lookup client
-	ghu, err := ghuser.New(os.Getenv("GITHUB_TOKEN"), ghWhoAmIPath)
+	ghu, err := ghuser.New(os.Getenv("GITHUB_TOKEN"), cfg.GHWhoAmIPath)
 	if err != nil {
 		slog.Warn("failed to create GitHub user key lookup client", "error", err)
 	}
 
 	var baseURL string
-	httpLn := unusedListener(httpAddr)
-	if httpAddr != "" {
+	httpLn := unusedListener(cfg.HTTPAddr)
+	if cfg.HTTPAddr != "" {
 		// HTTP is configured, use http://localhost with the HTTP port
-		httpLn, err = startListener(slog, "http", httpAddr)
+		httpLn, err = startListener(slog, "http", cfg.HTTPAddr)
 		if err != nil {
 			db.Close()
-			return nil, fmt.Errorf("failed to listen on HTTP address %q: %w", httpAddr, err)
+			return nil, fmt.Errorf("failed to listen on HTTP address %q: %w", cfg.HTTPAddr, err)
 		}
-		baseURL = fmt.Sprintf("http://%s:%d", env.WebHost, httpLn.tcp.Port)
+		baseURL = fmt.Sprintf("http://%s:%d", cfg.Env.WebHost, httpLn.tcp.Port)
 		slog.Info("http server listening", "addr", httpLn.tcp.String(), "port", httpLn.tcp.Port)
 	}
 
-	httpsLn := unusedListener(httpsAddr)
-	if httpsAddr != "" {
-		httpsLn, err = startListener(slog, "https", httpsAddr)
+	httpsLn := unusedListener(cfg.HTTPSAddr)
+	if cfg.HTTPSAddr != "" {
+		httpsLn, err = startListener(slog, "https", cfg.HTTPSAddr)
 		if err != nil {
 			db.Close()
-			return nil, fmt.Errorf("failed to listen on HTTPS address %q: %w", httpsAddr, err)
+			return nil, fmt.Errorf("failed to listen on HTTPS address %q: %w", cfg.HTTPSAddr, err)
 		}
-		baseURL = fmt.Sprintf("https://%s", env.WebHost)
+		baseURL = fmt.Sprintf("https://%s", cfg.Env.WebHost)
 		if httpsLn.tcp.Port != 443 {
 			baseURL += fmt.Sprintf(":%d", httpsLn.tcp.Port)
 		}
 	}
 
-	sshLn, err := startListener(slog, "ssh", sshAddr)
+	sshLn, err := startListener(slog, "ssh", cfg.SSHAddr)
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to listen on SSH address %q: %w", sshAddr, err)
+		return nil, fmt.Errorf("failed to listen on SSH address %q: %w", cfg.SSHAddr, err)
 	}
 
-	pluginLn, err := startListener(slog, "plugin", pluginAddr)
+	pluginLn, err := startListener(slog, "plugin", cfg.PluginAddr)
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to listen on piper plugin address %q: %w", pluginAddr, err)
+		return nil, fmt.Errorf("failed to listen on piper plugin address %q: %w", cfg.PluginAddr, err)
 	}
 
 	// Initialize metrics
-	sshMetrics := NewSSHMetrics(metricsRegistry)
-	sqlite.RegisterSQLiteMetrics(metricsRegistry)
-	llmgateway.RegisterMetrics(metricsRegistry)
+	sshMetrics := NewSSHMetrics(cfg.MetricsRegistry)
+	sqlite.RegisterSQLiteMetrics(cfg.MetricsRegistry)
+	llmgateway.RegisterMetrics(cfg.MetricsRegistry)
 
 	// Initialize tag resolver for image tag resolution
 	tagResolverInstance := tagresolver.New(db)
@@ -482,14 +501,14 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	// Initialize exelet clients
 	exeletClients := make(map[string]*exeletClient)
 	var validExeletAddrs []string
-	for _, addr := range exeletAddresses {
+	for _, addr := range cfg.ExeletAddresses {
 		if addr == "" {
 			continue
 		}
 		client, err := exeletclient.NewClient(addr,
 			exeletclient.WithInsecure(),
 			exeletclient.WithLogger(slog),
-			exeletclient.WithMetrics(metricsRegistry))
+			exeletclient.WithMetrics(cfg.MetricsRegistry))
 		if err != nil {
 			slog.Warn("failed to create exelet client, skipping host", "addr", addr, "error", err)
 			continue
@@ -513,7 +532,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	}
 	slog.Info("exelet clients initialized", "count", len(validExeletAddrs))
 
-	includeUnpublishedDocs := env.ShowHiddenDocs
+	includeUnpublishedDocs := cfg.Env.ShowHiddenDocs
 	docsStore, err := docspkg.Load(includeUnpublishedDocs)
 	if err != nil {
 		db.Close()
@@ -529,12 +548,12 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	}
 
 	s := &Server{
-		env:                env,
+		env:                cfg.Env,
 		httpLn:             httpLn,
 		httpsLn:            httpsLn,
 		sshLn:              sshLn,
 		pluginLn:           pluginLn,
-		piperdPort:         piperdPort,
+		piperdPort:         cfg.PiperdPort,
 		db:                 db,
 		tagResolver:        tagResolverInstance,
 		exeletClients:      exeletClients,
@@ -545,10 +564,10 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		creationStreams:    make(map[creationStreamKey]*CreationStream),
 		githubUser:         ghu,
 		postmarkClient:     postmarkClient,
-		fakeHTTPEmail:      fakeEmailServer,
+		fakeHTTPEmail:      cfg.FakeEmailServer,
 		PublicIPs:          map[netip.Addr]publicips.PublicIP{},
 
-		metricsRegistry: metricsRegistry,
+		metricsRegistry: cfg.MetricsRegistry,
 		sshMetrics:      sshMetrics,
 		dataSubdir:      dataSubdir,
 
@@ -558,7 +577,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	}
 
 	// Initialize DNS providers (both ACME and box shard DNS)
-	if env.UseRoute53 {
+	if cfg.Env.UseRoute53 {
 		// Prod/staging
 		s.route53Provider = route53.NewDNSProvider()
 		s.bsdns = s.route53Provider
