@@ -117,14 +117,24 @@ func collectCodebaseInfo(wd string, gitInfo *GitInfo) (*CodebaseInfo, error) {
 		GuidanceFiles:      []string{},
 	}
 
+	// Track seen files to avoid duplicates on case-insensitive file systems
+	seenFiles := make(map[string]bool)
+
+	// Check for user-level agent instructions in ~/.shelley/AGENTS.md
+	if home, err := os.UserHomeDir(); err == nil {
+		shelleyAgentsFile := filepath.Join(home, ".shelley", "AGENTS.md")
+		if content, err := os.ReadFile(shelleyAgentsFile); err == nil && len(content) > 0 {
+			info.InjectFiles = append(info.InjectFiles, shelleyAgentsFile)
+			info.InjectFileContents[shelleyAgentsFile] = string(content)
+			seenFiles[strings.ToLower(shelleyAgentsFile)] = true
+		}
+	}
+
 	// Determine the root directory to search
 	searchRoot := wd
 	if gitInfo != nil {
 		searchRoot = gitInfo.Root
 	}
-
-	// Track seen files to avoid duplicates on case-insensitive file systems
-	seenFiles := make(map[string]bool)
 
 	// Find root-level guidance files (case-insensitive)
 	rootGuidanceFiles := findGuidanceFilesInDir(searchRoot)
