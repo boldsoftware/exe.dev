@@ -191,7 +191,7 @@ export CODEX_API_KEY=%s
 export PATH="/home/exedev/.local/bin:$PATH"
 TMP=$(mktemp)
 trap 'rm -f "$TMP"' EXIT
-codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox --output-last-message "$TMP" <<'EOF'
+codex exec --model gpt-5.1-codex-max --config model_reasoning_effort=xhigh --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox --output-last-message "$TMP" <<'EOF'
 %s
 EOF
 cat "$TMP"
@@ -204,7 +204,7 @@ cat "$TMP"
 		return fmt.Sprintf(`set -euo pipefail
 export ANTHROPIC_API_KEY=%s
 export PATH="/home/exedev/.local/bin:$PATH"
-claude --print --dangerously-skip-permissions <<'EOF'
+claude --model opus --print --dangerously-skip-permissions <<'EOF'
 %s
 EOF
 `, anthropicKey, prompt), nil
