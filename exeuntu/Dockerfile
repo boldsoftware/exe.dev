@@ -40,6 +40,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 		fonts-noto-color-emoji fonts-symbola \
 		docker.io docker-buildx docker-compose-v2 \
 		imagemagick ffmpeg \
+		gh \
 		&& apt-get remove -y pollinate ubuntu-fan && \
 	# Allow non-root users to use ping without sudo by granting CAP_NET_RAW
 	setcap cap_net_raw=+ep /usr/bin/ping && \
