@@ -258,6 +258,16 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 		h.renderAllDocs(w, r)
 		return true
 	}
+
+	// Handle /docs/{slug}.md -> serve raw markdown
+	if strings.HasSuffix(path, ".md") {
+		basePath := strings.TrimSuffix(path, ".md")
+		if entry, ok := h.store.Entry(basePath); ok {
+			h.renderDocMarkdown(w, r, entry)
+			return true
+		}
+	}
+
 	if strings.HasSuffix(path, "/") && path != "/docs/" {
 		trimmed := strings.TrimSuffix(path, "/")
 		http.Redirect(w, r, trimmed, http.StatusMovedPermanently)
@@ -308,6 +318,11 @@ func (h *Handler) renderDocsList(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
+}
+
+func (h *Handler) renderDocMarkdown(w http.ResponseWriter, r *http.Request, entry *Entry) {
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	_, _ = w.Write([]byte(entry.Markdown))
 }
 
 func groupDocsByHeading(entries []*Entry) []Group {
