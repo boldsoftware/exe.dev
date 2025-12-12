@@ -53,9 +53,8 @@
   <script>
     document.addEventListener('DOMContentLoaded', async function() {
       if (passkey.isSupported()) {
-        // Start conditional mediation (autofill) if supported
-        document.getElementById('passkey-section').style.display = 'block';
         if (await passkey.isConditionalUISupported()) {
+          // Browser has native passkey autofill UI, use that instead of showing our button
           passkey.startConditionalAuth().catch(function(err) {
             // NotAllowedError happens if user dismisses the autofill or clicks the button instead
             if (err.name !== 'NotAllowedError') {
@@ -65,6 +64,9 @@
               errorEl.style.display = 'block';
             }
           });
+        } else {
+          // No conditional UI, show the manual passkey button
+          document.getElementById('passkey-section').style.display = 'block';
         }
       }
     });
