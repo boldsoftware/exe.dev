@@ -79,3 +79,49 @@ func TestBytesBeforeAndAfterStop(t *testing.T) {
 		}
 	})
 }
+
+func TestFirstByteAfterStopNotDiscarded(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		pr, pw := io.Pipe()
+		_, r, stop := WithReader(context.Background(), pr)
+
+		// Write "ls\n" and read it back.
+		go pw.Write([]byte("ls\n"))
+		buf := make([]byte, 3)
+		if _, err := io.ReadFull(r, buf); err != nil || string(buf) != "ls\n" {
+			t.Fatalf("expected %q, got %q, err=%v", "ls\n", buf, err)
+		}
+
+		// Write "exit\n" and read it back.
+		go pw.Write([]byte("exit\n"))
+		buf = make([]byte, 5)
+		if _, err := io.ReadFull(r, buf); err != nil || string(buf) != "exit\n" {
+			t.Fatalf("expected %q, got %q, err=%v", "exit\n", buf, err)
+		}
+
+		// Stop while goroutine is blocked waiting for more input.
+		synctest.Wait()
+		stop()
+
+		// Write "hi" after stop. Goroutine reads 'h', writes to internal
+		// pipe, exits. 'i' remains in underlying reader.
+		go pw.Write([]byte("hi"))
+
+		// Wait for goroutine to exit (it will write 'h' to internal pipe
+		// and close it).
+		synctest.Wait()
+
+		// Now try to read. The internal pipe has 'h' and is closed.
+		// After reading 'h', MultiReader should switch to underlying
+		// reader and get 'i'.
+		buf = make([]byte, 2)
+		n, err := io.ReadFull(r, buf)
+		if err != nil {
+			t.Fatalf("ReadFull error: %v", err)
+		}
+		if n != 2 || string(buf) != "hi" {
+			t.Fatalf("expected %q, got %q (n=%d)", "hi", buf[:n], n)
+		}
+	})
+}
+

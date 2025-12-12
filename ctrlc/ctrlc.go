@@ -18,6 +18,11 @@ var ErrCanceled = errors.New("user canceled")
 // The returned reader should be used for all subsequent reads. When stop is
 // called, any byte read by the internal goroutine is preserved in the returned
 // reader before it resumes reading directly from r.
+//
+// Known issue: the first byte after stop is consistently lost in practice
+// (e.g. after exiting a shell session started through the REPL, the first
+// keystroke is swallowed). Unit tests with synctest have not reproduced this,
+// so the bug may be elsewhere, but this is a likely suspect.
 func WithReader(parent context.Context, r io.Reader) (context.Context, io.Reader, func()) {
 	ctx, cancel := context.WithCancelCause(parent)
 	var stopped atomic.Bool

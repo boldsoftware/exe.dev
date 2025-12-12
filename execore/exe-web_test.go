@@ -17,6 +17,7 @@ import (
 	"exe.dev/publicips"
 	"exe.dev/sqlite"
 	"exe.dev/stage"
+	"exe.dev/tslog"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -26,6 +27,7 @@ func TestHostPolicyAcceptsApexARecord(t *testing.T) {
 	s := &Server{
 		env:       stage.Prod(),
 		PublicIPs: map[netip.Addr]publicips.PublicIP{},
+		log:       tslog.Slogger(t),
 	}
 	ctx := context.Background()
 
@@ -76,7 +78,7 @@ func TestHostPolicyAcceptsApexARecord(t *testing.T) {
 func TestResolveCustomDomainRejectsIPAddress(t *testing.T) {
 	t.Parallel()
 
-	s := &Server{env: stage.Prod()}
+	s := &Server{env: stage.Prod(), log: tslog.Slogger(t)}
 
 	// IP addresses should be rejected without any DNS lookups
 	for _, ip := range []string{"35.95.182.1", "192.168.1.1", "::1", "2001:db8::1"} {
@@ -98,6 +100,7 @@ func TestResolveBoxNameApexDomain(t *testing.T) {
 				Domain: "knownhosts.exe.xyz",
 			},
 		},
+		log: tslog.Slogger(t),
 	}
 
 	s.lookupCNAMEFunc = func(_ context.Context, host string) (string, error) {

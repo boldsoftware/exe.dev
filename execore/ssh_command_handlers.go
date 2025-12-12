@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"runtime"
 	"slices"
@@ -152,6 +153,14 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			HasPositionalArgs: true,
 		},
 		ss.shelleyCommand(),
+		{
+			Name:              "ssh",
+			Description:       "SSH into a box",
+			Usage:             "ssh <box-name> [command...]",
+			Handler:           ss.handleSSHCommand,
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeBoxNames,
+		},
 		{
 			Name:        "browser",
 			Description: "Generate a magic link to log in to the website",
@@ -1206,4 +1215,128 @@ func mapExeletStatusToContainerProgress(status *api.CreateInstanceStatus) contai
 	return container.CreateProgressInfo{
 		Phase: phase,
 	}
+}
+
+// handleSSHCommand implements the ssh command - SSH into a box from the REPL
+func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	if len(cc.Args) < 1 {
+		return cc.Errorf("usage: ssh <box-name> [command...]")
+	}
+
+	name := cc.Args[0]
+	cmdArgs := cc.Args[1:]
+
+	// Trim the @host if present and validate it
+	if _, found := strings.CutPrefix(name, "@"); found {
+		// If they typed just @host with no boxname
+		return cc.Errorf("usage: ssh <box-name> [command...]")
+	} else if boxName, host, found := strings.Cut(name, "@"); found {
+		// Format: boxname@host
+		if host != ss.server.env.BoxHost {
+			return cc.Errorf("unknown host %q; expected %s", host, ss.server.env.BoxHost)
+		}
+		name = boxName
+	}
+
+	// Look up the box
+	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
+			Name:            name,
+			CreatedByUserID: cc.User.ID,
+		})
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return cc.Errorf("box %q not found", name)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to look up box: %w", err)
+	}
+
+	// Validate box has SSH credentials
+	if box.SSHPort == nil || box.SSHUser == nil || len(box.SSHClientPrivateKey) == 0 {
+		return cc.Errorf("box %q does not have SSH configured", name)
+	}
+
+	// Create SSH signer from the client private key
+	sshSigner, err := ssh.ParsePrivateKey(box.SSHClientPrivateKey)
+	if err != nil {
+		return fmt.Errorf("failed to parse SSH key: %w", err)
+	}
+
+	sshHost := box.SSHHost()
+	sshAddr := fmt.Sprintf("%s:%d", sshHost, *box.SSHPort)
+	slog.InfoContext(ctx, "ssh command connecting to box", "addr", sshAddr, "user", *box.SSHUser, "ctrhost", box.Ctrhost)
+
+	sshConfig := &ssh.ClientConfig{
+		User: *box.SSHUser,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(sshSigner),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+
+	// Connect to the box with context support using net.Dialer
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", sshAddr)
+	if err != nil {
+		return cc.Errorf("failed to connect to box: %v", err)
+	}
+
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, sshAddr, sshConfig)
+	if err != nil {
+		conn.Close()
+		return cc.Errorf("SSH handshake failed: %v", err)
+	}
+	client := ssh.NewClient(sshConn, chans, reqs)
+	defer client.Close()
+
+	session, err := client.NewSession()
+	if err != nil {
+		return cc.Errorf("failed to create session: %v", err)
+	}
+	defer session.Close()
+
+	// Wire up stdout/stderr for all modes
+	session.Stdout = cc.SSHSession
+	session.Stderr = cc.SSHSession
+
+	if len(cmdArgs) > 0 {
+		// Exec mode - run command (no stdin needed)
+		cmd := strings.Join(cmdArgs, " ")
+		err := session.Run(cmd)
+		cc.SSHSession.Write([]byte("\r")) // return cursor to column 0
+		if err != nil {
+			var exitErr *ssh.ExitError
+			if errors.As(err, &exitErr) {
+				// Return nil since we already wrote output; exit code is informational
+				return nil
+			}
+			return cc.Errorf("command failed: %v", err)
+		}
+	} else {
+		// Interactive mode - wire up stdin for the shell
+		session.Stdin = cc.SSHSession
+
+		// Get PTY info from the client session and set it up first
+		// TODO(bmizerany): window change requests (glider mucks things up and makes ssh hard)
+		pty, _, _ := cc.SSHSession.Pty()
+		if err := session.RequestPty(
+			// TODO(bmizerany): get actual terminal type from client (or env)? good enough for now
+			"xterm-256color",
+
+			pty.Window.Height,
+			pty.Window.Width,
+			nil,
+		); err != nil {
+			return cc.Errorf("failed to request PTY: %v", err)
+		}
+
+		// Interactive mode - start shell
+		if err := session.Shell(); err != nil {
+			return cc.Errorf("failed to start shell: %v", err)
+		}
+		session.Wait()
+	}
+	return nil
 }

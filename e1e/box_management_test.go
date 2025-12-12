@@ -102,6 +102,23 @@ func TestVanillaBox(t *testing.T) {
 		}
 	})
 
+	t.Run("ssh_command", func(t *testing.T) {
+		noGolden(t)
+		// Test the ssh command in the REPL
+		pty := sshToExeDev(t, keyFile)
+		defer pty.disconnect()
+
+		// Run whoami via the ssh command
+		pty.sendLine("ssh " + boxName + " whoami")
+		pty.want("exedev")
+		pty.wantPrompt()
+
+		// Run echo via the ssh command
+		pty.sendLine("ssh " + boxName + " echo hello world")
+		pty.want("hello world")
+		pty.wantPrompt()
+	})
+
 	t.Run("docker", func(t *testing.T) {
 		// Wait for docker to be available. Docker uses socket activation and starts on first use,
 		// but we need to give systemd a bit more time after SSH is ready.
