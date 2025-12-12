@@ -280,3 +280,82 @@ func buildExpectedKnownHostsLine(s *Server, ca ssh.Signer) string {
 	}
 	return "@cert-authority " + target + " " + caKey
 }
+
+// TestBoxHostApexRedirectsToWebHost tests that requests to the BoxHost apex (exe.xyz)
+// are redirected to WebHost (exe.dev) to avoid passkey RPID mismatch errors.
+func TestBoxHostApexRedirectsToWebHost(t *testing.T) {
+	t.Parallel()
+
+	s := newUnstartedServer(t)
+
+	// In test env, BoxHost="exe.cloud" and WebHost="localhost"
+	// These are different, so the redirect should happen.
+	if s.env.BoxHost == s.env.WebHost {
+		t.Skip("BoxHost and WebHost are the same in this stage, skip")
+	}
+
+	tests := []struct {
+		name         string
+		host         string
+		path         string
+		wantRedirect bool
+		wantLocation string
+	}{
+		{
+			name:         "apex BoxHost redirects",
+			host:         s.env.BoxHost,
+			path:         "/",
+			wantRedirect: true,
+			wantLocation: "http://" + s.env.WebHost + "/",
+		},
+		{
+			name:         "apex BoxHost with path redirects",
+			host:         s.env.BoxHost,
+			path:         "/auth?redirect=/foo",
+			wantRedirect: true,
+			wantLocation: "http://" + s.env.WebHost + "/auth?redirect=/foo",
+		},
+		{
+			name:         "apex BoxHost with port redirects",
+			host:         s.env.BoxHost + ":443",
+			path:         "/",
+			wantRedirect: true,
+			wantLocation: "http://" + s.env.WebHost + "/",
+		},
+		{
+			name:         "subdomain of BoxHost does not redirect",
+			host:         "mybox." + s.env.BoxHost,
+			path:         "/",
+			wantRedirect: false,
+		},
+		{
+			name:         "WebHost does not redirect",
+			host:         s.env.WebHost,
+			path:         "/",
+			wantRedirect: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req.Host = tt.host
+			rr := httptest.NewRecorder()
+
+			s.ServeHTTP(rr, req)
+
+			if tt.wantRedirect {
+				if rr.Code != http.StatusTemporaryRedirect {
+					t.Errorf("status = %d, want %d", rr.Code, http.StatusTemporaryRedirect)
+				}
+				if loc := rr.Header().Get("Location"); loc != tt.wantLocation {
+					t.Errorf("Location = %q, want %q", loc, tt.wantLocation)
+				}
+			} else {
+				if rr.Code == http.StatusTemporaryRedirect {
+					t.Errorf("unexpected redirect to %s", rr.Header().Get("Location"))
+				}
+			}
+		})
+	}
+}

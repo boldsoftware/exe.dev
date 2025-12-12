@@ -426,6 +426,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Redirect requests to BoxHost apex (exe.xyz) to WebHost (exe.dev).
+	// BoxHost is only for box subdomains (boxname.exe.xyz); the apex itself should
+	// redirect to WebHost to avoid passkey RPID mismatch errors during auth.
+	if s.env.BoxHost != s.env.WebHost {
+		hostname := domz.Canonicalize(domz.StripPort(r.Host))
+		if hostname == s.env.BoxHost {
+			target := fmt.Sprintf("%s://%s%s", getScheme(r), s.env.WebHost, r.URL.RequestURI())
+			http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+			return
+		}
+	}
+
 	// Request logging occurs in LoggerMiddleware; avoid duplicate per-request logs here.
 
 	// Check if this should be handled by the proxy handler
