@@ -531,13 +531,24 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Count user types
+	var regularCount, loginWithExeCount int
+	for _, u := range users {
+		if u.CreatedForLoginWithExe {
+			loginWithExeCount++
+		} else {
+			regularCount++
+		}
+	}
+
 	// Check if JSON format is requested
 	if r.URL.Query().Get("format") == "json" {
 		type userInfo struct {
-			UserID      string `json:"user_id"`
-			Email       string `json:"email"`
-			CreatedAt   string `json:"created_at,omitempty"`
-			RootSupport bool   `json:"root_support"`
+			UserID                 string `json:"user_id"`
+			Email                  string `json:"email"`
+			CreatedAt              string `json:"created_at,omitempty"`
+			RootSupport            bool   `json:"root_support"`
+			CreatedForLoginWithExe bool   `json:"created_for_login_with_exe"`
 		}
 		var usersJSON []userInfo
 		for _, u := range users {
@@ -546,10 +557,11 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 				createdAt = u.CreatedAt.Format(time.RFC3339)
 			}
 			usersJSON = append(usersJSON, userInfo{
-				UserID:      u.UserID,
-				Email:       u.Email,
-				CreatedAt:   createdAt,
-				RootSupport: u.RootSupport == 1,
+				UserID:                 u.UserID,
+				Email:                  u.Email,
+				CreatedAt:              createdAt,
+				RootSupport:            u.RootSupport == 1,
+				CreatedForLoginWithExe: u.CreatedForLoginWithExe,
 			})
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -579,14 +591,15 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 </style>
 </head><body>
 <h1>Users</h1>
+<p>Regular users: %d | Login-with-exe users: %d | Total: %d</p>
 <p><a href="/debug/users?format=json">View as JSON</a></p>
-`)
+`, regularCount, loginWithExeCount, len(users))
 
 	if len(users) == 0 {
 		fmt.Fprintf(w, "<p>No users found.</p>\n")
 	} else {
 		fmt.Fprintf(w, "<table border='1' cellpadding='5' cellspacing='0'>\n")
-		fmt.Fprintf(w, "<tr><th>Email</th><th>User ID</th><th>Created At</th><th>Root Support</th></tr>\n")
+		fmt.Fprintf(w, "<tr><th>Email</th><th>User ID</th><th>Created At</th><th>Login-only</th><th>Root Support</th></tr>\n")
 		for _, u := range users {
 			createdAt := "-"
 			if u.CreatedAt != nil {
@@ -600,10 +613,15 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 				btnClass = "enabled"
 				btnText = "Disable"
 			}
-			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s <button class='toggle-btn %s' data-email='%s' data-userid='%s' data-enabled='%v'>%s</button></td></tr>\n",
+			loginWithExe := ""
+			if u.CreatedForLoginWithExe {
+				loginWithExe = "✓"
+			}
+			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s <button class='toggle-btn %s' data-email='%s' data-userid='%s' data-enabled='%v'>%s</button></td></tr>\n",
 				html.EscapeString(u.Email),
 				html.EscapeString(u.UserID),
 				html.EscapeString(createdAt),
+				loginWithExe,
 				html.EscapeString(rootSupportStatus),
 				btnClass,
 				html.EscapeString(u.Email),
