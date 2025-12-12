@@ -9,6 +9,7 @@ import (
 	"net"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"exe.dev/boxname"
@@ -16,7 +17,6 @@ import (
 	"exe.dev/exemenu"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/sqlite"
-	"exe.dev/sshsession"
 	"exe.dev/termfun"
 	"exe.dev/tracing"
 	"github.com/anmitsu/go-shlex"
@@ -37,6 +37,43 @@ func (m *minimalConnMetadata) ClientVersion() []byte { return nil }
 func (m *minimalConnMetadata) ServerVersion() []byte { return nil }
 func (m *minimalConnMetadata) RemoteAddr() net.Addr  { return m.remoteAddr }
 func (m *minimalConnMetadata) LocalAddr() net.Addr   { return nil }
+
+// shellSession wraps ssh.Session to implement exemenu.ShellSession with push-back support.
+// It serializes all reads to prevent concurrent calls from splitting data.
+type shellSession struct {
+	ssh.Session
+	mu  sync.Mutex
+	buf []byte
+}
+
+func NewSSHShell(s ssh.Session) *shellSession {
+	shell := &shellSession{Session: s}
+	// Close the session when context is done to unblock any pending reads.
+	context.AfterFunc(s.Context(), func() { shell.Close() })
+	return shell
+}
+
+func (s *shellSession) Read(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.buf) > 0 {
+		n := copy(p, s.buf)
+		s.buf = s.buf[n:]
+		return n, nil
+	}
+	return s.Session.Read(p)
+}
+
+func (s *shellSession) Push(data []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.buf = append(slices.Clone(data), s.buf...)
+}
+
+func (s *shellSession) Context() context.Context {
+	return s.Session.Context()
+}
 
 // SSHServer wraps the gliderlabs SSH server implementation
 type SSHServer struct {
@@ -218,10 +255,7 @@ func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) b
 }
 
 // handleSession handles SSH sessions
-func (ss *SSHServer) handleSession(rawSession ssh.Session) {
-	s := sshsession.NewManaged(rawSession)
-	defer s.Close()
-
+func (ss *SSHServer) handleSession(s ssh.Session) {
 	// Track SSH connection
 	ss.server.sshMetrics.connectionsTotal.WithLabelValues("connected").Inc()
 	ss.server.sshMetrics.connectionsCurrent.Inc()
@@ -274,10 +308,11 @@ func (ss *SSHServer) handleSession(rawSession ssh.Session) {
 }
 
 // handleShell handles interactive shell sessions with readline
-func (ss *SSHServer) handleShell(s sshsession.Session, publicKey string, registered bool) {
+func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered bool) {
+	shell := NewSSHShell(s)
 	if !registered {
 		// Handle registration flow
-		ss.handleRegistration(s, publicKey)
+		ss.handleRegistration(shell, publicKey)
 		return
 	}
 
@@ -292,7 +327,6 @@ func (ss *SSHServer) handleShell(s sshsession.Session, publicKey string, registe
 		return
 	}
 
-	shell := sshsession.NewShell(s)
 	ss.runMainShellWithReadline(shell, publicKey, user)
 }
 
@@ -408,7 +442,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 }
 
 // showAnimatedWelcome displays the ASCII art with a beautiful fade-out animation
-func (ss *SSHServer) showAnimatedWelcome(s sshsession.Session) {
+func (ss *SSHServer) showAnimatedWelcome(s *shellSession) {
 	// Skip animation in test mode for faster tests
 	if ss.server.env.SkipBanner {
 		fmt.Fprint(s, "~~~ EXE.DEV ~~~\r\n")
@@ -437,7 +471,7 @@ func (ss *SSHServer) showAnimatedWelcome(s sshsession.Session) {
 	fmt.Fprint(s, "\r")
 
 	// Query background color (with timeout fallback to black)
-	bg := termfun.QueryBackgroundColor(s, s.CtxReader())
+	bg := termfun.QueryBackgroundColor(s)
 
 	// Fade from bright green to background color
 	from := termfun.RGB{R: 80, G: 255, B: 120}
@@ -462,7 +496,7 @@ func (ss *SSHServer) showAnimatedWelcome(s sshsession.Session) {
 
 // readLineWithEchoAndDefault reads a line with echo and optionally pre-fills a default value.
 // It returns the entered line and a boolean indicating whether the user pressed enter.
-func (ss *SSHServer) readLineWithEchoAndDefault(s sshsession.Session, defaultValue string) (string, bool) {
+func (ss *SSHServer) readLineWithEchoAndDefault(s *shellSession, defaultValue string) (string, bool) {
 	var line []byte
 
 	// Pre-fill with default value if provided
@@ -471,15 +505,13 @@ func (ss *SSHServer) readLineWithEchoAndDefault(s sshsession.Session, defaultVal
 		fmt.Fprint(s, defaultValue)
 	}
 
-	ctx := s.Context()
-
+	var b [1]byte
 	for {
-		b, err := s.ReadByteContext(ctx)
-		if err != nil {
+		if _, err := s.Read(b[:]); err != nil {
 			return "", false
 		}
 
-		switch b {
+		switch b[0] {
 		case '\n', '\r':
 			// Enter pressed
 			fmt.Fprint(s, "\r\n")
@@ -499,35 +531,38 @@ func (ss *SSHServer) readLineWithEchoAndDefault(s sshsession.Session, defaultVal
 			}
 			// Ignore bare escape sequences we do not recognize.
 		default:
-			if b >= 32 && b < 127 { // Printable characters
-				line = append(line, b)
+			if b[0] >= 32 && b[0] < 127 { // Printable characters
+				line = append(line, b[0])
 				// Echo the character
-				fmt.Fprintf(s, "%c", b)
+				fmt.Fprintf(s, "%c", b[0])
 			}
 		}
 	}
 }
 
-func (ss *SSHServer) swallowOSCBackgroundColorResponse(s sshsession.Session) bool {
+func (ss *SSHServer) swallowOSCBackgroundColorResponse(s *shellSession) bool {
 	ctx, cancel := context.WithTimeout(s.Context(), time.Second)
 	defer cancel()
 
+	stop := context.AfterFunc(ctx, func() { s.Close() })
+	defer stop()
+
 	buf := []byte{27} // ESC
+	var b [1]byte
 
 	readNext := func() (byte, error) {
-		b, err := s.ReadByteContext(ctx)
-		if err != nil {
+		if _, err := s.Read(b[:]); err != nil {
 			return 0, err
 		}
-		buf = append(buf, b)
-		return b, nil
+		buf = append(buf, b[0])
+		return b[0], nil
 	}
 
 	// Expect the start of an OSC 11 response: ESC ] 11 ;
 	expected := []byte{']', '1', '1', ';'}
 	for _, want := range expected {
-		b, err := readNext()
-		if err != nil || b != want {
+		got, err := readNext()
+		if err != nil || got != want {
 			if len(buf) > 1 {
 				s.Push(append([]byte(nil), buf[1:]...))
 			}
@@ -539,21 +574,19 @@ func (ss *SSHServer) swallowOSCBackgroundColorResponse(s sshsession.Session) boo
 	const maxPayload = 2048
 	payloadLen := 0
 	for {
-		b, err := s.ReadByteContext(ctx)
-		if err != nil {
+		if _, err := s.Read(b[:]); err != nil {
 			// We requested this sequence, so drop partial data on read errors.
 			return true
 		}
 
-		switch b {
+		switch b[0] {
 		case 7: // BEL terminator
 			return true
 		case 27: // Possible ST (ESC \)
-			next, err := s.ReadByteContext(ctx)
-			if err != nil {
+			if _, err := s.Read(b[:]); err != nil {
 				return true
 			}
-			if next == '\\' {
+			if b[0] == '\\' {
 				return true
 			}
 			payloadLen += 2
@@ -571,7 +604,7 @@ func (ss *SSHServer) swallowOSCBackgroundColorResponse(s sshsession.Session) boo
 }
 
 // handleRegistration handles the registration flow using readline
-func (ss *SSHServer) handleRegistration(s sshsession.Session, publicKey string) {
+func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 	ss.showAnimatedWelcome(s)
 
 	// Attempt to identify this as a GitHub user based on their validated public key.
@@ -639,13 +672,10 @@ func (ss *SSHServer) handleRegistration(s sshsession.Session, publicKey string) 
 	fmt.Fprintf(s, "\r\n\r\n")
 
 	// Transition directly to the main shell menu
-	// We pass the session directly and let runMainShellWithReadline create its own reader
-	// This avoids issues with partially consumed readers
-	shell := sshsession.NewShell(s)
-	ss.runMainShellWithReadline(shell, publicKey, user)
+	ss.runMainShellWithReadline(s, publicKey, user)
 }
 
-func (ss *SSHServer) waitForEmailVerification(s sshsession.Session, publicKey, email string) (*exedb.User, error) {
+func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email string) (*exedb.User, error) {
 	ss.server.slog().Debug("starting email verification", "email", email)
 	verification, err := ss.startEmailVerification(s, publicKey, email)
 	if err != nil {
@@ -663,16 +693,21 @@ func (ss *SSHServer) waitForEmailVerification(s sshsession.Session, publicKey, e
 	fmt.Fprintf(s, "\033[2mWaiting for email verification...\033[0m\r\n")
 
 	ctrlCChan := make(chan struct{}, 1)
-	inputCtx, cancelInput := context.WithCancel(s.Context())
-	defer cancelInput()
+	doneChan := make(chan struct{})
 
 	go func() {
+		var b [1]byte
 		for {
-			b, err := s.ReadByteContext(inputCtx)
-			if err != nil {
+			if _, err := s.Read(b[:]); err != nil {
 				return
 			}
-			if b == 3 {
+			select {
+			case <-doneChan:
+				s.Push(b[:])
+				return
+			default:
+			}
+			if b[0] == 3 {
 				select {
 				case ctrlCChan <- struct{}{}:
 				default:
@@ -682,19 +717,16 @@ func (ss *SSHServer) waitForEmailVerification(s sshsession.Session, publicKey, e
 		}
 	}()
 
-	// Wait for email verification with Ctrl+C support
+	// Wait for email verification with Ctrl+C support.
 	select {
 	case <-verification.CompleteChan:
-		cancelInput() // stop the reader immediately now that input is no longer needed
+		close(doneChan)
 		fmt.Fprintf(s, "%s✓ Email verified successfully!%s\r\n\r\n", "\033[1;32m", "\033[0m")
 	case <-ctrlCChan:
-		cancelInput() // ensure the goroutine exits before we bubble up the cancellation
 		return nil, fmt.Errorf("Registration cancelled")
 	case <-time.After(10 * time.Minute):
-		cancelInput() // ensure the goroutine exits before reporting the timeout
 		return nil, fmt.Errorf("Email verification timed out. Please try again.")
 	case <-s.Context().Done():
-		cancelInput() // ensure the goroutine exits before propagating session closure
 		return nil, fmt.Errorf("session disconnected")
 	}
 
@@ -729,7 +761,7 @@ func (ss *SSHServer) waitForEmailVerification(s sshsession.Session, publicKey, e
 }
 
 // handleExec handles exec commands
-func (ss *SSHServer) handleExec(s sshsession.Session, cmd []string, publicKey string, registered bool) {
+func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, registered bool) {
 	defer s.Exit(0) // Always send exit status
 
 	if !registered {
@@ -759,7 +791,7 @@ func (ss *SSHServer) handleExec(s sshsession.Session, cmd []string, publicKey st
 		PublicKey:  publicKey,
 		Args:       cmd[1:],                        // Skip the command name itself
 		Output:     exemenu.NewANSIFilterWriter(s), // Filter out ANSI control codes from non-interactive sessions.
-		SSHSession: sshsession.NewShell(s),
+		SSHSession: NewSSHShell(s),
 		Terminal:   nil, // No interactive terminal for exec mode
 		DevMode:    ss.server.env.ReplDev,
 		Logger:     ss.server.slog(),
@@ -850,7 +882,7 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 	fmt.Fprintf(s, "  \033[1m%s rm %s\033[0m\r\n", ss.server.replSSHConnectionCommand(), boxName)
 }
 
-func (ss *SSHServer) startEmailVerification(s ssh.Session, publicKey, email string) (*EmailVerification, error) {
+func (ss *SSHServer) startEmailVerification(s *shellSession, publicKey, email string) (*EmailVerification, error) {
 	// Check whether this email already exists
 	_, err := withRxRes(ss.server, s.Context(), func(ctx context.Context, q *exedb.Queries) (any, error) {
 		return q.GetUserIDByEmail(ctx, email)

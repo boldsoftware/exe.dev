@@ -70,9 +70,12 @@ func (ss *SSHServer) handleDocCommand(ctx context.Context, cc *exemenu.CommandCo
 		title += " [hidden]"
 	}
 	model := newDocViewerModel(title, slug, entry.Markdown, width, height)
+
 	input := &docSessionInput{
 		readByte: func() (byte, error) {
-			return cc.SSHSession.ReadByteContext(ctx)
+			var b [1]byte
+			_, err := cc.SSHSession.Read(b[:])
+			return b[0], err
 		},
 	}
 	program := tea.NewProgram(model,

@@ -227,26 +227,6 @@ func (ws *WebShellSession) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
-func (ws *WebShellSession) ReadByteContext(ctx context.Context) (byte, error) {
-	var buf [1]byte
-	for {
-		if ctx != nil {
-			select {
-			case <-ctx.Done():
-				return 0, ctx.Err()
-			default:
-			}
-		}
-		n, err := ws.Read(buf[:])
-		if n == 1 {
-			return buf[0], err
-		}
-		if err != nil {
-			return 0, err
-		}
-	}
-}
-
 func (ws *WebShellSession) Write(p []byte) (n int, err error) {
 	ws.writeMutex.Lock()
 	defer ws.writeMutex.Unlock()
@@ -300,4 +280,9 @@ func (ws *WebShellSession) Push(data []byte) {
 	ws.readBuf = append(append([]byte{}, data...), ws.readBuf...)
 	ws.readCond.Broadcast()
 	ws.readMutex.Unlock()
+}
+
+func (ws *WebShellSession) Close() error {
+	ws.cancel()
+	return ws.conn.Close(websocket.StatusNormalClosure, "")
 }

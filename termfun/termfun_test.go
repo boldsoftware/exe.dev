@@ -8,9 +8,19 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"exe.dev/ctxio"
 )
+
+// testRWC is a simple io.ReadWriteCloser for testing
+type testRWC struct {
+	io.Reader
+	io.Writer
+	closed bool
+}
+
+func (t *testRWC) Close() error {
+	t.closed = true
+	return nil
+}
 
 func TestSrgbConversion(t *testing.T) {
 	tests := []struct {
@@ -146,9 +156,12 @@ func TestQueryBackgroundColor(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var w bytes.Buffer
-			cr := ctxio.NewReader(strings.NewReader(tt.response))
+			rwc := &testRWC{
+				Reader: strings.NewReader(tt.response),
+				Writer: &w,
+			}
 
-			got := QueryBackgroundColor(&w, cr)
+			got := QueryBackgroundColor(rwc)
 
 			if got != tt.want {
 				t.Errorf("QueryBackgroundColor() = %v, want %v", got, tt.want)
@@ -163,13 +176,16 @@ func TestQueryBackgroundColor(t *testing.T) {
 
 func TestQueryBackgroundColorFragmentedResponse(t *testing.T) {
 	var w bytes.Buffer
-	cr := ctxio.NewReader(io.MultiReader(
-		strings.NewReader("\x1b]11;rgb:12"),
-		strings.NewReader("34/5678/9abc"),
-		strings.NewReader("\x1b\\"),
-	))
+	rwc := &testRWC{
+		Reader: io.MultiReader(
+			strings.NewReader("\x1b]11;rgb:12"),
+			strings.NewReader("34/5678/9abc"),
+			strings.NewReader("\x1b\\"),
+		),
+		Writer: &w,
+	}
 
-	got := QueryBackgroundColor(&w, cr)
+	got := QueryBackgroundColor(rwc)
 	want := RGB{0x12, 0x56, 0x9a}
 
 	if got != want {

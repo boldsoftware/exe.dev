@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"exe.dev/ctxio"
 )
 
 type RGB struct {
@@ -35,30 +33,37 @@ func lerp(a, b, t float64) float64 {
 	return a + (b-a)*t
 }
 
-func QueryBackgroundColor(w io.Writer, cr *ctxio.Reader) RGB {
-	fmt.Fprint(w, "\x1b]11;?\x07")
+func QueryBackgroundColor(rwc io.ReadWriteCloser) RGB {
+	fmt.Fprint(rwc, "\x1b]11;?\x07")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
-	defer cancel()
+	resp := func() string {
+		var b strings.Builder
+		var c [1]byte
 
-	buf := new(strings.Builder)
-	var resp string
-	for buf.Len() < 1024 {
-		b, err := cr.ReadByteContext(ctx)
-		if err != nil {
-			return RGB{0, 0, 0}
+		ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+		defer cancel()
+
+		stop := context.AfterFunc(ctx, func() { rwc.Close() })
+		defer stop()
+
+		for b.Len() < 1024 {
+			_, err := rwc.Read(c[:])
+			if err != nil {
+				return ""
+			}
+			b.WriteByte(c[0])
+
+			// Check for bell/ST terminators.
+			if s, ok := strings.CutSuffix(b.String(), "\x07"); ok {
+				return s
+			}
+			if s, ok := strings.CutSuffix(b.String(), "\x1b\\"); ok {
+				return s
+			}
 		}
-		buf.WriteByte(b)
-		// Check for bell/ST terminators.
-		if s, ok := strings.CutSuffix(buf.String(), "\x07"); ok {
-			resp = s
-			break
-		}
-		if s, ok := strings.CutSuffix(buf.String(), "\x1b\\"); ok {
-			resp = s
-			break
-		}
-	}
+
+		return b.String()
+	}()
 
 	if resp == "" {
 		return RGB{0, 0, 0}

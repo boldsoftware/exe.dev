@@ -405,8 +405,8 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	startTime := time.Now()
 
 	// Determine if we should show fancy output (spinners, colors, etc) BEFORE creating instance
-	// Allow forced spinner (e.g., HTTP/SSE flows) via cc.ForceSpinner
 	showSpinner := (ss.shouldShowSpinner(cc.SSHSession) || cc.ForceSpinner) && !cc.WantJSON()
+	// Allow forced spinner (e.g., HTTP/SSE flows) via cc.ForceSpinner
 
 	// Reserve space for spinner if we're showing it: print a blank line, then move cursor up.
 	// This makes the readline prompt visible in the repl ui.
