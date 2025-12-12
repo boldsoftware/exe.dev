@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"exe.dev/boxname"
+	"exe.dev/ctrlc"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
@@ -42,8 +43,9 @@ func (m *minimalConnMetadata) LocalAddr() net.Addr   { return nil }
 // It serializes all reads to prevent concurrent calls from splitting data.
 type shellSession struct {
 	ssh.Session
-	mu  sync.Mutex
-	buf []byte
+	mu     sync.Mutex
+	buf    []byte
+	reader io.Reader // When set, Read() uses this instead of Session
 }
 
 func NewSSHShell(s ssh.Session) *shellSession {
@@ -55,14 +57,18 @@ func NewSSHShell(s ssh.Session) *shellSession {
 
 func (s *shellSession) Read(p []byte) (int, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if len(s.buf) > 0 {
 		n := copy(p, s.buf)
 		s.buf = s.buf[n:]
+		s.mu.Unlock()
 		return n, nil
 	}
-	return s.Session.Read(p)
+	r := s.reader
+	if r == nil {
+		r = s.Session
+	}
+	s.mu.Unlock()
+	return r.Read(p)
 }
 
 func (s *shellSession) Push(data []byte) {
@@ -692,42 +698,22 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 	fmt.Fprintf(s, "Pairing code: \033[1;32m%s\033[0m\r\n", verification.PairingCode)
 	fmt.Fprintf(s, "\033[2mWaiting for email verification...\033[0m\r\n")
 
-	ctrlCChan := make(chan struct{}, 1)
-	doneChan := make(chan struct{})
+	ctx, r, stop := ctrlc.WithReader(s.Context(), s.Session)
+	s.mu.Lock()
+	s.reader = r
+	s.mu.Unlock()
 
-	go func() {
-		var b [1]byte
-		for {
-			if _, err := s.Read(b[:]); err != nil {
-				return
-			}
-			select {
-			case <-doneChan:
-				s.Push(b[:])
-				return
-			default:
-			}
-			if b[0] == 3 {
-				select {
-				case ctrlCChan <- struct{}{}:
-				default:
-				}
-				return
-			}
-		}
-	}()
-
-	// Wait for email verification with Ctrl+C support.
 	select {
 	case <-verification.CompleteChan:
-		close(doneChan)
+		stop()
 		fmt.Fprintf(s, "%s✓ Email verified successfully!%s\r\n\r\n", "\033[1;32m", "\033[0m")
-	case <-ctrlCChan:
-		return nil, fmt.Errorf("Registration cancelled")
+	case <-ctx.Done():
+		if errors.Is(context.Cause(ctx), ctrlc.ErrCanceled) {
+			return nil, fmt.Errorf("Registration cancelled")
+		}
+		return nil, fmt.Errorf("session disconnected")
 	case <-time.After(10 * time.Minute):
 		return nil, fmt.Errorf("Email verification timed out. Please try again.")
-	case <-s.Context().Done():
-		return nil, fmt.Errorf("session disconnected")
 	}
 
 	// After successful verification, the user should have been created by the HTTP handler
@@ -746,7 +732,7 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 		})
 	})
 	if storeErr != nil {
-		ss.server.slog().Warn("failed to store SSH key after registration", "user_id", user.UserID, "email", user.Email, "error", storeErr)
+		ss.server.slog().WarnContext(s.Context(), "failed to store SSH key after registration", "user_id", user.UserID, "email", user.Email, "error", storeErr)
 		// Don't fail here, the key might already exist (TODO: is this right??)
 	}
 
