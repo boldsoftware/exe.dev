@@ -8,4 +8,3 @@ Other ways to reach/follow us:
 - Twitter: https://x.com/ssh_exe_dev
 - Bluesky: https://bsky.app/exe.dev
 - Fediverse: @exe.dev@bsky.brid.gy
-- LinkedIn: https://www.linkedin.com/company/exe-dev/
