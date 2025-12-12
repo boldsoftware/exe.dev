@@ -176,6 +176,9 @@ WORKDIR /home/exedev
 # Update PATH in .bashrc to include .local/bin
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/exedev/.bashrc
 
+# Configure git to use 'main' as default branch name
+RUN git config --global init.defaultBranch main
+
 # Switch back to root to install systemd service
 USER root
 
