@@ -26,3 +26,9 @@ SELECT EXISTS (
     WHERE user_id = ?
       AND expires_at > CURRENT_TIMESTAMP
 );
+
+-- name: GetSiteCookiesForUser :many
+SELECT domain, last_used_at
+FROM auth_cookies
+WHERE user_id = ? AND domain != ? AND expires_at > CURRENT_TIMESTAMP
+ORDER BY last_used_at DESC NULLS LAST;

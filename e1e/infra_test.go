@@ -2232,6 +2232,34 @@ func webLoginWithEmail(t *testing.T, email string) []*http.Cookie {
 	return clickVerifyLinkInEmail(t, emailMsg)
 }
 
+// webLoginWithExe performs a login flow with login_with_exe=1 set.
+// This simulates a user logging in via the proxy auth flow (login-with-exe).
+// Users created this way are "basic users" and should only see the profile tab.
+func webLoginWithExe(t *testing.T, email string) []*http.Cookie {
+	t.Helper()
+
+	// POST to /auth with email AND login_with_exe=1 to trigger login-with-exe flow
+	authURL := fmt.Sprintf("http://localhost:%d/auth", Env.exed.HTTPPort)
+	resp, err := http.PostForm(authURL, url.Values{
+		"email":          {email},
+		"login_with_exe": {"1"},
+	})
+	if err != nil {
+		t.Fatalf("failed to POST to /auth: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("POST /auth failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Wait for verification email
+	emailMsg := Env.email.waitForEmail(t, email)
+
+	// Click the verification link (same as SSH flow)
+	return clickVerifyLinkInEmail(t, emailMsg)
+}
+
 var boxCounter atomic.Int32
 
 // boxName creates a unique test-specific box name with e1e prefix for easy cleanup

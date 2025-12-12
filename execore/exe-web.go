@@ -1062,6 +1062,9 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// login_with_exe is explicitly set when logging into a site hosted by exe (proxy auth flow)
+	createdForLoginWithExe := r.FormValue("login_with_exe") == "1"
+
 	// Check if user exists, create if not
 	var userID string
 	err := s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
@@ -1069,7 +1072,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		userID, err = queries.GetUserIDByEmail(ctx, email)
 		if errors.Is(err, sql.ErrNoRows) {
 			// User doesn't exist, create them
-			userID, err = s.createUserRecord(ctx, queries, email)
+			userID, err = s.createUserRecord(ctx, queries, email, createdForLoginWithExe)
 			if err != nil {
 				return err
 			}
@@ -1340,6 +1343,7 @@ type unauthorizedData struct {
 	AuthURL       string
 	RedirectURL   string
 	ReturnHost    string
+	LoginWithExe  bool
 	InvalidSecret bool
 	InvalidToken  bool
 }
@@ -1361,6 +1365,8 @@ func (s *Server) render401(w http.ResponseWriter, r *http.Request, data unauthor
 			data.ReturnHost = r.FormValue("return_host")
 		}
 	}
+	// Set LoginWithExe if return_host is present (proxy auth flow)
+	data.LoginWithExe = data.ReturnHost != ""
 	data.AuthURL = fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host)
 
 	w.WriteHeader(http.StatusUnauthorized)
@@ -1725,6 +1731,12 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		s.slog().ErrorContext(r.Context(), "Failed to get boxes for dashboard", "error", err, "user_id", userID)
 	}
 
+	// Basic users (created for login-with-exe, no SSH keys, no boxes) should only see the profile tab.
+	if len(boxResults) == 0 && s.isBasicUser(r.Context(), user, len(sshKeys)) {
+		http.Redirect(w, r, "/user", http.StatusTemporaryRedirect)
+		return
+	}
+
 	// Convert to BoxDisplayInfo format with additional display information
 	boxes := make([]BoxDisplayInfo, len(boxResults))
 	for i, result := range boxResults {
@@ -1852,14 +1864,72 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		s.slog().ErrorContext(r.Context(), "Failed to get passkeys for profile", "error", err, "email", user.Email)
 	}
 
+	// Get site sessions (cookies for sites hosted by exe, excluding the main domain)
+	// De-duplicate by domain (keep the most recently used)
+	var siteSessions []SiteSession
+	siteCookies, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetSiteCookiesForUserRow, error) {
+		return queries.GetSiteCookiesForUser(ctx, exedb.GetSiteCookiesForUserParams{
+			UserID: userID,
+			Domain: s.env.WebHost,
+		})
+	})
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "Failed to get site cookies for profile", "error", err, "email", user.Email)
+	} else {
+		seenDomains := make(map[string]bool)
+		for _, cookie := range siteCookies {
+			// Skip duplicates (query is ordered by last_used_at DESC, so first one wins)
+			if seenDomains[cookie.Domain] {
+				continue
+			}
+			seenDomains[cookie.Domain] = true
+
+			var lastUsed string
+			if cookie.LastUsedAt != nil {
+				lastUsed = cookie.LastUsedAt.Format("Jan 2, 2006")
+			} else {
+				lastUsed = "Never"
+			}
+			siteSessions = append(siteSessions, SiteSession{
+				Domain:     cookie.Domain,
+				URL:        "https://" + cookie.Domain,
+				LastUsedAt: lastUsed,
+			})
+		}
+	}
+
+	// Get boxes shared with this user
+	sharedBoxResults, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetBoxesSharedWithUserRow, error) {
+		return queries.GetBoxesSharedWithUser(ctx, user.UserID)
+	})
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "Failed to get shared boxes for profile", "error", err, "email", user.Email)
+	}
+
+	// Convert shared boxes to SharedBoxDisplayInfo
+	sharedBoxes := make([]SharedBoxDisplayInfo, len(sharedBoxResults))
+	for i, result := range sharedBoxResults {
+		sharedBoxes[i] = SharedBoxDisplayInfo{
+			Name:       result.Name,
+			OwnerEmail: result.OwnerEmail,
+			ProxyURL:   s.boxProxyAddress(result.Name),
+		}
+	}
+
+	// Check if this is a basic user (created for login-with-exe, no SSH keys, no boxes)
+	basicUser := s.isBasicUser(r.Context(), user, len(sshKeys))
+
 	// Prepare template data
 	data := UserPageData{
-		Env:        s.env,
-		User:       user,
-		SSHKeys:    sshKeys,
-		Passkeys:   passkeys,
-		ActivePage: "profile",
-		IsLoggedIn: true,
+		Env:          s.env,
+		User:         user,
+		SSHKeys:      sshKeys,
+		Passkeys:     passkeys,
+		SiteSessions: siteSessions,
+		SharedBoxes:  sharedBoxes,
+		ActivePage:   "profile",
+		IsLoggedIn:   true,
+		BasicUser:    basicUser,
 	}
 
 	// Render template

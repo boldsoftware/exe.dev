@@ -201,10 +201,11 @@ type TagResolutionHistory struct {
 }
 
 type User struct {
-	UserID      string     `db:"user_id" json:"user_id"`
-	Email       string     `db:"email" json:"email"`
-	CreatedAt   *time.Time `db:"created_at" json:"created_at"`
-	RootSupport int64      `db:"root_support" json:"root_support"`
+	UserID                 string     `db:"user_id" json:"user_id"`
+	Email                  string     `db:"email" json:"email"`
+	CreatedAt              *time.Time `db:"created_at" json:"created_at"`
+	RootSupport            int64      `db:"root_support" json:"root_support"`
+	CreatedForLoginWithExe bool       `db:"created_for_login_with_exe" json:"created_for_login_with_exe"`
 }
 
 type UserDailyEmailCount struct {

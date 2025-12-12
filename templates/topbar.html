@@ -14,6 +14,7 @@
     </div>
     <div class="nav-right">
       {{if .IsLoggedIn}}
+      {{if not .BasicUser}}
       {{if and .ActivePage (eq .ActivePage "boxes")}}
       <span class="btn btn-active">
         <svg
@@ -94,6 +95,7 @@
         </svg>
         <span class="btn-text">Shell</span>
       </a>
+      {{end}}
       {{end}} {{if and .ActivePage (eq .ActivePage "profile")}}
       <span class="btn btn-active">
         <svg

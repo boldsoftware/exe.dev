@@ -1008,3 +1008,72 @@ func TestProxyCookieIsolation(t *testing.T) {
 	cleanup2.deleteBox(box2)
 	cleanup2.disconnect()
 }
+
+// TestBasicUserDashboard tests that a user created via the login-with-exe flow
+// (simulating proxy auth) sees only the profile tab and the "What is exe?" section.
+func TestBasicUserDashboard(t *testing.T) {
+	t.Parallel()
+	noGolden(t)
+
+	testID := time.Now().UnixNano()
+	basicUserEmail := fmt.Sprintf("basic-user-%d@test-basic-user.example", testID)
+
+	// Create a basic user via the login-with-exe flow
+	// This simulates a user who logged in through proxy auth to access a hosted site
+	cookies := webLoginWithExe(t, basicUserEmail)
+
+	// Set up HTTP client with the auth cookies
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("failed to create cookie jar: %v", err)
+	}
+	for _, cookie := range cookies {
+		cookie.Domain = "localhost"
+		jar.SetCookies(&url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", Env.exed.HTTPPort)}, []*http.Cookie{cookie})
+	}
+	client := &http.Client{
+		Jar:     jar,
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// Follow redirects but capture them
+			return nil
+		},
+	}
+
+	// Access the dashboard - basic users should be redirected to /user
+	dashboardURL := fmt.Sprintf("http://localhost:%d/", Env.exed.HTTPPort)
+	resp, err := client.Get(dashboardURL)
+	if err != nil {
+		t.Fatalf("failed to get dashboard: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// The request should end up at /user (after redirect)
+	if !strings.HasSuffix(resp.Request.URL.Path, "/user") {
+		t.Errorf("Expected basic user to be redirected to /user, but ended up at %s", resp.Request.URL.Path)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read response body: %v", err)
+	}
+	dashboard := string(body)
+
+	// Basic user should see the "What is exe?" section
+	if !strings.Contains(dashboard, "What is exe?") {
+		t.Errorf("Expected 'What is exe?' section in profile page for basic user")
+	}
+	if !strings.Contains(dashboard, "exe.dev is a hosting service") {
+		t.Errorf("Expected 'exe.dev is a hosting service' explanation in profile page")
+	}
+
+	// Basic user should NOT see the Shell tab
+	if strings.Contains(dashboard, `href="/shell"`) {
+		t.Errorf("Basic user should NOT see Shell tab in navigation")
+	}
+
+	// Basic user SHOULD see Profile (and it should be active since we're on /user)
+	if !strings.Contains(dashboard, "Profile") {
+		t.Errorf("Basic user should see Profile in the page")
+	}
+}

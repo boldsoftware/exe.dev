@@ -395,13 +395,15 @@ func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request) {
 		AuthURL       string
 		RedirectURL   string
 		ReturnHost    string
+		LoginWithExe  bool
 		InvalidSecret bool
 		InvalidToken  bool
 	}{
-		Email:       email,
-		AuthURL:     s.webBaseURL(r) + "/auth",
-		RedirectURL: u.String(),
-		ReturnHost:  r.Host,
+		Email:        email,
+		AuthURL:      s.webBaseURL(r) + "/auth",
+		RedirectURL:  u.String(),
+		ReturnHost:   r.Host,
+		LoginWithExe: true,
 	}
 
 	w.WriteHeader(http.StatusUnauthorized)

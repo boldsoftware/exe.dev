@@ -24,6 +24,9 @@
       {{if .ReturnHost}}
       <input type="hidden" name="return_host" value="{{.ReturnHost}}">
       {{end}}
+      {{if .LoginWithExe}}
+      <input type="hidden" name="login_with_exe" value="1">
+      {{end}}
       {{if .BoxName}}
       <input type="hidden" name="hostname" value="{{.BoxName}}">
       {{end}}

@@ -27,8 +27,9 @@ func setupTestBox(t *testing.T, db *sqlite.DB, boxName string) {
 		// Create user
 		userID := "test-user-" + boxName
 		err := queries.InsertUser(ctx, exedb.InsertUserParams{
-			UserID: userID,
-			Email:  "test@example.com",
+			UserID:                 userID,
+			Email:                  "test@example.com",
+			CreatedForLoginWithExe: false,
 		})
 		if err != nil {
 			return fmt.Errorf("insert user: %w", err)

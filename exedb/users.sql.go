@@ -21,7 +21,7 @@ func (q *Queries) GetEmailByUserID(ctx context.Context, userID string) (string, 
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT user_id, email, created_at, root_support
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe
 FROM users
 WHERE email = ?
 `
@@ -34,6 +34,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Email,
 		&i.CreatedAt,
 		&i.RootSupport,
+		&i.CreatedForLoginWithExe,
 	)
 	return i, err
 }
@@ -61,7 +62,7 @@ func (q *Queries) GetUserRootSupport(ctx context.Context, userID string) (int64,
 }
 
 const getUserWithDetails = `-- name: GetUserWithDetails :one
-SELECT user_id, email, created_at, root_support
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe
 FROM users
 WHERE user_id = ?
 `
@@ -74,26 +75,28 @@ func (q *Queries) GetUserWithDetails(ctx context.Context, userID string) (User, 
 		&i.Email,
 		&i.CreatedAt,
 		&i.RootSupport,
+		&i.CreatedForLoginWithExe,
 	)
 	return i, err
 }
 
 const insertUser = `-- name: InsertUser :exec
-INSERT INTO users (user_id, email) VALUES (?, ?)
+INSERT INTO users (user_id, email, created_for_login_with_exe) VALUES (?, ?, ?)
 `
 
 type InsertUserParams struct {
-	UserID string `db:"user_id" json:"user_id"`
-	Email  string `db:"email" json:"email"`
+	UserID                 string `db:"user_id" json:"user_id"`
+	Email                  string `db:"email" json:"email"`
+	CreatedForLoginWithExe bool   `db:"created_for_login_with_exe" json:"created_for_login_with_exe"`
 }
 
 func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
-	_, err := q.exec(ctx, q.insertUserStmt, insertUser, arg.UserID, arg.Email)
+	_, err := q.exec(ctx, q.insertUserStmt, insertUser, arg.UserID, arg.Email, arg.CreatedForLoginWithExe)
 	return err
 }
 
 const listAllUsers = `-- name: ListAllUsers :many
-SELECT user_id, email, created_at, root_support FROM users ORDER BY created_at DESC
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe FROM users ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
@@ -110,6 +113,7 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 			&i.Email,
 			&i.CreatedAt,
 			&i.RootSupport,
+			&i.CreatedForLoginWithExe,
 		); err != nil {
 			return nil, err
 		}

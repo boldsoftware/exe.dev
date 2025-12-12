@@ -94,3 +94,6 @@ SELECT support_access_allowed FROM boxes WHERE id = ?;
 
 -- name: GetBoxByNameWithSupportAccess :one
 SELECT * FROM boxes WHERE name = ? AND support_access_allowed = 1;
+
+-- name: CountBoxesForUser :one
+SELECT COUNT(*) FROM boxes WHERE created_by_user_id = ?;

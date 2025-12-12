@@ -45,6 +45,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countBoxSharesStmt, err = db.PrepareContext(ctx, countBoxShares); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxShares: %w", err)
 	}
+	if q.countBoxesForUserStmt, err = db.PrepareContext(ctx, countBoxesForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query CountBoxesForUser: %w", err)
+	}
 	if q.countPendingBoxSharesStmt, err = db.PrepareContext(ctx, countPendingBoxShares); err != nil {
 		return nil, fmt.Errorf("error preparing query CountPendingBoxShares: %w", err)
 	}
@@ -200,6 +203,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getSSHKeysForUserByEmailStmt, err = db.PrepareContext(ctx, getSSHKeysForUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHKeysForUserByEmail: %w", err)
+	}
+	if q.getSiteCookiesForUserStmt, err = db.PrepareContext(ctx, getSiteCookiesForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSiteCookiesForUser: %w", err)
 	}
 	if q.getTagResolutionStmt, err = db.PrepareContext(ctx, getTagResolution); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTagResolution: %w", err)
@@ -383,6 +389,11 @@ func (q *Queries) Close() error {
 	if q.countBoxSharesStmt != nil {
 		if cerr := q.countBoxSharesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countBoxSharesStmt: %w", cerr)
+		}
+	}
+	if q.countBoxesForUserStmt != nil {
+		if cerr := q.countBoxesForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countBoxesForUserStmt: %w", cerr)
 		}
 	}
 	if q.countPendingBoxSharesStmt != nil {
@@ -643,6 +654,11 @@ func (q *Queries) Close() error {
 	if q.getSSHKeysForUserByEmailStmt != nil {
 		if cerr := q.getSSHKeysForUserByEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSSHKeysForUserByEmailStmt: %w", cerr)
+		}
+	}
+	if q.getSiteCookiesForUserStmt != nil {
+		if cerr := q.getSiteCookiesForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSiteCookiesForUserStmt: %w", cerr)
 		}
 	}
 	if q.getTagResolutionStmt != nil {
@@ -931,6 +947,7 @@ type Queries struct {
 	cleanupExpiredPasskeyChallengesStmt    *sql.Stmt
 	countBoxShareLinksStmt                 *sql.Stmt
 	countBoxSharesStmt                     *sql.Stmt
+	countBoxesForUserStmt                  *sql.Stmt
 	countPendingBoxSharesStmt              *sql.Stmt
 	createBoxShareStmt                     *sql.Stmt
 	createBoxShareLinkStmt                 *sql.Stmt
@@ -983,6 +1000,7 @@ type Queries struct {
 	getSSHHostKeyStmt                      *sql.Stmt
 	getSSHKeysForUserStmt                  *sql.Stmt
 	getSSHKeysForUserByEmailStmt           *sql.Stmt
+	getSiteCookiesForUserStmt              *sql.Stmt
 	getTagResolutionStmt                   *sql.Stmt
 	getTagsNeedingRefreshStmt              *sql.Stmt
 	getUserByEmailStmt                     *sql.Stmt
@@ -1044,6 +1062,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		cleanupExpiredPasskeyChallengesStmt:    q.cleanupExpiredPasskeyChallengesStmt,
 		countBoxShareLinksStmt:                 q.countBoxShareLinksStmt,
 		countBoxSharesStmt:                     q.countBoxSharesStmt,
+		countBoxesForUserStmt:                  q.countBoxesForUserStmt,
 		countPendingBoxSharesStmt:              q.countPendingBoxSharesStmt,
 		createBoxShareStmt:                     q.createBoxShareStmt,
 		createBoxShareLinkStmt:                 q.createBoxShareLinkStmt,
@@ -1096,6 +1115,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getSSHHostKeyStmt:                      q.getSSHHostKeyStmt,
 		getSSHKeysForUserStmt:                  q.getSSHKeysForUserStmt,
 		getSSHKeysForUserByEmailStmt:           q.getSSHKeysForUserByEmailStmt,
+		getSiteCookiesForUserStmt:              q.getSiteCookiesForUserStmt,
 		getTagResolutionStmt:                   q.getTagResolutionStmt,
 		getTagsNeedingRefreshStmt:              q.getTagsNeedingRefreshStmt,
 		getUserByEmailStmt:                     q.getUserByEmailStmt,

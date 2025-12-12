@@ -404,7 +404,7 @@ func createTestUser(t *testing.T, s *Server, email string) string {
 	var userID string
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
-		userID, err = s.createUserRecord(ctx, queries, email)
+		userID, err = s.createUserRecord(ctx, queries, email, false)
 		return err
 	})
 	if err != nil {

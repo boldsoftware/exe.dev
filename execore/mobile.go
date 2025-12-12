@@ -397,11 +397,12 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 
 type authFormData struct {
 	stage.Env
-	RedirectURL string
-	ReturnHost  string
-	SSHCommand  string
-	BoxName     string
-	Prompt      string
+	RedirectURL  string
+	ReturnHost   string
+	LoginWithExe bool
+	SSHCommand   string
+	BoxName      string
+	Prompt       string
 }
 
 // handleMobileEmailAuth handles email authentication

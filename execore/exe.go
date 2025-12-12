@@ -101,14 +101,25 @@ type BoxShareLinkInfo struct {
 // UserPageData represents the data for the user dashboard page
 type UserPageData struct {
 	stage.Env
-	SSHCommand  string
-	User        exedb.User
-	SSHKeys     []SSHKey
-	Passkeys    []PasskeyInfo
-	Boxes       []BoxDisplayInfo
-	SharedBoxes []SharedBoxDisplayInfo
-	ActivePage  string
-	IsLoggedIn  bool
+	SSHCommand   string
+	User         exedb.User
+	SSHKeys      []SSHKey
+	Passkeys     []PasskeyInfo
+	Boxes        []BoxDisplayInfo
+	SharedBoxes  []SharedBoxDisplayInfo
+	SiteSessions []SiteSession
+	ActivePage   string
+	IsLoggedIn   bool
+	// BasicUser is true if the user has no SSH keys, no boxes, and was created for login-with-exe.
+	// These users should only see the profile tab and a "what is exe?" section.
+	BasicUser bool
+}
+
+// SiteSession represents an active session cookie for a site hosted by exe
+type SiteSession struct {
+	Domain     string
+	URL        string // Full URL with https://
+	LastUsedAt string // Formatted time string
 }
 
 // SSHKey represents an SSH key for the user page
@@ -1137,8 +1148,8 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 		// Check if user exists, create if not
 		userID, err := queries.GetUserIDByEmail(ctx, email)
 		if errors.Is(err, sql.ErrNoRows) {
-			// User doesn't exist, create them
-			userID, err = s.createUserRecord(ctx, queries, email)
+			// User doesn't exist, create them (mobile flow, not login-with-exe)
+			userID, err = s.createUserRecord(ctx, queries, email, false)
 			if err != nil {
 				return err
 			}
@@ -2070,16 +2081,35 @@ func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*
 	return &user, nil
 }
 
+// isBasicUser returns true if the user is a "basic user" - created for login-with-exe,
+// has no SSH keys, and has no boxes. These users should only see the profile tab.
+func (s *Server) isBasicUser(ctx context.Context, user exedb.User, sshKeyCount int) bool {
+	if !user.CreatedForLoginWithExe || sshKeyCount > 0 {
+		return false
+	}
+	boxCount, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
+		return queries.CountBoxesForUser(ctx, user.UserID)
+	})
+	if err != nil {
+		s.slog().ErrorContext(ctx, "Failed to count boxes for basic user check", "error", err, "user_id", user.UserID)
+		return false
+	}
+	return boxCount == 0
+}
+
 // createUserRecord creates a user record and returns the new user ID.
-func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, email string) (string, error) {
+// If createdForLoginWithExe is true, the user was created during the login flow
+// when trying to log into a site hosted by exe (via proxy auth with return_host).
+func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, email string, createdForLoginWithExe bool) (string, error) {
 	userID, err := generateUserID()
 	if err != nil {
 		return "", fmt.Errorf("failed to generate user ID: %w", err)
 	}
 
 	if err := queries.InsertUser(ctx, exedb.InsertUserParams{
-		UserID: userID,
-		Email:  email,
+		UserID:                 userID,
+		Email:                  email,
+		CreatedForLoginWithExe: createdForLoginWithExe,
 	}); err != nil {
 		return "", fmt.Errorf("failed to create user: %w", err)
 	}
@@ -2088,6 +2118,7 @@ func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, e
 }
 
 // createUser creates a new user with their resource allocation.
+// This is used for SSH registration flow, not login-with-exe.
 func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exedb.User, error) {
 	var user exedb.User
 
@@ -2095,7 +2126,7 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exed
 	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 
-		userID, err := s.createUserRecord(ctx, queries, email)
+		userID, err := s.createUserRecord(ctx, queries, email, false)
 		if err != nil {
 			return err
 		}

@@ -111,7 +111,7 @@ func (q *Queries) GetUserIDBySSHKey(ctx context.Context, publicKey string) (stri
 }
 
 const getUserWithSSHKey = `-- name: GetUserWithSSHKey :one
-SELECT u.user_id, u.email, u.created_at, u.root_support
+SELECT u.user_id, u.email, u.created_at, u.root_support, u.created_for_login_with_exe
 FROM users u
 JOIN ssh_keys s ON u.user_id = s.user_id
 WHERE s.public_key = ?
@@ -125,6 +125,7 @@ func (q *Queries) GetUserWithSSHKey(ctx context.Context, publicKey string) (User
 		&i.Email,
 		&i.CreatedAt,
 		&i.RootSupport,
+		&i.CreatedForLoginWithExe,
 	)
 	return i, err
 }

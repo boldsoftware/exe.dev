@@ -89,13 +89,7 @@
             font-size: 13px;
             font-style: italic;
         }
-        
-        .actions {
-            margin-top: 32px;
-            padding-top: 32px;
-            border-top: 1px solid #e0e0e0;
-        }
-        
+
         .btn {
             display: inline-block;
             padding: 8px 16px;
@@ -195,6 +189,52 @@
             font-style: italic;
         }
 
+        .sites-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .sites-table th,
+        .sites-table td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 13px;
+        }
+
+        .sites-table th {
+            color: #666;
+            font-weight: 500;
+        }
+
+        .sites-table td {
+            color: #000;
+        }
+
+        .sites-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .sites-table a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+
+        .sites-table a:hover {
+            text-decoration: underline;
+        }
+
+        .site-last-used {
+            color: #666;
+        }
+
+        .section-help {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+
         @media (max-width: 768px) {
             .main-container {
                 padding: 20px 12px;
@@ -213,8 +253,20 @@
 </head>
 <body>
     {{template "topbar" .}}
-    
+
     <div class="main-container">
+        {{if .BasicUser}}
+        <div class="section">
+            <div class="section-title">What is exe?</div>
+            <div class="section-help">
+                exe.dev is a hosting service. You've logged into a site
+                hosted by exe.dev that uses "Login with exe" to manage
+                authentication. See our <a href="/docs">docs</a> for
+                more information.
+            </div>
+        </div>
+        {{end}}
+
         <div class="section">
             <div class="section-title">Account</div>
             <div class="info-card">
@@ -224,7 +276,57 @@
                 </div>
             </div>
         </div>
-        
+
+        {{if .SiteSessions}}
+        <div class="section">
+            <div class="section-title">Sessions</div>
+            <div class="section-help">These are sites you've used exe.dev to log into and where you might still have a valid cookie. Logging out will clear all your authentication cookies.</div>
+            <div class="info-card">
+                <table class="sites-table">
+                    <thead>
+                        <tr>
+                            <th>Domain</th>
+                            <th>Last Used</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .SiteSessions}}
+                        <tr>
+                            <td><a href="{{.URL}}" target="_blank">{{.Domain}}</a></td>
+                            <td class="site-last-used">{{.LastUsedAt}}</td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {{end}}
+
+        {{if .SharedBoxes}}
+        <div class="section">
+            <div class="section-title">Sites Shared With You</div>
+            <div class="info-card">
+                <table class="sites-table">
+                    <thead>
+                        <tr>
+                            <th>Domain</th>
+                            <th>Owner</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .SharedBoxes}}
+                        <tr>
+                            <td><a href="{{.ProxyURL}}" target="_blank">{{.Name}}</a></td>
+                            <td class="site-last-used">{{.OwnerEmail}}</td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {{end}}
+
+        {{if not .BasicUser}}
         <div class="section">
             <div class="section-title">SSH Keys</div>
             {{if .SSHKeys}}
@@ -239,6 +341,7 @@
             </div>
             {{end}}
         </div>
+        {{end}}
 
         <div class="section" id="passkeys-section">
             <div class="section-title">Passkeys</div>
@@ -269,10 +372,6 @@
                 </div>
                 <div class="passkey-error" id="passkey-error"></div>
             </div>
-        </div>
-
-        <div class="actions">
-            <a href="/logout" class="btn btn-danger">Sign Out</a>
         </div>
     </div>
 

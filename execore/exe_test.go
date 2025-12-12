@@ -492,3 +492,328 @@ func TestWebAuthFlowCreatesNewUser(t *testing.T) {
 		t.Fatal("User should exist")
 	}
 }
+
+// TestBasicUserCreatedForLoginWithExe tests that a user created during the
+// login-with-exe flow (with login_with_exe form field) has the flag set.
+func TestBasicUserCreatedForLoginWithExe(t *testing.T) {
+	server := newTestServer(t)
+
+	email := "basicuser@example.com"
+
+	// Submit email for authentication WITH login_with_exe=1 (simulating login-with-exe)
+	form := url.Values{}
+	form.Add("email", email)
+	form.Add("login_with_exe", "1")
+	resp, err := http.Post(
+		fmt.Sprintf("http://127.0.0.1:%d/auth", server.httpPort()),
+		"application/x-www-form-urlencoded",
+		strings.NewReader(form.Encode()),
+	)
+	if err != nil {
+		t.Fatalf("Failed to POST /auth: %v", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Errorf("POST /auth: Expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Verify user was created with the flag set
+	user, err := withRxRes(server, context.Background(), func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
+		return queries.GetUserByEmail(ctx, email)
+	})
+	if err != nil {
+		t.Fatalf("User should exist after web auth, but got error: %v", err)
+	}
+
+	if !user.CreatedForLoginWithExe {
+		t.Fatal("User created with login_with_exe=1 should have CreatedForLoginWithExe=true")
+	}
+}
+
+// TestNormalUserCreatedWithoutFlag tests that a user created during normal
+// web auth (without login_with_exe) does NOT have the login-with-exe flag set.
+func TestNormalUserCreatedWithoutFlag(t *testing.T) {
+	server := newTestServer(t)
+
+	email := "normaluser@example.com"
+
+	// Submit email for authentication WITHOUT return_host (normal web auth)
+	form := url.Values{}
+	form.Add("email", email)
+	resp, err := http.Post(
+		fmt.Sprintf("http://127.0.0.1:%d/auth", server.httpPort()),
+		"application/x-www-form-urlencoded",
+		strings.NewReader(form.Encode()),
+	)
+	if err != nil {
+		t.Fatalf("Failed to POST /auth: %v", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Errorf("POST /auth: Expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Verify user was created WITHOUT the flag
+	user, err := withRxRes(server, context.Background(), func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
+		return queries.GetUserByEmail(ctx, email)
+	})
+	if err != nil {
+		t.Fatalf("User should exist after web auth, but got error: %v", err)
+	}
+
+	if user.CreatedForLoginWithExe {
+		t.Fatal("User created without login_with_exe should have CreatedForLoginWithExe=false")
+	}
+}
+
+// TestBasicUserDashboardRedirectsToProfile tests that a basic user (no SSH keys,
+// no boxes, created_for_login_with_exe=1) is redirected from / to /user.
+func TestBasicUserDashboardRedirectsToProfile(t *testing.T) {
+	server := newTestServer(t)
+
+	// Create a basic user directly (with the flag set, no SSH keys, no boxes)
+	var userID string
+	err := server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		userID, err = server.createUserRecord(ctx, queries, "basicuser-redirect@example.com", true)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to create basic user: %v", err)
+	}
+
+	// Create an auth cookie for this user
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Jar: jar,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse // Don't follow redirects
+		},
+	}
+
+	// Create auth cookie - domain must match what baseDomain returns for the request host
+	cookieValue := generateRegistrationToken()
+	err = server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.InsertAuthCookie(ctx, exedb.InsertAuthCookieParams{
+			CookieValue: cookieValue,
+			UserID:      userID,
+			Domain:      "127.0.0.1", // baseDomain returns this for 127.0.0.1:port
+			ExpiresAt:   time.Now().Add(24 * time.Hour),
+		})
+	})
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Set the cookie on the jar
+	baseURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", server.httpPort()))
+	jar.SetCookies(baseURL, []*http.Cookie{
+		{Name: "exe-auth", Value: cookieValue},
+	})
+
+	// Make request to dashboard (/)
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/", server.httpPort()))
+	if err != nil {
+		t.Fatalf("Failed to GET /: %v", err)
+	}
+	resp.Body.Close()
+
+	// Should redirect to /user
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		t.Errorf("Expected redirect (307), got %d", resp.StatusCode)
+	}
+
+	location := resp.Header.Get("Location")
+	if location != "/user" {
+		t.Errorf("Expected redirect to /user, got %s", location)
+	}
+}
+
+// TestBasicUserProfileShowsWhatIsExe tests that a basic user sees the
+// "What is exe?" section on their profile page.
+func TestBasicUserProfileShowsWhatIsExe(t *testing.T) {
+	server := newTestServer(t)
+
+	// Create a basic user directly (with the flag set, no SSH keys, no boxes)
+	var userID string
+	err := server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		userID, err = server.createUserRecord(ctx, queries, "basicuser-profile@example.com", true)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to create basic user: %v", err)
+	}
+
+	// Create an auth cookie for this user
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+
+	// Create auth cookie - domain must match what baseDomain returns for the request host
+	cookieValue := generateRegistrationToken()
+	err = server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.InsertAuthCookie(ctx, exedb.InsertAuthCookieParams{
+			CookieValue: cookieValue,
+			UserID:      userID,
+			Domain:      "127.0.0.1", // baseDomain returns this for 127.0.0.1:port
+			ExpiresAt:   time.Now().Add(24 * time.Hour),
+		})
+	})
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Set the cookie on the jar
+	baseURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", server.httpPort()))
+	jar.SetCookies(baseURL, []*http.Cookie{
+		{Name: "exe-auth", Value: cookieValue},
+	})
+
+	// Make request to profile page (/user)
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/user", server.httpPort()))
+	if err != nil {
+		t.Fatalf("Failed to GET /user: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200, got %d", resp.StatusCode)
+	}
+
+	// Should contain the "What is exe?" section
+	if !strings.Contains(string(body), "What is exe?") {
+		t.Error("Profile page should contain 'What is exe?' section for basic users")
+	}
+	if !strings.Contains(string(body), "exe.dev is a hosting service") {
+		t.Error("Profile page should contain explanation text for basic users")
+	}
+
+	// Should NOT show SSH Keys section for basic users
+	if strings.Contains(string(body), "SSH Keys") {
+		t.Error("Profile page should NOT show SSH Keys section for basic users")
+	}
+}
+
+// TestNormalUserProfileShowsSSHKeys tests that a normal user (with SSH key)
+// sees the SSH Keys section on their profile page.
+func TestNormalUserProfileShowsSSHKeys(t *testing.T) {
+	server := newTestServer(t)
+
+	// Create a normal user (with SSH key)
+	email := "normaluser-profile@example.com"
+	publicKey := "ssh-rsa dummy-test-key test@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Create an auth cookie for this user
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+
+	// Create auth cookie
+	cookieValue := generateRegistrationToken()
+	err = server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.InsertAuthCookie(ctx, exedb.InsertAuthCookieParams{
+			CookieValue: cookieValue,
+			UserID:      user.UserID,
+			Domain:      "127.0.0.1",
+			ExpiresAt:   time.Now().Add(24 * time.Hour),
+		})
+	})
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Set the cookie on the jar
+	baseURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", server.httpPort()))
+	jar.SetCookies(baseURL, []*http.Cookie{
+		{Name: "exe-auth", Value: cookieValue},
+	})
+
+	// Make request to profile page (/user)
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/user", server.httpPort()))
+	if err != nil {
+		t.Fatalf("Failed to GET /user: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200, got %d", resp.StatusCode)
+	}
+
+	// Should show SSH Keys section for normal users
+	if !strings.Contains(string(body), "SSH Keys") {
+		t.Error("Profile page should show SSH Keys section for normal users")
+	}
+
+	// Should NOT show "What is exe?" section for normal users
+	if strings.Contains(string(body), "What is exe?") {
+		t.Error("Profile page should NOT show 'What is exe?' section for normal users")
+	}
+}
+
+// TestNormalUserDashboardShowsAllTabs tests that a normal user (with SSH key)
+// can access the dashboard and sees all tabs.
+func TestNormalUserDashboardShowsAllTabs(t *testing.T) {
+	server := newTestServer(t)
+
+	// Create a normal user (with SSH key)
+	email := "normaluser-dashboard@example.com"
+	publicKey := "ssh-rsa dummy-test-key test@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Create an auth cookie for this user
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+
+	// Create auth cookie - domain must match what baseDomain returns for the request host
+	cookieValue := generateRegistrationToken()
+	err = server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.InsertAuthCookie(ctx, exedb.InsertAuthCookieParams{
+			CookieValue: cookieValue,
+			UserID:      user.UserID,
+			Domain:      "127.0.0.1", // baseDomain returns this for 127.0.0.1:port
+			ExpiresAt:   time.Now().Add(24 * time.Hour),
+		})
+	})
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Set the cookie on the jar
+	baseURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", server.httpPort()))
+	jar.SetCookies(baseURL, []*http.Cookie{
+		{Name: "exe-auth", Value: cookieValue},
+	})
+
+	// Make request to dashboard (/)
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/", server.httpPort()))
+	if err != nil {
+		t.Fatalf("Failed to GET /: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200, got %d", resp.StatusCode)
+	}
+
+	// Should show all tabs (Boxes, Shell, Profile)
+	if !strings.Contains(string(body), "Boxes") {
+		t.Error("Dashboard should show Boxes tab for normal users")
+	}
+	if !strings.Contains(string(body), "Shell") {
+		t.Error("Dashboard should show Shell tab for normal users")
+	}
+	if !strings.Contains(string(body), "Profile") {
+		t.Error("Dashboard should show Profile tab for normal users")
+	}
+}

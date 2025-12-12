@@ -60,6 +60,46 @@ func (q *Queries) GetAuthCookieInfo(ctx context.Context, arg GetAuthCookieInfoPa
 	return i, err
 }
 
+const getSiteCookiesForUser = `-- name: GetSiteCookiesForUser :many
+SELECT domain, last_used_at
+FROM auth_cookies
+WHERE user_id = ? AND domain != ? AND expires_at > CURRENT_TIMESTAMP
+ORDER BY last_used_at DESC NULLS LAST
+`
+
+type GetSiteCookiesForUserParams struct {
+	UserID string `db:"user_id" json:"user_id"`
+	Domain string `db:"domain" json:"domain"`
+}
+
+type GetSiteCookiesForUserRow struct {
+	Domain     string     `db:"domain" json:"domain"`
+	LastUsedAt *time.Time `db:"last_used_at" json:"last_used_at"`
+}
+
+func (q *Queries) GetSiteCookiesForUser(ctx context.Context, arg GetSiteCookiesForUserParams) ([]GetSiteCookiesForUserRow, error) {
+	rows, err := q.query(ctx, q.getSiteCookiesForUserStmt, getSiteCookiesForUser, arg.UserID, arg.Domain)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetSiteCookiesForUserRow{}
+	for rows.Next() {
+		var i GetSiteCookiesForUserRow
+		if err := rows.Scan(&i.Domain, &i.LastUsedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertAuthCookie = `-- name: InsertAuthCookie :exec
 INSERT INTO auth_cookies (cookie_value, user_id, domain, expires_at)
 VALUES (?, ?, ?, ?)
