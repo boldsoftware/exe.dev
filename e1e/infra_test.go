@@ -40,6 +40,7 @@ import (
 	"github.com/go4org/hashtriemap"
 
 	"exe.dev/ctrhosttest"
+	"exe.dev/e1e/testinfra"
 	"exe.dev/exelet/client"
 	api "exe.dev/pkg/api/exe/compute/v1"
 	"github.com/Netflix/go-expect"
@@ -300,8 +301,8 @@ func initLogging() error {
 var Env *testEnv
 
 type testEnv struct {
-	sshProxy       *tcpProxy
-	exedHTTPProxy  *tcpProxy
+	sshProxy       *testinfra.TCPProxy
+	exedHTTPProxy  *testinfra.TCPProxy
 	exed           exedInstance
 	piperd         piperdInstance
 	exelet         exeletInstance
@@ -350,7 +351,7 @@ type exeletInstance struct {
 }
 
 func (e *testEnv) sshPort() int {
-	return e.sshProxy.tcp.Port
+	return e.sshProxy.Port()
 }
 
 // parseSSHHost extracts hostname from ssh:// URL
@@ -761,9 +762,9 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 	}
 
 	// stop proxies
-	e.sshProxy.close()
+	e.sshProxy.Close()
 	if e.exedHTTPProxy != nil {
-		e.exedHTTPProxy.close()
+		e.exedHTTPProxy.Close()
 	}
 
 	// Collect and merge coverage data from exed and exelet
@@ -839,70 +840,6 @@ func (e *testEnv) checkBoxesCleanedUp() error {
 	return nil
 }
 
-type tcpProxy struct {
-	name string
-	ln   net.Listener
-	tcp  *net.TCPAddr
-	dst  atomic.Pointer[net.TCPAddr]
-}
-
-func newTCPProxy(name string) (*tcpProxy, error) {
-	ln, err := net.Listen("tcp", ":0")
-	if err != nil {
-		return nil, err
-	}
-	tcpAddr := ln.Addr().(*net.TCPAddr)
-	return &tcpProxy{name: name, ln: ln, tcp: tcpAddr}, nil
-}
-
-func (p *tcpProxy) serve() error {
-	for {
-		c, err := p.ln.Accept()
-		if err != nil {
-			return err
-		}
-		go func() {
-			defer c.Close()
-			// Block the dialer until destination address is set.
-			// We shouldn't have to do this, but live with it for now.
-			// TODO: figure out why we're seeing connections before setDestPort is called, and stop doing that.
-			var dstAddr *net.TCPAddr
-			// Poll. Why not. Cheap enough, and simpler than a condvar.
-			pollCount := 0
-			for {
-				dstAddr = p.dst.Load()
-				if dstAddr != nil {
-					break
-				}
-				pollCount += 1
-				if pollCount%20 == 1 {
-					slog.Info("tcpProxy: waiting for destination address", "name", p.name, "listener_addr", p.ln.Addr())
-				}
-				time.Sleep(50 * time.Millisecond)
-			}
-			dst, err := net.Dial("tcp", dstAddr.String())
-			if err != nil {
-				slog.Error("tcpProxy: failed to connect to dst", "name", p.name, "address", dstAddr, "error", err)
-				return
-			}
-			var wg sync.WaitGroup
-			wg.Go(func() { io.Copy(dst, c) })
-			wg.Go(func() { io.Copy(c, dst) })
-			wg.Wait()
-		}()
-	}
-}
-
-func (p *tcpProxy) setDestPort(port int) {
-	p.dst.Store(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port})
-}
-
-func (p *tcpProxy) close() {
-	if p.ln != nil {
-		p.ln.Close()
-	}
-}
-
 func setup(ctrHost string) (*testEnv, error) {
 	env := &testEnv{
 		asciinemaWriters: make(map[string]*expect.AsciinemaWriter),
@@ -922,15 +859,16 @@ func setup(ctrHost string) (*testEnv, error) {
 	//
 	// To work around this, we start a simple TCP proxy first, which will act as the sshpiper port.
 	// We then forward traffic from the proxy to the actual sshpiper instance.
-	sshProxy, err := newTCPProxy("sshProxy")
+	// TODO: figure out why we're seeing connections before SetDestPort is called, and stop doing that.
+	sshProxy, err := testinfra.NewTCPProxy("sshProxy")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ssh proxy: %w", err)
 	}
-	go sshProxy.serve()
+	go sshProxy.Serve(context.Background())
 	env.sshProxy = sshProxy
-	env.addCanonicalization(sshProxy.tcp.Port, "SSH_PORT")
+	env.addCanonicalization(sshProxy.Port(), "SSH_PORT")
 	if *flagVerbosePorts {
-		slog.Info("ssh proxy listening", "port", sshProxy.tcp.Port)
+		slog.Info("ssh proxy listening", "port", sshProxy.Port())
 	}
 
 	// Start email server first so we can pass its URL to exed
@@ -954,14 +892,15 @@ func setup(ctrHost string) (*testEnv, error) {
 	// We have a circular dependency: exelet needs to know exed's HTTP port,
 	// but exed needs to know exelet's address. Use the same proxy trick as for sshpiper.
 	// Start a TCP proxy for exed HTTP that we can give to exelet immediately.
-	exedHTTPProxy, err := newTCPProxy("exedHTTPProxy")
+	// TODO: figure out why we're seeing connections before setDestPort is called, and stop doing that.
+	exedHTTPProxy, err := testinfra.NewTCPProxy("exedHTTPProxy")
 	if err != nil {
 		return env, fmt.Errorf("failed to create exed HTTP proxy: %w", err)
 	}
-	go exedHTTPProxy.serve()
+	go exedHTTPProxy.Serve(context.Background())
 	env.exedHTTPProxy = exedHTTPProxy
 	if *flagVerbosePorts {
-		slog.Info("exed HTTP proxy listening", "port", exedHTTPProxy.tcp.Port)
+		slog.Info("exed HTTP proxy listening", "port", exedHTTPProxy.Port())
 	}
 
 	// Test if remote host can reach local proxy
@@ -970,8 +909,8 @@ func setup(ctrHost string) (*testEnv, error) {
 	// does NOT work, and we set up an SSH tunnel for the exelet->exed communication
 	// as a band-aid.
 	host := parseSSHHost(ctrHost)
-	hasConnectivity := testRemoteToLocalConnectivity(host, gateway, exedHTTPProxy.tcp.Port)
-	slog.Info("tested remote->local connectivity", "host", host, "gateway", gateway, "port", exedHTTPProxy.tcp.Port, "reachable", hasConnectivity)
+	hasConnectivity := testRemoteToLocalConnectivity(host, gateway, exedHTTPProxy.Port())
+	slog.Info("tested remote->local connectivity", "host", host, "gateway", gateway, "port", exedHTTPProxy.Port(), "reachable", hasConnectivity)
 	needsTunnel := !hasConnectivity
 
 	// Determine the exedURL for exelet
@@ -982,7 +921,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	if needsTunnel {
 		slog.Info("remote->local connectivity not available, using SSH reverse tunnel")
 		// Use SSH reverse tunnel: exelet -> SSH tunnel -> TCP proxy -> exed
-		remotePort, cmd, cancel, err := startSSHTunnel(host, exedHTTPProxy.tcp.Port)
+		remotePort, cmd, cancel, err := startSSHTunnel(host, exedHTTPProxy.Port())
 		if err != nil {
 			return env, fmt.Errorf("failed to start SSH tunnel: %w", err)
 		}
@@ -990,11 +929,11 @@ func setup(ctrHost string) (*testEnv, error) {
 		tunnelCancel = cancel
 		exedProxyURL = fmt.Sprintf("http://localhost:%d", remotePort)
 		if *flagVerbosePorts {
-			slog.Info("using SSH tunnel for exelet->exed", "remote_port", remotePort, "proxy_port", exedHTTPProxy.tcp.Port)
+			slog.Info("using SSH tunnel for exelet->exed", "remote_port", remotePort, "proxy_port", exedHTTPProxy.Port())
 		}
 	} else {
 		// Use direct gateway access via TCP proxy
-		exedProxyURL = fmt.Sprintf("http://%s:%d", gateway, exedHTTPProxy.tcp.Port)
+		exedProxyURL = fmt.Sprintf("http://%s:%d", gateway, exedHTTPProxy.Port())
 	}
 
 	// Start exelet with the proxy port
@@ -1013,7 +952,7 @@ func setup(ctrHost string) (*testEnv, error) {
 
 	// TODO: build piperd concurrently with starting exed for faster startup
 	// Pass "0,0" to let the proxy listeners allocate their own port numbers
-	ei, err := startExed(ctrHost, es.port, sshProxy.tcp.Port, []int{0, 0}, exelet.Address, env.exedSlogErrC, env.exedGuidLogC)
+	ei, err := startExed(ctrHost, es.port, sshProxy.Port(), []int{0, 0}, exelet.Address, env.exedSlogErrC, env.exedGuidLogC)
 	if err != nil {
 		return env, err
 	}
@@ -1033,10 +972,10 @@ func setup(ctrHost string) (*testEnv, error) {
 	}
 
 	// proxy SSH requests to piperd
-	env.sshProxy.setDestPort(pi.SSHPort)
+	env.sshProxy.SetDestPort(pi.SSHPort)
 
 	// Now that exed is running, point the HTTP proxy to the real exed HTTP port
-	env.exedHTTPProxy.setDestPort(ei.HTTPPort)
+	env.exedHTTPProxy.SetDestPort(ei.HTTPPort)
 
 	return env, nil
 }
