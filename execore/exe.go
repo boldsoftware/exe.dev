@@ -1086,7 +1086,6 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 	}, nil
 }
 
-
 // checkEmailVerificationToken checks if an email verification token is valid without consuming it
 func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) (exedb.GetEmailVerificationByTokenRow, error) {
 	var row exedb.GetEmailVerificationByTokenRow
