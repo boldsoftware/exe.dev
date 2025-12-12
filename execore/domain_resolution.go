@@ -11,6 +11,10 @@ import (
 	"exe.dev/domz"
 )
 
+// errHostIsIPAddress is returned when a custom domain request uses an IP address
+// instead of a domain name. This commonly happens from port scanners/bots.
+var errHostIsIPAddress = errors.New("host is an IP address, not a domain")
+
 // resolveCustomDomainBoxName determines the box name associated with a custom domain.
 // It handles both traditional CNAME-based custom domains and apex domains that rely on
 // ALIAS/ANAME records which resolve to A records pointing at exe.dev infrastructure.
@@ -18,6 +22,12 @@ func (s *Server) resolveCustomDomainBoxName(ctx context.Context, host string) (s
 	host = domz.Canonicalize(host)
 	if host == "" {
 		return "", fmt.Errorf("host is empty")
+	}
+
+	// Reject IP addresses early. This commonly happens from port scanners/bots
+	// connecting with the IP as the TLS SNI hostname.
+	if _, err := netip.ParseAddr(host); err == nil {
+		return "", errHostIsIPAddress
 	}
 
 	cname, err := s.lookupCNAME(ctx, host)

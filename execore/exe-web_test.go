@@ -73,6 +73,20 @@ func TestHostPolicyAcceptsApexARecord(t *testing.T) {
 	}
 }
 
+func TestResolveCustomDomainRejectsIPAddress(t *testing.T) {
+	t.Parallel()
+
+	s := &Server{env: stage.Prod()}
+
+	// IP addresses should be rejected without any DNS lookups
+	for _, ip := range []string{"35.95.182.1", "192.168.1.1", "::1", "2001:db8::1"} {
+		_, err := s.resolveCustomDomainBoxName(context.Background(), ip)
+		if err != errHostIsIPAddress {
+			t.Errorf("resolveCustomDomainBoxName(%q) = %v, want errHostIsIPAddress", ip, err)
+		}
+	}
+}
+
 func TestResolveBoxNameApexDomain(t *testing.T) {
 	t.Parallel()
 
