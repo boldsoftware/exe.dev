@@ -1086,15 +1086,6 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 	}, nil
 }
 
-// baseDomain extracts the base domain from a host
-func (s *Server) baseDomain(host string) string {
-	host = domz.StripPort(host)
-	if match := domz.FirstMatch(host, s.env.WebHost, s.env.BoxHost); match != "" {
-		return match
-	}
-	// Return as-is for custom domains
-	return host
-}
 
 // checkEmailVerificationToken checks if an email verification token is valid without consuming it
 func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) (exedb.GetEmailVerificationByTokenRow, error) {

@@ -1382,11 +1382,13 @@ func (s *Server) createAuthCookie(ctx context.Context, userID, domain string) (s
 	expiresAt := time.Now().Add(30 * 24 * time.Hour)
 
 	// Store in database
+	// Strip port from domain since cookies are per-host, not per-host:port
+	domainWithoutPort := domz.StripPort(domain)
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		return queries.InsertAuthCookie(ctx, exedb.InsertAuthCookieParams{
 			CookieValue: cookieValue,
 			UserID:      userID,
-			Domain:      s.baseDomain(domain),
+			Domain:      domainWithoutPort,
 			ExpiresAt:   expiresAt,
 		})
 	})
@@ -1440,7 +1442,8 @@ func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (st
 
 	ctx := r.Context()
 	cookieValue := cookie.Value
-	domain := s.baseDomain(r.Host)
+	// Strip port from domain since cookies are per-host, not per-host:port
+	domain := domz.StripPort(r.Host)
 
 	var userID string
 	var expiresAt time.Time

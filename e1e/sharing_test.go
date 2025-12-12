@@ -887,3 +887,124 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 	ownerCleanup.deleteBox(box)
 	ownerCleanup.disconnect()
 }
+
+// TestProxyCookieIsolation verifies that a proxy auth cookie for one box cannot be
+// used to access a different box. This ensures cookies are correctly scoped to
+// their specific subdomain (e.g., box1.exe.xyz cookie can't access box2.exe.xyz).
+func TestProxyCookieIsolation(t *testing.T) {
+	t.Parallel()
+	noGolden(t)
+
+	// Create two users, each with their own box
+	user1PTY, user1Cookies, user1KeyFile, _ := registerForExeDevWithEmail(t, "user1@test-cookie-isolation.example")
+	box1 := newBox(t, user1PTY, BoxOpts{Command: "/bin/bash"})
+	user1PTY.disconnect()
+	waitForSSH(t, box1, user1KeyFile)
+
+	user2PTY, _, user2KeyFile, _ := registerForExeDevWithEmail(t, "user2@test-cookie-isolation.example")
+	box2 := newBox(t, user2PTY, BoxOpts{Command: "/bin/bash"})
+	user2PTY.disconnect()
+	waitForSSH(t, box2, user2KeyFile)
+
+	const boxInternalPort = 8080
+	httpPort := Env.exed.HTTPPort
+
+	// Set up HTTP servers in both boxes
+	// Note: loginThroughProxy expects "alive" in the response body
+	for _, setup := range []struct {
+		box     string
+		keyFile string
+		content string
+	}{
+		{box1, user1KeyFile, "alive"},
+		{box2, user2KeyFile, "box2-content"},
+	} {
+		makeIndex := boxSSHCommand(t, setup.box, setup.keyFile, "echo", setup.content, ">", "/home/exedev/index.html")
+		if err := makeIndex.Run(); err != nil {
+			t.Fatalf("failed to create index.html for %s: %v", setup.box, err)
+		}
+
+		httpdCmd := boxSSHCommand(t, setup.box, setup.keyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(boxInternalPort), "-h", "/home/exedev")
+		httpdCmd.Stdout = t.Output()
+		httpdCmd.Stderr = t.Output()
+		if err := httpdCmd.Start(); err != nil {
+			t.Fatalf("failed to start httpd for %s: %v", setup.box, err)
+		}
+		t.Cleanup(func() {
+			httpdCmd.Process.Kill()
+			httpdCmd.Wait()
+		})
+
+		waitCmd := boxSSHCommand(t, setup.box, setup.keyFile, "timeout", "20", "sh", "-c",
+			fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", boxInternalPort))
+		if err := waitCmd.Run(); err != nil {
+			t.Fatalf("httpd not ready for %s: %v", setup.box, err)
+		}
+
+		// Configure proxy port and make private
+		out, err := runExeDevSSHCommand(t, setup.keyFile, "share", "port", setup.box, fmt.Sprintf("%d", boxInternalPort))
+		if err != nil {
+			t.Fatalf("failed to set proxy port: %v\n%s", err, out)
+		}
+		out, err = runExeDevSSHCommand(t, setup.keyFile, "share", "set-private", setup.box)
+		if err != nil {
+			t.Fatalf("failed to set private: %v\n%s", err, out)
+		}
+	}
+
+	// User 1 logs in to box1 through the proxy and gets a proxy auth cookie
+	fixture1 := newProxyAuthFixture(t, box1, httpPort, user1Cookies)
+	jar1 := fixture1.newJar()
+	fixture1.loginThroughProxy(jar1)
+
+	// Verify user1 can access box1
+	box1ProxyCookie := fixture1.authCookie(jar1)
+	t.Logf("Got proxy auth cookie for box1: %s (value length: %d)", box1ProxyCookie.Name, len(box1ProxyCookie.Value))
+
+	// Create a new jar with ONLY the box1 proxy cookie (not the main exe-auth cookie)
+	// and try to access box2 with it
+	jar2, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("failed to create cookie jar: %v", err)
+	}
+
+	// Set the box1 cookie for box2's URL - this simulates trying to reuse the cookie
+	box2URL := fmt.Sprintf("http://%s.exe.cloud:%d/", box2, httpPort)
+	jar2.SetCookies(mustParseURL(box2URL), []*http.Cookie{box1ProxyCookie})
+	// Also set it on localhost (since tests route through localhost)
+	jar2.SetCookies(mustParseURL(fmt.Sprintf("http://localhost:%d/", httpPort)), []*http.Cookie{box1ProxyCookie})
+
+	// Try to access box2 with box1's cookie - should NOT work
+	client := noRedirectClient(jar2)
+	req, err := localhostRequestWithHostHeader("GET", box2URL, nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+	req.Host = fmt.Sprintf("%s.exe.cloud:%d", box2, httpPort)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("failed to do request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// The request should either:
+	// 1. Get a redirect to login (307) because the cookie is invalid for this domain
+	// 2. Get 401 Unauthorized
+	// It should NOT return 200 OK with box2's content
+	if resp.StatusCode == http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("BUG: box1's proxy cookie was accepted for box2! Got 200 OK with body: %s", body)
+	}
+
+	t.Logf("Correctly rejected box1's cookie for box2: status %d", resp.StatusCode)
+
+	// Cleanup
+	cleanup1 := sshToExeDev(t, user1KeyFile)
+	cleanup1.deleteBox(box1)
+	cleanup1.disconnect()
+
+	cleanup2 := sshToExeDev(t, user2KeyFile)
+	cleanup2.deleteBox(box2)
+	cleanup2.disconnect()
+}
