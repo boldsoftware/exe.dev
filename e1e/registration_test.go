@@ -8,10 +8,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"testing"
+	"time"
 
+	"exe.dev/e1e/testinfra"
 	"exe.dev/ghuser"
 )
 
@@ -270,6 +273,63 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 	// After first-time registration, we show a welcome message and a prompt.
 	pty.want("Welcome to EXE.DEV!")
 	pty.want("create your first box")
+	pty.wantPrompt()
+	pty.sendLine("whoami")
+	pty.want(email)
+	pty.want(publicKey)
+	pty.disconnect()
+}
+
+// TestRegistrationWithLatency tests that registration works correctly
+// even when there is significant network latency.
+func TestRegistrationWithLatency(t *testing.T) {
+	t.Skip("broken at the moment, see issue 180")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t) // real banner makes for ugly golden files
+
+	// Add extra latency between us and the repl.
+	proxy, err := testinfra.NewTCPProxy("add_latency")
+	if err != nil {
+		t.Fatalf("failed to create latency proxy: %v", err)
+	}
+	proxy.SetLatency(100 * time.Millisecond)
+	proxy.SetDestPort(Env.piperd.SSHPort)
+
+	go proxy.Serve(Env.context(t))
+	t.Cleanup(proxy.Close)
+
+	keyFile, publicKey := genSSHKey(t)
+
+	// Use "real_banner_please" as the username to trigger the real banner.
+	pty := makePty(t, "ssh localhost with latency")
+	sshArgs := sshOpts()
+	sshArgs = append(sshArgs,
+		"-p", fmt.Sprint(proxy.Port()),
+		"-o", "IdentityFile="+keyFile,
+		"real_banner_please@localhost",
+	)
+	sshCmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
+	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=")
+	pty.attachAndStart(sshCmd)
+	pty.prompt = exeDevPrompt
+
+	pty.want("███") // part of the banner
+	pty.want("Please enter your email")
+
+	// Reject OSC 11 responses, which look like: ]11;rgb:0000/0000/0000
+	pty.reject("]11")
+	pty.reject("rgb:")
+
+	email := t.Name() + "@example.com"
+	pty.sendLine(email)
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	emailMsg := Env.email.waitForEmail(t, email)
+	clickVerifyLinkInEmail(t, emailMsg)
+	pty.want("Email verified successfully")
+	pty.want("Registration complete")
+	pty.want("Welcome to EXE.DEV!")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)

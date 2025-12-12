@@ -450,7 +450,8 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 // showAnimatedWelcome displays the ASCII art with a beautiful fade-out animation
 func (ss *SSHServer) showAnimatedWelcome(s *shellSession) {
 	// Skip animation in test mode for faster tests
-	if ss.server.env.SkipBanner {
+	// ...except for the one case where we do want the full animation in a test. (Sigh.)
+	if ss.server.env.SkipBanner && s.User() != "real_banner_please" {
 		fmt.Fprint(s, "~~~ EXE.DEV ~~~\r\n")
 		return
 	}

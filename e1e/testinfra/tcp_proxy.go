@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // TCPProxy creats an arbitrary TCP port on the local host,
@@ -30,6 +31,7 @@ type TCPProxy struct {
 	dst      atomic.Pointer[net.TCPAddr] // destination to connect to
 	ch       chan bool                   // channel closed when dst set
 	cancel   context.CancelFunc          // closes connections
+	latency  time.Duration               // latency to add to each read
 }
 
 // NewTCPProxy returns a new TCPProxy. This creates a new listener.
@@ -114,12 +116,17 @@ func (p *TCPProxy) proxy(ctx context.Context, c *net.TCPConn) {
 
 	copyDone := make(chan bool, 2)
 
+	cp := io.Copy
+	if p.latency > 0 {
+		cp = p.copyWithLatency
+	}
+
 	copyData := func(to, from *net.TCPConn) {
 		defer func() {
 			copyDone <- true
 			wg.Done()
 		}()
-		if _, err := io.Copy(to, from); err != nil && !errors.Is(err, net.ErrClosed) {
+		if _, err := cp(to, from); err != nil && !errors.Is(err, net.ErrClosed) {
 			slog.WarnContext(ctx, "TCPProxy copying error", "name", p.Name, "to", to.LocalAddr().String(), "from", from.LocalAddr().String(), "error", err)
 		}
 	}
@@ -153,6 +160,35 @@ func (p *TCPProxy) SetDestPort(port int) {
 	}
 	p.dst.Store(addr)
 	close(p.ch)
+}
+
+// SetLatency sets a latency to add to each read operation.
+// This must be called before Serve.
+func (p *TCPProxy) SetLatency(d time.Duration) {
+	p.latency = d
+}
+
+// copyWithLatency copies from src to dst, adding p.latency after each read.
+func (p *TCPProxy) copyWithLatency(dst io.Writer, src io.Reader) (int64, error) {
+	var written int64
+	buf := make([]byte, 4096)
+	for {
+		n, err := src.Read(buf)
+		if n > 0 {
+			time.Sleep(p.latency)
+			nw, werr := dst.Write(buf[:n])
+			written += int64(nw)
+			if werr != nil {
+				return written, werr
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				return written, nil
+			}
+			return written, err
+		}
+	}
 }
 
 // Close closes the listening socket.
