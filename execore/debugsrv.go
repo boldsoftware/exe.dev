@@ -76,9 +76,9 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/boxes">boxes</a> (<a href="/debug/boxes?format=json">json</a>)</li>
     <li><a href="/debug/users">users</a> (<a href="/debug/users?format=json">json</a>)</li>
 </ul>
-<p>Git version: %s</p>
+<p>Git version: %s %s</p>
 </body></html>
-`, commit)
+`, commit, gitHubLink(commit))
 }
 
 func (s *Server) handleDebugGitsha(w http.ResponseWriter, r *http.Request) {
@@ -269,6 +269,14 @@ func gitCommit() string {
 		}
 	}
 	return ""
+}
+
+// gitHubLink returns an HTML link to the GitHub commit history starting at the given SHA.
+func gitHubLink(commit string) string {
+	if commit == "" || commit == "unknown" {
+		return ""
+	}
+	return fmt.Sprintf(`(<a href="https://github.com/boldsoftware/exe/commits/%s">gh</a>)`, commit)
 }
 
 // handleDebugBoxDelete handles deletion of a box from the debug page.
