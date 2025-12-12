@@ -29,15 +29,7 @@ into `exe.dev`.
 To share your site publicly, run `ssh exe.dev share set-public <boxname>`.
 Return it to private access with `ssh exe.dev share set-private <boxname>`.
 
-## Using exe.dev authentication
-
-If you would like to build out authorization in your service, you may
-leverage exe.dev's existing authentication. Look for `X-ExeDev-UserID` and `X-ExeDev-Email`
-headers in the requests coming into the box. These headers are only present when
-the user is authenticated via exe.dev.
-
-- `X-ExeDev-UserID`: A stable, unique user identifier
-- `X-ExeDev-Email`: The user's email address
+To use exe.dev authentication in your application, see [Login with exe.dev](./login-with-exe).
 
 ## Reverse proxy headers
 
@@ -47,46 +39,6 @@ application can reconstruct the original public request information:
 - `X-Forwarded-Proto`: `https` when the client connected over TLS, otherwise `http`
 - `X-Forwarded-Host`: The full host header (including port) that the client requested
 - `X-Forwarded-For`: A comma-separated list containing any prior `X-Forwarded-For` value plus the client's IP as seen by exe.dev
-
-### Special Authentication URLs
-
-The following special URLs are available for authentication flows:
-
-- **Login**: `https://boxname.exe.xyz/__exe.dev/login?redirect={path}`
-
-- **Logout**: POST `https://boxname.exe.xyz/__exe.dev/logout`
-
-### Example: nginx configuration
-
-The following `nginx` configuration allows only specified email addresses to access a protected location:
-
-```nginx
-server {
-    listen 80;
-    server_name _;
-
-    location / {
-        # Check if X-ExeDev-Email header matches allowed addresses
-        set $allowed "false";
-        if ($http_x_exedev_email = "alice@example.com") {
-            set $allowed "true";
-        }
-        if ($http_x_exedev_email = "bob@example.com") {
-            set $allowed "true";
-        }
-
-        # Return 403 if not allowed
-        if ($allowed = "false") {
-            return 403 "Access denied. Please log in with an authorized account.";
-        }
-
-        # Serve content for authorized users
-        root /var/www/html;
-        index index.html;
-        try_files $uri $uri/ =404;
-    }
-}
-```
 
 ## Additional Ports
 
