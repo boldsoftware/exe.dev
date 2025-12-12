@@ -494,9 +494,9 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 
 			Image:   imageRef,
 			CPUs:    2,
-			Memory:  8 * 1000 * 1000 * 1000,  // 8GB
-			Disk:    20 * 1000 * 1000 * 1000, // 20GB
-			Env:     envVars,                 // Environment variables
+			Memory:  ss.server.env.DefaultMemory,
+			Disk:    ss.server.env.DefaultDisk,
+			Env:     envVars, // Environment variables
 			SSHKeys: []string{cc.PublicKey},  // Pass user's SSH key
 			Configs: []*api.Config{
 				{

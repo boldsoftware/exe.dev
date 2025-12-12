@@ -32,6 +32,9 @@ type Env struct {
 
 	NumShards  int   // number of IP shards available for box allocation, max 253
 	ProxyPorts []int // ports to listen on for proxying; empty means none
+
+	DefaultMemory uint64 // default memory for new boxes in bytes
+	DefaultDisk   uint64 // default disk size for new boxes in bytes
 }
 
 // Local returns an Env configured for convenient local human development.
@@ -61,6 +64,9 @@ func Local() Env {
 
 		NumShards:  25,
 		ProxyPorts: []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 9999},
+
+		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
+		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
 	}
 }
 
@@ -92,6 +98,9 @@ func Test() Env {
 
 		NumShards:  25,
 		ProxyPorts: nil, // no proxy ports in tests to avoid conflicts
+
+		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
+		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
 	}
 }
 
@@ -120,6 +129,9 @@ func Staging() Env {
 
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
+
+		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
+		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
 	}
 }
 
@@ -147,6 +159,9 @@ func Prod() Env {
 
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
+
+		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
+		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
 	}
 }
 
