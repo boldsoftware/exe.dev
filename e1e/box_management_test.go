@@ -249,6 +249,11 @@ func TestVanillaBox(t *testing.T) {
 		pty.want("200")
 		pty.wantPrompt()
 
+		// Test that unknown paths return 404
+		pty.sendLine("curl --max-time 10 -s -o /dev/null -w '%{http_code}\\n' http://169.254.169.254/does-not-exist")
+		pty.want("404")
+		pty.wantPrompt()
+
 		// Test Anthropic API through metadata service (only if ANTHROPIC_API_KEY is set)
 		// We don't include this because it messes with golden files locally.
 		// if os.Getenv("ANTHROPIC_API_KEY") != "" {

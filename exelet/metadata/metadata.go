@@ -95,7 +95,7 @@ func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr
 // Start starts the metadata HTTP server
 func (s *Service) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.handleRoot)
+	mux.HandleFunc("/{$}", s.handleRoot)
 
 	// Add gateway proxy handler
 	mux.HandleFunc("/gateway/llm/", s.handleGatewayProxy)
