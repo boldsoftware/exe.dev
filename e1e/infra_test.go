@@ -105,10 +105,18 @@ func TestMain(m *testing.M) {
 		os.Exit(m.Run())
 	}
 
+	// We are going to actually run some tests.
+
+	defer testinfra.RunCleanups()
+	exit := func(status int) {
+		testinfra.RunCleanups()
+		os.Exit(status)
+	}
+
 	err := initLogging()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to init logging: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	if testing.Verbose() && !*flagVerboseAll && !*flagVerbosePiperd && !*flagVerboseExed && !*flagVerboseExelet && !*flagVerbosePorts && !*flagVerboseEmail && !*flagVerbosePty && !*flagVerboseSlog {
@@ -135,7 +143,6 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 	}
 
 	var ctrHost string
-	var destroyVM func()
 	switch runtime.GOOS {
 	case "darwin":
 		ctrHost = ctrhosttest.Detect()
@@ -150,23 +157,16 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 		// otherwise start a VM.
 		ctrHost = os.Getenv("CTR_HOST")
 		if ctrHost == "" {
-			ctrHost, destroyVM, err = startLinuxVM()
+			ctrHost, err = startLinuxVM()
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
+				exit(1)
 			}
 		}
 
 	default:
 		fmt.Fprintf(os.Stderr, "don't know how to set up tests on %s\n", runtime.GOOS)
-		os.Exit(1)
-	}
-
-	exit := func(status int) {
-		if destroyVM != nil {
-			destroyVM()
-		}
-		os.Exit(status)
+		exit(1)
 	}
 
 	env, err := setup(ctrHost)
@@ -191,55 +191,79 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 		}
 	}()
 
+	var exitCode int
+
+	// Add some cleanups before we run the tests.
+	// The cleanups are run in reverse order.
+
+	testinfra.AddCleanup(func() {
+		for _, f := range logFiles {
+			if f == nil {
+				continue
+			}
+			if err := f.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "failed to close log file %v: %v\n", f.Name(), err)
+			}
+		}
+	})
+
+	testinfra.AddCleanup(func() {
+		if env.exedGuidLogC != nil {
+			close(env.exedGuidLogC)
+			for line := range env.exedGuidLogC {
+				fmt.Fprintf(os.Stderr, "\n\nexed log with guid during e1e run:\n%s\n\n", line)
+			}
+		}
+	})
+
+	testinfra.AddCleanup(func() {
+		close(env.exeletSlogErrC)
+		for line := range env.exeletSlogErrC {
+			exitCode = 1
+			fmt.Fprintf(os.Stderr, "\n\nexelet emitted ERROR log during e1e run:\n%s\n\n", line)
+		}
+	})
+
+	testinfra.AddCleanup(func() {
+		close(env.exedSlogErrC)
+		for line := range env.exedSlogErrC {
+			// TODO(philip): TestNewWithPrompt triggers this, because Shelley talks
+			// to the gateway and even though it's supposed to use "predictable" model, we get an error.
+			// This is an unrelated bug uncovered when I was trying to change how the
+			// plumbing works for the llm gateway, so I'm punting on fixing that bug and making
+			// the test infra ever so slightly less picky about error logs.
+			// Note that the change that exposed this was: "ctrhosttest: fix ResolveDefaultGateway to parse CTR_HOST SSH URLs"
+			// which leads me to believe that the Shelley gateway URL was wrong previously, and Shelley
+			// was silently swallowing an error, and now it's managing to talk to exed.
+			if strings.Contains(line, "\"msg\":\"llmgateway.httpError\"") {
+				continue
+			}
+			exitCode = 1
+			fmt.Fprintf(os.Stderr, "\n\nexed emitted ERROR log during e1e run:\n%s\n\n", line)
+		}
+	})
+
+	testinfra.AddCleanup(func() {
+		exeletClient := <-exeletClientC
+		if err := env.Close(exeletClient); err != nil {
+			slog.Error("test cleanup failed", "error", err)
+			fmt.Fprintf(os.Stderr, "\n\nERROR: %v\n\n", err)
+			if exitCode == 0 {
+				exitCode = 1
+			}
+		}
+	})
+
 	Env = env
 	slog.Info("running tests")
-	code := m.Run()
-	if err := env.Close(<-exeletClientC); err != nil {
-		slog.Error("test cleanup failed", "error", err)
-		fmt.Fprintf(os.Stderr, "\n\nERROR: %v\n\n", err)
-		if code == 0 {
-			code = 1
-		}
-	}
-	close(env.exedSlogErrC)
-	for line := range env.exedSlogErrC {
-		// TODO(philip): TestNewWithPrompt triggers this, because Shelley talks
-		// to the gateway and even though it's supposed to use "predictable" model, we get an error.
-		// This is an unrelated bug uncovered when I was trying to change how the
-		// plumbing works for the llm gateway, so I'm punting on fixing that bug and making
-		// the test infra ever so slightly less picky about error logs.
-		// Note that the change that exposed this was: "ctrhosttest: fix ResolveDefaultGateway to parse CTR_HOST SSH URLs"
-		// which leads me to believe that the Shelley gateway URL was wrong previously, and Shelley
-		// was silently swallowing an error, and now it's managing to talk to exed.
-		if strings.Contains(line, "\"msg\":\"llmgateway.httpError\"") {
-			continue
-		}
-		code = 1
-		fmt.Fprintf(os.Stderr, "\n\nexed emitted ERROR log during e1e run:\n%s\n\n", line)
-	}
-	close(env.exeletSlogErrC)
-	for line := range env.exeletSlogErrC {
-		code = 1
-		fmt.Fprintf(os.Stderr, "\n\nexelet emitted ERROR log during e1e run:\n%s\n\n", line)
-	}
-	if env.exedGuidLogC != nil {
-		close(env.exedGuidLogC)
-		for line := range env.exedGuidLogC {
-			fmt.Fprintf(os.Stderr, "\n\nexed log with guid during e1e run:\n%s\n\n", line)
-		}
-	}
 
-	for _, f := range logFiles {
-		if f == nil {
-			continue
-		}
-		err := f.Close()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to close log file %v: %v\n", f.Name(), err)
-		}
-	}
+	exitCode = m.Run()
+
+	testinfra.RunCleanups()
+
 	os.Stderr.Sync()
-	exit(code)
+
+	os.Exit(exitCode)
 }
 
 var logFiles = map[string]*os.File{
@@ -1018,10 +1042,12 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 
 	// Parse output to find ports
 	var teeMu sync.Mutex
-	tee := new(bytes.Buffer)
-	sshPortC := make(chan int)
+	tee := new(strings.Builder)
+	sshPortC := make(chan int, 1)
+	sshErrorC := make(chan error, 1)
 	go func() {
 		scan := bufio.NewScanner(cmdOut)
+		found := false
 		for scan.Scan() {
 			line := scan.Bytes()
 			teeMu.Lock()
@@ -1045,12 +1071,22 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 			case "sshpiperd is listening":
 				port, ok := entry["port"].(float64)
 				if ok {
-					go func() { sshPortC <- int(port) }()
+					sshPortC <- int(port)
 				} else {
-					fmt.Fprintf(os.Stderr, "failed to get SSH port from log entry: %v\n", entry)
-					os.Exit(1)
+					sshErrorC <- fmt.Errorf("failed to get SSH port from sshpiperd log entry: %v", entry)
 				}
+				found = true
+				break
 			}
+		}
+		if !found {
+			teeMu.Lock()
+			out := tee.String()
+			teeMu.Unlock()
+			sshErrorC <- fmt.Errorf("sshpiperd never reported listening, output:\n%s", out)
+		}
+		if err := scan.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
+			fmt.Fprintf(os.Stderr, "sshpiperd scan error: %v\n", err)
 		}
 	}()
 
@@ -1063,6 +1099,8 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 	for sshPort == 0 {
 		select {
 		case sshPort = <-sshPortC:
+		case err := <-sshErrorC:
+			return nil, err
 		case <-time.After(timeout):
 			teeMu.Lock()
 			out := tee.String()
@@ -2480,18 +2518,17 @@ func resolveGateway(ctrhost string) string {
 }
 
 // startLinuxVM starts a VM on Linux to run the exelet.
-// It returns the ssh address for the host,
-// and a function to shut down the VM.
-func startLinuxVM() (string, func(), error) {
+// It returns the ssh address for the host.
+func startLinuxVM() (string, error) {
 	userVal, err := user.Current()
 	if err != nil {
-		return "", nil, fmt.Errorf("can't fetch current user name: %v", err)
+		return "", fmt.Errorf("can't fetch current user name: %v", err)
 	}
 	name := userVal.Username + "-" + strconv.FormatInt(time.Now().Unix(), 10)
 
 	outdir, err := os.MkdirTemp("", "ci-vm-start-")
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to create temporary directory: %v", err)
+		return "", fmt.Errorf("failed to create temporary directory: %v", err)
 	}
 
 	cmd := exec.Command("../ops/ci-vm-start.sh")
@@ -2499,13 +2536,13 @@ func startLinuxVM() (string, func(), error) {
 		"NAME="+name,
 		"OUTDIR="+outdir)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", nil, fmt.Errorf("ops/ci-vm-start.sh failed: %v\n%s", err, out)
+		return "", fmt.Errorf("ops/ci-vm-start.sh failed: %v\n%s", err, out)
 	}
 
 	fileName := filepath.Join(outdir, name+".env")
 	envVars, err := os.ReadFile(fileName)
 	if err != nil {
-		return "", nil, fmt.Errorf("can't read ci-vm-start.sh environment variables: %v", err)
+		return "", fmt.Errorf("can't read ci-vm-start.sh environment variables: %v", err)
 	}
 
 	for _, line := range strings.Split(string(envVars), "\n") {
@@ -2515,17 +2552,17 @@ func startLinuxVM() (string, func(), error) {
 		}
 		name, val, ok := strings.Cut(line, "=")
 		if !ok {
-			return "", nil, fmt.Errorf("invalid line in ci-vm-start.sh output: %q", line)
+			return "", fmt.Errorf("invalid line in ci-vm-start.sh output: %q", line)
 		}
 		os.Setenv(name, val)
 	}
 
-	shutdown := func() {
+	testinfra.AddCleanup(func() {
 		exec.Command("../ops/ci-vm-destroy.sh", fileName).Run()
 		os.RemoveAll(outdir)
-	}
+	})
 
 	ctrHost := "ssh://" + os.Getenv("VM_USER") + "@" + os.Getenv("VM_IP")
 
-	return ctrHost, shutdown, nil
+	return ctrHost, nil
 }
