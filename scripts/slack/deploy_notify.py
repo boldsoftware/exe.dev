@@ -23,7 +23,15 @@ from zoneinfo import ZoneInfo
 
 from client import SlackClient, SlackError, ensure_token
 
-CHANNEL = "ship"
+CHANNEL_PROD = "ship"
+CHANNEL_STAGING = "boat"
+
+
+def channel_for_service(service: str) -> str:
+    """Return the Slack channel name for the given service."""
+    if "staging" in service.lower():
+        return CHANNEL_STAGING
+    return CHANNEL_PROD
 
 
 def get_commit_summary(sha: str) -> str:
@@ -94,7 +102,8 @@ def cmd_start(args: argparse.Namespace) -> None:
     """Post deployment start message and print the message timestamp."""
     token = ensure_token()
     slack = SlackClient(token)
-    channel_id = slack.find_channel_id(CHANNEL)
+    channel = channel_for_service(args.service)
+    channel_id = slack.find_channel_id(channel)
 
     commit_msg = get_commit_summary(args.sha)
     blocks = format_start_blocks(
@@ -104,26 +113,37 @@ def cmd_start(args: argparse.Namespace) -> None:
     fallback = f"Deploying {args.service} {args.sha} ({args.deployer})"
     ts = slack.post_message(channel_id, fallback, blocks=blocks)
 
-    # Print ts to stdout so caller can use it later
-    print(ts)
+    # Print channel:ts to stdout so caller can use it later
+    print(f"{channel}:{ts}")
+
+
+def parse_channel_ts(ts_arg: str) -> tuple[str, str]:
+    """Parse channel:ts format, falling back to default channel for old format."""
+    if ":" in ts_arg:
+        channel, ts = ts_arg.split(":", 1)
+        return channel, ts
+    # Backwards compatibility: assume production channel for old format
+    return CHANNEL_PROD, ts_arg
 
 
 def cmd_complete(args: argparse.Namespace) -> None:
     """Add checkmark emoji to the deployment message."""
     token = ensure_token()
     slack = SlackClient(token)
-    channel_id = slack.find_channel_id(CHANNEL)
+    channel, ts = parse_channel_ts(args.ts)
+    channel_id = slack.find_channel_id(channel)
 
-    slack.add_reaction(channel_id, args.ts, "white_check_mark")
+    slack.add_reaction(channel_id, ts, "white_check_mark")
 
 
 def cmd_fail(args: argparse.Namespace) -> None:
     """Add X emoji to the deployment message."""
     token = ensure_token()
     slack = SlackClient(token)
-    channel_id = slack.find_channel_id(CHANNEL)
+    channel, ts = parse_channel_ts(args.ts)
+    channel_id = slack.find_channel_id(channel)
 
-    slack.add_reaction(channel_id, args.ts, "x")
+    slack.add_reaction(channel_id, ts, "x")
 
 
 def parse_args() -> argparse.Namespace:

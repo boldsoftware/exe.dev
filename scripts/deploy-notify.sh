@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 check_token() {
     if [ -z "$EXE_SLACK_BOT_TOKEN" ]; then
-        echo "Slack notifications disabled. Set EXE_SLACK_BOT_TOKEN to post to #ship." >&2
+        echo "Slack notifications disabled. Set EXE_SLACK_BOT_TOKEN to enable." >&2
         return 1
     fi
     return 0
