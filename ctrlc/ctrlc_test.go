@@ -124,4 +124,3 @@ func TestFirstByteAfterStopNotDiscarded(t *testing.T) {
 		}
 	})
 }
-
