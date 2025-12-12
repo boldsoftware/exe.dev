@@ -1,7 +1,7 @@
 header {
   padding: 0 24px;
-  padding-top: 16px;
-  padding-bottom: 16px;
+  padding-top: 12px;
+  padding-bottom: 12px;
   border-bottom: 1px solid #e5e5e5;
   background: #ffffff;
   position: sticky;
@@ -21,7 +21,7 @@ header .nav-container {
 header .nav-left {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 16px;
 }
 
 header .nav-logo {
@@ -36,25 +36,20 @@ header .nav-logo {
 }
 
 header .nav-logo img {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
 }
 
 header .nav-links {
   display: flex;
-  gap: 24px;
+  gap: 20px;
 }
 
 header .nav-links a {
   color: #414141;
   text-decoration: none;
   font-size: 14px;
-}
-
-header .nav-links a.active {
-  color: #000000;
-  font-weight: 600;
 }
 
 header .nav-links a:hover {
@@ -139,4 +134,3 @@ header .btn .btn-text {
     gap: 8px;
   }
 }
-
