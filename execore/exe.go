@@ -817,22 +817,34 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 	return nil
 }
 
-// knownHostsLine returns the @cert-authority entry a user should add to known_hosts.
-func (s *Server) knownHostsLine(ctx context.Context) (string, error) {
-	host := strings.TrimSpace(s.env.ReplHost)
+func (s *Server) knownHostsTarget(host string) (string, error) {
+	host = strings.TrimSpace(host)
 	if host == "" {
-		return "", errors.New("repl host is not configured")
+		return "", errors.New("known hosts target host is empty")
 	}
-	port := s.piperdPort
-	if port == 0 {
+	if s.piperdPort == 0 {
 		return "", errors.New("ssh piperd port is not configured")
 	}
 
-	target := host
-	if port != 22 {
-		target = fmt.Sprintf("[%s]:%d", host, port)
-	} else if host == "exe.dev" {
-		target = "exe.dev,*.exe.dev"
+	if s.piperdPort != 22 {
+		return fmt.Sprintf("[%s]:%d", host, s.piperdPort), nil
+	}
+	if host == "exe.dev" || host == s.env.BoxHost {
+		return fmt.Sprintf("%s,*.%s", host, host), nil
+	}
+	return host, nil
+}
+
+// knownHostsLine returns the @cert-authority entry a user should add to known_hosts.
+func (s *Server) knownHostsLine(ctx context.Context, host string) (string, error) {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return "", errors.New("known hosts target host is empty")
+	}
+
+	target, err := s.knownHostsTarget(host)
+	if err != nil {
+		return "", err
 	}
 
 	hostKey, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetSSHHostKeyRow, error) {

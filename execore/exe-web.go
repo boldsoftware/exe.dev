@@ -45,7 +45,10 @@ import (
 	"tailscale.com/net/tsaddr"
 )
 
-const proxyBearerTokenTTL = 30 * 24 * time.Hour
+const (
+	proxyBearerTokenTTL = 30 * 24 * time.Hour
+	sshKnownHostsPath   = "/.well-known/ssh-known-hosts"
+)
 
 func (s *Server) prepareHandler() http.Handler {
 	lg := s.prepareLlmGateway()
@@ -426,12 +429,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	isKnownHostsRequest := r.URL.Path == sshKnownHostsPath
 	// Redirect requests to BoxHost apex (exe.xyz) to WebHost (exe.dev).
 	// BoxHost is only for box subdomains (boxname.exe.xyz); the apex itself should
 	// redirect to WebHost to avoid passkey RPID mismatch errors during auth.
 	if s.env.BoxHost != s.env.WebHost {
 		hostname := domz.Canonicalize(domz.StripPort(r.Host))
-		if hostname == s.env.BoxHost {
+		if hostname == s.env.BoxHost && !isKnownHostsRequest {
 			target := fmt.Sprintf("%s://%s%s", getScheme(r), s.env.WebHost, r.URL.RequestURI())
 			http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 			return
@@ -512,7 +516,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleClearExeuntuLatestCache(w, r)
 	case "/metrics":
 		requireLocalAccess(s.handleMetrics)(w, r)
-	case "/.well-known/ssh/knownhosts":
+	case sshKnownHostsPath:
 		s.handleKnownHosts(w, r)
 		return
 	case "/about":
@@ -645,7 +649,19 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 // handleKnownHosts exposes the SSH CA line for clients to trust the host certificate.
 func (s *Server) handleKnownHosts(w http.ResponseWriter, r *http.Request) {
-	line, err := s.knownHostsLine(r.Context())
+	host := domz.Canonicalize(domz.StripPort(r.Host))
+	switch host {
+	case s.env.ReplHost, s.env.BoxHost:
+		// ok
+	case "":
+		http.Error(w, "missing host header", http.StatusBadRequest)
+		return
+	default:
+		http.NotFound(w, r)
+		return
+	}
+
+	line, err := s.knownHostsLine(r.Context(), host)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "failed to render known hosts entry", "error", err)
 		http.Error(w, "ssh host certificate unavailable", http.StatusServiceUnavailable)

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -137,12 +136,12 @@ func TestKnownHostsLineFromStoredCert(t *testing.T) {
 	s := newUnstartedServer(t)
 	ca := installTestHostCertificate(t, s)
 
-	line, err := s.knownHostsLine(context.Background())
+	line, err := s.knownHostsLine(context.Background(), s.env.ReplHost)
 	if err != nil {
 		t.Fatalf("knownHostsLine() error = %v", err)
 	}
 
-	expected := buildExpectedKnownHostsLine(s, ca)
+	expected := buildExpectedKnownHostsLine(t, s, ca, s.env.ReplHost)
 	if line != expected {
 		t.Fatalf("knownHostsLine() = %q, want %q", line, expected)
 	}
@@ -157,7 +156,7 @@ func TestKnownHostsLineAddsWildcardForExeDev(t *testing.T) {
 
 	ca := installTestHostCertificate(t, s)
 
-	line, err := s.knownHostsLine(context.Background())
+	line, err := s.knownHostsLine(context.Background(), s.env.ReplHost)
 	if err != nil {
 		t.Fatalf("knownHostsLine() error = %v", err)
 	}
@@ -166,7 +165,31 @@ func TestKnownHostsLineAddsWildcardForExeDev(t *testing.T) {
 		t.Fatalf("knownHostsLine() missing wildcard host prefix, got %q", line)
 	}
 
-	expected := buildExpectedKnownHostsLine(s, ca)
+	expected := buildExpectedKnownHostsLine(t, s, ca, s.env.ReplHost)
+	if line != expected {
+		t.Fatalf("knownHostsLine() = %q, want %q", line, expected)
+	}
+}
+
+func TestKnownHostsLineAddsWildcardForBoxHost(t *testing.T) {
+	t.Parallel()
+
+	s := newUnstartedServer(t)
+	s.env = stage.Prod()
+	s.piperdPort = 22
+
+	ca := installTestHostCertificate(t, s)
+
+	line, err := s.knownHostsLine(context.Background(), s.env.BoxHost)
+	if err != nil {
+		t.Fatalf("knownHostsLine() error = %v", err)
+	}
+
+	if !strings.HasPrefix(line, "@cert-authority exe.xyz,*.exe.xyz ") {
+		t.Fatalf("knownHostsLine() missing box wildcard host prefix, got %q", line)
+	}
+
+	expected := buildExpectedKnownHostsLine(t, s, ca, s.env.BoxHost)
 	if line != expected {
 		t.Fatalf("knownHostsLine() = %q, want %q", line, expected)
 	}
@@ -178,7 +201,8 @@ func TestHandleKnownHostsSuccess(t *testing.T) {
 	s := newUnstartedServer(t)
 	ca := installTestHostCertificate(t, s)
 
-	req := httptest.NewRequest(http.MethodGet, "/.well-known/ssh/knownhosts", nil)
+	req := httptest.NewRequest(http.MethodGet, sshKnownHostsPath, nil)
+	req.Host = s.env.ReplHost
 	rr := httptest.NewRecorder()
 
 	s.handleKnownHosts(rr, req)
@@ -187,7 +211,7 @@ func TestHandleKnownHostsSuccess(t *testing.T) {
 		t.Fatalf("handleKnownHosts status = %d, want %d", rr.Code, http.StatusOK)
 	}
 
-	expectedLine := buildExpectedKnownHostsLine(s, ca)
+	expectedLine := buildExpectedKnownHostsLine(t, s, ca, s.env.ReplHost)
 	if body := strings.TrimSpace(rr.Body.String()); body != expectedLine {
 		t.Fatalf("handleKnownHosts body = %q, want %q", body, expectedLine)
 	}
@@ -200,11 +224,36 @@ func TestHandleKnownHostsSuccess(t *testing.T) {
 	}
 }
 
+func TestHandleKnownHostsBoxHost(t *testing.T) {
+	t.Parallel()
+
+	s := newUnstartedServer(t)
+	s.env = stage.Prod()
+	s.piperdPort = 22
+	ca := installTestHostCertificate(t, s)
+
+	req := httptest.NewRequest(http.MethodGet, sshKnownHostsPath, nil)
+	req.Host = s.env.BoxHost
+	rr := httptest.NewRecorder()
+
+	s.handleKnownHosts(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("handleKnownHosts status = %d, want %d", rr.Code, http.StatusOK)
+	}
+
+	expectedLine := buildExpectedKnownHostsLine(t, s, ca, s.env.BoxHost)
+	if body := strings.TrimSpace(rr.Body.String()); body != expectedLine {
+		t.Fatalf("handleKnownHosts body = %q, want %q", body, expectedLine)
+	}
+}
+
 func TestHandleKnownHostsMissingCert(t *testing.T) {
 	t.Parallel()
 
 	s := newUnstartedServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/.well-known/ssh/knownhosts", nil)
+	req := httptest.NewRequest(http.MethodGet, sshKnownHostsPath, nil)
+	req.Host = s.env.ReplHost
 	rr := httptest.NewRecorder()
 
 	s.handleKnownHosts(rr, req)
@@ -239,13 +288,18 @@ func installTestHostCertificate(t *testing.T, s *Server) ssh.Signer {
 		t.Fatalf("failed to build CA signer: %v", err)
 	}
 
+	validPrincipals := []string{s.env.ReplHost}
+	if boxHost := strings.TrimSpace(s.env.BoxHost); boxHost != "" && boxHost != s.env.ReplHost {
+		validPrincipals = append(validPrincipals, boxHost)
+	}
+
 	now := time.Now()
 	cert := &ssh.Certificate{
 		Key:             hostSigner.PublicKey(),
 		Serial:          1,
 		CertType:        ssh.HostCert,
 		KeyId:           "test-host",
-		ValidPrincipals: []string{s.env.ReplHost},
+		ValidPrincipals: validPrincipals,
 		ValidAfter:      uint64(now.Add(-time.Hour).Unix()),
 		ValidBefore:     uint64(now.Add(time.Hour).Unix()),
 	}
@@ -265,13 +319,12 @@ func installTestHostCertificate(t *testing.T, s *Server) ssh.Signer {
 	return caSigner
 }
 
-func buildExpectedKnownHostsLine(s *Server, ca ssh.Signer) string {
-	host := s.env.ReplHost
-	target := host
-	if s.piperdPort != 22 {
-		target = "[" + host + "]:" + strconv.Itoa(s.piperdPort)
-	} else if host == "exe.dev" {
-		target = "exe.dev,*.exe.dev"
+func buildExpectedKnownHostsLine(t testing.TB, s *Server, ca ssh.Signer, host string) string {
+	t.Helper()
+
+	target, err := s.knownHostsTarget(host)
+	if err != nil {
+		t.Fatalf("failed to build known hosts target for %s: %v", host, err)
 	}
 	caKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(ca.PublicKey())))
 	comment := host + " ssh ca"
@@ -321,6 +374,12 @@ func TestBoxHostApexRedirectsToWebHost(t *testing.T) {
 			path:         "/",
 			wantRedirect: true,
 			wantLocation: "http://" + s.env.WebHost + "/",
+		},
+		{
+			name:         "known hosts on BoxHost apex does not redirect",
+			host:         s.env.BoxHost,
+			path:         sshKnownHostsPath,
+			wantRedirect: false,
 		},
 		{
 			name:         "subdomain of BoxHost does not redirect",
