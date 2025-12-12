@@ -384,10 +384,16 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 
 	// Create a terminal using golang.org/x/term
 	terminal := term.NewTerminal(s, fmt.Sprintf("\033[1;36m%s\033[0m \033[37m▶\033[0m ", ss.server.env.ReplHost))
-	var ctx context.Context = s.Context()
+	ctx := s.Context()
 
-	// Set the terminal size to the pty size, and keep it updated whenever the pty changes.
-	_, winSizeCh, _ := s.Pty()
+	// Set the terminal size to the pty size, and keep it updated whenever
+	// the pty changes.
+	pty, winSizeCh, _ := s.Pty()
+
+	// Set initial size
+	terminal.SetSize(pty.Window.Width, pty.Window.Height)
+
+	// Update size on changes
 	go func() {
 		for {
 			select {
