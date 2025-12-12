@@ -7,17 +7,20 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+INSTANCE_NAME="exed-02"
+DOMAIN="exe.dev"
+
+# Get currently deployed SHA (best-effort, for Slack notification)
+OLD_SHA=$(curl -s "https://${INSTANCE_NAME}.crocodile-vector.ts.net/debug/gitsha" 2>/dev/null || true)
+
 # Slack notification (best-effort)
-DEPLOY_TS=$("$REPO_ROOT/scripts/deploy-notify.sh" start exed)
+DEPLOY_TS=$("$REPO_ROOT/scripts/deploy-notify.sh" start exed "$OLD_SHA")
 cleanup_notify() {
     if [ $? -ne 0 ] && [ -n "$DEPLOY_TS" ]; then
         "$REPO_ROOT/scripts/deploy-notify.sh" fail "$DEPLOY_TS"
     fi
 }
 trap cleanup_notify EXIT
-
-INSTANCE_NAME="exed-02"
-DOMAIN="exe.dev"
 
 # Colors for output
 RED='\033[0;31m'

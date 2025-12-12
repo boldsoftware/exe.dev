@@ -4,7 +4,7 @@ Notify Slack about deployment status.
 
 Usage:
   # Start a deployment (posts message, prints ts to stdout):
-  uv run scripts/slack/deploy_notify.py start --service exed --sha abc123 --deployer josh [--dirty]
+  uv run scripts/slack/deploy_notify.py start --service exed --sha abc123 --deployer josh [--old-sha def456] [--dirty]
 
   # Complete a deployment (adds checkmark emoji):
   uv run scripts/slack/deploy_notify.py complete --ts 1234567890.123456
@@ -50,8 +50,45 @@ def get_commit_summary(sha: str) -> str:
     return ""
 
 
+def get_commit_count(old_sha: str, new_sha: str) -> str:
+    """Get the number of commits between two SHAs. Returns '?' on failure."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-list", "--count", f"{old_sha}..{new_sha}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return "?"
+
+
+def shorten_sha(sha: str) -> str:
+    """Shorten a SHA using git. Returns original on failure."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", sha],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return sha
+
+
 def format_start_blocks(
-    service: str, sha: str, deployer: str, dirty: bool, commit_msg: str
+    service: str,
+    sha: str,
+    deployer: str,
+    dirty: bool,
+    commit_msg: str,
+    old_sha: str | None = None,
 ) -> list:
     """Format the deployment start message as Slack blocks."""
     now = datetime.now(timezone.utc)
@@ -77,9 +114,16 @@ def format_start_blocks(
 
     # Main info section with fields (2 per row)
     sha_url = f"https://github.com/boldsoftware/exe/commit/{sha}"
+    if old_sha:
+        old_sha_short = shorten_sha(old_sha)
+        old_sha_url = f"https://github.com/boldsoftware/exe/commit/{old_sha}"
+        commit_count = get_commit_count(old_sha, sha)
+        sha_text = f"*SHA*\n<{old_sha_url}|`{old_sha_short}`> → <{sha_url}|`{sha}`> ({commit_count} commits)"
+    else:
+        sha_text = f"*SHA*\n<{sha_url}|`{sha}`>"
     fields = [
         {"type": "mrkdwn", "text": f"*Service*\n{service}"},
-        {"type": "mrkdwn", "text": f"*SHA*\n<{sha_url}|`{sha}`>"},
+        {"type": "mrkdwn", "text": sha_text},
         {"type": "mrkdwn", "text": f"*Who*\n{deployer}"},
         {"type": "mrkdwn", "text": f"*Time*\n{pt_str} / {et_str} / {utc_str}"},
     ]
@@ -106,8 +150,9 @@ def cmd_start(args: argparse.Namespace) -> None:
     channel_id = slack.find_channel_id(channel)
 
     commit_msg = get_commit_summary(args.sha)
+    old_sha = getattr(args, "old_sha", None)
     blocks = format_start_blocks(
-        args.service, args.sha, args.deployer, args.dirty, commit_msg
+        args.service, args.sha, args.deployer, args.dirty, commit_msg, old_sha
     )
     # text is fallback for notifications/accessibility
     fallback = f"Deploying {args.service} {args.sha} ({args.deployer})"
@@ -157,6 +202,9 @@ def parse_args() -> argparse.Namespace:
     )
     start_parser.add_argument(
         "--sha", required=True, help="Short git SHA being deployed"
+    )
+    start_parser.add_argument(
+        "--old-sha", dest="old_sha", help="Short git SHA currently deployed"
     )
     start_parser.add_argument(
         "--deployer", required=True, help="Who is deploying (result of whoami)"
