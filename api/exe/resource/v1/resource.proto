@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package exe.resource.v1;
+
+option go_package = "exe.dev/api/resource/v1";
+
+service ResourceManagerService {
+  // GetNodeStatus returns current node capacity and allocation summary
+  rpc GetNodeStatus(GetNodeStatusRequest) returns (GetNodeStatusResponse);
+
+  // GetVMUsage returns usage information for a specific VM
+  rpc GetVMUsage(GetVMUsageRequest) returns (GetVMUsageResponse);
+
+  // SetVMPriority manually sets priority for a VM
+  rpc SetVMPriority(SetVMPriorityRequest) returns (SetVMPriorityResponse);
+}
+
+message GetNodeStatusRequest {}
+
+message GetNodeStatusResponse {
+  NodeCapacity capacity = 1;
+  NodeAllocation allocation = 2;
+}
+
+message GetVMUsageRequest {
+  string vm_id = 1;
+}
+
+message GetVMUsageResponse {
+  VMUsage usage = 1;
+}
+
+message NodeCapacity {
+  uint64 cpus = 1;           // Total CPU cores
+  uint64 memory_bytes = 2;   // Total RAM in bytes
+  uint64 disk_bytes = 3;     // Total disk in bytes (ZFS pool)
+}
+
+message NodeAllocation {
+  uint64 cpus = 1;           // Sum of allocated vCPUs
+  uint64 memory_bytes = 2;   // Sum of allocated memory
+  uint64 disk_bytes = 3;     // Sum of allocated disk quotas
+}
+
+message VMUsage {
+  string id = 1;
+  string name = 2;
+  double cpu_seconds = 3;    // Total CPU time consumed
+  double cpu_percent = 10;   // CPU usage percentage from last poll interval
+  uint64 memory_bytes = 4;   // Current memory usage
+  uint64 disk_bytes = 5;     // Current disk usage
+  uint64 net_rx_bytes = 6;   // Total network received
+  uint64 net_tx_bytes = 7;   // Total network transmitted
+  int64 last_activity = 8;   // Unix nano timestamp of last detected activity
+  VMPriority priority = 9;
+}
+
+enum VMPriority {
+  PRIORITY_NORMAL = 0;
+  PRIORITY_LOW = 1;
+}
+
+message SetVMPriorityRequest {
+  string vm_id = 1;
+  VMPriority priority = 2;
+}
+
+message SetVMPriorityResponse {}

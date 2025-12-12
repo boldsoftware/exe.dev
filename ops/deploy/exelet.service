@@ -5,12 +5,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+CPUWeight=1024
+IOWeight=1024
 WorkingDirectory=/data/exelet
 EnvironmentFile=-/etc/default/exelet
 KillMode=process
 
-# Use the latest timestamp version
-ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/exeletd.* | head -n1)" "-D"'
+# Use the latest exeletd
+ExecStart=/bin/bash -c 'exec "/home/ubuntu/exeletd.latest" "-D"'
 
 Restart=always
 RestartSec=5

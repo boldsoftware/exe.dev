@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
+	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
 	"exe.dev/tracing"
 )
@@ -19,6 +20,7 @@ import (
 type Client struct {
 	computeapi.ComputeServiceClient
 	storageapi.StorageServiceClient
+	resourceapi.ResourceManagerServiceClient
 	conn    *grpc.ClientConn
 	addr    string
 	cfg     *ClientConfig
@@ -49,11 +51,12 @@ func NewClient(addr string, clientOpts ...ClientOpt) (*Client, error) {
 	}
 
 	client := &Client{
-		ComputeServiceClient: computeapi.NewComputeServiceClient(c),
-		StorageServiceClient: storageapi.NewStorageServiceClient(c),
-		conn:                 c,
-		addr:                 addr,
-		cfg:                  cfg,
+		ComputeServiceClient:         computeapi.NewComputeServiceClient(c),
+		StorageServiceClient:         storageapi.NewStorageServiceClient(c),
+		ResourceManagerServiceClient: resourceapi.NewResourceManagerServiceClient(c),
+		conn:                         c,
+		addr:                         addr,
+		cfg:                          cfg,
 	}
 
 	return client, nil

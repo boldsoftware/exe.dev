@@ -9,6 +9,7 @@ var Command = &cli.Command{
 		createInstanceCommand,
 		listInstancesCommand,
 		getInstanceCommand,
+		usageInstanceCommand,
 		instanceLogsCommand,
 		startInstanceCommand,
 		stopInstanceCommand,

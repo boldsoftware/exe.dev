@@ -24,6 +24,7 @@ import (
 	"exe.dev/exelet/network/nat"
 	"exe.dev/exelet/services"
 	computeservice "exe.dev/exelet/services/compute"
+	resourcemanagerservice "exe.dev/exelet/services/resourcemanager"
 	resourcemonitorservice "exe.dev/exelet/services/resourcemonitor"
 	storageservice "exe.dev/exelet/services/storage"
 	"exe.dev/exelet/storage"
@@ -143,6 +144,24 @@ func main() {
 			Value:   config.DefaultInstanceDomain,
 			EnvVars: []string{"EXELET_INSTANCE_DOMAIN"},
 		},
+		&cli.BoolFlag{
+			Name:    "resource-manager-enabled",
+			Usage:   "enable the resource manager service for capacity tracking and priority management",
+			Value:   false,
+			EnvVars: []string{"EXELET_RESOURCE_MANAGER_ENABLED"},
+		},
+		&cli.DurationFlag{
+			Name:    "resource-manager-interval",
+			Usage:   "polling interval for the resource manager (e.g., 30s, 1m)",
+			Value:   config.DefaultResourceManagerInterval,
+			EnvVars: []string{"EXELET_RESOURCE_MANAGER_INTERVAL"},
+		},
+		&cli.DurationFlag{
+			Name:    "idle-threshold",
+			Usage:   "duration after which a VM is considered idle (e.g., 5m, 10m)",
+			Value:   config.DefaultIdleThreshold,
+			EnvVars: []string{"EXELET_IDLE_THRESHOLD"},
+		},
 	}
 	app.Action = serveAction
 
@@ -177,6 +196,9 @@ func serveAction(clix *cli.Context) error {
 	exedURL := clix.String("exed-url")
 	resourceMonitorInterval := clix.Duration("resource-monitor-interval")
 	instanceDomain := clix.String("instance-domain")
+	resourceManagerEnabled := clix.Bool("resource-manager-enabled")
+	resourceManagerInterval := clix.Duration("resource-manager-interval")
+	idleThreshold := clix.Duration("idle-threshold")
 
 	cfg := &config.ExeletConfig{
 		Name:                        name,
@@ -193,6 +215,9 @@ func serveAction(clix *cli.Context) error {
 		ExedURL:                     exedURL,
 		ResourceMonitorInterval:     resourceMonitorInterval,
 		InstanceDomain:              instanceDomain,
+		ResourceManagerEnabled:      resourceManagerEnabled,
+		ResourceManagerInterval:     resourceManagerInterval,
+		IdleThreshold:               idleThreshold,
 	}
 
 	opts := []exelet.ServerOpt{
@@ -259,6 +284,13 @@ func serveAction(clix *cli.Context) error {
 		},
 		resourcemonitorservice.New,
 		storageservice.New,
+	}
+
+	if cfg.ResourceManagerEnabled {
+		svcs = append(svcs, resourcemanagerservice.New)
+		log.InfoContext(ctx, "resource manager enabled",
+			"interval", cfg.ResourceManagerInterval,
+			"idle_threshold", cfg.IdleThreshold)
 	}
 
 	if err := srv.Register(serviceContext, svcs); err != nil {

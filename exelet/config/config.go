@@ -10,6 +10,10 @@ const (
 	DefaultHTTPAddress = ":9081"
 	// DefaultResourceMonitorInterval is the default polling interval for the resource monitor
 	DefaultResourceMonitorInterval = time.Minute
+	// DefaultResourceManagerInterval is the default polling interval for the resource manager
+	DefaultResourceManagerInterval = 30 * time.Second
+	// DefaultIdleThreshold is the default duration after which a VM is considered idle
+	DefaultIdleThreshold = 5 * time.Minute
 
 	// DefaultNameserver is the default instance nameserver
 	DefaultNameserver = "1.1.1.1"
@@ -104,4 +108,10 @@ type ExeletConfig struct {
 	ResourceMonitorInterval time.Duration
 	// InstanceDomain is the domain for instance hostnames (e.g., exe.xyz, exe-staging.xyz)
 	InstanceDomain string
+	// ResourceManagerEnabled enables the resource manager service
+	ResourceManagerEnabled bool
+	// ResourceManagerInterval controls how frequently the resource manager polls VMs
+	ResourceManagerInterval time.Duration
+	// IdleThreshold is the duration after which a VM is considered idle
+	IdleThreshold time.Duration
 }
