@@ -21,6 +21,7 @@ type AnotherMarked struct { // want AnotherMarked:"completeinit"
 }
 
 // unexportedConfig is an unexported type - all fields should be checked
+//
 //exe:completeinit
 type unexportedConfig struct { // want unexportedConfig:"completeinit"
 	host   string
