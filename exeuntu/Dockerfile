@@ -32,6 +32,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 		unzip util-linux rsync \
 		ubuntu-server ubuntu-dev-tools ubuntu-standard \
 		man-db manpages manpages-dev \
+		mitmproxy \
 		systemd systemd-sysv \
 		atop iotop \
 		golang-go git \
@@ -45,8 +46,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 	# Allow non-root users to use ping without sudo by granting CAP_NET_RAW
 	setcap cap_net_raw=+ep /usr/bin/ping && \
 	fc-cache -f -v && \
-	apt-get clean && \
-	rm -rf /var/lib/apt/lists/*
+	apt-get clean
 
 # Configure systemd
 RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
