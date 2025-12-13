@@ -404,26 +404,29 @@ function makeDevExeDashboard() {
   // Row 1: Aggregate web server metrics
   addTimeseriesChart(
     "Web Request Rate",
-    `sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval]))`,
+    `sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (stage)`,
     {
       panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 3, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
 
   addTimeseriesChart(
     "Web Requests In Flight",
-    `sum(http_requests_in_flight{${WEB_FILTER}})`,
+    `sum(http_requests_in_flight{${WEB_FILTER}}) by (stage)`,
     {
       panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 3, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
 
   addTimeseriesChart(
     "Web Success Rate",
-    `sum(rate(http_requests_total{${WEB_FILTER},code=~"2.."}[$__rate_interval])) / sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) * 100`,
+    `sum(rate(http_requests_total{${WEB_FILTER},code=~"2.."}[$__rate_interval])) by (stage) / sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (stage) * 100`,
     {
       panelCustomization: (x) =>
         x.unit("percent").min(0).max(100).gridPos({ x: 16, y: 3, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
 
@@ -434,8 +437,8 @@ function makeDevExeDashboard() {
     .gridPos({ x: 0, y: 9, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
-        .expr(`sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (code)`)
-        .legendFormat("{{code}}")
+        .expr(`sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (code, stage)`)
+        .legendFormat("{{stage}} {{code}}")
     );
   dash.withPanel(webStatusCodePanel);
 
@@ -445,8 +448,8 @@ function makeDevExeDashboard() {
     .gridPos({ x: 12, y: 9, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
-        .expr(`topk(10, sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (path))`)
-        .legendFormat("{{path}}")
+        .expr(`topk(10, sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (path, stage))`)
+        .legendFormat("{{stage}} {{path}}")
     );
   dash.withPanel(webByPathPanel);
 
@@ -457,26 +460,29 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "Web 4xx Error Rate",
-    `sum(rate(http_requests_total{${WEB_FILTER},code=~"4.."}[$__rate_interval]))`,
+    `sum(rate(http_requests_total{${WEB_FILTER},code=~"4.."}[$__rate_interval])) by (stage)`,
     {
       panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 16, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
 
   addTimeseriesChart(
     "Web 5xx Error Rate",
-    `sum(rate(http_requests_total{${WEB_FILTER},code=~"5.."}[$__rate_interval]))`,
+    `sum(rate(http_requests_total{${WEB_FILTER},code=~"5.."}[$__rate_interval])) by (stage)`,
     {
       panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 16, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
 
   addTimeseriesChart(
     "Web Error Percentage",
-    `sum(rate(http_requests_total{${WEB_FILTER},code=~"[45].."}[$__rate_interval])) / sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) * 100`,
+    `sum(rate(http_requests_total{${WEB_FILTER},code=~"[45].."}[$__rate_interval])) by (stage) / sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (stage) * 100`,
     {
       panelCustomization: (x) =>
         x.unit("percent").min(0).gridPos({ x: 16, y: 16, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
 
@@ -487,8 +493,8 @@ function makeDevExeDashboard() {
     .gridPos({ x: 0, y: 22, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
-        .expr(`sum(rate(http_requests_total{${WEB_FILTER},code=~"4.."}[$__rate_interval])) by (path, code)`)
-        .legendFormat("{{path}} ({{code}})")
+        .expr(`sum(rate(http_requests_total{${WEB_FILTER},code=~"4.."}[$__rate_interval])) by (path, code, stage)`)
+        .legendFormat("{{stage}} {{path}} ({{code}})")
     );
   dash.withPanel(web4xxByPathPanel);
 
@@ -498,8 +504,8 @@ function makeDevExeDashboard() {
     .gridPos({ x: 12, y: 22, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
-        .expr(`sum(rate(http_requests_total{${WEB_FILTER},code=~"5.."}[$__rate_interval])) by (path, code)`)
-        .legendFormat("{{path}} ({{code}})")
+        .expr(`sum(rate(http_requests_total{${WEB_FILTER},code=~"5.."}[$__rate_interval])) by (path, code, stage)`)
+        .legendFormat("{{stage}} {{path}} ({{code}})")
     );
   dash.withPanel(web5xxByPathPanel);
 
@@ -511,26 +517,29 @@ function makeDevExeDashboard() {
   // Aggregate proxy metrics
   addTimeseriesChart(
     "Proxy Request Rate",
-    `sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval]))`,
+    `sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (stage)`,
     {
       panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 29, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
 
   addTimeseriesChart(
     "Proxy Requests In Flight",
-    `sum(http_requests_in_flight{${PROXY_FILTER}})`,
+    `sum(http_requests_in_flight{${PROXY_FILTER}}) by (stage)`,
     {
       panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 29, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
 
   addTimeseriesChart(
     "Proxy Success Rate",
-    `sum(rate(http_requests_total{${PROXY_FILTER},code=~"2.."}[$__rate_interval])) / sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) * 100`,
+    `sum(rate(http_requests_total{${PROXY_FILTER},code=~"2.."}[$__rate_interval])) by (stage) / sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (stage) * 100`,
     {
       panelCustomization: (x) =>
         x.unit("percent").min(0).max(100).gridPos({ x: 16, y: 29, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
 
@@ -541,8 +550,8 @@ function makeDevExeDashboard() {
     .gridPos({ x: 0, y: 35, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
-        .expr(`sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (code)`)
-        .legendFormat("{{code}}")
+        .expr(`sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (code, stage)`)
+        .legendFormat("{{stage}} {{code}}")
     );
   dash.withPanel(proxyStatusCodePanel);
 
@@ -552,8 +561,8 @@ function makeDevExeDashboard() {
     .gridPos({ x: 12, y: 35, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
-        .expr(`topk(10, sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (box))`)
-        .legendFormat("{{box}}")
+        .expr(`topk(10, sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (box, stage))`)
+        .legendFormat("{{stage}} {{box}}")
     );
   dash.withPanel(proxyByBoxPanel);
 
@@ -564,8 +573,8 @@ function makeDevExeDashboard() {
     .gridPos({ x: 0, y: 41, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
-        .expr(`sum(rate(http_requests_total{${PROXY_FILTER},code=~"[45].."}[$__rate_interval])) by (box)`)
-        .legendFormat("{{box}}")
+        .expr(`sum(rate(http_requests_total{${PROXY_FILTER},code=~"[45].."}[$__rate_interval])) by (box, stage)`)
+        .legendFormat("{{stage}} {{box}}")
     );
   dash.withPanel(proxyErrorsByBoxPanel);
 
@@ -575,8 +584,8 @@ function makeDevExeDashboard() {
     .gridPos({ x: 12, y: 41, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
-        .expr(`sum(http_requests_in_flight{${PROXY_FILTER}}) by (box)`)
-        .legendFormat("{{box}}")
+        .expr(`sum(http_requests_in_flight{${PROXY_FILTER}}) by (box, stage)`)
+        .legendFormat("{{stage}} {{box}}")
     );
   dash.withPanel(proxyInFlightByBoxPanel);
 
