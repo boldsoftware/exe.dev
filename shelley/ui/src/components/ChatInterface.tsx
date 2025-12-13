@@ -836,7 +836,12 @@ function ChatInterface({
 
         <div className="header-actions">
           {/* Green + icon in circle for new conversation */}
-          <button onClick={onNewConversation} className="btn-new" aria-label="New conversation" tabIndex={-1}>
+          <button
+            onClick={onNewConversation}
+            className="btn-new"
+            aria-label="New conversation"
+            tabIndex={-1}
+          >
             <svg
               fill="none"
               stroke="currentColor"
@@ -1007,7 +1012,11 @@ function ChatInterface({
             // Error state
             <>
               <span className="status-message status-error">{error}</span>
-              <button onClick={() => setError(null)} className="status-button status-button-text" tabIndex={-1}>
+              <button
+                onClick={() => setError(null)}
+                className="status-button status-button-text"
+                tabIndex={-1}
+              >
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
