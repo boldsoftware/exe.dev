@@ -245,9 +245,9 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 		Ready bool   `json:"ready"`
 	}
 
-	var models []ModelInfo
+	var modelList []ModelInfo
 	if s.predictableOnly {
-		models = append(models, ModelInfo{ID: "predictable", Ready: true})
+		modelList = append(modelList, ModelInfo{ID: "predictable", Ready: true})
 	} else {
 		modelIDs := s.llmManager.GetAvailableModels()
 		for _, id := range modelIDs {
@@ -256,17 +256,17 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 				continue
 			}
 			_, err := s.llmManager.GetService(id)
-			models = append(models, ModelInfo{ID: id, Ready: err == nil})
+			modelList = append(modelList, ModelInfo{ID: id, Ready: err == nil})
 		}
 	}
 
 	// Select default model - use configured default if available, otherwise first ready model
 	defaultModel := s.defaultModel
 	if defaultModel == "" {
-		defaultModel = "claude-sonnet-4.5"
+		defaultModel = models.Default().ID
 	}
 	defaultModelAvailable := false
-	for _, m := range models {
+	for _, m := range modelList {
 		if m.ID == defaultModel && m.Ready {
 			defaultModelAvailable = true
 			break
@@ -274,7 +274,7 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 	}
 	if !defaultModelAvailable {
 		// Fall back to first ready model
-		for _, m := range models {
+		for _, m := range modelList {
 			if m.Ready {
 				defaultModel = m.ID
 				break
@@ -295,7 +295,7 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 	}
 
 	initData := map[string]interface{}{
-		"models":        models,
+		"models":        modelList,
 		"default_model": defaultModel,
 		"hostname":      hostname,
 		"default_cwd":   defaultCwd,

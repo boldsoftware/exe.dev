@@ -11,7 +11,7 @@ Shelley can be used as a command-line tool with the following commands:
 ### Global Flags
 
 - `--db <path>`: Path to SQLite database file (default: "shelley.db")
-- `--model <model>`: LLM model to use (default: `qwen3-coder-fireworks`; use `predictable` for testing).
+- `--model <model>`: LLM model to use (use `predictable` for testing). Run `shelley models` to see available models.
 - `--debug`: Enable debug logging
 
 ### Commands
@@ -58,12 +58,12 @@ Use `shelley models` to see supported models, whether they are ready, and the en
 
 Common env vars:
 
-- `FIREWORKS_API_KEY`: Required for `qwen3-coder-fireworks` (default model).
-- `OPENAI_API_KEY`: Required for OpenAI models (e.g. `openai-gpt4`).
-- `ANTHROPIC_API_KEY`: Required for Claude models (e.g. `claude-sonnet-3.5`).
+- `ANTHROPIC_API_KEY`: Required for Claude models.
+- `OPENAI_API_KEY`: Required for OpenAI models.
+- `FIREWORKS_API_KEY`: Required for Fireworks models.
 
 Notes:
 
-- Default model is `qwen3-coder-fireworks`. If required env vars are missing, the CLI will error with guidance.
+- Run `shelley models` to see which model is the default and which are available.
 - `predictable` is a built-in test model and requires no API keys.
 ```

@@ -47,12 +47,13 @@ const (
 func main() {
 	// Define global flags
 	var global GlobalConfig
+	defaultModelID := models.Default().ID
 	flag.StringVar(&global.DBPath, "db", "shelley.db", "Path to SQLite database file")
 	flag.BoolVar(&global.Debug, "debug", false, "Enable debug logging")
-	flag.StringVar(&global.Model, "model", "qwen3-coder-fireworks", "LLM model to use (default: qwen3-coder-fireworks; use 'predictable' for testing)")
+	flag.StringVar(&global.Model, "model", defaultModelID, "LLM model to use (use 'predictable' for testing)")
 	flag.BoolVar(&global.PredictableOnly, "predictable-only", false, "Use only the predictable service, ignoring all other models")
 	flag.StringVar(&global.ConfigPath, "config", "", "Path to shelley.json configuration file (optional)")
-	flag.StringVar(&global.DefaultModel, "default-model", "claude-sonnet-4.5", "Default model for web UI (default: claude-sonnet-4.5)")
+	flag.StringVar(&global.DefaultModel, "default-model", defaultModelID, "Default model for web UI")
 
 	// Custom usage function
 	flag.Usage = func() {

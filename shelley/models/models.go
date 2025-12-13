@@ -93,9 +93,25 @@ func (c *Config) getFireworksURL() string {
 func All() []Model {
 	return []Model{
 		{
+			ID:              "claude-opus-4.5",
+			Provider:        ProviderAnthropic,
+			Description:     "Claude Opus 4.5 (default)",
+			RequiredEnvVars: []string{"ANTHROPIC_API_KEY"},
+			Factory: func(config *Config) (llm.Service, error) {
+				if config.AnthropicAPIKey == "" {
+					return nil, fmt.Errorf("claude-opus-4.5 requires ANTHROPIC_API_KEY")
+				}
+				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude45Opus}
+				if url := config.getAnthropicURL(); url != "" {
+					svc.URL = url
+				}
+				return svc, nil
+			},
+		},
+		{
 			ID:              "qwen3-coder-fireworks",
 			Provider:        ProviderFireworks,
-			Description:     "Qwen3 Coder 480B on Fireworks (default)",
+			Description:     "Qwen3 Coder 480B on Fireworks",
 			RequiredEnvVars: []string{"FIREWORKS_API_KEY"},
 			Factory: func(config *Config) (llm.Service, error) {
 				if config.FireworksAPIKey == "" {
@@ -205,22 +221,6 @@ func All() []Model {
 			},
 		},
 		{
-			ID:              "claude-opus-4.5",
-			Provider:        ProviderAnthropic,
-			Description:     "Claude Opus 4.5",
-			RequiredEnvVars: []string{"ANTHROPIC_API_KEY"},
-			Factory: func(config *Config) (llm.Service, error) {
-				if config.AnthropicAPIKey == "" {
-					return nil, fmt.Errorf("claude-opus-4.5 requires ANTHROPIC_API_KEY")
-				}
-				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude45Opus}
-				if url := config.getAnthropicURL(); url != "" {
-					svc.URL = url
-				}
-				return svc, nil
-			},
-		},
-		{
 			ID:              "predictable",
 			Provider:        ProviderBuiltIn,
 			Description:     "Deterministic test model (no API key)",
@@ -254,7 +254,7 @@ func IDs() []string {
 
 // Default returns the default model
 func Default() Model {
-	return All()[0] // qwen3-coder-fireworks
+	return All()[0] // claude-opus-4.5
 }
 
 // Manager manages LLM services for all configured models

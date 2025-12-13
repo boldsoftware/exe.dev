@@ -23,7 +23,7 @@ type LLMConfig struct {
 	// TerminalURL is the URL to the terminal interface (optional)
 	TerminalURL string
 
-	// DefaultModel is the default model to use (optional, defaults to claude-sonnet-4.5)
+	// DefaultModel is the default model to use (optional, defaults to models.Default())
 	DefaultModel string
 
 	// Links are custom links to be displayed in the UI (optional)
