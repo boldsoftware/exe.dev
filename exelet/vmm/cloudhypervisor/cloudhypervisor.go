@@ -31,13 +31,14 @@ type NetworkManager interface {
 }
 
 type VMM struct {
-	dataDir        string
-	networkManager NetworkManager
-	log            *slog.Logger
+	dataDir         string
+	networkManager  NetworkManager
+	enableHugepages bool
+	log             *slog.Logger
 }
 
 // NewVMM returns a new CloudHypervisor based VMM
-func NewVMM(addr string, nm NetworkManager, log *slog.Logger) (*VMM, error) {
+func NewVMM(addr string, nm NetworkManager, enableHugepages bool, log *slog.Logger) (*VMM, error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		return nil, err
@@ -49,9 +50,10 @@ func NewVMM(addr string, nm NetworkManager, log *slog.Logger) (*VMM, error) {
 	}
 
 	return &VMM{
-		dataDir:        dataDir,
-		networkManager: nm,
-		log:            log,
+		dataDir:         dataDir,
+		networkManager:  nm,
+		enableHugepages: enableHugepages,
+		log:             log,
 	}, nil
 }
 
@@ -126,45 +128,26 @@ func (v *VMM) bootLogPath(id string) string {
 }
 
 func (v *VMM) waitForReady(ctx context.Context, id string) error {
-	readyCh := make(chan struct{})
-	errCh := make(chan error)
-	t := time.NewTicker(time.Millisecond * 500)
-	defer t.Stop()
+	// Create a timeout context for the overall wait
+	waitCtx, cancel := context.WithTimeout(ctx, config.InstanceStartTimeout)
+	defer cancel()
 
 	apiSocketPath := v.apiSocketPath(id)
-	go func() {
-		for range t.C {
-			// ping to check ready
-			c, err := client.NewCloudHypervisorClient(apiSocketPath, v.log)
-			if err != nil {
-				errCh <- err
-				return
-			}
 
-			resp, err := c.GetVmmPingWithResponse(ctx)
-			// Close immediately after use (not defer) to avoid FD leak in loop
-			c.Close()
-
-			if err != nil {
-				v.log.WarnContext(ctx, "unable to connect to api", "id", id)
-				continue
-			}
-			v.log.DebugContext(ctx, "connected to api", "version", resp.JSON200.Version)
-			readyCh <- struct{}{}
-			return
-		}
-	}()
-
-	select {
-	case err := <-errCh:
-		return err
-	case <-readyCh:
-		return nil
-	case <-time.After(config.InstanceStartTimeout):
-		return fmt.Errorf("timeout waiting on instance api")
-	case <-ctx.Done():
-		return ctx.Err()
+	// Use retry=true to keep trying with exponential backoff until context timeout
+	c, err := client.NewCloudHypervisorClient(waitCtx, apiSocketPath, true, v.log)
+	if err != nil {
+		return fmt.Errorf("timeout waiting on instance api: %w", err)
 	}
+	defer c.Close()
+
+	// Verify with a ping
+	resp, err := c.GetVmmPingWithResponse(waitCtx)
+	if err != nil {
+		return fmt.Errorf("unable to ping api: %w", err)
+	}
+	v.log.DebugContext(ctx, "connected to api", "version", resp.JSON200.Version)
+	return nil
 }
 
 func (v *VMM) waitForStopped(ctx context.Context, id string) error {
@@ -205,42 +188,40 @@ func (v *VMM) waitForStopped(ctx context.Context, id string) error {
 // a delete can remove the socket too quickly and keep the cloud
 // hypervisor api process running
 func (v *VMM) waitForShutdown(ctx context.Context, id string) error {
-	readyCh := make(chan struct{})
 	t := time.NewTicker(time.Millisecond * 250)
 	defer t.Stop()
-	go func() {
-		for range t.C {
-			// ping to check if VMM is still running
-			apiSocketPath := v.apiSocketPath(id)
-			c, err := client.NewCloudHypervisorClient(apiSocketPath, v.log)
+
+	apiSocketPath := v.apiSocketPath(id)
+	timeout := time.After(config.InstanceStopTimeout)
+
+	for {
+		select {
+		case <-timeout:
+			return fmt.Errorf("timeout waiting on vmm shutdown")
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.C:
+			// Use retry=false for fast fail - we want to detect when socket is gone
+			c, err := client.NewCloudHypervisorClient(ctx, apiSocketPath, false, v.log)
 			if err != nil {
 				// Socket is gone or can't connect - VMM has shut down
-				readyCh <- struct{}{}
-				return
+				return nil
 			}
-			c.Close()
 
 			// Try to ping the VMM
-			if _, err := c.GetVmmPingWithResponse(ctx); err != nil {
+			_, err = c.GetVmmPingWithResponse(ctx)
+			c.Close()
+			if err != nil {
 				// VMM not responding - shutdown complete
-				readyCh <- struct{}{}
-				return
+				return nil
 			}
 		}
-	}()
-
-	select {
-	case <-readyCh:
-		return nil
-	case <-time.After(config.InstanceStopTimeout):
-		return fmt.Errorf("timeout waiting on vmm shutdown")
-	case <-ctx.Done():
-		return ctx.Err()
 	}
 }
 
 func (v *VMM) shutdownVMM(ctx context.Context, id string) error {
-	c, err := client.NewCloudHypervisorClient(v.apiSocketPath(id), v.log)
+	// Use retry=false - instance should already be running
+	c, err := client.NewCloudHypervisorClient(ctx, v.apiSocketPath(id), false, v.log)
 	if err != nil {
 		return err
 	}

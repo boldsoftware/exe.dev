@@ -44,8 +44,8 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 
 	// check if already running
 	if _, err := os.Stat(apiSocketPath); err == nil {
-		// attempt to connect
-		c, err := client.NewCloudHypervisorClient(apiSocketPath, v.log)
+		// attempt to connect - use retry=false for quick check
+		c, err := client.NewCloudHypervisorClient(ctx, apiSocketPath, false, v.log)
 		if err == nil {
 			defer c.Close()
 			if _, err := c.GetVmmPingWithResponse(ctx); err == nil {
@@ -84,7 +84,10 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 	}
 	defer bootLog.Close()
 
-	cmd := exec.CommandContext(ctx, binPath, args...)
+	// Use exec.Command (not CommandContext) because cloud-hypervisor is a
+	// long-running daemon that should outlive the create context. CommandContext
+	// would kill the process when the context times out.
+	cmd := exec.Command(binPath, args...)
 	cmd.Stdout = bootLog
 	cmd.Stderr = bootLog
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -141,8 +144,8 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to save process metadata: %w", err)
 	}
 
-	// create
-	c, err := client.NewCloudHypervisorClient(v.apiSocketPath(id), v.log)
+	// create - use retry=false since waitForReady already confirmed socket is available
+	c, err := client.NewCloudHypervisorClient(ctx, v.apiSocketPath(id), false, v.log)
 	if err != nil {
 		return err
 	}

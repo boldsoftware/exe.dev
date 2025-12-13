@@ -10,12 +10,6 @@ import (
 )
 
 func (v *VMM) Start(ctx context.Context, id string) error {
-	c, err := client.NewCloudHypervisorClient(v.apiSocketPath(id), v.log)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
-
 	// check if already running (e.g. from an agent restart)
 	state, err := v.State(ctx, id)
 	if err != nil {
@@ -28,10 +22,17 @@ func (v *VMM) Start(ctx context.Context, id string) error {
 		return nil
 	}
 
-	// if stopped, start new api socket
+	// if stopped, start new api socket (this also creates the VM)
 	if err := v.runAPIInstance(ctx, id); err != nil {
 		return err
 	}
+
+	// Create client after runAPIInstance to connect to the new socket
+	c, err := client.NewCloudHypervisorClient(ctx, v.apiSocketPath(id), false, v.log)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
 
 	resp, err := c.BootVMWithResponse(ctx)
 	if err != nil {

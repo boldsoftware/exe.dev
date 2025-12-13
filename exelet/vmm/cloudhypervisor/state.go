@@ -16,7 +16,8 @@ import (
 
 func (v *VMM) State(ctx context.Context, id string) (api.VMState, error) {
 	apiSocketPath := v.apiSocketPath(id)
-	c, err := client.NewCloudHypervisorClient(apiSocketPath, v.log)
+	// Use retry=false for fast fail - if socket is unavailable, instance is stopped
+	c, err := client.NewCloudHypervisorClient(ctx, apiSocketPath, false, v.log)
 	if err != nil {
 		// check if not connected from client
 		if errors.Is(err, client.ErrNotConnected) {

@@ -162,6 +162,11 @@ func main() {
 			Value:   config.DefaultIdleThreshold,
 			EnvVars: []string{"EXELET_IDLE_THRESHOLD"},
 		},
+		&cli.BoolFlag{
+			Name:    "enable-hugepages",
+			Usage:   "enable hugepage memory for VMs (requires hugepages to be configured on the host)",
+			EnvVars: []string{"EXELET_ENABLE_HUGEPAGES"},
+		},
 	}
 	app.Action = serveAction
 
@@ -199,6 +204,7 @@ func serveAction(clix *cli.Context) error {
 	resourceManagerEnabled := clix.Bool("resource-manager-enabled")
 	resourceManagerInterval := clix.Duration("resource-manager-interval")
 	idleThreshold := clix.Duration("idle-threshold")
+	enableHugepages := clix.Bool("enable-hugepages")
 
 	cfg := &config.ExeletConfig{
 		Name:                        name,
@@ -218,6 +224,7 @@ func serveAction(clix *cli.Context) error {
 		ResourceManagerEnabled:      resourceManagerEnabled,
 		ResourceManagerInterval:     resourceManagerInterval,
 		IdleThreshold:               idleThreshold,
+		EnableHugepages:             enableHugepages,
 	}
 
 	opts := []exelet.ServerOpt{

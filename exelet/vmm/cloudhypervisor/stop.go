@@ -9,7 +9,8 @@ import (
 )
 
 func (v *VMM) Stop(ctx context.Context, id string) error {
-	c, err := client.NewCloudHypervisorClient(v.apiSocketPath(id), v.log)
+	// Use retry=false - instance should be running
+	c, err := client.NewCloudHypervisorClient(ctx, v.apiSocketPath(id), false, v.log)
 	if err != nil {
 		return err
 	}

@@ -44,7 +44,7 @@ func (s *Service) getInstance(ctx context.Context, id string) (*api.Instance, er
 	}
 
 	// check state from VMM
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.log)
+	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
 	if err != nil {
 		return nil, err
 	}

@@ -23,7 +23,7 @@ func (s *Service) UpdateInstance(ctx context.Context, req *api.UpdateInstanceReq
 
 func (s *Service) updateInstance(ctx context.Context, id, kernelImage, initImage string) error {
 	var err error
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.log)
+	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
 	if err != nil {
 		return fmt.Errorf("error getting vmm: %w", err)
 	}

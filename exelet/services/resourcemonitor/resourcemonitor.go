@@ -415,14 +415,16 @@ func (m *ResourceMonitor) vmPID(ctx context.Context, id string) (int, error) {
 	// TODO(philip): This is the same join as "func (v *VMM) apiSocketPath(id string) string" in cloudhypervisor.go;
 	// should be shared.
 	socketPath := filepath.Join(m.runtimePath, id, "chh.sock")
-	cl, err := client.NewCloudHypervisorClient(socketPath, m.log)
+
+	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	// Use retry=false - fail fast for monitoring queries
+	cl, err := client.NewCloudHypervisorClient(reqCtx, socketPath, false, m.log)
 	if err != nil {
 		return 0, err
 	}
 	defer cl.Close()
-
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
 
 	resp, err := cl.GetVmmPingWithResponse(reqCtx)
 	if err != nil {

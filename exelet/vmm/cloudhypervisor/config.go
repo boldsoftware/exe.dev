@@ -34,13 +34,15 @@ func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstanc
 		args = args + " " + netConf
 	}
 	memory := cfg.Memory
-	// align memory
-	hugePagesSize, err := defaultHugepageSize()
-	if err != nil {
-		// TODO: should we default to just disabling instead of returning an error?
-		return nil, fmt.Errorf("error getting default hugepage size (ensure hugepages are enabled): %w", err)
+	vmMemory := memory
+	// align memory to hugepage size if hugepages are enabled
+	if v.enableHugepages {
+		hugePagesSize, err := defaultHugepageSize()
+		if err != nil {
+			return nil, fmt.Errorf("error getting default hugepage size (ensure hugepages are enabled): %w", err)
+		}
+		vmMemory = alignMemory(memory, uint64(hugePagesSize))
 	}
-	vmMemory := alignMemory(memory, uint64(hugePagesSize))
 	rootDiskID := "root"
 	disks := []client.DiskConfig{
 		{
@@ -69,7 +71,6 @@ func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstanc
 		})
 	}
 	sharedMemory := true
-	hugePages := true
 	vCfg := &client.VmConfig{
 		Cpus: &client.CpusConfig{
 			BootVcpus: int(cfg.CPUs),
@@ -78,7 +79,7 @@ func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstanc
 		Memory: &client.MemoryConfig{
 			Size:      int64(vmMemory),
 			Shared:    &sharedMemory,
-			Hugepages: &hugePages,
+			Hugepages: &v.enableHugepages,
 		},
 		Disks: &disks,
 		// TODO: use console config to attach to stdin/stdout?

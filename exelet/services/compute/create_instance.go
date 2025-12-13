@@ -145,13 +145,14 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 
 	// Setup rollback to cleanup resources on error
 	rb := &createInstanceRollback{
-		ctx:            ctx,
-		log:            s.log,
-		serviceContext: s.context,
-		instanceID:     instanceID,
-		proxyManager:   s.proxyManager,
-		portAllocator:  s.portAllocator,
-		runtimeAddress: s.config.RuntimeAddress,
+		ctx:             ctx,
+		log:             s.log,
+		serviceContext:  s.context,
+		instanceID:      instanceID,
+		proxyManager:    s.proxyManager,
+		portAllocator:   s.portAllocator,
+		runtimeAddress:  s.config.RuntimeAddress,
+		enableHugepages: s.config.EnableHugepages,
 	}
 	defer func() {
 		if err != nil {
@@ -332,6 +333,10 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 		if _, err := io.Copy(kernelFile, kernel); err != nil {
+			kernelFile.Close()
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		if err := kernelFile.Sync(); err != nil {
 			kernelFile.Close()
 			return nil, status.Error(codes.Internal, err.Error())
 		}
@@ -578,7 +583,7 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 
 	s.log.DebugContext(ctx, "vm config", "config", vmCfg)
 
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.log)
+	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

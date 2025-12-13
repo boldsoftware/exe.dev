@@ -9,7 +9,8 @@ import (
 )
 
 func (v *VMM) Delete(ctx context.Context, id, ip string) error {
-	c, err := client.NewCloudHypervisorClient(v.apiSocketPath(id), v.log)
+	// Use retry=false - instance should exist or we proceed with cleanup
+	c, err := client.NewCloudHypervisorClient(ctx, v.apiSocketPath(id), false, v.log)
 	if err != nil {
 		// If we can't connect, VMM is likely already gone - continue with cleanup
 		if isNotConnected(err) {

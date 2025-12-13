@@ -428,7 +428,7 @@ func startExeletProcess(ctx context.Context, host, logFormat, logLevel, exedURL 
 		"-o", "ServerAliveInterval=30",
 		"-o", "ServerAliveCountMax=3",
 		host,
-		fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://:9080 --http-addr :9081 --exed-url %s --instance-domain exe.cloud --resource-manager-enabled`,
+		fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://:9080 --http-addr :9081 --exed-url %s --instance-domain exe.cloud --resource-manager-enabled --enable-hugepages`,
 			logFormat, logLevel, exedURL))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

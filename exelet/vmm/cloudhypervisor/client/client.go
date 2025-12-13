@@ -11,7 +11,10 @@ import (
 )
 
 const (
-	maxRetries = 2
+	// Initial backoff for exponential retry
+	initialBackoff = 100 * time.Millisecond
+	// Maximum backoff cap
+	maxBackoff = 1 * time.Second
 )
 
 // ErrNotConnected is returned when not connected
@@ -31,22 +34,14 @@ func (c *CHClient) Close() {
 	}
 }
 
-func NewCloudHypervisorClient(apiSocketPath string, log *slog.Logger) (*CHClient, error) {
+// NewCloudHypervisorClient creates a client for the cloud-hypervisor API socket.
+// If retry is true, uses exponential backoff (100ms, 200ms, 400ms, 800ms, 1s, 1s, ...)
+// until context timeout. If retry is false, fails immediately on first connection error.
+func NewCloudHypervisorClient(ctx context.Context, apiSocketPath string, retry bool, log *slog.Logger) (*CHClient, error) {
 	hc := &http.Client{
 		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				i := 0
-				for range maxRetries {
-					c, err := net.Dial("unix", apiSocketPath)
-					if err != nil {
-						log.Debug("error connecting to api socket; retrying", "path", apiSocketPath, "error", err, "retry", i)
-						time.Sleep(time.Millisecond * 250)
-						i += 1
-						continue
-					}
-					return c, nil
-				}
-				return nil, fmt.Errorf("unable to connect to api socket: %w", ErrNotConnected)
+			DialContext: func(dialCtx context.Context, _, _ string) (net.Conn, error) {
+				return dialWithBackoff(dialCtx, apiSocketPath, retry, log)
 			},
 		},
 	}
@@ -58,4 +53,45 @@ func NewCloudHypervisorClient(apiSocketPath string, log *slog.Logger) (*CHClient
 		c,
 		hc,
 	}, nil
+}
+
+// dialWithBackoff attempts to connect to the unix socket with optional exponential backoff.
+func dialWithBackoff(ctx context.Context, socketPath string, retry bool, log *slog.Logger) (net.Conn, error) {
+	backoff := initialBackoff
+	attempt := 0
+
+	for {
+		// Check context before attempting
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("unable to connect to api socket: %w", ErrNotConnected)
+		default:
+		}
+
+		conn, err := net.Dial("unix", socketPath)
+		if err == nil {
+			return conn, nil
+		}
+
+		// If not retrying, fail immediately
+		if !retry {
+			return nil, fmt.Errorf("unable to connect to api socket: %w", ErrNotConnected)
+		}
+
+		log.Debug("error connecting to api socket; retrying", "path", socketPath, "error", err, "attempt", attempt, "backoff", backoff)
+		attempt++
+
+		// Wait with backoff, respecting context
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("unable to connect to api socket: %w", ErrNotConnected)
+		case <-time.After(backoff):
+		}
+
+		// Exponential backoff with cap
+		backoff *= 2
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+	}
 }

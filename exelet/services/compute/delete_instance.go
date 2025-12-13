@@ -22,7 +22,7 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 
 		instance := resp.Instance
 
-		vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.log)
+		vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}

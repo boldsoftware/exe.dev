@@ -56,7 +56,7 @@ func (s *Service) startInstance(ctx context.Context, id string) error {
 		return err
 	}
 
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.log)
+	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
 	if err != nil {
 		return err
 	}

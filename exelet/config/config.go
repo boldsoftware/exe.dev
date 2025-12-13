@@ -114,4 +114,6 @@ type ExeletConfig struct {
 	ResourceManagerInterval time.Duration
 	// IdleThreshold is the duration after which a VM is considered idle
 	IdleThreshold time.Duration
+	// EnableHugepages enables hugepage memory for VMs (requires hugepages to be configured on the host)
+	EnableHugepages bool
 }

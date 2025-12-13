@@ -76,14 +76,16 @@ func (m *ResourceManager) getVMPID(ctx context.Context, id string) (int, error) 
 	}
 
 	socketPath := filepath.Join(runtimeURL.Path, id, "chh.sock")
-	cl, err := client.NewCloudHypervisorClient(socketPath, m.log)
+
+	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	// Use retry=false - fail fast for monitoring queries
+	cl, err := client.NewCloudHypervisorClient(reqCtx, socketPath, false, m.log)
 	if err != nil {
 		return 0, err
 	}
 	defer cl.Close()
-
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
 
 	resp, err := cl.GetVmmPingWithResponse(reqCtx)
 	if err != nil {

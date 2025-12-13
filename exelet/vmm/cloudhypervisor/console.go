@@ -8,7 +8,8 @@ import (
 
 func (v *VMM) Console(ctx context.Context, id string) (string, error) {
 	apiSocketPath := v.apiSocketPath(id)
-	c, err := client.NewCloudHypervisorClient(apiSocketPath, v.log)
+	// Use retry=false - instance should be running
+	c, err := client.NewCloudHypervisorClient(ctx, apiSocketPath, false, v.log)
 	if err != nil {
 		return "", err
 	}

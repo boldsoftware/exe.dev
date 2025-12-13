@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=simple
 CPUWeight=1024
 IOWeight=1024
+LimitNOFILE=1048576
 WorkingDirectory=/data/exelet
 EnvironmentFile=-/etc/default/exelet
 KillMode=process

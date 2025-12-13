@@ -32,6 +32,7 @@ type createInstanceRollback struct {
 	vmStarted          bool
 	runtimeAddress     string
 	networkIP          string
+	enableHugepages    bool
 }
 
 // Rollback cleans up resources in reverse order of creation
@@ -53,7 +54,7 @@ func (r *createInstanceRollback) Rollback() {
 	// Stop and delete VM if created
 	if r.vmStarted || r.vmCreated {
 		if r.runtimeAddress != "" && r.serviceContext != nil {
-			v, err := vmm.NewVMM(r.runtimeAddress, r.serviceContext.NetworkManager, r.log)
+			v, err := vmm.NewVMM(r.runtimeAddress, r.serviceContext.NetworkManager, r.enableHugepages, r.log)
 			if err != nil {
 				r.log.ErrorContext(r.ctx, "rollback: failed to create VMM client", "error", err)
 			} else {
