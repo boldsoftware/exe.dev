@@ -167,13 +167,13 @@ func TestListDirectory(t *testing.T) {
 
 		// Create a subdirectory
 		subDir := tmpDir + "/subdir"
-		if err := os.Mkdir(subDir, 0755); err != nil {
+		if err := os.Mkdir(subDir, 0o755); err != nil {
 			t.Fatalf("failed to create subdir: %v", err)
 		}
 
 		// Create a file
 		file := tmpDir + "/file.txt"
-		if err := os.WriteFile(file, []byte("test"), 0644); err != nil {
+		if err := os.WriteFile(file, []byte("test"), 0o644); err != nil {
 			t.Fatalf("failed to create file: %v", err)
 		}
 
@@ -210,13 +210,13 @@ func TestListDirectory(t *testing.T) {
 
 		// Create a visible subdirectory
 		visibleDir := tmpDir + "/visible"
-		if err := os.Mkdir(visibleDir, 0755); err != nil {
+		if err := os.Mkdir(visibleDir, 0o755); err != nil {
 			t.Fatalf("failed to create visible dir: %v", err)
 		}
 
 		// Create a hidden subdirectory
 		hiddenDir := tmpDir + "/.hidden"
-		if err := os.Mkdir(hiddenDir, 0755); err != nil {
+		if err := os.Mkdir(hiddenDir, 0o755); err != nil {
 			t.Fatalf("failed to create hidden dir: %v", err)
 		}
 

@@ -61,7 +61,7 @@ function DirectoryPickerModal({
     }
     return {
       dirPath: path.slice(0, lastSlash),
-      prefix: path.slice(lastSlash + 1)
+      prefix: path.slice(lastSlash + 1),
     };
   }, []);
 
@@ -139,17 +139,16 @@ function DirectoryPickerModal({
   }, [isOpen]);
 
   // Filter entries based on prefix (case-insensitive)
-  const filteredEntries = displayDir?.entries.filter((entry) => {
-    if (!filterPrefix) return true;
-    return entry.name.toLowerCase().startsWith(filterPrefix.toLowerCase());
-  }) || [];
+  const filteredEntries =
+    displayDir?.entries.filter((entry) => {
+      if (!filterPrefix) return true;
+      return entry.name.toLowerCase().startsWith(filterPrefix.toLowerCase());
+    }) || [];
 
   const handleEntryClick = (entry: DirectoryEntry) => {
     if (entry.is_dir) {
       const basePath = displayDir?.path || "";
-      const newPath = basePath === "/"
-        ? `/${entry.name}/`
-        : `${basePath}/${entry.name}/`;
+      const newPath = basePath === "/" ? `/${entry.name}/` : `${basePath}/${entry.name}/`;
       setInputPath(newPath);
     }
   };
@@ -171,9 +170,7 @@ function DirectoryPickerModal({
   const handleSelect = () => {
     // Use the current directory path for selection
     const { dirPath } = parseInputPath(inputPath);
-    const selectedPath = inputPath.endsWith("/")
-      ? (dirPath === "/" ? "/" : dirPath)
-      : dirPath;
+    const selectedPath = inputPath.endsWith("/") ? (dirPath === "/" ? "/" : dirPath) : dirPath;
     onSelect(selectedPath || displayDir?.path || "");
     onClose();
   };
@@ -288,7 +285,8 @@ function DirectoryPickerModal({
                     />
                   </svg>
                   <span>
-                    {filterPrefix && entry.name.toLowerCase().startsWith(filterPrefix.toLowerCase()) ? (
+                    {filterPrefix &&
+                    entry.name.toLowerCase().startsWith(filterPrefix.toLowerCase()) ? (
                       <>
                         <strong>{entry.name.slice(0, filterPrefix.length)}</strong>
                         {entry.name.slice(filterPrefix.length)}
@@ -315,11 +313,7 @@ function DirectoryPickerModal({
           <button className="btn" onClick={onClose}>
             Cancel
           </button>
-          <button
-            className="btn-primary"
-            onClick={handleSelect}
-            disabled={loading || !!error}
-          >
+          <button className="btn-primary" onClick={handleSelect} disabled={loading || !!error}>
             Select
           </button>
         </div>
