@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -186,6 +187,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/conversations/new", s.handleNewConversation)
 	mux.HandleFunc("/api/conversation/", s.handleConversation)
 	mux.HandleFunc("/api/validate-cwd", s.handleValidateCwd)
+	mux.HandleFunc("/api/list-directory", s.handleListDirectory)
 	mux.HandleFunc("/api/upload", s.handleUpload)
 
 	// Generic read route restricted to safe paths
@@ -248,6 +250,117 @@ func (s *Server) handleValidateCwd(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"valid": true,
 	})
+}
+
+// DirectoryEntry represents a single directory entry for the directory picker
+type DirectoryEntry struct {
+	Name  string `json:"name"`
+	IsDir bool   `json:"is_dir"`
+}
+
+// ListDirectoryResponse is the response from the list-directory endpoint
+type ListDirectoryResponse struct {
+	Path    string           `json:"path"`
+	Parent  string           `json:"parent"`
+	Entries []DirectoryEntry `json:"entries"`
+}
+
+// handleListDirectory lists the contents of a directory for the directory picker
+func (s *Server) handleListDirectory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		// Default to home directory or root
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			path = "/"
+		} else {
+			path = homeDir
+		}
+	}
+
+	// Clean and resolve the path
+	path = filepath.Clean(path)
+
+	// Verify path exists and is a directory
+	info, err := os.Stat(path)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		if os.IsNotExist(err) {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "directory does not exist",
+			})
+		} else if os.IsPermission(err) {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "permission denied",
+			})
+		} else {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+		return
+	}
+
+	if !info.IsDir() {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "path is not a directory",
+		})
+		return
+	}
+
+	// Read directory contents
+	dirEntries, err := os.ReadDir(path)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		if os.IsPermission(err) {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "permission denied",
+			})
+		} else {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+		return
+	}
+
+	// Build response with only directories (for directory picker)
+	var entries []DirectoryEntry
+	for _, entry := range dirEntries {
+		// Skip hidden files/directories (starting with .)
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		// Only include directories
+		if entry.IsDir() {
+			entries = append(entries, DirectoryEntry{
+				Name:  entry.Name(),
+				IsDir: true,
+			})
+		}
+	}
+
+	// Calculate parent directory
+	parent := filepath.Dir(path)
+	if parent == path {
+		// At root, no parent
+		parent = ""
+	}
+
+	response := ListDirectoryResponse{
+		Path:    path,
+		Parent:  parent,
+		Entries: entries,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 // getOrCreateConversationManager gets an existing conversation manager or creates a new one.

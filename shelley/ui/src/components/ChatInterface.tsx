@@ -12,6 +12,7 @@ import BrowserNavigateTool from "./BrowserNavigateTool";
 import BrowserEvalTool from "./BrowserEvalTool";
 import ReadImageTool from "./ReadImageTool";
 import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
+import DirectoryPickerModal from "./DirectoryPickerModal";
 
 interface CoalescedToolCallProps {
   toolName: string;
@@ -220,6 +221,7 @@ interface ChatInterfaceProps {
   currentConversation?: Conversation;
   onConversationUpdate?: (conversation: Conversation) => void;
   onFirstMessage?: (message: string, model: string, cwd?: string) => Promise<void>;
+  mostRecentCwd?: string | null;
 }
 
 function ChatInterface({
@@ -229,6 +231,7 @@ function ChatInterface({
   currentConversation,
   onConversationUpdate,
   onFirstMessage,
+  mostRecentCwd,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -259,23 +262,43 @@ function ChatInterface({
     setSelectedModelState(model);
     localStorage.setItem("shelley_selected_model", model);
   };
-  const [selectedCwd, setSelectedCwdState] = useState<string>(() => {
-    // First check localStorage for a sticky cwd preference
-    const storedCwd = localStorage.getItem("shelley_selected_cwd");
-    if (storedCwd) {
-      return storedCwd;
-    }
-    // Fall back to server default
-    return window.__SHELLEY_INIT__?.default_cwd || "";
-  });
+  const [selectedCwd, setSelectedCwdState] = useState<string>("");
+  const [cwdInitialized, setCwdInitialized] = useState(false);
   // Wrapper to persist cwd selection to localStorage
   const setSelectedCwd = (cwd: string) => {
     setSelectedCwdState(cwd);
     localStorage.setItem("shelley_selected_cwd", cwd);
   };
+
+  // Initialize CWD with priority: localStorage > mostRecentCwd > server default
+  useEffect(() => {
+    if (cwdInitialized) return;
+
+    // First check localStorage for a sticky cwd preference
+    const storedCwd = localStorage.getItem("shelley_selected_cwd");
+    if (storedCwd) {
+      setSelectedCwdState(storedCwd);
+      setCwdInitialized(true);
+      return;
+    }
+
+    // Use most recent conversation's CWD if available
+    if (mostRecentCwd) {
+      setSelectedCwdState(mostRecentCwd);
+      setCwdInitialized(true);
+      return;
+    }
+
+    // Fall back to server default
+    const defaultCwd = window.__SHELLEY_INIT__?.default_cwd || "";
+    if (defaultCwd) {
+      setSelectedCwdState(defaultCwd);
+      setCwdInitialized(true);
+    }
+  }, [mostRecentCwd, cwdInitialized]);
   const [cwdError, setCwdError] = useState<string | null>(null);
   const [editingModel, setEditingModel] = useState(false);
-  const [editingCwd, setEditingCwd] = useState(false);
+  const [showDirectoryPicker, setShowDirectoryPicker] = useState(false);
   // Settings modal removed - configuration moved to status bar for empty conversations
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [agentWorking, setAgentWorking] = useState(false);
@@ -1051,73 +1074,19 @@ function ChatInterface({
                   )}
                 </div>
 
-                {/* CWD indicator - click to edit */}
+                {/* CWD indicator - click to open directory picker */}
                 <div
                   className={`status-field status-field-cwd${cwdError ? " status-field-error" : ""}`}
                   title={cwdError || "Working directory for file operations"}
                 >
                   <span className="status-field-label">Dir:</span>
-                  {editingCwd ? (
-                    <input
-                      id="cwd-input-status"
-                      type="text"
-                      value={selectedCwd}
-                      onChange={(e) => {
-                        setSelectedCwd(e.target.value);
-                        setCwdError(null); // Clear error while typing
-                      }}
-                      onBlur={async () => {
-                        setEditingCwd(false);
-                        // Validate cwd on blur
-                        if (selectedCwd) {
-                          try {
-                            const validation = await api.validateCwd(selectedCwd);
-                            if (!validation.valid) {
-                              setCwdError(validation.error || "Invalid directory");
-                            } else {
-                              setCwdError(null);
-                            }
-                          } catch {
-                            setCwdError("Failed to validate directory");
-                          }
-                        } else {
-                          setCwdError(null);
-                        }
-                      }}
-                      onKeyDown={async (e) => {
-                        if (e.key === "Enter") {
-                          setEditingCwd(false);
-                          // Validate cwd on enter
-                          if (selectedCwd) {
-                            try {
-                              const validation = await api.validateCwd(selectedCwd);
-                              if (!validation.valid) {
-                                setCwdError(validation.error || "Invalid directory");
-                              } else {
-                                setCwdError(null);
-                              }
-                            } catch {
-                              setCwdError("Failed to validate directory");
-                            }
-                          } else {
-                            setCwdError(null);
-                          }
-                        }
-                      }}
-                      disabled={sending}
-                      placeholder="/path/to/working/directory"
-                      className={`status-input${cwdError ? " status-input-error" : ""}`}
-                      autoFocus
-                    />
-                  ) : (
-                    <button
-                      className={`status-chip${cwdError ? " status-chip-error" : ""}`}
-                      onClick={() => setEditingCwd(true)}
-                      disabled={sending}
-                    >
-                      {selectedCwd || "(no cwd)"}
-                    </button>
-                  )}
+                  <button
+                    className={`status-chip${cwdError ? " status-chip-error" : ""}`}
+                    onClick={() => setShowDirectoryPicker(true)}
+                    disabled={sending}
+                  >
+                    {selectedCwd || "(no cwd)"}
+                  </button>
                 </div>
               </div>
             </div>
@@ -1134,6 +1103,17 @@ function ChatInterface({
         onSend={sendMessage}
         disabled={sending || loading}
         autoFocus={true}
+      />
+
+      {/* Directory Picker Modal */}
+      <DirectoryPickerModal
+        isOpen={showDirectoryPicker}
+        onClose={() => setShowDirectoryPicker(false)}
+        onSelect={(path) => {
+          setSelectedCwd(path);
+          setCwdError(null);
+        }}
+        initialPath={selectedCwd}
       />
     </div>
   );

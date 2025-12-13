@@ -2033,3 +2033,133 @@ svg {
     width: 200px;
   }
 }
+
+/* Directory Picker Modal */
+.directory-picker-modal {
+  max-width: 32rem;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.directory-picker-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.directory-picker-input-container {
+  margin-bottom: 0.75rem;
+}
+
+.directory-picker-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+.directory-picker-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+.directory-picker-current {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  margin-bottom: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.directory-picker-filter {
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.directory-picker-error {
+  padding: 0.5rem 0.75rem;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: 0.25rem;
+  color: var(--error-text);
+  font-size: 0.875rem;
+  margin-bottom: 0.75rem;
+}
+
+.directory-picker-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.directory-picker-list {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  min-height: 200px;
+  max-height: 300px;
+}
+
+.directory-picker-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.directory-picker-entry:last-child {
+  border-bottom: none;
+}
+
+.directory-picker-entry:hover {
+  background: var(--bg-tertiary);
+}
+
+.directory-picker-entry-parent {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.directory-picker-icon {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.directory-picker-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 0.875rem;
+}
+
+.directory-picker-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-top: 1px solid var(--border);
+}

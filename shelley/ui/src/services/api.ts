@@ -66,6 +66,22 @@ class ApiService {
     }
     return response.json();
   }
+
+  async listDirectory(path?: string): Promise<{
+    path: string;
+    parent: string;
+    entries: Array<{ name: string; is_dir: boolean }>;
+    error?: string;
+  }> {
+    const url = path
+      ? `${this.baseUrl}/list-directory?path=${encodeURIComponent(path)}`
+      : `${this.baseUrl}/list-directory`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to list directory: ${response.statusText}`);
+    }
+    return response.json();
+  }
 }
 
 export const api = new ApiService();

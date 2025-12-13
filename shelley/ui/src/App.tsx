@@ -115,6 +115,9 @@ function App() {
     (conv) => conv.conversation_id === currentConversationId,
   );
 
+  // Get the CWD from the most recent conversation (first in list, sorted by updated_at desc)
+  const mostRecentCwd = conversations.length > 0 ? conversations[0].cwd : null;
+
   const handleFirstMessage = async (message: string, model: string, cwd?: string) => {
     try {
       const response = await api.sendMessageWithNewConversation({ message, model, cwd });
@@ -152,6 +155,7 @@ function App() {
           currentConversation={currentConversation}
           onConversationUpdate={updateConversation}
           onFirstMessage={handleFirstMessage}
+          mostRecentCwd={mostRecentCwd}
         />
       </div>
 
