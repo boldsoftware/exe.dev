@@ -21,7 +21,7 @@ In dev, typically the exed host is localhost, and ctr-host is lima-ctr-host.
 Start with the basics:
 
 ```
-brew install tailscale coreutils lima
+brew install tailscale coreutils lima node uv zstd
 tailscale up
 ```
 

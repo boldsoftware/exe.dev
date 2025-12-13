@@ -10,6 +10,7 @@ COMMIT := `git rev-parse --short HEAD`
 VERSION := $(shell date +%Y%m%d)
 REPO := exe.dev
 DOCKER := docker
+B2 := uvx b2
 
 # Colors
 RED := \033[0;31m
@@ -193,9 +194,13 @@ container/rovol/amd64: container/rovol/Dockerfile.rovol
 
 whoami: ## Download ghuser/whoami.sqlite3 from Backblaze if it doesn't exist
 	@if [ ! -f ghuser/whoami.sqlite3 ]; then \
-		if ! command -v b2 >/dev/null 2>&1; then \
-			echo "${RED}Error: b2 command not found${NC}"; \
-			echo "Please install the Backblaze B2 CLI (e.g. brew install b2-tools)"; \
+		if ! command -v uv >/dev/null 2>&1; then \
+			echo "${RED}Error: uv command not found${NC}"; \
+			if [ "$$(uname)" = "Darwin" ]; then \
+				echo "Please install uv: brew install uv"; \
+			else \
+				echo "Please install uv: curl -LsSf https://astral.sh/uv/install.sh | sh"; \
+			fi; \
 			exit 1; \
 		fi; \
 		if ! command -v zstd >/dev/null 2>&1; then \
@@ -208,8 +213,8 @@ whoami: ## Download ghuser/whoami.sqlite3 from Backblaze if it doesn't exist
 		export B2_APPLICATION_KEY="K004hvv/i5raZbvKXARk+H7sZLZ5XtQ"; \
 		export COLUMNS="$${COLUMNS:-80}"; \
 		export LINES="$${LINES:-24}"; \
-		b2 account authorize >/dev/null 2>&1 && \
-		b2 file download b2://bold-exe/whoami3.sqlite3.zst ghuser/whoami.sqlite3.zst \
+		$(B2) account authorize >/dev/null 2>&1 && \
+		$(B2) file download b2://bold-exe/whoami3.sqlite3.zst ghuser/whoami.sqlite3.zst \
 			|| { echo "${RED}Failed to download whoami.sqlite3.zst${NC}" && exit 1; }; \
 		echo "Decompressing ghuser/whoami.sqlite3.zst..."; \
 		zstd -d ghuser/whoami.sqlite3.zst -o ghuser/whoami.sqlite3 && \
@@ -240,9 +245,13 @@ exelet-fs: ## Download exelet-fs from Backblaze if hash changed or doesn't exist
 		STORED_HASH=$$(cat exelet/fs/.hash); \
 	fi; \
 	if [ ! -e exelet/fs/kernel ] || [ ! -e exelet/fs/rovol ] || [ "$$CURRENT_HASH" != "$$STORED_HASH" ]; then \
-		if ! command -v b2 >/dev/null 2>&1; then \
-			echo "${RED}Error: b2 command not found${NC}"; \
-			echo "Please install the Backblaze B2 CLI (e.g. brew install b2-tools)"; \
+		if ! command -v uv >/dev/null 2>&1; then \
+			echo "${RED}Error: uv command not found${NC}"; \
+			if [ "$$(uname)" = "Darwin" ]; then \
+				echo "Please install uv: brew install uv"; \
+			else \
+				echo "Please install uv: curl -LsSf https://astral.sh/uv/install.sh | sh"; \
+			fi; \
 			exit 1; \
 		fi; \
 		echo "Downloading exelet-fs from Backblaze (hash: $$CURRENT_HASH)..."; \
@@ -251,8 +260,8 @@ exelet-fs: ## Download exelet-fs from Backblaze if hash changed or doesn't exist
 		export B2_APPLICATION_KEY="K004hvv/i5raZbvKXARk+H7sZLZ5XtQ"; \
 		export COLUMNS="$${COLUMNS:-80}"; \
 		export LINES="$${LINES:-24}"; \
-		b2 account authorize >/dev/null 2>&1 && \
-		b2 file download b2://bold-exe/exelet-fs-$(GOARCH)-$$CURRENT_HASH.tar.gz .exelet-fs.tar.gz \
+		$(B2) account authorize >/dev/null 2>&1 && \
+		$(B2) file download b2://bold-exe/exelet-fs-$(GOARCH)-$$CURRENT_HASH.tar.gz .exelet-fs.tar.gz \
 			|| { echo "${RED}Failed to download exelet-fs-$(GOARCH)-$$CURRENT_HASH.tar.gz${NC}" && exit 1; }; \
 		echo "Decompressing exelet-fs..."; \
 		tar zxf .exelet-fs.tar.gz -C exelet/fs --exclude='._*' && \
@@ -321,14 +330,18 @@ package-exelet-fs:
 
 .PHONY: upload-exelet-fs
 upload-exelet-fs: package-exelet-fs ## Build and upload exelet-fs to Backblaze
-	@if ! command -v b2 >/dev/null 2>&1; then \
-		echo "${RED}Error: b2 command not found${NC}"; \
-		echo "Please install the Backblaze B2 CLI (e.g. brew install b2-tools)"; \
+	@if ! command -v uv >/dev/null 2>&1; then \
+		echo "${RED}Error: uv command not found${NC}"; \
+		if [ "$$(uname)" = "Darwin" ]; then \
+			echo "Please install uv: brew install uv"; \
+		else \
+			echo "Please install uv: curl -LsSf https://astral.sh/uv/install.sh | sh"; \
+		fi; \
 		exit 1; \
 	fi
 	@>&2 echo " -> uploading exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz to Backblaze"
 	@echo " !! Be sure to have B2 write keys !!"
-	b2 file upload bold-exe exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz \
+	$(B2) file upload bold-exe exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz \
 		|| { echo "${RED}Failed to upload exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz${NC}" && exit 1; }
 	@echo "✓ Uploaded exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz"
 
