@@ -305,11 +305,13 @@ func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
 		HostnameSuggestion string
 		IsLoggedIn         bool
 		ActivePage         string
+		BasicUser          bool
 	}{
 		Env:                s.env,
 		HostnameSuggestion: hostnameSuggestion,
 		IsLoggedIn:         isLoggedIn,
 		ActivePage:         "",
+		BasicUser:          false, // Users creating boxes are never basic users
 	}
 	s.renderTemplate(w, "new.html", data)
 }
