@@ -2,7 +2,7 @@
 title: Sharing
 description: share it like it's hot
 subheading: "2. Features"
-suborder: 3
+suborder: 2
 ---
 
 You can share your box's HTTP port (see [the http proxy documentation](./proxy))

@@ -2,7 +2,7 @@
 title: Custom Domains
 description: Use your own domain with exe.dev
 subheading: "2. Features"
-suborder: 2
+suborder: 4
 ---
 
 Point your own domain at your exe.dev box. TLS certificates are issued automatically.

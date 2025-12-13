@@ -2,7 +2,7 @@
 title: Login with exe
 description: Use exe.dev's authentication system in your applications
 subheading: "2. Features"
-suborder: 2
+suborder: 4
 ---
 
 You can leverage exe.dev's authentication system to identify users accessing
@@ -12,7 +12,7 @@ authorization without managing passwords or e-mails yourself.
 The "Login with exe" feature is complementary with [Sharing](./sharing).
 If a site is public, all users can access it, and the developer
 can implement their own authorization, including bouncing users through
-the /__exe.dev/login to require an e-mail address. Private sites always
+the /\_\_exe.dev/login to require an e-mail address. Private sites always
 have the authentication headers, because the site must have been shared
 to be accessed.
 
