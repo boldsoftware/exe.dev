@@ -50,8 +50,8 @@ SSH
 ssh -p SSH_PORT BOX_NAME@exe.cloud
 
 PROMPT ▶ ls
-Your boxes:
-  • BOX_NAME - running (boldsoftware/exeuntu)
+Your vms:
+  • BOX_NAME.exe.cloud - running (boldsoftware/exeuntu)
 PROMPT ▶ exit
 Goodbye!
 

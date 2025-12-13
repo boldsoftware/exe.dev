@@ -94,7 +94,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:        "ls",
-			Description: "List your boxes",
+			Description: "List your vms",
 			Handler:     ss.handleListCommand,
 			FlagSetFunc: jsonOnlyFlags("ls"),
 			Usage:       "ls",
@@ -271,11 +271,11 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 	}
 
 	if len(boxes) == 0 {
-		cc.Write("No boxes found. Create one with 'new'.\r\n")
+		cc.Write("No vms found. Create one with 'new'.\r\n")
 		return nil
 	}
 
-	cc.Write("\033[1;36mYour boxes:\033[0m\r\n")
+	cc.Write("\033[1;36mYour vms:\033[0m\r\n")
 	for _, b := range boxes {
 		var statusColor string
 		status := container.ContainerStatus(b.Status)
@@ -287,7 +287,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 		case container.StatusPending:
 			statusColor = "\033[1;33m" // yellow
 		}
-		cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", b.Name, statusColor, status.String())
+		cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", ss.server.env.BoxSub(b.Name), statusColor, status.String())
 		imageName := container.GetDisplayImageName(b.Image)
 		switch imageName {
 		case "exeuntu", "":

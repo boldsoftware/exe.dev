@@ -2401,7 +2401,7 @@ func newBox(t *testing.T, pty *expectPty, opts ...BoxOpts) string {
 
 	// Confirm it is there.
 	pty.sendLine("ls")
-	pty.want("boxes")
+	pty.want("vms")
 	pty.wantRe(boxNameRe + ".*running.*\n")
 	return boxName
 }
