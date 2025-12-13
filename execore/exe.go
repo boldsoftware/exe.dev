@@ -226,6 +226,7 @@ type Server struct {
 	// Metrics
 	metricsRegistry *prometheus.Registry
 	sshMetrics      *SSHMetrics
+	httpMetrics     *HTTPMetrics
 
 	// Data isolation
 	dataSubdir string // subdirectory under /data for container isolation
@@ -503,6 +504,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 	// Initialize metrics
 	sshMetrics := NewSSHMetrics(cfg.MetricsRegistry)
+	httpMetrics := NewHTTPMetrics(cfg.MetricsRegistry)
 	sqlite.RegisterSQLiteMetrics(cfg.MetricsRegistry)
 	llmgateway.RegisterMetrics(cfg.MetricsRegistry)
 
@@ -580,12 +582,22 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 		metricsRegistry: cfg.MetricsRegistry,
 		sshMetrics:      sshMetrics,
+		httpMetrics:     httpMetrics,
 		dataSubdir:      dataSubdir,
 
 		docs:      docsHandler,
 		templates: tmpl,
 		log:       slog,
 	}
+
+	// Set up HTTP metrics host functions for in-flight label tracking
+	s.httpMetrics.SetHostFuncs(s.isProxyRequest, func(host string) string {
+		hostname, _, _ := net.SplitHostPort(host)
+		if hostname == "" {
+			hostname = host
+		}
+		return domz.Label(hostname, s.env.BoxHost)
+	})
 
 	// Initialize DNS providers (both ACME and box shard DNS)
 	if cfg.Env.UseRoute53 {

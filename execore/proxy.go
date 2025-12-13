@@ -20,6 +20,7 @@ import (
 	"exe.dev/container"
 	"exe.dev/domz"
 	"exe.dev/exedb"
+	"exe.dev/metricsbag"
 	"exe.dev/stage"
 )
 
@@ -114,6 +115,9 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid hostname", http.StatusBadRequest)
 		return
 	}
+
+	// Set box name label for metrics
+	metricsbag.SetLabel(r.Context(), LabelBox, boxName)
 
 	// Find the box.
 	// Careful: we aren't checking the team or owner in this look-up, so we must do it below.

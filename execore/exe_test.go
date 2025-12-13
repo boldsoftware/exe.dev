@@ -222,8 +222,8 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 func TestMetricsEndpoint(t *testing.T) {
 	server := newTestServer(t)
 
-	// Use httptest.Server for testing
-	testServer := httptest.NewServer(server)
+	// Use the prepared handler which includes metrics wrapping
+	testServer := httptest.NewServer(server.prepareHandler())
 	defer testServer.Close()
 
 	// Make a request to the health endpoint first to trigger HTTP metrics
@@ -254,9 +254,9 @@ func TestMetricsEndpoint(t *testing.T) {
 	// Debug: print the actual response
 	t.Logf("Metrics response body: %s", bodyStr)
 
-	// Check for standard promhttp metrics
+	// Check for expected metrics
 	expectedMetrics := []string{
-		"promhttp_metric_handler_requests_total",
+		"http_requests_total",
 		"ssh_connections_current", // This should always be present as a gauge
 	}
 
@@ -279,8 +279,8 @@ func TestMetricsEndpoint(t *testing.T) {
 func TestHTTPMetricsInstrumentation(t *testing.T) {
 	server := newTestServer(t)
 
-	// Use httptest.Server for testing
-	testServer := httptest.NewServer(server)
+	// Use the prepared handler which includes metrics wrapping
+	testServer := httptest.NewServer(server.prepareHandler())
 	defer testServer.Close()
 
 	// Make a request to the health endpoint
@@ -304,9 +304,9 @@ func TestHTTPMetricsInstrumentation(t *testing.T) {
 
 	bodyStr := string(body)
 
-	// Check that we have standard promhttp metrics
-	if !strings.Contains(bodyStr, "promhttp_metric_handler_requests_total") {
-		t.Error("Expected to find promhttp_metric_handler_requests_total metric")
+	// Check that we have HTTP request metrics
+	if !strings.Contains(bodyStr, "http_requests_total") {
+		t.Error("Expected to find http_requests_total metric")
 	}
 }
 

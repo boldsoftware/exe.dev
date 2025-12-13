@@ -32,6 +32,7 @@ import (
 	"exe.dev/domz"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
+	"exe.dev/metricsbag"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
 	"exe.dev/route53"
 	"exe.dev/stage"
@@ -56,12 +57,9 @@ func (s *Server) prepareHandler() http.Handler {
 	servMux.Handle("/_/gateway/", lg)
 	servMux.Handle("/", s)
 
-	// Use standard promhttp instrumentation
-	instrumentedHandler := promhttp.InstrumentMetricHandler(
-		s.metricsRegistry,
-		servMux)
-
-	h := LoggerMiddleware(s.log)(instrumentedHandler)
+	h := s.httpMetrics.Wrap(servMux)
+	h = metricsbag.Wrap(h)
+	h = LoggerMiddleware(s.log)(h)
 	return h
 }
 
@@ -452,13 +450,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		info.IsTerminal = isTerminal
 	}
 	if isTerminal {
+		metricsbag.SetLabel(r.Context(), LabelProxy, "false")
+		metricsbag.SetLabel(r.Context(), LabelPath, "/terminal")
 		s.handleTerminalRequest(w, r)
 		return
 	}
 	if isProxy {
+		metricsbag.SetLabel(r.Context(), LabelProxy, "true")
+		// box label is set in handleProxyRequest after resolving the box name
 		s.handleProxyRequest(w, r)
 		return
 	}
+
+	// Set labels for non-proxy HTTP metrics
+	metricsbag.SetLabel(r.Context(), LabelProxy, "false")
+	metricsbag.SetLabel(r.Context(), LabelPath, normalizePath(r.URL.Path))
 
 	// Handle root path and user dashboard
 	path := r.URL.Path

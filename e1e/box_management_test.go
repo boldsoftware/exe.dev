@@ -458,6 +458,122 @@ func TestVanillaBox(t *testing.T) {
 		}
 	})
 
+	t.Run("http_metrics", func(t *testing.T) {
+		// Test that HTTP metrics are correctly instrumented with labels.
+		// This test verifies that after making requests, the /metrics endpoint
+		// shows http_requests_total with correct proxy, path, and box labels.
+		noGolden(t)
+
+		httpPort := Env.exed.HTTPPort
+
+		// Make a non-proxy request to /health
+		healthResp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", httpPort))
+		if err != nil {
+			t.Fatalf("failed to request /health: %v", err)
+		}
+		healthResp.Body.Close()
+		if healthResp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200 from /health, got %d", healthResp.StatusCode)
+		}
+
+		// Set up proxy route and make a proxy request.
+		// Start a simple HTTP server on the box first.
+		makeIndex := boxSSHCommand(t, boxName, keyFile, "sh", "-c", "echo metrics-test > /home/exedev/index.html")
+		if err := makeIndex.Run(); err != nil {
+			t.Fatalf("failed to create index.html: %v", err)
+		}
+
+		// Start busybox httpd on port 8080
+		httpdCmd := boxSSHCommand(t, boxName, keyFile, "busybox", "httpd", "-f", "-p", "8080", "-h", "/home/exedev")
+		if err := httpdCmd.Start(); err != nil {
+			t.Fatalf("failed to start busybox httpd: %v", err)
+		}
+		t.Cleanup(func() {
+			if httpdCmd.Process != nil {
+				httpdCmd.Process.Kill()
+				httpdCmd.Process.Wait()
+			}
+		})
+
+		// Wait for httpd to be ready
+		waitCmd := boxSSHCommand(t, boxName, keyFile, "timeout", "10", "sh", "-c",
+			"'while ! curl -s http://localhost:8080/; do sleep 0.1; done'")
+		if err := waitCmd.Run(); err != nil {
+			t.Fatalf("httpd not ready: %v", err)
+		}
+
+		// Set up public proxy route to port 8080
+		exeShell := sshToExeDev(t, keyFile)
+		exeShell.sendLine(fmt.Sprintf("share port %s 8080", boxName))
+		exeShell.want("Route updated successfully")
+		exeShell.wantPrompt()
+
+		exeShell.sendLine(fmt.Sprintf("share set-public %s", boxName))
+		exeShell.want("Route updated successfully")
+		exeShell.wantPrompt()
+		exeShell.disconnect()
+
+		// Make a proxy request
+		proxyReq, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/", httpPort), nil)
+		if err != nil {
+			t.Fatalf("failed to create proxy request: %v", err)
+		}
+		proxyReq.Host = fmt.Sprintf("%s.exe.cloud:%d", boxName, httpPort)
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		var proxyResp *http.Response
+		for range 30 {
+			proxyResp, err = client.Do(proxyReq)
+			if err == nil && proxyResp.StatusCode == http.StatusOK {
+				break
+			}
+			if proxyResp != nil {
+				proxyResp.Body.Close()
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if proxyResp == nil || proxyResp.StatusCode != http.StatusOK {
+			t.Fatalf("proxy request failed: err=%v, status=%d", err, proxyResp.StatusCode)
+		}
+		proxyResp.Body.Close()
+
+		// Now fetch /metrics and verify the labels are populated
+		metricsResp, err := http.Get(fmt.Sprintf("http://localhost:%d/metrics", httpPort))
+		if err != nil {
+			t.Fatalf("failed to fetch /metrics: %v", err)
+		}
+		defer metricsResp.Body.Close()
+		if metricsResp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200 from /metrics, got %d", metricsResp.StatusCode)
+		}
+
+		metricsBody, err := io.ReadAll(metricsResp.Body)
+		if err != nil {
+			t.Fatalf("failed to read /metrics body: %v", err)
+		}
+		metrics := string(metricsBody)
+
+		// Verify non-proxy request metrics: should have proxy="false", path="/health", box=""
+		// The metric line should look like:
+		// http_requests_total{box="",code="200",path="/health",proxy="false"} 1
+		if !strings.Contains(metrics, `http_requests_total{box="",code="200",path="/health",proxy="false"}`) {
+			t.Errorf("expected http_requests_total for /health with proxy=false, path=/health\nmetrics (truncated):\n%s", truncate(metrics, 2000))
+		}
+
+		// Verify proxy request metrics: should have proxy="true", path="", box=boxName
+		// The metric line should look like:
+		// http_requests_total{box="<boxName>",code="200",path="",proxy="true"} 1
+		expectedProxyMetric := fmt.Sprintf(`http_requests_total{box="%s",code="200",path="",proxy="true"}`, boxName)
+		if !strings.Contains(metrics, expectedProxyMetric) {
+			t.Errorf("expected http_requests_total for proxy request with proxy=true, box=%s\nmetrics (truncated):\n%s", boxName, truncate(metrics, 2000))
+		}
+
+		// Verify /metrics request itself is tracked (proxy="false", path="/metrics")
+		if !strings.Contains(metrics, `path="/metrics",proxy="false"`) {
+			t.Errorf("expected http_requests_total for /metrics path\nmetrics (truncated):\n%s", truncate(metrics, 2000))
+		}
+	})
+
 	// Cleanup
 	pty = sshToExeDev(t, keyFile)
 	pty.deleteBox(boxName)
