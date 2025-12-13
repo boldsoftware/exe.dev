@@ -32,7 +32,7 @@ const shelleyPreamble = `
 The user has just created this box, and wants to do the following with it.
 `
 
-const shelleyDefaultModel = "claude-sonnet-4.5"
+const shelleyDefaultModel = "claude-opus-4.5"
 
 // repeatedStringFlag is a flag.Value implementation that allows a flag to be specified multiple times
 type repeatedStringFlag []string
