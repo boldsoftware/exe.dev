@@ -283,7 +283,6 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 // TestRegistrationWithLatency tests that registration works correctly
 // even when there is significant network latency.
 func TestRegistrationWithLatency(t *testing.T) {
-	t.Skip("broken at the moment, see issue 180")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t) // real banner makes for ugly golden files

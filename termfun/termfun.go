@@ -1,7 +1,6 @@
 package termfun
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"math"
@@ -33,37 +32,51 @@ func lerp(a, b, t float64) float64 {
 	return a + (b-a)*t
 }
 
+// QueryBackgroundColor queries the terminal for its background color using
+// OSC 11. If the terminal doesn't respond within the timeout, or doesn't
+// support OSC 11, it returns black (RGB{0, 0, 0}).
+//
+// Note: This function should NOT be used on live SSH sessions because
+// the timeout handling can cause issues. On timeout, an orphan goroutine
+// remains blocked on Read() which can steal user input.
 func QueryBackgroundColor(rwc io.ReadWriteCloser) RGB {
 	fmt.Fprint(rwc, "\x1b]11;?\x07")
 
-	resp := func() string {
+	ch := make(chan string, 1)
+	go func() {
 		var b strings.Builder
 		var c [1]byte
-
-		ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
-		defer cancel()
-
-		stop := context.AfterFunc(ctx, func() { rwc.Close() })
-		defer stop()
 
 		for b.Len() < 1024 {
 			_, err := rwc.Read(c[:])
 			if err != nil {
-				return ""
+				ch <- ""
+				return
 			}
 			b.WriteByte(c[0])
 
 			// Check for bell/ST terminators.
 			if s, ok := strings.CutSuffix(b.String(), "\x07"); ok {
-				return s
+				ch <- s
+				return
 			}
 			if s, ok := strings.CutSuffix(b.String(), "\x1b\\"); ok {
-				return s
+				ch <- s
+				return
 			}
 		}
 
-		return b.String()
+		ch <- b.String()
 	}()
+
+	var resp string
+	select {
+	case resp = <-ch:
+	case <-time.After(150 * time.Millisecond):
+		// Timeout - terminal doesn't support OSC 11.
+		// Don't close the connection - caller owns it.
+		resp = ""
+	}
 
 	if resp == "" {
 		return RGB{0, 0, 0}

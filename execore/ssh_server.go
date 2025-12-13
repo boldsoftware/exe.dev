@@ -483,8 +483,12 @@ func (ss *SSHServer) showAnimatedWelcome(s *shellSession) {
 	fmt.Fprintf(s, "\033[%dA", len(asciiArt)-1)
 	fmt.Fprint(s, "\r")
 
-	// Query background color (with timeout fallback to black)
-	bg := termfun.QueryBackgroundColor(s)
+	// Use black as the background color. Querying the terminal's actual
+	// background color (OSC 11) is problematic because:
+	// 1. Many terminals don't support it
+	// 2. On high-latency connections, the query timeout can cause issues
+	// The visual difference (fading to black vs actual background) is minimal.
+	bg := termfun.RGB{R: 0, G: 0, B: 0}
 
 	// Fade from bright green to background color
 	from := termfun.RGB{R: 80, G: 255, B: 120}
