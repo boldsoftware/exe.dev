@@ -111,30 +111,6 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install gofumpt v0.9.2
-        run: |
-          TOOL_PATH="${RUNNER_TOOL_CACHE}/gofumpt/0.9.2/x64"
-          if [ -x "$TOOL_PATH/gofumpt" ]; then
-            echo "gofumpt v0.9.2 already cached"
-          else
-            mkdir -p "$TOOL_PATH"
-            curl -L https://github.com/mvdan/gofumpt/releases/download/v0.9.2/gofumpt_v0.9.2_linux_amd64 -o "$TOOL_PATH/gofumpt"
-            chmod +x "$TOOL_PATH/gofumpt"
-          fi
-          echo "$TOOL_PATH" >> $GITHUB_PATH
-
-      - name: Install shfmt v3.12.0
-        run: |
-          TOOL_PATH="${RUNNER_TOOL_CACHE}/shfmt/3.12.0/x64"
-          if [ -x "$TOOL_PATH/shfmt" ]; then
-            echo "shfmt v3.12.0 already cached"
-          else
-            mkdir -p "$TOOL_PATH"
-            curl -L https://github.com/mvdan/sh/releases/download/v3.12.0/shfmt_v3.12.0_linux_amd64 -o "$TOOL_PATH/shfmt"
-            chmod +x "$TOOL_PATH/shfmt"
-          fi
-          echo "$TOOL_PATH" >> $GITHUB_PATH
-
       - name: Check and fix formatting
         run: |
           # Run the formatters script
