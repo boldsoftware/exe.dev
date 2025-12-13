@@ -165,7 +165,7 @@ func (p *PiperPlugin) Serve(lis net.Listener) error {
 
 // handleNextAuthMethods advertises available authentication methods
 func (p *PiperPlugin) handleNextAuthMethods(conn libplugin.ConnMetadata) ([]string, error) {
-	slog.Debug("NextAuthMethods request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
+	// slog.Debug("NextAuthMethods request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
 	// Always offer both publickey and keyboard-interactive
 	return []string{"publickey", "keyboard-interactive"}, nil
 }

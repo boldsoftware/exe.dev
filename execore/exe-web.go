@@ -334,9 +334,6 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 		return nil, fmt.Errorf("no certificate manager configured for %s", serverName)
 	}
 
-	s.slog().Debug("getCertificate", "serverName", serverName)
-	defer s.slog().Debug("getCertificate done", "serverName", serverName)
-
 	return s.certManager.GetCertificate(hello)
 }
 
