@@ -62,7 +62,7 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 	boxName := cc.Args[0]
 
 	// Look up the box
-	box, err := ss.server.getBoxForUser(ctx, cc.PublicKey, boxName)
+	box, err := ss.server.getBoxForUserByUserID(ctx, cc.User.ID, boxName)
 	if errors.Is(err, sql.ErrNoRows) || (err != nil && strings.Contains(err.Error(), "not found")) {
 		return cc.Errorf("box %q not found", boxName)
 	}
