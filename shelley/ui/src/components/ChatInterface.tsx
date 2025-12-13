@@ -817,6 +817,7 @@ function ChatInterface({
             onClick={onOpenDrawer}
             className="btn-icon hide-on-desktop"
             aria-label="Open conversations"
+            tabIndex={-1}
           >
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -835,7 +836,7 @@ function ChatInterface({
 
         <div className="header-actions">
           {/* Green + icon in circle for new conversation */}
-          <button onClick={onNewConversation} className="btn-new" aria-label="New conversation">
+          <button onClick={onNewConversation} className="btn-new" aria-label="New conversation" tabIndex={-1}>
             <svg
               fill="none"
               stroke="currentColor"
@@ -858,6 +859,7 @@ function ChatInterface({
                 onClick={() => setShowOverflowMenu(!showOverflowMenu)}
                 className="btn-icon"
                 aria-label="More options"
+                tabIndex={-1}
               >
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -996,6 +998,7 @@ function ChatInterface({
               <button
                 onClick={handleManualReconnect}
                 className="status-button status-button-primary"
+                tabIndex={-1}
               >
                 Retry
               </button>
@@ -1004,7 +1007,7 @@ function ChatInterface({
             // Error state
             <>
               <span className="status-message status-error">{error}</span>
-              <button onClick={() => setError(null)} className="status-button status-button-text">
+              <button onClick={() => setError(null)} className="status-button status-button-text" tabIndex={-1}>
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
@@ -1023,6 +1026,7 @@ function ChatInterface({
                 onClick={handleCancel}
                 disabled={cancelling}
                 className="status-button status-button-cancel"
+                tabIndex={-1}
               >
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -1056,6 +1060,7 @@ function ChatInterface({
                       disabled={sending}
                       className="status-select"
                       autoFocus
+                      tabIndex={-1}
                     >
                       {models.map((model) => (
                         <option key={model.id} value={model.id} disabled={!model.ready}>
@@ -1068,6 +1073,7 @@ function ChatInterface({
                       className="status-chip"
                       onClick={() => setEditingModel(true)}
                       disabled={sending}
+                      tabIndex={-1}
                     >
                       {selectedModel}
                     </button>
@@ -1084,6 +1090,7 @@ function ChatInterface({
                     className={`status-chip${cwdError ? " status-chip-error" : ""}`}
                     onClick={() => setShowDirectoryPicker(true)}
                     disabled={sending}
+                    tabIndex={-1}
                   >
                     {selectedCwd || "(no cwd)"}
                   </button>
@@ -1103,6 +1110,7 @@ function ChatInterface({
         onSend={sendMessage}
         disabled={sending || loading}
         autoFocus={true}
+        onFocus={scrollToBottom}
       />
 
       {/* Directory Picker Modal */}

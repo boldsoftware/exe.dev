@@ -4,9 +4,10 @@ interface MessageInputProps {
   onSend: (message: string) => Promise<void>;
   disabled?: boolean;
   autoFocus?: boolean;
+  onFocus?: () => void;
 }
 
-function MessageInput({ onSend, disabled = false, autoFocus = false }: MessageInputProps) {
+function MessageInput({ onSend, disabled = false, autoFocus = false, onFocus }: MessageInputProps) {
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [uploadsInProgress, setUploadsInProgress] = useState(0);
@@ -168,6 +169,12 @@ function MessageInput({ onSend, disabled = false, autoFocus = false }: MessageIn
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
+          onFocus={() => {
+            // Scroll to bottom after keyboard animation settles
+            if (onFocus) {
+              requestAnimationFrame(() => requestAnimationFrame(onFocus));
+            }
+          }}
           placeholder="Type your message..."
           className="message-textarea"
           disabled={isDisabled}

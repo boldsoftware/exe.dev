@@ -3,8 +3,16 @@
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
+  height: 100%;
+  overflow: hidden;
   font-family:
     "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
   line-height: 1.6;
@@ -70,7 +78,8 @@ body {
 /* Layout */
 .app-container {
   display: flex;
-  height: 100vh;
+  height: 100vh; /* Fallback for older browsers */
+  height: 100dvh; /* Dynamic viewport height - adjusts when mobile browser chrome appears/hides */
   background: var(--bg-secondary);
   position: relative;
   overflow: hidden;
@@ -84,7 +93,8 @@ body {
 }
 
 .screen-height {
-  height: 100vh;
+  height: 100vh; /* Fallback for older browsers */
+  height: 100dvh;
 }
 
 .full-height {
@@ -306,9 +316,13 @@ button {
 
 /* Header */
 .header {
+  flex: 0 0 auto;
   background: var(--bg-base);
   border-bottom: 1px solid var(--border);
   padding: 0.75rem 1rem;
+  padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -335,13 +349,18 @@ button {
   inset: 0 auto 0 0;
   z-index: 50;
   width: 20rem;
+  max-width: calc(100vw - 3rem); /* Ensure drawer doesn't fill entire screen on mobile */
   background: var(--bg-base);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   height: 100%;
+  height: 100dvh;
   transform: translateX(-100%);
   transition: transform 0.3s ease;
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .drawer.open {
@@ -423,10 +442,14 @@ button {
 
 /* Messages */
 .messages-container {
-  flex: 1;
+  flex: 1 1 auto;
   overflow-y: auto;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding: 1rem;
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
 }
 
 .messages-list {
@@ -1300,9 +1323,13 @@ button {
 
 /* Message Input */
 .message-input-container {
+  flex: 0 0 auto;
   background: var(--bg-base);
   border-top: 1px solid var(--border);
   padding: 1rem;
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
 }
 
 .message-input-form {
@@ -1317,15 +1344,15 @@ button {
   flex: 1;
   min-height: 44px;
   max-height: 200px;
-  padding: 0.625rem 1.25rem;
+  padding: 0.625rem 1rem;
   border: 1.5px solid var(--border);
   border-radius: 4px;
   resize: none;
   background: var(--bg-base);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 0.875rem;
-  line-height: 1.6;
+  font-size: 16px; /* Must be 16px+ to prevent iOS zoom on focus */
+  line-height: 1.5;
   transition:
     border-color 0.2s,
     box-shadow 0.2s;
@@ -1514,7 +1541,8 @@ select:disabled {
 /* Loading/Error States */
 .loading-container,
 .error-container {
-  height: 100vh;
+  height: 100vh; /* Fallback for older browsers */
+  height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1527,9 +1555,12 @@ select:disabled {
 
 /* Unified Status Bar */
 .status-bar {
+  flex: 0 0 auto;
   background: var(--bg-base);
   border-top: 1px solid var(--border);
   padding: 0.5rem 1rem;
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
   min-height: 2.5rem;
   display: flex;
   align-items: center;
@@ -1866,7 +1897,8 @@ svg {
 /* Wrapper for messages area to position scroll-to-bottom button */
 .messages-area-wrapper {
   position: relative;
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0; /* Important for flex children to shrink properly */
   overflow: hidden;
 }
 
