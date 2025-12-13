@@ -173,9 +173,8 @@ USER exedev
 
 WORKDIR /home/exedev
 
-# Update PATH in .bashrc to include .local/bin and set default editor
-RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/exedev/.bashrc && \
-    echo 'export EDITOR=vim' >> /home/exedev/.bashrc
+# Update PATH in .bashrc to include .local/bin
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/exedev/.bashrc
 
 # Configure git to use 'main' as default branch name
 RUN git config --global init.defaultBranch main
