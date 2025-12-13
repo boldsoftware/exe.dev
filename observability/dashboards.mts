@@ -392,78 +392,225 @@ function makeDevExeDashboard() {
       .gridPos({ x: 0, y: 0, w: 24, h: 2 })
   );
 
-  // Row 1: HTTP metrics overview (starting at y: 4 after README)
+  // Filters for HTTP metrics
+  const WEB_FILTER = `proxy="false",${STAGE_FILTER}`;
+  const PROXY_FILTER = `proxy="true",${STAGE_FILTER}`;
+
+  // ========== HTTP WEB SERVER METRICS ==========
+  dash.withRow(
+    new RowBuilder("HTTP - Web Server").gridPos({ x: 0, y: 2, w: 24, h: 1 })
+  );
+
+  // Row 1: Aggregate web server metrics
   addTimeseriesChart(
-    "HTTP Requests Rate",
-    `rate(promhttp_metric_handler_requests_total{job="exed",${STAGE_FILTER}}[$__rate_interval])`,
+    "Web Request Rate",
+    `sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval]))`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 0, y: 4, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 3, w: 8, h: 6 }),
     }
   );
 
   addTimeseriesChart(
-    "HTTP Requests in Flight",
-    `promhttp_metric_handler_requests_in_flight{job="exed",${STAGE_FILTER}}`,
+    "Web Requests In Flight",
+    `sum(http_requests_in_flight{${WEB_FILTER}})`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 4, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 3, w: 8, h: 6 }),
     }
   );
 
   addTimeseriesChart(
-    "HTTP Request Success Rate",
-    `rate(promhttp_metric_handler_requests_total{job="exed",code="200",${STAGE_FILTER}}[$__rate_interval]) / rate(promhttp_metric_handler_requests_total{job="exed",${STAGE_FILTER}}[$__rate_interval]) * 100`,
+    "Web Success Rate",
+    `sum(rate(http_requests_total{${WEB_FILTER},code=~"2.."}[$__rate_interval])) / sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 16, y: 4, w: 8, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ x: 16, y: 3, w: 8, h: 6 }),
     }
   );
 
-  // Row 2: SSH connections and activity
+  // Row 2: Web server by status code and path
+  const webStatusCodePanel = new TimeseriesBuilder()
+    .title("Web Requests by Status Code")
+    .min(0)
+    .gridPos({ x: 0, y: 9, w: 12, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (code)`)
+        .legendFormat("{{code}}")
+    );
+  dash.withPanel(webStatusCodePanel);
+
+  const webByPathPanel = new TimeseriesBuilder()
+    .title("Web Request Rate by Path (Top 10)")
+    .min(0)
+    .gridPos({ x: 12, y: 9, w: 12, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`topk(10, sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (path))`)
+        .legendFormat("{{path}}")
+    );
+  dash.withPanel(webByPathPanel);
+
+  // ========== HTTP WEB SERVER ERRORS ==========
+  dash.withRow(
+    new RowBuilder("HTTP - Web Server Errors").gridPos({ x: 0, y: 15, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Web 4xx Error Rate",
+    `sum(rate(http_requests_total{${WEB_FILTER},code=~"4.."}[$__rate_interval]))`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 16, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Web 5xx Error Rate",
+    `sum(rate(http_requests_total{${WEB_FILTER},code=~"5.."}[$__rate_interval]))`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 16, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Web Error Percentage",
+    `sum(rate(http_requests_total{${WEB_FILTER},code=~"[45].."}[$__rate_interval])) / sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) * 100`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).gridPos({ x: 16, y: 16, w: 8, h: 6 }),
+    }
+  );
+
+  // Errors by path
+  const web4xxByPathPanel = new TimeseriesBuilder()
+    .title("Web 4xx Errors by Path")
+    .min(0)
+    .gridPos({ x: 0, y: 22, w: 12, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(rate(http_requests_total{${WEB_FILTER},code=~"4.."}[$__rate_interval])) by (path, code)`)
+        .legendFormat("{{path}} ({{code}})")
+    );
+  dash.withPanel(web4xxByPathPanel);
+
+  const web5xxByPathPanel = new TimeseriesBuilder()
+    .title("Web 5xx Errors by Path")
+    .min(0)
+    .gridPos({ x: 12, y: 22, w: 12, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(rate(http_requests_total{${WEB_FILTER},code=~"5.."}[$__rate_interval])) by (path, code)`)
+        .legendFormat("{{path}} ({{code}})")
+    );
+  dash.withPanel(web5xxByPathPanel);
+
+  // ========== HTTP PROXY METRICS ==========
+  dash.withRow(
+    new RowBuilder("HTTP - Proxies").gridPos({ x: 0, y: 28, w: 24, h: 1 })
+  );
+
+  // Aggregate proxy metrics
+  addTimeseriesChart(
+    "Proxy Request Rate",
+    `sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval]))`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 29, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Proxy Requests In Flight",
+    `sum(http_requests_in_flight{${PROXY_FILTER}})`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 29, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Proxy Success Rate",
+    `sum(rate(http_requests_total{${PROXY_FILTER},code=~"2.."}[$__rate_interval])) / sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) * 100`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).max(100).gridPos({ x: 16, y: 29, w: 8, h: 6 }),
+    }
+  );
+
+  // Proxy by status code and by box
+  const proxyStatusCodePanel = new TimeseriesBuilder()
+    .title("Proxy Requests by Status Code")
+    .min(0)
+    .gridPos({ x: 0, y: 35, w: 12, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (code)`)
+        .legendFormat("{{code}}")
+    );
+  dash.withPanel(proxyStatusCodePanel);
+
+  const proxyByBoxPanel = new TimeseriesBuilder()
+    .title("Proxy Request Rate by Box (Top 10)")
+    .min(0)
+    .gridPos({ x: 12, y: 35, w: 12, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`topk(10, sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (box))`)
+        .legendFormat("{{box}}")
+    );
+  dash.withPanel(proxyByBoxPanel);
+
+  // Proxy errors by box
+  const proxyErrorsByBoxPanel = new TimeseriesBuilder()
+    .title("Proxy Errors by Box")
+    .min(0)
+    .gridPos({ x: 0, y: 41, w: 12, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(rate(http_requests_total{${PROXY_FILTER},code=~"[45].."}[$__rate_interval])) by (box)`)
+        .legendFormat("{{box}}")
+    );
+  dash.withPanel(proxyErrorsByBoxPanel);
+
+  const proxyInFlightByBoxPanel = new TimeseriesBuilder()
+    .title("Proxy Requests In Flight by Box")
+    .min(0)
+    .gridPos({ x: 12, y: 41, w: 12, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(http_requests_in_flight{${PROXY_FILTER}}) by (box)`)
+        .legendFormat("{{box}}")
+    );
+  dash.withPanel(proxyInFlightByBoxPanel);
+
+  // ========== SSH METRICS ==========
+  dash.withRow(
+    new RowBuilder("SSH").gridPos({ x: 0, y: 47, w: 24, h: 1 })
+  );
+
   addTimeseriesChart(
     "SSH Connections Rate",
     `rate(ssh_connections_total{${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 0, y: 10, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ x: 0, y: 48, w: 8, h: 6 }),
     }
   );
 
   addTimeseriesChart("Current SSH Connections", `ssh_connections_current{${STAGE_FILTER}}`, {
-    panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 10, w: 8, h: 6 }),
+    panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 48, w: 8, h: 6 }),
   });
 
   addTimeseriesChart(
     "SSH Auth Attempts Rate",
     `rate(ssh_auth_attempts_total{${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 16, y: 10, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ x: 16, y: 48, w: 8, h: 6 }),
     }
   );
 
-  // Row 3: SSH session details
   addTimeseriesChart(
     "SSH Session Duration (95th percentile)",
     `histogram_quantile(0.95, rate(ssh_session_duration_seconds_bucket{${STAGE_FILTER}}[5m]))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").gridPos({ x: 0, y: 16, w: 12, h: 6 }),
-    }
-  );
-
-  addTimeseriesChart(
-    "HTTP Error Rate",
-    `rate(promhttp_metric_handler_requests_total{job="exed",code=~"[45]..",${STAGE_FILTER}}[5m]) / rate(promhttp_metric_handler_requests_total{job="exed",${STAGE_FILTER}}[5m]) * 100`,
-    {
-      panelCustomization: (x) =>
-        x.unit("percent").gridPos({ x: 12, y: 16, w: 12, h: 6 }),
-    }
-  );
-
-  // sshpiperd metrics
-  addTimeseriesChart(
-    "sshpiper Pipe Open Connections",
-    `rate(sshpiper_pipe_open_connections{${STAGE_FILTER}}[5m])`,
-    {
-      panelCustomization: (x) => x.gridPos({ x: 0, y: 10, w: 8, h: 6 }),
+        x.unit("s").gridPos({ x: 0, y: 54, w: 12, h: 6 }),
     }
   );
 
@@ -472,7 +619,7 @@ function makeDevExeDashboard() {
     .title("exed uptime")
     .unit("s")
     .min(0)
-    .gridPos({ x: 8, y: 10, w: 8, h: 6 })
+    .gridPos({ x: 12, y: 54, w: 12, h: 6 })
     .scaleDistribution(
       new ScaleDistributionConfigBuilder()
         .type(ScaleDistribution.Log)
@@ -485,19 +632,11 @@ function makeDevExeDashboard() {
     );
   dash.withPanel(uptimePanel);
 
-  addTimeseriesChart(
-    "sshpiper Upstream Auth Failures",
-    `rate(sshpiper_upstream_auth_failures{${STAGE_FILTER}}[5m])`,
-    {
-      panelCustomization: (x) => x.gridPos({ x: 16, y: 10, w: 8, h: 6 }),
-    }
-  );
-
-  // Row 6: SQLite Connection Pool Metrics
+  // SQLite Connection Pool Metrics
   dash.withRow(
     new RowBuilder("SQLite Connection Pool").gridPos({
       x: 0,
-      y: 34,
+      y: 60,
       w: 24,
       h: 1,
     })
@@ -507,7 +646,7 @@ function makeDevExeDashboard() {
   const sqlPoolPanel = new TimeseriesBuilder()
     .title("SQL Connection Pool")
     .min(0)
-    .gridPos({ x: 0, y: 35, w: 8, h: 6 })
+    .gridPos({ x: 0, y: 61, w: 8, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sqlite_pool_open_connections{job="exed",${STAGE_FILTER}}`)
@@ -529,7 +668,7 @@ function makeDevExeDashboard() {
   const writerPoolPanel = new TimeseriesBuilder()
     .title("Writer Connections")
     .min(0)
-    .gridPos({ x: 8, y: 35, w: 8, h: 6 })
+    .gridPos({ x: 8, y: 61, w: 8, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sqlite_pool_available_writers{job="exed",${STAGE_FILTER}}`)
@@ -546,7 +685,7 @@ function makeDevExeDashboard() {
   const readerPoolPanel = new TimeseriesBuilder()
     .title("Reader Connections")
     .min(0)
-    .gridPos({ x: 16, y: 35, w: 8, h: 6 })
+    .gridPos({ x: 16, y: 61, w: 8, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sqlite_pool_available_readers{job="exed",${STAGE_FILTER}}`)
@@ -559,11 +698,11 @@ function makeDevExeDashboard() {
     );
   dash.withPanel(readerPoolPanel);
 
-  // Row 7: SQLite Transaction Metrics
+  // SQLite Transaction Metrics
   dash.withRow(
     new RowBuilder("SQLite Transaction Metrics").gridPos({
       x: 0,
-      y: 41,
+      y: 67,
       w: 24,
       h: 1,
     })
@@ -573,7 +712,7 @@ function makeDevExeDashboard() {
     "SQLite Transaction Leaks",
     `rate(sqlite_tx_leaks_total{job="exed",${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 0, y: 42, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ x: 0, y: 68, w: 8, h: 6 }),
     }
   );
 
@@ -581,7 +720,7 @@ function makeDevExeDashboard() {
     "SQLite Read Transaction Leaks",
     `rate(sqlite_rx_leaks_total{job="exed",${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 8, y: 42, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ x: 8, y: 68, w: 8, h: 6 }),
     }
   );
 
@@ -590,15 +729,15 @@ function makeDevExeDashboard() {
     `histogram_quantile(0.95, rate(sqlite_tx_latency_bucket{job="exed",${STAGE_FILTER}}[5m])) / 1000`,
     {
       panelCustomization: (x) =>
-        x.unit("ms").gridPos({ x: 16, y: 42, w: 8, h: 6 }),
+        x.unit("ms").gridPos({ x: 16, y: 68, w: 8, h: 6 }),
     }
   );
 
-  // Row 8: Box creation time (user-perceived)
+  // Box creation time (user-perceived)
   dash.withRow(
     new RowBuilder("Box Creation Time").gridPos({
       x: 0,
-      y: 48,
+      y: 74,
       w: 24,
       h: 1,
     })
@@ -609,7 +748,7 @@ function makeDevExeDashboard() {
     .title("Box Creation Latency")
     .unit("s")
     .min(0)
-    .gridPos({ x: 0, y: 49, w: 12, h: 6 })
+    .gridPos({ x: 0, y: 75, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`histogram_quantile(0.5, rate(box_creation_time_seconds_bucket{${STAGE_FILTER}}[$__rate_interval]))`)
@@ -631,15 +770,15 @@ function makeDevExeDashboard() {
     "Box Creation Rate",
     `rate(box_creation_time_seconds_count{${STAGE_FILTER}}[$__rate_interval])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 12, y: 49, w: 12, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ x: 12, y: 75, w: 12, h: 6 }),
     }
   );
 
-  // Row 9: Certificate issuance
+  // Certificate issuance
   dash.withRow(
     new RowBuilder("Certificate Issuance").gridPos({
       x: 0,
-      y: 55,
+      y: 81,
       w: 24,
       h: 1,
     })
@@ -650,7 +789,7 @@ function makeDevExeDashboard() {
     `rate(letsencrypt_cert_requests_total{${STAGE_FILTER}}[$__rate_interval])`,
     {
       panelCustomization: (x) =>
-        x.min(0).gridPos({ x: 0, y: 56, w: 8, h: 6 }),
+        x.min(0).gridPos({ x: 0, y: 82, w: 8, h: 6 }),
     }
   );
 
