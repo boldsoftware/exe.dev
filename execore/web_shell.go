@@ -264,12 +264,27 @@ func (ws *WebShellSession) User() string {
 	return ""
 }
 
-// Pty returns PTY information and window size change channel
-func (ws *WebShellSession) Pty() (ssh.Pty, <-chan ssh.Window, bool) {
+// Pty returns a copy of the PTY associated with the session.
+func (ws *WebShellSession) Pty() (ssh.Pty, bool) {
 	if ws.ptyReq == nil {
-		return ssh.Pty{}, nil, false
+		return ssh.Pty{}, false
 	}
-	return *ws.ptyReq, ws.winCh, true
+	return *ws.ptyReq, true
+}
+
+// WaitWindowChange blocks until the terminal window size changes.
+// Returns true if a change occurred, false if the session ended.
+func (ws *WebShellSession) WaitWindowChange() bool {
+	select {
+	case w, ok := <-ws.winCh:
+		if !ok {
+			return false
+		}
+		ws.ptyReq.Window = w
+		return true
+	case <-ws.ctx.Done():
+		return false
+	}
 }
 
 func (ws *WebShellSession) Push(data []byte) {

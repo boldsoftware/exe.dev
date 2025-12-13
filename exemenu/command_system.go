@@ -138,7 +138,14 @@ type ShellSession interface {
 	Context() context.Context
 	Environ() []string
 	User() string
-	Pty() (ssh.Pty, <-chan ssh.Window, bool)
+
+	// Pty returns a copy of the PTY associated with the session.
+	Pty() (ssh.Pty, bool)
+
+	// WaitWindowChange blocks until the terminal window size changes.
+	// Returns true if a change occurred, false if the session ended.
+	// Multiple goroutines can wait simultaneously.
+	WaitWindowChange() bool
 }
 
 // UserInfo provides the minimal user details required by menu commands.

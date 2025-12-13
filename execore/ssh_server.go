@@ -47,13 +47,88 @@ type shellSession struct {
 	mu     sync.Mutex
 	buf    []byte
 	reader io.Reader // When set, Read() uses this instead of Session
+
+	// Window size tracking. gliderlabs/ssh only provides a single channel for
+	// window changes, but we need to support multiple consumers (readline,
+	// remote SSH sessions, etc). We use a condition variable for broadcast.
+	//
+	// TODO(bmizerany): This exists because gliderlabs consumes the underlying
+	// x/crypto/ssh window-change channel. Replace gliderlabs with raw
+	// x/crypto/ssh and this goes away.
+	winMu      sync.Mutex
+	winCond    *sync.Cond
+	winStarted bool
+	winVer     uint64 // incremented on each window change
+	pty        ssh.Pty
+	hasPty     bool
 }
 
 func NewSSHShell(s ssh.Session) *shellSession {
 	shell := &shellSession{Session: s}
+	shell.winCond = sync.NewCond(&shell.winMu)
 	// Close the session when context is done to unblock any pending reads.
-	context.AfterFunc(s.Context(), func() { shell.Close() })
+	context.AfterFunc(s.Context(), func() {
+		shell.Close()
+		shell.winCond.Broadcast() // wake any waiters
+	})
 	return shell
+}
+
+// Pty returns a copy of the PTY associated with the session.
+// The first call starts the background watcher for window changes.
+func (s *shellSession) Pty() (ssh.Pty, bool) {
+	s.winMu.Lock()
+	defer s.winMu.Unlock()
+
+	if !s.winStarted {
+		pty, winCh, ok := s.Session.Pty()
+		s.pty = pty
+		s.hasPty = ok
+		s.winStarted = true
+		if ok && winCh != nil {
+			go s.watchWindowChanges(winCh)
+		}
+	}
+
+	return s.pty, s.hasPty
+}
+
+// watchWindowChanges reads from gliderlabs' single window channel and
+// broadcasts to all waiters via condition variable.
+func (s *shellSession) watchWindowChanges(winCh <-chan ssh.Window) {
+	ctx := s.Session.Context()
+	for {
+		select {
+		case w, ok := <-winCh:
+			if !ok {
+				s.winCond.Broadcast()
+				return
+			}
+			s.winMu.Lock()
+			s.pty.Window = w
+			s.winVer++
+			s.winCond.Broadcast()
+			s.winMu.Unlock()
+		case <-ctx.Done():
+			s.winCond.Broadcast()
+			return
+		}
+	}
+}
+
+// WaitWindowChange blocks until the terminal window size changes.
+// Returns true if a change occurred, false if the session ended.
+func (s *shellSession) WaitWindowChange() bool {
+	s.winMu.Lock()
+	defer s.winMu.Unlock()
+	ver := s.winVer
+	for s.winVer == ver {
+		if s.Session.Context().Err() != nil {
+			return false
+		}
+		s.winCond.Wait()
+	}
+	return true
 }
 
 func (s *shellSession) Read(p []byte) (int, error) {
@@ -197,7 +272,7 @@ func (ss *SSHServer) shouldShowSpinner(s exemenu.ShellSession) bool {
 	// When user runs `ssh localexe new`, there's no PTY by default
 	// But when they run `ssh localexe` (interactive shell), there is a PTY
 	// We want to show spinner for direct commands too, since a human is likely watching
-	_, _, isPty := s.Pty()
+	_, isPty := s.Pty()
 
 	// If we have a PTY, definitely show spinner (interactive session)
 	if isPty {
@@ -389,20 +464,13 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 
 	// Set the terminal size to the pty size, and keep it updated whenever
 	// the pty changes.
-	pty, winSizeCh, _ := s.Pty()
-
-	// Set initial size
+	pty, _ := s.Pty()
 	terminal.SetSize(pty.Window.Width, pty.Window.Height)
 
-	// Update size on changes
 	go func() {
-		for {
-			select {
-			case w := <-winSizeCh:
-				terminal.SetSize(w.Width, w.Height)
-			case <-s.Context().Done():
-				return
-			}
+		for s.WaitWindowChange() {
+			pty, _ := s.Pty()
+			terminal.SetSize(pty.Window.Width, pty.Window.Height)
 		}
 	}()
 

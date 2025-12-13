@@ -56,7 +56,7 @@ func (ss *SSHServer) handleDocCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	width, height := 80, 24
-	if pty, _, ok := cc.SSHSession.Pty(); ok {
+	if pty, ok := cc.SSHSession.Pty(); ok {
 		if pty.Window.Width > 0 {
 			width = pty.Window.Width
 		}

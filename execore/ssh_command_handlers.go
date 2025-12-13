@@ -1322,8 +1322,7 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 		session.Stdin = cc.SSHSession
 
 		// Get PTY info from the client session and set it up first
-		// TODO(bmizerany): window change requests (glider mucks things up and makes ssh hard)
-		pty, _, _ := cc.SSHSession.Pty()
+		pty, _ := cc.SSHSession.Pty()
 		if err := session.RequestPty(
 			// TODO(bmizerany): get actual terminal type from client (or env)? good enough for now
 			"xterm-256color",
@@ -1334,6 +1333,14 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 		); err != nil {
 			return cc.Errorf("failed to request PTY: %v", err)
 		}
+
+		// Forward window size changes to the remote session.
+		go func() {
+			for cc.SSHSession.WaitWindowChange() {
+				pty, _ := cc.SSHSession.Pty()
+				session.WindowChange(pty.Window.Height, pty.Window.Width)
+			}
+		}()
 
 		// Interactive mode - start shell
 		if err := session.Shell(); err != nil {
