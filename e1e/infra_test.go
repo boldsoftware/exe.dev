@@ -24,7 +24,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -39,7 +38,6 @@ import (
 
 	"github.com/go4org/hashtriemap"
 
-	"exe.dev/ctrhosttest"
 	"exe.dev/e1e/testinfra"
 	"exe.dev/exelet/client"
 	api "exe.dev/pkg/api/exe/compute/v1"
@@ -142,30 +140,13 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 `)
 	}
 
-	var ctrHost string
-	switch runtime.GOOS {
-	case "darwin":
-		ctrHost = ctrhosttest.Detect()
-		// Skip tests in CI if there is no ctr-host
-		if os.Getenv("CI") != "" && ctrHost == "" {
-			fmt.Printf("skipping tests in CI: no ctr-host accessible\n")
+	ctrHost, err := testinfra.StartExeletVM()
+	if err != nil {
+		if err == testinfra.ErrNoVM && os.Getenv("CI") != "" {
+			fmt.Printf("skipping tests in CI: %v\n", err)
 			return
 		}
-
-	case "linux":
-		// Use $CTR_HOST if it is set,
-		// otherwise start a VM.
-		ctrHost = os.Getenv("CTR_HOST")
-		if ctrHost == "" {
-			ctrHost, err = startLinuxVM()
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				exit(1)
-			}
-		}
-
-	default:
-		fmt.Fprintf(os.Stderr, "don't know how to set up tests on %s\n", runtime.GOOS)
+		fmt.Fprintln(os.Stderr, err)
 		exit(1)
 	}
 
@@ -2515,54 +2496,4 @@ func resolveGateway(ctrhost string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
-}
-
-// startLinuxVM starts a VM on Linux to run the exelet.
-// It returns the ssh address for the host.
-func startLinuxVM() (string, error) {
-	userVal, err := user.Current()
-	if err != nil {
-		return "", fmt.Errorf("can't fetch current user name: %v", err)
-	}
-	name := userVal.Username + "-" + strconv.FormatInt(time.Now().Unix(), 10)
-
-	outdir, err := os.MkdirTemp("", "ci-vm-start-")
-	if err != nil {
-		return "", fmt.Errorf("failed to create temporary directory: %v", err)
-	}
-
-	cmd := exec.Command("../ops/ci-vm-start.sh")
-	cmd.Env = append(cmd.Environ(),
-		"NAME="+name,
-		"OUTDIR="+outdir)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("ops/ci-vm-start.sh failed: %v\n%s", err, out)
-	}
-
-	fileName := filepath.Join(outdir, name+".env")
-	envVars, err := os.ReadFile(fileName)
-	if err != nil {
-		return "", fmt.Errorf("can't read ci-vm-start.sh environment variables: %v", err)
-	}
-
-	for _, line := range strings.Split(string(envVars), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		name, val, ok := strings.Cut(line, "=")
-		if !ok {
-			return "", fmt.Errorf("invalid line in ci-vm-start.sh output: %q", line)
-		}
-		os.Setenv(name, val)
-	}
-
-	testinfra.AddCleanup(func() {
-		exec.Command("../ops/ci-vm-destroy.sh", fileName).Run()
-		os.RemoveAll(outdir)
-	})
-
-	ctrHost := "ssh://" + os.Getenv("VM_USER") + "@" + os.Getenv("VM_IP")
-
-	return ctrHost, nil
 }
