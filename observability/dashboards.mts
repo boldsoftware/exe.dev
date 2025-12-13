@@ -31,7 +31,9 @@ import {
   BigValueGraphMode,
   BigValueTextMode,
   GraphThresholdsStyleMode,
+  ScaleDistribution,
 } from "@grafana/grafana-foundation-sdk/common";
+import { ScaleDistributionConfigBuilder } from "@grafana/grafana-foundation-sdk/common";
 import {
   ThresholdsConfig,
   ThresholdsMode,
@@ -464,6 +466,24 @@ function makeDevExeDashboard() {
       panelCustomization: (x) => x.gridPos({ x: 0, y: 10, w: 8, h: 6 }),
     }
   );
+
+  // exed uptime - logarithmic y-axis to see deployments and crashes
+  const uptimePanel = new TimeseriesBuilder()
+    .title("exed uptime")
+    .unit("s")
+    .min(0)
+    .gridPos({ x: 8, y: 10, w: 8, h: 6 })
+    .scaleDistribution(
+      new ScaleDistributionConfigBuilder()
+        .type(ScaleDistribution.Log)
+        .log(10)
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`time() - process_start_time_seconds{job="exed",${STAGE_FILTER}}`)
+        .legendFormat("{{instance}}")
+    );
+  dash.withPanel(uptimePanel);
 
   addTimeseriesChart(
     "sshpiper Upstream Auth Failures",

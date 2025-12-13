@@ -105,6 +105,8 @@ func run() error {
 
 	// Create metrics registry and setup structured logging with metrics
 	metricsRegistry := prometheus.NewRegistry()
+	metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+	metricsRegistry.MustRegister(prometheus.NewGoCollector())
 	logging.SetupLogger(*devMode, metricsRegistry)
 	slog.Info("Starting exed server")
 
