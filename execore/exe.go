@@ -316,7 +316,7 @@ func startListener(slog *slog.Logger, typ, addr string) (*listener, error) {
 	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w (%s)", err, getPortOwnerInfo(addr))
 	}
 	tcpAddr := ln.Addr().(*net.TCPAddr)
 	// this log line is important for e2e tests, they parse it to get port numbers!
@@ -330,6 +330,41 @@ func startListener(slog *slog.Logger, typ, addr string) (*listener, error) {
 		addr:     tcpAddr.String(),
 		tcp:      tcpAddr,
 	}, nil
+}
+
+// getPortOwnerInfo tries to identify what process is using a port.
+// Returns a human-readable string with the PID and process name, or an error message.
+func getPortOwnerInfo(addr string) string {
+	// Extract port from addr (could be ":8080" or "0.0.0.0:8080" etc)
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		// addr might just be a port number
+		port = addr
+	}
+
+	cmd := exec.Command("lsof", "-i", ":"+port, "-sTCP:LISTEN", "-n", "-P")
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Sprintf("unable to determine port owner: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) < 2 {
+		return "no process found"
+	}
+
+	// Parse lsof output: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+	// Skip the header line
+	for _, line := range lines[1:] {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			command := fields[0]
+			pid := fields[1]
+			return fmt.Sprintf("pid=%s process=%s", pid, command)
+		}
+	}
+
+	return "could not parse lsof output"
 }
 
 func (s *Server) servingHTTP() bool {
