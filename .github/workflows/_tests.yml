@@ -85,7 +85,7 @@ jobs:
 
       - name: Run tests
         run: |
-          PKGS=$(go list ./... | grep -v -E '^exe\.dev/(e1e|experiments/imageunpack)$')
+          PKGS=$(go list ./... | grep -v -E '^exe\.dev/(e1e|e1e/testinfra|experiments/imageunpack)$')
           gotestsum --format testname -- -race $PKGS
 
   test-e1e:
@@ -140,7 +140,7 @@ jobs:
           E1E_LOG_DIR=$(mktemp -d)
           export E1E_LOG_DIR
           echo "E1E_LOG_DIR=$E1E_LOG_DIR" >> "$GITHUB_ENV"
-          GITHUB_ACTIONS=false gotestsum --format testname -- -race -timeout=3m -failfast ./e1e
+          GITHUB_ACTIONS=false gotestsum --format testname -- -race -timeout=3m -failfast ./e1e ./e1e/testinfra
 
       - name: Check golden files unchanged
         run: |
