@@ -4,10 +4,16 @@
 
 set -e
 
+# Require Slack bot token for deployments
+if [ -z "$EXE_SLACK_BOT_TOKEN" ]; then
+    echo "ERROR: EXE_SLACK_BOT_TOKEN is not set. Deployments require Slack notifications." >&2
+    exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Slack notification (best-effort)
+# Slack notification
 DEPLOY_TS=$("$REPO_ROOT/scripts/deploy-notify.sh" start sshpiper-staging)
 cleanup_notify() {
     if [ $? -ne 0 ] && [ -n "$DEPLOY_TS" ]; then
