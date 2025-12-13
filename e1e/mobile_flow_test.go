@@ -185,3 +185,65 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	pty.deleteBox(host)
 	pty.disconnect()
 }
+
+// TestNewPageRendersLoggedInAndOut verifies that the /new page renders correctly
+// both when logged out and when logged in. This ensures the topbar template
+// has access to all required fields (like BasicUser) in both cases.
+func TestNewPageRendersLoggedInAndOut(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	base := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
+
+	// Test 1: Logged out - GET /new should render the create box form
+	t.Run("logged_out", func(t *testing.T) {
+		resp, err := http.Get(base + "/new")
+		if err != nil {
+			t.Fatalf("GET /new: %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /new returned status %d, want 200", resp.StatusCode)
+		}
+		if !strings.Contains(string(body), "Create") {
+			t.Fatalf("GET /new should contain 'Create', got: %s", string(body))
+		}
+		// Verify topbar rendered without error (page would be blank/error if template failed)
+		if !strings.Contains(string(body), "Sign in") {
+			t.Fatalf("GET /new (logged out) should show 'Sign in' link, got: %s", string(body))
+		}
+	})
+
+	// Test 2: Logged in - GET /new should render with full navigation
+	t.Run("logged_in", func(t *testing.T) {
+		pty, cookies, _, _ := registerForExeDev(t)
+		pty.disconnect()
+
+		jar, err := cookiejar.New(nil)
+		if err != nil {
+			t.Fatalf("cookiejar.New: %v", err)
+		}
+		setCookiesForJar(t, jar, base, cookies)
+		client := &http.Client{Jar: jar, Timeout: 30 * time.Second}
+
+		resp, err := client.Get(base + "/new")
+		if err != nil {
+			t.Fatalf("GET /new: %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /new returned status %d, want 200", resp.StatusCode)
+		}
+		if !strings.Contains(string(body), "Create") {
+			t.Fatalf("GET /new should contain 'Create', got: %s", string(body))
+		}
+		// Verify topbar rendered with logged-in navigation (Sign out link)
+		if !strings.Contains(string(body), "Sign out") {
+			t.Fatalf("GET /new (logged in) should show 'Sign out' link, got: %s", string(body))
+		}
+	})
+}
