@@ -242,6 +242,10 @@ COPY nginx.conf /etc/nginx/sites-available/default
 COPY index.html /var/www/html/index.html
 RUN chmod 644 /var/www/html/index.html
 
+# Install xterm-ghostty terminfo for Ghostty terminal support
+COPY xterm-ghostty.terminfo /tmp/xterm-ghostty.terminfo
+RUN tic -x - < /tmp/xterm-ghostty.terminfo && rm /tmp/xterm-ghostty.terminfo
+
 # Expose the web server ports
 EXPOSE 8000 9999
 
