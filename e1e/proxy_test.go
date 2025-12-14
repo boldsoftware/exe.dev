@@ -5,12 +5,14 @@ package e1e
 import (
 	"encoding/base64"
 	"fmt"
+	"html"
 	"io"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -1004,8 +1006,10 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 
 		// Check if we got /auth/confirm or directly to /__exe.dev/auth (owner skip)
 		if strings.Contains(u.String(), "/auth/confirm") {
-			// Follow the /auth/confirm redirect - it will redirect to /__exe.dev/auth for users with access
-			// or return 401 for users without access
+			// Follow the /auth/confirm redirect - it will either:
+			// - Redirect directly for owners
+			// - Show confirmation page (200 OK) for non-owners
+			// - Return 401 for users without access
 			req, err = localhostRequestWithHostHeader("GET", u.String(), nil)
 			if err != nil {
 				t.Errorf("failed to make http request: %v", err)
@@ -1021,12 +1025,36 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 			if resp.StatusCode == exp.httpCode {
 				return
 			}
-			if resp.StatusCode != http.StatusTemporaryRedirect {
-				t.Errorf("expected StatusTemporaryRedirect (307) redirect after confirm, got status %d", resp.StatusCode)
-			}
-			u, err = resp.Location()
-			if err != nil {
-				t.Fatalf("failed to get redirect location: %v", err)
+			// Handle confirmation page for non-owners (200 OK with CONFIRM LOGIN page)
+			if resp.StatusCode == http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if strings.Contains(string(body), "CONFIRM LOGIN") {
+					// Extract Continue URL from confirmation page
+					confirmURLRe := regexp.MustCompile(`href="([^"]*__exe\.dev/auth[^"]*)"`)
+					matches := confirmURLRe.FindStringSubmatch(string(body))
+					if len(matches) < 2 {
+						t.Fatalf("could not find Continue URL in confirmation page")
+						return
+					}
+					u, err = url.Parse(html.UnescapeString(matches[1]))
+					if err != nil {
+						t.Fatalf("failed to parse Continue URL: %v", err)
+						return
+					}
+					t.Logf("Confirmation page shown, following Continue URL: %s", u.String())
+				} else {
+					t.Errorf("expected confirmation page or redirect, got 200 with unexpected body")
+					return
+				}
+			} else if resp.StatusCode == http.StatusTemporaryRedirect {
+				u, err = resp.Location()
+				if err != nil {
+					t.Fatalf("failed to get redirect location: %v", err)
+					return
+				}
+			} else {
+				t.Errorf("expected redirect or confirmation page after /auth/confirm, got status %d", resp.StatusCode)
 				return
 			}
 		}

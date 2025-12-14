@@ -5,10 +5,12 @@ package e1e
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -352,7 +354,9 @@ func proxyAssertWithQuery(t *testing.T, box string, exp proxyExpectation, query 
 		}
 		t.Logf("Got redirect to confirm page: %s", u.String())
 
-		// Follow redirect to /auth/confirm which should redirect to /__exe.dev/auth for users with access
+		// Follow redirect to /auth/confirm which either:
+		// - Redirects directly for owners
+		// - Shows confirmation page (200 OK) for non-owners
 		req, err = http.NewRequest("GET", u.String(), nil)
 		if err != nil {
 			t.Errorf("failed to make http request: %v", err)
@@ -365,13 +369,36 @@ func proxyAssertWithQuery(t *testing.T, box string, exp proxyExpectation, query 
 		}
 		t.Logf("Last request was to: %s", req.URL.String())
 
-		// Should get a redirect to /__exe.dev/auth (307 for users with access)
-		if resp.StatusCode != http.StatusTemporaryRedirect {
-			t.Errorf("expected StatusTemporaryRedirect (307) redirect after confirm, got status %d", resp.StatusCode)
-		}
-		u, err = resp.Location()
-		if err != nil {
-			t.Fatalf("failed to get redirect location: %v", err)
+		// Handle confirmation page for non-owners (200 OK with CONFIRM LOGIN page)
+		if resp.StatusCode == http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if strings.Contains(string(body), "CONFIRM LOGIN") {
+				// Extract Continue URL from confirmation page
+				confirmURLRe := regexp.MustCompile(`href="([^"]*__exe\.dev/auth[^"]*)"`)
+				matches := confirmURLRe.FindStringSubmatch(string(body))
+				if len(matches) < 2 {
+					t.Fatalf("could not find Continue URL in confirmation page")
+					return
+				}
+				u, err = url.Parse(html.UnescapeString(matches[1]))
+				if err != nil {
+					t.Fatalf("failed to parse Continue URL: %v", err)
+					return
+				}
+				t.Logf("Confirmation page shown, following Continue URL: %s", u.String())
+			} else {
+				t.Errorf("expected confirmation page or redirect, got 200 with unexpected body")
+				return
+			}
+		} else if resp.StatusCode == http.StatusTemporaryRedirect {
+			u, err = resp.Location()
+			if err != nil {
+				t.Fatalf("failed to get redirect location: %v", err)
+				return
+			}
+		} else {
+			t.Errorf("expected redirect or confirmation page after /auth/confirm, got status %d", resp.StatusCode)
 			return
 		}
 		t.Logf("Got redirect to %s", u.String())
@@ -1076,4 +1103,466 @@ func TestBasicUserDashboard(t *testing.T) {
 	if !strings.Contains(dashboard, "Profile") {
 		t.Errorf("Basic user should see Profile in the page")
 	}
+}
+
+// TestLoginWithExeFlow tests the complete "login with exe" authentication flow.
+//
+// This flow occurs when:
+// 1. A user visits a box subdomain (e.g., mybox.exe.cloud)
+// 2. The box requires authentication (private or needs identity)
+// 3. The user is redirected through the auth dance
+// 4. They see the 401 page with the target hostname displayed
+// 5. They authenticate via email
+// 6. They gain access to the box
+//
+// This is a regression test for:
+// - The 401 page showing the hostname when LoginWithExe is true
+// - Passkey support in the 401 page (template renders correctly)
+func TestLoginWithExeFlow(t *testing.T) {
+	t.Parallel()
+	noGolden(t)
+
+	// === Setup: Owner creates a box with an HTTP server ===
+	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, "owner@test-login-with-exe.example")
+	box := newBox(t, ownerPTY, BoxOpts{Command: "/bin/bash"})
+	ownerPTY.disconnect()
+	waitForSSH(t, box, ownerKeyFile)
+
+	const boxInternalPort = 8080
+	httpPort := Env.exed.HTTPPort
+
+	// Create content to serve
+	makeIndex := boxSSHCommand(t, box, ownerKeyFile, "echo", "hello-from-box", ">", "/home/exedev/index.html")
+	if err := makeIndex.Run(); err != nil {
+		t.Fatalf("failed to create index.html: %v", err)
+	}
+
+	// Start HTTP server in the box
+	httpdCmd := boxSSHCommand(t, box, ownerKeyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(boxInternalPort), "-h", "/home/exedev")
+	httpdCmd.Stdout = t.Output()
+	httpdCmd.Stderr = t.Output()
+	if err := httpdCmd.Start(); err != nil {
+		t.Fatalf("failed to start httpd: %v", err)
+	}
+	t.Cleanup(func() {
+		httpdCmd.Process.Kill()
+		httpdCmd.Wait()
+	})
+
+	// Wait for server
+	waitCmd := boxSSHCommand(t, box, ownerKeyFile, "timeout", "20", "sh", "-c",
+		fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", boxInternalPort))
+	if err := waitCmd.Run(); err != nil {
+		t.Fatalf("httpd not ready: %v", err)
+	}
+
+	// Configure proxy: set port and make it private (requires auth)
+	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
+	if err != nil {
+		t.Fatalf("failed to set proxy port: %v\n%s", err, out)
+	}
+	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "set-private", box)
+	if err != nil {
+		t.Fatalf("failed to set private: %v\n%s", err, out)
+	}
+
+	// === Test: Unauthenticated user goes through login-with-exe flow ===
+	testID := time.Now().UnixNano()
+	visitorEmail := fmt.Sprintf("visitor-%d@test-login-with-exe.example", testID)
+
+	// Create the login-with-exe flow helper
+	flow := newLoginWithExeFlow(t, box, httpPort, visitorEmail)
+
+	// Step 1: Visit the box - should redirect to login
+	flow.visitBoxAndExpectLoginRedirect()
+
+	// Step 2: Follow redirects to the auth page on main domain
+	flow.followRedirectsToAuthPage()
+
+	// Step 3: Verify the 401 page shows the hostname
+	flow.verify401PageShowsHostname()
+
+	// Step 4: Submit email to start authentication
+	flow.submitEmailForAuth()
+
+	// Step 5: Complete email verification
+	flow.completeEmailVerification()
+
+	// Step 6: Verify and click through the confirmation page
+	cookies := flow.verifyAndClickConfirmationPage()
+
+	// Step 7: Share with the visitor so they can access
+	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "add", box, visitorEmail)
+	if err != nil {
+		t.Fatalf("failed to share box: %v\n%s", err, out)
+	}
+
+	// Step 8: Verify authenticated user can now access the box
+	proxyAssert(t, box, proxyExpectation{
+		name:     "visitor can access after login-with-exe flow",
+		httpPort: httpPort,
+		cookies:  cookies,
+		httpCode: http.StatusOK,
+	})
+
+	// Cleanup
+	cleanup := sshToExeDev(t, ownerKeyFile)
+	cleanup.deleteBox(box)
+	cleanup.disconnect()
+}
+
+// loginWithExeFlow encapsulates the "login with exe" authentication flow.
+// It provides step-by-step methods that clearly document what each part of the flow does.
+type loginWithExeFlow struct {
+	t               *testing.T
+	box             string
+	httpPort        int
+	email           string
+	client          *http.Client
+	jar             *cookiejar.Jar
+	lastResp        *http.Response
+	returnHost      string
+	auth401PageBody string
+	confirmPageBody string
+}
+
+// newLoginWithExeFlow creates a new flow helper for testing login-with-exe.
+func newLoginWithExeFlow(t *testing.T, box string, httpPort int, email string) *loginWithExeFlow {
+	jar, _ := cookiejar.New(nil)
+	return &loginWithExeFlow{
+		t:          t,
+		box:        box,
+		httpPort:   httpPort,
+		email:      email,
+		jar:        jar,
+		client:     noRedirectClient(jar),
+		returnHost: fmt.Sprintf("%s.exe.cloud:%d", box, httpPort),
+	}
+}
+
+// visitBoxAndExpectLoginRedirect visits the box URL and expects a redirect to /__exe.dev/login.
+func (f *loginWithExeFlow) visitBoxAndExpectLoginRedirect() {
+	f.t.Helper()
+
+	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/", f.box, f.httpPort)
+	req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
+	if err != nil {
+		f.t.Fatalf("failed to create request: %v", err)
+	}
+
+	resp, err := f.client.Do(req)
+	if err != nil {
+		f.t.Fatalf("failed to visit box: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		f.t.Fatalf("expected redirect (307), got %d: %s", resp.StatusCode, body)
+	}
+
+	location, err := resp.Location()
+	if err != nil {
+		f.t.Fatalf("missing Location header: %v", err)
+	}
+
+	if !strings.Contains(location.Path, "/__exe.dev/login") {
+		f.t.Fatalf("expected redirect to /__exe.dev/login, got %s", location.String())
+	}
+
+	f.t.Logf("Step 1: Box redirected to login: %s", location.String())
+	f.lastResp = resp
+}
+
+// followRedirectsToAuthPage follows the redirect chain until we reach the auth page on the main domain.
+func (f *loginWithExeFlow) followRedirectsToAuthPage() {
+	f.t.Helper()
+
+	// Follow /__exe.dev/login redirect
+	location, _ := f.lastResp.Location()
+	f.lastResp.Body.Close()
+
+	req, err := localhostRequestWithHostHeader("GET", location.String(), nil)
+	if err != nil {
+		f.t.Fatalf("failed to create login request: %v", err)
+	}
+	req.Host = f.returnHost
+
+	resp, err := f.client.Do(req)
+	if err != nil {
+		f.t.Fatalf("failed to follow login redirect: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		f.t.Fatalf("expected redirect from /__exe.dev/login, got %d: %s", resp.StatusCode, body)
+	}
+
+	location, err = resp.Location()
+	if err != nil {
+		f.t.Fatalf("missing Location from login redirect: %v", err)
+	}
+	resp.Body.Close()
+
+	// This should redirect to the main domain's /auth with return_host parameter
+	if !strings.Contains(location.String(), "/auth") {
+		f.t.Fatalf("expected redirect to /auth, got %s", location.String())
+	}
+	if !strings.Contains(location.String(), "return_host=") {
+		f.t.Fatalf("expected return_host in redirect URL, got %s", location.String())
+	}
+
+	f.t.Logf("Step 2: Login redirected to main domain auth: %s", location.String())
+
+	// Follow redirect to /auth
+	req, err = http.NewRequest("GET", location.String(), nil)
+	if err != nil {
+		f.t.Fatalf("failed to create auth request: %v", err)
+	}
+
+	resp, err = f.client.Do(req)
+	if err != nil {
+		f.t.Fatalf("failed to reach auth page: %v", err)
+	}
+
+	f.lastResp = resp
+}
+
+// verify401PageShowsHostname verifies the 401 page contains the target hostname.
+// It also extracts the form data for the next step.
+func (f *loginWithExeFlow) verify401PageShowsHostname() {
+	f.t.Helper()
+
+	if f.lastResp.StatusCode != http.StatusUnauthorized {
+		body, _ := io.ReadAll(f.lastResp.Body)
+		f.lastResp.Body.Close()
+		f.t.Fatalf("expected 401 Unauthorized, got %d: %s", f.lastResp.StatusCode, body)
+	}
+
+	body, err := io.ReadAll(f.lastResp.Body)
+	f.lastResp.Body.Close()
+	if err != nil {
+		f.t.Fatalf("failed to read 401 page: %v", err)
+	}
+
+	pageContent := string(body)
+	f.auth401PageBody = pageContent
+
+	// Verify the hostname is displayed
+	if !strings.Contains(pageContent, f.returnHost) {
+		f.t.Errorf("401 page should show hostname %q, but it wasn't found in page", f.returnHost)
+	}
+
+	// Verify "Access required" message
+	if !strings.Contains(pageContent, "Access required") {
+		f.t.Errorf("401 page should show 'Access required' message")
+	}
+
+	// Verify the form action goes to /auth
+	if !strings.Contains(pageContent, `action="`) && !strings.Contains(pageContent, "/auth") {
+		f.t.Errorf("401 page should have form action to /auth")
+	}
+
+	// Verify return_host is in a hidden field
+	if !strings.Contains(pageContent, `name="return_host"`) {
+		f.t.Errorf("401 page should have return_host hidden field")
+	}
+
+	// Verify login_with_exe is in a hidden field
+	if !strings.Contains(pageContent, `name="login_with_exe"`) {
+		f.t.Errorf("401 page should have login_with_exe hidden field")
+	}
+
+	f.t.Logf("Step 3: 401 page shows hostname %q correctly", f.returnHost)
+}
+
+// submitEmailForAuth submits the email form from the 401 page to start authentication.
+func (f *loginWithExeFlow) submitEmailForAuth() {
+	f.t.Helper()
+
+	// Extract form fields from the 401 page (including redirect URL)
+	formData := url.Values{}
+	hiddenRe := regexp.MustCompile(`<input[^>]+type="hidden"[^>]+name="([^"]+)"[^>]+value="([^"]*)"`)
+	for _, match := range hiddenRe.FindAllStringSubmatch(f.auth401PageBody, -1) {
+		formData.Set(match[1], html.UnescapeString(match[2]))
+	}
+	// Also try the reverse order (value before name)
+	hiddenRe2 := regexp.MustCompile(`<input[^>]+value="([^"]*)"[^>]+name="([^"]+)"`)
+	for _, match := range hiddenRe2.FindAllStringSubmatch(f.auth401PageBody, -1) {
+		if formData.Get(match[2]) == "" {
+			formData.Set(match[2], html.UnescapeString(match[1]))
+		}
+	}
+
+	// Add the email
+	formData.Set("email", f.email)
+
+	authURL := fmt.Sprintf("http://localhost:%d/auth", f.httpPort)
+	resp, err := f.client.PostForm(authURL, formData)
+	if err != nil {
+		f.t.Fatalf("failed to POST email: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		f.t.Fatalf("POST /auth failed with status %d: %s", resp.StatusCode, body)
+	}
+
+	f.t.Logf("Step 4: Submitted email %s for authentication with form fields: %v", f.email, formData)
+}
+
+// completeEmailVerification waits for and clicks the verification link.
+// After verification, the user is redirected to /auth/confirm which shows the confirmation page.
+func (f *loginWithExeFlow) completeEmailVerification() {
+	f.t.Helper()
+
+	emailMsg := Env.email.waitForEmail(f.t, f.email)
+
+	// Extract verification URL from email
+	verifyURL, err := extractVerificationToken(emailMsg.Body)
+	if err != nil {
+		f.t.Fatalf("failed to extract verification URL: %v", err)
+	}
+
+	f.t.Logf("Verification URL from email: %s", verifyURL)
+
+	// GET the verification page (shows confirmation form)
+	getResp, err := http.Get(verifyURL)
+	if err != nil {
+		f.t.Fatalf("failed to access verification page: %v", err)
+	}
+	if getResp.StatusCode != http.StatusOK {
+		f.t.Fatalf("verification page request failed with status: %d", getResp.StatusCode)
+	}
+
+	htmlBody, err := io.ReadAll(getResp.Body)
+	getResp.Body.Close()
+	if err != nil {
+		f.t.Fatalf("failed to read verification page body: %v", err)
+	}
+
+	// Extract hidden inputs for form submission
+	hiddenRe := regexp.MustCompile(`<input[^>]+name="([^"]+)"[^>]+value="([^"]*)"[^>]*>`)
+	formData := url.Values{}
+	for _, match := range hiddenRe.FindAllStringSubmatch(string(htmlBody), -1) {
+		formData.Set(match[1], html.UnescapeString(match[2]))
+	}
+
+	// Determine form action
+	actionRe := regexp.MustCompile(`<form[^>]+action="([^"]+)"`)
+	actionMatch := actionRe.FindStringSubmatch(string(htmlBody))
+	actionPath := "/verify-email"
+	if len(actionMatch) >= 2 {
+		actionPath = actionMatch[1]
+	}
+
+	f.t.Logf("Verification form data: %v", formData)
+
+	// Submit verification form - this redirects to /auth/confirm
+	postURL := fmt.Sprintf("http://localhost:%d%s", f.httpPort, actionPath)
+	postResp, err := f.client.PostForm(postURL, formData)
+	if err != nil {
+		f.t.Fatalf("failed to submit verification form: %v", err)
+	}
+
+	// The response should be a redirect to /auth/confirm
+	if postResp.StatusCode != http.StatusTemporaryRedirect {
+		body, _ := io.ReadAll(postResp.Body)
+		postResp.Body.Close()
+		f.t.Fatalf("expected redirect after verification, got %d: %s", postResp.StatusCode, body)
+	}
+
+	location, err := postResp.Location()
+	postResp.Body.Close()
+	if err != nil {
+		f.t.Fatalf("missing Location header after verification: %v", err)
+	}
+
+	if !strings.Contains(location.Path, "/auth/confirm") {
+		f.t.Fatalf("expected redirect to /auth/confirm, got %s", location.String())
+	}
+
+	// Follow redirect to /auth/confirm - this shows the confirmation page
+	confirmResp, err := f.client.Get(location.String())
+	if err != nil {
+		f.t.Fatalf("failed to access confirmation page: %v", err)
+	}
+
+	if confirmResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(confirmResp.Body)
+		confirmResp.Body.Close()
+		f.t.Fatalf("confirmation page returned %d: %s", confirmResp.StatusCode, body)
+	}
+
+	confirmBody, err := io.ReadAll(confirmResp.Body)
+	confirmResp.Body.Close()
+	if err != nil {
+		f.t.Fatalf("failed to read confirmation page: %v", err)
+	}
+
+	f.lastResp = confirmResp
+	f.confirmPageBody = string(confirmBody)
+
+	f.t.Logf("Step 5: Completed email verification, now at confirmation page")
+}
+
+// verifyAndClickConfirmationPage verifies the confirmation page and clicks Continue.
+func (f *loginWithExeFlow) verifyAndClickConfirmationPage() []*http.Cookie {
+	f.t.Helper()
+
+	pageContent := f.confirmPageBody
+
+	// Verify confirmation page shows "CONFIRM LOGIN"
+	if !strings.Contains(pageContent, "CONFIRM LOGIN") {
+		f.t.Errorf("confirmation page should show 'CONFIRM LOGIN', got: %s", pageContent[:min(500, len(pageContent))])
+	}
+
+	// Verify the site domain is shown (hostname without port)
+	hostname := strings.Split(f.returnHost, ":")[0]
+	if !strings.Contains(pageContent, hostname) {
+		f.t.Errorf("confirmation page should show hostname %q", hostname)
+	}
+
+	// Verify user email is shown
+	if !strings.Contains(pageContent, f.email) {
+		f.t.Errorf("confirmation page should show user email %q", f.email)
+	}
+
+	// Extract the Continue URL
+	confirmURLRe := regexp.MustCompile(`href="([^"]*__exe\.dev/auth[^"]*)"[^>]*>Continue<`)
+	matches := confirmURLRe.FindStringSubmatch(pageContent)
+	if len(matches) < 2 {
+		f.t.Fatalf("could not find Continue URL in confirmation page")
+	}
+	continueURL := html.UnescapeString(matches[1])
+
+	f.t.Logf("Step 6: Confirmation page verified, clicking Continue: %s", continueURL)
+
+	// Click Continue - this completes the auth flow on the box subdomain
+	req, err := localhostRequestWithHostHeader("GET", continueURL, nil)
+	if err != nil {
+		f.t.Fatalf("failed to create continue request: %v", err)
+	}
+
+	resp, err := f.client.Do(req)
+	if err != nil {
+		f.t.Fatalf("failed to follow continue link: %v", err)
+	}
+
+	// Should redirect to the original page after setting proxy auth cookie
+	if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusTemporaryRedirect {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		f.t.Fatalf("expected redirect after Continue, got %d: %s", resp.StatusCode, body)
+	}
+	resp.Body.Close()
+
+	// Extract cookies from the jar for the box subdomain
+	boxURL := fmt.Sprintf("http://localhost:%d", f.httpPort)
+	cookies := f.jar.Cookies(mustParseURL(boxURL))
+
+	f.t.Logf("Step 6: Completed login-with-exe flow, got %d cookies", len(cookies))
+	return cookies
 }

@@ -507,8 +507,15 @@ func (s *Server) handlePasskeyLoginFinish(w http.ResponseWriter, r *http.Request
 		SameSite: http.SameSiteLaxMode,
 	})
 
+	// Check for redirect_to parameter (used by login with exe flow)
+	// Validate to prevent open redirect attacks
+	redirectTo := r.URL.Query().Get("redirect_to")
+	if redirectTo == "" || !isValidRedirectURL(redirectTo) {
+		redirectTo = "/"
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "redirect": "/"})
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "redirect": redirectTo})
 }
 
 // handlePasskeyDelete deletes a passkey for the authenticated user

@@ -107,7 +107,8 @@ async function registerPasskey(name) {
 }
 
 // Authenticate with a passkey (mediation can be 'optional' for button click, or 'conditional' for autofill)
-async function authenticateWithPasskey(mediation) {
+// redirectTo is an optional URL to redirect to after successful authentication
+async function authenticateWithPasskey(mediation, redirectTo) {
     if (!isPasskeySupported()) {
         throw new Error('Passkeys are not supported on this device');
     }
@@ -174,7 +175,11 @@ async function authenticateWithPasskey(mediation) {
     }
 
     // Finish authentication
-    const finishResp = await fetch('/passkey/login/finish', {
+    let finishUrl = '/passkey/login/finish';
+    if (redirectTo) {
+        finishUrl += '?redirect_to=' + encodeURIComponent(redirectTo);
+    }
+    const finishResp = await fetch(finishUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -200,11 +205,12 @@ async function authenticateWithPasskey(mediation) {
 
 // Start conditional mediation (autofill) authentication
 // This should be called on page load; it will resolve when user selects a passkey from autofill
-async function startConditionalAuth() {
+// redirectTo is an optional URL to redirect to after successful authentication
+async function startConditionalAuth(redirectTo) {
     if (!await isConditionalUISupported()) {
         return null;
     }
-    return authenticateWithPasskey('conditional');
+    return authenticateWithPasskey('conditional', redirectTo);
 }
 
 // Delete a passkey

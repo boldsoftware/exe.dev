@@ -394,20 +394,13 @@ func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request) {
 		Path:   r.URL.Path,
 	}
 
-	data := struct {
-		Email         string
-		AuthURL       string
-		RedirectURL   string
-		ReturnHost    string
-		LoginWithExe  bool
-		InvalidSecret bool
-		InvalidToken  bool
-	}{
+	data := unauthorizedData{
 		Email:        email,
 		AuthURL:      s.webBaseURL(r) + "/auth",
 		RedirectURL:  u.String(),
 		ReturnHost:   r.Host,
 		LoginWithExe: true,
+		// PasskeyEnabled is false: box subdomains can't use passkeys (RPID mismatch)
 	}
 
 	w.WriteHeader(http.StatusUnauthorized)

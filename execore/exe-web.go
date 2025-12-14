@@ -1337,8 +1337,8 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify the box exists (but don't reveal existence info)
-	_, err = withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+	// Verify the box exists and get owner info
+	box, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.BoxNamed(ctx, boxName)
 	})
 	if err != nil {
@@ -1360,23 +1360,47 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Redirect authenticated user to the box.
-	// The proxy will validate access (owner, email share, or share link).
-	// If the user doesn't have access, the proxy will show the 401 page.
+	// Build the magic URL for completing auth
 	magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
 		getScheme(r), returnHost, secret, url.QueryEscape(magicSecret.RedirectURL))
-	http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
+
+	// If user is the box owner, redirect directly without confirmation
+	if box.CreatedByUserID == magicSecret.UserID {
+		http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
+		return
+	}
+
+	// Non-owner: show confirmation page so user can confirm sharing their email with the site
+	userEmail, _ := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
+		return queries.GetEmailByUserID(ctx, magicSecret.UserID)
+	})
+
+	data := struct {
+		WebHost    string
+		UserEmail  string
+		SiteDomain string
+		CancelURL  string
+		ConfirmURL string
+	}{
+		WebHost:    s.env.WebHost,
+		UserEmail:  userEmail,
+		SiteDomain: hostname,
+		CancelURL:  "/",
+		ConfirmURL: magicURL,
+	}
+	s.renderTemplate(w, "login-confirmation.html", data)
 }
 
 // unauthorizedData holds the template data for the 401.html page
 type unauthorizedData struct {
-	Email         string
-	AuthURL       string
-	RedirectURL   string
-	ReturnHost    string
-	LoginWithExe  bool
-	InvalidSecret bool
-	InvalidToken  bool
+	Email          string
+	AuthURL        string
+	RedirectURL    string
+	ReturnHost     string
+	LoginWithExe   bool
+	InvalidSecret  bool
+	InvalidToken   bool
+	PasskeyEnabled bool
 }
 
 // render401 renders the 401.html unauthorized page.
@@ -1399,6 +1423,8 @@ func (s *Server) render401(w http.ResponseWriter, r *http.Request, data unauthor
 	// Set LoginWithExe if return_host is present (proxy auth flow)
 	data.LoginWithExe = data.ReturnHost != ""
 	data.AuthURL = fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host)
+	// Enable passkeys on the main domain (RPID matches)
+	data.PasskeyEnabled = true
 
 	w.WriteHeader(http.StatusUnauthorized)
 	s.renderTemplate(w, "401.html", data)

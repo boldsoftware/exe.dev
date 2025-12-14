@@ -2016,13 +2016,14 @@ func (es *emailServer) poisonInbox(email string) {
 
 // extractVerificationToken extracts the full verification URL from the email body
 func extractVerificationToken(body string) (string, error) {
-	// Look for the full verification URL pattern
-	re := regexp.MustCompile(`http://[^/]+/verify-(email|device)\?token=([a-zA-Z0-9\-_]+)`)
+	// Look for the full verification URL pattern including any query parameters
+	// The URL continues until whitespace or end of line
+	re := regexp.MustCompile(`http://[^/]+/verify-(email|device)\?[^\s]+`)
 	matches := re.FindStringSubmatch(body)
 	if len(matches) < 1 {
 		return "", fmt.Errorf("verification URL not found in email body: %s", body)
 	}
-	return matches[0], nil // Return the full URL, not just the token
+	return matches[0], nil // Return the full URL including all query params
 }
 
 func sshToExeDev(t *testing.T, keyFile string) *expectPty {

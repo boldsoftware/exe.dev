@@ -33,6 +33,9 @@
     <h1 class="text-4xl font-semibold mb-8">Invalid token.</h1>
     <p class="text-zinc-500 text-lg mb-3">(request another)</p>
     {{else}}
+    {{if .LoginWithExe}}
+    <p class="text-zinc-500 text-lg mb-3">{{.ReturnHost}}</p>
+    {{end}}
     <h1 class="text-4xl font-semibold mb-6">Access required.</h1>
     {{end}}
     <form method="POST" action="{{.AuthURL}}">
@@ -42,11 +45,81 @@
       <input type="hidden" name="login_with_exe" value="1">
       {{end}}
       <input type="email" name="email" placeholder="you@example.com" required autofocus
-        autocomplete="email" autocorrect="on" autocapitalize="none" spellcheck="false"
+        autocomplete="{{if .PasskeyEnabled}}username webauthn{{else}}email{{end}}" autocorrect="on" autocapitalize="none" spellcheck="false"
         class="w-full text-xl border-b-2 border-zinc-300 py-3 bg-transparent focus:outline-none focus:border-zinc-900 placeholder:text-zinc-400">
       <p class="text-zinc-400 text-sm mt-4">Press enter to request access</p>
     </form>
+
+    {{if .PasskeyEnabled}}
+    <p id="passkey-error" class="text-red-600 text-sm mt-4" style="display: none;"></p>
+
+    <div id="passkey-section" class="mt-6" style="display: none;">
+      <button id="passkey-login-btn" onclick="loginWithPasskey()"
+        class="text-zinc-500 hover:text-zinc-900 text-sm underline underline-offset-2 transition-colors">
+        Sign in with passkey
+      </button>
+    </div>
+    {{end}}
     {{end}}
   </main>
+
+  {{if .PasskeyEnabled}}
+  <script src="/static/passkey.js"></script>
+  <script>
+    // Build redirect URL for after passkey auth (redirects back to /auth with original params)
+    function getPasskeyRedirectURL() {
+      const form = document.querySelector('form');
+      const redirect = form.querySelector('input[name="redirect"]').value;
+      const returnHost = form.querySelector('input[name="return_host"]').value;
+      if (!redirect && !returnHost) {
+        return null; // No redirect needed, go to profile
+      }
+      let url = '/auth?';
+      if (redirect) url += 'redirect=' + encodeURIComponent(redirect);
+      if (returnHost) url += (redirect ? '&' : '') + 'return_host=' + encodeURIComponent(returnHost);
+      return url;
+    }
+
+    document.addEventListener('DOMContentLoaded', async function() {
+      if (passkey.isSupported()) {
+        const redirectURL = getPasskeyRedirectURL();
+        if (await passkey.isConditionalUISupported()) {
+          // Browser has native passkey autofill UI, use that instead of showing our button
+          passkey.startConditionalAuth(redirectURL).catch(function(err) {
+            // NotAllowedError happens if user dismisses the autofill or clicks the button instead
+            if (err.name !== 'NotAllowedError') {
+              console.error('passkey conditional auth failed:', err);
+              var errorEl = document.getElementById('passkey-error');
+              errorEl.textContent = err.message;
+              errorEl.style.display = 'block';
+            }
+          });
+        } else {
+          // No conditional UI, show the manual passkey button
+          document.getElementById('passkey-section').style.display = 'block';
+        }
+      }
+    });
+
+    async function loginWithPasskey() {
+      const errorEl = document.getElementById('passkey-error');
+      const btn = document.getElementById('passkey-login-btn');
+
+      errorEl.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Authenticating...';
+
+      try {
+        const redirectURL = getPasskeyRedirectURL();
+        await passkey.authenticate(null, redirectURL);
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Sign in with passkey';
+      }
+    }
+  </script>
+  {{end}}
 </body>
 </html>
