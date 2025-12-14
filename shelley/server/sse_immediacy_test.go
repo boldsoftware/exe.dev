@@ -22,8 +22,8 @@ import (
 // and provide immediate access to written data
 type flusherRecorder struct {
 	*httptest.ResponseRecorder
-	mu     sync.Mutex
-	chunks []string
+	mu      sync.Mutex
+	chunks  []string
 	flushed chan struct{}
 }
 

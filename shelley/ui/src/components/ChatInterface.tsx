@@ -442,7 +442,7 @@ function ChatInterface({
                 const llmData =
                   typeof msg.llm_data === "string" ? JSON.parse(msg.llm_data) : msg.llm_data;
                 return llmData?.Content?.some(
-                  (c: LLMContent) => c.Type === 2 && c.Text?.trim() === pendingText
+                  (c: LLMContent) => c.Type === 2 && c.Text?.trim() === pendingText,
                 );
               } catch {
                 return false;
