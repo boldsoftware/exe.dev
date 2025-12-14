@@ -48,6 +48,7 @@ export interface LLMContent {
 export interface Model {
   id: string;
   ready: boolean;
+  max_context_tokens?: number;
 }
 
 export interface ChatRequest {
@@ -58,6 +59,7 @@ export interface ChatRequest {
 // StreamResponse represents the streaming response format
 export interface StreamResponse extends Omit<StreamResponseForTS, "messages"> {
   messages: Message[];
+  total_tokens_used?: number;
 }
 
 // Link represents a custom link that can be added to the UI

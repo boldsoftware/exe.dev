@@ -1914,6 +1914,13 @@ svg {
   width: 100%;
 }
 
+.status-bar-new-conversation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
 .status-bar-controls {
   display: flex;
   align-items: center;
@@ -2194,4 +2201,28 @@ svg {
   gap: 0.5rem;
   padding: 1rem;
   border-top: 1px solid var(--border);
+}
+
+/* Context Usage Bar */
+/* Status bar for active conversation */
+.status-bar-active {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.context-usage-bar {
+  width: 60px;
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+  cursor: default;
+}
+
+.context-usage-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease, background-color 0.3s ease;
 }

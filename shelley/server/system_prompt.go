@@ -21,7 +21,11 @@ type SystemPromptData struct {
 	IsExeDev         bool
 	IsSudoAvailable  bool
 	Hostname         string // For exe.dev, the public hostname (e.g., "boxname.exe.xyz")
+	ShelleyDBPath    string // Path to the shelley database
 }
+
+// DBPath is the path to the shelley database, set at startup
+var DBPath string
 
 type GitInfo struct {
 	Root string
@@ -90,6 +94,20 @@ func collectSystemData() (*SystemPromptData, error) {
 				hostname = hostname + ".exe.xyz"
 			}
 			data.Hostname = hostname
+		}
+	}
+
+	// Set shelley database path if it was configured
+	if DBPath != "" {
+		// Convert to absolute path if relative
+		if !filepath.IsAbs(DBPath) {
+			if absPath, err := filepath.Abs(DBPath); err == nil {
+				data.ShelleyDBPath = absPath
+			} else {
+				data.ShelleyDBPath = DBPath
+			}
+		} else {
+			data.ShelleyDBPath = DBPath
 		}
 	}
 

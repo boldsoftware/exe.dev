@@ -13,6 +13,111 @@ import BrowserEvalTool from "./BrowserEvalTool";
 import ReadImageTool from "./ReadImageTool";
 import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
 import DirectoryPickerModal from "./DirectoryPickerModal";
+import ContextMenu from "./ContextMenu";
+
+interface ContextUsageBarProps {
+  totalTokensUsed: number;
+  maxContextTokens: number;
+}
+
+function ContextUsageBar({
+  totalTokensUsed,
+  maxContextTokens,
+}: ContextUsageBarProps) {
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [longPressTimer, setLongPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  
+  const percentage = maxContextTokens > 0 ? (totalTokensUsed / maxContextTokens) * 100 : 0;
+  const clampedPercentage = Math.min(percentage, 100);
+  
+  const getBarColor = () => {
+    if (percentage >= 90) return "var(--error-text)";
+    if (percentage >= 70) return "var(--warning-text, #f59e0b)";
+    return "var(--blue-text)";
+  };
+
+  const formatTokens = (tokens: number) => {
+    if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`;
+    if (tokens >= 1000) return `${(tokens / 1000).toFixed(0)}k`;
+    return tokens.toString();
+  };
+
+  // Handle right-click (desktop)
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  // Handle long-press (mobile)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    const timer = setTimeout(() => {
+      setContextMenu({ x: touch.clientX, y: touch.clientY });
+    }, 500);
+    setLongPressTimer(timer);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+  };
+
+  const remaining = Math.max(0, maxContextTokens - totalTokensUsed);
+
+  const menuItems = [
+    {
+      label: `Used: ${totalTokensUsed.toLocaleString()} tokens`,
+      icon: <span style={{ fontSize: "14px" }}>📊</span>,
+      onClick: () => {},
+    },
+    {
+      label: `Max: ${maxContextTokens.toLocaleString()} tokens`,
+      icon: <span style={{ fontSize: "14px" }}>📏</span>,
+      onClick: () => {},
+    },
+    {
+      label: `Remaining: ${remaining.toLocaleString()} tokens`,
+      icon: <span style={{ fontSize: "14px" }}>💾</span>,
+      onClick: () => {},
+    },
+    {
+      label: `Usage: ${percentage.toFixed(1)}%`,
+      icon: <span style={{ fontSize: "14px" }}>📈</span>,
+      onClick: () => {},
+    },
+  ];
+
+  return (
+    <>
+      <div
+        className="context-usage-bar"
+        onContextMenu={handleContextMenu}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+        title={`Context: ${formatTokens(totalTokensUsed)} / ${formatTokens(maxContextTokens)} tokens (${percentage.toFixed(1)}%)`}
+      >
+        <div
+          className="context-usage-fill"
+          style={{
+            width: `${clampedPercentage}%`,
+            backgroundColor: getBarColor(),
+          }}
+        />
+      </div>
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          items={menuItems}
+        />
+      )}
+    </>
+  );
+}
 
 interface CoalescedToolCallProps {
   toolName: string;
@@ -303,6 +408,7 @@ function ChatInterface({
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [agentWorking, setAgentWorking] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [totalTokensUsed, setTotalTokensUsed] = useState(0);
   const terminalURL = window.__SHELLEY_INIT__?.terminal_url || null;
   const links = window.__SHELLEY_INIT__?.links || [];
   const hostname = window.__SHELLEY_INIT__?.hostname || "localhost";
@@ -316,8 +422,6 @@ function ChatInterface({
   const overflowMenuRef = useRef<HTMLDivElement>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const userScrolledRef = useRef(false);
-  // Track the pending message text to know when it echoes back via SSE
-  const pendingMessageRef = useRef<string | null>(null);
 
   // Load messages and set up streaming
   useEffect(() => {
@@ -388,6 +492,9 @@ function ChatInterface({
       const response = await api.getConversation(conversationId);
       setMessages(response.messages ?? []);
       setAgentWorking(Boolean(response.agent_working));
+      if (typeof response.total_tokens_used === "number") {
+        setTotalTokensUsed(response.total_tokens_used);
+      }
       if (onConversationUpdate) {
         onConversationUpdate(response.conversation);
       }
@@ -432,27 +539,6 @@ function ChatInterface({
             }
             return result;
           });
-
-          // Check if our pending message has echoed back via SSE
-          if (pendingMessageRef.current) {
-            const pendingText = pendingMessageRef.current;
-            const foundPendingMessage = incomingMessages.some((msg) => {
-              if (msg.type !== "user" || !msg.llm_data) return false;
-              try {
-                const llmData =
-                  typeof msg.llm_data === "string" ? JSON.parse(msg.llm_data) : msg.llm_data;
-                return llmData?.Content?.some(
-                  (c: LLMContent) => c.Type === 2 && c.Text?.trim() === pendingText,
-                );
-              } catch {
-                return false;
-              }
-            });
-            if (foundPendingMessage) {
-              pendingMessageRef.current = null;
-              setSending(false);
-            }
-          }
         }
 
         // Update conversation data if provided
@@ -462,6 +548,10 @@ function ChatInterface({
 
         if (typeof streamResponse.agent_working === "boolean") {
           setAgentWorking(streamResponse.agent_working);
+        }
+        
+        if (typeof streamResponse.total_tokens_used === "number") {
+          setTotalTokensUsed(streamResponse.total_tokens_used);
         }
       } catch (err) {
         console.error("Failed to parse message stream data:", err);
@@ -512,14 +602,10 @@ function ChatInterface({
   const sendMessage = async (message: string) => {
     if (!message.trim() || sending) return;
 
-    const trimmedMessage = message.trim();
-
     try {
       setSending(true);
       setError(null);
       setAgentWorking(true);
-      // Track the pending message so we know when it echoes back via SSE
-      pendingMessageRef.current = trimmedMessage;
 
       // If no conversation ID, this is the first message - validate cwd first
       if (!conversationId && onFirstMessage) {
@@ -530,23 +616,21 @@ function ChatInterface({
             throw new Error(`Invalid working directory: ${validation.error}`);
           }
         }
-        await onFirstMessage(trimmedMessage, selectedModel, selectedCwd || undefined);
+        await onFirstMessage(message.trim(), selectedModel, selectedCwd || undefined);
       } else if (conversationId) {
         await api.sendMessage(conversationId, {
-          message: trimmedMessage,
+          message: message.trim(),
           model: selectedModel,
         });
       }
-      // Don't call setSending(false) here - wait for the message to echo back via SSE
-      // The SSE handler will clear sending when it sees our pending message
     } catch (err) {
       console.error("Failed to send message:", err);
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      setError(errorMessage);
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setError(message);
       setAgentWorking(false);
-      pendingMessageRef.current = null;
-      setSending(false);
       throw err; // Re-throw so MessageInput can preserve the text
+    } finally {
+      setSending(false);
     }
   };
 
@@ -846,7 +930,6 @@ function ChatInterface({
             onClick={onOpenDrawer}
             className="btn-icon hide-on-desktop"
             aria-label="Open conversations"
-            tabIndex={-1}
           >
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -865,12 +948,7 @@ function ChatInterface({
 
         <div className="header-actions">
           {/* Green + icon in circle for new conversation */}
-          <button
-            onClick={onNewConversation}
-            className="btn-new"
-            aria-label="New conversation"
-            tabIndex={-1}
-          >
+          <button onClick={onNewConversation} className="btn-new" aria-label="New conversation">
             <svg
               fill="none"
               stroke="currentColor"
@@ -893,7 +971,6 @@ function ChatInterface({
                 onClick={() => setShowOverflowMenu(!showOverflowMenu)}
                 className="btn-icon"
                 aria-label="More options"
-                tabIndex={-1}
               >
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -1032,7 +1109,6 @@ function ChatInterface({
               <button
                 onClick={handleManualReconnect}
                 className="status-button status-button-primary"
-                tabIndex={-1}
               >
                 Retry
               </button>
@@ -1041,11 +1117,7 @@ function ChatInterface({
             // Error state
             <>
               <span className="status-message status-error">{error}</span>
-              <button
-                onClick={() => setError(null)}
-                className="status-button status-button-text"
-                tabIndex={-1}
-              >
+              <button onClick={() => setError(null)} className="status-button status-button-text">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
@@ -1064,7 +1136,6 @@ function ChatInterface({
                 onClick={handleCancel}
                 disabled={cancelling}
                 className="status-button status-button-cancel"
-                tabIndex={-1}
               >
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -1079,65 +1150,67 @@ function ChatInterface({
             </>
           ) : // Idle state - show ready message, or configuration for empty conversation
           !conversationId ? (
-            // Empty conversation - show compact model and cwd indicators (click to edit)
-            <div className="status-bar-config">
-              <span className="status-message status-ready">Ready</span>
-              <div className="status-bar-controls">
-                {/* Model selector - click to edit */}
-                <div
-                  className="status-field status-field-model"
-                  title="AI model to use for this conversation"
-                >
-                  <span className="status-field-label">Model:</span>
-                  {editingModel ? (
-                    <select
-                      id="model-select-status"
-                      value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
-                      onBlur={() => setEditingModel(false)}
-                      disabled={sending}
-                      className="status-select"
-                      autoFocus
-                      tabIndex={-1}
-                    >
-                      {models.map((model) => (
-                        <option key={model.id} value={model.id} disabled={!model.ready}>
-                          {model.id} {!model.ready ? "(not ready)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <button
-                      className="status-chip"
-                      onClick={() => setEditingModel(true)}
-                      disabled={sending}
-                      tabIndex={-1}
-                    >
-                      {selectedModel}
-                    </button>
-                  )}
-                </div>
-
-                {/* CWD indicator - click to open directory picker */}
-                <div
-                  className={`status-field status-field-cwd${cwdError ? " status-field-error" : ""}`}
-                  title={cwdError || "Working directory for file operations"}
-                >
-                  <span className="status-field-label">Dir:</span>
-                  <button
-                    className={`status-chip${cwdError ? " status-chip-error" : ""}`}
-                    onClick={() => setShowDirectoryPicker(true)}
+            // Empty conversation - show model (left) and cwd (right)
+            <div className="status-bar-new-conversation">
+              {/* Model selector - far left */}
+              <div
+                className="status-field status-field-model"
+                title="AI model to use for this conversation"
+              >
+                <span className="status-field-label">Model:</span>
+                {editingModel ? (
+                  <select
+                    id="model-select-status"
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    onBlur={() => setEditingModel(false)}
                     disabled={sending}
-                    tabIndex={-1}
+                    className="status-select"
+                    autoFocus
                   >
-                    {selectedCwd || "(no cwd)"}
+                    {models.map((model) => (
+                      <option key={model.id} value={model.id} disabled={!model.ready}>
+                        {model.id} {!model.ready ? "(not ready)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <button
+                    className="status-chip"
+                    onClick={() => setEditingModel(true)}
+                    disabled={sending}
+                  >
+                    {selectedModel}
                   </button>
-                </div>
+                )}
+              </div>
+
+              {/* CWD indicator - far right */}
+              <div
+                className={`status-field status-field-cwd${cwdError ? " status-field-error" : ""}`}
+                title={cwdError || "Working directory for file operations"}
+              >
+                <span className="status-field-label">Dir:</span>
+                <button
+                  className={`status-chip${cwdError ? " status-chip-error" : ""}`}
+                  onClick={() => setShowDirectoryPicker(true)}
+                  disabled={sending}
+                >
+                  {selectedCwd || "(no cwd)"}
+                </button>
               </div>
             </div>
           ) : (
-            // Active conversation - show ready message
-            <span className="status-message status-ready">Ready</span>
+            // Active conversation - show Ready + context bar
+            <div className="status-bar-active">
+              <span className="status-message status-ready">Ready</span>
+              <ContextUsageBar
+                totalTokensUsed={totalTokensUsed}
+                maxContextTokens={
+                  models.find((m) => m.id === selectedModel)?.max_context_tokens || 200000
+                }
+              />
+            </div>
           )}
         </div>
       </div>
@@ -1148,7 +1221,6 @@ function ChatInterface({
         onSend={sendMessage}
         disabled={sending || loading}
         autoFocus={true}
-        onFocus={scrollToBottom}
       />
 
       {/* Directory Picker Modal */}

@@ -241,13 +241,14 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 
 	// Build initialization data
 	type ModelInfo struct {
-		ID    string `json:"id"`
-		Ready bool   `json:"ready"`
+		ID               string `json:"id"`
+		Ready            bool   `json:"ready"`
+		MaxContextTokens int    `json:"max_context_tokens,omitempty"`
 	}
 
 	var modelList []ModelInfo
 	if s.predictableOnly {
-		modelList = append(modelList, ModelInfo{ID: "predictable", Ready: true})
+		modelList = append(modelList, ModelInfo{ID: "predictable", Ready: true, MaxContextTokens: 200000})
 	} else {
 		modelIDs := s.llmManager.GetAvailableModels()
 		for _, id := range modelIDs {
@@ -255,8 +256,12 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 			if id == "predictable" {
 				continue
 			}
-			_, err := s.llmManager.GetService(id)
-			modelList = append(modelList, ModelInfo{ID: id, Ready: err == nil})
+			svc, err := s.llmManager.GetService(id)
+			maxCtx := 0
+			if err == nil && svc != nil {
+				maxCtx = svc.TokenContextWindow()
+			}
+			modelList = append(modelList, ModelInfo{ID: id, Ready: err == nil, MaxContextTokens: maxCtx})
 		}
 	}
 
@@ -437,9 +442,10 @@ func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request, c
 	w.Header().Set("Content-Type", "application/json")
 	apiMessages := toAPIMessages(messages)
 	json.NewEncoder(w).Encode(StreamResponse{
-		Messages:     apiMessages,
-		Conversation: conversation,
-		AgentWorking: agentWorking(apiMessages),
+		Messages:        apiMessages,
+		Conversation:    conversation,
+		AgentWorking:    agentWorking(apiMessages),
+		TotalTokensUsed: calculateTotalTokensUsed(apiMessages),
 	})
 }
 
@@ -703,9 +709,10 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 	// Send current messages and conversation data
 	apiMessages := toAPIMessages(messages)
 	streamData := StreamResponse{
-		Messages:     apiMessages,
-		Conversation: conversation,
-		AgentWorking: agentWorking(apiMessages),
+		Messages:        apiMessages,
+		Conversation:    conversation,
+		AgentWorking:    agentWorking(apiMessages),
+		TotalTokensUsed: calculateTotalTokensUsed(apiMessages),
 	}
 	data, _ := json.Marshal(streamData)
 	fmt.Fprintf(w, "data: %s\n\n", data)

@@ -42,9 +42,10 @@ type APIMessage struct {
 
 // StreamResponse represents the response format for conversation streaming
 type StreamResponse struct {
-	Messages     []APIMessage           `json:"messages"`
-	Conversation generated.Conversation `json:"conversation"`
-	AgentWorking bool                   `json:"agent_working"`
+	Messages        []APIMessage           `json:"messages"`
+	Conversation    generated.Conversation `json:"conversation"`
+	AgentWorking    bool                   `json:"agent_working"`
+	TotalTokensUsed uint64                 `json:"total_tokens_used,omitempty"`
 }
 
 // LLMProvider is an interface for getting LLM services
@@ -110,6 +111,23 @@ func extractEndOfTurn(raw string) (bool, bool) {
 		return false, false
 	}
 	return message.EndOfTurn, true
+}
+
+// calculateTotalTokensUsed sums up all input and output tokens from message usage data
+func calculateTotalTokensUsed(messages []APIMessage) uint64 {
+	var total uint64
+	for _, msg := range messages {
+		if msg.UsageData == nil {
+			continue
+		}
+		var usage llm.Usage
+		if err := json.Unmarshal([]byte(*msg.UsageData), &usage); err != nil {
+			continue
+		}
+		// Sum all tokens for total context usage
+		total += usage.InputTokens + usage.OutputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
+	}
+	return total
 }
 
 func agentWorking(messages []APIMessage) bool {
@@ -550,9 +568,10 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 	// TODO(philip): We're re-publishing ALL the messages, and that's wrong. We should only be publishing new stuff.
 	apiMessages := toAPIMessages(messages)
 	streamData := StreamResponse{
-		Messages:     apiMessages,
-		Conversation: conversation,
-		AgentWorking: agentWorking(apiMessages),
+		Messages:        apiMessages,
+		Conversation:    conversation,
+		AgentWorking:    agentWorking(apiMessages),
+		TotalTokensUsed: calculateTotalTokensUsed(apiMessages),
 	}
 	manager.subpub.Publish(latestSequenceID, streamData)
 }

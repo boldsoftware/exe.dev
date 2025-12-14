@@ -105,6 +105,9 @@ func runServe(global GlobalConfig, args []string) {
 	database := setupDatabase(global.DBPath, logger)
 	defer database.Close()
 
+	// Set the database path for system prompt generation
+	server.DBPath = global.DBPath
+
 	// Build LLM configuration
 	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL, global.DefaultModel)
 
