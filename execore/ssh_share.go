@@ -138,7 +138,7 @@ func (ss *SSHServer) handleShareShowCmd(ctx context.Context, cc *exemenu.Command
 		return cc.Errorf("usage: share show <box>")
 	}
 
-	boxName := cc.Args[0]
+	boxName := ss.normalizeBoxName(cc.Args[0])
 
 	// Get the box and verify ownership
 	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
@@ -316,7 +316,7 @@ func (ss *SSHServer) handleSharePortCmd(ctx context.Context, cc *exemenu.Command
 		return cc.Errorf("usage: share port <box> [port]")
 	}
 
-	boxName := cc.Args[0]
+	boxName := ss.normalizeBoxName(cc.Args[0])
 	if len(cc.Args) == 1 {
 		return ss.showRouteConfiguration(ctx, cc, boxName)
 	}
@@ -353,7 +353,7 @@ func (ss *SSHServer) handleShareVisibilityCmd(ctx context.Context, cc *exemenu.C
 		}
 	}
 
-	boxName := cc.Args[0]
+	boxName := ss.normalizeBoxName(cc.Args[0])
 
 	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
 		route.Share = shareMode
@@ -456,7 +456,7 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 		return cc.Errorf("usage: share add <box> <email> [--message='...']")
 	}
 
-	boxName := cc.Args[0]
+	boxName := ss.normalizeBoxName(cc.Args[0])
 
 	// Get the box and verify ownership
 	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
@@ -622,7 +622,7 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 		return cc.Errorf("usage: share remove <box> <email>")
 	}
 
-	boxName := cc.Args[0]
+	boxName := ss.normalizeBoxName(cc.Args[0])
 
 	// Get the box and verify ownership
 	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
@@ -713,7 +713,7 @@ func (ss *SSHServer) handleShareAddLinkCmd(ctx context.Context, cc *exemenu.Comm
 		return cc.Errorf("usage: share add-link <box>")
 	}
 
-	boxName := cc.Args[0]
+	boxName := ss.normalizeBoxName(cc.Args[0])
 
 	// Get the box and verify ownership
 	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
@@ -784,7 +784,7 @@ func (ss *SSHServer) handleShareRemoveLinkCmd(ctx context.Context, cc *exemenu.C
 		return cc.Errorf("usage: share remove-link <box> <token>")
 	}
 
-	boxName := cc.Args[0]
+	boxName := ss.normalizeBoxName(cc.Args[0])
 	token := strings.TrimSpace(cc.Args[1])
 
 	// Get the box, verify ownership, and delete share link in a single transaction

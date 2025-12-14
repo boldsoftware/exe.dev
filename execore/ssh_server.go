@@ -14,6 +14,7 @@ import (
 
 	"exe.dev/boxname"
 	"exe.dev/ctrlc"
+	"exe.dev/domz"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
@@ -1087,4 +1088,15 @@ func (ss *SSHServer) showCompletions(terminal *term.Terminal, completions []stri
 		}
 	}
 	terminal.Write([]byte("\r\n"))
+}
+
+// normalizeBoxName extracts the box name from user input.
+// It handles both plain box names ("connx") and full hostnames ("connx.exe.xyz").
+func (ss *SSHServer) normalizeBoxName(name string) string {
+	// Try to extract the box name from a full hostname (e.g., "connx.exe.xyz" -> "connx")
+	if label := domz.Label(name, ss.server.env.BoxHost); label != "" {
+		return label
+	}
+	// Return as-is if not a full hostname
+	return name
 }

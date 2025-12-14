@@ -59,7 +59,7 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 		return cc.Errorf("usage: shelley install <box>")
 	}
 
-	boxName := cc.Args[0]
+	boxName := ss.normalizeBoxName(cc.Args[0])
 
 	// Look up the box
 	box, err := ss.server.getBoxForUserByUserID(ctx, cc.User.ID, boxName)

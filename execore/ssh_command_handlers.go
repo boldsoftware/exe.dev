@@ -870,7 +870,7 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 		return cc.Errorf("please specify exactly one box name to delete, got %d", len(cc.Args))
 	}
 
-	boxName := cc.Args[0]
+	boxName := ss.normalizeBoxName(cc.Args[0])
 	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
 			Name:            boxName,
@@ -1028,7 +1028,7 @@ func (ss *SSHServer) handleProxyTokenCommand(ctx context.Context, cc *exemenu.Co
 		return cc.Errorf("please specify exactly one box name")
 	}
 
-	boxName := cc.Args[0]
+	boxName := ss.normalizeBoxName(cc.Args[0])
 
 	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
@@ -1102,7 +1102,7 @@ func (ss *SSHServer) handleGrantSupportRootCommand(ctx context.Context, cc *exem
 		return cc.Errorf("usage: grant-support-root <box-name> on|off")
 	}
 
-	boxName := cc.Args[0]
+	boxName := ss.normalizeBoxName(cc.Args[0])
 	onOff := strings.ToLower(cc.Args[1])
 
 	var newValue int64
@@ -1237,6 +1237,9 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 		}
 		name = boxName
 	}
+
+	// Also handle boxname.host format (e.g., "connx.exe.xyz")
+	name = ss.normalizeBoxName(name)
 
 	// Look up the box
 	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
