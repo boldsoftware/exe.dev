@@ -252,42 +252,46 @@ func (s *ZFS) getInstanceEncryptionKeyPath(id string) (string, error) {
 }
 
 func (s *ZFS) removeInstanceFS(id string) error {
-	fs, err := zfs.GetDataset(s.getDSName(id))
-	if err != nil {
-		return err
-	}
+	dsName := s.getDSName(id)
 
-	origin, err := fs.GetProperty("origin")
-	if err != nil {
-		return err
-	}
+	// Get origin before destroying (zfs get is faster than zfs list at scale)
+	origin := s.getDatasetOrigin(dsName)
 
-	// remove the instance data
+	// Remove the instance data directly using zfs destroy
 	// NOTE: this has to be done before removing the image snapshot because
 	// otherwise it will report an error as there is still a dependent clone
-	if err := s.retryDestroy(id, fs, fmt.Sprintf("instance filesystem %s", id)); err != nil {
-		return err
+	if err := s.destroyDataset(dsName); err != nil {
+		return fmt.Errorf("error removing instance filesystem %s: %w", id, err)
 	}
 
 	// remove origin snapshot
 	if origin != "" {
 		s.log.Debug("removing image fs snapshot", "origin", origin, "id", id)
-		imageSnap, err := zfs.GetDataset(origin)
-		if err != nil {
-			s.log.Warn("unable to get origin dataset for snapshot removal", "origin", origin, "id", id)
-		}
-		if imageSnap != nil {
-			if err := s.retryDestroy(id, imageSnap, fmt.Sprintf("image snapshot %s", origin)); err != nil {
-				return err
-			}
+		if err := s.destroyDataset(origin); err != nil {
+			// Log but don't fail - origin may already be gone or have other clones
+			s.log.Warn("unable to destroy origin snapshot", "origin", origin, "id", id, "error", err)
 		}
 	}
 
 	return nil
 }
 
-// retryDestroy attempts to destroy a ZFS dataset with exponential backoff
-func (s *ZFS) retryDestroy(id string, ds *zfs.Dataset, description string) error {
+// getDatasetOrigin returns the origin property of a dataset, or empty string if none/error
+func (s *ZFS) getDatasetOrigin(dsName string) string {
+	cmd := exec.Command("zfs", "get", "-Hp", "-o", "value", "origin", dsName)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	origin := strings.TrimSpace(string(out))
+	if origin == "-" {
+		return ""
+	}
+	return origin
+}
+
+// destroyDataset destroys a ZFS dataset directly by name with retry logic
+func (s *ZFS) destroyDataset(dsName string) error {
 	const maxAttempts = 10
 	const maxTimeout = 30 * time.Second
 	initialDelay := 100 * time.Millisecond
@@ -295,23 +299,29 @@ func (s *ZFS) retryDestroy(id string, ds *zfs.Dataset, description string) error
 
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		if err := ds.Destroy(zfs.DestroyRecursive); err != nil {
+		cmd := exec.Command("zfs", "destroy", "-r", dsName)
+		if err := cmd.Run(); err != nil {
 			lastErr = err
+
+			// Check if dataset doesn't exist - that's success
+			if strings.Contains(err.Error(), "does not exist") {
+				return nil
+			}
 
 			// Check if we've exceeded the max timeout
 			elapsed := time.Since(startTime)
 			if elapsed >= maxTimeout {
-				return fmt.Errorf("error removing %s %s after %d attempts (timeout %v): %w", description, id, attempt, elapsed, lastErr)
+				return fmt.Errorf("destroy %s failed after %d attempts (timeout %v): %w", dsName, attempt, elapsed, lastErr)
 			}
 
 			// Check if this is the last attempt
 			if attempt == maxAttempts {
-				return fmt.Errorf("error removing %s %s after %d attempts: %w", description, id, attempt, lastErr)
+				return fmt.Errorf("destroy %s failed after %d attempts: %w", dsName, attempt, lastErr)
 			}
 
 			// Calculate backoff delay (exponential: 100ms, 200ms, 400ms, ...)
 			delay := initialDelay * time.Duration(1<<(attempt-1))
-			s.log.Debug("retrying destroy", "id", id, "description", description, "attempt", attempt, "delay", delay, "error", err)
+			s.log.Debug("retrying destroy", "dataset", dsName, "attempt", attempt, "delay", delay, "error", err)
 
 			// Sleep with timeout awareness
 			remainingTime := maxTimeout - time.Since(startTime)
@@ -324,7 +334,7 @@ func (s *ZFS) retryDestroy(id string, ds *zfs.Dataset, description string) error
 
 		// Success
 		if attempt > 1 {
-			s.log.Debug("destroy succeeded", "id", id, "description", description, "attempt", attempt)
+			s.log.Debug("destroy succeeded", "dataset", dsName, "attempt", attempt)
 		}
 		return nil
 	}

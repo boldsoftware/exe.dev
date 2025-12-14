@@ -4,7 +4,7 @@ import "context"
 
 func (n *NAT) Config(ctx context.Context) any {
 	return &Config{
-		Bridge:  n.bridgeName,
+		Bridge:  n.primaryBridgeName(),
 		Network: n.network,
 		Router:  n.router,
 	}

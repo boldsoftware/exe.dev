@@ -4,12 +4,23 @@ package nat
 
 import (
 	"context"
+
+	"github.com/vishvananda/netlink"
 )
 
 func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
 	tapName := getTapID(id)
+
+	// Find which bridge this TAP belongs to before deleting it
+	bridgeName := n.getTapBridge(tapName)
+
 	if err := n.deleteTapInterface(tapName); err != nil {
 		return err
+	}
+
+	// Decrement port count for the bridge
+	if bridgeName != "" {
+		n.decrementBridgePort(bridgeName)
 	}
 
 	// Release the DHCP lease for this IP
@@ -22,4 +33,24 @@ func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
 	}
 
 	return nil
+}
+
+// getTapBridge returns the bridge name that a TAP interface belongs to
+func (n *NAT) getTapBridge(tapName string) string {
+	link, err := netlink.LinkByName(tapName)
+	if err != nil {
+		return ""
+	}
+
+	masterIndex := link.Attrs().MasterIndex
+	if masterIndex == 0 {
+		return ""
+	}
+
+	master, err := netlink.LinkByIndex(masterIndex)
+	if err != nil {
+		return ""
+	}
+
+	return master.Attrs().Name
 }

@@ -12,10 +12,35 @@ import (
 
 func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInterface, error) {
 	tapName := getTapID(id)
-	link, err := n.createTapInterface(tapName)
+
+	// Select a bridge with available capacity (atomically increments port count)
+	bridgeName, needsNewBridge := n.selectBridgeAndIncrement()
+	if needsNewBridge {
+		// All bridges are full, need to create a new one
+		// Use bridgeCreateMu to serialize bridge creation
+		n.bridgeCreateMu.Lock()
+
+		// Re-check after acquiring lock - another goroutine may have created a bridge
+		bridgeName, needsNewBridge = n.selectBridgeAndIncrement()
+		if needsNewBridge {
+			// Still need to create - get the next bridge name
+			newBridgeName := n.reserveNextBridge()
+			if err := n.createSecondaryBridge(ctx, newBridgeName); err != nil {
+				n.bridgeCreateMu.Unlock()
+				return nil, fmt.Errorf("failed to create secondary bridge: %w", err)
+			}
+			bridgeName = n.addBridgeAndSelect(newBridgeName)
+		}
+		n.bridgeCreateMu.Unlock()
+	}
+
+	link, err := n.createTapInterface(tapName, bridgeName)
 	if err != nil {
+		// Decrement port count since we failed to create the TAP
+		n.decrementBridgePort(bridgeName)
 		return nil, err
 	}
+
 	macAddress, err := randomMAC()
 	if err != nil {
 		return nil, err

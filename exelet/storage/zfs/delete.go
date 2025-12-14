@@ -9,9 +9,6 @@ import (
 
 // Delete removes an instance filesystem
 func (s *ZFS) Delete(ctx context.Context, id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// Ensure volume is unmounted before attempting to delete
 	// This prevents "device or resource busy" errors when destroying the ZFS volume
 	if err := s.unmountInstanceFS(id); err != nil {
