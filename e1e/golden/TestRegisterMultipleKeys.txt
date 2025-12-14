@@ -15,7 +15,6 @@ Please enter your email address: TestRegisterMultipleKeys@example.com
 
 
 Verification email sent to: TestRegisterMultipleKeys@example.com
-Pairing code: EMAIL_VERIFICATION_CODE
 Waiting for email verification...
 ✓ Email verified successfully!
 
@@ -55,7 +54,6 @@ Please enter your email address: TestRegisterMultipleKeys@example.com
 
 
 Verification email sent to: TestRegisterMultipleKeys@example.com
-Pairing code: EMAIL_VERIFICATION_CODE
 Waiting for email verification...
 ✓ Email verified successfully!
 
@@ -94,7 +92,6 @@ Please enter your email address: TestRegisterMultipleKeys@example.com
 
 
 Verification email sent to: TestRegisterMultipleKeys@example.com
-Pairing code: EMAIL_VERIFICATION_CODE
 Waiting for email verification...
 ✓ Email verified successfully!
 

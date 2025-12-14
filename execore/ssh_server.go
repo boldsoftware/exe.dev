@@ -707,7 +707,7 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 	}
 
 	fmt.Fprintf(s, "\r\nVerification email sent to: \033[1;32m%s\033[0m\r\n", email)
-	fmt.Fprintf(s, "Pairing code: \033[1;32m%s\033[0m\r\n", verification.PairingCode)
+	// fmt.Fprintf(s, "Pairing code: \033[1;32m%s\033[0m\r\n", verification.PairingCode)
 	fmt.Fprintf(s, "\033[2mWaiting for email verification...\033[0m\r\n")
 
 	ctx, r, stop := ctrlc.WithReader(s.Context(), s.Session)

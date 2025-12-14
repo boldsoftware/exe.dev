@@ -29,7 +29,7 @@ func TestNewKeyRegistration(t *testing.T) {
 	email := t.Name() + "@example.com"
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
 	emailMsg := Env.email.waitForEmail(t, email)
 	clickVerifyLinkInEmail(t, emailMsg)
 	pty.want("Email verified successfully")
@@ -54,7 +54,7 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	email := t.Name() + "@example.com"
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
 	emailMsg := Env.email.waitForEmail(t, email)
 	clickVerifyLinkInEmail(t, emailMsg)
 	pty.want("Email verified successfully")
@@ -98,7 +98,7 @@ func TestRegisterMultipleKeys(t *testing.T) {
 		email := t.Name() + "@example.com"
 		pty.sendLine(email)
 		pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-		pty.wantRe("Pairing code: .*[0-9]{6}.*")
+		// pty.wantRe("Pairing code: .*[0-9]{6}.*")
 		emailMsg := Env.email.waitForEmail(t, email)
 		clickVerifyLinkInEmail(t, emailMsg)
 		pty.want("Email verified successfully")
@@ -160,7 +160,7 @@ func TestRegisterWebThenKey(t *testing.T) {
 	pty.want("Please enter your email")
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
 
 	deviceEmail := Env.email.waitForEmail(t, email)
 	clickVerifyLinkInEmail(t, deviceEmail)
@@ -224,7 +224,7 @@ func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
 	newEmail := ghuser.FakeEmail1 + suffix
 
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(newEmail))
-	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
 
 	deviceEmail := Env.email.waitForEmail(t, newEmail)
 	clickVerifyLinkInEmail(t, deviceEmail)
@@ -262,7 +262,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 	pty.send("\n")
 
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
 
 	emailMsg := Env.email.waitForEmail(t, email)
 	clickVerifyLinkInEmail(t, emailMsg)
@@ -323,7 +323,7 @@ func TestRegistrationWithLatency(t *testing.T) {
 	email := t.Name() + "@example.com"
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
 	emailMsg := Env.email.waitForEmail(t, email)
 	clickVerifyLinkInEmail(t, emailMsg)
 	pty.want("Email verified successfully")

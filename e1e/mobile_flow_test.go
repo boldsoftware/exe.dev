@@ -170,7 +170,7 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	pty.want("Please enter your email")
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to")
-	pty.wantRe("Pairing code:")
+	// pty.wantRe("Pairing code:")
 
 	// Click verification link from email
 	emailMsg2 := Env.email.waitForEmail(t, email)

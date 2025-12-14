@@ -15,7 +15,6 @@ Please enter your email address: TestNewPageRendersLoggedInAndOut.logged_in@exam
 
 
 Verification email sent to: TestNewPageRendersLoggedInAndOut.logged_in@example.com
-Pairing code: EMAIL_VERIFICATION_CODE
 Waiting for email verification...
 ✓ Email verified successfully!
 

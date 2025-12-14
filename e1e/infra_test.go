@@ -2165,11 +2165,11 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) []*http.Cookie 
 
 	bodyStr := string(htmlBody)
 
-	// Extract the pairing code from the verification page
-	codeRe := regexp.MustCompile(`tracking-widest[^>]*>([0-9]{6})<`)
-	if codeMatches := codeRe.FindStringSubmatch(bodyStr); len(codeMatches) >= 2 {
-		Env.addCanonicalization(codeMatches[1], "EMAIL_VERIFICATION_CODE")
-	}
+	// // Extract the pairing code from the verification page
+	// codeRe := regexp.MustCompile(`tracking-widest[^>]*>([0-9]{6})<`)
+	// if codeMatches := codeRe.FindStringSubmatch(bodyStr); len(codeMatches) >= 2 {
+	// 	Env.addCanonicalization(codeMatches[1], "EMAIL_VERIFICATION_CODE")
+	// }
 
 	// Extract hidden inputs so we can POST the same form fields back
 	hiddenRe := regexp.MustCompile(`<input[^>]+name="([^"]+)"[^>]+value="([^"]*)"[^>]*>`)
@@ -2309,7 +2309,7 @@ func registerForExeDevWithEmail(t *testing.T, email string) (pty *expectPty, coo
 	pty.sendLine(email)
 	returnedEmail = email
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
 
 	emailMsg := Env.email.waitForEmail(t, email)
 	cookies = clickVerifyLinkInEmail(t, emailMsg)

@@ -15,7 +15,6 @@ Please enter your email address: TestNewRejectsBoxMatchingSSHUsername@example.co
 
 
 Verification email sent to: TestNewRejectsBoxMatchingSSHUsername@example.com
-Pairing code: EMAIL_VERIFICATION_CODE
 Waiting for email verification...
 ✓ Email verified successfully!
 

@@ -22,12 +22,12 @@
       <p class="text-xs text-zinc-400 pt-3 px-4">SSH KEY</p>
       <pre class="p-4 pt-2 text-sm whitespace-pre-wrap break-words"><code>{{.PublicKey}}</code></pre>
     </div>
-    {{if .PairingCode}}
+    {{/* {{if .PairingCode}}
     <div class="bg-zinc-100 rounded mb-6 inline-block">
       <p class="text-xs text-zinc-400 pt-3 px-4">PAIRING CODE</p>
       <p class="p-4 pt-2 text-2xl font-semibold tracking-widest">{{.PairingCode}}</p>
     </div>
-    {{end}}
+    {{end}} */}}
     <form method="POST" action="/verify-device">
       <input type="hidden" name="token" value="{{.Token}}">
       <button type="submit" class="bg-zinc-900 text-white px-6 py-3 text-sm hover:bg-black transition-colors rounded">Authorize</button>
