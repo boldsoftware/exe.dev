@@ -345,33 +345,54 @@ func (cm *ConversationManager) CancelConversation(ctx context.Context) error {
 	var inProgressToolID string
 	var inProgressToolName string
 
-	// Find the most recent tool use without a corresponding tool result
+	// Find tool_uses that don't have corresponding tool_results.
+	// Strategy:
+	// 1. Find the last assistant message that contains tool_uses
+	// 2. Collect all tool_result IDs from user messages AFTER that assistant message
+	// 3. Find tool_uses that don't have matching results
+
+	// Step 1: Find the index of the last assistant message with tool_uses
+	lastToolUseAssistantIdx := -1
 	for i := len(history) - 1; i >= 0; i-- {
 		msg := history[i]
 		if msg.Role == llm.MessageRoleAssistant {
-			// Check for tool uses in this message
+			hasToolUse := false
 			for _, content := range msg.Content {
 				if content.Type == llm.ContentTypeToolUse {
+					hasToolUse = true
+					break
+				}
+			}
+			if hasToolUse {
+				lastToolUseAssistantIdx = i
+				break
+			}
+		}
+	}
+
+	if lastToolUseAssistantIdx >= 0 {
+		// Step 2: Collect all tool_result IDs from messages after the assistant message
+		toolResultIDs := make(map[string]bool)
+		for i := lastToolUseAssistantIdx + 1; i < len(history); i++ {
+			msg := history[i]
+			if msg.Role == llm.MessageRoleUser {
+				for _, content := range msg.Content {
+					if content.Type == llm.ContentTypeToolResult {
+						toolResultIDs[content.ToolUseID] = true
+					}
+				}
+			}
+		}
+
+		// Step 3: Find the first tool_use that doesn't have a result
+		assistantMsg := history[lastToolUseAssistantIdx]
+		for _, content := range assistantMsg.Content {
+			if content.Type == llm.ContentTypeToolUse {
+				if !toolResultIDs[content.ID] {
 					inProgressToolID = content.ID
 					inProgressToolName = content.ToolName
 					break
 				}
-			}
-			if inProgressToolID != "" {
-				break
-			}
-		} else if msg.Role == llm.MessageRoleUser {
-			// Check if this contains a tool result for our tool ID
-			hasResult := false
-			for _, content := range msg.Content {
-				if content.Type == llm.ContentTypeToolResult && content.ToolUseID == inProgressToolID {
-					hasResult = true
-					break
-				}
-			}
-			if hasResult {
-				inProgressToolID = ""
-				inProgressToolName = ""
 			}
 		}
 	}

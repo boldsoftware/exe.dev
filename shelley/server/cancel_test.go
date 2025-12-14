@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
@@ -46,7 +47,11 @@ func TestCancelWithPredictableModel(t *testing.T) {
 	predictableService := loop.NewPredictableService()
 	llmManager := &testLLMManager{service: predictableService}
 	logger := slog.Default()
-	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", nil)
+
+	// Register the bash tool so the sleep command actually runs and can be cancelled
+	bashTool := &claudetool.BashTool{}
+	tools := []*llm.Tool{bashTool.Tool()}
+	server := NewServer(database, llmManager, tools, logger, true, "", "predictable", nil)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
