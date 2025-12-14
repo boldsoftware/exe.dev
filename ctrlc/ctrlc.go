@@ -32,14 +32,14 @@ func WithReader(parent context.Context, r io.Reader) (context.Context, io.Reader
 		var b [1]byte
 		for {
 			n, err := r.Read(b[:])
-			if err != nil {
-				cancel(err)
-				return
-			}
 			if stopped.Load() {
 				if n > 0 {
 					pw.Write(b[:n])
 				}
+				return
+			}
+			if err != nil {
+				cancel(err)
 				return
 			}
 			if b[0] == 3 { // Ctrl+C
