@@ -466,8 +466,10 @@ func (s *Server) recordMessage(ctx context.Context, conversationID string, messa
 	}
 	s.mu.Unlock()
 
-	// Notify subscribers
-	go s.notifySubscribers(ctx, conversationID)
+	// Notify subscribers - use WithoutCancel because the HTTP request context
+	// may be cancelled after the handler returns, but we still want the
+	// notification to complete so SSE clients see the message immediately
+	go s.notifySubscribers(context.WithoutCancel(ctx), conversationID)
 
 	return nil
 }

@@ -316,6 +316,8 @@ function ChatInterface({
   const overflowMenuRef = useRef<HTMLDivElement>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const userScrolledRef = useRef(false);
+  // Track the pending message text to know when it echoes back via SSE
+  const pendingMessageRef = useRef<string | null>(null);
 
   // Load messages and set up streaming
   useEffect(() => {
@@ -430,6 +432,27 @@ function ChatInterface({
             }
             return result;
           });
+
+          // Check if our pending message has echoed back via SSE
+          if (pendingMessageRef.current) {
+            const pendingText = pendingMessageRef.current;
+            const foundPendingMessage = incomingMessages.some((msg) => {
+              if (msg.type !== "user" || !msg.llm_data) return false;
+              try {
+                const llmData =
+                  typeof msg.llm_data === "string" ? JSON.parse(msg.llm_data) : msg.llm_data;
+                return llmData?.Content?.some(
+                  (c: LLMContent) => c.Type === 2 && c.Text?.trim() === pendingText
+                );
+              } catch {
+                return false;
+              }
+            });
+            if (foundPendingMessage) {
+              pendingMessageRef.current = null;
+              setSending(false);
+            }
+          }
         }
 
         // Update conversation data if provided
@@ -489,10 +512,14 @@ function ChatInterface({
   const sendMessage = async (message: string) => {
     if (!message.trim() || sending) return;
 
+    const trimmedMessage = message.trim();
+
     try {
       setSending(true);
       setError(null);
       setAgentWorking(true);
+      // Track the pending message so we know when it echoes back via SSE
+      pendingMessageRef.current = trimmedMessage;
 
       // If no conversation ID, this is the first message - validate cwd first
       if (!conversationId && onFirstMessage) {
@@ -503,21 +530,23 @@ function ChatInterface({
             throw new Error(`Invalid working directory: ${validation.error}`);
           }
         }
-        await onFirstMessage(message.trim(), selectedModel, selectedCwd || undefined);
+        await onFirstMessage(trimmedMessage, selectedModel, selectedCwd || undefined);
       } else if (conversationId) {
         await api.sendMessage(conversationId, {
-          message: message.trim(),
+          message: trimmedMessage,
           model: selectedModel,
         });
       }
+      // Don't call setSending(false) here - wait for the message to echo back via SSE
+      // The SSE handler will clear sending when it sees our pending message
     } catch (err) {
       console.error("Failed to send message:", err);
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setError(message);
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      setError(errorMessage);
       setAgentWorking(false);
-      throw err; // Re-throw so MessageInput can preserve the text
-    } finally {
+      pendingMessageRef.current = null;
       setSending(false);
+      throw err; // Re-throw so MessageInput can preserve the text
     }
   };
 
