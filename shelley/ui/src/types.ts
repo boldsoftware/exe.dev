@@ -59,7 +59,7 @@ export interface ChatRequest {
 // StreamResponse represents the streaming response format
 export interface StreamResponse extends Omit<StreamResponseForTS, "messages"> {
   messages: Message[];
-  total_tokens_used?: number;
+  context_window_size?: number;
 }
 
 // Link represents a custom link that can be added to the UI

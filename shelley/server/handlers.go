@@ -442,10 +442,10 @@ func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request, c
 	w.Header().Set("Content-Type", "application/json")
 	apiMessages := toAPIMessages(messages)
 	json.NewEncoder(w).Encode(StreamResponse{
-		Messages:        apiMessages,
-		Conversation:    conversation,
-		AgentWorking:    agentWorking(apiMessages),
-		TotalTokensUsed: calculateTotalTokensUsed(apiMessages),
+		Messages:          apiMessages,
+		Conversation:      conversation,
+		AgentWorking:      agentWorking(apiMessages),
+		ContextWindowSize: calculateContextWindowSize(apiMessages),
 	})
 }
 
@@ -709,10 +709,10 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 	// Send current messages and conversation data
 	apiMessages := toAPIMessages(messages)
 	streamData := StreamResponse{
-		Messages:        apiMessages,
-		Conversation:    conversation,
-		AgentWorking:    agentWorking(apiMessages),
-		TotalTokensUsed: calculateTotalTokensUsed(apiMessages),
+		Messages:          apiMessages,
+		Conversation:      conversation,
+		AgentWorking:      agentWorking(apiMessages),
+		ContextWindowSize: calculateContextWindowSize(apiMessages),
 	}
 	data, _ := json.Marshal(streamData)
 	fmt.Fprintf(w, "data: %s\n\n", data)

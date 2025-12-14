@@ -16,15 +16,15 @@ import DirectoryPickerModal from "./DirectoryPickerModal";
 import ContextMenu from "./ContextMenu";
 
 interface ContextUsageBarProps {
-  totalTokensUsed: number;
+  contextWindowSize: number;
   maxContextTokens: number;
 }
 
-function ContextUsageBar({ totalTokensUsed, maxContextTokens }: ContextUsageBarProps) {
+function ContextUsageBar({ contextWindowSize, maxContextTokens }: ContextUsageBarProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [longPressTimer, setLongPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
-  const percentage = maxContextTokens > 0 ? (totalTokensUsed / maxContextTokens) * 100 : 0;
+  const percentage = maxContextTokens > 0 ? (contextWindowSize / maxContextTokens) * 100 : 0;
   const clampedPercentage = Math.min(percentage, 100);
 
   const getBarColor = () => {
@@ -61,11 +61,11 @@ function ContextUsageBar({ totalTokensUsed, maxContextTokens }: ContextUsageBarP
     }
   };
 
-  const remaining = Math.max(0, maxContextTokens - totalTokensUsed);
+  const remaining = Math.max(0, maxContextTokens - contextWindowSize);
 
   const menuItems = [
     {
-      label: `Used: ${totalTokensUsed.toLocaleString()} tokens`,
+      label: `Used: ${contextWindowSize.toLocaleString()} tokens`,
       icon: <span style={{ fontSize: "14px" }}>📊</span>,
       onClick: () => {},
     },
@@ -94,7 +94,7 @@ function ContextUsageBar({ totalTokensUsed, maxContextTokens }: ContextUsageBarP
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
-        title={`Context: ${formatTokens(totalTokensUsed)} / ${formatTokens(maxContextTokens)} tokens (${percentage.toFixed(1)}%)`}
+        title={`Context: ${formatTokens(contextWindowSize)} / ${formatTokens(maxContextTokens)} tokens (${percentage.toFixed(1)}%)`}
       >
         <div
           className="context-usage-fill"
@@ -405,7 +405,7 @@ function ChatInterface({
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [agentWorking, setAgentWorking] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [totalTokensUsed, setTotalTokensUsed] = useState(0);
+  const [contextWindowSize, setContextWindowSize] = useState(0);
   const terminalURL = window.__SHELLEY_INIT__?.terminal_url || null;
   const links = window.__SHELLEY_INIT__?.links || [];
   const hostname = window.__SHELLEY_INIT__?.hostname || "localhost";
@@ -489,8 +489,8 @@ function ChatInterface({
       const response = await api.getConversation(conversationId);
       setMessages(response.messages ?? []);
       setAgentWorking(Boolean(response.agent_working));
-      if (typeof response.total_tokens_used === "number") {
-        setTotalTokensUsed(response.total_tokens_used);
+      if (typeof response.context_window_size === "number") {
+        setContextWindowSize(response.context_window_size);
       }
       if (onConversationUpdate) {
         onConversationUpdate(response.conversation);
@@ -547,8 +547,8 @@ function ChatInterface({
           setAgentWorking(streamResponse.agent_working);
         }
 
-        if (typeof streamResponse.total_tokens_used === "number") {
-          setTotalTokensUsed(streamResponse.total_tokens_used);
+        if (typeof streamResponse.context_window_size === "number") {
+          setContextWindowSize(streamResponse.context_window_size);
         }
       } catch (err) {
         console.error("Failed to parse message stream data:", err);
@@ -1202,7 +1202,7 @@ function ChatInterface({
             <div className="status-bar-active">
               <span className="status-message status-ready">Ready</span>
               <ContextUsageBar
-                totalTokensUsed={totalTokensUsed}
+                contextWindowSize={contextWindowSize}
                 maxContextTokens={
                   models.find((m) => m.id === selectedModel)?.max_context_tokens || 200000
                 }
