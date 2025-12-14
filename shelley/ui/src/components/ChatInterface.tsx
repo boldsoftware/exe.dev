@@ -20,16 +20,13 @@ interface ContextUsageBarProps {
   maxContextTokens: number;
 }
 
-function ContextUsageBar({
-  totalTokensUsed,
-  maxContextTokens,
-}: ContextUsageBarProps) {
+function ContextUsageBar({ totalTokensUsed, maxContextTokens }: ContextUsageBarProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [longPressTimer, setLongPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
-  
+
   const percentage = maxContextTokens > 0 ? (totalTokensUsed / maxContextTokens) * 100 : 0;
   const clampedPercentage = Math.min(percentage, 100);
-  
+
   const getBarColor = () => {
     if (percentage >= 90) return "var(--error-text)";
     if (percentage >= 70) return "var(--warning-text, #f59e0b)";
@@ -549,7 +546,7 @@ function ChatInterface({
         if (typeof streamResponse.agent_working === "boolean") {
           setAgentWorking(streamResponse.agent_working);
         }
-        
+
         if (typeof streamResponse.total_tokens_used === "number") {
           setTotalTokensUsed(streamResponse.total_tokens_used);
         }
