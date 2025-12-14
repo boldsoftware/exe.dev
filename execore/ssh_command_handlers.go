@@ -1275,7 +1275,7 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(sshSigner),
 		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: box.CreateHostKeyCallback(),
 		Timeout:         10 * time.Second,
 	}
 
