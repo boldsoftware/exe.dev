@@ -150,8 +150,8 @@ func TestOpenRedirectAfterAuth(t *testing.T) {
 // validates redirect_to to prevent open redirect attacks.
 func TestPasskeyOpenRedirect(t *testing.T) {
 	tests := []struct {
-		name           string
-		redirectTo     string
+		name             string
+		redirectTo       string
 		expectedRedirect string
 	}{
 		{"safe relative path", "/auth?redirect=%2F&return_host=box.exe.dev", "/auth?redirect=%2F&return_host=box.exe.dev"},
