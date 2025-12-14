@@ -1205,10 +1205,59 @@ func TestLoginWithExeFlow(t *testing.T) {
 		httpCode: http.StatusOK,
 	})
 
+	// Step 9: Verify user was created with CreatedForLoginWithExe=true
+	verifyUserCreatedForLoginWithExe(t, httpPort, visitorEmail)
+
+	// Step 10: Verify cookies were set on both main domain and subdomain
+	flow.verifyCookiesOnBothDomains()
+
 	// Cleanup
 	cleanup := sshToExeDev(t, ownerKeyFile)
 	cleanup.deleteBox(box)
 	cleanup.disconnect()
+}
+
+// verifyUserCreatedForLoginWithExe verifies that a user was created with the
+// CreatedForLoginWithExe flag set to true.
+func verifyUserCreatedForLoginWithExe(t *testing.T, httpPort int, email string) {
+	t.Helper()
+
+	// Query the debug API to get user info
+	debugURL := fmt.Sprintf("http://localhost:%d/debug/users?format=json", httpPort)
+	resp, err := http.Get(debugURL)
+	if err != nil {
+		t.Fatalf("failed to query debug API: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("debug API returned status %d", resp.StatusCode)
+	}
+
+	var users []struct {
+		Email                  string `json:"email"`
+		CreatedForLoginWithExe bool   `json:"created_for_login_with_exe"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		t.Fatalf("failed to decode debug API response: %v", err)
+	}
+
+	// Find our user
+	found := false
+	for _, u := range users {
+		if u.Email == email {
+			found = true
+			if !u.CreatedForLoginWithExe {
+				t.Errorf("user %q should have CreatedForLoginWithExe=true, but it's false", email)
+			} else {
+				t.Logf("Step 9: Verified user %q has CreatedForLoginWithExe=true", email)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("user %q not found in debug API response", email)
+	}
 }
 
 // loginWithExeFlow encapsulates the "login with exe" authentication flow.
@@ -1565,4 +1614,39 @@ func (f *loginWithExeFlow) verifyAndClickConfirmationPage() []*http.Cookie {
 
 	f.t.Logf("Step 6: Completed login-with-exe flow, got %d cookies", len(cookies))
 	return cookies
+}
+
+// verifyCookiesOnBothDomains verifies that cookies were set on both the main domain
+// (exe.dev) and the subdomain (box.exe.cloud).
+// In the test environment, both domains resolve to localhost, so cookies are in the same jar.
+// We verify by checking cookie names:
+// - "exe-auth" is set on the main domain during email verification
+// - "exe-proxy-auth" is set on the subdomain during magic auth
+func (f *loginWithExeFlow) verifyCookiesOnBothDomains() {
+	f.t.Helper()
+
+	// Get all cookies from the jar for localhost (both domains use same port in tests)
+	jarURL := fmt.Sprintf("http://localhost:%d", f.httpPort)
+	cookies := f.jar.Cookies(mustParseURL(jarURL))
+
+	var hasExeAuth, hasExeProxyAuth bool
+	for _, c := range cookies {
+		if c.Name == "exe-auth" {
+			hasExeAuth = true
+		}
+		if c.Name == "exe-proxy-auth" {
+			hasExeProxyAuth = true
+		}
+	}
+
+	if !hasExeAuth {
+		f.t.Errorf("missing exe-auth cookie (should be set on main domain during email verification)")
+	}
+	if !hasExeProxyAuth {
+		f.t.Errorf("missing exe-proxy-auth cookie (should be set on subdomain during magic auth)")
+	}
+
+	if hasExeAuth && hasExeProxyAuth {
+		f.t.Logf("Step 10: Verified cookies on both domains: exe-auth and exe-proxy-auth present")
+	}
 }
