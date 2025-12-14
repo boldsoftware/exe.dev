@@ -538,26 +538,25 @@ if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     exit 1
 fi
 
-# hugepages
-cat <<'EXELET_HUGEPAGES' >/tmp/hugepages.sh
+# sysctl
+cat <<'EXELET_SYSCTL' >/tmp/sysctl.sh
 #!/bin/bash
 set -euo pipefail
-HUGEPAGE_TARGET=$(awk '/MemTotal/ { print int($2/4096); exit(0); }' /proc/meminfo)
-echo "Setting vm.nr_hugepages=${HUGEPAGE_TARGET}"
-echo "${HUGEPAGE_TARGET}" >/proc/sys/vm/nr_hugepages
-mkdir -p /etc/sysctl.d
-cat <<EOF >/etc/sysctl.d/90-exe-hugepages.conf
-# Ensure huge pages survive reboots; required for Cloud Hypervisor.
-vm.nr_hugepages=${HUGEPAGE_TARGET}
+echo "Setting sysctl"
+cat <<EOF >/etc/sysctl.d/90-exe.conf
+net.ipv4.neigh.default.gc_thresh1=4096
+net.ipv4.neigh.default.gc_thresh2=8192
+net.ipv4.neigh.default.gc_thresh3=16384
+vm.max_map_count=1048576
 EOF
 sysctl --system >/dev/null
-EXELET_HUGEPAGES
+EXELET_SYSCTL
 
 if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    /tmp/hugepages.sh \
+    /tmp/sysctl.sh \
     "ubuntu@${MACHINE_NAME}:~/"; then
-    echo "ERROR: Failed to copy hugepages setup script"
-    rm -f /tmp/hugepages.sh
+    echo "ERROR: Failed to copy sysctl setup script"
+    rm -f /tmp/sysctl.sh
     exit 1
 fi
 
@@ -565,7 +564,7 @@ fi
 echo "Executing hugepages script on ${MACHINE_NAME}..."
 if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     "ubuntu@${MACHINE_NAME}" \
-    'chmod +x ~/hugepages.sh && sudo ~/hugepages.sh'; then
+    'chmod +x ~/sysctl.sh && sudo ~/sysctl.sh'; then
     echo "ERROR: Setup script failed"
     exit 1
 fi

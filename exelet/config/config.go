@@ -13,7 +13,7 @@ const (
 	// DefaultResourceManagerInterval is the default polling interval for the resource manager
 	DefaultResourceManagerInterval = 30 * time.Second
 	// DefaultIdleThreshold is the default duration after which a VM is considered idle
-	DefaultIdleThreshold = 5 * time.Minute
+	DefaultIdleThreshold = 1 * time.Minute
 
 	// DefaultNameserver is the default instance nameserver
 	DefaultNameserver = "1.1.1.1"

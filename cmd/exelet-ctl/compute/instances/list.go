@@ -13,6 +13,7 @@ import (
 
 	"exe.dev/cmd/exelet-ctl/helpers"
 	api "exe.dev/pkg/api/exe/compute/v1"
+	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 )
 
 var listInstancesCommand = &cli.Command{
@@ -33,7 +34,7 @@ var listInstancesCommand = &cli.Command{
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 12, 1, 3, ' ', 0)
-		fmt.Fprintf(w, "ID\tNAME\tIMAGE\tCPUS\tMEMORY\tDISK\tIP\tSTATE\n")
+		fmt.Fprintf(w, "ID\tNAME\tIMAGE\tCPUS\tMEMORY\tDISK\tIP\tSTATE\tPRIORITY\n")
 		for {
 			resp, err := stream.Recv()
 			if err != nil {
@@ -48,6 +49,7 @@ var listInstancesCommand = &cli.Command{
 			memory := ""
 			disk := ""
 			ip := ""
+			priority := "-"
 
 			if v := i.VMConfig; v != nil {
 				cpus = fmt.Sprintf("%d", v.CPUs)
@@ -64,7 +66,14 @@ var listInstancesCommand = &cli.Command{
 				}
 			}
 
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			// Get priority from resource manager (only for running instances)
+			if i.State == api.VMState_RUNNING {
+				if usageResp, err := c.GetVMUsage(ctx, &resourceapi.GetVMUsageRequest{VmID: i.ID}); err == nil {
+					priority = formatPriority(usageResp.Usage.Priority)
+				}
+			}
+
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				i.ID,
 				i.Name,
 				i.Image,
@@ -73,6 +82,7 @@ var listInstancesCommand = &cli.Command{
 				disk,
 				ip,
 				i.State.String(),
+				priority,
 			)
 		}
 		if err := w.Flush(); err != nil {

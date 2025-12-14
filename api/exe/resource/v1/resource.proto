@@ -58,6 +58,7 @@ message VMUsage {
 enum VMPriority {
   PRIORITY_NORMAL = 0;
   PRIORITY_LOW = 1;
+  PRIORITY_AUTO = 2;    // Use automatic detection based on activity
 }
 
 message SetVMPriorityRequest {

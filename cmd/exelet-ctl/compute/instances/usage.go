@@ -72,6 +72,8 @@ func formatPriority(p resourceapi.VMPriority) string {
 		return "normal"
 	case resourceapi.VMPriority_PRIORITY_LOW:
 		return "low"
+	case resourceapi.VMPriority_PRIORITY_AUTO:
+		return "auto"
 	default:
 		return "-"
 	}

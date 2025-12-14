@@ -66,11 +66,11 @@ Track `last_activity` timestamp per VM. Activity is detected using **rate-based 
 
 A VM is considered **idle** when `now - last_activity > idle_threshold`.
 
-Default idle threshold: 5 minutes (configurable).
+Default idle threshold: 1 minute (configurable).
 
 ## Priority Management
 
-Use cgroup v2 to adjust CPU scheduling weight for idle VMs.
+Use cgroup v2 to adjust CPU scheduling weight, IO weight, and memory controls for idle VMs.
 
 ### Cgroup Structure
 
@@ -79,7 +79,10 @@ Use cgroup v2 to adjust CPU scheduling weight for idle VMs.
 └── exelet.slice/
     ├── vm-<id-1>.scope/
     │   ├── cgroup.procs      # cloud-hypervisor PID
-    │   └── cpu.weight        # 100 (normal) or 10 (idle)
+    │   ├── cpu.weight        # 100 (normal) or 10 (idle)
+    │   ├── io.weight         # default 100 or default 10
+    │   ├── memory.swap.max   # max (swap allowed)
+    │   └── memory.high       # max (normal) or 80% of allocated (idle)
     ├── vm-<id-2>.scope/
     └── ...
 ```
@@ -91,10 +94,33 @@ Use cgroup v2 to adjust CPU scheduling weight for idle VMs.
 | Normal   | 100        | Default, active VM |
 | Low      | 10         | Idle VM, reduced scheduling priority |
 
+### IO Weight
+
+| Priority | io.weight | Description |
+|----------|-----------|-------------|
+| Normal   | 100       | Default, active VM |
+| Low      | 10        | Idle VM, reduced IO priority |
+
+### Memory Management
+
+Memory priority uses `memory.high` to control which VMs get swapped first under memory pressure:
+
+| Priority | memory.swap.max | memory.high | Effect |
+|----------|-----------------|-------------|--------|
+| Normal   | max             | max         | Swap allowed, no throttling (swapped last) |
+| Low      | max             | 80% of allocated | Swap allowed, throttled (swapped first) |
+
+**How it works:**
+- All VMs can swap when the system is under memory pressure
+- `memory.high` controls when the kernel starts aggressively reclaiming memory
+- Idle VMs have a lower `memory.high` threshold (80% of allocated memory)
+- When memory pressure occurs, the kernel targets VMs above their `memory.high` first
+- This means idle VMs get swapped to disk before active VMs
+
 ### Lifecycle
 
 1. **VM Start**: Create cgroup scope, move cloud-hypervisor process into it
-2. **Poll**: Check activity, adjust cpu.weight if priority changed
+2. **Poll**: Check activity, adjust cpu.weight/io.weight/memory.high if priority changed
 3. **VM Stop**: Remove cgroup scope
 
 ## gRPC Service
@@ -187,7 +213,7 @@ ResourceManagerEnabled bool
 ```
 
 Defaults:
-- `IdleThreshold`: 5 minutes
+- `IdleThreshold`: 1 minute
 - `ResourceManagerInterval`: 30 seconds
 - `ResourceManagerEnabled`: false (opt-in)
 

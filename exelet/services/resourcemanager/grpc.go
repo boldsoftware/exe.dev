@@ -79,18 +79,38 @@ func (m *ResourceManager) GetVMUsage(ctx context.Context, req *api.GetVMUsageReq
 }
 
 // SetVMPriority manually sets the priority for a VM.
+// Use PRIORITY_AUTO to clear the override and return to automatic detection.
 func (m *ResourceManager) SetVMPriority(ctx context.Context, req *api.SetVMPriorityRequest) (*api.SetVMPriorityResponse, error) {
 	if req.VmID == "" {
 		return nil, status.Error(codes.InvalidArgument, "vm_id is required")
 	}
 
-	// Store the override
+	// Handle auto mode - clear override and let automatic detection take over
+	if req.Priority == api.VMPriority_PRIORITY_AUTO {
+		m.priorityMu.Lock()
+		delete(m.priorityOverride, req.VmID)
+		m.priorityMu.Unlock()
+
+		m.log.InfoContext(ctx, "priority set to auto", "vm_id", req.VmID)
+		return &api.SetVMPriorityResponse{}, nil
+	}
+
+	// Store the override for manual priority
 	m.priorityMu.Lock()
 	m.priorityOverride[req.VmID] = req.Priority
 	m.priorityMu.Unlock()
 
+	// Get allocated memory and update state priority
+	var allocatedMemoryBytes uint64
+	m.usageMu.Lock()
+	if state, ok := m.usageState[req.VmID]; ok {
+		allocatedMemoryBytes = state.allocatedMemoryBytes
+		state.priority = req.Priority // Update state so GetVMUsage reflects the change immediately
+	}
+	m.usageMu.Unlock()
+
 	// Apply immediately
-	if err := m.applyPriority(ctx, req.VmID, req.Priority); err != nil {
+	if err := m.applyPriority(ctx, req.VmID, req.Priority, allocatedMemoryBytes); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to apply priority: %v", err)
 	}
 

@@ -12,12 +12,13 @@ import (
 
 	"exe.dev/exelet/config"
 	"exe.dev/exelet/services"
+	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	api "exe.dev/pkg/api/exe/resource/v1"
 )
 
 const (
 	// DefaultIdleThreshold is the default duration after which a VM is considered idle
-	DefaultIdleThreshold = 5 * time.Minute
+	DefaultIdleThreshold = 1 * time.Minute
 	// DefaultPollInterval is the default polling interval for the resource manager
 	DefaultPollInterval = 30 * time.Second
 	// DefaultCPUIdleThresholdPercent is the CPU usage percentage below which a VM is considered idle
@@ -48,7 +49,7 @@ type ResourceManager struct {
 
 	// Priority management
 	priorityMu       sync.Mutex
-	priorityOverride map[string]api.VMPriority // manual overrides
+	priorityOverride map[string]api.VMPriority // manual overrides (cleared when set to auto)
 	cgroupRoot       string
 
 	// Polling
@@ -62,15 +63,16 @@ type ResourceManager struct {
 
 // vmUsageState tracks per-VM usage and activity
 type vmUsageState struct {
-	name         string
-	cpuSeconds   float64
-	cpuPercent   float64 // CPU usage percentage from last poll interval
-	memoryBytes  uint64
-	diskBytes    uint64
-	netRxBytes   uint64
-	netTxBytes   uint64
-	lastActivity time.Time
-	priority     api.VMPriority
+	name                 string
+	cpuSeconds           float64
+	cpuPercent           float64 // CPU usage percentage from last poll interval
+	memoryBytes          uint64
+	allocatedMemoryBytes uint64 // VM's allocated memory from config (for memory.high calculation)
+	diskBytes            uint64
+	netRxBytes           uint64
+	netTxBytes           uint64
+	lastActivity         time.Time
+	priority             api.VMPriority
 
 	// Previous poll values for delta calculation
 	prevCPUSeconds float64
@@ -250,11 +252,17 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name string, vmC
 	m.usageMu.Lock()
 	state, exists := m.usageState[id]
 	if !exists {
+		// Get allocated memory from VM config for memory.high calculation
+		var allocatedMemory uint64
+		if cfg, ok := vmCfg.(*computeapi.VMConfig); ok && cfg != nil {
+			allocatedMemory = cfg.GetMemory()
+		}
 		state = &vmUsageState{
-			name:         name,
-			lastActivity: now,
-			priority:     api.VMPriority_PRIORITY_NORMAL,
-			prevPollTime: now,
+			name:                 name,
+			lastActivity:         now,
+			priority:             api.VMPriority_PRIORITY_NORMAL,
+			prevPollTime:         now,
+			allocatedMemoryBytes: allocatedMemory,
 		}
 		m.usageState[id] = state
 	}
@@ -304,7 +312,7 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name string, vmC
 	state.prevNetTxBytes = usage.netTxBytes
 	state.prevPollTime = now
 
-	// Determine priority
+	// Determine priority - use manual override if set, otherwise auto-detect based on activity
 	m.priorityMu.Lock()
 	override, hasOverride := m.priorityOverride[id]
 	m.priorityMu.Unlock()
@@ -320,6 +328,7 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name string, vmC
 
 	oldPriority := state.priority
 	state.priority = newPriority
+	allocatedMemoryBytes := state.allocatedMemoryBytes
 	m.usageMu.Unlock()
 
 	// Apply priority on first observation (to create cgroup) or when priority changes
@@ -337,7 +346,7 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name string, vmC
 				"name", name,
 				"priority", newPriority)
 		}
-		if err := m.applyPriority(ctx, id, newPriority); err != nil {
+		if err := m.applyPriority(ctx, id, newPriority, allocatedMemoryBytes); err != nil {
 			m.log.WarnContext(ctx, "resource manager: failed to apply priority", "id", id, "error", err)
 		}
 	}

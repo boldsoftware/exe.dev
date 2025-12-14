@@ -174,6 +174,30 @@ func TestPriorityWeights(t *testing.T) {
 	if ioWeightLow != 10 {
 		t.Errorf("ioWeightLow = %d, want 10", ioWeightLow)
 	}
+
+	// Memory high ratio
+	if memoryHighRatio <= 0 || memoryHighRatio >= 1 {
+		t.Errorf("memoryHighRatio (%v) should be between 0 and 1", memoryHighRatio)
+	}
+
+	if memoryHighRatio != 0.8 {
+		t.Errorf("memoryHighRatio = %v, want 0.8", memoryHighRatio)
+	}
+}
+
+func TestRequiredControllers(t *testing.T) {
+	// Verify that cpu, io, and memory controllers are required
+	expected := map[string]bool{"cpu": true, "io": true, "memory": true}
+
+	if len(requiredControllers) != len(expected) {
+		t.Errorf("requiredControllers has %d controllers, want %d", len(requiredControllers), len(expected))
+	}
+
+	for _, ctrl := range requiredControllers {
+		if !expected[ctrl] {
+			t.Errorf("unexpected controller %q in requiredControllers", ctrl)
+		}
+	}
 }
 
 func TestIdleDetection(t *testing.T) {
@@ -228,8 +252,8 @@ func TestVMPriorityValues(t *testing.T) {
 }
 
 func TestDefaultConfig(t *testing.T) {
-	if DefaultIdleThreshold != 5*time.Minute {
-		t.Errorf("DefaultIdleThreshold = %v, want 5m", DefaultIdleThreshold)
+	if DefaultIdleThreshold != 1*time.Minute {
+		t.Errorf("DefaultIdleThreshold = %v, want 1m", DefaultIdleThreshold)
 	}
 	if DefaultPollInterval != 30*time.Second {
 		t.Errorf("DefaultPollInterval = %v, want 30s", DefaultPollInterval)
