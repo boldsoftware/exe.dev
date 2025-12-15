@@ -274,6 +274,15 @@ func (s *Server) isProxyRequest(host string) bool {
 		hostname = host
 	}
 	hostname = domz.Canonicalize(hostname)
+	if s.env.WebHost == "localhost" {
+		// In local development, you can also use the local development machine's
+		// hostname as being localhost. This lets you do something like "socat TCP-LISTEN:8081,fork TCP:localhost:8080"
+		// and try exed's dashboard stuff from your phone.
+		oshost, err := os.Hostname()
+		if err == nil && hostname == oshost {
+			return false
+		}
+	}
 	if hostname == "" || domz.IsLocalhost(hostname) {
 		return false
 	}
