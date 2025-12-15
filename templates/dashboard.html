@@ -697,6 +697,153 @@
             border-color: #fecaca;
             color: #991b1b;
         }
+
+        /* VSCode Modal */
+        .vscode-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s ease, visibility 0.2s ease;
+        }
+
+        .vscode-modal-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .vscode-modal-content {
+            background: #fff;
+            border-radius: 8px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            transform: scale(0.95);
+            transition: transform 0.2s ease;
+        }
+
+        .vscode-modal-overlay.show .vscode-modal-content {
+            transform: scale(1);
+        }
+
+        .vscode-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .vscode-modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #000;
+        }
+
+        .vscode-modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: #666;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .vscode-modal-close:hover {
+            color: #333;
+        }
+
+        .vscode-modal-body {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.5;
+        }
+
+        .vscode-modal-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 6px;
+        }
+
+        .vscode-modal-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+
+        .vscode-modal-input:focus {
+            outline: none;
+            border-color: #999;
+        }
+
+        .vscode-modal-url-box {
+            background: #f5f5f5;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 10px 12px;
+            margin: 12px 0;
+            font-size: 12px;
+            word-break: break-all;
+            color: #333;
+        }
+
+        .vscode-modal-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .vscode-modal-btn {
+            flex: 1;
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            text-decoration: none;
+            text-align: center;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .vscode-modal-btn-primary {
+            background: #000;
+            color: #fff;
+            border: 1px solid #000;
+        }
+
+        .vscode-modal-btn-primary:hover {
+            background: #333;
+        }
+
+        .vscode-modal-btn-secondary {
+            background: #fff;
+            color: #666;
+            border: 1px solid #e0e0e0;
+        }
+
+        .vscode-modal-btn-secondary:hover {
+            background: #f5f5f5;
+            border-color: #d0d0d0;
+        }
     </style>
 </head>
 <body>
@@ -853,13 +1000,13 @@
                             </svg>
                             Open Terminal
                         </a>
-                        <a href="{{.VSCodeURL}}" class="action-btn-expanded" target="_blank">
+                        <button class="action-btn-expanded" onclick="openVSCodeModal('{{.VSCodeURL}}')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M16 2l6 4v12l-6 4-10-7.5V9.5z"></path>
                                 <path d="M6 9.5L16 2v20L6 14.5"></path>
                             </svg>
                             Open in VSCode
-                        </a>
+                        </button>
                         {{if .ShelleyURL}}
                         <a href="{{.ShelleyURL}}" class="action-btn-expanded" target="_blank">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -969,6 +1116,37 @@
     </div>
 
     <div id="toast" class="toast"></div>
+
+    <div id="vscode-modal" class="vscode-modal-overlay" onclick="closeVSCodeModal(event)">
+        <div class="vscode-modal-content" onclick="event.stopPropagation()">
+            <div class="vscode-modal-header">
+                <span class="vscode-modal-title">Open in VSCode</span>
+                <button class="vscode-modal-close" onclick="closeVSCodeModal()">&times;</button>
+            </div>
+            <div class="vscode-modal-body">
+                <label for="vscode-workdir" class="vscode-modal-label">Working Directory</label>
+                <input type="text" id="vscode-workdir" class="vscode-modal-input" value="/home/exedev" oninput="updateVSCodeURL()">
+                <div id="vscode-url-box" class="vscode-modal-url-box"></div>
+                <div class="vscode-modal-actions">
+                    <a id="vscode-open-btn" href="#" class="vscode-modal-btn vscode-modal-btn-primary">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                        Open VSCode
+                    </a>
+                    <button id="vscode-copy-btn" class="vscode-modal-btn vscode-modal-btn-secondary" onclick="copyVSCodeURL()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        Copy Link
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script src="/static/xterm.js"></script>
     <script src="/static/xterm-addon-web-links.js"></script>

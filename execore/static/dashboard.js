@@ -607,6 +607,68 @@ const openDeleteBoxModal = (boxName) => CommandModal.deleteBox(boxName);
 const openSetPublicModal = (boxName) => CommandModal.setPublic(boxName);
 const openSetPrivateModal = (boxName) => CommandModal.setPrivate(boxName);
 
+// VSCode modal functionality
+let vscodeBaseURL = '';
+
+function openVSCodeModal(url) {
+    // Extract the base URL (everything before the path after ssh-remote+connection/)
+    // URL format: vscode://vscode-remote/ssh-remote+boxname@host:port/path?windowId=_blank
+    const match = url.match(/^(vscode:\/\/vscode-remote\/ssh-remote\+[^/]+)/);
+    if (match) {
+        vscodeBaseURL = match[1];
+    } else {
+        vscodeBaseURL = url.replace(/\/[^?]+/, '');
+    }
+
+    // Reset working directory to default
+    const workdirInput = document.getElementById('vscode-workdir');
+    workdirInput.value = '/home/exedev';
+
+    updateVSCodeURL();
+
+    const modal = document.getElementById('vscode-modal');
+    modal.classList.add('show');
+}
+
+function closeVSCodeModal(event) {
+    // If called with event, only close if clicking overlay (not content)
+    if (event && event.target !== event.currentTarget) {
+        return;
+    }
+    const modal = document.getElementById('vscode-modal');
+    modal.classList.remove('show');
+}
+
+function updateVSCodeURL() {
+    const workdir = document.getElementById('vscode-workdir').value || '/home/exedev';
+    const fullURL = vscodeBaseURL + workdir + '?windowId=_blank';
+
+    document.getElementById('vscode-url-box').textContent = fullURL;
+    document.getElementById('vscode-open-btn').href = fullURL;
+}
+
+function copyVSCodeURL() {
+    const url = document.getElementById('vscode-url-box').textContent;
+    const btn = document.getElementById('vscode-copy-btn');
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(url).then(() => {
+            showCopyFeedback(btn);
+        }).catch(() => {
+            fallbackCopyTextToClipboard(url, btn);
+        });
+    } else {
+        fallbackCopyTextToClipboard(url, btn);
+    }
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeVSCodeModal();
+    }
+});
+
 // Initialize on page load
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initSearch);
