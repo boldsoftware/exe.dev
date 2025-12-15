@@ -73,6 +73,16 @@ func runSeccompTestSubprocess(t *testing.T) {
 		t.Fatalf("Expected EPERM, got %v", err)
 	}
 	t.Logf("Kill of self correctly returned EPERM")
+
+	// Try to kill using negative PID (process group kill) - this should also fail
+	err = syscall.Kill(-pid, syscall.SIGTERM)
+	if err == nil {
+		t.Fatal("Expected kill of -self to fail, but it succeeded")
+	}
+	if err != syscall.EPERM {
+		t.Fatalf("Expected EPERM for negative PID, got %v", err)
+	}
+	t.Logf("Kill of -self correctly returned EPERM")
 }
 
 func TestBlockKillSelf_ChildCannotKillParent(t *testing.T) {
@@ -103,7 +113,7 @@ func runChildCannotKillParentSubprocess(t *testing.T) {
 	}
 	t.Log("Seccomp filter installed in parent")
 
-	// Spawn a child process that tries to kill the parent
+	// Spawn a child process that tries to kill the parent using positive PID
 	// The child inherits the seccomp filter, which blocks kill(parent_pid, ...)
 	script := fmt.Sprintf(`
 echo "Child attempting to kill parent PID %d"
@@ -121,18 +131,50 @@ fi
 
 	cmd := exec.Command("sh", "-c", script)
 	output, err := cmd.CombinedOutput()
-	t.Logf("Child output:\n%s", output)
+	t.Logf("Child output (positive PID):\n%s", output)
 
 	// Check that the child reported success (kill was blocked)
 	if err != nil {
-		t.Fatalf("Child process reported failure: %v", err)
+		t.Fatalf("Child process reported failure (positive PID): %v", err)
 	}
 
 	// Verify the output contains our success message
 	if !strings.Contains(string(output), "SUCCESS: kill was blocked") {
-		t.Fatalf("Expected success message in output")
+		t.Fatalf("Expected success message in output (positive PID)")
 	}
 
 	// We're still alive!
-	t.Logf("Parent (PID %d) survived child's kill attempt", pid)
+	t.Logf("Parent (PID %d) survived child's positive PID kill attempt", pid)
+
+	// Now test with negative PID (process group kill)
+	negScript := fmt.Sprintf(`
+echo "Child attempting to kill parent process group with PID -%d"
+kill -TERM -%d 2>&1
+result=$?
+echo "kill exit code: $result"
+if [ $result -ne 0 ]; then
+    echo "SUCCESS: kill -pid was blocked"
+    exit 0
+else
+    echo "FAILURE: kill -pid succeeded (parent should be dead)"
+    exit 1
+fi
+`, pid, pid)
+
+	negCmd := exec.Command("sh", "-c", negScript)
+	negOutput, negErr := negCmd.CombinedOutput()
+	t.Logf("Child output (negative PID):\n%s", negOutput)
+
+	// Check that the child reported success (kill was blocked)
+	if negErr != nil {
+		t.Fatalf("Child process reported failure (negative PID): %v", negErr)
+	}
+
+	// Verify the output contains our success message
+	if !strings.Contains(string(negOutput), "SUCCESS: kill -pid was blocked") {
+		t.Fatalf("Expected success message in output (negative PID)")
+	}
+
+	// We're still alive!
+	t.Logf("Parent (PID %d) survived child's negative PID kill attempt", pid)
 }

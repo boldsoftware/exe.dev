@@ -18,3 +18,5 @@
    ```
    Simply setting `input.value = '...'` won't work because React won't detect the change.
 9. Commit your changes before finishing your turn.
+10. If you are testing Shelley itself, be aware that you might be running "under" shelley,
+  and indiscrimenantly running pkill -f shelley may break things.

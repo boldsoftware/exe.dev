@@ -46,61 +46,65 @@ func bpfJump(code uint16, k uint32, jt, jf uint8) unix.SockFilter {
 
 // BlockKillSelf installs a seccomp filter that prevents any process from
 // sending signals to the current process via kill(2) and related syscalls
-// (tkill, tgkill, pidfd_send_signal).
+// (tkill, tgkill).
 // This must be called before spawning child processes.
 // The filter is inherited by child processes.
+//
+// The filter is installed with SECCOMP_FILTER_FLAG_TSYNC to synchronize
+// across all threads in the process, ensuring child processes spawned
+// from any goroutine will inherit the filter.
 func BlockKillSelf() error {
 	pid := uint32(os.Getpid())
+	// Negative PID in two's complement (for blocking kill(-pid, sig) which
+	// sends signals to the process group)
+	negPid := uint32(-int32(pid))
 
-	// Build BPF filter program that blocks kill/tkill/tgkill/pidfd_send_signal
-	// when arg0 (target pid) matches our pid.
+	// Build BPF filter program that blocks kill/tkill/tgkill
+	// when arg0 (target pid) matches our pid or -pid.
 	//
 	// The filter structure:
 	// 1. Load and check architecture
 	// 2. Load syscall number
 	// 3. Check if it's one of the signal-sending syscalls
-	// 4. If so, check if arg0 == our pid
+	// 4. If so, check if arg0 == our pid OR arg0 == -our pid
 	// 5. If targeting us, return EPERM; otherwise allow
 	filter := []unix.SockFilter{
 		// [0] Load architecture
 		bpfStmt(bpfLD|bpfW|bpfABS, offsetArch),
 		// [1] If not our arch, jump to allow (end of filter)
-		bpfJump(bpfJMP|bpfJEQ|bpfK, auditArch, 0, 13), // skip to ALLOW at [15]
+		bpfJump(bpfJMP|bpfJEQ|bpfK, auditArch, 0, 12), // skip to ALLOW at [14]
 
 		// [2] Load syscall number
 		bpfStmt(bpfLD|bpfW|bpfABS, offsetNr),
 
 		// [3] Check for kill
-		bpfJump(bpfJMP|bpfJEQ|bpfK, sysKill, 8, 0), // match -> check pid at [12]
+		bpfJump(bpfJMP|bpfJEQ|bpfK, sysKill, 4, 0), // match -> check pid at [8]
 		// [4] Check for tkill
-		bpfJump(bpfJMP|bpfJEQ|bpfK, sysTkill, 7, 0), // match -> check pid at [12]
+		bpfJump(bpfJMP|bpfJEQ|bpfK, sysTkill, 3, 0), // match -> check pid at [8]
 		// [5] Check for tgkill (arg0 is tgid, arg2 is tid - we check arg0)
-		bpfJump(bpfJMP|bpfJEQ|bpfK, sysTgkill, 6, 0), // match -> check pid at [12]
-		// [6] Check for pidfd_send_signal (arg0 is pidfd, not pid - skip this check)
-		// pidfd_send_signal uses a file descriptor, not a pid, so we can't easily
-		// filter it by pid. We'll skip it for now.
-		// If we wanted to block it entirely: bpfJump(bpfJMP|bpfJEQ|bpfK, sysPidfdSendSignal, 0, 1),
-		// but that would break legitimate uses.
+		bpfJump(bpfJMP|bpfJEQ|bpfK, sysTgkill, 2, 0), // match -> check pid at [8]
 
-		// [6-11] Jump to allow for non-matching syscalls
-		bpfJump(bpfJMP|bpfJEQ|bpfK, 0xFFFFFFFF, 0, 8), // never matches, always jumps to ALLOW
+		// [6-7] Jump to allow for non-matching syscalls
+		bpfJump(bpfJMP|bpfJEQ|bpfK, 0xFFFFFFFF, 0, 7), // never matches, always jumps to ALLOW at [14]
+		bpfStmt(bpfRET|bpfK, unix.SECCOMP_RET_ALLOW),  // [7] unreachable filler
 
-		// This is unreachable filler to keep offsets correct
-		bpfStmt(bpfRET|bpfK, unix.SECCOMP_RET_ALLOW), // [7]
-		bpfStmt(bpfRET|bpfK, unix.SECCOMP_RET_ALLOW), // [8]
-		bpfStmt(bpfRET|bpfK, unix.SECCOMP_RET_ALLOW), // [9]
-		bpfStmt(bpfRET|bpfK, unix.SECCOMP_RET_ALLOW), // [10]
-		bpfStmt(bpfRET|bpfK, unix.SECCOMP_RET_ALLOW), // [11]
-
-		// [12] Load first argument (target PID) - lower 32 bits
+		// [8] Load first argument (target PID) - lower 32 bits
 		bpfStmt(bpfLD|bpfW|bpfABS, offsetArgs),
-		// [13] Check if target PID matches our PID
-		bpfJump(bpfJMP|bpfJEQ|bpfK, pid, 0, 1), // if not our pid, jump to allow
+		// [9] Check if target PID matches our PID (positive)
+		bpfJump(bpfJMP|bpfJEQ|bpfK, pid, 3, 0), // if our pid, jump to EPERM at [13]
+		// [10] Check if target PID matches -our PID (for process group kills)
+		bpfJump(bpfJMP|bpfJEQ|bpfK, negPid, 2, 0), // if -our pid, jump to EPERM at [13]
 
-		// [14] Return EPERM for signal syscalls targeting our process
+		// [11] Not targeting us, allow
+		bpfStmt(bpfRET|bpfK, unix.SECCOMP_RET_ALLOW),
+
+		// [12] Unreachable filler
+		bpfStmt(bpfRET|bpfK, unix.SECCOMP_RET_ALLOW),
+
+		// [13] Return EPERM for signal syscalls targeting our process
 		bpfStmt(bpfRET|bpfK, unix.SECCOMP_RET_ERRNO|uint32(unix.EPERM)),
 
-		// [15] Allow the syscall
+		// [14] Allow the syscall
 		bpfStmt(bpfRET|bpfK, unix.SECCOMP_RET_ALLOW),
 	}
 
@@ -115,10 +119,13 @@ func BlockKillSelf() error {
 		Filter: &filter[0],
 	}
 
-	// Use seccomp() syscall directly
-	_, _, errno := unix.Syscall(unix.SYS_SECCOMP, unix.SECCOMP_SET_MODE_FILTER, 0, uintptr(unsafe.Pointer(&prog)))
+	// Use seccomp() syscall with SECCOMP_FILTER_FLAG_TSYNC to apply the filter
+	// to all threads in the process. This ensures that child processes spawned
+	// from any goroutine (which may run on different OS threads) will inherit
+	// the filter.
+	_, _, errno := unix.Syscall(unix.SYS_SECCOMP, unix.SECCOMP_SET_MODE_FILTER, unix.SECCOMP_FILTER_FLAG_TSYNC, uintptr(unsafe.Pointer(&prog)))
 	if errno != 0 {
-		return fmt.Errorf("seccomp(SECCOMP_SET_MODE_FILTER): %w", errno)
+		return fmt.Errorf("seccomp(SECCOMP_SET_MODE_FILTER, TSYNC): %w", errno)
 	}
 
 	return nil
