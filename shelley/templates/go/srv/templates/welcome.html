@@ -28,7 +28,7 @@
             <ul>
               <li>Source code is in <code>~/src</code></li>
               <li>Edit via SSH or <a href="vscode://vscode-remote/ssh-remote+{{.Hostname}}@exe.dev/home/exedev/src?windowId=_blank">open in VS Code</a></li>
-              {{if .IsOwner}}<li>Chat with our coding agent, <a href="https://{{.Hostname}}.exe.dev:9999" target="_blank">Shelley</a></li>{{end}}
+              <li>Chat with our coding agent, <a href="https://{{.Hostname}}.exe.dev:9999" target="_blank">Shelley</a></li>
               <li><code>sudo systemctl restart srv</code> to pick up changes</li>
             </ul>
           </article>
@@ -62,7 +62,6 @@
             <span class="action-detail">{{.Hostname}}.xterm.exe.dev</span>
           </a>
         </li>
-        {{if .IsOwner}}
         <li>
           <a href="https://{{.Hostname}}.exe.dev:9999" target="_blank">
             <span class="action-icon">🤖</span>
@@ -70,7 +69,6 @@
             <span class="action-detail">{{.Hostname}}.exe.dev:9999</span>
           </a>
         </li>
-        {{end}}
         <li>
           <a href="https://exe.dev" target="_blank">
             <span class="action-icon">🏠</span>

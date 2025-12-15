@@ -29,8 +29,6 @@ type pageData struct {
 	Hostname   string
 	Now        string
 	UserEmail  string
-	UserRole   string
-	IsOwner    bool
 	VisitCount int64
 	LoginURL   string
 	LogoutURL  string
@@ -60,10 +58,8 @@ func New(dbPath, hostname string) (*Server, error) {
 func (s *Server) HandleRoot(w http.ResponseWriter, r *http.Request) {
 	// Identity from proxy headers (if present)
 	// UserID is stable; email is useful.
-	// Role indicates relationship to the box: owner, user, or anonymous.
 	userID := strings.TrimSpace(r.Header.Get("X-ExeDev-UserID"))
 	userEmail := strings.TrimSpace(r.Header.Get("X-ExeDev-Email"))
-	userRole := strings.TrimSpace(r.Header.Get("X-ExeDev-Role"))
 	now := time.Now()
 
 	var count int64
@@ -90,8 +86,6 @@ func (s *Server) HandleRoot(w http.ResponseWriter, r *http.Request) {
 		Hostname:   s.Hostname,
 		Now:        now.Format(time.RFC3339),
 		UserEmail:  userEmail,
-		UserRole:   userRole,
-		IsOwner:    userRole == "owner",
 		VisitCount: count,
 		LoginURL:   loginURLForRequest(r),
 		LogoutURL:  "/__exe.dev/logout",
