@@ -12,8 +12,8 @@ import (
 
 // Create creates a new instance filesystem
 func (s *ZFS) Create(ctx context.Context, id string, cfg *api.FilesystemConfig) (*api.Filesystem, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockVolume(id)
+	defer unlock()
 
 	var err error
 	// check if exists

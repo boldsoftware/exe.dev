@@ -9,8 +9,8 @@ import (
 )
 
 func (s *ZFS) Mount(ctx context.Context, id string) (*api.FilesystemMountConfig, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockVolume(id)
+	defer unlock()
 
 	mountpoint, err := s.mountInstanceFS(id)
 	if err != nil {

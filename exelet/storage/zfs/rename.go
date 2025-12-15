@@ -11,8 +11,8 @@ import (
 
 // Rename renames a filesystem from oldID to newID
 func (s *ZFS) Rename(ctx context.Context, oldID, newID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockVolumes(oldID, newID)
+	defer unlock()
 
 	oldDSName := s.getDSName(oldID)
 	newDSName := s.getDSName(newID)

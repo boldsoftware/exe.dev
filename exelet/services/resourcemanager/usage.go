@@ -1,7 +1,6 @@
 package resourcemanager
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -30,10 +29,10 @@ type usageData struct {
 func (m *ResourceManager) collectUsage(ctx context.Context, id, name string) (*usageData, error) {
 	usage := &usageData{}
 
-	// Get VM PID from cloud-hypervisor
-	pid, err := m.getVMPID(ctx, id)
+	// Get VM info from cloud-hypervisor (includes PID and memory)
+	pid, memoryBytes, err := m.getVMInfo(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("get VM PID: %w", err)
+		return nil, fmt.Errorf("get VM info: %w", err)
 	}
 
 	// CPU usage from /proc/<pid>/stat
@@ -42,12 +41,8 @@ func (m *ResourceManager) collectUsage(ctx context.Context, id, name string) (*u
 		return nil, fmt.Errorf("read CPU usage: %w", err)
 	}
 
-	// Memory usage from /proc/<pid>/status
-	usage.memoryBytes, err = m.readMemoryUsage(pid)
-	if err != nil {
-		// Non-fatal, continue with other metrics
-		m.log.DebugContext(ctx, "failed to read memory usage", "id", id, "error", err)
-	}
+	// Memory from cloud-hypervisor API (actual guest memory)
+	usage.memoryBytes = memoryBytes
 
 	// Disk usage from ZFS
 	usage.diskBytes, err = m.readDiskUsage(ctx, id)
@@ -64,15 +59,15 @@ func (m *ResourceManager) collectUsage(ctx context.Context, id, name string) (*u
 	return usage, nil
 }
 
-// getVMPID retrieves the cloud-hypervisor process PID for a VM.
-func (m *ResourceManager) getVMPID(ctx context.Context, id string) (int, error) {
+// getVMInfo retrieves VM info from cloud-hypervisor including PID and actual memory usage.
+func (m *ResourceManager) getVMInfo(ctx context.Context, id string) (pid int, memoryBytes uint64, err error) {
 	runtimeURL, err := url.Parse(m.config.RuntimeAddress)
 	if err != nil {
-		return 0, fmt.Errorf("parse runtime address: %w", err)
+		return 0, 0, fmt.Errorf("parse runtime address: %w", err)
 	}
 
 	if runtimeURL.Scheme != "cloudhypervisor" {
-		return 0, fmt.Errorf("unsupported runtime scheme: %s", runtimeURL.Scheme)
+		return 0, 0, fmt.Errorf("unsupported runtime scheme: %s", runtimeURL.Scheme)
 	}
 
 	socketPath := filepath.Join(runtimeURL.Path, id, "chh.sock")
@@ -83,19 +78,36 @@ func (m *ResourceManager) getVMPID(ctx context.Context, id string) (int, error) 
 	// Use retry=false - fail fast for monitoring queries
 	cl, err := client.NewCloudHypervisorClient(reqCtx, socketPath, false, m.log)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer cl.Close()
 
-	resp, err := cl.GetVmmPingWithResponse(reqCtx)
+	// Get PID from vmm.ping
+	pingResp, err := cl.GetVmmPingWithResponse(reqCtx)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	if resp.JSON200 == nil || resp.JSON200.Pid == nil {
-		return 0, fmt.Errorf("cloud-hypervisor did not report PID")
+	if pingResp.JSON200 == nil || pingResp.JSON200.Pid == nil {
+		return 0, 0, fmt.Errorf("cloud-hypervisor did not report PID")
+	}
+	pid = int(*pingResp.JSON200.Pid)
+
+	// Get actual memory from vm.info
+	infoResp, err := cl.GetVmInfoWithResponse(reqCtx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("get vm info: %w", err)
+	}
+	if infoResp.JSON200 != nil && infoResp.JSON200.MemoryActualSize != nil {
+		memoryBytes = uint64(*infoResp.JSON200.MemoryActualSize)
 	}
 
-	return int(*resp.JSON200.Pid), nil
+	return pid, memoryBytes, nil
+}
+
+// getVMPID retrieves just the PID for a VM (used by priority management).
+func (m *ResourceManager) getVMPID(ctx context.Context, id string) (int, error) {
+	pid, _, err := m.getVMInfo(ctx, id)
+	return pid, err
 }
 
 // readCPUUsage reads total CPU seconds from /proc/<pid>/stat.
@@ -132,34 +144,6 @@ func (m *ResourceManager) readCPUUsage(pid int) (float64, error) {
 	return float64(utime+stime) / clockTicks, nil
 }
 
-// readMemoryUsage reads memory usage from /proc/<pid>/status.
-func (m *ResourceManager) readMemoryUsage(pid int) (uint64, error) {
-	statusPath := fmt.Sprintf("/proc/%d/status", pid)
-	f, err := os.Open(statusPath)
-	if err != nil {
-		return 0, err
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		// VmRSS is the resident set size (actual memory in use)
-		if strings.HasPrefix(line, "VmRSS:") {
-			fields := strings.Fields(line)
-			if len(fields) < 2 {
-				return 0, fmt.Errorf("malformed VmRSS line")
-			}
-			kb, err := strconv.ParseUint(fields[1], 10, 64)
-			if err != nil {
-				return 0, fmt.Errorf("parse VmRSS: %w", err)
-			}
-			return kb * 1024, nil
-		}
-	}
-
-	return 0, fmt.Errorf("VmRSS not found")
-}
 
 // readDiskUsage reads disk usage from ZFS.
 func (m *ResourceManager) readDiskUsage(ctx context.Context, id string) (uint64, error) {

@@ -9,8 +9,8 @@ import (
 
 // Fsck runs filesystem check on the specified filesystem
 func (s *ZFS) Fsck(ctx context.Context, id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockVolume(id)
+	defer unlock()
 
 	diskPath, err := s.getDSDiskPath(id)
 	if err != nil {

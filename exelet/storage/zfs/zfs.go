@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -23,7 +24,7 @@ var ErrNotImplemented = errors.New("not implemented")
 type ZFS struct {
 	dataDir string
 	dsName  string
-	mu      *sync.Mutex
+	locks   sync.Map // map[string]*sync.Mutex - per-volume locks
 	log     *slog.Logger
 }
 
@@ -58,13 +59,46 @@ func NewZFS(addr string, log *slog.Logger) (*ZFS, error) {
 	return &ZFS{
 		dataDir: dataDir,
 		dsName:  dsName,
-		mu:      &sync.Mutex{},
 		log:     log,
 	}, nil
 }
 
 func (s *ZFS) Type() string {
 	return storageType
+}
+
+// getLock returns the lock for a volume ID, creating one if needed
+func (s *ZFS) getLock(id string) *sync.Mutex {
+	lock, _ := s.locks.LoadOrStore(id, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
+
+// lockVolume locks a single volume and returns an unlock function
+func (s *ZFS) lockVolume(id string) func() {
+	lock := s.getLock(id)
+	lock.Lock()
+	return lock.Unlock
+}
+
+// lockVolumes locks multiple volumes in sorted order to prevent deadlocks
+// and returns an unlock function that releases them in reverse order
+func (s *ZFS) lockVolumes(ids ...string) func() {
+	sorted := make([]string, len(ids))
+	copy(sorted, ids)
+	sort.Strings(sorted)
+
+	unlocks := make([]func(), len(sorted))
+	for i, id := range sorted {
+		lock := s.getLock(id)
+		lock.Lock()
+		unlocks[i] = lock.Unlock
+	}
+
+	return func() {
+		for i := len(unlocks) - 1; i >= 0; i-- {
+			unlocks[i]()
+		}
+	}
 }
 
 func align4K(v uint64) uint64 {

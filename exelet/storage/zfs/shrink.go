@@ -18,10 +18,10 @@ const (
 	minVolumeSize = 256 * 1024 * 1024
 )
 
-// Expand resizes the specified filesystem to the desired size
+// Shrink resizes the specified filesystem to the minimum size
 func (s *ZFS) Shrink(ctx context.Context, id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockVolume(id)
+	defer unlock()
 
 	dsName := s.getDSName(id)
 	ds, err := zfs.GetDataset(dsName)

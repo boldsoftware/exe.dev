@@ -7,8 +7,8 @@ import (
 )
 
 func (s *ZFS) Unmount(ctx context.Context, id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockVolume(id)
+	defer unlock()
 
 	if err := s.unmountInstanceFS(id); err != nil {
 		return err
