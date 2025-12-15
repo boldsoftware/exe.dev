@@ -15,6 +15,19 @@ function UsageDetailModal({ usage, durationMs, onClose }: UsageDetailModalProps)
     return `${(ms / 60000).toFixed(2)}m`;
   };
 
+  // Format timestamp for display
+  const formatTimestamp = (isoString: string): string => {
+    const date = new Date(isoString);
+    return date.toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
+
   // Close on escape key
   React.useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -136,6 +149,12 @@ function UsageDetailModal({ usage, durationMs, onClose }: UsageDetailModalProps)
             <>
               <div style={{ color: "#6b7280", fontWeight: "500" }}>Duration:</div>
               <div style={{ color: "#1f2937" }}>{formatDuration(durationMs)}</div>
+            </>
+          )}
+          {usage.end_time && (
+            <>
+              <div style={{ color: "#6b7280", fontWeight: "500" }}>Timestamp:</div>
+              <div style={{ color: "#1f2937" }}>{formatTimestamp(usage.end_time)}</div>
             </>
           )}
         </div>
