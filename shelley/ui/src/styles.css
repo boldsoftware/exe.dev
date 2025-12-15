@@ -319,7 +319,9 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s, opacity 0.2s;
+  transition:
+    background-color 0.2s,
+    opacity 0.2s;
   opacity: 0.4;
   color: var(--text-secondary);
 }

@@ -196,7 +196,9 @@ function ConversationDrawer({
                     style={{ cursor: showArchived ? "default" : "pointer" }}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="conversation-title">{getConversationPreview(conversation)}</div>
+                      <div className="conversation-title">
+                        {getConversationPreview(conversation)}
+                      </div>
                       <div className="conversation-date">{formatDate(conversation.updated_at)}</div>
                     </div>
                     <div
