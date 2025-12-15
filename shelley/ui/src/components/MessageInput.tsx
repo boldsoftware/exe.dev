@@ -178,7 +178,7 @@ function MessageInput({ onSend, disabled = false, autoFocus = false, onFocus }: 
           placeholder="Type your message..."
           className="message-textarea"
           disabled={isDisabled}
-          style={{ height: "auto" }}
+          rows={1}
           aria-label="Message input"
           data-testid="message-input"
           autoFocus={autoFocus}
