@@ -279,6 +279,22 @@ func (u *Usage) String() string {
 	return fmt.Sprintf("in: %d, out: %d", u.InputTokens, u.OutputTokens)
 }
 
+// TotalInputTokens returns the total number of input tokens including cached tokens.
+// This represents the full context that was sent to the model:
+// - InputTokens: tokens processed (not from cache)
+// - CacheCreationInputTokens: tokens written to cache (also part of input)
+// - CacheReadInputTokens: tokens read from cache (also part of input)
+func (u *Usage) TotalInputTokens() uint64 {
+	return u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+}
+
+// ContextWindowUsed returns the total context window usage after this response.
+// This is the size of the conversation that would be sent to the model for the next turn:
+// total input tokens + output tokens (which become part of the conversation).
+func (u *Usage) ContextWindowUsed() uint64 {
+	return u.TotalInputTokens() + u.OutputTokens
+}
+
 func (u *Usage) IsZero() bool {
 	return *u == Usage{}
 }

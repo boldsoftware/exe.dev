@@ -71,6 +71,10 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 			return nil, ctx.Err()
 		}
 	}
+
+	// Calculate input token count based on the request content
+	inputTokens := s.countRequestTokens(req)
+
 	// Extract the text content from the last user message
 	var inputText string
 	if len(req.Messages) > 0 {
@@ -88,53 +92,53 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 	// Handle input using case statements
 	switch inputText {
 	case "hello":
-		return s.makeResponse("Well, hi there!"), nil
+		return s.makeResponse("Well, hi there!", inputTokens), nil
 
 	case "Hello":
-		return s.makeResponse("Hello! I'm Shelley, your AI assistant. How can I help you today?"), nil
+		return s.makeResponse("Hello! I'm Shelley, your AI assistant. How can I help you today?", inputTokens), nil
 
 	case "Create an example":
-		return s.makeThinkToolResponse("I'll create a simple example for you."), nil
+		return s.makeThinkToolResponse("I'll create a simple example for you.", inputTokens), nil
 
 	case "screenshot":
 		// Trigger a screenshot of the current page
-		return s.makeScreenshotToolResponse(""), nil
+		return s.makeScreenshotToolResponse("", inputTokens), nil
 
 	case "tool smorgasbord":
 		// Return a response with all tool types for testing
-		return s.makeToolSmorgasbordResponse(), nil
+		return s.makeToolSmorgasbordResponse(inputTokens), nil
 
 	case "echo: foo":
-		return s.makeResponse("foo"), nil
+		return s.makeResponse("foo", inputTokens), nil
 
 	case "patch fail":
 		// Trigger a patch that will fail (file doesn't exist)
-		return s.makePatchToolResponse("/nonexistent/file/that/does/not/exist.txt"), nil
+		return s.makePatchToolResponse("/nonexistent/file/that/does/not/exist.txt", inputTokens), nil
 
 	case "patch bad json":
 		// Trigger a patch with malformed JSON (simulates Anthropic sending invalid JSON)
-		return s.makeMalformedPatchToolResponse(), nil
+		return s.makeMalformedPatchToolResponse(inputTokens), nil
 
 	default:
 		// Handle pattern-based inputs
 		if strings.HasPrefix(inputText, "echo: ") {
 			text := strings.TrimPrefix(inputText, "echo: ")
-			return s.makeResponse(text), nil
+			return s.makeResponse(text, inputTokens), nil
 		}
 
 		if strings.HasPrefix(inputText, "bash: ") {
 			cmd := strings.TrimPrefix(inputText, "bash: ")
-			return s.makeBashToolResponse(cmd), nil
+			return s.makeBashToolResponse(cmd, inputTokens), nil
 		}
 
 		if strings.HasPrefix(inputText, "think: ") {
 			thoughts := strings.TrimPrefix(inputText, "think: ")
-			return s.makeThinkToolResponse(thoughts), nil
+			return s.makeThinkToolResponse(thoughts, inputTokens), nil
 		}
 
 		if strings.HasPrefix(inputText, "patch: ") {
 			filePath := strings.TrimPrefix(inputText, "patch: ")
-			return s.makePatchToolResponse(filePath), nil
+			return s.makePatchToolResponse(filePath, inputTokens), nil
 		}
 
 		if strings.HasPrefix(inputText, "error: ") {
@@ -144,7 +148,7 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 
 		if strings.HasPrefix(inputText, "screenshot: ") {
 			selector := strings.TrimSpace(strings.TrimPrefix(inputText, "screenshot: "))
-			return s.makeScreenshotToolResponse(selector), nil
+			return s.makeScreenshotToolResponse(selector, inputTokens), nil
 		}
 
 		if strings.HasPrefix(inputText, "delay: ") {
@@ -158,16 +162,20 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 					return nil, ctx.Err()
 				}
 			}
-			return s.makeResponse(fmt.Sprintf("Delayed for %s seconds", delayStr)), nil
+			return s.makeResponse(fmt.Sprintf("Delayed for %s seconds", delayStr), inputTokens), nil
 		}
 
 		// Default response for undefined inputs
-		return s.makeResponse("edit predictable.go to add a response for that one..."), nil
+		return s.makeResponse("edit predictable.go to add a response for that one...", inputTokens), nil
 	}
 }
 
 // makeResponse creates a simple text response
-func (s *PredictableService) makeResponse(text string) *llm.Response {
+func (s *PredictableService) makeResponse(text string, inputTokens uint64) *llm.Response {
+	outputTokens := uint64(len(text) / 4) // ~4 chars per token
+	if outputTokens == 0 {
+		outputTokens = 1
+	}
 	return &llm.Response{
 		ID:    fmt.Sprintf("pred-%d", time.Now().UnixNano()),
 		Type:  "message",
@@ -178,26 +186,31 @@ func (s *PredictableService) makeResponse(text string) *llm.Response {
 		},
 		StopReason: llm.StopReasonStopSequence,
 		Usage: llm.Usage{
-			InputTokens:  uint64(len(strings.Fields(text))),
-			OutputTokens: uint64(len(strings.Fields(text))),
+			InputTokens:  inputTokens,
+			OutputTokens: outputTokens,
 			CostUSD:      0.001,
 		},
 	}
 }
 
 // makeBashToolResponse creates a response that calls the bash tool
-func (s *PredictableService) makeBashToolResponse(command string) *llm.Response {
+func (s *PredictableService) makeBashToolResponse(command string, inputTokens uint64) *llm.Response {
 	// Properly marshal the command to avoid JSON escaping issues
 	toolInputData := map[string]string{"command": command}
 	toolInputBytes, _ := json.Marshal(toolInputData)
 	toolInput := json.RawMessage(toolInputBytes)
+	responseText := fmt.Sprintf("I'll run the command: %s", command)
+	outputTokens := uint64(len(responseText)/4 + len(toolInputBytes)/4)
+	if outputTokens == 0 {
+		outputTokens = 1
+	}
 	return &llm.Response{
 		ID:    fmt.Sprintf("pred-bash-%d", time.Now().UnixNano()),
 		Type:  "message",
 		Role:  llm.MessageRoleAssistant,
 		Model: "predictable-v1",
 		Content: []llm.Content{
-			{Type: llm.ContentTypeText, Text: fmt.Sprintf("I'll run the command: %s", command)},
+			{Type: llm.ContentTypeText, Text: responseText},
 			{
 				ID:        fmt.Sprintf("tool_%d", time.Now().UnixNano()%1000),
 				Type:      llm.ContentTypeToolUse,
@@ -207,26 +220,31 @@ func (s *PredictableService) makeBashToolResponse(command string) *llm.Response 
 		},
 		StopReason: llm.StopReasonToolUse,
 		Usage: llm.Usage{
-			InputTokens:  uint64(len(strings.Fields(command)) + 5),
-			OutputTokens: uint64(len(strings.Fields(command)) + 10),
+			InputTokens:  inputTokens,
+			OutputTokens: outputTokens,
 			CostUSD:      0.002,
 		},
 	}
 }
 
 // makeThinkToolResponse creates a response that calls the think tool
-func (s *PredictableService) makeThinkToolResponse(thoughts string) *llm.Response {
+func (s *PredictableService) makeThinkToolResponse(thoughts string, inputTokens uint64) *llm.Response {
 	// Properly marshal the thoughts to avoid JSON escaping issues
 	toolInputData := map[string]string{"thoughts": thoughts}
 	toolInputBytes, _ := json.Marshal(toolInputData)
 	toolInput := json.RawMessage(toolInputBytes)
+	responseText := "Let me think about this."
+	outputTokens := uint64(len(responseText)/4 + len(toolInputBytes)/4)
+	if outputTokens == 0 {
+		outputTokens = 1
+	}
 	return &llm.Response{
 		ID:    fmt.Sprintf("pred-think-%d", time.Now().UnixNano()),
 		Type:  "message",
 		Role:  llm.MessageRoleAssistant,
 		Model: "predictable-v1",
 		Content: []llm.Content{
-			{Type: llm.ContentTypeText, Text: "Let me think about this."},
+			{Type: llm.ContentTypeText, Text: responseText},
 			{
 				ID:        fmt.Sprintf("tool_%d", time.Now().UnixNano()%1000),
 				Type:      llm.ContentTypeToolUse,
@@ -236,15 +254,15 @@ func (s *PredictableService) makeThinkToolResponse(thoughts string) *llm.Respons
 		},
 		StopReason: llm.StopReasonToolUse,
 		Usage: llm.Usage{
-			InputTokens:  uint64(len(strings.Fields(thoughts)) + 5),
-			OutputTokens: uint64(len(strings.Fields(thoughts)) + 5),
+			InputTokens:  inputTokens,
+			OutputTokens: outputTokens,
 			CostUSD:      0.002,
 		},
 	}
 }
 
 // makePatchToolResponse creates a response that calls the patch tool
-func (s *PredictableService) makePatchToolResponse(filePath string) *llm.Response {
+func (s *PredictableService) makePatchToolResponse(filePath string, inputTokens uint64) *llm.Response {
 	// Properly marshal the patch data to avoid JSON escaping issues
 	toolInputData := map[string]interface{}{
 		"path": filePath,
@@ -258,13 +276,18 @@ func (s *PredictableService) makePatchToolResponse(filePath string) *llm.Respons
 	}
 	toolInputBytes, _ := json.Marshal(toolInputData)
 	toolInput := json.RawMessage(toolInputBytes)
+	responseText := fmt.Sprintf("I'll patch the file: %s", filePath)
+	outputTokens := uint64(len(responseText)/4 + len(toolInputBytes)/4)
+	if outputTokens == 0 {
+		outputTokens = 1
+	}
 	return &llm.Response{
 		ID:    fmt.Sprintf("pred-patch-%d", time.Now().UnixNano()),
 		Type:  "message",
 		Role:  llm.MessageRoleAssistant,
 		Model: "predictable-v1",
 		Content: []llm.Content{
-			{Type: llm.ContentTypeText, Text: fmt.Sprintf("I'll patch the file: %s", filePath)},
+			{Type: llm.ContentTypeText, Text: responseText},
 			{
 				ID:        fmt.Sprintf("tool_%d", time.Now().UnixNano()%1000),
 				Type:      llm.ContentTypeToolUse,
@@ -274,8 +297,8 @@ func (s *PredictableService) makePatchToolResponse(filePath string) *llm.Respons
 		},
 		StopReason: llm.StopReasonToolUse,
 		Usage: llm.Usage{
-			InputTokens:  uint64(len(strings.Fields(filePath)) + 10),
-			OutputTokens: uint64(len(strings.Fields(filePath)) + 15),
+			InputTokens:  inputTokens,
+			OutputTokens: outputTokens,
 			CostUSD:      0.003,
 		},
 	}
@@ -283,7 +306,7 @@ func (s *PredictableService) makePatchToolResponse(filePath string) *llm.Respons
 
 // makeMalformedPatchToolResponse creates a response with malformed JSON that will fail to parse
 // This simulates when Anthropic sends back invalid JSON in the tool input
-func (s *PredictableService) makeMalformedPatchToolResponse() *llm.Response {
+func (s *PredictableService) makeMalformedPatchToolResponse(inputTokens uint64) *llm.Response {
 	// This malformed JSON has a string where an object is expected (patch field)
 	// Mimics the error: "cannot unmarshal string into Go struct field PatchInputOneSingular.patch"
 	malformedJSON := `{"path":"/home/agent/example.css","patch":"<parameter name=\"operation\">replace","oldText":".example {\n  color: red;\n}","newText":".example {\n  color: blue;\n}"}`
@@ -304,7 +327,7 @@ func (s *PredictableService) makeMalformedPatchToolResponse() *llm.Response {
 		},
 		StopReason: llm.StopReasonToolUse,
 		Usage: llm.Usage{
-			InputTokens:  50,
+			InputTokens:  inputTokens,
 			OutputTokens: 50,
 			CostUSD:      0.003,
 		},
@@ -344,21 +367,66 @@ func (s *PredictableService) ClearRequests() {
 	s.recentRequests = nil
 }
 
+// countRequestTokens estimates token count based on character count.
+// Uses a simple ~4 chars per token approximation.
+func (s *PredictableService) countRequestTokens(req *llm.Request) uint64 {
+	var totalChars int
+
+	// Count system prompt characters
+	for _, sys := range req.System {
+		totalChars += len(sys.Text)
+	}
+
+	// Count message characters
+	for _, msg := range req.Messages {
+		for _, content := range msg.Content {
+			switch content.Type {
+			case llm.ContentTypeText:
+				totalChars += len(content.Text)
+			case llm.ContentTypeToolUse:
+				totalChars += len(content.ToolName)
+				totalChars += len(content.ToolInput)
+			case llm.ContentTypeToolResult:
+				for _, result := range content.ToolResult {
+					if result.Type == llm.ContentTypeText {
+						totalChars += len(result.Text)
+					}
+				}
+			}
+		}
+	}
+
+	// Count tool definitions
+	for _, tool := range req.Tools {
+		totalChars += len(tool.Name)
+		totalChars += len(tool.Description)
+		totalChars += len(tool.InputSchema)
+	}
+
+	// ~4 chars per token is a rough approximation
+	return uint64(totalChars / 4)
+}
+
 // makeScreenshotToolResponse creates a response that calls the screenshot tool
-func (s *PredictableService) makeScreenshotToolResponse(selector string) *llm.Response {
+func (s *PredictableService) makeScreenshotToolResponse(selector string, inputTokens uint64) *llm.Response {
 	toolInputData := map[string]any{}
 	if selector != "" {
 		toolInputData["selector"] = selector
 	}
 	toolInputBytes, _ := json.Marshal(toolInputData)
 	toolInput := json.RawMessage(toolInputBytes)
+	responseText := "Taking a screenshot..."
+	outputTokens := uint64(len(responseText)/4 + len(toolInputBytes)/4)
+	if outputTokens == 0 {
+		outputTokens = 1
+	}
 	return &llm.Response{
 		ID:    fmt.Sprintf("pred-screenshot-%d", time.Now().UnixNano()),
 		Type:  "message",
 		Role:  llm.MessageRoleAssistant,
 		Model: "predictable-v1",
 		Content: []llm.Content{
-			{Type: llm.ContentTypeText, Text: "Taking a screenshot..."},
+			{Type: llm.ContentTypeText, Text: responseText},
 			{
 				ID:        fmt.Sprintf("tool_%d", time.Now().UnixNano()%1000),
 				Type:      llm.ContentTypeToolUse,
@@ -368,15 +436,15 @@ func (s *PredictableService) makeScreenshotToolResponse(selector string) *llm.Re
 		},
 		StopReason: llm.StopReasonToolUse,
 		Usage: llm.Usage{
-			InputTokens:  5,
-			OutputTokens: 5,
+			InputTokens:  inputTokens,
+			OutputTokens: outputTokens,
 			CostUSD:      0.0,
 		},
 	}
 }
 
 // makeToolSmorgasbordResponse creates a response that uses all available tool types
-func (s *PredictableService) makeToolSmorgasbordResponse() *llm.Response {
+func (s *PredictableService) makeToolSmorgasbordResponse(inputTokens uint64) *llm.Response {
 	baseNano := time.Now().UnixNano()
 	content := []llm.Content{
 		{Type: llm.ContentTypeText, Text: "Here's a sample of all the tools:"},
@@ -479,7 +547,7 @@ func (s *PredictableService) makeToolSmorgasbordResponse() *llm.Response {
 		Content:    content,
 		StopReason: llm.StopReasonToolUse,
 		Usage: llm.Usage{
-			InputTokens:  100,
+			InputTokens:  inputTokens,
 			OutputTokens: 200,
 			CostUSD:      0.01,
 		},

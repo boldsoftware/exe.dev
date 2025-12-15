@@ -114,8 +114,9 @@ func extractEndOfTurn(raw string) (bool, bool) {
 }
 
 // calculateContextWindowSize returns the context window usage from the most recent message.
-// Each API call's input_tokens represents the full conversation history sent to the model,
+// Each API call's input tokens represent the full conversation history sent to the model,
 // so we only need the last message's tokens (not accumulated across all messages).
+// The total input includes regular input tokens plus cached tokens (both read and created).
 func calculateContextWindowSize(messages []APIMessage) uint64 {
 	// Find the last message with usage data
 	for i := len(messages) - 1; i >= 0; i-- {
@@ -127,9 +128,9 @@ func calculateContextWindowSize(messages []APIMessage) uint64 {
 		if err := json.Unmarshal([]byte(*msg.UsageData), &usage); err != nil {
 			continue
 		}
-		// Return input + output tokens from the last message
-		// This represents the current context size (input) plus the latest response (output)
-		return usage.InputTokens + usage.OutputTokens
+		// Return total context window used: all input tokens + output tokens
+		// This represents the full context that would be sent for the next turn
+		return usage.ContextWindowUsed()
 	}
 	return 0
 }

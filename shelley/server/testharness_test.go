@@ -20,13 +20,14 @@ import (
 
 // TestHarness provides a DSL-like interface for testing conversations.
 type TestHarness struct {
-	t       *testing.T
-	db      *db.DB
-	server  *Server
-	cleanup func()
-	llm     *loop.PredictableService
-	convID  string
-	timeout time.Duration
+	t              *testing.T
+	db             *db.DB
+	server         *Server
+	cleanup        func()
+	llm            *loop.PredictableService
+	convID         string
+	timeout        time.Duration
+	responsesCount int // Number of agent responses seen so far
 }
 
 // NewTestHarness creates a new test harness with a predictable LLM and bash tool.
@@ -163,12 +164,15 @@ func (h *TestHarness) WaitToolResult() string {
 }
 
 // WaitResponse waits for the assistant's text response (end of turn).
+// It waits for a NEW response that hasn't been seen before.
 func (h *TestHarness) WaitResponse() string {
 	h.t.Helper()
 
 	if h.convID == "" {
 		h.t.Fatal("WaitResponse: no conversation started")
 	}
+
+	targetCount := h.responsesCount + 1
 
 	deadline := time.Now().Add(h.timeout)
 	for time.Now().Before(deadline) {
@@ -182,9 +186,10 @@ func (h *TestHarness) WaitResponse() string {
 			h.t.Fatalf("WaitResponse: failed to get messages: %v", err)
 		}
 
-		// Look for the last assistant message with end_of_turn
-		for i := len(messages) - 1; i >= 0; i-- {
-			msg := messages[i]
+		// Count assistant messages with end_of_turn
+		count := 0
+		var lastText string
+		for _, msg := range messages {
 			if msg.Type != string(db.MessageTypeAgent) || msg.LlmData == nil {
 				continue
 			}
@@ -195,22 +200,54 @@ func (h *TestHarness) WaitResponse() string {
 			}
 
 			if llmMsg.EndOfTurn {
+				count++
 				for _, content := range llmMsg.Content {
 					if content.Type == llm.ContentTypeText {
-						return content.Text
+						lastText = content.Text
+						break
 					}
 				}
 			}
 		}
 
+		if count >= targetCount {
+			h.responsesCount = count
+			return lastText
+		}
+
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	h.t.Fatalf("WaitResponse: timed out waiting for response")
+	h.t.Fatalf("WaitResponse: timed out waiting for response (seen %d, need %d)", h.responsesCount, targetCount)
 	return ""
 }
 
 // ConversationID returns the current conversation ID.
 func (h *TestHarness) ConversationID() string {
 	return h.convID
+}
+
+// GetContextWindowSize retrieves the current context window size from the server.
+func (h *TestHarness) GetContextWindowSize() uint64 {
+	h.t.Helper()
+
+	if h.convID == "" {
+		h.t.Fatal("GetContextWindowSize: no conversation started")
+	}
+
+	// Use handleGetConversation (GET /conversation/<id>) instead of stream endpoint
+	req := httptest.NewRequest("GET", "/api/conversation/"+h.convID, nil)
+	w := httptest.NewRecorder()
+
+	h.server.handleGetConversation(w, req, h.convID)
+	if w.Code != http.StatusOK {
+		h.t.Fatalf("GetContextWindowSize: expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp StreamResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		h.t.Fatalf("GetContextWindowSize: failed to parse response: %v", err)
+	}
+
+	return resp.ContextWindowSize
 }

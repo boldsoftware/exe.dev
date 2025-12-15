@@ -76,5 +76,5 @@ func ExampleLoop() {
 
 	// Output:
 	// Recorded assistant message with 1 content items
-	// Total usage: in: 3, out: 3
+	// Total usage: in: 31, out: 3
 }
