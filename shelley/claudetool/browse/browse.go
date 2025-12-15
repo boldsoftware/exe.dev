@@ -241,6 +241,68 @@ func (b *BrowseTools) navigateRun(ctx context.Context, m json.RawMessage) llm.To
 	return llm.ToolOut{LLMContent: llm.TextContent("done")}
 }
 
+// ResizeTool definition
+type resizeInput struct {
+	Width   int    `json:"width"`
+	Height  int    `json:"height"`
+	Timeout string `json:"timeout,omitempty"`
+}
+
+// NewResizeTool creates a tool for resizing the browser viewport
+func (b *BrowseTools) NewResizeTool() *llm.Tool {
+	return &llm.Tool{
+		Name:        "browser_resize",
+		Description: "Resize the browser viewport to a specific width and height",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"width": {
+					"type": "integer",
+					"description": "Viewport width in pixels"
+				},
+				"height": {
+					"type": "integer",
+					"description": "Viewport height in pixels"
+				},
+				"timeout": {
+					"type": "string",
+					"description": "Timeout as a Go duration string (default: 15s)"
+				}
+			},
+			"required": ["width", "height"]
+		}`),
+		Run: b.resizeRun,
+	}
+}
+
+func (b *BrowseTools) resizeRun(ctx context.Context, m json.RawMessage) llm.ToolOut {
+	var input resizeInput
+	if err := json.Unmarshal(m, &input); err != nil {
+		return llm.ErrorfToolOut("invalid input: %w", err)
+	}
+
+	if input.Width <= 0 || input.Height <= 0 {
+		return llm.ErrorToolOut(fmt.Errorf("invalid dimensions: width and height must be positive"))
+	}
+
+	browserCtx, err := b.GetBrowserContext()
+	if err != nil {
+		return llm.ErrorToolOut(err)
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(browserCtx, parseTimeout(input.Timeout))
+	defer cancel()
+
+	err = chromedp.Run(timeoutCtx,
+		chromedp.EmulateViewport(int64(input.Width), int64(input.Height)),
+	)
+	if err != nil {
+		return llm.ErrorToolOut(err)
+	}
+
+	return llm.ToolOut{LLMContent: llm.TextContent("done")}
+}
+
 // EvalTool definition
 type evalInput struct {
 	Expression string `json:"expression"`
@@ -423,6 +485,7 @@ func (b *BrowseTools) GetTools(includeScreenshotTools bool) []*llm.Tool {
 	tools := []*llm.Tool{
 		b.NewNavigateTool(),
 		b.NewEvalTool(),
+		b.NewResizeTool(),
 		b.NewRecentConsoleLogsTool(),
 		b.NewClearConsoleLogsTool(),
 	}

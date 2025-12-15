@@ -31,6 +31,7 @@ func TestToolCreation(t *testing.T) {
 	}{
 		{tools.NewNavigateTool(), "browser_navigate", "Navigate", []string{"url"}},
 		{tools.NewEvalTool(), "browser_eval", "Evaluate", []string{"expression"}},
+		{tools.NewResizeTool(), "browser_resize", "Resize", []string{"width", "height"}},
 		{tools.NewScreenshotTool(), "browser_take_screenshot", "Take", nil},
 	}
 
@@ -73,8 +74,8 @@ func TestGetTools(t *testing.T) {
 	// Test with screenshot tools included
 	t.Run("with screenshots", func(t *testing.T) {
 		toolsWithScreenshots := tools.GetTools(true)
-		if len(toolsWithScreenshots) != 6 {
-			t.Errorf("expected 6 tools with screenshots, got %d", len(toolsWithScreenshots))
+		if len(toolsWithScreenshots) != 7 {
+			t.Errorf("expected 7 tools with screenshots, got %d", len(toolsWithScreenshots))
 		}
 
 		// Check tool naming convention
@@ -89,8 +90,8 @@ func TestGetTools(t *testing.T) {
 	// Test without screenshot tools
 	t.Run("without screenshots", func(t *testing.T) {
 		noScreenshotTools := tools.GetTools(false)
-		if len(noScreenshotTools) != 4 {
-			t.Errorf("expected 4 tools without screenshots, got %d", len(noScreenshotTools))
+		if len(noScreenshotTools) != 5 {
+			t.Errorf("expected 5 tools without screenshots, got %d", len(noScreenshotTools))
 		}
 	})
 }
