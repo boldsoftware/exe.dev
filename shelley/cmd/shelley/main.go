@@ -10,14 +10,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/claudetool/browse"
 	"shelley.exe.dev/db"
-	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
-	"shelley.exe.dev/loop"
 	"shelley.exe.dev/models"
 	"shelley.exe.dev/seccomp"
 	"shelley.exe.dev/server"
@@ -34,16 +31,6 @@ type GlobalConfig struct {
 	TerminalURL     string
 	DefaultModel    string
 }
-
-// Message emoji constants
-const (
-	// User messages: person emoji
-	userEmoji = "👤"
-	// Assistant messages: robot emoji
-	assistantEmoji = "🤖"
-	// Tool messages: wrench emoji
-	toolEmoji = "🔧"
-)
 
 func main() {
 	// Define global flags
@@ -63,7 +50,6 @@ func main() {
 		flag.PrintDefaults()
 		fmt.Fprintf(flag.CommandLine.Output(), "\nCommands:\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  serve [flags]                 Start the web server\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  models                        List supported models and env requirements\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  unpack-template <name> <dir>  Unpack a project template to a directory\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  version                       Print version information as JSON\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "\nUse '%s <command> -h' for command-specific help\n", os.Args[0])
@@ -88,8 +74,6 @@ func main() {
 	switch command {
 	case "serve":
 		runServe(global, args[1:])
-	case "models":
-		runModels(global, args[1:])
 	case "unpack-template":
 		runUnpackTemplate(args[1:])
 	case "version":
@@ -123,6 +107,10 @@ func runServe(global GlobalConfig, args []string) {
 
 	// Initialize LLM service manager
 	llmManager := server.NewLLMServiceManager(llmConfig, llmHistory)
+
+	// Log available models
+	availableModels := llmManager.GetAvailableModels()
+	logger.Info("Available models", "models", strings.Join(availableModels, ", "))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -178,76 +166,6 @@ func setupDatabase(dbPath string, logger *slog.Logger) *db.DB {
 	}
 	logger.Debug("Database migrations completed successfully")
 	return database
-}
-
-func setupLLMService(global GlobalConfig, logger *slog.Logger) llm.Service {
-	// If predictable-only flag is set, always use predictable service
-	if global.PredictableOnly {
-		logger.Info("Using specified model", "model", "predictable-only")
-		return loop.NewPredictableService()
-	}
-
-	// Default model if none provided
-	modelID := strings.TrimSpace(global.Model)
-	if modelID == "" {
-		modelID = "qwen3-coder-fireworks"
-	}
-
-	// Check for predictable model
-	if modelID == "predictable" {
-		logger.Info("Using specified model", "model", modelID)
-		return loop.NewPredictableService()
-	}
-
-	// Build LLM configuration
-	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL, global.DefaultModel)
-
-	// Always use the service manager to ensure consistent logging
-	// For CLI usage, we don't need request history tracking
-	llmManager := server.NewLLMServiceManager(llmConfig, nil)
-	svc, err := llmManager.GetService(modelID)
-	if err != nil {
-		// Provide a helpful message with env hints
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		fmt.Fprintf(os.Stderr, "Tip: run 'shelley models' to see required env vars.\n")
-		os.Exit(1)
-	}
-	logger.Info("Using specified model", "model", modelID)
-	return svc
-}
-
-// runModels prints supported models, readiness, and required env variables
-func runModels(global GlobalConfig, args []string) {
-	logger := setupLogging(global.Debug)
-	_ = logger
-
-	fmt.Println("Supported models:")
-	for _, m := range models.All() {
-		ready := true
-		missing := []string{}
-		for _, env := range m.RequiredEnvVars {
-			if os.Getenv(env) == "" {
-				ready = false
-				missing = append(missing, env)
-			}
-		}
-		status := "ready"
-		if !ready {
-			status = "not ready"
-		}
-		fmt.Printf("- %s [%s] - %s\n", m.ID, m.Provider, status)
-		if m.Description != "" {
-			fmt.Printf("  %s\n", m.Description)
-		}
-		if len(m.RequiredEnvVars) > 0 {
-			fmt.Printf("  Required env: %s\n", strings.Join(m.RequiredEnvVars, ", "))
-			if len(missing) > 0 {
-				fmt.Printf("  Missing: %s\n", strings.Join(missing, ", "))
-			}
-		} else {
-			fmt.Printf("  Required env: none\n")
-		}
-	}
 }
 
 // runUnpackTemplate unpacks a project template to a directory
@@ -367,50 +285,6 @@ func setupTools(ctx context.Context, llmProvider claudetool.LLMServiceProvider) 
 	}
 }
 
-// Helper functions to convert between message formats
-func convertToLLMMessage(msg generated.Message) (llm.Message, error) {
-	if msg.LlmData == nil {
-		return llm.Message{}, fmt.Errorf("message has no LLM data")
-	}
-	var llmMsg llm.Message
-	if err := json.Unmarshal([]byte(*msg.LlmData), &llmMsg); err != nil {
-		return llm.Message{}, fmt.Errorf("failed to unmarshal LLM data: %w", err)
-	}
-	return llmMsg, nil
-}
-
-func getMessageType(message llm.Message) db.MessageType {
-	switch message.Role {
-	case llm.MessageRoleUser:
-		return db.MessageTypeUser
-	case llm.MessageRoleAssistant:
-		return db.MessageTypeAgent
-	default:
-		// For tool messages, check content
-		for _, content := range message.Content {
-			if content.Type == llm.ContentTypeToolUse || content.Type == llm.ContentTypeToolResult {
-				return db.MessageTypeTool
-			}
-		}
-		return db.MessageTypeAgent
-	}
-}
-
-func getMessageContentPreview(message llm.Message) string {
-	var content strings.Builder
-	for _, c := range message.Content {
-		switch c.Type {
-		case llm.ContentTypeText:
-			content.WriteString(c.Text)
-		case llm.ContentTypeToolUse:
-			content.WriteString(fmt.Sprintf("[Tool: %s]", c.ToolName))
-		case llm.ContentTypeToolResult:
-			content.WriteString("[Tool Result]")
-		}
-	}
-	return content.String()
-}
-
 // buildLLMConfig constructs LLMConfig from environment variables and optional config file
 func buildLLMConfig(logger *slog.Logger, configPath, terminalURL, defaultModel string) *server.LLMConfig {
 	llmCfg := &server.LLMConfig{
@@ -483,107 +357,6 @@ func buildLLMConfig(logger *slog.Logger, configPath, terminalURL, defaultModel s
 	}
 
 	return llmCfg
-}
-
-// printMessageToConsole prints a readable representation of a message to stdout, as it occurs.
-func printMessageToConsole(message llm.Message) {
-	// Determine emoji prefix based on message role and content
-	var emojiPrefix string
-	if message.Role == llm.MessageRoleAssistant {
-		emojiPrefix = assistantEmoji
-	} else if message.Role == llm.MessageRoleUser {
-		// Distinguish between actual user input vs tool results (which are sent back as a user message)
-		hasToolResult := false
-		for _, c := range message.Content {
-			if c.Type == llm.ContentTypeToolResult {
-				hasToolResult = true
-				break
-			}
-		}
-		if hasToolResult {
-			emojiPrefix = toolEmoji
-		} else {
-			emojiPrefix = userEmoji
-		}
-	} else {
-		emojiPrefix = "" // Default for other message types
-	}
-
-	// Build output lines
-	var lines []string
-	for _, c := range message.Content {
-		switch c.Type {
-		case llm.ContentTypeText:
-			if strings.TrimSpace(c.Text) != "" {
-				lines = append(lines, c.Text)
-			}
-		case llm.ContentTypeToolUse:
-			// Show a concise tool call line
-			input := strings.TrimSpace(string(c.ToolInput))
-			if len(input) > 200 {
-				input = input[:200] + "..."
-			}
-			lines = append(lines, fmt.Sprintf("-> Tool call: %s %s", c.ToolName, input))
-		case llm.ContentTypeToolResult:
-			// Show a concise tool result line
-			var parts []string
-			for _, tr := range c.ToolResult {
-				if tr.Type == llm.ContentTypeText && strings.TrimSpace(tr.Text) != "" {
-					parts = append(parts, tr.Text)
-				}
-			}
-			text := strings.Join(parts, "\n")
-			if text == "" {
-				if c.ToolError {
-					text = "[error]"
-				} else {
-					text = "[ok]"
-				}
-			}
-			lines = append(lines, fmt.Sprintf("<- Tool result%s\n%s", func() string {
-				if c.ToolError {
-					return " (error)"
-				}
-				return ""
-			}(), text))
-		case llm.ContentTypeThinking:
-			// Skip hidden thinking by default
-			continue
-		default:
-			// Fallback for unknown content types - show type and any available content
-			var parts []string
-			parts = append(parts, fmt.Sprintf("[%s]", c.Type.String()))
-
-			// Show text content if available
-			if c.Text != "" {
-				parts = append(parts, c.Text)
-			}
-
-			// Show media content info if available
-			if c.MediaType != "" {
-				if c.MediaType == "image/jpeg" || c.MediaType == "image/png" {
-					parts = append(parts, fmt.Sprintf("[Image: %s]", c.MediaType))
-				} else {
-					parts = append(parts, fmt.Sprintf("[Media: %s]", c.MediaType))
-				}
-			}
-
-			// Show tool data if this is a tool-related unknown type
-			if c.ToolName != "" {
-				parts = append(parts, fmt.Sprintf("Tool: %s", c.ToolName))
-			}
-
-			lines = append(lines, strings.Join(parts, " "))
-		}
-	}
-
-	out := strings.TrimSpace(strings.Join(lines, "\n"))
-	if out == "" {
-		out = "(no content)"
-	}
-	// Print with emoji prefix and timestamp
-	timestamp := time.Now().Format("15:04:05")
-	fmt.Printf("%s [%s] %s\n\n", emojiPrefix, timestamp, out)
 }
 
 // systemdListener returns a net.Listener from systemd socket activation.
