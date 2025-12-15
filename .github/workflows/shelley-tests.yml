@@ -100,7 +100,7 @@ jobs:
           fi
 
       - name: Run Go tests
-        run: go test -v -race ./...
+        run: go tool gotestsum --format testname -- -race ./...
 
       - name: Install Playwright browsers
         if: inputs.run_playwright != false
