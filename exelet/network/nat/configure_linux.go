@@ -35,6 +35,10 @@ func (n *NAT) configureBridge(ctx context.Context) error {
 		if err := netlink.LinkAdd(br); err != nil {
 			return err
 		}
+		// Increase FDB hash_max to prevent "exchange full" errors at scale
+		if err := setBridgeHashMax(primaryBridge, DefaultBridgeHashMax); err != nil {
+			n.log.WarnContext(ctx, "failed to set bridge hash_max", "bridge", primaryBridge, "error", err)
+		}
 		bridge = br
 	}
 
@@ -102,6 +106,10 @@ func (n *NAT) createSecondaryBridge(ctx context.Context, bridgeName string) erro
 		newBr := &netlink.Bridge{LinkAttrs: attrs}
 		if err := netlink.LinkAdd(newBr); err != nil {
 			return fmt.Errorf("failed to create bridge %s: %w", bridgeName, err)
+		}
+		// Increase FDB hash_max to prevent "exchange full" errors at scale
+		if err := setBridgeHashMax(bridgeName, DefaultBridgeHashMax); err != nil {
+			n.log.WarnContext(ctx, "failed to set bridge hash_max", "bridge", bridgeName, "error", err)
 		}
 		br = newBr
 	} else {
@@ -429,6 +437,22 @@ func writeSysctl(name, value string) error {
 	defer f.Close()
 
 	if _, err := io.WriteString(f, value); err != nil {
+		return err
+	}
+	return nil
+}
+
+// setBridgeHashMax sets the FDB hash_max for a bridge to allow more MAC addresses.
+// The default is 512 which can cause "exchange full" errors at scale.
+func setBridgeHashMax(bridgeName string, hashMax int) error {
+	path := fmt.Sprintf("/sys/class/net/%s/bridge/hash_max", bridgeName)
+	f, err := os.OpenFile(path, os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if _, err := fmt.Fprintf(f, "%d", hashMax); err != nil {
 		return err
 	}
 	return nil

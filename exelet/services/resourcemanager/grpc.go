@@ -78,6 +78,33 @@ func (m *ResourceManager) GetVMUsage(ctx context.Context, req *api.GetVMUsageReq
 	}, nil
 }
 
+// ListVMUsage streams usage information for all VMs.
+func (m *ResourceManager) ListVMUsage(req *api.ListVMUsageRequest, stream api.ResourceManagerService_ListVMUsageServer) error {
+	m.usageMu.Lock()
+	defer m.usageMu.Unlock()
+
+	for id, state := range m.usageState {
+		if err := stream.Send(&api.ListVMUsageResponse{
+			Usage: &api.VMUsage{
+				ID:           id,
+				Name:         state.name,
+				CpuSeconds:   state.cpuSeconds,
+				CpuPercent:   state.cpuPercent,
+				MemoryBytes:  state.memoryBytes,
+				DiskBytes:    state.diskBytes,
+				NetRxBytes:   state.netRxBytes,
+				NetTxBytes:   state.netTxBytes,
+				LastActivity: state.lastActivity.UnixNano(),
+				Priority:     state.priority,
+			},
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // SetVMPriority manually sets the priority for a VM.
 // Use PRIORITY_AUTO to clear the override and return to automatic detection.
 func (m *ResourceManager) SetVMPriority(ctx context.Context, req *api.SetVMPriorityRequest) (*api.SetVMPriorityResponse, error) {

@@ -2,12 +2,11 @@ package resourcemanager
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"log/slog"
 
 	api "exe.dev/pkg/api/exe/resource/v1"
 )

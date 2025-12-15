@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion8
 const (
 	ResourceManagerService_GetNodeStatus_FullMethodName = "/exe.resource.v1.ResourceManagerService/GetNodeStatus"
 	ResourceManagerService_GetVMUsage_FullMethodName    = "/exe.resource.v1.ResourceManagerService/GetVMUsage"
+	ResourceManagerService_ListVMUsage_FullMethodName   = "/exe.resource.v1.ResourceManagerService/ListVMUsage"
 	ResourceManagerService_SetVMPriority_FullMethodName = "/exe.resource.v1.ResourceManagerService/SetVMPriority"
 )
 
@@ -32,6 +33,8 @@ type ResourceManagerServiceClient interface {
 	GetNodeStatus(ctx context.Context, in *GetNodeStatusRequest, opts ...grpc.CallOption) (*GetNodeStatusResponse, error)
 	// GetVMUsage returns usage information for a specific VM
 	GetVMUsage(ctx context.Context, in *GetVMUsageRequest, opts ...grpc.CallOption) (*GetVMUsageResponse, error)
+	// ListVMUsage streams usage information for all VMs
+	ListVMUsage(ctx context.Context, in *ListVMUsageRequest, opts ...grpc.CallOption) (ResourceManagerService_ListVMUsageClient, error)
 	// SetVMPriority manually sets priority for a VM
 	SetVMPriority(ctx context.Context, in *SetVMPriorityRequest, opts ...grpc.CallOption) (*SetVMPriorityResponse, error)
 }
@@ -64,6 +67,39 @@ func (c *resourceManagerServiceClient) GetVMUsage(ctx context.Context, in *GetVM
 	return out, nil
 }
 
+func (c *resourceManagerServiceClient) ListVMUsage(ctx context.Context, in *ListVMUsageRequest, opts ...grpc.CallOption) (ResourceManagerService_ListVMUsageClient, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ResourceManagerService_ServiceDesc.Streams[0], ResourceManagerService_ListVMUsage_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &resourceManagerServiceListVMUsageClient{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type ResourceManagerService_ListVMUsageClient interface {
+	Recv() (*ListVMUsageResponse, error)
+	grpc.ClientStream
+}
+
+type resourceManagerServiceListVMUsageClient struct {
+	grpc.ClientStream
+}
+
+func (x *resourceManagerServiceListVMUsageClient) Recv() (*ListVMUsageResponse, error) {
+	m := new(ListVMUsageResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *resourceManagerServiceClient) SetVMPriority(ctx context.Context, in *SetVMPriorityRequest, opts ...grpc.CallOption) (*SetVMPriorityResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SetVMPriorityResponse)
@@ -82,6 +118,8 @@ type ResourceManagerServiceServer interface {
 	GetNodeStatus(context.Context, *GetNodeStatusRequest) (*GetNodeStatusResponse, error)
 	// GetVMUsage returns usage information for a specific VM
 	GetVMUsage(context.Context, *GetVMUsageRequest) (*GetVMUsageResponse, error)
+	// ListVMUsage streams usage information for all VMs
+	ListVMUsage(*ListVMUsageRequest, ResourceManagerService_ListVMUsageServer) error
 	// SetVMPriority manually sets priority for a VM
 	SetVMPriority(context.Context, *SetVMPriorityRequest) (*SetVMPriorityResponse, error)
 	mustEmbedUnimplementedResourceManagerServiceServer()
@@ -96,6 +134,9 @@ func (UnimplementedResourceManagerServiceServer) GetNodeStatus(context.Context, 
 }
 func (UnimplementedResourceManagerServiceServer) GetVMUsage(context.Context, *GetVMUsageRequest) (*GetVMUsageResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetVMUsage not implemented")
+}
+func (UnimplementedResourceManagerServiceServer) ListVMUsage(*ListVMUsageRequest, ResourceManagerService_ListVMUsageServer) error {
+	return status.Errorf(codes.Unimplemented, "method ListVMUsage not implemented")
 }
 func (UnimplementedResourceManagerServiceServer) SetVMPriority(context.Context, *SetVMPriorityRequest) (*SetVMPriorityResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetVMPriority not implemented")
@@ -150,6 +191,27 @@ func _ResourceManagerService_GetVMUsage_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ResourceManagerService_ListVMUsage_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListVMUsageRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ResourceManagerServiceServer).ListVMUsage(m, &resourceManagerServiceListVMUsageServer{ServerStream: stream})
+}
+
+type ResourceManagerService_ListVMUsageServer interface {
+	Send(*ListVMUsageResponse) error
+	grpc.ServerStream
+}
+
+type resourceManagerServiceListVMUsageServer struct {
+	grpc.ServerStream
+}
+
+func (x *resourceManagerServiceListVMUsageServer) Send(m *ListVMUsageResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 func _ResourceManagerService_SetVMPriority_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SetVMPriorityRequest)
 	if err := dec(in); err != nil {
@@ -188,6 +250,12 @@ var ResourceManagerService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ResourceManagerService_SetVMPriority_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ListVMUsage",
+			Handler:       _ResourceManagerService_ListVMUsage_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "exe/resource/v1/resource.proto",
 }

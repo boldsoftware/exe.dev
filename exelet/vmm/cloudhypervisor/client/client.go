@@ -78,7 +78,7 @@ func dialWithBackoff(ctx context.Context, socketPath string, retry bool, log *sl
 			return nil, fmt.Errorf("unable to connect to api socket: %w", ErrNotConnected)
 		}
 
-		log.Debug("error connecting to api socket; retrying", "path", socketPath, "error", err, "attempt", attempt, "backoff", backoff)
+		log.DebugContext(ctx, "error connecting to api socket; retrying", "path", socketPath, "error", err, "attempt", attempt, "backoff", backoff)
 		attempt++
 
 		// Wait with backoff, respecting context

@@ -144,7 +144,6 @@ func (m *ResourceManager) readCPUUsage(pid int) (float64, error) {
 	return float64(utime+stime) / clockTicks, nil
 }
 
-
 // readDiskUsage reads disk usage from ZFS.
 func (m *ResourceManager) readDiskUsage(ctx context.Context, id string) (uint64, error) {
 	if m.config.StorageManagerAddress == "" {

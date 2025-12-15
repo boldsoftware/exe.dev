@@ -13,12 +13,13 @@ import (
 )
 
 const (
-	DefaultBridgeName    = "br-exe"
-	DefaultNetwork       = "10.42.0.0/16"
-	DefaultNameserver    = "1.1.1.1"
-	DefaultNTPServer     = "ntp.ubuntu.com"
-	MetadataIP           = "169.254.169.254"
+	DefaultBridgeName        = "br-exe"
+	DefaultNetwork           = "10.42.0.0/16"
+	DefaultNameserver        = "1.1.1.1"
+	DefaultNTPServer         = "ntp.ubuntu.com"
+	MetadataIP               = "169.254.169.254"
 	DefaultMaxPortsPerBridge = 500
+	DefaultBridgeHashMax     = 4096 // FDB hash table size; default 512 causes "exchange full" at scale
 
 	DeviceName = "eth0"
 )

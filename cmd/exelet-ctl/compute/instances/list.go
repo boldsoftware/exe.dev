@@ -28,13 +28,14 @@ var listInstancesCommand = &cli.Command{
 		defer c.Close()
 
 		ctx := context.WithoutCancel(clix.Context)
+
+		// Collect all instances first
 		stream, err := c.ListInstances(ctx, &api.ListInstancesRequest{})
 		if err != nil {
 			return err
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 12, 1, 3, ' ', 0)
-		fmt.Fprintf(w, "ID\tNAME\tIMAGE\tCPUS\tMEMORY\tDISK\tIP\tSTATE\tPRIORITY\n")
+		var instances []*api.Instance
 		for {
 			resp, err := stream.Recv()
 			if err != nil {
@@ -43,8 +44,31 @@ var listInstancesCommand = &cli.Command{
 				}
 				return err
 			}
+			instances = append(instances, resp.Instance)
+		}
 
-			i := resp.Instance
+		// Fetch all VM usage in one streaming call and build a lookup map
+		usageMap := make(map[string]*resourceapi.VMUsage)
+		if usageStream, err := c.ListVMUsage(ctx, &resourceapi.ListVMUsageRequest{}); err == nil {
+			for {
+				resp, err := usageStream.Recv()
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+					break // Ignore errors, just use empty map
+				}
+				if resp.Usage != nil {
+					usageMap[resp.Usage.ID] = resp.Usage
+				}
+			}
+		}
+
+		// Print all instances, looking up priority from the map
+		w := tabwriter.NewWriter(os.Stdout, 12, 1, 3, ' ', 0)
+		fmt.Fprintf(w, "ID\tNAME\tIMAGE\tCPUS\tMEMORY\tDISK\tIP\tSTATE\tPRIORITY\n")
+
+		for _, i := range instances {
 			cpus := ""
 			memory := ""
 			disk := ""
@@ -66,10 +90,10 @@ var listInstancesCommand = &cli.Command{
 				}
 			}
 
-			// Get priority from resource manager (only for running instances)
+			// Look up priority from the pre-fetched map
 			if i.State == api.VMState_RUNNING {
-				if usageResp, err := c.GetVMUsage(ctx, &resourceapi.GetVMUsageRequest{VmID: i.ID}); err == nil {
-					priority = formatPriority(usageResp.Usage.Priority)
+				if usage, ok := usageMap[i.ID]; ok {
+					priority = formatPriority(usage.Priority)
 				}
 			}
 

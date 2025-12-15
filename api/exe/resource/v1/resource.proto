@@ -11,6 +11,9 @@ service ResourceManagerService {
   // GetVMUsage returns usage information for a specific VM
   rpc GetVMUsage(GetVMUsageRequest) returns (GetVMUsageResponse);
 
+  // ListVMUsage streams usage information for all VMs
+  rpc ListVMUsage(ListVMUsageRequest) returns (stream ListVMUsageResponse);
+
   // SetVMPriority manually sets priority for a VM
   rpc SetVMPriority(SetVMPriorityRequest) returns (SetVMPriorityResponse);
 }
@@ -27,6 +30,12 @@ message GetVMUsageRequest {
 }
 
 message GetVMUsageResponse {
+  VMUsage usage = 1;
+}
+
+message ListVMUsageRequest {}
+
+message ListVMUsageResponse {
   VMUsage usage = 1;
 }
 

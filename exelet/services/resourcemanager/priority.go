@@ -47,7 +47,7 @@ func (m *ResourceManager) initControllers(ctx context.Context) {
 
 	// Create and configure the slice
 	slicePath := filepath.Join(m.cgroupRoot, cgroupSlice)
-	if err := os.MkdirAll(slicePath, 0755); err != nil {
+	if err := os.MkdirAll(slicePath, 0o755); err != nil {
 		m.log.WarnContext(ctx, "failed to create cgroup slice", "path", slicePath, "error", err)
 		return
 	}
@@ -135,7 +135,7 @@ func (m *ResourceManager) ensureCgroup(ctx context.Context, id string, pid int) 
 
 	// Create scope if it doesn't exist (slice should already exist from initControllers)
 	if _, err := os.Stat(cgroupPath); os.IsNotExist(err) {
-		if err := os.Mkdir(cgroupPath, 0755); err != nil {
+		if err := os.Mkdir(cgroupPath, 0o755); err != nil {
 			return "", fmt.Errorf("create scope: %w", err)
 		}
 	}
@@ -164,35 +164,35 @@ func (m *ResourceManager) moveProcessToCgroup(cgroupPath string, pid int) error 
 	}
 
 	// Move process to cgroup
-	return os.WriteFile(procsFile, []byte(strconv.Itoa(pid)), 0644)
+	return os.WriteFile(procsFile, []byte(strconv.Itoa(pid)), 0o644)
 }
 
 // setCPUWeight sets the cpu.weight for a cgroup.
 func (m *ResourceManager) setCPUWeight(cgroupPath string, weight int) error {
 	weightFile := filepath.Join(cgroupPath, "cpu.weight")
-	return os.WriteFile(weightFile, []byte(strconv.Itoa(weight)), 0644)
+	return os.WriteFile(weightFile, []byte(strconv.Itoa(weight)), 0o644)
 }
 
 // setIOWeight sets the io.weight for a cgroup.
 // The io.weight file accepts "default <weight>" format.
 func (m *ResourceManager) setIOWeight(cgroupPath string, weight int) error {
 	weightFile := filepath.Join(cgroupPath, "io.weight")
-	return os.WriteFile(weightFile, []byte("default "+strconv.Itoa(weight)), 0644)
+	return os.WriteFile(weightFile, []byte("default "+strconv.Itoa(weight)), 0o644)
 }
 
 // setMemorySwapMax sets memory.swap.max for a cgroup.
 // Use "max" for unlimited swap or "0" to disable swap.
-func (m *ResourceManager) setMemorySwapMax(cgroupPath string, value string) error {
+func (m *ResourceManager) setMemorySwapMax(cgroupPath, value string) error {
 	swapFile := filepath.Join(cgroupPath, "memory.swap.max")
-	return os.WriteFile(swapFile, []byte(value), 0644)
+	return os.WriteFile(swapFile, []byte(value), 0o644)
 }
 
 // setMemoryHigh sets memory.high for a cgroup.
 // Use "max" for no limit, or a byte value as string.
 // When usage exceeds this value, the kernel aggressively reclaims memory.
-func (m *ResourceManager) setMemoryHigh(cgroupPath string, value string) error {
+func (m *ResourceManager) setMemoryHigh(cgroupPath, value string) error {
 	highFile := filepath.Join(cgroupPath, "memory.high")
-	return os.WriteFile(highFile, []byte(value), 0644)
+	return os.WriteFile(highFile, []byte(value), 0o644)
 }
 
 // enableController enables a controller on a cgroup.
@@ -212,7 +212,7 @@ func (m *ResourceManager) enableController(cgroupPath, controller string) error 
 	}
 
 	// Enable controller
-	return os.WriteFile(subtreeControl, []byte("+"+controller), 0644)
+	return os.WriteFile(subtreeControl, []byte("+"+controller), 0o644)
 }
 
 // removeCgroup removes the cgroup for a VM.
