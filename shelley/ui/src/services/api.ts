@@ -82,6 +82,43 @@ class ApiService {
     }
     return response.json();
   }
+
+  async getArchivedConversations(): Promise<Conversation[]> {
+    const response = await fetch(`${this.baseUrl}/conversations/archived`);
+    if (!response.ok) {
+      throw new Error(`Failed to get archived conversations: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async archiveConversation(conversationId: string): Promise<Conversation> {
+    const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/archive`, {
+      method: "POST",
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to archive conversation: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async unarchiveConversation(conversationId: string): Promise<Conversation> {
+    const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/unarchive`, {
+      method: "POST",
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to unarchive conversation: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async deleteConversation(conversationId: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/delete`, {
+      method: "POST",
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to delete conversation: ${response.statusText}`);
+    }
+  }
 }
 
 export const api = new ApiService();

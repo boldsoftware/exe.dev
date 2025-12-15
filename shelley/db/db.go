@@ -497,3 +497,71 @@ func (db *DB) QueriesTx(ctx context.Context, fn func(*generated.Queries) error) 
 		return fn(q)
 	})
 }
+
+// ListArchivedConversations retrieves archived conversations with pagination
+func (db *DB) ListArchivedConversations(ctx context.Context, limit, offset int64) ([]generated.Conversation, error) {
+	var conversations []generated.Conversation
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		var err error
+		conversations, err = q.ListArchivedConversations(ctx, generated.ListArchivedConversationsParams{
+			Limit:  limit,
+			Offset: offset,
+		})
+		return err
+	})
+	return conversations, err
+}
+
+// SearchArchivedConversations searches for archived conversations containing the given query in their slug
+func (db *DB) SearchArchivedConversations(ctx context.Context, query string, limit, offset int64) ([]generated.Conversation, error) {
+	queryPtr := &query
+	var conversations []generated.Conversation
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		var err error
+		conversations, err = q.SearchArchivedConversations(ctx, generated.SearchArchivedConversationsParams{
+			Column1: queryPtr,
+			Limit:   limit,
+			Offset:  offset,
+		})
+		return err
+	})
+	return conversations, err
+}
+
+// ArchiveConversation archives a conversation
+func (db *DB) ArchiveConversation(ctx context.Context, conversationID string) (*generated.Conversation, error) {
+	var conversation generated.Conversation
+	err := db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		q := generated.New(tx.Conn())
+		var err error
+		conversation, err = q.ArchiveConversation(ctx, conversationID)
+		return err
+	})
+	return &conversation, err
+}
+
+// UnarchiveConversation unarchives a conversation
+func (db *DB) UnarchiveConversation(ctx context.Context, conversationID string) (*generated.Conversation, error) {
+	var conversation generated.Conversation
+	err := db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		q := generated.New(tx.Conn())
+		var err error
+		conversation, err = q.UnarchiveConversation(ctx, conversationID)
+		return err
+	})
+	return &conversation, err
+}
+
+// DeleteConversation deletes a conversation and all its messages
+func (db *DB) DeleteConversation(ctx context.Context, conversationID string) error {
+	return db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		q := generated.New(tx.Conn())
+		// Delete messages first (foreign key constraint)
+		if err := q.DeleteConversationMessages(ctx, conversationID); err != nil {
+			return fmt.Errorf("failed to delete messages: %w", err)
+		}
+		return q.DeleteConversation(ctx, conversationID)
+	})
+}

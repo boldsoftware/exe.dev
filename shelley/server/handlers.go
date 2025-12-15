@@ -402,6 +402,15 @@ func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
 		case "cancel":
 			// /conversation/<id>/cancel
 			s.handleCancelConversation(w, r, conversationID)
+		case "archive":
+			// /conversation/<id>/archive
+			s.handleArchiveConversation(w, r, conversationID)
+		case "unarchive":
+			// /conversation/<id>/unarchive
+			s.handleUnarchiveConversation(w, r, conversationID)
+		case "delete":
+			// /conversation/<id>/delete
+			s.handleDeleteConversation(w, r, conversationID)
 		default:
 			http.Error(w, "Not found", http.StatusNotFound)
 		}
@@ -899,4 +908,104 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(version.GetInfo())
+}
+
+// handleArchivedConversations handles GET /api/conversations/archived
+func (s *Server) handleArchivedConversations(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	ctx := r.Context()
+	limit := 5000
+	offset := 0
+	var query string
+
+	// Parse query parameters
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+	query = r.URL.Query().Get("q")
+
+	// Get archived conversations from database
+	var conversations []generated.Conversation
+	var err error
+
+	if query != "" {
+		conversations, err = s.db.SearchArchivedConversations(ctx, query, int64(limit), int64(offset))
+	} else {
+		conversations, err = s.db.ListArchivedConversations(ctx, int64(limit), int64(offset))
+	}
+
+	if err != nil {
+		s.logger.Error("Failed to get archived conversations", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(conversations)
+}
+
+// handleArchiveConversation handles POST /conversation/<id>/archive
+func (s *Server) handleArchiveConversation(w http.ResponseWriter, r *http.Request, conversationID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx := r.Context()
+	conversation, err := s.db.ArchiveConversation(ctx, conversationID)
+	if err != nil {
+		s.logger.Error("Failed to archive conversation", "conversationID", conversationID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(conversation)
+}
+
+// handleUnarchiveConversation handles POST /conversation/<id>/unarchive
+func (s *Server) handleUnarchiveConversation(w http.ResponseWriter, r *http.Request, conversationID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx := r.Context()
+	conversation, err := s.db.UnarchiveConversation(ctx, conversationID)
+	if err != nil {
+		s.logger.Error("Failed to unarchive conversation", "conversationID", conversationID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(conversation)
+}
+
+// handleDeleteConversation handles POST /conversation/<id>/delete
+func (s *Server) handleDeleteConversation(w http.ResponseWriter, r *http.Request, conversationID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx := r.Context()
+	if err := s.db.DeleteConversation(ctx, conversationID); err != nil {
+		s.logger.Error("Failed to delete conversation", "conversationID", conversationID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
 }

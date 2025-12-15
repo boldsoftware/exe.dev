@@ -85,6 +85,20 @@ function App() {
     );
   };
 
+  const handleConversationArchived = (conversationId: string) => {
+    setConversations((prev) => prev.filter((conv) => conv.conversation_id !== conversationId));
+    // If the archived conversation was current, switch to another or clear
+    if (currentConversationId === conversationId) {
+      const remaining = conversations.filter((conv) => conv.conversation_id !== conversationId);
+      setCurrentConversationId(remaining.length > 0 ? remaining[0].conversation_id : null);
+    }
+  };
+
+  const handleConversationUnarchived = (conversation: Conversation) => {
+    // Add the unarchived conversation back to the list
+    setConversations((prev) => [conversation, ...prev]);
+  };
+
   if (loading && conversations.length === 0) {
     return (
       <div className="loading-container">
@@ -144,6 +158,8 @@ function App() {
         currentConversationId={currentConversationId}
         onSelectConversation={selectConversation}
         onNewConversation={startNewConversation}
+        onConversationArchived={handleConversationArchived}
+        onConversationUnarchived={handleConversationUnarchived}
       />
 
       {/* Main chat interface */}

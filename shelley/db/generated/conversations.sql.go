@@ -9,8 +9,41 @@ import (
 	"context"
 )
 
+const archiveConversation = `-- name: ArchiveConversation :one
+UPDATE conversations
+SET archived = TRUE, updated_at = CURRENT_TIMESTAMP
+WHERE conversation_id = ?
+RETURNING conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived
+`
+
+func (q *Queries) ArchiveConversation(ctx context.Context, conversationID string) (Conversation, error) {
+	row := q.db.QueryRowContext(ctx, archiveConversation, conversationID)
+	var i Conversation
+	err := row.Scan(
+		&i.ConversationID,
+		&i.Slug,
+		&i.UserInitiated,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Cwd,
+		&i.Archived,
+	)
+	return i, err
+}
+
+const countArchivedConversations = `-- name: CountArchivedConversations :one
+SELECT COUNT(*) FROM conversations WHERE archived = TRUE
+`
+
+func (q *Queries) CountArchivedConversations(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countArchivedConversations)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countConversations = `-- name: CountConversations :one
-SELECT COUNT(*) FROM conversations
+SELECT COUNT(*) FROM conversations WHERE archived = FALSE
 `
 
 func (q *Queries) CountConversations(ctx context.Context) (int64, error) {
@@ -23,7 +56,7 @@ func (q *Queries) CountConversations(ctx context.Context) (int64, error) {
 const createConversation = `-- name: CreateConversation :one
 INSERT INTO conversations (conversation_id, slug, user_initiated, cwd)
 VALUES (?, ?, ?, ?)
-RETURNING conversation_id, slug, user_initiated, created_at, updated_at, cwd
+RETURNING conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived
 `
 
 type CreateConversationParams struct {
@@ -48,6 +81,7 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Cwd,
+		&i.Archived,
 	)
 	return i, err
 }
@@ -63,7 +97,7 @@ func (q *Queries) DeleteConversation(ctx context.Context, conversationID string)
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd FROM conversations
+SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived FROM conversations
 WHERE conversation_id = ?
 `
 
@@ -77,12 +111,13 @@ func (q *Queries) GetConversation(ctx context.Context, conversationID string) (C
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Cwd,
+		&i.Archived,
 	)
 	return i, err
 }
 
 const getConversationBySlug = `-- name: GetConversationBySlug :one
-SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd FROM conversations
+SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived FROM conversations
 WHERE slug = ?
 `
 
@@ -96,12 +131,57 @@ func (q *Queries) GetConversationBySlug(ctx context.Context, slug *string) (Conv
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Cwd,
+		&i.Archived,
 	)
 	return i, err
 }
 
+const listArchivedConversations = `-- name: ListArchivedConversations :many
+SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived FROM conversations
+WHERE archived = TRUE
+ORDER BY updated_at DESC
+LIMIT ? OFFSET ?
+`
+
+type ListArchivedConversationsParams struct {
+	Limit  int64 `json:"limit"`
+	Offset int64 `json:"offset"`
+}
+
+func (q *Queries) ListArchivedConversations(ctx context.Context, arg ListArchivedConversationsParams) ([]Conversation, error) {
+	rows, err := q.db.QueryContext(ctx, listArchivedConversations, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Conversation{}
+	for rows.Next() {
+		var i Conversation
+		if err := rows.Scan(
+			&i.ConversationID,
+			&i.Slug,
+			&i.UserInitiated,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Cwd,
+			&i.Archived,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listConversations = `-- name: ListConversations :many
-SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd FROM conversations
+SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived FROM conversations
+WHERE archived = FALSE
 ORDER BY updated_at DESC
 LIMIT ? OFFSET ?
 `
@@ -127,6 +207,51 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Cwd,
+			&i.Archived,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchArchivedConversations = `-- name: SearchArchivedConversations :many
+SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived FROM conversations
+WHERE slug LIKE '%' || ? || '%' AND archived = TRUE
+ORDER BY updated_at DESC
+LIMIT ? OFFSET ?
+`
+
+type SearchArchivedConversationsParams struct {
+	Column1 *string `json:"column_1"`
+	Limit   int64   `json:"limit"`
+	Offset  int64   `json:"offset"`
+}
+
+func (q *Queries) SearchArchivedConversations(ctx context.Context, arg SearchArchivedConversationsParams) ([]Conversation, error) {
+	rows, err := q.db.QueryContext(ctx, searchArchivedConversations, arg.Column1, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Conversation{}
+	for rows.Next() {
+		var i Conversation
+		if err := rows.Scan(
+			&i.ConversationID,
+			&i.Slug,
+			&i.UserInitiated,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Cwd,
+			&i.Archived,
 		); err != nil {
 			return nil, err
 		}
@@ -142,8 +267,8 @@ func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsPa
 }
 
 const searchConversations = `-- name: SearchConversations :many
-SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd FROM conversations
-WHERE slug LIKE '%' || ? || '%'
+SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived FROM conversations
+WHERE slug LIKE '%' || ? || '%' AND archived = FALSE
 ORDER BY updated_at DESC
 LIMIT ? OFFSET ?
 `
@@ -170,6 +295,7 @@ func (q *Queries) SearchConversations(ctx context.Context, arg SearchConversatio
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Cwd,
+			&i.Archived,
 		); err != nil {
 			return nil, err
 		}
@@ -184,11 +310,33 @@ func (q *Queries) SearchConversations(ctx context.Context, arg SearchConversatio
 	return items, nil
 }
 
+const unarchiveConversation = `-- name: UnarchiveConversation :one
+UPDATE conversations
+SET archived = FALSE, updated_at = CURRENT_TIMESTAMP
+WHERE conversation_id = ?
+RETURNING conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived
+`
+
+func (q *Queries) UnarchiveConversation(ctx context.Context, conversationID string) (Conversation, error) {
+	row := q.db.QueryRowContext(ctx, unarchiveConversation, conversationID)
+	var i Conversation
+	err := row.Scan(
+		&i.ConversationID,
+		&i.Slug,
+		&i.UserInitiated,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Cwd,
+		&i.Archived,
+	)
+	return i, err
+}
+
 const updateConversationSlug = `-- name: UpdateConversationSlug :one
 UPDATE conversations
 SET slug = ?, updated_at = CURRENT_TIMESTAMP
 WHERE conversation_id = ?
-RETURNING conversation_id, slug, user_initiated, created_at, updated_at, cwd
+RETURNING conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived
 `
 
 type UpdateConversationSlugParams struct {
@@ -206,6 +354,7 @@ func (q *Queries) UpdateConversationSlug(ctx context.Context, arg UpdateConversa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Cwd,
+		&i.Archived,
 	)
 	return i, err
 }

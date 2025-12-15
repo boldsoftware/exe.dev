@@ -15,6 +15,7 @@ type Conversation struct {
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 	Cwd            *string   `json:"cwd"`
+	Archived       bool      `json:"archived"`
 }
 
 type Message struct {

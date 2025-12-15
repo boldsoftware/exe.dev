@@ -206,6 +206,7 @@ func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logge
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// API routes
 	mux.HandleFunc("/api/conversations", s.handleConversations)
+	mux.HandleFunc("/api/conversations/archived", s.handleArchivedConversations)
 	mux.HandleFunc("/api/conversations/new", s.handleNewConversation)
 	mux.HandleFunc("/api/conversation/", s.handleConversation)
 	mux.HandleFunc("/api/validate-cwd", s.handleValidateCwd)
