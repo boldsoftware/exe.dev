@@ -27,20 +27,6 @@
         padding: 0 24px;
       }
 
-      h1 {
-        font-size: 42px;
-        font-weight: 400;
-        letter-spacing: -0.02em;
-        margin-bottom: 32px;
-      }
-
-      .intro {
-        font-size: 18px;
-        line-height: 1.7;
-        margin-bottom: 48px;
-        color: rgba(0, 0, 0, 0.7);
-      }
-
       .post-list {
         display: flex;
         flex-direction: column;
@@ -92,25 +78,12 @@
           margin: 32px auto 80px;
           padding: 0 16px;
         }
-
-        h1 {
-          font-size: 32px;
-          margin-bottom: 24px;
-        }
-
-        .post-card {
-          padding: 0;
-        }
       }
     </style>
   </head>
   <body>
     {{template "topbar" .}}
     <main>
-      <h1>blog.exe.dev</h1>
-      <p class="intro">
-        By programmers for programmers.
-      </p>
       <section class="post-list">
         {{range .Entries}}
         <article class="post-card">
