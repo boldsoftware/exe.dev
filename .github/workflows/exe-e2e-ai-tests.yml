@@ -66,6 +66,9 @@ jobs:
           docker run --rm --entrypoint "bash" chromedp/headless-shell -c "tar -cvf - /headless-shell/" | tar -xf-
           echo "$PWD/headless-shell" >> $GITHUB_PATH
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
       - name: Run e2e AI tests via e1e framework
         id: run-e2e
         continue-on-error: true
@@ -188,10 +191,6 @@ jobs:
           if [ -n "${{ steps.vm.outputs.envfile }}" ]; then
             ./ops/ci-vm-destroy.sh "${{ steps.vm.outputs.envfile }}" || true
           fi
-
-      - name: Install uv
-        if: always()
-        uses: astral-sh/setup-uv@v3
 
       - name: Post failure to Slack #oops
         if: steps.run-e2e.outcome == 'failure'
