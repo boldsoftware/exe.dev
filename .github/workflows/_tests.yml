@@ -33,15 +33,6 @@ jobs:
           restore-keys: |
             go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.mod') }}-
 
-      - name: Install tools
-        run: |
-          go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
-
-      - name: Tools Version
-        run: |
-          go version
-          oapi-codegen -version
-
       - name: Verify go generate output unchanged
         run: |
           set -euo pipefail
