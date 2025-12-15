@@ -7,13 +7,18 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	blogpkg "exe.dev/blog"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"tailscale.com/net/tsaddr"
 )
 
 // Embed minimal static assets needed by blog templates.
@@ -30,12 +35,17 @@ func main() {
 		panic("-http must be set to a non-empty address")
 	}
 
+	metricsRegistry := prometheus.NewRegistry()
+	metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+	metricsRegistry.MustRegister(prometheus.NewGoCollector())
+
+	blogMetrics := blogpkg.NewMetrics(metricsRegistry)
 	log := slog.Default()
 
 	var handleBlog func(http.ResponseWriter, *http.Request) bool
 	if liveDir := detectLiveBlogDir(); liveDir != "" {
 		var err error
-		handleBlog, err = newLiveReloadHandler(log, liveDir)
+		handleBlog, err = newLiveReloadHandler(log, liveDir, blogMetrics)
 		if err != nil {
 			log.Error("failed to initialize live reload", "dir", liveDir, "error", err)
 			panic(err)
@@ -51,7 +61,7 @@ func main() {
 		if handler == nil {
 			panic("blog handler is nil")
 		}
-		handleBlog = handler.Handle
+		handleBlog = handler.WithMetrics(blogMetrics).Handle
 	}
 
 	mux := http.NewServeMux()
@@ -78,6 +88,8 @@ func main() {
 		tmpReq.URL.Path = "/" + filename
 		http.FileServer(http.FS(sub)).ServeHTTP(w, tmpReq)
 	})
+
+	mux.Handle("/metrics", requireTailnetAccess(promhttp.HandlerFor(metricsRegistry, promhttp.HandlerOpts{})))
 
 	// Blog routes
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +154,7 @@ func findGitRoot(start string) (string, bool) {
 	return "", false
 }
 
-func newLiveReloadHandler(log *slog.Logger, blogDir string) (func(http.ResponseWriter, *http.Request) bool, error) {
+func newLiveReloadHandler(log *slog.Logger, blogDir string, metrics *blogpkg.Metrics) (func(http.ResponseWriter, *http.Request) bool, error) {
 	if _, err := blogpkg.LoadFromDir(blogDir, true); err != nil {
 		return nil, err
 	}
@@ -167,7 +179,7 @@ func newLiveReloadHandler(log *slog.Logger, blogDir string) (func(http.ResponseW
 			http.Error(w, "blog unavailable", http.StatusInternalServerError)
 			return true
 		}
-		return handler.Handle(w, r)
+		return handler.WithMetrics(metrics).Handle(w, r)
 	}, nil
 }
 
@@ -225,5 +237,29 @@ func logRequests(next http.Handler) http.Handler {
 		if err := json.NewEncoder(os.Stdout).Encode(entry); err != nil {
 			slog.Error("failed to log request", "error", err)
 		}
+	})
+}
+
+func requireTailnetAccess(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, port, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			http.Error(w, "remoteaddr check: "+r.RemoteAddr+": "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if port == "" {
+			http.Error(w, "remoteaddr check: missing port in "+r.RemoteAddr, http.StatusInternalServerError)
+			return
+		}
+		remoteIP, err := netip.ParseAddr(host)
+		if err != nil {
+			http.Error(w, "remoteaddr check: "+r.RemoteAddr+": "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if !remoteIP.IsLoopback() && !tsaddr.IsTailscaleIP(remoteIP) {
+			http.Error(w, "Access denied", http.StatusUnauthorized)
+			return
+		}
+		handler.ServeHTTP(w, r)
 	})
 }

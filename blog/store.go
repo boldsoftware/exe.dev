@@ -260,6 +260,7 @@ type Handler struct {
 	showHidden   bool
 	templates    *template.Template
 	atomTemplate *template.Template
+	metrics      *Metrics
 }
 
 // NewHandler creates a handler that uses the embedded templates.
@@ -328,6 +329,15 @@ func (h *Handler) Store() *Store {
 	return h.store
 }
 
+// WithMetrics attaches metrics recording to the handler.
+func (h *Handler) WithMetrics(metrics *Metrics) *Handler {
+	if h == nil {
+		return h
+	}
+	h.metrics = metrics
+	return h
+}
+
 func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 	if h == nil || h.store == nil {
 		return false
@@ -341,6 +351,7 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 	}
 
 	if path == "/" {
+		h.recordPageHit(path)
 		h.renderList(w, r, showHidden)
 		return true
 	}
@@ -360,6 +371,7 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 		if !showHidden && !entry.Published {
 			return false
 		}
+		h.recordPageHit(entry.Path)
 		h.renderEntry(w, r, entry, showHidden)
 		return true
 	}
@@ -421,6 +433,13 @@ func (h *Handler) renderAtom(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/atom+xml; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
+}
+
+func (h *Handler) recordPageHit(path string) {
+	if h == nil || h.metrics == nil {
+		return
+	}
+	h.metrics.RecordPageHit(path)
 }
 
 func parseMarkdownPost(relPath string, data []byte) (Entry, error) {
