@@ -1,8 +1,17 @@
 # Shelley - A Coding Agent for exe.dev
 
-Shelley is a conversational AI coding agent that provides both a web interface and command-line tools for AI-powered coding assistance.
+Shelley is a conversational AI coding agent that provides a web interface
+for AI-powered coding assistance.
 
 See also ARCHITECTURE.md for architectural details.
+
+## Dev Tricks
+
+If you want to see how mobile looks, and you're on your home
+network where you've got mDNS working fine, you can
+run 
+  socat TCP-LISTEN:9001,fork TCP:localhost:9000
+and then have your phone go to http://hostname.local:9001/
 
 ## CLI Usage
 
@@ -33,14 +42,6 @@ Lists all supported models and their required environment variables.
 
 ```bash
 shelley models
-```
-
-#### `unpack-template` - Unpack Project Template
-
-Unpacks a project template to a directory.
-
-```bash
-shelley unpack-template <template-name> <directory>
 ```
 
 ### Examples
