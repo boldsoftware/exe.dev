@@ -16,7 +16,7 @@
 </head>
 <body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
   <main class="w-full max-w-2xl">
-    <h1 class="text-4xl font-semibold mb-6">Request a link</h1>
+    <h1 class="text-4xl font-semibold mb-6">Login (or create an account)</h1>
     <form method="POST" action="{{if .BoxName}}/m/email-auth{{else}}/auth{{end}}">
       {{if .RedirectURL}}
       <input type="hidden" name="redirect" value="{{.RedirectURL}}">

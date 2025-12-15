@@ -144,8 +144,8 @@ func TestScreenFlow(t *testing.T) {
 		if status != 200 {
 			t.Errorf("GET /auth: expected 200, got %d", status)
 		}
-		if !strings.Contains(body, "Request a link") {
-			t.Errorf("GET /auth: expected 'Request a link' in body")
+		if !strings.Contains(body, "Login (or create an account)") {
+			t.Errorf("GET /auth: expected 'Login (or create an account)' in body")
 		}
 		screenshot("auth_form", body)
 	})
