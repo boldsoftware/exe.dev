@@ -2,6 +2,7 @@
   "name": "shelley-ui",
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "npm@11.6.2",
   "scripts": {
     "dev": "esbuild src/main.tsx --bundle --outfile=dist/main.js --servedir=dist --watch",
     "build": "mkdir -p dist && cp src/index.html dist/ && cp src/styles.css dist/ && esbuild src/main.tsx --bundle --outfile=dist/main.js --minify --sourcemap && node scripts/build-info.js",
