@@ -13,7 +13,8 @@ interface PatchToolProps {
 }
 
 function PatchTool({ toolInput, isRunning, toolResult, hasError, executionTime }: PatchToolProps) {
-  const [isExpanded, setIsExpanded] = useState(true); // Default to expanded
+  // Default to collapsed for errors (since agents typically recover), expanded otherwise
+  const [isExpanded, setIsExpanded] = useState(!hasError);
 
   // Extract path from toolInput
   const path =

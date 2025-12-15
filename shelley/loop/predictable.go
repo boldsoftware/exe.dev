@@ -107,6 +107,14 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 	case "echo: foo":
 		return s.makeResponse("foo"), nil
 
+	case "patch fail":
+		// Trigger a patch that will fail (file doesn't exist)
+		return s.makePatchToolResponse("/nonexistent/file/that/does/not/exist.txt"), nil
+
+	case "patch bad json":
+		// Trigger a patch with malformed JSON (simulates Anthropic sending invalid JSON)
+		return s.makeMalformedPatchToolResponse(), nil
+
 	default:
 		// Handle pattern-based inputs
 		if strings.HasPrefix(inputText, "echo: ") {
@@ -268,6 +276,36 @@ func (s *PredictableService) makePatchToolResponse(filePath string) *llm.Respons
 		Usage: llm.Usage{
 			InputTokens:  uint64(len(strings.Fields(filePath)) + 10),
 			OutputTokens: uint64(len(strings.Fields(filePath)) + 15),
+			CostUSD:      0.003,
+		},
+	}
+}
+
+// makeMalformedPatchToolResponse creates a response with malformed JSON that will fail to parse
+// This simulates when Anthropic sends back invalid JSON in the tool input
+func (s *PredictableService) makeMalformedPatchToolResponse() *llm.Response {
+	// This malformed JSON has a string where an object is expected (patch field)
+	// Mimics the error: "cannot unmarshal string into Go struct field PatchInputOneSingular.patch"
+	malformedJSON := `{"path":"/home/agent/example.css","patch":"<parameter name=\"operation\">replace","oldText":".example {\n  color: red;\n}","newText":".example {\n  color: blue;\n}"}`
+	toolInput := json.RawMessage(malformedJSON)
+	return &llm.Response{
+		ID:    fmt.Sprintf("pred-patch-malformed-%d", time.Now().UnixNano()),
+		Type:  "message",
+		Role:  llm.MessageRoleAssistant,
+		Model: "predictable-v1",
+		Content: []llm.Content{
+			{Type: llm.ContentTypeText, Text: "I'll patch the file with the changes."},
+			{
+				ID:        fmt.Sprintf("tool_%d", time.Now().UnixNano()%1000),
+				Type:      llm.ContentTypeToolUse,
+				ToolName:  "patch",
+				ToolInput: toolInput,
+			},
+		},
+		StopReason: llm.StopReasonToolUse,
+		Usage: llm.Usage{
+			InputTokens:  50,
+			OutputTokens: 50,
 			CostUSD:      0.003,
 		},
 	}
