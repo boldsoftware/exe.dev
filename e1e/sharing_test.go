@@ -1608,9 +1608,12 @@ func (f *loginWithExeFlow) verifyAndClickConfirmationPage() []*http.Cookie {
 	}
 	resp.Body.Close()
 
-	// Extract cookies from the jar for the box subdomain
+	// Extract cookies from the jar for the box subdomain.
+	// With Go 1.25 and earlier they are on localhost,
+	// with Go 1.26 and later they are on returnHost.
 	boxURL := fmt.Sprintf("http://localhost:%d", f.httpPort)
 	cookies := f.jar.Cookies(mustParseURL(boxURL))
+	cookies = append(cookies, f.jar.Cookies(mustParseURL("https://"+f.returnHost))...)
 
 	f.t.Logf("Step 6: Completed login-with-exe flow, got %d cookies", len(cookies))
 	return cookies
@@ -1618,16 +1621,21 @@ func (f *loginWithExeFlow) verifyAndClickConfirmationPage() []*http.Cookie {
 
 // verifyCookiesOnBothDomains verifies that cookies were set on both the main domain
 // (exe.dev) and the subdomain (box.exe.cloud).
-// In the test environment, both domains resolve to localhost, so cookies are in the same jar.
 // We verify by checking cookie names:
 // - "exe-auth" is set on the main domain during email verification
 // - "exe-proxy-auth" is set on the subdomain during magic auth
 func (f *loginWithExeFlow) verifyCookiesOnBothDomains() {
 	f.t.Helper()
 
-	// Get all cookies from the jar for localhost (both domains use same port in tests)
+	// Get all cookies from the jar for localhost.
 	jarURL := fmt.Sprintf("http://localhost:%d", f.httpPort)
 	cookies := f.jar.Cookies(mustParseURL(jarURL))
+
+	// Get all cookies from the subdomain we are using.
+	// With Go 1.25 and earlier this is not needed as
+	// all cookies will be on localhost. In Go 1.26 the
+	// cookies will be on returnHost, per https://go.dev/issue/38988.
+	cookies = append(cookies, f.jar.Cookies(mustParseURL("https://"+f.returnHost))...)
 
 	var hasExeAuth, hasExeProxyAuth bool
 	for _, c := range cookies {
