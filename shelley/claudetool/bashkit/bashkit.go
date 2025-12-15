@@ -9,7 +9,6 @@ import (
 )
 
 var checks = []func(*syntax.CallExpr) error{
-	noGitConfigUsernameEmailChanges,
 	noBlindGitAdd,
 }
 
@@ -73,55 +72,6 @@ func Check(bashScript string) error {
 	})
 
 	return err
-}
-
-// noGitConfigUsernameEmailChanges checks for git config username/email changes.
-// It uses simple heuristics, and has both false positives and false negatives.
-func noGitConfigUsernameEmailChanges(cmd *syntax.CallExpr) error {
-	if hasGitConfigUsernameEmailChanges(cmd) {
-		return fmt.Errorf("permission denied: changing git config username/email is not allowed, use env vars instead")
-	}
-	return nil
-}
-
-func hasGitConfigUsernameEmailChanges(cmd *syntax.CallExpr) bool {
-	if len(cmd.Args) < 3 {
-		return false
-	}
-	if cmd.Args[0].Lit() != "git" {
-		return false
-	}
-
-	configIndex := -1
-	for i, arg := range cmd.Args {
-		if arg.Lit() == "config" {
-			configIndex = i
-			break
-		}
-	}
-
-	if configIndex < 0 || configIndex == len(cmd.Args)-1 {
-		return false
-	}
-
-	// check for user.name or user.email
-	keyIndex := -1
-	for i, arg := range cmd.Args {
-		if i < configIndex {
-			continue
-		}
-		if arg.Lit() == "user.name" || arg.Lit() == "user.email" {
-			keyIndex = i
-			break
-		}
-	}
-
-	if keyIndex < 0 || keyIndex == len(cmd.Args)-1 {
-		return false
-	}
-
-	// user.name/user.email is followed by a value
-	return true
 }
 
 // WillRunGitCommit checks if the provided bash script will run 'git commit'.
