@@ -361,61 +361,101 @@ func (l *Loop) handleToolCalls(ctx context.Context, content []llm.Content) error
 // This prevents the "tool_use ids were found without tool_result blocks" error from
 // the Anthropic API. Mutates the request's Messages slice.
 func (l *Loop) insertMissingToolResults(req *llm.Request) {
-	if len(req.Messages) < 2 {
-		return
-	}
-	prev := req.Messages[len(req.Messages)-2]
-	current := req.Messages[len(req.Messages)-1]
-
-	// Only check if previous message is assistant and current is user
-	if prev.Role != llm.MessageRoleAssistant || current.Role != llm.MessageRoleUser {
+	if len(req.Messages) < 1 {
 		return
 	}
 
-	// Count tool uses in previous message
-	var toolUsePrev int
-	var toolUseContents []llm.Content
-	for _, c := range prev.Content {
-		if c.Type == llm.ContentTypeToolUse {
-			toolUsePrev++
-			toolUseContents = append(toolUseContents, c)
+	// Scan through all messages looking for assistant messages with tool_use
+	// that are not immediately followed by a user message with corresponding tool_results.
+	// We may need to insert synthetic user messages with tool_results.
+	var newMessages []llm.Message
+	totalInserted := 0
+
+	for i := 0; i < len(req.Messages); i++ {
+		msg := req.Messages[i]
+		newMessages = append(newMessages, msg)
+
+		// Check if this is an assistant message with tool_use blocks
+		if msg.Role != llm.MessageRoleAssistant {
+			continue
+		}
+
+		var toolUseContents []llm.Content
+		for _, c := range msg.Content {
+			if c.Type == llm.ContentTypeToolUse {
+				toolUseContents = append(toolUseContents, c)
+			}
+		}
+		if len(toolUseContents) == 0 {
+			continue
+		}
+
+		// Check if next message is a user message with corresponding tool_results
+		var nextMsg *llm.Message
+		if i+1 < len(req.Messages) {
+			nextMsg = &req.Messages[i+1]
+		}
+
+		if nextMsg != nil && nextMsg.Role == llm.MessageRoleUser {
+			// Collect existing tool_result IDs in the next message
+			existingResults := make(map[string]bool)
+			for _, c := range nextMsg.Content {
+				if c.Type == llm.ContentTypeToolResult {
+					existingResults[c.ToolUseID] = true
+				}
+			}
+
+			// Find tool_uses that are missing results
+			var missingToolUses []llm.Content
+			for _, tu := range toolUseContents {
+				if !existingResults[tu.ID] {
+					missingToolUses = append(missingToolUses, tu)
+				}
+			}
+
+			if len(missingToolUses) > 0 {
+				// Prepend synthetic tool_results to the next user message
+				var prefix []llm.Content
+				for _, tu := range missingToolUses {
+					prefix = append(prefix, llm.Content{
+						Type:      llm.ContentTypeToolResult,
+						ToolUseID: tu.ID,
+						ToolError: true,
+						ToolResult: []llm.Content{{
+							Type: llm.ContentTypeText,
+							Text: "not executed; retry possible",
+						}},
+					})
+				}
+				req.Messages[i+1].Content = append(prefix, req.Messages[i+1].Content...)
+				totalInserted += len(prefix)
+			}
+		} else {
+			// Next message is not a user message (or there is no next message).
+			// Insert a synthetic user message with tool_results for all tool_uses.
+			var toolResultContent []llm.Content
+			for _, tu := range toolUseContents {
+				toolResultContent = append(toolResultContent, llm.Content{
+					Type:      llm.ContentTypeToolResult,
+					ToolUseID: tu.ID,
+					ToolError: true,
+					ToolResult: []llm.Content{{
+						Type: llm.ContentTypeText,
+						Text: "not executed; retry possible",
+					}},
+				})
+			}
+			syntheticMsg := llm.Message{
+				Role:    llm.MessageRoleUser,
+				Content: toolResultContent,
+			}
+			newMessages = append(newMessages, syntheticMsg)
+			totalInserted += len(toolResultContent)
 		}
 	}
-	if toolUsePrev == 0 {
-		return
-	}
 
-	// Count tool results in current message
-	var toolResultCurrent int
-	for _, c := range current.Content {
-		if c.Type == llm.ContentTypeToolResult {
-			toolResultCurrent++
-		}
+	if totalInserted > 0 {
+		req.Messages = newMessages
+		l.logger.Debug("inserted missing tool results", "count", totalInserted)
 	}
-
-	// If we have tool results already, don't insert missing ones
-	// (partial results would be a programmer error)
-	if toolResultCurrent != 0 {
-		return
-	}
-
-	// Create error results for all tool uses
-	var prefix []llm.Content
-	for _, part := range toolUseContents {
-		content := llm.Content{
-			Type:      llm.ContentTypeToolResult,
-			ToolUseID: part.ID,
-			ToolError: true,
-			ToolResult: []llm.Content{{
-				Type: llm.ContentTypeText,
-				Text: "not executed; retry possible",
-			}},
-		}
-		prefix = append(prefix, content)
-	}
-
-	// Prepend the synthetic tool results
-	current.Content = append(prefix, current.Content...)
-	req.Messages[len(req.Messages)-1] = current
-	l.logger.Debug("inserted missing tool results", "count", len(prefix))
 }

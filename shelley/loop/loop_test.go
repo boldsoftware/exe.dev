@@ -661,6 +661,123 @@ func TestInsertMissingToolResults(t *testing.T) {
 }
 
 func TestInsertMissingToolResultsWithEdgeCases(t *testing.T) {
+	// Test for the bug: when an assistant error message is recorded after a tool_use
+	// but before tool execution, the tool_use is "hidden" from insertMissingToolResults
+	// because it only checks the last two messages.
+	t.Run("tool_use hidden by subsequent assistant message", func(t *testing.T) {
+		loop := NewLoop(Config{
+			LLM:     NewPredictableService(),
+			History: []llm.Message{},
+		})
+
+		// Scenario:
+		// 1. LLM responds with tool_use
+		// 2. Something fails, error message recorded (assistant message)
+		// 3. User sends new message
+		// The tool_use in message 0 is never followed by a tool_result
+		req := &llm.Request{
+			Messages: []llm.Message{
+				{
+					Role: llm.MessageRoleAssistant,
+					Content: []llm.Content{
+						{Type: llm.ContentTypeText, Text: "I'll run a command"},
+						{Type: llm.ContentTypeToolUse, ID: "tool_hidden", ToolName: "bash"},
+					},
+				},
+				{
+					Role: llm.MessageRoleAssistant,
+					Content: []llm.Content{
+						{Type: llm.ContentTypeText, Text: "LLM request failed: some error"},
+					},
+				},
+				{
+					Role: llm.MessageRoleUser,
+					Content: []llm.Content{
+						{Type: llm.ContentTypeText, Text: "Please try again"},
+					},
+				},
+			},
+		}
+
+		loop.insertMissingToolResults(req)
+
+		// The function should have inserted a tool_result for tool_hidden
+		// It should be inserted as a user message after the assistant message with tool_use
+		// Since we can't insert in the middle, we need to ensure the history is valid
+
+		// Check that there's a tool_result for tool_hidden somewhere in the messages
+		found := false
+		for _, msg := range req.Messages {
+			for _, c := range msg.Content {
+				if c.Type == llm.ContentTypeToolResult && c.ToolUseID == "tool_hidden" {
+					found = true
+					if !c.ToolError {
+						t.Error("synthetic tool result should have ToolError=true")
+					}
+					break
+				}
+			}
+		}
+		if !found {
+			t.Error("expected to find synthetic tool result for tool_hidden - the bug is that tool_use is hidden by subsequent assistant message")
+		}
+	})
+
+	// Test for tool_use in earlier message (not the second-to-last)
+	t.Run("tool_use in earlier message without result", func(t *testing.T) {
+		loop := NewLoop(Config{
+			LLM:     NewPredictableService(),
+			History: []llm.Message{},
+		})
+
+		req := &llm.Request{
+			Messages: []llm.Message{
+				{
+					Role: llm.MessageRoleUser,
+					Content: []llm.Content{
+						{Type: llm.ContentTypeText, Text: "Do something"},
+					},
+				},
+				{
+					Role: llm.MessageRoleAssistant,
+					Content: []llm.Content{
+						{Type: llm.ContentTypeText, Text: "I'll use a tool"},
+						{Type: llm.ContentTypeToolUse, ID: "tool_earlier", ToolName: "bash"},
+					},
+				},
+				// Missing: user message with tool_result for tool_earlier
+				{
+					Role: llm.MessageRoleAssistant,
+					Content: []llm.Content{
+						{Type: llm.ContentTypeText, Text: "Something went wrong"},
+					},
+				},
+				{
+					Role: llm.MessageRoleUser,
+					Content: []llm.Content{
+						{Type: llm.ContentTypeText, Text: "Try again"},
+					},
+				},
+			},
+		}
+
+		loop.insertMissingToolResults(req)
+
+		// Should have inserted a tool_result for tool_earlier
+		found := false
+		for _, msg := range req.Messages {
+			for _, c := range msg.Content {
+				if c.Type == llm.ContentTypeToolResult && c.ToolUseID == "tool_earlier" {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			t.Error("expected to find synthetic tool result for tool_earlier")
+		}
+	})
+
 	t.Run("empty message list", func(t *testing.T) {
 		loop := NewLoop(Config{
 			LLM:     NewPredictableService(),
