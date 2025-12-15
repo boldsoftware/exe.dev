@@ -132,16 +132,23 @@ func TestIsProxyRequest(t *testing.T) {
 		{
 			name:     "prod subdomain format",
 			env:      stage.Prod(),
-			host:     "mybox.exe.dev",
+			host:     "mybox.exe.xyz",
 			expected: true,
-			comment:  "Should recognize *.exe.dev pattern in production",
+			comment:  "Should recognize *.exe.xyz (BoxHost) pattern in production",
 		},
 		{
 			name:     "prod subdomain with server port",
 			env:      stage.Prod(),
-			host:     "mybox.exe.dev:443",
+			host:     "mybox.exe.xyz:443",
 			expected: true,
-			comment:  "Should recognize *.exe.dev even with server port",
+			comment:  "Should recognize *.exe.xyz even with server port",
+		},
+		{
+			name:     "prod WebHost subdomain should not be proxy",
+			env:      stage.Prod(),
+			host:     "mybox.exe.dev",
+			expected: false,
+			comment:  "Subdomains of WebHost (exe.dev) should not be proxy requests",
 		},
 		{
 			name:     "exe.dev alone in prod mode",
@@ -151,20 +158,20 @@ func TestIsProxyRequest(t *testing.T) {
 			comment:  "Plain exe.dev should not be proxy request",
 		},
 
-		// Cross-mode cases (testing flexibility)
+		// Cross-mode cases: requests to "foreign" box domains go to proxy (which will 404)
 		{
-			name:     "prod domain in dev mode",
+			name:     "prod BoxHost in dev mode",
 			env:      stage.Test(),
-			host:     "mybox.exe.dev",
+			host:     "mybox.exe.xyz",
 			expected: true,
-			comment:  "Should still work with production domain in dev mode for flexibility",
+			comment:  "Prod BoxHost subdomains are proxied in dev (not excluded)",
 		},
 		{
-			name:     "dev domain in prod mode",
+			name:     "dev BoxHost in prod mode",
 			env:      stage.Prod(),
 			host:     "mybox.exe.cloud",
 			expected: true,
-			comment:  "Should still work with dev domain in production for flexibility",
+			comment:  "Dev BoxHost subdomains are proxied in prod (not excluded)",
 		},
 
 		// Edge cases

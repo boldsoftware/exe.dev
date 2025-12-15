@@ -11,7 +11,7 @@ if [ $# -eq 0 ]; then
 fi
 
 MACHINE_NAME="$1"
-PROXY_URL="http://${MACHINE_NAME}.localhost:8080"
+PROXY_URL="http://${MACHINE_NAME}.exe.cloud:8080"
 
 echo "Testing HTTP proxy functionality for container: $MACHINE_NAME"
 

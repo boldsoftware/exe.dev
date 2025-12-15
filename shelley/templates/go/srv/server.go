@@ -125,9 +125,9 @@ func mainDomainFromHost(h string) string {
 	if port != "" {
 		port = ":" + port
 	}
-	// Check for localhost-based domains (dev mode)
-	if strings.HasSuffix(host, ".localhost") || host == "localhost" {
-		return "localhost" + port
+	// Check for exe.cloud-based domains (dev mode)
+	if strings.HasSuffix(host, ".exe.cloud") || host == "exe.cloud" {
+		return "exe.cloud" + port
 	}
 	// Check for exe.dev-based domains (production)
 	if strings.HasSuffix(host, ".exe.dev") || host == "exe.dev" {

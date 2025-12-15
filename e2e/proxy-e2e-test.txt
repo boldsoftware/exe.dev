@@ -43,12 +43,12 @@ Test HTTP proxy functionality end-to-end by creating a container, starting an HT
 
 5. Test private access via HTTP proxy:
    ```
-   curl -v http://myproxybox.localhost:8080/
+   curl -v http://myproxybox.exe.cloud:8080/
    ```
    
    **Expected**: Should get HTTP redirect (3xx status) to authentication URL containing "auth" or "login"
 
-6. Test with browser navigation to `http://myproxybox.localhost:8080/`
+6. Test with browser navigation to `http://myproxybox.exe.cloud:8080/`
    
    **Expected**: Should redirect through authentication flow. After successful login, should show Python HTTP server directory listing.
 
@@ -70,7 +70,7 @@ Test HTTP proxy functionality end-to-end by creating a container, starting an HT
 
 9. Test public access (no authentication required):
    ```
-   curl http://myproxybox.localhost:8080/
+   curl http://myproxybox.exe.cloud:8080/
    ```
    
    **Expected**: Should return 200 OK with Python HTTP server directory listing directly, no redirects
@@ -93,7 +93,7 @@ Test HTTP proxy functionality end-to-end by creating a container, starting an HT
 
 13. Test access with new port configuration:
     ```
-    curl http://myproxybox.localhost:8080/
+    curl http://myproxybox.exe.cloud:8080/
     ```
     
     **Expected**: Should still work and return 200 OK with directory listing (proxy routes from port 8080 to container's port 8000)
@@ -114,7 +114,7 @@ Test HTTP proxy functionality end-to-end by creating a container, starting an HT
 
 16. Test that authentication is required again:
     ```
-    curl -v http://myproxybox.localhost:8080/
+    curl -v http://myproxybox.exe.cloud:8080/
     ```
     
     **Expected**: Should get HTTP redirect (3xx status) to authentication, not direct access
@@ -124,17 +124,17 @@ Test HTTP proxy functionality end-to-end by creating a container, starting an HT
 17. If authenticated in browser from step 6, test logout:
     ```
     # GET shows confirmation form
-    curl http://myproxybox.localhost:8080/__exe.dev/logout
+    curl http://myproxybox.exe.cloud:8080/__exe.dev/logout
     
     # POST actually logs out
-    curl -X POST http://myproxybox.localhost:8080/__exe.dev/logout
+    curl -X POST http://myproxybox.exe.cloud:8080/__exe.dev/logout
     ```
     
     **Expected**: GET shows HTML confirmation form, POST logs out and redirects to main domain
 
 18. Try accessing the container again after logout:
     ```
-    curl http://myproxybox.localhost:8080/
+    curl http://myproxybox.exe.cloud:8080/
     ```
     
     **Expected**: Should require authentication again (redirect to auth)

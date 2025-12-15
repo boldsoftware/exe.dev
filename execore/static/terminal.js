@@ -51,7 +51,7 @@ class TerminalClient {
 
     getBoxName() {
         const hostname = window.location.hostname;
-        // Extract box name from hostname (box.xterm.localhost or box.xterm.exe.dev)
+        // Extract box name from hostname (box.xterm.exe.cloud or box.xterm.exe.xyz)
         const parts = hostname.split('.');
         if (parts.length >= 3) {
             return parts[0];

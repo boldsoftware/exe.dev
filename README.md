@@ -49,7 +49,7 @@ Host localexe
  UserKnownHostsFile /dev/null
 
 Host *.localexe
- HostName %h.localhost
+ HostName %h.exe.cloud
  Port 2222
  StrictHostKeyChecking no
  UserKnownHostsFile /dev/null
@@ -112,7 +112,7 @@ With this you can:
 - ssh localexe
 - ssh <machine>@localexe
 - visit http://localhost:8080
-- visit http://machine.localhost:8080 (run `python -m http.server` in the machine first)
+- visit http://machine.exe.cloud:8080 (run `python -m http.server` in the machine first)
 - scp junk.txt localexe:junk.txt
 
 Everything will run locally on a lima VM.

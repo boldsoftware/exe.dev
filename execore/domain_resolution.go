@@ -26,7 +26,7 @@ func (s *Server) resolveCustomDomainBoxName(ctx context.Context, host string) (s
 
 	// Reject IP addresses early. This commonly happens from port scanners/bots
 	// connecting with the IP as the TLS SNI hostname.
-	if _, err := netip.ParseAddr(host); err == nil {
+	if domz.IsIPAddr(host) {
 		return "", errHostIsIPAddress
 	}
 

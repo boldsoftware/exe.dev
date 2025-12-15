@@ -3,6 +3,7 @@ package domz
 
 import (
 	"net"
+	"net/netip"
 	"strings"
 )
 
@@ -90,4 +91,9 @@ func FilterEmpty(strs []string) []string {
 func IsLocalhost(host string) bool {
 	host = StripPort(Canonicalize(host))
 	return host == "localhost" || host == "127.0.0.1" // no IPv6 anywhere in our systems yet
+}
+
+func IsIPAddr(host string) bool {
+	_, err := netip.ParseAddr(host)
+	return err == nil
 }

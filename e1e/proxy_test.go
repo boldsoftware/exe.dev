@@ -898,7 +898,7 @@ func localhostRequestWithHostHeader(method, urlS string, body io.Reader) (*http.
 	if err != nil {
 		return nil, err
 	}
-	if !strings.HasSuffix(host, ".localhost") && !strings.HasSuffix(host, ".exe.cloud") {
+	if !strings.HasSuffix(host, ".exe.cloud") {
 		return http.NewRequest(method, url.String(), body)
 	}
 	originalUrlHost := url.Host

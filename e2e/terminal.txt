@@ -16,20 +16,20 @@ Test the web terminal interface functionality, including complete authentication
 #### Terminal Authentication Flow
 
 1. **Access terminal without authentication**
-   - Visit: http://machinename.xterm.localhost:8080/
+   - Visit: http://machinename.xterm.exe.cloud:8080/
    - Expected: Redirect to auth page with correct port in URL
-   - Verify redirect URL contains: `http://localhost:8080/auth?redirect=...&return_host=machinename.xterm.localhost:8080`
+   - Verify redirect URL contains: `http://localhost:8080/auth?redirect=...&return_host=machinename.xterm.exe.cloud:8080`
    - This tests the port redirection fix
 
 2. **Complete authentication flow**
    - Follow the auth redirect from step 1
    - Complete authentication (email verification or existing session)
    - Expected: Redirect back to terminal subdomain via magic auth URL
-   - Verify URL pattern: `http://machinename.xterm.localhost:8080/__exe.dev/auth?secret=...&redirect=...`
+   - Verify URL pattern: `http://machinename.xterm.exe.cloud:8080/__exe.dev/auth?secret=...&redirect=...`
    - This tests the terminal-specific auth integration
 
 3. **Verify terminal hostname parsing**
-   - The auth flow should correctly parse "machinename" from "machinename.xterm.localhost"
+   - The auth flow should correctly parse "machinename" from "machinename.xterm.exe.cloud"
    - Should NOT get "invalid machine name" error
 
 #### Terminal Interface
@@ -75,19 +75,19 @@ Test the web terminal interface functionality, including complete authentication
 #### Terminal Session Management
 
 10. **Multiple terminal sessions**
-    - Open new browser tab to same terminal URL: http://machinename.xterm.localhost:8080/?t=2
+    - Open new browser tab to same terminal URL: http://machinename.xterm.exe.cloud:8080/?t=2
     - Both terminals should work independently
     - Commands in one terminal should not appear in the other
 
 11. **Terminal ID parameter**
-    - Access: http://machinename.xterm.localhost:8080/?t=5
+    - Access: http://machinename.xterm.exe.cloud:8080/?t=5
     - Should create terminal session "5"
     - Verify separate from default terminal (session "1")
 
 #### Error Handling
 
 12. **Non-existent machine**
-    - Visit: http://nonexistent.xterm.localhost:8080/
+    - Visit: http://nonexistent.xterm.exe.cloud:8080/
     - Expected: Should complete auth flow but then show "machine not found" error
     - Should NOT show "invalid machine name" error
 

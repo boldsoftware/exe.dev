@@ -32,9 +32,9 @@ This test verifies that containers can expose HTTP services and that the proxy a
 
 3. Open a new terminal/browser and try to access the container via HTTP:
    ```
-   curl http://machinename.localhost:8080/
+   curl http://machinename.exe.cloud:8080/
    ```
-   or navigate to http://machinename.localhost:8080/ in a browser.
+   or navigate to http://machinename.exe.cloud:8080/ in a browser.
    
    Expected: You should be redirected through an authentication flow. 
    This may involve redirections and session management.
@@ -65,10 +65,10 @@ This test verifies that containers can expose HTTP services and that the proxy a
 
 7. Test public access (no authentication required):
    ```
-   curl http://machinename.localhost:8080/
+   curl http://machinename.exe.cloud:8080/
    ```
-   or navigate to http://machinename.localhost:8080/ in a browser.
-   
+   or navigate to http://machinename.exe.cloud:8080/ in a browser.
+
    Expected: You should directly access the Python HTTP server's directory listing 
    without any authentication redirect. The response should be immediate.
 
@@ -87,9 +87,9 @@ This test verifies that containers can expose HTTP services and that the proxy a
 
 10. Test access with the new port configuration:
     ```
-    curl http://machinename.localhost:8080/
+    curl http://machinename.exe.cloud:8080/
     ```
-    
+
     Expected: Should still work, as the proxy routes from 8080 to the container's port 8000.
 
 #### 5. Test Route Back to Private
@@ -101,7 +101,7 @@ This test verifies that containers can expose HTTP services and that the proxy a
 
 12. Test that authentication is required again:
     ```
-    curl -v http://machinename.localhost:8080/
+    curl -v http://machinename.exe.cloud:8080/
     ```
     
     Expected: Should get redirected to authentication (you'll see HTTP redirects in the verbose output).
@@ -111,14 +111,14 @@ This test verifies that containers can expose HTTP services and that the proxy a
 
 13. If you authenticated in step 3, test logout:
     ```
-    curl http://machinename.localhost:8080/__exe.dev/logout
+    curl http://machinename.exe.cloud:8080/__exe.dev/logout
     ```
     
     Expected: Should log you out from the specific subhost.
 
 14. Try accessing the container again:
     ```
-    curl http://machinename.localhost:8080/
+    curl http://machinename.exe.cloud:8080/
     ```
     
     Expected: Should require authentication again.

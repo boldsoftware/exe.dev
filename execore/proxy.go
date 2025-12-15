@@ -267,34 +267,41 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// isProxyRequest determines if a request should be handled by the proxy
+// isProxyRequest reports whether a request to host should be handled by the proxy.
+// The proxy handles requests to VMs, which are can single subdomains of the box domain,
+// or third party domains pointing here.
 func (s *Server) isProxyRequest(host string) bool {
-	hostname, _, _ := net.SplitHostPort(host)
-	if hostname == "" {
-		hostname = host
+	// Given that we cannot enumerate all proxy hosts,
+	// implement by explicitly excluding known non-proxy hosts, and then allowing the rest through.
+	// TODO: When we have public ips, we could make this decision based on the IP the request came in on,
+	// or at least note when that decision varies from the hostname-based one.
+	host = domz.Canonicalize(domz.StripPort(host))
+	switch host {
+	case "":
+		return false // refuse the temptation to guess
+	case s.env.BoxHost:
+		return false // box apex is not a proxy target
 	}
-	hostname = domz.Canonicalize(hostname)
-	if s.env.WebHost == "localhost" {
-		// In local development, you can also use the local development machine's
-		// hostname as being localhost. This lets you do something like "socat TCP-LISTEN:8081,fork TCP:localhost:8080"
-		// and try exed's dashboard stuff from your phone.
+	if s.env.WebDev {
+		// When doing local development, it's useful to be able to reach the webserver
+		// via the local machine's hostname, not just localhost.
+		// This lets you do something like "socat TCP-LISTEN:8081,fork TCP:localhost:8080"
+		// and try out the mobile dashboard from your phone.
 		oshost, err := os.Hostname()
-		if err == nil && hostname == oshost {
+		if err == nil && host == oshost {
 			return false
 		}
 	}
-	if hostname == "" || domz.IsLocalhost(hostname) {
+	// Exclude our internal debug pages and the public web server.
+	if domz.FirstMatch(host, s.tsDomain, s.env.WebHost) != "" {
 		return false
 	}
-	// TODO: once web host and box host are distinct in prod+staging, we can get rid of the WebHost entries here.
-	switch hostname {
-	case s.env.BoxHost, s.tsDomain, s.env.WebHost, "www." + s.env.WebHost:
-		return false
+	if domz.IsIPAddr(host) {
+		return false // refuse IP addresses
 	}
-
-	// Any other hostname with at least one dot is a proxy request,
-	// otherwise it's invalid.
-	return strings.Contains(hostname, ".")
+	// We've excluded known non-proxy hosts.
+	// At this point, anything domain-like is fair game.
+	return strings.Contains(host, ".")
 }
 
 // getAuthenticatedUserID checks if the user is authenticated and returns their userID

@@ -102,9 +102,9 @@ func TestUtilityFunctions(t *testing.T) {
 			input    string
 			expected string
 		}{
-			{"example.localhost:8080", "localhost:8080"},
+			{"example.exe.cloud:8080", "exe.cloud:8080"},
 			{"example.exe.dev", "exe.dev"},
-			{"example.localhost", "localhost"},
+			{"example.exe.cloud", "exe.cloud"},
 		}
 
 		for _, test := range tests {

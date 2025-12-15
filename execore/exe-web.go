@@ -214,7 +214,6 @@ var (
 // resolveBoxName converts a hostname to a box name.
 // If hostname is a subdomain of the main domain (e.g., box.exe.dev),
 // it returns the box name with the main domain suffix stripped (e.g., "box").
-// In dev mode, also handles .localhost subdomains the same way.
 // For all other hostname values, a CNAME lookup is performed, and the above
 // rules are applied to the result; otherwise an error is returned.
 func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, error) {

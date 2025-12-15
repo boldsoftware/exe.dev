@@ -16,7 +16,7 @@ Test HTTP proxying capabilities, authentication flows, and proxy management.
 
 1. Start an HTTP server on your box (e.g., python3 -m http.server 8000)
 
-2. Connect to it via http://boxname.localhost:<HTTP_PORT>/. There should be a login flow.
+2. Connect to it via http://boxname.exe.cloud:<HTTP_PORT>/. There should be a login flow.
 
 Note that there should be a confirmation interstitial screen for logging into
 the box using your exe.dev credentials.
@@ -30,14 +30,14 @@ URL you started at.
 
 5. Use the "share" command in the exe.dev shell to make the proxy public. You should be able to access it without auth.
 
-6. Use http://boxname.localhost:<HTTP_PORT>/__exe.dev/logout to test logging out of a specific subhost.
+6. Use http://boxname.exe.cloud:<HTTP_PORT>/__exe.dev/logout to test logging out of a specific subhost.
 
 
 ## Hints
 
 ### HTTP Server Hints
 - In the container, start a simple HTTP server: `python3 -m http.server 8000`
-- Access via browser at http://boxname.localhost:<HTTP_PORT>/
+- Access via browser at http://boxname.exe.cloud:<HTTP_PORT>/
 - The system should redirect through authentication flows
 
 ### Authentication Hints
