@@ -7,7 +7,7 @@ published: true
 ---
 
 The use cases in this section are recipes to set up common
-software on an `exe.dev` box. Since creating a new box is as
+software on an `exe.dev` VM. Since creating a new VM is as
 simple as `ssh exe.dev new`, trying them out is easy.
 
 We also recommend using your preferred coding agent (or,

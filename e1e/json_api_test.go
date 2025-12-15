@@ -90,7 +90,7 @@ func TestExeDevAPI(t *testing.T) {
 	// Try to create a duplicate box using the repl.
 	Env.addCanonicalization(nbo.BoxName, "BOX_NAME")
 	pty.sendLine("new --name=" + nbo.BoxName)
-	pty.wantRe("Box name .*" + regexp.QuoteMeta(nbo.BoxName) + ".* is not available")
+	pty.wantRe("VM name .*" + regexp.QuoteMeta(nbo.BoxName) + ".* is not available")
 	pty.wantPrompt()
 
 	blo := runParseExeDevJSON[boxListOutput](t, keyFile, "ls", "--json")

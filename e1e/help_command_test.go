@@ -21,7 +21,7 @@ func TestHelpCommandShowsNewOptions(t *testing.T) {
 	pty.reject(banner)
 	pty.reject("enter your email")
 	pty.reject("see a list of commands")
-	pty.want("create your first box")
+	pty.want("create your first VM")
 	pty.wantPrompt()
 	pty.disconnect()
 }

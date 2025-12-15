@@ -328,7 +328,7 @@ func (s *Server) validateProxyBearerToken(ctx context.Context, token string, box
 	}
 
 	if record.BoxID != int64(boxID) {
-		return "", fmt.Errorf("proxy bearer token is not valid for this box")
+		return "", fmt.Errorf("proxy bearer token is not valid for this VM")
 	}
 
 	if time.Now().After(record.ExpiresAt) {
@@ -614,11 +614,11 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		// TODO(bmizerany): return a nicer error page
-		http.Error(w, "Failed to resolve box name", http.StatusInternalServerError)
+		http.Error(w, "Failed to resolve VM name", http.StatusInternalServerError)
 		return
 	}
 	if boxName == "" {
-		http.Error(w, "Invalid box name", http.StatusBadRequest)
+		http.Error(w, "Invalid VM name", http.StatusBadRequest)
 		return
 	}
 

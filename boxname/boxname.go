@@ -66,7 +66,7 @@ func init() {
 	}
 }
 
-const InvalidBoxNameMessage = "Invalid box name. Must be 5-63 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-box-name)."
+const InvalidBoxNameMessage = "Invalid VM name. Must be 5-63 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-vm-name)."
 
 // Valid reports whether name is a valid box name.
 // TODO: return a slice of validation errors instead of just true/false.

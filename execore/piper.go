@@ -184,7 +184,7 @@ func (p *PiperPlugin) handleBanner(conn libplugin.ConnMetadata) string {
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                           EXE.DEV SUPPORT ACCESS                         ║
 ╠══════════════════════════════════════════════════════════════════════════╣
-║  You are connecting to another user's box.                               ║
+║  You are connecting to another user's VM.                                ║
 ║                                                                          ║
 ║  Respect their privacy.                                                  ║
 ╚══════════════════════════════════════════════════════════════════════════╝
@@ -230,7 +230,7 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 
 		// Special case: support access attempt failed
 		if supportBoxName, isSupport := strings.CutPrefix(conn.User(), supportAccessPrefix); isSupport {
-			message = fmt.Sprintf("Support access denied for box %q.\n\nEither:\n- You don't have support privileges, or\n- The box doesn't have support access enabled\n\nPress Enter to close this connection.", supportBoxName)
+			message = fmt.Sprintf("Support access denied for VM %q.\n\nEither:\n- You don't have support privileges, or\n- The VM doesn't have support access enabled\n\nPress Enter to close this connection.", supportBoxName)
 		}
 
 		_, err := client("", message, "", false)
@@ -289,7 +289,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		box := p.server.FindBoxForSupportUser(ctx, userID, supportBoxName)
 		if box == nil {
 			slog.WarnContext(ctx, "piper public key auth: support access denied", "component", "piper-plugin", "box_name", supportBoxName, "user_id", userID)
-			return nil, fmt.Errorf("support access denied: either you don't have support privileges, or box %q doesn't have support access enabled", supportBoxName)
+			return nil, fmt.Errorf("support access denied: either you don't have support privileges, or VM %q doesn't have support access enabled", supportBoxName)
 		}
 		slog.InfoContext(ctx, "piper public key auth: support access granted", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "support_user_id", userID)
 		return p.handleBoxAccess(box, userID, conn.UniqueID())
@@ -360,7 +360,7 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 
 	if box.ContainerID == nil {
 		slog.DebugContext(ctx, "Box has no container ID", "component", "piper-plugin", "box_name", box.Name)
-		return nil, fmt.Errorf("box %s is not running", box.Name)
+		return nil, fmt.Errorf("VM %s is not running", box.Name)
 	}
 
 	// Check if instance is actually running via exelet
@@ -408,7 +408,7 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 	sshDetails, err := p.server.GetBoxSSHDetails(ctx, box.ID)
 	if err != nil {
 		slog.DebugContext(ctx, "Failed to get SSH details for box", "component", "piper-plugin", "box_name", box.Name, "error", err)
-		return nil, fmt.Errorf("failed to get SSH details for box %s: %v", box.Name, err)
+		return nil, fmt.Errorf("failed to get SSH details for VM %s: %v", box.Name, err)
 	}
 	slog.DebugContext(ctx, "SSH details for machine",
 		"user_id", userID,

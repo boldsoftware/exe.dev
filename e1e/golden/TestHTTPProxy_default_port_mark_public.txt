@@ -20,7 +20,7 @@ PROMPT ▶ share set-public BOX_NAME
 
 PROMPT ▶ share port BOX_NAME
 
-Route configuration for box 'BOX_NAME':
+Route configuration for VM 'BOX_NAME':
   Port: 8080
   Share: public
 

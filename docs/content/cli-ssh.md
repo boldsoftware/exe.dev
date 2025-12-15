@@ -1,18 +1,18 @@
 ---
 # DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "ssh"
-description: "SSH into a box"
+description: "SSH into a VM"
 subheading: "4. CLI Reference"
 suborder: 10
 ---
 
 # ssh
 
-SSH into a box
+SSH into a VM
 
 ## Usage
 
 ```
-ssh <box-name> [command...]
+ssh <vm-name> [command...]
 ```
 

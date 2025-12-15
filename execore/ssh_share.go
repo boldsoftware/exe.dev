@@ -34,15 +34,15 @@ func shareAddFlags() *flag.FlagSet {
 func (ss *SSHServer) shareCommand() *exemenu.Command {
 	return &exemenu.Command{
 		Name:        "share",
-		Description: "Share HTTPS box access with others",
-		Usage:       "share <subcommand> <box> [args...]",
+		Description: "Share HTTPS VM access with others",
+		Usage:       "share <subcommand> <vm> [args...]",
 		Handler:     ss.handleShareHelp,
 		FlagSetFunc: jsonOnlyFlags("share"),
 		Subcommands: []*exemenu.Command{
 			{
 				Name:              "show",
-				Description:       "Show current shares for a box",
-				Usage:             "share show <box>",
+				Description:       "Show current shares for a VM",
+				Usage:             "share show <vm>",
 				Handler:           ss.handleShareShowCmd,
 				FlagSetFunc:       jsonOnlyFlags("share-show"),
 				HasPositionalArgs: true,
@@ -50,8 +50,8 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			},
 			{
 				Name:              "port",
-				Description:       "Set the HTTP proxy port for a box",
-				Usage:             "share port <box> [port]",
+				Description:       "Set the HTTP proxy port for a VM",
+				Usage:             "share port <vm> [port]",
 				Handler:           ss.handleSharePortCmd,
 				FlagSetFunc:       jsonOnlyFlags("share-port"),
 				HasPositionalArgs: true,
@@ -63,7 +63,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			{
 				Name:              "set-public",
 				Description:       "Make the HTTP proxy publicly accessible",
-				Usage:             "share set-public <box>",
+				Usage:             "share set-public <vm>",
 				Handler:           ss.handleShareSetPublicCmd,
 				FlagSetFunc:       jsonOnlyFlags("share-set-public"),
 				HasPositionalArgs: true,
@@ -72,7 +72,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			{
 				Name:              "set-private",
 				Description:       "Restrict the HTTP proxy to authenticated users",
-				Usage:             "share set-private <box>",
+				Usage:             "share set-private <vm>",
 				Handler:           ss.handleShareSetPrivateCmd,
 				FlagSetFunc:       jsonOnlyFlags("share-set-private"),
 				HasPositionalArgs: true,
@@ -80,8 +80,8 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			},
 			{
 				Name:              "add",
-				Description:       "Share box with a user via email",
-				Usage:             "share add <box> <email> [--message='...']",
+				Description:       "Share VM with a user via email",
+				Usage:             "share add <vm> <email> [--message='...']",
 				Handler:           ss.handleShareAddCmd,
 				FlagSetFunc:       shareAddFlags,
 				HasPositionalArgs: true,
@@ -93,8 +93,8 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			},
 			{
 				Name:              "remove",
-				Description:       "Revoke a user's access to a box",
-				Usage:             "share remove <box> <email>",
+				Description:       "Revoke a user's access to a VM",
+				Usage:             "share remove <vm> <email>",
 				Handler:           ss.handleShareRemoveCmd,
 				FlagSetFunc:       jsonOnlyFlags("share-remove"),
 				HasPositionalArgs: true,
@@ -103,8 +103,8 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			{
 				Name:              "add-link",
 				Aliases:           []string{"add-share-link"},
-				Description:       "Create a shareable link for a box",
-				Usage:             "share add-link <box>",
+				Description:       "Create a shareable link for a VM",
+				Usage:             "share add-link <vm>",
 				Handler:           ss.handleShareAddLinkCmd,
 				FlagSetFunc:       jsonOnlyFlags("share-add-link"),
 				HasPositionalArgs: true,
@@ -114,7 +114,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 				Name:              "remove-link",
 				Aliases:           []string{"remove-share-link"},
 				Description:       "Revoke a shareable link",
-				Usage:             "share remove-link <box> <token>",
+				Usage:             "share remove-link <vm> <token>",
 				Handler:           ss.handleShareRemoveLinkCmd,
 				FlagSetFunc:       jsonOnlyFlags("share-remove-link"),
 				HasPositionalArgs: true,
@@ -135,7 +135,7 @@ func (ss *SSHServer) handleShareHelp(ctx context.Context, cc *exemenu.CommandCon
 
 func (ss *SSHServer) handleShareShowCmd(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) == 0 {
-		return cc.Errorf("usage: share show <box>")
+		return cc.Errorf("usage: share show <vm>")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -148,7 +148,7 @@ func (ss *SSHServer) handleShareShowCmd(ctx context.Context, cc *exemenu.Command
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("box %q not found or access denied", boxName)
+		return cc.Errorf("VM %q not found or access denied", boxName)
 	}
 	if err != nil {
 		return err
@@ -248,24 +248,24 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 	isPublic := route.Share == "public"
 
 	cc.Writeln("")
-	cc.Writeln("\033[1;36mSharing for box '%s'\033[0m", box.Name)
+	cc.Writeln("\033[1;36mSharing for VM '%s'\033[0m", box.Name)
 	cc.Writeln("URL: %s", ss.server.boxProxyAddress(box.Name))
 	cc.Writeln("Port: %d", route.Port)
 	if isPublic {
-		cc.Writeln("\033[1;33mMode: PUBLIC\033[0m - Anyone can access this box without authentication")
+		cc.Writeln("\033[1;33mMode: PUBLIC\033[0m - Anyone can access this VM without authentication")
 	} else {
 		cc.Writeln("Mode: Private")
 	}
 	cc.Writeln("")
 
 	if isPublic {
-		cc.Writeln("\033[1;33mNote:\033[0m This box is publicly accessible. Individual shares are not needed.")
+		cc.Writeln("\033[1;33mNote:\033[0m This VM is publicly accessible. Individual shares are not needed.")
 		cc.Writeln("To make it private, use: share set-private %s", box.Name)
 		cc.Writeln("")
 		if len(pendingShares)+len(activeShares)+len(shareLinks) == 0 {
 			return nil
 		}
-		cc.Writeln("Existing shares (will take effect if box becomes private):")
+		cc.Writeln("Existing shares (will take effect if VM becomes private):")
 		cc.Writeln("")
 	}
 
@@ -313,7 +313,7 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 
 func (ss *SSHServer) handleSharePortCmd(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) == 0 {
-		return cc.Errorf("usage: share port <box> [port]")
+		return cc.Errorf("usage: share port <vm> [port]")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -345,11 +345,11 @@ func (ss *SSHServer) handleShareVisibilityCmd(ctx context.Context, cc *exemenu.C
 	if len(cc.Args) != 1 {
 		switch shareMode {
 		case "public":
-			return cc.Errorf("usage: share set-public <box>")
+			return cc.Errorf("usage: share set-public <vm>")
 		case "private":
-			return cc.Errorf("usage: share set-private <box>")
+			return cc.Errorf("usage: share set-private <vm>")
 		default:
-			return cc.Errorf("box argument missing")
+			return cc.Errorf("VM argument missing")
 		}
 	}
 
@@ -369,7 +369,7 @@ func (ss *SSHServer) getOwnedBox(ctx context.Context, cc *exemenu.CommandContext
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return exedb.Box{}, cc.Errorf("box %q not found or access denied", boxName)
+		return exedb.Box{}, cc.Errorf("VM %q not found or access denied", boxName)
 	}
 	if err != nil {
 		return exedb.Box{}, err
@@ -394,7 +394,7 @@ func (ss *SSHServer) showRouteConfiguration(ctx context.Context, cc *exemenu.Com
 	}
 
 	cc.Writeln("")
-	cc.Writeln("\033[1;36mRoute configuration for box '%s':\033[0m", boxName)
+	cc.Writeln("\033[1;36mRoute configuration for VM '%s':\033[0m", boxName)
 	cc.Writeln("  Port: %d", route.Port)
 	cc.Writeln("  Share: %s", route.Share)
 	cc.Writeln("")
@@ -453,7 +453,7 @@ func formatAge(t *time.Time) string {
 func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandContext) error {
 	// share add <box> <email> [--message=...]
 	if len(cc.Args) < 2 {
-		return cc.Errorf("usage: share add <box> <email> [--message='...']")
+		return cc.Errorf("usage: share add <vm> <email> [--message='...']")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -466,7 +466,7 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("box %q not found or access denied", boxName)
+		return cc.Errorf("VM %q not found or access denied", boxName)
 	}
 	if err != nil {
 		return err
@@ -609,7 +609,7 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 	route := box.GetRoute()
 	if route.Share == "public" {
 		cc.Writeln("")
-		cc.Writeln("\033[1;33mNote:\033[0m This box is currently PUBLIC. The share will only take effect if you make it private.")
+		cc.Writeln("\033[1;33mNote:\033[0m This VM is currently PUBLIC. The share will only take effect if you make it private.")
 		cc.Writeln("To make it private: share set-private %s", box.Name)
 	}
 	cc.Writeln("")
@@ -619,7 +619,7 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.CommandContext) error {
 	// share remove <box> <email>
 	if len(cc.Args) < 2 {
-		return cc.Errorf("usage: share remove <box> <email>")
+		return cc.Errorf("usage: share remove <vm> <email>")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -632,7 +632,7 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("box %q not found or access denied", boxName)
+		return cc.Errorf("VM %q not found or access denied", boxName)
 	}
 	if err != nil {
 		return err
@@ -701,7 +701,7 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 	cc.Writeln("")
 	cc.Writeln("\033[1;32m✓\033[0m Removed %s's access to '%s'", email, box.Name)
 	if userShares == 0 && linkShares == 0 {
-		cc.Writeln("\033[1;32m✓\033[0m Box '%s' is now private (no shares remaining)", box.Name)
+		cc.Writeln("\033[1;32m✓\033[0m VM '%s' is now private (no shares remaining)", box.Name)
 	}
 	cc.Writeln("")
 	return nil
@@ -710,7 +710,7 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 func (ss *SSHServer) handleShareAddLinkCmd(ctx context.Context, cc *exemenu.CommandContext) error {
 	// share add-link <box>
 	if len(cc.Args) == 0 {
-		return cc.Errorf("usage: share add-link <box>")
+		return cc.Errorf("usage: share add-link <vm>")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -723,7 +723,7 @@ func (ss *SSHServer) handleShareAddLinkCmd(ctx context.Context, cc *exemenu.Comm
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("box %q not found or access denied", boxName)
+		return cc.Errorf("VM %q not found or access denied", boxName)
 	}
 	if err != nil {
 		return err
@@ -764,12 +764,12 @@ func (ss *SSHServer) handleShareAddLinkCmd(ctx context.Context, cc *exemenu.Comm
 	// Warn if box is public
 	route := box.GetRoute()
 	if route.Share == "public" {
-		cc.Writeln("\033[1;33mNote:\033[0m This box is currently PUBLIC (no authentication required).")
-		cc.Writeln("The share link will only matter if you make the box private.")
+		cc.Writeln("\033[1;33mNote:\033[0m This VM is currently PUBLIC (no authentication required).")
+		cc.Writeln("The share link will only matter if you make the VM private.")
 		cc.Writeln("")
 	}
 
-	cc.Writeln("Anyone with this link can access your box after logging in:")
+	cc.Writeln("Anyone with this link can access your VM after logging in:")
 	cc.Writeln("\033[1m%s\033[0m", shareURL)
 	cc.Writeln("")
 	cc.Writeln("To revoke this link, use:")
@@ -781,7 +781,7 @@ func (ss *SSHServer) handleShareAddLinkCmd(ctx context.Context, cc *exemenu.Comm
 func (ss *SSHServer) handleShareRemoveLinkCmd(ctx context.Context, cc *exemenu.CommandContext) error {
 	// share remove-link <box> <token>
 	if len(cc.Args) < 2 {
-		return cc.Errorf("usage: share remove-link <box> <token>")
+		return cc.Errorf("usage: share remove-link <vm> <token>")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -806,7 +806,7 @@ func (ss *SSHServer) handleShareRemoveLinkCmd(ctx context.Context, cc *exemenu.C
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return cc.Errorf("box %q not found or share link '%s' not found", boxName, token)
+			return cc.Errorf("VM %q not found or share link '%s' not found", boxName, token)
 		}
 		return err
 	}

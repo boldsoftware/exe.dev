@@ -19,7 +19,7 @@ to be accessed.
 ## Authentication Headers
 
 When a user is authenticated via exe.dev, the following headers are added to
-requests coming into your box:
+requests coming into your VM:
 
 - `X-ExeDev-UserID`: A stable, unique user identifier
 - `X-ExeDev-Email`: The user's email address
@@ -41,7 +41,7 @@ The following special URLs are available for authentication flows:
 
 ## Development
 
-If you're using an agent to develop on your exe.dev vm itself, your
+If you're using an agent to develop on your exe.dev VM itself, your
 server might be listening, for example, on http://localhost:8000/, and
 nothing is providing these headers. Use an http proxy to add the
 headers for testing. For example:

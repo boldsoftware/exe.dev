@@ -6,7 +6,7 @@
 
 ~~~ EXE.DEV ~~~
 
-EXE.DEV: get a box over ssh
+EXE.DEV: get a VM over ssh
 To sign up, please verify your email.
 
 Please enter your email address: TestMobileFlow_EndToEnd@example.com
@@ -32,6 +32,6 @@ Welcome to EXE.DEV!
 
 PROMPT ▶ rm BOX_NAME
 Deleting BOX_NAME...
-Box "BOX_NAME" deleted successfully
+VM "BOX_NAME" deleted successfully
 PROMPT ▶ exit
 Goodbye!

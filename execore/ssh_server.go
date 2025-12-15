@@ -434,7 +434,7 @@ func (ss *SSHServer) displayWelcomeTip(s exemenu.ShellSession, user *exedb.User)
 	}
 	var printedTip bool
 	if !hasCreatedBox {
-		line("- \033[1mnew\033[0m to create your first box")
+		line("- \033[1mnew\033[0m to create your first VM")
 		printedTip = true
 	}
 	if !hasSetBrowserCookies && !isWebShell {
@@ -699,7 +699,7 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 		ss.server.slog().InfoContext(s.Context(), "failed to retrieve GitHub user info", "publicKey", publicKey, "error", err)
 	}
 
-	fmt.Fprint(s, "\r\n\033[1;33mEXE.DEV: get a box over ssh\033[0m\r\n")
+	fmt.Fprint(s, "\r\n\033[1;33mEXE.DEV: get a VM over ssh\033[0m\r\n")
 	if ghInfo.Email != "" {
 		fmt.Fprintf(s, "\r\n✨ Recognized \033[1m@%s\033[0m's public GitHub SSH key. ✨\r\n", ghInfo.Login)
 		fmt.Fprintf(s, "(This key and email are public on GitHub; see %s/docs/ssh-github)\r\n", ss.server.webBaseURLNoRequest())

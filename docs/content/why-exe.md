@@ -14,6 +14,6 @@ Other than that, it should just be a computer. We don’t need config files fill
 
 _Just a computer._
 
-Want to build a soccer scheduling app for your kids school? Want a box to try out agent-of-the-week on a project where it cannot trash your laptop’s dot files (or bug you for permission to `ls` every five seconds)? Run `ssh exe.dev new`
+Want to build a soccer scheduling app for your kids school? Want a VM to try out agent-of-the-week on a project where it cannot trash your laptop's dot files (or bug you for permission to `ls` every five seconds)? Run `ssh exe.dev new`
 
 That is what exe.dev gives you. Pay a monthly fee for some compute resources. Spin up as many VMs as you like. Resource management and auth are taken care of for you.

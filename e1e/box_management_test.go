@@ -40,8 +40,8 @@ func TestVanillaBox(t *testing.T) {
 	t.Run("no_second_hint", func(t *testing.T) {
 		noGolden(t)
 		pty := sshToExeDev(t, keyFile)
-		// They've created a box, so we should have stopped hinting at them about it.
-		pty.reject("create your first box")
+		// They've created a VM, so we should have stopped hinting at them about it.
+		pty.reject("create your first VM")
 		pty.wantPrompt()
 		pty.disconnect()
 	})
@@ -612,7 +612,7 @@ func TestBadBoxName(t *testing.T) {
 	// Attempt to create a box with an invalid name.
 	boxName := "ThisIsNotAValidBoxName!"
 	pty.sendLine("new --name=" + boxName)
-	pty.wantRe("Invalid box name")
+	pty.wantRe("Invalid VM name")
 	pty.wantPrompt()
 	pty.disconnect()
 }

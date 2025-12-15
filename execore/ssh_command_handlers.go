@@ -29,7 +29,7 @@ import (
 
 // TODO(philip): Probably can be done in Shelley itself as part of the system prompt.
 const shelleyPreamble = `
-The user has just created this box, and wants to do the following with it.
+The user has just created this VM, and wants to do the following with it.
 `
 
 const shelleyDefaultModel = "claude-opus-4.5"
@@ -61,10 +61,10 @@ func jsonOnlyFlags(name string) func() *flag.FlagSet {
 // newCommandFlags creates a FlagSet for the new command
 func newCommandFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
-	fs.String("name", "", "box name (auto-generated if not specified)")
+	fs.String("name", "", "VM name (auto-generated if not specified)")
 	fs.String("image", "exeuntu", "container image")
 	fs.String("command", "auto", "container command: auto, none, or a custom command")
-	fs.String("prompt", "", "initial prompt to send to Shelley after box creation (requires exeuntu image)")
+	fs.String("prompt", "", "initial prompt to send to Shelley after VM creation (requires exeuntu image)")
 	fs.Bool("json", false, "output in JSON format")
 	fs.Bool("no-email", false, "do not send email notification")
 	fs.String("prompt-model", shelleyDefaultModel, "[hidden] override the prompt model") // for testing
@@ -94,14 +94,14 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:        "ls",
-			Description: "List your vms",
+			Description: "List your VMs",
 			Handler:     ss.handleListCommand,
 			FlagSetFunc: jsonOnlyFlags("ls"),
 			Usage:       "ls",
 		},
 		{
 			Name:        "new",
-			Description: "Create a new box",
+			Description: "Create a new VM",
 			Handler:     ss.handleNewCommand,
 			FlagSetFunc: newCommandFlags,
 			Examples: []string{
@@ -112,10 +112,10 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:              "rm",
-			Description:       "Delete a box",
+			Description:       "Delete a VM",
 			Handler:           ss.handleDeleteCommand,
 			FlagSetFunc:       jsonOnlyFlags("rm"),
-			Usage:             "rm <box-name>",
+			Usage:             "rm <vm-name>",
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
 		},
@@ -132,7 +132,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Description:       "Generate a proxy bearer token",
 			FlagSetFunc:       jsonOnlyFlags("proxy-token"),
 			Handler:           ss.handleProxyTokenCommand,
-			Usage:             "proxy-token <box-name>",
+			Usage:             "proxy-token <vm-name>",
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
 		},
@@ -155,8 +155,8 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		ss.shelleyCommand(),
 		{
 			Name:              "ssh",
-			Description:       "SSH into a box",
-			Usage:             "ssh <box-name> [command...]",
+			Description:       "SSH into a VM",
+			Usage:             "ssh <vm-name> [command...]",
 			Handler:           ss.handleSSHCommand,
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
@@ -181,8 +181,8 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		{
 			Name:              "grant-support-root",
 			Hidden:            true,
-			Description:       "Grant or revoke exe.dev support root access to a box",
-			Usage:             "grant-support-root <box-name> on|off",
+			Description:       "Grant or revoke exe.dev support root access to a VM",
+			Usage:             "grant-support-root <vm-name> on|off",
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
 			Handler:           ss.handleGrantSupportRootCommand,
@@ -271,11 +271,11 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 	}
 
 	if len(boxes) == 0 {
-		cc.Write("No vms found. Create one with 'new'.\r\n")
+		cc.Write("No VMs found. Create one with 'new'.\r\n")
 		return nil
 	}
 
-	cc.Write("\033[1;36mYour vms:\033[0m\r\n")
+	cc.Write("\033[1;36mYour VMs:\033[0m\r\n")
 	for _, b := range boxes {
 		var statusColor string
 		status := container.ContainerStatus(b.Status)
@@ -354,11 +354,11 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	//     > new mario
 	//   $ ssh exe.dev  # goes to the new box instead of the repl
 	if sess := cc.SSHSession; sess != nil && sess.User() == boxName {
-		return cc.Errorf("New box name cannot match SSH username. To create a box named %v, ssh into this REPL with a different username and try again. If you do this, you will have to use a username other than %v to log in to the REPL going forward.", boxName, boxName)
+		return cc.Errorf("New VM name cannot match SSH username. To create a VM named %v, ssh into this REPL with a different username and try again. If you do this, you will have to use a username other than %v to log in to the REPL going forward.", boxName, boxName)
 	}
 
 	if !ss.server.isBoxNameAvailable(ctx, boxName) {
-		return cc.Errorf("Box name %q is not available", boxName)
+		return cc.Errorf("VM name %q is not available", boxName)
 	}
 
 	// Get the display image name
@@ -405,7 +405,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	case errors.Is(err, errNoIPShardsAvailable):
 		// TODO: add CTA to upgrade plan
 		// Since we don't have plans now...
-		return cc.Errorf("You have reached the maximum number of boxes allowed on your plan.")
+		return cc.Errorf("You have reached the maximum number of VMs allowed on your plan.")
 	case err != nil:
 		return fmt.Errorf("failed to create box entry: %w", err)
 	}
@@ -666,7 +666,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 					currentStatus = "Pulling image"
 				}
 			case container.CreateStart:
-				currentStatus = "Starting box"
+				currentStatus = "Starting VM"
 			case container.CreateSSH:
 				currentStatus = "Configuring SSH"
 			case container.CreateDone:
@@ -867,7 +867,7 @@ type newBoxDetails struct {
 
 func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) != 1 {
-		return cc.Errorf("please specify exactly one box name to delete, got %d", len(cc.Args))
+		return cc.Errorf("please specify exactly one VM name to delete, got %d", len(cc.Args))
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -878,7 +878,7 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 		})
 	})
 	if err != nil {
-		cc.WriteError("Box %q not found", boxName)
+		cc.WriteError("VM %q not found", boxName)
 		return nil
 	}
 
@@ -896,7 +896,7 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 		cc.WriteJSON(result)
 		return nil
 	}
-	cc.Write("\033[1;32mBox %q deleted successfully\033[0m\r\n", boxName)
+	cc.Write("\033[1;32mVM %q deleted successfully\033[0m\r\n", boxName)
 	return nil
 }
 
@@ -1025,7 +1025,7 @@ func (ss *SSHServer) handleDeleteSSHKeyCommand(ctx context.Context, cc *exemenu.
 
 func (ss *SSHServer) handleProxyTokenCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) != 1 {
-		return cc.Errorf("please specify exactly one box name")
+		return cc.Errorf("please specify exactly one VM name")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -1037,7 +1037,7 @@ func (ss *SSHServer) handleProxyTokenCommand(ctx context.Context, cc *exemenu.Co
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("box %q not found", boxName)
+		return cc.Errorf("VM %q not found", boxName)
 	}
 	if err != nil {
 		return err
@@ -1055,7 +1055,7 @@ func (ss *SSHServer) handleProxyTokenCommand(ctx context.Context, cc *exemenu.Co
 		return nil
 	}
 
-	cc.Writeln("This token may be used as a Bearer token or as a basic auth username to authenticate with the %s proxy for box \033[1m%s\033[0m.", ss.server.env.BoxHost, boxName)
+	cc.Writeln("This token may be used as a Bearer token or as a basic auth username to authenticate with the %s proxy for VM \033[1m%s\033[0m.", ss.server.env.BoxHost, boxName)
 	cc.Writeln("")
 	cc.Writeln("%s", token)
 	return nil
@@ -1099,7 +1099,7 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.Comma
 
 func (ss *SSHServer) handleGrantSupportRootCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) != 2 {
-		return cc.Errorf("usage: grant-support-root <box-name> on|off")
+		return cc.Errorf("usage: grant-support-root <vm-name> on|off")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -1122,7 +1122,7 @@ func (ss *SSHServer) handleGrantSupportRootCommand(ctx context.Context, cc *exem
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("box %q not found", boxName)
+		return cc.Errorf("VM %q not found", boxName)
 	}
 	if err != nil {
 		return err
@@ -1139,9 +1139,9 @@ func (ss *SSHServer) handleGrantSupportRootCommand(ctx context.Context, cc *exem
 	}
 
 	if newValue == 1 {
-		cc.Writeln("exe.dev support now has root access to box %q.", boxName)
+		cc.Writeln("exe.dev support now has root access to VM %q.", boxName)
 	} else {
-		cc.Writeln("exe.dev support root access to box %q has been revoked.", boxName)
+		cc.Writeln("exe.dev support root access to VM %q has been revoked.", boxName)
 	}
 	return nil
 }
@@ -1220,7 +1220,7 @@ func mapExeletStatusToContainerProgress(status *api.CreateInstanceStatus) contai
 // handleSSHCommand implements the ssh command - SSH into a box from the REPL
 func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) < 1 {
-		return cc.Errorf("usage: ssh <box-name> [command...]")
+		return cc.Errorf("usage: ssh <vm-name> [command...]")
 	}
 
 	name := cc.Args[0]
@@ -1229,7 +1229,7 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 	// Trim the @host if present and validate it
 	if _, found := strings.CutPrefix(name, "@"); found {
 		// If they typed just @host with no boxname
-		return cc.Errorf("usage: ssh <box-name> [command...]")
+		return cc.Errorf("usage: ssh <vm-name> [command...]")
 	} else if boxName, host, found := strings.Cut(name, "@"); found {
 		// Format: boxname@host
 		if host != ss.server.env.BoxHost {
@@ -1249,15 +1249,15 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("box %q not found", name)
+		return cc.Errorf("VM %q not found", name)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to look up box: %w", err)
+		return fmt.Errorf("failed to look up VM: %w", err)
 	}
 
 	// Validate box has SSH credentials
 	if box.SSHPort == nil || box.SSHUser == nil || len(box.SSHClientPrivateKey) == 0 {
-		return cc.Errorf("box %q does not have SSH configured", name)
+		return cc.Errorf("VM %q does not have SSH configured", name)
 	}
 
 	// Create SSH signer from the client private key
@@ -1283,7 +1283,7 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", sshAddr)
 	if err != nil {
-		return cc.Errorf("failed to connect to box: %v", err)
+		return cc.Errorf("failed to connect to VM: %v", err)
 	}
 
 	sshConn, chans, reqs, err := ssh.NewClientConn(conn, sshAddr, sshConfig)

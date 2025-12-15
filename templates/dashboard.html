@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EXE.DEV - Your Boxes</title>
+    <title>EXE.DEV - Your VMs</title>
     <link rel="stylesheet" href="/static/topbar.css">
     <link rel="stylesheet" href="/static/xterm.css">
     <link rel="stylesheet" href="/static/terminal-common.css">
@@ -706,13 +706,13 @@
         {{if .Boxes}}
         <div class="section-header">
             <div class="section-left">
-                <a href="/~" class="section-title" style="text-decoration: none; color: inherit;">My Boxes</a>
+                <a href="/~" class="section-title" style="text-decoration: none; color: inherit;">My VMs</a>
                 <a href="/new" class="new-box-btn">+ New</a>
             </div>
             <div class="search-box">
                 <input type="text" 
                        id="box-search" 
-                       placeholder="Search boxes..." 
+                       placeholder="Search VMs..." 
                        class="search-input">
                 <button class="search-clear" onclick="clearSearch()" title="Clear search">×</button>
             </div>
@@ -905,12 +905,12 @@
         <div style="margin-bottom: 40px;">
             <div class="section-header">
                 <div class="section-left">
-                    <div class="section-title">My Boxes</div>
+                    <div class="section-title">My VMs</div>
                     <a href="/new" class="new-box-btn">+ New</a>
                 </div>
             </div>
             <div class="no-boxes">
-                <div class="no-boxes-message">No boxes yet. Create one with:</div>
+                <div class="no-boxes-message">No VMs yet. Create one with:</div>
                 <code>{{.SSHCommand}} new --name=myname</code>
             </div>
         </div>

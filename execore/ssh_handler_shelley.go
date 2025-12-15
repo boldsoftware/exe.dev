@@ -24,14 +24,14 @@ import (
 func (ss *SSHServer) shelleyCommand() *exemenu.Command {
 	return &exemenu.Command{
 		Name:        "shelley",
-		Description: "Manage Shelley agent on boxes",
+		Description: "Manage Shelley agent on VMs",
 		Usage:       "shelley <subcommand> [args...]",
 		Handler:     ss.handleShelleyHelp,
 		Subcommands: []*exemenu.Command{
 			{
 				Name:              "install",
 				Description:       "Install or upgrade Shelley to the current version",
-				Usage:             "shelley install <box>",
+				Usage:             "shelley install <vm>",
 				Handler:           ss.handleShelleyInstall,
 				HasPositionalArgs: true,
 				CompleterFunc:     ss.completeBoxNames,
@@ -47,7 +47,7 @@ func (ss *SSHServer) handleShelleyHelp(ctx context.Context, cc *exemenu.CommandC
 	cc.Writeln("Usage: shelley <subcommand>")
 	cc.Writeln("")
 	cc.Writeln("Available subcommands:")
-	cc.Writeln("  install <box>  Install/upgrade Shelley to the current version")
+	cc.Writeln("  install <vm>   Install/upgrade Shelley to the current version")
 	cc.Writeln("")
 	return nil
 }
@@ -56,7 +56,7 @@ func (ss *SSHServer) handleShelleyHelp(ctx context.Context, cc *exemenu.CommandC
 func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.CommandContext) error {
 	// Expect exactly one argument: the box name
 	if len(cc.Args) != 1 {
-		return cc.Errorf("usage: shelley install <box>")
+		return cc.Errorf("usage: shelley install <vm>")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -64,15 +64,15 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 	// Look up the box
 	box, err := ss.server.getBoxForUserByUserID(ctx, cc.User.ID, boxName)
 	if errors.Is(err, sql.ErrNoRows) || (err != nil && strings.Contains(err.Error(), "not found")) {
-		return cc.Errorf("box %q not found", boxName)
+		return cc.Errorf("VM %q not found", boxName)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to look up box: %w", err)
+		return fmt.Errorf("failed to look up VM: %w", err)
 	}
 
 	// Validate box has SSH credentials
 	if box.SSHPort == nil || box.SSHUser == nil || len(box.SSHClientPrivateKey) == 0 {
-		return cc.Errorf("box %q does not have SSH configured", boxName)
+		return cc.Errorf("VM %q does not have SSH configured", boxName)
 	}
 
 	// Check if this is an exeuntu-based box
@@ -81,11 +81,11 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 	// Get the actual architecture from the exelet client
 	exeletClient := ss.server.getExeletClient(box.Ctrhost)
 	if exeletClient == nil {
-		return fmt.Errorf("exelet host not available for box")
+		return fmt.Errorf("exelet host not available for VM")
 	}
 	arch := exeletClient.client.Arch()
 	if arch == "" {
-		return fmt.Errorf("architecture not available for box host")
+		return fmt.Errorf("architecture not available for VM host")
 	}
 
 	if !isExeuntu {
@@ -102,7 +102,7 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 			return nil
 		}
 
-		cc.Writeln("\033[1;33mBox %q is not exeuntu-based.\033[0m", boxName)
+		cc.Writeln("\033[1;33mVM %q is not exeuntu-based.\033[0m", boxName)
 		cc.Writeln("")
 		cc.Writeln("You can download and start shelley manually:")
 		cc.Writeln("  curl -o /usr/local/bin/shelley %s", downloadURL)
@@ -144,7 +144,7 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 
 	client, err := ssh.Dial("tcp", sshAddr, sshConfig)
 	if err != nil {
-		return fmt.Errorf("failed to connect to box via SSH: %w", err)
+		return fmt.Errorf("failed to connect to VM via SSH: %w", err)
 	}
 	defer client.Close()
 

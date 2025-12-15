@@ -1,14 +1,14 @@
 ---
 # DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "shelley"
-description: "Manage Shelley agent on boxes"
+description: "Manage Shelley agent on VMs"
 subheading: "4. CLI Reference"
 suborder: 9
 ---
 
 # shelley
 
-Manage Shelley agent on boxes
+Manage Shelley agent on VMs
 
 ## Usage
 
@@ -24,6 +24,6 @@ Install or upgrade Shelley to the current version
 
 **Usage:**
 ```
-shelley install <box>
+shelley install <vm>
 ```
 

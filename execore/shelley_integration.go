@@ -64,10 +64,10 @@ type ShelleyAgentMessage struct {
 // runShelleyPrompt sends a prompt to Shelley and streams the response back to the user
 func (ss *SSHServer) runShelleyPrompt(ctx context.Context, cc *exemenu.CommandContext, box *exedb.Box, sshKey ssh.Signer, prompt, shelleyUrl, model string) error {
 	if box.SSHPort == nil {
-		return fmt.Errorf("box does not have SSH port configured")
+		return fmt.Errorf("VM does not have SSH port configured")
 	}
 	if box.SSHUser == nil {
-		return fmt.Errorf("box does not have SSH user configured")
+		return fmt.Errorf("VM does not have SSH user configured")
 	}
 
 	// Create HTTP client that tunnels through SSH to the container

@@ -6,7 +6,7 @@
 
 ~~~ EXE.DEV ~~~
 
-EXE.DEV: get a box over ssh
+EXE.DEV: get a VM over ssh
 
 ✨ Recognized @fakeuser1's public GitHub SSH key. ✨
 (This key and email are public on GitHub; see http://localhost:EXED_HTTP_PORT/docs/ssh-github)
@@ -32,7 +32,7 @@ Your account has been successfully created.
 
 Welcome to EXE.DEV!
 
-- new to create your first box
+- new to create your first VM
 - help to see a list of commands
 
 PROMPT ▶ whoami

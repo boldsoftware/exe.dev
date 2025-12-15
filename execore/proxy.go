@@ -580,7 +580,7 @@ func (s *Server) boxForNameUserID(ctx context.Context, boxName, userID string) (
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("box '%s' not found or access denied", boxName)
+			return nil, fmt.Errorf("VM '%s' not found or access denied", boxName)
 		}
 		return nil, fmt.Errorf("database error: %v", err)
 	}
@@ -591,7 +591,7 @@ func (s *Server) boxForNameUserID(ctx context.Context, boxName, userID string) (
 func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *exedb.Box, route exedb.Route) error {
 	// Validate box has SSH credentials
 	if len(box.SSHClientPrivateKey) == 0 || box.SSHPort == nil {
-		return fmt.Errorf("box missing SSH credentials")
+		return fmt.Errorf("VM missing SSH credentials")
 	}
 
 	// Parse the SSH private key

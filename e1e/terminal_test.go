@@ -97,7 +97,7 @@ func TestTerminalPermissions(t *testing.T) {
 		if !strings.Contains(body, "nonexistent") {
 			t.Fatalf("expected box name 'nonexistent' in response, got: %s", body)
 		}
-		if !strings.Contains(body, "Return to your boxes") {
+		if !strings.Contains(body, "Return to your VMs") {
 			t.Fatalf("expected link to dashboard in response, got: %s", body)
 		}
 	})

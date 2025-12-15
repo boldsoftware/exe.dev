@@ -7,7 +7,7 @@ suborder: 1
 
 <img src="proxy.svg" alt="Diagram of HTTPS Proxy Flow" width="100%"/>
 
-`exe.dev` proxies traffic to https://boxname.exe.xyz/ to your box seamlessly, handling
+`exe.dev` proxies traffic to https://boxname.exe.xyz/ to your VM seamlessly, handling
 certificates, TLS termination, and optionally offering basic authentication.
 
 ## Configuring which port to proxy
@@ -22,7 +22,7 @@ This updates the proxy target while keeping the current visibility setting
 
 ## Private vs Public Proxies
 
-By default, only users with access to the box can access the HTTP proxy. Users
+By default, only users with access to the VM can access the HTTP proxy. Users
 accessing https://boxname.exe.xyz/ for the first time will be redirected to log
 into `exe.dev`.
 
@@ -44,9 +44,9 @@ application can reconstruct the original public request information:
 
 The proxy transparently forwards ports between 3000 and 9999.
 
-For example, if you are serving on port 3456 on your box,
+For example, if you are serving on port 3456 on your VM,
 you can access that at https://boxname.exe.xyz:3456/.
 
 You may only mark a single port public (with the `share set-public` and `share
 port` commands); these alternate ports can only be accessed by users with access
-to the box.
+to the VM.

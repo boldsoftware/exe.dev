@@ -1,19 +1,19 @@
 ---
 # DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "share"
-description: "Share HTTPS box access with others"
+description: "Share HTTPS VM access with others"
 subheading: "4. CLI Reference"
 suborder: 6
 ---
 
 # share
 
-Share HTTPS box access with others
+Share HTTPS VM access with others
 
 ## Usage
 
 ```
-share <subcommand> <box> [args...]
+share <subcommand> <vm> [args...]
 ```
 
 ## Options
@@ -24,11 +24,11 @@ share <subcommand> <box> [args...]
 
 ### share show
 
-Show current shares for a box
+Show current shares for a VM
 
 **Usage:**
 ```
-share show <box>
+share show <vm>
 ```
 
 **Options:**
@@ -36,11 +36,11 @@ share show <box>
 
 ### share port
 
-Set the HTTP proxy port for a box
+Set the HTTP proxy port for a VM
 
 **Usage:**
 ```
-share port <box> [port]
+share port <vm> [port]
 ```
 
 **Options:**
@@ -57,7 +57,7 @@ Make the HTTP proxy publicly accessible
 
 **Usage:**
 ```
-share set-public <box>
+share set-public <vm>
 ```
 
 **Options:**
@@ -69,7 +69,7 @@ Restrict the HTTP proxy to authenticated users
 
 **Usage:**
 ```
-share set-private <box>
+share set-private <vm>
 ```
 
 **Options:**
@@ -77,11 +77,11 @@ share set-private <box>
 
 ### share add
 
-Share box with a user via email
+Share VM with a user via email
 
 **Usage:**
 ```
-share add <box> <email> [--message='...']
+share add <vm> <email> [--message='...']
 ```
 
 **Options:**
@@ -96,11 +96,11 @@ share add mybox user@example.com --message='Check this out'
 
 ### share remove
 
-Revoke a user's access to a box
+Revoke a user's access to a VM
 
 **Usage:**
 ```
-share remove <box> <email>
+share remove <vm> <email>
 ```
 
 **Options:**
@@ -108,11 +108,11 @@ share remove <box> <email>
 
 ### share add-link
 
-Create a shareable link for a box
+Create a shareable link for a VM
 
 **Usage:**
 ```
-share add-link <box>
+share add-link <vm>
 ```
 
 **Aliases:** add-share-link
@@ -126,7 +126,7 @@ Revoke a shareable link
 
 **Usage:**
 ```
-share remove-link <box> <token>
+share remove-link <vm> <token>
 ```
 
 **Aliases:** remove-share-link

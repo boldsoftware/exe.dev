@@ -9,6 +9,6 @@ grant-support-root BOX_NAME off
 - help to see a list of commands
 
 PROMPT ▶ grant-support-root BOX_NAME off
-exe.dev support root access to box "BOX_NAME" has been revoked.
+exe.dev support root access to VM "BOX_NAME" has been revoked.
 PROMPT ▶ exit
 Goodbye!

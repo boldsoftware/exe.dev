@@ -21,7 +21,7 @@ Read env-info.txt for the service ports.
 
 3. Test the "whoami" command.
 
-4. Test the "ls" command (should have no boxes yet).
+4. Test the "ls" command (should have no VMs yet).
 
 ## Hints
 
@@ -29,4 +29,4 @@ Read env-info.txt for the service ports.
 - Use: `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p <SSH_PORT> localhost`
 - After entering email, get verification URL. Open in browser and click "Confirm Email Verification".
 - After email verification, type `whoami` at exe.dev prompt. Shows email and SSH key fingerprint.
-- Type `ls` at exe.dev prompt. Should show "No boxes found. Create one with 'new'."
+- Type `ls` at exe.dev prompt. Should show "No VMs found. Create one with 'new'."

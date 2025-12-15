@@ -284,7 +284,7 @@ func (s *Server) validateHostForTLSCert(ctx context.Context, host string) error 
 	}
 	if boxName == "" {
 		s.slog().WarnContext(ctx, "hostPolicy: unable to resolve box name", "host", host)
-		return fmt.Errorf("unable to resolve box for %s", host)
+		return fmt.Errorf("unable to resolve VM for %s", host)
 	}
 	if !s.boxExists(ctx, boxName) {
 		s.slog().WarnContext(ctx, "hostPolicy: no box found for subdomain", "subdomain", host)

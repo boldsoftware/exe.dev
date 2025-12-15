@@ -463,7 +463,7 @@ func TestShareCommands(t *testing.T) {
 
 	// Show initial share status (should be empty)
 	pty1.sendLine(fmt.Sprintf("share show %s", box))
-	pty1.want("Sharing for box")
+	pty1.want("Sharing for VM")
 	pty1.want(box)
 	pty1.want("No shares configured")
 	pty1.wantPrompt()
@@ -477,7 +477,7 @@ func TestShareCommands(t *testing.T) {
 
 	// Show updated share status (should show pending share)
 	pty1.sendLine(fmt.Sprintf("share show %s", box))
-	pty1.want("Sharing for box")
+	pty1.want("Sharing for VM")
 	pty1.want(box)
 	pty1.want(email2)
 	pty1.wantPrompt()
@@ -491,7 +491,7 @@ func TestShareCommands(t *testing.T) {
 
 	// Show status with share link
 	pty1.sendLine(fmt.Sprintf("share show %s", box))
-	pty1.want("Sharing for box")
+	pty1.want("Sharing for VM")
 	pty1.want(box)
 	pty1.want(email2)
 	pty1.want("Share links:") // Share link section
@@ -504,7 +504,7 @@ func TestShareCommands(t *testing.T) {
 
 	// Show status after removal
 	pty1.sendLine(fmt.Sprintf("share show %s", box))
-	pty1.want("Sharing for box")
+	pty1.want("Sharing for VM")
 	pty1.want("Share links:") // Still has share link
 	pty1.wantPrompt()
 

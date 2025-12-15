@@ -99,11 +99,11 @@ func (s *Server) boxNameFromCNAME(ctx context.Context, queryHost, cname string) 
 	}
 	if name == "" {
 		s.slog().WarnContext(ctx, "resolveCustomDomain: empty box name from CNAME", "host", queryHost, "cname", cname)
-		return "", fmt.Errorf("CNAME does not include box name for %s: %s", queryHost, cname)
+		return "", fmt.Errorf("CNAME does not include VM name for %s: %s", queryHost, cname)
 	}
 	if strings.Contains(name, ".") {
 		s.slog().WarnContext(ctx, "resolveCustomDomain: nested box name from CNAME", "host", queryHost, "cname", cname, "boxName", name)
-		return "", fmt.Errorf("CNAME must use single-label box name for %s: %s", queryHost, cname)
+		return "", fmt.Errorf("CNAME must use single-label VM name for %s: %s", queryHost, cname)
 	}
 	return name, nil
 }

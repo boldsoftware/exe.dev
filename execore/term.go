@@ -407,7 +407,7 @@ func (s *Server) createTerminalSession(ctx context.Context, userID, boxName, ses
 
 	// Check if box is running
 	if box.Status != "running" {
-		return nil, fmt.Errorf("box is not running (status: %s)", box.Status)
+		return nil, fmt.Errorf("VM is not running (status: %s)", box.Status)
 	}
 
 	// Establish SSH shell session with dtach
@@ -421,7 +421,7 @@ func (s *Server) createTerminalSession(ctx context.Context, userID, boxName, ses
 
 func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb.Box, sessionName string) error {
 	if len(box.SSHClientPrivateKey) == 0 || box.SSHPort == nil || box.SSHUser == nil {
-		return fmt.Errorf("box missing SSH credentials")
+		return fmt.Errorf("VM missing SSH credentials")
 	}
 	sshKey, err := container.CreateSSHSigner(string(box.SSHClientPrivateKey))
 	if err != nil {

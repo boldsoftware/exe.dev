@@ -174,7 +174,7 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 	// Check if hostname is available
 	if !s.isBoxNameAvailable(ctx, hostname) {
 		s.slog().ErrorContext(ctx, "Box name not available", "hostname", hostname)
-		cs.MarkDone(fmt.Errorf("box name %q is not available", hostname))
+		cs.MarkDone(fmt.Errorf("VM name %q is not available", hostname))
 		return
 	}
 
@@ -335,7 +335,7 @@ func (s *Server) handleMobileHostnameCheck(w http.ResponseWriter, r *http.Reques
 
 	name := strings.ToLower(strings.TrimSpace(request.Hostname))
 	if name == "" {
-		http.Error(w, "Box name is required", http.StatusBadRequest)
+		http.Error(w, "VM name is required", http.StatusBadRequest)
 		return
 	}
 
@@ -360,7 +360,7 @@ func (s *Server) handleMobileHostnameCheck(w http.ResponseWriter, r *http.Reques
 	case !isValid:
 		response.Message = boxname.InvalidBoxNameMessage
 	case !isAvailable:
-		response.Message = "That box name is not available."
+		response.Message = "That VM name is not available."
 	}
 
 	w.Header().Set("Content-Type", "application/json")

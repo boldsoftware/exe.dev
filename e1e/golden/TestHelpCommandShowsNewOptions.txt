@@ -6,7 +6,7 @@
 
 ~~~ EXE.DEV ~~~
 
-EXE.DEV: get a box over ssh
+EXE.DEV: get a VM over ssh
 To sign up, please verify your email.
 
 Please enter your email address: TestHelpCommandShowsNewOptions@example.com
@@ -28,7 +28,7 @@ Your account has been successfully created.
 
 Welcome to EXE.DEV!
 
-- new to create your first box
+- new to create your first VM
 - help to see a list of commands
 
 PROMPT ▶ whoami
@@ -39,16 +39,16 @@ PROMPT ▶ help new
 
 Command: new
 
-Create a new box
+Create a new VM
 
 Options:
   --command  container command: auto, none, or a custom command
   --env      environment variable in KEY=VALUE format (can be specified multiple times)
   --image    container image
   --json     output in JSON format
-  --name     box name (auto-generated if not specified)
+  --name     VM name (auto-generated if not specified)
   --no-email do not send email notification
-  --prompt   initial prompt to send to Shelley after box creation (requires exeuntu image)
+  --prompt   initial prompt to send to Shelley after VM creation (requires exeuntu image)
 
 Examples:
   new                                     # just give me a computer
@@ -63,7 +63,7 @@ Goodbye!
 ●
 
 
-- new to create your first box
+- new to create your first VM
 
 PROMPT ▶ exit
 Goodbye!

@@ -11,7 +11,7 @@ so the TypeScript is rather minimal; coming soon.) If you don't
 specify an alternative, Shelley will build on that architecture, and we think
 you'll have good, performant results.
 
-Whether your box is running a sandbox or prod, we believe this simpler
+Whether your VM is running a sandbox or prod, we believe this simpler
 stack makes sense. Websites are inherently distributed systems (the client is a browser),
 but a single, simple back end can scale for a long time. Modern
 machines are fast and disks are big. (exe.dev disks are persisted and backed up.)

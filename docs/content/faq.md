@@ -28,22 +28,22 @@ Host exe.dev
   IdentityFile ~/.ssh/id_ed25519_exe
 ```
 
-# Q: How do I connect VSCode to my box?
+# Q: How do I connect VSCode to my VM?
 
 On your dashboard, at [https://exe.dev/](https://exe.dev/), there are links
 to open in VSCode. This leverages VSCode's SSH remote features.
 The link is of the form:
 
 ```
-vscode://vscode-remote/ssh-remote+<box-name>@exe.dev/app?windowId=_blank
+vscode://vscode-remote/ssh-remote+<vm-name>@exe.dev/app?windowId=_blank
 ```
 
 The `app` in that URL is the path on the filesystem for VSCode to
 consider as your workspace.
 
-# Q: How do I copy files to/from my box?
+# Q: How do I copy files to/from my VM?
 
-Use `scp`. For example, `scp <local-file> <box-name>@exe.dev:`.
+Use `scp`. For example, `scp <local-file> <vm-name>@exe.dev:`.
 
 # Q: Why is it `ssh name@exe.dev` and not `ssh name.exe.dev`?
 
@@ -62,10 +62,10 @@ We pronounce it "EX-ee". But you don't have to.
 
 # Q: How do I access Github? How do I set up a minimal GitHub token?
 
-You can use the `gh` tool to login to GitHub on your vm, and it will
+You can use the `gh` tool to login to GitHub on your VM, and it will
 work fine.
 
-If you want  to give the vm only access to one repo, and perhaps make 
+If you want to give the VM only access to one repo, and perhaps make
 that access read-only, you can use [create a fine-grained personal access token](https://github.com/settings/personal-access-tokens/new).
 Choose a single repository, and add the "Contents" permission. Choose read-only or
 read-write as your use case desires.

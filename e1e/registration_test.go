@@ -61,7 +61,7 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	pty.want("Registration complete")
 	// Check that we show welcome message for first login.
 	pty.want("Welcome to EXE.DEV!")
-	pty.want("create your first box")
+	pty.want("create your first VM")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)
@@ -76,7 +76,7 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	// No registration flow, no welcome message
 	// but should still hint about how to create boxes,
 	// because they haven't yet.
-	pty.want("create your first box")
+	pty.want("create your first VM")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)
@@ -169,7 +169,7 @@ func TestRegisterWebThenKey(t *testing.T) {
 	pty.want("Registration complete")
 	pty.want("Your new ssh key has been added to your existing account.")
 	pty.want("Welcome to EXE.DEV!")
-	pty.want("create your first box")
+	pty.want("create your first VM")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)
@@ -272,7 +272,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 
 	// After first-time registration, we show a welcome message and a prompt.
 	pty.want("Welcome to EXE.DEV!")
-	pty.want("create your first box")
+	pty.want("create your first VM")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)

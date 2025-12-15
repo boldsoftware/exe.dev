@@ -1438,7 +1438,7 @@ type preCreateBoxOptions struct {
 func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (int, error) {
 	// Validate box name
 	if !boxname.Valid(opts.name) {
-		return 0, fmt.Errorf("invalid box name: %s", opts.name)
+		return 0, fmt.Errorf("invalid VM name: %s", opts.name)
 	}
 
 	routes := exedb.DefaultRouteJSON()
@@ -1577,7 +1577,7 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 	if box.ContainerID != nil {
 		exeletClient := s.getExeletClient(box.Ctrhost)
 		if exeletClient == nil {
-			return fmt.Errorf("exelet host not available for box")
+			return fmt.Errorf("exelet host not available for VM")
 		}
 
 		_, err := exeletClient.client.DeleteInstance(ctx, &computeapi.DeleteInstanceRequest{
@@ -2423,7 +2423,7 @@ func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDet
 
 	if result.SSHPort == nil || *result.SSHPort == 0 || len(result.SSHClientPrivateKey) == 0 {
 		// SSH details should always be set during creation. If they're missing, it's an error.
-		return nil, fmt.Errorf("SSH details missing for exelet-based box - box may still be creating or creation failed")
+		return nil, fmt.Errorf("SSH details missing for VM - VM may still be creating or creation failed")
 	}
 
 	sshPort := int(*result.SSHPort)

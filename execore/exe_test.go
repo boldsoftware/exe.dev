@@ -806,9 +806,9 @@ func TestNormalUserDashboardShowsAllTabs(t *testing.T) {
 		t.Errorf("Expected 200, got %d", resp.StatusCode)
 	}
 
-	// Should show all tabs (Boxes, Shell, Profile)
-	if !strings.Contains(string(body), "Boxes") {
-		t.Error("Dashboard should show Boxes tab for normal users")
+	// Should show all tabs (VMs, Shell, Profile)
+	if !strings.Contains(string(body), "VMs") {
+		t.Error("Dashboard should show VMs tab for normal users")
 	}
 	if !strings.Contains(string(body), "Shell") {
 		t.Error("Dashboard should show Shell tab for normal users")

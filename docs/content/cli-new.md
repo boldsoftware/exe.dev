@@ -1,14 +1,14 @@
 ---
 # DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "new"
-description: "Create a new box"
+description: "Create a new VM"
 subheading: "4. CLI Reference"
 suborder: 4
 ---
 
 # new
 
-Create a new box
+Create a new VM
 
 ## Options
 
@@ -16,9 +16,9 @@ Create a new box
 - `--env`: environment variable in KEY=VALUE format (can be specified multiple times)
 - `--image`: container image
 - `--json`: output in JSON format
-- `--name`: box name (auto-generated if not specified)
+- `--name`: VM name (auto-generated if not specified)
 - `--no-email`: do not send email notification
-- `--prompt`: initial prompt to send to Shelley after box creation (requires exeuntu image)
+- `--prompt`: initial prompt to send to Shelley after VM creation (requires exeuntu image)
 
 ## Examples
 

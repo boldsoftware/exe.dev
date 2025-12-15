@@ -1,19 +1,19 @@
 ---
 # DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "rm"
-description: "Delete a box"
+description: "Delete a VM"
 subheading: "4. CLI Reference"
 suborder: 5
 ---
 
 # rm
 
-Delete a box
+Delete a VM
 
 ## Usage
 
 ```
-rm <box-name>
+rm <vm-name>
 ```
 
 ## Options

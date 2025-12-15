@@ -372,7 +372,7 @@ function showCreationStream(hostname, boxRow) {
                         } else if (curEvent === 'fail') {
                             term.write('\r\nError: ' + (data || 'failed') + '\r\n');
                         } else if (curEvent === 'done') {
-                            term.write('\r\n✓ Box created successfully!\r\n');
+                            term.write('\r\n✓ VM created successfully!\r\n');
                             // Update the box status to running without full page reload
                             updateBoxStatusToRunning(boxRow);
                         }
@@ -543,7 +543,7 @@ class CommandModal {
     // Static convenience methods for common actions
     static shareByEmail(boxName) {
         cmdModal.open({
-            title: 'Share Box',
+            title: 'Share VM',
             commandPrefix: `share add ${boxName}`,
             inputPlaceholder: 'user@example.com'
         });
@@ -574,7 +574,7 @@ class CommandModal {
 
     static deleteBox(boxName) {
         cmdModal.open({
-            title: 'Delete Box',
+            title: 'Delete VM',
             command: `rm ${boxName}`,
             danger: true
         });

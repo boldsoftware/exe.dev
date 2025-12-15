@@ -6,7 +6,7 @@
 
 ~~~ EXE.DEV ~~~
 
-EXE.DEV: get a box over ssh
+EXE.DEV: get a VM over ssh
 To sign up, please verify your email.
 
 Please enter your email address: TestRegisterMultipleKeys@example.com
@@ -28,7 +28,7 @@ Your account has been successfully created.
 
 Welcome to EXE.DEV!
 
-- new to create your first box
+- new to create your first VM
 - help to see a list of commands
 
 PROMPT ▶ whoami
@@ -45,7 +45,7 @@ Goodbye!
 
 ~~~ EXE.DEV ~~~
 
-EXE.DEV: get a box over ssh
+EXE.DEV: get a VM over ssh
 To sign up, please verify your email.
 
 Please enter your email address: TestRegisterMultipleKeys@example.com
@@ -65,7 +65,7 @@ Your new ssh key has been added to your existing account.
 
 
 
-- new to create your first box
+- new to create your first VM
 - help to see a list of commands
 
 PROMPT ▶ whoami
@@ -83,7 +83,7 @@ Goodbye!
 
 ~~~ EXE.DEV ~~~
 
-EXE.DEV: get a box over ssh
+EXE.DEV: get a VM over ssh
 To sign up, please verify your email.
 
 Please enter your email address: TestRegisterMultipleKeys@example.com
@@ -103,7 +103,7 @@ Your new ssh key has been added to your existing account.
 
 
 
-- new to create your first box
+- new to create your first VM
 - help to see a list of commands
 
 PROMPT ▶ whoami

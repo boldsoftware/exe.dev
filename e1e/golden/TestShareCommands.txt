@@ -6,7 +6,7 @@
 
 ~~~ EXE.DEV ~~~
 
-EXE.DEV: get a box over ssh
+EXE.DEV: get a VM over ssh
 To sign up, please verify your email.
 
 Please enter your email address: TestShareCommands@example.com
@@ -28,7 +28,7 @@ Your account has been successfully created.
 
 Welcome to EXE.DEV!
 
-- new to create your first box
+- new to create your first VM
 - help to see a list of commands
 
 PROMPT ▶ whoami
@@ -46,11 +46,11 @@ SSH
 ssh -p SSH_PORT BOX_NAME@exe.cloud
 
 PROMPT ▶ ls
-Your vms:
+Your VMs:
   • BOX_NAME.exe.cloud - running (boldsoftware/exeuntu)
 PROMPT ▶ share show BOX_NAME
 
-Sharing for box 'BOX_NAME'
+Sharing for VM 'BOX_NAME'
 URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 Port: 8000
 Mode: Private
@@ -71,7 +71,7 @@ You can also share this URL directly: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 
 PROMPT ▶ share show BOX_NAME
 
-Sharing for box 'BOX_NAME'
+Sharing for VM 'BOX_NAME'
 URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 Port: 8000
 Mode: Private
@@ -86,7 +86,7 @@ PROMPT ▶ share add-share-link BOX_NAME
 
 ✓ Share link created
 
-Anyone with this link can access your box after logging in:
+Anyone with this link can access your VM after logging in:
 http://BOX_NAME.exe.cloud:EXED_HTTP_PORT?share=SHARE_TOKEN
 
 To revoke this link, use:
@@ -94,7 +94,7 @@ To revoke this link, use:
 
 PROMPT ▶ share show BOX_NAME
 
-Sharing for box 'BOX_NAME'
+Sharing for VM 'BOX_NAME'
 URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 Port: 8000
 Mode: Private
@@ -111,7 +111,7 @@ PROMPT ▶ share remove BOX_NAME friend@example.com
 
 PROMPT ▶ share show BOX_NAME
 
-Sharing for box 'BOX_NAME'
+Sharing for VM 'BOX_NAME'
 URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 Port: 8000
 Mode: Private
@@ -125,24 +125,24 @@ PROMPT ▶ help share
 
 Command: share
 
-Share HTTPS box access with others
+Share HTTPS VM access with others
 
-Usage: share <subcommand> <box> [args...]
+Usage: share <subcommand> <vm> [args...]
 
 Options:
   --json output in JSON format
 
 Subcommands:
-  show          - Show current shares for a box
-  port          - Set the HTTP proxy port for a box
+  show          - Show current shares for a VM
+  port          - Set the HTTP proxy port for a VM
   set-public    - Make the HTTP proxy publicly accessible
   set-private   - Restrict the HTTP proxy to authenticated users
-  add           - Share box with a user via email
-  remove        - Revoke a user's access to a box
-  add-link      - Create a shareable link for a box
+  add           - Share VM with a user via email
+  remove        - Revoke a user's access to a VM
+  add-link      - Create a shareable link for a VM
   remove-link   - Revoke a shareable link
 PROMPT ▶ rm BOX_NAME
 Deleting BOX_NAME...
-Box "BOX_NAME" deleted successfully
+VM "BOX_NAME" deleted successfully
 PROMPT ▶ exit
 Goodbye!

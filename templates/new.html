@@ -2,7 +2,7 @@
 <div class="new-view">
     <div class="form-container">
         <div class="form-card">
-            <h1 class="form-title">Create a New Box</h1>
+            <h1 class="form-title">Create a New VM</h1>
             
             <form id="create-vm-form" method="POST" action="/create-vm">
                 <div class="form-group">
@@ -35,7 +35,7 @@
                 </div>
                 
                 <button type="submit" class="form-button" id="create-button" disabled>
-                    Create Box
+                    Create VM
                 </button>
             </form>
         </div>
@@ -133,7 +133,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create a New Box - {{.WebHost}}</title>
+    <title>Create a New VM - {{.WebHost}}</title>
     <link rel="stylesheet" href="/static/exe.css">
     {{template "topbar_style" .}}
     <link rel="stylesheet" href="/static/form.css">
