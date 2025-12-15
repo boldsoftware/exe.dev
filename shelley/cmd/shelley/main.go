@@ -19,6 +19,7 @@ import (
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/loop"
 	"shelley.exe.dev/models"
+	"shelley.exe.dev/seccomp"
 	"shelley.exe.dev/server"
 	"shelley.exe.dev/templates"
 	"shelley.exe.dev/version"
@@ -71,6 +72,12 @@ func main() {
 	// Parse all flags first
 	flag.Parse()
 	args := flag.Args()
+
+	// Apply seccomp filter early, before spawning any child processes.
+	// This prevents child processes from killing shelley.
+	if err := seccomp.BlockKillSelf(); err != nil {
+		slog.Info("seccomp filter not installed", "error", err)
+	}
 
 	if len(args) == 0 {
 		flag.Usage()
