@@ -25,7 +25,6 @@ import (
 	"exe.dev/exelet/services"
 	computeservice "exe.dev/exelet/services/compute"
 	resourcemanagerservice "exe.dev/exelet/services/resourcemanager"
-	resourcemonitorservice "exe.dev/exelet/services/resourcemonitor"
 	storageservice "exe.dev/exelet/services/storage"
 	"exe.dev/exelet/storage"
 	"exe.dev/logging"
@@ -132,23 +131,11 @@ func main() {
 			Value:   "",
 			EnvVars: []string{"EXELET_EXED_URL"},
 		},
-		&cli.DurationFlag{
-			Name:    "resource-monitor-interval",
-			Usage:   "polling interval for the resource monitor (e.g., 30s, 1m)",
-			Value:   config.DefaultResourceMonitorInterval,
-			EnvVars: []string{"EXELET_RESOURCE_MONITOR_INTERVAL"},
-		},
 		&cli.StringFlag{
 			Name:    "instance-domain",
 			Usage:   "domain for instance hostnames (e.g., exe.xyz, exe-staging.xyz)",
 			Value:   config.DefaultInstanceDomain,
 			EnvVars: []string{"EXELET_INSTANCE_DOMAIN"},
-		},
-		&cli.BoolFlag{
-			Name:    "resource-manager-enabled",
-			Usage:   "enable the resource manager service for capacity tracking and priority management",
-			Value:   false,
-			EnvVars: []string{"EXELET_RESOURCE_MANAGER_ENABLED"},
 		},
 		&cli.DurationFlag{
 			Name:    "resource-manager-interval",
@@ -199,9 +186,7 @@ func serveAction(clix *cli.Context) error {
 	proxyPortMin := clix.Int("proxy-port-min")
 	proxyPortMax := clix.Int("proxy-port-max")
 	exedURL := clix.String("exed-url")
-	resourceMonitorInterval := clix.Duration("resource-monitor-interval")
 	instanceDomain := clix.String("instance-domain")
-	resourceManagerEnabled := clix.Bool("resource-manager-enabled")
 	resourceManagerInterval := clix.Duration("resource-manager-interval")
 	idleThreshold := clix.Duration("idle-threshold")
 	enableHugepages := clix.Bool("enable-hugepages")
@@ -219,9 +204,7 @@ func serveAction(clix *cli.Context) error {
 		ProxyPortMin:                proxyPortMin,
 		ProxyPortMax:                proxyPortMax,
 		ExedURL:                     exedURL,
-		ResourceMonitorInterval:     resourceMonitorInterval,
 		InstanceDomain:              instanceDomain,
-		ResourceManagerEnabled:      resourceManagerEnabled,
 		ResourceManagerInterval:     resourceManagerInterval,
 		IdleThreshold:               idleThreshold,
 		EnableHugepages:             enableHugepages,
@@ -289,15 +272,8 @@ func serveAction(clix *cli.Context) error {
 		func(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 			return computeSvc, nil
 		},
-		resourcemonitorservice.New,
+		resourcemanagerservice.New,
 		storageservice.New,
-	}
-
-	if cfg.ResourceManagerEnabled {
-		svcs = append(svcs, resourcemanagerservice.New)
-		log.InfoContext(ctx, "resource manager enabled",
-			"interval", cfg.ResourceManagerInterval,
-			"idle_threshold", cfg.IdleThreshold)
 	}
 
 	if err := srv.Register(serviceContext, svcs); err != nil {

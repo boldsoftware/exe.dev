@@ -35,13 +35,16 @@ func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstanc
 	}
 	memory := cfg.Memory
 	vmMemory := memory
-	// align memory to hugepage size if hugepages are enabled
+	// align memory to page size (hugepage size if enabled, otherwise default 4KB)
 	if v.enableHugepages {
 		hugePagesSize, err := defaultHugepageSize()
 		if err != nil {
 			return nil, fmt.Errorf("error getting default hugepage size (ensure hugepages are enabled): %w", err)
 		}
 		vmMemory = alignMemory(memory, uint64(hugePagesSize))
+	} else {
+		// Align to default page size (4KB) when not using hugepages
+		vmMemory = alignMemory(memory, 4) // 4 * 1024 = 4096 bytes
 	}
 	rootDiskID := "root"
 	disks := []client.DiskConfig{

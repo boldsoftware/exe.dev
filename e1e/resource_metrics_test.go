@@ -13,9 +13,9 @@ import (
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
-// TestResourceMonitor tests all resource monitor metrics using a single VM.
+// TestResourceMetrics tests all resource manager metrics using a single VM.
 // Consolidating these tests saves VM creation overhead.
-func TestResourceMonitor(t *testing.T) {
+func TestResourceMetrics(t *testing.T) {
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -77,7 +77,7 @@ func TestResourceMonitor(t *testing.T) {
 	})
 
 	t.Run("disk_metrics", func(t *testing.T) {
-		// Disk metrics are polled every cycle when resource-monitor-interval < 30s (as in tests).
+		// Disk metrics are polled every cycle with the resource manager.
 		diskMetric := fmt.Sprintf(`exelet_vm_disk_used_bytes{vm_id="%s"`, instanceID)
 
 		waitForMetric(t, metricsURL, diskMetric, true, 30*time.Second)

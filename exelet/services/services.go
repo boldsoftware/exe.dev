@@ -19,8 +19,6 @@ const (
 	ComputeService Type = "exe.services.compute.v1"
 	// StorageService is the service that implements storage
 	StorageService Type = "exe.services.storage.v1"
-	// ResourceMonitorService is the service that monitors VM resources
-	ResourceMonitorService Type = "exe.services.resource_monitor.v1"
 	// ResourceManagerService is the service that manages resource quotas and priorities
 	ResourceManagerService Type = "exe.services.resource_manager.v1"
 )

@@ -8,8 +8,6 @@ const (
 
 	// DefaultHTTPAddress is the default HTTP server address for debug and metrics
 	DefaultHTTPAddress = ":9081"
-	// DefaultResourceMonitorInterval is the default polling interval for the resource monitor
-	DefaultResourceMonitorInterval = time.Minute
 	// DefaultResourceManagerInterval is the default polling interval for the resource manager
 	DefaultResourceManagerInterval = 30 * time.Second
 	// DefaultIdleThreshold is the default duration after which a VM is considered idle
@@ -104,12 +102,8 @@ type ExeletConfig struct {
 	ProxyPortMax int
 	// ExedURL is the URL of the exed HTTP(S) server
 	ExedURL string
-	// ResourceMonitorInterval controls how frequently the resource monitor polls VMs
-	ResourceMonitorInterval time.Duration
 	// InstanceDomain is the domain for instance hostnames (e.g., exe.xyz, exe-staging.xyz)
 	InstanceDomain string
-	// ResourceManagerEnabled enables the resource manager service
-	ResourceManagerEnabled bool
 	// ResourceManagerInterval controls how frequently the resource manager polls VMs
 	ResourceManagerInterval time.Duration
 	// IdleThreshold is the duration after which a VM is considered idle

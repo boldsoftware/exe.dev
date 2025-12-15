@@ -1279,7 +1279,7 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 		return nil, fmt.Errorf("failed to create data/coverage directory %s: %w", dataDir, err)
 	}
 
-	remoteCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s" --proxy-port-min %d --proxy-port-max %d --resource-monitor-interval 5s --exed-url %s`,
+	remoteCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s" --proxy-port-min %d --proxy-port-max %d --resource-manager-interval 5s --enable-hugepages --exed-url %s`,
 		coverDir, remoteBinaryPath, dataDir, dataDir, dataDir, zfsDataset, dataDir, bridgeName, encodedNetwork, proxyPortMin, proxyPortMax, exedURL)
 
 	// Start exelet via SSH (similar to how exed is started locally)

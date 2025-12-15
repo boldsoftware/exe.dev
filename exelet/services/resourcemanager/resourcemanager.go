@@ -47,6 +47,9 @@ type ResourceManager struct {
 	usageMu    sync.Mutex
 	usageState map[string]*vmUsageState
 
+	// Prometheus metrics
+	metrics *prometheusMetrics
+
 	// Priority management
 	priorityMu       sync.Mutex
 	priorityOverride map[string]api.VMPriority // manual overrides (cleared when set to auto)
@@ -146,7 +149,11 @@ func (m *ResourceManager) Register(ctx *services.ServiceContext, server *grpc.Se
 	if ctx == nil {
 		return fmt.Errorf("service context is required")
 	}
+	if ctx.MetricsRegistry == nil {
+		return fmt.Errorf("metrics registry is required")
+	}
 	m.context = ctx
+	m.metrics = newPrometheusMetrics(ctx.MetricsRegistry)
 	api.RegisterResourceManagerServiceServer(server, m)
 	return nil
 }
@@ -331,6 +338,11 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name string, vmC
 	allocatedMemoryBytes := state.allocatedMemoryBytes
 	m.usageMu.Unlock()
 
+	// Update Prometheus metrics
+	if m.metrics != nil {
+		m.metrics.update(id, name, state)
+	}
+
 	// Apply priority on first observation (to create cgroup) or when priority changes
 	if !exists || oldPriority != newPriority {
 		if oldPriority != newPriority {
@@ -359,6 +371,10 @@ func (m *ResourceManager) cleanupMissing(ctx context.Context, seen map[string]st
 	for id := range m.usageState {
 		if _, ok := seen[id]; !ok {
 			delete(m.usageState, id)
+			// Clean up Prometheus metrics
+			if m.metrics != nil {
+				m.metrics.delete(id)
+			}
 			// Clean up cgroup
 			if err := m.removeCgroup(ctx, id); err != nil {
 				m.log.DebugContext(ctx, "resource manager: failed to remove cgroup", "id", id, "error", err)
