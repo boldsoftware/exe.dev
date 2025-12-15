@@ -102,6 +102,27 @@ func TestHTTPMetricsProxy(t *testing.T) {
 	}
 }
 
+func TestProxyBytesMetric(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	m := NewHTTPMetrics(registry)
+
+	// Simulate bytes being tracked
+	m.AddProxyBytes("in", 100)
+	m.AddProxyBytes("in", 50)
+	m.AddProxyBytes("out", 200)
+	m.AddProxyBytes("out", 75)
+
+	expected := `
+		# HELP proxy_bytes_total Total number of bytes proxied.
+		# TYPE proxy_bytes_total counter
+		proxy_bytes_total{direction="in"} 150
+		proxy_bytes_total{direction="out"} 275
+	`
+	if err := testutil.CollectAndCompare(m.proxyBytesTotal, strings.NewReader(expected)); err != nil {
+		t.Errorf("proxy_bytes_total mismatch: %v", err)
+	}
+}
+
 func TestNormalizePath(t *testing.T) {
 	tests := []struct {
 		path     string

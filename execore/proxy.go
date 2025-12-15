@@ -24,6 +24,28 @@ import (
 	"exe.dev/stage"
 )
 
+// countingConn wraps a net.Conn to count bytes read and written.
+type countingConn struct {
+	net.Conn
+	metrics *HTTPMetrics
+}
+
+func (c *countingConn) Read(b []byte) (int, error) {
+	n, err := c.Conn.Read(b)
+	if n > 0 {
+		c.metrics.AddProxyBytes("in", n)
+	}
+	return n, err
+}
+
+func (c *countingConn) Write(b []byte) (int, error) {
+	n, err := c.Conn.Write(b)
+	if n > 0 {
+		c.metrics.AddProxyBytes("out", n)
+	}
+	return n, err
+}
+
 // exe.dev provides a "magic" proxy for user's boxes. When a user requests https://vmname.exe.dev/,
 // we terminate TLS, and send that request on to the box using HTTP. This allows users to serve
 // web sites without dealing with, for example, TLS. The port we go to is determined by the "route" command.
@@ -641,7 +663,7 @@ func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey
 			if err != nil {
 				return nil, fmt.Errorf("SSH dial failed: %w", err)
 			}
-			return conn, nil
+			return &countingConn{Conn: conn, metrics: s.httpMetrics}, nil
 		},
 		ForceAttemptHTTP2:     false,
 		MaxIdleConns:          100,

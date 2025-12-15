@@ -1,6 +1,7 @@
 package execore
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -14,6 +15,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	io_prometheus_client "github.com/prometheus/client_model/go"
 
 	"exe.dev/stage"
 )
@@ -489,3 +493,80 @@ func TestClearExeDevHeaders(t *testing.T) {
 		t.Fatalf("expected other X- headers untouched, got %q", got)
 	}
 }
+
+// TestCountingConn tests that the countingConn wrapper correctly tracks bytes read and written
+func TestCountingConn(t *testing.T) {
+	t.Parallel()
+
+	registry := prometheus.NewRegistry()
+	metrics := NewHTTPMetrics(registry)
+
+	// Create a pipe to simulate a connection
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	// Wrap the client side with countingConn
+	wrapped := &countingConn{Conn: client, metrics: metrics}
+
+	// Write some data through the wrapped connection
+	testData := []byte("hello, world!")
+	writeDone := make(chan struct{})
+	go func() {
+		wrapped.Write(testData)
+		close(writeDone)
+	}()
+
+	// Read from the server side
+	buf := make([]byte, len(testData))
+	_, err := io.ReadFull(server, buf)
+	if err != nil {
+		t.Fatalf("failed to read from server: %v", err)
+	}
+	if !bytes.Equal(buf, testData) {
+		t.Fatalf("data mismatch: got %q, want %q", buf, testData)
+	}
+
+	// Wait for the write goroutine to complete
+	<-writeDone
+
+	// Now write from server and read through wrapped connection
+	responseData := []byte("response data")
+	go func() {
+		server.Write(responseData)
+	}()
+
+	buf = make([]byte, len(responseData))
+	_, err = io.ReadFull(wrapped, buf)
+	if err != nil {
+		t.Fatalf("failed to read from wrapped: %v", err)
+	}
+	if !bytes.Equal(buf, responseData) {
+		t.Fatalf("data mismatch: got %q, want %q", buf, responseData)
+	}
+
+	// Verify metrics were recorded
+	// "out" is bytes written through the wrapped connection (to the backend)
+	// "in" is bytes read through the wrapped connection (from the backend)
+	outMetric := getCounterValue(t, metrics.proxyBytesTotal.WithLabelValues("out"))
+	inMetric := getCounterValue(t, metrics.proxyBytesTotal.WithLabelValues("in"))
+
+	if outMetric != float64(len(testData)) {
+		t.Errorf("out bytes: got %v, want %v", outMetric, len(testData))
+	}
+	if inMetric != float64(len(responseData)) {
+		t.Errorf("in bytes: got %v, want %v", inMetric, len(responseData))
+	}
+}
+
+func getCounterValue(t *testing.T, counter prometheus.Counter) float64 {
+	t.Helper()
+	ch := make(chan prometheus.Metric, 1)
+	counter.Collect(ch)
+	m := <-ch
+	var metric = &prometheusMetric{}
+	m.Write(metric)
+	return metric.Counter.GetValue()
+}
+
+type prometheusMetric = io_prometheus_client.Metric

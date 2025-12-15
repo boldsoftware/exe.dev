@@ -89,6 +89,7 @@ const (
 type HTTPMetrics struct {
 	requestsTotal    *prometheus.CounterVec
 	requestsInFlight *prometheus.GaugeVec
+	proxyBytesTotal  *prometheus.CounterVec
 
 	// isProxyHost returns true if the host should be treated as a proxy request.
 	// This is set by the Server when creating HTTPMetrics.
@@ -117,8 +118,12 @@ func NewHTTPMetrics(registry *prometheus.Registry) *HTTPMetrics {
 			Name: "http_requests_in_flight",
 			Help: "Current number of HTTP requests being served.",
 		}, inFlightLabels),
+		proxyBytesTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "proxy_bytes_total",
+			Help: "Total number of bytes proxied.",
+		}, []string{"direction"}),
 	}
-	registry.MustRegister(metrics.requestsTotal, metrics.requestsInFlight)
+	registry.MustRegister(metrics.requestsTotal, metrics.requestsInFlight, metrics.proxyBytesTotal)
 	return metrics
 }
 
@@ -126,6 +131,12 @@ func NewHTTPMetrics(registry *prometheus.Registry) *HTTPMetrics {
 func (m *HTTPMetrics) SetHostFuncs(isProxyHost func(string) bool, boxFromHost func(string) string) {
 	m.isProxyHost = isProxyHost
 	m.boxFromHost = boxFromHost
+}
+
+// AddProxyBytes increments the proxy bytes counter.
+// direction should be "in" for bytes received from the backend or "out" for bytes sent to the backend.
+func (m *HTTPMetrics) AddProxyBytes(direction string, n int) {
+	m.proxyBytesTotal.WithLabelValues(direction).Add(float64(n))
 }
 
 // Wrap wraps a handler with HTTP metrics instrumentation.
