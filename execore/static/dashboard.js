@@ -388,6 +388,225 @@ function showCreationStream(hostname, boxRow) {
     })();
 }
 
+// Command Modal - generic widget for running shell commands
+class CommandModal {
+    #overlay = null;
+    #title = null;
+    #display = null;
+    #output = null;
+    #runBtn = null;
+    #currentCommand = '';
+    #inputEl = null;
+    #isDanger = false;
+    #commandSucceeded = false;
+
+    // Arrow function to preserve 'this' binding for event listener
+    #handleEscape = (e) => {
+        if (e.key === 'Escape') {
+            this.close();
+        }
+    };
+
+    #init() {
+        this.#overlay = document.getElementById('cmd-modal-overlay');
+        this.#title = document.getElementById('cmd-modal-title');
+        this.#display = document.getElementById('cmd-display');
+        this.#output = document.getElementById('cmd-output');
+        this.#runBtn = document.getElementById('cmd-run-btn');
+    }
+
+    #escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    #getFullCommand() {
+        if (this.#inputEl) {
+            const input = this.#inputEl.value.trim();
+            if (!input) return null;
+            return `${this.#currentCommand} ${input}`;
+        }
+        return this.#currentCommand;
+    }
+
+    #resetInputState() {
+        if (this.#commandSucceeded) {
+            this.#commandSucceeded = false;
+            this.#runBtn.disabled = false;
+            this.#runBtn.textContent = 'Run';
+            this.#output.classList.remove('visible', 'success', 'error');
+        }
+    }
+
+    #showSuccess(message) {
+        this.#output.classList.add('visible', 'success');
+        this.#output.textContent = message || 'Done';
+        this.#runBtn.textContent = 'Run';
+        this.#runBtn.disabled = true;
+        this.#commandSucceeded = true;
+    }
+
+    #showError(message) {
+        this.#output.classList.add('visible', 'error');
+        this.#output.textContent = message || 'Command failed';
+        this.#runBtn.textContent = 'Run';
+        this.#runBtn.disabled = false;
+    }
+
+    /**
+     * Open modal with a command
+     * @param {Object} options
+     * @param {string} options.title - Modal title
+     * @param {string} [options.command] - Full command to run (no input needed)
+     * @param {string} [options.commandPrefix] - Command prefix (input appended)
+     * @param {string} [options.inputPlaceholder] - Placeholder for input field
+     * @param {boolean} [options.danger] - Use red "Run" button
+     */
+    open(options) {
+        if (!this.#overlay) this.#init();
+
+        this.#title.textContent = options.title || 'Run Command';
+        this.#isDanger = options.danger || false;
+
+        // Reset state
+        this.#output.classList.remove('visible', 'success', 'error');
+        this.#output.textContent = '';
+        this.#runBtn.disabled = false;
+        this.#runBtn.textContent = 'Run';
+        this.#commandSucceeded = false;
+
+        // Set button style
+        this.#runBtn.classList.toggle('danger', this.#isDanger);
+
+        if (options.command) {
+            this.#currentCommand = options.command;
+            this.#inputEl = null;
+            this.#display.innerHTML = `<span class="cmd-text-static">${this.#escapeHtml(options.command)}</span>`;
+        } else if (options.commandPrefix) {
+            this.#currentCommand = options.commandPrefix;
+            this.#display.innerHTML = `
+                <span class="cmd-text-static">${this.#escapeHtml(options.commandPrefix)} </span>
+                <input type="text" class="cmd-input" id="cmd-input-field"
+                       placeholder="${options.inputPlaceholder || ''}" autocomplete="off">
+            `.trim();
+
+            this.#inputEl = document.getElementById('cmd-input-field');
+            this.#inputEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') this.run();
+            });
+            this.#inputEl.addEventListener('input', () => this.#resetInputState());
+            setTimeout(() => this.#inputEl.focus(), 50);
+        }
+
+        this.#overlay.classList.add('visible');
+        document.addEventListener('keydown', this.#handleEscape);
+    }
+
+    close() {
+        this.#overlay?.classList.remove('visible');
+        document.removeEventListener('keydown', this.#handleEscape);
+    }
+
+    async run() {
+        if (this.#commandSucceeded) return;
+
+        const command = this.#getFullCommand();
+        if (!command) {
+            this.#inputEl?.focus();
+            return;
+        }
+
+        this.#runBtn.disabled = true;
+        this.#runBtn.textContent = 'Running...';
+        this.#output.classList.remove('success', 'error');
+
+        try {
+            const response = await fetch('/m/cmd', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command }),
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.#showSuccess(result.output);
+            } else {
+                this.#showError(result.output || result.error);
+            }
+        } catch (err) {
+            this.#showError(`Network error: ${err.message}`);
+        }
+    }
+
+    // Static convenience methods for common actions
+    static shareByEmail(boxName) {
+        cmdModal.open({
+            title: 'Share Box',
+            commandPrefix: `share add ${boxName}`,
+            inputPlaceholder: 'user@example.com'
+        });
+    }
+
+    static createShareLink(boxName) {
+        cmdModal.open({
+            title: 'Create Share Link',
+            command: `share add-link ${boxName}`
+        });
+    }
+
+    static removeShare(boxName, email) {
+        cmdModal.open({
+            title: 'Remove Access',
+            command: `share remove ${boxName} ${email}`,
+            danger: true
+        });
+    }
+
+    static removeShareLink(boxName, token) {
+        cmdModal.open({
+            title: 'Remove Share Link',
+            command: `share remove-link ${boxName} ${token}`,
+            danger: true
+        });
+    }
+
+    static deleteBox(boxName) {
+        cmdModal.open({
+            title: 'Delete Box',
+            command: `rm ${boxName}`,
+            danger: true
+        });
+    }
+
+    static setPublic(boxName) {
+        cmdModal.open({
+            title: 'Make Public',
+            command: `share set-public ${boxName}`
+        });
+    }
+
+    static setPrivate(boxName) {
+        cmdModal.open({
+            title: 'Make Private',
+            command: `share set-private ${boxName}`
+        });
+    }
+}
+
+// Global instance
+const cmdModal = new CommandModal();
+
+// Global functions for onclick handlers in HTML
+const openShareModal = (boxName) => CommandModal.shareByEmail(boxName);
+const openShareLinkModal = (boxName) => CommandModal.createShareLink(boxName);
+const openRemoveShareModal = (boxName, email) => CommandModal.removeShare(boxName, email);
+const openRemoveShareLinkModal = (boxName, token) => CommandModal.removeShareLink(boxName, token);
+const openDeleteBoxModal = (boxName) => CommandModal.deleteBox(boxName);
+const openSetPublicModal = (boxName) => CommandModal.setPublic(boxName);
+const openSetPrivateModal = (boxName) => CommandModal.setPrivate(boxName);
+
 // Initialize on page load
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initSearch);

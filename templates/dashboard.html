@@ -473,6 +473,230 @@
                 padding: 5px 10px;
             }
         }
+
+        /* Command Modal */
+        .cmd-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s ease, visibility 0.15s ease;
+        }
+
+        .cmd-modal-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .cmd-modal {
+            background: #fff;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .cmd-modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .cmd-modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .cmd-modal-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: #999;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+        }
+
+        .cmd-modal-close:hover {
+            color: #333;
+        }
+
+        .cmd-modal-body {
+            padding: 20px;
+        }
+
+        .cmd-input-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #f5f5f5;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px 16px;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+            font-size: 14px;
+            overflow: hidden;
+        }
+
+        .cmd-prompt {
+            color: #666;
+            flex-shrink: 0;
+        }
+
+        .cmd-text {
+            color: #333;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .cmd-text-static {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .cmd-input {
+            background: #fff;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-family: inherit;
+            font-size: inherit;
+            color: #333;
+            min-width: 120px;
+            flex: 1;
+        }
+
+        .cmd-input:focus {
+            outline: none;
+            border-color: #666;
+        }
+
+        .cmd-btn-inline {
+            flex-shrink: 0;
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            background: #333;
+            border: 1px solid #333;
+            color: #fff;
+            transition: all 0.15s ease;
+        }
+
+        .cmd-btn-inline:hover {
+            background: #222;
+        }
+
+        .cmd-btn-inline:disabled {
+            background: #999;
+            border-color: #999;
+            cursor: not-allowed;
+        }
+
+        .cmd-btn-inline.danger {
+            background: #dc2626;
+            border-color: #dc2626;
+        }
+
+        .cmd-btn-inline.danger:hover {
+            background: #b91c1c;
+        }
+
+        .cmd-modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .cmd-btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .cmd-btn-cancel {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            color: #666;
+        }
+
+        .cmd-btn-cancel:hover {
+            background: #f5f5f5;
+            border-color: #d0d0d0;
+        }
+
+        .cmd-btn-run {
+            background: #333;
+            border: 1px solid #333;
+            color: #fff;
+        }
+
+        .cmd-btn-run:hover {
+            background: #222;
+        }
+
+        .cmd-btn-run:disabled {
+            background: #999;
+            border-color: #999;
+            cursor: not-allowed;
+        }
+
+        .cmd-btn-danger {
+            background: #dc2626;
+            border: 1px solid #dc2626;
+            color: #fff;
+        }
+
+        .cmd-btn-danger:hover {
+            background: #b91c1c;
+        }
+
+        .cmd-output {
+            margin-top: 16px;
+            padding: 12px 16px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            display: none;
+        }
+
+        .cmd-output.visible {
+            display: block;
+        }
+
+        .cmd-output.success {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+
+        .cmd-output.error {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
     </style>
 </head>
 <body>
@@ -582,11 +806,15 @@
                     </div>
                     {{if or (gt (len .SharedEmails) 0) (gt (len .ShareLinks) 0)}}
                     <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb;">
+                        {{$boxName := .Name}}
                         {{if gt (len .SharedEmails) 0}}
                         <div style="font-size: 13px; font-weight: 500; color: #6b7280; margin-bottom: 8px;">Shared with users:</div>
                         <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
                             {{range .SharedEmails}}
-                            <div style="font-size: 13px; color: #374151; padding: 4px 8px; background: #f9fafb; border-radius: 4px;">{{.}}</div>
+                            <div style="font-size: 13px; color: #374151; padding: 4px 8px; background: #f9fafb; border-radius: 4px; display: flex; align-items: center; justify-content: space-between;">
+                                <span>{{.}}</span>
+                                <button onclick="openRemoveShareModal('{{$boxName}}', '{{.}}')" style="background: none; border: none; color: #9ca3af; cursor: pointer; padding: 2px 6px; font-size: 16px;" title="Remove access">&times;</button>
+                            </div>
                             {{end}}
                         </div>
                         {{end}}
@@ -602,6 +830,7 @@
                                         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                                     </svg>
                                 </button>
+                                <button onclick="openRemoveShareLinkModal('{{$boxName}}', '{{.Token}}')" style="background: none; border: none; color: #9ca3af; cursor: pointer; padding: 2px 6px; font-size: 16px;" title="Remove link">&times;</button>
                             </div>
                             {{end}}
                         </div>
@@ -642,6 +871,30 @@
                             Open Shelley Agent
                         </a>
                         {{end}}
+                    </div>
+                    <div class="box-actions-expanded" style="margin-top: 8px;">
+                        <button class="action-btn-expanded" onclick="openShareModal('{{.Name}}')" style="cursor: pointer;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+                                <polyline points="16 6 12 2 8 6"></polyline>
+                                <line x1="12" y1="2" x2="12" y2="15"></line>
+                            </svg>
+                            Share
+                        </button>
+                        <button class="action-btn-expanded" onclick="openShareLinkModal('{{.Name}}')" style="cursor: pointer;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                            </svg>
+                            Share Link
+                        </button>
+                        <button class="action-btn-expanded" onclick="openDeleteBoxModal('{{.Name}}')" style="cursor: pointer; color: #dc2626;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                            Delete
+                        </button>
                     </div>
                     {{end}}
                 </div>
@@ -693,9 +946,30 @@
         </div>
         {{end}}
     </div>
-    
+
+    <!-- Command Modal -->
+    <div id="cmd-modal-overlay" class="cmd-modal-overlay" onclick="cmdModal.close()">
+        <div class="cmd-modal" onclick="event.stopPropagation()">
+            <div class="cmd-modal-header">
+                <span class="cmd-modal-title" id="cmd-modal-title">Run Command</span>
+                <button class="cmd-modal-close" onclick="cmdModal.close()">&times;</button>
+            </div>
+            <div class="cmd-modal-body">
+                <div class="cmd-input-row" id="cmd-input-row">
+                    <span class="cmd-prompt">$</span>
+                    <span class="cmd-text" id="cmd-display"></span>
+                    <button class="cmd-btn-inline" id="cmd-run-btn" onclick="cmdModal.run()">Run</button>
+                </div>
+                <div class="cmd-output" id="cmd-output"></div>
+                <div class="cmd-modal-actions">
+                    <button class="cmd-btn cmd-btn-cancel" onclick="cmdModal.close()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="toast" class="toast"></div>
-    
+
     <script src="/static/xterm.js"></script>
     <script src="/static/xterm-addon-web-links.js"></script>
     <script src="/static/terminal-common.js"></script>

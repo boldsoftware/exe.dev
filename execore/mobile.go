@@ -246,6 +246,7 @@ func (s *Server) handleMobile(w http.ResponseWriter, r *http.Request) {
 	mux.HandleFunc("/home", s.handleMobileVMList)
 	mux.HandleFunc("/creating/stream", s.handleMobileCreatingStream)
 	mux.HandleFunc("/box/creation-log", s.handleBoxCreationLog)
+	mux.HandleFunc("POST /cmd", s.handleRunCommand)
 
 	// Strip /m prefix before passing to mux
 	originalURL := r.URL.Path
