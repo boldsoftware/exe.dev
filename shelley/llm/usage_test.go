@@ -37,9 +37,9 @@ func TestUsageTotalInputTokens(t *testing.T) {
 			want: 5010, // 10 + 0 + 5000
 		},
 		{
-			name: "zero",
+			name:  "zero",
 			usage: Usage{},
-			want: 0,
+			want:  0,
 		},
 	}
 

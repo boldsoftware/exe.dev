@@ -74,9 +74,9 @@ func TestContextWindowSizeCalculation(t *testing.T) {
 		usage1Str := string(usage1JSON)
 
 		usage2 := llm.Usage{
-			InputTokens:              200,
-			CacheReadInputTokens:     100,
-			OutputTokens:             75,
+			InputTokens:          200,
+			CacheReadInputTokens: 100,
+			OutputTokens:         75,
 		}
 		usage2JSON, _ := json.Marshal(usage2)
 		usage2Str := string(usage2JSON)
