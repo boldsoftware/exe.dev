@@ -115,7 +115,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Description:       "Delete a VM",
 			Handler:           ss.handleDeleteCommand,
 			FlagSetFunc:       jsonOnlyFlags("rm"),
-			Usage:             "rm <vm-name>",
+			Usage:             "rm <vmname>",
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
 		},
@@ -132,7 +132,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Description:       "Generate a proxy bearer token",
 			FlagSetFunc:       jsonOnlyFlags("proxy-token"),
 			Handler:           ss.handleProxyTokenCommand,
-			Usage:             "proxy-token <vm-name>",
+			Usage:             "proxy-token <vmname>",
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
 		},
@@ -156,7 +156,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		{
 			Name:              "ssh",
 			Description:       "SSH into a VM",
-			Usage:             "ssh <vm-name> [command...]",
+			Usage:             "ssh <vmname> [command...]",
 			Handler:           ss.handleSSHCommand,
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
@@ -182,7 +182,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Name:              "grant-support-root",
 			Hidden:            true,
 			Description:       "Grant or revoke exe.dev support root access to a VM",
-			Usage:             "grant-support-root <vm-name> on|off",
+			Usage:             "grant-support-root <vmname> on|off",
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
 			Handler:           ss.handleGrantSupportRootCommand,
@@ -1099,7 +1099,7 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.Comma
 
 func (ss *SSHServer) handleGrantSupportRootCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) != 2 {
-		return cc.Errorf("usage: grant-support-root <vm-name> on|off")
+		return cc.Errorf("usage: grant-support-root <vmname> on|off")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -1220,7 +1220,7 @@ func mapExeletStatusToContainerProgress(status *api.CreateInstanceStatus) contai
 // handleSSHCommand implements the ssh command - SSH into a box from the REPL
 func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) < 1 {
-		return cc.Errorf("usage: ssh <vm-name> [command...]")
+		return cc.Errorf("usage: ssh <vmname> [command...]")
 	}
 
 	name := cc.Args[0]
@@ -1229,7 +1229,7 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 	// Trim the @host if present and validate it
 	if _, found := strings.CutPrefix(name, "@"); found {
 		// If they typed just @host with no boxname
-		return cc.Errorf("usage: ssh <vm-name> [command...]")
+		return cc.Errorf("usage: ssh <vmname> [command...]")
 	} else if boxName, host, found := strings.Cut(name, "@"); found {
 		// Format: boxname@host
 		if host != ss.server.env.BoxHost {

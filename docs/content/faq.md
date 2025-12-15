@@ -35,7 +35,7 @@ to open in VSCode. This leverages VSCode's SSH remote features.
 The link is of the form:
 
 ```
-vscode://vscode-remote/ssh-remote+<vm-name>@exe.dev/app?windowId=_blank
+vscode://vscode-remote/ssh-remote+<vmname>@exe.dev/app?windowId=_blank
 ```
 
 The `app` in that URL is the path on the filesystem for VSCode to
@@ -43,11 +43,11 @@ consider as your workspace.
 
 # Q: How do I copy files to/from my VM?
 
-Use `scp`. For example, `scp <local-file> <vm-name>@exe.dev:`.
+Use `scp`. For example, `scp <local-file> <vmname>@exe.dev:`.
 
 # Q: Why is it `ssh name@exe.dev` and not `ssh name.exe.dev`?
 
-We can make `https://boxname.exe.xyz/` work because HTTP has a "Host:" header that
+We can make `https://vmname.exe.xyz/` work because HTTP has a "Host:" header that
 lets us direct traffic appropriately. The SSH protocol only has the IP address
 that's being connected to.
 

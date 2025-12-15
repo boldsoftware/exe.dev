@@ -171,7 +171,7 @@ func (p *PiperPlugin) handleNextAuthMethods(conn libplugin.ConnMetadata) ([]stri
 }
 
 // supportAccessPrefix is the username prefix for support access.
-// Usage: ssh support+boxname@exe.cloud
+// Usage: ssh support+vmname@exe.cloud
 const supportAccessPrefix = "support+"
 
 // handleBanner returns an SSH banner shown before authentication.
@@ -279,7 +279,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	localAddress := cmp.Or(domz.StripPort(conn.LocalAddress()), "127.0.0.1")
 	slog.DebugContext(ctx, "piper public key auth user status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID, "local_address", localAddress)
 
-	// Check for support access: ssh support+boxname@exe.cloud
+	// Check for support access: ssh support+vmname@exe.cloud
 	if supportBoxName, isSupport := strings.CutPrefix(username, supportAccessPrefix); isSupport {
 		if !registered {
 			slog.WarnContext(ctx, "piper public key auth: support access denied - unregistered user", "component", "piper-plugin", "box_name", supportBoxName)
@@ -307,8 +307,8 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	}
 
 	// IP-based box routing (like SNI but for SSH):
-	// If `ssh boxname.exe.cloud` resolves to a shard IP (127.21.0.X), then look up the box by that shard/user combo.
-	// This makes `ssh boxname.exe.cloud` work like `ssh boxname@exe.cloud`.
+	// If `ssh vmname.exe.cloud` resolves to a shard IP (127.21.0.X), then look up the box by that shard/user combo.
+	// This makes `ssh vmname.exe.cloud` work like `ssh vmname@exe.cloud`.
 	// If this fails, continue on with normal routing.
 	slog.InfoContext(ctx, "piper public key auth checking for box by shard", "component", "piper-plugin", "user_id", userID, "local_address", localAddress)
 	if box := p.server.FindBoxByIPShard(ctx, userID, localAddress); box != nil {

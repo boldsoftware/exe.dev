@@ -39,5 +39,5 @@ they should get an error message indicating how to create a key.
 ### SSH Access Hints
 - Use `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p <SSH_PORT> boxname@localhost`
 - Wait ~10-15 seconds after box creation for SSH daemon to be fully ready.
-- In box shell, run `hostname`. Should show "boxname.exe.dev"
+- In box shell, run `hostname`. Should show "vmname.exe.dev"
 - Use `scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P <SSH_PORT> localfile boxname@localhost:/path`

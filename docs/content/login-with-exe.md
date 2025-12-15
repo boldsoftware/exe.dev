@@ -31,11 +31,11 @@ is public, unauthenticated requests will not have these headers.
 
 The following special URLs are available for authentication flows:
 
-- **Login**: `https://boxname.exe.xyz/__exe.dev/login?redirect={path}`
+- **Login**: `https://vmname.exe.xyz/__exe.dev/login?redirect={path}`
 
   Redirects the user to log in, then returns them to the specified path.
 
-- **Logout**: POST `https://boxname.exe.xyz/__exe.dev/logout`
+- **Logout**: POST `https://vmname.exe.xyz/__exe.dev/logout`
 
   Logs the user out, removing the cookie for your domain.
 

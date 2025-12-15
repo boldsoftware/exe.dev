@@ -24,14 +24,14 @@ import (
 	"exe.dev/stage"
 )
 
-// exe.dev provides a "magic" proxy for user's boxes. When a user requests https://boxname.exe.dev/,
+// exe.dev provides a "magic" proxy for user's boxes. When a user requests https://vmname.exe.dev/,
 // we terminate TLS, and send that request on to the box using HTTP. This allows users to serve
 // web sites without dealing with, for example, TLS. The port we go to is determined by the "route" command.
 // We also provide some basic auth. By default, you have to have access to the box (which we do via
 // a redirect dance) to have access to the proxy, but we also let you mark it public.
 //
 // If you have multiple web servers, for certain ports, we also redirect those requests. So,
-// https://boxname.exe.dev:8080/ will go to port 8080 on the box. These non-default ports are always
+// https://vmname.exe.dev:8080/ will go to port 8080 on the box. These non-default ports are always
 // private.
 
 // handleProxyRequest handles requests that should be proxied to containers

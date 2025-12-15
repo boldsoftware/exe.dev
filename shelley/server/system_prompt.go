@@ -20,7 +20,7 @@ type SystemPromptData struct {
 	Codebase         *CodebaseInfo
 	IsExeDev         bool
 	IsSudoAvailable  bool
-	Hostname         string // For exe.dev, the public hostname (e.g., "boxname.exe.xyz")
+	Hostname         string // For exe.dev, the public hostname (e.g., "vmname.exe.xyz")
 	ShelleyDBPath    string // Path to the shelley database
 }
 

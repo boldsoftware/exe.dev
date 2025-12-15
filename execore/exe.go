@@ -1315,7 +1315,7 @@ func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName strin
 }
 
 // FindBoxByIPShard finds a box by the local IP address shard for a given user.
-// This enables `ssh boxname.exe.cloud` to work like `ssh boxname@exe.cloud`.
+// This enables `ssh vmname.exe.cloud` to work like `ssh vmname@exe.cloud`.
 func (s *Server) FindBoxByIPShard(ctx context.Context, userID, localIP string) *exedb.Box {
 	if userID == "" || localIP == "" {
 		return nil

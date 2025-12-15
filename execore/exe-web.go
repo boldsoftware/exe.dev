@@ -424,7 +424,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	isKnownHostsRequest := r.URL.Path == sshKnownHostsPath
 	// Redirect requests to BoxHost apex (exe.xyz) to WebHost (exe.dev).
-	// BoxHost is only for box subdomains (boxname.exe.xyz); the apex itself should
+	// BoxHost is only for box subdomains (vmname.exe.xyz); the apex itself should
 	// redirect to WebHost to avoid passkey RPID mismatch errors during auth.
 	if s.env.BoxHost != s.env.WebHost {
 		hostname := domz.Canonicalize(domz.StripPort(r.Host))
