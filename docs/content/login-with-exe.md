@@ -23,9 +23,17 @@ requests coming into your box:
 
 - `X-ExeDev-UserID`: A stable, unique user identifier
 - `X-ExeDev-Email`: The user's email address
+- `X-ExeDev-Role`: The user's relationship to the box: `owner`, `user`, or `anonymous`
 
-These headers are only present when the user is authenticated. If your proxy
-is public, unauthenticated requests will not have these headers.
+The `X-ExeDev-Role` header is always present:
+
+- `owner`: The authenticated user owns the box
+- `user`: The authenticated user has been granted access (via email share or share link)
+- `anonymous`: The request is unauthenticated (only possible on public proxies)
+
+The `X-ExeDev-UserID` and `X-ExeDev-Email` headers are only present when the
+user is authenticated. If your proxy is public, unauthenticated requests will
+not have these headers but will have `X-ExeDev-Role: anonymous`.
 
 ## Special Authentication URLs
 

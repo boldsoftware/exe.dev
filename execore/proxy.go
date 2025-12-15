@@ -663,6 +663,15 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 			}
 			req.Header.Set("X-ExeDev-UserID", userID)
 			req.Header.Set("X-ExeDev-Email", email)
+
+			// Determine role: owner, user, or anonymous
+			if box.CreatedByUserID == userID {
+				req.Header.Set("X-ExeDev-Role", "owner")
+			} else {
+				req.Header.Set("X-ExeDev-Role", "user")
+			}
+		} else {
+			req.Header.Set("X-ExeDev-Role", "anonymous")
 		}
 
 		// Remove the exe-proxy-auth cookie
