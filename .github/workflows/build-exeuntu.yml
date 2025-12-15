@@ -177,10 +177,10 @@ jobs:
           echo "Pulling tag: $TAG"
 
           # Start both pulls in parallel
-          curl -f --max-time 300 "https://exe.dev/pull-exeuntu-everywhere-517c8a904?tag=$TAG" &
+          curl -fsS --max-time 300 "https://exe.dev/pull-exeuntu-everywhere-517c8a904?tag=$TAG" &
           PROD_PID=$!
 
-          curl -f --max-time 300 "https://exe-staging.dev/pull-exeuntu-everywhere-517c8a904?tag=$TAG" &
+          curl -fsS --max-time 300 "https://exe-staging.dev/pull-exeuntu-everywhere-517c8a904?tag=$TAG" &
           STAGING_PID=$!
 
           # Wait for staging (don't fail if it errors)
