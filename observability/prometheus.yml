@@ -64,6 +64,14 @@ scrape_configs:
           stage: 'staging'
     metrics_path: '/metrics'
 
+  - job_name: 'blogd'
+    scheme: https
+    static_configs:
+      - targets: ["blog.exe.dev"]
+        labels:
+          stage: 'production'
+    metrics_path: '/metrics'
+
   - job_name: 'sshpiperd'
     scheme: http
     static_configs:

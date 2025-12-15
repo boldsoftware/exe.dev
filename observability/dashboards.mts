@@ -802,6 +802,34 @@ function makeDevExeDashboard() {
     }
   );
 
+  // Blog traffic
+  dash.withRow(
+    new RowBuilder("Blog").gridPos({
+      x: 0,
+      y: 88,
+      w: 24,
+      h: 1,
+    })
+  );
+
+  addTimeseriesChart(
+    "Blog Hit Rate",
+    `sum(rate(blog_page_hits_total{job="blogd",stage=~"$stage"}[$__rate_interval])) by (stage)`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 89, w: 12, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Blog Hits by Path (Top 10)",
+    `topk(10, sum(rate(blog_page_hits_total{job="blogd",stage=~"$stage"}[$__rate_interval])) by (path, stage))`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 12, y: 89, w: 12, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}} {{path}}"),
+    }
+  );
+
   return dash;
 }
 
