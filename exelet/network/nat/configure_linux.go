@@ -16,7 +16,88 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+// MIGRATION: Remove after this commit has been deployed to prod.
+// This migrates the legacy "br-exe" bridge to the new "br-exe-0" naming scheme.
+func (n *NAT) migrateLegacyBridge(ctx context.Context) error {
+	legacyName := n.bridgeBaseName
+	newName := n.primaryBridgeName()
+
+	// Check if legacy bridge exists
+	legacyBridge, err := netlink.LinkByName(legacyName)
+	if err != nil {
+		if _, ok := err.(netlink.LinkNotFoundError); ok {
+			return nil // No legacy bridge, nothing to migrate
+		}
+		return err
+	}
+
+	// Check for conflict - new bridge should not exist
+	_, err = netlink.LinkByName(newName)
+	if err == nil {
+		return fmt.Errorf("both legacy bridge %s and new bridge %s exist; manual intervention required", legacyName, newName)
+	}
+	if _, ok := err.(netlink.LinkNotFoundError); !ok {
+		return err
+	}
+
+	n.log.InfoContext(ctx, "migrating legacy bridge", "from", legacyName, "to", newName)
+
+	// Clean up old iptables rules referencing the legacy bridge name
+	n.cleanupLegacyIPTablesRules(ctx, legacyName)
+
+	// Rename bridge
+	if err := netlink.LinkSetName(legacyBridge, newName); err != nil {
+		return fmt.Errorf("failed to rename bridge %s to %s: %w", legacyName, newName, err)
+	}
+
+	return nil
+}
+
+// MIGRATION: Remove after this commit has been deployed to prod.
+func (n *NAT) cleanupLegacyIPTablesRules(ctx context.Context, legacyBridge string) {
+	// Delete FORWARD rules (ignore errors - rules may not exist)
+	forwardArgs1 := []string{
+		"-D", "FORWARD",
+		"-i", legacyBridge,
+		"!", "-o", legacyBridge,
+		"-j", "ACCEPT",
+	}
+	if err := exec.CommandContext(ctx, "iptables", forwardArgs1...).Run(); err != nil {
+		n.log.DebugContext(ctx, "failed to delete legacy forward rule (may not exist)", "bridge", legacyBridge, "error", err)
+	}
+
+	forwardArgs2 := []string{
+		"-D", "FORWARD",
+		"-o", legacyBridge,
+		"-m", "conntrack",
+		"--ctstate", "RELATED,ESTABLISHED",
+		"-j", "ACCEPT",
+	}
+	if err := exec.CommandContext(ctx, "iptables", forwardArgs2...).Run(); err != nil {
+		n.log.DebugContext(ctx, "failed to delete legacy forward conntrack rule (may not exist)", "bridge", legacyBridge, "error", err)
+	}
+
+	// Delete PREROUTING DNAT rule for metadata service
+	dnatArgs := []string{
+		"-t", "nat",
+		"-D", "PREROUTING",
+		"-i", legacyBridge,
+		"-d", MetadataIP,
+		"-p", "tcp",
+		"--dport", "80",
+		"-j", "DNAT",
+	}
+	if err := exec.CommandContext(ctx, "iptables", dnatArgs...).Run(); err != nil {
+		n.log.DebugContext(ctx, "failed to delete legacy DNAT rule (may not exist)", "bridge", legacyBridge, "error", err)
+	}
+}
+
 func (n *NAT) configureBridge(ctx context.Context) error {
+	// MIGRATION: Remove this call when migrateLegacyBridge is removed.
+	if err := n.migrateLegacyBridge(ctx); err != nil {
+		return fmt.Errorf("error migrating legacy bridge: %w", err)
+	}
+
 	primaryBridge := n.primaryBridgeName()
 
 	// check for bridge and create if missing

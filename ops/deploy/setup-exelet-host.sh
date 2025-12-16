@@ -560,8 +560,8 @@ if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     exit 1
 fi
 
-# Execute the hugepages script
-echo "Executing hugepages script on ${MACHINE_NAME}..."
+# Execute the sysctl script
+echo "Executing sysctl script on ${MACHINE_NAME}..."
 if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     "ubuntu@${MACHINE_NAME}" \
     'chmod +x ~/sysctl.sh && sudo ~/sysctl.sh'; then
