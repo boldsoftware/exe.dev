@@ -1845,6 +1845,178 @@ function makeAddChart<T extends TimeseriesBuilder>(
   };
 }
 
+// Hosts Dashboard - node exporter metrics across all hosts
+function makeHostsDashboard() {
+  const dash = new DashboardBuilder("Hosts Dashboard");
+  dash
+    .uid("hosts-dashboard")
+    .tags(["generated", "hosts", "node-exporter"])
+    .refresh("1m")
+    .time({ from: "now-6h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "hosts-dashboard");
+
+  // Host metrics use this filter
+  const HOST_FILTER = 'instance=~"$instance"';
+
+  // Variable definition for instance selection from node exporter metrics
+  dash.withVariable(
+    new QueryVariableBuilder("instance")
+      .includeAll(true)
+      .query("label_values(node_uname_info,instance)")
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+  );
+
+  // README panel
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("")
+      .content(README_CONTENT)
+      .mode(TextMode.Markdown)
+      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
+  );
+
+  // CPU Metrics Row
+  dash.withRow(
+    new RowBuilder("CPU Metrics").gridPos({ x: 0, y: 2, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "CPU Usage %",
+    `100 - (avg by (instance) (irate(node_cpu_seconds_total{${HOST_FILTER},mode="idle"}[5m])) * 100)`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 3, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart("Load Average", `node_load1{${HOST_FILTER}}`, {
+    panelCustomization: (x) => x.gridPos({ x: 8, y: 3, w: 8, h: 6 }),
+  });
+
+  addTimeseriesChart(
+    "CPU Count",
+    `count by (instance) (node_cpu_seconds_total{${HOST_FILTER},mode="idle"})`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 16, y: 3, w: 8, h: 6 }),
+    }
+  );
+
+  // Memory Metrics Row
+  dash.withRow(
+    new RowBuilder("Memory Metrics").gridPos({ x: 0, y: 9, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Memory Usage %",
+    `(1 - (node_memory_MemAvailable_bytes{${HOST_FILTER}} / node_memory_MemTotal_bytes{${HOST_FILTER}})) * 100`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 10, w: 8, h: 6 }),
+      alert: {
+        threshold: 85,
+        condition: "gt",
+        forDuration: "3m",
+        summary: "Memory usage is critically high",
+        description: "Memory usage has exceeded 85% for more than 3 minutes",
+      },
+    }
+  );
+
+  addTimeseriesChart("Memory Total", `node_memory_MemTotal_bytes{${HOST_FILTER}}`, {
+    panelCustomization: (x) => x.unit("bytes").gridPos({ x: 8, y: 10, w: 8, h: 6 }),
+  });
+
+  addTimeseriesChart("Memory Available", `node_memory_MemAvailable_bytes{${HOST_FILTER}}`, {
+    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 16, y: 10, w: 8, h: 6 }),
+  });
+
+  // Swap Memory Row
+  dash.withRow(
+    new RowBuilder("Swap Memory").gridPos({ x: 0, y: 16, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Swap Usage %",
+    `(1 - (node_memory_SwapFree_bytes{${HOST_FILTER}} / node_memory_SwapTotal_bytes{${HOST_FILTER}})) * 100`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 17, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart("Swap Total", `node_memory_SwapTotal_bytes{${HOST_FILTER}}`, {
+    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 8, y: 17, w: 8, h: 6 }),
+  });
+
+  addTimeseriesChart("Swap Used", `node_memory_SwapTotal_bytes{${HOST_FILTER}} - node_memory_SwapFree_bytes{${HOST_FILTER}}`, {
+    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 16, y: 17, w: 8, h: 6 }),
+  });
+
+  // Disk Metrics Row
+  dash.withRow(
+    new RowBuilder("Disk Metrics").gridPos({ x: 0, y: 23, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Disk Usage %",
+    `(1 - (node_filesystem_avail_bytes{${HOST_FILTER},fstype!="tmpfs",fstype!="devtmpfs"} / node_filesystem_size_bytes{${HOST_FILTER},fstype!="tmpfs",fstype!="devtmpfs"})) * 100`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 24, w: 8, h: 6 }),
+      alert: {
+        threshold: 80,
+        condition: "gt",
+        forDuration: "1m",
+        summary: "Disk usage is critically high",
+        description: "Disk usage has exceeded 80% for more than 1 minute",
+      },
+    }
+  );
+
+  addTimeseriesChart("Disk I/O Read", `irate(node_disk_read_bytes_total{${HOST_FILTER}}[5m])`, {
+    panelCustomization: (x) => x.unit("Bps").gridPos({ x: 8, y: 24, w: 8, h: 6 }),
+  });
+
+  addTimeseriesChart("Disk I/O Write", `irate(node_disk_written_bytes_total{${HOST_FILTER}}[5m])`, {
+    panelCustomization: (x) => x.unit("Bps").gridPos({ x: 16, y: 24, w: 8, h: 6 }),
+  });
+
+  // Network Metrics Row
+  dash.withRow(
+    new RowBuilder("Network Metrics").gridPos({ x: 0, y: 30, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Network Receive",
+    `irate(node_network_receive_bytes_total{${HOST_FILTER},device!="lo"}[5m])`,
+    {
+      panelCustomization: (x) => x.unit("Bps").gridPos({ x: 0, y: 31, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Network Transmit",
+    `irate(node_network_transmit_bytes_total{${HOST_FILTER},device!="lo"}[5m])`,
+    {
+      panelCustomization: (x) => x.unit("Bps").gridPos({ x: 8, y: 31, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Network Errors",
+    `irate(node_network_receive_errs_total{${HOST_FILTER},device!="lo"}[5m]) + irate(node_network_transmit_errs_total{${HOST_FILTER},device!="lo"}[5m])`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 16, y: 31, w: 8, h: 6 }),
+    }
+  );
+
+  return dash;
+}
+
 // AWS CloudWatch Dashboard - metrics from YACE (Yet Another CloudWatch Exporter)
 function makeAwsCloudWatchDashboard() {
   const dash = new DashboardBuilder("AWS CloudWatch");
@@ -2085,6 +2257,7 @@ async function main() {
   await createDashboard(makeGrafanaDashboard());
   await createDashboard(makeMonMonDashboard());
   await createDashboard(makeAwsCloudWatchDashboard());
+  await createDashboard(makeHostsDashboard());
 
   // Create alerts after dashboards are created
   await createAlerts();
