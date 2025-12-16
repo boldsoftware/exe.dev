@@ -22,7 +22,7 @@ App (HTTPS proxy → :8080)
 https://nan-tango.exe.xyz
 
 SSH
-ssh nan-tango@exe.dev
+ssh nan-tango.exe.xyz
 ```
 
 Finally, follow the `https://vmname.exe.xyz/` provided. You're all set.

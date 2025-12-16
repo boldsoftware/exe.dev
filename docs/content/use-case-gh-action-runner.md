@@ -9,7 +9,7 @@ There's very little to it; you're following the GitHub instructions, but then
 doing a little bit of systemd work to make sure the runner keeps running.
 
 First, create a new VM with `ssh exe.dev new`. This will create
-a new VM. SSH into it with `ssh vmname@exe.dev`. The trickiest
+a new VM. SSH into it with `ssh vmname.exe.xyz`. The trickiest
 bit is to find the GitHub URLs. Replace the placeholders in the following:
 
  * [https://github.com/organizations/ORG/settings/actions/runners/new?arch=x64&os=linux](https://github.com/organizations/ORG/settings/actions/runners/new?arch=x64&os=linux)

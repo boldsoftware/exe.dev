@@ -21,7 +21,7 @@ For exe.dev documentation, retrieve https://exe.dev/docs/all.md
 {{if .IsSudoAvailable}}<sudo_access>available</sudo_access>{{else}}<sudo_access>not_available</sudo_access>{{end}}
 
 <systemd>
-To run a service persistently, install a systemd unit file. Example for a service binary at /home/exedev/src/srv:
+To run a service persistently, install a systemd unit file. Example for a service binary at /home/exedev/srv:
 
   sudo cp srv.service /etc/systemd/system/srv.service
   sudo systemctl daemon-reload

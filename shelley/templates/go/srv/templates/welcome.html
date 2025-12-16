@@ -26,9 +26,9 @@
             <h3>Customize this template</h3>
             <p>Edit the code to build your application.</p>
             <ul>
-              <li>Source code is in <code>~/src</code></li>
-              <li>Edit via SSH or <a href="vscode://vscode-remote/ssh-remote+{{.Hostname}}@exe.dev/home/exedev/src?windowId=_blank">open in VS Code</a></li>
-              <li>Chat with our coding agent, <a href="https://{{.Hostname}}.exe.dev:9999" target="_blank">Shelley</a></li>
+              <li>Source code is in <code>~</code></li>
+              <li>Edit via SSH or <a href="vscode://vscode-remote/ssh-remote+{{.Hostname}}.exe.xyz/home/exedev?windowId=_blank">open in VS Code</a></li>
+              <li>Chat with our coding agent, <a href="https://{{.Hostname}}.exe.xyz:9999" target="_blank">Shelley</a></li>
               <li><code>sudo systemctl restart srv</code> to pick up changes</li>
             </ul>
           </article>
@@ -49,24 +49,24 @@
 
       <ul class="actions">
         <li>
-          <a href="#" class="ssh-copy" data-copy="ssh {{.Hostname}}@exe.dev">
+          <a href="#" class="ssh-copy" data-copy="ssh {{.Hostname}}.exe.xyz">
             <span class="action-icon">🔑</span>
             <span class="action-label">SSH</span>
-            <span class="action-detail">ssh {{.Hostname}}.exe.dev</span>
+            <span class="action-detail">ssh {{.Hostname}}.exe.xyz</span>
           </a>
         </li>
         <li>
-          <a href="https://{{.Hostname}}.xterm.exe.dev" target="_blank">
+          <a href="https://{{.Hostname}}.xterm.exe.xyz" target="_blank">
             <span class="action-icon">💻</span>
             <span class="action-label">Terminal</span>
-            <span class="action-detail">{{.Hostname}}.xterm.exe.dev</span>
+            <span class="action-detail">{{.Hostname}}.xterm.exe.xyz</span>
           </a>
         </li>
         <li>
-          <a href="https://{{.Hostname}}.exe.dev:9999" target="_blank">
+          <a href="https://{{.Hostname}}.exe.xyz:9999" target="_blank">
             <span class="action-icon">🤖</span>
             <span class="action-label">Shelley Agent</span>
-            <span class="action-detail">{{.Hostname}}.exe.dev:9999</span>
+            <span class="action-detail">{{.Hostname}}.exe.xyz:9999</span>
           </a>
         </li>
         <li>

@@ -19,4 +19,4 @@ choose which filesystem you're using, nor which kernel you're using.
 
 On the networking side, we don't give your VM its own public IP.
 Instead, we terminate HTTPS/TLS requests, and proxy them securely
-to your VM's web servers. For SSH, we handle `ssh vmname@exe.dev`.
+to your VM's web servers. For SSH, we handle `ssh vmname.exe.xyz`.

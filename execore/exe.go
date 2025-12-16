@@ -1422,7 +1422,7 @@ func (s *Server) vscodeURL(boxName string) string {
 		colonP = fmt.Sprintf(":%d", s.boxSSHPort())
 	}
 	connStr := s.env.BoxDest(boxName) + colonP
-	return fmt.Sprintf("vscode://vscode-remote/ssh-remote+%s/home/exedev/src?windowId=_blank", connStr)
+	return fmt.Sprintf("vscode://vscode-remote/ssh-remote+%s/home/exedev?windowId=_blank", connStr)
 }
 
 // preCreateBox creates a box entry before the container is created, returns the box ID

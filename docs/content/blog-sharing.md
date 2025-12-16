@@ -16,7 +16,7 @@ authentication and authorization appropriately for your use case.
 It does not have to be so, and exe.dev gives you the typical web-based document
 mode of sharing for whatever web site you've figured out. When you run a web
 server on your exe.dev VM, exe.dev's HTTPS proxy, by default, lets you access
-it at https://vmname.exe.dev/. You can then use the "share" command in the
+it at https://vmname.exe.xyz/. You can then use the "share" command in the
 exe.dev shell to create share links and share explicitly with certain e-mail
 addresses. (And, of course, you can mark your site public.)
 
