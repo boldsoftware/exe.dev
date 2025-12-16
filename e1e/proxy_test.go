@@ -574,7 +574,7 @@ func newProxyAuthFixture(t *testing.T, box string, port int, cookies []*http.Coo
 		t:                  t,
 		proxyURL:           proxyURL,
 		logoutURL:          fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/logout", box, port),
-		expectedLogout:     fmt.Sprintf("http://localhost:%d/logged-out", port),
+		expectedLogout:     fmt.Sprintf("http://localhost:%d/logged-out", Env.exed.HTTPPort),
 		expectedReturnHost: fmt.Sprintf("%s.exe.cloud:%d", box, port),
 		cookieURL:          cookieURL,
 		localCookieAddr:    localCookieAddr,
