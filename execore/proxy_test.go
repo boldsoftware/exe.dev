@@ -564,7 +564,7 @@ func getCounterValue(t *testing.T, counter prometheus.Counter) float64 {
 	ch := make(chan prometheus.Metric, 1)
 	counter.Collect(ch)
 	m := <-ch
-	var metric = &prometheusMetric{}
+	metric := &prometheusMetric{}
 	m.Write(metric)
 	return metric.Counter.GetValue()
 }
