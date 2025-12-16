@@ -434,7 +434,7 @@ func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request) {
 
 	data := unauthorizedData{
 		Email:        email,
-		AuthURL:      s.webBaseURL(r) + "/auth",
+		AuthURL:      s.webBaseURLNoRequest() + "/auth",
 		RedirectURL:  u.String(),
 		ReturnHost:   r.Host,
 		LoginWithExe: true,
@@ -525,7 +525,10 @@ func (s *Server) handleProxyLogin(w http.ResponseWriter, r *http.Request) {
 		redirect = "/"
 	}
 
-	authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", s.webBaseURL(r), url.QueryEscape(redirect), url.QueryEscape(r.Host))
+	// Use webBaseURLNoRequest to get the main domain URL without copying the request's port.
+	// The main domain (exe.dev) always runs on the default HTTPS port (443),
+	// even when the proxy request came in on a non-standard port like 9999.
+	authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", s.webBaseURLNoRequest(), url.QueryEscape(redirect), url.QueryEscape(r.Host))
 
 	s.slog().DebugContext(r.Context(), "[REDIRECT] handleProxyLogin redirecting to main domain", "to", authURL)
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)

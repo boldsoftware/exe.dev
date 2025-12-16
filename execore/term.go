@@ -127,7 +127,9 @@ func cleanupTerminalSession(session *TerminalSession) {
 
 func (s *Server) xtermAuthURL(r *http.Request) string {
 	returnURL := fmt.Sprintf("%s://%s%s", getScheme(r), r.Host, r.URL.String())
-	authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", s.webBaseURL(r), url.QueryEscape(returnURL), url.QueryEscape(r.Host))
+	// Use webBaseURLNoRequest to get the main domain URL without copying the request's port.
+	// Terminal requests may come in on non-standard ports, but the main domain always uses default ports.
+	authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", s.webBaseURLNoRequest(), url.QueryEscape(returnURL), url.QueryEscape(r.Host))
 	return authURL
 }
 
@@ -156,7 +158,7 @@ func (s *Server) withTerminalAuth(next http.HandlerFunc) http.HandlerFunc {
 		if err != nil {
 			// User doesn't have access to this box (or it doesn't exist)
 			// Show access denied page
-			dashboardURL := s.webBaseURL(r)
+			dashboardURL := s.webBaseURLNoRequest()
 			data := struct {
 				BoxName      string
 				DashboardURL string

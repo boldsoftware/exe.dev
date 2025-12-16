@@ -461,8 +461,8 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Send verification email
-	verifyURL := fmt.Sprintf("%s/m/verify-token?token=%s", s.webBaseURL(r), token)
+	// Send verification email - use webBaseURLNoRequest to ensure the main domain URL
+	verifyURL := fmt.Sprintf("%s/m/verify-token?token=%s", s.webBaseURLNoRequest(), token)
 	subject := fmt.Sprintf("Verify your email - %s", s.env.WebHost)
 	body := fmt.Sprintf(`Hello,
 
