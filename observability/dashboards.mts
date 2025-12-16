@@ -147,6 +147,36 @@ function makeExeDevVMsDashboard() {
     .min(0);
   dash.withPanel(totalCpuPanel);
 
+  const totalMemoryPanel = new StatBuilder()
+    .title("Total Memory Usage")
+    .gridPos({ x: 12, y: 3, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(exelet_vm_memory_bytes{${STAGE_FILTER}})`)
+        .legendFormat("Memory")
+    )
+    .unit("bytes")
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(totalMemoryPanel);
+
+  const totalDiskPanel = new StatBuilder()
+    .title("Total Disk Usage")
+    .gridPos({ x: 18, y: 3, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(exelet_vm_disk_used_bytes{${STAGE_FILTER}})`)
+        .legendFormat("Disk")
+    )
+    .unit("bytes")
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(totalDiskPanel);
+
   // Row 2: CPU Usage Over Time
   dash.withRow(
     new RowBuilder("CPU Usage").gridPos({ x: 0, y: 7, w: 24, h: 1 })
@@ -171,14 +201,105 @@ function makeExeDevVMsDashboard() {
     }
   );
 
-  // Row 3: Top Consumers
+  // Row 3: Memory Usage
   dash.withRow(
-    new RowBuilder("Top CPU Consumers").gridPos({ x: 0, y: 16, w: 24, h: 1 })
+    new RowBuilder("Memory Usage").gridPos({ x: 0, y: 16, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Total VM Memory Usage",
+    `sum(exelet_vm_memory_bytes{${STAGE_FILTER}})`,
+    {
+      panelCustomization: (x) =>
+        x.unit("bytes").min(0).gridPos({ x: 0, y: 17, w: 12, h: 8 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Memory Usage per VM",
+    `exelet_vm_memory_bytes{${STAGE_FILTER}}`,
+    {
+      panelCustomization: (x) =>
+        x.unit("bytes").min(0).gridPos({ x: 12, y: 17, w: 12, h: 8 }),
+      queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
+    }
+  );
+
+  // Row 4: Disk Usage
+  dash.withRow(
+    new RowBuilder("Disk Usage").gridPos({ x: 0, y: 25, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Total VM Disk Usage",
+    `sum(exelet_vm_disk_used_bytes{${STAGE_FILTER}})`,
+    {
+      panelCustomization: (x) =>
+        x.unit("bytes").min(0).gridPos({ x: 0, y: 26, w: 12, h: 8 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Disk Usage per VM",
+    `exelet_vm_disk_used_bytes{${STAGE_FILTER}}`,
+    {
+      panelCustomization: (x) =>
+        x.unit("bytes").min(0).gridPos({ x: 12, y: 26, w: 12, h: 8 }),
+      queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
+    }
+  );
+
+  // Row 5: Network I/O
+  dash.withRow(
+    new RowBuilder("Network I/O").gridPos({ x: 0, y: 34, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Total Network RX Rate",
+    `sum(rate(exelet_vm_net_rx_bytes_total{${STAGE_FILTER}}[$__rate_interval]))`,
+    {
+      panelCustomization: (x) =>
+        x.unit("Bps").min(0).gridPos({ x: 0, y: 35, w: 12, h: 8 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Total Network TX Rate",
+    `sum(rate(exelet_vm_net_tx_bytes_total{${STAGE_FILTER}}[$__rate_interval]))`,
+    {
+      panelCustomization: (x) =>
+        x.unit("Bps").min(0).gridPos({ x: 12, y: 35, w: 12, h: 8 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Network RX per VM",
+    `rate(exelet_vm_net_rx_bytes_total{${STAGE_FILTER}}[$__rate_interval])`,
+    {
+      panelCustomization: (x) =>
+        x.unit("Bps").min(0).gridPos({ x: 0, y: 43, w: 12, h: 8 }),
+      queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Network TX per VM",
+    `rate(exelet_vm_net_tx_bytes_total{${STAGE_FILTER}}[$__rate_interval])`,
+    {
+      panelCustomization: (x) =>
+        x.unit("Bps").min(0).gridPos({ x: 12, y: 43, w: 12, h: 8 }),
+      queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
+    }
+  );
+
+  // Row 6: Top Consumers
+  dash.withRow(
+    new RowBuilder("Top Consumers").gridPos({ x: 0, y: 51, w: 24, h: 1 })
   );
 
   const topCpuTable = new TableBuilder()
     .title("Top 10 CPU Consumers (5m avg)")
-    .gridPos({ x: 0, y: 17, w: 24, h: 8 })
+    .gridPos({ x: 0, y: 52, w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(
@@ -188,6 +309,41 @@ function makeExeDevVMsDashboard() {
         .format("table")
     );
   dash.withPanel(topCpuTable);
+
+  const topMemoryTable = new TableBuilder()
+    .title("Top 10 Memory Consumers")
+    .gridPos({ x: 12, y: 52, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`topk(10, exelet_vm_memory_bytes{${STAGE_FILTER}})`)
+        .instant(true)
+        .format("table")
+    );
+  dash.withPanel(topMemoryTable);
+
+  const topDiskTable = new TableBuilder()
+    .title("Top 10 Disk Consumers")
+    .gridPos({ x: 0, y: 60, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`topk(10, exelet_vm_disk_used_bytes{${STAGE_FILTER}})`)
+        .instant(true)
+        .format("table")
+    );
+  dash.withPanel(topDiskTable);
+
+  const topNetworkTable = new TableBuilder()
+    .title("Top 10 Network Consumers (5m avg)")
+    .gridPos({ x: 12, y: 60, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(
+          `topk(10, rate(exelet_vm_net_rx_bytes_total{${STAGE_FILTER}}[5m]) + rate(exelet_vm_net_tx_bytes_total{${STAGE_FILTER}}[5m]))`
+        )
+        .instant(true)
+        .format("table")
+    );
+  dash.withPanel(topNetworkTable);
 
   return dash;
 }
