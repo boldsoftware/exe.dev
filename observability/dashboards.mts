@@ -54,6 +54,7 @@ interface AlertConfig {
   threshold: number;
   condition: "gt" | "lt" | "eq" | "ne"; // greater than, less than, equal, not equal
   forDuration?: string; // e.g., "5m", "10s"
+  noDataState?: "NoData" | "Alerting" | "OK"; // default: NoData
   summary?: string;
   description?: string;
 }
@@ -961,6 +962,7 @@ function makeDevExeDashboard() {
         threshold: 0,
         condition: "gt",
         forDuration: "1m",
+        noDataState: "OK",
         summary: "CreateInstance is failing",
         description: "CreateInstance gRPC calls are returning errors",
       },
@@ -1774,7 +1776,7 @@ async function createAlerts() {
           },
         ],
         intervalSeconds: 60,
-        noDataState: "NoData",
+        noDataState: alertSpec.alertConfig.noDataState || "NoData",
         execErrState: "Alerting",
         for: alertSpec.alertConfig.forDuration || "1m",
         ruleGroup: "dashboard-alerts",
