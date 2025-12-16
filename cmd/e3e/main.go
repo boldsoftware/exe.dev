@@ -111,7 +111,7 @@ func main() {
 
 func createBox(ctx context.Context, cfg *config) (*boxInfo, error) {
 	args := cfg.replSSH.buildBaseArgs()
-	args = append(args, cfg.replSSH.target(), "new", "--json")
+	args = append(args, cfg.replSSH.target(), "new", "--json", "--no-email")
 	// log.Printf("creating box: ssh %s", strings.Join(args, " "))
 	out, err := exec.CommandContext(ctx, "ssh", args...).CombinedOutput()
 	if err != nil {
