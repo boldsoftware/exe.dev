@@ -16,7 +16,6 @@ import (
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/models"
-	"shelley.exe.dev/seccomp"
 	"shelley.exe.dev/server"
 	"shelley.exe.dev/templates"
 	"shelley.exe.dev/version"
@@ -61,9 +60,10 @@ func main() {
 
 	// Apply seccomp filter early, before spawning any child processes.
 	// This prevents child processes from killing shelley.
-	if err := seccomp.BlockKillSelf(); err != nil {
-		slog.Info("seccomp filter not installed", "error", err)
-	}
+	// Turns out this doesn't work, because it blocks sudo, which we want to work.
+	// if err := seccomp.BlockKillSelf(); err != nil {
+	// 	slog.Info("seccomp filter not installed", "error", err)
+	// }
 
 	if len(args) == 0 {
 		flag.Usage()
