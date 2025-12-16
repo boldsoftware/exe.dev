@@ -1,8 +1,8 @@
-# Box Creation and SSH Access Test
+# VM Creation and SSH Access Test
 
 ## Instructions
 
-Test box creation, SSH access, and basic box operations.
+Test VM creation, SSH access, and basic VM operations.
 
 ### Prerequisites
 
@@ -11,20 +11,20 @@ Test box creation, SSH access, and basic box operations.
 
 ### Test Steps
 
-#### Box Creation and SSH Access
+#### VM Creation and SSH Access
 
-1. Create a new box using "new" command in the exe.dev shell.
+1. Create a new VM using "new" command in the exe.dev shell.
 
-2. SSH into that box and run "id".
+2. SSH into that VM and run "id".
 
-3. Check the hostname in the box.
+3. Check the hostname in the VM.
 
-4. Use scp with the new box to test that SSH subsystems work.
+4. Use scp with the new VM to test that SSH subsystems work.
 
 ## Edge Cases
 
-1. Creating new boxes should have restrictions on the names of new boxes.
-For example, "--foo" is not a valid box name. Make sure that returns an error message.
+1. Creating new VMs should have restrictions on the names of new VMs.
+For example, "--foo" is not a valid VM name. Make sure that returns an error message.
 
 2. If the user doesn't have an SSH key (which can be simulated with
 "ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -p <SSH_PORT> localhost")
@@ -33,11 +33,11 @@ they should get an error message indicating how to create a key.
 
 ## Hints
 
-### Box Creation Hints
-- Type `new` at exe.dev prompt. Creates box with random name like "able-yankee".
+### VM Creation Hints
+- Type `new` at exe.dev prompt. Creates VM with random name like "able-yankee".
 
 ### SSH Access Hints
-- Use `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p <SSH_PORT> boxname@localhost`
-- Wait ~10-15 seconds after box creation for SSH daemon to be fully ready.
-- In box shell, run `hostname`. Should show "vmname.exe.dev"
-- Use `scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P <SSH_PORT> localfile boxname@localhost:/path`
+- Use `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p <SSH_PORT> vmname@localhost`
+- Wait ~10-15 seconds after VM creation for SSH daemon to be fully ready.
+- In VM shell, run `hostname`. Should show "vmname.exe.dev"
+- Use `scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P <SSH_PORT> localfile vmname@localhost:/path`
