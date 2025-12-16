@@ -145,7 +145,7 @@ jobs:
       run_playwright: false
 
   push-to-main:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     needs: [commit-validation-and-formatting, test, shelley-test]
     permissions:
       contents: write
