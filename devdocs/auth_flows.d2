@@ -1,0 +1,773 @@
+# exe.dev Authentication Flows Diagram
+#
+# This D2 diagram documents all authentication flows in exe.dev:
+# - SSH Flow: New user registration and existing user new device authorization
+# - Web Flow: Browser-based login with email magic links or passkeys
+# - Proxy Flow: "Login with Exe" for hosted domains (foo.exe.xyz)
+# - Token Storage: How verification tokens and secrets are stored/consumed
+#
+# Each node shows the handler function, template rendered, and page title.
+# Arrows represent user actions between states.
+#
+# To view: cd devdocs && make serve
+# Related code: execore/exe-web-auth.go, execore/ssh_server.go, execore/proxy.go
+
+direction: down
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+  }
+}
+
+title: exe.dev Authentication Flows {
+  near: top-center
+  shape: text
+  style.font-size: 28
+  style.bold: true
+}
+
+# =============================================================================
+# SSH FLOW (Combined: New User + New Device)
+# =============================================================================
+
+ssh_flow: SSH Flow {
+  style.fill: "#e8e8f4"
+
+  ssh_connect: |md
+    **ssh exe.dev**
+
+    User connects via SSH
+  | {
+    shape: rectangle
+  }
+
+  auth_public_key: |md
+    **authenticatePublicKey()**
+
+    Check if key is registered
+  | {
+    shape: rectangle
+  }
+
+  handle_registration: |md
+    **handleRegistration()**
+
+    ASCII art welcome
+    "EXE.DEV: get a VM over ssh"
+  | {
+    shape: rectangle
+  }
+
+  github_check: |md
+    **githubUser.InfoString()**
+
+    Key on GitHub?
+  | {
+    shape: diamond
+  }
+
+  enter_email: |md
+    **readLineWithEchoAndDefault()**
+
+    User enters email
+    (pre-filled if GitHub)
+  | {
+    shape: parallelogram
+  }
+
+  email_exists_check: |md
+    **GetUserIDByEmail()**
+
+    Email already registered?
+  | {
+    shape: diamond
+  }
+
+  # New User Path
+  wait_verification: |md
+    **waitForEmailVerification()**
+
+    isNewAccount=true
+    "Waiting for email verification..."
+  | {
+    shape: rectangle
+  }
+
+  email_sent_new: |md
+    **sendEmail()**
+
+    "Welcome to EXE.DEV"
+    /verify-email?token=...&s=exemenu
+  | {
+    shape: rectangle
+  }
+
+  verify_email_http: |md
+    **handleEmailVerificationHTTP()**
+
+    POST /verify-email
+    createUserWithSSHKey()
+  | {
+    shape: rectangle
+  }
+
+  email_verified_page: |md
+    **renderTemplate()**
+
+    email-verified.html
+    Title: "VERIFIED"
+  | {
+    shape: document
+  }
+
+  # Existing User (New Device) Path
+  start_device_verification: |md
+    **startEmailVerification()**
+
+    isNewAccount=false
+    InsertPendingSSHKey()
+  | {
+    shape: rectangle
+  }
+
+  email_sent_device: |md
+    **sendEmail()**
+
+    "New ssh key login"
+    /verify-device?token=...
+  | {
+    shape: rectangle
+  }
+
+  show_device_form: |md
+    **showDeviceVerificationForm()**
+
+    GET /verify-device
+    lookUpDeviceVerification()
+  | {
+    shape: rectangle
+  }
+
+  device_verification_page: |md
+    **renderTemplate()**
+
+    device-verification.html
+    Title: "Authorize SSH key"
+  | {
+    shape: document
+  }
+
+  handle_device_verify: |md
+    **handleDeviceVerificationHTTP()**
+
+    POST /verify-device
+    InsertSSHKeyForEmailUser()
+  | {
+    shape: rectangle
+  }
+
+  device_verified_page: |md
+    **renderTemplate()**
+
+    device-verified.html
+    Title: "KEY AUTHORIZED"
+  | {
+    shape: document
+  }
+
+  # Common end
+  ssh_unblocked: |md
+    **close(CompleteChan)**
+
+    SSH session unblocked
+  | {
+    shape: rectangle
+  }
+
+  main_menu: |md
+    **runMainShellWithReadline()**
+
+    User in exe.dev REPL
+  | {
+    shape: rectangle
+  }
+
+  # Connections
+  ssh_connect -> auth_public_key: new key
+  auth_public_key -> handle_registration: not registered
+  auth_public_key -> main_menu: registered
+  handle_registration -> github_check
+  github_check -> enter_email
+  enter_email -> main_menu: GitHub email match
+  enter_email -> email_exists_check: needs verification
+
+  # New user path
+  email_exists_check -> wait_verification: no (new user)
+  wait_verification -> email_sent_new
+  email_sent_new -> verify_email_http: user clicks link
+  verify_email_http -> email_verified_page
+  email_verified_page -> ssh_unblocked
+
+  # Existing user (new device) path
+  email_exists_check -> start_device_verification: yes (new device)
+  start_device_verification -> email_sent_device
+  email_sent_device -> show_device_form: user clicks link
+  show_device_form -> device_verification_page
+  device_verification_page -> handle_device_verify: click Authorize
+  handle_device_verify -> device_verified_page
+  device_verified_page -> ssh_unblocked
+
+  ssh_unblocked -> main_menu
+}
+
+# =============================================================================
+# WEB FLOW
+# =============================================================================
+
+web_flow: Web Flow {
+  style.fill: "#e8f4e8"
+
+  visit_home: |md
+    **ServeHTTP()**
+
+    GET /
+    validateAuthCookie()
+  | {
+    shape: rectangle
+  }
+
+  index_page: |md
+    **renderTemplate()**
+
+    index.html
+    Home page
+    "ssh exe.dev"
+  | {
+    shape: document
+  }
+
+  click_login: |md
+    **User Action**
+
+    Clicks "Login" link
+    GET /auth
+  | {
+    shape: parallelogram
+  }
+
+  handle_auth: |md
+    **handleAuth()**
+
+    GET /auth
+    No return_host
+  | {
+    shape: rectangle
+  }
+
+  auth_form_page: |md
+    **renderTemplate()**
+
+    auth-form.html
+    Title: "Sign in"
+    "Login (or create an account)"
+  | {
+    shape: document
+  }
+
+  passkey_check: |md
+    **passkey.isSupported()**
+
+    Passkey available?
+    (client-side JS)
+  | {
+    shape: diamond
+  }
+
+  passkey_auth: |md
+    **handlePasskeyRoutes()**
+
+    WebAuthn authentication
+    /passkey/authenticate
+  | {
+    shape: rectangle
+  }
+
+  submit_email: |md
+    **handleAuthEmailSubmission()**
+
+    POST /auth
+    User enters email
+  | {
+    shape: rectangle
+  }
+
+  email_sent_page: |md
+    **renderTemplate()**
+
+    email-sent.html
+    Title: "Check Your Email"
+  | {
+    shape: document
+  }
+
+  verification_form: |md
+    **showEmailVerificationForm()**
+
+    GET /verify-email?token=...
+    checkEmailVerificationToken()
+  | {
+    shape: rectangle
+  }
+
+  email_verify_form_page: |md
+    **renderTemplate()**
+
+    email-verification-form.html
+    Title: "CONFIRM EMAIL"
+    Auto-submits form
+  | {
+    shape: document
+  }
+
+  handle_verify_http: |md
+    **handleEmailVerificationHTTP()**
+
+    POST /verify-email
+    createAuthCookie()
+  | {
+    shape: rectangle
+  }
+
+  dashboard_redirect: |md
+    **http.Redirect()**
+
+    Redirect to /
+  | {
+    shape: rectangle
+  }
+
+  dashboard_page: |md
+    **handleUserDashboard()**
+
+    dashboard.html
+    Title: "Your VMs"
+  | {
+    shape: document
+  }
+
+  # Connections
+  visit_home -> index_page: no cookie
+  index_page -> click_login
+  click_login -> handle_auth
+  handle_auth -> auth_form_page
+  auth_form_page -> passkey_check
+  passkey_check -> passkey_auth: yes
+  passkey_check -> submit_email: no (email)
+  passkey_auth -> dashboard_redirect
+  submit_email -> email_sent_page
+  email_sent_page -> verification_form: user clicks email
+  verification_form -> email_verify_form_page
+  email_verify_form_page -> handle_verify_http: auto-submit
+  handle_verify_http -> dashboard_redirect
+  dashboard_redirect -> dashboard_page
+  visit_home -> dashboard_page: has cookie
+}
+
+# =============================================================================
+# LOGIN WITH EXE (Proxy Auth Flow)
+# =============================================================================
+
+proxy_flow: Login with Exe (Proxy Flow) {
+  style.fill: "#f4f4e8"
+
+  visit_box: |md
+    **User Action**
+
+    GET foo.exe.xyz/
+    Visit hosted site
+  | {
+    shape: rectangle
+  }
+
+  handle_proxy: |md
+    **handleProxyRequest()**
+
+    resolveBoxName()
+    Check proxy auth
+  | {
+    shape: rectangle
+  }
+
+  proxy_auth_check: |md
+    **getAuthenticatedUserID()**
+
+    Has exe-proxy-auth
+    cookie?
+  | {
+    shape: diamond
+  }
+
+  redirect_to_auth: |md
+    **redirectToAuth()**
+
+    Redirect to
+    /__exe.dev/login
+  | {
+    shape: rectangle
+  }
+
+  handle_proxy_login: |md
+    **handleProxyLogin()**
+
+    Redirect to main domain
+    /auth?return_host=foo.exe.xyz
+  | {
+    shape: rectangle
+  }
+
+  handle_auth_proxy: |md
+    **handleAuth()**
+
+    GET /auth?return_host=...
+    render401() for proxy
+  | {
+    shape: rectangle
+  }
+
+  access_required_page: |md
+    **renderTemplate()**
+
+    401.html
+    Title: "Access required"
+    LoginWithExe=true
+  | {
+    shape: document
+  }
+
+  proxy_passkey: |md
+    **passkey.isSupported()**
+
+    Passkey or email?
+    (client-side JS)
+  | {
+    shape: diamond
+  }
+
+  proxy_passkey_auth: |md
+    **handlePasskeyRoutes()**
+
+    WebAuthn on main domain
+    /passkey/authenticate
+  | {
+    shape: rectangle
+  }
+
+  proxy_email_submit: |md
+    **handleAuthEmailSubmission()**
+
+    POST /auth
+    login_with_exe=1
+  | {
+    shape: rectangle
+  }
+
+  proxy_email_sent: |md
+    **renderTemplate()**
+
+    email-sent.html
+    Title: "Check Your Email"
+  | {
+    shape: document
+  }
+
+  proxy_verify_email: |md
+    **handleEmailVerificationHTTP()**
+
+    POST /verify-email
+    Has return_host param
+  | {
+    shape: rectangle
+  }
+
+  redirect_after_auth: |md
+    **redirectAfterAuth()**
+
+    isProxyRequest()
+    createMagicSecret()
+  | {
+    shape: rectangle
+  }
+
+  owner_check: |md
+    **redirectAfterAuth()**
+
+    box.CreatedByUserID
+    == magicSecret.UserID?
+  | {
+    shape: diamond
+  }
+
+  auth_confirm_page: |md
+    **handleAuthConfirm()**
+
+    GET /auth/confirm?secret=...
+    validateMagicSecret() (peek)
+  | {
+    shape: rectangle
+  }
+
+  login_confirmation_page: |md
+    **renderTemplate()**
+
+    login-confirmation.html
+    Title: "CONFIRM LOGIN"
+    "Site will see your email"
+  | {
+    shape: document
+  }
+
+  magic_auth: |md
+    **handleMagicAuth()**
+
+    GET /__exe.dev/auth?secret=...
+    validateMagicSecret()
+    createAuthCookie()
+  | {
+    shape: rectangle
+  }
+
+  proxy_success: |md
+    **http.Redirect()**
+
+    Redirect to original URL
+    User sees hosted content
+  | {
+    shape: rectangle
+  }
+
+  access_denied_page: |md
+    **renderAccessRequired()**
+
+    401.html
+    Title: "Access Denied"
+    User has no access
+  | {
+    shape: document
+  }
+
+  # Connections
+  visit_box -> handle_proxy
+  handle_proxy -> proxy_auth_check
+  proxy_auth_check -> proxy_success: has cookie & access
+  proxy_auth_check -> redirect_to_auth: no cookie
+  redirect_to_auth -> handle_proxy_login
+  handle_proxy_login -> handle_auth_proxy
+  handle_auth_proxy -> access_required_page
+  access_required_page -> proxy_passkey
+  proxy_passkey -> proxy_passkey_auth: passkey
+  proxy_passkey -> proxy_email_submit: email
+  proxy_passkey_auth -> redirect_after_auth
+  proxy_email_submit -> proxy_email_sent
+  proxy_email_sent -> proxy_verify_email: user clicks email
+  proxy_verify_email -> redirect_after_auth
+  redirect_after_auth -> owner_check
+  owner_check -> magic_auth: yes (owner)
+  owner_check -> auth_confirm_page: no (visitor)
+  auth_confirm_page -> login_confirmation_page
+  login_confirmation_page -> magic_auth: click Continue
+  magic_auth -> proxy_success
+  proxy_auth_check -> access_denied_page: has cookie, no access
+}
+
+# =============================================================================
+# TOKEN & SECRET STORAGE
+# =============================================================================
+
+storage: Token & Secret Storage {
+  style.fill: "#f0f0f0"
+
+  # In-Memory Storage
+  memory: In-Memory (Server struct) {
+    style.fill: "#ffe8e8"
+
+    ssh_verifications: |md
+      **emailVerifications**
+
+      map[token]*EmailVerification
+      - PublicKey, Email, Token
+      - PairingCode (6 digits)
+      - CompleteChan (sync)
+      - IsNewAccount bool
+
+      Created: addEmailVerification()
+      Lookup: lookUpEmailVerification()
+      Delete: deleteEmailVerification()
+      TTL: Until SSH session ends
+    | {
+      shape: cylinder
+    }
+
+    magic_secrets: |md
+      **magicSecrets**
+
+      map[secret]*MagicSecret
+      - UserID, BoxName
+      - RedirectURL
+      - ExpiresAt
+
+      Created: createMagicSecret()
+      crand.Text() generates secret
+      Validate: validateMagicSecret()
+      (consumes on use)
+      TTL: 2 minutes
+      Cleanup: cleanupExpiredMagicSecrets()
+    | {
+      shape: cylinder
+    }
+  }
+
+  # SQLite Database Storage
+  database: SQLite Database {
+    style.fill: "#e8f0ff"
+
+    email_verifications_db: |md
+      **email_verifications** table
+
+      - token TEXT PRIMARY KEY
+      - email TEXT
+      - user_id TEXT
+      - expires_at DATETIME
+      - verification_code TEXT
+
+      Insert: InsertEmailVerification()
+      or InsertOrReplaceEmailVerification()
+      Check: GetEmailVerificationByToken()
+      Consume: DeleteEmailVerificationByToken()
+      TTL: 24 hours
+    | {
+      shape: cylinder
+    }
+
+    pending_ssh_keys_db: |md
+      **pending_ssh_keys** table
+
+      - token TEXT PRIMARY KEY
+      - public_key TEXT
+      - user_email TEXT
+      - expires_at DATETIME
+
+      Insert: InsertPendingSSHKey()
+      Lookup: GetPendingSSHKeyByToken()
+      Delete: DeletePendingSSHKeyByToken()
+      TTL: ~15 minutes
+    | {
+      shape: cylinder
+    }
+
+    auth_cookies_db: |md
+      **auth_cookies** table
+
+      - cookie_value TEXT PRIMARY KEY
+      - user_id TEXT
+      - domain TEXT (exe.dev or box)
+      - expires_at DATETIME
+      - last_used_at DATETIME
+
+      Create: createAuthCookie()
+      Validate: validateAuthCookie()
+      TTL: 30 days (proxy)
+    | {
+      shape: cylinder
+    }
+
+    ssh_keys_db: |md
+      **ssh_keys** table
+
+      - user_id TEXT
+      - public_key TEXT UNIQUE
+      - added_at DATETIME
+      - last_used_at DATETIME
+
+      Insert: InsertSSHKeyForEmailUser()
+      Lookup: GetUserBySSHKey()
+      (permanent, not a token)
+    | {
+      shape: cylinder
+    }
+  }
+}
+
+# =============================================================================
+# STORAGE CONNECTIONS TO FLOWS
+# =============================================================================
+
+# SSH Flow - New user uses in-memory verifications
+ssh_flow.wait_verification -> storage.memory.ssh_verifications: creates token {
+  style.stroke: "#aa4444"
+  style.stroke-dash: 5
+}
+ssh_flow.verify_email_http -> storage.memory.ssh_verifications: lookUp & delete {
+  style.stroke: "#aa4444"
+  style.stroke-dash: 5
+}
+
+# SSH Flow - Existing user uses pending_ssh_keys table
+ssh_flow.start_device_verification -> storage.database.pending_ssh_keys_db: InsertPendingSSHKey {
+  style.stroke: "#4444aa"
+  style.stroke-dash: 5
+}
+ssh_flow.start_device_verification -> storage.memory.ssh_verifications: addEmailVerification {
+  style.stroke: "#aa4444"
+  style.stroke-dash: 5
+}
+ssh_flow.handle_device_verify -> storage.database.pending_ssh_keys_db: Delete {
+  style.stroke: "#4444aa"
+  style.stroke-dash: 5
+}
+ssh_flow.handle_device_verify -> storage.database.ssh_keys_db: InsertSSHKey {
+  style.stroke: "#4444aa"
+  style.stroke-dash: 5
+}
+
+# Web Flow uses database email_verifications
+web_flow.submit_email -> storage.database.email_verifications_db: InsertEmailVerification {
+  style.stroke: "#4444aa"
+  style.stroke-dash: 5
+}
+web_flow.handle_verify_http -> storage.database.email_verifications_db: validate & delete {
+  style.stroke: "#4444aa"
+  style.stroke-dash: 5
+}
+web_flow.handle_verify_http -> storage.database.auth_cookies_db: createAuthCookie {
+  style.stroke: "#4444aa"
+  style.stroke-dash: 5
+}
+
+# Proxy Flow uses magic secrets and cookies
+proxy_flow.redirect_after_auth -> storage.memory.magic_secrets: createMagicSecret {
+  style.stroke: "#aa4444"
+  style.stroke-dash: 5
+}
+proxy_flow.magic_auth -> storage.memory.magic_secrets: validateMagicSecret {
+  style.stroke: "#aa4444"
+  style.stroke-dash: 5
+}
+proxy_flow.magic_auth -> storage.database.auth_cookies_db: createAuthCookie {
+  style.stroke: "#4444aa"
+  style.stroke-dash: 5
+}
+proxy_flow.proxy_auth_check -> storage.database.auth_cookies_db: validateAuthCookie {
+  style.stroke: "#4444aa"
+  style.stroke-dash: 5
+}
+
+# =============================================================================
+# CROSS-FLOW CONNECTIONS
+# =============================================================================
+
+# Web user can reach dashboard directly if logged in
+web_flow.visit_home -> web_flow.dashboard_page: has cookie {
+  style.stroke: "#22aa66"
+  style.stroke-dash: 3
+}

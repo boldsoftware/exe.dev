@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>exe.dev Auth Flows</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            background: #16213e;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #0f3460;
+            z-index: 100;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: 500;
+        }
+
+        .controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .controls button {
+            background: #0f3460;
+            border: 1px solid #1a1a4e;
+            color: #eee;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        .controls button:hover {
+            background: #1a4a7e;
+        }
+
+        .controls button:active {
+            background: #0a2a4e;
+        }
+
+        .zoom-display {
+            font-size: 13px;
+            color: #888;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .viewer {
+            height: calc(100vh - 49px);
+            overflow: hidden;
+            position: relative;
+            cursor: grab;
+            background:
+                linear-gradient(90deg, #222 1px, transparent 1px),
+                linear-gradient(#222 1px, transparent 1px);
+            background-size: 20px 20px;
+            background-color: #1a1a2e;
+        }
+
+        .viewer:active {
+            cursor: grabbing;
+        }
+
+        .svg-container {
+            position: absolute;
+            transform-origin: 0 0;
+            transition: none;
+        }
+
+        .svg-container svg {
+            display: block;
+            max-width: none;
+        }
+
+        .minimap {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 200px;
+            height: 150px;
+            background: rgba(22, 33, 62, 0.9);
+            border: 1px solid #0f3460;
+            border-radius: 4px;
+            overflow: hidden;
+            z-index: 50;
+        }
+
+        .minimap-content {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .minimap-content svg {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .minimap-viewport {
+            position: absolute;
+            border: 2px solid #4a9eff;
+            background: rgba(74, 158, 255, 0.1);
+            pointer-events: none;
+        }
+
+        .help {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(22, 33, 62, 0.9);
+            border: 1px solid #0f3460;
+            border-radius: 4px;
+            padding: 12px 16px;
+            font-size: 12px;
+            color: #888;
+            z-index: 50;
+        }
+
+        .help kbd {
+            background: #0f3460;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #0f3460;
+            border-top-color: #4a9eff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #4a1a1a;
+            border: 1px solid #8a3a3a;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .error h3 {
+            color: #ff6b6b;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>exe.dev Authentication Flows</h1>
+        <div class="controls">
+            <button onclick="zoomIn()">+ Zoom In</button>
+            <button onclick="zoomOut()">- Zoom Out</button>
+            <span class="zoom-display" id="zoomLevel">100%</span>
+            <button onclick="resetView()">Reset</button>
+            <button onclick="fitToScreen()">Fit</button>
+        </div>
+    </div>
+
+    <div class="viewer" id="viewer">
+        <div class="loading" id="loading">
+            <div class="loading-spinner"></div>
+            <div>Loading diagram...</div>
+        </div>
+        <div class="svg-container" id="svgContainer"></div>
+    </div>
+
+    <div class="minimap" id="minimap">
+        <div class="minimap-content" id="minimapContent"></div>
+        <div class="minimap-viewport" id="minimapViewport"></div>
+    </div>
+
+    <div class="help">
+        <kbd>Scroll</kbd> Zoom &nbsp;
+        <kbd>Drag</kbd> Pan &nbsp;
+        <kbd>Double-click</kbd> Fit
+    </div>
+
+    <script>
+        // State
+        let scale = 1;
+        let translateX = 0;
+        let translateY = 0;
+        let isDragging = false;
+        let startX, startY;
+        let svgWidth = 0;
+        let svgHeight = 0;
+
+        const viewer = document.getElementById('viewer');
+        const container = document.getElementById('svgContainer');
+        const zoomDisplay = document.getElementById('zoomLevel');
+        const loading = document.getElementById('loading');
+        const minimapContent = document.getElementById('minimapContent');
+        const minimapViewport = document.getElementById('minimapViewport');
+
+        // Load SVG
+        async function loadSVG() {
+            try {
+                const response = await fetch('auth_flows.svg');
+                if (!response.ok) throw new Error('SVG not found. Run "make" first.');
+                const svgText = await response.text();
+                container.innerHTML = svgText;
+
+                const svg = container.querySelector('svg');
+                if (svg) {
+                    // Get original dimensions
+                    const viewBox = svg.getAttribute('viewBox');
+                    if (viewBox) {
+                        const parts = viewBox.split(' ');
+                        svgWidth = parseFloat(parts[2]);
+                        svgHeight = parseFloat(parts[3]);
+                    } else {
+                        svgWidth = svg.width.baseVal.value || 1000;
+                        svgHeight = svg.height.baseVal.value || 800;
+                    }
+
+                    // Make SVG fill container
+                    svg.style.width = svgWidth + 'px';
+                    svg.style.height = svgHeight + 'px';
+                    svg.removeAttribute('width');
+                    svg.removeAttribute('height');
+
+                    // Clone for minimap
+                    minimapContent.innerHTML = svgText;
+
+                    // Initial fit
+                    fitToScreen();
+                }
+
+                loading.style.display = 'none';
+            } catch (error) {
+                loading.innerHTML = `
+                    <div class="error">
+                        <h3>Could not load diagram</h3>
+                        <p>${error.message}</p>
+                        <p style="margin-top: 12px; font-size: 12px;">
+                            Run <code>make</code> in this directory to generate the SVG.
+                        </p>
+                    </div>
+                `;
+            }
+        }
+
+        // Transform
+        function updateTransform() {
+            container.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+            zoomDisplay.textContent = Math.round(scale * 100) + '%';
+            updateMinimap();
+        }
+
+        function updateMinimap() {
+            const minimap = document.getElementById('minimap');
+            const viewerRect = viewer.getBoundingClientRect();
+
+            // Calculate minimap scale
+            const minimapScale = Math.min(
+                minimap.clientWidth / svgWidth,
+                minimap.clientHeight / svgHeight
+            );
+
+            // Viewport size in minimap coordinates
+            const vpWidth = (viewerRect.width / scale) * minimapScale;
+            const vpHeight = (viewerRect.height / scale) * minimapScale;
+
+            // Viewport position
+            const vpX = (-translateX / scale) * minimapScale;
+            const vpY = (-translateY / scale) * minimapScale;
+
+            minimapViewport.style.width = vpWidth + 'px';
+            minimapViewport.style.height = vpHeight + 'px';
+            minimapViewport.style.left = vpX + 'px';
+            minimapViewport.style.top = vpY + 'px';
+        }
+
+        // Zoom functions
+        function zoomIn() {
+            const viewerRect = viewer.getBoundingClientRect();
+            zoomAt(viewerRect.width / 2, viewerRect.height / 2, 1.25);
+        }
+
+        function zoomOut() {
+            const viewerRect = viewer.getBoundingClientRect();
+            zoomAt(viewerRect.width / 2, viewerRect.height / 2, 0.8);
+        }
+
+        function zoomAt(clientX, clientY, factor) {
+            const newScale = Math.min(Math.max(scale * factor, 0.1), 5);
+            const ratio = newScale / scale;
+
+            translateX = clientX - (clientX - translateX) * ratio;
+            translateY = clientY - (clientY - translateY) * ratio;
+            scale = newScale;
+
+            updateTransform();
+        }
+
+        function resetView() {
+            scale = 1;
+            translateX = 0;
+            translateY = 0;
+            updateTransform();
+        }
+
+        function fitToScreen() {
+            const viewerRect = viewer.getBoundingClientRect();
+            const padding = 40;
+
+            const scaleX = (viewerRect.width - padding * 2) / svgWidth;
+            const scaleY = (viewerRect.height - padding * 2) / svgHeight;
+            scale = Math.min(scaleX, scaleY, 1);
+
+            translateX = (viewerRect.width - svgWidth * scale) / 2;
+            translateY = (viewerRect.height - svgHeight * scale) / 2;
+
+            updateTransform();
+        }
+
+        // Mouse events
+        viewer.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX - translateX;
+            startY = e.clientY - translateY;
+            viewer.style.cursor = 'grabbing';
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            translateX = e.clientX - startX;
+            translateY = e.clientY - startY;
+            updateTransform();
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+            viewer.style.cursor = 'grab';
+        });
+
+        viewer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const rect = viewer.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const factor = e.deltaY < 0 ? 1.1 : 0.9;
+            zoomAt(x, y, factor);
+        }, { passive: false });
+
+        viewer.addEventListener('dblclick', () => {
+            fitToScreen();
+        });
+
+        // Keyboard shortcuts
+        window.addEventListener('keydown', (e) => {
+            if (e.key === '+' || e.key === '=') zoomIn();
+            if (e.key === '-') zoomOut();
+            if (e.key === '0') resetView();
+            if (e.key === 'f') fitToScreen();
+        });
+
+        // Window resize
+        window.addEventListener('resize', () => {
+            updateMinimap();
+        });
+
+        // Initialize
+        loadSVG();
+    </script>
+</body>
+</html>

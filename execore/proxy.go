@@ -590,7 +590,7 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Redirect to logged out page on main domain
-	logoutURL := fmt.Sprintf("%s/logged-out", s.webBaseURL(r))
+	logoutURL := fmt.Sprintf("%s/logged-out", s.webBaseURLNoRequest())
 	http.Redirect(w, r, logoutURL, http.StatusTemporaryRedirect)
 }
 

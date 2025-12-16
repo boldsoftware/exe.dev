@@ -1,15 +1,9 @@
 package execore
 
 // This file contains the handlers and helpers for web-based authentication.
-
-// Flows:
-//      Home Page /
-//   -> click on Login
-//   -> GET /auth
-//   -> POST /auth (Check your email)
-//   -> GET /verify-email?token=...
-//   -> POST /verify-email?token=...            if redirect_host...     if token invalid ...
-//   -> GET /verify-email "VERIFIED"                                -> redirection        -> ...
+//
+// See devdocs/auth_flows.d2 for a complete diagram of all authentication flows
+// including SSH, web, and proxy ("Login with Exe") flows.
 
 import (
 	"context"
