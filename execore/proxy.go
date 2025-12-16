@@ -304,7 +304,7 @@ func (s *Server) isProxyRequest(host string) bool {
 	case s.env.BoxHost:
 		return false // box apex is not a proxy target
 	case "blog" + "." + s.env.WebHost:
-		return false // special main webserver subdomains that are actually served on VMs, whee
+		return true // special main webserver subdomains that are actually served on VMs, whee
 	}
 	if s.env.WebDev {
 		// When doing local development, it's useful to be able to reach the webserver
