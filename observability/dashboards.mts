@@ -82,7 +82,7 @@ function addStageVariable(dash: DashboardBuilder) {
       .label("Stage")
       .includeAll(true)
       .query('label_values(up, stage)')
-      .current({ text: "All", value: "$__all" })
+      .current({ text: "production", value: "production" })
       .multi(true)
       .sort(1)
   );
@@ -845,7 +845,7 @@ function makeDevExeDashboard() {
     .gridPos({ x: 0, y: 96, w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
-        .expr(`users_total{type="login",${STAGE_FILTER}}`)
+        .expr(`users_total{type="login",stage="production"}`)
         .legendFormat("Login Users")
     )
     .colorMode(BigValueColorMode.Value)
@@ -859,7 +859,7 @@ function makeDevExeDashboard() {
     .gridPos({ x: 6, y: 96, w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
-        .expr(`users_total{type="dev",${STAGE_FILTER}}`)
+        .expr(`users_total{type="dev",stage="production"}`)
         .legendFormat("Dev Users")
     )
     .colorMode(BigValueColorMode.Value)
@@ -873,7 +873,7 @@ function makeDevExeDashboard() {
     .gridPos({ x: 12, y: 96, w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
-        .expr(`vms_total{${STAGE_FILTER}}`)
+        .expr(`vms_total{stage="production"}`)
         .legendFormat("VMs")
     )
     .colorMode(BigValueColorMode.Value)
@@ -889,12 +889,12 @@ function makeDevExeDashboard() {
     .gridPos({ x: 0, y: 100, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
-        .expr(`users_total{type="login",${STAGE_FILTER}}`)
+        .expr(`users_total{type="login",stage="production"}`)
         .legendFormat("{{stage}} login")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`users_total{type="dev",${STAGE_FILTER}}`)
+        .expr(`users_total{type="dev",stage="production"}`)
         .legendFormat("{{stage}} dev")
     );
   dash.withPanel(usersOverTimePanel);
@@ -905,7 +905,7 @@ function makeDevExeDashboard() {
     .gridPos({ x: 12, y: 100, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
-        .expr(`vms_total{${STAGE_FILTER}}`)
+        .expr(`vms_total{stage="production"}`)
         .legendFormat("{{stage}}")
     );
   dash.withPanel(vmsOverTimePanel);
