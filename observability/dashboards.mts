@@ -453,16 +453,28 @@ function makeDevExeDashboard() {
     );
   dash.withPanel(webByPathPanel);
 
+  // Top Request Paths Table
+  const topRequestPathsTable = new TableBuilder()
+    .title("Top Request Paths")
+    .gridPos({ x: 0, y: 15, w: 24, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`topk(20, sum(rate(http_requests_total{${WEB_FILTER}}[5m])) by (path))`)
+        .instant(true)
+        .format("table")
+    );
+  dash.withPanel(topRequestPathsTable);
+
   // ========== HTTP WEB SERVER ERRORS ==========
   dash.withRow(
-    new RowBuilder("HTTP - Web Server Errors").gridPos({ x: 0, y: 15, w: 24, h: 1 })
+    new RowBuilder("HTTP - Web Server Errors").gridPos({ x: 0, y: 23, w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Web 4xx Error Rate",
     `sum(rate(http_requests_total{${WEB_FILTER},code=~"4.."}[$__rate_interval])) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 16, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 24, w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -471,7 +483,7 @@ function makeDevExeDashboard() {
     "Web 5xx Error Rate",
     `sum(rate(http_requests_total{${WEB_FILTER},code=~"5.."}[$__rate_interval])) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 16, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 24, w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -481,7 +493,7 @@ function makeDevExeDashboard() {
     `sum(rate(http_requests_total{${WEB_FILTER},code=~"[45].."}[$__rate_interval])) by (stage) / sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (stage) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).gridPos({ x: 16, y: 16, w: 8, h: 6 }),
+        x.unit("percent").min(0).gridPos({ x: 16, y: 24, w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -490,7 +502,7 @@ function makeDevExeDashboard() {
   const web4xxByPathPanel = new TimeseriesBuilder()
     .title("Web 4xx Errors by Path")
     .min(0)
-    .gridPos({ x: 0, y: 22, w: 12, h: 6 })
+    .gridPos({ x: 0, y: 30, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(rate(http_requests_total{${WEB_FILTER},code=~"4.."}[$__rate_interval])) by (path, code, stage)`)
@@ -501,7 +513,7 @@ function makeDevExeDashboard() {
   const web5xxByPathPanel = new TimeseriesBuilder()
     .title("Web 5xx Errors by Path")
     .min(0)
-    .gridPos({ x: 12, y: 22, w: 12, h: 6 })
+    .gridPos({ x: 12, y: 30, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(rate(http_requests_total{${WEB_FILTER},code=~"5.."}[$__rate_interval])) by (path, code, stage)`)
@@ -511,7 +523,7 @@ function makeDevExeDashboard() {
 
   // ========== HTTP PROXY METRICS ==========
   dash.withRow(
-    new RowBuilder("HTTP - Proxies").gridPos({ x: 0, y: 28, w: 24, h: 1 })
+    new RowBuilder("HTTP - Proxies").gridPos({ x: 0, y: 36, w: 24, h: 1 })
   );
 
   // Aggregate proxy metrics
@@ -519,7 +531,7 @@ function makeDevExeDashboard() {
     "Proxy Request Rate",
     `sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 29, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 37, w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -528,7 +540,7 @@ function makeDevExeDashboard() {
     "Proxy Requests In Flight",
     `sum(http_requests_in_flight{${PROXY_FILTER}}) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 29, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 37, w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -538,7 +550,7 @@ function makeDevExeDashboard() {
     `sum(rate(http_requests_total{${PROXY_FILTER},code=~"2.."}[$__rate_interval])) by (stage) / sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (stage) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 16, y: 29, w: 8, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ x: 16, y: 37, w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -547,7 +559,7 @@ function makeDevExeDashboard() {
   const proxyStatusCodePanel = new TimeseriesBuilder()
     .title("Proxy Requests by Status Code")
     .min(0)
-    .gridPos({ x: 0, y: 35, w: 12, h: 6 })
+    .gridPos({ x: 0, y: 43, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (code, stage)`)
@@ -558,7 +570,7 @@ function makeDevExeDashboard() {
   const proxyByBoxPanel = new TimeseriesBuilder()
     .title("Proxy Request Rate by Box (Top 10)")
     .min(0)
-    .gridPos({ x: 12, y: 35, w: 12, h: 6 })
+    .gridPos({ x: 12, y: 43, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`topk(10, sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (box, stage))`)
@@ -570,7 +582,7 @@ function makeDevExeDashboard() {
   const proxyErrorsByBoxPanel = new TimeseriesBuilder()
     .title("Proxy Errors by Box")
     .min(0)
-    .gridPos({ x: 0, y: 41, w: 12, h: 6 })
+    .gridPos({ x: 0, y: 49, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(rate(http_requests_total{${PROXY_FILTER},code=~"[45].."}[$__rate_interval])) by (box, stage)`)
@@ -581,7 +593,7 @@ function makeDevExeDashboard() {
   const proxyInFlightByBoxPanel = new TimeseriesBuilder()
     .title("Proxy Requests In Flight by Box")
     .min(0)
-    .gridPos({ x: 12, y: 41, w: 12, h: 6 })
+    .gridPos({ x: 12, y: 49, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(http_requests_in_flight{${PROXY_FILTER}}) by (box, stage)`)
@@ -591,26 +603,26 @@ function makeDevExeDashboard() {
 
   // ========== SSH METRICS ==========
   dash.withRow(
-    new RowBuilder("SSH").gridPos({ x: 0, y: 47, w: 24, h: 1 })
+    new RowBuilder("SSH").gridPos({ x: 0, y: 55, w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "SSH Connections Rate",
     `rate(ssh_connections_total{${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 0, y: 48, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ x: 0, y: 56, w: 8, h: 6 }),
     }
   );
 
   addTimeseriesChart("Current SSH Connections", `ssh_connections_current{${STAGE_FILTER}}`, {
-    panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 48, w: 8, h: 6 }),
+    panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 56, w: 8, h: 6 }),
   });
 
   addTimeseriesChart(
     "SSH Auth Attempts Rate",
     `rate(ssh_auth_attempts_total{${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 16, y: 48, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ x: 16, y: 56, w: 8, h: 6 }),
     }
   );
 
@@ -619,7 +631,7 @@ function makeDevExeDashboard() {
     `histogram_quantile(0.95, rate(ssh_session_duration_seconds_bucket{${STAGE_FILTER}}[5m]))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").gridPos({ x: 0, y: 54, w: 12, h: 6 }),
+        x.unit("s").gridPos({ x: 0, y: 62, w: 12, h: 6 }),
     }
   );
 
@@ -628,7 +640,7 @@ function makeDevExeDashboard() {
     .title("exed uptime")
     .unit("s")
     .min(0)
-    .gridPos({ x: 12, y: 54, w: 12, h: 6 })
+    .gridPos({ x: 12, y: 62, w: 12, h: 6 })
     .scaleDistribution(
       new ScaleDistributionConfigBuilder()
         .type(ScaleDistribution.Log)
@@ -645,7 +657,7 @@ function makeDevExeDashboard() {
   dash.withRow(
     new RowBuilder("SQLite Connection Pool").gridPos({
       x: 0,
-      y: 60,
+      y: 68,
       w: 24,
       h: 1,
     })
@@ -655,7 +667,7 @@ function makeDevExeDashboard() {
   const sqlPoolPanel = new TimeseriesBuilder()
     .title("SQL Connection Pool")
     .min(0)
-    .gridPos({ x: 0, y: 61, w: 8, h: 6 })
+    .gridPos({ x: 0, y: 69, w: 8, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sqlite_pool_open_connections{job="exed",${STAGE_FILTER}}`)
@@ -677,7 +689,7 @@ function makeDevExeDashboard() {
   const writerPoolPanel = new TimeseriesBuilder()
     .title("Writer Connections")
     .min(0)
-    .gridPos({ x: 8, y: 61, w: 8, h: 6 })
+    .gridPos({ x: 8, y: 69, w: 8, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sqlite_pool_available_writers{job="exed",${STAGE_FILTER}}`)
@@ -694,7 +706,7 @@ function makeDevExeDashboard() {
   const readerPoolPanel = new TimeseriesBuilder()
     .title("Reader Connections")
     .min(0)
-    .gridPos({ x: 16, y: 61, w: 8, h: 6 })
+    .gridPos({ x: 16, y: 69, w: 8, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sqlite_pool_available_readers{job="exed",${STAGE_FILTER}}`)
@@ -711,7 +723,7 @@ function makeDevExeDashboard() {
   dash.withRow(
     new RowBuilder("SQLite Transaction Metrics").gridPos({
       x: 0,
-      y: 67,
+      y: 75,
       w: 24,
       h: 1,
     })
@@ -721,7 +733,7 @@ function makeDevExeDashboard() {
     "SQLite Transaction Leaks",
     `rate(sqlite_tx_leaks_total{job="exed",${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 0, y: 68, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ x: 0, y: 76, w: 8, h: 6 }),
     }
   );
 
@@ -729,7 +741,7 @@ function makeDevExeDashboard() {
     "SQLite Read Transaction Leaks",
     `rate(sqlite_rx_leaks_total{job="exed",${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 8, y: 68, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ x: 8, y: 76, w: 8, h: 6 }),
     }
   );
 
@@ -738,7 +750,7 @@ function makeDevExeDashboard() {
     `histogram_quantile(0.95, rate(sqlite_tx_latency_bucket{job="exed",${STAGE_FILTER}}[5m])) / 1000`,
     {
       panelCustomization: (x) =>
-        x.unit("ms").gridPos({ x: 16, y: 68, w: 8, h: 6 }),
+        x.unit("ms").gridPos({ x: 16, y: 76, w: 8, h: 6 }),
     }
   );
 
@@ -746,7 +758,7 @@ function makeDevExeDashboard() {
   dash.withRow(
     new RowBuilder("Box Creation Time").gridPos({
       x: 0,
-      y: 74,
+      y: 82,
       w: 24,
       h: 1,
     })
@@ -757,7 +769,7 @@ function makeDevExeDashboard() {
     .title("Box Creation Latency")
     .unit("s")
     .min(0)
-    .gridPos({ x: 0, y: 75, w: 12, h: 6 })
+    .gridPos({ x: 0, y: 83, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`histogram_quantile(0.5, rate(box_creation_time_seconds_bucket{${STAGE_FILTER}}[$__rate_interval]))`)
@@ -779,7 +791,7 @@ function makeDevExeDashboard() {
     "Box Creation Rate",
     `rate(box_creation_time_seconds_count{${STAGE_FILTER}}[$__rate_interval])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 12, y: 75, w: 12, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ x: 12, y: 83, w: 12, h: 6 }),
     }
   );
 
@@ -787,7 +799,7 @@ function makeDevExeDashboard() {
   dash.withRow(
     new RowBuilder("Certificate Issuance").gridPos({
       x: 0,
-      y: 81,
+      y: 89,
       w: 24,
       h: 1,
     })
@@ -798,7 +810,7 @@ function makeDevExeDashboard() {
     `rate(letsencrypt_cert_requests_total{${STAGE_FILTER}}[$__rate_interval])`,
     {
       panelCustomization: (x) =>
-        x.min(0).gridPos({ x: 0, y: 82, w: 8, h: 6 }),
+        x.min(0).gridPos({ x: 0, y: 90, w: 8, h: 6 }),
     }
   );
 
@@ -806,7 +818,7 @@ function makeDevExeDashboard() {
   dash.withRow(
     new RowBuilder("Blog").gridPos({
       x: 0,
-      y: 88,
+      y: 96,
       w: 24,
       h: 1,
     })
@@ -816,7 +828,7 @@ function makeDevExeDashboard() {
     "Blog Hit Rate",
     `sum(rate(blog_page_hits_total{job="blogd",stage=~"$stage"}[$__rate_interval])) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 89, w: 12, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 97, w: 12, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -825,7 +837,7 @@ function makeDevExeDashboard() {
     "Blog Hits by Path (Top 10)",
     `topk(10, sum(rate(blog_page_hits_total{job="blogd",stage=~"$stage"}[$__rate_interval])) by (path, stage))`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 12, y: 89, w: 12, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ x: 12, y: 97, w: 12, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}} {{path}}"),
     }
   );
@@ -834,7 +846,7 @@ function makeDevExeDashboard() {
   dash.withRow(
     new RowBuilder("Entity Counts").gridPos({
       x: 0,
-      y: 95,
+      y: 103,
       w: 24,
       h: 1,
     })
@@ -842,7 +854,7 @@ function makeDevExeDashboard() {
 
   const loginUsersPanel = new StatBuilder()
     .title("Login Users")
-    .gridPos({ x: 0, y: 96, w: 6, h: 4 })
+    .gridPos({ x: 0, y: 104, w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`users_total{type="login",stage="production"}`)
@@ -856,7 +868,7 @@ function makeDevExeDashboard() {
 
   const devUsersPanel = new StatBuilder()
     .title("Dev Users")
-    .gridPos({ x: 6, y: 96, w: 6, h: 4 })
+    .gridPos({ x: 6, y: 104, w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`users_total{type="dev",stage="production"}`)
@@ -870,7 +882,7 @@ function makeDevExeDashboard() {
 
   const vmsCountPanel = new StatBuilder()
     .title("Total VMs")
-    .gridPos({ x: 12, y: 96, w: 6, h: 4 })
+    .gridPos({ x: 12, y: 104, w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`vms_total{stage="production"}`)
@@ -886,7 +898,7 @@ function makeDevExeDashboard() {
   const usersOverTimePanel = new TimeseriesBuilder()
     .title("Users Over Time")
     .min(0)
-    .gridPos({ x: 0, y: 100, w: 12, h: 6 })
+    .gridPos({ x: 0, y: 108, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`users_total{type="login",stage="production"}`)
@@ -902,7 +914,7 @@ function makeDevExeDashboard() {
   const vmsOverTimePanel = new TimeseriesBuilder()
     .title("VMs Over Time")
     .min(0)
-    .gridPos({ x: 12, y: 100, w: 12, h: 6 })
+    .gridPos({ x: 12, y: 108, w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`vms_total{stage="production"}`)
@@ -914,7 +926,7 @@ function makeDevExeDashboard() {
   dash.withRow(
     new RowBuilder("Proxy Bytes").gridPos({
       x: 0,
-      y: 106,
+      y: 114,
       w: 24,
       h: 1,
     })
@@ -924,7 +936,7 @@ function makeDevExeDashboard() {
     "Proxy Bytes Rate",
     `sum(rate(proxy_bytes_total{${STAGE_FILTER}}[$__rate_interval])) by (direction, stage)`,
     {
-      panelCustomization: (x) => x.unit("Bps").min(0).gridPos({ x: 0, y: 107, w: 12, h: 6 }),
+      panelCustomization: (x) => x.unit("Bps").min(0).gridPos({ x: 0, y: 115, w: 12, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}} {{direction}}"),
     }
   );
@@ -933,7 +945,7 @@ function makeDevExeDashboard() {
     "Proxy Bytes Total",
     `sum(increase(proxy_bytes_total{${STAGE_FILTER}}[1h])) by (direction, stage)`,
     {
-      panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 12, y: 107, w: 12, h: 6 }),
+      panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 12, y: 115, w: 12, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}} {{direction}}"),
     }
   );
