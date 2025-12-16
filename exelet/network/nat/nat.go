@@ -20,6 +20,7 @@ const (
 	MetadataIP               = "169.254.169.254"
 	DefaultMaxPortsPerBridge = 500
 	DefaultBridgeHashMax     = 4096 // FDB hash table size; default 512 causes "exchange full" at scale
+	CarrierNATCIDR           = "100.64.0.0/10"
 
 	DeviceName = "eth0"
 )

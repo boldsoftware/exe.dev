@@ -164,6 +164,11 @@ func (n *NAT) configureBridge(ctx context.Context) error {
 		return err
 	}
 
+	// block guest access to carrier-grade NAT range
+	if err := n.applyCarrierNATBlock(ctx, primaryBridge); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -269,6 +274,11 @@ func (n *NAT) createSecondaryBridge(ctx context.Context, bridgeName string) erro
 	}
 	if err := n.applyMetadataDNAT(ctx, bridgeName, serverIP.String()); err != nil {
 		return fmt.Errorf("failed to apply metadata DNAT for %s: %w", bridgeName, err)
+	}
+
+	// Block guest access to carrier-grade NAT range
+	if err := n.applyCarrierNATBlock(ctx, bridgeName); err != nil {
+		return fmt.Errorf("failed to apply carrier NAT block for %s: %w", bridgeName, err)
 	}
 
 	n.log.InfoContext(ctx, "created secondary bridge", "name", bridgeName, "veth_primary", vethPrimary, "veth_secondary", vethSecondary)
@@ -504,6 +514,60 @@ func (n *NAT) applyMetadataDNAT(ctx context.Context, bridgeName, bridgeIP string
 
 	if err := exec.CommandContext(ctx, "iptables", cArgs...).Run(); err != nil {
 		return fmt.Errorf("failed to add metadata DNAT rule: %w", err)
+	}
+
+	return nil
+}
+
+// applyCarrierNATBlock adds an iptables rule to block guest traffic to the carrier-grade NAT range (100.64.0.0/10).
+// This prevents guests from accessing host infrastructure on the CGNAT network while allowing exeletd
+// (running as a host process) to connect, since host-originated traffic uses the OUTPUT chain, not FORWARD.
+func (n *NAT) applyCarrierNATBlock(ctx context.Context, device string) error {
+	// Check if rule already exists
+	args := []string{
+		"-n",
+		"-L",
+		"FORWARD",
+		"-v",
+	}
+	fc := exec.CommandContext(ctx, "iptables", args...)
+
+	fOut, err := fc.CombinedOutput()
+	if err != nil {
+		return err
+	}
+
+	buf := bytes.NewBuffer(fOut)
+	sc := bufio.NewScanner(buf)
+	ruleExists := false
+	for sc.Scan() {
+		l := sc.Text()
+		if strings.Contains(l, device) && strings.Contains(l, "100.64.0.0/10") && strings.Contains(l, "DROP") {
+			ruleExists = true
+			break
+		}
+	}
+
+	if ruleExists {
+		return nil
+	}
+
+	n.log.DebugContext(ctx, "adding iptables rule to block carrier NAT access from guests", "device", device, "cidr", CarrierNATCIDR)
+
+	// Insert at beginning of FORWARD chain to ensure it's evaluated before ACCEPT rules
+	cArgs := []string{
+		"-I",
+		"FORWARD",
+		"-i",
+		device,
+		"-d",
+		CarrierNATCIDR,
+		"-j",
+		"DROP",
+	}
+
+	if err := exec.CommandContext(ctx, "iptables", cArgs...).Run(); err != nil {
+		return fmt.Errorf("failed to add carrier NAT block rule: %w", err)
 	}
 
 	return nil
