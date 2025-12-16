@@ -2,6 +2,15 @@ package execore
 
 // This file contains the handlers and helpers for web-based authentication.
 
+// Flows:
+//      Home Page /
+//   -> click on Login
+//   -> GET /auth
+//   -> POST /auth (Check your email)
+//   -> GET /verify-email?token=...
+//   -> POST /verify-email?token=...            if redirect_host...     if token invalid ...
+//   -> GET /verify-email "VERIFIED"                                -> redirection        -> ...
+
 import (
 	"context"
 	crand "crypto/rand"
