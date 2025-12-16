@@ -377,32 +377,20 @@
 
     <script src="/static/passkey.js"></script>
     <script>
-        // Generate a default passkey name based on platform
-        function getDefaultPasskeyName() {
-            const ua = navigator.userAgent;
-            if (/iPhone/.test(ua)) return 'iPhone';
-            if (/iPad/.test(ua)) return 'iPad';
-            if (/Macintosh/.test(ua)) return 'Mac';
-            if (/Windows/.test(ua)) return 'Windows';
-            if (/Android/.test(ua)) return 'Android';
-            if (/Linux/.test(ua)) return 'Linux';
-            return 'Passkey';
-        }
-
         // Check passkey support on page load
         document.addEventListener('DOMContentLoaded', function() {
             if (!passkey.isSupported()) {
                 document.getElementById('passkeys-unsupported').style.display = 'block';
                 document.getElementById('passkeys-content').style.display = 'none';
             } else {
-                document.getElementById('passkey-name').placeholder = getDefaultPasskeyName();
+                document.getElementById('passkey-name').placeholder = passkey.getDefaultName();
             }
         });
 
         async function addPasskey() {
             const nameInput = document.getElementById('passkey-name');
             const errorDiv = document.getElementById('passkey-error');
-            const name = nameInput.value.trim() || getDefaultPasskeyName();
+            const name = nameInput.value.trim() || passkey.getDefaultName();
 
             errorDiv.style.display = 'none';
             errorDiv.textContent = '';

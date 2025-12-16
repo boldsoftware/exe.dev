@@ -20,7 +20,54 @@
     <p class="text-6xl font-semibold tracking-widest">VERIFIED</p>
     {{if eq .Source "exemenu"}}
     <p class="text-zinc-500 mt-8">(return to your terminal)</p>
+    {{else}}
+    <div class="mt-8">
+      <a href="/" class="text-zinc-600 hover:text-zinc-900 underline">Continue to Dashboard</a>
+    </div>
+    {{end}}
+    {{if not .HasPasskeys}}
+    <div id="passkey-section" class="mt-12 border-t border-zinc-200 pt-8" style="display: none;">
+      <p class="text-zinc-600 mb-4">Add a passkey for faster sign-in?</p>
+      <div class="flex gap-3 items-center">
+        <input type="text" id="passkey-name" placeholder="Passkey name" class="px-3 py-2 border border-zinc-300 rounded text-sm focus:outline-none focus:border-zinc-500">
+        <button onclick="addPasskey()" class="px-4 py-2 bg-zinc-900 text-white rounded text-sm hover:bg-zinc-700">Add Passkey</button>
+      </div>
+      <p id="passkey-error" class="text-red-600 text-sm mt-2" style="display: none;"></p>
+      <p id="passkey-success" class="text-green-600 text-sm mt-2" style="display: none;">Passkey added!</p>
+    </div>
     {{end}}
   </main>
+  <script src="/static/passkey.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const section = document.getElementById('passkey-section');
+      if (section && passkey.isSupported()) {
+        section.style.display = 'block';
+        document.getElementById('passkey-name').placeholder = passkey.getDefaultName();
+      }
+    });
+
+    async function addPasskey() {
+      const nameInput = document.getElementById('passkey-name');
+      const errorDiv = document.getElementById('passkey-error');
+      const successDiv = document.getElementById('passkey-success');
+      const name = nameInput.value.trim() || passkey.getDefaultName();
+
+      errorDiv.style.display = 'none';
+      successDiv.style.display = 'none';
+
+      try {
+        await passkey.register(name);
+        successDiv.style.display = 'block';
+        document.querySelector('#passkey-section button').disabled = true;
+        document.querySelector('#passkey-section button').textContent = 'Added';
+        document.querySelector('#passkey-section button').classList.remove('bg-zinc-900', 'hover:bg-zinc-700');
+        document.querySelector('#passkey-section button').classList.add('bg-zinc-400');
+      } catch (err) {
+        errorDiv.textContent = err.message;
+        errorDiv.style.display = 'block';
+      }
+    }
+  </script>
 </body>
 </html>

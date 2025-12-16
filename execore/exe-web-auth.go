@@ -64,8 +64,9 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		source = r.FormValue("source")
 	}
 
-	// Track the verified email for the success page
+	// Track the verified email and user ID for the success page
 	var verifiedEmail string
+	var verifiedUserID string
 
 	// First check if this is an SSH session token (in-memory)
 	verification := s.lookUpEmailVerification(token)
@@ -79,6 +80,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			http.Error(w, "failed to create user account", http.StatusInternalServerError)
 			return
 		}
+		verifiedUserID = user.UserID
 
 		// Create HTTP auth cookie for this user
 		cookieValue, err := s.createAuthCookie(context.WithoutCancel(r.Context()), user.UserID, r.Host)
@@ -103,6 +105,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			s.render401(w, r, unauthorizedData{InvalidToken: true})
 			return
 		}
+		verifiedUserID = userID
 
 		// Look up the user to get their email for the success page
 		user, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
@@ -149,17 +152,30 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
+	// Check if user has passkeys for the success page
+	hasPasskeys := false
+	if verifiedUserID != "" {
+		passkeys, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetPasskeysByUserIDRow, error) {
+			return queries.GetPasskeysByUserID(ctx, verifiedUserID)
+		})
+		if err == nil && len(passkeys) > 0 {
+			hasPasskeys = true
+		}
+	}
+
 	// Send success response (for SSH registrations or standalone verifications)
 	data := struct {
 		stage.Env
-		SSHCommand string
-		Source     string
-		Email      string
+		SSHCommand  string
+		Source      string
+		Email       string
+		HasPasskeys bool
 	}{
-		Env:        s.env,
-		SSHCommand: s.replSSHConnectionCommand(),
-		Source:     source,
-		Email:      verifiedEmail,
+		Env:         s.env,
+		SSHCommand:  s.replSSHConnectionCommand(),
+		Source:      source,
+		Email:       verifiedEmail,
+		HasPasskeys: hasPasskeys,
 	}
 	s.renderTemplate(w, "email-verified.html", data)
 }

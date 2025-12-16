@@ -229,6 +229,18 @@ async function deletePasskey(id) {
     form.submit();
 }
 
+// Generate a default passkey name based on platform
+function getDefaultPasskeyName() {
+    const ua = navigator.userAgent;
+    if (/iPhone/.test(ua)) return 'iPhone';
+    if (/iPad/.test(ua)) return 'iPad';
+    if (/Macintosh/.test(ua)) return 'Mac';
+    if (/Windows/.test(ua)) return 'Windows';
+    if (/Android/.test(ua)) return 'Android';
+    if (/Linux/.test(ua)) return 'Linux';
+    return 'Passkey';
+}
+
 // Export functions for use in templates
 window.passkey = {
     isSupported: isPasskeySupported,
@@ -237,4 +249,5 @@ window.passkey = {
     authenticate: authenticateWithPasskey,
     startConditionalAuth: startConditionalAuth,
     delete: deletePasskey,
+    getDefaultName: getDefaultPasskeyName,
 };
