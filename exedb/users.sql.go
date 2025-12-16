@@ -9,6 +9,28 @@ import (
 	"context"
 )
 
+const countDevUsers = `-- name: CountDevUsers :one
+SELECT COUNT(*) FROM users WHERE created_for_login_with_exe = 0
+`
+
+func (q *Queries) CountDevUsers(ctx context.Context) (int64, error) {
+	row := q.queryRow(ctx, q.countDevUsersStmt, countDevUsers)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countLoginUsers = `-- name: CountLoginUsers :one
+SELECT COUNT(*) FROM users WHERE created_for_login_with_exe = 1
+`
+
+func (q *Queries) CountLoginUsers(ctx context.Context) (int64, error) {
+	row := q.queryRow(ctx, q.countLoginUsersStmt, countLoginUsers)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getEmailByUserID = `-- name: GetEmailByUserID :one
 SELECT email FROM users WHERE user_id = ?
 `

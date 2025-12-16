@@ -137,6 +137,17 @@ func (q *Queries) BoxesForUser(ctx context.Context, createdByUserID string) ([]B
 	return items, nil
 }
 
+const countBoxes = `-- name: CountBoxes :one
+SELECT COUNT(*) FROM boxes
+`
+
+func (q *Queries) CountBoxes(ctx context.Context) (int64, error) {
+	row := q.queryRow(ctx, q.countBoxesStmt, countBoxes)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countBoxesForUser = `-- name: CountBoxesForUser :one
 SELECT COUNT(*) FROM boxes WHERE created_by_user_id = ?
 `

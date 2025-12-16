@@ -542,6 +542,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	httpMetrics := NewHTTPMetrics(cfg.MetricsRegistry)
 	sqlite.RegisterSQLiteMetrics(cfg.MetricsRegistry)
 	llmgateway.RegisterMetrics(cfg.MetricsRegistry)
+	RegisterEntityMetrics(cfg.MetricsRegistry, db, slog)
 
 	// Initialize tag resolver for image tag resolution
 	tagResolverInstance := tagresolver.New(db)

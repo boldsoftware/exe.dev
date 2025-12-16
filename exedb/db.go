@@ -45,8 +45,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countBoxSharesStmt, err = db.PrepareContext(ctx, countBoxShares); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxShares: %w", err)
 	}
+	if q.countBoxesStmt, err = db.PrepareContext(ctx, countBoxes); err != nil {
+		return nil, fmt.Errorf("error preparing query CountBoxes: %w", err)
+	}
 	if q.countBoxesForUserStmt, err = db.PrepareContext(ctx, countBoxesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxesForUser: %w", err)
+	}
+	if q.countDevUsersStmt, err = db.PrepareContext(ctx, countDevUsers); err != nil {
+		return nil, fmt.Errorf("error preparing query CountDevUsers: %w", err)
+	}
+	if q.countLoginUsersStmt, err = db.PrepareContext(ctx, countLoginUsers); err != nil {
+		return nil, fmt.Errorf("error preparing query CountLoginUsers: %w", err)
 	}
 	if q.countPendingBoxSharesStmt, err = db.PrepareContext(ctx, countPendingBoxShares); err != nil {
 		return nil, fmt.Errorf("error preparing query CountPendingBoxShares: %w", err)
@@ -391,9 +400,24 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing countBoxSharesStmt: %w", cerr)
 		}
 	}
+	if q.countBoxesStmt != nil {
+		if cerr := q.countBoxesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countBoxesStmt: %w", cerr)
+		}
+	}
 	if q.countBoxesForUserStmt != nil {
 		if cerr := q.countBoxesForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countBoxesForUserStmt: %w", cerr)
+		}
+	}
+	if q.countDevUsersStmt != nil {
+		if cerr := q.countDevUsersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countDevUsersStmt: %w", cerr)
+		}
+	}
+	if q.countLoginUsersStmt != nil {
+		if cerr := q.countLoginUsersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countLoginUsersStmt: %w", cerr)
 		}
 	}
 	if q.countPendingBoxSharesStmt != nil {
@@ -947,7 +971,10 @@ type Queries struct {
 	cleanupExpiredPasskeyChallengesStmt    *sql.Stmt
 	countBoxShareLinksStmt                 *sql.Stmt
 	countBoxSharesStmt                     *sql.Stmt
+	countBoxesStmt                         *sql.Stmt
 	countBoxesForUserStmt                  *sql.Stmt
+	countDevUsersStmt                      *sql.Stmt
+	countLoginUsersStmt                    *sql.Stmt
 	countPendingBoxSharesStmt              *sql.Stmt
 	createBoxShareStmt                     *sql.Stmt
 	createBoxShareLinkStmt                 *sql.Stmt
@@ -1062,7 +1089,10 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		cleanupExpiredPasskeyChallengesStmt:    q.cleanupExpiredPasskeyChallengesStmt,
 		countBoxShareLinksStmt:                 q.countBoxShareLinksStmt,
 		countBoxSharesStmt:                     q.countBoxSharesStmt,
+		countBoxesStmt:                         q.countBoxesStmt,
 		countBoxesForUserStmt:                  q.countBoxesForUserStmt,
+		countDevUsersStmt:                      q.countDevUsersStmt,
+		countLoginUsersStmt:                    q.countLoginUsersStmt,
 		countPendingBoxSharesStmt:              q.countPendingBoxSharesStmt,
 		createBoxShareStmt:                     q.createBoxShareStmt,
 		createBoxShareLinkStmt:                 q.createBoxShareLinkStmt,

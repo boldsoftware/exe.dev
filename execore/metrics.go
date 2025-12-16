@@ -1,13 +1,17 @@
 package execore
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"exe.dev/exedb"
 	"exe.dev/metricsbag"
+	"exe.dev/sqlite"
 )
 
 // SSHMetrics holds SSH server metrics
@@ -175,4 +179,61 @@ func normalizePath(path string) string {
 		return "/"
 	}
 	return strings.TrimSuffix(path, "/")
+}
+
+// RegisterEntityMetrics registers gauge metrics for user and VM counts.
+// The gauges query the database on each Prometheus scrape.
+func RegisterEntityMetrics(registry *prometheus.Registry, db *sqlite.DB, logger *slog.Logger) {
+	registry.MustRegister(&entityCollector{db: db, logger: logger})
+}
+
+// entityCollector implements prometheus.Collector for entity count metrics.
+type entityCollector struct {
+	db     *sqlite.DB
+	logger *slog.Logger
+}
+
+var (
+	usersDesc = prometheus.NewDesc(
+		"users_total",
+		"Total number of users.",
+		[]string{"type"}, nil,
+	)
+	vmsDesc = prometheus.NewDesc(
+		"vms_total",
+		"Total number of VMs.",
+		nil, nil,
+	)
+)
+
+func (c *entityCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- usersDesc
+	ch <- vmsDesc
+}
+
+func (c *entityCollector) Collect(ch chan<- prometheus.Metric) {
+	var loginUsers, devUsers, vms int64
+
+	err := c.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
+		q := exedb.New(rx.Conn())
+		var err error
+		if loginUsers, err = q.CountLoginUsers(ctx); err != nil {
+			return err
+		}
+		if devUsers, err = q.CountDevUsers(ctx); err != nil {
+			return err
+		}
+		if vms, err = q.CountBoxes(ctx); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		c.logger.Error("failed to collect entity metrics", "error", err)
+		return
+	}
+
+	ch <- prometheus.MustNewConstMetric(usersDesc, prometheus.GaugeValue, float64(loginUsers), "login")
+	ch <- prometheus.MustNewConstMetric(usersDesc, prometheus.GaugeValue, float64(devUsers), "dev")
+	ch <- prometheus.MustNewConstMetric(vmsDesc, prometheus.GaugeValue, float64(vms))
 }

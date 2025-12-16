@@ -25,3 +25,9 @@ UPDATE users SET root_support = ? WHERE user_id = ?;
 
 -- name: GetUserRootSupport :one
 SELECT root_support FROM users WHERE user_id = ?;
+
+-- name: CountLoginUsers :one
+SELECT COUNT(*) FROM users WHERE created_for_login_with_exe = 1;
+
+-- name: CountDevUsers :one
+SELECT COUNT(*) FROM users WHERE created_for_login_with_exe = 0;
