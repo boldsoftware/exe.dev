@@ -830,6 +830,114 @@ function makeDevExeDashboard() {
     }
   );
 
+  // Entity Counts
+  dash.withRow(
+    new RowBuilder("Entity Counts").gridPos({
+      x: 0,
+      y: 95,
+      w: 24,
+      h: 1,
+    })
+  );
+
+  const loginUsersPanel = new StatBuilder()
+    .title("Login Users")
+    .gridPos({ x: 0, y: 96, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`users_total{type="login",${STAGE_FILTER}}`)
+        .legendFormat("Login Users")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(loginUsersPanel);
+
+  const devUsersPanel = new StatBuilder()
+    .title("Dev Users")
+    .gridPos({ x: 6, y: 96, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`users_total{type="dev",${STAGE_FILTER}}`)
+        .legendFormat("Dev Users")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(devUsersPanel);
+
+  const vmsCountPanel = new StatBuilder()
+    .title("Total VMs")
+    .gridPos({ x: 12, y: 96, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`vms_total{${STAGE_FILTER}}`)
+        .legendFormat("VMs")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(vmsCountPanel);
+
+  // Users and VMs over time
+  const usersOverTimePanel = new TimeseriesBuilder()
+    .title("Users Over Time")
+    .min(0)
+    .gridPos({ x: 0, y: 100, w: 12, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`users_total{type="login",${STAGE_FILTER}}`)
+        .legendFormat("{{stage}} login")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`users_total{type="dev",${STAGE_FILTER}}`)
+        .legendFormat("{{stage}} dev")
+    );
+  dash.withPanel(usersOverTimePanel);
+
+  const vmsOverTimePanel = new TimeseriesBuilder()
+    .title("VMs Over Time")
+    .min(0)
+    .gridPos({ x: 12, y: 100, w: 12, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`vms_total{${STAGE_FILTER}}`)
+        .legendFormat("{{stage}}")
+    );
+  dash.withPanel(vmsOverTimePanel);
+
+  // Proxy Bytes
+  dash.withRow(
+    new RowBuilder("Proxy Bytes").gridPos({
+      x: 0,
+      y: 106,
+      w: 24,
+      h: 1,
+    })
+  );
+
+  addTimeseriesChart(
+    "Proxy Bytes Rate",
+    `sum(rate(proxy_bytes_total{${STAGE_FILTER}}[$__rate_interval])) by (direction, stage)`,
+    {
+      panelCustomization: (x) => x.unit("Bps").min(0).gridPos({ x: 0, y: 107, w: 12, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}} {{direction}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Proxy Bytes Total",
+    `sum(increase(proxy_bytes_total{${STAGE_FILTER}}[1h])) by (direction, stage)`,
+    {
+      panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 12, y: 107, w: 12, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}} {{direction}}"),
+    }
+  );
+
   return dash;
 }
 
