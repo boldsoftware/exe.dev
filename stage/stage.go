@@ -4,6 +4,8 @@ package stage
 import "fmt"
 
 // An Env represents a deployment stage/environment.
+//
+//exe:completeinit
 type Env struct {
 	// Note: there is intentionally no string Name or DevMode field here.
 	// The instant one gets added, LLMs will start doing things like `if env.Name == "prod" {...}`.
