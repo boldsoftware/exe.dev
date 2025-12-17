@@ -45,7 +45,8 @@ nohup "$EXELETD" \
     --network-manager-address "nat://${DATA_DIR}/network?network=10.42.0.0/16" \
     --runtime-address "cloudhypervisor://${DATA_DIR}/runtime" \
     --exed-url "http://127.0.0.1:9081" \
-    --listen-address "tcp://127.0.0.1:9080" >/tmp/exeletd.log 2>&1 &
+    --listen-address "tcp://127.0.0.1:9080" \
+    --enable-hugepages >/tmp/exeletd.log 2>&1 &
 
 EXELET_PID=$!
 echo "Started exeletd with PID $EXELET_PID"

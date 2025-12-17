@@ -240,6 +240,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 		"--resource-manager-interval", "5s",
 		"--idle-threshold", "10m",
 		"--exed-url", exedProxyURL,
+		"--enable-hugepages",
 	}
 	slog.DebugContext(ctx, "starting exelet", "cmd", args)
 
