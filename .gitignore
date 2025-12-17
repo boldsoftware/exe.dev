@@ -33,3 +33,6 @@ exeletd
 /exelet-ctl
 exelet-fs-*
 ops/kernel-builder/output
+
+# assorted cmd/* binaries that LLMs like to drop straight in the repo root, natch
+blogd
