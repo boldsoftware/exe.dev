@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"runtime/debug"
+	"sort"
 	"time"
 
 	"exe.dev/exedb"
@@ -32,6 +33,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/boxes/delete", s.handleDebugBoxDelete)
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
 	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
+	mux.HandleFunc("/debug/exelets", s.handleDebugExelets)
+	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -75,6 +78,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/gitsha">gitsha</a></li>
     <li><a href="/debug/boxes">boxes</a> (<a href="/debug/boxes?format=json">json</a>)</li>
     <li><a href="/debug/users">users</a> (<a href="/debug/users?format=json">json</a>)</li>
+    <li><a href="/debug/exelets">exelets</a> (<a href="/debug/exelets?format=json">json</a>)</li>
 </ul>
 <p>Git version: %s %s</p>
 </body></html>
@@ -772,4 +776,187 @@ func formatInt64Ptr(v *int64) string {
 		return "-"
 	}
 	return fmt.Sprintf("%d", *v)
+}
+
+// handleDebugExelets displays a list of all exelets with their status and allows setting a preferred exelet.
+func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	type exeletInfo struct {
+		Address      string `json:"address"`
+		Version      string `json:"version"`
+		Arch         string `json:"arch"`
+		Status       string `json:"status"`
+		IsPreferred  bool   `json:"is_preferred"`
+		InstanceCount int   `json:"instance_count"`
+		Error        string `json:"error,omitempty"`
+	}
+
+	// Get the preferred exelet setting
+	preferredAddr, _ := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
+		return queries.GetPreferredExelet(ctx)
+	})
+
+	var exelets []exeletInfo
+
+	// Gather info from all exelet clients
+	for addr, ec := range s.exeletClients {
+		info := exeletInfo{
+			Address:     addr,
+			Version:     ec.client.Version(),
+			Arch:        ec.client.Arch(),
+			IsPreferred: addr == preferredAddr,
+		}
+
+		// Try to get system info to verify connectivity
+		sysInfoCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		resp, err := ec.client.GetSystemInfo(sysInfoCtx, &computeapi.GetSystemInfoRequest{})
+		cancel()
+		if err != nil {
+			info.Status = "error"
+			info.Error = err.Error()
+		} else {
+			info.Status = "healthy"
+			info.Version = resp.Version
+			info.Arch = resp.Arch
+		}
+
+		// Count instances
+		listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		stream, err := ec.client.ListInstances(listCtx, &computeapi.ListInstancesRequest{})
+		if err == nil {
+			count := 0
+			for {
+				_, err := stream.Recv()
+				if err != nil {
+					break
+				}
+				count++
+			}
+			info.InstanceCount = count
+		}
+		cancel()
+
+		exelets = append(exelets, info)
+	}
+
+	// Sort exelets by address for consistent display
+	sort.Slice(exelets, func(i, j int) bool {
+		return exelets[i].Address < exelets[j].Address
+	})
+
+	// Check if JSON format is requested
+	if r.URL.Query().Get("format") == "json" {
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(exelets); err != nil {
+			s.slog().ErrorContext(ctx, "Failed to encode exelets", "error", err)
+		}
+		return
+	}
+
+	// HTML output
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>Exelets</title>
+<style>
+table { border-collapse: collapse; margin: 10px 0; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+th { background: #f5f5f5; }
+.status-healthy { color: green; font-weight: bold; }
+.status-error { color: red; font-weight: bold; }
+.preferred { background: #d4edda; }
+.set-btn { padding: 4px 12px; cursor: pointer; border-radius: 3px; border: 1px solid #007bff; background: #007bff; color: white; }
+.set-btn:hover { background: #0056b3; }
+.clear-btn { padding: 4px 12px; cursor: pointer; border-radius: 3px; border: 1px solid #dc3545; background: #dc3545; color: white; }
+.clear-btn:hover { background: #c82333; }
+</style>
+</head><body>
+<h1>Exelets</h1>
+<p><a href="/debug/exelets?format=json">View as JSON</a></p>
+`)
+
+	if len(exelets) == 0 {
+		fmt.Fprintf(w, "<p>No exelets configured.</p>\n")
+	} else {
+		fmt.Fprintf(w, "<table>\n")
+		fmt.Fprintf(w, "<tr><th>Address</th><th>Status</th><th>Version</th><th>Arch</th><th>Instances</th><th>Actions</th></tr>\n")
+		for _, e := range exelets {
+			rowClass := ""
+			if e.IsPreferred {
+				rowClass = " class='preferred'"
+			}
+			statusClass := "status-healthy"
+			statusText := e.Status
+			if e.Status == "error" {
+				statusClass = "status-error"
+				statusText = fmt.Sprintf("error: %s", e.Error)
+			}
+
+			fmt.Fprintf(w, "<tr%s>", rowClass)
+			fmt.Fprintf(w, "<td><code>%s</code></td>", html.EscapeString(e.Address))
+			fmt.Fprintf(w, "<td class='%s'>%s</td>", statusClass, html.EscapeString(statusText))
+			fmt.Fprintf(w, "<td>%s</td>", html.EscapeString(e.Version))
+			fmt.Fprintf(w, "<td>%s</td>", html.EscapeString(e.Arch))
+			fmt.Fprintf(w, "<td>%d</td>", e.InstanceCount)
+			fmt.Fprintf(w, "<td>")
+			if !e.IsPreferred {
+				fmt.Fprintf(w, `<form method="post" action="/debug/exelets/set-preferred" style="display: inline;" onsubmit="return confirm('Set %s as the preferred exelet?');">
+<input type="hidden" name="address" value="%s">
+<button type="submit" class="set-btn">Set as Preferred</button>
+</form>`, html.EscapeString(e.Address), html.EscapeString(e.Address))
+			} else {
+				fmt.Fprintf(w, `⭐ <form method="post" action="/debug/exelets/set-preferred" style="display: inline;" onsubmit="return confirm('Clear preferred exelet?');">
+<input type="hidden" name="address" value="">
+<button type="submit" class="clear-btn">Clear Preference</button>
+</form>`)
+			}
+			fmt.Fprintf(w, "</td>")
+			fmt.Fprintf(w, "</tr>\n")
+		}
+		fmt.Fprintf(w, "</table>\n")
+	}
+
+	fmt.Fprintf(w, `<p><a href="/debug">Back to debug index</a></p>
+</body></html>
+`)
+}
+
+// handleDebugSetPreferredExelet sets or clears the preferred exelet.
+func (s *Server) handleDebugSetPreferredExelet(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	address := r.FormValue("address")
+
+	if address == "" {
+		// Clear the preferred exelet
+		err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.ClearPreferredExelet(ctx)
+		})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to clear preferred exelet: %v", err), http.StatusInternalServerError)
+			return
+		}
+		s.slog().InfoContext(ctx, "preferred exelet cleared via debug page")
+	} else {
+		// Verify the address is valid (exists in our exelet clients)
+		if _, ok := s.exeletClients[address]; !ok {
+			http.Error(w, fmt.Sprintf("unknown exelet address: %s", address), http.StatusBadRequest)
+			return
+		}
+
+		// Set the preferred exelet
+		err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.SetPreferredExelet(ctx, address)
+		})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to set preferred exelet: %v", err), http.StatusInternalServerError)
+			return
+		}
+		s.slog().InfoContext(ctx, "preferred exelet set via debug page", "address", address)
+	}
+
+	// Redirect back to the exelets page
+	http.Redirect(w, r, "/debug/exelets", http.StatusSeeOther)
 }

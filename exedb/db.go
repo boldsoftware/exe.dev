@@ -39,6 +39,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.cleanupExpiredPasskeyChallengesStmt, err = db.PrepareContext(ctx, cleanupExpiredPasskeyChallenges); err != nil {
 		return nil, fmt.Errorf("error preparing query CleanupExpiredPasskeyChallenges: %w", err)
 	}
+	if q.clearPreferredExeletStmt, err = db.PrepareContext(ctx, clearPreferredExelet); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearPreferredExelet: %w", err)
+	}
 	if q.countBoxShareLinksStmt, err = db.PrepareContext(ctx, countBoxShareLinks); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxShareLinks: %w", err)
 	}
@@ -201,6 +204,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getPendingSSHKeyEmailByPublicKeyStmt, err = db.PrepareContext(ctx, getPendingSSHKeyEmailByPublicKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingSSHKeyEmailByPublicKey: %w", err)
 	}
+	if q.getPreferredExeletStmt, err = db.PrepareContext(ctx, getPreferredExelet); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPreferredExelet: %w", err)
+	}
 	if q.getProxyBearerTokenStmt, err = db.PrepareContext(ctx, getProxyBearerToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetProxyBearerToken: %w", err)
 	}
@@ -312,6 +318,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.setBoxSupportAccessAllowedStmt, err = db.PrepareContext(ctx, setBoxSupportAccessAllowed); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxSupportAccessAllowed: %w", err)
 	}
+	if q.setPreferredExeletStmt, err = db.PrepareContext(ctx, setPreferredExelet); err != nil {
+		return nil, fmt.Errorf("error preparing query SetPreferredExelet: %w", err)
+	}
 	if q.setUserRootSupportStmt, err = db.PrepareContext(ctx, setUserRootSupport); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserRootSupport: %w", err)
 	}
@@ -388,6 +397,11 @@ func (q *Queries) Close() error {
 	if q.cleanupExpiredPasskeyChallengesStmt != nil {
 		if cerr := q.cleanupExpiredPasskeyChallengesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing cleanupExpiredPasskeyChallengesStmt: %w", cerr)
+		}
+	}
+	if q.clearPreferredExeletStmt != nil {
+		if cerr := q.clearPreferredExeletStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearPreferredExeletStmt: %w", cerr)
 		}
 	}
 	if q.countBoxShareLinksStmt != nil {
@@ -660,6 +674,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getPendingSSHKeyEmailByPublicKeyStmt: %w", cerr)
 		}
 	}
+	if q.getPreferredExeletStmt != nil {
+		if cerr := q.getPreferredExeletStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPreferredExeletStmt: %w", cerr)
+		}
+	}
 	if q.getProxyBearerTokenStmt != nil {
 		if cerr := q.getProxyBearerTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getProxyBearerTokenStmt: %w", cerr)
@@ -845,6 +864,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setBoxSupportAccessAllowedStmt: %w", cerr)
 		}
 	}
+	if q.setPreferredExeletStmt != nil {
+		if cerr := q.setPreferredExeletStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setPreferredExeletStmt: %w", cerr)
+		}
+	}
 	if q.setUserRootSupportStmt != nil {
 		if cerr := q.setUserRootSupportStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setUserRootSupportStmt: %w", cerr)
@@ -969,6 +993,7 @@ type Queries struct {
 	boxWithOwnerNamedStmt                  *sql.Stmt
 	boxesForUserStmt                       *sql.Stmt
 	cleanupExpiredPasskeyChallengesStmt    *sql.Stmt
+	clearPreferredExeletStmt               *sql.Stmt
 	countBoxShareLinksStmt                 *sql.Stmt
 	countBoxSharesStmt                     *sql.Stmt
 	countBoxesStmt                         *sql.Stmt
@@ -1023,6 +1048,7 @@ type Queries struct {
 	getPendingBoxSharesByEmailStmt         *sql.Stmt
 	getPendingSSHKeyByTokenStmt            *sql.Stmt
 	getPendingSSHKeyEmailByPublicKeyStmt   *sql.Stmt
+	getPreferredExeletStmt                 *sql.Stmt
 	getProxyBearerTokenStmt                *sql.Stmt
 	getSSHHostKeyStmt                      *sql.Stmt
 	getSSHKeysForUserStmt                  *sql.Stmt
@@ -1060,6 +1086,7 @@ type Queries struct {
 	recordUserEventStmt                    *sql.Stmt
 	sSHKeyForBoxNamedStmt                  *sql.Stmt
 	setBoxSupportAccessAllowedStmt         *sql.Stmt
+	setPreferredExeletStmt                 *sql.Stmt
 	setUserRootSupportStmt                 *sql.Stmt
 	updateAuthCookieLastUsedStmt           *sql.Stmt
 	updateAuthTokenUsedAtStmt              *sql.Stmt
@@ -1087,6 +1114,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		boxWithOwnerNamedStmt:                  q.boxWithOwnerNamedStmt,
 		boxesForUserStmt:                       q.boxesForUserStmt,
 		cleanupExpiredPasskeyChallengesStmt:    q.cleanupExpiredPasskeyChallengesStmt,
+		clearPreferredExeletStmt:               q.clearPreferredExeletStmt,
 		countBoxShareLinksStmt:                 q.countBoxShareLinksStmt,
 		countBoxSharesStmt:                     q.countBoxSharesStmt,
 		countBoxesStmt:                         q.countBoxesStmt,
@@ -1141,6 +1169,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPendingBoxSharesByEmailStmt:         q.getPendingBoxSharesByEmailStmt,
 		getPendingSSHKeyByTokenStmt:            q.getPendingSSHKeyByTokenStmt,
 		getPendingSSHKeyEmailByPublicKeyStmt:   q.getPendingSSHKeyEmailByPublicKeyStmt,
+		getPreferredExeletStmt:                 q.getPreferredExeletStmt,
 		getProxyBearerTokenStmt:                q.getProxyBearerTokenStmt,
 		getSSHHostKeyStmt:                      q.getSSHHostKeyStmt,
 		getSSHKeysForUserStmt:                  q.getSSHKeysForUserStmt,
@@ -1178,6 +1207,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		recordUserEventStmt:                    q.recordUserEventStmt,
 		sSHKeyForBoxNamedStmt:                  q.sSHKeyForBoxNamedStmt,
 		setBoxSupportAccessAllowedStmt:         q.setBoxSupportAccessAllowedStmt,
+		setPreferredExeletStmt:                 q.setPreferredExeletStmt,
 		setUserRootSupportStmt:                 q.setUserRootSupportStmt,
 		updateAuthCookieLastUsedStmt:           q.updateAuthCookieLastUsedStmt,
 		updateAuthTokenUsedAtStmt:              q.updateAuthTokenUsedAtStmt,

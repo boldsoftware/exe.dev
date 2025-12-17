@@ -550,6 +550,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// Initialize exelet clients
 	exeletClients := make(map[string]*exeletClient)
 	var validExeletAddrs []string
+	exeletClientMetrics := exeletclient.NewClientMetrics(cfg.MetricsRegistry)
 	for _, addr := range cfg.ExeletAddresses {
 		if addr == "" {
 			continue
@@ -557,7 +558,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		client, err := exeletclient.NewClient(addr,
 			exeletclient.WithInsecure(),
 			exeletclient.WithLogger(slog),
-			exeletclient.WithMetrics(cfg.MetricsRegistry))
+			exeletclient.WithClientMetrics(exeletClientMetrics))
 		if err != nil {
 			slog.Warn("failed to create exelet client, skipping host", "addr", addr, "error", err)
 			continue
@@ -2456,13 +2457,30 @@ func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDet
 	}, nil
 }
 
-// selectExeletClient selects an exelet client using a simple round-robin based on user ID
-func (s *Server) selectExeletClient(userID string) (*exeletClient, string, error) {
+// selectExeletClient selects an exelet client. If a preferred exelet is configured and available,
+// it uses that. Otherwise, falls back to hash-based selection using user ID.
+func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exeletClient, string, error) {
 	if len(s.exeletAddrs) == 0 {
 		return nil, "", fmt.Errorf("no exelet clients available")
 	}
 
-	// TODO: consistent hash generation across multiple backends
+	// Check for preferred exelet setting
+	preferredAddr, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
+		return queries.GetPreferredExelet(ctx)
+	})
+	if err == nil && preferredAddr != "" {
+		// Preferred exelet is configured, try to use it
+		if client, ok := s.exeletClients[preferredAddr]; ok {
+			return client, preferredAddr, nil
+		}
+		// Preferred exelet is not available, log error and fall back
+		slog.ErrorContext(ctx, "preferred exelet not available, falling back to hash-based selection",
+			"preferred_addr", preferredAddr,
+			"available_addrs", s.exeletAddrs)
+	}
+
+	// Fall back to hash-based selection
+	// TODO: consistent hashing? best-of-two random choices based on resource availability?
 	hash := 0
 	for _, c := range userID {
 		hash = hash*31 + int(c)

@@ -21,7 +21,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy-exed deploy-exed-staging deploy-exelet deploy-exelet-staging deploy-whoami deploy-what deploy-qa deploy-piperd deploy-piperd-staging clean run-dev generate whoami-clean ssh-exed-staging ssh-ctr-staging
+.PHONY: help build test deploy-exed deploy-exed-staging deploy-exelet deploy-exelet-staging deploy-whoami deploy-what deploy-qa deploy-piperd deploy-piperd-staging clean run-dev run-devlet run-devlets generate whoami-clean ssh-exed-staging ssh-ctr-staging
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -111,9 +111,13 @@ run-dev: ## Run exed locally for development
 	@echo "Starting dev server with ghcr.io/boldsoftware/exeuntu:latest"
 	@go run ./cmd/exed/exed.go -dev=local -http=:8080 -ssh=:2223
 
-run-devlet: ## Run exed locally for development along with exelet
-	@echo "Starting dev server with ghcr.io/boldsoftware/exeuntu:latest"
+run-devlet: ## Run exed locally for development along with exelet on lima-exe-ctr
+	@echo "Starting dev server with exelet on lima-exe-ctr"
 	@LOG_LEVEL=debug go run ./cmd/exed/exed.go -dev=local -http=:8080 -ssh=:2223 -start-exelet
+
+run-devlets: ## Run exed locally with exelets on both lima-exe-ctr and lima-exe-ctr-tests
+	@echo "Starting dev server with exelets on lima-exe-ctr and lima-exe-ctr-tests"
+	@LOG_LEVEL=debug go run ./cmd/exed/exed.go -dev=local -http=:8080 -ssh=:2223 -start-exelet -multi-exelet
 
 run-sshpiper: ## Run sshpiper proxy server
 	@echo "Starting sshpiper proxy..."

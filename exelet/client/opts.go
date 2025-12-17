@@ -23,15 +23,22 @@ func WithLogger(log *slog.Logger) ClientOpt {
 	}
 }
 
-// WithMetrics sets up gRPC metrics using the provided registry
-func WithMetrics(registry *prometheus.Registry) ClientOpt {
+// WithClientMetrics sets pre-created gRPC client metrics.
+// Create with NewClientMetrics.
+func WithClientMetrics(metrics *grpcprom.ClientMetrics) ClientOpt {
 	return func(c *ClientConfig) {
-		clientMetrics := grpcprom.NewClientMetrics(
-			grpcprom.WithClientHandlingTimeHistogram(
-				grpcprom.WithHistogramBuckets([]float64{0.01, 0.1, 0.3, 0.6, 1, 1.4, 2, 3, 6, 9, 20, 30, 60, 90}),
-			),
-		)
-		registry.MustRegister(clientMetrics)
-		c.Metrics = clientMetrics
+		c.Metrics = metrics
 	}
+}
+
+// NewClientMetrics creates gRPC client metrics and registers them with the registry.
+// Use this once, then pass to multiple clients via WithClientMetrics.
+func NewClientMetrics(registry *prometheus.Registry) *grpcprom.ClientMetrics {
+	clientMetrics := grpcprom.NewClientMetrics(
+		grpcprom.WithClientHandlingTimeHistogram(
+			grpcprom.WithHistogramBuckets([]float64{0.01, 0.1, 0.3, 0.6, 1, 1.4, 2, 3, 6, 9, 20, 30, 60, 90}),
+		),
+	)
+	registry.MustRegister(clientMetrics)
+	return clientMetrics
 }

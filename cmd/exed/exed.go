@@ -50,6 +50,7 @@ func run() error {
 	openBrowser := flag.Bool("open", false, "Open web browser to HTTP server (dev mode only)")
 	profilePath := flag.String("profile", "", "Enable CPU profiling for 30 seconds, saving to /tmp/exed-profile-<timestamp>.prof or specified path")
 	startExelet := flag.Bool("start-exelet", false, "Build and start exelet on lima-exe-ctr (dev mode only)")
+	multiExelet := flag.Bool("multi-exelet", false, "with -start-exelet, also start exelet on lima-exe-ctr-tests; may interact badly with concurrent automated tests")
 	flag.Parse()
 
 	// Validate dev mode
@@ -96,6 +97,11 @@ func run() error {
 		return fmt.Errorf("-start-exelet flag is only available in dev mode")
 	}
 
+	// -multi-exelet requires -start-exelet
+	if *multiExelet && !*startExelet {
+		return fmt.Errorf("-multi-exelet requires -start-exelet")
+	}
+
 	// Validate -start-exelet is incompatible with explicit addresses
 	if *startExelet {
 		if *exeletAddresses != "" {
@@ -110,13 +116,13 @@ func run() error {
 	logging.SetupLogger(*devMode, metricsRegistry)
 	slog.Info("Starting exed server")
 
-	// Start exelet if requested
+	// Start exelet(s) if requested
 	if *startExelet {
-		addr, gw, err := startExeletRemote(*devMode, *httpAddr)
+		addr, gw, err := startExeletsRemote(*devMode, *httpAddr, *multiExelet)
 		if err != nil {
-			return fmt.Errorf("failed to start exelet: %w", err)
+			return fmt.Errorf("failed to start exelets: %w", err)
 		}
-		slog.Info("exelet started successfully", "address", addr, "gateway", gw)
+		slog.Info("exelets started successfully", "addresses", addr, "gateway", gw)
 
 		// Set the exelet-addresses
 		*exeletAddresses = addr
@@ -293,36 +299,28 @@ func testRemoteToLocalConnectivity(ctx context.Context, host, gateway string, po
 	return err == nil
 }
 
-// startExeletRemote builds exelet, uploads to lima-exe-ctr, kills old instances, and starts it.
-// Returns the exelet address (tcp://lima-exe-ctr.local:PORT) and gateway address (which
-// is the address by which the exelet can dial the exed process).
-func startExeletRemote(devMode, httpAddr string) (string, string, error) {
-	host := "lima-exe-ctr.local"
-	slog.Info("starting remote exelet", "host", host)
+// startExeletsRemote builds exelet, uploads to lima dev host(s), kills old instances, and starts them.
+// If multiExelet is true, also starts on lima-exe-ctr-tests.
+// Returns a comma-separated list of exelet addresses and gateway address.
+func startExeletsRemote(devMode, httpAddr string, multiExelet bool) (string, string, error) {
+	const (
+		// Primary, normal dev lima VM
+		limaDevHost = "lima-exe-ctr.local"
+		// Secondary lima VM, normally reserved for automated tests
+		limaDevHostTests = "lima-exe-ctr-tests.local"
+	)
+
+	hosts := []string{limaDevHost}
+	if multiExelet {
+		hosts = append(hosts, limaDevHostTests)
+	}
+	slog.Info("starting remote exelets", "hosts", hosts)
 
 	// Build exelet binary
 	slog.Info("building exelet binary")
 	binPath, err := buildExeletBinary()
 	if err != nil {
 		return "", "", fmt.Errorf("failed to build exelet: %w", err)
-	}
-
-	ctx := context.Background()
-
-	// Stop any existing exelet instances
-	// no error handling because pkill fails if there's nothing to kill
-	sshExec(ctx, host, "sudo pkill -9 -f exeletd")
-
-	// Upload binary
-	remotePath := "/tmp/exeletd"
-	slog.InfoContext(ctx, "uploading exelet to remote host", "host", host, "path", remotePath)
-	if err := scpUpload(binPath, host, remotePath); err != nil {
-		return "", "", fmt.Errorf("failed to upload exelet: %w", err)
-	}
-
-	// Make executable
-	if _, err := sshExec(ctx, host, "chmod +x "+remotePath); err != nil {
-		return "", "", fmt.Errorf("failed to chmod exelet: %w", err)
 	}
 
 	// Determine LOG_FORMAT and LOG_LEVEL from environment, with dev mode defaults
@@ -339,8 +337,11 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 		logLevel = "debug"
 	}
 
+	ctx := context.Background()
+
 	// Get the gateway address early so we can construct exed URL
-	gateway, err := sshExec(ctx, host, "getent ahostsv4 _gateway | grep _gateway | awk '{ print $1; }'")
+	// All Lima VMs on the same Mac share the same gateway, so use primary host.
+	gateway, err := sshExec(ctx, limaDevHost, "getent ahostsv4 _gateway | grep _gateway | awk '{ print $1; }'")
 	if err != nil {
 		return "", "", fmt.Errorf("failed to resolve gateway: %w", err)
 	}
@@ -355,15 +356,47 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("failed to set up local listener: %w", err)
 	}
-	defer tmpLn.Close()
 	tmpPort := tmpLn.Addr().(*net.TCPAddr).Port
-
 	// Test if remote host can reach local port
 	// Usually local->ssh_ctr and ssh_ctr->local connectivity works. However, in some
 	// environments, such as coding agents that operate in containers, this connectivity
 	// does NOT work, and we set up an SSH tunnel for the exelet->exed communication
 	// as a band-aid.
-	needsTunnel := !testRemoteToLocalConnectivity(ctx, host, gateway, tmpPort)
+	needsTunnel := !testRemoteToLocalConnectivity(ctx, limaDevHost, gateway, tmpPort)
+	tmpLn.Close()
+
+	var exeletAddrs []string
+	for _, host := range hosts {
+		addr, err := startExeletOnHost(ctx, host, binPath, logFormat, logLevel, httpAddr, gateway, needsTunnel)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to start exelet on %q: %w", host, err)
+		}
+		exeletAddrs = append(exeletAddrs, addr)
+	}
+
+	slog.InfoContext(ctx, "exelets started", "addresses", exeletAddrs, "gateway", gateway)
+	return strings.Join(exeletAddrs, ","), gateway, nil
+}
+
+// startExeletOnHost starts exelet on a single host. Returns the exelet address.
+func startExeletOnHost(ctx context.Context, host, binPath, logFormat, logLevel, httpAddr, gateway string, needsTunnel bool) (string, error) {
+	slog.InfoContext(ctx, "starting remote exelet", "host", host)
+
+	// Stop any existing exelet instances
+	// no error handling because pkill fails if there's nothing to kill
+	sshExec(ctx, host, "sudo pkill -9 -f exeletd")
+
+	// Upload binary
+	remotePath := "/tmp/exeletd"
+	slog.InfoContext(ctx, "uploading exelet to remote host", "host", host, "path", remotePath)
+	if err := scpUpload(binPath, host, remotePath); err != nil {
+		return "", fmt.Errorf("failed to upload exelet: %w", err)
+	}
+
+	// Make executable
+	if _, err := sshExec(ctx, host, "chmod +x "+remotePath); err != nil {
+		return "", fmt.Errorf("failed to chmod exelet: %w", err)
+	}
 
 	// Construct exed URL
 	var exedURL string
@@ -373,19 +406,19 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 		httpPort, _ := strconv.Atoi(httpPortStr)
 		if httpPort == 0 {
 			// Parse failed, or dynamic port. Use gateway approach.
-			exedURL := fmt.Sprintf("http://%s%s", gateway, httpAddr)
+			exedURL = fmt.Sprintf("http://%s%s", gateway, httpAddr)
 			slog.InfoContext(ctx, "starting exeletd on remote host", "exed_url", exedURL)
 			if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL); err != nil {
-				return "", "", err
+				return "", err
 			}
-			return waitForExeletAndReturnAddress(host, gateway)
+			return waitForExeletAddress(host)
 		}
 		slog.InfoContext(ctx, "remote->local connectivity not available, using SSH reverse tunnel", "http_port", httpPort)
 
 		// Start SSH tunnel and discover remote port
 		remotePort, err := startSSHTunnelForExed(host, httpPort)
 		if err != nil {
-			return "", "", fmt.Errorf("failed to start SSH tunnel: %w", err)
+			return "", fmt.Errorf("failed to start SSH tunnel: %w", err)
 		}
 
 		slog.InfoContext(ctx, "SSH tunnel established", "remote_port", remotePort, "local_port", httpPort)
@@ -398,9 +431,9 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 	// Start exelet via SSH - the SSH command will keep running
 	slog.InfoContext(ctx, "starting exeletd on remote host", "exed_url", exedURL)
 	if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL); err != nil {
-		return "", "", err
+		return "", err
 	}
-	return waitForExeletAndReturnAddress(host, gateway)
+	return waitForExeletAddress(host)
 }
 
 // startExeletProcess starts the exelet process on the remote host via SSH.
@@ -433,10 +466,10 @@ func startExeletProcess(ctx context.Context, host, logFormat, logLevel, exedURL 
 	return nil
 }
 
-// waitForExeletAndReturnAddress waits for exelet to start and returns its address.
-func waitForExeletAndReturnAddress(host, gateway string) (string, string, error) {
+// waitForExeletAddress waits for exelet to start and returns its address.
+func waitForExeletAddress(host string) (string, error) {
 	// Wait for exelet to start by aggressively trying to connect to the port
-	slog.Info("waiting for exelet to start listening")
+	slog.Info("waiting for exelet to start listening", "host", host)
 	exeletPort := "9080"
 	timeout := 30 * time.Second
 	deadline := time.Now().Add(timeout)
@@ -451,14 +484,14 @@ func waitForExeletAndReturnAddress(host, gateway string) (string, string, error)
 		time.Sleep(100 * time.Millisecond)
 	}
 	if !connected {
-		return "", "", fmt.Errorf("timeout waiting for exelet to listen on %s:%s", host, exeletPort)
+		return "", fmt.Errorf("timeout waiting for exelet to listen on %s:%s", host, exeletPort)
 	}
 
 	// Construct the exelet address
 	exeletAddr := fmt.Sprintf("tcp://%s:%s", host, exeletPort)
 
-	slog.Info("exelet startup complete", "address", exeletAddr, "gateway", gateway)
-	return exeletAddr, gateway, nil
+	slog.Info("exelet startup complete", "address", exeletAddr)
+	return exeletAddr, nil
 }
 
 // buildExeletBinary builds exelet for Linux and returns path to the binary

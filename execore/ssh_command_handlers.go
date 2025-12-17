@@ -385,7 +385,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	completionChan := make(chan instanceCompletion, 1)
 
 	// Select exelet client
-	exeletClient, exeletAddr, err := ss.server.selectExeletClient(cc.User.ID)
+	exeletClient, exeletAddr, err := ss.server.selectExeletClient(ctx, cc.User.ID)
 	if err != nil {
 		return fmt.Errorf("failed to select exelet: %w", err)
 	}
