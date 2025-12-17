@@ -442,6 +442,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if info := GetRequestLogInfo(r.Context()); info != nil {
 		info.IsProxy = isProxy
 		info.IsTerminal = isTerminal
+		// Try to get userID from auth cookie for logging purposes
+		if userID, err := s.validateAuthCookie(r); err == nil {
+			info.UserID = userID
+		}
 	}
 	if isTerminal {
 		metricsbag.SetLabel(r.Context(), LabelProxy, "false")
@@ -471,6 +475,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
 	switch path {
 	case "/":
 		// If authenticated, show user dashboard; otherwise show index page

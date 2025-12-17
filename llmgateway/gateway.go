@@ -1,6 +1,7 @@
 package llmgateway
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"github.com/prometheus/client_golang/prometheus"
 	"tailscale.com/net/tsaddr"
@@ -23,7 +25,7 @@ var (
 			Name: "llm_tokens_total",
 			Help: "Total number of tokens by type, model and API type",
 		},
-		[]string{"token_type", "model", "api_type"},
+		[]string{"token_type", "model", "api_type", "vm_name", "user_id"},
 	)
 
 	// Counter for cost in USD by model
@@ -32,7 +34,7 @@ var (
 			Name: "llm_cost_usd_total",
 			Help: "Total cost in USD by model",
 		},
-		[]string{"model", "api_type"},
+		[]string{"model", "api_type", "vm_name", "user_id"},
 	)
 
 	// Counter for requests proxied
@@ -146,7 +148,20 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m.log.InfoContext(r.Context(), "authenticated via X-Exedev-Box header", "box", boxName, "remote_ip", host)
+	// Look up the box to get the user ID for logging and metrics
+	userID := ""
+	if err := m.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		box, err := exedb.New(rx.Conn()).BoxNamed(ctx, boxName)
+		if err != nil {
+			return err
+		}
+		userID = box.CreatedByUserID
+		return nil
+	}); err != nil {
+		m.log.WarnContext(r.Context(), "failed to look up box for user ID", "box", boxName, "error", err)
+	}
+
+	m.log.InfoContext(r.Context(), "authenticated via X-Exedev-Box header", "box", boxName, "remote_ip", host, "user_id", userID)
 	// Strip the header before forwarding
 	r.Header.Del("X-Exedev-Box")
 
@@ -179,14 +194,15 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r.URL.Path = remainder
 	var proxy *httputil.ReverseProxy
+	var transport *accountingTransport
 	var proxyErr error
 	switch alias {
 	case "anthropic":
-		proxy, proxyErr = m.createAnthropicProxy()
+		proxy, transport, proxyErr = m.createAnthropicProxy(r, boxName, userID)
 	case "openai":
-		proxy, proxyErr = m.createOpenAIProxy()
+		proxy, transport, proxyErr = m.createOpenAIProxy(r, boxName, userID)
 	case "fireworks":
-		proxy, proxyErr = m.createFireworksProxy()
+		proxy, transport, proxyErr = m.createFireworksProxy(r, boxName, userID)
 	default:
 		m.httpError(w, r, "unrecognized origin alias", http.StatusNotFound)
 		return
@@ -196,17 +212,22 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	proxy.ServeHTTP(w, r)
+	// For SSE responses, wait for processing to complete and add slog attributes
+	transport.WaitAndAddSSEAttributes()
 }
 
-func (m *llmGateway) createAnthropicProxy() (*httputil.ReverseProxy, error) {
+func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, userID string) (*httputil.ReverseProxy, *accountingTransport, error) {
 	if m.apiKeys.Anthropic == "" {
-		return nil, fmt.Errorf("anthropic api key not configured")
+		return nil, nil, fmt.Errorf("anthropic api key not configured")
 	}
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
 		db:           m.db,
 		apiType:      "anthropic",
 		log:          m.log,
+		incomingReq:  incomingReq,
+		boxName:      boxName,
+		userID:       userID,
 	}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
@@ -225,18 +246,21 @@ func (m *llmGateway) createAnthropicProxy() (*httputil.ReverseProxy, error) {
 		},
 	}
 
-	return proxy, nil
+	return proxy, transport, nil
 }
 
-func (m *llmGateway) createOpenAIProxy() (*httputil.ReverseProxy, error) {
+func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userID string) (*httputil.ReverseProxy, *accountingTransport, error) {
 	if m.apiKeys.OpenAI == "" {
-		return nil, fmt.Errorf("anthropic api key not configured")
+		return nil, nil, fmt.Errorf("openai api key not configured")
 	}
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
 		db:           m.db,
 		apiType:      "openai",
 		log:          m.log,
+		incomingReq:  incomingReq,
+		boxName:      boxName,
+		userID:       userID,
 	}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
@@ -256,18 +280,21 @@ func (m *llmGateway) createOpenAIProxy() (*httputil.ReverseProxy, error) {
 		},
 	}
 
-	return proxy, nil
+	return proxy, transport, nil
 }
 
-func (m *llmGateway) createFireworksProxy() (*httputil.ReverseProxy, error) {
+func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, userID string) (*httputil.ReverseProxy, *accountingTransport, error) {
 	if m.apiKeys.Fireworks == "" {
-		return nil, fmt.Errorf("fireworks api key not configured")
+		return nil, nil, fmt.Errorf("fireworks api key not configured")
 	}
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
 		db:           m.db,
 		apiType:      "fireworks",
 		log:          m.log,
+		incomingReq:  incomingReq,
+		boxName:      boxName,
+		userID:       userID,
 	}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
@@ -287,5 +314,5 @@ func (m *llmGateway) createFireworksProxy() (*httputil.ReverseProxy, error) {
 		},
 	}
 
-	return proxy, nil
+	return proxy, transport, nil
 }

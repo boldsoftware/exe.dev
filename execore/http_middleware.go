@@ -18,6 +18,7 @@ type requestLogInfoKey struct{}
 type RequestLogInfo struct {
 	IsProxy    bool
 	IsTerminal bool
+	UserID     string
 }
 
 // WithNewRequestLogInfo attaches a fresh RequestLogInfo to the context.
@@ -82,6 +83,7 @@ func customAttrsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r)
 
+		sloghttp.AddCustomAttributes(r, slog.String("log_type", "http_request"))
 		sloghttp.AddCustomAttributes(r, slog.String("method", r.Method))
 		if host := r.Host; host != "" {
 			sloghttp.AddCustomAttributes(r, slog.String("host", host))
@@ -96,6 +98,9 @@ func customAttrsMiddleware(next http.Handler) http.Handler {
 			}
 			if info.IsTerminal {
 				sloghttp.AddCustomAttributes(r, slog.Bool("terminal", true))
+			}
+			if info.UserID != "" {
+				sloghttp.AddCustomAttributes(r, slog.String("user_id", info.UserID))
 			}
 		}
 	})
