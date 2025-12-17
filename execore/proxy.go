@@ -143,9 +143,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Find the box.
 	// Careful: we aren't checking the team or owner in this look-up, so we must do it below.
-	box, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxNamed(ctx, boxName)
-	})
+	box, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxNamed, boxName)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			// Box doesn't exist - show 401 to avoid leaking existence
@@ -230,9 +228,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		// Show current user info
 		if userID, err := s.validateProxyAuthCookie(r); err == nil {
 			// Ignore error
-			userEmail, _ := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
-				return queries.GetEmailByUserID(ctx, userID)
-			})
+			userEmail, _ := withRxRes1(s, r.Context(), (*exedb.Queries).GetEmailByUserID, userID)
 			fmt.Fprintf(w, "Logged in user: %q (%q)\n", userEmail, userID)
 		} else if errors.Is(err, http.ErrNoCookie) {
 			fmt.Fprintf(w, "Not logged in\n")
@@ -423,9 +419,7 @@ func makeAuthURL(typ string, r *http.Request, q url.Values) string {
 func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request) {
 	var email string
 	if uid, err := s.validateProxyAuthCookie(r); err == nil {
-		email, _ = withRxRes(s, r.Context(), func(ctx context.Context, q *exedb.Queries) (string, error) {
-			return q.GetEmailByUserID(ctx, uid)
-		})
+		email, _ = withRxRes1(s, r.Context(), (*exedb.Queries).GetEmailByUserID, uid)
 	}
 
 	u := &url.URL{
@@ -606,11 +600,9 @@ func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (
 }
 
 func (s *Server) boxForNameUserID(ctx context.Context, boxName, userID string) (*exedb.Box, error) {
-	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.GetBoxByNameAndAlloc(ctx, exedb.GetBoxByNameAndAllocParams{
-			Name:            boxName,
-			CreatedByUserID: userID,
-		})
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxByNameAndAlloc, exedb.GetBoxByNameAndAllocParams{
+		Name:            boxName,
+		CreatedByUserID: userID,
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -696,9 +688,7 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 
 		// Add user info headers if authenticated
 		if userID, ok := s.getAuthenticatedUserID(r, *box); ok {
-			email, err := withRxRes(s, req.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
-				return queries.GetEmailByUserID(ctx, userID)
-			})
+			email, err := withRxRes1(s, req.Context(), (*exedb.Queries).GetEmailByUserID, userID)
 			if err != nil {
 				s.slog().ErrorContext(r.Context(), "failed to get user email for authenticated proxy headers", "error", err)
 				http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -817,11 +807,9 @@ func (s *Server) incrementShareLinkUsage(ctx context.Context, shareToken string)
 // This allows the user to retain access even if the share link is later revoked
 func (s *Server) autoCreateShareFromLink(ctx context.Context, userID string, boxID int, shareToken string) error {
 	// Get the share link to find who created it
-	shareLink, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.BoxShareLink, error) {
-		return queries.GetBoxShareLinkByTokenAndBoxID(ctx, exedb.GetBoxShareLinkByTokenAndBoxIDParams{
-			ShareToken: shareToken,
-			BoxID:      int64(boxID),
-		})
+	shareLink, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxShareLinkByTokenAndBoxID, exedb.GetBoxShareLinkByTokenAndBoxIDParams{
+		ShareToken: shareToken,
+		BoxID:      int64(boxID),
 	})
 	if err != nil {
 		return err

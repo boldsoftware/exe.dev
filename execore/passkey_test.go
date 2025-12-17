@@ -229,9 +229,7 @@ func TestPasskeyChallengeExpiration(t *testing.T) {
 	}
 
 	// Try to get the challenge - should not find it (either cleaned up or expired)
-	_, err = withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetPasskeyChallengeRow, error) {
-		return queries.GetPasskeyChallenge(ctx, "expired-test-challenge")
-	})
+	_, err = withRxRes1(s, ctx, (*exedb.Queries).GetPasskeyChallenge, "expired-test-challenge")
 	if err == nil {
 		t.Fatal("expected error getting expired challenge, got nil")
 	}

@@ -89,9 +89,7 @@ func (s *Server) handleRunCommand(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get user details for CommandContext
-	user, err := withRxRes(s, r.Context(), func(ctx context.Context, q *exedb.Queries) (exedb.User, error) {
-		return q.GetUserWithDetails(ctx, userID)
-	})
+	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to get user details", "error", err, "user_id", userID)
 		http.Error(w, "Failed to get user details", http.StatusInternalServerError)

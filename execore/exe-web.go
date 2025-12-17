@@ -793,9 +793,7 @@ var (
 
 func (s *Server) lookUpDeviceVerification(ctx context.Context, token string) (*exedb.PendingSSHKey, *EmailVerification, error) {
 	// Look up the pending SSH key to validate token and get info
-	pendingKey, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.PendingSSHKey, error) {
-		return queries.GetPendingSSHKeyByToken(ctx, token)
-	})
+	pendingKey, err := withRxRes1(s, ctx, (*exedb.Queries).GetPendingSSHKeyByToken, token)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -914,9 +912,7 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 // handleUserDashboard renders the user dashboard page
 func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, userID string) {
 	// Get user info
-	user, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
-		return queries.GetUserWithDetails(ctx, userID)
-	})
+	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "User not found", http.StatusNotFound)
@@ -945,9 +941,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 	}
 
 	// Get user's boxes
-	boxResults, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetBoxesForUserDashboardRow, error) {
-		return queries.GetBoxesForUserDashboard(ctx, user.UserID)
-	})
+	boxResults, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetBoxesForUserDashboard, user.UserID)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to get boxes for dashboard", "error", err, "user_id", userID)
 	}
@@ -1015,9 +1009,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 	}
 
 	// Get boxes shared with this user
-	sharedBoxResults, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetBoxesSharedWithUserRow, error) {
-		return queries.GetBoxesSharedWithUser(ctx, user.UserID)
-	})
+	sharedBoxResults, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetBoxesSharedWithUser, user.UserID)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to get shared boxes for dashboard", "error", err, "user_id", userID)
 	}
@@ -1049,9 +1041,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 
 func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userID string) {
 	// Get user info
-	user, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
-		return queries.GetUserWithDetails(ctx, userID)
-	})
+	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "User not found", http.StatusNotFound)
@@ -1088,11 +1078,9 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	// Get site sessions (cookies for sites hosted by exe, excluding the main domain)
 	// De-duplicate by domain (keep the most recently used)
 	var siteSessions []SiteSession
-	siteCookies, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetSiteCookiesForUserRow, error) {
-		return queries.GetSiteCookiesForUser(ctx, exedb.GetSiteCookiesForUserParams{
-			UserID: userID,
-			Domain: s.env.WebHost,
-		})
+	siteCookies, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetSiteCookiesForUser, exedb.GetSiteCookiesForUserParams{
+		UserID: userID,
+		Domain: s.env.WebHost,
 	})
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to get site cookies for profile", "error", err, "email", user.Email)
@@ -1120,9 +1108,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	}
 
 	// Get boxes shared with this user
-	sharedBoxResults, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetBoxesSharedWithUserRow, error) {
-		return queries.GetBoxesSharedWithUser(ctx, user.UserID)
-	})
+	sharedBoxResults, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetBoxesSharedWithUser, user.UserID)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to get shared boxes for profile", "error", err, "email", user.Email)
 	}

@@ -884,11 +884,9 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 	defer cancel()
 
 	// Get the box to find which exelet it's on
-	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, q *exedb.Queries) (exedb.Box, error) {
-		return q.GetBoxByNameAndAlloc(ctx, exedb.GetBoxByNameAndAllocParams{
-			Name:            boxName,
-			CreatedByUserID: allocID,
-		})
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetBoxByNameAndAlloc, exedb.GetBoxByNameAndAllocParams{
+		Name:            boxName,
+		CreatedByUserID: allocID,
 	})
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;33mFailed to look up instance: %v\033[0m\r\n", err)
@@ -950,9 +948,7 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 
 func (ss *SSHServer) startEmailVerification(s *shellSession, publicKey, email string) (*EmailVerification, error) {
 	// Check whether this email already exists
-	_, err := withRxRes(ss.server, s.Context(), func(ctx context.Context, q *exedb.Queries) (any, error) {
-		return q.GetUserIDByEmail(ctx, email)
-	})
+	_, err := withRxRes1(ss.server, s.Context(), (*exedb.Queries).GetUserIDByEmail, email)
 	var isNewAccount bool
 	switch {
 	case err == nil:

@@ -45,6 +45,7 @@ import (
 	exeletclient "exe.dev/exelet/client"
 	"exe.dev/ghuser"
 	"exe.dev/llmgateway"
+	"exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/publicips"
 	"exe.dev/route53"
@@ -726,12 +727,23 @@ func (s *Server) withTx(ctx context.Context, fn func(context.Context, *exedb.Que
 	})
 }
 
-// withRxRes executes a function with a read-only database transaction and exedb queries, returning a value
-func withRxRes[T any](s *Server, ctx context.Context, fn func(context.Context, *exedb.Queries) (T, error)) (T, error) {
+// withRxRes0 executes a sqlc query with a read-only database transaction and no arguments, returning a value.
+func withRxRes0[T any](s *Server, ctx context.Context, fn func(*exedb.Queries, context.Context) (T, error)) (T, error) {
 	var result T
 	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
-		result, err = fn(ctx, queries)
+		result, err = fn(queries, ctx)
+		return err
+	})
+	return result, err
+}
+
+// withRxRes1 executes a sqlc query with a read-only database transaction and one argument, returning a value.
+func withRxRes1[T, A any](s *Server, ctx context.Context, fn func(*exedb.Queries, context.Context, A) (T, error), a A) (T, error) {
+	var result T
+	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		result, err = fn(queries, ctx, a)
 		return err
 	})
 	return result, err
@@ -797,9 +809,7 @@ func (s *Server) installSSHHostKey(signer ssh.Signer, certSig *string) error {
 // generateHostKey loads the persistent RSA host key from the database, or generates and stores a new one
 func (s *Server) generateHostKey(ctx context.Context) error {
 	// Try to load existing host key from database (prod)
-	hostKey, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetSSHHostKeyRow, error) {
-		return queries.GetSSHHostKey(ctx)
-	})
+	hostKey, err := withRxRes0(s, ctx, (*exedb.Queries).GetSSHHostKey)
 	privateKeyPEM := hostKey.PrivateKey
 	publicKeyPEM := hostKey.PublicKey
 
@@ -896,9 +906,7 @@ func (s *Server) knownHostsLine(ctx context.Context, host string) (string, error
 		return "", err
 	}
 
-	hostKey, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetSSHHostKeyRow, error) {
-		return queries.GetSSHHostKey(ctx)
-	})
+	hostKey, err := withRxRes0(s, ctx, (*exedb.Queries).GetSSHHostKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to load ssh host certificate: %w", err)
 	}
@@ -1120,9 +1128,7 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 
 	if email != "" && verified {
 		// This is a verified key, check if user exists
-		_, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
-			return queries.GetUserIDByEmail(ctx, email)
-		})
+		_, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDByEmail, email)
 		if err == nil {
 			// User exists and has verified their email, they're fully registered
 			return &ssh.Permissions{
@@ -1160,14 +1166,7 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 
 // checkEmailVerificationToken checks if an email verification token is valid without consuming it
 func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) (exedb.GetEmailVerificationByTokenRow, error) {
-	var row exedb.GetEmailVerificationByTokenRow
-
-	// Get verification info and return user_id directly
-	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		row, err = queries.GetEmailVerificationByToken(ctx, token)
-		return err
-	})
+	row, err := withRxRes1(s, ctx, (*exedb.Queries).GetEmailVerificationByToken, token)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return exedb.GetEmailVerificationByTokenRow{}, fmt.Errorf("invalid verification token")
@@ -1231,9 +1230,7 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 
 // validateEmailVerificationByToken validates verification using a token
 func (s *Server) validateEmailVerificationByToken(ctx context.Context, token string) (string, error) {
-	userID, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
-		return queries.GetEmailVerificationByPartialToken(ctx, token)
-	})
+	userID, err := withRxRes1(s, ctx, (*exedb.Queries).GetEmailVerificationByPartialToken, token)
 	if err != nil {
 		return "", fmt.Errorf("invalid or expired token")
 	}
@@ -1251,9 +1248,7 @@ func (s *Server) validateEmailVerificationByToken(ctx context.Context, token str
 
 // validateAuthToken validates an authentication token and returns the user ID
 func (s *Server) validateAuthToken(ctx context.Context, token, expectedSubdomain string) (string, error) {
-	authToken, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.AuthToken, error) {
-		return queries.GetAuthTokenInfo(ctx, token)
-	})
+	authToken, err := withRxRes1(s, ctx, (*exedb.Queries).GetAuthTokenInfo, token)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("invalid token")
@@ -1302,11 +1297,9 @@ func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName strin
 	}
 
 	// Check if box exists and belongs to the user
-	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:            boxName,
-			CreatedByUserID: userID,
-		})
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            boxName,
+		CreatedByUserID: userID,
 	})
 	if err != nil {
 		s.slog().InfoContext(ctx, "FindBoxByNameForUser: box not found", "box", boxName, "error", err)
@@ -1334,11 +1327,9 @@ func (s *Server) FindBoxByIPShard(ctx context.Context, userID, localIP string) *
 		return nil
 	}
 
-	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.GetBoxByUserAndShard(ctx, exedb.GetBoxByUserAndShardParams{
-			UserID:  userID,
-			IPShard: int64(info.Shard),
-		})
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxByUserAndShard, exedb.GetBoxByUserAndShardParams{
+		UserID:  userID,
+		IPShard: int64(info.Shard),
 	})
 	if err != nil {
 		s.slog().InfoContext(ctx, "GetBoxByUserAndShard failed", "user_id", userID, "localIP", localIP, "shard", info.Shard, "error", err)
@@ -1356,17 +1347,13 @@ func (s *Server) FindBoxForSupportUser(ctx context.Context, userID, boxName stri
 	}
 
 	// Check if user is a root support user
-	isRootSupport, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
-		return queries.GetUserRootSupport(ctx, userID)
-	})
+	isRootSupport, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserRootSupport, userID)
 	if err != nil || isRootSupport != 1 {
 		return nil
 	}
 
 	// Look up box by name with support access enabled
-	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.GetBoxByNameWithSupportAccess(ctx, boxName)
-	})
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxByNameWithSupportAccess, boxName)
 	if err != nil {
 		s.slog().InfoContext(ctx, "FindBoxForSupportUser: box not found or support access not enabled", "box", boxName, "error", err)
 		return nil
@@ -1566,9 +1553,7 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 	// Get IP shard before deletion for DNS cleanup
 	var ipShard int64
 	if s.env.UseRoute53 {
-		shard, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
-			return queries.GetBoxIPShard(ctx, box.ID)
-		})
+		shard, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxIPShard, box.ID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("failed to get IP shard for DNS cleanup: %w", err)
 		}
@@ -1661,9 +1646,7 @@ func (s *Server) isBoxNameAvailable(ctx context.Context, name string) bool {
 		return false
 	}
 
-	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
-		return queries.BoxWithNameExists(ctx, name)
-	})
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxWithNameExists, name)
 	if err != nil {
 		s.slog().WarnContext(ctx, "failed to check box name availability", "error", err, "box_name", name)
 		return false
@@ -1672,9 +1655,7 @@ func (s *Server) isBoxNameAvailable(ctx context.Context, name string) bool {
 }
 
 func (s *Server) boxByNameExists(ctx context.Context, name string) bool {
-	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
-		return queries.BoxWithNameExists(ctx, name)
-	})
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxWithNameExists, name)
 	if err != nil {
 		s.slog().WarnContext(ctx, "failed to check box name existence", "error", err, "box_name", name)
 		return false
@@ -1691,9 +1672,7 @@ func (s *Server) boxExists(ctx context.Context, name string) bool {
 
 // getBoxesByHost gets all boxes (machines) that should be on a specific ctrhost
 func (s *Server) getBoxesByHost(ctx context.Context, ctrhost string) ([]*exedb.Box, error) {
-	boxResults, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.Box, error) {
-		return queries.GetBoxesByHost(ctx, ctrhost)
-	})
+	boxResults, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxesByHost, ctrhost)
 	if err != nil {
 		return nil, err
 	}
@@ -2110,16 +2089,10 @@ func (s *Server) isPortListening(address string) bool {
 // getEmailBySSHKey checks if an SSH key is registered and returns the associated email
 func (s *Server) GetEmailBySSHKey(ctx context.Context, publicKeyStr string) (email string, verified bool, err error) {
 	// Check if key exists in ssh_keys (all keys there are verified)
-	err = s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		email, err = queries.GetEmailBySSHKey(ctx, publicKeyStr)
-		return err
-	})
-
+	email, err = withRxRes1(s, ctx, (*exedb.Queries).GetEmailBySSHKey, publicKeyStr)
 	if errors.Is(err, sql.ErrNoRows) {
 		// Check if key exists in pending_ssh_keys (unverified)
-		email, err = withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
-			return queries.GetPendingSSHKeyEmailByPublicKey(ctx, publicKeyStr)
-		})
+		email, err = withRxRes1(s, ctx, (*exedb.Queries).GetPendingSSHKeyEmailByPublicKey, publicKeyStr)
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", false, nil
 		}
@@ -2130,9 +2103,7 @@ func (s *Server) GetEmailBySSHKey(ctx context.Context, publicKeyStr string) (ema
 
 // getUserByPublicKey retrieves a user by their SSH public key
 func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*exedb.User, error) {
-	user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
-		return queries.GetUserWithSSHKey(ctx, publicKeyStr)
-	})
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithSSHKey, publicKeyStr)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -2148,9 +2119,7 @@ func (s *Server) isBasicUser(ctx context.Context, user exedb.User, sshKeyCount i
 	if !user.CreatedForLoginWithExe || sshKeyCount > 0 {
 		return false
 	}
-	boxCount, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
-		return queries.CountBoxesForUser(ctx, user.UserID)
-	})
+	boxCount, err := withRxRes1(s, ctx, (*exedb.Queries).CountBoxesForUser, user.UserID)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "Failed to count boxes for basic user check", "error", err, "user_id", user.UserID)
 		return false
@@ -2388,9 +2357,7 @@ func generateUserID() (string, error) {
 // getUserIDByPublicKey gets user_id from an SSH public key
 func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicKey) (string, error) {
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(publicKey))
-	userID, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
-		return queries.GetUserIDBySSHKey(ctx, publicKeyStr)
-	})
+	userID, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDBySSHKey, publicKeyStr)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("user not found for public key")
@@ -2402,9 +2369,7 @@ func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicK
 
 // GetUserByEmail retrieves a user by their email address
 func (s *Server) GetUserByEmail(ctx context.Context, email string) (*exedb.User, error) {
-	user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
-		return queries.GetUserByEmail(ctx, email)
-	})
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserByEmail, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, sql.ErrNoRows
@@ -2416,9 +2381,7 @@ func (s *Server) GetUserByEmail(ctx context.Context, email string) (*exedb.User,
 
 // GetBoxSSHDetails retrieves SSH connection details from the boxes table
 func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDetails, error) {
-	result, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetBoxSSHDetailsRow, error) {
-		return queries.GetBoxSSHDetails(ctx, boxID)
-	})
+	result, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxSSHDetails, boxID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query box SSH details: %v", err)
 	}
@@ -2465,9 +2428,7 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 	}
 
 	// Check for preferred exelet setting
-	preferredAddr, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
-		return queries.GetPreferredExelet(ctx)
-	})
+	preferredAddr, err := withRxRes0(s, ctx, (*exedb.Queries).GetPreferredExelet)
 	if err == nil && preferredAddr != "" {
 		// Preferred exelet is configured, try to use it
 		if client, ok := s.exeletClients[preferredAddr]; ok {

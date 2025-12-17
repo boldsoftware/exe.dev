@@ -65,9 +65,7 @@ func (s *Server) handleWebShell(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get user info
-	user, err := withRxRes(s, r.Context(), func(ctx context.Context, q *exedb.Queries) (exedb.User, error) {
-		return q.GetUserWithDetails(ctx, userID)
-	})
+	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
 	if err != nil {
 		http.Error(w, "Failed to get user info", http.StatusInternalServerError)
 		return
@@ -93,9 +91,7 @@ func (s *Server) handleWebShellWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get user info
-	user, err := withRxRes(s, r.Context(), func(ctx context.Context, q *exedb.Queries) (exedb.User, error) {
-		return q.GetUserWithDetails(ctx, userID)
-	})
+	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
 	if err != nil {
 		http.Error(w, "Failed to get user info", http.StatusInternalServerError)
 		return

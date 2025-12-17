@@ -89,9 +89,7 @@ func (s *Server) handlePasskeyRegisterStart(w http.ResponseWriter, r *http.Reque
 	ctx := r.Context()
 
 	// Get user info
-	user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
-		return queries.GetUserWithDetails(ctx, userID)
-	})
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "Failed to get user for passkey registration", "error", err)
 		http.Error(w, "Failed to get user", http.StatusInternalServerError)
@@ -99,9 +97,7 @@ func (s *Server) handlePasskeyRegisterStart(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Get existing credentials for this user (to exclude them)
-	existingPasskeys, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetPasskeysByUserIDRow, error) {
-		return queries.GetPasskeysByUserID(ctx, userID)
-	})
+	existingPasskeys, err := withRxRes1(s, ctx, (*exedb.Queries).GetPasskeysByUserID, userID)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "Failed to get existing passkeys", "error", err)
 		http.Error(w, "Failed to get existing passkeys", http.StatusInternalServerError)
@@ -200,9 +196,7 @@ func (s *Server) handlePasskeyRegisterFinish(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Get user info
-	user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
-		return queries.GetUserWithDetails(ctx, userID)
-	})
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "Failed to get user for passkey registration finish", "error", err)
 		http.Error(w, "Failed to get user", http.StatusInternalServerError)
@@ -210,9 +204,7 @@ func (s *Server) handlePasskeyRegisterFinish(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Get existing credentials
-	existingPasskeys, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetPasskeysByUserIDRow, error) {
-		return queries.GetPasskeysByUserID(ctx, userID)
-	})
+	existingPasskeys, err := withRxRes1(s, ctx, (*exedb.Queries).GetPasskeysByUserID, userID)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "Failed to get existing passkeys", "error", err)
 		http.Error(w, "Failed to get existing passkeys", http.StatusInternalServerError)
@@ -382,9 +374,7 @@ func (s *Server) handlePasskeyLoginFinish(w http.ResponseWriter, r *http.Request
 	}
 
 	// Look up the credential to find the user
-	passkey, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetPasskeyByCredentialIDRow, error) {
-		return queries.GetPasskeyByCredentialID(ctx, parsedResponse.RawID)
-	})
+	passkey, err := withRxRes1(s, ctx, (*exedb.Queries).GetPasskeyByCredentialID, parsedResponse.RawID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			s.slog().WarnContext(ctx, "Passkey not found", "credential_id", base64.URLEncoding.EncodeToString(parsedResponse.RawID))
@@ -397,9 +387,7 @@ func (s *Server) handlePasskeyLoginFinish(w http.ResponseWriter, r *http.Request
 	}
 
 	// Get user info
-	user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
-		return queries.GetUserWithDetails(ctx, passkey.UserID)
-	})
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, passkey.UserID)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "Failed to get user", "error", err)
 		http.Error(w, "Failed to get user", http.StatusInternalServerError)
@@ -564,9 +552,7 @@ func (s *Server) handlePasskeyDelete(w http.ResponseWriter, r *http.Request, use
 
 // getPasskeysForUser returns passkey info for display
 func (s *Server) getPasskeysForUser(ctx context.Context, userID string) ([]PasskeyInfo, error) {
-	passkeys, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetPasskeysByUserIDRow, error) {
-		return queries.GetPasskeysByUserID(ctx, userID)
-	})
+	passkeys, err := withRxRes1(s, ctx, (*exedb.Queries).GetPasskeysByUserID, userID)
 	if err != nil {
 		return nil, err
 	}

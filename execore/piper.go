@@ -112,9 +112,7 @@ func (p *PiperPlugin) getExpectedHostKeyForConnection(connID string) (string, bo
 func (p *PiperPlugin) getServerHostKey() (string, *string, error) {
 	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
 	defer cancel()
-	row, err := withRxRes(p.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetSSHHostKeyRow, error) {
-		return queries.GetSSHHostKey(ctx)
-	})
+	row, err := withRxRes0(p.server, ctx, (*exedb.Queries).GetSSHHostKey)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to get server host key: %w", err)
 	}

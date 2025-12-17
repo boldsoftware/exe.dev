@@ -141,11 +141,9 @@ func (ss *SSHServer) handleShareShowCmd(ctx context.Context, cc *exemenu.Command
 	boxName := ss.normalizeBoxName(cc.Args[0])
 
 	// Get the box and verify ownership
-	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:            boxName,
-			CreatedByUserID: cc.User.ID,
-		})
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            boxName,
+		CreatedByUserID: cc.User.ID,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("VM %q not found or access denied", boxName)
@@ -159,27 +157,21 @@ func (ss *SSHServer) handleShareShowCmd(ctx context.Context, cc *exemenu.Command
 
 func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandContext, box *exedb.Box) error {
 	// Get pending shares
-	pendingShares, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.PendingBoxShare, error) {
-		return queries.GetPendingBoxSharesByBoxID(ctx, int64(box.ID))
-	})
+	pendingShares, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetPendingBoxSharesByBoxID, int64(box.ID))
 	if err != nil {
 		return err
 	}
 
 	// Get active shares
-	activeShares, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetBoxSharesByBoxIDRow, error) {
-		return queries.GetBoxSharesByBoxID(ctx, int64(box.ID))
-	})
+	activeShares, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetBoxSharesByBoxID, int64(box.ID))
 	if err != nil {
 		return err
 	}
 
 	// Get share links
-	shareLinks, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.BoxShareLink, error) {
-		return queries.GetBoxShareLinksByBoxID(ctx, exedb.GetBoxShareLinksByBoxIDParams{
-			BoxID:           int64(box.ID),
-			CreatedByUserID: box.CreatedByUserID,
-		})
+	shareLinks, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetBoxShareLinksByBoxID, exedb.GetBoxShareLinksByBoxIDParams{
+		BoxID:           int64(box.ID),
+		CreatedByUserID: box.CreatedByUserID,
 	})
 	if err != nil {
 		return err
@@ -362,11 +354,9 @@ func (ss *SSHServer) handleShareVisibilityCmd(ctx context.Context, cc *exemenu.C
 }
 
 func (ss *SSHServer) getOwnedBox(ctx context.Context, cc *exemenu.CommandContext, boxName string) (exedb.Box, error) {
-	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:            boxName,
-			CreatedByUserID: cc.User.ID,
-		})
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            boxName,
+		CreatedByUserID: cc.User.ID,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return exedb.Box{}, cc.Errorf("VM %q not found or access denied", boxName)
@@ -459,11 +449,9 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 	boxName := ss.normalizeBoxName(cc.Args[0])
 
 	// Get the box and verify ownership
-	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:            boxName,
-			CreatedByUserID: cc.User.ID,
-		})
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            boxName,
+		CreatedByUserID: cc.User.ID,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("VM %q not found or access denied", boxName)
@@ -502,18 +490,14 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 	}
 
 	// Check if user exists
-	var targetUserID string
 	var userExists bool
-	err = ss.server.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		targetUserID, err = queries.GetUserIDByEmail(ctx, email)
-		if errors.Is(err, sql.ErrNoRows) {
-			userExists = false
-			return nil
-		}
+	targetUserID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, email)
+	if errors.Is(err, sql.ErrNoRows) {
+		userExists = false
+		err = nil
+	} else if err == nil {
 		userExists = true
-		return err
-	})
+	}
 	if err != nil {
 		return err
 	}
@@ -625,11 +609,9 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 	boxName := ss.normalizeBoxName(cc.Args[0])
 
 	// Get the box and verify ownership
-	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:            boxName,
-			CreatedByUserID: cc.User.ID,
-		})
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            boxName,
+		CreatedByUserID: cc.User.ID,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("VM %q not found or access denied", boxName)
@@ -657,12 +639,7 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 	}
 
 	// Try to delete active share if user exists
-	var targetUserID string
-	err = ss.server.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		targetUserID, err = queries.GetUserIDByEmail(ctx, email)
-		return err
-	})
+	targetUserID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, email)
 	if err == nil {
 		// User exists, try to delete their active share
 		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
@@ -716,11 +693,9 @@ func (ss *SSHServer) handleShareAddLinkCmd(ctx context.Context, cc *exemenu.Comm
 	boxName := ss.normalizeBoxName(cc.Args[0])
 
 	// Get the box and verify ownership
-	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:            boxName,
-			CreatedByUserID: cc.User.ID,
-		})
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            boxName,
+		CreatedByUserID: cc.User.ID,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("VM %q not found or access denied", boxName)

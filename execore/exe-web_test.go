@@ -267,9 +267,7 @@ func installTestHostCertificate(t *testing.T, s *Server) ssh.Signer {
 	t.Helper()
 
 	ctx := t.Context()
-	row, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetSSHHostKeyRow, error) {
-		return queries.GetSSHHostKey(ctx)
-	})
+	row, err := withRxRes0(s, ctx, (*exedb.Queries).GetSSHHostKey)
 	if err != nil {
 		t.Fatalf("failed to load host key: %v", err)
 	}

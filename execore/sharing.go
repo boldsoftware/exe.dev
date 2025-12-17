@@ -76,20 +76,15 @@ func generateShareToken() string {
 func (s *Server) checkAndIncrementEmailQuota(ctx context.Context, userID string) error {
 	today := time.Now().UTC().Format("2006-01-02")
 
-	var count int64
-	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		count, err = queries.GetUserEmailCountForDate(ctx, exedb.GetUserEmailCountForDateParams{
-			UserID: userID,
-			Date:   today,
-		})
-		// If no row exists, count will be 0
-		if errors.Is(err, sql.ErrNoRows) {
-			count = 0
-			return nil
-		}
-		return err
+	count, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserEmailCountForDate, exedb.GetUserEmailCountForDateParams{
+		UserID: userID,
+		Date:   today,
 	})
+	// If no row exists, count will be 0
+	if errors.Is(err, sql.ErrNoRows) {
+		count = 0
+		err = nil
+	}
 	if err != nil {
 		return fmt.Errorf("failed to check email quota: %w", err)
 	}
@@ -117,9 +112,7 @@ func (s *Server) hasUserAccessToBox(ctx context.Context, userID string, box *exe
 	// Try to resolve any pending shares for this user before checking access.
 	// This is a defensive measure to catch any edge cases where pending shares
 	// weren't resolved during login (e.g., if we miss a login path in the future).
-	user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
-		return queries.GetUserWithDetails(ctx, userID)
-	})
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
 	if err == nil && user.Email != "" {
 		if err := s.resolvePendingShares(ctx, user.Email, userID); err != nil {
 			return BoxAccessNone, fmt.Errorf("resolve pending shares: %w", err)
@@ -127,12 +120,9 @@ func (s *Server) hasUserAccessToBox(ctx context.Context, userID string, box *exe
 	}
 
 	// Check if user has share access
-	hasAccess, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (bool, error) {
-		result, err := queries.HasUserAccessToBox(ctx, exedb.HasUserAccessToBoxParams{
-			BoxID:            int64(box.ID),
-			SharedWithUserID: userID,
-		})
-		return result, err
+	hasAccess, err := withRxRes1(s, ctx, (*exedb.Queries).HasUserAccessToBox, exedb.HasUserAccessToBoxParams{
+		BoxID:            int64(box.ID),
+		SharedWithUserID: userID,
 	})
 	if err != nil {
 		return BoxAccessNone, err
@@ -153,11 +143,9 @@ func (s *Server) hasUserAccessToBox(ctx context.Context, userID string, box *exe
 
 // validateShareLinkForBox checks if a share token is valid for a given box
 func (s *Server) validateShareLinkForBox(ctx context.Context, shareToken string, boxID int) (bool, error) {
-	link, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.BoxShareLink, error) {
-		return queries.GetBoxShareLinkByTokenAndBoxID(ctx, exedb.GetBoxShareLinkByTokenAndBoxIDParams{
-			ShareToken: shareToken,
-			BoxID:      int64(boxID),
-		})
+	link, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxShareLinkByTokenAndBoxID, exedb.GetBoxShareLinkByTokenAndBoxIDParams{
+		ShareToken: shareToken,
+		BoxID:      int64(boxID),
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
@@ -198,11 +186,9 @@ func (s *Server) countTotalShares(ctx context.Context, boxID int) (userShares, l
 func (s *Server) getShareLinks(ctx context.Context, boxID int, boxName, userID string) []BoxShareLinkInfo {
 	var links []BoxShareLinkInfo
 
-	shareLinks, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.BoxShareLink, error) {
-		return queries.GetBoxShareLinksByBoxID(ctx, exedb.GetBoxShareLinksByBoxIDParams{
-			BoxID:           int64(boxID),
-			CreatedByUserID: userID,
-		})
+	shareLinks, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxShareLinksByBoxID, exedb.GetBoxShareLinksByBoxIDParams{
+		BoxID:           int64(boxID),
+		CreatedByUserID: userID,
 	})
 	if err == nil {
 		for _, sl := range shareLinks {
@@ -221,9 +207,7 @@ func (s *Server) getSharedEmails(ctx context.Context, boxID int) []string {
 	var emails []string
 
 	// Get pending shares
-	pendingShares, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.PendingBoxShare, error) {
-		return queries.GetPendingBoxSharesByBoxID(ctx, int64(boxID))
-	})
+	pendingShares, err := withRxRes1(s, ctx, (*exedb.Queries).GetPendingBoxSharesByBoxID, int64(boxID))
 	if err == nil {
 		for _, ps := range pendingShares {
 			emails = append(emails, ps.SharedWithEmail)
@@ -231,9 +215,7 @@ func (s *Server) getSharedEmails(ctx context.Context, boxID int) []string {
 	}
 
 	// Get active shares
-	activeShares, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetBoxSharesByBoxIDRow, error) {
-		return queries.GetBoxSharesByBoxID(ctx, int64(boxID))
-	})
+	activeShares, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxSharesByBoxID, int64(boxID))
 	if err == nil {
 		for _, as := range activeShares {
 			emails = append(emails, as.SharedWithUserEmail)
@@ -246,9 +228,7 @@ func (s *Server) getSharedEmails(ctx context.Context, boxID int) []string {
 // resolvePendingShares converts pending shares to active shares when a user registers
 func (s *Server) resolvePendingShares(ctx context.Context, email, userID string) error {
 	// Get pending shares for this email
-	pendingShares, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetPendingBoxSharesByEmailRow, error) {
-		return queries.GetPendingBoxSharesByEmail(ctx, email)
-	})
+	pendingShares, err := withRxRes1(s, ctx, (*exedb.Queries).GetPendingBoxSharesByEmail, email)
 	if err != nil {
 		return err
 	}

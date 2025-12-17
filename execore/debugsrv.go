@@ -119,9 +119,7 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 		if email, ok := emailCache[containerID]; ok {
 			return email, nil
 		}
-		email, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
-			return queries.GetBoxOwnerEmailByContainerID(ctx, &containerID)
-		})
+		email, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxOwnerEmailByContainerID, &containerID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return "", fmt.Errorf("container %q not present in database", containerID)
@@ -301,9 +299,7 @@ func (s *Server) handleDebugBoxDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Look up the box (without owner restriction - this is an admin page)
-	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxNamed(ctx, boxName)
-	})
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, fmt.Sprintf("box %q not found", boxName), http.StatusNotFound)
@@ -336,9 +332,7 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Look up the box
-	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxNamed(ctx, boxName)
-	})
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, fmt.Sprintf("box %q not found", boxName), http.StatusNotFound)
@@ -349,23 +343,15 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Look up owner email
-	ownerEmail, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
-		return queries.GetEmailByUserID(ctx, box.CreatedByUserID)
-	})
+	ownerEmail, err := withRxRes1(s, ctx, (*exedb.Queries).GetEmailByUserID, box.CreatedByUserID)
 	if err != nil {
 		ownerEmail = box.CreatedByUserID // fallback to user ID
 	}
 
 	// Get sharing info
-	pendingShares, _ := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.PendingBoxShare, error) {
-		return queries.GetPendingBoxSharesByBoxID(ctx, int64(box.ID))
-	})
-	activeShares, _ := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetBoxSharesByBoxIDRow, error) {
-		return queries.GetBoxSharesByBoxID(ctx, int64(box.ID))
-	})
-	shareLinks, _ := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetAllBoxShareLinksByBoxIDRow, error) {
-		return queries.GetAllBoxShareLinksByBoxID(ctx, int64(box.ID))
-	})
+	pendingShares, _ := withRxRes1(s, ctx, (*exedb.Queries).GetPendingBoxSharesByBoxID, int64(box.ID))
+	activeShares, _ := withRxRes1(s, ctx, (*exedb.Queries).GetBoxSharesByBoxID, int64(box.ID))
+	shareLinks, _ := withRxRes1(s, ctx, (*exedb.Queries).GetAllBoxShareLinksByBoxID, int64(box.ID))
 
 	route := box.GetRoute()
 
@@ -527,9 +513,7 @@ pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
 func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	users, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.User, error) {
-		return queries.ListAllUsers(ctx)
-	})
+	users, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllUsers)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to list users: %v", err), http.StatusInternalServerError)
 		return
@@ -716,9 +700,7 @@ func (s *Server) handleDebugToggleRootSupport(w http.ResponseWriter, r *http.Req
 	// If enabling, require email confirmation
 	if enabling {
 		// Look up user to get their email
-		user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
-			return queries.GetUserWithDetails(ctx, userID)
-		})
+		user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to look up user: %v", err), http.StatusInternalServerError)
 			return
@@ -793,9 +775,7 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the preferred exelet setting
-	preferredAddr, _ := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
-		return queries.GetPreferredExelet(ctx)
-	})
+	preferredAddr, _ := withRxRes0(s, ctx, (*exedb.Queries).GetPreferredExelet)
 
 	var exelets []exeletInfo
 

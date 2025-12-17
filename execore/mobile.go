@@ -442,9 +442,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 
 	// Record pending VM creation details for this user+token so we can create after verification
 	// Lookup user_id by email (storeEmailVerification ensures user+alloc exists)
-	userID, err := withRxRes(s, r.Context(), func(ctx context.Context, q *exedb.Queries) (string, error) {
-		return q.GetUserIDByEmail(ctx, email)
-	})
+	userID, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserIDByEmail, email)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to lookup user after email auth", "email", email, "error", err)
 		http.Error(w, "Failed to process request", http.StatusInternalServerError)
@@ -733,9 +731,7 @@ func (s *Server) handleBoxCreationLog(w http.ResponseWriter, r *http.Request) {
 
 // getBoxForUserByUserID fetches a box for a user by userID and name
 func (s *Server) getBoxForUserByUserID(ctx context.Context, userID, boxName string) (*exedb.Box, error) {
-	b, err := withRxRes(s, ctx, func(ctx context.Context, q *exedb.Queries) (exedb.Box, error) {
-		return q.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{Name: boxName, CreatedByUserID: userID})
-	})
+	b, err := withRxRes1(s, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{Name: boxName, CreatedByUserID: userID})
 	if err != nil {
 		return nil, err
 	}

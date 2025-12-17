@@ -44,9 +44,7 @@ func (s *Server) recordUserEventBestEffort(ctx context.Context, userID, event st
 
 func (s *Server) allUserEventsBestEffort(ctx context.Context, userID string) map[string]int {
 	events := make(map[string]int)
-	results, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetAllUserEventsRow, error) {
-		return queries.GetAllUserEvents(ctx, userID)
-	})
+	results, err := withRxRes1(s, ctx, (*exedb.Queries).GetAllUserEvents, userID)
 	if err != nil {
 		s.slog().WarnContext(ctx, "allUserEventsBestEffort database error", "userID", userID, "error", err)
 		return events

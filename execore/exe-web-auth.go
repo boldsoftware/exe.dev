@@ -102,9 +102,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		verifiedUserID = userID
 
 		// Look up the user to get their email for the success page
-		user, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
-			return queries.GetUserWithDetails(ctx, userID)
-		})
+		user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
 		if err == nil {
 			verifiedEmail = user.Email
 
@@ -149,9 +147,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 	// Check if user has passkeys for the success page
 	hasPasskeys := false
 	if verifiedUserID != "" {
-		passkeys, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetPasskeysByUserIDRow, error) {
-			return queries.GetPasskeysByUserID(ctx, verifiedUserID)
-		})
+		passkeys, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetPasskeysByUserID, verifiedUserID)
 		if err == nil && len(passkeys) > 0 {
 			hasPasskeys = true
 		}
@@ -291,22 +287,12 @@ func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (st
 	// Strip port from domain since cookies are per-host, not per-host:port
 	domain := domz.StripPort(r.Host)
 
-	var userID string
-	var expiresAt time.Time
-
 	// Get auth cookie info
-	if err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		row, err := queries.GetAuthCookieInfo(ctx, exedb.GetAuthCookieInfoParams{
-			CookieValue: cookieValue,
-			Domain:      domain,
-		})
-		if err != nil {
-			return err
-		}
-		userID = row.UserID
-		expiresAt = row.ExpiresAt
-		return nil
-	}); err != nil {
+	row, err := withRxRes1(s, ctx, (*exedb.Queries).GetAuthCookieInfo, exedb.GetAuthCookieInfoParams{
+		CookieValue: cookieValue,
+		Domain:      domain,
+	})
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("invalid cookie")
 		}
@@ -314,7 +300,7 @@ func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (st
 	}
 
 	// Check if cookie has expired
-	if time.Now().After(expiresAt) {
+	if time.Now().After(row.ExpiresAt) {
 		// Clean up expired cookie - use context.WithoutCancel to ensure cleanup completes even if client disconnects
 		s.withTx(context.WithoutCancel(ctx), func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.DeleteAuthCookie(ctx, cookieValue)
@@ -327,7 +313,7 @@ func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (st
 		return queries.UpdateAuthCookieLastUsed(ctx, cookieValue)
 	})
 
-	return userID, nil
+	return row.UserID, nil
 }
 
 // validateProxyBearerToken ensures a bearer token is valid for the provided box and returns the associated user.
@@ -336,9 +322,7 @@ func (s *Server) validateProxyBearerToken(ctx context.Context, token string, box
 		return "", fmt.Errorf("empty proxy bearer token")
 	}
 
-	record, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.ProxyBearerToken, error) {
-		return queries.GetProxyBearerToken(ctx, token)
-	})
+	record, err := withRxRes1(s, ctx, (*exedb.Queries).GetProxyBearerToken, token)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("proxy bearer token not found")
@@ -365,9 +349,7 @@ func (s *Server) validateProxyBearerToken(ctx context.Context, token string, box
 
 // userHasActiveAuthCookie returns true when the user has at least one non-expired auth cookie record.
 func (s *Server) userHasActiveAuthCookie(ctx context.Context, userID string) (bool, error) {
-	hasCookie, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
-		return queries.UserHasAuthCookie(ctx, userID)
-	})
+	hasCookie, err := withRxRes1(s, ctx, (*exedb.Queries).UserHasAuthCookie, userID)
 	if err != nil {
 		return false, err
 	}
@@ -642,9 +624,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify the box exists and get owner info
-	box, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxNamed(ctx, boxName)
-	})
+	box, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxNamed, boxName)
 	if err != nil {
 		// Box doesn't exist or error - show 401 page (don't reveal box existence)
 		// Clean up the magic secret since we're not going to use it
@@ -652,9 +632,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		delete(s.magicSecrets, secret)
 		s.magicSecretsMu.Unlock()
 
-		userEmail, _ := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
-			return queries.GetEmailByUserID(ctx, magicSecret.UserID)
-		})
+		userEmail, _ := withRxRes1(s, r.Context(), (*exedb.Queries).GetEmailByUserID, magicSecret.UserID)
 
 		s.render401(w, r, unauthorizedData{
 			Email:       userEmail,
@@ -675,9 +653,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Non-owner: show confirmation page so user can confirm sharing their email with the site
-	userEmail, _ := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
-		return queries.GetEmailByUserID(ctx, magicSecret.UserID)
-	})
+	userEmail, _ := withRxRes1(s, r.Context(), (*exedb.Queries).GetEmailByUserID, magicSecret.UserID)
 
 	data := struct {
 		WebHost    string

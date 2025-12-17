@@ -238,12 +238,7 @@ func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *exemenu.CommandC
 }
 
 func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	var boxes []exedb.Box
-	err := ss.server.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		boxes, err = queries.BoxesForUser(ctx, cc.User.ID)
-		return err
-	})
+	boxes, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxesForUser, cc.User.ID)
 	if err != nil {
 		return err
 	}
@@ -870,11 +865,9 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
-	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:            boxName,
-			CreatedByUserID: cc.User.ID,
-		})
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            boxName,
+		CreatedByUserID: cc.User.ID,
 	})
 	if err != nil {
 		cc.WriteError("VM %q not found", boxName)
@@ -1029,11 +1022,9 @@ func (ss *SSHServer) handleProxyTokenCommand(ctx context.Context, cc *exemenu.Co
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
 
-	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:            boxName,
-			CreatedByUserID: cc.User.ID,
-		})
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            boxName,
+		CreatedByUserID: cc.User.ID,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("VM %q not found", boxName)
@@ -1114,11 +1105,9 @@ func (ss *SSHServer) handleGrantSupportRootCommand(ctx context.Context, cc *exem
 		return cc.Errorf("invalid value %q: use on or off", cc.Args[1])
 	}
 
-	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:            boxName,
-			CreatedByUserID: cc.User.ID,
-		})
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            boxName,
+		CreatedByUserID: cc.User.ID,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("VM %q not found", boxName)
@@ -1153,12 +1142,7 @@ func (ss *SSHServer) completeBoxNames(compCtx *exemenu.CompletionContext, cc *ex
 		return nil
 	}
 
-	var boxes []exedb.Box
-	err := ss.server.withRx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		boxes, err = queries.BoxesForUser(ctx, cc.User.ID)
-		return err
-	})
+	boxes, err := withRxRes1(ss.server, context.Background(), (*exedb.Queries).BoxesForUser, cc.User.ID)
 	if err != nil {
 		return nil
 	}
@@ -1241,11 +1225,9 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 	name = ss.normalizeBoxName(name)
 
 	// Look up the box
-	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:            name,
-			CreatedByUserID: cc.User.ID,
-		})
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            name,
+		CreatedByUserID: cc.User.ID,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("VM %q not found", name)
