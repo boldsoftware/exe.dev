@@ -290,14 +290,14 @@ func initLogging() error {
 var Env *testEnv
 
 type testEnv struct {
-	sshProxy       *testinfra.TCPProxy
-	exedHTTPProxy  *testinfra.TCPProxy
-	exed           exedInstance
-	piperd         piperdInstance
-	exelet         *testinfra.ExeletInstance
-	email          *emailServer
-	exedSlogErrC   chan string // receives exed ERROR log lines
-	exedGuidLogC   chan string // receives exed log lines with guid attribute
+	sshProxy      *testinfra.TCPProxy
+	exedHTTPProxy *testinfra.TCPProxy
+	exed          exedInstance
+	piperd        piperdInstance
+	exelet        *testinfra.ExeletInstance
+	email         *emailServer
+	exedSlogErrC  chan string // receives exed ERROR log lines
+	exedGuidLogC  chan string // receives exed log lines with guid attribute
 
 	asciinemaMu      sync.Mutex // protects asciinemaWriters
 	asciinemaWriters map[string]*expect.AsciinemaWriter
