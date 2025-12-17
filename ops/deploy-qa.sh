@@ -28,16 +28,16 @@ if [ "${DEPLOYED_SHA}" = "${CURRENT_SHA}" ]; then
     exit 0
 fi
 
-if ! command -v codex >/dev/null 2>&1; then
-    echo "😞 codex CLI not found (install codex before running deploy-qa)"
+if ! command -v claude >/dev/null 2>&1; then
+    echo "😞 claude CLI not found (install claude before running deploy-qa)"
     exit 1
 fi
 
 echo
-echo "running codex. this will take a while..."
+echo "running claude. this will take a while..."
 echo
 
-codex exec --model gpt-5.1-codex --sandbox read-only --full-auto --cd $(git rev-parse --show-toplevel) - <<EOF
+claude --model claude-opus-4-5-20251101 --dangerously-skip-permissions -p - <<EOF
 I'm about to deploy HEAD to production. ${DEPLOYED_SHA} is currently deployed.
 
 Please inspect all the intervening commits. (You may ignore any devlog commits.)

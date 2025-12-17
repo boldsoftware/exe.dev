@@ -101,7 +101,7 @@ deploy-piperd-staging: ## Deploy sshpiperd to staging
 deploy-what: ## Show commits that would deploy to production
 	@./ops/deploy-what.sh
 
-deploy-qa: ## Ask codex for a QA/testing plan for pending changes
+deploy-qa: ## Ask claude for a QA/testing plan for pending changes
 	@./ops/deploy-qa.sh
 
 run-dev: ## Run exed locally for development
