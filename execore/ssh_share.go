@@ -686,9 +686,9 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
-			"status":   "success",
-			"vm_name":  box.Name,
-			"message":  fmt.Sprintf("Removed %s's access", email),
+			"status":  "success",
+			"vm_name": box.Name,
+			"message": fmt.Sprintf("Removed %s's access", email),
 		})
 		return nil
 	}
