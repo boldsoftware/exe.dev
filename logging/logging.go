@@ -80,7 +80,7 @@ func SetupLogger(devMode string, registry *prometheus.Registry) {
 		opt := slogslack.Option{
 			Level:    slog.LevelError,
 			BotToken: slackBotToken,
-			Channel:  "#page",
+			Channel:  "page",
 		}
 		handler = slogmulti.Fanout(handler, opt.NewSlackHandler())
 	}
