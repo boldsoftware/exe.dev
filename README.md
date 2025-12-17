@@ -145,7 +145,7 @@ and for the terminal UI.
 The following downloads the whoami database. It'll prompt you to install some
 Backblaze tools from brew.
 ```
-make whoami	
+make whoami
 ```
 
 You can create yourself a fine-grained personal access token with NO permissions
@@ -161,30 +161,15 @@ go run ./cmd/exed -dev=local -https=:443
 ```
 
 TLS requires valid domain names.
-Exed uses `exe.local` instead of `localhost` for the main domain when serving TLS.
+Exed uses `exe.cloud` subdomains for VM when serving TLS locally.
+`*.exe.cloud` resolves to `127.0.0.1`.
 Certificates are issued by a local ACME server (Pebble) that runs automatically.
-
-Add entries to `/etc/hosts`:
-
-```
-# exe.dev local dev
-127.0.0.1	exe.local
-127.0.0.1	www.exe.local
-```
-
-For each machine subdomain,
-add its corresponding `.exe.local` entry.
-For example, a machine named `testing`:
-
-```
-127.0.0.1	testing.exe.local
-```
 
 Custom domains work via CNAME records pointing to machine subdomains.
 Create a CNAME record for your domain:
 
 ```
-testing.bllamo.com.  CNAME  testing.exe.local.
+testing.bllamo.com.  CNAME  testing.exe.cloud.
 ```
 
 Verify the CNAME:
@@ -202,7 +187,7 @@ This is expected in local development.
 
 ### To deploy production (exed and exelet)
 
-Run: 
+Run:
 
 ```
 make deploy-prod
@@ -270,7 +255,7 @@ The image is automatically built and pushed via GitHub Actions when the Dockerfi
 
 # Production Operations
 
-Prod exed machine is `exed-01`. 
+Prod exed machine is `exed-01`.
 
 Keys are in `/etc/systemd/system/exed.service.d/env.conf`
 
