@@ -544,6 +544,10 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			continue
 		}
 
+		// Record response for HTTPRecorder callback
+		lastResponseBody = buf
+		lastStatusCode = resp.StatusCode
+
 		switch {
 		case resp.StatusCode == http.StatusOK:
 			if s.DumpLLM {
