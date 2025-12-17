@@ -46,7 +46,7 @@ ui:
 	cd ui && npm ci && npm run build
 
 # Run Go tests
-test-go:
+test-go: ui
 	@echo "Running Go tests..."
 	go test -v ./...
 

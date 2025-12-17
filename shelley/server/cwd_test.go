@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -18,8 +19,10 @@ func TestWorkingDirectoryConfiguration(t *testing.T) {
 	t.Run("cwd_tmp", func(t *testing.T) {
 		h.NewConversation("bash: pwd", "/tmp")
 		result := strings.TrimSpace(h.WaitToolResult())
-		if result != "/tmp" {
-			t.Errorf("expected '/tmp', got: %s", result)
+		// Resolve symlinks for comparison (on macOS, /tmp -> /private/tmp)
+		expected, _ := filepath.EvalSymlinks("/tmp")
+		if result != expected {
+			t.Errorf("expected %q, got: %s", expected, result)
 		}
 	})
 
