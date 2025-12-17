@@ -40,11 +40,7 @@ func TestResourceMetrics(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	exeletClient, err := Env.initExeletClient()
-	if err != nil {
-		t.Fatalf("failed to init exelet client: %v", err)
-	}
-	defer exeletClient.Close()
+	exeletClient := Env.exelet.Client()
 
 	ctx := Env.context(t)
 	instanceID := instanceIDByName(t, ctx, exeletClient, boxName)

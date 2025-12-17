@@ -38,8 +38,6 @@ import (
 	"github.com/go4org/hashtriemap"
 
 	"exe.dev/e1e/testinfra"
-	"exe.dev/exelet/client"
-	api "exe.dev/pkg/api/exe/compute/v1"
 	"github.com/Netflix/go-expect"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
@@ -153,23 +151,12 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to setup test environment: %v\n", err)
 		slog.Error("test setup failed", "error", err)
-		if closeErr := env.Close(nil); closeErr != nil {
+		if closeErr := env.Close(); closeErr != nil {
 			slog.Error("cleanup failed", "error", closeErr)
 		}
 		os.Stderr.Sync()
 		exit(1)
 	}
-
-	// prepare exelet client early, for faster cleanup
-	exeletClientC := make(chan *client.Client, 1)
-	go func() {
-		c, err := env.initExeletClient()
-		exeletClientC <- c // unblock regardless
-		if err != nil {
-			slog.Error("failed to init exelet client", "error", err)
-			return
-		}
-	}()
 
 	var exitCode int
 
@@ -197,8 +184,7 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 	})
 
 	testinfra.AddCleanup(func() {
-		close(env.exeletSlogErrC)
-		for line := range env.exeletSlogErrC {
+		for line := range env.exelet.Errors {
 			exitCode = 1
 			fmt.Fprintf(os.Stderr, "\n\nexelet emitted ERROR log during e1e run:\n%s\n\n", line)
 		}
@@ -224,8 +210,7 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 	})
 
 	testinfra.AddCleanup(func() {
-		exeletClient := <-exeletClientC
-		if err := env.Close(exeletClient); err != nil {
+		if err := env.Close(); err != nil {
 			slog.Error("test cleanup failed", "error", err)
 			fmt.Fprintf(os.Stderr, "\n\nERROR: %v\n\n", err)
 			if exitCode == 0 {
@@ -309,10 +294,9 @@ type testEnv struct {
 	exedHTTPProxy  *testinfra.TCPProxy
 	exed           exedInstance
 	piperd         piperdInstance
-	exelet         exeletInstance
+	exelet         *testinfra.ExeletInstance
 	email          *emailServer
 	exedSlogErrC   chan string // receives exed ERROR log lines
-	exeletSlogErrC chan string // receives exelet ERROR log lines
 	exedGuidLogC   chan string // receives exed log lines with guid attribute
 
 	asciinemaMu      sync.Mutex // protects asciinemaWriters
@@ -361,135 +345,6 @@ func (e *testEnv) sshPort() int {
 // parseSSHHost extracts hostname from ssh:// URL
 func parseSSHHost(ctrHost string) string {
 	return strings.TrimPrefix(ctrHost, "ssh://")
-}
-
-// sshExec executes a command on remote host and returns combined output
-func sshExec(ctx context.Context, host, command string) (string, error) {
-	cmd := exec.CommandContext(ctx, "ssh",
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "LogLevel=ERROR", // hides "Permanently added" spam, but still shows real errors
-		host, command)
-	out, err := cmd.CombinedOutput()
-	return string(out), err
-}
-
-// scpUpload uploads a file to remote host
-func scpUpload(localPath, host, remotePath string) error {
-	cmd := exec.Command("scp",
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "LogLevel=ERROR", // hides "Permanently added" spam, but still shows real errors
-		localPath, host+":"+remotePath)
-	return cmd.Run()
-}
-
-// scpDownloadDir downloads a directory recursively from remote host
-func scpDownloadDir(host, remotePath, localPath string) error {
-	cmd := exec.Command("scp",
-		"-r",
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "LogLevel=ERROR",
-		host+":"+remotePath, localPath)
-	return cmd.Run()
-}
-
-// cloneImageVolumes clones existing image volumes from tank/sha256:* into the test dataset.
-// This enables copy-on-write sharing of base images, making tests much faster since
-// images don't need to be re-downloaded and provisioned for each test run.
-func cloneImageVolumes(ctx context.Context, host, zfsDataset, runID string) error {
-	// List all ZFS datasets
-	out, err := sshExec(ctx, host, "sudo zfs list -H -o name")
-	if err != nil {
-		return nil
-	}
-
-	// Filter for tank/sha256:* volumes (the cached base images)
-	var volumes []string
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "tank/sha256:") {
-			volumes = append(volumes, line)
-		}
-	}
-
-	if len(volumes) == 0 {
-		return nil
-	}
-
-	slog.InfoContext(ctx, "cloning image volumes for test isolation", "count", len(volumes), "dataset", zfsDataset)
-
-	for _, srcVolume := range volumes {
-		// Extract the sha256:... part from tank/sha256:...
-		// and create tank/e1e-<runID>/sha256:...
-		imageID := strings.TrimPrefix(srcVolume, "tank/")
-		destVolume := zfsDataset + "/" + imageID
-		snapName := fmt.Sprintf("e1e-%s", runID)
-
-		// Create a snapshot of the source volume
-		snapCmd := fmt.Sprintf("sudo zfs snapshot %s@%s", srcVolume, snapName)
-		if _, err := sshExec(ctx, host, snapCmd); err != nil {
-			slog.WarnContext(ctx, "failed to create snapshot for image clone", "src", srcVolume, "error", err)
-			continue
-		}
-
-		// Clone the snapshot to the test dataset
-		cloneCmd := fmt.Sprintf("sudo zfs clone %s@%s %s", srcVolume, snapName, destVolume)
-		if _, err := sshExec(ctx, host, cloneCmd); err != nil {
-			slog.WarnContext(ctx, "failed to clone image volume", "src", srcVolume, "dest", destVolume, "error", err)
-			// Clean up the snapshot we just created
-			sshExec(ctx, host, fmt.Sprintf("sudo zfs destroy %s@%s 2>/dev/null || true", srcVolume, snapName))
-			continue
-		}
-
-		slog.DebugContext(ctx, "cloned image volume", "src", srcVolume, "dest", destVolume)
-	}
-
-	return nil
-}
-
-func (e *testEnv) initExeletClient() (*client.Client, error) {
-	c, err := client.NewClient(e.exelet.Address, client.WithInsecure())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create exelet client: %w", err)
-	}
-	return c, nil
-}
-
-// CleanupTestInstances removes instances.
-// Designed for cleaning up test instances; best effort only.
-func CleanupTestInstances(ctx context.Context, exeletClient *client.Client) error {
-	if exeletClient == nil {
-		return nil
-	}
-
-	stream, err := exeletClient.ListInstances(ctx, &api.ListInstancesRequest{})
-	if err != nil {
-		return fmt.Errorf("failed to list instances: %w", err)
-	}
-
-	var instancesToDelete []string
-	for {
-		resp, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			slog.ErrorContext(ctx, "error receiving instance list", "error", err)
-			break
-		}
-		instancesToDelete = append(instancesToDelete, resp.Instance.ID)
-	}
-
-	for _, id := range instancesToDelete {
-		slog.InfoContext(ctx, "deleting test instance", "id", id)
-		if _, err := exeletClient.DeleteInstance(ctx, &api.DeleteInstanceRequest{ID: id}); err != nil {
-			slog.ErrorContext(ctx, "failed to delete instance", "id", id, "error", err)
-		}
-	}
-
-	return nil
 }
 
 func (t *testEnv) addCanonicalization(in any, canon string) {
@@ -555,8 +410,8 @@ func (e *testEnv) context(t *testing.T) context.Context {
 		select {
 		case <-e.exed.Ctx.Done():
 			cancel(context.Cause(e.exed.Ctx))
-		case <-e.exelet.Ctx.Done():
-			cancel(context.Cause(e.exelet.Ctx))
+		case <-e.exelet.Exited:
+			cancel(e.exelet.Cause())
 		case <-e.piperd.Ctx.Done():
 			cancel(context.Cause(e.piperd.Ctx))
 		case <-c.Done():
@@ -565,7 +420,7 @@ func (e *testEnv) context(t *testing.T) context.Context {
 	return c
 }
 
-func (e *testEnv) Close(exeletClient *client.Client) error {
+func (e *testEnv) Close() error {
 	if e == nil {
 		return nil
 	}
@@ -607,126 +462,8 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 		e.piperd.Cmd.Process.Kill()
 		<-e.piperd.Ctx.Done()
 	}
-	// Cleanup exelet (remote or local)
-	// We need to gracefully stop exelet first so it writes coverage data
-	var localExeletCoverDir string
-	if e.exelet.RemoteHost != "" {
-		remoteBinaryPath := fmt.Sprintf("/tmp/exelet-test-%s", testRunID)
 
-		// Clean up instances BEFORE killing exelet (need the connection)
-		if exeletClient != nil {
-			defer exeletClient.Close()
-			slog.Info("cleaning up instances")
-			instanceCtx, instanceCancel := context.WithTimeout(context.Background(), 15*time.Second)
-			if err := CleanupTestInstances(instanceCtx, exeletClient); err != nil {
-				slog.Error("instance cleanup failed", "error", err)
-			}
-			instanceCancel()
-		}
-
-		// Now gracefully terminate exelet via SIGTERM so it writes coverage data
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-
-		// Send SIGTERM to allow graceful shutdown and coverage write
-		slog.Info("sending SIGTERM to exelet")
-		sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("sudo pkill -TERM -f %s || true", remoteBinaryPath))
-
-		// Poll for process exit (check every 100ms, up to 5 seconds)
-		for i := 0; i < 50; i++ {
-			// pgrep returns exit code 1 if no processes matched
-			if _, err := sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("pgrep -f %s", remoteBinaryPath)); err != nil {
-				break // Process is gone
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		// Forcefully kill if still running
-		sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("sudo pkill -KILL -f %s || true", remoteBinaryPath))
-		cancel()
-
-		// Stop exelet SSH process
-		if e.exelet.CmdCancel != nil {
-			e.exelet.CmdCancel()
-		}
-		if e.exelet.Cmd != nil && e.exelet.Cmd.Process != nil {
-			e.exelet.Cmd.Process.Kill()
-			e.exelet.Cmd.Wait()
-		}
-
-		// Stop SSH tunnel if running
-		if e.exelet.TunnelCancel != nil {
-			e.exelet.TunnelCancel()
-		}
-		if e.exelet.TunnelCmd != nil && e.exelet.TunnelCmd.Process != nil {
-			e.exelet.TunnelCmd.Process.Kill()
-			e.exelet.TunnelCmd.Wait()
-		}
-
-		// Download exelet coverage data BEFORE cleaning up remote resources
-		if e.exelet.CoverDir != "" {
-			var err error
-			localExeletCoverDir, err = os.MkdirTemp("", "e1e-exelet-cov-local-*")
-			if err != nil {
-				slog.Error("failed to create local exelet coverage dir", "error", err)
-			} else {
-				// Download the remote coverage directory
-				if err := scpDownloadDir(e.exelet.RemoteHost, e.exelet.CoverDir+"/*", localExeletCoverDir); err != nil {
-					slog.Error("failed to download exelet coverage", "error", err)
-					localExeletCoverDir = "" // Don't use it if download failed
-				} else {
-					slog.Info("downloaded exelet coverage", "local_dir", localExeletCoverDir)
-				}
-			}
-		}
-
-		// Remote cleanup - use a fresh context with enough time
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cleanupCancel()
-
-		// Clean up isolated resources
-		// Remove bridge
-		if e.exelet.BridgeName != "" {
-			slog.Info("removing bridge", "bridge", e.exelet.BridgeName)
-			if _, err := sshExec(cleanupCtx, e.exelet.RemoteHost, fmt.Sprintf("sudo ip link delete %s 2>/dev/null || true", e.exelet.BridgeName)); err != nil {
-				slog.Error("failed to remove bridge", "bridge", e.exelet.BridgeName, "error", err)
-			}
-		}
-
-		// Remove ZFS dataset (includes cloned image volumes)
-		if e.exelet.ZFSDataset != "" {
-			slog.Info("removing ZFS dataset", "dataset", e.exelet.ZFSDataset)
-			if _, err := sshExec(cleanupCtx, e.exelet.RemoteHost, fmt.Sprintf("sudo zfs destroy -r %s 2>/dev/null || true", e.exelet.ZFSDataset)); err != nil {
-				slog.Error("failed to remove ZFS dataset", "dataset", e.exelet.ZFSDataset, "error", err)
-			}
-			// Clean up snapshots we created on source image volumes for cloning
-			cleanupSnapshotsCmd := fmt.Sprintf("sudo zfs list -H -t snapshot -o name | grep '@e1e-%s$' | xargs -r -n1 sudo zfs destroy 2>/dev/null || true", testRunID)
-			if _, err := sshExec(cleanupCtx, e.exelet.RemoteHost, cleanupSnapshotsCmd); err != nil {
-				slog.Error("failed to cleanup image snapshots", "error", err)
-			}
-		}
-
-		// Remove data directory
-		dataDir := fmt.Sprintf("/d/e-%s", testRunID)
-		slog.Info("removing data directory", "dataDir", dataDir)
-		if _, err := sshExec(cleanupCtx, e.exelet.RemoteHost, fmt.Sprintf("sudo rm -rf %s", dataDir)); err != nil {
-			slog.Error("failed to remove data directory", "dataDir", dataDir, "error", err)
-		}
-
-		// Remove remote coverage directory
-		if e.exelet.CoverDir != "" {
-			if _, err := sshExec(cleanupCtx, e.exelet.RemoteHost, fmt.Sprintf("sudo rm -rf %s", e.exelet.CoverDir)); err != nil {
-				slog.Error("failed to remove remote coverage directory", "error", err)
-			}
-		}
-
-		// Remove remote binary (use test-run-specific name)
-		if _, err := sshExec(cleanupCtx, e.exelet.RemoteHost, fmt.Sprintf("rm -f %s", remoteBinaryPath)); err != nil {
-			slog.Error("failed to cleanup remote exelet binary", "error", err)
-		}
-
-		// Remove local binary
-		os.Remove(filepath.Join(os.TempDir(), "exelet-test"))
-	}
+	localExeletCoverDir := e.exelet.Stop(context.Background())
 
 	// stop proxies
 	e.sshProxy.Close()
@@ -812,7 +549,6 @@ func setup(ctrHost string) (*testEnv, error) {
 		asciinemaWriters: make(map[string]*expect.AsciinemaWriter),
 		canonicalize:     make(map[string]string),
 		exedSlogErrC:     make(chan string, 16),
-		exeletSlogErrC:   make(chan string, 16),
 		exedGuidLogC:     make(chan string, 128),
 	}
 
@@ -849,13 +585,6 @@ func setup(ctrHost string) (*testEnv, error) {
 		slog.Info("email server listening", "port", es.port)
 	}
 
-	// resolve the gateway to pass to exed
-	gateway := resolveGateway(ctrHost)
-	if gateway == "" {
-		return env, fmt.Errorf("unable to resolve default gateway for %q", ctrHost)
-	}
-	slog.Info("resolved default gateway", "addr", gateway)
-
 	// We have a circular dependency: exelet needs to know exed's HTTP port,
 	// but exed needs to know exelet's address. Use the same proxy trick as for sshpiper.
 	// Start a TCP proxy for exed HTTP that we can give to exelet immediately.
@@ -870,50 +599,23 @@ func setup(ctrHost string) (*testEnv, error) {
 		slog.Info("exed HTTP proxy listening", "port", exedHTTPProxy.Port())
 	}
 
-	// Test if remote host can reach local proxy
-	// Usually local->ssh_ctr and ssh_ctr->local connectivity works. However, in some
-	// environments, such as coding agents that operate in containers, this connectivity
-	// does NOT work, and we set up an SSH tunnel for the exelet->exed communication
-	// as a band-aid.
-	host := parseSSHHost(ctrHost)
-	hasConnectivity := testRemoteToLocalConnectivity(host, gateway, exedHTTPProxy.Port())
-	slog.Info("tested remote->local connectivity", "host", host, "gateway", gateway, "port", exedHTTPProxy.Port(), "reachable", hasConnectivity)
-	needsTunnel := !hasConnectivity
-
-	// Determine the exedURL for exelet
-	var exedProxyURL string
-	var tunnelCmd *exec.Cmd
-	var tunnelCancel context.CancelFunc
-
-	if needsTunnel {
-		slog.Info("remote->local connectivity not available, using SSH reverse tunnel")
-		// Use SSH reverse tunnel: exelet -> SSH tunnel -> TCP proxy -> exed
-		remotePort, cmd, cancel, err := startSSHTunnel(host, exedHTTPProxy.Port())
-		if err != nil {
-			return env, fmt.Errorf("failed to start SSH tunnel: %w", err)
-		}
-		tunnelCmd = cmd
-		tunnelCancel = cancel
-		exedProxyURL = fmt.Sprintf("http://localhost:%d", remotePort)
-		if *flagVerbosePorts {
-			slog.Info("using SSH tunnel for exelet->exed", "remote_port", remotePort, "proxy_port", exedHTTPProxy.Port())
-		}
-	} else {
-		// Use direct gateway access via TCP proxy
-		exedProxyURL = fmt.Sprintf("http://%s:%d", gateway, exedHTTPProxy.Port())
-	}
-
-	// Start exelet with the proxy port
-	exelet, err := startExelet(ctrHost, exedProxyURL, env.exeletSlogErrC)
+	exeletBinary, err := testinfra.BuildExeletBinary()
 	if err != nil {
-		if tunnelCancel != nil {
-			tunnelCancel()
-		}
 		return env, err
 	}
-	exelet.TunnelCmd = tunnelCmd
-	exelet.TunnelCancel = tunnelCancel
-	env.exelet = *exelet
+	testinfra.AddCleanup(func() {
+		os.Remove(exeletBinary)
+	})
+
+	var exeletLog io.Writer
+	if *flagVerboseExelet {
+		exeletLog = logFileFor("exelet")
+	}
+	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, ctrHost, exedHTTPProxy.Port(), testRunID, exeletLog, *flagVerbosePorts)
+	if err != nil {
+		return env, err
+	}
+	env.exelet = exelet
 	env.addCanonicalization(exelet.Address, "EXELET_ADDRESS")
 	env.addCanonicalization(exelet.HTTPAddress, "EXELET_HTTP_ADDRESS")
 
@@ -1065,332 +767,6 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 	}
 
 	slog.Info("started piperd", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
-	return instance, nil
-}
-
-// testRemoteToLocalConnectivity checks if the remote host can reach the local port via gateway.
-// Returns true if connectivity works, false otherwise.
-func testRemoteToLocalConnectivity(host, gateway string, port int) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	// Try to connect from remote host to gateway:port
-	testCmd := fmt.Sprintf("timeout 2 nc -z %s %d 2>/dev/null", gateway, port)
-	_, err := sshExec(ctx, host, testCmd)
-	return err == nil
-}
-
-// startSSHTunnel establishes an SSH reverse tunnel and returns the dynamically allocated remote port.
-// Uses -v flag to capture SSH debug output showing the allocated port.
-func startSSHTunnel(host string, localPort int) (remotePort int, tunnelCmd *exec.Cmd, cancel context.CancelFunc, err error) {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// Start SSH tunnel with -v to capture allocated port
-	tunnelCmd = exec.CommandContext(ctx, "ssh",
-		"-v", // verbose to see allocated port
-		"-N", // no command
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "ServerAliveInterval=30",
-		"-o", "ExitOnForwardFailure=yes",
-		"-R", fmt.Sprintf("0:localhost:%d", localPort),
-		host,
-	)
-
-	// Capture stderr to parse allocated port
-	stderrPipe, err := tunnelCmd.StderrPipe()
-	if err != nil {
-		cancel()
-		return 0, nil, nil, fmt.Errorf("failed to get stderr pipe: %w", err)
-	}
-
-	if err := tunnelCmd.Start(); err != nil {
-		cancel()
-		return 0, nil, nil, fmt.Errorf("failed to start SSH tunnel: %w", err)
-	}
-
-	// Parse stderr for "Allocated port X for remote forward"
-	scanner := bufio.NewScanner(stderrPipe)
-	portC := make(chan int, 1)
-	go func() {
-		re := regexp.MustCompile(`Allocated port (\d+) for remote forward`)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if matches := re.FindStringSubmatch(line); len(matches) > 1 {
-				if port, err := strconv.Atoi(matches[1]); err == nil {
-					portC <- port
-					return
-				}
-			}
-		}
-	}()
-
-	// Wait for port allocation (with timeout)
-	select {
-	case remotePort = <-portC:
-		slog.InfoContext(ctx, "SSH tunnel established", "remote_port", remotePort, "local_port", localPort)
-		return remotePort, tunnelCmd, cancel, nil
-	case <-time.After(5 * time.Second):
-		tunnelCmd.Process.Kill()
-		cancel()
-		return 0, nil, nil, fmt.Errorf("timeout waiting for SSH tunnel to allocate port")
-	}
-}
-
-func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletInstance, error) {
-	start := time.Now()
-	slog.Info("starting exelet", "exedURL", exedURL)
-
-	// ctrHost is like "ssh://lima-exe-ctr-tests"
-	host := parseSSHHost(ctrHost)
-	if strings.HasPrefix(host, "ssh://") {
-		slog.Error("invalid ctrHost: %s", "x", ctrHost)
-	}
-	if host == "" {
-		return nil, fmt.Errorf("exelet requires remote host (ctrHost)")
-	}
-
-	// Build exelet binary locally
-	slog.Info("building exelet binary")
-	binPath, err := testinfra.BuildExeletBinary()
-	if err != nil {
-		return nil, err
-	}
-
-	ctx := context.Background()
-
-	// Use test-run-specific binary name to avoid conflicts with parallel test runs
-	remoteBinaryPath := fmt.Sprintf("/tmp/exelet-test-%s", testRunID)
-
-	// Ensure no existing binaries exist for this test run (e.g. on failed re-run)
-	if _, err := sshExec(ctx, host, fmt.Sprintf("rm -rf %s", remoteBinaryPath)); err != nil {
-		return nil, fmt.Errorf("failed to remove existing exelet: %w", err)
-	}
-
-	// Ensure no existing processes exist for this test run only
-	sshExec(ctx, host, fmt.Sprintf("pkill -f %s", remoteBinaryPath))
-
-	// Upload binary to remote host with unique name
-	slog.InfoContext(ctx, "uploading exelet to remote host", "host", host, "path", remoteBinaryPath)
-	if err := scpUpload(binPath, host, remoteBinaryPath); err != nil {
-		return nil, fmt.Errorf("failed to upload exelet: %w", err)
-	}
-
-	// Make binary executable
-	if _, err := sshExec(ctx, host, fmt.Sprintf("chmod +x %s", remoteBinaryPath)); err != nil {
-		return nil, fmt.Errorf("failed to chmod exelet: %w", err)
-	}
-
-	// Generate unique resource names for this test run to enable parallel test execution
-	// Each test run gets its own bridge, network, and ZFS dataset
-	bridgeName := fmt.Sprintf("br-exe-%s", testRunID)
-	// Use CGNAT range 100.64.0.0/10 for internal bridges (safe, no conflicts with Lima's 192.168.64.0/24)
-	// testRunID is a 4-character hex string (0000-FFFF), map to unique /24 networks
-	// CGNAT /10 gives us 100.64.0.0 through 100.127.255.255
-	// Map 16-bit testRunID to two octets for up to 16384 unique /24 networks
-	testRunIDNum := uint32(0)
-	fmt.Sscanf(testRunID, "%x", &testRunIDNum)
-	// Use both bytes: upper 6 bits for third octet (64-127), lower 8 bits for fourth octet (0-255)
-	thirdOctet := ((testRunIDNum >> 8) & 0x3F) + 64 // 64-127
-	fourthOctet := testRunIDNum & 0xFF              // 0-255
-	networkCIDR := fmt.Sprintf("100.%d.%d.0/24", thirdOctet, fourthOctet)
-	zfsDataset := fmt.Sprintf("tank/e1e-%s", testRunID)
-
-	slog.InfoContext(ctx, "using isolated resources", "bridge", bridgeName, "network", networkCIDR, "dataset", zfsDataset)
-
-	// Create ZFS dataset if it doesn't exist
-	// Check if dataset exists first
-	checkCmd := fmt.Sprintf("sudo zfs list %s >/dev/null 2>&1", zfsDataset)
-	_, err = sshExec(ctx, host, checkCmd)
-	if err != nil {
-		// Dataset doesn't exist, create it
-		slog.InfoContext(ctx, "creating ZFS dataset", "dataset", zfsDataset)
-		createCmd := fmt.Sprintf("sudo zfs create %s", zfsDataset)
-		if out, err := sshExec(ctx, host, createCmd); err != nil {
-			return nil, fmt.Errorf("failed to create ZFS dataset %s: %w\n%s", zfsDataset, err, out)
-		}
-	}
-
-	// Clone existing image volumes from tank/sha256:* into tank/e1e-<testRunID>/sha256:*
-	// This enables copy-on-write sharing of base images, making tests much faster.
-	if err := cloneImageVolumes(ctx, host, zfsDataset, testRunID); err != nil {
-		slog.WarnContext(ctx, "failed to clone image volumes (tests will still work but may be slower)", "error", err)
-	}
-
-	// Start exelet on remote host via SSH
-	// Use proxy port range 30000-40000 for e1e tests to avoid conflicts with dev (10000-20000) and unit tests (20000-30000)
-	// URL-encode the network CIDR since it contains slashes
-	// Metadata service will bind to the unique bridge IP with DNAT for parallel test support
-	encodedNetwork := url.QueryEscape(networkCIDR)
-
-	// Compute unique port range for this test run to avoid port conflicts in parallel test execution
-	// Base range is 30000-40000 (10000 ports). Divide into 1000-port chunks for each test run.
-	// testRunIDNum is 0-65535, map to 10 possible chunks (30000-31000, 31000-32000, ..., 39000-40000)
-	proxyPortMin := 30000 + (int(testRunIDNum%10) * 1000)
-	proxyPortMax := proxyPortMin + 1000
-
-	// Build the command to execute remotely
-	// Use unique data-dir per test run to avoid mount conflicts in /data/exelet/storage/mounts
-	// Use short-ish paths because there's a Unix socket path limit in the ~107 range, and
-	// long test names can run into it, amazingly.
-	dataDir := fmt.Sprintf("/d/e-%s", testRunID)
-	coverDir := fmt.Sprintf("/tmp/e1e-exelet-cov-%s", testRunID)
-
-	// Create the data directory and coverage directory
-	if _, err := sshExec(ctx, host, fmt.Sprintf("sudo mkdir -p %s %s", dataDir, coverDir)); err != nil {
-		return nil, fmt.Errorf("failed to create data/coverage directory %s: %w", dataDir, err)
-	}
-
-	remoteCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s" --proxy-port-min %d --proxy-port-max %d --resource-manager-interval 5s --enable-hugepages --exed-url %s`,
-		coverDir, remoteBinaryPath, dataDir, dataDir, dataDir, zfsDataset, dataDir, bridgeName, encodedNetwork, proxyPortMin, proxyPortMax, exedURL)
-
-	// Start exelet via SSH (similar to how exed is started locally)
-	exeletCmd := exec.Command("ssh",
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "LogLevel=ERROR",
-		host, remoteCmd)
-
-	cmdOut, err := exeletCmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
-	}
-	exeletCmd.Stderr = exeletCmd.Stdout
-
-	if err := exeletCmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start remote exelet: %w", err)
-	}
-
-	exeletCtx, exeletCancel := context.WithCancel(context.Background())
-	go func() {
-		exeletCmd.Wait()
-		exeletCancel()
-	}()
-
-	// Parse output to find addresses (similar to exed startup)
-	var teeMu sync.Mutex
-	tee := new(bytes.Buffer)
-	grpcAddrC := make(chan string, 1)
-	httpAddrC := make(chan string, 1)
-
-	go func() {
-		scan := bufio.NewScanner(cmdOut)
-		for scan.Scan() {
-			line := scan.Bytes()
-			teeMu.Lock()
-			tee.Write(line)
-			tee.WriteString("\n")
-			teeMu.Unlock()
-
-			lineStr := string(line)
-			if *flagVerboseExelet {
-				fmt.Fprintln(logFileFor("exelet"), lineStr)
-			}
-
-			// Parse JSON log line
-			if !json.Valid(line) {
-				continue
-			}
-			var entry map[string]any
-			if err := json.Unmarshal(line, &entry); err != nil {
-				continue
-			}
-
-			// Capture ERROR level logs
-			if level, ok := entry["level"].(string); ok && level == "ERROR" {
-				select {
-				case exeletSlogErrC <- lineStr:
-				default:
-				}
-			}
-
-			// Look for listening messages
-			switch entry["msg"] {
-			case "listening":
-				if addrVal, ok := entry["addr"].(string); ok {
-					select {
-					case grpcAddrC <- addrVal:
-					default:
-					}
-				}
-			case "http server listening":
-				if addrVal, ok := entry["addr"].(string); ok {
-					select {
-					case httpAddrC <- addrVal:
-					default:
-					}
-				}
-			}
-		}
-	}()
-
-	// Wait for exelet to start and extract addresses
-	slog.InfoContext(ctx, "waiting for exelet to start on remote host")
-	timeout := time.Minute
-	if os.Getenv("CI") != "" {
-		timeout = 2 * time.Minute
-	}
-
-	var grpcAddr, httpAddr string
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
-WaitLoop:
-	for {
-		select {
-		case grpcAddr = <-grpcAddrC:
-			if httpAddr != "" {
-				break WaitLoop
-			}
-		case httpAddr = <-httpAddrC:
-			if grpcAddr != "" {
-				break WaitLoop
-			}
-		case <-timer.C:
-			// Cleanup on timeout
-			exeletCmd.Process.Kill()
-			exeletCancel()
-			teeMu.Lock()
-			lastOutput := tee.String()
-			teeMu.Unlock()
-			return nil, fmt.Errorf("timeout waiting for exelet to start. Last log output:\n%s", lastOutput)
-		}
-	}
-
-	// Parse address to replace 0.0.0.0 with actual remote IP
-	// grpcAddr is like "tcp://0.0.0.0:45678"
-	u, err := url.Parse(grpcAddr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse exelet address: %w", err)
-	}
-
-	// Construct the actual address
-	_, port, err := net.SplitHostPort(u.Host)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse port from %s: %w", u.Host, err)
-	}
-	finalAddr := fmt.Sprintf("tcp://%s:%s", host, port)
-
-	_, httpPort, err := net.SplitHostPort(httpAddr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse http port from %s: %w", httpAddr, err)
-	}
-	finalHTTPAddr := fmt.Sprintf("http://%s:%s", host, httpPort)
-
-	instance := &exeletInstance{
-		Address:     finalAddr,
-		HTTPAddress: finalHTTPAddr,
-		Ctx:         exeletCtx,
-		Cmd:         exeletCmd,
-		CmdCancel:   exeletCancel,
-		DataDir:     dataDir,
-		RemoteHost:  host,
-		BridgeName:  bridgeName,
-		ZFSDataset:  zfsDataset,
-		CoverDir:    coverDir,
-	}
-
-	slog.InfoContext(ctx, "started remote exelet", "elapsed", time.Since(start).Truncate(100*time.Millisecond), "addr", finalAddr, "http_addr", finalHTTPAddr)
 	return instance, nil
 }
 
@@ -2436,27 +1812,4 @@ func e1eTestsOnlyRunOnce(t *testing.T) {
 //   - whose golden output isn't interesting/useful
 func noGolden(t *testing.T) {
 	skipGolden.Store(t.Name(), true)
-}
-
-// resolveGateway uses SSH to the given ctrhost to resolve its _gateway hostname.
-// If we're SSH'ing laptop->lima-exe-ctr, this gives us the address that lima-exe-ctr
-// can talk to laptop on.
-func resolveGateway(ctrhost string) string {
-	host := parseSSHHost(ctrhost)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "ssh",
-		"-o", "ConnectTimeout=3",
-		"-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "LogLevel=ERROR",
-		"-o", "UserKnownHostsFile=/dev/null",
-		host, "getent ahostsv4 _gateway 2>/dev/null | awk '{print $1; exit}'",
-	)
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
 }
