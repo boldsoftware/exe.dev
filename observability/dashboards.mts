@@ -32,8 +32,9 @@ import {
   BigValueTextMode,
   GraphThresholdsStyleMode,
   ScaleDistribution,
+  StackingMode,
 } from "@grafana/grafana-foundation-sdk/common";
-import { ScaleDistributionConfigBuilder } from "@grafana/grafana-foundation-sdk/common";
+import { ScaleDistributionConfigBuilder, StackingConfigBuilder } from "@grafana/grafana-foundation-sdk/common";
 import {
   ThresholdsConfig,
   ThresholdsMode,
@@ -2105,17 +2106,17 @@ function makeHostsDashboard() {
   );
 
   addTimeseriesChart(
-    "Memory Usage %",
-    `(1 - (node_memory_MemAvailable_bytes{${HOST_FILTER}} / node_memory_MemTotal_bytes{${HOST_FILTER}})) * 100`,
+    "Memory Available %",
+    `(node_memory_MemAvailable_bytes{${HOST_FILTER}} / node_memory_MemTotal_bytes{${HOST_FILTER}}) * 100`,
     {
       panelCustomization: (x) =>
         x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 10, w: 8, h: 6 }),
       alert: {
-        threshold: 85,
-        condition: "gt",
+        threshold: 20,
+        condition: "lt",
         forDuration: "3m",
-        summary: "Memory usage is critically high",
-        description: "Memory usage has exceeded 85% for more than 3 minutes",
+        summary: "Memory available is critically low",
+        description: "Memory available has dropped below 20% for more than 3 minutes",
       },
     }
   );
@@ -2128,9 +2129,135 @@ function makeHostsDashboard() {
     panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 16, y: 10, w: 8, h: 6 }),
   });
 
+  // Memory Usage by Type (stacked area chart)
+  // Shows all major memory categories from /proc/meminfo
+  const memoryByTypePanel = new TimeseriesBuilder()
+    .title("Memory Usage by Type")
+    .unit("bytes")
+    .min(0)
+    .gridPos({ x: 0, y: 16, w: 24, h: 8 })
+    .stacking(new StackingConfigBuilder().mode(StackingMode.Normal))
+    .fillOpacity(80)
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_AnonPages_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} AnonPages")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_Cached_bytes{${HOST_FILTER}} - node_memory_Shmem_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} Cached")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_Shmem_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} Shmem")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_Buffers_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} Buffers")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_SReclaimable_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} SReclaimable")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_SUnreclaim_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} SUnreclaim")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_KernelStack_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} KernelStack")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_PageTables_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} PageTables")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_Hugetlb_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} Hugetlb")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_Percpu_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} Percpu")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_Bounce_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} Bounce")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_WritebackTmp_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} WritebackTmp")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_MemFree_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} Free")
+    );
+  dash.withPanel(memoryByTypePanel);
+
+  // Huge Pages Row
+  dash.withRow(
+    new RowBuilder("Huge Pages").gridPos({ x: 0, y: 24, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Huge Pages Used vs Total",
+    `(node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) * node_memory_Hugepagesize_bytes{${HOST_FILTER}}`,
+    {
+      panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 0, y: 25, w: 12, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{instance}} Used"),
+    }
+  );
+
+  // Second target for total huge pages capacity as separate chart
+  const hugePagesPanel = new TimeseriesBuilder()
+    .title("Huge Pages Capacity")
+    .unit("bytes")
+    .min(0)
+    .gridPos({ x: 12, y: 25, w: 12, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_HugePages_Total{${HOST_FILTER}} * node_memory_Hugepagesize_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} Total")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_memory_HugePages_Free{${HOST_FILTER}} * node_memory_Hugepagesize_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} Free")
+    );
+  dash.withPanel(hugePagesPanel);
+
+  // Alert: Huge pages > 0 AND at 80% capacity
+  // This query returns a value only when huge pages are in use AND usage is >= 80%
+  addTimeseriesChart(
+    "Huge Pages Usage %",
+    `((node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) / node_memory_HugePages_Total{${HOST_FILTER}}) * 100 and on(instance) (node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) > 0`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 31, w: 12, h: 6 }),
+      alert: {
+        threshold: 80,
+        condition: "gt",
+        forDuration: "3m",
+        summary: "Huge pages usage is critically high",
+        description: "Huge pages are in use and usage has exceeded 80% for more than 3 minutes",
+      },
+    }
+  );
+
   // Swap Memory Row
   dash.withRow(
-    new RowBuilder("Swap Memory").gridPos({ x: 0, y: 16, w: 24, h: 1 })
+    new RowBuilder("Swap Memory").gridPos({ x: 0, y: 37, w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -2138,21 +2265,21 @@ function makeHostsDashboard() {
     `(1 - (node_memory_SwapFree_bytes{${HOST_FILTER}} / node_memory_SwapTotal_bytes{${HOST_FILTER}})) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 17, w: 8, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 38, w: 8, h: 6 }),
     }
   );
 
   addTimeseriesChart("Swap Total", `node_memory_SwapTotal_bytes{${HOST_FILTER}}`, {
-    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 8, y: 17, w: 8, h: 6 }),
+    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 8, y: 38, w: 8, h: 6 }),
   });
 
   addTimeseriesChart("Swap Used", `node_memory_SwapTotal_bytes{${HOST_FILTER}} - node_memory_SwapFree_bytes{${HOST_FILTER}}`, {
-    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 16, y: 17, w: 8, h: 6 }),
+    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 16, y: 38, w: 8, h: 6 }),
   });
 
   // Disk Metrics Row
   dash.withRow(
-    new RowBuilder("Disk Metrics").gridPos({ x: 0, y: 23, w: 24, h: 1 })
+    new RowBuilder("Disk Metrics").gridPos({ x: 0, y: 44, w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -2160,7 +2287,7 @@ function makeHostsDashboard() {
     `(1 - (node_filesystem_avail_bytes{${HOST_FILTER},fstype!="tmpfs",fstype!="devtmpfs"} / node_filesystem_size_bytes{${HOST_FILTER},fstype!="tmpfs",fstype!="devtmpfs"})) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 24, w: 8, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 45, w: 8, h: 6 }),
       alert: {
         threshold: 80,
         condition: "gt",
@@ -2172,23 +2299,23 @@ function makeHostsDashboard() {
   );
 
   addTimeseriesChart("Disk I/O Read", `irate(node_disk_read_bytes_total{${HOST_FILTER}}[5m])`, {
-    panelCustomization: (x) => x.unit("Bps").gridPos({ x: 8, y: 24, w: 8, h: 6 }),
+    panelCustomization: (x) => x.unit("Bps").gridPos({ x: 8, y: 45, w: 8, h: 6 }),
   });
 
   addTimeseriesChart("Disk I/O Write", `irate(node_disk_written_bytes_total{${HOST_FILTER}}[5m])`, {
-    panelCustomization: (x) => x.unit("Bps").gridPos({ x: 16, y: 24, w: 8, h: 6 }),
+    panelCustomization: (x) => x.unit("Bps").gridPos({ x: 16, y: 45, w: 8, h: 6 }),
   });
 
   // Network Metrics Row
   dash.withRow(
-    new RowBuilder("Network Metrics").gridPos({ x: 0, y: 30, w: 24, h: 1 })
+    new RowBuilder("Network Metrics").gridPos({ x: 0, y: 51, w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Network Receive",
     `irate(node_network_receive_bytes_total{${HOST_FILTER},device!="lo"}[5m])`,
     {
-      panelCustomization: (x) => x.unit("Bps").gridPos({ x: 0, y: 31, w: 8, h: 6 }),
+      panelCustomization: (x) => x.unit("Bps").gridPos({ x: 0, y: 52, w: 8, h: 6 }),
     }
   );
 
@@ -2196,7 +2323,7 @@ function makeHostsDashboard() {
     "Network Transmit",
     `irate(node_network_transmit_bytes_total{${HOST_FILTER},device!="lo"}[5m])`,
     {
-      panelCustomization: (x) => x.unit("Bps").gridPos({ x: 8, y: 31, w: 8, h: 6 }),
+      panelCustomization: (x) => x.unit("Bps").gridPos({ x: 8, y: 52, w: 8, h: 6 }),
     }
   );
 
@@ -2204,7 +2331,7 @@ function makeHostsDashboard() {
     "Network Errors",
     `irate(node_network_receive_errs_total{${HOST_FILTER},device!="lo"}[5m]) + irate(node_network_transmit_errs_total{${HOST_FILTER},device!="lo"}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 16, y: 31, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ x: 16, y: 52, w: 8, h: 6 }),
     }
   );
 
