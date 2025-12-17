@@ -157,7 +157,7 @@ func (h *ClaudeTestHarness) Close() {
 }
 
 // NewConversation starts a new conversation with Claude
-func (h *ClaudeTestHarness) NewConversation(msg string, cwd string) *ClaudeTestHarness {
+func (h *ClaudeTestHarness) NewConversation(msg, cwd string) *ClaudeTestHarness {
 	h.t.Helper()
 
 	chatReq := ChatRequest{
