@@ -12,6 +12,9 @@ REPO := exe.dev
 DOCKER := docker
 B2 := uvx b2
 
+# Deploy force flag: set FORCE=1 to bypass dirty worktree / non-origin/main checks
+DEPLOY_FLAGS := $(if $(filter 1,$(FORCE)),-f,)
+
 # Colors
 RED := \033[0;31m
 GREEN := \033[0;32m
@@ -42,10 +45,10 @@ test: ## Run all tests
 	@go test ./... -v -short
 	@echo "✓ Tests complete"
 
-deploy-exed: ## Deploy exed to production
+deploy-exed: ## Deploy exed to production (FORCE=1 to override safety checks)
 	@echo "${YELLOW}Deploying exed to production...${NC}"
 	@chmod +x ops/deploy/deploy-exed-prod.sh
-	@./ops/deploy/deploy-exed-prod.sh
+	@./ops/deploy/deploy-exed-prod.sh $(DEPLOY_FLAGS)
 	@./scripts/discord-notify.sh "deployed $(shell git rev-parse --short HEAD)"
 
 deploy-exed-staging: ## Deploy exed to staging
@@ -53,10 +56,10 @@ deploy-exed-staging: ## Deploy exed to staging
 	@chmod +x ops/deploy/deploy-exed-staging.sh
 	@./ops/deploy/deploy-exed-staging.sh
 
-deploy-exelet: ## Deploy exelet to production
+deploy-exelet: ## Deploy exelet to production (FORCE=1 to override safety checks)
 	@echo "${YELLOW}Deploying exelet to production...${NC}"
 	@chmod +x ops/deploy/deploy-exelet-prod.sh
-	@./ops/deploy/deploy-exelet-prod.sh
+	@./ops/deploy/deploy-exelet-prod.sh $(DEPLOY_FLAGS)
 
 deploy-exelet-staging: ## Deploy exelet to staging
 	@echo "${YELLOW}Deploying exelet to staging...${NC}"
@@ -88,10 +91,10 @@ ssh-ctr-staging: ## ssh to ctr-host staging
 ssh-mon: ## ssh to monitoring (prometheus/grafana) server
 	@ssh ubuntu@mon
 
-deploy-piperd: ## Deploy sshpiperd to production
+deploy-piperd: ## Deploy sshpiperd to production (FORCE=1 to override safety checks)
 	@echo "${YELLOW}Deploying sshpiperd to production...${NC}"
 	@chmod +x ops/deploy/deploy-sshpiper-prod.sh
-	@./ops/deploy/deploy-sshpiper-prod.sh
+	@./ops/deploy/deploy-sshpiper-prod.sh $(DEPLOY_FLAGS)
 
 deploy-piperd-staging: ## Deploy sshpiperd to staging
 	@echo "${YELLOW}Deploying sshpiperd to staging...${NC}"

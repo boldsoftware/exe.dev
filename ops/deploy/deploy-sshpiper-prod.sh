@@ -1,6 +1,7 @@
 #!/bin/bash
 # Deploy script for sshpiper binary
 # Builds sshpiper locally and deploys to prod VM
+# Use -f to force deploy from dirty worktree or non-origin/main commit
 
 set -e
 
@@ -12,6 +13,9 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Check deploy safety (dirty worktree, not on origin/main)
+"$REPO_ROOT/scripts/check-deploy-safety.sh" "$@"
 
 # Slack notification
 DEPLOY_TS=$("$REPO_ROOT/scripts/deploy-notify.sh" start sshpiper)
