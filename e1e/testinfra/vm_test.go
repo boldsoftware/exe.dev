@@ -1,6 +1,8 @@
 package testinfra
 
 import (
+	"fmt"
+	"math/rand/v2"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -14,7 +16,9 @@ func TestVM(t *testing.T) {
 
 	t.Parallel()
 
-	ctrHost, err := StartExeletVM()
+	testRunID := fmt.Sprintf("%04x", rand.Uint32()&0xFFFF)
+
+	ctrHost, err := StartExeletVM(testRunID)
 	if err != nil {
 		if err == ErrNoVM {
 			// We can see ErrNoVM on Darwin,

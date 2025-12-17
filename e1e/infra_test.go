@@ -26,7 +26,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -140,7 +139,7 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 `)
 	}
 
-	ctrHost, err := testinfra.StartExeletVM()
+	ctrHost, err := testinfra.StartExeletVM(testRunID)
 	if err != nil {
 		if err == testinfra.ErrNoVM && os.Getenv("CI") != "" {
 			fmt.Printf("skipping tests in CI: %v\n", err)
@@ -362,43 +361,6 @@ func (e *testEnv) sshPort() int {
 // parseSSHHost extracts hostname from ssh:// URL
 func parseSSHHost(ctrHost string) string {
 	return strings.TrimPrefix(ctrHost, "ssh://")
-}
-
-// buildExeletBinary builds exelet locally for Linux and returns path to binary.
-// The binary is built with coverage instrumentation via "make exelet-coverage".
-func buildExeletBinary() (string, error) {
-	binPath := filepath.Join(os.TempDir(), "exelet-test")
-
-	// Set working directory to project root (parent of e1e directory)
-	wd, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("failed to get working directory: %w", err)
-	}
-	buildDir := filepath.Dir(wd)
-
-	// Build exelet with coverage instrumentation
-	cmd := exec.Command("make", "exelet-coverage")
-	cmd.Dir = buildDir
-	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH="+runtime.GOARCH)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("failed to build exelet: %w\n%s\n", err, out)
-	}
-
-	// Ensure temp exelet is not present
-	if _, err := os.Stat(binPath); err == nil {
-		if rErr := os.RemoveAll(binPath); rErr != nil {
-			if !os.IsNotExist(rErr) {
-				return "", fmt.Errorf("error removing existing exelet from %s: %w", binPath, rErr)
-			}
-		}
-	}
-
-	// Rename to test binary path
-	if err := os.Rename(filepath.Join(buildDir, "exeletd"), binPath); err != nil {
-		return "", fmt.Errorf("failed to rename exelet to %s: %w", binPath, err)
-	}
-
-	return binPath, nil
 }
 
 // sshExec executes a command on remote host and returns combined output
@@ -1190,7 +1152,7 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 
 	// Build exelet binary locally
 	slog.Info("building exelet binary")
-	binPath, err := buildExeletBinary()
+	binPath, err := testinfra.BuildExeletBinary()
 	if err != nil {
 		return nil, err
 	}

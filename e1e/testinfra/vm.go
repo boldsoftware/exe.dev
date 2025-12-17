@@ -20,10 +20,13 @@ var ErrNoVM = errors.New("no ctr-host accessible")
 
 // StartExeletVM starts or finds a VM to run an exelet.
 // If the CTR_HOST environment variable is set, it is assumed to point to a VM.
+//
+// testRunID is a unique string for this invocation.
+//
 // This returns the ssh address for the socket, in the form ssh://USER@ADDR.
 // This returns [ErrNoVM] if no VM is available
 // and we don't know how to start one.
-func StartExeletVM() (string, error) {
+func StartExeletVM(testRunID string) (string, error) {
 	ctrHost := strings.TrimSpace(os.Getenv("CTR_HOST"))
 	if ctrHost != "" {
 		return ctrHost, nil
@@ -40,7 +43,7 @@ func StartExeletVM() (string, error) {
 		return ctrHost, nil
 
 	case "linux":
-		return startLinuxVM()
+		return startLinuxVM(testRunID)
 
 	default:
 		return "", fmt.Errorf("don't know how to start a VM on %s", runtime.GOOS)
@@ -49,12 +52,12 @@ func StartExeletVM() (string, error) {
 
 // startLinuxVM starts a VM on Linux to run the exelet.
 // It returns the ssh address for the host.
-func startLinuxVM() (string, error) {
+func startLinuxVM(testRunID string) (string, error) {
 	userVal, err := user.Current()
 	if err != nil {
 		return "", fmt.Errorf("starting VM failed: can't fetch current user name: %v", err)
 	}
-	name := userVal.Username + "-" + strconv.FormatInt(time.Now().Unix(), 10)
+	name := userVal.Username + "-" + testRunID + "-" + strconv.FormatInt(time.Now().Unix(), 10)
 
 	outdir, err := os.MkdirTemp("", "ci-vm-start-")
 	if err != nil {
@@ -64,14 +67,9 @@ func startLinuxVM() (string, error) {
 		os.RemoveAll(outdir)
 	})
 
-	// We are assumed to be running in a test.
-	// Walk up the directory tree until we find "go.mod".
-	srcdir := "."
-	for {
-		if _, err := os.Stat(filepath.Join(srcdir, "go.mod")); err == nil {
-			break
-		}
-		srcdir = filepath.Join(srcdir, "..")
+	srcdir, err := exeRootDir()
+	if err != nil {
+		return "", err
 	}
 
 	cmd := exec.Command(filepath.Join(srcdir, "ops/ci-vm-start.sh"))
@@ -125,4 +123,17 @@ func startLinuxVM() (string, error) {
 	ctrHost := "ssh://" + vmUser + "@" + vmIP
 
 	return ctrHost, nil
+}
+
+// exeRootDir returns the root of the source directory.
+// We find it by walking up the directory tree until we find "go.mod".
+func exeRootDir() (string, error) {
+	srcdir := "."
+	for range 32 {
+		if _, err := os.Stat(filepath.Join(srcdir, "go.mod")); err == nil {
+			return srcdir, nil
+		}
+		srcdir = filepath.Join(srcdir, "..")
+	}
+	return "", errors.New("could not find go.mod; directory too deep or in wrong directory")
 }
