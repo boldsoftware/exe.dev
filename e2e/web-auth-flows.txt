@@ -1,0 +1,45 @@
+# Web Authentication Flows Test
+
+## Instructions
+
+Test the web-based authentication flows, including direct web login (without SSH),
+dashboard access, and web-based VM creation.
+
+### Test Steps
+
+#### 1. Web Login Flow
+
+1. Access home page without authentication: http://localhost:<HTTP_PORT>/
+   - Expected: Shows index page with Login link
+
+2. Navigate to login page: http://localhost:<HTTP_PORT>/auth
+   - Expected: Shows email input form
+
+3. Submit email for verification (e.g., webtest@test.local)
+   - Expected: Redirects to "Check your email" page
+
+4. Fetch verification email and complete verification:
+   `curl http://localhost:<EMAIL_PORT>/emails?to=webtest@test.local`
+   - Navigate to the /verify-email link from email
+   - Expected: Shows "VERIFIED" and redirects to dashboard
+
+5. Verify dashboard access
+   - Expected: Shows "MY VMs" with option to create new VM
+
+#### 2. Web VM Creation
+
+6. Create VM from dashboard using "+ New" button
+   - Expected: VM creation form, then VM appears in dashboard
+
+#### 3. Logout and Re-authentication
+
+7. Logout via /logout
+   - Expected: Session cleared, redirects to home
+
+8. Re-login with same email
+   - Expected: Can access dashboard with existing VMs
+
+## Hints
+
+- Fetch verification URLs from email server (see env-info.txt)
+- The verification form may auto-submit

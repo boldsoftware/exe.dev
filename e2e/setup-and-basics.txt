@@ -25,8 +25,10 @@ Read env-info.txt for the service ports.
 
 ## Hints
 
-### Registration Hints
 - Use: `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p <SSH_PORT> localhost`
-- After entering email, get verification URL. Open in browser and click "Confirm Email Verification".
+- After entering email, fetch verification URL from email server:
+  `curl http://localhost:<EMAIL_PORT>/emails?to=<your-email>`
+  Look for the verify-email URL in the response body field.
+- Open the verification URL in browser and click "Confirm Email Verification".
 - After email verification, type `whoami` at exe.dev prompt. Shows email and SSH key fingerprint.
 - Type `ls` at exe.dev prompt. Should show "No VMs found. Create one with 'new'."

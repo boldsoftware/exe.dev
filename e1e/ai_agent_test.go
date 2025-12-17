@@ -58,18 +58,26 @@ The e1e test framework has set up the following services:
 - SSH proxy (sshpiper): localhost:%d
 - HTTP server (exed): http://localhost:%d
 - Direct SSH (exed): localhost:%d
+- Email server: http://localhost:%d
 
 To connect via SSH:
   ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %d localhost
 
 To access the web interface:
   http://localhost:%d
+
+To fetch verification emails:
+  curl http://localhost:%d/emails
+  curl http://localhost:%d/emails?to=user@example.com
 `,
 		Env.sshPort(),
 		Env.exed.HTTPPort,
 		Env.exed.SSHPort,
+		Env.email.port,
 		Env.sshPort(),
 		Env.exed.HTTPPort,
+		Env.email.port,
+		Env.email.port,
 	)
 	if err := os.WriteFile(envInfoPath, []byte(envInfo), 0o644); err != nil {
 		t.Fatalf("failed to write env-info.txt: %v", err)
@@ -143,7 +151,7 @@ HTTP port: %d
 		t.Logf("Report generated (%d bytes)", len(reportBytes))
 	}
 
-	if result != "SUCCESS" {
+	if !strings.HasPrefix(result, "SUCCESS") {
 		t.Fatalf("AI agent test failed with result: %s", result)
 	}
 }

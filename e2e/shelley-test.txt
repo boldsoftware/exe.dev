@@ -1,0 +1,40 @@
+# Shelley AI Agent Test
+
+## Instructions
+
+Test the Shelley AI coding agent, a key feature of exe.dev.
+
+### Test Steps
+
+#### 1. Create VM with Shelley Prompt
+
+1. Connect to exe.dev shell:
+   `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p <SSH_PORT> localhost`
+
+2. Create a new VM with a Shelley prompt:
+   `new --prompt="Create a file called hello.txt containing Hello World"`
+
+3. Expected behavior:
+   - VM creation proceeds normally
+   - See "Sending prompt to Shelley..."
+   - See "Connected to Shelley" and a URL
+   - Shelley output streams back showing tool calls
+   - See "Shelley finished its turn"
+
+4. Record the Shelley URL provided (e.g., http://vmname.exe.cloud:9999)
+
+#### 2. Verify Shelley Completed Task
+
+5. SSH into the VM and verify hello.txt was created:
+   `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p <SSH_PORT> <vmname>@localhost cat hello.txt`
+   - Expected: Shows "Hello World"
+
+#### 3. Access Shelley Web Interface (Optional)
+
+6. Open the Shelley URL from step 4 in browser
+   - Expected: Shelley web interface loads with conversation history
+
+## Hints
+
+- Shelley runs on port 9999 inside the VM
+- Use simple prompts for reliable testing

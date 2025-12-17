@@ -1270,6 +1270,9 @@ type emailServer struct {
 	listener net.Listener
 	inbox    hashtriemap.HashTrieMap[string, chan emailMessage] // email address -> inbox channel
 	poisoned hashtriemap.HashTrieMap[string, bool]              // email addresses that should panic on receive
+	// stored keeps a copy of all emails for HTTP retrieval by the AI agent
+	storedMu sync.RWMutex
+	stored   []emailMessage
 }
 
 func newEmailServer() (*emailServer, error) {
@@ -1287,6 +1290,7 @@ func newEmailServer() (*emailServer, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /", es.handleSendEmail)
+	mux.HandleFunc("GET /emails", es.handleGetEmails)
 
 	es.server = &http.Server{Handler: mux}
 
@@ -1325,7 +1329,29 @@ func (es *emailServer) handleSendEmail(w http.ResponseWriter, r *http.Request) {
 		panic(fmt.Sprintf("email sent to poisoned inbox %s: subject=%q", email.To, email.Subject))
 	}
 
+	// Store for HTTP retrieval
+	es.storedMu.Lock()
+	es.stored = append(es.stored, email)
+	es.storedMu.Unlock()
+
 	es.inboxChannel(email.To) <- email
+}
+
+func (es *emailServer) handleGetEmails(w http.ResponseWriter, r *http.Request) {
+	toFilter := r.URL.Query().Get("to")
+
+	es.storedMu.RLock()
+	defer es.storedMu.RUnlock()
+
+	var result []emailMessage
+	for _, email := range es.stored {
+		if toFilter == "" || email.To == toFilter {
+			result = append(result, email)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 // inboxChannel returns the inbox channel for the given email address.

@@ -1,0 +1,56 @@
+# New Device Authorization Test
+
+## Instructions
+
+Test the SSH authorization flow when an existing user connects with a new SSH key.
+This is different from new user registration - the email already exists in the system.
+
+### Prerequisites
+
+- Registration must be completed first (setup-and-basics.txt) with one SSH key
+
+### Test Steps
+
+#### 1. Setup Second SSH Key
+
+1. Generate a new SSH key:
+   `ssh-keygen -t ed25519 -f ~/.ssh/e2e_second_key -N "" -C "second-device-test"`
+
+#### 2. Connect with New Key
+
+2. Connect via SSH using the NEW key:
+   ```
+   ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+       -o IdentityFile=~/.ssh/e2e_second_key -o IdentitiesOnly=yes \
+       -p <SSH_PORT> localhost
+   ```
+
+3. Enter the SAME email used during original registration
+   - Expected: System recognizes existing user with new device
+   - Expected: Sends device authorization email (NOT regular verification)
+
+#### 3. Complete Device Authorization
+
+4. Fetch device authorization email:
+   `curl http://localhost:<EMAIL_PORT>/emails?to=<your-email>`
+   - Look for email with subject "New ssh key login"
+   - Contains /verify-device link (not /verify-email)
+
+5. Open /verify-device link in browser
+   - Expected: Shows "Authorize SSH key" page with key details
+   - Click "Authorize" button
+
+6. Verify SSH session becomes active after authorization
+
+#### 4. Verify Both Keys Work
+
+7. Test both keys can access the same account:
+   - Original key: `ssh -p <SSH_PORT> localhost whoami`
+   - New key: `ssh -o IdentityFile=~/.ssh/e2e_second_key -o IdentitiesOnly=yes -p <SSH_PORT> localhost whoami`
+   - Both should show same user email and both keys listed
+
+## Hints
+
+- Device auth uses /verify-device endpoint (not /verify-email)
+- Email subject is "New ssh key login" (not welcome message)
+- Use -o IdentitiesOnly=yes to force using a specific key

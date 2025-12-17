@@ -2,32 +2,35 @@
 
 ## Instructions
 
-Test exed by running all test groups in sequence. The e1e test framework has
-already started exed, exelet, and sshpiper. Read env-info.txt for the service
-ports.
+Test exed by running all test groups in order. The e1e test framework has
+started exed, exelet, and sshpiper. Read env-info.txt for service ports.
 
 Use tmux for interactive SSH testing (see tmux.md).
 
-As you go, create and update "report/report.md" with your findings, including
-details about what you found and screenshots. For web testing, use real
-screenshots. For terminal testing, include the text from tmux output.
+Create "report/report.md" with findings and screenshots as you go.
 
-Run the following test groups in order:
-1. setup-and-basics.txt - Registration and basic commands
-2. container-creation-ssh.txt - Container creation and SSH access
-3. http-proxying.txt - HTTP proxying and authentication
-4. custom-containers.txt
-5. terminal.txt
-6. mobile.txt
+## Test Groups (Required - Run All)
 
-When done, create "result.txt" with either SUCCESS or FAILURE.
+### Phase 1: Core Setup
+1. setup-and-basics.txt - SSH registration and basic commands
+2. container-creation-ssh.txt - VM creation and SSH access
 
-**Important**: All files you create besides result.txt must be in the report/*
-subdirectory. Any screenshots included in the markdown reports must also be
-added there.
+### Phase 2: Authentication Flows
+3. web-auth-flows.txt - Web login, dashboard, web VM creation
+4. new-device-auth.txt - New device authorization for existing users
+
+### Phase 3: Key Features
+5. shelley-test.txt - Shelley AI agent (IMPORTANT: key feature)
+6. http-proxying.txt - HTTP proxying and proxy authentication
+
+## Success Criteria
+
+When done, write ONLY the word "SUCCESS" or "FAILURE" to result.txt (nothing else).
+Write "SUCCESS" if tests 1-6 pass. Write "FAILURE" if any of tests 1-6 fail.
+
+**Important**: result.txt must contain ONLY "SUCCESS" or "FAILURE" with no other text.
+All other files go in report/* subdirectory.
 
 ## Hints
-
-### General Testing Hints
-- Use tmux for non-blocking testing as described in tmux.md
-- Wait appropriate times for services to fully start before testing
+- Use tmux for non-blocking SSH testing (see tmux.md)
+- Email server captures verification emails - fetch with curl (see env-info.txt)
