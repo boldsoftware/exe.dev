@@ -2335,6 +2335,57 @@ function makeHostsDashboard() {
     }
   );
 
+  // Resource Pressure (PSI) Row
+  dash.withRow(
+    new RowBuilder("Resource Pressure (PSI)").gridPos({ x: 0, y: 58, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "CPU Pressure",
+    `rate(node_pressure_cpu_waiting_seconds_total{${HOST_FILTER}}[5m]) * 100`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).gridPos({ x: 0, y: 59, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{instance}} waiting"),
+    }
+  );
+
+  // IO Pressure - both waiting and stalled
+  const ioPressurePanel = new TimeseriesBuilder()
+    .title("IO Pressure")
+    .unit("percent")
+    .min(0)
+    .gridPos({ x: 8, y: 59, w: 8, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`rate(node_pressure_io_waiting_seconds_total{${HOST_FILTER}}[5m]) * 100`)
+        .legendFormat("{{instance}} waiting")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`rate(node_pressure_io_stalled_seconds_total{${HOST_FILTER}}[5m]) * 100`)
+        .legendFormat("{{instance}} stalled")
+    );
+  dash.withPanel(ioPressurePanel);
+
+  // Memory Pressure - both waiting and stalled
+  const memoryPressurePanel = new TimeseriesBuilder()
+    .title("Memory Pressure")
+    .unit("percent")
+    .min(0)
+    .gridPos({ x: 16, y: 59, w: 8, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`rate(node_pressure_memory_waiting_seconds_total{${HOST_FILTER}}[5m]) * 100`)
+        .legendFormat("{{instance}} waiting")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`rate(node_pressure_memory_stalled_seconds_total{${HOST_FILTER}}[5m]) * 100`)
+        .legendFormat("{{instance}} stalled")
+    );
+  dash.withPanel(memoryPressurePanel);
+
   return dash;
 }
 
