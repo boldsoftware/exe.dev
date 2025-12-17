@@ -238,6 +238,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 		"--proxy-port-min", strconv.Itoa(proxyPortMin),
 		"--proxy-port-max", strconv.Itoa(proxyPortMax),
 		"--resource-manager-interval", "5s",
+		"--idle-threshold", "10m",
 		"--exed-url", exedProxyURL,
 	}
 	slog.DebugContext(ctx, "starting exelet", "cmd", args)

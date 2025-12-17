@@ -157,8 +157,8 @@ func TestPriorityWeights(t *testing.T) {
 		t.Errorf("cpuWeightNormal = %d, want 100", cpuWeightNormal)
 	}
 
-	if cpuWeightLow != 10 {
-		t.Errorf("cpuWeightLow = %d, want 10", cpuWeightLow)
+	if cpuWeightLow != 50 {
+		t.Errorf("cpuWeightLow = %d, want 50", cpuWeightLow)
 	}
 
 	// IO weights
@@ -170,8 +170,8 @@ func TestPriorityWeights(t *testing.T) {
 		t.Errorf("ioWeightNormal = %d, want 100", ioWeightNormal)
 	}
 
-	if ioWeightLow != 10 {
-		t.Errorf("ioWeightLow = %d, want 10", ioWeightLow)
+	if ioWeightLow != 50 {
+		t.Errorf("ioWeightLow = %d, want 50", ioWeightLow)
 	}
 
 	// Memory high ratio

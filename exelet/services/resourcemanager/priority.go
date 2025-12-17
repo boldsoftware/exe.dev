@@ -17,11 +17,11 @@ const (
 	// cpuWeightNormal is the default CPU weight for active VMs
 	cpuWeightNormal = 100
 	// cpuWeightLow is the reduced CPU weight for idle VMs
-	cpuWeightLow = 10
+	cpuWeightLow = 50
 	// ioWeightNormal is the default IO weight for active VMs
 	ioWeightNormal = 100
 	// ioWeightLow is the reduced IO weight for idle VMs
-	ioWeightLow = 10
+	ioWeightLow = 50
 	// memoryHighRatio is the fraction of allocated memory for memory.high on low priority VMs
 	// When a VM exceeds this ratio, the kernel aggressively reclaims its memory
 	memoryHighRatio = 0.8
