@@ -206,9 +206,9 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
-			"box_name": boxName,
-			"status":   "installed",
-			"backup":   backupPath,
+			"vm_name": boxName,
+			"status":  "installed",
+			"backup":  backupPath,
 		})
 		return nil
 	}

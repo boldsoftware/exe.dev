@@ -249,23 +249,24 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 	}
 
 	if cc.WantJSON() {
-		var boxList []map[string]any
-		for _, b := range boxes {
-			status := container.ContainerStatus(b.Status).String()
+		var vmList []map[string]any
+		for _, vm := range boxes {
+			status := container.ContainerStatus(vm.Status).String()
 			box := map[string]any{
-				"box_name": b.Name,
+				"vm_name":  vm.Name,
+				"ssh_dest": ss.server.env.BoxDest(vm.Name),
 				"status":   status,
 			}
-			imageName := container.GetDisplayImageName(b.Image)
+			imageName := container.GetDisplayImageName(vm.Image)
 			switch imageName {
 			case "exeuntu", "":
 			default:
 				box["image"] = imageName
 			}
-			boxList = append(boxList, box)
+			vmList = append(vmList, box)
 		}
 		cc.WriteJSON(map[string]any{
-			"boxes": boxList,
+			"vms": vmList,
 		})
 		return nil
 	}
@@ -758,11 +759,10 @@ done:
 		cc.Write("\r\033[K")
 	}
 	details := newBoxDetails{
-		BoxName:    boxName,
+		VMName:     boxName,
+		SSHDest:    ss.server.env.BoxDest(boxName),
 		SSHCommand: ss.server.boxSSHConnectionCommand(boxName),
-		SSHServer:  ss.server.env.BoxHost,
 		SSHPort:    ss.server.boxSSHPort(),
-		SSHUser:    boxName,
 		ProxyAddr:  ss.server.boxProxyAddress(boxName),
 		ProxyPort:  proxyPort,
 		VSCodeURL:  ss.server.vscodeURL(boxName),
@@ -822,9 +822,9 @@ done:
 		// Get the box and SSH details for Shelley integration
 		var box *exedb.Box
 		if cc.PublicKey != "" {
-			box, err = ss.server.getBoxForUser(ctx, cc.PublicKey, details.BoxName)
+			box, err = ss.server.getBoxForUser(ctx, cc.PublicKey, details.VMName)
 		} else {
-			box, err = ss.server.getBoxForUserByUserID(ctx, cc.User.ID, details.BoxName)
+			box, err = ss.server.getBoxForUserByUserID(ctx, cc.User.ID, details.VMName)
 		}
 		if err != nil {
 			return fmt.Errorf("failed to get box for Shelley: %w", err)
@@ -853,11 +853,10 @@ done:
 }
 
 type newBoxDetails struct {
-	BoxName    string `json:"box_name"`
+	VMName     string `json:"vm_name"`
 	SSHCommand string `json:"ssh_command"`
-	SSHServer  string `json:"ssh_server"`
+	SSHDest    string `json:"ssh_dest"`
 	SSHPort    int    `json:"ssh_port"`
-	SSHUser    string `json:"ssh_user"`
 	ProxyAddr  string `json:"https_url"`
 	ProxyPort  int    `json:"proxy_port"`
 	ShelleyURL string `json:"shelley_url,omitempty"`
@@ -890,8 +889,8 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 
 	if cc.WantJSON() {
 		result := map[string]string{
-			"box_name": boxName,
-			"status":   "deleted",
+			"vm_name": boxName,
+			"status":  "deleted",
 		}
 		cc.WriteJSON(result)
 		return nil
@@ -1049,8 +1048,8 @@ func (ss *SSHServer) handleProxyTokenCommand(ctx context.Context, cc *exemenu.Co
 	}
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
-			"box_name": boxName,
-			"token":    token,
+			"vm_name": boxName,
+			"token":   token,
 		})
 		return nil
 	}

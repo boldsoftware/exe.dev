@@ -149,8 +149,8 @@ func TestBoxSharing(t *testing.T) {
 			t.Fatalf("failed to run share command: %v\n%s", err, shareOut)
 		}
 		var shareInfo struct {
-			BoxName string `json:"box_name"`
-			Users   []struct {
+			VMName string `json:"vm_name"`
+			Users  []struct {
 				Email  string `json:"email"`
 				Status string `json:"status"`
 			} `json:"users"`
@@ -161,8 +161,8 @@ func TestBoxSharing(t *testing.T) {
 		if err = json.Unmarshal(shareOut, &shareInfo); err != nil {
 			t.Fatalf("failed to parse share info JSON: %v\n%s", err, shareOut)
 		}
-		if shareInfo.BoxName != box {
-			t.Errorf("Expected box name %s, got %s", box, shareInfo.BoxName)
+		if shareInfo.VMName != box {
+			t.Errorf("Expected VM name %s, got %s", box, shareInfo.VMName)
 		}
 		if len(shareInfo.Users) != 1 {
 			t.Errorf("Expected 1 shared user, got %d", len(shareInfo.Users))

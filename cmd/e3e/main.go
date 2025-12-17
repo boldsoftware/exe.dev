@@ -50,11 +50,10 @@ const (
 )
 
 type boxInfo struct {
-	Name       string `json:"box_name"`
+	Name       string `json:"vm_name"`
 	SSHCommand string `json:"ssh_command"`
 	SSHPort    int    `json:"ssh_port"`
-	SSHServer  string `json:"ssh_server"`
-	SSHUser    string `json:"ssh_user"`
+	SSHDest    string `json:"ssh_dest"`
 }
 
 type agentResult struct {
@@ -123,7 +122,7 @@ func createBox(ctx context.Context, cfg *config) (*boxInfo, error) {
 		return nil, fmt.Errorf("unmarshal: %w\n%s", err, out)
 	}
 	if resp.Name == "" {
-		return nil, fmt.Errorf("missing box_name in %s", out)
+		return nil, fmt.Errorf("missing vm_name in %s", out)
 	}
 	if resp.SSHCommand == "" {
 		return nil, fmt.Errorf("missing ssh_command in %s", out)
@@ -144,7 +143,7 @@ func runAgent(ctx context.Context, cfg *config, box *boxInfo, ag agent) agentRes
 	result := agentResult{Agent: ag}
 
 	boxSSHArgs := cfg.replSSH.buildBaseArgs()
-	boxSSHArgs = append(boxSSHArgs, "-p", fmt.Sprint(box.SSHPort), box.SSHUser+"@"+box.SSHServer)
+	boxSSHArgs = append(boxSSHArgs, "-p", fmt.Sprint(box.SSHPort), box.SSHDest)
 
 	script, err := agentScript(ag, cfg)
 	if err != nil {

@@ -51,8 +51,8 @@ func TestExeDevAPI(t *testing.T) {
 
 	nbo := runParseExeDevJSON[newBoxOutput](t, keyFile, "new", "--command=bash", "--json")
 	// TODO: actually use these values: ssh to the box, curl the https url, list the boxname using the exe.dev server, etc.
-	if nbo.BoxName == "" {
-		t.Errorf("expected box_name in JSON output, got empty string")
+	if nbo.VMName == "" {
+		t.Errorf("expected vm_name in JSON output, got empty string")
 	}
 	if nbo.HTTPS == "" {
 		t.Errorf("expected https_url in JSON output, got empty string")
@@ -60,8 +60,8 @@ func TestExeDevAPI(t *testing.T) {
 	if !strings.HasPrefix(nbo.HTTPS, "http") {
 		t.Errorf("expected https_url to start with 'http', got %q", nbo.HTTPS)
 	}
-	if nbo.SSHServer == "" {
-		t.Errorf("expected ssh_server in JSON output, got empty string")
+	if nbo.SSHDest == "" {
+		t.Errorf("expected ssh_dest in JSON output, got empty string")
 	}
 	if nbo.SSHPort == 0 {
 		t.Errorf("expected ssh_port in JSON output, got 0")
@@ -69,17 +69,11 @@ func TestExeDevAPI(t *testing.T) {
 	if nbo.SSH == "" {
 		t.Errorf("expected ssh_command in JSON output, got empty string")
 	}
-	if nbo.SSHUser == "" {
-		t.Errorf("expected ssh_user in JSON output, got empty string")
-	}
-	if nbo.SSHUser != nbo.BoxName {
-		t.Errorf("expected ssh_user %q, got %q", nbo.BoxName, nbo.SSHUser)
-	}
 	expectedSSH := "ssh "
 	if nbo.SSHPort != 22 {
 		expectedSSH += fmt.Sprintf("-p %d ", nbo.SSHPort)
 	}
-	expectedSSH += fmt.Sprintf("%s@%s", nbo.SSHUser, nbo.SSHServer)
+	expectedSSH += nbo.SSHDest
 	if nbo.SSH != expectedSSH {
 		t.Errorf("expected ssh_command %q, got %q", expectedSSH, nbo.SSH)
 	}
@@ -88,39 +82,42 @@ func TestExeDevAPI(t *testing.T) {
 	}
 
 	// Try to create a duplicate box using the repl.
-	Env.addCanonicalization(nbo.BoxName, "BOX_NAME")
-	pty.sendLine("new --name=" + nbo.BoxName)
-	pty.wantRe("VM name .*" + regexp.QuoteMeta(nbo.BoxName) + ".* is not available")
+	Env.addCanonicalization(nbo.VMName, "VM_NAME")
+	pty.sendLine("new --name=" + nbo.VMName)
+	pty.wantRe("VM name .*" + regexp.QuoteMeta(nbo.VMName) + ".* is not available")
 	pty.wantPrompt()
 
-	blo := runParseExeDevJSON[boxListOutput](t, keyFile, "ls", "--json")
-	t.Logf("ls output: %+v", blo)
-	boxes := blo.Boxes
-	if len(boxes) != 1 {
-		t.Errorf("expected exactly one box in ls output, got %d", len(boxes))
+	vlo := runParseExeDevJSON[vmListOutput](t, keyFile, "ls", "--json")
+	t.Logf("ls output: %+v", vlo)
+	vms := vlo.VMs
+	if len(vms) != 1 {
+		t.Errorf("expected exactly one VM in ls output, got %d", len(vms))
 	}
-	box0 := boxes[0]
-	if box0.BoxName != nbo.BoxName {
-		t.Errorf("expected box name %q in ls output, got %q", nbo.BoxName, boxes[0].BoxName)
+	vm0 := vms[0]
+	if vm0.VMName != nbo.VMName {
+		t.Errorf("expected VM name %q in ls output, got %q", nbo.VMName, vms[0].VMName)
 	}
-	if box0.Status != "running" {
-		t.Errorf("expected status 'running' in ls output, got %q", boxes[0].Status)
+	if vm0.Status != "running" {
+		t.Errorf("expected status 'running' in ls output, got %q", vms[0].Status)
+	}
+	if vm0.SSHDest == "" {
+		t.Errorf("expected ssh_dest in ls output, got empty string")
 	}
 	// TODO: check image name
 
-	delResult := runParseExeDevJSON[deleteBoxOutput](t, keyFile, "rm", nbo.BoxName, "--json")
-	if delResult.BoxName != nbo.BoxName {
-		t.Errorf("expected box name %q in rm output, got %q", nbo.BoxName, delResult.BoxName)
+	delResult := runParseExeDevJSON[deleteVMOutput](t, keyFile, "rm", nbo.VMName, "--json")
+	if delResult.VMName != nbo.VMName {
+		t.Errorf("expected VM name %q in rm output, got %q", nbo.VMName, delResult.VMName)
 	}
 	if delResult.Status != "deleted" {
 		t.Errorf("expected status 'deleted' in rm output, got %q", delResult.Status)
 	}
 
-	// Verify the box is gone from the list
-	blo2 := runParseExeDevJSON[boxListOutput](t, keyFile, "ls", "--json")
-	boxes2 := blo2.Boxes
-	if len(boxes2) != 0 {
-		t.Errorf("expected zero boxes in ls output after deletion, got %d", len(boxes2))
+	// Verify the VM is gone from the list
+	vlo2 := runParseExeDevJSON[vmListOutput](t, keyFile, "ls", "--json")
+	vms2 := vlo2.VMs
+	if len(vms2) != 0 {
+		t.Errorf("expected zero VMs in ls output after deletion, got %d", len(vms2))
 	}
 
 	browser := runParseExeDevJSON[browserCommandOutput](t, keyFile, "browser", "--json")
@@ -196,26 +193,26 @@ func TestExeDevAPI(t *testing.T) {
 }
 
 type newBoxOutput struct {
-	BoxName   string `json:"box_name"`
-	SSH       string `json:"ssh_command"`
-	SSHServer string `json:"ssh_server"`
-	SSHPort   int    `json:"ssh_port"`
-	SSHUser   string `json:"ssh_user"`
-	HTTPS     string `json:"https_url"`
+	VMName  string `json:"vm_name"`
+	SSH     string `json:"ssh_command"`
+	SSHDest string `json:"ssh_dest"`
+	SSHPort int    `json:"ssh_port"`
+	HTTPS   string `json:"https_url"`
 }
 
-type boxListEntry struct {
-	BoxName string `json:"box_name"`
+type vmListEntry struct {
+	VMName  string `json:"vm_name"`
+	SSHDest string `json:"ssh_dest"`
 	Status  string `json:"status"`
 }
 
-type boxListOutput struct {
-	Boxes []boxListEntry `json:"boxes"`
+type vmListOutput struct {
+	VMs []vmListEntry `json:"vms"`
 }
 
-type deleteBoxOutput struct {
-	BoxName string `json:"box_name"`
-	Status  string `json:"status"`
+type deleteVMOutput struct {
+	VMName string `json:"vm_name"`
+	Status string `json:"status"`
 }
 
 type browserCommandOutput struct {

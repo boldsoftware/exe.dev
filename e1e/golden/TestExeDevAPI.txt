@@ -35,8 +35,8 @@ PROMPT ▶ whoami
 Email Address: TestExeDevAPI@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-PROMPT ▶ new --name=BOX_NAME
-VM name "BOX_NAME" is not available
+PROMPT ▶ new --name=VM_NAME
+VM name "VM_NAME" is not available
 PROMPT ▶ whoami
 Email Address: TestExeDevAPI@example.com
 SSH Keys:

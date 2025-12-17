@@ -233,12 +233,12 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 		}
 
 		cc.WriteJSON(map[string]any{
-			"box_name": box.Name,
-			"status":   route.Share,
-			"port":     route.Port,
-			"url":      ss.server.boxProxyAddress(box.Name),
-			"users":    users,
-			"links":    links,
+			"vm_name": box.Name,
+			"status":  route.Share,
+			"port":    route.Port,
+			"url":     ss.server.boxProxyAddress(box.Name),
+			"users":   users,
+			"links":   links,
 		})
 		return nil
 	}
@@ -386,9 +386,9 @@ func (ss *SSHServer) showRouteConfiguration(ctx context.Context, cc *exemenu.Com
 
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
-			"box_name": boxName,
-			"port":     route.Port,
-			"share":    route.Share,
+			"vm_name": boxName,
+			"port":    route.Port,
+			"share":   route.Share,
 		})
 		return nil
 	}
@@ -427,10 +427,10 @@ func (ss *SSHServer) updateBoxRoute(ctx context.Context, cc *exemenu.CommandCont
 
 	if cc.WantJSON() {
 		result := map[string]any{
-			"box_name": boxName,
-			"port":     route.Port,
-			"share":    route.Share,
-			"status":   "updated",
+			"vm_name": boxName,
+			"port":    route.Port,
+			"share":   route.Share,
+			"status":  "updated",
 		}
 		cc.WriteJSON(result)
 		return nil
@@ -591,7 +591,7 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
 			"status":      "success",
-			"box_name":    box.Name,
+			"vm_name":     box.Name,
 			"shared_with": email,
 			"message":     "Invitation sent",
 		})
@@ -687,7 +687,7 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
 			"status":   "success",
-			"box_name": box.Name,
+			"vm_name":  box.Name,
 			"message":  fmt.Sprintf("Removed %s's access", email),
 		})
 		return nil
@@ -749,10 +749,10 @@ func (ss *SSHServer) handleShareAddLinkCmd(ctx context.Context, cc *exemenu.Comm
 
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
-			"status":   "success",
-			"box_name": box.Name,
-			"token":    token,
-			"url":      shareURL,
+			"status":  "success",
+			"vm_name": box.Name,
+			"token":   token,
+			"url":     shareURL,
 		})
 		return nil
 	}
@@ -813,9 +813,9 @@ func (ss *SSHServer) handleShareRemoveLinkCmd(ctx context.Context, cc *exemenu.C
 
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
-			"status":   "success",
-			"box_name": box.Name,
-			"message":  "Share link removed",
+			"status":  "success",
+			"vm_name": box.Name,
+			"message": "Share link removed",
 		})
 		return nil
 	}

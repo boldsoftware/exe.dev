@@ -270,8 +270,8 @@ chmod +x /home/exedev/cgi-bin/headers
 		}
 
 		type proxyTokenOutput struct {
-			BoxName string `json:"box_name"`
-			Token   string `json:"token"`
+			VMName string `json:"vm_name"`
+			Token  string `json:"token"`
 		}
 		tokenResp := runParseExeDevJSON[proxyTokenOutput](t, keyFile, "proxy-token", box, "--json")
 		token := tokenResp.Token

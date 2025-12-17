@@ -1026,7 +1026,7 @@ func (s *Server) sendFakeEmail(to, subject, body string) error {
 	return nil
 }
 
-var boxCreatedEmailTemplate = txttmpl.Must(txttmpl.New("box-created").Parse(`You have created {{.BoxName}}.exe.xyz
+var boxCreatedEmailTemplate = txttmpl.Must(txttmpl.New("box-created").Parse(`You have created {{.VMName}}.exe.xyz
 
 SSH:
 {{.SSHCommand}}
@@ -1051,7 +1051,7 @@ To prevent emails like this, pass the -no-email flag to new.
 
 // sendBoxCreatedEmail sends a confirmation email when a new box is created
 func (s *Server) sendBoxCreatedEmail(to string, details newBoxDetails) {
-	subject := fmt.Sprintf("exe.dev: created %s.exe.xyz", details.BoxName)
+	subject := fmt.Sprintf("exe.dev: created %s.exe.xyz", details.VMName)
 
 	body := new(strings.Builder)
 	if err := boxCreatedEmailTemplate.Execute(body, details); err != nil {
@@ -1060,7 +1060,7 @@ func (s *Server) sendBoxCreatedEmail(to string, details newBoxDetails) {
 	}
 
 	if err := s.sendEmail(to, subject, body.String()); err != nil {
-		s.slog().Warn("failed to send box created email", "to", to, "box", details.BoxName, "error", err)
+		s.slog().Warn("failed to send box created email", "to", to, "box", details.VMName, "error", err)
 	}
 }
 
