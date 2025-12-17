@@ -31,6 +31,7 @@ type Env struct {
 	ShowHiddenDocs    bool // whether to load and display unpublished docs
 	AutoStartSSHPiper bool // whether to auto-start sshpiper for local workflows
 	SSHCommandUsesAt  bool // whether ssh command logins use "box@host" format instead of "box.host" format
+	PostSlackFeed     bool // whether to post feed events to Slack; when false, logs them instead
 
 	NumShards  int   // number of IP shards available for box allocation, max 253
 	ProxyPorts []int // ports to listen on for proxying; empty means none
@@ -63,6 +64,7 @@ func Local() Env {
 		ShowHiddenDocs:    true,
 		AutoStartSSHPiper: true,
 		SSHCommandUsesAt:  true,
+		PostSlackFeed:     false,
 
 		NumShards:  25,
 		ProxyPorts: []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 9999},
@@ -97,6 +99,7 @@ func Test() Env {
 		ShowHiddenDocs:    true,
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  true,
+		PostSlackFeed:     false,
 
 		NumShards:  25,
 		ProxyPorts: nil, // no proxy ports in tests to avoid conflicts
@@ -128,6 +131,7 @@ func Staging() Env {
 		ShowHiddenDocs:    false,
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  false,
+		PostSlackFeed:     false,
 
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
@@ -158,6 +162,7 @@ func Prod() Env {
 		ShowHiddenDocs:    false,
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  false,
+		PostSlackFeed:     true,
 
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),

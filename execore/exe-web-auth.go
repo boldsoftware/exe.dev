@@ -19,6 +19,7 @@ import (
 
 	"exe.dev/domz"
 	"exe.dev/exedb"
+	"exe.dev/logging"
 	"exe.dev/stage"
 	_ "modernc.org/sqlite"
 )
@@ -764,6 +765,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 
 	// Check if user exists, create if not
 	var userID string
+	var isNewUser bool
 	err := s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
 		userID, err = queries.GetUserIDByEmail(ctx, email)
@@ -773,6 +775,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 			if err != nil {
 				return err
 			}
+			isNewUser = true
 			return nil
 		}
 		if err != nil {
@@ -784,6 +787,9 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		s.slog().ErrorContext(r.Context(), "Database error during user lookup/creation", "error", err)
 		s.showAuthError(w, r, "Database error occurred. Please try again.", "")
 		return
+	}
+	if isNewUser {
+		logging.PostFeedEvent(r.Context(), "new user (web): %s", email)
 	}
 
 	// Generate verification token

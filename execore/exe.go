@@ -464,6 +464,7 @@ type ServerConfig struct {
 
 // NewServer creates a new Server instance with database and container management.
 func NewServer(cfg ServerConfig) (*Server, error) {
+	logging.InitSlackFeed(cfg.Env.PostSlackFeed)
 	slog := cfg.Logger
 	// Run db migrations with a raw connection (not a pool).
 	if err := runMigrations(slog, cfg.DBPath); err != nil {
