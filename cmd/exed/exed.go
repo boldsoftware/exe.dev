@@ -339,22 +339,6 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 		logLevel = "debug"
 	}
 
-	// Get the VM IP address early so we can construct exed URL
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to lookup ip for %s: %w", host, err)
-	}
-	var remoteIp string
-	for _, ip := range ips {
-		if ip.To4() != nil {
-			remoteIp = ip.String()
-			break
-		}
-	}
-	if remoteIp == "" {
-		return "", "", fmt.Errorf("no ipv4 address found for %s", host)
-	}
-
 	// Get the gateway address early so we can construct exed URL
 	gateway, err := sshExec(ctx, host, "getent ahostsv4 _gateway | grep _gateway | awk '{ print $1; }'")
 	if err != nil {
