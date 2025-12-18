@@ -316,6 +316,29 @@ function CoalescedToolCall({
   );
 }
 
+// Animated "Agent working..." with letter-by-letter bold animation
+function AnimatedWorkingStatus() {
+  const text = "Agent working...";
+  const [boldIndex, setBoldIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBoldIndex((prev) => (prev + 1) % text.length);
+    }, 100); // 100ms per letter
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <span className="status-message animated-working">
+      {text.split("").map((char, idx) => (
+        <span key={idx} className={idx === boldIndex ? "bold-letter" : ""}>
+          {char}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 interface ChatInterfaceProps {
   conversationId: string | null;
   onOpenDrawer: () => void;
@@ -1051,22 +1074,7 @@ function ChatInterface({
           ) : (
             <div className="messages-list">
               {renderMessages()}
-              {agentWorking && (
-                <div
-                  key="agent-thinking"
-                  className="thinking-indicator"
-                  role="status"
-                  aria-live="polite"
-                  aria-label="Agent is thinking"
-                  data-testid="agent-thinking"
-                >
-                  <span className="thinking-dots" aria-hidden="true">
-                    <span>.</span>
-                    <span>.</span>
-                    <span>.</span>
-                  </span>
-                </div>
-              )}
+
               <div ref={messagesEndRef} />
             </div>
           )}
@@ -1128,7 +1136,7 @@ function ChatInterface({
           ) : agentWorking && conversationId ? (
             // Agent working - show cancel button
             <>
-              <span className="status-message">Agent working...</span>
+              <AnimatedWorkingStatus />
               <button
                 onClick={handleCancel}
                 disabled={cancelling}

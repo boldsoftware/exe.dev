@@ -1659,6 +1659,14 @@ select:disabled {
   font-weight: 500;
 }
 
+.animated-working {
+  display: inline;
+}
+
+.animated-working .bold-letter {
+  font-weight: 700;
+}
+
 .status-button {
   padding: 0.375rem 0.875rem;
   border-radius: 0.375rem;
