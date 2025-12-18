@@ -118,6 +118,13 @@ func TestIsProxyRequest(t *testing.T) {
 			comment:  "Should recognize *.exe.cloud even with server port",
 		},
 		{
+			name:     "xterm subdomain",
+			env:      stage.Test(),
+			host:     "mybox.xterm.exe.cloud:8080",
+			expected: false,
+			comment:  "Should recognize xterm",
+		},
+		{
 			name:     "localhost alone in dev mode",
 			env:      stage.Test(),
 			host:     "localhost",

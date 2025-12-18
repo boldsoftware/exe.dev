@@ -313,7 +313,7 @@ func (s *Server) isProxyRequest(host string) bool {
 		}
 	}
 	// Exclude our internal debug pages and the public web server.
-	if domz.FirstMatch(host, s.tsDomain, s.env.WebHost) != "" {
+	if domz.FirstMatch(host, s.tsDomain, s.env.WebHost, s.env.BoxSub("xterm")) != "" {
 		return false
 	}
 	if domz.IsIPAddr(host) {
