@@ -2610,6 +2610,315 @@ function makeAwsCloudWatchDashboard() {
   return dash;
 }
 
+// exe.dev LLM Gateway Dashboard - token usage, costs, latency, and rate limits
+function makeLLMGatewayDashboard() {
+  const dash = new DashboardBuilder("exe.dev LLM Gateway");
+  dash
+    .uid("exe-dev-llm-gateway")
+    .tags(["generated", "exe.dev", "llm"])
+    .refresh("30s")
+    .time({ from: "now-1h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  addStageVariable(dash);
+
+  // Add model variable
+  dash.withVariable(
+    new QueryVariableBuilder("model")
+      .label("Model")
+      .includeAll(true)
+      .query('label_values(llm_tokens_total, model)')
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+      .sort(1)
+  );
+
+  // Add api_type variable
+  dash.withVariable(
+    new QueryVariableBuilder("api_type")
+      .label("API Type")
+      .includeAll(true)
+      .query('label_values(llm_tokens_total, api_type)')
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+      .sort(1)
+  );
+
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "exe-dev-llm-gateway");
+  const STAGE_FILTER = 'stage=~"$stage"';
+  const MODEL_FILTER = 'model=~"$model"';
+  const API_TYPE_FILTER = 'api_type=~"$api_type"';
+  const FULL_FILTER = `${STAGE_FILTER},${MODEL_FILTER},${API_TYPE_FILTER}`;
+
+  // README panel
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("")
+      .content(README_CONTENT)
+      .mode(TextMode.Markdown)
+      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
+  );
+
+  // Row 1: Overview Stats
+  dash.withRow(
+    new RowBuilder("Overview").gridPos({ x: 0, y: 2, w: 24, h: 1 })
+  );
+
+  // Total requests (last 24h)
+  const totalRequestsPanel = new StatBuilder()
+    .title("Requests (24h)")
+    .gridPos({ x: 0, y: 3, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(increase(llm_requests_total{${STAGE_FILTER}}[24h]))`)
+        .legendFormat("Requests")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(totalRequestsPanel);
+
+  // Total cost (last 24h)
+  const totalCostPanel = new StatBuilder()
+    .title("Cost (24h)")
+    .gridPos({ x: 6, y: 3, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(increase(llm_cost_usd_total{${STAGE_FILTER}}[24h]))`)
+        .legendFormat("USD")
+    )
+    .unit("currencyUSD")
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(totalCostPanel);
+
+  // Total tokens (last 24h)
+  const totalTokensPanel = new StatBuilder()
+    .title("Tokens (24h)")
+    .gridPos({ x: 12, y: 3, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(increase(llm_tokens_total{${STAGE_FILTER}}[24h]))`)
+        .legendFormat("Tokens")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(totalTokensPanel);
+
+  // Current request rate
+  const requestRatePanel = new StatBuilder()
+    .title("Request Rate")
+    .gridPos({ x: 18, y: 3, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(rate(llm_requests_total{${STAGE_FILTER}}[5m]))`)
+        .legendFormat("req/s")
+    )
+    .unit("reqps")
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(requestRatePanel);
+
+  // Row 2: Request Metrics
+  dash.withRow(
+    new RowBuilder("Request Metrics").gridPos({ x: 0, y: 7, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Request Rate by API Type",
+    `sum(rate(llm_requests_total{${STAGE_FILTER}}[$__rate_interval])) by (api_type)`,
+    {
+      panelCustomization: (x) =>
+        x.unit("reqps").min(0).gridPos({ x: 0, y: 8, w: 12, h: 8 }),
+      queryCustomization: (q) => q.legendFormat("{{api_type}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Request Rate by Status",
+    `sum(rate(llm_requests_total{${STAGE_FILTER}}[$__rate_interval])) by (status)`,
+    {
+      panelCustomization: (x) =>
+        x.unit("reqps").min(0).gridPos({ x: 12, y: 8, w: 12, h: 8 }),
+      queryCustomization: (q) => q.legendFormat("{{status}}"),
+    }
+  );
+
+  // Row 3: Token Usage
+  dash.withRow(
+    new RowBuilder("Token Usage").gridPos({ x: 0, y: 16, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Token Rate by Type",
+    `sum(rate(llm_tokens_total{${FULL_FILTER}}[$__rate_interval])) by (token_type)`,
+    {
+      panelCustomization: (x) =>
+        x.unit("short").min(0).gridPos({ x: 0, y: 17, w: 12, h: 8 }),
+      queryCustomization: (q) => q.legendFormat("{{token_type}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Token Rate by Model",
+    `sum(rate(llm_tokens_total{${FULL_FILTER}}[$__rate_interval])) by (model)`,
+    {
+      panelCustomization: (x) =>
+        x.unit("short").min(0).gridPos({ x: 12, y: 17, w: 12, h: 8 }),
+      queryCustomization: (q) => q.legendFormat("{{model}}"),
+    }
+  );
+
+  // Row 4: Cost Tracking
+  dash.withRow(
+    new RowBuilder("Cost Tracking").gridPos({ x: 0, y: 25, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Cost Rate by Model",
+    `sum(rate(llm_cost_usd_total{${FULL_FILTER}}[$__rate_interval])) by (model) * 3600`,
+    {
+      panelCustomization: (x) =>
+        x.unit("currencyUSD").min(0).gridPos({ x: 0, y: 26, w: 12, h: 8 }),
+      queryCustomization: (q) => q.legendFormat("{{model}} ($/hr)"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Cost Rate by API Type",
+    `sum(rate(llm_cost_usd_total{${FULL_FILTER}}[$__rate_interval])) by (api_type) * 3600`,
+    {
+      panelCustomization: (x) =>
+        x.unit("currencyUSD").min(0).gridPos({ x: 12, y: 26, w: 12, h: 8 }),
+      queryCustomization: (q) => q.legendFormat("{{api_type}} ($/hr)"),
+    }
+  );
+
+  // Row 5: Latency
+  dash.withRow(
+    new RowBuilder("Latency").gridPos({ x: 0, y: 34, w: 24, h: 1 })
+  );
+
+  // Latency percentiles panel
+  const latencyPanel = new TimeseriesBuilder()
+    .title("Request Latency Percentiles")
+    .unit("s")
+    .min(0)
+    .gridPos({ x: 0, y: 35, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.5, sum(rate(llm_request_duration_seconds_bucket{${FULL_FILTER}}[$__rate_interval])) by (le))`)
+        .legendFormat("p50")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.9, sum(rate(llm_request_duration_seconds_bucket{${FULL_FILTER}}[$__rate_interval])) by (le))`)
+        .legendFormat("p90")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.99, sum(rate(llm_request_duration_seconds_bucket{${FULL_FILTER}}[$__rate_interval])) by (le))`)
+        .legendFormat("p99")
+    );
+  dash.withPanel(latencyPanel);
+
+  // Latency by model
+  const latencyByModelPanel = new TimeseriesBuilder()
+    .title("P90 Latency by Model")
+    .unit("s")
+    .min(0)
+    .gridPos({ x: 12, y: 35, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.9, sum(rate(llm_request_duration_seconds_bucket{${FULL_FILTER}}[$__rate_interval])) by (le, model))`)
+        .legendFormat("{{model}}")
+    );
+  dash.withPanel(latencyByModelPanel);
+
+  // Row 6: Anthropic Rate Limits
+  dash.withRow(
+    new RowBuilder("Anthropic Rate Limits").gridPos({ x: 0, y: 43, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Rate Limit Remaining",
+    `anthropic_rate_limit_remaining{${STAGE_FILTER}}`,
+    {
+      panelCustomization: (x) =>
+        x.min(0).gridPos({ x: 0, y: 44, w: 24, h: 8 }),
+      queryCustomization: (q) => q.legendFormat("{{type}}"),
+    }
+  );
+
+  // Row 7: Per-User Breakdown
+  dash.withRow(
+    new RowBuilder("Per-User Breakdown").gridPos({ x: 0, y: 52, w: 24, h: 1 })
+  );
+
+  // Top users by cost (table)
+  const topUsersCostTable = new TableBuilder()
+    .title("Top 10 Users by Cost (24h)")
+    .gridPos({ x: 0, y: 53, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`topk(10, sum(increase(llm_cost_usd_total{${STAGE_FILTER}}[24h])) by (user_id))`)
+        .instant(true)
+        .format("table")
+    );
+  dash.withPanel(topUsersCostTable);
+
+  // Top users by tokens (table)
+  const topUsersTokensTable = new TableBuilder()
+    .title("Top 10 Users by Tokens (24h)")
+    .gridPos({ x: 12, y: 53, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`topk(10, sum(increase(llm_tokens_total{${STAGE_FILTER}}[24h])) by (user_id))`)
+        .instant(true)
+        .format("table")
+    );
+  dash.withPanel(topUsersTokensTable);
+
+  // Row 8: Per-VM Breakdown
+  dash.withRow(
+    new RowBuilder("Per-VM Breakdown").gridPos({ x: 0, y: 61, w: 24, h: 1 })
+  );
+
+  // Top VMs by cost (table)
+  const topVMsCostTable = new TableBuilder()
+    .title("Top 10 VMs by Cost (24h)")
+    .gridPos({ x: 0, y: 62, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`topk(10, sum(increase(llm_cost_usd_total{${STAGE_FILTER}}[24h])) by (vm_name))`)
+        .instant(true)
+        .format("table")
+    );
+  dash.withPanel(topVMsCostTable);
+
+  // Top VMs by tokens (table)
+  const topVMsTokensTable = new TableBuilder()
+    .title("Top 10 VMs by Tokens (24h)")
+    .gridPos({ x: 12, y: 62, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`topk(10, sum(increase(llm_tokens_total{${STAGE_FILTER}}[24h])) by (vm_name))`)
+        .instant(true)
+        .format("table")
+    );
+  dash.withPanel(topVMsTokensTable);
+
+  return dash;
+}
+
 async function main() {
   if (TOKEN === undefined) {
     console.error(
@@ -2630,6 +2939,7 @@ async function main() {
   await createDashboard(makeMonMonDashboard());
   await createDashboard(makeAwsCloudWatchDashboard());
   await createDashboard(makeHostsDashboard());
+  await createDashboard(makeLLMGatewayDashboard());
 
   // Create alerts after dashboards are created
   await createAlerts();
