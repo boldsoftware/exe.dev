@@ -150,16 +150,14 @@ func TestPasskeyDeleteRemovesPasskey(t *testing.T) {
 	}
 
 	// Insert a test passkey directly into the database
-	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.InsertPasskey(ctx, exedb.InsertPasskeyParams{
-			UserID:       userID,
-			CredentialID: []byte("test-credential-id"),
-			PublicKey:    []byte("test-public-key"),
-			SignCount:    0,
-			Aaguid:       []byte("test-aaguid"),
-			Name:         "Test Passkey",
-			Flags:        0,
-		})
+	err = withTx1(s, ctx, (*exedb.Queries).InsertPasskey, exedb.InsertPasskeyParams{
+		UserID:       userID,
+		CredentialID: []byte("test-credential-id"),
+		PublicKey:    []byte("test-public-key"),
+		SignCount:    0,
+		Aaguid:       []byte("test-aaguid"),
+		Name:         "Test Passkey",
+		Flags:        0,
 	})
 	if err != nil {
 		t.Fatalf("failed to insert test passkey: %v", err)
@@ -208,22 +206,18 @@ func TestPasskeyChallengeExpiration(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert an expired challenge
-	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.InsertPasskeyChallenge(ctx, exedb.InsertPasskeyChallengeParams{
-			Challenge:   "expired-test-challenge",
-			SessionData: []byte(`{"challenge":"expired-test-challenge"}`),
-			UserID:      nil,
-			ExpiresAt:   time.Now().Add(-1 * time.Hour), // Already expired
-		})
+	err := withTx1(s, ctx, (*exedb.Queries).InsertPasskeyChallenge, exedb.InsertPasskeyChallengeParams{
+		Challenge:   "expired-test-challenge",
+		SessionData: []byte(`{"challenge":"expired-test-challenge"}`),
+		UserID:      nil,
+		ExpiresAt:   time.Now().Add(-1 * time.Hour), // Already expired
 	})
 	if err != nil {
 		t.Fatalf("failed to insert expired challenge: %v", err)
 	}
 
 	// Clean up expired challenges
-	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.CleanupExpiredPasskeyChallenges(ctx, time.Now())
-	})
+	err = withTx1(s, ctx, (*exedb.Queries).CleanupExpiredPasskeyChallenges, time.Now())
 	if err != nil {
 		t.Fatalf("failed to cleanup expired challenges: %v", err)
 	}
@@ -343,16 +337,14 @@ func TestGetPasskeysForUser(t *testing.T) {
 	}
 
 	// Insert a passkey
-	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.InsertPasskey(ctx, exedb.InsertPasskeyParams{
-			UserID:       userID,
-			CredentialID: []byte("credential-1"),
-			PublicKey:    []byte("public-key-1"),
-			SignCount:    0,
-			Aaguid:       []byte("aaguid-1"),
-			Name:         "MacBook Pro",
-			Flags:        0,
-		})
+	err = withTx1(s, ctx, (*exedb.Queries).InsertPasskey, exedb.InsertPasskeyParams{
+		UserID:       userID,
+		CredentialID: []byte("credential-1"),
+		PublicKey:    []byte("public-key-1"),
+		SignCount:    0,
+		Aaguid:       []byte("aaguid-1"),
+		Name:         "MacBook Pro",
+		Flags:        0,
 	})
 	if err != nil {
 		t.Fatalf("failed to insert passkey: %v", err)

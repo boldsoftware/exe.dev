@@ -585,13 +585,11 @@ func TestBasicUserDashboardRedirectsToProfile(t *testing.T) {
 
 	// Create auth cookie - domain must match what baseDomain returns for the request host
 	cookieValue := generateRegistrationToken()
-	err = server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.InsertAuthCookie(ctx, exedb.InsertAuthCookieParams{
-			CookieValue: cookieValue,
-			UserID:      userID,
-			Domain:      "127.0.0.1", // baseDomain returns this for 127.0.0.1:port
-			ExpiresAt:   time.Now().Add(24 * time.Hour),
-		})
+	err = withTx1(server, context.Background(), (*exedb.Queries).InsertAuthCookie, exedb.InsertAuthCookieParams{
+		CookieValue: cookieValue,
+		UserID:      userID,
+		Domain:      "127.0.0.1", // baseDomain returns this for 127.0.0.1:port
+		ExpiresAt:   time.Now().Add(24 * time.Hour),
 	})
 	if err != nil {
 		t.Fatalf("Failed to create auth cookie: %v", err)
@@ -643,13 +641,11 @@ func TestBasicUserProfileShowsWhatIsExe(t *testing.T) {
 
 	// Create auth cookie - domain must match what baseDomain returns for the request host
 	cookieValue := generateRegistrationToken()
-	err = server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.InsertAuthCookie(ctx, exedb.InsertAuthCookieParams{
-			CookieValue: cookieValue,
-			UserID:      userID,
-			Domain:      "127.0.0.1", // baseDomain returns this for 127.0.0.1:port
-			ExpiresAt:   time.Now().Add(24 * time.Hour),
-		})
+	err = withTx1(server, context.Background(), (*exedb.Queries).InsertAuthCookie, exedb.InsertAuthCookieParams{
+		CookieValue: cookieValue,
+		UserID:      userID,
+		Domain:      "127.0.0.1", // baseDomain returns this for 127.0.0.1:port
+		ExpiresAt:   time.Now().Add(24 * time.Hour),
 	})
 	if err != nil {
 		t.Fatalf("Failed to create auth cookie: %v", err)
@@ -706,13 +702,11 @@ func TestNormalUserProfileShowsSSHKeys(t *testing.T) {
 
 	// Create auth cookie
 	cookieValue := generateRegistrationToken()
-	err = server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.InsertAuthCookie(ctx, exedb.InsertAuthCookieParams{
-			CookieValue: cookieValue,
-			UserID:      user.UserID,
-			Domain:      "127.0.0.1",
-			ExpiresAt:   time.Now().Add(24 * time.Hour),
-		})
+	err = withTx1(server, context.Background(), (*exedb.Queries).InsertAuthCookie, exedb.InsertAuthCookieParams{
+		CookieValue: cookieValue,
+		UserID:      user.UserID,
+		Domain:      "127.0.0.1",
+		ExpiresAt:   time.Now().Add(24 * time.Hour),
 	})
 	if err != nil {
 		t.Fatalf("Failed to create auth cookie: %v", err)
@@ -766,13 +760,11 @@ func TestNormalUserDashboardShowsAllTabs(t *testing.T) {
 
 	// Create auth cookie - domain must match what baseDomain returns for the request host
 	cookieValue := generateRegistrationToken()
-	err = server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.InsertAuthCookie(ctx, exedb.InsertAuthCookieParams{
-			CookieValue: cookieValue,
-			UserID:      user.UserID,
-			Domain:      "127.0.0.1", // baseDomain returns this for 127.0.0.1:port
-			ExpiresAt:   time.Now().Add(24 * time.Hour),
-		})
+	err = withTx1(server, context.Background(), (*exedb.Queries).InsertAuthCookie, exedb.InsertAuthCookieParams{
+		CookieValue: cookieValue,
+		UserID:      user.UserID,
+		Domain:      "127.0.0.1", // baseDomain returns this for 127.0.0.1:port
+		ExpiresAt:   time.Now().Add(24 * time.Hour),
 	})
 	if err != nil {
 		t.Fatalf("Failed to create auth cookie: %v", err)
