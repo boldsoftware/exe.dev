@@ -660,6 +660,9 @@ func (s *Server) notifySubscribersNewMessage(ctx context.Context, conversationID
 		Messages:          apiMessages,
 		Conversation:      conversation,
 		AgentWorking:      !isEndOfTurn(newMsg),
+		// ContextWindowSize: 0 for messages without usage data (user/tool messages).
+		// With omitempty, 0 is omitted from JSON, so the UI keeps its cached value.
+		// Only agent messages have usage data, so context window updates when they arrive.
 		ContextWindowSize: calculateContextWindowSizeFromMsg(newMsg),
 	}
 	manager.subpub.Publish(newMsg.SequenceID, streamData)

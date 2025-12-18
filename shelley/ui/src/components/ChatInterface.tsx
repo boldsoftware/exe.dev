@@ -39,7 +39,12 @@ function ContextUsageBar({ contextWindowSize, maxContextTokens }: ContextUsageBa
     return tokens.toString();
   };
 
-  // Handle right-click (desktop)
+  // Handle click to show context menu
+  const handleClick = (e: React.MouseEvent) => {
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  // Handle right-click (desktop) - same as click
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY });
@@ -90,6 +95,7 @@ function ContextUsageBar({ contextWindowSize, maxContextTokens }: ContextUsageBa
     <>
       <div
         className="context-usage-bar"
+        onClick={handleClick}
         onContextMenu={handleContextMenu}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
@@ -1129,25 +1135,29 @@ function ChatInterface({
               </button>
             </>
           ) : agentWorking && conversationId ? (
-            // Agent working - show cancel button
-            <>
-              <AnimatedWorkingStatus />
-              <button
-                onClick={handleCancel}
-                disabled={cancelling}
-                className="status-button status-button-cancel"
-              >
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-                {cancelling ? "Cancelling..." : "Cancel"}
-              </button>
-            </>
+            // Agent working - show status with stop button and context bar
+            <div className="status-bar-active">
+              <div className="status-working-group">
+                <AnimatedWorkingStatus />
+                <button
+                  onClick={handleCancel}
+                  disabled={cancelling}
+                  className="status-stop-button"
+                  title={cancelling ? "Cancelling..." : "Stop"}
+                >
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="12" height="12" rx="1" />
+                  </svg>
+                  <span className="status-stop-label">{cancelling ? "Cancelling..." : "Stop"}</span>
+                </button>
+              </div>
+              <ContextUsageBar
+                contextWindowSize={contextWindowSize}
+                maxContextTokens={
+                  models.find((m) => m.id === selectedModel)?.max_context_tokens || 200000
+                }
+              />
+            </div>
           ) : // Idle state - show ready message, or configuration for empty conversation
           !conversationId ? (
             // Empty conversation - show model (left) and cwd (right)

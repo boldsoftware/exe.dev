@@ -2296,13 +2296,64 @@ svg {
   width: 100%;
 }
 
+.status-working-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-stop-button {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  border-radius: 0.25rem;
+  background: var(--error-bg);
+  color: var(--error-text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.status-stop-button:hover:not(:disabled) {
+  background: var(--error-text);
+  color: white;
+}
+
+.status-stop-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status-stop-button svg {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex-shrink: 0;
+}
+
+.status-stop-label {
+  white-space: nowrap;
+}
+
+/* Hide stop label on small screens */
+@media (max-width: 500px) {
+  .status-stop-label {
+    display: none;
+  }
+  .status-stop-button {
+    padding: 0.25rem;
+  }
+}
+
 .context-usage-bar {
   width: 60px;
   height: 6px;
   background: var(--bg-tertiary);
   border-radius: 3px;
   overflow: hidden;
-  cursor: default;
+  cursor: pointer;
 }
 
 .context-usage-fill {
