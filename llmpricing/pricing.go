@@ -115,17 +115,17 @@ var modelCost = map[string]centsPer1MTokens{
 		CacheCreation: 375,  // $3.75
 	},
 	Claude3Haiku: {
-		Input:         25,   // $0.25
-		Output:        125,  // $1.25
-		CacheRead:     2,    // $0.025 (rounded)
-		CacheCreation: 31,   // $0.3125 (rounded)
+		Input:         25,  // $0.25
+		Output:        125, // $1.25
+		CacheRead:     2,   // $0.025 (rounded)
+		CacheCreation: 31,  // $0.3125 (rounded)
 	},
 
 	// OpenAI models
 	"gpt-4o": {
-		Input:     250, // $2.50
+		Input:     250,  // $2.50
 		Output:    1000, // $10.00
-		CacheRead: 125, // $1.25
+		CacheRead: 125,  // $1.25
 	},
 	"gpt-4o-2024-11-20": {
 		Input:     250,  // $2.50
@@ -133,9 +133,9 @@ var modelCost = map[string]centsPer1MTokens{
 		CacheRead: 125,  // $1.25
 	},
 	"gpt-4o-mini": {
-		Input:     15,  // $0.15
-		Output:    60,  // $0.60
-		CacheRead: 7,   // $0.075 (rounded)
+		Input:     15, // $0.15
+		Output:    60, // $0.60
+		CacheRead: 7,  // $0.075 (rounded)
 	},
 	"gpt-4-turbo": {
 		Input:  1000, // $10.00

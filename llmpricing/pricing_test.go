@@ -197,11 +197,11 @@ func TestMicroCentsUSD(t *testing.T) {
 		want float64
 	}{
 		{0, 0},
-		{100_000_000, 1.0},   // 1 dollar
-		{1_000_000, 0.01},    // 1 cent
-		{1_000, 0.00001},     // 1/100th of a cent
-		{1, 0.00000001},      // 1 microCent
-		{500_000_000, 5.0},   // 5 dollars
+		{100_000_000, 1.0}, // 1 dollar
+		{1_000_000, 0.01},  // 1 cent
+		{1_000, 0.00001},   // 1/100th of a cent
+		{1, 0.00000001},    // 1 microCent
+		{500_000_000, 5.0}, // 5 dollars
 	}
 
 	for _, tt := range tests {
