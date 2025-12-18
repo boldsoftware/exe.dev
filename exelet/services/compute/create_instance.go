@@ -157,16 +157,7 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	defer func() {
 		if err != nil {
 			s.log.WarnContext(ctx, "instance creation failed, rolling back", "id", instanceID, "error", err)
-			// Let's try to read the tail of the boot log for debugging
-			// TODO: This is an abstraction violation, since VMM should have a method here.
-			// TODO: only read last 4KB
-			boogLogPath := s.config.DataDir + "/instances/" + instanceID + "/logs/boot.log"
-			logData, logErr := os.ReadFile(boogLogPath)
-			if logErr != nil {
-				s.log.WarnContext(ctx, "failed to read instance boot log", "id", instanceID, "error", logErr, "path", boogLogPath)
-			} else {
-				s.log.WarnContext(ctx, "instance boot log", "id", instanceID, "log", string(logData))
-			}
+			err = rb.EnhanceErrorWithBootLog(err)
 			rb.Rollback()
 		}
 	}()

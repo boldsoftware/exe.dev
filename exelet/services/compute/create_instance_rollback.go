@@ -2,8 +2,14 @@ package compute
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log/slog"
 	"os"
+
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	"exe.dev/exelet/services"
 	"exe.dev/exelet/sshproxy"
@@ -33,6 +39,71 @@ type createInstanceRollback struct {
 	runtimeAddress     string
 	networkIP          string
 	enableHugepages    bool
+}
+
+// EnhanceErrorWithBootLog reads the VM boot log and appends it to the error for debugging.
+// Returns the enhanced error, or the original error if boot log cannot be read.
+func (r *createInstanceRollback) EnhanceErrorWithBootLog(err error) error {
+	if r.runtimeAddress == "" {
+		return err
+	}
+
+	// NetworkManager can be nil for reading logs (only needed for network operations)
+	var nm vmm.NetworkManager
+	if r.serviceContext != nil {
+		nm = r.serviceContext.NetworkManager
+	}
+
+	v, vmmErr := vmm.NewVMM(r.runtimeAddress, nm, r.enableHugepages, r.log)
+	if vmmErr != nil {
+		r.log.WarnContext(r.ctx, "failed to create VMM client for boot log", "error", vmmErr)
+		return err
+	}
+
+	logReader, logErr := v.Logs(r.ctx, r.instanceID)
+	if logErr != nil {
+		r.log.WarnContext(r.ctx, "failed to read instance boot log", "id", r.instanceID, "error", logErr)
+		return err
+	}
+
+	logData, readErr := io.ReadAll(io.LimitReader(logReader, 4096))
+	logReader.Close()
+	if readErr != nil {
+		r.log.WarnContext(r.ctx, "failed to read instance boot log data", "id", r.instanceID, "error", readErr)
+		return err
+	}
+
+	if len(logData) > 0 {
+		bootLog := string(logData)
+		r.log.WarnContext(r.ctx, "instance boot log", "id", r.instanceID, "log", bootLog)
+		// Append boot log to message and add as DebugInfo detail for structured access
+		if st, ok := status.FromError(err); ok {
+			newSt := status.New(st.Code(), fmt.Sprintf("%s; boot log: %s", st.Message(), bootLog))
+			// Re-attach existing details and add boot log as DebugInfo
+			details := st.Details()
+			debugInfo := &errdetails.DebugInfo{Detail: bootLog}
+			if len(details) > 0 {
+				// Copy existing details to new status
+				debugAny, anyErr := anypb.New(debugInfo)
+				if anyErr != nil {
+					// Fall back to status with just the message if marshal fails
+					return newSt.Err()
+				}
+				protoDetails := st.Proto().Details
+				protoDetails = append(protoDetails, debugAny)
+				newProto := newSt.Proto()
+				newProto.Details = protoDetails
+				return status.FromProto(newProto).Err()
+			}
+			if withLog, detailErr := newSt.WithDetails(debugInfo); detailErr == nil {
+				return withLog.Err()
+			}
+			return newSt.Err()
+		}
+		return fmt.Errorf("%w; boot log: %s", err, bootLog)
+	}
+
+	return err
 }
 
 // Rollback cleans up resources in reverse order of creation

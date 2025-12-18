@@ -1,10 +1,17 @@
 package compute
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"exe.dev/exelet/config"
 	api "exe.dev/pkg/api/exe/compute/v1"
@@ -514,5 +521,122 @@ func TestRollbackCleansUpCreatingInstance(t *testing.T) {
 	}
 	if !errors.Is(err, api.ErrNotFound) {
 		t.Errorf("expected ErrNotFound after rollback, got: %v", err)
+	}
+}
+
+// TestEnhanceErrorWithBootLog tests that the rollback's EnhanceErrorWithBootLog
+// method correctly reads the boot log from VMM and appends it to the error.
+func TestEnhanceErrorWithBootLog(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	// Create temp directory structure for VMM
+	runtimeDir := t.TempDir()
+	instanceID := "test-instance-bootlog"
+
+	// Create instance directory and boot.log
+	instanceDir := filepath.Join(runtimeDir, instanceID)
+	if err := os.MkdirAll(instanceDir, 0o770); err != nil {
+		t.Fatalf("failed to create instance dir: %v", err)
+	}
+
+	bootLogContent := "boot error: Cannot open disk path /dev/zvol/test/disk\nKernel panic - not syncing"
+	bootLogPath := filepath.Join(instanceDir, "boot.log")
+	if err := os.WriteFile(bootLogPath, []byte(bootLogContent), 0o644); err != nil {
+		t.Fatalf("failed to write boot.log: %v", err)
+	}
+
+	// Create rollback struct with runtime address pointing to temp dir
+	rb := &createInstanceRollback{
+		ctx:            context.Background(),
+		log:            log,
+		instanceID:     instanceID,
+		runtimeAddress: "cloudhypervisor://" + runtimeDir,
+	}
+
+	// Test EnhanceErrorWithBootLog
+	originalErr := errors.New("VM boot failed with status 500")
+	enhancedErr := rb.EnhanceErrorWithBootLog(originalErr)
+
+	// Verify error was enhanced with boot log
+	if enhancedErr == originalErr {
+		t.Error("error should be enhanced, but got original error")
+	}
+	if !strings.Contains(enhancedErr.Error(), "Cannot open disk path") {
+		t.Errorf("enhanced error should contain boot log content, got: %v", enhancedErr)
+	}
+	if !strings.Contains(enhancedErr.Error(), "VM boot failed with status 500") {
+		t.Errorf("enhanced error should preserve original error, got: %v", enhancedErr)
+	}
+	if !strings.Contains(enhancedErr.Error(), "boot log:") {
+		t.Errorf("enhanced error should have 'boot log:' prefix, got: %v", enhancedErr)
+	}
+
+	// Verify original error is still unwrappable
+	if !errors.Is(enhancedErr, originalErr) {
+		t.Error("enhanced error should wrap original error")
+	}
+
+	// Test with gRPC status error - should preserve status code and add boot log as detail
+	grpcErr := status.Error(codes.Internal, "VM boot failed with status 500")
+	enhancedGrpcErr := rb.EnhanceErrorWithBootLog(grpcErr)
+
+	// Verify gRPC status code is preserved
+	st, ok := status.FromError(enhancedGrpcErr)
+	if !ok {
+		t.Error("enhanced gRPC error should still be a status error")
+	}
+	if st.Code() != codes.Internal {
+		t.Errorf("expected codes.Internal, got %v", st.Code())
+	}
+	// Message should contain boot log for clients that don't read details
+	if !strings.Contains(st.Message(), "boot log:") {
+		t.Errorf("message should contain boot log prefix, got: %s", st.Message())
+	}
+	if !strings.Contains(st.Message(), "Cannot open disk path") {
+		t.Errorf("message should contain boot log content, got: %s", st.Message())
+	}
+	// Boot log should also be in details as DebugInfo for structured access
+	var foundBootLog bool
+	for _, detail := range st.Details() {
+		if debugInfo, ok := detail.(*errdetails.DebugInfo); ok {
+			if strings.Contains(debugInfo.Detail, "Cannot open disk path") {
+				foundBootLog = true
+				break
+			}
+		}
+	}
+	if !foundBootLog {
+		t.Error("boot log should be in DebugInfo detail")
+	}
+}
+
+// TestEnhanceErrorWithBootLogNoLog tests that when boot.log doesn't exist,
+// the original error is returned unchanged.
+func TestEnhanceErrorWithBootLogNoLog(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	// Create temp directory structure for VMM (but no boot.log)
+	runtimeDir := t.TempDir()
+	instanceID := "test-instance-no-bootlog"
+
+	// Create rollback struct with runtime address pointing to temp dir
+	rb := &createInstanceRollback{
+		ctx:            context.Background(),
+		log:            log,
+		instanceID:     instanceID,
+		runtimeAddress: "cloudhypervisor://" + runtimeDir,
+	}
+
+	// Test EnhanceErrorWithBootLog with missing boot log
+	originalErr := errors.New("VM boot failed")
+	enhancedErr := rb.EnhanceErrorWithBootLog(originalErr)
+
+	// Verify original error is returned when boot log doesn't exist
+	if enhancedErr != originalErr {
+		t.Errorf("should return original error when boot log doesn't exist, got: %v", enhancedErr)
 	}
 }
