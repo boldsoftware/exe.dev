@@ -76,7 +76,9 @@ func NewLLMServiceManager(cfg *LLMConfig, history *models.LLMRequestHistory) LLM
 	return manager
 }
 
-// toAPIMessages converts database messages to API messages
+// toAPIMessages converts database messages to API messages.
+// When display_data is present (tool results), llm_data is omitted to save bandwidth
+// since the display_data contains all information needed for UI rendering.
 func toAPIMessages(messages []generated.Message) []APIMessage {
 	apiMessages := make([]APIMessage, len(messages))
 	for i, msg := range messages {
@@ -87,6 +89,10 @@ func toAPIMessages(messages []generated.Message) []APIMessage {
 				endOfTurnPtr = &endOfTurnCopy
 			}
 		}
+
+		// TODO: Consider omitting llm_data when display_data is present to save bandwidth.
+		// The display_data contains all info needed for UI rendering of tool results,
+		// but the UI currently still uses llm_data for some checks.
 
 		apiMsg := APIMessage{
 			MessageID:      msg.MessageID,
@@ -171,6 +177,43 @@ func agentWorking(messages []APIMessage) bool {
 
 	// No agent message found yet but conversation has activity, assume agent is working.
 	return true
+}
+
+// isEndOfTurn checks if a database message represents end of turn
+func isEndOfTurn(msg *generated.Message) bool {
+	if msg == nil {
+		return false
+	}
+	// Error messages end the turn
+	if msg.Type == string(db.MessageTypeError) {
+		return true
+	}
+	// Only agent messages can have end_of_turn
+	if msg.Type != string(db.MessageTypeAgent) {
+		return false
+	}
+	if msg.LlmData == nil {
+		return false
+	}
+	endOfTurn, ok := extractEndOfTurn(*msg.LlmData)
+	if !ok {
+		return false
+	}
+	return endOfTurn
+}
+
+// calculateContextWindowSizeFromMsg calculates context window usage from a single message.
+// Returns 0 if the message has no usage data (e.g., user messages), in which case
+// the client should keep its previous context window value.
+func calculateContextWindowSizeFromMsg(msg *generated.Message) uint64 {
+	if msg == nil || msg.UsageData == nil {
+		return 0
+	}
+	var usage llm.Usage
+	if err := json.Unmarshal([]byte(*msg.UsageData), &usage); err != nil {
+		return 0
+	}
+	return usage.ContextWindowUsed()
 }
 
 // Server manages the HTTP API and active conversations
@@ -463,7 +506,7 @@ func (s *Server) recordMessage(ctx context.Context, conversationID string, messa
 	displayDataToStore := ExtractDisplayData(message)
 
 	// Create message
-	_, err = s.db.CreateMessage(ctx, db.CreateMessageParams{
+	createdMsg, err := s.db.CreateMessage(ctx, db.CreateMessageParams{
 		ConversationID: conversationID,
 		Type:           messageType,
 		LLMData:        message,
@@ -490,10 +533,10 @@ func (s *Server) recordMessage(ctx context.Context, conversationID string, messa
 	}
 	s.mu.Unlock()
 
-	// Notify subscribers - use WithoutCancel because the HTTP request context
-	// may be cancelled after the handler returns, but we still want the
-	// notification to complete so SSE clients see the message immediately
-	go s.notifySubscribers(context.WithoutCancel(ctx), conversationID)
+	// Notify subscribers with only the new message - use WithoutCancel because
+	// the HTTP request context may be cancelled after the handler returns, but
+	// we still want the notification to complete so SSE clients see the message immediately
+	go s.notifySubscribersNewMessage(context.WithoutCancel(ctx), conversationID, createdMsg)
 
 	return nil
 }
@@ -537,7 +580,8 @@ func convertToLLMMessage(msg generated.Message) (llm.Message, error) {
 	return llmMsg, nil
 }
 
-// notifySubscribers sends updated messages and conversation data to all subscribers
+// notifySubscribers sends conversation metadata updates (e.g., slug changes) to subscribers.
+// This is used when only the conversation data changes, not the messages.
 func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 	s.mu.Lock()
 	manager, exists := s.activeConversations[conversationID]
@@ -547,16 +591,11 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 		return
 	}
 
-	// Get conversation data and all messages
+	// Get conversation data only (no messages needed for metadata-only updates)
 	var conversation generated.Conversation
-	var messages []generated.Message
 	err := s.db.Queries(ctx, func(q *generated.Queries) error {
 		var err error
 		conversation, err = q.GetConversation(ctx, conversationID)
-		if err != nil {
-			return err
-		}
-		messages, err = q.ListMessages(ctx, conversationID)
 		return err
 	})
 	if err != nil {
@@ -564,22 +603,66 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 		return
 	}
 
-	// Determine the latest sequence ID
+	// For conversation-only updates, we need to get the latest sequence ID
+	// to properly notify subscribers, but we send an empty message list
 	var latestSequenceID int64
-	if len(messages) > 0 {
-		latestSequenceID = messages[len(messages)-1].SequenceID
+	err = s.db.Queries(ctx, func(q *generated.Queries) error {
+		messages, err := q.ListMessages(ctx, conversationID)
+		if err != nil {
+			return err
+		}
+		if len(messages) > 0 {
+			latestSequenceID = messages[len(messages)-1].SequenceID
+		}
+		return nil
+	})
+	if err != nil {
+		s.logger.Error("Failed to get latest sequence ID", "conversationID", conversationID, "error", err)
+		return
 	}
 
-	// Publish to all subscribers
-	// TODO(philip): We're re-publishing ALL the messages, and that's wrong. We should only be publishing new stuff.
-	apiMessages := toAPIMessages(messages)
+	// Publish conversation update with no new messages
+	streamData := StreamResponse{
+		Messages:     nil, // No new messages, just conversation update
+		Conversation: conversation,
+	}
+	manager.subpub.Publish(latestSequenceID, streamData)
+}
+
+// notifySubscribersNewMessage sends a single new message to all subscribers.
+// This is more efficient than re-sending all messages on each update.
+func (s *Server) notifySubscribersNewMessage(ctx context.Context, conversationID string, newMsg *generated.Message) {
+	s.mu.Lock()
+	manager, exists := s.activeConversations[conversationID]
+	s.mu.Unlock()
+
+	if !exists {
+		return
+	}
+
+	// Get conversation data for the response
+	var conversation generated.Conversation
+	err := s.db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		conversation, err = q.GetConversation(ctx, conversationID)
+		return err
+	})
+	if err != nil {
+		s.logger.Error("Failed to get conversation data for notification", "conversationID", conversationID, "error", err)
+		return
+	}
+
+	// Convert the single new message to API format
+	apiMessages := toAPIMessages([]generated.Message{*newMsg})
+
+	// Publish only the new message
 	streamData := StreamResponse{
 		Messages:          apiMessages,
 		Conversation:      conversation,
-		AgentWorking:      agentWorking(apiMessages),
-		ContextWindowSize: calculateContextWindowSize(apiMessages),
+		AgentWorking:      !isEndOfTurn(newMsg),
+		ContextWindowSize: calculateContextWindowSizeFromMsg(newMsg),
 	}
-	manager.subpub.Publish(latestSequenceID, streamData)
+	manager.subpub.Publish(newMsg.SequenceID, streamData)
 }
 
 // Cleanup removes inactive conversation managers
