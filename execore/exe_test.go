@@ -165,9 +165,8 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 		t.Fatalf("Failed to create verification token: %v", err)
 	}
 
-	// Use httptest.Server to have real HTTP behavior with cookies
-	testServer := httptest.NewServer(server)
-	defer testServer.Close()
+	// Use the actual server's HTTP port for real HTTP behavior with cookies
+	baseURL := server.httpURL()
 
 	// Create HTTP client with cookie jar
 	jar, _ := cookiejar.New(nil)
@@ -176,7 +175,7 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 	// POST to verify email
 	form := url.Values{}
 	form.Add("token", token)
-	resp, err := client.PostForm(testServer.URL+"/verify-email", form)
+	resp, err := client.PostForm(baseURL+"/verify-email", form)
 	if err != nil {
 		t.Fatalf("POST /verify-email failed: %v", err)
 	}
@@ -188,7 +187,7 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 
 	// Now browse to "/" with a NEW client (without cookies) - should show landing page
 	noJarClient := &http.Client{}
-	resp, err = noJarClient.Get(testServer.URL + "/")
+	resp, err = noJarClient.Get(baseURL + "/")
 	if err != nil {
 		t.Fatalf("GET / failed: %v", err)
 	}
@@ -200,7 +199,7 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 	}
 
 	// Now browse to "/" with cookies - should show dashboard, not landing page
-	resp, err = client.Get(testServer.URL + "/")
+	resp, err = client.Get(baseURL + "/")
 	if err != nil {
 		t.Fatalf("GET / failed: %v", err)
 	}
@@ -221,20 +220,17 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 // TestMetricsEndpoint tests that the /metrics endpoint returns Prometheus metrics
 func TestMetricsEndpoint(t *testing.T) {
 	server := newTestServer(t)
-
-	// Use the prepared handler which includes metrics wrapping
-	testServer := httptest.NewServer(server.prepareHandler())
-	defer testServer.Close()
+	baseURL := server.httpURL()
 
 	// Make a request to the health endpoint first to trigger HTTP metrics
-	healthResp, err := http.Get(testServer.URL + "/health")
+	healthResp, err := http.Get(baseURL + "/health")
 	if err != nil {
 		t.Fatalf("Failed to make health request: %v", err)
 	}
 	healthResp.Body.Close()
 
 	// Make request to metrics endpoint
-	resp, err := http.Get(testServer.URL + "/metrics")
+	resp, err := http.Get(baseURL + "/metrics")
 	if err != nil {
 		t.Fatalf("Failed to fetch metrics: %v", err)
 	}
@@ -278,20 +274,17 @@ func TestMetricsEndpoint(t *testing.T) {
 // TestHTTPMetricsInstrumentation tests that HTTP requests are being instrumented
 func TestHTTPMetricsInstrumentation(t *testing.T) {
 	server := newTestServer(t)
-
-	// Use the prepared handler which includes metrics wrapping
-	testServer := httptest.NewServer(server.prepareHandler())
-	defer testServer.Close()
+	baseURL := server.httpURL()
 
 	// Make a request to the health endpoint
-	resp, err := http.Get(testServer.URL + "/health")
+	resp, err := http.Get(baseURL + "/health")
 	if err != nil {
 		t.Fatalf("Failed to make health check request: %v", err)
 	}
 	resp.Body.Close()
 
 	// Now fetch metrics to see if the request was recorded
-	resp, err = http.Get(testServer.URL + "/metrics")
+	resp, err = http.Get(baseURL + "/metrics")
 	if err != nil {
 		t.Fatalf("Failed to fetch metrics: %v", err)
 	}

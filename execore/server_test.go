@@ -1,6 +1,7 @@
 package execore
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -14,6 +15,11 @@ func newTestServer(t *testing.T) *Server {
 	s := newUnstartedServer(t)
 	s.startAndAwaitReady()
 	return s
+}
+
+// httpURL returns the base HTTP URL for the test server (e.g., "http://127.0.0.1:12345").
+func (s *Server) httpURL() string {
+	return fmt.Sprintf("http://127.0.0.1:%d", s.httpPort())
 }
 
 func (s *Server) startAndAwaitReady() {

@@ -392,6 +392,11 @@ func (s *Server) httpsPort() int {
 	return -1
 }
 
+// isMainListenerPort returns true if the port is the server's main HTTP or HTTPS port.
+func (s *Server) isMainListenerPort(port int) bool {
+	return port == s.httpPort() || port == s.httpsPort()
+}
+
 // httpURLPort returns :PORT for use in http URLs.
 // It returns an empty string if not listening on HTTP, or if the port is 80.
 func (s *Server) httpURLPort() string {

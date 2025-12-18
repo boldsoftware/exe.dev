@@ -20,6 +20,7 @@ import (
 	"os"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -415,6 +416,51 @@ func (s *Server) renderTemplate(w http.ResponseWriter, templateName string, data
 	return nil
 }
 
+// isRequestOnMainPort checks that the request came in on the main HTTP/HTTPS port.
+// Returns true if the request should continue processing, false if an error response was sent.
+// Non-proxy content (main website, xterm, etc) should only be served on the main port.
+// Checks both the actual connection port and the Host header port.
+func (s *Server) isRequestOnMainPort(w http.ResponseWriter, r *http.Request) bool {
+	// Check the actual local address the request came in on from the context.
+	conn, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+	if ok && conn != nil {
+		_, localPortStr, err := net.SplitHostPort(conn.String())
+		if err != nil {
+			s.slog().ErrorContext(r.Context(), "failed to parse local address", "error", err, "addr", conn.String())
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return false
+		}
+		localPort, err := strconv.Atoi(localPortStr)
+		if err != nil {
+			s.slog().ErrorContext(r.Context(), "failed to convert local port", "error", err, "port", localPortStr)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return false
+		}
+		if !s.isMainListenerPort(localPort) {
+			http.Error(w, "404 page not found", http.StatusNotFound)
+			return false
+		}
+	}
+
+	// Also check the Host header if it contains a port.
+	_, hostPortStr, err := net.SplitHostPort(r.Host)
+	if err == nil && hostPortStr != "" {
+		// Host header has an explicit port - verify it matches main port.
+		hostPort, err := strconv.Atoi(hostPortStr)
+		if err != nil {
+			http.Error(w, "invalid port in host header", http.StatusBadRequest)
+			return false
+		}
+		if !s.isMainListenerPort(hostPort) {
+			http.Error(w, "404 page not found", http.StatusNotFound)
+			return false
+		}
+	}
+	// No port in Host header is fine - browsers don't send port for 80/443.
+
+	return true
+}
+
 // ServeHTTP implements http.Handler for the HTTP server
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.stopping.Load() {
@@ -435,8 +481,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Request logging occurs in LoggerMiddleware; avoid duplicate per-request logs here.
-
 	// Check if this should be handled by the proxy handler
 	isProxy := s.isProxyRequest(r.Host)
 	isTerminal := s.isTerminalRequest(r.Host)
@@ -448,16 +492,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			info.UserID = userID
 		}
 	}
-	if isTerminal {
-		metricsbag.SetLabel(r.Context(), LabelProxy, "false")
-		metricsbag.SetLabel(r.Context(), LabelPath, "/terminal")
-		s.handleTerminalRequest(w, r)
-		return
-	}
 	if isProxy {
 		metricsbag.SetLabel(r.Context(), LabelProxy, "true")
 		// box label is set in handleProxyRequest after resolving the box name
 		s.handleProxyRequest(w, r)
+		return
+	}
+
+	// Non-proxy content (main site, terminal) should only be served on the main port.
+	if !s.isRequestOnMainPort(w, r) {
+		return
+	}
+
+	if isTerminal {
+		metricsbag.SetLabel(r.Context(), LabelProxy, "false")
+		metricsbag.SetLabel(r.Context(), LabelPath, "/terminal")
+		s.handleTerminalRequest(w, r)
 		return
 	}
 
