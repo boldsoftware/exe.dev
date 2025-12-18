@@ -4,6 +4,16 @@
 
 set -e
 
+# Check for machine name parameter
+if [ $# -ne 1 ] || [ -z "$1" ]; then
+    echo "ERROR: Machine name must be specified" >&2
+    echo "Usage: $0 <machine-name>" >&2
+    echo "Example: $0 exe-ctr-staging-01" >&2
+    exit 1
+fi
+
+INSTANCE_NAME="$1"
+
 # Require Slack bot token for deployments
 if [ -z "$EXE_SLACK_BOT_TOKEN" ]; then
     echo "ERROR: EXE_SLACK_BOT_TOKEN is not set. Deployments require Slack notifications." >&2
@@ -24,8 +34,6 @@ trap cleanup_notify EXIT
 
 # staging / prod machines are intel only for now
 ARCH=amd64
-
-INSTANCE_NAME="exe-ctr-staging-01"
 
 # Colors for output
 RED='\033[0;31m'

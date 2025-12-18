@@ -4,15 +4,15 @@ set -euo pipefail
 # Check for machine name parameter
 if [ $# -ne 1 ]; then
     echo "Usage: $0 <machine-name>"
-    echo "Machine name must be in format: exe-ctr-NN (where NN is a number)"
+    echo "Machine name must be in format: exe-ctr-NN or exe-ctr-staging-NN (where NN is a number)"
     exit 1
 fi
 
 MACHINE_NAME="$1"
 
 # Validate machine name format
-if ! [[ "$MACHINE_NAME" =~ ^exe-ctr-[0-9]+$ ]]; then
-    echo "Error: Machine name must be in format exe-ctr-NN (e.g., exe-ctr-01)"
+if ! [[ "$MACHINE_NAME" =~ ^exe-ctr-(staging-)?[0-9]+$ ]]; then
+    echo "Error: Machine name must be in format exe-ctr-NN or exe-ctr-staging-NN (e.g., exe-ctr-01, exe-ctr-staging-01)"
     exit 1
 fi
 
@@ -594,7 +594,16 @@ sudo systemctl daemon-reload
 sudo systemctl enable prometheus-node-exporter
 sudo systemctl restart prometheus-node-exporter
 echo "Verifying node-exporter is running..."
-curl -s http://localhost:9100/metrics | head -n 3
+for i in $(seq 1 300); do
+    if curl -s http://localhost:9100/metrics | head -n 3; then
+        break
+    fi
+    if [ $i -eq 300 ]; then
+        echo "ERROR: node-exporter failed to start after 30 seconds"
+        exit 1
+    fi
+    sleep 0.1
+done
 NODE_EXPORTER_SCRIPT
 
 echo ""
