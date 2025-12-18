@@ -25,7 +25,10 @@ function DirectoryPickerModal({
   onSelect,
   initialPath,
 }: DirectoryPickerModalProps) {
-  const [inputPath, setInputPath] = useState(initialPath || "");
+  const [inputPath, setInputPath] = useState(() => {
+    if (!initialPath) return "";
+    return initialPath.endsWith("/") ? initialPath : initialPath + "/";
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -122,19 +125,28 @@ function DirectoryPickerModal({
   // Initialize when modal opens
   useEffect(() => {
     if (isOpen) {
-      setInputPath(initialPath || "");
+      if (!initialPath) {
+        setInputPath("");
+      } else {
+        setInputPath(initialPath.endsWith("/") ? initialPath : initialPath + "/");
+      }
       // Clear cache on open to get fresh data
       cacheRef.current.clear();
     }
   }, [isOpen, initialPath]);
 
-  // Focus input when modal opens
+  // Focus input when modal opens (but not on mobile to avoid keyboard popup)
   useEffect(() => {
     if (isOpen && inputRef.current) {
-      inputRef.current.focus();
-      // Move cursor to end
-      const len = inputRef.current.value.length;
-      inputRef.current.setSelectionRange(len, len);
+      // Check if mobile device (touch-based)
+      const isMobile = window.matchMedia("(max-width: 768px)").matches || 
+                       "ontouchstart" in window;
+      if (!isMobile) {
+        inputRef.current.focus();
+        // Move cursor to end
+        const len = inputRef.current.value.length;
+        inputRef.current.setSelectionRange(len, len);
+      }
     }
   }, [isOpen]);
 
