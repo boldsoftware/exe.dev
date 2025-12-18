@@ -139,8 +139,7 @@ function DirectoryPickerModal({
   useEffect(() => {
     if (isOpen && inputRef.current) {
       // Check if mobile device (touch-based)
-      const isMobile = window.matchMedia("(max-width: 768px)").matches || 
-                       "ontouchstart" in window;
+      const isMobile = window.matchMedia("(max-width: 768px)").matches || "ontouchstart" in window;
       if (!isMobile) {
         inputRef.current.focus();
         // Move cursor to end
