@@ -568,9 +568,7 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 
 	// Delete only this specific cookie from the database
 	if cookieValue != "" {
-		err := s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.DeleteAuthCookieByValue(ctx, cookieValue)
-		})
+		err := withTx1(s, r.Context(), (*exedb.Queries).DeleteAuthCookieByValue, cookieValue)
 		if err != nil {
 			s.slog().ErrorContext(r.Context(), "Failed to delete specific proxy auth cookie from database", "error", err)
 		}
@@ -798,9 +796,7 @@ func (s *Server) checkShareLinkAccess(r *http.Request, boxID int) bool {
 
 // incrementShareLinkUsage increments the usage counter for a share link
 func (s *Server) incrementShareLinkUsage(ctx context.Context, shareToken string) error {
-	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.IncrementShareLinkUsage(ctx, shareToken)
-	})
+	return withTx1(s, ctx, (*exedb.Queries).IncrementShareLinkUsage, shareToken)
 }
 
 // autoCreateShareFromLink creates an email-based share for a user who accessed via share link

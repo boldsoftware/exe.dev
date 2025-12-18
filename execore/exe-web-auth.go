@@ -126,9 +126,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		setExeAuthCookie(w, r, cookieValue)
 
 		// Clean up the database token (single use)
-		err = s.withTx(context.WithoutCancel(r.Context()), func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.DeleteEmailVerificationByToken(ctx, token)
-		})
+		err = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).DeleteEmailVerificationByToken, token)
 		if err != nil {
 			s.slog().ErrorContext(r.Context(), "Failed to cleanup email verification token", "error", err)
 			// Continue anyway
@@ -226,13 +224,11 @@ func (s *Server) createAuthCookie(ctx context.Context, userID, domain string) (s
 	// Store in database
 	// Strip port from domain since cookies are per-host, not per-host:port
 	domainWithoutPort := domz.StripPort(domain)
-	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.InsertAuthCookie(ctx, exedb.InsertAuthCookieParams{
-			CookieValue: cookieValue,
-			UserID:      userID,
-			Domain:      domainWithoutPort,
-			ExpiresAt:   expiresAt,
-		})
+	err := withTx1(s, ctx, (*exedb.Queries).InsertAuthCookie, exedb.InsertAuthCookieParams{
+		CookieValue: cookieValue,
+		UserID:      userID,
+		Domain:      domainWithoutPort,
+		ExpiresAt:   expiresAt,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to store auth cookie: %w", err)
@@ -246,13 +242,11 @@ func (s *Server) createProxyBearerToken(ctx context.Context, userID string, boxI
 	token := crand.Text()
 	expiresAt := time.Now().Add(proxyBearerTokenTTL)
 
-	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.InsertProxyBearerToken(ctx, exedb.InsertProxyBearerTokenParams{
-			Token:     token,
-			UserID:    userID,
-			BoxID:     int64(boxID),
-			ExpiresAt: expiresAt,
-		})
+	err := withTx1(s, ctx, (*exedb.Queries).InsertProxyBearerToken, exedb.InsertProxyBearerTokenParams{
+		Token:     token,
+		UserID:    userID,
+		BoxID:     int64(boxID),
+		ExpiresAt: expiresAt,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to store proxy bearer token: %w", err)
@@ -302,16 +296,12 @@ func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (st
 	// Check if cookie has expired
 	if time.Now().After(row.ExpiresAt) {
 		// Clean up expired cookie - use context.WithoutCancel to ensure cleanup completes even if client disconnects
-		s.withTx(context.WithoutCancel(ctx), func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.DeleteAuthCookie(ctx, cookieValue)
-		})
+		withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).DeleteAuthCookie, cookieValue)
 		return "", fmt.Errorf("cookie expired")
 	}
 
 	// Update last used time
-	s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpdateAuthCookieLastUsed(ctx, cookieValue)
-	})
+	withTx1(s, ctx, (*exedb.Queries).UpdateAuthCookieLastUsed, cookieValue)
 
 	return row.UserID, nil
 }
@@ -338,9 +328,7 @@ func (s *Server) validateProxyBearerToken(ctx context.Context, token string, box
 		return "", fmt.Errorf("proxy bearer token expired")
 	}
 
-	if err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpdateProxyBearerTokenLastUsed(ctx, token)
-	}); err != nil {
+	if err := withTx1(s, ctx, (*exedb.Queries).UpdateProxyBearerTokenLastUsed, token); err != nil {
 		s.slog().WarnContext(ctx, "failed to update proxy bearer token last used", "error", err)
 	}
 
@@ -523,9 +511,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 	// Clear ALL auth cookies for this user across all domains
 	if userID != "" {
-		err := s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.DeleteAuthCookiesByUserID(ctx, userID)
-		})
+		err := withTx1(s, r.Context(), (*exedb.Queries).DeleteAuthCookiesByUserID, userID)
 		if err != nil {
 			s.slog().ErrorContext(r.Context(), "Failed to delete user's auth cookies from database", "error", err)
 		}
@@ -804,13 +790,11 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	token := generateRegistrationToken()
 
 	// Store verification in database (reuse existing email_verifications table)
-	err = s.withTx(context.WithoutCancel(r.Context()), func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.InsertEmailVerification(ctx, exedb.InsertEmailVerificationParams{
-			Token:     token,
-			Email:     email,
-			UserID:    userID,
-			ExpiresAt: time.Now().Add(24 * time.Hour),
-		})
+	err = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).InsertEmailVerification, exedb.InsertEmailVerificationParams{
+		Token:     token,
+		Email:     email,
+		UserID:    userID,
+		ExpiresAt: time.Now().Add(24 * time.Hour),
 	})
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to store email verification", "error", err)

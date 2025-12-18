@@ -718,11 +718,9 @@ func (s *Server) handleDebugToggleRootSupport(w http.ResponseWriter, r *http.Req
 		newValue = 1
 	}
 
-	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.SetUserRootSupport(ctx, exedb.SetUserRootSupportParams{
-			RootSupport: newValue,
-			UserID:      userID,
-		})
+	err := withTx1(s, ctx, (*exedb.Queries).SetUserRootSupport, exedb.SetUserRootSupportParams{
+		RootSupport: newValue,
+		UserID:      userID,
 	})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to update root support: %v", err), http.StatusInternalServerError)
@@ -911,9 +909,7 @@ func (s *Server) handleDebugSetPreferredExelet(w http.ResponseWriter, r *http.Re
 
 	if address == "" {
 		// Clear the preferred exelet
-		err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.ClearPreferredExelet(ctx)
-		})
+		err := withTx0(s, ctx, (*exedb.Queries).ClearPreferredExelet)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to clear preferred exelet: %v", err), http.StatusInternalServerError)
 			return
@@ -927,9 +923,7 @@ func (s *Server) handleDebugSetPreferredExelet(w http.ResponseWriter, r *http.Re
 		}
 
 		// Set the preferred exelet
-		err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.SetPreferredExelet(ctx, address)
-		})
+		err := withTx1(s, ctx, (*exedb.Queries).SetPreferredExelet, address)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to set preferred exelet: %v", err), http.StatusInternalServerError)
 			return

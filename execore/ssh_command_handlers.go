@@ -1057,13 +1057,11 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.Comma
 	token := generateRegistrationToken()
 
 	// Store verification in database using the existing email verification table
-	err := ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.InsertEmailVerification(ctx, exedb.InsertEmailVerificationParams{
-			Token:     token,
-			Email:     cc.User.Email,
-			UserID:    cc.User.ID,
-			ExpiresAt: time.Now().Add(15 * time.Minute), // 15 minute expiry
-		})
+	err := withTx1(ss.server, ctx, (*exedb.Queries).InsertEmailVerification, exedb.InsertEmailVerificationParams{
+		Token:     token,
+		Email:     cc.User.Email,
+		UserID:    cc.User.ID,
+		ExpiresAt: time.Now().Add(15 * time.Minute), // 15 minute expiry
 	})
 	if err != nil {
 		return err
@@ -1116,11 +1114,9 @@ func (ss *SSHServer) handleGrantSupportRootCommand(ctx context.Context, cc *exem
 		return err
 	}
 
-	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.SetBoxSupportAccessAllowed(ctx, exedb.SetBoxSupportAccessAllowedParams{
-			SupportAccessAllowed: newValue,
-			ID:                   box.ID,
-		})
+	err = withTx1(ss.server, ctx, (*exedb.Queries).SetBoxSupportAccessAllowed, exedb.SetBoxSupportAccessAllowedParams{
+		SupportAccessAllowed: newValue,
+		ID:                   box.ID,
 	})
 	if err != nil {
 		return err

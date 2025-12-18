@@ -801,9 +801,7 @@ func (s *Server) lookUpDeviceVerification(ctx context.Context, token string) (*e
 	// Check if token has expired
 	if time.Now().After(pendingKey.ExpiresAt) {
 		// Clean up expired token - use context.WithoutCancel to ensure cleanup completes even if client disconnects
-		s.withTx(context.WithoutCancel(ctx), func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.DeletePendingSSHKeyByToken(ctx, token)
-		})
+		withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).DeletePendingSSHKeyByToken, token)
 		return nil, nil, errExpiredToken
 	}
 
@@ -895,11 +893,9 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 
 	// Store the SSH key as verified
 	if publicKey != "" {
-		err = s.withTx(context.WithoutCancel(ctx), func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.InsertSSHKeyForEmailUser(ctx, exedb.InsertSSHKeyForEmailUserParams{
-				Email:     email,
-				PublicKey: publicKey,
-			})
+		err = withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).InsertSSHKeyForEmailUser, exedb.InsertSSHKeyForEmailUserParams{
+			Email:     email,
+			PublicKey: publicKey,
 		})
 		if err != nil {
 			s.slog().ErrorContext(ctx, "Error storing SSH key during verification", "error", err)

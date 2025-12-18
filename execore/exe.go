@@ -749,6 +749,20 @@ func withRxRes1[T, A any](s *Server, ctx context.Context, fn func(*exedb.Queries
 	return result, err
 }
 
+// withTx0 executes a sqlc query with a read-write database transaction and no arguments.
+func withTx0(s *Server, ctx context.Context, fn func(*exedb.Queries, context.Context) error) error {
+	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return fn(queries, ctx)
+	})
+}
+
+// withTx1 executes a sqlc query with a read-write database transaction and one argument.
+func withTx1[A any](s *Server, ctx context.Context, fn func(*exedb.Queries, context.Context, A) error, a A) error {
+	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return fn(queries, ctx, a)
+	})
+}
+
 // DataPath returns a path under /data with the server's isolation subdirectory
 func (s *Server) DataPath(path string) string {
 	return fmt.Sprintf("/data/%s/%s", s.dataSubdir, strings.TrimPrefix(path, "/"))
@@ -841,12 +855,10 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 		fingerprint := s.GetPublicKeyFingerprint(signer.PublicKey())
 
 		// Store in database
-		err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.UpsertSSHHostKey(ctx, exedb.UpsertSSHHostKeyParams{
-				PrivateKey:  privateKeyPEM,
-				PublicKey:   publicKeyPEM,
-				Fingerprint: fingerprint,
-			})
+		err = withTx1(s, ctx, (*exedb.Queries).UpsertSSHHostKey, exedb.UpsertSSHHostKeyParams{
+			PrivateKey:  privateKeyPEM,
+			PublicKey:   publicKeyPEM,
+			Fingerprint: fingerprint,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to store host key: %w", err)
@@ -1177,9 +1189,7 @@ func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) 
 	// Check if token has expired
 	if time.Now().After(row.ExpiresAt) {
 		// Clean up expired token
-		s.withTx(context.WithoutCancel(ctx), func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.DeleteEmailVerificationByToken(ctx, token)
-		})
+		withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).DeleteEmailVerificationByToken, token)
 		return exedb.GetEmailVerificationByTokenRow{}, fmt.Errorf("verification token expired")
 	}
 
@@ -1194,9 +1204,7 @@ func (s *Server) validateEmailVerificationToken(ctx context.Context, token strin
 	}
 
 	// Clean up used token - use context.WithoutCancel to ensure cleanup completes even if client disconnects
-	s.withTx(context.WithoutCancel(ctx), func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.DeleteEmailVerificationByToken(ctx, token)
-	})
+	withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).DeleteEmailVerificationByToken, token)
 
 	return row.UserID, nil
 }
@@ -1236,9 +1244,7 @@ func (s *Server) validateEmailVerificationByToken(ctx context.Context, token str
 	}
 
 	// Consume the token
-	err = s.withTx(context.WithoutCancel(ctx), func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.DeleteEmailVerificationByToken(ctx, token)
-	})
+	err = withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).DeleteEmailVerificationByToken, token)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "Failed to delete email verification token", "error", err)
 	}
@@ -1272,9 +1278,7 @@ func (s *Server) validateAuthToken(ctx context.Context, token, expectedSubdomain
 	}
 
 	// Mark token as used
-	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpdateAuthTokenUsedAt(ctx, token)
-	})
+	err = withTx1(s, ctx, (*exedb.Queries).UpdateAuthTokenUsedAt, token)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "Failed to mark token as used", "error", err)
 	}
@@ -1623,17 +1627,15 @@ func (s *Server) rollbackBoxPreCreation(ctx context.Context, boxID int) error {
 
 // updateBoxWithContainer updates a box with container info and SSH keys after container creation
 func (s *Server) updateBoxWithContainer(ctx context.Context, boxID int, containerID, sshUser string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
-	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
-			ContainerID:          &containerID,
-			Status:               "running",
-			SSHServerIdentityKey: []byte(sshKeys.ServerIdentityKey),
-			SSHAuthorizedKeys:    &sshKeys.AuthorizedKeys,
-			SSHClientPrivateKey:  []byte(sshKeys.ClientPrivateKey),
-			SSHPort:              func() *int64 { p := int64(sshPort); return &p }(),
-			SSHUser:              &sshUser,
-			ID:                   boxID,
-		})
+	return withTx1(s, ctx, (*exedb.Queries).UpdateBoxContainerAndStatus, exedb.UpdateBoxContainerAndStatusParams{
+		ContainerID:          &containerID,
+		Status:               "running",
+		SSHServerIdentityKey: []byte(sshKeys.ServerIdentityKey),
+		SSHAuthorizedKeys:    &sshKeys.AuthorizedKeys,
+		SSHClientPrivateKey:  []byte(sshKeys.ClientPrivateKey),
+		SSHPort:              func() *int64 { p := int64(sshPort); return &p }(),
+		SSHUser:              &sshUser,
+		ID:                   boxID,
 	})
 }
 
@@ -1883,11 +1885,9 @@ func (s *Server) syncInstancesForExelet(ctx context.Context, addr string, client
 
 // updateBoxStatus updates the status of a box in the database
 func (s *Server) updateBoxStatus(ctx context.Context, boxID int, status string) error {
-	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpdateBoxStatus(ctx, exedb.UpdateBoxStatusParams{
-			Status: status,
-			ID:     boxID,
-		})
+	return withTx1(s, ctx, (*exedb.Queries).UpdateBoxStatus, exedb.UpdateBoxStatusParams{
+		Status: status,
+		ID:     boxID,
 	})
 }
 

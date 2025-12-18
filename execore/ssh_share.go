@@ -404,12 +404,10 @@ func (ss *SSHServer) updateBoxRoute(ctx context.Context, cc *exemenu.CommandCont
 
 	box.SetRoute(route)
 
-	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpdateBoxRoutes(ctx, exedb.UpdateBoxRoutesParams{
-			Routes:          box.Routes,
-			Name:            boxName,
-			CreatedByUserID: cc.User.ID,
-		})
+	err = withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxRoutes, exedb.UpdateBoxRoutesParams{
+		Routes:          box.Routes,
+		Name:            boxName,
+		CreatedByUserID: cc.User.ID,
 	})
 	if err != nil {
 		return err
@@ -627,11 +625,9 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 	var deletedPending, deletedActive bool
 
 	// Delete pending share
-	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.DeletePendingBoxShareByBoxAndEmail(ctx, exedb.DeletePendingBoxShareByBoxAndEmailParams{
-			BoxID:           int64(box.ID),
-			SharedWithEmail: email,
-		})
+	err = withTx1(ss.server, ctx, (*exedb.Queries).DeletePendingBoxShareByBoxAndEmail, exedb.DeletePendingBoxShareByBoxAndEmailParams{
+		BoxID:           int64(box.ID),
+		SharedWithEmail: email,
 	})
 	// Ignore "not found" errors for pending shares
 	if err == nil {
@@ -642,11 +638,9 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 	targetUserID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, email)
 	if err == nil {
 		// User exists, try to delete their active share
-		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.DeleteBoxShareByBoxAndUser(ctx, exedb.DeleteBoxShareByBoxAndUserParams{
-				BoxID:            int64(box.ID),
-				SharedWithUserID: targetUserID,
-			})
+		err = withTx1(ss.server, ctx, (*exedb.Queries).DeleteBoxShareByBoxAndUser, exedb.DeleteBoxShareByBoxAndUserParams{
+			BoxID:            int64(box.ID),
+			SharedWithUserID: targetUserID,
 		})
 		if err == nil {
 			deletedActive = true

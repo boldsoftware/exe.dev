@@ -94,11 +94,9 @@ func (s *Server) checkAndIncrementEmailQuota(ctx context.Context, userID string)
 	}
 
 	// Increment counter
-	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.IncrementUserEmailCount(ctx, exedb.IncrementUserEmailCountParams{
-			UserID: userID,
-			Date:   today,
-		})
+	return withTx1(s, ctx, (*exedb.Queries).IncrementUserEmailCount, exedb.IncrementUserEmailCountParams{
+		UserID: userID,
+		Date:   today,
 	})
 }
 

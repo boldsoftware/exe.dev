@@ -534,11 +534,9 @@ func (s *Server) handlePasskeyDelete(w http.ResponseWriter, r *http.Request, use
 	}
 
 	// Delete the passkey (ensuring it belongs to this user)
-	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.DeletePasskey(ctx, exedb.DeletePasskeyParams{
-			ID:     passkeyID,
-			UserID: userID,
-		})
+	err = withTx1(s, ctx, (*exedb.Queries).DeletePasskey, exedb.DeletePasskeyParams{
+		ID:     passkeyID,
+		UserID: userID,
 	})
 	if err != nil {
 		s.slog().ErrorContext(ctx, "Failed to delete passkey", "error", err)
