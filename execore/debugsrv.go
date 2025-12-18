@@ -783,13 +783,13 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	type exeletInfo struct {
-		Address      string `json:"address"`
-		Version      string `json:"version"`
-		Arch         string `json:"arch"`
-		Status       string `json:"status"`
-		IsPreferred  bool   `json:"is_preferred"`
-		InstanceCount int   `json:"instance_count"`
-		Error        string `json:"error,omitempty"`
+		Address       string `json:"address"`
+		Version       string `json:"version"`
+		Arch          string `json:"arch"`
+		Status        string `json:"status"`
+		IsPreferred   bool   `json:"is_preferred"`
+		InstanceCount int    `json:"instance_count"`
+		Error         string `json:"error,omitempty"`
 	}
 
 	// Get the preferred exelet setting
