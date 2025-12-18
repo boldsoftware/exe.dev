@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>exe blog: {{.Entry.Title}}{{if and .ShowHidden (not .Entry.Published)}} [draft]{{end}}</title>
     <link rel="stylesheet" href="/static/exe.css" />
+    <link rel="alternate" type="application/atom+xml" title="exe.dev blog" href="https://blog.exe.dev/atom.xml" />
     {{template "topbar_style" .}}
     <style>
       body {
