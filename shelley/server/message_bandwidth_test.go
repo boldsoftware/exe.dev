@@ -206,7 +206,7 @@ func TestContextWindowSizeInSSE(t *testing.T) {
 			var raw map[string]interface{}
 			json.Unmarshal([]byte(jsonStr), &raw)
 			_, hasCtx := raw["context_window_size"]
-			
+
 			sseEvents <- sseEvent{
 				data:              streamResp,
 				contextWindowSize: streamResp.ContextWindowSize,

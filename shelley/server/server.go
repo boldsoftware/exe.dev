@@ -657,9 +657,9 @@ func (s *Server) notifySubscribersNewMessage(ctx context.Context, conversationID
 
 	// Publish only the new message
 	streamData := StreamResponse{
-		Messages:          apiMessages,
-		Conversation:      conversation,
-		AgentWorking:      !isEndOfTurn(newMsg),
+		Messages:     apiMessages,
+		Conversation: conversation,
+		AgentWorking: !isEndOfTurn(newMsg),
 		// ContextWindowSize: 0 for messages without usage data (user/tool messages).
 		// With omitempty, 0 is omitted from JSON, so the UI keeps its cached value.
 		// Only agent messages have usage data, so context window updates when they arrive.
