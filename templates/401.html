@@ -88,6 +88,11 @@
           passkey.startConditionalAuth(redirectURL).catch(function(err) {
             // NotAllowedError happens if user dismisses the autofill or clicks the button instead
             if (err.name !== 'NotAllowedError') {
+              // Some browsers report conditional UI support but don't actually support resident credentials
+              if (err.message && err.message.includes('Resident credentials')) {
+                console.log('passkey conditional auth not fully supported:', err.message);
+                return;
+              }
               console.error('passkey conditional auth failed:', err);
               var errorEl = document.getElementById('passkey-error');
               errorEl.textContent = err.message;
