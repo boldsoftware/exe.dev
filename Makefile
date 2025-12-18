@@ -21,7 +21,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy-exed deploy-exed-staging deploy-exelet deploy-exelet-staging deploy-whoami deploy-what deploy-qa deploy-piperd deploy-piperd-staging clean run-dev run-devlet run-devlets generate whoami-clean ssh-exed-staging ssh-ctr-staging
+.PHONY: help build test deploy-exed deploy-exed-staging deploy-exelet deploy-exelet-staging deploy-whoami deploy-what deploy-qa deploy-piperd deploy-piperd-staging deploy-blogd clean run-dev run-devlet run-devlets generate whoami-clean ssh-exed-staging ssh-ctr-staging
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -72,6 +72,13 @@ deploy-whoami: ## Deploy whoami sqlite database to production
 	@echo "${YELLOW}Deploying whoami database to production...${NC}"
 	@chmod +x ops/deploy/deploy-whoami.sh
 	@./ops/deploy/deploy-whoami.sh
+
+deploy-blogd:
+	GOOS=linux GOARCH=amd64 go build -o blogd.$(TIMESTAMP) ./cmd/blogd
+	scp blogd.$(TIMESTAMP) exedev@exeblog:~
+	ssh exedev@exeblog chmod a+x blogd.$(TIMESTAMP)
+	ssh exedev@exeblog sudo systemctl restart blogd
+	rm blogd.$(TIMESTAMP)
 
 ssh-exed: ## ssh to exed production server
 	@ssh ubuntu@exed-02
