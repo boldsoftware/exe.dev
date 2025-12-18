@@ -377,13 +377,23 @@ button {
   flex: 0 0 auto;
   background: var(--bg-base);
   border-bottom: 1px solid var(--border);
-  padding: 0.75rem 1rem;
-  padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  padding: 0.5rem 1rem;
+  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
   padding-left: max(1rem, env(safe-area-inset-left));
   padding-right: max(1rem, env(safe-area-inset-right));
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0; /* Allow shrinking below content size */
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .header-title {
@@ -393,12 +403,14 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
   letter-spacing: -0.02em;
+  min-width: 0; /* Allow shrinking */
 }
 
 .header-actions {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-shrink: 0; /* Never shrink the actions */
 }
 
 /* Drawer/Sidebar */
@@ -2299,4 +2311,22 @@ svg {
   transition:
     width 0.3s ease,
     background-color 0.3s ease;
+}
+
+/* Mobile optimizations for tighter spacing */
+@media (max-width: 767px) {
+  .header {
+    padding: 0.375rem 0.75rem;
+    padding-top: calc(0.375rem + env(safe-area-inset-top, 0px));
+  }
+
+  .status-bar {
+    padding: 0.375rem 0.75rem;
+    min-height: 2rem;
+  }
+
+  .message-input-container {
+    padding: 0.5rem 0.75rem;
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  }
 }

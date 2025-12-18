@@ -686,12 +686,7 @@ function ChatInterface({
   };
 
   const getDisplayTitle = () => {
-    if (currentConversation?.slug) {
-      // Truncate if too long (more than ~30 characters)
-      const slug = currentConversation.slug;
-      return slug.length > 30 ? `${slug.substring(0, 27)}...` : slug;
-    }
-    return "Shelley";
+    return currentConversation?.slug || "Shelley";
   };
 
   // Process messages to coalesce tool calls
@@ -945,7 +940,7 @@ function ChatInterface({
     <div className="full-height flex flex-col">
       {/* Header */}
       <div className="header">
-        <div className="flex items-center space-x-3">
+        <div className="header-left">
           <button
             onClick={onOpenDrawer}
             className="btn-icon hide-on-desktop"
