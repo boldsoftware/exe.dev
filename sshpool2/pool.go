@@ -288,7 +288,7 @@ func isSSHConnError(err error) bool {
 		return true
 	}
 	if errors.Is(err, io.EOF) {
-		return true;
+		return true
 	}
 	// When the underlying SSH transport has closed, the next channel open often fails
 	// with a formatted error that doesn't wrap a well-known sentinel.
