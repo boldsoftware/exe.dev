@@ -1,4 +1,11 @@
-import { Conversation, StreamResponse, ChatRequest } from "../types";
+import {
+  Conversation,
+  StreamResponse,
+  ChatRequest,
+  GitDiffInfo,
+  GitFileInfo,
+  GitFileDiff,
+} from "../types";
 
 class ApiService {
   private baseUrl = "/api";
@@ -135,6 +142,36 @@ class ApiService {
     }
     if (!response.ok) {
       throw new Error(`Failed to get conversation by slug: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  // Git diff APIs
+  async getGitDiffs(cwd: string): Promise<{ diffs: GitDiffInfo[]; gitRoot: string }> {
+    const response = await fetch(`${this.baseUrl}/git/diffs?cwd=${encodeURIComponent(cwd)}`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || response.statusText);
+    }
+    return response.json();
+  }
+
+  async getGitDiffFiles(diffId: string, cwd: string): Promise<GitFileInfo[]> {
+    const response = await fetch(
+      `${this.baseUrl}/git/diffs/${diffId}/files?cwd=${encodeURIComponent(cwd)}`,
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to get diff files: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async getGitFileDiff(diffId: string, filePath: string, cwd: string): Promise<GitFileDiff> {
+    const response = await fetch(
+      `${this.baseUrl}/git/file-diff/${diffId}/${filePath}?cwd=${encodeURIComponent(cwd)}`,
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to get file diff: ${response.statusText}`);
     }
     return response.json();
   }

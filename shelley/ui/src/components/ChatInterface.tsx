@@ -3,6 +3,7 @@ import { Message, Conversation, StreamResponse, LLMContent } from "../types";
 import { api } from "../services/api";
 import MessageComponent from "./Message";
 import MessageInput from "./MessageInput";
+import DiffViewer from "./DiffViewer";
 import BashTool from "./BashTool";
 import PatchTool from "./PatchTool";
 import ScreenshotTool from "./ScreenshotTool";
@@ -427,6 +428,8 @@ function ChatInterface({
   const [showDirectoryPicker, setShowDirectoryPicker] = useState(false);
   // Settings modal removed - configuration moved to status bar for empty conversations
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+  const [showDiffViewer, setShowDiffViewer] = useState(false);
+  const [diffCommentText, setDiffCommentText] = useState("");
   const [agentWorking, setAgentWorking] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [contextWindowSize, setContextWindowSize] = useState(0);
@@ -980,82 +983,105 @@ function ChatInterface({
             </svg>
           </button>
 
-          {/* Overflow menu - only show when there's content */}
-          {(terminalURL || links.length > 0) && (
-            <div ref={overflowMenuRef} style={{ position: "relative" }}>
-              <button
-                onClick={() => setShowOverflowMenu(!showOverflowMenu)}
-                className="btn-icon"
-                aria-label="More options"
-              >
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
-                  />
-                </svg>
-              </button>
+          {/* Overflow menu */}
+          <div ref={overflowMenuRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowOverflowMenu(!showOverflowMenu)}
+              className="btn-icon"
+              aria-label="More options"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+                />
+              </svg>
+            </button>
 
-              {showOverflowMenu && (
-                <div className="overflow-menu">
-                  {terminalURL && (
-                    <button
-                      onClick={() => {
-                        setShowOverflowMenu(false);
-                        window.open(terminalURL, "_blank");
-                      }}
-                      className="overflow-menu-item"
+            {showOverflowMenu && (
+              <div className="overflow-menu">
+                {/* Diffs button - show when we have a CWD */}
+                {(currentConversation?.cwd || selectedCwd) && (
+                  <button
+                    onClick={() => {
+                      setShowOverflowMenu(false);
+                      setShowDiffViewer(true);
+                    }}
+                    className="overflow-menu-item"
+                  >
+                    <svg
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      style={{ width: "1.25rem", height: "1.25rem", marginRight: "0.75rem" }}
                     >
-                      <svg
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        style={{ width: "1.25rem", height: "1.25rem", marginRight: "0.75rem" }}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                        />
-                      </svg>
-                      Terminal
-                    </button>
-                  )}
-                  {links.map((link, index) => (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        setShowOverflowMenu(false);
-                        window.open(link.url, "_blank");
-                      }}
-                      className="overflow-menu-item"
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                    Diffs
+                  </button>
+                )}
+                {terminalURL && (
+                  <button
+                    onClick={() => {
+                      setShowOverflowMenu(false);
+                      window.open(terminalURL, "_blank");
+                    }}
+                    className="overflow-menu-item"
+                  >
+                    <svg
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      style={{ width: "1.25rem", height: "1.25rem", marginRight: "0.75rem" }}
                     >
-                      <svg
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        style={{ width: "1.25rem", height: "1.25rem", marginRight: "0.75rem" }}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d={
-                            link.icon_svg ||
-                            "M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                          }
-                        />
-                      </svg>
-                      {link.title}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                    Terminal
+                  </button>
+                )}
+                {links.map((link, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      setShowOverflowMenu(false);
+                      window.open(link.url, "_blank");
+                    }}
+                    className="overflow-menu-item"
+                  >
+                    <svg
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      style={{ width: "1.25rem", height: "1.25rem", marginRight: "0.75rem" }}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d={
+                          link.icon_svg ||
+                          "M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                        }
+                      />
+                    </svg>
+                    {link.title}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1221,11 +1247,14 @@ function ChatInterface({
       </div>
 
       {/* Message input */}
+      {/* Message input */}
       <MessageInput
         key={conversationId || "new"}
         onSend={sendMessage}
         disabled={sending || loading}
         autoFocus={true}
+        injectedText={diffCommentText}
+        onClearInjectedText={() => setDiffCommentText("")}
       />
 
       {/* Directory Picker Modal */}
@@ -1237,6 +1266,14 @@ function ChatInterface({
           setCwdError(null);
         }}
         initialPath={selectedCwd}
+      />
+
+      {/* Diff Viewer */}
+      <DiffViewer
+        cwd={currentConversation?.cwd || selectedCwd}
+        isOpen={showDiffViewer}
+        onClose={() => setShowDiffViewer(false)}
+        onCommentTextChange={setDiffCommentText}
       />
     </div>
   );

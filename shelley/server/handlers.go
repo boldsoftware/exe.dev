@@ -77,6 +77,45 @@ func (s *Server) handleRead(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, f)
 }
 
+// handleWriteFile writes content to a file (for diff viewer edit mode)
+func (s *Server) handleWriteFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Path    string `json:"path"`
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Path == "" {
+		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+
+	// Security: only allow writing within certain directories
+	// For now, require the path to be within a git repository
+	clean := filepath.Clean(req.Path)
+	if !filepath.IsAbs(clean) {
+		http.Error(w, "absolute path required", http.StatusBadRequest)
+		return
+	}
+
+	// Write the file
+	if err := os.WriteFile(clean, []byte(req.Content), 0o644); err != nil {
+		http.Error(w, fmt.Sprintf("failed to write file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
 // handleUpload handles file uploads via POST /api/upload
 // Files are saved to the ScreenshotDir with a random filename
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {

@@ -259,10 +259,14 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/conversation-by-slug/", s.handleConversationBySlug)
 	mux.HandleFunc("/api/validate-cwd", s.handleValidateCwd)
 	mux.HandleFunc("/api/list-directory", s.handleListDirectory)
+	mux.HandleFunc("/api/git/diffs", s.handleGitDiffs)
+	mux.HandleFunc("/api/git/diffs/", s.handleGitDiffFiles)
+	mux.HandleFunc("/api/git/file-diff/", s.handleGitFileDiff)
 	mux.HandleFunc("/api/upload", s.handleUpload)
 
 	// Generic read route restricted to safe paths
 	mux.HandleFunc("/api/read", s.handleRead)
+	mux.HandleFunc("/api/write-file", s.handleWriteFile)
 
 	// Version endpoint
 	mux.HandleFunc("/version", s.handleVersion)

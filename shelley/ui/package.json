@@ -5,7 +5,7 @@
   "packageManager": "npm@11.6.2",
   "scripts": {
     "dev": "esbuild src/main.tsx --bundle --outfile=dist/main.js --servedir=dist --watch",
-    "build": "mkdir -p dist && cp src/index.html dist/ && cp src/styles.css dist/ && esbuild src/main.tsx --bundle --outfile=dist/main.js --minify --sourcemap && node scripts/build-info.js",
+    "build": "node scripts/build.js",
     "clean": "rm -rf dist/*",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
@@ -19,6 +19,7 @@
     "test:e2e:debug": "npm run build && playwright test --debug"
   },
   "dependencies": {
+    "monaco-editor": "^0.44.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

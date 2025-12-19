@@ -86,3 +86,40 @@ declare global {
     __SHELLEY_INIT__?: InitData;
   }
 }
+
+// Git diff types
+export interface GitDiffInfo {
+  id: string;
+  message: string;
+  author: string;
+  timestamp: string;
+  filesCount: number;
+  additions: number;
+  deletions: number;
+}
+
+export interface GitFileInfo {
+  path: string;
+  status: "added" | "modified" | "deleted";
+  additions: number;
+  deletions: number;
+}
+
+export interface GitFileDiff {
+  path: string;
+  oldContent: string;
+  newContent: string;
+}
+
+// Comment for diff viewer
+export interface DiffComment {
+  id: string;
+  line: number;
+  side: "left" | "right";
+  text: string;
+  selectedText?: string;
+  startLine?: number;
+  endLine?: number;
+  filePath: string;
+  diffId: string;
+}

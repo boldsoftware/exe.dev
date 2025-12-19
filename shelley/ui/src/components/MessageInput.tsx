@@ -48,9 +48,18 @@ interface MessageInputProps {
   disabled?: boolean;
   autoFocus?: boolean;
   onFocus?: () => void;
+  injectedText?: string;
+  onClearInjectedText?: () => void;
 }
 
-function MessageInput({ onSend, disabled = false, autoFocus = false, onFocus }: MessageInputProps) {
+function MessageInput({
+  onSend,
+  disabled = false,
+  autoFocus = false,
+  onFocus,
+  injectedText,
+  onClearInjectedText,
+}: MessageInputProps) {
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [uploadsInProgress, setUploadsInProgress] = useState(0);
@@ -244,6 +253,19 @@ function MessageInput({ onSend, disabled = false, autoFocus = false, onFocus }: 
     }
   };
 
+  // Auto-insert injected text (diff comments) directly into the textarea
+  useEffect(() => {
+    if (injectedText) {
+      setMessage((prev) => {
+        const needsNewline = prev.length > 0 && !prev.endsWith("\n");
+        return prev + (needsNewline ? "\n\n" : "") + injectedText;
+      });
+      onClearInjectedText?.();
+      // Focus the textarea after inserting
+      setTimeout(() => textareaRef.current?.focus(), 0);
+    }
+  }, [injectedText, onClearInjectedText]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim() && !disabled && !submitting && uploadsInProgress === 0) {
@@ -299,6 +321,7 @@ function MessageInput({ onSend, disabled = false, autoFocus = false, onFocus }: 
   const canSubmit = message.trim() && !isDisabled && !submitting;
 
   const isDraggingOver = dragCounter > 0;
+  // Note: injectedText is auto-inserted via useEffect, no manual UI needed
 
   return (
     <div
