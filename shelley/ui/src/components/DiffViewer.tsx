@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import type * as Monaco from "monaco-editor";
 import { api } from "../services/api";
 import { GitDiffInfo, GitFileInfo, GitFileDiff } from "../types";
 
@@ -9,72 +10,11 @@ interface DiffViewerProps {
   onCommentTextChange: (text: string) => void;
 }
 
-// Monaco types (minimal interface for what we need)
-interface MonacoEditor {
-  editor: {
-    createModel: (content: string, language?: string, uri?: unknown) => unknown;
-    getModel: (uri: unknown) => unknown | null;
-    createDiffEditor: (container: HTMLElement, options: unknown) => MonacoDiffEditor;
-    MouseTargetType: {
-      GUTTER_GLYPH_MARGIN: number;
-      CONTENT_TEXT: number;
-      CONTENT_EMPTY: number;
-    };
-  };
-  languages: {
-    getLanguages: () => Array<{ id: string; extensions?: string[] }>;
-  };
-  Uri: {
-    file: (path: string) => unknown;
-  };
-  Range: new (startLine: number, startCol: number, endLine: number, endCol: number) => unknown;
-}
-
-interface MonacoDiffEditor {
-  setModel: (model: { original: unknown; modified: unknown }) => void;
-  dispose: () => void;
-  getModifiedEditor: () => MonacoStandaloneEditor;
-  getLineChanges: () => Array<{
-    originalStartLineNumber: number;
-    originalEndLineNumber: number;
-    modifiedStartLineNumber: number;
-    modifiedEndLineNumber: number;
-  }> | null;
-}
-
-interface MonacoStandaloneEditor {
-  onMouseDown: (handler: (e: MonacoMouseEvent) => void) => void;
-  getModel: () => {
-    getLineContent: (line: number) => string;
-    getLineCount: () => number;
-    getValueInRange: (sel: unknown) => string;
-    getValue: () => string;
-  } | null;
-  getSelection: () => {
-    isEmpty: () => boolean;
-    startLineNumber: number;
-    endLineNumber: number;
-  } | null;
-  deltaDecorations: (old: unknown[], decorations: unknown[]) => void;
-  revealLineInCenter: (line: number) => void;
-  setPosition: (position: { lineNumber: number; column: number }) => void;
-  getPosition: () => { lineNumber: number; column: number } | null;
-  updateOptions: (options: Record<string, unknown>) => void;
-  onDidChangeModelContent: (handler: () => void) => { dispose: () => void };
-}
-
-interface MonacoMouseEvent {
-  target: {
-    type: number;
-    position: { lineNumber: number } | null;
-  };
-}
-
 // Global Monaco instance - loaded lazily
-let monacoInstance: MonacoEditor | null = null;
-let monacoLoadPromise: Promise<MonacoEditor> | null = null;
+let monacoInstance: typeof Monaco | null = null;
+let monacoLoadPromise: Promise<typeof Monaco> | null = null;
 
-function loadMonaco(): Promise<MonacoEditor> {
+function loadMonaco(): Promise<typeof Monaco> {
   if (monacoInstance) {
     return Promise.resolve(monacoInstance);
   }
@@ -84,12 +24,10 @@ function loadMonaco(): Promise<MonacoEditor> {
 
   monacoLoadPromise = (async () => {
     // Configure Monaco environment for web workers before importing
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (self as any).MonacoEnvironment = {
-      getWorkerUrl: function (_moduleId: string, _label: string) {
-        return '/editor.worker.js';
-      }
+    const monacoEnv: Monaco.Environment = {
+      getWorkerUrl: () => '/editor.worker.js'
     };
+    (self as Window).MonacoEnvironment = monacoEnv;
 
     // Load Monaco CSS if not already loaded
     if (!document.querySelector('link[href="/monaco-editor.css"]')) {
@@ -99,9 +37,11 @@ function loadMonaco(): Promise<MonacoEditor> {
       document.head.appendChild(link);
     }
 
-    // Load Monaco from our local bundle
-    const monaco = await import(/* webpackIgnore: true */ '/monaco-editor.js');
-    monacoInstance = monaco as unknown as MonacoEditor;
+    // Load Monaco from our local bundle (runtime URL, cast to proper types)
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore - dynamic runtime URL import
+    const monaco = (await import("/monaco-editor.js")) as typeof Monaco;
+    monacoInstance = monaco;
     return monacoInstance;
   })();
 
@@ -125,7 +65,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
   const saveTimeoutRef = useRef<number | null>(null);
   const pendingSaveRef = useRef<(() => Promise<void>) | null>(null);
   const scheduleSaveRef = useRef<(() => void) | null>(null);
-  const contentChangeDisposableRef = useRef<{ dispose: () => void } | null>(null);
+  const contentChangeDisposableRef = useRef<Monaco.IDisposable | null>(null);
   const [showCommentDialog, setShowCommentDialog] = useState<{
     line: number;
     side: "left" | "right";
@@ -138,8 +78,8 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
   const [selectorsExpanded, setSelectorsExpanded] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const editorContainerRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<MonacoDiffEditor | null>(null);
-  const monacoRef = useRef<MonacoEditor | null>(null);
+  const editorRef = useRef<Monaco.editor.IStandaloneDiffEditor | null>(null);
+  const monacoRef = useRef<typeof Monaco | null>(null);
   const modeRef = useRef<ViewMode>(mode);
 
   // Keep modeRef in sync with mode state and update editor options
@@ -266,7 +206,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
 
     // Add click handler for commenting - clicking on a line in comment mode opens dialog
     const modifiedEditor = diffEditor.getModifiedEditor();
-    modifiedEditor.onMouseDown((e: MonacoMouseEvent) => {
+    modifiedEditor.onMouseDown((e: Monaco.editor.IEditorMouseEvent) => {
       // In comment mode, clicking on line content opens comment dialog
       const isLineClick =
         e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT ||
