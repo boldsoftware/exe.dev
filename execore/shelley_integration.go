@@ -77,7 +77,8 @@ func (ss *SSHServer) runShelleyPrompt(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	// Create conversation and get ID
-	conversationID, err := ss.createShelleyConversation(ctx, httpClient, prompt, model)
+	userID := cc.User.ID
+	conversationID, err := ss.createShelleyConversation(ctx, httpClient, prompt, model, userID)
 	if err != nil {
 		return err
 	}
@@ -86,11 +87,11 @@ func (ss *SSHServer) runShelleyPrompt(ctx context.Context, cc *exemenu.CommandCo
 	cc.Write("🐌 Follow along at %s\r\n\r\n", shelleyUrl)
 
 	// Stream the conversation and display agent messages
-	return ss.streamShelleyConversation(ctx, httpClient, conversationID, cc, box.Name)
+	return ss.streamShelleyConversation(ctx, httpClient, conversationID, cc, box.Name, userID)
 }
 
 // createShelleyConversation creates a new Shelley conversation with the given prompt
-func (ss *SSHServer) createShelleyConversation(ctx context.Context, httpClient *http.Client, prompt, model string) (string, error) {
+func (ss *SSHServer) createShelleyConversation(ctx context.Context, httpClient *http.Client, prompt, model, userID string) (string, error) {
 	// Create the chat request
 	chatReq := ShelleyChatRequest{
 		Message: prompt,
@@ -121,47 +122,43 @@ func (ss *SSHServer) createShelleyConversation(ctx context.Context, httpClient *
 	}
 
 	var resp *http.Response
+	var lastErr error
 	for i := 0; i <= len(retryDelays); i++ {
 		req, err := http.NewRequestWithContext(ctx, "POST", shelleyURL, bytes.NewReader(reqBody))
 		if err != nil {
 			return "", fmt.Errorf("failed to create request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Shelley-Request", "1")
+		req.Header.Set("X-Exedev-Userid", userID)
 
 		resp, err = httpClient.Do(req)
-		if err == nil && (resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated) {
-			// Success! (201 Created or 200 OK)
+		if err != nil {
+			// Connection error - retry
+			lastErr = err
+			if i >= len(retryDelays) {
+				return "", fmt.Errorf("failed to connect to Shelley after retries: %w", lastErr)
+			}
+			select {
+			case <-time.After(retryDelays[i]):
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+			continue
+		}
+
+		// Got a response - check status
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+			// Success!
 			break
 		}
 
-		// Failed - close response if we got one
-		if resp != nil {
-			resp.Body.Close()
-			resp = nil
-		}
-
-		// If we've exhausted retries, return the error
-		if i >= len(retryDelays) {
-			if err != nil {
-				return "", fmt.Errorf("failed to connect to Shelley after retries: %w", err)
-			}
-			if resp != nil {
-				return "", fmt.Errorf("shelley returned status %d after retries", resp.StatusCode)
-			}
-			return "", fmt.Errorf("failed to connect to Shelley: unknown error")
-		}
-
-		// Wait before retrying
-		select {
-		case <-time.After(retryDelays[i]):
-		case <-ctx.Done():
-			return "", ctx.Err()
-		}
+		// Server returned an error - don't retry, return the error immediately
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return "", fmt.Errorf("shelley returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	if resp == nil {
-		return "", fmt.Errorf("no response from Shelley")
-	}
 	defer resp.Body.Close()
 
 	// Parse the response to get conversation ID
@@ -181,13 +178,14 @@ func (ss *SSHServer) createShelleyConversation(ctx context.Context, httpClient *
 }
 
 // streamShelleyConversation streams a Shelley conversation and displays agent messages
-func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *http.Client, conversationID string, cc *exemenu.CommandContext, boxName string) error {
+func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *http.Client, conversationID string, cc *exemenu.CommandContext, boxName, userID string) error {
 	// Connect to the conversation stream
 	streamURL := fmt.Sprintf("http://localhost:9999/api/conversation/%s/stream", conversationID)
 	streamReq, err := http.NewRequestWithContext(ctx, "GET", streamURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create stream request: %w", err)
 	}
+	streamReq.Header.Set("X-Exedev-Userid", userID)
 
 	streamResp, err := httpClient.Do(streamReq)
 	if err != nil {
