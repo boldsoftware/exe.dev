@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { linkifyText } from "../utils/linkify";
 import { Message as MessageType, LLMMessage, LLMContent, Usage } from "../types";
 import BashTool from "./BashTool";
 import PatchTool from "./PatchTool";
@@ -336,7 +337,9 @@ function Message({ message, onOpenDiffViewer }: MessageProps) {
           </div>
         );
       case "text":
-        return <div className="whitespace-pre-wrap break-words">{content.Text || ""}</div>;
+        return (
+          <div className="whitespace-pre-wrap break-words">{linkifyText(content.Text || "")}</div>
+        );
       case "tool_use":
         // IMPORTANT: When adding a new tool component here, also add it to:
         // 1. The tool_result case below

@@ -12,6 +12,7 @@
     "type-check": "tsc --noEmit",
     "format": "prettier --write 'src/**/*.{ts,tsx,js,jsx,json,css,html}'",
     "format:check": "prettier --check 'src/**/*.{ts,tsx,js,jsx,json,css,html}'",
+    "test": "tsx src/utils/linkify.test.runner.ts",
     "generate-types": "cd .. && go run ./cmd/go2ts.go -o ui/src/generated-types.ts",
     "test:e2e": "npm run build && playwright test",
     "test:e2e:headed": "npm run build && playwright test --headed",
@@ -35,6 +36,7 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "prettier": "^3.6.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.0.0",
     "typescript-eslint": "^8.43.0"
   }

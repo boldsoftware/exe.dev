@@ -3163,3 +3163,15 @@ svg {
 .injected-text-insert-btn:hover {
   filter: brightness(1.1);
 }
+
+/* Links in message text */
+.text-link {
+  color: var(--blue-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--blue-border);
+}
+
+.text-link:hover {
+  text-decoration-color: var(--blue-text);
+}
