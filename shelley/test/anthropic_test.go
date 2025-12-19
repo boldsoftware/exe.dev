@@ -52,20 +52,15 @@ func TestWithAnthropicAPI(t *testing.T) {
 	}
 	llmManager := server.NewLLMServiceManager(llmConfig, nil)
 
-	// Set up tools
-	bashTool := &claudetool.BashTool{Pwd: t.TempDir()}
-	patchTool := &claudetool.PatchTool{}
-	keywordTool := claudetool.NewKeywordTool(llmManager)
-	tools := []*llm.Tool{
-		claudetool.Think,
-		bashTool.Tool(),
-		patchTool.Tool(),
-		keywordTool.Tool(),
-		// TODO: Add todo tools when needed
+	// Set up tools config
+	toolSetConfig := claudetool.ToolSetConfig{
+		WorkingDir:    t.TempDir(),
+		LLMProvider:   llmManager,
+		EnableBrowser: false,
 	}
 
 	// Create server
-	svr := server.NewServer(database, llmManager, tools, logger, false, "", "", "", nil)
+	svr := server.NewServer(database, llmManager, toolSetConfig, logger, false, "", "", "", nil)
 
 	// Set up HTTP server
 	mux := http.NewServeMux()

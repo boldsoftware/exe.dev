@@ -64,13 +64,12 @@ func NewClaudeTestHarness(t *testing.T) *ClaudeTestHarness {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	// Set up tools - bash for testing tool cancellation
-	bashTool := &claudetool.BashTool{Pwd: t.TempDir()}
-	tools := []*llm.Tool{
-		claudetool.Think,
-		bashTool.Tool(),
+	toolSetConfig := claudetool.ToolSetConfig{
+		WorkingDir:    t.TempDir(),
+		EnableBrowser: false,
 	}
 
-	server := NewServer(database, llmManager, tools, logger, true, "", "claude", "", nil)
+	server := NewServer(database, llmManager, toolSetConfig, logger, true, "", "claude", "", nil)
 	h.server = server
 
 	return h

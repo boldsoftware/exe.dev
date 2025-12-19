@@ -18,6 +18,7 @@ import (
 
 	"tailscale.com/util/singleflight"
 
+	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
@@ -220,7 +221,7 @@ func calculateContextWindowSizeFromMsg(msg *generated.Message) uint64 {
 type Server struct {
 	db                  *db.DB
 	llmManager          LLMProvider
-	tools               []*llm.Tool
+	toolSetConfig       claudetool.ToolSetConfig
 	activeConversations map[string]*ConversationManager
 	mu                  sync.Mutex
 	logger              *slog.Logger
@@ -233,11 +234,11 @@ type Server struct {
 }
 
 // NewServer creates a new server instance
-func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logger *slog.Logger, predictableOnly bool, terminalURL, defaultModel, requireHeader string, links []Link) *Server {
+func NewServer(database *db.DB, llmManager LLMProvider, toolSetConfig claudetool.ToolSetConfig, logger *slog.Logger, predictableOnly bool, terminalURL, defaultModel, requireHeader string, links []Link) *Server {
 	return &Server{
 		db:                  database,
 		llmManager:          llmManager,
-		tools:               tools,
+		toolSetConfig:       toolSetConfig,
 		activeConversations: make(map[string]*ConversationManager),
 		logger:              logger,
 		predictableOnly:     predictableOnly,
@@ -447,7 +448,7 @@ func (s *Server) getOrCreateConversationManager(ctx context.Context, conversatio
 			return s.recordMessage(ctx, conversationID, message, usage)
 		}
 
-		manager := NewConversationManager(conversationID, s.db, s.logger, s.tools, recordMessage)
+		manager := NewConversationManager(conversationID, s.db, s.logger, s.toolSetConfig, recordMessage)
 		if err := manager.Hydrate(ctx); err != nil {
 			return nil, err
 		}

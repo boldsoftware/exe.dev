@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -181,9 +182,20 @@ func TestSystemdListenerIntegration(t *testing.T) {
 	// Note: We don't set LISTEN_PID here because we don't know the child PID yet.
 	// The systemdListener function handles missing LISTEN_PID gracefully.
 	cmd = exec.Command(binary, "-db", dbPath, "serve", "-systemd-activation")
-	cmd.Env = append(os.Environ(), "LISTEN_FDS=1")
+	// Build environment without LISTEN_PID (will be inherited from parent otherwise)
+	// and add LISTEN_FDS=1
+	env := make([]string, 0, len(os.Environ()))
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "LISTEN_PID=") {
+			env = append(env, e)
+		}
+	}
+	env = append(env, "LISTEN_FDS=1")
+	cmd.Env = env
 	cmd.ExtraFiles = []*os.File{file} // This makes the file fd 3 in the child
-	cmd.Stderr = os.Stderr            // Show any errors from the subprocess
+	var stderrBuf, stdoutBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
 
 	// Start the process
 	if err := cmd.Start(); err != nil {
@@ -211,7 +223,7 @@ func TestSystemdListenerIntegration(t *testing.T) {
 	cmd.Wait()
 
 	if err != nil {
-		t.Fatalf("Failed to connect to server: %v", err)
+		t.Fatalf("Failed to connect to server: %v\nstdout: %s\nstderr: %s", err, stdoutBuf.String(), stderrBuf.String())
 	}
 	defer resp.Body.Close()
 

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
@@ -25,7 +26,7 @@ func TestMessageQueuedDuringThinking(t *testing.T) {
 	predictableService := loop.NewPredictableService()
 	llmManager := &testLLMManager{service: predictableService}
 	logger := slog.Default()
-	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", "", nil)
+	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
@@ -156,7 +157,7 @@ func TestContextPreservedAfterCancel(t *testing.T) {
 	predictableService := loop.NewPredictableService()
 	llmManager := &testLLMManager{service: predictableService}
 	logger := slog.Default()
-	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", "", nil)
+	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)

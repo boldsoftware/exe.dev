@@ -40,10 +40,8 @@ func NewTestHarness(t *testing.T) *TestHarness {
 	llmManager := &testLLMManager{service: predictableService}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	bashTool := &claudetool.BashTool{}
-	tools := []*llm.Tool{bashTool.Tool()}
-
-	server := NewServer(database, llmManager, tools, logger, true, "", "predictable", "", nil)
+	toolSetConfig := claudetool.ToolSetConfig{EnableBrowser: false}
+	server := NewServer(database, llmManager, toolSetConfig, logger, true, "", "predictable", "", nil)
 
 	return &TestHarness{
 		t:       t,

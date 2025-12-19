@@ -37,10 +37,8 @@ func TestCancelAfterToolCompletesCreatesDuplicateToolResult(t *testing.T) {
 	llmManager := &testLLMManager{service: predictableService}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	bashTool := &claudetool.BashTool{}
-	tools := []*llm.Tool{bashTool.Tool()}
-
-	server := NewServer(database, llmManager, tools, logger, true, "", "predictable", "", nil)
+	toolSetConfig := claudetool.ToolSetConfig{EnableBrowser: false}
+	server := NewServer(database, llmManager, toolSetConfig, logger, true, "", "predictable", "", nil)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)

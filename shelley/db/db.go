@@ -315,6 +315,18 @@ func (db *DB) UpdateConversationSlug(ctx context.Context, conversationID, slug s
 	return &conversation, err
 }
 
+// UpdateConversationCwd updates the working directory for a conversation
+func (db *DB) UpdateConversationCwd(ctx context.Context, conversationID, cwd string) error {
+	return db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		q := generated.New(tx.Conn())
+		_, err := q.UpdateConversationCwd(ctx, generated.UpdateConversationCwdParams{
+			Cwd:            &cwd,
+			ConversationID: conversationID,
+		})
+		return err
+	})
+}
+
 // Message methods (moved from MessageService)
 
 // MessageType represents the type of message

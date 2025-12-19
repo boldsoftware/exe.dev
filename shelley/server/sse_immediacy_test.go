@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/loop"
@@ -63,7 +64,7 @@ func TestSSEUserMessageAppearsImmediately(t *testing.T) {
 	predictableService := loop.NewPredictableService()
 	llmManager := &testLLMManager{service: predictableService}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", "", nil)
+	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
@@ -204,7 +205,7 @@ func TestSSEUserMessageWithRealHTTPServer(t *testing.T) {
 	predictableService := loop.NewPredictableService()
 	llmManager := &testLLMManager{service: predictableService}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	srv := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", "", nil)
+	srv := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
@@ -314,7 +315,7 @@ func TestSSEUserMessageWithExistingConnection(t *testing.T) {
 	predictableService := loop.NewPredictableService()
 	llmManager := &testLLMManager{service: predictableService}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", "", nil)
+	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
 
 	// Create conversation and get a manager (simulating an established SSE connection)
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)

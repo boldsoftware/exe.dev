@@ -52,16 +52,14 @@ func TestServerEndToEnd(t *testing.T) {
 	_ = predictableService // will need to mock this properly
 
 	// Set up tools
-	bashTool := &claudetool.BashTool{Pwd: t.TempDir()}
-	patchTool := &claudetool.PatchTool{}
-	tools := []*llm.Tool{
-		claudetool.Think,
-		bashTool.Tool(),
-		patchTool.Tool(),
+	// Set up tools config
+	toolSetConfig := claudetool.ToolSetConfig{
+		WorkingDir:    t.TempDir(),
+		EnableBrowser: false,
 	}
 
 	// Create server
-	svr := server.NewServer(database, llmManager, tools, logger, false, "", "", "", nil)
+	svr := server.NewServer(database, llmManager, toolSetConfig, logger, false, "", "", "", nil)
 
 	// Set up HTTP server
 	mux := http.NewServeMux()
@@ -386,7 +384,7 @@ func TestConversationCleanup(t *testing.T) {
 	// Create server with predictable service
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger}, nil)
-	svr := server.NewServer(database, llmManager, []*llm.Tool{}, logger, false, "", "", "", nil)
+	svr := server.NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, false, "", "", "", nil)
 
 	// Create a conversation
 	// Using database directly instead of service
@@ -422,7 +420,7 @@ func TestSlugGeneration(t *testing.T) {
 	// Create server
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger}, nil)
-	_ = server.NewServer(database, llmManager, []*llm.Tool{}, logger, false, "", "", "", nil)
+	_ = server.NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, false, "", "", "", nil)
 
 	// Test slug generation directly to avoid timing issues
 	// ctx := context.Background()
@@ -516,7 +514,7 @@ func TestSlugGenerationWithPredictableService(t *testing.T) {
 		t.Fatalf("Failed to migrate database: %v", err)
 	}
 
-	_ = server.NewServer(database, llmManager, []*llm.Tool{}, logger, false, "", "", "", nil)
+	_ = server.NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, false, "", "", "", nil)
 
 	// Test slug generation directly
 	// ctx := context.Background()
@@ -612,7 +610,7 @@ func TestSSEIncrementalUpdates(t *testing.T) {
 	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger}, nil)
 
 	// Create server
-	serviceInstance := server.NewServer(database, llmManager, nil, logger, false, "", "", "", nil)
+	serviceInstance := server.NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, false, "", "", "", nil)
 	mux := http.NewServeMux()
 	serviceInstance.RegisterRoutes(mux)
 	testServer := httptest.NewServer(mux)
@@ -728,7 +726,7 @@ func TestSystemPromptSentToLLM(t *testing.T) {
 		logger:             logger,
 	}
 
-	tools := []*llm.Tool{}
+	tools := claudetool.ToolSetConfig{}
 	svr := server.NewServer(database, customLLMManager, tools, logger, false, "", "", "", nil)
 
 	// Start server
@@ -922,7 +920,7 @@ func TestVersionEndpoint(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger}, nil)
-	svr := server.NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "", "", nil)
+	svr := server.NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "", "", nil)
 
 	mux := http.NewServeMux()
 	svr.RegisterRoutes(mux)
@@ -973,7 +971,7 @@ func TestScreenshotRouteServesImage(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger}, nil)
-	svr := server.NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "", "", nil)
+	svr := server.NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "", "", nil)
 
 	mux := http.NewServeMux()
 	svr.RegisterRoutes(mux)

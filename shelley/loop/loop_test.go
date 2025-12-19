@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -478,6 +480,13 @@ func TestLoopWithActualKeywordTool(t *testing.T) {
 }
 
 func TestKeywordToolWithLLMProvider(t *testing.T) {
+	// Create a temp directory with a test file to search
+	tempDir := t.TempDir()
+	testFile := filepath.Join(tempDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("this is a test file\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
 	// Create a predictable service for testing
 	predictableService := NewPredictableService()
 
@@ -487,14 +496,15 @@ func TestKeywordToolWithLLMProvider(t *testing.T) {
 		models:  []string{"predictable"},
 	}
 
-	// Create keyword tool with provider
-	keywordTool := claudetool.NewKeywordTool(llmProvider)
+	// Create keyword tool with provider - use temp dir instead of /
+	keywordTool := claudetool.NewKeywordToolWithWorkingDir(llmProvider, claudetool.NewMutableWorkingDir(tempDir))
 	tool := keywordTool.Tool()
 
 	// Test input
 	input := `{"query": "test search", "search_terms": ["test"]}`
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	result := tool.Run(ctx, json.RawMessage(input))
 
 	// Should get a result without error (even though ripgrep will fail in test environment)

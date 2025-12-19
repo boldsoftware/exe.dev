@@ -332,6 +332,33 @@ func (q *Queries) UnarchiveConversation(ctx context.Context, conversationID stri
 	return i, err
 }
 
+const updateConversationCwd = `-- name: UpdateConversationCwd :one
+UPDATE conversations
+SET cwd = ?, updated_at = CURRENT_TIMESTAMP
+WHERE conversation_id = ?
+RETURNING conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived
+`
+
+type UpdateConversationCwdParams struct {
+	Cwd            *string `json:"cwd"`
+	ConversationID string  `json:"conversation_id"`
+}
+
+func (q *Queries) UpdateConversationCwd(ctx context.Context, arg UpdateConversationCwdParams) (Conversation, error) {
+	row := q.db.QueryRowContext(ctx, updateConversationCwd, arg.Cwd, arg.ConversationID)
+	var i Conversation
+	err := row.Scan(
+		&i.ConversationID,
+		&i.Slug,
+		&i.UserInitiated,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Cwd,
+		&i.Archived,
+	)
+	return i, err
+}
+
 const updateConversationSlug = `-- name: UpdateConversationSlug :one
 UPDATE conversations
 SET slug = ?, updated_at = CURRENT_TIMESTAMP

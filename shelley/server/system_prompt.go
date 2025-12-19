@@ -37,9 +37,10 @@ type CodebaseInfo struct {
 	GuidanceFiles      []string
 }
 
-// GenerateSystemPrompt generates the system prompt using the embedded template
-func GenerateSystemPrompt() (string, error) {
-	data, err := collectSystemData()
+// GenerateSystemPrompt generates the system prompt using the embedded template.
+// If workingDir is empty, it uses the current working directory.
+func GenerateSystemPrompt(workingDir string) (string, error) {
+	data, err := collectSystemData(workingDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to collect system data: %w", err)
 	}
@@ -58,10 +59,14 @@ func GenerateSystemPrompt() (string, error) {
 	return buf.String(), nil
 }
 
-func collectSystemData() (*SystemPromptData, error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get working directory: %w", err)
+func collectSystemData(workingDir string) (*SystemPromptData, error) {
+	wd := workingDir
+	if wd == "" {
+		var err error
+		wd, err = os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get working directory: %w", err)
+		}
 	}
 
 	data := &SystemPromptData{

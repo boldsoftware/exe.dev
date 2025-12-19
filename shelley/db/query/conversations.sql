@@ -67,3 +67,9 @@ UPDATE conversations
 SET archived = FALSE, updated_at = CURRENT_TIMESTAMP
 WHERE conversation_id = ?
 RETURNING *;
+
+-- name: UpdateConversationCwd :one
+UPDATE conversations
+SET cwd = ?, updated_at = CURRENT_TIMESTAMP
+WHERE conversation_id = ?
+RETURNING *;

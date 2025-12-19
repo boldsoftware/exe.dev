@@ -25,6 +25,26 @@ import (
 	"shelley.exe.dev/version"
 )
 
+// formatCwdWithTilde replaces $HOME prefix with ~ in a path.
+func formatCwdWithTilde(cwd *string) *string {
+	if cwd == nil {
+		return nil
+	}
+	home := os.Getenv("HOME")
+	if home == "" {
+		return cwd
+	}
+	if *cwd == home {
+		s := "~"
+		return &s
+	}
+	if strings.HasPrefix(*cwd, home+"/") {
+		s := "~" + (*cwd)[len(home):]
+		return &s
+	}
+	return cwd
+}
+
 // handleRead serves files from limited allowed locations via /api/read?path=
 func (s *Server) handleRead(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -376,6 +396,11 @@ func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("Failed to get conversations", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
+	}
+
+	// Format cwd with ~ for home directory
+	for i := range conversations {
+		conversations[i].Cwd = formatCwdWithTilde(conversations[i].Cwd)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -956,6 +981,11 @@ func (s *Server) handleArchivedConversations(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Format cwd with ~ for home directory
+	for i := range conversations {
+		conversations[i].Cwd = formatCwdWithTilde(conversations[i].Cwd)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(conversations)
 }
@@ -975,6 +1005,7 @@ func (s *Server) handleArchiveConversation(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	conversation.Cwd = formatCwdWithTilde(conversation.Cwd)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(conversation)
 }
@@ -994,6 +1025,7 @@ func (s *Server) handleUnarchiveConversation(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	conversation.Cwd = formatCwdWithTilde(conversation.Cwd)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(conversation)
 }
@@ -1041,6 +1073,7 @@ func (s *Server) handleConversationBySlug(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	conversation.Cwd = formatCwdWithTilde(conversation.Cwd)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(conversation)
 }

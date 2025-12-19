@@ -12,9 +12,7 @@ import (
 	"strings"
 
 	"shelley.exe.dev/claudetool"
-	"shelley.exe.dev/claudetool/browse"
 	"shelley.exe.dev/db"
-	"shelley.exe.dev/llm"
 	"shelley.exe.dev/models"
 	"shelley.exe.dev/server"
 	"shelley.exe.dev/templates"
@@ -113,14 +111,10 @@ func runServe(global GlobalConfig, args []string) {
 	availableModels := llmManager.GetAvailableModels()
 	logger.Info("Available models", "models", strings.Join(availableModels, ", "))
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	tools, toolsCleanup := setupTools(ctx, llmManager)
-	defer toolsCleanup()
+	toolSetConfig := setupToolSetConfig(llmManager)
 
 	// Create server
-	svr := server.NewServer(database, llmManager, tools, logger, global.PredictableOnly, llmConfig.TerminalURL, llmConfig.DefaultModel, *requireHeader, llmConfig.Links)
+	svr := server.NewServer(database, llmManager, toolSetConfig, logger, global.PredictableOnly, llmConfig.TerminalURL, llmConfig.DefaultModel, *requireHeader, llmConfig.Links)
 
 	var err error
 	if *systemdActivation {
@@ -242,47 +236,17 @@ func runVersion() {
 	}
 }
 
-func setupTools(ctx context.Context, llmProvider claudetool.LLMServiceProvider) ([]*llm.Tool, func()) {
+func setupToolSetConfig(llmProvider claudetool.LLMServiceProvider) claudetool.ToolSetConfig {
 	wd, err := os.Getwd()
 	if err != nil {
 		// Fallback to "/" if we can't get working directory
 		wd = "/"
 	}
-	bashTool := &claudetool.BashTool{
-		Pwd:              wd,
+	return claudetool.ToolSetConfig{
+		WorkingDir:       wd,
 		LLMProvider:      llmProvider,
 		EnableJITInstall: claudetool.EnableBashToolJITInstall,
-	}
-	patchTool := &claudetool.PatchTool{
-		Simplified:       true,
-		Pwd:              wd,
-		ClipboardEnabled: true,
-	}
-	keywordTool := claudetool.NewKeywordTool(llmProvider)
-
-	tools := []*llm.Tool{
-		claudetool.Think,
-		bashTool.Tool(),
-		patchTool.Tool(),
-		keywordTool.Tool(),
-	}
-
-	browserTools, browserCleanup := browse.RegisterBrowserTools(ctx, true)
-	if len(browserTools) > 0 {
-		tools = append(tools, browserTools...)
-	}
-
-	cleanups := make([]func(), 0, 1)
-	if browserCleanup != nil {
-		cleanups = append(cleanups, browserCleanup)
-	}
-
-	return tools, func() {
-		for i := len(cleanups) - 1; i >= 0; i-- {
-			if cleanups[i] != nil {
-				cleanups[i]()
-			}
-		}
+		EnableBrowser:    true,
 	}
 }
 

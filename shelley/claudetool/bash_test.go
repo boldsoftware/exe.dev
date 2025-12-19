@@ -16,7 +16,7 @@ func TestBashSlowOk(t *testing.T) {
 	t.Run("SlowOk Flag", func(t *testing.T) {
 		input := json.RawMessage(`{"command":"echo 'slow test'","slow_ok":true}`)
 
-		bashTool := (&BashTool{}).Tool()
+		bashTool := (&BashTool{WorkingDir: NewMutableWorkingDir("/")}).Tool()
 		toolOut := bashTool.Run(context.Background(), input)
 		if toolOut.Error != nil {
 			t.Fatalf("Unexpected error: %v", toolOut.Error)
@@ -33,7 +33,7 @@ func TestBashSlowOk(t *testing.T) {
 	t.Run("SlowOk with Background", func(t *testing.T) {
 		input := json.RawMessage(`{"command":"echo 'slow background test'","slow_ok":true,"background":true}`)
 
-		bashTool := (&BashTool{}).Tool()
+		bashTool := (&BashTool{WorkingDir: NewMutableWorkingDir("/")}).Tool()
 		toolOut := bashTool.Run(context.Background(), input)
 		if toolOut.Error != nil {
 			t.Fatalf("Unexpected error: %v", toolOut.Error)
@@ -70,7 +70,7 @@ func TestBashSlowOk(t *testing.T) {
 }
 
 func TestBashTool(t *testing.T) {
-	var bashTool BashTool
+	bashTool := &BashTool{WorkingDir: NewMutableWorkingDir("/")}
 	tool := bashTool.Tool()
 
 	// Test basic functionality
@@ -140,7 +140,8 @@ func TestBashTool(t *testing.T) {
 			Background: 100 * time.Millisecond,
 		}
 		customBash := &BashTool{
-			Timeouts: customTimeouts,
+			WorkingDir: NewMutableWorkingDir("/"),
+			Timeouts:   customTimeouts,
 		}
 		tool := customBash.Tool()
 
@@ -177,7 +178,7 @@ func TestBashTool(t *testing.T) {
 
 func TestExecuteBash(t *testing.T) {
 	ctx := context.Background()
-	bashTool := &BashTool{}
+	bashTool := &BashTool{WorkingDir: NewMutableWorkingDir("/")}
 
 	// Test successful command
 	t.Run("Successful Command", func(t *testing.T) {
@@ -268,7 +269,7 @@ func TestExecuteBash(t *testing.T) {
 }
 
 func TestBackgroundBash(t *testing.T) {
-	var bashTool BashTool
+	bashTool := &BashTool{WorkingDir: NewMutableWorkingDir("/")}
 	tool := bashTool.Tool()
 
 	// Test basic background execution

@@ -516,6 +516,18 @@ button {
   color: rgba(255, 255, 255, 0.8);
 }
 
+.conversation-item .conversation-cwd {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  opacity: 0.8;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
 /* Messages */
 .messages-container {
   flex: 1 1 auto;

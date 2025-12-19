@@ -21,11 +21,17 @@ type LLMServiceProvider interface {
 // KeywordTool provides keyword search functionality
 type KeywordTool struct {
 	llmProvider LLMServiceProvider
+	workingDir  *MutableWorkingDir
 }
 
 // NewKeywordTool creates a new keyword tool with the given LLM provider
 func NewKeywordTool(provider LLMServiceProvider) *KeywordTool {
 	return &KeywordTool{llmProvider: provider}
+}
+
+// NewKeywordToolWithWorkingDir creates a new keyword tool with the given LLM provider and shared working directory
+func NewKeywordToolWithWorkingDir(provider LLMServiceProvider, wd *MutableWorkingDir) *KeywordTool {
+	return &KeywordTool{llmProvider: provider, workingDir: wd}
 }
 
 // Tool returns the LLM tool definition
@@ -104,7 +110,7 @@ func (k *KeywordTool) keywordRun(ctx context.Context, m json.RawMessage) llm.Too
 	if err := json.Unmarshal(m, &input); err != nil {
 		return llm.ErrorToolOut(err)
 	}
-	wd := WorkingDir(ctx)
+	wd := k.workingDir.Get()
 	root, err := FindRepoRoot(wd)
 	if err == nil {
 		wd = root

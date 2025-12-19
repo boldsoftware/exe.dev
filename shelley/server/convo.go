@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
@@ -31,7 +32,8 @@ type ConversationManager struct {
 	system         []llm.SystemContent
 	recordMessage  loop.MessageRecordFunc
 	logger         *slog.Logger
-	tools          []*llm.Tool
+	toolSetConfig  claudetool.ToolSetConfig
+	toolSet        *claudetool.ToolSet // created per-conversation when loop starts
 
 	subpub *subpub.SubPub[StreamResponse]
 
@@ -41,7 +43,7 @@ type ConversationManager struct {
 }
 
 // NewConversationManager constructs a manager with dependencies but defers hydration until needed.
-func NewConversationManager(conversationID string, database *db.DB, baseLogger *slog.Logger, tools []*llm.Tool, recordMessage loop.MessageRecordFunc) *ConversationManager {
+func NewConversationManager(conversationID string, database *db.DB, baseLogger *slog.Logger, toolSetConfig claudetool.ToolSetConfig, recordMessage loop.MessageRecordFunc) *ConversationManager {
 	logger := baseLogger
 	if logger == nil {
 		logger = slog.Default()
@@ -54,7 +56,7 @@ func NewConversationManager(conversationID string, database *db.DB, baseLogger *
 		lastActivity:   time.Now(),
 		recordMessage:  recordMessage,
 		logger:         logger,
-		tools:          append([]*llm.Tool(nil), tools...),
+		toolSetConfig:  toolSetConfig,
 		subpub:         subpub.New[StreamResponse](),
 	}
 }
@@ -175,7 +177,7 @@ func hasSystemMessage(messages []generated.Message) bool {
 }
 
 func (cm *ConversationManager) createSystemPrompt(ctx context.Context) (*generated.Message, error) {
-	systemPrompt, err := GenerateSystemPrompt()
+	systemPrompt, err := GenerateSystemPrompt(cm.cwd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate system prompt: %w", err)
 	}
@@ -263,27 +265,41 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 	history := append([]llm.Message(nil), cm.history...)
 	system := append([]llm.SystemContent(nil), cm.system...)
 	recordMessage := cm.recordMessage
-	tools := append([]*llm.Tool(nil), cm.tools...)
 	logger := cm.logger
 	cwd := cm.cwd
+	toolSetConfig := cm.toolSetConfig
+	conversationID := cm.conversationID
+	db := cm.db
 	cm.mu.Unlock()
+
+	// Create tools for this conversation with the conversation's working directory
+	toolSetConfig.WorkingDir = cwd
+	toolSetConfig.ModelID = modelID
+	toolSetConfig.OnWorkingDirChange = func(newDir string) {
+		// Persist working directory change to database
+		if err := db.UpdateConversationCwd(context.Background(), conversationID, newDir); err != nil {
+			logger.Error("failed to persist working directory change", "error", err, "newDir", newDir)
+		}
+	}
+
+	processCtx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
+	toolSet := claudetool.NewToolSet(processCtx, toolSetConfig)
 
 	loopInstance := loop.NewLoop(loop.Config{
 		LLM:           service,
 		History:       history,
-		Tools:         tools,
+		Tools:         toolSet.Tools(),
 		RecordMessage: recordMessage,
 		Logger:        logger,
 		System:        system,
 		WorkingDir:    cwd,
 	})
 
-	processCtx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
-
 	cm.mu.Lock()
 	if cm.loop != nil {
 		cm.mu.Unlock()
 		cancel()
+		toolSet.Cleanup()
 		existingModel := cm.modelID
 		if existingModel != "" && modelID != "" && existingModel != modelID {
 			return fmt.Errorf("%w: conversation already uses model %s; requested %s", errConversationModelMismatch, existingModel, modelID)
@@ -294,6 +310,7 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 	cm.loopCancel = cancel
 	cm.loopCtx = processCtx
 	cm.modelID = modelID
+	cm.toolSet = toolSet
 	cm.history = nil
 	cm.system = nil
 	cm.mu.Unlock()
@@ -314,14 +331,19 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 func (cm *ConversationManager) stopLoop() {
 	cm.mu.Lock()
 	cancel := cm.loopCancel
+	toolSet := cm.toolSet
 	cm.loopCancel = nil
 	cm.loopCtx = nil
 	cm.loop = nil
 	cm.modelID = ""
+	cm.toolSet = nil
 	cm.mu.Unlock()
 
 	if cancel != nil {
 		cancel()
+	}
+	if toolSet != nil {
+		toolSet.Cleanup()
 	}
 }
 

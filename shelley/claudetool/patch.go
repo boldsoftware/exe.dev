@@ -29,8 +29,8 @@ type PatchCallback func(input PatchInput, output llm.ToolOut) llm.ToolOut
 // PatchTools are not concurrency-safe.
 type PatchTool struct {
 	Callback PatchCallback // may be nil
-	// Pwd is the working directory for resolving relative paths
-	Pwd string
+	// WorkingDir is the shared mutable working directory.
+	WorkingDir *MutableWorkingDir
 	// Simplified indicates whether to use the simplified input schema.
 	// Helpful for weaker models.
 	Simplified bool
@@ -41,6 +41,11 @@ type PatchTool struct {
 	ClipboardEnabled bool
 	// clipboards stores clipboard name -> text
 	clipboards map[string]string
+}
+
+// getWorkingDir returns the current working directory.
+func (p *PatchTool) getWorkingDir() string {
+	return p.WorkingDir.Get()
 }
 
 // Tool returns an llm.Tool based on p.
@@ -334,14 +339,8 @@ func (p *PatchTool) patchParse(m json.RawMessage) (PatchInput, error) {
 func (p *PatchTool) patchRun(ctx context.Context, input *PatchInput) llm.ToolOut {
 	path := input.Path
 	if !filepath.IsAbs(input.Path) {
-		// Use working directory from context if available, otherwise fall back to p.Pwd
-		pwd := WorkingDir(ctx)
-		if pwd == "" {
-			pwd = p.Pwd
-		}
-		if pwd == "" {
-			return llm.ErrorfToolOut("path %q is not absolute and no working directory is set", input.Path)
-		}
+		// Use shared WorkingDir if available, then context, then Pwd fallback
+		pwd := p.getWorkingDir()
 		path = filepath.Join(pwd, input.Path)
 	}
 	input.Path = path

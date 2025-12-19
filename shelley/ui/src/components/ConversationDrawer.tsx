@@ -62,6 +62,8 @@ function ConversationDrawer({
     }
   };
 
+  // cwd is already formatted with ~ by the server
+
   const getConversationPreview = (conversation: Conversation) => {
     if (conversation.slug) {
       return conversation.slug;
@@ -199,7 +201,14 @@ function ConversationDrawer({
                       <div className="conversation-title">
                         {getConversationPreview(conversation)}
                       </div>
-                      <div className="conversation-date">{formatDate(conversation.updated_at)}</div>
+                      <div className="conversation-date">
+                        {formatDate(conversation.updated_at)}
+                      </div>
+                      {conversation.cwd && (
+                        <div className="conversation-cwd" title={conversation.cwd}>
+                          {conversation.cwd}
+                        </div>
+                      )}
                     </div>
                     <div
                       className="conversation-actions"

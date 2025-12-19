@@ -10,6 +10,7 @@ import BrowserNavigateTool from "./BrowserNavigateTool";
 import BrowserEvalTool from "./BrowserEvalTool";
 import ReadImageTool from "./ReadImageTool";
 import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
+import ChangeDirTool from "./ChangeDirTool";
 import ContextMenu from "./ContextMenu";
 import UsageDetailModal from "./UsageDetailModal";
 
@@ -276,6 +277,10 @@ function Message({ message }: MessageProps) {
         if (content.ToolName === "think") {
           return <ThinkTool toolInput={content.ToolInput} isRunning={true} />;
         }
+        // Use specialized component for change_dir tool
+        if (content.ToolName === "change_dir") {
+          return <ChangeDirTool toolInput={content.ToolInput} isRunning={true} />;
+        }
         // Use specialized component for keyword search tool
         if (content.ToolName === "keyword_search") {
           return <KeywordSearchTool toolInput={content.ToolInput} isRunning={true} />;
@@ -403,6 +408,19 @@ function Message({ message }: MessageProps) {
         if (toolName === "think") {
           return (
             <ThinkTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+            />
+          );
+        }
+
+        // Use specialized component for change_dir tool
+        if (toolName === "change_dir") {
+          return (
+            <ChangeDirTool
               toolInput={toolInput}
               isRunning={false}
               toolResult={content.ToolResult}

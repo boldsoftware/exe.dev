@@ -32,8 +32,8 @@ type BashTool struct {
 	EnableJITInstall bool
 	// Timeouts holds the configurable timeout values (uses defaults if nil)
 	Timeouts *Timeouts
-	// Pwd is the working directory for the tool
-	Pwd string
+	// WorkingDir is the shared mutable working directory.
+	WorkingDir *MutableWorkingDir
 	// LLMProvider provides access to LLM services for tool validation
 	LLMProvider LLMServiceProvider
 }
@@ -82,10 +82,15 @@ func (t *Timeouts) background() time.Duration {
 func (b *BashTool) Tool() *llm.Tool {
 	return &llm.Tool{
 		Name:        bashName,
-		Description: fmt.Sprintf(strings.TrimSpace(bashDescription), b.Pwd),
+		Description: fmt.Sprintf(strings.TrimSpace(bashDescription), b.getWorkingDir()),
 		InputSchema: llm.MustSchema(bashInputSchema),
 		Run:         b.Run,
 	}
+}
+
+// getWorkingDir returns the current working directory.
+func (b *BashTool) getWorkingDir() string {
+	return b.WorkingDir.Get()
 }
 
 const (
@@ -99,6 +104,8 @@ Use background for servers/demos that need to stay running.
 
 MUST set slow_ok=true for potentially slow commands: builds, downloads,
 installs, tests, or any other substantive operation.
+
+To change the working directory persistently, use the change_dir tool.
 
 <pwd>%s</pwd>
 `
@@ -158,6 +165,15 @@ func (b *BashTool) Run(ctx context.Context, m json.RawMessage) llm.ToolOut {
 		return llm.ErrorfToolOut("failed to unmarshal bash command input: %w", err)
 	}
 
+	// Check that the working directory exists
+	wd := b.getWorkingDir()
+	if _, err := os.Stat(wd); err != nil {
+		if os.IsNotExist(err) {
+			return llm.ErrorfToolOut("working directory does not exist: %s (use change_dir to switch to a valid directory)", wd)
+		}
+		return llm.ErrorfToolOut("cannot access working directory %s: %w", wd, err)
+	}
+
 	// do a quick permissions check (NOT a security barrier)
 	err := bashkit.Check(req.Command)
 	if err != nil {
@@ -202,12 +218,8 @@ const maxBashOutputLength = 131072
 
 func (b *BashTool) makeBashCommand(ctx context.Context, command string, out io.Writer) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "bash", "-c", command)
-	// Use working directory from context if available, otherwise fall back to b.Pwd
-	if wd := WorkingDir(ctx); wd != "" {
-		cmd.Dir = wd
-	} else {
-		cmd.Dir = b.Pwd
-	}
+	// Use shared WorkingDir if available, then context, then Pwd fallback
+	cmd.Dir = b.getWorkingDir()
 	cmd.Stdin = nil
 	cmd.Stdout = out
 	cmd.Stderr = out
