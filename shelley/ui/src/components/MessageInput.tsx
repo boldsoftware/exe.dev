@@ -64,8 +64,7 @@ function MessageInput({ onSend, disabled = false, autoFocus = false, onFocus }: 
 
   // Check if speech recognition is available
   const speechRecognitionAvailable =
-    typeof window !== "undefined" &&
-    (window.SpeechRecognition || window.webkitSpeechRecognition);
+    typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {
