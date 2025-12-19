@@ -62,7 +62,18 @@ function ConversationDrawer({
     }
   };
 
-  // cwd is already formatted with ~ by the server
+  // Format cwd with ~ for home directory (display only)
+  const formatCwdForDisplay = (cwd: string | null | undefined): string | null => {
+    if (!cwd) return null;
+    const homeDir = window.__SHELLEY_INIT__?.home_dir;
+    if (homeDir && cwd === homeDir) {
+      return "~";
+    }
+    if (homeDir && cwd.startsWith(homeDir + "/")) {
+      return "~" + cwd.slice(homeDir.length);
+    }
+    return cwd;
+  };
 
   const getConversationPreview = (conversation: Conversation) => {
     if (conversation.slug) {
@@ -201,12 +212,16 @@ function ConversationDrawer({
                       <div className="conversation-title">
                         {getConversationPreview(conversation)}
                       </div>
-                      <div className="conversation-date">{formatDate(conversation.updated_at)}</div>
-                      {conversation.cwd && (
-                        <div className="conversation-cwd" title={conversation.cwd}>
-                          {conversation.cwd}
-                        </div>
-                      )}
+                      <div className="conversation-meta">
+                        <span className="conversation-date">
+                          {formatDate(conversation.updated_at)}
+                        </span>
+                        {conversation.cwd && (
+                          <span className="conversation-cwd" title={conversation.cwd}>
+                            {formatCwdForDisplay(conversation.cwd)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div
                       className="conversation-actions"

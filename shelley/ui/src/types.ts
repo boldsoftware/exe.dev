@@ -74,6 +74,7 @@ export interface InitData {
   models: Model[];
   default_model: string;
   default_cwd?: string;
+  home_dir?: string;
   hostname?: string;
   terminal_url?: string;
   links?: Link[];

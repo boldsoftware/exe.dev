@@ -507,12 +507,20 @@ button {
   word-break: break-all;
 }
 
-.conversation-item .conversation-date {
+.conversation-item .conversation-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.75rem;
   color: var(--text-tertiary);
+  min-width: 0;
 }
 
-.conversation-item.active .conversation-date {
+.conversation-item .conversation-date {
+  flex-shrink: 0;
+}
+
+.conversation-item.active .conversation-meta {
   color: rgba(255, 255, 255, 0.8);
 }
 
@@ -520,12 +528,11 @@ button {
   font-family: var(--font-mono);
   font-size: 0.7rem;
   opacity: 0.8;
-  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  direction: rtl;
   text-align: left;
+  min-width: 0;
 }
 
 /* Messages */
