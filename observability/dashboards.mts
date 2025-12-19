@@ -112,17 +112,15 @@ function makeExeDevVMsDashboard() {
       .title("")
       .content(README_CONTENT)
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
+      .gridPos({ w: 24, h: 2 })
   );
 
   // Row 1: Overview Stats
-  dash.withRow(
-    new RowBuilder("Overview").gridPos({ x: 0, y: 2, w: 24, h: 1 })
-  );
+  dash.withRow(new RowBuilder("Overview"));
 
   const runningVMsPanel = new StatBuilder()
     .title("Running VMs")
-    .gridPos({ x: 0, y: 3, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`count(exelet_vm_cpu_seconds_total{${STAGE_FILTER}})`)
@@ -136,7 +134,7 @@ function makeExeDevVMsDashboard() {
 
   const totalCpuPanel = new StatBuilder()
     .title("Total CPU Usage")
-    .gridPos({ x: 6, y: 3, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(rate(exelet_vm_cpu_seconds_total{${STAGE_FILTER}}[5m]))`)
@@ -151,7 +149,7 @@ function makeExeDevVMsDashboard() {
 
   const totalMemoryPanel = new StatBuilder()
     .title("Total Memory Usage")
-    .gridPos({ x: 12, y: 3, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(exelet_vm_memory_bytes{${STAGE_FILTER}})`)
@@ -166,7 +164,7 @@ function makeExeDevVMsDashboard() {
 
   const totalDiskPanel = new StatBuilder()
     .title("Total Disk Usage")
-    .gridPos({ x: 18, y: 3, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(exelet_vm_disk_used_bytes{${STAGE_FILTER}})`)
@@ -180,16 +178,13 @@ function makeExeDevVMsDashboard() {
   dash.withPanel(totalDiskPanel);
 
   // Row 2: CPU Usage Over Time
-  dash.withRow(
-    new RowBuilder("CPU Usage").gridPos({ x: 0, y: 7, w: 24, h: 1 })
-  );
+  dash.withRow(new RowBuilder("CPU Usage"));
 
   addTimeseriesChart(
     "Total VM CPU Usage (cores)",
     `sum(rate(exelet_vm_cpu_seconds_total{${STAGE_FILTER}}[$__rate_interval]))`,
     {
-      panelCustomization: (x) =>
-        x.unit("short").min(0).gridPos({ x: 0, y: 8, w: 12, h: 8 }),
+      panelCustomization: (x) => x.unit("short").min(0).gridPos({ w: 12, h: 8 }),
     }
   );
 
@@ -197,23 +192,19 @@ function makeExeDevVMsDashboard() {
     "CPU Usage per VM",
     `rate(exelet_vm_cpu_seconds_total{${STAGE_FILTER}}[$__rate_interval])`,
     {
-      panelCustomization: (x) =>
-        x.unit("short").min(0).gridPos({ x: 12, y: 8, w: 12, h: 8 }),
+      panelCustomization: (x) => x.unit("short").min(0).gridPos({ w: 12, h: 8 }),
       queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
     }
   );
 
   // Row 3: Memory Usage
-  dash.withRow(
-    new RowBuilder("Memory Usage").gridPos({ x: 0, y: 16, w: 24, h: 1 })
-  );
+  dash.withRow(new RowBuilder("Memory Usage"));
 
   addTimeseriesChart(
     "Total VM Memory Usage",
     `sum(exelet_vm_memory_bytes{${STAGE_FILTER}})`,
     {
-      panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos({ x: 0, y: 17, w: 12, h: 8 }),
+      panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ w: 12, h: 8 }),
     }
   );
 
@@ -221,23 +212,19 @@ function makeExeDevVMsDashboard() {
     "Memory Usage per VM",
     `exelet_vm_memory_bytes{${STAGE_FILTER}}`,
     {
-      panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos({ x: 12, y: 17, w: 12, h: 8 }),
+      panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ w: 12, h: 8 }),
       queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
     }
   );
 
   // Row 4: Disk Usage
-  dash.withRow(
-    new RowBuilder("Disk Usage").gridPos({ x: 0, y: 25, w: 24, h: 1 })
-  );
+  dash.withRow(new RowBuilder("Disk Usage"));
 
   addTimeseriesChart(
     "Total VM Disk Usage",
     `sum(exelet_vm_disk_used_bytes{${STAGE_FILTER}})`,
     {
-      panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos({ x: 0, y: 26, w: 12, h: 8 }),
+      panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ w: 12, h: 8 }),
     }
   );
 
@@ -245,23 +232,19 @@ function makeExeDevVMsDashboard() {
     "Disk Usage per VM",
     `exelet_vm_disk_used_bytes{${STAGE_FILTER}}`,
     {
-      panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos({ x: 12, y: 26, w: 12, h: 8 }),
+      panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ w: 12, h: 8 }),
       queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
     }
   );
 
   // Row 5: Network I/O
-  dash.withRow(
-    new RowBuilder("Network I/O").gridPos({ x: 0, y: 34, w: 24, h: 1 })
-  );
+  dash.withRow(new RowBuilder("Network I/O"));
 
   addTimeseriesChart(
     "Total Network RX Rate",
     `sum(rate(exelet_vm_net_rx_bytes_total{${STAGE_FILTER}}[$__rate_interval]))`,
     {
-      panelCustomization: (x) =>
-        x.unit("Bps").min(0).gridPos({ x: 0, y: 35, w: 12, h: 8 }),
+      panelCustomization: (x) => x.unit("Bps").min(0).gridPos({ w: 12, h: 8 }),
     }
   );
 
@@ -269,8 +252,7 @@ function makeExeDevVMsDashboard() {
     "Total Network TX Rate",
     `sum(rate(exelet_vm_net_tx_bytes_total{${STAGE_FILTER}}[$__rate_interval]))`,
     {
-      panelCustomization: (x) =>
-        x.unit("Bps").min(0).gridPos({ x: 12, y: 35, w: 12, h: 8 }),
+      panelCustomization: (x) => x.unit("Bps").min(0).gridPos({ w: 12, h: 8 }),
     }
   );
 
@@ -278,8 +260,7 @@ function makeExeDevVMsDashboard() {
     "Network RX per VM",
     `rate(exelet_vm_net_rx_bytes_total{${STAGE_FILTER}}[$__rate_interval])`,
     {
-      panelCustomization: (x) =>
-        x.unit("Bps").min(0).gridPos({ x: 0, y: 43, w: 12, h: 8 }),
+      panelCustomization: (x) => x.unit("Bps").min(0).gridPos({ w: 12, h: 8 }),
       queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
     }
   );
@@ -288,20 +269,17 @@ function makeExeDevVMsDashboard() {
     "Network TX per VM",
     `rate(exelet_vm_net_tx_bytes_total{${STAGE_FILTER}}[$__rate_interval])`,
     {
-      panelCustomization: (x) =>
-        x.unit("Bps").min(0).gridPos({ x: 12, y: 43, w: 12, h: 8 }),
+      panelCustomization: (x) => x.unit("Bps").min(0).gridPos({ w: 12, h: 8 }),
       queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
     }
   );
 
   // Row 6: Top Consumers
-  dash.withRow(
-    new RowBuilder("Top Consumers").gridPos({ x: 0, y: 51, w: 24, h: 1 })
-  );
+  dash.withRow(new RowBuilder("Top Consumers"));
 
   const topCpuTable = new TableBuilder()
     .title("Top 10 CPU Consumers (5m avg)")
-    .gridPos({ x: 0, y: 52, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(
@@ -314,7 +292,7 @@ function makeExeDevVMsDashboard() {
 
   const topMemoryTable = new TableBuilder()
     .title("Top 10 Memory Consumers")
-    .gridPos({ x: 12, y: 52, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`topk(10, exelet_vm_memory_bytes{${STAGE_FILTER}})`)
@@ -325,7 +303,7 @@ function makeExeDevVMsDashboard() {
 
   const topDiskTable = new TableBuilder()
     .title("Top 10 Disk Consumers")
-    .gridPos({ x: 0, y: 60, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`topk(10, exelet_vm_disk_used_bytes{${STAGE_FILTER}})`)
@@ -336,7 +314,7 @@ function makeExeDevVMsDashboard() {
 
   const topNetworkTable = new TableBuilder()
     .title("Top 10 Network Consumers (5m avg)")
-    .gridPos({ x: 12, y: 60, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(
@@ -391,18 +369,14 @@ function makeGrpcMetricsDashboard() {
       .title("")
       .content(README_CONTENT)
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
+      .gridPos({ w: 24, h: 2 })
   );
 
   // Get RPC methods from proto files
   const grpcMethods = getGrpcMethodsFromProtos();
-  let yPos = 2;
 
   // ========== SERVER METRICS SECTION ==========
-  dash.withRow(
-    new RowBuilder("Server Metrics").gridPos({ x: 0, y: yPos, w: 24, h: 1 })
-  );
-  yPos += 1;
+  dash.withRow(new RowBuilder("Server Metrics"));
 
   // One row per gRPC method - server side
   for (const method of grpcMethods) {
@@ -411,7 +385,7 @@ function makeGrpcMetricsDashboard() {
     // Request rate
     const ratePanel = new TimeseriesBuilder()
       .title(`${method} - Requests`)
-      .gridPos({ x: 0, y: yPos, w: 8, h: 5 })
+      .gridPos({ w: 8, h: 5 })
       .min(0)
       .withTarget(
         new DataqueryBuilder()
@@ -423,7 +397,7 @@ function makeGrpcMetricsDashboard() {
     // Error rate
     const errorPanel = new TimeseriesBuilder()
       .title(`${method} - Errors`)
-      .gridPos({ x: 8, y: yPos, w: 8, h: 5 })
+      .gridPos({ w: 8, h: 5 })
       .min(0)
       .withTarget(
         new DataqueryBuilder()
@@ -437,7 +411,7 @@ function makeGrpcMetricsDashboard() {
       .title(`${method} - Latency`)
       .unit("s")
       .min(0)
-      .gridPos({ x: 16, y: yPos, w: 8, h: 5 })
+      .gridPos({ w: 8, h: 5 })
       .withTarget(
         new DataqueryBuilder()
           .expr(`histogram_quantile(0.5, sum(rate(grpc_server_handling_seconds_bucket{${methodFilter}}[$__rate_interval])) by (le))`)
@@ -454,15 +428,10 @@ function makeGrpcMetricsDashboard() {
           .legendFormat("p99")
       );
     dash.withPanel(latencyPanel);
-
-    yPos += 5;
   }
 
   // ========== CLIENT METRICS SECTION ==========
-  dash.withRow(
-    new RowBuilder("Client Metrics").gridPos({ x: 0, y: yPos, w: 24, h: 1 })
-  );
-  yPos += 1;
+  dash.withRow(new RowBuilder("Client Metrics"));
 
   // One row per gRPC method - client side
   for (const method of grpcMethods) {
@@ -471,7 +440,7 @@ function makeGrpcMetricsDashboard() {
     // Request rate
     const ratePanel = new TimeseriesBuilder()
       .title(`${method} - Requests`)
-      .gridPos({ x: 0, y: yPos, w: 8, h: 5 })
+      .gridPos({ w: 8, h: 5 })
       .min(0)
       .withTarget(
         new DataqueryBuilder()
@@ -483,7 +452,7 @@ function makeGrpcMetricsDashboard() {
     // Error rate
     const errorPanel = new TimeseriesBuilder()
       .title(`${method} - Errors`)
-      .gridPos({ x: 8, y: yPos, w: 8, h: 5 })
+      .gridPos({ w: 8, h: 5 })
       .min(0)
       .withTarget(
         new DataqueryBuilder()
@@ -497,7 +466,7 @@ function makeGrpcMetricsDashboard() {
       .title(`${method} - Latency`)
       .unit("s")
       .min(0)
-      .gridPos({ x: 16, y: yPos, w: 8, h: 5 })
+      .gridPos({ w: 8, h: 5 })
       .withTarget(
         new DataqueryBuilder()
           .expr(`histogram_quantile(0.5, sum(rate(grpc_client_handling_seconds_bucket{${methodFilter}}[$__rate_interval])) by (le))`)
@@ -514,8 +483,6 @@ function makeGrpcMetricsDashboard() {
           .legendFormat("p99")
       );
     dash.withPanel(latencyPanel);
-
-    yPos += 5;
   }
 
   return dash;
@@ -547,7 +514,7 @@ function makeDevExeDashboard() {
       .title("")
       .content(README_CONTENT)
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
+      .gridPos({ w: 24, h: 2 })
   );
 
   // Filters for HTTP metrics
@@ -556,7 +523,7 @@ function makeDevExeDashboard() {
 
   // ========== HTTP WEB SERVER METRICS ==========
   dash.withRow(
-    new RowBuilder("HTTP - Web Server").gridPos({ x: 0, y: 2, w: 24, h: 1 })
+    new RowBuilder("HTTP - Web Server").gridPos({ w: 24, h: 1 })
   );
 
   // Row 1: Aggregate web server metrics
@@ -564,7 +531,7 @@ function makeDevExeDashboard() {
     "Web Request Rate",
     `sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 3, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -573,7 +540,7 @@ function makeDevExeDashboard() {
     "Web Requests In Flight",
     `sum(http_requests_in_flight{${WEB_FILTER}}) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 3, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -583,7 +550,7 @@ function makeDevExeDashboard() {
     `sum(rate(http_requests_total{${WEB_FILTER},code=~"2.."}[$__rate_interval])) by (stage) / sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (stage) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 16, y: 3, w: 8, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -592,7 +559,7 @@ function makeDevExeDashboard() {
   const webStatusCodePanel = new TimeseriesBuilder()
     .title("Web Requests by Status Code")
     .min(0)
-    .gridPos({ x: 0, y: 9, w: 12, h: 6 })
+    .gridPos({ w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (code, stage)`)
@@ -603,7 +570,7 @@ function makeDevExeDashboard() {
   const webByPathPanel = new TimeseriesBuilder()
     .title("Web Request Rate by Path (Top 10)")
     .min(0)
-    .gridPos({ x: 12, y: 9, w: 12, h: 6 })
+    .gridPos({ w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`topk(10, sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (path, stage))`)
@@ -614,7 +581,7 @@ function makeDevExeDashboard() {
   // Top Request Paths Table
   const topRequestPathsTable = new TableBuilder()
     .title("Top Request Paths")
-    .gridPos({ x: 0, y: 15, w: 24, h: 8 })
+    .gridPos({ w: 24, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`topk(20, sum(rate(http_requests_total{${WEB_FILTER}}[5m])) by (path))`)
@@ -625,14 +592,14 @@ function makeDevExeDashboard() {
 
   // ========== HTTP WEB SERVER ERRORS ==========
   dash.withRow(
-    new RowBuilder("HTTP - Web Server Errors").gridPos({ x: 0, y: 23, w: 24, h: 1 })
+    new RowBuilder("HTTP - Web Server Errors").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Web 4xx Error Rate",
     `sum(rate(http_requests_total{${WEB_FILTER},code=~"4.."}[$__rate_interval])) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 24, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -641,7 +608,7 @@ function makeDevExeDashboard() {
     "Web 5xx Error Rate",
     `sum(rate(http_requests_total{${WEB_FILTER},code=~"5.."}[$__rate_interval])) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 24, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -651,7 +618,7 @@ function makeDevExeDashboard() {
     `sum(rate(http_requests_total{${WEB_FILTER},code=~"[45].."}[$__rate_interval])) by (stage) / sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (stage) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).gridPos({ x: 16, y: 24, w: 8, h: 6 }),
+        x.unit("percent").min(0).gridPos({ w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -660,7 +627,7 @@ function makeDevExeDashboard() {
   const web4xxByPathPanel = new TimeseriesBuilder()
     .title("Web 4xx Errors by Path")
     .min(0)
-    .gridPos({ x: 0, y: 30, w: 12, h: 6 })
+    .gridPos({ w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(rate(http_requests_total{${WEB_FILTER},code=~"4.."}[$__rate_interval])) by (path, code, stage)`)
@@ -671,7 +638,7 @@ function makeDevExeDashboard() {
   const web5xxByPathPanel = new TimeseriesBuilder()
     .title("Web 5xx Errors by Path")
     .min(0)
-    .gridPos({ x: 12, y: 30, w: 12, h: 6 })
+    .gridPos({ w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(rate(http_requests_total{${WEB_FILTER},code=~"5.."}[$__rate_interval])) by (path, code, stage)`)
@@ -681,7 +648,7 @@ function makeDevExeDashboard() {
 
   // ========== HTTP PROXY METRICS ==========
   dash.withRow(
-    new RowBuilder("HTTP - Proxies").gridPos({ x: 0, y: 36, w: 24, h: 1 })
+    new RowBuilder("HTTP - Proxies").gridPos({ w: 24, h: 1 })
   );
 
   // Aggregate proxy metrics
@@ -689,7 +656,7 @@ function makeDevExeDashboard() {
     "Proxy Request Rate",
     `sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 37, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -698,7 +665,7 @@ function makeDevExeDashboard() {
     "Proxy Requests In Flight",
     `sum(http_requests_in_flight{${PROXY_FILTER}}) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 37, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -708,7 +675,7 @@ function makeDevExeDashboard() {
     `sum(rate(http_requests_total{${PROXY_FILTER},code=~"2.."}[$__rate_interval])) by (stage) / sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (stage) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 16, y: 37, w: 8, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -717,7 +684,7 @@ function makeDevExeDashboard() {
   const proxyStatusCodePanel = new TimeseriesBuilder()
     .title("Proxy Requests by Status Code")
     .min(0)
-    .gridPos({ x: 0, y: 43, w: 12, h: 6 })
+    .gridPos({ w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (code, stage)`)
@@ -728,7 +695,7 @@ function makeDevExeDashboard() {
   const proxyByBoxPanel = new TimeseriesBuilder()
     .title("Proxy Request Rate by Box (Top 10)")
     .min(0)
-    .gridPos({ x: 12, y: 43, w: 12, h: 6 })
+    .gridPos({ w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`topk(10, sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (box, stage))`)
@@ -740,7 +707,7 @@ function makeDevExeDashboard() {
   const proxyErrorsByBoxPanel = new TimeseriesBuilder()
     .title("Proxy Errors by Box")
     .min(0)
-    .gridPos({ x: 0, y: 49, w: 12, h: 6 })
+    .gridPos({ w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(rate(http_requests_total{${PROXY_FILTER},code=~"[45].."}[$__rate_interval])) by (box, stage)`)
@@ -751,7 +718,7 @@ function makeDevExeDashboard() {
   const proxyInFlightByBoxPanel = new TimeseriesBuilder()
     .title("Proxy Requests In Flight by Box")
     .min(0)
-    .gridPos({ x: 12, y: 49, w: 12, h: 6 })
+    .gridPos({ w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(http_requests_in_flight{${PROXY_FILTER}}) by (box, stage)`)
@@ -761,26 +728,26 @@ function makeDevExeDashboard() {
 
   // ========== SSH METRICS ==========
   dash.withRow(
-    new RowBuilder("SSH").gridPos({ x: 0, y: 55, w: 24, h: 1 })
+    new RowBuilder("SSH").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "SSH Connections Rate",
     `rate(ssh_connections_total{${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 0, y: 56, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ w: 8, h: 6 }),
     }
   );
 
   addTimeseriesChart("Current SSH Connections", `ssh_connections_current{${STAGE_FILTER}}`, {
-    panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 56, w: 8, h: 6 }),
+    panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
   });
 
   addTimeseriesChart(
     "SSH Auth Attempts Rate",
     `rate(ssh_auth_attempts_total{${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 16, y: 56, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -789,7 +756,7 @@ function makeDevExeDashboard() {
     `histogram_quantile(0.95, rate(ssh_session_duration_seconds_bucket{${STAGE_FILTER}}[5m]))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").gridPos({ x: 0, y: 62, w: 12, h: 6 }),
+        x.unit("s").gridPos({ w: 12, h: 6 }),
     }
   );
 
@@ -798,7 +765,7 @@ function makeDevExeDashboard() {
     .title("exed uptime")
     .unit("s")
     .min(0)
-    .gridPos({ x: 12, y: 62, w: 12, h: 6 })
+    .gridPos({ w: 12, h: 6 })
     .scaleDistribution(
       new ScaleDistributionConfigBuilder()
         .type(ScaleDistribution.Log)
@@ -813,19 +780,14 @@ function makeDevExeDashboard() {
 
   // SQLite Connection Pool Metrics
   dash.withRow(
-    new RowBuilder("SQLite Connection Pool").gridPos({
-      x: 0,
-      y: 68,
-      w: 24,
-      h: 1,
-    })
+    new RowBuilder("SQLite Connection Pool").gridPos({ w: 24, h: 1 })
   );
 
   // SQL-level connection metrics
   const sqlPoolPanel = new TimeseriesBuilder()
     .title("SQL Connection Pool")
     .min(0)
-    .gridPos({ x: 0, y: 69, w: 8, h: 6 })
+    .gridPos({ w: 8, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sqlite_pool_open_connections{job="exed",${STAGE_FILTER}}`)
@@ -847,7 +809,7 @@ function makeDevExeDashboard() {
   const writerPoolPanel = new TimeseriesBuilder()
     .title("Writer Connections")
     .min(0)
-    .gridPos({ x: 8, y: 69, w: 8, h: 6 })
+    .gridPos({ w: 8, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sqlite_pool_available_writers{job="exed",${STAGE_FILTER}}`)
@@ -864,7 +826,7 @@ function makeDevExeDashboard() {
   const readerPoolPanel = new TimeseriesBuilder()
     .title("Reader Connections")
     .min(0)
-    .gridPos({ x: 16, y: 69, w: 8, h: 6 })
+    .gridPos({ w: 8, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sqlite_pool_available_readers{job="exed",${STAGE_FILTER}}`)
@@ -879,19 +841,14 @@ function makeDevExeDashboard() {
 
   // SQLite Transaction Metrics
   dash.withRow(
-    new RowBuilder("SQLite Transaction Metrics").gridPos({
-      x: 0,
-      y: 75,
-      w: 24,
-      h: 1,
-    })
+    new RowBuilder("SQLite Transaction Metrics").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "SQLite Transaction Leaks",
     `rate(sqlite_tx_leaks_total{job="exed",${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 0, y: 76, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -899,7 +856,7 @@ function makeDevExeDashboard() {
     "SQLite Read Transaction Leaks",
     `rate(sqlite_rx_leaks_total{job="exed",${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 8, y: 76, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -908,18 +865,13 @@ function makeDevExeDashboard() {
     `histogram_quantile(0.95, rate(sqlite_tx_latency_bucket{job="exed",${STAGE_FILTER}}[5m])) / 1000`,
     {
       panelCustomization: (x) =>
-        x.unit("ms").gridPos({ x: 16, y: 76, w: 8, h: 6 }),
+        x.unit("ms").gridPos({ w: 8, h: 6 }),
     }
   );
 
   // Box creation time (user-perceived)
   dash.withRow(
-    new RowBuilder("Box Creation Time").gridPos({
-      x: 0,
-      y: 82,
-      w: 24,
-      h: 1,
-    })
+    new RowBuilder("Box Creation Time").gridPos({ w: 24, h: 1 })
   );
 
   // Box creation latency percentiles - all on one chart
@@ -927,7 +879,7 @@ function makeDevExeDashboard() {
     .title("Box Creation Latency")
     .unit("s")
     .min(0)
-    .gridPos({ x: 0, y: 83, w: 12, h: 6 })
+    .gridPos({ w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`histogram_quantile(0.5, rate(box_creation_time_seconds_bucket{${STAGE_FILTER}}[$__rate_interval]))`)
@@ -949,7 +901,7 @@ function makeDevExeDashboard() {
     "Box Creation Rate",
     `rate(box_creation_time_seconds_count{${STAGE_FILTER}}[$__rate_interval])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 12, y: 83, w: 12, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ w: 12, h: 6 }),
     }
   );
 
@@ -957,7 +909,7 @@ function makeDevExeDashboard() {
     "CreateInstance Errors",
     `sum(rate(grpc_server_handled_total{grpc_method="CreateInstance",grpc_code!="OK",${STAGE_FILTER}}[$__rate_interval])) by (grpc_code)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 89, w: 12, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 12, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{grpc_code}}"),
       alert: {
         threshold: 0,
@@ -974,18 +926,13 @@ function makeDevExeDashboard() {
     "CreateInstance Success Rate",
     `sum(rate(grpc_server_handled_total{grpc_method="CreateInstance",grpc_code="OK",${STAGE_FILTER}}[$__rate_interval]))`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 12, y: 89, w: 12, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 12, h: 6 }),
     }
   );
 
   // Certificate issuance
   dash.withRow(
-    new RowBuilder("Certificate Issuance").gridPos({
-      x: 0,
-      y: 95,
-      w: 24,
-      h: 1,
-    })
+    new RowBuilder("Certificate Issuance").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -993,25 +940,20 @@ function makeDevExeDashboard() {
     `rate(letsencrypt_cert_requests_total{${STAGE_FILTER}}[$__rate_interval])`,
     {
       panelCustomization: (x) =>
-        x.min(0).gridPos({ x: 0, y: 96, w: 8, h: 6 }),
+        x.min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
   // Blog traffic
   dash.withRow(
-    new RowBuilder("Blog").gridPos({
-      x: 0,
-      y: 102,
-      w: 24,
-      h: 1,
-    })
+    new RowBuilder("Blog").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Blog Hit Rate",
     `sum(rate(blog_page_hits_total{job="blogd",stage=~"$stage"}[$__rate_interval])) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 103, w: 12, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 12, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -1020,24 +962,19 @@ function makeDevExeDashboard() {
     "Blog Hits by Path (Top 10)",
     `topk(10, sum(rate(blog_page_hits_total{job="blogd",stage=~"$stage"}[$__rate_interval])) by (path, stage))`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 12, y: 103, w: 12, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 12, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}} {{path}}"),
     }
   );
 
   // Entity Counts
   dash.withRow(
-    new RowBuilder("Entity Counts").gridPos({
-      x: 0,
-      y: 109,
-      w: 24,
-      h: 1,
-    })
+    new RowBuilder("Entity Counts").gridPos({ w: 24, h: 1 })
   );
 
   const loginUsersPanel = new StatBuilder()
     .title("Login Users")
-    .gridPos({ x: 0, y: 110, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`users_total{type="login",stage="production"}`)
@@ -1051,7 +988,7 @@ function makeDevExeDashboard() {
 
   const devUsersPanel = new StatBuilder()
     .title("Dev Users")
-    .gridPos({ x: 6, y: 110, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`users_total{type="dev",stage="production"}`)
@@ -1065,7 +1002,7 @@ function makeDevExeDashboard() {
 
   const vmsCountPanel = new StatBuilder()
     .title("Total VMs")
-    .gridPos({ x: 12, y: 110, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`vms_total{stage="production"}`)
@@ -1081,7 +1018,7 @@ function makeDevExeDashboard() {
   const usersOverTimePanel = new TimeseriesBuilder()
     .title("Users Over Time")
     .min(0)
-    .gridPos({ x: 0, y: 114, w: 12, h: 6 })
+    .gridPos({ w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`users_total{type="login",stage="production"}`)
@@ -1097,7 +1034,7 @@ function makeDevExeDashboard() {
   const vmsOverTimePanel = new TimeseriesBuilder()
     .title("VMs Over Time")
     .min(0)
-    .gridPos({ x: 12, y: 114, w: 12, h: 6 })
+    .gridPos({ w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`vms_total{stage="production"}`)
@@ -1107,19 +1044,14 @@ function makeDevExeDashboard() {
 
   // Proxy Bytes
   dash.withRow(
-    new RowBuilder("Proxy Bytes").gridPos({
-      x: 0,
-      y: 120,
-      w: 24,
-      h: 1,
-    })
+    new RowBuilder("Proxy Bytes").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Proxy Bytes Rate",
     `sum(rate(proxy_bytes_total{${STAGE_FILTER}}[$__rate_interval])) by (direction, stage)`,
     {
-      panelCustomization: (x) => x.unit("Bps").min(0).gridPos({ x: 0, y: 121, w: 12, h: 6 }),
+      panelCustomization: (x) => x.unit("Bps").min(0).gridPos({ w: 12, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}} {{direction}}"),
     }
   );
@@ -1128,21 +1060,21 @@ function makeDevExeDashboard() {
     "Proxy Bytes Total",
     `sum(increase(proxy_bytes_total{${STAGE_FILTER}}[1h])) by (direction, stage)`,
     {
-      panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 12, y: 121, w: 12, h: 6 }),
+      panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ w: 12, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}} {{direction}}"),
     }
   );
 
   // ========== EXELETS (Container Hosts) ==========
   dash.withRow(
-    new RowBuilder("Exelets (Container Hosts)").gridPos({ x: 0, y: 127, w: 24, h: 1 })
+    new RowBuilder("Exelets (Container Hosts)").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Exelet CPU Usage",
     `100 - (avg by (instance) (irate(node_cpu_seconds_total{role="exelet",${STAGE_FILTER},mode="idle"}[5m])) * 100)`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 128, w: 6, h: 6 }),
+      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ w: 6, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1151,7 +1083,7 @@ function makeDevExeDashboard() {
     "Exelet Memory Usage",
     `(1 - (node_memory_MemAvailable_bytes{role="exelet",${STAGE_FILTER}} / node_memory_MemTotal_bytes{role="exelet",${STAGE_FILTER}})) * 100`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 6, y: 128, w: 6, h: 6 }),
+      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ w: 6, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1160,7 +1092,7 @@ function makeDevExeDashboard() {
     "Exelet Memory Pressure",
     `rate(node_pressure_memory_waiting_seconds_total{role="exelet",${STAGE_FILTER}}[5m]) * 100`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).gridPos({ x: 12, y: 128, w: 6, h: 6 }),
+      panelCustomization: (x) => x.unit("percent").min(0).gridPos({ w: 6, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1169,21 +1101,21 @@ function makeDevExeDashboard() {
     "Exelet Error Log Rate",
     `sum(rate(logs_total{job="exelet",level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (instance)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 18, y: 128, w: 6, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 6, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
 
   // ========== EXED (Web/SSH Frontend) ==========
   dash.withRow(
-    new RowBuilder("Exed (Web/SSH Frontend)").gridPos({ x: 0, y: 134, w: 24, h: 1 })
+    new RowBuilder("Exed (Web/SSH Frontend)").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Exed CPU Usage",
     `100 - (avg by (instance) (irate(node_cpu_seconds_total{role="exed",${STAGE_FILTER},mode="idle"}[5m])) * 100)`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 135, w: 6, h: 6 }),
+      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ w: 6, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1192,7 +1124,7 @@ function makeDevExeDashboard() {
     "Exed Memory Usage",
     `(1 - (node_memory_MemAvailable_bytes{role="exed",${STAGE_FILTER}} / node_memory_MemTotal_bytes{role="exed",${STAGE_FILTER}})) * 100`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 6, y: 135, w: 6, h: 6 }),
+      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ w: 6, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1201,7 +1133,7 @@ function makeDevExeDashboard() {
     .title("Exed Network Traffic")
     .unit("Bps")
     .min(0)
-    .gridPos({ x: 12, y: 135, w: 6, h: 6 })
+    .gridPos({ w: 6, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`irate(node_network_receive_bytes_total{role="exed",${STAGE_FILTER},device!="lo"}[5m])`)
@@ -1218,21 +1150,21 @@ function makeDevExeDashboard() {
     "Exed Error Log Rate",
     `sum(rate(logs_total{job="exed",level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (instance)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 18, y: 135, w: 6, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 6, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
 
   // ========== LOGGING ==========
   dash.withRow(
-    new RowBuilder("Logging").gridPos({ x: 0, y: 141, w: 24, h: 1 })
+    new RowBuilder("Logging").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Warning Log Rate",
     `sum(rate(logs_total{level="WARN",${STAGE_FILTER}}[$__rate_interval])) by (job, stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 142, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}} {{job}}"),
     }
   );
@@ -1241,7 +1173,7 @@ function makeDevExeDashboard() {
     "Error Log Rate",
     `sum(rate(logs_total{level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (job, stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 142, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{stage}} {{job}}"),
     }
   );
@@ -1249,7 +1181,7 @@ function makeDevExeDashboard() {
   const logsOverTimePanel = new TimeseriesBuilder()
     .title("Logs by Level")
     .min(0)
-    .gridPos({ x: 16, y: 142, w: 8, h: 6 })
+    .gridPos({ w: 8, h: 6 })
     .stacking(
       new StackingConfigBuilder()
         .mode(StackingMode.Normal)
@@ -1285,19 +1217,19 @@ function makeGrafanaDashboard() {
       .title("")
       .content(README_CONTENT)
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
+      .gridPos({ w: 24, h: 2 })
   );
 
   // Row 1: Request Metrics
   dash.withRow(
-    new RowBuilder("Request Metrics").gridPos({ x: 0, y: 3, w: 24, h: 1 })
+    new RowBuilder("Request Metrics").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "HTTP Request Rate",
     `rate(grafana_http_request_duration_seconds_count[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 0, y: 5, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1306,7 +1238,7 @@ function makeGrafanaDashboard() {
     `histogram_quantile(0.95, sum(rate(grafana_http_request_duration_seconds_bucket[5m])) by (le))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").gridPos({ x: 8, y: 5, w: 8, h: 6 }),
+        x.unit("s").gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1315,13 +1247,13 @@ function makeGrafanaDashboard() {
     `histogram_quantile(0.99, sum(rate(grafana_http_request_duration_seconds_bucket[5m])) by (le))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").gridPos({ x: 16, y: 5, w: 8, h: 6 }),
+        x.unit("s").gridPos({ w: 8, h: 6 }),
     }
   );
 
   // Row 2: Resource Usage
   dash.withRow(
-    new RowBuilder("Resource Usage").gridPos({ x: 0, y: 11, w: 24, h: 1 })
+    new RowBuilder("Resource Usage").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -1329,7 +1261,7 @@ function makeGrafanaDashboard() {
     `rate(process_cpu_seconds_total{job="grafana"}[5m]) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").gridPos({ x: 0, y: 12, w: 8, h: 6 }),
+        x.unit("percent").gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1338,7 +1270,7 @@ function makeGrafanaDashboard() {
     `process_resident_memory_bytes{job="grafana"}`,
     {
       panelCustomization: (x) =>
-        x.unit("bytes").gridPos({ x: 8, y: 12, w: 8, h: 6 }),
+        x.unit("bytes").gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1347,20 +1279,20 @@ function makeGrafanaDashboard() {
     `go_memstats_heap_alloc_bytes{job="grafana"}`,
     {
       panelCustomization: (x) =>
-        x.unit("bytes").gridPos({ x: 16, y: 12, w: 8, h: 6 }),
+        x.unit("bytes").gridPos({ w: 8, h: 6 }),
     }
   );
 
   // Row 3: Goroutines and GC
   dash.withRow(
-    new RowBuilder("Go Runtime Metrics").gridPos({ x: 0, y: 18, w: 24, h: 1 })
+    new RowBuilder("Go Runtime Metrics").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Number of Goroutines",
     `go_goroutines{job="grafana"}`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 19, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1368,7 +1300,7 @@ function makeGrafanaDashboard() {
     "GC Rate",
     `rate(go_gc_duration_seconds_count{job="grafana"}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 8, y: 19, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1377,25 +1309,20 @@ function makeGrafanaDashboard() {
     `histogram_quantile(0.95, rate(go_gc_duration_seconds_bucket{job="grafana"}[5m]))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").gridPos({ x: 16, y: 19, w: 8, h: 6 }),
+        x.unit("s").gridPos({ w: 8, h: 6 }),
     }
   );
 
   // Row 4: Database Performance
   dash.withRow(
-    new RowBuilder("Database Performance").gridPos({
-      x: 0,
-      y: 25,
-      w: 24,
-      h: 1,
-    })
+    new RowBuilder("Database Performance").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Database Query Rate",
     `rate(grafana_database_queries_total[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 0, y: 26, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1404,7 +1331,7 @@ function makeGrafanaDashboard() {
     `histogram_quantile(0.95, sum(rate(grafana_database_query_duration_seconds_bucket[5m])) by (le))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").gridPos({ x: 8, y: 26, w: 8, h: 6 }),
+        x.unit("s").gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1412,20 +1339,20 @@ function makeGrafanaDashboard() {
     "Database Connection Pool",
     `grafana_database_connections_open{job="grafana"}`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 16, y: 26, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
   // Row 5: Alert Manager
   dash.withRow(
-    new RowBuilder("Alert Manager").gridPos({ x: 0, y: 32, w: 24, h: 1 })
+    new RowBuilder("Alert Manager").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Active Alerts",
     `grafana_alerting_active_configurations{job="grafana"}`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 33, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1433,7 +1360,7 @@ function makeGrafanaDashboard() {
     "Alert Rule Evaluations Rate",
     `rate(grafana_alerting_rule_evaluations_total[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 8, y: 33, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1441,20 +1368,20 @@ function makeGrafanaDashboard() {
     "Alert Notification Rate",
     `rate(grafana_alerting_notifications_sent_total[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 16, y: 33, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ w: 8, h: 6 }),
     }
   );
 
   // Row 6: API and Dashboard Metrics
   dash.withRow(
-    new RowBuilder("Dashboard Metrics").gridPos({ x: 0, y: 39, w: 24, h: 1 })
+    new RowBuilder("Dashboard Metrics").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Dashboard API Requests",
     `rate(grafana_api_dashboard_get_duration_seconds_count[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 0, y: 40, w: 12, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ w: 12, h: 6 }),
     }
   );
 
@@ -1463,7 +1390,7 @@ function makeGrafanaDashboard() {
     `histogram_quantile(0.95, rate(grafana_api_dashboard_get_duration_seconds_bucket[5m]))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").gridPos({ x: 12, y: 40, w: 12, h: 6 }),
+        x.unit("s").gridPos({ w: 12, h: 6 }),
     }
   );
 
@@ -1491,18 +1418,18 @@ function makeMonMonDashboard() {
       .title("")
       .content(README_CONTENT)
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
+      .gridPos({ w: 24, h: 2 })
   );
 
   // Row 1: Overview Stats
   dash.withRow(
-    new RowBuilder("Monitoring Server Overview").gridPos({ x: 0, y: 3, w: 24, h: 1 })
+    new RowBuilder("Monitoring Server Overview").gridPos({ w: 24, h: 1 })
   );
 
   // Mon host memory stat
   const monMemoryPanel = new StatBuilder()
     .title("Mon Host Memory Usage")
-    .gridPos({ x: 0, y: 5, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`(1 - (node_memory_MemAvailable_bytes{instance="mon:9100"} / node_memory_MemTotal_bytes{instance="mon:9100"})) * 100`)
@@ -1528,7 +1455,7 @@ function makeMonMonDashboard() {
   // Grafana memory stat
   const grafanaMemoryPanel = new StatBuilder()
     .title("Grafana Memory Usage")
-    .gridPos({ x: 6, y: 5, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`process_resident_memory_bytes{job="grafana"}`)
@@ -1553,7 +1480,7 @@ function makeMonMonDashboard() {
   // Prometheus memory stat
   const prometheusMemoryPanel = new StatBuilder()
     .title("Prometheus Memory Usage")
-    .gridPos({ x: 12, y: 5, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`process_resident_memory_bytes{job="prometheus"}`)
@@ -1578,7 +1505,7 @@ function makeMonMonDashboard() {
   // Mon host CPU stat
   const monCpuPanel = new StatBuilder()
     .title("Mon Host CPU Usage")
-    .gridPos({ x: 18, y: 5, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`100 - (avg(rate(node_cpu_seconds_total{instance="mon:9100",mode="idle"}[5m])) * 100)`)
@@ -1603,7 +1530,7 @@ function makeMonMonDashboard() {
 
   // Row 2: Host Memory Details
   dash.withRow(
-    new RowBuilder("Mon Host Memory Details").gridPos({ x: 0, y: 9, w: 24, h: 1 })
+    new RowBuilder("Mon Host Memory Details").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -1611,7 +1538,7 @@ function makeMonMonDashboard() {
     `(1 - (node_memory_MemAvailable_bytes{instance="mon:9100"} / node_memory_MemTotal_bytes{instance="mon:9100"})) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 10, w: 12, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ w: 12, h: 6 }),
     }
   );
 
@@ -1620,13 +1547,13 @@ function makeMonMonDashboard() {
     `node_memory_MemTotal_bytes{instance="mon:9100"} - node_memory_MemAvailable_bytes{instance="mon:9100"}`,
     {
       panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos({ x: 12, y: 10, w: 12, h: 6 }),
+        x.unit("bytes").min(0).gridPos({ w: 12, h: 6 }),
     }
   );
 
   // Row 3: Process Memory
   dash.withRow(
-    new RowBuilder("Process Memory Usage").gridPos({ x: 0, y: 16, w: 24, h: 1 })
+    new RowBuilder("Process Memory Usage").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -1634,7 +1561,7 @@ function makeMonMonDashboard() {
     `process_resident_memory_bytes{job="grafana"}`,
     {
       panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos({ x: 0, y: 17, w: 8, h: 6 }),
+        x.unit("bytes").min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1643,7 +1570,7 @@ function makeMonMonDashboard() {
     `process_resident_memory_bytes{job="prometheus"}`,
     {
       panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos({ x: 8, y: 17, w: 8, h: 6 }),
+        x.unit("bytes").min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1652,13 +1579,13 @@ function makeMonMonDashboard() {
     `sum(process_resident_memory_bytes{job=~"grafana|prometheus"})`,
     {
       panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos({ x: 16, y: 17, w: 8, h: 6 }),
+        x.unit("bytes").min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
   // Row 4: CPU Usage
   dash.withRow(
-    new RowBuilder("CPU Usage").gridPos({ x: 0, y: 23, w: 24, h: 1 })
+    new RowBuilder("CPU Usage").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -1666,7 +1593,7 @@ function makeMonMonDashboard() {
     `100 - (avg(rate(node_cpu_seconds_total{instance="mon:9100",mode="idle"}[5m])) * 100)`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 24, w: 8, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1675,7 +1602,7 @@ function makeMonMonDashboard() {
     `rate(process_cpu_seconds_total{job="grafana"}[5m]) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).gridPos({ x: 8, y: 24, w: 8, h: 6 }),
+        x.unit("percent").min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1684,20 +1611,20 @@ function makeMonMonDashboard() {
     `rate(process_cpu_seconds_total{job="prometheus"}[5m]) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).gridPos({ x: 16, y: 24, w: 8, h: 6 }),
+        x.unit("percent").min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
   // Row 5: Grafana Key Metrics
   dash.withRow(
-    new RowBuilder("Grafana Performance").gridPos({ x: 0, y: 30, w: 24, h: 1 })
+    new RowBuilder("Grafana Performance").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Grafana HTTP Request Rate",
     `rate(grafana_http_request_duration_seconds_count{job="grafana"}[5m])`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 31, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1706,7 +1633,7 @@ function makeMonMonDashboard() {
     `histogram_quantile(0.95, sum(rate(grafana_http_request_duration_seconds_bucket{job="grafana"}[5m])) by (le))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").min(0).gridPos({ x: 8, y: 31, w: 8, h: 6 }),
+        x.unit("s").min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1714,20 +1641,20 @@ function makeMonMonDashboard() {
     "Grafana Goroutines",
     `go_goroutines{job="grafana"}`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 16, y: 31, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
   // Row 6: Prometheus Key Metrics
   dash.withRow(
-    new RowBuilder("Prometheus Performance").gridPos({ x: 0, y: 37, w: 24, h: 1 })
+    new RowBuilder("Prometheus Performance").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Prometheus Samples Ingested Rate",
     `rate(prometheus_tsdb_head_samples_appended_total{job="prometheus"}[5m])`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 38, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1735,7 +1662,7 @@ function makeMonMonDashboard() {
     "Prometheus Active Series",
     `prometheus_tsdb_head_series{job="prometheus"}`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 38, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1744,13 +1671,13 @@ function makeMonMonDashboard() {
     `histogram_quantile(0.95, rate(prometheus_engine_query_duration_seconds_bucket{job="prometheus"}[5m]))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").min(0).gridPos({ x: 16, y: 38, w: 8, h: 6 }),
+        x.unit("s").min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
   // Row 7: Storage and Resources
   dash.withRow(
-    new RowBuilder("Storage & Resources").gridPos({ x: 0, y: 44, w: 24, h: 1 })
+    new RowBuilder("Storage & Resources").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -1758,7 +1685,7 @@ function makeMonMonDashboard() {
     `(1 - (node_filesystem_avail_bytes{instance="mon:9100",fstype!="tmpfs",fstype!="devtmpfs"} / node_filesystem_size_bytes{instance="mon:9100",fstype!="tmpfs",fstype!="devtmpfs"})) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 45, w: 8, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{mountpoint}}"),
     }
   );
@@ -1768,7 +1695,7 @@ function makeMonMonDashboard() {
     `prometheus_tsdb_storage_blocks_bytes{job="prometheus"}`,
     {
       panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos({ x: 8, y: 45, w: 8, h: 6 }),
+        x.unit("bytes").min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -1777,7 +1704,7 @@ function makeMonMonDashboard() {
     `rate(node_network_receive_bytes_total{instance="mon:9100",device!="lo"}[5m])`,
     {
       panelCustomization: (x) =>
-        x.unit("Bps").min(0).gridPos({ x: 16, y: 45, w: 8, h: 6 }),
+        x.unit("Bps").min(0).gridPos({ w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("RX {{device}}"),
     }
   );
@@ -1789,7 +1716,7 @@ function makeMonMonDashboard() {
 function makeAddTimeseriesChart(dash: DashboardBuilder, dashboardUID: string) {
   const builders = {
     buildPanel: () =>
-      new TimeseriesBuilder().gridPos({ x: 0, y: 0, w: 8, h: 6 }),
+      new TimeseriesBuilder().gridPos({ w: 8, h: 6 }),
     // You might need to specify a default datasource, like so:
     // new DataqueryBuilder().datasource({ type: "prometheus", uid: "grafanacloud-prom" })
     buildQueryTarget: () => new DataqueryBuilder(),
@@ -2202,12 +2129,12 @@ function makeHostsDashboard() {
       .title("")
       .content(README_CONTENT)
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
+      .gridPos({ w: 24, h: 2 })
   );
 
   // CPU Metrics Row
   dash.withRow(
-    new RowBuilder("CPU Metrics").gridPos({ x: 0, y: 2, w: 24, h: 1 })
+    new RowBuilder("CPU Metrics").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -2215,25 +2142,25 @@ function makeHostsDashboard() {
     `100 - (avg by (instance) (irate(node_cpu_seconds_total{${HOST_FILTER},mode="idle"}[5m])) * 100)`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 3, w: 8, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ w: 8, h: 6 }),
     }
   );
 
   addTimeseriesChart("Load Average", `node_load1{${HOST_FILTER}}`, {
-    panelCustomization: (x) => x.gridPos({ x: 8, y: 3, w: 8, h: 6 }),
+    panelCustomization: (x) => x.gridPos({ w: 8, h: 6 }),
   });
 
   addTimeseriesChart(
     "CPU Count",
     `count by (instance) (node_cpu_seconds_total{${HOST_FILTER},mode="idle"})`,
     {
-      panelCustomization: (x) => x.min(0).gridPos({ x: 16, y: 3, w: 8, h: 6 }),
+      panelCustomization: (x) => x.min(0).gridPos({ w: 8, h: 6 }),
     }
   );
 
   // Memory Metrics Row
   dash.withRow(
-    new RowBuilder("Memory Metrics").gridPos({ x: 0, y: 9, w: 24, h: 1 })
+    new RowBuilder("Memory Metrics").gridPos({ w: 24, h: 1 })
   );
 
   // Memory Available % - alert only for non-exelet hosts
@@ -2242,7 +2169,7 @@ function makeHostsDashboard() {
     `(node_memory_MemAvailable_bytes{${HOST_FILTER}} / node_memory_MemTotal_bytes{${HOST_FILTER}}) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 10, w: 6, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ w: 6, h: 6 }),
       alert: {
         threshold: 20,
         condition: "lt",
@@ -2261,7 +2188,7 @@ function makeHostsDashboard() {
     `(1 - (node_memory_MemAvailable_bytes{${HOST_FILTER}} / node_memory_MemTotal_bytes{${HOST_FILTER}})) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 6, y: 10, w: 6, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ w: 6, h: 6 }),
       alert: {
         threshold: 90,
         condition: "gt",
@@ -2275,11 +2202,11 @@ function makeHostsDashboard() {
   );
 
   addTimeseriesChart("Memory Total", `node_memory_MemTotal_bytes{${HOST_FILTER}}`, {
-    panelCustomization: (x) => x.unit("bytes").gridPos({ x: 12, y: 10, w: 6, h: 6 }),
+    panelCustomization: (x) => x.unit("bytes").gridPos({ w: 6, h: 6 }),
   });
 
   addTimeseriesChart("Memory Available", `node_memory_MemAvailable_bytes{${HOST_FILTER}}`, {
-    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 18, y: 10, w: 6, h: 6 }),
+    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ w: 6, h: 6 }),
   });
 
   // Memory Usage by Type (stacked area chart)
@@ -2288,7 +2215,7 @@ function makeHostsDashboard() {
     .title("Memory Usage by Type")
     .unit("bytes")
     .min(0)
-    .gridPos({ x: 0, y: 16, w: 24, h: 8 })
+    .gridPos({ w: 24, h: 8 })
     .stacking(new StackingConfigBuilder().mode(StackingMode.Normal))
     .fillOpacity(80)
     .withTarget(
@@ -2360,14 +2287,14 @@ function makeHostsDashboard() {
 
   // Huge Pages Row
   dash.withRow(
-    new RowBuilder("Huge Pages").gridPos({ x: 0, y: 24, w: 24, h: 1 })
+    new RowBuilder("Huge Pages").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Huge Pages Used vs Total",
     `(node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) * node_memory_Hugepagesize_bytes{${HOST_FILTER}}`,
     {
-      panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 0, y: 25, w: 12, h: 6 }),
+      panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ w: 12, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{instance}} Used"),
     }
   );
@@ -2377,7 +2304,7 @@ function makeHostsDashboard() {
     .title("Huge Pages Capacity")
     .unit("bytes")
     .min(0)
-    .gridPos({ x: 12, y: 25, w: 12, h: 6 })
+    .gridPos({ w: 12, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`node_memory_HugePages_Total{${HOST_FILTER}} * node_memory_Hugepagesize_bytes{${HOST_FILTER}}`)
@@ -2397,7 +2324,7 @@ function makeHostsDashboard() {
     `((node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) / node_memory_HugePages_Total{${HOST_FILTER}}) * 100 and on(instance) (node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) > 0`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 31, w: 12, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ w: 12, h: 6 }),
       alert: {
         threshold: 80,
         condition: "gt",
@@ -2410,7 +2337,7 @@ function makeHostsDashboard() {
 
   // Swap Memory Row
   dash.withRow(
-    new RowBuilder("Swap Memory").gridPos({ x: 0, y: 37, w: 24, h: 1 })
+    new RowBuilder("Swap Memory").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -2418,21 +2345,21 @@ function makeHostsDashboard() {
     `(1 - (node_memory_SwapFree_bytes{${HOST_FILTER}} / node_memory_SwapTotal_bytes{${HOST_FILTER}})) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 38, w: 8, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ w: 8, h: 6 }),
     }
   );
 
   addTimeseriesChart("Swap Total", `node_memory_SwapTotal_bytes{${HOST_FILTER}}`, {
-    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 8, y: 38, w: 8, h: 6 }),
+    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ w: 8, h: 6 }),
   });
 
   addTimeseriesChart("Swap Used", `node_memory_SwapTotal_bytes{${HOST_FILTER}} - node_memory_SwapFree_bytes{${HOST_FILTER}}`, {
-    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 16, y: 38, w: 8, h: 6 }),
+    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ w: 8, h: 6 }),
   });
 
   // Disk Metrics Row
   dash.withRow(
-    new RowBuilder("Disk Metrics").gridPos({ x: 0, y: 44, w: 24, h: 1 })
+    new RowBuilder("Disk Metrics").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -2440,7 +2367,7 @@ function makeHostsDashboard() {
     `(1 - (node_filesystem_avail_bytes{${HOST_FILTER},fstype!="tmpfs",fstype!="devtmpfs"} / node_filesystem_size_bytes{${HOST_FILTER},fstype!="tmpfs",fstype!="devtmpfs"})) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 45, w: 8, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ w: 8, h: 6 }),
       alert: {
         threshold: 80,
         condition: "gt",
@@ -2452,23 +2379,23 @@ function makeHostsDashboard() {
   );
 
   addTimeseriesChart("Disk I/O Read", `irate(node_disk_read_bytes_total{${HOST_FILTER}}[5m])`, {
-    panelCustomization: (x) => x.unit("Bps").gridPos({ x: 8, y: 45, w: 8, h: 6 }),
+    panelCustomization: (x) => x.unit("Bps").gridPos({ w: 8, h: 6 }),
   });
 
   addTimeseriesChart("Disk I/O Write", `irate(node_disk_written_bytes_total{${HOST_FILTER}}[5m])`, {
-    panelCustomization: (x) => x.unit("Bps").gridPos({ x: 16, y: 45, w: 8, h: 6 }),
+    panelCustomization: (x) => x.unit("Bps").gridPos({ w: 8, h: 6 }),
   });
 
   // Network Metrics Row
   dash.withRow(
-    new RowBuilder("Network Metrics").gridPos({ x: 0, y: 51, w: 24, h: 1 })
+    new RowBuilder("Network Metrics").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
     "Network Receive",
     `irate(node_network_receive_bytes_total{${HOST_FILTER},device!="lo"}[5m])`,
     {
-      panelCustomization: (x) => x.unit("Bps").gridPos({ x: 0, y: 52, w: 8, h: 6 }),
+      panelCustomization: (x) => x.unit("Bps").gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -2476,7 +2403,7 @@ function makeHostsDashboard() {
     "Network Transmit",
     `irate(node_network_transmit_bytes_total{${HOST_FILTER},device!="lo"}[5m])`,
     {
-      panelCustomization: (x) => x.unit("Bps").gridPos({ x: 8, y: 52, w: 8, h: 6 }),
+      panelCustomization: (x) => x.unit("Bps").gridPos({ w: 8, h: 6 }),
     }
   );
 
@@ -2484,13 +2411,13 @@ function makeHostsDashboard() {
     "Network Errors",
     `irate(node_network_receive_errs_total{${HOST_FILTER},device!="lo"}[5m]) + irate(node_network_transmit_errs_total{${HOST_FILTER},device!="lo"}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 16, y: 52, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ w: 8, h: 6 }),
     }
   );
 
   // Resource Pressure (PSI) Row
   dash.withRow(
-    new RowBuilder("Resource Pressure (PSI)").gridPos({ x: 0, y: 58, w: 24, h: 1 })
+    new RowBuilder("Resource Pressure (PSI)").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -2498,7 +2425,7 @@ function makeHostsDashboard() {
     `rate(node_pressure_cpu_waiting_seconds_total{${HOST_FILTER}}[5m]) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).gridPos({ x: 0, y: 59, w: 8, h: 6 }),
+        x.unit("percent").min(0).gridPos({ w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{instance}} waiting"),
     }
   );
@@ -2508,7 +2435,7 @@ function makeHostsDashboard() {
     .title("IO Pressure")
     .unit("percent")
     .min(0)
-    .gridPos({ x: 8, y: 59, w: 8, h: 6 })
+    .gridPos({ w: 8, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`rate(node_pressure_io_waiting_seconds_total{${HOST_FILTER}}[5m]) * 100`)
@@ -2526,7 +2453,7 @@ function makeHostsDashboard() {
     .title("Memory Pressure")
     .unit("percent")
     .min(0)
-    .gridPos({ x: 16, y: 59, w: 8, h: 6 })
+    .gridPos({ w: 8, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`rate(node_pressure_memory_waiting_seconds_total{${HOST_FILTER}}[5m]) * 100`)
@@ -2561,12 +2488,12 @@ function makeAwsCloudWatchDashboard() {
       .title("")
       .content(README_CONTENT)
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
+      .gridPos({ w: 24, h: 2 })
   );
 
   // ========== EC2 SECTION ==========
   dash.withRow(
-    new RowBuilder("EC2 Instances").gridPos({ x: 0, y: 2, w: 24, h: 1 })
+    new RowBuilder("EC2 Instances").gridPos({ w: 24, h: 1 })
   );
 
   // EC2 CPU Utilization
@@ -2575,7 +2502,7 @@ function makeAwsCloudWatchDashboard() {
     .unit("percent")
     .min(0)
     .max(100)
-    .gridPos({ x: 0, y: 3, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`aws_ec2_cpuutilization_average`)
@@ -2589,7 +2516,7 @@ function makeAwsCloudWatchDashboard() {
     .unit("percent")
     .min(0)
     .max(100)
-    .gridPos({ x: 12, y: 3, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`aws_ec2_cpuutilization_maximum`)
@@ -2602,7 +2529,7 @@ function makeAwsCloudWatchDashboard() {
     .title("EC2 Network In (5m)")
     .unit("bytes")
     .min(0)
-    .gridPos({ x: 0, y: 11, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`aws_ec2_networkin_sum`)
@@ -2615,7 +2542,7 @@ function makeAwsCloudWatchDashboard() {
     .title("EC2 Network Out (5m)")
     .unit("bytes")
     .min(0)
-    .gridPos({ x: 12, y: 11, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`aws_ec2_networkout_sum`)
@@ -2628,7 +2555,7 @@ function makeAwsCloudWatchDashboard() {
     .title("EC2 Disk I/O (5m)")
     .unit("bytes")
     .min(0)
-    .gridPos({ x: 0, y: 19, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`aws_ec2_diskreadbytes_sum`)
@@ -2645,7 +2572,7 @@ function makeAwsCloudWatchDashboard() {
   const ec2StatusPanel = new TimeseriesBuilder()
     .title("EC2 Status Check Failed")
     .min(0)
-    .gridPos({ x: 12, y: 19, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`aws_ec2_statuscheckfailed_maximum`)
@@ -2663,7 +2590,7 @@ function makeAwsCloudWatchDashboard() {
 
   // ========== EBS SECTION ==========
   dash.withRow(
-    new RowBuilder("EBS Volumes").gridPos({ x: 0, y: 27, w: 24, h: 1 })
+    new RowBuilder("EBS Volumes").gridPos({ w: 24, h: 1 })
   );
 
   // EBS Read/Write Ops
@@ -2671,7 +2598,7 @@ function makeAwsCloudWatchDashboard() {
     .title("EBS IOPS (5m)")
     .unit("ops")
     .min(0)
-    .gridPos({ x: 0, y: 28, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`aws_ebs_volume_read_ops_sum`)
@@ -2689,7 +2616,7 @@ function makeAwsCloudWatchDashboard() {
     .title("EBS Throughput (5m)")
     .unit("bytes")
     .min(0)
-    .gridPos({ x: 12, y: 28, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`aws_ebs_volume_read_bytes_sum`)
@@ -2707,7 +2634,7 @@ function makeAwsCloudWatchDashboard() {
     .title("EBS Latency (5m Total Time)")
     .unit("s")
     .min(0)
-    .gridPos({ x: 0, y: 36, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`aws_ebs_volume_total_read_time_sum`)
@@ -2726,7 +2653,7 @@ function makeAwsCloudWatchDashboard() {
     .unit("percent")
     .min(0)
     .max(100)
-    .gridPos({ x: 12, y: 36, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`aws_ebs_burst_balance_minimum`)
@@ -2745,14 +2672,14 @@ function makeAwsCloudWatchDashboard() {
 
   // ========== ROUTE53 SECTION ==========
   dash.withRow(
-    new RowBuilder("Route53 DNS").gridPos({ x: 0, y: 44, w: 24, h: 1 })
+    new RowBuilder("Route53 DNS").gridPos({ w: 24, h: 1 })
   );
 
   // Route53 DNS Queries
   const route53Panel = new TimeseriesBuilder()
     .title("Route53 DNS Queries (5m)")
     .min(0)
-    .gridPos({ x: 0, y: 45, w: 24, h: 8 })
+    .gridPos({ w: 24, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`aws_route53_dnsqueries_sum`)
@@ -2810,18 +2737,18 @@ function makeLLMGatewayDashboard() {
       .title("")
       .content(README_CONTENT)
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
+      .gridPos({ w: 24, h: 2 })
   );
 
   // Row 1: Overview Stats
   dash.withRow(
-    new RowBuilder("Overview").gridPos({ x: 0, y: 2, w: 24, h: 1 })
+    new RowBuilder("Overview").gridPos({ w: 24, h: 1 })
   );
 
   // Total requests (last 24h)
   const totalRequestsPanel = new StatBuilder()
     .title("Requests (24h)")
-    .gridPos({ x: 0, y: 3, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(increase(llm_requests_total{${STAGE_FILTER}}[24h]))`)
@@ -2836,7 +2763,7 @@ function makeLLMGatewayDashboard() {
   // Total cost (last 24h)
   const totalCostPanel = new StatBuilder()
     .title("Cost (24h)")
-    .gridPos({ x: 6, y: 3, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(increase(llm_cost_usd_total{${STAGE_FILTER}}[24h]))`)
@@ -2852,7 +2779,7 @@ function makeLLMGatewayDashboard() {
   // Total tokens (last 24h)
   const totalTokensPanel = new StatBuilder()
     .title("Tokens (24h)")
-    .gridPos({ x: 12, y: 3, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(increase(llm_tokens_total{${STAGE_FILTER}}[24h]))`)
@@ -2867,7 +2794,7 @@ function makeLLMGatewayDashboard() {
   // Current request rate
   const requestRatePanel = new StatBuilder()
     .title("Request Rate")
-    .gridPos({ x: 18, y: 3, w: 6, h: 4 })
+    .gridPos({ w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(rate(llm_requests_total{${STAGE_FILTER}}[5m]))`)
@@ -2882,7 +2809,7 @@ function makeLLMGatewayDashboard() {
 
   // Row 2: Request Metrics
   dash.withRow(
-    new RowBuilder("Request Metrics").gridPos({ x: 0, y: 7, w: 24, h: 1 })
+    new RowBuilder("Request Metrics").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -2890,7 +2817,7 @@ function makeLLMGatewayDashboard() {
     `sum(rate(llm_requests_total{${STAGE_FILTER}}[$__rate_interval])) by (api_type)`,
     {
       panelCustomization: (x) =>
-        x.unit("reqps").min(0).gridPos({ x: 0, y: 8, w: 12, h: 8 }),
+        x.unit("reqps").min(0).gridPos({ w: 12, h: 8 }),
       queryCustomization: (q) => q.legendFormat("{{api_type}}"),
     }
   );
@@ -2900,14 +2827,14 @@ function makeLLMGatewayDashboard() {
     `sum(rate(llm_requests_total{${STAGE_FILTER}}[$__rate_interval])) by (status)`,
     {
       panelCustomization: (x) =>
-        x.unit("reqps").min(0).gridPos({ x: 12, y: 8, w: 12, h: 8 }),
+        x.unit("reqps").min(0).gridPos({ w: 12, h: 8 }),
       queryCustomization: (q) => q.legendFormat("{{status}}"),
     }
   );
 
   // Row 3: Token Usage
   dash.withRow(
-    new RowBuilder("Token Usage").gridPos({ x: 0, y: 16, w: 24, h: 1 })
+    new RowBuilder("Token Usage").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -2915,7 +2842,7 @@ function makeLLMGatewayDashboard() {
     `sum(rate(llm_tokens_total{${FULL_FILTER}}[$__rate_interval])) by (token_type)`,
     {
       panelCustomization: (x) =>
-        x.unit("short").min(0).gridPos({ x: 0, y: 17, w: 12, h: 8 }),
+        x.unit("short").min(0).gridPos({ w: 12, h: 8 }),
       queryCustomization: (q) => q.legendFormat("{{token_type}}"),
     }
   );
@@ -2925,14 +2852,14 @@ function makeLLMGatewayDashboard() {
     `sum(rate(llm_tokens_total{${FULL_FILTER}}[$__rate_interval])) by (model)`,
     {
       panelCustomization: (x) =>
-        x.unit("short").min(0).gridPos({ x: 12, y: 17, w: 12, h: 8 }),
+        x.unit("short").min(0).gridPos({ w: 12, h: 8 }),
       queryCustomization: (q) => q.legendFormat("{{model}}"),
     }
   );
 
   // Row 4: Cost Tracking
   dash.withRow(
-    new RowBuilder("Cost Tracking").gridPos({ x: 0, y: 25, w: 24, h: 1 })
+    new RowBuilder("Cost Tracking").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -2940,7 +2867,7 @@ function makeLLMGatewayDashboard() {
     `sum(rate(llm_cost_usd_total{${FULL_FILTER}}[$__rate_interval])) by (model) * 3600`,
     {
       panelCustomization: (x) =>
-        x.unit("currencyUSD").min(0).gridPos({ x: 0, y: 26, w: 12, h: 8 }),
+        x.unit("currencyUSD").min(0).gridPos({ w: 12, h: 8 }),
       queryCustomization: (q) => q.legendFormat("{{model}} ($/hr)"),
     }
   );
@@ -2950,14 +2877,14 @@ function makeLLMGatewayDashboard() {
     `sum(rate(llm_cost_usd_total{${FULL_FILTER}}[$__rate_interval])) by (api_type) * 3600`,
     {
       panelCustomization: (x) =>
-        x.unit("currencyUSD").min(0).gridPos({ x: 12, y: 26, w: 12, h: 8 }),
+        x.unit("currencyUSD").min(0).gridPos({ w: 12, h: 8 }),
       queryCustomization: (q) => q.legendFormat("{{api_type}} ($/hr)"),
     }
   );
 
   // Row 5: Latency
   dash.withRow(
-    new RowBuilder("Latency").gridPos({ x: 0, y: 34, w: 24, h: 1 })
+    new RowBuilder("Latency").gridPos({ w: 24, h: 1 })
   );
 
   // Latency percentiles panel
@@ -2965,7 +2892,7 @@ function makeLLMGatewayDashboard() {
     .title("Request Latency Percentiles")
     .unit("s")
     .min(0)
-    .gridPos({ x: 0, y: 35, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`histogram_quantile(0.5, sum(rate(llm_request_duration_seconds_bucket{${FULL_FILTER}}[$__rate_interval])) by (le))`)
@@ -2988,7 +2915,7 @@ function makeLLMGatewayDashboard() {
     .title("P90 Latency by Model")
     .unit("s")
     .min(0)
-    .gridPos({ x: 12, y: 35, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`histogram_quantile(0.9, sum(rate(llm_request_duration_seconds_bucket{${FULL_FILTER}}[$__rate_interval])) by (le, model))`)
@@ -2998,7 +2925,7 @@ function makeLLMGatewayDashboard() {
 
   // Row 6: Anthropic Rate Limits
   dash.withRow(
-    new RowBuilder("Anthropic Rate Limits").gridPos({ x: 0, y: 43, w: 24, h: 1 })
+    new RowBuilder("Anthropic Rate Limits").gridPos({ w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -3006,20 +2933,20 @@ function makeLLMGatewayDashboard() {
     `anthropic_rate_limit_remaining{${STAGE_FILTER}}`,
     {
       panelCustomization: (x) =>
-        x.min(0).gridPos({ x: 0, y: 44, w: 24, h: 8 }),
+        x.min(0).gridPos({ w: 24, h: 8 }),
       queryCustomization: (q) => q.legendFormat("{{type}}"),
     }
   );
 
   // Row 7: Per-User Breakdown
   dash.withRow(
-    new RowBuilder("Per-User Breakdown").gridPos({ x: 0, y: 52, w: 24, h: 1 })
+    new RowBuilder("Per-User Breakdown").gridPos({ w: 24, h: 1 })
   );
 
   // Top users by cost (table)
   const topUsersCostTable = new TableBuilder()
     .title("Top 10 Users by Cost (24h)")
-    .gridPos({ x: 0, y: 53, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`topk(10, sum(increase(llm_cost_usd_total{${STAGE_FILTER}}[24h])) by (user_id))`)
@@ -3031,7 +2958,7 @@ function makeLLMGatewayDashboard() {
   // Top users by tokens (table)
   const topUsersTokensTable = new TableBuilder()
     .title("Top 10 Users by Tokens (24h)")
-    .gridPos({ x: 12, y: 53, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`topk(10, sum(increase(llm_tokens_total{${STAGE_FILTER}}[24h])) by (user_id))`)
@@ -3042,13 +2969,13 @@ function makeLLMGatewayDashboard() {
 
   // Row 8: Per-VM Breakdown
   dash.withRow(
-    new RowBuilder("Per-VM Breakdown").gridPos({ x: 0, y: 61, w: 24, h: 1 })
+    new RowBuilder("Per-VM Breakdown").gridPos({ w: 24, h: 1 })
   );
 
   // Top VMs by cost (table)
   const topVMsCostTable = new TableBuilder()
     .title("Top 10 VMs by Cost (24h)")
-    .gridPos({ x: 0, y: 62, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`topk(10, sum(increase(llm_cost_usd_total{${STAGE_FILTER}}[24h])) by (vm_name))`)
@@ -3060,7 +2987,7 @@ function makeLLMGatewayDashboard() {
   // Top VMs by tokens (table)
   const topVMsTokensTable = new TableBuilder()
     .title("Top 10 VMs by Tokens (24h)")
-    .gridPos({ x: 12, y: 62, w: 12, h: 8 })
+    .gridPos({ w: 12, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`topk(10, sum(increase(llm_tokens_total{${STAGE_FILTER}}[24h])) by (vm_name))`)
