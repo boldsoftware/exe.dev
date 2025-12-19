@@ -175,6 +175,18 @@ class ApiService {
     }
     return response.json();
   }
+
+  async renameConversation(conversationId: string, slug: string): Promise<Conversation> {
+    const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/rename`, {
+      method: "POST",
+      headers: this.postHeaders,
+      body: JSON.stringify({ slug }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to rename conversation: ${response.statusText}`);
+    }
+    return response.json();
+  }
 }
 
 export const api = new ApiService();

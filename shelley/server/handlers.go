@@ -460,6 +460,9 @@ func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
 		case "delete":
 			// /conversation/<id>/delete
 			s.handleDeleteConversation(w, r, conversationID)
+		case "rename":
+			// /conversation/<id>/rename
+			s.handleRenameConversation(w, r, conversationID)
 		default:
 			http.Error(w, "Not found", http.StatusNotFound)
 		}
@@ -1080,6 +1083,44 @@ func (s *Server) handleConversationBySlug(w http.ResponseWriter, r *http.Request
 			return
 		}
 		s.logger.Error("Failed to get conversation by slug", "slug", slug, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(conversation)
+}
+
+// RenameRequest represents a request to rename a conversation
+type RenameRequest struct {
+	Slug string `json:"slug"`
+}
+
+// handleRenameConversation handles POST /conversation/<id>/rename
+func (s *Server) handleRenameConversation(w http.ResponseWriter, r *http.Request, conversationID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx := r.Context()
+
+	var req RenameRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Sanitize the slug using the same rules as auto-generated slugs
+	sanitized := slug.Sanitize(req.Slug)
+	if sanitized == "" {
+		http.Error(w, "Slug is required (must contain alphanumeric characters)", http.StatusBadRequest)
+		return
+	}
+
+	conversation, err := s.db.UpdateConversationSlug(ctx, conversationID, sanitized)
+	if err != nil {
+		s.logger.Error("Failed to rename conversation", "conversationID", conversationID, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}

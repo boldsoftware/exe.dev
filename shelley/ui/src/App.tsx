@@ -162,6 +162,15 @@ function App() {
     setConversations((prev) => [conversation, ...prev]);
   };
 
+  const handleConversationRenamed = (conversation: Conversation) => {
+    // Update the conversation in the list with the new slug
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.conversation_id === conversation.conversation_id ? conversation : c
+      )
+    );
+  };
+
   if (loading && conversations.length === 0) {
     return (
       <div className="loading-container">
@@ -223,6 +232,7 @@ function App() {
         onNewConversation={startNewConversation}
         onConversationArchived={handleConversationArchived}
         onConversationUnarchived={handleConversationUnarchived}
+        onConversationRenamed={handleConversationRenamed}
       />
 
       {/* Main chat interface */}

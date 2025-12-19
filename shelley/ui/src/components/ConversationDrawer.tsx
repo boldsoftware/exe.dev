@@ -11,6 +11,7 @@ interface ConversationDrawerProps {
   onNewConversation: () => void;
   onConversationArchived?: (id: string) => void;
   onConversationUnarchived?: (conversation: Conversation) => void;
+  onConversationRenamed?: (conversation: Conversation) => void;
 }
 
 function ConversationDrawer({
@@ -22,10 +23,14 @@ function ConversationDrawer({
   onNewConversation,
   onConversationArchived,
   onConversationUnarchived,
+  onConversationRenamed,
 }: ConversationDrawerProps) {
   const [showArchived, setShowArchived] = useState(false);
   const [archivedConversations, setArchivedConversations] = useState<Conversation[]>([]);
   const [loadingArchived, setLoadingArchived] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingSlug, setEditingSlug] = useState("");
+  const renameInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (showArchived && archivedConversations.length === 0) {
@@ -121,6 +126,60 @@ function ConversationDrawer({
     }
   };
 
+  // Sanitize slug: lowercase, alphanumeric and hyphens only, max 60 chars
+  const sanitizeSlug = (input: string): string => {
+    return input
+      .toLowerCase()
+      .replace(/[\s_]+/g, "-")
+      .replace(/[^a-z0-9-]+/g, "")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 60)
+      .replace(/-$/g, "");
+  };
+
+  const handleStartRename = (e: React.MouseEvent, conversation: Conversation) => {
+    e.stopPropagation();
+    setEditingId(conversation.conversation_id);
+    setEditingSlug(conversation.slug || "");
+    // Select all text after render
+    setTimeout(() => renameInputRef.current?.select(), 0);
+  };
+
+  const handleRename = async (conversationId: string) => {
+    const sanitized = sanitizeSlug(editingSlug);
+    if (!sanitized) {
+      setEditingId(null);
+      return;
+    }
+
+    // Check for uniqueness against current conversations
+    const isDuplicate = [...conversations, ...archivedConversations].some(
+      (c) => c.slug === sanitized && c.conversation_id !== conversationId
+    );
+    if (isDuplicate) {
+      alert("A conversation with this name already exists");
+      return;
+    }
+
+    try {
+      const updated = await api.renameConversation(conversationId, sanitized);
+      onConversationRenamed?.(updated);
+      setEditingId(null);
+    } catch (err) {
+      console.error("Failed to rename conversation:", err);
+    }
+  };
+
+  const handleRenameKeyDown = (e: React.KeyboardEvent, conversationId: string) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleRename(conversationId);
+    } else if (e.key === "Escape") {
+      setEditingId(null);
+    }
+  };
+
   const displayedConversations = showArchived ? archivedConversations : conversations;
 
   return (
@@ -209,9 +268,33 @@ function ConversationDrawer({
                     style={{ cursor: showArchived ? "default" : "pointer" }}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="conversation-title">
-                        {getConversationPreview(conversation)}
-                      </div>
+                      {editingId === conversation.conversation_id ? (
+                        <input
+                          ref={renameInputRef}
+                          type="text"
+                          value={editingSlug}
+                          onChange={(e) => setEditingSlug(e.target.value)}
+                          onBlur={() => handleRename(conversation.conversation_id)}
+                          onKeyDown={(e) => handleRenameKeyDown(e, conversation.conversation_id)}
+                          onClick={(e) => e.stopPropagation()}
+                          autoFocus
+                          className="conversation-title"
+                          style={{
+                            width: "100%",
+                            background: "transparent",
+                            border: "none",
+                            borderBottom: "1px solid var(--text-secondary)",
+                            outline: "none",
+                            padding: 0,
+                            font: "inherit",
+                            color: "inherit",
+                          }}
+                        />
+                      ) : (
+                        <div className="conversation-title">
+                          {getConversationPreview(conversation)}
+                        </div>
+                      )}
                       <div className="conversation-meta">
                         <span className="conversation-date">
                           {formatDate(conversation.updated_at)}
@@ -271,26 +354,48 @@ function ConversationDrawer({
                           </button>
                         </>
                       ) : (
-                        <button
-                          onClick={(e) => handleArchive(e, conversation.conversation_id)}
-                          className="btn-icon-sm"
-                          title="Archive"
-                          aria-label="Archive conversation"
-                        >
-                          <svg
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            style={{ width: "1rem", height: "1rem" }}
+                        <>
+                          <button
+                            onClick={(e) => handleStartRename(e, conversation)}
+                            className="btn-icon-sm"
+                            title="Rename"
+                            aria-label="Rename conversation"
                           >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
-                            />
-                          </svg>
-                        </button>
+                            <svg
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              style={{ width: "1rem", height: "1rem" }}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                              />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={(e) => handleArchive(e, conversation.conversation_id)}
+                            className="btn-icon-sm"
+                            title="Archive"
+                            aria-label="Archive conversation"
+                          >
+                            <svg
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              style={{ width: "1rem", height: "1rem" }}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
+                              />
+                            </svg>
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
