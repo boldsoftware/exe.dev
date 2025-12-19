@@ -355,11 +355,20 @@ func (l *Loop) handleToolCalls(ctx context.Context, content []llm.Content) error
 	return nil
 }
 
-// insertMissingToolResults adds error results for tool uses that were requested
-// but not included in the next message. This can happen when a request is cancelled
-// or fails after the LLM responds with tool_use blocks but before the tools execute.
-// This prevents the "tool_use ids were found without tool_result blocks" error from
-// the Anthropic API. Mutates the request's Messages slice.
+// insertMissingToolResults fixes tool_result issues in the conversation history:
+// 1. Adds error results for tool_uses that were requested but not included in the next message.
+//    This can happen when a request is cancelled or fails after the LLM responds with tool_use
+//    blocks but before the tools execute.
+// 2. Removes orphan tool_results that reference tool_use IDs not present in the immediately
+//    preceding assistant message. This can happen when a tool execution completes after
+//    CancelConversation has already written cancellation messages.
+//
+// This prevents API errors like:
+// - "tool_use ids were found without tool_result blocks"
+// - "unexpected tool_use_id found in tool_result blocks ... Each tool_result block must have
+//   a corresponding tool_use block in the previous message"
+//
+// Mutates the request's Messages slice.
 func (l *Loop) insertMissingToolResults(req *llm.Request) {
 	if len(req.Messages) < 1 {
 		return
@@ -367,57 +376,51 @@ func (l *Loop) insertMissingToolResults(req *llm.Request) {
 
 	// Scan through all messages looking for assistant messages with tool_use
 	// that are not immediately followed by a user message with corresponding tool_results.
-	// We may need to insert synthetic user messages with tool_results.
+	// We may need to insert synthetic user messages with tool_results or filter orphans.
 	var newMessages []llm.Message
 	totalInserted := 0
+	totalRemoved := 0
+
+	// Track the tool_use IDs from the most recent assistant message
+	var prevAssistantToolUseIDs map[string]bool
 
 	for i := 0; i < len(req.Messages); i++ {
 		msg := req.Messages[i]
-		newMessages = append(newMessages, msg)
 
-		// Check if this is an assistant message with tool_use blocks
-		if msg.Role != llm.MessageRoleAssistant {
-			continue
-		}
-
-		var toolUseContents []llm.Content
-		for _, c := range msg.Content {
-			if c.Type == llm.ContentTypeToolUse {
-				toolUseContents = append(toolUseContents, c)
+		if msg.Role == llm.MessageRoleAssistant {
+			// Track all tool_use IDs in this assistant message
+			prevAssistantToolUseIDs = make(map[string]bool)
+			for _, c := range msg.Content {
+				if c.Type == llm.ContentTypeToolUse {
+					prevAssistantToolUseIDs[c.ID] = true
+				}
 			}
-		}
-		if len(toolUseContents) == 0 {
-			continue
-		}
+			newMessages = append(newMessages, msg)
 
-		// Check if next message is a user message with corresponding tool_results
-		var nextMsg *llm.Message
-		if i+1 < len(req.Messages) {
-			nextMsg = &req.Messages[i+1]
-		}
-
-		if nextMsg != nil && nextMsg.Role == llm.MessageRoleUser {
-			// Collect existing tool_result IDs in the next message
-			existingResults := make(map[string]bool)
-			for _, c := range nextMsg.Content {
-				if c.Type == llm.ContentTypeToolResult {
-					existingResults[c.ToolUseID] = true
+			// Check if next message needs synthetic tool_results
+			var toolUseContents []llm.Content
+			for _, c := range msg.Content {
+				if c.Type == llm.ContentTypeToolUse {
+					toolUseContents = append(toolUseContents, c)
 				}
 			}
 
-			// Find tool_uses that are missing results
-			var missingToolUses []llm.Content
-			for _, tu := range toolUseContents {
-				if !existingResults[tu.ID] {
-					missingToolUses = append(missingToolUses, tu)
-				}
+			if len(toolUseContents) == 0 {
+				continue
 			}
 
-			if len(missingToolUses) > 0 {
-				// Prepend synthetic tool_results to the next user message
-				var prefix []llm.Content
-				for _, tu := range missingToolUses {
-					prefix = append(prefix, llm.Content{
+			// Check if next message is a user message with corresponding tool_results
+			var nextMsg *llm.Message
+			if i+1 < len(req.Messages) {
+				nextMsg = &req.Messages[i+1]
+			}
+
+			if nextMsg == nil || nextMsg.Role != llm.MessageRoleUser {
+				// Next message is not a user message (or there is no next message).
+				// Insert a synthetic user message with tool_results for all tool_uses.
+				var toolResultContent []llm.Content
+				for _, tu := range toolUseContents {
+					toolResultContent = append(toolResultContent, llm.Content{
 						Type:      llm.ContentTypeToolResult,
 						ToolUseID: tu.ID,
 						ToolError: true,
@@ -427,35 +430,80 @@ func (l *Loop) insertMissingToolResults(req *llm.Request) {
 						}},
 					})
 				}
-				req.Messages[i+1].Content = append(prefix, req.Messages[i+1].Content...)
-				totalInserted += len(prefix)
+				syntheticMsg := llm.Message{
+					Role:    llm.MessageRoleUser,
+					Content: toolResultContent,
+				}
+				newMessages = append(newMessages, syntheticMsg)
+				totalInserted += len(toolResultContent)
 			}
+		} else if msg.Role == llm.MessageRoleUser {
+			// Filter out orphan tool_results and add missing ones
+			var filteredContent []llm.Content
+			existingResultIDs := make(map[string]bool)
+
+			for _, c := range msg.Content {
+				if c.Type == llm.ContentTypeToolResult {
+					// Only keep tool_results that match a tool_use in the previous assistant message
+					if prevAssistantToolUseIDs != nil && prevAssistantToolUseIDs[c.ToolUseID] {
+						filteredContent = append(filteredContent, c)
+						existingResultIDs[c.ToolUseID] = true
+					} else {
+						// Orphan tool_result - skip it
+						totalRemoved++
+						l.logger.Debug("removing orphan tool_result", "tool_use_id", c.ToolUseID)
+					}
+				} else {
+					// Keep non-tool_result content
+					filteredContent = append(filteredContent, c)
+				}
+			}
+
+			// Check if we need to add missing tool_results for this user message
+			if prevAssistantToolUseIDs != nil {
+				var prefix []llm.Content
+				for toolUseID := range prevAssistantToolUseIDs {
+					if !existingResultIDs[toolUseID] {
+						prefix = append(prefix, llm.Content{
+							Type:      llm.ContentTypeToolResult,
+							ToolUseID: toolUseID,
+							ToolError: true,
+							ToolResult: []llm.Content{{
+								Type: llm.ContentTypeText,
+								Text: "not executed; retry possible",
+							}},
+						})
+						totalInserted++
+					}
+				}
+				if len(prefix) > 0 {
+					filteredContent = append(prefix, filteredContent...)
+				}
+			}
+
+			// Only add the message if it has content
+			if len(filteredContent) > 0 {
+				msg.Content = filteredContent
+				newMessages = append(newMessages, msg)
+			} else {
+				// Message is now empty after filtering - skip it entirely
+				l.logger.Debug("removing empty user message after filtering orphan tool_results")
+			}
+
+			// Reset for next iteration - user message "consumes" the previous tool_uses
+			prevAssistantToolUseIDs = nil
 		} else {
-			// Next message is not a user message (or there is no next message).
-			// Insert a synthetic user message with tool_results for all tool_uses.
-			var toolResultContent []llm.Content
-			for _, tu := range toolUseContents {
-				toolResultContent = append(toolResultContent, llm.Content{
-					Type:      llm.ContentTypeToolResult,
-					ToolUseID: tu.ID,
-					ToolError: true,
-					ToolResult: []llm.Content{{
-						Type: llm.ContentTypeText,
-						Text: "not executed; retry possible",
-					}},
-				})
-			}
-			syntheticMsg := llm.Message{
-				Role:    llm.MessageRoleUser,
-				Content: toolResultContent,
-			}
-			newMessages = append(newMessages, syntheticMsg)
-			totalInserted += len(toolResultContent)
+			newMessages = append(newMessages, msg)
 		}
 	}
 
-	if totalInserted > 0 {
+	if totalInserted > 0 || totalRemoved > 0 {
 		req.Messages = newMessages
-		l.logger.Debug("inserted missing tool results", "count", totalInserted)
+		if totalInserted > 0 {
+			l.logger.Debug("inserted missing tool results", "count", totalInserted)
+		}
+		if totalRemoved > 0 {
+			l.logger.Debug("removed orphan tool results", "count", totalRemoved)
+		}
 	}
 }
