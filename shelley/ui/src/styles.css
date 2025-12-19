@@ -2084,6 +2084,20 @@ svg {
   align-items: center;
   justify-content: space-between;
   width: 100%;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* On smaller screens, allow the fields to stack vertically */
+@media (max-width: 600px) {
+  .status-bar-new-conversation {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .status-field {
+    width: 100%;
+  }
 }
 
 .status-bar-controls {
@@ -2092,11 +2106,12 @@ svg {
   gap: 0.5rem;
 }
 
-/* Fixed-width containers for status fields to prevent jitter */
+/* Flexible containers for status fields that adapt to content */
 .status-field {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  min-width: 0; /* Allow flex items to shrink below content size */
 }
 
 .status-field-label {
@@ -2106,11 +2121,15 @@ svg {
 }
 
 .status-field-model {
-  width: 180px;
+  flex: 1 1 auto;
+  min-width: 150px;
+  max-width: 300px;
 }
 
 .status-field-cwd {
-  width: 260px;
+  flex: 1 1 auto;
+  min-width: 180px;
+  max-width: 400px;
 }
 
 /* Compact clickable chips for model and cwd */
@@ -2124,12 +2143,14 @@ svg {
   font-family: var(--font-mono);
   cursor: pointer;
   transition: all 0.2s;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal; /* Allow text to wrap */
+  word-break: break-word; /* Break long words if needed */
+  overflow-wrap: break-word;
   width: 100%;
   text-align: left;
   box-sizing: border-box;
+  line-height: 1.3; /* Better line height for multi-line text */
+  min-height: 1.75rem; /* Minimum height to accommodate wrapped text */
 }
 
 .status-chip:hover:not(:disabled) {
@@ -2230,11 +2251,13 @@ svg {
   }
 
   .status-field-model {
-    width: 160px;
+    min-width: 120px;
+    max-width: 200px;
   }
 
   .status-field-cwd {
-    width: 200px;
+    min-width: 140px;
+    max-width: 250px;
   }
 }
 
