@@ -13,7 +13,14 @@ interface PatchToolProps {
   display?: unknown; // Display data from the tool_result Content (contains the diff)
 }
 
-function PatchTool({ toolInput, isRunning, toolResult, hasError, executionTime, display }: PatchToolProps) {
+function PatchTool({
+  toolInput,
+  isRunning,
+  toolResult,
+  hasError,
+  executionTime,
+  display,
+}: PatchToolProps) {
   // Default to collapsed for errors (since agents typically recover), expanded otherwise
   const [isExpanded, setIsExpanded] = useState(!hasError);
 
@@ -29,7 +36,12 @@ function PatchTool({ toolInput, isRunning, toolResult, hasError, executionTime, 
         : "";
 
   // Extract diff from display (preferred) or fall back to toolResult
-  const diff = typeof display === "string" ? display : (toolResult && toolResult.length > 0 && toolResult[0].Text ? toolResult[0].Text : "");
+  const diff =
+    typeof display === "string"
+      ? display
+      : toolResult && toolResult.length > 0 && toolResult[0].Text
+        ? toolResult[0].Text
+        : "";
 
   const isComplete = !isRunning && toolResult !== undefined;
 
