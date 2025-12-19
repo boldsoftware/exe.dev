@@ -255,6 +255,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/conversations/archived", s.handleArchivedConversations)
 	mux.HandleFunc("/api/conversations/new", s.handleNewConversation)
 	mux.HandleFunc("/api/conversation/", s.handleConversation)
+	mux.HandleFunc("/api/conversation-by-slug/", s.handleConversationBySlug)
 	mux.HandleFunc("/api/validate-cwd", s.handleValidateCwd)
 	mux.HandleFunc("/api/list-directory", s.handleListDirectory)
 	mux.HandleFunc("/api/upload", s.handleUpload)

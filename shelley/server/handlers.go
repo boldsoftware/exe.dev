@@ -141,11 +141,17 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 // staticHandler serves files from the provided filesystem and disables caching for HTML/CSS/JS to avoid stale bundles
+// isConversationSlugPath returns true if the path looks like a conversation slug route
+// (e.g., /c/my-conversation-slug)
+func isConversationSlugPath(path string) bool {
+	return strings.HasPrefix(path, "/c/")
+}
+
 func (s *Server) staticHandler(fs http.FileSystem) http.Handler {
 	fileServer := http.FileServer(fs)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Inject initialization data into index.html
-		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+		if r.URL.Path == "/" || r.URL.Path == "/index.html" || isConversationSlugPath(r.URL.Path) {
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")
@@ -1008,4 +1014,33 @@ func (s *Server) handleDeleteConversation(w http.ResponseWriter, r *http.Request
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+}
+
+// handleConversationBySlug handles GET /api/conversation-by-slug/<slug>
+func (s *Server) handleConversationBySlug(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	slug := strings.TrimPrefix(r.URL.Path, "/api/conversation-by-slug/")
+	if slug == "" {
+		http.Error(w, "Slug required", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	conversation, err := s.db.GetConversationBySlug(ctx, slug)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, "Conversation not found", http.StatusNotFound)
+			return
+		}
+		s.logger.Error("Failed to get conversation by slug", "slug", slug, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(conversation)
 }

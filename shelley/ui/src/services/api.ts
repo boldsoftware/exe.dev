@@ -125,6 +125,19 @@ class ApiService {
       throw new Error(`Failed to delete conversation: ${response.statusText}`);
     }
   }
+
+  async getConversationBySlug(slug: string): Promise<Conversation | null> {
+    const response = await fetch(
+      `${this.baseUrl}/conversation-by-slug/${encodeURIComponent(slug)}`,
+    );
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new Error(`Failed to get conversation by slug: ${response.statusText}`);
+    }
+    return response.json();
+  }
 }
 
 export const api = new ApiService();
