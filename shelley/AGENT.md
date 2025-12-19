@@ -20,3 +20,9 @@
 9. Commit your changes before finishing your turn.
 10. If you are testing Shelley itself, be aware that you might be running "under" shelley,
   and indiscrimenantly running pkill -f shelley may break things.
+11. To test the Shelley UI in a separate instance, build with `make build`, then run on a
+    different port with a separate database:
+    ```
+    ./bin/shelley -config /exe.dev/shelley.json -db /tmp/shelley-test.db serve -port 8002
+    ```
+    Then use browser tools to navigate to http://localhost:8002/ and interact with the UI.

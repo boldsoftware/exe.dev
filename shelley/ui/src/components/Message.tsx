@@ -262,6 +262,11 @@ function Message({ message }: MessageProps) {
       case "text":
         return <div className="whitespace-pre-wrap break-words">{content.Text || ""}</div>;
       case "tool_use":
+        // IMPORTANT: When adding a new tool component here, also add it to:
+        // 1. The tool_result case below
+        // 2. TOOL_COMPONENTS map in ChatInterface.tsx
+        // See AGENT.md in this directory.
+
         // Use specialized component for bash tool
         if (content.ToolName === "bash") {
           return <BashTool toolInput={content.ToolInput} isRunning={true} />;
