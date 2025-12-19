@@ -25,6 +25,7 @@ var reserved = []string{
 	"reset", "route", "scope", "serve", "setup", "share", "shell", "solid", "sound", "speed", "spell", "stack", "start", "store", "style", "table", "theme",
 	"throw", "timer", "token", "tower", "trace", "trash", "trust", "users", "video", "virus", "watts", "agent", "agents", "claude", "openai", "jules", "cursor",
 	"cline", "qwencode", "claudecode", "editor", "terminal", "sketch", "webterm", "daemon", "server", "client", "remote", "session", "tunnel", "bridge", "exedev",
+	"shelley", "secret", "secrets", "environ", "variable", "variables", "metadata", "cloudinit", "firewall", "config", "network", "networks", "database", "configure",
 	"gateway", "router", "switch", "firewall", "cluster", "docker", "podman", "kubernetes", "helm", "ansible", "terraform", "vagrant", "puppet", "consul", "vault",
 	"nomad", "etcd", "redis", "nginx", "apache", "traefik", "envoy", "istio", "linkerd", "cilium", "weave", "calico", "flannel", "zookeeper", "kafka", "rabbit",
 	"zeromq", "websocket", "telnet", "rsync", "netcat", "socat", "screen", "byobu", "mosh", "tmate", "gotty", "ttyd", "shellinabox", "wetty", "xterm", "xtermjs",
