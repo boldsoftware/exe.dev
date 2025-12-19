@@ -287,7 +287,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 			teeMu.Unlock()
 
 			if logFile != nil {
-				fmt.Fprintf(logFile, "%s", line)
+				fmt.Fprintf(logFile, "%s\n", line)
 			}
 
 			// Parse JSON log line
