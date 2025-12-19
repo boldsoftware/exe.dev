@@ -194,7 +194,7 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 </style>
 </head><body>
 <h1>Boxes by Host</h1>
-<p><a href="/debug/boxes?format=json">View as JSON</a></p>
+<p><a href="/debug">/debug</a> | <a href="/debug/boxes?format=json">json</a></p>
 `)
 
 	if len(hosts) == 0 {
@@ -255,7 +255,6 @@ document.getElementById('confirmInput').addEventListener('input', function() {
     document.getElementById('confirmBtn').disabled = (this.value !== expected);
 });
 </script>
-<p><a href="/debug">Back to debug index</a></p>
 </body></html>
 `)
 }
@@ -369,7 +368,7 @@ pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
 </style>
 </head><body>
 <h1>Box: %s</h1>
-<p><a href="/debug/boxes">&larr; Back to boxes</a></p>
+<p><a href="/debug">/debug</a> | <a href="/debug/boxes">/debug/boxes</a> </p>
 `, html.EscapeString(box.Name), html.EscapeString(box.Name))
 
 	// Basic info
@@ -504,8 +503,7 @@ pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
 `, html.EscapeString(*box.CreationLog))
 	}
 
-	fmt.Fprintf(w, `<p><a href="/debug/boxes">&larr; Back to boxes</a></p>
-</body></html>
+	fmt.Fprintf(w, `</body></html>
 `)
 }
 
@@ -579,8 +577,8 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 </style>
 </head><body>
 <h1>Users</h1>
+<p><a href="/debug">/debug</a> | <a href="/debug/users?format=json">json</a></p>
 <p>Regular users: %d | Login-with-exe users: %d | Total: %d</p>
-<p><a href="/debug/users?format=json">View as JSON</a></p>
 `, regularCount, loginWithExeCount, len(users))
 
 	if len(users) == 0 {
@@ -677,7 +675,6 @@ document.getElementById('confirmInput').addEventListener('input', function() {
     document.getElementById('confirmBtn').disabled = (this.value !== expected);
 });
 </script>
-<p><a href="/debug">Back to debug index</a></p>
 </body></html>
 `)
 }
@@ -852,7 +849,7 @@ th { background: #f5f5f5; }
 </style>
 </head><body>
 <h1>Exelets</h1>
-<p><a href="/debug/exelets?format=json">View as JSON</a></p>
+<p><a href="/debug">/debug</a> | <a href="/debug/exelets?format=json">json</a></p>
 `)
 
 	if len(exelets) == 0 {
@@ -896,8 +893,7 @@ th { background: #f5f5f5; }
 		fmt.Fprintf(w, "</table>\n")
 	}
 
-	fmt.Fprintf(w, `<p><a href="/debug">Back to debug index</a></p>
-</body></html>
+	fmt.Fprintf(w, `</body></html>
 `)
 }
 
