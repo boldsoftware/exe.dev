@@ -201,9 +201,7 @@ function ConversationDrawer({
                       <div className="conversation-title">
                         {getConversationPreview(conversation)}
                       </div>
-                      <div className="conversation-date">
-                        {formatDate(conversation.updated_at)}
-                      </div>
+                      <div className="conversation-date">{formatDate(conversation.updated_at)}</div>
                       {conversation.cwd && (
                         <div className="conversation-cwd" title={conversation.cwd}>
                           {conversation.cwd}

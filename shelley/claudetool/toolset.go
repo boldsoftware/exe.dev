@@ -55,9 +55,9 @@ type ToolSetConfig struct {
 // ToolSet holds a set of tools for a single conversation.
 // Each conversation should have its own ToolSet.
 type ToolSet struct {
-	tools     []*llm.Tool
-	cleanup   func()
-	wd        *MutableWorkingDir
+	tools   []*llm.Tool
+	cleanup func()
+	wd      *MutableWorkingDir
 }
 
 // Tools returns the tools in this set.

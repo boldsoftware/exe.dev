@@ -483,7 +483,7 @@ func TestKeywordToolWithLLMProvider(t *testing.T) {
 	// Create a temp directory with a test file to search
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "test.txt")
-	if err := os.WriteFile(testFile, []byte("this is a test file\n"), 0644); err != nil {
+	if err := os.WriteFile(testFile, []byte("this is a test file\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
