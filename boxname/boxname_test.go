@@ -69,15 +69,18 @@ func TestReservedPortSuffixes(t *testing.T) {
 		}
 	}
 
-	// Names matching ^p[0-9]*$ should be invalid
+	// Names matching ^(p|port)[0-9]*$ should be invalid
 	invalidPOnlyNames := []string{
 		"p8080",
 		"p80800",
 		"p808000",
+		"port80",
+		"port8080",
+		"port80800",
 	}
 	for _, name := range invalidPOnlyNames {
 		if IsValid(name) {
-			t.Errorf("Name %q should be invalid (reserved p+digits pattern)", name)
+			t.Errorf("Name %q should be invalid (reserved port pattern)", name)
 		}
 	}
 

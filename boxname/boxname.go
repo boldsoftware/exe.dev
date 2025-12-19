@@ -84,9 +84,9 @@ var (
 // Names ending with -NNN, -pNNN, or -portNNN are reserved for possible future port signifier suffixes.
 var reservedSuffixRE = regexp.MustCompile(`-(p|port)?[0-9]+$`)
 
-// reservedFullNameRE hold full name rejection patterns.
-// p80, p8080, port9000 etc are reserved for possible future port subdomains.
-var reservedFullNameRE = regexp.MustCompile(`^p[0-9]*$`)
+// reservedFullNameRE holds full name rejection patterns.
+// p80, p8080, port8080, port9000 etc are reserved for possible future port subdomains.
+var reservedFullNameRE = regexp.MustCompile(`^(p|port)[0-9]*$`)
 
 // nameFormatRE matches valid box name format:
 // starts with letter, contains only lowercase letters/numbers/hyphens, no consecutive hyphens, doesn't end with hyphen
