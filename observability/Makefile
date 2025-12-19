@@ -1,4 +1,4 @@
-.PHONY: deploy-grafana deploy-prometheus deploy-node-exporter check-node
+.PHONY: deploy-grafana deploy-prometheus deploy-node-exporter typecheck
 
 # Hosts to deploy node-exporter to
 HOSTS := mon exed-02 exe-ctr-02 exe-ctr-03 ci.crocodile-vector.ts.net exed-staging-01 exe-ctr-staging-01
@@ -6,27 +6,31 @@ HOSTS := mon exed-02 exe-ctr-02 exe-ctr-03 ci.crocodile-vector.ts.net exed-stagi
 # Grafana configuration
 GRAFANA_URL := https://grafana.crocodile-vector.ts.net/
 
-# Check if node is installed
-check-node:
-	@if ! command -v node >/dev/null 2>&1; then \
-		echo "Error: Node.js is not installed"; \
-		echo "Please install Node.js (e.g., 'brew install node' on Mac)"; \
-		exit 1; \
-	fi
+# Node environment directory
+NODEENV := .nodeenv
+
+# Bootstrap Node.js environment via uv nodeenv
+$(NODEENV):
+	uv tool run nodeenv --node=lts $(NODEENV)
+	$(NODEENV)/bin/npm install
+
+node_modules: $(NODEENV) package.json
+	$(NODEENV)/bin/npm install
+	touch node_modules
+
+# Run TypeScript type checking
+typecheck: node_modules
+	$(NODEENV)/bin/npx tsc --noEmit
 
 # Deploy Grafana dashboards
-deploy-grafana: check-node
-	@if [ ! -d "node_modules" ]; then \
-		echo "Installing npm dependencies..."; \
-		npm install; \
-	fi
+deploy-grafana: node_modules
 	@if [ -z "$(GRAFANA_BEARER_TOKEN)" ]; then \
 		echo "Error: GRAFANA_BEARER_TOKEN environment variable is not set"; \
 		echo "Please set it with: export GRAFANA_BEARER_TOKEN=your_token"; \
 		exit 1; \
 	fi
 	@echo "Deploying Grafana dashboards to $(GRAFANA_URL)..."
-	GRAFANA_URL=$(GRAFANA_URL) ./node_modules/.bin/tsx dashboards.mts
+	GRAFANA_URL=$(GRAFANA_URL) $(NODEENV)/bin/npx tsx dashboards.mts
 
 # Deploy Prometheus configuration
 deploy-prometheus:

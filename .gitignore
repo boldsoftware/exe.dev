@@ -9,6 +9,7 @@ ghuser/whoami.sqlite3*
 !.vscode/launch.json
 !.vscode/tasks.json
 node_modules/
+.nodeenv/
 deps/sshpiper/sshpiperd
 deps/sshpiper/metrics
 /cmd/exed/exed
