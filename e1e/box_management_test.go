@@ -869,13 +869,13 @@ func TestNewBoxVariants(t *testing.T) {
 
 	pty, _, keyFile, email := registerForExeDev(t)
 
-	// Test both long name (63 chars, DNS limit) and --no-email flag together.
+	// Test both long name (52 chars, the max) and --no-email flag together.
 	// For no-email, poison the inbox - email server will panic if email arrives before process ends.
 	Env.email.poisonInbox(email)
 
 	boxName := boxName(t)
-	if len(boxName) < 63 {
-		boxName += strings.Repeat("a", 63-len(boxName))
+	if len(boxName) < 52 {
+		boxName += strings.Repeat("a", 52-len(boxName))
 		Env.addCanonicalization(boxName, "BOX_NAME")
 	}
 	pty.sendLine(fmt.Sprintf("new --name=%s -no-email", boxName))

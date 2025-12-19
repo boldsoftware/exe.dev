@@ -74,7 +74,7 @@ func init() {
 var (
 	// errInvalidNameFormat is the default error message returned for routine invalid vm names.
 	// The aim is to helpfully guide users to pick valid names.
-	errInvalidNameFormat = errors.New("invalid VM name, must be 5-63 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-vm-name)")
+	errInvalidNameFormat = errors.New("invalid VM name, must be 5-52 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-vm-name)")
 	// errUnavailableName is the error returned for vm names that are denylisted or reserved.
 	// It is intentionally ambiguous.
 	errUnavailableName = errors.New("invalid VM name: this VM name is not available")
@@ -102,7 +102,9 @@ func Valid(name string) error {
 	if len(name) < 5 {
 		return errInvalidNameFormat
 	}
-	if len(name) > 63 {
+	// Max length is 52 (not the DNS label limit of 63) so we can safely
+	// append "-port12345" (11 chars) if we implement port-specific subdomains.
+	if len(name) > 52 {
 		return errInvalidNameFormat
 	}
 
