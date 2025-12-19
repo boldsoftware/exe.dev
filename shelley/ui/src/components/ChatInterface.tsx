@@ -1255,6 +1255,7 @@ function ChatInterface({
         autoFocus={true}
         injectedText={diffCommentText}
         onClearInjectedText={() => setDiffCommentText("")}
+        persistKey={conversationId ? undefined : "new-conversation"}
       />
 
       {/* Directory Picker Modal */}

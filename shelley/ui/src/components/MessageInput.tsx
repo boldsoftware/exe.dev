@@ -50,7 +50,11 @@ interface MessageInputProps {
   onFocus?: () => void;
   injectedText?: string;
   onClearInjectedText?: () => void;
+  /** If set, persist draft message to localStorage under this key */
+  persistKey?: string;
 }
+
+const PERSIST_KEY_PREFIX = "shelley_draft_";
 
 function MessageInput({
   onSend,
@@ -59,8 +63,15 @@ function MessageInput({
   onFocus,
   injectedText,
   onClearInjectedText,
+  persistKey,
 }: MessageInputProps) {
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(() => {
+    // Load persisted draft if persistKey is set
+    if (persistKey) {
+      return localStorage.getItem(PERSIST_KEY_PREFIX + persistKey) || "";
+    }
+    return "";
+  });
   const [submitting, setSubmitting] = useState(false);
   const [uploadsInProgress, setUploadsInProgress] = useState(0);
   const [dragCounter, setDragCounter] = useState(0);
@@ -280,6 +291,10 @@ function MessageInput({
         await onSend(messageToSend);
         // Only clear on success
         setMessage("");
+        // Clear persisted draft on successful send
+        if (persistKey) {
+          localStorage.removeItem(PERSIST_KEY_PREFIX + persistKey);
+        }
       } catch {
         // Keep the message on error so user can retry
       } finally {
@@ -307,6 +322,17 @@ function MessageInput({
   useEffect(() => {
     adjustTextareaHeight();
   }, [message]);
+
+  // Persist draft to localStorage when persistKey is set
+  useEffect(() => {
+    if (persistKey) {
+      if (message) {
+        localStorage.setItem(PERSIST_KEY_PREFIX + persistKey, message);
+      } else {
+        localStorage.removeItem(PERSIST_KEY_PREFIX + persistKey);
+      }
+    }
+  }, [message, persistKey]);
 
   useEffect(() => {
     if (autoFocus && textareaRef.current) {
