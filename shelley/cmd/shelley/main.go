@@ -89,6 +89,7 @@ func runServe(global GlobalConfig, args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	port := fs.String("port", "9000", "Port to listen on")
 	systemdActivation := fs.Bool("systemd-activation", false, "Use systemd socket activation (listen on fd from systemd)")
+	requireHeader := fs.String("require-header", "", "Require this header on all API requests (e.g., X-Exedev-Userid)")
 	fs.Parse(args)
 
 	logger := setupLogging(global.Debug)
@@ -119,7 +120,7 @@ func runServe(global GlobalConfig, args []string) {
 	defer toolsCleanup()
 
 	// Create server
-	svr := server.NewServer(database, llmManager, tools, logger, global.PredictableOnly, llmConfig.TerminalURL, llmConfig.DefaultModel, llmConfig.Links)
+	svr := server.NewServer(database, llmManager, tools, logger, global.PredictableOnly, llmConfig.TerminalURL, llmConfig.DefaultModel, *requireHeader, llmConfig.Links)
 
 	var err error
 	if *systemdActivation {

@@ -3,6 +3,12 @@ import { Conversation, StreamResponse, ChatRequest } from "../types";
 class ApiService {
   private baseUrl = "/api";
 
+  // Common headers for state-changing requests (CSRF protection)
+  private postHeaders = {
+    "Content-Type": "application/json",
+    "X-Shelley-Request": "1",
+  };
+
   async getConversations(): Promise<Conversation[]> {
     const response = await fetch(`${this.baseUrl}/conversations`);
     if (!response.ok) {
@@ -14,9 +20,7 @@ class ApiService {
   async sendMessageWithNewConversation(request: ChatRequest): Promise<{ conversation_id: string }> {
     const response = await fetch(`${this.baseUrl}/conversations/new`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: this.postHeaders,
       body: JSON.stringify(request),
     });
     if (!response.ok) {
@@ -36,9 +40,7 @@ class ApiService {
   async sendMessage(conversationId: string, request: ChatRequest): Promise<void> {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/chat`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: this.postHeaders,
       body: JSON.stringify(request),
     });
     if (!response.ok) {
@@ -53,6 +55,7 @@ class ApiService {
   async cancelConversation(conversationId: string): Promise<void> {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/cancel`, {
       method: "POST",
+      headers: { "X-Shelley-Request": "1" },
     });
     if (!response.ok) {
       throw new Error(`Failed to cancel conversation: ${response.statusText}`);
@@ -94,6 +97,7 @@ class ApiService {
   async archiveConversation(conversationId: string): Promise<Conversation> {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/archive`, {
       method: "POST",
+      headers: { "X-Shelley-Request": "1" },
     });
     if (!response.ok) {
       throw new Error(`Failed to archive conversation: ${response.statusText}`);
@@ -104,6 +108,7 @@ class ApiService {
   async unarchiveConversation(conversationId: string): Promise<Conversation> {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/unarchive`, {
       method: "POST",
+      headers: { "X-Shelley-Request": "1" },
     });
     if (!response.ok) {
       throw new Error(`Failed to unarchive conversation: ${response.statusText}`);
@@ -114,6 +119,7 @@ class ApiService {
   async deleteConversation(conversationId: string): Promise<void> {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/delete`, {
       method: "POST",
+      headers: { "X-Shelley-Request": "1" },
     });
     if (!response.ok) {
       throw new Error(`Failed to delete conversation: ${response.statusText}`);

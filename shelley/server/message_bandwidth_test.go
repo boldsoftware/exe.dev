@@ -26,7 +26,7 @@ func TestMessageSentOnlyOnce(t *testing.T) {
 	llmManager := &testLLMManager{service: predictableService}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", nil)
+	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", "", nil)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
@@ -160,7 +160,7 @@ func TestContextWindowSizeInSSE(t *testing.T) {
 	llmManager := &testLLMManager{service: predictableService}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", nil)
+	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", "", nil)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)

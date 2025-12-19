@@ -25,7 +25,7 @@ func TestMessageQueuedDuringThinking(t *testing.T) {
 	predictableService := loop.NewPredictableService()
 	llmManager := &testLLMManager{service: predictableService}
 	logger := slog.Default()
-	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", nil)
+	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", "", nil)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
@@ -156,7 +156,7 @@ func TestContextPreservedAfterCancel(t *testing.T) {
 	predictableService := loop.NewPredictableService()
 	llmManager := &testLLMManager{service: predictableService}
 	logger := slog.Default()
-	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", nil)
+	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", "", nil)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)

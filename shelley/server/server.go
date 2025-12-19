@@ -228,11 +228,12 @@ type Server struct {
 	terminalURL         string
 	defaultModel        string
 	links               []Link
+	requireHeader       string
 	conversationGroup   singleflight.Group[string, *ConversationManager]
 }
 
 // NewServer creates a new server instance
-func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logger *slog.Logger, predictableOnly bool, terminalURL, defaultModel string, links []Link) *Server {
+func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logger *slog.Logger, predictableOnly bool, terminalURL, defaultModel, requireHeader string, links []Link) *Server {
 	return &Server{
 		db:                  database,
 		llmManager:          llmManager,
@@ -242,6 +243,7 @@ func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logge
 		predictableOnly:     predictableOnly,
 		terminalURL:         terminalURL,
 		defaultModel:        defaultModel,
+		requireHeader:       requireHeader,
 		links:               links,
 	}
 }
@@ -704,9 +706,12 @@ func (s *Server) StartWithListener(listener net.Listener) error {
 	mux := http.NewServeMux()
 	s.RegisterRoutes(mux)
 
-	// Add middleware
+	// Add middleware (applied in reverse order: last added = first executed)
 	handler := LoggerMiddleware(s.logger)(mux)
-	handler = CORSMiddleware()(handler)
+	handler = CSRFMiddleware()(handler)
+	if s.requireHeader != "" {
+		handler = RequireHeaderMiddleware(s.requireHeader)(handler)
+	}
 
 	httpServer := &http.Server{
 		Handler: handler,

@@ -40,7 +40,7 @@ func TestCancelAfterToolCompletesCreatesDuplicateToolResult(t *testing.T) {
 	bashTool := &claudetool.BashTool{}
 	tools := []*llm.Tool{bashTool.Tool()}
 
-	server := NewServer(database, llmManager, tools, logger, true, "", "predictable", nil)
+	server := NewServer(database, llmManager, tools, logger, true, "", "predictable", "", nil)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)

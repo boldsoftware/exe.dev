@@ -70,7 +70,7 @@ func NewClaudeTestHarness(t *testing.T) *ClaudeTestHarness {
 		bashTool.Tool(),
 	}
 
-	server := NewServer(database, llmManager, tools, logger, true, "", "claude", nil)
+	server := NewServer(database, llmManager, tools, logger, true, "", "claude", "", nil)
 	h.server = server
 
 	return h

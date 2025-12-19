@@ -51,7 +51,7 @@ func TestCancelWithPredictableModel(t *testing.T) {
 	// Register the bash tool so the sleep command actually runs and can be cancelled
 	bashTool := &claudetool.BashTool{}
 	tools := []*llm.Tool{bashTool.Tool()}
-	server := NewServer(database, llmManager, tools, logger, true, "", "predictable", nil)
+	server := NewServer(database, llmManager, tools, logger, true, "", "predictable", "", nil)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
@@ -248,7 +248,7 @@ func TestCancelWithNoActiveConversation(t *testing.T) {
 	llmManager := &testLLMManager{service: predictableService}
 	logger := slog.Default()
 
-	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", nil)
+	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", "", nil)
 
 	// Create a conversation but don't start it
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
@@ -287,7 +287,7 @@ func TestCancelDuringTextGeneration(t *testing.T) {
 
 	llmManager := &testLLMManager{service: predictableService}
 	logger := slog.Default()
-	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", nil)
+	server := NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "predictable", "", nil)
 
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
 	if err != nil {

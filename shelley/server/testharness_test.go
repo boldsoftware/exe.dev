@@ -43,7 +43,7 @@ func NewTestHarness(t *testing.T) *TestHarness {
 	bashTool := &claudetool.BashTool{}
 	tools := []*llm.Tool{bashTool.Tool()}
 
-	server := NewServer(database, llmManager, tools, logger, true, "", "predictable", nil)
+	server := NewServer(database, llmManager, tools, logger, true, "", "predictable", "", nil)
 
 	return &TestHarness{
 		t:       t,
