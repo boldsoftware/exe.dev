@@ -175,11 +175,8 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 	})
 
 	testinfra.AddCleanup(func() {
-		if env.exedGuidLogC != nil {
-			close(env.exedGuidLogC)
-			for line := range env.exedGuidLogC {
-				fmt.Fprintf(os.Stderr, "\n\nexed log with guid during e1e run:\n%s\n\n", line)
-			}
+		for line := range env.exed.GUIDLog {
+			fmt.Fprintf(os.Stderr, "\n\nexed log with guid during e1e run:\n%s\n\n", line)
 		}
 	})
 
@@ -191,8 +188,7 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 	})
 
 	testinfra.AddCleanup(func() {
-		close(env.exedSlogErrC)
-		for line := range env.exedSlogErrC {
+		for line := range env.exed.Errors {
 			// TODO(philip): TestNewWithPrompt triggers this, because Shelley talks
 			// to the gateway and even though it's supposed to use "predictable" model, we get an error.
 			// This is an unrelated bug uncovered when I was trying to change how the
@@ -292,8 +288,8 @@ var Env *testEnv
 type testEnv struct {
 	sshProxy      *testinfra.TCPProxy
 	exedHTTPProxy *testinfra.TCPProxy
-	exed          exedInstance
-	piperd        piperdInstance
+	exed          *testinfra.ExedInstance
+	piperd        *piperdInstance
 	exelet        *testinfra.ExeletInstance
 	email         *emailServer
 	exedSlogErrC  chan string // receives exed ERROR log lines
@@ -306,36 +302,10 @@ type testEnv struct {
 	canonicalize   map[string]string // maps non-deterministic strings to deterministic ones
 }
 
-type exedInstance struct {
-	DBPath          string
-	Cmd             *exec.Cmd
-	Ctx             context.Context // cancelled when Cmd exits
-	SSHPort         int             // direct SSH port, not via sshpiper
-	HTTPPort        int
-	PiperPluginPort int
-	CoverDir        string // directory for Go coverage artifacts (GOCOVERDIR)
-	ExtraPorts      []int  // additional proxy ports
-}
-
 type piperdInstance struct {
 	Cmd     *exec.Cmd
 	Ctx     context.Context // cancelled when Cmd exits
 	SSHPort int
-}
-
-type exeletInstance struct {
-	Address      string             // e.g., "tcp://192.168.5.15:9080"
-	HTTPAddress  string             // e.g., "http://192.168.5.15:9081"
-	Ctx          context.Context    // cancelled when Cmd exits
-	Cmd          *exec.Cmd          // SSH command running exelet
-	CmdCancel    context.CancelFunc // cancel function for exelet context
-	DataDir      string             // temp directory for exelet data (local or remote path)
-	RemoteHost   string             // SSH host if running remotely (e.g., "lima-exe-ctr-tests")
-	TunnelCmd    *exec.Cmd          // SSH tunnel process if using reverse tunnel
-	TunnelCancel context.CancelFunc // cancel function for tunnel context
-	BridgeName   string             // bridge name for network isolation
-	ZFSDataset   string             // ZFS dataset for storage isolation
-	CoverDir     string             // remote directory for Go coverage artifacts (GOCOVERDIR)
 }
 
 func (e *testEnv) sshPort() int {
@@ -408,8 +378,8 @@ func (e *testEnv) context(t *testing.T) context.Context {
 	c, cancel := context.WithCancelCause(t.Context())
 	go func() {
 		select {
-		case <-e.exed.Ctx.Done():
-			cancel(context.Cause(e.exed.Ctx))
+		case <-e.exed.Exited:
+			cancel(e.exed.Cause())
 		case <-e.exelet.Exited:
 			cancel(e.exelet.Cause())
 		case <-e.piperd.Ctx.Done():
@@ -425,39 +395,10 @@ func (e *testEnv) Close() error {
 		return nil
 	}
 
-	// Check that all boxes have been cleaned up before killing exed
-	var checkErr error
-	if e.exed.Cmd != nil && e.exed.Cmd.Process != nil {
-		if err := e.checkBoxesCleanedUp(); err != nil {
-			slog.Error("boxes not cleaned up", "error", err)
-			checkErr = err
-			// Continue with cleanup even if check failed
-		}
+	if e.exed != nil {
+		e.exed.Stop(context.Background(), testRunID)
 	}
 
-	if e.exed.DBPath != "" {
-		os.Remove(e.exed.DBPath)
-	}
-	// Gracefully stop exed with SIGTERM so it writes coverage data
-	if e.exed.Cmd != nil && e.exed.Cmd.Process != nil {
-		slog.Info("sending SIGTERM to exed")
-		e.exed.Cmd.Process.Signal(syscall.SIGTERM)
-		// Wait for graceful exit (up to 5 seconds)
-		done := make(chan struct{})
-		go func() {
-			<-e.exed.Ctx.Done()
-			close(done)
-		}()
-		select {
-		case <-done:
-			// Graceful exit
-		case <-time.After(5 * time.Second):
-			// Forcefully kill if still running
-			slog.Warn("exed did not exit gracefully, killing")
-			e.exed.Cmd.Process.Kill()
-			<-e.exed.Ctx.Done()
-		}
-	}
 	if e.piperd.Cmd != nil && e.piperd.Cmd.Process != nil {
 		e.piperd.Cmd.Process.Kill()
 		<-e.piperd.Ctx.Done()
@@ -492,53 +433,6 @@ func (e *testEnv) Close() error {
 		} else {
 			slog.Info("wrote merged coverage profile", "path", *flagCoverProfile, "sources", coverDirs)
 		}
-	}
-	return checkErr
-}
-
-func (e *testEnv) checkBoxesCleanedUp() error {
-	url := fmt.Sprintf("http://localhost:%d/debug/boxes?format=json", e.exed.HTTPPort)
-	resp, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("failed to check boxes: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code checking boxes: %d", resp.StatusCode)
-	}
-
-	var boxes []struct {
-		Host   string `json:"host"`
-		ID     string `json:"id"`
-		Name   string `json:"name"`
-		Status string `json:"status"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&boxes); err != nil {
-		return fmt.Errorf("failed to decode boxes JSON: %w", err)
-	}
-
-	// Log all boxes for debugging
-	if len(boxes) > 0 {
-		var allBoxNames []string
-		for _, box := range boxes {
-			allBoxNames = append(allBoxNames, box.Name)
-		}
-		slog.Info("boxes at cleanup", "boxes", allBoxNames)
-	}
-
-	// Only check boxes from this specific test run
-	boxPrefix := fmt.Sprintf("e1e-%s-", testRunID)
-	var e1eBoxes []string
-	for _, box := range boxes {
-		if strings.HasPrefix(box.Name, boxPrefix) {
-			e1eBoxes = append(e1eBoxes, box.Name)
-		}
-	}
-
-	if len(e1eBoxes) > 0 {
-		return fmt.Errorf("e1e boxes not cleaned up: %v", e1eBoxes)
 	}
 
 	return nil
@@ -619,22 +513,27 @@ func setup(ctrHost string) (*testEnv, error) {
 	env.addCanonicalization(exelet.Address, "EXELET_ADDRESS")
 	env.addCanonicalization(exelet.HTTPAddress, "EXELET_HTTP_ADDRESS")
 
+	var exedLog io.Writer
+	if *flagVerboseExed {
+		exedLog = logFileFor("exed")
+	}
+
 	// TODO: build piperd concurrently with starting exed for faster startup
 	// Pass "0,0" to let the proxy listeners allocate their own port numbers
-	ei, err := startExed(ctrHost, es.port, sshProxy.Port(), []int{0, 0}, exelet.Address, env.exedSlogErrC, env.exedGuidLogC)
+	ei, err := testinfra.StartExed(context.Background(), es.port, sshProxy.Port(), []int{0, 0}, []string{exelet.Address}, exedLog, *flagVerbosePorts)
 	if err != nil {
 		return env, err
 	}
-	env.exed = *ei
+	env.exed = ei
 	env.addCanonicalization(ei.SSHPort, "EXED_SSH_PORT")
 	env.addCanonicalization(ei.HTTPPort, "EXED_HTTP_PORT")
 	env.addCanonicalization(ei.PiperPluginPort, "EXED_PIPER_PLUGIN_PORT")
 
-	pi, err := startPiperd(*ei)
+	pi, err := startPiperd(ei)
 	if err != nil {
 		return env, err
 	}
-	env.piperd = *pi
+	env.piperd = pi
 	env.addCanonicalization(pi.SSHPort, "PIPERD_PORT")
 	if *flagVerbosePorts {
 		slog.Info("piperd listening", "port", pi.SSHPort)
@@ -649,7 +548,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	return env, nil
 }
 
-func startPiperd(ei exedInstance) (*piperdInstance, error) {
+func startPiperd(ei *testinfra.ExedInstance) (*piperdInstance, error) {
 	start := time.Now()
 	slog.Info("starting piperd")
 	tmpFile, err := os.CreateTemp("", "sshpiperd_test_key_*.pem")
@@ -669,7 +568,7 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 		"--server-key-generate-mode", "always",
 		"--server-key", tmpFile.Name(),
 		"grpc",
-		"--endpoint=localhost:"+fmt.Sprint(ei.PiperPluginPort),
+		"--endpoint=localhost:"+strconv.Itoa(ei.PiperPluginPort),
 		"--insecure",
 	)
 	piperdCmd.Dir = filepath.Join("..", "deps", "sshpiper") // run from sshpiper dir so it finds its go.mod
@@ -767,256 +666,6 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 	}
 
 	slog.Info("started piperd", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
-	return instance, nil
-}
-
-func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts []int, exeletAddr string, exedSlogErrC, exedGuidLogC chan string) (*exedInstance, error) {
-	start := time.Now()
-	slog.Info("starting exed")
-	// Choose binary: use PREBUILT_EXED if provided, otherwise build a temp binary.
-	var binPath string
-	if prebuilt := os.Getenv("PREBUILT_EXED"); prebuilt != "" {
-		st, err := os.Stat(prebuilt)
-		if err != nil {
-			return nil, fmt.Errorf("PREBUILT_EXED not usable: %w", err)
-		}
-		if st.IsDir() {
-			return nil, fmt.Errorf("PREBUILT_EXED points to a directory, need a file: %s", prebuilt)
-		}
-		binPath = prebuilt
-	} else {
-		bin, err := os.CreateTemp("", "exed_test_bin_*")
-		if err != nil {
-			return nil, fmt.Errorf("failed to create temp file: %w", err)
-		}
-		bin.Close()
-		binPath = bin.Name()
-		buildCmd := exec.Command("go", "build", "-race", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "../cmd/exed")
-		if out, err := buildCmd.CombinedOutput(); err != nil {
-			return nil, fmt.Errorf("failed to build exed: %w\n%s", err, out)
-		}
-	}
-
-	shm := "/dev/shm"
-	if st, err := os.Stat(shm); err != nil || !st.IsDir() {
-		shm = ""
-	}
-	dbPath, err := os.CreateTemp(shm, "exed_test_*.db")
-	if err != nil {
-		return nil, err
-	}
-	dbPath.Close()
-
-	coverDir, err := os.MkdirTemp("", "e1e-exed-cov-*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create coverage dir: %w", err)
-	}
-
-	emailServerURL := fmt.Sprintf("http://localhost:%d", emailServerPort)
-	whoamiPath := "../ghuser/whoami.sqlite3"
-	if os.Getenv("CI") != "" {
-		whoamiPath = "/root/whoami.sqlite3"
-	}
-	exedCmd := exec.Command(binPath,
-		"-db="+dbPath.Name(),
-		"-dev=test",
-		"-http=:0",
-		"-ssh=:0",
-		"-piper-plugin=:0",
-		"-piperd-port="+fmt.Sprint(piperPort),
-		"-fake-email-server="+emailServerURL,
-		"-gh-whoami="+whoamiPath,
-		"-exelet-addresses="+exeletAddr,
-	)
-	// Convert extra proxy ports to comma-delimited string
-	extraPortsStr := ""
-	if len(extraProxyPorts) > 0 {
-		portStrs := make([]string, len(extraProxyPorts))
-		for i, port := range extraProxyPorts {
-			portStrs[i] = fmt.Sprintf("%d", port)
-		}
-		extraPortsStr = strings.Join(portStrs, ",")
-	}
-
-	exedCmd.Env = append(
-		os.Environ(),
-		"LOG_FORMAT=json",
-		"LOG_LEVEL=debug",
-		"CTR_HOST="+ctrHost,
-		"GOCOVERDIR="+coverDir,
-		"TEST_PROXY_PORTS="+extraPortsStr,
-	)
-	if os.Getenv("CI") != "" {
-		exedCmd.Env = append(exedCmd.Env, "GITHUB_TOKEN=fake-but-not-empty")
-	}
-	// Ensure LLM gateway API keys are set for e1e tests. If real keys aren't provided,
-	// use fake keys so requests can reach the external APIs (which will reject them
-	// with auth errors, but that still proves the gateway path works end-to-end).
-	if os.Getenv("ANTHROPIC_API_KEY") == "" {
-		exedCmd.Env = append(exedCmd.Env, "ANTHROPIC_API_KEY=fake-key-for-e1e-test")
-	}
-	if os.Getenv("OPENAI_API_KEY") == "" {
-		exedCmd.Env = append(exedCmd.Env, "OPENAI_API_KEY=fake-key-for-e1e-test")
-	}
-	if os.Getenv("FIREWORKS_API_KEY") == "" {
-		exedCmd.Env = append(exedCmd.Env, "FIREWORKS_API_KEY=fake-key-for-e1e-test")
-	}
-	cmdOut, err := exedCmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
-	}
-	exedCmd.Stderr = exedCmd.Stdout
-
-	if err := exedCmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start exed: %w", err)
-	}
-
-	// Parse output to find ports
-	var teeMu sync.Mutex
-	tee := new(bytes.Buffer)
-	type listen struct {
-		typ  string
-		port int
-	}
-	listeningC := make(chan listen)
-	proxyPortsC := make(chan []int, 1)
-	startedC := make(chan bool)
-	go func() {
-		seenPanic := false
-		scan := bufio.NewScanner(cmdOut)
-		for scan.Scan() {
-			line := scan.Bytes()
-			teeMu.Lock()
-			tee.Write(line)
-			tee.WriteString("\n")
-			teeMu.Unlock()
-			lineStr := string(line)
-			if *flagVerboseExed {
-				fmt.Fprintln(logFileFor("exed"), lineStr)
-			}
-			if seenPanic {
-				fmt.Println(lineStr)
-			}
-			// Parse JSON log line.
-			if !json.Valid(line) {
-				// Invalid JSON could be a stray fmt.Printf...or a panic.
-				// If it's a panic, dup all output to stdout.
-				if bytes.Contains(line, []byte("panic:")) {
-					seenPanic = true
-					// Dump what we have so far.
-					// From here on out, we'll print as we go.
-					teeMu.Lock()
-					fmt.Print(tee.String())
-					teeMu.Unlock()
-				}
-				if guidRegex.MatchString(lineStr) {
-					select {
-					case exedGuidLogC <- lineStr:
-					default:
-					}
-				}
-				continue
-			}
-			var entry map[string]any
-			if err := json.Unmarshal(line, &entry); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to parse log line: %v\n", err)
-				continue
-			}
-			if fmt.Sprint(entry["level"]) == "ERROR" {
-				select {
-				case exedSlogErrC <- lineStr:
-				default:
-				}
-			}
-			if guid, _ := entry["guid"].(string); guid != "" {
-				select {
-				case exedGuidLogC <- lineStr:
-				default:
-				}
-			}
-			switch entry["msg"] {
-			case "listening":
-				listeningC <- listen{typ: entry["type"].(string), port: int(entry["port"].(float64))}
-				if *flagVerbosePorts {
-					slog.Info("exed listening", "type", entry["type"], "port", entry["port"])
-				}
-			case "proxy listeners set up":
-				// Parse proxy ports from the "ports" array in the log entry
-				if portsVal, ok := entry["ports"].([]any); ok {
-					ports := make([]int, len(portsVal))
-					for i, p := range portsVal {
-						ports[i] = int(p.(float64))
-					}
-					select {
-					case proxyPortsC <- ports:
-					default:
-					}
-					if *flagVerbosePorts {
-						slog.Info("exed proxy ports", "ports", ports)
-					}
-				}
-			case "server started":
-				startedC <- true
-			}
-		}
-	}()
-
-	timeout := time.Minute
-	if os.Getenv("CI") != "" {
-		timeout = 2 * time.Minute
-	}
-
-	var sshPort, httpPort, piperPluginPort int
-	var proxyPorts []int
-	expectedProxyPorts := len(extraProxyPorts)
-ProcessLogs:
-	for {
-		select {
-		case ln := <-listeningC:
-			switch ln.typ {
-			case "ssh":
-				sshPort = ln.port
-			case "http":
-				httpPort = ln.port
-			case "plugin":
-				piperPluginPort = ln.port
-			}
-		case proxyPorts = <-proxyPortsC:
-			// Received proxy ports from "proxy listeners set up" log message
-		case <-startedC:
-			break ProcessLogs
-		case <-time.After(timeout):
-			teeMu.Lock()
-			out := tee.String()
-			teeMu.Unlock()
-			return nil, fmt.Errorf("timeout waiting for exed to start. Output:\n%s", out)
-		}
-	}
-	if sshPort == 0 || httpPort == 0 || piperPluginPort == 0 {
-		return nil, fmt.Errorf("failed to start all required ports")
-	}
-	if len(proxyPorts) != expectedProxyPorts {
-		return nil, fmt.Errorf("expected %d proxy ports, got %d", expectedProxyPorts, len(proxyPorts))
-	}
-
-	cmdCtx, cancel := context.WithCancel(context.Background())
-	go func() {
-		exedCmd.Wait()
-		cancel()
-	}()
-
-	instance := &exedInstance{
-		DBPath:          dbPath.Name(),
-		Cmd:             exedCmd,
-		Ctx:             cmdCtx,
-		SSHPort:         sshPort,
-		HTTPPort:        httpPort,
-		PiperPluginPort: piperPluginPort,
-		CoverDir:        coverDir,
-		ExtraPorts:      proxyPorts,
-	}
-
-	slog.Info("started exed", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
 	return instance, nil
 }
 
