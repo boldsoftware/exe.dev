@@ -380,6 +380,7 @@ function Message({ message }: MessageProps) {
               toolResult={content.ToolResult}
               hasError={hasError}
               executionTime={executionTime}
+              display={content.Display}
             />
           );
         }
