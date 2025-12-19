@@ -2462,3 +2462,104 @@ svg {
     padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Print styles - looks like the chat window, just without chrome */
+@media print {
+  /* Reset page layout */
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  /* Hide interactive chrome but keep the header title */
+  .status-bar,
+  .message-input-container,
+  .drawer,
+  .backdrop,
+  .scroll-to-bottom-button,
+  .overflow-menu,
+  .context-menu,
+  .modal-overlay {
+    display: none !important;
+  }
+
+  /* Hide header buttons but keep the title */
+  .header-actions,
+  .header .btn-icon {
+    display: none !important;
+  }
+
+  /* Simplify header for print */
+  .header {
+    background: white !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    padding: 0.75rem 1rem !important;
+  }
+
+  .header-title {
+    font-size: 1rem !important;
+  }
+
+  /* Reset app container for print */
+  .app-container {
+    display: block !important;
+    height: auto !important;
+    background: white !important;
+  }
+
+  .main-content {
+    display: block !important;
+    height: auto !important;
+  }
+
+  /* Reset messages area to flow naturally */
+  .messages-area-wrapper {
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+    background: white !important;
+  }
+
+  .messages-container {
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+    background: white !important;
+  }
+
+  .messages-list {
+    background: white !important;
+  }
+
+  /* Hide empty state in print */
+  .empty-state {
+    display: none !important;
+  }
+
+  /* Keep message styling, just add page break hints */
+  .message {
+    page-break-inside: avoid;
+  }
+
+  /* Tool results */
+  .tool-result-details {
+    page-break-inside: avoid;
+  }
+
+  /* Code blocks */
+  pre,
+  code {
+    page-break-inside: avoid;
+  }
+
+  /* Screenshots and images - ensure they fit */
+  .screenshot-preview,
+  .screenshot-image,
+  .read-image-preview {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid;
+  }
+}
