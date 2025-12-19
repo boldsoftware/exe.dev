@@ -52,13 +52,22 @@ function MessageInput({ onSend, disabled = false, autoFocus = false, onFocus }: 
   };
 
   const handlePaste = async (event: React.ClipboardEvent) => {
-    // Check if the clipboard contains files
-    if (event.clipboardData && event.clipboardData.files.length > 0) {
-      const file = event.clipboardData.files[0];
-      event.preventDefault();
-
-      const cursorPos = textareaRef.current?.selectionStart ?? message.length;
-      await uploadFile(file, cursorPos);
+    // Check clipboard items (works on both desktop and mobile)
+    // Mobile browsers often don't populate clipboardData.files, but items works
+    const items = event.clipboardData?.items;
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind === "file") {
+          const file = item.getAsFile();
+          if (file) {
+            event.preventDefault();
+            const cursorPos = textareaRef.current?.selectionStart ?? message.length;
+            await uploadFile(file, cursorPos);
+            return;
+          }
+        }
+      }
     }
   };
 
