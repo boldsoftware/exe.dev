@@ -1503,6 +1503,67 @@ button {
   background: var(--gray-600);
 }
 
+/* Voice input button */
+.message-voice-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 0.25rem;
+  padding: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background-color 0.2s,
+    color 0.2s,
+    transform 0.1s;
+  cursor: pointer;
+}
+
+.message-voice-btn:hover:not(:disabled):not(.listening) {
+  background: var(--gray-100);
+  color: var(--text-primary);
+}
+
+.dark .message-voice-btn:hover:not(:disabled):not(.listening) {
+  background: var(--gray-700);
+}
+
+.message-voice-btn:active:not(:disabled):not(.listening) {
+  transform: scale(0.95);
+}
+
+.message-voice-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.message-voice-btn.listening,
+.message-voice-btn.listening:hover {
+  background: #dc2626;
+  color: white;
+  animation: pulse-voice 1.5s ease-in-out infinite;
+}
+
+.dark .message-voice-btn.listening,
+.dark .message-voice-btn.listening:hover {
+  background: #ef4444;
+  color: white;
+}
+
+@keyframes pulse-voice {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
 /* Drag and drop styles */
 .message-input-container {
   position: relative;
