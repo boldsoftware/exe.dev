@@ -1142,7 +1142,7 @@ function makeDevExeDashboard() {
     "Exelet CPU Usage",
     `100 - (avg by (instance) (irate(node_cpu_seconds_total{role="exelet",${STAGE_FILTER},mode="idle"}[5m])) * 100)`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 128, w: 8, h: 6 }),
+      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 128, w: 6, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1151,7 +1151,7 @@ function makeDevExeDashboard() {
     "Exelet Memory Usage",
     `(1 - (node_memory_MemAvailable_bytes{role="exelet",${STAGE_FILTER}} / node_memory_MemTotal_bytes{role="exelet",${STAGE_FILTER}})) * 100`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 8, y: 128, w: 8, h: 6 }),
+      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 6, y: 128, w: 6, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1160,7 +1160,16 @@ function makeDevExeDashboard() {
     "Exelet Memory Pressure",
     `rate(node_pressure_memory_waiting_seconds_total{role="exelet",${STAGE_FILTER}}[5m]) * 100`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).gridPos({ x: 16, y: 128, w: 8, h: 6 }),
+      panelCustomization: (x) => x.unit("percent").min(0).gridPos({ x: 12, y: 128, w: 6, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Exelet Error Log Rate",
+    `sum(rate(logs_total{job="exelet",level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (instance)`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 18, y: 128, w: 6, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1174,7 +1183,7 @@ function makeDevExeDashboard() {
     "Exed CPU Usage",
     `100 - (avg by (instance) (irate(node_cpu_seconds_total{role="exed",${STAGE_FILTER},mode="idle"}[5m])) * 100)`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 135, w: 8, h: 6 }),
+      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 135, w: 6, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1183,7 +1192,7 @@ function makeDevExeDashboard() {
     "Exed Memory Usage",
     `(1 - (node_memory_MemAvailable_bytes{role="exed",${STAGE_FILTER}} / node_memory_MemTotal_bytes{role="exed",${STAGE_FILTER}})) * 100`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 8, y: 135, w: 8, h: 6 }),
+      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 6, y: 135, w: 6, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1192,7 +1201,7 @@ function makeDevExeDashboard() {
     .title("Exed Network Traffic")
     .unit("Bps")
     .min(0)
-    .gridPos({ x: 16, y: 135, w: 8, h: 6 })
+    .gridPos({ x: 12, y: 135, w: 6, h: 6 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`irate(node_network_receive_bytes_total{role="exed",${STAGE_FILTER},device!="lo"}[5m])`)
@@ -1204,6 +1213,53 @@ function makeDevExeDashboard() {
         .legendFormat("{{instance}} tx")
     );
   dash.withPanel(exedNetworkPanel);
+
+  addTimeseriesChart(
+    "Exed Error Log Rate",
+    `sum(rate(logs_total{job="exed",level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (instance)`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 18, y: 135, w: 6, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  // ========== LOGGING ==========
+  dash.withRow(
+    new RowBuilder("Logging").gridPos({ x: 0, y: 141, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Warning Log Rate",
+    `sum(rate(logs_total{level="WARN",${STAGE_FILTER}}[$__rate_interval])) by (job, stage)`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 142, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}} {{job}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Error Log Rate",
+    `sum(rate(logs_total{level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (job, stage)`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 142, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{stage}} {{job}}"),
+    }
+  );
+
+  const logsOverTimePanel = new TimeseriesBuilder()
+    .title("Logs by Level")
+    .min(0)
+    .gridPos({ x: 16, y: 142, w: 8, h: 6 })
+    .stacking(
+      new StackingConfigBuilder()
+        .mode(StackingMode.Normal)
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(rate(logs_total{${STAGE_FILTER}}[$__rate_interval])) by (level)`)
+        .legendFormat("{{level}}")
+    );
+  dash.withPanel(logsOverTimePanel);
 
   return dash;
 }
