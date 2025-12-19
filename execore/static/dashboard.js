@@ -601,6 +601,14 @@ class CommandModal {
             command: `share set-private ${boxName}`
         });
     }
+
+    static setPort(boxName) {
+        cmdModal.open({
+            title: 'Set Proxy Port',
+            commandPrefix: `share port ${boxName}`,
+            inputPlaceholder: 'port (e.g. 8080)'
+        });
+    }
 }
 
 // Global instance
@@ -645,6 +653,7 @@ const openRemoveShareLinkModal = (boxName, token) => CommandModal.removeShareLin
 const openDeleteBoxModal = (boxName) => CommandModal.deleteBox(boxName);
 const openSetPublicModal = (boxName) => CommandModal.setPublic(boxName);
 const openSetPrivateModal = (boxName) => CommandModal.setPrivate(boxName);
+const openSetPortModal = (boxName) => CommandModal.setPort(boxName);
 
 // VSCode modal functionality
 let vscodeBaseURL = '';

@@ -18,6 +18,7 @@ import (
 var allowedCommands = map[string]bool{
 	"rm":                true,
 	"share show":        true,
+	"share port":        true,
 	"share add":         true,
 	"share remove":      true,
 	"share add-link":    true,
