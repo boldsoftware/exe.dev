@@ -69,6 +69,14 @@ func init() {
 
 const InvalidBoxNameMessage = "Invalid VM name. Must be 5-63 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-vm-name)."
 
+// reservedSuffixRE holds suffix rejection patterns.
+// Names ending with -NNN, -pNNN, or -portNNN are reserved for possible future port signifier suffixes.
+var reservedSuffixRE = regexp.MustCompile(`-(p|port)?[0-9]+$`)
+
+// reservedFullNameRE hold full name rejection patterns.
+// p80, p8080, port9000 etc are reserved for possible future port subdomains.
+var reservedFullNameRE = regexp.MustCompile(`^p[0-9]*$`)
+
 // Valid reports whether name is a valid box name.
 // TODO: return a slice of validation errors instead of just true/false.
 func Valid(name string) bool {
@@ -81,6 +89,16 @@ func Valid(name string) bool {
 		if strings.Contains(name, drug) {
 			return false
 		}
+	}
+
+	// Reject names ending with -NNN, -pNNN, or -portNNN (reserved for port signifiers)
+	if reservedSuffixRE.MatchString(name) {
+		return false
+	}
+
+	// Reject names that are entirely reserved patterns (e.g., p, p80, p8080)
+	if reservedFullNameRE.MatchString(name) {
+		return false
 	}
 
 	// Check pattern: starts with letter, contains only lowercase letters/numbers/hyphens, no consecutive hyphens, doesn't end with hyphen
