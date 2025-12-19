@@ -12,6 +12,8 @@ import BrowserNavigateTool from "./BrowserNavigateTool";
 import BrowserEvalTool from "./BrowserEvalTool";
 import ReadImageTool from "./ReadImageTool";
 import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
+import ChangeDirTool from "./ChangeDirTool";
+import BrowserResizeTool from "./BrowserResizeTool";
 import DirectoryPickerModal from "./DirectoryPickerModal";
 
 interface ContextUsageBarProps {
@@ -136,6 +138,8 @@ const TOOL_COMPONENTS: Record<string, React.ComponentType<any>> = {
   read_image: ReadImageTool,
   browser_recent_console_logs: BrowserConsoleLogsTool,
   browser_clear_console_logs: BrowserConsoleLogsTool,
+  change_dir: ChangeDirTool,
+  browser_resize: BrowserResizeTool,
 };
 
 function CoalescedToolCall({

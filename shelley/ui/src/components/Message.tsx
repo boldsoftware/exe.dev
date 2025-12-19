@@ -11,6 +11,7 @@ import BrowserEvalTool from "./BrowserEvalTool";
 import ReadImageTool from "./ReadImageTool";
 import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
 import ChangeDirTool from "./ChangeDirTool";
+import BrowserResizeTool from "./BrowserResizeTool";
 import ContextMenu from "./ContextMenu";
 import UsageDetailModal from "./UsageDetailModal";
 
@@ -297,6 +298,10 @@ function Message({ message }: MessageProps) {
         if (content.ToolName === "read_image") {
           return <ReadImageTool toolInput={content.ToolInput} isRunning={true} />;
         }
+        // Use specialized component for browser resize tool
+        if (content.ToolName === "browser_resize") {
+          return <BrowserResizeTool toolInput={content.ToolInput} isRunning={true} />;
+        }
         // Use specialized component for browser console logs tools
         if (
           content.ToolName === "browser_recent_console_logs" ||
@@ -479,6 +484,19 @@ function Message({ message }: MessageProps) {
               hasError={hasError}
               executionTime={executionTime}
               display={content.Display}
+            />
+          );
+        }
+
+        // Use specialized component for browser resize tool
+        if (toolName === "browser_resize") {
+          return (
+            <BrowserResizeTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
             />
           );
         }
