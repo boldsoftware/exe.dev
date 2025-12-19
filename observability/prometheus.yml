@@ -23,10 +23,14 @@ scrape_configs:
         - 'sketch-dev:9100'
         - 'docker-01:9100'
         - 'docker-02:9100'
-        - 'exed-02:19100'  # exed listens on most ports for proxy, so use 10000+9100
         - 'ci.crocodile-vector.ts.net:9100'
         labels:
           stage: 'production'
+      - targets:
+        - 'exed-02:19100'  # exed listens on most ports for proxy, so use 10000+9100
+        labels:
+          stage: 'production'
+          role: 'exed'
       - targets:
         - 'exe-ctr-02:9100'
         - 'exe-ctr-03:9100'
@@ -37,6 +41,7 @@ scrape_configs:
         - 'exed-staging-01:19100'  # exed listens on most ports for proxy, so use 10000+9100
         labels:
           stage: 'staging'
+          role: 'exed'
       - targets:
         - 'exe-ctr-staging-01:9100'
         labels:

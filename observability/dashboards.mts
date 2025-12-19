@@ -1133,6 +1133,78 @@ function makeDevExeDashboard() {
     }
   );
 
+  // ========== EXELETS (Container Hosts) ==========
+  dash.withRow(
+    new RowBuilder("Exelets (Container Hosts)").gridPos({ x: 0, y: 127, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Exelet CPU Usage",
+    `100 - (avg by (instance) (irate(node_cpu_seconds_total{role="exelet",${STAGE_FILTER},mode="idle"}[5m])) * 100)`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 128, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Exelet Memory Usage",
+    `(1 - (node_memory_MemAvailable_bytes{role="exelet",${STAGE_FILTER}} / node_memory_MemTotal_bytes{role="exelet",${STAGE_FILTER}})) * 100`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 8, y: 128, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Exelet Memory Pressure",
+    `rate(node_pressure_memory_waiting_seconds_total{role="exelet",${STAGE_FILTER}}[5m]) * 100`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).gridPos({ x: 16, y: 128, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  // ========== EXED (Web/SSH Frontend) ==========
+  dash.withRow(
+    new RowBuilder("Exed (Web/SSH Frontend)").gridPos({ x: 0, y: 134, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Exed CPU Usage",
+    `100 - (avg by (instance) (irate(node_cpu_seconds_total{role="exed",${STAGE_FILTER},mode="idle"}[5m])) * 100)`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 135, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Exed Memory Usage",
+    `(1 - (node_memory_MemAvailable_bytes{role="exed",${STAGE_FILTER}} / node_memory_MemTotal_bytes{role="exed",${STAGE_FILTER}})) * 100`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 8, y: 135, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  const exedNetworkPanel = new TimeseriesBuilder()
+    .title("Exed Network Traffic")
+    .unit("Bps")
+    .min(0)
+    .gridPos({ x: 16, y: 135, w: 8, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`irate(node_network_receive_bytes_total{role="exed",${STAGE_FILTER},device!="lo"}[5m])`)
+        .legendFormat("{{instance}} rx")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`irate(node_network_transmit_bytes_total{role="exed",${STAGE_FILTER},device!="lo"}[5m])`)
+        .legendFormat("{{instance}} tx")
+    );
+  dash.withPanel(exedNetworkPanel);
+
   return dash;
 }
 
