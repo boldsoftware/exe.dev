@@ -25,15 +25,15 @@ function loadMonaco(): Promise<typeof Monaco> {
   monacoLoadPromise = (async () => {
     // Configure Monaco environment for web workers before importing
     const monacoEnv: Monaco.Environment = {
-      getWorkerUrl: () => '/editor.worker.js'
+      getWorkerUrl: () => "/editor.worker.js",
     };
     (self as Window).MonacoEnvironment = monacoEnv;
 
     // Load Monaco CSS if not already loaded
     if (!document.querySelector('link[href="/monaco-editor.css"]')) {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = '/monaco-editor.css';
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "/monaco-editor.css";
       document.head.appendChild(link);
     }
 
@@ -61,7 +61,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
   const [error, setError] = useState<string | null>(null);
   const [monacoLoaded, setMonacoLoaded] = useState(false);
   const [currentChangeIndex, setCurrentChangeIndex] = useState<number>(-1);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const saveTimeoutRef = useRef<number | null>(null);
   const pendingSaveRef = useRef<(() => Promise<void>) | null>(null);
   const scheduleSaveRef = useRef<(() => void) | null>(null);
@@ -423,7 +423,13 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
 
   // Save the current file (in edit mode)
   const saveCurrentFile = useCallback(async () => {
-    if (!editorRef.current || !selectedFile || !fileDiff || modeRef.current !== "edit" || !gitRoot) {
+    if (
+      !editorRef.current ||
+      !selectedFile ||
+      !fileDiff ||
+      modeRef.current !== "edit" ||
+      !gitRoot
+    ) {
       return;
     }
 
@@ -435,7 +441,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
     const fullPath = gitRoot + "/" + selectedFile;
 
     try {
-      setSaveStatus('saving');
+      setSaveStatus("saving");
       const response = await fetch("/api/write-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -443,22 +449,22 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
       });
 
       if (response.ok) {
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus("idle"), 2000);
       } else {
-        setSaveStatus('error');
-        setTimeout(() => setSaveStatus('idle'), 3000);
+        setSaveStatus("error");
+        setTimeout(() => setSaveStatus("idle"), 3000);
       }
     } catch (err) {
-      console.error('Failed to save:', err);
-      setSaveStatus('error');
-      setTimeout(() => setSaveStatus('idle'), 3000);
+      console.error("Failed to save:", err);
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 3000);
     }
   }, [selectedFile, fileDiff, gitRoot]);
 
   // Debounced auto-save
   const scheduleSave = useCallback(() => {
-    if (modeRef.current !== 'edit') return; // Only auto-save in edit mode
+    if (modeRef.current !== "edit") return; // Only auto-save in edit mode
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
@@ -540,11 +546,11 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
     <div className="diff-viewer-overlay">
       <div className="diff-viewer-container">
         {/* Toast notification */}
-        {saveStatus !== 'idle' && (
+        {saveStatus !== "idle" && (
           <div className={`diff-viewer-toast diff-viewer-toast-${saveStatus}`}>
-            {saveStatus === 'saving' && '💾 Saving...'}
-            {saveStatus === 'saved' && '✅ Saved'}
-            {saveStatus === 'error' && '❌ Error saving'}
+            {saveStatus === "saving" && "💾 Saving..."}
+            {saveStatus === "saved" && "✅ Saved"}
+            {saveStatus === "error" && "❌ Error saving"}
           </div>
         )}
 
