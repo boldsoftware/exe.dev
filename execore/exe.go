@@ -1301,7 +1301,7 @@ type SSHClient interface {
 // findBoxByNameForUser finds a box by name that the user has access to
 func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName string) *exedb.Box {
 	// s.slog().Debug("FindBoxByNameForUser", "user_id", userID, "box_name", boxName)
-	if !boxname.Valid(boxName) {
+	if !boxname.IsValid(boxName) {
 		// s.slog().Info("invalid box name format", "box", boxName)
 		return nil
 	}
@@ -1352,7 +1352,7 @@ func (s *Server) FindBoxByIPShard(ctx context.Context, userID, localIP string) *
 // FindBoxForSupportUser finds a box by name if the user is a root support user and the box has support access enabled.
 // Returns nil if the user is not a root support user or the box doesn't have support access enabled.
 func (s *Server) FindBoxForSupportUser(ctx context.Context, userID, boxName string) *exedb.Box {
-	if userID == "" || !boxname.Valid(boxName) {
+	if userID == "" || !boxname.IsValid(boxName) {
 		return nil
 	}
 
@@ -1436,8 +1436,8 @@ type preCreateBoxOptions struct {
 
 func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (int, error) {
 	// Validate box name
-	if !boxname.Valid(opts.name) {
-		return 0, fmt.Errorf("invalid VM name: %s", opts.name)
+	if err := boxname.Valid(opts.name); err != nil {
+		return 0, err
 	}
 
 	routes := exedb.DefaultRouteJSON()
@@ -1648,7 +1648,7 @@ func (s *Server) updateBoxWithContainer(ctx context.Context, boxID int, containe
 // isBoxNameAvailable checks if a box name is available for use.
 // Errors are translated into false (unavailability).
 func (s *Server) isBoxNameAvailable(ctx context.Context, name string) bool {
-	if !boxname.Valid(name) {
+	if !boxname.IsValid(name) {
 		return false
 	}
 

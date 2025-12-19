@@ -340,8 +340,8 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	// Validate box name (both provided and generated)
-	if !boxname.Valid(boxName) {
-		return cc.Errorf("%s", boxname.InvalidBoxNameMessage)
+	if err := boxname.Valid(boxName); err != nil {
+		return cc.Errorf("%s", err)
 	}
 
 	// If the box name matches the SSH username, reject it.

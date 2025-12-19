@@ -95,7 +95,7 @@ func TestMobileInvalidHostname(t *testing.T) {
 	if response.Valid {
 		t.Error("Expected hostname to be invalid")
 	}
-	if !strings.Contains(response.Message, "Invalid") {
+	if !strings.Contains(response.Message, "nvalid") {
 		t.Error("Expected invalid hostname message")
 	}
 }

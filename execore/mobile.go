@@ -340,10 +340,10 @@ func (s *Server) handleMobileHostnameCheck(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Check if hostname is valid and available
-	isValid := boxname.Valid(name)
+	validErr := boxname.Valid(name)
 	isAvailable := true
 
-	if isValid {
+	if validErr == nil {
 		isAvailable = s.isBoxNameAvailable(r.Context(), name)
 	}
 
@@ -352,13 +352,13 @@ func (s *Server) handleMobileHostnameCheck(w http.ResponseWriter, r *http.Reques
 		Available bool   `json:"available"`
 		Message   string `json:"message"`
 	}{
-		Valid:     isValid,
+		Valid:     validErr == nil,
 		Available: isAvailable,
 	}
 
 	switch {
-	case !isValid:
-		response.Message = boxname.InvalidBoxNameMessage
+	case validErr != nil:
+		response.Message = validErr.Error()
 	case !isAvailable:
 		response.Message = "That VM name is not available."
 	}
@@ -650,7 +650,7 @@ func (s *Server) handleMobileCreatingStream(w http.ResponseWriter, r *http.Reque
 
 	// Read hostname from query parameter
 	hostname := strings.TrimSpace(r.URL.Query().Get("hostname"))
-	if hostname == "" || !boxname.Valid(hostname) {
+	if hostname == "" || !boxname.IsValid(hostname) {
 		http.Error(w, "Invalid hostname", http.StatusBadRequest)
 		return
 	}
@@ -708,7 +708,7 @@ func (s *Server) handleBoxCreationLog(w http.ResponseWriter, r *http.Request) {
 
 	// Read hostname from query parameter
 	hostname := strings.TrimSpace(r.URL.Query().Get("hostname"))
-	if hostname == "" || !boxname.Valid(hostname) {
+	if hostname == "" || !boxname.IsValid(hostname) {
 		http.Error(w, "Invalid hostname", http.StatusBadRequest)
 		return
 	}

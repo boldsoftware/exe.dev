@@ -612,7 +612,7 @@ func TestBadBoxName(t *testing.T) {
 	// Attempt to create a box with an invalid name.
 	boxName := "ThisIsNotAValidBoxName!"
 	pty.sendLine("new --name=" + boxName)
-	pty.wantRe("Invalid VM name")
+	pty.wantRe("invalid VM name")
 	pty.wantPrompt()
 	pty.disconnect()
 }

@@ -1,6 +1,7 @@
 package boxname
 
 import (
+	"errors"
 	mathrand "math/rand"
 	"regexp"
 	"strings"
@@ -70,7 +71,14 @@ func init() {
 	}
 }
 
-const InvalidBoxNameMessage = "Invalid VM name. Must be 5-63 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-vm-name)."
+var (
+	// errInvalidNameFormat is the default error message returned for routine invalid vm names.
+	// The aim is to helpfully guide users to pick valid names.
+	errInvalidNameFormat = errors.New("invalid VM name, must be 5-63 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-vm-name)")
+	// errUnavailableName is the error returned for vm names that are denylisted or reserved.
+	// It is intentionally ambiguous.
+	errUnavailableName = errors.New("invalid VM name: this VM name is not available")
+)
 
 // reservedSuffixRE holds suffix rejection patterns.
 // Names ending with -NNN, -pNNN, or -portNNN are reserved for possible future port signifier suffixes.
@@ -80,38 +88,51 @@ var reservedSuffixRE = regexp.MustCompile(`-(p|port)?[0-9]+$`)
 // p80, p8080, port9000 etc are reserved for possible future port subdomains.
 var reservedFullNameRE = regexp.MustCompile(`^p[0-9]*$`)
 
-// Valid reports whether name is a valid box name.
-// TODO: return a slice of validation errors instead of just true/false.
-func Valid(name string) bool {
-	// Must be at least 5 characters and at most 63 characters
-	if len(name) < 5 || len(name) > 63 {
-		return false
+// nameFormatRE matches valid box name format:
+// starts with letter, contains only lowercase letters/numbers/hyphens, no consecutive hyphens, doesn't end with hyphen
+var nameFormatRE = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+
+// IsValid reports whether name is a valid box name.
+func IsValid(name string) bool {
+	return Valid(name) == nil
+}
+
+// Valid returns nil if name is a valid box name, or an error describing why not.
+func Valid(name string) error {
+	if len(name) < 5 {
+		return errInvalidNameFormat
+	}
+	if len(name) > 63 {
+		return errInvalidNameFormat
+	}
+
+	// Check format first so we give a good error for garbage input
+	if !nameFormatRE.MatchString(name) {
+		return errInvalidNameFormat
 	}
 
 	// Check denylist and reserved substrings.
 	withoutHyphens := strings.ReplaceAll(name, "-", "")
-	if _, onDelyList := denylist[withoutHyphens]; onDelyList {
-		return false
+	if denylist[withoutHyphens] {
+		return errUnavailableName
 	}
-	for _, drug := range denySubstrings {
-		if strings.Contains(withoutHyphens, drug) {
-			return false
+	for _, denied := range denySubstrings {
+		if strings.Contains(withoutHyphens, denied) {
+			return errUnavailableName
 		}
 	}
 
 	// Reject names ending with -NNN, -pNNN, or -portNNN (reserved for port signifiers)
 	if reservedSuffixRE.MatchString(name) {
-		return false
+		return errUnavailableName
 	}
 
 	// Reject names that are entirely reserved patterns (e.g., p, p80, p8080)
 	if reservedFullNameRE.MatchString(name) {
-		return false
+		return errUnavailableName
 	}
 
-	// Check pattern: starts with letter, contains only lowercase letters/numbers/hyphens, no consecutive hyphens, doesn't end with hyphen
-	matched, _ := regexp.MatchString(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, name)
-	return matched
+	return nil
 }
 
 var words = []string{

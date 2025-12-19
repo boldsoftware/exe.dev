@@ -17,11 +17,11 @@ func TestGeneratedBoxNamesAreValid(t *testing.T) {
 	t.Parallel()
 	for range 10 {
 		name := Random()
-		if !Valid(name) {
-			t.Errorf("Generated name '%s' is not valid", name)
+		if !IsValid(name) {
+			t.Errorf("Generated name %q is not valid", name)
 		}
 		if len(name) > 30 {
-			t.Errorf("Generated name '%s' is too long (%d chars)", name, len(name))
+			t.Errorf("Generated name %q is too long (%d chars)", name, len(name))
 		}
 	}
 }
@@ -38,7 +38,7 @@ func TestReservedPortSuffixes(t *testing.T) {
 		"foo-bar-443",
 	}
 	for _, name := range invalidNames {
-		if Valid(name) {
+		if IsValid(name) {
 			t.Errorf("Name with reserved port suffix %q should be invalid", name)
 		}
 	}
@@ -51,7 +51,7 @@ func TestReservedPortSuffixes(t *testing.T) {
 		"foo-bar-p443",
 	}
 	for _, name := range invalidPNames {
-		if Valid(name) {
+		if IsValid(name) {
 			t.Errorf("Name with reserved port suffix %q should be invalid", name)
 		}
 	}
@@ -64,7 +64,7 @@ func TestReservedPortSuffixes(t *testing.T) {
 		"foo-bar-port443",
 	}
 	for _, name := range invalidPortNames {
-		if Valid(name) {
+		if IsValid(name) {
 			t.Errorf("Name with reserved port suffix %q should be invalid", name)
 		}
 	}
@@ -76,7 +76,7 @@ func TestReservedPortSuffixes(t *testing.T) {
 		"p808000",
 	}
 	for _, name := range invalidPOnlyNames {
-		if Valid(name) {
+		if IsValid(name) {
 			t.Errorf("Name %q should be invalid (reserved p+digits pattern)", name)
 		}
 	}
@@ -91,7 +91,7 @@ func TestReservedPortSuffixes(t *testing.T) {
 		"mybox-aport80", // has 'a' before 'port'
 	}
 	for _, name := range validNames {
-		if !Valid(name) {
+		if !IsValid(name) {
 			t.Errorf("Name %q should be valid", name)
 		}
 	}
@@ -99,30 +99,30 @@ func TestReservedPortSuffixes(t *testing.T) {
 
 func TestShelleyReserved(t *testing.T) {
 	t.Parallel()
-	if Valid("shelley") {
-		t.Error("'shelley' should be reserved and thus invalid")
+	if IsValid("shelley") {
+		t.Error("'shelley' should be reserved")
 	}
 }
 
 func TestDrugSpamDenylist(t *testing.T) {
 	t.Parallel()
 	for _, name := range denySubstrings {
-		if Valid(name) {
-			t.Errorf("Denylisted drug spam name '%s' is considered valid", name)
+		if IsValid(name) {
+			t.Errorf("Denylisted drug spam name %q is considered valid", name)
 		}
-		if Valid(name+"box") || Valid("my"+name) || Valid("my-"+name+"-box") {
-			t.Errorf("Name containing denylisted drug spam '%s' is considered valid", name)
+		if IsValid(name+"box") || IsValid("my"+name) || IsValid("my-"+name+"-box") {
+			t.Errorf("Name containing denylisted drug spam %q is considered valid", name)
 		}
 	}
 
-	// Explicity test: "adderall"
-	if Valid("adderall") {
-		t.Error("Denylisted drug spam name 'viagra' is considered valid")
+	// Explicitly test: "adderall"
+	if IsValid("adderall") {
+		t.Error("Denylisted drug spam name 'adderall' is considered valid")
 	}
-	if Valid("adderallbox") {
-		t.Error("Name containing denylisted drug spam 'viagra' is considered valid")
+	if IsValid("adderallbox") {
+		t.Error("Name containing denylisted drug spam 'adderall' is considered valid")
 	}
-	if Valid("allOfTheAdderallRightNow") {
-		t.Error("Name containing denylisted drug spam 'viagra' is considered valid")
+	if IsValid("allOfTheAdderallRightNow") {
+		t.Error("Name containing denylisted drug spam 'adderall' is considered valid")
 	}
 }

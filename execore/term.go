@@ -596,7 +596,7 @@ func (s *Server) terminalBoxForBase(hostname string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	if !boxname.Valid(boxName) {
+	if !boxname.IsValid(boxName) {
 		return "", false
 	}
 	return boxName, true

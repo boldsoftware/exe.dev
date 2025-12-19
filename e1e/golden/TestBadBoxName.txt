@@ -36,6 +36,6 @@ Email Address: TestBadBoxName@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
 PROMPT ▶ new --name=ThisIsNotAValidBoxName!
-Invalid VM name. Must be 5-63 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-vm-name).
+invalid VM name, must be 5-63 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-vm-name)
 PROMPT ▶ exit
 Goodbye!
