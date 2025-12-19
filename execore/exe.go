@@ -1648,9 +1648,7 @@ func (s *Server) updateBoxWithContainer(ctx context.Context, boxID int, containe
 // isBoxNameAvailable checks if a box name is available for use.
 // Errors are translated into false (unavailability).
 func (s *Server) isBoxNameAvailable(ctx context.Context, name string) bool {
-	// Check if name is in denylist
-	withoutHyphens := strings.ReplaceAll(name, "-", "")
-	if boxname.Denylisted(withoutHyphens) {
+	if !boxname.Valid(name) {
 		return false
 	}
 

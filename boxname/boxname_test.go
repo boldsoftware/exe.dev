@@ -99,14 +99,14 @@ func TestReservedPortSuffixes(t *testing.T) {
 
 func TestShelleyReserved(t *testing.T) {
 	t.Parallel()
-	if !Denylisted("shelley") {
-		t.Error("'shelley' should be in the denylist")
+	if Valid("shelley") {
+		t.Error("'shelley' should be reserved and thus invalid")
 	}
 }
 
 func TestDrugSpamDenylist(t *testing.T) {
 	t.Parallel()
-	for _, name := range drugspam {
+	for _, name := range denySubstrings {
 		if Valid(name) {
 			t.Errorf("Denylisted drug spam name '%s' is considered valid", name)
 		}

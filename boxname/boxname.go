@@ -6,9 +6,11 @@ import (
 	"strings"
 )
 
+// denySubstrings are vmnames that are forbidden even as substrings.
+// They are for avoiding names known to be used by spammers, often drugspam.
 // See what happens when these are actively ignored:
 // https://www.google.com/search?q=ollama+adderall
-var drugspam = []string{
+var denySubstrings = []string{
 	"adderall", "ambien", "antidepressant", "antiviral", "antivirus", "anxiety", "bipolar", "cialis", "depression",
 	"erectile", "fatigue", "fibromyalgia", "gabapentin", "herpes", "hiv", "insomnia", "levitra", "lupus",
 	"melatonin", "narcotic", "opioid", "oxycodone", "painkiller", "parkinson", "pharmacy", "prescription",
@@ -51,19 +53,20 @@ var reserved = []string{
 	"sshtunnel", "ssh-forward", "sshforward", "ssh-forwarding", "sshforwarding", "ssh-session", "sshsession", "ssh-socket", "sshsocket", "ssh-agent-forward",
 	"sshagentforward", "ssh-agent-forwarding", "sshagentforwarding", "ssh-keygen", "sshkeygen", "ssh-copy-id", "sshcopyid", "ssh-add", "sshadd",
 	"boxname", "box-name", "boxnames", "box-names", "my-box", "mybox", "your-box", "yourbox", "our-box", "ourbox",
+	"vm-name", "vmname", "vm-names", "vmnames", "my-vm", "myvm", "your-vm", "yourvm", "our-vm", "ourvm",
 }
 
 var JobsRelated = []string{"job", "jobs", "career", "careers", "apply", "work", "position", "positions", "opening", "openings", "hire", "hiring", "role", "roles", "join"}
 
-var denylisted map[string]bool
+var denylist map[string]bool
 
 func init() {
-	denylisted = make(map[string]bool)
+	denylist = make(map[string]bool)
 	for _, name := range reserved {
-		denylisted[name] = true
+		denylist[name] = true
 	}
 	for _, name := range JobsRelated {
-		denylisted[name] = true
+		denylist[name] = true
 	}
 }
 
@@ -85,8 +88,13 @@ func Valid(name string) bool {
 		return false
 	}
 
-	for _, drug := range drugspam {
-		if strings.Contains(name, drug) {
+	// Check denylist and reserved substrings.
+	withoutHyphens := strings.ReplaceAll(name, "-", "")
+	if _, onDelyList := denylist[withoutHyphens]; onDelyList {
+		return false
+	}
+	for _, drug := range denySubstrings {
+		if strings.Contains(withoutHyphens, drug) {
 			return false
 		}
 	}
@@ -104,12 +112,6 @@ func Valid(name string) bool {
 	// Check pattern: starts with letter, contains only lowercase letters/numbers/hyphens, no consecutive hyphens, doesn't end with hyphen
 	matched, _ := regexp.MatchString(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, name)
 	return matched
-}
-
-// Denylisted reports whether name is in the denylist.
-func Denylisted(name string) bool {
-	_, exists := denylisted[name]
-	return exists
 }
 
 var words = []string{

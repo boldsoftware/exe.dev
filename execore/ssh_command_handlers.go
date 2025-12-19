@@ -332,7 +332,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	if boxName == "" {
 		for range 10 {
 			randBoxName := boxname.Random()
-			if boxname.Valid(randBoxName) && ss.server.isBoxNameAvailable(ctx, randBoxName) {
+			if ss.server.isBoxNameAvailable(ctx, randBoxName) {
 				boxName = randBoxName
 				break
 			}
