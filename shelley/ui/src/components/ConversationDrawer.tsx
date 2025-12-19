@@ -155,7 +155,7 @@ function ConversationDrawer({
 
     // Check for uniqueness against current conversations
     const isDuplicate = [...conversations, ...archivedConversations].some(
-      (c) => c.slug === sanitized && c.conversation_id !== conversationId
+      (c) => c.slug === sanitized && c.conversation_id !== conversationId,
     );
     if (isDuplicate) {
       alert("A conversation with this name already exists");

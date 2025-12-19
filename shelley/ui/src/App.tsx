@@ -165,9 +165,7 @@ function App() {
   const handleConversationRenamed = (conversation: Conversation) => {
     // Update the conversation in the list with the new slug
     setConversations((prev) =>
-      prev.map((c) =>
-        c.conversation_id === conversation.conversation_id ? conversation : c
-      )
+      prev.map((c) => (c.conversation_id === conversation.conversation_id ? conversation : c)),
     );
   };
 
