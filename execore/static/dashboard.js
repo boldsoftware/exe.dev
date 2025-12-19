@@ -399,6 +399,7 @@ class CommandModal {
     #inputEl = null;
     #isDanger = false;
     #commandSucceeded = false;
+    #needsReload = false;
 
     // Arrow function to preserve 'this' binding for event listener
     #handleEscape = (e) => {
@@ -445,6 +446,7 @@ class CommandModal {
         this.#runBtn.textContent = 'Run';
         this.#runBtn.disabled = true;
         this.#commandSucceeded = true;
+        this.#needsReload = true;
     }
 
     #showError(message) {
@@ -475,6 +477,7 @@ class CommandModal {
         this.#runBtn.disabled = false;
         this.#runBtn.textContent = 'Run';
         this.#commandSucceeded = false;
+        this.#needsReload = false;
 
         // Set button style
         this.#runBtn.classList.toggle('danger', this.#isDanger);
@@ -506,6 +509,11 @@ class CommandModal {
     close() {
         this.#overlay?.classList.remove('visible');
         document.removeEventListener('keydown', this.#handleEscape);
+        // Reload if any command succeeded, preserving expanded state
+        if (this.#needsReload) {
+            saveExpandedState();
+            window.location.reload();
+        }
     }
 
     async run() {
@@ -598,6 +606,37 @@ class CommandModal {
 // Global instance
 const cmdModal = new CommandModal();
 
+// State preservation for reload after actions
+function saveExpandedState() {
+    const expanded = [];
+    document.querySelectorAll('.box-row.expanded').forEach(row => {
+        const name = row.querySelector('.box-name')?.textContent.trim();
+        if (name) expanded.push(name);
+    });
+    if (expanded.length > 0) {
+        sessionStorage.setItem('expandedBoxes', JSON.stringify(expanded));
+    }
+}
+
+function restoreExpandedState() {
+    const stored = sessionStorage.getItem('expandedBoxes');
+    if (!stored) return;
+
+    sessionStorage.removeItem('expandedBoxes');
+
+    try {
+        const expanded = JSON.parse(stored);
+        document.querySelectorAll('.box-row').forEach(row => {
+            const name = row.querySelector('.box-name')?.textContent.trim();
+            if (name && expanded.includes(name)) {
+                row.classList.add('expanded');
+            }
+        });
+    } catch (e) {
+        console.error('Failed to restore expanded state:', e);
+    }
+}
+
 // Global functions for onclick handlers in HTML
 const openShareModal = (boxName) => CommandModal.shareByEmail(boxName);
 const openShareLinkModal = (boxName) => CommandModal.createShareLink(boxName);
@@ -670,8 +709,13 @@ document.addEventListener('keydown', (e) => {
 });
 
 // Initialize on page load
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initSearch);
-} else {
+function initDashboard() {
+    restoreExpandedState();
     initSearch();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initDashboard);
+} else {
+    initDashboard();
 }
