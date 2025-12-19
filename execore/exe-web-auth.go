@@ -261,9 +261,14 @@ func (s *Server) validateAuthCookie(r *http.Request) (string, error) {
 	return s.validateNamedAuthCookie(r, "exe-auth")
 }
 
-// validateProxyAuthCookie validates the proxy authentication cookie and returns the user_id
+// validateProxyAuthCookie validates the proxy authentication cookie and returns the user_id.
+// The cookie name is port-specific: "login-with-exe-<port>".
 func (s *Server) validateProxyAuthCookie(r *http.Request) (string, error) {
-	return s.validateNamedAuthCookie(r, "exe-proxy-auth")
+	port, err := getRequestPort(r)
+	if err != nil {
+		return "", fmt.Errorf("failed to get port from request: %w", err)
+	}
+	return s.validateNamedAuthCookie(r, proxyAuthCookieName(port))
 }
 
 func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (string, error) {

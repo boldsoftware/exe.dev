@@ -1623,7 +1623,7 @@ func (f *loginWithExeFlow) verifyAndClickConfirmationPage() []*http.Cookie {
 // (exe.dev) and the subdomain (box.exe.cloud).
 // We verify by checking cookie names:
 // - "exe-auth" is set on the main domain during email verification
-// - "exe-proxy-auth" is set on the subdomain during magic auth
+// - "login-with-exe-<port>" is set on the subdomain during magic auth
 func (f *loginWithExeFlow) verifyCookiesOnBothDomains() {
 	f.t.Helper()
 
@@ -1637,24 +1637,24 @@ func (f *loginWithExeFlow) verifyCookiesOnBothDomains() {
 	// cookies will be on returnHost, per https://go.dev/issue/38988.
 	cookies = append(cookies, f.jar.Cookies(mustParseURL("https://"+f.returnHost))...)
 
-	var hasExeAuth, hasExeProxyAuth bool
+	var hasExeAuth, hasLoginWithExe bool
 	for _, c := range cookies {
 		if c.Name == "exe-auth" {
 			hasExeAuth = true
 		}
-		if c.Name == "exe-proxy-auth" {
-			hasExeProxyAuth = true
+		if strings.HasPrefix(c.Name, "login-with-exe-") {
+			hasLoginWithExe = true
 		}
 	}
 
 	if !hasExeAuth {
 		f.t.Errorf("missing exe-auth cookie (should be set on main domain during email verification)")
 	}
-	if !hasExeProxyAuth {
-		f.t.Errorf("missing exe-proxy-auth cookie (should be set on subdomain during magic auth)")
+	if !hasLoginWithExe {
+		f.t.Errorf("missing login-with-exe-<port> cookie (should be set on subdomain during magic auth)")
 	}
 
-	if hasExeAuth && hasExeProxyAuth {
-		f.t.Logf("Step 10: Verified cookies on both domains: exe-auth and exe-proxy-auth present")
+	if hasExeAuth && hasLoginWithExe {
+		f.t.Logf("Step 10: Verified cookies on both domains: exe-auth and login-with-exe-<port> present")
 	}
 }

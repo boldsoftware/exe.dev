@@ -231,7 +231,7 @@ chmod +x /home/exedev/cgi-bin/headers
 		altPort := Env.exed.ExtraPorts[0]
 		serveHTTP(t, altPort)
 		fixture := newProxyAuthFixture(t, box, altPort, cookies)
-		requireLogoutUI(t, fixture.logoutURL, fixture.expectedLogout)
+		requireLogoutUI(t, fixture.logoutURL, fixture.expectedLogout, fixture.port)
 
 		ownerJar := fixture.newJar()
 		ownerClient := fixture.loginThroughProxy(ownerJar)
@@ -531,6 +531,68 @@ chmod +x /home/exedev/cgi-bin/headers
 		})
 	})
 
+	t.Run("cookie_port_isolation", func(t *testing.T) {
+		// Verify that a proxy auth cookie for one port doesn't work for another port.
+		// This tests that cookies are named "login-with-exe-<port>" rather than
+		// a shared name like "exe-proxy-auth".
+		portA := Env.exed.ExtraPorts[0]
+		portB := Env.exed.ExtraPorts[1]
+		serveHTTP(t, portA)
+		serveHTTP(t, portB)
+
+		// Login through proxy on port A
+		fixtureA := newProxyAuthFixture(t, box, portA, cookies)
+		jarA := fixtureA.newJar()
+		fixtureA.loginThroughProxy(jarA)
+		proxyAuthCookieA := fixtureA.authCookie(jarA)
+
+		// Verify the cookie works on port A
+		clientA := noRedirectClient(jarA)
+		reqA, err := localhostRequestWithHostHeader("GET", fixtureA.proxyURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request for port A: %v", err)
+		}
+		respA, err := clientA.Do(reqA)
+		if err != nil {
+			t.Fatalf("failed to make request on port A: %v", err)
+		}
+		bodyA, _ := io.ReadAll(respA.Body)
+		respA.Body.Close()
+		if respA.StatusCode != http.StatusOK {
+			t.Fatalf("cookie should work on port A, got status %d: %s", respA.StatusCode, bodyA)
+		}
+
+		// Try using the port A cookie on port B - should fail with redirect to login
+		fixtureB := newProxyAuthFixture(t, box, portB, nil) // no main domain cookies
+		jarB, _ := cookiejar.New(nil)
+		// Manually add port A's cookie to port B's jar
+		portBURL := mustParseURL(fmt.Sprintf("http://localhost:%d", portB))
+		jarB.SetCookies(portBURL, []*http.Cookie{proxyAuthCookieA})
+
+		clientB := noRedirectClient(jarB)
+		reqB, err := localhostRequestWithHostHeader("GET", fixtureB.proxyURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request for port B: %v", err)
+		}
+		respB, err := clientB.Do(reqB)
+		if err != nil {
+			t.Fatalf("failed to make request on port B: %v", err)
+		}
+		respB.Body.Close()
+
+		// Should redirect to login because port A's cookie shouldn't work on port B
+		if respB.StatusCode != http.StatusTemporaryRedirect {
+			t.Fatalf("port A cookie should NOT work on port B, expected redirect (307), got status %d", respB.StatusCode)
+		}
+		location, err := respB.Location()
+		if err != nil {
+			t.Fatalf("expected redirect location: %v", err)
+		}
+		if !strings.Contains(location.Path, "/__exe.dev/login") {
+			t.Fatalf("expected redirect to login, got %s", location.String())
+		}
+	})
+
 	// Cleanup
 	pty = sshToExeDev(t, keyFile)
 	pty.deleteBox(box)
@@ -555,6 +617,7 @@ func mustParseURL(raw string) *url.URL {
 
 type proxyAuthFixture struct {
 	t                  testing.TB
+	port               int
 	proxyURL           string
 	logoutURL          string
 	expectedLogout     string
@@ -572,6 +635,7 @@ func newProxyAuthFixture(t *testing.T, box string, port int, cookies []*http.Coo
 	localCookieURL := mustParseURL(localCookieAddr)
 	return proxyAuthFixture{
 		t:                  t,
+		port:               port,
 		proxyURL:           proxyURL,
 		logoutURL:          fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/logout", box, port),
 		expectedLogout:     fmt.Sprintf("http://localhost:%d/logged-out", Env.exed.HTTPPort),
@@ -583,12 +647,18 @@ func newProxyAuthFixture(t *testing.T, box string, port int, cookies []*http.Coo
 	}
 }
 
+// proxyAuthCookieName returns the cookie name for proxy authentication on a specific port.
+func proxyAuthCookieName(port int) string {
+	return fmt.Sprintf("login-with-exe-%d", port)
+}
+
 func (f proxyAuthFixture) authCookies(jar *cookiejar.Jar) []*http.Cookie {
 	f.t.Helper()
+	cookieName := proxyAuthCookieName(f.port)
 	var found []*http.Cookie
 	for _, u := range []*url.URL{f.cookieURL, f.localCookieURL} {
 		for _, c := range jar.Cookies(u) {
-			if c.Name == "exe-proxy-auth" && c.Value != "" {
+			if c.Name == cookieName && c.Value != "" {
 				copy := *c
 				found = append(found, &copy)
 			}
@@ -825,7 +895,7 @@ func (f proxyAuthFixture) requireOtherSessionStillAuthed(client *http.Client, ja
 	}
 }
 
-func requireLogoutUI(t *testing.T, logoutURL, expectedLogout string) {
+func requireLogoutUI(t *testing.T, logoutURL, expectedLogout string, port int) {
 	t.Helper()
 
 	client := noRedirectClient(nil)
@@ -876,15 +946,16 @@ func requireLogoutUI(t *testing.T, logoutURL, expectedLogout string) {
 		t.Fatalf("expected logout POST redirect to %s, got %s (body: %s)", expectedLogout, logoutPostLocation.String(), body)
 	}
 
+	cookieName := proxyAuthCookieName(port)
 	logoutCookieCleared := false
 	for _, c := range logoutPostResp.Cookies() {
-		if c.Name == "exe-proxy-auth" && c.Value == "" && c.MaxAge == -1 {
+		if c.Name == cookieName && c.Value == "" && c.MaxAge == -1 {
 			logoutCookieCleared = true
 			break
 		}
 	}
 	if !logoutCookieCleared {
-		t.Fatalf("expected logout POST to clear exe-proxy-auth cookie")
+		t.Fatalf("expected logout POST to clear %s cookie", cookieName)
 	}
 }
 

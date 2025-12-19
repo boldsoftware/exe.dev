@@ -413,6 +413,31 @@ func makeAuthURL(typ string, r *http.Request, q url.Values) string {
 	)
 }
 
+// proxyAuthCookieName returns the cookie name for proxy authentication on a specific port.
+// Each port gets its own cookie to prevent cross-port authentication.
+func proxyAuthCookieName(port int) string {
+	return fmt.Sprintf("login-with-exe-%d", port)
+}
+
+// getRequestPort extracts the port number from an HTTP request's Host header.
+// For requests without an explicit port, it returns the default port for the scheme
+// (443 for HTTPS, 80 for HTTP).
+func getRequestPort(r *http.Request) (int, error) {
+	_, portStr, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		// No port in Host header - use default port for the scheme
+		if r.TLS != nil {
+			return 443, nil
+		}
+		return 80, nil
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid port: %w", err)
+	}
+	return port, nil
+}
+
 // renderAccessRequired renders the 401.html page for unauthorized access.
 // This is shown when a box doesn't exist OR when user doesn't have access
 // to avoid leaking box existence information.
@@ -491,9 +516,17 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Determine cookie name based on request type (terminal vs proxy)
-	cookieName := "exe-proxy-auth"
+	var cookieName string
 	if s.isTerminalRequest(r.Host) {
 		cookieName = "exe-auth"
+	} else {
+		port, err := getRequestPort(r)
+		if err != nil {
+			s.slog().ErrorContext(r.Context(), "Failed to get port from request", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		cookieName = proxyAuthCookieName(port)
 	}
 
 	setAuthCookie(w, r, cookieName, cookieValue)
@@ -559,9 +592,17 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// POST: perform the logout
+	port, err := getRequestPort(r)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "Failed to get port from request for logout", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	cookieName := proxyAuthCookieName(port)
+
 	// Get the specific cookie value to delete
 	var cookieValue string
-	cookie, err := r.Cookie("exe-proxy-auth")
+	cookie, err := r.Cookie(cookieName)
 	if err == nil && cookie.Value != "" {
 		cookieValue = cookie.Value
 	}
@@ -576,7 +617,7 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 
 	// Clear the proxy auth cookie in the browser
 	http.SetCookie(w, &http.Cookie{
-		Name:     "exe-proxy-auth",
+		Name:     cookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
@@ -696,11 +737,11 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 			req.Header.Set("X-ExeDev-Email", email)
 		}
 
-		// Remove the exe-proxy-auth cookie
+		// Remove login-with-exe-* cookies (port-specific proxy auth cookies)
 		nCookies := len(req.Cookies())
 		var cookies []*http.Cookie
 		for _, c := range req.Cookies() {
-			if c.Name != "exe-proxy-auth" {
+			if !strings.HasPrefix(c.Name, "login-with-exe-") {
 				cookies = append(cookies, c)
 			}
 		}
