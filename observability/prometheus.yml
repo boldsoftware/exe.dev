@@ -24,16 +24,24 @@ scrape_configs:
         - 'docker-01:9100'
         - 'docker-02:9100'
         - 'exed-02:19100'  # exed listens on most ports for proxy, so use 10000+9100
-        - 'exe-ctr-02:9100'
-        - 'exe-ctr-03:9100'
         - 'ci.crocodile-vector.ts.net:9100'
         labels:
           stage: 'production'
       - targets:
+        - 'exe-ctr-02:9100'
+        - 'exe-ctr-03:9100'
+        labels:
+          stage: 'production'
+          role: 'exelet'
+      - targets:
         - 'exed-staging-01:19100'  # exed listens on most ports for proxy, so use 10000+9100
+        labels:
+          stage: 'staging'
+      - targets:
         - 'exe-ctr-staging-01:9100'
         labels:
           stage: 'staging'
+          role: 'exelet'
 
   - job_name: 'authd'
     static_configs:

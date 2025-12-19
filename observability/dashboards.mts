@@ -1990,10 +1990,12 @@ function makeAddChart<T extends TimeseriesBuilder>(
       panelCustomization,
       queryCustomization,
       alert,
+      alertQueryOverride,
     }: {
       panelCustomization?: (panel: T) => T;
       queryCustomization?: (dataQuery: DataqueryBuilder) => DataqueryBuilder;
       alert?: AlertConfig;
+      alertQueryOverride?: string; // Use a different query for alerts (e.g., to exclude certain hosts)
     } = {}
   ) {
     const panel = builders.buildPanel().title(title);
@@ -2021,9 +2023,10 @@ function makeAddChart<T extends TimeseriesBuilder>(
       panel.thresholds(thresholds).thresholdsStyle(thresholdStyle);
 
       // Store alert configuration for later creation
+      // Use alertQueryOverride if provided (e.g., to exclude certain hosts from alerting)
       alertsToCreate.push({
         panelTitle: title,
-        query: query,
+        query: alertQueryOverride || query,
         alertConfig: alert,
         dashboardUID: dashboardUID,
       });
@@ -2105,12 +2108,13 @@ function makeHostsDashboard() {
     new RowBuilder("Memory Metrics").gridPos({ x: 0, y: 9, w: 24, h: 1 })
   );
 
+  // Memory Available % - alert only for non-exelet hosts
   addTimeseriesChart(
     "Memory Available %",
     `(node_memory_MemAvailable_bytes{${HOST_FILTER}} / node_memory_MemTotal_bytes{${HOST_FILTER}}) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 10, w: 8, h: 6 }),
+        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 10, w: 6, h: 6 }),
       alert: {
         threshold: 20,
         condition: "lt",
@@ -2118,15 +2122,36 @@ function makeHostsDashboard() {
         summary: "Memory available is critically low",
         description: "Memory available has dropped below 20% for more than 3 minutes",
       },
+      // Alert query excludes exelet hosts - they are allowed to run out of memory
+      alertQueryOverride: `(node_memory_MemAvailable_bytes{role!="exelet"} / node_memory_MemTotal_bytes{role!="exelet"}) * 100`,
+    }
+  );
+
+  // Memory Usage % - alert only for non-exelet hosts
+  addTimeseriesChart(
+    "Memory Usage %",
+    `(1 - (node_memory_MemAvailable_bytes{${HOST_FILTER}} / node_memory_MemTotal_bytes{${HOST_FILTER}})) * 100`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).max(100).gridPos({ x: 6, y: 10, w: 6, h: 6 }),
+      alert: {
+        threshold: 90,
+        condition: "gt",
+        forDuration: "3m",
+        summary: "Memory usage is critically high",
+        description: "Memory usage has exceeded 90% for more than 3 minutes",
+      },
+      // Alert query excludes exelet hosts - they are allowed to run out of memory
+      alertQueryOverride: `(1 - (node_memory_MemAvailable_bytes{role!="exelet"} / node_memory_MemTotal_bytes{role!="exelet"})) * 100`,
     }
   );
 
   addTimeseriesChart("Memory Total", `node_memory_MemTotal_bytes{${HOST_FILTER}}`, {
-    panelCustomization: (x) => x.unit("bytes").gridPos({ x: 8, y: 10, w: 8, h: 6 }),
+    panelCustomization: (x) => x.unit("bytes").gridPos({ x: 12, y: 10, w: 6, h: 6 }),
   });
 
   addTimeseriesChart("Memory Available", `node_memory_MemAvailable_bytes{${HOST_FILTER}}`, {
-    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 16, y: 10, w: 8, h: 6 }),
+    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 18, y: 10, w: 6, h: 6 }),
   });
 
   // Memory Usage by Type (stacked area chart)
