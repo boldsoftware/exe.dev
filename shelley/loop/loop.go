@@ -356,17 +356,17 @@ func (l *Loop) handleToolCalls(ctx context.Context, content []llm.Content) error
 }
 
 // insertMissingToolResults fixes tool_result issues in the conversation history:
-// 1. Adds error results for tool_uses that were requested but not included in the next message.
-//    This can happen when a request is cancelled or fails after the LLM responds with tool_use
-//    blocks but before the tools execute.
-// 2. Removes orphan tool_results that reference tool_use IDs not present in the immediately
-//    preceding assistant message. This can happen when a tool execution completes after
-//    CancelConversation has already written cancellation messages.
+//  1. Adds error results for tool_uses that were requested but not included in the next message.
+//     This can happen when a request is cancelled or fails after the LLM responds with tool_use
+//     blocks but before the tools execute.
+//  2. Removes orphan tool_results that reference tool_use IDs not present in the immediately
+//     preceding assistant message. This can happen when a tool execution completes after
+//     CancelConversation has already written cancellation messages.
 //
 // This prevents API errors like:
-// - "tool_use ids were found without tool_result blocks"
-// - "unexpected tool_use_id found in tool_result blocks ... Each tool_result block must have
-//   a corresponding tool_use block in the previous message"
+//   - "tool_use ids were found without tool_result blocks"
+//   - "unexpected tool_use_id found in tool_result blocks ... Each tool_result block must have
+//     a corresponding tool_use block in the previous message"
 //
 // Mutates the request's Messages slice.
 func (l *Loop) insertMissingToolResults(req *llm.Request) {
