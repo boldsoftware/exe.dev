@@ -142,4 +142,3 @@ func TestRequireHeaderMiddleware_AllowsVersionEndpointWithoutHeader(t *testing.T
 		t.Errorf("expected status 200 for /version without required header, got %d", w.Code)
 	}
 }
-

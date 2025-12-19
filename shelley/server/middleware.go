@@ -19,7 +19,6 @@ func LoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return sloghttp.NewWithConfig(logger, config)
 }
 
-
 // CSRFMiddleware protects against CSRF attacks by requiring the X-Shelley-Request header
 // on state-changing requests (POST, PUT, DELETE). This works because browsers will not
 // add custom headers to simple cross-origin requests, and CORS preflight will block
