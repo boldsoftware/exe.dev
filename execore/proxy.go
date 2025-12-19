@@ -289,6 +289,9 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 // The proxy handles requests to VMs, which are can single subdomains of the box domain,
 // or third party domains pointing here.
 func (s *Server) isProxyRequest(host string) bool {
+	// DANGER ZONE: This function is load-bearing and empirically bug-prone.
+	// Please take extra care when working on it.
+
 	// Given that we cannot enumerate all proxy hosts,
 	// implement by explicitly excluding known non-proxy hosts, and then allowing the rest through.
 	// TODO: When we have public ips, we could make this decision based on the IP the request came in on,
@@ -299,7 +302,7 @@ func (s *Server) isProxyRequest(host string) bool {
 		return false // refuse the temptation to guess
 	case s.env.BoxHost:
 		return false // box apex is not a proxy target
-	case "blog" + "." + s.env.WebHost:
+	case "blog." + s.env.WebHost:
 		return true // special main webserver subdomains that are actually served on VMs, whee
 	}
 	if s.env.WebDev {
@@ -312,7 +315,8 @@ func (s *Server) isProxyRequest(host string) bool {
 			return false
 		}
 	}
-	// Exclude our internal debug pages and the public web server.
+	// Exclude pages that we serve: our internal debug pages (on Tailscale), the public web server ([*.]exe.dev),
+	// and web-based xterm (foo.xterm.exe.xyz).
 	if domz.FirstMatch(host, s.tsDomain, s.env.WebHost, s.env.BoxSub("xterm")) != "" {
 		return false
 	}
