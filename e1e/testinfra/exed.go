@@ -350,7 +350,6 @@ ProcessLogs:
 
 	slog.InfoContext(ctx, "started exed", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
 	return instance, nil
-
 }
 
 // Stop stops the exed process.
