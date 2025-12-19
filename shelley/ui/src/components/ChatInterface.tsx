@@ -13,7 +13,6 @@ import BrowserEvalTool from "./BrowserEvalTool";
 import ReadImageTool from "./ReadImageTool";
 import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
 import DirectoryPickerModal from "./DirectoryPickerModal";
-import ContextMenu from "./ContextMenu";
 
 interface ContextUsageBarProps {
   contextWindowSize: number;
@@ -21,8 +20,8 @@ interface ContextUsageBarProps {
 }
 
 function ContextUsageBar({ contextWindowSize, maxContextTokens }: ContextUsageBarProps) {
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const [longPressTimer, setLongPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const [showPopup, setShowPopup] = useState(false);
+  const barRef = useRef<HTMLDivElement>(null);
 
   const percentage = maxContextTokens > 0 ? (contextWindowSize / maxContextTokens) * 100 : 0;
   const clampedPercentage = Math.min(percentage, 100);
@@ -39,67 +38,65 @@ function ContextUsageBar({ contextWindowSize, maxContextTokens }: ContextUsageBa
     return tokens.toString();
   };
 
-  // Handle click to show context menu
-  const handleClick = (e: React.MouseEvent) => {
-    setContextMenu({ x: e.clientX, y: e.clientY });
+  const handleClick = () => {
+    setShowPopup(!showPopup);
   };
 
-  // Handle right-click (desktop) - same as click
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY });
-  };
+  // Close popup when clicking outside
+  useEffect(() => {
+    if (!showPopup) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (barRef.current && !barRef.current.contains(e.target as Node)) {
+        setShowPopup(false);
+      }
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [showPopup]);
 
-  // Handle long-press (mobile)
-  const handleTouchStart = (e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    const timer = setTimeout(() => {
-      setContextMenu({ x: touch.clientX, y: touch.clientY });
-    }, 500);
-    setLongPressTimer(timer);
-  };
+  // Calculate fixed position when popup should be shown
+  const [popupPosition, setPopupPosition] = useState<{ bottom: number; right: number } | null>(
+    null,
+  );
 
-  const handleTouchEnd = () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      setLongPressTimer(null);
+  useEffect(() => {
+    if (showPopup && barRef.current) {
+      const rect = barRef.current.getBoundingClientRect();
+      setPopupPosition({
+        bottom: window.innerHeight - rect.top + 4,
+        right: window.innerWidth - rect.right,
+      });
+    } else {
+      setPopupPosition(null);
     }
-  };
-
-  const remaining = Math.max(0, maxContextTokens - contextWindowSize);
-
-  const menuItems = [
-    {
-      label: `Used: ${contextWindowSize.toLocaleString()} tokens`,
-      icon: <span style={{ fontSize: "14px" }}>📊</span>,
-      onClick: () => {},
-    },
-    {
-      label: `Max: ${maxContextTokens.toLocaleString()} tokens`,
-      icon: <span style={{ fontSize: "14px" }}>📏</span>,
-      onClick: () => {},
-    },
-    {
-      label: `Remaining: ${remaining.toLocaleString()} tokens`,
-      icon: <span style={{ fontSize: "14px" }}>💾</span>,
-      onClick: () => {},
-    },
-    {
-      label: `Usage: ${percentage.toFixed(1)}%`,
-      icon: <span style={{ fontSize: "14px" }}>📈</span>,
-      onClick: () => {},
-    },
-  ];
+  }, [showPopup]);
 
   return (
-    <>
+    <div ref={barRef}>
+      {showPopup && popupPosition && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: popupPosition.bottom,
+            right: popupPosition.right,
+            padding: "6px 10px",
+            backgroundColor: "var(--bg-secondary)",
+            border: "1px solid var(--border-color)",
+            borderRadius: "4px",
+            fontSize: "12px",
+            color: "var(--text-secondary)",
+            whiteSpace: "nowrap",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+            zIndex: 100,
+          }}
+        >
+          {formatTokens(contextWindowSize)} / {formatTokens(maxContextTokens)} (
+          {percentage.toFixed(1)}%) tokens used
+        </div>
+      )}
       <div
         className="context-usage-bar"
         onClick={handleClick}
-        onContextMenu={handleContextMenu}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
         title={`Context: ${formatTokens(contextWindowSize)} / ${formatTokens(maxContextTokens)} tokens (${percentage.toFixed(1)}%)`}
       >
         <div
@@ -110,15 +107,7 @@ function ContextUsageBar({ contextWindowSize, maxContextTokens }: ContextUsageBa
           }}
         />
       </div>
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
-          items={menuItems}
-        />
-      )}
-    </>
+    </div>
   );
 }
 
