@@ -155,6 +155,13 @@ func TestIsProxyRequest(t *testing.T) {
 			comment:  "Should recognize *.exe.xyz even with server port",
 		},
 		{
+			name:     "blog subdomain should proxy",
+			env:      stage.Prod(),
+			host:     "blog.exe.dev",
+			expected: true,
+			comment:  "blog.exe.dev is served from a VM even though it's under WebHost",
+		},
+		{
 			name:     "prod WebHost subdomain should not be proxy",
 			env:      stage.Prod(),
 			host:     "mybox.exe.dev",
