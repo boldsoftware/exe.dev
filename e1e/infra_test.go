@@ -18,7 +18,6 @@ import (
 	"io"
 	"log/slog"
 	"math/rand/v2"
-	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -34,8 +33,6 @@ import (
 	"syscall"
 	"testing"
 	"time"
-
-	"github.com/go4org/hashtriemap"
 
 	"exe.dev/e1e/testinfra"
 	"github.com/Netflix/go-expect"
@@ -291,7 +288,7 @@ type testEnv struct {
 	exed          *testinfra.ExedInstance
 	piperd        *piperdInstance
 	exelet        *testinfra.ExeletInstance
-	email         *emailServer
+	email         *testinfra.EmailServer
 	exedSlogErrC  chan string // receives exed ERROR log lines
 	exedGuidLogC  chan string // receives exed log lines with guid attribute
 
@@ -469,14 +466,14 @@ func setup(ctrHost string) (*testEnv, error) {
 	}
 
 	// Start email server first so we can pass its URL to exed
-	es, err := newEmailServer()
+	es, err := testinfra.StartEmailServer(context.Background(), *flagVerboseEmail)
 	if err != nil {
 		return env, err
 	}
 	env.email = es
-	env.addCanonicalization(es.port, "EMAIL_SERVER_PORT")
+	env.addCanonicalization(es.Port, "EMAIL_SERVER_PORT")
 	if *flagVerboseEmail {
-		slog.Info("email server listening", "port", es.port)
+		slog.Info("email server listening", "port", es.Port)
 	}
 
 	// We have a circular dependency: exelet needs to know exed's HTTP port,
@@ -520,7 +517,7 @@ func setup(ctrHost string) (*testEnv, error) {
 
 	// TODO: build piperd concurrently with starting exed for faster startup
 	// Pass "0,0" to let the proxy listeners allocate their own port numbers
-	ei, err := testinfra.StartExed(context.Background(), es.port, sshProxy.Port(), []int{0, 0}, []string{exelet.Address}, exedLog, *flagVerbosePorts)
+	ei, err := testinfra.StartExed(context.Background(), es.Port, sshProxy.Port(), []int{0, 0}, []string{exelet.Address}, exedLog, *flagVerbosePorts)
 	if err != nil {
 		return env, err
 	}
@@ -907,138 +904,6 @@ func writeAsciinemaToText(castFile, baseName string) error {
 	return nil
 }
 
-type emailMessage struct {
-	To      string `json:"to"`
-	Subject string `json:"subject"`
-	Body    string `json:"body"`
-}
-
-type emailServer struct {
-	port     int
-	server   *http.Server
-	listener net.Listener
-	inbox    hashtriemap.HashTrieMap[string, chan emailMessage] // email address -> inbox channel
-	poisoned hashtriemap.HashTrieMap[string, bool]              // email addresses that should panic on receive
-	// stored keeps a copy of all emails for HTTP retrieval by the AI agent
-	storedMu sync.RWMutex
-	stored   []emailMessage
-}
-
-func newEmailServer() (*emailServer, error) {
-	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		return nil, fmt.Errorf("failed to listen: %w", err)
-	}
-
-	port := listener.Addr().(*net.TCPAddr).Port
-
-	es := &emailServer{
-		port:     port,
-		listener: listener,
-	}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /", es.handleSendEmail)
-	mux.HandleFunc("GET /emails", es.handleGetEmails)
-
-	es.server = &http.Server{Handler: mux}
-
-	go func() {
-		if err := es.server.Serve(listener); err != nil && err != http.ErrServerClosed {
-			fmt.Fprintf(os.Stderr, "email server error: %v\n", err)
-		}
-	}()
-
-	return es, nil
-}
-
-func (es *emailServer) handleSendEmail(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "failed to read body", http.StatusBadRequest)
-		return
-	}
-
-	var email emailMessage
-	if err := json.Unmarshal(body, &email); err != nil {
-		http.Error(w, "invalid json", http.StatusBadRequest)
-		return
-	}
-
-	if email.To == "" {
-		http.Error(w, "to field is required", http.StatusBadRequest)
-		return
-	}
-
-	if *flagVerboseEmail {
-		slog.InfoContext(r.Context(), "email received", "to", email.To, "subject", email.Subject, "body", email.Body)
-	}
-
-	if _, poisoned := es.poisoned.Load(email.To); poisoned {
-		panic(fmt.Sprintf("email sent to poisoned inbox %s: subject=%q", email.To, email.Subject))
-	}
-
-	// Store for HTTP retrieval
-	es.storedMu.Lock()
-	es.stored = append(es.stored, email)
-	es.storedMu.Unlock()
-
-	es.inboxChannel(email.To) <- email
-}
-
-func (es *emailServer) handleGetEmails(w http.ResponseWriter, r *http.Request) {
-	toFilter := r.URL.Query().Get("to")
-
-	es.storedMu.RLock()
-	defer es.storedMu.RUnlock()
-
-	var result []emailMessage
-	for _, email := range es.stored {
-		if toFilter == "" || email.To == toFilter {
-			result = append(result, email)
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
-}
-
-// inboxChannel returns the inbox channel for the given email address.
-func (es *emailServer) inboxChannel(email string) chan emailMessage {
-	ch, _ := es.inbox.LoadOrStore(email, make(chan emailMessage, 16))
-	return ch
-}
-
-// waitForEmail waits for an email to a specific address with a timeout
-func (es *emailServer) waitForEmail(t *testing.T, email string) emailMessage {
-	ch := es.inboxChannel(email)
-	select {
-	case msg := <-ch:
-		return msg
-	case <-time.After(5 * time.Second):
-		t.Fatalf("timeout waiting for email to %s", email)
-		return emailMessage{}
-	}
-}
-
-// poisonInbox marks an inbox as poisoned. Any email sent to this address will panic.
-// This is used to verify no email is sent without requiring a sleep-based timeout.
-func (es *emailServer) poisonInbox(email string) {
-	es.poisoned.Store(email, true)
-}
-
-// extractVerificationToken extracts the full verification URL from the email body
-func extractVerificationToken(body string) (string, error) {
-	// Look for the full verification URL pattern including any query parameters
-	// The URL continues until whitespace or end of line
-	re := regexp.MustCompile(`http://[^/]+/verify-(email|device)\?[^\s]+`)
-	matches := re.FindStringSubmatch(body)
-	if len(matches) < 1 {
-		return "", fmt.Errorf("verification URL not found in email body: %s", body)
-	}
-	return matches[0], nil // Return the full URL including all query params
-}
-
 func sshToExeDev(t *testing.T, keyFile string) *expectPty {
 	pty := sshWithUsername(t, "", keyFile)
 	pty.prompt = exeDevPrompt
@@ -1151,8 +1016,20 @@ func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
 	return pty
 }
 
-func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) []*http.Cookie {
-	verifyURL, err := extractVerificationToken(emailMsg.Body)
+// waitForEmailAndVerify waits for an email message to an address,
+// looks for a verification link in that email, and clicks it.
+// It returns HTTP authorization cookies.
+func waitForEmailAndVerify(t *testing.T, to string) []*http.Cookie {
+	msg, err := Env.email.WaitForEmail(to)
+	if err != nil {
+		t.Helper()
+		t.Fatal(err)
+	}
+	return clickVerifyLinkInEmail(t, msg)
+}
+
+func clickVerifyLinkInEmail(t *testing.T, emailMsg *testinfra.EmailMessage) []*http.Cookie {
+	verifyURL, err := testinfra.ExtractVerificationToken(emailMsg.Body)
 	if err != nil {
 		t.Fatalf("failed to extract verification URL: %v", err)
 	}
@@ -1258,11 +1135,9 @@ func webLoginWithEmail(t *testing.T, email string) []*http.Cookie {
 		t.Fatalf("POST /auth failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Wait for verification email
-	emailMsg := Env.email.waitForEmail(t, email)
-
-	// Click the verification link (same as SSH flow)
-	return clickVerifyLinkInEmail(t, emailMsg)
+	// Wait for verification email and click verification link
+	// (same as SSH flow).
+	return waitForEmailAndVerify(t, email)
 }
 
 // webLoginWithExe performs a login flow with login_with_exe=1 set.
@@ -1286,11 +1161,9 @@ func webLoginWithExe(t *testing.T, email string) []*http.Cookie {
 		t.Fatalf("POST /auth failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Wait for verification email
-	emailMsg := Env.email.waitForEmail(t, email)
-
-	// Click the verification link (same as SSH flow)
-	return clickVerifyLinkInEmail(t, emailMsg)
+	// Wait for verification email and verify
+	// (same as SSH flow).
+	return waitForEmailAndVerify(t, email)
 }
 
 var boxCounter atomic.Int32
@@ -1325,8 +1198,7 @@ func registerForExeDevWithEmail(t *testing.T, email string) (pty *expectPty, coo
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
 
-	emailMsg := Env.email.waitForEmail(t, email)
-	cookies = clickVerifyLinkInEmail(t, emailMsg)
+	cookies = waitForEmailAndVerify(t, email)
 
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")

@@ -30,8 +30,7 @@ func TestNewKeyRegistration(t *testing.T) {
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
-	emailMsg := Env.email.waitForEmail(t, email)
-	clickVerifyLinkInEmail(t, emailMsg)
+	waitForEmailAndVerify(t, email)
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
 	pty.want("Welcome to EXE.DEV!") // check that we show welcome message for users who haven't created boxes
@@ -55,8 +54,7 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
-	emailMsg := Env.email.waitForEmail(t, email)
-	clickVerifyLinkInEmail(t, emailMsg)
+	waitForEmailAndVerify(t, email)
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
 	// Check that we show welcome message for first login.
@@ -99,8 +97,7 @@ func TestRegisterMultipleKeys(t *testing.T) {
 		pty.sendLine(email)
 		pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 		// pty.wantRe("Pairing code: .*[0-9]{6}.*")
-		emailMsg := Env.email.waitForEmail(t, email)
-		clickVerifyLinkInEmail(t, emailMsg)
+		waitForEmailAndVerify(t, email)
 		pty.want("Email verified successfully")
 		pty.want("Registration complete")
 		if i == 0 {
@@ -137,7 +134,10 @@ func TestRegisterWebThenKey(t *testing.T) {
 	}
 
 	// Verify the email using the mobile flow link
-	emailMsg := Env.email.waitForEmail(t, email)
+	emailMsg, err := Env.email.WaitForEmail(email)
+	if err != nil {
+		t.Fatal(err)
+	}
 	mobileRe := regexp.MustCompile(`http://localhost:\d+/m/verify-token\?token=[a-zA-Z0-9]+`)
 	verifyLink := mobileRe.FindString(emailMsg.Body)
 	if verifyLink == "" {
@@ -162,8 +162,7 @@ func TestRegisterWebThenKey(t *testing.T) {
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
 
-	deviceEmail := Env.email.waitForEmail(t, email)
-	clickVerifyLinkInEmail(t, deviceEmail)
+	waitForEmailAndVerify(t, email)
 
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
@@ -226,8 +225,7 @@ func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(newEmail))
 	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
 
-	deviceEmail := Env.email.waitForEmail(t, newEmail)
-	clickVerifyLinkInEmail(t, deviceEmail)
+	waitForEmailAndVerify(t, newEmail)
 
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
@@ -264,8 +262,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
 
-	emailMsg := Env.email.waitForEmail(t, email)
-	clickVerifyLinkInEmail(t, emailMsg)
+	waitForEmailAndVerify(t, email)
 
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
@@ -324,8 +321,7 @@ func TestRegistrationWithLatency(t *testing.T) {
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
-	emailMsg := Env.email.waitForEmail(t, email)
-	clickVerifyLinkInEmail(t, emailMsg)
+	waitForEmailAndVerify(t, email)
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
 	pty.want("Welcome to EXE.DEV!")

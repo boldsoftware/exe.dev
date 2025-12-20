@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"exe.dev/e1e/testinfra"
 )
 
 func TestBoxSharing(t *testing.T) {
@@ -94,7 +96,10 @@ func TestBoxSharing(t *testing.T) {
 			t.Fatalf("Expected %q in output, got: %q", want, out)
 		}
 
-		emailMsg := Env.email.waitForEmail(t, guestEmail)
+		emailMsg, err := Env.email.WaitForEmail(guestEmail)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !strings.Contains(emailMsg.Body, "has shared") {
 			t.Fatalf("Expected share invitation email, got: %s", emailMsg.Body)
 		}
@@ -728,7 +733,10 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 	}
 
 	// Wait for invitation email (confirms pending share was created)
-	emailMsg := Env.email.waitForEmail(t, guestEmail)
+	emailMsg, err := Env.email.WaitForEmail(guestEmail)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(emailMsg.Body, "has shared") {
 		t.Fatalf("Expected share invitation email, got: %s", emailMsg.Body)
 	}
@@ -861,7 +869,10 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 	}
 
 	// Consume the share invitation email
-	Env.email.waitForEmail(t, guestEmail)
+	_, err = Env.email.WaitForEmail(guestEmail)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Verify the share is pending
 	shareOut, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "show", box, "--json")
@@ -1467,10 +1478,13 @@ func (f *loginWithExeFlow) submitEmailForAuth() {
 func (f *loginWithExeFlow) completeEmailVerification() {
 	f.t.Helper()
 
-	emailMsg := Env.email.waitForEmail(f.t, f.email)
+	emailMsg, err := Env.email.WaitForEmail(f.email)
+	if err != nil {
+		f.t.Fatal(err)
+	}
 
 	// Extract verification URL from email
-	verifyURL, err := extractVerificationToken(emailMsg.Body)
+	verifyURL, err := testinfra.ExtractVerificationToken(emailMsg.Body)
 	if err != nil {
 		f.t.Fatalf("failed to extract verification URL: %v", err)
 	}

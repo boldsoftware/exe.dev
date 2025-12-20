@@ -73,11 +73,11 @@ To fetch verification emails:
 		Env.sshPort(),
 		Env.exed.HTTPPort,
 		Env.exed.SSHPort,
-		Env.email.port,
+		Env.email.Port,
 		Env.sshPort(),
 		Env.exed.HTTPPort,
-		Env.email.port,
-		Env.email.port,
+		Env.email.Port,
+		Env.email.Port,
 	)
 	if err := os.WriteFile(envInfoPath, []byte(envInfo), 0o644); err != nil {
 		t.Fatalf("failed to write env-info.txt: %v", err)

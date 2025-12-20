@@ -67,7 +67,10 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	}
 
 	// 4) Click verify link from email (uses the mobile /m/verify-token?token=... link)
-	emailMsg := Env.email.waitForEmail(t, email)
+	emailMsg, err := Env.email.WaitForEmail(email)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Extract first URL to /m/verify-token?token=...
 	re := regexp.MustCompile(`http://localhost:\d+/m/verify-token\?token=[a-zA-Z0-9]+`)
 	m := re.FindString(emailMsg.Body)
@@ -173,8 +176,7 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	// pty.wantRe("Pairing code:")
 
 	// Click verification link from email
-	emailMsg2 := Env.email.waitForEmail(t, email)
-	clickVerifyLinkInEmail(t, emailMsg2)
+	waitForEmailAndVerify(t, email)
 
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")

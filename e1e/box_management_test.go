@@ -31,7 +31,10 @@ func TestVanillaBox(t *testing.T) {
 	pty.disconnect()
 
 	t.Run("new_box_email_sent", func(t *testing.T) {
-		msg := Env.email.waitForEmail(t, email)
+		msg, err := Env.email.WaitForEmail(email)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !strings.Contains(msg.Subject, boxName) {
 			t.Errorf("expected email subject to contain box name %q, got %q", boxName, msg.Subject)
 		}
@@ -871,7 +874,7 @@ func TestNewBoxVariants(t *testing.T) {
 
 	// Test both long name (52 chars, the max) and --no-email flag together.
 	// For no-email, poison the inbox - email server will panic if email arrives before process ends.
-	Env.email.poisonInbox(email)
+	Env.email.PoisonInbox(email)
 
 	boxName := boxName(t)
 	if len(boxName) < 52 {
