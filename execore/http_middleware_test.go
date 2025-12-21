@@ -97,6 +97,36 @@ func TestLoggerMiddlewareStatusCode(t *testing.T) {
 	}
 }
 
+func TestLoggerMiddleware_SkipsMetrics200(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	handler := LoggerMiddleware(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/metrics" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	handler.ServeHTTP(httptest.NewRecorder(), metricsReq)
+
+	if buf.Len() != 0 {
+		t.Fatalf("expected GET /metrics 200 to be skipped, got log: %s", buf.String())
+	}
+
+	otherReq := httptest.NewRequest(http.MethodGet, "/other", nil)
+	handler.ServeHTTP(httptest.NewRecorder(), otherReq)
+
+	if buf.Len() == 0 {
+		t.Fatal("expected non-metrics request to be logged")
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("/other")) {
+		t.Fatalf("expected log to contain non-metrics path, got: %s", buf.String())
+	}
+}
+
 func TestLoggerMiddleware_AddsTraceID(t *testing.T) {
 	var capturedTraceID string
 

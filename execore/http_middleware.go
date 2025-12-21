@@ -50,6 +50,9 @@ func LoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 		ClientErrorLevel: slog.LevelInfo,
 		ServerErrorLevel: slog.LevelInfo,
 		WithRequestID:    false,
+		Filters: []sloghttp.Filter{
+			skipMetricsLogs,
+		},
 	}
 
 	return func(next http.Handler) http.Handler {
@@ -104,4 +107,12 @@ func customAttrsMiddleware(next http.Handler) http.Handler {
 			}
 		}
 	})
+}
+
+func skipMetricsLogs(w sloghttp.WrapResponseWriter, r *http.Request) bool {
+	if r.Method == http.MethodGet && r.URL.Path == "/metrics" && w.Status() == http.StatusOK {
+		return false
+	}
+
+	return true
 }
