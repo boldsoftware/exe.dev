@@ -191,9 +191,10 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 		if prompt != "" {
 			_ = fs.Set("prompt", prompt)
 		}
+		userEmail, _ := withRxRes1(s, createCtx, (*exedb.Queries).GetEmailByUserID, userID)
 
 		cc := &exemenu.CommandContext{
-			User:         &exemenu.UserInfo{ID: userID},
+			User:         &exemenu.UserInfo{ID: userID, Email: userEmail},
 			FlagSet:      fs,
 			Output:       cs,
 			Logger:       s.slog(),

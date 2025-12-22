@@ -150,6 +150,15 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 		t.Fatalf("unexpected done payload: %q", doneData)
 	}
 
+	// Verify box-created email was sent
+	boxCreatedEmail, err := Env.email.WaitForEmail(email)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(boxCreatedEmail.Subject, host) {
+		t.Errorf("expected box-created email subject to contain %q, got %q", host, boxCreatedEmail.Subject)
+	}
+
 	// 6) Dashboard page should show the box
 	dashURL := base + "/"
 	dashResp, err := client2.Get(dashURL)
