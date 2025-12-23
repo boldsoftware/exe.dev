@@ -15,7 +15,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/tg123/sshpiper/libplugin"
 	"golang.org/x/crypto/ssh"
@@ -24,6 +23,9 @@ import (
 
 // sshCmd is the command we send via ssh.
 const sshCmd = "date"
+
+// sshReply is the reply sent by the fake ssh server.
+const sshReply = "the time is now"
 
 // sawCmd is set if the sshd version saw the command.
 var sawCmd = false
@@ -83,14 +85,38 @@ func TestSSHPiperd(t *testing.T) {
 		"test@localhost",
 		sshCmd,
 	)
-	cmd.Stdout = t.Output()
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	stdout := io.TeeReader(stdoutPipe, t.Output())
 	cmd.Stderr = t.Output()
-	if err := cmd.Run(); err != nil {
-		t.Errorf("ssh exit status: %v", err)
+	if err := cmd.Start(); err != nil {
+		t.Errorf("failed to start ssh: %v", err)
+	}
+
+	outputDone := make(chan bool)
+	var output strings.Builder
+	go func() {
+		defer close(outputDone)
+		_, err := io.Copy(&output, stdout)
+		if err != nil && !errors.Is(err, os.ErrClosed) {
+			t.Errorf("error reading from ssh stdout: %v", err)
+		}
+	}()
+
+	if err := cmd.Wait(); err != nil {
+		t.Errorf("ssh failed with exit status %v", err)
 	}
 
 	if !sawCmd {
 		t.Error("ssh server did not see expected command")
+	}
+
+	<-outputDone
+	if !strings.Contains(output.String(), sshReply) {
+		t.Errorf("ssh output does not contain expected string %q", sshReply)
 	}
 
 	pi.Stop(t.Context())
@@ -284,7 +310,7 @@ func handleSSHDChannel(t *testing.T, channel ssh.Channel, channelReqs <-chan *ss
 			t.Errorf("sshd channel req.Reply error %v", err)
 		}
 
-		if _, err := channel.Write([]byte(time.Now().String() + "\n")); err != nil {
+		if _, err := channel.Write([]byte(sshReply + "\n")); err != nil {
 			t.Errorf("sshd channel write error %v", err)
 		}
 
