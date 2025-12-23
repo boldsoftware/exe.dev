@@ -335,6 +335,44 @@ func TestSitemapEndpoint(t *testing.T) {
 	}
 }
 
+// TestRobotsTxtEndpoint tests that /robots.txt returns a valid robots.txt with sitemap reference.
+func TestRobotsTxtEndpoint(t *testing.T) {
+	server := newTestServer(t)
+	baseURL := server.httpURL()
+
+	resp, err := http.Get(baseURL + "/robots.txt")
+	if err != nil {
+		t.Fatalf("Failed to fetch robots.txt: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "text/plain") {
+		t.Errorf("Expected Content-Type text/plain, got %s", contentType)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read robots.txt response: %v", err)
+	}
+
+	bodyStr := string(body)
+
+	if !strings.Contains(bodyStr, "User-agent: *") {
+		t.Error("Missing User-agent directive")
+	}
+	if !strings.Contains(bodyStr, "Allow: /") {
+		t.Error("Missing Allow directive")
+	}
+	if !strings.Contains(bodyStr, "Sitemap: https://localhost/sitemap.xml") {
+		t.Error("Missing or incorrect Sitemap directive")
+	}
+}
+
 // TestHTTPMetricsInstrumentation tests that HTTP requests are being instrumented
 func TestHTTPMetricsInstrumentation(t *testing.T) {
 	server := newTestServer(t)

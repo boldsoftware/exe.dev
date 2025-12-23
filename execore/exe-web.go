@@ -577,6 +577,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/sitemap.xml":
 		s.handleSitemap(w, r)
+	case "/robots.txt":
+		s.handleRobots(w, r)
 	case "/about":
 		s.serveStaticFile(w, r, "about.html")
 	case "/jobs":
@@ -713,6 +715,15 @@ func (s *Server) handleSitemap(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprint(w, `</urlset>
 `)
+}
+
+// handleRobots serves robots.txt for search engine crawlers.
+func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprint(w, "User-agent: *\n")
+	fmt.Fprint(w, "Allow: /\n")
+	fmt.Fprint(w, "\n")
+	fmt.Fprintf(w, "Sitemap: https://%s/sitemap.xml\n", s.env.WebHost)
 }
 
 // requireLocalAccess wraps an HTTP handler to only allow access from localhost or Tailscale IPs
