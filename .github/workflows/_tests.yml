@@ -98,18 +98,6 @@ jobs:
             echo "$HOME/.local/bin" >> $GITHUB_PATH
           fi
 
-      - name: start ephemeral vm
-        id: vm
-        run: |
-          set -euo pipefail
-          ./ops/ci-vm-start.sh | tee ci-vm-start.log
-          ENVFILE=$(tail -n1 ci-vm-start.log)
-          echo "envfile=$ENVFILE" >> "$GITHUB_OUTPUT"
-          # Export CTR_HOST for later steps
-          # shellcheck disable=SC1090
-          source "$ENVFILE"
-          echo "CTR_HOST=ssh://$VM_USER@$VM_IP" >> "$GITHUB_ENV"
-
       - name: Run e1e tests
         run: |
           # This is a separate step from other tests because...
@@ -164,13 +152,6 @@ jobs:
           path: ${{ env.E1E_LOG_DIR }}
           retention-days: 7
         continue-on-error: true
-
-      - name: destroy ephemeral vm
-        if: always()
-        run: |
-          if [ -n "${{ steps.vm.outputs.envfile }}" ]; then
-            ./ops/ci-vm-destroy.sh "${{ steps.vm.outputs.envfile }}" || true
-          fi
 
       # Please don't delete this.
       # It is useful to uncomment it to test stuff in CI
