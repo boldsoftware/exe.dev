@@ -362,7 +362,7 @@ func (ei *ExedInstance) Stop(ctx context.Context, testRunID string) {
 	os.Remove(ei.DBPath)
 
 	// Gracefully stop exed with SIGTERM so it writes coverage data.
-	slog.InfoContext(ctx, "sending SIGteRM to exed")
+	slog.InfoContext(ctx, "sending SIGTERM to exed")
 	ei.Cmd.Process.Signal(syscall.SIGTERM)
 	// Wait for graceful exit (up to 5 seconds).
 	select {
