@@ -27,6 +27,8 @@ import (
 	"golang.org/x/term"
 )
 
+var errRegistrationCancelled = errors.New("Registration cancelled")
+
 // minimalConnMetadata implements ssh.ConnMetadata with just the fields we need
 type minimalConnMetadata struct {
 	user       string
@@ -736,7 +738,11 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 	if needsEmailVerification {
 		user, err = ss.waitForEmailVerification(s, publicKey, email)
 		if err != nil || user == nil {
-			ss.server.slog().Error("email verification failed", "email", email, "error", err)
+			if errors.Is(err, errRegistrationCancelled) {
+				ss.server.slog().Info("email registration cancelled", "email", email)
+			} else {
+				ss.server.slog().Error("email verification failed", "email", email, "error", err)
+			}
 			fmt.Fprintf(s, "\r\n\033[1;31m%v\033[0m\r\n", err)
 			return
 		}
@@ -789,7 +795,7 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 		fmt.Fprintf(s, "%s✓ Email verified successfully!%s\r\n\r\n", "\033[1;32m", "\033[0m")
 	case <-ctx.Done():
 		if errors.Is(context.Cause(ctx), ctrlc.ErrCanceled) {
-			return nil, fmt.Errorf("Registration cancelled")
+			return nil, errRegistrationCancelled
 		}
 		return nil, fmt.Errorf("session disconnected")
 	case <-time.After(10 * time.Minute):
