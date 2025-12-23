@@ -23,7 +23,7 @@ func TestRequiresSSHKey(t *testing.T) {
 	pty := makePty(t, "ssh localhost [no keys]")
 
 	sshCmd := exec.CommandContext(Env.context(t), "ssh",
-		"-p", fmt.Sprint(Env.piperd.SSHPort),
+		"-p", fmt.Sprint(Env.piperd.Port),
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "PubkeyAuthentication=no",
 		"-o", "UserKnownHostsFile=/dev/null",
@@ -54,7 +54,7 @@ func TestExeDevRejectsSCP(t *testing.T) {
 	pty = makePty(t, "scp localhost")
 
 	sshCmd := exec.CommandContext(Env.context(t), "scp",
-		"-P", fmt.Sprint(Env.piperd.SSHPort),
+		"-P", fmt.Sprint(Env.piperd.Port),
 		"-o", "IdentityFile="+keyFile,
 		"-o", "IdentityAgent=none",
 		"-o", "StrictHostKeyChecking=no",

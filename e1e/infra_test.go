@@ -3,7 +3,6 @@
 package e1e
 
 import (
-	"bufio"
 	"bytes"
 	"cmp"
 	"context"
@@ -286,7 +285,7 @@ type testEnv struct {
 	sshProxy      *testinfra.TCPProxy
 	exedHTTPProxy *testinfra.TCPProxy
 	exed          *testinfra.ExedInstance
-	piperd        *piperdInstance
+	piperd        *testinfra.SSHPiperdInstance
 	exelet        *testinfra.ExeletInstance
 	email         *testinfra.EmailServer
 	exedSlogErrC  chan string // receives exed ERROR log lines
@@ -297,12 +296,6 @@ type testEnv struct {
 
 	canonicalizeMu sync.Mutex
 	canonicalize   map[string]string // maps non-deterministic strings to deterministic ones
-}
-
-type piperdInstance struct {
-	Cmd     *exec.Cmd
-	Ctx     context.Context // cancelled when Cmd exits
-	SSHPort int
 }
 
 func (e *testEnv) sshPort() int {
@@ -379,8 +372,8 @@ func (e *testEnv) context(t *testing.T) context.Context {
 			cancel(e.exed.Cause())
 		case <-e.exelet.Exited:
 			cancel(e.exelet.Cause())
-		case <-e.piperd.Ctx.Done():
-			cancel(context.Cause(e.piperd.Ctx))
+		case <-e.piperd.Exited:
+			cancel(e.piperd.Cause())
 		case <-c.Done():
 		}
 	}()
@@ -396,9 +389,8 @@ func (e *testEnv) Close() error {
 		e.exed.Stop(context.Background(), testRunID)
 	}
 
-	if e.piperd.Cmd != nil && e.piperd.Cmd.Process != nil {
-		e.piperd.Cmd.Process.Kill()
-		<-e.piperd.Ctx.Done()
+	if e.piperd != nil {
+		e.piperd.Stop(context.Background())
 	}
 
 	localExeletCoverDir := e.exelet.Stop(context.Background())
@@ -526,144 +518,27 @@ func setup(ctrHost string) (*testEnv, error) {
 	env.addCanonicalization(ei.HTTPPort, "EXED_HTTP_PORT")
 	env.addCanonicalization(ei.PiperPluginPort, "EXED_PIPER_PLUGIN_PORT")
 
-	pi, err := startPiperd(ei)
+	var piperLog io.Writer
+	if *flagVerbosePiperd {
+		piperLog = logFileFor("sshpiperd")
+	}
+	pi, err := testinfra.StartSSHPiperd(context.Background(), ei.PiperPluginPort, piperLog)
 	if err != nil {
 		return env, err
 	}
 	env.piperd = pi
-	env.addCanonicalization(pi.SSHPort, "PIPERD_PORT")
+	env.addCanonicalization(pi.Port, "PIPERD_PORT")
 	if *flagVerbosePorts {
-		slog.Info("piperd listening", "port", pi.SSHPort)
+		slog.Info("piperd listening", "port", pi.Port)
 	}
 
 	// proxy SSH requests to piperd
-	env.sshProxy.SetDestPort(pi.SSHPort)
+	env.sshProxy.SetDestPort(pi.Port)
 
 	// Now that exed is running, point the HTTP proxy to the real exed HTTP port
 	env.exedHTTPProxy.SetDestPort(ei.HTTPPort)
 
 	return env, nil
-}
-
-func startPiperd(ei *testinfra.ExedInstance) (*piperdInstance, error) {
-	start := time.Now()
-	slog.Info("starting piperd")
-	tmpFile, err := os.CreateTemp("", "sshpiperd_test_key_*.pem")
-	if err != nil {
-		return nil, err
-	}
-	tmpFile.Close()
-	defer os.Remove(tmpFile.Name())
-
-	// Start piperd process and capture its output
-	piperdCmd := exec.Command("go", "run", "-race", "./cmd/sshpiperd",
-		"--log-format", "json",
-		"--log-level", "debug",
-		"--port", "0",
-		"--drop-hostkeys-message",
-		"--address=0.0.0.0",
-		"--server-key-generate-mode", "always",
-		"--server-key", tmpFile.Name(),
-		"grpc",
-		"--endpoint=localhost:"+strconv.Itoa(ei.PiperPluginPort),
-		"--insecure",
-	)
-	piperdCmd.Dir = filepath.Join("..", "deps", "sshpiper") // run from sshpiper dir so it finds its go.mod
-
-	// Start piperd process and capture its output
-	cmdOut, err := piperdCmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
-	}
-	piperdCmd.Stderr = piperdCmd.Stdout
-
-	if err := piperdCmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start sshpiperd: %w", err)
-	}
-
-	// Parse output to find ports
-	var teeMu sync.Mutex
-	tee := new(strings.Builder)
-	sshPortC := make(chan int, 1)
-	sshErrorC := make(chan error, 1)
-	go func() {
-		scan := bufio.NewScanner(cmdOut)
-		found := false
-		for scan.Scan() {
-			line := scan.Bytes()
-			teeMu.Lock()
-			tee.Write(line)
-			tee.Write([]byte("\n"))
-			if *flagVerbosePiperd {
-				fmt.Fprintln(logFileFor("sshpiperd"), string(line))
-			}
-			teeMu.Unlock()
-			// Parse JSON log line
-			if !json.Valid(line) {
-				// TODO: log when non-JSON lines are seen?
-				continue
-			}
-			var entry map[string]any
-			if err := json.Unmarshal(line, &entry); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to parse log line: %v\n", err)
-				continue
-			}
-			switch entry["msg"] {
-			case "sshpiperd is listening":
-				port, ok := entry["port"].(float64)
-				if ok {
-					sshPortC <- int(port)
-				} else {
-					sshErrorC <- fmt.Errorf("failed to get SSH port from sshpiperd log entry: %v", entry)
-				}
-				found = true
-				break
-			}
-		}
-		if !found {
-			teeMu.Lock()
-			out := tee.String()
-			teeMu.Unlock()
-			sshErrorC <- fmt.Errorf("sshpiperd never reported listening, output:\n%s", out)
-		}
-		if err := scan.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
-			fmt.Fprintf(os.Stderr, "sshpiperd scan error: %v\n", err)
-		}
-	}()
-
-	timeout := time.Minute
-	if os.Getenv("CI") != "" {
-		timeout = 2 * time.Minute
-	}
-
-	var sshPort int
-	for sshPort == 0 {
-		select {
-		case sshPort = <-sshPortC:
-		case err := <-sshErrorC:
-			return nil, err
-		case <-time.After(timeout):
-			teeMu.Lock()
-			out := tee.String()
-			teeMu.Unlock()
-			return nil, fmt.Errorf("timeout waiting for piperd to start. output:\n%s", out)
-		}
-	}
-
-	cmdCtx, cancel := context.WithCancel(context.Background())
-	go func() {
-		piperdCmd.Wait()
-		cancel()
-	}()
-
-	instance := &piperdInstance{
-		Cmd:     piperdCmd,
-		Ctx:     cmdCtx,
-		SSHPort: sshPort,
-	}
-
-	slog.Info("started piperd", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
-	return instance, nil
 }
 
 // genSSHKey generates an SSH keypair for a test.

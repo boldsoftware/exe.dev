@@ -363,7 +363,7 @@ func TestVanillaBox(t *testing.T) {
 		ptyHost := makePty(t, "ssh "+boxHostname)
 		args := sshOpts()
 		args = append(args,
-			"-p", fmt.Sprint(Env.piperd.SSHPort), // use piperd port directly (not proxy) so sshpiper sees the correct local address
+			"-p", fmt.Sprint(Env.piperd.Port), // use piperd port directly (not proxy) so sshpiper sees the correct local address
 			"-o", "IdentityFile="+keyFile,
 			boxHostname,
 		)

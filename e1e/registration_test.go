@@ -290,7 +290,7 @@ func TestRegistrationWithLatency(t *testing.T) {
 		t.Fatalf("failed to create latency proxy: %v", err)
 	}
 	proxy.SetLatency(100 * time.Millisecond)
-	proxy.SetDestPort(Env.piperd.SSHPort)
+	proxy.SetDestPort(Env.piperd.Port)
 
 	go proxy.Serve(Env.context(t))
 	t.Cleanup(proxy.Close)
