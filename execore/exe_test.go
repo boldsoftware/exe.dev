@@ -2,6 +2,7 @@ package execore
 
 import (
 	"context"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -268,6 +269,69 @@ func TestMetricsEndpoint(t *testing.T) {
 	}
 	if !strings.Contains(bodyStr, "# TYPE") {
 		t.Error("Expected Prometheus format with TYPE comments")
+	}
+}
+
+// TestSitemapEndpoint tests that /sitemap.xml returns a valid sitemap with the home page and docs.
+func TestSitemapEndpoint(t *testing.T) {
+	server := newTestServer(t)
+	baseURL := server.httpURL()
+
+	resp, err := http.Get(baseURL + "/sitemap.xml")
+	if err != nil {
+		t.Fatalf("Failed to fetch sitemap: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "application/xml") {
+		t.Errorf("Expected Content-Type application/xml, got %s", contentType)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read sitemap response: %v", err)
+	}
+
+	// Parse XML to validate structure
+	type sitemapURL struct {
+		Loc string `xml:"loc"`
+	}
+	type urlset struct {
+		XMLName xml.Name     `xml:"urlset"`
+		URLs    []sitemapURL `xml:"url"`
+	}
+
+	var sitemap urlset
+	if err := xml.Unmarshal(body, &sitemap); err != nil {
+		t.Fatalf("Failed to parse sitemap XML: %v", err)
+	}
+
+	if len(sitemap.URLs) == 0 {
+		t.Fatal("Sitemap contains no URLs")
+	}
+
+	// Check that home page is included
+	hasHomePage := false
+	hasDocsPage := false
+	for _, u := range sitemap.URLs {
+		if u.Loc == "https://localhost/" {
+			hasHomePage = true
+		}
+		if strings.Contains(u.Loc, "/docs/") {
+			hasDocsPage = true
+		}
+	}
+
+	if !hasHomePage {
+		t.Error("Missing home page URL in sitemap")
+	}
+	if !hasDocsPage {
+		t.Error("No docs pages found in sitemap")
 	}
 }
 

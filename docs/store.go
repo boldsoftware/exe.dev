@@ -182,6 +182,17 @@ func (s *Store) Groups() []Group {
 	return s.groups
 }
 
+// Entries returns all published, linked entries for use in sitemaps and similar.
+func (s *Store) Entries() []*Entry {
+	var result []*Entry
+	for _, entry := range s.entries {
+		if entry.Published && !entry.Unlinked {
+			result = append(result, entry)
+		}
+	}
+	return result
+}
+
 func (s *Store) Entry(path string) (*Entry, bool) {
 	entry, ok := s.byPath[path]
 	return entry, ok
