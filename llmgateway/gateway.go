@@ -2,6 +2,7 @@ package llmgateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -241,6 +242,9 @@ func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, us
 		Transport:      transport,
 		ModifyResponse: transport.modifyResponse,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
 			m.log.Error("anthropic api gateway", "error", err)
 			m.httpError(w, r, "anthropic api gateway error: "+err.Error(), http.StatusBadGateway)
 		},
@@ -275,6 +279,9 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userI
 		Transport:      transport,
 		ModifyResponse: transport.modifyResponse,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
 			m.log.Error("openai api gateway", "error", err)
 			m.httpError(w, r, "openai api gateway error: "+err.Error(), http.StatusBadGateway)
 		},
@@ -309,6 +316,9 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, us
 		Transport:      transport,
 		ModifyResponse: transport.modifyResponse,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
 			m.log.Error("fireworks api gateway", "error", err)
 			m.httpError(w, r, "fireworks api gateway error: "+err.Error(), http.StatusBadGateway)
 		},
