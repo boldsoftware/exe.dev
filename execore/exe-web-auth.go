@@ -19,7 +19,6 @@ import (
 
 	"exe.dev/domz"
 	"exe.dev/exedb"
-	"exe.dev/logging"
 	"exe.dev/stage"
 	_ "modernc.org/sqlite"
 )
@@ -794,7 +793,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if isNewUser {
-		logging.PostFeedEvent(r.Context(), "new user (web): %s", email)
+		s.slackFeed.NewUser(r.Context(), userID, email, "web")
 	}
 
 	// Generate verification token

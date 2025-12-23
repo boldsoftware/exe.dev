@@ -7,38 +7,64 @@ import (
 	"os"
 	"strings"
 
+	"github.com/go4org/hashtriemap"
 	"github.com/slack-go/slack"
 )
 
-var slackFeedClient *slack.Client
+// SlackFeed manages posting events to the Slack #feed channel.
+// All methods are non-blocking and best-effort.
+type SlackFeed struct {
+	client *slack.Client
 
-// InitSlackFeed initializes the Slack feed client.
-// It must be called before PostFeedEvent.
-// If enabled is false or SLACK_BOT_TOKEN is not set,
-// PostFeedEvent will log messages instead of posting.
-func InitSlackFeed(enabled bool) {
-	token := strings.TrimSpace(os.Getenv("SLACK_BOT_TOKEN"))
-	if !enabled || token == "" {
-		return
-	}
-	slackFeedClient = slack.New(token)
+	// Track new user signup messages for adding reactions when they create their first VM.
+	// Maps userID -> message reference (channel + timestamp).
+	// In-memory only, best effort.
+	newUserMessages hashtriemap.HashTrieMap[string, slack.ItemRef]
 }
 
-// PostFeedEvent posts an event message to the #feed Slack channel.
-// If slack feed was not initialized or disabled, logs the message instead.
-// This function best-effort and non-blocking; it logs errors rather than returning them.
-func PostFeedEvent(ctx context.Context, msg string, args ...any) {
-	message := fmt.Sprintf(msg, args...)
-	if slackFeedClient == nil {
+// NewSlackFeed creates a new SlackFeed.
+// If enabled is false or SLACK_BOT_TOKEN is not set, returns a SlackFeed
+// that logs messages instead of posting to Slack.
+func NewSlackFeed(enabled bool) *SlackFeed {
+	sf := new(SlackFeed)
+	token := strings.TrimSpace(os.Getenv("SLACK_BOT_TOKEN"))
+	if enabled && token != "" {
+		sf.client = slack.New(token)
+	}
+	return sf
+}
+
+// NewUser notifies Slack of a new user signup.
+func (sf *SlackFeed) NewUser(ctx context.Context, userID, email, source string) {
+	message := fmt.Sprintf("new user (%s): `%s`", source, email)
+	if sf.client == nil {
 		slog.InfoContext(ctx, "slack #feed", "message", message)
 		return
 	}
 	go func() {
-		_, _, err := slackFeedClient.PostMessageContext(context.WithoutCancel(ctx), "feed",
-			slack.MsgOptionText(message, false),
-		)
+		channel, ts, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), "feed", slack.MsgOptionText(message, true))
 		if err != nil {
 			slog.WarnContext(ctx, "failed to post to #feed", "error", err)
+			return
+		}
+		sf.newUserMessages.Store(userID, slack.NewRefToMessage(channel, ts))
+	}()
+}
+
+// CreatedVM notifies Slack that user userID has created a VM.
+func (sf *SlackFeed) CreatedVM(ctx context.Context, userID string) {
+	ref, ok := sf.newUserMessages.LoadAndDelete(userID)
+	if !ok {
+		return
+	}
+	if sf.client == nil {
+		slog.InfoContext(ctx, "slack #feed reaction", "emoji", "hatching_chick", "userID", userID)
+		return
+	}
+	go func() {
+		err := sf.client.AddReactionContext(context.WithoutCancel(ctx), "hatching_chick", ref)
+		if err != nil {
+			slog.WarnContext(ctx, "failed to add reaction to #feed message", "error", err, "userID", userID)
 		}
 	}()
 }

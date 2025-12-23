@@ -749,6 +749,7 @@ done:
 	if ss.server != nil && ss.server.sshMetrics != nil {
 		ss.server.sshMetrics.boxCreationDur.Observe(totalTime.Seconds())
 	}
+	ss.server.slackFeed.CreatedVM(ctx, user.ID)
 	if showSpinner {
 		// Clear the progress line and show formatted completion message
 		cc.Write("\r\033[K")

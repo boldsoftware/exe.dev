@@ -31,7 +31,6 @@ import (
 	"exe.dev/domz"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
-	"exe.dev/logging"
 	"exe.dev/metricsbag"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
 	"exe.dev/route53"
@@ -978,7 +977,7 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 			return nil, fmt.Errorf("create user: %w", err)
 		}
 		s.slog().InfoContext(ctx, "Created new user", "email", email)
-		logging.PostFeedEvent(ctx, "new user (ssh): %s", email)
+		s.slackFeed.NewUser(ctx, user.UserID, email, "ssh")
 	} else {
 		s.slog().DebugContext(ctx, "User already exists", "email", email)
 		// User already exists - still need to resolve pending shares

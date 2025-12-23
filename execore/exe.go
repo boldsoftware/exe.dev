@@ -243,6 +243,9 @@ type Server struct {
 	log *slog.Logger
 	// net/http server error logger
 	netHTTPLogger *log.Logger
+
+	// Slack feed for posting events and tracking new user signups
+	slackFeed *logging.SlackFeed
 }
 
 // exeletClient wraps an exelet client with its address
@@ -469,7 +472,6 @@ type ServerConfig struct {
 
 // NewServer creates a new Server instance with database and container management.
 func NewServer(cfg ServerConfig) (*Server, error) {
-	logging.InitSlackFeed(cfg.Env.PostSlackFeed)
 	slog := cfg.Logger
 	// Run db migrations with a raw connection (not a pool).
 	if err := runMigrations(slog, cfg.DBPath); err != nil {
@@ -632,6 +634,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		docs:      docsHandler,
 		templates: tmpl,
 		log:       slog,
+		slackFeed: logging.NewSlackFeed(cfg.Env.PostSlackFeed),
 	}
 
 	// Set up HTTP metrics host functions for in-flight label tracking
