@@ -385,7 +385,11 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 			if session.sshStdin != nil && msg.Data != "" {
 				_, err := session.sshStdin.Write([]byte(msg.Data))
 				if err != nil {
-					slog.ErrorContext(ctx, "Failed to write to terminal", "error", err)
+					if errors.Is(err, io.EOF) {
+						// Session closed, stop processing
+						return
+					}
+					slog.InfoContext(ctx, "Failed to write to terminal", "error", err)
 				}
 			}
 		}
