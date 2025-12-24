@@ -2,7 +2,7 @@ Here's a diagram that Claude built from an excalidraw I drew...
 
 
 User                                exe.dev Service
-                                                           
+
 ┌─────────────────┐                            ┌─────────────────────────────────┐
 │                 │                            │      exe-ctr-01 (-02...) (AWS)  │
 │     SSH         │                            │                                 │
@@ -49,16 +49,16 @@ exe.dev provides containers/VMs very, very easily over SSH.
 
 Users SSH into exe.dev, which is handled by sshpiper. sshpiper
 talks to exed over a gRPC plugin interface to find out what to
-do with the connection. Connections for "host@exe.dev" with
+do with the connection. Connections for "host.exe.xyz" with
 appropriate credentials are forwarded onto the container itself.
-Connections for the "exe.dev shell" are forwarded to exed directly.
+Connections for the repl ("exe.dev shell") are forwarded to exed directly.
 
 sshd is set up on container credential with new credentials stored
 in the database.
 
 ## HTTP Architecture
 
-For HTTP, connections https://host.exe.dev/ are handled by exed directly
+For HTTP, connections https://host.exe.xyz/ are handled by exed directly
 and proxied to their containers.
 
 ## Container Management
