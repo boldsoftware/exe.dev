@@ -48,9 +48,32 @@ import {
   Query as AlertQuery,
 } from "@grafana/grafana-foundation-sdk/alerting";
 
-// Grafana auto-layouts panels when x/y are omitted, but the SDK types require them.
-// This cast helper matches runtime behavior.
-const gp = (pos: { w: number; h: number }) => pos as { x: number; y: number; w: number; h: number };
+// Global layout state for panel positioning on a 24-unit wide grid.
+// Panels flow left to right, wrapping to the next row when they exceed 24 units.
+let layoutX = 0;
+let layoutY = 0;
+let layoutRowHeight = 0;
+
+// Reset layout at the start of each dashboard
+function resetLayout() {
+  layoutX = 0;
+  layoutY = 0;
+  layoutRowHeight = 0;
+}
+
+// Returns gridPos with computed x/y and advances the position.
+const gp = (pos: { w: number; h: number }): { x: number; y: number; w: number; h: number } => {
+  // Wrap to next row if panel doesn't fit
+  if (layoutX + pos.w > 24) {
+    layoutX = 0;
+    layoutY += layoutRowHeight;
+    layoutRowHeight = 0;
+  }
+  const result = { x: layoutX, y: layoutY, w: pos.w, h: pos.h };
+  layoutX += pos.w;
+  layoutRowHeight = Math.max(layoutRowHeight, pos.h);
+  return result;
+};
 
 const TOKEN = process.env.GRAFANA_BEARER_TOKEN;
 const GRAFANA_URL = process.env.GRAFANA_URL;
@@ -97,6 +120,7 @@ function addStageVariable(dash: DashboardBuilder) {
 
 // exe.dev VMs Dashboard - VM-level metrics from exelet
 function makeExeDevVMsDashboard() {
+  resetLayout();
   const dash = new DashboardBuilder("exe.dev VMs");
   dash
     .uid("exe-dev-vms-dashboard")
@@ -355,6 +379,7 @@ function getGrpcMethodsFromProtos(): string[] {
 
 // gRPC Metrics Dashboard - covers both client (exed) and server (exelet) metrics
 function makeGrpcMetricsDashboard() {
+  resetLayout();
   const dash = new DashboardBuilder("gRPC Metrics");
   dash
     .uid("grpc-metrics-dashboard")
@@ -494,6 +519,7 @@ function makeGrpcMetricsDashboard() {
 }
 
 function makeDevExeDashboard() {
+  resetLayout();
   // Declare the name and define a unique id.
   const dash = new DashboardBuilder("exe.dev Dashboard");
   dash
@@ -1202,6 +1228,7 @@ function makeDevExeDashboard() {
 }
 
 function makeGrafanaDashboard() {
+  resetLayout();
   const dash = new DashboardBuilder("Grafana Self-Monitoring Dashboard");
   dash
     .uid("grafana-monitoring-dashboard")
@@ -1403,6 +1430,7 @@ function makeGrafanaDashboard() {
 }
 
 function makeMonMonDashboard() {
+  resetLayout();
   const dash = new DashboardBuilder("Mon Mon - Monitoring Infrastructure");
   dash
     .uid("mon-mon-dashboard")
@@ -2105,6 +2133,7 @@ function makeAddChart<T extends TimeseriesBuilder>(
 
 // Hosts Dashboard - node exporter metrics across all hosts
 function makeHostsDashboard() {
+  resetLayout();
   const dash = new DashboardBuilder("Hosts Dashboard");
   dash
     .uid("hosts-dashboard")
@@ -2476,6 +2505,7 @@ function makeHostsDashboard() {
 
 // AWS CloudWatch Dashboard - metrics from YACE (Yet Another CloudWatch Exporter)
 function makeAwsCloudWatchDashboard() {
+  resetLayout();
   const dash = new DashboardBuilder("AWS CloudWatch");
   dash
     .uid("aws-cloudwatch-dashboard")
@@ -2697,6 +2727,7 @@ function makeAwsCloudWatchDashboard() {
 
 // exe.dev LLM Gateway Dashboard - token usage, costs, latency, and rate limits
 function makeLLMGatewayDashboard() {
+  resetLayout();
   const dash = new DashboardBuilder("exe.dev LLM Gateway");
   dash
     .uid("exe-dev-llm-gateway")
