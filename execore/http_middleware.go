@@ -49,6 +49,7 @@ func LoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 		DefaultLevel:     slog.LevelInfo,
 		ClientErrorLevel: slog.LevelInfo,
 		ServerErrorLevel: slog.LevelInfo,
+		WithUserAgent:    true,
 		WithRequestID:    false,
 		Filters: []sloghttp.Filter{
 			skipMetricsLogs,
