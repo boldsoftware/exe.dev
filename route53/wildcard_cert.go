@@ -24,6 +24,10 @@ import (
 	"tailscale.com/util/singleflight"
 )
 
+// ErrUnrecognizedDomain is returned when GetCertificate is called with a domain
+// that is not managed by this WildcardCertManager.
+var ErrUnrecognizedDomain = errors.New("unrecognized domain")
+
 func pkFromData(keyData []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(keyData)
 	if block == nil || block.Type != "RSA PRIVATE KEY" {
@@ -146,7 +150,7 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 	rootDomain := w.domainForServerName(serverName)
 	if rootDomain == "" {
 		// Not a domain we manage.
-		return nil, fmt.Errorf("unrecognized domain: %q", hello.ServerName)
+		return nil, fmt.Errorf("%w: %q", ErrUnrecognizedDomain, hello.ServerName)
 	}
 
 	cert, err := w.ensureCertificateForDomain(rootDomain)

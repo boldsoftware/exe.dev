@@ -318,7 +318,9 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 	if domz.FirstMatch(serverName, s.env.BoxHost, s.env.WebHost) != "" {
 		if s.wildcardCertManager != nil {
 			cert, err := s.wildcardCertManager.GetCertificate(hello)
-			if err != nil {
+			if errors.Is(err, route53.ErrUnrecognizedDomain) {
+				s.slog().Debug("wildcard GetCertificate rejected unrecognized domain", "error", err)
+			} else if err != nil {
 				s.slog().Error("wildcard GetCertificate failed; giving up", "error", err)
 			}
 			return cert, err
