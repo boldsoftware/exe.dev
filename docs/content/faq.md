@@ -54,7 +54,7 @@ you can run `docker run --rm alpine:latest echo hello`, and go from there!
 
 We pronounce it "EX-ee". But you don't have to.
 
-# Q: How do I access Github? How do I set up a minimal GitHub token?
+# Q: How do I access GitHub? How do I set up a minimal GitHub token?
 
 You can use the `gh` tool to login to GitHub on your VM, and it will
 work fine.
