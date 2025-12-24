@@ -19,7 +19,7 @@ comes with dollars to use for LLM tokens. This lets you get started without
 registering for LLM API keys. You are welcome to, of course, configure Shelley
 to use your own API keys.
 
-Shelley is named so because the main tool it uses is the shell, and I like
+Shelley is so named because the main tool it uses is the shell, and I like
 putting "-ey" at the end of words. It is also named after Percy Bysshe Shelley,
 with an appropriately ironic nod at
 "[Ozymandias](https://www.poetryfoundation.org/poems/46565/ozymandias)."
