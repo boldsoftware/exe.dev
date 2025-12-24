@@ -213,7 +213,8 @@ function makeExeDevVMsDashboard() {
     "Total VM CPU Usage (cores)",
     `sum(rate(exelet_vm_cpu_seconds_total{${STAGE_FILTER}}[$__rate_interval]))`,
     {
-      panelCustomization: (x) => x.unit("short").min(0).gridPos(gp({ w: 12, h: 8 })),
+      panelCustomization: (x) => x.unit("short").min(0),
+      gridPos: { w: 12, h: 8 },
     }
   );
 
@@ -221,7 +222,8 @@ function makeExeDevVMsDashboard() {
     "CPU Usage per VM",
     `rate(exelet_vm_cpu_seconds_total{${STAGE_FILTER}}[$__rate_interval])`,
     {
-      panelCustomization: (x) => x.unit("short").min(0).gridPos(gp({ w: 12, h: 8 })),
+      panelCustomization: (x) => x.unit("short").min(0),
+      gridPos: { w: 12, h: 8 },
       queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
     }
   );
@@ -233,7 +235,8 @@ function makeExeDevVMsDashboard() {
     "Total VM Memory Usage",
     `sum(exelet_vm_memory_bytes{${STAGE_FILTER}})`,
     {
-      panelCustomization: (x) => x.unit("bytes").min(0).gridPos(gp({ w: 12, h: 8 })),
+      panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 12, h: 8 },
     }
   );
 
@@ -241,7 +244,8 @@ function makeExeDevVMsDashboard() {
     "Memory Usage per VM",
     `exelet_vm_memory_bytes{${STAGE_FILTER}}`,
     {
-      panelCustomization: (x) => x.unit("bytes").min(0).gridPos(gp({ w: 12, h: 8 })),
+      panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 12, h: 8 },
       queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
     }
   );
@@ -253,7 +257,8 @@ function makeExeDevVMsDashboard() {
     "Total VM Disk Usage",
     `sum(exelet_vm_disk_used_bytes{${STAGE_FILTER}})`,
     {
-      panelCustomization: (x) => x.unit("bytes").min(0).gridPos(gp({ w: 12, h: 8 })),
+      panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 12, h: 8 },
     }
   );
 
@@ -261,7 +266,8 @@ function makeExeDevVMsDashboard() {
     "Disk Usage per VM",
     `exelet_vm_disk_used_bytes{${STAGE_FILTER}}`,
     {
-      panelCustomization: (x) => x.unit("bytes").min(0).gridPos(gp({ w: 12, h: 8 })),
+      panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 12, h: 8 },
       queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
     }
   );
@@ -273,7 +279,8 @@ function makeExeDevVMsDashboard() {
     "Total Network RX Rate",
     `sum(rate(exelet_vm_net_rx_bytes_total{${STAGE_FILTER}}[$__rate_interval]))`,
     {
-      panelCustomization: (x) => x.unit("Bps").min(0).gridPos(gp({ w: 12, h: 8 })),
+      panelCustomization: (x) => x.unit("Bps").min(0),
+      gridPos: { w: 12, h: 8 },
     }
   );
 
@@ -281,7 +288,8 @@ function makeExeDevVMsDashboard() {
     "Total Network TX Rate",
     `sum(rate(exelet_vm_net_tx_bytes_total{${STAGE_FILTER}}[$__rate_interval]))`,
     {
-      panelCustomization: (x) => x.unit("Bps").min(0).gridPos(gp({ w: 12, h: 8 })),
+      panelCustomization: (x) => x.unit("Bps").min(0),
+      gridPos: { w: 12, h: 8 },
     }
   );
 
@@ -289,7 +297,8 @@ function makeExeDevVMsDashboard() {
     "Network RX per VM",
     `rate(exelet_vm_net_rx_bytes_total{${STAGE_FILTER}}[$__rate_interval])`,
     {
-      panelCustomization: (x) => x.unit("Bps").min(0).gridPos(gp({ w: 12, h: 8 })),
+      panelCustomization: (x) => x.unit("Bps").min(0),
+      gridPos: { w: 12, h: 8 },
       queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
     }
   );
@@ -298,7 +307,8 @@ function makeExeDevVMsDashboard() {
     "Network TX per VM",
     `rate(exelet_vm_net_tx_bytes_total{${STAGE_FILTER}}[$__rate_interval])`,
     {
-      panelCustomization: (x) => x.unit("Bps").min(0).gridPos(gp({ w: 12, h: 8 })),
+      panelCustomization: (x) => x.unit("Bps").min(0),
+      gridPos: { w: 12, h: 8 },
       queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
     }
   );
@@ -562,7 +572,8 @@ function makeDevExeDashboard() {
     "Web Request Rate",
     `sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -571,7 +582,8 @@ function makeDevExeDashboard() {
     "Web Requests In Flight",
     `sum(http_requests_in_flight{${WEB_FILTER}}) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -581,7 +593,8 @@ function makeDevExeDashboard() {
     `sum(rate(http_requests_total{${WEB_FILTER},code=~"2.."}[$__rate_interval])) by (stage) / sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (stage) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("percent").min(0).max(100),
+      gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -630,7 +643,8 @@ function makeDevExeDashboard() {
     "Web 4xx Error Rate",
     `sum(rate(http_requests_total{${WEB_FILTER},code=~"4.."}[$__rate_interval])) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -639,7 +653,8 @@ function makeDevExeDashboard() {
     "Web 5xx Error Rate",
     `sum(rate(http_requests_total{${WEB_FILTER},code=~"5.."}[$__rate_interval])) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -649,7 +664,8 @@ function makeDevExeDashboard() {
     `sum(rate(http_requests_total{${WEB_FILTER},code=~"[45].."}[$__rate_interval])) by (stage) / sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (stage) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("percent").min(0),
+      gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -687,7 +703,8 @@ function makeDevExeDashboard() {
     "Proxy Request Rate",
     `sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -696,7 +713,8 @@ function makeDevExeDashboard() {
     "Proxy Requests In Flight",
     `sum(http_requests_in_flight{${PROXY_FILTER}}) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -706,7 +724,8 @@ function makeDevExeDashboard() {
     `sum(rate(http_requests_total{${PROXY_FILTER},code=~"2.."}[$__rate_interval])) by (stage) / sum(rate(http_requests_total{${PROXY_FILTER}}[$__rate_interval])) by (stage) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("percent").min(0).max(100),
+      gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -766,19 +785,20 @@ function makeDevExeDashboard() {
     "SSH Connections Rate",
     `rate(ssh_connections_total{${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos(gp({ w: 8, h: 6 })),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
   addTimeseriesChart("Current SSH Connections", `ssh_connections_current{${STAGE_FILTER}}`, {
-    panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+    panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
   });
 
   addTimeseriesChart(
     "SSH Auth Attempts Rate",
     `rate(ssh_auth_attempts_total{${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos(gp({ w: 8, h: 6 })),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -787,7 +807,8 @@ function makeDevExeDashboard() {
     `histogram_quantile(0.95, rate(ssh_session_duration_seconds_bucket{${STAGE_FILTER}}[5m]))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").gridPos(gp({ w: 12, h: 6 })),
+        x.unit("s"),
+      gridPos: { w: 12, h: 6 },
     }
   );
 
@@ -879,7 +900,7 @@ function makeDevExeDashboard() {
     "SQLite Transaction Leaks",
     `rate(sqlite_tx_leaks_total{job="exed",${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos(gp({ w: 8, h: 6 })),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -887,7 +908,7 @@ function makeDevExeDashboard() {
     "SQLite Read Transaction Leaks",
     `rate(sqlite_rx_leaks_total{job="exed",${STAGE_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos(gp({ w: 8, h: 6 })),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -896,7 +917,8 @@ function makeDevExeDashboard() {
     `histogram_quantile(0.95, rate(sqlite_tx_latency_bucket{job="exed",${STAGE_FILTER}}[5m])) / 1000`,
     {
       panelCustomization: (x) =>
-        x.unit("ms").gridPos(gp({ w: 8, h: 6 })),
+        x.unit("ms"),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -932,7 +954,7 @@ function makeDevExeDashboard() {
     "Box Creation Rate",
     `rate(box_creation_time_seconds_count{${STAGE_FILTER}}[$__rate_interval])`,
     {
-      panelCustomization: (x) => x.gridPos(gp({ w: 12, h: 6 })),
+      gridPos: { w: 12, h: 6 },
     }
   );
 
@@ -940,7 +962,8 @@ function makeDevExeDashboard() {
     "CreateInstance Errors",
     `sum(rate(grpc_server_handled_total{grpc_method="CreateInstance",grpc_code!="OK",${STAGE_FILTER}}[$__rate_interval])) by (grpc_code)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 12, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{grpc_code}}"),
       alert: {
         threshold: 0,
@@ -957,7 +980,8 @@ function makeDevExeDashboard() {
     "CreateInstance Success Rate",
     `sum(rate(grpc_server_handled_total{grpc_method="CreateInstance",grpc_code="OK",${STAGE_FILTER}}[$__rate_interval]))`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 12, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 6 },
     }
   );
 
@@ -971,7 +995,8 @@ function makeDevExeDashboard() {
     `rate(letsencrypt_cert_requests_total{${STAGE_FILTER}}[$__rate_interval])`,
     {
       panelCustomization: (x) =>
-        x.min(0).gridPos(gp({ w: 8, h: 6 })),
+        x.min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -984,7 +1009,8 @@ function makeDevExeDashboard() {
     "Blog Hit Rate",
     `sum(rate(blog_page_hits_total{job="blogd",stage=~"$stage"}[$__rate_interval])) by (stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 12, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}}"),
     }
   );
@@ -993,7 +1019,8 @@ function makeDevExeDashboard() {
     "Blog Hits by Path (Top 10)",
     `topk(10, sum(rate(blog_page_hits_total{job="blogd",stage=~"$stage"}[$__rate_interval])) by (path, stage))`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 12, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}} {{path}}"),
     }
   );
@@ -1082,7 +1109,8 @@ function makeDevExeDashboard() {
     "Proxy Bytes Rate",
     `sum(rate(proxy_bytes_total{${STAGE_FILTER}}[$__rate_interval])) by (direction, stage)`,
     {
-      panelCustomization: (x) => x.unit("Bps").min(0).gridPos(gp({ w: 12, h: 6 })),
+      panelCustomization: (x) => x.unit("Bps").min(0),
+      gridPos: { w: 12, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}} {{direction}}"),
     }
   );
@@ -1091,7 +1119,8 @@ function makeDevExeDashboard() {
     "Proxy Bytes Total",
     `sum(increase(proxy_bytes_total{${STAGE_FILTER}}[1h])) by (direction, stage)`,
     {
-      panelCustomization: (x) => x.unit("bytes").min(0).gridPos(gp({ w: 12, h: 6 })),
+      panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 12, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}} {{direction}}"),
     }
   );
@@ -1105,7 +1134,8 @@ function makeDevExeDashboard() {
     "Exelet CPU Usage",
     `100 - (avg by (instance) (irate(node_cpu_seconds_total{role="exelet",${STAGE_FILTER},mode="idle"}[5m])) * 100)`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos(gp({ w: 6, h: 6 })),
+      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      gridPos: { w: 6, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1114,7 +1144,8 @@ function makeDevExeDashboard() {
     "Exelet Memory Usage",
     `(1 - (node_memory_MemAvailable_bytes{role="exelet",${STAGE_FILTER}} / node_memory_MemTotal_bytes{role="exelet",${STAGE_FILTER}})) * 100`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos(gp({ w: 6, h: 6 })),
+      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      gridPos: { w: 6, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1123,7 +1154,8 @@ function makeDevExeDashboard() {
     "Exelet Memory Pressure",
     `rate(node_pressure_memory_waiting_seconds_total{role="exelet",${STAGE_FILTER}}[5m]) * 100`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).gridPos(gp({ w: 6, h: 6 })),
+      panelCustomization: (x) => x.unit("percent").min(0),
+      gridPos: { w: 6, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1132,7 +1164,8 @@ function makeDevExeDashboard() {
     "Exelet Error Log Rate",
     `sum(rate(logs_total{job="exelet",level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (instance)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 6, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 6, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1146,7 +1179,8 @@ function makeDevExeDashboard() {
     "Exed CPU Usage",
     `100 - (avg by (instance) (irate(node_cpu_seconds_total{role="exed",${STAGE_FILTER},mode="idle"}[5m])) * 100)`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos(gp({ w: 6, h: 6 })),
+      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      gridPos: { w: 6, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1155,7 +1189,8 @@ function makeDevExeDashboard() {
     "Exed Memory Usage",
     `(1 - (node_memory_MemAvailable_bytes{role="exed",${STAGE_FILTER}} / node_memory_MemTotal_bytes{role="exed",${STAGE_FILTER}})) * 100`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos(gp({ w: 6, h: 6 })),
+      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      gridPos: { w: 6, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1181,7 +1216,8 @@ function makeDevExeDashboard() {
     "Exed Error Log Rate",
     `sum(rate(logs_total{job="exed",level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (instance)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 6, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 6, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
   );
@@ -1195,7 +1231,8 @@ function makeDevExeDashboard() {
     "Warning Log Rate",
     `sum(rate(logs_total{level="WARN",${STAGE_FILTER}}[$__rate_interval])) by (job, stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}} {{job}}"),
     }
   );
@@ -1204,7 +1241,8 @@ function makeDevExeDashboard() {
     "Error Log Rate",
     `sum(rate(logs_total{level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (job, stage)`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}} {{job}}"),
     }
   );
@@ -1261,7 +1299,7 @@ function makeGrafanaDashboard() {
     "HTTP Request Rate",
     `rate(grafana_http_request_duration_seconds_count[5m])`,
     {
-      panelCustomization: (x) => x.gridPos(gp({ w: 8, h: 6 })),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1270,7 +1308,8 @@ function makeGrafanaDashboard() {
     `histogram_quantile(0.95, sum(rate(grafana_http_request_duration_seconds_bucket[5m])) by (le))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").gridPos(gp({ w: 8, h: 6 })),
+        x.unit("s"),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1279,7 +1318,8 @@ function makeGrafanaDashboard() {
     `histogram_quantile(0.99, sum(rate(grafana_http_request_duration_seconds_bucket[5m])) by (le))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").gridPos(gp({ w: 8, h: 6 })),
+        x.unit("s"),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1293,7 +1333,8 @@ function makeGrafanaDashboard() {
     `rate(process_cpu_seconds_total{job="grafana"}[5m]) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").gridPos(gp({ w: 8, h: 6 })),
+        x.unit("percent"),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1302,7 +1343,8 @@ function makeGrafanaDashboard() {
     `process_resident_memory_bytes{job="grafana"}`,
     {
       panelCustomization: (x) =>
-        x.unit("bytes").gridPos(gp({ w: 8, h: 6 })),
+        x.unit("bytes"),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1311,7 +1353,8 @@ function makeGrafanaDashboard() {
     `go_memstats_heap_alloc_bytes{job="grafana"}`,
     {
       panelCustomization: (x) =>
-        x.unit("bytes").gridPos(gp({ w: 8, h: 6 })),
+        x.unit("bytes"),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1324,7 +1367,8 @@ function makeGrafanaDashboard() {
     "Number of Goroutines",
     `go_goroutines{job="grafana"}`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1332,7 +1376,7 @@ function makeGrafanaDashboard() {
     "GC Rate",
     `rate(go_gc_duration_seconds_count{job="grafana"}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos(gp({ w: 8, h: 6 })),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1341,7 +1385,8 @@ function makeGrafanaDashboard() {
     `histogram_quantile(0.95, rate(go_gc_duration_seconds_bucket{job="grafana"}[5m]))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").gridPos(gp({ w: 8, h: 6 })),
+        x.unit("s"),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1354,7 +1399,7 @@ function makeGrafanaDashboard() {
     "Database Query Rate",
     `rate(grafana_database_queries_total[5m])`,
     {
-      panelCustomization: (x) => x.gridPos(gp({ w: 8, h: 6 })),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1363,7 +1408,8 @@ function makeGrafanaDashboard() {
     `histogram_quantile(0.95, sum(rate(grafana_database_query_duration_seconds_bucket[5m])) by (le))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").gridPos(gp({ w: 8, h: 6 })),
+        x.unit("s"),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1371,7 +1417,8 @@ function makeGrafanaDashboard() {
     "Database Connection Pool",
     `grafana_database_connections_open{job="grafana"}`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1384,7 +1431,8 @@ function makeGrafanaDashboard() {
     "Active Alerts",
     `grafana_alerting_active_configurations{job="grafana"}`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1392,7 +1440,7 @@ function makeGrafanaDashboard() {
     "Alert Rule Evaluations Rate",
     `rate(grafana_alerting_rule_evaluations_total[5m])`,
     {
-      panelCustomization: (x) => x.gridPos(gp({ w: 8, h: 6 })),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1400,7 +1448,7 @@ function makeGrafanaDashboard() {
     "Alert Notification Rate",
     `rate(grafana_alerting_notifications_sent_total[5m])`,
     {
-      panelCustomization: (x) => x.gridPos(gp({ w: 8, h: 6 })),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1413,7 +1461,7 @@ function makeGrafanaDashboard() {
     "Dashboard API Requests",
     `rate(grafana_api_dashboard_get_duration_seconds_count[5m])`,
     {
-      panelCustomization: (x) => x.gridPos(gp({ w: 12, h: 6 })),
+      gridPos: { w: 12, h: 6 },
     }
   );
 
@@ -1422,7 +1470,8 @@ function makeGrafanaDashboard() {
     `histogram_quantile(0.95, rate(grafana_api_dashboard_get_duration_seconds_bucket[5m]))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").gridPos(gp({ w: 12, h: 6 })),
+        x.unit("s"),
+      gridPos: { w: 12, h: 6 },
     }
   );
 
@@ -1571,7 +1620,8 @@ function makeMonMonDashboard() {
     `(1 - (node_memory_MemAvailable_bytes{instance="mon:9100"} / node_memory_MemTotal_bytes{instance="mon:9100"})) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos(gp({ w: 12, h: 6 })),
+        x.unit("percent").min(0).max(100),
+      gridPos: { w: 12, h: 6 },
     }
   );
 
@@ -1580,7 +1630,8 @@ function makeMonMonDashboard() {
     `node_memory_MemTotal_bytes{instance="mon:9100"} - node_memory_MemAvailable_bytes{instance="mon:9100"}`,
     {
       panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos(gp({ w: 12, h: 6 })),
+        x.unit("bytes").min(0),
+      gridPos: { w: 12, h: 6 },
     }
   );
 
@@ -1594,7 +1645,8 @@ function makeMonMonDashboard() {
     `process_resident_memory_bytes{job="grafana"}`,
     {
       panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("bytes").min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1603,7 +1655,8 @@ function makeMonMonDashboard() {
     `process_resident_memory_bytes{job="prometheus"}`,
     {
       panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("bytes").min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1612,7 +1665,8 @@ function makeMonMonDashboard() {
     `sum(process_resident_memory_bytes{job=~"grafana|prometheus"})`,
     {
       panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("bytes").min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1626,7 +1680,8 @@ function makeMonMonDashboard() {
     `100 - (avg(rate(node_cpu_seconds_total{instance="mon:9100",mode="idle"}[5m])) * 100)`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("percent").min(0).max(100),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1635,7 +1690,8 @@ function makeMonMonDashboard() {
     `rate(process_cpu_seconds_total{job="grafana"}[5m]) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("percent").min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1644,7 +1700,8 @@ function makeMonMonDashboard() {
     `rate(process_cpu_seconds_total{job="prometheus"}[5m]) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("percent").min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1657,7 +1714,8 @@ function makeMonMonDashboard() {
     "Grafana HTTP Request Rate",
     `rate(grafana_http_request_duration_seconds_count{job="grafana"}[5m])`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1666,7 +1724,8 @@ function makeMonMonDashboard() {
     `histogram_quantile(0.95, sum(rate(grafana_http_request_duration_seconds_bucket{job="grafana"}[5m])) by (le))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").min(0).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("s").min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1674,7 +1733,8 @@ function makeMonMonDashboard() {
     "Grafana Goroutines",
     `go_goroutines{job="grafana"}`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1687,7 +1747,8 @@ function makeMonMonDashboard() {
     "Prometheus Samples Ingested Rate",
     `rate(prometheus_tsdb_head_samples_appended_total{job="prometheus"}[5m])`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1695,7 +1756,8 @@ function makeMonMonDashboard() {
     "Prometheus Active Series",
     `prometheus_tsdb_head_series{job="prometheus"}`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1704,7 +1766,8 @@ function makeMonMonDashboard() {
     `histogram_quantile(0.95, rate(prometheus_engine_query_duration_seconds_bucket{job="prometheus"}[5m]))`,
     {
       panelCustomization: (x) =>
-        x.unit("s").min(0).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("s").min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1718,7 +1781,8 @@ function makeMonMonDashboard() {
     `(1 - (node_filesystem_avail_bytes{instance="mon:9100",fstype!="tmpfs",fstype!="devtmpfs"} / node_filesystem_size_bytes{instance="mon:9100",fstype!="tmpfs",fstype!="devtmpfs"})) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("percent").min(0).max(100),
+      gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{mountpoint}}"),
     }
   );
@@ -1728,7 +1792,8 @@ function makeMonMonDashboard() {
     `prometheus_tsdb_storage_blocks_bytes{job="prometheus"}`,
     {
       panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("bytes").min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -1737,7 +1802,8 @@ function makeMonMonDashboard() {
     `rate(node_network_receive_bytes_total{instance="mon:9100",device!="lo"}[5m])`,
     {
       panelCustomization: (x) =>
-        x.unit("Bps").min(0).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("Bps").min(0),
+      gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("RX {{device}}"),
     }
   );
@@ -1748,10 +1814,7 @@ function makeMonMonDashboard() {
 // Helper method to create "addTimeseriesChart" methods for your dashboard.
 function makeAddTimeseriesChart(dash: DashboardBuilder, dashboardUID: string) {
   const builders = {
-    buildPanel: () =>
-      new TimeseriesBuilder().gridPos(gp({ w: 8, h: 6 })),
-    // You might need to specify a default datasource, like so:
-    // new DataqueryBuilder().datasource({ type: "prometheus", uid: "grafanacloud-prom" })
+    buildPanel: () => new TimeseriesBuilder(),
     buildQueryTarget: () => new DataqueryBuilder(),
   };
   return makeAddChart<TimeseriesBuilder>(dash, builders, dashboardUID);
@@ -2079,11 +2142,13 @@ function makeAddChart<T extends TimeseriesBuilder>(
       queryCustomization,
       alert,
       alertQueryOverride,
+      gridPos: gridPosSize,
     }: {
       panelCustomization?: (panel: T) => T;
       queryCustomization?: (dataQuery: DataqueryBuilder) => DataqueryBuilder;
       alert?: AlertConfig;
       alertQueryOverride?: string; // Use a different query for alerts (e.g., to exclude certain hosts)
+      gridPos?: { w: number; h: number };
     } = {}
   ) {
     const panel = builders.buildPanel().title(title);
@@ -2124,6 +2189,9 @@ function makeAddChart<T extends TimeseriesBuilder>(
     if (panelCustomization) {
       panelCustomization(panel);
     }
+
+    // Apply gridPos (default 8x6 if not specified)
+    panel.gridPos(gp(gridPosSize ?? { w: 8, h: 6 }));
 
     // Attach the query target to the panel
     panel.withTarget(queryTarget);
@@ -2176,19 +2244,21 @@ function makeHostsDashboard() {
     `100 - (avg by (instance) (irate(node_cpu_seconds_total{${HOST_FILTER},mode="idle"}[5m])) * 100)`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("percent").min(0).max(100),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
   addTimeseriesChart("Load Average", `node_load1{${HOST_FILTER}}`, {
-    panelCustomization: (x) => x.gridPos(gp({ w: 8, h: 6 })),
+    gridPos: { w: 8, h: 6 },
   });
 
   addTimeseriesChart(
     "CPU Count",
     `count by (instance) (node_cpu_seconds_total{${HOST_FILTER},mode="idle"})`,
     {
-      panelCustomization: (x) => x.min(0).gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -2203,7 +2273,8 @@ function makeHostsDashboard() {
     `(node_memory_MemAvailable_bytes{${HOST_FILTER}} / node_memory_MemTotal_bytes{${HOST_FILTER}}) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos(gp({ w: 6, h: 6 })),
+        x.unit("percent").min(0).max(100),
+      gridPos: { w: 6, h: 6 },
       alert: {
         threshold: 20,
         condition: "lt",
@@ -2222,7 +2293,8 @@ function makeHostsDashboard() {
     `(1 - (node_memory_MemAvailable_bytes{${HOST_FILTER}} / node_memory_MemTotal_bytes{${HOST_FILTER}})) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos(gp({ w: 6, h: 6 })),
+        x.unit("percent").min(0).max(100),
+      gridPos: { w: 6, h: 6 },
       alert: {
         threshold: 90,
         condition: "gt",
@@ -2236,11 +2308,13 @@ function makeHostsDashboard() {
   );
 
   addTimeseriesChart("Memory Total", `node_memory_MemTotal_bytes{${HOST_FILTER}}`, {
-    panelCustomization: (x) => x.unit("bytes").gridPos(gp({ w: 6, h: 6 })),
+    panelCustomization: (x) => x.unit("bytes"),
+      gridPos: { w: 6, h: 6 },
   });
 
   addTimeseriesChart("Memory Available", `node_memory_MemAvailable_bytes{${HOST_FILTER}}`, {
-    panelCustomization: (x) => x.unit("bytes").min(0).gridPos(gp({ w: 6, h: 6 })),
+    panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 6, h: 6 },
   });
 
   // Memory Usage by Type (stacked area chart)
@@ -2328,7 +2402,8 @@ function makeHostsDashboard() {
     "Huge Pages Used vs Total",
     `(node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) * node_memory_Hugepagesize_bytes{${HOST_FILTER}}`,
     {
-      panelCustomization: (x) => x.unit("bytes").min(0).gridPos(gp({ w: 12, h: 6 })),
+      panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 12, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{instance}} Used"),
     }
   );
@@ -2358,7 +2433,8 @@ function makeHostsDashboard() {
     `((node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) / node_memory_HugePages_Total{${HOST_FILTER}}) * 100 and on(instance) (node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) > 0`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos(gp({ w: 12, h: 6 })),
+        x.unit("percent").min(0).max(100),
+      gridPos: { w: 12, h: 6 },
       alert: {
         threshold: 80,
         condition: "gt",
@@ -2379,16 +2455,19 @@ function makeHostsDashboard() {
     `(1 - (node_memory_SwapFree_bytes{${HOST_FILTER}} / node_memory_SwapTotal_bytes{${HOST_FILTER}})) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("percent").min(0).max(100),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
   addTimeseriesChart("Swap Total", `node_memory_SwapTotal_bytes{${HOST_FILTER}}`, {
-    panelCustomization: (x) => x.unit("bytes").min(0).gridPos(gp({ w: 8, h: 6 })),
+    panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 8, h: 6 },
   });
 
   addTimeseriesChart("Swap Used", `node_memory_SwapTotal_bytes{${HOST_FILTER}} - node_memory_SwapFree_bytes{${HOST_FILTER}}`, {
-    panelCustomization: (x) => x.unit("bytes").min(0).gridPos(gp({ w: 8, h: 6 })),
+    panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 8, h: 6 },
   });
 
   // Disk Metrics Row
@@ -2401,7 +2480,8 @@ function makeHostsDashboard() {
     `(1 - (node_filesystem_avail_bytes{${HOST_FILTER},fstype!="tmpfs",fstype!="devtmpfs"} / node_filesystem_size_bytes{${HOST_FILTER},fstype!="tmpfs",fstype!="devtmpfs"})) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("percent").min(0).max(100),
+      gridPos: { w: 8, h: 6 },
       alert: {
         threshold: 80,
         condition: "gt",
@@ -2413,11 +2493,13 @@ function makeHostsDashboard() {
   );
 
   addTimeseriesChart("Disk I/O Read", `irate(node_disk_read_bytes_total{${HOST_FILTER}}[5m])`, {
-    panelCustomization: (x) => x.unit("Bps").gridPos(gp({ w: 8, h: 6 })),
+    panelCustomization: (x) => x.unit("Bps"),
+      gridPos: { w: 8, h: 6 },
   });
 
   addTimeseriesChart("Disk I/O Write", `irate(node_disk_written_bytes_total{${HOST_FILTER}}[5m])`, {
-    panelCustomization: (x) => x.unit("Bps").gridPos(gp({ w: 8, h: 6 })),
+    panelCustomization: (x) => x.unit("Bps"),
+      gridPos: { w: 8, h: 6 },
   });
 
   // Network Metrics Row
@@ -2429,7 +2511,8 @@ function makeHostsDashboard() {
     "Network Receive",
     `irate(node_network_receive_bytes_total{${HOST_FILTER},device!="lo"}[5m])`,
     {
-      panelCustomization: (x) => x.unit("Bps").gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.unit("Bps"),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -2437,7 +2520,8 @@ function makeHostsDashboard() {
     "Network Transmit",
     `irate(node_network_transmit_bytes_total{${HOST_FILTER},device!="lo"}[5m])`,
     {
-      panelCustomization: (x) => x.unit("Bps").gridPos(gp({ w: 8, h: 6 })),
+      panelCustomization: (x) => x.unit("Bps"),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -2445,7 +2529,7 @@ function makeHostsDashboard() {
     "Network Errors",
     `irate(node_network_receive_errs_total{${HOST_FILTER},device!="lo"}[5m]) + irate(node_network_transmit_errs_total{${HOST_FILTER},device!="lo"}[5m])`,
     {
-      panelCustomization: (x) => x.gridPos(gp({ w: 8, h: 6 })),
+      gridPos: { w: 8, h: 6 },
     }
   );
 
@@ -2459,7 +2543,8 @@ function makeHostsDashboard() {
     `rate(node_pressure_cpu_waiting_seconds_total{${HOST_FILTER}}[5m]) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).gridPos(gp({ w: 8, h: 6 })),
+        x.unit("percent").min(0),
+      gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{instance}} waiting"),
     }
   );
@@ -2853,7 +2938,8 @@ function makeLLMGatewayDashboard() {
     `sum(rate(llm_requests_total{${STAGE_FILTER}}[$__rate_interval])) by (api_type)`,
     {
       panelCustomization: (x) =>
-        x.unit("reqps").min(0).gridPos(gp({ w: 12, h: 8 })),
+        x.unit("reqps").min(0),
+      gridPos: { w: 12, h: 8 },
       queryCustomization: (q) => q.legendFormat("{{api_type}}"),
     }
   );
@@ -2863,7 +2949,8 @@ function makeLLMGatewayDashboard() {
     `sum(rate(llm_requests_total{${STAGE_FILTER}}[$__rate_interval])) by (status)`,
     {
       panelCustomization: (x) =>
-        x.unit("reqps").min(0).gridPos(gp({ w: 12, h: 8 })),
+        x.unit("reqps").min(0),
+      gridPos: { w: 12, h: 8 },
       queryCustomization: (q) => q.legendFormat("{{status}}"),
     }
   );
@@ -2878,7 +2965,8 @@ function makeLLMGatewayDashboard() {
     `sum(rate(llm_tokens_total{${FULL_FILTER}}[$__rate_interval])) by (token_type)`,
     {
       panelCustomization: (x) =>
-        x.unit("short").min(0).gridPos(gp({ w: 12, h: 8 })),
+        x.unit("short").min(0),
+      gridPos: { w: 12, h: 8 },
       queryCustomization: (q) => q.legendFormat("{{token_type}}"),
     }
   );
@@ -2888,7 +2976,8 @@ function makeLLMGatewayDashboard() {
     `sum(rate(llm_tokens_total{${FULL_FILTER}}[$__rate_interval])) by (model)`,
     {
       panelCustomization: (x) =>
-        x.unit("short").min(0).gridPos(gp({ w: 12, h: 8 })),
+        x.unit("short").min(0),
+      gridPos: { w: 12, h: 8 },
       queryCustomization: (q) => q.legendFormat("{{model}}"),
     }
   );
@@ -2903,7 +2992,8 @@ function makeLLMGatewayDashboard() {
     `sum(rate(llm_cost_usd_total{${FULL_FILTER}}[$__rate_interval])) by (model) * 3600`,
     {
       panelCustomization: (x) =>
-        x.unit("currencyUSD").min(0).gridPos(gp({ w: 12, h: 8 })),
+        x.unit("currencyUSD").min(0),
+      gridPos: { w: 12, h: 8 },
       queryCustomization: (q) => q.legendFormat("{{model}} ($/hr)"),
     }
   );
@@ -2913,7 +3003,8 @@ function makeLLMGatewayDashboard() {
     `sum(rate(llm_cost_usd_total{${FULL_FILTER}}[$__rate_interval])) by (api_type) * 3600`,
     {
       panelCustomization: (x) =>
-        x.unit("currencyUSD").min(0).gridPos(gp({ w: 12, h: 8 })),
+        x.unit("currencyUSD").min(0),
+      gridPos: { w: 12, h: 8 },
       queryCustomization: (q) => q.legendFormat("{{api_type}} ($/hr)"),
     }
   );
@@ -2969,7 +3060,8 @@ function makeLLMGatewayDashboard() {
     `anthropic_rate_limit_remaining{${STAGE_FILTER}}`,
     {
       panelCustomization: (x) =>
-        x.min(0).gridPos(gp({ w: 24, h: 8 })),
+        x.min(0),
+      gridPos: { w: 24, h: 8 },
       queryCustomization: (q) => q.legendFormat("{{type}}"),
     }
   );
