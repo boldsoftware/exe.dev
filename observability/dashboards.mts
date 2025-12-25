@@ -2790,6 +2790,24 @@ function makeAwsCloudWatchDashboard() {
     );
   dash.withPanel(ebsBurstPanel);
 
+  // EBS IOPS Exceeded Check - alerts when volumes exceed provisioned IOPS
+  addTimeseriesChart(
+    "EBS IOPS Exceeded",
+    `aws_ebs_volumeiopsexceededcheck_maximum`,
+    {
+      panelCustomization: (x) => x.min(0).max(1),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{tag_Name}}"),
+      alert: {
+        threshold: 0,
+        condition: "gt",
+        forDuration: "1m",
+        summary: "EBS volume is exceeding provisioned IOPS",
+        description: "An EBS volume has exceeded its provisioned IOPS limit",
+      },
+    }
+  );
+
   // ========== ROUTE53 SECTION ==========
   dash.withRow(
     new RowBuilder("Route53 DNS").gridPos(gp({ w: 24, h: 1 }))

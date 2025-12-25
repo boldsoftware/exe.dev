@@ -76,6 +76,10 @@ discovery:
           statistics: [Minimum]
           period: 300
           length: 300
+        - name: VolumeIOPSExceededCheck
+          statistics: [Maximum]
+          period: 300
+          length: 300
 
 # Route53 DNS queries per hosted zone (static config, discovery not supported)
 # Note: Route53 metrics are only available in us-east-1
