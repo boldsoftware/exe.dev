@@ -270,6 +270,28 @@ INSTANCE_ID=$(aws ec2 run-instances \
 
 echo "Instance ${INSTANCE_ID} created"
 
+# Tag EBS volumes attached to the instance
+echo "Tagging EBS volumes..."
+ROOT_VOLUME_ID=$(aws ec2 describe-instances \
+    --instance-ids ${INSTANCE_ID} \
+    --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/sda1`].Ebs.VolumeId' \
+    --output text \
+    --region ${REGION})
+DATA_VOLUME_ID=$(aws ec2 describe-instances \
+    --instance-ids ${INSTANCE_ID} \
+    --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/xvdf`].Ebs.VolumeId' \
+    --output text \
+    --region ${REGION})
+
+if [ -n "$ROOT_VOLUME_ID" ] && [ "$ROOT_VOLUME_ID" != "None" ]; then
+    aws ec2 create-tags --resources ${ROOT_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-root --region ${REGION}
+    echo "Tagged root volume ${ROOT_VOLUME_ID} as ${MACHINE_NAME}-root"
+fi
+if [ -n "$DATA_VOLUME_ID" ] && [ "$DATA_VOLUME_ID" != "None" ]; then
+    aws ec2 create-tags --resources ${DATA_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-data --region ${REGION}
+    echo "Tagged data volume ${DATA_VOLUME_ID} as ${MACHINE_NAME}-data"
+fi
+
 # Wait for instance to be running
 echo "Waiting for instance to start..."
 aws ec2 wait instance-running --instance-ids ${INSTANCE_ID} --region ${REGION}
