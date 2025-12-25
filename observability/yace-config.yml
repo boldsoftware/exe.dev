@@ -30,6 +30,14 @@ discovery:
           statistics: [Sum]
           period: 300
           length: 300
+        - name: NetworkPacketsIn
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: NetworkPacketsOut
+          statistics: [Sum]
+          period: 300
+          length: 300
         - name: DiskReadBytes
           statistics: [Sum]
           period: 300
@@ -38,7 +46,51 @@ discovery:
           statistics: [Sum]
           period: 300
           length: 300
+        - name: DiskReadOps
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: DiskWriteOps
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: EBSReadBytes
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: EBSWriteBytes
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: EBSReadOps
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: EBSWriteOps
+          statistics: [Sum]
+          period: 300
+          length: 300
         - name: StatusCheckFailed
+          statistics: [Maximum]
+          period: 300
+          length: 300
+        - name: StatusCheckFailed_Instance
+          statistics: [Maximum]
+          period: 300
+          length: 300
+        - name: StatusCheckFailed_System
+          statistics: [Maximum]
+          period: 300
+          length: 300
+        - name: StatusCheckFailed_AttachedEBS
+          statistics: [Maximum]
+          period: 300
+          length: 300
+        - name: InstanceEBSIOPSExceededCheck
+          statistics: [Maximum]
+          period: 300
+          length: 300
+        - name: InstanceEBSThroughputExceededCheck
           statistics: [Maximum]
           period: 300
           length: 300
@@ -72,11 +124,27 @@ discovery:
           statistics: [Sum]
           period: 300
           length: 300
+        - name: VolumeIdleTime
+          statistics: [Sum]
+          period: 300
+          length: 300
+        - name: VolumeQueueLength
+          statistics: [Average]
+          period: 300
+          length: 300
         - name: BurstBalance
           statistics: [Minimum]
           period: 300
           length: 300
         - name: VolumeIOPSExceededCheck
+          statistics: [Maximum]
+          period: 300
+          length: 300
+        - name: VolumeThroughputExceededCheck
+          statistics: [Maximum]
+          period: 300
+          length: 300
+        - name: VolumeStalledIOCheck
           statistics: [Maximum]
           period: 300
           length: 300

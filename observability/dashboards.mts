@@ -2616,13 +2616,14 @@ function makeAwsCloudWatchDashboard() {
     new RowBuilder("EC2 Instances").gridPos(gp({ w: 24, h: 1 }))
   );
 
-  // EC2 CPU Utilization
+  // Row 1: CPU metrics
+  // CPU Utilization (Average)
   const ec2CpuPanel = new TimeseriesBuilder()
-    .title("EC2 CPU Utilization")
+    .title("CPU Utilization (Average)")
     .unit("percent")
     .min(0)
     .max(100)
-    .gridPos(gp({ w: 12, h: 8 }))
+    .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
         .expr(`aws_ec2_cpuutilization_average`)
@@ -2630,13 +2631,13 @@ function makeAwsCloudWatchDashboard() {
     );
   dash.withPanel(ec2CpuPanel);
 
-  // EC2 CPU Max
+  // CPU Utilization (Maximum)
   const ec2CpuMaxPanel = new TimeseriesBuilder()
-    .title("EC2 CPU Utilization (Max)")
+    .title("CPU Utilization (Maximum)")
     .unit("percent")
     .min(0)
     .max(100)
-    .gridPos(gp({ w: 12, h: 8 }))
+    .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
         .expr(`aws_ec2_cpuutilization_maximum`)
@@ -2644,59 +2645,32 @@ function makeAwsCloudWatchDashboard() {
     );
   dash.withPanel(ec2CpuMaxPanel);
 
-  // EC2 Network In
-  const ec2NetInPanel = new TimeseriesBuilder()
-    .title("EC2 Network In (5m)")
-    .unit("bytes")
+  // Status Checks (combined panel)
+  const ec2StatusPanel = new TimeseriesBuilder()
+    .title("Status Checks (should be 0)")
+    .unit("short")
     .min(0)
-    .gridPos(gp({ w: 12, h: 8 }))
+    .max(1)
+    .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_networkin_sum`)
-        .legendFormat("{{tag_Name}}")
-    );
-  dash.withPanel(ec2NetInPanel);
-
-  // EC2 Network Out
-  const ec2NetOutPanel = new TimeseriesBuilder()
-    .title("EC2 Network Out (5m)")
-    .unit("bytes")
-    .min(0)
-    .gridPos(gp({ w: 12, h: 8 }))
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(`aws_ec2_networkout_sum`)
-        .legendFormat("{{tag_Name}}")
-    );
-  dash.withPanel(ec2NetOutPanel);
-
-  // EC2 Disk Read/Write
-  const ec2DiskPanel = new TimeseriesBuilder()
-    .title("EC2 Disk I/O (5m)")
-    .unit("bytes")
-    .min(0)
-    .gridPos(gp({ w: 12, h: 8 }))
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(`aws_ec2_diskreadbytes_sum`)
-        .legendFormat("{{tag_Name}} read")
+        .expr(`aws_ec2_status_check_failed_maximum`)
+        .legendFormat("{{tag_Name}} any")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_diskwritebytes_sum`)
-        .legendFormat("{{tag_Name}} write")
-    );
-  dash.withPanel(ec2DiskPanel);
-
-  // EC2 Status Check Failed
-  const ec2StatusPanel = new TimeseriesBuilder()
-    .title("EC2 Status Check Failed")
-    .min(0)
-    .gridPos(gp({ w: 12, h: 8 }))
+        .expr(`aws_ec2_status_check_failed_instance_maximum`)
+        .legendFormat("{{tag_Name}} instance")
+    )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_statuscheckfailed_maximum`)
-        .legendFormat("{{tag_Name}}")
+        .expr(`aws_ec2_status_check_failed_system_maximum`)
+        .legendFormat("{{tag_Name}} system")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_status_check_failed_attached_ebs_maximum`)
+        .legendFormat("{{tag_Name}} EBS")
     )
     .thresholds(
       new ThresholdsConfigBuilder()
@@ -2708,72 +2682,306 @@ function makeAwsCloudWatchDashboard() {
     );
   dash.withPanel(ec2StatusPanel);
 
+  // Row 2: Network throughput
+  // Network In (bytes/sec)
+  const ec2NetInPanel = new TimeseriesBuilder()
+    .title("Network In")
+    .unit("Bps")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_network_in_sum / 300`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ec2NetInPanel);
+
+  // Network Out (bytes/sec)
+  const ec2NetOutPanel = new TimeseriesBuilder()
+    .title("Network Out")
+    .unit("Bps")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_network_out_sum / 300`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ec2NetOutPanel);
+
+  // Network Packets (combined in/out)
+  const ec2NetPacketsPanel = new TimeseriesBuilder()
+    .title("Network Packets")
+    .unit("pps")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_network_packets_in_sum / 300`)
+        .legendFormat("{{tag_Name}} in")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_network_packets_out_sum / 300`)
+        .legendFormat("{{tag_Name}} out")
+    );
+  dash.withPanel(ec2NetPacketsPanel);
+
+  // Row 3: Instance store disk I/O (for instances with local disks)
+  // Disk Read Throughput
+  const ec2DiskReadPanel = new TimeseriesBuilder()
+    .title("Disk Read Throughput")
+    .unit("Bps")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_disk_read_bytes_sum / 300`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ec2DiskReadPanel);
+
+  // Disk Write Throughput
+  const ec2DiskWritePanel = new TimeseriesBuilder()
+    .title("Disk Write Throughput")
+    .unit("Bps")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_disk_write_bytes_sum / 300`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ec2DiskWritePanel);
+
+  // Disk IOPS
+  const ec2DiskOpsPanel = new TimeseriesBuilder()
+    .title("Disk IOPS")
+    .unit("iops")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_disk_read_ops_sum / 300`)
+        .legendFormat("{{tag_Name}} read")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_disk_write_ops_sum / 300`)
+        .legendFormat("{{tag_Name}} write")
+    );
+  dash.withPanel(ec2DiskOpsPanel);
+
+  // Row 4: EBS metrics (aggregated across all volumes per instance)
+  // EBS Read Throughput
+  const ec2EbsReadPanel = new TimeseriesBuilder()
+    .title("EBS Read Throughput")
+    .unit("Bps")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_ebsread_bytes_sum / 300`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ec2EbsReadPanel);
+
+  // EBS Write Throughput
+  const ec2EbsWritePanel = new TimeseriesBuilder()
+    .title("EBS Write Throughput")
+    .unit("Bps")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_ebswrite_bytes_sum / 300`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ec2EbsWritePanel);
+
+  // EBS IOPS
+  const ec2EbsOpsPanel = new TimeseriesBuilder()
+    .title("EBS IOPS")
+    .unit("iops")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_ebsread_ops_sum / 300`)
+        .legendFormat("{{tag_Name}} read")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_ebswrite_ops_sum / 300`)
+        .legendFormat("{{tag_Name}} write")
+    );
+  dash.withPanel(ec2EbsOpsPanel);
+
+  // Row 5: EBS health checks
+  // EBS IOPS Exceeded Check
+  const ec2EbsIopsExceededPanel = new TimeseriesBuilder()
+    .title("EBS IOPS Exceeded")
+    .unit("short")
+    .min(0)
+    .max(1)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_instance_ebsiopsexceeded_check_maximum`)
+        .legendFormat("{{tag_Name}}")
+    )
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "green" } as Threshold,
+          { value: 1, color: "red" } as Threshold,
+        ])
+    );
+  dash.withPanel(ec2EbsIopsExceededPanel);
+
+  // EBS Throughput Exceeded Check
+  const ec2EbsThroughputExceededPanel = new TimeseriesBuilder()
+    .title("EBS Throughput Exceeded")
+    .unit("short")
+    .min(0)
+    .max(1)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ec2_instance_ebsthroughput_exceeded_check_maximum`)
+        .legendFormat("{{tag_Name}}")
+    )
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "green" } as Threshold,
+          { value: 1, color: "red" } as Threshold,
+        ])
+    );
+  dash.withPanel(ec2EbsThroughputExceededPanel);
+
   // ========== EBS SECTION ==========
   dash.withRow(
     new RowBuilder("EBS Volumes").gridPos(gp({ w: 24, h: 1 }))
   );
 
-  // EBS Read/Write Ops
-  const ebsOpsPanel = new TimeseriesBuilder()
-    .title("EBS IOPS (5m)")
-    .unit("ops")
+  // Row 1: Latency metrics (most important for performance)
+  // Average Read Latency (ms) = TotalReadTime / ReadOps * 1000
+  const ebsReadLatencyPanel = new TimeseriesBuilder()
+    .title("Average Read Latency")
+    .unit("ms")
     .min(0)
-    .gridPos(gp({ w: 12, h: 8 }))
+    .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ebs_volume_read_ops_sum`)
-        .legendFormat("{{tag_Name}} read")
-    )
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(`aws_ebs_volume_write_ops_sum`)
-        .legendFormat("{{tag_Name}} write")
+        .expr(`(aws_ebs_volume_total_read_time_sum / aws_ebs_volume_read_ops_sum) * 1000`)
+        .legendFormat("{{tag_Name}}")
     );
-  dash.withPanel(ebsOpsPanel);
+  dash.withPanel(ebsReadLatencyPanel);
 
-  // EBS Read/Write Bytes
-  const ebsBytesPanel = new TimeseriesBuilder()
-    .title("EBS Throughput (5m)")
-    .unit("bytes")
+  // Average Write Latency (ms) = TotalWriteTime / WriteOps * 1000
+  const ebsWriteLatencyPanel = new TimeseriesBuilder()
+    .title("Average Write Latency")
+    .unit("ms")
     .min(0)
-    .gridPos(gp({ w: 12, h: 8 }))
+    .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ebs_volume_read_bytes_sum`)
-        .legendFormat("{{tag_Name}} read")
-    )
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(`aws_ebs_volume_write_bytes_sum`)
-        .legendFormat("{{tag_Name}} write")
+        .expr(`(aws_ebs_volume_total_write_time_sum / aws_ebs_volume_write_ops_sum) * 1000`)
+        .legendFormat("{{tag_Name}}")
     );
-  dash.withPanel(ebsBytesPanel);
+  dash.withPanel(ebsWriteLatencyPanel);
 
-  // EBS Latency (Total Read/Write Time)
-  const ebsLatencyPanel = new TimeseriesBuilder()
-    .title("EBS Latency (5m Total Time)")
-    .unit("s")
+  // Average Queue Length
+  const ebsQueueLengthPanel = new TimeseriesBuilder()
+    .title("Average Queue Length")
+    .unit("short")
     .min(0)
-    .gridPos(gp({ w: 12, h: 8 }))
+    .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ebs_volume_total_read_time_sum`)
-        .legendFormat("{{tag_Name}} read")
-    )
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(`aws_ebs_volume_total_write_time_sum`)
-        .legendFormat("{{tag_Name}} write")
+        .expr(`aws_ebs_volume_queue_length_average`)
+        .legendFormat("{{tag_Name}}")
     );
-  dash.withPanel(ebsLatencyPanel);
+  dash.withPanel(ebsQueueLengthPanel);
 
-  // EBS Burst Balance
-  const ebsBurstPanel = new TimeseriesBuilder()
-    .title("EBS Burst Balance")
+  // Row 2: Throughput metrics
+  // Read Throughput (bytes/sec over 5 min period)
+  const ebsReadThroughputPanel = new TimeseriesBuilder()
+    .title("Read Throughput")
+    .unit("Bps")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_read_bytes_sum / 300`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ebsReadThroughputPanel);
+
+  // Write Throughput (bytes/sec over 5 min period)
+  const ebsWriteThroughputPanel = new TimeseriesBuilder()
+    .title("Write Throughput")
+    .unit("Bps")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_write_bytes_sum / 300`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ebsWriteThroughputPanel);
+
+  // Time Spent Idle (%) = IdleTime / Period * 100
+  const ebsIdleTimePanel = new TimeseriesBuilder()
+    .title("Time Spent Idle")
     .unit("percent")
     .min(0)
     .max(100)
-    .gridPos(gp({ w: 12, h: 8 }))
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`(aws_ebs_volume_idle_time_sum / 300) * 100`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ebsIdleTimePanel);
+
+  // Row 3: IOPS metrics
+  // Read Operations (ops/sec over 5 min period)
+  const ebsReadOpsPanel = new TimeseriesBuilder()
+    .title("Read Operations")
+    .unit("iops")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_read_ops_sum / 300`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ebsReadOpsPanel);
+
+  // Write Operations (ops/sec over 5 min period)
+  const ebsWriteOpsPanel = new TimeseriesBuilder()
+    .title("Write Operations")
+    .unit("iops")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_write_ops_sum / 300`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ebsWriteOpsPanel);
+
+  // EBS Burst Balance
+  const ebsBurstPanel = new TimeseriesBuilder()
+    .title("Burst Balance")
+    .unit("percent")
+    .min(0)
+    .max(100)
+    .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
         .expr(`aws_ebs_burst_balance_minimum`)
@@ -2790,10 +2998,69 @@ function makeAwsCloudWatchDashboard() {
     );
   dash.withPanel(ebsBurstPanel);
 
+  // Row 4: Average I/O size and health checks
+  // Average Read Size (bytes/op)
+  const ebsAvgReadSizePanel = new TimeseriesBuilder()
+    .title("Average Read Size")
+    .unit("decbytes")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_read_bytes_sum / aws_ebs_volume_read_ops_sum`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ebsAvgReadSizePanel);
+
+  // Average Write Size (bytes/op)
+  const ebsAvgWriteSizePanel = new TimeseriesBuilder()
+    .title("Average Write Size")
+    .unit("decbytes")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_write_bytes_sum / aws_ebs_volume_write_ops_sum`)
+        .legendFormat("{{tag_Name}}")
+    );
+  dash.withPanel(ebsAvgWriteSizePanel);
+
+  // Health checks panel (IOPS exceeded, throughput exceeded, stalled IO)
+  const ebsHealthPanel = new TimeseriesBuilder()
+    .title("Health Checks (should be 0)")
+    .unit("short")
+    .min(0)
+    .max(1)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_iopsexceeded_check_maximum`)
+        .legendFormat("{{tag_Name}} IOPS exceeded")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_throughput_exceeded_check_maximum`)
+        .legendFormat("{{tag_Name}} throughput exceeded")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`aws_ebs_volume_stalled_iocheck_maximum`)
+        .legendFormat("{{tag_Name}} stalled IO")
+    )
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "green" } as Threshold,
+          { value: 1, color: "red" } as Threshold,
+        ])
+    );
+  dash.withPanel(ebsHealthPanel);
+
   // EBS IOPS Exceeded Check - alerts when volumes exceed provisioned IOPS
   addTimeseriesChart(
-    "EBS IOPS Exceeded",
-    `aws_ebs_volumeiopsexceededcheck_maximum`,
+    "EBS IOPS Exceeded (Alert)",
+    `aws_ebs_volume_iopsexceeded_check_maximum`,
     {
       panelCustomization: (x) => x.min(0).max(1),
       gridPos: { w: 12, h: 8 },
