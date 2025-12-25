@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -64,6 +65,21 @@ import (
 
 //go:embed static
 var staticFS embed.FS
+
+// buildTime returns the VCS commit time from build info, or the process start time as fallback.
+// Used as the modification time for embedded static files to enable HTTP caching.
+var buildTime = sync.OnceValue(func() time.Time {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, setting := range info.Settings {
+			if setting.Key == "vcs.time" {
+				if t, err := time.Parse(time.RFC3339, setting.Value); err == nil {
+					return t
+				}
+			}
+		}
+	}
+	return time.Now()
+})
 
 // Region represents a geographical region where resources are allocated
 type Region string

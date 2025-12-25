@@ -3,6 +3,7 @@
 package execore
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -11,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -655,8 +657,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleRoot handles requests to the root path
-// serveStaticFile serves a file from the embedded static directory using http.FileServer
+// serveStaticFile serves a file from the embedded static directory.
+// Uses the binary's VCS build time as the modification time to enable HTTP caching.
 func (s *Server) serveStaticFile(w http.ResponseWriter, r *http.Request, filename string) {
 	// Create a sub-filesystem from the static directory
 	staticSubFS, err := fs.Sub(staticFS, "static")
@@ -665,18 +667,20 @@ func (s *Server) serveStaticFile(w http.ResponseWriter, r *http.Request, filenam
 		return
 	}
 
-	// Check if file exists
-	if _, err := staticSubFS.Open(filename); err != nil {
+	f, err := staticSubFS.Open(filename)
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
+	defer f.Close()
 
-	// Create a temporary request with the filename as path
-	tempReq := r.Clone(r.Context())
-	tempReq.URL.Path = "/" + filename
+	data, err := io.ReadAll(f)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
-	// Use http.FileServer to serve the file
-	http.FileServer(http.FS(staticSubFS)).ServeHTTP(w, tempReq)
+	http.ServeContent(w, r, filename, buildTime(), bytes.NewReader(data))
 }
 
 // handleHealth handles health check requests
