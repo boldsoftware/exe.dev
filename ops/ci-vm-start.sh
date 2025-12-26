@@ -1,20 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NAME="${NAME:-ci-ubuntu-$(date +%Y%m%d%H%M%S)}"
-VCPUS="${VCPUS:-4}"
-RAM_MB="${RAM_MB:-16384}"          # 16GiB
-DISK_GB="${DISK_GB:-40}"           # thin-provisioned
-DATA_DISK_GB="${DATA_DISK_GB:-50}" # ZFS data disk
-BASE_IMG="${BASE_IMG:-/var/lib/libvirt/images/ubuntu-24.04-base.qcow2}"
-BASE_IMG_URL="${BASE_IMG_URL:-https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img}"
-
-WORKDIR="${WORKDIR:-/var/lib/libvirt/images}"
-SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}" # or inject via env
-USER_NAME="${USER_NAME:-ubuntu}"
-
-CLOUD_HYPERVISOR_VERSION="${CLOUD_HYPERVISOR_VERSION:-48.0}"
-VIRTIOFSD_VERSION="${VIRTIOFSD_VERSION:-1.13.2}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source ${SCRIPT_DIR}/ci-vm-env.sh
 
 # TODO(philip): rewrite these cleanup functions in python
 # Cleanup old VMs and unused images
@@ -142,7 +130,6 @@ cleanup_cache_snapshots
 # END TODO(philip)
 
 # Cache/snapshot settings (hash of ops/ as determined by git tree (must be checked in))
-CACHE_DIR="${EXEDEV_CACHE:-$HOME/.cache/exedev}"
 mkdir -p "${CACHE_DIR}"
 sudo chown $USER "${CACHE_DIR}"
 
@@ -178,35 +165,6 @@ cp_clone_file() {
     fi
     return 1
 }
-
-# Determine setup hash based on ops/ directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SETUP_HASH="$(git rev-parse HEAD:ops/)"
-
-# Detect current platform architecture
-HOST_ARCH=$(uname -m)
-if [ "$HOST_ARCH" = "x86_64" ]; then
-    HOST_ARCH="amd64"
-elif [ "$HOST_ARCH" = "aarch64" ] || [ "$HOST_ARCH" = "arm64" ]; then
-    HOST_ARCH="arm64"
-fi
-
-# Get container image digest for current platform
-EXEUNTU_IMAGE="ghcr.io/boldsoftware/exeuntu:latest"
-EXEUNTU_DIGEST=$("${SCRIPT_DIR}/get-image-digest.sh" "$EXEUNTU_IMAGE" "$HOST_ARCH" | cut -d: -f2 | cut -c1-20)
-
-# Combine ops tree hash with image digest for cache key
-# We re-build the VM snapshot once a day. If you want to disable
-# using snapshots, change SNAPSHOT_DIR to be something unique, and, voila.
-SNAPSHOT_DIR="${CACHE_DIR}/ci-vm-${SETUP_HASH:0:20}-${EXEUNTU_DIGEST}-$(date +%Y%m%d)"
-SNAPSHOT_BASE="${SNAPSHOT_DIR}/base.qcow2"
-SNAPSHOT_DATA="${SNAPSHOT_DIR}/data.qcow2"
-LOCAL_BASE_COPY="${WORKDIR}/ci-base-${SETUP_HASH}.qcow2"
-LOCAL_DATA_COPY="${WORKDIR}/ci-data-${SETUP_HASH}.qcow2"
-SNAPSHOT_AVAILABLE=0
-if [[ -f "${SNAPSHOT_BASE}" && -f "${SNAPSHOT_DATA}" ]]; then
-    SNAPSHOT_AVAILABLE=1
-fi
 
 if [[ ! -f "${BASE_IMG}" ]]; then
     sudo curl "${BASE_IMG_URL}" -o "${BASE_IMG}"
