@@ -19,6 +19,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"log/slog"
 	"math"
 	"runtime"
 	"strings"
@@ -392,6 +393,9 @@ func (p *DB) Rx(ctx context.Context, fn func(ctx context.Context, rx *Rx) error)
 			p.readers <- conn
 			return fmt.Errorf("sqlite.Rx begin: %w", err)
 		}
+
+		slog.ErrorContext(ctx, "sqlite.Rx: unrecoverable error starting read tx: %v; incrementing leak counter", "err", err)
+
 		// an unrecoverable error, e.g. tx-inside-tx misuse or IOERR
 		// Count this as a leak since the connection may be unusable
 		rxLeaksCounter.Inc()
