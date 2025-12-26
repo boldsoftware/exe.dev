@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -11,6 +12,26 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	_ "modernc.org/sqlite"
 )
+
+func setBusyTimeout(t *testing.T, p *DB, timeoutMS int) {
+	t.Helper()
+	ctx := context.Background()
+	if err := p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		_, err := tx.Exec(fmt.Sprintf("PRAGMA busy_timeout=%d;", timeoutMS))
+		return err
+	}); err != nil {
+		t.Fatalf("setBusyTimeout writer: %v", err)
+	}
+
+	for i := 0; i < cap(p.readers); i++ {
+		if err := p.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+			_, err := rx.Conn().ExecContext(ctx, fmt.Sprintf("PRAGMA busy_timeout=%d;", timeoutMS))
+			return err
+		}); err != nil {
+			t.Fatalf("setBusyTimeout reader %d: %v", i, err)
+		}
+	}
+}
 
 func TestWrapErr(t *testing.T) {
 	err := wrapErr("prefix", nil)
@@ -529,6 +550,93 @@ func TestSQLiteErrorPropagation(t *testing.T) {
 		// Error code 1 = SQLITE_ERROR
 		if !strings.Contains(errStr, "(1)") {
 			t.Errorf("error should contain SQLite error code (1), got: %v", err)
+		}
+	})
+}
+
+func TestBusyHandling(t *testing.T) {
+	dsn := filepath.Join(t.TempDir(), "busy.sqlite")
+	p, err := New(dsn, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := p.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	setBusyTimeout(t, p, 50)
+
+	ctx := context.Background()
+	if err := p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		if _, err := tx.Exec("CREATE TABLE IF NOT EXISTS busy_check (v INT);"); err != nil {
+			return err
+		}
+		_, err := tx.Exec("INSERT INTO busy_check (v) VALUES (1);")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		var v int
+		return rx.QueryRow("SELECT count(*) FROM busy_check;").Scan(&v)
+	}); err != nil {
+		t.Fatalf("precheck busy_check: %v", err)
+	}
+
+	extDB, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := extDB.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	extDB.SetMaxOpenConns(1)
+	extDB.SetMaxIdleConns(1)
+
+	extConn, err := extDB.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := extConn.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if _, err := extConn.ExecContext(ctx, "PRAGMA busy_timeout=50;"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := extConn.ExecContext(ctx, "PRAGMA journal_mode=wal;"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := extConn.ExecContext(ctx, "BEGIN IMMEDIATE;"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		extConn.ExecContext(context.Background(), "ROLLBACK;")
+	})
+
+	t.Run("tx_busy", func(t *testing.T) {
+		var callbackRan bool
+		err := p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+			callbackRan = true
+			_, err := tx.Exec("SELECT 1;")
+			return err
+		})
+		if callbackRan {
+			t.Fatal("callback should not run when BEGIN fails")
+		}
+		if err == nil {
+			t.Fatal("expected busy error")
+		}
+		if !strings.Contains(err.Error(), "SQLITE_BUSY") {
+			t.Fatalf("err=%v, want SQLITE_BUSY", err)
+		}
+		if got := len(p.writer); got != 1 {
+			t.Fatalf("writer len=%d, want 1", got)
 		}
 	})
 }
