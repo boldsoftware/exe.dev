@@ -188,13 +188,16 @@ func (s *Server) getShareLinks(ctx context.Context, boxID int, boxName, userID s
 		BoxID:           int64(boxID),
 		CreatedByUserID: userID,
 	})
-	if err == nil {
-		for _, sl := range shareLinks {
-			links = append(links, BoxShareLinkInfo{
-				Token: sl.ShareToken,
-				URL:   fmt.Sprintf("%s?share=%s", s.boxProxyAddress(boxName), sl.ShareToken),
-			})
-		}
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to load share links", "error", err, "box_id", boxID, "box_name", boxName)
+		return links
+	}
+
+	for _, sl := range shareLinks {
+		links = append(links, BoxShareLinkInfo{
+			Token: sl.ShareToken,
+			URL:   fmt.Sprintf("%s?share=%s", s.boxProxyAddress(boxName), sl.ShareToken),
+		})
 	}
 
 	return links
@@ -206,7 +209,9 @@ func (s *Server) getSharedEmails(ctx context.Context, boxID int) []string {
 
 	// Get pending shares
 	pendingShares, err := withRxRes1(s, ctx, (*exedb.Queries).GetPendingBoxSharesByBoxID, int64(boxID))
-	if err == nil {
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to load pending box shares", "error", err, "box_id", boxID)
+	} else {
 		for _, ps := range pendingShares {
 			emails = append(emails, ps.SharedWithEmail)
 		}
@@ -214,7 +219,9 @@ func (s *Server) getSharedEmails(ctx context.Context, boxID int) []string {
 
 	// Get active shares
 	activeShares, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxSharesByBoxID, int64(boxID))
-	if err == nil {
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to load active box shares", "error", err, "box_id", boxID)
+	} else {
 		for _, as := range activeShares {
 			emails = append(emails, as.SharedWithUserEmail)
 		}
