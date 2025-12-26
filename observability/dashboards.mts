@@ -3058,6 +3058,8 @@ function makeAwsCloudWatchDashboard() {
   dash.withPanel(ebsHealthPanel);
 
   // EBS IOPS Exceeded Check - alerts when volumes exceed provisioned IOPS
+  // Note: noDataState is "OK" because CloudWatch may not emit this metric when
+  // volumes are healthy, so no data means no problem.
   addTimeseriesChart(
     "EBS IOPS Exceeded (Alert)",
     `aws_ebs_volume_iopsexceeded_check_maximum`,
@@ -3069,6 +3071,7 @@ function makeAwsCloudWatchDashboard() {
         threshold: 0,
         condition: "gt",
         forDuration: "10m",
+        noDataState: "OK",
         summary: "EBS volume is exceeding provisioned IOPS",
         description: "An EBS volume has exceeded its provisioned IOPS limit",
       },
