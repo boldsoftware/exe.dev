@@ -370,3 +370,165 @@ func TestLatencyHistograms(t *testing.T) {
 		}
 	}
 }
+
+func TestSQLiteErrorPropagation(t *testing.T) {
+	p, err := New(filepath.Join(t.TempDir(), "testerrors.sqlite"), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	ctx := context.Background()
+
+	// Set up a table with constraints to trigger errors
+	err = p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		_, err := tx.Exec(`CREATE TABLE test_errors (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			value INTEGER CHECK(value > 0)
+		);`)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(`INSERT INTO test_errors (id, name, value) VALUES (1, 'first', 10);`)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The modernc.org/sqlite driver reports errors with human-readable messages
+	// and SQLite error codes in parentheses. We verify:
+	// 1. The descriptive error message is present
+	// 2. The SQLite error code is included (in parentheses)
+
+	t.Run("write_unique_constraint", func(t *testing.T) {
+		err := p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+			_, err := tx.Exec(`INSERT INTO test_errors (id, name, value) VALUES (2, 'first', 20);`)
+			return err
+		})
+		if err == nil {
+			t.Fatal("expected UNIQUE constraint error, got nil")
+		}
+		errStr := err.Error()
+		if !strings.Contains(errStr, "UNIQUE constraint failed") {
+			t.Errorf("error should contain 'UNIQUE constraint failed', got: %v", err)
+		}
+		// Error code 2067 = SQLITE_CONSTRAINT_UNIQUE
+		if !strings.Contains(errStr, "(2067)") {
+			t.Errorf("error should contain SQLite error code (2067), got: %v", err)
+		}
+	})
+
+	t.Run("write_not_null_constraint", func(t *testing.T) {
+		err := p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+			_, err := tx.Exec(`INSERT INTO test_errors (id, name, value) VALUES (3, NULL, 30);`)
+			return err
+		})
+		if err == nil {
+			t.Fatal("expected NOT NULL constraint error, got nil")
+		}
+		errStr := err.Error()
+		if !strings.Contains(errStr, "NOT NULL constraint failed") {
+			t.Errorf("error should contain 'NOT NULL constraint failed', got: %v", err)
+		}
+		// Error code 1299 = SQLITE_CONSTRAINT_NOTNULL
+		if !strings.Contains(errStr, "(1299)") {
+			t.Errorf("error should contain SQLite error code (1299), got: %v", err)
+		}
+	})
+
+	t.Run("write_check_constraint", func(t *testing.T) {
+		err := p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+			_, err := tx.Exec(`INSERT INTO test_errors (id, name, value) VALUES (4, 'fourth', -5);`)
+			return err
+		})
+		if err == nil {
+			t.Fatal("expected CHECK constraint error, got nil")
+		}
+		errStr := err.Error()
+		if !strings.Contains(errStr, "CHECK constraint failed") {
+			t.Errorf("error should contain 'CHECK constraint failed', got: %v", err)
+		}
+		// Error code 275 = SQLITE_CONSTRAINT_CHECK
+		if !strings.Contains(errStr, "(275)") {
+			t.Errorf("error should contain SQLite error code (275), got: %v", err)
+		}
+	})
+
+	t.Run("write_no_such_table", func(t *testing.T) {
+		err := p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+			_, err := tx.Exec(`INSERT INTO nonexistent_table (col) VALUES (1);`)
+			return err
+		})
+		if err == nil {
+			t.Fatal("expected no such table error, got nil")
+		}
+		errStr := err.Error()
+		if !strings.Contains(errStr, "no such table") {
+			t.Errorf("error should contain 'no such table', got: %v", err)
+		}
+		// Error code 1 = SQLITE_ERROR
+		if !strings.Contains(errStr, "(1)") {
+			t.Errorf("error should contain SQLite error code (1), got: %v", err)
+		}
+	})
+
+	t.Run("read_no_such_table", func(t *testing.T) {
+		err := p.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+			var count int
+			return rx.QueryRow(`SELECT count(*) FROM nonexistent_table;`).Scan(&count)
+		})
+		if err == nil {
+			t.Fatal("expected no such table error, got nil")
+		}
+		errStr := err.Error()
+		if !strings.Contains(errStr, "no such table") {
+			t.Errorf("error should contain 'no such table', got: %v", err)
+		}
+		// Error code 1 = SQLITE_ERROR
+		if !strings.Contains(errStr, "(1)") {
+			t.Errorf("error should contain SQLite error code (1), got: %v", err)
+		}
+	})
+
+	t.Run("read_syntax_error", func(t *testing.T) {
+		err := p.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+			var count int
+			return rx.QueryRow(`SELEC * FROM test_errors;`).Scan(&count)
+		})
+		if err == nil {
+			t.Fatal("expected syntax error, got nil")
+		}
+		errStr := err.Error()
+		if !strings.Contains(errStr, "syntax error") {
+			t.Errorf("error should contain 'syntax error', got: %v", err)
+		}
+		// Error code 1 = SQLITE_ERROR
+		if !strings.Contains(errStr, "(1)") {
+			t.Errorf("error should contain SQLite error code (1), got: %v", err)
+		}
+	})
+
+	t.Run("read_query_rows_error", func(t *testing.T) {
+		err := p.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+			rows, err := rx.Query(`SELECT * FROM nonexistent_table;`)
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+			return nil
+		})
+		if err == nil {
+			t.Fatal("expected no such table error, got nil")
+		}
+		errStr := err.Error()
+		if !strings.Contains(errStr, "no such table") {
+			t.Errorf("error should contain 'no such table', got: %v", err)
+		}
+		// Error code 1 = SQLITE_ERROR
+		if !strings.Contains(errStr, "(1)") {
+			t.Errorf("error should contain SQLite error code (1), got: %v", err)
+		}
+	})
+}
