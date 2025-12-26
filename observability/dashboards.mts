@@ -898,7 +898,7 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "SQLite Transaction Leaks",
-    `rate(sqlite_tx_leaks_total{job="exed",${STAGE_FILTER}}[5m])`,
+    `increase(sqlite_tx_leaks_total{job="exed",${STAGE_FILTER}}[$__rate_interval])`,
     {
       gridPos: { w: 8, h: 6 },
     }
@@ -906,7 +906,7 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "SQLite Read Transaction Leaks",
-    `rate(sqlite_rx_leaks_total{job="exed",${STAGE_FILTER}}[5m])`,
+    `increase(sqlite_rx_leaks_total{job="exed",${STAGE_FILTER}}[$__rate_interval])`,
     {
       gridPos: { w: 8, h: 6 },
     }
@@ -1161,8 +1161,8 @@ function makeDevExeDashboard() {
   );
 
   addTimeseriesChart(
-    "Exelet Error Log Rate",
-    `sum(rate(logs_total{job="exelet",level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (instance)`,
+    "Exelet Error Logs",
+    `sum(increase(logs_total{job="exelet",level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (instance)`,
     {
       panelCustomization: (x) => x.min(0),
       gridPos: { w: 6, h: 6 },
@@ -1213,8 +1213,8 @@ function makeDevExeDashboard() {
   dash.withPanel(exedNetworkPanel);
 
   addTimeseriesChart(
-    "Exed Error Log Rate",
-    `sum(rate(logs_total{job="exed",level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (instance)`,
+    "Exed Error Logs",
+    `sum(increase(logs_total{job="exed",level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (instance)`,
     {
       panelCustomization: (x) => x.min(0),
       gridPos: { w: 6, h: 6 },
@@ -1228,8 +1228,8 @@ function makeDevExeDashboard() {
   );
 
   addTimeseriesChart(
-    "Warning Log Rate",
-    `sum(rate(logs_total{level="WARN",${STAGE_FILTER}}[$__rate_interval])) by (job, stage)`,
+    "Warning Logs",
+    `sum(increase(logs_total{level="WARN",${STAGE_FILTER}}[$__rate_interval])) by (job, stage)`,
     {
       panelCustomization: (x) => x.min(0),
       gridPos: { w: 8, h: 6 },
@@ -1238,8 +1238,8 @@ function makeDevExeDashboard() {
   );
 
   addTimeseriesChart(
-    "Error Log Rate",
-    `sum(rate(logs_total{level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (job, stage)`,
+    "Error Logs",
+    `sum(increase(logs_total{level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (job, stage)`,
     {
       panelCustomization: (x) => x.min(0),
       gridPos: { w: 8, h: 6 },
