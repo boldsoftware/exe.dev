@@ -321,7 +321,7 @@ func TestRxLeak(t *testing.T) {
 	for i := 0; i < 5000; i++ {
 		ctx, cancel := context.WithCancel(context.Background())
 		go cancel()
-		err := p.Tx(ctx, func(ctx context.Context, tx *Tx) error { return nil })
+		err := p.Rx(ctx, func(ctx context.Context, rx *Rx) error { return nil })
 		if err != nil && strings.Contains(err.Error(), "LEAK") {
 			t.Error(err)
 		}
@@ -389,6 +389,263 @@ func TestLatencyHistograms(t *testing.T) {
 		if !foundMetrics[expected] {
 			t.Errorf("Expected latency metric %s not found", expected)
 		}
+	}
+}
+
+func TestRowScanNoRows(t *testing.T) {
+	p, err := New(filepath.Join(t.TempDir(), "testnorows.sqlite"), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	ctx := context.Background()
+
+	// Create a table
+	err = p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		_, err := tx.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT);")
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test QueryRow.Scan when no rows exist (should return sql.ErrNoRows)
+	err = p.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		var name string
+		return rx.QueryRow("SELECT name FROM t WHERE id = 999;").Scan(&name)
+	})
+	if err == nil {
+		t.Fatal("expected sql.ErrNoRows, got nil")
+	}
+	if !strings.Contains(err.Error(), "no rows") {
+		t.Errorf("error should contain 'no rows', got: %v", err)
+	}
+}
+
+func TestRowScanTypeMismatch(t *testing.T) {
+	p, err := New(filepath.Join(t.TempDir(), "testscanerr.sqlite"), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	ctx := context.Background()
+
+	// Create a table with data
+	err = p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		if _, err := tx.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT);"); err != nil {
+			return err
+		}
+		_, err := tx.Exec("INSERT INTO t (id, name) VALUES (1, 'test');")
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test Scan with wrong type - trying to scan a string into an int
+	err = p.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		var id int
+		// Intentionally scan wrong column type
+		return rx.QueryRow("SELECT name FROM t WHERE id = 1;").Scan(&id)
+	})
+	if err == nil {
+		t.Fatal("expected scan error, got nil")
+	}
+}
+
+func TestContextCancelledBeforeAcquire(t *testing.T) {
+	p, err := New(filepath.Join(t.TempDir(), "testctx.sqlite"), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	bg := context.Background()
+
+	// Set up a table
+	err = p.Tx(bg, func(ctx context.Context, tx *Tx) error {
+		_, err := tx.Exec("CREATE TABLE t (c INTEGER);")
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test Tx with already cancelled context (before acquiring connection)
+	t.Run("tx_cancelled_before_acquire", func(t *testing.T) {
+		// First, occupy the writer connection
+		writerOccupied := make(chan struct{})
+		writerDone := make(chan struct{})
+
+		go func() {
+			err := p.Tx(bg, func(ctx context.Context, tx *Tx) error {
+				close(writerOccupied)
+				<-writerDone
+				return nil
+			})
+			if err != nil {
+				t.Error(err)
+			}
+		}()
+
+		<-writerOccupied
+
+		// Now try to start a Tx with a cancelled context
+		ctx, cancel := context.WithCancel(bg)
+		cancel()
+
+		err := p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+			return nil
+		})
+		if err == nil {
+			t.Fatal("expected context error, got nil")
+		}
+		if !strings.Contains(err.Error(), "context canceled") {
+			t.Errorf("expected context canceled error, got: %v", err)
+		}
+
+		close(writerDone)
+	})
+
+	// Test Rx with already cancelled context (before acquiring connection)
+	t.Run("rx_cancelled_before_acquire", func(t *testing.T) {
+		// First, occupy all reader connections
+		readerOccupied := make(chan struct{})
+		readerDone := make(chan struct{})
+
+		go func() {
+			err := p.Rx(bg, func(ctx context.Context, rx *Rx) error {
+				close(readerOccupied)
+				<-readerDone
+				return nil
+			})
+			if err != nil {
+				t.Error(err)
+			}
+		}()
+
+		<-readerOccupied
+
+		// Now try to start an Rx with a cancelled context
+		ctx, cancel := context.WithCancel(bg)
+		cancel()
+
+		err := p.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+			return nil
+		})
+		if err == nil {
+			t.Fatal("expected context error, got nil")
+		}
+		if !strings.Contains(err.Error(), "context canceled") {
+			t.Errorf("expected context canceled error, got: %v", err)
+		}
+
+		close(readerDone)
+	})
+}
+
+func TestExecContextCancelled(t *testing.T) {
+	p, err := New(filepath.Join(t.TempDir(), "testexecctx.sqlite"), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	bg := context.Background()
+
+	// Test Exec with cancelled context before acquiring connection
+	writerOccupied := make(chan struct{})
+	writerDone := make(chan struct{})
+
+	go func() {
+		err := p.Tx(bg, func(ctx context.Context, tx *Tx) error {
+			close(writerOccupied)
+			<-writerDone
+			return nil
+		})
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	<-writerOccupied
+
+	ctx, cancel := context.WithCancel(bg)
+	cancel()
+
+	err = p.Exec(ctx, "PRAGMA wal_checkpoint(TRUNCATE);")
+	if err == nil {
+		t.Fatal("expected context error, got nil")
+	}
+	if !strings.Contains(err.Error(), "context canceled") {
+		t.Errorf("expected context canceled error, got: %v", err)
+	}
+
+	close(writerDone)
+}
+
+func TestRxContext(t *testing.T) {
+	p, err := New(filepath.Join(t.TempDir(), "testrxcontext.sqlite"), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	ctx := context.Background()
+
+	err = p.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		// Test that rx.Context() returns the correct context
+		rxCtx := rx.Context()
+		if rxCtx == nil {
+			return fmt.Errorf("rx.Context() returned nil")
+		}
+		// The context should have the CtxKey set
+		if rxCtx.Value(CtxKey) == nil {
+			return fmt.Errorf("rx.Context() doesn't have CtxKey")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRxConn(t *testing.T) {
+	p, err := New(filepath.Join(t.TempDir(), "testrxconn.sqlite"), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	ctx := context.Background()
+
+	// Create a table first
+	err = p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		_, err := tx.Exec("CREATE TABLE t (c INTEGER);")
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = p.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		// Test that rx.Conn() returns the underlying connection
+		conn := rx.Conn()
+		if conn == nil {
+			return fmt.Errorf("rx.Conn() returned nil")
+		}
+		// Use the raw connection
+		rows, err := conn.QueryContext(ctx, "SELECT 1;")
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

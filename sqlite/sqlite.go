@@ -339,9 +339,11 @@ func (p *DB) Tx(ctx context.Context, fn func(ctx context.Context, tx *Tx) error)
 			p.writer <- conn
 			return fmt.Errorf("sqlite.Tx begin: %w", err)
 		}
-		// unrecoverable error, this will lock everything up
-		// Count this as a leak since the connection may be unusable
+		// Unrecoverable error (e.g. SQLITE_CORRUPT, SQLITE_IOERR).
+		// Close the connection to release resources, but don't return it to the pool.
+		// The pool will have one fewer writer connection.
 		txLeaksCounter.Inc()
+		conn.Close()
 		return fmt.Errorf("sqlite.Tx LEAK %w", err)
 	}
 	tx := &Tx{
@@ -396,9 +398,11 @@ func (p *DB) Rx(ctx context.Context, fn func(ctx context.Context, rx *Rx) error)
 
 		slog.ErrorContext(ctx, "sqlite.Rx: unrecoverable error starting read tx: %v; incrementing leak counter", "err", err)
 
-		// an unrecoverable error, e.g. tx-inside-tx misuse or IOERR
-		// Count this as a leak since the connection may be unusable
+		// Unrecoverable error (e.g. tx-inside-tx misuse, SQLITE_CORRUPT, SQLITE_IOERR).
+		// Close the connection to release resources, but don't return it to the pool.
+		// The pool will have one fewer reader connection.
 		rxLeaksCounter.Inc()
+		conn.Close()
 		return fmt.Errorf("sqlite.Rx LEAK: %w", err)
 	}
 	rx := &Rx{conn: conn, p: p, caller: callerOfCaller(1)}
