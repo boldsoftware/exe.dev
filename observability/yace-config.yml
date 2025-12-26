@@ -88,66 +88,66 @@ discovery:
           length: 300
         - name: InstanceEBSIOPSExceededCheck
           statistics: [Maximum]
-          period: 300
-          length: 300
+          period: 60
+          length: 60
         - name: InstanceEBSThroughputExceededCheck
           statistics: [Maximum]
-          period: 300
-          length: 300
+          period: 60
+          length: 60
 
-    # EBS volumes
+    # EBS volumes (1-minute native granularity)
     - type: AWS/EBS
       regions:
         - us-west-2
       metrics:
         - name: VolumeReadOps
           statistics: [Sum]
-          period: 300
-          length: 300
+          period: 60
+          length: 60
         - name: VolumeWriteOps
           statistics: [Sum]
-          period: 300
-          length: 300
+          period: 60
+          length: 60
         - name: VolumeReadBytes
           statistics: [Sum]
-          period: 300
-          length: 300
+          period: 60
+          length: 60
         - name: VolumeWriteBytes
           statistics: [Sum]
-          period: 300
-          length: 300
+          period: 60
+          length: 60
         - name: VolumeTotalReadTime
           statistics: [Sum]
-          period: 300
-          length: 300
+          period: 60
+          length: 60
         - name: VolumeTotalWriteTime
           statistics: [Sum]
-          period: 300
-          length: 300
+          period: 60
+          length: 60
         - name: VolumeIdleTime
           statistics: [Sum]
-          period: 300
-          length: 300
+          period: 60
+          length: 60
         - name: VolumeQueueLength
           statistics: [Average]
-          period: 300
-          length: 300
+          period: 60
+          length: 60
         - name: BurstBalance
           statistics: [Minimum]
-          period: 300
-          length: 300
+          period: 60
+          length: 60
         - name: VolumeIOPSExceededCheck
           statistics: [Maximum]
-          period: 300
-          length: 300
+          period: 60
+          length: 60
         - name: VolumeThroughputExceededCheck
           statistics: [Maximum]
-          period: 300
-          length: 300
+          period: 60
+          length: 60
         - name: VolumeStalledIOCheck
           statistics: [Maximum]
-          period: 300
-          length: 300
+          period: 60
+          length: 60
 
 # Route53 DNS queries per hosted zone (static config, discovery not supported)
 # Note: Route53 metrics are only available in us-east-1
@@ -165,8 +165,8 @@ static:
     metrics:
       - name: DNSQueries
         statistics: [Sum]
-        period: 300
-        length: 300
+        period: 60
+        length: 60
   - name: route53-exe-work
     namespace: AWS/Route53
     regions:
@@ -180,8 +180,8 @@ static:
     metrics:
       - name: DNSQueries
         statistics: [Sum]
-        period: 300
-        length: 300
+        period: 60
+        length: 60
   - name: route53-exe-dev
     namespace: AWS/Route53
     regions:
@@ -195,8 +195,8 @@ static:
     metrics:
       - name: DNSQueries
         statistics: [Sum]
-        period: 300
-        length: 300
+        period: 60
+        length: 60
   - name: route53-exe-staging-xyz
     namespace: AWS/Route53
     regions:
@@ -210,8 +210,8 @@ static:
     metrics:
       - name: DNSQueries
         statistics: [Sum]
-        period: 300
-        length: 300
+        period: 60
+        length: 60
   - name: route53-exe-zone
     namespace: AWS/Route53
     regions:
@@ -225,8 +225,8 @@ static:
     metrics:
       - name: DNSQueries
         statistics: [Sum]
-        period: 300
-        length: 300
+        period: 60
+        length: 60
   - name: route53-exe-cloud
     namespace: AWS/Route53
     regions:
@@ -240,8 +240,8 @@ static:
     metrics:
       - name: DNSQueries
         statistics: [Sum]
-        period: 300
-        length: 300
+        period: 60
+        length: 60
   - name: route53-exe-city
     namespace: AWS/Route53
     regions:
@@ -255,8 +255,8 @@ static:
     metrics:
       - name: DNSQueries
         statistics: [Sum]
-        period: 300
-        length: 300
+        period: 60
+        length: 60
   - name: route53-exe-xyz
     namespace: AWS/Route53
     regions:
@@ -270,8 +270,8 @@ static:
     metrics:
       - name: DNSQueries
         statistics: [Sum]
-        period: 300
-        length: 300
+        period: 60
+        length: 60
   - name: route53-exe-new
     namespace: AWS/Route53
     regions:
@@ -285,5 +285,5 @@ static:
     metrics:
       - name: DNSQueries
         statistics: [Sum]
-        period: 300
-        length: 300
+        period: 60
+        length: 60
