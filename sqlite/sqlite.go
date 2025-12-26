@@ -436,6 +436,7 @@ func (p *DB) rollback(ctx context.Context, txType string, txErr error, conn *sql
 		// TODO: confirm this check works on all sqlite drivers.
 		if !strings.Contains(err.Error(), "SQLITE_BUSY") {
 			// Connection is being closed due to unrecoverable error - count as leak
+			slog.ErrorContext(ctx, "sqlite: unrecoverable rollback error; incrementing leak counter", "err", err)
 			if strings.HasPrefix(txType, "Tx") {
 				txLeaksCounter.Inc()
 			} else {
