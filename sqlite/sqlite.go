@@ -403,6 +403,7 @@ func (p *DB) Rx(ctx context.Context, fn func(ctx context.Context, rx *Rx) error)
 	var err error
 	defer func() {
 		err = p.rollback(rx.ctx, "Rx", err, rx.conn)
+		rx.conn = nil
 		// always return conn,
 		// either the entire database is closed or the conn is fine.
 		rx.p.readers <- conn
