@@ -92,7 +92,7 @@ chmod +x /home/exedev/cgi-bin/headers
 
 	t.Run("default_port", func(t *testing.T) {
 		serveHTTP(t, 8080)
-		httpPort := Env.exed.HTTPPort
+		httpPort := Env.servers.Exed.HTTPPort
 
 		// TODO: do the auth dance to test private routes too.
 
@@ -161,7 +161,7 @@ chmod +x /home/exedev/cgi-bin/headers
 		})
 
 		t.Run("error_responses", func(t *testing.T) {
-			httpPort := Env.exed.HTTPPort
+			httpPort := Env.servers.Exed.HTTPPort
 			const (
 				unreachablePort = 9091
 				defaultPort     = 8080
@@ -219,7 +219,7 @@ chmod +x /home/exedev/cgi-bin/headers
 	})
 
 	t.Run("auth_confirm_owner_skip", func(t *testing.T) {
-		altPort := Env.exed.ExtraPorts[0]
+		altPort := Env.servers.Exed.ExtraPorts[0]
 		serveHTTP(t, altPort)
 		fixture := newProxyAuthFixture(t, box, altPort, cookies)
 		jar := fixture.newJar()
@@ -228,7 +228,7 @@ chmod +x /home/exedev/cgi-bin/headers
 	})
 
 	t.Run("logout_flow", func(t *testing.T) {
-		altPort := Env.exed.ExtraPorts[0]
+		altPort := Env.servers.Exed.ExtraPorts[0]
 		serveHTTP(t, altPort)
 		fixture := newProxyAuthFixture(t, box, altPort, cookies)
 		requireLogoutUI(t, fixture.logoutURL, fixture.expectedLogout, fixture.port)
@@ -247,7 +247,7 @@ chmod +x /home/exedev/cgi-bin/headers
 	})
 
 	t.Run("basic_auth", func(t *testing.T) {
-		httpPort := Env.exed.HTTPPort
+		httpPort := Env.servers.Exed.HTTPPort
 		serveHTTP(t, 8080)
 
 		exeShell := sshToExeDev(t, keyFile)
@@ -370,7 +370,7 @@ chmod +x /home/exedev/cgi-bin/headers
 
 	t.Run("forwarded_headers", func(t *testing.T) {
 		const internalPort = 8080
-		httpPort := Env.exed.HTTPPort
+		httpPort := Env.servers.Exed.HTTPPort
 
 		serveHTTP(t, internalPort)
 
@@ -461,7 +461,7 @@ chmod +x /home/exedev/cgi-bin/headers
 
 	t.Run("reject_synthetic_exedev_headers", func(t *testing.T) {
 		const internalPort = 8080
-		httpPort := Env.exed.HTTPPort
+		httpPort := Env.servers.Exed.HTTPPort
 
 		serveHTTP(t, internalPort)
 
@@ -506,26 +506,26 @@ chmod +x /home/exedev/cgi-bin/headers
 	})
 
 	t.Run("alternate_ports", func(t *testing.T) {
-		serveHTTP(t, Env.exed.ExtraPorts[0])
+		serveHTTP(t, Env.servers.Exed.ExtraPorts[0])
 
-		expectedRedirect := fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/login?redirect=http%%3A%%2F%%2F%s.exe.cloud%%3A%d%%2F%%3Ffoo%%3D1", box, Env.exed.ExtraPorts[0], box, Env.exed.ExtraPorts[0])
+		expectedRedirect := fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/login?redirect=http%%3A%%2F%%2F%s.exe.cloud%%3A%d%%2F%%3Ffoo%%3D1", box, Env.servers.Exed.ExtraPorts[0], box, Env.servers.Exed.ExtraPorts[0])
 		proxyAssert(t, box, proxyExpectation{
 			name:             "altport without auth redirects",
-			httpPort:         Env.exed.ExtraPorts[0],
+			httpPort:         Env.servers.Exed.ExtraPorts[0],
 			cookies:          nil,
 			httpCode:         http.StatusTemporaryRedirect,
 			redirectLocation: expectedRedirect,
 		})
 		proxyAssert(t, box, proxyExpectation{
 			name:     "altport with auth succeeds",
-			httpPort: Env.exed.ExtraPorts[0],
+			httpPort: Env.servers.Exed.ExtraPorts[0],
 			cookies:  cookies,
 			httpCode: http.StatusOK,
 		})
 
 		proxyAssert(t, box, proxyExpectation{
 			name:     "other altport with auth fails",
-			httpPort: Env.exed.ExtraPorts[1],
+			httpPort: Env.servers.Exed.ExtraPorts[1],
 			cookies:  cookies,
 			httpCode: http.StatusBadGateway,
 		})
@@ -535,8 +535,8 @@ chmod +x /home/exedev/cgi-bin/headers
 		// Verify that a proxy auth cookie for one port doesn't work for another port.
 		// This tests that cookies are named "login-with-exe-<port>" rather than
 		// a shared name like "exe-proxy-auth".
-		portA := Env.exed.ExtraPorts[0]
-		portB := Env.exed.ExtraPorts[1]
+		portA := Env.servers.Exed.ExtraPorts[0]
+		portB := Env.servers.Exed.ExtraPorts[1]
 		serveHTTP(t, portA)
 		serveHTTP(t, portB)
 
@@ -638,7 +638,7 @@ func newProxyAuthFixture(t *testing.T, box string, port int, cookies []*http.Coo
 		port:               port,
 		proxyURL:           proxyURL,
 		logoutURL:          fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/logout", box, port),
-		expectedLogout:     fmt.Sprintf("http://localhost:%d/logged-out", Env.exed.HTTPPort),
+		expectedLogout:     fmt.Sprintf("http://localhost:%d/logged-out", Env.servers.Exed.HTTPPort),
 		expectedReturnHost: fmt.Sprintf("%s.exe.cloud:%d", box, port),
 		cookieURL:          cookieURL,
 		localCookieAddr:    localCookieAddr,

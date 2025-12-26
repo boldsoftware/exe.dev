@@ -19,7 +19,7 @@ func TestResourceMetrics(t *testing.T) {
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
-	if Env.exelet.HTTPAddress == "" {
+	if Env.servers.Exelets[0].HTTPAddress == "" {
 		t.Skip("exelet HTTP address is not available")
 	}
 
@@ -40,11 +40,11 @@ func TestResourceMetrics(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	exeletClient := Env.exelet.Client()
+	exeletClient := Env.servers.Exelets[0].Client()
 
 	ctx := Env.context(t)
 	instanceID := instanceIDByName(t, ctx, exeletClient, boxName)
-	metricsURL := Env.exelet.HTTPAddress + "/metrics"
+	metricsURL := Env.servers.Exelets[0].HTTPAddress + "/metrics"
 
 	t.Run("network_metrics", func(t *testing.T) {
 		// Wait for network metrics to appear

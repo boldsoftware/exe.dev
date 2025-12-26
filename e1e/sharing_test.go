@@ -55,7 +55,7 @@ func TestBoxSharing(t *testing.T) {
 	}
 
 	// httpPort is the exed HTTP proxy port, not the port inside the box
-	httpPort := Env.exed.HTTPPort
+	httpPort := Env.servers.Exed.HTTPPort
 
 	// Configure the proxy to use port 8080 and ensure it is private
 	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
@@ -96,7 +96,7 @@ func TestBoxSharing(t *testing.T) {
 			t.Fatalf("Expected %q in output, got: %q", want, out)
 		}
 
-		emailMsg, err := Env.email.WaitForEmail(guestEmail)
+		emailMsg, err := Env.servers.Email.WaitForEmail(guestEmail)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -120,13 +120,13 @@ func TestBoxSharing(t *testing.T) {
 		}
 		for _, cookie := range guestCookies {
 			cookie.Domain = "localhost"
-			jar2.SetCookies(&url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", Env.exed.HTTPPort)}, []*http.Cookie{cookie})
+			jar2.SetCookies(&url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", Env.servers.Exed.HTTPPort)}, []*http.Cookie{cookie})
 		}
 		client2 := &http.Client{
 			Jar:     jar2,
 			Timeout: 10 * time.Second,
 		}
-		resp, err := client2.Get(fmt.Sprintf("http://localhost:%d/", Env.exed.HTTPPort))
+		resp, err := client2.Get(fmt.Sprintf("http://localhost:%d/", Env.servers.Exed.HTTPPort))
 		if err != nil {
 			t.Fatalf("failed to get dashboard: %v", err)
 		}
@@ -263,7 +263,7 @@ func proxyAssertWithQuery(t *testing.T, box string, exp proxyExpectation, query 
 	t.Helper()
 	t.Logf("Testing proxy expectation: %s port %d expected http status %d", exp.name, exp.httpPort, exp.httpCode)
 	if exp.httpPort == 0 {
-		exp.httpPort = Env.exed.HTTPPort
+		exp.httpPort = Env.servers.Exed.HTTPPort
 	}
 
 	jar, err := cookiejar.New(nil)
@@ -583,7 +583,7 @@ func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
 		t.Fatalf("failed to wait for busybox to serve: %v\n", err)
 	}
 
-	httpPort := Env.exed.HTTPPort
+	httpPort := Env.servers.Exed.HTTPPort
 
 	// Configure proxy port and set the box to PUBLIC
 	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
@@ -709,7 +709,7 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 		t.Fatalf("failed to wait for busybox to serve: %v\n", err)
 	}
 
-	httpPort := Env.exed.HTTPPort
+	httpPort := Env.servers.Exed.HTTPPort
 
 	// Configure proxy port and make it private
 	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
@@ -733,7 +733,7 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 	}
 
 	// Wait for invitation email (confirms pending share was created)
-	emailMsg, err := Env.email.WaitForEmail(guestEmail)
+	emailMsg, err := Env.servers.Email.WaitForEmail(guestEmail)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -849,7 +849,7 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 		t.Fatalf("failed to wait for busybox to serve: %v\n", err)
 	}
 
-	httpPort := Env.exed.HTTPPort
+	httpPort := Env.servers.Exed.HTTPPort
 
 	// Configure proxy port and make it private
 	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
@@ -869,7 +869,7 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 	}
 
 	// Consume the share invitation email
-	_, err = Env.email.WaitForEmail(guestEmail)
+	_, err = Env.servers.Email.WaitForEmail(guestEmail)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -945,7 +945,7 @@ func TestProxyCookieIsolation(t *testing.T) {
 	waitForSSH(t, box2, user2KeyFile)
 
 	const boxInternalPort = 8080
-	httpPort := Env.exed.HTTPPort
+	httpPort := Env.servers.Exed.HTTPPort
 
 	// Set up HTTP servers in both boxes
 	// Note: loginThroughProxy expects "alive" in the response body
@@ -1067,7 +1067,7 @@ func TestBasicUserDashboard(t *testing.T) {
 	}
 	for _, cookie := range cookies {
 		cookie.Domain = "localhost"
-		jar.SetCookies(&url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", Env.exed.HTTPPort)}, []*http.Cookie{cookie})
+		jar.SetCookies(&url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", Env.servers.Exed.HTTPPort)}, []*http.Cookie{cookie})
 	}
 	client := &http.Client{
 		Jar:     jar,
@@ -1079,7 +1079,7 @@ func TestBasicUserDashboard(t *testing.T) {
 	}
 
 	// Access the dashboard - basic users should be redirected to /user
-	dashboardURL := fmt.Sprintf("http://localhost:%d/", Env.exed.HTTPPort)
+	dashboardURL := fmt.Sprintf("http://localhost:%d/", Env.servers.Exed.HTTPPort)
 	resp, err := client.Get(dashboardURL)
 	if err != nil {
 		t.Fatalf("failed to get dashboard: %v", err)
@@ -1140,7 +1140,7 @@ func TestLoginWithExeFlow(t *testing.T) {
 	waitForSSH(t, box, ownerKeyFile)
 
 	const boxInternalPort = 8080
-	httpPort := Env.exed.HTTPPort
+	httpPort := Env.servers.Exed.HTTPPort
 
 	// Create content to serve
 	makeIndex := boxSSHCommand(t, box, ownerKeyFile, "echo", "hello-from-box", ">", "/home/exedev/index.html")
@@ -1478,7 +1478,7 @@ func (f *loginWithExeFlow) submitEmailForAuth() {
 func (f *loginWithExeFlow) completeEmailVerification() {
 	f.t.Helper()
 
-	emailMsg, err := Env.email.WaitForEmail(f.email)
+	emailMsg, err := Env.servers.Email.WaitForEmail(f.email)
 	if err != nil {
 		f.t.Fatal(err)
 	}

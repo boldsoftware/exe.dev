@@ -171,20 +171,20 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 	})
 
 	testinfra.AddCleanup(func() {
-		for line := range env.exed.GUIDLog {
+		for line := range env.servers.Exed.GUIDLog {
 			fmt.Fprintf(os.Stderr, "\n\nexed log with guid during e1e run:\n%s\n\n", line)
 		}
 	})
 
 	testinfra.AddCleanup(func() {
-		for line := range env.exelet.Errors {
+		for line := range env.servers.Exelets[0].Errors {
 			exitCode = 1
 			fmt.Fprintf(os.Stderr, "\n\nexelet emitted ERROR log during e1e run:\n%s\n\n", line)
 		}
 	})
 
 	testinfra.AddCleanup(func() {
-		for line := range env.exed.Errors {
+		for line := range env.servers.Exed.Errors {
 			// TODO(philip): TestNewWithPrompt triggers this, because Shelley talks
 			// to the gateway and even though it's supposed to use "predictable" model, we get an error.
 			// This is an unrelated bug uncovered when I was trying to change how the
@@ -282,14 +282,7 @@ func initLogging() error {
 var Env *testEnv
 
 type testEnv struct {
-	sshProxy      *testinfra.TCPProxy
-	exedHTTPProxy *testinfra.TCPProxy
-	exed          *testinfra.ExedInstance
-	piperd        *testinfra.SSHPiperdInstance
-	exelet        *testinfra.ExeletInstance
-	email         *testinfra.EmailServer
-	exedSlogErrC  chan string // receives exed ERROR log lines
-	exedGuidLogC  chan string // receives exed log lines with guid attribute
+	servers *testinfra.ServerEnv
 
 	asciinemaMu      sync.Mutex // protects asciinemaWriters
 	asciinemaWriters map[string]*expect.AsciinemaWriter
@@ -299,7 +292,7 @@ type testEnv struct {
 }
 
 func (e *testEnv) sshPort() int {
-	return e.sshProxy.Port()
+	return e.servers.SSHProxy.Port()
 }
 
 // parseSSHHost extracts hostname from ssh:// URL
@@ -368,12 +361,12 @@ func (e *testEnv) context(t *testing.T) context.Context {
 	c, cancel := context.WithCancelCause(t.Context())
 	go func() {
 		select {
-		case <-e.exed.Exited:
-			cancel(e.exed.Cause())
-		case <-e.exelet.Exited:
-			cancel(e.exelet.Cause())
-		case <-e.piperd.Exited:
-			cancel(e.piperd.Cause())
+		case <-e.servers.Exed.Exited:
+			cancel(e.servers.Exed.Cause())
+		case <-e.servers.Exelets[0].Exited:
+			cancel(e.servers.Exelets[0].Cause())
+		case <-e.servers.SSHPiperd.Exited:
+			cancel(e.servers.SSHPiperd.Cause())
 		case <-c.Done():
 		}
 	}()
@@ -385,31 +378,16 @@ func (e *testEnv) Close() error {
 		return nil
 	}
 
-	if e.exed != nil {
-		e.exed.Stop(context.Background(), testRunID)
-	}
-
-	if e.piperd != nil {
-		e.piperd.Stop(context.Background())
-	}
-
-	localExeletCoverDir := e.exelet.Stop(context.Background())
-
-	// stop proxies
-	e.sshProxy.Close()
-	if e.exedHTTPProxy != nil {
-		e.exedHTTPProxy.Close()
+	var coverDirs []string
+	if e.servers != nil {
+		coverDirs = e.servers.Stop(context.Background(), testRunID)
 	}
 
 	// Collect and merge coverage data from exed and exelet
-	slog.Info("COVERAGE", "exed_dir", e.exed.CoverDir, "exelet_dir", localExeletCoverDir)
+	slog.Info("COVERAGE", "exed_dir", e.servers.Exed.CoverDir, "exelet_dir", coverDirs)
 
-	var coverDirs []string
-	if e.exed.CoverDir != "" {
-		coverDirs = append(coverDirs, e.exed.CoverDir)
-	}
-	if localExeletCoverDir != "" {
-		coverDirs = append(coverDirs, localExeletCoverDir)
+	if cd := e.servers.Exed.CoverDir; cd != "" {
+		coverDirs = append(coverDirs, cd)
 	}
 
 	if len(coverDirs) > 0 {
@@ -431,53 +409,20 @@ func setup(ctrHost string) (*testEnv, error) {
 	env := &testEnv{
 		asciinemaWriters: make(map[string]*expect.AsciinemaWriter),
 		canonicalize:     make(map[string]string),
-		exedSlogErrC:     make(chan string, 16),
-		exedGuidLogC:     make(chan string, 128),
 	}
 
-	// We have a circular dependency around ports.
-	// (This is not a problem in production, because we use fixed port numbers.)
-	//
-	// We need to start exed, which needs to know what port sshpiper is listening on,
-	// in order to give correct port numbers out to clients.
-	//
-	// We need to start sshpiper, which needs to know what exed's piper plugin port is.
-	//
-	// To work around this, we start a simple TCP proxy first, which will act as the sshpiper port.
-	// We then forward traffic from the proxy to the actual sshpiper instance.
-	// TODO: figure out why we're seeing connections before SetDestPort is called, and stop doing that.
-	sshProxy, err := testinfra.NewTCPProxy("sshProxy")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create ssh proxy: %w", err)
-	}
-	go sshProxy.Serve(context.Background())
-	env.sshProxy = sshProxy
-	env.addCanonicalization(sshProxy.Port(), "SSH_PORT")
-	if *flagVerbosePorts {
-		slog.Info("ssh proxy listening", "port", sshProxy.Port())
-	}
-
-	// Start email server first so we can pass its URL to exed
-	es, err := testinfra.StartEmailServer(context.Background(), *flagVerboseEmail)
-	if err != nil {
-		return env, err
-	}
-	env.email = es
-	env.addCanonicalization(es.Port, "EMAIL_SERVER_PORT")
-	if *flagVerboseEmail {
-		slog.Info("email server listening", "port", es.Port)
-	}
-
-	// We have a circular dependency: exelet needs to know exed's HTTP port,
-	// but exed needs to know exelet's address. Use the same proxy trick as for sshpiper.
-	// Start a TCP proxy for exed HTTP that we can give to exelet immediately.
-	// TODO: figure out why we're seeing connections before setDestPort is called, and stop doing that.
+	// We have a circular dependency:
+	// exelet needs to know exed's HTTP port,
+	// but exed needs to know exelet's address.
+	// Start a TCP proxy for exed HTTP that
+	// we can give to exelet immediately.
+	// TODO: figure out why we're seeing connections
+	// before setDestPort is called, and stop doing that.
 	exedHTTPProxy, err := testinfra.NewTCPProxy("exedHTTPProxy")
 	if err != nil {
 		return env, fmt.Errorf("failed to create exed HTTP proxy: %w", err)
 	}
 	go exedHTTPProxy.Serve(context.Background())
-	env.exedHTTPProxy = exedHTTPProxy
 	if *flagVerbosePorts {
 		slog.Info("exed HTTP proxy listening", "port", exedHTTPProxy.Port())
 	}
@@ -498,7 +443,6 @@ func setup(ctrHost string) (*testEnv, error) {
 	if err != nil {
 		return env, err
 	}
-	env.exelet = exelet
 	env.addCanonicalization(exelet.Address, "EXELET_ADDRESS")
 	env.addCanonicalization(exelet.HTTPAddress, "EXELET_HTTP_ADDRESS")
 
@@ -507,36 +451,30 @@ func setup(ctrHost string) (*testEnv, error) {
 		exedLog = logFileFor("exed")
 	}
 
-	// TODO: build piperd concurrently with starting exed for faster startup
-	// Pass "0,0" to let the proxy listeners allocate their own port numbers
-	ei, err := testinfra.StartExed(context.Background(), es.Port, sshProxy.Port(), []int{0, 0}, []string{exelet.Address}, exedLog, *flagVerbosePorts)
-	if err != nil {
-		return env, err
-	}
-	env.exed = ei
-	env.addCanonicalization(ei.SSHPort, "EXED_SSH_PORT")
-	env.addCanonicalization(ei.HTTPPort, "EXED_HTTP_PORT")
-	env.addCanonicalization(ei.PiperPluginPort, "EXED_PIPER_PLUGIN_PORT")
-
 	var piperLog io.Writer
 	if *flagVerbosePiperd {
 		piperLog = logFileFor("sshpiperd")
 	}
-	pi, err := testinfra.StartSSHPiperd(context.Background(), ei.PiperPluginPort, piperLog)
+
+	serverEnv, err := testinfra.StartServers(context.Background(),
+		[]*testinfra.ExeletInstance{exelet},
+		exedHTTPProxy,
+		exedLog,
+		piperLog,
+		*flagVerbosePorts,
+		*flagVerboseEmail,
+	)
+	env.servers = serverEnv
 	if err != nil {
 		return env, err
 	}
-	env.piperd = pi
-	env.addCanonicalization(pi.Port, "PIPERD_PORT")
-	if *flagVerbosePorts {
-		slog.Info("piperd listening", "port", pi.Port)
-	}
 
-	// proxy SSH requests to piperd
-	env.sshProxy.SetDestPort(pi.Port)
-
-	// Now that exed is running, point the HTTP proxy to the real exed HTTP port
-	env.exedHTTPProxy.SetDestPort(ei.HTTPPort)
+	env.addCanonicalization(serverEnv.Exed.SSHPort, "EXED_SSH_PORT")
+	env.addCanonicalization(serverEnv.Exed.HTTPPort, "EXED_HTTP_PORT")
+	env.addCanonicalization(serverEnv.Exed.PiperPluginPort, "EXED_PIPER_PLUGIN_PORT")
+	env.addCanonicalization(serverEnv.SSHPiperd.Port, "PIPERD_PORT")
+	env.addCanonicalization(serverEnv.Email.Port, "EMAIL_SERVER_PORT")
+	env.addCanonicalization(serverEnv.SSHProxy.Port(), "SSH_PORT")
 
 	return env, nil
 }
@@ -895,7 +833,7 @@ func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
 // looks for a verification link in that email, and clicks it.
 // It returns HTTP authorization cookies.
 func waitForEmailAndVerify(t *testing.T, to string) []*http.Cookie {
-	msg, err := Env.email.WaitForEmail(to)
+	msg, err := Env.servers.Email.WaitForEmail(to)
 	if err != nil {
 		t.Helper()
 		t.Fatal(err)
@@ -970,7 +908,7 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg *testinfra.EmailMessage) []*h
 	}
 	client := &http.Client{Jar: jar}
 
-	postURL := fmt.Sprintf("http://localhost:%d%s", Env.exed.HTTPPort, actionPath)
+	postURL := fmt.Sprintf("http://localhost:%d%s", Env.servers.Exed.HTTPPort, actionPath)
 	postResp, err := client.PostForm(postURL, formData)
 	if err != nil {
 		t.Fatalf("failed to submit verification form: %v", err)
@@ -999,7 +937,7 @@ func webLoginWithEmail(t *testing.T, email string) []*http.Cookie {
 	t.Helper()
 
 	// POST to /auth with email to trigger the web login flow
-	authURL := fmt.Sprintf("http://localhost:%d/auth", Env.exed.HTTPPort)
+	authURL := fmt.Sprintf("http://localhost:%d/auth", Env.servers.Exed.HTTPPort)
 	resp, err := http.PostForm(authURL, url.Values{"email": {email}})
 	if err != nil {
 		t.Fatalf("failed to POST to /auth: %v", err)
@@ -1022,7 +960,7 @@ func webLoginWithExe(t *testing.T, email string) []*http.Cookie {
 	t.Helper()
 
 	// POST to /auth with email AND login_with_exe=1 to trigger login-with-exe flow
-	authURL := fmt.Sprintf("http://localhost:%d/auth", Env.exed.HTTPPort)
+	authURL := fmt.Sprintf("http://localhost:%d/auth", Env.servers.Exed.HTTPPort)
 	resp, err := http.PostForm(authURL, url.Values{
 		"email":          {email},
 		"login_with_exe": {"1"},

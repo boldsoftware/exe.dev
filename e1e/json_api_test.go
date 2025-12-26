@@ -132,7 +132,7 @@ func TestExeDevAPI(t *testing.T) {
 	if magicURL.Scheme != "http" {
 		t.Errorf("expected magic_link scheme http, got %q", magicURL.Scheme)
 	}
-	expectedHost := fmt.Sprintf("localhost:%d", Env.exed.HTTPPort)
+	expectedHost := fmt.Sprintf("localhost:%d", Env.servers.Exed.HTTPPort)
 	if magicURL.Host != expectedHost {
 		t.Errorf("expected magic_link host %q, got %q", expectedHost, magicURL.Host)
 	}

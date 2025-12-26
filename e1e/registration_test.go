@@ -121,7 +121,7 @@ func TestRegisterWebThenKey(t *testing.T) {
 	e1eTestsOnlyRunOnce(t)
 
 	email := t.Name() + "@example.com"
-	baseURL := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
+	baseURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
 
 	resp, err := http.PostForm(baseURL+"/m/email-auth", url.Values{"email": {email}})
 	if err != nil {
@@ -134,7 +134,7 @@ func TestRegisterWebThenKey(t *testing.T) {
 	}
 
 	// Verify the email using the mobile flow link
-	emailMsg, err := Env.email.WaitForEmail(email)
+	emailMsg, err := Env.servers.Email.WaitForEmail(email)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +290,7 @@ func TestRegistrationWithLatency(t *testing.T) {
 		t.Fatalf("failed to create latency proxy: %v", err)
 	}
 	proxy.SetLatency(100 * time.Millisecond)
-	proxy.SetDestPort(Env.piperd.Port)
+	proxy.SetDestPort(Env.servers.SSHPiperd.Port)
 
 	go proxy.Serve(Env.context(t))
 	t.Cleanup(proxy.Close)

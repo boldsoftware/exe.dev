@@ -61,12 +61,12 @@ func TestTerminalPermissions(t *testing.T) {
 
 	// Test 2b: Terminal favicon is served for authenticated user
 	t.Run("favicon_served", func(t *testing.T) {
-		faviconURL := fmt.Sprintf("http://%s.xterm.exe.cloud:%d/favicon.ico", box, Env.exed.HTTPPort)
+		faviconURL := fmt.Sprintf("http://%s.xterm.exe.cloud:%d/favicon.ico", box, Env.servers.Exed.HTTPPort)
 		req, err := localhostRequestWithHostHeader("GET", faviconURL, nil)
 		if err != nil {
 			t.Fatalf("failed to make http request: %v", err)
 		}
-		req.Host = fmt.Sprintf("%s.xterm.exe.cloud:%d", box, Env.exed.HTTPPort)
+		req.Host = fmt.Sprintf("%s.xterm.exe.cloud:%d", box, Env.servers.Exed.HTTPPort)
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -259,17 +259,17 @@ func terminalRequest(t *testing.T, boxName string, cookies []*http.Cookie) (*htt
 		panic(err)
 	}
 	if cookies != nil {
-		u := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
+		u := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
 		setCookiesForJar(t, jar, u, cookies)
 	}
 	client := noRedirectClient(jar)
 
-	terminalURL := fmt.Sprintf("http://%s.xterm.exe.cloud:%d/", boxName, Env.exed.HTTPPort)
+	terminalURL := fmt.Sprintf("http://%s.xterm.exe.cloud:%d/", boxName, Env.servers.Exed.HTTPPort)
 	req, err := localhostRequestWithHostHeader("GET", terminalURL, nil)
 	if err != nil {
 		t.Fatalf("failed to make http request: %v", err)
 	}
-	req.Host = fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.exed.HTTPPort)
+	req.Host = fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.servers.Exed.HTTPPort)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("failed to do http request: %v", err)
@@ -291,17 +291,17 @@ func terminalRequestWithAuth(t *testing.T, boxName string, cookies []*http.Cooki
 		panic(err)
 	}
 	// Set cookies for the main domain
-	u := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
+	u := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
 	setCookiesForJar(t, jar, u, cookies)
 
 	client := noRedirectClient(jar)
 
-	terminalURL := fmt.Sprintf("http://%s.xterm.exe.cloud:%d/", boxName, Env.exed.HTTPPort)
+	terminalURL := fmt.Sprintf("http://%s.xterm.exe.cloud:%d/", boxName, Env.servers.Exed.HTTPPort)
 	req, err := localhostRequestWithHostHeader("GET", terminalURL, nil)
 	if err != nil {
 		t.Fatalf("failed to make http request: %v", err)
 	}
-	req.Host = fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.exed.HTTPPort)
+	req.Host = fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.servers.Exed.HTTPPort)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("failed to do http request: %v", err)
@@ -421,15 +421,15 @@ func createAuthenticatedTerminalClient(t *testing.T, boxName string, baseCookies
 	}
 
 	// Set base cookies for main domain
-	mainURL := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
+	mainURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
 	setCookiesForJar(t, jar, mainURL, baseCookies)
 
 	client := noRedirectClient(jar)
 
 	// Start with terminal page request
-	terminalURL := fmt.Sprintf("http://%s.xterm.exe.cloud:%d/", boxName, Env.exed.HTTPPort)
+	terminalURL := fmt.Sprintf("http://%s.xterm.exe.cloud:%d/", boxName, Env.servers.Exed.HTTPPort)
 	req, _ := localhostRequestWithHostHeader("GET", terminalURL, nil)
-	req.Host = fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.exed.HTTPPort)
+	req.Host = fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.servers.Exed.HTTPPort)
 
 	// Follow the redirect chain
 	for range 10 {
@@ -482,8 +482,8 @@ func connectTerminalWebSocket(t *testing.T, boxName string, client *http.Client)
 	sessionName := "test-session"
 	terminalID := "test-terminal-1"
 	// Use localhost in the URL but set the Host header to the subdomain
-	wsURL := fmt.Sprintf("ws://localhost:%d/terminal/ws/%s?name=%s", Env.exed.HTTPPort, terminalID, sessionName)
-	originalHost := fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.exed.HTTPPort)
+	wsURL := fmt.Sprintf("ws://localhost:%d/terminal/ws/%s?name=%s", Env.servers.Exed.HTTPPort, terminalID, sessionName)
+	originalHost := fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.servers.Exed.HTTPPort)
 
 	// Create context for the WebSocket connection
 	ctx := context.Background()

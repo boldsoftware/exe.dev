@@ -31,7 +31,7 @@ func TestVanillaBox(t *testing.T) {
 	pty.disconnect()
 
 	t.Run("new_box_email_sent", func(t *testing.T) {
-		msg, err := Env.email.WaitForEmail(email)
+		msg, err := Env.servers.Email.WaitForEmail(email)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -363,7 +363,7 @@ func TestVanillaBox(t *testing.T) {
 		ptyHost := makePty(t, "ssh "+boxHostname)
 		args := sshOpts()
 		args = append(args,
-			"-p", fmt.Sprint(Env.piperd.Port), // use piperd port directly (not proxy) so sshpiper sees the correct local address
+			"-p", fmt.Sprint(Env.servers.SSHPiperd.Port), // use piperd port directly (not proxy) so sshpiper sees the correct local address
 			"-o", "IdentityFile="+keyFile,
 			boxHostname,
 		)
@@ -404,13 +404,13 @@ func TestVanillaBox(t *testing.T) {
 		}
 		for _, cookie := range cookies {
 			cookie.Domain = "localhost"
-			jar.SetCookies(&url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", Env.exed.HTTPPort)}, []*http.Cookie{cookie})
+			jar.SetCookies(&url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", Env.servers.Exed.HTTPPort)}, []*http.Cookie{cookie})
 		}
 		client := &http.Client{
 			Jar:     jar,
 			Timeout: 10 * time.Second,
 		}
-		resp, err := client.Get(fmt.Sprintf("http://localhost:%d/", Env.exed.HTTPPort))
+		resp, err := client.Get(fmt.Sprintf("http://localhost:%d/", Env.servers.Exed.HTTPPort))
 		if err != nil {
 			t.Fatalf("failed to get dashboard: %v", err)
 		}
@@ -441,7 +441,7 @@ func TestVanillaBox(t *testing.T) {
 		exeShell.disconnect()
 
 		// Fetch dashboard again
-		resp, err = client.Get(fmt.Sprintf("http://localhost:%d/", Env.exed.HTTPPort))
+		resp, err = client.Get(fmt.Sprintf("http://localhost:%d/", Env.servers.Exed.HTTPPort))
 		if err != nil {
 			t.Fatalf("failed to get dashboard after update: %v", err)
 		}
@@ -467,7 +467,7 @@ func TestVanillaBox(t *testing.T) {
 		// shows http_requests_total with correct proxy, path, and box labels.
 		noGolden(t)
 
-		httpPort := Env.exed.HTTPPort
+		httpPort := Env.servers.Exed.HTTPPort
 
 		// Make a non-proxy request to /health
 		healthResp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", httpPort))
@@ -856,7 +856,7 @@ func TestNewBoxVariants(t *testing.T) {
 
 	// Test both long name (52 chars, the max) and --no-email flag together.
 	// For no-email, poison the inbox - email server will panic if email arrives before process ends.
-	Env.email.PoisonInbox(email)
+	Env.servers.Email.PoisonInbox(email)
 
 	boxName := boxName(t)
 	if len(boxName) < 52 {

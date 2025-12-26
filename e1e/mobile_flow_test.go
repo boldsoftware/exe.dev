@@ -27,7 +27,7 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	}
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Minute}
 
-	base := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
+	base := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
 
 	// 1) GET /m (logged-out) shows create page
 	resp, err := client.Get(base + "/m")
@@ -67,7 +67,7 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	}
 
 	// 4) Click verify link from email (uses the mobile /m/verify-token?token=... link)
-	emailMsg, err := Env.email.WaitForEmail(email)
+	emailMsg, err := Env.servers.Email.WaitForEmail(email)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	}
 
 	// Verify box-created email was sent
-	boxCreatedEmail, err := Env.email.WaitForEmail(email)
+	boxCreatedEmail, err := Env.servers.Email.WaitForEmail(email)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestNewPageRendersLoggedInAndOut(t *testing.T) {
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
-	base := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
+	base := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
 
 	// Test 1: Logged out - GET /new should render the create box form
 	t.Run("logged_out", func(t *testing.T) {

@@ -71,13 +71,13 @@ To fetch verification emails:
   curl http://localhost:%d/emails?to=user@example.com
 `,
 		Env.sshPort(),
-		Env.exed.HTTPPort,
-		Env.exed.SSHPort,
-		Env.email.Port,
+		Env.servers.Exed.HTTPPort,
+		Env.servers.Exed.SSHPort,
+		Env.servers.Email.Port,
 		Env.sshPort(),
-		Env.exed.HTTPPort,
-		Env.email.Port,
-		Env.email.Port,
+		Env.servers.Exed.HTTPPort,
+		Env.servers.Email.Port,
+		Env.servers.Email.Port,
 	)
 	if err := os.WriteFile(envInfoPath, []byte(envInfo), 0o644); err != nil {
 		t.Fatalf("failed to write env-info.txt: %v", err)
@@ -89,12 +89,12 @@ To fetch verification emails:
 
 SSH port: %d
 HTTP port: %d
-`, Env.sshPort(), Env.exed.HTTPPort)
+`, Env.sshPort(), Env.servers.Exed.HTTPPort)
 
 	ctx := Env.context(t)
 
 	t.Logf("Running AI agent")
-	t.Logf("SSH port: %d, HTTP port: %d", Env.sshPort(), Env.exed.HTTPPort)
+	t.Logf("SSH port: %d, HTTP port: %d", Env.sshPort(), Env.servers.Exed.HTTPPort)
 
 	cmd := exec.CommandContext(ctx, sketchPath,
 		"-one-shot",

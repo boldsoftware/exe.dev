@@ -65,7 +65,7 @@ func TestSupportAccess(t *testing.T) {
 	}
 
 	// Configure proxy port and set private
-	httpPort := Env.exed.HTTPPort
+	httpPort := Env.servers.Exed.HTTPPort
 	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
 	if err != nil {
 		t.Fatalf("failed to set proxy port: %v\n%s", err, out)
@@ -213,7 +213,7 @@ func TestSupportAccess(t *testing.T) {
 func enableRootSupport(t *testing.T, email string) {
 	t.Helper()
 
-	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/debug/users?format=json", Env.exed.HTTPPort))
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/debug/users?format=json", Env.servers.Exed.HTTPPort))
 	if err != nil {
 		t.Fatalf("failed to get users list: %v", err)
 	}
@@ -250,7 +250,7 @@ func enableRootSupport(t *testing.T, email string) {
 	form.Add("confirm_email", email)
 
 	postResp, err := http.PostForm(
-		fmt.Sprintf("http://localhost:%d/debug/users/toggle-root-support", Env.exed.HTTPPort),
+		fmt.Sprintf("http://localhost:%d/debug/users/toggle-root-support", Env.servers.Exed.HTTPPort),
 		form,
 	)
 	if err != nil {
