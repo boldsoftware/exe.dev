@@ -806,6 +806,15 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 	// Get the user to verify it was created
 	user, userErr := ss.server.getUserByPublicKey(s.Context(), publicKey)
 	if userErr != nil || user == nil {
+		fingerprint := ""
+		if pk, _, _, _, err := gossh.ParseAuthorizedKey([]byte(publicKey)); err == nil {
+			fingerprint = ss.server.GetPublicKeyFingerprint(pk)
+		}
+		if userErr != nil {
+			ss.server.slog().ErrorContext(s.Context(), "lookup user after verification failed", "error", userErr, "fingerprint", fingerprint)
+		} else {
+			ss.server.slog().ErrorContext(s.Context(), "lookup user after verification returned nil user", "fingerprint", fingerprint)
+		}
 		return nil, fmt.Errorf("internal error: user not found after verification")
 	}
 
