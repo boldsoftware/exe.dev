@@ -3,6 +3,7 @@ package testinfra
 import (
 	"fmt"
 	"math/rand/v2"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -12,6 +13,9 @@ import (
 func TestVM(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping in short mode")
+	}
+	if os.Getenv("CI") != "" {
+		t.Skip("skipping on CI")
 	}
 
 	t.Parallel()

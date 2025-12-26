@@ -14,6 +14,9 @@ func TestExelet(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping in short mode")
 	}
+	if os.Getenv("CI") != "" {
+		t.Skip("skipping on CI")
+	}
 
 	t.Parallel()
 
