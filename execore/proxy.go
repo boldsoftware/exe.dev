@@ -733,7 +733,7 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 		if userID, ok := s.getAuthenticatedUserID(r, *box); ok {
 			email, err := withRxRes1(s, req.Context(), (*exedb.Queries).GetEmailByUserID, userID)
 			if err != nil {
-				s.slog().ErrorContext(r.Context(), "failed to get user email for authenticated proxy headers", "error", err)
+				s.slog().ErrorContext(r.Context(), "failed to get user email for authenticated proxy headers", "error", err, "user_id", userID)
 				http.Error(w, "internal server error", http.StatusInternalServerError)
 				return
 			}
