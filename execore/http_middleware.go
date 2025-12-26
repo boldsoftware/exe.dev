@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"runtime/debug"
 
 	sloghttp "github.com/samber/slog-http"
 
@@ -63,6 +64,30 @@ func LoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 		h = requestInfoMiddleware(h)
 		h = tracing.HTTPMiddleware(h)
 		return h
+	}
+}
+
+// RecoverHTTPMiddleware logs panics at error level and responds with 500.
+// http.ErrAbortHandler is re-panicked to preserve net/http semantics.
+func RecoverHTTPMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if rec := recover(); rec != nil {
+					if rec == http.ErrAbortHandler {
+						panic(rec)
+					}
+					traceID := tracing.TraceIDFromContext(r.Context())
+					logger.Error("http panic",
+						"panic", rec,
+						"trace_id", traceID,
+						"stack", string(debug.Stack()),
+					)
+					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				}
+			}()
+			next.ServeHTTP(w, r)
+		})
 	}
 }
 
