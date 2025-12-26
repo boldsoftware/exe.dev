@@ -143,12 +143,13 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 	systemctl set-default multi-user.target
 
 # Modify existing ubuntu user (UID 1000) to become exedev user
-RUN usermod -l exedev ubuntu && \
+RUN usermod -l exedev -c "exe.dev user" ubuntu && \
 	groupmod -n exedev ubuntu && \
 	mv /home/ubuntu /home/exedev && \
 	usermod -d /home/exedev exedev && \
 	usermod -aG sudo exedev && \
 	usermod -aG docker exedev && \
+	sed -i 's/^ubuntu:/exedev:/' /etc/subuid /etc/subgid && \
 	echo 'exedev ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
 ENV EXEUNTU=1
