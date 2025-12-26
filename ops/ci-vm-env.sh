@@ -45,4 +45,3 @@ SNAPSHOT_AVAILABLE=0
 if [[ -f "${SNAPSHOT_BASE}" && -f "${SNAPSHOT_DATA}" ]]; then
     SNAPSHOT_AVAILABLE=1
 fi
-
