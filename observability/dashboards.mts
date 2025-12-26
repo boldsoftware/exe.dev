@@ -2214,13 +2214,31 @@ function makeHostsDashboard() {
   const addTimeseriesChart = makeAddTimeseriesChart(dash, "hosts-dashboard");
 
   // Host metrics use this filter
-  const HOST_FILTER = 'instance=~"$instance"';
+  const HOST_FILTER = 'instance=~"$instance",role=~"$role",stage=~"$stage"';
 
   // Variable definition for instance selection from node exporter metrics
   dash.withVariable(
     new QueryVariableBuilder("instance")
       .includeAll(true)
       .query("label_values(node_uname_info,instance)")
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+  );
+
+  // Variable definition for role selection
+  dash.withVariable(
+    new QueryVariableBuilder("role")
+      .includeAll(true)
+      .query("label_values(node_uname_info,role)")
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+  );
+
+  // Variable definition for stage selection
+  dash.withVariable(
+    new QueryVariableBuilder("stage")
+      .includeAll(true)
+      .query("label_values(node_uname_info,stage)")
       .current({ text: "All", value: "$__all" })
       .multi(true)
   );
@@ -2318,7 +2336,7 @@ function makeHostsDashboard() {
   });
 
   // Memory Usage by Type (stacked area chart)
-  // Shows all major memory categories from /proc/meminfo
+  // Shows all major memory categories from /proc/meminfo, summed across hosts
   const memoryByTypePanel = new TimeseriesBuilder()
     .title("Memory Usage by Type")
     .unit("bytes")
@@ -2328,122 +2346,122 @@ function makeHostsDashboard() {
     .fillOpacity(80)
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_AnonPages_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} AnonPages")
+        .expr(`sum(node_memory_AnonPages_bytes{${HOST_FILTER}})`)
+        .legendFormat("AnonPages")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_Cached_bytes{${HOST_FILTER}} - node_memory_Shmem_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} Cached")
+        .expr(`sum(node_memory_Cached_bytes{${HOST_FILTER}} - node_memory_Shmem_bytes{${HOST_FILTER}})`)
+        .legendFormat("Cached")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_Shmem_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} Shmem")
+        .expr(`sum(node_memory_Shmem_bytes{${HOST_FILTER}})`)
+        .legendFormat("Shmem")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_Buffers_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} Buffers")
+        .expr(`sum(node_memory_Buffers_bytes{${HOST_FILTER}})`)
+        .legendFormat("Buffers")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_SReclaimable_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} SReclaimable")
+        .expr(`sum(node_memory_SReclaimable_bytes{${HOST_FILTER}})`)
+        .legendFormat("SReclaimable")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_SUnreclaim_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} SUnreclaim")
+        .expr(`sum(node_memory_SUnreclaim_bytes{${HOST_FILTER}})`)
+        .legendFormat("SUnreclaim")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_KernelStack_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} KernelStack")
+        .expr(`sum(node_memory_KernelStack_bytes{${HOST_FILTER}})`)
+        .legendFormat("KernelStack")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_PageTables_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} PageTables")
+        .expr(`sum(node_memory_PageTables_bytes{${HOST_FILTER}})`)
+        .legendFormat("PageTables")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_Hugetlb_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} Hugetlb")
+        .expr(`sum(node_memory_Hugetlb_bytes{${HOST_FILTER}})`)
+        .legendFormat("Hugetlb")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_Percpu_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} Percpu")
+        .expr(`sum(node_memory_Percpu_bytes{${HOST_FILTER}})`)
+        .legendFormat("Percpu")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_Bounce_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} Bounce")
+        .expr(`sum(node_memory_Bounce_bytes{${HOST_FILTER}})`)
+        .legendFormat("Bounce")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_WritebackTmp_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} WritebackTmp")
+        .expr(`sum(node_memory_WritebackTmp_bytes{${HOST_FILTER}})`)
+        .legendFormat("WritebackTmp")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_MemFree_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} Free")
+        .expr(`sum(node_memory_MemFree_bytes{${HOST_FILTER}})`)
+        .legendFormat("Free")
     );
   dash.withPanel(memoryByTypePanel);
 
-  // Huge Pages Row
+  // Resource Pressure (PSI) Row - moved here to be right after memory metrics
   dash.withRow(
-    new RowBuilder("Huge Pages").gridPos(gp({ w: 24, h: 1 }))
+    new RowBuilder("Resource Pressure (PSI)").gridPos(gp({ w: 24, h: 1 }))
   );
 
   addTimeseriesChart(
-    "Huge Pages Used vs Total",
-    `(node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) * node_memory_Hugepagesize_bytes{${HOST_FILTER}}`,
+    "CPU Pressure",
+    `rate(node_pressure_cpu_waiting_seconds_total{${HOST_FILTER}}[5m]) * 100`,
     {
-      panelCustomization: (x) => x.unit("bytes").min(0),
-      gridPos: { w: 12, h: 6 },
-      queryCustomization: (q) => q.legendFormat("{{instance}} Used"),
+      panelCustomization: (x) =>
+        x.unit("percent").min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}} waiting"),
     }
   );
 
-  // Second target for total huge pages capacity as separate chart
-  const hugePagesPanel = new TimeseriesBuilder()
-    .title("Huge Pages Capacity")
-    .unit("bytes")
+  // IO Pressure - both waiting and stalled
+  const ioPressurePanel = new TimeseriesBuilder()
+    .title("IO Pressure")
+    .unit("percent")
     .min(0)
-    .gridPos(gp({ w: 12, h: 6 }))
+    .gridPos(gp({ w: 8, h: 6 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_HugePages_Total{${HOST_FILTER}} * node_memory_Hugepagesize_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} Total")
+        .expr(`rate(node_pressure_io_waiting_seconds_total{${HOST_FILTER}}[5m]) * 100`)
+        .legendFormat("{{instance}} waiting")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_memory_HugePages_Free{${HOST_FILTER}} * node_memory_Hugepagesize_bytes{${HOST_FILTER}}`)
-        .legendFormat("{{instance}} Free")
+        .expr(`rate(node_pressure_io_stalled_seconds_total{${HOST_FILTER}}[5m]) * 100`)
+        .legendFormat("{{instance}} stalled")
     );
-  dash.withPanel(hugePagesPanel);
+  dash.withPanel(ioPressurePanel);
 
-  // Alert: Huge pages > 0 AND at 80% capacity
-  // This query returns a value only when huge pages are in use AND usage is >= 80%
-  addTimeseriesChart(
-    "Huge Pages Usage %",
-    `((node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) / node_memory_HugePages_Total{${HOST_FILTER}}) * 100 and on(instance) (node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) > 0`,
-    {
-      panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100),
-      gridPos: { w: 12, h: 6 },
-      alert: {
-        threshold: 80,
-        condition: "gt",
-        forDuration: "3m",
-        summary: "Huge pages usage is critically high",
-        description: "Huge pages are in use and usage has exceeded 80% for more than 3 minutes",
-      },
-    }
-  );
+  // Memory Pressure - both waiting and stalled
+  const memoryPressurePanel = new TimeseriesBuilder()
+    .title("Memory Pressure")
+    .unit("percent")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`rate(node_pressure_memory_waiting_seconds_total{${HOST_FILTER}}[5m]) * 100`)
+        .legendFormat("{{instance}} waiting")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`rate(node_pressure_memory_stalled_seconds_total{${HOST_FILTER}}[5m]) * 100`)
+        .legendFormat("{{instance}} stalled")
+    );
+  dash.withPanel(memoryPressurePanel);
 
   // Swap Memory Row
   dash.withRow(
@@ -2457,6 +2475,16 @@ function makeHostsDashboard() {
       panelCustomization: (x) =>
         x.unit("percent").min(0).max(100),
       gridPos: { w: 8, h: 6 },
+      alert: {
+        threshold: 75,
+        condition: "gt",
+        forDuration: "3m",
+        noDataState: "OK",
+        summary: "Swap usage is high",
+        description: "Swap usage has exceeded 75% for more than 3 minutes",
+      },
+      // Alert query filters out hosts with no swap (SwapTotal == 0) to avoid divide-by-zero
+      alertQueryOverride: `(1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes)) * 100 and node_memory_SwapTotal_bytes > 0`,
     }
   );
 
@@ -2533,57 +2561,57 @@ function makeHostsDashboard() {
     }
   );
 
-  // Resource Pressure (PSI) Row
+  // Huge Pages Row - at the bottom
   dash.withRow(
-    new RowBuilder("Resource Pressure (PSI)").gridPos(gp({ w: 24, h: 1 }))
+    new RowBuilder("Huge Pages").gridPos(gp({ w: 24, h: 1 }))
   );
 
   addTimeseriesChart(
-    "CPU Pressure",
-    `rate(node_pressure_cpu_waiting_seconds_total{${HOST_FILTER}}[5m]) * 100`,
+    "Huge Pages Used vs Total",
+    `(node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) * node_memory_Hugepagesize_bytes{${HOST_FILTER}}`,
     {
-      panelCustomization: (x) =>
-        x.unit("percent").min(0),
-      gridPos: { w: 8, h: 6 },
-      queryCustomization: (q) => q.legendFormat("{{instance}} waiting"),
+      panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}} Used"),
     }
   );
 
-  // IO Pressure - both waiting and stalled
-  const ioPressurePanel = new TimeseriesBuilder()
-    .title("IO Pressure")
-    .unit("percent")
+  // Second target for total huge pages capacity as separate chart
+  const hugePagesPanel = new TimeseriesBuilder()
+    .title("Huge Pages Capacity")
+    .unit("bytes")
     .min(0)
-    .gridPos(gp({ w: 8, h: 6 }))
+    .gridPos(gp({ w: 12, h: 6 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`rate(node_pressure_io_waiting_seconds_total{${HOST_FILTER}}[5m]) * 100`)
-        .legendFormat("{{instance}} waiting")
+        .expr(`node_memory_HugePages_Total{${HOST_FILTER}} * node_memory_Hugepagesize_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} Total")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`rate(node_pressure_io_stalled_seconds_total{${HOST_FILTER}}[5m]) * 100`)
-        .legendFormat("{{instance}} stalled")
+        .expr(`node_memory_HugePages_Free{${HOST_FILTER}} * node_memory_Hugepagesize_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} Free")
     );
-  dash.withPanel(ioPressurePanel);
+  dash.withPanel(hugePagesPanel);
 
-  // Memory Pressure - both waiting and stalled
-  const memoryPressurePanel = new TimeseriesBuilder()
-    .title("Memory Pressure")
-    .unit("percent")
-    .min(0)
-    .gridPos(gp({ w: 8, h: 6 }))
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(`rate(node_pressure_memory_waiting_seconds_total{${HOST_FILTER}}[5m]) * 100`)
-        .legendFormat("{{instance}} waiting")
-    )
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(`rate(node_pressure_memory_stalled_seconds_total{${HOST_FILTER}}[5m]) * 100`)
-        .legendFormat("{{instance}} stalled")
-    );
-  dash.withPanel(memoryPressurePanel);
+  // Alert: Huge pages > 0 AND at 80% capacity
+  // This query returns a value only when huge pages are in use AND usage is >= 80%
+  addTimeseriesChart(
+    "Huge Pages Usage %",
+    `((node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) / node_memory_HugePages_Total{${HOST_FILTER}}) * 100 and on(instance) (node_memory_HugePages_Total{${HOST_FILTER}} - node_memory_HugePages_Free{${HOST_FILTER}}) > 0`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).max(100),
+      gridPos: { w: 12, h: 6 },
+      alert: {
+        threshold: 80,
+        condition: "gt",
+        forDuration: "3m",
+        summary: "Huge pages usage is critically high",
+        description: "Huge pages are in use and usage has exceeded 80% for more than 3 minutes",
+      },
+    }
+  );
 
   return dash;
 }
@@ -2601,6 +2629,34 @@ function makeAwsCloudWatchDashboard() {
     .timezone("browser");
 
   const addTimeseriesChart = makeAddTimeseriesChart(dash, "aws-cloudwatch-dashboard");
+
+  // Filter for AWS metrics (name, role, stage)
+  const AWS_FILTER = 'tag_Name=~"$name",tag_role=~"$role",tag_stage=~"$stage"';
+
+  // Variable definitions for filtering
+  dash.withVariable(
+    new QueryVariableBuilder("name")
+      .includeAll(true)
+      .query("label_values(aws_ec2_cpuutilization_average,tag_Name)")
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+  );
+
+  dash.withVariable(
+    new QueryVariableBuilder("role")
+      .includeAll(true)
+      .query("label_values(aws_ec2_cpuutilization_average,tag_role)")
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+  );
+
+  dash.withVariable(
+    new QueryVariableBuilder("stage")
+      .includeAll(true)
+      .query("label_values(aws_ec2_cpuutilization_average,tag_stage)")
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+  );
 
   // README panel
   dash.withPanel(
@@ -2626,7 +2682,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_cpuutilization_average`)
+        .expr(`aws_ec2_cpuutilization_average{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ec2CpuPanel);
@@ -2640,7 +2696,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_cpuutilization_maximum`)
+        .expr(`aws_ec2_cpuutilization_maximum{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ec2CpuMaxPanel);
@@ -2654,22 +2710,22 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_status_check_failed_maximum`)
+        .expr(`aws_ec2_status_check_failed_maximum{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}} any")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_status_check_failed_instance_maximum`)
+        .expr(`aws_ec2_status_check_failed_instance_maximum{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}} instance")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_status_check_failed_system_maximum`)
+        .expr(`aws_ec2_status_check_failed_system_maximum{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}} system")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_status_check_failed_attached_ebs_maximum`)
+        .expr(`aws_ec2_status_check_failed_attached_ebs_maximum{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}} EBS")
     )
     .thresholds(
@@ -2691,7 +2747,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_network_in_sum / 300`)
+        .expr(`aws_ec2_network_in_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ec2NetInPanel);
@@ -2704,7 +2760,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_network_out_sum / 300`)
+        .expr(`aws_ec2_network_out_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ec2NetOutPanel);
@@ -2717,12 +2773,12 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_network_packets_in_sum / 300`)
+        .expr(`aws_ec2_network_packets_in_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}} in")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_network_packets_out_sum / 300`)
+        .expr(`aws_ec2_network_packets_out_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}} out")
     );
   dash.withPanel(ec2NetPacketsPanel);
@@ -2736,7 +2792,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_disk_read_bytes_sum / 300`)
+        .expr(`aws_ec2_disk_read_bytes_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ec2DiskReadPanel);
@@ -2749,7 +2805,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_disk_write_bytes_sum / 300`)
+        .expr(`aws_ec2_disk_write_bytes_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ec2DiskWritePanel);
@@ -2762,12 +2818,12 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_disk_read_ops_sum / 300`)
+        .expr(`aws_ec2_disk_read_ops_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}} read")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_disk_write_ops_sum / 300`)
+        .expr(`aws_ec2_disk_write_ops_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}} write")
     );
   dash.withPanel(ec2DiskOpsPanel);
@@ -2781,7 +2837,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_ebsread_bytes_sum / 300`)
+        .expr(`aws_ec2_ebsread_bytes_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ec2EbsReadPanel);
@@ -2794,7 +2850,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_ebswrite_bytes_sum / 300`)
+        .expr(`aws_ec2_ebswrite_bytes_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ec2EbsWritePanel);
@@ -2807,12 +2863,12 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_ebsread_ops_sum / 300`)
+        .expr(`aws_ec2_ebsread_ops_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}} read")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_ebswrite_ops_sum / 300`)
+        .expr(`aws_ec2_ebswrite_ops_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}} write")
     );
   dash.withPanel(ec2EbsOpsPanel);
@@ -2827,7 +2883,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 12, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_instance_ebsiopsexceeded_check_maximum`)
+        .expr(`aws_ec2_instance_ebsiopsexceeded_check_maximum{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}}")
     )
     .thresholds(
@@ -2849,7 +2905,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 12, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ec2_instance_ebsthroughput_exceeded_check_maximum`)
+        .expr(`aws_ec2_instance_ebsthroughput_exceeded_check_maximum{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}}")
     )
     .thresholds(
@@ -2876,7 +2932,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`(aws_ebs_volume_total_read_time_sum / aws_ebs_volume_read_ops_sum) * 1000`)
+        .expr(`(aws_ebs_volume_total_read_time_sum{${AWS_FILTER}} / aws_ebs_volume_read_ops_sum{${AWS_FILTER}}) * 1000`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ebsReadLatencyPanel);
@@ -2889,7 +2945,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`(aws_ebs_volume_total_write_time_sum / aws_ebs_volume_write_ops_sum) * 1000`)
+        .expr(`(aws_ebs_volume_total_write_time_sum{${AWS_FILTER}} / aws_ebs_volume_write_ops_sum{${AWS_FILTER}}) * 1000`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ebsWriteLatencyPanel);
@@ -2902,7 +2958,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ebs_volume_queue_length_average`)
+        .expr(`aws_ebs_volume_queue_length_average{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ebsQueueLengthPanel);
@@ -2916,7 +2972,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ebs_volume_read_bytes_sum / 300`)
+        .expr(`aws_ebs_volume_read_bytes_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ebsReadThroughputPanel);
@@ -2929,7 +2985,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ebs_volume_write_bytes_sum / 300`)
+        .expr(`aws_ebs_volume_write_bytes_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ebsWriteThroughputPanel);
@@ -2943,7 +2999,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`(aws_ebs_volume_idle_time_sum / 300) * 100`)
+        .expr(`(aws_ebs_volume_idle_time_sum{${AWS_FILTER}} / 300) * 100`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ebsIdleTimePanel);
@@ -2957,7 +3013,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ebs_volume_read_ops_sum / 300`)
+        .expr(`aws_ebs_volume_read_ops_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ebsReadOpsPanel);
@@ -2970,7 +3026,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ebs_volume_write_ops_sum / 300`)
+        .expr(`aws_ebs_volume_write_ops_sum{${AWS_FILTER}} / 300`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ebsWriteOpsPanel);
@@ -2984,7 +3040,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ebs_burst_balance_minimum`)
+        .expr(`aws_ebs_burst_balance_minimum{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}}")
     )
     .thresholds(
@@ -3007,7 +3063,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ebs_volume_read_bytes_sum / aws_ebs_volume_read_ops_sum`)
+        .expr(`aws_ebs_volume_read_bytes_sum{${AWS_FILTER}} / aws_ebs_volume_read_ops_sum{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ebsAvgReadSizePanel);
@@ -3020,7 +3076,7 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ebs_volume_write_bytes_sum / aws_ebs_volume_write_ops_sum`)
+        .expr(`aws_ebs_volume_write_bytes_sum{${AWS_FILTER}} / aws_ebs_volume_write_ops_sum{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}}")
     );
   dash.withPanel(ebsAvgWriteSizePanel);
@@ -3034,17 +3090,17 @@ function makeAwsCloudWatchDashboard() {
     .gridPos(gp({ w: 8, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ebs_volume_iopsexceeded_check_maximum`)
+        .expr(`aws_ebs_volume_iopsexceeded_check_maximum{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}} IOPS exceeded")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ebs_volume_throughput_exceeded_check_maximum`)
+        .expr(`aws_ebs_volume_throughput_exceeded_check_maximum{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}} throughput exceeded")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`aws_ebs_volume_stalled_iocheck_maximum`)
+        .expr(`aws_ebs_volume_stalled_iocheck_maximum{${AWS_FILTER}}`)
         .legendFormat("{{tag_Name}} stalled IO")
     )
     .thresholds(
@@ -3062,7 +3118,7 @@ function makeAwsCloudWatchDashboard() {
   // volumes are healthy, so no data means no problem.
   addTimeseriesChart(
     "EBS IOPS Exceeded (Alert)",
-    `aws_ebs_volume_iopsexceeded_check_maximum`,
+    `aws_ebs_volume_iopsexceeded_check_maximum{${AWS_FILTER}}`,
     {
       panelCustomization: (x) => x.min(0).max(1),
       gridPos: { w: 12, h: 8 },

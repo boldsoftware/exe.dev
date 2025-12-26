@@ -16,6 +16,15 @@ if ! [[ "$MACHINE_NAME" =~ ^exe-ctr-(staging-)?[0-9]+$ ]]; then
     exit 1
 fi
 
+# Determine stage based on machine name
+if [[ "$MACHINE_NAME" =~ ^exe-ctr-staging- ]]; then
+    STAGE="staging"
+else
+    STAGE="production"
+fi
+ROLE="exelet"
+echo "Machine role: ${ROLE}, stage: ${STAGE}"
+
 # Get the directory of this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -263,7 +272,7 @@ INSTANCE_ID=$(aws ec2 run-instances \
     --block-device-mappings \
     "DeviceName=/dev/sda1,Ebs={VolumeSize=${ROOT_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
     "DeviceName=/dev/xvdf,Ebs={VolumeSize=${DATA_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
-    --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${MACHINE_NAME}}]" \
+    --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${MACHINE_NAME}},{Key=role,Value=${ROLE}},{Key=stage,Value=${STAGE}}]" \
     --query 'Instances[0].InstanceId' \
     --output text \
     --region ${REGION})
@@ -284,12 +293,12 @@ DATA_VOLUME_ID=$(aws ec2 describe-instances \
     --region ${REGION})
 
 if [ -n "$ROOT_VOLUME_ID" ] && [ "$ROOT_VOLUME_ID" != "None" ]; then
-    aws ec2 create-tags --resources ${ROOT_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-root --region ${REGION}
-    echo "Tagged root volume ${ROOT_VOLUME_ID} as ${MACHINE_NAME}-root"
+    aws ec2 create-tags --resources ${ROOT_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-root Key=role,Value=${ROLE} Key=stage,Value=${STAGE} --region ${REGION}
+    echo "Tagged root volume ${ROOT_VOLUME_ID} as ${MACHINE_NAME}-root (role=${ROLE}, stage=${STAGE})"
 fi
 if [ -n "$DATA_VOLUME_ID" ] && [ "$DATA_VOLUME_ID" != "None" ]; then
-    aws ec2 create-tags --resources ${DATA_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-data --region ${REGION}
-    echo "Tagged data volume ${DATA_VOLUME_ID} as ${MACHINE_NAME}-data"
+    aws ec2 create-tags --resources ${DATA_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-data Key=role,Value=${ROLE} Key=stage,Value=${STAGE} --region ${REGION}
+    echo "Tagged data volume ${DATA_VOLUME_ID} as ${MACHINE_NAME}-data (role=${ROLE}, stage=${STAGE})"
 fi
 
 # Wait for instance to be running

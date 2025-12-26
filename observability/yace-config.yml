@@ -9,8 +9,12 @@ discovery:
   exportedTagsOnMetrics:
     AWS/EC2:
       - Name
+      - role
+      - stage
     AWS/EBS:
       - Name
+      - role
+      - stage
 
   jobs:
     # EC2 instances
