@@ -16,7 +16,7 @@ func TestNewThrottleGlobalBlock(t *testing.T) {
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
-	pty, _, keyFile, _ := registerForExeDev(t)
+	pty, _, _, _ := registerForExeDev(t)
 	defer pty.disconnect()
 
 	// Enable global throttle via debug page
@@ -35,8 +35,8 @@ func TestNewThrottleGlobalBlock(t *testing.T) {
 	}
 
 	// Try to create a box - should be blocked
-	boxName := boxName(t)
-	pty.sendLine("new --name=" + boxName)
+	bn := boxName(t)
+	pty.sendLine("new --name=" + bn)
 	pty.want("VM creation is temporarily disabled for testing.")
 	pty.wantPrompt()
 
@@ -52,15 +52,15 @@ func TestNewThrottleGlobalBlock(t *testing.T) {
 	resp.Body.Close()
 
 	// Now creation should work
-	boxName = boxName(t)
-	pty.sendLine("new --name=" + boxName)
+	boxName2 := boxName(t)
+	pty.sendLine("new --name=" + boxName2)
 	pty.reject("disabled")
-	pty.wantRe("Creating .*" + boxName)
+	pty.wantRe("Creating .*" + boxName2)
 	pty.want("Ready")
 	pty.wantPrompt()
 
 	// Cleanup
-	pty.deleteBox(boxName)
+	pty.deleteBox(boxName2)
 }
 
 func TestNewThrottleEmailPattern(t *testing.T) {
@@ -91,8 +91,8 @@ func TestNewThrottleEmailPattern(t *testing.T) {
 	resp.Body.Close()
 
 	// Try to create a box - should be blocked due to email pattern
-	boxName := boxName(t)
-	pty.sendLine("new --name=" + boxName)
+	bn := boxName(t)
+	pty.sendLine("new --name=" + bn)
 	pty.want("Your domain is blocked from creating VMs.")
 	pty.wantPrompt()
 
@@ -108,15 +108,15 @@ func TestNewThrottleEmailPattern(t *testing.T) {
 	resp.Body.Close()
 
 	// Now creation should work
-	boxName = boxName(t)
-	pty.sendLine("new --name=" + boxName)
+	boxName2 := boxName(t)
+	pty.sendLine("new --name=" + boxName2)
 	pty.reject("blocked")
-	pty.wantRe("Creating .*" + boxName)
+	pty.wantRe("Creating .*" + boxName2)
 	pty.want("Ready")
 	pty.wantPrompt()
 
 	// Cleanup
-	pty.deleteBox(boxName)
+	pty.deleteBox(boxName2)
 
 	// Suppress unused variable warnings
 	_ = keyFile
@@ -178,8 +178,8 @@ func TestNewThrottleDefaultMessage(t *testing.T) {
 	resp.Body.Close()
 
 	// Try to create a box - should see default message
-	boxName := boxName(t)
-	pty.sendLine("new --name=" + boxName)
+	bn := boxName(t)
+	pty.sendLine("new --name=" + bn)
 	pty.want("VM creation is temporarily disabled.")
 	pty.wantPrompt()
 
