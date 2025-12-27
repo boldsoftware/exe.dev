@@ -350,7 +350,7 @@ func (p *DB) Tx(ctx context.Context, fn func(ctx context.Context, tx *Tx) error)
 
 	// If the context is closed, we want BEGIN to succeed and then
 	// we roll it back later.
-	if _, err := conn.ExecContext(context.WithoutCancel(ctx), "BEGIN IMMEDIATE;"); err != nil {
+	if _, err := conn.ExecContext(context.Background(), "BEGIN IMMEDIATE;"); err != nil {
 		if isRecoverableErr(err) {
 			p.writer <- conn
 			return fmt.Errorf("sqlite.Tx begin: %w", err)
@@ -372,7 +372,7 @@ func (p *DB) Tx(ctx context.Context, fn func(ctx context.Context, tx *Tx) error)
 	var err error
 	defer func() {
 		if err == nil {
-			_, commitErr := tx.conn.ExecContext(context.WithoutCancel(tx.ctx), "COMMIT;")
+			_, commitErr := tx.conn.ExecContext(context.Background(), "COMMIT;")
 			if commitErr != nil {
 				err = fmt.Errorf("Tx: commit: %w", commitErr)
 			}
@@ -408,7 +408,7 @@ func (p *DB) Rx(ctx context.Context, fn func(ctx context.Context, rx *Rx) error)
 
 	// If the context is closed, we want BEGIN to succeed and then
 	// we roll it back later.
-	if _, err := conn.ExecContext(context.WithoutCancel(ctx), "BEGIN;"); err != nil {
+	if _, err := conn.ExecContext(context.Background(), "BEGIN;"); err != nil {
 		if isRecoverableErr(err) {
 			p.readers <- conn
 			return fmt.Errorf("sqlite.Rx begin: %w", err)
@@ -443,7 +443,7 @@ func (p *DB) Rx(ctx context.Context, fn func(ctx context.Context, rx *Rx) error)
 // rollback rolls back the transaction and reports whether the connection is still usable.
 // If it returns false, the connection has been closed and must not be returned to the pool.
 func (p *DB) rollback(ctx context.Context, txType string, conn *sql.Conn) (connOK bool) {
-	_, err := conn.ExecContext(context.WithoutCancel(ctx), "ROLLBACK;")
+	_, err := conn.ExecContext(context.Background(), "ROLLBACK;")
 	if err == nil || strings.Contains(err.Error(), "no transaction is active") || isRecoverableErr(err) {
 		return true
 	}
