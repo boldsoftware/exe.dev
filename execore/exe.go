@@ -1753,6 +1753,15 @@ func isValidEmail(email string) bool {
 	return emailverifier.IsAddressValid(email)
 }
 
+// isDisposableEmail checks if an email uses a disposable/anonymized email provider.
+func isDisposableEmail(email string) bool {
+	syntax := emailVerifier.ParseAddress(email)
+	if !syntax.Valid {
+		return false
+	}
+	return emailVerifier.IsDisposable(syntax.Domain)
+}
+
 const (
 	containerListRetryInitialDelay = 2 * time.Second
 	containerListRetryMaxDelay     = 20 * time.Second

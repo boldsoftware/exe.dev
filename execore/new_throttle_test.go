@@ -217,3 +217,30 @@ func TestNewThrottleJSONEndpoint(t *testing.T) {
 		t.Errorf("expected message 'Test message', got %q", config.Message)
 	}
 }
+
+func TestCheckNewThrottleDisposableEmail(t *testing.T) {
+	s := newTestServer(t)
+	ctx := context.Background()
+
+	// Disposable emails should be throttled even with no patterns configured
+	tests := []struct {
+		email     string
+		throttled bool
+	}{
+		{"user@gmail.com", false},
+		{"user@outlook.com", false},
+		{"user@example.com", false},
+		// Known disposable email domains
+		{"user@mailinator.com", true},
+		{"user@guerrillamail.com", true},
+		{"user@yopmail.com", true},
+		{"user@10minutemail.com", true},
+	}
+
+	for _, tt := range tests {
+		throttled, _ := s.CheckNewThrottle(ctx, tt.email)
+		if throttled != tt.throttled {
+			t.Errorf("CheckNewThrottle(%q) = %v, want %v", tt.email, throttled, tt.throttled)
+		}
+	}
+}

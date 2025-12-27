@@ -1000,6 +1000,15 @@ func (s *Server) CheckNewThrottle(ctx context.Context, email string) (bool, stri
 		}
 	}
 
+	// Check for disposable/anonymized email providers
+	if isDisposableEmail(email) {
+		msg := config.Message
+		if msg == "" {
+			msg = "VM creation is not available for your account."
+		}
+		return true, msg
+	}
+
 	return false, ""
 }
 
