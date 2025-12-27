@@ -1064,7 +1064,7 @@ func (s *Server) sendEmail(to, subject, body string) error {
 
 	_, err := s.postmarkClient.SendEmail(email)
 	if err != nil {
-		s.slog().Error("failed to send email", "to", to, "subject", subject, "error", err)
+		s.slog().Warn("failed to send email", "to", to, "subject", subject, "error", err)
 	} else {
 		s.slog().Info("email sent successfully", "to", to, "subject", subject)
 	}
