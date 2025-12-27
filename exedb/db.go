@@ -183,6 +183,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getIPShardByBoxNameStmt, err = db.PrepareContext(ctx, getIPShardByBoxName); err != nil {
 		return nil, fmt.Errorf("error preparing query GetIPShardByBoxName: %w", err)
 	}
+	if q.getNewThrottleEmailPatternsStmt, err = db.PrepareContext(ctx, getNewThrottleEmailPatterns); err != nil {
+		return nil, fmt.Errorf("error preparing query GetNewThrottleEmailPatterns: %w", err)
+	}
+	if q.getNewThrottleEnabledStmt, err = db.PrepareContext(ctx, getNewThrottleEnabled); err != nil {
+		return nil, fmt.Errorf("error preparing query GetNewThrottleEnabled: %w", err)
+	}
+	if q.getNewThrottleMessageStmt, err = db.PrepareContext(ctx, getNewThrottleMessage); err != nil {
+		return nil, fmt.Errorf("error preparing query GetNewThrottleMessage: %w", err)
+	}
 	if q.getPasskeyByCredentialIDStmt, err = db.PrepareContext(ctx, getPasskeyByCredentialID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPasskeyByCredentialID: %w", err)
 	}
@@ -317,6 +326,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setBoxSupportAccessAllowedStmt, err = db.PrepareContext(ctx, setBoxSupportAccessAllowed); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxSupportAccessAllowed: %w", err)
+	}
+	if q.setNewThrottleEmailPatternsStmt, err = db.PrepareContext(ctx, setNewThrottleEmailPatterns); err != nil {
+		return nil, fmt.Errorf("error preparing query SetNewThrottleEmailPatterns: %w", err)
+	}
+	if q.setNewThrottleEnabledStmt, err = db.PrepareContext(ctx, setNewThrottleEnabled); err != nil {
+		return nil, fmt.Errorf("error preparing query SetNewThrottleEnabled: %w", err)
+	}
+	if q.setNewThrottleMessageStmt, err = db.PrepareContext(ctx, setNewThrottleMessage); err != nil {
+		return nil, fmt.Errorf("error preparing query SetNewThrottleMessage: %w", err)
 	}
 	if q.setPreferredExeletStmt, err = db.PrepareContext(ctx, setPreferredExelet); err != nil {
 		return nil, fmt.Errorf("error preparing query SetPreferredExelet: %w", err)
@@ -639,6 +657,21 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getIPShardByBoxNameStmt: %w", cerr)
 		}
 	}
+	if q.getNewThrottleEmailPatternsStmt != nil {
+		if cerr := q.getNewThrottleEmailPatternsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getNewThrottleEmailPatternsStmt: %w", cerr)
+		}
+	}
+	if q.getNewThrottleEnabledStmt != nil {
+		if cerr := q.getNewThrottleEnabledStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getNewThrottleEnabledStmt: %w", cerr)
+		}
+	}
+	if q.getNewThrottleMessageStmt != nil {
+		if cerr := q.getNewThrottleMessageStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getNewThrottleMessageStmt: %w", cerr)
+		}
+	}
 	if q.getPasskeyByCredentialIDStmt != nil {
 		if cerr := q.getPasskeyByCredentialIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getPasskeyByCredentialIDStmt: %w", cerr)
@@ -864,6 +897,21 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setBoxSupportAccessAllowedStmt: %w", cerr)
 		}
 	}
+	if q.setNewThrottleEmailPatternsStmt != nil {
+		if cerr := q.setNewThrottleEmailPatternsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setNewThrottleEmailPatternsStmt: %w", cerr)
+		}
+	}
+	if q.setNewThrottleEnabledStmt != nil {
+		if cerr := q.setNewThrottleEnabledStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setNewThrottleEnabledStmt: %w", cerr)
+		}
+	}
+	if q.setNewThrottleMessageStmt != nil {
+		if cerr := q.setNewThrottleMessageStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setNewThrottleMessageStmt: %w", cerr)
+		}
+	}
 	if q.setPreferredExeletStmt != nil {
 		if cerr := q.setPreferredExeletStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setPreferredExeletStmt: %w", cerr)
@@ -1041,6 +1089,9 @@ type Queries struct {
 	getEmailVerificationByPartialTokenStmt *sql.Stmt
 	getEmailVerificationByTokenStmt        *sql.Stmt
 	getIPShardByBoxNameStmt                *sql.Stmt
+	getNewThrottleEmailPatternsStmt        *sql.Stmt
+	getNewThrottleEnabledStmt              *sql.Stmt
+	getNewThrottleMessageStmt              *sql.Stmt
 	getPasskeyByCredentialIDStmt           *sql.Stmt
 	getPasskeyChallengeStmt                *sql.Stmt
 	getPasskeysByUserIDStmt                *sql.Stmt
@@ -1086,6 +1137,9 @@ type Queries struct {
 	recordUserEventStmt                    *sql.Stmt
 	sSHKeyForBoxNamedStmt                  *sql.Stmt
 	setBoxSupportAccessAllowedStmt         *sql.Stmt
+	setNewThrottleEmailPatternsStmt        *sql.Stmt
+	setNewThrottleEnabledStmt              *sql.Stmt
+	setNewThrottleMessageStmt              *sql.Stmt
 	setPreferredExeletStmt                 *sql.Stmt
 	setUserRootSupportStmt                 *sql.Stmt
 	updateAuthCookieLastUsedStmt           *sql.Stmt
@@ -1162,6 +1216,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:        q.getEmailVerificationByTokenStmt,
 		getIPShardByBoxNameStmt:                q.getIPShardByBoxNameStmt,
+		getNewThrottleEmailPatternsStmt:        q.getNewThrottleEmailPatternsStmt,
+		getNewThrottleEnabledStmt:              q.getNewThrottleEnabledStmt,
+		getNewThrottleMessageStmt:              q.getNewThrottleMessageStmt,
 		getPasskeyByCredentialIDStmt:           q.getPasskeyByCredentialIDStmt,
 		getPasskeyChallengeStmt:                q.getPasskeyChallengeStmt,
 		getPasskeysByUserIDStmt:                q.getPasskeysByUserIDStmt,
@@ -1207,6 +1264,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		recordUserEventStmt:                    q.recordUserEventStmt,
 		sSHKeyForBoxNamedStmt:                  q.sSHKeyForBoxNamedStmt,
 		setBoxSupportAccessAllowedStmt:         q.setBoxSupportAccessAllowedStmt,
+		setNewThrottleEmailPatternsStmt:        q.setNewThrottleEmailPatternsStmt,
+		setNewThrottleEnabledStmt:              q.setNewThrottleEnabledStmt,
+		setNewThrottleMessageStmt:              q.setNewThrottleMessageStmt,
 		setPreferredExeletStmt:                 q.setPreferredExeletStmt,
 		setUserRootSupportStmt:                 q.setUserRootSupportStmt,
 		updateAuthCookieLastUsedStmt:           q.updateAuthCookieLastUsedStmt,

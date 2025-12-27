@@ -18,6 +18,39 @@ func (q *Queries) ClearPreferredExelet(ctx context.Context) error {
 	return err
 }
 
+const getNewThrottleEmailPatterns = `-- name: GetNewThrottleEmailPatterns :one
+SELECT value FROM server_meta WHERE key = 'new_throttle_email_patterns'
+`
+
+func (q *Queries) GetNewThrottleEmailPatterns(ctx context.Context) (string, error) {
+	row := q.queryRow(ctx, q.getNewThrottleEmailPatternsStmt, getNewThrottleEmailPatterns)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
+const getNewThrottleEnabled = `-- name: GetNewThrottleEnabled :one
+SELECT value FROM server_meta WHERE key = 'new_throttle_enabled'
+`
+
+func (q *Queries) GetNewThrottleEnabled(ctx context.Context) (string, error) {
+	row := q.queryRow(ctx, q.getNewThrottleEnabledStmt, getNewThrottleEnabled)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
+const getNewThrottleMessage = `-- name: GetNewThrottleMessage :one
+SELECT value FROM server_meta WHERE key = 'new_throttle_message'
+`
+
+func (q *Queries) GetNewThrottleMessage(ctx context.Context) (string, error) {
+	row := q.queryRow(ctx, q.getNewThrottleMessageStmt, getNewThrottleMessage)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
 const getPreferredExelet = `-- name: GetPreferredExelet :one
 SELECT value FROM server_meta WHERE key = 'preferred_exelet'
 `
@@ -27,6 +60,36 @@ func (q *Queries) GetPreferredExelet(ctx context.Context) (string, error) {
 	var value string
 	err := row.Scan(&value)
 	return value, err
+}
+
+const setNewThrottleEmailPatterns = `-- name: SetNewThrottleEmailPatterns :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('new_throttle_email_patterns', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+`
+
+func (q *Queries) SetNewThrottleEmailPatterns(ctx context.Context, value string) error {
+	_, err := q.exec(ctx, q.setNewThrottleEmailPatternsStmt, setNewThrottleEmailPatterns, value)
+	return err
+}
+
+const setNewThrottleEnabled = `-- name: SetNewThrottleEnabled :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('new_throttle_enabled', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+`
+
+func (q *Queries) SetNewThrottleEnabled(ctx context.Context, value string) error {
+	_, err := q.exec(ctx, q.setNewThrottleEnabledStmt, setNewThrottleEnabled, value)
+	return err
+}
+
+const setNewThrottleMessage = `-- name: SetNewThrottleMessage :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('new_throttle_message', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+`
+
+func (q *Queries) SetNewThrottleMessage(ctx context.Context, value string) error {
+	_, err := q.exec(ctx, q.setNewThrottleMessageStmt, setNewThrottleMessage, value)
+	return err
 }
 
 const setPreferredExelet = `-- name: SetPreferredExelet :exec

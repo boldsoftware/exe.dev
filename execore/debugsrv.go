@@ -11,8 +11,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/pprof"
+	"regexp"
 	"runtime/debug"
 	"sort"
+	"strings"
 	"time"
 
 	"exe.dev/exedb"
@@ -35,6 +37,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
 	mux.HandleFunc("/debug/exelets", s.handleDebugExelets)
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
+	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
+	mux.HandleFunc("POST /debug/new-throttle", s.handleDebugNewThrottlePost)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -79,6 +83,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/boxes">boxes</a> (<a href="/debug/boxes?format=json">json</a>)</li>
     <li><a href="/debug/users">users</a> (<a href="/debug/users?format=json">json</a>)</li>
     <li><a href="/debug/exelets">exelets</a> (<a href="/debug/exelets?format=json">json</a>)</li>
+    <li><a href="/debug/new-throttle">new-throttle</a> (<a href="/debug/new-throttle?format=json">json</a>)</li>
 </ul>
 <p>Git version: %s %s</p>
 </body></html>
@@ -929,4 +934,262 @@ func (s *Server) handleDebugSetPreferredExelet(w http.ResponseWriter, r *http.Re
 
 	// Redirect back to the exelets page
 	http.Redirect(w, r, "/debug/exelets", http.StatusSeeOther)
+}
+
+// NewThrottleConfig represents the configuration for throttling "new" VM creation.
+type NewThrottleConfig struct {
+	Enabled       bool     `json:"enabled"`
+	EmailPatterns []string `json:"email_patterns"`
+	Message       string   `json:"message"`
+}
+
+// GetNewThrottleConfig retrieves the current throttle configuration from the database.
+func (s *Server) GetNewThrottleConfig(ctx context.Context) (*NewThrottleConfig, error) {
+	config := &NewThrottleConfig{}
+
+	// Get enabled flag
+	enabledStr, err := withRxRes0(s, ctx, (*exedb.Queries).GetNewThrottleEnabled)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to get throttle enabled: %w", err)
+	}
+	config.Enabled = enabledStr == "true"
+
+	// Get email patterns (stored as JSON array)
+	patternsStr, err := withRxRes0(s, ctx, (*exedb.Queries).GetNewThrottleEmailPatterns)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to get throttle email patterns: %w", err)
+	}
+	if patternsStr != "" {
+		if err := json.Unmarshal([]byte(patternsStr), &config.EmailPatterns); err != nil {
+			return nil, fmt.Errorf("failed to parse email patterns: %w", err)
+		}
+	}
+
+	// Get message
+	config.Message, err = withRxRes0(s, ctx, (*exedb.Queries).GetNewThrottleMessage)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to get throttle message: %w", err)
+	}
+
+	return config, nil
+}
+
+// CheckNewThrottle checks if a user is throttled from creating new VMs.
+// Returns (throttled, message) where throttled is true if the user should be denied,
+// and message is the denial message to show.
+func (s *Server) CheckNewThrottle(ctx context.Context, email string) (bool, string) {
+	config, err := s.GetNewThrottleConfig(ctx)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to get throttle config", "error", err)
+		return false, ""
+	}
+
+	// Check global toggle first
+	if config.Enabled {
+		msg := config.Message
+		if msg == "" {
+			msg = "VM creation is temporarily disabled."
+		}
+		return true, msg
+	}
+
+	// Check email patterns
+	for _, pattern := range config.EmailPatterns {
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			s.slog().WarnContext(ctx, "invalid throttle email pattern", "pattern", pattern, "error", err)
+			continue
+		}
+		if re.MatchString(email) {
+			msg := config.Message
+			if msg == "" {
+				msg = "VM creation is not available for your account."
+			}
+			return true, msg
+		}
+	}
+
+	return false, ""
+}
+
+// handleDebugNewThrottle displays the new-throttle configuration page.
+func (s *Server) handleDebugNewThrottle(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	config, err := s.GetNewThrottleConfig(ctx)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get throttle config: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Check if JSON format is requested
+	if r.URL.Query().Get("format") == "json" {
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(config); err != nil {
+			s.slog().ErrorContext(ctx, "Failed to encode throttle config", "error", err)
+		}
+		return
+	}
+
+	// HTML output
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>New Throttle Settings</title>
+<style>
+table { border-collapse: collapse; margin: 10px 0; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+th { background: #f5f5f5; }
+.section { margin: 20px 0; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+textarea { width: 100%%; height: 150px; font-family: monospace; }
+input[type="text"] { width: 100%%; padding: 8px; box-sizing: border-box; }
+.toggle-switch { display: inline-flex; align-items: center; cursor: pointer; }
+.toggle-switch input { display: none; }
+.toggle-slider { width: 50px; height: 26px; background: #ccc; border-radius: 13px; position: relative; transition: 0.3s; }
+.toggle-slider:before { content: ""; position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%%; top: 2px; left: 2px; transition: 0.3s; }
+.toggle-switch input:checked + .toggle-slider { background: #dc3545; }
+.toggle-switch input:checked + .toggle-slider:before { left: 26px; }
+.toggle-label { margin-left: 10px; font-weight: bold; }
+.save-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 16px; }
+.save-btn:hover { background: #0056b3; }
+.warning { background: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 5px; margin: 10px 0; }
+.error-list { color: red; margin: 5px 0; }
+</style>
+</head><body>
+<h1>New Throttle Settings</h1>
+<p><a href="/debug">/debug</a> | <a href="/debug/new-throttle?format=json">json</a></p>
+
+<div class="warning">
+<strong>Warning:</strong> These settings control who can create new VMs. Enable with caution.
+</div>
+
+<form method="post" action="/debug/new-throttle" id="throttleForm">
+
+<div class="section">
+<h2>Global Throttle</h2>
+<p>When enabled, ALL users are blocked from creating new VMs.</p>
+<label class="toggle-switch">
+<input type="checkbox" name="enabled" value="true" %s>
+<span class="toggle-slider"></span>
+<span class="toggle-label">Block all new VM creation</span>
+</label>
+</div>
+
+<div class="section">
+<h2>Email Pattern Throttle</h2>
+<p>Enter email patterns (regular expressions) to block, one per line. Users whose email matches any pattern will be blocked.</p>
+<p>Examples: <code>.*@example\.com$</code> (block all example.com), <code>^test@</code> (block emails starting with test@)</p>
+<textarea name="email_patterns" placeholder="Enter email regex patterns, one per line...">%s</textarea>
+<div id="patternErrors" class="error-list"></div>
+</div>
+
+<div class="section">
+<h2>Denial Message</h2>
+<p>Message shown to users when they are blocked from creating VMs. Leave empty for default message.</p>
+<input type="text" name="message" value="%s" placeholder="VM creation is temporarily unavailable.">
+</div>
+
+<div class="section">
+<button type="submit" class="save-btn">Save Settings</button>
+</div>
+
+</form>
+
+<script>
+document.getElementById('throttleForm').addEventListener('submit', function(e) {
+    var patterns = document.querySelector('textarea[name="email_patterns"]').value;
+    var lines = patterns.split('\n');
+    var errors = [];
+
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (line === '') continue;
+        try {
+            new RegExp(line);
+        } catch (err) {
+            errors.push('Line ' + (i + 1) + ': ' + err.message);
+        }
+    }
+
+    var errorDiv = document.getElementById('patternErrors');
+    if (errors.length > 0) {
+        errorDiv.innerHTML = errors.join('<br>');
+        e.preventDefault();
+        return false;
+    }
+    errorDiv.innerHTML = '';
+    return true;
+});
+</script>
+
+</body></html>
+`, checkedAttr(config.Enabled), html.EscapeString(strings.Join(config.EmailPatterns, "\n")), html.EscapeString(config.Message))
+}
+
+func checkedAttr(checked bool) string {
+	if checked {
+		return "checked"
+	}
+	return ""
+}
+
+// handleDebugNewThrottlePost handles saving the new-throttle configuration.
+func (s *Server) handleDebugNewThrottlePost(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	enabled := r.FormValue("enabled") == "true"
+	emailPatternsStr := r.FormValue("email_patterns")
+	message := r.FormValue("message")
+
+	// Parse email patterns (one per line)
+	var emailPatterns []string
+	for _, line := range strings.Split(emailPatternsStr, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Validate the regex
+		if _, err := regexp.Compile(line); err != nil {
+			http.Error(w, fmt.Sprintf("invalid regex pattern %q: %v", line, err), http.StatusBadRequest)
+			return
+		}
+		emailPatterns = append(emailPatterns, line)
+	}
+
+	// Save enabled flag
+	enabledStr := "false"
+	if enabled {
+		enabledStr = "true"
+	}
+	if err := withTx1(s, ctx, (*exedb.Queries).SetNewThrottleEnabled, enabledStr); err != nil {
+		http.Error(w, fmt.Sprintf("failed to save enabled flag: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Save email patterns as JSON
+	patternsJSON, err := json.Marshal(emailPatterns)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to encode email patterns: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if err := withTx1(s, ctx, (*exedb.Queries).SetNewThrottleEmailPatterns, string(patternsJSON)); err != nil {
+		http.Error(w, fmt.Sprintf("failed to save email patterns: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Save message
+	if err := withTx1(s, ctx, (*exedb.Queries).SetNewThrottleMessage, message); err != nil {
+		http.Error(w, fmt.Sprintf("failed to save message: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "new-throttle settings updated via debug page",
+		"enabled", enabled,
+		"email_patterns_count", len(emailPatterns),
+		"message", message)
+
+	// Redirect back to the throttle page
+	http.Redirect(w, r, "/debug/new-throttle", http.StatusSeeOther)
 }

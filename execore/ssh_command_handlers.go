@@ -328,6 +328,11 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		return cc.Errorf("--prompt can only be used with the exeuntu image")
 	}
 
+	// Check if user is throttled from creating new VMs
+	if throttled, msg := ss.server.CheckNewThrottle(ctx, user.Email); throttled {
+		return cc.Errorf("%s", msg)
+	}
+
 	// Generate box name if not provided
 	if boxName == "" {
 		for range 10 {
