@@ -20,22 +20,25 @@ eval "$(aws configure export-credentials --format env 2>/dev/null)" || {
 exec duckdb -cmd "
 INSTALL aws;
 LOAD aws;
+INSTALL httpfs;
+LOAD httpfs;
 SET s3_region='us-west-2';
+SET enable_http_metadata_cache=true;
 
--- Create view for logs
+-- Create view for logs (use explicit JSON types to handle polymorphic OTLP attribute values)
 CREATE OR REPLACE VIEW logs AS
 SELECT
-    make_timestamp(l.timeUnixNano::bigint // 1000) as time,
-    l.severityText as severity,
-    l.body.stringValue as message,
-    l.attributes as log_attributes,
-    r.resource.attributes as resource_attributes,
-    s.scope.name as scope_name,
+    make_timestamp(json_extract_string(l, '\$.timeUnixNano')::bigint // 1000) as time,
+    json_extract_string(l, '\$.severityText') as severity,
+    json_extract_string(l, '\$.body.stringValue') as message,
+    json_extract(l, '\$.attributes') as log_attributes,
+    json_extract(r, '\$.resource.attributes') as resource_attributes,
+    json_extract_string(s, '\$.scope.name') as scope_name,
     year, month, day, hour
-FROM read_json('s3://exe.dev-logs/${ENV}/**/*.json', hive_partitioning=true)
+FROM read_json('s3://exe.dev-logs/${ENV}/**/*.json', hive_partitioning=true, auto_detect=false, columns={resourceLogs: 'JSON[]'})
 CROSS JOIN UNNEST(resourceLogs) as t(r)
-CROSS JOIN UNNEST(r.scopeLogs) as t2(s)
-CROSS JOIN UNNEST(s.logRecords) as t3(l);
+CROSS JOIN UNNEST(CAST(json_extract(r, '\$.scopeLogs') AS JSON[])) as t2(s)
+CROSS JOIN UNNEST(CAST(json_extract(s, '\$.logRecords') AS JSON[])) as t3(l);
 
 SELECT '${ENV} logs ready. Try: SELECT time, severity, message FROM logs ORDER BY time DESC LIMIT 20;' as status;
 "
