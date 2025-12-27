@@ -3,7 +3,7 @@
 # Slack deployment notification helpers (best-effort, never fails deployment).
 #
 # Usage from Makefile or other scripts:
-#   DEPLOY_TS=$(./scripts/deploy-notify.sh start exed [old_sha])
+#   DEPLOY_TS=$(./scripts/deploy-notify.sh start exed [old_sha] [hostname])
 #   # ... do deployment ...
 #   ./scripts/deploy-notify.sh complete "$DEPLOY_TS"
 #
@@ -25,6 +25,7 @@ check_token() {
 deploy_notify_start() {
     local service="$1"
     local old_sha="$2"
+    local hostname="$3"
 
     if ! check_token; then
         return 0
@@ -34,6 +35,7 @@ deploy_notify_start() {
     local deployer
     local dirty_flag=""
     local old_sha_flag=""
+    local hostname_flag=""
 
     sha=$(git rev-parse --short HEAD)
     deployer=$(whoami)
@@ -46,11 +48,15 @@ deploy_notify_start() {
         old_sha_flag="--old-sha $old_sha"
     fi
 
+    if [ -n "$hostname" ]; then
+        hostname_flag="--hostname $hostname"
+    fi
+
     uv run "$SCRIPT_DIR/slack/deploy_notify.py" start \
         --service "$service" \
         --sha "$sha" \
         --deployer "$deployer" \
-        $dirty_flag $old_sha_flag 2>/dev/null || true
+        $dirty_flag $old_sha_flag $hostname_flag 2>/dev/null || true
 }
 
 deploy_notify_complete() {
@@ -74,10 +80,10 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     case "$1" in
     start)
         if [ -z "$2" ]; then
-            echo "Usage: $0 start <service> [old_sha]" >&2
+            echo "Usage: $0 start <service> [old_sha] [hostname]" >&2
             exit 0
         fi
-        deploy_notify_start "$2" "$3"
+        deploy_notify_start "$2" "$3" "$4"
         ;;
     complete)
         if [ -z "$2" ]; then
@@ -97,9 +103,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         echo "Usage: $0 {start|complete|fail} <args>" >&2
         echo "" >&2
         echo "Commands:" >&2
-        echo "  start <service> [old_sha]  - Post deployment start message, prints ts to stdout" >&2
-        echo "  complete <ts>              - Add checkmark emoji to message" >&2
-        echo "  fail <ts>                  - Add X emoji to message" >&2
+        echo "  start <service> [old_sha] [hostname]  - Post deployment start message, prints ts to stdout" >&2
+        echo "  complete <ts>                         - Add checkmark emoji to message" >&2
+        echo "  fail <ts>                             - Add X emoji to message" >&2
         exit 0
         ;;
     esac

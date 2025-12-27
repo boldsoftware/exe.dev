@@ -24,7 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Slack notification
-DEPLOY_TS=$("$REPO_ROOT/scripts/deploy-notify.sh" start exelet-staging)
+DEPLOY_TS=$("$REPO_ROOT/scripts/deploy-notify.sh" start exelet-staging "" "$INSTANCE_NAME")
 cleanup_notify() {
     if [ $? -ne 0 ] && [ -n "$DEPLOY_TS" ]; then
         "$REPO_ROOT/scripts/deploy-notify.sh" fail "$DEPLOY_TS"

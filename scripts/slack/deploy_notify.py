@@ -4,7 +4,7 @@ Notify Slack about deployment status.
 
 Usage:
   # Start a deployment (posts message, prints ts to stdout):
-  uv run scripts/slack/deploy_notify.py start --service exed --sha abc123 --deployer josh [--old-sha def456] [--dirty]
+  uv run scripts/slack/deploy_notify.py start --service exed --sha abc123 --deployer josh [--old-sha def456] [--dirty] [--hostname myhost]
 
   # Complete a deployment (adds checkmark emoji):
   uv run scripts/slack/deploy_notify.py complete --ts 1234567890.123456
@@ -89,6 +89,7 @@ def format_start_blocks(
     dirty: bool,
     commit_msg: str,
     old_sha: str | None = None,
+    hostname: str | None = None,
 ) -> list:
     """Format the deployment start message as Slack blocks."""
     now = datetime.now(timezone.utc)
@@ -128,6 +129,9 @@ def format_start_blocks(
         {"type": "mrkdwn", "text": f"*Time*\n{pt_str} / {et_str} / {utc_str}"},
     ]
 
+    if hostname:
+        fields.insert(1, {"type": "mrkdwn", "text": f"*Host*\n{hostname}"})
+
     if commit_msg:
         # Adding a 5th field makes it span the full width on its own row
         fields.append({"type": "mrkdwn", "text": f"*Commit*\n{commit_msg}"})
@@ -151,8 +155,9 @@ def cmd_start(args: argparse.Namespace) -> None:
 
     commit_msg = get_commit_summary(args.sha)
     old_sha = getattr(args, "old_sha", None)
+    hostname = getattr(args, "hostname", None)
     blocks = format_start_blocks(
-        args.service, args.sha, args.deployer, args.dirty, commit_msg, old_sha
+        args.service, args.sha, args.deployer, args.dirty, commit_msg, old_sha, hostname
     )
     # text is fallback for notifications/accessibility
     fallback = f"Deploying {args.service} {args.sha} ({args.deployer})"
@@ -211,6 +216,9 @@ def parse_args() -> argparse.Namespace:
     )
     start_parser.add_argument(
         "--dirty", action="store_true", help="Mark worktree as dirty"
+    )
+    start_parser.add_argument(
+        "--hostname", help="Hostname being deployed to"
     )
 
     # complete command
