@@ -776,6 +776,9 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 			return nil, fmt.Errorf("internal error: email service is not configured")
 		case strings.Contains(err.Error(), "marked as inactive"):
 			return nil, fmt.Errorf("This email address has been blocked by the email provider.\r\nPlease try a different email address.")
+		case strings.Contains(err.Error(), "failed to send verification email"):
+			ss.server.slog().Error("email sending failed", "email", email, "error", err)
+			return nil, fmt.Errorf("Failed to send verification email. Please check your email address and try again.")
 		}
 		return nil, err
 	}
