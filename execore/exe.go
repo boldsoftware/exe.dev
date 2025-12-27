@@ -2500,3 +2500,38 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 
 	return client, addr, nil
 }
+
+// autoThrottleVMLimit is the VM count threshold that triggers automatic throttling.
+const autoThrottleVMLimit = 400
+
+// autoThrottleVMCreation enables throttling if the preferred exelet has hit its VM limit.
+func (s *Server) autoThrottleVMCreation(ctx context.Context) {
+	preferredAddr, err := withRxRes0(s, ctx, (*exedb.Queries).GetPreferredExelet)
+	if err != nil || preferredAddr == "" {
+		slog.WarnContext(ctx, "autoThrottleVMCreation no preferred exelet configured", "error", err)
+		return
+	}
+	ec, ok := s.exeletClients[preferredAddr]
+	if !ok {
+		s.slog().ErrorContext(ctx, "auto-throttle: preferred exelet client not found", "exelet", preferredAddr, "clients", s.exeletClients)
+		return
+	}
+
+	count, err := ec.countInstances(ctx)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "auto-throttle: failed to list instances", "exelet", preferredAddr, "error", err)
+		return
+	}
+
+	if count < autoThrottleVMLimit {
+		return
+	}
+
+	// There's a logical race here: multiple attempts could all write "true" here. No harm done, though.
+	if err := withTx1(s, ctx, (*exedb.Queries).SetNewThrottleEnabled, "true"); err != nil {
+		s.slog().ErrorContext(ctx, "auto-throttle: failed to enable throttle", "error", err)
+		return
+	}
+
+	s.slog().ErrorContext(ctx, "auto-throttle: VM limit reached on preferred exelet, throttle enabled", "exelet", preferredAddr, "vm_count", count, "limit", autoThrottleVMLimit)
+}

@@ -746,6 +746,12 @@ done:
 		ss.server.sshMetrics.boxCreationDur.Observe(totalTime.Seconds())
 	}
 	ss.server.slackFeed.CreatedVM(ctx, user.ID)
+
+	// We've added another VM.
+	// Check whether we've hit the VM limit and need to auto-throttle.
+	// TODO: remove this :P
+	ss.server.autoThrottleVMCreation(ctx)
+
 	if showSpinner {
 		// Clear the progress line and show formatted completion message
 		cc.Write("\r\033[K")
