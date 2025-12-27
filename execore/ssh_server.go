@@ -741,7 +741,7 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 			if errors.Is(err, errRegistrationCancelled) {
 				ss.server.slog().Info("email registration cancelled", "email", email)
 			} else {
-				ss.server.slog().Error("email verification failed", "email", email, "error", err)
+				ss.server.slog().Warn("email verification failed", "email", email, "error", err)
 			}
 			fmt.Fprintf(s, "\r\n\033[1;31m%v\033[0m\r\n", err)
 			return
