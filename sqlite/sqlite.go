@@ -18,6 +18,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -289,6 +290,21 @@ type ctxKeyType int
 // This code is here is used for an exception: the slog package.
 var CtxKey any = ctxKeyType(0)
 
+// isRecoverableErr reports whether err is transient and has left the connection usable.
+func isRecoverableErr(err error) bool {
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	s := err.Error()
+	// SQLITE_BUSY is lock contention.
+	// SQLITE_INTERRUPT means the operation was cancelled (e.g. context cancelled).
+	// Neither corrupts the connection.
+	return strings.Contains(s, "SQLITE_BUSY") || strings.Contains(s, "interrupted")
+}
+
 func checkNoTx(ctx context.Context, typ string) {
 	x := ctx.Value(CtxKey)
 	if x == nil {
@@ -335,12 +351,13 @@ func (p *DB) Tx(ctx context.Context, fn func(ctx context.Context, tx *Tx) error)
 	// If the context is closed, we want BEGIN to succeed and then
 	// we roll it back later.
 	if _, err := conn.ExecContext(context.WithoutCancel(ctx), "BEGIN IMMEDIATE;"); err != nil {
-		if strings.Contains(err.Error(), "SQLITE_BUSY") {
+		if isRecoverableErr(err) {
 			p.writer <- conn
 			return fmt.Errorf("sqlite.Tx begin: %w", err)
 		}
 		// Unrecoverable error (e.g. SQLITE_CORRUPT, SQLITE_IOERR).
 		// Close the connection to release resources, but don't return it to the pool.
+		slog.ErrorContext(ctx, "sqlite.Tx: unrecoverable error starting write tx", "err", err)
 		// The pool will have one fewer writer connection.
 		txLeaksCounter.Inc()
 		conn.Close()
@@ -355,18 +372,19 @@ func (p *DB) Tx(ctx context.Context, fn func(ctx context.Context, tx *Tx) error)
 	var err error
 	defer func() {
 		if err == nil {
-			_, err = tx.conn.ExecContext(tx.ctx, "COMMIT;")
-			if err != nil {
-				err = fmt.Errorf("Tx: commit: %w", err)
+			_, commitErr := tx.conn.ExecContext(tx.ctx, "COMMIT;")
+			if commitErr != nil {
+				err = fmt.Errorf("Tx: commit: %w", commitErr)
 			}
 		}
+		connUsable := true
 		if err != nil {
-			err = p.rollback(tx.ctx, "Tx", err, tx.conn)
-			// always return conn,
-			// either the entire database is closed or the conn is fine.
+			connUsable = p.rollback(tx.ctx, "Tx", tx.conn)
 		}
-		tx.p.writer <- conn
-		// Update metrics after returning connection
+		if connUsable {
+			tx.p.writer <- tx.conn
+		}
+		tx.Rx.conn = nil // poison against use-after-close
 		p.UpdateMetrics()
 	}()
 	if ctxErr := tx.ctx.Err(); ctxErr != nil {
@@ -391,13 +409,11 @@ func (p *DB) Rx(ctx context.Context, fn func(ctx context.Context, rx *Rx) error)
 	// If the context is closed, we want BEGIN to succeed and then
 	// we roll it back later.
 	if _, err := conn.ExecContext(context.WithoutCancel(ctx), "BEGIN;"); err != nil {
-		if strings.Contains(err.Error(), "SQLITE_BUSY") {
+		if isRecoverableErr(err) {
 			p.readers <- conn
 			return fmt.Errorf("sqlite.Rx begin: %w", err)
 		}
-
-		slog.ErrorContext(ctx, "sqlite.Rx: unrecoverable error starting read tx: %v; incrementing leak counter", "err", err)
-
+		slog.ErrorContext(ctx, "sqlite.Rx: unrecoverable error starting read tx", "err", err)
 		// Unrecoverable error (e.g. tx-inside-tx misuse, SQLITE_CORRUPT, SQLITE_IOERR).
 		// Close the connection to release resources, but don't return it to the pool.
 		// The pool will have one fewer reader connection.
@@ -408,50 +424,41 @@ func (p *DB) Rx(ctx context.Context, fn func(ctx context.Context, rx *Rx) error)
 	rx := &Rx{conn: conn, p: p, caller: callerOfCaller(1)}
 	rx.ctx = context.WithValue(ctx, CtxKey, rx)
 
-	var err error
 	defer func() {
-		err = p.rollback(rx.ctx, "Rx", err, rx.conn)
-		rx.conn = nil
-		// always return conn,
-		// either the entire database is closed or the conn is fine.
-		rx.p.readers <- conn
-		// Update metrics after returning connection
+		if connUsable := p.rollback(rx.ctx, "Rx", rx.conn); connUsable {
+			rx.p.readers <- rx.conn
+		}
+		rx.conn = nil // poison against use-after-close
 		p.UpdateMetrics()
 	}()
 	if ctxErr := rx.ctx.Err(); ctxErr != nil {
 		return ctxErr // fast path for canceled context
 	}
 	t0 := time.Now()
-	err = fn(rx.ctx, rx)
+	err := fn(rx.ctx, rx)
 	rxLatencyHistogram.Observe(float64(time.Since(t0).Milliseconds()))
 	return err
 }
 
-func (p *DB) rollback(ctx context.Context, txType string, txErr error, conn *sql.Conn) error {
-	// Even if the context is cancelled,
-	// we still need to rollback to finish up the transaction.
+// rollback rolls back the transaction and reports whether the connection is still usable.
+// If it returns false, the connection has been closed and must not be returned to the pool.
+func (p *DB) rollback(ctx context.Context, txType string, conn *sql.Conn) (connOK bool) {
 	_, err := conn.ExecContext(context.WithoutCancel(ctx), "ROLLBACK;")
-	if err != nil && !strings.Contains(err.Error(), "no transaction is active") {
-		// There are a few cases where an error during a transaction
-		// will be reported as a rollback error:
-		// 	https://sqlite.org/lang_transaction.html#response_to_errors_within_a_transaction
-		// In good operation, we should never see any of these.
-		//
-		// TODO: confirm this check works on all sqlite drivers.
-		if !strings.Contains(err.Error(), "SQLITE_BUSY") {
-			// Connection is being closed due to unrecoverable error - count as leak
-			slog.ErrorContext(ctx, "sqlite: unrecoverable rollback error; incrementing leak counter", "err", err)
-			if strings.HasPrefix(txType, "Tx") {
-				txLeaksCounter.Inc()
-			} else {
-				rxLeaksCounter.Inc()
-			}
-			conn.Close()
-			p.db.Close()
-		}
-		return fmt.Errorf("%s: %v: rollback failed: %w", txType, txErr, err)
+	if err == nil || strings.Contains(err.Error(), "no transaction is active") || isRecoverableErr(err) {
+		return true
 	}
-	return txErr
+	// Unrecoverable error (e.g. SQLITE_CORRUPT, SQLITE_IOERR). Bad news bears.
+	// Close the connection and tell the caller not to return it to the pool.
+	slog.ErrorContext(ctx, "sqlite: unrecoverable rollback error", "err", err)
+	if txType == "Tx" {
+		txLeaksCounter.Inc()
+	} else {
+		rxLeaksCounter.Inc()
+	}
+	conn.Close()
+	// Don't close the db, just the connection.
+	// Fingers crossed we'll be able to keep limping along.
+	return false
 }
 
 type Tx struct {
