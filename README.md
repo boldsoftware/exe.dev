@@ -7,4 +7,4 @@ Other ways to reach/follow us:
 - Discord: https://discord.gg/7FsSbPdtvg
 - Twitter: https://x.com/ssh_exe_dev
 - Bluesky: https://bsky.app/profile/exe.dev
-- Fediverse: [@exe.dev@bsky.brid.gy](https://bsky.brid.gy/r/https://bsky.app/profile/exe.dev)
+- Fediverse: [@exe.dev@bsky.brid.gy](https://fed.brid.gy/bsky/exe.dev)
