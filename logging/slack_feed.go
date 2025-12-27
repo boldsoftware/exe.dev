@@ -79,7 +79,7 @@ func (sf *SlackFeed) ServerStarted(ctx context.Context, gitSHA string) {
 		return
 	}
 	go func() {
-		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), "page", slack.MsgOptionText(message, true))
+		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), "page", slack.MsgOptionText(message, false))
 		if err != nil {
 			slog.WarnContext(ctx, "failed to post to #page", "error", err)
 		}
