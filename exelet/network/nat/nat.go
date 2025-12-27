@@ -21,6 +21,7 @@ const (
 	DefaultMaxPortsPerBridge = 500
 	DefaultBridgeHashMax     = 4096 // FDB hash table size; default 512 causes "exchange full" at scale
 	CarrierNATCIDR           = "100.64.0.0/10"
+	DefaultConnLimit         = 10000 // Max concurrent connections per VM
 
 	DeviceName = "eth0"
 )
@@ -54,6 +55,7 @@ type NAT struct {
 	log               *slog.Logger
 	bridges           []bridgeInfo
 	maxPortsPerBridge int
+	connLimit         int // max concurrent connections per VM
 	mu                sync.Mutex
 	bridgeCreateMu    sync.Mutex // serializes bridge creation
 }
@@ -128,6 +130,7 @@ func NewNATManager(addr string, log *slog.Logger) (*NAT, error) {
 		log:               log,
 		bridges:           []bridgeInfo{{name: primaryBridgeName, portCount: 0}},
 		maxPortsPerBridge: maxPortsPerBridge,
+		connLimit:         DefaultConnLimit,
 	}
 
 	return n, nil

@@ -11,3 +11,7 @@ import (
 func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInterface, error) {
 	return nil, ErrNotImplemented
 }
+
+func (n *NAT) ApplyConnectionLimit(ctx context.Context, ip string) error {
+	return ErrNotImplemented
+}

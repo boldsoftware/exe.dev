@@ -17,4 +17,6 @@ type NetworkManager interface {
 	CreateInterface(ctx context.Context, id string) (*api.NetworkInterface, error)
 	// DeleteInterface deletes the specified network interface and releases its IP
 	DeleteInterface(ctx context.Context, id, ip string) error
+	// ApplyConnectionLimit applies a connection limit rule for the given IP
+	ApplyConnectionLimit(ctx context.Context, ip string) error
 }

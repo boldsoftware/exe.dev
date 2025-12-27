@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -122,6 +123,14 @@ func (r *createInstanceRollback) Rollback() {
 		r.log.DebugContext(r.ctx, "rollback: released allocated port", "port", r.allocatedPort)
 	}
 
+	// Parse IP from CIDR format once for use in cleanup (e.g., "10.42.1.5/16" -> "10.42.1.5")
+	bareIP := ""
+	if r.networkIP != "" {
+		if parsedIP, _, err := net.ParseCIDR(r.networkIP); err == nil {
+			bareIP = parsedIP.String()
+		}
+	}
+
 	// Stop and delete VM if created
 	if r.vmStarted || r.vmCreated {
 		if r.runtimeAddress != "" && r.serviceContext != nil {
@@ -138,12 +147,13 @@ func (r *createInstanceRollback) Rollback() {
 					}
 				}
 
-				// Delete VM
+				// Delete VM (v.Delete also cleans up network interface)
 				if r.vmCreated {
-					if err := v.Delete(r.ctx, r.instanceID, r.networkIP); err != nil {
+					if err := v.Delete(r.ctx, r.instanceID, bareIP); err != nil {
 						r.log.ErrorContext(r.ctx, "rollback: failed to delete VM", "id", r.instanceID, "error", err)
 					} else {
 						r.log.DebugContext(r.ctx, "rollback: deleted VM", "id", r.instanceID)
+						r.networkCreated = false // v.Delete already cleaned up network
 					}
 				}
 			}
@@ -178,10 +188,9 @@ func (r *createInstanceRollback) Rollback() {
 		}
 	}
 
-	// Delete network interface
+	// Delete network interface (if not already cleaned up by v.Delete)
 	if r.networkCreated {
-		// Pass empty IP since we may not have allocated one yet during rollback
-		if err := r.serviceContext.NetworkManager.DeleteInterface(r.ctx, r.instanceID, ""); err != nil {
+		if err := r.serviceContext.NetworkManager.DeleteInterface(r.ctx, r.instanceID, bareIP); err != nil {
 			r.log.ErrorContext(r.ctx, "rollback: failed to delete network interface", "id", r.instanceID, "error", err)
 		}
 	}

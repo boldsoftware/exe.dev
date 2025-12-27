@@ -50,6 +50,12 @@ func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInter
 	if err != nil {
 		return nil, err
 	}
+
+	// Apply connection limit for this VM
+	if err := n.applyConnLimit(ctx, ip.String()); err != nil {
+		return nil, fmt.Errorf("failed to apply connection limit: %w", err)
+	}
+
 	gwIP, err := n.dhcpServer.ServerIP()
 	if err != nil {
 		return nil, err
@@ -79,4 +85,10 @@ func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInter
 	}
 
 	return iface, nil
+}
+
+// ApplyConnectionLimit applies a connection limit rule for the given IP.
+// This is used to apply limits to existing VMs at startup.
+func (n *NAT) ApplyConnectionLimit(ctx context.Context, ip string) error {
+	return n.applyConnLimit(ctx, ip)
 }

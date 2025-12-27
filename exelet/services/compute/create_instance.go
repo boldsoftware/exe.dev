@@ -132,8 +132,15 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 			if rmErr := os.RemoveAll(instanceDir); rmErr != nil {
 				s.log.ErrorContext(ctx, "failed to clean up stale instance directory", "id", instanceID, "error", rmErr)
 			}
-			// Also clean up network interface if it exists (pass empty IP since we don't know it)
-			if delErr := s.context.NetworkManager.DeleteInterface(ctx, instanceID, ""); delErr != nil {
+			// Extract IP from stale instance for proper cleanup (iptables rule + DHCP lease)
+			staleIP := ""
+			if existingInstance.VMConfig != nil && existingInstance.VMConfig.NetworkInterface != nil && existingInstance.VMConfig.NetworkInterface.IP != nil {
+				if ipAddr, _, err := net.ParseCIDR(existingInstance.VMConfig.NetworkInterface.IP.IPV4); err == nil {
+					staleIP = ipAddr.String()
+				}
+			}
+			// Also clean up network interface if it exists
+			if delErr := s.context.NetworkManager.DeleteInterface(ctx, instanceID, staleIP); delErr != nil {
 				s.log.DebugContext(ctx, "no network interface to clean up for stale instance", "id", instanceID)
 			}
 		} else {
@@ -207,6 +214,9 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	rb.networkCreated = true
+	if networkInterface.IP != nil {
+		rb.networkIP = networkInterface.IP.IPV4
+	}
 
 	// ensure gateway IP (for shelley config)
 	gatewayIP := ""
@@ -606,7 +616,6 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 			return nil, status.Errorf(codes.Internal, "failed to parse VM IP: %s", err)
 		}
 		vmIP = ipAddr.String()
-		rb.networkIP = networkInterface.IP.IPV4
 	} else {
 		s.portAllocator.Release(sshPort)
 		return nil, status.Error(codes.Internal, "no IP address assigned to VM")

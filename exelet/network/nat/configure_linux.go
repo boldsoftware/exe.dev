@@ -602,3 +602,63 @@ func setBridgeHashMax(bridgeName string, hashMax int) error {
 	}
 	return nil
 }
+
+// applyConnLimit adds an iptables rule to limit concurrent connections from a VM IP.
+func (n *NAT) applyConnLimit(ctx context.Context, ip string) error {
+	ruleArgs := []string{
+		"-s",
+		ip,
+		"-m",
+		"connlimit",
+		"--connlimit-above",
+		fmt.Sprintf("%d", n.connLimit),
+		"--connlimit-mask",
+		"32",
+		"-j",
+		"DROP",
+	}
+
+	// Check if exact rule already exists using iptables -C
+	checkArgs := append([]string{"-C", "FORWARD"}, ruleArgs...)
+	if err := exec.CommandContext(ctx, "iptables", checkArgs...).Run(); err == nil {
+		// Rule already exists
+		return nil
+	}
+
+	n.log.DebugContext(ctx, "adding iptables connection limit rule", "ip", ip, "limit", n.connLimit)
+
+	// Insert at beginning of FORWARD chain to ensure it's evaluated before ACCEPT rules
+	insertArgs := append([]string{"-I", "FORWARD"}, ruleArgs...)
+	if err := exec.CommandContext(ctx, "iptables", insertArgs...).Run(); err != nil {
+		return fmt.Errorf("failed to add connection limit rule: %w", err)
+	}
+
+	return nil
+}
+
+// removeConnLimit removes the connection limit iptables rule for a VM IP.
+func (n *NAT) removeConnLimit(ctx context.Context, ip string) error {
+	n.log.DebugContext(ctx, "removing iptables connection limit rule", "ip", ip, "limit", n.connLimit)
+
+	cArgs := []string{
+		"-D",
+		"FORWARD",
+		"-s",
+		ip,
+		"-m",
+		"connlimit",
+		"--connlimit-above",
+		fmt.Sprintf("%d", n.connLimit),
+		"--connlimit-mask",
+		"32",
+		"-j",
+		"DROP",
+	}
+
+	if err := exec.CommandContext(ctx, "iptables", cArgs...).Run(); err != nil {
+		// Don't fail if rule doesn't exist (may have been already removed)
+		n.log.DebugContext(ctx, "failed to remove connection limit rule (may not exist)", "ip", ip, "error", err)
+	}
+
+	return nil
+}

@@ -3,6 +3,7 @@ package compute
 import (
 	"context"
 	"log/slog"
+	"net"
 	"sync"
 
 	"google.golang.org/grpc"
@@ -86,6 +87,21 @@ func (s *Service) Start(ctx context.Context) error {
 		if i.SSHPort > 0 {
 			s.portAllocator.MarkAllocated(int(i.SSHPort))
 			s.log.DebugContext(ctx, "marked port as allocated", "instance", i.ID, "port", i.SSHPort)
+		}
+	}
+
+	// Apply connection limits for existing instances
+	for _, i := range instances {
+		if i.VMConfig != nil && i.VMConfig.NetworkInterface != nil && i.VMConfig.NetworkInterface.IP != nil {
+			ipStr := i.VMConfig.NetworkInterface.IP.IPV4
+			ip, _, err := net.ParseCIDR(ipStr)
+			if err != nil {
+				s.log.WarnContext(ctx, "failed to parse instance IP", "instance", i.ID, "ip", ipStr, "error", err)
+				continue
+			}
+			if err := s.context.NetworkManager.ApplyConnectionLimit(ctx, ip.String()); err != nil {
+				s.log.WarnContext(ctx, "failed to apply connection limit", "instance", i.ID, "ip", ip.String(), "error", err)
+			}
 		}
 	}
 

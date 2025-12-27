@@ -23,6 +23,13 @@ func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
 		n.decrementBridgePort(bridgeName)
 	}
 
+	// Remove connection limit rule for this IP
+	if ip != "" {
+		if err := n.removeConnLimit(ctx, ip); err != nil {
+			n.log.WarnContext(ctx, "failed to remove connection limit", "ip", ip, "error", err)
+		}
+	}
+
 	// Release the DHCP lease for this IP
 	if ip != "" {
 		if err := n.dhcpServer.Release(ip); err != nil {
