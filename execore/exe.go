@@ -474,6 +474,14 @@ func runMigrations(slog *slog.Logger, dbPath string) error {
 		return fmt.Errorf("failed to open database for migrations: %w", err)
 	}
 	defer rawDB.Close()
+	// Checkpoint WAL before creating the pool or running migrations.
+	// Added in Dec 2025 to enforce WAL cleanup on server start,
+	// because we were having (as-yet-undiagnosed) connection leaks
+	// leading to giant WAL files.
+	// We can probably remove at some point in the future(?).
+	if _, err := rawDB.Exec("PRAGMA wal_checkpoint(FULL)"); err != nil {
+		return fmt.Errorf("failed to checkpoint WAL: %w", err)
+	}
 	// Set busy_timeout to handle database lock contention during restarts
 	if _, err := rawDB.Exec("PRAGMA busy_timeout=1000"); err != nil {
 		return fmt.Errorf("failed to set busy_timeout: %w", err)
