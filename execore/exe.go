@@ -1944,6 +1944,8 @@ func (s *Server) Start() error {
 
 	s.initShardIPs(ctx)
 
+	s.slackFeed.ServerStarted(ctx, gitCommit())
+
 	// Start HTTP server in a goroutine if configured
 	if s.httpLn.ln != nil {
 		go func() {

@@ -68,3 +68,20 @@ func (sf *SlackFeed) CreatedVM(ctx context.Context, userID string) {
 		}
 	}()
 }
+
+// ServerStarted notifies #page that the server has started.
+func (sf *SlackFeed) ServerStarted(ctx context.Context, gitSHA string) {
+	hostname, _ := os.Hostname()
+	shaLink := fmt.Sprintf("<https://github.com/boldsoftware/exe/commit/%s|%s>", gitSHA, gitSHA)
+	message := fmt.Sprintf("exed %s started on %s", shaLink, hostname)
+	if sf.client == nil {
+		slog.InfoContext(ctx, "slack #page", "message", message)
+		return
+	}
+	go func() {
+		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), "page", slack.MsgOptionText(message, true))
+		if err != nil {
+			slog.WarnContext(ctx, "failed to post to #page", "error", err)
+		}
+	}()
+}
