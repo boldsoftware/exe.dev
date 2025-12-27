@@ -20,7 +20,6 @@ import (
 
 	"exe.dev/exelet/config"
 	exeletfs "exe.dev/exelet/fs"
-	"exe.dev/exelet/utils"
 	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
@@ -265,10 +264,8 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 
-		// use singleflight to ensure only one image loads at a time
-		imageID, err, _ := s.imageLoadGroup.Do(imageFSID, func() (string, error) {
-			return utils.LoadImage(ctx, req.Image, platform, s.context.ImageManager, s.context.StorageManager, s.log)
-		})
+		// use ImageLoader which has singleflight coordination
+		imageID, err := s.context.ImageLoader.LoadImage(ctx, req.Image, platform)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}

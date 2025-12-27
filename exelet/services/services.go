@@ -29,11 +29,17 @@ type InstanceLookup interface {
 	Instances(ctx context.Context) ([]*api.Instance, error)
 }
 
+// ImageLoader provides image loading with singleflight coordination
+type ImageLoader interface {
+	LoadImage(ctx context.Context, imageRef, platform string) (string, error)
+}
+
 type ServiceContext struct {
 	StorageManager  storage.StorageManager
 	NetworkManager  network.NetworkManager
 	ImageManager    *image.ImageManager
 	ComputeService  InstanceLookup
+	ImageLoader     ImageLoader
 	MetricsRegistry *prometheus.Registry
 }
 

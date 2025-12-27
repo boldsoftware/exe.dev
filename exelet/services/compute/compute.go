@@ -2,6 +2,7 @@ package compute
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"sync"
@@ -28,7 +29,6 @@ type Service struct {
 	log                 *slog.Logger
 	portAllocator       *PortAllocator
 	proxyManager        *sshproxy.Manager
-	imageLoadGroup      singleflight.Group[string, string]
 	instanceCreateGroup singleflight.Group[string, *api.Instance]
 	instanceDeleteGroup singleflight.Group[string, *api.DeleteInstanceResponse]
 }
@@ -56,6 +56,9 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 
 // Register is called from the server to register with the GRPC server.
 func (s *Service) Register(ctx *services.ServiceContext, server *grpc.Server) error {
+	if ctx.ImageLoader == nil {
+		return errors.New("compute service requires ImageLoader to be set in ServiceContext")
+	}
 	api.RegisterComputeServiceServer(server, s)
 	s.context = ctx
 	return nil

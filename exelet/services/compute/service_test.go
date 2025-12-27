@@ -6,10 +6,12 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
 	"exe.dev/exelet/config"
+	"exe.dev/exelet/services"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -167,5 +169,39 @@ func TestRecoverProxiesStopsProxyForStoppedInstance(t *testing.T) {
 	_, exists = computeSvc.proxyManager.GetPort(instanceID)
 	if exists {
 		t.Errorf("SSH proxy should NOT be created for STOPPED instance")
+	}
+}
+
+// TestRegisterRequiresImageLoader verifies that Register fails with a clear error
+// if ImageLoader is not set in ServiceContext.
+func TestRegisterRequiresImageLoader(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	cfg := &config.ExeletConfig{
+		Name:    "test",
+		DataDir: t.TempDir(),
+	}
+
+	svc, err := New(cfg, log)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	computeSvc := svc.(*Service)
+
+	// Try to register with nil ImageLoader
+	ctx := &services.ServiceContext{
+		// ImageLoader is nil
+	}
+
+	err = computeSvc.Register(ctx, nil)
+	if err == nil {
+		t.Fatal("Register should fail when ImageLoader is nil")
+	}
+
+	expectedMsg := "compute service requires ImageLoader"
+	if !strings.Contains(err.Error(), expectedMsg) {
+		t.Errorf("error should mention ImageLoader requirement, got: %v", err)
 	}
 }

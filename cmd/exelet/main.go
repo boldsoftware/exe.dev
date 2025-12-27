@@ -262,11 +262,18 @@ func serveAction(clix *cli.Context) error {
 		return err
 	}
 
+	// Create storage service first so it can be the ImageLoader
+	storageSvc, err := storageservice.New(cfg, log)
+	if err != nil {
+		return err
+	}
+
 	serviceContext := &services.ServiceContext{
 		StorageManager:  storageManager,
 		NetworkManager:  nm,
 		ImageManager:    im,
 		ComputeService:  computeSvc.(*computeservice.Service),
+		ImageLoader:     storageSvc.(*storageservice.Service),
 		MetricsRegistry: srv.MetricsRegistry(),
 	}
 
@@ -275,7 +282,9 @@ func serveAction(clix *cli.Context) error {
 			return computeSvc, nil
 		},
 		resourcemanagerservice.New,
-		storageservice.New,
+		func(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
+			return storageSvc, nil
+		},
 	}
 
 	if err := srv.Register(serviceContext, svcs); err != nil {

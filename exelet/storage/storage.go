@@ -30,6 +30,6 @@ type StorageManager interface {
 	Rename(ctx context.Context, oldID, newID string) error
 	// Fsck runs filesystem check on the specified filesystem
 	Fsck(ctx context.Context, id string) error
-	// DeleteInstanceFS removes an instance fs
+	// Delete removes an instance fs
 	Delete(ctx context.Context, id string) error
 }
