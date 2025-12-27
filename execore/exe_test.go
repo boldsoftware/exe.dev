@@ -38,11 +38,20 @@ func TestEmailValidation(t *testing.T) {
 	}{
 		{"test@example.com", true},
 		{"user@domain.co.uk", true},
+		{"user.name+tag@example.com", true},
 		{"", false},
 		{"invalid", false},
 		{"@example.com", false},
 		{"test@", false},
 		{"test@domain", false},
+		// Special characters that should be rejected
+		{`'"><h<!;Sad@asdasd.asd`, false},
+		{`"test@example.com`, false},
+		{`<script>@example.com`, false},
+		{`test@example.com>`, false},
+		{`test;drop@example.com`, false},
+		{"test\n@example.com", false},
+		{"test\r@example.com", false},
 	}
 
 	for _, tt := range tests {

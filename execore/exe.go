@@ -55,6 +55,7 @@ import (
 	"exe.dev/stage"
 	"exe.dev/tagresolver"
 	templatespkg "exe.dev/templates"
+	emailverifier "github.com/AfterShip/email-verifier"
 	"github.com/keighl/postmark"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -1744,20 +1745,12 @@ func (s *Server) getExeletClient(host string) *exeletClient {
 	return nil
 }
 
-// isValidEmail performs basic email validation
+// emailVerifier is used to check for disposable email domains.
+var emailVerifier = emailverifier.NewVerifier()
+
+// isValidEmail checks if an email address has valid syntax.
 func isValidEmail(email string) bool {
-	if email == "" {
-		return false
-	}
-
-	// Very basic email validation - contains @ and a dot after @
-	atIndex := strings.Index(email, "@")
-	if atIndex <= 0 || atIndex == len(email)-1 {
-		return false
-	}
-
-	domain := email[atIndex+1:]
-	return strings.Contains(domain, ".")
+	return emailverifier.IsAddressValid(email)
 }
 
 const (
