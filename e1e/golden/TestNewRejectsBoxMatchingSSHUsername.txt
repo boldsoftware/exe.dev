@@ -1,0 +1,53 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a VM over ssh
+To sign up, please verify your email.
+
+Please enter your email address: TestNewRejectsBoxMatchingSSHUsername@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
+
+
+Verification email sent to: TestNewRejectsBoxMatchingSSHUsername@example.com
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+
+
+
+Welcome to EXE.DEV!
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ whoami
+Email Address: TestNewRejectsBoxMatchingSSHUsername@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+PROMPT ▶ exit
+Goodbye!
+
+
+●
+● ssh BOX_NAME@localhost
+●
+
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ new --name=BOX_NAME
+New VM name cannot match SSH username. To create a VM named BOX_NAME, ssh into this REPL with a different username and try again. If you do this, you will have to use a username other than BOX_NAME to log in to the REPL going forward.
+PROMPT ▶ exit
+Goodbye!
