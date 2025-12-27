@@ -1,7 +1,7 @@
 .PHONY: deploy-grafana deploy-prometheus deploy-node-exporter typecheck
 
 # Hosts to deploy node-exporter to
-HOSTS := mon exed-02 exe-ctr-02 exe-ctr-03 ci.crocodile-vector.ts.net exed-staging-01 exe-ctr-staging-01
+HOSTS := mon exed-02 exe-ctr-02 exe-ctr-03 exe-ctr-04 ci.crocodile-vector.ts.net exed-staging-01 exe-ctr-staging-01
 
 # Grafana configuration
 GRAFANA_URL := https://grafana.crocodile-vector.ts.net/
