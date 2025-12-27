@@ -1,12 +1,16 @@
 #!/bin/bash
 set -euo pipefail
 
-# Setup IAM role and policy for YACE (Yet Another CloudWatch Exporter) on the mon host.
+# Setup IAM role and policies for the mon host:
+# - YACE (Yet Another CloudWatch Exporter) - CloudWatch read access
+# - OpenTelemetry Collector - S3 write access for logs
+#
 # This script is idempotent - safe to run multiple times.
 #
 # Reference: https://github.com/prometheus-community/yet-another-cloudwatch-exporter
 
 REGION="us-west-2"
+S3_LOGS_BUCKET="exe.dev-logs"
 INSTANCE_ROLE_NAME="mon-instance-role"
 INSTANCE_PROFILE_NAME="mon-instance-profile"
 POLICY_NAME="yace-cloudwatch-access"
@@ -86,6 +90,69 @@ aws iam put-role-policy \
     }'
 echo "Policy ${POLICY_NAME} applied to role ${INSTANCE_ROLE_NAME}"
 
+# Create S3 bucket for logs if it doesn't exist
+echo "Checking S3 bucket ${S3_LOGS_BUCKET}..."
+if ! aws s3api head-bucket --bucket ${S3_LOGS_BUCKET} 2>/dev/null; then
+    echo "Creating S3 bucket ${S3_LOGS_BUCKET}..."
+    aws s3api create-bucket \
+        --bucket ${S3_LOGS_BUCKET} \
+        --region ${REGION} \
+        --create-bucket-configuration LocationConstraint=${REGION}
+
+    # Enable versioning for safety
+    aws s3api put-bucket-versioning \
+        --bucket ${S3_LOGS_BUCKET} \
+        --versioning-configuration Status=Enabled
+
+    # Set lifecycle policy to expire old logs after 90 days
+    aws s3api put-bucket-lifecycle-configuration \
+        --bucket ${S3_LOGS_BUCKET} \
+        --lifecycle-configuration '{
+            "Rules": [
+                {
+                    "ID": "ExpireOldLogs",
+                    "Status": "Enabled",
+                    "Filter": {},
+                    "Expiration": {
+                        "Days": 90
+                    },
+                    "NoncurrentVersionExpiration": {
+                        "NoncurrentDays": 30
+                    }
+                }
+            ]
+        }'
+    echo "S3 bucket ${S3_LOGS_BUCKET} created with 90-day expiration"
+else
+    echo "S3 bucket ${S3_LOGS_BUCKET} already exists"
+fi
+
+# Create/update S3 policy for otel-collector
+echo "Creating/updating S3 policy for otel-collector..."
+aws iam put-role-policy \
+    --role-name ${INSTANCE_ROLE_NAME} \
+    --policy-name "otel-collector-s3-logs" \
+    --policy-document '{
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "OtelCollectorS3Write",
+                "Effect": "Allow",
+                "Action": [
+                    "s3:PutObject",
+                    "s3:GetObject",
+                    "s3:ListBucket",
+                    "s3:GetBucketLocation"
+                ],
+                "Resource": [
+                    "arn:aws:s3:::'"${S3_LOGS_BUCKET}"'",
+                    "arn:aws:s3:::'"${S3_LOGS_BUCKET}"'/*"
+                ]
+            }
+        ]
+    }'
+echo "S3 policy applied to role ${INSTANCE_ROLE_NAME}"
+
 # Check if instance profile exists, create if not
 echo "Checking instance profile ${INSTANCE_PROFILE_NAME}..."
 if ! aws iam get-instance-profile --instance-profile-name ${INSTANCE_PROFILE_NAME} >/dev/null 2>&1; then
@@ -159,12 +226,18 @@ echo "=========================================="
 echo "Setup complete!"
 echo "=========================================="
 echo ""
-echo "The ${MACHINE_NAME} instance now has IAM permissions for YACE:"
+echo "The ${MACHINE_NAME} instance now has IAM permissions for:"
+echo ""
+echo "YACE (CloudWatch Exporter):"
 echo "  - cloudwatch:GetMetricData"
 echo "  - cloudwatch:GetMetricStatistics"
 echo "  - cloudwatch:ListMetrics"
 echo "  - tag:GetResources"
 echo "  - Various resource discovery permissions"
+echo ""
+echo "OpenTelemetry Collector (S3 logs):"
+echo "  - s3:PutObject, s3:GetObject, s3:ListBucket"
+echo "  - Bucket: s3://${S3_LOGS_BUCKET}/"
 echo ""
 echo "Instance: ${INSTANCE_ID}"
 echo "Role: ${INSTANCE_ROLE_NAME}"
