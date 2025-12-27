@@ -803,16 +803,7 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 
 		// Count instances
 		listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		stream, err := ec.client.ListInstances(listCtx, &computeapi.ListInstancesRequest{})
-		if err == nil {
-			count := 0
-			for {
-				_, err := stream.Recv()
-				if err != nil {
-					break
-				}
-				count++
-			}
+		if count, err := ec.countInstances(listCtx); err == nil {
 			info.InstanceCount = count
 		}
 		cancel()

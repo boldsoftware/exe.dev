@@ -270,6 +270,23 @@ type exeletClient struct {
 	client *exeletclient.Client
 }
 
+// countInstances returns the number of instances on this exelet.
+func (ec *exeletClient) countInstances(ctx context.Context) (int, error) {
+	stream, err := ec.client.ListInstances(ctx, &computeapi.ListInstancesRequest{})
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for {
+		_, err := stream.Recv()
+		if err != nil {
+			break
+		}
+		count++
+	}
+	return count, nil
+}
+
 func (s *Server) slog() *slog.Logger {
 	if s.log != nil {
 		return s.log
