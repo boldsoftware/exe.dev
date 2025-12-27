@@ -206,6 +206,17 @@ function makeExeDevVMsDashboard() {
     .min(0);
   dash.withPanel(totalDiskPanel);
 
+  // Running VMs per Host chart
+  addTimeseriesChart(
+    "Running VMs per Host",
+    `count by (instance) (exelet_vm_cpu_seconds_total{${STAGE_FILTER}})`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 24, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
   // Row 2: CPU Usage Over Time
   dash.withRow(new RowBuilder("CPU Usage"));
 
