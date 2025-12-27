@@ -768,6 +768,7 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 }
 
 func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email string) (*exedb.User, error) {
+	// TODO: thread a context through here.
 	ss.server.slog().Debug("starting email verification", "email", email)
 	verification, err := ss.startEmailVerification(s, publicKey, email)
 	if err != nil {
