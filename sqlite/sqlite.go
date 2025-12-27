@@ -372,7 +372,7 @@ func (p *DB) Tx(ctx context.Context, fn func(ctx context.Context, tx *Tx) error)
 	var err error
 	defer func() {
 		if err == nil {
-			_, commitErr := tx.conn.ExecContext(tx.ctx, "COMMIT;")
+			_, commitErr := tx.conn.ExecContext(context.WithoutCancel(tx.ctx), "COMMIT;")
 			if commitErr != nil {
 				err = fmt.Errorf("Tx: commit: %w", commitErr)
 			}
