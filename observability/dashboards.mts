@@ -1826,6 +1826,60 @@ function makeMonMonDashboard() {
     }
   );
 
+  // Row 8: OpenTelemetry Collector
+  dash.withRow(
+    new RowBuilder("OpenTelemetry Collector").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "OTel Collector Memory Usage",
+    `otelcol_process_memory_rss_bytes{job="otel-collector"}`,
+    {
+      panelCustomization: (x) =>
+        x.unit("bytes").min(0),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  addTimeseriesChart(
+    "OTel Collector CPU Usage",
+    `rate(otelcol_process_cpu_seconds_total{job="otel-collector"}[5m]) * 100`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  addTimeseriesChart(
+    "OTel Collector Logs Received Rate",
+    `rate(otelcol_receiver_accepted_log_records_total{job="otel-collector"}[5m])`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  addTimeseriesChart(
+    "OTel Collector Logs Exported Rate",
+    `rate(otelcol_exporter_sent_log_records_total{job="otel-collector"}[5m])`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{exporter}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "OTel Collector Export Failures",
+    `rate(otelcol_exporter_send_failed_log_records_total{job="otel-collector"}[5m])`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{exporter}}"),
+    }
+  );
+
   return dash;
 }
 

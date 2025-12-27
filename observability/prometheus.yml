@@ -114,3 +114,9 @@ scrape_configs:
     static_configs:
       - targets: ["mon:5000"]
     metrics_path: '/metrics'
+
+  - job_name: 'otel-collector'
+    scheme: http
+    static_configs:
+      - targets: ["mon:8888"]
+    metrics_path: '/metrics'
