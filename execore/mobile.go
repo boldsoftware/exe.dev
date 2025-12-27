@@ -516,6 +516,7 @@ func (s *Server) handleMobileVerifyTokenEmailLink(w http.ResponseWriter, r *http
 		http.Error(w, "Invalid or expired token", http.StatusBadRequest)
 		return
 	}
+	s.slackFeed.EmailVerified(r.Context(), userID)
 
 	// Create auth cookie
 	cookieValue, err := s.createAuthCookie(r.Context(), userID, r.Host)
@@ -573,6 +574,7 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 		http.Error(w, "Invalid or expired token", http.StatusBadRequest)
 		return
 	}
+	s.slackFeed.EmailVerified(r.Context(), userID)
 
 	// Create auth cookie
 	cookieValue, err := s.createAuthCookie(r.Context(), userID, r.Host)

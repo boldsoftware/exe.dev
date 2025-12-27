@@ -51,6 +51,24 @@ func (sf *SlackFeed) NewUser(ctx context.Context, userID, email, source string) 
 	}()
 }
 
+// EmailVerified notifies Slack that user userID has verified their email.
+func (sf *SlackFeed) EmailVerified(ctx context.Context, userID string) {
+	ref, ok := sf.newUserMessages.Load(userID)
+	if !ok {
+		return
+	}
+	if sf.client == nil {
+		slog.InfoContext(ctx, "slack #feed reaction", "emoji", "passport_control", "userID", userID)
+		return
+	}
+	go func() {
+		err := sf.client.AddReactionContext(context.WithoutCancel(ctx), "passport_control", ref)
+		if err != nil {
+			slog.WarnContext(ctx, "failed to add reaction to #feed message", "error", err, "userID", userID)
+		}
+	}()
+}
+
 // CreatedVM notifies Slack that user userID has created a VM.
 func (sf *SlackFeed) CreatedVM(ctx context.Context, userID string) {
 	ref, ok := sf.newUserMessages.LoadAndDelete(userID)

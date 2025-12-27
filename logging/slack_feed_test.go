@@ -32,6 +32,49 @@ func TestSlackFeed_TracksNewUserMessage(t *testing.T) {
 	require.Equal(t, ref, val)
 }
 
+func TestSlackFeed_EmailVerified_KeepsEntry(t *testing.T) {
+	// Test that EmailVerified logs but does NOT remove the entry
+	sf := &SlackFeed{client: nil}
+
+	// Store a message ref
+	ref := slack.NewRefToMessage("C123", "1234567890.123456")
+	sf.newUserMessages.Store("user123", ref)
+
+	// Call EmailVerified - with nil client it logs instead of adding reaction
+	sf.EmailVerified(context.Background(), "user123")
+
+	// Verify entry is still there (so CreatedVM can add its reaction later)
+	_, ok := sf.newUserMessages.Load("user123")
+	require.True(t, ok, "message ref should still be present after EmailVerified")
+}
+
+func TestSlackFeed_EmailVerified_NoOpIfNotFound(t *testing.T) {
+	// Test that EmailVerified is a no-op if there's no stored message
+	sf := &SlackFeed{client: nil}
+
+	// Should not panic when there's no stored message
+	sf.EmailVerified(context.Background(), "nonexistent")
+}
+
+func TestSlackFeed_EmailVerified_ThenCreatedVM(t *testing.T) {
+	// Test that both EmailVerified and CreatedVM can react to the same message
+	sf := &SlackFeed{client: nil}
+
+	// Store a message ref
+	ref := slack.NewRefToMessage("C123", "1234567890.123456")
+	sf.newUserMessages.Store("user123", ref)
+
+	// EmailVerified logs (passport_control) but keeps entry
+	sf.EmailVerified(context.Background(), "user123")
+	_, ok := sf.newUserMessages.Load("user123")
+	require.True(t, ok, "entry should remain after EmailVerified")
+
+	// CreatedVM logs (hatching_chick) and removes entry
+	sf.CreatedVM(context.Background(), "user123")
+	_, ok = sf.newUserMessages.Load("user123")
+	require.False(t, ok, "entry should be removed after CreatedVM")
+}
+
 func TestSlackFeed_CreatedVM_RemovesEntry(t *testing.T) {
 	// Test that CreatedVM removes the entry and logs (with nil client)
 	sf := &SlackFeed{client: nil}

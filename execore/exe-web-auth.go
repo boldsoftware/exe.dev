@@ -75,6 +75,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		verifiedUserID = user.UserID
+		s.slackFeed.EmailVerified(r.Context(), user.UserID)
 
 		// Create HTTP auth cookie for this user
 		cookieValue, err := s.createAuthCookie(context.WithoutCancel(r.Context()), user.UserID, r.Host)
@@ -100,6 +101,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		verifiedUserID = userID
+		s.slackFeed.EmailVerified(r.Context(), userID)
 
 		// Look up the user to get their email for the success page
 		user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
