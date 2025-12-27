@@ -830,6 +830,24 @@ function makeDevExeDashboard() {
     );
   dash.withPanel(uptimePanel);
 
+  // exelet uptime - logarithmic y-axis to see deployments and crashes
+  const exeletUptimePanel = new TimeseriesBuilder()
+    .title("exelet uptime")
+    .unit("s")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 6 }))
+    .scaleDistribution(
+      new ScaleDistributionConfigBuilder()
+        .type(ScaleDistribution.Log)
+        .log(10)
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`time() - process_start_time_seconds{job="exelet",${STAGE_FILTER}}`)
+        .legendFormat("{{instance}}")
+    );
+  dash.withPanel(exeletUptimePanel);
+
   // SQLite Connection Pool Metrics
   dash.withRow(
     new RowBuilder("SQLite Connection Pool").gridPos(gp({ w: 24, h: 1 }))

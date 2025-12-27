@@ -178,6 +178,8 @@ func serveAction(clix *cli.Context) error {
 		os.Setenv("LOG_LEVEL", "debug")
 	}
 	metricsRegistry := prometheus.NewRegistry()
+	metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+	metricsRegistry.MustRegister(prometheus.NewGoCollector())
 	logging.SetupLogger("", metricsRegistry)
 	log := slog.Default()
 
