@@ -290,6 +290,18 @@ type ctxKeyType int
 // This code is here is used for an exception: the slog package.
 var CtxKey any = ctxKeyType(0)
 
+// sqlCtx converts ctx into a context suitable for passing to modernc.org/sqlite.
+func sqlCtx(ctx context.Context) context.Context {
+	// We always return context.Background() to avoid a race condition in the driver.
+	// When a context is cancelled, the driver spawns a goroutine that calls sqlite3_interrupt().
+	// If the connection is reused before that goroutine runs, the interrupt affects the wrong query.
+	//
+	// Until this is fixed upstream, we simply never pass cancellable contexts to the driver.
+	//
+	// See https://gitlab.com/cznic/sqlite/-/issues/241
+	return context.Background()
+}
+
 // isRecoverableErr reports whether err is transient and has left the connection usable.
 func isRecoverableErr(err error) bool {
 	if err == nil {
@@ -335,7 +347,7 @@ func (p *DB) Exec(ctx context.Context, query string, args ...interface{}) error 
 	defer func() {
 		p.writer <- conn
 	}()
-	_, err = conn.ExecContext(ctx, query, args...)
+	_, err = conn.ExecContext(sqlCtx(ctx), query, args...)
 	return wrapErr("db.exec", err)
 }
 
@@ -467,7 +479,7 @@ type Tx struct {
 }
 
 func (tx *Tx) Exec(query string, args ...interface{}) (sql.Result, error) {
-	res, err := tx.conn.ExecContext(tx.ctx, query, args...)
+	res, err := tx.conn.ExecContext(sqlCtx(tx.ctx), query, args...)
 	return res, wrapErr("exec", err)
 }
 
@@ -483,18 +495,39 @@ func (rx *Rx) Context() context.Context {
 }
 
 func (rx *Rx) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	rows, err := rx.conn.QueryContext(rx.ctx, query, args...)
+	rows, err := rx.conn.QueryContext(sqlCtx(rx.ctx), query, args...)
 	return rows, wrapErr("query", err)
 }
 
 func (rx *Rx) QueryRow(query string, args ...interface{}) *Row {
-	rows, err := rx.conn.QueryContext(rx.ctx, query, args...)
+	rows, err := rx.conn.QueryContext(sqlCtx(rx.ctx), query, args...)
 	return &Row{err: err, rows: rows}
 }
 
-// Conn returns the underlying sql.Conn for use with external libraries like sqlc
-func (rx *Rx) Conn() *sql.Conn {
-	return rx.conn
+// Conn returns a wrapped sql.Conn-like thing for use with external libraries like sqlc.
+func (rx *Rx) Conn() *dbtxWrapper {
+	return &dbtxWrapper{conn: rx.conn}
+}
+
+// dbtxWrapper wraps *sql.Conn, substituting sqlCtx for the context for all database operations.
+type dbtxWrapper struct {
+	conn *sql.Conn
+}
+
+func (c *dbtxWrapper) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	return c.conn.ExecContext(sqlCtx(ctx), query, args...)
+}
+
+func (c *dbtxWrapper) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
+	return c.conn.PrepareContext(sqlCtx(ctx), query)
+}
+
+func (c *dbtxWrapper) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	return c.conn.QueryContext(sqlCtx(ctx), query, args...)
+}
+
+func (c *dbtxWrapper) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+	return c.conn.QueryRowContext(sqlCtx(ctx), query, args...)
 }
 
 // Row is equivalent to *sql.Row, but we provide a more useful error.
