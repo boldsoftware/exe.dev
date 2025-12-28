@@ -201,6 +201,8 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "anthropic":
 		proxy, transport, proxyErr = m.createAnthropicProxy(r, boxName, userID)
 	case "openai":
+		m.httpError(w, r, "openai gateway temporarily disabled", http.StatusServiceUnavailable)
+		return
 		proxy, transport, proxyErr = m.createOpenAIProxy(r, boxName, userID)
 	case "fireworks":
 		proxy, transport, proxyErr = m.createFireworksProxy(r, boxName, userID)

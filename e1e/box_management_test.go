@@ -298,6 +298,8 @@ func TestVanillaBox(t *testing.T) {
 	})
 
 	t.Run("gateway_openai", func(t *testing.T) {
+		t.Skip("openai gateway temporarily disabled due to suspected abuse")
+
 		noGolden(t) // Response may vary
 		// Send a minimal request to OpenAI. The error response proves we reached them.
 		// OpenAI returns errors with "error" object containing "type" and "message".
