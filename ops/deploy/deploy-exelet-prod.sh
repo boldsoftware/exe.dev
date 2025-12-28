@@ -78,7 +78,8 @@ rm -rf exelet/fs/{kernel,rovol}
 make GOARCH=${ARCH} exelet-fs
 
 # Build the binary
-GOOS=linux GOARCH=${ARCH} CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$BINARY_NAME" ./cmd/exelet
+COMMIT=$(git rev-parse --short HEAD)
+GOOS=linux GOARCH=${ARCH} CGO_ENABLED=0 go build -ldflags="-s -w -X exe.dev/version.Commit=${COMMIT}" -o "/tmp/$BINARY_NAME" ./cmd/exelet
 
 if [ ! -f "/tmp/$BINARY_NAME" ]; then
     echo -e "${RED}ERROR: Failed to build binary${NC}"

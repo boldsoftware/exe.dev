@@ -292,13 +292,13 @@ protos:
 exelet: exelet-fs
 	@>&2 echo " -> building exelet ${COMMIT}${BUILD}"
 	@# exelet only runs in linux
-	@GOOS=linux CGO_ENABLED=0 go build -ldflags="-s -w" -o exeletd ./cmd/exelet
+	@GOOS=linux CGO_ENABLED=0 go build -ldflags="-s -w -X $(REPO)/version.Commit=$(COMMIT)" -o exeletd ./cmd/exelet
 
 .PHONY: exelet-coverage
 exelet-coverage: exelet-fs
 	@>&2 echo " -> building exelet with coverage ${COMMIT}${BUILD}"
 	@# exelet only runs in linux
-	@GOOS=linux CGO_ENABLED=0 go build -cover -covermode=atomic -coverpkg=exe.dev/... -ldflags="-s -w" -o exeletd ./cmd/exelet
+	@GOOS=linux CGO_ENABLED=0 go build -cover -covermode=atomic -coverpkg=exe.dev/... -ldflags="-s -w -X $(REPO)/version.Commit=$(COMMIT)" -o exeletd ./cmd/exelet
 
 .PHONY: exelet-ctl
 exelet-ctl:
