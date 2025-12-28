@@ -16,7 +16,7 @@ import (
 // The private half goes into a file in dir to satisfy ssh,
 // and the public half is returned as a string,
 // for testing convenience.
-func GenSSHKey(dir string) (path, publicKey string, err error){
+func GenSSHKey(dir string) (path, publicKey string, err error) {
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate ed25519 key: %v", err)
