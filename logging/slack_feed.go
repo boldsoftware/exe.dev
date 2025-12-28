@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go4org/hashtriemap"
 	"github.com/slack-go/slack"
@@ -51,17 +52,34 @@ func (sf *SlackFeed) NewUser(ctx context.Context, userID, email, source string) 
 	}()
 }
 
+// loadUserMessage loads the message for userID from sf.newUserMessages, retrying as needed.
+// The retry is a cheap workaround for the fact that all our Slack work is non-blocking and async.
+func (sf *SlackFeed) loadUserMessage(userID string) (slack.ItemRef, bool) {
+	backoff := []time.Duration{
+		0,
+		200 * time.Millisecond, 500 * time.Millisecond,
+		1 * time.Second, 2 * time.Second,
+	}
+	for _, delay := range backoff {
+		time.Sleep(delay)
+		if ref, ok := sf.newUserMessages.Load(userID); ok {
+			return ref, true
+		}
+	}
+	return slack.ItemRef{}, false
+}
+
 // EmailVerified notifies Slack that user userID has verified their email.
 func (sf *SlackFeed) EmailVerified(ctx context.Context, userID string) {
-	ref, ok := sf.newUserMessages.Load(userID)
-	if !ok {
-		return
-	}
-	if sf.client == nil {
-		slog.InfoContext(ctx, "slack #feed reaction", "emoji", "passport_control", "userID", userID)
-		return
-	}
 	go func() {
+		ref, ok := sf.loadUserMessage(userID)
+		if !ok {
+			return
+		}
+		if sf.client == nil {
+			slog.InfoContext(ctx, "slack #feed reaction", "emoji", "passport_control", "userID", userID)
+			return
+		}
 		err := sf.client.AddReactionContext(context.WithoutCancel(ctx), "passport_control", ref)
 		if err != nil {
 			slog.WarnContext(ctx, "failed to add reaction to #feed message", "error", err, "userID", userID)
@@ -71,15 +89,15 @@ func (sf *SlackFeed) EmailVerified(ctx context.Context, userID string) {
 
 // CreatedVM notifies Slack that user userID has created a VM.
 func (sf *SlackFeed) CreatedVM(ctx context.Context, userID string) {
-	ref, ok := sf.newUserMessages.LoadAndDelete(userID)
-	if !ok {
-		return
-	}
-	if sf.client == nil {
-		slog.InfoContext(ctx, "slack #feed reaction", "emoji", "hatching_chick", "userID", userID)
-		return
-	}
 	go func() {
+		ref, ok := sf.loadUserMessage(userID)
+		if !ok {
+			return
+		}
+		if sf.client == nil {
+			slog.InfoContext(ctx, "slack #feed reaction", "emoji", "hatching_chick", "userID", userID)
+			return
+		}
 		err := sf.client.AddReactionContext(context.WithoutCancel(ctx), "hatching_chick", ref)
 		if err != nil {
 			slog.WarnContext(ctx, "failed to add reaction to #feed message", "error", err, "userID", userID)

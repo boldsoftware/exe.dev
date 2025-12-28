@@ -756,6 +756,7 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 			return
 		}
 		user = newUser
+		ss.server.slackFeed.EmailVerified(s.Context(), newUser.UserID)
 		// TODO: handle new device but existing user case!
 	}
 
