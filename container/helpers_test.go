@@ -1,8 +1,69 @@
 package container
 
 import (
+	"strings"
 	"testing"
 )
+
+func TestValidateImageName(t *testing.T) {
+	tests := []struct {
+		name    string
+		image   string
+		wantErr bool
+		errMsg  string
+	}{
+		// Valid images
+		{"simple name", "alpine", false, ""},
+		{"with tag", "alpine:latest", false, ""},
+		{"with user", "myuser/myimage:v1", false, ""},
+		{"full registry", "ghcr.io/boldsoftware/exeuntu:latest", false, ""},
+		{"docker.io", "docker.io/library/ubuntu:22.04", false, ""},
+		{"quay.io", "quay.io/sclorg/python-313", false, ""},
+		{"with digest", "ubuntu@sha256:abc123def456", false, ""},
+
+		// Empty - not allowed (caller should trim whitespace before calling)
+		{"empty string", "", true, "cannot be empty"},
+
+		// Localhost - not allowed
+		{"localhost", "localhost/myimage", true, "is not valid"},
+		{"localhost with port", "localhost:5000/myimage", true, "is not valid"},
+		{"localhost uppercase", "LOCALHOST/myimage", true, "is not valid"},
+		{"localhost mixed case", "LocalHost:5000/myimage", true, "is not valid"},
+		{"127.0.0.1", "127.0.0.1/myimage", true, "is not valid"},
+		{"127.0.0.1 with port", "127.0.0.1:5000/myimage", true, "is not valid"},
+
+		// URL schemes - not allowed
+		{"file scheme", "file:///path/to/image", true, "is not valid"},
+		{"http scheme", "http://registry.example.com/image", true, "is not valid"},
+		{"https scheme", "https://registry.example.com/image", true, "is not valid"},
+		{"oci scheme", "oci:///some/path", true, "is not valid"},
+
+		// Absolute paths - not allowed
+		{"absolute path", "/var/lib/containers/image", true, "is not valid"},
+		{"absolute path with tag", "/path/to/image:latest", true, "is not valid"},
+
+		// Relative paths - not allowed
+		{"relative path current", "./local/image", true, "is not valid"},
+		{"relative path parent", "../other/image", true, "is not valid"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateImageName(tt.image)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("ValidateImageName(%q) = nil, expected error containing %q", tt.image, tt.errMsg)
+				} else if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("ValidateImageName(%q) = %q, expected error containing %q", tt.image, err.Error(), tt.errMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("ValidateImageName(%q) = %q, expected nil", tt.image, err.Error())
+				}
+			}
+		})
+	}
+}
 
 func TestExpandImageNameForContainerd(t *testing.T) {
 	tests := []struct {

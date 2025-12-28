@@ -1,6 +1,27 @@
 package container
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
+
+// ValidateImageName performs basic validation on an image name before expansion.
+// This catches obvious errors early; the real validation happens when pulling.
+func ValidateImageName(image string) error {
+	if image == "" {
+		return fmt.Errorf("image name cannot be empty")
+	}
+
+	// Reject anything that smells remotely local.
+	lower := strings.ToLower(image)
+	if strings.HasPrefix(lower, "localhost") || strings.HasPrefix(lower, "127.0.0.1") ||
+		strings.Contains(image, "://") || strings.HasPrefix(image, "/") ||
+		strings.HasPrefix(image, "./") || strings.HasPrefix(image, "../") {
+		return fmt.Errorf("image name %q is not valid", image)
+	}
+
+	return nil
+}
 
 // ExpandImageName expands short image names to full paths
 // This is the original function that works with Docker

@@ -238,8 +238,10 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	platform := fmt.Sprintf("linux/%s", runtime.GOARCH)
 	s.log.DebugContext(ctx, "creating instance fs", "id", instanceID)
 
+	s.log.InfoContext(ctx, "fetching image manifest", "instance_id", instanceID, "image", req.Image, "platform", platform)
 	imageMetadata, err := s.context.ImageManager.FetchManifestForPlatform(ctx, req.Image, platform)
 	if err != nil {
+		s.log.ErrorContext(ctx, "failed to fetch image manifest", "instance_id", instanceID, "image", req.Image, "platform", platform, "error", err)
 		return nil, status.Errorf(codes.Internal, "error fetching image manifest: %s", err)
 	}
 	s.log.DebugContext(ctx, "loaded image manifest", "image", req.Image, "digest", imageMetadata.Digest)

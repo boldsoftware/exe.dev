@@ -323,6 +323,11 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		}
 	}
 
+	image = strings.TrimSpace(image)
+	if err := container.ValidateImageName(image); err != nil {
+		return cc.Errorf("invalid image: %s", err)
+	}
+
 	// Validate that --prompt is only used with exeuntu image
 	if prompt != "" && image != "exeuntu" {
 		return cc.Errorf("--prompt can only be used with the exeuntu image")
@@ -470,6 +475,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 
 		// Expand image name to fully qualified reference (e.g., alpine -> docker.io/library/alpine:latest)
 		fullImage := container.ExpandImageNameForContainerd(image)
+		slog.InfoContext(ctx, "expanded image name", "input", image, "expanded", fullImage, "box", boxName)
 
 		// Resolve tag to digest if tagResolver is available (for caching and consistency)
 		imageRef := fullImage
@@ -483,6 +489,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 				slog.DebugContext(ctx, "Resolved image tag to digest", "tag", fullImage, "digest", imageRef)
 			}
 		}
+		slog.InfoContext(ctx, "creating instance with image", "box", boxName, "imageRef", imageRef)
 
 		// Create instance request
 		createReq := &api.CreateInstanceRequest{
