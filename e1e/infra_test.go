@@ -6,10 +6,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"crypto/ed25519"
-	cryptorand "crypto/rand"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
@@ -38,7 +35,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	ansiterm "github.com/veops/go-ansiterm"
-	"golang.org/x/crypto/ssh"
 )
 
 var (
@@ -484,37 +480,13 @@ func setup(ctrHost string) (*testEnv, error) {
 // and the public half is returned as a string,
 // for testing convenience.
 func genSSHKey(t *testing.T) (path, publickey string) {
-	t.Helper()
-	_, privateKey, err := ed25519.GenerateKey(cryptorand.Reader)
+	path, publickey, err := testinfra.GenSSHKey(t.TempDir())
 	if err != nil {
-		t.Fatalf("failed to generate ed25519 key: %v", err)
+		t.Helper()
+		t.Fatal(err)
 	}
-
-	privKeyPath := filepath.Join(t.TempDir(), "id_ed25519")
-	privKeyFile, err := os.OpenFile(privKeyPath, os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		t.Fatalf("failed to create private key file: %v", err)
-	}
-	privateKeyBytes, err := ssh.MarshalPrivateKey(privateKey, "")
-	if err != nil {
-		t.Fatalf("Failed to marshal private key: %v", err)
-	}
-	if err := pem.Encode(privKeyFile, privateKeyBytes); err != nil {
-		t.Fatalf("Failed to write private key: %v", err)
-	}
-	err = privKeyFile.Close()
-	if err != nil {
-		t.Fatalf("failed to close private key file: %v", err)
-	}
-
-	publicKey := privateKey.Public().(ed25519.PublicKey)
-	sshPublicKey, err := ssh.NewPublicKey(publicKey)
-	if err != nil {
-		t.Fatalf("failed to create SSH public key: %v", err)
-	}
-	pubStr := strings.TrimSuffix(string(ssh.MarshalAuthorizedKey(sshPublicKey)), "\n")
-	Env.addCanonicalization(pubStr, "SSH_PUBKEY")
-	return privKeyPath, pubStr
+	Env.addCanonicalization(publickey, "SSH_PUBKEY")
+	return path, publickey
 }
 
 const (
