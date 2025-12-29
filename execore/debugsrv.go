@@ -35,6 +35,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/boxes/delete", s.handleDebugBoxDelete)
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
 	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
+	mux.HandleFunc("POST /debug/users/toggle-vm-creation", s.handleDebugToggleVMCreation)
 	mux.HandleFunc("/debug/exelets", s.handleDebugExelets)
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
 	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
@@ -742,6 +743,35 @@ func (s *Server) handleDebugToggleRootSupport(w http.ResponseWriter, r *http.Req
 
 	// Redirect back to the users page
 	http.Redirect(w, r, "/debug/users", http.StatusSeeOther)
+}
+
+func (s *Server) handleDebugToggleVMCreation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	disable := r.FormValue("disable") == "1"
+
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	err := withTx1(s, ctx, (*exedb.Queries).SetUserNewVMCreationDisabled, exedb.SetUserNewVMCreationDisabledParams{
+		NewVmCreationDisabled: disable,
+		UserID:                userID,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to update vm creation: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	action := "enabled"
+	if disable {
+		action = "disabled"
+	}
+	s.slog().InfoContext(ctx, "vm creation toggled via debug page", "user_id", userID, "action", action)
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func ptrStr(s *string) string {
