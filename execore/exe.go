@@ -241,6 +241,9 @@ type Server struct {
 	postmarkClient *postmark.Client
 	fakeHTTPEmail  string // fake HTTP email server URL for sending emails (for e2e tests)
 
+	// IPQS email quality service
+	ipqsAPIKey string
+
 	// Metrics
 	metricsRegistry *prometheus.Registry
 	sshMetrics      *SSHMetrics
@@ -544,6 +547,12 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		slog.Info("POSTMARK_API_KEY not set, email verification will not work")
 	}
 
+	// Initialize IPQS API key for email quality checks
+	ipqsAPIKey := os.Getenv("IPQS_API_KEY")
+	if ipqsAPIKey == "" {
+		slog.Info("IPQS_API_KEY not set, email quality checks disabled")
+	}
+
 	// Initialize GitHub User lookup client
 	ghu, err := ghuser.New(os.Getenv("GITHUB_TOKEN"), cfg.GHWhoAmIPath)
 	if err != nil {
@@ -666,6 +675,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		githubUser:         ghu,
 		postmarkClient:     postmarkClient,
 		fakeHTTPEmail:      cfg.FakeEmailServer,
+		ipqsAPIKey:         ipqsAPIKey,
 		PublicIPs:          map[netip.Addr]publicips.PublicIP{},
 
 		metricsRegistry: cfg.MetricsRegistry,
@@ -1262,16 +1272,21 @@ func (s *Server) validateEmailVerificationToken(ctx context.Context, token strin
 
 // storeEmailVerification stores an email verification token
 func (s *Server) storeEmailVerification(ctx context.Context, email, token string) error {
-	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+	var userID string
+	var isNewUser bool
+
+	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 		// Check if user exists, create if not
-		userID, err := queries.GetUserIDByEmail(ctx, email)
+		var err error
+		userID, err = queries.GetUserIDByEmail(ctx, email)
 		if errors.Is(err, sql.ErrNoRows) {
 			// User doesn't exist, create them (mobile flow, not login-with-exe)
 			userID, err = s.createUserRecord(ctx, queries, email, false)
 			if err != nil {
 				return err
 			}
+			isNewUser = true
 		} else if err != nil {
 			return fmt.Errorf("failed to check user: %w", err)
 		}
@@ -1285,6 +1300,18 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 			ExpiresAt: expiresAt,
 		})
 	})
+	if err != nil {
+		return err
+	}
+
+	// Check email quality for new users (outside the transaction)
+	if isNewUser {
+		if err := s.checkEmailQuality(ctx, userID, email); err != nil {
+			s.slog().ErrorContext(ctx, "email quality check failed", "error", err, "email", email)
+		}
+	}
+
+	return nil
 }
 
 // validateEmailVerificationByToken validates verification using a token
@@ -2199,6 +2226,70 @@ func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, e
 	return userID, nil
 }
 
+// checkEmailQuality checks the email quality via IPQS and updates the user if disposable.
+// This should be called after user creation, outside of any transaction.
+// Returns nil if IPQS is disabled (no API key).
+func (s *Server) checkEmailQuality(ctx context.Context, userID, email string) error {
+	if s.ipqsAPIKey == "" {
+		return nil
+	}
+
+	// Call IPQS API with a timeout
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	url := fmt.Sprintf("https://www.ipqualityscore.com/api/json/email/%s/%s", s.ipqsAPIKey, email)
+	req, err := http.NewRequestWithContext(reqCtx, "GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create IPQS request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("IPQS request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read IPQS response: %w", err)
+	}
+
+	// Save the response to the database
+	if err := withTx1(s, ctx, (*exedb.Queries).InsertEmailAddressQuality, exedb.InsertEmailAddressQualityParams{
+		Email:        email,
+		ResponseJson: string(body),
+	}); err != nil {
+		return fmt.Errorf("failed to save email quality: %w", err)
+	}
+
+	// Parse response to check disposable flag
+	var result struct {
+		Success    bool `json:"success"`
+		Disposable bool `json:"disposable"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("failed to parse IPQS response: %w", err)
+	}
+
+	if !result.Success {
+		return fmt.Errorf("IPQS returned unsuccessful response for %s", email)
+	}
+
+	// If disposable, disable VM creation for this user
+	if result.Disposable {
+		s.slog().InfoContext(ctx, "disposable email detected, disabling VM creation", "email", email, "user_id", userID)
+		if err := withTx1(s, ctx, (*exedb.Queries).SetUserNewVMCreationDisabled, exedb.SetUserNewVMCreationDisabledParams{
+			NewVmCreationDisabled: true,
+			UserID:                userID,
+		}); err != nil {
+			return fmt.Errorf("failed to disable VM creation for user: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // createUser creates a new user with their resource allocation.
 // This is used for SSH registration flow, not login-with-exe.
 func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exedb.User, error) {
@@ -2229,6 +2320,11 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exed
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Check email quality and disable VM creation if disposable
+	if err := s.checkEmailQuality(ctx, user.UserID, email); err != nil {
+		s.slog().ErrorContext(ctx, "email quality check failed", "error", err, "email", email)
 	}
 
 	// Resolve any pending shares for this email

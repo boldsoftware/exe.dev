@@ -168,6 +168,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxesSharedWithUserStmt, err = db.PrepareContext(ctx, getBoxesSharedWithUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesSharedWithUser: %w", err)
 	}
+	if q.getEmailAddressQualityByEmailStmt, err = db.PrepareContext(ctx, getEmailAddressQualityByEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query GetEmailAddressQualityByEmail: %w", err)
+	}
 	if q.getEmailBySSHKeyStmt, err = db.PrepareContext(ctx, getEmailBySSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailBySSHKey: %w", err)
 	}
@@ -284,6 +287,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertDeletedBoxStmt, err = db.PrepareContext(ctx, insertDeletedBox); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertDeletedBox: %w", err)
+	}
+	if q.insertEmailAddressQualityStmt, err = db.PrepareContext(ctx, insertEmailAddressQuality); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertEmailAddressQuality: %w", err)
 	}
 	if q.insertEmailVerificationStmt, err = db.PrepareContext(ctx, insertEmailVerification); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertEmailVerification: %w", err)
@@ -638,6 +644,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxesSharedWithUserStmt: %w", cerr)
 		}
 	}
+	if q.getEmailAddressQualityByEmailStmt != nil {
+		if cerr := q.getEmailAddressQualityByEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getEmailAddressQualityByEmailStmt: %w", cerr)
+		}
+	}
 	if q.getEmailBySSHKeyStmt != nil {
 		if cerr := q.getEmailBySSHKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailBySSHKeyStmt: %w", cerr)
@@ -831,6 +842,11 @@ func (q *Queries) Close() error {
 	if q.insertDeletedBoxStmt != nil {
 		if cerr := q.insertDeletedBoxStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertDeletedBoxStmt: %w", cerr)
+		}
+	}
+	if q.insertEmailAddressQualityStmt != nil {
+		if cerr := q.insertEmailAddressQualityStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertEmailAddressQualityStmt: %w", cerr)
 		}
 	}
 	if q.insertEmailVerificationStmt != nil {
@@ -1100,6 +1116,7 @@ type Queries struct {
 	getBoxesByHostStmt                     *sql.Stmt
 	getBoxesForUserDashboardStmt           *sql.Stmt
 	getBoxesSharedWithUserStmt             *sql.Stmt
+	getEmailAddressQualityByEmailStmt      *sql.Stmt
 	getEmailBySSHKeyStmt                   *sql.Stmt
 	getEmailByUserIDStmt                   *sql.Stmt
 	getEmailVerificationByPartialTokenStmt *sql.Stmt
@@ -1139,6 +1156,7 @@ type Queries struct {
 	insertBoxStmt                          *sql.Stmt
 	insertBoxIPShardStmt                   *sql.Stmt
 	insertDeletedBoxStmt                   *sql.Stmt
+	insertEmailAddressQualityStmt          *sql.Stmt
 	insertEmailVerificationStmt            *sql.Stmt
 	insertOrReplaceEmailVerificationStmt   *sql.Stmt
 	insertPasskeyStmt                      *sql.Stmt
@@ -1229,6 +1247,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxesByHostStmt:                     q.getBoxesByHostStmt,
 		getBoxesForUserDashboardStmt:           q.getBoxesForUserDashboardStmt,
 		getBoxesSharedWithUserStmt:             q.getBoxesSharedWithUserStmt,
+		getEmailAddressQualityByEmailStmt:      q.getEmailAddressQualityByEmailStmt,
 		getEmailBySSHKeyStmt:                   q.getEmailBySSHKeyStmt,
 		getEmailByUserIDStmt:                   q.getEmailByUserIDStmt,
 		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
@@ -1268,6 +1287,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertBoxStmt:                          q.insertBoxStmt,
 		insertBoxIPShardStmt:                   q.insertBoxIPShardStmt,
 		insertDeletedBoxStmt:                   q.insertDeletedBoxStmt,
+		insertEmailAddressQualityStmt:          q.insertEmailAddressQualityStmt,
 		insertEmailVerificationStmt:            q.insertEmailVerificationStmt,
 		insertOrReplaceEmailVerificationStmt:   q.insertOrReplaceEmailVerificationStmt,
 		insertPasskeyStmt:                      q.insertPasskeyStmt,

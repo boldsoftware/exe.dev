@@ -78,6 +78,14 @@ type DeletedBox struct {
 	DeletedAt *time.Time `db:"deleted_at" json:"deleted_at"`
 }
 
+type EmailAddressQuality struct {
+	ID           int64      `db:"id" json:"id"`
+	Email        string     `db:"email" json:"email"`
+	QueriedAt    *time.Time `db:"queried_at" json:"queried_at"`
+	ResponseJson string     `db:"response_json" json:"response_json"`
+	Disposable   *int64     `db:"disposable" json:"disposable"`
+}
+
 type EmailVerification struct {
 	Token            string     `db:"token" json:"token"`
 	Email            string     `db:"email" json:"email"`

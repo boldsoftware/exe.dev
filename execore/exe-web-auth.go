@@ -796,6 +796,10 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 	if isNewUser {
 		s.slackFeed.NewUser(r.Context(), userID, email, "web")
+		// Check email quality and disable VM creation if disposable
+		if err := s.checkEmailQuality(r.Context(), userID, email); err != nil {
+			s.slog().ErrorContext(r.Context(), "email quality check failed", "error", err, "email", email)
+		}
 	}
 
 	// Generate verification token
