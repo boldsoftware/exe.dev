@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -12,7 +14,9 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	blogpkg "exe.dev/blog"
@@ -25,6 +29,21 @@ import (
 //
 //go:embed static/*
 var staticFS embed.FS
+
+// buildTime returns the VCS commit time from build info, or the process start time as fallback.
+// Used as the modification time for embedded static files to enable HTTP caching.
+var buildTime = sync.OnceValue(func() time.Time {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, setting := range info.Settings {
+			if setting.Key == "vcs.time" {
+				if t, err := time.Parse(time.RFC3339, setting.Value); err == nil {
+					return t
+				}
+			}
+		}
+	}
+	return time.Now()
+})
 
 func main() {
 	httpAddr := flag.String("http", ":8080", "HTTP server address, empty to disable")
@@ -73,6 +92,7 @@ func main() {
 	})
 
 	// Serve embedded static assets under /static/
+	// Uses the binary's VCS build time as the modification time to enable HTTP caching.
 	mux.HandleFunc("/static/", func(w http.ResponseWriter, r *http.Request) {
 		sub, err := fs.Sub(staticFS, "static")
 		if err != nil {
@@ -84,9 +104,18 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
-		tmpReq := r.Clone(r.Context())
-		tmpReq.URL.Path = "/" + filename
-		http.FileServer(http.FS(sub)).ServeHTTP(w, tmpReq)
+		f, err := sub.Open(filename)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		defer f.Close()
+		data, err := io.ReadAll(f)
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		http.ServeContent(w, r, filename, buildTime(), bytes.NewReader(data))
 	})
 
 	mux.Handle("/metrics", requireTailnetAccess(promhttp.HandlerFor(metricsRegistry, promhttp.HandlerOpts{})))
