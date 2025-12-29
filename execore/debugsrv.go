@@ -171,6 +171,11 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 		hosts = append(hosts, info)
 	}
 
+	// Sort hosts lexicographically for consistent display
+	sort.Slice(hosts, func(i, j int) bool {
+		return hosts[i].Host < hosts[j].Host
+	})
+
 	// Check if JSON format is requested
 	if r.URL.Query().Get("format") == "json" {
 		w.Header().Set("Content-Type", "application/json")
