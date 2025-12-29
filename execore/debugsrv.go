@@ -1006,7 +1006,7 @@ func (s *Server) CheckNewThrottle(ctx context.Context, email string) (bool, stri
 	if isDisposableEmail(email) {
 		msg := config.Message
 		if msg == "" {
-			msg = "VM creation is not available for your account."
+			msg = "VM creation is currently unavailable for your account."
 		}
 		return true, msg
 	}
