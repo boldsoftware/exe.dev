@@ -338,6 +338,11 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		return cc.Errorf("%s", msg)
 	}
 
+	// Check if user has VM creation disabled
+	if disabled, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserNewVMCreationDisabled, user.ID); err == nil && disabled {
+		return cc.Errorf("VM creation is not available for your account.")
+	}
+
 	// Generate box name if not provided
 	if boxName == "" {
 		for range 10 {

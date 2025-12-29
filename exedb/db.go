@@ -249,6 +249,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserIDBySSHKeyStmt, err = db.PrepareContext(ctx, getUserIDBySSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserIDBySSHKey: %w", err)
 	}
+	if q.getUserNewVMCreationDisabledStmt, err = db.PrepareContext(ctx, getUserNewVMCreationDisabled); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserNewVMCreationDisabled: %w", err)
+	}
 	if q.getUserRootSupportStmt, err = db.PrepareContext(ctx, getUserRootSupport); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserRootSupport: %w", err)
 	}
@@ -338,6 +341,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setPreferredExeletStmt, err = db.PrepareContext(ctx, setPreferredExelet); err != nil {
 		return nil, fmt.Errorf("error preparing query SetPreferredExelet: %w", err)
+	}
+	if q.setUserNewVMCreationDisabledStmt, err = db.PrepareContext(ctx, setUserNewVMCreationDisabled); err != nil {
+		return nil, fmt.Errorf("error preparing query SetUserNewVMCreationDisabled: %w", err)
 	}
 	if q.setUserRootSupportStmt, err = db.PrepareContext(ctx, setUserRootSupport); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserRootSupport: %w", err)
@@ -767,6 +773,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserIDBySSHKeyStmt: %w", cerr)
 		}
 	}
+	if q.getUserNewVMCreationDisabledStmt != nil {
+		if cerr := q.getUserNewVMCreationDisabledStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserNewVMCreationDisabledStmt: %w", cerr)
+		}
+	}
 	if q.getUserRootSupportStmt != nil {
 		if cerr := q.getUserRootSupportStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserRootSupportStmt: %w", cerr)
@@ -915,6 +926,11 @@ func (q *Queries) Close() error {
 	if q.setPreferredExeletStmt != nil {
 		if cerr := q.setPreferredExeletStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setPreferredExeletStmt: %w", cerr)
+		}
+	}
+	if q.setUserNewVMCreationDisabledStmt != nil {
+		if cerr := q.setUserNewVMCreationDisabledStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setUserNewVMCreationDisabledStmt: %w", cerr)
 		}
 	}
 	if q.setUserRootSupportStmt != nil {
@@ -1111,6 +1127,7 @@ type Queries struct {
 	getUserEmailCountForDateStmt           *sql.Stmt
 	getUserIDByEmailStmt                   *sql.Stmt
 	getUserIDBySSHKeyStmt                  *sql.Stmt
+	getUserNewVMCreationDisabledStmt       *sql.Stmt
 	getUserRootSupportStmt                 *sql.Stmt
 	getUserWithDetailsStmt                 *sql.Stmt
 	getUserWithSSHKeyStmt                  *sql.Stmt
@@ -1141,6 +1158,7 @@ type Queries struct {
 	setNewThrottleEnabledStmt              *sql.Stmt
 	setNewThrottleMessageStmt              *sql.Stmt
 	setPreferredExeletStmt                 *sql.Stmt
+	setUserNewVMCreationDisabledStmt       *sql.Stmt
 	setUserRootSupportStmt                 *sql.Stmt
 	updateAuthCookieLastUsedStmt           *sql.Stmt
 	updateAuthTokenUsedAtStmt              *sql.Stmt
@@ -1238,6 +1256,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserEmailCountForDateStmt:           q.getUserEmailCountForDateStmt,
 		getUserIDByEmailStmt:                   q.getUserIDByEmailStmt,
 		getUserIDBySSHKeyStmt:                  q.getUserIDBySSHKeyStmt,
+		getUserNewVMCreationDisabledStmt:       q.getUserNewVMCreationDisabledStmt,
 		getUserRootSupportStmt:                 q.getUserRootSupportStmt,
 		getUserWithDetailsStmt:                 q.getUserWithDetailsStmt,
 		getUserWithSSHKeyStmt:                  q.getUserWithSSHKeyStmt,
@@ -1268,6 +1287,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setNewThrottleEnabledStmt:              q.setNewThrottleEnabledStmt,
 		setNewThrottleMessageStmt:              q.setNewThrottleMessageStmt,
 		setPreferredExeletStmt:                 q.setPreferredExeletStmt,
+		setUserNewVMCreationDisabledStmt:       q.setUserNewVMCreationDisabledStmt,
 		setUserRootSupportStmt:                 q.setUserRootSupportStmt,
 		updateAuthCookieLastUsedStmt:           q.updateAuthCookieLastUsedStmt,
 		updateAuthTokenUsedAtStmt:              q.updateAuthTokenUsedAtStmt,

@@ -21,6 +21,8 @@ sql:
             go_type: "int"
           - column: "users.created_for_login_with_exe"
             go_type: "bool"
+          - column: "users.new_vm_creation_disabled"
+            go_type: "bool"
         rename:
           box_ip_shard: "BoxIPShard"
           ip_shard: "IPShard"

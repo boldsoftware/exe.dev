@@ -206,6 +206,7 @@ type User struct {
 	CreatedAt              *time.Time `db:"created_at" json:"created_at"`
 	RootSupport            int64      `db:"root_support" json:"root_support"`
 	CreatedForLoginWithExe bool       `db:"created_for_login_with_exe" json:"created_for_login_with_exe"`
+	NewVmCreationDisabled  bool       `db:"new_vm_creation_disabled" json:"new_vm_creation_disabled"`
 }
 
 type UserDailyEmailCount struct {

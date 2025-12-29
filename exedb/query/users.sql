@@ -31,3 +31,9 @@ SELECT COUNT(*) FROM users WHERE created_for_login_with_exe = 1;
 
 -- name: CountDevUsers :one
 SELECT COUNT(*) FROM users WHERE created_for_login_with_exe = 0;
+
+-- name: GetUserNewVMCreationDisabled :one
+SELECT new_vm_creation_disabled FROM users WHERE user_id = ?;
+
+-- name: SetUserNewVMCreationDisabled :exec
+UPDATE users SET new_vm_creation_disabled = ? WHERE user_id = ?;
