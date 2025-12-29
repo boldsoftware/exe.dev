@@ -12,6 +12,7 @@ import (
 	"cmp"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -25,6 +26,9 @@ import (
 	"exe.dev/sqlite"
 	sloghttp "github.com/samber/slog-http"
 )
+
+// errBodyNotReplayable is returned when HTTP/2 tries to retry a request but the body has already been consumed.
+var errBodyNotReplayable = errors.New("request body not replayable; caller should retry")
 
 // accountingTransport wraps http transactions to check and track the client's credit usage
 type accountingTransport struct {
@@ -44,9 +48,21 @@ type accountingTransport struct {
 	sseUsage *UsageDebit
 }
 
+// getBodyCannotReplay is an http.Request.GetBody implementation that returns a sentinel error.
+// It is useful for communicating to someone upstream than a replay was requested and rejected.
+// It's not worth buffering all requests to handle this transparently,
+// but treating this situation as a full error is just log noise.
+func getBodyCannotReplay() (io.ReadCloser, error) {
+	return nil, errBodyNotReplayable
+}
+
 // RoundTrip enforces credit usage limits and records some metrics.
 func (a *accountingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	// TODO: restore latency measurements
+
+	if r.Body != nil && r.GetBody == nil {
+		r.GetBody = getBodyCannotReplay
+	}
 
 	// Increment the requests counter with status="attempted"
 	requestsCounter.WithLabelValues("attempted", a.apiType).Inc()

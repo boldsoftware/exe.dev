@@ -244,7 +244,7 @@ func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, us
 		Transport:      transport,
 		ModifyResponse: transport.modifyResponse,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			if errors.Is(err, context.Canceled) {
+			if errors.Is(err, context.Canceled) || errors.Is(err, errBodyNotReplayable) {
 				return
 			}
 			m.log.Error("anthropic api gateway", "error", err)
@@ -281,7 +281,7 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userI
 		Transport:      transport,
 		ModifyResponse: transport.modifyResponse,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			if errors.Is(err, context.Canceled) {
+			if errors.Is(err, context.Canceled) || errors.Is(err, errBodyNotReplayable) {
 				return
 			}
 			m.log.Error("openai api gateway", "error", err)
@@ -318,7 +318,7 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, us
 		Transport:      transport,
 		ModifyResponse: transport.modifyResponse,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			if errors.Is(err, context.Canceled) {
+			if errors.Is(err, context.Canceled) || errors.Is(err, errBodyNotReplayable) {
 				return
 			}
 			m.log.Error("fireworks api gateway", "error", err)
