@@ -121,3 +121,21 @@ func (sf *SlackFeed) ServerStarted(ctx context.Context, gitSHA string) {
 		}
 	}()
 }
+
+// PreferredExeletChanged notifies #page when the preferred exelet is set or cleared.
+func (sf *SlackFeed) PreferredExeletChanged(ctx context.Context, address string) {
+	message := "preferred exelet cleared"
+	if address != "" {
+		message = fmt.Sprintf("preferred exelet set to `%s`", address)
+	}
+	if sf.client == nil {
+		slog.InfoContext(ctx, "slack #page", "message", message)
+		return
+	}
+	go func() {
+		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), "page", slack.MsgOptionText(message, false))
+		if err != nil {
+			slog.WarnContext(ctx, "failed to post to #page", "error", err)
+		}
+	}()
+}

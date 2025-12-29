@@ -907,6 +907,7 @@ func (s *Server) handleDebugSetPreferredExelet(w http.ResponseWriter, r *http.Re
 			return
 		}
 		s.slog().InfoContext(ctx, "preferred exelet cleared via debug page")
+		s.slackFeed.PreferredExeletChanged(ctx, "")
 	} else {
 		// Verify the address is valid (exists in our exelet clients)
 		if _, ok := s.exeletClients[address]; !ok {
@@ -921,6 +922,7 @@ func (s *Server) handleDebugSetPreferredExelet(w http.ResponseWriter, r *http.Re
 			return
 		}
 		s.slog().InfoContext(ctx, "preferred exelet set via debug page", "address", address)
+		s.slackFeed.PreferredExeletChanged(ctx, address)
 	}
 
 	// Redirect back to the exelets page
