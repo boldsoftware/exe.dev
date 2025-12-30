@@ -22,6 +22,7 @@ type SSHProxy struct {
 	TargetPort  int
 	PID         int
 	InstanceDir string
+	BindIP      string // IP address to bind to (empty means all interfaces)
 	log         *slog.Logger
 }
 
@@ -33,14 +34,16 @@ type proxyMetadata struct {
 	StartedAt time.Time `json:"started_at"`
 }
 
-// NewSSHProxy creates a new SSH proxy instance
-func NewSSHProxy(instanceID string, port int, targetIP, instanceDir string, log *slog.Logger) *SSHProxy {
+// NewSSHProxy creates a new SSH proxy instance.
+// bindIP specifies the IP address to bind to; empty string means all interfaces.
+func NewSSHProxy(instanceID string, port int, targetIP, instanceDir, bindIP string, log *slog.Logger) *SSHProxy {
 	return &SSHProxy{
 		InstanceID:  instanceID,
 		Port:        port,
 		TargetIP:    targetIP,
 		TargetPort:  22, // Always SSH port
 		InstanceDir: instanceDir,
+		BindIP:      bindIP,
 		log:         log,
 	}
 }
@@ -65,7 +68,12 @@ func (p *SSHProxy) Start() error {
 	}
 
 	// Build socat command
-	listenAddr := fmt.Sprintf("TCP-LISTEN:%d,fork,reuseaddr", p.Port)
+	var listenAddr string
+	if p.BindIP != "" {
+		listenAddr = fmt.Sprintf("TCP-LISTEN:%d,fork,reuseaddr,bind=%s", p.Port, p.BindIP)
+	} else {
+		listenAddr = fmt.Sprintf("TCP-LISTEN:%d,fork,reuseaddr", p.Port)
+	}
 	targetAddr := fmt.Sprintf("TCP:%s:%d", p.TargetIP, p.TargetPort)
 
 	cmd := exec.Command("socat", listenAddr, targetAddr)

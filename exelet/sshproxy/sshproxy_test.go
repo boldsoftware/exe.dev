@@ -43,7 +43,7 @@ func TestStartAdoptsExistingProcess(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Now create SSHProxy and call Start() - it should adopt, not create duplicate
-	proxy := NewSSHProxy("test-instance", port, targetIP, instanceDir, log)
+	proxy := NewSSHProxy("test-instance", port, targetIP, instanceDir, "", log)
 	if err := proxy.Start(); err != nil {
 		t.Fatalf("Start() failed: %v", err)
 	}

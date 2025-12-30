@@ -110,4 +110,6 @@ type ExeletConfig struct {
 	IdleThreshold time.Duration
 	// EnableHugepages enables hugepage memory for VMs (requires hugepages to be configured on the host)
 	EnableHugepages bool
+	// ProxyBindIP is the IP address to bind SSH proxies to (empty means all interfaces)
+	ProxyBindIP string
 }

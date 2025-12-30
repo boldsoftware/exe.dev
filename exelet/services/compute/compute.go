@@ -50,7 +50,7 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 		mu:            &sync.Mutex{},
 		log:           log,
 		portAllocator: portAllocator,
-		proxyManager:  sshproxy.NewManager(cfg.DataDir, log),
+		proxyManager:  sshproxy.NewManager(cfg.DataDir, cfg.ProxyBindIP, log),
 	}, nil
 }
 

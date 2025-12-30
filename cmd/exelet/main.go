@@ -154,6 +154,12 @@ func main() {
 			Usage:   "enable hugepage memory for VMs (requires hugepages to be configured on the host)",
 			EnvVars: []string{"EXELET_ENABLE_HUGEPAGES"},
 		},
+		&cli.StringFlag{
+			Name:    "proxy-bind-ip",
+			Usage:   "IP address to bind SSH proxies to (empty means all interfaces, use Tailscale IP for production)",
+			Value:   "",
+			EnvVars: []string{"EXELET_PROXY_BIND_IP"},
+		},
 	}
 	app.Action = serveAction
 
@@ -192,6 +198,7 @@ func serveAction(clix *cli.Context) error {
 	resourceManagerInterval := clix.Duration("resource-manager-interval")
 	idleThreshold := clix.Duration("idle-threshold")
 	enableHugepages := clix.Bool("enable-hugepages")
+	proxyBindIP := clix.String("proxy-bind-ip")
 
 	cfg := &config.ExeletConfig{
 		Name:                        name,
@@ -210,6 +217,7 @@ func serveAction(clix *cli.Context) error {
 		ResourceManagerInterval:     resourceManagerInterval,
 		IdleThreshold:               idleThreshold,
 		EnableHugepages:             enableHugepages,
+		ProxyBindIP:                 proxyBindIP,
 	}
 
 	opts := []exelet.ServerOpt{

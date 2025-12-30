@@ -16,15 +16,18 @@ type Manager struct {
 	proxies map[string]*SSHProxy // instanceID -> proxy
 	ports   map[string]int       // instanceID -> port
 	dataDir string               // Root directory for instance data
+	bindIP  string               // IP address to bind proxies to (empty means all interfaces)
 	log     *slog.Logger
 }
 
-// NewManager creates a new SSH proxy manager
-func NewManager(dataDir string, log *slog.Logger) *Manager {
+// NewManager creates a new SSH proxy manager.
+// bindIP specifies the IP address to bind proxies to; empty string means all interfaces.
+func NewManager(dataDir, bindIP string, log *slog.Logger) *Manager {
 	return &Manager{
 		proxies: make(map[string]*SSHProxy),
 		ports:   make(map[string]int),
 		dataDir: dataDir,
+		bindIP:  bindIP,
 		log:     log,
 	}
 }
@@ -40,7 +43,7 @@ func (m *Manager) CreateProxy(instanceID, targetIP string, port int, instanceDir
 	}
 
 	// Create and start proxy
-	proxy := NewSSHProxy(instanceID, port, targetIP, instanceDir, m.log)
+	proxy := NewSSHProxy(instanceID, port, targetIP, instanceDir, m.bindIP, m.log)
 	if err := proxy.Start(); err != nil {
 		return fmt.Errorf("failed to start proxy: %w", err)
 	}
@@ -134,7 +137,7 @@ func (m *Manager) RecoverProxies(instances []*api.Instance) error {
 		}
 
 		instanceDir := filepath.Join(m.dataDir, "instances", instance.ID)
-		proxy := NewSSHProxy(instance.ID, port, targetIP, instanceDir, m.log)
+		proxy := NewSSHProxy(instance.ID, port, targetIP, instanceDir, m.bindIP, m.log)
 
 		// Try to load existing metadata (may not exist for older instances)
 		if err := proxy.LoadFromDisk(); err != nil {
