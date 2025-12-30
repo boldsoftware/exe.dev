@@ -44,5 +44,6 @@ func GenSSHKey(dir string) (path, publicKey string, err error) {
 		return "", "", fmt.Errorf("failed to create SSH public key: %v", err)
 	}
 	pubStr := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPublicKey)))
+	AddCanonicalization(pubStr, "SSH_PUBKEY")
 	return privKeyPath, pubStr, nil
 }

@@ -308,7 +308,7 @@ func TestRegistrationWithLatency(t *testing.T) {
 	sshCmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
 	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=")
 	pty.attachAndStart(sshCmd)
-	pty.prompt = exeDevPrompt
+	pty.pty.SetPrompt(exeDevPrompt)
 
 	pty.want("███") // part of the banner
 	pty.want("Please enter your email")

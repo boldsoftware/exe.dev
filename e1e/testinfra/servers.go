@@ -104,6 +104,8 @@ func StartServers(ctx context.Context, exelets []*ExeletInstance, exedHTTPProxy 
 	// point the HTTP proxy to the real exed HTTP port.
 	env.ExedHTTPProxy.SetDestPort(ei.HTTPPort)
 
+	AddCanonicalization(env.SSHProxy.Port(), "SSH_PORT")
+
 	return env, nil
 }
 

@@ -215,7 +215,7 @@ func TestBoxSharing(t *testing.T) {
 			t.Fatalf("Expected share token, got empty string")
 		}
 		// Canonicalize the share token for golden files
-		Env.addCanonicalization(linkInfo.Token, "SHARE_TOKEN")
+		testinfra.AddCanonicalization(linkInfo.Token, "SHARE_TOKEN")
 
 		// Register a guest user.
 		_, guestCookies, _, _ := registerForExeDev(t)

@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"exe.dev/e1e/testinfra"
 )
 
 // TestExeDevAPI tests a variety of exe.dev commands/repls.
@@ -82,7 +84,7 @@ func TestExeDevAPI(t *testing.T) {
 	}
 
 	// Try to create a duplicate box using the repl.
-	Env.addCanonicalization(nbo.VMName, "VM_NAME")
+	testinfra.AddCanonicalization(nbo.VMName, "VM_NAME")
 	pty.sendLine("new --name=" + nbo.VMName)
 	pty.wantRe("VM name .*" + regexp.QuoteMeta(nbo.VMName) + ".* is not available")
 	pty.wantPrompt()

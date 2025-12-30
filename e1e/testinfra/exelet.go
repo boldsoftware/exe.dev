@@ -423,6 +423,9 @@ WaitLoop:
 		exeletLoggerDone: exeletLoggerDone,
 	}
 
+	AddCanonicalization(instance.Address, "EXELET_ADDRESS")
+	AddCanonicalization(instance.HTTPAddress, "EXELET_HTTP_ADDRESS")
+
 	slog.InfoContext(ctx, "started remote exelet", "elapsed", time.Since(start).Truncate(100*time.Millisecond), "addr", finalAddr, "http_addr", finalHTTPAddr)
 	return instance, nil
 }

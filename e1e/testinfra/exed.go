@@ -348,6 +348,10 @@ ProcessLogs:
 		exedLoggerDone:  exedLoggerDone,
 	}
 
+	AddCanonicalization(instance.SSHPort, "EXED_SSH_PORT")
+	AddCanonicalization(instance.HTTPPort, "EXED_HTTP_PORT")
+	AddCanonicalization(instance.PiperPluginPort, "EXED_PIPER_PLUGIN_PORT")
+
 	slog.InfoContext(ctx, "started exed", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
 	return instance, nil
 }

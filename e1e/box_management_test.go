@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"exe.dev/bsdns/alley53"
+	"exe.dev/e1e/testinfra"
 )
 
 // TestVanillaBox tests functionality of a vanilla box.
@@ -224,7 +225,7 @@ func TestVanillaBox(t *testing.T) {
 			t.Fatalf("metadata service not responding: got %q for source_ip", vmIP)
 		}
 		if strings.HasPrefix(vmIP, "192.168.") || strings.HasPrefix(vmIP, "100.") {
-			Env.addCanonicalization(vmIP, "VM_IP")
+			testinfra.AddCanonicalization(vmIP, "VM_IP")
 		}
 
 		pty := sshToBox(t, boxName, keyFile)
@@ -398,7 +399,7 @@ func TestVanillaBox(t *testing.T) {
 		sshCmd := exec.CommandContext(Env.context(t), "ssh", args...)
 		sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
 		ptyHost.attachAndStart(sshCmd)
-		ptyHost.promptRe = regexp.QuoteMeta(boxName) + ".*" + regexp.QuoteMeta("$")
+		ptyHost.pty.SetPromptRE(regexp.QuoteMeta(boxName) + ".*" + regexp.QuoteMeta("$"))
 
 		// Verify we're in the right box
 		ptyHost.reject("Permission denied")
@@ -657,7 +658,7 @@ func TestNewRejectsBoxMatchingSSHUsername(t *testing.T) {
 
 	conflictName := boxName(t)
 	conflictPty := sshWithUsername(t, conflictName, keyFile)
-	conflictPty.prompt = exeDevPrompt
+	conflictPty.pty.SetPrompt(exeDevPrompt)
 	conflictPty.wantPrompt()
 
 	conflictPty.sendLine("new --name=" + conflictName)
@@ -907,7 +908,7 @@ func TestNewBoxVariants(t *testing.T) {
 	boxName := boxName(t)
 	if len(boxName) < 52 {
 		boxName += strings.Repeat("a", 52-len(boxName))
-		Env.addCanonicalization(boxName, "BOX_NAME")
+		testinfra.AddCanonicalization(boxName, "BOX_NAME")
 	}
 	pty.sendLine(fmt.Sprintf("new --name=%s -no-email", boxName))
 	pty.wantRe("Creating .*" + boxName)

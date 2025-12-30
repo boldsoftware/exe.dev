@@ -162,6 +162,8 @@ func StartSSHPiperd(ctx context.Context, sshPiperPluginPort int, logFile io.Writ
 		Port:   sshPort,
 	}
 
+	AddCanonicalization(instance.Port, "PIPERD_PORT")
+
 	slog.InfoContext(ctx, "started piperd", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
 	return instance, nil
 }
