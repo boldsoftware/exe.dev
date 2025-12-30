@@ -956,7 +956,14 @@ func (s *Server) handleDebugSetPreferredExelet(w http.ResponseWriter, r *http.Re
 			http.Error(w, fmt.Sprintf("failed to set preferred exelet: %v", err), http.StatusInternalServerError)
 			return
 		}
-		s.slog().InfoContext(ctx, "preferred exelet set via debug page", "address", address)
+
+		// Clear the new throttle when switching preferred exelet
+		if err := withTx1(s, ctx, (*exedb.Queries).SetNewThrottleEnabled, "false"); err != nil {
+			http.Error(w, fmt.Sprintf("failed to clear new throttle: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		s.slog().InfoContext(ctx, "preferred exelet set via debug page (new throttle cleared)", "address", address)
 		s.slackFeed.PreferredExeletChanged(ctx, address)
 	}
 
