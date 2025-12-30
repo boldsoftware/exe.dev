@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"cmp"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -165,7 +166,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 				}
 				fmt.Fprintln(bodyWriter, line)
 			}
-			if err := scanner.Err(); err != nil {
+			if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
 				a.log.Error("Proxy SSE scanner", "error", err)
 			}
 			bodyWriter.Close()
