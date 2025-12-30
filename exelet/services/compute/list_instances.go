@@ -35,7 +35,6 @@ func (s *Service) listInstances(ctx context.Context) ([]*api.Instance, error) {
 	}
 	instances := []*api.Instance{}
 	for _, config := range configs {
-		s.log.DebugContext(ctx, "getting instance from config", "config", config)
 		id := filepath.Base(filepath.Dir(config))
 		r, err := s.GetInstance(ctx, &api.GetInstanceRequest{
 			ID: id,
