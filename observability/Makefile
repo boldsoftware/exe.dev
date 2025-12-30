@@ -3,6 +3,9 @@
 # Hosts to deploy node-exporter to
 HOSTS := mon exed-02 exe-ctr-02 exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 ci.crocodile-vector.ts.net exed-staging-01 exe-ctr-staging-01
 
+# Dead hosts (terminated or unreachable)
+DEAD_HOSTS := exe-ctr-01 exe-ctr-06 exe-ctr-staging-02
+
 # Grafana configuration
 GRAFANA_URL := https://grafana.crocodile-vector.ts.net/
 
