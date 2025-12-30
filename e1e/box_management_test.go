@@ -337,6 +337,32 @@ func TestVanillaBox(t *testing.T) {
 		}
 	})
 
+	t.Run("gateway_ssh_blocked", func(t *testing.T) {
+		// Verify that VMs cannot access their gateway's SSH port.
+		// VMs should only be able to reach the gateway on port 80 (metadata service).
+		noGolden(t)
+
+		// Get the gateway IP from within the VM
+		out, err := boxSSHCommand(t, boxName, keyFile, "ip", "route", "show", "default").CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to get default route: %v\n%s", err, out)
+		}
+		// Output is like: "default via 192.168.100.1 dev eth0"
+		fields := strings.Fields(string(out))
+		if len(fields) < 3 || fields[0] != "default" || fields[1] != "via" {
+			t.Fatalf("unexpected ip route output: %s", out)
+		}
+		gatewayIP := fields[2]
+
+		// Try to connect to SSH (port 22) on the gateway. This should fail/timeout.
+		// Use nc with a short timeout to probe the port.
+		out, err = boxSSHCommand(t, boxName, keyFile, "nc", "-z", "-w", "2", gatewayIP, "22").CombinedOutput()
+		if err == nil {
+			t.Errorf("expected SSH connection to gateway %s:22 to be blocked, but it succeeded", gatewayIP)
+		}
+		// Success: connection was blocked (nc returned non-zero)
+	})
+
 	t.Run("shard_routing", func(t *testing.T) {
 		// shard_routing tests that `ssh vmname.exe.cloud` routes to the correct box.
 		// Skip if alley53 isn't running

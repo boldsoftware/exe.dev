@@ -169,6 +169,11 @@ func (n *NAT) configureBridge(ctx context.Context) error {
 		return err
 	}
 
+	// block guest access to gateway (bridge IP) except for metadata service
+	if err := n.applyGatewayBlock(ctx, primaryBridge, serverIP.String()); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -279,6 +284,11 @@ func (n *NAT) createSecondaryBridge(ctx context.Context, bridgeName string) erro
 	// Block guest access to carrier-grade NAT range
 	if err := n.applyCarrierNATBlock(ctx, bridgeName); err != nil {
 		return fmt.Errorf("failed to apply carrier NAT block for %s: %w", bridgeName, err)
+	}
+
+	// Block guest access to gateway (bridge IP) except for metadata service
+	if err := n.applyGatewayBlock(ctx, bridgeName, serverIP.String()); err != nil {
+		return fmt.Errorf("failed to apply gateway block for %s: %w", bridgeName, err)
 	}
 
 	n.log.InfoContext(ctx, "created secondary bridge", "name", bridgeName, "veth_primary", vethPrimary, "veth_secondary", vethSecondary)
@@ -568,6 +578,58 @@ func (n *NAT) applyCarrierNATBlock(ctx context.Context, device string) error {
 
 	if err := exec.CommandContext(ctx, "iptables", cArgs...).Run(); err != nil {
 		return fmt.Errorf("failed to add carrier NAT block rule: %w", err)
+	}
+
+	return nil
+}
+
+// applyGatewayBlock blocks VMs from initiating new connections to the gateway (bridge) IP,
+// except for port 80 (metadata service) and DHCP (UDP 67/68). This prevents VMs
+// from accessing other services running on the host (like SSH) via the gateway IP.
+// Established/related connections (like SSH proxy responses) are allowed through.
+func (n *NAT) applyGatewayBlock(ctx context.Context, bridgeName, bridgeIP string) error {
+	// Check if rule already exists
+	args := []string{"-n", "-L", "INPUT", "-v"}
+	fc := exec.CommandContext(ctx, "iptables", args...)
+
+	fOut, err := fc.CombinedOutput()
+	if err != nil {
+		return err
+	}
+
+	buf := bytes.NewBuffer(fOut)
+	sc := bufio.NewScanner(buf)
+	ruleExists := false
+	for sc.Scan() {
+		l := sc.Text()
+		// Look for our DROP rule for this bridge/IP combination
+		if strings.Contains(l, bridgeName) && strings.Contains(l, bridgeIP) && strings.Contains(l, "DROP") {
+			ruleExists = true
+			break
+		}
+	}
+
+	if ruleExists {
+		return nil
+	}
+
+	n.log.DebugContext(ctx, "adding iptables rules to block gateway access from guests (except metadata/DHCP)", "bridge", bridgeName, "gateway_ip", bridgeIP)
+
+	// Block new TCP connections from VMs to gateway, except port 80 (metadata service).
+	// We use INPUT chain because this traffic is destined for the host itself.
+	// The --syn flag matches only TCP SYN packets (new connection attempts),
+	// allowing established connection responses (like SSH proxy traffic) through.
+	cArgs := []string{
+		"-I", "INPUT",
+		"-i", bridgeName,
+		"-d", bridgeIP,
+		"-p", "tcp",
+		"--syn",
+		"!", "--dport", "80",
+		"-j", "DROP",
+	}
+	if err := exec.CommandContext(ctx, "iptables", cArgs...).Run(); err != nil {
+		return fmt.Errorf("failed to add gateway block rule (tcp): %w", err)
 	}
 
 	return nil
