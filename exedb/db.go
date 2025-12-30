@@ -57,6 +57,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countDevUsersStmt, err = db.PrepareContext(ctx, countDevUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query CountDevUsers: %w", err)
 	}
+	if q.countIPShardsStmt, err = db.PrepareContext(ctx, countIPShards); err != nil {
+		return nil, fmt.Errorf("error preparing query CountIPShards: %w", err)
+	}
 	if q.countLoginUsersStmt, err = db.PrepareContext(ctx, countLoginUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query CountLoginUsers: %w", err)
 	}
@@ -231,6 +234,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getSSHKeysForUserByEmailStmt, err = db.PrepareContext(ctx, getSSHKeysForUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHKeysForUserByEmail: %w", err)
 	}
+	if q.getShardPublicIPStmt, err = db.PrepareContext(ctx, getShardPublicIP); err != nil {
+		return nil, fmt.Errorf("error preparing query GetShardPublicIP: %w", err)
+	}
 	if q.getSiteCookiesForUserStmt, err = db.PrepareContext(ctx, getSiteCookiesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSiteCookiesForUser: %w", err)
 	}
@@ -324,6 +330,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAllUsersStmt, err = db.PrepareContext(ctx, listAllUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllUsers: %w", err)
 	}
+	if q.listIPShardsStmt, err = db.PrepareContext(ctx, listIPShards); err != nil {
+		return nil, fmt.Errorf("error preparing query ListIPShards: %w", err)
+	}
 	if q.listIPShardsForUserStmt, err = db.PrepareContext(ctx, listIPShardsForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIPShardsForUser: %w", err)
 	}
@@ -386,6 +395,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateTagResolutionDigestStmt, err = db.PrepareContext(ctx, updateTagResolutionDigest); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTagResolutionDigest: %w", err)
+	}
+	if q.upsertIPShardStmt, err = db.PrepareContext(ctx, upsertIPShard); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertIPShard: %w", err)
 	}
 	if q.upsertSSHHostKeyStmt, err = db.PrepareContext(ctx, upsertSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertSSHHostKey: %w", err)
@@ -457,6 +469,11 @@ func (q *Queries) Close() error {
 	if q.countDevUsersStmt != nil {
 		if cerr := q.countDevUsersStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countDevUsersStmt: %w", cerr)
+		}
+	}
+	if q.countIPShardsStmt != nil {
+		if cerr := q.countIPShardsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countIPShardsStmt: %w", cerr)
 		}
 	}
 	if q.countLoginUsersStmt != nil {
@@ -749,6 +766,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getSSHKeysForUserByEmailStmt: %w", cerr)
 		}
 	}
+	if q.getShardPublicIPStmt != nil {
+		if cerr := q.getShardPublicIPStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getShardPublicIPStmt: %w", cerr)
+		}
+	}
 	if q.getSiteCookiesForUserStmt != nil {
 		if cerr := q.getSiteCookiesForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSiteCookiesForUserStmt: %w", cerr)
@@ -904,6 +926,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAllUsersStmt: %w", cerr)
 		}
 	}
+	if q.listIPShardsStmt != nil {
+		if cerr := q.listIPShardsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listIPShardsStmt: %w", cerr)
+		}
+	}
 	if q.listIPShardsForUserStmt != nil {
 		if cerr := q.listIPShardsForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listIPShardsForUserStmt: %w", cerr)
@@ -1009,6 +1036,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateTagResolutionDigestStmt: %w", cerr)
 		}
 	}
+	if q.upsertIPShardStmt != nil {
+		if cerr := q.upsertIPShardStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertIPShardStmt: %w", cerr)
+		}
+	}
 	if q.upsertSSHHostKeyStmt != nil {
 		if cerr := q.upsertSSHHostKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertSSHHostKeyStmt: %w", cerr)
@@ -1079,6 +1111,7 @@ type Queries struct {
 	countBoxesStmt                         *sql.Stmt
 	countBoxesForUserStmt                  *sql.Stmt
 	countDevUsersStmt                      *sql.Stmt
+	countIPShardsStmt                      *sql.Stmt
 	countLoginUsersStmt                    *sql.Stmt
 	countPendingBoxSharesStmt              *sql.Stmt
 	createBoxShareStmt                     *sql.Stmt
@@ -1137,6 +1170,7 @@ type Queries struct {
 	getSSHHostKeyStmt                      *sql.Stmt
 	getSSHKeysForUserStmt                  *sql.Stmt
 	getSSHKeysForUserByEmailStmt           *sql.Stmt
+	getShardPublicIPStmt                   *sql.Stmt
 	getSiteCookiesForUserStmt              *sql.Stmt
 	getTagResolutionStmt                   *sql.Stmt
 	getTagsNeedingRefreshStmt              *sql.Stmt
@@ -1168,6 +1202,7 @@ type Queries struct {
 	insertTagResolutionHistoryStmt         *sql.Stmt
 	insertUserStmt                         *sql.Stmt
 	listAllUsersStmt                       *sql.Stmt
+	listIPShardsStmt                       *sql.Stmt
 	listIPShardsForUserStmt                *sql.Stmt
 	recordUserEventStmt                    *sql.Stmt
 	sSHKeyForBoxNamedStmt                  *sql.Stmt
@@ -1189,6 +1224,7 @@ type Queries struct {
 	updateProxyBearerTokenLastUsedStmt     *sql.Stmt
 	updateTagResolutionCheckedStmt         *sql.Stmt
 	updateTagResolutionDigestStmt          *sql.Stmt
+	upsertIPShardStmt                      *sql.Stmt
 	upsertSSHHostKeyStmt                   *sql.Stmt
 	upsertSSHKeyForUserStmt                *sql.Stmt
 	upsertTagResolutionStmt                *sql.Stmt
@@ -1210,6 +1246,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countBoxesStmt:                         q.countBoxesStmt,
 		countBoxesForUserStmt:                  q.countBoxesForUserStmt,
 		countDevUsersStmt:                      q.countDevUsersStmt,
+		countIPShardsStmt:                      q.countIPShardsStmt,
 		countLoginUsersStmt:                    q.countLoginUsersStmt,
 		countPendingBoxSharesStmt:              q.countPendingBoxSharesStmt,
 		createBoxShareStmt:                     q.createBoxShareStmt,
@@ -1268,6 +1305,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getSSHHostKeyStmt:                      q.getSSHHostKeyStmt,
 		getSSHKeysForUserStmt:                  q.getSSHKeysForUserStmt,
 		getSSHKeysForUserByEmailStmt:           q.getSSHKeysForUserByEmailStmt,
+		getShardPublicIPStmt:                   q.getShardPublicIPStmt,
 		getSiteCookiesForUserStmt:              q.getSiteCookiesForUserStmt,
 		getTagResolutionStmt:                   q.getTagResolutionStmt,
 		getTagsNeedingRefreshStmt:              q.getTagsNeedingRefreshStmt,
@@ -1299,6 +1337,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertTagResolutionHistoryStmt:         q.insertTagResolutionHistoryStmt,
 		insertUserStmt:                         q.insertUserStmt,
 		listAllUsersStmt:                       q.listAllUsersStmt,
+		listIPShardsStmt:                       q.listIPShardsStmt,
 		listIPShardsForUserStmt:                q.listIPShardsForUserStmt,
 		recordUserEventStmt:                    q.recordUserEventStmt,
 		sSHKeyForBoxNamedStmt:                  q.sSHKeyForBoxNamedStmt,
@@ -1320,6 +1359,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateProxyBearerTokenLastUsedStmt:     q.updateProxyBearerTokenLastUsedStmt,
 		updateTagResolutionCheckedStmt:         q.updateTagResolutionCheckedStmt,
 		updateTagResolutionDigestStmt:          q.updateTagResolutionDigestStmt,
+		upsertIPShardStmt:                      q.upsertIPShardStmt,
 		upsertSSHHostKeyStmt:                   q.upsertSSHHostKeyStmt,
 		upsertSSHKeyForUserStmt:                q.upsertSSHKeyForUserStmt,
 		upsertTagResolutionStmt:                q.upsertTagResolutionStmt,

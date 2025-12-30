@@ -44,6 +44,7 @@ import (
 	"exe.dev/domz"
 	"exe.dev/exedb"
 	exeletclient "exe.dev/exelet/client"
+	"exe.dev/exens"
 	"exe.dev/ghuser"
 	"exe.dev/llmgateway"
 	"exe.dev/logging"
@@ -206,6 +207,8 @@ type Server struct {
 	route53Provider *route53.DNSProvider
 	// bsdns manages box shard DNS records (route53 or alley53)
 	bsdns bsdns.Provider
+	// dnsServer is the embedded DNS nameserver (only when UseRoute53)
+	dnsServer *exens.Server
 
 	// Testing hooks
 	lookupCNAMEFunc func(context.Context, string) (string, error)
@@ -709,9 +712,11 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 	// Initialize DNS providers (both ACME and box shard DNS)
 	if cfg.Env.UseRoute53 {
-		// Prod/staging
+		// Prod/staging: Use embedded DNS server for exe.xyz, Route53 for exe.dev
+		// During transition, Route53 is also used for exe.xyz box CNAMEs
 		s.route53Provider = route53.NewDNSProvider()
-		s.bsdns = s.route53Provider
+		s.dnsServer = exens.NewServer(s.db, s.log)
+		s.bsdns = s.route53Provider // Route53 for box CNAME updates during transition
 	} else {
 		// Use alley53 if available. If not, fall back to a no-op provider.
 		c := alley53.NewClient("localhost:5380")
@@ -1987,7 +1992,33 @@ func (s *Server) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Start embedded DNS server FIRST, before initShardIPs.
+	// initShardIPs does DNS lookups for sNNN.exe.xyz to map public IPs to shards.
+	// Starting DNS first avoids a deadlock when NS records point to this server.
+	// The DNS server reads from the ip_shards DB table (populated on previous boots).
+	if s.dnsServer != nil && s.env.DiscoverPublicIPs {
+		dnsCtx, dnsCancel := context.WithTimeout(ctx, 10*time.Second)
+		privateIPs, err := publicips.EC2PrivateIPs(dnsCtx)
+		dnsCancel()
+		if err != nil {
+			s.slog().ErrorContext(ctx, "failed to get private IPs for DNS server", "error", err)
+		} else if len(privateIPs) > 0 {
+			if err := s.dnsServer.Start(ctx, privateIPs); err != nil {
+				s.slog().ErrorContext(ctx, "DNS server failed to start", "error", err)
+			} else {
+				s.slog().InfoContext(ctx, "embedded DNS server started", "ips", privateIPs)
+			}
+		}
+	}
+
 	s.initShardIPs(ctx)
+
+	// Populate ip_shards table and validate (after initShardIPs populates PublicIPs)
+	if s.dnsServer != nil && len(s.PublicIPs) > 0 {
+		if err := exens.PopulateIPShards(ctx, s.db, s.log, s.PublicIPs); err != nil {
+			s.slog().ErrorContext(ctx, "ip_shards population failed", "error", err)
+		}
+	}
 
 	s.slackFeed.ServerStarted(ctx, gitCommit())
 
@@ -2367,6 +2398,9 @@ func (s *Server) Stop() error {
 
 	if s.tagResolver != nil {
 		s.tagResolver.Stop()
+	}
+	if s.dnsServer != nil {
+		s.dnsServer.Stop(ctx)
 	}
 	if err := s.sshPool.Close(); err != nil {
 		s.slog().ErrorContext(ctx, "SSH pool close error", "error", err)

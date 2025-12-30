@@ -32,6 +32,7 @@ import (
 	"exe.dev/dnsresolver"
 	"exe.dev/domz"
 	"exe.dev/exedb"
+	"exe.dev/exens"
 	"exe.dev/llmgateway"
 	"exe.dev/metricsbag"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
@@ -51,6 +52,21 @@ const (
 	proxyBearerTokenTTL = 30 * 24 * time.Hour
 	sshKnownHostsPath   = "/.well-known/ssh-known-hosts"
 )
+
+// acmeServerAdapter wraps exens.Server to implement route53.LocalACMEProvider.
+type acmeServerAdapter struct {
+	server *exens.Server
+}
+
+func (a *acmeServerAdapter) UpsertTXTRecord(ctx context.Context, name, value string, ttl int64) error {
+	a.server.SetTXTRecord(name, value)
+	return nil
+}
+
+func (a *acmeServerAdapter) DeleteTXTRecord(ctx context.Context, name, value string) error {
+	a.server.DeleteTXTRecord(name, value)
+	return nil
+}
 
 func (s *Server) prepareHandler() http.Handler {
 	lg := s.prepareLlmGateway()
@@ -127,6 +143,10 @@ func (s *Server) setupHTTPSServer() {
 			autocert.DirCache("certs"),
 			s.sshMetrics.letsencryptRequests,
 		)
+		// Enable dual-write ACME TXT records to local DNS server during transition
+		if s.dnsServer != nil {
+			s.wildcardCertManager.SetLocalDNSProvider(&acmeServerAdapter{s.dnsServer})
+		}
 	}
 
 	s.certManager = &autocert.Manager{

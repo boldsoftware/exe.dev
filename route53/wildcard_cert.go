@@ -87,13 +87,21 @@ const (
 	certificateRenewBefore  = 10 * 24 * time.Hour
 )
 
+// LocalACMEProvider is an optional interface for writing ACME TXT records to a local database.
+// This is used for dual-write during the transition from Route53 to embedded DNS.
+type LocalACMEProvider interface {
+	UpsertTXTRecord(ctx context.Context, name, value string, ttl int64) error
+	DeleteTXTRecord(ctx context.Context, name, value string) error
+}
+
 type WildcardCertManager struct {
-	dnsProvider  *DNSProvider
-	diskCache    autocert.Cache // persistent cache for certificates
-	acmeClient   *acme.Client
-	domains      []string // list of domains managed by this cert manager; each entry covers itself and a wildcard cert
-	certRequests prometheus.Counter
-	sf           singleflight.Group[string, *tls.Certificate] // singleflight group for certificate requests
+	dnsProvider      *DNSProvider
+	localDNSProvider LocalACMEProvider // optional, for dual-write during transition
+	diskCache        autocert.Cache    // persistent cache for certificates
+	acmeClient       *acme.Client
+	domains          []string // list of domains managed by this cert manager; each entry covers itself and a wildcard cert
+	certRequests     prometheus.Counter
+	sf               singleflight.Group[string, *tls.Certificate] // singleflight group for certificate requests
 
 	renewalsInFlight sync.Map // background renewals currently running per domain
 
@@ -136,6 +144,12 @@ func NewWildcardCertManager(domains []string, diskCache autocert.Cache, certRequ
 	manager.warmManagedDomains()
 
 	return manager
+}
+
+// SetLocalDNSProvider sets an optional local DNS provider for dual-write ACME challenges.
+// This enables writing TXT records to both Route53 and a local database.
+func (w *WildcardCertManager) SetLocalDNSProvider(provider LocalACMEProvider) {
+	w.localDNSProvider = provider
 }
 
 // GetCertificate implements the tls.Config.GetCertificate interface
@@ -355,6 +369,15 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 	cleanUpChallenges := func() {
 		for _, c := range staged {
 			w.dnsProvider.CleanupACMEChallenge(ctx, c.domain, c.keyAuth)
+			// Also clean up from local DNS provider if configured
+			if w.localDNSProvider != nil {
+				acmeName := acmeChallengeName(c.domain)
+				baseDomain := extractDomain(c.domain)
+				fullName := acmeName + "." + baseDomain
+				if err := w.localDNSProvider.DeleteTXTRecord(ctx, fullName, c.keyAuth); err != nil {
+					slog.WarnContext(ctx, "failed to delete ACME TXT from local DNS", "name", fullName, "error", err)
+				}
+			}
 		}
 	}
 
@@ -400,6 +423,17 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 			return nil, fmt.Errorf("failed to create ACME challenge: %w", err)
 		}
 		slog.InfoContext(ctx, "DNS TXT record created for ACME challenge", "recordID", recordID)
+
+		// Also write to local DNS provider if configured (dual-write during transition)
+		if w.localDNSProvider != nil {
+			acmeName := acmeChallengeName(authorization.Identifier.Value)
+			baseDomain := extractDomain(authorization.Identifier.Value)
+			fullName := acmeName + "." + baseDomain
+			if err := w.localDNSProvider.UpsertTXTRecord(ctx, fullName, keyAuth, 600); err != nil {
+				slog.WarnContext(ctx, "failed to write ACME TXT to local DNS", "name", fullName, "error", err)
+				// Don't fail - Route53 write succeeded
+			}
+		}
 
 		staged = append(staged, stagedChallenge{
 			domain:    authorization.Identifier.Value,

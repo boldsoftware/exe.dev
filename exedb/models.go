@@ -95,6 +95,13 @@ type EmailVerification struct {
 	VerificationCode *string    `db:"verification_code" json:"verification_code"`
 }
 
+type IPShard struct {
+	Shard     int64     `db:"shard" json:"shard"`
+	PublicIp  string    `db:"public_ip" json:"public_ip"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+}
+
 type Migration struct {
 	MigrationNumber int64      `db:"migration_number" json:"migration_number"`
 	MigrationName   string     `db:"migration_name" json:"migration_name"`
