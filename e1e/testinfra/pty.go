@@ -323,7 +323,7 @@ var (
 
 	// canonicalize is used to convert indeterminate strings
 	// to a canonical form for asciinema recordings.
-	canonicalize = make(map[string] string)
+	canonicalize = make(map[string]string)
 )
 
 // AddCanonicalization adds a canonicalization from some value to a string.
