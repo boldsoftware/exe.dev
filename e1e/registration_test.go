@@ -331,3 +331,54 @@ func TestRegistrationWithLatency(t *testing.T) {
 	pty.want(publicKey)
 	pty.disconnect()
 }
+
+// TestWarpTerminalBootstrap tests that Warp terminal's shell bootstrap script
+// is detected and treated as an interactive session rather than a command.
+// Warp sends a command like "export TERM_PROGRAM=WarpTerminal ..." when connecting,
+// which previously caused the server to reject unregistered users with
+// "Please complete registration" instead of showing the registration flow.
+// See https://github.com/boldsoftware/exe.dev/issues/39
+func TestWarpTerminalBootstrap(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	keyFile, publicKey := genSSHKey(t)
+	warpBootstrapCmd := `export TERM_PROGRAM=WarpTerminal; echo "warp bootstrap"`
+
+	sshWarp := func() *expectPty {
+		pty := makePty(t, "ssh localhost (warp simulation)")
+		sshArgs := Env.servers.BaseSSHArgs("", keyFile)
+		sshArgs = append(sshArgs, "-t", warpBootstrapCmd)
+		sshCmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
+		sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=")
+		pty.attachAndStart(sshCmd)
+		pty.pty.SetPrompt(testinfra.ExeDevPrompt)
+		return pty
+	}
+
+	// First connection: should get registration flow, not "Please complete registration"
+	pty := sshWarp()
+	pty.reject("Please complete registration")
+	pty.want(testinfra.Banner)
+	pty.want("Please enter your email")
+	email := t.Name() + "@example.com"
+	pty.sendLine(email)
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+	waitForEmailAndVerify(t, email)
+	pty.want("Registration complete")
+	pty.wantPrompt()
+	pty.sendLine("whoami")
+	pty.want(email)
+	pty.want(publicKey)
+	pty.disconnect()
+
+	// Second connection: should get main menu directly
+	pty = sshWarp()
+	pty.reject(testinfra.Banner)
+	pty.reject("Please enter your email")
+	pty.wantPrompt()
+	pty.sendLine("whoami")
+	pty.want(email)
+	pty.disconnect()
+}

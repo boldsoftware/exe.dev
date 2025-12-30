@@ -381,7 +381,21 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 
 	// Check for exec command
 	cmd := s.Command()
-	if len(cmd) > 0 {
+	isExec := len(cmd) > 0
+
+	if isExec {
+		// Detect Warp terminal's bootstrap script. Grumble grumble.
+		// See https://github.com/boldsoftware/exe.dev/issues/39
+		full := strings.Join(cmd, " ")
+		isWarpBootstrap := strings.Contains(full, "TERM_PROGRAM=WarpTerminal") || strings.Contains(full, "WARP_SESSION_ID=")
+		if isWarpBootstrap {
+			// Warp is trying to bootstrap its shell integration.
+			// Treat this as an interactive shell session instead, and swallow the command. (Sigh.)
+			isExec = false
+		}
+	}
+
+	if isExec {
 		// Handle exec commands
 		ss.handleExec(s, cmd, publicKey, registered)
 		return
