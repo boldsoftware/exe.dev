@@ -113,6 +113,7 @@ func run() error {
 	metricsRegistry := prometheus.NewRegistry()
 	metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 	metricsRegistry.MustRegister(prometheus.NewGoCollector())
+	execore.RegisterBuildInfo(metricsRegistry)
 	logging.SetupLogger(*devMode, metricsRegistry)
 	slog.Info("Starting exed server")
 

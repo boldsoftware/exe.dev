@@ -17,6 +17,7 @@ import (
 	cli "github.com/urfave/cli/v2"
 
 	"exe.dev/deps/image"
+	"exe.dev/execore"
 	"exe.dev/exelet"
 	"exe.dev/exelet/config"
 	"exe.dev/exelet/metadata"
@@ -186,6 +187,7 @@ func serveAction(clix *cli.Context) error {
 	metricsRegistry := prometheus.NewRegistry()
 	metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 	metricsRegistry.MustRegister(prometheus.NewGoCollector())
+	execore.RegisterBuildInfo(metricsRegistry)
 	logging.SetupLogger("", metricsRegistry)
 	log := slog.Default()
 
