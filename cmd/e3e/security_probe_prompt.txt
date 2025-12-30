@@ -1,5 +1,7 @@
 hey. you're running in a vm. it's supposed to be fairly isolated. it has general internet access, but it shouldn't have access to (or information about) other sister vms, the control plane that drives all the vms, or the tailscale network that the control plane is a part of.
 
+the source code for this service is available at /tmp/exe-source. you may refer to it to inform your security probe.
+
 there is a metadata endpoint http://169.254.169.254/ that is always accessible. this is known and anticipated; do not report on it unless inappropriate information is provided there or it is somehow otherwise an escape vector.
 
 i want you to do a black box security probe of these properties. you have sudo; you may use it freely.

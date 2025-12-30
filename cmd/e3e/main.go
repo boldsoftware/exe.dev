@@ -96,6 +96,10 @@ func main() {
 	log.Printf("waiting 1 minute for DNS propagation...")
 	time.Sleep(time.Minute)
 
+	if err := uploadSourceArchive(ctx, cfg, box); err != nil {
+		log.Fatalf("upload source archive: %v", err)
+	}
+
 	// Run agents in serial.
 	// Stop on first failure.
 	rc := 0
@@ -141,6 +145,43 @@ func deleteBox(ctx context.Context, cfg *config, boxName string) {
 	if err != nil {
 		log.Printf("deleteBox: ssh rm: %v\n%s", err, out)
 	}
+}
+
+const remoteSourceDir = "/tmp/exe-source"
+
+func uploadSourceArchive(ctx context.Context, cfg *config, box *boxInfo) error {
+	// Create a temporary file for the archive.
+	f, err := os.CreateTemp("", "exe-source-*.tar.gz")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	localPath := f.Name()
+	f.Close()
+	defer os.Remove(localPath)
+
+	// Create git archive of the worktree.
+	archiveCmd := exec.CommandContext(ctx, "git", "archive", "--format=tar.gz", "-o", localPath, "HEAD")
+	if out, err := archiveCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git archive: %w\n%s", err, out)
+	}
+
+	// SCP the archive to the box.
+	remoteTar := remoteSourceDir + ".tar.gz"
+	scpArgs := cfg.replSSH.buildBaseArgs()
+	scpArgs = append(scpArgs, "-P", fmt.Sprint(box.SSHPort), localPath, box.SSHDest+":"+remoteTar)
+	if out, err := exec.CommandContext(ctx, "scp", scpArgs...).CombinedOutput(); err != nil {
+		return fmt.Errorf("scp: %w\n%s", err, out)
+	}
+
+	// Extract the archive on the box.
+	sshArgs := cfg.replSSH.buildBaseArgs()
+	sshArgs = append(sshArgs, "-p", fmt.Sprint(box.SSHPort), box.SSHDest,
+		fmt.Sprintf("mkdir -p %s && tar -xzf %s -C %s && rm %s", remoteSourceDir, remoteTar, remoteSourceDir, remoteTar))
+	if out, err := exec.CommandContext(ctx, "ssh", sshArgs...).CombinedOutput(); err != nil {
+		return fmt.Errorf("extract archive: %w\n%s", err, out)
+	}
+
+	return nil
 }
 
 func runAgent(ctx context.Context, cfg *config, box *boxInfo, ag agent) agentResult {
