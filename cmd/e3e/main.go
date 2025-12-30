@@ -165,16 +165,16 @@ func uploadSourceArchive(ctx context.Context, cfg *config, box *boxInfo) error {
 		return fmt.Errorf("git archive: %w\n%s", err, out)
 	}
 
-	// SCP the archive to the box.
+	// SCP the archive to the box (scp uses -P for port, not -p).
 	remoteTar := remoteSourceDir + ".tar.gz"
-	scpArgs := cfg.replSSH.buildBaseArgs()
+	scpArgs := cfg.replSSH.buildCommonArgs()
 	scpArgs = append(scpArgs, "-P", fmt.Sprint(box.SSHPort), localPath, box.SSHDest+":"+remoteTar)
 	if out, err := exec.CommandContext(ctx, "scp", scpArgs...).CombinedOutput(); err != nil {
 		return fmt.Errorf("scp: %w\n%s", err, out)
 	}
 
 	// Extract the archive on the box.
-	sshArgs := cfg.replSSH.buildBaseArgs()
+	sshArgs := cfg.replSSH.buildCommonArgs()
 	sshArgs = append(sshArgs, "-p", fmt.Sprint(box.SSHPort), box.SSHDest,
 		fmt.Sprintf("mkdir -p %s && tar -xzf %s -C %s && rm %s", remoteSourceDir, remoteTar, remoteSourceDir, remoteTar))
 	if out, err := exec.CommandContext(ctx, "ssh", sshArgs...).CombinedOutput(); err != nil {
@@ -265,12 +265,17 @@ func (cfg sshConfig) target() string {
 }
 
 func (cfg sshConfig) buildBaseArgs() []string {
+	args := cfg.buildCommonArgs()
+	if cfg.port != "" {
+		args = append(args, "-p", cfg.port)
+	}
+	return args
+}
+
+func (cfg sshConfig) buildCommonArgs() []string {
 	args := []string{"-o", "BatchMode=yes", "-o", "LogLevel=ERROR"}
 	if cfg.privateKeyPath != "" {
 		args = append(args, "-i", cfg.privateKeyPath)
-	}
-	if cfg.port != "" {
-		args = append(args, "-p", cfg.port)
 	}
 	if cfg.knownHostsPath != "" {
 		args = append(args, "-o", fmt.Sprintf("UserKnownHostsFile=%s", cfg.knownHostsPath))
