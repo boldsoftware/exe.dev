@@ -92,6 +92,10 @@ func main() {
 		log.Fatalf("create box: %v", err)
 	}
 
+	// TODO(https://github.com/boldsoftware/exe.dev/issues/32): remove once DNS propagation is fixed.
+	log.Printf("waiting 1 minute for DNS propagation...")
+	time.Sleep(time.Minute)
+
 	// Run agents in serial.
 	// Stop on first failure.
 	rc := 0
