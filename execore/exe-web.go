@@ -889,7 +889,7 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	}
 
 	// Signal completion to waiting SSH session
-	close(verification.CompleteChan)
+	verification.Close()
 	s.deleteEmailVerification(verification)
 
 	data := struct {

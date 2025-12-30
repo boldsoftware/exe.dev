@@ -153,8 +153,17 @@ type EmailVerification struct {
 	Token        string
 	PairingCode  string
 	CompleteChan chan struct{}
+	closeOnce    sync.Once
 	CreatedAt    time.Time
 	IsNewAccount bool
+}
+
+// Close signals completion to the waiting SSH session.
+// Safe to call multiple times; only the first call closes the channel.
+func (v *EmailVerification) Close() {
+	v.closeOnce.Do(func() {
+		close(v.CompleteChan)
+	})
 }
 
 // MagicSecret represents a temporary authentication secret for proxy magic URLs

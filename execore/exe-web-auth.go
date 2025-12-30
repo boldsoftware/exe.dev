@@ -87,7 +87,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		}
 
 		// Signal completion to SSH session
-		close(verification.CompleteChan)
+		verification.Close()
 
 		// Clean up email verification
 		s.deleteEmailVerification(verification)
