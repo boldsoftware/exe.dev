@@ -2067,7 +2067,12 @@ async function createAlerts() {
  */
 function convertQueryForAlert(query: string): string {
   // Replace dashboard variables with patterns that work in alerts
-  return query.replace(/instance=~"\$instance"/g, 'instance=~".+"');
+  // Only alert on production stage
+  return query
+    .replace(/instance=~"\$instance"/g, 'instance=~".+"')
+    .replace(/tag_Name=~"\$name"/g, 'tag_Name=~".+"')
+    .replace(/tag_role=~"\$role"/g, 'tag_role=~".+"')
+    .replace(/tag_stage=~"\$stage"/g, 'tag_stage="production"');
 }
 
 /**
@@ -3199,9 +3204,11 @@ function makeAwsCloudWatchDashboard() {
   // EBS IOPS Exceeded Check - alerts when volumes exceed provisioned IOPS
   // Note: noDataState is "OK" because CloudWatch may not emit this metric when
   // volumes are healthy, so no data means no problem.
+  // The >= 0 filter excludes NaN values (detached volumes) which would otherwise trigger alerts.
+  // Note: EBS volume metrics don't have tag_stage, so we exclude staging by name pattern.
   addTimeseriesChart(
     "EBS IOPS Exceeded (Alert)",
-    `aws_ebs_volume_iopsexceeded_check_maximum{${AWS_FILTER}}`,
+    `aws_ebs_volume_iopsexceeded_check_maximum{tag_Name!~".*staging.*"} >= 0`,
     {
       panelCustomization: (x) => x.min(0).max(1),
       gridPos: { w: 12, h: 8 },
