@@ -40,6 +40,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
 	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
 	mux.HandleFunc("POST /debug/new-throttle", s.handleDebugNewThrottlePost)
+	mux.HandleFunc("/debug/ipshards", s.handleDebugIPShards)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -85,6 +86,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/users">users</a> (<a href="/debug/users?format=json">json</a>)</li>
     <li><a href="/debug/exelets">exelets</a> (<a href="/debug/exelets?format=json">json</a>)</li>
     <li><a href="/debug/new-throttle">new-throttle</a> (<a href="/debug/new-throttle?format=json">json</a>)</li>
+    <li><a href="/debug/ipshards">ipshards</a> (<a href="/debug/ipshards?format=json">json</a>)</li>
 </ul>
 <p>Git version: %s %s</p>
 </body></html>
@@ -1236,4 +1238,123 @@ func (s *Server) handleDebugNewThrottlePost(w http.ResponseWriter, r *http.Reque
 
 	// Redirect back to the throttle page
 	http.Redirect(w, r, "/debug/new-throttle", http.StatusSeeOther)
+}
+
+// handleDebugIPShards displays the IP shard assignments.
+func (s *Server) handleDebugIPShards(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	type ipShardInfo struct {
+		Shard     int    `json:"shard"`
+		PublicIP  string `json:"public_ip"`
+		PrivateIP string `json:"private_ip,omitempty"`
+		Missing   bool   `json:"missing,omitempty"`
+	}
+
+	// Get all shards from DB
+	dbShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListIPShards)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list IP shards: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Build a reverse map: shard -> private IP from the server's PublicIPs
+	shardToPrivateIP := make(map[int]string)
+	for privateIP, info := range s.PublicIPs {
+		shardToPrivateIP[info.Shard] = privateIP.String()
+	}
+
+	// Build the shard info list
+	var shards []ipShardInfo
+	for _, dbShard := range dbShards {
+		info := ipShardInfo{
+			Shard:    int(dbShard.Shard),
+			PublicIP: dbShard.PublicIp,
+		}
+		if privateIP, ok := shardToPrivateIP[int(dbShard.Shard)]; ok {
+			info.PrivateIP = privateIP
+		} else {
+			info.Missing = true
+		}
+		shards = append(shards, info)
+	}
+
+	// Find unmapped IPs (on this machine but not in DB)
+	var unmappedIPs []string
+	for privateIP, info := range s.PublicIPs {
+		// Check if this shard exists in DB
+		found := false
+		for _, dbShard := range dbShards {
+			if int(dbShard.Shard) == info.Shard {
+				found = true
+				break
+			}
+		}
+		if !found {
+			unmappedIPs = append(unmappedIPs, fmt.Sprintf("%s (public: %s, s%03d)", privateIP, info.IP, info.Shard))
+		}
+	}
+	sort.Strings(unmappedIPs)
+
+	// Check if JSON format is requested
+	if r.URL.Query().Get("format") == "json" {
+		type jsonResponse struct {
+			Shards     []ipShardInfo `json:"shards"`
+			UnmappedIP []string      `json:"unmapped_ips,omitempty"`
+		}
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(jsonResponse{Shards: shards, UnmappedIP: unmappedIPs}); err != nil {
+			s.slog().ErrorContext(ctx, "Failed to encode IP shards", "error", err)
+		}
+		return
+	}
+
+	// HTML output
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>IP Shards</title>
+<style>
+table { border-collapse: collapse; margin: 10px 0; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+th { background: #f5f5f5; }
+.missing { background: #f8d7da; color: #721c24; }
+.unmapped { background: #fff3cd; padding: 10px; border-radius: 5px; margin: 10px 0; }
+</style>
+</head><body>
+<h1>IP Shards</h1>
+<p><a href="/debug">/debug</a> | <a href="/debug/ipshards?format=json">json</a></p>
+`)
+
+	if len(shards) == 0 {
+		fmt.Fprintf(w, "<p>No IP shards in database.</p>\n")
+	} else {
+		fmt.Fprintf(w, "<table>\n")
+		fmt.Fprintf(w, "<tr><th>Shard</th><th>Public IP</th><th>Private IP</th></tr>\n")
+		for _, shard := range shards {
+			rowClass := ""
+			privateIP := shard.PrivateIP
+			if shard.Missing {
+				rowClass = " class='missing'"
+				privateIP = "(not on this machine)"
+			}
+			fmt.Fprintf(w, "<tr%s><td>s%03d</td><td>%s</td><td>%s</td></tr>\n",
+				rowClass,
+				shard.Shard,
+				html.EscapeString(shard.PublicIP),
+				html.EscapeString(privateIP),
+			)
+		}
+		fmt.Fprintf(w, "</table>\n")
+	}
+
+	if len(unmappedIPs) > 0 {
+		fmt.Fprintf(w, "<div class='unmapped'>\n")
+		fmt.Fprintf(w, "<strong>IPs on this machine not in DB:</strong> %s\n", html.EscapeString(strings.Join(unmappedIPs, ", ")))
+		fmt.Fprintf(w, "</div>\n")
+	}
+
+	fmt.Fprintf(w, `</body></html>
+`)
 }

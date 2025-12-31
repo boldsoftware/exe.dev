@@ -786,6 +786,31 @@ func (s *Server) logIPResolver() {
 	s.slog().Info("public IP assignments loaded", "assignments", assignments)
 }
 
+// validateIPShards checks that all IP shards in the DB have corresponding private IPs
+// on this machine. Logs an error for each shard that is missing.
+func (s *Server) validateIPShards(ctx context.Context) {
+	dbShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListIPShards)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to list IP shards for validation", "error", err)
+		return
+	}
+
+	// Build a set of shards we have on this machine
+	localShards := make(map[int]bool)
+	for _, info := range s.PublicIPs {
+		localShards[info.Shard] = true
+	}
+
+	// Check each DB shard
+	for _, dbShard := range dbShards {
+		if !localShards[int(dbShard.Shard)] {
+			s.slog().ErrorContext(ctx, "ip_shard in DB missing from this machine",
+				"shard", dbShard.Shard,
+				"public_ip", dbShard.PublicIp)
+		}
+	}
+}
+
 // withRx executes a function with a read-only database transaction and exedb queries
 func (s *Server) withRx(ctx context.Context, fn func(context.Context, *exedb.Queries) error) error {
 	return s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
@@ -2018,6 +2043,9 @@ func (s *Server) Start() error {
 		if err := exens.PopulateIPShards(ctx, s.db, s.log, s.PublicIPs); err != nil {
 			s.slog().ErrorContext(ctx, "ip_shards population failed", "error", err)
 		}
+
+		// Validate that all DB shards have corresponding private IPs on this machine
+		s.validateIPShards(ctx)
 	}
 
 	s.slackFeed.ServerStarted(ctx, gitCommit())
