@@ -230,9 +230,9 @@ func TestParseShardFromName(t *testing.T) {
 		{"s001.exe.xyz", 1, false},
 		{"s025.exe.xyz", 25, false},
 		{"s010.exe.dev", 10, false},
-		{"s000.exe.xyz", 0, true},  // Invalid shard
-		{"s026.exe.xyz", 0, true},  // Out of range
-		{"s1.exe.xyz", 0, true},    // Wrong format
+		{"s000.exe.xyz", 0, true}, // Invalid shard
+		{"s026.exe.xyz", 0, true}, // Out of range
+		{"s1.exe.xyz", 0, true},   // Wrong format
 		{"testbox.exe.xyz", 0, true},
 		{"", 0, true},
 	}
