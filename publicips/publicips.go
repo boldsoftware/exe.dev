@@ -68,17 +68,11 @@ type ipMapping struct {
 	private netip.Addr
 }
 
-// EC2IPs returns a mapping of private IPv4 addresses to their associated public IPv4
-// metadata on the current EC2 instance. boxDomain specifies the base domain for
-// shard records (e.g. exe.dev or exe-staging.dev). If the process is not running
-// on EC2, it returns an empty map and a nil error.
-func EC2IPs(ctx context.Context, boxDomain string) (map[netip.Addr]PublicIP, error) {
+// ec2IPMappings queries EC2 metadata to get (public, private) IP pairs.
+// This does NOT do any DNS lookups. Returns nil if not running on EC2.
+func ec2IPMappings(ctx context.Context) ([]ipMapping, error) {
 	if ctx == nil {
 		return nil, errors.New("publicips: context must not be nil")
-	}
-	boxDomain = strings.TrimSpace(boxDomain)
-	if boxDomain == "" {
-		return nil, errors.New("publicips: box domain must not be empty")
 	}
 
 	client := newMetadataClient()
@@ -91,7 +85,7 @@ func EC2IPs(ctx context.Context, boxDomain string) (map[netip.Addr]PublicIP, err
 	case errors.Is(err, errIMDSv1Only):
 		useToken = false
 	case errors.Is(err, errMetadataUnavailable):
-		return map[netip.Addr]PublicIP{}, nil
+		return nil, nil
 	default:
 		return nil, fmt.Errorf("publicips: fetch metadata token: %w", err)
 	}
@@ -99,7 +93,7 @@ func EC2IPs(ctx context.Context, boxDomain string) (map[netip.Addr]PublicIP, err
 	macs, err := client.macAddresses(ctx, token, useToken)
 	if err != nil {
 		if errors.Is(err, errMetadataUnavailable) {
-			return map[netip.Addr]PublicIP{}, nil
+			return nil, nil
 		}
 		return nil, fmt.Errorf("publicips: list interfaces: %w", err)
 	}
@@ -138,6 +132,44 @@ func EC2IPs(ctx context.Context, boxDomain string) (map[netip.Addr]PublicIP, err
 				private: privateAddr,
 			})
 		}
+	}
+	return mappings, nil
+}
+
+// EC2PrivateIPs returns the private IPv4 addresses from EC2 metadata.
+// This does NOT do any DNS lookups - it only queries EC2 metadata.
+// Returns nil if not running on EC2.
+func EC2PrivateIPs(ctx context.Context) ([]netip.Addr, error) {
+	mappings, err := ec2IPMappings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(mappings) == 0 {
+		return nil, nil
+	}
+	result := make([]netip.Addr, 0, len(mappings))
+	for _, m := range mappings {
+		result = append(result, m.private)
+	}
+	return result, nil
+}
+
+// EC2IPs returns a mapping of private IPv4 addresses to their associated public IPv4
+// metadata on the current EC2 instance. boxDomain specifies the base domain for
+// shard records (e.g. exe.dev or exe-staging.dev). If the process is not running
+// on EC2, it returns an empty map and a nil error.
+func EC2IPs(ctx context.Context, boxDomain string) (map[netip.Addr]PublicIP, error) {
+	if ctx == nil {
+		return nil, errors.New("publicips: context must not be nil")
+	}
+	boxDomain = strings.TrimSpace(boxDomain)
+	if boxDomain == "" {
+		return nil, errors.New("publicips: box domain must not be empty")
+	}
+
+	mappings, err := ec2IPMappings(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	result := make(map[netip.Addr]PublicIP, len(mappings))
