@@ -165,4 +165,8 @@ func TestEmbeddedDNS(t *testing.T) {
 			t.Errorf("expected NXDOMAIN, got %s", dns.RcodeToString[resp.Rcode])
 		}
 	})
+
+	pty = sshToExeDev(t, keyFile)
+	pty.deleteBox(boxName)
+	pty.disconnect()
 }
