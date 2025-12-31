@@ -8,14 +8,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	expect "github.com/Netflix/go-expect"
+	"github.com/creack/pty"
 	ansiterm "github.com/veops/go-ansiterm"
 )
 
@@ -79,19 +82,19 @@ func MakePTY(cinemaName, name string, verbose bool) (*PTY, bool, error) {
 }
 
 // Close closes the PTY.
-func (pty *PTY) Close() error {
-	return pty.console.Close()
+func (p *PTY) Close() error {
+	return p.console.Close()
 }
 
 // TTY returns the terminal associated with the PTY.
-func (pty *PTY) TTY() *os.File {
-	return pty.console.Tty()
+func (p *PTY) TTY() *os.File {
+	return p.console.Tty()
 }
 
 // Want looks for a string in the PTY output,
 // and returns an error if not found.
-func (pty *PTY) Want(s string) error {
-	out, err := pty.console.ExpectString(s)
+func (p *PTY) Want(s string) error {
+	out, err := p.console.ExpectString(s)
 	if err != nil {
 		return fmt.Errorf("want %q in output (%v), actual output:\n%s", s, err, out)
 	}
@@ -99,13 +102,13 @@ func (pty *PTY) Want(s string) error {
 }
 
 // Wantf is like Want, but with formatting.
-func (pty *PTY) Wantf(msg string, args ...any) error {
-	return pty.Want(fmt.Sprintf(msg, args...))
+func (p *PTY) Wantf(msg string, args ...any) error {
+	return p.Want(fmt.Sprintf(msg, args...))
 }
 
 // WantRE is like Want, but with a regular expression.
-func (pty *PTY) WantRE(re string) error {
-	out, err := pty.console.Expect(
+func (p *PTY) WantRE(re string) error {
+	out, err := p.console.Expect(
 		expect.RegexpPattern(re),
 	)
 	if err != nil {
@@ -115,55 +118,55 @@ func (pty *PTY) WantRE(re string) error {
 }
 
 // SetPrompt sets a prompt for WantPrompt.
-func (pty *PTY) SetPrompt(prompt string) {
-	if pty.promptRE != "" {
-		panic(fmt.Sprintf("saw both prompt %q and promptRE %q", prompt, pty.promptRE))
+func (p *PTY) SetPrompt(prompt string) {
+	if p.promptRE != "" {
+		panic(fmt.Sprintf("saw both prompt %q and promptRE %q", prompt, p.promptRE))
 	}
-	pty.prompt = prompt
+	p.prompt = prompt
 }
 
 // SetPromptRE sets a prompt regular expression for WantPrompt.
-func (pty *PTY) SetPromptRE(promptRE string) {
-	if pty.prompt != "" {
-		panic(fmt.Sprintf("saw both prompt %q and promptRE %q", pty.prompt, promptRE))
+func (p *PTY) SetPromptRE(promptRE string) {
+	if p.prompt != "" {
+		panic(fmt.Sprintf("saw both prompt %q and promptRE %q", p.prompt, promptRE))
 	}
-	pty.promptRE = promptRE
+	p.promptRE = promptRE
 }
 
 // WantPrompt expects to see a prompt in the PTY output.
 // Either SetPrompt or SetPromptRE must be called first.
-func (pty *PTY) WantPrompt() error {
-	if pty.promptRE != "" {
-		return pty.WantRE(pty.promptRE)
+func (p *PTY) WantPrompt() error {
+	if p.promptRE != "" {
+		return p.WantRE(p.promptRE)
 	}
-	if pty.prompt != "" {
-		return pty.Want(pty.prompt)
+	if p.prompt != "" {
+		return p.Want(p.prompt)
 	}
 	return errors.New("WantPrompt called before SetPrompt or SetPromptRE")
 }
 
 // Send writes a string to the PTY.
-func (pty *PTY) Send(s string) error {
-	_, err := pty.console.Send(s)
+func (p *PTY) Send(s string) error {
+	_, err := p.console.Send(s)
 	return err
 }
 
 // SendLine writes a string followed by a newline to the PTY.
-func (pty *PTY) SendLine(s string) error {
-	return pty.Send(s + "\n")
+func (p *PTY) SendLine(s string) error {
+	return p.Send(s + "\n")
 }
 
 // Disconnect disconnects the PTY.
-func (pty *PTY) Disconnect() error {
-	if err := pty.SendLine("exit"); err != nil {
+func (p *PTY) Disconnect() error {
+	if err := p.SendLine("exit"); err != nil {
 		return err
 	}
-	return pty.WantEOF()
+	return p.WantEOF()
 }
 
 // WantEOF expects EOF from the PTY.
-func (pty *PTY) WantEOF() error {
-	if out, err := pty.console.ExpectEOF(); err != nil {
+func (p *PTY) WantEOF() error {
+	if out, err := p.console.ExpectEOF(); err != nil {
 		return fmt.Errorf("want EOF in output (%v), output:\n%s", err, out)
 	}
 	return nil
@@ -171,8 +174,32 @@ func (pty *PTY) WantEOF() error {
 
 // Reject adds a reject string to the PTY.
 // If the string is seen, other PTY operations will return an error.
-func (pty *PTY) Reject(s string) {
-	pty.console.RejectString(s)
+func (p *PTY) Reject(s string) {
+	p.console.RejectString(s)
+}
+
+// AttachAndStart attaches the PTY to the given command and starts it.
+func (p *PTY) AttachAndStart(cmd *exec.Cmd) error {
+	tty := p.TTY()
+	cmd.Stdin = tty
+	cmd.Stdout = tty
+	cmd.Stderr = tty
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setctty: true,
+		Setsid:  true,
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start %v: %v", cmd, err)
+	}
+
+	pty.Setsize(tty, &pty.Winsize{Rows: 120, Cols: 240})
+
+	// The command now owns the PTY; close our reference.
+	// Without this, Linux hangs on disconnect waiting for EOF.
+	tty.Close()
+
+	return nil
 }
 
 var (
@@ -215,7 +242,7 @@ func cinemaNameToBaseName(cinemaName string) string {
 	return strings.ReplaceAll(cinemaName, "/", "_")
 }
 
-// WriteASCIInemaFile writes out the asciinema file in text form for a pty.
+// WriteASCIInemaFile writes out the asciinema file in text form for a PTY.
 // The file is written to dir.
 func WriteASCIInemaFile(dir, cinemaName string) error {
 	asciinemaMu.Lock()
@@ -305,7 +332,7 @@ NextLine:
 		lines = lines[:len(lines)-1]
 	}
 
-	// Some ptys like to use a bunch of trailing spaces
+	// Some PTYs like to use a bunch of trailing spaces
 	// followed by a series of \b,
 	// in order to "clear" the line.
 	// This varies by OS, because of course it does.
