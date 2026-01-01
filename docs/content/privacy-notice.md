@@ -1,4 +1,10 @@
-**EXE.DEV PRIVACY NOTICE**
+---
+title: Privacy Notice
+description: How exe.dev handles your data
+subheading: "6. Other"
+suborder: 10
+published: true
+---
 
 **Last Updated**: 2026-01-01
 
@@ -47,7 +53,7 @@ We also collect personal data automatically when you interact with our
 websites and other services and may also collect personal data from
 other sources and third parties.
 
-**<u>Personal Data Provided by Individuals</u>**
+**Personal Data Provided by Individuals**
 
 We collect the following categories of personal data individuals provide
 us:
@@ -76,9 +82,9 @@ us:
   you to our third-party payment providers. The payment provider’s use
   of your personal data is governed by their privacy notice. To view
   Stripe’s privacy policy, please click
-  [here](https://stripe.com/privacy?).
+  [here](https://stripe.com/privacy).
 
-- **Feedback and** **Support Information**, including the contents of
+- **Feedback and Support Information**, including the contents of
   custom messages sent through the forms, chat platforms, including our
   online live chat or automated chat functions, email addresses, or
   other contact information we make available to customers, as well as
@@ -89,7 +95,7 @@ us:
   online chat, email, phone, text message or social media, and to
   improve our products and services.
 
-**<u>Personal Data Automatically Collected</u>**
+**Personal Data Automatically Collected**
 
 We, and our third-party partners, automatically collect information you
 provide to us and information about how you access and use our products
@@ -155,10 +161,10 @@ diagnose or fix technology problems; and (g) otherwise to plan for and
 enhance our products and services.
 
 For information about the choices you may have in relation to our use of
-automatic data collection technologies, please refer to the <u>Your
-Privacy Choices</u> section below.
+automatic data collection technologies, please refer to the Your
+Privacy Choices section below.
 
-**<u>Personal Data from Other Sources and Third Parties</u>**
+**Personal Data from Other Sources and Third Parties**
 
 We may receive the same categories of personal data as described above
 from the following sources and other parties:
@@ -192,7 +198,7 @@ from the following sources and other parties:
   customers. For example, a customer may provide us with your contact
   information as a part of a referral.
 
-- **Advertisers,** **Influencers, and Publishers**: We engage in
+- **Advertisers, Influencers, and Publishers**: We engage in
   advertising both on our services and through third-party services.
   Advertisers, influencers, and publishers may share personal data with
   us in connection with our advertising efforts. For example, we may
@@ -222,7 +228,7 @@ from the following sources and other parties:
   and your interests and preferences based on the other personal data we
   collect and the interactions we have with you.
 
-**<u>Additional Uses of Personal Data</u>**
+**Additional Uses of Personal Data**
 
 In addition to the primary purposes for using personal data described
 above, we may also use personal data we collect to:
@@ -275,7 +281,7 @@ above, we may also use personal data we collect to:
   property, products, services, technology, assets, and business;
 
 - Defend, protect, or enforce our rights or applicable contracts and
-  agreements (including our <u>Terms of Service</u>), as well as to
+  agreements (including our [Terms of Service](/docs/terms-of-service)), as well as to
   resolve disputes, to carry out our obligations and enforce our rights,
   and to protect our business interests and the interests and rights of
   third parties;
@@ -371,7 +377,7 @@ ways:
 
 **Your Privacy Choices**
 
-**<u>Communication Preferences</u>**
+**Communication Preferences**
 
 - **Email Communication Preferences**: You can stop receiving
   promotional email communications from us by clicking on the
@@ -387,15 +393,15 @@ ways:
   notifications settings and are not responsible if they do not function
   as intended.
 
-**<u>Withdrawing Your Consent</u>**
+**Withdrawing Your Consent**
 
 Where we have your consent for the processing of your personal data
 (e.g., when you opt in to receive certain types of marketing
 communications from us), you may withdraw your consent by following the
 instructions provided when your consent was requested or by contacting
-us as set forth in the <u>Contact Us</u> section below.
+us as set forth in the Contact Us section below.
 
-**<u>Automatic Data Collection Preferences</u>**
+**Automatic Data Collection Preferences**
 
 You may be able to utilize third-party tools and features to restrict
 our use of automatic data collection technologies. For example, (i) most
@@ -414,7 +420,7 @@ need to update your preferences on multiple devices or browsers. We do
 not have any control over these third-party tools and features and are
 not responsible if they do not function as intended.
 
-**<u>Targeted Advertising Preferences</u>**
+**Targeted Advertising Preferences**
 
 We engage third parties to help us facilitate targeted advertising
 designed to show you personalized ads based on predictions of your
@@ -433,8 +439,8 @@ personal data we and our third-party partners collect to the same
 person, or otherwise target advertising to an individual on a
 third-party website or platform.
 
-In addition to taking the steps set forth in the <u>Automatic Data
-Collection Preferences</u> section above, you may be able to further
+In addition to taking the steps set forth in the Automatic Data
+Collection Preferences section above, you may be able to further
 exercise control over the advertisements that you see by leveraging one
 or more targeted advertising opt-out programs. For example:
 
@@ -483,14 +489,14 @@ your use of our services, including for analytics and fraud prevention
 as well as any other purpose permitted under the applicable advertising
 industry program.
 
-**<u>Modifying or Deleting Your Personal Data</u>**
+**Modifying or Deleting Your Personal Data**
 
 If you have any questions about reviewing, modifying, or deleting your
-personal data, you can contact us as set forth in the <u>Contact Us</u>
+personal data, you can contact us as set forth in the Contact Us
 section below. We may not be able to modify or delete your personal data
 in all circumstances.
 
-**<u>Partner-Specific Preferences</u>**
+**Partner-Specific Preferences**
 
 Certain of our third-party providers and partners offer additional ways
 that you may exercise control over your personal data, or automatically
@@ -542,7 +548,7 @@ personal data practices of these third-party websites, plug-ins,
 applications, or other services. To learn about these third parties’
 personal data practices, please visit their respective privacy notices.
 
-**Updates** **to This Privacy Notice**
+**Updates to This Privacy Notice**
 
 We may update this Privacy Notice from time to time. When we make
 changes to this Privacy Notice, we will change the date at the beginning
