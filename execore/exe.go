@@ -698,7 +698,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		docs:      docsHandler,
 		templates: tmpl,
 		log:       slog,
-		slackFeed: logging.NewSlackFeed(cfg.Env.PostSlackFeed),
+		slackFeed: logging.NewSlackFeed(slog, cfg.Env.PostSlackFeed),
 	}
 
 	// Set up HTTP metrics host functions for in-flight label tracking
