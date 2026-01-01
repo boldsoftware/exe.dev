@@ -24,7 +24,7 @@ func TestBoxSharing(t *testing.T) {
 	noGolden(t)
 
 	ownerPTY, ownerCookies, ownerKeyFile, ownerEmail := registerForExeDevWithEmail(t, "owner@test-box-sharing.example")
-	box := newBox(t, ownerPTY, BoxOpts{Command: "/bin/bash"})
+	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
 	ownerPTY.disconnect()
 	waitForSSH(t, box, ownerKeyFile)
 
@@ -58,11 +58,11 @@ func TestBoxSharing(t *testing.T) {
 	httpPort := Env.servers.Exed.HTTPPort
 
 	// Configure the proxy to use port 8080 and ensure it is private
-	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
+	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
 	if err != nil {
 		t.Fatalf("failed to set proxy port: %v\n%s", err, out)
 	}
-	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "set-private", box)
+	out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "set-private", box)
 	if err != nil {
 		t.Fatalf("failed to set proxy visibility: %v\n%s", err, out)
 	}
@@ -88,7 +88,7 @@ func TestBoxSharing(t *testing.T) {
 			httpCode: http.StatusUnauthorized, // Should get 401 to not leak box existence
 		})
 
-		out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "add", box, guestEmail, "--message=Welcome")
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "add", box, guestEmail, "--message=Welcome")
 		if err != nil {
 			t.Fatalf("failed to share box: %v\n%s", err, out)
 		}
@@ -149,7 +149,7 @@ func TestBoxSharing(t *testing.T) {
 		}
 
 		// Owner: Check share status via SSH
-		shareOut, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "show", box, "--json")
+		shareOut, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "show", box, "--json")
 		if err != nil {
 			t.Fatalf("failed to run share command: %v\n%s", err, shareOut)
 		}
@@ -180,7 +180,7 @@ func TestBoxSharing(t *testing.T) {
 		}
 
 		// Owner: Revoke access
-		out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "remove", box, guestEmail)
+		out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "remove", box, guestEmail)
 		if err != nil {
 			t.Fatalf("failed to remove share: %v\n%s", err, out)
 		}
@@ -200,7 +200,7 @@ func TestBoxSharing(t *testing.T) {
 
 	t.Run("share_link", func(t *testing.T) {
 		noGolden(t)
-		linkOut, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "add-share-link", box, "--json")
+		linkOut, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "add-share-link", box, "--json")
 		if err != nil {
 			t.Fatalf("failed to run share add-share-link command: %v\n%s", err, linkOut)
 		}
@@ -236,7 +236,7 @@ func TestBoxSharing(t *testing.T) {
 			httpCode: http.StatusOK,
 		})
 
-		out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "remove-share-link", box, linkInfo.Token)
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "remove-share-link", box, linkInfo.Token)
 		if err != nil {
 			t.Fatalf("failed to remove share link: %v\n%s", err, out)
 		}
@@ -463,7 +463,7 @@ func TestShareCommands(t *testing.T) {
 
 	// User 1: Create a box
 	pty1, _, keyFile1, email1 := registerForExeDev(t)
-	box := newBox(t, pty1, BoxOpts{Command: "/bin/bash"})
+	box := newBox(t, pty1, testinfra.BoxOpts{Command: "/bin/bash"})
 	pty1.wantPrompt()
 
 	// Show initial share status (should be empty)
@@ -550,7 +550,7 @@ func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
 
 	// Owner creates a box
 	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, "owner@test-public-box.example")
-	box := newBox(t, ownerPTY, BoxOpts{Command: "/bin/bash"})
+	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
 	ownerPTY.disconnect()
 	waitForSSH(t, box, ownerKeyFile)
 
@@ -586,11 +586,11 @@ func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
 	httpPort := Env.servers.Exed.HTTPPort
 
 	// Configure proxy port and set the box to PUBLIC
-	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
+	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
 	if err != nil {
 		t.Fatalf("failed to set proxy port: %v\n%s", err, out)
 	}
-	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "set-public", box)
+	out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "set-public", box)
 	if err != nil {
 		t.Fatalf("failed to set public visibility: %v\n%s", err, out)
 	}
@@ -676,7 +676,7 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 
 	// Owner creates a box
 	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, fmt.Sprintf("owner-%d@test-pending-share-ssh.example", testID))
-	box := newBox(t, ownerPTY, BoxOpts{Command: "/bin/bash"})
+	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
 	ownerPTY.disconnect()
 	waitForSSH(t, box, ownerKeyFile)
 
@@ -712,11 +712,11 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 	httpPort := Env.servers.Exed.HTTPPort
 
 	// Configure proxy port and make it private
-	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
+	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
 	if err != nil {
 		t.Fatalf("failed to set proxy port: %v\n%s", err, out)
 	}
-	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "set-private", box)
+	out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "set-private", box)
 	if err != nil {
 		t.Fatalf("failed to set private visibility: %v\n%s", err, out)
 	}
@@ -724,7 +724,7 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 	// KEY STEP: Share with an email that doesn't exist yet
 	// This should create a PENDING share
 	guestEmail := fmt.Sprintf("guest-%d@test-pending-share-ssh.example", testID)
-	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "add", box, guestEmail)
+	out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "add", box, guestEmail)
 	if err != nil {
 		t.Fatalf("failed to share box: %v\n%s", err, out)
 	}
@@ -742,7 +742,7 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 	}
 
 	// Verify the share is pending (check via share show --json)
-	shareOut, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "show", box, "--json")
+	shareOut, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "show", box, "--json")
 	if err != nil {
 		t.Fatalf("failed to run share show: %v\n%s", err, shareOut)
 	}
@@ -768,7 +768,7 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 	guestPTY.disconnect()
 
 	// Verify the share is now active
-	shareOut, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "show", box, "--json")
+	shareOut, err = Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "show", box, "--json")
 	if err != nil {
 		t.Fatalf("failed to run share show after registration: %v\n%s", err, shareOut)
 	}
@@ -816,7 +816,7 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 
 	// Owner creates a box
 	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, fmt.Sprintf("owner-%d@test-pending-share-web.example", testID))
-	box := newBox(t, ownerPTY, BoxOpts{Command: "/bin/bash"})
+	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
 	ownerPTY.disconnect()
 	waitForSSH(t, box, ownerKeyFile)
 
@@ -852,18 +852,18 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 	httpPort := Env.servers.Exed.HTTPPort
 
 	// Configure proxy port and make it private
-	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
+	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
 	if err != nil {
 		t.Fatalf("failed to set proxy port: %v\n%s", err, out)
 	}
-	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "set-private", box)
+	out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "set-private", box)
 	if err != nil {
 		t.Fatalf("failed to set private visibility: %v\n%s", err, out)
 	}
 
 	// Share with an email that doesn't exist yet - creates PENDING share
 	guestEmail := fmt.Sprintf("guest-%d@test-pending-share-web.example", testID)
-	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "add", box, guestEmail)
+	out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "add", box, guestEmail)
 	if err != nil {
 		t.Fatalf("failed to share box: %v\n%s", err, out)
 	}
@@ -875,7 +875,7 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 	}
 
 	// Verify the share is pending
-	shareOut, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "show", box, "--json")
+	shareOut, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "show", box, "--json")
 	if err != nil {
 		t.Fatalf("failed to run share show: %v\n%s", err, shareOut)
 	}
@@ -898,7 +898,7 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 	guestCookies := webLoginWithEmail(t, guestEmail)
 
 	// Verify the share status after web login
-	shareOut, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "show", box, "--json")
+	shareOut, err = Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "show", box, "--json")
 	if err != nil {
 		t.Fatalf("failed to run share show after web login: %v\n%s", err, shareOut)
 	}
@@ -935,12 +935,12 @@ func TestProxyCookieIsolation(t *testing.T) {
 
 	// Create two users, each with their own box
 	user1PTY, user1Cookies, user1KeyFile, _ := registerForExeDevWithEmail(t, "user1@test-cookie-isolation.example")
-	box1 := newBox(t, user1PTY, BoxOpts{Command: "/bin/bash"})
+	box1 := newBox(t, user1PTY, testinfra.BoxOpts{Command: "/bin/bash"})
 	user1PTY.disconnect()
 	waitForSSH(t, box1, user1KeyFile)
 
 	user2PTY, _, user2KeyFile, _ := registerForExeDevWithEmail(t, "user2@test-cookie-isolation.example")
-	box2 := newBox(t, user2PTY, BoxOpts{Command: "/bin/bash"})
+	box2 := newBox(t, user2PTY, testinfra.BoxOpts{Command: "/bin/bash"})
 	user2PTY.disconnect()
 	waitForSSH(t, box2, user2KeyFile)
 
@@ -980,11 +980,11 @@ func TestProxyCookieIsolation(t *testing.T) {
 		}
 
 		// Configure proxy port and make private
-		out, err := runExeDevSSHCommand(t, setup.keyFile, "share", "port", setup.box, fmt.Sprintf("%d", boxInternalPort))
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), setup.keyFile, "share", "port", setup.box, fmt.Sprintf("%d", boxInternalPort))
 		if err != nil {
 			t.Fatalf("failed to set proxy port: %v\n%s", err, out)
 		}
-		out, err = runExeDevSSHCommand(t, setup.keyFile, "share", "set-private", setup.box)
+		out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), setup.keyFile, "share", "set-private", setup.box)
 		if err != nil {
 			t.Fatalf("failed to set private: %v\n%s", err, out)
 		}
@@ -1135,7 +1135,7 @@ func TestLoginWithExeFlow(t *testing.T) {
 
 	// === Setup: Owner creates a box with an HTTP server ===
 	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, "owner@test-login-with-exe.example")
-	box := newBox(t, ownerPTY, BoxOpts{Command: "/bin/bash"})
+	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
 	ownerPTY.disconnect()
 	waitForSSH(t, box, ownerKeyFile)
 
@@ -1168,11 +1168,11 @@ func TestLoginWithExeFlow(t *testing.T) {
 	}
 
 	// Configure proxy: set port and make it private (requires auth)
-	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
+	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
 	if err != nil {
 		t.Fatalf("failed to set proxy port: %v\n%s", err, out)
 	}
-	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "set-private", box)
+	out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "set-private", box)
 	if err != nil {
 		t.Fatalf("failed to set private: %v\n%s", err, out)
 	}
@@ -1203,7 +1203,7 @@ func TestLoginWithExeFlow(t *testing.T) {
 	cookies := flow.verifyAndClickConfirmationPage()
 
 	// Step 7: Share with the visitor so they can access
-	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "add", box, visitorEmail)
+	out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "add", box, visitorEmail)
 	if err != nil {
 		t.Fatalf("failed to share box: %v\n%s", err, out)
 	}

@@ -24,7 +24,7 @@ func TestNewKeyRegistration(t *testing.T) {
 
 	keyFile, publicKey := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
-	pty.want(banner)
+	pty.want(testinfra.Banner)
 	pty.want("Please enter your email")
 	email := t.Name() + "@example.com"
 	pty.sendLine(email)
@@ -69,7 +69,7 @@ func TestRegistrationHappensOnce(t *testing.T) {
 
 	// second login: no re-registration, but should still show welcome since user hasn't created boxes
 	pty = sshToExeDev(t, keyFile)
-	pty.reject(banner)
+	pty.reject(testinfra.Banner)
 	pty.reject("Please enter your email")
 	// No registration flow, no welcome message
 	// but should still hint about how to create boxes,
@@ -91,7 +91,7 @@ func TestRegisterMultipleKeys(t *testing.T) {
 	for i := range 3 {
 		keyFile, publicKey := genSSHKey(t)
 		pty := sshToExeDev(t, keyFile)
-		pty.want(banner)
+		pty.want(testinfra.Banner)
 		pty.want("Please enter your email")
 		email := t.Name() + "@example.com"
 		pty.sendLine(email)
@@ -156,7 +156,7 @@ func TestRegisterWebThenKey(t *testing.T) {
 
 	keyFile, publicKey := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
-	pty.want(banner)
+	pty.want(testinfra.Banner)
 	pty.want("Please enter your email")
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
@@ -188,7 +188,7 @@ func TestRegisterGitHubKey(t *testing.T) {
 	}
 
 	pty := sshToExeDev(t, keyFile)
-	pty.want(banner)
+	pty.want(testinfra.Banner)
 	pty.want("Email:")
 	pty.want("fake-for-tests@example.com")
 	pty.sendLine("")
@@ -213,7 +213,7 @@ func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
 	}
 
 	pty := sshToExeDev(t, keyFile)
-	pty.want(banner)
+	pty.want(testinfra.Banner)
 	pty.want("Email:")
 	pty.want(ghuser.FakeEmail1)
 	// change email from "fake-for-tests@example.com" to "fake-for-tests@example.combinatorics"
@@ -248,7 +248,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 
 	keyFile, publicKey := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
-	pty.want(banner)
+	pty.want(testinfra.Banner)
 	pty.want("Please enter your email")
 
 	email := t.Name() + "@example.com"
@@ -299,7 +299,7 @@ func TestRegistrationWithLatency(t *testing.T) {
 
 	// Use "real_banner_please" as the username to trigger the real banner.
 	pty := makePty(t, "ssh localhost with latency")
-	sshArgs := sshOpts()
+	sshArgs := testinfra.SSHOpts()
 	sshArgs = append(sshArgs,
 		"-p", fmt.Sprint(proxy.Port()),
 		"-o", "IdentityFile="+keyFile,
@@ -308,7 +308,7 @@ func TestRegistrationWithLatency(t *testing.T) {
 	sshCmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
 	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=")
 	pty.attachAndStart(sshCmd)
-	pty.pty.SetPrompt(exeDevPrompt)
+	pty.pty.SetPrompt(testinfra.ExeDevPrompt)
 
 	pty.want("███") // part of the banner
 	pty.want("Please enter your email")

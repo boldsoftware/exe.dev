@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strconv"
 	"testing"
+
+	"exe.dev/e1e/testinfra"
 )
 
 // TestSupportAccess tests the support root access mechanism end-to-end.
@@ -27,7 +29,7 @@ func TestSupportAccess(t *testing.T) {
 	supportPTY, supportCookies, supportKeyFile, supportEmail := registerForExeDevWithEmail(t, "support@test-support-access.example")
 
 	// Owner creates a box
-	box := newBox(t, ownerPTY, BoxOpts{Command: "/bin/bash"})
+	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
 	ownerPTY.wantPrompt()
 	ownerPTY.disconnect()
 
@@ -66,11 +68,11 @@ func TestSupportAccess(t *testing.T) {
 
 	// Configure proxy port and set private
 	httpPort := Env.servers.Exed.HTTPPort
-	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
+	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
 	if err != nil {
 		t.Fatalf("failed to set proxy port: %v\n%s", err, out)
 	}
-	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "set-private", box)
+	out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "set-private", box)
 	if err != nil {
 		t.Fatalf("failed to set proxy visibility: %v\n%s", err, out)
 	}

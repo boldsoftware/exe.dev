@@ -2,6 +2,8 @@ package e1e
 
 import (
 	"testing"
+
+	"exe.dev/e1e/testinfra"
 )
 
 func TestHelpCommandShowsNewOptions(t *testing.T) {
@@ -18,7 +20,7 @@ func TestHelpCommandShowsNewOptions(t *testing.T) {
 	pty.disconnect()
 
 	pty = sshToExeDev(t, keyFile)
-	pty.reject(banner)
+	pty.reject(testinfra.Banner)
 	pty.reject("enter your email")
 	pty.reject("see a list of commands")
 	pty.want("create your first VM")

@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"exe.dev/e1e/testinfra"
 )
 
 func TestHTTPProxy(t *testing.T) {
@@ -25,7 +27,7 @@ func TestHTTPProxy(t *testing.T) {
 	noGolden(t)
 
 	pty, cookies, keyFile, _ := registerForExeDev(t)
-	box := newBox(t, pty, BoxOpts{Command: "/bin/bash"})
+	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
 	pty.disconnect()
 	waitForSSH(t, box, keyFile)
 

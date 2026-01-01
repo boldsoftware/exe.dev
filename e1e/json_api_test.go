@@ -43,7 +43,7 @@ func TestExeDevAPI(t *testing.T) {
 
 	// Also verify plain-text whoami output without PTY contains the email.
 	// This exercises the non-interactive exec path and ensures clean output formatting.
-	whoPlain, err := runExeDevSSHCommand(t, keyFile, "whoami")
+	whoPlain, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "whoami")
 	if err != nil {
 		t.Fatalf("failed to run whoami (plain): %v\n%s", err, whoPlain)
 	}
@@ -182,7 +182,7 @@ func TestExeDevAPI(t *testing.T) {
 	pty.wantPrompt()
 
 	// Verify that we can't log in using the deleted key.
-	sshArgs := append(baseSSHArgs("", keyFile), "whoami")
+	sshArgs := append(Env.servers.BaseSSHArgs("", keyFile), "whoami")
 	cmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
 	cmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=")
 	output, err := cmd.CombinedOutput()

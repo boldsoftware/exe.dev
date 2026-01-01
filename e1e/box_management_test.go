@@ -390,7 +390,7 @@ func TestVanillaBox(t *testing.T) {
 		// proxy creates a new outbound connection to sshpiper, losing the original
 		// destination IP information.
 		ptyHost := makePty(t, "ssh "+boxHostname)
-		args := sshOpts()
+		args := testinfra.SSHOpts()
 		args = append(args,
 			"-p", fmt.Sprint(Env.servers.SSHPiperd.Port), // use piperd port directly (not proxy) so sshpiper sees the correct local address
 			"-o", "IdentityFile="+keyFile,
@@ -403,7 +403,7 @@ func TestVanillaBox(t *testing.T) {
 
 		// Verify we're in the right box
 		ptyHost.reject("Permission denied")
-		ptyHost.reject(exeDevPrompt) // we don't want to land in the repl!
+		ptyHost.reject(testinfra.ExeDevPrompt) // we don't want to land in the repl!
 		ptyHost.wantPrompt()
 		ptyHost.sendLine("hostname")
 		ptyHost.want(boxName)
@@ -620,7 +620,7 @@ func TestStandardAlpineBox(t *testing.T) {
 
 	// Attempt to create a box with a standard alpine image.
 	image := "ghcr.io/linuxcontainers/alpine:latest"
-	boxName := newBox(t, pty, BoxOpts{Image: image})
+	boxName := newBox(t, pty, testinfra.BoxOpts{Image: image})
 	waitForSSH(t, boxName, keyFile)
 
 	out, err := boxSSHCommand(t, boxName, keyFile, "cat", "/etc/os-release").CombinedOutput()
@@ -658,7 +658,7 @@ func TestNewRejectsBoxMatchingSSHUsername(t *testing.T) {
 
 	conflictName := boxName(t)
 	conflictPty := sshWithUsername(t, conflictName, keyFile)
-	conflictPty.pty.SetPrompt(exeDevPrompt)
+	conflictPty.pty.SetPrompt(testinfra.ExeDevPrompt)
 	conflictPty.wantPrompt()
 
 	conflictPty.sendLine("new --name=" + conflictName)
@@ -801,7 +801,7 @@ func TestBoxRestartShutdown(t *testing.T) {
 		// That probably means we're leaking something somewhere.
 		ctx, cancel := context.WithTimeout(Env.context(t), time.Second)
 		defer cancel()
-		cmd := boxSSHCommandContext(ctx, boxName, keyFile, "echo", "ping")
+		cmd := Env.servers.BoxSSHCommand(ctx, boxName, keyFile, "echo", "ping")
 		output, err := cmd.CombinedOutput()
 		if err == nil {
 			t.Fatalf("ssh to box %q succeeded after shutdown; output: %s", boxName, output)

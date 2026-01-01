@@ -4,10 +4,8 @@ package e1e
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"html"
 	"io"
 	"log/slog"
 	"math/rand/v2"
@@ -18,17 +16,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"testing"
-	"time"
 
 	"exe.dev/e1e/testinfra"
-	"github.com/charmbracelet/x/ansi"
-	"github.com/creack/pty"
 )
 
 var (
@@ -408,11 +401,6 @@ func genSSHKey(t *testing.T) (path, publickey string) {
 	return path, publickey
 }
 
-const (
-	banner       = "~~~ EXE.DEV ~~~"
-	exeDevPrompt = "\033[1;36mlocalhost\033[0m \033[37m▶\033[0m "
-)
-
 type expectPty struct {
 	t   *testing.T
 	pty *testinfra.PTY
@@ -489,18 +477,10 @@ func (p *expectPty) wantEOF() {
 
 // attachAndStart attaches the pty to the given command and starts it.
 func (p *expectPty) attachAndStart(cmd *exec.Cmd) {
-	// Configure and attach.
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = p.pty.TTY(), p.pty.TTY(), p.pty.TTY()
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setctty: true, Setsid: true}
-
-	// Start the command.
-	if err := cmd.Start(); err != nil {
-		p.t.Fatalf("failed to start %v: %v", cmd, err)
+	if err := p.pty.AttachAndStart(cmd); err != nil {
+		p.t.Helper()
+		p.t.Fatal(err)
 	}
-	pty.Setsize(p.pty.TTY(), &pty.Winsize{Rows: 120, Cols: 240})
-	// sshCmd now owns the PTY; close our reference.
-	// Without this, linux hangs on disconnect waiting for EOF.
-	p.pty.TTY().Close()
 	p.t.Cleanup(func() { _ = cmd.Wait() })
 }
 
@@ -541,63 +521,35 @@ func makePty(t *testing.T, name string) *expectPty {
 }
 
 func sshToExeDev(t *testing.T, keyFile string) *expectPty {
-	pty := sshWithUsername(t, "", keyFile)
-	pty.pty.SetPrompt(exeDevPrompt)
+	pty := makePty(t, "ssh localhost")
+	cmd, err := Env.servers.SSHToExeDev(Env.context(t), pty.pty, keyFile)
+	if err != nil {
+		t.Helper()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cmd.Wait() })
 	return pty
 }
 
-func runExeDevSSHCommand(t *testing.T, keyFile string, args ...string) ([]byte, error) {
-	sshArgs := baseSSHArgs("", keyFile)
-	sshArgs = append(sshArgs, args...)
-	sshCmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
-	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
-	out, err := sshCmd.CombinedOutput()
-	if strings.Contains(string(out), "\r") {
-		t.Errorf("ssh output contains \\r, did REPL formatting sneak through? raw output:\n%q", string(out))
-	}
-	if ansi.Strip(string(out)) != string(out) {
-		t.Errorf("ssh output contains ANSI escape codes, did REPL formatting sneak through? raw output:\n%q", string(out))
-	}
-	return out, err
-}
-
 func runParseExeDevJSON[T any](t *testing.T, keyFile string, args ...string) T {
-	t.Helper()
-	var result T
-	out, err := runExeDevSSHCommand(t, keyFile, args...)
+	result, err := testinfra.RunParseExeDevJSON[T](Env.context(t), Env.servers, keyFile, args...)
 	if err != nil {
-		t.Fatalf("failed to run command: %v\n%s", err, out)
-	}
-	if err := json.Unmarshal(out, &result); err != nil {
-		t.Fatalf("failed to parse command output as JSON: %v\n%s", err, out)
+		t.Helper()
+		t.Fatal(err)
 	}
 	return result
 }
 
 func boxSSHCommand(t *testing.T, boxname, keyFile string, args ...string) *exec.Cmd {
-	return boxSSHCommandContext(Env.context(t), boxname, keyFile, args...)
-}
-
-func boxSSHCommandContext(ctx context.Context, boxname, keyFile string, args ...string) *exec.Cmd {
-	sshArgs := baseSSHArgs(boxname, keyFile)
-	sshArgs = append(sshArgs, args...)
-	sshCmd := exec.CommandContext(ctx, "ssh", sshArgs...)
-	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
-	return sshCmd
+	return Env.servers.BoxSSHCommand(Env.context(t), boxname, keyFile, args...)
 }
 
 // waitForSSH blocks until SSH is responsive on the given box.
 func waitForSSH(t *testing.T, boxName, keyFile string) {
-	// Wait for SSH to be responsive (systemd may take time to initialize).
-	var err error
-	for range 300 {
-		err = boxSSHCommand(t, boxName, keyFile, "true").Run()
-		if err == nil {
-			return
-		}
-		time.Sleep(100 * time.Millisecond)
+	if err := Env.servers.WaitForBoxSSHServer(Env.context(t), boxName, keyFile); err != nil {
+		t.Helper()
+		t.Fatal(err)
 	}
-	t.Fatalf("box ssh did not come up, last error: %v", err)
 }
 
 func sshToBox(t *testing.T, boxname, keyFile string) *expectPty {
@@ -606,49 +558,14 @@ func sshToBox(t *testing.T, boxname, keyFile string) *expectPty {
 	return pty
 }
 
-func usernameAt(username string) string {
-	if username == "" {
-		return ""
-	}
-	return username + "@"
-}
-
-func baseSSHArgs(username, keyFile string) []string {
-	args := sshOpts()
-	args = append(args,
-		"-p", fmt.Sprint(Env.sshPort()),
-		"-o", "IdentityFile="+keyFile,
-		usernameAt(username)+"localhost",
-	)
-	return args
-}
-
-func sshOpts() []string {
-	return []string{
-		"-F", "/dev/null",
-		"-o", "IdentityAgent=none",
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "LogLevel=ERROR", // hides "Permanently added" spam, but still shows real errors
-		"-o", "PreferredAuthentications=publickey",
-		"-o", "PubkeyAuthentication=yes",
-		"-o", "PasswordAuthentication=no",
-		"-o", "KbdInteractiveAuthentication=no",
-		"-o", "ChallengeResponseAuthentication=no",
-		"-o", "IdentitiesOnly=yes",
-		"-o", "ConnectTimeout=5", // 5 second connection timeout
-		"-o", "ServerAliveInterval=5", // send keepalive every 5 seconds
-		"-o", "ServerAliveCountMax=2", // disconnect after 2 failed keepalives (10s total)
-	}
-}
-
 func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
-	pty := makePty(t, "ssh "+usernameAt(username)+"localhost")
-	sshArgs := baseSSHArgs(username, keyFile)
-	sshCmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
-	// fmt.Println("RUNNING", sshCmd)
-	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
-	pty.attachAndStart(sshCmd)
+	pty := makePty(t, "ssh "+username+"@localhost")
+	sshCmd, err := Env.servers.SSHWithUserName(Env.context(t), pty.pty, username, keyFile)
+	if err != nil {
+		t.Helper()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sshCmd.Wait() })
 	return pty
 }
 
@@ -656,99 +573,20 @@ func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
 // looks for a verification link in that email, and clicks it.
 // It returns HTTP authorization cookies.
 func waitForEmailAndVerify(t *testing.T, to string) []*http.Cookie {
-	msg, err := Env.servers.Email.WaitForEmail(to)
+	cookies, err := Env.servers.WaitForEmailAndVerify(to)
 	if err != nil {
 		t.Helper()
 		t.Fatal(err)
 	}
-	return clickVerifyLinkInEmail(t, msg)
+	return cookies
 }
 
 func clickVerifyLinkInEmail(t *testing.T, emailMsg *testinfra.EmailMessage) []*http.Cookie {
-	verifyURL, err := testinfra.ExtractVerificationToken(emailMsg.Body)
+	cookies, err := Env.servers.ClickVerifyLinkInEmail(emailMsg)
 	if err != nil {
-		t.Fatalf("failed to extract verification URL: %v", err)
+		t.Helper()
+		t.Fatal(err)
 	}
-
-	parsedVerifyURL, err := url.Parse(verifyURL)
-	if err != nil {
-		t.Fatalf("failed to parse verification URL %q: %v", verifyURL, err)
-	}
-
-	// Step 1: GET the verification page (shows confirmation form)
-	getResp, err := http.Get(verifyURL)
-	if err != nil {
-		t.Fatalf("failed to access verification page: %v", err)
-	}
-	if getResp.StatusCode != http.StatusOK {
-		t.Fatalf("verification page request failed with status: %d", getResp.StatusCode)
-	}
-
-	htmlBody, err := io.ReadAll(getResp.Body)
-	if err != nil {
-		t.Fatalf("failed to read verification page body: %v", err)
-	}
-	getResp.Body.Close()
-
-	bodyStr := string(htmlBody)
-
-	// // Extract the pairing code from the verification page
-	// codeRe := regexp.MustCompile(`tracking-widest[^>]*>([0-9]{6})<`)
-	// if codeMatches := codeRe.FindStringSubmatch(bodyStr); len(codeMatches) >= 2 {
-	// 	testinfra.AddCanonicalization(codeMatches[1], "EMAIL_VERIFICATION_CODE")
-	// }
-
-	// Extract hidden inputs so we can POST the same form fields back
-	hiddenRe := regexp.MustCompile(`<input[^>]+name="([^"]+)"[^>]+value="([^"]*)"[^>]*>`)
-	formData := url.Values{}
-	for _, match := range hiddenRe.FindAllStringSubmatch(bodyStr, -1) {
-		name := match[1]
-		value := html.UnescapeString(match[2])
-		formData.Set(name, value)
-	}
-
-	token := formData.Get("token")
-	if token == "" {
-		t.Fatalf("failed to extract token from HTML form: %s", bodyStr)
-	}
-	testinfra.AddCanonicalization(token, "EMAIL_VERIFICATION_TOKEN")
-
-	// Determine form action (defaults to /verify-email if not found)
-	actionRe := regexp.MustCompile(`<form[^>]+action="([^"]+)"`)
-	actionMatch := actionRe.FindStringSubmatch(bodyStr)
-	actionPath := "/verify-email"
-	if len(actionMatch) >= 2 {
-		actionPath = actionMatch[1]
-	}
-	if !strings.HasPrefix(actionPath, "/") {
-		actionPath = "/" + actionPath
-	}
-
-	// Create HTTP client with cookie jar to capture authentication cookies
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatalf("failed to create cookie jar: %v", err)
-	}
-	client := &http.Client{Jar: jar}
-
-	postURL := fmt.Sprintf("http://localhost:%d%s", Env.servers.Exed.HTTPPort, actionPath)
-	postResp, err := client.PostForm(postURL, formData)
-	if err != nil {
-		t.Fatalf("failed to submit verification form: %v", err)
-	}
-	if postResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(postResp.Body)
-		t.Errorf("verification form submission returned status: %d, body: %s", postResp.StatusCode, string(body))
-	}
-	postResp.Body.Close()
-
-	// Extract cookies from the response
-	cookies := jar.Cookies(parsedVerifyURL)
-	if len(cookies) == 0 {
-		parsedPostURL, _ := url.Parse(postURL)
-		cookies = jar.Cookies(parsedPostURL)
-	}
-
 	return cookies
 }
 
@@ -757,96 +595,41 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg *testinfra.EmailMessage) []*h
 // Unlike registerForExeDevWithEmail, this doesn't create a user via SSH,
 // so it exercises the web-only user creation path.
 func webLoginWithEmail(t *testing.T, email string) []*http.Cookie {
-	t.Helper()
-
-	// POST to /auth with email to trigger the web login flow
-	authURL := fmt.Sprintf("http://localhost:%d/auth", Env.servers.Exed.HTTPPort)
-	resp, err := http.PostForm(authURL, url.Values{"email": {email}})
+	cookies, err := Env.servers.WebLoginWithEmail(email)
 	if err != nil {
-		t.Fatalf("failed to POST to /auth: %v", err)
+		t.Helper()
+		t.Fatal(err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("POST /auth failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Wait for verification email and click verification link
-	// (same as SSH flow).
-	return waitForEmailAndVerify(t, email)
+	return cookies
 }
 
 // webLoginWithExe performs a login flow with login_with_exe=1 set.
 // This simulates a user logging in via the proxy auth flow (login-with-exe).
 // Users created this way are "basic users" and should only see the profile tab.
 func webLoginWithExe(t *testing.T, email string) []*http.Cookie {
-	t.Helper()
-
-	// POST to /auth with email AND login_with_exe=1 to trigger login-with-exe flow
-	authURL := fmt.Sprintf("http://localhost:%d/auth", Env.servers.Exed.HTTPPort)
-	resp, err := http.PostForm(authURL, url.Values{
-		"email":          {email},
-		"login_with_exe": {"1"},
-	})
+	cookies, err := Env.servers.WebLoginWithExe(email)
 	if err != nil {
-		t.Fatalf("failed to POST to /auth: %v", err)
+		t.Helper()
+		t.Fatal(err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("POST /auth failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Wait for verification email and verify
-	// (same as SSH flow).
-	return waitForEmailAndVerify(t, email)
+	return cookies
 }
 
 var boxCounter atomic.Int32
 
 // boxName creates a unique test-specific box name with e1e prefix for easy cleanup
 func boxName(t *testing.T) string {
-	t.Helper()
-	// Create a unique test-specific box name: "e1e-{runid}-{counter}-{testname}"
-	// runid provides cross-process uniqueness.
-	// counter covers within-process uniqueness.
-	// e1e prefix and testname are for debuggability.
-	counter := fmt.Sprintf("%04x", boxCounter.Add(1))
-	testName := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-"))
-	// Sanitize to allowed charset [a-z0-9-] to satisfy isValidBoxName
-	testName = regexp.MustCompile(`[^a-z0-9-]+`).ReplaceAllString(testName, "-")
-	// Collapse multiple hyphens and trim
-	testName = regexp.MustCompile(`-+`).ReplaceAllString(testName, "-")
-	testName = strings.Trim(testName, "-")
-	boxName := fmt.Sprintf("e1e-%s-%s-%s", testRunID, counter, testName)
-	testinfra.AddCanonicalization(boxName, "BOX_NAME")
-	return boxName
+	return testinfra.BoxName(t.Name(), testRunID)
 }
 
 func registerForExeDevWithEmail(t *testing.T, email string) (pty *expectPty, cookies []*http.Cookie, keyFile, returnedEmail string) {
-	keyFile, publicKey := genSSHKey(t)
-	pty = sshToExeDev(t, keyFile)
-	pty.want(banner)
-
-	pty.want("Please enter your email")
-	pty.sendLine(email)
-	returnedEmail = email
-	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
-
-	cookies = waitForEmailAndVerify(t, email)
-
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
-	pty.want("Welcome to EXE.DEV!") // check that we show welcome message for users who haven't created boxes
-	pty.wantPrompt()
-
-	pty.sendLine("whoami")
-	pty.want(email)
-	pty.want(publicKey)
-	pty.wantPrompt()
-
-	return pty, cookies, keyFile, returnedEmail
+	pty = makePty(t, "ssh localhost")
+	cookies, keyFile, sshCmd, err := Env.servers.RegisterForExeDevWithEmail(Env.context(t), pty.pty, email, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sshCmd.Wait() })
+	return pty, cookies, keyFile, email
 }
 
 // registerForExeDev is a convenience command to register for an exe.dev account.
@@ -886,45 +669,12 @@ func noRedirectClient(jar http.CookieJar) *http.Client {
 	}
 }
 
-// BoxOpts holds optional parameters for newBox.
-type BoxOpts struct {
-	Image   string
-	Command string
-}
-
 // newBox requests a new box from the open repl pty.
-func newBox(t *testing.T, pty *expectPty, opts ...BoxOpts) string {
-	boxName := boxName(t)
-	boxNameRe := regexp.QuoteMeta(boxName)
-
-	// Use first opts if provided, otherwise default
-	var opt BoxOpts
-	if len(opts) > 0 {
-		opt = opts[0]
+func newBox(t *testing.T, pty *expectPty, opts ...testinfra.BoxOpts) string {
+	boxName, err := Env.servers.NewBox(t.Name(), testRunID, pty.pty, opts...)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// Build the command line
-	cmdLine := "new --name=" + boxName
-	if opt.Image != "" {
-		cmdLine += " --image=" + strconv.Quote(opt.Image)
-	}
-	if opt.Command != "" {
-		cmdLine += " --command=" + strconv.Quote(opt.Command)
-	}
-
-	pty.sendLine(cmdLine)
-	pty.reject("Sorry")
-	pty.wantRe("Creating .*" + boxNameRe)
-	// Calls to action
-	pty.want("App")
-	pty.want("http://")
-	pty.want("SSH")
-	pty.wantf("ssh -p %v %v@exe.cloud", Env.sshPort(), boxName)
-
-	// Confirm it is there.
-	pty.sendLine("ls")
-	pty.want("VMs")
-	pty.wantRe(boxNameRe + ".*running.*\n")
 	return boxName
 }
 

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/e1e/testinfra"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
@@ -24,7 +25,7 @@ func TestTerminalPermissions(t *testing.T) {
 
 	// Create user and box
 	pty, cookies, keyFile, _ := registerForExeDev(t)
-	box := newBox(t, pty, BoxOpts{Command: "/bin/bash"})
+	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
 	pty.disconnect()
 
 	// Test 1: No authentication - should redirect to login

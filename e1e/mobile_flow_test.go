@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"exe.dev/e1e/testinfra"
 )
 
 // TestMobileFlow_EndToEnd exercises the mobile creation flow with SSE using the default image.
@@ -178,7 +180,7 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	// Now that the account exists via email, add an SSH key
 	keyFile, _ := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
-	pty.want(banner)
+	pty.want(testinfra.Banner)
 	pty.want("Please enter your email")
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to")
