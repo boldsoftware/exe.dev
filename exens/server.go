@@ -368,11 +368,11 @@ func (s *Server) lookupSOA(ctx context.Context, qname, fqdn string, class uint16
 			Hdr:     dns.Header{Name: fqdn, Class: class, TTL: 86400},
 			Ns:      "ns1." + s.webHost + ".",
 			Mbox:    "hostmaster." + s.webHost + ".",
-			Serial:  1,        // Static serial; we don't do zone transfers
-			Refresh: 86400,    // 1 day
-			Retry:   7200,     // 2 hours
-			Expire:  1209600,  // 2 weeks
-			Minttl:  300,      // 5 minutes (negative cache TTL)
+			Serial:  1,       // Static serial; we don't do zone transfers
+			Refresh: 86400,   // 1 day
+			Retry:   7200,    // 2 hours
+			Expire:  1209600, // 2 weeks
+			Minttl:  300,     // 5 minutes (negative cache TTL)
 		},
 	}, nil
 }
