@@ -715,7 +715,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		// Prod/staging: Use embedded DNS server for exe.xyz, Route53 for exe.dev
 		// During transition, Route53 is also used for exe.xyz box CNAMEs
 		s.route53Provider = route53.NewDNSProvider()
-		s.dnsServer = exens.NewServer(s.db, s.log)
+		s.dnsServer = exens.NewServer(s.db, s.log, cfg.Env.BoxHost, cfg.Env.WebHost)
 		s.bsdns = s.route53Provider // Route53 for box CNAME updates during transition
 	} else {
 		// Use alley53 if available. If not, fall back to a no-op provider.

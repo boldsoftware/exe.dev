@@ -38,6 +38,227 @@ func newTestDB(t *testing.T) *sqlite.DB {
 	return db
 }
 
+func TestNSRecords(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	log := tslog.Slogger(t)
+
+	// Test production config
+	t.Run("Prod", func(t *testing.T) {
+		server := NewServer(db, log, "exe.xyz", "exe.dev")
+
+		rrs, err := server.lookupNS(ctx, "exe.xyz", "exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 2 {
+			t.Fatalf("expected 2 NS records, got %d", len(rrs))
+		}
+
+		// Check ns1 and ns2
+		ns1, ok := rrs[0].(*dns.NS)
+		if !ok {
+			t.Fatalf("expected *dns.NS, got %T", rrs[0])
+		}
+		if ns1.Ns != "ns1.exe.dev." {
+			t.Errorf("expected ns1.exe.dev., got %s", ns1.Ns)
+		}
+
+		ns2, ok := rrs[1].(*dns.NS)
+		if !ok {
+			t.Fatalf("expected *dns.NS, got %T", rrs[1])
+		}
+		if ns2.Ns != "ns2.exe.dev." {
+			t.Errorf("expected ns2.exe.dev., got %s", ns2.Ns)
+		}
+	})
+
+	// Test staging config
+	t.Run("Staging", func(t *testing.T) {
+		server := NewServer(db, log, "exe-staging.xyz", "exe-staging.dev")
+
+		rrs, err := server.lookupNS(ctx, "exe-staging.xyz", "exe-staging.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 2 {
+			t.Fatalf("expected 2 NS records, got %d", len(rrs))
+		}
+
+		ns1 := rrs[0].(*dns.NS)
+		if ns1.Ns != "ns1.exe-staging.dev." {
+			t.Errorf("expected ns1.exe-staging.dev., got %s", ns1.Ns)
+		}
+	})
+
+	// Test non-matching domain returns nothing
+	t.Run("WrongDomain", func(t *testing.T) {
+		server := NewServer(db, log, "exe.xyz", "exe.dev")
+
+		rrs, err := server.lookupNS(ctx, "other.com", "other.com.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 0 {
+			t.Errorf("expected 0 records for wrong domain, got %d", len(rrs))
+		}
+	})
+}
+
+func TestSOARecords(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	log := tslog.Slogger(t)
+
+	// Test production config
+	t.Run("Prod", func(t *testing.T) {
+		server := NewServer(db, log, "exe.xyz", "exe.dev")
+
+		rrs, err := server.lookupSOA(ctx, "exe.xyz", "exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 SOA record, got %d", len(rrs))
+		}
+
+		soa, ok := rrs[0].(*dns.SOA)
+		if !ok {
+			t.Fatalf("expected *dns.SOA, got %T", rrs[0])
+		}
+		if soa.Ns != "ns1.exe.dev." {
+			t.Errorf("expected MNAME ns1.exe.dev., got %s", soa.Ns)
+		}
+		if soa.Mbox != "hostmaster.exe.dev." {
+			t.Errorf("expected RNAME hostmaster.exe.dev., got %s", soa.Mbox)
+		}
+		if soa.Minttl != 300 {
+			t.Errorf("expected minimum TTL 300, got %d", soa.Minttl)
+		}
+	})
+
+	// Test staging config
+	t.Run("Staging", func(t *testing.T) {
+		server := NewServer(db, log, "exe-staging.xyz", "exe-staging.dev")
+
+		rrs, err := server.lookupSOA(ctx, "exe-staging.xyz", "exe-staging.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 SOA record, got %d", len(rrs))
+		}
+
+		soa := rrs[0].(*dns.SOA)
+		if soa.Ns != "ns1.exe-staging.dev." {
+			t.Errorf("expected MNAME ns1.exe-staging.dev., got %s", soa.Ns)
+		}
+		if soa.Mbox != "hostmaster.exe-staging.dev." {
+			t.Errorf("expected RNAME hostmaster.exe-staging.dev., got %s", soa.Mbox)
+		}
+	})
+
+	// Test non-matching domain returns nothing
+	t.Run("WrongDomain", func(t *testing.T) {
+		server := NewServer(db, log, "exe.xyz", "exe.dev")
+
+		rrs, err := server.lookupSOA(ctx, "other.com", "other.com.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 0 {
+			t.Errorf("expected 0 records for wrong domain, got %d", len(rrs))
+		}
+	})
+}
+
+func TestXtermWildcardA(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	log := tslog.Slogger(t)
+
+	// Add shard 1 IP (the base IP)
+	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		return queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
+			Shard:    1,
+			PublicIp: "10.0.0.1",
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, log, "exe.xyz", "exe.dev")
+
+	// Test wildcard xterm subdomain
+	t.Run("WildcardXterm", func(t *testing.T) {
+		rrs, err := server.lookupA(ctx, "anything.xterm.exe.xyz", "anything.xterm.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 A record, got %d", len(rrs))
+		}
+
+		a, ok := rrs[0].(*dns.A)
+		if !ok {
+			t.Fatalf("expected *dns.A, got %T", rrs[0])
+		}
+		if a.A.String() != "10.0.0.1" {
+			t.Errorf("expected 10.0.0.1, got %s", a.A.String())
+		}
+	})
+
+	// Test multiple levels of subdomain
+	t.Run("DeepWildcardXterm", func(t *testing.T) {
+		rrs, err := server.lookupA(ctx, "foo.bar.xterm.exe.xyz", "foo.bar.xterm.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 A record for deep wildcard, got %d", len(rrs))
+		}
+
+		a := rrs[0].(*dns.A)
+		if a.A.String() != "10.0.0.1" {
+			t.Errorf("expected 10.0.0.1, got %s", a.A.String())
+		}
+	})
+
+	// Test staging domain
+	t.Run("StagingXterm", func(t *testing.T) {
+		stagingServer := NewServer(db, log, "exe-staging.xyz", "exe-staging.dev")
+
+		rrs, err := stagingServer.lookupA(ctx, "test.xterm.exe-staging.xyz", "test.xterm.exe-staging.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 A record for staging xterm, got %d", len(rrs))
+		}
+	})
+
+	// Test base domain A record (exe.xyz -> shard 1 IP)
+	t.Run("BaseDomain", func(t *testing.T) {
+		rrs, err := server.lookupA(ctx, "exe.xyz", "exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 A record for base domain, got %d", len(rrs))
+		}
+
+		a, ok := rrs[0].(*dns.A)
+		if !ok {
+			t.Fatalf("expected *dns.A, got %T", rrs[0])
+		}
+		if a.A.String() != "10.0.0.1" {
+			t.Errorf("expected 10.0.0.1, got %s", a.A.String())
+		}
+	})
+}
+
 func TestDNSServer(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
@@ -86,7 +307,7 @@ func TestDNSServer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := NewServer(db, log)
+	server := NewServer(db, log, "exe.xyz", "exe.dev")
 
 	// Add a TXT record
 	server.SetTXTRecord("_acme-challenge.exe.xyz", "test-token-123")
@@ -191,7 +412,7 @@ func TestDNSServer(t *testing.T) {
 func TestTXTRecordManagement(t *testing.T) {
 	db := newTestDB(t)
 	log := tslog.Slogger(t)
-	server := NewServer(db, log)
+	server := NewServer(db, log, "exe.xyz", "exe.dev")
 
 	// Add TXT records
 	server.SetTXTRecord("_acme.example.com", "token1")
@@ -256,7 +477,7 @@ func TestServerStartStop(t *testing.T) {
 	ctx := context.Background()
 	log := tslog.Slogger(t)
 
-	server := NewServer(db, log)
+	server := NewServer(db, log, "exe.xyz", "exe.dev")
 
 	// Test that Start with no IPs returns an error
 	err := server.Start(ctx, nil)
@@ -288,7 +509,7 @@ func TestDNSServerIntegration(t *testing.T) {
 
 	// Start a custom DNS server on a high port for testing
 	mux := dns.NewServeMux()
-	server := NewServer(db, log)
+	server := NewServer(db, log, "exe.xyz", "exe.dev")
 	mux.HandleFunc(".", server.handleDNS)
 
 	// Find an available port
@@ -369,6 +590,92 @@ func TestDNSServerIntegration(t *testing.T) {
 
 		if len(txt.Txt) != 1 || txt.Txt[0] != "test-value" {
 			t.Errorf("expected [test-value], got %v", txt.Txt)
+		}
+	})
+
+	t.Run("QueryNSRecord", func(t *testing.T) {
+		msg := dns.NewMsg("exe.xyz.", dns.TypeNS)
+
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(resp.Answer) != 2 {
+			t.Fatalf("expected 2 NS answers, got %d", len(resp.Answer))
+		}
+
+		ns1, ok := resp.Answer[0].(*dns.NS)
+		if !ok {
+			t.Fatalf("expected NS record, got %T", resp.Answer[0])
+		}
+		if ns1.Ns != "ns1.exe.dev." {
+			t.Errorf("expected ns1.exe.dev., got %s", ns1.Ns)
+		}
+	})
+
+	t.Run("QueryXtermWildcard", func(t *testing.T) {
+		msg := dns.NewMsg("something.xterm.exe.xyz.", dns.TypeA)
+
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(resp.Answer) != 1 {
+			t.Fatalf("expected 1 A answer for xterm wildcard, got %d", len(resp.Answer))
+		}
+
+		a, ok := resp.Answer[0].(*dns.A)
+		if !ok {
+			t.Fatalf("expected A record, got %T", resp.Answer[0])
+		}
+		// Should return shard 1 IP (192.168.1.1 from test setup)
+		if a.A.String() != "192.168.1.1" {
+			t.Errorf("expected 192.168.1.1, got %s", a.A.String())
+		}
+	})
+
+	t.Run("QueryBaseDomain", func(t *testing.T) {
+		msg := dns.NewMsg("exe.xyz.", dns.TypeA)
+
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(resp.Answer) != 1 {
+			t.Fatalf("expected 1 A answer for base domain, got %d", len(resp.Answer))
+		}
+
+		a, ok := resp.Answer[0].(*dns.A)
+		if !ok {
+			t.Fatalf("expected A record, got %T", resp.Answer[0])
+		}
+		// Should return shard 1 IP (192.168.1.1 from test setup)
+		if a.A.String() != "192.168.1.1" {
+			t.Errorf("expected 192.168.1.1, got %s", a.A.String())
+		}
+	})
+
+	t.Run("QuerySOARecord", func(t *testing.T) {
+		msg := dns.NewMsg("exe.xyz.", dns.TypeSOA)
+
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(resp.Answer) != 1 {
+			t.Fatalf("expected 1 SOA answer, got %d", len(resp.Answer))
+		}
+
+		soa, ok := resp.Answer[0].(*dns.SOA)
+		if !ok {
+			t.Fatalf("expected SOA record, got %T", resp.Answer[0])
+		}
+		if soa.Ns != "ns1.exe.dev." {
+			t.Errorf("expected ns1.exe.dev., got %s", soa.Ns)
 		}
 	})
 }

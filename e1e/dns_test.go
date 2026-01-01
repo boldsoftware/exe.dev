@@ -51,7 +51,7 @@ func TestEmbeddedDNS(t *testing.T) {
 
 	// Create an exens.Server against the test database
 	log := tslog.Slogger(t)
-	server := exens.NewServer(db, log)
+	server := exens.NewServer(db, log, "exe.cloud", "localhost")
 
 	// Start DNS server on a random high port
 	mux := dns.NewServeMux()

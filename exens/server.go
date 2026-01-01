@@ -30,6 +30,11 @@ type Server struct {
 	db  *sqlite.DB
 	log *slog.Logger
 
+	// boxHost is the domain for boxes (e.g., "exe.xyz" or "exe-staging.xyz")
+	boxHost string
+	// webHost is the domain for the name servers (e.g., "exe.dev" or "exe-staging.dev")
+	webHost string
+
 	mu        sync.Mutex
 	listeners []net.PacketConn
 	servers   []*dns.Server
@@ -42,10 +47,14 @@ type Server struct {
 }
 
 // NewServer creates a new DNS server backed by the given database.
-func NewServer(db *sqlite.DB, log *slog.Logger) *Server {
+// boxHost is the domain for boxes (e.g., "exe.xyz" or "exe-staging.xyz").
+// webHost is the domain for the name servers (e.g., "exe.dev" or "exe-staging.dev").
+func NewServer(db *sqlite.DB, log *slog.Logger, boxHost, webHost string) *Server {
 	return &Server{
 		db:         db,
 		log:        log,
+		boxHost:    boxHost,
+		webHost:    webHost,
 		txtRecords: make(map[string][]string),
 	}
 }
@@ -167,6 +176,10 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 			rrs, err = s.lookupCNAME(ctx, qname, header.Name, header.Class)
 		case dns.TypeTXT:
 			rrs, err = s.lookupTXT(ctx, qname, header.Name, header.Class)
+		case dns.TypeNS:
+			rrs, err = s.lookupNS(ctx, qname, header.Name, header.Class)
+		case dns.TypeSOA:
+			rrs, err = s.lookupSOA(ctx, qname, header.Name, header.Class)
 		default:
 			s.log.DebugContext(ctx, "unsupported query type", "name", qname, "type", dns.TypeToString[qtype])
 		}
@@ -198,7 +211,22 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 // lookupA handles A record queries.
 // Format: sNNN.{domain} where NNN is a shard number (001-025)
 // For box names, returns the CNAME and chases it to get the A record.
+// For *.xterm.{boxHost}, returns the base public IP (shard 1).
+// For the base domain ({boxHost}), returns the base public IP (shard 1).
 func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
+	// Check for base domain (exe.xyz) - return shard 1 IP for web redirect
+	if qname == s.boxHost {
+		return s.lookupShardA(ctx, 1, fqdn, class)
+	}
+
+	// Check for xterm wildcard (*.xterm.{boxHost})
+	// e.g., "anything.xterm.exe.xyz" or "foo.bar.xterm.exe.xyz"
+	xtermSuffix := ".xterm." + s.boxHost
+	if strings.HasSuffix(qname, xtermSuffix) {
+		// Return shard 1 (base public IP) for all xterm subdomains
+		return s.lookupShardA(ctx, 1, fqdn, class)
+	}
+
 	// Parse shard from name (e.g., "s001.exe.xyz" -> shard 1)
 	shard, err := parseShardFromName(qname)
 	if err != nil {
@@ -218,8 +246,13 @@ func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) 
 		return append(cnameRRs, aRRs...), nil
 	}
 
+	return s.lookupShardA(ctx, shard, fqdn, class)
+}
+
+// lookupShardA returns an A record for the given shard number.
+func (s *Server) lookupShardA(ctx context.Context, shard int, fqdn string, class uint16) ([]dns.RR, error) {
 	var publicIP string
-	err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		queries := exedb.New(rx.Conn())
 		var err error
 		publicIP, err = queries.GetShardPublicIP(ctx, int64(shard))
@@ -300,6 +333,48 @@ func (s *Server) lookupTXT(ctx context.Context, qname, fqdn string, class uint16
 		})
 	}
 	return rrs, nil
+}
+
+// lookupNS handles NS record queries.
+// Returns NS records for the boxHost domain (e.g., exe.xyz -> ns1.exe.dev, ns2.exe.dev).
+func (s *Server) lookupNS(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
+	// Only return NS records for the exact boxHost domain
+	if qname != s.boxHost {
+		return nil, nil
+	}
+
+	return []dns.RR{
+		&dns.NS{
+			Hdr: dns.Header{Name: fqdn, Class: class, TTL: 86400},
+			Ns:  "ns1." + s.webHost + ".",
+		},
+		&dns.NS{
+			Hdr: dns.Header{Name: fqdn, Class: class, TTL: 86400},
+			Ns:  "ns2." + s.webHost + ".",
+		},
+	}, nil
+}
+
+// lookupSOA handles SOA record queries.
+// Returns the SOA record for the boxHost domain (e.g., exe.xyz).
+func (s *Server) lookupSOA(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
+	// Only return SOA record for the exact boxHost domain
+	if qname != s.boxHost {
+		return nil, nil
+	}
+
+	return []dns.RR{
+		&dns.SOA{
+			Hdr:     dns.Header{Name: fqdn, Class: class, TTL: 86400},
+			Ns:      "ns1." + s.webHost + ".",
+			Mbox:    "hostmaster." + s.webHost + ".",
+			Serial:  1,        // Static serial; we don't do zone transfers
+			Refresh: 86400,    // 1 day
+			Retry:   7200,     // 2 hours
+			Expire:  1209600,  // 2 weeks
+			Minttl:  300,      // 5 minutes (negative cache TTL)
+		},
+	}, nil
 }
 
 // parseShardFromName extracts the shard number from a DNS name.
