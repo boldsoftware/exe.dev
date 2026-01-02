@@ -205,11 +205,9 @@ jobs:
           # Check if main can be fast-forwarded to HEAD
           if git merge-base --is-ancestor origin/main HEAD; then
             echo "Fast-forward main to HEAD"
-            git push origin HEAD:main
             bin/push-to-both-repos.sh main shelley shelley
           elif git rebase origin/main; then
             echo "Successfully rebased onto main"
-            git push origin HEAD:main
             bin/push-to-both-repos.sh main shelley shelley
           else
             echo "Failed to rebase - conflicts detected"
