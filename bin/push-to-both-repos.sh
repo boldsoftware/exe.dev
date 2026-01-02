@@ -39,8 +39,7 @@ SUBREPO_DIR=$3
     exit 1
 )
 
-# Debugging
-git remote -v
+git remote get-url $SUBREPO || "$SUBREPO must exist as a remote"
 
 # TODO: Should we assert that the history we're about to push is linear? Small?
 
@@ -110,6 +109,6 @@ git push --dry-run origin HEAD:"${TARGET}"
 git push --dry-run $SUBREPO $PREV_SUBREPO_COMMIT:$TARGET
 
 # TODO, do it with leases?
-
+#
 git push origin HEAD:"${TARGET}"
 git push $SUBREPO $(cat /tmp/commit):$TARGET
