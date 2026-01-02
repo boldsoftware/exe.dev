@@ -34,6 +34,10 @@ type ExedInstance struct {
 	Errors          chan string     // exed errors are sent on this channel
 	GUIDLog         chan string     // exed GUID logs sent on this channel
 
+	binPath        string    // exed binary we executed
+	piperPort      int       // port for ssh piper process
+	emailServerURL string    // port for fake email server
+	whoamiPath     string    // -gh-whoami exed parameter
 	exedLoggerDone chan bool // closed when logging goroutine done
 }
 
@@ -84,7 +88,12 @@ func StartExed(ctx context.Context, emailServerPort, piperPort int, extraProxyPo
 		}
 		bin.Close()
 		binPath = bin.Name()
-		buildCmd := exec.Command("go", "build", "-race", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "../cmd/exed")
+		rootDir, err := exeRootDir()
+		if err != nil {
+			return nil, err
+		}
+		buildCmd := exec.Command("go", "build", "-race", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "./cmd/exed")
+		buildCmd.Dir = rootDir
 		if out, err := buildCmd.CombinedOutput(); err != nil {
 			return nil, fmt.Errorf("failed to build exed: %w\n%s", err, out)
 		}
@@ -144,24 +153,7 @@ func StartExed(ctx context.Context, emailServerPort, piperPort int, extraProxyPo
 		"TEST_PROXY_PORTS="+extraPortsStr,
 	)
 
-	if os.Getenv("CI") != "" {
-		exedCmd.Env = append(exedCmd.Env, "GITHUB_TOKEN=fake-but-not-empty")
-	}
-
-	// Ensure LLM gateway API keys are set for e1e tests.
-	// If real keys aren't provided,
-	// use fake keys so requests can reach the external APIs
-	// (which will reject them with auth errors,
-	// but that still proves the gateway path works end-to-end).
-	if os.Getenv("ANTHROPIC_API_KEY") == "" {
-		exedCmd.Env = append(exedCmd.Env, "ANTHROPIC_API_KEY=fake-key-for-e1e-test")
-	}
-	if os.Getenv("OPENAI_API_KEY") == "" {
-		exedCmd.Env = append(exedCmd.Env, "OPENAI_API_KEY=fake-key-for-e1e-test")
-	}
-	if os.Getenv("FIREWORKS_API_KEY") == "" {
-		exedCmd.Env = append(exedCmd.Env, "FIREWORKS_API_KEY=fake-key-for-e1e-test")
-	}
+	exedCmd.Env = addExedEnvKeys(exedCmd.Env)
 
 	cmdOut, err := exedCmd.StdoutPipe()
 	if err != nil {
@@ -345,6 +337,10 @@ ProcessLogs:
 		CoverDir:        coverDir,
 		Errors:          exedSlogErrC,
 		GUIDLog:         exedGUIDLogC,
+		binPath:         binPath,
+		piperPort:       piperPort,
+		emailServerURL:  emailServerURL,
+		whoamiPath:      whoamiPath,
 		exedLoggerDone:  exedLoggerDone,
 	}
 
@@ -354,6 +350,30 @@ ProcessLogs:
 
 	slog.InfoContext(ctx, "started exed", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
 	return instance, nil
+}
+
+// addExedEnvKeys adds some keys to the exed environment.
+func addExedEnvKeys(env []string) []string {
+	if os.Getenv("CI") != "" {
+		env = append(env, "GITHUB_TOKEN=fake-but-not-empty")
+	}
+
+	// Ensure LLM gateway API keys are set for e1e tests.
+	// If real keys aren't provided,
+	// use fake keys so requests can reach the external APIs
+	// (which will reject them with auth errors,
+	// but that still proves the gateway path works end-to-end).
+	if os.Getenv("ANTHROPIC_API_KEY") == "" {
+		env = append(env, "ANTHROPIC_API_KEY=fake-key-for-e1e-test")
+	}
+	if os.Getenv("OPENAI_API_KEY") == "" {
+		env = append(env, "OPENAI_API_KEY=fake-key-for-e1e-test")
+	}
+	if os.Getenv("FIREWORKS_API_KEY") == "" {
+		env = append(env, "FIREWORKS_API_KEY=fake-key-for-e1e-test")
+	}
+
+	return env
 }
 
 // Stop stops the exed process.
@@ -434,6 +454,157 @@ func (ei *ExedInstance) checkBoxesCleanedUp(ctx context.Context, testRunID strin
 	if len(e1eBoxes) > 0 {
 		return fmt.Errorf("e1e boxes not cleaned up: %v", e1eBoxes)
 	}
+
+	return nil
+}
+
+// Restart restarts the exed process with a possibly different
+// set of exelets.
+func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testRunID string) error {
+	start := time.Now()
+	slog.InfoContext(ctx, "restarting exed")
+
+	ei.Stop(ctx, testRunID)
+
+	exedCmd := exec.Command(ei.binPath,
+		"-db="+ei.DBPath,
+		"-dev=test",
+		"-http=:"+strconv.Itoa(ei.HTTPPort),
+		"-ssh=:"+strconv.Itoa(ei.SSHPort),
+		"-piper-plugin=:"+strconv.Itoa(ei.PiperPluginPort),
+		"-piperd-port="+strconv.Itoa(ei.piperPort),
+		"-fake-email-server="+ei.emailServerURL,
+		"-gh-whoami="+ei.whoamiPath,
+		"-exelet-addresses="+strings.Join(exeletAddrs, ","),
+	)
+
+	exedCmd.Env = append(
+		exedCmd.Environ(),
+		"LOG_FORMAT=json",
+		"LOG_LEVEL=debug",
+		"GOCOVERDIR="+ei.CoverDir,
+	)
+
+	if len(ei.ExtraPorts) > 0 {
+		portStrs := make([]string, len(ei.ExtraPorts))
+		for i, port := range ei.ExtraPorts {
+			portStrs[i] = strconv.Itoa(port)
+		}
+		extraPortsStr := strings.Join(portStrs, ",")
+		exedCmd.Env = append(exedCmd.Env, "TEST_PROXY_PORTS="+extraPortsStr)
+	}
+
+	exedCmd.Env = addExedEnvKeys(exedCmd.Env)
+
+	cmdOut, err := exedCmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdout pipe: %v", err)
+	}
+
+	exedCmd.Stderr = exedCmd.Stdout
+
+	if err := exedCmd.Start(); err != nil {
+		return fmt.Errorf("failed to restart exed: %v", err)
+	}
+
+	var teeMu sync.Mutex
+	tee := new(strings.Builder)
+	startedC := make(chan bool)
+	exedSlogErrC := make(chan string, 16)
+	exedGUIDLogC := make(chan string, 128)
+	exedLoggerDone := make(chan bool)
+
+	go func() {
+		defer close(exedLoggerDone)
+		started := false
+		seenPanic := false
+		scan := bufio.NewScanner(cmdOut)
+		for scan.Scan() {
+			line := scan.Bytes()
+
+			teeMu.Lock()
+			tee.Write(line)
+			tee.WriteString("\n")
+			teeMu.Unlock()
+
+			if seenPanic {
+				fmt.Printf("%s\n", line)
+			}
+
+			if !json.Valid(line) {
+				if bytes.Contains(line, []byte("panic:")) {
+					seenPanic = true
+					teeMu.Lock()
+					fmt.Print(tee.String())
+					teeMu.Unlock()
+				}
+				if guidRegex.Match(line) {
+					select {
+					case exedGUIDLogC <- string(line):
+					default:
+					}
+				}
+				continue
+			}
+
+			var entry map[string]any
+			if err := json.Unmarshal(line, &entry); err != nil {
+				slog.ErrorContext(ctx, "failed to parse exed log file", "error", err, "line", string(line))
+				continue
+			}
+			if level, ok := entry["level"].(string); ok && level == "ERROR" {
+				select {
+				case exedSlogErrC <- string(line):
+				default:
+				}
+			}
+			if guid, ok := entry["guid"].(string); ok && guid != "" {
+				select {
+				case exedGUIDLogC <- string(line):
+				default:
+				}
+			}
+
+			if entry["msg"] == "server started" {
+				if !started {
+					close(startedC)
+					started = true
+				}
+			}
+		}
+
+		if err := scan.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
+			slog.ErrorContext(ctx, "error scanning exed output", "error", err)
+		}
+	}()
+
+	select {
+	case <-startedC:
+	case <-time.After(2 * time.Minute):
+		teeMu.Lock()
+		out := tee.String()
+		teeMu.Unlock()
+		return fmt.Errorf("timeout waiting for exed to restart; output:\n%s", out)
+	}
+
+	cmdCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		exedCmd.Wait()
+		cancel()
+	}()
+
+	cause := sync.OnceValue(func() error {
+		return context.Cause(cmdCtx)
+	})
+
+	ei.Exited = cmdCtx.Done()
+	ei.Cause = cause
+	ei.Cmd = exedCmd
+	ei.Errors = exedSlogErrC
+	ei.GUIDLog = exedGUIDLogC
+	ei.exedLoggerDone = exedLoggerDone
+
+	slog.InfoContext(ctx, "restarted exed", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
 
 	return nil
 }

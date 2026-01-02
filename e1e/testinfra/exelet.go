@@ -774,8 +774,8 @@ func scpDownloadDir(ctx context.Context, host, remotePath, localPath string) err
 
 // BuildExeletBinary builds exelet locally for Linux and returns path to binary.
 // The binary is built with coverage instrumentation via "make exelet-coverage".
-func BuildExeletBinary() (string, error) {
-	binPath := filepath.Join(os.TempDir(), "exelet-test")
+func BuildExeletBinary(testRunID string) (string, error) {
+	binPath := filepath.Join(os.TempDir(), "exelet-test-"+testRunID)
 
 	// Set working directory to project root (parent of e1e directory)
 	srcdir, err := exeRootDir()
@@ -809,7 +809,7 @@ func BuildExeletBinary() (string, error) {
 	fl.Type = syscall.F_UNLCK
 	defer syscall.FcntlFlock(uintptr(fd), syscall.F_SETLK, &fl)
 
-	// Build exelet with coverage instrumentation
+	// Build exelet with coverage instrumentation.
 	cmd := exec.Command("make", "exelet-coverage")
 	cmd.Dir = srcdir
 	cmd.Env = append(cmd.Environ(), "GOOS=linux", "GOARCH="+runtime.GOARCH)
@@ -817,7 +817,7 @@ func BuildExeletBinary() (string, error) {
 		return "", fmt.Errorf("failed to build exelet: %w\n%s", err, out)
 	}
 
-	// Ensure temp exelet is not present
+	// Ensure temp exelet is not present.
 	if _, err := os.Stat(binPath); err == nil {
 		if rErr := os.RemoveAll(binPath); rErr != nil {
 			if !os.IsNotExist(rErr) {
@@ -826,7 +826,7 @@ func BuildExeletBinary() (string, error) {
 		}
 	}
 
-	// Rename to test binary path
+	// Rename to test binary path.
 	if err := os.Rename(filepath.Join(srcdir, "exeletd"), binPath); err != nil {
 		return "", fmt.Errorf("failed to rename exelet to %s: %v", binPath, err)
 	}

@@ -345,7 +345,7 @@ func setup(ctrHost string) (*testEnv, error) {
 		slog.Info("exed HTTP proxy listening", "port", exedHTTPProxy.Port())
 	}
 
-	exeletBinary, err := testinfra.BuildExeletBinary()
+	exeletBinary, err := testinfra.BuildExeletBinary(testRunID)
 	if err != nil {
 		return env, err
 	}

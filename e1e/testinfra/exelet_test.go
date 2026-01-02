@@ -20,13 +20,13 @@ func TestExelet(t *testing.T) {
 
 	t.Parallel()
 
-	exeletBinary, err := BuildExeletBinary()
+	testRunID := fmt.Sprintf("%04x", rand.Uint32()&0xFFFF)
+
+	exeletBinary, err := BuildExeletBinary(testRunID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.Remove(exeletBinary)
-
-	testRunID := fmt.Sprintf("%04x", rand.Uint32()&0xFFFF)
 
 	ctrHost, err := StartExeletVM(testRunID)
 	if err != nil {
