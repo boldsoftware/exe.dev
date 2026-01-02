@@ -187,6 +187,12 @@ jobs:
           git config --global user.name "Auto-rebaser"
           git config --global user.email "bot@exe.dev"
 
+          git remote add shelley git@github.com:boldsoftware/shelley.git
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          echo "${SHELLEY_REPO_DEPLOY_KEY}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
           # Try to rebase onto main and push
           git fetch origin main
           # For debugging, print the current commit and main's commit
@@ -200,9 +206,11 @@ jobs:
           if git merge-base --is-ancestor origin/main HEAD; then
             echo "Fast-forward main to HEAD"
             git push origin HEAD:main
+            bin/push-to-both-repos.sh main shelley shelley
           elif git rebase origin/main; then
             echo "Successfully rebased onto main"
             git push origin HEAD:main
+            bin/push-to-both-repos.sh main shelley shelley
           else
             echo "Failed to rebase - conflicts detected"
             exit 1
