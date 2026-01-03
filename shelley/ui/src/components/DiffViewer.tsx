@@ -10,6 +10,33 @@ interface DiffViewerProps {
   onCommentTextChange: (text: string) => void;
 }
 
+// Icon components for cleaner JSX
+const PrevFileIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+    <path d="M8 2L2 8l6 6V2z" />
+    <path d="M14 2L8 8l6 6V2z" />
+  </svg>
+);
+
+const PrevChangeIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+    <path d="M10 2L4 8l6 6V2z" />
+  </svg>
+);
+
+const NextChangeIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+    <path d="M6 2l6 6-6 6V2z" />
+  </svg>
+);
+
+const NextFileIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+    <path d="M2 2l6 6-6 6V2z" />
+    <path d="M8 2l6 6-6 6V2z" />
+  </svg>
+);
+
 // Global Monaco instance - loaded lazily
 let monacoInstance: typeof Monaco | null = null;
 let monacoLoadPromise: Promise<typeof Monaco> | null = null;
@@ -75,11 +102,12 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
   } | null>(null);
   const [commentText, setCommentText] = useState("");
   const [mode, setMode] = useState<ViewMode>("comment");
-  const [selectorsExpanded, setSelectorsExpanded] = useState(false);
+
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Monaco.editor.IStandaloneDiffEditor | null>(null);
   const monacoRef = useRef<typeof Monaco | null>(null);
+  const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const modeRef = useRef<ViewMode>(mode);
 
   // Keep modeRef in sync with mode state and update editor options
@@ -101,6 +129,16 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Focus comment input when dialog opens
+  useEffect(() => {
+    if (showCommentDialog && commentInputRef.current) {
+      // Small delay to ensure the dialog is rendered
+      setTimeout(() => {
+        commentInputRef.current?.focus();
+      }, 50);
+    }
+  }, [showCommentDialog]);
+
   // Load Monaco when viewer opens
   useEffect(() => {
     if (isOpen && !monacoLoaded) {
@@ -116,10 +154,25 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
     }
   }, [isOpen, monacoLoaded]);
 
-  // Load diffs when viewer opens
+  // Load diffs when viewer opens, reset state when it closes
   useEffect(() => {
     if (isOpen && cwd) {
       loadDiffs();
+    } else if (!isOpen) {
+      // Reset state when closing
+      setFileDiff(null);
+      setSelectedFile(null);
+      setFiles([]);
+      setSelectedDiff(null);
+      setDiffs([]);
+      setError(null);
+      setShowCommentDialog(null);
+      setCommentText("");
+      // Dispose editor when closing
+      if (editorRef.current) {
+        editorRef.current.dispose();
+        editorRef.current = null;
+      }
     }
   }, [isOpen, cwd]);
 
@@ -183,7 +236,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
       renderMarginRevertIcon: false,
       lineNumbers: isMobile ? "off" : "on",
       minimap: { enabled: false },
-      scrollBeyondLastLine: false,
+      scrollBeyondLastLine: true, // Enable scroll past end for mobile floating buttons
       wordWrap: "on",
       glyphMargin: false, // No glyph margin - click on lines to comment
       lineDecorationsWidth: isMobile ? 0 : 10,
@@ -195,6 +248,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
       contextmenu: false,
       links: false,
       folding: !isMobile,
+      padding: isMobile ? { bottom: 80 } : undefined, // Extra padding for floating buttons on mobile
     });
 
     diffEditor.setModel({
@@ -206,6 +260,32 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
 
     // Add click handler for commenting - clicking on a line in comment mode opens dialog
     const modifiedEditor = diffEditor.getModifiedEditor();
+    
+    // Handler function for opening comment dialog
+    const openCommentDialog = (lineNumber: number) => {
+      const model = modifiedEditor.getModel();
+      const selection = modifiedEditor.getSelection();
+      let selectedText = "";
+      let startLine = lineNumber;
+      let endLine = lineNumber;
+
+      if (selection && !selection.isEmpty() && model) {
+        selectedText = model.getValueInRange(selection);
+        startLine = selection.startLineNumber;
+        endLine = selection.endLineNumber;
+      } else if (model) {
+        selectedText = model.getLineContent(lineNumber) || "";
+      }
+
+      setShowCommentDialog({
+        line: startLine,
+        side: "right",
+        selectedText,
+        startLine,
+        endLine,
+      });
+    };
+    
     modifiedEditor.onMouseDown((e: Monaco.editor.IEditorMouseEvent) => {
       // In comment mode, clicking on line content opens comment dialog
       const isLineClick =
@@ -215,30 +295,28 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
       if (isLineClick && modeRef.current === "comment") {
         const position = e.target.position;
         if (position) {
-          const model = modifiedEditor.getModel();
-          const selection = modifiedEditor.getSelection();
-          let selectedText = "";
-          let startLine = position.lineNumber;
-          let endLine = position.lineNumber;
-
-          if (selection && !selection.isEmpty() && model) {
-            selectedText = model.getValueInRange(selection);
-            startLine = selection.startLineNumber;
-            endLine = selection.endLineNumber;
-          } else if (model) {
-            selectedText = model.getLineContent(position.lineNumber) || "";
-          }
-
-          setShowCommentDialog({
-            line: startLine,
-            side: "right",
-            selectedText,
-            startLine,
-            endLine,
-          });
+          openCommentDialog(position.lineNumber);
         }
       }
     });
+    
+    // For mobile: use onMouseUp which fires more reliably on touch devices
+    if (isMobile) {
+      modifiedEditor.onMouseUp((e: Monaco.editor.IEditorMouseEvent) => {
+        if (modeRef.current !== "comment") return;
+        
+        const isLineClick =
+          e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT ||
+          e.target.type === monaco.editor.MouseTargetType.CONTENT_EMPTY;
+
+        if (isLineClick) {
+          const position = e.target.position;
+          if (position) {
+            openCommentDialog(position.lineNumber);
+          }
+        }
+      });
+    }
 
     // Add content change listener for auto-save
     contentChangeDisposableRef.current?.dispose();
@@ -320,18 +398,13 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
   const handleAddComment = () => {
     if (!showCommentDialog || !commentText.trim() || !selectedFile) return;
 
-    // Format and append comment directly to the message input
-    let commentBlock = `**${selectedFile}**`;
-    if (showCommentDialog.startLine !== showCommentDialog.endLine) {
-      commentBlock += ` (lines ${showCommentDialog.startLine}-${showCommentDialog.endLine})`;
-    } else {
-      commentBlock += ` (line ${showCommentDialog.line})`;
-    }
-    commentBlock += ":\n";
-    if (showCommentDialog.selectedText) {
-      commentBlock += "```\n" + showCommentDialog.selectedText + "\n```\n";
-    }
-    commentBlock += commentText + "\n\n";
+    // Format: > filename:123: code
+    // Comment...
+    const line = showCommentDialog.line;
+    const codeSnippet = showCommentDialog.selectedText?.split('\n')[0]?.trim() || '';
+    const truncatedCode = codeSnippet.length > 60 ? codeSnippet.substring(0, 57) + '...' : codeSnippet;
+    
+    const commentBlock = `> ${selectedFile}:${line}: ${truncatedCode}\n${commentText}\n\n`;
 
     onCommentTextChange(commentBlock);
     setShowCommentDialog(null);
@@ -542,6 +615,101 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
   const hasNextFile = currentFileIndex < files.length - 1;
   const hasPrevFile = currentFileIndex > 0;
 
+  // Selectors shared between desktop and mobile
+  const commitSelector = (
+    <select
+      value={selectedDiff || ""}
+      onChange={(e) => setSelectedDiff(e.target.value || null)}
+      className="diff-viewer-select"
+    >
+      <option value="">Choose base...</option>
+      {diffs.map((diff) => {
+        const stats = `${diff.filesCount} files, +${diff.additions}/-${diff.deletions}`;
+        return (
+          <option key={diff.id} value={diff.id}>
+            {diff.id === "working"
+              ? `Working Changes (${stats})`
+              : `${diff.message.slice(0, 40)} (${stats})`}
+          </option>
+        );
+      })}
+    </select>
+  );
+
+  const fileSelector = (
+    <select
+      value={selectedFile || ""}
+      onChange={(e) => setSelectedFile(e.target.value || null)}
+      className="diff-viewer-select"
+      disabled={files.length === 0}
+    >
+      <option value="">{files.length === 0 ? "No files" : "Choose file..."}</option>
+      {files.map((file) => (
+        <option key={file.path} value={file.path}>
+          {getStatusSymbol(file.status)} {file.path}
+          {file.additions > 0 && ` (+${file.additions})`}
+          {file.deletions > 0 && ` (-${file.deletions})`}
+        </option>
+      ))}
+    </select>
+  );
+
+  const modeToggle = (
+    <div className="diff-viewer-mode-toggle">
+      <button
+        className={`diff-viewer-mode-btn ${mode === "comment" ? "active" : ""}`}
+        onClick={() => setMode("comment")}
+        title="Comment mode"
+      >
+        💬
+      </button>
+      <button
+        className={`diff-viewer-mode-btn ${mode === "edit" ? "active" : ""}`}
+        onClick={() => setMode("edit")}
+        title="Edit mode"
+      >
+        ✏️
+      </button>
+    </div>
+  );
+
+  const navButtons = (
+    <div className="diff-viewer-nav-buttons">
+      <button
+        className="diff-viewer-nav-btn"
+        onClick={goToPreviousFile}
+        disabled={!hasPrevFile}
+        title="Previous file"
+      >
+        <PrevFileIcon />
+      </button>
+      <button
+        className="diff-viewer-nav-btn"
+        onClick={goToPreviousChange}
+        disabled={!fileDiff}
+        title="Previous change"
+      >
+        <PrevChangeIcon />
+      </button>
+      <button
+        className="diff-viewer-nav-btn"
+        onClick={goToNextChange}
+        disabled={!fileDiff}
+        title="Next change"
+      >
+        <NextChangeIcon />
+      </button>
+      <button
+        className="diff-viewer-nav-btn"
+        onClick={() => goToNextFile()}
+        disabled={!hasNextFile}
+        title="Next file"
+      >
+        <NextFileIcon />
+      </button>
+    </div>
+  );
+
   return (
     <div className="diff-viewer-overlay">
       <div className="diff-viewer-container">
@@ -554,129 +722,36 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
           </div>
         )}
 
-        {/* Header */}
-        <div className="diff-viewer-header">
-          <div className="diff-viewer-header-row">
-            {/* Mode toggle */}
-            <div className="diff-viewer-mode-toggle">
-              <button
-                className={`diff-viewer-mode-btn ${mode === "comment" ? "active" : ""}`}
-                onClick={() => setMode("comment")}
-                title="Comment mode"
-              >
-                💬
-              </button>
-              <button
-                className={`diff-viewer-mode-btn ${mode === "edit" ? "active" : ""}`}
-                onClick={() => setMode("edit")}
-                title="Edit mode"
-              >
-                ✏️
-              </button>
+        {/* Header - different layout for desktop vs mobile */}
+        {isMobile ? (
+          // Mobile header: just selectors 50/50
+          <div className="diff-viewer-header diff-viewer-header-mobile">
+            <div className="diff-viewer-mobile-selectors">
+              {commitSelector}
+              {fileSelector}
             </div>
-
-            {/* Navigation buttons: <<(prev file) <(prev change) >(next change) >>(next file) */}
-            <div className="diff-viewer-nav-buttons">
-              <button
-                className="diff-viewer-nav-btn"
-                onClick={goToPreviousFile}
-                disabled={!hasPrevFile}
-                title="Previous file"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M11 2L5 8l6 6V2zM4 2v12H2V2h2z" />
-                </svg>
-              </button>
-              <button
-                className="diff-viewer-nav-btn"
-                onClick={goToPreviousChange}
-                disabled={!fileDiff}
-                title="Previous change"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M10 2L4 8l6 6V2z" />
-                </svg>
-              </button>
-              <button
-                className="diff-viewer-nav-btn"
-                onClick={goToNextChange}
-                disabled={!fileDiff}
-                title="Next change"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M6 2l6 6-6 6V2z" />
-                </svg>
-              </button>
-              <button
-                className="diff-viewer-nav-btn"
-                onClick={() => goToNextFile()}
-                disabled={!hasNextFile}
-                title="Next file"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M5 2l6 6-6 6V2zM12 2v12h2V2h-2z" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Expand/collapse selectors */}
-            <button
-              className="diff-viewer-expand-btn"
-              onClick={() => setSelectorsExpanded(!selectorsExpanded)}
-              title={selectorsExpanded ? "Collapse selectors" : "Expand selectors"}
-            >
-              {selectorsExpanded ? "▲" : "▼"}
-              <span className="diff-viewer-expand-label">
-                {selectedFile ? selectedFile.split("/").pop() : "Select..."}
-              </span>
-            </button>
-
             <button className="diff-viewer-close" onClick={onClose} title="Close (Esc)">
               ×
             </button>
           </div>
-
-          {/* Collapsible selectors */}
-          {selectorsExpanded && (
-            <div className="diff-viewer-selectors">
-              {/* Diff selector */}
-              <select
-                value={selectedDiff || ""}
-                onChange={(e) => setSelectedDiff(e.target.value || null)}
-                className="diff-viewer-select"
-              >
-                <option value="">Choose base...</option>
-                {diffs.map((diff) => {
-                  const stats = `${diff.filesCount} files, +${diff.additions}/-${diff.deletions}`;
-                  return (
-                    <option key={diff.id} value={diff.id}>
-                      {diff.id === "working"
-                        ? `Working Changes (${stats})`
-                        : `${diff.message.slice(0, 40)} (${stats})`}
-                    </option>
-                  );
-                })}
-              </select>
-
-              {/* File selector */}
-              <select
-                value={selectedFile || ""}
-                onChange={(e) => setSelectedFile(e.target.value || null)}
-                className="diff-viewer-select"
-                disabled={files.length === 0}
-              >
-                <option value="">{files.length === 0 ? "No files" : "Choose file..."}</option>
-                {files.map((file) => (
-                  <option key={file.path} value={file.path}>
-                    {getStatusSymbol(file.status)} {file.path}
-                    {file.additions > 0 && ` (+${file.additions})`}
-                    {file.deletions > 0 && ` (-${file.deletions})`}
-                  </option>
-                ))}
-              </select>
+        ) : (
+          // Desktop header: selectors expand, controls on right
+          <div className="diff-viewer-header">
+            <div className="diff-viewer-header-row">
+              <div className="diff-viewer-selectors-row">
+                {commitSelector}
+                {fileSelector}
+              </div>
+              <div className="diff-viewer-controls-row">
+                {navButtons}
+                {modeToggle}
+                <button className="diff-viewer-close" onClick={onClose} title="Close (Esc)">
+                  ×
+                </button>
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Error banner */}
         {error && <div className="diff-viewer-error">{error}</div>}
@@ -712,6 +787,51 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
           />
         </div>
 
+        {/* Mobile floating nav buttons at bottom */}
+        {isMobile && (
+          <div className="diff-viewer-mobile-nav">
+            <button
+              className={`diff-viewer-mobile-nav-btn diff-viewer-mobile-mode-btn ${mode === "comment" ? "active" : ""}`}
+              onClick={() => setMode(mode === "comment" ? "edit" : "comment")}
+              title={mode === "comment" ? "Comment mode (tap to switch)" : "Edit mode (tap to switch)"}
+            >
+              {mode === "comment" ? "💬" : "✏️"}
+            </button>
+            <button
+              className="diff-viewer-mobile-nav-btn"
+              onClick={goToPreviousFile}
+              disabled={!hasPrevFile}
+              title="Previous file"
+            >
+              <PrevFileIcon />
+            </button>
+            <button
+              className="diff-viewer-mobile-nav-btn"
+              onClick={goToPreviousChange}
+              disabled={!fileDiff}
+              title="Previous change"
+            >
+              <PrevChangeIcon />
+            </button>
+            <button
+              className="diff-viewer-mobile-nav-btn"
+              onClick={goToNextChange}
+              disabled={!fileDiff}
+              title="Next change"
+            >
+              <NextChangeIcon />
+            </button>
+            <button
+              className="diff-viewer-mobile-nav-btn"
+              onClick={() => goToNextFile()}
+              disabled={!hasNextFile}
+              title="Next file"
+            >
+              <NextFileIcon />
+            </button>
+          </div>
+        )}
+
         {/* Comment dialog */}
         {showCommentDialog && (
           <div className="diff-viewer-comment-dialog">
@@ -726,6 +846,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
               <pre className="diff-viewer-selected-text">{showCommentDialog.selectedText}</pre>
             )}
             <textarea
+              ref={commentInputRef}
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               placeholder="Enter your comment..."

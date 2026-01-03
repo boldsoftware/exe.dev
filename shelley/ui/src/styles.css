@@ -2632,17 +2632,45 @@ svg {
   width: 100%;
 }
 
-.diff-viewer-header-left {
+.diff-viewer-selectors-row {
   display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
+  flex: 1;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
-.diff-viewer-title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-primary);
+.diff-viewer-selectors-row .diff-viewer-select {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+}
+
+.diff-viewer-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.diff-viewer-header-mobile {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+}
+
+.diff-viewer-mobile-selectors {
+  display: flex;
+  flex: 1;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.diff-viewer-mobile-selectors .diff-viewer-select {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.75rem;
+  padding: 0.375rem;
 }
 
 .diff-viewer-mode-toggle {
@@ -2696,41 +2724,6 @@ svg {
 
 .diff-viewer-nav-btn:hover:not(:disabled) {
   background: var(--bg-tertiary);
-}
-
-.diff-viewer-expand-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--border-color);
-  background: var(--bg-base);
-  color: var(--text-primary);
-  cursor: pointer;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.diff-viewer-expand-btn:hover {
-  background: var(--bg-tertiary);
-}
-
-.diff-viewer-expand-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  text-align: left;
-}
-
-.diff-viewer-selectors {
-  display: flex;
-  gap: 0.5rem;
-  width: 100%;
-  padding-top: 0.25rem;
 }
 
 .diff-viewer-select {
@@ -2932,6 +2925,55 @@ svg {
   background: var(--bg-secondary);
 }
 
+/* Mobile floating nav buttons */
+.diff-viewer-mobile-nav {
+  position: absolute;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 0.5rem;
+  z-index: 100;
+}
+
+.diff-viewer-mobile-nav-btn {
+  width: 3rem;
+  height: 3rem;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.diff-viewer-mobile-nav-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+.diff-viewer-mobile-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.diff-viewer-mobile-nav-btn:active:not(:disabled) {
+  background: var(--bg-tertiary);
+  transform: scale(0.95);
+}
+
+.diff-viewer-mobile-mode-btn {
+  font-size: 1.25rem;
+}
+
+.diff-viewer-mobile-mode-btn.active {
+  background: var(--blue-bg);
+  color: var(--blue-text);
+}
+
 /* Monaco comment glyph decoration */
 /* Mobile optimizations for diff viewer */
 @media (max-width: 767px) {
@@ -2941,60 +2983,58 @@ svg {
 
   .diff-viewer-container {
     border-radius: 0;
-    max-height: 100%;
+    width: 100%;
+    max-width: 100%;
     height: 100%;
-  }
-
-  .diff-viewer-header {
-    padding: 0.375rem 0.5rem;
-    gap: 0.375rem;
-  }
-
-  .diff-viewer-header-row {
-    gap: 0.375rem;
-  }
-
-  .diff-viewer-selectors {
-    flex-direction: column;
-    width: 100%;
-  }
-
-  .diff-viewer-select {
-    max-width: none;
-    width: 100%;
-  }
-
-  .diff-viewer-title {
-    font-size: 0.875rem;
-  }
-
-  .diff-viewer-mode-btn {
-    padding: 0.25rem 0.375rem;
-    font-size: 0.75rem;
-  }
-
-  .diff-viewer-nav-btn {
-    padding: 0.25rem 0.375rem;
-    font-size: 0.75rem;
-  }
-
-  .diff-viewer-expand-btn {
-    font-size: 0.6875rem;
+    max-height: 100%;
   }
 
   .diff-viewer-close {
     width: 1.75rem;
     height: 1.75rem;
     font-size: 1.25rem;
+    flex-shrink: 0;
   }
 
-  /* Monaco editor mobile styles - hide gutters */
+  /* Monaco editor mobile styles - hide gutters completely */
   .diff-viewer-editor .monaco-editor .margin {
     display: none !important;
+    width: 0 !important;
+  }
+
+  .diff-viewer-editor .monaco-editor .margin-view-overlays {
+    display: none !important;
+    width: 0 !important;
   }
 
   .diff-viewer-editor .monaco-editor .editor-scrollable {
     left: 0 !important;
+  }
+
+  .diff-viewer-editor .monaco-editor .lines-content {
+    margin-left: 0 !important;
+  }
+
+  /* Ensure diff editor uses full width */
+  .diff-viewer-editor .monaco-diff-editor {
+    width: 100% !important;
+  }
+
+  .diff-viewer-editor .monaco-diff-editor .editor.modified {
+    width: 100% !important;
+    left: 0 !important;
+  }
+
+  /* Comment dialog on top half of screen for mobile (keyboard space) */
+  .diff-viewer-comment-dialog {
+    top: 10%;
+    transform: translate(-50%, 0);
+    max-height: 40vh;
+    overflow-y: auto;
+  }
+
+  .diff-viewer-comment-input {
+    min-height: 60px;
   }
 }
 
