@@ -227,7 +227,6 @@ func (p *Pool) connect(key connKey, config *ssh.ClientConfig) (*pooledConn, erro
 	connected := pc.connect()
 	if connected {
 		pc.disconnected() // balance the connect() call
-		p.log().Debug("reusing pooled SSH connection", "key", key.String())
 		return pc, nil
 	}
 
