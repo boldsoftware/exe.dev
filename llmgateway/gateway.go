@@ -162,7 +162,6 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.log.WarnContext(r.Context(), "failed to look up box for user ID", "box", boxName, "error", err)
 	}
 
-	m.log.InfoContext(r.Context(), "authenticated via X-Exedev-Box header", "box", boxName, "remote_ip", host, "user_id", userID)
 	// Strip the header before forwarding
 	r.Header.Del("X-Exedev-Box")
 
@@ -178,7 +177,7 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(endpointPath, "/")
 	alias := parts[0]
 	remainder := endpointPath[len(alias):]
-	m.log.InfoContext(r.Context(), "llmGateway.ServeHTTP", "alias", alias, "remaimder", remainder, "method", r.Method, "url", r.URL)
+	m.log.InfoContext(r.Context(), "llmGateway.ServeHTTP", "alias", alias, "remaimder", remainder, "method", r.Method, "url", r.URL, "boxname", boxName)
 
 	requestsCounter.WithLabelValues("attempted", alias).Inc()
 
