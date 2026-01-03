@@ -358,6 +358,11 @@ func addExedEnvKeys(env []string) []string {
 		env = append(env, "GITHUB_TOKEN=fake-but-not-empty")
 	}
 
+	// Disable IPQS email quality checks in tests.
+	// Test emails like "TestFoo@example.com" get flagged as disposable,
+	// which disables VM creation for the test user.
+	env = append(env, "IPQS_API_KEY=")
+
 	// Ensure LLM gateway API keys are set for e1e tests.
 	// If real keys aren't provided,
 	// use fake keys so requests can reach the external APIs
