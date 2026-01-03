@@ -513,7 +513,7 @@ func (s *PredictableService) makeToolSmorgasbordResponse(inputTokens uint64) *ll
 	})
 
 	// browser_eval tool
-	evalInput, _ := json.Marshal(map[string]string{"script": "document.title"})
+	evalInput, _ := json.Marshal(map[string]string{"expression": "document.title"})
 	content = append(content, llm.Content{
 		ID:        fmt.Sprintf("tool_eval_%d", (baseNano+6)%1000),
 		Type:      llm.ContentTypeToolUse,

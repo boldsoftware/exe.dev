@@ -3,7 +3,7 @@ import { LLMContent } from "../types";
 
 interface BrowserEvalToolProps {
   // For tool_use (pending state)
-  toolInput?: unknown; // { script: string }
+  toolInput?: unknown; // { expression: string }
   isRunning?: boolean;
 
   // For tool_result (completed state)
@@ -21,13 +21,13 @@ function BrowserEvalTool({
 }: BrowserEvalToolProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Extract script from toolInput
-  const script =
+  // Extract expression from toolInput
+  const expression =
     typeof toolInput === "object" &&
     toolInput !== null &&
-    "script" in toolInput &&
-    typeof toolInput.script === "string"
-      ? toolInput.script
+    "expression" in toolInput &&
+    typeof (toolInput as { expression?: unknown }).expression === "string"
+      ? (toolInput as { expression: string }).expression
       : typeof toolInput === "string"
         ? toolInput
         : "";
@@ -36,13 +36,13 @@ function BrowserEvalTool({
   const result =
     toolResult && toolResult.length > 0 && toolResult[0].Text ? toolResult[0].Text : "";
 
-  // Truncate script for display
-  const truncateScript = (scr: string, maxLen: number = 300) => {
-    if (scr.length <= maxLen) return scr;
-    return scr.substring(0, maxLen) + "...";
+  // Truncate expression for display
+  const truncateText = (text: string, maxLen: number = 300) => {
+    if (text.length <= maxLen) return text;
+    return text.substring(0, maxLen) + "...";
   };
 
-  const displayScript = truncateScript(script);
+  const displayExpression = truncateText(expression);
   const isComplete = !isRunning && toolResult !== undefined;
 
   return (
@@ -50,7 +50,7 @@ function BrowserEvalTool({
       <div className="tool-header" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="tool-summary">
           <span className={`tool-emoji ${isRunning ? "running" : ""}`}>⚡</span>
-          <span className="tool-command">{displayScript}</span>
+          <span className="tool-command">{displayExpression}</span>
           {isComplete && hasError && <span className="tool-error">✗</span>}
           {isComplete && !hasError && <span className="tool-success">✓</span>}
         </div>
@@ -84,8 +84,8 @@ function BrowserEvalTool({
       {isExpanded && (
         <div className="tool-details">
           <div className="tool-section">
-            <div className="tool-label">Script:</div>
-            <pre className="tool-code">{script}</pre>
+            <div className="tool-label">Expression:</div>
+            <pre className="tool-code">{expression}</pre>
           </div>
 
           {isComplete && (
