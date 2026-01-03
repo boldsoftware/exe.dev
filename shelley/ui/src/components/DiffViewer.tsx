@@ -260,7 +260,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
 
     // Add click handler for commenting - clicking on a line in comment mode opens dialog
     const modifiedEditor = diffEditor.getModifiedEditor();
-    
+
     // Handler function for opening comment dialog
     const openCommentDialog = (lineNumber: number) => {
       const model = modifiedEditor.getModel();
@@ -285,7 +285,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
         endLine,
       });
     };
-    
+
     modifiedEditor.onMouseDown((e: Monaco.editor.IEditorMouseEvent) => {
       // In comment mode, clicking on line content opens comment dialog
       const isLineClick =
@@ -299,12 +299,12 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
         }
       }
     });
-    
+
     // For mobile: use onMouseUp which fires more reliably on touch devices
     if (isMobile) {
       modifiedEditor.onMouseUp((e: Monaco.editor.IEditorMouseEvent) => {
         if (modeRef.current !== "comment") return;
-        
+
         const isLineClick =
           e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT ||
           e.target.type === monaco.editor.MouseTargetType.CONTENT_EMPTY;
@@ -401,9 +401,10 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
     // Format: > filename:123: code
     // Comment...
     const line = showCommentDialog.line;
-    const codeSnippet = showCommentDialog.selectedText?.split('\n')[0]?.trim() || '';
-    const truncatedCode = codeSnippet.length > 60 ? codeSnippet.substring(0, 57) + '...' : codeSnippet;
-    
+    const codeSnippet = showCommentDialog.selectedText?.split("\n")[0]?.trim() || "";
+    const truncatedCode =
+      codeSnippet.length > 60 ? codeSnippet.substring(0, 57) + "..." : codeSnippet;
+
     const commentBlock = `> ${selectedFile}:${line}: ${truncatedCode}\n${commentText}\n\n`;
 
     onCommentTextChange(commentBlock);
@@ -793,7 +794,9 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
             <button
               className={`diff-viewer-mobile-nav-btn diff-viewer-mobile-mode-btn ${mode === "comment" ? "active" : ""}`}
               onClick={() => setMode(mode === "comment" ? "edit" : "comment")}
-              title={mode === "comment" ? "Comment mode (tap to switch)" : "Edit mode (tap to switch)"}
+              title={
+                mode === "comment" ? "Comment mode (tap to switch)" : "Edit mode (tap to switch)"
+              }
             >
               {mode === "comment" ? "💬" : "✏️"}
             </button>
