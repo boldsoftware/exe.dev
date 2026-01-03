@@ -9,12 +9,12 @@
 EXE.DEV: get a VM over ssh
 To sign up, please verify your email.
 
-Please enter your email address: TestNewPageRendersLoggedInAndOut.logged_in@example.com
+Please enter your email address: TestNewPageRendersLoggedInAndOut.logged_in_with_billing@example.com
 
 [DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
 
 
-Verification email sent to: TestNewPageRendersLoggedInAndOut.logged_in@example.com
+Verification email sent to: TestNewPageRendersLoggedInAndOut.logged_in_with_billing@example.com
 Waiting for email verification...
 ✓ Email verified successfully!
 
@@ -32,7 +32,7 @@ Welcome to EXE.DEV!
 - help to see a list of commands
 
 PROMPT ▶ whoami
-Email Address: TestNewPageRendersLoggedInAndOut.logged_in@example.com
+Email Address: TestNewPageRendersLoggedInAndOut.logged_in_with_billing@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
 PROMPT ▶ exit

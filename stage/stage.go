@@ -1,7 +1,12 @@
 // Package stage organizes different staging environments: prod, staging, local, test, etc.
 package stage
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+
+	"exe.dev/billing"
+)
 
 // An Env represents a deployment stage/environment.
 //
@@ -21,12 +26,13 @@ type Env struct {
 	UseCobble         bool // whether to start cobble/pebble for local ACME testing
 	DiscoverPublicIPs bool // whether to attempt to discover public IPs of the server using EC2 metadata service
 
-	FakeEmail  bool // whether to log emails instead of sending them
-	ReplDev    bool // whether to expose dev-only repl features (printing internal errors, showing hidden commands, skipping real email, etc.)
-	WebDev     bool // whether to expose dev-only web features (auto-show email links, skipping real email, etc.)
-	ProxyDev   bool // whether to expose dev-only proxy features (addressing a box directly via host:port, etc.)
-	GatewayDev bool // allow X-Exedev-Box auth even when request source IP isn't tailscale
-	SkipBanner bool // whether to skip showing the EXE banner on repl login
+	FakeEmail   bool // whether to log emails instead of sending them
+	SkipBilling bool // whether to skip billing/Stripe checkout for new signups (for tests)
+	ReplDev     bool // whether to expose dev-only repl features (printing internal errors, showing hidden commands, skipping real email, etc.)
+	WebDev      bool // whether to expose dev-only web features (auto-show email links, skipping real email, etc.)
+	ProxyDev    bool // whether to expose dev-only proxy features (addressing a box directly via host:port, etc.)
+	GatewayDev  bool // allow X-Exedev-Box auth even when request source IP isn't tailscale
+	SkipBanner  bool // whether to skip showing the EXE banner on repl login
 
 	ShowHiddenDocs    bool // whether to load and display unpublished docs
 	AutoStartSSHPiper bool // whether to auto-start sshpiper for local workflows
@@ -46,6 +52,8 @@ type Env struct {
 
 	DefaultMemory uint64 // default memory for new boxes in bytes
 	DefaultDisk   uint64 // default disk size for new boxes in bytes
+
+	StripeAPIKey string // Stripe API key for billing operations
 }
 
 // Invalid returns an Env with obviously invalid values.
@@ -103,12 +111,13 @@ func Local() Env {
 		UseCobble:         true,
 		DiscoverPublicIPs: false,
 
-		FakeEmail:  true,
-		ReplDev:    true,
-		WebDev:     true,
-		ProxyDev:   true,
-		GatewayDev: true,
-		SkipBanner: false,
+		FakeEmail:   true,
+		SkipBilling: false,
+		ReplDev:     true,
+		WebDev:      true,
+		ProxyDev:    true,
+		GatewayDev:  true,
+		SkipBanner:  false,
 
 		ShowHiddenDocs:    true,
 		AutoStartSSHPiper: true,
@@ -128,6 +137,8 @@ func Local() Env {
 
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
+
+		StripeAPIKey: billing.TestAPIKey,
 	}
 }
 
@@ -146,12 +157,13 @@ func Test() Env {
 		UseCobble:         false,
 		DiscoverPublicIPs: false,
 
-		FakeEmail:  true,
-		ReplDev:    false,
-		WebDev:     false,
-		ProxyDev:   true,
-		GatewayDev: true,
-		SkipBanner: true,
+		FakeEmail:   true,
+		SkipBilling: true,
+		ReplDev:     false,
+		WebDev:      false,
+		ProxyDev:    true,
+		GatewayDev:  true,
+		SkipBanner:  true,
 
 		ShowHiddenDocs:    true,
 		AutoStartSSHPiper: false,
@@ -171,6 +183,8 @@ func Test() Env {
 
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
+
+		StripeAPIKey: billing.TestAPIKey,
 	}
 }
 
@@ -186,12 +200,13 @@ func Staging() Env {
 		UseCobble:         false,
 		DiscoverPublicIPs: true,
 
-		FakeEmail:  false,
-		ReplDev:    false,
-		WebDev:     false,
-		ProxyDev:   false,
-		GatewayDev: false,
-		SkipBanner: false,
+		FakeEmail:   false,
+		SkipBilling: false,
+		ReplDev:     false,
+		WebDev:      false,
+		ProxyDev:    false,
+		GatewayDev:  false,
+		SkipBanner:  false,
 
 		ShowHiddenDocs:    false,
 		AutoStartSSHPiper: false,
@@ -211,6 +226,8 @@ func Staging() Env {
 
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
+
+		StripeAPIKey: os.Getenv("STRIPE_API_KEY"),
 	}
 }
 
@@ -225,12 +242,13 @@ func Prod() Env {
 		UseCobble:         false,
 		DiscoverPublicIPs: true,
 
-		FakeEmail:  false,
-		ReplDev:    false,
-		WebDev:     false,
-		ProxyDev:   false,
-		GatewayDev: false,
-		SkipBanner: false,
+		FakeEmail:   false,
+		SkipBilling: false,
+		ReplDev:     false,
+		WebDev:      false,
+		ProxyDev:    false,
+		GatewayDev:  false,
+		SkipBanner:  false,
 
 		ShowHiddenDocs:    false,
 		AutoStartSSHPiper: false,
@@ -250,6 +268,8 @@ func Prod() Env {
 
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
+
+		StripeAPIKey: os.Getenv("STRIPE_API_KEY"),
 	}
 }
 
@@ -299,4 +319,9 @@ func (e Env) BoxDest(boxName string) string {
 		return fmt.Sprintf("%s@%s", boxName, e.BoxHost)
 	}
 	return fmt.Sprintf("%s.%s", boxName, e.BoxHost)
+}
+
+// BillingClient returns a configured billing manager for this environment.
+func (e Env) BillingClient() *billing.Manager {
+	return &billing.Manager{APIKey: e.StripeAPIKey}
 }

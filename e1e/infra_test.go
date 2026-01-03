@@ -603,6 +603,28 @@ func registerForExeDevWithEmail(t *testing.T, email string) (pty *expectPty, coo
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sshCmd.Wait() })
+
+	// Add billing automatically - it's required before VM creation
+	if err := Env.servers.AddBillingForEmail(email); err != nil {
+		t.Fatalf("failed to add billing for %s: %v", email, err)
+	}
+
+	return pty, cookies, keyFile, email
+}
+
+// registerForExeDevWithoutBilling registers a user without adding billing.
+// Use this for tests that specifically test the no-billing user flow.
+func registerForExeDevWithoutBilling(t *testing.T) (pty *expectPty, cookies []*http.Cookie, keyFile, email string) {
+	name := t.Name()
+	name = strings.ReplaceAll(name, "/", ".")
+	email = name + "@example.com"
+
+	pty = makePty(t, "ssh localhost")
+	cookies, keyFile, sshCmd, err := Env.servers.RegisterForExeDevWithEmail(Env.context(t), pty.pty, email, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sshCmd.Wait() })
 	return pty, cookies, keyFile, email
 }
 
@@ -650,6 +672,15 @@ func newBox(t *testing.T, pty *expectPty, opts ...testinfra.BoxOpts) string {
 		t.Fatal(err)
 	}
 	return boxName
+}
+
+// addBillingForEmail adds billing account for a user by email.
+// This is needed before VM creation for users without billing info.
+func addBillingForEmail(t *testing.T, email string) {
+	t.Helper()
+	if err := Env.servers.AddBillingForEmail(email); err != nil {
+		t.Fatalf("failed to add billing: %v", err)
+	}
 }
 
 var (

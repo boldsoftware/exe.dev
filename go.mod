@@ -81,6 +81,7 @@ require (
 	cel.dev/expr v0.24.0 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6 // indirect
+	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/Microsoft/hcsshim v0.13.0 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
@@ -218,6 +219,7 @@ require (
 	github.com/spf13/pflag v1.0.7 // indirect
 	github.com/sqlc-dev/sqlc v1.30.0 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
+	github.com/stripe/stripe-go/v82 v82.5.1 // indirect
 	github.com/tailscale/go-winio v0.0.0-20231025203758-c4f33415bf55 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/tg123/remotesigner v0.0.3 // indirect
@@ -248,6 +250,7 @@ require (
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	goji.io v2.0.2+incompatible // indirect
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
+	golang.org/x/exp/typeparams v0.0.0-20240314144324-c7f7c6466f7f // indirect
 	golang.org/x/mod v0.31.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
@@ -258,6 +261,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/gotestsum v1.13.0 // indirect
+	honnef.co/go/tools v0.6.1 // indirect
 	lukechampine.com/uint128 v1.3.0 // indirect
 	modernc.org/libc v1.67.2 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
@@ -271,6 +275,7 @@ tool (
 	github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 	github.com/sqlc-dev/sqlc/cmd/sqlc
 	gotest.tools/gotestsum
+	honnef.co/go/tools/cmd/staticcheck
 	mvdan.cc/gofumpt
 	mvdan.cc/sh/v3/cmd/shfmt
 )

@@ -38,6 +38,7 @@ import (
 	"exe.dev/metricsbag"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
 	"exe.dev/route53"
+	"exe.dev/sqlite"
 	"exe.dev/stage"
 	"exe.dev/tracing"
 
@@ -642,6 +643,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleEmailVerificationHTTP(w, r)
 	case "/verify-device":
 		s.handleDeviceVerificationHTTP(w, r)
+	case "/billing/checkout/start":
+		s.handleBillingCheckoutStart(w, r)
+	case "/billing/checkout/success":
+		s.handleBillingCheckoutSuccess(w, r)
+	case "/billing/checkout/canceled":
+		s.handleBillingCheckoutCanceled(w, r)
+	case "/billing/subscribe":
+		s.handleBillingSubscribe(w, r)
+	case "/billing/success":
+		s.handleBillingSuccess(w, r)
 	case "/auth":
 		s.handleAuth(w, r)
 	case "/auth/confirm":
@@ -1082,6 +1093,52 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 	}
 
 	return user, nil
+}
+
+// createUserWithSSHKeyAndID creates a new user with a pre-specified user ID.
+// This is used when the user ID was generated earlier (e.g., for billing).
+func (s *Server) createUserWithSSHKeyAndID(ctx context.Context, userID, email, publicKey string) (*exedb.User, error) {
+	var user exedb.User
+
+	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+
+		if err := queries.InsertUser(ctx, exedb.InsertUserParams{
+			UserID:                 userID,
+			Email:                  email,
+			CreatedForLoginWithExe: false,
+		}); err != nil {
+			return fmt.Errorf("failed to create user: %w", err)
+		}
+
+		if publicKey != "" {
+			if err := queries.InsertSSHKey(ctx, exedb.InsertSSHKeyParams{
+				UserID:    userID,
+				PublicKey: publicKey,
+			}); err != nil {
+				return err
+			}
+		}
+
+		var err error
+		user, err = queries.GetUserWithDetails(ctx, userID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Check email quality and disable VM creation if disposable
+	if err := s.checkEmailQuality(ctx, user.UserID, email); err != nil {
+		s.slog().ErrorContext(ctx, "email quality check failed", "error", err, "email", email)
+	}
+
+	// Resolve any pending shares for this email
+	if err := s.resolvePendingShares(ctx, email, user.UserID); err != nil {
+		return nil, fmt.Errorf("failed to resolve pending shares: %w", err)
+	}
+
+	return &user, nil
 }
 
 // handleUserDashboard renders the user dashboard page

@@ -117,6 +117,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteTagResolutionStmt, err = db.PrepareContext(ctx, deleteTagResolution); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTagResolution: %w", err)
 	}
+	if q.getAccountStmt, err = db.PrepareContext(ctx, getAccount); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAccount: %w", err)
+	}
+	if q.getAccountByUserIDStmt, err = db.PrepareContext(ctx, getAccountByUserID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAccountByUserID: %w", err)
+	}
 	if q.getAllBoxShareLinksByBoxIDStmt, err = db.PrepareContext(ctx, getAllBoxShareLinksByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllBoxShareLinksByBoxID: %w", err)
 	}
@@ -282,6 +288,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.incrementUserEmailCountStmt, err = db.PrepareContext(ctx, incrementUserEmailCount); err != nil {
 		return nil, fmt.Errorf("error preparing query IncrementUserEmailCount: %w", err)
 	}
+	if q.insertAccountStmt, err = db.PrepareContext(ctx, insertAccount); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertAccount: %w", err)
+	}
 	if q.insertAuthCookieStmt, err = db.PrepareContext(ctx, insertAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAuthCookie: %w", err)
 	}
@@ -326,6 +335,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertUserStmt, err = db.PrepareContext(ctx, insertUser); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertUser: %w", err)
+	}
+	if q.listAllAccountsStmt, err = db.PrepareContext(ctx, listAllAccounts); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllAccounts: %w", err)
 	}
 	if q.listAllUsersStmt, err = db.PrepareContext(ctx, listAllUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllUsers: %w", err)
@@ -410,6 +422,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.userHasAuthCookieStmt, err = db.PrepareContext(ctx, userHasAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query UserHasAuthCookie: %w", err)
+	}
+	if q.userIsPayingStmt, err = db.PrepareContext(ctx, userIsPaying); err != nil {
+		return nil, fmt.Errorf("error preparing query UserIsPaying: %w", err)
+	}
+	if q.userNeedsBillingStmt, err = db.PrepareContext(ctx, userNeedsBilling); err != nil {
+		return nil, fmt.Errorf("error preparing query UserNeedsBilling: %w", err)
 	}
 	return &q, nil
 }
@@ -569,6 +587,16 @@ func (q *Queries) Close() error {
 	if q.deleteTagResolutionStmt != nil {
 		if cerr := q.deleteTagResolutionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteTagResolutionStmt: %w", cerr)
+		}
+	}
+	if q.getAccountStmt != nil {
+		if cerr := q.getAccountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAccountStmt: %w", cerr)
+		}
+	}
+	if q.getAccountByUserIDStmt != nil {
+		if cerr := q.getAccountByUserIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAccountByUserIDStmt: %w", cerr)
 		}
 	}
 	if q.getAllBoxShareLinksByBoxIDStmt != nil {
@@ -846,6 +874,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing incrementUserEmailCountStmt: %w", cerr)
 		}
 	}
+	if q.insertAccountStmt != nil {
+		if cerr := q.insertAccountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertAccountStmt: %w", cerr)
+		}
+	}
 	if q.insertAuthCookieStmt != nil {
 		if cerr := q.insertAuthCookieStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertAuthCookieStmt: %w", cerr)
@@ -919,6 +952,11 @@ func (q *Queries) Close() error {
 	if q.insertUserStmt != nil {
 		if cerr := q.insertUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertUserStmt: %w", cerr)
+		}
+	}
+	if q.listAllAccountsStmt != nil {
+		if cerr := q.listAllAccountsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllAccountsStmt: %w", cerr)
 		}
 	}
 	if q.listAllUsersStmt != nil {
@@ -1061,6 +1099,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing userHasAuthCookieStmt: %w", cerr)
 		}
 	}
+	if q.userIsPayingStmt != nil {
+		if cerr := q.userIsPayingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing userIsPayingStmt: %w", cerr)
+		}
+	}
+	if q.userNeedsBillingStmt != nil {
+		if cerr := q.userNeedsBillingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing userNeedsBillingStmt: %w", cerr)
+		}
+	}
 	return err
 }
 
@@ -1131,6 +1179,8 @@ type Queries struct {
 	deletePendingSSHKeyByTokenStmt         *sql.Stmt
 	deleteSSHKeyForUserStmt                *sql.Stmt
 	deleteTagResolutionStmt                *sql.Stmt
+	getAccountStmt                         *sql.Stmt
+	getAccountByUserIDStmt                 *sql.Stmt
 	getAllBoxShareLinksByBoxIDStmt         *sql.Stmt
 	getAllUserEventsStmt                   *sql.Stmt
 	getAuthCookieInfoStmt                  *sql.Stmt
@@ -1186,6 +1236,7 @@ type Queries struct {
 	incrementSeenOnHostsStmt               *sql.Stmt
 	incrementShareLinkUsageStmt            *sql.Stmt
 	incrementUserEmailCountStmt            *sql.Stmt
+	insertAccountStmt                      *sql.Stmt
 	insertAuthCookieStmt                   *sql.Stmt
 	insertBoxStmt                          *sql.Stmt
 	insertBoxIPShardStmt                   *sql.Stmt
@@ -1201,6 +1252,7 @@ type Queries struct {
 	insertSSHKeyForEmailUserStmt           *sql.Stmt
 	insertTagResolutionHistoryStmt         *sql.Stmt
 	insertUserStmt                         *sql.Stmt
+	listAllAccountsStmt                    *sql.Stmt
 	listAllUsersStmt                       *sql.Stmt
 	listIPShardsStmt                       *sql.Stmt
 	listIPShardsForUserStmt                *sql.Stmt
@@ -1229,6 +1281,8 @@ type Queries struct {
 	upsertSSHKeyForUserStmt                *sql.Stmt
 	upsertTagResolutionStmt                *sql.Stmt
 	userHasAuthCookieStmt                  *sql.Stmt
+	userIsPayingStmt                       *sql.Stmt
+	userNeedsBillingStmt                   *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
@@ -1266,6 +1320,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deletePendingSSHKeyByTokenStmt:         q.deletePendingSSHKeyByTokenStmt,
 		deleteSSHKeyForUserStmt:                q.deleteSSHKeyForUserStmt,
 		deleteTagResolutionStmt:                q.deleteTagResolutionStmt,
+		getAccountStmt:                         q.getAccountStmt,
+		getAccountByUserIDStmt:                 q.getAccountByUserIDStmt,
 		getAllBoxShareLinksByBoxIDStmt:         q.getAllBoxShareLinksByBoxIDStmt,
 		getAllUserEventsStmt:                   q.getAllUserEventsStmt,
 		getAuthCookieInfoStmt:                  q.getAuthCookieInfoStmt,
@@ -1321,6 +1377,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		incrementSeenOnHostsStmt:               q.incrementSeenOnHostsStmt,
 		incrementShareLinkUsageStmt:            q.incrementShareLinkUsageStmt,
 		incrementUserEmailCountStmt:            q.incrementUserEmailCountStmt,
+		insertAccountStmt:                      q.insertAccountStmt,
 		insertAuthCookieStmt:                   q.insertAuthCookieStmt,
 		insertBoxStmt:                          q.insertBoxStmt,
 		insertBoxIPShardStmt:                   q.insertBoxIPShardStmt,
@@ -1336,6 +1393,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertSSHKeyForEmailUserStmt:           q.insertSSHKeyForEmailUserStmt,
 		insertTagResolutionHistoryStmt:         q.insertTagResolutionHistoryStmt,
 		insertUserStmt:                         q.insertUserStmt,
+		listAllAccountsStmt:                    q.listAllAccountsStmt,
 		listAllUsersStmt:                       q.listAllUsersStmt,
 		listIPShardsStmt:                       q.listIPShardsStmt,
 		listIPShardsForUserStmt:                q.listIPShardsForUserStmt,
@@ -1364,5 +1422,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertSSHKeyForUserStmt:                q.upsertSSHKeyForUserStmt,
 		upsertTagResolutionStmt:                q.upsertTagResolutionStmt,
 		userHasAuthCookieStmt:                  q.userHasAuthCookieStmt,
+		userIsPayingStmt:                       q.userIsPayingStmt,
+		userNeedsBillingStmt:                   q.userNeedsBillingStmt,
 	}
 }

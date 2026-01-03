@@ -277,6 +277,18 @@
             </div>
         </div>
 
+        {{if not .BasicUser}}
+        <div class="section">
+            <div class="section-title">Billing</div>
+            <div class="info-card">
+                <div class="info-row">
+                    <div class="info-label">Support</div>
+                    <div class="info-value"><a href="mailto:support@exe.dev">support@exe.dev</a></div>
+                </div>
+            </div>
+        </div>
+        {{end}}
+
         {{if .SiteSessions}}
         <div class="section">
             <div class="section-title">Sessions</div>

@@ -841,6 +841,11 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 	select {
 	case <-verification.CompleteChan:
 		stop()
+		// Check if billing checkout failed or was canceled
+		if verification.Error != nil {
+			fmt.Fprintf(s, "\r\n%s✗ %s%s\r\n", "\033[1;31m", verification.Error.Error(), "\033[0m")
+			return nil, verification.Error
+		}
 		fmt.Fprintf(s, "%s✓ Email verified successfully!%s\r\n\r\n", "\033[1;32m", "\033[0m")
 	case <-ctx.Done():
 		if errors.Is(context.Cause(ctx), ctrlc.ErrCanceled) {

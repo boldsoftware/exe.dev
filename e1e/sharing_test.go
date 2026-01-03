@@ -675,7 +675,8 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 	testID := time.Now().UnixNano()
 
 	// Owner creates a box
-	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, fmt.Sprintf("owner-%d@test-pending-share-ssh.example", testID))
+	ownerEmail := fmt.Sprintf("owner-%d@test-pending-share-ssh.example", testID)
+	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, ownerEmail)
 	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
 	ownerPTY.disconnect()
 	waitForSSH(t, box, ownerKeyFile)
@@ -815,7 +816,8 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 	testID := time.Now().UnixNano()
 
 	// Owner creates a box
-	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, fmt.Sprintf("owner-%d@test-pending-share-web.example", testID))
+	ownerEmail := fmt.Sprintf("owner-%d@test-pending-share-web.example", testID)
+	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, ownerEmail)
 	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
 	ownerPTY.disconnect()
 	waitForSSH(t, box, ownerKeyFile)

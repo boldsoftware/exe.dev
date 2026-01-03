@@ -163,6 +163,11 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
+	// Require STRIPE_API_KEY in production (non-dev) environments
+	if !env.WebDev && env.StripeAPIKey == "" {
+		return fmt.Errorf("STRIPE_API_KEY environment variable is required in production")
+	}
+
 	server, err := execore.NewServer(execore.ServerConfig{
 		Logger:          slog.Default(),
 		HTTPAddr:        *httpAddr,

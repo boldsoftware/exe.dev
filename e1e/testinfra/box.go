@@ -313,6 +313,55 @@ func (se *ServerEnv) WebLoginWithExe(email string) ([]*http.Cookie, error) {
 	return se.WaitForEmailAndVerify(email)
 }
 
+// AddBillingForUser adds a billing account for a user by their user_id.
+// This simulates a user completing the Stripe billing flow.
+func (se *ServerEnv) AddBillingForUser(userID string) error {
+	addBillingURL := fmt.Sprintf("http://localhost:%d/debug/users/add-billing", se.Exed.HTTPPort)
+	resp, err := http.PostForm(addBillingURL, url.Values{"user_id": {userID}})
+	if err != nil {
+		return fmt.Errorf("failed to POST to /debug/users/add-billing: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("POST /debug/users/add-billing failed with status %d: %s", resp.StatusCode, body)
+	}
+	return nil
+}
+
+// AddBillingForEmail adds a billing account for a user by their email address.
+// This looks up the user_id from the email and then adds billing.
+func (se *ServerEnv) AddBillingForEmail(email string) error {
+	// Get user_id from debug endpoint
+	usersURL := fmt.Sprintf("http://localhost:%d/debug/users?format=json", se.Exed.HTTPPort)
+	resp, err := http.Get(usersURL)
+	if err != nil {
+		return fmt.Errorf("failed to get users: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var users []struct {
+		UserID string `json:"user_id"`
+		Email  string `json:"email"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		return fmt.Errorf("failed to parse users: %v", err)
+	}
+
+	var userID string
+	for _, u := range users {
+		if u.Email == email {
+			userID = u.UserID
+			break
+		}
+	}
+	if userID == "" {
+		return fmt.Errorf("user %s not found", email)
+	}
+
+	return se.AddBillingForUser(userID)
+}
+
 // RegisterForExeDevWithEmail registers with exed over an
 // ssh connection on pty.
 // Dir is where to put the generated SSH key.

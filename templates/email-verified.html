@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Email Verified - {{.WebHost}}</title>
+  <title>{{if .IsWelcome}}Welcome{{else}}Email Verified{{end}} - {{.WebHost}}</title>
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,20 +17,29 @@
 <body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
   <main class="w-full max-w-2xl">
     <p class="text-zinc-500 mb-4">{{.Email}}</p>
-    <p class="text-6xl font-semibold tracking-widest">VERIFIED</p>
-    {{if eq .Source "exemenu"}}
-    <p class="text-zinc-500 mt-8">(return to your terminal)</p>
+    <p class="text-6xl font-semibold tracking-widest">{{if .IsWelcome}}WELCOME{{else}}VERIFIED{{end}}</p>
+    {{if .NeedsBilling}}
+    <div class="mt-8 space-y-4">
+      <p class="text-zinc-600">One last step: add a payment method to start launching VMs.</p>
+      <p class="text-zinc-500 text-sm">You will not be charged during the Developer Preview. The preview ends February 1, 2026.</p>
+      <a href="/billing/checkout/start?token={{.BillingToken}}" class="inline-block px-6 py-3 bg-zinc-900 text-white rounded hover:bg-zinc-700">Setup Future Payment Details</a>
+    </div>
+    {{else if eq .Source "exemenu"}}
+    <p class="text-zinc-500 mt-8">Return to your terminal to continue.</p>
     {{else}}
     <div class="mt-8">
       <a href="/" class="text-zinc-600 hover:text-zinc-900 underline">Continue to Dashboard</a>
     </div>
     {{end}}
-    {{if not .HasPasskeys}}
+    {{if and (not .HasPasskeys) (not .NeedsBilling)}}
     <div id="passkey-section" class="mt-12 border-t border-zinc-200 pt-8" style="display: none;">
-      <p class="text-zinc-600 mb-4">Add a passkey for faster sign-in?</p>
-      <div class="flex gap-3 items-center">
-        <input type="text" id="passkey-name" placeholder="Passkey name" class="px-3 py-2 border border-zinc-300 rounded text-sm focus:outline-none focus:border-zinc-500">
-        <button onclick="addPasskey()" class="px-4 py-2 bg-zinc-900 text-white rounded text-sm hover:bg-zinc-700">Add Passkey</button>
+      <p class="text-zinc-500 text-sm mb-4">Optional: Add a passkey for passwordless sign-in from this browser.</p>
+      <div class="flex flex-col gap-2">
+        <label for="passkey-name" class="text-zinc-600 text-sm">Passkey name</label>
+        <div class="flex gap-3 items-center">
+          <input type="text" id="passkey-name" placeholder="e.g. MacBook Pro, Work Laptop" class="px-3 py-2 border border-zinc-300 rounded text-sm focus:outline-none focus:border-zinc-500 w-64">
+          <button onclick="addPasskey()" class="px-4 py-2 border border-zinc-300 text-zinc-700 rounded text-sm hover:bg-zinc-100">Add Passkey</button>
+        </div>
       </div>
       <p id="passkey-error" class="text-red-600 text-sm mt-2" style="display: none;"></p>
       <p id="passkey-success" class="text-green-600 text-sm mt-2" style="display: none;">Passkey added!</p>

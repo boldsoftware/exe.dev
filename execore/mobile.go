@@ -295,12 +295,21 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 
 // handleMobileNew renders the new box form
 func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
-	// Always show the new box form
 	hostnameSuggestion := boxname.Random()
 
 	// Check if user is logged in
-	_, err := s.validateAuthCookie(r)
+	userID, err := s.validateAuthCookie(r)
 	isLoggedIn := err == nil
+
+	// If user is logged in, check if they need billing (only new users need billing)
+	if isLoggedIn {
+		needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
+		if err == nil && needsBilling != nil && *needsBilling {
+			// User is logged in but needs to add billing info
+			s.renderTemplate(w, "billing-required.html", s.env)
+			return
+		}
+	}
 
 	data := struct {
 		stage.Env
@@ -380,8 +389,16 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 
 	s.slog().InfoContext(r.Context(), "Mobile VM creation request", "hostname", hostname, "prompt", prompt)
 
-	// If user is logged in, start creation immediately and redirect to dashboard
+	// If user is logged in, check billing status before proceeding
 	if userID, err := s.validateAuthCookie(r); err == nil {
+		// Check if user needs billing (only new users need billing)
+		needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
+		if err == nil && needsBilling != nil && *needsBilling {
+			// User is logged in but needs to add billing info
+			s.renderTemplate(w, "billing-required.html", s.env)
+			return
+		}
+
 		// Start box creation in background
 		s.startBoxCreation(r.Context(), hostname, prompt, userID)
 		http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
@@ -552,6 +569,14 @@ func (s *Server) handleMobileVerifyTokenEmailLink(w http.ResponseWriter, r *http
 		return
 	}
 	if hostname != "" {
+		// Check if user needs billing before starting creation (only new users need billing)
+		needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
+		if err == nil && needsBilling != nil && *needsBilling {
+			// User needs to add billing before creating a VM
+			s.renderTemplate(w, "billing-required.html", s.env)
+			return
+		}
+
 		// Start box creation in background
 		s.startBoxCreation(r.Context(), hostname, prompt, userID)
 		http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
@@ -610,6 +635,14 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 		return
 	}
 	if hostname != "" {
+		// Check if user needs billing before starting creation (only new users need billing)
+		needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
+		if err == nil && needsBilling != nil && *needsBilling {
+			// User needs to add billing before creating a VM
+			s.renderTemplate(w, "billing-required.html", s.env)
+			return
+		}
+
 		// Start box creation in background
 		s.startBoxCreation(r.Context(), hostname, prompt, userID)
 		http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)

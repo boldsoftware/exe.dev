@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"exe.dev/boxname"
+	"exe.dev/billing"
 	"exe.dev/bsdns"
 	"exe.dev/bsdns/alley53"
 	"exe.dev/container"
@@ -159,6 +160,18 @@ type EmailVerification struct {
 	closeOnce    sync.Once
 	CreatedAt    time.Time
 	IsNewAccount bool
+
+	// UserID is pre-generated for the new user. It is set after email
+	// verification but before user creation.
+	UserID string
+
+	// AccountID is the billing account ID created before Stripe checkout.
+	// It is used as the Stripe customer ID.
+	AccountID string
+
+	// Error is set if billing checkout fails or is canceled. The SSH session
+	// checks this after CompleteChan closes.
+	Error error
 }
 
 // Close signals completion to the waiting SSH session.
@@ -280,6 +293,9 @@ type Server struct {
 
 	// Slack feed for posting events and tracking new user signups
 	slackFeed *logging.SlackFeed
+
+	// Billing manager for subscription management
+	billing *billing.Manager
 }
 
 // exeletClient wraps an exelet client with its address
@@ -701,6 +717,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		templates: tmpl,
 		log:       slog,
 		slackFeed: logging.NewSlackFeed(slog, cfg.Env),
+		billing:   cfg.Env.BillingClient(),
 	}
 
 	// Set up HTTP metrics host functions for in-flight label tracking
