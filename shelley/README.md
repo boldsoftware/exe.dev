@@ -1,70 +1,49 @@
-# Shelley - A Coding Agent for exe.dev
+# Shelley: a coding agent for exe.dev
 
-Shelley is a conversational AI coding agent that provides a web interface
-for AI-powered coding assistance.
+Shelley is a mobile-friendly, web-based, multi-conversation, multi-modal,
+multi-model, single-user coding agent built for but not exclusive to
+[exe.dev](https://exe.dev/). It does not come with authorization or sandboxing:
+bring your own. 
 
-See also ARCHITECTURE.md for architectural details.
+*Mobile-friendly* because ideas can come any time.
+
+*Web-based*, because terminal-based scroll back is punishment for shoplifting in some countries.
+
+*Multi-modal* because screenshots, charts, and graphs are necessary, not to mention delightful. 
+
+*Multi-model* to benefit from all the innovation going on.
+
+*Single-user* because it makes sense to bring the agent to the compute.
+
+# Architecture 
+
+The technical stack is Go for the backend, SQLite for storage, and Typescript
+and React for the UI. 
+
+The data model is that Conversations have Messages, which might be from the
+user, the model, the tools, or the harness. All of that is stored in the
+database, and we use a SSE endpoint to keep the UI updated. 
+
+# History
+
+Shelley is partially based on our previous coding agent effort, [Sketch](https://github.com/boldsoftware/sketch). 
+
+Unsurprisingly, much of Shelley is written by Shelley, Sketch, Claude Code, and Codex. 
+
+# Open source
+
+Shelley is Apache licensed. We require a CLA for contributions.
+
+# Building Shelley
+
+Run `make`. Run `make serve` to start Shelley locally.
 
 ## Dev Tricks
 
 If you want to see how mobile looks, and you're on your home
 network where you've got mDNS working fine, you can
 run 
-  socat TCP-LISTEN:9001,fork TCP:localhost:9000
-and then have your phone go to http://hostname.local:9001/
 
-## CLI Usage
-
-Shelley can be used as a command-line tool with the following commands:
-
-### Global Flags
-
-- `--db <path>`: Path to SQLite database file (default: "shelley.db")
-- `--model <model>`: LLM model to use (use `predictable` for testing). Run `shelley models` to see available models.
-- `--debug`: Enable debug logging
-
-### Commands
-
-#### `serve` - Start Web Server
-
-Starts the web server for the browser-based interface.
-
-```bash
-shelley serve --port 9000
 ```
-
-Flags:
-- `--port <port>`: Port to listen on (default: 9000)
-
-#### `models` - List Supported Models
-
-Lists all supported models and their required environment variables.
-
-```bash
-shelley models
-```
-
-### Examples
-
-```bash
-# Start the web server
-shelley serve --port 8080
-
-# List supported models
-shelley models
-
-## Models and API Keys
-
-Use `shelley models` to see supported models, whether they are ready, and the environment variables required for each.
-
-Common env vars:
-
-- `ANTHROPIC_API_KEY`: Required for Claude models.
-- `OPENAI_API_KEY`: Required for OpenAI models.
-- `FIREWORKS_API_KEY`: Required for Fireworks models.
-
-Notes:
-
-- Run `shelley models` to see which model is the default and which are available.
-- `predictable` is a built-in test model and requires no API keys.
+socat TCP-LISTEN:9001,fork TCP:localhost:9000
 ```
