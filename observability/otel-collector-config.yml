@@ -23,6 +23,15 @@ processors:
     timeout: 1s
     send_batch_size: 1024
 
+  # Filter out noisy log lines before sending to Honeycomb
+  filter/honeycomb:
+    logs:
+      exclude:
+        match_type: strict
+        bodies:
+          - "getting instance from config"
+          - "resource manager: activity check"
+
 connectors:
   # Route logs based on deployment.environment
   routing:
@@ -30,9 +39,9 @@ connectors:
     error_mode: ignore
     table:
       - statement: route() where resource.attributes["deployment.environment"] == "staging"
-        pipelines: [logs/staging]
+        pipelines: [logs/staging-honeycomb, logs/staging-storage]
       - statement: route() where resource.attributes["deployment.environment"] == "production"
-        pipelines: [logs/production]
+        pipelines: [logs/production-honeycomb, logs/production-storage]
 
 exporters:
   # Honeycomb exporter for staging
@@ -131,15 +140,27 @@ service:
       processors: [batch]
       exporters: [routing]
 
-    # Staging: Honeycomb + file + S3
-    logs/staging:
+    # Staging Honeycomb: filtered to reduce noise
+    logs/staging-honeycomb:
       receivers: [routing]
-      exporters: [otlphttp/honeycomb-staging, file/staging, awss3/staging]
+      processors: [filter/honeycomb]
+      exporters: [otlphttp/honeycomb-staging]
 
-    # Production: Honeycomb + file + S3
-    logs/production:
+    # Staging storage: unfiltered file + S3
+    logs/staging-storage:
       receivers: [routing]
-      exporters: [otlphttp/honeycomb-production, file/production, awss3/production]
+      exporters: [file/staging, awss3/staging]
+
+    # Production Honeycomb: filtered to reduce noise
+    logs/production-honeycomb:
+      receivers: [routing]
+      processors: [filter/honeycomb]
+      exporters: [otlphttp/honeycomb-production]
+
+    # Production storage: unfiltered file + S3
+    logs/production-storage:
+      receivers: [routing]
+      exporters: [file/production, awss3/production]
 
     # Unknown environment: file + S3 (no Honeycomb)
     logs/unknown:
