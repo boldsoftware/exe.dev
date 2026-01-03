@@ -30,6 +30,14 @@ Shelley is partially based on our previous coding agent effort, [Sketch](https:/
 
 Unsurprisingly, much of Shelley is written by Shelley, Sketch, Claude Code, and Codex. 
 
+# Shelley's Name
+
+Shelley is so named because the main tool it uses is the shell, and I like
+putting "-ey" at the end of words. It is also named after Percy Bysshe Shelley,
+with an appropriately ironic nod at
+"[Ozymandias](https://www.poetryfoundation.org/poems/46565/ozymandias)."
+Shelley is a computer program, and, it's an it.
+
 # Open source
 
 Shelley is Apache licensed. We require a CLA for contributions.
