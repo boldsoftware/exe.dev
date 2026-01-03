@@ -3,6 +3,7 @@ package route53
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -130,6 +131,18 @@ func NewWildcardCertManager(domains []string, diskCache autocert.Cache, certRequ
 	client := &acme.Client{
 		Key:          key,
 		DirectoryURL: "https://acme-v02.api.letsencrypt.org/directory",
+	}
+
+	// Register or retrieve the ACME account
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	acct := &acme.Account{
+		Contact: []string{"mailto:admin@exe.dev"},
+	}
+	_, err = client.Register(ctx, acct, acme.AcceptTOS)
+	if err != nil && !errors.Is(err, acme.ErrAccountAlreadyExists) {
+		panic(fmt.Sprintf("failed to register ACME account: %v", err))
 	}
 
 	manager := &WildcardCertManager{
@@ -607,7 +620,7 @@ func decodeCertificate(data []byte) (*tls.Certificate, error) {
 
 	var (
 		certs [][]byte
-		key   *rsa.PrivateKey
+		key   crypto.PrivateKey
 		rest  = data
 	)
 
@@ -624,7 +637,20 @@ func decodeCertificate(data []byte) (*tls.Certificate, error) {
 		case "RSA PRIVATE KEY":
 			parsedKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse cached private key: %w", err)
+				return nil, fmt.Errorf("failed to parse cached RSA private key: %w", err)
+			}
+			key = parsedKey
+		case "EC PRIVATE KEY":
+			parsedKey, err := x509.ParseECPrivateKey(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse cached EC private key: %w", err)
+			}
+			key = parsedKey
+		case "PRIVATE KEY":
+			// PKCS#8 format - can contain RSA, EC, or other key types
+			parsedKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse cached PKCS8 private key: %w", err)
 			}
 			key = parsedKey
 		default:
