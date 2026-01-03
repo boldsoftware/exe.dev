@@ -223,6 +223,7 @@ jobs:
 
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          SHELLEY_REPO_DEPLOY_KEY: ${{ secrets.SHELLEY_REPO_DEPLOY_KEY }}
       - name: Ensure GitHub CLI installed
         if: steps.push.outputs.exeuntu_or_shelley_changed == 'true'
         run: |
