@@ -388,6 +388,16 @@ func (l *Loop) insertMissingToolResults(req *llm.Request) {
 		msg := req.Messages[i]
 
 		if msg.Role == llm.MessageRoleAssistant {
+			// Handle empty assistant messages - add placeholder content if not the last message
+			// The API requires all messages to have non-empty content except for the optional
+			// final assistant message. Empty content can happen when the model ends its turn
+			// without producing any output.
+			if len(msg.Content) == 0 && i < len(req.Messages)-1 {
+				req.Messages[i].Content = []llm.Content{{Type: llm.ContentTypeText, Text: "(no response)"}}
+				msg = req.Messages[i] // update local copy for subsequent processing
+				l.logger.Debug("added placeholder content to empty assistant message", "index", i)
+			}
+
 			// Track all tool_use IDs in this assistant message
 			prevAssistantToolUseIDs = make(map[string]bool)
 			for _, c := range msg.Content {

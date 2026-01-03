@@ -841,3 +841,126 @@ func TestInsertMissingToolResultsWithEdgeCases(t *testing.T) {
 		}
 	})
 }
+
+func TestInsertMissingToolResults_EmptyAssistantContent(t *testing.T) {
+	// Test for the bug: when an assistant message has empty content (can happen when
+	// the model ends its turn without producing any output), we need to add placeholder
+	// content if it's not the last message. Otherwise the API will reject with:
+	// "messages.N: all messages must have non-empty content except for the optional
+	// final assistant message"
+
+	t.Run("empty assistant content in middle of conversation", func(t *testing.T) {
+		loop := NewLoop(Config{
+			LLM:     NewPredictableService(),
+			History: []llm.Message{},
+		})
+
+		req := &llm.Request{
+			Messages: []llm.Message{
+				{
+					Role:    llm.MessageRoleUser,
+					Content: []llm.Content{{Type: llm.ContentTypeText, Text: "run git fetch"}},
+				},
+				{
+					Role:    llm.MessageRoleAssistant,
+					Content: []llm.Content{{Type: llm.ContentTypeToolUse, ID: "tool1", ToolName: "bash"}},
+				},
+				{
+					Role: llm.MessageRoleUser,
+					Content: []llm.Content{{
+						Type:       llm.ContentTypeToolResult,
+						ToolUseID:  "tool1",
+						ToolResult: []llm.Content{{Type: llm.ContentTypeText, Text: "success"}},
+					}},
+				},
+				{
+					// Empty assistant message - this can happen when model ends turn without output
+					Role:      llm.MessageRoleAssistant,
+					Content:   []llm.Content{},
+					EndOfTurn: true,
+				},
+				{
+					Role:    llm.MessageRoleUser,
+					Content: []llm.Content{{Type: llm.ContentTypeText, Text: "next question"}},
+				},
+			},
+		}
+
+		loop.insertMissingToolResults(req)
+
+		// The empty assistant message (index 3) should now have placeholder content
+		if len(req.Messages[3].Content) == 0 {
+			t.Error("expected placeholder content to be added to empty assistant message")
+		}
+		if req.Messages[3].Content[0].Type != llm.ContentTypeText {
+			t.Error("expected placeholder to be text content")
+		}
+		if req.Messages[3].Content[0].Text != "(no response)" {
+			t.Errorf("expected placeholder text '(no response)', got %q", req.Messages[3].Content[0].Text)
+		}
+	})
+
+	t.Run("empty assistant content at end of conversation - no modification needed", func(t *testing.T) {
+		loop := NewLoop(Config{
+			LLM:     NewPredictableService(),
+			History: []llm.Message{},
+		})
+
+		req := &llm.Request{
+			Messages: []llm.Message{
+				{
+					Role:    llm.MessageRoleUser,
+					Content: []llm.Content{{Type: llm.ContentTypeText, Text: "hello"}},
+				},
+				{
+					// Empty assistant message at end is allowed by the API
+					Role:      llm.MessageRoleAssistant,
+					Content:   []llm.Content{},
+					EndOfTurn: true,
+				},
+			},
+		}
+
+		loop.insertMissingToolResults(req)
+
+		// The empty assistant message at the end should NOT be modified
+		// because the API allows empty content for the final assistant message
+		if len(req.Messages[1].Content) != 0 {
+			t.Error("expected final empty assistant message to remain empty")
+		}
+	})
+
+	t.Run("non-empty assistant content - no modification needed", func(t *testing.T) {
+		loop := NewLoop(Config{
+			LLM:     NewPredictableService(),
+			History: []llm.Message{},
+		})
+
+		req := &llm.Request{
+			Messages: []llm.Message{
+				{
+					Role:    llm.MessageRoleUser,
+					Content: []llm.Content{{Type: llm.ContentTypeText, Text: "hello"}},
+				},
+				{
+					Role:    llm.MessageRoleAssistant,
+					Content: []llm.Content{{Type: llm.ContentTypeText, Text: "hi there"}},
+				},
+				{
+					Role:    llm.MessageRoleUser,
+					Content: []llm.Content{{Type: llm.ContentTypeText, Text: "goodbye"}},
+				},
+			},
+		}
+
+		loop.insertMissingToolResults(req)
+
+		// The assistant message should not be modified
+		if len(req.Messages[1].Content) != 1 {
+			t.Errorf("expected assistant message to have 1 content item, got %d", len(req.Messages[1].Content))
+		}
+		if req.Messages[1].Content[0].Text != "hi there" {
+			t.Errorf("expected assistant message text 'hi there', got %q", req.Messages[1].Content[0].Text)
+		}
+	})
+}
