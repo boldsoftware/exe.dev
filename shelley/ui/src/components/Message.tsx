@@ -24,12 +24,88 @@ interface ToolDisplay {
 
 interface MessageProps {
   message: MessageType;
+  onOpenDiffViewer?: (commit: string) => void;
 }
 
-function Message({ message }: MessageProps) {
+function Message({ message, onOpenDiffViewer }: MessageProps) {
   // Hide system messages from the UI
   if (message.type === "system") {
     return null;
+  }
+
+  // Render gitinfo messages as compact status updates
+  if (message.type === "gitinfo") {
+    // Parse user_data which contains structured git state info
+    let commitHash: string | null = null;
+    let subject: string | null = null;
+    let branch: string | null = null;
+
+    if (message.user_data) {
+      try {
+        const userData =
+          typeof message.user_data === "string" ? JSON.parse(message.user_data) : message.user_data;
+        if (userData.commit) {
+          commitHash = userData.commit;
+        }
+        if (userData.subject) {
+          subject = userData.subject;
+        }
+        if (userData.branch) {
+          branch = userData.branch;
+        }
+      } catch (err) {
+        console.error("Failed to parse gitinfo user_data:", err);
+      }
+    }
+
+    if (!commitHash) {
+      return null;
+    }
+
+    const canShowDiff = commitHash && onOpenDiffViewer;
+
+    const handleDiffClick = () => {
+      if (commitHash && onOpenDiffViewer) {
+        onOpenDiffViewer(commitHash);
+      }
+    };
+
+    return (
+      <div
+        className="message message-gitinfo"
+        data-testid="message-gitinfo"
+        style={{
+          padding: "0.4rem 1rem",
+          fontSize: "0.8rem",
+          color: "var(--text-secondary)",
+          textAlign: "center",
+          fontStyle: "italic",
+        }}
+      >
+        <span>
+          {branch} now at {commitHash}
+          {subject && ` "${subject}"`}
+          {canShowDiff && (
+            <>
+              {" "}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleDiffClick();
+                }}
+                style={{
+                  color: "var(--link-color, #0066cc)",
+                  textDecoration: "underline",
+                }}
+              >
+                diff
+              </a>
+            </>
+          )}
+        </span>
+      </div>
+    );
   }
 
   // Context menu state

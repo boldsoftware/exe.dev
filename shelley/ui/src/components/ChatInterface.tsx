@@ -429,6 +429,9 @@ function ChatInterface({
   // Settings modal removed - configuration moved to status bar for empty conversations
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [showDiffViewer, setShowDiffViewer] = useState(false);
+  const [diffViewerInitialCommit, setDiffViewerInitialCommit] = useState<string | undefined>(
+    undefined,
+  );
   const [diffCommentText, setDiffCommentText] = useState("");
   const [agentWorking, setAgentWorking] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -918,7 +921,16 @@ function ChatInterface({
 
     const rendered = coalescedItems.map((item, index) => {
       if (item.type === "message" && item.message) {
-        return <MessageComponent key={item.message.message_id} message={item.message} />;
+        return (
+          <MessageComponent
+            key={item.message.message_id}
+            message={item.message}
+            onOpenDiffViewer={(commit) => {
+              setDiffViewerInitialCommit(commit);
+              setShowDiffViewer(true);
+            }}
+          />
+        );
       } else if (item.type === "tool") {
         return (
           <CoalescedToolCall
@@ -1273,8 +1285,12 @@ function ChatInterface({
       <DiffViewer
         cwd={currentConversation?.cwd || selectedCwd}
         isOpen={showDiffViewer}
-        onClose={() => setShowDiffViewer(false)}
+        onClose={() => {
+          setShowDiffViewer(false);
+          setDiffViewerInitialCommit(undefined);
+        }}
         onCommentTextChange={setDiffCommentText}
+        initialCommit={diffViewerInitialCommit}
       />
     </div>
   );

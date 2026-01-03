@@ -8,6 +8,7 @@ interface DiffViewerProps {
   isOpen: boolean;
   onClose: () => void;
   onCommentTextChange: (text: string) => void;
+  initialCommit?: string; // If set, select this commit when opening
 }
 
 // Icon components for cleaner JSX
@@ -77,7 +78,7 @@ function loadMonaco(): Promise<typeof Monaco> {
 
 type ViewMode = "comment" | "edit";
 
-function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerProps) {
+function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }: DiffViewerProps) {
   const [diffs, setDiffs] = useState<GitDiffInfo[]>([]);
   const [gitRoot, setGitRoot] = useState<string | null>(null);
   const [selectedDiff, setSelectedDiff] = useState<string | null>(null);
@@ -174,7 +175,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
         editorRef.current = null;
       }
     }
-  }, [isOpen, cwd]);
+  }, [isOpen, cwd, initialCommit]);
 
   // Load files when diff is selected
   useEffect(() => {
@@ -342,6 +343,18 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange }: DiffViewerPro
       const response = await api.getGitDiffs(cwd);
       setDiffs(response.diffs);
       setGitRoot(response.gitRoot);
+
+      // If initialCommit is set, try to select that commit
+      if (initialCommit) {
+        const matchingDiff = response.diffs.find(
+          (d) => d.id === initialCommit || d.id.startsWith(initialCommit),
+        );
+        if (matchingDiff) {
+          setSelectedDiff(matchingDiff.id);
+          return;
+        }
+      }
+
       // Auto-select working changes if non-empty
       if (response.diffs.length > 0) {
         const working = response.diffs.find((d) => d.id === "working");

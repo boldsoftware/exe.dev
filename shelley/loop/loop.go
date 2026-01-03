@@ -8,36 +8,49 @@ import (
 	"time"
 
 	"shelley.exe.dev/claudetool"
+	"shelley.exe.dev/gitstate"
 	"shelley.exe.dev/llm"
 )
 
 // MessageRecordFunc is called to record new messages to persistent storage
 type MessageRecordFunc func(ctx context.Context, message llm.Message, usage llm.Usage) error
 
+// GitStateChangeFunc is called when the git state changes at the end of a turn.
+// This is used to record user-visible notifications about git changes.
+type GitStateChangeFunc func(ctx context.Context, state *gitstate.GitState)
+
 // Config contains all configuration needed to create a Loop
 type Config struct {
-	LLM           llm.Service
-	History       []llm.Message
-	Tools         []*llm.Tool
-	RecordMessage MessageRecordFunc
-	Logger        *slog.Logger
-	System        []llm.SystemContent
-	WorkingDir    string // working directory for tools
+	LLM              llm.Service
+	History          []llm.Message
+	Tools            []*llm.Tool
+	RecordMessage    MessageRecordFunc
+	Logger           *slog.Logger
+	System           []llm.SystemContent
+	WorkingDir       string // working directory for tools
+	OnGitStateChange GitStateChangeFunc
+	// GetWorkingDir returns the current working directory for tools.
+	// If set, this is called at end of turn to check for git state changes.
+	// If nil, Config.WorkingDir is used as a static value.
+	GetWorkingDir func() string
 }
 
 // Loop manages a conversation turn with an LLM including tool execution and message recording.
 // Notably, when the turn ends, the "Loop" is over. TODO: maybe rename to Turn?
 type Loop struct {
-	llm           llm.Service
-	tools         []*llm.Tool
-	recordMessage MessageRecordFunc
-	history       []llm.Message
-	messageQueue  []llm.Message
-	totalUsage    llm.Usage
-	mu            sync.Mutex
-	logger        *slog.Logger
-	system        []llm.SystemContent
-	workingDir    string
+	llm              llm.Service
+	tools            []*llm.Tool
+	recordMessage    MessageRecordFunc
+	history          []llm.Message
+	messageQueue     []llm.Message
+	totalUsage       llm.Usage
+	mu               sync.Mutex
+	logger           *slog.Logger
+	system           []llm.SystemContent
+	workingDir       string
+	onGitStateChange GitStateChangeFunc
+	getWorkingDir    func() string
+	lastGitState     *gitstate.GitState
 }
 
 // NewLoop creates a new Loop instance with the provided configuration
@@ -47,15 +60,25 @@ func NewLoop(config Config) *Loop {
 		logger = slog.Default()
 	}
 
+	// Get initial git state
+	workingDir := config.WorkingDir
+	if config.GetWorkingDir != nil {
+		workingDir = config.GetWorkingDir()
+	}
+	initialGitState := gitstate.GetGitState(workingDir)
+
 	return &Loop{
-		llm:           config.LLM,
-		history:       config.History,
-		tools:         config.Tools,
-		recordMessage: config.RecordMessage,
-		messageQueue:  make([]llm.Message, 0),
-		logger:        logger,
-		system:        config.System,
-		workingDir:    config.WorkingDir,
+		llm:              config.LLM,
+		history:          config.History,
+		tools:            config.Tools,
+		recordMessage:    config.RecordMessage,
+		messageQueue:     make([]llm.Message, 0),
+		logger:           logger,
+		system:           config.System,
+		workingDir:       config.WorkingDir,
+		onGitStateChange: config.OnGitStateChange,
+		getWorkingDir:    config.GetWorkingDir,
+		lastGitState:     initialGitState,
 	}
 }
 
@@ -265,7 +288,47 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 		return l.handleToolCalls(ctx, resp.Content)
 	}
 
+	// End of turn - check for git state changes
+	l.checkGitStateChange(ctx)
+
 	return nil
+}
+
+// checkGitStateChange checks if the git state has changed and calls the callback if so.
+// This is called at the end of each turn.
+func (l *Loop) checkGitStateChange(ctx context.Context) {
+	if l.onGitStateChange == nil {
+		return
+	}
+
+	// Get current working directory
+	workingDir := l.workingDir
+	if l.getWorkingDir != nil {
+		workingDir = l.getWorkingDir()
+	}
+
+	// Get current git state
+	currentState := gitstate.GetGitState(workingDir)
+
+	// Compare with last known state
+	l.mu.Lock()
+	lastState := l.lastGitState
+	l.mu.Unlock()
+
+	// Check if state changed
+	if !currentState.Equal(lastState) {
+		l.mu.Lock()
+		l.lastGitState = currentState
+		l.mu.Unlock()
+
+		if currentState.IsRepo {
+			l.logger.Debug("git state changed",
+				"worktree", currentState.Worktree,
+				"branch", currentState.Branch,
+				"commit", currentState.Commit)
+			l.onGitStateChange(ctx, currentState)
+		}
+	}
 }
 
 // handleToolCalls processes tool calls from the LLM response

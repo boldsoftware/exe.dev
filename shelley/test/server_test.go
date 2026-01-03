@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1007,5 +1008,119 @@ func TestScreenshotRouteServesImage(t *testing.T) {
 	// Cache-Control should be set
 	if cc := resp.Header.Get("Cache-Control"); cc == "" {
 		t.Fatalf("expected Cache-Control header to be set")
+	}
+}
+
+// TestGitStateChangeCreatesGitInfoMessage verifies that when the agent makes a git commit,
+// a gitinfo message is created in the database.
+func TestGitStateChangeCreatesGitInfoMessage(t *testing.T) {
+	ctx := context.Background()
+
+	// Create a temp directory with a git repo
+	workDir := t.TempDir()
+
+	// Initialize git repo
+	runCmd := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = workDir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("Command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+	runCmd("git", "init")
+	runCmd("git", "config", "user.email", "test@example.com")
+	runCmd("git", "config", "user.name", "Test User")
+
+	// Create initial commit
+	initialFile := filepath.Join(workDir, "initial.txt")
+	if err := os.WriteFile(initialFile, []byte("initial content"), 0o644); err != nil {
+		t.Fatalf("Failed to write initial file: %v", err)
+	}
+	runCmd("git", "add", ".")
+	runCmd("git", "commit", "-m", "Initial commit")
+
+	// Create database
+	tempDB := t.TempDir() + "/gitstate_test.db"
+	database, err := db.New(db.Config{DSN: tempDB})
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	defer database.Close()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("Failed to migrate database: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	// Create LLM manager that returns predictable service
+	predictableService := loop.NewPredictableService()
+	customLLMManager := &inspectableLLMManager{
+		predictableService: predictableService,
+		logger:             logger,
+	}
+
+	// Create server with git repo as working directory
+	toolConfig := claudetool.ToolSetConfig{
+		WorkingDir:    workDir,
+		EnableBrowser: false,
+	}
+	svr := server.NewServer(database, customLLMManager, toolConfig, logger, false, "", "", "", nil)
+
+	mux := http.NewServeMux()
+	svr.RegisterRoutes(mux)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	// The test command creates a file and commits it. We use explicit paths to avoid bash safety checks.
+	// NOTE: We must set cwd when creating the conversation so the tools run in our git repo.
+	chatReq := map[string]interface{}{
+		"message": "bash: echo 'new content' > newfile.txt && git add newfile.txt && git commit -m 'Add new file'",
+		"model":   "predictable",
+		"cwd":     workDir,
+	}
+	body, _ := json.Marshal(chatReq)
+	resp, err := http.Post(ts.URL+"/api/conversations/new", "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		t.Fatalf("Failed to send message: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("Expected status 201, got %d: %s", resp.StatusCode, body)
+	}
+
+	var createResp struct {
+		ConversationID string `json:"conversation_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&createResp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	// Poll for the gitinfo message to appear
+	var foundGitInfo bool
+	for i := 0; i < 50; i++ {
+		time.Sleep(100 * time.Millisecond)
+
+		messages, err := database.ListMessagesByConversationPaginated(ctx, createResp.ConversationID, 100, 0)
+		if err != nil {
+			continue
+		}
+
+		for _, msg := range messages {
+			if msg.Type == string(db.MessageTypeGitInfo) {
+				foundGitInfo = true
+				t.Logf("Found gitinfo message: %v", msg.UserData)
+				break
+			}
+		}
+		if foundGitInfo {
+			break
+		}
+	}
+
+	if !foundGitInfo {
+		t.Fatal("Expected a gitinfo message to be created after git commit, but none was found")
 	}
 }

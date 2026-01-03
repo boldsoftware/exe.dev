@@ -43,4 +43,4 @@ export interface StreamResponseForTS {
   agent_working: boolean;
 }
 
-export type MessageType = "user" | "agent" | "tool" | "error" | "system";
+export type MessageType = "user" | "agent" | "tool" | "error" | "system" | "gitinfo";

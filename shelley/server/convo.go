@@ -11,6 +11,7 @@ import (
 	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
+	"shelley.exe.dev/gitstate"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/loop"
 	"shelley.exe.dev/subpub"
@@ -217,6 +218,11 @@ func (cm *ConversationManager) partitionMessages(messages []generated.Message) (
 	var system []llm.SystemContent
 
 	for _, msg := range messages {
+		// Skip gitinfo messages - they are user-visible only, not sent to LLM
+		if msg.Type == string(db.MessageTypeGitInfo) {
+			continue
+		}
+
 		llmMsg, err := convertToLLMMessage(msg)
 		if err != nil {
 			cm.logger.Warn("Failed to convert message to LLM format", "messageID", msg.MessageID, "error", err)
@@ -293,6 +299,10 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 		Logger:        logger,
 		System:        system,
 		WorkingDir:    cwd,
+		GetWorkingDir: toolSet.WorkingDir().Get,
+		OnGitStateChange: func(ctx context.Context, state *gitstate.GitState) {
+			cm.recordGitStateChange(ctx, state)
+		},
 	})
 
 	cm.mu.Lock()
@@ -480,4 +490,74 @@ func (cm *ConversationManager) CancelConversation(ctx context.Context) error {
 	cm.mu.Unlock()
 
 	return nil
+}
+
+// GitInfoUserData is the structured data stored in user_data for gitinfo messages.
+type GitInfoUserData struct {
+	Worktree string `json:"worktree"`
+	Branch   string `json:"branch"`
+	Commit   string `json:"commit"`
+	Subject  string `json:"subject"`
+	Text     string `json:"text"` // Human-readable description
+}
+
+// recordGitStateChange creates a gitinfo message when git state changes.
+// This message is visible to users in the UI but is not sent to the LLM.
+func (cm *ConversationManager) recordGitStateChange(ctx context.Context, state *gitstate.GitState) {
+	if state == nil || !state.IsRepo {
+		return
+	}
+
+	// Create a gitinfo message with the state description
+	message := llm.Message{
+		Role:    llm.MessageRoleAssistant,
+		Content: []llm.Content{{Type: llm.ContentTypeText, Text: state.String()}},
+	}
+
+	userData := GitInfoUserData{
+		Worktree: state.Worktree,
+		Branch:   state.Branch,
+		Commit:   state.Commit,
+		Subject:  state.Subject,
+		Text:     state.String(),
+	}
+
+	createdMsg, err := cm.db.CreateMessage(ctx, db.CreateMessageParams{
+		ConversationID: cm.conversationID,
+		Type:           db.MessageTypeGitInfo,
+		LLMData:        message,
+		UserData:       userData,
+		UsageData:      llm.Usage{},
+	})
+	if err != nil {
+		cm.logger.Error("Failed to record git state change", "error", err)
+		return
+	}
+
+	cm.logger.Debug("Recorded git state change", "state", state.String())
+
+	// Notify subscribers so the UI updates
+	go cm.notifyGitStateChange(context.WithoutCancel(ctx), createdMsg)
+}
+
+// notifyGitStateChange publishes a gitinfo message to subscribers.
+func (cm *ConversationManager) notifyGitStateChange(ctx context.Context, msg *generated.Message) {
+	var conversation generated.Conversation
+	err := cm.db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		conversation, err = q.GetConversation(ctx, cm.conversationID)
+		return err
+	})
+	if err != nil {
+		cm.logger.Error("Failed to get conversation for git state notification", "error", err)
+		return
+	}
+
+	apiMessages := toAPIMessages([]generated.Message{*msg})
+	streamData := StreamResponse{
+		Messages:     apiMessages,
+		Conversation: conversation,
+		AgentWorking: false, // Gitinfo is recorded at end of turn, agent is done
+	}
+	cm.subpub.Publish(msg.SequenceID, streamData)
 }

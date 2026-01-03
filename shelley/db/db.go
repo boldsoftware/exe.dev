@@ -333,11 +333,12 @@ func (db *DB) UpdateConversationCwd(ctx context.Context, conversationID, cwd str
 type MessageType string
 
 const (
-	MessageTypeUser   MessageType = "user"
-	MessageTypeAgent  MessageType = "agent"
-	MessageTypeTool   MessageType = "tool"
-	MessageTypeSystem MessageType = "system"
-	MessageTypeError  MessageType = "error"
+	MessageTypeUser    MessageType = "user"
+	MessageTypeAgent   MessageType = "agent"
+	MessageTypeTool    MessageType = "tool"
+	MessageTypeSystem  MessageType = "system"
+	MessageTypeError   MessageType = "error"
+	MessageTypeGitInfo MessageType = "gitinfo" // user-visible only, not sent to LLM
 )
 
 // CreateMessageParams contains parameters for creating a message

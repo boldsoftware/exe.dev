@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"shelley.exe.dev/gitstate"
 	"shelley.exe.dev/llm"
 )
 
@@ -96,7 +97,16 @@ func (c *ChangeDirTool) Run(ctx context.Context, m json.RawMessage) llm.ToolOut 
 		c.OnChange(targetPath)
 	}
 
+	// Check git status for the new directory
+	state := gitstate.GetGitState(targetPath)
+	var resultText string
+	if state.IsRepo {
+		resultText = fmt.Sprintf("Changed working directory to: %s\n\nGit repository detected (root: %s)", targetPath, state.Worktree)
+	} else {
+		resultText = fmt.Sprintf("Changed working directory to: %s\n\nNot in a git repository.", targetPath)
+	}
+
 	return llm.ToolOut{
-		LLMContent: llm.TextContent(fmt.Sprintf("Changed working directory to: %s", targetPath)),
+		LLMContent: llm.TextContent(resultText),
 	}
 }

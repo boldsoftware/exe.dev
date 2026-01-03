@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"shelley.exe.dev/claudetool"
+	"shelley.exe.dev/gitstate"
 	"shelley.exe.dev/llm"
 )
 
@@ -963,4 +966,201 @@ func TestInsertMissingToolResults_EmptyAssistantContent(t *testing.T) {
 			t.Errorf("expected assistant message text 'hi there', got %q", req.Messages[1].Content[0].Text)
 		}
 	})
+}
+
+func TestGitStateTracking(t *testing.T) {
+	// Create a test repo
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	runGit(t, tmpDir, "init")
+	runGit(t, tmpDir, "config", "user.email", "test@test.com")
+	runGit(t, tmpDir, "config", "user.name", "Test")
+
+	// Create initial commit
+	testFile := filepath.Join(tmpDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, tmpDir, "add", ".")
+	runGit(t, tmpDir, "commit", "-m", "initial")
+
+	// Track git state changes
+	var mu sync.Mutex
+	var gitStateChanges []*gitstate.GitState
+
+	loop := NewLoop(Config{
+		LLM:           NewPredictableService(),
+		History:       []llm.Message{},
+		WorkingDir:    tmpDir,
+		GetWorkingDir: func() string { return tmpDir },
+		OnGitStateChange: func(ctx context.Context, state *gitstate.GitState) {
+			mu.Lock()
+			gitStateChanges = append(gitStateChanges, state)
+			mu.Unlock()
+		},
+		RecordMessage: func(ctx context.Context, message llm.Message, usage llm.Usage) error {
+			return nil
+		},
+	})
+
+	// Verify initial state was captured
+	if loop.lastGitState == nil {
+		t.Fatal("expected initial git state to be captured")
+	}
+	if !loop.lastGitState.IsRepo {
+		t.Error("expected IsRepo to be true")
+	}
+
+	// Process a turn (no state change should occur)
+	loop.QueueUserMessage(llm.Message{
+		Role:    llm.MessageRoleUser,
+		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "hello"}},
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := loop.ProcessOneTurn(ctx)
+	if err != nil {
+		t.Fatalf("ProcessOneTurn failed: %v", err)
+	}
+
+	// No state change should have occurred
+	mu.Lock()
+	numChanges := len(gitStateChanges)
+	mu.Unlock()
+	if numChanges != 0 {
+		t.Errorf("expected no git state changes, got %d", numChanges)
+	}
+
+	// Now make a commit
+	if err := os.WriteFile(testFile, []byte("updated"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, tmpDir, "add", ".")
+	runGit(t, tmpDir, "commit", "-m", "update")
+
+	// Process another turn - this should detect the commit change
+	loop.QueueUserMessage(llm.Message{
+		Role:    llm.MessageRoleUser,
+		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "hello again"}},
+	})
+
+	err = loop.ProcessOneTurn(ctx)
+	if err != nil {
+		t.Fatalf("ProcessOneTurn failed: %v", err)
+	}
+
+	// Now a state change should have been detected
+	mu.Lock()
+	numChanges = len(gitStateChanges)
+	mu.Unlock()
+	if numChanges != 1 {
+		t.Errorf("expected 1 git state change, got %d", numChanges)
+	}
+}
+
+func TestGitStateTrackingWorktree(t *testing.T) {
+	tmpDir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainRepo := filepath.Join(tmpDir, "main")
+	worktreeDir := filepath.Join(tmpDir, "worktree")
+
+	// Create main repo
+	if err := os.MkdirAll(mainRepo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, mainRepo, "init")
+	runGit(t, mainRepo, "config", "user.email", "test@test.com")
+	runGit(t, mainRepo, "config", "user.name", "Test")
+
+	// Create initial commit
+	testFile := filepath.Join(mainRepo, "test.txt")
+	if err := os.WriteFile(testFile, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, mainRepo, "add", ".")
+	runGit(t, mainRepo, "commit", "-m", "initial")
+
+	// Create a worktree
+	runGit(t, mainRepo, "worktree", "add", "-b", "feature", worktreeDir)
+
+	// Track git state changes in the worktree
+	var mu sync.Mutex
+	var gitStateChanges []*gitstate.GitState
+
+	loop := NewLoop(Config{
+		LLM:           NewPredictableService(),
+		History:       []llm.Message{},
+		WorkingDir:    worktreeDir,
+		GetWorkingDir: func() string { return worktreeDir },
+		OnGitStateChange: func(ctx context.Context, state *gitstate.GitState) {
+			mu.Lock()
+			gitStateChanges = append(gitStateChanges, state)
+			mu.Unlock()
+		},
+		RecordMessage: func(ctx context.Context, message llm.Message, usage llm.Usage) error {
+			return nil
+		},
+	})
+
+	// Verify initial state
+	if loop.lastGitState == nil {
+		t.Fatal("expected initial git state to be captured")
+	}
+	if loop.lastGitState.Branch != "feature" {
+		t.Errorf("expected branch 'feature', got %q", loop.lastGitState.Branch)
+	}
+	if loop.lastGitState.Worktree != worktreeDir {
+		t.Errorf("expected worktree %q, got %q", worktreeDir, loop.lastGitState.Worktree)
+	}
+
+	// Make a commit in the worktree
+	worktreeFile := filepath.Join(worktreeDir, "feature.txt")
+	if err := os.WriteFile(worktreeFile, []byte("feature content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, worktreeDir, "add", ".")
+	runGit(t, worktreeDir, "commit", "-m", "feature commit")
+
+	// Process a turn to detect the change
+	loop.QueueUserMessage(llm.Message{
+		Role:    llm.MessageRoleUser,
+		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "hello"}},
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = loop.ProcessOneTurn(ctx)
+	if err != nil {
+		t.Fatalf("ProcessOneTurn failed: %v", err)
+	}
+
+	mu.Lock()
+	numChanges := len(gitStateChanges)
+	mu.Unlock()
+
+	if numChanges != 1 {
+		t.Errorf("expected 1 git state change in worktree, got %d", numChanges)
+	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	// For commits, use --no-verify to skip hooks
+	if len(args) > 0 && args[0] == "commit" {
+		newArgs := []string{"commit", "--no-verify"}
+		newArgs = append(newArgs, args[1:]...)
+		args = newArgs
+	}
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, output)
+	}
 }
