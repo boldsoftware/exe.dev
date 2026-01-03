@@ -174,12 +174,11 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m.log.InfoContext(r.Context(), "gateway proxying request -->", "method", r.Method, "url", r.URL)
 	endpointPath := strings.TrimPrefix(r.URL.Path, "/_/gateway/")
 	parts := strings.Split(endpointPath, "/")
 	alias := parts[0]
 	remainder := endpointPath[len(alias):]
-	m.log.InfoContext(r.Context(), "llmGateway.ServeHTTP", "alias", alias, "remaimder", remainder)
+	m.log.InfoContext(r.Context(), "llmGateway.ServeHTTP", "alias", alias, "remaimder", remainder, "method", r.Method, "url", r.URL)
 
 	requestsCounter.WithLabelValues("attempted", alias).Inc()
 
