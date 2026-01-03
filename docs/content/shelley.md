@@ -25,6 +25,14 @@ with an appropriately ironic nod at
 "[Ozymandias](https://www.poetryfoundation.org/poems/46565/ozymandias)."
 Shelley is a computer program, and, it's an it.
 
+## AGENTS.md
+
+Shelley reads guidance files, specifically:
+* personal `AGENTS.md` file at `~/.config/shelley/AGENTS.md`
+* project `AGENTS.md` files in the git root or working directory
+
+Shelley will also notice `CLAUDE.md` and `DEAR_LLM.md` files.
+
 ## Upgrading
 
 Since Shelley is running on your VM, you're running the version that
