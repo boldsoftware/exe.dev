@@ -461,6 +461,7 @@ function ChatInterface({
     } else {
       // No conversation yet, show empty state
       setMessages([]);
+      setContextWindowSize(0);
       setLoading(false);
     }
 
