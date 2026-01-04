@@ -603,7 +603,7 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 		fmt.Fprintf(w, "<p>No users found.</p>\n")
 	} else {
 		fmt.Fprintf(w, "<table border='1' cellpadding='5' cellspacing='0'>\n")
-		fmt.Fprintf(w, "<tr><th>Email</th><th>User ID</th><th>Created At</th><th>Login-only</th><th>Stripe</th><th>Root Support</th></tr>\n")
+		fmt.Fprintf(w, "<tr><th>Email</th><th>User ID</th><th>Created At</th><th>Login-only</th><th>Billing</th><th>Root Support</th></tr>\n")
 		for _, u := range users {
 			createdAt := "-"
 			if u.CreatedAt != nil {
@@ -621,9 +621,9 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 			if u.CreatedForLoginWithExe {
 				loginWithExe = "✓"
 			}
-			stripeCell := "-"
+			billingCell := "-"
 			if acctID, ok := accountByUser[u.UserID]; ok {
-				stripeCell = fmt.Sprintf("<a href='%s' target='_blank'>%s</a>",
+				billingCell = fmt.Sprintf("<a href='%s' target='_blank'>%s</a>",
 					html.EscapeString(s.billing.DashboardURL(acctID)),
 					html.EscapeString(acctID))
 			}
@@ -632,7 +632,7 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 				html.EscapeString(u.UserID),
 				html.EscapeString(createdAt),
 				loginWithExe,
-				stripeCell,
+				billingCell,
 				html.EscapeString(rootSupportStatus),
 				btnClass,
 				html.EscapeString(u.Email),
