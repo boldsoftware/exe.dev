@@ -170,7 +170,6 @@ func (m *Manager) UpdateProfile(ctx context.Context, exeAccountID string, p *Pro
 }
 
 // DashboardURL returns the Stripe dashboard URL for a customer.
-// Stripe automatically redirects to test/live mode based on the customer ID.
 func (m *Manager) DashboardURL(customerID string) string {
 	return "https://dashboard.stripe.com/customers/" + customerID
 }

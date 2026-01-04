@@ -38,7 +38,6 @@ import (
 	"exe.dev/metricsbag"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
 	"exe.dev/route53"
-	"exe.dev/sqlite"
 	"exe.dev/stage"
 	"exe.dev/tracing"
 
@@ -1092,17 +1091,13 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 // createUserWithSSHKeyAndID creates a new user with a pre-specified user ID.
 // This is used when the user ID was generated earlier (e.g., for billing).
 func (s *Server) createUserWithSSHKeyAndID(ctx context.Context, userID, email, publicKey string) (*exedb.User, error) {
-	var user exedb.User
-
-	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-
+	user, err := withTxRes0(s, ctx, func(queries *exedb.Queries, ctx context.Context) (exedb.User, error) {
 		if err := queries.InsertUser(ctx, exedb.InsertUserParams{
 			UserID:                 userID,
 			Email:                  email,
 			CreatedForLoginWithExe: false,
 		}); err != nil {
-			return fmt.Errorf("failed to create user: %w", err)
+			return exedb.User{}, fmt.Errorf("failed to create user: %w", err)
 		}
 
 		if publicKey != "" {
@@ -1110,13 +1105,11 @@ func (s *Server) createUserWithSSHKeyAndID(ctx context.Context, userID, email, p
 				UserID:    userID,
 				PublicKey: publicKey,
 			}); err != nil {
-				return err
+				return exedb.User{}, err
 			}
 		}
 
-		var err error
-		user, err = queries.GetUserWithDetails(ctx, userID)
-		return err
+		return queries.GetUserWithDetails(ctx, userID)
 	})
 	if err != nil {
 		return nil, err

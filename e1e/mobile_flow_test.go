@@ -17,11 +17,18 @@ import (
 )
 
 // TestMobileFlow_EndToEnd exercises the mobile creation flow with SSE using the default image.
+//
+// This test is skipped in CI because it requires creating an actual VM, which involves:
+//   - Downloading and unpacking a container image (~2-3 minutes)
+//   - Booting the VM with cloud-hypervisor (~1 minute)
+//   - Running shelley to set up the environment (~2-3 minutes)
+//   - SSE stream monitoring with 8-minute deadline
+//
+// The CI timeout of 10 minutes is insufficient for this full flow. The test runs
+// successfully in local development environments with longer timeouts.
 func TestMobileFlow_EndToEnd(t *testing.T) {
 	if os.Getenv("CI") != "" {
-		// VM creation takes several minutes (downloading image, booting, running shelley).
-		// The CI timeout of 10 minutes is insufficient for this full end-to-end test.
-		t.Skip("skipping on CI - VM creation takes several minutes, exceeds CI timeout")
+		t.Skip("skipping on CI: VM creation exceeds CI timeout (see function comment for details)")
 	}
 	// Unique hostname for this test
 	host := boxName(t)

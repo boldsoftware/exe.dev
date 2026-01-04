@@ -163,8 +163,6 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
-	// Require Stripe API key to be configured.
-	// Local/test stages use the billing.TestAPIKey; staging/prod require STRIPE_API_KEY env var.
 	if env.StripeAPIKey == "" {
 		return fmt.Errorf("STRIPE_API_KEY environment variable is required")
 	}
