@@ -136,7 +136,7 @@ func InitDataSubdir(log *slog.Logger, db *sqlite.DB) (string, error) {
 			if dataSubdir == "" {
 				return fmt.Errorf("data_subdir is empty in server_meta")
 			}
-			log.Debug("using existing data_subdir", "subdir", dataSubdir)
+			log.DebugContext(ctx, "using existing data_subdir", "subdir", dataSubdir)
 			return nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -156,7 +156,7 @@ func InitDataSubdir(log *slog.Logger, db *sqlite.DB) (string, error) {
 			return fmt.Errorf("failed to set data_subdir in server_meta: %w", err)
 		}
 
-		log.Info("initialized new data_subdir", "subdir", dataSubdir)
+		log.InfoContext(ctx, "initialized new data_subdir", "subdir", dataSubdir)
 		return nil
 	})
 	if err != nil {

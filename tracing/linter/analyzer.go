@@ -18,22 +18,20 @@ var Analyzer = &analysis.Analyzer{
 }
 
 // slogFunctions maps non-context slog functions to their context variants
+// Note: Log/LogCtx/Logf are not included because slog.Log already takes context as first param
 var slogFunctions = map[string]string{
 	"Debug":    "DebugContext",
 	"Info":     "InfoContext",
 	"Warn":     "WarnContext",
 	"Error":    "ErrorContext",
-	"Log":      "LogContext",
 	"DebugCtx": "DebugContext",
 	"InfoCtx":  "InfoContext",
 	"WarnCtx":  "WarnContext",
 	"ErrorCtx": "ErrorContext",
-	"LogCtx":   "LogContext",
 	"Debugf":   "DebugContext",
 	"Infof":    "InfoContext",
 	"Warnf":    "WarnContext",
 	"Errorf":   "ErrorContext",
-	"Logf":     "LogContext",
 }
 
 type contextSource struct {
