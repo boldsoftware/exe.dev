@@ -733,13 +733,13 @@ func (s *Server) serveStaticFile(w http.ResponseWriter, r *http.Request, filenam
 }
 
 // handleHealth handles health check requests
-func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status":"ok","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
 }
 
 // handleSitemap serves the sitemap.xml for search engines.
-func (s *Server) handleSitemap(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleSitemap(w http.ResponseWriter, _ *http.Request) {
 	baseURL := "https://" + s.env.WebHost
 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
@@ -772,7 +772,7 @@ func (s *Server) handleSitemap(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRobots serves robots.txt for search engine crawlers.
-func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRobots(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	fmt.Fprint(w, "User-agent: *\n")
 	fmt.Fprint(w, "Allow: /\n")

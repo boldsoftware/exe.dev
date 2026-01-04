@@ -47,7 +47,7 @@ func (s *Server) handleShelleyDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 // renderShelleyDownloadPage renders an HTML page with architecture selection
-func (s *Server) renderShelleyDownloadPage(w http.ResponseWriter, r *http.Request) {
+func (s *Server) renderShelleyDownloadPage(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	html := `<!DOCTYPE html>

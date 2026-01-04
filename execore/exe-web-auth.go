@@ -546,7 +546,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleLoggedOut displays a logged out confirmation page
-func (s *Server) handleLoggedOut(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleLoggedOut(w http.ResponseWriter, _ *http.Request) {
 	data := struct {
 		stage.Env
 		MainDomain string
