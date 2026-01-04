@@ -33,6 +33,7 @@ type Env struct {
 	SSHCommandUsesAt  bool // whether ssh command logins use "box@host" format instead of "box.host" format
 	PostSlackFeed     bool // whether to post feed events to Slack; when false, logs them instead
 
+	LogCmdAttr           bool   // whether to include "cmd" attribute in log entries; useful in dev/test, where multiple logs are interwoven, noise in prod
 	LogFormat            string // default log format: "tint", "text", or "json"; empty defaults to "text"
 	LogLevel             string // default log level: "debug", "info", "warn", "error"; empty defaults to "info"
 	LogErrorSlackChannel string // Slack channel for error logs; empty means no Slack posting
@@ -70,6 +71,7 @@ func Local() Env {
 		SSHCommandUsesAt:  true,
 		PostSlackFeed:     false,
 
+		LogCmdAttr:           true,
 		LogFormat:            "tint",
 		LogLevel:             "debug",
 		LogErrorSlackChannel: "",
@@ -109,6 +111,7 @@ func Test() Env {
 		SSHCommandUsesAt:  true,
 		PostSlackFeed:     false,
 
+		LogCmdAttr:           true,
 		LogFormat:            "text",
 		LogLevel:             "info",
 		LogErrorSlackChannel: "",
@@ -145,6 +148,7 @@ func Staging() Env {
 		SSHCommandUsesAt:  false,
 		PostSlackFeed:     false,
 
+		LogCmdAttr:           false,
 		LogFormat:            "json",
 		LogLevel:             "info",
 		LogErrorSlackChannel: "poke",
@@ -180,6 +184,7 @@ func Prod() Env {
 		SSHCommandUsesAt:  false,
 		PostSlackFeed:     true,
 
+		LogCmdAttr:           false,
 		LogFormat:            "json",
 		LogLevel:             "info",
 		LogErrorSlackChannel: "page",

@@ -105,9 +105,8 @@ func SetupLogger(env stage.Env, registry *prometheus.Registry) {
 		handler = NewMetricsHandler(handler, metrics)
 	}
 
-	// Create logger with cmd attribute from os.Args[0]
 	logger := slog.New(handler)
-	if len(os.Args) > 0 {
+	if env.LogCmdAttr && len(os.Args) > 0 {
 		cmdName := filepath.Base(os.Args[0])
 		logger = logger.With("cmd", cmdName)
 	}
