@@ -21,7 +21,7 @@ func TestSlackFeed_NoClient(t *testing.T) {
 
 func TestSlackFeed_TracksNewUserMessage(t *testing.T) {
 	// Test that we can store and retrieve message refs
-	sf := &SlackFeed{client: nil, log: tslog.Slogger(t)}
+	sf := &SlackFeed{}
 
 	// Manually store a message ref (simulating what NewUser does with a real client)
 	ref := slack.NewRefToMessage("C123", "1234567890.123456")

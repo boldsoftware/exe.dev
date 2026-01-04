@@ -365,18 +365,6 @@ func (s *Server) webBaseURLNoRequest() string {
 	return fmt.Sprintf("%s://%s%s", s.bestScheme(), s.env.WebHost, s.bestURLPort())
 }
 
-func (s *Server) webBaseURL(r *http.Request) string {
-	_, port, _ := net.SplitHostPort(r.Host)
-	if port == "" {
-		// Use listener port if not default for the scheme
-		port = s.urlPort(r.TLS != nil)
-	} else {
-		// Respect port from Host header
-		port = ":" + port
-	}
-	return fmt.Sprintf("%s://%s%s", getScheme(r), s.env.WebHost, port)
-}
-
 // getProxyPorts returns the list of ports that should be used for proxying.
 // TEST_PROXY_PORTS env var overrides the stage config (used by e1e tests).
 func (s *Server) getProxyPorts() []int {

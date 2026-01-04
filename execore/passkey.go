@@ -2,7 +2,6 @@ package execore
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -570,15 +569,6 @@ func (s *Server) getPasskeysForUser(ctx context.Context, userID string) ([]Passk
 		result = append(result, info)
 	}
 	return result, nil
-}
-
-// generateChallenge creates a random challenge for WebAuthn
-func generateChallenge() ([]byte, error) {
-	challenge := make([]byte, 32)
-	if _, err := rand.Read(challenge); err != nil {
-		return nil, err
-	}
-	return challenge, nil
 }
 
 // handlePasskeyRoutes routes passkey-related requests to the appropriate handlers
