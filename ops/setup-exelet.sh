@@ -40,6 +40,7 @@ IMAGES=(
 echo "Starting exeletd in background..."
 mkdir -p "${DATA_DIR}"/{storage,network,runtime}
 nohup "$EXELETD" \
+    --stage test \
     --data-dir "${DATA_DIR}" \
     --storage-manager-address "zfs://${DATA_DIR}/storage?dataset=tank" \
     --network-manager-address "nat://${DATA_DIR}/network?network=10.42.0.0/16" \

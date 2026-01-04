@@ -29,6 +29,7 @@ import (
 	storageservice "exe.dev/exelet/services/storage"
 	"exe.dev/exelet/storage"
 	"exe.dev/logging"
+	"exe.dev/stage"
 	"exe.dev/version"
 )
 
@@ -161,6 +162,12 @@ func main() {
 			Value:   "",
 			EnvVars: []string{"EXELET_PROXY_BIND_IP"},
 		},
+		&cli.StringFlag{
+			Name:    "stage",
+			Usage:   "deployment stage: prod, staging, local, or test",
+			Value:   "",
+			EnvVars: []string{"EXELET_STAGE"},
+		},
 	}
 	app.Action = serveAction
 
@@ -180,6 +187,14 @@ func serveAction(clix *cli.Context) error {
 	networkManagerAddress := clix.String("network-manager-address")
 	storageManagerAddress := clix.String("storage-manager-address")
 	enableInstanceBootOnStartup := clix.Bool("enable-instance-boot-on-startup")
+	stageName := clix.String("stage")
+	if stageName == "" {
+		return fmt.Errorf("--stage flag is required (prod, staging, local, or test)")
+	}
+	env, err := stage.Parse(stageName)
+	if err != nil {
+		return err
+	}
 
 	if debug {
 		os.Setenv("LOG_LEVEL", "debug")
@@ -188,7 +203,7 @@ func serveAction(clix *cli.Context) error {
 	metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 	metricsRegistry.MustRegister(prometheus.NewGoCollector())
 	execore.RegisterBuildInfo(metricsRegistry)
-	logging.SetupLogger("", metricsRegistry)
+	logging.SetupLogger(env, metricsRegistry)
 	log := slog.Default()
 
 	maintenanceMode := clix.Bool("maintenance")

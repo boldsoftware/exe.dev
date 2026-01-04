@@ -80,7 +80,7 @@ func run() error {
 		return err
 	}
 
-	logging.SetupLogger("local", nil)
+	logging.SetupLogger(stage.Local(), nil)
 	slog.Info("starting alley53", "platform", runtime.GOOS)
 
 	// Set up local DNS infrastructure

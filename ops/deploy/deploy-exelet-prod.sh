@@ -105,7 +105,7 @@ echo -e "${GREEN}✓ Binary uploaded${NC}"
 
 # Copy systemd service file
 echo "Copying systemd service file..."
-if ! scp "ops/deploy/exelet.service" "$TAILSCALE_HOST:~/exelet.service"; then
+if ! scp "ops/deploy/exelet-prod.service" "$TAILSCALE_HOST:~/exelet.service"; then
     echo -e "${RED}ERROR: Failed to copy service file to VM${NC}"
     exit 1
 fi

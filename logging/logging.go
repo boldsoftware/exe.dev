@@ -1,12 +1,14 @@
 package logging
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"exe.dev/stage"
 	"exe.dev/tracing"
 	"github.com/lmittmann/tint"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,44 +19,44 @@ import (
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 )
 
-// SetupLogger configures slog based on the LOG_FORMAT environment variable.
-// LOG_FORMAT can be "json", "text", "tint", or "" (defaults: tint in dev, text in prod)
-// LOG_LEVEL can be "debug", "info", "warn", "error" (default: info)
+// SetupLogger configures slog based on env.
+// LOG_FORMAT and LOG_LEVEL environment variables override env settings.
+// Empty values fall back to defaults ("text" for format, "info" for level).
+// LOG_FORMAT can be "json", "text", or "tint".
+// LOG_LEVEL can be "debug", "info", "warn", or "error".
 // If registry is non-nil, log metrics will be registered and counted.
-func SetupLogger(devMode string, registry *prometheus.Registry) {
-	logFormat := strings.ToLower(os.Getenv("LOG_FORMAT"))
-	logLevel := strings.ToLower(os.Getenv("LOG_LEVEL"))
-
-	// Set default format based on dev mode if not explicitly set
-	if logFormat == "" {
-		if devMode != "" {
-			logFormat = "tint" // Use tint in dev mode
-		} else {
-			logFormat = "text" // Use text in production
-		}
-	}
+func SetupLogger(env stage.Env, registry *prometheus.Registry) {
+	// TODO: get rid of LOG_FORMAT and LOG_LEVEL env vars in favor of stage.Env only.
+	logFormat := cmp.Or(
+		strings.ToLower(os.Getenv("LOG_FORMAT")),
+		env.LogFormat,
+		"text",
+	)
+	logLevel := cmp.Or(
+		strings.ToLower(os.Getenv("LOG_LEVEL")),
+		env.LogLevel,
+		"info",
+	)
 
 	// Parse log level
 	var level slog.Level
 	switch logLevel {
 	case "debug":
 		level = slog.LevelDebug
-	case "info", "":
-		level = slog.LevelInfo
 	case "warn", "warning":
 		level = slog.LevelWarn
 	case "error":
 		level = slog.LevelError
-	default:
+	default: // "info" or unknown
 		level = slog.LevelInfo
 	}
 
 	// Create handler based on format
-	var handler slog.Handler
 	opts := &slog.HandlerOptions{
 		Level: level,
 	}
 
+	var handler slog.Handler
 	switch logFormat {
 	case "json":
 		handler = slog.NewJSONHandler(os.Stdout, opts)
@@ -76,11 +78,11 @@ func SetupLogger(devMode string, registry *prometheus.Registry) {
 	}
 
 	slackBotToken := strings.TrimSpace(os.Getenv("SLACK_BOT_TOKEN"))
-	if devMode == "" && slackBotToken != "" {
+	if env.LogErrorSlackChannel != "" && slackBotToken != "" {
 		opt := slogslack.Option{
 			Level:    slog.LevelError,
 			BotToken: slackBotToken,
-			Channel:  "page",
+			Channel:  env.LogErrorSlackChannel,
 		}
 		handler = slogmulti.Fanout(handler, opt.NewSlackHandler())
 	}
@@ -88,7 +90,7 @@ func SetupLogger(devMode string, registry *prometheus.Registry) {
 	// Add OTEL handler if OTEL_EXPORTER_OTLP_ENDPOINT is configured
 	otelEndpoint := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
 	if otelEndpoint != "" {
-		otelHandler := setupOTELHandler(level)
+		otelHandler := setupOTELHandler()
 		if otelHandler != nil {
 			handler = slogmulti.Fanout(handler, otelHandler)
 		}
@@ -126,7 +128,7 @@ func SetupLogger(devMode string, registry *prometheus.Registry) {
 // - OTEL_BLRP_MAX_QUEUE_SIZE: max queued records (default 2048)
 // - OTEL_BLRP_SCHEDULE_DELAY: export interval (default 1s)
 // - OTEL_BLRP_MAX_EXPORT_BATCH_SIZE: records per export (default 512)
-func setupOTELHandler(level slog.Level) slog.Handler {
+func setupOTELHandler() slog.Handler {
 	ctx := context.Background()
 
 	logExporter, err := otlploghttp.New(ctx)

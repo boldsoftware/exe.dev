@@ -33,6 +33,10 @@ type Env struct {
 	SSHCommandUsesAt  bool // whether ssh command logins use "box@host" format instead of "box.host" format
 	PostSlackFeed     bool // whether to post feed events to Slack; when false, logs them instead
 
+	LogFormat            string // default log format: "tint", "text", or "json"; empty defaults to "text"
+	LogLevel             string // default log level: "debug", "info", "warn", "error"; empty defaults to "info"
+	LogErrorSlackChannel string // Slack channel for error logs; empty means no Slack posting
+
 	NumShards  int   // number of IP shards available for box allocation, max 253
 	ProxyPorts []int // ports to listen on for proxying; empty means none
 
@@ -65,6 +69,10 @@ func Local() Env {
 		AutoStartSSHPiper: true,
 		SSHCommandUsesAt:  true,
 		PostSlackFeed:     false,
+
+		LogFormat:            "tint",
+		LogLevel:             "debug",
+		LogErrorSlackChannel: "",
 
 		NumShards:  25,
 		ProxyPorts: []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 9999},
@@ -101,6 +109,10 @@ func Test() Env {
 		SSHCommandUsesAt:  true,
 		PostSlackFeed:     false,
 
+		LogFormat:            "text",
+		LogLevel:             "info",
+		LogErrorSlackChannel: "",
+
 		NumShards:  25,
 		ProxyPorts: nil, // no proxy ports in tests to avoid conflicts
 
@@ -133,6 +145,10 @@ func Staging() Env {
 		SSHCommandUsesAt:  false,
 		PostSlackFeed:     false,
 
+		LogFormat:            "json",
+		LogLevel:             "info",
+		LogErrorSlackChannel: "poke",
+
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
 
@@ -164,11 +180,32 @@ func Prod() Env {
 		SSHCommandUsesAt:  false,
 		PostSlackFeed:     true,
 
+		LogFormat:            "json",
+		LogLevel:             "info",
+		LogErrorSlackChannel: "page",
+
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
 
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
+	}
+}
+
+// Parse parses a stage name and returns the corresponding Env.
+// Valid names are "prod", "staging", "local", and "test".
+func Parse(name string) (Env, error) {
+	switch name {
+	case "prod":
+		return Prod(), nil
+	case "staging":
+		return Staging(), nil
+	case "local":
+		return Local(), nil
+	case "test":
+		return Test(), nil
+	default:
+		return Env{}, fmt.Errorf("invalid stage %q: must be prod, staging, local, or test", name)
 	}
 }
 

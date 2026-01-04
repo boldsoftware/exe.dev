@@ -229,6 +229,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 		"LOG_FORMAT=json",
 		remoteBinaryPath,
 		"--debug",
+		"--stage", "test",
 		"--listen-address", "tcp://0.0.0.0:0",
 		"--http-addr", ":0",
 		"--data-dir", dataDir,

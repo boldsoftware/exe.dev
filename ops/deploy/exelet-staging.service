@@ -13,7 +13,7 @@ EnvironmentFile=-/etc/default/exelet
 KillMode=process
 
 # Use the latest exeletd
-ExecStart=/bin/bash -c 'exec "/home/ubuntu/exeletd.latest" "-D" "--listen-address=tcp://$(tailscale ip -4):9080" "--http-addr=$(tailscale ip -4):9081"'
+ExecStart=/bin/bash -c 'exec "/home/ubuntu/exeletd.latest" "-D" "--stage=staging" "--listen-address=tcp://$(tailscale ip -4):9080" "--http-addr=$(tailscale ip -4):9081"'
 
 Restart=always
 RestartSec=5

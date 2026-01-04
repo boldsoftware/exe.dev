@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/pprof"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -58,12 +57,6 @@ func run() error {
 		return fmt.Errorf(`valid dev modes are "", "local", and "test", got: %q`, *devMode)
 	}
 
-	// Validate stage
-	validStages := []string{"prod", "staging", "local", "test"}
-	if !slices.Contains(validStages, *stageName) {
-		return fmt.Errorf(`valid stages are %q, got: %q`, validStages, *stageName)
-	}
-
 	// Override stage if dev mode is set
 	switch *devMode {
 	case "local":
@@ -72,19 +65,10 @@ func run() error {
 		*stageName = "test"
 	}
 
-	// Look up env and synchronize stage back to dev mode
-	var env stage.Env
-	switch *stageName {
-	case "prod":
-		env = stage.Prod()
-	case "staging":
-		env = stage.Staging()
-	case "local":
-		env = stage.Local()
-	case "test":
-		env = stage.Test()
-	default:
-		return fmt.Errorf("unsupported stage: %q", *stageName)
+	// Parse stage
+	env, err := stage.Parse(*stageName)
+	if err != nil {
+		return err
 	}
 
 	// Validate -open flag (dev mode only)
@@ -114,7 +98,7 @@ func run() error {
 	metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 	metricsRegistry.MustRegister(prometheus.NewGoCollector())
 	execore.RegisterBuildInfo(metricsRegistry)
-	logging.SetupLogger(*devMode, metricsRegistry)
+	logging.SetupLogger(env, metricsRegistry)
 	slog.Info("Starting exed server")
 
 	// Start exelet(s) if requested
@@ -446,7 +430,7 @@ func startExeletProcess(ctx context.Context, host, logFormat, logLevel, exedURL 
 		"-o", "ServerAliveInterval=30",
 		"-o", "ServerAliveCountMax=3",
 		host,
-		fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://:9080 --http-addr :9081 --exed-url %s --instance-domain exe.cloud --enable-hugepages`,
+		fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --stage local --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://:9080 --http-addr :9081 --exed-url %s --instance-domain exe.cloud --enable-hugepages`,
 			logFormat, logLevel, exedURL))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
