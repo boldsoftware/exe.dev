@@ -61,7 +61,7 @@ You can run exed and exelet together as follows. This will build both exelet and
 and the logs will be intermixed. First build will be slow, but then the kernel build is cached.
 
 ```
-LOG_LEVEL=debug go run ./cmd/exed -dev=local -gh-whoami $(pwd)/ghuser/whoami.sqlite3 -start-exelet
+LOG_LEVEL=debug go run ./cmd/exed -stage=local -gh-whoami $(pwd)/ghuser/whoami.sqlite3 -start-exelet
 ```
 
 ### Running exelet separately
@@ -102,7 +102,7 @@ Access them at `http://localhost:9081/debug` or use `--http-addr` to change the 
 After you have setup a local exelet running and downloaded the whoami database (make whoami), run:
 
 ```
-go run ./cmd/exed -dev=local -gh-whoami $(pwd)/ghuser/whoami.sqlite3 \
+go run ./cmd/exed -stage=local -gh-whoami $(pwd)/ghuser/whoami.sqlite3 \
   -exelet-addresses tcp://127.0.0.1:9080
 ```
 
@@ -157,7 +157,7 @@ and set it as GITHUB_TOKEN.
 Run exed with TLS enabled:
 
 ```
-go run ./cmd/exed -dev=local -https=:443
+go run ./cmd/exed -stage=local -https=:443
 ```
 
 TLS requires valid domain names.

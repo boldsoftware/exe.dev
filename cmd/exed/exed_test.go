@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"exe.dev/stage"
 )
 
 func TestProfileFlag(t *testing.T) {
@@ -44,28 +46,28 @@ func TestFlagValidation(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:    "open without dev mode",
+			name:    "open in prod stage",
 			args:    []string{"-open"},
-			wantErr: "-open flag is only available in dev mode",
+			wantErr: "-open flag is only available in local/test stages",
 		},
 		{
-			name:    "open with dev mode",
-			args:    []string{"-dev", "local", "-open"},
+			name:    "open with local stage",
+			args:    []string{"-stage", "local", "-open"},
 			wantErr: "", // should not error during validation
 		},
 		{
-			name:    "invalid dev mode",
-			args:    []string{"-dev", "invalid"},
-			wantErr: `valid dev modes are "", "local", and "test", got: "invalid"`,
+			name:    "invalid stage",
+			args:    []string{"-stage", "invalid"},
+			wantErr: `invalid stage "invalid"`,
 		},
 		{
-			name:    "start-exelet without dev mode",
+			name:    "start-exelet in prod stage",
 			args:    []string{"-start-exelet"},
-			wantErr: "-start-exelet flag is only available in dev mode",
+			wantErr: "-start-exelet flag is only available in local/test stages",
 		},
 		{
-			name:    "start-exelet with dev mode",
-			args:    []string{"-dev", "local", "-start-exelet"},
+			name:    "start-exelet with local stage",
+			args:    []string{"-stage", "local", "-start-exelet"},
 			wantErr: "", // should not error during validation
 		},
 	}
@@ -88,47 +90,48 @@ func TestFlagValidation(t *testing.T) {
 			_ = httpsAddr
 			dbPath := flag.String("db", "TMP", "SQLite database path")
 			_ = dbPath
-			devMode := flag.String("dev", "", "development mode")
+			stageName := flag.String("stage", "prod", "staging env")
 			ghWhoAmIPath := flag.String("gh-whoami", "ghuser/whoami.sqlite3", "GitHub user key database path")
 			_ = ghWhoAmIPath
 			fakeHTTPEmail := flag.String("fake-email-server", "", "HTTP email server URL")
 			_ = fakeHTTPEmail
-			openBrowser := flag.Bool("open", false, "Open web browser to HTTP server (dev mode only)")
+			openBrowser := flag.Bool("open", false, "Open web browser to HTTP server")
 			profilePath := flag.String("profile", "", "Enable CPU profiling")
 			_ = profilePath
-			startExelet := flag.Bool("start-exelet", false, "Build and start exelet on lima-exe-ctr (dev mode only)")
+			startExelet := flag.Bool("start-exelet", false, "Build and start exelet on lima-exe-ctr")
 
 			// Parse the test args
 			if err := flag.CommandLine.Parse(tt.args); err != nil {
 				t.Fatalf("flag parse error: %v", err)
 			}
 
-			// Run validation logic
-			var validationErr error
+			// Run validation logic (mirrors cmd/exed/exed.go logic)
+			var validationErr string
 
-			// Validate dev mode
-			if *devMode != "" && *devMode != "local" && *devMode != "test" {
-				validationErr = flag.ErrHelp
-				if !strings.Contains(`valid dev modes are "", "local", and "test"`, *devMode) {
-					validationErr = flag.ErrHelp
-				}
+			// Parse stage
+			env, err := stage.Parse(*stageName)
+			if err != nil {
+				validationErr = err.Error()
 			}
 
-			// Validate -open flag (dev mode only)
-			if *openBrowser && *devMode == "" {
-				validationErr = flag.ErrHelp
+			// Validate -open flag (local/test only)
+			if validationErr == "" && *openBrowser && !env.ReplDev {
+				validationErr = "-open flag is only available in local/test stages"
 			}
 
-			// Validate -start-exelet flag (dev mode only)
-			if *startExelet && *devMode == "" {
-				validationErr = flag.ErrHelp
+			// Validate -start-exelet flag (local/test only)
+			if validationErr == "" && *startExelet && !env.ReplDev {
+				validationErr = "-start-exelet flag is only available in local/test stages"
 			}
 
-			if tt.wantErr == "" && validationErr != nil {
+			if tt.wantErr == "" && validationErr != "" {
 				t.Errorf("unexpected error: %v", validationErr)
 			}
-			if tt.wantErr != "" && validationErr == nil {
+			if tt.wantErr != "" && validationErr == "" {
 				t.Errorf("expected error containing %q, got nil", tt.wantErr)
+			}
+			if tt.wantErr != "" && validationErr != "" && !strings.Contains(validationErr, tt.wantErr) {
+				t.Errorf("expected error containing %q, got %q", tt.wantErr, validationErr)
 			}
 		})
 	}

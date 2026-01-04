@@ -125,7 +125,7 @@ func StartExed(ctx context.Context, emailServerPort, piperPort int, extraProxyPo
 
 	exedCmd := exec.Command(binPath,
 		"-db="+dbPath.Name(),
-		"-dev=test",
+		"-stage=test",
 		"-http=:0",
 		"-ssh=:0",
 		"-piper-plugin=:0",
@@ -473,7 +473,7 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 
 	exedCmd := exec.Command(ei.binPath,
 		"-db="+ei.DBPath,
-		"-dev=test",
+		"-stage=test",
 		"-http=:"+strconv.Itoa(ei.HTTPPort),
 		"-ssh=:"+strconv.Itoa(ei.SSHPort),
 		"-piper-plugin=:"+strconv.Itoa(ei.PiperPluginPort),

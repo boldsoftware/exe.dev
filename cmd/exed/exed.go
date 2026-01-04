@@ -38,32 +38,18 @@ func run() error {
 	piperdPort := flag.Int("piperd-port", 2222, "sshpiper listening port")
 	httpsAddr := flag.String("https", "", "HTTPS server address (enables TLS with Let's Encrypt), empty to disable")
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
-	devMode := flag.String("dev", "", `development mode: "" (production), "local" (local containerd), or "test" (test mode)`)
-	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test", overridden by -dev flag`)
+	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test"`)
 	exeletAddresses := flag.String("exelet-addresses", "", "Comma-separated list of exelet addresses (e.g., 'tcp://host1:8080,tcp://host2:8080')")
 	ghWhoAmIPath := flag.String("gh-whoami", "ghuser/whoami.sqlite3", "GitHub user key database path")
 	fakeHTTPEmail := flag.String("fake-email-server", "", "HTTP email server URL for sending emails (e.g., http://localhost:8025)")
 	// TODO(ian): Remove this unused flag when we are sure
 	// no script still uses it.
 	flag.String("gateway", "", "unused")
-	openBrowser := flag.Bool("open", false, "Open web browser to HTTP server (dev mode only)")
+	openBrowser := flag.Bool("open", false, "Open web browser to HTTP server (local/test only)")
 	profilePath := flag.String("profile", "", "Enable CPU profiling for 30 seconds, saving to /tmp/exed-profile-<timestamp>.prof or specified path")
-	startExelet := flag.Bool("start-exelet", false, "Build and start exelet on lima-exe-ctr (dev mode only)")
+	startExelet := flag.Bool("start-exelet", false, "Build and start exelet on lima-exe-ctr (local/test only)")
 	multiExelet := flag.Bool("multi-exelet", false, "with -start-exelet, also start exelet on lima-exe-ctr-tests; may interact badly with concurrent automated tests")
 	flag.Parse()
-
-	// Validate dev mode
-	if *devMode != "" && *devMode != "local" && *devMode != "test" {
-		return fmt.Errorf(`valid dev modes are "", "local", and "test", got: %q`, *devMode)
-	}
-
-	// Override stage if dev mode is set
-	switch *devMode {
-	case "local":
-		*stageName = "local"
-	case "test":
-		*stageName = "test"
-	}
 
 	// Parse stage
 	env, err := stage.Parse(*stageName)
@@ -71,14 +57,14 @@ func run() error {
 		return err
 	}
 
-	// Validate -open flag (dev mode only)
-	if *openBrowser && *devMode == "" {
-		return fmt.Errorf("-open flag is only available in dev mode")
+	// Validate -open flag (local/test only)
+	if *openBrowser && !env.WebDev {
+		return fmt.Errorf("-open flag is only available in webdev-enabled stages")
 	}
 
-	// Validate -start-exelet flag (dev mode only)
-	if *startExelet && *devMode == "" {
-		return fmt.Errorf("-start-exelet flag is only available in dev mode")
+	// Validate -start-exelet flag (local/test only)
+	if *startExelet && !env.ReplDev {
+		return fmt.Errorf("-start-exelet flag is only available in repldev-enabled stages")
 	}
 
 	// -multi-exelet requires -start-exelet
@@ -103,7 +89,7 @@ func run() error {
 
 	// Start exelet(s) if requested
 	if *startExelet {
-		addr, gw, err := startExeletsRemote(*devMode, *httpAddr, *multiExelet)
+		addr, gw, err := startExeletsRemote(env, *httpAddr, *multiExelet)
 		if err != nil {
 			return fmt.Errorf("failed to start exelets: %w", err)
 		}
@@ -287,7 +273,7 @@ func testRemoteToLocalConnectivity(ctx context.Context, host, gateway string, po
 // startExeletsRemote builds exelet, uploads to lima dev host(s), kills old instances, and starts them.
 // If multiExelet is true, also starts on lima-exe-ctr-tests.
 // Returns a comma-separated list of exelet addresses and gateway address.
-func startExeletsRemote(devMode, httpAddr string, multiExelet bool) (string, string, error) {
+func startExeletsRemote(env stage.Env, httpAddr string, multiExelet bool) (string, string, error) {
 	const (
 		// Primary, normal dev lima VM
 		limaDevHost = "lima-exe-ctr.local"
@@ -306,20 +292,6 @@ func startExeletsRemote(devMode, httpAddr string, multiExelet bool) (string, str
 	binPath, err := buildExeletBinary()
 	if err != nil {
 		return "", "", fmt.Errorf("failed to build exelet: %w", err)
-	}
-
-	// Determine LOG_FORMAT and LOG_LEVEL from environment, with dev mode defaults
-	logFormat := os.Getenv("LOG_FORMAT")
-	if logFormat == "" {
-		if devMode != "" {
-			logFormat = "tint"
-		} else {
-			logFormat = "text"
-		}
-	}
-	logLevel := os.Getenv("LOG_LEVEL")
-	if logLevel == "" {
-		logLevel = "debug"
 	}
 
 	ctx := context.Background()
@@ -352,7 +324,7 @@ func startExeletsRemote(devMode, httpAddr string, multiExelet bool) (string, str
 
 	var exeletAddrs []string
 	for _, host := range hosts {
-		addr, err := startExeletOnHost(ctx, host, binPath, logFormat, logLevel, httpAddr, gateway, needsTunnel)
+		addr, err := startExeletOnHost(ctx, host, binPath, env.LogFormat, env.LogLevel, httpAddr, gateway, needsTunnel)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to start exelet on %q: %w", host, err)
 		}

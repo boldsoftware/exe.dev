@@ -8,13 +8,13 @@
       "mode": "debug",
       "program": "${workspaceFolder}/cmd/exed",
       "cwd": "${workspaceFolder}",
-      "args": ["-dev=local", "-start-exelet"], // -gh-whoami $(pwd)/ghuser/whoami.sqlite3 
+      "args": ["-stage=local", "-start-exelet"], // -gh-whoami $(pwd)/ghuser/whoami.sqlite3
       "env": {
         "LOG_LEVEL": "debug"
       }
     },
     // First run the following, and then you can attach:
-    // LOG_LEVEL=debug dlv debug ./cmd/exed --headless --listen=127.0.0.1:2345 --api-version=2 --accept-multiclient -- -dev=local -gh-whoami $(pwd)/ghuser/whoami.sqlite3 -start-exelet
+    // LOG_LEVEL=debug dlv debug ./cmd/exed --headless --listen=127.0.0.1:2345 --api-version=2 --accept-multiclient -- -stage=local -gh-whoami $(pwd)/ghuser/whoami.sqlite3 -start-exelet
     {
       "name": "Attach to Delve",
       "type": "go",
