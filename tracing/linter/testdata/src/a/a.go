@@ -67,3 +67,60 @@ func httpHandlerWithCtx(w http.ResponseWriter, r *http.Request) {
 func notHttpHandler(w http.ResponseWriter, r string) {
 	slog.Info("this is fine, r is not *http.Request")
 }
+
+// Test case: Closure (FuncLit) with ctx as its own parameter
+func closureWithCtxParam() {
+	fn := func(ctx context.Context) {
+		slog.Info("should flag - ctx is closure param") // want "should use slog.InfoContext instead of slog.Info when ctx is available"
+	}
+	fn(context.Background())
+}
+
+// Test case: Deeply nested closures - ctx multiple levels up
+func deeplyNestedClosure(ctx context.Context) {
+	func() {
+		func() {
+			func() {
+				slog.Info("should flag - ctx 3 levels up") // want "should use slog.InfoContext instead of slog.Info when ctx is available"
+			}()
+		}()
+	}()
+}
+
+// Test case: Closure with ctx declared inside (not from outer scope)
+func closureWithCtxDeclaredInside() {
+	func() {
+		ctx := context.Background()
+		slog.Info("should flag - ctx declared in closure") // want "should use slog.InfoContext instead of slog.Info when ctx is available"
+		_ = ctx
+	}()
+}
+
+// Test case: slog.Log already takes context - should NOT flag
+func slogLogAlreadyTakesCtx(ctx context.Context) {
+	slog.Log(ctx, slog.LevelInfo, "this is fine - Log already takes ctx")
+}
+
+// Test case: Logger methods inside closure
+func loggerMethodInClosure(ctx context.Context) {
+	logger := slog.Default()
+	func() {
+		logger.Info("should flag - ctx in outer scope") // want "should use slog.InfoContext instead of slog.Info when ctx is available"
+	}()
+}
+
+// Test case: Closure inside HTTP handler
+func closureInHTTPHandler(w http.ResponseWriter, r *http.Request) {
+	func() {
+		slog.Info("should flag - r in outer HTTP handler") // want "should use slog.InfoContext instead of slog.Info when r is available"
+	}()
+}
+
+// Test case: HTTP handler with closure that has its own ctx
+func httpHandlerClosureWithOwnCtx(w http.ResponseWriter, r *http.Request) {
+	func() {
+		ctx := r.Context()
+		slog.Info("should flag with ctx not r") // want "should use slog.InfoContext instead of slog.Info when ctx is available"
+		_ = ctx
+	}()
+}
