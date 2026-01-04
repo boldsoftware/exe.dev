@@ -1124,7 +1124,7 @@ func (s *Server) createUserWithSSHKeyAndID(ctx context.Context, userID, email, p
 
 	// Check email quality and disable VM creation if disposable
 	if err := s.checkEmailQuality(ctx, user.UserID, email); err != nil {
-		s.slog().ErrorContext(ctx, "email quality check failed", "error", err, "email", email)
+		return nil, fmt.Errorf("email quality check failed: %w", err)
 	}
 
 	// Resolve any pending shares for this email

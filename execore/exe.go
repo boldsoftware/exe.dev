@@ -169,9 +169,9 @@ type EmailVerification struct {
 	// It is used as the Stripe customer ID.
 	AccountID string
 
-	// Error is set if billing checkout fails or is canceled. The SSH session
+	// Err is set if billing checkout fails or is canceled. The SSH session
 	// checks this after CompleteChan closes.
-	Error error
+	Err error
 }
 
 // Close signals completion to the waiting SSH session.

@@ -302,7 +302,8 @@ func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
 	isLoggedIn := err == nil
 
 	// If user is logged in, check if they need billing (only new users need billing)
-	if isLoggedIn {
+	// Skip this check if SkipBilling is set (for tests)
+	if isLoggedIn && !s.env.SkipBilling {
 		needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
 		if err == nil && needsBilling != nil && *needsBilling {
 			// User is logged in but needs to add billing info
@@ -392,11 +393,14 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 	// If user is logged in, check billing status before proceeding
 	if userID, err := s.validateAuthCookie(r); err == nil {
 		// Check if user needs billing (only new users need billing)
-		needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
-		if err == nil && needsBilling != nil && *needsBilling {
-			// User is logged in but needs to add billing info
-			http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
-			return
+		// Skip this check if SkipBilling is set (for tests)
+		if !s.env.SkipBilling {
+			needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
+			if err == nil && needsBilling != nil && *needsBilling {
+				// User is logged in but needs to add billing info
+				http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
+				return
+			}
 		}
 
 		// Start box creation in background
@@ -570,11 +574,14 @@ func (s *Server) handleMobileVerifyTokenEmailLink(w http.ResponseWriter, r *http
 	}
 	if hostname != "" {
 		// Check if user needs billing before starting creation (only new users need billing)
-		needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
-		if err == nil && needsBilling != nil && *needsBilling {
-			// User needs to add billing before creating a VM
-			http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
-			return
+		// Skip this check if SkipBilling is set (for tests)
+		if !s.env.SkipBilling {
+			needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
+			if err == nil && needsBilling != nil && *needsBilling {
+				// User needs to add billing before creating a VM
+				http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
+				return
+			}
 		}
 
 		// Start box creation in background
@@ -636,11 +643,14 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 	}
 	if hostname != "" {
 		// Check if user needs billing before starting creation (only new users need billing)
-		needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
-		if err == nil && needsBilling != nil && *needsBilling {
-			// User needs to add billing before creating a VM
-			http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
-			return
+		// Skip this check if SkipBilling is set (for tests)
+		if !s.env.SkipBilling {
+			needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
+			if err == nil && needsBilling != nil && *needsBilling {
+				// User needs to add billing before creating a VM
+				http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
+				return
+			}
 		}
 
 		// Start box creation in background

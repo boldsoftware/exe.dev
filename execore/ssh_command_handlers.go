@@ -372,9 +372,12 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	// Check if user needs billing (only new users created on/after 2026-01-03 need billing)
-	if needsBilling, err := withRxRes1(ss.server, ctx, (*exedb.Queries).UserNeedsBilling, user.ID); err == nil && needsBilling != nil && *needsBilling {
-		billingURL := ss.server.webBaseURLNoRequest() + "/billing/subscribe?source=exemenu"
-		return cc.Errorf("Billing Required\r\n\r\nYou need to add billing information before creating a VM.\r\n\r\nYou will not be charged during the Developer Preview. The preview ends February 1, 2026.\r\n\r\nVisit: %s", billingURL)
+	// Skip this check if SkipBilling is set (for tests)
+	if !ss.server.env.SkipBilling {
+		if needsBilling, err := withRxRes1(ss.server, ctx, (*exedb.Queries).UserNeedsBilling, user.ID); err == nil && needsBilling != nil && *needsBilling {
+			billingURL := ss.server.webBaseURLNoRequest() + "/billing/subscribe?source=exemenu"
+			return cc.Errorf("Billing Required\r\n\r\nYou need to add billing information before creating a VM.\r\n\r\nYou will not be charged during the Developer Preview. The preview ends February 1, 2026.\r\n\r\nVisit: %s", billingURL)
+		}
 	}
 
 	// Generate box name if not provided

@@ -191,6 +191,11 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Check if user needs billing (only new users need billing, legacy users are grandfathered)
+	// Skip this check if SkipBilling is set (for tests)
+	if s.env.SkipBilling {
+		http.Redirect(w, r, "/new", http.StatusSeeOther)
+		return
+	}
 	needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "failed to check user account", "error", err)

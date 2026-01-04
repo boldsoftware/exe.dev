@@ -14,6 +14,8 @@ import (
 
 func TestBillingRequiredForNewVM_WebUI(t *testing.T) {
 	server := newTestServer(t)
+	// Enable billing checks for this test (disabled by default in test env)
+	server.env.SkipBilling = false
 
 	// Create a user without billing info
 	email := "no-billing@example.com"
@@ -28,28 +30,27 @@ func TestBillingRequiredForNewVM_WebUI(t *testing.T) {
 		t.Fatalf("Failed to create auth cookie: %v", err)
 	}
 
-	// Request /new - should show billing-required page
+	// Request /new - should redirect to billing subscribe page
 	req := httptest.NewRequest("GET", "/new", nil)
 	req.Host = server.env.WebHost
 	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("Expected status 303, got %d", w.Code)
 	}
 
-	body := w.Body.String()
-	if !strings.Contains(body, "Billing Required") {
-		t.Error("Expected billing required page to be shown for user without billing")
-	}
-	if !strings.Contains(body, "/billing/subscribe") {
-		t.Error("Expected billing subscription link on the page")
+	location := w.Header().Get("Location")
+	if location != "/billing/subscribe" {
+		t.Errorf("Expected redirect to /billing/subscribe, got %q", location)
 	}
 }
 
 func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
 	server := newTestServer(t)
+	// Enable billing checks for this test (disabled by default in test env)
+	server.env.SkipBilling = false
 
 	// Create a user without billing info
 	email := "no-billing-create@example.com"
@@ -64,7 +65,7 @@ func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
 		t.Fatalf("Failed to create auth cookie: %v", err)
 	}
 
-	// POST to /create-vm - should show billing-required page
+	// POST to /create-vm - should redirect to billing subscribe page
 	form := url.Values{}
 	form.Add("hostname", "test-vm")
 	form.Add("prompt", "test prompt")
@@ -75,13 +76,13 @@ func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("Expected status 303, got %d", w.Code)
 	}
 
-	body := w.Body.String()
-	if !strings.Contains(body, "Billing Required") {
-		t.Error("Expected billing required page for user without billing info")
+	location := w.Header().Get("Location")
+	if location != "/billing/subscribe" {
+		t.Errorf("Expected redirect to /billing/subscribe, got %q", location)
 	}
 }
 

@@ -251,7 +251,9 @@ func TestNewPageRendersLoggedInAndOut(t *testing.T) {
 		}
 	})
 
-	// Test 2: Logged in without billing - GET /new should show billing required page
+	// Test 2: Logged in without billing - In test env (SkipBilling=true), should still show create form
+	// Note: Billing is skipped in test environment, so users without billing can still create VMs.
+	// In production (SkipBilling=false), users without billing would see the billing required page.
 	t.Run("logged_in_no_billing", func(t *testing.T) {
 		pty, cookies, _, _ := registerForExeDevWithoutBilling(t)
 		pty.disconnect()
@@ -273,12 +275,9 @@ func TestNewPageRendersLoggedInAndOut(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("GET /new returned status %d, want 200", resp.StatusCode)
 		}
-		// User without billing should see billing required page
-		if !strings.Contains(string(body), "Billing Required") {
-			t.Fatalf("GET /new (logged in, no billing) should show 'Billing Required', got: %s", string(body))
-		}
-		if !strings.Contains(string(body), "/billing/subscribe") {
-			t.Fatalf("GET /new (logged in, no billing) should show billing subscription link, got: %s", string(body))
+		// In test env, billing is skipped so user should see create form
+		if !strings.Contains(string(body), "Create a New VM") {
+			t.Fatalf("GET /new (logged in, no billing, test env) should show 'Create a New VM', got: %s", string(body))
 		}
 	})
 

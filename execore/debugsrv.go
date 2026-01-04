@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"exe.dev/billing"
 	"exe.dev/exedb"
 	"exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
@@ -625,7 +624,7 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 			stripeCell := "-"
 			if acctID, ok := accountByUser[u.UserID]; ok {
 				stripeCell = fmt.Sprintf("<a href='%s' target='_blank'>%s</a>",
-					html.EscapeString(billing.DashboardURL(s.env.StripeAPIKey, acctID)),
+					html.EscapeString(s.billing.DashboardURL(acctID)),
 					html.EscapeString(acctID))
 			}
 			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s <button class='toggle-btn %s' data-email='%s' data-userid='%s' data-enabled='%v'>%s</button></td></tr>\n",

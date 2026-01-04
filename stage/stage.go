@@ -69,12 +69,13 @@ func Invalid() Env {
 		UseCobble:         false,
 		DiscoverPublicIPs: false,
 
-		FakeEmail:  true, // something is wrong, so don't send real email
-		ReplDev:    false,
-		WebDev:     false,
-		ProxyDev:   false,
-		GatewayDev: false,
-		SkipBanner: false,
+		FakeEmail:   true, // something is wrong, so don't send real email
+		SkipBilling: true, // something is wrong, so skip billing
+		ReplDev:     false,
+		WebDev:      false,
+		ProxyDev:    false,
+		GatewayDev:  false,
+		SkipBanner:  false,
 
 		ShowHiddenDocs:    false,
 		AutoStartSSHPiper: false,
@@ -94,6 +95,8 @@ func Invalid() Env {
 
 		DefaultMemory: 0, // invalid: must be > 0
 		DefaultDisk:   0, // invalid: must be > 0
+
+		StripeAPIKey: "", // invalid: no API key
 	}
 }
 

@@ -2,6 +2,7 @@
 package billing
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -21,8 +22,6 @@ var stripeKey = os.Getenv("STRIPE_API_KEY")
 
 const DefaultPlan = "individual"
 
-var priceIDCache sync.Map // lookup key -> price ID
-
 // Manager handles billing operations.
 type Manager struct {
 	// APIKey specifies the Stripe API key to use for requests.
@@ -31,6 +30,8 @@ type Manager struct {
 	//   1. The STRIPE_API_KEY environment variable
 	//   2. The sandboxAPIKey
 	APIKey string
+
+	priceIDCache sync.Map // "apiKey:lookupKey" -> price ID
 }
 
 // SubscribeParams contains the parameters for subscribing an account to a plan.
@@ -79,10 +80,7 @@ func (m *Manager) Subscribe(ctx context.Context, exeAccountID string, p *Subscri
 
 	c := m.client()
 
-	plan := p.Plan
-	if plan == "" {
-		plan = DefaultPlan
-	}
+	plan := cmp.Or(p.Plan, DefaultPlan)
 
 	// Look up the price by its lookup key
 	priceID, err := m.lookupPriceID(ctx, c, plan)
@@ -137,7 +135,8 @@ func (m *Manager) Subscribe(ctx context.Context, exeAccountID string, p *Subscri
 
 // lookupPriceID finds the price ID for a given lookup key, caching results.
 func (m *Manager) lookupPriceID(ctx context.Context, c *stripe.Client, lookupKey string) (string, error) {
-	if v, ok := priceIDCache.Load(lookupKey); ok {
+	cacheKey := m.APIKey + ":" + lookupKey
+	if v, ok := m.priceIDCache.Load(cacheKey); ok {
 		return v.(string), nil
 	}
 
@@ -148,7 +147,7 @@ func (m *Manager) lookupPriceID(ctx context.Context, c *stripe.Client, lookupKey
 		if err != nil {
 			return "", err
 		}
-		priceIDCache.Store(lookupKey, price.ID)
+		m.priceIDCache.Store(cacheKey, price.ID)
 		return price.ID, nil
 	}
 	return "", fmt.Errorf("no active price found with lookup key %q", lookupKey)
@@ -172,10 +171,10 @@ func (m *Manager) UpdateProfile(ctx context.Context, exeAccountID string, p *Pro
 }
 
 // DashboardURL returns the Stripe dashboard URL for a customer.
-// Uses test dashboard if apiKey is a test key.
-func DashboardURL(apiKey, customerID string) string {
+// Uses test dashboard if the manager's API key is a test key.
+func (m *Manager) DashboardURL(customerID string) string {
 	base := "https://dashboard.stripe.com"
-	if strings.HasPrefix(apiKey, "sk_test_") {
+	if strings.HasPrefix(m.APIKey, "sk_test_") {
 		base = "https://dashboard.stripe.com/test"
 	}
 	return base + "/customers/" + customerID
