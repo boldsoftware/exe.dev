@@ -236,6 +236,7 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 	} else {
 		successURL = baseURL + "/new"
 	}
+	// If user cancels checkout, send them back to /billing/subscribe so they can try again.
 	cancelURL := baseURL + "/billing/subscribe"
 	if source != "" {
 		cancelURL += "?source=" + url.QueryEscape(source)

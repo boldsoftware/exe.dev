@@ -19,7 +19,9 @@ import (
 // TestMobileFlow_EndToEnd exercises the mobile creation flow with SSE using the default image.
 func TestMobileFlow_EndToEnd(t *testing.T) {
 	if os.Getenv("CI") != "" {
-		t.Skip("skipping on CI - test exceeds CI timeout")
+		// VM creation takes several minutes (downloading image, booting, running shelley).
+		// The CI timeout of 10 minutes is insufficient for this full end-to-end test.
+		t.Skip("skipping on CI - VM creation takes several minutes, exceeds CI timeout")
 	}
 	// Unique hostname for this test
 	host := boxName(t)

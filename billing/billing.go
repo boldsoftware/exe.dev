@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -171,11 +170,7 @@ func (m *Manager) UpdateProfile(ctx context.Context, exeAccountID string, p *Pro
 }
 
 // DashboardURL returns the Stripe dashboard URL for a customer.
-// Uses test dashboard if the manager's API key is a test key.
+// Stripe automatically redirects to test/live mode based on the customer ID.
 func (m *Manager) DashboardURL(customerID string) string {
-	base := "https://dashboard.stripe.com"
-	if strings.HasPrefix(m.APIKey, "sk_test_") {
-		base = "https://dashboard.stripe.com/test"
-	}
-	return base + "/customers/" + customerID
+	return "https://dashboard.stripe.com/customers/" + customerID
 }

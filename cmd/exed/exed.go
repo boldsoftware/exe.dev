@@ -163,9 +163,10 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
-	// Require STRIPE_API_KEY in production (non-dev) environments
-	if !env.WebDev && env.StripeAPIKey == "" {
-		return fmt.Errorf("STRIPE_API_KEY environment variable is required in production")
+	// Require Stripe API key to be configured.
+	// Local/test stages use the billing.TestAPIKey; staging/prod require STRIPE_API_KEY env var.
+	if env.StripeAPIKey == "" {
+		return fmt.Errorf("STRIPE_API_KEY environment variable is required")
 	}
 
 	server, err := execore.NewServer(execore.ServerConfig{
