@@ -306,7 +306,7 @@ func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
 		needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
 		if err == nil && needsBilling != nil && *needsBilling {
 			// User is logged in but needs to add billing info
-			s.renderTemplate(w, "billing-required.html", s.env)
+			http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
 			return
 		}
 	}
@@ -395,7 +395,7 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 		needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
 		if err == nil && needsBilling != nil && *needsBilling {
 			// User is logged in but needs to add billing info
-			s.renderTemplate(w, "billing-required.html", s.env)
+			http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
 			return
 		}
 
@@ -573,7 +573,7 @@ func (s *Server) handleMobileVerifyTokenEmailLink(w http.ResponseWriter, r *http
 		needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
 		if err == nil && needsBilling != nil && *needsBilling {
 			// User needs to add billing before creating a VM
-			s.renderTemplate(w, "billing-required.html", s.env)
+			http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
 			return
 		}
 
@@ -639,7 +639,7 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 		needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
 		if err == nil && needsBilling != nil && *needsBilling {
 			// User needs to add billing before creating a VM
-			s.renderTemplate(w, "billing-required.html", s.env)
+			http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
 			return
 		}
 

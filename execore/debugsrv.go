@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/billing"
 	"exe.dev/exedb"
 	"exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
@@ -36,7 +37,6 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
 	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
 	mux.HandleFunc("POST /debug/users/toggle-vm-creation", s.handleDebugToggleVMCreation)
-	mux.HandleFunc("POST /debug/users/add-billing", s.handleDebugAddBilling)
 	mux.HandleFunc("/debug/exelets", s.handleDebugExelets)
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
 	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
@@ -552,7 +552,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			CreatedAt              string `json:"created_at,omitempty"`
 			RootSupport            bool   `json:"root_support"`
 			CreatedForLoginWithExe bool   `json:"created_for_login_with_exe"`
-			StripeAccountID        string `json:"stripe_account_id,omitempty"`
+			AccountID              string `json:"account_id,omitempty"`
 		}
 		var usersJSON []userInfo
 		for _, u := range users {
@@ -566,7 +566,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 				CreatedAt:              createdAt,
 				RootSupport:            u.RootSupport == 1,
 				CreatedForLoginWithExe: u.CreatedForLoginWithExe,
-				StripeAccountID:        accountByUser[u.UserID],
+				AccountID:              accountByUser[u.UserID],
 			})
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -624,13 +624,8 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 			}
 			stripeCell := "-"
 			if acctID, ok := accountByUser[u.UserID]; ok {
-				stripeDashboard := "https://dashboard.stripe.com"
-				if strings.HasPrefix(s.env.StripeAPIKey, "sk_test_") {
-					stripeDashboard = "https://dashboard.stripe.com/test"
-				}
-				stripeCell = fmt.Sprintf("<a href='%s/customers/%s' target='_blank'>%s</a>",
-					stripeDashboard,
-					html.EscapeString(acctID),
+				stripeCell = fmt.Sprintf("<a href='%s' target='_blank'>%s</a>",
+					html.EscapeString(billing.DashboardURL(s.env.StripeAPIKey, acctID)),
 					html.EscapeString(acctID))
 			}
 			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s <button class='toggle-btn %s' data-email='%s' data-userid='%s' data-enabled='%v'>%s</button></td></tr>\n",
@@ -790,42 +785,6 @@ func (s *Server) handleDebugToggleVMCreation(w http.ResponseWriter, r *http.Requ
 		action = "disabled"
 	}
 	s.slog().InfoContext(ctx, "vm creation toggled via debug page", "user_id", userID, "action", action)
-
-	w.WriteHeader(http.StatusOK)
-}
-
-func (s *Server) handleDebugAddBilling(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	userID := r.FormValue("user_id")
-	if userID == "" {
-		http.Error(w, "user_id is required", http.StatusBadRequest)
-		return
-	}
-
-	// Check if user already has an account
-	hasAccount, err := withRxRes1(s, ctx, (*exedb.Queries).UserIsPaying, userID)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to check account: %v", err), http.StatusInternalServerError)
-		return
-	}
-	if hasAccount {
-		http.Error(w, "user already has billing account", http.StatusBadRequest)
-		return
-	}
-
-	// Create account for user
-	accountID := fmt.Sprintf("acct_debug_%s", userID[:8])
-	err = withTx1(s, ctx, (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        accountID,
-		CreatedBy: userID,
-	})
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to create account: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	s.slog().InfoContext(ctx, "billing account added via debug page", "user_id", userID, "account_id", accountID)
 
 	w.WriteHeader(http.StatusOK)
 }

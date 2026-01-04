@@ -643,12 +643,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleEmailVerificationHTTP(w, r)
 	case "/verify-device":
 		s.handleDeviceVerificationHTTP(w, r)
-	case "/billing/checkout/start":
-		s.handleBillingCheckoutStart(w, r)
-	case "/billing/checkout/success":
-		s.handleBillingCheckoutSuccess(w, r)
-	case "/billing/checkout/canceled":
-		s.handleBillingCheckoutCanceled(w, r)
 	case "/billing/subscribe":
 		s.handleBillingSubscribe(w, r)
 	case "/billing/success":

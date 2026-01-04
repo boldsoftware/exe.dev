@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -140,7 +141,6 @@ func (m *Manager) lookupPriceID(ctx context.Context, c *stripe.Client, lookupKey
 		return v.(string), nil
 	}
 
-	var priceID string
 	for price, err := range c.V1Prices.List(ctx, &stripe.PriceListParams{
 		LookupKeys: []*string{&lookupKey},
 		Active:     stripe.Bool(true),
@@ -148,15 +148,10 @@ func (m *Manager) lookupPriceID(ctx context.Context, c *stripe.Client, lookupKey
 		if err != nil {
 			return "", err
 		}
-		priceID = price.ID
-		break
+		priceIDCache.Store(lookupKey, price.ID)
+		return price.ID, nil
 	}
-	if priceID == "" {
-		return "", fmt.Errorf("no active price found with lookup key %q", lookupKey)
-	}
-
-	priceIDCache.Store(lookupKey, priceID)
-	return priceID, nil
+	return "", fmt.Errorf("no active price found with lookup key %q", lookupKey)
 }
 
 // UpdateProfile updates the account's profile information.
@@ -174,4 +169,14 @@ func (m *Manager) UpdateProfile(ctx context.Context, exeAccountID string, p *Pro
 
 	_, err := c.V1Customers.Update(ctx, exeAccountID, params)
 	return err
+}
+
+// DashboardURL returns the Stripe dashboard URL for a customer.
+// Uses test dashboard if apiKey is a test key.
+func DashboardURL(apiKey, customerID string) string {
+	base := "https://dashboard.stripe.com"
+	if strings.HasPrefix(apiKey, "sk_test_") {
+		base = "https://dashboard.stripe.com/test"
+	}
+	return base + "/customers/" + customerID
 }
