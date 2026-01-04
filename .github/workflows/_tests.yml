@@ -63,15 +63,10 @@ jobs:
             fi
           fi
 
-      - name: Verify slogcontext linter passes
+      - name: Verify custom linters pass
         run: |
-          go build -o /tmp/slogcontext ./tracing/linter/cmd/slogcontext
-          go vet -vettool=/tmp/slogcontext ./...
-
-      - name: Verify completeinit linter passes
-        run: |
-          go build -o /tmp/completeinit ./completeinit/cmd/completeinit
-          go vet -vettool=/tmp/completeinit ./...
+          go build -o /tmp/exelint ./cmd/exelint
+          go vet -vettool=/tmp/exelint ./...
 
       - name: Run tests
         run: |
