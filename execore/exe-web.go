@@ -438,7 +438,7 @@ func isClientDisconnectError(err error) bool {
 		return true
 	}
 	msg := err.Error()
-	return strings.Contains(msg, "http2: stream closed") || strings.Contains(msg, "broken pipe") || strings.Contains(msg, "connection reset by peer") || strings.Contains(msg, "client disconnected")
+	return strings.Contains(msg, "http2: stream closed") || strings.Contains(msg, "broken pipe") || strings.Contains(msg, "connection reset by peer") || strings.Contains(msg, "client disconnected") || strings.Contains(msg, "connection timed out")
 }
 
 // renderTemplate is a helper method that handles template parsing and execution
