@@ -80,6 +80,7 @@ func TestUnpackPublicImage(t *testing.T) {
 }
 
 func TestUnpackExeuntu(t *testing.T) {
+	t.Skip("downloads large image")
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
