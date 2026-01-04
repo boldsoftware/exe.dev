@@ -44,6 +44,7 @@ import (
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	_ "modernc.org/sqlite"
+	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale"
 	"tailscale.com/net/tsaddr"
 )
@@ -195,7 +196,7 @@ func (s *Server) setupHTTPSServer() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		tailscaleAcknowledgeUnstableAPI()
-		lc := &tailscale.LocalClient{}
+		lc := new(local.Client)
 		st, err := lc.Status(ctx)
 		if err != nil || st == nil || st.Self == nil || st.Self.DNSName == "" {
 			if err != nil {
