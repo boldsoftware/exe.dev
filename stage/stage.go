@@ -45,6 +45,44 @@ type Env struct {
 	DefaultDisk   uint64 // default disk size for new boxes in bytes
 }
 
+// Invalid returns an Env with obviously invalid values.
+// Use this instead of a zero Env when an invalid Env is needed.
+// Values are set to fail closed: an invalid env means all features are disabled.
+func Invalid() Env {
+	return Env{
+		WebHost:  "INVALID.INVALID",
+		ReplHost: "INVALID.INVALID",
+		BoxHost:  "INVALID.INVALID",
+
+		UseRoute53:        false,
+		UseCobble:         false,
+		DiscoverPublicIPs: false,
+
+		FakeEmail:  true, // something is wrong, so don't send real email
+		ReplDev:    false,
+		WebDev:     false,
+		ProxyDev:   false,
+		GatewayDev: false,
+		SkipBanner: false,
+
+		ShowHiddenDocs:    false,
+		AutoStartSSHPiper: false,
+		SSHCommandUsesAt:  false,
+		PostSlackFeed:     false,
+
+		LogCmdAttr:           false,
+		LogFormat:            "INVALID",
+		LogLevel:             "INVALID",
+		LogErrorSlackChannel: "",
+
+		NumShards:  0, // invalid: must be >= 1
+		ProxyPorts: nil,
+
+		DefaultMemory: 0, // invalid: must be > 0
+		DefaultDisk:   0, // invalid: must be > 0
+	}
+}
+
 // Local returns an Env configured for convenient local human development.
 // It enables more expensive features (cobble, auto-starting sshpiper),
 // and provides convenience shortcuts like email links in the console/web.
@@ -210,7 +248,7 @@ func Parse(name string) (Env, error) {
 	case "test":
 		return Test(), nil
 	default:
-		return Env{}, fmt.Errorf("invalid stage %q: must be prod, staging, local, or test", name)
+		return Invalid(), fmt.Errorf("invalid stage %q: must be prod, staging, local, or test", name)
 	}
 }
 
