@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"exe.dev/boxname"
 	"exe.dev/container"
@@ -26,6 +28,13 @@ import (
 	api "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/sqlite"
 )
+
+// grpcStatuser is an interface for errors that wrap a gRPC status.
+// Use with errors.As to extract the underlying status from wrapped errors.
+type grpcStatuser interface {
+	error
+	GRPCStatus() *status.Status
+}
 
 // TODO(philip): Probably can be done in Shelley itself as part of the system prompt.
 const shelleyPreamble = `
@@ -554,6 +563,14 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		// Call CreateInstance
 		stream, err := exeletClient.client.CreateInstance(ctx, createReq)
 		if err != nil {
+			// Check if this is a client error (user input issue)
+			if s, ok := status.FromError(err); ok && s.Code() == codes.InvalidArgument {
+				completionChan <- instanceCompletion{
+					container: nil,
+					err:       cc.Errorf("%s", s.Message()),
+				}
+				return
+			}
 			completionChan <- instanceCompletion{
 				container: nil,
 				err:       fmt.Errorf("failed to create instance: %w", err),
@@ -569,6 +586,14 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 				break
 			}
 			if err != nil {
+				// Check if this is a client error (user input issue)
+				if s, ok := status.FromError(err); ok && s.Code() == codes.InvalidArgument {
+					completionChan <- instanceCompletion{
+						container: nil,
+						err:       cc.Errorf("%s", s.Message()),
+					}
+					return
+				}
 				completionChan <- instanceCompletion{
 					container: nil,
 					err:       fmt.Errorf("stream error: %w", err),
@@ -715,6 +740,15 @@ done:
 			return queries.DeleteBox(ctx, boxID)
 		}); err != nil {
 			slog.ErrorContext(ctx, "Failed to clean up box entry after container creation failure", "boxID", boxID, "error", err)
+		}
+		// Check if this is a gRPC user error (e.g., invalid image name)
+		// and convert it to a CommandClientError for proper display.
+		var gs grpcStatuser
+		if errors.As(createErr, &gs) {
+			switch gs.GRPCStatus().Code() {
+			case codes.InvalidArgument, codes.FailedPrecondition:
+				return cc.Errorf("%s", gs.GRPCStatus().Message())
+			}
 		}
 		return createErr
 	}

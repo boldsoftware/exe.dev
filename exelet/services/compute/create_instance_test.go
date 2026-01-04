@@ -640,3 +640,93 @@ func TestEnhanceErrorWithBootLogNoLog(t *testing.T) {
 		t.Errorf("should return original error when boot log doesn't exist, got: %v", enhancedErr)
 	}
 }
+
+// TestIsImageResolutionUserError tests the isImageResolutionUserError function
+// which identifies user-caused image errors vs system errors.
+func TestIsImageResolutionUserError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "generic internal error",
+			err:      errors.New("connection refused"),
+			expected: false,
+		},
+		{
+			name:     "timeout error",
+			err:      errors.New("context deadline exceeded"),
+			expected: false,
+		},
+		{
+			name:     "pull access denied",
+			err:      errors.New("error resolving image reference: pull access denied, repository does not exist"),
+			expected: true,
+		},
+		{
+			name:     "insufficient scope",
+			err:      errors.New("error resolving image reference: server message: insufficient_scope: authorization failed"),
+			expected: true,
+		},
+		{
+			name:     "unauthorized",
+			err:      errors.New("unauthorized: authentication required"),
+			expected: true,
+		},
+		{
+			name:     "manifest unknown",
+			err:      errors.New("manifest unknown: manifest unknown"),
+			expected: true,
+		},
+		{
+			name:     "name unknown",
+			err:      errors.New("name unknown: repository name not known to registry"),
+			expected: true,
+		},
+		{
+			name:     "not found",
+			err:      errors.New("not found"),
+			expected: true,
+		},
+		{
+			name:     "denied",
+			err:      errors.New("denied: requested access to the resource is denied"),
+			expected: true,
+		},
+		{
+			name:     "mixed case unauthorized",
+			err:      errors.New("UNAUTHORIZED: access denied"),
+			expected: true,
+		},
+		{
+			name:     "wrapped user error",
+			err:      errors.New("failed to resolve: error resolving image reference: pull access denied"),
+			expected: true,
+		},
+		{
+			name:     "forbidden",
+			err:      errors.New("403 Forbidden"),
+			expected: true,
+		},
+		{
+			name:     "failed to authorize",
+			err:      errors.New("failed to authorize: failed to fetch anonymous token"),
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isImageResolutionUserError(tt.err)
+			if result != tt.expected {
+				t.Errorf("isImageResolutionUserError(%v) = %v, expected %v", tt.err, result, tt.expected)
+			}
+		})
+	}
+}

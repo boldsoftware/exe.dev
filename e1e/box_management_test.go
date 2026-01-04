@@ -649,6 +649,63 @@ func TestBadBoxName(t *testing.T) {
 	pty.disconnect()
 }
 
+func TestNewWithNonexistentImage(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, _, _ := registerForExeDev(t)
+
+	// Attempt to create a box with a valid-looking but non-existent image.
+	boxName := boxName(t)
+	image := "ghcr.io/nobody/nonexistent-image-abc123:latest"
+	pty.sendLine(fmt.Sprintf("new --name=%s --image=%s", boxName, image))
+	// Wait for the Creating... message, then for error
+	pty.wantRe("Creating.*" + boxName)
+	// The user should see a helpful error message about the image not being found/pulled.
+	pty.want("not found or not accessible")
+	pty.wantPrompt()
+	pty.disconnect()
+}
+
+func TestNewWithNonexistentTag(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, _, _ := registerForExeDev(t)
+
+	// Attempt to create a box with a real repo but a non-existent tag.
+	// This triggers "manifest unknown" type errors.
+	boxName := boxName(t)
+	image := "alpine:nonexistent-tag-xyz123"
+	pty.sendLine(fmt.Sprintf("new --name=%s --image=%s", boxName, image))
+	// Wait for the Creating... message, then for error
+	pty.wantRe("Creating.*" + boxName)
+	// The user should see a helpful error message about the image not being found/pulled.
+	pty.want("not found or not accessible")
+	pty.wantPrompt()
+	pty.disconnect()
+}
+
+func TestNewWithPrivateImage(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, _, _ := registerForExeDev(t)
+
+	// Attempt to create a box with a private image that requires authentication.
+	// This triggers "unauthorized" or "denied" type errors.
+	boxName := boxName(t)
+	// Use a private GitHub Container Registry image that we don't have access to.
+	image := "ghcr.io/boldsoftware/private-nonexistent:latest"
+	pty.sendLine(fmt.Sprintf("new --name=%s --image=%s", boxName, image))
+	// Wait for the Creating... message, then for error
+	pty.wantRe("Creating.*" + boxName)
+	// The user should see a helpful error message about the image not being found/pulled.
+	pty.want("not found or not accessible")
+	pty.wantPrompt()
+	pty.disconnect()
+}
+
 func TestNewRejectsBoxMatchingSSHUsername(t *testing.T) {
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)

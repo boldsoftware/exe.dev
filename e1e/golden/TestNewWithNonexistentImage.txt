@@ -1,0 +1,42 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a VM over ssh
+To sign up, please verify your email.
+
+Please enter your email address: TestNewWithNonexistentImage@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
+
+
+Verification email sent to: TestNewWithNonexistentImage@example.com
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+
+
+
+Welcome to EXE.DEV!
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ whoami
+Email Address: TestNewWithNonexistentImage@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+PROMPT ▶ new --name=BOX_NAME --image=ghcr.io/nobody/nonexistent-image-abc123:latest
+Creating BOX_NAME using image nobody/nonexistent-image-abc123...
+image "ghcr.io/nobody/nonexistent-image-abc123:latest" not found or not accessible
+PROMPT ▶ exit
+Goodbye!

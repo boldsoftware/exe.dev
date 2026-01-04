@@ -58,6 +58,34 @@ func shellEscapeValue(s string) string {
 	return "'" + escaped + "'"
 }
 
+// isImageResolutionUserError reports whether the error is an image resolution error caused by bad user input.
+// Example: image not found, unauthorized (private), invalid reference.
+func isImageResolutionUserError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// TODO: can we do better than string matching here?
+	errStr := strings.ToLower(err.Error())
+	userErrorPatterns := []string{
+		"pull access denied",
+		"repository does not exist",
+		"unauthorized",
+		"insufficient_scope",
+		"not found",
+		"manifest unknown",
+		"name unknown",
+		"denied",
+		"forbidden",
+		"failed to authorize",
+	}
+	for _, pattern := range userErrorPatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
 // CreateInstance creates a new exelet instance
 func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.ComputeService_CreateInstanceServer) (err error) {
 	// validate
@@ -241,6 +269,10 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	s.log.InfoContext(ctx, "fetching image manifest", "instance_id", instanceID, "image", req.Image, "platform", platform)
 	imageMetadata, err := s.context.ImageManager.FetchManifestForPlatform(ctx, req.Image, platform)
 	if err != nil {
+		if isImageResolutionUserError(err) {
+			s.log.WarnContext(ctx, "failed to fetch image manifest (user error)", "instance_id", instanceID, "image", req.Image, "platform", platform, "error", err)
+			return nil, status.Errorf(codes.InvalidArgument, "image %q not found or not accessible", req.Image)
+		}
 		s.log.ErrorContext(ctx, "failed to fetch image manifest", "instance_id", instanceID, "image", req.Image, "platform", platform, "error", err)
 		return nil, status.Errorf(codes.Internal, "error fetching image manifest: %s", err)
 	}
