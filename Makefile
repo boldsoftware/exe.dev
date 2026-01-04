@@ -21,7 +21,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy-exed deploy-exed-staging deploy-exelet deploy-exelet-staging deploy-whoami deploy-what deploy-qa deploy-piperd deploy-piperd-staging deploy-blogd clean run-dev run-devlet run-devlets generate whoami-clean ssh-exed-staging ssh-ctr-staging
+.PHONY: help build test deploy-exed deploy-exed-staging deploy-exelet deploy-exelet-staging deploy-staging _check-staging-machine deploy-whoami deploy-what deploy-qa deploy-piperd deploy-piperd-staging deploy-blogd clean run-dev run-devlet run-devlets generate whoami-clean ssh-exed-staging ssh-ctr-staging
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -61,12 +61,28 @@ deploy-exelet: ## Deploy exelet to production (FORCE=1 to override safety checks
 	@chmod +x ops/deploy/deploy-exelet-prod.sh
 	@./ops/deploy/deploy-exelet-prod.sh $(DEPLOY_FLAGS)
 
-deploy-exelet-staging: ## Deploy exelet to staging
+deploy-exelet-staging: ## Deploy exelet to staging (MACHINE=name required)
+	@if [ -z "$(MACHINE)" ]; then \
+		echo "${RED}ERROR: MACHINE is required for staging deployments${NC}"; \
+		echo "Usage: make deploy-staging MACHINE=<machine-name>"; \
+		echo "   or: make deploy-exelet-staging MACHINE=<machine-name>"; \
+		echo "Example: make deploy-exelet-staging MACHINE=exe-ctr-staging-01"; \
+		exit 1; \
+	fi
 	@echo "${YELLOW}Deploying exelet to staging...${NC}"
 	@chmod +x ops/deploy/deploy-exelet-staging.sh
-	@./ops/deploy/deploy-exelet-staging.sh
+	@./ops/deploy/deploy-exelet-staging.sh $(MACHINE)
 
-deploy-staging: deploy-exed-staging deploy-exelet-staging # deploy all of staging
+deploy-staging: _check-staging-machine deploy-exed-staging deploy-exelet-staging ## Deploy all of staging (MACHINE=name required)
+
+_check-staging-machine:
+	@if [ -z "$(MACHINE)" ]; then \
+		echo "${RED}ERROR: MACHINE is required for staging deployments${NC}"; \
+		echo "Usage: make deploy-staging MACHINE=<machine-name>"; \
+		echo "   or: make deploy-exelet-staging MACHINE=<machine-name>"; \
+		echo "Example: make deploy-staging MACHINE=exe-ctr-staging-01"; \
+		exit 1; \
+	fi
 
 deploy-whoami: ## Deploy whoami sqlite database to production
 	@echo "${YELLOW}Deploying whoami database to production...${NC}"
