@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import type * as Monaco from "monaco-editor";
 import { api } from "../services/api";
+import { isDarkModeActive } from "../services/theme";
 import { GitDiffInfo, GitFileInfo, GitFileDiff } from "../types";
 
 interface DiffViewerProps {
@@ -227,7 +228,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
 
     // Create diff editor with mobile-friendly options
     const diffEditor = monaco.editor.createDiffEditor(editorContainerRef.current, {
-      theme: "vs",
+      theme: isDarkModeActive() ? "vs-dark" : "vs",
       readOnly: true, // Always read-only in diff viewer
       originalEditable: false,
       automaticLayout: true,
@@ -577,6 +578,29 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
     pendingSaveRef.current = null;
     saveCurrentFile();
   }, [saveCurrentFile]);
+
+  // Update Monaco theme when dark mode changes
+  useEffect(() => {
+    if (!monacoRef.current) return;
+
+    const updateMonacoTheme = () => {
+      const theme = isDarkModeActive() ? "vs-dark" : "vs";
+      monacoRef.current?.editor.setTheme(theme);
+    };
+
+    // Watch for changes to the dark class on documentElement
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.attributeName === "class") {
+          updateMonacoTheme();
+        }
+      }
+    });
+
+    observer.observe(document.documentElement, { attributes: true });
+
+    return () => observer.disconnect();
+  }, [monacoLoaded]);
 
   // Keyboard shortcuts
   useEffect(() => {

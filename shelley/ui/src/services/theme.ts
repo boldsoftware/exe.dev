@@ -18,6 +18,11 @@ export function getSystemPrefersDark(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
+export function isDarkModeActive(): boolean {
+  const theme = getStoredTheme();
+  return theme === "dark" || (theme === "system" && getSystemPrefersDark());
+}
+
 export function applyTheme(theme: ThemeMode): void {
   const isDark = theme === "dark" || (theme === "system" && getSystemPrefersDark());
   document.documentElement.classList.toggle("dark", isDark);
