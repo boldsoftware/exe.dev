@@ -54,7 +54,13 @@ async function build() {
     fs.copyFileSync('src/styles.css', 'dist/styles.css');
 
     // Write build info
-    const buildInfo = { timestamp: new Date().toISOString() };
+    // Get the absolute path to the src directory for staleness checking
+    const srcDir = new URL('../src', import.meta.url).pathname;
+    const buildInfo = {
+      timestamp: Date.now(),
+      date: new Date().toISOString(),
+      srcDir: srcDir,
+    };
     fs.writeFileSync('dist/build-info.json', JSON.stringify(buildInfo, null, 2));
 
     console.log('Build complete!');
