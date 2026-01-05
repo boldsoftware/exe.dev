@@ -9,30 +9,50 @@ import (
 	"context"
 )
 
+const activateAccount = `-- name: ActivateAccount :exec
+UPDATE accounts SET billing_status = 'active' WHERE created_by = ?
+`
+
+// ActivateAccount marks an account as active after Stripe checkout completes.
+func (q *Queries) ActivateAccount(ctx context.Context, createdBy string) error {
+	_, err := q.exec(ctx, q.activateAccountStmt, activateAccount, createdBy)
+	return err
+}
+
 const getAccount = `-- name: GetAccount :one
-SELECT id, created_by, created_at FROM accounts WHERE id = ?
+SELECT id, created_by, created_at, billing_status FROM accounts WHERE id = ?
 `
 
 func (q *Queries) GetAccount(ctx context.Context, id string) (Account, error) {
 	row := q.queryRow(ctx, q.getAccountStmt, getAccount, id)
 	var i Account
-	err := row.Scan(&i.ID, &i.CreatedBy, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.BillingStatus,
+	)
 	return i, err
 }
 
 const getAccountByUserID = `-- name: GetAccountByUserID :one
-SELECT id, created_by, created_at FROM accounts WHERE created_by = ?
+SELECT id, created_by, created_at, billing_status FROM accounts WHERE created_by = ?
 `
 
 func (q *Queries) GetAccountByUserID(ctx context.Context, createdBy string) (Account, error) {
 	row := q.queryRow(ctx, q.getAccountByUserIDStmt, getAccountByUserID, createdBy)
 	var i Account
-	err := row.Scan(&i.ID, &i.CreatedBy, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.BillingStatus,
+	)
 	return i, err
 }
 
 const insertAccount = `-- name: InsertAccount :exec
-INSERT INTO accounts (id, created_by) VALUES (?, ?)
+INSERT INTO accounts (id, created_by, billing_status) VALUES (?, ?, 'pending')
 `
 
 type InsertAccountParams struct {
@@ -46,7 +66,7 @@ func (q *Queries) InsertAccount(ctx context.Context, arg InsertAccountParams) er
 }
 
 const listAllAccounts = `-- name: ListAllAccounts :many
-SELECT id, created_by, created_at FROM accounts
+SELECT id, created_by, created_at, billing_status FROM accounts
 `
 
 func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
@@ -58,7 +78,12 @@ func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
 	items := []Account{}
 	for rows.Next() {
 		var i Account
-		if err := rows.Scan(&i.ID, &i.CreatedBy, &i.CreatedAt); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.BillingStatus,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -73,11 +98,11 @@ func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
 }
 
 const userIsPaying = `-- name: UserIsPaying :one
-SELECT COUNT(*) > 0 FROM accounts WHERE created_by = ?
+SELECT COUNT(*) > 0 FROM accounts WHERE created_by = ? AND billing_status = 'active'
 `
 
 // UserIsPaying checks if a user has billing information on file.
-// Users with an account record have completed the Stripe subscription flow.
+// Users with an active account record have completed the Stripe subscription flow.
 func (q *Queries) UserIsPaying(ctx context.Context, createdBy string) (bool, error) {
 	row := q.queryRow(ctx, q.userIsPayingStmt, userIsPaying, createdBy)
 	var column_1 bool
@@ -87,13 +112,13 @@ func (q *Queries) UserIsPaying(ctx context.Context, createdBy string) (bool, err
 
 const userNeedsBilling = `-- name: UserNeedsBilling :one
 SELECT
-    NOT EXISTS (SELECT 1 FROM accounts WHERE created_by = ?1)
+    NOT EXISTS (SELECT 1 FROM accounts WHERE created_by = ?1 AND billing_status = 'active')
     AND (SELECT created_at FROM users WHERE user_id = ?1) >= '2026-01-03 00:00:00'
 `
 
 // UserNeedsBilling checks if a user needs to add billing before creating VMs.
 // Returns true only if:
-// 1. The user doesn't have an account record (not paying)
+// 1. The user doesn't have an ACTIVE account record (pending accounts don't count)
 // 2. AND the user was created on or after 2026-01-03 (billing requirement date)
 // Legacy users created before this date are grandfathered and don't need billing.
 func (q *Queries) UserNeedsBilling(ctx context.Context, userID string) (*bool, error) {

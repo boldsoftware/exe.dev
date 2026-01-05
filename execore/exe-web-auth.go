@@ -228,13 +228,13 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Build callback URLs
+	// Always route through /billing/success to activate the account after Stripe checkout.
+	// The {CHECKOUT_SESSION_ID} placeholder is replaced by Stripe with the actual session ID.
 	baseURL := s.webBaseURLNoRequest()
 	source := r.URL.Query().Get("source")
-	var successURL string
-	if source == "exemenu" {
-		successURL = baseURL + "/billing/success?source=exemenu"
-	} else {
-		successURL = baseURL + "/new"
+	successURL := baseURL + "/billing/success?session_id={CHECKOUT_SESSION_ID}"
+	if source != "" {
+		successURL += "&source=" + url.QueryEscape(source)
 	}
 	// If user cancels checkout, send them back to /billing/subscribe so they can try again.
 	cancelURL := baseURL + "/billing/subscribe"
@@ -257,9 +257,38 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 	http.Redirect(w, r, checkoutURL, http.StatusSeeOther)
 }
 
-// handleBillingSuccess shows the billing success page after Stripe checkout completes.
+// handleBillingSuccess activates the account after Stripe checkout completes.
+// Stripe redirects here with a session_id after successful checkout.
 func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 	source := r.URL.Query().Get("source")
+	sessionID := r.URL.Query().Get("session_id")
+
+	// Require authentication
+	userID, err := s.validateAuthCookie(r)
+	if err != nil {
+		http.Redirect(w, r, "/auth?redirect="+url.QueryEscape(r.URL.String()), http.StatusSeeOther)
+		return
+	}
+
+	// Activate the account if we have a valid session_id.
+	// The session_id is only provided by Stripe after successful checkout,
+	// so its presence indicates the user completed checkout.
+	if sessionID != "" {
+		if err := withTx1(s, r.Context(), (*exedb.Queries).ActivateAccount, userID); err != nil {
+			s.slog().ErrorContext(r.Context(), "failed to activate account", "error", err, "session_id", sessionID)
+			http.Error(w, "failed to activate billing", http.StatusInternalServerError)
+			return
+		}
+		s.slog().InfoContext(r.Context(), "account activated after Stripe checkout", "user_id", userID, "session_id", sessionID)
+	}
+
+	// If not from exemenu, redirect to /new to create a VM
+	if source != "exemenu" {
+		http.Redirect(w, r, "/new", http.StatusSeeOther)
+		return
+	}
+
+	// For exemenu, show the success page
 	data := struct {
 		WebHost string
 		Source  string

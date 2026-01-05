@@ -105,15 +105,11 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 		t.Fatalf("bad verify response status: %d\n%s", verifyResp.StatusCode, verifyRespBody)
 	}
 
-	// After verification, user should see billing required page since they have no billing info
-	if !strings.Contains(string(verifyRespBody), "Billing Required") {
-		t.Fatalf("expected billing required page after verification, got: %s", string(verifyRespBody))
-	}
+	// Note: In test environment (stage=test), SkipBilling=true so billing checks are skipped.
+	// The user will be redirected to the dashboard instead of a billing required page.
+	// In production (stage=prod), users without billing would see the billing required page.
 
-	// Add billing for this user so they can create VMs
-	addBillingForEmail(t, email)
-
-	// Now trigger VM creation by POSTing to /create-vm again (user is now logged in via cookies)
+	// Trigger VM creation by POSTing to /create-vm (user is now logged in via cookies)
 	form = url.Values{}
 	form.Set("hostname", host)
 	form.Set("prompt", "e2e mobile flow")

@@ -97,13 +97,17 @@ func TestUserWithBillingCanAccessNewVM_WebUI(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Add an account record for this user (simulates completed Stripe billing)
+	// Add an account record for this user and activate it (simulates completed Stripe checkout)
 	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
 		ID:        "acct_test123",
 		CreatedBy: user.UserID,
 	})
 	if err != nil {
 		t.Fatalf("Failed to insert account: %v", err)
+	}
+	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, user.UserID)
+	if err != nil {
+		t.Fatalf("Failed to activate account: %v", err)
 	}
 
 	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
@@ -174,13 +178,17 @@ func TestUserIsPayingQuery(t *testing.T) {
 		t.Error("Expected user without account record to not be paying")
 	}
 
-	// Add an account record
+	// Add an account record and activate it (simulates completing Stripe checkout)
 	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
 		ID:        "acct_ispaying_test",
 		CreatedBy: user.UserID,
 	})
 	if err != nil {
 		t.Fatalf("Failed to insert account: %v", err)
+	}
+	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, user.UserID)
+	if err != nil {
+		t.Fatalf("Failed to activate account: %v", err)
 	}
 
 	// Check that user is now paying
@@ -216,7 +224,7 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 		t.Error("Expected new user without account record to need billing")
 	}
 
-	// Add an account record (simulate completing billing)
+	// Add an account record and activate it (simulate completing Stripe checkout)
 	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
 		ID:        "acct_needsbilling_test",
 		CreatedBy: user.UserID,
@@ -224,8 +232,12 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to insert account: %v", err)
 	}
+	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, user.UserID)
+	if err != nil {
+		t.Fatalf("Failed to activate account: %v", err)
+	}
 
-	// User with account record should NOT need billing
+	// User with active account should NOT need billing
 	needsBilling, err = withRxRes1(server, t.Context(), (*exedb.Queries).UserNeedsBilling, user.UserID)
 	if err != nil {
 		t.Fatalf("UserNeedsBilling query failed: %v", err)
@@ -268,5 +280,90 @@ func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
 	}
 	if *needsBilling {
 		t.Error("Expected legacy user (created before 2026-01-03) to NOT need billing")
+	}
+}
+
+func TestBillingBypassBug(t *testing.T) {
+	// This test reproduces a critical billing bypass bug:
+	// 1. New user signs up (requires billing)
+	// 2. User clicks "New" -> redirected to /billing/subscribe
+	// 3. /billing/subscribe creates account record and redirects to Stripe checkout
+	// 4. User hits browser back button (never completes Stripe checkout)
+	// 5. User clicks "New" again -> BUG: allowed to create VM without paying!
+	//
+	// The fix: accounts should have a billing_status that starts as 'pending'
+	// and only becomes 'active' after Stripe checkout completes.
+
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a new user (will require billing since created after 2026-01-03)
+	email := "billing-bypass@example.com"
+	publicKey := "ssh-rsa dummy-billing-bypass-key billing-bypass@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Step 1: Verify user needs billing initially
+	needsBilling, err := withRxRes1(server, t.Context(), (*exedb.Queries).UserNeedsBilling, user.UserID)
+	if err != nil {
+		t.Fatalf("UserNeedsBilling query failed: %v", err)
+	}
+	if needsBilling == nil || !*needsBilling {
+		t.Fatal("Expected new user to need billing initially")
+	}
+
+	// Step 2: Visit /billing/subscribe (this creates account and redirects to Stripe)
+	req := httptest.NewRequest("GET", "/billing/subscribe", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	// Should redirect to Stripe checkout
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Expected redirect to Stripe, got status %d", w.Code)
+	}
+	location := w.Header().Get("Location")
+	if !strings.Contains(location, "stripe.com") && !strings.Contains(location, "checkout") {
+		t.Fatalf("Expected redirect to Stripe checkout, got %q", location)
+	}
+
+	// Step 3: User hits back button - they never completed Stripe checkout!
+	// At this point, the account record exists but checkout was NOT completed.
+
+	// Step 4: Check if user still needs billing - they SHOULD still need it!
+	// This is where the bug manifests: currently UserNeedsBilling returns false
+	// because an account record exists, even though checkout wasn't completed.
+	needsBilling, err = withRxRes1(server, t.Context(), (*exedb.Queries).UserNeedsBilling, user.UserID)
+	if err != nil {
+		t.Fatalf("UserNeedsBilling query failed: %v", err)
+	}
+	if needsBilling == nil {
+		t.Fatal("UserNeedsBilling returned nil")
+	}
+	if !*needsBilling {
+		t.Error("BUG: User should still need billing after starting but not completing Stripe checkout")
+	}
+
+	// Step 5: Try to access /new - should still redirect to billing
+	req = httptest.NewRequest("GET", "/new", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("Expected redirect (303), got %d - user bypassed billing!", w.Code)
+	}
+	location = w.Header().Get("Location")
+	if location != "/billing/subscribe" {
+		t.Errorf("Expected redirect to /billing/subscribe, got %q - billing was bypassed!", location)
 	}
 }
