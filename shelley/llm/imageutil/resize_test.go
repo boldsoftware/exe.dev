@@ -24,12 +24,12 @@ func createTestPNG(t *testing.T, width, height int) []byte {
 
 func TestResizeImage(t *testing.T) {
 	tests := []struct {
-		name        string
-		width       int
-		height      int
-		maxDim      int
-		wantResize  bool
-		wantMaxDim  int
+		name       string
+		width      int
+		height     int
+		maxDim     int
+		wantResize bool
+		wantMaxDim int
 	}{
 		{"small image", 800, 600, 2000, false, 800},
 		{"at limit", 2000, 2000, 2000, false, 2000},

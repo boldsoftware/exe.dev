@@ -67,7 +67,7 @@ func NewBrowseTools(ctx context.Context, idleTimeout time.Duration, maxImageDime
 		consoleLogs:       make([]*runtime.EventConsoleAPICalled, 0),
 		maxConsoleLogs:    100,
 		maxImageDimension: maxImageDimension,
-		idleTimeout:    idleTimeout,
+		idleTimeout:       idleTimeout,
 	}
 }
 
