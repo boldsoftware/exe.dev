@@ -86,6 +86,7 @@ interface AlertConfig {
   noDataState?: "NoData" | "Alerting" | "OK"; // default: NoData
   summary?: string;
   description?: string;
+  labels?: Record<string, string>; // additional labels for notification routing
 }
 
 // Storage for alerts to be created
@@ -2026,6 +2027,7 @@ async function createAlerts() {
         labels: {
           panel: alertSpec.panelTitle,
           dashboard: alertSpec.dashboardUID,
+          ...alertSpec.alertConfig.labels,
         },
         folderUID: "auto-alerts",
       };
@@ -2570,9 +2572,10 @@ function makeHostsDashboard() {
         noDataState: "OK",
         summary: "Swap usage is high",
         description: "Swap usage has exceeded 75% for more than 3 minutes",
+        labels: { signal: "strong" },
       },
-      // Alert query filters out hosts with no swap (SwapTotal == 0) to avoid divide-by-zero
-      alertQueryOverride: `(1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes)) * 100 and node_memory_SwapTotal_bytes > 0`,
+      // Alert query filters out hosts with no swap (SwapTotal == 0) and only alerts for exelets
+      alertQueryOverride: `(1 - (node_memory_SwapFree_bytes{role="exelet"} / node_memory_SwapTotal_bytes{role="exelet"})) * 100 and node_memory_SwapTotal_bytes{role="exelet"} > 0`,
     }
   );
 
@@ -2605,6 +2608,25 @@ function makeHostsDashboard() {
         summary: "Disk usage is critically high",
         description: "Disk usage has exceeded 80% for more than 1 minute",
       },
+    }
+  );
+
+  // Exelet /data disk space alert - alert when less than 50GB available
+  addTimeseriesChart(
+    "Exelet /data Available",
+    `node_filesystem_avail_bytes{${HOST_FILTER},mountpoint="/data"}`,
+    {
+      panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 8, h: 6 },
+      alert: {
+        threshold: 50 * 1024 * 1024 * 1024, // 50GB in bytes
+        condition: "lt",
+        forDuration: "1m",
+        summary: "Exelet /data disk space is critically low",
+        description: "Exelet /data filesystem has less than 50GB available",
+        labels: { signal: "strong" },
+      },
+      alertQueryOverride: `node_filesystem_avail_bytes{role="exelet",mountpoint="/data"}`,
     }
   );
 
