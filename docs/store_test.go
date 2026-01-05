@@ -132,19 +132,8 @@ func TestHandlerDocsAllMd(t *testing.T) {
 			continue
 		}
 		// Check that the markdown content appears in the combined output
-		// We can't check for exact match due to separators, but we can check for a unique line
-		lines := []string{}
-		for _, line := range []string{entry.Markdown[:min(len(entry.Markdown), 50)]} {
-			lines = append(lines, line)
-		}
-		found := false
-		for _, line := range lines {
-			if len(line) > 0 && contains(body, line) {
-				found = true
-				break
-			}
-		}
-		if !found {
+		line := entry.Markdown[:min(len(entry.Markdown), 50)]
+		if !contains(body, line) {
 			t.Errorf("expected to find content from %s in all.md output", entry.Slug)
 		}
 	}
