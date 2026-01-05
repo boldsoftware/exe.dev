@@ -583,12 +583,17 @@ func (n *NAT) applyCarrierNATBlock(ctx context.Context, device string) error {
 	return nil
 }
 
-// applyGatewayBlock blocks VMs from initiating new connections to the gateway (bridge) IP,
-// except for port 80 (metadata service) and DHCP (UDP 67/68). This prevents VMs
-// from accessing other services running on the host (like SSH) via the gateway IP.
+// applyGatewayBlock blocks VMs from initiating new TCP connections to the gateway (bridge) IP.
+// This prevents VMs from accessing services running on the host (like SSH) via the gateway IP.
+//
+// For the metadata service, VMs must use 169.254.169.254, not the bridge IP directly.
+// A DNAT rule rewrites 169.254.169.254:80 -> bridge_ip:80, and we use conntrack's
+// --ctorigdst to allow only traffic that was originally destined for 169.254.169.254.
+// Traffic sent directly to the bridge IP on port 80 is blocked.
+//
 // Established/related connections (like SSH proxy responses) are allowed through.
 func (n *NAT) applyGatewayBlock(ctx context.Context, bridgeName, bridgeIP string) error {
-	// Check if rule already exists
+	// Check if rule already exists by looking for our DROP rule
 	args := []string{"-n", "-L", "INPUT", "-v"}
 	fc := exec.CommandContext(ctx, "iptables", args...)
 
@@ -613,23 +618,40 @@ func (n *NAT) applyGatewayBlock(ctx context.Context, bridgeName, bridgeIP string
 		return nil
 	}
 
-	n.log.DebugContext(ctx, "adding iptables rules to block gateway access from guests (except metadata/DHCP)", "bridge", bridgeName, "gateway_ip", bridgeIP)
+	n.log.DebugContext(ctx, "adding iptables rules to block gateway access from guests", "bridge", bridgeName, "gateway_ip", bridgeIP)
 
-	// Block new TCP connections from VMs to gateway, except port 80 (metadata service).
-	// We use INPUT chain because this traffic is destined for the host itself.
-	// The --syn flag matches only TCP SYN packets (new connection attempts),
-	// allowing established connection responses (like SSH proxy traffic) through.
-	cArgs := []string{
+	// Rule 1: Allow port 80 traffic that was originally destined for the metadata IP (169.254.169.254).
+	// This traffic was DNATed to the bridge IP and should be allowed through to the metadata service.
+	// We use conntrack's --ctorigdst to check the original destination before DNAT.
+	allowArgs := []string{
 		"-I", "INPUT",
 		"-i", bridgeName,
 		"-d", bridgeIP,
 		"-p", "tcp",
+		"--dport", "80",
+		"-m", "conntrack",
+		"--ctorigdst", MetadataIP,
+		"-j", "ACCEPT",
+	}
+	if err := exec.CommandContext(ctx, "iptables", allowArgs...).Run(); err != nil {
+		return fmt.Errorf("failed to add metadata allow rule: %w", err)
+	}
+
+	// Rule 2: Block all other new TCP connections from VMs to gateway.
+	// We use INPUT chain because this traffic is destined for the host itself.
+	// The --syn flag matches only TCP SYN packets (new connection attempts),
+	// allowing established connection responses (like SSH proxy traffic) through.
+	// This rule comes after the ACCEPT rule above, so DNATed metadata traffic is allowed.
+	blockArgs := []string{
+		"-A", "INPUT",
+		"-i", bridgeName,
+		"-d", bridgeIP,
+		"-p", "tcp",
 		"--syn",
-		"!", "--dport", "80",
 		"-j", "DROP",
 	}
-	if err := exec.CommandContext(ctx, "iptables", cArgs...).Run(); err != nil {
-		return fmt.Errorf("failed to add gateway block rule (tcp): %w", err)
+	if err := exec.CommandContext(ctx, "iptables", blockArgs...).Run(); err != nil {
+		return fmt.Errorf("failed to add gateway block rule: %w", err)
 	}
 
 	return nil

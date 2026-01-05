@@ -339,8 +339,8 @@ func TestVanillaBox(t *testing.T) {
 	})
 
 	t.Run("gateway_ssh_blocked", func(t *testing.T) {
-		// Verify that VMs cannot access their gateway's SSH port.
-		// VMs should only be able to reach the gateway on port 80 (metadata service).
+		// Verify that VMs cannot access their gateway's SSH port or port 80 directly.
+		// VMs must use 169.254.169.254 for metadata service, not the gateway IP.
 		noGolden(t)
 
 		// Get the gateway IP from within the VM
@@ -361,7 +361,14 @@ func TestVanillaBox(t *testing.T) {
 		if err == nil {
 			t.Errorf("expected SSH connection to gateway %s:22 to be blocked, but it succeeded", gatewayIP)
 		}
-		// Success: connection was blocked (nc returned non-zero)
+
+		// Try to connect to port 80 on the gateway IP directly. This should also fail.
+		// VMs must use 169.254.169.254 for the metadata service, not the gateway IP.
+		out, err = boxSSHCommand(t, boxName, keyFile, "nc", "-z", "-w", "2", gatewayIP, "80").CombinedOutput()
+		if err == nil {
+			t.Errorf("expected connection to gateway %s:80 to be blocked, but it succeeded", gatewayIP)
+		}
+		// Success: both connections were blocked
 	})
 
 	t.Run("shard_routing", func(t *testing.T) {
