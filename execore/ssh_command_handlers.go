@@ -78,6 +78,7 @@ func newCommandFlags() *flag.FlagSet {
 	fs.Bool("no-email", false, "do not send email notification")
 	fs.String("prompt-model", shelleyDefaultModel, "[hidden] override the prompt model") // for testing
 	fs.Bool("no-shard", false, "[hidden] skip shard allocation")
+	fs.String("exelet", "", "[hidden] create VM on specified exelet (support only)")
 	// Environment variables (can be specified multiple times)
 	var envVars repeatedStringFlag
 	fs.Var(&envVars, "env", "environment variable in KEY=VALUE format (can be specified multiple times)")
@@ -313,6 +314,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	model := cc.FlagSet.Lookup("prompt-model").Value.String()
 	noEmail := cc.FlagSet.Lookup("no-email").Value.String() == "true"
 	noShard := cc.FlagSet.Lookup("no-shard").Value.String() == "true"
+	exeletOverride := cc.FlagSet.Lookup("exelet").Value.String()
 
 	// Parse environment variables
 	var envVars []string
@@ -342,13 +344,30 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		return cc.Errorf("--prompt can only be used with the exeuntu image")
 	}
 
+	// Handle --exelet override (support only)
+	if exeletOverride != "" {
+		// Check if user has root_support privilege
+		isRootSupport, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserRootSupport, user.ID)
+		if err != nil || isRootSupport != 1 {
+			slog.WarnContext(ctx, "unauthorized exelet override attempt",
+				"user_id", user.ID,
+				"email", user.Email,
+				"exelet", exeletOverride)
+			return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", user.Email)
+		}
+		// Validate that the exelet is in the available list
+		if !slices.Contains(ss.server.exeletAddrs, exeletOverride) {
+			return cc.Errorf("exelet %q not found. Available exelets: %v", exeletOverride, ss.server.exeletAddrs)
+		}
+	}
+
 	// Check if user is throttled from creating new VMs
-	if throttled, msg := ss.server.CheckNewThrottle(ctx, user.Email); throttled {
+	if throttled, msg := ss.server.CheckNewThrottle(ctx, user.Email); throttled && exeletOverride == "" {
 		return cc.Errorf("%s", msg)
 	}
 
 	// Check if user has VM creation disabled
-	if disabled, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserNewVMCreationDisabled, user.ID); err == nil && disabled {
+	if disabled, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserNewVMCreationDisabled, user.ID); err == nil && disabled && exeletOverride == "" {
 		return cc.Errorf("VM creation is not available for your account; contact support@exe.dev")
 	}
 
@@ -404,9 +423,17 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	completionChan := make(chan instanceCompletion, 1)
 
 	// Select exelet client
-	exeletClient, exeletAddr, err := ss.server.selectExeletClient(ctx, cc.User.ID)
-	if err != nil {
-		return fmt.Errorf("failed to select exelet: %w", err)
+	var exeletClient *exeletClient
+	var exeletAddr string
+	if exeletOverride != "" {
+		exeletAddr = exeletOverride
+		exeletClient = ss.server.exeletClients[exeletOverride]
+	} else {
+		var err error
+		exeletClient, exeletAddr, err = ss.server.selectExeletClient(ctx, cc.User.ID)
+		if err != nil {
+			return fmt.Errorf("failed to select exelet: %w", err)
+		}
 	}
 
 	// Pre-create box in database to get its ID
@@ -804,8 +831,11 @@ done:
 
 	// We've added another VM.
 	// Check whether we've hit the VM limit and need to auto-throttle.
+	// Skip for exelet override; this was one of us doing something intentional.
 	// TODO: remove this :P
-	ss.server.autoThrottleVMCreation(ctx)
+	if exeletOverride == "" {
+		ss.server.autoThrottleVMCreation(ctx)
+	}
 
 	if showSpinner {
 		// Clear the progress line and show formatted completion message
