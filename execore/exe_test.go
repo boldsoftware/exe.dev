@@ -16,6 +16,8 @@ import (
 	"exe.dev/container"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestTokenGeneration(t *testing.T) {
@@ -901,5 +903,54 @@ func TestNormalUserDashboardShowsAllTabs(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "Profile") {
 		t.Error("Dashboard should show Profile tab for normal users")
+	}
+}
+
+// TestIsExeletNotFoundError tests detection of "not found" errors from exelet
+func TestIsExeletNotFoundError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "regular error",
+			err:      fmt.Errorf("something went wrong"),
+			expected: false,
+		},
+		{
+			name:     "grpc NotFound",
+			err:      status.Error(codes.NotFound, "not found: instance vm123"),
+			expected: true,
+		},
+		{
+			name:     "grpc FailedPrecondition",
+			err:      status.Error(codes.FailedPrecondition, "some other error"),
+			expected: false,
+		},
+		{
+			name:     "grpc Internal error",
+			err:      status.Error(codes.Internal, "internal server error"),
+			expected: false,
+		},
+		{
+			name:     "grpc Unavailable error",
+			err:      status.Error(codes.Unavailable, "service unavailable"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isExeletNotFoundError(tt.err)
+			if result != tt.expected {
+				t.Errorf("isExeletNotFoundError(%v) = %v, want %v", tt.err, result, tt.expected)
+			}
+		})
 	}
 }

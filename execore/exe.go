@@ -62,6 +62,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/ssh"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	_ "modernc.org/sqlite"
 )
 
@@ -1668,6 +1670,14 @@ func (s *Server) deleteBoxShardDNSRecord(ctx context.Context, boxName string, sh
 	return nil
 }
 
+// isExeletNotFoundError checks if an error from exelet indicates the instance doesn't exist.
+// This handles the case where execore's database has a ContainerID but the instance
+// is no longer present on the exelet (e.g., after exelet data loss or failed creation).
+func isExeletNotFoundError(err error) bool {
+	s, ok := status.FromError(err)
+	return ok && s.Code() == codes.NotFound
+}
+
 // deleteBox deletes a box and all associated resources (container, database records, DNS).
 // This is the canonical deletion implementation used by both the REPL `rm` command and the debug page.
 func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
@@ -1691,7 +1701,7 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 		_, err := exeletClient.client.DeleteInstance(ctx, &computeapi.DeleteInstanceRequest{
 			ID: *box.ContainerID,
 		})
-		if err != nil {
+		if err != nil && !isExeletNotFoundError(err) {
 			return fmt.Errorf("failed to delete instance: %w", err)
 		}
 	}

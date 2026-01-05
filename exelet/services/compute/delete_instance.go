@@ -17,6 +17,10 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 	resp, err, _ := s.instanceDeleteGroup.Do(req.ID, func() (*api.DeleteInstanceResponse, error) {
 		resp, err := s.GetInstance(ctx, &api.GetInstanceRequest{ID: req.ID})
 		if err != nil {
+			// Pass through NotFound from GetInstance so callers can handle gracefully
+			if s, ok := status.FromError(err); ok && s.Code() == codes.NotFound {
+				return nil, err
+			}
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
 
