@@ -25,6 +25,15 @@ func TestBillingRequiredForNewVM_WebUI(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
+	// Set user's created_at to after the billing requirement date (2026-01-07 21:00:00 UTC)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 21:00:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
 	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
 	if err != nil {
 		t.Fatalf("Failed to create auth cookie: %v", err)
@@ -58,6 +67,15 @@ func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
 	user, err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Set user's created_at to after the billing requirement date (2026-01-07 21:00:00 UTC)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 21:00:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
 	}
 
 	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
@@ -204,7 +222,7 @@ func TestUserIsPayingQuery(t *testing.T) {
 func TestUserNeedsBillingQuery(t *testing.T) {
 	server := newTestServer(t)
 
-	// Create a user (will be created with current timestamp = 2026-01-03)
+	// Create a user
 	email := "needsbilling-test@example.com"
 	publicKey := "ssh-rsa dummy-needsbilling-test-key needsbilling-test@example.com"
 	user, err := server.createUser(t.Context(), publicKey, email)
@@ -212,7 +230,16 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// New user without account record should need billing
+	// Set user's created_at to after the billing requirement date (2026-01-07 21:00:00 UTC)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 21:00:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	// New user (created after billing requirement date) without account record should need billing
 	needsBilling, err := withRxRes1(server, t.Context(), (*exedb.Queries).UserNeedsBilling, user.UserID)
 	if err != nil {
 		t.Fatalf("UserNeedsBilling query failed: %v", err)
@@ -261,16 +288,16 @@ func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Update user's created_at to before the billing requirement date (2026-01-02)
+	// Update user's created_at to before the billing requirement date (2026-01-07 21:00 UTC)
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-02 23:59:59' WHERE user_id = ?`, user.UserID)
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 20:59:59' WHERE user_id = ?`, user.UserID)
 		return err
 	})
 	if err != nil {
 		t.Fatalf("Failed to update user created_at: %v", err)
 	}
 
-	// Legacy user (created before 2026-01-03) should NOT need billing even without an account
+	// Legacy user (created before 2026-01-07 21:00 UTC) should NOT need billing even without an account
 	needsBilling, err := withRxRes1(server, t.Context(), (*exedb.Queries).UserNeedsBilling, user.UserID)
 	if err != nil {
 		t.Fatalf("UserNeedsBilling query failed: %v", err)
@@ -279,7 +306,7 @@ func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
 		t.Fatal("UserNeedsBilling returned nil")
 	}
 	if *needsBilling {
-		t.Error("Expected legacy user (created before 2026-01-03) to NOT need billing")
+		t.Error("Expected legacy user (created before 2026-01-07 21:00 UTC) to NOT need billing")
 	}
 }
 
@@ -297,12 +324,21 @@ func TestBillingBypassBug(t *testing.T) {
 	server := newTestServer(t)
 	server.env.SkipBilling = false
 
-	// Create a new user (will require billing since created after 2026-01-03)
+	// Create a new user
 	email := "billing-bypass@example.com"
 	publicKey := "ssh-rsa dummy-billing-bypass-key billing-bypass@example.com"
 	user, err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Set user's created_at to after the billing requirement date (2026-01-07 21:00:00 UTC)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 21:00:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
 	}
 
 	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
@@ -377,12 +413,21 @@ func TestBillingSuccessBypassWithFakeSessionID(t *testing.T) {
 	server := newTestServer(t)
 	server.env.SkipBilling = false
 
-	// Create a new user (will require billing since created after 2026-01-03)
+	// Create a new user
 	email := "bypass-fake-session@example.com"
 	publicKey := "ssh-rsa dummy-bypass-fake-session bypass-fake-session@example.com"
 	user, err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Set user's created_at to after the billing requirement date (2026-01-07 21:00:00 UTC)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 21:00:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
 	}
 
 	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
@@ -429,5 +474,74 @@ func TestBillingSuccessBypassWithFakeSessionID(t *testing.T) {
 	}
 	if !*needsBilling {
 		t.Error("SECURITY BUG: User should still need billing after visiting success with fake session_id")
+	}
+}
+
+func TestDebugForceBillingForLegacyUser(t *testing.T) {
+	// Test that _debug_force_billing=1 forces billing flow even for grandfathered users.
+	// This is used for canary testing billing before the official billing start date.
+
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a user
+	email := "legacy-force-billing@example.com"
+	publicKey := "ssh-rsa dummy-legacy-force-billing legacy-force-billing@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Update user's created_at to before the billing requirement date (make them a legacy user)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 20:59:59' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Verify user does NOT need billing (they are grandfathered)
+	needsBilling, err := withRxRes1(server, t.Context(), (*exedb.Queries).UserNeedsBilling, user.UserID)
+	if err != nil {
+		t.Fatalf("UserNeedsBilling query failed: %v", err)
+	}
+	if needsBilling == nil || *needsBilling {
+		t.Fatal("Expected legacy user to NOT need billing")
+	}
+
+	// Without _debug_force_billing, /billing/subscribe should redirect to /new
+	req := httptest.NewRequest("GET", "/billing/subscribe", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("Expected redirect (303), got %d", w.Code)
+	}
+	location := w.Header().Get("Location")
+	if location != "/new" {
+		t.Errorf("Expected redirect to /new for legacy user, got %q", location)
+	}
+
+	// With _debug_force_billing=1, /billing/subscribe should redirect to Stripe checkout
+	req = httptest.NewRequest("GET", "/billing/subscribe?_debug_force_billing=1", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("Expected redirect (303), got %d", w.Code)
+	}
+	location = w.Header().Get("Location")
+	if !strings.Contains(location, "stripe.com") && !strings.Contains(location, "checkout") {
+		t.Errorf("Expected redirect to Stripe checkout with _debug_force_billing=1, got %q", location)
 	}
 }

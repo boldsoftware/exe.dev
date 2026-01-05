@@ -196,13 +196,18 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 		http.Redirect(w, r, "/new", http.StatusSeeOther)
 		return
 	}
+
+	// _debug_force_billing=1 forces billing flow even for grandfathered users.
+	// This is used for canary testing billing before the official billing start date.
+	forceBilling := r.URL.Query().Get("_debug_force_billing") == "1"
+
 	needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "failed to check user account", "error", err)
 		http.Error(w, "failed to check billing status", http.StatusInternalServerError)
 		return
 	}
-	if needsBilling == nil || !*needsBilling {
+	if !forceBilling && (needsBilling == nil || !*needsBilling) {
 		// User doesn't need billing (already has it or is a legacy user), redirect to new VM page
 		http.Redirect(w, r, "/new", http.StatusSeeOther)
 		return
