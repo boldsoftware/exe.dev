@@ -927,7 +927,6 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 	// Try to load existing host key from database (prod)
 	hostKey, err := withRxRes0(s, ctx, (*exedb.Queries).GetSSHHostKey)
 	privateKeyPEM := hostKey.PrivateKey
-	publicKeyPEM := hostKey.PublicKey
 
 	if errors.Is(err, sql.ErrNoRows) {
 		// No existing key, generate a new one (staging, local, test)
@@ -951,7 +950,7 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 		}
 
 		// Get public key in authorized_keys format
-		publicKeyPEM = string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
+		publicKeyPEM := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
 
 		// Calculate fingerprint
 		fingerprint := s.GetPublicKeyFingerprint(signer.PublicKey())

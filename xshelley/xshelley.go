@@ -274,28 +274,3 @@ func extractShelley(img v1.Image, outputPath string) error {
 
 	return fmt.Errorf("shelley binary not found in layer")
 }
-
-func layerContainsShelley(layer v1.Layer) (bool, error) {
-	rc, err := layer.Uncompressed()
-	if err != nil {
-		return false, err
-	}
-	defer rc.Close()
-
-	tr := tar.NewReader(rc)
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return false, err
-		}
-
-		if strings.HasSuffix(header.Name, shelleyPath) || header.Name == shelleyPath {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/url"
 	"strings"
 	"sync"
@@ -49,8 +48,6 @@ type NAT struct {
 	nameservers       []string
 	ntpServer         string
 	router            string
-	availableIPs      map[string]net.IP
-	allocatedIPs      []net.IP
 	dhcpCancel        func() // cancel function for DHCP server context
 	log               *slog.Logger
 	bridges           []bridgeInfo
@@ -144,19 +141,6 @@ func (n *NAT) primaryBridgeName() string {
 	return fmt.Sprintf("%s-0", n.bridgeBaseName)
 }
 
-// selectBridge finds a bridge with available capacity or returns empty string if all full
-func (n *NAT) selectBridge() string {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	for i := range n.bridges {
-		if n.bridges[i].portCount < n.maxPortsPerBridge {
-			return n.bridges[i].name
-		}
-	}
-	return ""
-}
-
 // selectBridgeAndIncrement atomically selects a bridge with capacity and increments its port count.
 // Returns the bridge name and whether a new bridge needs to be created.
 // If needsNewBridge is true, the caller should create the bridge and call addBridgeAndSelect.
@@ -191,31 +175,12 @@ func (n *NAT) addBridgeAndSelect(name string) string {
 	return name
 }
 
-// nextBridgeNameLocked returns the name for the next bridge to create.
-// Must be called with n.mu held.
-func (n *NAT) nextBridgeNameLocked() string {
-	return fmt.Sprintf("%s-%d", n.bridgeBaseName, len(n.bridges))
-}
-
 // reserveNextBridge reserves the next bridge name and returns it.
 // The caller must create the bridge and call addBridgeAndSelect.
 func (n *NAT) reserveNextBridge() string {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	return fmt.Sprintf("%s-%d", n.bridgeBaseName, len(n.bridges))
-}
-
-// incrementBridgePort increments the port count for the specified bridge
-func (n *NAT) incrementBridgePort(bridgeName string) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	for i := range n.bridges {
-		if n.bridges[i].name == bridgeName {
-			n.bridges[i].portCount++
-			return
-		}
-	}
 }
 
 // decrementBridgePort decrements the port count for the specified bridge
@@ -231,18 +196,6 @@ func (n *NAT) decrementBridgePort(bridgeName string) {
 			return
 		}
 	}
-}
-
-// nextBridgeName returns the name for the next bridge to create
-func (n *NAT) nextBridgeName() string {
-	return fmt.Sprintf("%s-%d", n.bridgeBaseName, len(n.bridges))
-}
-
-// addBridge adds a new bridge to the tracking list
-func (n *NAT) addBridge(name string) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.bridges = append(n.bridges, bridgeInfo{name: name, portCount: 0})
 }
 
 // Close stops the NAT manager and cleans up resources

@@ -18,7 +18,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 
 	"exe.dev/e1e/testinfra"
@@ -213,8 +212,6 @@ var logFiles = map[string]*os.File{
 	"e1e":       nil,
 }
 
-var guidRegex = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
-
 func logFileFor(name string) *os.File {
 	f, ok := logFiles[name]
 	if !ok || f == nil {
@@ -270,11 +267,6 @@ type testEnv struct {
 
 func (e *testEnv) sshPort() int {
 	return e.servers.SSHProxy.Port()
-}
-
-// parseSSHHost extracts hostname from ssh:// URL
-func parseSSHHost(ctrHost string) string {
-	return strings.TrimPrefix(ctrHost, "ssh://")
 }
 
 func (e *testEnv) context(t *testing.T) context.Context {
@@ -415,13 +407,6 @@ func (p *expectPty) want(s string) {
 
 func (p *expectPty) reject(s string) {
 	p.pty.Reject(s)
-}
-
-func (p *expectPty) wantf(msg string, args ...any) {
-	if err := p.pty.Wantf(msg, args...); err != nil {
-		p.t.Helper()
-		p.t.Fatal(err)
-	}
 }
 
 func (p *expectPty) wantRe(re string) {
@@ -581,15 +566,6 @@ func waitForEmailAndVerify(t *testing.T, to string) []*http.Cookie {
 	return cookies
 }
 
-func clickVerifyLinkInEmail(t *testing.T, emailMsg *testinfra.EmailMessage) []*http.Cookie {
-	cookies, err := Env.servers.ClickVerifyLinkInEmail(emailMsg)
-	if err != nil {
-		t.Helper()
-		t.Fatal(err)
-	}
-	return cookies
-}
-
 // webLoginWithEmail performs a web-only login flow (no SSH involved).
 // This uses the /auth POST endpoint to trigger email verification.
 // Unlike registerForExeDevWithEmail, this doesn't create a user via SSH,
@@ -614,8 +590,6 @@ func webLoginWithExe(t *testing.T, email string) []*http.Cookie {
 	}
 	return cookies
 }
-
-var boxCounter atomic.Int32
 
 // boxName creates a unique test-specific box name with e1e prefix for easy cleanup
 func boxName(t *testing.T) string {

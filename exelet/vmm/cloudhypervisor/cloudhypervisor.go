@@ -150,39 +150,6 @@ func (v *VMM) waitForReady(ctx context.Context, id string) error {
 	return nil
 }
 
-func (v *VMM) waitForStopped(ctx context.Context, id string) error {
-	readyCh := make(chan struct{})
-	errCh := make(chan error)
-	t := time.NewTicker(time.Millisecond * 500)
-	defer t.Stop()
-	go func() {
-		for range t.C {
-			state, err := v.State(ctx, id)
-			if err != nil {
-				errCh <- err
-				return
-			}
-			switch state {
-			case api.VMState_STOPPED:
-				v.log.DebugContext(ctx, "vm waitForStopped", "id", id)
-				readyCh <- struct{}{}
-				return
-			}
-		}
-	}()
-
-	select {
-	case err := <-errCh:
-		return err
-	case <-readyCh:
-		return nil
-	case <-time.After(config.InstanceStopTimeout):
-		return fmt.Errorf("timeout waiting on instance stop")
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
 // waitForShutdown waits until the API is no longer responding
 // this enables cloudhypervisor to shutdown properly. otherwise
 // a delete can remove the socket too quickly and keep the cloud
