@@ -147,7 +147,15 @@ func agentWorking(messages []APIMessage) bool {
 		return false
 	}
 
-	last := messages[len(messages)-1]
+	// Find the last non-gitinfo message (gitinfo messages are passive notifications)
+	lastIdx := len(messages) - 1
+	for lastIdx >= 0 && messages[lastIdx].Type == string(db.MessageTypeGitInfo) {
+		lastIdx--
+	}
+	if lastIdx < 0 {
+		return false
+	}
+	last := messages[lastIdx]
 
 	// If the last message is an error, agent is not working
 	if last.Type == string(db.MessageTypeError) {
@@ -161,7 +169,7 @@ func agentWorking(messages []APIMessage) bool {
 		return !*last.EndOfTurn
 	}
 
-	for i := len(messages) - 1; i >= 0; i-- {
+	for i := lastIdx; i >= 0; i-- {
 		msg := messages[i]
 		if msg.Type != string(db.MessageTypeAgent) {
 			continue
