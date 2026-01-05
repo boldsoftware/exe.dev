@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"exe.dev/stage"
 	"exe.dev/tslog"
 	"github.com/slack-go/slack"
 	"github.com/stretchr/testify/require"
@@ -52,13 +53,17 @@ func TestSlackFeed_CreatedVM_NoOpIfNotFound(t *testing.T) {
 func TestSlackFeed_NewSlackFeed_NoToken(t *testing.T) {
 	// When SLACK_BOT_TOKEN is not set, client should be nil
 	t.Setenv("SLACK_BOT_TOKEN", "")
-	sf := NewSlackFeed(tslog.Slogger(t), true)
+	env := stage.Test()
+	env.PostSlackFeed = true
+	sf := NewSlackFeed(tslog.Slogger(t), env)
 	require.Nil(t, sf.client, "client should be nil when no token")
 }
 
 func TestSlackFeed_NewSlackFeed_Disabled(t *testing.T) {
 	// When disabled, client should be nil even if token is set
 	t.Setenv("SLACK_BOT_TOKEN", "xoxb-fake-token")
-	sf := NewSlackFeed(tslog.Slogger(t), false)
+	env := stage.Test()
+	env.PostSlackFeed = false
+	sf := NewSlackFeed(tslog.Slogger(t), env)
 	require.Nil(t, sf.client, "client should be nil when disabled")
 }

@@ -8,15 +8,17 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/stage"
 	"github.com/go4org/hashtriemap"
 	"github.com/slack-go/slack"
 )
 
-// SlackFeed manages posting events to the Slack #feed channel.
+// SlackFeed manages posting events to Slack channels.
 // All methods are non-blocking and best-effort.
 type SlackFeed struct {
 	client *slack.Client
 	log    *slog.Logger
+	env    stage.Env
 
 	// Track new user signup messages for adding reactions when they create their first VM.
 	// Maps userID -> message reference (channel + timestamp).
@@ -25,12 +27,15 @@ type SlackFeed struct {
 }
 
 // NewSlackFeed creates a new SlackFeed.
-// If enabled is false or SLACK_BOT_TOKEN is not set, returns a SlackFeed
+// If env.PostSlackFeed is false or SLACK_BOT_TOKEN is not set, returns a SlackFeed
 // that logs messages instead of posting to Slack.
-func NewSlackFeed(log *slog.Logger, enabled bool) *SlackFeed {
-	sf := &SlackFeed{log: log}
+func NewSlackFeed(log *slog.Logger, env stage.Env) *SlackFeed {
+	sf := &SlackFeed{
+		log: log,
+		env: env,
+	}
 	token := strings.TrimSpace(os.Getenv("SLACK_BOT_TOKEN"))
-	if enabled && token != "" {
+	if env.PostSlackFeed && token != "" {
 		sf.client = slack.New(token)
 	}
 	return sf
@@ -40,13 +45,13 @@ func NewSlackFeed(log *slog.Logger, enabled bool) *SlackFeed {
 func (sf *SlackFeed) NewUser(ctx context.Context, userID, email, source string) {
 	message := fmt.Sprintf("new user (%s): `%s`", source, email)
 	if sf.client == nil {
-		sf.log.InfoContext(ctx, "slack #feed", "message", message)
+		sf.log.InfoContext(ctx, "slack feed channel", "message", message)
 		return
 	}
 	go func() {
-		channel, ts, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), "feed", slack.MsgOptionText(message, true))
+		channel, ts, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), sf.env.SlackFeedChannel, slack.MsgOptionText(message, true))
 		if err != nil {
-			sf.log.WarnContext(ctx, "failed to post to #feed", "error", err)
+			sf.log.WarnContext(ctx, "failed to post to feed channel", "error", err)
 			return
 		}
 		sf.newUserMessages.Store(userID, slack.NewRefToMessage(channel, ts))
@@ -78,12 +83,12 @@ func (sf *SlackFeed) EmailVerified(ctx context.Context, userID string) {
 			return
 		}
 		if sf.client == nil {
-			sf.log.InfoContext(ctx, "slack #feed reaction", "emoji", "passport_control", "userID", userID)
+			sf.log.InfoContext(ctx, "slack feed channel reaction", "emoji", "passport_control", "userID", userID)
 			return
 		}
 		err := sf.client.AddReactionContext(context.WithoutCancel(ctx), "passport_control", ref)
 		if err != nil {
-			sf.log.WarnContext(ctx, "failed to add reaction to #feed message", "error", err, "userID", userID)
+			sf.log.WarnContext(ctx, "failed to add reaction to feed channel message", "error", err, "userID", userID)
 		}
 	}()
 }
@@ -96,47 +101,47 @@ func (sf *SlackFeed) CreatedVM(ctx context.Context, userID string) {
 			return
 		}
 		if sf.client == nil {
-			sf.log.InfoContext(ctx, "slack #feed reaction", "emoji", "hatching_chick", "userID", userID)
+			sf.log.InfoContext(ctx, "slack feed channel reaction", "emoji", "hatching_chick", "userID", userID)
 			return
 		}
 		err := sf.client.AddReactionContext(context.WithoutCancel(ctx), "hatching_chick", ref)
 		if err != nil {
-			sf.log.WarnContext(ctx, "failed to add reaction to #feed message", "error", err, "userID", userID)
+			sf.log.WarnContext(ctx, "failed to add reaction to feed channel message", "error", err, "userID", userID)
 		}
 	}()
 }
 
-// ServerStarted notifies #page that the server has started.
+// ServerStarted notifies the ops channel that the server has started.
 func (sf *SlackFeed) ServerStarted(ctx context.Context, gitSHA string) {
 	hostname, _ := os.Hostname()
 	shaLink := fmt.Sprintf("<https://github.com/boldsoftware/exe/commit/%s|%s>", gitSHA, gitSHA)
 	message := fmt.Sprintf("exed %s started on %s", shaLink, hostname)
 	if sf.client == nil {
-		sf.log.InfoContext(ctx, "slack #page", "message", message)
+		sf.log.InfoContext(ctx, "slack ops channel", "message", message)
 		return
 	}
 	go func() {
-		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), "buzz", slack.MsgOptionText(message, false))
+		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), sf.env.SlackOpsChannel, slack.MsgOptionText(message, false))
 		if err != nil {
-			sf.log.WarnContext(ctx, "failed to post to #page", "error", err)
+			sf.log.WarnContext(ctx, "failed to post to ops channel", "error", err)
 		}
 	}()
 }
 
-// PreferredExeletChanged notifies #page when the preferred exelet is set or cleared.
+// PreferredExeletChanged notifies the ops channel when the preferred exelet is set or cleared.
 func (sf *SlackFeed) PreferredExeletChanged(ctx context.Context, address string) {
 	message := "preferred exelet cleared"
 	if address != "" {
 		message = fmt.Sprintf("preferred exelet set to `%s`", address)
 	}
 	if sf.client == nil {
-		sf.log.InfoContext(ctx, "slack #page", "message", message)
+		sf.log.InfoContext(ctx, "slack ops channel", "message", message)
 		return
 	}
 	go func() {
-		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), "buzz", slack.MsgOptionText(message, false))
+		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), sf.env.SlackOpsChannel, slack.MsgOptionText(message, false))
 		if err != nil {
-			sf.log.WarnContext(ctx, "failed to post to #page", "error", err)
+			sf.log.WarnContext(ctx, "failed to post to ops channel", "error", err)
 		}
 	}()
 }

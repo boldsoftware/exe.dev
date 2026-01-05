@@ -37,6 +37,8 @@ type Env struct {
 	LogFormat            string // default log format: "tint", "text", or "json"; empty defaults to "text"
 	LogLevel             string // default log level: "debug", "info", "warn", "error"; empty defaults to "info"
 	LogErrorSlackChannel string // Slack channel for error logs; empty means no Slack posting
+	SlackFeedChannel     string // Slack channel for user activity feed (signups, etc.); empty means no posting
+	SlackOpsChannel      string // Slack channel for ops notifications (server starts, exelet changes); empty means no posting
 
 	NumShards  int   // number of IP shards available for box allocation, max 253
 	ProxyPorts []int // ports to listen on for proxying; empty means none
@@ -74,6 +76,8 @@ func Invalid() Env {
 		LogFormat:            "INVALID",
 		LogLevel:             "INVALID",
 		LogErrorSlackChannel: "",
+		SlackFeedChannel:     "",
+		SlackOpsChannel:      "",
 
 		NumShards:  0, // invalid: must be >= 1
 		ProxyPorts: nil,
@@ -113,6 +117,8 @@ func Local() Env {
 		LogFormat:            "tint",
 		LogLevel:             "debug",
 		LogErrorSlackChannel: "",
+		SlackFeedChannel:     "",
+		SlackOpsChannel:      "",
 
 		NumShards:  25,
 		ProxyPorts: []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 9999},
@@ -153,6 +159,8 @@ func Test() Env {
 		LogFormat:            "text",
 		LogLevel:             "info",
 		LogErrorSlackChannel: "",
+		SlackFeedChannel:     "",
+		SlackOpsChannel:      "",
 
 		NumShards:  25,
 		ProxyPorts: nil, // no proxy ports in tests to avoid conflicts
@@ -190,6 +198,8 @@ func Staging() Env {
 		LogFormat:            "json",
 		LogLevel:             "info",
 		LogErrorSlackChannel: "poke",
+		SlackFeedChannel:     "",
+		SlackOpsChannel:      "",
 
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
@@ -226,6 +236,8 @@ func Prod() Env {
 		LogFormat:            "json",
 		LogLevel:             "info",
 		LogErrorSlackChannel: "errs",
+		SlackFeedChannel:     "feed",
+		SlackOpsChannel:      "buzz",
 
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
