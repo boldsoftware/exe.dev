@@ -1021,6 +1021,12 @@ func TestGitStateChangeCreatesGitInfoMessage(t *testing.T) {
 
 	// Initialize git repo
 	runCmd := func(name string, args ...string) {
+		// For git commits, use --no-verify to skip hooks
+		if name == "git" && len(args) > 0 && args[0] == "commit" {
+			newArgs := []string{"commit", "--no-verify"}
+			newArgs = append(newArgs, args[1:]...)
+			args = newArgs
+		}
 		cmd := exec.Command(name, args...)
 		cmd.Dir = workDir
 		out, err := cmd.CombinedOutput()
@@ -1074,8 +1080,9 @@ func TestGitStateChangeCreatesGitInfoMessage(t *testing.T) {
 
 	// The test command creates a file and commits it. We use explicit paths to avoid bash safety checks.
 	// NOTE: We must set cwd when creating the conversation so the tools run in our git repo.
+	// Use --no-verify to skip commit hooks that may interfere with tests.
 	chatReq := map[string]interface{}{
-		"message": "bash: echo 'new content' > newfile.txt && git add newfile.txt && git commit -m 'Add new file'",
+		"message": "bash: echo 'new content' > newfile.txt && git add newfile.txt && git commit --no-verify -m 'Add new file'",
 		"model":   "predictable",
 		"cwd":     workDir,
 	}
