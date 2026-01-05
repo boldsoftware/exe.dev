@@ -596,6 +596,28 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
         saveImmediately();
         return;
       }
+
+      // Comment mode navigation shortcuts (only when comment dialog is closed)
+      if (mode === "comment" && !showCommentDialog) {
+        if (e.key === ".") {
+          e.preventDefault();
+          goToNextChange();
+          return;
+        } else if (e.key === ",") {
+          e.preventDefault();
+          goToPreviousChange();
+          return;
+        } else if (e.key === ">") {
+          e.preventDefault();
+          goToNextFile();
+          return;
+        } else if (e.key === "<") {
+          e.preventDefault();
+          goToPreviousFile();
+          return;
+        }
+      }
+
       if (!e.ctrlKey) return;
       if (e.key === "j") {
         e.preventDefault();
@@ -606,9 +628,20 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, goToNextFile, goToPreviousFile, showCommentDialog, onClose, saveImmediately]);
+    // Use capture phase to intercept events before Monaco editor handles them
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [
+    isOpen,
+    goToNextFile,
+    goToPreviousFile,
+    goToNextChange,
+    goToPreviousChange,
+    showCommentDialog,
+    onClose,
+    saveImmediately,
+    mode,
+  ]);
 
   if (!isOpen) return null;
 
@@ -693,7 +726,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
         className="diff-viewer-nav-btn"
         onClick={goToPreviousFile}
         disabled={!hasPrevFile}
-        title="Previous file"
+        title="Previous file (<)"
       >
         <PrevFileIcon />
       </button>
@@ -701,7 +734,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
         className="diff-viewer-nav-btn"
         onClick={goToPreviousChange}
         disabled={!fileDiff}
-        title="Previous change"
+        title="Previous change (,)"
       >
         <PrevChangeIcon />
       </button>
@@ -709,7 +742,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
         className="diff-viewer-nav-btn"
         onClick={goToNextChange}
         disabled={!fileDiff}
-        title="Next change"
+        title="Next change (.)"
       >
         <NextChangeIcon />
       </button>
@@ -717,7 +750,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
         className="diff-viewer-nav-btn"
         onClick={() => goToNextFile()}
         disabled={!hasNextFile}
-        title="Next file"
+        title="Next file (>)"
       >
         <NextFileIcon />
       </button>
@@ -817,7 +850,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
               className="diff-viewer-mobile-nav-btn"
               onClick={goToPreviousFile}
               disabled={!hasPrevFile}
-              title="Previous file"
+              title="Previous file (<)"
             >
               <PrevFileIcon />
             </button>
@@ -825,7 +858,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
               className="diff-viewer-mobile-nav-btn"
               onClick={goToPreviousChange}
               disabled={!fileDiff}
-              title="Previous change"
+              title="Previous change (,)"
             >
               <PrevChangeIcon />
             </button>
@@ -833,7 +866,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
               className="diff-viewer-mobile-nav-btn"
               onClick={goToNextChange}
               disabled={!fileDiff}
-              title="Next change"
+              title="Next change (.)"
             >
               <NextChangeIcon />
             </button>
@@ -841,7 +874,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
               className="diff-viewer-mobile-nav-btn"
               onClick={() => goToNextFile()}
               disabled={!hasNextFile}
-              title="Next file"
+              title="Next file (>)"
             >
               <NextFileIcon />
             </button>
