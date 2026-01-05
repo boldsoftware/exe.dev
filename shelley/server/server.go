@@ -189,9 +189,9 @@ func isEndOfTurn(msg *generated.Message) bool {
 	if msg.Type == string(db.MessageTypeError) {
 		return true
 	}
-	// Gitinfo messages are metadata, not part of the agent turn - ignore them
+	// Gitinfo messages always come at end of turn (after a commit)
 	if msg.Type == string(db.MessageTypeGitInfo) {
-		return false
+		return true
 	}
 	// Only agent messages can have end_of_turn
 	if msg.Type != string(db.MessageTypeAgent) {
