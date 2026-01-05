@@ -112,9 +112,6 @@ func StartSSHPiperd(ctx context.Context, sshPiperPluginPort int, logFile io.Writ
 					sshErrorC <- fmt.Errorf("failed to get SSH port from sshpiperd log entry: %v", entry)
 				}
 				found = true
-
-				// TODO: Collect any other sshpiperd output
-				break
 			}
 		}
 		if !found {

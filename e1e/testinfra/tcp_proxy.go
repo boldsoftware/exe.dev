@@ -144,7 +144,7 @@ func (p *TCPProxy) proxy(ctx context.Context, c *net.TCPConn) {
 			case <-ctx.Done():
 				c.Close()
 				dst.Close()
-				break
+				return
 			}
 		}
 	}()
