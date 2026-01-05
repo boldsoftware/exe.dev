@@ -2057,7 +2057,7 @@ func (s *Server) Start() error {
 		s.validateIPShards(ctx)
 	}
 
-	s.slackFeed.ServerStarted(ctx, gitCommit())
+	s.slackFeed.ServiceStarted(ctx, "exed")
 
 	// Start HTTP server in a goroutine if configured
 	if s.httpLn.ln != nil {

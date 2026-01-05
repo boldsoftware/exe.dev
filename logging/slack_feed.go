@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -111,11 +112,12 @@ func (sf *SlackFeed) CreatedVM(ctx context.Context, userID string) {
 	}()
 }
 
-// ServerStarted notifies the ops channel that the server has started.
-func (sf *SlackFeed) ServerStarted(ctx context.Context, gitSHA string) {
+// ServiceStarted notifies the ops channel that a service has started.
+func (sf *SlackFeed) ServiceStarted(ctx context.Context, serviceName string) {
 	hostname, _ := os.Hostname()
-	shaLink := fmt.Sprintf("<https://github.com/boldsoftware/exe/commit/%s|%s>", gitSHA, gitSHA)
-	message := fmt.Sprintf("exed %s started on %s", shaLink, hostname)
+	sha := GitCommit()
+	shaLink := fmt.Sprintf("<https://github.com/boldsoftware/exe/commit/%s|%s>", sha, sha)
+	message := fmt.Sprintf("%s %s started on %s", serviceName, shaLink, hostname)
 	if sf.client == nil {
 		sf.log.InfoContext(ctx, "slack ops channel", "message", message)
 		return
@@ -126,6 +128,19 @@ func (sf *SlackFeed) ServerStarted(ctx context.Context, gitSHA string) {
 			sf.log.WarnContext(ctx, "failed to post to ops channel", "error", err)
 		}
 	}()
+}
+
+// GitCommit extracts the git SHA from build info.
+func GitCommit() string {
+	bi, _ := debug.ReadBuildInfo()
+	if bi != nil {
+		for _, setting := range bi.Settings {
+			if setting.Key == "vcs.revision" {
+				return setting.Value
+			}
+		}
+	}
+	return "unknown"
 }
 
 // PreferredExeletChanged notifies the ops channel when the preferred exelet is set or cleared.

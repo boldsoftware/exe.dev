@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"exe.dev/exelet/config"
+	"exe.dev/stage"
 )
 
 func TestHTTPServer(t *testing.T) {
@@ -26,7 +27,7 @@ func TestHTTPServer(t *testing.T) {
 	}
 
 	registry := prometheus.NewRegistry()
-	srv, err := NewExelet(cfg, log, WithMetricsRegistry(registry))
+	srv, err := NewExelet(cfg, log, stage.Test(), WithMetricsRegistry(registry))
 	if err != nil {
 		t.Fatalf("failed to create exelet: %v", err)
 	}
@@ -44,7 +45,7 @@ func TestHTTPServer(t *testing.T) {
 	// Use a fixed high port that's unlikely to conflict
 	httpFixedAddr := "127.0.0.1:18080"
 	registry2 := prometheus.NewRegistry()
-	srv2, err := NewExelet(cfg, log, WithMetricsRegistry(registry2))
+	srv2, err := NewExelet(cfg, log, stage.Test(), WithMetricsRegistry(registry2))
 	if err != nil {
 		t.Fatalf("failed to create exelet: %v", err)
 	}

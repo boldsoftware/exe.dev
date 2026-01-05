@@ -64,5 +64,7 @@ func (s *Exelet) Run(ctx context.Context) error {
 
 	s.log.InfoContext(ctx, "exelet server ready", "version", version.FullVersion())
 
+	s.slackFeed.ServiceStarted(ctx, "exelet")
+
 	return nil
 }

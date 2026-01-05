@@ -243,7 +243,7 @@ func serveAction(clix *cli.Context) error {
 	if maintenanceMode {
 		opts = append(opts, exelet.WithMaintenance())
 	}
-	srv, err := exelet.NewExelet(cfg, log, opts...)
+	srv, err := exelet.NewExelet(cfg, log, env, opts...)
 	if err != nil {
 		return err
 	}

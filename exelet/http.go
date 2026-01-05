@@ -6,11 +6,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
-	"runtime/debug"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"exe.dev/logging"
 	"exe.dev/version"
 )
 
@@ -85,18 +85,5 @@ func (s *Exelet) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
 func (s *Exelet) handleVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	fmt.Fprintf(w, "%s\n", version.FullVersion())
-	fmt.Fprintf(w, "Git commit: %s\n", gitCommit())
-}
-
-// gitCommit extracts the git SHA from build info for version identification.
-func gitCommit() string {
-	bi, _ := debug.ReadBuildInfo()
-	if bi != nil {
-		for _, setting := range bi.Settings {
-			if setting.Key == "vcs.revision" {
-				return setting.Value
-			}
-		}
-	}
-	return "unknown"
+	fmt.Fprintf(w, "Git commit: %s\n", logging.GitCommit())
 }

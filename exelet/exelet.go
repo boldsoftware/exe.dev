@@ -22,7 +22,9 @@ import (
 
 	"exe.dev/exelet/config"
 	"exe.dev/exelet/services"
+	exelogging "exe.dev/logging"
 	api "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/stage"
 	"exe.dev/tracing"
 )
 
@@ -47,10 +49,11 @@ type Exelet struct {
 	metricsRegistry *prometheus.Registry
 	metrics         *ExeletMetrics
 	grpcMetrics     *grpcprom.ServerMetrics
+	slackFeed       *exelogging.SlackFeed
 }
 
 // NewExelet returns a new exelet server.
-func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, opts ...ServerOpt) (*Exelet, error) {
+func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, env stage.Env, opts ...ServerOpt) (*Exelet, error) {
 	state := api.Server_INIT
 
 	// apply opts
@@ -88,6 +91,7 @@ func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, opts ...ServerOpt) (*
 		metricsRegistry: metricsRegistry,
 		metrics:         metrics,
 		grpcMetrics:     grpcMetrics,
+		slackFeed:       exelogging.NewSlackFeed(log, env),
 	}
 
 	grpcOpts, err := getGRPCOptions(cfg)

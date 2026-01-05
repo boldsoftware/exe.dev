@@ -12,12 +12,12 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"regexp"
-	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
 
 	"exe.dev/exedb"
+	"exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -66,7 +66,7 @@ func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
 
 // handleDebugIndex renders a simple HTML index of debug endpoints.
 func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
-	commit := gitCommit()
+	commit := logging.GitCommit()
 	if commit == "" {
 		commit = "unknown"
 	}
@@ -97,7 +97,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDebugGitsha(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
-	fmt.Fprint(w, gitCommit())
+	fmt.Fprint(w, logging.GitCommit())
 }
 
 // handleDebugBoxes returns the list of container hosts and their containers
@@ -272,19 +272,6 @@ document.getElementById('confirmInput').addEventListener('input', function() {
 </script>
 </body></html>
 `)
-}
-
-// gitCommit extracts the git SHA from build info for version identification.
-func gitCommit() string {
-	bi, _ := debug.ReadBuildInfo()
-	if bi != nil {
-		for _, setting := range bi.Settings {
-			if setting.Key == "vcs.revision" {
-				return setting.Value
-			}
-		}
-	}
-	return ""
 }
 
 // gitHubLink returns an HTML link to the GitHub commit history starting at the given SHA.
