@@ -367,3 +367,67 @@ func TestBillingBypassBug(t *testing.T) {
 		t.Errorf("Expected redirect to /billing/subscribe, got %q - billing was bypassed!", location)
 	}
 }
+
+func TestBillingSuccessBypassWithFakeSessionID(t *testing.T) {
+	// This test reproduces a critical billing bypass vulnerability:
+	// A user can bypass Stripe checkout by directly visiting /billing/success
+	// with any fake session_id parameter. The endpoint should verify with Stripe
+	// that the session was actually completed before activating the account.
+
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a new user (will require billing since created after 2026-01-03)
+	email := "bypass-fake-session@example.com"
+	publicKey := "ssh-rsa dummy-bypass-fake-session bypass-fake-session@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Step 1: Start billing flow to create account record
+	req := httptest.NewRequest("GET", "/billing/subscribe", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Expected redirect to Stripe, got status %d", w.Code)
+	}
+
+	// Step 2: Bypass Stripe checkout by visiting /billing/success with fake session_id
+	req = httptest.NewRequest("GET", "/billing/success?session_id=cs_fake_session_12345", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	// Should fail - cannot verify fake session with Stripe
+	if w.Code == http.StatusOK || w.Code == http.StatusSeeOther {
+		// Check if billing was bypassed
+		needsBilling, err := withRxRes1(server, t.Context(), (*exedb.Queries).UserNeedsBilling, user.UserID)
+		if err != nil {
+			t.Fatalf("UserNeedsBilling query failed: %v", err)
+		}
+		if needsBilling != nil && !*needsBilling {
+			t.Error("SECURITY BUG: User bypassed billing with fake session_id!")
+		}
+	}
+
+	// User should still need billing since checkout was never completed
+	needsBilling, err := withRxRes1(server, t.Context(), (*exedb.Queries).UserNeedsBilling, user.UserID)
+	if err != nil {
+		t.Fatalf("UserNeedsBilling query failed: %v", err)
+	}
+	if needsBilling == nil {
+		t.Fatal("UserNeedsBilling returned nil")
+	}
+	if !*needsBilling {
+		t.Error("SECURITY BUG: User should still need billing after visiting success with fake session_id")
+	}
+}

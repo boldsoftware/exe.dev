@@ -271,15 +271,21 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Activate the account if we have a valid session_id.
-	// The session_id is only provided by Stripe after successful checkout,
-	// so its presence indicates the user completed checkout.
+	// Verify the session with Stripe to prevent bypass attacks where users
+	// craft fake session_id parameters without completing checkout.
 	if sessionID != "" {
+		billingID, err := s.billing.VerifyCheckout(r.Context(), sessionID)
+		if err != nil {
+			s.slog().ErrorContext(r.Context(), "failed to verify checkout session", "error", err, "session_id", sessionID)
+			http.Error(w, "failed to verify billing", http.StatusBadRequest)
+			return
+		}
 		if err := withTx1(s, r.Context(), (*exedb.Queries).ActivateAccount, userID); err != nil {
 			s.slog().ErrorContext(r.Context(), "failed to activate account", "error", err, "session_id", sessionID)
 			http.Error(w, "failed to activate billing", http.StatusInternalServerError)
 			return
 		}
-		s.slog().InfoContext(r.Context(), "account activated after Stripe checkout", "user_id", userID, "session_id", sessionID)
+		s.slog().InfoContext(r.Context(), "account activated after Stripe checkout", "user_id", userID, "session_id", sessionID, "billing_id", billingID)
 	}
 
 	// If not from exemenu, redirect to /new to create a VM

@@ -36,8 +36,8 @@ import (
 	txttmpl "text/template"
 	"time"
 
-	"exe.dev/boxname"
 	"exe.dev/billing"
+	"exe.dev/boxname"
 	"exe.dev/bsdns"
 	"exe.dev/bsdns/alley53"
 	"exe.dev/container"
@@ -165,9 +165,9 @@ type EmailVerification struct {
 	// verification but before user creation.
 	UserID string
 
-	// AccountID is the billing account ID created before Stripe checkout.
+	// BillingID is the billing account ID created before Stripe checkout.
 	// It is used as the Stripe customer ID.
-	AccountID string
+	BillingID string
 
 	// Err is set if billing checkout fails or is canceled. The SSH session
 	// checks this after CompleteChan closes.

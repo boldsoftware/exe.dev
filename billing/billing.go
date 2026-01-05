@@ -6,11 +6,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
 
+	"exe.dev/backoff"
 	"github.com/stripe/stripe-go/v82"
+)
+
+// Errors
+var (
+	// ErrIncomplete is returned when a billing operation is incomplete.
+	ErrIncomplete = errors.New("incomplete")
 )
 
 // TestAPIKey is the Stripe test API key. It is safe to check into source code
@@ -30,7 +38,16 @@ type Manager struct {
 	//   2. The sandboxAPIKey
 	APIKey string
 
+	Logger *slog.Logger
+
 	priceIDCache sync.Map // "apiKey:lookupKey" -> price ID
+}
+
+func (m *Manager) slog() *slog.Logger {
+	if m.Logger != nil {
+		return m.Logger
+	}
+	return slog.Default()
 }
 
 // SubscribeParams contains the parameters for subscribing an account to a plan.
@@ -69,10 +86,51 @@ func (m *Manager) client() *stripe.Client {
 	return stripe.NewClient(apiKey)
 }
 
+// upsertCustomer creates a customer in Stripe if one does not already exist for the provided billing ID.
+// If the customer already exists, nothing happens.
+func (m *Manager) upsertCustomer(ctx context.Context, billingID, email string) error {
+	c := m.client()
+	custParams := &stripe.CustomerCreateParams{
+		Email: &email,
+	}
+	custParams.AddExtra("id", billingID)
+
+	_, err := c.V1Customers.Create(ctx, custParams)
+	if err != nil && !isExists(err) {
+		return err
+	}
+	return nil
+}
+
+func isExists(err error) bool {
+	var stripeErr *stripe.Error
+	return errors.As(err, &stripeErr) && stripeErr.Code == stripe.ErrorCodeResourceAlreadyExists
+}
+
+// isRetryable returns true if the error is a transient error that should be retried.
+// 4xx errors (except 429 rate limit) are not retryable.
+func isRetryable(err error) bool {
+	var stripeErr *stripe.Error
+	if !errors.As(err, &stripeErr) {
+		// Network errors and other non-Stripe errors are retryable
+		return true
+	}
+	// Rate limit errors (429) are retryable
+	if stripeErr.HTTPStatusCode == 429 {
+		return true
+	}
+	// Other 4xx errors are not retryable (bad request, not found, etc.)
+	if stripeErr.HTTPStatusCode >= 400 && stripeErr.HTTPStatusCode < 500 {
+		return false
+	}
+	// 5xx errors are retryable
+	return true
+}
+
 // Subscribe generates a payment link for subscribing an account to a plan.
 //
 // It returns a payment link URL for the account to complete the subscription.
-func (m *Manager) Subscribe(ctx context.Context, exeAccountID string, p *SubscribeParams) (paymentLink string, _ error) {
+func (m *Manager) Subscribe(ctx context.Context, billingID string, p *SubscribeParams) (paymentLink string, _ error) {
 	if p == nil {
 		p = &SubscribeParams{}
 	}
@@ -87,25 +145,20 @@ func (m *Manager) Subscribe(ctx context.Context, exeAccountID string, p *Subscri
 		return "", fmt.Errorf("lookup price %q: %w", plan, err)
 	}
 
-	// Create Stripe customer record if one doesn't exist.
-	// A little secret Stripe does not document well, or expose in their SDK:
-	// You can bring your own customer IDs!
-	// https://stripe.com/docs/api/customers/create#create_customer-id
-	custParams := &stripe.CustomerCreateParams{
-		Email: &p.Email,
-	}
-	custParams.AddExtra("id", exeAccountID)
-
-	_, err = c.V1Customers.Create(ctx, custParams)
-	if err != nil {
-		var stripeErr *stripe.Error
-		if !errors.As(err, &stripeErr) || stripeErr.Code != stripe.ErrorCodeResourceAlreadyExists {
+	for err := range backoff.Loop(ctx, 1*time.Second) {
+		if err != nil {
 			return "", err
 		}
+		err := m.upsertCustomer(ctx, billingID, p.Email)
+		if err != nil {
+			m.slog().ErrorContext(ctx, "upsert customer", "error", err)
+			continue
+		}
+		break
 	}
 
 	params := &stripe.CheckoutSessionCreateParams{
-		Customer: &exeAccountID,
+		Customer: &billingID,
 		Mode:     stripe.String("subscription"),
 		LineItems: []*stripe.CheckoutSessionCreateLineItemParams{
 			{
@@ -124,12 +177,21 @@ func (m *Manager) Subscribe(ctx context.Context, exeAccountID string, p *Subscri
 		}
 	}
 
-	sess, err := c.V1CheckoutSessions.Create(ctx, params)
-	if err != nil {
-		return "", err
+	for err := range backoff.Loop(ctx, 1*time.Second) {
+		if err != nil {
+			m.slog().ErrorContext(ctx, "create checkout session", "error", err)
+			return "", err
+		}
+
+		sess, err := c.V1CheckoutSessions.Create(ctx, params)
+		if err != nil {
+			m.slog().ErrorContext(ctx, "create checkout session", "error", err)
+			continue
+		}
+		return sess.URL, nil
 	}
 
-	return sess.URL, nil
+	panic("unreachable")
 }
 
 // lookupPriceID finds the price ID for a given lookup key, caching results.
@@ -153,7 +215,7 @@ func (m *Manager) lookupPriceID(ctx context.Context, c *stripe.Client, lookupKey
 }
 
 // UpdateProfile updates the account's profile information.
-func (m *Manager) UpdateProfile(ctx context.Context, exeAccountID string, p *Profile) error {
+func (m *Manager) UpdateProfile(ctx context.Context, billingID string, p *Profile) error {
 	if p == nil {
 		return nil
 	}
@@ -165,11 +227,62 @@ func (m *Manager) UpdateProfile(ctx context.Context, exeAccountID string, p *Pro
 		params.Email = &p.Email
 	}
 
-	_, err := c.V1Customers.Update(ctx, exeAccountID, params)
-	return err
+	for range backoff.Loop(ctx, 1*time.Second) {
+		_, err := c.V1Customers.Update(ctx, billingID, params)
+		if err == nil {
+			return nil
+		}
+		m.slog().ErrorContext(ctx, "update customer profile", "error", err)
+	}
+	return ctx.Err()
 }
 
 // DashboardURL returns the Stripe dashboard URL for a customer.
-func (m *Manager) DashboardURL(customerID string) string {
-	return "https://dashboard.stripe.com/customers/" + customerID
+func (m *Manager) DashboardURL(billingID string) string {
+	return "https://dashboard.stripe.com/customers/" + billingID
+}
+
+// VerifyCheckout verifies that a checkout session was completed successfully.
+// It returns the billing ID if the session is valid, or an error if the account is not in good standing.
+func (m *Manager) VerifyCheckout(ctx context.Context, sessionID string) (billingID string, _ error) {
+	// TODO(bmizerany): This could take the URL string landed on and get all the
+	// info from there. This whould be nicer if Manager kept the success/cancel
+	// URLs, and we removed them from SubscribeParams?
+	if sessionID == "" {
+		return "", errors.New("session ID is required")
+	}
+
+	c := m.client()
+
+	for range backoff.Loop(ctx, 1*time.Second) {
+		sess, err := c.V1CheckoutSessions.Retrieve(ctx, sessionID, nil)
+		if err != nil {
+			if !isRetryable(err) {
+				return "", fmt.Errorf("failed to retrieve checkout session: %w", err)
+			}
+			m.slog().ErrorContext(ctx, "retrieve checkout session", "error", err)
+			continue
+		}
+
+		// Verify the session status is complete
+		if sess.Status != stripe.CheckoutSessionStatusComplete {
+			m.slog().ErrorContext(ctx, "checkout session not complete", "status", sess.Status)
+			return "", fmt.Errorf("%s: status: %q", ErrIncomplete, sess.Status)
+		}
+
+		// Verify payment status - for subscriptions with trials, this may be "no_payment_required"
+		switch sess.PaymentStatus {
+		case stripe.CheckoutSessionPaymentStatusPaid, stripe.CheckoutSessionPaymentStatusNoPaymentRequired:
+			// Valid payment statuses
+			if sess.Customer == nil || sess.Customer.ID == "" {
+				return "", errors.New("checkout session has no customer")
+			}
+			return sess.Customer.ID, nil
+		default:
+			return "", fmt.Errorf("checkout session payment not confirmed: payment_status=%s", sess.PaymentStatus)
+		}
+
+	}
+
+	return "", ctx.Err()
 }
