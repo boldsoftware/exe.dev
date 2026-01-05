@@ -192,4 +192,7 @@ echo "  sudo systemctl restart exed"
 # Mark deployment as successful
 "$REPO_ROOT/scripts/deploy-notify.sh" complete "$DEPLOY_TS"
 
+# Discord notification
+"$REPO_ROOT/scripts/discord-notify.sh" "deployed $(git rev-parse --short HEAD)"
+
 rm -f "/tmp/$BINARY_NAME"

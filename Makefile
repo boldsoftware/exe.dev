@@ -12,16 +12,13 @@ REPO := exe.dev
 DOCKER := docker
 B2 := uvx b2
 
-# Deploy force flag: set FORCE=1 to bypass dirty worktree / non-origin/main checks
-DEPLOY_FLAGS := $(if $(filter 1,$(FORCE)),-f,)
-
 # Colors
 RED := \033[0;31m
 GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy-exed deploy-exed-staging deploy-exelet deploy-exelet-staging deploy-staging _check-staging-machine deploy-whoami deploy-what deploy-qa deploy-piperd deploy-piperd-staging deploy-blogd clean run-dev run-devlet run-devlets generate whoami-clean ssh-exed-staging ssh-ctr-staging
+.PHONY: help build test deploy-exed deploy-exed-staging deploy-exelet deploy-exelet-staging deploy-staging deploy-whoami deploy-what deploy-qa deploy-piperd deploy-piperd-staging deploy-blogd clean run-dev run-devlet run-devlets generate whoami-clean ssh-exed-staging ssh-ctr-staging
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -45,56 +42,41 @@ test: ## Run all tests
 	@go test ./... -v -short
 	@echo "✓ Tests complete"
 
-deploy-exed: ## Deploy exed to production (FORCE=1 to override safety checks)
-	@echo "${YELLOW}Deploying exed to production...${NC}"
-	@chmod +x ops/deploy/deploy-exed-prod.sh
-	@./ops/deploy/deploy-exed-prod.sh $(DEPLOY_FLAGS)
-	@./scripts/discord-notify.sh "deployed $(shell git rev-parse --short HEAD)"
+deploy-exed: ## Deploy exed to production
+	@echo ""
+	@echo "./ops/deploy/deploy-exed-prod.sh"
+	@echo ""
 
 deploy-exed-staging: ## Deploy exed to staging
-	@echo "${YELLOW}Deploying exed to staging...${NC}"
-	@chmod +x ops/deploy/deploy-exed-staging.sh
-	@./ops/deploy/deploy-exed-staging.sh
+	@echo ""
+	@echo "./ops/deploy/deploy-exed-staging.sh"
+	@echo ""
 
-deploy-exelet: ## Deploy exelet to production (FORCE=1 to override safety checks)
-	@echo "${YELLOW}Deploying exelet to production...${NC}"
-	@chmod +x ops/deploy/deploy-exelet-prod.sh
-	@./ops/deploy/deploy-exelet-prod.sh $(DEPLOY_FLAGS)
+deploy-exelet: ## Deploy exelet to production
+	@echo ""
+	@echo "./ops/deploy/deploy-exelet-prod.sh <machine-name>"
+	@echo ""
 
-deploy-exelet-staging: ## Deploy exelet to staging (MACHINE=name required)
-	@if [ -z "$(MACHINE)" ]; then \
-		echo "${RED}ERROR: MACHINE is required for staging deployments${NC}"; \
-		echo "Usage: make deploy-staging MACHINE=<machine-name>"; \
-		echo "   or: make deploy-exelet-staging MACHINE=<machine-name>"; \
-		echo "Example: make deploy-exelet-staging MACHINE=exe-ctr-staging-01"; \
-		exit 1; \
-	fi
-	@echo "${YELLOW}Deploying exelet to staging...${NC}"
-	@chmod +x ops/deploy/deploy-exelet-staging.sh
-	@./ops/deploy/deploy-exelet-staging.sh $(MACHINE)
+deploy-exelet-staging: ## Deploy exelet to staging
+	@echo ""
+	@echo "./ops/deploy/deploy-exelet-staging.sh <machine-name>"
+	@echo ""
 
-deploy-staging: _check-staging-machine deploy-exed-staging deploy-exelet-staging ## Deploy all of staging (MACHINE=name required)
-
-_check-staging-machine:
-	@if [ -z "$(MACHINE)" ]; then \
-		echo "${RED}ERROR: MACHINE is required for staging deployments${NC}"; \
-		echo "Usage: make deploy-staging MACHINE=<machine-name>"; \
-		echo "   or: make deploy-exelet-staging MACHINE=<machine-name>"; \
-		echo "Example: make deploy-staging MACHINE=exe-ctr-staging-01"; \
-		exit 1; \
-	fi
+deploy-staging: ## Deploy all of staging
+	@echo ""
+	@echo "./ops/deploy/deploy-exed-staging.sh"
+	@echo "./ops/deploy/deploy-exelet-staging.sh <machine-name>"
+	@echo ""
 
 deploy-whoami: ## Deploy whoami sqlite database to production
-	@echo "${YELLOW}Deploying whoami database to production...${NC}"
-	@chmod +x ops/deploy/deploy-whoami.sh
-	@./ops/deploy/deploy-whoami.sh
+	@echo ""
+	@echo "./ops/deploy/deploy-whoami.sh"
+	@echo ""
 
-deploy-blogd:
-	GOOS=linux GOARCH=amd64 go build -o blogd.$(TIMESTAMP) ./cmd/blogd
-	scp blogd.$(TIMESTAMP) exedev@exeblog:~
-	ssh exedev@exeblog chmod a+x blogd.$(TIMESTAMP)
-	ssh exedev@exeblog sudo systemctl restart blogd
-	rm blogd.$(TIMESTAMP)
+deploy-blogd: ## Deploy blogd
+	@echo ""
+	@echo "./ops/deploy/deploy-blogd.sh"
+	@echo ""
 
 ssh-exed: ## ssh to exed production server
 	@ssh ubuntu@exed-02
@@ -114,21 +96,25 @@ ssh-ctr-staging: ## ssh to ctr-host staging
 ssh-mon: ## ssh to monitoring (prometheus/grafana) server
 	@ssh ubuntu@mon
 
-deploy-piperd: ## Deploy sshpiperd to production (FORCE=1 to override safety checks)
-	@echo "${YELLOW}Deploying sshpiperd to production...${NC}"
-	@chmod +x ops/deploy/deploy-sshpiper-prod.sh
-	@./ops/deploy/deploy-sshpiper-prod.sh $(DEPLOY_FLAGS)
+deploy-piperd: ## Deploy sshpiperd to production
+	@echo ""
+	@echo "./ops/deploy/deploy-sshpiper-prod.sh"
+	@echo ""
 
 deploy-piperd-staging: ## Deploy sshpiperd to staging
-	@echo "${YELLOW}Deploying sshpiperd to staging...${NC}"
-	@chmod +x ops/deploy/deploy-sshpiper-staging.sh
-	@./ops/deploy/deploy-sshpiper-staging.sh
+	@echo ""
+	@echo "./ops/deploy/deploy-sshpiper-staging.sh"
+	@echo ""
 
 deploy-what: ## Show commits that would deploy to production
-	@./ops/deploy-what.sh
+	@echo ""
+	@echo "./ops/deploy-what.sh"
+	@echo ""
 
 deploy-qa: ## Ask claude for a QA/testing plan for pending changes
-	@./ops/deploy-qa.sh
+	@echo ""
+	@echo "./ops/deploy-qa.sh"
+	@echo ""
 
 run-dev: ## Run exed locally for development
 	@echo "Starting dev server with ghcr.io/boldsoftware/exeuntu:latest"
