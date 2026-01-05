@@ -3216,7 +3216,7 @@ function makeAwsCloudWatchDashboard() {
       alert: {
         threshold: 0,
         condition: "gt",
-        forDuration: "10m",
+        forDuration: "30m",
         noDataState: "OK",
         summary: "EBS volume is exceeding provisioned IOPS",
         description: "An EBS volume has exceeded its provisioned IOPS limit",
