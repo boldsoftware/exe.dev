@@ -41,6 +41,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
 	mux.HandleFunc("POST /debug/new-throttle", s.handleDebugNewThrottlePost)
 	mux.HandleFunc("/debug/ipshards", s.handleDebugIPShards)
+	mux.HandleFunc("POST /debug/log", s.handleDebugLog)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -87,6 +88,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/exelets">exelets</a> (<a href="/debug/exelets?format=json">json</a>)</li>
     <li><a href="/debug/new-throttle">new-throttle</a> (<a href="/debug/new-throttle?format=json">json</a>)</li>
     <li><a href="/debug/ipshards">ipshards</a> (<a href="/debug/ipshards?format=json">json</a>)</li>
+    <li>/debug/log (POST text=... to log an error)</li>
 </ul>
 <p>Git version: %s %s</p>
 </body></html>
@@ -1357,4 +1359,16 @@ th { background: #f5f5f5; }
 
 	fmt.Fprintf(w, `</body></html>
 `)
+}
+
+// handleDebugLog logs an error message provided via POST request.
+func (s *Server) handleDebugLog(w http.ResponseWriter, r *http.Request) {
+	text := r.FormValue("text")
+	if text == "" {
+		http.Error(w, "text parameter is required", http.StatusBadRequest)
+		return
+	}
+	s.slog().ErrorContext(r.Context(), text)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "logged: %s\n", text)
 }
