@@ -2313,7 +2313,7 @@ func (s *Server) checkEmailQuality(ctx context.Context, userID, email string) er
 	}
 
 	// Call IPQS API with a timeout
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	url := fmt.Sprintf("https://www.ipqualityscore.com/api/json/email/%s/%s", s.ipqsAPIKey, email)
@@ -2334,7 +2334,7 @@ func (s *Server) checkEmailQuality(ctx context.Context, userID, email string) er
 	}
 
 	// Save the response to the database
-	if err := withTx1(s, ctx, (*exedb.Queries).InsertEmailAddressQuality, exedb.InsertEmailAddressQualityParams{
+	if err := withTx1(s, context.Background(), (*exedb.Queries).InsertEmailAddressQuality, exedb.InsertEmailAddressQualityParams{
 		Email:        email,
 		ResponseJson: string(body),
 	}); err != nil {
@@ -2357,7 +2357,7 @@ func (s *Server) checkEmailQuality(ctx context.Context, userID, email string) er
 	// If disposable, disable VM creation for this user
 	if result.Disposable {
 		s.slog().InfoContext(ctx, "disposable email detected, disabling VM creation", "email", email, "user_id", userID)
-		if err := withTx1(s, ctx, (*exedb.Queries).SetUserNewVMCreationDisabled, exedb.SetUserNewVMCreationDisabledParams{
+		if err := withTx1(s, context.Background(), (*exedb.Queries).SetUserNewVMCreationDisabled, exedb.SetUserNewVMCreationDisabledParams{
 			NewVmCreationDisabled: true,
 			UserID:                userID,
 		}); err != nil {
