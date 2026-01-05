@@ -116,7 +116,7 @@ func (sf *SlackFeed) ServerStarted(ctx context.Context, gitSHA string) {
 		return
 	}
 	go func() {
-		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), "page", slack.MsgOptionText(message, false))
+		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), "buzz", slack.MsgOptionText(message, false))
 		if err != nil {
 			sf.log.WarnContext(ctx, "failed to post to #page", "error", err)
 		}
@@ -134,7 +134,7 @@ func (sf *SlackFeed) PreferredExeletChanged(ctx context.Context, address string)
 		return
 	}
 	go func() {
-		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), "page", slack.MsgOptionText(message, false))
+		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), "buzz", slack.MsgOptionText(message, false))
 		if err != nil {
 			sf.log.WarnContext(ctx, "failed to post to #page", "error", err)
 		}

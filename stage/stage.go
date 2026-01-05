@@ -225,7 +225,7 @@ func Prod() Env {
 		LogCmdAttr:           false,
 		LogFormat:            "json",
 		LogLevel:             "info",
-		LogErrorSlackChannel: "page",
+		LogErrorSlackChannel: "errs",
 
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
