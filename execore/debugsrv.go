@@ -42,6 +42,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/new-throttle", s.handleDebugNewThrottlePost)
 	mux.HandleFunc("/debug/ipshards", s.handleDebugIPShards)
 	mux.HandleFunc("POST /debug/log", s.handleDebugLog)
+	mux.HandleFunc("/debug/testimonials", s.handleDebugTestimonials)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -89,6 +90,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/new-throttle">new-throttle</a> (<a href="/debug/new-throttle?format=json">json</a>)</li>
     <li><a href="/debug/ipshards">ipshards</a> (<a href="/debug/ipshards?format=json">json</a>)</li>
     <li>/debug/log (POST text=... to log an error)</li>
+    <li><a href="/debug/testimonials">testimonials</a></li>
 </ul>
 <p>Git version: %s %s</p>
 </body></html>
@@ -1358,4 +1360,49 @@ func (s *Server) handleDebugLog(w http.ResponseWriter, r *http.Request) {
 	s.slog().ErrorContext(r.Context(), text)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "logged: %s\n", text)
+}
+
+// handleDebugTestimonials displays all testimonials with their approval status.
+func (s *Server) handleDebugTestimonials(w http.ResponseWriter, r *http.Request) {
+	testimonials := AllTestimonials()
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>Testimonials</title>
+<style>
+.testimonial { border: 1px solid #ccc; padding: 15px; margin: 10px 0; border-radius: 5px; }
+.testimonial.approved { border-left: 4px solid #28a745; }
+.testimonial.unapproved { border-left: 4px solid #dc3545; opacity: 0.6; }
+.status { font-weight: bold; margin-bottom: 10px; }
+.status.approved { color: #28a745; }
+.status.unapproved { color: #dc3545; }
+</style>
+</head><body>
+<h1>Testimonials</h1>
+<p><a href="/debug">/debug</a></p>
+<p>Testimonials are stored in code (execore/testimonials.go). Edit that file to add or modify testimonials.</p>
+`)
+
+	if len(testimonials) == 0 {
+		fmt.Fprintf(w, "<p>No testimonials configured.</p>\n")
+	} else {
+		for i, t := range testimonials {
+			class := "unapproved"
+			statusClass := "unapproved"
+			statusText := "Not Approved"
+			if t.Approved {
+				class = "approved"
+				statusClass = "approved"
+				statusText = "Approved"
+			}
+			fmt.Fprintf(w, `<div class="testimonial %s">
+<div class="status %s">#%d - %s</div>
+<div class="content">%s</div>
+</div>
+`, class, statusClass, i+1, statusText, t.HTML)
+		}
+	}
+
+	fmt.Fprintf(w, `</body></html>
+`)
 }

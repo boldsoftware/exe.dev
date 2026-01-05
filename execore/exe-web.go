@@ -633,6 +633,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleRobots(w, r)
 	case "/about":
 		s.serveStaticFile(w, r, "about.html")
+	case "/love":
+		s.handleLovePage(w, r)
 	case "/jobs":
 		s.serveStaticFile(w, r, "jobs.html")
 	case "/verify-email":
@@ -736,6 +738,27 @@ func (s *Server) serveStaticFile(w http.ResponseWriter, r *http.Request, filenam
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status":"ok","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
+}
+
+// handleLovePage serves the /love page with testimonials.
+func (s *Server) handleLovePage(w http.ResponseWriter, r *http.Request) {
+	approved := ApprovedTestimonials()
+	type testimonialView struct {
+		HTML template.HTML
+	}
+	var views []testimonialView
+	for _, t := range approved {
+		views = append(views, testimonialView{HTML: template.HTML(t.HTML)})
+	}
+	data := struct {
+		Testimonials []testimonialView
+	}{
+		Testimonials: views,
+	}
+	if err := s.renderTemplate(w, "love.html", data); err != nil {
+		s.log.ErrorContext(r.Context(), "failed to render love page", "error", err)
+		return
+	}
 }
 
 // handleSitemap serves the sitemap.xml for search engines.
