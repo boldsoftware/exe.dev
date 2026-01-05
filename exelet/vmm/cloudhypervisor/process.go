@@ -85,11 +85,7 @@ func isProcessRunning(pid int) bool {
 	}
 
 	err = process.Signal(syscall.Signal(0))
-	if err != nil {
-		return false
-	}
-
-	return true
+	return err == nil
 }
 
 // killProcess attempts to kill a process gracefully, then forcefully

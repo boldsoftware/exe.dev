@@ -188,11 +188,7 @@ func (p *SSHProxy) IsRunning() bool {
 	}
 
 	err = process.Signal(syscall.Signal(0))
-	if err != nil {
-		return false
-	}
-
-	return true
+	return err == nil
 }
 
 // SaveToDisk persists proxy metadata to instance directory

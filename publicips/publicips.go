@@ -406,10 +406,7 @@ func isUnavailable(err error) bool {
 		}
 	}
 	var opErr *net.OpError
-	if errors.As(err, &opErr) {
-		return true
-	}
-	return false
+	return errors.As(err, &opErr)
 }
 
 func defaultHTTPClient() *http.Client {
