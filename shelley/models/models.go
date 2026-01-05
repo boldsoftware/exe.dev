@@ -389,6 +389,11 @@ func (l *loggingService) TokenContextWindow() int {
 	return l.service.TokenContextWindow()
 }
 
+// MaxImageDimension delegates to the underlying service
+func (l *loggingService) MaxImageDimension() int {
+	return l.service.MaxImageDimension()
+}
+
 // UseSimplifiedPatch delegates to the underlying service if it supports it
 func (l *loggingService) UseSimplifiedPatch() bool {
 	if sp, ok := l.service.(llm.SimplifiedPatcher); ok {

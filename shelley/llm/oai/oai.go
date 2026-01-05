@@ -767,6 +767,12 @@ func (s *Service) TokenContextWindow() int {
 	}
 }
 
+// MaxImageDimension returns the maximum allowed image dimension.
+// TODO: determine actual OpenAI image dimension limits
+func (s *Service) MaxImageDimension() int {
+	return 0 // No known limit
+}
+
 // Do sends a request to OpenAI using the go-openai package.
 func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error) {
 	// Configure the OpenAI client

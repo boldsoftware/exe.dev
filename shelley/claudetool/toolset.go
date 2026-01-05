@@ -122,7 +122,14 @@ func NewToolSet(ctx context.Context, cfg ToolSetConfig) *ToolSet {
 
 	var cleanup func()
 	if cfg.EnableBrowser {
-		browserTools, browserCleanup := browse.RegisterBrowserTools(ctx, true)
+		// Get max image dimension from the LLM service
+		maxImageDimension := 0
+		if cfg.LLMProvider != nil && cfg.ModelID != "" {
+			if svc, err := cfg.LLMProvider.GetService(cfg.ModelID); err == nil {
+				maxImageDimension = svc.MaxImageDimension()
+			}
+		}
+		browserTools, browserCleanup := browse.RegisterBrowserTools(ctx, true, maxImageDimension)
 		if len(browserTools) > 0 {
 			tools = append(tools, browserTools...)
 		}

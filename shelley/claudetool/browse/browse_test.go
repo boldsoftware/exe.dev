@@ -1,9 +1,14 @@
 package browse
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,7 +22,7 @@ import (
 
 func TestToolCreation(t *testing.T) {
 	// Create browser tools instance
-	tools := NewBrowseTools(context.Background())
+	tools := NewBrowseTools(context.Background(), 0, 0)
 	t.Cleanup(func() {
 		tools.Close()
 	})
@@ -66,7 +71,7 @@ func TestToolCreation(t *testing.T) {
 
 func TestGetTools(t *testing.T) {
 	// Create browser tools instance
-	tools := NewBrowseTools(context.Background())
+	tools := NewBrowseTools(context.Background(), 0, 0)
 	t.Cleanup(func() {
 		tools.Close()
 	})
@@ -107,7 +112,7 @@ func TestBrowserInitialization(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	tools := NewBrowseTools(ctx)
+	tools := NewBrowseTools(ctx, 0, 0)
 	t.Cleanup(func() {
 		tools.Close()
 	})
@@ -145,7 +150,7 @@ func TestNavigateTool(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	tools := NewBrowseTools(ctx)
+	tools := NewBrowseTools(ctx, 0, 0)
 	t.Cleanup(func() {
 		tools.Close()
 	})
@@ -202,7 +207,7 @@ func TestNavigateTool(t *testing.T) {
 func TestScreenshotTool(t *testing.T) {
 	// Create browser tools instance
 	ctx := context.Background()
-	tools := NewBrowseTools(ctx)
+	tools := NewBrowseTools(ctx, 0, 0)
 	t.Cleanup(func() {
 		tools.Close()
 	})
@@ -239,7 +244,7 @@ func TestScreenshotTool(t *testing.T) {
 func TestReadImageTool(t *testing.T) {
 	// Create a test BrowseTools instance
 	ctx := context.Background()
-	browseTools := NewBrowseTools(ctx)
+	browseTools := NewBrowseTools(ctx, 0, 0)
 	t.Cleanup(func() {
 		browseTools.Close()
 	})
@@ -304,7 +309,7 @@ func TestDefaultViewportSize(t *testing.T) {
 		t.Skip("Skipping browser test in CI/headless environment")
 	}
 
-	tools := NewBrowseTools(ctx)
+	tools := NewBrowseTools(ctx, 0, 0)
 	t.Cleanup(func() {
 		tools.Close()
 	})
@@ -364,7 +369,7 @@ func TestBrowserIdleShutdownAndRestart(t *testing.T) {
 
 	// Use a short idle timeout for testing
 	idleTimeout := 100 * time.Millisecond
-	tools := NewBrowseToolsWithIdleTimeout(ctx, idleTimeout)
+	tools := NewBrowseTools(ctx, idleTimeout, 0)
 	t.Cleanup(func() {
 		tools.Close()
 	})
@@ -405,4 +410,75 @@ func TestBrowserIdleShutdownAndRestart(t *testing.T) {
 	if toolOut.Error != nil {
 		t.Fatalf("Navigate failed after restart: %v", toolOut.Error)
 	}
+}
+
+func TestReadImageToolResizesLargeImage(t *testing.T) {
+	// Create a test BrowseTools instance with max dimension of 2000
+	ctx := context.Background()
+	browseTools := NewBrowseTools(ctx, 0, 2000)
+	t.Cleanup(func() {
+		browseTools.Close()
+	})
+
+	// Create a large test image (3000x2500 pixels)
+	testDir := t.TempDir()
+	testImagePath := filepath.Join(testDir, "large_image.png")
+
+	// Create a large image using image package
+	img := image.NewRGBA(image.Rect(0, 0, 3000, 2500))
+	for y := 0; y < 2500; y++ {
+		for x := 0; x < 3000; x++ {
+			img.Set(x, y, color.RGBA{R: 100, G: 150, B: 200, A: 255})
+		}
+	}
+
+	f, err := os.Create(testImagePath)
+	if err != nil {
+		t.Fatalf("Failed to create test image file: %v", err)
+	}
+	if err := png.Encode(f, img); err != nil {
+		f.Close()
+		t.Fatalf("Failed to encode test image: %v", err)
+	}
+	f.Close()
+
+	// Create the tool
+	readImageTool := browseTools.NewReadImageTool()
+
+	// Prepare input
+	input := fmt.Sprintf(`{"path": "%s"}`, testImagePath)
+
+	// Run the tool
+	toolOut := readImageTool.Run(ctx, json.RawMessage(input))
+	if toolOut.Error != nil {
+		t.Fatalf("Read image tool failed: %v", toolOut.Error)
+	}
+	result := toolOut.LLMContent
+
+	// Check that we got at least two content objects
+	if len(result) < 2 {
+		t.Fatalf("Expected at least 2 content objects, got %d", len(result))
+	}
+
+	// Check that the description mentions resizing
+	if !strings.Contains(result[0].Text, "resized") {
+		t.Errorf("Expected description to mention resizing, got: %s", result[0].Text)
+	}
+
+	// Decode the returned image and verify dimensions are within limits
+	imageData, err := base64.StdEncoding.DecodeString(result[1].Data)
+	if err != nil {
+		t.Fatalf("Failed to decode base64 image: %v", err)
+	}
+
+	config, _, err := image.DecodeConfig(bytes.NewReader(imageData))
+	if err != nil {
+		t.Fatalf("Failed to decode image config: %v", err)
+	}
+
+	if config.Width > 2000 || config.Height > 2000 {
+		t.Errorf("Image dimensions still exceed 2000 pixels: %dx%d", config.Width, config.Height)
+	}
+
+	t.Logf("Large image resized from 3000x2500 to %dx%d", config.Width, config.Height)
 }

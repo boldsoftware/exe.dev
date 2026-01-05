@@ -74,6 +74,12 @@ func (s *Service) TokenContextWindow() int {
 	}
 }
 
+// MaxImageDimension returns the maximum allowed image dimension for multi-image requests.
+// Anthropic enforces a 2000 pixel limit when multiple images are in a conversation.
+func (s *Service) MaxImageDimension() int {
+	return 2000
+}
+
 // HTTPRecorder is a callback for recording HTTP request/response data for debugging
 type HTTPRecorder func(url string, requestBody, responseBody []byte, statusCode int, err error, duration time.Duration)
 

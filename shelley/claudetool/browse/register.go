@@ -9,8 +9,9 @@ import (
 // RegisterBrowserTools returns all browser tools ready to be added to an agent.
 // It also returns a cleanup function that should be called when done to properly close the browser.
 // The browser will be initialized lazily when a browser tool is first used.
-func RegisterBrowserTools(ctx context.Context, supportsScreenshots bool) ([]*llm.Tool, func()) {
-	browserTools := NewBrowseTools(ctx)
+// maxImageDimension is the max pixel dimension for images (0 uses default of 2000).
+func RegisterBrowserTools(ctx context.Context, supportsScreenshots bool, maxImageDimension int) ([]*llm.Tool, func()) {
+	browserTools := NewBrowseTools(ctx, 0, maxImageDimension)
 
 	return browserTools.GetTools(supportsScreenshots), func() {
 		browserTools.Close()

@@ -19,6 +19,7 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
 	"shelley.exe.dev/llm"
+	"shelley.exe.dev/llm/imageutil"
 )
 
 // ScreenshotDir is the directory where screenshots are stored
@@ -45,25 +46,27 @@ type BrowseTools struct {
 	// Idle timeout management
 	idleTimeout time.Duration
 	idleTimer   *time.Timer
+	// Max image dimension for resizing (0 means use default)
+	maxImageDimension int
 }
 
-// NewBrowseTools creates a new set of browser automation tools
-func NewBrowseTools(ctx context.Context) *BrowseTools {
-	return NewBrowseToolsWithIdleTimeout(ctx, DefaultIdleTimeout)
-}
-
-// NewBrowseToolsWithIdleTimeout creates browser tools with a custom idle timeout
-func NewBrowseToolsWithIdleTimeout(ctx context.Context, idleTimeout time.Duration) *BrowseTools {
-	// Ensure the screenshot directory exists
+// NewBrowseTools creates a new set of browser automation tools.
+// idleTimeout is how long to wait before shutting down an idle browser (0 uses default).
+// maxImageDimension is the max pixel dimension for images (0 means unlimited).
+func NewBrowseTools(ctx context.Context, idleTimeout time.Duration, maxImageDimension int) *BrowseTools {
+	if idleTimeout <= 0 {
+		idleTimeout = DefaultIdleTimeout
+	}
 	if err := os.MkdirAll(ScreenshotDir, 0o755); err != nil {
 		log.Printf("Failed to create screenshot directory: %v", err)
 	}
 
 	return &BrowseTools{
-		ctx:            ctx,
-		screenshots:    make(map[string]time.Time),
-		consoleLogs:    make([]*runtime.EventConsoleAPICalled, 0),
-		maxConsoleLogs: 100,
+		ctx:               ctx,
+		screenshots:       make(map[string]time.Time),
+		consoleLogs:       make([]*runtime.EventConsoleAPICalled, 0),
+		maxConsoleLogs:    100,
+		maxImageDimension: maxImageDimension,
 		idleTimeout:    idleTimeout,
 	}
 }
@@ -454,10 +457,21 @@ func (b *BrowseTools) screenshotRun(ctx context.Context, m json.RawMessage) llm.
 	// Get the full path to the screenshot
 	screenshotPath := GetScreenshotPath(id)
 
-	// Encode the image as base64
-	base64Data := base64.StdEncoding.EncodeToString(buf)
+	// Resize image if needed to fit within model's image dimension limits
+	imageData := buf
+	format := "png"
+	resized := false
+	if b.maxImageDimension > 0 {
+		var err error
+		imageData, format, resized, err = imageutil.ResizeImage(buf, b.maxImageDimension)
+		if err != nil {
+			return llm.ErrorToolOut(fmt.Errorf("failed to resize screenshot: %w", err))
+		}
+	}
 
-	// Prepare display data for the UI
+	base64Data := base64.StdEncoding.EncodeToString(imageData)
+	mediaType := "image/" + format
+
 	display := map[string]any{
 		"type":     "screenshot",
 		"id":       id,
@@ -466,15 +480,19 @@ func (b *BrowseTools) screenshotRun(ctx context.Context, m json.RawMessage) llm.
 		"selector": input.Selector,
 	}
 
-	// Return the screenshot directly to the LLM and provide display metadata for the UI
+	description := fmt.Sprintf("Screenshot taken (saved as %s)", screenshotPath)
+	if resized {
+		description += " [resized]"
+	}
+
 	return llm.ToolOut{LLMContent: []llm.Content{
 		{
 			Type: llm.ContentTypeText,
-			Text: fmt.Sprintf("Screenshot taken (saved as %s)", screenshotPath),
+			Text: description,
 		},
 		{
-			Type:      llm.ContentTypeText, // Will be mapped to image in content array
-			MediaType: "image/png",
+			Type:      llm.ContentTypeText,
+			MediaType: mediaType,
 			Data:      base64Data,
 		},
 	}, Display: display}
@@ -570,24 +588,38 @@ func (b *BrowseTools) readImageRun(ctx context.Context, m json.RawMessage) llm.T
 		return llm.ErrorfToolOut("failed to read image file: %w", err)
 	}
 
-	// Detect the image type
-	imageType := http.DetectContentType(imageData)
-	if !strings.HasPrefix(imageType, "image/") {
-		return llm.ErrorfToolOut("file is not an image: %s", imageType)
+	detectedType := http.DetectContentType(imageData)
+	if !strings.HasPrefix(detectedType, "image/") {
+		return llm.ErrorfToolOut("file is not an image: %s", detectedType)
 	}
 
-	// Encode the image as base64
-	base64Data := base64.StdEncoding.EncodeToString(imageData)
+	// Resize image if needed to fit within model's image dimension limits
+	resized := false
+	format := strings.TrimPrefix(detectedType, "image/")
+	if b.maxImageDimension > 0 {
+		var err error
+		imageData, format, resized, err = imageutil.ResizeImage(imageData, b.maxImageDimension)
+		if err != nil {
+			return llm.ErrorToolOut(fmt.Errorf("failed to resize image: %w", err))
+		}
+	}
 
-	// Create a Content object that includes both text and the image
+	base64Data := base64.StdEncoding.EncodeToString(imageData)
+	mediaType := "image/" + format
+
+	description := fmt.Sprintf("Image from %s (type: %s)", input.Path, mediaType)
+	if resized {
+		description += " [resized]"
+	}
+
 	return llm.ToolOut{LLMContent: []llm.Content{
 		{
 			Type: llm.ContentTypeText,
-			Text: fmt.Sprintf("Image from %s (type: %s)", input.Path, imageType),
+			Text: description,
 		},
 		{
-			Type:      llm.ContentTypeText, // Will be mapped to image in content array
-			MediaType: imageType,
+			Type:      llm.ContentTypeText,
+			MediaType: mediaType,
 			Data:      base64Data,
 		},
 	}}

@@ -461,6 +461,12 @@ func (s *Service) TokenContextWindow() int {
 	}
 }
 
+// MaxImageDimension returns the maximum allowed image dimension.
+// TODO: determine actual Gemini image dimension limits
+func (s *Service) MaxImageDimension() int {
+	return 0 // No known limit
+}
+
 // Do sends a request to Gemini.
 func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error) {
 	// Log the incoming request for debugging

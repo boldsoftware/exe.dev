@@ -52,6 +52,11 @@ func (s *PredictableService) TokenContextWindow() int {
 	return s.tokenContextWindow
 }
 
+// MaxImageDimension returns the maximum allowed image dimension.
+func (s *PredictableService) MaxImageDimension() int {
+	return 2000
+}
+
 // Do processes a request and returns a predictable response based on the input text
 func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Response, error) {
 	// Store request for testing inspection

@@ -87,6 +87,10 @@ func (m *MockLLMService) TokenContextWindow() int {
 	return 8192 // Mock token limit
 }
 
+func (m *MockLLMService) MaxImageDimension() int {
+	return 0 // No limit for mock
+}
+
 // MockLLMProvider provides a mock LLM provider for testing
 type MockLLMProvider struct {
 	Service *MockLLMService
