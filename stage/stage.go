@@ -197,9 +197,9 @@ func Staging() Env {
 		LogCmdAttr:           false,
 		LogFormat:            "json",
 		LogLevel:             "info",
-		LogErrorSlackChannel: "poke",
-		SlackFeedChannel:     "",
-		SlackOpsChannel:      "",
+		LogErrorSlackChannel: "stag",
+		SlackFeedChannel:     "stag",
+		SlackOpsChannel:      "stag",
 
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
