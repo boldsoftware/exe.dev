@@ -172,6 +172,10 @@ function DirectoryPickerModal({
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Don't submit while IME is composing (e.g., converting Japanese hiragana to kanji)
+    if (e.nativeEvent.isComposing) {
+      return;
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       handleSelect();

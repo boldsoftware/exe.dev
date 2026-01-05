@@ -172,6 +172,10 @@ function ConversationDrawer({
   };
 
   const handleRenameKeyDown = (e: React.KeyboardEvent, conversationId: string) => {
+    // Don't submit while IME is composing (e.g., converting Japanese hiragana to kanji)
+    if (e.nativeEvent.isComposing) {
+      return;
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       handleRename(conversationId);

@@ -304,6 +304,10 @@ function MessageInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Don't submit while IME is composing (e.g., converting Japanese hiragana to kanji)
+    if (e.nativeEvent.isComposing) {
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
