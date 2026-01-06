@@ -59,6 +59,8 @@ func (c *countingConn) Write(b []byte) (int, error) {
 // handleProxyRequest handles requests that should be proxied to containers
 // This handler is called when the Host header matches box.exe.dev or box.exe.local
 func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
 	// Ensure the port in the Host header matches the listener's local port
 	conn, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
 	if !ok {
@@ -149,7 +151,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 			// Box doesn't exist - show 401 to avoid leaking existence
 			s.renderAccessRequired(w, r)
 		} else {
-			s.slog().ErrorContext(r.Context(), "Failed to look up box", "error", err, "box_name", boxName)
+			s.slog().ErrorContext(r.Context(), "Failed to look up box", "error", err, "box_name", boxName, "elapsed", time.Since(start).Round(time.Millisecond))
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 		return
