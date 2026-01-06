@@ -35,6 +35,7 @@ type ExedInstance struct {
 	GUIDLog         chan string     // exed GUID logs sent on this channel
 
 	binPath        string    // exed binary we executed
+	logFile        io.Writer // exed log file; may be nil for no logs
 	piperPort      int       // port for ssh piper process
 	emailServerURL string    // port for fake email server
 	whoamiPath     string    // -gh-whoami exed parameter
@@ -338,6 +339,7 @@ ProcessLogs:
 		Errors:          exedSlogErrC,
 		GUIDLog:         exedGUIDLogC,
 		binPath:         binPath,
+		logFile:         logFile,
 		piperPort:       piperPort,
 		emailServerURL:  emailServerURL,
 		whoamiPath:      whoamiPath,
@@ -467,7 +469,13 @@ func (ei *ExedInstance) checkBoxesCleanedUp(ctx context.Context, testRunID strin
 // set of exelets.
 func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testRunID string) error {
 	start := time.Now()
-	slog.InfoContext(ctx, "restarting exed")
+	slog.InfoContext(ctx, "restarting exed", "exelets", exeletAddrs)
+	var logger *slog.Logger
+	if ei.logFile != nil {
+		handler := slog.NewJSONHandler(ei.logFile, nil)
+		logger = slog.New(handler)
+		logger.InfoContext(ctx, "restarting exed", "exelets", exeletAddrs)
+	}
 
 	ei.Stop(ctx, testRunID)
 
@@ -532,6 +540,9 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 			tee.WriteString("\n")
 			teeMu.Unlock()
 
+			if ei.logFile != nil {
+				fmt.Fprintf(ei.logFile, "%s\n", line)
+			}
 			if seenPanic {
 				fmt.Printf("%s\n", line)
 			}
@@ -609,7 +620,11 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 	ei.GUIDLog = exedGUIDLogC
 	ei.exedLoggerDone = exedLoggerDone
 
-	slog.InfoContext(ctx, "restarted exed", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
+	elapsed := time.Since(start.Truncate(100 * time.Millisecond))
+	slog.InfoContext(ctx, "restarted exed", "elapsed", elapsed)
+	if logger != nil {
+		logger.InfoContext(ctx, "restarted exed", "elapsed", elapsed)
+	}
 
 	return nil
 }

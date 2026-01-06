@@ -70,7 +70,7 @@ jobs:
 
       - name: Run tests
         run: |
-          PKGS=$(go list ./... | grep -v -E '^exe\.dev/(e1e|e1e/testinfra|experiments/imageunpack)$')
+          PKGS=$(go list ./... | grep -v -E '^exe\.dev/(e1e|e1e/testinfra|e1e/exelets|experiments/imageunpack)$')
           go tool gotestsum --format testname -- -race $PKGS
 
   test-e1e:
@@ -153,6 +153,11 @@ jobs:
           path: ${{ env.E1E_LOG_DIR }}
           retention-days: 7
         continue-on-error: true
+
+      - name: Run e1e/exelets tests
+        run: |
+          # Separate from e1e tests to avoid too many simultaneous VMs.
+          GITHUB_ACTIONS=false go tool gotestsum --format testname -- -race -timeout=3m -failfast ./e1e/exelets
 
       # Please don't delete this.
       # It is useful to uncomment it to test stuff in CI
