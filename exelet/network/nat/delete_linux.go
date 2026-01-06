@@ -14,6 +14,11 @@ func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
 	// Find which bridge this TAP belongs to before deleting it
 	bridgeName := n.getTapBridge(tapName)
 
+	// Remove bandwidth limit before deleting TAP (cleanup, ignore errors)
+	if err := n.removeBandwidthLimit(ctx, tapName); err != nil {
+		n.log.WarnContext(ctx, "failed to remove bandwidth limit", "tap", tapName, "error", err)
+	}
+
 	if err := n.deleteTapInterface(tapName); err != nil {
 		return err
 	}

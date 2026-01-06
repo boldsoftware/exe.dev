@@ -1,3 +1,5 @@
+//go:build linux
+
 package nat
 
 import (
@@ -21,6 +23,10 @@ const (
 	DefaultBridgeHashMax     = 4096 // FDB hash table size; default 512 causes "exchange full" at scale
 	CarrierNATCIDR           = "100.64.0.0/10"
 	DefaultConnLimit         = 10000 // Max concurrent connections per VM
+
+	// Bandwidth limiting defaults (per VM upload limit)
+	DefaultBandwidthRate  = "100mbit" // Max upload bandwidth per VM
+	DefaultBandwidthBurst = "256k"    // HTB burst size
 
 	DeviceName = "eth0"
 )
@@ -52,7 +58,9 @@ type NAT struct {
 	log               *slog.Logger
 	bridges           []bridgeInfo
 	maxPortsPerBridge int
-	connLimit         int // max concurrent connections per VM
+	connLimit         int    // max concurrent connections per VM
+	bandwidthRate     string // max upload bandwidth per VM (e.g., "100mbit")
+	bandwidthBurst    string // police burst size (e.g., "15k")
 	mu                sync.Mutex
 	bridgeCreateMu    sync.Mutex // serializes bridge creation
 }
@@ -128,6 +136,8 @@ func NewNATManager(addr string, log *slog.Logger) (*NAT, error) {
 		bridges:           []bridgeInfo{{name: primaryBridgeName, portCount: 0}},
 		maxPortsPerBridge: maxPortsPerBridge,
 		connLimit:         DefaultConnLimit,
+		bandwidthRate:     DefaultBandwidthRate,
+		bandwidthBurst:    DefaultBandwidthBurst,
 	}
 
 	return n, nil

@@ -19,4 +19,6 @@ type NetworkManager interface {
 	DeleteInterface(ctx context.Context, id, ip string) error
 	// ApplyConnectionLimit applies a connection limit rule for the given IP
 	ApplyConnectionLimit(ctx context.Context, ip string) error
+	// ApplyBandwidthLimit applies bandwidth limiting to an existing TAP device
+	ApplyBandwidthLimit(ctx context.Context, id string) error
 }

@@ -147,6 +147,11 @@ func (n *NAT) configureBridge(ctx context.Context) error {
 		return err
 	}
 
+	// Apply fq_codel to bridge for fair queuing between VMs
+	if err := n.applyBridgeFqCodel(ctx, primaryBridge); err != nil {
+		n.log.WarnContext(ctx, "failed to apply fq_codel to bridge", "bridge", primaryBridge, "error", err)
+	}
+
 	// Add DNAT rule to redirect metadata service traffic (169.254.169.254:80)
 	// to the bridge IP. This allows multiple exelets to run in parallel, each
 	// with their own bridge IP, while VMs see the standard metadata IP.
@@ -210,6 +215,11 @@ func (n *NAT) createSecondaryBridge(ctx context.Context, bridgeName string) erro
 
 	if err := netlink.LinkSetUp(br); err != nil {
 		return fmt.Errorf("failed to bring up bridge %s: %w", bridgeName, err)
+	}
+
+	// Apply fq_codel to secondary bridge for fair queuing between VMs
+	if err := n.applyBridgeFqCodel(ctx, bridgeName); err != nil {
+		n.log.WarnContext(ctx, "failed to apply fq_codel to bridge", "bridge", bridgeName, "error", err)
 	}
 
 	// Create veth pair to connect to primary bridge
@@ -742,6 +752,147 @@ func (n *NAT) removeConnLimit(ctx context.Context, ip string) error {
 	if err := exec.CommandContext(ctx, "iptables", cArgs...).Run(); err != nil {
 		// Don't fail if rule doesn't exist (may have been already removed)
 		n.log.DebugContext(ctx, "failed to remove connection limit rule (may not exist)", "ip", ip, "error", err)
+	}
+
+	return nil
+}
+
+// applyBandwidthLimit limits upload bandwidth FROM the VM using an IFB device.
+//
+// From the host's perspective:
+// - TAP ingress = traffic coming FROM the VM (uploads) ← LIMITED via IFB
+// - TAP egress = traffic going TO the VM (downloads) ← unlimited
+//
+// We use an IFB (Intermediate Functional Block) device to redirect TAP ingress
+// to a virtual device where we can apply HTB shaping. This queues excess traffic
+// instead of dropping it, allowing TCP to adapt gracefully.
+func (n *NAT) applyBandwidthLimit(ctx context.Context, tapName string) error {
+	ifbName := getIfbName(tapName)
+	n.log.DebugContext(ctx, "applying bandwidth limit", "tap", tapName, "ifb", ifbName, "rate", n.bandwidthRate)
+
+	// Track what we've created for rollback on error
+	var ifbCreated, ingressCreated bool
+
+	cleanup := func() {
+		if ingressCreated {
+			_ = exec.CommandContext(ctx, "tc", "qdisc", "del", "dev", tapName, "ingress").Run()
+		}
+		if ifbCreated {
+			_ = exec.CommandContext(ctx, "ip", "link", "del", ifbName).Run()
+		}
+	}
+
+	// Create IFB device for this TAP
+	// ip link add $IFB type ifb
+	createIfbArgs := []string{"link", "add", ifbName, "type", "ifb"}
+	if err := exec.CommandContext(ctx, "ip", createIfbArgs...).Run(); err != nil {
+		return fmt.Errorf("failed to create ifb device: %w", err)
+	}
+	ifbCreated = true
+
+	// Bring up IFB device
+	// ip link set $IFB up
+	upIfbArgs := []string{"link", "set", ifbName, "up"}
+	if err := exec.CommandContext(ctx, "ip", upIfbArgs...).Run(); err != nil {
+		cleanup()
+		return fmt.Errorf("failed to bring up ifb device: %w", err)
+	}
+
+	// Add ingress qdisc to TAP for redirect
+	// tc qdisc add dev $TAP handle ffff: ingress
+	ingressArgs := []string{
+		"qdisc", "add", "dev", tapName,
+		"handle", "ffff:", "ingress",
+	}
+	if err := exec.CommandContext(ctx, "tc", ingressArgs...).Run(); err != nil {
+		cleanup()
+		return fmt.Errorf("failed to add ingress qdisc: %w", err)
+	}
+	ingressCreated = true
+
+	// Redirect TAP ingress to IFB egress
+	// tc filter add dev $TAP parent ffff: protocol all u32 match u32 0 0 action mirred egress redirect dev $IFB
+	mirredArgs := []string{
+		"filter", "add", "dev", tapName,
+		"parent", "ffff:",
+		"protocol", "all",
+		"u32", "match", "u32", "0", "0",
+		"action", "mirred", "egress", "redirect", "dev", ifbName,
+	}
+	if err := exec.CommandContext(ctx, "tc", mirredArgs...).Run(); err != nil {
+		cleanup()
+		return fmt.Errorf("failed to add mirred redirect: %w", err)
+	}
+
+	// Apply HTB shaping on IFB egress
+	// tc qdisc add dev $IFB root handle 1: htb default 10
+	htbArgs := []string{
+		"qdisc", "add", "dev", ifbName,
+		"root", "handle", "1:", "htb", "default", "10",
+	}
+	if err := exec.CommandContext(ctx, "tc", htbArgs...).Run(); err != nil {
+		cleanup()
+		return fmt.Errorf("failed to add htb qdisc to ifb: %w", err)
+	}
+
+	// Create HTB class with rate limit
+	// tc class add dev $IFB parent 1: classid 1:10 htb rate 100mbit burst 256k cburst 256k
+	classArgs := []string{
+		"class", "add", "dev", ifbName,
+		"parent", "1:", "classid", "1:10", "htb",
+		"rate", n.bandwidthRate,
+		"burst", n.bandwidthBurst,
+		"cburst", n.bandwidthBurst,
+	}
+	if err := exec.CommandContext(ctx, "tc", classArgs...).Run(); err != nil {
+		cleanup()
+		return fmt.Errorf("failed to add htb class to ifb: %w", err)
+	}
+
+	// Add fq_codel for fair queuing and low latency
+	// tc qdisc add dev $IFB parent 1:10 handle 10: fq_codel
+	fqArgs := []string{
+		"qdisc", "add", "dev", ifbName,
+		"parent", "1:10", "handle", "10:", "fq_codel",
+	}
+	if err := exec.CommandContext(ctx, "tc", fqArgs...).Run(); err != nil {
+		cleanup()
+		return fmt.Errorf("failed to add fq_codel to ifb: %w", err)
+	}
+
+	return nil
+}
+
+// removeBandwidthLimit removes the bandwidth limiting setup from a TAP device.
+func (n *NAT) removeBandwidthLimit(ctx context.Context, tapName string) error {
+	ifbName := getIfbName(tapName)
+	n.log.DebugContext(ctx, "removing bandwidth limit", "tap", tapName, "ifb", ifbName)
+
+	// Remove ingress qdisc from TAP (this also removes attached filters/mirred)
+	// tc qdisc del dev $TAP ingress
+	ingressArgs := []string{"qdisc", "del", "dev", tapName, "ingress"}
+	if err := exec.CommandContext(ctx, "tc", ingressArgs...).Run(); err != nil {
+		n.log.DebugContext(ctx, "failed to remove ingress qdisc (may not exist)", "tap", tapName, "error", err)
+	}
+
+	// Delete the IFB device
+	// ip link del $IFB
+	delIfbArgs := []string{"link", "del", ifbName}
+	if err := exec.CommandContext(ctx, "ip", delIfbArgs...).Run(); err != nil {
+		n.log.DebugContext(ctx, "failed to delete ifb device (may not exist)", "ifb", ifbName, "error", err)
+	}
+
+	return nil
+}
+
+// applyBridgeFqCodel applies fq_codel to a bridge for fair queuing between VMs.
+func (n *NAT) applyBridgeFqCodel(ctx context.Context, bridgeName string) error {
+	n.log.DebugContext(ctx, "applying fq_codel to bridge", "bridge", bridgeName)
+
+	// tc qdisc replace dev $BRIDGE root fq_codel
+	args := []string{"qdisc", "replace", "dev", bridgeName, "root", "fq_codel"}
+	if err := exec.CommandContext(ctx, "tc", args...).Run(); err != nil {
+		return fmt.Errorf("failed to apply fq_codel to bridge: %w", err)
 	}
 
 	return nil

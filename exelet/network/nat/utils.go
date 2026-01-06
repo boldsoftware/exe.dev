@@ -1,3 +1,5 @@
+//go:build linux
+
 package nat
 
 import (
@@ -9,6 +11,16 @@ import (
 
 func getTapID(id string) string {
 	return utils.GetTapName(id)
+}
+
+// getIfbName returns the IFB device name for a given TAP device.
+// IFB devices are used to redirect TAP ingress for bandwidth shaping.
+func getIfbName(tapName string) string {
+	// Replace "tap-" prefix with "ifb-"
+	if len(tapName) > 4 && tapName[:4] == "tap-" {
+		return "ifb-" + tapName[4:]
+	}
+	return "ifb-" + tapName
 }
 
 func randomMAC() (string, error) {

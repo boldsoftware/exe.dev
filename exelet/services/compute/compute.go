@@ -93,8 +93,13 @@ func (s *Service) Start(ctx context.Context) error {
 		}
 	}
 
-	// Apply connection limits for existing instances
+	// Apply connection limits and bandwidth limits for existing running instances
 	for _, i := range instances {
+		// Skip stopped instances - they don't have TAP devices
+		if i.State == api.VMState_STOPPED || i.State == api.VMState_CREATING {
+			continue
+		}
+
 		if i.VMConfig != nil && i.VMConfig.NetworkInterface != nil && i.VMConfig.NetworkInterface.IP != nil {
 			ipStr := i.VMConfig.NetworkInterface.IP.IPV4
 			ip, _, err := net.ParseCIDR(ipStr)
@@ -105,6 +110,10 @@ func (s *Service) Start(ctx context.Context) error {
 			if err := s.context.NetworkManager.ApplyConnectionLimit(ctx, ip.String()); err != nil {
 				s.log.WarnContext(ctx, "failed to apply connection limit", "instance", i.ID, "ip", ip.String(), "error", err)
 			}
+		}
+		// Apply bandwidth limit to existing TAP device
+		if err := s.context.NetworkManager.ApplyBandwidthLimit(ctx, i.ID); err != nil {
+			s.log.WarnContext(ctx, "failed to apply bandwidth limit", "instance", i.ID, "error", err)
 		}
 	}
 

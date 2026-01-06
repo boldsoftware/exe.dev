@@ -34,34 +34,67 @@ func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInter
 		n.bridgeCreateMu.Unlock()
 	}
 
+	// Track cleanup actions for rollback on error
+	var cleanupTap, cleanupIP, cleanupConnLimit bool
+	var ipStr string
+
+	cleanup := func() {
+		if cleanupConnLimit && ipStr != "" {
+			_ = n.removeConnLimit(ctx, ipStr)
+		}
+		if cleanupIP && ipStr != "" {
+			_ = n.dhcpServer.Release(ipStr)
+		}
+		if cleanupTap {
+			_ = n.removeBandwidthLimit(ctx, tapName)
+			_ = n.deleteTapInterface(tapName)
+			n.decrementBridgePort(bridgeName)
+		}
+	}
+
 	link, err := n.createTapInterface(tapName, bridgeName)
 	if err != nil {
 		// Decrement port count since we failed to create the TAP
 		n.decrementBridgePort(bridgeName)
 		return nil, err
 	}
+	cleanupTap = true
 
 	macAddress, err := randomMAC()
 	if err != nil {
+		cleanup()
 		return nil, err
 	}
 
 	ip, err := n.dhcpServer.Reserve(macAddress)
 	if err != nil {
+		cleanup()
 		return nil, err
 	}
+	ipStr = ip.String()
+	cleanupIP = true
 
 	// Apply connection limit for this VM
-	if err := n.applyConnLimit(ctx, ip.String()); err != nil {
+	if err := n.applyConnLimit(ctx, ipStr); err != nil {
+		cleanup()
 		return nil, fmt.Errorf("failed to apply connection limit: %w", err)
+	}
+	cleanupConnLimit = true
+
+	// Apply bandwidth limit to the TAP device
+	if err := n.applyBandwidthLimit(ctx, tapName); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("failed to apply bandwidth limit: %w", err)
 	}
 
 	gwIP, err := n.dhcpServer.ServerIP()
 	if err != nil {
+		cleanup()
 		return nil, err
 	}
 	_, ipnet, err := net.ParseCIDR(n.network)
 	if err != nil {
+		cleanup()
 		return nil, err
 	}
 	sz, _ := ipnet.Mask.Size()
@@ -91,4 +124,11 @@ func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInter
 // This is used to apply limits to existing VMs at startup.
 func (n *NAT) ApplyConnectionLimit(ctx context.Context, ip string) error {
 	return n.applyConnLimit(ctx, ip)
+}
+
+// ApplyBandwidthLimit applies bandwidth limiting to an existing TAP device.
+// This is used to apply limits to existing VMs at startup.
+func (n *NAT) ApplyBandwidthLimit(ctx context.Context, id string) error {
+	tapName := getTapID(id)
+	return n.applyBandwidthLimit(ctx, tapName)
 }
