@@ -112,7 +112,7 @@ func (sf *SlackFeed) CreatedVM(ctx context.Context, userID string) {
 	}()
 }
 
-// ServiceStarted notifies the ops channel that a service has started.
+// ServiceStarted notifies the ops and error channels that a service has started.
 func (sf *SlackFeed) ServiceStarted(ctx context.Context, serviceName string) {
 	hostname, _ := os.Hostname()
 	sha := GitCommit()
@@ -128,6 +128,14 @@ func (sf *SlackFeed) ServiceStarted(ctx context.Context, serviceName string) {
 			sf.log.WarnContext(ctx, "failed to post to ops channel", "error", err)
 		}
 	}()
+	if sf.env.LogErrorSlackChannel != "" {
+		go func() {
+			_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), sf.env.LogErrorSlackChannel, slack.MsgOptionText(message, false))
+			if err != nil {
+				sf.log.WarnContext(ctx, "failed to post to error channel", "error", err)
+			}
+		}()
+	}
 }
 
 // GitCommit extracts the git SHA from build info.
