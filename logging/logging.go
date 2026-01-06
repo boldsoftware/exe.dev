@@ -79,10 +79,13 @@ func SetupLogger(env stage.Env, registry *prometheus.Registry) {
 
 	slackBotToken := strings.TrimSpace(os.Getenv("SLACK_BOT_TOKEN"))
 	if env.LogErrorSlackChannel != "" && slackBotToken != "" {
+		// Set Honeycomb environment for trace links in Slack messages
+		SetHoneycombEnv(env.HoneycombEnv)
 		opt := slogslack.Option{
-			Level:    slog.LevelError,
-			BotToken: slackBotToken,
-			Channel:  env.LogErrorSlackChannel,
+			Level:     slog.LevelError,
+			BotToken:  slackBotToken,
+			Channel:   env.LogErrorSlackChannel,
+			Converter: HoneycombConverter,
 		}
 		handler = slogmulti.Fanout(handler, &detachContextHandler{opt.NewSlackHandler()})
 	}

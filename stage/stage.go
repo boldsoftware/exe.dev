@@ -39,6 +39,7 @@ type Env struct {
 	LogErrorSlackChannel string // Slack channel for error logs; empty means no Slack posting
 	SlackFeedChannel     string // Slack channel for user activity feed (signups, etc.); empty means no posting
 	SlackOpsChannel      string // Slack channel for ops notifications (server starts, exelet changes); empty means no posting
+	HoneycombEnv         string // Honeycomb environment name for trace links in Slack ("production", "staging"); empty means no links
 
 	NumShards  int   // number of IP shards available for box allocation, max 253
 	ProxyPorts []int // ports to listen on for proxying; empty means none
@@ -78,6 +79,7 @@ func Invalid() Env {
 		LogErrorSlackChannel: "",
 		SlackFeedChannel:     "",
 		SlackOpsChannel:      "",
+		HoneycombEnv:         "",
 
 		NumShards:  0, // invalid: must be >= 1
 		ProxyPorts: nil,
@@ -119,6 +121,7 @@ func Local() Env {
 		LogErrorSlackChannel: "",
 		SlackFeedChannel:     "",
 		SlackOpsChannel:      "",
+		HoneycombEnv:         "",
 
 		NumShards:  25,
 		ProxyPorts: []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 9999},
@@ -161,6 +164,7 @@ func Test() Env {
 		LogErrorSlackChannel: "",
 		SlackFeedChannel:     "",
 		SlackOpsChannel:      "",
+		HoneycombEnv:         "",
 
 		NumShards:  25,
 		ProxyPorts: nil, // no proxy ports in tests to avoid conflicts
@@ -200,6 +204,7 @@ func Staging() Env {
 		LogErrorSlackChannel: "stag",
 		SlackFeedChannel:     "stag",
 		SlackOpsChannel:      "stag",
+		HoneycombEnv:         "staging",
 
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
@@ -238,6 +243,7 @@ func Prod() Env {
 		LogErrorSlackChannel: "errs",
 		SlackFeedChannel:     "feed",
 		SlackOpsChannel:      "buzz",
+		HoneycombEnv:         "production",
 
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
