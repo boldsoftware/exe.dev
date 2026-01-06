@@ -146,14 +146,14 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	// Find the box.
 	// Careful: we aren't checking the team or owner in this look-up, so we must do it below.
 	box, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxNamed, boxName)
+	if errors.Is(err, sql.ErrNoRows) {
+		// Box doesn't exist - show 401 to avoid leaking existence
+		s.renderAccessRequired(w, r)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			// Box doesn't exist - show 401 to avoid leaking existence
-			s.renderAccessRequired(w, r)
-		} else {
-			s.slog().ErrorContext(r.Context(), "Failed to look up box", "error", err, "box_name", boxName, "elapsed", time.Since(start).Round(time.Millisecond))
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-		}
+		s.slog().ErrorContext(r.Context(), "Failed to look up box", "error", err, "box_name", boxName, "elapsed", time.Since(start).Round(time.Millisecond))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
