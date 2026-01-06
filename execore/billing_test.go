@@ -117,7 +117,7 @@ func TestUserWithBillingCanAccessNewVM_WebUI(t *testing.T) {
 
 	// Add an account record for this user and activate it (simulates completed Stripe checkout)
 	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        "acct_test123",
+		ID:        "exe_test123",
 		CreatedBy: user.UserID,
 	})
 	if err != nil {
@@ -198,7 +198,7 @@ func TestUserIsPayingQuery(t *testing.T) {
 
 	// Add an account record and activate it (simulates completing Stripe checkout)
 	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        "acct_ispaying_test",
+		ID:        "exe_ispaying_test",
 		CreatedBy: user.UserID,
 	})
 	if err != nil {
@@ -253,7 +253,7 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 
 	// Add an account record and activate it (simulate completing Stripe checkout)
 	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        "acct_needsbilling_test",
+		ID:        "exe_needsbilling_test",
 		CreatedBy: user.UserID,
 	})
 	if err != nil {

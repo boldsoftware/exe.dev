@@ -222,7 +222,7 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Create account record
-	accountID := "acct_" + rand.Text()[:16]
+	accountID := "exe_" + rand.Text()[:16]
 	if err := withTx1(s, r.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
 		ID:        accountID,
 		CreatedBy: userID,
