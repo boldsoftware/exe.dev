@@ -32,6 +32,7 @@ package metadata
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -211,6 +212,13 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 			pr.Out.Host = s.exedTargetURL.Host
 			// Add header to identify the box making the request
 			pr.Out.Header.Set("X-Exedev-Box", boxName)
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			s.log.ErrorContext(r.Context(), "gateway proxy error", "error", err, "box", boxName)
+			http.Error(w, "gateway proxy error: "+err.Error(), http.StatusBadGateway)
 		},
 	}
 
