@@ -284,6 +284,78 @@ function makeExeDevVMsDashboard() {
     }
   );
 
+  // Row: ZFS Volume Usage (host-level ZFS pool metrics)
+  dash.withRow(new RowBuilder("ZFS Volume Usage"));
+
+  // ZFS volume usage percentage across exelet hosts
+  const zfsUsagePanel = new TimeseriesBuilder()
+    .title("ZFS Volume Usage % (per Host)")
+    .unit("percent")
+    .min(0)
+    .max(100)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} * 100)`)
+        .legendFormat("{{instance}}")
+    );
+  dash.withPanel(zfsUsagePanel);
+
+  // ZFS usage statistics (max, p75, median, min) across all exelet hosts
+  const zfsStatsPanel = new TimeseriesBuilder()
+    .title("ZFS Volume Usage % (Aggregate Stats)")
+    .unit("percent")
+    .min(0)
+    .max(100)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`max(100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} * 100))`)
+        .legendFormat("max")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`quantile(0.75, 100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} * 100))`)
+        .legendFormat("p75")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`quantile(0.5, 100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} * 100))`)
+        .legendFormat("median")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`min(100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} * 100))`)
+        .legendFormat("min")
+    );
+  dash.withPanel(zfsStatsPanel);
+
+  // ZFS absolute usage in bytes (used space per host)
+  const zfsUsedBytesPanel = new TimeseriesBuilder()
+    .title("ZFS Used Space (per Host)")
+    .unit("bytes")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_filesystem_size_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} - node_filesystem_avail_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}}`)
+        .legendFormat("{{instance}}")
+    );
+  dash.withPanel(zfsUsedBytesPanel);
+
+  // ZFS available space in bytes (free space per host)
+  const zfsAvailBytesPanel = new TimeseriesBuilder()
+    .title("ZFS Available Space (per Host)")
+    .unit("bytes")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_filesystem_avail_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}}`)
+        .legendFormat("{{instance}}")
+    );
+  dash.withPanel(zfsAvailBytesPanel);
+
   // Row 5: Network I/O
   dash.withRow(new RowBuilder("Network I/O"));
 
@@ -3583,6 +3655,918 @@ function makeLLMGatewayDashboard() {
   return dash;
 }
 
+// ZFS Metrics Dashboard - comprehensive ZFS statistics from node_exporter
+function makeZFSDashboard() {
+  resetLayout();
+  const dash = new DashboardBuilder("ZFS Metrics");
+  dash
+    .uid("zfs-metrics-dashboard")
+    .tags(["generated", "zfs", "storage"])
+    .refresh("1m")
+    .time({ from: "now-6h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  // Variable for stage selection
+  dash.withVariable(
+    new QueryVariableBuilder("stage")
+      .label("Stage")
+      .includeAll(true)
+      .query('label_values(node_zfs_arc_size, stage)')
+      .current({ text: "production", value: "production" })
+      .multi(true)
+      .sort(1)
+  );
+
+  // Variable for role selection
+  dash.withVariable(
+    new QueryVariableBuilder("role")
+      .label("Role")
+      .includeAll(true)
+      .query('label_values(node_zfs_arc_size, role)')
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+      .sort(1)
+  );
+
+  // Variable for host selection
+  dash.withVariable(
+    new QueryVariableBuilder("instance")
+      .label("Host")
+      .includeAll(true)
+      .query('label_values(node_zfs_arc_size{stage=~"$stage",role=~"$role"}, instance)')
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+      .sort(1)
+  );
+
+  const HOST_FILTER = 'instance=~"$instance",role=~"$role",stage=~"$stage"';
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "zfs-metrics-dashboard");
+
+  // README panel
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("")
+      .content(README_CONTENT)
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 2 }))
+  );
+
+  // ========== ZFS POOL STATUS ==========
+  dash.withRow(new RowBuilder("ZFS Pool Status"));
+
+  // Pools online (should equal total pools)
+  const poolsOnlinePanel = new StatBuilder()
+    .title("Pools Online")
+    .gridPos(gp({ w: 6, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`count(node_zfs_zpool_state{state="online",${HOST_FILTER}} == 1)`)
+        .legendFormat("Online")
+    )
+    .colorMode(BigValueColorMode.Background)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.Value)
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "green" } as Threshold,
+        ])
+    );
+  dash.withPanel(poolsOnlinePanel);
+
+  // Pools degraded (should be 0)
+  const poolsDegradedPanel = new StatBuilder()
+    .title("Pools Degraded")
+    .gridPos(gp({ w: 6, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`count(node_zfs_zpool_state{state="degraded",${HOST_FILTER}} == 1) or vector(0)`)
+        .legendFormat("Degraded")
+    )
+    .colorMode(BigValueColorMode.Background)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.Value)
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "green" } as Threshold,
+          { value: 1, color: "yellow" } as Threshold,
+        ])
+    );
+  dash.withPanel(poolsDegradedPanel);
+
+  // Pools in bad state (faulted, suspended, unavail, removed)
+  const poolsBadPanel = new StatBuilder()
+    .title("Pools Failed/Unavail")
+    .gridPos(gp({ w: 6, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`count(node_zfs_zpool_state{state=~"faulted|suspended|unavail|removed",${HOST_FILTER}} == 1) or vector(0)`)
+        .legendFormat("Failed")
+    )
+    .colorMode(BigValueColorMode.Background)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.Value)
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "green" } as Threshold,
+          { value: 1, color: "red" } as Threshold,
+        ])
+    );
+  dash.withPanel(poolsBadPanel);
+
+  // Pools offline (administrative)
+  const poolsOfflinePanel = new StatBuilder()
+    .title("Pools Offline")
+    .gridPos(gp({ w: 6, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`count(node_zfs_zpool_state{state="offline",${HOST_FILTER}} == 1) or vector(0)`)
+        .legendFormat("Offline")
+    )
+    .colorMode(BigValueColorMode.Background)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.Value)
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "green" } as Threshold,
+          { value: 1, color: "blue" } as Threshold,
+        ])
+    );
+  dash.withPanel(poolsOfflinePanel);
+
+  // Pool state explanation
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("About Pool States")
+      .content(`**ZFS Pool States:**
+- **online**: Pool is healthy and fully operational
+- **degraded**: Pool is operational but has failed/missing devices
+- **faulted**: Pool has failed and is not accessible
+- **offline**: Pool was taken offline administratively
+- **removed**: Device was physically removed
+- **suspended**: Pool I/O is suspended due to device failure
+- **unavail**: Pool cannot be opened`)
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 4 }))
+  );
+
+  // ZFS filesystem usage percentage
+  const zfsUsagePanel = new TimeseriesBuilder()
+    .title("ZFS Volume Usage %")
+    .unit("percent")
+    .min(0)
+    .max(100)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`100 - (node_filesystem_avail_bytes{fstype="zfs",${HOST_FILTER}} / node_filesystem_size_bytes{fstype="zfs",${HOST_FILTER}} * 100)`)
+        .legendFormat("{{instance}} {{mountpoint}}")
+    );
+  dash.withPanel(zfsUsagePanel);
+
+  // ZFS filesystem space breakdown
+  const zfsSpacePanel = new TimeseriesBuilder()
+    .title("ZFS Volume Space")
+    .unit("bytes")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_filesystem_size_bytes{fstype="zfs",${HOST_FILTER}}`)
+        .legendFormat("{{instance}} total")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_filesystem_size_bytes{fstype="zfs",${HOST_FILTER}} - node_filesystem_avail_bytes{fstype="zfs",${HOST_FILTER}}`)
+        .legendFormat("{{instance}} used")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_filesystem_avail_bytes{fstype="zfs",${HOST_FILTER}}`)
+        .legendFormat("{{instance}} available")
+    );
+  dash.withPanel(zfsSpacePanel);
+
+  // ========== ARC (Adaptive Replacement Cache) ==========
+  dash.withRow(new RowBuilder("ARC (Adaptive Replacement Cache)"));
+
+  // Description text panel
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("About ARC")
+      .content(`**ARC** is ZFS's main memory cache for frequently accessed data. It uses an adaptive algorithm that balances between:
+- **MRU (Most Recently Used)**: Data accessed recently
+- **MFU (Most Frequently Used)**: Data accessed often
+- **Ghost lists**: Track recently evicted data to improve hit rates
+
+Key metrics to watch:
+- **Hit Rate**: Should be >90% for good performance
+- **ARC Size**: Current cache size vs limits
+- **Evictions**: Indicate memory pressure`)
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 3 }))
+  );
+
+  // ARC size and limits
+  const arcSizePanel = new TimeseriesBuilder()
+    .title("ARC Size")
+    .unit("bytes")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_arc_size{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} current")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_arc_c{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} target")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_arc_c_max{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} max")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_arc_c_min{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} min")
+    );
+  dash.withPanel(arcSizePanel);
+
+  // ARC hit rate - use increase() to avoid "might not be a counter" warnings
+  // since node_zfs metrics are typed as "untyped" by node_exporter
+  const arcHitRatePanel = new TimeseriesBuilder()
+    .title("ARC Hit Rate")
+    .unit("percentunit")
+    .min(0)
+    .max(1)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_arc_hits{${HOST_FILTER}}[5m]) / (increase(node_zfs_arc_hits{${HOST_FILTER}}[5m]) + increase(node_zfs_arc_misses{${HOST_FILTER}}[5m]))`)
+        .legendFormat("{{instance}} hit rate")
+    );
+  dash.withPanel(arcHitRatePanel);
+
+  // ARC hits/misses breakdown
+  const arcHitsMissesPanel = new TimeseriesBuilder()
+    .title("ARC Hits/Misses Rate")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_arc_hits{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} hits")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_arc_misses{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} misses")
+    );
+  dash.withPanel(arcHitsMissesPanel);
+
+  // ARC data breakdown (MRU vs MFU)
+  const arcBreakdownPanel = new TimeseriesBuilder()
+    .title("ARC Data Breakdown")
+    .unit("bytes")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .stacking(new StackingConfigBuilder().mode(StackingMode.Normal))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_arc_mru_size{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} MRU")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_arc_mfu_size{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} MFU")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_arc_anon_size{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} anon")
+    );
+  dash.withPanel(arcBreakdownPanel);
+
+  // ARC demand hits breakdown
+  addTimeseriesChart(
+    "ARC Demand Data Hits/Misses",
+    `increase(node_zfs_arc_demand_data_hits{${HOST_FILTER}}[5m])`,
+    {
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}} data hits"),
+    }
+  );
+
+  addTimeseriesChart(
+    "ARC Metadata Hits/Misses",
+    `increase(node_zfs_arc_demand_metadata_hits{${HOST_FILTER}}[5m])`,
+    {
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}} metadata hits"),
+    }
+  );
+
+  // ARC compression ratio
+  const arcCompressionPanel = new TimeseriesBuilder()
+    .title("ARC Compression Ratio")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_arc_uncompressed_size{${HOST_FILTER}} / node_zfs_arc_compressed_size{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} ratio")
+    );
+  dash.withPanel(arcCompressionPanel);
+
+  // ARC memory usage
+  const arcMemoryPanel = new TimeseriesBuilder()
+    .title("ARC Memory")
+    .unit("bytes")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_arc_memory_all_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} all")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_arc_memory_free_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} free")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_arc_memory_available_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} available")
+    );
+  dash.withPanel(arcMemoryPanel);
+
+  // ========== L2ARC (Level 2 ARC - SSD Cache) ==========
+  dash.withRow(new RowBuilder("L2ARC (SSD Cache)"));
+
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("About L2ARC")
+      .content(`**L2ARC** is the second level of the ARC cache, typically stored on SSDs. It caches data evicted from the main ARC.
+
+Key metrics:
+- **Size**: Amount of data cached on SSD
+- **Hit Rate**: L2ARC hit rate (lower than ARC is normal)
+- **Read/Write Bytes**: I/O to the L2ARC device`)
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 2 }))
+  );
+
+  // L2ARC size
+  addTimeseriesChart(
+    "L2ARC Size",
+    `node_zfs_arc_l2_size{${HOST_FILTER}}`,
+    {
+      panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  // L2ARC hits/misses
+  const l2arcHitsMissesPanel = new TimeseriesBuilder()
+    .title("L2ARC Hits/Misses")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_arc_l2_hits{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} hits")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_arc_l2_misses{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} misses")
+    );
+  dash.withPanel(l2arcHitsMissesPanel);
+
+  // L2ARC read/write bytes
+  const l2arcIOPanel = new TimeseriesBuilder()
+    .title("L2ARC I/O")
+    .unit("Bps")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_arc_l2_read_bytes{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} read")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_arc_l2_write_bytes{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} write")
+    );
+  dash.withPanel(l2arcIOPanel);
+
+  // L2ARC errors
+  const l2arcErrorsPanel = new TimeseriesBuilder()
+    .title("L2ARC Errors")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_arc_l2_cksum_bad{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} checksum errors")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_arc_l2_io_error{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} I/O errors")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_arc_l2_writes_error{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} write errors")
+    );
+  dash.withPanel(l2arcErrorsPanel);
+
+  // ========== ZIL (ZFS Intent Log) ==========
+  dash.withRow(new RowBuilder("ZIL (ZFS Intent Log)"));
+
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("About ZIL")
+      .content(`**ZIL** (ZFS Intent Log) is a write-ahead log that ensures synchronous write integrity. Every sync write is first written to the ZIL before being acknowledged.
+
+Key metrics:
+- **Commit Count**: Number of ZIL commits (sync write batches)
+- **ITX Count**: Individual transaction count
+- **Copied vs Indirect**: How transactions are stored (copied inline vs referenced)`)
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 2 }))
+  );
+
+  // ZIL commit rate
+  addTimeseriesChart(
+    "ZIL Commit Rate",
+    `increase(node_zfs_zil_zil_commit_count{${HOST_FILTER}}[5m])`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  // ZIL commit writer count rate
+  addTimeseriesChart(
+    "ZIL Writer Rate",
+    `increase(node_zfs_zil_zil_commit_writer_count{${HOST_FILTER}}[5m])`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  // ZIL ITX count rate
+  addTimeseriesChart(
+    "ZIL Transaction Rate",
+    `increase(node_zfs_zil_zil_itx_count{${HOST_FILTER}}[5m])`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  // ZIL copied vs indirect bytes
+  const zilBytesPanel = new TimeseriesBuilder()
+    .title("ZIL Bytes (Copied vs Indirect)")
+    .unit("Bps")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_zil_zil_itx_copied_bytes{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} copied")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_zil_zil_itx_indirect_bytes{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} indirect")
+    );
+  dash.withPanel(zilBytesPanel);
+
+  // ZIL errors/stalls
+  const zilErrorsPanel = new TimeseriesBuilder()
+    .title("ZIL Stalls/Suspends/Errors")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_zil_zil_commit_stall_count{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} stalls")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_zil_zil_commit_suspend_count{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} suspends")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_zil_zil_commit_error_count{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} errors")
+    );
+  dash.withPanel(zilErrorsPanel);
+
+  // ========== DMU TX (Data Management Unit Transactions) ==========
+  dash.withRow(new RowBuilder("DMU TX (Transactions)"));
+
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("About DMU TX")
+      .content(`**DMU TX** (Data Management Unit Transactions) handles data block management.
+
+Key metrics:
+- **Assigned**: Successfully assigned transactions
+- **Delay**: Transactions delayed due to dirty data limits
+- **Throttle**: Transactions throttled to prevent overwhelming the system
+- **Error**: Failed transactions`)
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 2 }))
+  );
+
+  // DMU TX assigned rate
+  addTimeseriesChart(
+    "DMU TX Assigned Rate",
+    `increase(node_zfs_dmu_tx_dmu_tx_assigned{${HOST_FILTER}}[5m])`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  // DMU TX delays
+  const dmuDelaysPanel = new TimeseriesBuilder()
+    .title("DMU TX Delays")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_dmu_tx_dmu_tx_delay{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} delay")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_dmu_tx_dmu_tx_dirty_delay{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} dirty delay")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_dmu_tx_dmu_tx_dirty_throttle{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} throttle")
+    );
+  dash.withPanel(dmuDelaysPanel);
+
+  // DMU TX errors
+  addTimeseriesChart(
+    "DMU TX Errors",
+    `increase(node_zfs_dmu_tx_dmu_tx_error{${HOST_FILTER}}[5m])`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  // ========== ZFETCH (Prefetch) ==========
+  dash.withRow(new RowBuilder("ZFetch (Prefetch)"));
+
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("About ZFetch")
+      .content(`**ZFetch** is ZFS's prefetching mechanism that predicts and preloads data before it's requested.
+
+Key metrics:
+- **Hits**: Prefetch predictions that were correct
+- **Misses**: Data requested that wasn't prefetched
+- **Stride**: Sequential access pattern detections`)
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 2 }))
+  );
+
+  // ZFetch hits/misses
+  const zfetchPanel = new TimeseriesBuilder()
+    .title("ZFetch Hits/Misses")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_zfetch_hits{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} hits")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_zfetch_misses{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} misses")
+    );
+  dash.withPanel(zfetchPanel);
+
+  // ZFetch I/O
+  const zfetchIOPanel = new TimeseriesBuilder()
+    .title("ZFetch I/O")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_zfetch_io_issued{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} issued")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_zfetch_io_active{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} active")
+    );
+  dash.withPanel(zfetchIOPanel);
+
+  // ========== DBUF (Data Buffer Cache) ==========
+  dash.withRow(new RowBuilder("DBUF (Data Buffer Cache)"));
+
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("About DBUF")
+      .content(`**DBUF** (Data Buffer) cache stores file-level data blocks. It sits between the ARC and the file system.
+
+Key metrics:
+- **Cache Size**: Current dbuf cache size
+- **Hash Stats**: Hash table efficiency`)
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 2 }))
+  );
+
+  // DBUF cache size
+  const dbufSizePanel = new TimeseriesBuilder()
+    .title("DBUF Cache Size")
+    .unit("bytes")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_dbuf_cache_size_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} current")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_dbuf_cache_target_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} target")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_dbuf_cache_hiwater_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} hiwater")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_dbuf_cache_lowater_bytes{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} lowater")
+    );
+  dash.withPanel(dbufSizePanel);
+
+  // DBUF hash hits/misses
+  const dbufHashPanel = new TimeseriesBuilder()
+    .title("DBUF Hash Hits/Misses")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_dbuf_hash_hits{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} hits")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_dbuf_hash_misses{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} misses")
+    );
+  dash.withPanel(dbufHashPanel);
+
+  // ========== VDEV MIRROR ==========
+  dash.withRow(new RowBuilder("VDEV Mirror Stats"));
+
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("About VDEV Mirror")
+      .content(`**VDEV Mirror** statistics show how ZFS distributes reads across mirrored disks.
+
+- **Rotating**: Statistics for HDDs (seeks are expensive)
+- **Non-Rotating**: Statistics for SSDs (random reads are cheap)
+- **Preferred**: When ZFS successfully finds the preferred disk`)
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 2 }))
+  );
+
+  // VDEV mirror preferred found/not found
+  const vdevPreferredPanel = new TimeseriesBuilder()
+    .title("VDEV Preferred Disk Selection")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_vdev_mirror_preferred_found{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} found")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_vdev_mirror_preferred_not_found{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} not found")
+    );
+  dash.withPanel(vdevPreferredPanel);
+
+  // VDEV mirror rotating vs non-rotating
+  const vdevTypePanel = new TimeseriesBuilder()
+    .title("VDEV Disk Type Selection")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_vdev_mirror_rotating_linear{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} rotating linear")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_vdev_mirror_rotating_seek{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} rotating seek")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_vdev_mirror_non_rotating_linear{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} non-rotating linear")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_vdev_mirror_non_rotating_seek{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} non-rotating seek")
+    );
+  dash.withPanel(vdevTypePanel);
+
+  // ========== ABD (ARC Buffer Data) ==========
+  dash.withRow(new RowBuilder("ABD (ARC Buffer Data)"));
+
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("About ABD")
+      .content(`**ABD** (ARC Buffer Data) manages memory allocation for ARC buffers.
+
+- **Linear**: Contiguous memory allocations (more efficient)
+- **Scatter**: Non-contiguous allocations (used when memory is fragmented)
+- **Chunk Waste**: Memory wasted due to allocation granularity`)
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 2 }))
+  );
+
+  // ABD linear vs scatter
+  const abdTypePanel = new TimeseriesBuilder()
+    .title("ABD Allocation Types")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_abd_linear_cnt{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} linear")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_abd_scatter_cnt{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} scatter")
+    );
+  dash.withPanel(abdTypePanel);
+
+  // ABD data sizes
+  const abdSizePanel = new TimeseriesBuilder()
+    .title("ABD Data Size")
+    .unit("bytes")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_abd_linear_data_size{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} linear")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_abd_scatter_data_size{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} scatter")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`node_zfs_abd_scatter_chunk_waste{${HOST_FILTER}}`)
+        .legendFormat("{{instance}} chunk waste")
+    );
+  dash.withPanel(abdSizePanel);
+
+  // ========== FM (Fault Management) ==========
+  dash.withRow(new RowBuilder("FM (Fault Management)"));
+
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("About FM")
+      .content(`**FM** (Fault Management) tracks ZFS error reporting.
+
+- **erpt-dropped**: Error reports that were dropped (concerning if high)
+- **erpt-duplicates**: Duplicate error reports filtered out
+- **set-failed**: Failed attempts to set error report data`)
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 2 }))
+  );
+
+  // FM error stats
+  const fmPanel = new TimeseriesBuilder()
+    .title("Fault Management Errors")
+    .min(0)
+    .gridPos(gp({ w: 24, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_fm_erpt_dropped{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} dropped")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_fm_erpt_duplicates{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} duplicates")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_fm_erpt_set_failed{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} set failed")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_fm_fmri_set_failed{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} fmri set failed")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(node_zfs_fm_payload_set_failed{${HOST_FILTER}}[5m])`)
+        .legendFormat("{{instance}} payload set failed")
+    );
+  dash.withPanel(fmPanel);
+
+  // ========== Per-Dataset Stats ==========
+  dash.withRow(new RowBuilder("Per-Dataset I/O"));
+
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("About Dataset Stats")
+      .content(`Per-dataset I/O statistics show read/write activity for individual ZFS datasets (filesystems, volumes, snapshots).`)
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 2 }))
+  );
+
+  // Dataset reads/writes
+  const datasetIOPanel = new TimeseriesBuilder()
+    .title("Dataset I/O Rate")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(increase(node_zfs_zpool_dataset_reads{${HOST_FILTER}}[5m])) by (instance)`)
+        .legendFormat("{{instance}} reads")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(increase(node_zfs_zpool_dataset_writes{${HOST_FILTER}}[5m])) by (instance)`)
+        .legendFormat("{{instance}} writes")
+    );
+  dash.withPanel(datasetIOPanel);
+
+  // Dataset bytes read/written
+  const datasetBytesPanel = new TimeseriesBuilder()
+    .title("Dataset Throughput")
+    .unit("Bps")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(increase(node_zfs_zpool_dataset_nread{${HOST_FILTER}}[5m])) by (instance)`)
+        .legendFormat("{{instance}} read")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(increase(node_zfs_zpool_dataset_nwritten{${HOST_FILTER}}[5m])) by (instance)`)
+        .legendFormat("{{instance}} written")
+    );
+  dash.withPanel(datasetBytesPanel);
+
+  return dash;
+}
+
 async function main() {
   if (TOKEN === undefined) {
     console.error(
@@ -3604,6 +4588,7 @@ async function main() {
   await createDashboard(makeAwsCloudWatchDashboard());
   await createDashboard(makeHostsDashboard());
   await createDashboard(makeLLMGatewayDashboard());
+  await createDashboard(makeZFSDashboard());
 
   // Create alerts after dashboards are created
   await createAlerts();
