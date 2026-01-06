@@ -206,7 +206,7 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "fireworks":
 		proxy, transport, proxyErr = m.createFireworksProxy(r, boxName, userID)
 	default:
-		m.httpError(w, r, "unrecognized origin alias", http.StatusNotFound)
+		m.httpError(w, r, "unrecognized origin alias "+alias, http.StatusNotFound)
 		return
 	}
 	if proxyErr != nil {
