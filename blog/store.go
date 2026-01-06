@@ -302,7 +302,9 @@ func CanPreviewUnpublished(r *http.Request) bool {
 		return false
 	}
 	email = strings.ToLower(email)
-	return strings.HasSuffix(email, "@bold.dev") || strings.HasSuffix(email, "@exe.dev") || email == "david@zentus.com"
+	return strings.HasSuffix(email, "@bold.dev") || strings.HasSuffix(email, "@exe.dev") || email == "david@zentus.com" ||
+		email == "philip.zeyliger@gmail.com" || email == "blake.mizerany@gmail.com" ||
+		email == "josharian@gmail.com" || email == "evan@h5t.io" || email == "ian@airs.com"
 }
 
 func (h *Handler) entries(showHidden bool) []*Entry {
