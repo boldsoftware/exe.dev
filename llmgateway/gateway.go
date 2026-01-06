@@ -113,7 +113,8 @@ func NewGateway(log *slog.Logger, db *sqlite.DB, apiKeys APIKeys, devMode bool) 
 
 func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, errstr string, code int) {
 	http.Error(w, errstr, code)
-	m.log.ErrorContext(r.Context(), "llmgateway.httpError", "method", r.Method, "path", r.URL.Path, "code", code, "error", errstr)
+	boxName := r.Header.Get("X-Exedev-Box")
+	m.log.ErrorContext(r.Context(), "llmgateway.httpError", "method", r.Method, "path", r.URL.Path, "code", code, "error", errstr, "boxName", boxName)
 }
 
 func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
