@@ -997,7 +997,7 @@ The %s team`, verifyEmailURL, webHost)
 
 	err = s.sendEmail(email, subject, body)
 	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to send auth email", "error", err)
+		s.slog().ErrorContext(r.Context(), "Failed to send auth email", "error", err, "email", email)
 		s.showAuthError(w, r, "Failed to send email. Please try again or contact support.", "")
 		return
 	}
