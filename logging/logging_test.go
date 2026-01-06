@@ -236,6 +236,48 @@ func TestLogMetricsWithAttrsAndGroup(t *testing.T) {
 	require.True(t, found, "logs_total INFO metric not found")
 }
 
+func TestDetachContextHandler_SuppressesContextCanceled(t *testing.T) {
+	var handled []slog.Record
+	mockHandler := &mockSlogHandler{
+		handleFn: func(ctx context.Context, r slog.Record) error {
+			handled = append(handled, r)
+			return nil
+		},
+	}
+
+	h := &detachContextHandler{Handler: mockHandler}
+
+	// Regular error should pass through
+	r1 := slog.NewRecord(time.Now(), slog.LevelError, "regular error", 0)
+	r1.AddAttrs(slog.Any("error", io.EOF))
+	err := h.Handle(context.Background(), r1)
+	require.NoError(t, err)
+	require.Len(t, handled, 1)
+
+	// context.Canceled should be suppressed
+	r2 := slog.NewRecord(time.Now(), slog.LevelError, "canceled error", 0)
+	r2.AddAttrs(slog.Any("error", context.Canceled))
+	err = h.Handle(context.Background(), r2)
+	require.NoError(t, err)
+	require.Len(t, handled, 1) // still 1, not 2
+
+	// Non-error attributes should pass through
+	r3 := slog.NewRecord(time.Now(), slog.LevelError, "no error attr", 0)
+	r3.AddAttrs(slog.String("key", "value"))
+	err = h.Handle(context.Background(), r3)
+	require.NoError(t, err)
+	require.Len(t, handled, 2)
+}
+
+type mockSlogHandler struct {
+	handleFn func(ctx context.Context, r slog.Record) error
+}
+
+func (h *mockSlogHandler) Enabled(ctx context.Context, level slog.Level) bool { return true }
+func (h *mockSlogHandler) Handle(ctx context.Context, r slog.Record) error    { return h.handleFn(ctx, r) }
+func (h *mockSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler           { return h }
+func (h *mockSlogHandler) WithGroup(name string) slog.Handler                 { return h }
+
 func TestSetupLoggerWithMetrics(t *testing.T) {
 	// Create a prometheus registry for testing
 	registry := prometheus.NewRegistry()

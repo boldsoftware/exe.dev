@@ -3,6 +3,7 @@ package logging
 import (
 	"cmp"
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -157,10 +158,35 @@ func setupOTELHandler() slog.Handler {
 // preventing context cancellation from affecting the underlying handler.
 // This is necessary for handlers like slogslack that spawn goroutines
 // using the provided context.
+//
+// It also suppresses posting when the error is context.Canceled.
+// We have found these to be common and more or less uniformly harmless and not actionable.
 type detachContextHandler struct {
 	slog.Handler
 }
 
 func (h *detachContextHandler) Handle(ctx context.Context, r slog.Record) error {
+	// Detect whether there's a context.Canceled error in the record.
+	var suppress bool
+	r.Attrs(func(a slog.Attr) bool {
+		switch a.Key {
+		case "error", "err":
+			// continued below
+		default:
+			return true
+		}
+		err, ok := a.Value.Any().(error)
+		if !ok {
+			return true
+		}
+		if errors.Is(err, context.Canceled) {
+			suppress = true
+		}
+		return false
+	})
+	// If so, suppress posting to Slack.
+	if suppress {
+		return nil
+	}
 	return h.Handler.Handle(context.WithoutCancel(ctx), r)
 }
