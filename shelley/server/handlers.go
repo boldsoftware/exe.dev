@@ -332,10 +332,14 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 		}
 	}
 
-	// Get hostname
+	// Get hostname (add .exe.xyz suffix if no dots, matching system_prompt.go)
 	hostname := "localhost"
 	if h, err := os.Hostname(); err == nil {
-		hostname = h
+		if !strings.Contains(h, ".") {
+			hostname = h + ".exe.xyz"
+		} else {
+			hostname = h
+		}
 	}
 
 	// Get default working directory
