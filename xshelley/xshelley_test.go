@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -33,7 +34,7 @@ func TestGetShelley(t *testing.T) {
 	}
 
 	// Verify the file is in the expected cache location
-	if !filepath.HasPrefix(path, cacheDirPath) {
+	if !strings.HasPrefix(path, cacheDirPath+string(filepath.Separator)) {
 		t.Errorf("Expected path to be in cache dir %s, got %s", cacheDirPath, path)
 	}
 
@@ -93,10 +94,10 @@ func TestGetShelleyMultipleArchitectures(t *testing.T) {
 	}
 
 	// Both should be in cache
-	if !filepath.HasPrefix(pathAmd64, cacheDirPath) {
+	if !strings.HasPrefix(pathAmd64, cacheDirPath+string(filepath.Separator)) {
 		t.Errorf("amd64 path not in cache dir")
 	}
-	if !filepath.HasPrefix(pathArm64, cacheDirPath) {
+	if !strings.HasPrefix(pathArm64, cacheDirPath+string(filepath.Separator)) {
 		t.Errorf("arm64 path not in cache dir")
 	}
 }
