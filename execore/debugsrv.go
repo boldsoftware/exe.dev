@@ -309,7 +309,7 @@ func (s *Server) handleDebugBoxDelete(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("box %q not found", boxName), http.StatusNotFound)
 			return
 		}
-		http.Error(w, fmt.Sprintf("failed to look up box: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("/debug/boxes: failed to look up box by name: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -342,7 +342,7 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("box %q not found", boxName), http.StatusNotFound)
 			return
 		}
-		http.Error(w, fmt.Sprintf("failed to look up box: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("/debug/boxes/detail: failed to look up box by name: %v", err), http.StatusInternalServerError)
 		return
 	}
 
