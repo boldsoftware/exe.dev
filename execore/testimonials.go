@@ -35,7 +35,7 @@ I am... processing this.<br><br>
 	{
 		HTML: `Been using it for just over a week now. Really falling in love with it. Even with out AI coding features, I'm not sure how I'd do local development without it.<br><br>
 <span style="color: #666;">&mdash; <a href="https://bsky.app/profile/launchit.ai/post/3marf3eofgk2k">Mark Roddy</a></span>`,
-		Approved: false,
+		Approved: true,
 	},
 	{
 		HTML: `Daily appreciation for building this - exe.dev and Shelley are amazing! My friends and I (and my dad) have been churning out apps every day!<br><br>
