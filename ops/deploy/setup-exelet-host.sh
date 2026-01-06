@@ -297,8 +297,13 @@ if [ -n "$ROOT_VOLUME_ID" ] && [ "$ROOT_VOLUME_ID" != "None" ]; then
     echo "Tagged root volume ${ROOT_VOLUME_ID} as ${MACHINE_NAME}-root (role=${ROLE}, stage=${STAGE})"
 fi
 if [ -n "$DATA_VOLUME_ID" ] && [ "$DATA_VOLUME_ID" != "None" ]; then
-    aws ec2 create-tags --resources ${DATA_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-data Key=role,Value=${ROLE} Key=stage,Value=${STAGE} --region ${REGION}
-    echo "Tagged data volume ${DATA_VOLUME_ID} as ${MACHINE_NAME}-data (role=${ROLE}, stage=${STAGE})"
+    if [ "$STAGE" = "production" ]; then
+        aws ec2 create-tags --resources ${DATA_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-data Key=role,Value=${ROLE} Key=stage,Value=${STAGE} Key=exe-volume-type,Value=exe-ctr-data --region ${REGION}
+        echo "Tagged data volume ${DATA_VOLUME_ID} as ${MACHINE_NAME}-data (role=${ROLE}, stage=${STAGE}, exe-volume-type=exe-ctr-data)"
+    else
+        aws ec2 create-tags --resources ${DATA_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-data Key=role,Value=${ROLE} Key=stage,Value=${STAGE} --region ${REGION}
+        echo "Tagged data volume ${DATA_VOLUME_ID} as ${MACHINE_NAME}-data (role=${ROLE}, stage=${STAGE})"
+    fi
 fi
 
 # Wait for instance to be running
