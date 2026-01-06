@@ -14,9 +14,9 @@ type commandLogKey struct{}
 // similar to sloghttp for HTTP requests. It allows handlers to add
 // custom attributes that will be included in the final command completion log.
 type CommandLog struct {
-	mu       sync.Mutex
-	attrs    []slog.Attr
-	start    time.Time
+	mu        sync.Mutex
+	attrs     []slog.Attr
+	start     time.Time
 	durations map[string]time.Duration
 }
 
