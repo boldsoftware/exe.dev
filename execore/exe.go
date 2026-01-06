@@ -1646,7 +1646,11 @@ func (s *Server) createBoxShardDNSRecord(ctx context.Context, boxName string, sh
 	dnsCtx, cancel := context.WithTimeout(ctx, 30*time.Second) // TODO: 30s seems like a lot
 	defer cancel()
 
-	if err := s.bsdns.UpsertBoxRecord(dnsCtx, s.env.BoxHost, boxName, shard); err != nil {
+	start := time.Now()
+	err := s.bsdns.UpsertBoxRecord(dnsCtx, s.env.BoxHost, boxName, shard)
+	CommandLogAddDuration(ctx, "dns", time.Since(start))
+
+	if err != nil {
 		return fmt.Errorf("failed to create DNS record for box %s: %w", boxName, err)
 	}
 	return nil

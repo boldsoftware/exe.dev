@@ -530,12 +530,42 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 		}
 
 		// Execute command using new system
-		rc := ss.commands.ExecuteCommand(ctx, cc, parts)
+		rc := ss.executeCommandWithLogging(ctx, cc, parts)
 		if rc == -1 {
 			// EOF
 			return
 		}
 	}
+}
+
+// executeCommandWithLogging wraps ExecuteCommand to add structured logging
+// with timing information and accumulated attributes (similar to sloghttp).
+func (ss *SSHServer) executeCommandWithLogging(ctx context.Context, cc *exemenu.CommandContext, parts []string) int {
+	start := time.Now()
+	cl := NewCommandLog(start)
+	ctx = WithCommandLog(ctx, cl)
+
+	rc := ss.commands.ExecuteCommand(ctx, cc, parts)
+
+	// Build log attributes
+	attrs := []any{
+		"log_type", "ssh_command",
+		"command", strings.Join(parts, " "),
+		"rc", rc,
+		"duration", time.Since(start),
+	}
+	if cc.User != nil {
+		attrs = append(attrs, "user_id", cc.User.ID)
+	}
+
+	// Add accumulated attributes from handlers
+	for _, attr := range cl.Attrs() {
+		attrs = append(attrs, attr.Key, attr.Value.Any())
+	}
+
+	ss.server.slog().InfoContext(ctx, "ssh command completed", attrs...)
+
+	return rc
 }
 
 // showAnimatedWelcome displays the ASCII art with a beautiful fade-out animation
@@ -898,8 +928,7 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 	}
 
 	var ctx context.Context = s.Context()
-	rc := ss.commands.ExecuteCommand(ctx, cc, cmd) // Just the command name
-	ss.server.slog().DebugContext(ctx, "ssh exec command completed", "command", strings.Join(cmd, " "), "rc", rc)
+	rc := ss.executeCommandWithLogging(ctx, cc, cmd)
 	if rc > 0 {
 		s.Close()
 		s.Exit(rc)

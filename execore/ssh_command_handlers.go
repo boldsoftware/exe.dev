@@ -588,8 +588,10 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		}
 
 		// Call CreateInstance
+		exeletStart := time.Now()
 		stream, err := exeletClient.client.CreateInstance(ctx, createReq)
 		if err != nil {
+			CommandLogAddDuration(ctx, "exelet_rpc", time.Since(exeletStart))
 			// Check if this is a client error (user input issue)
 			if s, ok := status.FromError(err); ok && s.Code() == codes.InvalidArgument {
 				completionChan <- instanceCompletion{
@@ -613,6 +615,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 				break
 			}
 			if err != nil {
+				CommandLogAddDuration(ctx, "exelet_rpc", time.Since(exeletStart))
 				// Check if this is a client error (user input issue)
 				if s, ok := status.FromError(err); ok && s.Code() == codes.InvalidArgument {
 					completionChan <- instanceCompletion{
@@ -644,6 +647,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 				instance = v.Instance
 			}
 		}
+		CommandLogAddDuration(ctx, "exelet_rpc", time.Since(exeletStart))
 
 		if instance == nil {
 			completionChan <- instanceCompletion{
