@@ -84,7 +84,7 @@ func SetupLogger(env stage.Env, registry *prometheus.Registry) {
 			BotToken: slackBotToken,
 			Channel:  env.LogErrorSlackChannel,
 		}
-		handler = slogmulti.Fanout(handler, opt.NewSlackHandler())
+		handler = slogmulti.Fanout(handler, &detachContextHandler{opt.NewSlackHandler()})
 	}
 
 	// Add OTEL handler if OTEL_EXPORTER_OTLP_ENDPOINT is configured
@@ -148,4 +148,16 @@ func setupOTELHandler() slog.Handler {
 	}
 
 	return otelslog.NewHandler(scopeName, otelslog.WithLoggerProvider(lp))
+}
+
+// detachContextHandler wraps a slog.Handler to use context.WithoutCancel,
+// preventing context cancellation from affecting the underlying handler.
+// This is necessary for handlers like slogslack that spawn goroutines
+// using the provided context.
+type detachContextHandler struct {
+	slog.Handler
+}
+
+func (h *detachContextHandler) Handle(ctx context.Context, r slog.Record) error {
+	return h.Handler.Handle(context.WithoutCancel(ctx), r)
 }
