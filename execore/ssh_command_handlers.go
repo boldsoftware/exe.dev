@@ -775,7 +775,7 @@ done:
 
 	if createErr != nil {
 		// Clean up the pre-created box entry since container creation failed
-		if err := ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		if err := ss.server.db.Tx(context.WithoutCancel(ctx), func(ctx context.Context, tx *sqlite.Tx) error {
 			queries := exedb.New(tx.Conn())
 			return queries.DeleteBox(ctx, boxID)
 		}); err != nil {
