@@ -41,6 +41,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
 	mux.HandleFunc("POST /debug/new-throttle", s.handleDebugNewThrottlePost)
 	mux.HandleFunc("/debug/ipshards", s.handleDebugIPShards)
+	mux.HandleFunc("GET /debug/log", s.handleDebugLogForm)
 	mux.HandleFunc("POST /debug/log", s.handleDebugLog)
 	mux.HandleFunc("/debug/testimonials", s.handleDebugTestimonials)
 
@@ -89,7 +90,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/exelets">exelets</a> (<a href="/debug/exelets?format=json">json</a>)</li>
     <li><a href="/debug/new-throttle">new-throttle</a> (<a href="/debug/new-throttle?format=json">json</a>)</li>
     <li><a href="/debug/ipshards">ipshards</a> (<a href="/debug/ipshards?format=json">json</a>)</li>
-    <li>/debug/log (POST text=... to log an error)</li>
+    <li><a href="/debug/log">/debug/log</a> (POST text=... to log an error)</li>
     <li><a href="/debug/testimonials">testimonials</a></li>
 </ul>
 <p>Git version: %s %s</p>
@@ -1347,6 +1348,21 @@ th { background: #f5f5f5; }
 	}
 
 	fmt.Fprintf(w, `</body></html>
+`)
+}
+
+// handleDebugLogForm renders a simple form to log an error message.
+func (s *Server) handleDebugLogForm(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>Log Error</title></head><body>
+<h1>Log Error</h1>
+<p><a href="/debug">/debug</a></p>
+<form method="post">
+<input type="text" name="text" value="testing" size="40">
+<button type="submit">Log That</button>
+</form>
+</body></html>
 `)
 }
 
