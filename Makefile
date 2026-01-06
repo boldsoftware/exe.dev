@@ -108,12 +108,12 @@ deploy-piperd-staging: ## Deploy sshpiperd to staging
 
 deploy-what: ## Show commits that would deploy to production
 	@echo ""
-	@echo "./ops/deploy-what.sh"
+	@echo "./ops/deploy/deploy-what.sh"
 	@echo ""
 
 deploy-qa: ## Ask claude for a QA/testing plan for pending changes
 	@echo ""
-	@echo "./ops/deploy-qa.sh"
+	@echo "./ops/deploy/deploy-qa.sh"
 	@echo ""
 
 run-dev: ## Run exed locally for development
