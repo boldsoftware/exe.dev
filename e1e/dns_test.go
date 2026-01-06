@@ -3,6 +3,7 @@ package e1e
 import (
 	"context"
 	"net"
+	"sync"
 	"testing"
 
 	"codeberg.org/miekg/dns"
@@ -63,13 +64,19 @@ func TestEmbeddedDNS(t *testing.T) {
 	}
 	addr := ln.LocalAddr().String()
 
+	var started sync.Mutex
+	started.Lock()
 	dnsServer := &dns.Server{
 		PacketConn: ln,
 		Net:        "udp",
 		Handler:    mux,
+		NotifyStartedFunc: func(context.Context) {
+			started.Unlock()
+		},
 	}
 
 	go dnsServer.ActivateAndServe()
+	started.Lock() // Wait for server to be fully initialized before allowing shutdown
 	defer dnsServer.Shutdown(ctx)
 
 	// Create DNS client
