@@ -482,3 +482,60 @@ func TestEdgeCases(t *testing.T) {
 		})
 	}
 }
+
+func TestAddCoauthorTrailer(t *testing.T) {
+	trailer := "Co-authored-by: Shelley <shelley@exe.dev>"
+	tests := []struct {
+		name   string
+		script string
+		want   string
+	}{
+		{
+			name:   "simple git commit",
+			script: `git commit -m "Add feature"`,
+			want:   `git commit --trailer "Co-authored-by: Shelley <shelley@exe.dev>" -m "Add feature"`,
+		},
+		{
+			name:   "git commit with -am",
+			script: `git commit -am "Fix bug"`,
+			want:   `git commit --trailer "Co-authored-by: Shelley <shelley@exe.dev>" -am "Fix bug"`,
+		},
+		{
+			name:   "no git commit",
+			script: `git status`,
+			want:   `git status`,
+		},
+		{
+			name:   "git with flags before commit",
+			script: `git -C /path/to/repo commit -m "Update"`,
+			want:   `git -C /path/to/repo commit --trailer "Co-authored-by: Shelley <shelley@exe.dev>" -m "Update"`,
+		},
+		{
+			name:   "pipeline with git commit",
+			script: `git add file.go && git commit -m "Add file"`,
+			want:   `git add file.go && git commit --trailer "Co-authored-by: Shelley <shelley@exe.dev>" -m "Add file"`,
+		},
+		{
+			name:   "non-git command",
+			script: `echo hello`,
+			want:   `echo hello`,
+		},
+		{
+			name:   "invalid syntax unchanged",
+			script: `git commit -m 'unterminated`,
+			want:   `git commit -m 'unterminated`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := AddCoauthorTrailer(tc.script, trailer)
+			// Normalize whitespace for comparison
+			gotNorm := strings.Join(strings.Fields(got), " ")
+			wantNorm := strings.Join(strings.Fields(tc.want), " ")
+			if gotNorm != wantNorm {
+				t.Errorf("AddCoauthorTrailer() =\n%q\nwant:\n%q", got, tc.want)
+			}
+		})
+	}
+}

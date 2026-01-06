@@ -1,6 +1,7 @@
 package bashkit
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"sync"
@@ -142,6 +143,87 @@ func hasBlindGitAdd(cmd *syntax.CallExpr) bool {
 	}
 
 	return false
+}
+
+// AddCoauthorTrailer modifies a bash script to add a Co-authored-by trailer
+// to any git commit commands. Returns the modified script.
+func AddCoauthorTrailer(bashScript, trailer string) string {
+	r := strings.NewReader(bashScript)
+	parser := syntax.NewParser(syntax.KeepComments(true))
+	file, err := parser.Parse(r, "")
+	if err != nil {
+		// Can't parse, return original
+		return bashScript
+	}
+
+	modified := false
+	syntax.Walk(file, func(node syntax.Node) bool {
+		callExpr, ok := node.(*syntax.CallExpr)
+		if !ok {
+			return true
+		}
+		if addTrailerToGitCommit(callExpr, trailer) {
+			modified = true
+		}
+		return true
+	})
+
+	if !modified {
+		return bashScript
+	}
+
+	var buf bytes.Buffer
+	printer := syntax.NewPrinter()
+	if err := printer.Print(&buf, file); err != nil {
+		return bashScript
+	}
+	return buf.String()
+}
+
+// addTrailerToGitCommit adds --trailer to a git commit command.
+// Returns true if the command was modified.
+func addTrailerToGitCommit(cmd *syntax.CallExpr, trailer string) bool {
+	if !isGitCommitCommand(cmd) {
+		return false
+	}
+
+	// Find where to insert --trailer (right after "commit")
+	insertIdx := -1
+	for i := 1; i < len(cmd.Args); i++ {
+		if cmd.Args[i].Lit() == "commit" {
+			insertIdx = i + 1
+			break
+		}
+	}
+	if insertIdx < 0 {
+		return false
+	}
+
+	// Create --trailer argument
+	trailerArg := &syntax.Word{
+		Parts: []syntax.WordPart{
+			&syntax.Lit{Value: "--trailer"},
+		},
+	}
+	// Create the trailer value argument
+	trailerVal := &syntax.Word{
+		Parts: []syntax.WordPart{
+			&syntax.DblQuoted{
+				Parts: []syntax.WordPart{
+					&syntax.Lit{Value: trailer},
+				},
+			},
+		},
+	}
+
+	// Insert the two new arguments
+	newArgs := make([]*syntax.Word, 0, len(cmd.Args)+2)
+	newArgs = append(newArgs, cmd.Args[:insertIdx]...)
+	newArgs = append(newArgs, trailerArg, trailerVal)
+	newArgs = append(newArgs, cmd.Args[insertIdx:]...)
+	cmd.Args = newArgs
+
+	return true
 }
 
 // isGitCommitCommand checks if a command is 'git commit'.
