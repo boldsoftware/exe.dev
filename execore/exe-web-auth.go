@@ -21,6 +21,7 @@ import (
 	"exe.dev/billing"
 	"exe.dev/domz"
 	"exe.dev/exedb"
+	"exe.dev/sqlite"
 	"exe.dev/stage"
 	_ "modernc.org/sqlite"
 )
@@ -144,6 +145,34 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		if redirectURL != "" || returnHost != "" {
 			// This is a web auth flow, perform redirect after authentication
 			s.redirectAfterAuth(w, r, userID)
+			return
+		}
+
+		// Check for pending mobile VM creation tied to this token
+		var hostname, prompt string
+		err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+			row := rx.Conn().QueryRowContext(ctx, `SELECT hostname, prompt FROM mobile_pending_vm WHERE token = ?`, token)
+			return row.Scan(&hostname, &prompt)
+		})
+		if err == nil && hostname != "" {
+			// Clean up the pending record
+			_ = s.db.Tx(context.WithoutCancel(r.Context()), func(ctx context.Context, tx *sqlite.Tx) error {
+				_, err := tx.Conn().ExecContext(ctx, `DELETE FROM mobile_pending_vm WHERE token = ?`, token)
+				return err
+			})
+
+			// Check if user needs billing before starting creation
+			if !s.env.SkipBilling {
+				needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
+				if err == nil && needsBilling != nil && *needsBilling {
+					http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
+					return
+				}
+			}
+
+			// Start box creation in background and redirect to dashboard
+			s.startBoxCreation(r.Context(), hostname, prompt, userID)
+			http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
 			return
 		}
 	}

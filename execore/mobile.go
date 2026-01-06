@@ -243,7 +243,6 @@ func (s *Server) handleMobile(w http.ResponseWriter, r *http.Request) {
 	mux.HandleFunc("/create-vm", s.handleMobileCreateVM)
 	mux.HandleFunc("/email-auth", s.handleMobileEmailAuth)
 	mux.HandleFunc("POST /verify-token", s.handleMobileVerifyTokenManualEntry)
-	mux.HandleFunc("GET /verify-token", s.handleMobileVerifyTokenEmailLink)
 	mux.HandleFunc("/home", s.handleMobileVMList)
 	mux.HandleFunc("/creating/stream", s.handleMobileCreatingStream)
 	mux.HandleFunc("/box/creation-log", s.handleBoxCreationLog)
@@ -481,8 +480,8 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Send verification email - use webBaseURLNoRequest to ensure the main domain URL
-	verifyURL := fmt.Sprintf("%s/m/verify-token?token=%s", s.webBaseURLNoRequest(), token)
+	// Send verification email - use the standard /verify-email endpoint (requires POST confirmation)
+	verifyURL := fmt.Sprintf("%s/verify-email?token=%s", s.webBaseURLNoRequest(), token)
 	subject := fmt.Sprintf("Verify your email - %s", s.env.WebHost)
 	body := fmt.Sprintf(`Hello,
 
@@ -490,14 +489,10 @@ Please click the link below to verify your email and complete your setup:
 
 %s
 
-Or enter this token:
-
-%s
-
 This link will expire in 24 hours.
 
 Best regards,
-The %s team`, verifyURL, token, s.env.WebHost)
+The %s team`, verifyURL, s.env.WebHost)
 
 	err = s.sendEmail(email, subject, body)
 	if err != nil {
@@ -522,74 +517,6 @@ The %s team`, verifyURL, token, s.env.WebHost)
 	}
 
 	s.renderTemplate(w, "email-sent.html", data)
-}
-
-// handleMobileVerifyTokenEmailLink handles token verification via clicked email link
-func (s *Server) handleMobileVerifyTokenEmailLink(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		http.Error(w, "Missing token", http.StatusBadRequest)
-		return
-	}
-
-	userID, err := s.validateEmailVerificationToken(r.Context(), token)
-	if err != nil {
-		http.Error(w, "Invalid or expired token", http.StatusBadRequest)
-		return
-	}
-	s.slackFeed.EmailVerified(r.Context(), userID)
-
-	// Create auth cookie
-	cookieValue, err := s.createAuthCookie(r.Context(), userID, r.Host)
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to create auth cookie", "error", err)
-		http.Error(w, "Authentication failed", http.StatusInternalServerError)
-		return
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "exe-auth",
-		Value:    cookieValue,
-		Path:     "/",
-		Expires:  time.Now().Add(30 * 24 * time.Hour),
-		Secure:   s.servingHTTPS(),
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-
-	// If we have a pending VM tied to this token, start creation and redirect to dashboard
-	var hostname, prompt string
-	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		row := rx.Conn().QueryRowContext(ctx, `SELECT hostname, prompt FROM mobile_pending_vm WHERE token = ?`, token)
-		return row.Scan(&hostname, &prompt)
-	})
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
-		s.slog().ErrorContext(r.Context(), "Failed to query pending mobile VM by token", "error", err)
-		http.Error(w, "Failed to process request", http.StatusInternalServerError)
-		return
-	}
-	if hostname != "" {
-		// Check if user needs billing before starting creation (only new users need billing)
-		// Skip this check if SkipBilling is set (for tests)
-		if !s.env.SkipBilling {
-			needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
-			if err == nil && needsBilling != nil && *needsBilling {
-				// User needs to add billing before creating a VM
-				http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
-				return
-			}
-		}
-
-		// Start box creation in background
-		s.startBoxCreation(r.Context(), hostname, prompt, userID)
-		http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
-		return
-	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // handleMobileVerifyTokenManualEntry handles token verification via manual entry form

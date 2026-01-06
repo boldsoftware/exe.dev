@@ -133,25 +133,27 @@ func TestRegisterWebThenKey(t *testing.T) {
 		t.Fatalf("unexpected status %d from /m/email-auth: %s", resp.StatusCode, string(body))
 	}
 
-	// Verify the email using the mobile flow link
+	// Verify the email using the standard flow (requires POST confirmation)
 	emailMsg, err := Env.servers.Email.WaitForEmail(email)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mobileRe := regexp.MustCompile(`http://localhost:\d+/m/verify-token\?token=[a-zA-Z0-9]+`)
-	verifyLink := mobileRe.FindString(emailMsg.Body)
-	if verifyLink == "" {
-		t.Fatalf("did not find mobile verify link in email:\n%s", emailMsg.Body)
+	tokenRe := regexp.MustCompile(`http://localhost:\d+/verify-email\?token=([a-zA-Z0-9]+)`)
+	matches := tokenRe.FindStringSubmatch(emailMsg.Body)
+	if len(matches) < 2 {
+		t.Fatalf("did not find verify link in email:\n%s", emailMsg.Body)
 	}
+	token := matches[1]
 
-	verifyResp, err := http.Get(verifyLink)
+	// POST to verify the token (standard flow requires POST confirmation)
+	verifyResp, err := http.PostForm(baseURL+"/verify-email", url.Values{"token": {token}})
 	if err != nil {
-		t.Fatalf("GET mobile verify link: %v", err)
+		t.Fatalf("POST verify: %v", err)
 	}
 	verifyRespBody, _ := io.ReadAll(verifyResp.Body)
 	verifyResp.Body.Close()
-	if verifyResp.StatusCode != http.StatusOK && verifyResp.StatusCode != http.StatusTemporaryRedirect {
-		t.Fatalf("mobile verify returned status %d body %q", verifyResp.StatusCode, string(verifyRespBody))
+	if verifyResp.StatusCode != http.StatusOK && verifyResp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("verify returned status %d body %q", verifyResp.StatusCode, string(verifyRespBody))
 	}
 
 	keyFile, publicKey := genSSHKey(t)

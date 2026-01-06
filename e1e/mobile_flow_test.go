@@ -81,27 +81,33 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 		t.Fatalf("unexpected email sent page: status=%d body=%q", resp.StatusCode, string(body))
 	}
 
-	// 4) Click verify link from email (uses the mobile /m/verify-token?token=... link)
+	// 4) Click verify link from email (uses the standard /verify-email?token=... link)
 	emailMsg, err := Env.servers.Email.WaitForEmail(email)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Extract first URL to /m/verify-token?token=...
-	re := regexp.MustCompile(`http://localhost:\d+/m/verify-token\?token=[a-zA-Z0-9]+`)
-	m := re.FindString(emailMsg.Body)
-	if m == "" {
-		t.Fatalf("did not find mobile verify link in email:\n%s", emailMsg.Body)
+	// Extract token from verification URL
+	re := regexp.MustCompile(`http://localhost:\d+/verify-email\?token=([a-zA-Z0-9]+)`)
+	matches := re.FindStringSubmatch(emailMsg.Body)
+	if len(matches) < 2 {
+		t.Fatalf("did not find verify link in email:\n%s", emailMsg.Body)
 	}
+	token := matches[1]
+
 	// Use a fresh client+jar to follow redirects and retain cookies
 	jar2, _ := cookiejar.New(nil)
 	client2 := &http.Client{Jar: jar2, Timeout: 5 * time.Minute}
-	verifyResp, err := client2.Get(m)
+
+	// POST to verify the token (standard flow requires POST confirmation)
+	verifyForm := url.Values{}
+	verifyForm.Set("token", token)
+	verifyResp, err := client2.PostForm(base+"/verify-email", verifyForm)
 	if err != nil {
-		t.Fatalf("GET verify link: %v", err)
+		t.Fatalf("POST verify: %v", err)
 	}
 	verifyRespBody, _ := io.ReadAll(verifyResp.Body)
 	verifyResp.Body.Close()
-	if verifyResp.StatusCode != http.StatusOK && verifyResp.StatusCode != http.StatusTemporaryRedirect {
+	if verifyResp.StatusCode != http.StatusOK && verifyResp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("bad verify response status: %d\n%s", verifyResp.StatusCode, verifyRespBody)
 	}
 
