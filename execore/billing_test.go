@@ -25,9 +25,9 @@ func TestBillingRequiredForNewVM_WebUI(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Set user's created_at to after the billing requirement date (2026-01-07 21:00:00 UTC)
+	// Set user's created_at to after the billing requirement date (2026-01-06 23:10:00 UTC)
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 21:00:01' WHERE user_id = ?`, user.UserID)
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
 		return err
 	})
 	if err != nil {
@@ -69,9 +69,9 @@ func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Set user's created_at to after the billing requirement date (2026-01-07 21:00:00 UTC)
+	// Set user's created_at to after the billing requirement date (2026-01-06 23:10:00 UTC)
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 21:00:01' WHERE user_id = ?`, user.UserID)
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
 		return err
 	})
 	if err != nil {
@@ -230,9 +230,9 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Set user's created_at to after the billing requirement date (2026-01-07 21:00:00 UTC)
+	// Set user's created_at to after the billing requirement date (2026-01-06 23:10:00 UTC)
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 21:00:01' WHERE user_id = ?`, user.UserID)
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
 		return err
 	})
 	if err != nil {
@@ -288,16 +288,16 @@ func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Update user's created_at to before the billing requirement date (2026-01-07 21:00 UTC)
+	// Update user's created_at to before the billing requirement date (2026-01-06 23:10 UTC)
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 20:59:59' WHERE user_id = ?`, user.UserID)
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:09:59' WHERE user_id = ?`, user.UserID)
 		return err
 	})
 	if err != nil {
 		t.Fatalf("Failed to update user created_at: %v", err)
 	}
 
-	// Legacy user (created before 2026-01-07 21:00 UTC) should NOT need billing even without an account
+	// Legacy user (created before 2026-01-06 23:10 UTC) should NOT need billing even without an account
 	needsBilling, err := withRxRes1(server, t.Context(), (*exedb.Queries).UserNeedsBilling, user.UserID)
 	if err != nil {
 		t.Fatalf("UserNeedsBilling query failed: %v", err)
@@ -306,7 +306,7 @@ func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
 		t.Fatal("UserNeedsBilling returned nil")
 	}
 	if *needsBilling {
-		t.Error("Expected legacy user (created before 2026-01-07 21:00 UTC) to NOT need billing")
+		t.Error("Expected legacy user (created before 2026-01-06 23:10 UTC) to NOT need billing")
 	}
 }
 
@@ -332,9 +332,9 @@ func TestBillingBypassBug(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Set user's created_at to after the billing requirement date (2026-01-07 21:00:00 UTC)
+	// Set user's created_at to after the billing requirement date (2026-01-06 23:10:00 UTC)
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 21:00:01' WHERE user_id = ?`, user.UserID)
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
 		return err
 	})
 	if err != nil {
@@ -421,9 +421,9 @@ func TestBillingSuccessBypassWithFakeSessionID(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Set user's created_at to after the billing requirement date (2026-01-07 21:00:00 UTC)
+	// Set user's created_at to after the billing requirement date (2026-01-06 23:10:00 UTC)
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 21:00:01' WHERE user_id = ?`, user.UserID)
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
 		return err
 	})
 	if err != nil {
@@ -494,7 +494,7 @@ func TestDebugForceBillingForLegacyUser(t *testing.T) {
 
 	// Update user's created_at to before the billing requirement date (make them a legacy user)
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 20:59:59' WHERE user_id = ?`, user.UserID)
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:09:59' WHERE user_id = ?`, user.UserID)
 		return err
 	})
 	if err != nil {
