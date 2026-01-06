@@ -42,6 +42,11 @@ I am... processing this.<br><br>
 <span style="color: #666;">&mdash; conti, Discord</span>`,
 		Approved: true,
 	},
+	{
+		HTML: `Seriously don't die. I haven't found a service I could code on my phone from like this. It's amazing. Now I'm programming remote servers. Stopped using copilot...<br><br>
+<span style="color: #666;">&mdash; Asim, Discord</span>`,
+		Approved: true,
+	},
 }
 
 // ApprovedTestimonials returns all approved testimonials.
