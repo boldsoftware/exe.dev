@@ -219,6 +219,7 @@ func (cc *CommandContext) WriteInternalError(ctx context.Context, cmd string, er
 		"error", err,
 		"user_id", cc.User.ID,
 		"public_key", cc.PublicKey,
+		"cmd", cmd,
 		"args", cc.Args,
 		"guid", guid,
 	}
