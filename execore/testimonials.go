@@ -42,6 +42,12 @@ Shelley needs advertised more in your docs and website. It has got me hooked! it
 Been using it for just over a week now. Really falling in love with it. Even with out AI coding features, I'm not sure how I'd do local development without it.`,
 		Approved: false,
 	},
+	{
+		HTML: `<strong>conti</strong><br>
+<span style="color: #666;">Discord</span><br><br>
+Daily appreciation for building this - exe.dev and Shelley are amazing! My friends and I (and my dad) have been churning out apps every day!`,
+		Approved: true,
+	},
 }
 
 // ApprovedTestimonials returns all approved testimonials.
