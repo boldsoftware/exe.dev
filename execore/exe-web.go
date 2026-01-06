@@ -15,6 +15,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/netip"
@@ -743,6 +744,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 // handleLovePage serves the /love page with testimonials.
 func (s *Server) handleLovePage(w http.ResponseWriter, r *http.Request) {
 	approved := ApprovedTestimonials()
+	rand.Shuffle(len(approved), func(i, j int) {
+		approved[i], approved[j] = approved[j], approved[i]
+	})
 	type testimonialView struct {
 		HTML template.HTML
 	}
