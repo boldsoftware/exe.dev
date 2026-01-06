@@ -16,6 +16,8 @@ var denySubstrings = []string{
 	"erectile", "fatigue", "fibromyalgia", "gabapentin", "herpes", "hiv", "insomnia", "levitra", "lupus",
 	"melatonin", "narcotic", "opioid", "oxycodone", "painkiller", "parkinson", "pharmacy", "prescription",
 	"prozac", "sildenafil", "sleepaid", "tramadol", "viagra", "xanax", "zolpidem",
+
+	"exelet", // reserved for assorted exelet-specific uses
 }
 
 // reserved is a list of reserved or denylisted box names.
