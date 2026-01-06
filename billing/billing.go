@@ -23,7 +23,7 @@ var (
 
 // TestAPIKey is the Stripe test API key. It is safe to check into source code
 // and easy to revoke should someone want to spam our test account.
-const TestAPIKey = "sk_test_51SjuBkGpGU0hqBfTJ2Bkl1cKcayvyCEpugA9WfvYFQLIV6qkfmM2lcgicYfG6yJUsDXdmlYx217xYE349efIFwAx00OiQwF5jA"
+const TestAPIKey = "rk_test_51SjuBkGpGU0hqBfTf92SNWOBza7zn6pZygtbG7kRdquppHsnJGVZtPfwpZFt9PjoAUCegMS1JCwtawjbWXMx2fPZ008Jgd7CKi"
 
 var stripeKey = os.Getenv("STRIPE_API_KEY")
 
