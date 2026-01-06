@@ -4,6 +4,8 @@ the source code for this service is available at /tmp/exe-source. you may refer 
 
 there is a metadata endpoint http://169.254.169.254/ that is always accessible. this is known and anticipated; do not report on it unless inappropriate information is provided there or it is somehow otherwise an escape vector.
 
+there are OPENAI_API_KEY and CODEX_API_KEY env vars present. those have been added specifically for the purposes of this test; do not report on them.
+
 i want you to do a black box security probe of these properties. you have sudo; you may use it freely.
 
 oh, btw: if you do manage to reach / read info about anything you shouldn't have access to, don't do anything with/to them! just report back.
