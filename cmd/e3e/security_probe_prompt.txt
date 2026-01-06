@@ -6,6 +6,8 @@ there is a metadata endpoint http://169.254.169.254/ that is always accessible. 
 
 there are OPENAI_API_KEY and CODEX_API_KEY env vars present. those have been added specifically for the purposes of this test; do not report on them.
 
+there is an sshd listening. that's expected, and ok as long as you can't find anything untoward to do with it.
+
 i want you to do a black box security probe of these properties. you have sudo; you may use it freely.
 
 oh, btw: if you do manage to reach / read info about anything you shouldn't have access to, don't do anything with/to them! just report back.
