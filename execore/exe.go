@@ -1347,7 +1347,7 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 	// Check email quality for new users (outside the transaction)
 	if isNewUser {
 		if err := s.checkEmailQuality(context.WithoutCancel(ctx), userID, email); err != nil {
-			s.slog().ErrorContext(ctx, "email quality check failed", "error", err, "email", email)
+			s.slog().WarnContext(ctx, "email quality check failed", "error", err, "email", email)
 		}
 	}
 
@@ -2401,7 +2401,7 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exed
 
 	// Check email quality and disable VM creation if disposable
 	if err := s.checkEmailQuality(context.WithoutCancel(ctx), user.UserID, email); err != nil {
-		s.slog().ErrorContext(ctx, "email quality check failed", "error", err, "email", email)
+		s.slog().WarnContext(ctx, "email quality check failed", "error", err, "email", email)
 	}
 
 	// Resolve any pending shares for this email
