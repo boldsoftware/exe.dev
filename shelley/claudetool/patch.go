@@ -103,6 +103,10 @@ Recipes:
 Usage notes:
 - All inputs are interpreted literally (no automatic newline or whitespace handling)
 - For replace operations, oldText must appear EXACTLY ONCE in the file
+
+IMPORTANT: Each patch call must be less than 60k tokens total. For large file
+changes, break them into multiple smaller patch operations rather than one
+large overwrite. Prefer incremental replace operations over full file overwrites.
 `
 
 	// If you modify this, update the termui template for prettier rendering.
@@ -317,7 +321,7 @@ func (p *PatchTool) patchParse(m json.RawMessage) (PatchInput, error) {
 		originalErr = err
 	}
 	var inputOneString PatchInputOneString
-	if err := json.Unmarshal(m, &inputOneString); err == nil {
+	if err := json.Unmarshal(m, &inputOneString); err == nil && inputOneString.Patches != "" {
 		var onePatch PatchRequest
 		if err := json.Unmarshal([]byte(inputOneString.Patches), &onePatch); err == nil && onePatch.Operation != "" {
 			return PatchInput{Path: inputOneString.Path, Patches: []PatchRequest{onePatch}}, nil
@@ -330,6 +334,10 @@ func (p *PatchTool) patchParse(m json.RawMessage) (PatchInput, error) {
 		} else if originalErr == nil {
 			originalErr = err
 		}
+	}
+	// If JSON parsed but patches field was missing/empty, provide a clear error
+	if originalErr == nil {
+		return PatchInput{}, fmt.Errorf("patches field is missing or empty (this may indicate a truncated LLM response)\nJSON: %s", string(m))
 	}
 	return PatchInput{}, fmt.Errorf("failed to unmarshal patch input: %w\nJSON: %s", originalErr, string(m))
 }

@@ -107,6 +107,9 @@ installs, tests, or any other substantive operation.
 
 To change the working directory persistently, use the change_dir tool.
 
+IMPORTANT: Keep commands concise. The command input must be less than 60k tokens.
+For complex scripts, write them to a file first and then execute the file.
+
 <pwd>%s</pwd>
 `
 	// If you modify this, update the termui template for prettier rendering.

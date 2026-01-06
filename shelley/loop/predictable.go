@@ -124,6 +124,10 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 		// Trigger a patch with malformed JSON (simulates Anthropic sending invalid JSON)
 		return s.makeMalformedPatchToolResponse(inputTokens), nil
 
+	case "maxTokens":
+		// Simulate a max_tokens truncation
+		return s.makeMaxTokensResponse("This is a truncated response that was cut off mid-sentence because the output token limit was", inputTokens), nil
+
 	default:
 		// Handle pattern-based inputs
 		if strings.HasPrefix(inputText, "echo: ") {
@@ -172,6 +176,29 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 
 		// Default response for undefined inputs
 		return s.makeResponse("edit predictable.go to add a response for that one...", inputTokens), nil
+	}
+}
+
+// makeMaxTokensResponse creates a response that simulates hitting max_tokens limit
+func (s *PredictableService) makeMaxTokensResponse(text string, inputTokens uint64) *llm.Response {
+	outputTokens := uint64(len(text) / 4)
+	if outputTokens == 0 {
+		outputTokens = 1
+	}
+	return &llm.Response{
+		ID:    fmt.Sprintf("pred-%d", time.Now().UnixNano()),
+		Type:  "message",
+		Role:  llm.MessageRoleAssistant,
+		Model: "predictable-v1",
+		Content: []llm.Content{
+			{Type: llm.ContentTypeText, Text: text},
+		},
+		StopReason: llm.StopReasonMaxTokens,
+		Usage: llm.Usage{
+			InputTokens:  inputTokens,
+			OutputTokens: outputTokens,
+			CostUSD:      0.001,
+		},
 	}
 }
 

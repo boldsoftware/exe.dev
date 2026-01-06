@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1162,5 +1163,79 @@ func runGit(t *testing.T, dir string, args ...string) {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v failed: %v\n%s", args, err, output)
+	}
+}
+
+func TestMaxTokensTruncation(t *testing.T) {
+	var recordedMessages []llm.Message
+	var mu sync.Mutex
+
+	recordFunc := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
+		mu.Lock()
+		defer mu.Unlock()
+		recordedMessages = append(recordedMessages, message)
+		return nil
+	}
+
+	service := NewPredictableService()
+	loop := NewLoop(Config{
+		LLM:           service,
+		History:       []llm.Message{},
+		Tools:         []*llm.Tool{},
+		RecordMessage: recordFunc,
+	})
+
+	// Queue a user message that triggers max_tokens response
+	userMessage := llm.Message{
+		Role:    llm.MessageRoleUser,
+		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "maxTokens"}},
+	}
+	loop.QueueUserMessage(userMessage)
+
+	// Process the turn - should end with error message about truncation
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := loop.ProcessOneTurn(ctx)
+	if err != nil {
+		t.Fatalf("ProcessOneTurn failed: %v", err)
+	}
+
+	// Check that messages were recorded:
+	// 1. First assistant message (truncated)
+	// 2. User error message about truncation
+	mu.Lock()
+	numMessages := len(recordedMessages)
+	mu.Unlock()
+
+	if numMessages != 2 {
+		mu.Lock()
+		for i, msg := range recordedMessages {
+			t.Logf("Message %d: role=%v, content=%v", i, msg.Role, msg.Content)
+		}
+		mu.Unlock()
+		t.Fatalf("expected 2 recorded messages (truncated response, error message), got %d", numMessages)
+	}
+
+	// Verify the first message was the truncated assistant response
+	mu.Lock()
+	firstMsg := recordedMessages[0]
+	mu.Unlock()
+	if firstMsg.Role != llm.MessageRoleAssistant {
+		t.Errorf("expected first message to be assistant, got %v", firstMsg.Role)
+	}
+
+	// Verify the second message is the error/system message about truncation
+	mu.Lock()
+	secondMsg := recordedMessages[1]
+	mu.Unlock()
+	if secondMsg.Role != llm.MessageRoleUser {
+		t.Errorf("expected second message to be user (system error), got %v", secondMsg.Role)
+	}
+	if !strings.Contains(secondMsg.Content[0].Text, "truncated") {
+		t.Errorf("expected error message to mention truncation, got %q", secondMsg.Content[0].Text)
+	}
+	if !strings.Contains(secondMsg.Content[0].Text, "smaller") {
+		t.Errorf("expected error message to suggest smaller changes, got %q", secondMsg.Content[0].Text)
 	}
 }

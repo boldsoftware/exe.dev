@@ -236,7 +236,7 @@ type request struct {
 	TopP          float64         `json:"top_p,omitempty"`
 	StopSequences []string        `json:"stop_sequences,omitempty"`
 
-	TokenEfficientToolUse bool `json:"-"` // DO NOT USE, broken on Anthropic's side as of 2025-02-28
+
 }
 
 func mapped[Slice ~[]E, E, T any](s Slice, f func(E) T) []T {
@@ -481,8 +481,6 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 	}
 
 	backoff := []time.Duration{15 * time.Second, 30 * time.Second, time.Minute}
-	largerMaxTokens := false
-	var partialUsage usage
 
 	url := cmp.Or(s.URL, DefaultURL)
 	httpc := cmp.Or(s.HTTPC, http.DefaultClient)
@@ -522,18 +520,6 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 		req.Header.Set("X-API-Key", s.APIKey)
 		req.Header.Set("Anthropic-Version", "2023-06-01")
 
-		var features []string
-		if request.TokenEfficientToolUse {
-			features = append(features, "token-efficient-tool-use-2025-02-19")
-		}
-		if largerMaxTokens {
-			features = append(features, "output-128k-2025-02-19")
-			request.MaxTokens = 128 * 1024
-		}
-		if len(features) > 0 {
-			req.Header.Set("anthropic-beta", strings.Join(features, ","))
-		}
-
 		resp, err := httpc.Do(req)
 		if err != nil {
 			// Don't retry httprr cache misses
@@ -566,19 +552,7 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			if err != nil {
 				return nil, errors.Join(errs, err)
 			}
-			if response.StopReason == "max_tokens" && !largerMaxTokens {
-				slog.InfoContext(ctx, "anthropic_retrying_with_larger_tokens", "message", "Retrying Anthropic API call with larger max tokens size")
-				// Retry with more output tokens.
-				largerMaxTokens = true
-				response.Usage.CostUSD = llm.CostUSDFromResponse(resp.Header)
-				partialUsage = response.Usage
-				continue
-			}
-
 			// Calculate and set the cost_usd field
-			if largerMaxTokens {
-				response.Usage.Add(partialUsage)
-			}
 			response.Usage.CostUSD = llm.CostUSDFromResponse(resp.Header)
 
 			endTime := time.Now()

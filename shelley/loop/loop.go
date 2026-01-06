@@ -288,6 +288,12 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 		return l.handleToolCalls(ctx, resp.Content)
 	}
 
+	// Handle max tokens truncation - record error message for the user
+	if resp.StopReason == llm.StopReasonMaxTokens {
+		l.logger.Warn("LLM response truncated due to max tokens")
+		return l.handleMaxTokensTruncation(ctx)
+	}
+
 	// End of turn - check for git state changes
 	l.checkGitStateChange(ctx)
 
@@ -329,6 +335,37 @@ func (l *Loop) checkGitStateChange(ctx context.Context) {
 			l.onGitStateChange(ctx, currentState)
 		}
 	}
+}
+
+// handleMaxTokensTruncation handles the case where the LLM response was truncated
+// due to hitting the maximum output token limit. It records an error message
+// informing the user and instructing the LLM to use smaller outputs.
+func (l *Loop) handleMaxTokensTruncation(ctx context.Context) error {
+	errorMessage := llm.Message{
+		Role: llm.MessageRoleUser,
+		Content: []llm.Content{
+			{
+				Type: llm.ContentTypeText,
+				Text: "[SYSTEM ERROR: Your previous response was truncated because it exceeded the maximum output token limit. " +
+					"Any tool calls in that response were lost. Please retry with smaller, incremental changes. " +
+					"For file operations, break large changes into multiple smaller patches. " +
+					"The user can ask you to continue if needed.]",
+			},
+		},
+	}
+
+	l.mu.Lock()
+	l.history = append(l.history, errorMessage)
+	l.mu.Unlock()
+
+	// Record the error message
+	if err := l.recordMessage(ctx, errorMessage, llm.Usage{}); err != nil {
+		l.logger.Error("failed to record truncation error message", "error", err)
+	}
+
+	// End the turn - don't automatically continue
+	l.checkGitStateChange(ctx)
+	return nil
 }
 
 // handleToolCalls processes tool calls from the LLM response

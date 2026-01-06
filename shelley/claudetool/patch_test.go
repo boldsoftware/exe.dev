@@ -308,6 +308,23 @@ func TestPatchTool_ErrorCases(t *testing.T) {
 	if result.Error == nil || !strings.Contains(result.Error.Error(), "clipboard") {
 		t.Error("expected clipboard error")
 	}
+
+	// Test missing patches field (simulates truncated LLM response)
+	msg = json.RawMessage(`{"path":"server/dashboard.go"}`)
+	result = patch.Run(ctx, msg)
+	if result.Error == nil {
+		t.Error("expected error for missing patches field")
+	}
+	if !strings.Contains(result.Error.Error(), "missing or empty") {
+		t.Errorf("expected 'missing or empty' in error, got: %v", result.Error)
+	}
+
+	// Test empty patches array
+	msg = json.RawMessage(`{"path":"server/dashboard.go","patches":[]}`)
+	result = patch.Run(ctx, msg)
+	if result.Error == nil {
+		t.Error("expected error for empty patches array")
+	}
 }
 
 func TestPatchTool_FlexibleInputParsing(t *testing.T) {
