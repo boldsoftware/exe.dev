@@ -302,6 +302,9 @@ func (s *Server) validateHostForTLSCert(ctx context.Context, host string) error 
 	if domz.FirstMatch(host, s.env.BoxHost, s.env.WebHost) != "" {
 		return nil
 	}
+	if host == "exe.new" {
+		return nil
+	}
 
 	boxName, err := s.resolveCustomDomainBoxName(ctx, host)
 	if err != nil {
@@ -522,16 +525,25 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	isKnownHostsRequest := r.URL.Path == sshKnownHostsPath
+	hostname := domz.Canonicalize(domz.StripPort(r.Host))
+
 	// Redirect requests to BoxHost apex (exe.xyz) to WebHost (exe.dev).
 	// BoxHost is only for box subdomains (vmname.exe.xyz); the apex itself should
 	// redirect to WebHost to avoid passkey RPID mismatch errors during auth.
 	if s.env.BoxHost != s.env.WebHost {
-		hostname := domz.Canonicalize(domz.StripPort(r.Host))
 		if hostname == s.env.BoxHost && !isKnownHostsRequest {
 			target := fmt.Sprintf("%s://%s%s", getScheme(r), s.env.WebHost, r.URL.RequestURI())
 			http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 			return
 		}
+	}
+
+	// Redirect requests to exe.new to WebHost/new (exe.dev/new).
+	// This is a vanity domain that lets users start a new box from a memorable URL.
+	if hostname == "exe.new" {
+		target := fmt.Sprintf("%s://%s/new", getScheme(r), s.env.WebHost)
+		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+		return
 	}
 
 	// Check if this should be handled by the proxy handler

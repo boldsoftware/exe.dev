@@ -416,3 +416,74 @@ func TestBoxHostApexRedirectsToWebHost(t *testing.T) {
 		})
 	}
 }
+
+func TestExeNewRedirectsToWebHostNew(t *testing.T) {
+	t.Parallel()
+
+	s := newUnstartedServer(t)
+
+	tests := []struct {
+		name         string
+		host         string
+		path         string
+		wantRedirect bool
+		wantLocation string
+	}{
+		{
+			name:         "exe.new redirects to /new",
+			host:         "exe.new",
+			path:         "/",
+			wantRedirect: true,
+			wantLocation: "http://" + s.env.WebHost + "/new",
+		},
+		{
+			name:         "exe.new with path still redirects to /new",
+			host:         "exe.new",
+			path:         "/foo",
+			wantRedirect: true,
+			wantLocation: "http://" + s.env.WebHost + "/new",
+		},
+		{
+			name:         "exe.new with port redirects",
+			host:         "exe.new:443",
+			path:         "/",
+			wantRedirect: true,
+			wantLocation: "http://" + s.env.WebHost + "/new",
+		},
+		{
+			name:         "WebHost does not redirect",
+			host:         s.env.WebHost,
+			path:         "/new",
+			wantRedirect: false,
+		},
+		{
+			name:         "other domain does not redirect",
+			host:         "other.test",
+			path:         "/",
+			wantRedirect: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req.Host = tt.host
+			rr := httptest.NewRecorder()
+
+			s.ServeHTTP(rr, req)
+
+			if tt.wantRedirect {
+				if rr.Code != http.StatusTemporaryRedirect {
+					t.Errorf("status = %d, want %d", rr.Code, http.StatusTemporaryRedirect)
+				}
+				if loc := rr.Header().Get("Location"); loc != tt.wantLocation {
+					t.Errorf("Location = %q, want %q", loc, tt.wantLocation)
+				}
+			} else {
+				if rr.Code == http.StatusTemporaryRedirect && rr.Header().Get("Location") == "http://"+s.env.WebHost+"/new" {
+					t.Errorf("unexpected redirect to %s", rr.Header().Get("Location"))
+				}
+			}
+		})
+	}
+}
