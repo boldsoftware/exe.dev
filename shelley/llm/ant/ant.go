@@ -235,8 +235,6 @@ type request struct {
 	TopK          int             `json:"top_k,omitempty"`
 	TopP          float64         `json:"top_p,omitempty"`
 	StopSequences []string        `json:"stop_sequences,omitempty"`
-
-
 }
 
 func mapped[Slice ~[]E, E, T any](s Slice, f func(E) T) []T {
