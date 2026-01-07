@@ -28,7 +28,7 @@ The binaries are on the [releases page](https://github.com/boldsoftware/shelley/
 ## Homebrew (macOS/Linux)
 
 ```bash
-brew install philz/tap/shelley
+brew install boldsoftware/tap/shelley
 ```
 
 ## Build from Source
