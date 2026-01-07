@@ -522,9 +522,9 @@ function ChatInterface({
       const response = await api.getConversation(conversationId);
       setMessages(response.messages ?? []);
       setAgentWorking(Boolean(response.agent_working));
-      if (typeof response.context_window_size === "number") {
-        setContextWindowSize(response.context_window_size);
-      }
+      // Always update context window size when loading a conversation.
+      // If omitted from response (due to omitempty when 0), default to 0.
+      setContextWindowSize(response.context_window_size ?? 0);
       if (onConversationUpdate) {
         onConversationUpdate(response.conversation);
       }

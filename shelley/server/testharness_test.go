@@ -85,6 +85,7 @@ func (h *TestHarness) NewConversation(msg, cwd string) *TestHarness {
 		h.t.Fatalf("NewConversation: failed to parse response: %v", err)
 	}
 	h.convID = resp.ConversationID
+	h.responsesCount = 0 // Reset for new conversation
 	return h
 }
 
