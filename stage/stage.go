@@ -306,8 +306,9 @@ func (e Env) String() string {
 	return e.ReplHost
 }
 
-func (e Env) BoxSub(sub string) string      { return sub + "." + e.BoxHost }
-func (e Env) BoxXtermSub(sub string) string { return sub + ".xterm." + e.BoxHost }
+func (e Env) BoxSub(sub string) string        { return sub + "." + e.BoxHost }
+func (e Env) BoxXtermSub(sub string) string   { return sub + ".xterm." + e.BoxHost }
+func (e Env) BoxShelleySub(sub string) string { return sub + ".shelley." + e.BoxHost }
 
 // ShardIsValid reports whether shard is within the valid range for this stage.
 func (e Env) ShardIsValid(shard int) bool {

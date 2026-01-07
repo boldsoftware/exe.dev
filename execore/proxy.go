@@ -158,12 +158,15 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Determine final route:
+	// - Shelley subdomain (box.shelley.exe.xyz) always routes to port 9999 as private
 	// - If no explicit targetPort (0), or it matches server default ports, or equals box's default, use box route
 	// - Otherwise create an ad-hoc private route for the requested port
 	var route exedb.Route
 	boxRoute := box.GetRoute()
 	targetPort := hostHeaderPort
-	if targetPort == 0 || targetPort == boxRoute.Port || s.isDefaultServerPort(targetPort) {
+	if s.isShelleyRequest(r.Host) {
+		route = exedb.Route{Port: 9999, Share: "private"}
+	} else if targetPort == 0 || targetPort == boxRoute.Port || s.isDefaultServerPort(targetPort) {
 		route = boxRoute
 	} else {
 		route = exedb.Route{Port: targetPort, Share: "private"}
@@ -319,6 +322,7 @@ func (s *Server) isProxyRequest(host string) bool {
 	}
 	// Exclude pages that we serve: our internal debug pages (on Tailscale), the public web server ([*.]exe.dev),
 	// and web-based xterm (foo.xterm.exe.xyz).
+	// Note: shelley subdomain (foo.shelley.exe.xyz) IS a proxy request - it proxies to port 9999.
 	if domz.FirstMatch(host, s.tsDomain, s.env.WebHost, s.env.BoxSub("xterm")) != "" {
 		return false
 	}
@@ -328,6 +332,14 @@ func (s *Server) isProxyRequest(host string) bool {
 	// We've excluded known non-proxy hosts.
 	// At this point, anything domain-like is fair game.
 	return strings.Contains(host, ".")
+}
+
+// isShelleyRequest determines if a request is for a Shelley subdomain (vm.shelley.exe.xyz)
+func (s *Server) isShelleyRequest(host string) bool {
+	host = domz.Canonicalize(domz.StripPort(host))
+	// Check if host ends with .shelley.{BoxHost} (e.g., vm.shelley.exe.xyz)
+	shelleyBase := s.env.BoxSub("shelley") // shelley.exe.xyz
+	return strings.HasSuffix(host, "."+shelleyBase)
 }
 
 // getAuthenticatedUserID checks if the user is authenticated and returns their userID

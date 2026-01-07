@@ -1548,9 +1548,9 @@ func (s *Server) xtermURL(boxName string, useTLS bool) string {
 	return fmt.Sprintf("%s://%s%s", schemeForTLS(useTLS), s.env.BoxXtermSub(boxName), s.urlPort(useTLS))
 }
 
-// shelleyURL returns the Shelley agent URL for a box (port 9999).
+// shelleyURL returns the Shelley agent URL for a box (vm.shelley.exe.xyz).
 func (s *Server) shelleyURL(boxName string) string {
-	return fmt.Sprintf("%s://%s:%d", s.bestScheme(), s.env.BoxSub(boxName), 9999)
+	return fmt.Sprintf("%s://%s%s", s.bestScheme(), s.env.BoxShelleySub(boxName), s.bestURLPort())
 }
 
 // vscodeURL returns the VSCode remote SSH URL for a box.

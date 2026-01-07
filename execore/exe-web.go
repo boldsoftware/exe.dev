@@ -137,7 +137,7 @@ func (s *Server) setupHTTPSServer() {
 
 	s.slog().Info("set up wildcard TLS certificates with Route 53", "decision", s.env.UseRoute53, "stage", s.env.String())
 	if s.env.UseRoute53 {
-		wildcardDomains := []string{s.env.WebHost, s.env.BoxHost, s.env.BoxSub("xterm")}
+		wildcardDomains := []string{s.env.WebHost, s.env.BoxHost, s.env.BoxSub("xterm"), s.env.BoxSub("shelley")}
 		wildcardDomains = dedupInPlace(wildcardDomains)
 		wildcardDomains = domz.FilterEmpty(wildcardDomains)
 		s.wildcardCertManager = route53.NewWildcardCertManager(
@@ -240,6 +240,7 @@ var (
 // resolveBoxName converts a hostname to a box name.
 // If hostname is a subdomain of the main domain (e.g., box.exe.dev),
 // it returns the box name with the main domain suffix stripped (e.g., "box").
+// Shelley subdomains (box.shelley.exe.xyz) are handled by stripping the ".shelley" part.
 // For all other hostname values, a CNAME lookup is performed, and the above
 // rules are applied to the result; otherwise an error is returned.
 func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, error) {
@@ -253,9 +254,17 @@ func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, e
 		return "", errInvalidBoxName
 	}
 	// If a subdomain of our box domain, return the box name.
-	sub := domz.Label(hostname, s.env.BoxHost)
-	if sub != "" {
-		return sub, nil
+	// Use CutBase (not Label) to handle multi-level subdomains like box.shelley.exe.xyz
+	sub, ok := domz.CutBase(hostname, s.env.BoxHost)
+	if ok && sub != "" {
+		// Handle shelley subdomain: box.shelley.exe.xyz -> box
+		if strings.HasSuffix(sub, ".shelley") {
+			return strings.TrimSuffix(sub, ".shelley"), nil
+		}
+		// For regular subdomains, only accept single-level (no dots)
+		if !strings.Contains(sub, ".") {
+			return sub, nil
+		}
 	}
 
 	// Reject non-domain hostnames.
@@ -546,7 +555,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if this should be handled by the proxy handler
+	// Check if this should be handled by the proxy handler.
+	// Shelley subdomain (vm.shelley.exe.xyz) is also handled as a proxy request.
 	isProxy := s.isProxyRequest(r.Host)
 	isTerminal := s.isTerminalRequest(r.Host)
 	if info := GetRequestLogInfo(r.Context()); info != nil {

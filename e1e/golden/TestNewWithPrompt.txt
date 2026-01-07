@@ -40,7 +40,7 @@ Creating BOX_NAME using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME!
 
 Coding agent
-http://BOX_NAME.exe.cloud:9999
+http://BOX_NAME.shelley.exe.cloud:EXED_HTTP_PORT
 
 App (HTTPS proxy → :8000)
 http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
@@ -52,11 +52,11 @@ ssh -p SSH_PORT BOX_NAME@exe.cloud
 Sending prompt to Shelley...
 
 🐌 Connected to Shelley
-🐌 Follow along at http://BOX_NAME.exe.cloud:9999
+🐌 Follow along at http://BOX_NAME.shelley.exe.cloud:EXED_HTTP_PORT
 
 🤖 Well, hi there!
 🏁 Shelley finished its turn. Continue the conversation at
-  http://BOX_NAME.exe.cloud:9999
+  http://BOX_NAME.shelley.exe.cloud:EXED_HTTP_PORT
 
 PROMPT ▶ rm BOX_NAME
 Deleting BOX_NAME...

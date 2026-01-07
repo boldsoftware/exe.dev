@@ -125,6 +125,13 @@ func TestIsProxyRequest(t *testing.T) {
 			comment:  "Should recognize xterm",
 		},
 		{
+			name:     "shelley subdomain",
+			env:      stage.Test(),
+			host:     "mybox.shelley.exe.cloud:8080",
+			expected: true,
+			comment:  "Shelley subdomain is a proxy request (proxies to port 9999)",
+		},
+		{
 			name:     "localhost alone in dev mode",
 			env:      stage.Test(),
 			host:     "localhost",

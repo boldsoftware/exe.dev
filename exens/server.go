@@ -219,11 +219,12 @@ func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) 
 		return s.lookupShardA(ctx, 1, fqdn, class)
 	}
 
-	// Check for xterm wildcard (*.xterm.{boxHost})
-	// e.g., "anything.xterm.exe.xyz" or "foo.bar.xterm.exe.xyz"
+	// Check for xterm/shelley wildcard (*.xterm.{boxHost} or *.shelley.{boxHost})
+	// e.g., "anything.xterm.exe.xyz" or "foo.shelley.exe.xyz"
 	xtermSuffix := ".xterm." + s.boxHost
-	if strings.HasSuffix(qname, xtermSuffix) {
-		// Return shard 1 (base public IP) for all xterm subdomains
+	shelleySuffix := ".shelley." + s.boxHost
+	if strings.HasSuffix(qname, xtermSuffix) || strings.HasSuffix(qname, shelleySuffix) {
+		// Return shard 1 (base public IP) for all xterm/shelley subdomains
 		return s.lookupShardA(ctx, 1, fqdn, class)
 	}
 

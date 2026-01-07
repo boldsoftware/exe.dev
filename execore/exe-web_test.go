@@ -130,6 +130,44 @@ func TestResolveBoxNameApexDomain(t *testing.T) {
 	}
 }
 
+func TestResolveBoxNameShelleySubdomain(t *testing.T) {
+	t.Parallel()
+
+	s := &Server{
+		env: stage.Test(), // BoxHost is exe.cloud
+		log: tslog.Slogger(t),
+	}
+
+	tests := []struct {
+		hostname string
+		wantBox  string
+		wantErr  bool
+	}{
+		{"mybox.shelley.exe.cloud", "mybox", false},
+		{"galaxy-uncle.shelley.exe.cloud", "galaxy-uncle", false},
+		{"mybox.exe.cloud", "mybox", false},
+		{"mybox.xterm.exe.cloud", "", true}, // xterm is not handled by resolveBoxName
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.hostname, func(t *testing.T) {
+			boxName, err := s.resolveBoxName(context.Background(), tt.hostname)
+			if tt.wantErr {
+				if err == nil && boxName != "" {
+					t.Errorf("resolveBoxName(%q) = %q, want error or empty", tt.hostname, boxName)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveBoxName(%q) error = %v, want nil", tt.hostname, err)
+			}
+			if boxName != tt.wantBox {
+				t.Errorf("resolveBoxName(%q) = %q, want %q", tt.hostname, boxName, tt.wantBox)
+			}
+		})
+	}
+}
+
 func TestKnownHostsLineFromStoredCert(t *testing.T) {
 	t.Parallel()
 

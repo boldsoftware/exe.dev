@@ -226,6 +226,25 @@ func TestXtermWildcardA(t *testing.T) {
 		}
 	})
 
+	// Test wildcard shelley subdomain
+	t.Run("WildcardShelley", func(t *testing.T) {
+		rrs, err := server.lookupA(ctx, "mybox.shelley.exe.xyz", "mybox.shelley.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 A record for shelley wildcard, got %d", len(rrs))
+		}
+
+		a, ok := rrs[0].(*dns.A)
+		if !ok {
+			t.Fatalf("expected *dns.A, got %T", rrs[0])
+		}
+		if a.A.String() != "10.0.0.1" {
+			t.Errorf("expected 10.0.0.1, got %s", a.A.String())
+		}
+	})
+
 	// Test staging domain
 	t.Run("StagingXterm", func(t *testing.T) {
 		stagingServer := NewServer(db, log, "exe-staging.xyz", "exe-staging.dev")
