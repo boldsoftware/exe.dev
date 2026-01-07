@@ -365,8 +365,8 @@ button {
 .btn-new {
   width: 2rem;
   height: 2rem;
-  background: var(--green-600);
-  color: white;
+  background: var(--text-primary);
+  color: var(--bg-base);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -375,7 +375,7 @@ button {
 }
 
 .btn-new:hover {
-  background: var(--green-700);
+  background: var(--text-secondary);
 }
 
 /* Header */
@@ -450,6 +450,12 @@ button {
   justify-content: space-between;
   padding: 1rem;
   border-bottom: 1px solid var(--border);
+}
+
+.drawer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .drawer-title {

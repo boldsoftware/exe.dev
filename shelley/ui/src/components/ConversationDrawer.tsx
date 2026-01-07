@@ -193,53 +193,40 @@ function ConversationDrawer({
         {/* Header */}
         <div className="drawer-header">
           <h2 className="drawer-title">{showArchived ? "Archived" : "Conversations"}</h2>
-          <button
-            onClick={onClose}
-            className="btn-icon hide-on-desktop"
-            aria-label="Close conversations"
-          >
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
-
-        {/* New conversation button */}
-        {!showArchived && (
-          <div className="drawer-section">
-            <button
-              onClick={onNewConversation}
-              className="btn-primary"
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "0.5rem",
-              }}
-            >
-              <svg
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                style={{ width: "1rem", height: "1rem" }}
+          <div className="drawer-header-actions">
+            {/* New conversation button - mobile only */}
+            {!showArchived && (
+              <button
+                onClick={onNewConversation}
+                className="btn-icon hide-on-desktop"
+                aria-label="New conversation"
               >
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="btn-icon hide-on-desktop"
+              aria-label="Close conversations"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M12 4v16m8-8H4"
+                  d="M6 18L18 6M6 6l12 12"
                 />
               </svg>
-              <span>New Conversation</span>
             </button>
           </div>
-        )}
+        </div>
 
         {/* Conversations list */}
         <div className="drawer-body scrollable">
