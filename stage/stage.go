@@ -115,7 +115,7 @@ func Local() Env {
 		DiscoverPublicIPs: false,
 
 		FakeEmail:   true,
-		SkipBilling: false,
+		SkipBilling: true,
 		ReplDev:     true,
 		WebDev:      true,
 		ProxyDev:    true,
