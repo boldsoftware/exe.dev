@@ -642,6 +642,18 @@ function makeDevExeDashboard() {
       .gridPos(gp({ w: 24, h: 2 }))
   );
 
+  // Deployed Versions table - shows what versions are deployed by role
+  const deployedVersionsTable = new TableBuilder()
+    .title("Deployed Versions")
+    .gridPos(gp({ w: 24, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`count by (role, commit) (git_build_info{${STAGE_FILTER}})`)
+        .instant()
+        .format(PromQueryFormat.Table)
+    );
+  dash.withPanel(deployedVersionsTable);
+
   // Filters for HTTP metrics
   const WEB_FILTER = `proxy="false",${STAGE_FILTER}`;
   const PROXY_FILTER = `proxy="true",${STAGE_FILTER}`;
