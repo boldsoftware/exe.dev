@@ -367,7 +367,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	// Check if user is throttled from creating new VMs
-	if throttled, msg := ss.server.CheckNewThrottle(ctx, user.Email); throttled && exeletOverride == "" {
+	if throttled, msg := ss.server.CheckNewThrottle(ctx, user.ID, user.Email); throttled && exeletOverride == "" {
 		return cc.Errorf("%s", msg)
 	}
 

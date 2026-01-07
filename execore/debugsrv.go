@@ -1026,7 +1026,7 @@ func (s *Server) GetNewThrottleConfig(ctx context.Context) (*NewThrottleConfig, 
 // CheckNewThrottle checks if a user is throttled from creating new VMs.
 // Returns (throttled, message) where throttled is true if the user should be denied,
 // and message is the denial message to show.
-func (s *Server) CheckNewThrottle(ctx context.Context, email string) (bool, string) {
+func (s *Server) CheckNewThrottle(ctx context.Context, userID, email string) (bool, string) {
 	config, err := s.GetNewThrottleConfig(ctx)
 	if err != nil {
 		s.slog().WarnContext(ctx, "failed to get throttle config", "error", err)
@@ -1040,6 +1040,16 @@ func (s *Server) CheckNewThrottle(ctx context.Context, email string) (bool, stri
 			msg = "VM creation is temporarily disabled."
 		}
 		return true, msg
+	}
+
+	// userID == "" for tests.
+	if userID != "" {
+		// Check whether billing is enabled--don't throttle people
+		// who have valid billing information.
+		isPaying, err := withRxRes1(s, ctx, (*exedb.Queries).UserIsPaying, userID)
+		if err == nil && isPaying {
+			return false, ""
+		}
 	}
 
 	// Check email patterns

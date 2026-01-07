@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"exe.dev/exedb"
 )
 
 func TestNewThrottleConfig(t *testing.T) {
@@ -30,7 +32,7 @@ func TestNewThrottleConfig(t *testing.T) {
 	}
 
 	// Check that no one is throttled initially
-	throttled, msg := s.CheckNewThrottle(ctx, "test@example.com")
+	throttled, msg := s.CheckNewThrottle(ctx, "", "test@example.com")
 	if throttled {
 		t.Errorf("expected not throttled initially, got throttled with message: %s", msg)
 	}
@@ -54,7 +56,7 @@ func TestCheckNewThrottleGlobalEnabled(t *testing.T) {
 	resp.Body.Close()
 
 	// Check that user is throttled
-	throttled, msg := s.CheckNewThrottle(ctx, "anyone@example.com")
+	throttled, msg := s.CheckNewThrottle(ctx, "", "anyone@example.com")
 	if !throttled {
 		t.Error("expected user to be throttled when global throttle is enabled")
 	}
@@ -74,7 +76,7 @@ func TestCheckNewThrottleGlobalEnabled(t *testing.T) {
 	resp.Body.Close()
 
 	// Check that user is not throttled anymore
-	throttled, _ = s.CheckNewThrottle(ctx, "anyone@example.com")
+	throttled, _ = s.CheckNewThrottle(ctx, "", "anyone@example.com")
 	if throttled {
 		t.Error("expected user to not be throttled after clearing")
 	}
@@ -98,7 +100,7 @@ func TestCheckNewThrottleEmailPatterns(t *testing.T) {
 	resp.Body.Close()
 
 	// Check that matching emails are throttled
-	throttled, msg := s.CheckNewThrottle(ctx, "user@blocked.com")
+	throttled, msg := s.CheckNewThrottle(ctx, "", "user@blocked.com")
 	if !throttled {
 		t.Error("expected user@blocked.com to be throttled")
 	}
@@ -106,18 +108,18 @@ func TestCheckNewThrottleEmailPatterns(t *testing.T) {
 		t.Errorf("expected 'Your domain is blocked', got %q", msg)
 	}
 
-	throttled, _ = s.CheckNewThrottle(ctx, "user@also-blocked.org")
+	throttled, _ = s.CheckNewThrottle(ctx, "", "user@also-blocked.org")
 	if !throttled {
 		t.Error("expected user@also-blocked.org to be throttled")
 	}
 
 	// Check that non-matching emails are not throttled
-	throttled, _ = s.CheckNewThrottle(ctx, "user@allowed.com")
+	throttled, _ = s.CheckNewThrottle(ctx, "", "user@allowed.com")
 	if throttled {
 		t.Error("expected user@allowed.com to not be throttled")
 	}
 
-	throttled, _ = s.CheckNewThrottle(ctx, "user@blocked.com.other")
+	throttled, _ = s.CheckNewThrottle(ctx, "", "user@blocked.com.other")
 	if throttled {
 		t.Error("expected user@blocked.com.other to not be throttled (pattern uses $)")
 	}
@@ -141,7 +143,7 @@ func TestCheckNewThrottleDefaultMessage(t *testing.T) {
 	resp.Body.Close()
 
 	// Check that default message is used
-	throttled, msg := s.CheckNewThrottle(ctx, "test@example.com")
+	throttled, msg := s.CheckNewThrottle(ctx, "", "test@example.com")
 	if !throttled {
 		t.Error("expected user to be throttled")
 	}
@@ -168,7 +170,7 @@ func TestCheckNewThrottleEmailPatternDefaultMessage(t *testing.T) {
 	resp.Body.Close()
 
 	// Check that email pattern default message is used
-	throttled, msg := s.CheckNewThrottle(ctx, "user@test.com")
+	throttled, msg := s.CheckNewThrottle(ctx, "", "user@test.com")
 	if !throttled {
 		t.Error("expected user to be throttled")
 	}
@@ -239,9 +241,44 @@ func TestCheckNewThrottleDisposableEmail(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		throttled, _ := s.CheckNewThrottle(ctx, tt.email)
+		throttled, _ := s.CheckNewThrottle(ctx, "", tt.email)
 		if throttled != tt.throttled {
 			t.Errorf("CheckNewThrottle(%q) = %v, want %v", tt.email, throttled, tt.throttled)
 		}
+	}
+}
+
+func TestCheckNewThrottleStripe(t *testing.T) {
+	s := newTestServer(t)
+	s.env.SkipBilling = false
+
+	// An email from a disposable name that we normally reject.
+	email := "user@mailinator.com"
+	publicKey := "ssh-rsa dummy-has-billing-test-key user@mailinator.com"
+	user, err := s.createUser(t.Context(), publicKey, email)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that user is rejected without billing information.
+	if throttled, _ := s.CheckNewThrottle(t.Context(), user.UserID, email); !throttled {
+		t.Error("expected user to be throttled, but was not")
+	}
+
+	// Add an account record for user and activate it.
+	err = withTx1(s, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
+		ID:        "exe_test456",
+		CreatedBy: user.UserID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = withTx1(s, t.Context(), (*exedb.Queries).ActivateAccount, user.UserID); err != nil {
+		t.Fatal(err)
+	}
+
+	throttled, msg := s.CheckNewThrottle(t.Context(), user.UserID, email)
+	if throttled {
+		t.Errorf("user with activated billing is incorrectly throttled (msg %q)", msg)
 	}
 }
