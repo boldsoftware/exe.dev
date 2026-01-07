@@ -1,4 +1,8 @@
 # THIS FILE IS UNDER SOURCE CONTROL at exe.git/observability/...
+#
+# NOTE: Scrape configs are duplicated in otel-collector-config.yml for
+# forwarding metrics to S3. When updating targets, update both files to
+# keep them in sync.
 
 global:
   scrape_interval: 15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.

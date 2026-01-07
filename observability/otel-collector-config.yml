@@ -18,6 +18,160 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+  # Prometheus receiver for staging metrics
+  # NOTE: Keep staging scrape_configs in sync with prometheus.yml
+  prometheus/staging:
+    config:
+      scrape_configs:
+        - job_name: 'node-staging'
+          scrape_interval: 60s
+          static_configs:
+            - targets:
+                - 'exed-staging-01:19100'
+              labels:
+                stage: 'staging'
+                role: 'exed'
+            - targets:
+                - 'exe-ctr-staging-01:9100'
+              labels:
+                stage: 'staging'
+                role: 'exelet'
+
+        - job_name: 'exed-staging'
+          scrape_interval: 60s
+          scheme: https
+          static_configs:
+            - targets: ["exed-staging-01.crocodile-vector.ts.net"]
+              labels:
+                stage: 'staging'
+          metrics_path: '/metrics'
+
+        - job_name: 'sshpiperd-staging'
+          scrape_interval: 60s
+          scheme: http
+          static_configs:
+            - targets: ["exed-staging-01:30303"]
+              labels:
+                stage: 'staging'
+          metrics_path: '/metrics'
+
+        - job_name: 'exelet-staging'
+          scrape_interval: 60s
+          scheme: http
+          static_configs:
+            - targets: ["exe-ctr-staging-01:9081"]
+              labels:
+                stage: 'staging'
+          metrics_path: '/metrics'
+
+  # Prometheus receiver for production metrics
+  # NOTE: Keep production scrape_configs in sync with prometheus.yml
+  prometheus/production:
+    config:
+      scrape_configs:
+        - job_name: 'node-production'
+          scrape_interval: 60s
+          static_configs:
+            - targets:
+                - 'sketch-01:9100'
+                - 'mon:9100'
+                - 'sketch-dev:9100'
+                - 'docker-01:9100'
+                - 'docker-02:9100'
+                - 'ci.crocodile-vector.ts.net:9100'
+              labels:
+                stage: 'production'
+            - targets:
+                - 'exed-02:19100'
+              labels:
+                stage: 'production'
+                role: 'exed'
+            - targets:
+                - 'exe-ctr-02:9100'
+                - 'exe-ctr-03:9100'
+                - 'exe-ctr-04:9100'
+                - 'exe-ctr-05:9100'
+                - 'exe-ctr-07:9100'
+                - 'exe-ctr-08:9100'
+                - 'exe-ctr-09:9100'
+                - 'exe-ctr-10:9100'
+                - 'exe-ctr-11:9100'
+              labels:
+                stage: 'production'
+                role: 'exelet'
+
+        - job_name: 'grafana-production'
+          scrape_interval: 60s
+          scheme: https
+          static_configs:
+            - targets: ["grafana.crocodile-vector.ts.net"]
+          metrics_path: '/metrics'
+
+        - job_name: 'authd-production'
+          scrape_interval: 60s
+          static_configs:
+            - targets: ["sketch-01:3001"]
+          metrics_path: '/authd/metrics'
+
+        - job_name: 'merde-production'
+          scrape_interval: 60s
+          scheme: https
+          tls_config:
+            insecure_skip_verify: true
+          static_configs:
+            - targets: ["merde"]
+          metrics_path: '/metrics'
+
+        - job_name: 'skabandd-production'
+          scrape_interval: 60s
+          scheme: https
+          static_configs:
+            - targets: ["sketch-dev.crocodile-vector.ts.net"]
+          metrics_path: '/debug/metrics'
+
+        - job_name: 'exed-production'
+          scrape_interval: 60s
+          scheme: https
+          static_configs:
+            - targets: ["exed-02.crocodile-vector.ts.net"]
+              labels:
+                stage: 'production'
+          metrics_path: '/metrics'
+
+        - job_name: 'blogd-production'
+          scrape_interval: 60s
+          scheme: https
+          static_configs:
+            - targets: ["blog.exe.dev"]
+              labels:
+                stage: 'production'
+          metrics_path: '/metrics'
+
+        - job_name: 'sshpiperd-production'
+          scrape_interval: 60s
+          scheme: http
+          static_configs:
+            - targets: ["exed-02:30303"]
+              labels:
+                stage: 'production'
+          metrics_path: '/metrics'
+
+        - job_name: 'exelet-production'
+          scrape_interval: 60s
+          scheme: http
+          static_configs:
+            - targets: ["exe-ctr-02:9081", "exe-ctr-03:9081", "exe-ctr-04:9081", "exe-ctr-05:9081", "exe-ctr-07:9081", "exe-ctr-08:9081", "exe-ctr-09:9081", "exe-ctr-10:9081", "exe-ctr-11:9081"]
+              labels:
+                stage: 'production'
+          metrics_path: '/metrics'
+
+        - job_name: 'yace-production'
+          scrape_interval: 60s
+          scheme: http
+          static_configs:
+            - targets: ["mon:5000"]
+          metrics_path: '/metrics'
+
 processors:
   batch:
     timeout: 1s
@@ -117,6 +271,26 @@ exporters:
       s3_partition_format: 'year=%Y/month=%m/day=%d/hour=%H'
     marshaler: otlp_json
 
+  # S3 exporter for staging metrics
+  # Writes to s3://exe.dev-logs/metrics/staging/year=YYYY/month=MM/day=DD/hour=HH/
+  awss3/staging-metrics:
+    s3uploader:
+      region: us-west-2
+      s3_bucket: exe.dev-logs
+      s3_prefix: metrics/staging
+      s3_partition_format: 'year=%Y/month=%m/day=%d/hour=%H'
+    marshaler: otlp_json
+
+  # S3 exporter for production metrics
+  # Writes to s3://exe.dev-logs/metrics/production/year=YYYY/month=MM/day=DD/hour=HH/
+  awss3/production-metrics:
+    s3uploader:
+      region: us-west-2
+      s3_bucket: exe.dev-logs
+      s3_prefix: metrics/production
+      s3_partition_format: 'year=%Y/month=%m/day=%d/hour=%H'
+    marshaler: otlp_json
+
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
@@ -166,3 +340,15 @@ service:
     logs/unknown:
       receivers: [routing]
       exporters: [file/unknown, awss3/unknown]
+
+    # Staging metrics: scrape prometheus endpoints, send to S3
+    metrics/staging:
+      receivers: [prometheus/staging]
+      processors: [batch]
+      exporters: [awss3/staging-metrics]
+
+    # Production metrics: scrape prometheus endpoints, send to S3
+    metrics/production:
+      receivers: [prometheus/production]
+      processors: [batch]
+      exporters: [awss3/production-metrics]
