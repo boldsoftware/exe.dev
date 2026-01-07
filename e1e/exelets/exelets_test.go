@@ -6,9 +6,11 @@ import (
 	"flag"
 	"fmt"
 	"math/rand/v2"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 
@@ -168,4 +170,84 @@ func ensureExeletCount(ctx context.Context, count int) error {
 	}
 
 	return nil
+}
+
+// register registers with exed, returning HTTP cookies,
+// an ssh private key, and a test email address.
+// It also registers a PTY that is connected to exed via ssh,
+// and that may be used for further exed commands.
+func register(t *testing.T) (pty *testinfra.PTY, cookies []*http.Cookie, keyFile, email string) {
+	name := strings.ReplaceAll(t.Name(), "/", ".")
+	email = name + "@example.com"
+	pty, _, err := testinfra.MakePTY("", "ssh localhost", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookies, keyFile, sshCmd, err := serverEnv.RegisterForExeDevWithEmail(t.Context(), pty, email, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sshCmd.Wait() })
+	return pty, cookies, keyFile, email
+}
+
+// makeBox makes a new box given a PTY that is connected to exed.
+// It returns the name of the new box.
+func makeBox(t *testing.T, pty *testinfra.PTY, keyFile, email string) string {
+	boxName, err := serverEnv.NewBox(t.Name(), exeletTestRunIDs[0], pty)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Clear out the new-box email.
+	if msg, err := serverEnv.Email.WaitForEmail(email); err != nil {
+		t.Error(err)
+	} else if !strings.Contains(msg.Subject, boxName) {
+		t.Errorf("got email subject %q, expected it to contain box name %q", msg.Subject, boxName)
+	}
+
+	// Wait for the box to be up and running.
+	if err := serverEnv.WaitForBoxSSHServer(t.Context(), boxName, keyFile); err != nil {
+		t.Fatal(err)
+	}
+
+	return boxName
+}
+
+// disconnect disconnects a PTY.
+func disconnect(t *testing.T, pty *testinfra.PTY) {
+	if err := pty.Disconnect(); err != nil {
+		t.Helper()
+		t.Error(err)
+	}
+}
+
+// deleteBox deletes the named box.
+func deleteBox(t *testing.T, boxName, keyFile string) {
+	pty, _, err := testinfra.MakePTY("", "ssh localhost", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sshCmd, err := serverEnv.SSHToExeDev(t.Context(), pty, keyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sshCmd.Wait() })
+
+	if err := pty.SendLine("rm " + boxName); err != nil {
+		t.Fatal(err)
+	}
+	if err := pty.Want("Deleting"); err != nil {
+		t.Fatal(err)
+	}
+	pty.Reject("internal error")
+	if err := pty.Want("success"); err != nil {
+		t.Fatal(err)
+	}
+	if err := pty.WantPrompt(); err != nil {
+		t.Fatal(err)
+	}
+	if err := pty.Disconnect(); err != nil {
+		t.Error(err)
+	}
 }

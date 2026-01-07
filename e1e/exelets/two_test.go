@@ -2,7 +2,10 @@ package exelets
 
 import (
 	"context"
-	"strings"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"slices"
 	"testing"
 
 	"exe.dev/e1e/testinfra"
@@ -22,39 +25,13 @@ func TestTwoExelets(t *testing.T) {
 
 	// Don't use t.Context here, the restarted exed should be
 	// around for other tests.
-	if err := serverEnv.Exed.Restart(context.Background(), exeletAddrs, exeletTestRunIDs[0]); err != nil {
+	if err := serverEnv.Exed.Restart(context.Background(), exeletAddrs, exeletTestRunIDs[0], false); err != nil {
 		t.Fatal(err)
 	}
 
-	pty, _, err := testinfra.MakePTY("", "ssh localhost", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	email := t.Name() + "@example.com"
-	_, keyFile, sshCmd, err := serverEnv.RegisterForExeDevWithEmail(t.Context(), pty, email, t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = sshCmd.Wait() })
-
-	boxName, err := serverEnv.NewBox(t.Name(), exeletTestRunIDs[0], pty)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := pty.Disconnect(); err != nil {
-		t.Error(err)
-	}
-
-	if msg, err := serverEnv.Email.WaitForEmail(email); err != nil {
-		t.Error(err)
-	} else if !strings.Contains(msg.Subject, boxName) {
-		t.Errorf("got email subject %q, expected it to contain box name %q", msg.Subject, boxName)
-	}
-
-	if err := serverEnv.WaitForBoxSSHServer(t.Context(), boxName, keyFile); err != nil {
-		t.Fatal(err)
-	}
+	pty, _, keyFile, email := register(t)
+	boxName := makeBox(t, pty, keyFile, email)
+	disconnect(t, pty)
 
 	cmd := serverEnv.BoxSSHCommand(t.Context(), boxName, keyFile, "true")
 	cmd.Stdout = t.Output()
@@ -63,30 +40,83 @@ func TestTwoExelets(t *testing.T) {
 		t.Fatalf("failed to run true: %v", err)
 	}
 
-	pty, _, err = testinfra.MakePTY("", "ssh localhost", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sshCmd2, err := serverEnv.SSHToExeDev(t.Context(), pty, keyFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = sshCmd2.Wait() })
+	deleteBox(t, boxName, keyFile)
+}
 
-	if err := pty.SendLine("rm " + boxName); err != nil {
+func TestUserOnSingleExelet(t *testing.T) {
+	if err := ensureExeletCount(context.Background(), 2); err != nil {
 		t.Fatal(err)
 	}
-	if err := pty.Want("Deleting"); err != nil {
+
+	// Start exed with a single exelet.
+	exeletAddrs := []string{exelets[0].Address}
+	if err := serverEnv.Exed.Restart(context.Background(), exeletAddrs, exeletTestRunIDs[0], false); err != nil {
 		t.Fatal(err)
 	}
-	pty.Reject("internal error")
-	if err := pty.Want("success"); err != nil {
+
+	// Create a box on that exelet.
+	pty, _, keyFile, email := register(t)
+	box1 := makeBox(t, pty, keyFile, email)
+	disconnect(t, pty)
+
+	// Restart exed with two exelets.
+	exeletAddrs = []string{
+		exelets[0].Address,
+		exelets[1].Address,
+	}
+	if err := serverEnv.Exed.Restart(context.Background(), exeletAddrs, exeletTestRunIDs[0], true); err != nil {
 		t.Fatal(err)
 	}
-	if err := pty.WantPrompt(); err != nil {
+
+	// Create another box.
+	pty, _, err := testinfra.MakePTY("", "ssh localhost", true)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := pty.Disconnect(); err != nil {
-		t.Error(err)
+	cmd, err := serverEnv.SSHToExeDev(t.Context(), pty, keyFile)
+	if err != nil {
+		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = cmd.Wait() })
+	pty.SetPrompt(testinfra.ExeDevPrompt)
+	box2 := makeBox(t, pty, keyFile, email)
+	disconnect(t, pty)
+
+	// Check the list of boxes to see where they wound up.
+	url := fmt.Sprintf("http://localhost:%d/debug/boxes?format=json", serverEnv.Exed.HTTPPort)
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("%s returned status %d", url, resp.StatusCode)
+	}
+
+	var boxes []struct{
+		Host string `json:"host"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&boxes); err != nil {
+		t.Fatalf("failed to JSON decode %s: %v", url, err)
+	}
+
+	resp.Body.Close()
+
+	t.Logf("after creating two boxes: %v", boxes)
+
+	if len(boxes) != 2 {
+		t.Errorf("got %d boxes, want 2", len(boxes))
+	}
+	var exelets []string
+	for _, box := range boxes {
+		if !slices.Contains(exelets, box.Host) {
+			exelets = append(exelets, box.Host)
+		}
+	}
+	if len(exelets) != 1 {
+		t.Errorf("boxes found on %d exelets, want 1", len(exelets))
+	}
+
+	deleteBox(t, box1, keyFile)
+	deleteBox(t, box2, keyFile)
 }

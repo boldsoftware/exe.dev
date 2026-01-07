@@ -2687,6 +2687,59 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 		return nil, "", fmt.Errorf("no exelet clients available")
 	}
 
+	// Check for existing VMs for this user.
+	// If there are any, use the exelet that holds the most VMs.
+	vms, err := withRxRes1(s, ctx, (*exedb.Queries).BoxesForUser, userID)
+	if err != nil {
+		return nil, "", err
+	}
+	m := make(map[string]int)
+	var (
+		maxHost string
+		maxCnt  int
+	)
+	for i := range vms {
+		host := vms[i].Ctrhost
+		cnt := m[host]
+		cnt++
+		m[host] = cnt
+		if cnt > maxCnt {
+			maxHost, maxCnt = host, cnt
+		} else if cnt == maxCnt && host < maxHost {
+			// Make the choice predictable,
+			// though it probably doesn't matter.
+			maxHost = host
+		}
+	}
+	if maxCnt > 0 {
+		client := s.getExeletClient(maxHost)
+
+		// Special case: don't pick exe-ctr-02 because it has
+		// huge pages. TODO: Clean this up sometime.
+		if strings.Contains(maxHost, "exe-ctr-02:") {
+			s.slog().DebugContext(ctx, "not selecting exelet because it is exe-ctr-02", "user", userID, "host", maxHost, "userVMCount", maxCnt)
+			client = nil
+		}
+
+		var count int
+		if client == nil {
+			// Don't pick this VM if it is too loaded.
+			count, err := client.countInstances(ctx)
+			if err != nil {
+				return nil, "", err
+			}
+			if count >= autoThrottleVMLimit {
+				s.slog().DebugContext(ctx, "not selecting exelet because it is over threshold", "user", userID, "host", maxHost, "userVMCount", maxCnt, "exeletVMCount", count)
+				client = nil
+			}
+		}
+
+		if client != nil {
+			s.slog().DebugContext(ctx, "selecting exelet with most VMs for user", "user", userID, "host", maxHost, "userVMCount", maxCnt, "exeletVMCount", count)
+			return client, maxHost, nil
+		}
+	}
+
 	// Check for preferred exelet setting
 	preferredAddr, err := withRxRes0(s, ctx, (*exedb.Queries).GetPreferredExelet)
 	if err == nil && preferredAddr != "" {

@@ -385,12 +385,16 @@ func addExedEnvKeys(env []string) []string {
 
 // Stop stops the exed process.
 // This does not return an error; errors are just logged.
-func (ei *ExedInstance) Stop(ctx context.Context, testRunID string) {
-	if err := ei.checkBoxesCleanedUp(ctx, testRunID); err != nil {
-		slog.ErrorContext(ctx, "boxes not cleaned up", "error", err)
-	}
+// If midTest is true we are in the middle of a test
+// and should not remove the database.
+func (ei *ExedInstance) Stop(ctx context.Context, testRunID string, midTest bool) {
+	if !midTest {
+		if err := ei.checkBoxesCleanedUp(ctx, testRunID); err != nil {
+			slog.ErrorContext(ctx, "boxes not cleaned up", "error", err)
+		}
 
-	os.Remove(ei.DBPath)
+		os.Remove(ei.DBPath)
+	}
 
 	// Gracefully stop exed with SIGTERM so it writes coverage data.
 	slog.InfoContext(ctx, "sending SIGTERM to exed")
@@ -466,8 +470,9 @@ func (ei *ExedInstance) checkBoxesCleanedUp(ctx context.Context, testRunID strin
 }
 
 // Restart restarts the exed process with a possibly different
-// set of exelets.
-func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testRunID string) error {
+// set of exelets. If midTest is true, we are in the middle
+// of a test and should not remove the database.
+func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testRunID string, midTest bool) error {
 	start := time.Now()
 	slog.InfoContext(ctx, "restarting exed", "exelets", exeletAddrs)
 	var logger *slog.Logger
@@ -477,7 +482,7 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 		logger.InfoContext(ctx, "restarting exed", "exelets", exeletAddrs)
 	}
 
-	ei.Stop(ctx, testRunID)
+	ei.Stop(ctx, testRunID, midTest)
 
 	exedCmd := exec.Command(ei.binPath,
 		"-db="+ei.DBPath,

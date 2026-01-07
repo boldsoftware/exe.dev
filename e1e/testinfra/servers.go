@@ -116,7 +116,7 @@ func StartServers(ctx context.Context, exelets []*ExeletInstance, exedHTTPProxy 
 // if any.
 func (env *ServerEnv) Stop(ctx context.Context, testRunID string) []string {
 	if env.Exed != nil {
-		env.Exed.Stop(ctx, testRunID)
+		env.Exed.Stop(ctx, testRunID, false)
 	}
 
 	if env.SSHPiperd != nil {
