@@ -353,9 +353,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 
 	// Handle --exelet override (support only)
 	if exeletOverride != "" {
-		// Check if user has root_support privilege
-		isRootSupport, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserRootSupport, user.ID)
-		if err != nil || isRootSupport != 1 {
+		if !ss.server.UserHasExeSudo(ctx, user.ID) {
 			slog.WarnContext(ctx, "unauthorized exelet override attempt",
 				"user_id", user.ID,
 				"email", user.Email,
@@ -1239,9 +1237,7 @@ func (ss *SSHServer) handleGrantSupportRootCommand(ctx context.Context, cc *exem
 }
 
 func (ss *SSHServer) handleExeletsCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	// Check if user has root_support privilege
-	isRootSupport, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserRootSupport, cc.User.ID)
-	if err != nil || isRootSupport != 1 {
+	if !ss.server.UserHasExeSudo(ctx, cc.User.ID) {
 		return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", cc.User.Email)
 	}
 

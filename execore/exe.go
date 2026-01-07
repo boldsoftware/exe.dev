@@ -1489,16 +1489,16 @@ func (s *Server) FindBoxByIPShard(ctx context.Context, userID, localIP string) *
 	return &box
 }
 
-// FindBoxForSupportUser finds a box by name if the user is a root support user and the box has support access enabled.
-// Returns nil if the user is not a root support user or the box doesn't have support access enabled.
-func (s *Server) FindBoxForSupportUser(ctx context.Context, userID, boxName string) *exedb.Box {
-	if userID == "" || !boxname.IsValid(boxName) {
-		return nil
-	}
-
-	// Check if user is a root support user
+// UserHasExeSudo reports whether if the user has exe root_support privilege.
+func (s *Server) UserHasExeSudo(ctx context.Context, userID string) bool {
 	isRootSupport, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserRootSupport, userID)
-	if err != nil || isRootSupport != 1 {
+	return err == nil && isRootSupport == 1
+}
+
+// FindBoxForExeSudoer finds a box by name if the user is a root support user and the box has support access enabled.
+// Returns nil if the user is not a root support user or the box doesn't have support access enabled.
+func (s *Server) FindBoxForExeSudoer(ctx context.Context, userID, boxName string) *exedb.Box {
+	if userID == "" || !boxname.IsValid(boxName) || !s.UserHasExeSudo(ctx, userID) {
 		return nil
 	}
 

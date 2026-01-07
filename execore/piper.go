@@ -284,7 +284,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 			return nil, fmt.Errorf("support access denied: unregistered ssh key")
 		}
 		slog.InfoContext(ctx, "piper public key auth: support access attempt", "component", "piper-plugin", "box_name", supportBoxName, "user_id", userID)
-		box := p.server.FindBoxForSupportUser(ctx, userID, supportBoxName)
+		box := p.server.FindBoxForExeSudoer(ctx, userID, supportBoxName)
 		if box == nil {
 			slog.WarnContext(ctx, "piper public key auth: support access denied", "component", "piper-plugin", "box_name", supportBoxName, "user_id", userID)
 			return nil, fmt.Errorf("support access denied: either you don't have support privileges, or VM %q doesn't have support access enabled", supportBoxName)
