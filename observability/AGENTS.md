@@ -1,4 +1,21 @@
+## Prometheus Access
+
+Prometheus is accessible at `http://mon:9090`. You can query it directly:
+
+```bash
+# Query metrics
+curl -s "http://mon:9090/api/v1/query" --data-urlencode 'query=up' | jq .
+
+# Check targets and their health
+curl -s "http://mon:9090/api/v1/targets" | jq '.data.activeTargets[] | "\(.labels.job) \(.labels.instance) \(.health)"'
+
+# Get Prometheus config
+curl -s "http://mon:9090/api/v1/status/config" | jq .
+```
+
 prometheus.yml can point you to where the prometheus metrics are
+
+## SSH Access
 
 if you need to ssh to a relevant host, use ubuntu@ as the user,
 and you typically have SSH access

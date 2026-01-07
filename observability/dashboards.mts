@@ -2158,7 +2158,9 @@ function convertQueryForAlert(query: string): string {
     .replace(/instance=~"\$instance"/g, 'instance=~".+"')
     .replace(/tag_Name=~"\$name"/g, 'tag_Name=~".+"')
     .replace(/tag_role=~"\$role"/g, 'tag_role=~".+"')
-    .replace(/tag_stage=~"\$stage"/g, 'tag_stage="production"');
+    .replace(/tag_stage=~"\$stage"/g, 'tag_stage="production"')
+    .replace(/role=~"\$role",?/g, '')
+    .replace(/stage=~"\$stage"/g, 'stage="production"');
 }
 
 /**
