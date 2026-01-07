@@ -1,0 +1,35 @@
+name: Sync Commits Pushed Directly to from Shelley
+
+on:
+  schedule:
+    # Run every 30 minutes
+    - cron: '*/30 * * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  sync-shelley-commits:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for the sync script
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run sync script
+        id: sync
+        run: |
+          git remote add shelley https://github.com/boldsoftware/shelley.git
+          git fetch shelley
+          if ./bin/sync-commits-from-shelley.sh shelley/main; then
+            if git tag -l | grep -q "^new-exe-commit$"; then
+              git push origin new-exe-commit:main
+              git tag -d new-exe-commit || true
+            fi
+          else
+            echo Sync script failed
+            exit 1
+          fi
