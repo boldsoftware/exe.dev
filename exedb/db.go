@@ -198,6 +198,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, getEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailVerificationByToken: %w", err)
 	}
+	if q.getHLLSketchStmt, err = db.PrepareContext(ctx, getHLLSketch); err != nil {
+		return nil, fmt.Errorf("error preparing query GetHLLSketch: %w", err)
+	}
 	if q.getIPShardByBoxNameStmt, err = db.PrepareContext(ctx, getIPShardByBoxName); err != nil {
 		return nil, fmt.Errorf("error preparing query GetIPShardByBoxName: %w", err)
 	}
@@ -413,6 +416,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateTagResolutionDigestStmt, err = db.PrepareContext(ctx, updateTagResolutionDigest); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTagResolutionDigest: %w", err)
+	}
+	if q.upsertHLLSketchStmt, err = db.PrepareContext(ctx, upsertHLLSketch); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertHLLSketch: %w", err)
 	}
 	if q.upsertIPShardStmt, err = db.PrepareContext(ctx, upsertIPShard); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertIPShard: %w", err)
@@ -728,6 +734,11 @@ func (q *Queries) Close() error {
 	if q.getEmailVerificationByTokenStmt != nil {
 		if cerr := q.getEmailVerificationByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailVerificationByTokenStmt: %w", cerr)
+		}
+	}
+	if q.getHLLSketchStmt != nil {
+		if cerr := q.getHLLSketchStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getHLLSketchStmt: %w", cerr)
 		}
 	}
 	if q.getIPShardByBoxNameStmt != nil {
@@ -1090,6 +1101,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateTagResolutionDigestStmt: %w", cerr)
 		}
 	}
+	if q.upsertHLLSketchStmt != nil {
+		if cerr := q.upsertHLLSketchStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertHLLSketchStmt: %w", cerr)
+		}
+	}
 	if q.upsertIPShardStmt != nil {
 		if cerr := q.upsertIPShardStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertIPShardStmt: %w", cerr)
@@ -1222,6 +1238,7 @@ type Queries struct {
 	getEmailByUserIDStmt                   *sql.Stmt
 	getEmailVerificationByPartialTokenStmt *sql.Stmt
 	getEmailVerificationByTokenStmt        *sql.Stmt
+	getHLLSketchStmt                       *sql.Stmt
 	getIPShardByBoxNameStmt                *sql.Stmt
 	getNewThrottleEmailPatternsStmt        *sql.Stmt
 	getNewThrottleEnabledStmt              *sql.Stmt
@@ -1294,6 +1311,7 @@ type Queries struct {
 	updateProxyBearerTokenLastUsedStmt     *sql.Stmt
 	updateTagResolutionCheckedStmt         *sql.Stmt
 	updateTagResolutionDigestStmt          *sql.Stmt
+	upsertHLLSketchStmt                    *sql.Stmt
 	upsertIPShardStmt                      *sql.Stmt
 	upsertSSHHostKeyStmt                   *sql.Stmt
 	upsertSSHKeyForUserStmt                *sql.Stmt
@@ -1365,6 +1383,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailByUserIDStmt:                   q.getEmailByUserIDStmt,
 		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:        q.getEmailVerificationByTokenStmt,
+		getHLLSketchStmt:                       q.getHLLSketchStmt,
 		getIPShardByBoxNameStmt:                q.getIPShardByBoxNameStmt,
 		getNewThrottleEmailPatternsStmt:        q.getNewThrottleEmailPatternsStmt,
 		getNewThrottleEnabledStmt:              q.getNewThrottleEnabledStmt,
@@ -1437,6 +1456,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateProxyBearerTokenLastUsedStmt:     q.updateProxyBearerTokenLastUsedStmt,
 		updateTagResolutionCheckedStmt:         q.updateTagResolutionCheckedStmt,
 		updateTagResolutionDigestStmt:          q.updateTagResolutionDigestStmt,
+		upsertHLLSketchStmt:                    q.upsertHLLSketchStmt,
 		upsertIPShardStmt:                      q.upsertIPShardStmt,
 		upsertSSHHostKeyStmt:                   q.upsertSSHHostKeyStmt,
 		upsertSSHKeyForUserStmt:                q.upsertSSHKeyForUserStmt,

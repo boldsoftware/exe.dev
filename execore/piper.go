@@ -356,6 +356,11 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 
 	slog.DebugContext(ctx, "handleBoxAccess for box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "user_id", userID, "conn_id", connID)
 
+	// Track unique VM logins
+	if p.server.hllTracker != nil && userID != "" {
+		p.server.hllTracker.NoteEvent("vm-login", userID)
+	}
+
 	if box.ContainerID == nil {
 		slog.DebugContext(ctx, "Box has no container ID", "component", "piper-plugin", "box_name", box.Name)
 		return nil, fmt.Errorf("VM %s is not running", box.Name)

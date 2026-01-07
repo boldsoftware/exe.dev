@@ -102,6 +102,12 @@ type EmailVerification struct {
 	VerificationCode *string    `db:"verification_code" json:"verification_code"`
 }
 
+type HllSketch struct {
+	Key       string     `db:"key" json:"key"`
+	Data      []byte     `db:"data" json:"data"`
+	UpdatedAt *time.Time `db:"updated_at" json:"updated_at"`
+}
+
 type IPShard struct {
 	Shard     int64     `db:"shard" json:"shard"`
 	PublicIp  string    `db:"public_ip" json:"public_ip"`

@@ -222,6 +222,18 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 			s.renderAccessRequired(w, r)
 			return
 		}
+
+		// Track unique users for private proxy access
+		if s.hllTracker != nil {
+			s.hllTracker.NoteEvent("proxy", userID)
+			if route.Port == 9999 {
+				s.hllTracker.NoteEvent("shelley-proxy", userID)
+			}
+			// Track login-with-exe: user accessing someone else's box (not owner)
+			if accessType != BoxAccessOwner {
+				s.hllTracker.NoteEvent("login-with-exe", userID)
+			}
+		}
 	}
 
 	// Handle debug path in dev/test environments

@@ -590,6 +590,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metricsbag.SetLabel(r.Context(), LabelProxy, "false")
 	metricsbag.SetLabel(r.Context(), LabelPath, normalizePath(r.URL.Path))
 
+	// Track unique web visitors (main site only, not proxy or terminal)
+	if s.hllTracker != nil {
+		if info := GetRequestLogInfo(r.Context()); info != nil && info.UserID != "" {
+			s.hllTracker.NoteEvent("web-visit", info.UserID)
+		}
+	}
+
 	// Handle root path and user dashboard
 	path := r.URL.Path
 	// Debug endpoints (pprof, expvar), gated by localhost or Tailscale access

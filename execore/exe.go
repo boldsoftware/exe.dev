@@ -47,6 +47,7 @@ import (
 	exeletclient "exe.dev/exelet/client"
 	"exe.dev/exens"
 	"exe.dev/ghuser"
+	"exe.dev/hll"
 	"exe.dev/llmgateway"
 	"exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
@@ -275,6 +276,8 @@ type Server struct {
 	metricsRegistry *prometheus.Registry
 	sshMetrics      *SSHMetrics
 	httpMetrics     *HTTPMetrics
+	hllTracker      *hll.Tracker
+	hllCollector    *hll.Collector
 
 	// Data isolation
 	dataSubdir string // subdirectory under /data for container isolation
@@ -634,6 +637,17 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	llmgateway.RegisterMetrics(cfg.MetricsRegistry)
 	RegisterEntityMetrics(cfg.MetricsRegistry, db, slog)
 
+	// Initialize HLL unique user tracking
+	hllStorage := newHLLStorage(db)
+	hllTracker := hll.NewTracker(hllStorage)
+	hllEvents := []string{"proxy", "shelley-proxy", "vm-login", "web-visit", "login-with-exe"}
+	hllCollector := hll.NewCollector(hllTracker, hllEvents)
+	if err := hllCollector.Register(cfg.MetricsRegistry); err != nil {
+		hllTracker.Close()
+		db.Close()
+		return nil, fmt.Errorf("failed to register HLL metrics: %w", err)
+	}
+
 	// Initialize tag resolver for image tag resolution
 	tagResolverInstance := tagresolver.New(db)
 
@@ -711,6 +725,8 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		metricsRegistry: cfg.MetricsRegistry,
 		sshMetrics:      sshMetrics,
 		httpMetrics:     httpMetrics,
+		hllTracker:      hllTracker,
+		hllCollector:    hllCollector,
 		dataSubdir:      dataSubdir,
 
 		docs:      docsHandler,
@@ -2473,6 +2489,11 @@ func (s *Server) Stop() error {
 	}
 	if err := s.sshPool.Close(); err != nil {
 		s.slog().ErrorContext(ctx, "SSH pool close error", "error", err)
+	}
+	if s.hllTracker != nil {
+		if err := s.hllTracker.Close(); err != nil {
+			s.slog().ErrorContext(ctx, "HLL tracker close error", "error", err)
+		}
 	}
 	if s.db != nil {
 		s.db.Close()
