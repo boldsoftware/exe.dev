@@ -1308,7 +1308,7 @@ function ChatInterface({
           ) : (
             // Active conversation - show Ready + context bar
             <div className="status-bar-active">
-              <span className="status-message status-ready">Ready</span>
+              <span className="status-message status-ready">Ready on {hostname}</span>
               <ContextUsageBar
                 contextWindowSize={contextWindowSize}
                 maxContextTokens={

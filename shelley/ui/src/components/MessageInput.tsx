@@ -379,7 +379,7 @@ function MessageInput({
               requestAnimationFrame(() => requestAnimationFrame(onFocus));
             }
           }}
-          placeholder="Type your message..."
+          placeholder="Message, paste image, or attach file..."
           className="message-textarea"
           disabled={isDisabled}
           rows={1}
