@@ -25,10 +25,10 @@ curl -Lo shelley "https://github.com/boldsoftware/shelley/releases/latest/downlo
 
 The binaries are on the [releases page](https://github.com/boldsoftware/shelley/releases/latest).
 
-## Homebrew (macOS/Linux)
+## Homebrew (macOS)
 
 ```bash
-brew install boldsoftware/tap/shelley
+brew install --cask boldsoftware/tap/shelley
 ```
 
 ## Build from Source

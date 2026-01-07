@@ -21,7 +21,8 @@ builds:
 
 archives:
   - id: shelley
-    format: binary
+    formats:
+      - binary
     name_template: >-
       {{ .ProjectName }}_
       {{- .Os }}_
@@ -49,16 +50,17 @@ release:
   draft: false
   prerelease: auto
 
-brews:
-  - repository:
+homebrew_casks:
+  - name: shelley
+    binaries:
+      - shelley
+    repository:
       owner: boldsoftware
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
+    directory: Casks
     homepage: https://github.com/boldsoftware/shelley
     description: "A mobile-friendly, web-based, multi-modal coding agent"
-    license: Apache-2.0
-    install: |
-      bin.install "shelley"
-    test: |
-      system "#{bin}/shelley", "--help"
+    hooks:
+      post_install: |
+        system "xattr", "-dr", "com.apple.quarantine", "#{caskroom_path}"
