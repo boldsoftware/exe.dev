@@ -10,16 +10,16 @@ VM eth0 → TAP device → Bridge (br-exe-*) → iptables NAT → External netwo
 ```
 
 - **TAP devices**: One per VM, named `tap-<instance-id>`
-- **Bridges**: Linux bridges, 500 VMs per bridge max
+- **Bridges**: Linux bridges, 500 VMs per bridge max, with fq_codel for fair queuing
 - **NAT**: iptables masquerade for outbound traffic
-- **IPAM**: Simple IP reservation system (not DHCP-based)
+- **IPAM**: Simple IP reservation system (`pkg/ipam`) - not DHCP-based
 
 ### IP Address Management (IPAM)
 
 VMs do **not** use DHCP to obtain their IP addresses. Instead:
 
 1. **At VM creation**: The NAT manager reserves an IP from the `10.42.0.0/16` pool
-2. **IP assignment**: Stored in a local datastore (`pkg/dhcpd/ds.go`) keyed by MAC address
+2. **IP assignment**: Stored in a local datastore (`pkg/ipam/ds.go`) keyed by MAC address
 3. **Boot-time config**: Network settings passed to VM via kernel `ip=` boot argument
 
 **File:** `exelet/vmm/cloudhypervisor/config.go:134-175`
@@ -30,9 +30,9 @@ VMs do **not** use DHCP to obtain their IP addresses. Instead:
 
 The `autoconf=none` means the guest kernel configures networking statically at boot - no DHCP client runs in the guest.
 
-**File:** `exelet/network/nat/create_linux.go:49-52`
+**File:** `exelet/network/nat/create_linux.go`
 ```go
-ip, err := n.dhcpServer.Reserve(macAddress)  // Reserve IP from pool
+ip, err := n.ipam.Reserve(macAddress)  // Reserve IP from pool
 ```
 
 This design is simpler and faster than DHCP (no round-trip needed at boot).
@@ -44,14 +44,60 @@ This design is simpler and faster than DHCP (no round-trip needed at boot).
 | VMs per bridge | 500 | `DefaultMaxPortsPerBridge` |
 | Connections per VM | 10,000 | `DefaultConnLimit` (iptables connlimit) |
 | FDB hash table | 4,096 | `DefaultBridgeHashMax` |
-| Bandwidth limit | None | Not implemented |
+| Upload bandwidth per VM | 100 Mbps | `DefaultBandwidthRate` (via IFB + HTB) |
 
-**File:** `exelet/network/nat/nat.go:20-23`
+**File:** `exelet/network/nat/nat.go`
 ```go
 DefaultMaxPortsPerBridge = 500
 DefaultBridgeHashMax     = 4096
 DefaultConnLimit         = 10000
+DefaultBandwidthRate     = "100mbit"
+DefaultBandwidthBurst    = "256k"
 ```
+
+### Per-VM Network Limits
+
+Each VM has the following network constraints applied at creation time:
+
+#### Upload Bandwidth Limiting
+
+Upload bandwidth (traffic FROM the VM) is limited using an IFB (Intermediate Functional Block) device with HTB shaping:
+
+```
+TAP ingress → IFB device → HTB rate limit (100mbit) → fq_codel
+```
+
+**File:** `exelet/network/nat/configure_linux.go:applyBandwidthLimit()`
+
+The implementation:
+1. Creates an IFB device per TAP (`ifb-<tap-suffix>`)
+2. Redirects TAP ingress to IFB egress via tc mirred
+3. Applies HTB shaping on IFB with rate limit and burst
+4. Adds fq_codel for fair queuing within the rate limit
+
+This approach queues excess traffic (allowing TCP to adapt) rather than dropping it.
+
+**Note:** Download bandwidth (traffic TO the VM) is currently unlimited.
+
+#### Connection Limiting
+
+Each VM is limited to 10,000 concurrent connections via iptables connlimit:
+
+```bash
+iptables -I FORWARD -s $VM_IP -m connlimit --connlimit-above 10000 --connlimit-mask 32 -j DROP
+```
+
+**File:** `exelet/network/nat/configure_linux.go:applyConnLimit()`
+
+#### Bridge Fair Queuing
+
+Each bridge has fq_codel applied for fair queuing between VMs:
+
+```bash
+tc qdisc replace dev br-exe-0 root fq_codel
+```
+
+**File:** `exelet/network/nat/configure_linux.go:applyBridgeFqCodel()`
 
 ### Why Multiple Bridges?
 
@@ -64,7 +110,7 @@ The multi-bridge architecture exists due to Linux bridge FDB (Forwarding Databas
    - Dynamic MAC learning from guest traffic
    - Safety margin for bursts
 
-**File:** `exelet/network/nat/configure_linux.go:674-680`
+**File:** `exelet/network/nat/configure_linux.go:setBridgeHashMax()`
 ```go
 // setBridgeHashMax sets the FDB hash_max for a bridge to allow more MAC addresses.
 // The default is 512 which can cause "exchange full" errors at scale.
@@ -87,21 +133,14 @@ func setBridgeHashMax(bridgeName string, hashMax int) error {
 
 ### 1. Per-VM Bandwidth Limiting
 
-**Background:**
-Without bandwidth limits, a single VM can saturate the host's network link, affecting all other VMs. This is critical for:
-- Preventing noisy neighbor issues
-- Ensuring fair bandwidth distribution
-- Controlling egress costs
+**Status: Implemented (upload only)**
 
-**Current State:**
-- No bandwidth limiting implemented
-- All VMs share full network bandwidth
-- Connection limit (10,000) is the only constraint
+Upload bandwidth is limited to 100 Mbps per VM using IFB + HTB. See "Per-VM Network Limits" section above.
 
-**Questions to Answer:**
-- What bandwidth should each VM be entitled to?
-- Should limits be symmetric (same ingress/egress)?
-- How do we handle burst traffic vs sustained?
+**Remaining Questions:**
+- Should download bandwidth also be limited?
+- Should limits be configurable per VM plan?
+- Is 100 Mbps the right default?
 
 **Measurement Commands:**
 ```bash
@@ -113,97 +152,43 @@ for tap in /sys/class/net/tap-*/; do
   echo "$name: rx=$(numfmt --to=iec $rx) tx=$(numfmt --to=iec $tx)"
 done
 
-# Real-time bandwidth per TAP
-watch -n 1 'for tap in /sys/class/net/tap-*/statistics; do
-  echo "$(dirname $tap | xargs basename): $(cat $tap/rx_bytes) $(cat $tap/tx_bytes)"
-done'
+# Check tc qdiscs on TAP and IFB devices
+tc -s qdisc show | grep -A5 -E "tap-|ifb-"
 
-# Check existing tc qdiscs
-tc -s qdisc show
-
-# Check iptables byte counters
-iptables -L -v -n -x | head -50
+# Check HTB class stats
+for ifb in /sys/class/net/ifb-*/; do
+  name=$(basename $ifb)
+  tc -s class show dev $name
+done
 ```
 
-**Implementation with tc (Traffic Control):**
+**Download Limiting (Not Yet Implemented):**
 
-**Option A: Simple rate limit (TBF - Token Bucket Filter)**
+To limit download bandwidth, apply HTB directly to TAP egress:
+
 ```bash
-# Limit TAP to 100 Mbps egress
-tc qdisc add dev tap-abc123 root tbf rate 100mbit burst 32kbit latency 400ms
-
-# Verify
-tc -s qdisc show dev tap-abc123
-```
-- Pros: Simple, low overhead
-- Cons: No burst allowance, strict rate
-
-**Option B: HTB (Hierarchical Token Bucket) - Recommended**
-```bash
-# Create HTB qdisc
+# Example: 100 Mbps download limit
 tc qdisc add dev tap-abc123 root handle 1: htb default 10
-
-# Create class with rate and burst ceiling
-tc class add dev tap-abc123 parent 1: classid 1:10 htb rate 100mbit ceil 200mbit burst 15k
-
-# Add fair queuing for traffic within the class
+tc class add dev tap-abc123 parent 1: classid 1:10 htb rate 100mbit burst 256k
 tc qdisc add dev tap-abc123 parent 1:10 handle 10: fq_codel
 ```
-- Pros: Allows bursting up to ceiling, fair queuing
-- Cons: More complex setup
-
-**Option C: CAKE qdisc (modern, feature-rich)**
-```bash
-# CAKE provides bandwidth shaping + fair queuing + latency management
-tc qdisc add dev tap-abc123 root cake bandwidth 100mbit
-
-# With RTT compensation for low latency
-tc qdisc add dev tap-abc123 root cake bandwidth 100mbit rtt 50ms
-```
-- Pros: Modern, handles bufferbloat, per-flow fairness
-- Cons: May not be available on older kernels
-
-**Ingress Limiting:**
-Ingress (incoming traffic) is harder to limit. Options:
-
-```bash
-# Option 1: Police at ingress (drop excess)
-tc qdisc add dev tap-abc123 handle ffff: ingress
-tc filter add dev tap-abc123 parent ffff: protocol ip prio 1 u32 match ip src 0.0.0.0/0 \
-    police rate 100mbit burst 32k drop flowid :1
-
-# Option 2: Use IFB (Intermediate Functional Block) device
-ip link add ifb0 type ifb
-ip link set ifb0 up
-tc qdisc add dev tap-abc123 handle ffff: ingress
-tc filter add dev tap-abc123 parent ffff: protocol ip u32 match u32 0 0 \
-    action mirred egress redirect dev ifb0
-tc qdisc add dev ifb0 root cake bandwidth 100mbit
-```
-
-**Recommended Implementation:**
-1. Apply HTB + fq_codel to each TAP device at creation time
-2. Set rate based on VM plan (e.g., 100 Mbps base, 500 Mbps ceiling)
-3. Use ingress policing for incoming traffic
 
 ---
 
 ### 2. Noisy Neighbor Prevention
 
-**Background:**
-Beyond bandwidth, network contention can come from:
-- Packet-per-second (PPS) floods
-- Connection storms
-- Small packet DoS
+**Status: Partially Implemented**
 
-**Current State:**
-- Connection limit of 10,000 per VM
-- No PPS limiting
-- No queue prioritization
+Current mitigations:
+- ✅ Connection limit of 10,000 per VM
+- ✅ Upload bandwidth limit of 100 Mbps
+- ✅ fq_codel on bridges for fair queuing
+- ❌ No PPS (packets per second) limiting
+- ❌ No traffic prioritization
 
 **Questions to Answer:**
 - What PPS rates cause host-level issues?
-- Should interactive traffic get priority?
+- Should interactive traffic (SSH) get priority?
 - How do we detect and mitigate network abuse?
 
 **Measurement Commands:**
@@ -217,7 +202,7 @@ for tap in /sys/class/net/tap-*/statistics; do
 done
 
 # Connections per VM (via conntrack)
-for ip in 10.42.0.{1..255}; do
+for ip in 10.42.0.{2..255}; do
   count=$(conntrack -L 2>/dev/null | grep -c $ip)
   [ $count -gt 0 ] && echo "$ip: $count connections"
 done
@@ -229,37 +214,12 @@ tc -s qdisc show dev br-exe-0
 ip -s link show br-exe-0 | grep -E "dropped|errors"
 ```
 
-**Fair Queuing on Bridge:**
+**PPS Limiting (Not Yet Implemented):**
 ```bash
-# Replace default pfifo_fast with fq_codel on bridge
-tc qdisc replace dev br-exe-0 root fq_codel
-
-# Or use CAKE for more comprehensive fairness
-tc qdisc replace dev br-exe-0 root cake bandwidth 10gbit
-```
-
-**PPS Limiting (iptables):**
-```bash
-# Limit packets per second from each VM
-iptables -I FORWARD -s 10.42.0.0/16 -m limit --limit 50000/s --limit-burst 100000 -j ACCEPT
-iptables -I FORWARD -s 10.42.0.0/16 -j DROP
-
-# Or per-VM (requires per-VM rules)
-iptables -I FORWARD -s $VM_IP -m hashlimit \
+# Limit packets per second from each VM using hashlimit
+iptables -I FORWARD -s 10.42.0.0/16 -m hashlimit \
     --hashlimit-above 50000/s --hashlimit-mode srcip \
     --hashlimit-name vm_pps -j DROP
-```
-
-**Priority for Interactive Traffic:**
-```bash
-# Mark SSH traffic as high priority
-iptables -t mangle -A FORWARD -p tcp --dport 22 -j MARK --set-mark 1
-
-# Apply DSCP marking
-iptables -t mangle -A FORWARD -p tcp --dport 22 -j DSCP --set-dscp-class EF
-
-# Configure tc to prioritize marked packets
-tc filter add dev br-exe-0 parent 1: protocol ip prio 1 handle 1 fw flowid 1:1
 ```
 
 ---
@@ -312,19 +272,11 @@ echo 4096 > /sys/class/net/br-exe-0/bridge/multicast_hash_max
 **Alternatives to Linux Bridge:**
 
 **Option A: macvlan (bypass bridge)**
-```bash
-# Create macvlan interface directly on physical NIC
-ip link add link eth0 name macvlan0 type macvlan mode bridge
-ip link set macvlan0 up
-```
 - Pros: Lower overhead, direct path to physical NIC
 - Cons: All VMs share MAC address space, may hit switch limits
 - **Not supported on AWS EC2** (requires promiscuous mode)
 
 **Option B: ipvlan (L3 mode)**
-```bash
-ip link add link eth0 name ipvlan0 type ipvlan mode l3
-```
 - Pros: Very low overhead, L3 routing, works on AWS EC2
 - Cons: Different networking model, may break some protocols (no ARP/broadcast)
 
@@ -338,7 +290,6 @@ ip link add link eth0 name ipvlan0 type ipvlan mode l3
 - Test increasing `maxPortsPerBridge` to 1000
 - Monitor for "exchange full" errors or performance degradation
 - Consider ipvlan for highest density scenarios on AWS EC2
-- Consider macvlan only on bare metal deployments
 
 ---
 
@@ -353,7 +304,6 @@ Tracking per-VM bandwidth usage is essential for:
 **Current State:**
 - TAP device statistics available via sysfs
 - No aggregation or historical tracking
-- Resource manager doesn't track network usage long-term
 
 **Questions to Answer:**
 - What granularity is needed (per-second? per-minute? per-hour?)
@@ -371,41 +321,7 @@ done
 
 # iptables byte/packet counters
 iptables -L FORWARD -v -n -x | grep 10.42
-
-# Per-VM with instance ID mapping
-# (requires mapping TAP name to instance ID)
-
-# Prometheus metrics (if exported)
-curl -s localhost:9090/metrics | grep -E "exelet.*net"
 ```
-
-**Implementation Options:**
-
-**Option A: Extend Resource Manager**
-Add network stats collection to existing polling loop:
-```go
-// In resourcemanager/usage.go
-func (m *ResourceManager) collectNetworkUsage(tapName string) (rx, tx uint64, err error) {
-    // Read from /sys/class/net/<tap>/statistics/
-}
-```
-
-**Option B: Prometheus node_exporter**
-```bash
-# Enable netdev collector (may already be enabled)
-# Metrics: node_network_receive_bytes_total, node_network_transmit_bytes_total
-```
-
-**Option C: eBPF for detailed flow tracking**
-```bash
-# Use bpftrace or custom eBPF program for per-flow accounting
-bpftrace -e 'tracepoint:net:net_dev_xmit /args->name == "tap-abc123"/ { @bytes = sum(args->len); }'
-```
-
-**Recommended Approach:**
-1. Add network stats to resource manager (already partially done)
-2. Export to Prometheus
-3. Aggregate by user/project in external system
 
 ---
 
@@ -419,6 +335,7 @@ Understanding the network stack overhead helps optimize for density.
 - iptables rule traversal
 - NAT connection tracking
 - TAP device overhead
+- IFB bandwidth limiting
 
 **Measurement Commands:**
 ```bash
@@ -432,9 +349,6 @@ cat /proc/sys/net/netfilter/nf_conntrack_max
 
 # softirq CPU usage (network processing)
 cat /proc/softirqs | grep -E "NET_RX|NET_TX"
-
-# Network stack latency
-# Use ping from VM to external host, compare to ping from host
 
 # Per-CPU network distribution
 cat /proc/net/softnet_stat
@@ -454,66 +368,6 @@ echo "ff" > /sys/class/net/br-exe-0/queues/rx-0/rps_cpus
 
 ---
 
-### 6. Alternative Network Backends
-
-**Background:**
-For highest density scenarios, alternative networking may provide better performance than bridge + NAT.
-
-**Options:**
-
-**SR-IOV (Single Root I/O Virtualization)**
-- Hardware-based network virtualization
-- Direct NIC assignment to VMs
-- Near-native performance
-- Requires SR-IOV capable NIC
-- Limited by number of VFs (virtual functions)
-- **AWS EC2 note**: AWS uses SR-IOV internally via ENA (Elastic Network Adapter), but you cannot create your own VFs - AWS manages this. The `sriov_numvfs` sysfs interface is not available. For bare-metal EC2 instances (`.metal`), you get direct hardware access but still through ENA.
-
-**macvlan**
-- Software-based, lower overhead than bridge
-- Each container/VM gets its own MAC address
-- **Not supported on AWS EC2** - requires promiscuous mode which ENA driver doesn't support, and AWS VPC blocks traffic not addressed to the instance's MAC
-- Works on bare metal and some other cloud providers
-
-**ipvlan (L3 mode)**
-- Similar to macvlan but shares host's MAC address
-- Multiple IPs on single MAC - works on AWS
-- Lower overhead than bridge
-- Requires L3 routing (no ARP/broadcast)
-
-**eBPF/XDP**
-- Programmable packet processing
-- Can replace iptables rules
-- Lower latency than traditional stack
-- Higher complexity
-- **AWS EC2 note**: Supported on ENA driver v2.2+ (check with `modinfo ena`). Native XDP works but XDP_TX has performance limitations due to small TX ring size (1024). Generic/SKB mode may actually outperform native mode for TX-heavy workloads on smaller instances.
-
-**Questions to Answer:**
-- Do current NICs support SR-IOV?
-- Is direct IP assignment feasible?
-- What's the complexity vs performance trade-off?
-
-**Measurement Commands:**
-```bash
-# Check SR-IOV support (bare metal only - not available on AWS EC2 VMs)
-lspci | grep -i ethernet
-ls /sys/class/net/*/device/sriov_numvfs 2>/dev/null
-
-# Enable SR-IOV VFs (bare metal only - does NOT work on AWS EC2)
-echo 32 > /sys/class/net/eth0/device/sriov_numvfs
-
-# List VFs
-ip link show eth0
-
-# Check ENA driver version (AWS EC2)
-modinfo ena | grep version
-
-# Check XDP support on ENA
-ethtool -i eth0 | grep driver
-```
-
----
-
 ## Measurement Commands Summary
 
 ```bash
@@ -526,6 +380,12 @@ done
 # === tc/qdisc Status ===
 tc -s qdisc show
 tc -s class show dev br-exe-0
+
+# === Bandwidth Limit Status ===
+for ifb in $(ip link show type ifb | grep ifb- | awk -F: '{print $2}'); do
+  echo "=== $ifb ==="
+  tc -s class show dev $ifb
+done
 
 # === iptables Counters ===
 iptables -L FORWARD -v -n -x
@@ -545,6 +405,20 @@ cat /proc/net/softnet_stat
 
 ---
 
+## Implementation Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Per-VM upload bandwidth limit | ✅ Done | 100 Mbps via IFB + HTB |
+| Per-VM download bandwidth limit | ❌ Not done | Could add HTB to TAP egress |
+| Per-VM connection limit | ✅ Done | 10,000 via iptables connlimit |
+| Bridge fair queuing | ✅ Done | fq_codel on all bridges |
+| PPS limiting | ❌ Not done | Could use iptables hashlimit |
+| Traffic prioritization | ❌ Not done | Could mark/prioritize SSH |
+| Per-VM accounting | ❌ Not done | Stats available but not aggregated |
+
+---
+
 ## Expected Impact
 
 | Strategy | Density Impact | Performance Impact | Complexity | Risk | AWS EC2 |
@@ -558,79 +432,12 @@ cat /proc/net/softnet_stat
 | SR-IOV (custom VFs) | Best performance | Near-native | High | Medium | **No** (managed by AWS) |
 | eBPF/XDP | Lower latency | Variable | High | Medium | Yes (with caveats) |
 
-**Recommended Starting Point:**
-1. **Implement per-VM bandwidth limiting** with HTB + fq_codel
-2. **Add fq_codel to bridges** for fairness
-3. **Extend resource manager** for network accounting
-4. **Test higher VMs per bridge** (1000 instead of 500)
-5. **Evaluate ipvlan** for highest density scenarios (works on AWS EC2)
-
 ---
 
-## Quick Wins
+## Future Work
 
-These changes can be implemented quickly with high confidence:
-
-### 1. Add fq_codel to Bridges
-**Impact:** Fair bandwidth sharing, reduced bufferbloat
-**Risk:** Low
-**Effort:** One tc command per bridge
-
-Replace the default qdisc with fq_codel for fair queuing:
-
-```bash
-# Apply to all bridges
-for br in $(ip link show type bridge | grep br-exe | awk -F: '{print $2}'); do
-  tc qdisc replace dev $br root fq_codel
-done
-
-# Add to bridge creation code in exelet/network/nat/
-```
-
-### 2. Per-VM Bandwidth Limits
-**Impact:** Prevents noisy neighbors, controls costs
-**Risk:** Low
-**Effort:** Add to TAP creation
-
-Apply bandwidth limits when creating TAP devices:
-
-```bash
-# Example: 100 Mbps base rate, 200 Mbps burst ceiling
-tap_name="tap-abc123"
-tc qdisc add dev $tap_name root handle 1: htb default 10
-tc class add dev $tap_name parent 1: classid 1:10 htb rate 100mbit ceil 200mbit burst 15k
-tc qdisc add dev $tap_name parent 1:10 handle 10: fq_codel
-```
-
-Add to `exelet/network/nat/create_linux.go` after TAP creation.
-
-### 3. Increase VMs per Bridge
-**Impact:** Simpler network topology
-**Risk:** Low (with monitoring)
-**Effort:** Constant change
-
-The 500 VM limit is conservative. Test increasing to 1000:
-
-```go
-// In exelet/network/nat/nat.go, change:
-DefaultMaxPortsPerBridge = 1000  // was 500
-```
-
-Monitor for "exchange full" errors in dmesg after change.
-
-### 4. Network Accounting in Resource Manager
-**Impact:** Visibility into per-VM bandwidth
-**Risk:** Low
-**Effort:** Extend existing code
-
-Network stats are already collected but not exposed. Add to Prometheus metrics:
-
-```go
-// Already in usage.go - ensure it's exported to Prometheus
-netRxBytes, netTxBytes := m.collectNetworkUsage(tapName)
-```
-
-Check if metrics are available:
-```bash
-curl -s localhost:9090/metrics | grep -E "exelet.*net"
-```
+1. **Download bandwidth limiting** - Apply HTB to TAP egress
+2. **Configurable limits per plan** - Different bandwidth/connection limits per VM tier
+3. **PPS limiting** - Protect against packet flood attacks
+4. **Network accounting** - Aggregate and export per-VM bandwidth metrics
+5. **Test higher bridge density** - Try 1000 VMs per bridge with monitoring
