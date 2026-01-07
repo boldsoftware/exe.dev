@@ -1,0 +1,64 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: shelley
+    binary: shelley
+    main: ./cmd/shelley
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: shelley
+    format: binary
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Os }}_
+      {{- .Arch }}
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - 'typo'
+
+release:
+  github:
+    owner: boldsoftware
+    name: shelley
+  draft: false
+  prerelease: auto
+
+brews:
+  - repository:
+      owner: philz
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/boldsoftware/shelley
+    description: "A mobile-friendly, web-based, multi-modal coding agent"
+    license: Apache-2.0
+    install: |
+      bin.install "shelley"
+    test: |
+      system "#{bin}/shelley", "--help"
