@@ -213,6 +213,64 @@ func TestVanillaBox(t *testing.T) {
 		t.Logf("Shelley install test completed")
 	})
 
+	t.Run("shelley_subdomain", func(t *testing.T) {
+		noGolden(t)
+		// Test that Shelley is accessible via the subdomain URL (vm.shelley.exe.cloud)
+		// This tests the shelley subdomain routing added in proxy.go
+
+		httpPort := Env.servers.Exed.HTTPPort
+
+		// Set up cookie jar with auth cookies
+		jar, err := cookiejar.New(nil)
+		if err != nil {
+			t.Fatalf("failed to create cookie jar: %v", err)
+		}
+		for _, cookie := range cookies {
+			cookie.Domain = "localhost"
+			jar.SetCookies(&url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", httpPort)}, []*http.Cookie{cookie})
+		}
+
+		// Make a request to Shelley's /version endpoint via subdomain routing
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/version", httpPort), nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		// Set Host header to use shelley subdomain routing
+		req.Host = fmt.Sprintf("%s.shelley.exe.cloud:%d", boxName, httpPort)
+
+		client := &http.Client{Jar: jar, Timeout: 10 * time.Second}
+		var resp *http.Response
+		for range 50 {
+			resp, err = client.Do(req)
+			if err == nil && resp.StatusCode == http.StatusOK {
+				break
+			}
+			if resp != nil {
+				resp.Body.Close()
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if resp == nil {
+			t.Fatalf("shelley subdomain request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200 from shelley /version, got %d", resp.StatusCode)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("failed to read response body: %v", err)
+		}
+
+		// Shelley's /version endpoint returns version info
+		if len(body) == 0 {
+			t.Errorf("expected non-empty response from /version")
+		}
+		t.Logf("Shelley /version response: %s", string(body))
+	})
+
 	t.Run("metadata_service", func(t *testing.T) {
 		// Get the VM's IP address so we can canonicalize it BEFORE starting the pty session
 		// that will be recorded in the golden file
