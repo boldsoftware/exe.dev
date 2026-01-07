@@ -1203,6 +1203,22 @@ function makeDevExeDashboard() {
     );
   dash.withPanel(usersOverTimePanel);
 
+  const signupRatePanel = new TimeseriesBuilder()
+    .title("Signup Rate (per day)")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(users_total{type="login",stage="production"}[1d])`)
+        .legendFormat("login signups")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(users_total{type="dev",stage="production"}[1d])`)
+        .legendFormat("dev signups")
+    );
+  dash.withPanel(signupRatePanel);
+
   const vmsOverTimePanel = new TimeseriesBuilder()
     .title("VMs Over Time")
     .min(0)
