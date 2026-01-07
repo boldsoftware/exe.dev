@@ -30,6 +30,9 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	if os.Getenv("CI") != "" {
 		t.Skip("skipping on CI: VM creation exceeds CI timeout (see function comment for details)")
 	}
+
+	noGolden(t) // output is uninteresting, and this doesn't run on CI
+
 	// Unique hostname for this test
 	host := boxName(t)
 	t.Parallel()
