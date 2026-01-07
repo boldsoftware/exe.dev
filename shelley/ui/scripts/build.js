@@ -55,6 +55,14 @@ async function build() {
     fs.copyFileSync('src/index.html', 'dist/index.html');
     fs.copyFileSync('src/styles.css', 'dist/styles.css');
 
+    // Copy assets (icons, manifest, etc.)
+    const assetsDir = 'src/assets';
+    if (fs.existsSync(assetsDir)) {
+      for (const file of fs.readdirSync(assetsDir)) {
+        fs.copyFileSync(`${assetsDir}/${file}`, `dist/${file}`);
+      }
+    }
+
     // Write build info
     // Get the absolute path to the src directory for staleness checking
     const srcDir = new URL('../src', import.meta.url).pathname;
