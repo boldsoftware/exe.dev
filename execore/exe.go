@@ -2722,7 +2722,7 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 		}
 
 		var count int
-		if client == nil {
+		if client != nil {
 			// Don't pick this VM if it is too loaded.
 			count, err := client.countInstances(ctx)
 			if err != nil {
