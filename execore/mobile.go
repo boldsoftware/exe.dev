@@ -217,7 +217,7 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 		}
 
 		if err != nil {
-			s.slog().ErrorContext(ctx, "Box creation failed", "hostname", hostname, "error", err)
+			s.slog().ErrorContext(ctx, "Box creation failed", "hostname", hostname, "email", userEmail, "error", err)
 			cs.MarkDone(err)
 			return
 		}
