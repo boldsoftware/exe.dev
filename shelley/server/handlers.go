@@ -193,6 +193,33 @@ func acceptsGzip(r *http.Request) bool {
 	return strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
 }
 
+// etagMatches checks if the client's If-None-Match header matches the given ETag.
+// Per RFC 7232, If-None-Match can contain multiple ETags (comma-separated)
+// and may use weak validators (W/"..."). For GET/HEAD, weak comparison is used.
+func etagMatches(ifNoneMatch, etag string) bool {
+	if ifNoneMatch == "" {
+		return false
+	}
+	// Normalize our ETag by stripping W/ prefix if present
+	normEtag := strings.TrimPrefix(etag, `W/`)
+
+	// If-None-Match can be "*" which matches any
+	if ifNoneMatch == "*" {
+		return true
+	}
+
+	// Split by comma and check each tag
+	for _, tag := range strings.Split(ifNoneMatch, ",") {
+		tag = strings.TrimSpace(tag)
+		// Strip W/ prefix for weak comparison
+		tag = strings.TrimPrefix(tag, `W/`)
+		if tag == normEtag {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) staticHandler(fsys http.FileSystem) http.Handler {
 	fileServer := http.FileServer(fsys)
 
@@ -235,7 +262,7 @@ func (s *Server) staticHandler(fsys http.FileSystem) http.Handler {
 				if hash, ok := checksums[filename]; ok {
 					etag := `"` + hash + `"`
 					w.Header().Set("ETag", etag)
-					if r.Header.Get("If-None-Match") == etag {
+					if etagMatches(r.Header.Get("If-None-Match"), etag) {
 						w.WriteHeader(http.StatusNotModified)
 						return
 					}
@@ -244,8 +271,9 @@ func (s *Server) staticHandler(fsys http.FileSystem) http.Handler {
 
 			w.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext(r.URL.Path)))
 			w.Header().Set("Vary", "Accept-Encoding")
-			// Cache for 1 year - ETag ensures revalidation works
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			// Use must-revalidate so browsers check ETag on each request.
+			// We can't use immutable since we don't have content-hashed filenames.
+			w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
 
 			if acceptsGzip(r) {
 				// Client accepts gzip - serve compressed directly
