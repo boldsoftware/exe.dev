@@ -45,8 +45,8 @@ EXE_SHELLEY_TREE=$(git ls-tree origin/main shelley --format "%(objectname)")
 echo "exe shelley/ tree: $EXE_SHELLEY_TREE"
 
 if [ "$SHELLEY_TREE" = "$EXE_SHELLEY_TREE" ]; then
-	echo "Already in sync! Nothing to do."
-	exit 0
+    echo "Already in sync! Nothing to do."
+    exit 0
 fi
 
 echo "Trees differ - need to sync commits from shelley to exe3"
@@ -57,22 +57,22 @@ echo "Finding base commit in $SHELLEY_COMMIT history..."
 BASE_COMMIT=""
 COMMIT_COUNT=0
 for commit_info in $(git log -n 20 --pretty="%H:%T" "$SHELLEY_COMMIT"); do
-	commit_hash=$(echo $commit_info | awk -F: '{ print $1 }')
-	tree_hash=$(echo $commit_info | awk -F: '{ print $2 }')
-	COMMIT_COUNT=$((COMMIT_COUNT + 1))
-	echo "Checking commit: $commit_hash (tree: $tree_hash)"
+    commit_hash=$(echo $commit_info | awk -F: '{ print $1 }')
+    tree_hash=$(echo $commit_info | awk -F: '{ print $2 }')
+    COMMIT_COUNT=$((COMMIT_COUNT + 1))
+    echo "Checking commit: $commit_hash (tree: $tree_hash)"
 
-	if [ "$tree_hash" = "$EXE_SHELLEY_TREE" ]; then
-		BASE_COMMIT="$commit_hash"
-		echo "Found base commit: $BASE_COMMIT (tree: $tree_hash) after checking $COMMIT_COUNT commits"
-		break
-	fi
+    if [ "$tree_hash" = "$EXE_SHELLEY_TREE" ]; then
+        BASE_COMMIT="$commit_hash"
+        echo "Found base commit: $BASE_COMMIT (tree: $tree_hash) after checking $COMMIT_COUNT commits"
+        break
+    fi
 done
 
 if [ -z "$BASE_COMMIT" ]; then
-	echo "ERROR: Could not find base commit in $SHELLEY_COMMIT history that matches exe shelley/ tree (searched $COMMIT_COUNT commits)"
-	echo "The exe repo's shelley/ directory may be too out of date; check it manually."
-	exit 1
+    echo "ERROR: Could not find base commit in $SHELLEY_COMMIT history that matches exe shelley/ tree (searched $COMMIT_COUNT commits)"
+    echo "The exe repo's shelley/ directory may be too out of date; check it manually."
+    exit 1
 fi
 
 # Step 3: Get commits to process
@@ -83,23 +83,23 @@ COMMIT_COUNT=$(git rev-list --count "$BASE_COMMIT".."$SHELLEY_COMMIT")
 echo "Found $COMMIT_COUNT commits to process"
 
 if [ $COMMIT_COUNT -eq 0 ]; then
-	echo "No commits to process - already at latest"
-	exit 0
+    echo "No commits to process - already at latest"
+    exit 0
 fi
 
 if [ $COMMIT_COUNT -gt 20 ]; then
-	echo "ERROR: Too many commits to process ($COMMIT_COUNT > 20). This seems dangerous."
-	exit 1
+    echo "ERROR: Too many commits to process ($COMMIT_COUNT > 20). This seems dangerous."
+    exit 1
 fi
 
 # Check for merge commits
 echo "Checking for merge commits..."
 MERGE_COMMITS=$(git rev-list --merges "$BASE_COMMIT".."$SHELLEY_COMMIT")
 if [ -n "$MERGE_COMMITS" ]; then
-	echo "ERROR: Found merge commits in range. Refusing to continue."
-	echo "Merge commits found:"
-	git log --oneline --merges "$BASE_COMMIT".."$SHELLEY_COMMIT"
-	exit 1
+    echo "ERROR: Found merge commits in range. Refusing to continue."
+    echo "Merge commits found:"
+    git log --oneline --merges "$BASE_COMMIT".."$SHELLEY_COMMIT"
+    exit 1
 fi
 
 echo "All commits are non-merge commits - proceeding"
@@ -110,49 +110,49 @@ echo "Starting from exe commit: $CURRENT_EXE_COMMIT"
 
 FIRST_NEW_COMMIT=""
 for commit in $(git rev-list --reverse "$BASE_COMMIT".."$SHELLEY_COMMIT"); do
-	echo "Processing shelley commit: $(git log --oneline --decorate -n 1 $commit)"
+    echo "Processing shelley commit: $(git log --oneline --decorate -n 1 $commit)"
 
-	# Get the tree of this shelley commit
-	SHELLEY_COMMIT_TREE=$(git rev-parse "$commit^{tree}")
-	echo "  Shelley commit tree: $SHELLEY_COMMIT_TREE"
+    # Get the tree of this shelley commit
+    SHELLEY_COMMIT_TREE=$(git rev-parse "$commit^{tree}")
+    echo "  Shelley commit tree: $SHELLEY_COMMIT_TREE"
 
-	# Create a new tree that combines:
-	# - All entries from current exe3 HEAD except shelley/
-	# - The shelley/ entry pointing to the shelley commit tree
+    # Create a new tree that combines:
+    # - All entries from current exe3 HEAD except shelley/
+    # - The shelley/ entry pointing to the shelley commit tree
 
-	# Get the top-level tree entries from current HEAD, excluding shelley/
-	TEMP_INDEX=$(mktemp)
-	git ls-tree HEAD | grep -v $'\tshelley$' >"$TEMP_INDEX" || true
+    # Get the top-level tree entries from current HEAD, excluding shelley/
+    TEMP_INDEX=$(mktemp)
+    git ls-tree HEAD | grep -v $'\tshelley$' >"$TEMP_INDEX" || true
 
-	# Add the shelley directory entry
-	printf "040000 tree %s\tshelley\n" "$SHELLEY_COMMIT_TREE" >>"$TEMP_INDEX"
+    # Add the shelley directory entry
+    printf "040000 tree %s\tshelley\n" "$SHELLEY_COMMIT_TREE" >>"$TEMP_INDEX"
 
-	# Create tree from this index
-	NEW_TREE=$(git mktree <"$TEMP_INDEX")
-	rm "$TEMP_INDEX"
+    # Create tree from this index
+    NEW_TREE=$(git mktree <"$TEMP_INDEX")
+    rm "$TEMP_INDEX"
 
-	echo "  Created new tree: $NEW_TREE"
+    echo "  Created new tree: $NEW_TREE"
 
-	# Create commit with same metadata as original shelley commit
-	new_commit_file=$(mktemp)
-	GIT_AUTHOR_NAME="$(git log -1 --pretty=format:%an $commit)" \
-	GIT_AUTHOR_EMAIL="$(git log -1 --pretty=format:%ae $commit)" \
-	GIT_AUTHOR_DATE="$(git log -1 --pretty=format:%ad $commit)" \
-	GIT_COMMITTER_NAME="$(git log -1 --pretty=format:%cn $commit)" \
-	GIT_COMMITTER_EMAIL="$(git log -1 --pretty=format:%ce $commit)" \
-	GIT_COMMITTER_DATE="$(git log -1 --pretty=format:%cd $commit)" \
-		git commit-tree "$NEW_TREE" -p "$CURRENT_EXE_COMMIT" -m "$(git log -1 --pretty=format:%B $commit)" | tee $new_commit_file
-	NEW_COMMIT=$(cat $new_commit_file)
+    # Create commit with same metadata as original shelley commit
+    new_commit_file=$(mktemp)
+    GIT_AUTHOR_NAME="$(git log -1 --pretty=format:%an $commit)" \
+    GIT_AUTHOR_EMAIL="$(git log -1 --pretty=format:%ae $commit)" \
+    GIT_AUTHOR_DATE="$(git log -1 --pretty=format:%ad $commit)" \
+    GIT_COMMITTER_NAME="$(git log -1 --pretty=format:%cn $commit)" \
+    GIT_COMMITTER_EMAIL="$(git log -1 --pretty=format:%ce $commit)" \
+    GIT_COMMITTER_DATE="$(git log -1 --pretty=format:%cd $commit)" \
+        git commit-tree "$NEW_TREE" -p "$CURRENT_EXE_COMMIT" -m "$(git log -1 --pretty=format:%B $commit)" | tee $new_commit_file
+    NEW_COMMIT=$(cat $new_commit_file)
 
-	echo "  Created exe commit: $NEW_COMMIT"
+    echo "  Created exe commit: $NEW_COMMIT"
 
-	# Track the first new commit for the log range
-	if [ -z "$FIRST_NEW_COMMIT" ]; then
-		FIRST_NEW_COMMIT="$NEW_COMMIT"
-	fi
+    # Track the first new commit for the log range
+    if [ -z "$FIRST_NEW_COMMIT" ]; then
+        FIRST_NEW_COMMIT="$NEW_COMMIT"
+    fi
 
-	# Update our current position
-	CURRENT_EXE_COMMIT="$NEW_COMMIT"
+    # Update our current position
+    CURRENT_EXE_COMMIT="$NEW_COMMIT"
 done
 
 # Tag the final commit
@@ -166,18 +166,18 @@ FINAL_SHELLEY_TREE=$(git rev-parse "$SHELLEY_COMMIT"^{tree})
 FINAL_EXE_SHELLEY_TREE=$(git ls-tree "$CURRENT_EXE_COMMIT" shelley --format "%(objectname)")
 
 if [ "$FINAL_SHELLEY_TREE" = "$FINAL_EXE_SHELLEY_TREE" ]; then
-	echo "Success! Trees now match:"
-	echo "  $SHELLEY_COMMIT^{tree}: $FINAL_SHELLEY_TREE"
-	echo "  exe shelley/ tree: $FINAL_EXE_SHELLEY_TREE"
-	echo "Processed $COMMIT_COUNT commits successfully."
-	echo
-	echo "New commits created:"
-	git log --boundary --oneline "$FIRST_NEW_COMMIT"^.."$CURRENT_EXE_COMMIT"
-	echo
-	echo "Final commit tagged as 'new-exe-commit': $CURRENT_EXE_COMMIT"
+    echo "Success! Trees now match:"
+    echo "  $SHELLEY_COMMIT^{tree}: $FINAL_SHELLEY_TREE"
+    echo "  exe shelley/ tree: $FINAL_EXE_SHELLEY_TREE"
+    echo "Processed $COMMIT_COUNT commits successfully."
+    echo
+    echo "New commits created:"
+    git log --boundary --oneline "$FIRST_NEW_COMMIT"^.."$CURRENT_EXE_COMMIT"
+    echo
+    echo "Final commit tagged as 'new-exe-commit': $CURRENT_EXE_COMMIT"
 else
-	echo "Verification failed! Trees still don't match:"
-	echo "  $SHELLEY_COMMIT^{tree}: $FINAL_SHELLEY_TREE"
-	echo "  exe shelley/ tree: $FINAL_EXE_SHELLEY_TREE"
-	exit 1
+    echo "Verification failed! Trees still don't match:"
+    echo "  $SHELLEY_COMMIT^{tree}: $FINAL_SHELLEY_TREE"
+    echo "  exe shelley/ tree: $FINAL_EXE_SHELLEY_TREE"
+    exit 1
 fi
