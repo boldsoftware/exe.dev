@@ -43,7 +43,7 @@ func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInter
 			_ = n.removeConnLimit(ctx, ipStr)
 		}
 		if cleanupIP && ipStr != "" {
-			_ = n.dhcpServer.Release(ipStr)
+			_ = n.ipam.Release(ipStr)
 		}
 		if cleanupTap {
 			_ = n.removeBandwidthLimit(ctx, tapName)
@@ -66,7 +66,7 @@ func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInter
 		return nil, err
 	}
 
-	ip, err := n.dhcpServer.Reserve(macAddress)
+	ip, err := n.ipam.Reserve(macAddress)
 	if err != nil {
 		cleanup()
 		return nil, err
@@ -87,7 +87,7 @@ func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInter
 		return nil, fmt.Errorf("failed to apply bandwidth limit: %w", err)
 	}
 
-	gwIP, err := n.dhcpServer.ServerIP()
+	gwIP, err := n.ipam.ServerIP()
 	if err != nil {
 		cleanup()
 		return nil, err

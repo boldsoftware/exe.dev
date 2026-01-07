@@ -1,4 +1,4 @@
-package dhcpd
+package ipam
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 )
 
 func TestDatastoreReserveRelease(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "exe-dhcpd-test-")
+	tmpDir, err := os.MkdirTemp("", "exe-ipam-test-")
 	assert.NoError(t, err)
 
 	defer os.RemoveAll(tmpDir)
@@ -36,7 +36,7 @@ func TestDatastoreReserveRelease(t *testing.T) {
 }
 
 func TestDatastoreLoad(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "exe-dhcpd-test-")
+	tmpDir, err := os.MkdirTemp("", "exe-ipam-test-")
 	assert.NoError(t, err)
 
 	defer os.RemoveAll(tmpDir)
@@ -83,7 +83,7 @@ func TestDatastoreListConcurrentAccess(t *testing.T) {
 }
 
 func TestDatastoreReserveExistingIsIdempotent(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "exe-dhcpd-test-")
+	tmpDir, err := os.MkdirTemp("", "exe-ipam-test-")
 	assert.NoError(t, err)
 
 	defer os.RemoveAll(tmpDir)
@@ -117,7 +117,7 @@ func TestDatastoreReserveExistingIsIdempotent(t *testing.T) {
 }
 
 func TestDatastoreReserveIPCollision(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "exe-dhcpd-test-")
+	tmpDir, err := os.MkdirTemp("", "exe-ipam-test-")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 
@@ -147,7 +147,7 @@ func TestDatastoreReserveIPCollision(t *testing.T) {
 func TestDatastoreReserveConcurrentSameIP(t *testing.T) {
 	// Test that concurrent reservations of the same IP result in
 	// exactly one success and the rest getting ErrExists
-	tmpDir, err := os.MkdirTemp("", "exe-dhcpd-test-")
+	tmpDir, err := os.MkdirTemp("", "exe-ipam-test-")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 

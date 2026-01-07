@@ -1,4 +1,4 @@
-package dhcpd
+package ipam
 
 import (
 	"fmt"
@@ -12,66 +12,60 @@ import (
 )
 
 func TestUtilsGetServerIP(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "exe-dhcpd-test-")
+	tmpDir, err := os.MkdirTemp("", "exe-ipam-test-")
 	assert.NoError(t, err)
 
 	defer os.RemoveAll(tmpDir)
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	srv, err := NewDHCPServer(&Config{
-		DataDir:   tmpDir,
-		Interface: "br-exe",
-		Network:   "192.168.64.0/24",
-		Port:      67,
+	mgr, err := NewManager(&Config{
+		DataDir: tmpDir,
+		Network: "192.168.64.0/24",
 	}, log)
 	assert.NoError(t, err)
 
 	expectedIP := net.ParseIP("192.168.64.1")
 
-	serverIP, err := srv.getServerIP()
+	serverIP, err := mgr.getServerIP()
 	assert.NoError(t, err)
 
 	assert.Equal(t, expectedIP.String(), serverIP.String())
 }
 
 func TestUtilsGetNextIP(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "exe-dhcpd-test-")
+	tmpDir, err := os.MkdirTemp("", "exe-ipam-test-")
 	assert.NoError(t, err)
 
 	defer os.RemoveAll(tmpDir)
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	srv, err := NewDHCPServer(&Config{
-		DataDir:   tmpDir,
-		Interface: "br-exe",
-		Network:   "192.168.64.0/24",
-		Port:      67,
+	mgr, err := NewManager(&Config{
+		DataDir: tmpDir,
+		Network: "192.168.64.0/24",
 	}, log)
 	assert.NoError(t, err)
 
-	assert.NoError(t, srv.ds.Reserve("server", "192.168.64.1"))
+	assert.NoError(t, mgr.ds.Reserve("server", "192.168.64.1"))
 
-	nextIP, err := srv.getNextIP()
+	nextIP, err := mgr.getNextIP()
 	assert.NoError(t, err)
 
 	assert.Equal(t, nextIP.String(), "192.168.64.2")
 }
 
-func TestDHCPServerReserveConcurrent(t *testing.T) {
+func TestManagerReserveConcurrent(t *testing.T) {
 	// Test that concurrent Reserve() calls each get a unique IP
-	tmpDir, err := os.MkdirTemp("", "exe-dhcpd-test-")
+	tmpDir, err := os.MkdirTemp("", "exe-ipam-test-")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	srv, err := NewDHCPServer(&Config{
-		DataDir:   tmpDir,
-		Interface: "br-exe",
-		Network:   "192.168.64.0/24",
-		Port:      67,
+	mgr, err := NewManager(&Config{
+		DataDir: tmpDir,
+		Network: "192.168.64.0/24",
 	}, log)
 	assert.NoError(t, err)
 
@@ -90,7 +84,7 @@ func TestDHCPServerReserveConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func(mac string) {
 			defer wg.Done()
-			ip, err := srv.Reserve(mac)
+			ip, err := mgr.Reserve(mac)
 			results <- result{mac: mac, ip: ip, err: err}
 		}(mac)
 	}

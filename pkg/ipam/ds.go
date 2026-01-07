@@ -1,4 +1,4 @@
-package dhcpd
+package ipam
 
 import (
 	"encoding/json"

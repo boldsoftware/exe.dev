@@ -39,7 +39,6 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3
-	github.com/insomniacslk/dhcp v0.0.0-20250417080101-5f8cf70e8c5f
 	github.com/keighl/postmark v0.0.0-20190821160221-28358b1a94e3
 	github.com/lmittmann/tint v1.1.2
 	github.com/mistifyio/go-zfs/v3 v3.1.0
@@ -54,6 +53,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af
 	github.com/slack-go/slack v0.15.0
 	github.com/stretchr/testify v1.11.1
+	github.com/stripe/stripe-go/v82 v82.5.1
 	github.com/tg123/sshpiper v0.0.0-00010101000000-000000000000
 	github.com/urfave/cli/v2 v2.27.7
 	github.com/veops/go-ansiterm v0.0.5
@@ -198,7 +198,6 @@ require (
 	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/pganalyze/pg_query_go/v6 v6.1.0 // indirect
-	github.com/pierrec/lz4/v4 v4.1.21 // indirect
 	github.com/pingcap/errors v0.11.5-0.20240311024730-e056997136bb // indirect
 	github.com/pingcap/failpoint v0.0.0-20240528011301-b51a646c7c86 // indirect
 	github.com/pingcap/log v1.1.0 // indirect
@@ -219,11 +218,9 @@ require (
 	github.com/spf13/pflag v1.0.7 // indirect
 	github.com/sqlc-dev/sqlc v1.30.0 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
-	github.com/stripe/stripe-go/v82 v82.5.1 // indirect
 	github.com/tailscale/go-winio v0.0.0-20231025203758-c4f33415bf55 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/tg123/remotesigner v0.0.3 // indirect
-	github.com/u-root/uio v0.0.0-20240224005618-d2acac8f3701 // indirect
 	github.com/vbatts/tar-split v0.12.1 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/vmware-labs/yaml-jsonpath v0.3.2 // indirect

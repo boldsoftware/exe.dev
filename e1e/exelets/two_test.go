@@ -11,7 +11,7 @@ import (
 	"exe.dev/e1e/testinfra"
 )
 
-func TestTwoExelets(t *testing.T) {
+func TestTwoHosts(t *testing.T) {
 	// Don't use t.Context here, the exelets should be around
 	// for other tests.
 	if err := ensureExeletCount(context.Background(), 2); err != nil {
@@ -43,7 +43,7 @@ func TestTwoExelets(t *testing.T) {
 	deleteBox(t, boxName, keyFile)
 }
 
-func TestUserOnSingleExelet(t *testing.T) {
+func TestUserOnSingleHost(t *testing.T) {
 	if err := ensureExeletCount(context.Background(), 2); err != nil {
 		t.Fatal(err)
 	}

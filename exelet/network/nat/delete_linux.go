@@ -35,12 +35,12 @@ func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
 		}
 	}
 
-	// Release the DHCP lease for this IP
+	// Release the IP lease
 	if ip != "" {
-		if err := n.dhcpServer.Release(ip); err != nil {
-			n.log.WarnContext(ctx, "failed to release DHCP lease", "ip", ip, "error", err)
+		if err := n.ipam.Release(ip); err != nil {
+			n.log.WarnContext(ctx, "failed to release IP lease", "ip", ip, "error", err)
 		} else {
-			n.log.DebugContext(ctx, "released DHCP lease", "tap", tapName, "ip", ip)
+			n.log.DebugContext(ctx, "released IP lease", "tap", tapName, "ip", ip)
 		}
 	}
 

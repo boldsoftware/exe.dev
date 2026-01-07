@@ -124,7 +124,7 @@ func (n *NAT) configureBridge(ctx context.Context) error {
 	}
 
 	// assign dhcp server IP
-	serverIP, err := n.dhcpServer.ServerIP()
+	serverIP, err := n.ipam.ServerIP()
 	if err != nil {
 		return err
 	}
@@ -283,7 +283,7 @@ func (n *NAT) createSecondaryBridge(ctx context.Context, bridgeName string) erro
 	}
 
 	// Apply metadata DNAT rule for the new bridge (redirects to primary bridge IP)
-	serverIP, err := n.dhcpServer.ServerIP()
+	serverIP, err := n.ipam.ServerIP()
 	if err != nil {
 		return err
 	}

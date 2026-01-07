@@ -1,4 +1,4 @@
-package dhcpd
+package ipam
 
 import (
 	"errors"
@@ -8,8 +8,8 @@ import (
 	iplib "github.com/c-robinson/iplib/v2"
 )
 
-func (s *DHCPServer) getServerIP() (net.IP, error) {
-	_, network, err := iplib.ParseCIDR(s.config.Network)
+func (m *Manager) getServerIP() (net.IP, error) {
+	_, network, err := iplib.ParseCIDR(m.config.Network)
 	if err != nil {
 		return nil, err
 	}
@@ -17,8 +17,8 @@ func (s *DHCPServer) getServerIP() (net.IP, error) {
 	return network.FirstAddress(), nil
 }
 
-func (s *DHCPServer) getNextIP() (net.IP, error) {
-	subnetIP, network, err := iplib.ParseCIDR(s.config.Network)
+func (m *Manager) getNextIP() (net.IP, error) {
+	subnetIP, network, err := iplib.ParseCIDR(m.config.Network)
 	if err != nil {
 		return nil, err
 	}
@@ -28,12 +28,12 @@ func (s *DHCPServer) getNextIP() (net.IP, error) {
 		next := iplib.NextIP(ip)
 
 		// Skip the server IP (first address in network)
-		if next.Equal(s.serverIP) {
+		if next.Equal(m.serverIP) {
 			ip = next
 			continue
 		}
 
-		if _, err := s.ds.Get(&Query{IP: next.String()}); err != nil {
+		if _, err := m.ds.Get(&Query{IP: next.String()}); err != nil {
 			if !errors.Is(err, ErrNotFound) {
 				return nil, err
 			}
@@ -47,5 +47,5 @@ func (s *DHCPServer) getNextIP() (net.IP, error) {
 		ip = next
 	}
 
-	return nil, fmt.Errorf("no IPs available in %s", s.config.Network)
+	return nil, fmt.Errorf("no IPs available in %s", m.config.Network)
 }

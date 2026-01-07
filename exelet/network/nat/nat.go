@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"exe.dev/pkg/dhcpd"
+	"exe.dev/pkg/ipam"
 )
 
 const (
@@ -50,11 +50,10 @@ type bridgeInfo struct {
 type NAT struct {
 	bridgeBaseName    string
 	network           string
-	dhcpServer        *dhcpd.DHCPServer
+	ipam              *ipam.Manager
 	nameservers       []string
 	ntpServer         string
 	router            string
-	dhcpCancel        func() // cancel function for DHCP server context
 	log               *slog.Logger
 	bridges           []bridgeInfo
 	maxPortsPerBridge int
@@ -104,13 +103,10 @@ func NewNATManager(addr string, log *slog.Logger) (*NAT, error) {
 	// Primary bridge name is the base name with -0 suffix
 	primaryBridgeName := fmt.Sprintf("%s-0", bridgeBaseName)
 
-	// configure DHCP server
-	dhcpSrv, err := dhcpd.NewDHCPServer(&dhcpd.Config{
-		Interface:  primaryBridgeName,
-		DataDir:    u.Path,
-		Network:    network,
-		Port:       67,
-		DNSServers: nameservers,
+	// configure IPAM
+	ipamMgr, err := ipam.NewManager(&ipam.Config{
+		DataDir: u.Path,
+		Network: network,
 	}, log)
 	if err != nil {
 		return nil, err
@@ -118,7 +114,7 @@ func NewNATManager(addr string, log *slog.Logger) (*NAT, error) {
 
 	// If router not explicitly set, use the bridge IP (first address in network)
 	if router == "" {
-		serverIP, err := dhcpSrv.ServerIP()
+		serverIP, err := ipamMgr.ServerIP()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get server IP: %w", err)
 		}
@@ -128,7 +124,7 @@ func NewNATManager(addr string, log *slog.Logger) (*NAT, error) {
 	n := &NAT{
 		bridgeBaseName:    bridgeBaseName,
 		network:           network,
-		dhcpServer:        dhcpSrv,
+		ipam:              ipamMgr,
 		nameservers:       nameservers,
 		ntpServer:         ntpServer,
 		router:            router,
@@ -210,12 +206,5 @@ func (n *NAT) decrementBridgePort(bridgeName string) {
 
 // Close stops the NAT manager and cleans up resources
 func (n *NAT) Close() error {
-	// Stop DHCP server to close socket
-	if n.dhcpServer != nil {
-		if err := n.dhcpServer.Stop(); err != nil {
-			n.log.Warn("failed to stop DHCP server", "error", err)
-		}
-	}
-
 	return nil
 }

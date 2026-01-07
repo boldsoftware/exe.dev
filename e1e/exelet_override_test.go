@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestExeletOverride(t *testing.T) {
+func TestHostOverride(t *testing.T) {
 	t.Parallel()
 	noGolden(t)
 
