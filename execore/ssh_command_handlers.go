@@ -198,6 +198,13 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:           ss.handleGrantSupportRootCommand,
 		},
 		{
+			Name:        "exelets",
+			Hidden:      true,
+			Description: "List all exelets (support only)",
+			FlagSetFunc: jsonOnlyFlags("exelets"),
+			Handler:     ss.handleExeletsCommand,
+		},
+		{
 			Name:        "exit",
 			Description: "Exit",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
@@ -1227,6 +1234,101 @@ func (ss *SSHServer) handleGrantSupportRootCommand(ctx context.Context, cc *exem
 		cc.Writeln("exe.dev support now has root access to VM %q.", boxName)
 	} else {
 		cc.Writeln("exe.dev support root access to VM %q has been revoked.", boxName)
+	}
+	return nil
+}
+
+func (ss *SSHServer) handleExeletsCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	// Check if user has root_support privilege
+	isRootSupport, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserRootSupport, cc.User.ID)
+	if err != nil || isRootSupport != 1 {
+		return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", cc.User.Email)
+	}
+
+	type exeletInfo struct {
+		Address       string `json:"address"`
+		Version       string `json:"version"`
+		Arch          string `json:"arch"`
+		Status        string `json:"status"`
+		IsPreferred   bool   `json:"is_preferred"`
+		InstanceCount int    `json:"instance_count"`
+		Error         string `json:"error,omitempty"`
+	}
+
+	// Get the preferred exelet setting
+	preferredAddr, _ := withRxRes0(ss.server, ctx, (*exedb.Queries).GetPreferredExelet)
+
+	var exelets []exeletInfo
+
+	// Gather info from all exelet clients
+	for addr, ec := range ss.server.exeletClients {
+		info := exeletInfo{
+			Address:     addr,
+			Version:     ec.client.Version(),
+			Arch:        ec.client.Arch(),
+			IsPreferred: addr == preferredAddr,
+		}
+
+		// Try to get system info to verify connectivity
+		sysInfoCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		resp, err := ec.client.GetSystemInfo(sysInfoCtx, &api.GetSystemInfoRequest{})
+		cancel()
+		if err != nil {
+			info.Status = "error"
+			info.Error = err.Error()
+		} else {
+			info.Status = "healthy"
+			info.Version = resp.Version
+			info.Arch = resp.Arch
+		}
+
+		// Count instances
+		listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		if count, err := ec.countInstances(listCtx); err == nil {
+			info.InstanceCount = count
+		}
+		cancel()
+
+		exelets = append(exelets, info)
+	}
+
+	// Sort exelets by address for consistent output
+	slices.SortFunc(exelets, func(a, b exeletInfo) int {
+		return cmp.Compare(a.Address, b.Address)
+	})
+
+	if cc.WantJSON() {
+		cc.WriteJSON(map[string]any{
+			"exelets": exelets,
+		})
+		return nil
+	}
+
+	if len(exelets) == 0 {
+		cc.Writeln("No exelets configured.")
+		return nil
+	}
+
+	for i, e := range exelets {
+		cc.Writeln("\033[1m%s\033[0m", e.Address)
+		if e.IsPreferred {
+			cc.Writeln("  \033[1;33m★ preferred\033[0m")
+		}
+
+		statusColor := "\033[1;32m" // green
+		if e.Status == "error" {
+			statusColor = "\033[1;31m" // red
+		}
+		cc.Writeln("  %s%s\033[0m (%d instances)", statusColor, e.Status, e.InstanceCount)
+		if e.Version != "" || e.Arch != "" {
+			cc.Writeln("  Version: %s, Arch: %s", e.Version, e.Arch)
+		}
+		if e.Error != "" {
+			cc.Writeln("  \033[1;31mError:\033[0m %s", e.Error)
+		}
+		if i < len(exelets)-1 {
+			cc.Writeln("")
+		}
 	}
 	return nil
 }
