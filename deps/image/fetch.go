@@ -34,13 +34,13 @@ func (i *ImageManager) Fetch(ctx context.Context, ref, platform, destDir string)
 		return nil, err
 	}
 
-	err = util.CreateRegistryHost(imageRef, i.config.Username, i.config.Password, i.config.Insecure,
+	resolver, err := util.NewResolver(imageRef, i.config.Username, i.config.Password, i.config.Insecure,
 		i.config.UseHTTP, "", false)
 	if err != nil {
-		return nil, fmt.Errorf("error creating registry host configuration: %v", err)
+		return nil, fmt.Errorf("error creating registry resolver: %v", err)
 	}
 
-	descriptor, err := registry.FetchDescriptor(util.GetResolver(), contentStore, imageRef)
+	descriptor, err := registry.FetchDescriptor(resolver, contentStore, imageRef)
 	if err != nil {
 		return nil, err
 	}

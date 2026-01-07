@@ -56,15 +56,13 @@ func (i *ImageManager) FetchMetadata(ctx context.Context, ref string) (*types.Im
 		return nil, err
 	}
 
-	// Set up registry auth first - this must happen before cache lookup to ensure
+	// Set up registry resolver - this must happen before cache lookup to ensure
 	// credentials are valid for this repository (prevents cross-repo cache attacks)
-	err = util.CreateRegistryHost(imageRef, i.config.Username, i.config.Password, i.config.Insecure,
+	resolver, err := util.NewResolver(imageRef, i.config.Username, i.config.Password, i.config.Insecure,
 		i.config.UseHTTP, "", false)
 	if err != nil {
-		return nil, fmt.Errorf("error creating registry host configuration: %w", err)
+		return nil, fmt.Errorf("error creating registry resolver: %w", err)
 	}
-
-	resolver := util.GetResolver()
 
 	// Get the repository name (without tag/digest) for cache key
 	repository := imageRef.Name()
@@ -228,13 +226,12 @@ func (i *ImageManager) FetchManifestForPlatform(ctx context.Context, ref, platfo
 		return nil, err
 	}
 
-	err = util.CreateRegistryHost(imageRef, i.config.Username, i.config.Password, i.config.Insecure,
+	resolver, err := util.NewResolver(imageRef, i.config.Username, i.config.Password, i.config.Insecure,
 		i.config.UseHTTP, "", false)
 	if err != nil {
-		return nil, fmt.Errorf("error creating registry host configuration: %w", err)
+		return nil, fmt.Errorf("error creating registry resolver: %w", err)
 	}
 
-	resolver := util.GetResolver()
 	name, _, err := resolver.Resolve(ctx, imageRef.String())
 	if err != nil {
 		return nil, fmt.Errorf("error resolving image reference: %w", err)
@@ -354,13 +351,12 @@ func (i *ImageManager) FetchConfig(ctx context.Context, ref, platform string) (*
 		return nil, err
 	}
 
-	err = util.CreateRegistryHost(imageRef, i.config.Username, i.config.Password, i.config.Insecure,
+	resolver, err := util.NewResolver(imageRef, i.config.Username, i.config.Password, i.config.Insecure,
 		i.config.UseHTTP, "", false)
 	if err != nil {
-		return nil, fmt.Errorf("error creating registry host configuration: %w", err)
+		return nil, fmt.Errorf("error creating registry resolver: %w", err)
 	}
 
-	resolver := util.GetResolver()
 	name, _, err := resolver.Resolve(ctx, imageRef.String())
 	if err != nil {
 		return nil, fmt.Errorf("error resolving image reference: %w", err)

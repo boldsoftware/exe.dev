@@ -25,7 +25,6 @@ import (
 var (
 	configDir     = os.Getenv("DOCKER_CONFIG")
 	configFileDir = ".docker"
-	registryHost  docker.RegistryHost
 )
 
 // retryTransport wraps an http.RoundTripper and retries transient errors
@@ -147,12 +146,12 @@ func parseRetryAfter(value string) time.Duration {
 	return 0
 }
 
-func CreateRegistryHost(imageRef reference.Named, username, password string, insecure, plainHTTP bool, dockerConfigPath string, pushOp bool) error {
+func NewResolver(imageRef reference.Named, username, password string, insecure, plainHTTP bool, dockerConfigPath string, pushOp bool) (remotes.Resolver, error) {
 	hostname, _ := splitHostname(imageRef.String())
 	if hostname == "docker.io" {
 		hostname = "registry-1.docker.io"
 	}
-	registryHost = docker.RegistryHost{
+	registryHost := docker.RegistryHost{
 		Host:         hostname,
 		Scheme:       "https",
 		Path:         "/v2",
@@ -222,18 +221,12 @@ func CreateRegistryHost(imageRef reference.Named, username, password string, ins
 	}
 	registryHost.Authorizer = docker.NewDockerAuthorizer(docker.WithAuthCreds(credFunc))
 
-	return nil
-}
-
-func GetResolver() remotes.Resolver {
 	opts := docker.ResolverOptions{
-		Hosts: getHosts,
+		Hosts: func(string) ([]docker.RegistryHost, error) {
+			return []docker.RegistryHost{registryHost}, nil
+		},
 	}
-	return docker.NewResolver(opts)
-}
-
-func getHosts(name string) ([]docker.RegistryHost, error) {
-	return []docker.RegistryHost{registryHost}, nil
+	return docker.NewResolver(opts), nil
 }
 
 // resolveHostname resolves Docker specific hostnames
