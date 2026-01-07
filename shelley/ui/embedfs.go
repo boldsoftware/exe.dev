@@ -100,3 +100,17 @@ func checkStaleness() {
 func Assets() http.FileSystem {
 	return assets
 }
+
+// Checksums returns the content checksums for static assets.
+// These are computed during build and used for ETag generation.
+func Checksums() map[string]string {
+	data, err := fs.ReadFile(Dist, "dist/checksums.json")
+	if err != nil {
+		return nil
+	}
+	var checksums map[string]string
+	if err := json.Unmarshal(data, &checksums); err != nil {
+		return nil
+	}
+	return checksums
+}

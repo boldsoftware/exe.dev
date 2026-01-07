@@ -1,5 +1,7 @@
 import * as esbuild from 'esbuild';
 import * as fs from 'fs';
+import * as zlib from 'zlib';
+import * as crypto from 'crypto';
 
 const isWatch = process.argv.includes('--watch');
 const isProd = !isWatch;
@@ -65,10 +67,43 @@ async function build() {
 
     console.log('Build complete!');
 
-    // Show file sizes
-    console.log('\nOutput files:');
-    const files = fs.readdirSync('dist').filter(f => f.endsWith('.js') || f.endsWith('.css') || f.endsWith('.ttf'));
-    for (const file of files.sort()) {
+    // Generate gzip versions of large files and remove originals to reduce binary size
+    // The server will decompress on-the-fly for the rare clients that don't support gzip
+    console.log('\nGenerating gzip compressed files...');
+    const filesToCompress = ['monaco-editor.js', 'editor.worker.js', 'main.js', 'monaco-editor.css', 'styles.css'];
+    const checksums = {};
+    
+    for (const file of filesToCompress) {
+      const inputPath = `dist/${file}`;
+      const outputPath = `dist/${file}.gz`;
+      if (fs.existsSync(inputPath)) {
+        const input = fs.readFileSync(inputPath);
+        const compressed = zlib.gzipSync(input, { level: 9 });
+        fs.writeFileSync(outputPath, compressed);
+        
+        // Compute SHA256 of the compressed content for ETag
+        const hash = crypto.createHash('sha256').update(compressed).digest('hex').slice(0, 16);
+        checksums[file] = hash;
+        
+        const origKb = (input.length / 1024).toFixed(1);
+        const gzKb = (compressed.length / 1024).toFixed(1);
+        const ratio = ((compressed.length / input.length) * 100).toFixed(0);
+        console.log(`  ${file}: ${origKb} KB -> ${gzKb} KB gzip (${ratio}%) [${hash}]`);
+        
+        // Remove original to save space in embedded binary
+        fs.unlinkSync(inputPath);
+      }
+    }
+    
+    // Write checksums for ETag support
+    fs.writeFileSync('dist/checksums.json', JSON.stringify(checksums, null, 2));
+    console.log('\nChecksums written to dist/checksums.json');
+
+    console.log('\nOther files:');
+    const otherFiles = fs.readdirSync('dist').filter(f => 
+      (f.endsWith('.ttf') || f.endsWith('.map')) && !f.endsWith('.gz')
+    );
+    for (const file of otherFiles.sort()) {
       const stats = fs.statSync(`dist/${file}`);
       const sizeKb = (stats.size / 1024).toFixed(1);
       console.log(`  ${file}: ${sizeKb} KB`);

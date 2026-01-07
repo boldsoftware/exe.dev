@@ -263,30 +263,28 @@ func NewServer(database *db.DB, llmManager LLMProvider, toolSetConfig claudetool
 
 // RegisterRoutes registers HTTP routes on the given mux
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
-	// API routes
-	mux.HandleFunc("/api/conversations", s.handleConversations)
-	mux.HandleFunc("/api/conversations/archived", s.handleArchivedConversations)
-	mux.HandleFunc("/api/conversations/new", s.handleNewConversation)
-	mux.HandleFunc("/api/conversation/", s.handleConversation)
-	mux.HandleFunc("/api/conversation-by-slug/", s.handleConversationBySlug)
-	mux.HandleFunc("/api/validate-cwd", s.handleValidateCwd)
-	mux.HandleFunc("/api/list-directory", s.handleListDirectory)
-	mux.HandleFunc("/api/git/diffs", s.handleGitDiffs)
-	mux.HandleFunc("/api/git/diffs/", s.handleGitDiffFiles)
-	mux.HandleFunc("/api/git/file-diff/", s.handleGitFileDiff)
-	mux.HandleFunc("/api/upload", s.handleUpload)
-
-	// Generic read route restricted to safe paths
-	mux.HandleFunc("/api/read", s.handleRead)
-	mux.HandleFunc("/api/write-file", s.handleWriteFile)
+	// API routes - wrap with gzip where beneficial
+	mux.Handle("/api/conversations", gzipHandler(http.HandlerFunc(s.handleConversations)))
+	mux.Handle("/api/conversations/archived", gzipHandler(http.HandlerFunc(s.handleArchivedConversations)))
+	mux.Handle("/api/conversations/new", http.HandlerFunc(s.handleNewConversation)) // Small response
+	mux.Handle("/api/conversation/", http.StripPrefix("/api/conversation", s.conversationMux()))
+	mux.Handle("/api/conversation-by-slug/", gzipHandler(http.HandlerFunc(s.handleConversationBySlug)))
+	mux.Handle("/api/validate-cwd", http.HandlerFunc(s.handleValidateCwd)) // Small response
+	mux.Handle("/api/list-directory", gzipHandler(http.HandlerFunc(s.handleListDirectory)))
+	mux.Handle("/api/git/diffs", gzipHandler(http.HandlerFunc(s.handleGitDiffs)))
+	mux.Handle("/api/git/diffs/", gzipHandler(http.HandlerFunc(s.handleGitDiffFiles)))
+	mux.Handle("/api/git/file-diff/", gzipHandler(http.HandlerFunc(s.handleGitFileDiff)))
+	mux.HandleFunc("/api/upload", s.handleUpload)                      // Binary uploads
+	mux.HandleFunc("/api/read", s.handleRead)                          // Serves images
+	mux.Handle("/api/write-file", http.HandlerFunc(s.handleWriteFile)) // Small response
 
 	// Version endpoint
-	mux.HandleFunc("/version", s.handleVersion)
+	mux.Handle("/version", http.HandlerFunc(s.handleVersion)) // Small response
 
 	// Debug routes
-	mux.HandleFunc("/debug/llm", s.handleDebugLLM)
+	mux.Handle("/debug/llm", gzipHandler(http.HandlerFunc(s.handleDebugLLM)))
 
-	// Serve embedded UI assets with conservative caching
+	// Serve embedded UI assets
 	mux.Handle("/", s.staticHandler(ui.Assets()))
 }
 

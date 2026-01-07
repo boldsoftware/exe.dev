@@ -1,6 +1,7 @@
 package server
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -9,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,6 +24,7 @@ import (
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/models"
 	"shelley.exe.dev/slug"
+	"shelley.exe.dev/ui"
 	"shelley.exe.dev/version"
 )
 
@@ -179,15 +182,23 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"path": filename})
 }
 
-// staticHandler serves files from the provided filesystem and disables caching for HTML/CSS/JS to avoid stale bundles
-// isConversationSlugPath returns true if the path looks like a conversation slug route
-// (e.g., /c/my-conversation-slug)
+// staticHandler serves files from the provided filesystem.
+// For JS/CSS files, it serves pre-compressed .gz versions with content-based ETags.
 func isConversationSlugPath(path string) bool {
 	return strings.HasPrefix(path, "/c/")
 }
 
-func (s *Server) staticHandler(fs http.FileSystem) http.Handler {
-	fileServer := http.FileServer(fs)
+// acceptsGzip returns true if the client accepts gzip encoding
+func acceptsGzip(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
+}
+
+func (s *Server) staticHandler(fsys http.FileSystem) http.Handler {
+	fileServer := http.FileServer(fsys)
+
+	// Load checksums for ETag support (content-based, not git-based)
+	checksums := ui.Checksums()
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Inject initialization data into index.html
 		if r.URL.Path == "/" || r.URL.Path == "/index.html" || isConversationSlugPath(r.URL.Path) {
@@ -195,15 +206,64 @@ func (s *Server) staticHandler(fs http.FileSystem) http.Handler {
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")
 			w.Header().Set("Content-Type", "text/html")
-			s.serveIndexWithInit(w, r, fs)
+			s.serveIndexWithInit(w, r, fsys)
 			return
 		}
 
-		if strings.HasSuffix(r.URL.Path, ".html") || strings.HasSuffix(r.URL.Path, ".js") || strings.HasSuffix(r.URL.Path, ".css") {
-			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-			w.Header().Set("Pragma", "no-cache")
-			w.Header().Set("Expires", "0")
+		// For JS and CSS files, serve from .gz files (only .gz versions are embedded)
+		if strings.HasSuffix(r.URL.Path, ".js") || strings.HasSuffix(r.URL.Path, ".css") {
+			gzPath := r.URL.Path + ".gz"
+			gzFile, err := fsys.Open(gzPath)
+			if err != nil {
+				// No .gz file, fall through to regular file server
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+			defer gzFile.Close()
+
+			stat, err := gzFile.Stat()
+			if err != nil || stat.IsDir() {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+
+			// Get filename without leading slash for checksum lookup
+			filename := strings.TrimPrefix(r.URL.Path, "/")
+
+			// Check ETag for cache validation (content-based)
+			if checksums != nil {
+				if hash, ok := checksums[filename]; ok {
+					etag := `"` + hash + `"`
+					w.Header().Set("ETag", etag)
+					if r.Header.Get("If-None-Match") == etag {
+						w.WriteHeader(http.StatusNotModified)
+						return
+					}
+				}
+			}
+
+			w.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext(r.URL.Path)))
+			w.Header().Set("Vary", "Accept-Encoding")
+			// Cache for 1 year - ETag ensures revalidation works
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+
+			if acceptsGzip(r) {
+				// Client accepts gzip - serve compressed directly
+				w.Header().Set("Content-Encoding", "gzip")
+				io.Copy(w, gzFile)
+			} else {
+				// Rare: client doesn't accept gzip - decompress on the fly
+				gr, err := gzip.NewReader(gzFile)
+				if err != nil {
+					http.Error(w, "failed to decompress", http.StatusInternalServerError)
+					return
+				}
+				defer gr.Close()
+				io.Copy(w, gr)
+			}
+			return
 		}
+
 		fileServer.ServeHTTP(w, r)
 	})
 }
@@ -429,48 +489,39 @@ func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(conversations)
 }
 
-// handleConversation handles conversation-specific routes
-func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/api/conversation/")
-	parts := strings.SplitN(path, "/", 2)
-	if len(parts) == 0 || parts[0] == "" {
-		http.Error(w, "Conversation ID required", http.StatusBadRequest)
-		return
-	}
-
-	conversationID := parts[0]
-
-	// Handle different endpoints
-	if len(parts) == 1 {
-		// /conversation/<id>
-		s.handleGetConversation(w, r, conversationID)
-	} else {
-		switch parts[1] {
-		case "stream":
-			// /conversation/<id>/stream
-			s.handleStreamConversation(w, r, conversationID)
-		case "chat":
-			// /conversation/<id>/chat
-			s.handleChatConversation(w, r, conversationID)
-		case "cancel":
-			// /conversation/<id>/cancel
-			s.handleCancelConversation(w, r, conversationID)
-		case "archive":
-			// /conversation/<id>/archive
-			s.handleArchiveConversation(w, r, conversationID)
-		case "unarchive":
-			// /conversation/<id>/unarchive
-			s.handleUnarchiveConversation(w, r, conversationID)
-		case "delete":
-			// /conversation/<id>/delete
-			s.handleDeleteConversation(w, r, conversationID)
-		case "rename":
-			// /conversation/<id>/rename
-			s.handleRenameConversation(w, r, conversationID)
-		default:
-			http.Error(w, "Not found", http.StatusNotFound)
-		}
-	}
+// conversationMux returns a mux for /api/conversation/<id>/* routes
+func (s *Server) conversationMux() *http.ServeMux {
+	mux := http.NewServeMux()
+	// GET /api/conversation/<id> - returns all messages (can be large, compress)
+	mux.Handle("GET /{id}", gzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.handleGetConversation(w, r, r.PathValue("id"))
+	})))
+	// GET /api/conversation/<id>/stream - SSE stream (do NOT compress)
+	// TODO: Consider gzip for SSE in the future. Would reduce bandwidth
+	// for large tool outputs, but needs flush after each event.
+	mux.HandleFunc("GET /{id}/stream", func(w http.ResponseWriter, r *http.Request) {
+		s.handleStreamConversation(w, r, r.PathValue("id"))
+	})
+	// POST endpoints - small responses, no compression needed
+	mux.HandleFunc("POST /{id}/chat", func(w http.ResponseWriter, r *http.Request) {
+		s.handleChatConversation(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		s.handleCancelConversation(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /{id}/archive", func(w http.ResponseWriter, r *http.Request) {
+		s.handleArchiveConversation(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /{id}/unarchive", func(w http.ResponseWriter, r *http.Request) {
+		s.handleUnarchiveConversation(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /{id}/delete", func(w http.ResponseWriter, r *http.Request) {
+		s.handleDeleteConversation(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /{id}/rename", func(w http.ResponseWriter, r *http.Request) {
+		s.handleRenameConversation(w, r, r.PathValue("id"))
+	})
+	return mux
 }
 
 // handleGetConversation handles GET /conversation/<id>
