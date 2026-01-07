@@ -69,6 +69,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countPendingBoxSharesStmt, err = db.PrepareContext(ctx, countPendingBoxShares); err != nil {
 		return nil, fmt.Errorf("error preparing query CountPendingBoxShares: %w", err)
 	}
+	if q.countUsersWithBoxesStmt, err = db.PrepareContext(ctx, countUsersWithBoxes); err != nil {
+		return nil, fmt.Errorf("error preparing query CountUsersWithBoxes: %w", err)
+	}
 	if q.createBoxShareStmt, err = db.PrepareContext(ctx, createBoxShare); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateBoxShare: %w", err)
 	}
@@ -510,6 +513,11 @@ func (q *Queries) Close() error {
 	if q.countPendingBoxSharesStmt != nil {
 		if cerr := q.countPendingBoxSharesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countPendingBoxSharesStmt: %w", cerr)
+		}
+	}
+	if q.countUsersWithBoxesStmt != nil {
+		if cerr := q.countUsersWithBoxesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countUsersWithBoxesStmt: %w", cerr)
 		}
 	}
 	if q.createBoxShareStmt != nil {
@@ -1171,6 +1179,7 @@ type Queries struct {
 	countIPShardsStmt                      *sql.Stmt
 	countLoginUsersStmt                    *sql.Stmt
 	countPendingBoxSharesStmt              *sql.Stmt
+	countUsersWithBoxesStmt                *sql.Stmt
 	createBoxShareStmt                     *sql.Stmt
 	createBoxShareLinkStmt                 *sql.Stmt
 	createPendingBoxShareStmt              *sql.Stmt
@@ -1313,6 +1322,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countIPShardsStmt:                      q.countIPShardsStmt,
 		countLoginUsersStmt:                    q.countLoginUsersStmt,
 		countPendingBoxSharesStmt:              q.countPendingBoxSharesStmt,
+		countUsersWithBoxesStmt:                q.countUsersWithBoxesStmt,
 		createBoxShareStmt:                     q.createBoxShareStmt,
 		createBoxShareLinkStmt:                 q.createBoxShareLinkStmt,
 		createPendingBoxShareStmt:              q.createPendingBoxShareStmt,

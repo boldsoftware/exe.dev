@@ -159,6 +159,17 @@ func (q *Queries) CountBoxesForUser(ctx context.Context, createdByUserID string)
 	return count, err
 }
 
+const countUsersWithBoxes = `-- name: CountUsersWithBoxes :one
+SELECT COUNT(DISTINCT created_by_user_id) FROM boxes
+`
+
+func (q *Queries) CountUsersWithBoxes(ctx context.Context) (int64, error) {
+	row := q.queryRow(ctx, q.countUsersWithBoxesStmt, countUsersWithBoxes)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteBox = `-- name: DeleteBox :exec
 DELETE FROM boxes WHERE id = ?
 `

@@ -201,6 +201,7 @@ func TestEntityMetrics(t *testing.T) {
 	loginUsersFound := false
 	devUsersFound := false
 	vmsFound := false
+	usersWithVMsFound := false
 	for _, m := range metrics {
 		switch m.GetName() {
 		case "users_total":
@@ -227,6 +228,11 @@ func TestEntityMetrics(t *testing.T) {
 			if v := m.GetMetric()[0].GetGauge().GetValue(); v != 0 {
 				t.Errorf("vms_total = %v, want 0", v)
 			}
+		case "users_with_vms_total":
+			usersWithVMsFound = true
+			if v := m.GetMetric()[0].GetGauge().GetValue(); v != 0 {
+				t.Errorf("users_with_vms_total = %v, want 0", v)
+			}
 		}
 	}
 
@@ -238,5 +244,8 @@ func TestEntityMetrics(t *testing.T) {
 	}
 	if !vmsFound {
 		t.Error("vms_total metric not found")
+	}
+	if !usersWithVMsFound {
+		t.Error("users_with_vms_total metric not found")
 	}
 }

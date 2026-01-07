@@ -100,3 +100,6 @@ SELECT COUNT(*) FROM boxes WHERE created_by_user_id = ?;
 
 -- name: CountBoxes :one
 SELECT COUNT(*) FROM boxes;
+
+-- name: CountUsersWithBoxes :one
+SELECT COUNT(DISTINCT created_by_user_id) FROM boxes;
