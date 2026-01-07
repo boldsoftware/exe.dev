@@ -53,6 +53,13 @@ func TestEmbeddedFiles(t *testing.T) {
 			contentType:  "",
 			contains:     []string{},
 		},
+		{
+			name:         "shelley page is served",
+			path:         "/shelley",
+			expectedCode: http.StatusOK,
+			contentType:  "text/html",
+			contains:     []string{"Shelley", "github.com/boldsoftware"},
+		},
 	}
 
 	for _, tt := range tests {
