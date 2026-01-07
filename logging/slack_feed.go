@@ -112,6 +112,24 @@ func (sf *SlackFeed) CreatedVM(ctx context.Context, userID string) {
 	}()
 }
 
+// Subscribed notifies Slack that user userID has completed the Stripe subscription flow.
+func (sf *SlackFeed) Subscribed(ctx context.Context, userID string) {
+	go func() {
+		ref, ok := sf.loadUserMessage(userID)
+		if !ok {
+			return
+		}
+		if sf.client == nil {
+			sf.log.InfoContext(ctx, "slack feed channel reaction", "emoji", "money_with_wings", "userID", userID)
+			return
+		}
+		err := sf.client.AddReactionContext(context.WithoutCancel(ctx), "money_with_wings", ref)
+		if err != nil {
+			sf.log.WarnContext(ctx, "failed to add reaction to feed channel message", "error", err, "userID", userID)
+		}
+	}()
+}
+
 // ServiceStarted notifies the ops and error channels that a service has started.
 func (sf *SlackFeed) ServiceStarted(ctx context.Context, serviceName string) {
 	hostname, _ := os.Hostname()

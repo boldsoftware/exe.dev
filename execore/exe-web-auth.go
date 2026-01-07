@@ -320,6 +320,7 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.slog().InfoContext(r.Context(), "account activated after Stripe checkout", "user_id", userID, "session_id", sessionID, "billing_id", billingID)
+		s.slackFeed.Subscribed(r.Context(), userID)
 	}
 
 	// If not from exemenu, redirect to /new to create a VM
