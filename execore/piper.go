@@ -408,28 +408,25 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 		slog.DebugContext(ctx, "Failed to get SSH details for box", "component", "piper-plugin", "box_name", box.Name, "error", err)
 		return nil, fmt.Errorf("failed to get SSH details for VM %s: %v", box.Name, err)
 	}
-	slog.DebugContext(ctx, "SSH details for machine",
+	if sshDetails.HostKey == "" {
+		slog.DebugContext(ctx, "Box has no stored host key", "component", "piper-plugin", "box_name", box.Name)
+		return nil, fmt.Errorf("VM %s has no stored host key", box.Name)
+	}
+	host := box.SSHHost()
+	port := sshDetails.Port
+	// This is a CANONICAL LOG LINE, in the sense that this is a wide event to tell us about SSH connections.
+	slog.InfoContext(ctx, "SSH Connection to VM",
 		"user_id", userID,
 		"conn_id", connID,
 		"component", "piper-plugin",
 		"box_name", box.Name,
-		"port", sshDetails.Port,
+		"log_type", "vm-ssh-connection",
+		"port", port,
 		"ctrhost", sshDetails.Ctrhost,
-		"user", sshDetails.User,
+		"ssh_user", sshDetails.User,
+		"box_host", host,
 	)
-
-	host := box.SSHHost()
-	port := sshDetails.Port
-
-	slog.DebugContext(ctx, "Using database SSH details for box", "component", "piper-plugin", "box_name", box.Name, "host", host, "port", port)
-
-	// Store the expected host key for this connection if available
-	if sshDetails.HostKey != "" {
-		p.storeExpectedHostKeyForConnection(connID, sshDetails.HostKey)
-		slog.DebugContext(ctx, "Stored expected host key for connection", "component", "piper-plugin", "box_name", box.Name, "conn_id", connID, "host_key", sshDetails.HostKey)
-	}
-
-	slog.DebugContext(ctx, "directing piperd to connect", "host", host, "port", port, "user", sshDetails.User)
+	p.storeExpectedHostKeyForConnection(connID, sshDetails.HostKey)
 	return &libplugin.Upstream{
 		Host:     host, // Container host from ctrhost (direct via vzNAT in dev)
 		Port:     int32(port),
