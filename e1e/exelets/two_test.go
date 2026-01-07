@@ -92,7 +92,7 @@ func TestUserOnSingleExelet(t *testing.T) {
 		t.Fatalf("%s returned status %d", url, resp.StatusCode)
 	}
 
-	var boxes []struct{
+	var boxes []struct {
 		Host string `json:"host"`
 		Name string `json:"name"`
 	}
