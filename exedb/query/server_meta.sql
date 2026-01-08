@@ -28,3 +28,10 @@ SELECT value FROM server_meta WHERE key = 'new_throttle_message';
 -- name: SetNewThrottleMessage :exec
 INSERT INTO server_meta (key, value, updated_at) VALUES ('new_throttle_message', ?, CURRENT_TIMESTAMP)
 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP;
+
+-- name: GetLoginCreationDisabled :one
+SELECT value FROM server_meta WHERE key = 'login_creation_disabled';
+
+-- name: SetLoginCreationDisabled :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('login_creation_disabled', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP;

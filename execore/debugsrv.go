@@ -41,6 +41,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
 	mux.HandleFunc("POST /debug/new-throttle", s.handleDebugNewThrottlePost)
 	mux.HandleFunc("/debug/signup-limiter", s.handleDebugSignupLimiter)
+	mux.HandleFunc("POST /debug/signup-limiter", s.handleDebugSignupLimiterPost)
 	mux.HandleFunc("/debug/ipshards", s.handleDebugIPShards)
 	mux.HandleFunc("GET /debug/log", s.handleDebugLogForm)
 	mux.HandleFunc("POST /debug/log", s.handleDebugLog)
@@ -1082,27 +1083,95 @@ func (s *Server) CheckNewThrottle(ctx context.Context, userID, email string) (bo
 	return false, ""
 }
 
-// handleDebugSignupLimiter displays the signup rate limiter state.
+// handleDebugSignupLimiter displays the signup rate limiter state and login creation settings.
 func (s *Server) handleDebugSignupLimiter(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	loginDisabled := s.IsLoginCreationDisabled(ctx)
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>Signup Rate Limiter</title>
+<html><head><title>Signup Limiter</title>
 <style>
 table { border-collapse: collapse; margin: 10px 0; }
 th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
 th { background: #f5f5f5; }
+.section { margin: 20px 0; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+.toggle-switch { display: inline-flex; align-items: center; cursor: pointer; }
+.toggle-switch input { display: none; }
+.toggle-slider { width: 50px; height: 26px; background: #ccc; border-radius: 13px; position: relative; transition: 0.3s; }
+.toggle-slider:before { content: ""; position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%%; top: 2px; left: 2px; transition: 0.3s; }
+.toggle-switch input:checked + .toggle-slider { background: #dc3545; }
+.toggle-switch input:checked + .toggle-slider:before { left: 26px; }
+.toggle-label { margin-left: 10px; font-weight: bold; }
+.save-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 16px; }
+.save-btn:hover { background: #0056b3; }
+.warning { background: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 5px; margin: 10px 0; }
 </style>
 </head><body>
-<h1>Signup Rate Limiter</h1>
+<h1>Signup Limiter</h1>
+<p><a href="/debug">/debug</a></p>
+
+<div class="section">
+<h2>Block New Account Creation</h2>
+<div class="warning">
+<strong>Warning:</strong> When enabled, users with unrecognized email addresses cannot create new accounts.
+</div>
+<form method="post" action="/debug/signup-limiter">
+<p>When enabled, users trying to login with an email we haven't seen before will be blocked. Existing users can still log in and add new SSH keys.</p>
+<label class="toggle-switch">
+<input type="checkbox" name="disabled" value="true" %s>
+<span class="toggle-slider"></span>
+<span class="toggle-label">Block new account creation</span>
+</label>
+<p style="margin-top: 10px;">
+<button type="submit" class="save-btn">Save Settings</button>
+</p>
+</form>
+</div>
+
+<div class="section">
+<h2>Rate Limiter</h2>
 <p>Rate limit: 5 requests per minute per IP address.</p>
-<h2>Currently Rate-Limited IPs</h2>
-`)
-	s.signupLimiter.DumpHTML(w, true) // onlyLimited=true to show only rate-limited IPs
+<h3>Currently Rate-Limited IPs</h3>
+`, checkedAttr(loginDisabled))
+	if s.signupLimiter != nil {
+		s.signupLimiter.DumpHTML(w, true) // onlyLimited=true to show only rate-limited IPs
+	} else {
+		fmt.Fprintf(w, "<p>No rate limiter configured.</p>\n")
+	}
 	fmt.Fprintf(w, `
-<h2>All Tracked IPs</h2>
+<h3>All Tracked IPs</h3>
 `)
-	s.signupLimiter.DumpHTML(w, false) // show all tracked IPs
-	fmt.Fprintf(w, `</body></html>`)
+	if s.signupLimiter != nil {
+		s.signupLimiter.DumpHTML(w, false) // show all tracked IPs
+	} else {
+		fmt.Fprintf(w, "<p>No rate limiter configured.</p>\n")
+	}
+	fmt.Fprintf(w, `</div>
+</body></html>`)
+}
+
+// handleDebugSignupLimiterPost handles saving the login creation disabled setting.
+func (s *Server) handleDebugSignupLimiterPost(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	disabled := r.FormValue("disabled") == "true"
+
+	// Save the setting
+	disabledStr := "false"
+	if disabled {
+		disabledStr = "true"
+	}
+	if err := withTx1(s, ctx, (*exedb.Queries).SetLoginCreationDisabled, disabledStr); err != nil {
+		http.Error(w, fmt.Sprintf("failed to save setting: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "login creation disabled setting updated via debug page", "disabled", disabled)
+
+	// Redirect back to the signup limiter page
+	http.Redirect(w, r, "/debug/signup-limiter", http.StatusSeeOther)
 }
 
 // handleDebugNewThrottle displays the new-throttle configuration page.
@@ -1476,4 +1545,13 @@ func (s *Server) handleDebugTestimonials(w http.ResponseWriter, r *http.Request)
 
 	fmt.Fprintf(w, `</body></html>
 `)
+}
+
+// IsLoginCreationDisabled returns true if new account creation is disabled.
+func (s *Server) IsLoginCreationDisabled(ctx context.Context) bool {
+	val, err := withRxRes0(s, ctx, (*exedb.Queries).GetLoginCreationDisabled)
+	if err != nil {
+		return false
+	}
+	return val == "true"
 }

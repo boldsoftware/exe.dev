@@ -984,30 +984,37 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// login_with_exe is explicitly set when logging into a site hosted by exe (proxy auth flow)
 	createdForLoginWithExe := r.FormValue("login_with_exe") == "1"
 
-	// Check if user exists, create if not
-	var userID string
-	var isNewUser bool
-	err := s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		userID, err = queries.GetUserIDByEmail(ctx, email)
-		if errors.Is(err, sql.ErrNoRows) {
-			// User doesn't exist, create them
-			userID, err = s.createUserRecord(ctx, queries, email, createdForLoginWithExe)
-			if err != nil {
-				return err
-			}
-			isNewUser = true
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("failed to check user existence: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Database error during user lookup/creation", "error", err)
+	// First check if user exists (read-only check)
+	existingUserID, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserIDByEmail, email)
+	isNewUser := errors.Is(err, sql.ErrNoRows)
+	if err != nil && !isNewUser {
+		s.slog().ErrorContext(r.Context(), "Database error checking user", "error", err)
 		s.showAuthError(w, r, "Database error occurred. Please try again.", "")
 		return
+	}
+
+	// If new user, check if account creation is disabled
+	if isNewUser && s.IsLoginCreationDisabled(r.Context()) {
+		s.slog().InfoContext(r.Context(), "new account creation blocked", "email", email)
+		s.showAuthError(w, r, "Account creation is temporarily unavailable. Please try again later.", "")
+		return
+	}
+
+	// Now create the user if needed
+	var userID string
+	if isNewUser {
+		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+			var err error
+			userID, err = s.createUserRecord(ctx, queries, email, createdForLoginWithExe)
+			return err
+		})
+		if err != nil {
+			s.slog().ErrorContext(r.Context(), "Database error during user creation", "error", err)
+			s.showAuthError(w, r, "Database error occurred. Please try again.", "")
+			return
+		}
+	} else {
+		userID = existingUserID
 	}
 	if isNewUser {
 		source := "web"

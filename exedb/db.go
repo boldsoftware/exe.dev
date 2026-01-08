@@ -204,6 +204,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getIPShardByBoxNameStmt, err = db.PrepareContext(ctx, getIPShardByBoxName); err != nil {
 		return nil, fmt.Errorf("error preparing query GetIPShardByBoxName: %w", err)
 	}
+	if q.getLoginCreationDisabledStmt, err = db.PrepareContext(ctx, getLoginCreationDisabled); err != nil {
+		return nil, fmt.Errorf("error preparing query GetLoginCreationDisabled: %w", err)
+	}
 	if q.getNewThrottleEmailPatternsStmt, err = db.PrepareContext(ctx, getNewThrottleEmailPatterns); err != nil {
 		return nil, fmt.Errorf("error preparing query GetNewThrottleEmailPatterns: %w", err)
 	}
@@ -365,6 +368,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setBoxSupportAccessAllowedStmt, err = db.PrepareContext(ctx, setBoxSupportAccessAllowed); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxSupportAccessAllowed: %w", err)
+	}
+	if q.setLoginCreationDisabledStmt, err = db.PrepareContext(ctx, setLoginCreationDisabled); err != nil {
+		return nil, fmt.Errorf("error preparing query SetLoginCreationDisabled: %w", err)
 	}
 	if q.setNewThrottleEmailPatternsStmt, err = db.PrepareContext(ctx, setNewThrottleEmailPatterns); err != nil {
 		return nil, fmt.Errorf("error preparing query SetNewThrottleEmailPatterns: %w", err)
@@ -746,6 +752,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getIPShardByBoxNameStmt: %w", cerr)
 		}
 	}
+	if q.getLoginCreationDisabledStmt != nil {
+		if cerr := q.getLoginCreationDisabledStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getLoginCreationDisabledStmt: %w", cerr)
+		}
+	}
 	if q.getNewThrottleEmailPatternsStmt != nil {
 		if cerr := q.getNewThrottleEmailPatternsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getNewThrottleEmailPatternsStmt: %w", cerr)
@@ -1016,6 +1027,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setBoxSupportAccessAllowedStmt: %w", cerr)
 		}
 	}
+	if q.setLoginCreationDisabledStmt != nil {
+		if cerr := q.setLoginCreationDisabledStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setLoginCreationDisabledStmt: %w", cerr)
+		}
+	}
 	if q.setNewThrottleEmailPatternsStmt != nil {
 		if cerr := q.setNewThrottleEmailPatternsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setNewThrottleEmailPatternsStmt: %w", cerr)
@@ -1240,6 +1256,7 @@ type Queries struct {
 	getEmailVerificationByTokenStmt        *sql.Stmt
 	getHLLSketchStmt                       *sql.Stmt
 	getIPShardByBoxNameStmt                *sql.Stmt
+	getLoginCreationDisabledStmt           *sql.Stmt
 	getNewThrottleEmailPatternsStmt        *sql.Stmt
 	getNewThrottleEnabledStmt              *sql.Stmt
 	getNewThrottleMessageStmt              *sql.Stmt
@@ -1294,6 +1311,7 @@ type Queries struct {
 	recordUserEventStmt                    *sql.Stmt
 	sSHKeyForBoxNamedStmt                  *sql.Stmt
 	setBoxSupportAccessAllowedStmt         *sql.Stmt
+	setLoginCreationDisabledStmt           *sql.Stmt
 	setNewThrottleEmailPatternsStmt        *sql.Stmt
 	setNewThrottleEnabledStmt              *sql.Stmt
 	setNewThrottleMessageStmt              *sql.Stmt
@@ -1385,6 +1403,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailVerificationByTokenStmt:        q.getEmailVerificationByTokenStmt,
 		getHLLSketchStmt:                       q.getHLLSketchStmt,
 		getIPShardByBoxNameStmt:                q.getIPShardByBoxNameStmt,
+		getLoginCreationDisabledStmt:           q.getLoginCreationDisabledStmt,
 		getNewThrottleEmailPatternsStmt:        q.getNewThrottleEmailPatternsStmt,
 		getNewThrottleEnabledStmt:              q.getNewThrottleEnabledStmt,
 		getNewThrottleMessageStmt:              q.getNewThrottleMessageStmt,
@@ -1439,6 +1458,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		recordUserEventStmt:                    q.recordUserEventStmt,
 		sSHKeyForBoxNamedStmt:                  q.sSHKeyForBoxNamedStmt,
 		setBoxSupportAccessAllowedStmt:         q.setBoxSupportAccessAllowedStmt,
+		setLoginCreationDisabledStmt:           q.setLoginCreationDisabledStmt,
 		setNewThrottleEmailPatternsStmt:        q.setNewThrottleEmailPatternsStmt,
 		setNewThrottleEnabledStmt:              q.setNewThrottleEnabledStmt,
 		setNewThrottleMessageStmt:              q.setNewThrottleMessageStmt,

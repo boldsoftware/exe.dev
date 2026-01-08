@@ -18,6 +18,17 @@ func (q *Queries) ClearPreferredExelet(ctx context.Context) error {
 	return err
 }
 
+const getLoginCreationDisabled = `-- name: GetLoginCreationDisabled :one
+SELECT value FROM server_meta WHERE key = 'login_creation_disabled'
+`
+
+func (q *Queries) GetLoginCreationDisabled(ctx context.Context) (string, error) {
+	row := q.queryRow(ctx, q.getLoginCreationDisabledStmt, getLoginCreationDisabled)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
 const getNewThrottleEmailPatterns = `-- name: GetNewThrottleEmailPatterns :one
 SELECT value FROM server_meta WHERE key = 'new_throttle_email_patterns'
 `
@@ -60,6 +71,16 @@ func (q *Queries) GetPreferredExelet(ctx context.Context) (string, error) {
 	var value string
 	err := row.Scan(&value)
 	return value, err
+}
+
+const setLoginCreationDisabled = `-- name: SetLoginCreationDisabled :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('login_creation_disabled', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+`
+
+func (q *Queries) SetLoginCreationDisabled(ctx context.Context, value string) error {
+	_, err := q.exec(ctx, q.setLoginCreationDisabledStmt, setLoginCreationDisabled, value)
+	return err
 }
 
 const setNewThrottleEmailPatterns = `-- name: SetNewThrottleEmailPatterns :exec

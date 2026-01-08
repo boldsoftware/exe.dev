@@ -1027,6 +1027,11 @@ func (ss *SSHServer) startEmailVerification(s *shellSession, publicKey, email st
 		return nil, fmt.Errorf("failed to check existing email: %v", err)
 	}
 
+	// If this is a new account and login creation is disabled, block it
+	if isNewAccount && ss.server.IsLoginCreationDisabled(s.Context()) {
+		return nil, fmt.Errorf("account creation is temporarily unavailable")
+	}
+
 	if !isNewAccount {
 		// Email already exists - this is a new ssh key for an existing user.
 		verif := ss.server.addEmailVerification(publicKey, email, isNewAccount)
