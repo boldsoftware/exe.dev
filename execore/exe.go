@@ -2454,6 +2454,7 @@ func (s *Server) validateNewSignup(ctx context.Context, ip, email string) error 
 		// Site-wide account creation disabled
 		return errors.New("account creation is temporarily unavailable")
 	}
+	s.slog().InfoContext(ctx, "vetting new signup", "ip", ip, "email", email)
 	if s.ipFlaggedForAbuse(ctx, ip) {
 		s.slog().InfoContext(ctx, "blocking signup due to recent_abuse", "ip", ip)
 		return errors.New("unable to process signup")
