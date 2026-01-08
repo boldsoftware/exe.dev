@@ -515,7 +515,7 @@ This link will expire in 24 hours.
 Best regards,
 The %s team`, verifyURL, s.env.WebHost)
 
-	err = s.sendEmail(email, subject, body)
+	err = s.sendEmail(r.Context(), email, subject, body)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to send verification email", "error", err)
 		http.Error(w, "Failed to send email", http.StatusInternalServerError)

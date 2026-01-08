@@ -43,6 +43,7 @@ import (
 	"exe.dev/container"
 	docspkg "exe.dev/docs"
 	"exe.dev/domz"
+	"exe.dev/email"
 	"exe.dev/exedb"
 	exeletclient "exe.dev/exelet/client"
 	"exe.dev/exens"
@@ -59,7 +60,6 @@ import (
 	"exe.dev/tagresolver"
 	templatespkg "exe.dev/templates"
 	emailverifier "github.com/AfterShip/email-verifier"
-	"github.com/keighl/postmark"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/acme/autocert"
@@ -278,8 +278,8 @@ type Server struct {
 	githubUser *ghuser.Client
 
 	// Email service
-	postmarkClient *postmark.Client
-	fakeHTTPEmail  string // fake HTTP email server URL for sending emails (for e2e tests)
+	emailSenders  *email.Senders
+	fakeHTTPEmail string // fake HTTP email server URL for sending emails (for e2e tests)
 
 	// IPQS email quality service
 	ipqsAPIKey string
@@ -591,19 +591,10 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize data subdir: %w", err)
 	}
 
-	// Initialize Postmark client
-	postmarkAPIKey := os.Getenv("POSTMARK_API_KEY")
-	var postmarkClient *postmark.Client
-	if postmarkAPIKey != "" {
-		postmarkClient = postmark.NewClient(postmarkAPIKey, "")
-		// Under load, we see HTTP/2 GOAWAY errors from Postmark.
-		// Instead of attempting to cache bodies and enable retries, disable HTTP/2 entirely.
-		postmarkClient.HTTPClient.Transport = &http.Transport{
-			ForceAttemptHTTP2: false,
-			TLSNextProto:      make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
-		}
-	} else {
-		slog.Info("POSTMARK_API_KEY not set, email verification will not work")
+	// Initialize email senders
+	emailSenders := email.NewSendersFromEnv(cfg.Env.MailgunDomain())
+	if emailSenders.Any() == nil {
+		slog.Info("no email provider configured, email verification will not work")
 	}
 
 	// Initialize IPQS API key for email quality checks
@@ -742,9 +733,9 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		emailVerifications: make(map[string]*EmailVerification),
 		magicSecrets:       make(map[string]*MagicSecret),
 		creationStreams:    make(map[creationStreamKey]*CreationStream),
-		githubUser:         ghu,
-		postmarkClient:     postmarkClient,
-		fakeHTTPEmail:      cfg.FakeEmailServer,
+		githubUser:    ghu,
+		emailSenders:  emailSenders,
+		fakeHTTPEmail: cfg.FakeEmailServer,
 		ipqsAPIKey:         ipqsAPIKey,
 		PublicIPs:          map[netip.Addr]publicips.PublicIP{},
 
@@ -1159,45 +1150,39 @@ func generatePairingCode() string {
 var errNoEmailService = errors.New("email service not configured")
 
 // sendEmail sends an email using the configured email service
-func (s *Server) sendEmail(to, subject, body string) error {
+func (s *Server) sendEmail(ctx context.Context, to, subject, body string) error {
 	// Check if HTTP email server is configured first
 	if s.fakeHTTPEmail != "" {
-		err := s.sendFakeEmail(to, subject, body)
+		err := s.sendFakeEmail(ctx, to, subject, body)
 		if err != nil {
-			s.slog().Warn("failed to send fake email", "to", to, "subject", subject, "error", err)
+			s.slog().WarnContext(ctx, "failed to send fake email", "to", to, "subject", subject, "error", err)
 		}
 	}
 
 	// In dev mode, always just log the email
 	if s.env.FakeEmail {
-		s.slog().Info("DEV MODE: Would send email", "to", to, "subject", subject, "body", body)
+		s.slog().InfoContext(ctx, "DEV MODE: Would send email", "to", to, "subject", subject, "body", body)
 		return nil
 	}
 
 	// Check if email service is configured
-	if s.postmarkClient == nil {
+	sender := s.emailSenders.Any()
+	if sender == nil {
 		return errNoEmailService
 	}
 
-	// Use the existing sendVerificationEmail logic
-	email := postmark.Email{
-		From:     fmt.Sprintf("%s <support@%s>", s.env.WebHost, s.env.WebHost),
-		To:       to,
-		Subject:  subject,
-		TextBody: body,
-	}
-
-	_, err := s.postmarkClient.SendEmail(email)
+	from := fmt.Sprintf("%s <support@%s>", s.env.WebHost, s.env.WebHost)
+	err := sender.Send(ctx, from, to, subject, body)
 	if err != nil {
-		s.slog().Warn("failed to send email", "to", to, "subject", subject, "error", err)
+		s.slog().WarnContext(ctx, "failed to send email", "to", to, "subject", subject, "error", err)
 	} else {
-		s.slog().Info("email sent successfully", "to", to, "subject", subject)
+		s.slog().InfoContext(ctx, "email sent successfully", "to", to, "subject", subject)
 	}
 	return err
 }
 
 // sendFakeEmail sends an email to the fake HTTP email server
-func (s *Server) sendFakeEmail(to, subject, body string) error {
+func (s *Server) sendFakeEmail(ctx context.Context, to, subject, body string) error {
 	emailData := map[string]string{
 		"to":      to,
 		"subject": subject,
@@ -1209,7 +1194,13 @@ func (s *Server) sendFakeEmail(to, subject, body string) error {
 		return fmt.Errorf("failed to marshal email data: %w", err)
 	}
 
-	resp, err := http.Post(s.fakeHTTPEmail, "application/json", strings.NewReader(string(jsonData)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.fakeHTTPEmail, strings.NewReader(string(jsonData)))
+	if err != nil {
+		return fmt.Errorf("failed to create fake email request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send fake email via HTTP: %w", err)
 	}
@@ -1219,7 +1210,7 @@ func (s *Server) sendFakeEmail(to, subject, body string) error {
 		return fmt.Errorf("fake email server returned error: %s", resp.Status)
 	}
 
-	s.slog().Info("fake email sent successfully via HTTP", "to", to, "subject", subject)
+	s.slog().InfoContext(ctx, "fake email sent successfully via HTTP", "to", to, "subject", subject)
 	return nil
 }
 
@@ -1247,17 +1238,17 @@ To prevent emails like this, pass the -no-email flag to new.
 `))
 
 // sendBoxCreatedEmail sends a confirmation email when a new box is created
-func (s *Server) sendBoxCreatedEmail(to string, details newBoxDetails) {
+func (s *Server) sendBoxCreatedEmail(ctx context.Context, to string, details newBoxDetails) {
 	subject := fmt.Sprintf("exe.dev: created %s.exe.xyz", details.VMName)
 
 	body := new(strings.Builder)
 	if err := boxCreatedEmailTemplate.Execute(body, details); err != nil {
-		s.slog().Warn("failed to render box created email", "error", err)
+		s.slog().WarnContext(ctx, "failed to render box created email", "error", err)
 		return
 	}
 
-	if err := s.sendEmail(to, subject, body.String()); err != nil {
-		s.slog().Warn("failed to send box created email", "to", to, "box", details.VMName, "error", err)
+	if err := s.sendEmail(ctx, to, subject, body.String()); err != nil {
+		s.slog().WarnContext(ctx, "failed to send box created email", "to", to, "box", details.VMName, "error", err)
 	}
 }
 

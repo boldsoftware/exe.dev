@@ -46,6 +46,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("GET /debug/log", s.handleDebugLogForm)
 	mux.HandleFunc("POST /debug/log", s.handleDebugLog)
 	mux.HandleFunc("/debug/testimonials", s.handleDebugTestimonials)
+	mux.HandleFunc("GET /debug/email", s.handleDebugEmailForm)
+	mux.HandleFunc("POST /debug/email", s.handleDebugEmailSend)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -95,6 +97,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/ipshards">ipshards</a> (<a href="/debug/ipshards?format=json">json</a>)</li>
     <li><a href="/debug/log">/debug/log</a> (POST text=... to log an error)</li>
     <li><a href="/debug/testimonials">testimonials</a></li>
+    <li><a href="/debug/email">email</a> (send test emails)</li>
 </ul>
 <p>Git version: %s %s</p>
 </body></html>
@@ -1554,4 +1557,150 @@ func (s *Server) IsLoginCreationDisabled(ctx context.Context) bool {
 		return false
 	}
 	return val == "true"
+}
+
+// handleDebugEmailForm renders a form to send test emails.
+func (s *Server) handleDebugEmailForm(w http.ResponseWriter, r *http.Request) {
+	postmarkAvailable := s.emailSenders.Postmark != nil
+	mailgunAvailable := s.emailSenders.Mailgun != nil
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>Send Test Email</title>
+<style>
+.section { margin: 20px 0; }
+input[type="text"], input[type="email"] { width: 300px; padding: 8px; }
+textarea { width: 400px; height: 100px; }
+.send-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; }
+.send-btn:hover { background: #0056b3; }
+.send-btn:disabled { background: #ccc; cursor: not-allowed; }
+.provider-status { margin: 10px 0; }
+.available { color: green; }
+.unavailable { color: red; }
+.result { margin: 20px 0; padding: 15px; border-radius: 5px; }
+.result.success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+.result.error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+</style>
+</head><body>
+<h1>Send Test Email</h1>
+<p><a href="/debug">/debug</a></p>
+
+<div class="provider-status">
+<strong>Provider Status:</strong><br>
+<span class="%s">Postmark: %s</span><br>
+<span class="%s">Mailgun: %s</span>
+</div>
+`,
+		availableClass(postmarkAvailable), availableText(postmarkAvailable),
+		availableClass(mailgunAvailable), availableText(mailgunAvailable))
+
+	// Show result if present
+	if result := r.URL.Query().Get("result"); result != "" {
+		resultClass := "success"
+		if r.URL.Query().Get("error") == "1" {
+			resultClass = "error"
+		}
+		fmt.Fprintf(w, `<div class="result %s">%s</div>`, resultClass, html.EscapeString(result))
+	}
+
+	fmt.Fprintf(w, `
+<form method="post">
+<div class="section">
+<label><strong>To:</strong></label><br>
+<input type="email" name="to" required placeholder="recipient@example.com">
+</div>
+
+<div class="section">
+<label><strong>Subject:</strong></label><br>
+<input type="text" name="subject" value="Test email from exe.dev debug" required>
+</div>
+
+<div class="section">
+<label><strong>Body:</strong></label><br>
+<textarea name="body" required>This is a test email sent from the exe.dev debug page.</textarea>
+</div>
+
+<div class="section">
+<label><strong>Provider:</strong></label><br>
+<select name="provider">
+<option value="postmark" %s>Postmark</option>
+<option value="mailgun" %s>Mailgun</option>
+</select>
+</div>
+
+<div class="section">
+<button type="submit" class="send-btn">Send Test Email</button>
+</div>
+</form>
+</body></html>
+`, disabledAttr(!postmarkAvailable), disabledAttr(!mailgunAvailable))
+}
+
+func availableClass(available bool) string {
+	if available {
+		return "available"
+	}
+	return "unavailable"
+}
+
+func availableText(available bool) string {
+	if available {
+		return "Available"
+	}
+	return "Not configured"
+}
+
+func disabledAttr(disabled bool) string {
+	if disabled {
+		return "disabled"
+	}
+	return ""
+}
+
+// handleDebugEmailSend sends a test email via the selected provider.
+func (s *Server) handleDebugEmailSend(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	to := r.FormValue("to")
+	subject := r.FormValue("subject")
+	body := r.FormValue("body")
+	provider := r.FormValue("provider")
+
+	if to == "" || subject == "" || body == "" {
+		http.Redirect(w, r, "/debug/email?result=Missing+required+fields&error=1", http.StatusSeeOther)
+		return
+	}
+
+	var sender interface {
+		Send(ctx context.Context, from, to, subject, body string) error
+	}
+
+	switch provider {
+	case "postmark":
+		if s.emailSenders.Postmark == nil {
+			http.Redirect(w, r, "/debug/email?result=Postmark+not+configured&error=1", http.StatusSeeOther)
+			return
+		}
+		sender = s.emailSenders.Postmark
+	case "mailgun":
+		if s.emailSenders.Mailgun == nil {
+			http.Redirect(w, r, "/debug/email?result=Mailgun+not+configured&error=1", http.StatusSeeOther)
+			return
+		}
+		sender = s.emailSenders.Mailgun
+	default:
+		http.Redirect(w, r, "/debug/email?result=Invalid+provider&error=1", http.StatusSeeOther)
+		return
+	}
+
+	from := fmt.Sprintf("%s <support@%s>", s.env.WebHost, s.env.WebHost)
+	err := sender.Send(ctx, from, to, subject, body)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "debug email send failed", "provider", provider, "to", to, "error", err)
+		http.Redirect(w, r, fmt.Sprintf("/debug/email?result=%s&error=1", html.EscapeString(err.Error())), http.StatusSeeOther)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "debug email sent", "provider", provider, "to", to, "subject", subject)
+	http.Redirect(w, r, fmt.Sprintf("/debug/email?result=Email+sent+successfully+via+%s+to+%s", provider, html.EscapeString(to)), http.StatusSeeOther)
 }

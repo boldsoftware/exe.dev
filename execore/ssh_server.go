@@ -1071,7 +1071,7 @@ This link will expire in 15 minutes.
 Best regards,
 The EXE.DEV team`, publicKey, verifyURL)
 
-		if err := ss.server.sendEmail(email, subject, body); err != nil {
+		if err := ss.server.sendEmail(s.Context(), email, subject, body); err != nil {
 			ss.server.deleteEmailVerification(verif)
 			return nil, fmt.Errorf("failed to send verification email: %v", err)
 		}
@@ -1099,7 +1099,7 @@ This link will expire in 15 minutes.
 Best regards,
 The EXE.DEV team`, verifyURL)
 
-	if err := ss.server.sendEmail(email, subject, body); err != nil {
+	if err := ss.server.sendEmail(s.Context(), email, subject, body); err != nil {
 		ss.server.deleteEmailVerification(verif)
 		return nil, fmt.Errorf("failed to send verification email: %v", err)
 	}

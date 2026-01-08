@@ -329,3 +329,9 @@ func (e Env) BoxDest(boxName string) string {
 func (e Env) BillingClient() *billing.Manager {
 	return &billing.Manager{APIKey: e.StripeAPIKey}
 }
+
+// MailgunDomain returns the Mailgun sending domain for this environment.
+// This is the same as WebHost.
+func (e Env) MailgunDomain() string {
+	return e.WebHost
+}

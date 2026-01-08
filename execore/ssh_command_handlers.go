@@ -879,7 +879,7 @@ done:
 	}
 
 	if !noEmail {
-		go ss.server.sendBoxCreatedEmail(user.Email, details)
+		go ss.server.sendBoxCreatedEmail(context.Background(), user.Email, details)
 	}
 
 	if cc.WantJSON() {
