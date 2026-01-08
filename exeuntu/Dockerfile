@@ -34,7 +34,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 		man-db manpages manpages-dev \
 		mitmproxy \
 		systemd systemd-sysv \
-		atop iotop \
+		atop btop iotop ncdu \
 		golang-go git \
 		libglib2.0-0 libnss3 libx11-6 libxcomposite1 libxdamage1 \
 		libxext6 libxi6 libxrandr2 libgbm1 libgtk-3-0 \
