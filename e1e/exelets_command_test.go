@@ -40,6 +40,7 @@ func TestExeletsCommand(t *testing.T) {
 		type exeletsOutput struct {
 			Exelets []struct {
 				Address       string `json:"address"`
+				Host          string `json:"host"`
 				Version       string `json:"version"`
 				Arch          string `json:"arch"`
 				Status        string `json:"status"`
@@ -58,10 +59,13 @@ func TestExeletsCommand(t *testing.T) {
 			t.Fatal("expected at least one exelet in JSON output")
 		}
 
-		// Check that we have an address and status
+		// Check that we have an address, host, and status
 		for _, e := range result.Exelets {
 			if e.Address == "" {
 				t.Error("expected exelet address to be non-empty")
+			}
+			if e.Host == "" {
+				t.Error("expected exelet host to be non-empty")
 			}
 			if e.Status != "healthy" && e.Status != "error" {
 				t.Errorf("unexpected exelet status: %q", e.Status)

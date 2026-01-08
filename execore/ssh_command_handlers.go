@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"runtime"
 	"slices"
@@ -1243,6 +1244,7 @@ func (ss *SSHServer) handleExeletsCommand(ctx context.Context, cc *exemenu.Comma
 
 	type exeletInfo struct {
 		Address       string `json:"address"`
+		Host          string `json:"host"`
 		Version       string `json:"version"`
 		Arch          string `json:"arch"`
 		Status        string `json:"status"`
@@ -1258,8 +1260,13 @@ func (ss *SSHServer) handleExeletsCommand(ctx context.Context, cc *exemenu.Comma
 
 	// Gather info from all exelet clients
 	for addr, ec := range ss.server.exeletClients {
+		host := addr
+		if u, err := url.Parse(addr); err == nil {
+			host = u.Hostname()
+		}
 		info := exeletInfo{
 			Address:     addr,
+			Host:        host,
 			Version:     ec.client.Version(),
 			Arch:        ec.client.Arch(),
 			IsPreferred: addr == preferredAddr,
@@ -1306,7 +1313,7 @@ func (ss *SSHServer) handleExeletsCommand(ctx context.Context, cc *exemenu.Comma
 	}
 
 	for i, e := range exelets {
-		cc.Writeln("\033[1m%s\033[0m", e.Address)
+		cc.Writeln("\033[1m%s\033[0m", e.Host)
 		if e.IsPreferred {
 			cc.Writeln("  \033[1;33m★ preferred\033[0m")
 		}
