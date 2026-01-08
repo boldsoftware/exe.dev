@@ -733,9 +733,9 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		emailVerifications: make(map[string]*EmailVerification),
 		magicSecrets:       make(map[string]*MagicSecret),
 		creationStreams:    make(map[creationStreamKey]*CreationStream),
-		githubUser:    ghu,
-		emailSenders:  emailSenders,
-		fakeHTTPEmail: cfg.FakeEmailServer,
+		githubUser:         ghu,
+		emailSenders:       emailSenders,
+		fakeHTTPEmail:      cfg.FakeEmailServer,
 		ipqsAPIKey:         ipqsAPIKey,
 		PublicIPs:          map[netip.Addr]publicips.PublicIP{},
 

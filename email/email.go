@@ -23,9 +23,9 @@ type Sender interface {
 // Senders holds multiple email provider implementations.
 // Use Postmark or Mailgun fields directly to choose which provider to use per-email.
 type Senders struct {
-	Postmark       Sender
-	Mailgun        Sender
-	preferMailgun  bool
+	Postmark      Sender
+	Mailgun       Sender
+	preferMailgun bool
 }
 
 // NewSendersFromEnv creates Senders from environment variables.
