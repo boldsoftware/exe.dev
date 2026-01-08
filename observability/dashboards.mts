@@ -1395,6 +1395,192 @@ function makeDevExeDashboard() {
   return dash;
 }
 
+// exe.dev Usage Dashboard - Daily/weekly unique users and entity counts
+function makeExeDevUsageDashboard() {
+  resetLayout();
+  const dash = new DashboardBuilder("exe.dev Usage");
+  dash
+    .uid("exe-dev-usage-dashboard")
+    .tags(["generated", "exe.dev", "usage"])
+    .refresh("1h")
+    .time({ from: "now-30d/d", to: "now/d" })  // Round to day boundaries
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  // README panel
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("")
+      .content(README_CONTENT)
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 2 }))
+  );
+
+  // ========== UNIQUE USERS BY EVENT TYPE ==========
+  // The unique_users metric resets at midnight UTC.
+  // Use max_over_time[1d] to get peak value per day. Time range uses /d to round to day boundaries.
+
+  dash.withRow(
+    new RowBuilder("Unique Users - Proxy").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  const proxyUsersPanel = new TimeseriesBuilder()
+    .title("Proxy Users (Daily & Weekly)")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`max_over_time(unique_users{event="proxy",period="daily",stage="production"}[1d])`)
+        .legendFormat("daily (max)")
+        .interval("1d")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`max_over_time(unique_users{event="proxy",period="weekly",stage="production"}[1d])`)
+        .legendFormat("weekly (max)")
+        .interval("1d")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`unique_users{event="proxy",period="daily",stage="production"}`)
+        .legendFormat("daily (raw)")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`unique_users{event="proxy",period="weekly",stage="production"}`)
+        .legendFormat("weekly (raw)")
+    );
+  dash.withPanel(proxyUsersPanel);
+
+  const shelleyProxyUsersPanel = new TimeseriesBuilder()
+    .title("Shelley Proxy Users (Daily & Weekly)")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`max_over_time(unique_users{event="shelley-proxy",period="daily",stage="production"}[1d])`)
+        .legendFormat("daily (max)")
+        .interval("1d")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`max_over_time(unique_users{event="shelley-proxy",period="weekly",stage="production"}[1d])`)
+        .legendFormat("weekly (max)")
+        .interval("1d")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`unique_users{event="shelley-proxy",period="daily",stage="production"}`)
+        .legendFormat("daily (raw)")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`unique_users{event="shelley-proxy",period="weekly",stage="production"}`)
+        .legendFormat("weekly (raw)")
+    );
+  dash.withPanel(shelleyProxyUsersPanel);
+
+  dash.withRow(
+    new RowBuilder("Unique Users - VM & Web").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  const vmLoginUsersPanel = new TimeseriesBuilder()
+    .title("VM Login Users (Daily & Weekly)")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`max_over_time(unique_users{event="vm-login",period="daily",stage="production"}[1d])`)
+        .legendFormat("daily (max)")
+        .interval("1d")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`max_over_time(unique_users{event="vm-login",period="weekly",stage="production"}[1d])`)
+        .legendFormat("weekly (max)")
+        .interval("1d")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`unique_users{event="vm-login",period="daily",stage="production"}`)
+        .legendFormat("daily (raw)")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`unique_users{event="vm-login",period="weekly",stage="production"}`)
+        .legendFormat("weekly (raw)")
+    );
+  dash.withPanel(vmLoginUsersPanel);
+
+  const webVisitUsersPanel = new TimeseriesBuilder()
+    .title("Web Visit Users (Daily & Weekly)")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`max_over_time(unique_users{event="web-visit",period="daily",stage="production"}[1d])`)
+        .legendFormat("daily (max)")
+        .interval("1d")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`max_over_time(unique_users{event="web-visit",period="weekly",stage="production"}[1d])`)
+        .legendFormat("weekly (max)")
+        .interval("1d")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`unique_users{event="web-visit",period="daily",stage="production"}`)
+        .legendFormat("daily (raw)")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`unique_users{event="web-visit",period="weekly",stage="production"}`)
+        .legendFormat("weekly (raw)")
+    );
+  dash.withPanel(webVisitUsersPanel);
+
+  // ========== ENTITY COUNTS OVER TIME ==========
+  dash.withRow(
+    new RowBuilder("Entity Counts").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  const usersOverTimePanel = new TimeseriesBuilder()
+    .title("Users")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`users_total{stage="production"}`)
+        .legendFormat("{{type}}")
+    );
+  dash.withPanel(usersOverTimePanel);
+
+  const usersWithVmsOverTimePanel = new TimeseriesBuilder()
+    .title("Users with VMs")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`users_with_vms_total{stage="production"}`)
+        .legendFormat("users with VMs")
+    );
+  dash.withPanel(usersWithVmsOverTimePanel);
+
+  const vmsOverTimePanel = new TimeseriesBuilder()
+    .title("VMs")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`vms_total{stage="production"}`)
+        .legendFormat("VMs")
+    );
+  dash.withPanel(vmsOverTimePanel);
+
+  return dash;
+}
+
 function makeGrafanaDashboard() {
   resetLayout();
   const dash = new DashboardBuilder("Grafana Self-Monitoring Dashboard");
@@ -4611,6 +4797,7 @@ async function main() {
     process.exit(1);
   }
   await createDashboard(makeDevExeDashboard());
+  await createDashboard(makeExeDevUsageDashboard());
   await createDashboard(makeExeDevVMsDashboard());
   await createDashboard(makeGrpcMetricsDashboard());
   await createDashboard(makeGrafanaDashboard());
