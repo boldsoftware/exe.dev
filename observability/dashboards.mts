@@ -944,6 +944,32 @@ function makeDevExeDashboard() {
     );
   dash.withPanel(exeletUptimePanel);
 
+  // ========== SIGNUPS ==========
+  dash.withRow(
+    new RowBuilder("Signups").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "Blocked Signups Rate",
+    `sum(rate(signups_blocked_total{${STAGE_FILTER}}[$__rate_interval])) by (reason, stage)`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{stage}} {{reason}}"),
+    }
+  );
+
+  const blockedSignupsBySourcePanel = new TimeseriesBuilder()
+    .title("Blocked Signups by Source")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(rate(signups_blocked_total{${STAGE_FILTER}}[$__rate_interval])) by (source, stage)`)
+        .legendFormat("{{stage}} {{source}}")
+    );
+  dash.withPanel(blockedSignupsBySourcePanel);
+
   // SQLite Connection Pool Metrics
   dash.withRow(
     new RowBuilder("SQLite Connection Pool").gridPos(gp({ w: 24, h: 1 }))
@@ -1391,6 +1417,276 @@ function makeDevExeDashboard() {
         .legendFormat("{{level}}")
     );
   dash.withPanel(logsOverTimePanel);
+
+  return dash;
+}
+
+// Email Dashboard - email sending and delivery metrics
+function makeEmailDashboard() {
+  resetLayout();
+  const dash = new DashboardBuilder("Email");
+  dash
+    .uid("email-dashboard")
+    .tags(["generated", "exe.dev", "email"])
+    .refresh("5m")
+    .time({ from: "now-24h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  addStageVariable(dash);
+
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "email-dashboard");
+  const STAGE_FILTER = 'stage=~"$stage"';
+
+  // README panel
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("")
+      .content(README_CONTENT)
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 2 }))
+  );
+
+  // ========== EMAIL SENDING ==========
+  dash.withRow(
+    new RowBuilder("Email Sending").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "Emails Sent Rate",
+    `sum(rate(emails_sent_total{${STAGE_FILTER}}[$__rate_interval])) by (provider, stage)`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{stage}} {{provider}}"),
+    }
+  );
+
+  const emailsByTypePanel = new TimeseriesBuilder()
+    .title("Emails by Type")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(rate(emails_sent_total{${STAGE_FILTER}}[$__rate_interval])) by (type, stage)`)
+        .legendFormat("{{stage}} {{type}}")
+    );
+  dash.withPanel(emailsByTypePanel);
+
+  const emailsTotalPanel = new StatBuilder()
+    .title("Emails Sent (24h)")
+    .gridPos(gp({ w: 8, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(increase(emails_sent_total{${STAGE_FILTER}}[24h]))`)
+        .legendFormat("Total")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(emailsTotalPanel);
+
+  // ========== POSTMARK OUTBOUND STATS ==========
+  dash.withRow(
+    new RowBuilder("Postmark Outbound").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  const postmarkSentPanel = new StatBuilder()
+    .title("Total Sent (All Time)")
+    .gridPos(gp({ w: 4, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_outbound_total{type="sent",${STAGE_FILTER}}`)
+        .legendFormat("Sent")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(postmarkSentPanel);
+
+  const postmarkBouncedPanel = new StatBuilder()
+    .title("Total Bounced")
+    .gridPos(gp({ w: 4, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_outbound_total{type="bounced",${STAGE_FILTER}}`)
+        .legendFormat("Bounced")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(postmarkBouncedPanel);
+
+  const postmarkSpamPanel = new StatBuilder()
+    .title("Spam Complaints")
+    .gridPos(gp({ w: 4, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_outbound_total{type="spam_complaints",${STAGE_FILTER}}`)
+        .legendFormat("Spam")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(postmarkSpamPanel);
+
+  const postmarkOpensPanel = new StatBuilder()
+    .title("Opens")
+    .gridPos(gp({ w: 4, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_outbound_total{type="opens",${STAGE_FILTER}}`)
+        .legendFormat("Opens")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(postmarkOpensPanel);
+
+  const postmarkUniqueOpensPanel = new StatBuilder()
+    .title("Unique Opens")
+    .gridPos(gp({ w: 4, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_outbound_total{type="unique_opens",${STAGE_FILTER}}`)
+        .legendFormat("Unique")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(postmarkUniqueOpensPanel);
+
+  const postmarkClicksPanel = new StatBuilder()
+    .title("Clicks")
+    .gridPos(gp({ w: 4, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_outbound_total{type="total_clicks",${STAGE_FILTER}}`)
+        .legendFormat("Clicks")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(postmarkClicksPanel);
+
+  // ========== POSTMARK BOUNCES BY TYPE ==========
+  dash.withRow(
+    new RowBuilder("Postmark Bounces").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  const bounceTypesPanel = new TimeseriesBuilder()
+    .title("Bounce Types Over Time")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_bounces_total{${STAGE_FILTER}}`)
+        .legendFormat("{{type}}")
+    );
+  dash.withPanel(bounceTypesPanel);
+
+  const bounceStatsPanel = new TableBuilder()
+    .title("Bounce Statistics")
+    .gridPos(gp({ w: 12, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_bounces_total{${STAGE_FILTER}}`)
+        .instant()
+        .format(PromQueryFormat.Table)
+    );
+  dash.withPanel(bounceStatsPanel);
+
+  // Hard vs Soft Bounces
+  const hardBouncesPanel = new StatBuilder()
+    .title("Hard Bounces")
+    .gridPos(gp({ w: 4, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_bounces_total{type="hard_bounce",${STAGE_FILTER}}`)
+        .legendFormat("Hard")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(hardBouncesPanel);
+
+  const softBouncesPanel = new StatBuilder()
+    .title("Soft Bounces")
+    .gridPos(gp({ w: 4, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_bounces_total{type="soft_bounce",${STAGE_FILTER}}`)
+        .legendFormat("Soft")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(softBouncesPanel);
+
+  const blockedBouncesPanel = new StatBuilder()
+    .title("Blocked")
+    .gridPos(gp({ w: 4, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_bounces_total{type="blocked",${STAGE_FILTER}}`)
+        .legendFormat("Blocked")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(blockedBouncesPanel);
+
+  const transientBouncesPanel = new StatBuilder()
+    .title("Transient")
+    .gridPos(gp({ w: 4, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_bounces_total{type="transient",${STAGE_FILTER}}`)
+        .legendFormat("Transient")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(transientBouncesPanel);
+
+  const dnsErrorBouncesPanel = new StatBuilder()
+    .title("DNS Errors")
+    .gridPos(gp({ w: 4, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_bounces_total{type="dns_error",${STAGE_FILTER}}`)
+        .legendFormat("DNS")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(dnsErrorBouncesPanel);
+
+  const spamNotificationPanel = new StatBuilder()
+    .title("Spam Notifications")
+    .gridPos(gp({ w: 4, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_bounces_total{type="spam_notification",${STAGE_FILTER}}`)
+        .legendFormat("Spam")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(spamNotificationPanel);
 
   return dash;
 }
@@ -4797,6 +5093,7 @@ async function main() {
     process.exit(1);
   }
   await createDashboard(makeDevExeDashboard());
+  await createDashboard(makeEmailDashboard());
   await createDashboard(makeExeDevUsageDashboard());
   await createDashboard(makeExeDevVMsDashboard());
   await createDashboard(makeGrpcMetricsDashboard());
