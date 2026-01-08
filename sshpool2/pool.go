@@ -331,12 +331,17 @@ func (p *Pool) removeConn(pc *pooledConn) {
 }
 
 // Close shuts down the pool and closes all connections immediately.
+// Close is idempotent and safe to call multiple times.
 func (p *Pool) Close() error {
 	if p == nil {
 		return nil
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	if p.conns == nil {
+		return nil // already closed
+	}
 
 	var errs []error
 	for _, pc := range p.conns {
@@ -345,8 +350,9 @@ func (p *Pool) Close() error {
 			pc.timer.Stop()
 		}
 		pc.mu.Unlock()
-		err := pc.client.Close()
-		errs = append(errs, err)
+		if err := pc.client.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	p.conns = nil
 
