@@ -1002,7 +1002,11 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if isNewUser {
-		s.slackFeed.NewUser(r.Context(), userID, email, "web")
+		source := "web"
+		if returnHost := r.FormValue("return_host"); returnHost != "" {
+			source = "login " + returnHost
+		}
+		s.slackFeed.NewUser(r.Context(), userID, email, source)
 		// Check email quality and disable VM creation if disposable
 		if err := s.checkEmailQuality(context.WithoutCancel(r.Context()), userID, email); err != nil {
 			s.slog().WarnContext(r.Context(), "email quality check failed", "error", err, "email", email)
