@@ -984,27 +984,23 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// login_with_exe is explicitly set when logging into a site hosted by exe (proxy auth flow)
 	createdForLoginWithExe := r.FormValue("login_with_exe") == "1"
 
-	// First check if user exists (read-only check)
-	existingUserID, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserIDByEmail, email)
+	// Validate signup eligibility (checks if new user and runs IPQS/disabled checks)
+	if err := s.validateNewSignup(r.Context(), ip.String(), email); err != nil {
+		s.slog().InfoContext(r.Context(), "signup validation failed", "error", err, "ip", ip, "email", email)
+		s.showAuthError(w, r, err.Error(), "")
+		return
+	}
+
+	// Get or create the user
+	userID, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserIDByEmail, email)
 	isNewUser := errors.Is(err, sql.ErrNoRows)
 	if err != nil && !isNewUser {
-		s.slog().ErrorContext(r.Context(), "Database error checking user", "error", err)
+		s.slog().ErrorContext(r.Context(), "Database error fetching user", "error", err)
 		s.showAuthError(w, r, "Database error occurred. Please try again.", "")
 		return
 	}
-
-	// If new user, check if account creation is disabled
-	if isNewUser && s.IsLoginCreationDisabled(r.Context()) {
-		s.slog().InfoContext(r.Context(), "new account creation blocked", "email", email)
-		s.showAuthError(w, r, "Account creation is temporarily unavailable. Please try again later.", "")
-		return
-	}
-
-	// Now create the user if needed
-	var userID string
 	if isNewUser {
 		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-			var err error
 			userID, err = s.createUserRecord(ctx, queries, email, createdForLoginWithExe)
 			return err
 		})
@@ -1013,8 +1009,6 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 			s.showAuthError(w, r, "Database error occurred. Please try again.", "")
 			return
 		}
-	} else {
-		userID = existingUserID
 	}
 	if isNewUser {
 		source := "web"

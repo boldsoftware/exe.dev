@@ -193,6 +193,17 @@ type MagicSecret struct {
 	CreatedAt   time.Time
 }
 
+// ipAbuseCacheEntry stores a cached IPQS IP abuse check result.
+type ipAbuseCacheEntry struct {
+	recentAbuse bool
+	cachedAt    time.Time
+}
+
+const (
+	ipAbuseCacheMaxEntries = 32000
+	ipAbuseCacheTTL        = 24 * time.Hour
+)
+
 // Server implements both HTTP and SSH server functionality for exe.dev
 type Server struct {
 	env        stage.Env // prod, staging, local, test, etc.
@@ -272,6 +283,11 @@ type Server struct {
 
 	// IPQS email quality service
 	ipqsAPIKey string
+
+	// IPQS IP abuse cache (random replacement, max 32k entries, 24h TTL)
+	// TODO: put into db perhaps?
+	ipAbuseCacheMu sync.Mutex
+	ipAbuseCache   map[string]ipAbuseCacheEntry
 
 	// Metrics
 	metricsRegistry *prometheus.Registry
@@ -2428,6 +2444,124 @@ func (s *Server) checkEmailQuality(ctx context.Context, userID, email string) er
 	}
 
 	return nil
+}
+
+// validateNewSignup checks whether a possibly new user at ip may sign up; it returns a user-friendly error if not.
+// If the user already exists, it always returns nil.
+// This is the single chokepoint for new signup attempts (web, SSH, mobile).
+// Rate limiting is handled separately, earlier in each flow, by checkSignupRateLimit.
+func (s *Server) validateNewSignup(ctx context.Context, ip, email string) error {
+	_, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDByEmail, email)
+	if err == nil {
+		return nil // user exists, no checks needed
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		s.slog().ErrorContext(ctx, "failed to check existing user for signup validation", "error", err, "email", email)
+		return errors.New("sign-up is temporarily unavailable")
+	}
+	if s.IsLoginCreationDisabled(ctx) {
+		// Site-wide account creation disabled
+		return errors.New("account creation is temporarily unavailable")
+	}
+	if s.ipFlaggedForAbuse(ctx, ip) {
+		s.slog().InfoContext(ctx, "blocking signup due to recent_abuse", "ip", ip)
+		return errors.New("unable to process signup")
+	}
+	return nil
+}
+
+// ipFlaggedForAbuse reports whether ip has recent abuse according to IPQS.
+// Fails open: returns false on errors.
+func (s *Server) ipFlaggedForAbuse(ctx context.Context, ip string) bool {
+	if s.ipqsAPIKey == "" {
+		return false
+	}
+	if flagged, ok := s.cachedIPAbuse(ip); ok {
+		return flagged
+	}
+
+	// Call IPQS IP API with a timeout
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	url := fmt.Sprintf("https://www.ipqualityscore.com/api/json/ip/%s/%s", s.ipqsAPIKey, ip)
+	req, err := http.NewRequestWithContext(reqCtx, "GET", url, nil)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to create IPQS IP request", "error", err, "ip", ip)
+		return false
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		s.slog().WarnContext(ctx, "IPQS IP request failed", "error", err, "ip", ip)
+		return false
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to read IPQS IP response", "error", err, "ip", ip)
+		return false
+	}
+
+	var result struct {
+		Success     bool `json:"success"`
+		RecentAbuse bool `json:"recent_abuse"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		s.slog().ErrorContext(ctx, "failed to parse IPQS IP response", "error", err, "ip", ip)
+		return false
+	}
+
+	if !result.Success {
+		s.slog().WarnContext(ctx, "IPQS IP returned unsuccessful response", "ip", ip)
+		return false
+	}
+
+	s.cacheIPAbuseResult(ip, result.RecentAbuse)
+	return result.RecentAbuse
+}
+
+// cachedIPAbuse returns the cached abuse status for ip.
+// Returns (flagged, true) if found and valid, (false, false) if not cached or expired.
+func (s *Server) cachedIPAbuse(ip string) (flagged, ok bool) {
+	s.ipAbuseCacheMu.Lock()
+	defer s.ipAbuseCacheMu.Unlock()
+	entry, ok := s.ipAbuseCache[ip]
+	if !ok {
+		return false, false
+	}
+	if time.Since(entry.cachedAt) >= ipAbuseCacheTTL {
+		delete(s.ipAbuseCache, ip)
+		return false, false
+	}
+	return entry.recentAbuse, true
+}
+
+// cacheIPAbuseResult stores an IP abuse check result in the cache.
+// Uses random replacement when the cache is full.
+func (s *Server) cacheIPAbuseResult(ip string, recentAbuse bool) {
+	s.ipAbuseCacheMu.Lock()
+	defer s.ipAbuseCacheMu.Unlock()
+
+	// Initialize cache if needed
+	if s.ipAbuseCache == nil {
+		s.ipAbuseCache = make(map[string]ipAbuseCacheEntry)
+	}
+
+	// If at capacity, evict a random entry
+	if len(s.ipAbuseCache) >= ipAbuseCacheMaxEntries {
+		// Pick a random key to evict
+		for key := range s.ipAbuseCache {
+			delete(s.ipAbuseCache, key)
+			break // maps iterate in random order in Go
+		}
+	}
+
+	s.ipAbuseCache[ip] = ipAbuseCacheEntry{
+		recentAbuse: recentAbuse,
+		cachedAt:    time.Now(),
+	}
 }
 
 // createUser creates a new user with their resource allocation.

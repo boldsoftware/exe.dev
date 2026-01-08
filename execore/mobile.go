@@ -464,6 +464,13 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate signup eligibility
+	if err := s.validateNewSignup(r.Context(), ip.String(), email); err != nil {
+		s.slog().InfoContext(r.Context(), "signup validation failed", "error", err, "ip", ip, "email", email)
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
 	// Generate verification token
 	token := generateRegistrationToken()
 

@@ -777,6 +777,14 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 		suggested = ""
 	}
 
+	// Validate signup eligibility
+	ipStr := clientIPFromRemoteAddr(s.RemoteAddr().String())
+	if err := ss.server.validateNewSignup(s.Context(), ipStr, email); err != nil {
+		ss.server.slog().InfoContext(s.Context(), "signup blocked", "reason", err, "ip", ipStr, "email", email)
+		fmt.Fprintf(s, "\r\n\033[1;31m%s\033[0m\r\n", err)
+		return
+	}
+
 	needsEmailVerification := ghInfo.Email == "" || email != ghInfo.Email
 	var user *exedb.User
 	if needsEmailVerification {
@@ -1025,11 +1033,6 @@ func (ss *SSHServer) startEmailVerification(s *shellSession, publicKey, email st
 		isNewAccount = true
 	default:
 		return nil, fmt.Errorf("failed to check existing email: %v", err)
-	}
-
-	// If this is a new account and login creation is disabled, block it
-	if isNewAccount && ss.server.IsLoginCreationDisabled(s.Context()) {
-		return nil, fmt.Errorf("account creation is temporarily unavailable")
 	}
 
 	if !isNewAccount {
