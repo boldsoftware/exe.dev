@@ -4,10 +4,12 @@ package email
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/keighl/postmark"
@@ -37,8 +39,12 @@ var emailsSentTotal = prometheus.NewCounterVec(
 )
 
 // RegisterMetrics registers email metrics with the given prometheus registry.
-func RegisterMetrics(registry *prometheus.Registry) {
+// If a PostmarkStatsCollector is provided, it will also be registered.
+func RegisterMetrics(registry *prometheus.Registry, postmarkCollector *PostmarkStatsCollector) {
 	registry.MustRegister(emailsSentTotal)
+	if postmarkCollector != nil {
+		registry.MustRegister(postmarkCollector)
+	}
 }
 
 // Sender is an interface for sending emails.
@@ -154,4 +160,204 @@ func (s *MailgunSender) Send(ctx context.Context, emailType Type, from, to, subj
 	emailsSentTotal.WithLabelValues("mailgun", string(emailType)).Inc()
 	slog.InfoContext(ctx, "email sent", "provider", "mailgun", "type", emailType, "to", to, "subject", subject)
 	return nil
+}
+
+// Prometheus metric descriptors for Postmark stats (reported as counters since they're cumulative totals).
+var (
+	postmarkOutboundDesc = prometheus.NewDesc(
+		"postmark_outbound_total",
+		"Postmark outbound email statistics (cumulative).",
+		[]string{"type"}, nil,
+	)
+	postmarkBounceDesc = prometheus.NewDesc(
+		"postmark_bounces_total",
+		"Postmark bounce statistics by type (cumulative).",
+		[]string{"type"}, nil,
+	)
+)
+
+// postmarkOutboundResponse matches the /stats/outbound API response.
+type postmarkOutboundResponse struct {
+	Sent               int64   `json:"Sent"`
+	Bounced            int64   `json:"Bounced"`
+	SMTPApiErrors      int64   `json:"SMTPApiErrors"`
+	BounceRate         float64 `json:"BounceRate"`
+	SpamComplaints     int64   `json:"SpamComplaints"`
+	SpamComplaintsRate float64 `json:"SpamComplaintsRate"`
+	Opens              int64   `json:"Opens"`
+	UniqueOpens        int64   `json:"UniqueOpens"`
+	TotalClicks        int64   `json:"TotalClicks"`
+	UniqueLinksClicked int64   `json:"UniqueLinksClicked"`
+}
+
+// postmarkBounceResponse matches the /stats/outbound/bounces API response.
+type postmarkBounceResponse struct {
+	HardBounce       int64 `json:"HardBounce"`
+	SoftBounce       int64 `json:"SoftBounce"`
+	Transient        int64 `json:"Transient"`
+	Blocked          int64 `json:"Blocked"`
+	DnsError         int64 `json:"DnsError"`
+	AutoResponder    int64 `json:"AutoResponder"`
+	SpamNotification int64 `json:"SpamNotification"`
+	SMTPApiError     int64 `json:"SMTPApiError"`
+}
+
+// PostmarkStatsCollector polls Postmark stats API and exposes them as Prometheus counters.
+// It implements prometheus.Collector.
+type PostmarkStatsCollector struct {
+	apiKey     string
+	httpClient *http.Client
+	logger     *slog.Logger
+	stopOnce   sync.Once
+	stop       chan struct{}
+
+	mu       sync.RWMutex
+	outbound *postmarkOutboundResponse
+	bounces  *postmarkBounceResponse
+}
+
+// NewPostmarkStatsCollector creates a new stats collector.
+func NewPostmarkStatsCollector(apiKey string, logger *slog.Logger) *PostmarkStatsCollector {
+	return &PostmarkStatsCollector{
+		apiKey: apiKey,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		logger: logger,
+		stop:   make(chan struct{}),
+	}
+}
+
+// Start begins polling Postmark stats every 10 minutes.
+func (c *PostmarkStatsCollector) Start() {
+	c.poll() // Poll immediately on start
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				c.poll()
+			case <-c.stop:
+				return
+			}
+		}
+	}()
+}
+
+// Stop stops the stats collector.
+func (c *PostmarkStatsCollector) Stop() {
+	c.stopOnce.Do(func() {
+		close(c.stop)
+	})
+}
+
+// Describe implements prometheus.Collector.
+func (c *PostmarkStatsCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- postmarkOutboundDesc
+	ch <- postmarkBounceDesc
+}
+
+// Collect implements prometheus.Collector.
+func (c *PostmarkStatsCollector) Collect(ch chan<- prometheus.Metric) {
+	c.mu.RLock()
+	outbound := c.outbound
+	bounces := c.bounces
+	c.mu.RUnlock()
+
+	if outbound != nil {
+		ch <- prometheus.MustNewConstMetric(postmarkOutboundDesc, prometheus.CounterValue, float64(outbound.Sent), "sent")
+		ch <- prometheus.MustNewConstMetric(postmarkOutboundDesc, prometheus.CounterValue, float64(outbound.Bounced), "bounced")
+		ch <- prometheus.MustNewConstMetric(postmarkOutboundDesc, prometheus.CounterValue, float64(outbound.SMTPApiErrors), "smtp_api_errors")
+		ch <- prometheus.MustNewConstMetric(postmarkOutboundDesc, prometheus.CounterValue, float64(outbound.SpamComplaints), "spam_complaints")
+		ch <- prometheus.MustNewConstMetric(postmarkOutboundDesc, prometheus.CounterValue, float64(outbound.Opens), "opens")
+		ch <- prometheus.MustNewConstMetric(postmarkOutboundDesc, prometheus.CounterValue, float64(outbound.UniqueOpens), "unique_opens")
+		ch <- prometheus.MustNewConstMetric(postmarkOutboundDesc, prometheus.CounterValue, float64(outbound.TotalClicks), "total_clicks")
+		ch <- prometheus.MustNewConstMetric(postmarkOutboundDesc, prometheus.CounterValue, float64(outbound.UniqueLinksClicked), "unique_links_clicked")
+	}
+
+	if bounces != nil {
+		ch <- prometheus.MustNewConstMetric(postmarkBounceDesc, prometheus.CounterValue, float64(bounces.HardBounce), "hard_bounce")
+		ch <- prometheus.MustNewConstMetric(postmarkBounceDesc, prometheus.CounterValue, float64(bounces.SoftBounce), "soft_bounce")
+		ch <- prometheus.MustNewConstMetric(postmarkBounceDesc, prometheus.CounterValue, float64(bounces.Transient), "transient")
+		ch <- prometheus.MustNewConstMetric(postmarkBounceDesc, prometheus.CounterValue, float64(bounces.Blocked), "blocked")
+		ch <- prometheus.MustNewConstMetric(postmarkBounceDesc, prometheus.CounterValue, float64(bounces.DnsError), "dns_error")
+		ch <- prometheus.MustNewConstMetric(postmarkBounceDesc, prometheus.CounterValue, float64(bounces.AutoResponder), "auto_responder")
+		ch <- prometheus.MustNewConstMetric(postmarkBounceDesc, prometheus.CounterValue, float64(bounces.SpamNotification), "spam_notification")
+		ch <- prometheus.MustNewConstMetric(postmarkBounceDesc, prometheus.CounterValue, float64(bounces.SMTPApiError), "smtp_api_error")
+	}
+}
+
+func (c *PostmarkStatsCollector) poll() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	outbound, err := c.fetchOutboundStats(ctx)
+	if err != nil {
+		c.logger.ErrorContext(ctx, "failed to fetch postmark outbound stats", "error", err)
+	}
+
+	bounces, err := c.fetchBounceStats(ctx)
+	if err != nil {
+		c.logger.ErrorContext(ctx, "failed to fetch postmark bounce stats", "error", err)
+	}
+
+	c.mu.Lock()
+	if outbound != nil {
+		c.outbound = outbound
+	}
+	if bounces != nil {
+		c.bounces = bounces
+	}
+	c.mu.Unlock()
+}
+
+func (c *PostmarkStatsCollector) fetchOutboundStats(ctx context.Context) (*postmarkOutboundResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.postmarkapp.com/stats/outbound", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Postmark-Server-Token", c.apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("postmark API returned status %d", resp.StatusCode)
+	}
+
+	var result postmarkOutboundResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *PostmarkStatsCollector) fetchBounceStats(ctx context.Context) (*postmarkBounceResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.postmarkapp.com/stats/outbound/bounces", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Postmark-Server-Token", c.apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("postmark API returned status %d", resp.StatusCode)
+	}
+
+	var result postmarkBounceResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }

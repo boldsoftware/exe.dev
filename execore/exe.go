@@ -278,8 +278,9 @@ type Server struct {
 	githubUser *ghuser.Client
 
 	// Email service
-	emailSenders  *email.Senders
-	fakeHTTPEmail string // fake HTTP email server URL for sending emails (for e2e tests)
+	emailSenders           *email.Senders
+	fakeHTTPEmail          string // fake HTTP email server URL for sending emails (for e2e tests)
+	postmarkStatsCollector *email.PostmarkStatsCollector
 
 	// IPQS email quality service
 	ipqsAPIKey string
@@ -597,6 +598,13 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		slog.Info("no email provider configured, email verification will not work")
 	}
 
+	// Initialize Postmark stats collector
+	var postmarkStatsCollector *email.PostmarkStatsCollector
+	if postmarkAPIKey := os.Getenv("POSTMARK_API_KEY"); postmarkAPIKey != "" {
+		postmarkStatsCollector = email.NewPostmarkStatsCollector(postmarkAPIKey, slog)
+		postmarkStatsCollector.Start()
+	}
+
 	// Initialize IPQS API key for email quality checks
 	ipqsAPIKey := os.Getenv("IPQS_API_KEY")
 	if ipqsAPIKey == "" {
@@ -653,7 +661,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	sqlite.RegisterSQLiteMetrics(cfg.MetricsRegistry)
 	llmgateway.RegisterMetrics(cfg.MetricsRegistry)
 	RegisterEntityMetrics(cfg.MetricsRegistry, db, slog)
-	email.RegisterMetrics(cfg.MetricsRegistry)
+	email.RegisterMetrics(cfg.MetricsRegistry, postmarkStatsCollector)
 
 	// Initialize HLL unique user tracking
 	hllStorage := newHLLStorage(db)
@@ -735,9 +743,10 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		magicSecrets:       make(map[string]*MagicSecret),
 		creationStreams:    make(map[creationStreamKey]*CreationStream),
 		githubUser:         ghu,
-		emailSenders:       emailSenders,
-		fakeHTTPEmail:      cfg.FakeEmailServer,
-		ipqsAPIKey:         ipqsAPIKey,
+		emailSenders:           emailSenders,
+		fakeHTTPEmail:          cfg.FakeEmailServer,
+		postmarkStatsCollector: postmarkStatsCollector,
+		ipqsAPIKey:             ipqsAPIKey,
 		PublicIPs:          map[netip.Addr]publicips.PublicIP{},
 
 		metricsRegistry: cfg.MetricsRegistry,
@@ -2624,6 +2633,9 @@ func (s *Server) Stop() error {
 
 	if s.tagResolver != nil {
 		s.tagResolver.Stop()
+	}
+	if s.postmarkStatsCollector != nil {
+		s.postmarkStatsCollector.Stop()
 	}
 	if s.dnsServer != nil {
 		s.dnsServer.Stop(ctx)
