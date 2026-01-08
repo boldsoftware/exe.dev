@@ -976,7 +976,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Basic email validation
-	if !strings.Contains(email, "@") || !strings.Contains(email, ".") {
+	if !isValidEmail(email) {
 		s.showAuthError(w, r, "Please enter a valid email address", "")
 		return
 	}
