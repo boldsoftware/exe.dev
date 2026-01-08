@@ -580,6 +580,12 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	var postmarkClient *postmark.Client
 	if postmarkAPIKey != "" {
 		postmarkClient = postmark.NewClient(postmarkAPIKey, "")
+		// Under load, we see HTTP/2 GOAWAY errors from Postmark.
+		// Instead of attempting to cache bodies and enable retries, disable HTTP/2 entirely.
+		postmarkClient.HTTPClient.Transport = &http.Transport{
+			ForceAttemptHTTP2: false,
+			TLSNextProto:      make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
+		}
 	} else {
 		slog.Info("POSTMARK_API_KEY not set, email verification will not work")
 	}
