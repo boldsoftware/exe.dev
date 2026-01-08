@@ -443,6 +443,13 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ip, allowed := s.checkSignupRateLimit(r)
+	if !allowed {
+		s.slog().WarnContext(r.Context(), "signup rate limit exceeded", "ip", ip)
+		http.Error(w, "Too many requests. Please try again later.", http.StatusTooManyRequests)
+		return
+	}
+
 	email := strings.TrimSpace(r.FormValue("email"))
 	hostname := strings.ToLower(strings.TrimSpace(r.FormValue("hostname")))
 	prompt := strings.TrimSpace(r.FormValue("prompt"))

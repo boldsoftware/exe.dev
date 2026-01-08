@@ -40,6 +40,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
 	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
 	mux.HandleFunc("POST /debug/new-throttle", s.handleDebugNewThrottlePost)
+	mux.HandleFunc("/debug/signup-limiter", s.handleDebugSignupLimiter)
 	mux.HandleFunc("/debug/ipshards", s.handleDebugIPShards)
 	mux.HandleFunc("GET /debug/log", s.handleDebugLogForm)
 	mux.HandleFunc("POST /debug/log", s.handleDebugLog)
@@ -89,6 +90,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/users">users</a> (<a href="/debug/users?format=json">json</a>)</li>
     <li><a href="/debug/exelets">exelets</a> (<a href="/debug/exelets?format=json">json</a>)</li>
     <li><a href="/debug/new-throttle">new-throttle</a> (<a href="/debug/new-throttle?format=json">json</a>)</li>
+    <li><a href="/debug/signup-limiter">signup-limiter</a></li>
     <li><a href="/debug/ipshards">ipshards</a> (<a href="/debug/ipshards?format=json">json</a>)</li>
     <li><a href="/debug/log">/debug/log</a> (POST text=... to log an error)</li>
     <li><a href="/debug/testimonials">testimonials</a></li>
@@ -1078,6 +1080,29 @@ func (s *Server) CheckNewThrottle(ctx context.Context, userID, email string) (bo
 	}
 
 	return false, ""
+}
+
+// handleDebugSignupLimiter displays the signup rate limiter state.
+func (s *Server) handleDebugSignupLimiter(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>Signup Rate Limiter</title>
+<style>
+table { border-collapse: collapse; margin: 10px 0; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+th { background: #f5f5f5; }
+</style>
+</head><body>
+<h1>Signup Rate Limiter</h1>
+<p>Rate limit: 5 requests per minute per IP address.</p>
+<h2>Currently Rate-Limited IPs</h2>
+`)
+	s.signupLimiter.DumpHTML(w, true) // onlyLimited=true to show only rate-limited IPs
+	fmt.Fprintf(w, `
+<h2>All Tracked IPs</h2>
+`)
+	s.signupLimiter.DumpHTML(w, false) // show all tracked IPs
+	fmt.Fprintf(w, `</body></html>`)
 }
 
 // handleDebugNewThrottle displays the new-throttle configuration page.

@@ -67,6 +67,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	_ "modernc.org/sqlite"
+	"tailscale.com/util/limiter"
 )
 
 //go:embed static
@@ -299,6 +300,9 @@ type Server struct {
 
 	// Billing manager for subscription management
 	billing *billing.Manager
+
+	// Rate limiter for signup requests (5 per minute per IP)
+	signupLimiter *limiter.Limiter[netip.Addr]
 }
 
 // exeletClient wraps an exelet client with its address
@@ -734,6 +738,11 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		log:       slog,
 		slackFeed: logging.NewSlackFeed(slog, cfg.Env),
 		billing:   cfg.Env.BillingClient(),
+		signupLimiter: &limiter.Limiter[netip.Addr]{
+			Size:           10000,           // Track up to 10k IPs
+			Max:            5,               // 5 requests max
+			RefillInterval: time.Minute / 5, // Refill 1 token per 12 seconds
+		},
 	}
 
 	// Set up HTTP metrics host functions for in-flight label tracking

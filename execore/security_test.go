@@ -175,3 +175,43 @@ func TestPasskeyOpenRedirect(t *testing.T) {
 		})
 	}
 }
+
+// TestSignupRateLimiting tests that signup endpoints are rate limited.
+func TestSignupRateLimiting(t *testing.T) {
+	server := newTestServer(t)
+
+	// Send 5 requests (the limit) - all should succeed
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("POST", "/auth", strings.NewReader("email=test@example.com"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.RemoteAddr = "192.0.2.1:12345" // Use a test IP
+		w := httptest.NewRecorder()
+		server.handleAuthEmailSubmission(w, req)
+
+		if w.Code == http.StatusTooManyRequests {
+			t.Errorf("Request %d: got 429 Too Many Requests, want success", i+1)
+		}
+	}
+
+	// 6th request should be rate limited
+	req := httptest.NewRequest("POST", "/auth", strings.NewReader("email=test@example.com"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "192.0.2.1:12345" // Same IP
+	w := httptest.NewRecorder()
+	server.handleAuthEmailSubmission(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Errorf("Request 6: got %d, want %d (Too Many Requests)", w.Code, http.StatusTooManyRequests)
+	}
+
+	// Different IP should not be rate limited
+	req = httptest.NewRequest("POST", "/auth", strings.NewReader("email=test@example.com"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "192.0.2.2:12345" // Different IP
+	w = httptest.NewRecorder()
+	server.handleAuthEmailSubmission(w, req)
+
+	if w.Code == http.StatusTooManyRequests {
+		t.Errorf("Different IP: got 429 Too Many Requests, should not be rate limited")
+	}
+}

@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -961,6 +962,13 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 
 // handleAuthEmailSubmission handles the email form submission for web auth
 func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Request) {
+	ip, allowed := s.checkSignupRateLimit(r)
+	if !allowed {
+		s.slog().WarnContext(r.Context(), "signup rate limit exceeded", "ip", ip)
+		http.Error(w, "Too many requests. Please try again later.", http.StatusTooManyRequests)
+		return
+	}
+
 	email := strings.TrimSpace(r.FormValue("email"))
 	if email == "" {
 		s.showAuthError(w, r, "Please enter a valid email address", "")
@@ -1114,4 +1122,16 @@ func (s *Server) showAuthEmailSent(w http.ResponseWriter, r *http.Request, email
 	}
 
 	s.renderTemplate(w, "email-sent.html", data)
+}
+
+// checkSignupRateLimit checks if the request should be rate limited.
+// Returns the client IP and whether the request is allowed.
+func (s *Server) checkSignupRateLimit(r *http.Request) (netip.Addr, bool) {
+	ipStr := clientIPFromRemoteAddr(r.RemoteAddr)
+	ip, err := netip.ParseAddr(ipStr)
+	if err != nil {
+		// Can't parse IP, allow the request (don't break on edge cases)
+		return netip.Addr{}, true
+	}
+	return ip, s.signupLimiter.Allow(ip)
 }
