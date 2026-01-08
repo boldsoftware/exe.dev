@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
@@ -1671,9 +1672,7 @@ func (s *Server) handleDebugEmailSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var sender interface {
-		Send(ctx context.Context, from, to, subject, body string) error
-	}
+	var sender email.Sender
 
 	switch provider {
 	case "postmark":
@@ -1694,13 +1693,11 @@ func (s *Server) handleDebugEmailSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	from := fmt.Sprintf("%s <support@%s>", s.env.WebHost, s.env.WebHost)
-	err := sender.Send(ctx, from, to, subject, body)
+	err := sender.Send(ctx, email.TypeDebugTest, from, to, subject, body)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "debug email send failed", "provider", provider, "to", to, "error", err)
 		http.Redirect(w, r, fmt.Sprintf("/debug/email?result=%s&error=1", html.EscapeString(err.Error())), http.StatusSeeOther)
 		return
 	}
-
-	s.slog().InfoContext(ctx, "debug email sent", "provider", provider, "to", to, "subject", subject)
 	http.Redirect(w, r, fmt.Sprintf("/debug/email?result=Email+sent+successfully+via+%s+to+%s", provider, html.EscapeString(to)), http.StatusSeeOther)
 }

@@ -5,19 +5,48 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/keighl/postmark"
 	"github.com/mailgun/mailgun-go/v4"
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+// Type represents the type of email being sent.
+type Type string
+
+const (
+	TypeNewUserVerification    Type = "new_user_verification"
+	TypeDeviceVerification     Type = "device_verification"
+	TypeWebAuthVerification    Type = "web_auth_verification"
+	TypeMobileAuthVerification Type = "mobile_auth_verification"
+	TypeShareInvitation        Type = "share_invitation"
+	TypeBoxCreated             Type = "box_created"
+	TypeDebugTest              Type = "debug_test"
+)
+
+var emailsSentTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "emails_sent_total",
+		Help: "Total number of emails sent.",
+	},
+	[]string{"provider", "type"},
+)
+
+// RegisterMetrics registers email metrics with the given prometheus registry.
+func RegisterMetrics(registry *prometheus.Registry) {
+	registry.MustRegister(emailsSentTotal)
+}
 
 // Sender is an interface for sending emails.
 type Sender interface {
 	// Send sends an email with the given parameters.
+	// emailType identifies the type of email being sent.
 	// from should be in the format "Name <email@example.com>"
-	Send(ctx context.Context, from, to, subject, body string) error
+	Send(ctx context.Context, emailType Type, from, to, subject, body string) error
 }
 
 // Senders holds multiple email provider implementations.
@@ -82,7 +111,7 @@ func NewPostmarkSender(apiKey string) *PostmarkSender {
 }
 
 // Send sends an email via Postmark.
-func (s *PostmarkSender) Send(ctx context.Context, from, to, subject, body string) error {
+func (s *PostmarkSender) Send(ctx context.Context, emailType Type, from, to, subject, body string) error {
 	email := postmark.Email{
 		From:     from,
 		To:       to,
@@ -90,6 +119,10 @@ func (s *PostmarkSender) Send(ctx context.Context, from, to, subject, body strin
 		TextBody: body,
 	}
 	_, err := s.client.SendEmail(email)
+	if err == nil {
+		emailsSentTotal.WithLabelValues("postmark", string(emailType)).Inc()
+		slog.InfoContext(ctx, "email sent", "provider", "postmark", "type", emailType, "to", to, "subject", subject)
+	}
 	return err
 }
 
@@ -108,7 +141,7 @@ func NewMailgunSender(domain, apiKey string) *MailgunSender {
 }
 
 // Send sends an email via Mailgun.
-func (s *MailgunSender) Send(ctx context.Context, from, to, subject, body string) error {
+func (s *MailgunSender) Send(ctx context.Context, emailType Type, from, to, subject, body string) error {
 	msg := s.mg.NewMessage(from, subject, body, to)
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -118,5 +151,7 @@ func (s *MailgunSender) Send(ctx context.Context, from, to, subject, body string
 	if err != nil {
 		return fmt.Errorf("mailgun send failed: %w", err)
 	}
+	emailsSentTotal.WithLabelValues("mailgun", string(emailType)).Inc()
+	slog.InfoContext(ctx, "email sent", "provider", "mailgun", "type", emailType, "to", to, "subject", subject)
 	return nil
 }

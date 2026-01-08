@@ -15,6 +15,7 @@ import (
 	"exe.dev/boxname"
 	"exe.dev/ctrlc"
 	"exe.dev/domz"
+	emailpkg "exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
@@ -1071,7 +1072,7 @@ This link will expire in 15 minutes.
 Best regards,
 The EXE.DEV team`, publicKey, verifyURL)
 
-		if err := ss.server.sendEmail(s.Context(), email, subject, body); err != nil {
+		if err := ss.server.sendEmail(s.Context(), emailpkg.TypeDeviceVerification, email, subject, body); err != nil {
 			ss.server.deleteEmailVerification(verif)
 			return nil, fmt.Errorf("failed to send verification email: %v", err)
 		}
@@ -1099,7 +1100,7 @@ This link will expire in 15 minutes.
 Best regards,
 The EXE.DEV team`, verifyURL)
 
-	if err := ss.server.sendEmail(s.Context(), email, subject, body); err != nil {
+	if err := ss.server.sendEmail(s.Context(), emailpkg.TypeNewUserVerification, email, subject, body); err != nil {
 		ss.server.deleteEmailVerification(verif)
 		return nil, fmt.Errorf("failed to send verification email: %v", err)
 	}

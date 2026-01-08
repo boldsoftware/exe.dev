@@ -653,6 +653,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	sqlite.RegisterSQLiteMetrics(cfg.MetricsRegistry)
 	llmgateway.RegisterMetrics(cfg.MetricsRegistry)
 	RegisterEntityMetrics(cfg.MetricsRegistry, db, slog)
+	email.RegisterMetrics(cfg.MetricsRegistry)
 
 	// Initialize HLL unique user tracking
 	hllStorage := newHLLStorage(db)
@@ -1149,8 +1150,9 @@ func generatePairingCode() string {
 
 var errNoEmailService = errors.New("email service not configured")
 
-// sendEmail sends an email using the configured email service
-func (s *Server) sendEmail(ctx context.Context, to, subject, body string) error {
+// sendEmail sends an email using the configured email service.
+// emailType identifies the type of email being sent for logging and metrics.
+func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subject, body string) error {
 	// Check if HTTP email server is configured first
 	if s.fakeHTTPEmail != "" {
 		err := s.sendFakeEmail(ctx, to, subject, body)
@@ -1161,7 +1163,7 @@ func (s *Server) sendEmail(ctx context.Context, to, subject, body string) error 
 
 	// In dev mode, always just log the email
 	if s.env.FakeEmail {
-		s.slog().InfoContext(ctx, "DEV MODE: Would send email", "to", to, "subject", subject, "body", body)
+		s.slog().InfoContext(ctx, "DEV MODE: Would send email", "to", to, "subject", subject, "type", emailType, "body", body)
 		return nil
 	}
 
@@ -1172,11 +1174,9 @@ func (s *Server) sendEmail(ctx context.Context, to, subject, body string) error 
 	}
 
 	from := fmt.Sprintf("%s <support@%s>", s.env.WebHost, s.env.WebHost)
-	err := sender.Send(ctx, from, to, subject, body)
+	err := sender.Send(ctx, emailType, from, to, subject, body)
 	if err != nil {
-		s.slog().WarnContext(ctx, "failed to send email", "to", to, "subject", subject, "error", err)
-	} else {
-		s.slog().InfoContext(ctx, "email sent successfully", "to", to, "subject", subject)
+		s.slog().WarnContext(ctx, "failed to send email", "to", to, "subject", subject, "type", emailType, "error", err)
 	}
 	return err
 }
@@ -1247,7 +1247,7 @@ func (s *Server) sendBoxCreatedEmail(ctx context.Context, to string, details new
 		return
 	}
 
-	if err := s.sendEmail(ctx, to, subject, body.String()); err != nil {
+	if err := s.sendEmail(ctx, email.TypeBoxCreated, to, subject, body.String()); err != nil {
 		s.slog().WarnContext(ctx, "failed to send box created email", "to", to, "box", details.VMName, "error", err)
 	}
 }
