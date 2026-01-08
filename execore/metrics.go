@@ -44,6 +44,32 @@ func RegisterBuildInfo(registry *prometheus.Registry) {
 	registry.MustRegister(gitBuildInfo)
 }
 
+// SignupMetrics holds metrics for user signup operations.
+type SignupMetrics struct {
+	blockedTotal *prometheus.CounterVec
+}
+
+// NewSignupMetrics creates and registers signup metrics.
+func NewSignupMetrics(registry *prometheus.Registry) *SignupMetrics {
+	m := &SignupMetrics{
+		blockedTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "signups_blocked_total",
+				Help: "Total number of blocked signup attempts.",
+			},
+			[]string{"reason", "source"},
+		),
+	}
+	registry.MustRegister(m.blockedTotal)
+	return m
+}
+
+// IncBlocked increments the blocked signup counter for the given reason and source.
+// Source should be "web", "mobile", or "ssh".
+func (m *SignupMetrics) IncBlocked(reason, source string) {
+	m.blockedTotal.WithLabelValues(reason, source).Inc()
+}
+
 // SSHMetrics holds SSH server metrics
 type SSHMetrics struct {
 	connectionsTotal    *prometheus.CounterVec

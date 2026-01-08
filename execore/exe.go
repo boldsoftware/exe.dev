@@ -294,6 +294,7 @@ type Server struct {
 	metricsRegistry *prometheus.Registry
 	sshMetrics      *SSHMetrics
 	httpMetrics     *HTTPMetrics
+	signupMetrics   *SignupMetrics
 	hllTracker      *hll.Tracker
 	hllCollector    *hll.Collector
 
@@ -658,6 +659,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// Initialize metrics
 	sshMetrics := NewSSHMetrics(cfg.MetricsRegistry)
 	httpMetrics := NewHTTPMetrics(cfg.MetricsRegistry)
+	signupMetrics := NewSignupMetrics(cfg.MetricsRegistry)
 	sqlite.RegisterSQLiteMetrics(cfg.MetricsRegistry)
 	llmgateway.RegisterMetrics(cfg.MetricsRegistry)
 	RegisterEntityMetrics(cfg.MetricsRegistry, db, slog)
@@ -752,6 +754,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		metricsRegistry: cfg.MetricsRegistry,
 		sshMetrics:      sshMetrics,
 		httpMetrics:     httpMetrics,
+		signupMetrics:   signupMetrics,
 		hllTracker:      hllTracker,
 		hllCollector:    hllCollector,
 		dataSubdir:      dataSubdir,
@@ -2450,7 +2453,8 @@ func (s *Server) checkEmailQuality(ctx context.Context, userID, email string) er
 // If the user already exists, it always returns nil.
 // This is the single chokepoint for new signup attempts (web, SSH, mobile).
 // Rate limiting is handled separately, earlier in each flow, by checkSignupRateLimit.
-func (s *Server) validateNewSignup(ctx context.Context, ip, email string) error {
+// source should be "web", "ssh", or "mobile".
+func (s *Server) validateNewSignup(ctx context.Context, ip, email, source string) error {
 	_, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDByEmail, email)
 	if err == nil {
 		return nil // user exists, no checks needed
@@ -2460,12 +2464,13 @@ func (s *Server) validateNewSignup(ctx context.Context, ip, email string) error 
 		return errors.New("sign-up is temporarily unavailable")
 	}
 	if s.IsLoginCreationDisabled(ctx) {
-		// Site-wide account creation disabled
+		s.signupMetrics.IncBlocked("login_creation_disabled", source)
 		return errors.New("account creation is temporarily unavailable")
 	}
 	s.slog().InfoContext(ctx, "vetting new signup", "ip", ip, "email", email)
 	if s.ipFlaggedForAbuse(ctx, ip) {
 		s.slog().InfoContext(ctx, "blocking signup due to recent_abuse", "ip", ip)
+		s.signupMetrics.IncBlocked("ip_abuse", source)
 		return errors.New("unable to process signup")
 	}
 	return nil

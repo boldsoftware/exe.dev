@@ -966,6 +966,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	ip, allowed := s.checkSignupRateLimit(r)
 	if !allowed {
 		s.slog().WarnContext(r.Context(), "signup rate limit exceeded", "ip", ip)
+		s.signupMetrics.IncBlocked("rate_limit", "web")
 		http.Error(w, "Too many requests. Please try again later.", http.StatusTooManyRequests)
 		return
 	}
@@ -986,7 +987,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	createdForLoginWithExe := r.FormValue("login_with_exe") == "1"
 
 	// Validate signup eligibility (checks if new user and runs IPQS/disabled checks)
-	if err := s.validateNewSignup(r.Context(), ip.String(), email); err != nil {
+	if err := s.validateNewSignup(r.Context(), ip.String(), email, "web"); err != nil {
 		s.slog().InfoContext(r.Context(), "signup validation failed", "error", err, "ip", ip, "email", email)
 		s.showAuthError(w, r, err.Error(), "")
 		return

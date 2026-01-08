@@ -780,7 +780,7 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 
 	// Validate signup eligibility
 	ipStr := clientIPFromRemoteAddr(s.RemoteAddr().String())
-	if err := ss.server.validateNewSignup(s.Context(), ipStr, email); err != nil {
+	if err := ss.server.validateNewSignup(s.Context(), ipStr, email, "ssh"); err != nil {
 		ss.server.slog().InfoContext(s.Context(), "signup blocked", "reason", err, "ip", ipStr, "email", email)
 		fmt.Fprintf(s, "\r\n\033[1;31m%s\033[0m\r\n", err)
 		return

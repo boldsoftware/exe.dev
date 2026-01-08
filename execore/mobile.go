@@ -451,6 +451,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 	ip, allowed := s.checkSignupRateLimit(r)
 	if !allowed {
 		s.slog().WarnContext(r.Context(), "signup rate limit exceeded", "ip", ip)
+		s.signupMetrics.IncBlocked("rate_limit", "mobile")
 		http.Error(w, "Too many requests. Please try again later.", http.StatusTooManyRequests)
 		return
 	}
@@ -470,7 +471,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate signup eligibility
-	if err := s.validateNewSignup(r.Context(), ip.String(), email); err != nil {
+	if err := s.validateNewSignup(r.Context(), ip.String(), email, "mobile"); err != nil {
 		s.slog().InfoContext(r.Context(), "signup validation failed", "error", err, "ip", ip, "email", email)
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
