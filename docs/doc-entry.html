@@ -3,7 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>exe docs: {{.Entry.Title}}{{if and .ShowHidden (not .Entry.Published)}} [draft]{{end}}</title>
+    <title>{{.Entry.Title}}{{if and .ShowHidden (not .Entry.Published)}} [draft]{{end}} - exe.dev docs</title>
+    <meta name="description" content="{{.Entry.Description}}">
+    <link rel="canonical" href="https://exe.dev{{.Entry.Path}}">
+    <meta property="og:title" content="{{.Entry.Title}} - exe.dev docs">
+    <meta property="og:description" content="{{.Entry.Description}}">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://exe.dev{{.Entry.Path}}">
+    <meta property="og:site_name" content="exe.dev">
     <link rel="stylesheet" href="/static/exe.css" />
     {{template "topbar_style" .}}
     <style>
