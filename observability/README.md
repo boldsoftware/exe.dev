@@ -13,6 +13,9 @@ export PROMETHEUS_HOST=mon
 # Deploy Grafana dashboards (installs Node.js and npm dependencies if needed)
 make deploy-grafana
 
+# Deploy notification templates (for cleaner Slack alerts)
+make deploy-notifications
+
 # Deploy Prometheus configuration
 make deploy-prometheus
 ```
@@ -70,6 +73,19 @@ Alert configuration options:
 - `forDuration`: How long the condition must persist before alerting (e.g., "1m", "5m", "10s")
 - `summary`: Short summary for the alert
 - `description`: Detailed description for the alert
+
+## Notification Templates
+
+The `notifications.mts` script manages Grafana notification templates and contact point configurations.
+This produces cleaner Slack alerts like:
+
+```
+[FIRING] exe-ctr-11: Swap usage is high
+Swap usage has exceeded 75% for more than 3 minutes
+View Alert
+```
+
+Instead of the verbose default format. Edit `notifications.mts` to customize the templates.
 
 # General Notes on Monitoring setup
 

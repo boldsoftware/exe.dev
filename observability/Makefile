@@ -1,4 +1,4 @@
-.PHONY: deploy-grafana deploy-prometheus deploy-node-exporter typecheck
+.PHONY: deploy-grafana deploy-prometheus deploy-node-exporter deploy-notifications typecheck
 
 # Hosts to deploy node-exporter to
 HOSTS := mon exed-02 exe-ctr-02 exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 ci.crocodile-vector.ts.net exed-staging-01 exe-ctr-staging-01
@@ -34,6 +34,16 @@ deploy-grafana: node_modules
 	fi
 	@echo "Deploying Grafana dashboards to $(GRAFANA_URL)..."
 	GRAFANA_URL=$(GRAFANA_URL) $(NODEENV)/bin/npx tsx dashboards.mts
+
+# Deploy notification templates and contact point configs
+deploy-notifications: node_modules
+	@if [ -z "$(GRAFANA_BEARER_TOKEN)" ]; then \
+		echo "Error: GRAFANA_BEARER_TOKEN environment variable is not set"; \
+		echo "Please set it with: export GRAFANA_BEARER_TOKEN=your_token"; \
+		exit 1; \
+	fi
+	@echo "Deploying notification templates to $(GRAFANA_URL)..."
+	GRAFANA_URL=$(GRAFANA_URL) $(NODEENV)/bin/npx tsx notifications.mts
 
 # Deploy Prometheus configuration
 deploy-prometheus:
