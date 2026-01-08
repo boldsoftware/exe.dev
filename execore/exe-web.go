@@ -470,15 +470,14 @@ func isClientDisconnectError(err error) bool {
 // renderTemplate is a helper method that handles template parsing and execution
 func (s *Server) renderTemplate(w http.ResponseWriter, templateName string, data interface{}) error {
 	w.Header().Set("Content-Type", "text/html")
-	if err := s.templates.ExecuteTemplate(w, templateName, data); err != nil {
-		if !isClientDisconnectError(err) {
-			s.slog().Error("Failed to execute template", "error", err, "template", templateName)
-		}
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, templateName, data); err != nil {
+		s.slog().Error("Failed to execute template", "error", err, "template", templateName)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return err
 	}
-
-	return nil
+	_, err := w.Write(buf.Bytes())
+	return err
 }
 
 // isRequestOnMainPort checks that the request came in on the main HTTP/HTTPS port.

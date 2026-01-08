@@ -278,16 +278,20 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	prompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
+
 	// Generate a random hostname suggestion
 	hostnameSuggestion := boxname.Random()
 
 	data := struct {
 		stage.Env
 		HostnameSuggestion string
+		Prompt             string
 		IsLoggedIn         bool
 	}{
 		Env:                s.env,
 		HostnameSuggestion: hostnameSuggestion,
+		Prompt:             prompt,
 		IsLoggedIn:         false, // Already checked auth above, if we're here user is not logged in
 	}
 

@@ -1,6 +1,7 @@
 package execore
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,21 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestMobileHome(t *testing.T) {
+	server := newTestServer(t)
+	req := httptest.NewRequest("GET", "/m", nil)
+	req.Host = server.env.WebHost
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("GET /m returned status %d, want %d", w.Code, http.StatusOK)
+	}
+	reject := "Internal server error"
+	if bytes.Contains(w.Body.Bytes(), []byte(reject)) {
+		t.Errorf("response included unexpected string %q", reject)
+	}
+}
 
 func TestMobileHostnameCheck(t *testing.T) {
 	server := newTestServer(t)

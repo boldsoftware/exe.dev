@@ -239,6 +239,7 @@ func TestScreenFlow(t *testing.T) {
 		data := struct {
 			WebHost         string
 			BoxName         string
+			BoxDest         func(string) string
 			Port            int
 			IsShelleyPort   bool
 			ShowWelcomeStep bool
@@ -247,6 +248,7 @@ func TestScreenFlow(t *testing.T) {
 		}{
 			WebHost:         server.env.WebHost,
 			BoxName:         "testbox",
+			BoxDest:         server.env.BoxDest,
 			Port:            8080,
 			IsShelleyPort:   false,
 			ShowWelcomeStep: true,

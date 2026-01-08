@@ -278,6 +278,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 			data := struct {
 				stage.Env
 				BoxName         string
+				BoxDest         func(string) string
 				SSHCommand      string
 				Port            int
 				TerminalURL     string
@@ -287,6 +288,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 			}{
 				Env:             s.env,
 				BoxName:         boxName,
+				BoxDest:         s.env.BoxDest,
 				SSHCommand:      s.boxSSHConnectionCommand(boxName),
 				Port:            route.Port,
 				TerminalURL:     s.xtermURL(boxName, r.TLS != nil),
