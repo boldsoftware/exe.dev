@@ -165,7 +165,12 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			if !s.env.SkipBilling {
 				needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
 				if err == nil && needsBilling != nil && *needsBilling {
-					http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
+					// Preserve hostname/prompt through billing flow
+					billingURL := "/billing/subscribe?name=" + url.QueryEscape(hostname)
+					if prompt != "" {
+						billingURL += "&prompt=" + url.QueryEscape(prompt)
+					}
+					http.Redirect(w, r, billingURL, http.StatusSeeOther)
 					return
 				}
 			}
@@ -211,6 +216,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 
 // handleBillingSubscribe handles billing subscription for authenticated users.
 // This is used when a user tries to create a VM but doesn't have billing info.
+// Accepts name and prompt query params to preserve VM creation details through Stripe checkout.
 func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) {
 	// Require authentication
 	userID, err := s.validateAuthCookie(r)
@@ -218,6 +224,10 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 		http.Redirect(w, r, "/auth?redirect="+url.QueryEscape(r.URL.String()), http.StatusSeeOther)
 		return
 	}
+
+	// Read VM creation params to preserve through checkout
+	vmName := strings.TrimSpace(r.URL.Query().Get("name"))
+	vmPrompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
 
 	// Check if user needs billing (only new users need billing, legacy users are grandfathered)
 	// Skip this check if SkipBilling is set (for tests)
@@ -270,10 +280,27 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 	if source != "" {
 		successURL += "&source=" + url.QueryEscape(source)
 	}
-	// If user cancels checkout, send them back to /billing/subscribe so they can try again.
-	cancelURL := baseURL + "/billing/subscribe"
-	if source != "" {
-		cancelURL += "?source=" + url.QueryEscape(source)
+	// Include VM creation params in success URL so we can create the VM after checkout
+	if vmName != "" {
+		successURL += "&name=" + url.QueryEscape(vmName)
+	}
+	if vmPrompt != "" {
+		successURL += "&prompt=" + url.QueryEscape(vmPrompt)
+	}
+
+	// If user cancels checkout, send them back to /new with their form data preserved
+	cancelURL := baseURL + "/new"
+	if vmName != "" || vmPrompt != "" {
+		cancelURL += "?"
+		if vmName != "" {
+			cancelURL += "name=" + url.QueryEscape(vmName)
+			if vmPrompt != "" {
+				cancelURL += "&"
+			}
+		}
+		if vmPrompt != "" {
+			cancelURL += "prompt=" + url.QueryEscape(vmPrompt)
+		}
 	}
 
 	checkoutURL, err := s.billing.Subscribe(r.Context(), accountID, &billing.SubscribeParams{
@@ -293,9 +320,12 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 
 // handleBillingSuccess activates the account after Stripe checkout completes.
 // Stripe redirects here with a session_id after successful checkout.
+// If name and prompt query params are present, starts VM creation automatically.
 func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 	source := r.URL.Query().Get("source")
 	sessionID := r.URL.Query().Get("session_id")
+	vmName := strings.TrimSpace(r.URL.Query().Get("name"))
+	vmPrompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
 
 	// Require authentication
 	userID, err := s.validateAuthCookie(r)
@@ -321,6 +351,13 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 		}
 		s.slog().InfoContext(r.Context(), "account activated after Stripe checkout", "user_id", userID, "session_id", sessionID, "billing_id", billingID)
 		s.slackFeed.Subscribed(r.Context(), userID)
+	}
+
+	// If VM name was provided, start VM creation and redirect to dashboard
+	if vmName != "" {
+		s.startBoxCreation(r.Context(), vmName, vmPrompt, userID)
+		http.Redirect(w, r, "/?filter="+url.QueryEscape(vmName), http.StatusSeeOther)
+		return
 	}
 
 	// If not from exemenu, redirect to /new to create a VM

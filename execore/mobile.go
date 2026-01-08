@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -292,34 +293,35 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, "new.html", data)
 }
 
-// handleMobileNew renders the new box form
+// handleMobileNew renders the new box form.
+// Always shows the form - billing is requested when the user clicks "Create VM".
+// Accepts name and prompt query params to prefill the form (used after billing cancel).
 func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
-	hostnameSuggestion := boxname.Random()
+	// Read name and prompt from query params (used when redirecting back after billing cancel)
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	prompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
+
+	// Use the prefilled name or generate a random suggestion
+	hostnameSuggestion := name
+	if hostnameSuggestion == "" {
+		hostnameSuggestion = boxname.Random()
+	}
 
 	// Check if user is logged in
-	userID, err := s.validateAuthCookie(r)
+	_, err := s.validateAuthCookie(r)
 	isLoggedIn := err == nil
-
-	// If user is logged in, check if they need billing (only new users need billing)
-	// Skip this check if SkipBilling is set (for tests)
-	if isLoggedIn && !s.env.SkipBilling {
-		needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
-		if err == nil && needsBilling != nil && *needsBilling {
-			// User is logged in but needs to add billing info
-			http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
-			return
-		}
-	}
 
 	data := struct {
 		stage.Env
 		HostnameSuggestion string
+		Prompt             string
 		IsLoggedIn         bool
 		ActivePage         string
 		BasicUser          bool
 	}{
 		Env:                s.env,
 		HostnameSuggestion: hostnameSuggestion,
+		Prompt:             prompt,
 		IsLoggedIn:         isLoggedIn,
 		ActivePage:         "",
 		BasicUser:          false, // Users creating boxes are never basic users
@@ -397,7 +399,12 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 			needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
 			if err == nil && needsBilling != nil && *needsBilling {
 				// User is logged in but needs to add billing info
-				http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
+				// Preserve the name and prompt so they can be passed to Stripe and restored after checkout
+				billingURL := "/billing/subscribe?name=" + url.QueryEscape(hostname)
+				if prompt != "" {
+					billingURL += "&prompt=" + url.QueryEscape(prompt)
+				}
+				http.Redirect(w, r, billingURL, http.StatusSeeOther)
 				return
 			}
 		}

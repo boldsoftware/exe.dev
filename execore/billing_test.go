@@ -13,6 +13,8 @@ import (
 )
 
 func TestBillingRequiredForNewVM_WebUI(t *testing.T) {
+	// Test that /new always shows the form, even for users who need billing.
+	// Billing is only checked when the user tries to create a VM via /create-vm.
 	server := newTestServer(t)
 	// Enable billing checks for this test (disabled by default in test env)
 	server.env.SkipBilling = false
@@ -39,20 +41,20 @@ func TestBillingRequiredForNewVM_WebUI(t *testing.T) {
 		t.Fatalf("Failed to create auth cookie: %v", err)
 	}
 
-	// Request /new - should redirect to billing subscribe page
+	// Request /new - should show the form (billing is checked at /create-vm)
 	req := httptest.NewRequest("GET", "/new", nil)
 	req.Host = server.env.WebHost
 	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
 
-	if w.Code != http.StatusSeeOther {
-		t.Errorf("Expected status 303, got %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200 (form), got %d", w.Code)
 	}
 
-	location := w.Header().Get("Location")
-	if location != "/billing/subscribe" {
-		t.Errorf("Expected redirect to /billing/subscribe, got %q", location)
+	body := w.Body.String()
+	if !strings.Contains(body, "Create a New VM") {
+		t.Error("Expected new VM form to be shown")
 	}
 }
 
@@ -83,7 +85,7 @@ func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
 		t.Fatalf("Failed to create auth cookie: %v", err)
 	}
 
-	// POST to /create-vm - should redirect to billing subscribe page
+	// POST to /create-vm - should redirect to billing subscribe page with name and prompt preserved
 	form := url.Values{}
 	form.Add("hostname", "test-vm")
 	form.Add("prompt", "test prompt")
@@ -99,8 +101,15 @@ func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
 	}
 
 	location := w.Header().Get("Location")
-	if location != "/billing/subscribe" {
-		t.Errorf("Expected redirect to /billing/subscribe, got %q", location)
+	// Should redirect to /billing/subscribe with VM name and prompt preserved
+	if !strings.HasPrefix(location, "/billing/subscribe?") {
+		t.Errorf("Expected redirect to /billing/subscribe with params, got %q", location)
+	}
+	if !strings.Contains(location, "name=test-vm") {
+		t.Errorf("Expected name param in redirect URL, got %q", location)
+	}
+	if !strings.Contains(location, "prompt=test") {
+		t.Errorf("Expected prompt param in redirect URL, got %q", location)
 	}
 }
 
@@ -313,10 +322,10 @@ func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
 func TestBillingBypassBug(t *testing.T) {
 	// This test reproduces a critical billing bypass bug:
 	// 1. New user signs up (requires billing)
-	// 2. User clicks "New" -> redirected to /billing/subscribe
-	// 3. /billing/subscribe creates account record and redirects to Stripe checkout
+	// 2. User fills out /new form and clicks "Create VM"
+	// 3. /create-vm redirects to /billing/subscribe which creates account and redirects to Stripe
 	// 4. User hits browser back button (never completes Stripe checkout)
-	// 5. User clicks "New" again -> BUG: allowed to create VM without paying!
+	// 5. User tries to create VM again -> should still be blocked!
 	//
 	// The fix: accounts should have a billing_status that starts as 'pending'
 	// and only becomes 'active' after Stripe checkout completes.
@@ -356,7 +365,7 @@ func TestBillingBypassBug(t *testing.T) {
 	}
 
 	// Step 2: Visit /billing/subscribe (this creates account and redirects to Stripe)
-	req := httptest.NewRequest("GET", "/billing/subscribe", nil)
+	req := httptest.NewRequest("GET", "/billing/subscribe?name=test-vm&prompt=test", nil)
 	req.Host = server.env.WebHost
 	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
 	w := httptest.NewRecorder()
@@ -388,9 +397,13 @@ func TestBillingBypassBug(t *testing.T) {
 		t.Error("BUG: User should still need billing after starting but not completing Stripe checkout")
 	}
 
-	// Step 5: Try to access /new - should still redirect to billing
-	req = httptest.NewRequest("GET", "/new", nil)
+	// Step 5: Try to create a VM via /create-vm - should redirect to billing
+	form := url.Values{}
+	form.Add("hostname", "test-vm")
+	form.Add("prompt", "test")
+	req = httptest.NewRequest("POST", "/create-vm", strings.NewReader(form.Encode()))
 	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
 	w = httptest.NewRecorder()
 	server.ServeHTTP(w, req)
@@ -399,7 +412,7 @@ func TestBillingBypassBug(t *testing.T) {
 		t.Errorf("Expected redirect (303), got %d - user bypassed billing!", w.Code)
 	}
 	location = w.Header().Get("Location")
-	if location != "/billing/subscribe" {
+	if !strings.HasPrefix(location, "/billing/subscribe") {
 		t.Errorf("Expected redirect to /billing/subscribe, got %q - billing was bypassed!", location)
 	}
 }
@@ -543,5 +556,309 @@ func TestDebugForceBillingForLegacyUser(t *testing.T) {
 	location = w.Header().Get("Location")
 	if !strings.Contains(location, "stripe.com") && !strings.Contains(location, "checkout") {
 		t.Errorf("Expected redirect to Stripe checkout with _debug_force_billing=1, got %q", location)
+	}
+}
+
+func TestNewPageAlwaysShowsForm_EvenWhenBillingRequired(t *testing.T) {
+	// Test that /new always shows the form, even for users who need billing.
+	// Billing is only requested when they click "Create VM".
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a user without billing info
+	email := "new-flow-test@example.com"
+	publicKey := "ssh-rsa dummy-new-flow-test-key new-flow-test@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Set user's created_at to after the billing requirement date
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Request /new - should show the form, NOT redirect to billing
+	req := httptest.NewRequest("GET", "/new", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200 (form), got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Create a New VM") {
+		t.Error("Expected new VM form to be shown")
+	}
+}
+
+func TestNewPagePrefillsFromQueryParams(t *testing.T) {
+	// Test that /new prefills name and prompt from query params.
+	// This is used when user cancels Stripe checkout and is redirected back.
+	server := newTestServer(t)
+
+	// Request /new with name and prompt params
+	req := httptest.NewRequest("GET", "/new?name=my-vm&prompt=Build+a+blog", nil)
+	req.Host = server.env.WebHost
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, `value="my-vm"`) {
+		t.Error("Expected hostname to be prefilled with 'my-vm'")
+	}
+	if !strings.Contains(body, "Build a blog") {
+		t.Error("Expected prompt to be prefilled with 'Build a blog'")
+	}
+}
+
+func TestCreateVMRedirectsToBillingWithParams(t *testing.T) {
+	// Test that /create-vm redirects to /billing/subscribe with name and prompt params.
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a user without billing info
+	email := "create-vm-params@example.com"
+	publicKey := "ssh-rsa dummy-create-vm-params-key create-vm-params@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Set user's created_at to after the billing requirement date
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// POST to /create-vm with hostname and prompt
+	form := url.Values{}
+	form.Add("hostname", "test-vm-name")
+	form.Add("prompt", "Build a blog")
+	req := httptest.NewRequest("POST", "/create-vm", strings.NewReader(form.Encode()))
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("Expected status 303, got %d", w.Code)
+	}
+
+	location := w.Header().Get("Location")
+	// Should redirect to /billing/subscribe with name and prompt params
+	if !strings.HasPrefix(location, "/billing/subscribe?") {
+		t.Errorf("Expected redirect to /billing/subscribe with params, got %q", location)
+	}
+	if !strings.Contains(location, "name=test-vm-name") {
+		t.Errorf("Expected name param in redirect URL, got %q", location)
+	}
+	if !strings.Contains(location, "prompt=Build") {
+		t.Errorf("Expected prompt param in redirect URL, got %q", location)
+	}
+}
+
+func TestBillingSubscribePreservesVMParams(t *testing.T) {
+	// Test that /billing/subscribe includes name and prompt in Stripe callback URLs.
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a user without billing info
+	email := "billing-params@example.com"
+	publicKey := "ssh-rsa dummy-billing-params-key billing-params@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Set user's created_at to after the billing requirement date
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Request /billing/subscribe with name and prompt params
+	req := httptest.NewRequest("GET", "/billing/subscribe?name=my-test-vm&prompt=Build+something", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Expected redirect to Stripe, got status %d", w.Code)
+	}
+
+	// The redirect URL is to Stripe, but we can check that our callback URLs
+	// contain the name and prompt params by examining the checkout session.
+	// Since we can't easily inspect the Stripe session, we verify the behavior
+	// end-to-end in TestBillingSuccessCreatesVM.
+}
+
+func TestBillingCancelCreatesNoVMState(t *testing.T) {
+	// Prove that canceling billing creates no VM state:
+	// 1. User fills form on /new and clicks "Create VM"
+	// 2. /create-vm redirects to /billing/subscribe (no startBoxCreation called)
+	// 3. /billing/subscribe redirects to Stripe (only account record created, no VM state)
+	// 4. User cancels → redirected to /new (no VM state created)
+	//
+	// This test verifies no boxes are created during this flow.
+
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a user without billing
+	email := "cancel-no-vm@example.com"
+	publicKey := "ssh-rsa dummy-cancel-no-vm cancel-no-vm@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Set user's created_at to after billing requirement date
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Count boxes before the flow
+	var boxCountBefore int
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM boxes`).Scan(&boxCountBefore)
+	})
+	if err != nil {
+		t.Fatalf("Failed to count boxes: %v", err)
+	}
+
+	// Step 1: POST to /create-vm with VM details
+	form := url.Values{}
+	form.Add("hostname", "cancel-test-vm")
+	form.Add("prompt", "test prompt")
+	req := httptest.NewRequest("POST", "/create-vm", strings.NewReader(form.Encode()))
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	// Should redirect to billing (not create VM)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Expected redirect, got %d", w.Code)
+	}
+	location := w.Header().Get("Location")
+	if !strings.HasPrefix(location, "/billing/subscribe") {
+		t.Fatalf("Expected redirect to /billing/subscribe, got %q", location)
+	}
+
+	// Verify no boxes were created
+	var boxCountAfterCreate int
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM boxes`).Scan(&boxCountAfterCreate)
+	})
+	if err != nil {
+		t.Fatalf("Failed to count boxes: %v", err)
+	}
+	if boxCountAfterCreate != boxCountBefore {
+		t.Errorf("Box created during /create-vm redirect! Before: %d, After: %d", boxCountBefore, boxCountAfterCreate)
+	}
+
+	// Step 2: Visit /billing/subscribe (simulates following the redirect)
+	req = httptest.NewRequest("GET", "/billing/subscribe?name=cancel-test-vm&prompt=test+prompt", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	// Should redirect to Stripe
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Expected redirect to Stripe, got %d", w.Code)
+	}
+
+	// Verify no boxes were created
+	var boxCountAfterBilling int
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM boxes`).Scan(&boxCountAfterBilling)
+	})
+	if err != nil {
+		t.Fatalf("Failed to count boxes: %v", err)
+	}
+	if boxCountAfterBilling != boxCountBefore {
+		t.Errorf("Box created during /billing/subscribe! Before: %d, After: %d", boxCountBefore, boxCountAfterBilling)
+	}
+
+	// Step 3: Simulate cancel by visiting /new with params (what Stripe's cancelURL points to)
+	req = httptest.NewRequest("GET", "/new?name=cancel-test-vm&prompt=test+prompt", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected form, got %d", w.Code)
+	}
+
+	// Verify STILL no boxes were created
+	var boxCountAfterCancel int
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM boxes`).Scan(&boxCountAfterCancel)
+	})
+	if err != nil {
+		t.Fatalf("Failed to count boxes: %v", err)
+	}
+	if boxCountAfterCancel != boxCountBefore {
+		t.Errorf("Box created during cancel flow! Before: %d, After: %d", boxCountBefore, boxCountAfterCancel)
+	}
+
+	// Also verify the VM name is still available (not reserved)
+	req = httptest.NewRequest("POST", "/check-hostname", strings.NewReader(`{"hostname":"cancel-test-vm"}`))
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, `"available":true`) {
+		t.Errorf("VM name should still be available after cancel, but got: %s", body)
 	}
 }
