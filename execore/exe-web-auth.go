@@ -267,14 +267,30 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Create account record
-	accountID := "exe_" + rand.Text()[:16]
-	if err := withTx1(s, r.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        accountID,
-		CreatedBy: userID,
-	}); err != nil {
-		s.slog().ErrorContext(r.Context(), "failed to create account", "error", err)
-		http.Error(w, "failed to create account", http.StatusInternalServerError)
+	// Check if user already has a pending account (from previous incomplete checkout)
+	existingAccount, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountByUserID, userID)
+	var accountID string
+	if err == nil && existingAccount.BillingStatus == "pending" {
+		// Reuse existing pending account
+		accountID = existingAccount.ID
+	} else if errors.Is(err, sql.ErrNoRows) {
+		// Create new account record
+		accountID = "exe_" + rand.Text()[:16]
+		if err := withTx1(s, r.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
+			ID:        accountID,
+			CreatedBy: userID,
+		}); err != nil {
+			s.slog().ErrorContext(r.Context(), "failed to create account", "error", err)
+			http.Error(w, "failed to create account", http.StatusInternalServerError)
+			return
+		}
+	} else if err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to check existing account", "error", err)
+		http.Error(w, "failed to check billing status", http.StatusInternalServerError)
+		return
+	} else {
+		// User has an active account - shouldn't get here due to earlier check, but redirect safely
+		http.Redirect(w, r, "/new", http.StatusSeeOther)
 		return
 	}
 

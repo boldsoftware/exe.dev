@@ -727,6 +727,126 @@ func TestBillingSubscribePreservesVMParams(t *testing.T) {
 	// end-to-end in TestBillingSuccessCreatesVM.
 }
 
+func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
+	// Test that visiting /billing/subscribe multiple times reuses the same
+	// pending account instead of creating duplicates. This prevents the bug
+	// where users who abandon checkout and return later get multiple Stripe customers.
+
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a user without billing
+	email := "duplicate-account-test@example.com"
+	publicKey := "ssh-rsa dummy-duplicate-account-test duplicate-account-test@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Set user's created_at to after billing requirement date
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Count accounts before
+	var accountCountBefore int64
+	accountCountBefore, err = withRxRes1(server, t.Context(), (*exedb.Queries).CountAccountsByBillingStatus, "pending")
+	if err != nil {
+		t.Fatalf("Failed to count accounts: %v", err)
+	}
+
+	// Visit /billing/subscribe first time
+	req := httptest.NewRequest("GET", "/billing/subscribe?name=test-vm&prompt=test", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("First visit: expected redirect to Stripe, got %d", w.Code)
+	}
+
+	// Get the account ID from first visit
+	firstAccount, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, user.UserID)
+	if err != nil {
+		t.Fatalf("Failed to get account after first visit: %v", err)
+	}
+	firstAccountID := firstAccount.ID
+
+	// Verify one new account was created
+	var accountCountAfterFirst int64
+	accountCountAfterFirst, err = withRxRes1(server, t.Context(), (*exedb.Queries).CountAccountsByBillingStatus, "pending")
+	if err != nil {
+		t.Fatalf("Failed to count accounts: %v", err)
+	}
+	if accountCountAfterFirst != accountCountBefore+1 {
+		t.Errorf("Expected one new account after first visit, got %d -> %d", accountCountBefore, accountCountAfterFirst)
+	}
+
+	// Visit /billing/subscribe second time (simulating user abandoning checkout and returning)
+	req = httptest.NewRequest("GET", "/billing/subscribe?name=test-vm2&prompt=test2", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Second visit: expected redirect to Stripe, got %d", w.Code)
+	}
+
+	// Get the account ID from second visit
+	secondAccount, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, user.UserID)
+	if err != nil {
+		t.Fatalf("Failed to get account after second visit: %v", err)
+	}
+	secondAccountID := secondAccount.ID
+
+	// Verify the SAME account ID was reused
+	if firstAccountID != secondAccountID {
+		t.Errorf("Expected same account ID to be reused, got first=%q, second=%q", firstAccountID, secondAccountID)
+	}
+
+	// Verify NO new accounts were created
+	var accountCountAfterSecond int64
+	accountCountAfterSecond, err = withRxRes1(server, t.Context(), (*exedb.Queries).CountAccountsByBillingStatus, "pending")
+	if err != nil {
+		t.Fatalf("Failed to count accounts: %v", err)
+	}
+	if accountCountAfterSecond != accountCountAfterFirst {
+		t.Errorf("BUG: Duplicate account created! Count went from %d to %d", accountCountAfterFirst, accountCountAfterSecond)
+	}
+
+	// Visit a third time for good measure
+	req = httptest.NewRequest("GET", "/billing/subscribe", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Third visit: expected redirect to Stripe, got %d", w.Code)
+	}
+
+	// Verify still only one account
+	var accountCountAfterThird int64
+	accountCountAfterThird, err = withRxRes1(server, t.Context(), (*exedb.Queries).CountAccountsByBillingStatus, "pending")
+	if err != nil {
+		t.Fatalf("Failed to count accounts: %v", err)
+	}
+	if accountCountAfterThird != accountCountAfterFirst {
+		t.Errorf("BUG: Duplicate account created on third visit! Count went from %d to %d", accountCountAfterFirst, accountCountAfterThird)
+	}
+}
+
 func TestBillingCancelCreatesNoVMState(t *testing.T) {
 	// Prove that canceling billing creates no VM state:
 	// 1. User fills form on /new and clicks "Create VM"
