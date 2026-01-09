@@ -93,6 +93,12 @@ type EmailAddressQuality struct {
 	Disposable   *int64     `db:"disposable" json:"disposable"`
 }
 
+type EmailBounce struct {
+	Email     string     `db:"email" json:"email"`
+	Reason    string     `db:"reason" json:"reason"`
+	BouncedAt *time.Time `db:"bounced_at" json:"bounced_at"`
+}
+
 type EmailVerification struct {
 	Token            string     `db:"token" json:"token"`
 	Email            string     `db:"email" json:"email"`

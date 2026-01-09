@@ -1074,7 +1074,7 @@ The EXE.DEV team`, publicKey, verifyURL)
 
 		if err := ss.server.sendEmail(s.Context(), emailpkg.TypeDeviceVerification, email, subject, body); err != nil {
 			ss.server.deleteEmailVerification(verif)
-			return nil, fmt.Errorf("failed to send verification email: %v", err)
+			return nil, fmt.Errorf("failed to send verification email: %w", err)
 		}
 		if ss.server.env.FakeEmail {
 			fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed link: \033[1;36m%s\033[0m\r\n\r\n", verifyURL)
@@ -1102,7 +1102,7 @@ The EXE.DEV team`, verifyURL)
 
 	if err := ss.server.sendEmail(s.Context(), emailpkg.TypeNewUserVerification, email, subject, body); err != nil {
 		ss.server.deleteEmailVerification(verif)
-		return nil, fmt.Errorf("failed to send verification email: %v", err)
+		return nil, fmt.Errorf("failed to send verification email: %w", err)
 	}
 	if ss.server.env.FakeEmail {
 		fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed link: \033[1;36m%s\033[0m\r\n\r\n", verifyURL)

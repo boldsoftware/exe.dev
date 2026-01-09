@@ -189,6 +189,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getEmailAddressQualityByEmailStmt, err = db.PrepareContext(ctx, getEmailAddressQualityByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailAddressQualityByEmail: %w", err)
 	}
+	if q.getEmailBounceStmt, err = db.PrepareContext(ctx, getEmailBounce); err != nil {
+		return nil, fmt.Errorf("error preparing query GetEmailBounce: %w", err)
+	}
 	if q.getEmailBySSHKeyStmt, err = db.PrepareContext(ctx, getEmailBySSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailBySSHKey: %w", err)
 	}
@@ -321,6 +324,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertEmailAddressQualityStmt, err = db.PrepareContext(ctx, insertEmailAddressQuality); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertEmailAddressQuality: %w", err)
 	}
+	if q.insertEmailBounceStmt, err = db.PrepareContext(ctx, insertEmailBounce); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertEmailBounce: %w", err)
+	}
 	if q.insertEmailVerificationStmt, err = db.PrepareContext(ctx, insertEmailVerification); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertEmailVerification: %w", err)
 	}
@@ -350,6 +356,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertUserStmt, err = db.PrepareContext(ctx, insertUser); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertUser: %w", err)
+	}
+	if q.isEmailBouncedStmt, err = db.PrepareContext(ctx, isEmailBounced); err != nil {
+		return nil, fmt.Errorf("error preparing query IsEmailBounced: %w", err)
 	}
 	if q.listAllAccountsStmt, err = db.PrepareContext(ctx, listAllAccounts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllAccounts: %w", err)
@@ -730,6 +739,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getEmailAddressQualityByEmailStmt: %w", cerr)
 		}
 	}
+	if q.getEmailBounceStmt != nil {
+		if cerr := q.getEmailBounceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getEmailBounceStmt: %w", cerr)
+		}
+	}
 	if q.getEmailBySSHKeyStmt != nil {
 		if cerr := q.getEmailBySSHKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailBySSHKeyStmt: %w", cerr)
@@ -950,6 +964,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertEmailAddressQualityStmt: %w", cerr)
 		}
 	}
+	if q.insertEmailBounceStmt != nil {
+		if cerr := q.insertEmailBounceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertEmailBounceStmt: %w", cerr)
+		}
+	}
 	if q.insertEmailVerificationStmt != nil {
 		if cerr := q.insertEmailVerificationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertEmailVerificationStmt: %w", cerr)
@@ -998,6 +1017,11 @@ func (q *Queries) Close() error {
 	if q.insertUserStmt != nil {
 		if cerr := q.insertUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertUserStmt: %w", cerr)
+		}
+	}
+	if q.isEmailBouncedStmt != nil {
+		if cerr := q.isEmailBouncedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing isEmailBouncedStmt: %w", cerr)
 		}
 	}
 	if q.listAllAccountsStmt != nil {
@@ -1259,6 +1283,7 @@ type Queries struct {
 	getBoxesForUserDashboardStmt           *sql.Stmt
 	getBoxesSharedWithUserStmt             *sql.Stmt
 	getEmailAddressQualityByEmailStmt      *sql.Stmt
+	getEmailBounceStmt                     *sql.Stmt
 	getEmailBySSHKeyStmt                   *sql.Stmt
 	getEmailByUserIDStmt                   *sql.Stmt
 	getEmailVerificationByPartialTokenStmt *sql.Stmt
@@ -1303,6 +1328,7 @@ type Queries struct {
 	insertBoxIPShardStmt                   *sql.Stmt
 	insertDeletedBoxStmt                   *sql.Stmt
 	insertEmailAddressQualityStmt          *sql.Stmt
+	insertEmailBounceStmt                  *sql.Stmt
 	insertEmailVerificationStmt            *sql.Stmt
 	insertOrReplaceEmailVerificationStmt   *sql.Stmt
 	insertPasskeyStmt                      *sql.Stmt
@@ -1313,6 +1339,7 @@ type Queries struct {
 	insertSSHKeyForEmailUserStmt           *sql.Stmt
 	insertTagResolutionHistoryStmt         *sql.Stmt
 	insertUserStmt                         *sql.Stmt
+	isEmailBouncedStmt                     *sql.Stmt
 	listAllAccountsStmt                    *sql.Stmt
 	listAllUsersStmt                       *sql.Stmt
 	listIPShardsStmt                       *sql.Stmt
@@ -1407,6 +1434,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxesForUserDashboardStmt:           q.getBoxesForUserDashboardStmt,
 		getBoxesSharedWithUserStmt:             q.getBoxesSharedWithUserStmt,
 		getEmailAddressQualityByEmailStmt:      q.getEmailAddressQualityByEmailStmt,
+		getEmailBounceStmt:                     q.getEmailBounceStmt,
 		getEmailBySSHKeyStmt:                   q.getEmailBySSHKeyStmt,
 		getEmailByUserIDStmt:                   q.getEmailByUserIDStmt,
 		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
@@ -1451,6 +1479,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertBoxIPShardStmt:                   q.insertBoxIPShardStmt,
 		insertDeletedBoxStmt:                   q.insertDeletedBoxStmt,
 		insertEmailAddressQualityStmt:          q.insertEmailAddressQualityStmt,
+		insertEmailBounceStmt:                  q.insertEmailBounceStmt,
 		insertEmailVerificationStmt:            q.insertEmailVerificationStmt,
 		insertOrReplaceEmailVerificationStmt:   q.insertOrReplaceEmailVerificationStmt,
 		insertPasskeyStmt:                      q.insertPasskeyStmt,
@@ -1461,6 +1490,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertSSHKeyForEmailUserStmt:           q.insertSSHKeyForEmailUserStmt,
 		insertTagResolutionHistoryStmt:         q.insertTagResolutionHistoryStmt,
 		insertUserStmt:                         q.insertUserStmt,
+		isEmailBouncedStmt:                     q.isEmailBouncedStmt,
 		listAllAccountsStmt:                    q.listAllAccountsStmt,
 		listAllUsersStmt:                       q.listAllUsersStmt,
 		listIPShardsStmt:                       q.listIPShardsStmt,

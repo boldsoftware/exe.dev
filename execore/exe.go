@@ -1165,7 +1165,14 @@ var errNoEmailService = errors.New("email service not configured")
 // sendEmail sends an email using the configured email service.
 // emailType identifies the type of email being sent for logging and metrics.
 func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subject, body string) error {
-	// Check if HTTP email server is configured first
+	// Do not attempt to send to an email address that has hard-bounced before. Best effort.
+	// If bounced, silently pretend the email was sent (anti-fraud measure).
+	bounced, _ := withRxRes1(s, ctx, (*exedb.Queries).IsEmailBounced, to)
+	if bounced == 1 {
+		s.slog().InfoContext(ctx, "silently dropping email to bounced address", "to", to, "subject", subject, "type", emailType)
+		return nil
+	}
+
 	if s.fakeHTTPEmail != "" {
 		err := s.sendFakeEmail(ctx, to, subject, body)
 		if err != nil {
@@ -1189,6 +1196,20 @@ func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subjec
 	err := sender.Send(ctx, emailType, from, to, subject, body)
 	if err != nil {
 		s.slog().WarnContext(ctx, "failed to send email", "to", to, "subject", subject, "type", emailType, "error", err)
+		// Record bounce/inactive recipient errors
+		// This error is from Postmark that reads (in part):
+		//   > 406 You tried to send to recipient(s) that have been marked as inactive.
+		// TODO: add other substrings to check
+		if strings.Contains(err.Error(), "marked as inactive") {
+			// Best effort
+			err := withTx1(s, ctx, (*exedb.Queries).InsertEmailBounce, exedb.InsertEmailBounceParams{
+				Email:  to,
+				Reason: err.Error(),
+			})
+			if err != nil {
+				s.slog().ErrorContext(ctx, "failed to record email bounce", "email", to, "error", err)
+			}
+		}
 	}
 	return err
 }
