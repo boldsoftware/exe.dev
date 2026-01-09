@@ -60,6 +60,7 @@ import (
 	"exe.dev/stage"
 	"exe.dev/tagresolver"
 	templatespkg "exe.dev/templates"
+	"exe.dev/tracing"
 	emailverifier "github.com/AfterShip/email-verifier"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -2518,7 +2519,7 @@ func (s *Server) validateNewSignup(ctx context.Context, ip, email, source string
 	if s.ipFlaggedForAbuse(ctx, ip) {
 		s.slog().InfoContext(ctx, "blocking signup due to recent_abuse", "ip", ip)
 		s.signupMetrics.IncBlocked("ip_abuse", source)
-		return errors.New("unable to process signup")
+		return fmt.Errorf("unable to process signup (trace=%s, email=%s)", tracing.TraceIDFromContext(ctx), email)
 	}
 	return nil
 }
