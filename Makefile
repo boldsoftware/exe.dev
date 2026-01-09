@@ -18,7 +18,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy-exed deploy-exed-staging deploy-exelet deploy-exelet-staging deploy-staging deploy-whoami deploy-what deploy-qa deploy-piperd deploy-piperd-staging deploy-blogd clean run-dev run-devlet run-devlets generate whoami-clean ssh-exed-staging ssh-ctr-staging
+.PHONY: help build test deploy-exed deploy-exed-staging deploy-exelet deploy-exelet-staging deploy-staging deploy-whoami deploy-qa deploy-piperd deploy-piperd-staging deploy-blogd clean run-dev run-devlet run-devlets generate whoami-clean ssh-exed-staging ssh-ctr-staging
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -104,11 +104,6 @@ deploy-piperd: ## Deploy sshpiperd to production
 deploy-piperd-staging: ## Deploy sshpiperd to staging
 	@echo ""
 	@echo "./ops/deploy/deploy-sshpiper-staging.sh"
-	@echo ""
-
-deploy-what: ## Show commits that would deploy to production
-	@echo ""
-	@echo "./ops/deploy/deploy-what.sh"
 	@echo ""
 
 deploy-qa: ## Ask claude for a QA/testing plan for pending changes
