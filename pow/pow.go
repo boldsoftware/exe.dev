@@ -18,10 +18,10 @@ import (
 )
 
 var (
-	ErrInvalidToken    = errors.New("invalid challenge token")
-	ErrTokenExpired    = errors.New("challenge token expired")
-	ErrInvalidProof    = errors.New("proof of work invalid")
-	ErrMalformedToken  = errors.New("malformed token format")
+	ErrInvalidToken   = errors.New("invalid challenge token")
+	ErrTokenExpired   = errors.New("challenge token expired")
+	ErrInvalidProof   = errors.New("proof of work invalid")
+	ErrMalformedToken = errors.New("malformed token format")
 )
 
 // Challenge represents the payload inside a signed token.

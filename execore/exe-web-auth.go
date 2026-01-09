@@ -13,14 +13,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
-
-	"log/slog"
 
 	sloghttp "github.com/samber/slog-http"
 
