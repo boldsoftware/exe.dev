@@ -767,6 +767,11 @@ func (n *NAT) removeConnLimit(ctx context.Context, ip string) error {
 // to a virtual device where we can apply HTB shaping. This queues excess traffic
 // instead of dropping it, allowing TCP to adapt gracefully.
 func (n *NAT) applyBandwidthLimit(ctx context.Context, tapName string) error {
+	if n.disableBandwidth {
+		n.log.DebugContext(ctx, "bandwidth limiting disabled, skipping", "tap", tapName)
+		return nil
+	}
+
 	ifbName := getIfbName(tapName)
 	n.log.DebugContext(ctx, "applying bandwidth limit", "tap", tapName, "ifb", ifbName, "rate", n.bandwidthRate)
 

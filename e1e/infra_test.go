@@ -115,6 +115,14 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 `)
 	}
 
+	// Bootstrap localhost if CTR_HOST=localhost
+	if os.Getenv("CTR_HOST") == "localhost" {
+		if err := testinfra.BootstrapLocalhost(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to bootstrap localhost: %v\n", err)
+			exit(1)
+		}
+	}
+
 	ctrHost, err := testinfra.StartExeletVM(testRunID)
 	if err != nil {
 		if err == testinfra.ErrNoVM && os.Getenv("CI") != "" {

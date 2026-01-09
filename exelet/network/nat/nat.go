@@ -60,6 +60,7 @@ type NAT struct {
 	connLimit         int    // max concurrent connections per VM
 	bandwidthRate     string // max upload bandwidth per VM (e.g., "100mbit")
 	bandwidthBurst    string // police burst size (e.g., "15k")
+	disableBandwidth  bool   // disable bandwidth limiting (for envs without ifb support)
 	mu                sync.Mutex
 	bridgeCreateMu    sync.Mutex // serializes bridge creation
 }
@@ -100,6 +101,9 @@ func NewNATManager(addr string, log *slog.Logger) (*NAT, error) {
 		router = v
 	}
 
+	// Check if bandwidth limiting should be disabled (for environments without ifb kernel module)
+	disableBandwidth := u.Query().Get("disable_bandwidth") == "true"
+
 	// Primary bridge name is the base name with -0 suffix
 	primaryBridgeName := fmt.Sprintf("%s-0", bridgeBaseName)
 
@@ -134,6 +138,11 @@ func NewNATManager(addr string, log *slog.Logger) (*NAT, error) {
 		connLimit:         DefaultConnLimit,
 		bandwidthRate:     DefaultBandwidthRate,
 		bandwidthBurst:    DefaultBandwidthBurst,
+		disableBandwidth:  disableBandwidth,
+	}
+
+	if disableBandwidth {
+		log.Info("bandwidth limiting disabled via config")
 	}
 
 	return n, nil
