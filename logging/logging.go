@@ -25,8 +25,8 @@ import (
 
 // ResourceAttrs contains optional OTEL resource attributes for logging.
 type ResourceAttrs struct {
-	ServiceVersion    string // e.g., "1.2.3" from version.BuildVersion()
-	DeploymentEnv     string // e.g., "prod", "staging", "local", "test"
+	ServiceVersion string // e.g., "1.2.3" from version.BuildVersion()
+	DeploymentEnv  string // e.g., "prod", "staging", "local", "test"
 }
 
 // SetupLogger configures slog based on env.
