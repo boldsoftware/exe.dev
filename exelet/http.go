@@ -41,6 +41,7 @@ func (s *Exelet) StartHTTPServer(addr string, registry *prometheus.Registry) err
 
 	// version endpoint
 	mux.HandleFunc("/debug/version", s.handleVersion)
+	mux.HandleFunc("/debug/gitsha", s.handleGitSHA)
 
 	// prometheus metrics
 	if registry != nil {
@@ -76,6 +77,7 @@ func (s *Exelet) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
 <ul>
     <li><a href="/debug/pprof/">pprof</a></li>
     <li><a href="/debug/version">version</a></li>
+    <li><a href="/debug/gitsha">gitsha</a></li>
     <li><a href="/metrics">metrics</a></li>
 </ul>
 </body></html>
@@ -86,4 +88,9 @@ func (s *Exelet) handleVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	fmt.Fprintf(w, "%s\n", version.FullVersion())
 	fmt.Fprintf(w, "Git commit: %s\n", logging.GitCommit())
+}
+
+func (s *Exelet) handleGitSHA(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprint(w, version.Commit)
 }
