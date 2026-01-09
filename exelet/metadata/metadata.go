@@ -41,6 +41,7 @@ import (
 	"net/netip"
 	"net/url"
 	"strings"
+	"syscall"
 
 	sloghttp "github.com/samber/slog-http"
 )
@@ -221,8 +222,14 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 			if errors.Is(err, context.Canceled) {
 				return
 			}
-			s.log.ErrorContext(r.Context(), "gateway proxy error", "error", err, "box", boxName)
 			http.Error(w, "gateway proxy error: "+err.Error(), http.StatusBadGateway)
+			switch {
+			case errors.Is(err, syscall.ECONNREFUSED):
+				// This typically happens in bursts when we restart exed. Warn only.
+				s.log.WarnContext(r.Context(), "gateway proxy conn refused", "error", err, "box", boxName)
+			default:
+				s.log.ErrorContext(r.Context(), "gateway proxy error", "error", err, "box", boxName)
+			}
 		},
 	}
 
