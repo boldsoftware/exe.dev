@@ -52,6 +52,7 @@ import (
 	"exe.dev/llmgateway"
 	"exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/pow"
 	"exe.dev/publicips"
 	"exe.dev/route53"
 	"exe.dev/sqlite"
@@ -321,6 +322,30 @@ type Server struct {
 
 	// Rate limiter for signup requests (5 per minute per IP)
 	signupLimiter *limiter.Limiter[netip.Addr]
+
+	// Proof-of-work challenger for signup (when enabled)
+	// The idea is that instead of an external captcha, we ask
+	// the client to do some math. This will be annoying to implement
+	// for a script-kiddie (though Claude Code would manage just fine),
+	// and will cost CPU cycles, slowing down the user. This is currently
+	// default off, and, also, NOT e1e TESTED! Before enabling, you
+	// should test that it works in staging.
+	//
+	// Alas this is a half-measure because SSH sends you right to e-mail.
+	// When SSH becomes a problem, we need SSH to send you a URL, which
+	// THEN asks for your e-mail, and goes through the rest of this flow.
+	signupPOW        *pow.Challenger
+	signupPOWEnabled bool
+}
+
+// newSignupPOW creates a proof-of-work challenger with a random secret.
+// Difficulty 16 means ~65k hashes on average (a few hundred ms on typical devices).
+func newSignupPOW() *pow.Challenger {
+	secret := make([]byte, 32)
+	if _, err := crand.Read(secret); err != nil {
+		panic("failed to generate random secret: " + err.Error())
+	}
+	return pow.NewChallenger(secret, 16, 2*time.Minute)
 }
 
 // exeletClient wraps an exelet client with its address
@@ -769,6 +794,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 			Max:            5,               // 5 requests max
 			RefillInterval: time.Minute / 5, // Refill 1 token per 12 seconds
 		},
+		signupPOW: newSignupPOW(),
 	}
 
 	// Set up HTTP metrics host functions for in-flight label tracking

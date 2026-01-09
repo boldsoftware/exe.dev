@@ -35,3 +35,10 @@ SELECT value FROM server_meta WHERE key = 'login_creation_disabled';
 -- name: SetLoginCreationDisabled :exec
 INSERT INTO server_meta (key, value, updated_at) VALUES ('login_creation_disabled', ?, CURRENT_TIMESTAMP)
 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP;
+
+-- name: GetSignupPOWEnabled :one
+SELECT value FROM server_meta WHERE key = 'signup_pow_enabled';
+
+-- name: SetSignupPOWEnabled :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('signup_pow_enabled', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP;

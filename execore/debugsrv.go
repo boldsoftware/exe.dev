@@ -43,6 +43,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/new-throttle", s.handleDebugNewThrottlePost)
 	mux.HandleFunc("/debug/signup-limiter", s.handleDebugSignupLimiter)
 	mux.HandleFunc("POST /debug/signup-limiter", s.handleDebugSignupLimiterPost)
+	mux.HandleFunc("/debug/signup-pow", s.handleDebugSignupPOW)
+	mux.HandleFunc("POST /debug/signup-pow", s.handleDebugSignupPOWPost)
 	mux.HandleFunc("/debug/ipshards", s.handleDebugIPShards)
 	mux.HandleFunc("GET /debug/log", s.handleDebugLogForm)
 	mux.HandleFunc("POST /debug/log", s.handleDebugLog)
@@ -95,6 +97,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/exelets">exelets</a> (<a href="/debug/exelets?format=json">json</a>)</li>
     <li><a href="/debug/new-throttle">new-throttle</a> (<a href="/debug/new-throttle?format=json">json</a>)</li>
     <li><a href="/debug/signup-limiter">signup-limiter</a></li>
+    <li><a href="/debug/signup-pow">signup-pow</a></li>
     <li><a href="/debug/ipshards">ipshards</a> (<a href="/debug/ipshards?format=json">json</a>)</li>
     <li><a href="/debug/log">/debug/log</a> (POST text=... to log an error)</li>
     <li><a href="/debug/testimonials">testimonials</a></li>
@@ -1700,4 +1703,84 @@ func (s *Server) handleDebugEmailSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/debug/email?result=Email+sent+successfully+via+%s+to+%s", provider, html.EscapeString(to)), http.StatusSeeOther)
+}
+
+// IsSignupPOWEnabled returns true if proof-of-work is required for new signups.
+func (s *Server) IsSignupPOWEnabled(ctx context.Context) bool {
+	val, err := withRxRes0(s, ctx, (*exedb.Queries).GetSignupPOWEnabled)
+	if err != nil {
+		return false
+	}
+	return val == "true"
+}
+
+// handleDebugSignupPOW displays the signup POW configuration page.
+func (s *Server) handleDebugSignupPOW(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	enabled := s.IsSignupPOWEnabled(ctx)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>Signup Proof-of-Work</title>
+<style>
+.section { margin: 20px 0; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+.toggle-switch { display: inline-flex; align-items: center; cursor: pointer; }
+.toggle-switch input { display: none; }
+.toggle-slider { width: 50px; height: 26px; background: #ccc; border-radius: 13px; position: relative; transition: 0.3s; }
+.toggle-slider:before { content: ""; position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%%; top: 2px; left: 2px; transition: 0.3s; }
+.toggle-switch input:checked + .toggle-slider { background: #28a745; }
+.toggle-switch input:checked + .toggle-slider:before { left: 26px; }
+.toggle-label { margin-left: 10px; font-weight: bold; }
+.save-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 16px; }
+.save-btn:hover { background: #0056b3; }
+.info { background: #e7f3ff; border: 1px solid #b6d4fe; padding: 10px; border-radius: 5px; margin: 10px 0; }
+code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
+</style>
+</head><body>
+<h1>Signup Proof-of-Work</h1>
+<p><a href="/debug">/debug</a></p>
+
+<div class="info">
+<strong>Info:</strong> When enabled, new users must complete a proof-of-work challenge before creating an account.
+This helps prevent automated signups. Difficulty is currently set to <code>%d</code> leading zero bits (~%d hashes average).
+</div>
+
+<div class="section">
+<h2>Enable POW for New Signups</h2>
+<form method="post" action="/debug/signup-pow">
+<p>When enabled, new users will see a "Verifying..." interstitial while their browser solves a cryptographic puzzle.</p>
+<label class="toggle-switch">
+<input type="checkbox" name="enabled" value="true" %s>
+<span class="toggle-slider"></span>
+<span class="toggle-label">Require POW for new signups</span>
+</label>
+<p style="margin-top: 10px;">
+<button type="submit" class="save-btn">Save Settings</button>
+</p>
+</form>
+</div>
+
+</body></html>
+`, s.signupPOW.GetDifficulty(), 1<<s.signupPOW.GetDifficulty(), checkedAttr(enabled))
+}
+
+// handleDebugSignupPOWPost handles saving the signup POW enabled setting.
+func (s *Server) handleDebugSignupPOWPost(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	enabled := r.FormValue("enabled") == "true"
+
+	enabledStr := "false"
+	if enabled {
+		enabledStr = "true"
+	}
+	if err := withTx1(s, ctx, (*exedb.Queries).SetSignupPOWEnabled, enabledStr); err != nil {
+		http.Error(w, fmt.Sprintf("failed to save setting: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "signup POW setting updated via debug page", "enabled", enabled)
+
+	http.Redirect(w, r, "/debug/signup-pow", http.StatusSeeOther)
 }

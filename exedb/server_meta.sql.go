@@ -73,6 +73,17 @@ func (q *Queries) GetPreferredExelet(ctx context.Context) (string, error) {
 	return value, err
 }
 
+const getSignupPOWEnabled = `-- name: GetSignupPOWEnabled :one
+SELECT value FROM server_meta WHERE key = 'signup_pow_enabled'
+`
+
+func (q *Queries) GetSignupPOWEnabled(ctx context.Context) (string, error) {
+	row := q.queryRow(ctx, q.getSignupPOWEnabledStmt, getSignupPOWEnabled)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
 const setLoginCreationDisabled = `-- name: SetLoginCreationDisabled :exec
 INSERT INTO server_meta (key, value, updated_at) VALUES ('login_creation_disabled', ?, CURRENT_TIMESTAMP)
 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
@@ -120,5 +131,15 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIME
 
 func (q *Queries) SetPreferredExelet(ctx context.Context, value string) error {
 	_, err := q.exec(ctx, q.setPreferredExeletStmt, setPreferredExelet, value)
+	return err
+}
+
+const setSignupPOWEnabled = `-- name: SetSignupPOWEnabled :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('signup_pow_enabled', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+`
+
+func (q *Queries) SetSignupPOWEnabled(ctx context.Context, value string) error {
+	_, err := q.exec(ctx, q.setSignupPOWEnabledStmt, setSignupPOWEnabled, value)
 	return err
 }

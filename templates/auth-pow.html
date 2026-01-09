@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.WebHost}} - Verifying</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style type="text/tailwindcss">
+    @theme {
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    }
+  </style>
+</head>
+<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
+  <main class="w-full max-w-2xl">
+    <h1 class="text-4xl font-semibold mb-6">Verifying...</h1>
+    <form id="pow-form" method="POST" action="/auth">
+      <input type="hidden" name="email" value="{{.Email}}">
+      <input type="hidden" name="pow_token" value="{{.POWToken}}">
+      <input type="hidden" name="pow_nonce" id="pow_nonce" value="">
+      <input type="hidden" name="pow_time_ms" id="pow_time_ms" value="">
+      {{if .Redirect}}
+      <input type="hidden" name="redirect" value="{{.Redirect}}">
+      {{end}}
+      {{if .ReturnHost}}
+      <input type="hidden" name="return_host" value="{{.ReturnHost}}">
+      {{end}}
+      {{if .LoginWithExe}}
+      <input type="hidden" name="login_with_exe" value="1">
+      {{end}}
+    </form>
+    <p id="status" class="text-zinc-400 text-sm">Please wait...</p>
+  </main>
+
+  <script>
+    const token = "{{.POWToken}}";
+    const difficulty = {{.POWDifficulty}};
+
+    async function solvePOW() {
+      const encoder = new TextEncoder();
+      const tokenBytes = encoder.encode(token);
+
+      for (let nonce = 0; ; nonce++) {
+        const nonceBytes = new ArrayBuffer(8);
+        const view = new DataView(nonceBytes);
+        view.setBigUint64(0, BigInt(nonce), true);
+
+        const combined = new Uint8Array(tokenBytes.length + 8);
+        combined.set(tokenBytes);
+        combined.set(new Uint8Array(nonceBytes), tokenBytes.length);
+
+        const hashBuffer = await crypto.subtle.digest('SHA-256', combined);
+        const hashArray = new Uint8Array(hashBuffer);
+
+        if (hasLeadingZeros(hashArray, difficulty)) {
+          return nonce;
+        }
+
+        if (nonce % 10000 === 0) {
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+    }
+
+    function hasLeadingZeros(hash, n) {
+      const fullBytes = Math.floor(n / 8);
+      const remainingBits = n % 8;
+
+      for (let i = 0; i < fullBytes; i++) {
+        if (hash[i] !== 0) return false;
+      }
+
+      if (remainingBits > 0 && fullBytes < hash.length) {
+        const mask = 0xFF << (8 - remainingBits);
+        if ((hash[fullBytes] & mask) !== 0) return false;
+      }
+
+      return true;
+    }
+
+    (async function() {
+      try {
+        const startTime = performance.now();
+        const nonce = await solvePOW();
+        const elapsed = Math.round(performance.now() - startTime);
+
+        document.getElementById('pow_nonce').value = nonce.toString();
+        document.getElementById('pow_time_ms').value = elapsed.toString();
+        document.getElementById('pow-form').submit();
+      } catch (err) {
+        document.getElementById('status').textContent = 'Error, please go back and try again';
+      }
+    })();
+  </script>
+</body>
+</html>

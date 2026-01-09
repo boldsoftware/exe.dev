@@ -1,12 +1,17 @@
 package execore
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"exe.dev/exedb"
+	"exe.dev/pow"
 )
 
 // TestXSSInEmailVerificationForm tests that template variables in the
@@ -213,5 +218,89 @@ func TestSignupRateLimiting(t *testing.T) {
 
 	if w.Code == http.StatusTooManyRequests {
 		t.Errorf("Different IP: got 429 Too Many Requests, should not be rate limited")
+	}
+}
+
+// TestSignupPOW tests that proof-of-work is required for new user signups when enabled.
+func TestSignupPOW(t *testing.T) {
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	// Enable POW for signups
+	err := withTx1(server, ctx, (*exedb.Queries).SetSignupPOWEnabled, "true")
+	if err != nil {
+		t.Fatalf("failed to enable POW: %v", err)
+	}
+
+	// Attempt signup without POW - should show interstitial page
+	form := url.Values{}
+	form.Set("email", "newuser-pow-test@example.com")
+	req := httptest.NewRequest("POST", "/auth", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "192.0.2.10:12345"
+	w := httptest.NewRecorder()
+	server.handleAuthEmailSubmission(w, req)
+
+	// Should show the POW interstitial page (status 200)
+	if w.Code != http.StatusOK {
+		t.Errorf("Without POW: got status %d, want %d", w.Code, http.StatusOK)
+	}
+	// Interstitial should contain the POW token and "Verifying"
+	body := w.Body.String()
+	if !strings.Contains(body, "Verifying") {
+		t.Errorf("Expected interstitial page with 'Verifying', got: %s", body[:min(200, len(body))])
+	}
+	if !strings.Contains(body, "pow_token") {
+		t.Errorf("Expected interstitial page with pow_token field")
+	}
+
+	// Now get a fresh token and solve it
+	token, err := server.signupPOW.NewToken()
+	if err != nil {
+		t.Fatalf("failed to create POW token: %v", err)
+	}
+	nonce := pow.Solve(token, server.signupPOW.GetDifficulty())
+
+	// Attempt signup with valid POW - should succeed
+	form = url.Values{}
+	form.Set("email", "newuser-pow-test2@example.com")
+	form.Set("pow_token", token)
+	form.Set("pow_nonce", strconv.FormatUint(nonce, 10))
+	req = httptest.NewRequest("POST", "/auth", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "192.0.2.11:12345"
+	w = httptest.NewRecorder()
+	server.handleAuthEmailSubmission(w, req)
+
+	// Should proceed past POW (show email sent page, not interstitial)
+	body = w.Body.String()
+	if strings.Contains(body, "Verifying") {
+		t.Errorf("With valid POW: still showing interstitial page")
+	}
+}
+
+// TestSignupPOWDisabled tests that POW is not required when disabled.
+func TestSignupPOWDisabled(t *testing.T) {
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	// Ensure POW is disabled
+	err := withTx1(server, ctx, (*exedb.Queries).SetSignupPOWEnabled, "false")
+	if err != nil {
+		t.Fatalf("failed to disable POW: %v", err)
+	}
+
+	// Signup without POW should work for new users
+	form := url.Values{}
+	form.Set("email", "newuser-no-pow@example.com")
+	req := httptest.NewRequest("POST", "/auth", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "192.0.2.20:12345"
+	w := httptest.NewRecorder()
+	server.handleAuthEmailSubmission(w, req)
+
+	// Should not complain about POW
+	if strings.Contains(w.Body.String(), "verification challenge") {
+		t.Errorf("With POW disabled: got verification challenge error")
 	}
 }

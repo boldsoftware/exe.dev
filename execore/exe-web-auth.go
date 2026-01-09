@@ -16,13 +16,19 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
+
+	"log/slog"
+
+	sloghttp "github.com/samber/slog-http"
 
 	"exe.dev/billing"
 	"exe.dev/domz"
 	emailpkg "exe.dev/email"
 	"exe.dev/exedb"
+	"exe.dev/pow"
 	"exe.dev/sqlite"
 	"exe.dev/stage"
 	_ "modernc.org/sqlite"
@@ -961,6 +967,60 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, "auth-form.html", data)
 }
 
+// verifySignupPOW verifies the proof-of-work submitted with a signup request.
+func (s *Server) verifySignupPOW(r *http.Request) error {
+	token := r.FormValue("pow_token")
+	nonceStr := r.FormValue("pow_nonce")
+
+	if token == "" || nonceStr == "" {
+		return errors.New("missing proof-of-work")
+	}
+
+	nonce, err := strconv.ParseUint(nonceStr, 10, 64)
+	if err != nil {
+		return errors.New("invalid nonce format")
+	}
+
+	if err := s.signupPOW.Verify(token, nonce); err != nil {
+		if errors.Is(err, pow.ErrTokenExpired) {
+			return errors.New("challenge expired, please try again")
+		}
+		return errors.New("invalid proof-of-work")
+	}
+
+	return nil
+}
+
+// showPOWInterstitial renders the proof-of-work interstitial page.
+// This page solves the challenge in JavaScript and re-submits to /auth.
+func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, email string) {
+	token, err := s.signupPOW.NewToken()
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to generate POW token", "error", err)
+		s.showAuthError(w, r, "Internal error. Please try again.", "")
+		return
+	}
+
+	data := struct {
+		stage.Env
+		Email         string
+		POWToken      string
+		POWDifficulty int
+		Redirect      string
+		ReturnHost    string
+		LoginWithExe  bool
+	}{
+		Env:           s.env,
+		Email:         email,
+		POWToken:      token,
+		POWDifficulty: s.signupPOW.GetDifficulty(),
+		Redirect:      r.FormValue("redirect"),
+		ReturnHost:    r.FormValue("return_host"),
+		LoginWithExe:  r.FormValue("login_with_exe") == "1",
+	}
+	s.renderTemplate(w, "auth-pow.html", data)
+}
+
 // handleAuthEmailSubmission handles the email form submission for web auth
 func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Request) {
 	ip, allowed := s.checkSignupRateLimit(r)
@@ -1001,6 +1061,28 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		s.showAuthError(w, r, "Database error occurred. Please try again.", "")
 		return
 	}
+
+	// Require proof-of-work for new users when enabled
+	if isNewUser && s.IsSignupPOWEnabled(r.Context()) {
+		// Check if POW was submitted
+		if r.FormValue("pow_token") == "" {
+			// No POW submitted - show interstitial to solve it
+			s.showPOWInterstitial(w, r, email)
+			return
+		}
+		// Verify the submitted POW
+		if err := s.verifySignupPOW(r); err != nil {
+			s.slog().InfoContext(r.Context(), "signup POW verification failed", "error", err, "ip", ip, "email", email)
+			// Show interstitial again with fresh challenge
+			s.showPOWInterstitial(w, r, email)
+			return
+		}
+		// Record the client-reported solve time in the HTTP request log
+		if timeMs := r.FormValue("pow_time_ms"); timeMs != "" {
+			sloghttp.AddCustomAttributes(r, slog.String("pow_time_ms", timeMs))
+		}
+	}
+
 	if isNewUser {
 		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
 			userID, err = s.createUserRecord(ctx, queries, email, createdForLoginWithExe)
