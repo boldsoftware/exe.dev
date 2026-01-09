@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -8,6 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"exe.dev/tracing"
 )
 
 // mockInstanceLookup is a simple mock for testing
@@ -107,5 +110,111 @@ func TestMetadataServiceRootResponse(t *testing.T) {
 
 	if meta.Name != "test-box" {
 		t.Errorf("got name %q, want %q", meta.Name, "test-box")
+	}
+}
+
+func TestMetadataServiceLoggingMiddleware(t *testing.T) {
+	// Capture log output using our tracing handler
+	var buf bytes.Buffer
+	jsonHandler := slog.NewJSONHandler(&buf, nil)
+	tracingHandler := tracing.NewHandler(jsonHandler)
+	log := slog.New(tracingHandler)
+
+	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", nil)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	// Create a request using the middleware directly (not starting the actual server)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/{$}", svc.handleRoot)
+	handler := svc.loggerMiddleware(mux)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d", w.Code, http.StatusOK)
+	}
+
+	// Parse log output (should be a single JSON line)
+	var logEntry map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
+		t.Fatalf("failed to parse log output: %v\nLog output: %s", err, buf.String())
+	}
+
+	// Verify trace_id is present
+	if _, ok := logEntry["trace_id"]; !ok {
+		t.Errorf("trace_id not found in log. Log: %v", logEntry)
+	}
+
+	// Verify log_type is present
+	if logType, ok := logEntry["log_type"]; !ok {
+		t.Errorf("log_type not found in log. Log: %v", logEntry)
+	} else if logType != "http_request" {
+		t.Errorf("expected log_type=http_request, got %v", logType)
+	}
+
+	// Verify method is present
+	if method, ok := logEntry["method"]; !ok {
+		t.Errorf("method not found in log. Log: %v", logEntry)
+	} else if method != "GET" {
+		t.Errorf("expected method=GET, got %v", method)
+	}
+
+	// Verify uri is present
+	if uri, ok := logEntry["uri"]; !ok {
+		t.Errorf("uri not found in log. Log: %v", logEntry)
+	} else if uri != "/" {
+		t.Errorf("expected uri=/, got %v", uri)
+	}
+
+	// Verify remote_ip is present
+	if remoteIP, ok := logEntry["remote_ip"]; !ok {
+		t.Errorf("remote_ip not found in log. Log: %v", logEntry)
+	} else if remoteIP != "10.0.0.1" {
+		t.Errorf("expected remote_ip=10.0.0.1, got %v", remoteIP)
+	}
+
+	// Verify box name is present (from mockInstanceLookup)
+	if box, ok := logEntry["box"]; !ok {
+		t.Errorf("box not found in log. Log: %v", logEntry)
+	} else if box != "test-box" {
+		t.Errorf("expected box=test-box, got %v", box)
+	}
+}
+
+func TestMetadataServiceTraceIDIsUnique(t *testing.T) {
+	seen := make(map[string]bool)
+
+	var buf bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", nil)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	// Create an inner handler that captures trace_id
+	captureHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		traceID := tracing.TraceIDFromContext(r.Context())
+		if seen[traceID] {
+			t.Errorf("loggerMiddleware generated duplicate trace_id: %s", traceID)
+		}
+		seen[traceID] = true
+		svc.handleRoot(w, r)
+	})
+	testHandler := svc.loggerMiddleware(captureHandler)
+
+	for i := 0; i < 100; i++ {
+		req := httptest.NewRequest("GET", "/", nil)
+		w := httptest.NewRecorder()
+		testHandler.ServeHTTP(w, req)
+	}
+
+	if len(seen) != 100 {
+		t.Errorf("expected 100 unique trace_ids, got %d", len(seen))
 	}
 }

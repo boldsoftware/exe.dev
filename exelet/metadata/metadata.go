@@ -45,6 +45,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	sloghttp "github.com/samber/slog-http"
+
+	"exe.dev/tracing"
 )
 
 const (
@@ -53,6 +55,30 @@ const (
 	// MetadataPort is the port where the metadata service listens
 	MetadataPort = 80
 )
+
+// requestLogInfoKey is used to pass request classification info via context.
+type requestLogInfoKey struct{}
+
+// RequestLogInfo holds extra info that handlers can fill in for logging.
+type RequestLogInfo struct {
+	BoxName string
+}
+
+// withNewRequestLogInfo attaches a fresh RequestLogInfo to the context.
+func withNewRequestLogInfo(ctx context.Context) (context.Context, *RequestLogInfo) {
+	info := &RequestLogInfo{}
+	return context.WithValue(ctx, requestLogInfoKey{}, info), info
+}
+
+// getRequestLogInfo retrieves RequestLogInfo from context, if present.
+func getRequestLogInfo(ctx context.Context) *RequestLogInfo {
+	if v := ctx.Value(requestLogInfoKey{}); v != nil {
+		if info, ok := v.(*RequestLogInfo); ok {
+			return info
+		}
+	}
+	return nil
+}
 
 // InstanceLookup provides a method to look up instances by IP address
 type InstanceLookup interface {
@@ -119,33 +145,17 @@ func (s *Service) Start(ctx context.Context) error {
 	// Add gateway proxy handler
 	mux.HandleFunc("/gateway/llm/", s.handleGatewayProxy)
 
-	// Configure slog-http middleware
-	config := sloghttp.Config{
-		DefaultLevel:     slog.LevelInfo,
-		ClientErrorLevel: slog.LevelInfo,
-		ServerErrorLevel: slog.LevelError,
-		WithRequestID:    false,
-		Filters: []sloghttp.Filter{
-			// Skip middleware logging for gateway proxy - it logs errors explicitly
-			sloghttp.IgnorePathPrefix("/gateway/llm/"),
-		},
-	}
-
-	// Wrap handler with slog middleware
-	handlerWithLogging := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mux.ServeHTTP(w, r)
-		// Add custom attributes for logging
-		sloghttp.AddCustomAttributes(r, slog.String("method", r.Method))
-		sloghttp.AddCustomAttributes(r, slog.String("path", r.URL.Path))
-		if remoteIP, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-			sloghttp.AddCustomAttributes(r, slog.String("remote_ip", remoteIP))
-		}
-	})
-	slogMiddleware := sloghttp.NewWithConfig(s.log, config)(handlerWithLogging)
+	// Build the handler with logging middleware chain.
+	// The middleware chain (in order of execution) is:
+	//  1. tracing.HTTPMiddleware - generates trace_id and adds to context
+	//  2. requestInfoMiddleware - sets up RequestLogInfo context
+	//  3. sloghttp middleware - captures request/response and logs
+	//  4. customAttrsMiddleware - adds custom attributes after handler runs
+	handler := s.loggerMiddleware(mux)
 
 	s.server = &http.Server{
 		Addr:    s.listenAddr,
-		Handler: slogMiddleware,
+		Handler: handler,
 	}
 
 	s.log.InfoContext(ctx, "starting metadata service", "addr", s.listenAddr)
@@ -157,6 +167,58 @@ func (s *Service) Start(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+// loggerMiddleware builds the logging middleware chain.
+func (s *Service) loggerMiddleware(next http.Handler) http.Handler {
+	slogConfig := sloghttp.Config{
+		DefaultLevel:     slog.LevelInfo,
+		ClientErrorLevel: slog.LevelInfo,
+		ServerErrorLevel: slog.LevelError,
+		WithRequestID:    false,
+		Filters: []sloghttp.Filter{
+			// Skip middleware logging for gateway proxy - it logs errors explicitly
+			sloghttp.IgnorePathPrefix("/gateway/llm/"),
+		},
+	}
+
+	// Build chain from inside out: 4 -> 3 -> 2 -> 1
+	h := s.customAttrsMiddleware(next)
+	h = sloghttp.NewWithConfig(s.log, slogConfig)(h)
+	h = s.requestInfoMiddleware(h)
+	h = tracing.HTTPMiddleware(h)
+	return h
+}
+
+// requestInfoMiddleware sets up RequestLogInfo context.
+func (s *Service) requestInfoMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, _ := withNewRequestLogInfo(r.Context())
+		r = r.WithContext(ctx)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// customAttrsMiddleware adds custom log attributes after the handler runs.
+func (s *Service) customAttrsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+
+		sloghttp.AddCustomAttributes(r, slog.String("log_type", "http_request"))
+		sloghttp.AddCustomAttributes(r, slog.String("method", r.Method))
+		if uri := r.URL.RequestURI(); uri != "" {
+			sloghttp.AddCustomAttributes(r, slog.String("uri", uri))
+		}
+		if remoteIP, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+			sloghttp.AddCustomAttributes(r, slog.String("remote_ip", remoteIP))
+		}
+
+		if info := getRequestLogInfo(r.Context()); info != nil {
+			if info.BoxName != "" {
+				sloghttp.AddCustomAttributes(r, slog.String("box", info.BoxName))
+			}
+		}
+	})
 }
 
 // Stop stops the metadata HTTP server
@@ -185,6 +247,10 @@ func (s *Service) handleRoot(w http.ResponseWriter, r *http.Request) {
 	if s.instanceLookup != nil {
 		if _, name, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP); err == nil {
 			response.Name = name
+			// Set boxname for logging
+			if info := getRequestLogInfo(r.Context()); info != nil {
+				info.BoxName = name
+			}
 		} else {
 			s.log.DebugContext(r.Context(), "failed to lookup instance", "ip", sourceIP, "error", err)
 		}
@@ -213,6 +279,11 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 		s.log.ErrorContext(r.Context(), "no box found for IP", "ip", sourceIP)
 		http.Error(w, "No box found for this IP", http.StatusForbidden)
 		return
+	}
+
+	// Set boxname for logging
+	if info := getRequestLogInfo(r.Context()); info != nil {
+		info.BoxName = boxName
 	}
 
 	// Rewrite the path to match the exed gateway endpoint
