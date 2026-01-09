@@ -14,6 +14,7 @@ var Command = &cli.Command{
 		startInstanceCommand,
 		stopInstanceCommand,
 		updateInstanceCommand,
+		setGroupInstanceCommand,
 		deleteInstanceCommand,
 	},
 }

@@ -67,6 +67,7 @@ type ResourceManager struct {
 // vmUsageState tracks per-VM usage and activity
 type vmUsageState struct {
 	name                 string
+	groupID              string // Group ID for per-account cgroup grouping
 	cpuSeconds           float64
 	cpuPercent           float64 // CPU usage percentage from last poll interval
 	memoryBytes          uint64
@@ -241,14 +242,14 @@ func (m *ResourceManager) poll(ctx context.Context) {
 
 	for _, inst := range instances {
 		seen[inst.GetID()] = struct{}{}
-		m.pollInstance(ctx, inst.GetID(), inst.GetName(), inst.GetVMConfig(), now)
+		m.pollInstance(ctx, inst.GetID(), inst.GetName(), inst.GetGroupID(), inst.GetVMConfig(), now)
 	}
 
 	// Cleanup state for removed instances
 	m.cleanupMissing(ctx, seen)
 }
 
-func (m *ResourceManager) pollInstance(ctx context.Context, id, name string, vmCfg interface{}, now time.Time) {
+func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID string, vmCfg interface{}, now time.Time) {
 	// Collect usage metrics
 	usage, err := m.collectUsage(ctx, id, name)
 	if err != nil {
@@ -258,6 +259,8 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name string, vmC
 
 	m.usageMu.Lock()
 	state, exists := m.usageState[id]
+	groupChanged := false
+	oldGroupID := ""
 	if !exists {
 		// Get allocated memory from VM config for memory.high calculation
 		var allocatedMemory uint64
@@ -266,12 +269,19 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name string, vmC
 		}
 		state = &vmUsageState{
 			name:                 name,
+			groupID:              groupID,
 			lastActivity:         now,
 			priority:             api.VMPriority_PRIORITY_NORMAL,
 			prevPollTime:         now,
 			allocatedMemoryBytes: allocatedMemory,
 		}
 		m.usageState[id] = state
+	} else if state.groupID != groupID {
+		// Group ID changed (via SetInstanceGroup), update state so cgroup moves on next applyPriority
+		m.log.InfoContext(ctx, "resource manager: group ID changed", "id", id, "old_group", state.groupID, "new_group", groupID)
+		oldGroupID = state.groupID
+		state.groupID = groupID
+		groupChanged = true
 	}
 
 	// Check for activity based on CPU percentage and network delta
@@ -336,6 +346,7 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name string, vmC
 	oldPriority := state.priority
 	state.priority = newPriority
 	allocatedMemoryBytes := state.allocatedMemoryBytes
+	stateGroupID := state.groupID
 	m.usageMu.Unlock()
 
 	// Update Prometheus metrics
@@ -343,9 +354,14 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name string, vmC
 		m.metrics.update(id, name, state)
 	}
 
-	// Apply priority on first observation (to create cgroup) or when priority changes
-	if !exists || oldPriority != newPriority {
-		if oldPriority != newPriority {
+	// Apply priority on first observation (to create cgroup), when priority changes, or when group changes
+	if !exists || oldPriority != newPriority || groupChanged {
+		if groupChanged {
+			m.log.InfoContext(ctx, "resource manager: moving VM to new group cgroup",
+				"id", id,
+				"name", name,
+				"group_id", stateGroupID)
+		} else if oldPriority != newPriority {
 			m.log.InfoContext(ctx, "resource manager: priority changed",
 				"id", id,
 				"name", name,
@@ -358,8 +374,13 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name string, vmC
 				"name", name,
 				"priority", newPriority)
 		}
-		if err := m.applyPriority(ctx, id, newPriority, allocatedMemoryBytes); err != nil {
+		if err := m.applyPriority(ctx, id, stateGroupID, newPriority, allocatedMemoryBytes); err != nil {
 			m.log.WarnContext(ctx, "resource manager: failed to apply priority", "id", id, "error", err)
+		} else if groupChanged {
+			// Clean up old cgroup after successfully moving to new group
+			if err := m.removeCgroup(ctx, id, oldGroupID); err != nil {
+				m.log.DebugContext(ctx, "resource manager: failed to remove old cgroup", "id", id, "old_group", oldGroupID, "error", err)
+			}
 		}
 	}
 }
@@ -368,15 +389,16 @@ func (m *ResourceManager) cleanupMissing(ctx context.Context, seen map[string]st
 	m.usageMu.Lock()
 	defer m.usageMu.Unlock()
 
-	for id := range m.usageState {
+	for id, state := range m.usageState {
 		if _, ok := seen[id]; !ok {
+			groupID := state.groupID
 			delete(m.usageState, id)
 			// Clean up Prometheus metrics
 			if m.metrics != nil {
 				m.metrics.delete(id)
 			}
 			// Clean up cgroup
-			if err := m.removeCgroup(ctx, id); err != nil {
+			if err := m.removeCgroup(ctx, id, groupID); err != nil {
 				m.log.DebugContext(ctx, "resource manager: failed to remove cgroup", "id", id, "error", err)
 			}
 		}

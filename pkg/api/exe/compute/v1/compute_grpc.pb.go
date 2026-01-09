@@ -19,15 +19,16 @@ import (
 const _ = grpc.SupportPackageIsVersion8
 
 const (
-	ComputeService_CreateInstance_FullMethodName  = "/exe.compute.v1.ComputeService/CreateInstance"
-	ComputeService_ListInstances_FullMethodName   = "/exe.compute.v1.ComputeService/ListInstances"
-	ComputeService_GetInstance_FullMethodName     = "/exe.compute.v1.ComputeService/GetInstance"
-	ComputeService_GetInstanceLogs_FullMethodName = "/exe.compute.v1.ComputeService/GetInstanceLogs"
-	ComputeService_StartInstance_FullMethodName   = "/exe.compute.v1.ComputeService/StartInstance"
-	ComputeService_StopInstance_FullMethodName    = "/exe.compute.v1.ComputeService/StopInstance"
-	ComputeService_UpdateInstance_FullMethodName  = "/exe.compute.v1.ComputeService/UpdateInstance"
-	ComputeService_DeleteInstance_FullMethodName  = "/exe.compute.v1.ComputeService/DeleteInstance"
-	ComputeService_GetSystemInfo_FullMethodName   = "/exe.compute.v1.ComputeService/GetSystemInfo"
+	ComputeService_CreateInstance_FullMethodName   = "/exe.compute.v1.ComputeService/CreateInstance"
+	ComputeService_ListInstances_FullMethodName    = "/exe.compute.v1.ComputeService/ListInstances"
+	ComputeService_GetInstance_FullMethodName      = "/exe.compute.v1.ComputeService/GetInstance"
+	ComputeService_GetInstanceLogs_FullMethodName  = "/exe.compute.v1.ComputeService/GetInstanceLogs"
+	ComputeService_StartInstance_FullMethodName    = "/exe.compute.v1.ComputeService/StartInstance"
+	ComputeService_StopInstance_FullMethodName     = "/exe.compute.v1.ComputeService/StopInstance"
+	ComputeService_UpdateInstance_FullMethodName   = "/exe.compute.v1.ComputeService/UpdateInstance"
+	ComputeService_DeleteInstance_FullMethodName   = "/exe.compute.v1.ComputeService/DeleteInstance"
+	ComputeService_SetInstanceGroup_FullMethodName = "/exe.compute.v1.ComputeService/SetInstanceGroup"
+	ComputeService_GetSystemInfo_FullMethodName    = "/exe.compute.v1.ComputeService/GetSystemInfo"
 )
 
 // ComputeServiceClient is the client API for ComputeService service.
@@ -42,6 +43,7 @@ type ComputeServiceClient interface {
 	StopInstance(ctx context.Context, in *StopInstanceRequest, opts ...grpc.CallOption) (*StopInstanceResponse, error)
 	UpdateInstance(ctx context.Context, in *UpdateInstanceRequest, opts ...grpc.CallOption) (*UpdateInstanceResponse, error)
 	DeleteInstance(ctx context.Context, in *DeleteInstanceRequest, opts ...grpc.CallOption) (*DeleteInstanceResponse, error)
+	SetInstanceGroup(ctx context.Context, in *SetInstanceGroupRequest, opts ...grpc.CallOption) (*SetInstanceGroupResponse, error)
 	GetSystemInfo(ctx context.Context, in *GetSystemInfoRequest, opts ...grpc.CallOption) (*GetSystemInfoResponse, error)
 }
 
@@ -202,6 +204,16 @@ func (c *computeServiceClient) DeleteInstance(ctx context.Context, in *DeleteIns
 	return out, nil
 }
 
+func (c *computeServiceClient) SetInstanceGroup(ctx context.Context, in *SetInstanceGroupRequest, opts ...grpc.CallOption) (*SetInstanceGroupResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetInstanceGroupResponse)
+	err := c.cc.Invoke(ctx, ComputeService_SetInstanceGroup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *computeServiceClient) GetSystemInfo(ctx context.Context, in *GetSystemInfoRequest, opts ...grpc.CallOption) (*GetSystemInfoResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetSystemInfoResponse)
@@ -224,6 +236,7 @@ type ComputeServiceServer interface {
 	StopInstance(context.Context, *StopInstanceRequest) (*StopInstanceResponse, error)
 	UpdateInstance(context.Context, *UpdateInstanceRequest) (*UpdateInstanceResponse, error)
 	DeleteInstance(context.Context, *DeleteInstanceRequest) (*DeleteInstanceResponse, error)
+	SetInstanceGroup(context.Context, *SetInstanceGroupRequest) (*SetInstanceGroupResponse, error)
 	GetSystemInfo(context.Context, *GetSystemInfoRequest) (*GetSystemInfoResponse, error)
 	mustEmbedUnimplementedComputeServiceServer()
 }
@@ -255,6 +268,9 @@ func (UnimplementedComputeServiceServer) UpdateInstance(context.Context, *Update
 }
 func (UnimplementedComputeServiceServer) DeleteInstance(context.Context, *DeleteInstanceRequest) (*DeleteInstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteInstance not implemented")
+}
+func (UnimplementedComputeServiceServer) SetInstanceGroup(context.Context, *SetInstanceGroupRequest) (*SetInstanceGroupResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetInstanceGroup not implemented")
 }
 func (UnimplementedComputeServiceServer) GetSystemInfo(context.Context, *GetSystemInfoRequest) (*GetSystemInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSystemInfo not implemented")
@@ -425,6 +441,24 @@ func _ComputeService_DeleteInstance_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ComputeService_SetInstanceGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetInstanceGroupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).SetInstanceGroup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_SetInstanceGroup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).SetInstanceGroup(ctx, req.(*SetInstanceGroupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ComputeService_GetSystemInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetSystemInfoRequest)
 	if err := dec(in); err != nil {
@@ -469,6 +503,10 @@ var ComputeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteInstance",
 			Handler:    _ComputeService_DeleteInstance_Handler,
+		},
+		{
+			MethodName: "SetInstanceGroup",
+			Handler:    _ComputeService_SetInstanceGroup_Handler,
 		},
 		{
 			MethodName: "GetSystemInfo",

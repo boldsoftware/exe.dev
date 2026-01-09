@@ -13,23 +13,25 @@ service ComputeService {
   rpc StopInstance(StopInstanceRequest) returns (StopInstanceResponse);
   rpc UpdateInstance(UpdateInstanceRequest) returns (UpdateInstanceResponse);
   rpc DeleteInstance(DeleteInstanceRequest) returns (DeleteInstanceResponse);
+  rpc SetInstanceGroup(SetInstanceGroupRequest) returns (SetInstanceGroupResponse);
   rpc GetSystemInfo(GetSystemInfoRequest) returns (GetSystemInfoResponse);
 }
 
 message CreateInstanceRequest {
   string id = 1;
-  string name = 2; 
+  string name = 2;
   string image = 3;
   uint64 cpus = 4;
   uint64 memory = 5;
   uint64 disk = 6;
-  repeated string env = 7; 
+  repeated string env = 7;
   repeated string ssh_keys = 8;
   Placement placement = 9;
   string kernel_image = 10;
   repeated string boot_args = 11;
   repeated Volume volumes = 12;
   repeated Config configs = 13;
+  string group_id = 14;  // Group ID for per-account cgroup grouping
 }
 
 message Config {
@@ -132,6 +134,13 @@ message DeleteInstanceRequest {
 
 message DeleteInstanceResponse {}
 
+message SetInstanceGroupRequest {
+  string id = 1;
+  string group_id = 2;
+}
+
+message SetInstanceGroupResponse {}
+
 message UpdateInstanceRequest {
   string id = 1;
   string kernel_image = 2;
@@ -159,6 +168,7 @@ message Instance {
   Placement placement = 9;
   int32 ssh_port = 10;
   repeated ExposedPort exposed_ports = 11;
+  string group_id = 12;  // Group ID for per-account cgroup grouping
 }
 
 message VMConfig {

@@ -127,17 +127,19 @@ func (m *ResourceManager) SetVMPriority(ctx context.Context, req *api.SetVMPrior
 	m.priorityOverride[req.VmID] = req.Priority
 	m.priorityMu.Unlock()
 
-	// Get allocated memory and update state priority
+	// Get allocated memory, groupID and update state priority
 	var allocatedMemoryBytes uint64
+	var groupID string
 	m.usageMu.Lock()
 	if state, ok := m.usageState[req.VmID]; ok {
 		allocatedMemoryBytes = state.allocatedMemoryBytes
+		groupID = state.groupID
 		state.priority = req.Priority // Update state so GetVMUsage reflects the change immediately
 	}
 	m.usageMu.Unlock()
 
 	// Apply immediately
-	if err := m.applyPriority(ctx, req.VmID, req.Priority, allocatedMemoryBytes); err != nil {
+	if err := m.applyPriority(ctx, req.VmID, groupID, req.Priority, allocatedMemoryBytes); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to apply priority: %v", err)
 	}
 

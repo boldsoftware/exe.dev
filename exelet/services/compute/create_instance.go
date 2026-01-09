@@ -689,6 +689,7 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		State:        api.VMState_STARTING,
 		SSHPort:      int32(sshPort), // SSH proxy port
 		ExposedPorts: exposedPorts,
+		GroupID:      req.GroupID,
 	}
 
 	if err := s.saveInstanceConfig(i); err != nil {

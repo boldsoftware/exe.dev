@@ -449,3 +449,115 @@ func TestCleanupMissing(t *testing.T) {
 		t.Error("vm3 priority override should be removed")
 	}
 }
+
+func TestDefaultGroupID(t *testing.T) {
+	if defaultGroupID != "default" {
+		t.Errorf("defaultGroupID = %q, want %q", defaultGroupID, "default")
+	}
+}
+
+func TestAccountSlicePath(t *testing.T) {
+	m := &ResourceManager{
+		cgroupRoot: "/sys/fs/cgroup",
+	}
+
+	tests := []struct {
+		name        string
+		groupID     string
+		expectedDir string
+	}{
+		{
+			name:        "specific group",
+			groupID:     "acct_123",
+			expectedDir: "acct_123.slice",
+		},
+		{
+			name:        "group with special chars",
+			groupID:     "acct/with/slashes",
+			expectedDir: "acct_with_slashes.slice",
+		},
+		{
+			name:        "empty group uses default",
+			groupID:     "",
+			expectedDir: "default.slice",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			groupID := tt.groupID
+			if groupID == "" {
+				groupID = defaultGroupID
+			}
+			sliceName := sanitizeCgroupName(groupID) + ".slice"
+			slicePath := filepath.Join(m.cgroupRoot, cgroupSlice, sliceName)
+
+			expectedPath := filepath.Join(m.cgroupRoot, cgroupSlice, tt.expectedDir)
+			if slicePath != expectedPath {
+				t.Errorf("group slice path = %q, want %q", slicePath, expectedPath)
+			}
+		})
+	}
+}
+
+func TestCgroupPathWithGroup(t *testing.T) {
+	m := &ResourceManager{
+		cgroupRoot: "/sys/fs/cgroup",
+	}
+
+	tests := []struct {
+		name         string
+		vmID         string
+		groupID      string
+		expectedPath string
+	}{
+		{
+			name:         "vm with group",
+			vmID:         "vm000001-testbox",
+			groupID:      "acct_123",
+			expectedPath: "/sys/fs/cgroup/exelet.slice/acct_123.slice/vm-vm000001-testbox.scope",
+		},
+		{
+			name:         "vm with default group",
+			vmID:         "vm000002-anotherbox",
+			groupID:      "",
+			expectedPath: "/sys/fs/cgroup/exelet.slice/default.slice/vm-vm000002-anotherbox.scope",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			groupID := tt.groupID
+			if groupID == "" {
+				groupID = defaultGroupID
+			}
+			sliceName := sanitizeCgroupName(groupID) + ".slice"
+			groupSlicePath := filepath.Join(m.cgroupRoot, cgroupSlice, sliceName)
+			scopeName := "vm-" + sanitizeCgroupName(tt.vmID) + ".scope"
+			cgroupPath := filepath.Join(groupSlicePath, scopeName)
+
+			if cgroupPath != tt.expectedPath {
+				t.Errorf("cgroup path = %q, want %q", cgroupPath, tt.expectedPath)
+			}
+		})
+	}
+}
+
+func TestVmUsageStateGroupID(t *testing.T) {
+	state := &vmUsageState{
+		name:    "test-vm",
+		groupID: "acct_456",
+	}
+
+	if state.groupID != "acct_456" {
+		t.Errorf("groupID = %q, want %q", state.groupID, "acct_456")
+	}
+
+	// Test empty groupID
+	emptyState := &vmUsageState{
+		name: "test-vm-2",
+	}
+	if emptyState.groupID != "" {
+		t.Errorf("empty groupID = %q, want empty string", emptyState.groupID)
+	}
+}
