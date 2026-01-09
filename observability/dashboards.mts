@@ -1671,10 +1671,10 @@ function makeEmailDashboard() {
     .min(0);
   dash.withPanel(spamNotificationPanel);
 
-  // Hard bounce rate alert - alerts when hard bounces exceed 5% of total emails in the last hour
+  // Hard bounce rate alert - alerts when hard bounces exceed 5% of total emails in the last hour and there are at least 15 hard bounces
   addTimeseriesChart(
     "Hard Bounce Rate (1h)",
-    `increase(postmark_bounces_total{type="hard_bounce",${STAGE_FILTER}}[1h]) / increase(emails_sent_total{${STAGE_FILTER}}[1h]) * 100`,
+    `increase(postmark_bounces_total{type="hard_bounce",${STAGE_FILTER}}[1h]) / clamp_min(increase(emails_sent_total{${STAGE_FILTER}}[1h]), 1) * 100 and increase(postmark_bounces_total{type="hard_bounce",${STAGE_FILTER}}[1h]) >= 15`,
     {
       panelCustomization: (x) => x.unit("percent").min(0).max(100),
       gridPos: { w: 8, h: 6 },
@@ -1683,8 +1683,26 @@ function makeEmailDashboard() {
         threshold: 5,
         condition: "gt",
         forDuration: "5m",
+        noDataState: "OK",
         summary: "Hard bounce rate exceeds 5%",
         description: "The hard bounce rate in the last hour has exceeded 5% of total emails sent. This may indicate email deliverability issues.",
+      },
+    }
+  );
+
+  // Absolute hard bounce count alert - alerts when there are more than 100 hard bounces in an hour
+  addTimeseriesChart(
+    "Hard Bounces (1h)",
+    `increase(postmark_bounces_total{type="hard_bounce",${STAGE_FILTER}}[1h])`,
+    {
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("Hard Bounces"),
+      alert: {
+        threshold: 100,
+        condition: "gt",
+        forDuration: "5m",
+        summary: "Lots of hard bounces",
+        description: "More than 100 hard bounces in the last hour.",
       },
     }
   );
