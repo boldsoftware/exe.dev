@@ -107,6 +107,10 @@ func (s *Service) Start(ctx context.Context) error {
 		ClientErrorLevel: slog.LevelInfo,
 		ServerErrorLevel: slog.LevelError,
 		WithRequestID:    false,
+		Filters: []sloghttp.Filter{
+			// Skip middleware logging for gateway proxy - it logs errors explicitly
+			sloghttp.IgnorePathPrefix("/gateway/llm/"),
+		},
 	}
 
 	// Wrap handler with slog middleware
