@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"exe.dev/ctrhosttest"
@@ -50,15 +49,16 @@ func StartExeletVM(testRunID string) (string, error) {
 	}
 }
 
+// startLinuxVMMu ensures exclusivity within a single process.
+// We use a file lock for exclusivity between processes.
+var startLinuxVMMu sync.Mutex
+
 // startLinuxVM starts a VM on Linux to run the exelet.
 // It returns the ssh address for the host.
 func startLinuxVM(testRunID string) (string, error) {
-	userVal, err := user.Current()
-	if err != nil {
-		return "", fmt.Errorf("starting VM failed: can't fetch current user name: %v", err)
-	}
-	name := userVal.Username + "-" + testRunID + "-" + strconv.FormatInt(time.Now().Unix(), 10)
-
+	// Use the same sort of prefix that ci-vm-start defaults to,
+	// but add in testRunID.
+	name := "ci-ubuntu-" + testRunID + "-" + time.Now().Format("20060102150405")
 	outdir, err := os.MkdirTemp("", "ci-vm-start-")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary directory: %v", err)
@@ -72,6 +72,18 @@ func startLinuxVM(testRunID string) (string, error) {
 		return "", err
 	}
 
+	// Running ci-vm-start.sh is not concurrent-safe,
+	// so use a lock. We can't lock the shell script,
+	// as that will make the executable file busy.
+	// Just lock this file.
+	startLinuxVMMu.Lock()
+
+	cleanup, err := flock(filepath.Join(srcdir, "e1e/testinfra/vm.go"))
+	if err != nil {
+		startLinuxVMMu.Unlock()
+		return "", fmt.Errorf("error acquiring ci-vm-start lock: %v", err)
+	}
+
 	cmd := exec.Command(filepath.Join(srcdir, "ops/ci-vm-start.sh"))
 	cmd.Env = append(cmd.Environ(),
 		"NAME="+name,
@@ -79,7 +91,12 @@ func startLinuxVM(testRunID string) (string, error) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if err := cmd.Run(); err != nil {
+	err = cmd.Run()
+
+	cleanup()
+	startLinuxVMMu.Unlock()
+
+	if err != nil {
 		return "", fmt.Errorf("ops/ci-vm-start.sh failed: %v\n", err)
 	}
 

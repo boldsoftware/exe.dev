@@ -17,7 +17,7 @@ cleanup_old_vms() {
         fi
 
         # Extract timestamp from VM name (format: ci-ubuntu-YYYYMMDDHHmmss)
-        local timestamp_str=$(echo "$vm" | perl -ne 'print $1 if /^ci-ubuntu-(\d{14})$/')
+        local timestamp_str=$(echo "$vm" | perl -ne 'print $1 if /^ci-ubuntu-.*(\d{14})$/')
         if [[ -z "$timestamp_str" ]]; then
             # VM doesn't match expected naming pattern, skip it
             continue

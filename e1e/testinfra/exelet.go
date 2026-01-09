@@ -773,6 +773,10 @@ func scpDownloadDir(ctx context.Context, host, remotePath, localPath string) err
 	return nil
 }
 
+// buildExeletBinaryMu ensures exclusivity within a single process.
+// We use a file lock for exclusivity between processes.
+var buildExeletBinaryMu sync.Mutex
+
 // BuildExeletBinary builds exelet locally for Linux and returns path to binary.
 // The binary is built with coverage instrumentation via "make exelet-coverage".
 func BuildExeletBinary(testRunID string) (string, error) {
@@ -785,30 +789,14 @@ func BuildExeletBinary(testRunID string) (string, error) {
 	}
 
 	// The Makefile is not concurrent-safe, so use a lock.
-	makefile := filepath.Join(srcdir, "Makefile")
-	fd, err := syscall.Open(makefile, syscall.O_RDWR, 0)
+	buildExeletBinaryMu.Lock()
+	defer buildExeletBinaryMu.Unlock()
+
+	cleanup, err := flock(filepath.Join(srcdir, "Makefile"))
 	if err != nil {
-		return "", fmt.Errorf("failed to open Makefile: %v", err)
+		return "", fmt.Errorf("failed to acquire lock on Makefile: %v", err)
 	}
-	defer syscall.Close(fd)
-
-	fl := syscall.Flock_t{
-		Type:   syscall.F_WRLCK,
-		Start:  0,
-		Len:    0,
-		Whence: io.SeekStart,
-	}
-	for {
-		if err := syscall.FcntlFlock(uintptr(fd), syscall.F_SETLKW, &fl); err == nil {
-			break
-		}
-		if err != syscall.EAGAIN {
-			return "", fmt.Errorf("failed to acquire file lock: %v", err)
-		}
-	}
-
-	fl.Type = syscall.F_UNLCK
-	defer syscall.FcntlFlock(uintptr(fd), syscall.F_SETLK, &fl)
+	defer cleanup()
 
 	// Build exelet with coverage instrumentation.
 	cmd := exec.Command("make", "exelet-coverage")
@@ -833,4 +821,38 @@ func BuildExeletBinary(testRunID string) (string, error) {
 	}
 
 	return binPath, nil
+}
+
+// flock acquires an exclusive advisory lock on filename.
+// It returns a function that releases the lock.
+func flock(filename string) (func(), error) {
+	fd, err := syscall.Open(filename, syscall.O_RDWR, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	fl := syscall.Flock_t{
+		Type:   syscall.F_WRLCK,
+		Start:  0,
+		Len:    0,
+		Whence: io.SeekStart,
+	}
+	for {
+		err := syscall.FcntlFlock(uintptr(fd), syscall.F_SETLKW, &fl)
+		if err == nil {
+			break
+		}
+		if err != syscall.EINTR {
+			syscall.Close(fd)
+			return nil, fmt.Errorf("failed to acquire file lock: %v", err)
+		}
+	}
+
+	cleanup := func() {
+		fl.Type = syscall.F_UNLCK
+		syscall.FcntlFlock(uintptr(fd), syscall.F_SETLK, &fl)
+		syscall.Close(fd)
+	}
+
+	return cleanup, nil
 }
