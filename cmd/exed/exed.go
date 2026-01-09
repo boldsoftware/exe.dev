@@ -20,6 +20,7 @@ import (
 	"exe.dev/execore"
 	"exe.dev/logging"
 	"exe.dev/stage"
+	"exe.dev/version"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -84,7 +85,10 @@ func run() error {
 	metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 	metricsRegistry.MustRegister(prometheus.NewGoCollector())
 	execore.RegisterBuildInfo(metricsRegistry)
-	logging.SetupLogger(env, metricsRegistry)
+	logging.SetupLogger(env, metricsRegistry, &logging.ResourceAttrs{
+		ServiceVersion: version.BuildVersion(),
+		DeploymentEnv:  *stageName,
+	})
 	slog.Info("Starting exed server")
 
 	// Start exelet(s) if requested

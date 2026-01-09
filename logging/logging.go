@@ -16,9 +16,18 @@ import (
 	slogmulti "github.com/samber/slog-multi"
 	slogslack "github.com/samber/slog-slack/v2"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
+	"go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
+
+// ResourceAttrs contains optional OTEL resource attributes for logging.
+type ResourceAttrs struct {
+	ServiceVersion    string // e.g., "1.2.3" from version.BuildVersion()
+	DeploymentEnv     string // e.g., "prod", "staging", "local", "test"
+}
 
 // SetupLogger configures slog based on env.
 // LOG_FORMAT and LOG_LEVEL environment variables override env settings.
@@ -26,7 +35,8 @@ import (
 // LOG_FORMAT can be "json", "text", or "tint".
 // LOG_LEVEL can be "debug", "info", "warn", or "error".
 // If registry is non-nil, log metrics will be registered and counted.
-func SetupLogger(env stage.Env, registry *prometheus.Registry) {
+// If attrs is non-nil, OTEL resource attributes will be added to logs.
+func SetupLogger(env stage.Env, registry *prometheus.Registry, attrs *ResourceAttrs) {
 	// TODO: get rid of LOG_FORMAT and LOG_LEVEL env vars in favor of stage.Env only.
 	logFormat := cmp.Or(
 		strings.ToLower(os.Getenv("LOG_FORMAT")),
@@ -94,7 +104,7 @@ func SetupLogger(env stage.Env, registry *prometheus.Registry) {
 	// Add OTEL handler if OTEL_EXPORTER_OTLP_ENDPOINT is configured
 	otelEndpoint := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
 	if otelEndpoint != "" {
-		otelHandler := setupOTELHandler()
+		otelHandler := setupOTELHandler(attrs)
 		if otelHandler != nil {
 			handler = slogmulti.Fanout(handler, otelHandler)
 		}
@@ -131,7 +141,7 @@ func SetupLogger(env stage.Env, registry *prometheus.Registry) {
 // - OTEL_BLRP_MAX_QUEUE_SIZE: max queued records (default 2048)
 // - OTEL_BLRP_SCHEDULE_DELAY: export interval (default 1s)
 // - OTEL_BLRP_MAX_EXPORT_BATCH_SIZE: records per export (default 512)
-func setupOTELHandler() slog.Handler {
+func setupOTELHandler(attrs *ResourceAttrs) slog.Handler {
 	ctx := context.Background()
 
 	logExporter, err := otlploghttp.New(ctx)
@@ -140,7 +150,35 @@ func setupOTELHandler() slog.Handler {
 		return nil
 	}
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown"
+	}
+
+	// Build resource attributes
+	resAttrs := []attribute.KeyValue{
+		semconv.HostName(hostname),
+	}
+	if attrs != nil {
+		if attrs.ServiceVersion != "" {
+			resAttrs = append(resAttrs, semconv.ServiceVersion(attrs.ServiceVersion))
+		}
+		if attrs.DeploymentEnv != "" {
+			resAttrs = append(resAttrs, semconv.DeploymentEnvironmentName(attrs.DeploymentEnv))
+		}
+	}
+
+	res, err := resource.Merge(
+		resource.Default(),
+		resource.NewWithAttributes(semconv.SchemaURL, resAttrs...),
+	)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to create OTEL resource", "error", err)
+		return nil
+	}
+
 	lp := sdklog.NewLoggerProvider(
+		sdklog.WithResource(res),
 		sdklog.WithProcessor(
 			sdklog.NewBatchProcessor(logExporter),
 		),

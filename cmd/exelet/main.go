@@ -205,7 +205,10 @@ func serveAction(clix *cli.Context) error {
 	metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 	metricsRegistry.MustRegister(prometheus.NewGoCollector())
 	execore.RegisterBuildInfo(metricsRegistry)
-	logging.SetupLogger(env, metricsRegistry)
+	logging.SetupLogger(env, metricsRegistry, &logging.ResourceAttrs{
+		ServiceVersion: version.BuildVersion(),
+		DeploymentEnv:  stageName,
+	})
 	log := slog.Default()
 
 	maintenanceMode := clix.Bool("maintenance")

@@ -76,7 +76,7 @@ func TestSetupLogger_WithOTEL(t *testing.T) {
 	os.Setenv("LOG_FORMAT", "json")
 
 	// Setup the logger
-	SetupLogger(stage.Prod(), nil)
+	SetupLogger(stage.Prod(), nil, nil)
 
 	// Log some messages
 	slog.Info("test message 1", "key1", "value1")
@@ -128,7 +128,7 @@ func TestSetupLogger_WithoutOTEL(t *testing.T) {
 	os.Setenv("LOG_FORMAT", "json")
 
 	// This should not panic or error
-	SetupLogger(stage.Test(), nil)
+	SetupLogger(stage.Test(), nil, nil)
 
 	// Should be able to log without issues
 	slog.Info("test without OTEL")
@@ -294,7 +294,7 @@ func TestSetupLoggerWithMetrics(t *testing.T) {
 	os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 
 	// Setup logger with registry
-	SetupLogger(stage.Test(), registry)
+	SetupLogger(stage.Test(), registry, nil)
 
 	// Log some messages
 	slog.Info("test info")
