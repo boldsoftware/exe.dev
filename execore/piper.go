@@ -32,6 +32,7 @@ import (
 type ProxyKeyMapping struct {
 	OriginalPublicKey []byte    // The user's original public key (SSH wire format)
 	LocalAddress      string    // The local IP address the client connected to
+	ClientAddr        string    // The client's real remote address
 	CreatedAt         time.Time // When this mapping was created (for expiration)
 }
 
@@ -329,7 +330,8 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	// 4. When exed sees the proxy key, it can look up the original user's key
 	// 5. Mappings expire after a few minutes to prevent memory leaks
 
-	proxyPrivateKeyPEM, proxyFingerprint, err := p.generateEphemeralProxyKey(ctx, key, localAddress)
+	clientAddr := conn.RemoteAddr()
+	proxyPrivateKeyPEM, proxyFingerprint, err := p.generateEphemeralProxyKey(ctx, key, localAddress, clientAddr)
 	if err != nil {
 		slog.DebugContext(ctx, "Failed to generate ephemeral proxy key", "component", "piper-plugin", "error", err)
 		return nil, fmt.Errorf("failed to generate ephemeral proxy key: %v", err)
@@ -392,7 +394,7 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 				slog.InfoContext(ctx, "Instance not running, routing to exed for error display",
 					"component", "piper-plugin", "box_name", box.Name, "state", instanceResp.Instance.State.String())
 
-				proxyPrivateKeyPEM, _, err := p.generateEphemeralProxyKey(ctx, nil, "127.0.0.1")
+				proxyPrivateKeyPEM, _, err := p.generateEphemeralProxyKey(ctx, nil, "127.0.0.1", "127.0.0.1")
 				if err != nil {
 					return nil, fmt.Errorf("failed to generate proxy key: %v", err)
 				}
@@ -450,7 +452,7 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 // allowing exed to later identify the original user when it sees the proxy key.
 //
 // Returns: (privateKeyPEM, proxyKeyFingerprint, error)
-func (p *PiperPlugin) generateEphemeralProxyKey(ctx context.Context, originalUserPublicKey []byte, localAddress string) (string, string, error) {
+func (p *PiperPlugin) generateEphemeralProxyKey(ctx context.Context, originalUserPublicKey []byte, localAddress, clientAddr string) (string, string, error) {
 	// Generate a new ED25519 private key for this connection (simpler and more reliable than RSA)
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -481,11 +483,12 @@ func (p *PiperPlugin) generateEphemeralProxyKey(ctx context.Context, originalUse
 	}
 	slog.DebugContext(ctx, "Private key validation successful", "component", "piper-plugin")
 
-	// Store the mapping: proxy key fingerprint -> original user public key + local address
+	// Store the mapping: proxy key fingerprint -> original user public key + addresses
 	p.proxyKeyMutex.Lock()
 	p.proxyKeyMappings[proxyFingerprint] = &ProxyKeyMapping{
 		OriginalPublicKey: originalUserPublicKey,
 		LocalAddress:      localAddress,
+		ClientAddr:        clientAddr,
 		CreatedAt:         time.Now(),
 	}
 	p.proxyKeyMutex.Unlock()
@@ -495,15 +498,15 @@ func (p *PiperPlugin) generateEphemeralProxyKey(ctx context.Context, originalUse
 	return privateKeyPEM, proxyFingerprint, nil
 }
 
-// lookupOriginalUserKey retrieves the original user's public key and local address from an ephemeral proxy key.
+// lookupOriginalUserKey retrieves the original user's public key, local address, and client address from an ephemeral proxy key.
 // This is called by exed when it sees a proxy key and needs to identify the original user.
-func (p *PiperPlugin) lookupOriginalUserKey(proxyKeyFingerprint string) ([]byte, string, bool) {
+func (p *PiperPlugin) lookupOriginalUserKey(proxyKeyFingerprint string) (originalKey []byte, localAddr, clientAddr string, exists bool) {
 	p.proxyKeyMutex.RLock()
-	mapping, exists := p.proxyKeyMappings[proxyKeyFingerprint]
+	mapping, ok := p.proxyKeyMappings[proxyKeyFingerprint]
 	p.proxyKeyMutex.RUnlock()
 
-	if !exists {
-		return nil, "", false
+	if !ok {
+		return nil, "", "", false
 	}
 
 	// Check if mapping has expired (15 minutes)
@@ -512,10 +515,10 @@ func (p *PiperPlugin) lookupOriginalUserKey(proxyKeyFingerprint string) ([]byte,
 		p.proxyKeyMutex.Lock()
 		delete(p.proxyKeyMappings, proxyKeyFingerprint)
 		p.proxyKeyMutex.Unlock()
-		return nil, "", false
+		return nil, "", "", false
 	}
 
-	return mapping.OriginalPublicKey, mapping.LocalAddress, true
+	return mapping.OriginalPublicKey, mapping.LocalAddress, mapping.ClientAddr, true
 }
 
 // handleVerifyHostKey validates the host key for container connections

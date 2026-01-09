@@ -51,6 +51,10 @@ type shellSession struct {
 	buf    []byte
 	reader io.Reader // When set, Read() uses this instead of Session
 
+	// clientAddr is the original client's IP address from sshpiper.
+	// This is used for IPQS checks during signup validation.
+	clientAddr string
+
 	// Window size tracking. gliderlabs/ssh only provides a single channel for
 	// window changes, but we need to support multiple consumers (readline,
 	// remote SSH sessions, etc). We use a condition variable for broadcast.
@@ -66,8 +70,8 @@ type shellSession struct {
 	hasPty     bool
 }
 
-func NewSSHShell(s ssh.Session) *shellSession {
-	shell := &shellSession{Session: s}
+func NewSSHShell(s ssh.Session, clientAddr string) *shellSession {
+	shell := &shellSession{Session: s, clientAddr: clientAddr}
 	shell.winCond = sync.NewCond(&shell.winMu)
 	// Close the session when context is done to unblock any pending reads.
 	context.AfterFunc(s.Context(), func() {
@@ -335,6 +339,7 @@ func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) b
 	ctx.SetValue("registered", perms.Extensions["registered"])
 	ctx.SetValue("email", perms.Extensions["email"])
 	ctx.SetValue("public_key", perms.Extensions["public_key"])
+	ctx.SetValue("client_addr", perms.Extensions["client_addr"])
 
 	return true
 }
@@ -408,7 +413,15 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 
 // handleShell handles interactive shell sessions with readline
 func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered bool) {
-	shell := NewSSHShell(s)
+	// Get the real client address from context (set by piper during auth)
+	clientAddr := ""
+	if ca := s.Context().Value("client_addr"); ca != nil {
+		clientAddr = ca.(string)
+	}
+	if clientAddr == "" {
+		clientAddr = s.RemoteAddr().String() // fallback for direct connections
+	}
+	shell := NewSSHShell(s, clientAddr)
 	if !registered {
 		// Handle registration flow
 		ss.handleRegistration(shell, publicKey)
@@ -778,8 +791,8 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 		suggested = ""
 	}
 
-	// Validate signup eligibility
-	ipStr := clientIPFromRemoteAddr(s.RemoteAddr().String())
+	// Validate signup eligibility (use the real client IP from piper, not 127.0.0.1)
+	ipStr := clientIPFromRemoteAddr(s.clientAddr)
 	if err := ss.server.validateNewSignup(s.Context(), ipStr, email, "ssh"); err != nil {
 		ss.server.slog().InfoContext(s.Context(), "signup blocked", "reason", err, "ip", ipStr, "email", email)
 		fmt.Fprintf(s, "\r\n\033[1;31m%s\033[0m\r\n", err)
@@ -927,6 +940,15 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 		return
 	}
 
+	// Get the real client address from context (set by piper during auth)
+	clientAddr := ""
+	if ca := s.Context().Value("client_addr"); ca != nil {
+		clientAddr = ca.(string)
+	}
+	if clientAddr == "" {
+		clientAddr = s.RemoteAddr().String() // fallback for direct connections
+	}
+
 	cc := &exemenu.CommandContext{
 		User: &exemenu.UserInfo{
 			ID:    user.UserID,
@@ -935,7 +957,7 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 		PublicKey:  publicKey,
 		Args:       cmd[1:],                        // Skip the command name itself
 		Output:     exemenu.NewANSIFilterWriter(s), // Filter out ANSI control codes from non-interactive sessions.
-		SSHSession: NewSSHShell(s),
+		SSHSession: NewSSHShell(s, clientAddr),
 		Terminal:   nil, // No interactive terminal for exec mode
 		DevMode:    ss.server.env.ReplDev,
 		Logger:     ss.server.slog(),

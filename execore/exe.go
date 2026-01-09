@@ -1350,9 +1350,9 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 
 	// Check if this is a proxy connection from sshpiper
 	s.slog().DebugContext(ctx, "Checking if key is a proxy key")
-	if originalUserKey, localAddress, isProxy := s.lookupEphemeralProxyKey(key); isProxy {
-		s.slog().DebugContext(ctx, "Ephemeral proxy authentication detected", "user", user, "local_address", localAddress)
-		return s.authenticateProxyUserWithLocalAddress(ctx, user, originalUserKey, localAddress)
+	if originalUserKey, localAddress, clientAddr, isProxy := s.lookupEphemeralProxyKey(key); isProxy {
+		s.slog().DebugContext(ctx, "Ephemeral proxy authentication detected", "user", user, "local_address", localAddress, "client_addr", clientAddr)
+		return s.authenticateProxyUserWithLocalAddress(ctx, user, originalUserKey, localAddress, clientAddr)
 	} else {
 		s.slog().DebugContext(ctx, "Not a proxy key, treating as direct user connection")
 	}
@@ -2723,25 +2723,25 @@ func (s *Server) Stop() error {
 // 3. Piper sends proxy key to exed for authentication
 // 4. Exed recognizes proxy key and asks piper plugin for original user key
 // 5. Exed authenticates based on original user key
-func (s *Server) lookupEphemeralProxyKey(proxyKey ssh.PublicKey) ([]byte, string, bool) {
+func (s *Server) lookupEphemeralProxyKey(proxyKey ssh.PublicKey) (originalKey []byte, localAddress, clientAddr string, exists bool) {
 	// Get the original user key from the piper plugin
 	// The piper plugin is always configured when SSH proxy is enabled
 	if s.piperPlugin == nil {
 		s.slog().Error("Piper plugin not configured but proxy key received")
-		return nil, "", false
+		return nil, "", "", false
 	}
 
 	proxyFingerprint := s.GetPublicKeyFingerprint(proxyKey)
 	s.slog().Debug("Looking up proxy key", "fingerprint", proxyFingerprint[:16])
 
-	originalUserKey, localAddress, exists := s.piperPlugin.lookupOriginalUserKey(proxyFingerprint)
+	originalUserKey, localAddress, clientAddr, exists := s.piperPlugin.lookupOriginalUserKey(proxyFingerprint)
 	if !exists {
 		s.slog().Debug("Proxy key not found or expired", "fingerprint", proxyFingerprint[:16])
-		return nil, "", false // Not a proxy key or expired
+		return nil, "", "", false // Not a proxy key or expired
 	}
 
-	s.slog().Debug("Found original user key for proxy key", "key_length", len(originalUserKey), "local_address", localAddress, "proxy_fingerprint", proxyFingerprint[:16])
-	return originalUserKey, localAddress, true
+	s.slog().Debug("Found original user key for proxy key", "key_length", len(originalUserKey), "local_address", localAddress, "client_addr", clientAddr, "proxy_fingerprint", proxyFingerprint[:16])
+	return originalUserKey, localAddress, clientAddr, true
 }
 
 // authenticateProxyUser authenticates a user through an ephemeral proxy connection
@@ -2810,9 +2810,9 @@ func (s *Server) authenticateProxyUser(ctx context.Context, username string, ori
 }
 
 // authenticateProxyUserWithLocalAddress authenticates a user through an ephemeral proxy connection
-// and includes the local address for ipAllocator routing
-func (s *Server) authenticateProxyUserWithLocalAddress(ctx context.Context, username string, originalUserKeyBytes []byte, localAddress string) (*ssh.Permissions, error) {
-	s.slog().InfoContext(ctx, "authenticateProxyUserWithLocalAddress", "username", username, "localAddress", localAddress, "keyBytes", len(originalUserKeyBytes))
+// and includes the local address for ipAllocator routing and client address for IPQS checks
+func (s *Server) authenticateProxyUserWithLocalAddress(ctx context.Context, username string, originalUserKeyBytes []byte, localAddress, clientAddr string) (*ssh.Permissions, error) {
+	s.slog().InfoContext(ctx, "authenticateProxyUserWithLocalAddress", "username", username, "localAddress", localAddress, "clientAddr", clientAddr, "keyBytes", len(originalUserKeyBytes))
 
 	// Check for special container-logs username format and easter egg careers usernames
 	if strings.HasPrefix(username, "container-logs:") || slices.Contains(boxname.JobsRelated, username) {
@@ -2822,14 +2822,21 @@ func (s *Server) authenticateProxyUserWithLocalAddress(ctx context.Context, user
 		// The SSH server will handle this specially
 		return &ssh.Permissions{
 			Extensions: map[string]string{
-				"registered": "true",
-				"proxy_user": username,
-				"public_key": "", // Empty key for special log display
+				"registered":  "true",
+				"proxy_user":  username,
+				"public_key":  "", // Empty key for special log display
+				"client_addr": clientAddr,
 			},
 		}, nil
 	}
 
-	return s.authenticateProxyUser(ctx, username, originalUserKeyBytes)
+	perms, err := s.authenticateProxyUser(ctx, username, originalUserKeyBytes)
+	if err != nil {
+		return nil, err
+	}
+	// Add client address to extensions for use in signup validation
+	perms.Extensions["client_addr"] = clientAddr
+	return perms, nil
 }
 
 // generateUserID creates a new user ID with "usr" prefix + 13 random characters
