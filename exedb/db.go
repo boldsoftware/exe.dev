@@ -111,6 +111,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteBoxShareLinkByBoxAndTokenStmt, err = db.PrepareContext(ctx, deleteBoxShareLinkByBoxAndToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBoxShareLinkByBoxAndToken: %w", err)
 	}
+	if q.deleteEmailQualityBypassStmt, err = db.PrepareContext(ctx, deleteEmailQualityBypass); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteEmailQualityBypass: %w", err)
+	}
 	if q.deleteEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, deleteEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEmailVerificationByToken: %w", err)
 	}
@@ -204,6 +207,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getEmailByUserIDStmt, err = db.PrepareContext(ctx, getEmailByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailByUserID: %w", err)
 	}
+	if q.getEmailQualityBypassStmt, err = db.PrepareContext(ctx, getEmailQualityBypass); err != nil {
+		return nil, fmt.Errorf("error preparing query GetEmailQualityBypass: %w", err)
+	}
 	if q.getEmailVerificationByPartialTokenStmt, err = db.PrepareContext(ctx, getEmailVerificationByPartialToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailVerificationByPartialToken: %w", err)
 	}
@@ -269,6 +275,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getSignupPOWEnabledStmt, err = db.PrepareContext(ctx, getSignupPOWEnabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSignupPOWEnabled: %w", err)
+	}
+	if q.getSignupRejectionsByEmailStmt, err = db.PrepareContext(ctx, getSignupRejectionsByEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSignupRejectionsByEmail: %w", err)
+	}
+	if q.getSignupRejectionsByIPStmt, err = db.PrepareContext(ctx, getSignupRejectionsByIP); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSignupRejectionsByIP: %w", err)
 	}
 	if q.getSiteCookiesForUserStmt, err = db.PrepareContext(ctx, getSiteCookiesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSiteCookiesForUser: %w", err)
@@ -339,6 +351,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertEmailBounceStmt, err = db.PrepareContext(ctx, insertEmailBounce); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertEmailBounce: %w", err)
 	}
+	if q.insertEmailQualityBypassStmt, err = db.PrepareContext(ctx, insertEmailQualityBypass); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertEmailQualityBypass: %w", err)
+	}
 	if q.insertEmailVerificationStmt, err = db.PrepareContext(ctx, insertEmailVerification); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertEmailVerification: %w", err)
 	}
@@ -363,6 +378,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertSSHKeyForEmailUserStmt, err = db.PrepareContext(ctx, insertSSHKeyForEmailUser); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSSHKeyForEmailUser: %w", err)
 	}
+	if q.insertSignupRejectionStmt, err = db.PrepareContext(ctx, insertSignupRejection); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertSignupRejection: %w", err)
+	}
 	if q.insertTagResolutionHistoryStmt, err = db.PrepareContext(ctx, insertTagResolutionHistory); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTagResolutionHistory: %w", err)
 	}
@@ -371,6 +389,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.isEmailBouncedStmt, err = db.PrepareContext(ctx, isEmailBounced); err != nil {
 		return nil, fmt.Errorf("error preparing query IsEmailBounced: %w", err)
+	}
+	if q.isEmailQualityBypassedStmt, err = db.PrepareContext(ctx, isEmailQualityBypassed); err != nil {
+		return nil, fmt.Errorf("error preparing query IsEmailQualityBypassed: %w", err)
 	}
 	if q.listAllAccountsStmt, err = db.PrepareContext(ctx, listAllAccounts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllAccounts: %w", err)
@@ -636,6 +657,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteBoxShareLinkByBoxAndTokenStmt: %w", cerr)
 		}
 	}
+	if q.deleteEmailQualityBypassStmt != nil {
+		if cerr := q.deleteEmailQualityBypassStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteEmailQualityBypassStmt: %w", cerr)
+		}
+	}
 	if q.deleteEmailVerificationByTokenStmt != nil {
 		if cerr := q.deleteEmailVerificationByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteEmailVerificationByTokenStmt: %w", cerr)
@@ -791,6 +817,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getEmailByUserIDStmt: %w", cerr)
 		}
 	}
+	if q.getEmailQualityBypassStmt != nil {
+		if cerr := q.getEmailQualityBypassStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getEmailQualityBypassStmt: %w", cerr)
+		}
+	}
 	if q.getEmailVerificationByPartialTokenStmt != nil {
 		if cerr := q.getEmailVerificationByPartialTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailVerificationByPartialTokenStmt: %w", cerr)
@@ -899,6 +930,16 @@ func (q *Queries) Close() error {
 	if q.getSignupPOWEnabledStmt != nil {
 		if cerr := q.getSignupPOWEnabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSignupPOWEnabledStmt: %w", cerr)
+		}
+	}
+	if q.getSignupRejectionsByEmailStmt != nil {
+		if cerr := q.getSignupRejectionsByEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSignupRejectionsByEmailStmt: %w", cerr)
+		}
+	}
+	if q.getSignupRejectionsByIPStmt != nil {
+		if cerr := q.getSignupRejectionsByIPStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSignupRejectionsByIPStmt: %w", cerr)
 		}
 	}
 	if q.getSiteCookiesForUserStmt != nil {
@@ -1016,6 +1057,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertEmailBounceStmt: %w", cerr)
 		}
 	}
+	if q.insertEmailQualityBypassStmt != nil {
+		if cerr := q.insertEmailQualityBypassStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertEmailQualityBypassStmt: %w", cerr)
+		}
+	}
 	if q.insertEmailVerificationStmt != nil {
 		if cerr := q.insertEmailVerificationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertEmailVerificationStmt: %w", cerr)
@@ -1056,6 +1102,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertSSHKeyForEmailUserStmt: %w", cerr)
 		}
 	}
+	if q.insertSignupRejectionStmt != nil {
+		if cerr := q.insertSignupRejectionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertSignupRejectionStmt: %w", cerr)
+		}
+	}
 	if q.insertTagResolutionHistoryStmt != nil {
 		if cerr := q.insertTagResolutionHistoryStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertTagResolutionHistoryStmt: %w", cerr)
@@ -1069,6 +1120,11 @@ func (q *Queries) Close() error {
 	if q.isEmailBouncedStmt != nil {
 		if cerr := q.isEmailBouncedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing isEmailBouncedStmt: %w", cerr)
+		}
+	}
+	if q.isEmailQualityBypassedStmt != nil {
+		if cerr := q.isEmailQualityBypassedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing isEmailQualityBypassedStmt: %w", cerr)
 		}
 	}
 	if q.listAllAccountsStmt != nil {
@@ -1329,6 +1385,7 @@ type Queries struct {
 	deleteBoxIPShardStmt                   *sql.Stmt
 	deleteBoxShareByBoxAndUserStmt         *sql.Stmt
 	deleteBoxShareLinkByBoxAndTokenStmt    *sql.Stmt
+	deleteEmailQualityBypassStmt           *sql.Stmt
 	deleteEmailVerificationByTokenStmt     *sql.Stmt
 	deletePasskeyStmt                      *sql.Stmt
 	deletePasskeyChallengeStmt             *sql.Stmt
@@ -1360,6 +1417,7 @@ type Queries struct {
 	getEmailBounceStmt                     *sql.Stmt
 	getEmailBySSHKeyStmt                   *sql.Stmt
 	getEmailByUserIDStmt                   *sql.Stmt
+	getEmailQualityBypassStmt              *sql.Stmt
 	getEmailVerificationByPartialTokenStmt *sql.Stmt
 	getEmailVerificationByTokenStmt        *sql.Stmt
 	getHLLSketchStmt                       *sql.Stmt
@@ -1382,6 +1440,8 @@ type Queries struct {
 	getSSHKeysForUserByEmailStmt           *sql.Stmt
 	getShardPublicIPStmt                   *sql.Stmt
 	getSignupPOWEnabledStmt                *sql.Stmt
+	getSignupRejectionsByEmailStmt         *sql.Stmt
+	getSignupRejectionsByIPStmt            *sql.Stmt
 	getSiteCookiesForUserStmt              *sql.Stmt
 	getTagResolutionStmt                   *sql.Stmt
 	getTagsNeedingRefreshStmt              *sql.Stmt
@@ -1405,6 +1465,7 @@ type Queries struct {
 	insertDeletedBoxStmt                   *sql.Stmt
 	insertEmailAddressQualityStmt          *sql.Stmt
 	insertEmailBounceStmt                  *sql.Stmt
+	insertEmailQualityBypassStmt           *sql.Stmt
 	insertEmailVerificationStmt            *sql.Stmt
 	insertOrReplaceEmailVerificationStmt   *sql.Stmt
 	insertPasskeyStmt                      *sql.Stmt
@@ -1413,9 +1474,11 @@ type Queries struct {
 	insertProxyBearerTokenStmt             *sql.Stmt
 	insertSSHKeyStmt                       *sql.Stmt
 	insertSSHKeyForEmailUserStmt           *sql.Stmt
+	insertSignupRejectionStmt              *sql.Stmt
 	insertTagResolutionHistoryStmt         *sql.Stmt
 	insertUserStmt                         *sql.Stmt
 	isEmailBouncedStmt                     *sql.Stmt
+	isEmailQualityBypassedStmt             *sql.Stmt
 	listAllAccountsStmt                    *sql.Stmt
 	listAllUserLLMCreditsStmt              *sql.Stmt
 	listAllUsersStmt                       *sql.Stmt
@@ -1489,6 +1552,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteBoxIPShardStmt:                   q.deleteBoxIPShardStmt,
 		deleteBoxShareByBoxAndUserStmt:         q.deleteBoxShareByBoxAndUserStmt,
 		deleteBoxShareLinkByBoxAndTokenStmt:    q.deleteBoxShareLinkByBoxAndTokenStmt,
+		deleteEmailQualityBypassStmt:           q.deleteEmailQualityBypassStmt,
 		deleteEmailVerificationByTokenStmt:     q.deleteEmailVerificationByTokenStmt,
 		deletePasskeyStmt:                      q.deletePasskeyStmt,
 		deletePasskeyChallengeStmt:             q.deletePasskeyChallengeStmt,
@@ -1520,6 +1584,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailBounceStmt:                     q.getEmailBounceStmt,
 		getEmailBySSHKeyStmt:                   q.getEmailBySSHKeyStmt,
 		getEmailByUserIDStmt:                   q.getEmailByUserIDStmt,
+		getEmailQualityBypassStmt:              q.getEmailQualityBypassStmt,
 		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:        q.getEmailVerificationByTokenStmt,
 		getHLLSketchStmt:                       q.getHLLSketchStmt,
@@ -1542,6 +1607,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getSSHKeysForUserByEmailStmt:           q.getSSHKeysForUserByEmailStmt,
 		getShardPublicIPStmt:                   q.getShardPublicIPStmt,
 		getSignupPOWEnabledStmt:                q.getSignupPOWEnabledStmt,
+		getSignupRejectionsByEmailStmt:         q.getSignupRejectionsByEmailStmt,
+		getSignupRejectionsByIPStmt:            q.getSignupRejectionsByIPStmt,
 		getSiteCookiesForUserStmt:              q.getSiteCookiesForUserStmt,
 		getTagResolutionStmt:                   q.getTagResolutionStmt,
 		getTagsNeedingRefreshStmt:              q.getTagsNeedingRefreshStmt,
@@ -1565,6 +1632,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertDeletedBoxStmt:                   q.insertDeletedBoxStmt,
 		insertEmailAddressQualityStmt:          q.insertEmailAddressQualityStmt,
 		insertEmailBounceStmt:                  q.insertEmailBounceStmt,
+		insertEmailQualityBypassStmt:           q.insertEmailQualityBypassStmt,
 		insertEmailVerificationStmt:            q.insertEmailVerificationStmt,
 		insertOrReplaceEmailVerificationStmt:   q.insertOrReplaceEmailVerificationStmt,
 		insertPasskeyStmt:                      q.insertPasskeyStmt,
@@ -1573,9 +1641,11 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertProxyBearerTokenStmt:             q.insertProxyBearerTokenStmt,
 		insertSSHKeyStmt:                       q.insertSSHKeyStmt,
 		insertSSHKeyForEmailUserStmt:           q.insertSSHKeyForEmailUserStmt,
+		insertSignupRejectionStmt:              q.insertSignupRejectionStmt,
 		insertTagResolutionHistoryStmt:         q.insertTagResolutionHistoryStmt,
 		insertUserStmt:                         q.insertUserStmt,
 		isEmailBouncedStmt:                     q.isEmailBouncedStmt,
+		isEmailQualityBypassedStmt:             q.isEmailQualityBypassedStmt,
 		listAllAccountsStmt:                    q.listAllAccountsStmt,
 		listAllUserLLMCreditsStmt:              q.listAllUserLLMCreditsStmt,
 		listAllUsersStmt:                       q.listAllUsersStmt,

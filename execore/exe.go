@@ -2435,9 +2435,19 @@ func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, e
 
 // checkEmailQuality checks the email quality via IPQS and updates the user if disposable.
 // This should be called after user creation, outside of any transaction.
-// Returns nil if IPQS is disabled (no API key).
+// Returns nil if IPQS is disabled (no API key) or if the email is in the bypass list.
 func (s *Server) checkEmailQuality(ctx context.Context, userID, email string) error {
 	if s.ipqsAPIKey == "" {
+		return nil
+	}
+
+	// Check if email is in the bypass list
+	bypassed, err := withRxRes1(s, ctx, (*exedb.Queries).IsEmailQualityBypassed, email)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to check email quality bypass", "error", err, "email", email)
+		// Continue with the check if we can't read the bypass table
+	} else if bypassed == 1 {
+		s.slog().InfoContext(ctx, "email quality check bypassed", "email", email)
 		return nil
 	}
 
@@ -2513,15 +2523,42 @@ func (s *Server) validateNewSignup(ctx context.Context, ip, email, source string
 	}
 	if s.IsLoginCreationDisabled(ctx) {
 		s.signupMetrics.IncBlocked("login_creation_disabled", source)
+		s.recordSignupRejection(ctx, email, ip, "login_creation_disabled", source)
 		return errors.New("account creation is temporarily unavailable")
 	}
 	s.slog().InfoContext(ctx, "vetting new signup", "ip", ip, "email", email)
+
+	// Check if email is in the bypass list
+	bypassed, err := withRxRes1(s, ctx, (*exedb.Queries).IsEmailQualityBypassed, email)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to check email quality bypass for signup", "error", err, "email", email)
+		// Continue with the check if we can't read the bypass table
+	} else if bypassed == 1 {
+		s.slog().InfoContext(ctx, "signup quality checks bypassed", "email", email)
+		return nil
+	}
+
 	if s.ipFlaggedForAbuse(ctx, ip) {
 		s.slog().InfoContext(ctx, "blocking signup due to recent_abuse", "ip", ip)
 		s.signupMetrics.IncBlocked("ip_abuse", source)
+		s.recordSignupRejection(ctx, email, ip, "ip_abuse", source)
 		return fmt.Errorf("unable to process signup (trace=%s, email=%s)", tracing.TraceIDFromContext(ctx), email)
 	}
 	return nil
+}
+
+// recordSignupRejection records a rejected signup attempt to the database.
+// Errors are logged but not returned since this is best-effort.
+func (s *Server) recordSignupRejection(ctx context.Context, email, ip, reason, source string) {
+	err := withTx1(s, ctx, (*exedb.Queries).InsertSignupRejection, exedb.InsertSignupRejectionParams{
+		Email:  email,
+		Ip:     ip,
+		Reason: reason,
+		Source: source,
+	})
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to record signup rejection", "error", err, "email", email, "ip", ip, "reason", reason)
+	}
 }
 
 // ipFlaggedForAbuse reports whether ip has recent abuse according to IPQS.

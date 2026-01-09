@@ -99,6 +99,13 @@ type EmailBounce struct {
 	BouncedAt *time.Time `db:"bounced_at" json:"bounced_at"`
 }
 
+type EmailQualityBypass struct {
+	Email   string     `db:"email" json:"email"`
+	Reason  string     `db:"reason" json:"reason"`
+	AddedAt *time.Time `db:"added_at" json:"added_at"`
+	AddedBy string     `db:"added_by" json:"added_by"`
+}
+
 type EmailVerification struct {
 	Token            string     `db:"token" json:"token"`
 	Email            string     `db:"email" json:"email"`
@@ -187,6 +194,15 @@ type ServerMetum struct {
 	Value     string     `db:"value" json:"value"`
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt *time.Time `db:"updated_at" json:"updated_at"`
+}
+
+type SignupRejection struct {
+	ID         int64      `db:"id" json:"id"`
+	Email      string     `db:"email" json:"email"`
+	Ip         string     `db:"ip" json:"ip"`
+	Reason     string     `db:"reason" json:"reason"`
+	Source     string     `db:"source" json:"source"`
+	RejectedAt *time.Time `db:"rejected_at" json:"rejected_at"`
 }
 
 type SshHostKey struct {
