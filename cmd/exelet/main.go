@@ -331,7 +331,7 @@ func serveAction(clix *cli.Context) error {
 	metadataListenAddr := natConfig.Router + ":80"
 	log.InfoContext(ctx, "metadata service will bind to bridge IP", "addr", metadataListenAddr)
 
-	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.ExedURL, metadataListenAddr)
+	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.ExedURL, metadataListenAddr, serviceContext.MetricsRegistry)
 	if err != nil {
 		return err
 	}

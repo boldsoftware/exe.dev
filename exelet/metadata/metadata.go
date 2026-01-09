@@ -43,6 +43,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/prometheus/client_golang/prometheus"
 	sloghttp "github.com/samber/slog-http"
 )
 
@@ -66,11 +67,13 @@ type Service struct {
 	exedURL        string
 	exedTargetURL  *url.URL
 	listenAddr     string // actual address to bind to (may differ from MetadataIP for isolation)
+
+	gatewayRequests *prometheus.CounterVec
 }
 
 // NewService creates a new metadata service
 // listenAddr is the IP:port to bind to (e.g., "192.168.1.1:80")
-func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr string) (*Service, error) {
+func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr string, registry *prometheus.Registry) (*Service, error) {
 	if exedURL == "" {
 		return nil, fmt.Errorf("exedURL is required")
 	}
@@ -83,12 +86,26 @@ func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr
 		return nil, fmt.Errorf("failed to parse exed URL: %w", err)
 	}
 
+	gatewayRequests := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "exelet",
+			Subsystem: "metadata",
+			Name:      "gateway_requests_total",
+			Help:      "Total LLM gateway proxy requests by outcome.",
+		},
+		[]string{"outcome"},
+	)
+	if registry != nil {
+		registry.MustRegister(gatewayRequests)
+	}
+
 	s := &Service{
-		log:            log,
-		instanceLookup: computeSvc,
-		exedURL:        exedURL,
-		exedTargetURL:  targetURL,
-		listenAddr:     listenAddr,
+		log:             log,
+		instanceLookup:  computeSvc,
+		exedURL:         exedURL,
+		exedTargetURL:   targetURL,
+		listenAddr:      listenAddr,
+		gatewayRequests: gatewayRequests,
 	}
 
 	return s, nil
@@ -218,6 +235,10 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 			// Add header to identify the box making the request
 			pr.Out.Header.Set("X-Exedev-Box", boxName)
 		},
+		ModifyResponse: func(resp *http.Response) error {
+			s.gatewayRequests.WithLabelValues("success").Inc()
+			return nil
+		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			if errors.Is(err, context.Canceled) {
 				return
@@ -225,9 +246,11 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "gateway proxy error: "+err.Error(), http.StatusBadGateway)
 			switch {
 			case errors.Is(err, syscall.ECONNREFUSED):
+				s.gatewayRequests.WithLabelValues("conn_refused").Inc()
 				// This typically happens in bursts when we restart exed. Warn only.
 				s.log.WarnContext(r.Context(), "gateway proxy conn refused", "error", err, "box", boxName)
 			default:
+				s.gatewayRequests.WithLabelValues("unknown_error").Inc()
 				s.log.ErrorContext(r.Context(), "gateway proxy error", "error", err, "box", boxName)
 			}
 		},

@@ -20,7 +20,7 @@ func (m *mockInstanceLookup) GetInstanceByIP(ctx context.Context, ip string) (id
 func TestMetadataService404(t *testing.T) {
 	log := slog.Default()
 
-	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080")
+	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestMetadataService404(t *testing.T) {
 func TestMetadataServiceRootResponse(t *testing.T) {
 	log := slog.Default()
 
-	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080")
+	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
