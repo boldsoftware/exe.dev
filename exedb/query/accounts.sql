@@ -28,3 +28,7 @@ SELECT * FROM accounts;
 SELECT
     NOT EXISTS (SELECT 1 FROM accounts WHERE created_by = ?1 AND billing_status = 'active')
     AND (SELECT created_at FROM users WHERE user_id = ?1) >= '2026-01-06 23:10:00';
+
+-- name: CountAccountsByBillingStatus :one
+-- CountAccountsByBillingStatus counts accounts with the given billing status.
+SELECT COUNT(*) FROM accounts WHERE billing_status = ?;

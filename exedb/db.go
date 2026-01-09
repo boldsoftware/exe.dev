@@ -45,6 +45,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.clearPreferredExeletStmt, err = db.PrepareContext(ctx, clearPreferredExelet); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearPreferredExelet: %w", err)
 	}
+	if q.countAccountsByBillingStatusStmt, err = db.PrepareContext(ctx, countAccountsByBillingStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query CountAccountsByBillingStatus: %w", err)
+	}
 	if q.countBoxShareLinksStmt, err = db.PrepareContext(ctx, countBoxShareLinks); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxShareLinks: %w", err)
 	}
@@ -485,6 +488,11 @@ func (q *Queries) Close() error {
 	if q.clearPreferredExeletStmt != nil {
 		if cerr := q.clearPreferredExeletStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing clearPreferredExeletStmt: %w", cerr)
+		}
+	}
+	if q.countAccountsByBillingStatusStmt != nil {
+		if cerr := q.countAccountsByBillingStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countAccountsByBillingStatusStmt: %w", cerr)
 		}
 	}
 	if q.countBoxShareLinksStmt != nil {
@@ -1203,6 +1211,7 @@ type Queries struct {
 	boxesForUserStmt                       *sql.Stmt
 	cleanupExpiredPasskeyChallengesStmt    *sql.Stmt
 	clearPreferredExeletStmt               *sql.Stmt
+	countAccountsByBillingStatusStmt       *sql.Stmt
 	countBoxShareLinksStmt                 *sql.Stmt
 	countBoxSharesStmt                     *sql.Stmt
 	countBoxesStmt                         *sql.Stmt
@@ -1350,6 +1359,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		boxesForUserStmt:                       q.boxesForUserStmt,
 		cleanupExpiredPasskeyChallengesStmt:    q.cleanupExpiredPasskeyChallengesStmt,
 		clearPreferredExeletStmt:               q.clearPreferredExeletStmt,
+		countAccountsByBillingStatusStmt:       q.countAccountsByBillingStatusStmt,
 		countBoxShareLinksStmt:                 q.countBoxShareLinksStmt,
 		countBoxSharesStmt:                     q.countBoxSharesStmt,
 		countBoxesStmt:                         q.countBoxesStmt,

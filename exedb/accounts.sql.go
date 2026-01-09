@@ -19,6 +19,18 @@ func (q *Queries) ActivateAccount(ctx context.Context, createdBy string) error {
 	return err
 }
 
+const countAccountsByBillingStatus = `-- name: CountAccountsByBillingStatus :one
+SELECT COUNT(*) FROM accounts WHERE billing_status = ?
+`
+
+// CountAccountsByBillingStatus counts accounts with the given billing status.
+func (q *Queries) CountAccountsByBillingStatus(ctx context.Context, billingStatus string) (int64, error) {
+	row := q.queryRow(ctx, q.countAccountsByBillingStatusStmt, countAccountsByBillingStatus, billingStatus)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getAccount = `-- name: GetAccount :one
 SELECT id, created_by, created_at, billing_status FROM accounts WHERE id = ?
 `

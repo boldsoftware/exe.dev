@@ -265,16 +265,23 @@ var (
 		"Total number of users with at least one VM.",
 		nil, nil,
 	)
+	billingAccountsDesc = prometheus.NewDesc(
+		"billing_accounts_total",
+		"Total number of billing accounts.",
+		[]string{"status"}, nil,
+	)
 )
 
 func (c *entityCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- usersDesc
 	ch <- vmsDesc
 	ch <- usersWithVMsDesc
+	ch <- billingAccountsDesc
 }
 
 func (c *entityCollector) Collect(ch chan<- prometheus.Metric) {
 	var loginUsers, devUsers, vms, usersWithVMs int64
+	var accountsActive, accountsPending int64
 
 	err := c.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
 		q := exedb.New(rx.Conn())
@@ -291,6 +298,12 @@ func (c *entityCollector) Collect(ch chan<- prometheus.Metric) {
 		if usersWithVMs, err = q.CountUsersWithBoxes(ctx); err != nil {
 			return err
 		}
+		if accountsActive, err = q.CountAccountsByBillingStatus(ctx, "active"); err != nil {
+			return err
+		}
+		if accountsPending, err = q.CountAccountsByBillingStatus(ctx, "pending"); err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
@@ -302,4 +315,6 @@ func (c *entityCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(usersDesc, prometheus.GaugeValue, float64(devUsers), "dev")
 	ch <- prometheus.MustNewConstMetric(vmsDesc, prometheus.GaugeValue, float64(vms))
 	ch <- prometheus.MustNewConstMetric(usersWithVMsDesc, prometheus.GaugeValue, float64(usersWithVMs))
+	ch <- prometheus.MustNewConstMetric(billingAccountsDesc, prometheus.GaugeValue, float64(accountsActive), "active")
+	ch <- prometheus.MustNewConstMetric(billingAccountsDesc, prometheus.GaugeValue, float64(accountsPending), "pending")
 }
