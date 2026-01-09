@@ -5031,6 +5031,131 @@ Key metrics:
   return dash;
 }
 
+// exe.dev Abuse Signals Dashboard - indicators of potential abuse
+function makeAbuseSignalsDashboard() {
+  resetLayout();
+  const dash = new DashboardBuilder("exe.dev Abuse Signals");
+  dash
+    .uid("abuse-signals-dashboard")
+    .tags(["generated", "exe.dev", "abuse"])
+    .refresh("1m")
+    .time({ from: "now-6h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  addStageVariable(dash);
+  addReadmePanel(dash);
+
+  const STAGE_FILTER = 'stage=~"$stage"';
+
+  // ========== CPU USAGE PER EXELET ==========
+  dash.withRow(
+    new RowBuilder("CPU Usage per Exelet").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  const cpuUsagePanel = new TimeseriesBuilder()
+    .title("CPU Usage per Exelet (%)")
+    .unit("percent")
+    .min(0)
+    .max(100)
+    .gridPos(gp({ w: 24, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`100 - (avg by (instance) (irate(node_cpu_seconds_total{role="exelet",${STAGE_FILTER},mode="idle"}[5m])) * 100)`)
+        .legendFormat("{{instance}}")
+    );
+  dash.withPanel(cpuUsagePanel);
+
+  // ========== HARD BOUNCES ==========
+  dash.withRow(
+    new RowBuilder("Email Hard Bounces").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  const hardBouncesStatPanel = new StatBuilder()
+    .title("Hard Bounces (Total)")
+    .gridPos(gp({ w: 6, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`postmark_bounces_total{type="hard_bounce",${STAGE_FILTER}}`)
+        .legendFormat("Hard Bounces")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area);
+  dash.withPanel(hardBouncesStatPanel);
+
+  const hardBounceRatePanel = new TimeseriesBuilder()
+    .title("Hard Bounce Rate")
+    .min(0)
+    .gridPos(gp({ w: 18, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`increase(postmark_bounces_total{type="hard_bounce",${STAGE_FILTER}}[5m])`)
+        .legendFormat("hard bounces / 5m")
+    );
+  dash.withPanel(hardBounceRatePanel);
+
+  // ========== LLM GATEWAY SPEND ==========
+  dash.withRow(
+    new RowBuilder("LLM Gateway Spend").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  const llmCost24hPanel = new StatBuilder()
+    .title("LLM Cost (24h)")
+    .unit("currencyUSD")
+    .gridPos(gp({ w: 6, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(increase(llm_cost_usd_total{${STAGE_FILTER}}[24h]))`)
+        .legendFormat("Cost")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area);
+  dash.withPanel(llmCost24hPanel);
+
+  const llmCostRatePanel = new TimeseriesBuilder()
+    .title("LLM Cost Rate ($/hour)")
+    .unit("currencyUSD")
+    .min(0)
+    .gridPos(gp({ w: 18, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(rate(llm_cost_usd_total{${STAGE_FILTER}}[$__rate_interval])) * 3600`)
+        .legendFormat("cost/hour")
+    );
+  dash.withPanel(llmCostRatePanel);
+
+  // ========== NETWORK TX/RX PER EXELET ==========
+  dash.withRow(
+    new RowBuilder("Network per Exelet").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  const networkRxPanel = new TimeseriesBuilder()
+    .title("Network RX per Exelet")
+    .unit("Bps")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`irate(node_network_receive_bytes_total{role="exelet",${STAGE_FILTER},device!="lo"}[5m])`)
+        .legendFormat("{{instance}} {{device}}")
+    );
+  dash.withPanel(networkRxPanel);
+
+  const networkTxPanel = new TimeseriesBuilder()
+    .title("Network TX per Exelet")
+    .unit("Bps")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`irate(node_network_transmit_bytes_total{role="exelet",${STAGE_FILTER},device!="lo"}[5m])`)
+        .legendFormat("{{instance}} {{device}}")
+    );
+  dash.withPanel(networkTxPanel);
+
+  return dash;
+}
+
 async function main() {
   if (TOKEN === undefined) {
     console.error(
@@ -5055,6 +5180,7 @@ async function main() {
   await createDashboard(makeHostsDashboard());
   await createDashboard(makeLLMGatewayDashboard());
   await createDashboard(makeZFSDashboard());
+  await createDashboard(makeAbuseSignalsDashboard());
 
   // Create alerts after dashboards are created
   await createAlerts();
