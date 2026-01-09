@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	sloghttp "github.com/samber/slog-http"
 	"golang.org/x/crypto/ssh"
 
 	"exe.dev/container"
@@ -170,6 +172,13 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		route = boxRoute
 	} else {
 		route = exedb.Route{Port: targetPort, Share: "private"}
+	}
+
+	if route.Port == 9999 {
+		// We're going to call all proxy requests to port 9999
+		// shelley requests. We could look for /api/conversation/* or
+		// something, this seems fine for purposes of tracking/logging.
+		sloghttp.AddCustomAttributes(r, slog.Bool("proxy_shelley", true))
 	}
 
 	// Apply authentication based on route share setting
