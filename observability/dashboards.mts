@@ -3274,6 +3274,7 @@ function makeHostsDashboard() {
         threshold: 80,
         condition: "gt",
         forDuration: "3m",
+        noDataState: "OK",
         summary: "Huge pages usage is critically high",
         description: "Huge pages are in use and usage has exceeded 80% for more than 3 minutes",
       },
