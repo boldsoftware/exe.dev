@@ -13,8 +13,8 @@ NC='\033[0m'
 
 errors=0
 
-# Check for dirty worktree
-if [ -n "$(git status --porcelain)" ]; then
+# Check for dirty worktree (ignore untracked files)
+if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
     if [ "$FORCE" = "1" ]; then
         echo -e "${RED}WARNING: Deploying from dirty worktree (forced)${NC}" >&2
     else
