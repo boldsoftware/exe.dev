@@ -1414,7 +1414,7 @@ function makeDevExeDashboard() {
 // Email Dashboard - email sending and delivery metrics
 function makeEmailDashboard() {
   resetLayout();
-  const dash = new DashboardBuilder("Email");
+  const dash = new DashboardBuilder("exe.dev Email");
   dash
     .uid("email-dashboard")
     .tags(["generated", "exe.dev", "email"])
@@ -1670,6 +1670,24 @@ function makeEmailDashboard() {
     .textMode(BigValueTextMode.ValueAndName)
     .min(0);
   dash.withPanel(spamNotificationPanel);
+
+  // Hard bounce rate alert - alerts when hard bounces exceed 5% of total emails in the last hour
+  addTimeseriesChart(
+    "Hard Bounce Rate (1h)",
+    `increase(postmark_bounces_total{type="hard_bounce",${STAGE_FILTER}}[1h]) / increase(emails_sent_total{${STAGE_FILTER}}[1h]) * 100`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("Hard Bounce %"),
+      alert: {
+        threshold: 5,
+        condition: "gt",
+        forDuration: "5m",
+        summary: "Hard bounce rate exceeds 5%",
+        description: "The hard bounce rate in the last hour has exceeded 5% of total emails sent. This may indicate email deliverability issues.",
+      },
+    }
+  );
 
   return dash;
 }
