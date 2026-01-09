@@ -159,7 +159,7 @@ func (ws *WebShellSession) readMessages() {
 		err := wsjson.Read(ws.ctx, ws.conn, &msg)
 		if err != nil {
 			if websocket.CloseStatus(err) != websocket.StatusNormalClosure {
-				slog.Debug("Websocket read error", "error", err)
+				slog.DebugContext(ws.ctx, "Websocket read error", "error", err)
 			}
 			ws.cancel()
 			return

@@ -96,6 +96,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		return nil
 	}
 
+	ctx := a.incomingReq.Context()
 	contentType := resp.Header.Get("Content-Type")
 
 	// Note that the response may be a unary HTTP response body, or it may be a stream of
@@ -115,7 +116,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		data, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			a.log.Error("couldn't read unary response body", "error", err)
+			a.log.ErrorContext(ctx, "couldn't read unary response body", "error", err)
 			return err
 		}
 		resp.Body = io.NopCloser(bytes.NewReader(data))
@@ -124,19 +125,19 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		if slices.Contains(contentEncoding, "gzip") {
 			gzReader, err := gzip.NewReader(bytes.NewReader(data))
 			if err != nil {
-				a.log.Error("accountingTransport couldn't create new gzip reader for unary response body", "error", err)
+				a.log.ErrorContext(ctx, "accountingTransport couldn't create new gzip reader for unary response body", "error", err)
 				return err
 			}
 			decoded, err := io.ReadAll(gzReader)
 			if err != nil {
-				a.log.Error("accountingTransport couldn't read gzip reader for unary response body", "error", err)
+				a.log.ErrorContext(ctx, "accountingTransport couldn't read gzip reader for unary response body", "error", err)
 				return err
 			}
 			gzReader.Close()
 			data = decoded
 		}
 		if err := a.processResponseData(data); err != nil {
-			a.log.Error("accountingTransport couldn't process unary JSON response", "processResponseData error", err)
+			a.log.ErrorContext(ctx, "accountingTransport couldn't process unary JSON response", "processResponseData error", err)
 			return err
 		}
 
@@ -162,13 +163,13 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 					// Process the event data, which may include details for accounting.
 					// For SSE, we use processResponseDataSSE which stores usage for later
 					if err := a.processResponseDataSSE([]byte(data)); err != nil {
-						a.log.Error("Proxy SSE scanner", "processResponseData error", err)
+						a.log.ErrorContext(ctx, "Proxy SSE scanner", "processResponseData error", err)
 					}
 				}
 				fmt.Fprintln(bodyWriter, line)
 			}
 			if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
-				a.log.Error("Proxy SSE scanner", "error", err)
+				a.log.ErrorContext(ctx, "Proxy SSE scanner", "error", err)
 			}
 			bodyWriter.Close()
 		}()
@@ -176,7 +177,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		// We just log this rather than return an error, so that the request still gets
 		// proxied. We just don't have a way to debit any charges based on usage data that
 		// may have been included in the response.
-		a.log.Error("accountingTransport.modifyResponse", "unrecognized content type", contentType)
+		a.log.ErrorContext(ctx, "accountingTransport.modifyResponse", "unrecognized content type", contentType)
 	}
 
 	if a.testDebitDone != nil {
@@ -204,12 +205,13 @@ type UsageDebit struct {
 
 func (m *accountingTransport) processResponseData(data []byte) error {
 	usageDebit := UsageDebit{Created: time.Now()}
+	ctx := m.incomingReq.Context()
 
 	switch m.apiType {
 	case "anthropic":
 		var ui anthropicResponseUsageInfo
 		if err := json.Unmarshal(data, &ui); err != nil {
-			m.log.Error("anthropic json decode", "data", string(data), "error", err)
+			m.log.ErrorContext(ctx, "anthropic json decode", "data", string(data), "error", err)
 			return fmt.Errorf("json decode error: %w", err)
 		}
 		if ui.Usage == nil {
@@ -219,7 +221,7 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 		usageDebit.Usage = *ui.Usage
 		usageDebit.Model = ui.Model
 		usageDebit.MessageID = ui.ID
-		m.log.Info("debitResponse", "anthropicResponseUsageInfo", ui)
+		m.log.InfoContext(ctx, "debitResponse", "anthropicResponseUsageInfo", ui)
 	case "openai", "fireworks":
 		if len(data) == 0 {
 			return fmt.Errorf("empty openai response, skipping accounting")
@@ -239,7 +241,7 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 
 		// If token counts are zero, set a minimal token count to avoid accounting errors
 		if promptTokens == 0 && completionTokens == 0 {
-			m.log.Debug("openai response has zero token counts, using defaults")
+			m.log.DebugContext(ctx, "openai response has zero token counts, using defaults")
 			promptTokens = 1
 			completionTokens = 1
 		}
@@ -254,10 +256,10 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 		usageDebit.Usage = usage
 		usageDebit.Model = model
 		usageDebit.MessageID = oi.ID
-		m.log.Info("debitResponse", "openaiResponseUsageInfo", oi)
+		m.log.InfoContext(ctx, "debitResponse", "openaiResponseUsageInfo", oi)
 
 	default:
-		m.log.Error("accountingTransport.processResponseData: unknown API type", "apiType", m.apiType)
+		m.log.ErrorContext(ctx, "accountingTransport.processResponseData: unknown API type", "apiType", m.apiType)
 	}
 
 	// Calculate cost based on model pricing
@@ -309,6 +311,7 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 // This is needed for SSE responses where we can't add slog attributes from the goroutine.
 func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 	usageDebit := UsageDebit{Created: time.Now()}
+	ctx := m.incomingReq.Context()
 
 	switch m.apiType {
 	case "anthropic":
@@ -324,7 +327,7 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 		usageDebit.Usage = *ui.Usage
 		usageDebit.Model = ui.Model
 		usageDebit.MessageID = ui.ID
-		m.log.Info("debitResponse", "anthropicResponseUsageInfo", ui)
+		m.log.InfoContext(ctx, "debitResponse", "anthropicResponseUsageInfo", ui)
 	case "openai", "fireworks":
 		if len(data) == 0 {
 			return nil
@@ -354,7 +357,7 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 		usageDebit.Usage = usage
 		usageDebit.Model = model
 		usageDebit.MessageID = oi.ID
-		m.log.Info("debitResponse", "openaiResponseUsageInfo", oi)
+		m.log.InfoContext(ctx, "debitResponse", "openaiResponseUsageInfo", oi)
 
 	default:
 		return nil

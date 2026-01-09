@@ -18,6 +18,7 @@ import (
 	"exe.dev/domz"
 	"exe.dev/exedb"
 	api "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/tracing"
 	"github.com/tg123/sshpiper/libplugin"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
@@ -210,7 +211,8 @@ func (p *PiperPlugin) handleBanner(conn libplugin.ConnMetadata) string {
 //
 // Anyway, that's why we're at keyboard interactive.
 func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, client libplugin.KeyboardInteractiveChallenge) (*libplugin.Upstream, error) {
-	slog.Debug("Keyboard interactive auth request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
+	ctx := tracing.ContextWithTraceID(context.Background(), tracing.GenerateTraceID())
+	slog.DebugContext(ctx, "Keyboard interactive auth request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
 
 	// Use connection's unique ID to track if we've already shown the message
 	connID := conn.UniqueID()
@@ -233,12 +235,12 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 
 		_, err := client("", message, "", false)
 		if err != nil {
-			slog.Debug("Keyboard interactive challenge failed", "component", "piper-plugin", "error", err)
+			slog.DebugContext(ctx, "Keyboard interactive challenge failed", "component", "piper-plugin", "error", err)
 			return nil, err
 		}
 	} else {
 		// Already shown message - just fail silently to avoid repeating
-		slog.Debug("Keyboard interactive auth retry - skipping message display", "component", "piper-plugin", "conn_id", connID)
+		slog.DebugContext(ctx, "Keyboard interactive auth retry - skipping message display", "component", "piper-plugin", "conn_id", connID)
 	}
 
 	// Always return nil to deny access
@@ -247,7 +249,8 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 
 // handlePublicKeyAuth handles public key authentication and routing decisions
 func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byte) (*libplugin.Upstream, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx := tracing.ContextWithTraceID(context.Background(), tracing.GenerateTraceID())
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	slog.DebugContext(ctx, "piper plugin public key auth request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
@@ -290,7 +293,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 			return nil, fmt.Errorf("support access denied: either you don't have support privileges, or VM %q doesn't have support access enabled", supportBoxName)
 		}
 		slog.InfoContext(ctx, "piper public key auth: support access granted", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "support_user_id", userID)
-		return p.handleBoxAccess(box, userID, conn.UniqueID())
+		return p.handleBoxAccess(ctx, box, userID, conn.UniqueID())
 	}
 
 	// Check if this is a direct box access attempt
@@ -298,7 +301,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		slog.InfoContext(ctx, "piper public key auth checking for box by name", "component", "piper-plugin", "username", username, "user_id", userID)
 		if box := p.server.FindBoxByNameForUser(ctx, userID, username); box != nil {
 			slog.InfoContext(ctx, "piper public key auth found box by name, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "ctrhost", box.Ctrhost, "port", box.SSHPort)
-			return p.handleBoxAccess(box, userID, conn.UniqueID())
+			return p.handleBoxAccess(ctx, box, userID, conn.UniqueID())
 		}
 
 		slog.InfoContext(ctx, "No box found with name", "component", "piper-plugin", "username", username, "user_id", userID)
@@ -311,7 +314,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	slog.InfoContext(ctx, "piper public key auth checking for box by shard", "component", "piper-plugin", "user_id", userID, "local_address", localAddress)
 	if box := p.server.FindBoxByIPShard(ctx, userID, localAddress); box != nil {
 		slog.InfoContext(ctx, "piper pk auth found box by IP shard, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "local_address", localAddress)
-		return p.handleBoxAccess(box, userID, conn.UniqueID())
+		return p.handleBoxAccess(ctx, box, userID, conn.UniqueID())
 	}
 
 	// For all other cases (interactive shell, registration, etc.),
@@ -326,7 +329,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	// 4. When exed sees the proxy key, it can look up the original user's key
 	// 5. Mappings expire after a few minutes to prevent memory leaks
 
-	proxyPrivateKeyPEM, proxyFingerprint, err := p.generateEphemeralProxyKey(key, localAddress)
+	proxyPrivateKeyPEM, proxyFingerprint, err := p.generateEphemeralProxyKey(ctx, key, localAddress)
 	if err != nil {
 		slog.DebugContext(ctx, "Failed to generate ephemeral proxy key", "component", "piper-plugin", "error", err)
 		return nil, fmt.Errorf("failed to generate ephemeral proxy key: %v", err)
@@ -350,8 +353,8 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 }
 
 // handleBoxAccess sets up routing to a specific box container
-func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*libplugin.Upstream, error) {
-	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
+func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userID, connID string) (*libplugin.Upstream, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	slog.DebugContext(ctx, "handleBoxAccess for box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "user_id", userID, "conn_id", connID)
@@ -389,7 +392,7 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 				slog.InfoContext(ctx, "Instance not running, routing to exed for error display",
 					"component", "piper-plugin", "box_name", box.Name, "state", instanceResp.Instance.State.String())
 
-				proxyPrivateKeyPEM, _, err := p.generateEphemeralProxyKey(nil, "127.0.0.1")
+				proxyPrivateKeyPEM, _, err := p.generateEphemeralProxyKey(ctx, nil, "127.0.0.1")
 				if err != nil {
 					return nil, fmt.Errorf("failed to generate proxy key: %v", err)
 				}
@@ -447,7 +450,7 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 // allowing exed to later identify the original user when it sees the proxy key.
 //
 // Returns: (privateKeyPEM, proxyKeyFingerprint, error)
-func (p *PiperPlugin) generateEphemeralProxyKey(originalUserPublicKey []byte, localAddress string) (string, string, error) {
+func (p *PiperPlugin) generateEphemeralProxyKey(ctx context.Context, originalUserPublicKey []byte, localAddress string) (string, string, error) {
 	// Generate a new ED25519 private key for this connection (simpler and more reliable than RSA)
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -469,14 +472,14 @@ func (p *PiperPlugin) generateEphemeralProxyKey(originalUserPublicKey []byte, lo
 	}
 
 	proxyFingerprint := p.server.GetPublicKeyFingerprint(signer.PublicKey())
-	slog.Debug("Generated proxy key", "component", "piper-plugin", "key_type", signer.PublicKey().Type(), "fingerprint_preview", proxyFingerprint[:16])
+	slog.DebugContext(ctx, "Generated proxy key", "component", "piper-plugin", "key_type", signer.PublicKey().Type(), "fingerprint_preview", proxyFingerprint[:16])
 
 	// Validate the generated key by trying to parse it again
 	if _, err := ssh.ParsePrivateKey(privateKeyPEMBytes); err != nil {
-		slog.Error("Generated private key is invalid", "component", "piper-plugin", "error", err)
+		slog.ErrorContext(ctx, "Generated private key is invalid", "component", "piper-plugin", "error", err)
 		return "", "", fmt.Errorf("generated invalid private key: %v", err)
 	}
-	slog.Debug("Private key validation successful", "component", "piper-plugin")
+	slog.DebugContext(ctx, "Private key validation successful", "component", "piper-plugin")
 
 	// Store the mapping: proxy key fingerprint -> original user public key + local address
 	p.proxyKeyMutex.Lock()
@@ -487,7 +490,7 @@ func (p *PiperPlugin) generateEphemeralProxyKey(originalUserPublicKey []byte, lo
 	}
 	p.proxyKeyMutex.Unlock()
 
-	slog.Debug("Stored ephemeral proxy mapping", "component", "piper-plugin", "proxy_fingerprint", proxyFingerprint, "user_key_length_bytes", len(originalUserPublicKey))
+	slog.DebugContext(ctx, "Stored ephemeral proxy mapping", "component", "piper-plugin", "proxy_fingerprint", proxyFingerprint, "user_key_length_bytes", len(originalUserPublicKey))
 
 	return privateKeyPEM, proxyFingerprint, nil
 }
@@ -518,33 +521,34 @@ func (p *PiperPlugin) lookupOriginalUserKey(proxyKeyFingerprint string) ([]byte,
 // handleVerifyHostKey validates the host key for container connections
 // It uses the connection-scoped expected host key stored during connection setup
 func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname, netaddr string, key []byte) error {
-	slog.Debug("VerifyHostKey called", "component", "piper-plugin", "hostname", hostname, "netaddr", netaddr, "key_length", len(key))
+	ctx := tracing.ContextWithTraceID(context.Background(), tracing.GenerateTraceID())
+	slog.DebugContext(ctx, "VerifyHostKey called", "component", "piper-plugin", "hostname", hostname, "netaddr", netaddr, "key_length", len(key))
 
 	// Convert the received key to SSH authorized_keys format for comparison
 	pubKey, err := ssh.ParsePublicKey(key)
 	if err != nil {
-		slog.Debug("Failed to parse received host key", "component", "piper-plugin", "hostname", hostname, "error", err)
+		slog.DebugContext(ctx, "Failed to parse received host key", "component", "piper-plugin", "hostname", hostname, "error", err)
 		return fmt.Errorf("invalid host key format: %w", err)
 	}
 	receivedKey := string(ssh.MarshalAuthorizedKey(pubKey))
-	slog.Debug("Received host key", "component", "piper-plugin", "hostname", hostname, "received_key", receivedKey[:50]+"...")
+	slog.DebugContext(ctx, "Received host key", "component", "piper-plugin", "hostname", hostname, "received_key", receivedKey[:50]+"...")
 
 	// Check if this is a box connection by looking up stored expected keys
 	connID := conn.UniqueID()
 	expectedKey, found := p.getExpectedHostKeyForConnection(connID)
-	slog.Debug("Expected key lookup", "component", "piper-plugin", "conn_id", connID, "found", found)
+	slog.DebugContext(ctx, "Expected key lookup", "component", "piper-plugin", "conn_id", connID, "found", found)
 
 	if found {
 		// This is a box connection with a stored expected key
 		if strings.TrimSpace(expectedKey) == strings.TrimSpace(receivedKey) {
-			slog.Debug("Host key validation successful for box",
+			slog.DebugContext(ctx, "Host key validation successful for box",
 				"component", "piper-plugin",
 				"conn_id", connID, "hostname", hostname,
 			)
 			return nil
 		}
 		// Key mismatch for box connection
-		slog.Debug("Host key validation failed - box key mismatch",
+		slog.DebugContext(ctx, "Host key validation failed - box key mismatch",
 			"component", "piper-plugin",
 			"conn_id", connID, "hostname", hostname,
 			"expected_key", expectedKey, "received_key", receivedKey,
@@ -556,10 +560,10 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 	// Validate against the server's host key from the database
 	serverHostKey, serverCert, err := p.getServerHostKey()
 	if err != nil {
-		slog.Debug("Failed to get server host key", "component", "piper-plugin", "error", err)
+		slog.DebugContext(ctx, "Failed to get server host key", "component", "piper-plugin", "error", err)
 		return fmt.Errorf("host key validation failed for %s", hostname)
 	}
-	slog.Debug("Got server host key", "component", "piper-plugin", "hostname", hostname, "server_key", serverHostKey[:50]+"...")
+	slog.DebugContext(ctx, "Got server host key", "component", "piper-plugin", "hostname", hostname, "server_key", serverHostKey[:50]+"...")
 
 	trimmedReceived := strings.TrimSpace(receivedKey)
 	trimmedExpectedKey := strings.TrimSpace(serverHostKey)
@@ -568,7 +572,7 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 		trimmedExpectedCert := strings.TrimSpace(*serverCert)
 		if trimmedExpectedCert != "" {
 			if trimmedExpectedCert == trimmedReceived {
-				slog.Debug("Host cert validation successful for exed server (cert match)",
+				slog.DebugContext(ctx, "Host cert validation successful for exed server (cert match)",
 					"component", "piper-plugin", "hostname", hostname)
 				return nil
 			}
@@ -579,7 +583,7 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 					expectedKeyPub, _, _, _, err = ssh.ParseAuthorizedKey([]byte(trimmedExpectedKey + "\n"))
 				}
 				if err == nil && bytes.Equal(cert.Key.Marshal(), expectedKeyPub.Marshal()) {
-					slog.Debug("Host cert validation successful for exed server (underlying key match)",
+					slog.DebugContext(ctx, "Host cert validation successful for exed server (underlying key match)",
 						"component", "piper-plugin", "hostname", hostname, "cert_key_id", cert.KeyId)
 					return nil
 				}
@@ -588,13 +592,13 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 	}
 
 	if trimmedExpectedKey == trimmedReceived {
-		slog.Debug("Host key validation successful for exed server",
+		slog.DebugContext(ctx, "Host key validation successful for exed server",
 			"component", "piper-plugin", "hostname", hostname)
 		return nil
 	}
 
 	// Neither box key nor server key matched
-	slog.Debug("Host key validation failed - no matching key found",
+	slog.DebugContext(ctx, "Host key validation failed - no matching key found",
 		"component", "piper-plugin", "hostname", hostname)
 	return fmt.Errorf("host key validation failed for %s", hostname)
 } // cleanupExpiredMappings runs periodically to remove expired proxy key mappings and keyboard interactive tracking

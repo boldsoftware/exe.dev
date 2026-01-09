@@ -250,7 +250,7 @@ func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, us
 			if errors.Is(err, context.Canceled) || errors.Is(err, errBodyNotReplayable) {
 				return
 			}
-			m.log.Error("anthropic api gateway", "error", err)
+			m.log.ErrorContext(r.Context(), "anthropic api gateway", "error", err)
 			m.httpError(w, r, "anthropic api gateway error: "+err.Error(), http.StatusBadGateway)
 		},
 	}
@@ -275,7 +275,7 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userI
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.Out.Header.Del("Authorization") // Remove our bearer token so we don't leak them to the origin server.
-			m.log.Info("ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
+			m.log.InfoContext(r.In.Context(), "ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
 			r.Out.Header.Set("Authorization", "Bearer "+m.apiKeys.OpenAI)
 			r.Out.Header.Set("X-API-Key", m.apiKeys.OpenAI)
 			r.Out.Host = "api.openai.com"
@@ -288,7 +288,7 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userI
 			if errors.Is(err, context.Canceled) || errors.Is(err, errBodyNotReplayable) {
 				return
 			}
-			m.log.Error("openai api gateway", "error", err)
+			m.log.ErrorContext(r.Context(), "openai api gateway", "error", err)
 			m.httpError(w, r, "openai api gateway error: "+err.Error(), http.StatusBadGateway)
 		},
 	}
@@ -313,7 +313,7 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, us
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.Out.Header.Del("Authorization") // Remove our bearer token so we don't leak them to the origin server.
-			m.log.Info("ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
+			m.log.InfoContext(r.In.Context(), "ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
 			r.Out.Header.Set("Authorization", "Bearer "+m.apiKeys.Fireworks)
 			r.Out.Header.Set("X-API-Key", m.apiKeys.Fireworks)
 			r.Out.Host = "api.fireworks.ai"
@@ -326,7 +326,7 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, us
 			if errors.Is(err, context.Canceled) || errors.Is(err, errBodyNotReplayable) {
 				return
 			}
-			m.log.Error("fireworks api gateway", "error", err)
+			m.log.ErrorContext(r.Context(), "fireworks api gateway", "error", err)
 			m.httpError(w, r, "fireworks api gateway error: "+err.Error(), http.StatusBadGateway)
 		},
 	}
