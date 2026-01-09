@@ -221,7 +221,14 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 		usageDebit.Usage = *ui.Usage
 		usageDebit.Model = ui.Model
 		usageDebit.MessageID = ui.ID
-		m.log.InfoContext(ctx, "debitResponse", "anthropicResponseUsageInfo", ui)
+		m.log.InfoContext(ctx, "debitResponse",
+			"message_id", ui.ID,
+			"model", ui.Model,
+			"input_tokens", ui.Usage.InputTokens,
+			"output_tokens", ui.Usage.OutputTokens,
+			"cache_creation_tokens", ui.Usage.CacheCreationInputTokens,
+			"cache_read_tokens", ui.Usage.CacheReadInputTokens,
+		)
 	case "openai", "fireworks":
 		if len(data) == 0 {
 			return fmt.Errorf("empty openai response, skipping accounting")
@@ -256,7 +263,12 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 		usageDebit.Usage = usage
 		usageDebit.Model = model
 		usageDebit.MessageID = oi.ID
-		m.log.InfoContext(ctx, "debitResponse", "openaiResponseUsageInfo", oi)
+		m.log.InfoContext(ctx, "debitResponse",
+			"message_id", oi.ID,
+			"model", model,
+			"input_tokens", promptTokens,
+			"output_tokens", completionTokens,
+		)
 
 	default:
 		m.log.ErrorContext(ctx, "accountingTransport.processResponseData: unknown API type", "apiType", m.apiType)
@@ -327,7 +339,14 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 		usageDebit.Usage = *ui.Usage
 		usageDebit.Model = ui.Model
 		usageDebit.MessageID = ui.ID
-		m.log.InfoContext(ctx, "debitResponse", "anthropicResponseUsageInfo", ui)
+		m.log.InfoContext(ctx, "debitResponse",
+			"message_id", ui.ID,
+			"model", ui.Model,
+			"input_tokens", ui.Usage.InputTokens,
+			"output_tokens", ui.Usage.OutputTokens,
+			"cache_creation_tokens", ui.Usage.CacheCreationInputTokens,
+			"cache_read_tokens", ui.Usage.CacheReadInputTokens,
+		)
 	case "openai", "fireworks":
 		if len(data) == 0 {
 			return nil
@@ -357,7 +376,12 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 		usageDebit.Usage = usage
 		usageDebit.Model = model
 		usageDebit.MessageID = oi.ID
-		m.log.InfoContext(ctx, "debitResponse", "openaiResponseUsageInfo", oi)
+		m.log.InfoContext(ctx, "debitResponse",
+			"message_id", oi.ID,
+			"model", model,
+			"input_tokens", promptTokens,
+			"output_tokens", completionTokens,
+		)
 
 	default:
 		return nil
