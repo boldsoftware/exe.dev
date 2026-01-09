@@ -7,19 +7,19 @@ DB_PATH=""
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --yes|-y)
-            YES_FLAG=true
-            shift
-            ;;
-        -*)
-            echo "Unknown option: $1" >&2
-            echo "Usage: $0 [--yes] <path-to-exe.db>" >&2
-            exit 1
-            ;;
-        *)
-            DB_PATH="$1"
-            shift
-            ;;
+    --yes | -y)
+        YES_FLAG=true
+        shift
+        ;;
+    -*)
+        echo "Unknown option: $1" >&2
+        echo "Usage: $0 [--yes] <path-to-exe.db>" >&2
+        exit 1
+        ;;
+    *)
+        DB_PATH="$1"
+        shift
+        ;;
     esac
 done
 
@@ -69,16 +69,16 @@ END {
         read -p "[y/N/q] " -n 1 -r
         echo
         case $REPLY in
-            y|Y)
-                eval "$cmd"
-                ;;
-            q|Q)
-                echo "Aborted."
-                exit 0
-                ;;
-            *)
-                echo "Skipped."
-                ;;
+        y | Y)
+            eval "$cmd"
+            ;;
+        q | Q)
+            echo "Aborted."
+            exit 0
+            ;;
+        *)
+            echo "Skipped."
+            ;;
         esac
     fi
 done
