@@ -659,6 +659,22 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
         return;
       }
 
+      // Intercept PageUp/PageDown to scroll the diff editor instead of background
+      if (e.key === "PageUp" || e.key === "PageDown") {
+        if (editorRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          const modifiedEditor = editorRef.current.getModifiedEditor();
+          // Trigger the editor's built-in page up/down action
+          modifiedEditor.trigger(
+            "keyboard",
+            e.key === "PageUp" ? "cursorPageUp" : "cursorPageDown",
+            null,
+          );
+        }
+        return;
+      }
+
       // Comment mode navigation shortcuts (only when comment dialog is closed)
       if (mode === "comment" && !showCommentDialog) {
         if (e.key === ".") {
