@@ -113,7 +113,6 @@ func (pc *pooledConn) release() {
 		panic(fmt.Sprintf("pooledConn.release: negative active=%d", pc.active))
 	}
 
-	slog.Debug("closing SSH connection after last active connection released", "key", pc.key.String())
 	if err := pc.client.Close(); err != nil {
 		pc.log.Warn("error closing SSH connection", "key", pc.key.String(), "error", err)
 	}

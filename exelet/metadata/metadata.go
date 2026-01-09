@@ -43,10 +43,9 @@ import (
 	"strings"
 	"syscall"
 
+	"exe.dev/tracing"
 	"github.com/prometheus/client_golang/prometheus"
 	sloghttp "github.com/samber/slog-http"
-
-	"exe.dev/tracing"
 )
 
 const (
@@ -305,6 +304,8 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 			pr.Out.Host = s.exedTargetURL.Host
 			// Add header to identify the box making the request
 			pr.Out.Header.Set("X-Exedev-Box", boxName)
+			// Propagate trace_id to downstream service
+			tracing.SetTraceIDHeader(pr.In.Context(), pr.Out.Header)
 		},
 		ModifyResponse: func(resp *http.Response) error {
 			s.gatewayRequests.WithLabelValues("success").Inc()

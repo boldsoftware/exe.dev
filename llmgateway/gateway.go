@@ -238,7 +238,6 @@ func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, us
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.Out.Header.Del("Authorization") // Remove our bearer token so we don't leak them to the origin server.
-			m.log.Info("ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
 			r.Out.Header.Set("X-API-Key", m.apiKeys.Anthropic)
 			r.Out.Host = "api.anthropic.com"
 			r.Out.URL.Scheme = "https"

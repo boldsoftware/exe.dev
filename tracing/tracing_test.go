@@ -276,3 +276,48 @@ func TestHTTPMiddleware_TraceIDAvailableForLogging(t *testing.T) {
 		t.Errorf("Log output missing message. Got: %s", output)
 	}
 }
+
+func TestHTTPMiddleware_ReadsTraceIDFromHeader(t *testing.T) {
+	expectedTraceID := "header-trace-id-12345678"
+	var capturedTraceID string
+
+	handler := HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedTraceID = TraceIDFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set(TraceIDHeader, expectedTraceID)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if capturedTraceID != expectedTraceID {
+		t.Errorf("HTTPMiddleware did not read trace_id from header: got %q, want %q", capturedTraceID, expectedTraceID)
+	}
+}
+
+func TestSetTraceIDHeader(t *testing.T) {
+	traceID := "test-trace-id-for-header"
+	ctx := ContextWithTraceID(context.Background(), traceID)
+
+	header := make(http.Header)
+	SetTraceIDHeader(ctx, header)
+
+	got := header.Get(TraceIDHeader)
+	if got != traceID {
+		t.Errorf("SetTraceIDHeader() set header to %q, want %q", got, traceID)
+	}
+}
+
+func TestSetTraceIDHeader_NoTraceID(t *testing.T) {
+	ctx := context.Background()
+
+	header := make(http.Header)
+	SetTraceIDHeader(ctx, header)
+
+	got := header.Get(TraceIDHeader)
+	if got != "" {
+		t.Errorf("SetTraceIDHeader() should not set header when no trace_id in context, got %q", got)
+	}
+}
