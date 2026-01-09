@@ -71,7 +71,7 @@ func (m *ResourceManager) initControllers(ctx context.Context) {
 // groupID is used for per-account cgroup grouping (empty string uses default group).
 // allocatedMemoryBytes is the VM's allocated memory size for calculating memory.high.
 // If 0, memory.high is not set for LOW priority VMs.
-func (m *ResourceManager) applyPriority(ctx context.Context, id string, groupID string, priority api.VMPriority, allocatedMemoryBytes uint64) error {
+func (m *ResourceManager) applyPriority(ctx context.Context, id, groupID string, priority api.VMPriority, allocatedMemoryBytes uint64) error {
 	// Get VM PID
 	pid, err := m.getVMPID(ctx, id)
 	if err != nil {
@@ -171,7 +171,7 @@ func (m *ResourceManager) ensureAccountSlice(ctx context.Context, groupID string
 // ensureCgroup ensures the cgroup exists for the VM and the process is in it.
 // groupID is used for per-account cgroup grouping (empty string uses default group).
 // Controllers should already be enabled via initControllers() at startup.
-func (m *ResourceManager) ensureCgroup(ctx context.Context, id string, groupID string, pid int) (string, error) {
+func (m *ResourceManager) ensureCgroup(ctx context.Context, id, groupID string, pid int) (string, error) {
 	// Ensure account slice exists first
 	accountSlicePath, err := m.ensureAccountSlice(ctx, groupID)
 	if err != nil {
@@ -315,7 +315,7 @@ func (m *ResourceManager) enableController(cgroupPath, controller string) error 
 }
 
 // removeCgroup removes the cgroup for a VM and cleans up empty account slices.
-func (m *ResourceManager) removeCgroup(ctx context.Context, id string, groupID string) error {
+func (m *ResourceManager) removeCgroup(ctx context.Context, id, groupID string) error {
 	if groupID == "" {
 		groupID = defaultGroupID
 	}
