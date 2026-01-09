@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/netip"
 	"strings"
 	"time"
 
+	"exe.dev/domz"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"github.com/prometheus/client_golang/prometheus"
@@ -123,32 +123,21 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.log.InfoContext(r.Context(), "llmGateway.ServeHTTP", "r.URL.Path", r.URL.Path)
 
 	// Authenticate request
-	// The request must have "X-Exedev-Box: <boxname>" header,
-	// AND must be in dev mode OR coming via our tailscale IP.
-	boxName := r.Header.Get("X-Exedev-Box")
-	if boxName == "" {
-		m.httpError(w, r, "X-Exedev-Box header required", http.StatusUnauthorized)
+	// The request must come from a Tailscale IP (or be in devMode),
+	// AND must have "X-Exedev-Box: <boxname>" header.
+
+	host := domz.StripPort(r.RemoteAddr)
+	remoteIP, err := netip.ParseAddr(host)
+	if !m.devMode && (err != nil || !tsaddr.IsTailscaleIP(remoteIP)) {
+		// This is super sketchy.
+		// Someone on the public internet is trying to access our gateway.
+		m.httpError(w, r, "hey go away", http.StatusUnauthorized)
 		return
 	}
 
-	// Check if request is from dev mode or tailscale
-	remoteAddr := r.RemoteAddr
-	host, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		host = remoteAddr
-	}
-	remoteIP, err := netip.ParseAddr(host)
-
-	allowXExedevBox := false
-	if err == nil {
-		// Allow if in dev mode or coming from tailscale IP
-		if m.devMode || tsaddr.IsTailscaleIP(remoteIP) {
-			allowXExedevBox = true
-		}
-	}
-
-	if !allowXExedevBox {
-		m.httpError(w, r, "X-Exedev-Box header not allowed from this IP", http.StatusUnauthorized)
+	boxName := r.Header.Get("X-Exedev-Box")
+	if boxName == "" {
+		m.httpError(w, r, "X-Exedev-Box header required", http.StatusUnauthorized)
 		return
 	}
 

@@ -183,7 +183,7 @@ func TestGateway_ProxyFunctionality_HeaderFiltering(t *testing.T) {
 func TestGateway_ServeHTTP_AuthenticationFailure(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
 
-	// Create request without authentication
+	// Create request without authentication (from non-tailscale IP)
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
 		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -196,9 +196,9 @@ func TestGateway_ServeHTTP_AuthenticationFailure(t *testing.T) {
 		t.Errorf("Expected status 401, got %d", rr.Code)
 	}
 
-	// Should contain auth error message
-	if !strings.Contains(rr.Body.String(), "X-Exedev-Box header required") {
-		t.Errorf("Expected X-Exedev-Box header required error in response, got: %s", rr.Body.String())
+	// Should contain auth error message (tailscale IP is checked first)
+	if !strings.Contains(rr.Body.String(), "hey go away") {
+		t.Errorf("Expected 'hey go away' error in response, got: %s", rr.Body.String())
 	}
 }
 
@@ -240,12 +240,12 @@ func TestGateway_ServeHTTP_XExedevBoxAuthenticationInProduction(t *testing.T) {
 	rr := httptest.NewRecorder()
 	gateway.ServeHTTP(rr, req)
 
-	// Should return 401 with rejection message
+	// Should return 401 with rejection message (tailscale IP is checked first)
 	if rr.Code != http.StatusUnauthorized {
-		t.Errorf("Expected status 401 for X-Exedev-Box from non-tailscale IP in production mode, got %d", rr.Code)
+		t.Errorf("Expected status 401 for request from non-tailscale IP in production mode, got %d", rr.Code)
 	}
-	if !strings.Contains(rr.Body.String(), "X-Exedev-Box header not allowed") {
-		t.Errorf("Expected rejection message for X-Exedev-Box, got: %s", rr.Body.String())
+	if !strings.Contains(rr.Body.String(), "hey go away") {
+		t.Errorf("Expected 'hey go away' error, got: %s", rr.Body.String())
 	}
 }
 
