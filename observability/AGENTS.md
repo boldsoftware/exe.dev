@@ -1,3 +1,10 @@
+## Visualization Preferences
+
+Generally, prefer time series widgets.
+
+All dashboards should typically have stage filters. Use additional
+filters (like role or instance) as applicable.
+
 ## Prometheus Access
 
 Prometheus is accessible at `http://mon:9090`. You can query it directly:
