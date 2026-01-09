@@ -682,6 +682,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			RootSupport            bool    `json:"root_support"`
 			CreatedForLoginWithExe bool    `json:"created_for_login_with_exe"`
 			AccountID              string  `json:"account_id,omitempty"`
+			BillingURL             string  `json:"billing_url,omitempty"`
 			CreditAvailableUSD     float64 `json:"credit_available_usd"`
 			CreditEffectiveUSD     float64 `json:"credit_effective_usd"`
 			CreditMaxUSD           float64 `json:"credit_max_usd"`
@@ -695,13 +696,19 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			if u.CreatedAt != nil {
 				createdAt = u.CreatedAt.Format(time.RFC3339)
 			}
+			acctID := accountByUser[u.UserID]
+			var billingURL string
+			if acctID != "" {
+				billingURL = s.billing.DashboardURL(acctID)
+			}
 			ui := userInfo{
 				UserID:                 u.UserID,
 				Email:                  u.Email,
 				CreatedAt:              createdAt,
 				RootSupport:            u.RootSupport == 1,
 				CreatedForLoginWithExe: u.CreatedForLoginWithExe,
-				AccountID:              accountByUser[u.UserID],
+				AccountID:              acctID,
+				BillingURL:             billingURL,
 			}
 			if credit, ok := creditByUser[u.UserID]; ok {
 				ui.CreditAvailableUSD = credit.AvailableCredit
@@ -732,6 +739,9 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!doctype html>
 <html><head><title>Users</title>
+<link rel="stylesheet" href="/static/datatables.min.css">
+<script src="/static/jquery.min.js"></script>
+<script src="/static/datatables.min.js"></script>
 <style>
 .toggle-btn { padding: 4px 8px; cursor: pointer; border-radius: 3px; border: 1px solid #ccc; font-size: 11px; }
 .toggle-btn.enabled { background: #28a745; color: white; border-color: #28a745; }
@@ -744,13 +754,10 @@ dialog button { margin-right: 10px; padding: 8px 16px; }
 dialog .confirm-btn { background: #28a745; color: white; border: none; cursor: pointer; }
 dialog .confirm-btn:disabled { background: #ccc; cursor: not-allowed; }
 dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: pointer; }
-#usersTable { border-collapse: collapse; width: 100%%; }
-#usersTable th, #usersTable td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 13px; }
-#usersTable th { background: #f5f5f5; cursor: pointer; user-select: none; }
-#usersTable th:hover { background: #e8e8e8; }
-#usersTable tr:hover { background: #f9f9f9; }
-#searchBox { padding: 8px; margin-bottom: 10px; width: 300px; }
-.sort-indicator { margin-left: 4px; }
+#usersTable { width: 100%%; }
+#usersTable td, #usersTable th { font-size: 13px; }
+#usersTable thead tr.filters th { padding: 4px; }
+#usersTable thead tr.filters input { width: 100%%; box-sizing: border-box; font-size: 11px; padding: 4px; }
 .credit-cell { text-align: right; font-family: monospace; }
 .negative { color: red; }
 </style>
@@ -758,108 +765,41 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 <h1>Users</h1>
 <p><a href="/debug">/debug</a> | <a href="/debug/users?format=json">json</a></p>
 <p>Regular users: %d | Login-with-exe users: %d | Total: %d</p>
-<p><input type="text" id="searchBox" placeholder="Search by email or user ID..."></p>
-`, regularCount, loginWithExeCount, len(users))
 
-	if len(users) == 0 {
-		fmt.Fprintf(w, "<p>No users found.</p>\n")
-	} else {
-		fmt.Fprintf(w, "<table id='usersTable'>\n")
-		fmt.Fprintf(w, "<thead><tr>")
-		fmt.Fprintf(w, "<th data-col='email'>Email</th>")
-		fmt.Fprintf(w, "<th data-col='userid'>User ID</th>")
-		fmt.Fprintf(w, "<th data-col='created'>Created At</th>")
-		fmt.Fprintf(w, "<th data-col='login'>Login-only</th>")
-		fmt.Fprintf(w, "<th data-col='billing'>Billing</th>")
-		fmt.Fprintf(w, "<th data-col='credit'>DB Credit ($)</th>")
-		fmt.Fprintf(w, "<th data-col='effective'>Effective ($)</th>")
-		fmt.Fprintf(w, "<th data-col='maxcredit'>Max ($)</th>")
-		fmt.Fprintf(w, "<th data-col='refresh'>Refresh/hr ($)</th>")
-		fmt.Fprintf(w, "<th data-col='totalused'>Total Used ($)</th>")
-		fmt.Fprintf(w, "<th data-col='lastrefresh'>Last Refresh</th>")
-		fmt.Fprintf(w, "<th data-col='root'>Root Support</th>")
-		fmt.Fprintf(w, "</tr></thead>\n<tbody>\n")
-		for _, u := range users {
-			createdAt := "-"
-			if u.CreatedAt != nil {
-				createdAt = u.CreatedAt.Format(time.RFC3339)
-			}
-			rootSupportStatus := "No"
-			btnClass := "disabled"
-			btnText := "Enable"
-			if u.RootSupport == 1 {
-				rootSupportStatus = "Yes"
-				btnClass = "enabled"
-				btnText = "Disable"
-			}
-			loginWithExe := ""
-			if u.CreatedForLoginWithExe {
-				loginWithExe = "✓"
-			}
-			billingCell := "-"
-			if acctID, ok := accountByUser[u.UserID]; ok {
-				billingCell = fmt.Sprintf("<a href='%s' target='_blank'>%s</a>",
-					html.EscapeString(s.billing.DashboardURL(acctID)),
-					html.EscapeString(acctID))
-			}
-			// Credit info
-			creditAvail := "-"
-			creditEffective := "-"
-			creditMax := "-"
-			creditRefresh := "-"
-			creditTotalUsed := "-"
-			lastRefresh := "-"
-			creditClass := "credit-cell"
-			effectiveClass := "credit-cell"
-			var availUSD, maxUSD, refreshUSD float64
-			if credit, ok := creditByUser[u.UserID]; ok {
-				availUSD = credit.AvailableCredit
-				maxUSD = credit.MaxCredit
-				refreshUSD = credit.RefreshPerHour
-				creditAvail = fmt.Sprintf("%.2f", availUSD)
-				creditMax = fmt.Sprintf("%.2f", maxUSD)
-				creditRefresh = fmt.Sprintf("%.2f", refreshUSD)
-				creditTotalUsed = fmt.Sprintf("%.2f", credit.TotalUsed)
-				lastRefresh = credit.LastRefreshAt.Format(time.RFC3339)
-				// Calculate effective credit (what it would be if refreshed now)
-				effectiveUSD, _ := llmgateway.CalculateRefreshedCredit(
-					credit.AvailableCredit,
-					credit.MaxCredit,
-					credit.RefreshPerHour,
-					credit.LastRefreshAt,
-					time.Now(),
-				)
-				creditEffective = fmt.Sprintf("%.2f", effectiveUSD)
-				if availUSD < 0 {
-					creditClass = "credit-cell negative"
-				}
-				if effectiveUSD < 0 {
-					effectiveClass = "credit-cell negative"
-				}
-			}
-			fmt.Fprintf(w, "<tr data-email='%s' data-userid='%s'>\n",
-				html.EscapeString(u.Email), html.EscapeString(u.UserID))
-			fmt.Fprintf(w, "<td>%s</td>", html.EscapeString(u.Email))
-			fmt.Fprintf(w, "<td>%s</td>", html.EscapeString(u.UserID))
-			fmt.Fprintf(w, "<td>%s</td>", html.EscapeString(createdAt))
-			fmt.Fprintf(w, "<td>%s</td>", loginWithExe)
-			fmt.Fprintf(w, "<td>%s</td>", billingCell)
-			fmt.Fprintf(w, "<td class='%s'>%s <button class='edit-btn' data-userid='%s' data-avail='%f' data-max='%f' data-refresh='%f'>✎</button></td>",
-				creditClass, creditAvail, html.EscapeString(u.UserID), availUSD, maxUSD, refreshUSD)
-			fmt.Fprintf(w, "<td class='%s'>%s</td>", effectiveClass, creditEffective)
-			fmt.Fprintf(w, "<td class='credit-cell'>%s</td>", creditMax)
-			fmt.Fprintf(w, "<td class='credit-cell'>%s</td>", creditRefresh)
-			fmt.Fprintf(w, "<td class='credit-cell'>%s</td>", creditTotalUsed)
-			fmt.Fprintf(w, "<td class='credit-cell'>%s</td>", html.EscapeString(lastRefresh))
-			fmt.Fprintf(w, "<td>%s <button class='toggle-btn %s' data-email='%s' data-userid='%s' data-enabled='%v'>%s</button></td>",
-				html.EscapeString(rootSupportStatus), btnClass,
-				html.EscapeString(u.Email), html.EscapeString(u.UserID), u.RootSupport == 1, btnText)
-			fmt.Fprintf(w, "</tr>\n")
-		}
-		fmt.Fprintf(w, "</tbody></table>\n")
-	}
+<table id="usersTable" class="display stripe hover">
+<thead>
+<tr>
+<th>Email</th>
+<th>User ID</th>
+<th>Created At</th>
+<th>Login-only</th>
+<th>Billing</th>
+<th>DB Credit ($)</th>
+<th>Effective ($)</th>
+<th>Max ($)</th>
+<th>Refresh/hr ($)</th>
+<th>Total Used ($)</th>
+<th>Last Refresh</th>
+<th>Root Support</th>
+</tr>
+<tr class="filters">
+<th>Email</th>
+<th>User ID</th>
+<th>Created At</th>
+<th>Login-only</th>
+<th>Billing</th>
+<th>DB Credit ($)</th>
+<th>Effective ($)</th>
+<th>Max ($)</th>
+<th>Refresh/hr ($)</th>
+<th>Total Used ($)</th>
+<th>Last Refresh</th>
+<th>Root Support</th>
+</tr>
+</thead>
+</table>
 
-	fmt.Fprintf(w, `<dialog id="toggleDialog">
+<dialog id="toggleDialog">
 <form method="post" action="/debug/users/toggle-root-support">
 <p id="dialogMessage"></p>
 <p><strong id="emailDisplay"></strong></p>
@@ -875,7 +815,88 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 </p>
 </form>
 </dialog>
+
+<dialog id="creditDialog">
+<form method="post" action="/debug/users/update-credit">
+<h3>Edit Gateway Credit</h3>
+<input type="hidden" name="user_id" id="creditUserIdInput">
+<p><label>Available Credit ($):<br><input type="number" name="available" id="creditAvailInput" step="0.01"></label></p>
+<p><label>Max Credit ($):<br><input type="number" name="max" id="creditMaxInput" step="0.01"></label></p>
+<p><label>Refresh per Hour ($):<br><input type="number" name="refresh" id="creditRefreshInput" step="0.01"></label></p>
+<p>
+<button type="submit" class="confirm-btn">Save</button>
+<button type="button" class="cancel-btn" id="creditCancelBtn">Cancel</button>
+</p>
+</form>
+</dialog>
+
 <script>
+$(document).ready(function() {
+    // Add column filter inputs to header filter row
+    $('#usersTable thead tr.filters th').each(function() {
+        var title = $(this).text();
+        $(this).html('<input type="text" placeholder="' + title + '">');
+    });
+
+    var table = $('#usersTable').DataTable({
+        ajax: {
+            url: '/debug/users?format=json',
+            dataSrc: ''
+        },
+        pageLength: 100,
+        lengthMenu: [[25, 50, 100, 250, -1], [25, 50, 100, 250, "All"]],
+        order: [[2, 'desc']],
+        orderCellsTop: true,
+        columns: [
+            { data: 'email' },
+            { data: 'user_id' },
+            { data: 'created_at', defaultContent: '-' },
+            { data: 'created_for_login_with_exe', render: function(d) { return d ? '✓' : ''; } },
+            { data: null, render: function(d) {
+                if (d.billing_url) return '<a href="' + d.billing_url + '" target="_blank">' + d.account_id + '</a>';
+                return '-';
+            }},
+            { data: null, className: 'credit-cell', render: function(d) {
+                var val = d.credit_available_usd ? d.credit_available_usd.toFixed(2) : '-';
+                var cls = d.credit_available_usd < 0 ? 'negative' : '';
+                return '<span class="' + cls + '">' + val + '</span> ' +
+                    '<button class="edit-btn" data-userid="' + d.user_id + '" ' +
+                    'data-avail="' + (d.credit_available_usd||0) + '" ' +
+                    'data-max="' + (d.credit_max_usd||100) + '" ' +
+                    'data-refresh="' + (d.credit_refresh_per_hr_usd||10) + '">✎</button>';
+            }},
+            { data: 'credit_effective_usd', className: 'credit-cell', render: function(d) {
+                if (!d && d !== 0) return '-';
+                var cls = d < 0 ? 'negative' : '';
+                return '<span class="' + cls + '">' + d.toFixed(2) + '</span>';
+            }},
+            { data: 'credit_max_usd', className: 'credit-cell', render: function(d) { return d ? d.toFixed(2) : '-'; } },
+            { data: 'credit_refresh_per_hr_usd', className: 'credit-cell', render: function(d) { return d ? d.toFixed(2) : '-'; } },
+            { data: 'credit_total_used_usd', className: 'credit-cell', render: function(d) { return d ? d.toFixed(2) : '-'; } },
+            { data: 'credit_last_refresh_at', defaultContent: '-' },
+            { data: null, render: function(d) {
+                var status = d.root_support ? 'Yes' : 'No';
+                var btnClass = d.root_support ? 'enabled' : 'disabled';
+                var btnText = d.root_support ? 'Disable' : 'Enable';
+                return status + ' <button class="toggle-btn ' + btnClass + '" ' +
+                    'data-email="' + d.email + '" data-userid="' + d.user_id + '" ' +
+                    'data-enabled="' + d.root_support + '">' + btnText + '</button>';
+            }}
+        ],
+        initComplete: function() {
+            this.api().columns().every(function(idx) {
+                var column = this;
+                $('input', $('#usersTable thead tr.filters th').eq(idx)).on('keyup change clear', function() {
+                    if (column.search() !== this.value) {
+                        column.search(this.value).draw();
+                    }
+                });
+            });
+        }
+    });
+});
+
+// Toggle root support dialog
 document.addEventListener('click', function(e) {
     if (e.target.classList.contains('toggle-btn')) {
         var email = e.target.dataset.email;
@@ -892,18 +913,15 @@ document.addEventListener('click', function(e) {
         var confirmBtn = document.getElementById('confirmBtn');
 
         if (enabling) {
-            // Enabling: require email confirmation
             document.getElementById('dialogMessage').textContent = 'Enable root support access for this user?';
             confirmSection.style.display = 'block';
             confirmInput.value = '';
             confirmBtn.disabled = true;
         } else {
-            // Disabling: no confirmation needed
             document.getElementById('dialogMessage').textContent = 'Disable root support access for this user?';
             confirmSection.style.display = 'none';
             confirmBtn.disabled = false;
         }
-
         document.getElementById('toggleDialog').showModal();
     }
 });
@@ -914,22 +932,8 @@ document.getElementById('confirmInput').addEventListener('input', function() {
     var expected = document.getElementById('emailDisplay').textContent;
     document.getElementById('confirmBtn').disabled = (this.value !== expected);
 });
-</script>
 
-<dialog id="creditDialog">
-<form method="post" action="/debug/users/update-credit">
-<h3>Edit Gateway Credit</h3>
-<input type="hidden" name="user_id" id="creditUserIdInput">
-<p><label>Available Credit ($):<br><input type="number" name="available" id="creditAvailInput" step="0.01"></label></p>
-<p><label>Max Credit ($):<br><input type="number" name="max" id="creditMaxInput" step="0.01"></label></p>
-<p><label>Refresh per Hour ($):<br><input type="number" name="refresh" id="creditRefreshInput" step="0.01"></label></p>
-<p>
-<button type="submit" class="confirm-btn">Save</button>
-<button type="button" class="cancel-btn" id="creditCancelBtn">Cancel</button>
-</p>
-</form>
-</dialog>
-<script>
+// Credit edit dialog
 document.addEventListener('click', function(e) {
     if (e.target.classList.contains('edit-btn')) {
         var userId = e.target.dataset.userid;
@@ -946,42 +950,9 @@ document.addEventListener('click', function(e) {
 document.getElementById('creditCancelBtn').addEventListener('click', function() {
     document.getElementById('creditDialog').close();
 });
-
-// Sorting
-var sortCol = null, sortAsc = true;
-document.querySelectorAll('#usersTable th').forEach(function(th) {
-    th.addEventListener('click', function() {
-        var col = th.dataset.col;
-        if (sortCol === col) { sortAsc = !sortAsc; } else { sortCol = col; sortAsc = true; }
-        sortTable();
-    });
-});
-function sortTable() {
-    var tbody = document.querySelector('#usersTable tbody');
-    var rows = Array.from(tbody.querySelectorAll('tr'));
-    var colIdx = Array.from(document.querySelectorAll('#usersTable th')).findIndex(function(th) { return th.dataset.col === sortCol; });
-    rows.sort(function(a, b) {
-        var aVal = a.cells[colIdx].textContent.trim();
-        var bVal = b.cells[colIdx].textContent.trim();
-        var aNum = parseFloat(aVal), bNum = parseFloat(bVal);
-        if (!isNaN(aNum) && !isNaN(bNum)) { return sortAsc ? aNum - bNum : bNum - aNum; }
-        return sortAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-    });
-    rows.forEach(function(row) { tbody.appendChild(row); });
-}
-
-// Searching
-document.getElementById('searchBox').addEventListener('input', function() {
-    var query = this.value.toLowerCase();
-    document.querySelectorAll('#usersTable tbody tr').forEach(function(row) {
-        var email = row.dataset.email.toLowerCase();
-        var userid = row.dataset.userid.toLowerCase();
-        row.style.display = (email.includes(query) || userid.includes(query)) ? '' : 'none';
-    });
-});
 </script>
 </body></html>
-`)
+`, regularCount, loginWithExeCount, len(users))
 }
 
 // handleDebugToggleRootSupport toggles the root support flag for a user.
