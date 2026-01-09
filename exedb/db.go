@@ -84,6 +84,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createPendingBoxShareStmt, err = db.PrepareContext(ctx, createPendingBoxShare); err != nil {
 		return nil, fmt.Errorf("error preparing query CreatePendingBoxShare: %w", err)
 	}
+	if q.createUserLLMCreditIfNotExistsStmt, err = db.PrepareContext(ctx, createUserLLMCreditIfNotExists); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateUserLLMCreditIfNotExists: %w", err)
+	}
+	if q.debitUserLLMCreditStmt, err = db.PrepareContext(ctx, debitUserLLMCredit); err != nil {
+		return nil, fmt.Errorf("error preparing query DebitUserLLMCredit: %w", err)
+	}
 	if q.deleteAuthCookieStmt, err = db.PrepareContext(ctx, deleteAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAuthCookie: %w", err)
 	}
@@ -285,6 +291,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserIDBySSHKeyStmt, err = db.PrepareContext(ctx, getUserIDBySSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserIDBySSHKey: %w", err)
 	}
+	if q.getUserLLMCreditStmt, err = db.PrepareContext(ctx, getUserLLMCredit); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserLLMCredit: %w", err)
+	}
 	if q.getUserNewVMCreationDisabledStmt, err = db.PrepareContext(ctx, getUserNewVMCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserNewVMCreationDisabled: %w", err)
 	}
@@ -366,6 +375,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAllAccountsStmt, err = db.PrepareContext(ctx, listAllAccounts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllAccounts: %w", err)
 	}
+	if q.listAllUserLLMCreditsStmt, err = db.PrepareContext(ctx, listAllUserLLMCredits); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllUserLLMCredits: %w", err)
+	}
 	if q.listAllUsersStmt, err = db.PrepareContext(ctx, listAllUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllUsers: %w", err)
 	}
@@ -441,6 +453,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateTagResolutionDigestStmt, err = db.PrepareContext(ctx, updateTagResolutionDigest); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTagResolutionDigest: %w", err)
 	}
+	if q.updateUserLLMAvailableCreditStmt, err = db.PrepareContext(ctx, updateUserLLMAvailableCredit); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateUserLLMAvailableCredit: %w", err)
+	}
+	if q.updateUserLLMCreditSettingsStmt, err = db.PrepareContext(ctx, updateUserLLMCreditSettings); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateUserLLMCreditSettings: %w", err)
+	}
 	if q.upsertHLLSketchStmt, err = db.PrepareContext(ctx, upsertHLLSketch); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertHLLSketch: %w", err)
 	}
@@ -455,6 +473,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertTagResolutionStmt, err = db.PrepareContext(ctx, upsertTagResolution); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertTagResolution: %w", err)
+	}
+	if q.upsertUserLLMCreditStmt, err = db.PrepareContext(ctx, upsertUserLLMCredit); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertUserLLMCredit: %w", err)
 	}
 	if q.userHasAuthCookieStmt, err = db.PrepareContext(ctx, userHasAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query UserHasAuthCookie: %w", err)
@@ -568,6 +589,16 @@ func (q *Queries) Close() error {
 	if q.createPendingBoxShareStmt != nil {
 		if cerr := q.createPendingBoxShareStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing createPendingBoxShareStmt: %w", cerr)
+		}
+	}
+	if q.createUserLLMCreditIfNotExistsStmt != nil {
+		if cerr := q.createUserLLMCreditIfNotExistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createUserLLMCreditIfNotExistsStmt: %w", cerr)
+		}
+	}
+	if q.debitUserLLMCreditStmt != nil {
+		if cerr := q.debitUserLLMCreditStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing debitUserLLMCreditStmt: %w", cerr)
 		}
 	}
 	if q.deleteAuthCookieStmt != nil {
@@ -905,6 +936,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserIDBySSHKeyStmt: %w", cerr)
 		}
 	}
+	if q.getUserLLMCreditStmt != nil {
+		if cerr := q.getUserLLMCreditStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserLLMCreditStmt: %w", cerr)
+		}
+	}
 	if q.getUserNewVMCreationDisabledStmt != nil {
 		if cerr := q.getUserNewVMCreationDisabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserNewVMCreationDisabledStmt: %w", cerr)
@@ -1040,6 +1076,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAllAccountsStmt: %w", cerr)
 		}
 	}
+	if q.listAllUserLLMCreditsStmt != nil {
+		if cerr := q.listAllUserLLMCreditsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllUserLLMCreditsStmt: %w", cerr)
+		}
+	}
 	if q.listAllUsersStmt != nil {
 		if cerr := q.listAllUsersStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllUsersStmt: %w", cerr)
@@ -1165,6 +1206,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateTagResolutionDigestStmt: %w", cerr)
 		}
 	}
+	if q.updateUserLLMAvailableCreditStmt != nil {
+		if cerr := q.updateUserLLMAvailableCreditStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateUserLLMAvailableCreditStmt: %w", cerr)
+		}
+	}
+	if q.updateUserLLMCreditSettingsStmt != nil {
+		if cerr := q.updateUserLLMCreditSettingsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateUserLLMCreditSettingsStmt: %w", cerr)
+		}
+	}
 	if q.upsertHLLSketchStmt != nil {
 		if cerr := q.upsertHLLSketchStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertHLLSketchStmt: %w", cerr)
@@ -1188,6 +1239,11 @@ func (q *Queries) Close() error {
 	if q.upsertTagResolutionStmt != nil {
 		if cerr := q.upsertTagResolutionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertTagResolutionStmt: %w", cerr)
+		}
+	}
+	if q.upsertUserLLMCreditStmt != nil {
+		if cerr := q.upsertUserLLMCreditStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertUserLLMCreditStmt: %w", cerr)
 		}
 	}
 	if q.userHasAuthCookieStmt != nil {
@@ -1264,6 +1320,8 @@ type Queries struct {
 	createBoxShareStmt                     *sql.Stmt
 	createBoxShareLinkStmt                 *sql.Stmt
 	createPendingBoxShareStmt              *sql.Stmt
+	createUserLLMCreditIfNotExistsStmt     *sql.Stmt
+	debitUserLLMCreditStmt                 *sql.Stmt
 	deleteAuthCookieStmt                   *sql.Stmt
 	deleteAuthCookieByValueStmt            *sql.Stmt
 	deleteAuthCookiesByUserIDStmt          *sql.Stmt
@@ -1331,6 +1389,7 @@ type Queries struct {
 	getUserEmailCountForDateStmt           *sql.Stmt
 	getUserIDByEmailStmt                   *sql.Stmt
 	getUserIDBySSHKeyStmt                  *sql.Stmt
+	getUserLLMCreditStmt                   *sql.Stmt
 	getUserNewVMCreationDisabledStmt       *sql.Stmt
 	getUserRootSupportStmt                 *sql.Stmt
 	getUserWithDetailsStmt                 *sql.Stmt
@@ -1358,6 +1417,7 @@ type Queries struct {
 	insertUserStmt                         *sql.Stmt
 	isEmailBouncedStmt                     *sql.Stmt
 	listAllAccountsStmt                    *sql.Stmt
+	listAllUserLLMCreditsStmt              *sql.Stmt
 	listAllUsersStmt                       *sql.Stmt
 	listIPShardsStmt                       *sql.Stmt
 	listIPShardsForUserStmt                *sql.Stmt
@@ -1383,11 +1443,14 @@ type Queries struct {
 	updateProxyBearerTokenLastUsedStmt     *sql.Stmt
 	updateTagResolutionCheckedStmt         *sql.Stmt
 	updateTagResolutionDigestStmt          *sql.Stmt
+	updateUserLLMAvailableCreditStmt       *sql.Stmt
+	updateUserLLMCreditSettingsStmt        *sql.Stmt
 	upsertHLLSketchStmt                    *sql.Stmt
 	upsertIPShardStmt                      *sql.Stmt
 	upsertSSHHostKeyStmt                   *sql.Stmt
 	upsertSSHKeyForUserStmt                *sql.Stmt
 	upsertTagResolutionStmt                *sql.Stmt
+	upsertUserLLMCreditStmt                *sql.Stmt
 	userHasAuthCookieStmt                  *sql.Stmt
 	userIsPayingStmt                       *sql.Stmt
 	userNeedsBillingStmt                   *sql.Stmt
@@ -1417,6 +1480,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createBoxShareStmt:                     q.createBoxShareStmt,
 		createBoxShareLinkStmt:                 q.createBoxShareLinkStmt,
 		createPendingBoxShareStmt:              q.createPendingBoxShareStmt,
+		createUserLLMCreditIfNotExistsStmt:     q.createUserLLMCreditIfNotExistsStmt,
+		debitUserLLMCreditStmt:                 q.debitUserLLMCreditStmt,
 		deleteAuthCookieStmt:                   q.deleteAuthCookieStmt,
 		deleteAuthCookieByValueStmt:            q.deleteAuthCookieByValueStmt,
 		deleteAuthCookiesByUserIDStmt:          q.deleteAuthCookiesByUserIDStmt,
@@ -1484,6 +1549,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserEmailCountForDateStmt:           q.getUserEmailCountForDateStmt,
 		getUserIDByEmailStmt:                   q.getUserIDByEmailStmt,
 		getUserIDBySSHKeyStmt:                  q.getUserIDBySSHKeyStmt,
+		getUserLLMCreditStmt:                   q.getUserLLMCreditStmt,
 		getUserNewVMCreationDisabledStmt:       q.getUserNewVMCreationDisabledStmt,
 		getUserRootSupportStmt:                 q.getUserRootSupportStmt,
 		getUserWithDetailsStmt:                 q.getUserWithDetailsStmt,
@@ -1511,6 +1577,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertUserStmt:                         q.insertUserStmt,
 		isEmailBouncedStmt:                     q.isEmailBouncedStmt,
 		listAllAccountsStmt:                    q.listAllAccountsStmt,
+		listAllUserLLMCreditsStmt:              q.listAllUserLLMCreditsStmt,
 		listAllUsersStmt:                       q.listAllUsersStmt,
 		listIPShardsStmt:                       q.listIPShardsStmt,
 		listIPShardsForUserStmt:                q.listIPShardsForUserStmt,
@@ -1536,11 +1603,14 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateProxyBearerTokenLastUsedStmt:     q.updateProxyBearerTokenLastUsedStmt,
 		updateTagResolutionCheckedStmt:         q.updateTagResolutionCheckedStmt,
 		updateTagResolutionDigestStmt:          q.updateTagResolutionDigestStmt,
+		updateUserLLMAvailableCreditStmt:       q.updateUserLLMAvailableCreditStmt,
+		updateUserLLMCreditSettingsStmt:        q.updateUserLLMCreditSettingsStmt,
 		upsertHLLSketchStmt:                    q.upsertHLLSketchStmt,
 		upsertIPShardStmt:                      q.upsertIPShardStmt,
 		upsertSSHHostKeyStmt:                   q.upsertSSHHostKeyStmt,
 		upsertSSHKeyForUserStmt:                q.upsertSSHKeyForUserStmt,
 		upsertTagResolutionStmt:                q.upsertTagResolutionStmt,
+		upsertUserLLMCreditStmt:                q.upsertUserLLMCreditStmt,
 		userHasAuthCookieStmt:                  q.userHasAuthCookieStmt,
 		userIsPayingStmt:                       q.userIsPayingStmt,
 		userNeedsBillingStmt:                   q.userNeedsBillingStmt,

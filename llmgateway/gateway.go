@@ -89,6 +89,7 @@ type llmGateway struct {
 	devMode       bool      // if true, accept requests from any IP with X-Exedev-Box header
 	testDebitDone chan bool // for testing -- if non-nil, best effort send every time a debit occurs
 	log           *slog.Logger
+	creditMgr     *CreditManager
 }
 
 type APIKeys struct {
@@ -99,11 +100,12 @@ type APIKeys struct {
 
 func NewGateway(log *slog.Logger, db *sqlite.DB, apiKeys APIKeys, devMode bool) *llmGateway {
 	ret := &llmGateway{
-		now:     time.Now,
-		db:      db,
-		apiKeys: apiKeys,
-		devMode: devMode,
-		log:     log,
+		now:       time.Now,
+		db:        db,
+		apiKeys:   apiKeys,
+		devMode:   devMode,
+		log:       log,
+		creditMgr: NewCreditManager(db),
 	}
 	if apiKeys.Anthropic == "" || apiKeys.Fireworks == "" || apiKeys.OpenAI == "" {
 		log.Warn("NewGateway: not all apiKeys are set", "apiKeys", apiKeys)
@@ -174,6 +176,20 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check credit before allowing LLM request
+	if userID != "" {
+		creditInfo, err := m.creditMgr.CheckAndRefreshCredit(r.Context(), userID)
+		if err != nil {
+			if errors.Is(err, ErrInsufficientCredit) {
+				m.log.WarnContext(r.Context(), "insufficient LLM credit", "user_id", userID, "box", boxName, "available_usd", creditInfo.Available)
+				m.httpError(w, r, "insufficient gateway credit", http.StatusPaymentRequired)
+				return
+			}
+			m.httpError(w, r, "failed to check gateway credit", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	endpointPath := strings.TrimPrefix(r.URL.Path, "/_/gateway/")
 	parts := strings.Split(endpointPath, "/")
 	alias := parts[0]
@@ -225,6 +241,7 @@ func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, us
 		db:           m.db,
 		apiType:      "anthropic",
 		log:          m.log,
+		creditMgr:    m.creditMgr,
 		incomingReq:  incomingReq,
 		boxName:      boxName,
 		userID:       userID,
@@ -261,6 +278,7 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userI
 		db:           m.db,
 		apiType:      "openai",
 		log:          m.log,
+		creditMgr:    m.creditMgr,
 		incomingReq:  incomingReq,
 		boxName:      boxName,
 		userID:       userID,
@@ -298,6 +316,7 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, us
 		db:           m.db,
 		apiType:      "fireworks",
 		log:          m.log,
+		creditMgr:    m.creditMgr,
 		incomingReq:  incomingReq,
 		boxName:      boxName,
 		userID:       userID,

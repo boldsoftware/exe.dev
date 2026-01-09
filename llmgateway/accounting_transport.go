@@ -38,6 +38,7 @@ type accountingTransport struct {
 	apiType       string
 	testDebitDone chan bool // for testing -- if non-nil, best effort send every time a debit occurs
 	log           *slog.Logger
+	creditMgr     *CreditManager
 
 	// Request context for adding slog attributes
 	incomingReq *http.Request
@@ -276,6 +277,16 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 	tokensCounter.WithLabelValues("output", model, m.apiType, m.boxName, m.userID).Add(float64(usage.OutputTokens))
 	costUSDCounter.WithLabelValues(model, m.apiType, m.boxName, m.userID).Add(costUSD)
 
+	// Debit credit from user's balance
+	var remainingCredit float64 = -1
+	if m.creditMgr != nil && m.userID != "" {
+		if creditInfo, err := m.creditMgr.DebitCredit(m.incomingReq.Context(), m.userID, costUSD); err != nil {
+			m.log.ErrorContext(m.incomingReq.Context(), "failed to debit LLM credit", "user_id", m.userID, "cost_usd", costUSD, "error", err)
+		} else if creditInfo != nil {
+			remainingCredit = creditInfo.Available
+		}
+	}
+
 	// Add slog attributes to the incoming request for HTTP logging
 	if m.incomingReq != nil {
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.String("llm_model", model))
@@ -286,6 +297,9 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.Uint64("cache_creation_tokens", usage.CacheCreationInputTokens))
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.Uint64("cache_read_tokens", usage.CacheReadInputTokens))
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.Float64("cost_usd", costUSD))
+		if remainingCredit >= 0 {
+			sloghttp.AddCustomAttributes(m.incomingReq, slog.Float64("remaining_credit_usd", remainingCredit))
+		}
 	}
 
 	return nil
@@ -381,6 +395,17 @@ func (m *accountingTransport) WaitAndAddSSEAttributes() {
 	if m.sseUsage != nil && m.incomingReq != nil {
 		usage := m.sseUsage.Usage
 		model := m.sseUsage.Model
+
+		// Debit credit from user's balance
+		var remainingCredit float64 = -1
+		if m.creditMgr != nil && m.userID != "" {
+			if creditInfo, err := m.creditMgr.DebitCredit(m.incomingReq.Context(), m.userID, usage.CostUSD); err != nil {
+				m.log.ErrorContext(m.incomingReq.Context(), "failed to debit LLM credit (SSE)", "user_id", m.userID, "cost_usd", usage.CostUSD, "error", err)
+			} else if creditInfo != nil {
+				remainingCredit = creditInfo.Available
+			}
+		}
+
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.String("llm_model", model))
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.String("vm_name", m.boxName))
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.String("user_id", m.userID))
@@ -389,6 +414,9 @@ func (m *accountingTransport) WaitAndAddSSEAttributes() {
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.Uint64("cache_creation_tokens", usage.CacheCreationInputTokens))
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.Uint64("cache_read_tokens", usage.CacheReadInputTokens))
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.Float64("cost_usd", usage.CostUSD))
+		if remainingCredit >= 0 {
+			sloghttp.AddCustomAttributes(m.incomingReq, slog.Float64("remaining_credit_usd", remainingCredit))
+		}
 	}
 }
 

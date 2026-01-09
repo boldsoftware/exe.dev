@@ -13,13 +13,16 @@ import (
 	"net/http/pprof"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"exe.dev/email"
 	"exe.dev/exedb"
+	"exe.dev/llmgateway"
 	"exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/sqlite"
 )
 
 // debugHandler constructs and returns a handler with Go-standard debug endpoints
@@ -37,6 +40,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
 	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
 	mux.HandleFunc("POST /debug/users/toggle-vm-creation", s.handleDebugToggleVMCreation)
+	mux.HandleFunc("POST /debug/users/update-credit", s.handleDebugUpdateUserCredit)
 	mux.HandleFunc("/debug/exelets", s.handleDebugExelets)
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
 	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
@@ -543,6 +547,17 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 		accountByUser[a.CreatedBy] = a.ID
 	}
 
+	// Fetch all gateway credits and build a map from user_id to credit info
+	credits, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllUserLLMCredits)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to list LLM credits", "error", err)
+		credits = nil
+	}
+	creditByUser := make(map[string]exedb.UserLlmCredit)
+	for _, c := range credits {
+		creditByUser[c.UserID] = c
+	}
+
 	// Count user types
 	var regularCount, loginWithExeCount int
 	for _, u := range users {
@@ -556,12 +571,18 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 	// Check if JSON format is requested
 	if r.URL.Query().Get("format") == "json" {
 		type userInfo struct {
-			UserID                 string `json:"user_id"`
-			Email                  string `json:"email"`
-			CreatedAt              string `json:"created_at,omitempty"`
-			RootSupport            bool   `json:"root_support"`
-			CreatedForLoginWithExe bool   `json:"created_for_login_with_exe"`
-			AccountID              string `json:"account_id,omitempty"`
+			UserID                 string  `json:"user_id"`
+			Email                  string  `json:"email"`
+			CreatedAt              string  `json:"created_at,omitempty"`
+			RootSupport            bool    `json:"root_support"`
+			CreatedForLoginWithExe bool    `json:"created_for_login_with_exe"`
+			AccountID              string  `json:"account_id,omitempty"`
+			CreditAvailableUSD     float64 `json:"credit_available_usd"`
+			CreditEffectiveUSD     float64 `json:"credit_effective_usd"`
+			CreditMaxUSD           float64 `json:"credit_max_usd"`
+			CreditRefreshPerHrUSD  float64 `json:"credit_refresh_per_hr_usd"`
+			CreditTotalUsedUSD     float64 `json:"credit_total_used_usd"`
+			CreditLastRefreshAt    string  `json:"credit_last_refresh_at,omitempty"`
 		}
 		var usersJSON []userInfo
 		for _, u := range users {
@@ -569,14 +590,29 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			if u.CreatedAt != nil {
 				createdAt = u.CreatedAt.Format(time.RFC3339)
 			}
-			usersJSON = append(usersJSON, userInfo{
+			ui := userInfo{
 				UserID:                 u.UserID,
 				Email:                  u.Email,
 				CreatedAt:              createdAt,
 				RootSupport:            u.RootSupport == 1,
 				CreatedForLoginWithExe: u.CreatedForLoginWithExe,
 				AccountID:              accountByUser[u.UserID],
-			})
+			}
+			if credit, ok := creditByUser[u.UserID]; ok {
+				ui.CreditAvailableUSD = credit.AvailableCredit
+				ui.CreditMaxUSD = credit.MaxCredit
+				ui.CreditRefreshPerHrUSD = credit.RefreshPerHour
+				ui.CreditTotalUsedUSD = credit.TotalUsed
+				ui.CreditLastRefreshAt = credit.LastRefreshAt.Format(time.RFC3339)
+				ui.CreditEffectiveUSD, _ = llmgateway.CalculateRefreshedCredit(
+					credit.AvailableCredit,
+					credit.MaxCredit,
+					credit.RefreshPerHour,
+					credit.LastRefreshAt,
+					time.Now(),
+				)
+			}
+			usersJSON = append(usersJSON, ui)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
@@ -592,28 +628,52 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `<!doctype html>
 <html><head><title>Users</title>
 <style>
-.toggle-btn { padding: 4px 8px; cursor: pointer; border-radius: 3px; border: 1px solid #ccc; }
+.toggle-btn { padding: 4px 8px; cursor: pointer; border-radius: 3px; border: 1px solid #ccc; font-size: 11px; }
 .toggle-btn.enabled { background: #28a745; color: white; border-color: #28a745; }
 .toggle-btn.disabled { background: #6c757d; color: white; border-color: #6c757d; }
+.edit-btn { padding: 2px 6px; cursor: pointer; border-radius: 3px; border: 1px solid #007bff; background: #007bff; color: white; font-size: 11px; }
 dialog { padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
 dialog::backdrop { background: rgba(0,0,0,0.5); }
-dialog input[type="text"] { width: 100%%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
+dialog input[type="text"], dialog input[type="number"] { width: 100%%; padding: 8px; margin: 5px 0; box-sizing: border-box; }
 dialog button { margin-right: 10px; padding: 8px 16px; }
 dialog .confirm-btn { background: #28a745; color: white; border: none; cursor: pointer; }
 dialog .confirm-btn:disabled { background: #ccc; cursor: not-allowed; }
 dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: pointer; }
+#usersTable { border-collapse: collapse; width: 100%%; }
+#usersTable th, #usersTable td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 13px; }
+#usersTable th { background: #f5f5f5; cursor: pointer; user-select: none; }
+#usersTable th:hover { background: #e8e8e8; }
+#usersTable tr:hover { background: #f9f9f9; }
+#searchBox { padding: 8px; margin-bottom: 10px; width: 300px; }
+.sort-indicator { margin-left: 4px; }
+.credit-cell { text-align: right; font-family: monospace; }
+.negative { color: red; }
 </style>
 </head><body>
 <h1>Users</h1>
 <p><a href="/debug">/debug</a> | <a href="/debug/users?format=json">json</a></p>
 <p>Regular users: %d | Login-with-exe users: %d | Total: %d</p>
+<p><input type="text" id="searchBox" placeholder="Search by email or user ID..."></p>
 `, regularCount, loginWithExeCount, len(users))
 
 	if len(users) == 0 {
 		fmt.Fprintf(w, "<p>No users found.</p>\n")
 	} else {
-		fmt.Fprintf(w, "<table border='1' cellpadding='5' cellspacing='0'>\n")
-		fmt.Fprintf(w, "<tr><th>Email</th><th>User ID</th><th>Created At</th><th>Login-only</th><th>Billing</th><th>Root Support</th></tr>\n")
+		fmt.Fprintf(w, "<table id='usersTable'>\n")
+		fmt.Fprintf(w, "<thead><tr>")
+		fmt.Fprintf(w, "<th data-col='email'>Email</th>")
+		fmt.Fprintf(w, "<th data-col='userid'>User ID</th>")
+		fmt.Fprintf(w, "<th data-col='created'>Created At</th>")
+		fmt.Fprintf(w, "<th data-col='login'>Login-only</th>")
+		fmt.Fprintf(w, "<th data-col='billing'>Billing</th>")
+		fmt.Fprintf(w, "<th data-col='credit'>DB Credit ($)</th>")
+		fmt.Fprintf(w, "<th data-col='effective'>Effective ($)</th>")
+		fmt.Fprintf(w, "<th data-col='maxcredit'>Max ($)</th>")
+		fmt.Fprintf(w, "<th data-col='refresh'>Refresh/hr ($)</th>")
+		fmt.Fprintf(w, "<th data-col='totalused'>Total Used ($)</th>")
+		fmt.Fprintf(w, "<th data-col='lastrefresh'>Last Refresh</th>")
+		fmt.Fprintf(w, "<th data-col='root'>Root Support</th>")
+		fmt.Fprintf(w, "</tr></thead>\n<tbody>\n")
 		for _, u := range users {
 			createdAt := "-"
 			if u.CreatedAt != nil {
@@ -637,21 +697,61 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 					html.EscapeString(s.billing.DashboardURL(acctID)),
 					html.EscapeString(acctID))
 			}
-			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s <button class='toggle-btn %s' data-email='%s' data-userid='%s' data-enabled='%v'>%s</button></td></tr>\n",
-				html.EscapeString(u.Email),
-				html.EscapeString(u.UserID),
-				html.EscapeString(createdAt),
-				loginWithExe,
-				billingCell,
-				html.EscapeString(rootSupportStatus),
-				btnClass,
-				html.EscapeString(u.Email),
-				html.EscapeString(u.UserID),
-				u.RootSupport == 1,
-				btnText,
-			)
+			// Credit info
+			creditAvail := "-"
+			creditEffective := "-"
+			creditMax := "-"
+			creditRefresh := "-"
+			creditTotalUsed := "-"
+			lastRefresh := "-"
+			creditClass := "credit-cell"
+			effectiveClass := "credit-cell"
+			var availUSD, maxUSD, refreshUSD float64
+			if credit, ok := creditByUser[u.UserID]; ok {
+				availUSD = credit.AvailableCredit
+				maxUSD = credit.MaxCredit
+				refreshUSD = credit.RefreshPerHour
+				creditAvail = fmt.Sprintf("%.2f", availUSD)
+				creditMax = fmt.Sprintf("%.2f", maxUSD)
+				creditRefresh = fmt.Sprintf("%.2f", refreshUSD)
+				creditTotalUsed = fmt.Sprintf("%.2f", credit.TotalUsed)
+				lastRefresh = credit.LastRefreshAt.Format(time.RFC3339)
+				// Calculate effective credit (what it would be if refreshed now)
+				effectiveUSD, _ := llmgateway.CalculateRefreshedCredit(
+					credit.AvailableCredit,
+					credit.MaxCredit,
+					credit.RefreshPerHour,
+					credit.LastRefreshAt,
+					time.Now(),
+				)
+				creditEffective = fmt.Sprintf("%.2f", effectiveUSD)
+				if availUSD < 0 {
+					creditClass = "credit-cell negative"
+				}
+				if effectiveUSD < 0 {
+					effectiveClass = "credit-cell negative"
+				}
+			}
+			fmt.Fprintf(w, "<tr data-email='%s' data-userid='%s'>\n",
+				html.EscapeString(u.Email), html.EscapeString(u.UserID))
+			fmt.Fprintf(w, "<td>%s</td>", html.EscapeString(u.Email))
+			fmt.Fprintf(w, "<td>%s</td>", html.EscapeString(u.UserID))
+			fmt.Fprintf(w, "<td>%s</td>", html.EscapeString(createdAt))
+			fmt.Fprintf(w, "<td>%s</td>", loginWithExe)
+			fmt.Fprintf(w, "<td>%s</td>", billingCell)
+			fmt.Fprintf(w, "<td class='%s'>%s <button class='edit-btn' data-userid='%s' data-avail='%f' data-max='%f' data-refresh='%f'>✎</button></td>",
+				creditClass, creditAvail, html.EscapeString(u.UserID), availUSD, maxUSD, refreshUSD)
+			fmt.Fprintf(w, "<td class='%s'>%s</td>", effectiveClass, creditEffective)
+			fmt.Fprintf(w, "<td class='credit-cell'>%s</td>", creditMax)
+			fmt.Fprintf(w, "<td class='credit-cell'>%s</td>", creditRefresh)
+			fmt.Fprintf(w, "<td class='credit-cell'>%s</td>", creditTotalUsed)
+			fmt.Fprintf(w, "<td class='credit-cell'>%s</td>", html.EscapeString(lastRefresh))
+			fmt.Fprintf(w, "<td>%s <button class='toggle-btn %s' data-email='%s' data-userid='%s' data-enabled='%v'>%s</button></td>",
+				html.EscapeString(rootSupportStatus), btnClass,
+				html.EscapeString(u.Email), html.EscapeString(u.UserID), u.RootSupport == 1, btnText)
+			fmt.Fprintf(w, "</tr>\n")
 		}
-		fmt.Fprintf(w, "</table>\n")
+		fmt.Fprintf(w, "</tbody></table>\n")
 	}
 
 	fmt.Fprintf(w, `<dialog id="toggleDialog">
@@ -708,6 +808,71 @@ document.getElementById('cancelBtn').addEventListener('click', function() {
 document.getElementById('confirmInput').addEventListener('input', function() {
     var expected = document.getElementById('emailDisplay').textContent;
     document.getElementById('confirmBtn').disabled = (this.value !== expected);
+});
+</script>
+
+<dialog id="creditDialog">
+<form method="post" action="/debug/users/update-credit">
+<h3>Edit Gateway Credit</h3>
+<input type="hidden" name="user_id" id="creditUserIdInput">
+<p><label>Available Credit ($):<br><input type="number" name="available" id="creditAvailInput" step="0.01"></label></p>
+<p><label>Max Credit ($):<br><input type="number" name="max" id="creditMaxInput" step="0.01"></label></p>
+<p><label>Refresh per Hour ($):<br><input type="number" name="refresh" id="creditRefreshInput" step="0.01"></label></p>
+<p>
+<button type="submit" class="confirm-btn">Save</button>
+<button type="button" class="cancel-btn" id="creditCancelBtn">Cancel</button>
+</p>
+</form>
+</dialog>
+<script>
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('edit-btn')) {
+        var userId = e.target.dataset.userid;
+        var avail = parseFloat(e.target.dataset.avail) || 0;
+        var max = parseFloat(e.target.dataset.max) || 100;
+        var refresh = parseFloat(e.target.dataset.refresh) || 10;
+        document.getElementById('creditUserIdInput').value = userId;
+        document.getElementById('creditAvailInput').value = avail.toFixed(2);
+        document.getElementById('creditMaxInput').value = max.toFixed(2);
+        document.getElementById('creditRefreshInput').value = refresh.toFixed(2);
+        document.getElementById('creditDialog').showModal();
+    }
+});
+document.getElementById('creditCancelBtn').addEventListener('click', function() {
+    document.getElementById('creditDialog').close();
+});
+
+// Sorting
+var sortCol = null, sortAsc = true;
+document.querySelectorAll('#usersTable th').forEach(function(th) {
+    th.addEventListener('click', function() {
+        var col = th.dataset.col;
+        if (sortCol === col) { sortAsc = !sortAsc; } else { sortCol = col; sortAsc = true; }
+        sortTable();
+    });
+});
+function sortTable() {
+    var tbody = document.querySelector('#usersTable tbody');
+    var rows = Array.from(tbody.querySelectorAll('tr'));
+    var colIdx = Array.from(document.querySelectorAll('#usersTable th')).findIndex(function(th) { return th.dataset.col === sortCol; });
+    rows.sort(function(a, b) {
+        var aVal = a.cells[colIdx].textContent.trim();
+        var bVal = b.cells[colIdx].textContent.trim();
+        var aNum = parseFloat(aVal), bNum = parseFloat(bVal);
+        if (!isNaN(aNum) && !isNaN(bNum)) { return sortAsc ? aNum - bNum : bNum - aNum; }
+        return sortAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    });
+    rows.forEach(function(row) { tbody.appendChild(row); });
+}
+
+// Searching
+document.getElementById('searchBox').addEventListener('input', function() {
+    var query = this.value.toLowerCase();
+    document.querySelectorAll('#usersTable tbody tr').forEach(function(row) {
+        var email = row.dataset.email.toLowerCase();
+        var userid = row.dataset.userid.toLowerCase();
+        row.style.display = (email.includes(query) || userid.includes(query)) ? '' : 'none';
+    });
 });
 </script>
 </body></html>
@@ -796,6 +961,73 @@ func (s *Server) handleDebugToggleVMCreation(w http.ResponseWriter, r *http.Requ
 	s.slog().InfoContext(ctx, "vm creation toggled via debug page", "user_id", userID, "action", action)
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// handleDebugUpdateUserCredit updates a user's gateway credit settings.
+func (s *Server) handleDebugUpdateUserCredit(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	availableStr := r.FormValue("available")
+	maxStr := r.FormValue("max")
+	refreshStr := r.FormValue("refresh")
+
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	var availableUSD, maxUSD, refreshUSD float64
+	var err error
+	if availableStr != "" {
+		availableUSD, err = strconv.ParseFloat(availableStr, 64)
+		if err != nil {
+			http.Error(w, "invalid available value", http.StatusBadRequest)
+			return
+		}
+	}
+	if maxStr != "" {
+		maxUSD, err = strconv.ParseFloat(maxStr, 64)
+		if err != nil {
+			http.Error(w, "invalid max value", http.StatusBadRequest)
+			return
+		}
+	}
+	if refreshStr != "" {
+		refreshUSD, err = strconv.ParseFloat(refreshStr, 64)
+		if err != nil {
+			http.Error(w, "invalid refresh value", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Upsert the credit record
+	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		q := exedb.New(tx.Conn())
+		// First ensure record exists
+		if err := q.CreateUserLLMCreditIfNotExists(ctx, userID); err != nil {
+			return err
+		}
+		// Then update settings
+		return q.UpdateUserLLMCreditSettings(ctx, exedb.UpdateUserLLMCreditSettingsParams{
+			AvailableCredit: availableUSD,
+			MaxCredit:       maxUSD,
+			RefreshPerHour:  refreshUSD,
+			UserID:          userID,
+		})
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to update credit: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "LLM credit updated via debug page",
+		"user_id", userID,
+		"available_usd", availableUSD,
+		"max_usd", maxUSD,
+		"refresh_per_hour_usd", refreshUSD)
+
+	http.Redirect(w, r, "/debug/users", http.StatusSeeOther)
 }
 
 func ptrStr(s *string) string {
