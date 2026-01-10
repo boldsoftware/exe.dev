@@ -1442,8 +1442,7 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 	var userID string
 	var isNewUser bool
 
-	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
+	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		// Check if user exists, create if not
 		var err error
 		userID, err = queries.GetUserIDByEmail(ctx, email)
@@ -1682,8 +1681,7 @@ func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (in
 	routes := exedb.DefaultRouteJSON()
 	var boxID int
 	var assignedShard int
-	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
+	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		id, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
 			Ctrhost:         opts.ctrhost,
 			Name:            opts.name,
@@ -1837,8 +1835,7 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 	}
 
 	// Delete from database and track in deleted_boxes
-	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
+	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		userID := box.CreatedByUserID
 
 		// Delete IP shard allocation first
@@ -1870,15 +1867,11 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 }
 
 func (s *Server) rollbackBoxPreCreation(ctx context.Context, boxID int) error {
-	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
+	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		if err := queries.DeleteBoxIPShard(ctx, boxID); err != nil {
 			return err
 		}
-		if err := queries.DeleteBox(ctx, boxID); err != nil {
-			return err
-		}
-		return nil
+		return queries.DeleteBox(ctx, boxID)
 	})
 }
 
@@ -2670,9 +2663,7 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exed
 	var user exedb.User
 
 	// First create the user and allocation in the database
-	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-
+	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		userID, err := s.createUserRecord(ctx, queries, email, false)
 		if err != nil {
 			return err

@@ -22,7 +22,6 @@ import (
 	"exe.dev/llmgateway"
 	"exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
-	"exe.dev/sqlite"
 )
 
 // debugHandler constructs and returns a handler with Go-standard debug endpoints
@@ -1045,8 +1044,7 @@ func (s *Server) handleDebugUpdateUserCredit(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Upsert the credit record
-	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		q := exedb.New(tx.Conn())
+	err = s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
 		// First ensure record exists
 		if err := q.CreateUserLLMCreditIfNotExists(ctx, userID); err != nil {
 			return err
