@@ -116,7 +116,14 @@ func NewGateway(log *slog.Logger, db *sqlite.DB, apiKeys APIKeys, devMode bool) 
 // httpError reports an error on w.
 func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, errstr string, code int, boxName string) {
 	http.Error(w, errstr, code)
-	m.log.ErrorContext(r.Context(), "llmgateway.httpError", "method", r.Method, "path", r.URL.Path, "code", code, "error", errstr, "boxName", boxName)
+	var logger func(context.Context, string, ...any)
+	if code != http.StatusPaymentRequired {
+		logger = m.log.ErrorContext
+	} else {
+		// Running out of LLM credit is not an error.
+		logger = m.log.InfoContext
+	}
+	logger(r.Context(), "llmgateway.httpError", "method", r.Method, "path", r.URL.Path, "code", code, "error", errstr, "boxName", boxName)
 }
 
 func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
