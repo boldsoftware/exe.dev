@@ -229,21 +229,16 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!doctype html>
 <html><head><title>Boxes/VMs</title>
+<link rel="stylesheet" href="/static/datatables.min.css">
+<script src="/static/jquery.min.js"></script>
+<script src="/static/datatables.min.js"></script>
 <style>
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
 h1 { margin-bottom: 10px; }
-.toolbar { margin: 15px 0; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
-.search-box { padding: 8px 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; width: 300px; }
-.count { color: #666; font-size: 14px; }
-table { border-collapse: collapse; width: 100%%; }
-th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
-th { background: #f5f5f5; cursor: pointer; user-select: none; position: relative; }
-th:hover { background: #e9e9e9; }
-th.sort-asc::after { content: " ▲"; font-size: 10px; }
-th.sort-desc::after { content: " ▼"; font-size: 10px; }
-th.no-sort { cursor: default; }
-th.no-sort:hover { background: #f5f5f5; }
-tr:hover { background: #f9f9f9; }
+#boxesTable { width: 100%%; }
+#boxesTable td, #boxesTable th { font-size: 13px; }
+#boxesTable thead tr.filters th { padding: 4px; }
+#boxesTable thead tr.filters input { width: 100%%; box-sizing: border-box; font-size: 11px; padding: 4px; }
 .delete-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; }
 .delete-btn:hover { background: #c82333; }
 dialog { padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
@@ -254,7 +249,6 @@ dialog .confirm-btn { background: #dc3545; color: white; border: none; cursor: p
 dialog .confirm-btn:disabled { background: #ccc; cursor: not-allowed; }
 dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: pointer; }
 .error-box { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 10px; border-radius: 4px; margin: 10px 0; }
-.no-results { text-align: center; padding: 20px; color: #666; }
 a { color: #007bff; text-decoration: none; }
 a:hover { text-decoration: underline; }
 </style>
@@ -269,32 +263,28 @@ a:hover { text-decoration: underline; }
 			html.EscapeString(host.Host), html.EscapeString(host.Error))
 	}
 
-	if len(flatContainers) == 0 && len(hostErrors) == 0 {
-		fmt.Fprintf(w, "<p>No boxes running.</p>\n")
-	} else if len(flatContainers) > 0 {
-		fmt.Fprintf(w, `<div class="toolbar">
-<input type="text" class="search-box" id="searchBox" placeholder="Search boxes..." autofocus>
-<span class="count"><span id="visibleCount">%d</span> / %d boxes</span>
-</div>
-`, len(flatContainers), len(flatContainers))
+	fmt.Fprintf(w, `<p>Total boxes: %d</p>
 
-		fmt.Fprintf(w, "<table id='boxesTable'>\n")
-		fmt.Fprintf(w, "<thead><tr><th data-col='name'>Name</th><th data-col='exelet'>Exelet</th><th data-col='status'>Status</th><th data-col='owner'>Owner</th><th class='no-sort'>Actions</th></tr></thead>\n")
-		fmt.Fprintf(w, "<tbody>\n")
-		for _, c := range flatContainers {
-			fmt.Fprintf(w, "<tr><td><a href='/debug/boxes/%s'>%s</a></td><td>%s</td><td>%s</td><td>%s</td><td><button class='delete-btn' data-box='%s'>Delete</button></td></tr>\n",
-				html.EscapeString(c.Name),
-				html.EscapeString(c.Name),
-				html.EscapeString(c.Host),
-				html.EscapeString(c.Status),
-				html.EscapeString(c.OwnerEmail),
-				html.EscapeString(c.Name),
-			)
-		}
-		fmt.Fprintf(w, "</tbody></table>\n")
-	}
+<table id="boxesTable" class="display stripe hover">
+<thead>
+<tr>
+<th>Name</th>
+<th>Exelet</th>
+<th>Status</th>
+<th>Owner</th>
+<th>Actions</th>
+</tr>
+<tr class="filters">
+<th>Name</th>
+<th>Exelet</th>
+<th>Status</th>
+<th>Owner</th>
+<th></th>
+</tr>
+</thead>
+</table>
 
-	fmt.Fprintf(w, `<dialog id="deleteDialog">
+<dialog id="deleteDialog">
 <form method="post" action="/debug/boxes/delete">
 <p>To delete this box, type its name to confirm:</p>
 <p><strong id="boxNameDisplay"></strong></p>
@@ -306,97 +296,71 @@ a:hover { text-decoration: underline; }
 </p>
 </form>
 </dialog>
+
 <script>
-(function() {
-    var table = document.getElementById('boxesTable');
-    if (!table) return;
-
-    var searchBox = document.getElementById('searchBox');
-    var visibleCount = document.getElementById('visibleCount');
-    var tbody = table.querySelector('tbody');
-    var rows = Array.from(tbody.querySelectorAll('tr'));
-    var sortCol = 'name';
-    var sortAsc = true;
-
-    // Search functionality
-    searchBox.addEventListener('input', function() {
-        var term = this.value.toLowerCase();
-        var visible = 0;
-        rows.forEach(function(row) {
-            var text = row.textContent.toLowerCase();
-            var match = term === '' || text.indexOf(term) !== -1;
-            row.style.display = match ? '' : 'none';
-            if (match) visible++;
-        });
-        visibleCount.textContent = visible;
-    });
-
-    // Sort functionality
-    var headers = table.querySelectorAll('th[data-col]');
-    headers.forEach(function(th) {
-        th.addEventListener('click', function() {
-            var col = this.dataset.col;
-            if (sortCol === col) {
-                sortAsc = !sortAsc;
-            } else {
-                sortCol = col;
-                sortAsc = true;
-            }
-            sortTable();
-            updateSortIndicators();
-        });
-    });
-
-    function getColIndex(col) {
-        var cols = {name: 0, exelet: 1, status: 2, owner: 3};
-        return cols[col];
-    }
-
-    function sortTable() {
-        var idx = getColIndex(sortCol);
-        rows.sort(function(a, b) {
-            var aVal = a.cells[idx].textContent.toLowerCase();
-            var bVal = b.cells[idx].textContent.toLowerCase();
-            if (aVal < bVal) return sortAsc ? -1 : 1;
-            if (aVal > bVal) return sortAsc ? 1 : -1;
-            return 0;
-        });
-        rows.forEach(function(row) { tbody.appendChild(row); });
-    }
-
-    function updateSortIndicators() {
-        headers.forEach(function(th) {
-            th.classList.remove('sort-asc', 'sort-desc');
-            if (th.dataset.col === sortCol) {
-                th.classList.add(sortAsc ? 'sort-asc' : 'sort-desc');
-            }
-        });
-    }
-
-    updateSortIndicators();
-
-    // Delete dialog
-    document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('delete-btn')) {
-            var boxName = e.target.dataset.box;
-            document.getElementById('boxNameDisplay').textContent = boxName;
-            document.getElementById('boxNameInput').value = boxName;
-            document.getElementById('confirmInput').value = '';
-            document.getElementById('confirmBtn').disabled = true;
-            document.getElementById('deleteDialog').showModal();
+$(document).ready(function() {
+    // Add column filter inputs to header filter row (except Actions column)
+    $('#boxesTable thead tr.filters th').each(function(idx) {
+        var title = $(this).text();
+        if (title) {
+            $(this).html('<input type="text" placeholder="' + title + '">');
         }
     });
-    document.getElementById('cancelBtn').addEventListener('click', function() {
-        document.getElementById('deleteDialog').close();
+
+    var table = $('#boxesTable').DataTable({
+        ajax: {
+            url: '/debug/boxes?format=json',
+            dataSrc: ''
+        },
+        pageLength: 100,
+        lengthMenu: [[25, 50, 100, 250, -1], [25, 50, 100, 250, "All"]],
+        order: [[0, 'asc']],
+        orderCellsTop: true,
+        columns: [
+            { data: 'name', render: function(d) {
+                return '<a href="/debug/boxes/' + d + '">' + d + '</a>';
+            }},
+            { data: 'host' },
+            { data: 'status' },
+            { data: 'owner_email', defaultContent: '' },
+            { data: 'name', orderable: false, render: function(d) {
+                return '<button class="delete-btn" data-box="' + d + '">Delete</button>';
+            }}
+        ],
+        initComplete: function() {
+            this.api().columns().every(function(idx) {
+                var column = this;
+                $('input', $('#boxesTable thead tr.filters th').eq(idx)).on('keyup change clear', function() {
+                    if (column.search() !== this.value) {
+                        column.search(this.value).draw();
+                    }
+                });
+            });
+        }
     });
-    document.getElementById('confirmInput').addEventListener('input', function() {
-        var expected = document.getElementById('boxNameInput').value;
-        document.getElementById('confirmBtn').disabled = (this.value !== expected);
-    });
-})();
+});
+
+// Delete dialog
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('delete-btn')) {
+        var boxName = e.target.dataset.box;
+        document.getElementById('boxNameDisplay').textContent = boxName;
+        document.getElementById('boxNameInput').value = boxName;
+        document.getElementById('confirmInput').value = '';
+        document.getElementById('confirmBtn').disabled = true;
+        document.getElementById('deleteDialog').showModal();
+    }
+});
+document.getElementById('cancelBtn').addEventListener('click', function() {
+    document.getElementById('deleteDialog').close();
+});
+document.getElementById('confirmInput').addEventListener('input', function() {
+    var expected = document.getElementById('boxNameInput').value;
+    document.getElementById('confirmBtn').disabled = (this.value !== expected);
+});
 </script>
 </body></html>
-`)
+`, len(flatContainers))
 }
 
 // gitHubLink returns an HTML link to the GitHub commit history starting at the given SHA.
