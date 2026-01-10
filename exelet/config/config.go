@@ -13,6 +13,11 @@ const (
 	// DefaultIdleThreshold is the default duration after which a VM is considered idle
 	DefaultIdleThreshold = 1 * time.Minute
 
+	// DefaultBootLogRotationInterval is the default interval for checking boot log sizes
+	DefaultBootLogRotationInterval = 1 * time.Minute
+	// DefaultBootLogMaxBytes is the default maximum size for boot logs (1 MB)
+	DefaultBootLogMaxBytes = 1 << 20
+
 	// DefaultNameserver is the default instance nameserver
 	DefaultNameserver = "1.1.1.1"
 
@@ -112,4 +117,8 @@ type ExeletConfig struct {
 	EnableHugepages bool
 	// ProxyBindIP is the IP address to bind SSH proxies to (empty means all interfaces)
 	ProxyBindIP string
+	// BootLogRotationInterval controls how frequently boot logs are checked for rotation
+	BootLogRotationInterval time.Duration
+	// BootLogMaxBytes is the maximum size for boot logs before rotation
+	BootLogMaxBytes int64
 }

@@ -31,6 +31,7 @@ type Service struct {
 	proxyManager        *sshproxy.Manager
 	instanceCreateGroup singleflight.Group[string, *api.Instance]
 	instanceDeleteGroup singleflight.Group[string, *api.DeleteInstanceResponse]
+	stopLogRotation     func()
 }
 
 // New returns a new service.
@@ -135,6 +136,26 @@ func (s *Service) Start(ctx context.Context) error {
 		// Don't fail startup, continue
 	}
 
+	// Start boot log rotation
+	interval := s.config.BootLogRotationInterval
+	if interval == 0 {
+		interval = config.DefaultBootLogRotationInterval
+	}
+	maxBytes := s.config.BootLogMaxBytes
+	if maxBytes == 0 {
+		maxBytes = config.DefaultBootLogMaxBytes
+	}
+	s.stopLogRotation = vmm.StartLogRotation(ctx, interval, maxBytes)
+
+	// Ensure rotation is stopped if Start fails after this point
+	startSucceeded := false
+	defer func() {
+		if !startSucceeded && s.stopLogRotation != nil {
+			s.stopLogRotation()
+			s.stopLogRotation = nil
+		}
+	}()
+
 	// start stopped instances if enabled
 	if s.config.EnableInstanceBootOnStartup {
 		s.log.InfoContext(ctx, "booting stopped instances")
@@ -147,12 +168,17 @@ func (s *Service) Start(ctx context.Context) error {
 		}
 	}
 
+	startSucceeded = true
 	return nil
 }
 
 // Stop stops the service.
 func (s *Service) Stop(ctx context.Context) error {
 	s.proxyManager.StopAll()
+
+	if s.stopLogRotation != nil {
+		s.stopLogRotation()
+	}
 
 	return nil
 }

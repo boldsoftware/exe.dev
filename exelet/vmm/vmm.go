@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"time"
 
 	"exe.dev/exelet/vmm/cloudhypervisor"
 	api "exe.dev/pkg/api/exe/compute/v1"
@@ -41,6 +42,8 @@ type VMM interface {
 	Delete(ctx context.Context, id, ip string) error
 	// RecoverProcesses adopts running processes and cleans up stale metadata on startup
 	RecoverProcesses(ctx context.Context) error
+	// StartLogRotation starts background log rotation and returns a function to stop it
+	StartLogRotation(ctx context.Context, interval time.Duration, maxBytes int64) func()
 }
 
 // NewVMM returns a new Virtual Machine Manager

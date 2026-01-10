@@ -71,14 +71,15 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 		"--seccomp=false",
 	}
 
-	// bootlog
+	// bootlog - use O_APPEND so writes always go to end of file,
+	// which allows truncation-based log rotation to work correctly
 	bootLogPath := v.bootLogPath(id)
 	if _, err := os.Stat(bootLogPath); err == nil {
 		if err := os.Remove(bootLogPath); err != nil {
 			return err
 		}
 	}
-	bootLog, err := os.Create(bootLogPath)
+	bootLog, err := os.OpenFile(bootLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
 	}
