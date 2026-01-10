@@ -54,6 +54,7 @@ func LoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 		WithRequestID:    false,
 		Filters: []sloghttp.Filter{
 			skipMetricsLogs,
+			skipMetadataServiceErrors,
 		},
 	}
 
@@ -140,5 +141,14 @@ func skipMetricsLogs(w sloghttp.WrapResponseWriter, r *http.Request) bool {
 		return false
 	}
 
+	return true
+}
+
+// skipMetadataServiceErrors silences errors from requests targeting the AWS metadata service IP.
+// TODO: investigate why these requests are happening and fix the root cause.
+func skipMetadataServiceErrors(w sloghttp.WrapResponseWriter, r *http.Request) bool {
+	if r.Host == "169.254.169.254" && w.Status() >= 400 {
+		return false
+	}
 	return true
 }
