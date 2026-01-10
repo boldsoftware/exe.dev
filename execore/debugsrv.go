@@ -49,6 +49,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/signup-limiter", s.handleDebugSignupLimiterPost)
 	mux.HandleFunc("/debug/signup-pow", s.handleDebugSignupPOW)
 	mux.HandleFunc("POST /debug/signup-pow", s.handleDebugSignupPOWPost)
+	mux.HandleFunc("/debug/signup-reject", s.handleDebugSignupReject)
+	mux.HandleFunc("POST /debug/signup-reject", s.handleDebugSignupRejectPost)
 	mux.HandleFunc("/debug/ipshards", s.handleDebugIPShards)
 	mux.HandleFunc("GET /debug/log", s.handleDebugLogForm)
 	mux.HandleFunc("POST /debug/log", s.handleDebugLog)
@@ -102,6 +104,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/new-throttle">new-throttle</a> (<a href="/debug/new-throttle?format=json">json</a>)</li>
     <li><a href="/debug/signup-limiter">signup-limiter</a></li>
     <li><a href="/debug/signup-pow">signup-pow</a></li>
+    <li><a href="/debug/signup-reject">signup-reject</a></li>
     <li><a href="/debug/ipshards">ipshards</a> (<a href="/debug/ipshards?format=json">json</a>)</li>
     <li><a href="/debug/log">/debug/log</a> (POST text=... to log an error)</li>
     <li><a href="/debug/testimonials">testimonials</a></li>
@@ -2091,4 +2094,180 @@ func (s *Server) handleDebugSignupPOWPost(w http.ResponseWriter, r *http.Request
 	s.slog().InfoContext(ctx, "signup POW setting updated via debug page", "enabled", enabled)
 
 	http.Redirect(w, r, "/debug/signup-pow", http.StatusSeeOther)
+}
+
+// handleDebugSignupReject displays the signup rejections and bypass list.
+func (s *Server) handleDebugSignupReject(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Get recent rejections
+	rejections, err := withRxRes1(s, ctx, (*exedb.Queries).GetRecentSignupRejections, int64(200))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get rejections: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Get bypass list
+	bypassList, err := withRxRes0(s, ctx, (*exedb.Queries).ListEmailQualityBypass)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get bypass list: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>Signup Rejections</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
+table { border-collapse: collapse; width: 100%%; margin: 10px 0; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+th { background: #f5f5f5; }
+.section { margin: 20px 0; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+.add-form { background: #f9f9f9; padding: 15px; border-radius: 5px; margin: 10px 0; }
+.add-form input[type="text"] { padding: 8px; width: 300px; }
+.add-form input[type="submit"] { padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer; border-radius: 3px; }
+.add-form input[type="submit"]:hover { background: #0056b3; }
+.delete-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; }
+.delete-btn:hover { background: #c82333; }
+</style>
+</head><body>
+<h1>Signup Rejections & Bypass</h1>
+<p><a href="/debug">/debug</a></p>
+
+<div class="section">
+<h2>Email Quality Bypass List</h2>
+<p>Emails in this list bypass IP abuse checks and email quality checks.</p>
+
+<div class="add-form">
+<form method="post" action="/debug/signup-reject">
+<input type="hidden" name="action" value="add">
+<input type="text" name="email" placeholder="email@example.com" required>
+<input type="text" name="reason" placeholder="Reason for bypass" required>
+<input type="submit" value="Add to Bypass List">
+</form>
+</div>
+
+<table>
+<tr><th>Email</th><th>Reason</th><th>Added At</th><th>Added By</th><th>Action</th></tr>
+`)
+
+	for _, b := range bypassList {
+		addedAt := ""
+		if b.AddedAt != nil {
+			addedAt = b.AddedAt.Format("2006-01-02 15:04:05")
+		}
+		fmt.Fprintf(w, `<tr>
+<td>%s</td>
+<td>%s</td>
+<td>%s</td>
+<td>%s</td>
+<td>
+<form method="post" action="/debug/signup-reject" style="display:inline;">
+<input type="hidden" name="action" value="delete">
+<input type="hidden" name="email" value="%s">
+<button type="submit" class="delete-btn" onclick="return confirm('Remove %s from bypass list?')">Remove</button>
+</form>
+</td>
+</tr>
+`, html.EscapeString(b.Email), html.EscapeString(b.Reason), addedAt, html.EscapeString(b.AddedBy),
+			html.EscapeString(b.Email), html.EscapeString(b.Email))
+	}
+
+	if len(bypassList) == 0 {
+		fmt.Fprintf(w, "<tr><td colspan='5'>No emails in bypass list</td></tr>\n")
+	}
+
+	fmt.Fprintf(w, `</table>
+</div>
+
+<div class="section">
+<h2>Recent Signup Rejections (last 200)</h2>
+<table>
+<tr><th>Email</th><th>IP</th><th>Reason</th><th>Source</th><th>Rejected At</th><th>Action</th></tr>
+`)
+
+	for _, r := range rejections {
+		rejectedAt := ""
+		if r.RejectedAt != nil {
+			rejectedAt = r.RejectedAt.Format("2006-01-02 15:04:05")
+		}
+		// Check if this email is already in the bypass list
+		alreadyBypassed := false
+		for _, b := range bypassList {
+			if b.Email == r.Email {
+				alreadyBypassed = true
+				break
+			}
+		}
+		actionCell := ""
+		if !alreadyBypassed {
+			actionCell = fmt.Sprintf(`<form method="post" action="/debug/signup-reject" style="display:inline;">
+<input type="hidden" name="action" value="add">
+<input type="hidden" name="email" value="%s">
+<input type="hidden" name="reason" value="Added from rejection list">
+<button type="submit" style="padding: 4px 8px; cursor: pointer;">Bypass</button>
+</form>`, html.EscapeString(r.Email))
+		} else {
+			actionCell = "<em>bypassed</em>"
+		}
+		fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+			html.EscapeString(r.Email), html.EscapeString(r.Ip), html.EscapeString(r.Reason),
+			html.EscapeString(r.Source), rejectedAt, actionCell)
+	}
+
+	if len(rejections) == 0 {
+		fmt.Fprintf(w, "<tr><td colspan='6'>No rejections recorded</td></tr>\n")
+	}
+
+	fmt.Fprintf(w, `</table>
+</div>
+
+</body></html>
+`)
+}
+
+// handleDebugSignupRejectPost handles adding/removing emails from the bypass list.
+func (s *Server) handleDebugSignupRejectPost(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	action := r.FormValue("action")
+	email := r.FormValue("email")
+
+	if email == "" {
+		http.Error(w, "email is required", http.StatusBadRequest)
+		return
+	}
+
+	switch action {
+	case "add":
+		reason := r.FormValue("reason")
+		if reason == "" {
+			reason = "Added via debug page"
+		}
+		err := withTx1(s, ctx, (*exedb.Queries).InsertEmailQualityBypass, exedb.InsertEmailQualityBypassParams{
+			Email:   email,
+			Reason:  reason,
+			AddedBy: "debug",
+		})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to add bypass: %v", err), http.StatusInternalServerError)
+			return
+		}
+		s.slog().InfoContext(ctx, "email added to quality bypass list via debug page", "email", email, "reason", reason)
+
+	case "delete":
+		err := withTx1(s, ctx, (*exedb.Queries).DeleteEmailQualityBypass, email)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to remove bypass: %v", err), http.StatusInternalServerError)
+			return
+		}
+		s.slog().InfoContext(ctx, "email removed from quality bypass list via debug page", "email", email)
+
+	default:
+		http.Error(w, "invalid action", http.StatusBadRequest)
+		return
+	}
+
+	http.Redirect(w, r, "/debug/signup-reject", http.StatusSeeOther)
 }

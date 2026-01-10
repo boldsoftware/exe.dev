@@ -261,6 +261,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getProxyBearerTokenStmt, err = db.PrepareContext(ctx, getProxyBearerToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetProxyBearerToken: %w", err)
 	}
+	if q.getRecentSignupRejectionsStmt, err = db.PrepareContext(ctx, getRecentSignupRejections); err != nil {
+		return nil, fmt.Errorf("error preparing query GetRecentSignupRejections: %w", err)
+	}
 	if q.getSSHHostKeyStmt, err = db.PrepareContext(ctx, getSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHHostKey: %w", err)
 	}
@@ -401,6 +404,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listAllUsersStmt, err = db.PrepareContext(ctx, listAllUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllUsers: %w", err)
+	}
+	if q.listEmailQualityBypassStmt, err = db.PrepareContext(ctx, listEmailQualityBypass); err != nil {
+		return nil, fmt.Errorf("error preparing query ListEmailQualityBypass: %w", err)
 	}
 	if q.listIPShardsStmt, err = db.PrepareContext(ctx, listIPShards); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIPShards: %w", err)
@@ -907,6 +913,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getProxyBearerTokenStmt: %w", cerr)
 		}
 	}
+	if q.getRecentSignupRejectionsStmt != nil {
+		if cerr := q.getRecentSignupRejectionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getRecentSignupRejectionsStmt: %w", cerr)
+		}
+	}
 	if q.getSSHHostKeyStmt != nil {
 		if cerr := q.getSSHHostKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSSHHostKeyStmt: %w", cerr)
@@ -1140,6 +1151,11 @@ func (q *Queries) Close() error {
 	if q.listAllUsersStmt != nil {
 		if cerr := q.listAllUsersStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllUsersStmt: %w", cerr)
+		}
+	}
+	if q.listEmailQualityBypassStmt != nil {
+		if cerr := q.listEmailQualityBypassStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listEmailQualityBypassStmt: %w", cerr)
 		}
 	}
 	if q.listIPShardsStmt != nil {
@@ -1435,6 +1451,7 @@ type Queries struct {
 	getPendingSSHKeyEmailByPublicKeyStmt   *sql.Stmt
 	getPreferredExeletStmt                 *sql.Stmt
 	getProxyBearerTokenStmt                *sql.Stmt
+	getRecentSignupRejectionsStmt          *sql.Stmt
 	getSSHHostKeyStmt                      *sql.Stmt
 	getSSHKeysForUserStmt                  *sql.Stmt
 	getSSHKeysForUserByEmailStmt           *sql.Stmt
@@ -1482,6 +1499,7 @@ type Queries struct {
 	listAllAccountsStmt                    *sql.Stmt
 	listAllUserLLMCreditsStmt              *sql.Stmt
 	listAllUsersStmt                       *sql.Stmt
+	listEmailQualityBypassStmt             *sql.Stmt
 	listIPShardsStmt                       *sql.Stmt
 	listIPShardsForUserStmt                *sql.Stmt
 	recordUserEventStmt                    *sql.Stmt
@@ -1602,6 +1620,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPendingSSHKeyEmailByPublicKeyStmt:   q.getPendingSSHKeyEmailByPublicKeyStmt,
 		getPreferredExeletStmt:                 q.getPreferredExeletStmt,
 		getProxyBearerTokenStmt:                q.getProxyBearerTokenStmt,
+		getRecentSignupRejectionsStmt:          q.getRecentSignupRejectionsStmt,
 		getSSHHostKeyStmt:                      q.getSSHHostKeyStmt,
 		getSSHKeysForUserStmt:                  q.getSSHKeysForUserStmt,
 		getSSHKeysForUserByEmailStmt:           q.getSSHKeysForUserByEmailStmt,
@@ -1649,6 +1668,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAllAccountsStmt:                    q.listAllAccountsStmt,
 		listAllUserLLMCreditsStmt:              q.listAllUserLLMCreditsStmt,
 		listAllUsersStmt:                       q.listAllUsersStmt,
+		listEmailQualityBypassStmt:             q.listEmailQualityBypassStmt,
 		listIPShardsStmt:                       q.listIPShardsStmt,
 		listIPShardsForUserStmt:                q.listIPShardsForUserStmt,
 		recordUserEventStmt:                    q.recordUserEventStmt,

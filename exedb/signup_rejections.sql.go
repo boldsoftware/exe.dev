@@ -9,6 +9,40 @@ import (
 	"context"
 )
 
+const getRecentSignupRejections = `-- name: GetRecentSignupRejections :many
+SELECT id, email, ip, reason, source, rejected_at FROM signup_rejections ORDER BY rejected_at DESC LIMIT ?
+`
+
+func (q *Queries) GetRecentSignupRejections(ctx context.Context, limit int64) ([]SignupRejection, error) {
+	rows, err := q.query(ctx, q.getRecentSignupRejectionsStmt, getRecentSignupRejections, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SignupRejection{}
+	for rows.Next() {
+		var i SignupRejection
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Ip,
+			&i.Reason,
+			&i.Source,
+			&i.RejectedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSignupRejectionsByEmail = `-- name: GetSignupRejectionsByEmail :many
 SELECT id, email, ip, reason, source, rejected_at FROM signup_rejections WHERE email = ? ORDER BY rejected_at DESC
 `

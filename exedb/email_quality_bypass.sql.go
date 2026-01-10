@@ -59,3 +59,35 @@ func (q *Queries) IsEmailQualityBypassed(ctx context.Context, email string) (int
 	err := row.Scan(&bypassed)
 	return bypassed, err
 }
+
+const listEmailQualityBypass = `-- name: ListEmailQualityBypass :many
+SELECT email, reason, added_at, added_by FROM email_quality_bypass ORDER BY added_at DESC
+`
+
+func (q *Queries) ListEmailQualityBypass(ctx context.Context) ([]EmailQualityBypass, error) {
+	rows, err := q.query(ctx, q.listEmailQualityBypassStmt, listEmailQualityBypass)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EmailQualityBypass{}
+	for rows.Next() {
+		var i EmailQualityBypass
+		if err := rows.Scan(
+			&i.Email,
+			&i.Reason,
+			&i.AddedAt,
+			&i.AddedBy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

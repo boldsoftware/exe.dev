@@ -9,3 +9,6 @@ SELECT EXISTS(SELECT 1 FROM email_quality_bypass WHERE email = ?) AS bypassed;
 
 -- name: DeleteEmailQualityBypass :exec
 DELETE FROM email_quality_bypass WHERE email = ?;
+
+-- name: ListEmailQualityBypass :many
+SELECT * FROM email_quality_bypass ORDER BY added_at DESC;
