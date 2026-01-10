@@ -795,7 +795,8 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 	ipStr := clientIPFromRemoteAddr(s.clientAddr)
 	if err := ss.server.validateNewSignup(s.Context(), ipStr, email, "ssh"); err != nil {
 		ss.server.slog().InfoContext(s.Context(), "signup blocked", "reason", err, "ip", ipStr, "email", email)
-		fmt.Fprintf(s, "\r\n\033[1;31m%s\033[0m\r\n", err)
+		trace := tracing.TraceIDFromContext(s.Context())
+		fmt.Fprintf(s, "\r\n\033[1;31m%s\033[0m\r\n%s\r\n", err, trace)
 		return
 	}
 
