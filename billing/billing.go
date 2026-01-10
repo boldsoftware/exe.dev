@@ -185,6 +185,11 @@ func (m *Manager) Subscribe(ctx context.Context, billingID string, p *SubscribeP
 
 		sess, err := c.V1CheckoutSessions.Create(ctx, params)
 		if err != nil {
+			if !isRetryable(err) {
+				// Client errors (4xx) won't succeed on retry
+				m.slog().WarnContext(ctx, "create checkout session", "error", err)
+				return "", err
+			}
 			m.slog().ErrorContext(ctx, "create checkout session", "error", err)
 			continue
 		}
