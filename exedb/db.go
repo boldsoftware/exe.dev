@@ -27,6 +27,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.activateAccountStmt, err = db.PrepareContext(ctx, activateAccount); err != nil {
 		return nil, fmt.Errorf("error preparing query ActivateAccount: %w", err)
 	}
+	if q.addShellHistoryStmt, err = db.PrepareContext(ctx, addShellHistory); err != nil {
+		return nil, fmt.Errorf("error preparing query AddShellHistory: %w", err)
+	}
 	if q.boxNamedStmt, err = db.PrepareContext(ctx, boxNamed); err != nil {
 		return nil, fmt.Errorf("error preparing query BoxNamed: %w", err)
 	}
@@ -276,6 +279,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getShardPublicIPStmt, err = db.PrepareContext(ctx, getShardPublicIP); err != nil {
 		return nil, fmt.Errorf("error preparing query GetShardPublicIP: %w", err)
 	}
+	if q.getShellHistoryStmt, err = db.PrepareContext(ctx, getShellHistory); err != nil {
+		return nil, fmt.Errorf("error preparing query GetShellHistory: %w", err)
+	}
 	if q.getSignupPOWEnabledStmt, err = db.PrepareContext(ctx, getSignupPOWEnabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSignupPOWEnabled: %w", err)
 	}
@@ -521,6 +527,11 @@ func (q *Queries) Close() error {
 	if q.activateAccountStmt != nil {
 		if cerr := q.activateAccountStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing activateAccountStmt: %w", cerr)
+		}
+	}
+	if q.addShellHistoryStmt != nil {
+		if cerr := q.addShellHistoryStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing addShellHistoryStmt: %w", cerr)
 		}
 	}
 	if q.boxNamedStmt != nil {
@@ -936,6 +947,11 @@ func (q *Queries) Close() error {
 	if q.getShardPublicIPStmt != nil {
 		if cerr := q.getShardPublicIPStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getShardPublicIPStmt: %w", cerr)
+		}
+	}
+	if q.getShellHistoryStmt != nil {
+		if cerr := q.getShellHistoryStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getShellHistoryStmt: %w", cerr)
 		}
 	}
 	if q.getSignupPOWEnabledStmt != nil {
@@ -1373,6 +1389,7 @@ type Queries struct {
 	db                                     DBTX
 	tx                                     *sql.Tx
 	activateAccountStmt                    *sql.Stmt
+	addShellHistoryStmt                    *sql.Stmt
 	boxNamedStmt                           *sql.Stmt
 	boxWithNameExistsStmt                  *sql.Stmt
 	boxWithOwnerNamedStmt                  *sql.Stmt
@@ -1456,6 +1473,7 @@ type Queries struct {
 	getSSHKeysForUserStmt                  *sql.Stmt
 	getSSHKeysForUserByEmailStmt           *sql.Stmt
 	getShardPublicIPStmt                   *sql.Stmt
+	getShellHistoryStmt                    *sql.Stmt
 	getSignupPOWEnabledStmt                *sql.Stmt
 	getSignupRejectionsByEmailStmt         *sql.Stmt
 	getSignupRejectionsByIPStmt            *sql.Stmt
@@ -1542,6 +1560,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		db:                                     tx,
 		tx:                                     tx,
 		activateAccountStmt:                    q.activateAccountStmt,
+		addShellHistoryStmt:                    q.addShellHistoryStmt,
 		boxNamedStmt:                           q.boxNamedStmt,
 		boxWithNameExistsStmt:                  q.boxWithNameExistsStmt,
 		boxWithOwnerNamedStmt:                  q.boxWithOwnerNamedStmt,
@@ -1625,6 +1644,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getSSHKeysForUserStmt:                  q.getSSHKeysForUserStmt,
 		getSSHKeysForUserByEmailStmt:           q.getSSHKeysForUserByEmailStmt,
 		getShardPublicIPStmt:                   q.getShardPublicIPStmt,
+		getShellHistoryStmt:                    q.getShellHistoryStmt,
 		getSignupPOWEnabledStmt:                q.getSignupPOWEnabledStmt,
 		getSignupRejectionsByEmailStmt:         q.getSignupRejectionsByEmailStmt,
 		getSignupRejectionsByIPStmt:            q.getSignupRejectionsByIPStmt,

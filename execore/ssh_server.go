@@ -493,6 +493,15 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 	// Create a terminal using golang.org/x/term
 	terminal := term.NewTerminal(s, fmt.Sprintf("\033[1;36m%s\033[0m \033[37m▶\033[0m ", ss.server.env.ReplHost))
 
+	// Load shell history from database
+	history, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetShellHistory, user.UserID)
+	if err != nil {
+		ss.server.slog().WarnContext(ctx, "failed to load shell history", "error", err)
+	}
+	for _, entry := range history {
+		terminal.History.Add(entry)
+	}
+
 	// Set the terminal size to the pty size, and keep it updated whenever
 	// the pty changes.
 	pty, _ := s.Pty()
@@ -516,12 +525,18 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 			return
 		}
 
+		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
 		ss.server.slog().DebugContext(ctx, "command received", "line", line)
 
-		parts, err := shlex.Split(strings.TrimSpace(line), true)
+		// Add to shell history in database (best-effort)
+		if err := withTx1(ss.server, ctx, (*exedb.Queries).AddShellHistory, exedb.AddShellHistoryParams{UserID: user.UserID, Command: line}); err != nil {
+			ss.server.slog().WarnContext(ctx, "failed to save shell history", "error", err)
+		}
+
+		parts, err := shlex.Split(line, true)
 		if err != nil {
 			fmt.Fprintf(s, "Error parsing command: %v\r\n", err)
 			continue

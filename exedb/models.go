@@ -196,6 +196,13 @@ type ServerMetum struct {
 	UpdatedAt *time.Time `db:"updated_at" json:"updated_at"`
 }
 
+type ShellHistory struct {
+	ID        int64      `db:"id" json:"id"`
+	UserID    string     `db:"user_id" json:"user_id"`
+	Command   string     `db:"command" json:"command"`
+	CreatedAt *time.Time `db:"created_at" json:"created_at"`
+}
+
 type SignupRejection struct {
 	ID               int64      `db:"id" json:"id"`
 	Email            string     `db:"email" json:"email"`
