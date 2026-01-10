@@ -42,6 +42,7 @@ import (
 	"exe.dev/tracing"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	sloghttp "github.com/samber/slog-http"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	_ "modernc.org/sqlite"
@@ -558,14 +559,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Shelley subdomain (vm.shelley.exe.xyz) is also handled as a proxy request.
 	isProxy := s.isProxyRequest(r.Host)
 	isTerminal := s.isTerminalRequest(r.Host)
-	if info := GetRequestLogInfo(r.Context()); info != nil {
-		info.IsProxy = isProxy
-		info.IsTerminal = isTerminal
-		// Try to get userID from auth cookie for logging purposes
-		if userID, err := s.validateAuthCookie(r); err == nil {
-			info.UserID = userID
-		}
+
+	// Add request classification to logs
+	if isProxy {
+		sloghttp.AddCustomAttributes(r, slog.Bool("proxy", true))
 	}
+	if isTerminal {
+		sloghttp.AddCustomAttributes(r, slog.Bool("terminal", true))
+	}
+
+	// Try to get userID from auth cookie for logging and tracking
+	var loggedUserID string
+	if userID, err := s.validateAuthCookie(r); err == nil {
+		loggedUserID = userID
+		sloghttp.AddCustomAttributes(r, slog.String("user_id", userID))
+	}
+
 	if isProxy {
 		metricsbag.SetLabel(r.Context(), LabelProxy, "true")
 		// box label is set in handleProxyRequest after resolving the box name
@@ -590,10 +599,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metricsbag.SetLabel(r.Context(), LabelPath, normalizePath(r.URL.Path))
 
 	// Track unique web visitors (main site only, not proxy or terminal)
-	if s.hllTracker != nil {
-		if info := GetRequestLogInfo(r.Context()); info != nil && info.UserID != "" {
-			s.hllTracker.NoteEvent("web-visit", info.UserID)
-		}
+	if s.hllTracker != nil && loggedUserID != "" {
+		s.hllTracker.NoteEvent("web-visit", loggedUserID)
 	}
 
 	// Handle root path and user dashboard

@@ -55,30 +55,6 @@ const (
 	MetadataPort = 80
 )
 
-// requestLogInfoKey is used to pass request classification info via context.
-type requestLogInfoKey struct{}
-
-// RequestLogInfo holds extra info that handlers can fill in for logging.
-type RequestLogInfo struct {
-	BoxName string
-}
-
-// withNewRequestLogInfo attaches a fresh RequestLogInfo to the context.
-func withNewRequestLogInfo(ctx context.Context) (context.Context, *RequestLogInfo) {
-	info := &RequestLogInfo{}
-	return context.WithValue(ctx, requestLogInfoKey{}, info), info
-}
-
-// getRequestLogInfo retrieves RequestLogInfo from context, if present.
-func getRequestLogInfo(ctx context.Context) *RequestLogInfo {
-	if v := ctx.Value(requestLogInfoKey{}); v != nil {
-		if info, ok := v.(*RequestLogInfo); ok {
-			return info
-		}
-	}
-	return nil
-}
-
 // InstanceLookup provides a method to look up instances by IP address
 type InstanceLookup interface {
 	GetInstanceByIP(ctx context.Context, ip string) (id, name string, err error)
@@ -147,9 +123,8 @@ func (s *Service) Start(ctx context.Context) error {
 	// Build the handler with logging middleware chain.
 	// The middleware chain (in order of execution) is:
 	//  1. tracing.HTTPMiddleware - generates trace_id and adds to context
-	//  2. requestInfoMiddleware - sets up RequestLogInfo context
-	//  3. sloghttp middleware - captures request/response and logs
-	//  4. customAttrsMiddleware - adds custom attributes after handler runs
+	//  2. sloghttp middleware - captures request/response and logs
+	//  3. customAttrsMiddleware - adds custom attributes after handler runs
 	handler := s.loggerMiddleware(mux)
 
 	s.server = &http.Server{
@@ -179,21 +154,11 @@ func (s *Service) loggerMiddleware(next http.Handler) http.Handler {
 		WithRequestID:    false,
 	}
 
-	// Build chain from inside out: 4 -> 3 -> 2 -> 1
+	// Build chain from inside out: 3 -> 2 -> 1
 	h := s.customAttrsMiddleware(next)
 	h = sloghttp.NewWithConfig(s.log, slogConfig)(h)
-	h = s.requestInfoMiddleware(h)
 	h = tracing.HTTPMiddleware(h)
 	return h
-}
-
-// requestInfoMiddleware sets up RequestLogInfo context.
-func (s *Service) requestInfoMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, _ := withNewRequestLogInfo(r.Context())
-		r = r.WithContext(ctx)
-		next.ServeHTTP(w, r)
-	})
 }
 
 // customAttrsMiddleware adds custom log attributes after the handler runs.
@@ -208,12 +173,6 @@ func (s *Service) customAttrsMiddleware(next http.Handler) http.Handler {
 		}
 		if remoteIP, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 			sloghttp.AddCustomAttributes(r, slog.String("remote_ip", remoteIP))
-		}
-
-		if info := getRequestLogInfo(r.Context()); info != nil {
-			if info.BoxName != "" {
-				sloghttp.AddCustomAttributes(r, slog.String("box", info.BoxName))
-			}
 		}
 	})
 }
@@ -244,10 +203,7 @@ func (s *Service) handleRoot(w http.ResponseWriter, r *http.Request) {
 	if s.instanceLookup != nil {
 		if _, name, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP); err == nil {
 			response.Name = name
-			// Set boxname for logging
-			if info := getRequestLogInfo(r.Context()); info != nil {
-				info.BoxName = name
-			}
+			sloghttp.AddCustomAttributes(r, slog.String("vm_name", name))
 		} else {
 			s.log.DebugContext(r.Context(), "failed to lookup instance", "ip", sourceIP, "error", err)
 		}

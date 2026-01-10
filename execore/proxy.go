@@ -193,9 +193,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Set user ID for HTTP logging
-		if info := GetRequestLogInfo(r.Context()); info != nil {
-			info.UserID = userID
-		}
+		sloghttp.AddCustomAttributes(r, slog.String("user_id", userID))
 
 		// User is authenticated - check if they have access
 		hasAccess := false

@@ -178,11 +178,11 @@ func TestMetadataServiceLoggingMiddleware(t *testing.T) {
 		t.Errorf("expected remote_ip=10.0.0.1, got %v", remoteIP)
 	}
 
-	// Verify box name is present (from mockInstanceLookup)
-	if box, ok := logEntry["box"]; !ok {
-		t.Errorf("box not found in log. Log: %v", logEntry)
-	} else if box != "test-box" {
-		t.Errorf("expected box=test-box, got %v", box)
+	// Verify vm_name is present (from mockInstanceLookup)
+	if vmName, ok := logEntry["vm_name"]; !ok {
+		t.Errorf("vm_name not found in log. Log: %v", logEntry)
+	} else if vmName != "test-box" {
+		t.Errorf("expected vm_name=test-box, got %v", vmName)
 	}
 }
 
