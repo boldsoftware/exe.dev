@@ -173,7 +173,7 @@ func (s *Service) loggerMiddleware(next http.Handler) http.Handler {
 	slogConfig := sloghttp.Config{
 		DefaultLevel:     slog.LevelInfo,
 		ClientErrorLevel: slog.LevelInfo,
-		ServerErrorLevel: slog.LevelError,
+		ServerErrorLevel: slog.LevelInfo,
 		WithRequestID:    false,
 		Filters: []sloghttp.Filter{
 			// Skip middleware logging for gateway proxy - it logs errors explicitly
