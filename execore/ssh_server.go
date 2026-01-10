@@ -752,11 +752,12 @@ func (ss *SSHServer) swallowOSCBackgroundColorResponse(s *shellSession) bool {
 // handleRegistration handles the registration flow using readline
 func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 	ss.showAnimatedWelcome(s)
+	ctx := s.Context()
 
 	// Attempt to identify this as a GitHub user based on their validated public key.
 	ghInfo, err := ss.server.githubUser.InfoString(s.Context(), publicKey)
 	if err != nil {
-		ss.server.slog().InfoContext(s.Context(), "failed to retrieve GitHub user info", "publicKey", publicKey, "error", err)
+		ss.server.slog().InfoContext(ctx, "failed to retrieve GitHub user info", "publicKey", publicKey, "error", err)
 	}
 
 	fmt.Fprint(s, "\r\n\033[1;33mEXE.DEV: get a VM over ssh\033[0m\r\n")
@@ -806,19 +807,19 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 		user, err = ss.waitForEmailVerification(s, publicKey, email)
 		if err != nil || user == nil {
 			if errors.Is(err, errRegistrationCancelled) {
-				ss.server.slog().Info("email registration cancelled", "email", email)
+				ss.server.slog().InfoContext(ctx, "email registration cancelled", "email", email)
 			} else {
-				ss.server.slog().Warn("email verification failed", "email", email, "error", err)
+				ss.server.slog().WarnContext(ctx, "email verification failed", "email", email, "error", err)
 			}
 			fmt.Fprintf(s, "\r\n\033[1;31m%v\033[0m\r\n", err)
 			return
 		}
 	} else {
 		// Email matches GitHub's. Rely on their verification; create user directly now.
-		ss.server.slog().Info("email matches GitHub, skipping verification", "email", email)
+		ss.server.slog().InfoContext(ctx, "email matches GitHub, skipping verification", "email", email)
 		newUser, err := ss.server.createUserWithSSHKey(s.Context(), email, publicKey)
 		if err != nil {
-			ss.server.slog().Error("failed to create user with SSH key during github auto-verification", "error", err)
+			ss.server.slog().ErrorContext(ctx, "failed to create user with SSH key during github auto-verification", "error", err)
 			fmt.Fprintf(s, "\r\n\033[1;31minternal error: failed to create user account\033[0m\r\n")
 			return
 		}
