@@ -175,10 +175,6 @@ func (s *Service) loggerMiddleware(next http.Handler) http.Handler {
 		ClientErrorLevel: slog.LevelInfo,
 		ServerErrorLevel: slog.LevelInfo,
 		WithRequestID:    false,
-		Filters: []sloghttp.Filter{
-			// Skip middleware logging for gateway proxy - it logs errors explicitly
-			sloghttp.IgnorePathPrefix("/gateway/llm/"),
-		},
 	}
 
 	// Build chain from inside out: 4 -> 3 -> 2 -> 1
