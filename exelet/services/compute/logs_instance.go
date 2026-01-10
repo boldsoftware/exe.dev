@@ -1,8 +1,9 @@
 package compute
 
 import (
-	"bufio"
+	"bytes"
 	"errors"
+	"io"
 	"os"
 
 	"google.golang.org/grpc/codes"
@@ -46,27 +47,34 @@ func (s *Service) GetInstanceLogs(req *api.GetInstanceLogsRequest, stream api.Co
 	doneCh := make(chan struct{})
 	errCh := make(chan error)
 
-	// send to server
+	// send to server - read in chunks to handle sparse files with null byte holes
 	go func() {
 		defer close(doneCh)
 
-		scanner := bufio.NewScanner(r)
-		for scanner.Scan() {
-			msg := scanner.Text() + "\n" // append newline since scanner doesn't include
-			if err := stream.Send(&api.GetInstanceLogsResponse{
-				Log: &api.Log{
-					Type:    api.Log_STDOUT,
-					Message: msg,
-				},
-			}); err != nil {
-				errCh <- err
+		buf := make([]byte, 64*1024) // 64KB chunks
+		for {
+			n, err := r.Read(buf)
+			if n > 0 {
+				// Filter out null bytes (sparse file holes)
+				chunk := bytes.ReplaceAll(buf[:n], []byte{0}, nil)
+				if len(chunk) > 0 {
+					if sendErr := stream.Send(&api.GetInstanceLogsResponse{
+						Log: &api.Log{
+							Type:    api.Log_STDOUT,
+							Message: string(chunk),
+						},
+					}); sendErr != nil {
+						errCh <- sendErr
+						return
+					}
+				}
+			}
+			if err != nil {
+				if err != io.EOF {
+					errCh <- err
+				}
 				return
 			}
-		}
-
-		if err := scanner.Err(); err != nil {
-			errCh <- err
-			return
 		}
 	}()
 

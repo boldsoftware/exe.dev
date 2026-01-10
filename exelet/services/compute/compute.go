@@ -145,7 +145,11 @@ func (s *Service) Start(ctx context.Context) error {
 	if maxBytes == 0 {
 		maxBytes = config.DefaultBootLogMaxBytes
 	}
-	s.stopLogRotation = vmm.StartLogRotation(ctx, interval, maxBytes)
+	keepBytes := s.config.BootLogKeepBytes
+	if keepBytes == 0 {
+		keepBytes = config.DefaultBootLogKeepBytes
+	}
+	s.stopLogRotation = vmm.StartLogRotation(ctx, interval, maxBytes, keepBytes)
 
 	// Ensure rotation is stopped if Start fails after this point
 	startSucceeded := false

@@ -36,7 +36,8 @@ func TestRotateBootLog(t *testing.T) {
 			t.Fatalf("failed to write boot log: %v", err)
 		}
 
-		if err := vmm.RotateBootLog(context.Background(), instanceID, 1024); err != nil {
+		// maxBytes=1024, keepBytes=512 - file is smaller than max, no rotation
+		if err := vmm.RotateBootLog(context.Background(), instanceID, 1024, 512); err != nil {
 			t.Fatalf("RotateBootLog failed: %v", err)
 		}
 
@@ -57,8 +58,8 @@ func TestRotateBootLog(t *testing.T) {
 			t.Fatalf("failed to write boot log: %v", err)
 		}
 
-		// Rotate keeping last 10 bytes
-		if err := vmm.RotateBootLog(context.Background(), instanceID, 10); err != nil {
+		// maxBytes=20 triggers rotation, keepBytes=10 keeps last 10 bytes
+		if err := vmm.RotateBootLog(context.Background(), instanceID, 20, 10); err != nil {
 			t.Fatalf("RotateBootLog failed: %v", err)
 		}
 
@@ -72,7 +73,7 @@ func TestRotateBootLog(t *testing.T) {
 	})
 
 	t.Run("rotation handles nonexistent file", func(t *testing.T) {
-		if err := vmm.RotateBootLog(context.Background(), "nonexistent-instance", 1024); err != nil {
+		if err := vmm.RotateBootLog(context.Background(), "nonexistent-instance", 1024, 512); err != nil {
 			t.Fatalf("RotateBootLog should not fail for nonexistent file: %v", err)
 		}
 	})
@@ -96,8 +97,8 @@ func TestRotateBootLog(t *testing.T) {
 		// Write some content
 		appendFile.WriteString("BEFORE")
 
-		// Rotate keeping last 100 bytes
-		if err := vmm.RotateBootLog(context.Background(), instanceID, 100); err != nil {
+		// Rotate: maxBytes=500 triggers, keepBytes=100
+		if err := vmm.RotateBootLog(context.Background(), instanceID, 500, 100); err != nil {
 			t.Fatalf("RotateBootLog failed: %v", err)
 		}
 
@@ -110,7 +111,7 @@ func TestRotateBootLog(t *testing.T) {
 			t.Fatalf("failed to read boot log: %v", err)
 		}
 
-		// With O_APPEND, "AFTER" should appear at the end of the file, not at a sparse offset
+		// With O_APPEND, "AFTER" should appear at the end of the file
 		if !strings.HasSuffix(string(data), "AFTER") {
 			t.Errorf("expected file to end with AFTER, got %q", string(data))
 		}
@@ -146,7 +147,8 @@ func TestStartLogRotation(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	stop := vmm.StartLogRotation(ctx, 10*time.Millisecond, 100)
+	// maxBytes=200 triggers rotation, keepBytes=50
+	stop := vmm.StartLogRotation(ctx, 10*time.Millisecond, 200, 50)
 	defer stop()
 
 	// Poll until rotation happens or timeout
@@ -156,14 +158,14 @@ func TestStartLogRotation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to stat boot log: %v", err)
 		}
-		if info.Size() <= 100 {
+		if info.Size() <= 50 {
 			return // Success
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
 	info, _ := os.Stat(bootLogPath)
-	t.Fatalf("expected file to be rotated to <= 100 bytes, got %d bytes", info.Size())
+	t.Fatalf("expected file to be rotated to <= 50 bytes, got %d bytes", info.Size())
 }
 
 func TestRotationWithConcurrentAppendWrites(t *testing.T) {
@@ -197,13 +199,13 @@ func TestRotationWithConcurrentAppendWrites(t *testing.T) {
 	}
 	defer appendFile.Close()
 
-	// Write some content, rotate, write more - no sleeps needed
+	// Write some content, rotate, write more
 	for i := 0; i < 10; i++ {
 		appendFile.WriteString("W")
 	}
 
-	// Rotate
-	if err := vmm.RotateBootLog(context.Background(), instanceID, 200); err != nil {
+	// Rotate: maxBytes=500 triggers, keepBytes=100
+	if err := vmm.RotateBootLog(context.Background(), instanceID, 500, 100); err != nil {
 		t.Fatalf("first rotation failed: %v", err)
 	}
 
@@ -213,7 +215,7 @@ func TestRotationWithConcurrentAppendWrites(t *testing.T) {
 	}
 
 	// Rotate again
-	if err := vmm.RotateBootLog(context.Background(), instanceID, 200); err != nil {
+	if err := vmm.RotateBootLog(context.Background(), instanceID, 500, 100); err != nil {
 		t.Fatalf("second rotation failed: %v", err)
 	}
 
@@ -229,8 +231,8 @@ func TestRotationWithConcurrentAppendWrites(t *testing.T) {
 	}
 
 	// File should be bounded and contain writes from after rotation
-	if len(data) > 300 {
-		t.Errorf("file too large: %d bytes (expected <= 300)", len(data))
+	if len(data) > 200 {
+		t.Errorf("file too large: %d bytes (expected <= 200)", len(data))
 	}
 	if !strings.Contains(string(data), "Y") {
 		t.Error("file should contain content written after rotation")

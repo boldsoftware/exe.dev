@@ -15,8 +15,10 @@ const (
 
 	// DefaultBootLogRotationInterval is the default interval for checking boot log sizes
 	DefaultBootLogRotationInterval = 1 * time.Minute
-	// DefaultBootLogMaxBytes is the default maximum size for boot logs (1 MB)
+	// DefaultBootLogMaxBytes is the maximum size before rotation is triggered (1 MB)
 	DefaultBootLogMaxBytes = 1 << 20
+	// DefaultBootLogKeepBytes is how many bytes to keep after rotation (32 KB)
+	DefaultBootLogKeepBytes = 32 * 1024
 
 	// DefaultNameserver is the default instance nameserver
 	DefaultNameserver = "1.1.1.1"
@@ -119,6 +121,8 @@ type ExeletConfig struct {
 	ProxyBindIP string
 	// BootLogRotationInterval controls how frequently boot logs are checked for rotation
 	BootLogRotationInterval time.Duration
-	// BootLogMaxBytes is the maximum size for boot logs before rotation
+	// BootLogMaxBytes is the maximum size for boot logs before rotation is triggered
 	BootLogMaxBytes int64
+	// BootLogKeepBytes is how many bytes to keep after rotation
+	BootLogKeepBytes int64
 }

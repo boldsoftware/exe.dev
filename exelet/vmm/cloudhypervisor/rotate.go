@@ -14,12 +14,16 @@ import (
 
 // StartLogRotation starts the background log rotation goroutine.
 // It returns a function that can be called to stop the rotation.
-func (v *VMM) StartLogRotation(ctx context.Context, interval time.Duration, maxBytes int64) func() {
+// maxBytes is the threshold that triggers rotation, keepBytes is how much to keep after rotation.
+func (v *VMM) StartLogRotation(ctx context.Context, interval time.Duration, maxBytes, keepBytes int64) func() {
 	if interval <= 0 {
 		interval = config.DefaultBootLogRotationInterval
 	}
 	if maxBytes <= 0 {
 		maxBytes = config.DefaultBootLogMaxBytes
+	}
+	if keepBytes <= 0 {
+		keepBytes = config.DefaultBootLogKeepBytes
 	}
 
 	stop := make(chan struct{})
@@ -33,7 +37,7 @@ func (v *VMM) StartLogRotation(ctx context.Context, interval time.Duration, maxB
 		for {
 			select {
 			case <-ticker.C:
-				v.rotateAllBootLogs(ctx, maxBytes)
+				v.rotateAllBootLogs(ctx, maxBytes, keepBytes)
 			case <-stop:
 				return
 			case <-ctx.Done():
@@ -49,7 +53,7 @@ func (v *VMM) StartLogRotation(ctx context.Context, interval time.Duration, maxB
 }
 
 // rotateAllBootLogs iterates through all VM instances and rotates their boot logs.
-func (v *VMM) rotateAllBootLogs(ctx context.Context, maxBytes int64) {
+func (v *VMM) rotateAllBootLogs(ctx context.Context, maxBytes, keepBytes int64) {
 	entries, err := os.ReadDir(v.dataDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -64,16 +68,17 @@ func (v *VMM) rotateAllBootLogs(ctx context.Context, maxBytes int64) {
 		}
 
 		instanceID := entry.Name()
-		if err := v.RotateBootLog(ctx, instanceID, maxBytes); err != nil {
+		if err := v.RotateBootLog(ctx, instanceID, maxBytes, keepBytes); err != nil {
 			v.log.WarnContext(ctx, "failed to rotate boot log", "instance", instanceID, "error", err)
 		}
 	}
 }
 
-// RotateBootLog rotates the boot log for the given instance, keeping the last
-// maxBytes of content. Since boot.log is opened with O_APPEND, cloud-hypervisor
-// will automatically write to the new end of file after truncation.
-func (v *VMM) RotateBootLog(ctx context.Context, id string, maxBytes int64) error {
+// RotateBootLog rotates the boot log for the given instance.
+// maxBytes is the threshold that triggers rotation, keepBytes is how much to keep.
+// Since boot.log is opened with O_APPEND, cloud-hypervisor will automatically
+// write to the new end of file after truncation.
+func (v *VMM) RotateBootLog(ctx context.Context, id string, maxBytes, keepBytes int64) error {
 	bootLogPath := v.bootLogPath(id)
 
 	// Check file size
@@ -114,9 +119,9 @@ func (v *VMM) RotateBootLog(ctx context.Context, id string, maxBytes int64) erro
 		return nil
 	}
 
-	// Read last maxBytes from the file
-	offset := size - maxBytes
-	tail := make([]byte, maxBytes)
+	// Read last keepBytes from the file
+	offset := size - keepBytes
+	tail := make([]byte, keepBytes)
 	n, err := f.ReadAt(tail, offset)
 	if err != nil && err != io.EOF {
 		return err
