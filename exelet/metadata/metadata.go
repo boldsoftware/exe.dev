@@ -169,6 +169,8 @@ func (s *Service) Start(ctx context.Context) error {
 }
 
 // loggerMiddleware builds the logging middleware chain.
+// This is a "CANONICAL LOG LINE". If at all possible, don't filter these,
+// so taht we can reliably see what's going on in HTTP based on these.
 func (s *Service) loggerMiddleware(next http.Handler) http.Handler {
 	slogConfig := sloghttp.Config{
 		DefaultLevel:     slog.LevelInfo,
@@ -276,11 +278,6 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set boxname for logging
-	if info := getRequestLogInfo(r.Context()); info != nil {
-		info.BoxName = boxName
-	}
-
 	// Rewrite the path to match the exed gateway endpoint
 	// /gateway/llm/anthropic/... -> /_/gateway/anthropic/...
 	originalPath := r.URL.Path
@@ -290,7 +287,9 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 	newPath2 := strings.Replace(newPath1, "/gateway/llm", "/_/gateway", 1)
 	r.URL.Path = newPath2
 
-	s.log.DebugContext(r.Context(), "proxying gateway request", "original_path", originalPath, "new_path", newPath2, "box", boxName)
+	sloghttp.AddCustomAttributes(r, slog.String("vm_name", boxName))
+	sloghttp.AddCustomAttributes(r, slog.String("original_path", originalPath))
+	sloghttp.AddCustomAttributes(r, slog.String("new_path", newPath2))
 
 	// Create a reverse proxy for this request
 	proxy := &httputil.ReverseProxy{

@@ -25,6 +25,8 @@ instances of that:
   These don't have a meaningful duration, since they're not really at the "end"
   of anything, but are an important enough event.
 
+* SSH Handler Commands
+
 * gRPC "finished call"
 
   These aren't particularly well instrumented.
