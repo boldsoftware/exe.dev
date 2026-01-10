@@ -62,6 +62,7 @@ import (
 	templatespkg "exe.dev/templates"
 	"exe.dev/tracing"
 	emailverifier "github.com/AfterShip/email-verifier"
+	sloghttp "github.com/samber/slog-http"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/acme/autocert"
@@ -2527,6 +2528,7 @@ func (s *Server) validateNewSignup(ctx context.Context, ip, email, source string
 		return errors.New("account creation is temporarily unavailable")
 	}
 	s.slog().InfoContext(ctx, "vetting new signup", "ip", ip, "email", email)
+	sloghttp.AddContextAttributes(ctx, slog.String("email", email))
 
 	// Check if email is in the bypass list
 	bypassed, err := withRxRes1(s, ctx, (*exedb.Queries).IsEmailQualityBypassed, email)
