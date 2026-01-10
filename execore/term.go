@@ -166,7 +166,7 @@ func (s *Server) withTerminalAuth(next http.HandlerFunc) http.HandlerFunc {
 				BoxName:      boxName,
 				DashboardURL: dashboardURL,
 			}
-			s.renderTemplate(w, "terminal-access-denied.html", data)
+			s.renderTemplate(r.Context(), w, "terminal-access-denied.html", data)
 			return
 		}
 

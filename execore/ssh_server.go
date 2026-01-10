@@ -312,7 +312,7 @@ func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) b
 	// Convert gliderlabs public key to golang.org/x/crypto/ssh public key for compatibility
 	goKey, err := gossh.ParsePublicKey(key.Marshal())
 	if err != nil {
-		ss.server.slog().Error("failed to parse public key", "error", err)
+		ss.server.slog().ErrorContext(ctx, "failed to parse public key", "error", err)
 		return false
 	}
 
@@ -325,7 +325,7 @@ func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) b
 	// Use existing authentication logic
 	perms, err := ss.server.AuthenticatePublicKey(connMeta, goKey)
 	if err != nil {
-		ss.server.slog().Error("authentication failed", "error", err)
+		ss.server.slog().ErrorContext(ctx, "authentication failed", "error", err)
 		// Increment failed auth metric
 		ss.server.sshMetrics.authAttempts.WithLabelValues("failed", "public_key").Inc()
 		return false
@@ -482,15 +482,15 @@ func (ss *SSHServer) displayWelcomeTip(s exemenu.ShellSession, user *exedb.User)
 
 // runMainShellWithReadline implements the main menu using a simple line reader
 func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey string, user *exedb.User) {
-	ss.server.slog().Debug("start runMainShellWithReadline", "public_key", publicKey, "email", user.Email)
+	ctx := s.Context()
+	ss.server.slog().DebugContext(ctx, "start runMainShellWithReadline", "public_key", publicKey, "email", user.Email)
 	// Show welcome message, hints, tips, etc.
 	ss.displayWelcomeTip(s, user)
 
-	ss.server.recordUserEventBestEffort(s.Context(), user.UserID, userEventUsedREPL)
+	ss.server.recordUserEventBestEffort(ctx, user.UserID, userEventUsedREPL)
 
 	// Create a terminal using golang.org/x/term
 	terminal := term.NewTerminal(s, fmt.Sprintf("\033[1;36m%s\033[0m \033[37m▶\033[0m ", ss.server.env.ReplHost))
-	ctx := s.Context()
 
 	// Set the terminal size to the pty size, and keep it updated whenever
 	// the pty changes.
@@ -837,8 +837,8 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 }
 
 func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email string) (*exedb.User, error) {
-	// TODO: thread a context through here.
-	ss.server.slog().Debug("starting email verification", "email", email)
+	ctx := s.Context()
+	ss.server.slog().DebugContext(ctx, "starting email verification", "email", email)
 	verification, err := ss.startEmailVerification(s, publicKey, email)
 	if err != nil {
 		switch {
@@ -847,7 +847,7 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 		case strings.Contains(err.Error(), "marked as inactive"):
 			return nil, fmt.Errorf("This email address has been blocked by the email provider.\r\nPlease try a different email address.")
 		case strings.Contains(err.Error(), "failed to send verification email"):
-			ss.server.slog().Error("email sending failed", "email", email, "error", err)
+			ss.server.slog().ErrorContext(ctx, "email sending failed", "email", email, "error", err)
 			return nil, fmt.Errorf("Failed to send verification email. Please check your email address and try again.")
 		}
 		return nil, err
@@ -857,7 +857,9 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 	// fmt.Fprintf(s, "Pairing code: \033[1;32m%s\033[0m\r\n", verification.PairingCode)
 	fmt.Fprintf(s, "\033[2mWaiting for email verification...\033[0m\r\n")
 
-	ctx, r, stop := ctrlc.WithReader(s.Context(), s.Session)
+	var r io.Reader
+	var stop func()
+	ctx, r, stop = ctrlc.WithReader(ctx, s.Session)
 	s.mu.Lock()
 	s.reader = r
 	s.mu.Unlock()

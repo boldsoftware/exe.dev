@@ -218,7 +218,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		BillingToken: "",
 		IsWelcome:    false,
 	}
-	s.renderTemplate(w, "email-verified.html", data)
+	s.renderTemplate(r.Context(), w, "email-verified.html", data)
 }
 
 // handleBillingSubscribe handles billing subscription for authenticated users.
@@ -397,7 +397,7 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 		WebHost: s.env.WebHost,
 		Source:  source,
 	}
-	s.renderTemplate(w, "billing-success.html", data)
+	s.renderTemplate(r.Context(), w, "billing-success.html", data)
 }
 
 // unauthorizedData holds the template data for the 401.html page
@@ -436,7 +436,7 @@ func (s *Server) render401(w http.ResponseWriter, r *http.Request, data unauthor
 	data.PasskeyEnabled = true
 
 	w.WriteHeader(http.StatusUnauthorized)
-	s.renderTemplate(w, "401.html", data)
+	s.renderTemplate(r.Context(), w, "401.html", data)
 }
 
 // Helper functions for authentication and reverse proxy
@@ -776,7 +776,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleLoggedOut displays a logged out confirmation page
-func (s *Server) handleLoggedOut(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleLoggedOut(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		stage.Env
 		MainDomain string
@@ -784,7 +784,7 @@ func (s *Server) handleLoggedOut(w http.ResponseWriter, _ *http.Request) {
 		Env:        s.env,
 		MainDomain: s.env.WebHost,
 	}
-	_ = s.renderTemplate(w, "proxy-logged-out.html", data)
+	_ = s.renderTemplate(r.Context(), w, "proxy-logged-out.html", data)
 }
 
 func setExeAuthCookie(w http.ResponseWriter, r *http.Request, cookieValue string) {
@@ -891,7 +891,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		CancelURL:  "/",
 		ConfirmURL: magicURL,
 	}
-	s.renderTemplate(w, "login-confirmation.html", data)
+	s.renderTemplate(r.Context(), w, "login-confirmation.html", data)
 }
 
 // handleAuthCallback handles authentication callbacks with magic tokens
@@ -979,7 +979,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		RedirectURL: q.Get("redirect"),
 		ReturnHost:  returnHost,
 	}
-	s.renderTemplate(w, "auth-form.html", data)
+	s.renderTemplate(r.Context(), w, "auth-form.html", data)
 }
 
 // verifySignupPOW verifies the proof-of-work submitted with a signup request.
@@ -1033,7 +1033,7 @@ func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, ema
 		ReturnHost:    r.FormValue("return_host"),
 		LoginWithExe:  r.FormValue("login_with_exe") == "1",
 	}
-	s.renderTemplate(w, "auth-pow.html", data)
+	s.renderTemplate(r.Context(), w, "auth-pow.html", data)
 }
 
 // handleAuthEmailSubmission handles the email form submission for web auth
@@ -1204,7 +1204,7 @@ func (s *Server) showAuthError(w http.ResponseWriter, r *http.Request, message, 
 	}
 
 	w.WriteHeader(http.StatusBadRequest)
-	s.renderTemplate(w, "auth-error.html", data)
+	s.renderTemplate(r.Context(), w, "auth-error.html", data)
 }
 
 // showAuthEmailSent displays the email sent confirmation page
@@ -1221,7 +1221,7 @@ func (s *Server) showAuthEmailSent(w http.ResponseWriter, r *http.Request, email
 		DevURL:      devURL,
 	}
 
-	s.renderTemplate(w, "email-sent.html", data)
+	s.renderTemplate(r.Context(), w, "email-sent.html", data)
 }
 
 // checkSignupRateLimit checks if the request should be rate limited.

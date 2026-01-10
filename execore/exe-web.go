@@ -468,11 +468,11 @@ func isClientDisconnectError(err error) bool {
 }
 
 // renderTemplate is a helper method that handles template parsing and execution
-func (s *Server) renderTemplate(w http.ResponseWriter, templateName string, data interface{}) error {
+func (s *Server) renderTemplate(ctx context.Context, w http.ResponseWriter, templateName string, data interface{}) error {
 	w.Header().Set("Content-Type", "text/html")
 	var buf bytes.Buffer
 	if err := s.templates.ExecuteTemplate(&buf, templateName, data); err != nil {
-		s.slog().Error("Failed to execute template", "error", err, "template", templateName)
+		s.slog().ErrorContext(ctx, "Failed to execute template", "error", err, "template", templateName)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return err
 	}
@@ -629,8 +629,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			IsLoggedIn:         false,
 			ActivePage:         "",
 		}
-		if err := s.renderTemplate(w, "index.html", data); err != nil {
-			s.log.ErrorContext(r.Context(), "failed to render index page", "error", err)
+		if err := s.renderTemplate(r.Context(), w, "index.html", data); err != nil {
 			return
 		}
 		return
@@ -793,8 +792,7 @@ func (s *Server) handleLovePage(w http.ResponseWriter, r *http.Request) {
 	}{
 		Testimonials: views,
 	}
-	if err := s.renderTemplate(w, "love.html", data); err != nil {
-		s.log.ErrorContext(r.Context(), "failed to render love page", "error", err)
+	if err := s.renderTemplate(r.Context(), w, "love.html", data); err != nil {
 		return
 	}
 }
@@ -922,7 +920,7 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
 		PairingCode: verification.PairingCode,
 	}
 
-	s.renderTemplate(w, "device-verification.html", data)
+	s.renderTemplate(r.Context(), w, "device-verification.html", data)
 }
 
 // handleDeviceVerificationHTTP handles web-based device verification
@@ -995,7 +993,7 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		SSHCommand: s.replSSHConnectionCommand(),
 		PublicKey:  pendingKey.PublicKey,
 	}
-	s.renderTemplate(w, "device-verified.html", data)
+	s.renderTemplate(r.Context(), w, "device-verified.html", data)
 }
 
 var (
@@ -1075,7 +1073,7 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Render template
-	s.renderTemplate(w, "email-verification-form.html", data)
+	s.renderTemplate(r.Context(), w, "email-verification-form.html", data)
 }
 
 func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey string) (*exedb.User, error) {
@@ -1285,7 +1283,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 	}
 
 	// Render template
-	s.renderTemplate(w, "dashboard.html", data)
+	s.renderTemplate(r.Context(), w, "dashboard.html", data)
 }
 
 func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userID string) {
@@ -1389,7 +1387,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	}
 
 	// Render template
-	s.renderTemplate(w, "user-profile.html", data)
+	s.renderTemplate(r.Context(), w, "user-profile.html", data)
 }
 
 // getScheme returns the request scheme

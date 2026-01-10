@@ -78,7 +78,7 @@ func (s *Server) handleWebShell(w http.ResponseWriter, r *http.Request) {
 		ActivePage: "shell",
 		IsLoggedIn: true,
 	}
-	s.renderTemplate(w, "shell.html", data)
+	s.renderTemplate(r.Context(), w, "shell.html", data)
 }
 
 // handleWebShellWS handles websocket connections for the web shell

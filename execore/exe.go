@@ -1350,7 +1350,7 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 
 	// Check if this is a proxy connection from sshpiper
 	s.slog().DebugContext(ctx, "Checking if key is a proxy key")
-	if originalUserKey, localAddress, clientAddr, isProxy := s.lookupEphemeralProxyKey(key); isProxy {
+	if originalUserKey, localAddress, clientAddr, isProxy := s.lookupEphemeralProxyKey(ctx, key); isProxy {
 		s.slog().DebugContext(ctx, "Ephemeral proxy authentication detected", "user", user, "local_address", localAddress, "client_addr", clientAddr)
 		return s.authenticateProxyUserWithLocalAddress(ctx, user, originalUserKey, localAddress, clientAddr)
 	} else {
@@ -2760,24 +2760,24 @@ func (s *Server) Stop() error {
 // 3. Piper sends proxy key to exed for authentication
 // 4. Exed recognizes proxy key and asks piper plugin for original user key
 // 5. Exed authenticates based on original user key
-func (s *Server) lookupEphemeralProxyKey(proxyKey ssh.PublicKey) (originalKey []byte, localAddress, clientAddr string, exists bool) {
+func (s *Server) lookupEphemeralProxyKey(ctx context.Context, proxyKey ssh.PublicKey) (originalKey []byte, localAddress, clientAddr string, exists bool) {
 	// Get the original user key from the piper plugin
 	// The piper plugin is always configured when SSH proxy is enabled
 	if s.piperPlugin == nil {
-		s.slog().Error("Piper plugin not configured but proxy key received")
+		s.slog().ErrorContext(ctx, "Piper plugin not configured but proxy key received")
 		return nil, "", "", false
 	}
 
 	proxyFingerprint := s.GetPublicKeyFingerprint(proxyKey)
-	s.slog().Debug("Looking up proxy key", "fingerprint", proxyFingerprint[:16])
+	s.slog().DebugContext(ctx, "Looking up proxy key", "fingerprint", proxyFingerprint[:16])
 
 	originalUserKey, localAddress, clientAddr, exists := s.piperPlugin.lookupOriginalUserKey(proxyFingerprint)
 	if !exists {
-		s.slog().Debug("Proxy key not found or expired", "fingerprint", proxyFingerprint[:16])
+		s.slog().DebugContext(ctx, "Proxy key not found or expired", "fingerprint", proxyFingerprint[:16])
 		return nil, "", "", false // Not a proxy key or expired
 	}
 
-	s.slog().Debug("Found original user key for proxy key", "key_length", len(originalUserKey), "local_address", localAddress, "client_addr", clientAddr, "proxy_fingerprint", proxyFingerprint[:16])
+	s.slog().DebugContext(ctx, "Found original user key for proxy key", "key_length", len(originalUserKey), "local_address", localAddress, "client_addr", clientAddr, "proxy_fingerprint", proxyFingerprint[:16])
 	return originalUserKey, localAddress, clientAddr, true
 }
 

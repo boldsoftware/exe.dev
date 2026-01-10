@@ -295,7 +295,7 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 		IsLoggedIn:         false, // Already checked auth above, if we're here user is not logged in
 	}
 
-	s.renderTemplate(w, "new.html", data)
+	s.renderTemplate(r.Context(), w, "new.html", data)
 }
 
 // handleMobileNew renders the new box form.
@@ -331,7 +331,7 @@ func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
 		ActivePage:         "",
 		BasicUser:          false, // Users creating boxes are never basic users
 	}
-	s.renderTemplate(w, "new.html", data)
+	s.renderTemplate(r.Context(), w, "new.html", data)
 }
 
 // handleMobileHostnameCheck checks if a hostname is available
@@ -428,7 +428,7 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 		Prompt:     prompt,
 	}
 
-	s.renderTemplate(w, "auth-form.html", data)
+	s.renderTemplate(r.Context(), w, "auth-form.html", data)
 }
 
 type authFormData struct {
@@ -543,7 +543,7 @@ The %s team`, verifyURL, s.env.WebHost)
 		data.DevURL = verifyURL
 	}
 
-	s.renderTemplate(w, "email-sent.html", data)
+	s.renderTemplate(r.Context(), w, "email-sent.html", data)
 }
 
 // handleMobileVerifyTokenManualEntry handles token verification via manual entry form

@@ -307,13 +307,13 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 			}
 
 			w.WriteHeader(http.StatusBadGateway)
-			_ = s.renderTemplate(w, "proxy-unreachable.html", data)
+			_ = s.renderTemplate(r.Context(), w, "proxy-unreachable.html", data)
 			return
 		}
 
 		// Non-owner: render 503 page
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = s.renderTemplate(w, "503.html", nil)
+		_ = s.renderTemplate(r.Context(), w, "503.html", nil)
 		return
 	}
 }
@@ -497,7 +497,7 @@ func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusUnauthorized)
-	s.renderTemplate(w, "401.html", data)
+	s.renderTemplate(r.Context(), w, "401.html", data)
 }
 
 // redirectToAuth redirects the user to the /__exe.dev/login URL

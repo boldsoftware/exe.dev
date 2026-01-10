@@ -224,7 +224,7 @@ func TestScreenFlow(t *testing.T) {
 		}{
 			WebHost: server.env.WebHost,
 		}
-		server.renderTemplate(rec, "proxy-logged-out.html", data)
+		server.renderTemplate(context.Background(), rec, "proxy-logged-out.html", data)
 
 		if rec.Code != 200 {
 			t.Errorf("proxy-logged-out template: expected 200, got %d", rec.Code)
@@ -255,7 +255,7 @@ func TestScreenFlow(t *testing.T) {
 			SSHCommand:      "ssh testbox@" + server.env.ReplHost,
 			TerminalURL:     "https://testbox.term." + server.env.WebHost,
 		}
-		server.renderTemplate(rec, "proxy-unreachable.html", data)
+		server.renderTemplate(context.Background(), rec, "proxy-unreachable.html", data)
 
 		if rec.Code != 200 {
 			t.Errorf("proxy-unreachable template: expected 200, got %d", rec.Code)
@@ -274,7 +274,7 @@ func TestScreenFlow(t *testing.T) {
 			BoxName:      "testbox",
 			DashboardURL: "/",
 		}
-		server.renderTemplate(rec, "terminal-access-denied.html", data)
+		server.renderTemplate(context.Background(), rec, "terminal-access-denied.html", data)
 
 		if rec.Code != 200 {
 			t.Errorf("terminal-access-denied template: expected 200, got %d", rec.Code)
@@ -299,7 +299,7 @@ func TestScreenFlow(t *testing.T) {
 			CancelURL:  "/cancel",
 			ConfirmURL: "/confirm",
 		}
-		server.renderTemplate(rec, "login-confirmation.html", data)
+		server.renderTemplate(context.Background(), rec, "login-confirmation.html", data)
 
 		if rec.Code != 200 {
 			t.Errorf("login-confirmation template: expected 200, got %d", rec.Code)
