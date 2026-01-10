@@ -91,31 +91,19 @@ func main() {
 		fmt.Fprintf(w, `{"status":"ok","timestamp":"%s"}`+"\n", time.Now().Format(time.RFC3339))
 	})
 
+	// Serve favicon from embedded static assets.
+	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		serveStaticFile(w, r, "favicon.ico")
+	})
+
 	// Serve embedded static assets under /static/
-	// Uses the binary's VCS build time as the modification time to enable HTTP caching.
 	mux.HandleFunc("/static/", func(w http.ResponseWriter, r *http.Request) {
-		sub, err := fs.Sub(staticFS, "static")
-		if err != nil {
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
 		filename := strings.TrimPrefix(r.URL.Path, "/static/")
 		if filename == "" || strings.Contains(filename, "..") {
 			http.NotFound(w, r)
 			return
 		}
-		f, err := sub.Open(filename)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		defer f.Close()
-		data, err := io.ReadAll(f)
-		if err != nil {
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-		http.ServeContent(w, r, filename, buildTime(), bytes.NewReader(data))
+		serveStaticFile(w, r, filename)
 	})
 
 	mux.Handle("/metrics", requireTailnetAccess(promhttp.HandlerFor(metricsRegistry, promhttp.HandlerOpts{})))
@@ -291,4 +279,25 @@ func requireTailnetAccess(handler http.Handler) http.Handler {
 		}
 		handler.ServeHTTP(w, r)
 	})
+}
+
+// serveStaticFile serves a file from the embedded static directory.
+func serveStaticFile(w http.ResponseWriter, r *http.Request, filename string) {
+	sub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	f, err := sub.Open(filename)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	http.ServeContent(w, r, filename, buildTime(), bytes.NewReader(data))
 }
