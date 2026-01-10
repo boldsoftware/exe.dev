@@ -533,6 +533,20 @@ func (q *Queries) UpdateBoxContainerIDAndStatus(ctx context.Context, arg UpdateB
 	return err
 }
 
+const updateBoxCreationLog = `-- name: UpdateBoxCreationLog :exec
+UPDATE boxes SET creation_log = ? WHERE name = ?
+`
+
+type UpdateBoxCreationLogParams struct {
+	CreationLog *string `db:"creation_log" json:"creation_log"`
+	Name        string  `db:"name" json:"name"`
+}
+
+func (q *Queries) UpdateBoxCreationLog(ctx context.Context, arg UpdateBoxCreationLogParams) error {
+	_, err := q.exec(ctx, q.updateBoxCreationLogStmt, updateBoxCreationLog, arg.CreationLog, arg.Name)
+	return err
+}
+
 const updateBoxRoutes = `-- name: UpdateBoxRoutes :exec
 UPDATE boxes SET routes = ? WHERE name = ? AND created_by_user_id = ?
 `

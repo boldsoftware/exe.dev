@@ -120,6 +120,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, deleteEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEmailVerificationByToken: %w", err)
 	}
+	if q.deleteMobilePendingVMByTokenStmt, err = db.PrepareContext(ctx, deleteMobilePendingVMByToken); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteMobilePendingVMByToken: %w", err)
+	}
+	if q.deleteMobilePendingVMByUserAndHostnameStmt, err = db.PrepareContext(ctx, deleteMobilePendingVMByUserAndHostname); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteMobilePendingVMByUserAndHostname: %w", err)
+	}
 	if q.deletePasskeyStmt, err = db.PrepareContext(ctx, deletePasskey); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePasskey: %w", err)
 	}
@@ -225,8 +231,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getIPShardByBoxNameStmt, err = db.PrepareContext(ctx, getIPShardByBoxName); err != nil {
 		return nil, fmt.Errorf("error preparing query GetIPShardByBoxName: %w", err)
 	}
+	if q.getLatestMobilePendingVMByUserStmt, err = db.PrepareContext(ctx, getLatestMobilePendingVMByUser); err != nil {
+		return nil, fmt.Errorf("error preparing query GetLatestMobilePendingVMByUser: %w", err)
+	}
 	if q.getLoginCreationDisabledStmt, err = db.PrepareContext(ctx, getLoginCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLoginCreationDisabled: %w", err)
+	}
+	if q.getMobilePendingVMByTokenStmt, err = db.PrepareContext(ctx, getMobilePendingVMByToken); err != nil {
+		return nil, fmt.Errorf("error preparing query GetMobilePendingVMByToken: %w", err)
 	}
 	if q.getNewThrottleEmailPatternsStmt, err = db.PrepareContext(ctx, getNewThrottleEmailPatterns); err != nil {
 		return nil, fmt.Errorf("error preparing query GetNewThrottleEmailPatterns: %w", err)
@@ -465,6 +477,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateBoxContainerIDAndStatusStmt, err = db.PrepareContext(ctx, updateBoxContainerIDAndStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxContainerIDAndStatus: %w", err)
 	}
+	if q.updateBoxCreationLogStmt, err = db.PrepareContext(ctx, updateBoxCreationLog); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxCreationLog: %w", err)
+	}
 	if q.updateBoxRoutesStmt, err = db.PrepareContext(ctx, updateBoxRoutes); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxRoutes: %w", err)
 	}
@@ -497,6 +512,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertIPShardStmt, err = db.PrepareContext(ctx, upsertIPShard); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertIPShard: %w", err)
+	}
+	if q.upsertMobilePendingVMStmt, err = db.PrepareContext(ctx, upsertMobilePendingVM); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertMobilePendingVM: %w", err)
 	}
 	if q.upsertSSHHostKeyStmt, err = db.PrepareContext(ctx, upsertSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertSSHHostKey: %w", err)
@@ -684,6 +702,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteEmailVerificationByTokenStmt: %w", cerr)
 		}
 	}
+	if q.deleteMobilePendingVMByTokenStmt != nil {
+		if cerr := q.deleteMobilePendingVMByTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteMobilePendingVMByTokenStmt: %w", cerr)
+		}
+	}
+	if q.deleteMobilePendingVMByUserAndHostnameStmt != nil {
+		if cerr := q.deleteMobilePendingVMByUserAndHostnameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteMobilePendingVMByUserAndHostnameStmt: %w", cerr)
+		}
+	}
 	if q.deletePasskeyStmt != nil {
 		if cerr := q.deletePasskeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deletePasskeyStmt: %w", cerr)
@@ -859,9 +887,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getIPShardByBoxNameStmt: %w", cerr)
 		}
 	}
+	if q.getLatestMobilePendingVMByUserStmt != nil {
+		if cerr := q.getLatestMobilePendingVMByUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getLatestMobilePendingVMByUserStmt: %w", cerr)
+		}
+	}
 	if q.getLoginCreationDisabledStmt != nil {
 		if cerr := q.getLoginCreationDisabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getLoginCreationDisabledStmt: %w", cerr)
+		}
+	}
+	if q.getMobilePendingVMByTokenStmt != nil {
+		if cerr := q.getMobilePendingVMByTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getMobilePendingVMByTokenStmt: %w", cerr)
 		}
 	}
 	if q.getNewThrottleEmailPatternsStmt != nil {
@@ -1259,6 +1297,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxContainerIDAndStatusStmt: %w", cerr)
 		}
 	}
+	if q.updateBoxCreationLogStmt != nil {
+		if cerr := q.updateBoxCreationLogStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxCreationLogStmt: %w", cerr)
+		}
+	}
 	if q.updateBoxRoutesStmt != nil {
 		if cerr := q.updateBoxRoutesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxRoutesStmt: %w", cerr)
@@ -1312,6 +1355,11 @@ func (q *Queries) Close() error {
 	if q.upsertIPShardStmt != nil {
 		if cerr := q.upsertIPShardStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertIPShardStmt: %w", cerr)
+		}
+	}
+	if q.upsertMobilePendingVMStmt != nil {
+		if cerr := q.upsertMobilePendingVMStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertMobilePendingVMStmt: %w", cerr)
 		}
 	}
 	if q.upsertSSHHostKeyStmt != nil {
@@ -1386,343 +1434,355 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                                     DBTX
-	tx                                     *sql.Tx
-	activateAccountStmt                    *sql.Stmt
-	addShellHistoryStmt                    *sql.Stmt
-	boxNamedStmt                           *sql.Stmt
-	boxWithNameExistsStmt                  *sql.Stmt
-	boxWithOwnerNamedStmt                  *sql.Stmt
-	boxesForUserStmt                       *sql.Stmt
-	cleanupExpiredPasskeyChallengesStmt    *sql.Stmt
-	clearPreferredExeletStmt               *sql.Stmt
-	countAccountsByBillingStatusStmt       *sql.Stmt
-	countBoxShareLinksStmt                 *sql.Stmt
-	countBoxSharesStmt                     *sql.Stmt
-	countBoxesStmt                         *sql.Stmt
-	countBoxesForUserStmt                  *sql.Stmt
-	countDevUsersStmt                      *sql.Stmt
-	countIPShardsStmt                      *sql.Stmt
-	countLoginUsersStmt                    *sql.Stmt
-	countPendingBoxSharesStmt              *sql.Stmt
-	countUsersWithBoxesStmt                *sql.Stmt
-	createBoxShareStmt                     *sql.Stmt
-	createBoxShareLinkStmt                 *sql.Stmt
-	createPendingBoxShareStmt              *sql.Stmt
-	createUserLLMCreditIfNotExistsStmt     *sql.Stmt
-	debitUserLLMCreditStmt                 *sql.Stmt
-	deleteAuthCookieStmt                   *sql.Stmt
-	deleteAuthCookieByValueStmt            *sql.Stmt
-	deleteAuthCookiesByUserIDStmt          *sql.Stmt
-	deleteBoxStmt                          *sql.Stmt
-	deleteBoxIPShardStmt                   *sql.Stmt
-	deleteBoxShareByBoxAndUserStmt         *sql.Stmt
-	deleteBoxShareLinkByBoxAndTokenStmt    *sql.Stmt
-	deleteEmailQualityBypassStmt           *sql.Stmt
-	deleteEmailVerificationByTokenStmt     *sql.Stmt
-	deletePasskeyStmt                      *sql.Stmt
-	deletePasskeyChallengeStmt             *sql.Stmt
-	deletePendingBoxShareByBoxAndEmailStmt *sql.Stmt
-	deletePendingSSHKeyByTokenStmt         *sql.Stmt
-	deleteSSHKeyForUserStmt                *sql.Stmt
-	deleteTagResolutionStmt                *sql.Stmt
-	getAccountStmt                         *sql.Stmt
-	getAccountByUserIDStmt                 *sql.Stmt
-	getAllBoxShareLinksByBoxIDStmt         *sql.Stmt
-	getAllUserEventsStmt                   *sql.Stmt
-	getAuthCookieInfoStmt                  *sql.Stmt
-	getAuthTokenInfoStmt                   *sql.Stmt
-	getBoxByNameAndAllocStmt               *sql.Stmt
-	getBoxByNameWithSupportAccessStmt      *sql.Stmt
-	getBoxByUserAndShardStmt               *sql.Stmt
-	getBoxDetailsForSetupStmt              *sql.Stmt
-	getBoxIPShardStmt                      *sql.Stmt
-	getBoxOwnerEmailByContainerIDStmt      *sql.Stmt
-	getBoxSSHDetailsStmt                   *sql.Stmt
-	getBoxShareLinkByTokenAndBoxIDStmt     *sql.Stmt
-	getBoxShareLinksByBoxIDStmt            *sql.Stmt
-	getBoxSharesByBoxIDStmt                *sql.Stmt
-	getBoxSupportAccessAllowedStmt         *sql.Stmt
-	getBoxesByHostStmt                     *sql.Stmt
-	getBoxesForUserDashboardStmt           *sql.Stmt
-	getBoxesSharedWithUserStmt             *sql.Stmt
-	getEmailAddressQualityByEmailStmt      *sql.Stmt
-	getEmailBounceStmt                     *sql.Stmt
-	getEmailBySSHKeyStmt                   *sql.Stmt
-	getEmailByUserIDStmt                   *sql.Stmt
-	getEmailQualityBypassStmt              *sql.Stmt
-	getEmailVerificationByPartialTokenStmt *sql.Stmt
-	getEmailVerificationByTokenStmt        *sql.Stmt
-	getHLLSketchStmt                       *sql.Stmt
-	getIPShardByBoxNameStmt                *sql.Stmt
-	getLoginCreationDisabledStmt           *sql.Stmt
-	getNewThrottleEmailPatternsStmt        *sql.Stmt
-	getNewThrottleEnabledStmt              *sql.Stmt
-	getNewThrottleMessageStmt              *sql.Stmt
-	getPasskeyByCredentialIDStmt           *sql.Stmt
-	getPasskeyChallengeStmt                *sql.Stmt
-	getPasskeysByUserIDStmt                *sql.Stmt
-	getPendingBoxSharesByBoxIDStmt         *sql.Stmt
-	getPendingBoxSharesByEmailStmt         *sql.Stmt
-	getPendingSSHKeyByTokenStmt            *sql.Stmt
-	getPendingSSHKeyEmailByPublicKeyStmt   *sql.Stmt
-	getPreferredExeletStmt                 *sql.Stmt
-	getProxyBearerTokenStmt                *sql.Stmt
-	getRecentSignupRejectionsStmt          *sql.Stmt
-	getSSHHostKeyStmt                      *sql.Stmt
-	getSSHKeysForUserStmt                  *sql.Stmt
-	getSSHKeysForUserByEmailStmt           *sql.Stmt
-	getShardPublicIPStmt                   *sql.Stmt
-	getShellHistoryStmt                    *sql.Stmt
-	getSignupPOWEnabledStmt                *sql.Stmt
-	getSignupRejectionsByEmailStmt         *sql.Stmt
-	getSignupRejectionsByIPStmt            *sql.Stmt
-	getSiteCookiesForUserStmt              *sql.Stmt
-	getTagResolutionStmt                   *sql.Stmt
-	getTagsNeedingRefreshStmt              *sql.Stmt
-	getUserByEmailStmt                     *sql.Stmt
-	getUserEmailCountForDateStmt           *sql.Stmt
-	getUserIDByEmailStmt                   *sql.Stmt
-	getUserIDBySSHKeyStmt                  *sql.Stmt
-	getUserLLMCreditStmt                   *sql.Stmt
-	getUserNewVMCreationDisabledStmt       *sql.Stmt
-	getUserRootSupportStmt                 *sql.Stmt
-	getUserWithDetailsStmt                 *sql.Stmt
-	getUserWithSSHKeyStmt                  *sql.Stmt
-	hasUserAccessToBoxStmt                 *sql.Stmt
-	incrementSeenOnHostsStmt               *sql.Stmt
-	incrementShareLinkUsageStmt            *sql.Stmt
-	incrementUserEmailCountStmt            *sql.Stmt
-	insertAccountStmt                      *sql.Stmt
-	insertAuthCookieStmt                   *sql.Stmt
-	insertBoxStmt                          *sql.Stmt
-	insertBoxIPShardStmt                   *sql.Stmt
-	insertDeletedBoxStmt                   *sql.Stmt
-	insertEmailAddressQualityStmt          *sql.Stmt
-	insertEmailBounceStmt                  *sql.Stmt
-	insertEmailQualityBypassStmt           *sql.Stmt
-	insertEmailVerificationStmt            *sql.Stmt
-	insertOrReplaceEmailVerificationStmt   *sql.Stmt
-	insertPasskeyStmt                      *sql.Stmt
-	insertPasskeyChallengeStmt             *sql.Stmt
-	insertPendingSSHKeyStmt                *sql.Stmt
-	insertProxyBearerTokenStmt             *sql.Stmt
-	insertSSHKeyStmt                       *sql.Stmt
-	insertSSHKeyForEmailUserStmt           *sql.Stmt
-	insertSignupRejectionStmt              *sql.Stmt
-	insertTagResolutionHistoryStmt         *sql.Stmt
-	insertUserStmt                         *sql.Stmt
-	isEmailBouncedStmt                     *sql.Stmt
-	isEmailQualityBypassedStmt             *sql.Stmt
-	listAllAccountsStmt                    *sql.Stmt
-	listAllUserLLMCreditsStmt              *sql.Stmt
-	listAllUsersStmt                       *sql.Stmt
-	listEmailQualityBypassStmt             *sql.Stmt
-	listIPShardsStmt                       *sql.Stmt
-	listIPShardsForUserStmt                *sql.Stmt
-	recordUserEventStmt                    *sql.Stmt
-	sSHKeyForBoxNamedStmt                  *sql.Stmt
-	setBoxSupportAccessAllowedStmt         *sql.Stmt
-	setLoginCreationDisabledStmt           *sql.Stmt
-	setNewThrottleEmailPatternsStmt        *sql.Stmt
-	setNewThrottleEnabledStmt              *sql.Stmt
-	setNewThrottleMessageStmt              *sql.Stmt
-	setPreferredExeletStmt                 *sql.Stmt
-	setSignupPOWEnabledStmt                *sql.Stmt
-	setUserNewVMCreationDisabledStmt       *sql.Stmt
-	setUserRootSupportStmt                 *sql.Stmt
-	updateAuthCookieLastUsedStmt           *sql.Stmt
-	updateAuthTokenUsedAtStmt              *sql.Stmt
-	updateBoxContainerAndStatusStmt        *sql.Stmt
-	updateBoxContainerIDAndStatusStmt      *sql.Stmt
-	updateBoxRoutesStmt                    *sql.Stmt
-	updateBoxSSHDetailsStmt                *sql.Stmt
-	updateBoxStatusStmt                    *sql.Stmt
-	updatePasskeySignCountStmt             *sql.Stmt
-	updateProxyBearerTokenLastUsedStmt     *sql.Stmt
-	updateTagResolutionCheckedStmt         *sql.Stmt
-	updateTagResolutionDigestStmt          *sql.Stmt
-	updateUserLLMAvailableCreditStmt       *sql.Stmt
-	updateUserLLMCreditSettingsStmt        *sql.Stmt
-	upsertHLLSketchStmt                    *sql.Stmt
-	upsertIPShardStmt                      *sql.Stmt
-	upsertSSHHostKeyStmt                   *sql.Stmt
-	upsertSSHKeyForUserStmt                *sql.Stmt
-	upsertTagResolutionStmt                *sql.Stmt
-	upsertUserLLMCreditStmt                *sql.Stmt
-	userHasAuthCookieStmt                  *sql.Stmt
-	userIsPayingStmt                       *sql.Stmt
-	userNeedsBillingStmt                   *sql.Stmt
+	db                                         DBTX
+	tx                                         *sql.Tx
+	activateAccountStmt                        *sql.Stmt
+	addShellHistoryStmt                        *sql.Stmt
+	boxNamedStmt                               *sql.Stmt
+	boxWithNameExistsStmt                      *sql.Stmt
+	boxWithOwnerNamedStmt                      *sql.Stmt
+	boxesForUserStmt                           *sql.Stmt
+	cleanupExpiredPasskeyChallengesStmt        *sql.Stmt
+	clearPreferredExeletStmt                   *sql.Stmt
+	countAccountsByBillingStatusStmt           *sql.Stmt
+	countBoxShareLinksStmt                     *sql.Stmt
+	countBoxSharesStmt                         *sql.Stmt
+	countBoxesStmt                             *sql.Stmt
+	countBoxesForUserStmt                      *sql.Stmt
+	countDevUsersStmt                          *sql.Stmt
+	countIPShardsStmt                          *sql.Stmt
+	countLoginUsersStmt                        *sql.Stmt
+	countPendingBoxSharesStmt                  *sql.Stmt
+	countUsersWithBoxesStmt                    *sql.Stmt
+	createBoxShareStmt                         *sql.Stmt
+	createBoxShareLinkStmt                     *sql.Stmt
+	createPendingBoxShareStmt                  *sql.Stmt
+	createUserLLMCreditIfNotExistsStmt         *sql.Stmt
+	debitUserLLMCreditStmt                     *sql.Stmt
+	deleteAuthCookieStmt                       *sql.Stmt
+	deleteAuthCookieByValueStmt                *sql.Stmt
+	deleteAuthCookiesByUserIDStmt              *sql.Stmt
+	deleteBoxStmt                              *sql.Stmt
+	deleteBoxIPShardStmt                       *sql.Stmt
+	deleteBoxShareByBoxAndUserStmt             *sql.Stmt
+	deleteBoxShareLinkByBoxAndTokenStmt        *sql.Stmt
+	deleteEmailQualityBypassStmt               *sql.Stmt
+	deleteEmailVerificationByTokenStmt         *sql.Stmt
+	deleteMobilePendingVMByTokenStmt           *sql.Stmt
+	deleteMobilePendingVMByUserAndHostnameStmt *sql.Stmt
+	deletePasskeyStmt                          *sql.Stmt
+	deletePasskeyChallengeStmt                 *sql.Stmt
+	deletePendingBoxShareByBoxAndEmailStmt     *sql.Stmt
+	deletePendingSSHKeyByTokenStmt             *sql.Stmt
+	deleteSSHKeyForUserStmt                    *sql.Stmt
+	deleteTagResolutionStmt                    *sql.Stmt
+	getAccountStmt                             *sql.Stmt
+	getAccountByUserIDStmt                     *sql.Stmt
+	getAllBoxShareLinksByBoxIDStmt             *sql.Stmt
+	getAllUserEventsStmt                       *sql.Stmt
+	getAuthCookieInfoStmt                      *sql.Stmt
+	getAuthTokenInfoStmt                       *sql.Stmt
+	getBoxByNameAndAllocStmt                   *sql.Stmt
+	getBoxByNameWithSupportAccessStmt          *sql.Stmt
+	getBoxByUserAndShardStmt                   *sql.Stmt
+	getBoxDetailsForSetupStmt                  *sql.Stmt
+	getBoxIPShardStmt                          *sql.Stmt
+	getBoxOwnerEmailByContainerIDStmt          *sql.Stmt
+	getBoxSSHDetailsStmt                       *sql.Stmt
+	getBoxShareLinkByTokenAndBoxIDStmt         *sql.Stmt
+	getBoxShareLinksByBoxIDStmt                *sql.Stmt
+	getBoxSharesByBoxIDStmt                    *sql.Stmt
+	getBoxSupportAccessAllowedStmt             *sql.Stmt
+	getBoxesByHostStmt                         *sql.Stmt
+	getBoxesForUserDashboardStmt               *sql.Stmt
+	getBoxesSharedWithUserStmt                 *sql.Stmt
+	getEmailAddressQualityByEmailStmt          *sql.Stmt
+	getEmailBounceStmt                         *sql.Stmt
+	getEmailBySSHKeyStmt                       *sql.Stmt
+	getEmailByUserIDStmt                       *sql.Stmt
+	getEmailQualityBypassStmt                  *sql.Stmt
+	getEmailVerificationByPartialTokenStmt     *sql.Stmt
+	getEmailVerificationByTokenStmt            *sql.Stmt
+	getHLLSketchStmt                           *sql.Stmt
+	getIPShardByBoxNameStmt                    *sql.Stmt
+	getLatestMobilePendingVMByUserStmt         *sql.Stmt
+	getLoginCreationDisabledStmt               *sql.Stmt
+	getMobilePendingVMByTokenStmt              *sql.Stmt
+	getNewThrottleEmailPatternsStmt            *sql.Stmt
+	getNewThrottleEnabledStmt                  *sql.Stmt
+	getNewThrottleMessageStmt                  *sql.Stmt
+	getPasskeyByCredentialIDStmt               *sql.Stmt
+	getPasskeyChallengeStmt                    *sql.Stmt
+	getPasskeysByUserIDStmt                    *sql.Stmt
+	getPendingBoxSharesByBoxIDStmt             *sql.Stmt
+	getPendingBoxSharesByEmailStmt             *sql.Stmt
+	getPendingSSHKeyByTokenStmt                *sql.Stmt
+	getPendingSSHKeyEmailByPublicKeyStmt       *sql.Stmt
+	getPreferredExeletStmt                     *sql.Stmt
+	getProxyBearerTokenStmt                    *sql.Stmt
+	getRecentSignupRejectionsStmt              *sql.Stmt
+	getSSHHostKeyStmt                          *sql.Stmt
+	getSSHKeysForUserStmt                      *sql.Stmt
+	getSSHKeysForUserByEmailStmt               *sql.Stmt
+	getShardPublicIPStmt                       *sql.Stmt
+	getShellHistoryStmt                        *sql.Stmt
+	getSignupPOWEnabledStmt                    *sql.Stmt
+	getSignupRejectionsByEmailStmt             *sql.Stmt
+	getSignupRejectionsByIPStmt                *sql.Stmt
+	getSiteCookiesForUserStmt                  *sql.Stmt
+	getTagResolutionStmt                       *sql.Stmt
+	getTagsNeedingRefreshStmt                  *sql.Stmt
+	getUserByEmailStmt                         *sql.Stmt
+	getUserEmailCountForDateStmt               *sql.Stmt
+	getUserIDByEmailStmt                       *sql.Stmt
+	getUserIDBySSHKeyStmt                      *sql.Stmt
+	getUserLLMCreditStmt                       *sql.Stmt
+	getUserNewVMCreationDisabledStmt           *sql.Stmt
+	getUserRootSupportStmt                     *sql.Stmt
+	getUserWithDetailsStmt                     *sql.Stmt
+	getUserWithSSHKeyStmt                      *sql.Stmt
+	hasUserAccessToBoxStmt                     *sql.Stmt
+	incrementSeenOnHostsStmt                   *sql.Stmt
+	incrementShareLinkUsageStmt                *sql.Stmt
+	incrementUserEmailCountStmt                *sql.Stmt
+	insertAccountStmt                          *sql.Stmt
+	insertAuthCookieStmt                       *sql.Stmt
+	insertBoxStmt                              *sql.Stmt
+	insertBoxIPShardStmt                       *sql.Stmt
+	insertDeletedBoxStmt                       *sql.Stmt
+	insertEmailAddressQualityStmt              *sql.Stmt
+	insertEmailBounceStmt                      *sql.Stmt
+	insertEmailQualityBypassStmt               *sql.Stmt
+	insertEmailVerificationStmt                *sql.Stmt
+	insertOrReplaceEmailVerificationStmt       *sql.Stmt
+	insertPasskeyStmt                          *sql.Stmt
+	insertPasskeyChallengeStmt                 *sql.Stmt
+	insertPendingSSHKeyStmt                    *sql.Stmt
+	insertProxyBearerTokenStmt                 *sql.Stmt
+	insertSSHKeyStmt                           *sql.Stmt
+	insertSSHKeyForEmailUserStmt               *sql.Stmt
+	insertSignupRejectionStmt                  *sql.Stmt
+	insertTagResolutionHistoryStmt             *sql.Stmt
+	insertUserStmt                             *sql.Stmt
+	isEmailBouncedStmt                         *sql.Stmt
+	isEmailQualityBypassedStmt                 *sql.Stmt
+	listAllAccountsStmt                        *sql.Stmt
+	listAllUserLLMCreditsStmt                  *sql.Stmt
+	listAllUsersStmt                           *sql.Stmt
+	listEmailQualityBypassStmt                 *sql.Stmt
+	listIPShardsStmt                           *sql.Stmt
+	listIPShardsForUserStmt                    *sql.Stmt
+	recordUserEventStmt                        *sql.Stmt
+	sSHKeyForBoxNamedStmt                      *sql.Stmt
+	setBoxSupportAccessAllowedStmt             *sql.Stmt
+	setLoginCreationDisabledStmt               *sql.Stmt
+	setNewThrottleEmailPatternsStmt            *sql.Stmt
+	setNewThrottleEnabledStmt                  *sql.Stmt
+	setNewThrottleMessageStmt                  *sql.Stmt
+	setPreferredExeletStmt                     *sql.Stmt
+	setSignupPOWEnabledStmt                    *sql.Stmt
+	setUserNewVMCreationDisabledStmt           *sql.Stmt
+	setUserRootSupportStmt                     *sql.Stmt
+	updateAuthCookieLastUsedStmt               *sql.Stmt
+	updateAuthTokenUsedAtStmt                  *sql.Stmt
+	updateBoxContainerAndStatusStmt            *sql.Stmt
+	updateBoxContainerIDAndStatusStmt          *sql.Stmt
+	updateBoxCreationLogStmt                   *sql.Stmt
+	updateBoxRoutesStmt                        *sql.Stmt
+	updateBoxSSHDetailsStmt                    *sql.Stmt
+	updateBoxStatusStmt                        *sql.Stmt
+	updatePasskeySignCountStmt                 *sql.Stmt
+	updateProxyBearerTokenLastUsedStmt         *sql.Stmt
+	updateTagResolutionCheckedStmt             *sql.Stmt
+	updateTagResolutionDigestStmt              *sql.Stmt
+	updateUserLLMAvailableCreditStmt           *sql.Stmt
+	updateUserLLMCreditSettingsStmt            *sql.Stmt
+	upsertHLLSketchStmt                        *sql.Stmt
+	upsertIPShardStmt                          *sql.Stmt
+	upsertMobilePendingVMStmt                  *sql.Stmt
+	upsertSSHHostKeyStmt                       *sql.Stmt
+	upsertSSHKeyForUserStmt                    *sql.Stmt
+	upsertTagResolutionStmt                    *sql.Stmt
+	upsertUserLLMCreditStmt                    *sql.Stmt
+	userHasAuthCookieStmt                      *sql.Stmt
+	userIsPayingStmt                           *sql.Stmt
+	userNeedsBillingStmt                       *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                                     tx,
-		tx:                                     tx,
-		activateAccountStmt:                    q.activateAccountStmt,
-		addShellHistoryStmt:                    q.addShellHistoryStmt,
-		boxNamedStmt:                           q.boxNamedStmt,
-		boxWithNameExistsStmt:                  q.boxWithNameExistsStmt,
-		boxWithOwnerNamedStmt:                  q.boxWithOwnerNamedStmt,
-		boxesForUserStmt:                       q.boxesForUserStmt,
-		cleanupExpiredPasskeyChallengesStmt:    q.cleanupExpiredPasskeyChallengesStmt,
-		clearPreferredExeletStmt:               q.clearPreferredExeletStmt,
-		countAccountsByBillingStatusStmt:       q.countAccountsByBillingStatusStmt,
-		countBoxShareLinksStmt:                 q.countBoxShareLinksStmt,
-		countBoxSharesStmt:                     q.countBoxSharesStmt,
-		countBoxesStmt:                         q.countBoxesStmt,
-		countBoxesForUserStmt:                  q.countBoxesForUserStmt,
-		countDevUsersStmt:                      q.countDevUsersStmt,
-		countIPShardsStmt:                      q.countIPShardsStmt,
-		countLoginUsersStmt:                    q.countLoginUsersStmt,
-		countPendingBoxSharesStmt:              q.countPendingBoxSharesStmt,
-		countUsersWithBoxesStmt:                q.countUsersWithBoxesStmt,
-		createBoxShareStmt:                     q.createBoxShareStmt,
-		createBoxShareLinkStmt:                 q.createBoxShareLinkStmt,
-		createPendingBoxShareStmt:              q.createPendingBoxShareStmt,
-		createUserLLMCreditIfNotExistsStmt:     q.createUserLLMCreditIfNotExistsStmt,
-		debitUserLLMCreditStmt:                 q.debitUserLLMCreditStmt,
-		deleteAuthCookieStmt:                   q.deleteAuthCookieStmt,
-		deleteAuthCookieByValueStmt:            q.deleteAuthCookieByValueStmt,
-		deleteAuthCookiesByUserIDStmt:          q.deleteAuthCookiesByUserIDStmt,
-		deleteBoxStmt:                          q.deleteBoxStmt,
-		deleteBoxIPShardStmt:                   q.deleteBoxIPShardStmt,
-		deleteBoxShareByBoxAndUserStmt:         q.deleteBoxShareByBoxAndUserStmt,
-		deleteBoxShareLinkByBoxAndTokenStmt:    q.deleteBoxShareLinkByBoxAndTokenStmt,
-		deleteEmailQualityBypassStmt:           q.deleteEmailQualityBypassStmt,
-		deleteEmailVerificationByTokenStmt:     q.deleteEmailVerificationByTokenStmt,
-		deletePasskeyStmt:                      q.deletePasskeyStmt,
-		deletePasskeyChallengeStmt:             q.deletePasskeyChallengeStmt,
-		deletePendingBoxShareByBoxAndEmailStmt: q.deletePendingBoxShareByBoxAndEmailStmt,
-		deletePendingSSHKeyByTokenStmt:         q.deletePendingSSHKeyByTokenStmt,
-		deleteSSHKeyForUserStmt:                q.deleteSSHKeyForUserStmt,
-		deleteTagResolutionStmt:                q.deleteTagResolutionStmt,
-		getAccountStmt:                         q.getAccountStmt,
-		getAccountByUserIDStmt:                 q.getAccountByUserIDStmt,
-		getAllBoxShareLinksByBoxIDStmt:         q.getAllBoxShareLinksByBoxIDStmt,
-		getAllUserEventsStmt:                   q.getAllUserEventsStmt,
-		getAuthCookieInfoStmt:                  q.getAuthCookieInfoStmt,
-		getAuthTokenInfoStmt:                   q.getAuthTokenInfoStmt,
-		getBoxByNameAndAllocStmt:               q.getBoxByNameAndAllocStmt,
-		getBoxByNameWithSupportAccessStmt:      q.getBoxByNameWithSupportAccessStmt,
-		getBoxByUserAndShardStmt:               q.getBoxByUserAndShardStmt,
-		getBoxDetailsForSetupStmt:              q.getBoxDetailsForSetupStmt,
-		getBoxIPShardStmt:                      q.getBoxIPShardStmt,
-		getBoxOwnerEmailByContainerIDStmt:      q.getBoxOwnerEmailByContainerIDStmt,
-		getBoxSSHDetailsStmt:                   q.getBoxSSHDetailsStmt,
-		getBoxShareLinkByTokenAndBoxIDStmt:     q.getBoxShareLinkByTokenAndBoxIDStmt,
-		getBoxShareLinksByBoxIDStmt:            q.getBoxShareLinksByBoxIDStmt,
-		getBoxSharesByBoxIDStmt:                q.getBoxSharesByBoxIDStmt,
-		getBoxSupportAccessAllowedStmt:         q.getBoxSupportAccessAllowedStmt,
-		getBoxesByHostStmt:                     q.getBoxesByHostStmt,
-		getBoxesForUserDashboardStmt:           q.getBoxesForUserDashboardStmt,
-		getBoxesSharedWithUserStmt:             q.getBoxesSharedWithUserStmt,
-		getEmailAddressQualityByEmailStmt:      q.getEmailAddressQualityByEmailStmt,
-		getEmailBounceStmt:                     q.getEmailBounceStmt,
-		getEmailBySSHKeyStmt:                   q.getEmailBySSHKeyStmt,
-		getEmailByUserIDStmt:                   q.getEmailByUserIDStmt,
-		getEmailQualityBypassStmt:              q.getEmailQualityBypassStmt,
-		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
-		getEmailVerificationByTokenStmt:        q.getEmailVerificationByTokenStmt,
-		getHLLSketchStmt:                       q.getHLLSketchStmt,
-		getIPShardByBoxNameStmt:                q.getIPShardByBoxNameStmt,
-		getLoginCreationDisabledStmt:           q.getLoginCreationDisabledStmt,
-		getNewThrottleEmailPatternsStmt:        q.getNewThrottleEmailPatternsStmt,
-		getNewThrottleEnabledStmt:              q.getNewThrottleEnabledStmt,
-		getNewThrottleMessageStmt:              q.getNewThrottleMessageStmt,
-		getPasskeyByCredentialIDStmt:           q.getPasskeyByCredentialIDStmt,
-		getPasskeyChallengeStmt:                q.getPasskeyChallengeStmt,
-		getPasskeysByUserIDStmt:                q.getPasskeysByUserIDStmt,
-		getPendingBoxSharesByBoxIDStmt:         q.getPendingBoxSharesByBoxIDStmt,
-		getPendingBoxSharesByEmailStmt:         q.getPendingBoxSharesByEmailStmt,
-		getPendingSSHKeyByTokenStmt:            q.getPendingSSHKeyByTokenStmt,
-		getPendingSSHKeyEmailByPublicKeyStmt:   q.getPendingSSHKeyEmailByPublicKeyStmt,
-		getPreferredExeletStmt:                 q.getPreferredExeletStmt,
-		getProxyBearerTokenStmt:                q.getProxyBearerTokenStmt,
-		getRecentSignupRejectionsStmt:          q.getRecentSignupRejectionsStmt,
-		getSSHHostKeyStmt:                      q.getSSHHostKeyStmt,
-		getSSHKeysForUserStmt:                  q.getSSHKeysForUserStmt,
-		getSSHKeysForUserByEmailStmt:           q.getSSHKeysForUserByEmailStmt,
-		getShardPublicIPStmt:                   q.getShardPublicIPStmt,
-		getShellHistoryStmt:                    q.getShellHistoryStmt,
-		getSignupPOWEnabledStmt:                q.getSignupPOWEnabledStmt,
-		getSignupRejectionsByEmailStmt:         q.getSignupRejectionsByEmailStmt,
-		getSignupRejectionsByIPStmt:            q.getSignupRejectionsByIPStmt,
-		getSiteCookiesForUserStmt:              q.getSiteCookiesForUserStmt,
-		getTagResolutionStmt:                   q.getTagResolutionStmt,
-		getTagsNeedingRefreshStmt:              q.getTagsNeedingRefreshStmt,
-		getUserByEmailStmt:                     q.getUserByEmailStmt,
-		getUserEmailCountForDateStmt:           q.getUserEmailCountForDateStmt,
-		getUserIDByEmailStmt:                   q.getUserIDByEmailStmt,
-		getUserIDBySSHKeyStmt:                  q.getUserIDBySSHKeyStmt,
-		getUserLLMCreditStmt:                   q.getUserLLMCreditStmt,
-		getUserNewVMCreationDisabledStmt:       q.getUserNewVMCreationDisabledStmt,
-		getUserRootSupportStmt:                 q.getUserRootSupportStmt,
-		getUserWithDetailsStmt:                 q.getUserWithDetailsStmt,
-		getUserWithSSHKeyStmt:                  q.getUserWithSSHKeyStmt,
-		hasUserAccessToBoxStmt:                 q.hasUserAccessToBoxStmt,
-		incrementSeenOnHostsStmt:               q.incrementSeenOnHostsStmt,
-		incrementShareLinkUsageStmt:            q.incrementShareLinkUsageStmt,
-		incrementUserEmailCountStmt:            q.incrementUserEmailCountStmt,
-		insertAccountStmt:                      q.insertAccountStmt,
-		insertAuthCookieStmt:                   q.insertAuthCookieStmt,
-		insertBoxStmt:                          q.insertBoxStmt,
-		insertBoxIPShardStmt:                   q.insertBoxIPShardStmt,
-		insertDeletedBoxStmt:                   q.insertDeletedBoxStmt,
-		insertEmailAddressQualityStmt:          q.insertEmailAddressQualityStmt,
-		insertEmailBounceStmt:                  q.insertEmailBounceStmt,
-		insertEmailQualityBypassStmt:           q.insertEmailQualityBypassStmt,
-		insertEmailVerificationStmt:            q.insertEmailVerificationStmt,
-		insertOrReplaceEmailVerificationStmt:   q.insertOrReplaceEmailVerificationStmt,
-		insertPasskeyStmt:                      q.insertPasskeyStmt,
-		insertPasskeyChallengeStmt:             q.insertPasskeyChallengeStmt,
-		insertPendingSSHKeyStmt:                q.insertPendingSSHKeyStmt,
-		insertProxyBearerTokenStmt:             q.insertProxyBearerTokenStmt,
-		insertSSHKeyStmt:                       q.insertSSHKeyStmt,
-		insertSSHKeyForEmailUserStmt:           q.insertSSHKeyForEmailUserStmt,
-		insertSignupRejectionStmt:              q.insertSignupRejectionStmt,
-		insertTagResolutionHistoryStmt:         q.insertTagResolutionHistoryStmt,
-		insertUserStmt:                         q.insertUserStmt,
-		isEmailBouncedStmt:                     q.isEmailBouncedStmt,
-		isEmailQualityBypassedStmt:             q.isEmailQualityBypassedStmt,
-		listAllAccountsStmt:                    q.listAllAccountsStmt,
-		listAllUserLLMCreditsStmt:              q.listAllUserLLMCreditsStmt,
-		listAllUsersStmt:                       q.listAllUsersStmt,
-		listEmailQualityBypassStmt:             q.listEmailQualityBypassStmt,
-		listIPShardsStmt:                       q.listIPShardsStmt,
-		listIPShardsForUserStmt:                q.listIPShardsForUserStmt,
-		recordUserEventStmt:                    q.recordUserEventStmt,
-		sSHKeyForBoxNamedStmt:                  q.sSHKeyForBoxNamedStmt,
-		setBoxSupportAccessAllowedStmt:         q.setBoxSupportAccessAllowedStmt,
-		setLoginCreationDisabledStmt:           q.setLoginCreationDisabledStmt,
-		setNewThrottleEmailPatternsStmt:        q.setNewThrottleEmailPatternsStmt,
-		setNewThrottleEnabledStmt:              q.setNewThrottleEnabledStmt,
-		setNewThrottleMessageStmt:              q.setNewThrottleMessageStmt,
-		setPreferredExeletStmt:                 q.setPreferredExeletStmt,
-		setSignupPOWEnabledStmt:                q.setSignupPOWEnabledStmt,
-		setUserNewVMCreationDisabledStmt:       q.setUserNewVMCreationDisabledStmt,
-		setUserRootSupportStmt:                 q.setUserRootSupportStmt,
-		updateAuthCookieLastUsedStmt:           q.updateAuthCookieLastUsedStmt,
-		updateAuthTokenUsedAtStmt:              q.updateAuthTokenUsedAtStmt,
-		updateBoxContainerAndStatusStmt:        q.updateBoxContainerAndStatusStmt,
-		updateBoxContainerIDAndStatusStmt:      q.updateBoxContainerIDAndStatusStmt,
-		updateBoxRoutesStmt:                    q.updateBoxRoutesStmt,
-		updateBoxSSHDetailsStmt:                q.updateBoxSSHDetailsStmt,
-		updateBoxStatusStmt:                    q.updateBoxStatusStmt,
-		updatePasskeySignCountStmt:             q.updatePasskeySignCountStmt,
-		updateProxyBearerTokenLastUsedStmt:     q.updateProxyBearerTokenLastUsedStmt,
-		updateTagResolutionCheckedStmt:         q.updateTagResolutionCheckedStmt,
-		updateTagResolutionDigestStmt:          q.updateTagResolutionDigestStmt,
-		updateUserLLMAvailableCreditStmt:       q.updateUserLLMAvailableCreditStmt,
-		updateUserLLMCreditSettingsStmt:        q.updateUserLLMCreditSettingsStmt,
-		upsertHLLSketchStmt:                    q.upsertHLLSketchStmt,
-		upsertIPShardStmt:                      q.upsertIPShardStmt,
-		upsertSSHHostKeyStmt:                   q.upsertSSHHostKeyStmt,
-		upsertSSHKeyForUserStmt:                q.upsertSSHKeyForUserStmt,
-		upsertTagResolutionStmt:                q.upsertTagResolutionStmt,
-		upsertUserLLMCreditStmt:                q.upsertUserLLMCreditStmt,
-		userHasAuthCookieStmt:                  q.userHasAuthCookieStmt,
-		userIsPayingStmt:                       q.userIsPayingStmt,
-		userNeedsBillingStmt:                   q.userNeedsBillingStmt,
+		db:                                         tx,
+		tx:                                         tx,
+		activateAccountStmt:                        q.activateAccountStmt,
+		addShellHistoryStmt:                        q.addShellHistoryStmt,
+		boxNamedStmt:                               q.boxNamedStmt,
+		boxWithNameExistsStmt:                      q.boxWithNameExistsStmt,
+		boxWithOwnerNamedStmt:                      q.boxWithOwnerNamedStmt,
+		boxesForUserStmt:                           q.boxesForUserStmt,
+		cleanupExpiredPasskeyChallengesStmt:        q.cleanupExpiredPasskeyChallengesStmt,
+		clearPreferredExeletStmt:                   q.clearPreferredExeletStmt,
+		countAccountsByBillingStatusStmt:           q.countAccountsByBillingStatusStmt,
+		countBoxShareLinksStmt:                     q.countBoxShareLinksStmt,
+		countBoxSharesStmt:                         q.countBoxSharesStmt,
+		countBoxesStmt:                             q.countBoxesStmt,
+		countBoxesForUserStmt:                      q.countBoxesForUserStmt,
+		countDevUsersStmt:                          q.countDevUsersStmt,
+		countIPShardsStmt:                          q.countIPShardsStmt,
+		countLoginUsersStmt:                        q.countLoginUsersStmt,
+		countPendingBoxSharesStmt:                  q.countPendingBoxSharesStmt,
+		countUsersWithBoxesStmt:                    q.countUsersWithBoxesStmt,
+		createBoxShareStmt:                         q.createBoxShareStmt,
+		createBoxShareLinkStmt:                     q.createBoxShareLinkStmt,
+		createPendingBoxShareStmt:                  q.createPendingBoxShareStmt,
+		createUserLLMCreditIfNotExistsStmt:         q.createUserLLMCreditIfNotExistsStmt,
+		debitUserLLMCreditStmt:                     q.debitUserLLMCreditStmt,
+		deleteAuthCookieStmt:                       q.deleteAuthCookieStmt,
+		deleteAuthCookieByValueStmt:                q.deleteAuthCookieByValueStmt,
+		deleteAuthCookiesByUserIDStmt:              q.deleteAuthCookiesByUserIDStmt,
+		deleteBoxStmt:                              q.deleteBoxStmt,
+		deleteBoxIPShardStmt:                       q.deleteBoxIPShardStmt,
+		deleteBoxShareByBoxAndUserStmt:             q.deleteBoxShareByBoxAndUserStmt,
+		deleteBoxShareLinkByBoxAndTokenStmt:        q.deleteBoxShareLinkByBoxAndTokenStmt,
+		deleteEmailQualityBypassStmt:               q.deleteEmailQualityBypassStmt,
+		deleteEmailVerificationByTokenStmt:         q.deleteEmailVerificationByTokenStmt,
+		deleteMobilePendingVMByTokenStmt:           q.deleteMobilePendingVMByTokenStmt,
+		deleteMobilePendingVMByUserAndHostnameStmt: q.deleteMobilePendingVMByUserAndHostnameStmt,
+		deletePasskeyStmt:                          q.deletePasskeyStmt,
+		deletePasskeyChallengeStmt:                 q.deletePasskeyChallengeStmt,
+		deletePendingBoxShareByBoxAndEmailStmt:     q.deletePendingBoxShareByBoxAndEmailStmt,
+		deletePendingSSHKeyByTokenStmt:             q.deletePendingSSHKeyByTokenStmt,
+		deleteSSHKeyForUserStmt:                    q.deleteSSHKeyForUserStmt,
+		deleteTagResolutionStmt:                    q.deleteTagResolutionStmt,
+		getAccountStmt:                             q.getAccountStmt,
+		getAccountByUserIDStmt:                     q.getAccountByUserIDStmt,
+		getAllBoxShareLinksByBoxIDStmt:             q.getAllBoxShareLinksByBoxIDStmt,
+		getAllUserEventsStmt:                       q.getAllUserEventsStmt,
+		getAuthCookieInfoStmt:                      q.getAuthCookieInfoStmt,
+		getAuthTokenInfoStmt:                       q.getAuthTokenInfoStmt,
+		getBoxByNameAndAllocStmt:                   q.getBoxByNameAndAllocStmt,
+		getBoxByNameWithSupportAccessStmt:          q.getBoxByNameWithSupportAccessStmt,
+		getBoxByUserAndShardStmt:                   q.getBoxByUserAndShardStmt,
+		getBoxDetailsForSetupStmt:                  q.getBoxDetailsForSetupStmt,
+		getBoxIPShardStmt:                          q.getBoxIPShardStmt,
+		getBoxOwnerEmailByContainerIDStmt:          q.getBoxOwnerEmailByContainerIDStmt,
+		getBoxSSHDetailsStmt:                       q.getBoxSSHDetailsStmt,
+		getBoxShareLinkByTokenAndBoxIDStmt:         q.getBoxShareLinkByTokenAndBoxIDStmt,
+		getBoxShareLinksByBoxIDStmt:                q.getBoxShareLinksByBoxIDStmt,
+		getBoxSharesByBoxIDStmt:                    q.getBoxSharesByBoxIDStmt,
+		getBoxSupportAccessAllowedStmt:             q.getBoxSupportAccessAllowedStmt,
+		getBoxesByHostStmt:                         q.getBoxesByHostStmt,
+		getBoxesForUserDashboardStmt:               q.getBoxesForUserDashboardStmt,
+		getBoxesSharedWithUserStmt:                 q.getBoxesSharedWithUserStmt,
+		getEmailAddressQualityByEmailStmt:          q.getEmailAddressQualityByEmailStmt,
+		getEmailBounceStmt:                         q.getEmailBounceStmt,
+		getEmailBySSHKeyStmt:                       q.getEmailBySSHKeyStmt,
+		getEmailByUserIDStmt:                       q.getEmailByUserIDStmt,
+		getEmailQualityBypassStmt:                  q.getEmailQualityBypassStmt,
+		getEmailVerificationByPartialTokenStmt:     q.getEmailVerificationByPartialTokenStmt,
+		getEmailVerificationByTokenStmt:            q.getEmailVerificationByTokenStmt,
+		getHLLSketchStmt:                           q.getHLLSketchStmt,
+		getIPShardByBoxNameStmt:                    q.getIPShardByBoxNameStmt,
+		getLatestMobilePendingVMByUserStmt:         q.getLatestMobilePendingVMByUserStmt,
+		getLoginCreationDisabledStmt:               q.getLoginCreationDisabledStmt,
+		getMobilePendingVMByTokenStmt:              q.getMobilePendingVMByTokenStmt,
+		getNewThrottleEmailPatternsStmt:            q.getNewThrottleEmailPatternsStmt,
+		getNewThrottleEnabledStmt:                  q.getNewThrottleEnabledStmt,
+		getNewThrottleMessageStmt:                  q.getNewThrottleMessageStmt,
+		getPasskeyByCredentialIDStmt:               q.getPasskeyByCredentialIDStmt,
+		getPasskeyChallengeStmt:                    q.getPasskeyChallengeStmt,
+		getPasskeysByUserIDStmt:                    q.getPasskeysByUserIDStmt,
+		getPendingBoxSharesByBoxIDStmt:             q.getPendingBoxSharesByBoxIDStmt,
+		getPendingBoxSharesByEmailStmt:             q.getPendingBoxSharesByEmailStmt,
+		getPendingSSHKeyByTokenStmt:                q.getPendingSSHKeyByTokenStmt,
+		getPendingSSHKeyEmailByPublicKeyStmt:       q.getPendingSSHKeyEmailByPublicKeyStmt,
+		getPreferredExeletStmt:                     q.getPreferredExeletStmt,
+		getProxyBearerTokenStmt:                    q.getProxyBearerTokenStmt,
+		getRecentSignupRejectionsStmt:              q.getRecentSignupRejectionsStmt,
+		getSSHHostKeyStmt:                          q.getSSHHostKeyStmt,
+		getSSHKeysForUserStmt:                      q.getSSHKeysForUserStmt,
+		getSSHKeysForUserByEmailStmt:               q.getSSHKeysForUserByEmailStmt,
+		getShardPublicIPStmt:                       q.getShardPublicIPStmt,
+		getShellHistoryStmt:                        q.getShellHistoryStmt,
+		getSignupPOWEnabledStmt:                    q.getSignupPOWEnabledStmt,
+		getSignupRejectionsByEmailStmt:             q.getSignupRejectionsByEmailStmt,
+		getSignupRejectionsByIPStmt:                q.getSignupRejectionsByIPStmt,
+		getSiteCookiesForUserStmt:                  q.getSiteCookiesForUserStmt,
+		getTagResolutionStmt:                       q.getTagResolutionStmt,
+		getTagsNeedingRefreshStmt:                  q.getTagsNeedingRefreshStmt,
+		getUserByEmailStmt:                         q.getUserByEmailStmt,
+		getUserEmailCountForDateStmt:               q.getUserEmailCountForDateStmt,
+		getUserIDByEmailStmt:                       q.getUserIDByEmailStmt,
+		getUserIDBySSHKeyStmt:                      q.getUserIDBySSHKeyStmt,
+		getUserLLMCreditStmt:                       q.getUserLLMCreditStmt,
+		getUserNewVMCreationDisabledStmt:           q.getUserNewVMCreationDisabledStmt,
+		getUserRootSupportStmt:                     q.getUserRootSupportStmt,
+		getUserWithDetailsStmt:                     q.getUserWithDetailsStmt,
+		getUserWithSSHKeyStmt:                      q.getUserWithSSHKeyStmt,
+		hasUserAccessToBoxStmt:                     q.hasUserAccessToBoxStmt,
+		incrementSeenOnHostsStmt:                   q.incrementSeenOnHostsStmt,
+		incrementShareLinkUsageStmt:                q.incrementShareLinkUsageStmt,
+		incrementUserEmailCountStmt:                q.incrementUserEmailCountStmt,
+		insertAccountStmt:                          q.insertAccountStmt,
+		insertAuthCookieStmt:                       q.insertAuthCookieStmt,
+		insertBoxStmt:                              q.insertBoxStmt,
+		insertBoxIPShardStmt:                       q.insertBoxIPShardStmt,
+		insertDeletedBoxStmt:                       q.insertDeletedBoxStmt,
+		insertEmailAddressQualityStmt:              q.insertEmailAddressQualityStmt,
+		insertEmailBounceStmt:                      q.insertEmailBounceStmt,
+		insertEmailQualityBypassStmt:               q.insertEmailQualityBypassStmt,
+		insertEmailVerificationStmt:                q.insertEmailVerificationStmt,
+		insertOrReplaceEmailVerificationStmt:       q.insertOrReplaceEmailVerificationStmt,
+		insertPasskeyStmt:                          q.insertPasskeyStmt,
+		insertPasskeyChallengeStmt:                 q.insertPasskeyChallengeStmt,
+		insertPendingSSHKeyStmt:                    q.insertPendingSSHKeyStmt,
+		insertProxyBearerTokenStmt:                 q.insertProxyBearerTokenStmt,
+		insertSSHKeyStmt:                           q.insertSSHKeyStmt,
+		insertSSHKeyForEmailUserStmt:               q.insertSSHKeyForEmailUserStmt,
+		insertSignupRejectionStmt:                  q.insertSignupRejectionStmt,
+		insertTagResolutionHistoryStmt:             q.insertTagResolutionHistoryStmt,
+		insertUserStmt:                             q.insertUserStmt,
+		isEmailBouncedStmt:                         q.isEmailBouncedStmt,
+		isEmailQualityBypassedStmt:                 q.isEmailQualityBypassedStmt,
+		listAllAccountsStmt:                        q.listAllAccountsStmt,
+		listAllUserLLMCreditsStmt:                  q.listAllUserLLMCreditsStmt,
+		listAllUsersStmt:                           q.listAllUsersStmt,
+		listEmailQualityBypassStmt:                 q.listEmailQualityBypassStmt,
+		listIPShardsStmt:                           q.listIPShardsStmt,
+		listIPShardsForUserStmt:                    q.listIPShardsForUserStmt,
+		recordUserEventStmt:                        q.recordUserEventStmt,
+		sSHKeyForBoxNamedStmt:                      q.sSHKeyForBoxNamedStmt,
+		setBoxSupportAccessAllowedStmt:             q.setBoxSupportAccessAllowedStmt,
+		setLoginCreationDisabledStmt:               q.setLoginCreationDisabledStmt,
+		setNewThrottleEmailPatternsStmt:            q.setNewThrottleEmailPatternsStmt,
+		setNewThrottleEnabledStmt:                  q.setNewThrottleEnabledStmt,
+		setNewThrottleMessageStmt:                  q.setNewThrottleMessageStmt,
+		setPreferredExeletStmt:                     q.setPreferredExeletStmt,
+		setSignupPOWEnabledStmt:                    q.setSignupPOWEnabledStmt,
+		setUserNewVMCreationDisabledStmt:           q.setUserNewVMCreationDisabledStmt,
+		setUserRootSupportStmt:                     q.setUserRootSupportStmt,
+		updateAuthCookieLastUsedStmt:               q.updateAuthCookieLastUsedStmt,
+		updateAuthTokenUsedAtStmt:                  q.updateAuthTokenUsedAtStmt,
+		updateBoxContainerAndStatusStmt:            q.updateBoxContainerAndStatusStmt,
+		updateBoxContainerIDAndStatusStmt:          q.updateBoxContainerIDAndStatusStmt,
+		updateBoxCreationLogStmt:                   q.updateBoxCreationLogStmt,
+		updateBoxRoutesStmt:                        q.updateBoxRoutesStmt,
+		updateBoxSSHDetailsStmt:                    q.updateBoxSSHDetailsStmt,
+		updateBoxStatusStmt:                        q.updateBoxStatusStmt,
+		updatePasskeySignCountStmt:                 q.updatePasskeySignCountStmt,
+		updateProxyBearerTokenLastUsedStmt:         q.updateProxyBearerTokenLastUsedStmt,
+		updateTagResolutionCheckedStmt:             q.updateTagResolutionCheckedStmt,
+		updateTagResolutionDigestStmt:              q.updateTagResolutionDigestStmt,
+		updateUserLLMAvailableCreditStmt:           q.updateUserLLMAvailableCreditStmt,
+		updateUserLLMCreditSettingsStmt:            q.updateUserLLMCreditSettingsStmt,
+		upsertHLLSketchStmt:                        q.upsertHLLSketchStmt,
+		upsertIPShardStmt:                          q.upsertIPShardStmt,
+		upsertMobilePendingVMStmt:                  q.upsertMobilePendingVMStmt,
+		upsertSSHHostKeyStmt:                       q.upsertSSHHostKeyStmt,
+		upsertSSHKeyForUserStmt:                    q.upsertSSHKeyForUserStmt,
+		upsertTagResolutionStmt:                    q.upsertTagResolutionStmt,
+		upsertUserLLMCreditStmt:                    q.upsertUserLLMCreditStmt,
+		userHasAuthCookieStmt:                      q.userHasAuthCookieStmt,
+		userIsPayingStmt:                           q.userIsPayingStmt,
+		userNeedsBillingStmt:                       q.userNeedsBillingStmt,
 	}
 }

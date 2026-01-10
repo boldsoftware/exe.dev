@@ -28,7 +28,6 @@ import (
 	emailpkg "exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/pow"
-	"exe.dev/sqlite"
 	"exe.dev/stage"
 	_ "modernc.org/sqlite"
 )
@@ -156,17 +155,15 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		}
 
 		// Check for pending mobile VM creation tied to this token
-		var hostname, prompt string
-		err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-			row := rx.Conn().QueryRowContext(ctx, `SELECT hostname, prompt FROM mobile_pending_vm WHERE token = ?`, token)
-			return row.Scan(&hostname, &prompt)
-		})
-		if err == nil && hostname != "" {
+		pendingVM, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetMobilePendingVMByToken, token)
+		if err == nil && pendingVM.Hostname != "" {
+			hostname := pendingVM.Hostname
+			prompt := ""
+			if pendingVM.Prompt != nil {
+				prompt = *pendingVM.Prompt
+			}
 			// Clean up the pending record
-			_ = s.db.Tx(context.WithoutCancel(r.Context()), func(ctx context.Context, tx *sqlite.Tx) error {
-				_, err := tx.Conn().ExecContext(ctx, `DELETE FROM mobile_pending_vm WHERE token = ?`, token)
-				return err
-			})
+			_ = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).DeleteMobilePendingVMByToken, token)
 
 			// Check if user needs billing before starting creation
 			if !s.env.SkipBilling {

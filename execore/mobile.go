@@ -19,7 +19,6 @@ import (
 	emailpkg "exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
-	"exe.dev/sqlite"
 	"exe.dev/stage"
 )
 
@@ -211,9 +210,9 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 		creationLog := cs.logBuf.String()
 		cs.mu.Unlock()
 
-		if saveErr := s.db.Tx(createCtx, func(ctx context.Context, tx *sqlite.Tx) error {
-			_, updateErr := tx.Conn().ExecContext(ctx, `UPDATE boxes SET creation_log = ? WHERE name = ?`, creationLog, hostname)
-			return updateErr
+		if saveErr := withTx1(s, createCtx, (*exedb.Queries).UpdateBoxCreationLog, exedb.UpdateBoxCreationLogParams{
+			CreationLog: &creationLog,
+			Name:        hostname,
 		}); saveErr != nil {
 			s.slog().ErrorContext(ctx, "Failed to save creation log", "error", saveErr, "hostname", hostname)
 		}
@@ -225,9 +224,9 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 		}
 
 		// Clean up pending VM entry if it exists
-		if err := s.db.Tx(createCtx, func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Conn().ExecContext(ctx, `DELETE FROM mobile_pending_vm WHERE user_id = ? AND hostname = ?`, userID, hostname)
-			return err
+		if err := withTx1(s, createCtx, (*exedb.Queries).DeleteMobilePendingVMByUserAndHostname, exedb.DeleteMobilePendingVMByUserAndHostnameParams{
+			UserID:   userID,
+			Hostname: hostname,
 		}); err != nil {
 			s.slog().ErrorContext(ctx, "Failed to delete pending mobile VM", "error", err, "user_id", userID, "hostname", hostname)
 		}
@@ -497,9 +496,11 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if hostname != "" {
-		if err := s.db.Tx(r.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Conn().ExecContext(ctx, `INSERT OR REPLACE INTO mobile_pending_vm (token, user_id, hostname, prompt) VALUES (?, ?, ?, ?)`, token, userID, hostname, prompt)
-			return err
+		if err := withTx1(s, r.Context(), (*exedb.Queries).UpsertMobilePendingVM, exedb.UpsertMobilePendingVMParams{
+			Token:    token,
+			UserID:   userID,
+			Hostname: hostname,
+			Prompt:   &prompt,
 		}); err != nil {
 			s.slog().ErrorContext(r.Context(), "Failed to store pending mobile VM", "error", err)
 			http.Error(w, "Failed to process request", http.StatusInternalServerError)
@@ -581,11 +582,7 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 	})
 
 	// Look up the most recent pending VM for this user
-	var hostname, prompt string
-	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		row := rx.Conn().QueryRowContext(ctx, `SELECT hostname, prompt FROM mobile_pending_vm WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`, userID)
-		return row.Scan(&hostname, &prompt)
-	})
+	pendingVM, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetLatestMobilePendingVMByUser, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -594,6 +591,11 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 		s.slog().ErrorContext(r.Context(), "Failed to query pending mobile VM by user_id", "error", err)
 		http.Error(w, "Failed to process request", http.StatusInternalServerError)
 		return
+	}
+	hostname := pendingVM.Hostname
+	prompt := ""
+	if pendingVM.Prompt != nil {
+		prompt = *pendingVM.Prompt
 	}
 	if hostname != "" {
 		// Check if user needs billing before starting creation (only new users need billing)
