@@ -1217,54 +1217,6 @@ button {
   font-weight: normal;
 }
 
-.patch-tool-diff {
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 0.25rem;
-  padding: 0.75rem;
-  margin: 0;
-  overflow-x: auto;
-  line-height: 1.4;
-}
-
-.patch-diff-line {
-  white-space: pre;
-  display: block;
-}
-
-.patch-diff-addition {
-  background: rgba(34, 197, 94, 0.1);
-  color: #16a34a;
-}
-
-.dark .patch-diff-addition {
-  background: rgba(34, 197, 94, 0.15);
-  color: #86efac;
-}
-
-.patch-diff-deletion {
-  background: rgba(239, 68, 68, 0.1);
-  color: #dc2626;
-}
-
-.dark .patch-diff-deletion {
-  background: rgba(239, 68, 68, 0.15);
-  color: #fca5a5;
-}
-
-.patch-diff-hunk {
-  color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  font-weight: 500;
-}
-
-.patch-diff-header {
-  color: var(--text-tertiary);
-  font-style: italic;
-}
-
 .patch-tool-error-message {
   font-family: var(--font-mono);
   font-size: 0.875rem;
@@ -1277,6 +1229,114 @@ button {
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-secondary);
+}
+
+/* Patch Tool Monaco Editor */
+.patch-tool-monaco-editor {
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+/* Patch Tool Comment Dialog */
+.patch-tool-comment-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  z-index: 1000;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.dark .patch-tool-comment-dialog {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.patch-tool-comment-dialog h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.patch-tool-selected-text {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  padding: 0.5rem;
+  margin: 0 0 0.75rem 0;
+  overflow-x: auto;
+  max-height: 100px;
+  white-space: pre;
+  color: var(--text-secondary);
+}
+
+.patch-tool-comment-input {
+  width: 100%;
+  min-height: 80px;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.875rem;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.patch-tool-comment-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.patch-tool-comment-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
+.patch-tool-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background-color 0.15s;
+}
+
+.patch-tool-btn-primary {
+  background: var(--primary);
+  color: white;
+}
+
+.patch-tool-btn-primary:hover:not(:disabled) {
+  background: var(--primary-dark);
+}
+
+.patch-tool-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.patch-tool-btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.patch-tool-btn-secondary:hover {
+  background: var(--bg-secondary);
 }
 
 /* Screenshot Tool */

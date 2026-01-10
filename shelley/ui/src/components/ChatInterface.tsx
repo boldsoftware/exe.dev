@@ -124,6 +124,7 @@ interface CoalescedToolCallProps {
   toolEndTime?: string | null;
   hasResult?: boolean;
   display?: unknown;
+  onCommentTextChange?: (text: string) => void;
 }
 
 // Map tool names to their specialized components.
@@ -155,6 +156,7 @@ function CoalescedToolCall({
   toolEndTime,
   hasResult,
   display,
+  onCommentTextChange,
 }: CoalescedToolCallProps) {
   // Calculate execution time if available
   let executionTime = "";
@@ -183,6 +185,8 @@ function CoalescedToolCall({
       ...(toolName === "browser_recent_console_logs" || toolName === "browser_clear_console_logs"
         ? { toolName }
         : {}),
+      // Patch tool can add comments
+      ...(toolName === "patch" && onCommentTextChange ? { onCommentTextChange } : {}),
     };
     return <ToolComponent {...props} />;
   }
@@ -932,6 +936,7 @@ function ChatInterface({
               setDiffViewerInitialCommit(commit);
               setShowDiffViewer(true);
             }}
+            onCommentTextChange={setDiffCommentText}
           />
         );
       } else if (item.type === "tool") {
@@ -946,6 +951,7 @@ function ChatInterface({
             toolEndTime={item.toolEndTime}
             hasResult={item.hasResult}
             display={item.display}
+            onCommentTextChange={setDiffCommentText}
           />
         );
       }

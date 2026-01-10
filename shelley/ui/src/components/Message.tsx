@@ -26,9 +26,10 @@ interface ToolDisplay {
 interface MessageProps {
   message: MessageType;
   onOpenDiffViewer?: (commit: string) => void;
+  onCommentTextChange?: (text: string) => void;
 }
 
-function Message({ message, onOpenDiffViewer }: MessageProps) {
+function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProps) {
   // Hide system messages from the UI
   if (message.type === "system") {
     return null;
@@ -352,7 +353,13 @@ function Message({ message, onOpenDiffViewer }: MessageProps) {
         }
         // Use specialized component for patch tool
         if (content.ToolName === "patch") {
-          return <PatchTool toolInput={content.ToolInput} isRunning={true} />;
+          return (
+            <PatchTool
+              toolInput={content.ToolInput}
+              isRunning={true}
+              onCommentTextChange={onCommentTextChange}
+            />
+          );
         }
         // Use specialized component for screenshot tool
         if (content.ToolName === "screenshot" || content.ToolName === "browser_take_screenshot") {
@@ -475,6 +482,7 @@ function Message({ message, onOpenDiffViewer }: MessageProps) {
               hasError={hasError}
               executionTime={executionTime}
               display={content.Display}
+              onCommentTextChange={onCommentTextChange}
             />
           );
         }
@@ -724,7 +732,13 @@ function Message({ message, onOpenDiffViewer }: MessageProps) {
       ];
 
       return (
-        <PatchTool toolInput={{}} isRunning={false} toolResult={mockToolResult} hasError={false} />
+        <PatchTool
+          toolInput={{}}
+          isRunning={false}
+          toolResult={mockToolResult}
+          hasError={false}
+          onCommentTextChange={onCommentTextChange}
+        />
       );
     }
 
