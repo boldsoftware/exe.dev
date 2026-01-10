@@ -1052,6 +1052,16 @@ function makeDevExeDashboard() {
     }
   );
 
+  addTimeseriesChart(
+    "SQLite Read Latency (95th percentile)",
+    `histogram_quantile(0.95, rate(sqlite_rx_latency_bucket{job="exed",${STAGE_FILTER}}[5m])) / 1000`,
+    {
+      panelCustomization: (x) =>
+        x.unit("ms"),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
   // Box creation time (user-perceived)
   dash.withRow(
     new RowBuilder("Box Creation Time").gridPos(gp({ w: 24, h: 1 }))
@@ -1201,6 +1211,20 @@ function makeDevExeDashboard() {
     .textMode(BigValueTextMode.ValueAndName)
     .min(0);
   dash.withPanel(vmsCountPanel);
+
+  const billingAccountsPanel = new StatBuilder()
+    .title("Billing Accounts")
+    .gridPos(gp({ w: 6, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`billing_accounts_total{stage="production"}`)
+        .legendFormat("Billing Accounts")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(billingAccountsPanel);
 
   // Users and VMs over time
   const usersOverTimePanel = new TimeseriesBuilder()
@@ -1885,6 +1909,17 @@ function makeExeDevUsageDashboard() {
         .legendFormat("VMs")
     );
   dash.withPanel(vmsOverTimePanel);
+
+  const billingAccountsOverTimePanel = new TimeseriesBuilder()
+    .title("Billing Accounts")
+    .min(0)
+    .gridPos(gp({ w: 8, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`billing_accounts_total{stage="production"}`)
+        .legendFormat("Billing Accounts")
+    );
+  dash.withPanel(billingAccountsOverTimePanel);
 
   return dash;
 }
