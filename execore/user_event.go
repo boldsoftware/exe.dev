@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"exe.dev/exedb"
-	"exe.dev/sqlite"
 )
 
 const (
@@ -20,15 +19,7 @@ func (s *Server) recordUserEvent(ctx context.Context, userID, event string) erro
 	if s.db == nil {
 		return fmt.Errorf("database not initialized")
 	}
-	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		return s.recordUserEventTx(tx, userID, event)
-	})
-}
-
-// recordUserEventTx increments the number of times userID has experienced event, within transaction tx.
-func (s *Server) recordUserEventTx(tx *sqlite.Tx, userID, event string) error {
-	queries := exedb.New(tx.Conn())
-	return queries.RecordUserEvent(context.WithoutCancel(tx.Context()), exedb.RecordUserEventParams{
+	return withTx1(s, ctx, (*exedb.Queries).RecordUserEvent, exedb.RecordUserEventParams{
 		UserID: userID,
 		Event:  event,
 	})

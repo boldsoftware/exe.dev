@@ -20,7 +20,6 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
-	"exe.dev/sqlite"
 	"exe.dev/termfun"
 	"exe.dev/tracing"
 	"github.com/anmitsu/go-shlex"
@@ -917,12 +916,9 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 	}
 
 	// Store/update the SSH key as verified - use context.WithoutCancel to ensure cleanup completes even if client disconnects
-	storeErr := ss.server.db.Tx(context.WithoutCancel(s.Context()), func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.UpsertSSHKeyForUser(ctx, exedb.UpsertSSHKeyForUserParams{
-			UserID:    user.UserID,
-			PublicKey: publicKey,
-		})
+	storeErr := withTx1(ss.server, context.WithoutCancel(s.Context()), (*exedb.Queries).UpsertSSHKeyForUser, exedb.UpsertSSHKeyForUserParams{
+		UserID:    user.UserID,
+		PublicKey: publicKey,
 	})
 	if storeErr != nil {
 		ss.server.slog().WarnContext(s.Context(), "failed to store SSH key after registration", "user_id", user.UserID, "email", user.Email, "error", storeErr)

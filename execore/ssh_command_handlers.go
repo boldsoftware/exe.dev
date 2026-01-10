@@ -27,7 +27,6 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	api "exe.dev/pkg/api/exe/compute/v1"
-	"exe.dev/sqlite"
 )
 
 // grpcStatuser is an interface for errors that wrap a gRPC status.
@@ -781,10 +780,7 @@ done:
 
 	if createErr != nil {
 		// Clean up the pre-created box entry since container creation failed
-		if err := ss.server.db.Tx(context.WithoutCancel(ctx), func(ctx context.Context, tx *sqlite.Tx) error {
-			queries := exedb.New(tx.Conn())
-			return queries.DeleteBox(ctx, boxID)
-		}); err != nil {
+		if err := withTx1(ss.server, context.WithoutCancel(ctx), (*exedb.Queries).DeleteBox, boxID); err != nil {
 			slog.ErrorContext(ctx, "Failed to clean up box entry after container creation failure", "boxID", boxID, "error", err)
 		}
 		// Check if this is a gRPC user error (e.g., invalid image name)
@@ -828,13 +824,10 @@ done:
 			Share: "private",
 		}
 		box.SetRoute(route)
-		if err := ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			queries := exedb.New(tx.Conn())
-			return queries.UpdateBoxRoutes(ctx, exedb.UpdateBoxRoutesParams{
-				Name:            box.Name,
-				CreatedByUserID: box.CreatedByUserID,
-				Routes:          box.Routes,
-			})
+		if err := withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxRoutes, exedb.UpdateBoxRoutesParams{
+			Name:            box.Name,
+			CreatedByUserID: box.CreatedByUserID,
+			Routes:          box.Routes,
 		}); err != nil {
 			slog.WarnContext(ctx, "failed to save auto-routing setup", "box", boxName, "port", bestPort, "error", err)
 		}
@@ -1022,28 +1015,19 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 		PublicKey string `json:"public_key"`
 		Current   bool   `json:"current"`
 	}
-	var sshKeys []sshKeyRow
 	ccPubKey := strings.TrimSpace(cc.PublicKey)
-	err := ss.server.db.Rx(ctx,
-		func(ctx context.Context, rx *sqlite.Rx) error {
-			queries := exedb.New(rx.Conn())
-			publicKeys, err := queries.GetSSHKeysForUserByEmail(ctx, cc.User.Email)
-			if err != nil {
-				return err
-			}
-			for _, dbPublicKey := range publicKeys {
-				dbPublicKey = strings.TrimSpace(dbPublicKey)
-				if dbPublicKey == "" {
-					continue
-				}
-				isCurrent := dbPublicKey == ccPubKey
-				sshKeys = append(sshKeys, sshKeyRow{PublicKey: dbPublicKey, Current: isCurrent})
-			}
-			return nil
-		},
-	)
+	publicKeys, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetSSHKeysForUserByEmail, cc.User.Email)
 	if err != nil {
 		return err
+	}
+	var sshKeys []sshKeyRow
+	for _, dbPublicKey := range publicKeys {
+		dbPublicKey = strings.TrimSpace(dbPublicKey)
+		if dbPublicKey == "" {
+			continue
+		}
+		isCurrent := dbPublicKey == ccPubKey
+		sshKeys = append(sshKeys, sshKeyRow{PublicKey: dbPublicKey, Current: isCurrent})
 	}
 
 	slices.SortFunc(sshKeys, func(a, b sshKeyRow) int {
