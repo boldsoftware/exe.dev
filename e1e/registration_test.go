@@ -133,28 +133,8 @@ func TestRegisterWebThenKey(t *testing.T) {
 		t.Fatalf("unexpected status %d from /m/email-auth: %s", resp.StatusCode, string(body))
 	}
 
-	// Verify the email using the standard flow (requires POST confirmation)
-	emailMsg, err := Env.servers.Email.WaitForEmail(email)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tokenRe := regexp.MustCompile(`http://localhost:\d+/verify-email\?token=([a-zA-Z0-9]+)`)
-	matches := tokenRe.FindStringSubmatch(emailMsg.Body)
-	if len(matches) < 2 {
-		t.Fatalf("did not find verify link in email:\n%s", emailMsg.Body)
-	}
-	token := matches[1]
-
-	// POST to verify the token (standard flow requires POST confirmation)
-	verifyResp, err := http.PostForm(baseURL+"/verify-email", url.Values{"token": {token}})
-	if err != nil {
-		t.Fatalf("POST verify: %v", err)
-	}
-	verifyRespBody, _ := io.ReadAll(verifyResp.Body)
-	verifyResp.Body.Close()
-	if verifyResp.StatusCode != http.StatusOK && verifyResp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("verify returned status %d body %q", verifyResp.StatusCode, string(verifyRespBody))
-	}
+	// Verify the email using the standard flow
+	waitForEmailAndVerify(t, email)
 
 	keyFile, publicKey := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
