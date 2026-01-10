@@ -117,11 +117,16 @@ func NewGateway(log *slog.Logger, db *sqlite.DB, apiKeys APIKeys, devMode bool) 
 func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, errstr string, code int, boxName string) {
 	http.Error(w, errstr, code)
 	var logger func(context.Context, string, ...any)
-	if code != http.StatusPaymentRequired {
-		logger = m.log.ErrorContext
-	} else {
+	switch code {
+	case http.StatusPaymentRequired:
 		// Running out of LLM credit is not an error.
 		logger = m.log.InfoContext
+	case http.StatusNotFound:
+		// This is probably a user poking around the gateway.
+		// Possibly sketchy...but not necessarily an error.
+		logger = m.log.WarnContext
+	default:
+		logger = m.log.ErrorContext
 	}
 	logger(r.Context(), "llmgateway.httpError", "method", r.Method, "path", r.URL.Path, "code", code, "error", errstr, "boxName", boxName)
 }
