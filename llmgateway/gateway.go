@@ -113,9 +113,9 @@ func NewGateway(log *slog.Logger, db *sqlite.DB, apiKeys APIKeys, devMode bool) 
 	return ret
 }
 
-func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, errstr string, code int) {
+// httpError reports an error on w.
+func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, errstr string, code int, boxName string) {
 	http.Error(w, errstr, code)
-	boxName := r.Header.Get("X-Exedev-Box")
 	m.log.ErrorContext(r.Context(), "llmgateway.httpError", "method", r.Method, "path", r.URL.Path, "code", code, "error", errstr, "boxName", boxName)
 }
 
@@ -126,18 +126,18 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// The request must come from a Tailscale IP (or be in devMode),
 	// AND must have "X-Exedev-Box: <boxname>" header.
 
+	boxName := r.Header.Get("X-Exedev-Box")
 	host := domz.StripPort(r.RemoteAddr)
 	remoteIP, err := netip.ParseAddr(host)
 	if !m.devMode && (err != nil || !tsaddr.IsTailscaleIP(remoteIP)) {
 		// This is super sketchy.
 		// Someone on the public internet is trying to access our gateway.
-		m.httpError(w, r, "hey go away", http.StatusUnauthorized)
+		m.httpError(w, r, "hey go away", http.StatusUnauthorized, boxName)
 		return
 	}
 
-	boxName := r.Header.Get("X-Exedev-Box")
 	if boxName == "" {
-		m.httpError(w, r, "X-Exedev-Box header required", http.StatusUnauthorized)
+		m.httpError(w, r, "X-Exedev-Box header required", http.StatusUnauthorized, boxName)
 		return
 	}
 
@@ -171,10 +171,10 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			if errors.Is(err, ErrInsufficientCredit) {
 				m.log.WarnContext(r.Context(), "insufficient LLM credit", "user_id", userID, "box", boxName, "available_usd", creditInfo.Available)
-				m.httpError(w, r, "insufficient gateway credit", http.StatusPaymentRequired)
+				m.httpError(w, r, "insufficient gateway credit", http.StatusPaymentRequired, boxName)
 				return
 			}
-			m.httpError(w, r, "failed to check gateway credit", http.StatusInternalServerError)
+			m.httpError(w, r, "failed to check gateway credit", http.StatusInternalServerError, boxName)
 			return
 		}
 	}
@@ -209,11 +209,11 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "fireworks":
 		proxy, transport, proxyErr = m.createFireworksProxy(r, boxName, userID)
 	default:
-		m.httpError(w, r, "unrecognized origin alias "+alias, http.StatusNotFound)
+		m.httpError(w, r, "unrecognized origin alias "+alias, http.StatusNotFound, boxName)
 		return
 	}
 	if proxyErr != nil {
-		m.httpError(w, r, proxyErr.Error(), http.StatusInternalServerError)
+		m.httpError(w, r, proxyErr.Error(), http.StatusInternalServerError, boxName)
 		return
 	}
 	proxy.ServeHTTP(w, r)
@@ -250,7 +250,7 @@ func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, us
 				return
 			}
 			m.log.ErrorContext(r.Context(), "anthropic api gateway", "error", err)
-			m.httpError(w, r, "anthropic api gateway error: "+err.Error(), http.StatusBadGateway)
+			m.httpError(w, r, "anthropic api gateway error: "+err.Error(), http.StatusBadGateway, boxName)
 		},
 	}
 
@@ -288,7 +288,7 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userI
 				return
 			}
 			m.log.ErrorContext(r.Context(), "openai api gateway", "error", err)
-			m.httpError(w, r, "openai api gateway error: "+err.Error(), http.StatusBadGateway)
+			m.httpError(w, r, "openai api gateway error: "+err.Error(), http.StatusBadGateway, boxName)
 		},
 	}
 
@@ -326,7 +326,7 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, us
 				return
 			}
 			m.log.ErrorContext(r.Context(), "fireworks api gateway", "error", err)
-			m.httpError(w, r, "fireworks api gateway error: "+err.Error(), http.StatusBadGateway)
+			m.httpError(w, r, "fireworks api gateway error: "+err.Error(), http.StatusBadGateway, boxName)
 		},
 	}
 
