@@ -309,6 +309,13 @@ function MessageInput({
       return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
+      // On mobile, let Enter create newlines since there's a send button
+      // I'm not convinced the divergence from desktop is the correct answer,
+      // but we can try it and see how it feels.
+      const isMobile = "ontouchstart" in window;
+      if (isMobile) {
+        return;
+      }
       e.preventDefault();
       handleSubmit(e);
     }
