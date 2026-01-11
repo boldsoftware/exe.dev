@@ -1809,6 +1809,9 @@ func isExeletNotFoundError(err error) bool {
 // deleteBox deletes a box and all associated resources (container, database records, DNS).
 // This is the canonical deletion implementation used by both the REPL `rm` command and the debug page.
 func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
+	// Commit to the whole thing. Avoid partial deletions on client disconnect.
+	ctx = context.WithoutCancel(ctx)
+
 	// Get IP shard before deletion for DNS cleanup
 	var ipShard int64
 	if s.env.UseRoute53 {
