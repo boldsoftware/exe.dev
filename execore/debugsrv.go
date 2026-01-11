@@ -125,110 +125,11 @@ func (s *Server) handleDebugGitsha(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	type containerInfo struct {
-		Host       string `json:"host"`
-		ID         string `json:"id"`
-		Name       string `json:"name"`
-		Status     string `json:"status"`
-		OwnerEmail string `json:"owner_email,omitempty"`
-	}
-
-	type hostInfo struct {
-		Host       string
-		Containers []containerInfo
-		Error      string
-	}
-
-	var hosts []hostInfo
-	var flatContainers []containerInfo
-
-	emailCache := make(map[string]string)
-	getOwnerEmail := func(ctx context.Context, containerID string) (string, error) {
-		if containerID == "" {
-			return "", fmt.Errorf("empty container ID")
-		}
-		if email, ok := emailCache[containerID]; ok {
-			return email, nil
-		}
-		email, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxOwnerEmailByContainerID, &containerID)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return "", fmt.Errorf("container %q not present in database", containerID)
-			}
-			return "", fmt.Errorf("failed to look up owner for container %q: %w", containerID, err)
-		}
-		emailCache[containerID] = email
-		return email, nil
-	}
-
-	// List instances from exelet hosts
-	for addr, ec := range s.exeletClients {
-		info := hostInfo{Host: addr}
-		stream, err := ec.client.ListInstances(ctx, &computeapi.ListInstancesRequest{})
-		if err != nil {
-			info.Error = err.Error()
-		} else {
-			// Collect all instances from the stream
-			for {
-				resp, err := stream.Recv()
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					info.Error = err.Error()
-					break
-				}
-				inst := resp.Instance
-				cInfo := containerInfo{
-					Host:   addr,
-					ID:     inst.ID,
-					Name:   inst.Name,
-					Status: inst.State.String(),
-				}
-				if ownerEmail, err := getOwnerEmail(ctx, inst.ID); err == nil {
-					cInfo.OwnerEmail = ownerEmail
-				} else {
-					s.slog().WarnContext(ctx, "failed to resolve box owner email", "boxName", inst.Name, "instanceID", inst.ID, "error", err)
-				}
-				info.Containers = append(info.Containers, cInfo)
-				flatContainers = append(flatContainers, cInfo)
-			}
-		}
-		hosts = append(hosts, info)
-	}
-
-	// Sort hosts lexicographically for consistent display
-	sort.Slice(hosts, func(i, j int) bool {
-		return hosts[i].Host < hosts[j].Host
-	})
-
-	// Check if JSON format is requested
-	if r.URL.Query().Get("format") == "json" {
-		w.Header().Set("Content-Type", "application/json")
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(flatContainers); err != nil {
-			s.slog().ErrorContext(ctx, "Failed to encode containers", "error", err)
-		}
-		return
-	}
-
-	// Collect any host errors
-	var hostErrors []hostInfo
-	for _, host := range hosts {
-		if host.Error != "" {
-			hostErrors = append(hostErrors, host)
-		}
-	}
-
-	// Sort containers by name for consistent display
-	sort.Slice(flatContainers, func(i, j int) bool {
-		return flatContainers[i].Name < flatContainers[j].Name
-	})
-
-	// HTML output
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
+	// For HTML requests, return the page shell immediately.
+	// DataTables will load data via AJAX from the JSON endpoint.
+	if r.URL.Query().Get("format") != "json" {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<!doctype html>
 <html><head><title>Boxes/VMs</title>
 <link rel="stylesheet" href="/static/datatables.min.css">
 <script src="/static/jquery.min.js"></script>
@@ -236,35 +137,25 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 <style>
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
 h1 { margin-bottom: 10px; }
-#boxesTable { width: 100%%; }
+#boxesTable { width: 100%; }
 #boxesTable td, #boxesTable th { font-size: 13px; }
 #boxesTable thead tr.filters th { padding: 4px; }
-#boxesTable thead tr.filters input { width: 100%%; box-sizing: border-box; font-size: 11px; padding: 4px; }
+#boxesTable thead tr.filters input { width: 100%; box-sizing: border-box; font-size: 11px; padding: 4px; }
 .delete-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; }
 .delete-btn:hover { background: #c82333; }
 dialog { padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
 dialog::backdrop { background: rgba(0,0,0,0.5); }
-dialog input[type="text"] { width: 100%%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
+dialog input[type="text"] { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
 dialog button { margin-right: 10px; padding: 8px 16px; }
 dialog .confirm-btn { background: #dc3545; color: white; border: none; cursor: pointer; }
 dialog .confirm-btn:disabled { background: #ccc; cursor: not-allowed; }
 dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: pointer; }
-.error-box { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 10px; border-radius: 4px; margin: 10px 0; }
 a { color: #007bff; text-decoration: none; }
 a:hover { text-decoration: underline; }
 </style>
 </head><body>
 <h1>Boxes/VMs</h1>
 <p><a href="/debug">/debug</a> | <a href="/debug/boxes?format=json">json</a></p>
-`)
-
-	// Show any host errors
-	for _, host := range hostErrors {
-		fmt.Fprintf(w, "<div class='error-box'><strong>%s:</strong> %s</div>\n",
-			html.EscapeString(host.Host), html.EscapeString(host.Error))
-	}
-
-	fmt.Fprintf(w, `<p>Total boxes: %d</p>
 
 <table id="boxesTable" class="display stripe hover">
 <thead>
@@ -361,7 +252,83 @@ document.getElementById('confirmInput').addEventListener('input', function() {
 });
 </script>
 </body></html>
-`, len(flatContainers))
+`)
+		return
+	}
+
+	// JSON format requested - fetch all data
+	type containerInfo struct {
+		Host       string `json:"host"`
+		ID         string `json:"id"`
+		Name       string `json:"name"`
+		Status     string `json:"status"`
+		OwnerEmail string `json:"owner_email,omitempty"`
+	}
+
+	var flatContainers []containerInfo
+
+	emailCache := make(map[string]string)
+	getOwnerEmail := func(ctx context.Context, containerID string) (string, error) {
+		if containerID == "" {
+			return "", fmt.Errorf("empty container ID")
+		}
+		if email, ok := emailCache[containerID]; ok {
+			return email, nil
+		}
+		email, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxOwnerEmailByContainerID, &containerID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return "", fmt.Errorf("container %q not present in database", containerID)
+			}
+			return "", fmt.Errorf("failed to look up owner for container %q: %w", containerID, err)
+		}
+		emailCache[containerID] = email
+		return email, nil
+	}
+
+	// List instances from exelet hosts
+	for addr, ec := range s.exeletClients {
+		stream, err := ec.client.ListInstances(ctx, &computeapi.ListInstancesRequest{})
+		if err != nil {
+			s.slog().ErrorContext(ctx, "failed to list instances", "host", addr, "error", err)
+			continue
+		}
+		for {
+			resp, err := stream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				s.slog().ErrorContext(ctx, "failed to receive instance", "host", addr, "error", err)
+				break
+			}
+			inst := resp.Instance
+			cInfo := containerInfo{
+				Host:   addr,
+				ID:     inst.ID,
+				Name:   inst.Name,
+				Status: inst.State.String(),
+			}
+			if ownerEmail, err := getOwnerEmail(ctx, inst.ID); err == nil {
+				cInfo.OwnerEmail = ownerEmail
+			} else {
+				s.slog().WarnContext(ctx, "failed to resolve box owner email", "boxName", inst.Name, "instanceID", inst.ID, "error", err)
+			}
+			flatContainers = append(flatContainers, cInfo)
+		}
+	}
+
+	// Sort containers by name for consistent display
+	sort.Slice(flatContainers, func(i, j int) bool {
+		return flatContainers[i].Name < flatContainers[j].Name
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(flatContainers); err != nil {
+		s.slog().ErrorContext(ctx, "Failed to encode containers", "error", err)
+	}
 }
 
 // gitHubLink returns an HTML link to the GitHub commit history starting at the given SHA.
