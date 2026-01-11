@@ -1,5 +1,5 @@
 -- name: InsertSignupRejection :exec
-INSERT INTO signup_rejections (email, ip, reason, source) VALUES (?, ?, ?, ?);
+INSERT INTO signup_rejections (email, ip, reason, source, ipqs_response_json) VALUES (?, ?, ?, ?, ?);
 
 -- name: GetSignupRejectionsByEmail :many
 SELECT * FROM signup_rejections WHERE email = ? ORDER BY rejected_at DESC;

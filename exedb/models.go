@@ -197,12 +197,13 @@ type ServerMetum struct {
 }
 
 type SignupRejection struct {
-	ID         int64      `db:"id" json:"id"`
-	Email      string     `db:"email" json:"email"`
-	Ip         string     `db:"ip" json:"ip"`
-	Reason     string     `db:"reason" json:"reason"`
-	Source     string     `db:"source" json:"source"`
-	RejectedAt *time.Time `db:"rejected_at" json:"rejected_at"`
+	ID               int64      `db:"id" json:"id"`
+	Email            string     `db:"email" json:"email"`
+	Ip               string     `db:"ip" json:"ip"`
+	Reason           string     `db:"reason" json:"reason"`
+	Source           string     `db:"source" json:"source"`
+	RejectedAt       *time.Time `db:"rejected_at" json:"rejected_at"`
+	IpqsResponseJson *string    `db:"ipqs_response_json" json:"ipqs_response_json"`
 }
 
 type SshHostKey struct {

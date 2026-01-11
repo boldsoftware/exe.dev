@@ -2523,7 +2523,7 @@ func (s *Server) validateNewSignup(ctx context.Context, ip, email, source string
 	}
 	if s.IsLoginCreationDisabled(ctx) {
 		s.signupMetrics.IncBlocked("login_creation_disabled", source)
-		s.recordSignupRejection(ctx, email, ip, "login_creation_disabled", source)
+		s.recordSignupRejection(ctx, email, ip, "login_creation_disabled", source, "")
 		return errors.New("account creation is temporarily unavailable")
 	}
 	s.slog().InfoContext(ctx, "vetting new signup", "ip", ip, "email", email)
@@ -2538,23 +2538,29 @@ func (s *Server) validateNewSignup(ctx context.Context, ip, email, source string
 		return nil
 	}
 
-	if s.ipFlaggedForAbuse(ctx, ip) {
+	if flagged, ipqsJSON := s.ipFlaggedForAbuse(ctx, ip); flagged {
 		s.slog().InfoContext(ctx, "blocking signup due to recent_abuse", "ip", ip)
 		s.signupMetrics.IncBlocked("ip_abuse", source)
-		s.recordSignupRejection(ctx, email, ip, "ip_abuse", source)
+		s.recordSignupRejection(ctx, email, ip, "ip_abuse", source, ipqsJSON)
 		return fmt.Errorf("unable to process signup (trace=%s, email=%s)", tracing.TraceIDFromContext(ctx), email)
 	}
 	return nil
 }
 
 // recordSignupRejection records a rejected signup attempt to the database.
+// ipqsResponseJSON is optional and only provided when the rejection is due to IPQS IP abuse.
 // Errors are logged but not returned since this is best-effort.
-func (s *Server) recordSignupRejection(ctx context.Context, email, ip, reason, source string) {
+func (s *Server) recordSignupRejection(ctx context.Context, email, ip, reason, source, ipqsResponseJSON string) {
+	var ipqsJSON *string
+	if ipqsResponseJSON != "" {
+		ipqsJSON = &ipqsResponseJSON
+	}
 	err := withTx1(s, ctx, (*exedb.Queries).InsertSignupRejection, exedb.InsertSignupRejectionParams{
-		Email:  email,
-		Ip:     ip,
-		Reason: reason,
-		Source: source,
+		Email:            email,
+		Ip:               ip,
+		Reason:           reason,
+		Source:           source,
+		IpqsResponseJson: ipqsJSON,
 	})
 	if err != nil {
 		s.slog().ErrorContext(ctx, "failed to record signup rejection", "error", err, "email", email, "ip", ip, "reason", reason)
@@ -2562,13 +2568,14 @@ func (s *Server) recordSignupRejection(ctx context.Context, email, ip, reason, s
 }
 
 // ipFlaggedForAbuse reports whether ip has recent abuse according to IPQS.
+// Returns the flagged status and the raw JSON response (if available).
 // Fails open: returns false on errors.
-func (s *Server) ipFlaggedForAbuse(ctx context.Context, ip string) bool {
+func (s *Server) ipFlaggedForAbuse(ctx context.Context, ip string) (flagged bool, ipqsResponseJSON string) {
 	if s.ipqsAPIKey == "" {
-		return false
+		return false, ""
 	}
 	if flagged, ok := s.cachedIPAbuse(ip); ok {
-		return flagged
+		return flagged, "" // no JSON available for cached results
 	}
 
 	// Call IPQS IP API with a timeout
@@ -2579,20 +2586,20 @@ func (s *Server) ipFlaggedForAbuse(ctx context.Context, ip string) bool {
 	req, err := http.NewRequestWithContext(reqCtx, "GET", url, nil)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "failed to create IPQS IP request", "error", err, "ip", ip)
-		return false
+		return false, ""
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		s.slog().WarnContext(ctx, "IPQS IP request failed", "error", err, "ip", ip)
-		return false
+		return false, ""
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		s.slog().WarnContext(ctx, "failed to read IPQS IP response", "error", err, "ip", ip)
-		return false
+		return false, ""
 	}
 
 	var result struct {
@@ -2601,16 +2608,16 @@ func (s *Server) ipFlaggedForAbuse(ctx context.Context, ip string) bool {
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		s.slog().ErrorContext(ctx, "failed to parse IPQS IP response", "error", err, "ip", ip)
-		return false
+		return false, ""
 	}
 
 	if !result.Success {
 		s.slog().WarnContext(ctx, "IPQS IP returned unsuccessful response", "ip", ip)
-		return false
+		return false, ""
 	}
 
 	s.cacheIPAbuseResult(ip, result.RecentAbuse)
-	return result.RecentAbuse
+	return result.RecentAbuse, string(body)
 }
 
 // cachedIPAbuse returns the cached abuse status for ip.

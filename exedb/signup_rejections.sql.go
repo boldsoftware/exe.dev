@@ -10,7 +10,7 @@ import (
 )
 
 const getRecentSignupRejections = `-- name: GetRecentSignupRejections :many
-SELECT id, email, ip, reason, source, rejected_at FROM signup_rejections ORDER BY rejected_at DESC LIMIT ?
+SELECT id, email, ip, reason, source, rejected_at, ipqs_response_json FROM signup_rejections ORDER BY rejected_at DESC LIMIT ?
 `
 
 func (q *Queries) GetRecentSignupRejections(ctx context.Context, limit int64) ([]SignupRejection, error) {
@@ -29,6 +29,7 @@ func (q *Queries) GetRecentSignupRejections(ctx context.Context, limit int64) ([
 			&i.Reason,
 			&i.Source,
 			&i.RejectedAt,
+			&i.IpqsResponseJson,
 		); err != nil {
 			return nil, err
 		}
@@ -44,7 +45,7 @@ func (q *Queries) GetRecentSignupRejections(ctx context.Context, limit int64) ([
 }
 
 const getSignupRejectionsByEmail = `-- name: GetSignupRejectionsByEmail :many
-SELECT id, email, ip, reason, source, rejected_at FROM signup_rejections WHERE email = ? ORDER BY rejected_at DESC
+SELECT id, email, ip, reason, source, rejected_at, ipqs_response_json FROM signup_rejections WHERE email = ? ORDER BY rejected_at DESC
 `
 
 func (q *Queries) GetSignupRejectionsByEmail(ctx context.Context, email string) ([]SignupRejection, error) {
@@ -63,6 +64,7 @@ func (q *Queries) GetSignupRejectionsByEmail(ctx context.Context, email string) 
 			&i.Reason,
 			&i.Source,
 			&i.RejectedAt,
+			&i.IpqsResponseJson,
 		); err != nil {
 			return nil, err
 		}
@@ -78,7 +80,7 @@ func (q *Queries) GetSignupRejectionsByEmail(ctx context.Context, email string) 
 }
 
 const getSignupRejectionsByIP = `-- name: GetSignupRejectionsByIP :many
-SELECT id, email, ip, reason, source, rejected_at FROM signup_rejections WHERE ip = ? ORDER BY rejected_at DESC
+SELECT id, email, ip, reason, source, rejected_at, ipqs_response_json FROM signup_rejections WHERE ip = ? ORDER BY rejected_at DESC
 `
 
 func (q *Queries) GetSignupRejectionsByIP(ctx context.Context, ip string) ([]SignupRejection, error) {
@@ -97,6 +99,7 @@ func (q *Queries) GetSignupRejectionsByIP(ctx context.Context, ip string) ([]Sig
 			&i.Reason,
 			&i.Source,
 			&i.RejectedAt,
+			&i.IpqsResponseJson,
 		); err != nil {
 			return nil, err
 		}
@@ -112,14 +115,15 @@ func (q *Queries) GetSignupRejectionsByIP(ctx context.Context, ip string) ([]Sig
 }
 
 const insertSignupRejection = `-- name: InsertSignupRejection :exec
-INSERT INTO signup_rejections (email, ip, reason, source) VALUES (?, ?, ?, ?)
+INSERT INTO signup_rejections (email, ip, reason, source, ipqs_response_json) VALUES (?, ?, ?, ?, ?)
 `
 
 type InsertSignupRejectionParams struct {
-	Email  string `db:"email" json:"email"`
-	Ip     string `db:"ip" json:"ip"`
-	Reason string `db:"reason" json:"reason"`
-	Source string `db:"source" json:"source"`
+	Email            string  `db:"email" json:"email"`
+	Ip               string  `db:"ip" json:"ip"`
+	Reason           string  `db:"reason" json:"reason"`
+	Source           string  `db:"source" json:"source"`
+	IpqsResponseJson *string `db:"ipqs_response_json" json:"ipqs_response_json"`
 }
 
 func (q *Queries) InsertSignupRejection(ctx context.Context, arg InsertSignupRejectionParams) error {
@@ -128,6 +132,7 @@ func (q *Queries) InsertSignupRejection(ctx context.Context, arg InsertSignupRej
 		arg.Ip,
 		arg.Reason,
 		arg.Source,
+		arg.IpqsResponseJson,
 	)
 	return err
 }
