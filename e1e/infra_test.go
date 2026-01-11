@@ -625,7 +625,7 @@ func registerForExeDevWithEmail(t *testing.T, email string) (pty *expectPty, coo
 func registerForExeDevWithoutBilling(t *testing.T) (pty *expectPty, cookies []*http.Cookie, keyFile, email string) {
 	name := t.Name()
 	name = strings.ReplaceAll(name, "/", ".")
-	email = name + "@example.com"
+	email = name + testinfra.FakeEmailSuffix
 
 	pty = makePty(t, "ssh localhost")
 	cookies, keyFile, sshCmd, err := Env.servers.RegisterForExeDevWithEmail(Env.context(t), pty.pty, email, t.TempDir())
@@ -643,7 +643,7 @@ func registerForExeDevWithoutBilling(t *testing.T) (pty *expectPty, cookies []*h
 func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, keyFile, email string) {
 	name := t.Name()
 	name = strings.ReplaceAll(name, "/", ".")
-	email = name + "@example.com"
+	email = name + testinfra.FakeEmailSuffix
 	return registerForExeDevWithEmail(t, email)
 }
 

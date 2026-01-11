@@ -26,7 +26,7 @@ func TestNewKeyRegistration(t *testing.T) {
 	pty := sshToExeDev(t, keyFile)
 	pty.want(testinfra.Banner)
 	pty.want("Please enter your email")
-	email := t.Name() + "@example.com"
+	email := t.Name() + testinfra.FakeEmailSuffix
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
@@ -50,7 +50,7 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	// initial registration
 	pty := sshToExeDev(t, keyFile)
 	pty.want("Please enter your email")
-	email := t.Name() + "@example.com"
+	email := t.Name() + testinfra.FakeEmailSuffix
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
@@ -93,7 +93,7 @@ func TestRegisterMultipleKeys(t *testing.T) {
 		pty := sshToExeDev(t, keyFile)
 		pty.want(testinfra.Banner)
 		pty.want("Please enter your email")
-		email := t.Name() + "@example.com"
+		email := t.Name() + testinfra.FakeEmailSuffix
 		pty.sendLine(email)
 		pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 		// pty.wantRe("Pairing code: .*[0-9]{6}.*")
@@ -120,7 +120,7 @@ func TestRegisterWebThenKey(t *testing.T) {
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
-	email := t.Name() + "@example.com"
+	email := t.Name() + testinfra.FakeEmailSuffix
 	baseURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
 
 	resp, err := http.PostForm(baseURL+"/m/email-auth", url.Values{"email": {email}})
@@ -233,7 +233,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 	pty.want(testinfra.Banner)
 	pty.want("Please enter your email")
 
-	email := t.Name() + "@example.com"
+	email := t.Name() + testinfra.FakeEmailSuffix
 
 	// Type the email one character at a time to simulate interactive typing.
 	for _, ch := range email {
@@ -299,7 +299,7 @@ func TestRegistrationWithLatency(t *testing.T) {
 	pty.reject("]11")
 	pty.reject("rgb:")
 
-	email := t.Name() + "@example.com"
+	email := t.Name() + testinfra.FakeEmailSuffix
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
@@ -344,7 +344,7 @@ func TestWarpTerminalBootstrap(t *testing.T) {
 	pty.reject("Please complete registration")
 	pty.want(testinfra.Banner)
 	pty.want("Please enter your email")
-	email := t.Name() + "@example.com"
+	email := t.Name() + testinfra.FakeEmailSuffix
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 	waitForEmailAndVerify(t, email)

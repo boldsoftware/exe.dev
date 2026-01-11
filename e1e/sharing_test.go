@@ -474,7 +474,7 @@ func TestShareCommands(t *testing.T) {
 	pty1.wantPrompt()
 
 	// User 1: Share the box with a user (will be pending since they're not registered)
-	email2 := "friend@example.com"
+	email2 := "friend" + testinfra.FakeEmailSuffix
 	pty1.sendLine(fmt.Sprintf("share add %s %s --message='Welcome to my box'", box, email2))
 	pty1.want("Invitation sent to " + email2)
 	pty1.want("will receive an email")

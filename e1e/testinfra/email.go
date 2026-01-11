@@ -73,6 +73,7 @@ func StartEmailServer(ctx context.Context, verbose bool) (*EmailServer, error) {
 	}()
 
 	AddCanonicalization(es.Port, "EMAIL_SERVER_PORT")
+	AddCanonicalization(FakeEmailSuffix, "@example.com")
 
 	return es, nil
 }

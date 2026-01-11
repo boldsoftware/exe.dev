@@ -28,6 +28,9 @@ const (
 
 	// ExeDevPrompt is the prompt used by exe.dev running on localhost.
 	ExeDevPrompt = "\033[1;36mlocalhost\033[0m \033[37m▶\033[0m "
+
+	// FakeEmailSuffix is the suffix used for test email addresses.
+	FakeEmailSuffix = "@example.com"
 )
 
 // sshOpts is the basic set of SSH options for testing.

@@ -72,7 +72,7 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	}
 
 	// 3) POST /m/email-auth
-	email := t.Name() + "@example.com"
+	email := t.Name() + testinfra.FakeEmailSuffix
 	resp, err = client.PostForm(base+"/m/email-auth", url.Values{"email": {email}, "hostname": {host}})
 	if err != nil {
 		t.Fatalf("POST /m/email-auth: %v", err)

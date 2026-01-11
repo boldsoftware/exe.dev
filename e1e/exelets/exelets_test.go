@@ -178,7 +178,7 @@ func ensureExeletCount(ctx context.Context, count int) error {
 // and that may be used for further exed commands.
 func register(t *testing.T) (pty *testinfra.PTY, cookies []*http.Cookie, keyFile, email string) {
 	name := strings.ReplaceAll(t.Name(), "/", ".")
-	email = name + "@example.com"
+	email = name + testinfra.FakeEmailSuffix
 	pty, _, err := testinfra.MakePTY("", "ssh localhost", true)
 	if err != nil {
 		t.Fatal(err)
