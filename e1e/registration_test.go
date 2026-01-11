@@ -364,3 +364,31 @@ func TestWarpTerminalBootstrap(t *testing.T) {
 	pty.want(email)
 	pty.disconnect()
 }
+
+// TestBogusEmailDomainBlocked verifies that emails to bogus domains
+// (like example.com) are silently dropped and never delivered.
+func TestBogusEmailDomainBlocked(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	// Use a bogus domain that should be blocked
+	email := t.Name() + "@example.com"
+
+	// Poison the inbox: if an email is accidentally sent, the test fails immediately.
+	Env.servers.Email.PoisonInbox(email)
+
+	keyFile, _ := genSSHKey(t)
+	pty := sshToExeDev(t, keyFile)
+	pty.want(testinfra.Banner)
+	pty.want("Please enter your email")
+
+	pty.sendLine(email)
+
+	// The server should still say it sent the email (anti-fraud measure)
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+
+	// If we reach here, no email was sent (otherwise the poison would have panicked).
+	// Close the connection without waiting for EOF (server is waiting for verification).
+	pty.close()
+}

@@ -64,6 +64,56 @@ func TestEmailValidation(t *testing.T) {
 	}
 }
 
+func TestIsBogusEmailDomain(t *testing.T) {
+	tests := []struct {
+		email string
+		bogus bool
+	}{
+		// Valid domains
+		{"user@gmail.com", false},
+		{"user@outlook.com", false},
+		{"user@company.org", false},
+		{"user@university.edu", false},
+
+		// RFC 2606 reserved domains
+		{"user@example.com", true},
+		{"user@example.net", true},
+		{"user@example.org", true},
+		{"user@test.com", true},
+
+		// Common typos of popular domains
+		{"user@gmail.co", true},
+		{"user@gmial.com", true},
+		{"user@gmai.com", true},
+		{"user@gamil.com", true},
+		{"user@gnail.com", true},
+		{"user@gmail.con", true},
+		{"user@gmail.om", true},
+		{"user@hotmail.co", true},
+		{"user@hotmal.com", true},
+		{"user@hotmial.com", true},
+		{"user@outlok.com", true},
+		{"user@outloo.com", true},
+		{"user@outlook.co", true},
+		{"user@yahooo.com", true},
+		{"user@yaho.com", true},
+		{"user@yahoo.co", true},
+		{"user@icloud.co", true},
+		{"user@icoud.com", true},
+
+		// Case insensitive (ParseAddress normalizes to lowercase)
+		{"user@EXAMPLE.COM", true},
+		{"user@Gmail.Co", true},
+	}
+
+	for _, tt := range tests {
+		result := isBogusEmailDomain(tt.email)
+		if result != tt.bogus {
+			t.Errorf("isBogusEmailDomain(%q) = %v, want %v", tt.email, result, tt.bogus)
+		}
+	}
+}
+
 // TestEmailVerificationRequiresPOST tests that email verification requires POST confirmation
 func TestEmailVerificationRequiresPOST(t *testing.T) {
 	// Create server

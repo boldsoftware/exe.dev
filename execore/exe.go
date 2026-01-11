@@ -1190,9 +1190,36 @@ func generatePairingCode() string {
 
 var errNoEmailService = errors.New("email service not configured")
 
+// bogusEmailDomains contains domains that should never receive emails.
+// Includes RFC 2606 reserved domains and common typos of popular email providers.
+// Note: domains without TLDs (localhost, invalid) are rejected by ParseAddress.
+var bogusEmailDomains = []string{
+	"example.com", "example.net", "example.org", "test.com", // RFC 2606 reserved domains
+	"gmail.co", "gmial.com", "gmai.com", "gamil.com", "gnail.com", "gmail.con", "gmail.om",
+	"hotmail.co", "hotmal.com", "hotmial.com",
+	"outlok.com", "outloo.com", "outlook.co",
+	"yahooo.com", "yaho.com", "yahoo.co",
+	"icloud.co", "icoud.com",
+}
+
+// isBogusEmailDomain reports whether email is known to be undeliverable.
+func isBogusEmailDomain(email string) bool {
+	syntax := emailVerifier.ParseAddress(email)
+	if !syntax.Valid {
+		return false
+	}
+	return slices.Contains(bogusEmailDomains, syntax.Domain)
+}
+
 // sendEmail sends an email using the configured email service.
 // emailType identifies the type of email being sent for logging and metrics.
 func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subject, body string) error {
+	// Do not attempt to send to bogus domains (reserved or common typos).
+	if isBogusEmailDomain(to) {
+		s.slog().InfoContext(ctx, "silently dropping email to bogus domain", "to", to, "subject", subject, "type", emailType)
+		return nil
+	}
+
 	// Do not attempt to send to an email address that has hard-bounced before. Best effort.
 	// If bounced, silently pretend the email was sent (anti-fraud measure).
 	bounced, _ := withRxRes1(s, ctx, (*exedb.Queries).IsEmailBounced, to)
@@ -1206,6 +1233,7 @@ func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subjec
 		if err != nil {
 			s.slog().WarnContext(ctx, "failed to send fake email", "to", to, "subject", subject, "error", err)
 		}
+		return nil
 	}
 
 	// In dev mode, always just log the email

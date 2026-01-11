@@ -468,6 +468,15 @@ func (p *expectPty) wantEOF() {
 	}
 }
 
+// close closes the PTY without waiting for EOF.
+// Use this when the server is in a blocking state.
+func (p *expectPty) close() {
+	if err := p.pty.Close(); err != nil {
+		p.t.Helper()
+		p.t.Fatal(err)
+	}
+}
+
 // attachAndStart attaches the pty to the given command and starts it.
 func (p *expectPty) attachAndStart(cmd *exec.Cmd) {
 	if err := p.pty.AttachAndStart(cmd); err != nil {
