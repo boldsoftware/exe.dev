@@ -178,8 +178,9 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	}
 
 	// Setup rollback to cleanup resources on error
+	// Use WithoutCancel so rollback completes even if context was cancelled (which may be why we're rolling back)
 	rb := &createInstanceRollback{
-		ctx:             ctx,
+		ctx:             context.WithoutCancel(ctx),
 		log:             s.log,
 		serviceContext:  s.context,
 		instanceID:      instanceID,

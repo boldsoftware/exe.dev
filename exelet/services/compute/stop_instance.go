@@ -12,6 +12,9 @@ import (
 )
 
 func (s *Service) StopInstance(ctx context.Context, req *api.StopInstanceRequest) (*api.StopInstanceResponse, error) {
+	// Use WithoutCancel so the stop completes even if the gRPC request times out or client disconnects
+	ctx = context.WithoutCancel(ctx)
+
 	i, err := s.getInstance(ctx, req.ID)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
