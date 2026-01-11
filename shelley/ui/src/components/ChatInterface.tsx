@@ -445,8 +445,7 @@ function ChatInterface({
   const terminalURL = window.__SHELLEY_INIT__?.terminal_url || null;
   const links = window.__SHELLEY_INIT__?.links || [];
   const hostname = window.__SHELLEY_INIT__?.hostname || "localhost";
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [, setReconnectAttempts] = useState(0);
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -454,6 +453,7 @@ function ChatInterface({
   const eventSourceRef = useRef<EventSource | null>(null);
   const overflowMenuRef = useRef<HTMLDivElement>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const periodicRetryRef = useRef<number | null>(null);
   const userScrolledRef = useRef(false);
 
   // Load messages and set up streaming
@@ -475,6 +475,9 @@ function ChatInterface({
       }
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (periodicRetryRef.current) {
+        clearInterval(periodicRetryRef.current);
       }
     };
   }, [conversationId]);
@@ -517,6 +520,36 @@ function ChatInterface({
       };
     }
   }, [showOverflowMenu]);
+
+  // Reconnect when page becomes visible, focused, or online
+  // Store reconnect function in a ref so event listeners always have the latest version
+  const reconnectRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        reconnectRef.current();
+      }
+    };
+
+    const handleFocus = () => {
+      reconnectRef.current();
+    };
+
+    const handleOnline = () => {
+      reconnectRef.current();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("online", handleOnline);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("online", handleOnline);
+    };
+  }, []);
 
   const loadMessages = async () => {
     if (!conversationId) return;
@@ -600,15 +633,23 @@ function ChatInterface({
         eventSourceRef.current = null;
       }
 
-      // Backoff delays: 1s, 5s, 10s, then give up
-      const delays = [1000, 5000, 10000];
+      // Backoff delays: 1s, 2s, 5s, then show disconnected but keep retrying periodically
+      const delays = [1000, 2000, 5000];
 
       setReconnectAttempts((prev) => {
         const attempts = prev + 1;
 
         if (attempts > delays.length) {
-          // Give up and show disconnected UI
+          // Show disconnected UI but start periodic retry every 30 seconds
           setIsDisconnected(true);
+          if (!periodicRetryRef.current) {
+            periodicRetryRef.current = window.setInterval(() => {
+              if (eventSourceRef.current === null) {
+                console.log("Periodic reconnect attempt");
+                setupMessageStream();
+              }
+            }, 30000);
+          }
           return attempts;
         }
 
@@ -627,9 +668,13 @@ function ChatInterface({
 
     eventSource.onopen = () => {
       console.log("Message stream connected");
-      // Reset reconnect attempts on successful connection
+      // Reset reconnect attempts and clear periodic retry on successful connection
       setReconnectAttempts(0);
       setIsDisconnected(false);
+      if (periodicRetryRef.current) {
+        clearInterval(periodicRetryRef.current);
+        periodicRetryRef.current = null;
+      }
     };
   };
 
@@ -675,14 +720,29 @@ function ChatInterface({
   };
 
   const handleManualReconnect = () => {
+    if (!conversationId || eventSourceRef.current) return;
     setIsDisconnected(false);
     setReconnectAttempts(0);
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
+    if (periodicRetryRef.current) {
+      clearInterval(periodicRetryRef.current);
+      periodicRetryRef.current = null;
+    }
     setupMessageStream();
   };
+
+  // Update the reconnect ref when isDisconnected or conversationId changes
+  useEffect(() => {
+    reconnectRef.current = () => {
+      if (isDisconnected && conversationId && !eventSourceRef.current) {
+        console.log("Visibility/focus/online triggered reconnect attempt");
+        handleManualReconnect();
+      }
+    };
+  }, [isDisconnected, conversationId]);
 
   const handleCancel = async () => {
     if (!conversationId || cancelling) return;
