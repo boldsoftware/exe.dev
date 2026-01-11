@@ -457,6 +457,50 @@ func (q *Queries) InsertBox(ctx context.Context, arg InsertBoxParams) (int64, er
 	return result.LastInsertId()
 }
 
+const listAllBoxesWithOwner = `-- name: ListAllBoxesWithOwner :many
+SELECT b.name, b.status, b.ctrhost, b.container_id, u.email as owner_email
+FROM boxes b
+JOIN users u ON u.user_id = b.created_by_user_id
+ORDER BY b.name
+`
+
+type ListAllBoxesWithOwnerRow struct {
+	Name        string  `db:"name" json:"name"`
+	Status      string  `db:"status" json:"status"`
+	Ctrhost     string  `db:"ctrhost" json:"ctrhost"`
+	ContainerID *string `db:"container_id" json:"container_id"`
+	OwnerEmail  string  `db:"owner_email" json:"owner_email"`
+}
+
+func (q *Queries) ListAllBoxesWithOwner(ctx context.Context) ([]ListAllBoxesWithOwnerRow, error) {
+	rows, err := q.query(ctx, q.listAllBoxesWithOwnerStmt, listAllBoxesWithOwner)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllBoxesWithOwnerRow{}
+	for rows.Next() {
+		var i ListAllBoxesWithOwnerRow
+		if err := rows.Scan(
+			&i.Name,
+			&i.Status,
+			&i.Ctrhost,
+			&i.ContainerID,
+			&i.OwnerEmail,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const sSHKeyForBoxNamed = `-- name: SSHKeyForBoxNamed :one
 SELECT ssh_server_identity_key FROM boxes WHERE name = ?
 `

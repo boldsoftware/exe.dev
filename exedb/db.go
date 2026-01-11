@@ -417,6 +417,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAllAccountsStmt, err = db.PrepareContext(ctx, listAllAccounts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllAccounts: %w", err)
 	}
+	if q.listAllBoxesWithOwnerStmt, err = db.PrepareContext(ctx, listAllBoxesWithOwner); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllBoxesWithOwner: %w", err)
+	}
 	if q.listAllUserLLMCreditsStmt, err = db.PrepareContext(ctx, listAllUserLLMCredits); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllUserLLMCredits: %w", err)
 	}
@@ -1197,6 +1200,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAllAccountsStmt: %w", cerr)
 		}
 	}
+	if q.listAllBoxesWithOwnerStmt != nil {
+		if cerr := q.listAllBoxesWithOwnerStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllBoxesWithOwnerStmt: %w", cerr)
+		}
+	}
 	if q.listAllUserLLMCreditsStmt != nil {
 		if cerr := q.listAllUserLLMCreditsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllUserLLMCreditsStmt: %w", cerr)
@@ -1567,6 +1575,7 @@ type Queries struct {
 	isEmailBouncedStmt                         *sql.Stmt
 	isEmailQualityBypassedStmt                 *sql.Stmt
 	listAllAccountsStmt                        *sql.Stmt
+	listAllBoxesWithOwnerStmt                  *sql.Stmt
 	listAllUserLLMCreditsStmt                  *sql.Stmt
 	listAllUsersStmt                           *sql.Stmt
 	listEmailQualityBypassStmt                 *sql.Stmt
@@ -1744,6 +1753,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		isEmailBouncedStmt:                         q.isEmailBouncedStmt,
 		isEmailQualityBypassedStmt:                 q.isEmailQualityBypassedStmt,
 		listAllAccountsStmt:                        q.listAllAccountsStmt,
+		listAllBoxesWithOwnerStmt:                  q.listAllBoxesWithOwnerStmt,
 		listAllUserLLMCreditsStmt:                  q.listAllUserLLMCreditsStmt,
 		listAllUsersStmt:                           q.listAllUsersStmt,
 		listEmailQualityBypassStmt:                 q.listEmailQualityBypassStmt,

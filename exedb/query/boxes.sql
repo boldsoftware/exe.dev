@@ -106,3 +106,9 @@ SELECT COUNT(DISTINCT created_by_user_id) FROM boxes;
 
 -- name: UpdateBoxCreationLog :exec
 UPDATE boxes SET creation_log = ? WHERE name = ?;
+
+-- name: ListAllBoxesWithOwner :many
+SELECT b.name, b.status, b.ctrhost, b.container_id, u.email as owner_email
+FROM boxes b
+JOIN users u ON u.user_id = b.created_by_user_id
+ORDER BY b.name;
