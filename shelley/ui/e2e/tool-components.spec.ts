@@ -145,6 +145,53 @@ test.describe('Tool Component Verification', () => {
     await expect(navigateTool.locator('.tool-command').filter({ hasText: 'https://example.com' })).toBeVisible();
   });
 
+  test('patch tool can be collapsed and expanded without errors', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+
+    const messageInput = page.getByTestId('message-input');
+    const sendButton = page.getByTestId('send-button');
+
+    // Trigger a successful patch tool (uses overwrite operation which always succeeds)
+    await messageInput.fill('patch success');
+    await sendButton.click();
+
+    // Wait for successful patch tool with Monaco editor
+    // Use specific locator to find the successful patch (not the failed ones from other tests)
+    const patchTool = page.locator('.patch-tool[data-testid="tool-call-completed"]').filter({ hasText: 'test-patch-success.txt' }).first();
+    await expect(patchTool).toBeVisible({ timeout: 30000 });
+    // Wait for Monaco editor to be fully rendered (only visible for successful patches)
+    await expect(patchTool.locator('.patch-tool-monaco-editor')).toBeVisible({ timeout: 10000 });
+
+    // Get console errors before toggling
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+
+    const header = patchTool.locator('.patch-tool-header');
+
+    // Collapse
+    await header.click();
+    await expect(patchTool.locator('.patch-tool-details')).toBeHidden();
+
+    // Expand - Monaco should reinitialize
+    await header.click();
+    await expect(patchTool.locator('.patch-tool-details')).toBeVisible();
+    await expect(patchTool.locator('.patch-tool-monaco-editor')).toBeVisible({ timeout: 10000 });
+
+    // Collapse again
+    await header.click();
+    await expect(patchTool.locator('.patch-tool-details')).toBeHidden();
+
+    // Expand again - this was triggering "Cannot add model because it already exists!" in Firefox
+    await header.click();
+    await expect(patchTool.locator('.patch-tool-details')).toBeVisible();
+    await expect(patchTool.locator('.patch-tool-monaco-editor')).toBeVisible({ timeout: 10000 });
+
+    // Check no Monaco model errors occurred
+    const modelErrors = errors.filter(e => e.includes('model') && e.includes('already exists'));
+    expect(modelErrors).toHaveLength(0);
+  });
+
   test('emoji sizes are consistent across all tools', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('domcontentloaded');

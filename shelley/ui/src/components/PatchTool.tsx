@@ -86,6 +86,13 @@ function PatchTool({
   const monacoRef = useRef<typeof Monaco | null>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const hoverDecorationsRef = useRef<string[]>([]);
+  const modelsRef = useRef<{
+    original: Monaco.editor.ITextModel | null;
+    modified: Monaco.editor.ITextModel | null;
+  }>({
+    original: null,
+    modified: null,
+  });
 
   // Track viewport size
   useEffect(() => {
@@ -154,10 +161,18 @@ function PatchTool({
 
     const monaco = monacoRef.current;
 
-    // Dispose previous editor
+    // Dispose previous editor and models
     if (editorRef.current) {
       editorRef.current.dispose();
       editorRef.current = null;
+    }
+    if (modelsRef.current.original) {
+      modelsRef.current.original.dispose();
+      modelsRef.current.original = null;
+    }
+    if (modelsRef.current.modified) {
+      modelsRef.current.modified.dispose();
+      modelsRef.current.modified = null;
     }
 
     // Get language from file extension
@@ -176,8 +191,15 @@ function PatchTool({
     const originalUri = monaco.Uri.file(`patch-original-${timestamp}-${displayData.path}`);
     const modifiedUri = monaco.Uri.file(`patch-modified-${timestamp}-${displayData.path}`);
 
+    // Check for and dispose any existing models with these URIs (defensive, shouldn't happen)
+    const existingOriginal = monaco.editor.getModel(originalUri);
+    if (existingOriginal) existingOriginal.dispose();
+    const existingModified = monaco.editor.getModel(modifiedUri);
+    if (existingModified) existingModified.dispose();
+
     const originalModel = monaco.editor.createModel(displayData.oldContent, language, originalUri);
     const modifiedModel = monaco.editor.createModel(displayData.newContent, language, modifiedUri);
+    modelsRef.current = { original: originalModel, modified: modifiedModel };
 
     // Create diff editor
     const diffEditor = monaco.editor.createDiffEditor(editorContainerRef.current, {
@@ -293,6 +315,14 @@ function PatchTool({
       if (editorRef.current) {
         editorRef.current.dispose();
         editorRef.current = null;
+      }
+      if (modelsRef.current.original) {
+        modelsRef.current.original.dispose();
+        modelsRef.current.original = null;
+      }
+      if (modelsRef.current.modified) {
+        modelsRef.current.modified.dispose();
+        modelsRef.current.modified = null;
       }
     };
   }, [monacoLoaded, displayData, isMobile, isExpanded, onCommentTextChange]);

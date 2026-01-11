@@ -120,6 +120,10 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 		// Trigger a patch that will fail (file doesn't exist)
 		return s.makePatchToolResponse("/nonexistent/file/that/does/not/exist.txt", inputTokens), nil
 
+	case "patch success":
+		// Trigger a patch that will succeed (using overwrite, which creates the file)
+		return s.makePatchToolResponseOverwrite("/tmp/test-patch-success.txt", inputTokens), nil
+
 	case "patch bad json":
 		// Trigger a patch with malformed JSON (simulates Anthropic sending invalid JSON)
 		return s.makeMalformedPatchToolResponse(inputTokens), nil
@@ -332,6 +336,47 @@ func (s *PredictableService) makePatchToolResponse(filePath string, inputTokens 
 			InputTokens:  inputTokens,
 			OutputTokens: outputTokens,
 			CostUSD:      0.003,
+		},
+	}
+}
+
+// makePatchToolResponseOverwrite creates a response that uses overwrite operation (always succeeds)
+func (s *PredictableService) makePatchToolResponseOverwrite(filePath string, inputTokens uint64) *llm.Response {
+	toolInputData := map[string]interface{}{
+		"path": filePath,
+		"patches": []map[string]string{
+			{
+				"operation": "overwrite",
+				"newText":   "This is the new content of the file.\nLine 2\nLine 3\n",
+			},
+		},
+	}
+	toolInputBytes, _ := json.Marshal(toolInputData)
+	toolInput := json.RawMessage(toolInputBytes)
+	responseText := fmt.Sprintf("I'll create/overwrite the file: %s", filePath)
+	outputTokens := uint64(len(responseText)/4 + len(toolInputBytes)/4)
+	if outputTokens == 0 {
+		outputTokens = 1
+	}
+	return &llm.Response{
+		ID:    fmt.Sprintf("pred-patch-overwrite-%d", time.Now().UnixNano()),
+		Type:  "message",
+		Role:  llm.MessageRoleAssistant,
+		Model: "predictable-v1",
+		Content: []llm.Content{
+			{Type: llm.ContentTypeText, Text: responseText},
+			{
+				ID:        fmt.Sprintf("tool_%d", time.Now().UnixNano()%1000),
+				Type:      llm.ContentTypeToolUse,
+				ToolName:  "patch",
+				ToolInput: toolInput,
+			},
+		},
+		StopReason: llm.StopReasonToolUse,
+		Usage: llm.Usage{
+			InputTokens:  inputTokens,
+			OutputTokens: outputTokens,
+			CostUSD:      0.0,
 		},
 	}
 }
