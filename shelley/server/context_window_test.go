@@ -114,6 +114,48 @@ func TestContextWindowSizeCalculation(t *testing.T) {
 			t.Errorf("calculateContextWindowSize() = %d, want %d", got, want)
 		}
 	})
+
+	t.Run("skips_zero_usage_messages", func(t *testing.T) {
+		// Test that we skip messages with zero usage data (common for user/tool messages)
+		// and find the last message with actual usage
+		validUsage := llm.Usage{
+			InputTokens:  200,
+			OutputTokens: 50,
+		}
+		validUsageJSON, _ := json.Marshal(validUsage)
+		validUsageStr := string(validUsageJSON)
+
+		zeroUsage := llm.Usage{} // All zeros
+		zeroUsageJSON, _ := json.Marshal(zeroUsage)
+		zeroUsageStr := string(zeroUsageJSON)
+
+		messages := []APIMessage{
+			{
+				Type:      string(db.MessageTypeSystem),
+				UsageData: &zeroUsageStr, // System message with zero usage
+			},
+			{
+				Type:      string(db.MessageTypeUser),
+				UsageData: &zeroUsageStr, // User message with zero usage
+			},
+			{
+				Type:      string(db.MessageTypeAgent),
+				UsageData: &validUsageStr, // Agent message with valid usage
+			},
+			{
+				Type:      string(db.MessageTypeUser),
+				UsageData: &zeroUsageStr, // User message after agent (zero usage)
+			},
+		}
+
+		// Should find the agent message's usage (200 + 50 = 250), not the last message's zero usage
+		got := calculateContextWindowSize(messages)
+		want := uint64(250)
+
+		if got != want {
+			t.Errorf("calculateContextWindowSize() = %d, want %d", got, want)
+		}
+	})
 }
 
 // TestContextWindowGrowsWithConversation tests that the context window size grows
