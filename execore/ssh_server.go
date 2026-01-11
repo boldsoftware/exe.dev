@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"slices"
 	"strings"
@@ -577,7 +578,9 @@ func (ss *SSHServer) executeCommandWithLogging(ctx context.Context, cc *exemenu.
 		attrs = append(attrs, attr.Key, attr.Value.Any())
 	}
 
-	ss.server.slog().InfoContext(ctx, "ssh command completed", attrs...)
+	// This is a canonical log line!
+	ss.server.slog().InfoContext(ctx, "ssh command completed",
+		slog.String("log_type", "ssh_command"))
 
 	return rc
 }

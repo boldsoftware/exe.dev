@@ -27,6 +27,10 @@ instances of that:
 
 * SSH Handler Commands
 
+  "body: ssh command completed"
+  (or)
+  "log_type: ssh_command"
+
 * gRPC "finished call"
 
   These aren't particularly well instrumented.
