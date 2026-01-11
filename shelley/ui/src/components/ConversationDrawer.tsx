@@ -4,7 +4,9 @@ import { api } from "../services/api";
 
 interface ConversationDrawerProps {
   isOpen: boolean;
+  isCollapsed: boolean;
   onClose: () => void;
+  onToggleCollapse: () => void;
   conversations: Conversation[];
   currentConversationId: string | null;
   onSelectConversation: (id: string) => void;
@@ -16,7 +18,9 @@ interface ConversationDrawerProps {
 
 function ConversationDrawer({
   isOpen,
+  isCollapsed,
   onClose,
+  onToggleCollapse,
   conversations,
   currentConversationId,
   onSelectConversation,
@@ -189,7 +193,7 @@ function ConversationDrawer({
   return (
     <>
       {/* Drawer */}
-      <div className={`drawer ${isOpen ? "open" : ""}`}>
+      <div className={`drawer ${isOpen ? "open" : ""} ${isCollapsed ? "collapsed" : ""}`}>
         {/* Header */}
         <div className="drawer-header">
           <h2 className="drawer-title">{showArchived ? "Archived" : "Conversations"}</h2>
@@ -222,6 +226,22 @@ function ConversationDrawer({
                   strokeLinejoin="round"
                   strokeWidth={2}
                   d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+            {/* Collapse button - desktop only */}
+            <button
+              onClick={onToggleCollapse}
+              className="btn-icon show-on-desktop-only"
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
                 />
               </svg>
             </button>

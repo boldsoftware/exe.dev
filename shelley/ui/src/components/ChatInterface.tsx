@@ -354,6 +354,8 @@ interface ChatInterfaceProps {
   onConversationUpdate?: (conversation: Conversation) => void;
   onFirstMessage?: (message: string, model: string, cwd?: string) => Promise<void>;
   mostRecentCwd?: string | null;
+  isDrawerCollapsed?: boolean;
+  onToggleDrawerCollapse?: () => void;
 }
 
 function ChatInterface({
@@ -364,6 +366,8 @@ function ChatInterface({
   onConversationUpdate,
   onFirstMessage,
   mostRecentCwd,
+  isDrawerCollapsed,
+  onToggleDrawerCollapse,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1040,6 +1044,25 @@ function ChatInterface({
               />
             </svg>
           </button>
+
+          {/* Expand drawer button - desktop only when collapsed */}
+          {isDrawerCollapsed && onToggleDrawerCollapse && (
+            <button
+              onClick={onToggleDrawerCollapse}
+              className="btn-icon show-on-desktop-only"
+              aria-label="Expand sidebar"
+              title="Expand sidebar"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 5l7 7-7 7M5 5l7 7-7 7"
+                />
+              </svg>
+            </button>
+          )}
 
           <h1 className="header-title" title={currentConversation?.slug || "Shelley"}>
             {getDisplayTitle()}

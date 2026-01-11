@@ -61,6 +61,7 @@ function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerCollapsed, setDrawerCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const initialSlugResolved = useRef(false);
@@ -146,6 +147,10 @@ function App() {
     setDrawerOpen(false);
   };
 
+  const toggleDrawerCollapsed = () => {
+    setDrawerCollapsed((prev) => !prev);
+  };
+
   const updateConversation = (updatedConversation: Conversation) => {
     setConversations((prev) =>
       prev.map((conv) =>
@@ -229,7 +234,9 @@ function App() {
       {/* Conversations drawer */}
       <ConversationDrawer
         isOpen={drawerOpen}
+        isCollapsed={drawerCollapsed}
         onClose={() => setDrawerOpen(false)}
+        onToggleCollapse={toggleDrawerCollapsed}
         conversations={conversations}
         currentConversationId={currentConversationId}
         onSelectConversation={selectConversation}
@@ -249,6 +256,8 @@ function App() {
           onConversationUpdate={updateConversation}
           onFirstMessage={handleFirstMessage}
           mostRecentCwd={mostRecentCwd}
+          isDrawerCollapsed={drawerCollapsed}
+          onToggleDrawerCollapse={toggleDrawerCollapsed}
         />
       </div>
 

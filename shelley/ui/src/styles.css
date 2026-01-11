@@ -2226,11 +2226,26 @@ svg {
     transform: translateX(0) !important;
   }
 
+  .drawer.collapsed {
+    display: none;
+  }
+
   .hide-on-desktop {
     display: none !important;
   }
 
+  .show-on-desktop-only {
+    display: flex !important;
+  }
+
   .backdrop {
+    display: none !important;
+  }
+}
+
+/* Hide desktop-only elements on mobile */
+@media (max-width: 767px) {
+  .show-on-desktop-only {
     display: none !important;
   }
 }
