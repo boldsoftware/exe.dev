@@ -575,7 +575,6 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
               toolResult={content.ToolResult}
               hasError={hasError}
               executionTime={executionTime}
-              display={content.Display}
             />
           );
         }

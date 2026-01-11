@@ -7,7 +7,6 @@ interface ReadImageToolProps {
   toolResult?: LLMContent[];
   hasError?: boolean;
   executionTime?: string;
-  display?: unknown; // Display data from the tool_result Content
 }
 
 function ReadImageTool({
@@ -16,7 +15,6 @@ function ReadImageTool({
   toolResult,
   hasError,
   executionTime,
-  display,
 }: ReadImageToolProps) {
   const [isExpanded, setIsExpanded] = useState(true); // Default to expanded
 
@@ -47,26 +45,14 @@ function ReadImageTool({
 
   const filename = getPath(toolInput) || getId(toolInput) || "image";
 
-  // Use display data passed as prop (from tool_result Content.Display)
-  const displayData = display;
-
-  // Construct image URL
+  // Build image URL from the base64 data in toolResult
+  // The read_image tool returns [text description, image content with Data and MediaType]
   let imageUrl: string | undefined = undefined;
-  if (displayData && typeof displayData === "object" && displayData !== null) {
-    const url =
-      "url" in displayData && typeof displayData.url === "string" ? displayData.url : undefined;
-    const path =
-      "path" in displayData && typeof displayData.path === "string" ? displayData.path : undefined;
-    const id =
-      "id" in displayData && typeof displayData.id === "string" ? displayData.id : undefined;
-
-    imageUrl =
-      url ||
-      (path
-        ? `/api/read?path=${encodeURIComponent(path)}`
-        : id
-          ? `/api/read?path=${encodeURIComponent(id)}`
-          : undefined);
+  if (toolResult && toolResult.length >= 2) {
+    const imageContent = toolResult[1];
+    if (imageContent?.Data && imageContent?.MediaType) {
+      imageUrl = `data:${imageContent.MediaType};base64,${imageContent.Data}`;
+    }
   }
 
   const isComplete = !isRunning && toolResult !== undefined;
