@@ -22,6 +22,8 @@ import (
 	"exe.dev/llmgateway"
 	"exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
+
+	"tailscale.com/client/local"
 )
 
 // debugHandler constructs and returns a handler with Go-standard debug endpoints
@@ -2207,10 +2209,15 @@ func (s *Server) handleDebugSignupRejectPost(w http.ResponseWriter, r *http.Requ
 		if reason == "" {
 			reason = "Added via debug page"
 		}
+		addedBy := "debug"
+		lc := new(local.Client)
+		if who, err := lc.WhoIs(ctx, r.RemoteAddr); err == nil && who.UserProfile != nil && who.UserProfile.LoginName != "" {
+			addedBy = fmt.Sprintf("debug (%s)", who.UserProfile.LoginName)
+		}
 		err := withTx1(s, ctx, (*exedb.Queries).InsertEmailQualityBypass, exedb.InsertEmailQualityBypassParams{
 			Email:   email,
 			Reason:  reason,
-			AddedBy: "debug",
+			AddedBy: addedBy,
 		})
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to add bypass: %v", err), http.StatusInternalServerError)
