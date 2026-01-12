@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/pprof"
+	"net/netip"
 	"regexp"
 	"sort"
 	"strconv"
@@ -1467,7 +1468,8 @@ h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
 <h3>Currently Rate-Limited IPs</h3>
 `, checkedAttr(loginDisabled))
 	if s.signupLimiter != nil {
-		s.signupLimiter.DumpHTML(w, true) // onlyLimited=true to show only rate-limited IPs
+		s.signupLimiter.Allow(netip.Addr{}) // ensure internal cache is initialized
+		s.signupLimiter.DumpHTML(w, true)   // onlyLimited=true to show only rate-limited IPs
 	} else {
 		fmt.Fprintf(w, "<p>No rate limiter configured.</p>\n")
 	}
