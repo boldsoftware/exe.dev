@@ -150,3 +150,54 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+func TestHandlerDocsMdIndex(t *testing.T) {
+	store, err := Load(true)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	handler := NewHandler(store, true)
+	if handler == nil {
+		t.Fatal("NewHandler returned nil")
+	}
+
+	req := httptest.NewRequest("GET", "/docs.md", nil)
+	w := httptest.NewRecorder()
+
+	handled := handler.Handle(w, req)
+	if !handled {
+		t.Fatal("Handler did not handle /docs.md")
+	}
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("got status code %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType != "text/markdown; charset=utf-8" {
+		t.Errorf("got content type %q, want %q", contentType, "text/markdown; charset=utf-8")
+	}
+
+	body := w.Body.String()
+	if body == "" {
+		t.Fatal("response body is empty")
+	}
+
+	// Check that it starts with the expected header
+	if !contains(body, "# exe.dev docs") {
+		t.Error("expected body to contain '# exe.dev docs' header")
+	}
+
+	// Verify that all published, linked doc titles are listed
+	for _, entry := range store.entries {
+		if !entry.Published || entry.Unlinked {
+			continue
+		}
+		// Check that the entry title appears as a markdown link
+		if !contains(body, entry.Title) {
+			t.Errorf("expected to find title %q in docs.md output", entry.Title)
+		}
+	}
+}

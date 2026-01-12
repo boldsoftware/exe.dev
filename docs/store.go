@@ -265,6 +265,11 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 
+	if path == "/docs.md" {
+		h.renderDocsIndex(w, r)
+		return true
+	}
+
 	if path == "/docs/all.md" {
 		h.renderAllDocs(w, r)
 		return true
@@ -331,9 +336,31 @@ func (h *Handler) renderDocsList(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(buf.Bytes())
 }
 
-func (h *Handler) renderDocMarkdown(w http.ResponseWriter, r *http.Request, entry *Entry) {
+func (h *Handler) renderDocMarkdown(w http.ResponseWriter, _ *http.Request, entry *Entry) {
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	_, _ = w.Write([]byte(entry.Markdown))
+}
+
+func (h *Handler) renderDocsIndex(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	fmt.Fprintf(w, "# exe.dev docs\n\n")
+
+	for _, group := range h.store.Groups() {
+		if group.Heading != "" {
+			fmt.Fprintf(w, "## %s\n\n", group.Heading)
+		}
+		for _, entry := range group.Docs {
+			if !entry.Published && !h.showHidden {
+				continue
+			}
+			fmt.Fprintf(w, "- [%s](/docs/%s.md)", entry.Title, entry.Slug)
+			if entry.Description != "" {
+				fmt.Fprintf(w, " - %s", entry.Description)
+			}
+			fmt.Fprintln(w)
+		}
+		fmt.Fprintln(w)
+	}
 }
 
 func groupDocsByHeading(entries []*Entry) []Group {
