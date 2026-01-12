@@ -345,7 +345,7 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
         // IMPORTANT: When adding a new tool component here, also add it to:
         // 1. The tool_result case below
         // 2. TOOL_COMPONENTS map in ChatInterface.tsx
-        // See AGENT.md in this directory.
+        // See AGENTS.md in this directory.
 
         // Use specialized component for bash tool
         if (content.ToolName === "bash") {
