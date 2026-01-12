@@ -799,6 +799,10 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		signupPOW: newSignupPOW(),
 	}
 
+	// Initialize the limiter's internal cache by calling Allow once.
+	// This avoids an unimportant but distracting /debug panic after each deployment.
+	s.signupLimiter.Allow(netip.Addr{})
+
 	// Set up HTTP metrics host functions for in-flight label tracking
 	s.httpMetrics.SetHostFuncs(s.isProxyRequest, func(host string) string {
 		hostname, _, _ := net.SplitHostPort(host)
