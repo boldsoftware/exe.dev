@@ -276,17 +276,12 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	}
 	slog.DebugContext(ctx, "looked up user for ssh key", "component", "piper-plugin", "public_key", pubKey, "user_id", userID)
 
-	registered := userID != ""
 	username := conn.User()
 	localAddress := cmp.Or(domz.StripPort(conn.LocalAddress()), "127.0.0.1")
-	slog.DebugContext(ctx, "piper public key auth user status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID, "local_address", localAddress)
+	slog.DebugContext(ctx, "piper public key auth user status", "component", "piper-plugin", "username", username, "user_id", userID, "local_address", localAddress)
 
 	// Check for support access: ssh support+vmname@exe.cloud
 	if supportBoxName, isSupport := strings.CutPrefix(username, supportAccessPrefix); isSupport {
-		if !registered {
-			slog.WarnContext(ctx, "piper public key auth: support access denied - unregistered user", "component", "piper-plugin", "box_name", supportBoxName)
-			return nil, fmt.Errorf("support access denied: unregistered ssh key")
-		}
 		slog.InfoContext(ctx, "piper public key auth: support access attempt", "component", "piper-plugin", "box_name", supportBoxName, "user_id", userID)
 		box := p.server.FindBoxForExeSudoer(ctx, userID, supportBoxName)
 		if box == nil {
@@ -297,14 +292,14 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		return p.handleBoxAccess(ctx, box, userID, conn.UniqueID())
 	}
 
-	// Check if this is a direct box access attempt
-	if username != "" && registered {
-		slog.InfoContext(ctx, "piper public key auth checking for box by name", "component", "piper-plugin", "username", username, "user_id", userID)
+	// In test/local environments, it's useful to be able to access VMs by username,
+	// so we don't have to do DNS nonsense.
+	// We used to enable this everywhere, but it was an evergreen source of user confusion.
+	if p.server.env.SSHCommandUsesAt && username != "" {
 		if box := p.server.FindBoxByNameForUser(ctx, userID, username); box != nil {
 			slog.InfoContext(ctx, "piper public key auth found box by name, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "ctrhost", box.Ctrhost, "port", box.SSHPort)
 			return p.handleBoxAccess(ctx, box, userID, conn.UniqueID())
 		}
-
 		slog.InfoContext(ctx, "No box found with name", "component", "piper-plugin", "username", username, "user_id", userID)
 	}
 
