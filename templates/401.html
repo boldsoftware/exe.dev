@@ -45,7 +45,7 @@
       <input type="hidden" name="login_with_exe" value="1">
       {{end}}
       <input type="email" name="email" placeholder="you@example.com" required autofocus
-        autocomplete="{{if .PasskeyEnabled}}username webauthn{{else}}email{{end}}" autocorrect="on" autocapitalize="none" spellcheck="false"
+        autocomplete="{{if .PasskeyEnabled}}username webauthn{{else}}email{{end}}" autocorrect="on" autocapitalize="none" spellcheck="true"
         class="w-full text-xl border-b-2 border-zinc-300 py-3 bg-transparent focus:outline-none focus:border-zinc-900 placeholder:text-zinc-400">
       <p class="text-zinc-400 text-sm mt-4">Press enter to request access</p>
     </form>
