@@ -238,7 +238,11 @@ const testCases: TestCase[] = [
     input: "Download here: **https://example.com/file.vsix**",
     expected: [
       { type: "text", content: "Download here: **" },
-      { type: "link", content: "https://example.com/file.vsix", href: "https://example.com/file.vsix" },
+      {
+        type: "link",
+        content: "https://example.com/file.vsix",
+        href: "https://example.com/file.vsix",
+      },
       { type: "text", content: "**" },
     ],
   },
