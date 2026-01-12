@@ -73,5 +73,5 @@ $ cat > token
 (paste the token and hit ctrl-d)
 $ gh auth login --with-token < token
 $ gh auth setup-git
-$ gh clone https://github.com/USER/REPO
+$ git clone https://github.com/USER/REPO
 ```
