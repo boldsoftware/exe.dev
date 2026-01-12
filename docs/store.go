@@ -602,47 +602,31 @@ func parseTags(content string) (tags []string) {
 	return tags
 }
 
-func (h *Handler) renderAllDocs(w http.ResponseWriter, r *http.Request) {
-	buf := new(bytes.Buffer)
+func (h *Handler) renderAllDocs(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 
 	firstDoc := true
-	for _, entry := range h.store.entries {
-		if entry.Unlinked {
-			continue
-		}
-		if !entry.Published && !h.showHidden {
-			continue
-		}
+	for _, group := range h.store.Groups() {
+		for _, entry := range group.Docs {
+			if !entry.Published && !h.showHidden {
+				continue
+			}
 
-		if !firstDoc {
-			buf.WriteString("\n\n---\n\n")
-		}
-		firstDoc = false
+			if !firstDoc {
+				fmt.Fprintf(w, "\n\n---\n\n")
+			}
+			firstDoc = false
 
-		// Add title as H1
-		if entry.Title != "" {
-			buf.WriteString("# ")
-			buf.WriteString(entry.Title)
-			buf.WriteString("\n\n")
+			if entry.Title != "" {
+				fmt.Fprintf(w, "# %s\n\n", entry.Title)
+			}
+			if entry.Subheading != "" {
+				fmt.Fprintf(w, "**%s**\n\n", entry.Subheading)
+			}
+			if entry.Description != "" {
+				fmt.Fprintf(w, "*%s*\n\n", entry.Description)
+			}
+			fmt.Fprint(w, entry.Markdown)
 		}
-
-		// Add subheading if present
-		if entry.Subheading != "" {
-			buf.WriteString("**")
-			buf.WriteString(entry.Subheading)
-			buf.WriteString("**\n\n")
-		}
-
-		// Add description if present
-		if entry.Description != "" {
-			buf.WriteString("*")
-			buf.WriteString(entry.Description)
-			buf.WriteString("*\n\n")
-		}
-
-		buf.WriteString(entry.Markdown)
 	}
-
-	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-	_, _ = w.Write(buf.Bytes())
 }
