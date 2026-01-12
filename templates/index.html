@@ -14,92 +14,93 @@
     <meta property="og:image" content="https://exe.dev/static/exy.png">
     <meta name="twitter:card" content="summary">
     <meta name="twitter:image" content="https://exe.dev/static/exy.png">
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="alternate" type="application/atom+xml" title="exe.dev blog" href="https://blog.exe.dev/atom.xml">
-    <style>
-      body {
-        font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
-      }
-      @keyframes fadeIn {
-        from {
-          opacity: 0;
-        }
-        to {
-          opacity: 1;
-        }
-      }
-
-      @keyframes cursor {
-        0%, 49% {
-          opacity: 1;
-        }
-        50%, 100% {
-          opacity: 0;
-        }
-      }
-
-      .glow {
-        transition: text-shadow 0.3s ease;
-      }
-
-      .glow:hover {
-        text-shadow:
-          0 0 20px rgba(0, 255, 0, 0.5),
-          0 0 40px rgba(0, 255, 0, 0.25),
-          0 0 60px rgba(0, 255, 0, 0.1);
-      }
-
-      @keyframes fadeOut {
-        from {
-          opacity: 1;
-        }
-        to {
-          opacity: 0;
-        }
-      }
-
-      body.htmx-swapping {
-        animation: fadeOut 0.3s ease-out forwards;
-      }
-
-      body.htmx-settling {
-        animation: fadeIn 0.3s ease-in forwards;
-      }
-    </style>
+    <link rel="stylesheet" href="/static/index.css">
   </head>
-  <body class="min-h-dvh grid grid-rows-[auto_1fr_auto] bg-white text-gray-900">
-    <nav class="flex justify-end px-6 py-4">
-      <a href="/auth" class="flex items-center gap-2 text-gray-400 hover:text-gray-600">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+  <body>
+    <nav>
+      <a href="/auth" class="nav-login">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
         </svg>
         <span>Login</span>
       </a>
     </nav>
-    <main class="flex flex-col justify-center items-center px-4 py-8 space-y-8 font-mono">
-      <div class="relative w-full max-w-xl mx-auto px-4 text-center animate-[fadeIn_0.8s_ease-out_forwards]">
-        <div class="glow text-xl sm:text-3xl md:text-6xl">
-          <span>{{.SSHCommand}} <span class="animate-[cursor_1s_infinite] select-none">_</span></span>
+    <main>
+      <div class="hero">
+        <div class="ssh-command">
+          <span>{{.SSHCommand}} <span class="cursor">_</span></span>
         </div>
-        <div class="mt-4 sm:mt-8 text-xs sm:text-base md:text-lg text-gray-500">
-            The disk persists. You have sudo.
+        <div class="tagline">
+          The disk persists. You have sudo.
         </div>
+        <a href="/auth" class="mobile-login">Login / Register</a>
       </div>
+      {{if .Testimonials}}
+      <div class="testimonials">
+        <div id="testimonial" class="testimonial"></div>
+      </div>
+      {{end}}
     </main>
-    <!-- Footer with stub links to privacy and terms, about, and discord -->
-    <footer class="text-sm text-gray-400 min-w-full py-4 px-6 flex justify-center gap-4">
-        <!-- <a href="/privacy" class="hover:underline">Privacy Policy</a> -->
-        <!-- <span>&bull;</span> -->
-        <!-- <a href="/terms" class="hover:underline">Terms of Service</a> -->
-        <!-- <span>&bull;</span> -->
-        <a href="/docs/what-is-exe" class="hover:underline">About</a>
-        <span>&bull;</span>
-        <a href="https://blog.exe.dev" class="hover:underline">Blog</a>
-        <span>&bull;</span>
-        <a href="https://discord.gg/jc9WQUfaxf" class="hover:underline">Discord</a>
+    <footer>
+      <a href="/docs/what-is-exe">About</a>
+      <span>&bull;</span>
+      <a href="https://blog.exe.dev">Blog</a>
+      <span>&bull;</span>
+      <a href="https://discord.gg/jc9WQUfaxf">Discord</a>
     </footer>
+    {{if .Testimonials}}
+    <script>
+      const testimonials = [
+        {{range .Testimonials}}{
+          quote: `{{.Quote}}`,
+          author: `{{.Author}}`,
+          link: `{{.Link}}`
+        },
+        {{end}}
+      ];
+
+      const linkIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.25 5.5a.75.75 0 0 0-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 0 0 .75-.75v-4a.75.75 0 0 1 1.5 0v4A2.25 2.25 0 0 1 12.75 17h-8.5A2.25 2.25 0 0 1 2 14.75v-8.5A2.25 2.25 0 0 1 4.25 4h5a.75.75 0 0 1 0 1.5h-5Z" clip-rule="evenodd" /><path fill-rule="evenodd" d="M6.194 12.753a.75.75 0 0 0 1.06.053L16.5 4.44v2.81a.75.75 0 0 0 1.5 0v-4.5a.75.75 0 0 0-.75-.75h-4.5a.75.75 0 0 0 0 1.5h2.553l-9.056 8.194a.75.75 0 0 0-.053 1.06Z" clip-rule="evenodd" /></svg>';
+
+      const container = document.getElementById('testimonial');
+      let shown = [];
+
+      function getRandomIndex() {
+        if (shown.length >= testimonials.length) {
+          shown = [];
+        }
+        let idx;
+        do {
+          idx = Math.floor(Math.random() * testimonials.length);
+        } while (shown.includes(idx));
+        shown.push(idx);
+        return idx;
+      }
+
+      function renderTestimonial(t) {
+        const quoteHtml = t.quote.replace(/\n\n/g, '<br><br>');
+        let html = quoteHtml + '<div class="attribution">&mdash; ' + t.author;
+        if (t.link) {
+          html += ' <a href="' + t.link + '" class="source-link" target="_blank">' + linkIcon + '</a>';
+        }
+        html += '</div>';
+        return html;
+      }
+
+      function showNext() {
+        container.classList.remove('visible');
+        setTimeout(() => {
+          container.innerHTML = renderTestimonial(testimonials[getRandomIndex()]);
+          container.classList.add('visible');
+        }, 1200);
+      }
+
+      showNext();
+      setInterval(showNext, 7400);
+    </script>
+    {{end}}
   </body>
 </html>

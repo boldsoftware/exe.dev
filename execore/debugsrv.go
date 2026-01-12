@@ -1866,11 +1866,15 @@ func (s *Server) handleDebugTestimonials(w http.ResponseWriter, r *http.Request)
 				statusClass = "approved"
 				statusText = "Approved"
 			}
+			linkHTML := ""
+			if t.Link != "" {
+				linkHTML = fmt.Sprintf(` <a href="%s" target="_blank">[link]</a>`, t.Link)
+			}
 			fmt.Fprintf(w, `<div class="testimonial %s">
 <div class="status %s">#%d - %s</div>
-<div class="content">%s</div>
+<div class="content">%s<br><br>&mdash; %s%s</div>
 </div>
-`, class, statusClass, i+1, statusText, t.HTML)
+`, class, statusClass, i+1, statusText, strings.ReplaceAll(t.Quote, "\n\n", "<br><br>"), t.Author, linkHTML)
 		}
 	}
 

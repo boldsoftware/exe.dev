@@ -26,6 +26,24 @@
       .testimonial.fading {
         animation: fadeOut 0.5s ease-out forwards;
       }
+      .attribution {
+        margin-top: 1rem;
+        color: #6b7280;
+      }
+      .source-link {
+        display: inline-block;
+        vertical-align: middle;
+        margin-left: 0.25rem;
+        color: #9ca3af;
+        transition: color 0.2s;
+      }
+      .source-link:hover {
+        color: #4b5563;
+      }
+      .source-link svg {
+        width: 0.875rem;
+        height: 0.875rem;
+      }
     </style>
   </head>
   <body class="min-h-dvh grid grid-rows-[auto_1fr_auto] bg-white text-gray-900">
@@ -36,7 +54,7 @@
       <div class="max-w-2xl mx-auto px-4 text-center">
         <div id="testimonial-container" class="testimonial text-sm sm:text-base text-gray-700 leading-relaxed">
           {{if .Testimonials}}
-          {{(index .Testimonials 0).HTML}}
+          <p class="text-gray-500">Loading...</p>
           {{else}}
           <p class="text-gray-500">No testimonials yet.</p>
           {{end}}
@@ -57,22 +75,44 @@
         <span>&bull;</span>
         <a href="https://discord.gg/jc9WQUfaxf" class="hover:underline">Discord</a>
     </footer>
-    {{if gt (len .Testimonials) 1}}
+    {{if .Testimonials}}
     <script>
       const testimonials = [
-        {{range .Testimonials}}`{{.HTML}}`,
+        {{range .Testimonials}}{
+          quote: `{{.Quote}}`,
+          author: `{{.Author}}`,
+          link: `{{.Link}}`
+        },
         {{end}}
       ];
+
+      const linkIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.25 5.5a.75.75 0 0 0-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 0 0 .75-.75v-4a.75.75 0 0 1 1.5 0v4A2.25 2.25 0 0 1 12.75 17h-8.5A2.25 2.25 0 0 1 2 14.75v-8.5A2.25 2.25 0 0 1 4.25 4h5a.75.75 0 0 1 0 1.5h-5Z" clip-rule="evenodd" /><path fill-rule="evenodd" d="M6.194 12.753a.75.75 0 0 0 1.06.053L16.5 4.44v2.81a.75.75 0 0 0 1.5 0v-4.5a.75.75 0 0 0-.75-.75h-4.5a.75.75 0 0 0 0 1.5h2.553l-9.056 8.194a.75.75 0 0 0-.053 1.06Z" clip-rule="evenodd" /></svg>';
+
       let currentIndex = 0;
       const container = document.getElementById('testimonial-container');
       const dots = document.querySelectorAll('.testimonial-dot');
 
-      function showTestimonial(index) {
-        if (index === currentIndex) return;
+      function renderTestimonial(t) {
+        const quoteHtml = t.quote.replace(/\n\n/g, '<br><br>');
+        let html = quoteHtml + '<div class="attribution">&mdash; ' + t.author;
+        if (t.link) {
+          html += ' <a href="' + t.link + '" class="source-link" target="_blank">' + linkIcon + '</a>';
+        }
+        html += '</div>';
+        return html;
+      }
+
+      function showTestimonial(index, immediate) {
+        if (index === currentIndex && !immediate) return;
+        if (immediate) {
+          currentIndex = index;
+          container.innerHTML = renderTestimonial(testimonials[currentIndex]);
+          return;
+        }
         container.classList.add('fading');
         setTimeout(() => {
           currentIndex = index;
-          container.innerHTML = testimonials[currentIndex];
+          container.innerHTML = renderTestimonial(testimonials[currentIndex]);
           container.classList.remove('fading');
           dots.forEach((dot, i) => {
             dot.classList.toggle('!bg-gray-600', i === currentIndex);
@@ -80,6 +120,9 @@
           });
         }, 500);
       }
+
+      // Show first testimonial immediately
+      showTestimonial(0, true);
 
       dots.forEach((dot, i) => {
         dot.addEventListener('click', () => showTestimonial(i));

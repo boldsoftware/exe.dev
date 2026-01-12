@@ -629,12 +629,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			HostnameSuggestion string
 			IsLoggedIn         bool
 			ActivePage         string
+			Testimonials       []Testimonial
 		}{
 			Env:                s.env,
 			SSHCommand:         s.replSSHConnectionCommand(),
 			HostnameSuggestion: hostnameSuggestion,
 			IsLoggedIn:         false,
 			ActivePage:         "",
+			Testimonials:       ApprovedTestimonials(),
 		}
 		if err := s.renderTemplate(r.Context(), w, "index.html", data); err != nil {
 			return
@@ -787,17 +789,10 @@ func (s *Server) handleLovePage(w http.ResponseWriter, r *http.Request) {
 	rand.Shuffle(len(approved), func(i, j int) {
 		approved[i], approved[j] = approved[j], approved[i]
 	})
-	type testimonialView struct {
-		HTML template.HTML
-	}
-	var views []testimonialView
-	for _, t := range approved {
-		views = append(views, testimonialView{HTML: template.HTML(t.HTML)})
-	}
 	data := struct {
-		Testimonials []testimonialView
+		Testimonials []Testimonial
 	}{
-		Testimonials: views,
+		Testimonials: approved,
 	}
 	if err := s.renderTemplate(r.Context(), w, "love.html", data); err != nil {
 		return
