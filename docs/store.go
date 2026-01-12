@@ -607,6 +607,9 @@ func (h *Handler) renderAllDocs(w http.ResponseWriter, r *http.Request) {
 
 	firstDoc := true
 	for _, entry := range h.store.entries {
+		if entry.Unlinked {
+			continue
+		}
 		if !entry.Published && !h.showHidden {
 			continue
 		}

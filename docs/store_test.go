@@ -123,9 +123,9 @@ func TestHandlerDocsAllMd(t *testing.T) {
 		t.Fatal("response body is empty")
 	}
 
-	// Verify that all published docs are included
+	// Verify that all published, linked docs are included
 	for _, entry := range store.entries {
-		if !entry.Published {
+		if !entry.Published || entry.Unlinked {
 			continue
 		}
 		if entry.Markdown == "" {
