@@ -273,11 +273,13 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
 
     editorRef.current = diffEditor;
 
-    // Auto-scroll to first diff after editor is ready
-    // Use setTimeout to allow Monaco to compute the diff
-    setTimeout(() => {
+    // Auto-scroll to first diff when Monaco finishes computing it (once per file)
+    let hasScrolledToFirstChange = false;
+    const scrollToFirstChange = () => {
+      if (hasScrolledToFirstChange) return;
       const changes = diffEditor.getLineChanges();
       if (changes && changes.length > 0) {
+        hasScrolledToFirstChange = true;
         const firstChange = changes[0];
         const targetLine = firstChange.modifiedStartLineNumber || 1;
         const editor = diffEditor.getModifiedEditor();
@@ -285,7 +287,11 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
         editor.setPosition({ lineNumber: targetLine, column: 1 });
         setCurrentChangeIndex(0);
       }
-    }, 100);
+    };
+
+    // Try immediately in case diff is already computed, then listen for update
+    scrollToFirstChange();
+    const diffUpdateDisposable = diffEditor.onDidUpdateDiff(scrollToFirstChange);
 
     // Add click handler for commenting - clicking on a line in comment mode opens dialog
     const modifiedEditor = diffEditor.getModifiedEditor();
@@ -403,6 +409,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
 
     // Cleanup function
     return () => {
+      diffUpdateDisposable.dispose();
       contentChangeDisposableRef.current?.dispose();
       contentChangeDisposableRef.current = null;
       if (editorRef.current) {
