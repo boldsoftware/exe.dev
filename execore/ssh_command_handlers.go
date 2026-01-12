@@ -408,15 +408,6 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		return cc.Errorf("%s", err)
 	}
 
-	// If the box name matches the SSH username, reject it.
-	// This avoids this common confusing scenario:
-	//   $ ssh exe.dev  # implicitly: ssh mario@exe.dev
-	//     > new mario
-	//   $ ssh exe.dev  # goes to the new box instead of the repl
-	if sess := cc.SSHSession; sess != nil && sess.User() == boxName {
-		return cc.Errorf("New VM name cannot match SSH username. To create a VM named %v, ssh into this REPL with a different username and try again. If you do this, you will have to use a username other than %v to log in to the REPL going forward.", boxName, boxName)
-	}
-
 	if !ss.server.isBoxNameAvailable(ctx, boxName) {
 		return cc.Errorf("VM name %q is not available", boxName)
 	}
