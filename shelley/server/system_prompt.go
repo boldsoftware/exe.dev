@@ -220,6 +220,7 @@ func findGuidanceFilesInDir(dir string) []string {
 
 	guidanceNames := map[string]bool{
 		"agent.md":    true,
+		"agents.md":   true,
 		"claude.md":   true,
 		"dear_llm.md": true,
 		"readme.md":   true,
@@ -244,6 +245,7 @@ func findGuidanceFilesInDir(dir string) []string {
 func findAllGuidanceFiles(root string) []string {
 	guidanceNames := map[string]bool{
 		"agent.md":    true,
+		"agents.md":   true,
 		"claude.md":   true,
 		"dear_llm.md": true,
 	}
