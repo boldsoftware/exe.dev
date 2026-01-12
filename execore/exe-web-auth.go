@@ -29,6 +29,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/pow"
 	"exe.dev/stage"
+	"exe.dev/tracing"
 	_ "modernc.org/sqlite"
 )
 
@@ -1035,14 +1036,6 @@ func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, ema
 
 // handleAuthEmailSubmission handles the email form submission for web auth
 func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Request) {
-	ip, allowed := s.checkSignupRateLimit(r)
-	if !allowed {
-		s.slog().WarnContext(r.Context(), "signup rate limit exceeded", "ip", ip)
-		s.signupMetrics.IncBlocked("rate_limit", "web")
-		http.Error(w, "Too many requests. Please try again later.", http.StatusTooManyRequests)
-		return
-	}
-
 	email := strings.TrimSpace(r.FormValue("email"))
 	if email == "" {
 		s.showAuthError(w, r, "Please enter a valid email address", "")
@@ -1052,6 +1045,15 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// Basic email validation
 	if !isValidEmail(email) {
 		s.showAuthError(w, r, "Please enter a valid email address", "")
+		return
+	}
+
+	// TODO: This applies to existing users, which seems wrong.
+	ip, allowed := s.checkSignupRateLimit(r)
+	if !allowed {
+		s.slog().WarnContext(r.Context(), "signup rate limit exceeded", "ip", ip, "email", email)
+		s.signupMetrics.IncBlocked("rate_limit", "web")
+		http.Error(w, "Too many requests. Please try again later. + "+tracing.TraceIDFromContext(r.Context()), http.StatusTooManyRequests)
 		return
 	}
 
