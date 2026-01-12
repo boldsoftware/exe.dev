@@ -811,7 +811,12 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 
 	// Validate signup eligibility (use the real client IP from piper, not 127.0.0.1)
 	ipStr := clientIPFromRemoteAddr(s.clientAddr)
-	if err := ss.server.validateNewSignup(s.Context(), ipStr, email, "ssh"); err != nil {
+	if err := ss.server.validateNewSignup(s.Context(), signupValidationParams{
+		ip:               ipStr,
+		email:            email,
+		source:           "ssh",
+		trustedGitHubKey: ghInfo.IsGitHubUser && ghInfo.CreditOK,
+	}); err != nil {
 		ss.server.slog().InfoContext(s.Context(), "signup blocked", "reason", err, "ip", ipStr, "email", email)
 		trace := tracing.TraceIDFromContext(s.Context())
 		fmt.Fprintf(s, "\r\n\033[1;31m%s\033[0m\r\n%s\r\n", err, trace)

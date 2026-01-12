@@ -470,7 +470,12 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate signup eligibility
-	if err := s.validateNewSignup(r.Context(), ip.String(), email, "mobile"); err != nil {
+	if err := s.validateNewSignup(r.Context(), signupValidationParams{
+		ip:               ip.String(),
+		email:            email,
+		source:           "mobile",
+		trustedGitHubKey: false,
+	}); err != nil {
 		s.slog().InfoContext(r.Context(), "signup validation failed", "error", err, "ip", ip, "email", email)
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return

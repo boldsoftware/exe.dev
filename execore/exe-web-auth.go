@@ -1061,7 +1061,12 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	createdForLoginWithExe := r.FormValue("login_with_exe") == "1"
 
 	// Validate signup eligibility (checks if new user and runs IPQS/disabled checks)
-	if err := s.validateNewSignup(r.Context(), ip.String(), email, "web"); err != nil {
+	if err := s.validateNewSignup(r.Context(), signupValidationParams{
+		ip:               ip.String(),
+		email:            email,
+		source:           "web",
+		trustedGitHubKey: false,
+	}); err != nil {
 		s.slog().InfoContext(r.Context(), "signup validation failed", "error", err, "ip", ip, "email", email)
 		s.showAuthError(w, r, err.Error(), "")
 		return

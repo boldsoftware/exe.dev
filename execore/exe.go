@@ -2536,43 +2536,58 @@ func (s *Server) checkEmailQuality(ctx context.Context, userID, email string) er
 	return nil
 }
 
-// validateNewSignup checks whether a possibly new user at ip may sign up; it returns a user-friendly error if not.
+// signupValidationParams specifies a new signup attempt.
+//
+//exe:completeinit
+type signupValidationParams struct {
+	ip               string // Client IP address
+	email            string // Email address being registered
+	source           string // "web", "ssh", or "mobile"
+	trustedGitHubKey bool   // If true, bypass IP abuse check (user has verified GitHub SSH key with good standing)
+}
+
+// validateNewSignup checks whether a possibly new user may sign up; it returns a user-friendly error if not.
 // If the user already exists, it always returns nil.
 // This is the single chokepoint for new signup attempts (web, SSH, mobile).
 // Rate limiting is handled separately, earlier in each flow, by checkSignupRateLimit.
-// source should be "web", "ssh", or "mobile".
-func (s *Server) validateNewSignup(ctx context.Context, ip, email, source string) error {
-	_, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDByEmail, email)
+func (s *Server) validateNewSignup(ctx context.Context, p signupValidationParams) error {
+	_, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDByEmail, p.email)
 	if err == nil {
 		return nil // user exists, no checks needed
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		s.slog().ErrorContext(ctx, "failed to check existing user for signup validation", "error", err, "email", email)
+		s.slog().ErrorContext(ctx, "failed to check existing user for signup validation", "error", err, "email", p.email)
 		return errors.New("sign-up is temporarily unavailable")
 	}
 	if s.IsLoginCreationDisabled(ctx) {
-		s.signupMetrics.IncBlocked("login_creation_disabled", source)
-		s.recordSignupRejection(ctx, email, ip, "login_creation_disabled", source, "")
+		s.signupMetrics.IncBlocked("login_creation_disabled", p.source)
+		s.recordSignupRejection(ctx, p, "login_creation_disabled", "")
 		return errors.New("account creation is temporarily unavailable")
 	}
-	s.slog().InfoContext(ctx, "vetting new signup", "ip", ip, "email", email)
-	sloghttp.AddContextAttributes(ctx, slog.String("email", email))
+	s.slog().InfoContext(ctx, "vetting new signup", "ip", p.ip, "email", p.email)
+	sloghttp.AddContextAttributes(ctx, slog.String("email", p.email))
 
 	// Check if email is in the bypass list
-	bypassed, err := withRxRes1(s, ctx, (*exedb.Queries).IsEmailQualityBypassed, email)
+	bypassed, err := withRxRes1(s, ctx, (*exedb.Queries).IsEmailQualityBypassed, p.email)
 	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to check email quality bypass for signup", "error", err, "email", email)
+		s.slog().ErrorContext(ctx, "failed to check email quality bypass for signup", "error", err, "email", p.email)
 		// Continue with the check if we can't read the bypass table
 	} else if bypassed == 1 {
-		s.slog().InfoContext(ctx, "signup quality checks bypassed", "email", email)
+		s.slog().InfoContext(ctx, "signup quality checks bypassed", "email", p.email)
 		return nil
 	}
 
-	if flagged, ipqsJSON := s.ipFlaggedForAbuse(ctx, ip); flagged {
-		s.slog().InfoContext(ctx, "blocking signup due to recent_abuse", "ip", ip)
-		s.signupMetrics.IncBlocked("ip_abuse", source)
-		s.recordSignupRejection(ctx, email, ip, "ip_abuse", source, ipqsJSON)
-		return fmt.Errorf("unable to process signup (trace=%s, email=%s)", tracing.TraceIDFromContext(ctx), email)
+	// Skip IP abuse check for users with trusted GitHub SSH keys
+	if p.trustedGitHubKey {
+		s.slog().InfoContext(ctx, "signup quality checks bypassed for trusted GitHub key", "email", p.email)
+		return nil
+	}
+
+	if flagged, ipqsJSON := s.ipFlaggedForAbuse(ctx, p.ip); flagged {
+		s.slog().InfoContext(ctx, "blocking signup due to recent_abuse", "ip", p.ip)
+		s.signupMetrics.IncBlocked("ip_abuse", p.source)
+		s.recordSignupRejection(ctx, p, "ip_abuse", ipqsJSON)
+		return fmt.Errorf("unable to process signup (trace=%s, email=%s)", tracing.TraceIDFromContext(ctx), p.email)
 	}
 	return nil
 }
@@ -2580,20 +2595,20 @@ func (s *Server) validateNewSignup(ctx context.Context, ip, email, source string
 // recordSignupRejection records a rejected signup attempt to the database.
 // ipqsResponseJSON is optional and only provided when the rejection is due to IPQS IP abuse.
 // Errors are logged but not returned since this is best-effort.
-func (s *Server) recordSignupRejection(ctx context.Context, email, ip, reason, source, ipqsResponseJSON string) {
+func (s *Server) recordSignupRejection(ctx context.Context, p signupValidationParams, reason, ipqsResponseJSON string) {
 	var ipqsJSON *string
 	if ipqsResponseJSON != "" {
 		ipqsJSON = &ipqsResponseJSON
 	}
 	err := withTx1(s, ctx, (*exedb.Queries).InsertSignupRejection, exedb.InsertSignupRejectionParams{
-		Email:            email,
-		Ip:               ip,
+		Email:            p.email,
+		Ip:               p.ip,
 		Reason:           reason,
-		Source:           source,
+		Source:           p.source,
 		IpqsResponseJson: ipqsJSON,
 	})
 	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to record signup rejection", "error", err, "email", email, "ip", ip, "reason", reason)
+		s.slog().ErrorContext(ctx, "failed to record signup rejection", "error", err, "email", p.email, "ip", p.ip, "reason", reason)
 	}
 }
 
