@@ -604,7 +604,7 @@ pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
 `)
 }
 
-// handleDebugUsers displays a list of all users with their root support status.
+// handleDebugUsers displays a list of all users with their root support and VM creation settings.
 func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -653,6 +653,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			Email                  string  `json:"email"`
 			CreatedAt              string  `json:"created_at,omitempty"`
 			RootSupport            bool    `json:"root_support"`
+			VMCreationDisabled     bool    `json:"vm_creation_disabled"`
 			CreatedForLoginWithExe bool    `json:"created_for_login_with_exe"`
 			AccountID              string  `json:"account_id,omitempty"`
 			BillingURL             string  `json:"billing_url,omitempty"`
@@ -679,6 +680,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 				Email:                  u.Email,
 				CreatedAt:              createdAt,
 				RootSupport:            u.RootSupport == 1,
+				VMCreationDisabled:     u.NewVmCreationDisabled,
 				CreatedForLoginWithExe: u.CreatedForLoginWithExe,
 				AccountID:              acctID,
 				BillingURL:             billingURL,
@@ -753,6 +755,7 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 <th>Refresh/hr ($)</th>
 <th>Total Used ($)</th>
 <th>Last Refresh</th>
+<th>VM Creation Disabled</th>
 <th>Root Support</th>
 </tr>
 <tr class="filters">
@@ -767,6 +770,7 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 <th>Refresh/hr ($)</th>
 <th>Total Used ($)</th>
 <th>Last Refresh</th>
+<th>VM Creation Disabled</th>
 <th>Root Support</th>
 </tr>
 </thead>
@@ -804,6 +808,8 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 </dialog>
 
 <script>
+var usersTable;
+
 $(document).ready(function() {
     // Add column filter inputs to header filter row
     $('#usersTable thead tr.filters th').each(function() {
@@ -811,7 +817,7 @@ $(document).ready(function() {
         $(this).html('<input type="text" placeholder="' + title + '">');
     });
 
-    var table = $('#usersTable').DataTable({
+    usersTable = $('#usersTable').DataTable({
         ajax: {
             url: '/debug/users?format=json',
             dataSrc: ''
@@ -847,11 +853,19 @@ $(document).ready(function() {
             { data: 'credit_refresh_per_hr_usd', className: 'credit-cell', render: function(d) { return d ? d.toFixed(2) : '-'; } },
             { data: 'credit_total_used_usd', className: 'credit-cell', render: function(d) { return d ? d.toFixed(2) : '-'; } },
             { data: 'credit_last_refresh_at', defaultContent: '-' },
+            { data: 'vm_creation_disabled', render: function(d, type, row) {
+                var isDisabled = !!d;
+                var status = isDisabled ? 'Yes' : 'No';
+                var btnClass = isDisabled ? 'disabled' : 'enabled';
+                var btnText = isDisabled ? 'Enable' : 'Disable';
+                return status + ' <button class="toggle-btn vm-toggle-btn ' + btnClass + '" ' +
+                    'data-userid="' + row.user_id + '" data-disabled="' + isDisabled + '">' + btnText + '</button>';
+            }},
             { data: null, render: function(d) {
                 var status = d.root_support ? 'Yes' : 'No';
                 var btnClass = d.root_support ? 'enabled' : 'disabled';
                 var btnText = d.root_support ? 'Disable' : 'Enable';
-                return status + ' <button class="toggle-btn ' + btnClass + '" ' +
+                return status + ' <button class="toggle-btn root-toggle-btn ' + btnClass + '" ' +
                     'data-email="' + d.email + '" data-userid="' + d.user_id + '" ' +
                     'data-enabled="' + d.root_support + '">' + btnText + '</button>';
             }}
@@ -871,7 +885,7 @@ $(document).ready(function() {
 
 // Toggle root support dialog
 document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('toggle-btn')) {
+    if (e.target.classList.contains('root-toggle-btn')) {
         var email = e.target.dataset.email;
         var userId = e.target.dataset.userid;
         var isEnabled = e.target.dataset.enabled === 'true';
@@ -904,6 +918,36 @@ document.getElementById('cancelBtn').addEventListener('click', function() {
 document.getElementById('confirmInput').addEventListener('input', function() {
     var expected = document.getElementById('emailDisplay').textContent;
     document.getElementById('confirmBtn').disabled = (this.value !== expected);
+});
+
+// Toggle VM creation disabled
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('vm-toggle-btn')) {
+        var userId = e.target.dataset.userid;
+        var currentlyDisabled = e.target.dataset.disabled === 'true';
+        var body = new URLSearchParams();
+        body.append('user_id', userId);
+        body.append('disable', currentlyDisabled ? '0' : '1');
+
+        fetch('/debug/users/toggle-vm-creation', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: body.toString()
+        }).then(function(resp) {
+            if (!resp.ok) {
+                alert('Failed to update VM creation flag');
+                return;
+            }
+            if (usersTable) {
+                usersTable.ajax.reload(null, false);
+            }
+        }).catch(function(err) {
+            console.error('VM creation toggle failed', err);
+            alert('Failed to update VM creation flag');
+        });
+    }
 });
 
 // Credit edit dialog
