@@ -42,6 +42,7 @@ type Command struct {
 	Examples          []string
 	Subcommands       []*Command
 	HasPositionalArgs bool
+	RawArgs           bool // if true, skip flag parsing and pass all args as-is
 	Handler           func(context.Context, *CommandContext) error
 	Available         func(ctx *CommandContext) bool                     // nil means always available
 	CompleterFunc     func(*CompletionContext, *CommandContext) []string // Custom completion for command arguments
@@ -426,9 +427,14 @@ func (ct *CommandTree) executeCommand(ctx context.Context, cc *CommandContext, c
 		return cc.Errorf("exe.dev repl: command not available: %q", strings.Join(commandPath, " "))
 	}
 
-	// Parse flags if the command has a FlagSetFunc
 	// The remaining command path parts after finding the command are the actual arguments
 	allArgs := remainingArgs
+
+	if cmd.RawArgs {
+		cc.Args = allArgs
+		return cmd.Handler(ctx, cc)
+	}
+
 	// Parse the flags - always use a fresh FlagSet to avoid concurrent access
 	var fs *flag.FlagSet
 	if cmd.FlagSetFunc != nil {

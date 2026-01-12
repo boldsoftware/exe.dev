@@ -137,6 +137,13 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:     ss.handleJobCommand,
 		},
 		{
+			Name:        "sudo",
+			Hidden:      true,
+			Description: "Execute a command as another user",
+			Handler:     ss.handleSudoCommand,
+			RawArgs:     true,
+		},
+		{
 			Name:              "proxy-token",
 			Hidden:            true,
 			Description:       "Generate a proxy bearer token",
@@ -1006,6 +1013,16 @@ func (ss *SSHServer) handleJobCommand(ctx context.Context, cc *exemenu.CommandCo
 	cc.Writeln("  Want to work with us? Email:")
 	cc.Writeln("")
 	cc.Writeln("  david+repl@bold.dev")
+	cc.Writeln("")
+	return nil
+}
+
+func (ss *SSHServer) handleSudoCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	cc.Writeln("")
+	cc.Writeln("%s is not in the sudoers file. This incident will be reported.", cc.User.Email)
+	cc.Writeln("")
+	cc.Writeln("")
+	cc.Writeln("Want to be in the sudoers file? Email david+sudo@bold.dev")
 	cc.Writeln("")
 	return nil
 }
