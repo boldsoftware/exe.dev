@@ -3,6 +3,15 @@ import type * as Monaco from "monaco-editor";
 import { LLMContent } from "../types";
 import { isDarkModeActive } from "../services/theme";
 
+// Feature flag for Monaco diff view (set localStorage.setItem('shelley-use-monaco-diff', 'true') to enable)
+function useMonacoDiff(): boolean {
+  try {
+    return localStorage.getItem("shelley-use-monaco-diff") === "true";
+  } catch {
+    return false;
+  }
+}
+
 // Display data structure from the patch tool
 interface PatchDisplayData {
   path: string;
@@ -62,19 +71,66 @@ function loadMonaco(): Promise<typeof Monaco> {
   return monacoLoadPromise;
 }
 
-function PatchTool({
-  toolInput,
-  isRunning,
-  toolResult,
-  hasError,
+// Simple diff view component (default)
+function SimpleDiffView({
+  displayData,
   executionTime,
-  display,
+}: {
+  displayData: PatchDisplayData | null;
+  executionTime?: string;
+}) {
+  // Get diff text from displayData or fall back to empty
+  const diff = displayData?.diff || "";
+
+  // Parse unified diff to extract lines
+  const lines = diff ? diff.split("\n") : [];
+
+  return (
+    <div className="patch-tool-section">
+      {executionTime && (
+        <div className="patch-tool-label">
+          <span>Diff:</span>
+          <span className="patch-tool-time">{executionTime}</span>
+        </div>
+      )}
+      <pre className="patch-tool-diff">
+        {lines.map((line, idx) => {
+          // Determine line type for styling
+          let className = "patch-diff-line";
+          if (line.startsWith("+") && !line.startsWith("+++")) {
+            className += " patch-diff-addition";
+          } else if (line.startsWith("-") && !line.startsWith("---")) {
+            className += " patch-diff-deletion";
+          } else if (line.startsWith("@@")) {
+            className += " patch-diff-hunk";
+          } else if (line.startsWith("---") || line.startsWith("+++")) {
+            className += " patch-diff-header";
+          }
+
+          return (
+            <div key={idx} className={className}>
+              {line || " "}
+            </div>
+          );
+        })}
+      </pre>
+    </div>
+  );
+}
+
+// Monaco diff view component (feature-flagged)
+function MonacoDiffView({
+  displayData,
+  isMobile,
   onCommentTextChange,
-}: PatchToolProps) {
-  // Default to collapsed for errors (since agents typically recover), expanded otherwise
-  const [isExpanded, setIsExpanded] = useState(!hasError);
+  filename,
+}: {
+  displayData: PatchDisplayData;
+  isMobile: boolean;
+  onCommentTextChange?: (text: string) => void;
+  filename: string;
+}) {
   const [monacoLoaded, setMonacoLoaded] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [showCommentDialog, setShowCommentDialog] = useState<{
     line: number;
     selectedText?: string;
@@ -94,48 +150,9 @@ function PatchTool({
     modified: null,
   });
 
-  // Track viewport size
+  // Load Monaco
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  // Extract path from toolInput
-  const path =
-    typeof toolInput === "object" &&
-    toolInput !== null &&
-    "path" in toolInput &&
-    typeof toolInput.path === "string"
-      ? toolInput.path
-      : typeof toolInput === "string"
-        ? toolInput
-        : "";
-
-  // Parse display data (structured format from backend)
-  const displayData: PatchDisplayData | null =
-    display &&
-    typeof display === "object" &&
-    "path" in display &&
-    "oldContent" in display &&
-    "newContent" in display
-      ? (display as PatchDisplayData)
-      : null;
-
-  // Extract error message from toolResult if present
-  const errorMessage =
-    toolResult && toolResult.length > 0 && toolResult[0].Text ? toolResult[0].Text : "";
-
-  const isComplete = !isRunning && toolResult !== undefined;
-
-  // Extract filename from path or diff headers
-  const filename = displayData?.path || path || "patch";
-
-  // Load Monaco when expanded and we have display data
-  useEffect(() => {
-    if (isExpanded && displayData && !monacoLoaded) {
+    if (!monacoLoaded) {
       loadMonaco()
         .then((monaco) => {
           monacoRef.current = monaco;
@@ -145,17 +162,11 @@ function PatchTool({
           console.error("Failed to load Monaco:", err);
         });
     }
-  }, [isExpanded, displayData, monacoLoaded]);
+  }, [monacoLoaded]);
 
   // Create Monaco editor when data is ready
   useEffect(() => {
-    if (
-      !monacoLoaded ||
-      !displayData ||
-      !editorContainerRef.current ||
-      !monacoRef.current ||
-      !isExpanded
-    ) {
+    if (!monacoLoaded || !editorContainerRef.current || !monacoRef.current) {
       return;
     }
 
@@ -325,7 +336,7 @@ function PatchTool({
         modelsRef.current.modified = null;
       }
     };
-  }, [monacoLoaded, displayData, isMobile, isExpanded, onCommentTextChange]);
+  }, [monacoLoaded, displayData, isMobile, onCommentTextChange]);
 
   // Update Monaco theme when dark mode changes
   useEffect(() => {
@@ -376,7 +387,6 @@ function PatchTool({
 
   // Calculate editor height based on content
   const getEditorHeight = () => {
-    if (!displayData) return "200px";
     const lineCount = Math.max(
       displayData.oldContent.split("\n").length,
       displayData.newContent.split("\n").length,
@@ -385,6 +395,112 @@ function PatchTool({
     const height = Math.min(400, Math.max(100, lineCount * 18 + 20));
     return `${height}px`;
   };
+
+  return (
+    <>
+      <div
+        ref={editorContainerRef}
+        className="patch-tool-monaco-editor"
+        style={{ height: getEditorHeight(), width: "100%" }}
+      />
+
+      {/* Comment dialog */}
+      {showCommentDialog && onCommentTextChange && (
+        <div className="patch-tool-comment-dialog">
+          <h4>Add Comment (Line {showCommentDialog.line})</h4>
+          {showCommentDialog.selectedText && (
+            <pre className="patch-tool-selected-text">{showCommentDialog.selectedText}</pre>
+          )}
+          <textarea
+            ref={commentInputRef}
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            placeholder="Enter your comment..."
+            className="patch-tool-comment-input"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setShowCommentDialog(null);
+              } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                handleAddComment();
+              }
+            }}
+          />
+          <div className="patch-tool-comment-actions">
+            <button
+              onClick={() => setShowCommentDialog(null)}
+              className="patch-tool-btn patch-tool-btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAddComment}
+              className="patch-tool-btn patch-tool-btn-primary"
+              disabled={!commentText.trim()}
+            >
+              Add Comment
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function PatchTool({
+  toolInput,
+  isRunning,
+  toolResult,
+  hasError,
+  executionTime,
+  display,
+  onCommentTextChange,
+}: PatchToolProps) {
+  // Default to collapsed for errors (since agents typically recover), expanded otherwise
+  const [isExpanded, setIsExpanded] = useState(!hasError);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  // Check feature flag for Monaco diff view
+  const useMonaco = useMonacoDiff();
+
+  // Track viewport size
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Extract path from toolInput
+  const path =
+    typeof toolInput === "object" &&
+    toolInput !== null &&
+    "path" in toolInput &&
+    typeof toolInput.path === "string"
+      ? toolInput.path
+      : typeof toolInput === "string"
+        ? toolInput
+        : "";
+
+  // Parse display data (structured format from backend)
+  const displayData: PatchDisplayData | null =
+    display &&
+    typeof display === "object" &&
+    "path" in display &&
+    "oldContent" in display &&
+    "newContent" in display
+      ? (display as PatchDisplayData)
+      : null;
+
+  // Extract error message from toolResult if present
+  const errorMessage =
+    toolResult && toolResult.length > 0 && toolResult[0].Text ? toolResult[0].Text : "";
+
+  const isComplete = !isRunning && toolResult !== undefined;
+
+  // Extract filename from path or diff headers
+  const filename = displayData?.path || path || "patch";
 
   return (
     <div
@@ -436,12 +552,19 @@ function PatchTool({
                 </div>
               )}
 
-              {/* Monaco diff editor */}
-              <div
-                ref={editorContainerRef}
-                className="patch-tool-monaco-editor"
-                style={{ height: getEditorHeight(), width: "100%" }}
-              />
+              {useMonaco ? (
+                <MonacoDiffView
+                  displayData={displayData}
+                  isMobile={isMobile}
+                  onCommentTextChange={onCommentTextChange}
+                  filename={filename}
+                />
+              ) : (
+                <SimpleDiffView
+                  displayData={displayData}
+                  executionTime={undefined} // Already shown above
+                />
+              )}
             </div>
           )}
 
@@ -460,46 +583,6 @@ function PatchTool({
               <div className="patch-tool-label">Applying patch...</div>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Comment dialog */}
-      {showCommentDialog && onCommentTextChange && (
-        <div className="patch-tool-comment-dialog">
-          <h4>Add Comment (Line {showCommentDialog.line})</h4>
-          {showCommentDialog.selectedText && (
-            <pre className="patch-tool-selected-text">{showCommentDialog.selectedText}</pre>
-          )}
-          <textarea
-            ref={commentInputRef}
-            value={commentText}
-            onChange={(e) => setCommentText(e.target.value)}
-            placeholder="Enter your comment..."
-            className="patch-tool-comment-input"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setShowCommentDialog(null);
-              } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                handleAddComment();
-              }
-            }}
-          />
-          <div className="patch-tool-comment-actions">
-            <button
-              onClick={() => setShowCommentDialog(null)}
-              className="patch-tool-btn patch-tool-btn-secondary"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleAddComment}
-              className="patch-tool-btn patch-tool-btn-primary"
-              disabled={!commentText.trim()}
-            >
-              Add Comment
-            </button>
-          </div>
         </div>
       )}
     </div>

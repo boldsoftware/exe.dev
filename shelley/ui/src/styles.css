@@ -1231,6 +1231,55 @@ button {
   color: var(--text-secondary);
 }
 
+/* Patch Tool Simple Diff View */
+.patch-tool-diff {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  padding: 0.75rem;
+  margin: 0;
+  overflow-x: auto;
+  line-height: 1.4;
+}
+
+.patch-diff-line {
+  white-space: pre;
+  display: block;
+}
+
+.patch-diff-addition {
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
+}
+
+.dark .patch-diff-addition {
+  background: rgba(34, 197, 94, 0.15);
+  color: #86efac;
+}
+
+.patch-diff-deletion {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+
+.dark .patch-diff-deletion {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
+.patch-diff-hunk {
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  font-weight: 500;
+}
+
+.patch-diff-header {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
 /* Patch Tool Monaco Editor */
 .patch-tool-monaco-editor {
   border: 1px solid var(--border);
