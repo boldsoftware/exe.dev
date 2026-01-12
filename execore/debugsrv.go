@@ -2083,6 +2083,50 @@ func (s *Server) handleDebugSignupReject(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	type ipqsSummary struct {
+		display string
+		rawJSON string
+		hasJSON bool
+	}
+
+	summarizeIPQS := func(raw *string) ipqsSummary {
+		if raw == nil {
+			return ipqsSummary{display: "missing"}
+		}
+		rawJSON := strings.TrimSpace(*raw)
+		if rawJSON == "" {
+			return ipqsSummary{display: "missing"}
+		}
+
+		summary := ipqsSummary{
+			display: "no location data",
+			rawJSON: rawJSON,
+			hasJSON: true,
+		}
+
+		var payload struct {
+			CountryCode string `json:"country_code"`
+			Region      string `json:"region"`
+		}
+		if err := json.Unmarshal([]byte(rawJSON), &payload); err != nil {
+			summary.display = "invalid JSON"
+			return summary
+		}
+
+		parts := make([]string, 0, 2)
+		if payload.CountryCode != "" {
+			parts = append(parts, payload.CountryCode)
+		}
+		if payload.Region != "" {
+			parts = append(parts, payload.Region)
+		}
+		if len(parts) > 0 {
+			summary.display = strings.Join(parts, " / ")
+		}
+
+		return summary
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!doctype html>
 <html><head><title>Signup Rejections</title>
@@ -2099,6 +2143,9 @@ h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
 .add-form input[type="submit"]:hover { background: #0056b3; }
 .delete-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; }
 .delete-btn:hover { background: #c82333; }
+.json-btn { background: none; border: none; color: #007bff; cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
+.json-btn:hover { color: #0056b3; }
+.json-btn:disabled { color: #6c757d; cursor: default; text-decoration: none; }
 </style>
 </head><body>
 <h1>Signup Rejections & Bypass</h1>
@@ -2153,13 +2200,19 @@ h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
 <div class="section">
 <h2>Recent Signup Rejections (last 200)</h2>
 <table>
-<tr><th>Email</th><th>IP</th><th>Reason</th><th>Source</th><th>Rejected At</th><th>Action</th></tr>
+<tr><th>Email</th><th>IP</th><th>Country/Region</th><th>Reason</th><th>Source</th><th>Rejected At</th><th>Action</th></tr>
 `)
 
 	for _, r := range rejections {
 		rejectedAt := ""
 		if r.RejectedAt != nil {
 			rejectedAt = r.RejectedAt.Format("2006-01-02 15:04:05")
+		}
+		ipqs := summarizeIPQS(r.IpqsResponseJson)
+		ipqsCell := html.EscapeString(ipqs.display)
+		if ipqs.hasJSON {
+			ipqsCell = fmt.Sprintf(`<button type="button" class="json-btn" data-json="%s">%s</button>`,
+				html.EscapeString(ipqs.rawJSON), html.EscapeString(ipqs.display))
 		}
 		// Check if this email is already in the bypass list
 		alreadyBypassed := false
@@ -2180,17 +2233,36 @@ h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
 		} else {
 			actionCell = "<em>bypassed</em>"
 		}
-		fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
-			html.EscapeString(r.Email), html.EscapeString(r.Ip), html.EscapeString(r.Reason),
+		fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+			html.EscapeString(r.Email), html.EscapeString(r.Ip), ipqsCell, html.EscapeString(r.Reason),
 			html.EscapeString(r.Source), rejectedAt, actionCell)
 	}
 
 	if len(rejections) == 0 {
-		fmt.Fprintf(w, "<tr><td colspan='6'>No rejections recorded</td></tr>\n")
+		fmt.Fprintf(w, "<tr><td colspan='7'>No rejections recorded</td></tr>\n")
 	}
 
 	fmt.Fprintf(w, `</table>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.json-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var raw = btn.getAttribute('data-json');
+      if (!raw) {
+        return;
+      }
+      try {
+        var parsed = JSON.parse(raw);
+        alert(JSON.stringify(parsed, null, 2));
+      } catch (err) {
+        alert(raw);
+      }
+    });
+  });
+});
+</script>
 
 </body></html>
 `)
