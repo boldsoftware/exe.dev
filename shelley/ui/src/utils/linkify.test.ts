@@ -233,6 +233,15 @@ const testCases: TestCase[] = [
       { type: "text", content: "> for more" },
     ],
   },
+  {
+    name: "URL in markdown bold - should not include asterisks",
+    input: "Download here: **https://example.com/file.vsix**",
+    expected: [
+      { type: "text", content: "Download here: **" },
+      { type: "link", content: "https://example.com/file.vsix", href: "https://example.com/file.vsix" },
+      { type: "text", content: "**" },
+    ],
+  },
 ];
 
 function deepEqual(a: unknown, b: unknown): boolean {

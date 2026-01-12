@@ -3,7 +3,7 @@ import React from "react";
 // Regex for matching URLs. Only matches http:// and https:// URLs.
 // Avoids matching trailing punctuation that's likely not part of the URL.
 // eslint-disable-next-line no-useless-escape
-const URL_REGEX = /https?:\/\/[^\s<>"'`\]\)]+[^\s<>"'`\]\).,:;!?]/g;
+const URL_REGEX = /https?:\/\/[^\s<>"'`\]\)*]+[^\s<>"'`\]\).,:;!?*]/g;
 
 export interface LinkifyResult {
   type: "text" | "link";
