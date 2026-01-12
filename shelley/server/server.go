@@ -47,6 +47,8 @@ type StreamResponse struct {
 	Conversation      generated.Conversation `json:"conversation"`
 	AgentWorking      bool                   `json:"agent_working"`
 	ContextWindowSize uint64                 `json:"context_window_size,omitempty"`
+	// ConversationListUpdate is set when another conversation in the list changed
+	ConversationListUpdate *ConversationListUpdate `json:"conversation_list_update,omitempty"`
 }
 
 // LLMProvider is an interface for getting LLM services
@@ -232,6 +234,13 @@ func calculateContextWindowSizeFromMsg(msg *generated.Message) uint64 {
 		return 0
 	}
 	return usage.ContextWindowUsed()
+}
+
+// ConversationListUpdate represents an update to the conversation list
+type ConversationListUpdate struct {
+	Type           string                  `json:"type"` // "update", "delete"
+	Conversation   *generated.Conversation `json:"conversation,omitempty"`
+	ConversationID string                  `json:"conversation_id,omitempty"` // For deletes
 }
 
 // Server manages the HTTP API and active conversations
@@ -650,6 +659,12 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 		Conversation: conversation,
 	}
 	manager.subpub.Publish(latestSequenceID, streamData)
+
+	// Also notify conversation list subscribers (e.g., slug change)
+	s.publishConversationListUpdate(ConversationListUpdate{
+		Type:         "update",
+		Conversation: &conversation,
+	})
 }
 
 // notifySubscribersNewMessage sends a single new message to all subscribers.
@@ -689,6 +704,28 @@ func (s *Server) notifySubscribersNewMessage(ctx context.Context, conversationID
 		ContextWindowSize: calculateContextWindowSizeFromMsg(newMsg),
 	}
 	manager.subpub.Publish(newMsg.SequenceID, streamData)
+
+	// Also notify conversation list subscribers about the update (updated_at changed)
+	s.publishConversationListUpdate(ConversationListUpdate{
+		Type:         "update",
+		Conversation: &conversation,
+	})
+}
+
+// publishConversationListUpdate broadcasts a conversation list update to ALL active
+// conversation streams. This allows clients to receive updates about other conversations
+// while they're subscribed to their current conversation's stream.
+func (s *Server) publishConversationListUpdate(update ConversationListUpdate) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Broadcast to all active conversation managers
+	for _, manager := range s.activeConversations {
+		streamData := StreamResponse{
+			ConversationListUpdate: &update,
+		}
+		manager.subpub.Broadcast(streamData)
+	}
 }
 
 // Cleanup removes inactive conversation managers

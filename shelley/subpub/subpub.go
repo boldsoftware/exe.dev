@@ -106,3 +106,30 @@ func (sp *SubPub[K]) Publish(idx int64, message K) {
 	}
 	sp.subscribers = remaining
 }
+
+// Broadcast sends a message to ALL subscribers regardless of their current index.
+// This is used for out-of-band notifications like conversation list updates.
+func (sp *SubPub[K]) Broadcast(message K) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+
+	remaining := sp.subscribers[:0]
+	for _, sub := range sp.subscribers {
+		select {
+		case <-sub.ctx.Done():
+			close(sub.ch)
+			continue
+		default:
+		}
+
+		select {
+		case sub.ch <- message:
+			remaining = append(remaining, sub)
+		default:
+			// Channel full, disconnect
+			close(sub.ch)
+			sub.cancel()
+		}
+	}
+	sp.subscribers = remaining
+}

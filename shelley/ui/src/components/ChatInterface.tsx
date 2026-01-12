@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Message, Conversation, StreamResponse, LLMContent } from "../types";
+import {
+  Message,
+  Conversation,
+  StreamResponse,
+  LLMContent,
+  ConversationListUpdate,
+} from "../types";
 import { api } from "../services/api";
 import { ThemeMode, getStoredTheme, setStoredTheme, applyTheme } from "../services/theme";
 import MessageComponent from "./Message";
@@ -352,6 +358,7 @@ interface ChatInterfaceProps {
   onNewConversation: () => void;
   currentConversation?: Conversation;
   onConversationUpdate?: (conversation: Conversation) => void;
+  onConversationListUpdate?: (update: ConversationListUpdate) => void;
   onFirstMessage?: (message: string, model: string, cwd?: string) => Promise<void>;
   mostRecentCwd?: string | null;
   isDrawerCollapsed?: boolean;
@@ -364,6 +371,7 @@ function ChatInterface({
   onNewConversation,
   currentConversation,
   onConversationUpdate,
+  onConversationListUpdate,
   onFirstMessage,
   mostRecentCwd,
   isDrawerCollapsed,
@@ -613,8 +621,13 @@ function ChatInterface({
         }
 
         // Update conversation data if provided
-        if (onConversationUpdate) {
+        if (onConversationUpdate && streamResponse.conversation) {
           onConversationUpdate(streamResponse.conversation);
+        }
+
+        // Handle conversation list updates (for other conversations)
+        if (onConversationListUpdate && streamResponse.conversation_list_update) {
+          onConversationListUpdate(streamResponse.conversation_list_update);
         }
 
         if (typeof streamResponse.agent_working === "boolean") {

@@ -731,6 +731,12 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 	}
 	conversationID := conversation.ConversationID
 
+	// Notify conversation list subscribers about the new conversation
+	go s.publishConversationListUpdate(ConversationListUpdate{
+		Type:         "update",
+		Conversation: conversation,
+	})
+
 	// Get or create conversation manager
 	manager, err := s.getOrCreateConversationManager(ctx, conversationID)
 	if err != nil {
@@ -1104,6 +1110,12 @@ func (s *Server) handleArchiveConversation(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Notify conversation list subscribers
+	go s.publishConversationListUpdate(ConversationListUpdate{
+		Type:         "update",
+		Conversation: conversation,
+	})
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(conversation)
 }
@@ -1123,6 +1135,12 @@ func (s *Server) handleUnarchiveConversation(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Notify conversation list subscribers
+	go s.publishConversationListUpdate(ConversationListUpdate{
+		Type:         "update",
+		Conversation: conversation,
+	})
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(conversation)
 }
@@ -1140,6 +1158,12 @@ func (s *Server) handleDeleteConversation(w http.ResponseWriter, r *http.Request
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+
+	// Notify conversation list subscribers about the deletion
+	go s.publishConversationListUpdate(ConversationListUpdate{
+		Type:           "delete",
+		ConversationID: conversationID,
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
@@ -1207,6 +1231,12 @@ func (s *Server) handleRenameConversation(w http.ResponseWriter, r *http.Request
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+
+	// Notify conversation list subscribers
+	go s.publishConversationListUpdate(ConversationListUpdate{
+		Type:         "update",
+		Conversation: conversation,
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(conversation)

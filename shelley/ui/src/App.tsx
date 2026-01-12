@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import ChatInterface from "./components/ChatInterface";
 import ConversationDrawer from "./components/ConversationDrawer";
-import { Conversation } from "./types";
+import { Conversation, ConversationListUpdate } from "./types";
 import { api } from "./services/api";
 
 // Check if a slug is a generated ID (format: cXXXX where X is alphanumeric)
@@ -100,6 +100,39 @@ function App() {
   // Load conversations on mount
   useEffect(() => {
     loadConversations();
+  }, []);
+
+  // Handle conversation list updates from the message stream
+  const handleConversationListUpdate = useCallback((update: ConversationListUpdate) => {
+    if (update.type === "update" && update.conversation) {
+      setConversations((prev) => {
+        // Check if this conversation already exists
+        const existingIndex = prev.findIndex(
+          (c) => c.conversation_id === update.conversation!.conversation_id,
+        );
+
+        if (existingIndex >= 0) {
+          // Update existing conversation
+          const updated = [...prev];
+          updated[existingIndex] = update.conversation!;
+          // Re-sort by updated_at descending
+          updated.sort(
+            (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+          );
+          return updated;
+        } else {
+          // Add new conversation at the appropriate position
+          const updated = [update.conversation!, ...prev];
+          // Sort by updated_at descending
+          updated.sort(
+            (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+          );
+          return updated;
+        }
+      });
+    } else if (update.type === "delete" && update.conversation_id) {
+      setConversations((prev) => prev.filter((c) => c.conversation_id !== update.conversation_id));
+    }
   }, []);
 
   // Update page title and URL when conversation changes
@@ -254,6 +287,7 @@ function App() {
           onNewConversation={startNewConversation}
           currentConversation={currentConversation}
           onConversationUpdate={updateConversation}
+          onConversationListUpdate={handleConversationListUpdate}
           onFirstMessage={handleFirstMessage}
           mostRecentCwd={mostRecentCwd}
           isDrawerCollapsed={drawerCollapsed}

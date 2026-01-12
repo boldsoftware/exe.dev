@@ -60,6 +60,7 @@ export interface ChatRequest {
 export interface StreamResponse extends Omit<StreamResponseForTS, "messages"> {
   messages: Message[];
   context_window_size?: number;
+  conversation_list_update?: ConversationListUpdate;
 }
 
 // Link represents a custom link that can be added to the UI
@@ -122,4 +123,11 @@ export interface DiffComment {
   endLine?: number;
   filePath: string;
   diffId: string;
+}
+
+// Conversation list streaming update
+export interface ConversationListUpdate {
+  type: "update" | "delete";
+  conversation?: Conversation;
+  conversation_id?: string; // For deletes
 }
