@@ -2,7 +2,7 @@
   "name": "shelley-ui",
   "version": "1.0.0",
   "type": "module",
-  "packageManager": "npm@11.6.2",
+  "packageManager": "pnpm@10.28.0",
   "scripts": {
     "dev": "esbuild src/main.tsx --bundle --outfile=dist/main.js --servedir=dist --watch",
     "build": "node scripts/build.js",
@@ -14,10 +14,10 @@
     "format:check": "prettier --check 'src/**/*.{ts,tsx,js,jsx,json,css,html}'",
     "test": "tsx src/utils/linkify.test.runner.ts",
     "generate-types": "cd .. && go run ./cmd/go2ts.go -o ui/src/generated-types.ts",
-    "test:e2e": "npm run build && playwright test",
-    "test:e2e:headed": "npm run build && playwright test --headed",
-    "test:e2e:ui": "npm run build && playwright test --ui",
-    "test:e2e:debug": "npm run build && playwright test --debug"
+    "test:e2e": "pnpm run build && playwright test",
+    "test:e2e:headed": "pnpm run build && playwright test --headed",
+    "test:e2e:ui": "pnpm run build && playwright test --ui",
+    "test:e2e:debug": "pnpm run build && playwright test --debug"
   },
   "dependencies": {
     "monaco-editor": "^0.44.0",
@@ -40,5 +40,10 @@
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
     "typescript-eslint": "^8.43.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

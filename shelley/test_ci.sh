@@ -8,25 +8,25 @@ echo ""
 
 echo "==> Installing UI dependencies..."
 cd ui
-npm ci
+pnpm install --frozen-lockfile
 cd ..
 
 echo ""
 echo "==> Running TypeScript type check..."
 cd ui
-npm run type-check
+pnpm run type-check
 cd ..
 
 echo ""
 echo "==> Running ESLint..."
 cd ui
-npm run lint
+pnpm run lint
 cd ..
 
 echo ""
 echo "==> Building UI..."
 cd ui
-npm run build
+pnpm run build
 cd ..
 
 echo ""

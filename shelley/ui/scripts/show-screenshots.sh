@@ -16,7 +16,7 @@ if [ -d "test-results" ]; then
     find test-results -name "*.png" -type f -exec ls -la {} \; | head -10
 else
     echo "\n❌ No test-results directory found. Run tests first:"
-    echo "   npm run test:e2e"
+    echo "   pnpm run test:e2e"
 fi
 
 # Check for screenshots in e2e directory
@@ -29,5 +29,5 @@ fi
 
 echo "\n💡 To view screenshots:"
 echo "   - Open files directly with an image viewer"
-echo "   - Use 'npx playwright show-report' for HTML report"
+echo "   - Use 'pnpm exec playwright show-report' for HTML report"
 echo "   - Check test-results/ for failure screenshots"

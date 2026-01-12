@@ -55,35 +55,40 @@ jobs:
             go-shelley-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('shelley/go.mod') }}-
             go-shelley-${{ runner.os }}-${{ runner.arch }}-
 
-      - name: Set up Node.js
+      - name: Set up Node.js and pnpm
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Install UI dependencies
         run: |
           cd ui
-          npm ci
+          pnpm install --frozen-lockfile
 
       - name: Run TypeScript type check
         run: |
           cd ui
-          npm run type-check
+          pnpm run type-check
 
       - name: Run ESLint
         run: |
           cd ui
-          npm run lint
+          pnpm run lint
 
       - name: Run unit tests
         run: |
           cd ui
-          npm test
+          pnpm test
 
       - name: Build UI
         run: |
           cd ui
-          npm run build
+          pnpm run build
 
       - name: Build template tarballs
         run: make templates

@@ -43,7 +43,7 @@ build-linux-x86: ui templates
 # Build UI
 ui:
 	@echo "Building UI..."
-	cd ui && npm ci && npm run build
+	cd ui && pnpm install --frozen-lockfile && pnpm run build
 
 # Run Go tests
 test-go: ui
@@ -53,17 +53,17 @@ test-go: ui
 # Run end-to-end tests
 test-e2e: ui
 	@echo "Running E2E tests..."
-	cd ui && npm run test:e2e
+	cd ui && pnpm run test:e2e
 
 # Run E2E tests in headed mode (with visible browser)
 test-e2e-headed: ui
 	@echo "Running E2E tests (headed)..."
-	cd ui && npm run test:e2e:headed
+	cd ui && pnpm run test:e2e:headed
 
 # Run E2E tests in UI mode
 test-e2e-ui: ui
 	@echo "Opening E2E test UI..."
-	cd ui && npm run test:e2e:ui
+	cd ui && pnpm run test:e2e:ui
 
 # Run all tests
 test: test-go test-e2e

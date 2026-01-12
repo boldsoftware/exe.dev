@@ -7,7 +7,7 @@
    a thing. This is useful for interactive testing with a browser, since you don't rely on a model,
    and can fabricate some inputs and outputs. To test things, launch shelley with the relevant flag
    to only expose this model, and use shelley with a browser.
-6. Build the UI (`make ui` or `cd ui && npm install && npm run build`) before running Go tests so `ui/dist` exists for the embed.
+6. Build the UI (`make ui` or `cd ui && pnpm install && pnpm run build`) before running Go tests so `ui/dist` exists for the embed.
 7. Run Go unit tests with `go test ./server` (or narrower packages while iterating) once the UI bundle is built.
 8. To programmatically type into the React message input (e.g., in browser automation), you must use React's internal setter:
    ```javascript

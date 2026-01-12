@@ -15,34 +15,34 @@ This directory contains end-to-end tests for the Shelley web interface using Pla
 ### Install Dependencies
 ```bash
 cd ui/
-npm install
-npx playwright install
+pnpm install
+pnpm exec playwright install
 ```
 
 ### Run All Tests
 ```bash
-npm run test:e2e
+pnpm run test:e2e
 ```
 
 ### Run Specific Tests
 ```bash
 # Run only mobile Chrome tests
-npm run test:e2e -- --project="Mobile Chrome"
+pnpm run test:e2e -- --project="Mobile Chrome"
 
 # Run specific test
-npm run test:e2e -- --grep "should load the main page"
+pnpm run test:e2e -- --grep "should load the main page"
 
 # Run with headed browser (visible)
-npm run test:e2e:headed
+pnpm run test:e2e:headed
 
 # Open UI mode
-npm run test:e2e:ui
+pnpm run test:e2e:ui
 ```
 
 ### Debug Failed Tests
 ```bash
 # View HTML report
-npx playwright show-report
+pnpm exec playwright show-report
 
 # View screenshots
 ls -la test-results/*/
