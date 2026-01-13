@@ -127,22 +127,13 @@ function App() {
         );
 
         if (existingIndex >= 0) {
-          // Update existing conversation
+          // Update existing conversation in place (don't re-sort to avoid distracting jumps)
           const updated = [...prev];
           updated[existingIndex] = update.conversation!;
-          // Re-sort by updated_at descending
-          updated.sort(
-            (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-          );
           return updated;
         } else {
-          // Add new conversation at the appropriate position
-          const updated = [update.conversation!, ...prev];
-          // Sort by updated_at descending
-          updated.sort(
-            (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-          );
-          return updated;
+          // Add new conversation at the top
+          return [update.conversation!, ...prev];
         }
       });
     } else if (update.type === "delete" && update.conversation_id) {
