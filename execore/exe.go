@@ -338,6 +338,9 @@ type Server struct {
 	// THEN asks for your e-mail, and goes through the rest of this flow.
 	signupPOW        *pow.Challenger
 	signupPOWEnabled bool
+
+	// Discord link secret for HMAC verification of Discord account linking
+	discordLinkSecret string
 }
 
 // newSignupPOW creates a proof-of-work challenger with a random secret.
@@ -639,6 +642,9 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		slog.Info("IPQS_API_KEY not set, email quality checks disabled")
 	}
 
+	// Initialize Discord link secret for account linking
+	discordLinkSecret := os.Getenv("EXE_LINK_SECRET")
+
 	// Initialize GitHub User lookup client
 	ghu, err := ghuser.New(os.Getenv("GITHUB_TOKEN"), cfg.GHWhoAmIPath)
 	if err != nil {
@@ -776,6 +782,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		fakeHTTPEmail:          cfg.FakeEmailServer,
 		postmarkStatsCollector: postmarkStatsCollector,
 		ipqsAPIKey:             ipqsAPIKey,
+		discordLinkSecret:      discordLinkSecret,
 		PublicIPs:              map[netip.Addr]publicips.PublicIP{},
 
 		metricsRegistry: cfg.MetricsRegistry,

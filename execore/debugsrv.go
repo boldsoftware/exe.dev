@@ -664,6 +664,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			CreditRefreshPerHrUSD  float64 `json:"credit_refresh_per_hr_usd"`
 			CreditTotalUsedUSD     float64 `json:"credit_total_used_usd"`
 			CreditLastRefreshAt    string  `json:"credit_last_refresh_at,omitempty"`
+			DiscordID              string  `json:"discord_id,omitempty"`
 		}
 		var usersJSON []userInfo
 		for _, u := range users {
@@ -685,6 +686,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 				CreatedForLoginWithExe: u.CreatedForLoginWithExe,
 				AccountID:              acctID,
 				BillingURL:             billingURL,
+				DiscordID:              ptrStr(u.DiscordID),
 			}
 			if credit, ok := creditByUser[u.UserID]; ok {
 				ui.CreditAvailableUSD = credit.AvailableCredit
@@ -758,6 +760,7 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 <th>Last Refresh</th>
 <th>VM Creation Disabled</th>
 <th>Root Support</th>
+<th>Discord</th>
 </tr>
 <tr class="filters">
 <th>Email</th>
@@ -773,6 +776,7 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 <th>Last Refresh</th>
 <th>VM Creation Disabled</th>
 <th>Root Support</th>
+<th>Discord</th>
 </tr>
 </thead>
 </table>
@@ -869,7 +873,8 @@ $(document).ready(function() {
                 return status + ' <button class="toggle-btn root-toggle-btn ' + btnClass + '" ' +
                     'data-email="' + d.email + '" data-userid="' + d.user_id + '" ' +
                     'data-enabled="' + d.root_support + '">' + btnText + '</button>';
-            }}
+            }},
+            { data: 'discord_id', defaultContent: '-' }
         ],
         initComplete: function() {
             this.api().columns().every(function(idx) {

@@ -265,6 +265,7 @@ type User struct {
 	RootSupport            int64      `db:"root_support" json:"root_support"`
 	CreatedForLoginWithExe bool       `db:"created_for_login_with_exe" json:"created_for_login_with_exe"`
 	NewVmCreationDisabled  bool       `db:"new_vm_creation_disabled" json:"new_vm_creation_disabled"`
+	DiscordID              *string    `db:"discord_id" json:"discord_id"`
 }
 
 type UserDailyEmailCount struct {

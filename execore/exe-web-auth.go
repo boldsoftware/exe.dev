@@ -7,10 +7,13 @@ package execore
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	crand "crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -1238,4 +1241,82 @@ func (s *Server) checkSignupRateLimit(r *http.Request) (netip.Addr, bool) {
 		return netip.Addr{}, true
 	}
 	return ip, s.signupLimiter.Allow(ip)
+}
+
+// handleLinkDiscord handles Discord account linking via HMAC'd links from the Discord bot.
+// The link format is: /link-discord?discord_id=X&discord_username=Y&ts=Z&hmac=H
+func (s *Server) handleLinkDiscord(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Require authentication
+	userID, err := s.validateAuthCookie(r)
+	if err != nil {
+		authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
+		http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+		return
+	}
+
+	discordID := r.URL.Query().Get("discord_id")
+	discordUsername := r.URL.Query().Get("discord_username")
+	ts := r.URL.Query().Get("ts")
+	hmacParam := r.URL.Query().Get("hmac")
+
+	if discordID == "" || discordUsername == "" || ts == "" || hmacParam == "" {
+		http.Error(w, "Missing required parameters", http.StatusBadRequest)
+		return
+	}
+
+	// Verify HMAC
+	if !s.verifyDiscordLinkHMAC(discordID, discordUsername, ts, hmacParam) {
+		http.Error(w, "Invalid or expired link", http.StatusBadRequest)
+		return
+	}
+
+	// Link the Discord account
+	err = withTx1(s, ctx, (*exedb.Queries).SetUserDiscordID, exedb.SetUserDiscordIDParams{
+		DiscordID: &discordID,
+		UserID:    userID,
+	})
+	if err != nil {
+		s.slog().ErrorContext(ctx, "Failed to link Discord account", "error", err, "user_id", userID, "discord_id", discordID)
+		http.Error(w, "Failed to link Discord account", http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "Discord account linked", "user_id", userID, "discord_id", discordID, "discord_username", discordUsername)
+
+	// Show success page
+	data := struct {
+		stage.Env
+		DiscordUsername string
+	}{
+		Env:             s.env,
+		DiscordUsername: discordUsername,
+	}
+	s.renderTemplate(ctx, w, "discord-linked.html", data)
+}
+
+// verifyDiscordLinkHMAC verifies the HMAC signature for Discord account linking.
+// Returns true if the HMAC is valid and the timestamp is within 10 minutes.
+func (s *Server) verifyDiscordLinkHMAC(discordID, discordUsername, ts, providedHMAC string) bool {
+	if s.discordLinkSecret == "" {
+		return false
+	}
+
+	// Check timestamp isn't too old (10 minutes)
+	timestamp, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil {
+		return false
+	}
+	if time.Now().Unix()-timestamp > 600 {
+		return false
+	}
+
+	// Compute expected HMAC
+	data := fmt.Sprintf("%s:%s:%s", discordID, discordUsername, ts)
+	mac := hmac.New(sha256.New, []byte(s.discordLinkSecret))
+	mac.Write([]byte(data))
+	expected := hex.EncodeToString(mac.Sum(nil))
+
+	return hmac.Equal([]byte(expected), []byte(providedHMAC))
 }

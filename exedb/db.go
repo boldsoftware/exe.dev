@@ -312,6 +312,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTagsNeedingRefreshStmt, err = db.PrepareContext(ctx, getTagsNeedingRefresh); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTagsNeedingRefresh: %w", err)
 	}
+	if q.getUserByDiscordIDStmt, err = db.PrepareContext(ctx, getUserByDiscordID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserByDiscordID: %w", err)
+	}
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
 	}
@@ -461,6 +464,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setSignupPOWEnabledStmt, err = db.PrepareContext(ctx, setSignupPOWEnabled); err != nil {
 		return nil, fmt.Errorf("error preparing query SetSignupPOWEnabled: %w", err)
+	}
+	if q.setUserDiscordIDStmt, err = db.PrepareContext(ctx, setUserDiscordID); err != nil {
+		return nil, fmt.Errorf("error preparing query SetUserDiscordID: %w", err)
 	}
 	if q.setUserNewVMCreationDisabledStmt, err = db.PrepareContext(ctx, setUserNewVMCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserNewVMCreationDisabled: %w", err)
@@ -1025,6 +1031,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTagsNeedingRefreshStmt: %w", cerr)
 		}
 	}
+	if q.getUserByDiscordIDStmt != nil {
+		if cerr := q.getUserByDiscordIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserByDiscordIDStmt: %w", cerr)
+		}
+	}
 	if q.getUserByEmailStmt != nil {
 		if cerr := q.getUserByEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserByEmailStmt: %w", cerr)
@@ -1273,6 +1284,11 @@ func (q *Queries) Close() error {
 	if q.setSignupPOWEnabledStmt != nil {
 		if cerr := q.setSignupPOWEnabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setSignupPOWEnabledStmt: %w", cerr)
+		}
+	}
+	if q.setUserDiscordIDStmt != nil {
+		if cerr := q.setUserDiscordIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setUserDiscordIDStmt: %w", cerr)
 		}
 	}
 	if q.setUserNewVMCreationDisabledStmt != nil {
@@ -1540,6 +1556,7 @@ type Queries struct {
 	getSiteCookiesForUserStmt                  *sql.Stmt
 	getTagResolutionStmt                       *sql.Stmt
 	getTagsNeedingRefreshStmt                  *sql.Stmt
+	getUserByDiscordIDStmt                     *sql.Stmt
 	getUserByEmailStmt                         *sql.Stmt
 	getUserEmailCountForDateStmt               *sql.Stmt
 	getUserIDByEmailStmt                       *sql.Stmt
@@ -1590,6 +1607,7 @@ type Queries struct {
 	setNewThrottleMessageStmt                  *sql.Stmt
 	setPreferredExeletStmt                     *sql.Stmt
 	setSignupPOWEnabledStmt                    *sql.Stmt
+	setUserDiscordIDStmt                       *sql.Stmt
 	setUserNewVMCreationDisabledStmt           *sql.Stmt
 	setUserRootSupportStmt                     *sql.Stmt
 	updateAuthCookieLastUsedStmt               *sql.Stmt
@@ -1718,6 +1736,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getSiteCookiesForUserStmt:                  q.getSiteCookiesForUserStmt,
 		getTagResolutionStmt:                       q.getTagResolutionStmt,
 		getTagsNeedingRefreshStmt:                  q.getTagsNeedingRefreshStmt,
+		getUserByDiscordIDStmt:                     q.getUserByDiscordIDStmt,
 		getUserByEmailStmt:                         q.getUserByEmailStmt,
 		getUserEmailCountForDateStmt:               q.getUserEmailCountForDateStmt,
 		getUserIDByEmailStmt:                       q.getUserIDByEmailStmt,
@@ -1768,6 +1787,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setNewThrottleMessageStmt:                  q.setNewThrottleMessageStmt,
 		setPreferredExeletStmt:                     q.setPreferredExeletStmt,
 		setSignupPOWEnabledStmt:                    q.setSignupPOWEnabledStmt,
+		setUserDiscordIDStmt:                       q.setUserDiscordIDStmt,
 		setUserNewVMCreationDisabledStmt:           q.setUserNewVMCreationDisabledStmt,
 		setUserRootSupportStmt:                     q.setUserRootSupportStmt,
 		updateAuthCookieLastUsedStmt:               q.updateAuthCookieLastUsedStmt,
