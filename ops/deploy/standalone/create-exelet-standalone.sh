@@ -22,26 +22,26 @@ SKIP_ZFS=false
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --data-device)
-            DATA_DEVICE="$2"
-            shift 2
-            ;;
-        --skip-zfs)
-            SKIP_ZFS=true
-            shift
-            ;;
-        -h|--help)
-            echo "Usage: $0 [OPTIONS]"
-            echo ""
-            echo "Options:"
-            echo "  --data-device DEVICE   Block device to use for ZFS data pool (e.g., /dev/sdb)"
-            echo "  --skip-zfs             Skip ZFS setup even if --data-device is provided"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1" >&2
-            exit 1
-            ;;
+    --data-device)
+        DATA_DEVICE="$2"
+        shift 2
+        ;;
+    --skip-zfs)
+        SKIP_ZFS=true
+        shift
+        ;;
+    -h | --help)
+        echo "Usage: $0 [OPTIONS]"
+        echo ""
+        echo "Options:"
+        echo "  --data-device DEVICE   Block device to use for ZFS data pool (e.g., /dev/sdb)"
+        echo "  --skip-zfs             Skip ZFS setup even if --data-device is provided"
+        exit 0
+        ;;
+    *)
+        echo "Unknown option: $1" >&2
+        exit 1
+        ;;
     esac
 done
 
@@ -54,12 +54,12 @@ ensure_root() {
 
 detect_arch() {
     case "$(uname -m)" in
-        aarch64) echo "arm64" ;;
-        x86_64) echo "amd64" ;;
-        *)
-            echo "Unsupported architecture: $(uname -m)" >&2
-            exit 1
-            ;;
+    aarch64) echo "arm64" ;;
+    x86_64) echo "amd64" ;;
+    *)
+        echo "Unsupported architecture: $(uname -m)" >&2
+        exit 1
+        ;;
     esac
 }
 

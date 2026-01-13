@@ -37,16 +37,16 @@ REMOTE_USER=$(echo "$REMOTE_INFO" | cut -d'|' -f2)
 REMOTE_HOME=$(echo "$REMOTE_INFO" | cut -d'|' -f3)
 
 case "$TARGET_ARCH" in
-    x86_64)
-        GOARCH="amd64"
-        ;;
-    aarch64)
-        GOARCH="arm64"
-        ;;
-    *)
-        echo "ERROR: Unsupported architecture: $TARGET_ARCH" >&2
-        exit 1
-        ;;
+x86_64)
+    GOARCH="amd64"
+    ;;
+aarch64)
+    GOARCH="arm64"
+    ;;
+*)
+    echo "ERROR: Unsupported architecture: $TARGET_ARCH" >&2
+    exit 1
+    ;;
 esac
 
 echo "Target: $SSH_HOST"
@@ -94,7 +94,7 @@ echo "Binary uploaded"
 
 # Generate and copy systemd service file
 echo "Generating systemd service file..."
-cat > /tmp/exelet.service <<EOF
+cat >/tmp/exelet.service <<EOF
 [Unit]
 Description=exe.dev exelet (standalone)
 After=network.target
