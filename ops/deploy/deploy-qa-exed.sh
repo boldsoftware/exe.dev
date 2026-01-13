@@ -1,30 +1,36 @@
 #!/bin/bash
 set -euo pipefail
 
-API_ENDPOINT="https://exed-02.crocodile-vector.ts.net/debug/gitsha"
+EXED_ENDPOINT="https://exed-02.crocodile-vector.ts.net/debug/gitsha"
 
 echo "🕸️  checking what is deployed..."
 
-if ! DEPLOYED_SHA=$(curl -s "${API_ENDPOINT}"); then
-    echo "😞 could not get deployed SHA (curl failed)"
+if ! EXED_SHA=$(curl -s "${EXED_ENDPOINT}"); then
+    echo "😞 could not get exed SHA (curl failed)"
     exit 1
 fi
 
-if [ -z "${DEPLOYED_SHA}" ]; then
-    echo "😞 could not get deployed SHA (empty response)"
+if [ -z "${EXED_SHA}" ]; then
+    echo "😞 could not get exed SHA (empty response from ${EXED_ENDPOINT})"
     exit 1
 fi
 
-if ! git rev-parse --quiet --verify "${DEPLOYED_SHA}" >/dev/null; then
-    echo "😞 could not get deployed SHA (invalid SHA)"
-    echo "  ${DEPLOYED_SHA}"
+if ! git rev-parse --quiet --verify "${EXED_SHA}" >/dev/null; then
+    echo "😞 exed SHA is not a valid commit: ${EXED_SHA}"
+    echo "  (from ${EXED_ENDPOINT})"
     exit 1
+fi
+
+# Get one exelet SHA for deployment order consideration
+EXELET_HOST=$(ssh exe.dev exelets --json | jq -r '.exelets[0].host')
+if [ -n "$EXELET_HOST" ]; then
+    EXELET_SHA=$(curl -s "http://${EXELET_HOST}.crocodile-vector.ts.net:9081/debug/gitsha")
 fi
 
 CURRENT_SHA=$(git rev-parse HEAD)
 
-if [ "${DEPLOYED_SHA}" = "${CURRENT_SHA}" ]; then
-    echo "✅ already deployed: ${DEPLOYED_SHA}"
+if [ "${EXED_SHA}" = "${CURRENT_SHA}" ]; then
+    echo "✅ exed already deployed: ${EXED_SHA}"
     exit 0
 fi
 
@@ -38,12 +44,16 @@ echo "running claude. this will take a while..."
 echo
 
 claude --model claude-opus-4-5-20251101 --dangerously-skip-permissions -p - <<EOF
-I'm about to deploy HEAD to production. ${DEPLOYED_SHA} is currently deployed.
+I'm about to deploy exed to production, from this worktree.
+Exed ${EXED_SHA} is currently deployed.
+Exelet ${EXELET_SHA:-unknown} is currently deployed.
 
 Please inspect all the intervening commits. (You may ignore any devlog commits.)
-You have two goals:
+
+You have three goals:
 
 - Look for significant issues that we should investigate before deploying.
+- Consider deployment order if there are dependencies between exed and exelet.
 - Make a list of important things to test manually in production after deployment.
 
 Read deeply. Understand the codebase and the changes, and think everything through carefully.

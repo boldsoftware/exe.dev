@@ -8,11 +8,14 @@ get_gitsha() {
 
 echo "🕸️  checking what is deployed..."
 
+# Get exed SHA for deployment order consideration
+EXED_SHA=$(curl -s "https://exed-02.crocodile-vector.ts.net/debug/gitsha")
+
 if [ -n "${1:-}" ]; then
     # Single host provided
-    DEPLOYED_SHA=$(get_gitsha "$1")
-    if [ -z "$DEPLOYED_SHA" ]; then
-        echo "😞 could not get deployed SHA from $1 (empty response)"
+    EXELET_SHA=$(get_gitsha "$1")
+    if [ -z "$EXELET_SHA" ]; then
+        echo "😞 could not get exelet SHA from $1 (empty response)"
         exit 1
     fi
 else
@@ -29,7 +32,7 @@ else
     for host in $HOSTS; do
         sha=$(get_gitsha "$host")
         if [ -z "$sha" ]; then
-            echo "😞 could not get deployed SHA from $host (empty response)"
+            echo "😞 could not get exelet SHA from $host (empty response)"
             exit 1
         fi
         HOST_SHAS="$HOST_SHAS$host:$sha"$'\n'
@@ -48,19 +51,18 @@ else
         exit 1
     fi
 
-    DEPLOYED_SHA=$(echo $UNIQUE_SHAS | tr -d ' ')
+    EXELET_SHA=$(echo $UNIQUE_SHAS | tr -d ' ')
 fi
 
-if ! git rev-parse --quiet --verify "${DEPLOYED_SHA}" >/dev/null; then
-    echo "😞 could not get deployed SHA (invalid SHA)"
-    echo "  ${DEPLOYED_SHA}"
+if ! git rev-parse --quiet --verify "${EXELET_SHA}" >/dev/null; then
+    echo "😞 exelet SHA is not a valid commit: ${EXELET_SHA}"
     exit 1
 fi
 
 CURRENT_SHA=$(git rev-parse HEAD)
 
-if [ "${DEPLOYED_SHA}" = "${CURRENT_SHA}" ]; then
-    echo "✅ already deployed: ${DEPLOYED_SHA}"
+if [ "${EXELET_SHA}" = "${CURRENT_SHA}" ]; then
+    echo "✅ exelet already deployed: ${EXELET_SHA}"
     exit 0
 fi
 
@@ -74,12 +76,16 @@ echo "running claude. this will take a while..."
 echo
 
 claude --model claude-opus-4-5-20251101 --dangerously-skip-permissions -p - <<EOF
-I'm about to deploy HEAD to production. ${DEPLOYED_SHA} is currently deployed.
+I'm about to deploy exelet to production, from this worktree.
+Exelet ${EXELET_SHA} is currently deployed.
+Exed ${EXED_SHA:-unknown} is currently deployed.
 
 Please inspect all the intervening commits. (You may ignore any devlog commits.)
-You have two goals:
+
+You have three goals:
 
 - Look for significant issues that we should investigate before deploying.
+- Consider deployment order if there are dependencies between exed and exelet.
 - Make a list of important things to test manually in production after deployment.
 
 Read deeply. Understand the codebase and the changes, and think everything through carefully.
