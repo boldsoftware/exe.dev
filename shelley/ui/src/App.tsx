@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import ChatInterface from "./components/ChatInterface";
 import ConversationDrawer from "./components/ConversationDrawer";
+import CommandPalette from "./components/CommandPalette";
 import { Conversation, ConversationListUpdate } from "./types";
 import { api } from "./services/api";
 
@@ -62,6 +63,8 @@ function App() {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerCollapsed, setDrawerCollapsed] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [diffViewerTrigger, setDiffViewerTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const initialSlugResolved = useRef(false);
@@ -100,6 +103,18 @@ function App() {
   // Load conversations on mount
   useEffect(() => {
     loadConversations();
+  }, []);
+
+  // Global keyboard shortcut for command palette (Cmd+K / Ctrl+K)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   // Handle conversation list updates from the message stream
@@ -292,8 +307,29 @@ function App() {
           mostRecentCwd={mostRecentCwd}
           isDrawerCollapsed={drawerCollapsed}
           onToggleDrawerCollapse={toggleDrawerCollapsed}
+          openDiffViewerTrigger={diffViewerTrigger}
         />
       </div>
+
+      {/* Command Palette */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        conversations={conversations}
+        onNewConversation={() => {
+          startNewConversation();
+          setCommandPaletteOpen(false);
+        }}
+        onSelectConversation={(id) => {
+          selectConversation(id);
+          setCommandPaletteOpen(false);
+        }}
+        onOpenDiffViewer={() => {
+          setDiffViewerTrigger((prev) => prev + 1);
+          setCommandPaletteOpen(false);
+        }}
+        hasCwd={!!(currentConversation?.cwd || mostRecentCwd)}
+      />
 
       {/* Backdrop for mobile drawer */}
       {drawerOpen && (

@@ -363,6 +363,7 @@ interface ChatInterfaceProps {
   mostRecentCwd?: string | null;
   isDrawerCollapsed?: boolean;
   onToggleDrawerCollapse?: () => void;
+  openDiffViewerTrigger?: number; // increment to trigger opening diff viewer
 }
 
 function ChatInterface({
@@ -376,6 +377,7 @@ function ChatInterface({
   mostRecentCwd,
   isDrawerCollapsed,
   onToggleDrawerCollapse,
+  openDiffViewerTrigger,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -760,6 +762,13 @@ function ChatInterface({
       }
     };
   }, [isDisconnected, conversationId]);
+
+  // Handle external trigger to open diff viewer
+  useEffect(() => {
+    if (openDiffViewerTrigger && openDiffViewerTrigger > 0) {
+      setShowDiffViewer(true);
+    }
+  }, [openDiffViewerTrigger]);
 
   const handleCancel = async () => {
     if (!conversationId || cancelling) return;
