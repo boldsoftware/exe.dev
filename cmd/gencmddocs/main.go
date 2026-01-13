@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -29,6 +30,13 @@ func main() {
 }
 
 func run() error {
+	// Find git root to ensure we write to the correct location
+	root, err := findGitRoot()
+	if err != nil {
+		return err
+	}
+	outDir := filepath.Join(root, outputDir)
+
 	// Create command tree using the real definitions
 	ss := &execore.SSHServer{}
 	ct := execore.NewCommandTree(ss)
@@ -42,11 +50,11 @@ func run() error {
 		suborder++
 		doc := generateCommandDoc(cmd, suborder)
 		filename := fmt.Sprintf("cli-%s.md", cmd.Name)
-		outputPath := filepath.Join(outputDir, filename)
-		if err := os.WriteFile(outputPath, []byte(doc), 0o644); err != nil {
-			return fmt.Errorf("writing %s: %w", outputPath, err)
+		outPath := filepath.Join(outDir, filename)
+		if err := os.WriteFile(outPath, []byte(doc), 0o644); err != nil {
+			return fmt.Errorf("writing %s: %w", outPath, err)
 		}
-		fmt.Printf("wrote %s\n", outputPath)
+		fmt.Printf("wrote %s\n", outPath)
 	}
 
 	return nil
@@ -163,4 +171,12 @@ func writeSubcommandDoc(buf *bytes.Buffer, parentName string, sub *exemenu.Comma
 		}
 		buf.WriteString("```\n\n")
 	}
+}
+
+func findGitRoot() (string, error) {
+	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return "", fmt.Errorf("finding git root: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
 }
