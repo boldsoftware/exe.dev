@@ -775,6 +775,10 @@ func (n *NAT) applyBandwidthLimit(ctx context.Context, tapName string) error {
 	ifbName := getIfbName(tapName)
 	n.log.DebugContext(ctx, "applying bandwidth limit", "tap", tapName, "ifb", ifbName, "rate", n.bandwidthRate)
 
+	// These remove the old IFB if it exists. Ignores the errors that come out when making a new VM.
+	_ = exec.CommandContext(ctx, "tc", "qdisc", "del", "dev", tapName, "ingress").Run()
+	_ = exec.CommandContext(ctx, "ip", "link", "del", ifbName).Run()
+
 	// Track what we've created for rollback on error
 	var ifbCreated, ingressCreated bool
 

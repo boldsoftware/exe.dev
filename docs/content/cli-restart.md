@@ -1,19 +1,19 @@
 ---
 # DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
-title: "delete-ssh-key"
-description: "Delete an SSH key"
+title: "restart"
+description: "Restart a VM"
 subheading: "4. CLI Reference"
-suborder: 9
+suborder: 6
 ---
 
-# delete-ssh-key
+# restart
 
-Delete an SSH key
+Restart a VM
 
 ## Usage
 
 ```
-delete-ssh-key <public-key>
+restart <vmname>
 ```
 
 ## Options

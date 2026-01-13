@@ -32,14 +32,20 @@ func NewManager(dataDir, bindIP string, log *slog.Logger) *Manager {
 	}
 }
 
-// CreateProxy creates and starts a new SSH proxy for an instance
+// CreateProxy creates and starts a new SSH proxy for an instance.
+// If a proxy already exists for the instance, it is stopped and replaced.
 func (m *Manager) CreateProxy(instanceID, targetIP string, port int, instanceDir string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Check if proxy already exists
-	if _, exists := m.proxies[instanceID]; exists {
-		return fmt.Errorf("proxy already exists for instance %s", instanceID)
+	// Stop existing proxy if present (handles restart case and stale proxies)
+	if existingProxy, exists := m.proxies[instanceID]; exists {
+		m.log.Info("stopping existing proxy before creating new one", "instance", instanceID)
+		if err := existingProxy.Stop(); err != nil {
+			m.log.Warn("failed to stop existing proxy", "instance", instanceID, "error", err)
+		}
+		delete(m.proxies, instanceID)
+		delete(m.ports, instanceID)
 	}
 
 	// Create and start proxy

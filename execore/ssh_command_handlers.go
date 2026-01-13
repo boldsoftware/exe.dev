@@ -132,6 +132,15 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			CompleterFunc:     ss.completeBoxNames,
 		},
 		{
+			Name:              "restart",
+			Description:       "Restart a VM",
+			Handler:           ss.handleRestartCommand,
+			FlagSetFunc:       jsonOnlyFlags("restart"),
+			Usage:             "restart <vmname>",
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeBoxNames,
+		},
+		{
 			Name:        "hireme",
 			Aliases:     boxname.JobsRelated,
 			Hidden:      true,
@@ -957,6 +966,122 @@ type newBoxDetails struct {
 	ShelleyURL string `json:"shelley_url,omitempty"`
 	VSCodeURL  string `json:"vscode_url,omitempty"`
 	XTermURL   string `json:"xterm_url,omitempty"`
+}
+
+func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	if len(cc.Args) != 1 {
+		return cc.Errorf("please specify exactly one VM name to restart, got %d", len(cc.Args))
+	}
+
+	boxName := ss.normalizeBoxName(cc.Args[0])
+
+	// Verify the box exists and belongs to this user
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            boxName,
+		CreatedByUserID: cc.User.ID,
+	})
+	if err != nil {
+		return cc.Errorf("VM %q not found", boxName)
+	}
+
+	if box.ContainerID == nil {
+		return cc.Errorf("VM %q has no container", boxName)
+	}
+
+	exeletClient := ss.server.getExeletClient(box.Ctrhost)
+	if exeletClient == nil {
+		return cc.Errorf("exelet host not available for VM")
+	}
+
+	cc.Writeln("Restarting \033[1m%s\033[0m...", boxName)
+
+	// Use WithoutCancel so the restart completes even if client disconnects
+	restartCtx := context.WithoutCancel(ctx)
+	containerID := *box.ContainerID
+
+	// Get the current instance state to decide whether to stop first
+	const maxAttempts = 3
+	instanceResp, err := exeletClient.client.GetInstance(restartCtx, &api.GetInstanceRequest{
+		ID: containerID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get instance status: %w", err)
+	}
+
+	// Only stop if the instance is currently running
+	state := instanceResp.Instance.State
+	switch state {
+	case api.VMState_RUNNING, api.VMState_STARTING, api.VMState_PAUSED:
+		// Instance is up, need to stop it first
+		var stopErr error
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			_, stopErr = exeletClient.client.StopInstance(restartCtx, &api.StopInstanceRequest{
+				ID: containerID,
+			})
+			if stopErr == nil {
+				break
+			}
+			// State changed since we checked - that's OK
+			if s, ok := status.FromError(stopErr); ok && s.Code() == codes.FailedPrecondition {
+				stopErr = nil
+				break
+			}
+			if attempt < maxAttempts {
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+		if stopErr != nil {
+			return fmt.Errorf("failed to stop instance: %w", stopErr)
+		}
+	case api.VMState_STOPPED, api.VMState_ERROR, api.VMState_CREATED:
+		// Instance is already stopped or in a restartable state, skip stop
+	default:
+		// Unknown or transient state (STOPPING, CREATING, UPDATING, DELETED)
+		return cc.Errorf("VM is in state %q and cannot be restarted", state.String())
+	}
+
+	// Start the instance with retries
+	var startErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		_, startErr = exeletClient.client.StartInstance(restartCtx, &api.StartInstanceRequest{
+			ID: containerID,
+		})
+		if startErr == nil {
+			break
+		}
+		if attempt < maxAttempts {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	if startErr != nil {
+		// Provide a clearer error message for state issues
+		if s, ok := status.FromError(startErr); ok && s.Code() == codes.FailedPrecondition {
+			return cc.Errorf("VM cannot be started: %s", s.Message())
+		}
+		return fmt.Errorf("failed to start instance after %d attempts: %w", maxAttempts, startErr)
+	}
+
+	// Verify the instance is actually running after start
+	verifyResp, err := exeletClient.client.GetInstance(restartCtx, &api.GetInstanceRequest{
+		ID: containerID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to verify instance status after start: %w", err)
+	}
+	finalState := verifyResp.Instance.State
+	if finalState != api.VMState_RUNNING && finalState != api.VMState_STARTING {
+		return cc.Errorf("VM failed to start, current state: %s", finalState.String())
+	}
+
+	if cc.WantJSON() {
+		cc.WriteJSON(map[string]string{
+			"vm_name": boxName,
+			"status":  "restarted",
+		})
+		return nil
+	}
+	cc.Writeln("\033[1;32mVM %q restarted successfully\033[0m", boxName)
+	return nil
 }
 
 func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.CommandContext) error {

@@ -1023,6 +1023,111 @@ func TestNewBoxVariants(t *testing.T) {
 	cleanup.disconnect()
 }
 
+func TestRestartCommand(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+	boxName := newBox(t, pty)
+	pty.disconnect()
+	waitForSSH(t, boxName, keyFile)
+
+	// Write marker file to verify disk persistence across restart
+	if err := boxSSHCommand(t, boxName, keyFile, "echo restart-test > /home/exedev/restart-marker.txt && sync").Run(); err != nil {
+		t.Fatalf("failed to write marker file: %v", err)
+	}
+
+	// Run restart command from REPL
+	repl := sshToExeDev(t, keyFile)
+	repl.sendLine("restart " + boxName)
+	repl.want("Restarting")
+	repl.want("restarted successfully")
+	repl.wantPrompt()
+	repl.disconnect()
+
+	// Wait for SSH to come back up
+	waitForSSH(t, boxName, keyFile)
+
+	// Verify disk persisted
+	out, err := boxSSHCommand(t, boxName, keyFile, "cat", "/home/exedev/restart-marker.txt").CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to read marker file after restart: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(string(out), "restart-test") {
+		t.Fatalf("expected marker file to contain 'restart-test', got: %s", out)
+	}
+
+	// Verify network works by checking metadata service
+	out, err = boxSSHCommand(t, boxName, keyFile, "curl", "-s", "--max-time", "10", "http://169.254.169.254/").CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to reach metadata service after restart: %v", err)
+	}
+	if !strings.Contains(string(out), boxName) {
+		t.Fatalf("expected metadata service to return box name, got: %s", out)
+	}
+
+	// Cleanup
+	cleanup := sshToExeDev(t, keyFile)
+	cleanup.deleteBox(boxName)
+	cleanup.disconnect()
+}
+
+func TestRestartStoppedVM(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+	boxName := newBox(t, pty)
+	pty.disconnect()
+	waitForSSH(t, boxName, keyFile)
+
+	// Write marker file to verify disk persistence
+	if err := boxSSHCommand(t, boxName, keyFile, "echo stopped-restart-test > /home/exedev/stopped-marker.txt && sync").Run(); err != nil {
+		t.Fatalf("failed to write marker file: %v", err)
+	}
+
+	// Stop the VM by running shutdown from within
+	box := sshToBox(t, boxName, keyFile)
+	box.wantPrompt()
+	box.sendLine("sudo shutdown now") // Broken pipe warning comes from here and is to be expected. TODO find a way to supress the warning.
+	box.wantEOF()
+
+	// Wait for SSH to become unavailable (VM is stopped)
+	for range 50 {
+		err := boxSSHCommand(t, boxName, keyFile, "true").Run()
+		if err != nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Now restart the stopped VM using the restart command
+	repl := sshToExeDev(t, keyFile)
+	repl.sendLine("restart " + boxName)
+	repl.want("Restarting")
+	repl.want("restarted successfully")
+	repl.wantPrompt()
+	repl.disconnect()
+
+	// Wait for SSH to come back up
+	waitForSSH(t, boxName, keyFile)
+
+	// Verify disk persisted across stop+restart
+	out, err := boxSSHCommand(t, boxName, keyFile, "cat", "/home/exedev/stopped-marker.txt").CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to read marker file after restart: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(string(out), "stopped-restart-test") {
+		t.Fatalf("expected marker file to contain 'stopped-restart-test', got: %s", out)
+	}
+
+	// Cleanup
+	cleanup := sshToExeDev(t, keyFile)
+	cleanup.deleteBox(boxName)
+	cleanup.disconnect()
+}
+
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
