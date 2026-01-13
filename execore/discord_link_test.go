@@ -208,12 +208,15 @@ func TestHandleLinkDiscordSuccess(t *testing.T) {
 		t.Errorf("got status %d, want %d: %s", w.Code, http.StatusOK, w.Body.String())
 	}
 
-	// Verify the discord_id was stored
+	// Verify the discord_id and discord_username were stored
 	user, err := withRxRes1(server, ctx, (*exedb.Queries).GetUserWithDetails, userID)
 	if err != nil {
 		t.Fatalf("failed to get user: %v", err)
 	}
 	if user.DiscordID == nil || *user.DiscordID != discordID {
 		t.Errorf("discord_id not stored correctly, got %v, want %s", user.DiscordID, discordID)
+	}
+	if user.DiscordUsername == nil || *user.DiscordUsername != discordUsername {
+		t.Errorf("discord_username not stored correctly, got %v, want %s", user.DiscordUsername, discordUsername)
 	}
 }

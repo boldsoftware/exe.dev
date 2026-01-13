@@ -1273,9 +1273,10 @@ func (s *Server) handleLinkDiscord(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Link the Discord account
-	err = withTx1(s, ctx, (*exedb.Queries).SetUserDiscordID, exedb.SetUserDiscordIDParams{
-		DiscordID: &discordID,
-		UserID:    userID,
+	err = withTx1(s, ctx, (*exedb.Queries).SetUserDiscord, exedb.SetUserDiscordParams{
+		DiscordID:       &discordID,
+		DiscordUsername: &discordUsername,
+		UserID:          userID,
 	})
 	if err != nil {
 		s.slog().ErrorContext(ctx, "Failed to link Discord account", "error", err, "user_id", userID, "discord_id", discordID)

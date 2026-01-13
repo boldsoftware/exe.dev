@@ -465,8 +465,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.setSignupPOWEnabledStmt, err = db.PrepareContext(ctx, setSignupPOWEnabled); err != nil {
 		return nil, fmt.Errorf("error preparing query SetSignupPOWEnabled: %w", err)
 	}
-	if q.setUserDiscordIDStmt, err = db.PrepareContext(ctx, setUserDiscordID); err != nil {
-		return nil, fmt.Errorf("error preparing query SetUserDiscordID: %w", err)
+	if q.setUserDiscordStmt, err = db.PrepareContext(ctx, setUserDiscord); err != nil {
+		return nil, fmt.Errorf("error preparing query SetUserDiscord: %w", err)
 	}
 	if q.setUserNewVMCreationDisabledStmt, err = db.PrepareContext(ctx, setUserNewVMCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserNewVMCreationDisabled: %w", err)
@@ -1286,9 +1286,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setSignupPOWEnabledStmt: %w", cerr)
 		}
 	}
-	if q.setUserDiscordIDStmt != nil {
-		if cerr := q.setUserDiscordIDStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing setUserDiscordIDStmt: %w", cerr)
+	if q.setUserDiscordStmt != nil {
+		if cerr := q.setUserDiscordStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setUserDiscordStmt: %w", cerr)
 		}
 	}
 	if q.setUserNewVMCreationDisabledStmt != nil {
@@ -1607,7 +1607,7 @@ type Queries struct {
 	setNewThrottleMessageStmt                  *sql.Stmt
 	setPreferredExeletStmt                     *sql.Stmt
 	setSignupPOWEnabledStmt                    *sql.Stmt
-	setUserDiscordIDStmt                       *sql.Stmt
+	setUserDiscordStmt                         *sql.Stmt
 	setUserNewVMCreationDisabledStmt           *sql.Stmt
 	setUserRootSupportStmt                     *sql.Stmt
 	updateAuthCookieLastUsedStmt               *sql.Stmt
@@ -1787,7 +1787,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setNewThrottleMessageStmt:                  q.setNewThrottleMessageStmt,
 		setPreferredExeletStmt:                     q.setPreferredExeletStmt,
 		setSignupPOWEnabledStmt:                    q.setSignupPOWEnabledStmt,
-		setUserDiscordIDStmt:                       q.setUserDiscordIDStmt,
+		setUserDiscordStmt:                         q.setUserDiscordStmt,
 		setUserNewVMCreationDisabledStmt:           q.setUserNewVMCreationDisabledStmt,
 		setUserRootSupportStmt:                     q.setUserRootSupportStmt,
 		updateAuthCookieLastUsedStmt:               q.updateAuthCookieLastUsedStmt,
