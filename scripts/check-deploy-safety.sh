@@ -13,6 +13,14 @@ NC='\033[0m'
 
 errors=0
 
+# Check for git worktree (go build has issues with worktrees: go.dev/issue/58218)
+# In a worktree, git-dir and git-common-dir differ
+if [ "$(git rev-parse --git-dir)" != "$(git rev-parse --git-common-dir)" ]; then
+    echo -e "${RED}ERROR: Cannot deploy from a git worktree (go.dev/issue/58218).${NC}" >&2
+    echo "Please deploy from the main repository checkout." >&2
+    exit 1
+fi
+
 # Check for dirty worktree (ignore untracked files)
 if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
     if [ "$FORCE" = "1" ]; then
