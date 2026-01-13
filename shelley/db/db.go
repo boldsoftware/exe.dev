@@ -300,6 +300,25 @@ func (db *DB) SearchConversations(ctx context.Context, query string, limit, offs
 	return conversations, err
 }
 
+// SearchConversationsWithMessages searches for conversations containing the query in slug or message content
+func (db *DB) SearchConversationsWithMessages(ctx context.Context, query string, limit, offset int64) ([]generated.Conversation, error) {
+	queryPtr := &query
+	var conversations []generated.Conversation
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		var err error
+		conversations, err = q.SearchConversationsWithMessages(ctx, generated.SearchConversationsWithMessagesParams{
+			Column1: queryPtr,
+			Column2: queryPtr,
+			Column3: queryPtr,
+			Limit:   limit,
+			Offset:  offset,
+		})
+		return err
+	})
+	return conversations, err
+}
+
 // UpdateConversationSlug updates the slug of a conversation
 func (db *DB) UpdateConversationSlug(ctx context.Context, conversationID, slug string) (*generated.Conversation, error) {
 	var conversation generated.Conversation

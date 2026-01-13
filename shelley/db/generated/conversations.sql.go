@@ -310,6 +310,65 @@ func (q *Queries) SearchConversations(ctx context.Context, arg SearchConversatio
 	return items, nil
 }
 
+const searchConversationsWithMessages = `-- name: SearchConversationsWithMessages :many
+SELECT DISTINCT c.conversation_id, c.slug, c.user_initiated, c.created_at, c.updated_at, c.cwd, c.archived FROM conversations c
+LEFT JOIN messages m ON c.conversation_id = m.conversation_id AND m.type IN ('user', 'agent')
+WHERE c.archived = FALSE
+  AND (
+    c.slug LIKE '%' || ? || '%'
+    OR json_extract(m.user_data, '$.text') LIKE '%' || ? || '%'
+    OR m.llm_data LIKE '%' || ? || '%'
+  )
+ORDER BY c.updated_at DESC
+LIMIT ? OFFSET ?
+`
+
+type SearchConversationsWithMessagesParams struct {
+	Column1 *string `json:"column_1"`
+	Column2 *string `json:"column_2"`
+	Column3 *string `json:"column_3"`
+	Limit   int64   `json:"limit"`
+	Offset  int64   `json:"offset"`
+}
+
+// Search conversations by slug OR message content (user messages and agent responses, not system prompts)
+func (q *Queries) SearchConversationsWithMessages(ctx context.Context, arg SearchConversationsWithMessagesParams) ([]Conversation, error) {
+	rows, err := q.db.QueryContext(ctx, searchConversationsWithMessages,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Conversation{}
+	for rows.Next() {
+		var i Conversation
+		if err := rows.Scan(
+			&i.ConversationID,
+			&i.Slug,
+			&i.UserInitiated,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Cwd,
+			&i.Archived,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const unarchiveConversation = `-- name: UnarchiveConversation :one
 UPDATE conversations
 SET archived = FALSE, updated_at = CURRENT_TIMESTAMP

@@ -29,6 +29,19 @@ WHERE slug LIKE '%' || ? || '%' AND archived = FALSE
 ORDER BY updated_at DESC
 LIMIT ? OFFSET ?;
 
+-- name: SearchConversationsWithMessages :many
+-- Search conversations by slug OR message content (user messages and agent responses, not system prompts)
+SELECT DISTINCT c.* FROM conversations c
+LEFT JOIN messages m ON c.conversation_id = m.conversation_id AND m.type IN ('user', 'agent')
+WHERE c.archived = FALSE
+  AND (
+    c.slug LIKE '%' || ? || '%'
+    OR json_extract(m.user_data, '$.text') LIKE '%' || ? || '%'
+    OR m.llm_data LIKE '%' || ? || '%'
+  )
+ORDER BY c.updated_at DESC
+LIMIT ? OFFSET ?;
+
 -- name: SearchArchivedConversations :many
 SELECT * FROM conversations
 WHERE slug LIKE '%' || ? || '%' AND archived = TRUE

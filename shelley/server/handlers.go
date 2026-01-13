@@ -496,13 +496,20 @@ func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	query = r.URL.Query().Get("q")
+	searchContent := r.URL.Query().Get("search_content") == "true"
 
 	// Get conversations from database
 	var conversations []generated.Conversation
 	var err error
 
 	if query != "" {
-		conversations, err = s.db.SearchConversations(ctx, query, int64(limit), int64(offset))
+		if searchContent {
+			// Search in both slug and message content
+			conversations, err = s.db.SearchConversationsWithMessages(ctx, query, int64(limit), int64(offset))
+		} else {
+			// Search only in slug
+			conversations, err = s.db.SearchConversations(ctx, query, int64(limit), int64(offset))
+		}
 	} else {
 		conversations, err = s.db.ListConversations(ctx, int64(limit), int64(offset))
 	}

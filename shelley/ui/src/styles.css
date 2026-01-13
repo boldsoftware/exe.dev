@@ -3461,6 +3461,16 @@ svg {
   flex-shrink: 0;
 }
 
+.command-palette-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+
 .command-palette-shortcut kbd,
 .command-palette-footer kbd {
   display: inline-block;
