@@ -9,11 +9,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/dustin/go-humanize"
+	qrterminal "github.com/mdp/qrterminal/v3"
 
 	emailpkg "exe.dev/email"
 	"exe.dev/exedb"
@@ -28,7 +30,13 @@ func shareAddFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("share-add", flag.ContinueOnError)
 	fs.String("message", "", "message to include in share invitation")
 	fs.Bool("json", false, "output in JSON format")
+	fs.Bool("qr", false, "show QR code for the share URL")
 	return fs
+}
+
+// writeQRCode writes a QR code for the given URL to the writer.
+func writeQRCode(w io.Writer, url string) {
+	qrterminal.GenerateHalfBlock(url, qrterminal.L, w)
 }
 
 // shareCommand returns the command definition for the share command
@@ -45,7 +53,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 				Description:       "Show current shares for a VM",
 				Usage:             "share show <vm>",
 				Handler:           ss.handleShareShowCmd,
-				FlagSetFunc:       jsonOnlyFlags("share-show"),
+				FlagSetFunc:       addQRFlag(jsonOnlyFlags("share-show")),
 				HasPositionalArgs: true,
 				CompleterFunc:     ss.completeBoxNames,
 			},
@@ -107,7 +115,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 				Description:       "Create a shareable link for a VM",
 				Usage:             "share add-link <vm>",
 				Handler:           ss.handleShareAddLinkCmd,
-				FlagSetFunc:       jsonOnlyFlags("share-add-link"),
+				FlagSetFunc:       addQRFlag(jsonOnlyFlags("share-add-link")),
 				HasPositionalArgs: true,
 				CompleterFunc:     ss.completeBoxNames,
 			},
@@ -240,9 +248,15 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 	route := box.GetRoute()
 	isPublic := route.Share == "public"
 
+	boxURL := ss.server.boxProxyAddress(box.Name)
+
 	cc.Writeln("")
 	cc.Writeln("\033[1;36mSharing for VM '%s'\033[0m", box.Name)
-	cc.Writeln("URL: %s", ss.server.boxProxyAddress(box.Name))
+	cc.Writeln("URL: %s", boxURL)
+	if cc.WantQR() {
+		cc.Writeln("")
+		writeQRCode(cc.Output, boxURL)
+	}
 	cc.Writeln("Port: %d", route.Port)
 	if isPublic {
 		cc.Writeln("\033[1;33mMode: PUBLIC\033[0m - Anyone can access this VM without authentication")
@@ -742,6 +756,12 @@ func (ss *SSHServer) handleShareAddLinkCmd(ctx context.Context, cc *exemenu.Comm
 	cc.Writeln("Anyone with this link can access your VM after logging in:")
 	cc.Writeln("\033[1m%s\033[0m", shareURL)
 	cc.Writeln("")
+
+	if cc.WantQR() {
+		writeQRCode(cc.Output, shareURL)
+		cc.Writeln("")
+	}
+
 	cc.Writeln("To revoke this link, use:")
 	cc.Writeln("  share remove-link %s %s", box.Name, token)
 	cc.Writeln("")

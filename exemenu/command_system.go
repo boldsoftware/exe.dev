@@ -238,6 +238,15 @@ func (ctx *CommandContext) WantJSON() bool {
 	return flag != nil && flag.Value.String() == "true"
 }
 
+// WantQR reports whether the --qr flag is set.
+func (ctx *CommandContext) WantQR() bool {
+	if ctx.FlagSet == nil {
+		return false
+	}
+	flag := ctx.FlagSet.Lookup("qr")
+	return flag != nil && flag.Value.String() == "true"
+}
+
 // WriteError outputs an error message in either JSON or formatted text
 func (ctx *CommandContext) WriteError(message string, args ...any) {
 	if ctx.WantJSON() {

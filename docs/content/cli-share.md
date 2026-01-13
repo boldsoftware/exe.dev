@@ -33,6 +33,7 @@ share show <vm>
 
 **Options:**
 - `--json`: output in JSON format
+- `--qr`: show QR code for the URL
 
 ### share port
 
@@ -87,6 +88,7 @@ share add <vm> <email> [--message='...']
 **Options:**
 - `--json`: output in JSON format
 - `--message`: message to include in share invitation
+- `--qr`: show QR code for the share URL
 
 **Examples:**
 ```
@@ -119,6 +121,7 @@ share add-link <vm>
 
 **Options:**
 - `--json`: output in JSON format
+- `--qr`: show QR code for the URL
 
 ### share remove-link
 

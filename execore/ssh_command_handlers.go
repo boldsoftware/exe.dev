@@ -67,6 +67,15 @@ func jsonOnlyFlags(name string) func() *flag.FlagSet {
 	}
 }
 
+// addQRFlag wraps a FlagSet creation function to add the --qr flag.
+func addQRFlag(f func() *flag.FlagSet) func() *flag.FlagSet {
+	return func() *flag.FlagSet {
+		fs := f()
+		fs.Bool("qr", false, "show QR code for the URL")
+		return fs
+	}
+}
+
 // newCommandFlags creates a FlagSet for the new command
 func newCommandFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
@@ -194,7 +203,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Description: "Generate a magic link to log in to the website",
 			Usage:       "browser",
 			Handler:     ss.handleBrowserCommand,
-			FlagSetFunc: jsonOnlyFlags("browser"),
+			FlagSetFunc: addQRFlag(jsonOnlyFlags("browser")),
 		},
 		{
 			Name:        "clear",
@@ -1308,6 +1317,10 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.Comma
 	cc.Writeln("")
 	cc.Writeln("\033[1;36m%s\033[0m", magicURL)
 	cc.Writeln("")
+	if cc.WantQR() {
+		writeQRCode(cc.Output, magicURL)
+		cc.Writeln("")
+	}
 	cc.Writeln("\033[2mExpires in 15 minutes.\033[0m")
 	cc.Writeln("")
 	return nil

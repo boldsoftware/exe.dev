@@ -19,4 +19,5 @@ browser
 ## Options
 
 - `--json`: output in JSON format
+- `--qr`: show QR code for the URL
 
