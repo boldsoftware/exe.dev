@@ -617,6 +617,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 					},
 				},
 			},
+			GroupID: cc.User.ID,
 		}
 
 		// Call CreateInstance
