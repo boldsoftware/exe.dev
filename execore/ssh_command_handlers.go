@@ -85,6 +85,8 @@ func newCommandFlags() *flag.FlagSet {
 	return fs
 }
 
+//go:generate go run ../cmd/gencmddocs
+
 // NewCommandTree creates a new command tree with all exe.dev commands
 func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 	commands := []*exemenu.Command{
