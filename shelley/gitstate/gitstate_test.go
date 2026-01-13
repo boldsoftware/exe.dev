@@ -184,14 +184,41 @@ func TestGitState_String(t *testing.T) {
 	}{
 		{"nil state", nil, ""},
 		{"not a repo", &GitState{IsRepo: false}, ""},
-		{"with branch", &GitState{Worktree: "/home/user/myrepo", Branch: "main", Commit: "abc1234", IsRepo: true}, "myrepo/main now at abc1234"},
-		{"detached head", &GitState{Worktree: "/home/user/myrepo", Branch: "", Commit: "abc1234", IsRepo: true}, "myrepo (detached) now at abc1234"},
+		{"with branch", &GitState{Worktree: "/srv/myrepo", Branch: "main", Commit: "abc1234", Subject: "fix bug", IsRepo: true}, `/srv/myrepo (main) now at abc1234 "fix bug"`},
+		{"detached head", &GitState{Worktree: "/srv/myrepo", Branch: "", Commit: "abc1234", Subject: "add feature", IsRepo: true}, `/srv/myrepo (detached) now at abc1234 "add feature"`},
+		{"long subject truncated", &GitState{Worktree: "/srv/myrepo", Branch: "main", Commit: "abc1234", Subject: "this is a very long commit message that should be truncated", IsRepo: true}, `/srv/myrepo (main) now at abc1234 "this is a very long commit message that should ..."`},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.state.String(); got != tt.expected {
 				t.Errorf("String() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestTildeReplace(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home directory")
+	}
+
+	tests := []struct {
+		name     string
+		path     string
+		expected string
+	}{
+		{"home dir", home, "~"},
+		{"subdir of home", home + "/projects/foo", "~/projects/foo"},
+		{"not in home", "/var/log", "/var/log"},
+		{"root", "/", "/"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tildeReplace(tt.path); got != tt.expected {
+				t.Errorf("tildeReplace(%q) = %q, want %q", tt.path, got, tt.expected)
 			}
 		})
 	}

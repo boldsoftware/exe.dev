@@ -2,8 +2,8 @@
 package gitstate
 
 import (
+	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -95,6 +95,14 @@ func (g *GitState) Equal(other *GitState) bool {
 		g.IsRepo == other.IsRepo
 }
 
+// tildeReplace replaces the home directory prefix with ~ for display.
+func tildeReplace(path string) string {
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(path, home) {
+		return "~" + path[len(home):]
+	}
+	return path
+}
+
 // String returns a human-readable description of the git state change.
 // It's designed to be shown to users, not the LLM.
 func (g *GitState) String() string {
@@ -102,11 +110,14 @@ func (g *GitState) String() string {
 		return ""
 	}
 
-	// Get just the worktree name (last path component)
-	worktreeName := filepath.Base(g.Worktree)
+	worktreePath := tildeReplace(g.Worktree)
+	subject := g.Subject
+	if len(subject) > 50 {
+		subject = subject[:47] + "..."
+	}
 
 	if g.Branch != "" {
-		return worktreeName + "/" + g.Branch + " now at " + g.Commit
+		return worktreePath + " (" + g.Branch + ") now at " + g.Commit + " \"" + subject + "\""
 	}
-	return worktreeName + " (detached) now at " + g.Commit
+	return worktreePath + " (detached) now at " + g.Commit + " \"" + subject + "\""
 }

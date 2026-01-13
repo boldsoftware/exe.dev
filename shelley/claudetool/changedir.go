@@ -6,10 +6,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"shelley.exe.dev/gitstate"
 	"shelley.exe.dev/llm"
 )
+
+// tildeReplace replaces the home directory prefix with ~ for display.
+func tildeReplace(path string) string {
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(path, home) {
+		return "~" + path[len(home):]
+	}
+	return path
+}
 
 // ChangeDirTool changes the working directory for bash commands.
 type ChangeDirTool struct {
@@ -101,7 +110,10 @@ func (c *ChangeDirTool) Run(ctx context.Context, m json.RawMessage) llm.ToolOut 
 	state := gitstate.GetGitState(targetPath)
 	var resultText string
 	if state.IsRepo {
-		resultText = fmt.Sprintf("Changed working directory to: %s\n\nGit repository detected (root: %s)", targetPath, state.Worktree)
+		resultText = fmt.Sprintf("Changed working directory to: %s\n\nGit repository detected (root: %s, branch: %s)", targetPath, tildeReplace(state.Worktree), state.Branch)
+		if state.Branch == "" {
+			resultText = fmt.Sprintf("Changed working directory to: %s\n\nGit repository detected (root: %s, detached HEAD)", targetPath, tildeReplace(state.Worktree))
+		}
 	} else {
 		resultText = fmt.Sprintf("Changed working directory to: %s\n\nNot in a git repository.", targetPath)
 	}
