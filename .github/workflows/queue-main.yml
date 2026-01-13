@@ -29,6 +29,8 @@ jobs:
       actions: write # needed to save caches
     outputs:
       commit_sha: ${{ steps.get_commit.outputs.commit_sha }}
+      shelley_changed: ${{ steps.changes.outputs.shelley_changed }}
+      exe_changed: ${{ steps.changes.outputs.exe_changed }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -154,14 +156,43 @@ jobs:
         id: get_commit
         run: echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
+      - name: Detect changed paths
+        id: changes
+        run: |
+          set -euo pipefail
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No files changed"
+            echo "shelley_changed=false" >> $GITHUB_OUTPUT
+            echo "exe_changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          SHELLEY_CHANGED=false
+          EXE_CHANGED=false
+
+          while IFS= read -r file; do
+            if [[ "$file" == shelley/* ]]; then
+              SHELLEY_CHANGED=true
+            else
+              EXE_CHANGED=true
+            fi
+          done <<< "$CHANGED_FILES"
+
+          echo "shelley_changed=$SHELLEY_CHANGED" >> $GITHUB_OUTPUT
+          echo "exe_changed=$EXE_CHANGED" >> $GITHUB_OUTPUT
+          echo "Shelley changed: $SHELLEY_CHANGED, Exe changed: $EXE_CHANGED"
+
   test:
     needs: [commit-validation-and-formatting]
+    if: needs.commit-validation-and-formatting.outputs.exe_changed == 'true'
     uses: ./.github/workflows/_tests.yml
     with:
       ref: ${{ needs.commit-validation-and-formatting.outputs.commit_sha }}
 
   shelley-test:
     needs: [commit-validation-and-formatting]
+    if: needs.commit-validation-and-formatting.outputs.shelley_changed == 'true'
     uses: ./.github/workflows/shelley-tests.yml
     with:
       ref: ${{ needs.commit-validation-and-formatting.outputs.commit_sha }}
@@ -170,6 +201,7 @@ jobs:
   push-to-main:
     runs-on: ubuntu-latest
     needs: [commit-validation-and-formatting, test, shelley-test]
+    if: ${{ !cancelled() && !failure() }}
     permissions:
       contents: write
       issues: write
