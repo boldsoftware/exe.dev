@@ -40,7 +40,7 @@ var testimonials = []Testimonial{
 	},
 	{
 		Quote:    "Daily appreciation for building this - exe.dev and Shelley are amazing! My friends and I (and my dad) have been churning out apps every day!",
-		Author:   "conti, Discord",
+		Author:   "consti, Discord",
 		Approved: true,
 	},
 	{
