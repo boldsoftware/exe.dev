@@ -614,6 +614,7 @@ func convertToLLMMessage(msg generated.Message) (llm.Message, error) {
 
 // notifySubscribers sends conversation metadata updates (e.g., slug changes) to subscribers.
 // This is used when only the conversation data changes, not the messages.
+// Uses Broadcast instead of Publish to avoid racing with message sequence IDs.
 func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 	s.mu.Lock()
 	manager, exists := s.activeConversations[conversationID]
@@ -635,30 +636,14 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 		return
 	}
 
-	// For conversation-only updates, we need to get the latest sequence ID
-	// to properly notify subscribers, but we send an empty message list
-	var latestSequenceID int64
-	err = s.db.Queries(ctx, func(q *generated.Queries) error {
-		messages, err := q.ListMessages(ctx, conversationID)
-		if err != nil {
-			return err
-		}
-		if len(messages) > 0 {
-			latestSequenceID = messages[len(messages)-1].SequenceID
-		}
-		return nil
-	})
-	if err != nil {
-		s.logger.Error("Failed to get latest sequence ID", "conversationID", conversationID, "error", err)
-		return
-	}
-
-	// Publish conversation update with no new messages
+	// Broadcast conversation update with no new messages.
+	// Using Broadcast instead of Publish ensures this metadata-only update
+	// doesn't race with notifySubscribersNewMessage which uses Publish with sequence IDs.
 	streamData := StreamResponse{
 		Messages:     nil, // No new messages, just conversation update
 		Conversation: conversation,
 	}
-	manager.subpub.Publish(latestSequenceID, streamData)
+	manager.subpub.Broadcast(streamData)
 
 	// Also notify conversation list subscribers (e.g., slug change)
 	s.publishConversationListUpdate(ConversationListUpdate{
