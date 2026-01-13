@@ -21,6 +21,8 @@ echo "Deploying blogd"
 echo "==========================================="
 echo ""
 
+go mod verify
+
 echo -e "${YELLOW}Building binary...${NC}"
 GOOS=linux GOARCH=amd64 go build -o "$BINARY_NAME" ./cmd/blogd
 

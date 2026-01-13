@@ -53,6 +53,9 @@ echo -e "${GREEN}✓ Tailscale SSH access verified${NC}"
 echo "Target VM: $INSTANCE_NAME (via Tailscale)"
 echo ""
 
+go mod verify
+(cd deps/sshpiper && go mod verify)
+
 # Generate timestamp for this deployment
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BINARY_NAME="sshpiperd.$TIMESTAMP"
