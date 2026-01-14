@@ -200,16 +200,38 @@ type MagicSecret struct {
 	CreatedAt   time.Time
 }
 
-// ipAbuseCacheEntry stores a cached IPQS IP abuse check result.
+// ipqsIPResult holds the relevant fields from an IPQS IP lookup.
+type ipqsIPResult struct {
+	RecentAbuse bool   `json:"recent_abuse"`
+	CountryCode string `json:"country_code"`
+}
+
+// ipAbuseCacheEntry stores a cached IPQS IP lookup result.
 type ipAbuseCacheEntry struct {
-	recentAbuse bool
-	cachedAt    time.Time
+	result   ipqsIPResult
+	cachedAt time.Time
 }
 
 const (
 	ipAbuseCacheMaxEntries = 32000
 	ipAbuseCacheTTL        = 24 * time.Hour
+
+	// ipAbuseAllowUSBypass allows US-based IPs to bypass the abuse check during US business hours.
+	ipAbuseAllowUSBypass = true
 )
+
+var (
+	tzEastern = mustLoadLocation("America/New_York")
+	tzPacific = mustLoadLocation("America/Los_Angeles")
+)
+
+func mustLoadLocation(name string) *time.Location {
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		panic(err)
+	}
+	return loc
+}
 
 // Server implements both HTTP and SSH server functionality for exe.dev
 type Server struct {
@@ -2664,8 +2686,8 @@ func (s *Server) ipFlaggedForAbuse(ctx context.Context, ip string) (flagged bool
 	if s.ipqsAPIKey == "" {
 		return false, ""
 	}
-	if flagged, ok := s.cachedIPAbuse(ip); ok {
-		return flagged, "" // no JSON available for cached results
+	if result, ok := s.cachedIPLookup(ip); ok {
+		return result.isFlagged(), "" // no JSON available for cached results
 	}
 
 	// Call IPQS IP API with a timeout
@@ -2692,43 +2714,60 @@ func (s *Server) ipFlaggedForAbuse(ctx context.Context, ip string) (flagged bool
 		return false, ""
 	}
 
-	var result struct {
-		Success     bool `json:"success"`
-		RecentAbuse bool `json:"recent_abuse"`
+	var apiResp struct {
+		Success bool `json:"success"`
+		ipqsIPResult
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := json.Unmarshal(body, &apiResp); err != nil {
 		s.slog().ErrorContext(ctx, "failed to parse IPQS IP response", "error", err, "ip", ip)
 		return false, ""
 	}
 
-	if !result.Success {
+	if !apiResp.Success {
 		s.slog().WarnContext(ctx, "IPQS IP returned unsuccessful response", "ip", ip)
 		return false, ""
 	}
 
-	s.cacheIPAbuseResult(ip, result.RecentAbuse)
-	return result.RecentAbuse, string(body)
+	s.cacheIPLookup(ip, apiResp.ipqsIPResult)
+	return apiResp.ipqsIPResult.isFlagged(), string(body)
 }
 
-// cachedIPAbuse returns the cached abuse status for ip.
-// Returns (flagged, true) if found and valid, (false, false) if not cached or expired.
-func (s *Server) cachedIPAbuse(ip string) (flagged, ok bool) {
+// isFlagged reports whether this IP should be blocked from signup.
+// Applies the US business hours bypass if enabled.
+func (r ipqsIPResult) isFlagged() bool {
+	if !r.RecentAbuse {
+		return false
+	}
+	if ipAbuseAllowUSBypass && r.CountryCode == "US" && isUSBusinessHours(time.Now()) {
+		return false
+	}
+	return true
+}
+
+// isUSBusinessHours reports whether t falls within US business hours:
+// 7am Eastern to 8pm Pacific (covers the continental US workday).
+func isUSBusinessHours(t time.Time) bool {
+	return t.In(tzEastern).Hour() >= 7 && t.In(tzPacific).Hour() < 20
+}
+
+// cachedIPLookup returns the cached IPQS lookup result for ip.
+func (s *Server) cachedIPLookup(ip string) (ipqsIPResult, bool) {
 	s.ipAbuseCacheMu.Lock()
 	defer s.ipAbuseCacheMu.Unlock()
 	entry, ok := s.ipAbuseCache[ip]
 	if !ok {
-		return false, false
+		return ipqsIPResult{}, false
 	}
 	if time.Since(entry.cachedAt) >= ipAbuseCacheTTL {
 		delete(s.ipAbuseCache, ip)
-		return false, false
+		return ipqsIPResult{}, false
 	}
-	return entry.recentAbuse, true
+	return entry.result, true
 }
 
-// cacheIPAbuseResult stores an IP abuse check result in the cache.
+// cacheIPLookup stores an IPQS lookup result in the cache.
 // Uses random replacement when the cache is full.
-func (s *Server) cacheIPAbuseResult(ip string, recentAbuse bool) {
+func (s *Server) cacheIPLookup(ip string, result ipqsIPResult) {
 	s.ipAbuseCacheMu.Lock()
 	defer s.ipAbuseCacheMu.Unlock()
 
@@ -2747,8 +2786,8 @@ func (s *Server) cacheIPAbuseResult(ip string, recentAbuse bool) {
 	}
 
 	s.ipAbuseCache[ip] = ipAbuseCacheEntry{
-		recentAbuse: recentAbuse,
-		cachedAt:    time.Now(),
+		result:   result,
+		cachedAt: time.Now(),
 	}
 }
 
