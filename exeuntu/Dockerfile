@@ -42,6 +42,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 		docker.io docker-buildx docker-compose-v2 \
 		imagemagick ffmpeg \
 		gh \
+		dbus-user-session \
 		&& apt-get remove -y pollinate ubuntu-fan && \
 	# Allow non-root users to use ping without sudo by granting CAP_NET_RAW
 	setcap cap_net_raw=+ep /usr/bin/ping && \
@@ -89,7 +90,6 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		ubuntu-fan.service \
 		ldconfig.service \
 		unattended-upgrades.service \
-		systemd-logind.service \
 		lxd-installer.socket \
 	        console-getty.service \
 		keyboard-setup.service \
@@ -110,7 +110,8 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		apt-daily-upgrade.timer \
 		apt-daily.timer \
 		plymouth-log.service && \
-	systemctl disable docker.service containerd.service systemd-logind.service getty.target \
+	# systemd-logind is disabled but not masked. It's involved in populating the XDG runtime dir sockets... somehow
+	systemctl disable docker.service containerd.service getty.target systemd-logind.service \
 		nginx.service \
                    console-getty.service \
 		   atop.service \
@@ -132,7 +133,6 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
                    systemd-udev-trigger.service \
                    systemd-udev-settle.service \
 		   e2scrub_reap.service \
-		   systemd-user-sessions.service \
 		   systemd-update-utmp.service \
 		   atopacct.service \
 		   sysstat.service \
@@ -153,7 +153,10 @@ RUN usermod -l exedev -c "exe.dev user" ubuntu && \
 	usermod -aG sudo exedev && \
 	usermod -aG docker exedev && \
 	sed -i 's/^ubuntu:/exedev:/' /etc/subuid /etc/subgid && \
-	echo 'exedev ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+	echo 'exedev ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
+	# Manually enable linger, this should autopopulate /run/user/1000
+	mkdir -p /var/lib/systemd/linger && \
+	touch /var/lib/systemd/linger/exedev
 
 ENV EXEUNTU=1
 
@@ -177,8 +180,11 @@ USER exedev
 
 WORKDIR /home/exedev
 
-# Update PATH in .bashrc to include .local/bin
-RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/exedev/.bashrc
+# Update PATH in .bashrc to include .local/bin and set XDG_RUNTIME_DIR for systemd user services
+# XDG paths are not autopopulated despite the presense of libpam-systemd. Manually add them here.
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/exedev/.bashrc && \
+    echo 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"' >> /home/exedev/.bashrc && \
+    echo 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"' >> /home/exedev/.profile
 
 # Configure git to use 'main' as default branch name
 RUN git config --global init.defaultBranch main
