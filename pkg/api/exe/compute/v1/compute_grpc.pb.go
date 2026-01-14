@@ -29,6 +29,8 @@ const (
 	ComputeService_DeleteInstance_FullMethodName   = "/exe.compute.v1.ComputeService/DeleteInstance"
 	ComputeService_SetInstanceGroup_FullMethodName = "/exe.compute.v1.ComputeService/SetInstanceGroup"
 	ComputeService_GetSystemInfo_FullMethodName    = "/exe.compute.v1.ComputeService/GetSystemInfo"
+	ComputeService_SendVM_FullMethodName           = "/exe.compute.v1.ComputeService/SendVM"
+	ComputeService_ReceiveVM_FullMethodName        = "/exe.compute.v1.ComputeService/ReceiveVM"
 )
 
 // ComputeServiceClient is the client API for ComputeService service.
@@ -45,6 +47,10 @@ type ComputeServiceClient interface {
 	DeleteInstance(ctx context.Context, in *DeleteInstanceRequest, opts ...grpc.CallOption) (*DeleteInstanceResponse, error)
 	SetInstanceGroup(ctx context.Context, in *SetInstanceGroupRequest, opts ...grpc.CallOption) (*SetInstanceGroupResponse, error)
 	GetSystemInfo(ctx context.Context, in *GetSystemInfoRequest, opts ...grpc.CallOption) (*GetSystemInfoResponse, error)
+	// SendVM streams a stopped VM's disk and config to the caller for migration
+	SendVM(ctx context.Context, opts ...grpc.CallOption) (ComputeService_SendVMClient, error)
+	// ReceiveVM receives a VM from another exelet
+	ReceiveVM(ctx context.Context, opts ...grpc.CallOption) (ComputeService_ReceiveVMClient, error)
 }
 
 type computeServiceClient struct {
@@ -224,6 +230,70 @@ func (c *computeServiceClient) GetSystemInfo(ctx context.Context, in *GetSystemI
 	return out, nil
 }
 
+func (c *computeServiceClient) SendVM(ctx context.Context, opts ...grpc.CallOption) (ComputeService_SendVMClient, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ComputeService_ServiceDesc.Streams[3], ComputeService_SendVM_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &computeServiceSendVMClient{ClientStream: stream}
+	return x, nil
+}
+
+type ComputeService_SendVMClient interface {
+	Send(*SendVMRequest) error
+	Recv() (*SendVMResponse, error)
+	grpc.ClientStream
+}
+
+type computeServiceSendVMClient struct {
+	grpc.ClientStream
+}
+
+func (x *computeServiceSendVMClient) Send(m *SendVMRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *computeServiceSendVMClient) Recv() (*SendVMResponse, error) {
+	m := new(SendVMResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *computeServiceClient) ReceiveVM(ctx context.Context, opts ...grpc.CallOption) (ComputeService_ReceiveVMClient, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ComputeService_ServiceDesc.Streams[4], ComputeService_ReceiveVM_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &computeServiceReceiveVMClient{ClientStream: stream}
+	return x, nil
+}
+
+type ComputeService_ReceiveVMClient interface {
+	Send(*ReceiveVMRequest) error
+	Recv() (*ReceiveVMResponse, error)
+	grpc.ClientStream
+}
+
+type computeServiceReceiveVMClient struct {
+	grpc.ClientStream
+}
+
+func (x *computeServiceReceiveVMClient) Send(m *ReceiveVMRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *computeServiceReceiveVMClient) Recv() (*ReceiveVMResponse, error) {
+	m := new(ReceiveVMResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ComputeServiceServer is the server API for ComputeService service.
 // All implementations must embed UnimplementedComputeServiceServer
 // for forward compatibility
@@ -238,6 +308,10 @@ type ComputeServiceServer interface {
 	DeleteInstance(context.Context, *DeleteInstanceRequest) (*DeleteInstanceResponse, error)
 	SetInstanceGroup(context.Context, *SetInstanceGroupRequest) (*SetInstanceGroupResponse, error)
 	GetSystemInfo(context.Context, *GetSystemInfoRequest) (*GetSystemInfoResponse, error)
+	// SendVM streams a stopped VM's disk and config to the caller for migration
+	SendVM(ComputeService_SendVMServer) error
+	// ReceiveVM receives a VM from another exelet
+	ReceiveVM(ComputeService_ReceiveVMServer) error
 	mustEmbedUnimplementedComputeServiceServer()
 }
 
@@ -274,6 +348,12 @@ func (UnimplementedComputeServiceServer) SetInstanceGroup(context.Context, *SetI
 }
 func (UnimplementedComputeServiceServer) GetSystemInfo(context.Context, *GetSystemInfoRequest) (*GetSystemInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSystemInfo not implemented")
+}
+func (UnimplementedComputeServiceServer) SendVM(ComputeService_SendVMServer) error {
+	return status.Errorf(codes.Unimplemented, "method SendVM not implemented")
+}
+func (UnimplementedComputeServiceServer) ReceiveVM(ComputeService_ReceiveVMServer) error {
+	return status.Errorf(codes.Unimplemented, "method ReceiveVM not implemented")
 }
 func (UnimplementedComputeServiceServer) mustEmbedUnimplementedComputeServiceServer() {}
 
@@ -477,6 +557,58 @@ func _ComputeService_GetSystemInfo_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ComputeService_SendVM_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ComputeServiceServer).SendVM(&computeServiceSendVMServer{ServerStream: stream})
+}
+
+type ComputeService_SendVMServer interface {
+	Send(*SendVMResponse) error
+	Recv() (*SendVMRequest, error)
+	grpc.ServerStream
+}
+
+type computeServiceSendVMServer struct {
+	grpc.ServerStream
+}
+
+func (x *computeServiceSendVMServer) Send(m *SendVMResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *computeServiceSendVMServer) Recv() (*SendVMRequest, error) {
+	m := new(SendVMRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func _ComputeService_ReceiveVM_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ComputeServiceServer).ReceiveVM(&computeServiceReceiveVMServer{ServerStream: stream})
+}
+
+type ComputeService_ReceiveVMServer interface {
+	Send(*ReceiveVMResponse) error
+	Recv() (*ReceiveVMRequest, error)
+	grpc.ServerStream
+}
+
+type computeServiceReceiveVMServer struct {
+	grpc.ServerStream
+}
+
+func (x *computeServiceReceiveVMServer) Send(m *ReceiveVMResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *computeServiceReceiveVMServer) Recv() (*ReceiveVMRequest, error) {
+	m := new(ReceiveVMRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ComputeService_ServiceDesc is the grpc.ServiceDesc for ComputeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -528,6 +660,18 @@ var ComputeService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "GetInstanceLogs",
 			Handler:       _ComputeService_GetInstanceLogs_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "SendVM",
+			Handler:       _ComputeService_SendVM_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "ReceiveVM",
+			Handler:       _ComputeService_ReceiveVM_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "exe/compute/v1/compute.proto",

@@ -2,7 +2,9 @@ package compute
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 
 	"google.golang.org/grpc/codes"
@@ -13,6 +15,11 @@ import (
 )
 
 func (s *Service) StartInstance(ctx context.Context, req *api.StartInstanceRequest) (*api.StartInstanceResponse, error) {
+	// Check if instance is being migrated
+	if err := s.checkNotMigrating(req.ID); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
+
 	i, err := s.getInstance(ctx, req.ID)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -56,17 +63,25 @@ func (s *Service) startInstance(ctx context.Context, id string) error {
 		return err
 	}
 
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
+	vmmgr, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
 	if err != nil {
 		return err
 	}
 
-	// update VMM config
-	vmCfg, err := vmm.Get(ctx, id)
+	// Get or create VMM config (migrated VMs won't have a VMM config yet)
+	vmCfg, err := vmmgr.Get(ctx, id)
+	isMigratedVM := false
 	if err != nil {
-		return err
+		if !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("failed to get VMM config: %w", err)
+		}
+		// VMM config doesn't exist - this is a migrated VM being started for the first time
+		s.log.DebugContext(ctx, "creating VMM config for migrated instance", "id", id)
+		vmCfg = iCfg.VMConfig
+		isMigratedVM = true
 	}
 
+	// Create network interface
 	networkInterface, err := s.context.NetworkManager.CreateInterface(ctx, vmCfg.ID)
 	if err != nil {
 		return err
@@ -74,13 +89,20 @@ func (s *Service) startInstance(ctx context.Context, id string) error {
 	// update network interface (ip= boot arg is derived from this at runtime)
 	vmCfg.NetworkInterface = networkInterface
 
-	// update config
-	if err := vmm.Update(ctx, vmCfg); err != nil {
-		return err
+	if isMigratedVM {
+		// For migrated VMs, create the VMM config with network interface already set
+		if err := vmmgr.Create(ctx, vmCfg); err != nil {
+			return fmt.Errorf("failed to create VMM config: %w", err)
+		}
+	} else {
+		// For existing VMs, update the config
+		if err := vmmgr.Update(ctx, vmCfg); err != nil {
+			return err
+		}
 	}
 
 	// start
-	if err := vmm.Start(ctx, id); err != nil {
+	if err := vmmgr.Start(ctx, id); err != nil {
 		return err
 	}
 

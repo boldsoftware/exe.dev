@@ -15,6 +15,10 @@ service ComputeService {
   rpc DeleteInstance(DeleteInstanceRequest) returns (DeleteInstanceResponse);
   rpc SetInstanceGroup(SetInstanceGroupRequest) returns (SetInstanceGroupResponse);
   rpc GetSystemInfo(GetSystemInfoRequest) returns (GetSystemInfoResponse);
+  // SendVM streams a stopped VM's disk and config to the caller for migration
+  rpc SendVM(stream SendVMRequest) returns (stream SendVMResponse);
+  // ReceiveVM receives a VM from another exelet
+  rpc ReceiveVM(stream ReceiveVMRequest) returns (stream ReceiveVMResponse);
 }
 
 message CreateInstanceRequest {
@@ -251,4 +255,90 @@ message Server {
 message ServerLocality {
   string region = 1;
   string zone = 2;
+}
+
+// SendVM messages
+message SendVMRequest {
+  oneof type {
+    SendVMStartRequest start = 1;
+  }
+}
+
+message SendVMStartRequest {
+  string instance_id = 1;
+  // If true, send full stream of instance only (target already has base image).
+  // If false, send base image snapshot first, then incremental instance stream.
+  // Note: "true" results in a larger transfer but works reliably regardless of
+  // target's snapshot state. "false" is more efficient but requires the target
+  // to not have the base image (zfs recv will fail if it exists with snapshots).
+  bool target_has_base_image = 2;
+}
+
+message SendVMResponse {
+  oneof type {
+    SendVMMetadata metadata = 1;
+    SendVMDataChunk data = 2;
+    SendVMComplete complete = 3;
+  }
+}
+
+message SendVMMetadata {
+  Instance instance = 1;             // Full instance config
+  string base_image_id = 2;          // e.g., "sha256:abc123..."
+  uint64 total_size_estimate = 3;    // Estimated bytes for progress display
+  bool encrypted = 4;                // Whether disk is encrypted
+  bytes encryption_key = 5;          // Encryption key (if encrypted)
+}
+
+message SendVMDataChunk {
+  bytes data = 1;           // Raw zfs send data (64KB chunks)
+  bool is_base_image = 2;   // True if this chunk is base image data
+}
+
+message SendVMComplete {
+  string checksum = 1;      // SHA256 of entire stream for verification
+  uint64 total_bytes = 2;   // Total bytes transferred
+}
+
+// ReceiveVM messages
+message ReceiveVMRequest {
+  oneof type {
+    ReceiveVMStartRequest start = 1;
+    ReceiveVMDataChunk data = 2;
+    ReceiveVMComplete complete = 3;
+  }
+}
+
+message ReceiveVMStartRequest {
+  string instance_id = 1;           // Instance ID to use on target
+  Instance source_instance = 2;     // Instance config from source
+  string base_image_id = 3;         // Base image ID to check/clone
+  bool encrypted = 4;               // Whether disk is encrypted
+  bytes encryption_key = 5;         // Encryption key (if encrypted)
+  string group_id = 6;              // Target group ID
+}
+
+message ReceiveVMDataChunk {
+  bytes data = 1;           // Raw zfs recv data
+  bool is_base_image = 2;   // True if this chunk is base image data
+}
+
+message ReceiveVMComplete {
+  string checksum = 1;  // Checksum for verification
+}
+
+message ReceiveVMResponse {
+  oneof type {
+    ReceiveVMReady ready = 1;
+    ReceiveVMResult result = 2;
+  }
+}
+
+message ReceiveVMReady {
+  bool has_base_image = 1;  // Target already has the base image
+}
+
+message ReceiveVMResult {
+  Instance instance = 1;  // Created instance
+  string error = 2;       // Error message if failed
 }

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"io"
 
 	api "exe.dev/pkg/api/exe/storage/v1"
 )
@@ -32,4 +33,25 @@ type StorageManager interface {
 	Fsck(ctx context.Context, id string) error
 	// Delete removes an instance fs
 	Delete(ctx context.Context, id string) error
+
+	// Migration methods
+
+	// GetDatasetName returns the full dataset name for an ID (e.g., "tank/instance-id")
+	GetDatasetName(id string) string
+	// GetOrigin returns the origin (parent snapshot) of a dataset, or empty string if none
+	GetOrigin(id string) string
+	// CreateMigrationSnapshot creates a snapshot for migration and returns its name and a cleanup function
+	CreateMigrationSnapshot(ctx context.Context, id string) (snapName string, cleanup func(), err error)
+	// SendSnapshot streams ZFS snapshot data. If incremental is true, sends only delta from baseSnap.
+	SendSnapshot(ctx context.Context, snapName string, incremental bool, baseSnap string) (io.ReadCloser, error)
+	// ReceiveSnapshot receives a ZFS stream and creates/updates a dataset
+	ReceiveSnapshot(ctx context.Context, id string, reader io.Reader) error
+	// GetEncryptionKey returns the encryption key for an encrypted dataset, or nil if not encrypted
+	GetEncryptionKey(id string) ([]byte, error)
+	// SetEncryptionKey stores an encryption key for a dataset
+	SetEncryptionKey(id string, key []byte) error
+	// SnapshotExists checks if a ZFS snapshot exists
+	SnapshotExists(snapName string) bool
+	// CreateSnapshot creates a ZFS snapshot with the given full name (e.g., "tank/sha256:...@instance-id")
+	CreateSnapshot(ctx context.Context, snapName string) error
 }

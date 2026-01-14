@@ -1,0 +1,203 @@
+package instances
+
+import (
+	"context"
+	"fmt"
+	"io"
+
+	"github.com/dustin/go-humanize"
+	"github.com/urfave/cli/v2"
+
+	"exe.dev/cmd/exelet-ctl/helpers"
+	"exe.dev/exelet/client"
+	api "exe.dev/pkg/api/exe/compute/v1"
+)
+
+var migrateInstanceCommand = &cli.Command{
+	Name:      "migrate",
+	Usage:     "migrate a stopped instance to another exelet",
+	ArgsUsage: "<instance-id> <target-address>",
+	Flags: []cli.Flag{
+		&cli.BoolFlag{
+			Name:  "delete",
+			Usage: "delete instance from source after successful migration",
+		},
+	},
+	Action: func(clix *cli.Context) error {
+		if clix.NArg() < 2 {
+			return fmt.Errorf("usage: migrate <instance-id> <target-address>")
+		}
+
+		instanceID := clix.Args().Get(0)
+		targetAddr := clix.Args().Get(1)
+		deleteAfter := clix.Bool("delete")
+
+		// Connect to source exelet (from --addr flag)
+		sourceClient, err := helpers.GetClient(clix)
+		if err != nil {
+			return fmt.Errorf("failed to connect to source: %w", err)
+		}
+		defer sourceClient.Close()
+
+		// Connect to target exelet
+		targetClient, err := client.NewClient(targetAddr, client.WithInsecure())
+		if err != nil {
+			return fmt.Errorf("failed to connect to target: %w", err)
+		}
+		defer targetClient.Close()
+
+		ctx := context.WithoutCancel(clix.Context)
+
+		// Start spinner
+		sp := helpers.NewSpinner("starting migration...")
+		sp.Start()
+		defer sp.Stop()
+
+		// Start SendVM stream on source
+		sp.Update("connecting to source...")
+		sendStream, err := sourceClient.SendVM(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to start SendVM: %w", err)
+		}
+
+		// Send start request to source
+		// We tell sender TargetHasBaseImage=true to get a full stream. This is because
+		// ZFS incremental streams require the exact origin snapshot (with matching GUID)
+		// to exist on target. Even if target has the base image, it won't have the same
+		// origin snapshot GUID. Sending a full stream works reliably.
+		sp.Update("requesting VM data...")
+		if err := sendStream.Send(&api.SendVMRequest{
+			Type: &api.SendVMRequest_Start{
+				Start: &api.SendVMStartRequest{
+					InstanceID:         instanceID,
+					TargetHasBaseImage: true,
+				},
+			},
+		}); err != nil {
+			return fmt.Errorf("failed to send start request: %w", err)
+		}
+
+		// Receive metadata from source
+		resp, err := sendStream.Recv()
+		if err != nil {
+			return fmt.Errorf("failed to receive metadata: %w", err)
+		}
+		metadata := resp.GetMetadata()
+		if metadata == nil {
+			return fmt.Errorf("expected metadata, got %T", resp.Type)
+		}
+
+		sp.Update(fmt.Sprintf("migrating %s (%s)...", metadata.Instance.Name, humanize.Bytes(metadata.TotalSizeEstimate)))
+
+		// Start ReceiveVM stream on target
+		recvStream, err := targetClient.ReceiveVM(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to start ReceiveVM: %w", err)
+		}
+
+		// Send start request to target
+		if err := recvStream.Send(&api.ReceiveVMRequest{
+			Type: &api.ReceiveVMRequest_Start{
+				Start: &api.ReceiveVMStartRequest{
+					InstanceID:     instanceID,
+					SourceInstance: metadata.Instance,
+					BaseImageID:    metadata.BaseImageID,
+					Encrypted:      metadata.Encrypted,
+					EncryptionKey:  metadata.EncryptionKey,
+					GroupID:        metadata.Instance.GroupID,
+				},
+			},
+		}); err != nil {
+			return fmt.Errorf("failed to send receive start: %w", err)
+		}
+
+		// Receive ready from target
+		recvResp, err := recvStream.Recv()
+		if err != nil {
+			return fmt.Errorf("failed to receive ready: %w", err)
+		}
+		ready := recvResp.GetReady()
+		if ready == nil {
+			return fmt.Errorf("expected ready, got %T", recvResp.Type)
+		}
+
+		// Pipe data from source to target
+		var totalBytes uint64
+		for {
+			resp, err := sendStream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("failed to receive from source: %w", err)
+			}
+
+			switch v := resp.Type.(type) {
+			case *api.SendVMResponse_Data:
+				totalBytes += uint64(len(v.Data.Data))
+				sp.Update(fmt.Sprintf("transferring %s / %s...",
+					humanize.Bytes(totalBytes),
+					humanize.Bytes(metadata.TotalSizeEstimate)))
+
+				if err := recvStream.Send(&api.ReceiveVMRequest{
+					Type: &api.ReceiveVMRequest_Data{
+						Data: &api.ReceiveVMDataChunk{
+							Data:        v.Data.Data,
+							IsBaseImage: v.Data.IsBaseImage,
+						},
+					},
+				}); err != nil {
+					return fmt.Errorf("failed to send to target: %w", err)
+				}
+
+			case *api.SendVMResponse_Complete:
+				sp.Update("verifying transfer...")
+				if err := recvStream.Send(&api.ReceiveVMRequest{
+					Type: &api.ReceiveVMRequest_Complete{
+						Complete: &api.ReceiveVMComplete{
+							Checksum: v.Complete.Checksum,
+						},
+					},
+				}); err != nil {
+					return fmt.Errorf("failed to send complete: %w", err)
+				}
+			}
+		}
+
+		// Close send direction on target to signal we're done
+		if err := recvStream.CloseSend(); err != nil {
+			return fmt.Errorf("failed to close send: %w", err)
+		}
+
+		// Receive result from target
+		for {
+			recvResp, err := recvStream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("failed to receive result: %w", err)
+			}
+
+			if result := recvResp.GetResult(); result != nil {
+				if result.Error != "" {
+					return fmt.Errorf("migration failed: %s", result.Error)
+				}
+				sp.Update("migration complete")
+				break
+			}
+		}
+
+		// Delete from source if requested
+		if deleteAfter {
+			sp.Update("deleting from source...")
+			if _, err := sourceClient.DeleteInstance(ctx, &api.DeleteInstanceRequest{ID: instanceID}); err != nil {
+				return fmt.Errorf("migration succeeded but failed to delete from source: %w", err)
+			}
+		}
+
+		sp.Final(fmt.Sprintf("migrated %s to %s (%s transferred)", instanceID, targetAddr, humanize.Bytes(totalBytes)))
+
+		return nil
+	},
+}

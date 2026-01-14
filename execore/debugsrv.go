@@ -20,6 +20,7 @@ import (
 
 	"exe.dev/email"
 	"exe.dev/exedb"
+	exeletclient "exe.dev/exelet/client"
 	"exe.dev/llmgateway"
 	"exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
@@ -39,6 +40,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/boxes", s.handleDebugBoxes)
 	mux.HandleFunc("/debug/boxes/{name}", s.handleDebugBoxDetails)
 	mux.HandleFunc("POST /debug/boxes/delete", s.handleDebugBoxDelete)
+	mux.HandleFunc("GET /debug/boxes/migrate", s.handleDebugBoxMigrateForm)
+	mux.HandleFunc("POST /debug/boxes/migrate", s.handleDebugBoxMigrate)
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
 	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
 	mux.HandleFunc("POST /debug/users/toggle-vm-creation", s.handleDebugToggleVMCreation)
@@ -160,6 +163,8 @@ h1 { margin-bottom: 10px; }
 #boxesTable td, #boxesTable th { font-size: 13px; }
 #boxesTable thead tr.filters th { padding: 4px; }
 #boxesTable thead tr.filters input { width: 100%%; box-sizing: border-box; font-size: 11px; padding: 4px; }
+.migrate-btn { display: inline-block; background: #007bff; color: white; padding: 4px 8px; border-radius: 3px; font-size: 12px; margin-right: 4px; text-decoration: none; }
+.migrate-btn:hover { background: #0056b3; text-decoration: none; }
 .delete-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; }
 .delete-btn:hover { background: #c82333; }
 dialog { padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
@@ -236,7 +241,8 @@ $(document).ready(function() {
             { data: 'status' },
             { data: 'owner_email', defaultContent: '' },
             { data: 'name', orderable: false, render: function(d) {
-                return '<button class="delete-btn" data-box="' + d + '">Delete</button>';
+                return '<a href="/debug/boxes/migrate?box_name=' + encodeURIComponent(d) + '" class="migrate-btn">Migrate</a> ' +
+                       '<button class="delete-btn" data-box="' + d + '">Delete</button>';
             }}
         ],
         initComplete: function() {
@@ -270,6 +276,7 @@ document.getElementById('confirmInput').addEventListener('input', function() {
     var expected = document.getElementById('boxNameInput').value;
     document.getElementById('confirmBtn').disabled = (this.value !== expected);
 });
+
 </script>
 </body></html>
 `, source, sourceNav, source)
@@ -419,6 +426,479 @@ func (s *Server) handleDebugBoxDelete(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect back to the boxes page
 	http.Redirect(w, r, "/debug/boxes", http.StatusSeeOther)
+}
+
+// handleDebugBoxMigrateForm shows the migration form.
+func (s *Server) handleDebugBoxMigrateForm(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	boxName := r.URL.Query().Get("box_name")
+	if boxName == "" {
+		http.Error(w, "box_name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Look up the box to get its current host
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("box %q not found: %v", boxName, err), http.StatusNotFound)
+		return
+	}
+	currentHost := box.Ctrhost
+
+	// Get list of exelets for the dropdown, sorted and excluding current host
+	var addrs []string
+	for addr := range s.exeletClients {
+		if addr != currentHost {
+			addrs = append(addrs, addr)
+		}
+	}
+	sort.Strings(addrs)
+
+	var exeletOptions string
+	for _, addr := range addrs {
+		exeletOptions += fmt.Sprintf(`<option value="%s">%s</option>`, html.EscapeString(addr), html.EscapeString(addr))
+	}
+
+	// Escape box name for safe HTML interpolation
+	escapedBoxName := html.EscapeString(boxName)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>Migrate Box: %s</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; max-width: 600px; }
+h1 { margin-bottom: 10px; }
+label { display: block; margin-top: 15px; font-weight: bold; }
+select, input[type="text"] { width: 100%%; padding: 8px; margin-top: 5px; box-sizing: border-box; font-size: 14px; }
+button { margin-top: 20px; padding: 10px 20px; font-size: 14px; cursor: pointer; }
+button[type="submit"] { background: #007bff; color: white; border: none; }
+button[type="submit"]:disabled { background: #ccc; cursor: not-allowed; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+#progress { margin-top: 20px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; display: none; white-space: pre-wrap; font-family: monospace; font-size: 13px; max-height: 400px; overflow-y: auto; }
+#progress.active { display: block; }
+#progress.error { background: #f8d7da; border-color: #f5c6cb; }
+#progress.success { background: #d4edda; border-color: #c3e6cb; }
+.warning { background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 12px; margin: 15px 0; }
+.warning strong { color: #856404; }
+</style>
+</head><body>
+<h1>Migrate Box</h1>
+<p><a href="/debug/boxes">&larr; Back to boxes</a></p>
+
+<div class="warning"><strong>Warning:</strong> The VM will be stopped during migration and restarted on the target host.</div>
+
+<form id="migrateForm" method="post" action="/debug/boxes/migrate">
+<p>Box: <strong>%s</strong></p>
+<input type="hidden" name="box_name" value="%s">
+
+<label for="target">Target exelet:</label>
+<select name="target" id="target" required>
+<option value="">Select target exelet...</option>
+%s
+</select>
+
+<label for="confirm_name">Type box name to confirm:</label>
+<input type="text" name="confirm_name" id="confirm_name" autocomplete="off" placeholder="%s">
+
+<p>
+<button type="submit" id="submitBtn" disabled>Migrate</button>
+<a href="/debug/boxes">Cancel</a>
+</p>
+</form>
+
+<div id="progress"></div>
+
+<script>
+var expectedName = %q;
+document.getElementById('confirm_name').addEventListener('input', function() {
+    var target = document.getElementById('target').value;
+    document.getElementById('submitBtn').disabled = (this.value !== expectedName || !target);
+});
+document.getElementById('target').addEventListener('change', function() {
+    var confirmed = document.getElementById('confirm_name').value;
+    document.getElementById('submitBtn').disabled = (confirmed !== expectedName || !this.value);
+});
+
+document.getElementById('migrateForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var form = this;
+    var progress = document.getElementById('progress');
+    var submitBtn = document.getElementById('submitBtn');
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Migrating...';
+    progress.className = 'active';
+    progress.textContent = 'Starting migration...\n';
+
+    fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form)
+    }).then(function(response) {
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+
+        function read() {
+            reader.read().then(function(result) {
+                if (result.done) {
+                    return;
+                }
+                var text = decoder.decode(result.value, {stream: true});
+                progress.textContent += text;
+                progress.scrollTop = progress.scrollHeight;
+
+                // Check for completion markers
+                if (text.includes('MIGRATION_SUCCESS:')) {
+                    progress.className = 'active success';
+                    var match = text.match(/MIGRATION_SUCCESS:(\S+)/);
+                    if (match) {
+                        // Add a clickable link instead of auto-redirecting
+                        var link = document.createElement('a');
+                        link.href = '/debug/boxes/' + match[1];
+                        link.textContent = 'Go to box details \u2192';
+                        link.style.cssText = 'display:inline-block;margin-top:15px;padding:10px 20px;background:#28a745;color:white;text-decoration:none;border-radius:4px;';
+                        progress.parentNode.insertBefore(link, progress.nextSibling);
+                    }
+                } else if (text.includes('MIGRATION_ERROR:')) {
+                    progress.className = 'active error';
+                    submitBtn.textContent = 'Migrate';
+                    submitBtn.disabled = false;
+                }
+
+                read();
+            });
+        }
+        read();
+    }).catch(function(err) {
+        progress.className = 'active error';
+        progress.textContent += '\nFetch error: ' + err;
+        submitBtn.textContent = 'Migrate';
+        submitBtn.disabled = false;
+    });
+});
+</script>
+</body></html>
+`, escapedBoxName, escapedBoxName, escapedBoxName, exeletOptions, escapedBoxName, boxName)
+}
+
+// handleDebugBoxMigrate handles migration of a box to a different exelet.
+// It streams progress updates to the client.
+func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	boxName := r.FormValue("box_name")
+	targetAddr := r.FormValue("target")
+	confirmName := r.FormValue("confirm_name")
+
+	// Set up streaming response
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	writeProgress := func(format string, args ...any) {
+		fmt.Fprintf(w, format+"\n", args...)
+		flusher.Flush()
+	}
+
+	writeError := func(format string, args ...any) {
+		writeProgress("ERROR: "+format, args...)
+		writeProgress("MIGRATION_ERROR:")
+	}
+
+	if boxName == "" || targetAddr == "" {
+		writeError("box_name and target are required")
+		return
+	}
+
+	if boxName != confirmName {
+		writeError("confirm_name must match box_name")
+		return
+	}
+
+	writeProgress("Looking up box %q...", boxName)
+
+	// Look up the box
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError("box %q not found", boxName)
+			return
+		}
+		writeError("failed to look up box: %v", err)
+		return
+	}
+
+	if box.ContainerID == nil {
+		writeError("box has no container_id")
+		return
+	}
+
+	writeProgress("Box found: container_id=%s, source=%s", *box.ContainerID, box.Ctrhost)
+
+	// Get source exelet client
+	sourceClient := s.getExeletClient(box.Ctrhost)
+	if sourceClient == nil {
+		writeError("source exelet %q not available", box.Ctrhost)
+		return
+	}
+
+	// Get target exelet client
+	targetClient := s.getExeletClient(targetAddr)
+	if targetClient == nil {
+		writeError("target exelet %q not configured", targetAddr)
+		return
+	}
+
+	if box.Ctrhost == targetAddr {
+		writeError("source and target exelet are the same")
+		return
+	}
+
+	containerID := *box.ContainerID
+
+	// Use a context that won't be cancelled if the browser disconnects.
+	// This ensures migration completes and the VM isn't left stopped on source.
+	ctx = context.WithoutCancel(ctx)
+
+	// Step 1: Stop VM on source
+	writeProgress("Stopping VM on source exelet...")
+	s.slog().InfoContext(ctx, "stopping VM for migration", "box", boxName, "container_id", containerID, "source", box.Ctrhost)
+	if _, err := sourceClient.client.StopInstance(ctx, &computeapi.StopInstanceRequest{ID: containerID}); err != nil {
+		writeError("failed to stop VM on source: %v", err)
+		return
+	}
+	writeProgress("VM stopped.")
+
+	// Step 2: Perform migration
+	writeProgress("Starting disk transfer from %s to %s...", box.Ctrhost, targetAddr)
+	s.slog().InfoContext(ctx, "starting migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
+	if err := s.migrateVM(ctx, sourceClient.client, targetClient.client, containerID, writeProgress); err != nil {
+		writeError("migration failed: %v", err)
+		return
+	}
+	writeProgress("Disk transfer complete.")
+
+	// Step 3: Start VM on target
+	writeProgress("Starting VM on target exelet...")
+	s.slog().InfoContext(ctx, "starting VM on target", "box", boxName, "target", targetAddr)
+	if _, err := targetClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err != nil {
+		writeError("migration succeeded but failed to start VM on target: %v", err)
+		return
+	}
+	writeProgress("VM started on target.")
+
+	// Step 4: Get new SSH port from target
+	writeProgress("Getting new SSH port...")
+	instance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+	if err != nil {
+		writeError("migration succeeded but failed to get instance info: %v", err)
+		return
+	}
+	newSSHPort := int64(instance.Instance.SSHPort)
+	writeProgress("New SSH port: %d", newSSHPort)
+
+	// Step 5: Update database with new ctrhost, ssh_port, and status
+	writeProgress("Updating database...")
+	if err := withTx1(s, ctx, (*exedb.Queries).UpdateBoxMigration, exedb.UpdateBoxMigrationParams{
+		Ctrhost: targetAddr,
+		SSHPort: &newSSHPort,
+		Status:  "running",
+		ID:      box.ID,
+	}); err != nil {
+		writeError("migration succeeded but failed to update database: %v", err)
+		return
+	}
+	writeProgress("Database updated.")
+
+	// Log warning about source cleanup
+	s.slog().WarnContext(ctx, "VM migrated - source instance needs manual cleanup",
+		"box_name", boxName,
+		"container_id", containerID,
+		"source_host", box.Ctrhost,
+		"target_host", targetAddr,
+	)
+
+	writeProgress("")
+	writeProgress("=== Migration complete! ===")
+	writeProgress("")
+	writeProgress("To verify the target instance:")
+	writeProgress("  1. Check boot logs:")
+	writeProgress("     ./exelet-ctl -a %s compute instances logs %s", targetAddr, containerID)
+	writeProgress("  2. Verify SSH connectivity to the box")
+	writeProgress("")
+	writeProgress("After confirming the target instance is working correctly,")
+	writeProgress("remove the old instance from the source exelet:")
+	writeProgress("  ./exelet-ctl -a %s compute instances rm %s", box.Ctrhost, containerID)
+	writeProgress("")
+	writeProgress("View box details: /debug/boxes/%s", boxName)
+	writeProgress("MIGRATION_SUCCESS:%s", boxName)
+}
+
+// migrateVM performs the SendVM/ReceiveVM streaming between source and target exelets.
+// The progress callback is called periodically with status updates.
+func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Client, instanceID string, progress func(string, ...any)) error {
+	// Start SendVM on source
+	sendStream, err := source.SendVM(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to start SendVM: %w", err)
+	}
+
+	progress("Requesting VM metadata from source...")
+
+	// First, get metadata from source to learn the base image ID.
+	// We tell sender target doesn't have base image initially - we'll handle this below.
+	if err := sendStream.Send(&computeapi.SendVMRequest{
+		Type: &computeapi.SendVMRequest_Start{
+			Start: &computeapi.SendVMStartRequest{
+				InstanceID:         instanceID,
+				TargetHasBaseImage: true, // Tell sender to send full stream (see comment below)
+			},
+		},
+	}); err != nil {
+		return fmt.Errorf("failed to send start request: %w", err)
+	}
+
+	// Receive metadata from source
+	resp, err := sendStream.Recv()
+	if err != nil {
+		return fmt.Errorf("failed to receive metadata: %w", err)
+	}
+	metadata := resp.GetMetadata()
+	if metadata == nil {
+		return fmt.Errorf("expected metadata, got %T", resp.Type)
+	}
+
+	progress("Received metadata: image=%s, base_image=%s, encrypted=%v",
+		metadata.Instance.Image, metadata.BaseImageID, metadata.Encrypted)
+
+	// Start ReceiveVM on target
+	recvStream, err := target.ReceiveVM(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to start ReceiveVM: %w", err)
+	}
+
+	progress("Initiating receive on target...")
+
+	// Send start request to target
+	if err := recvStream.Send(&computeapi.ReceiveVMRequest{
+		Type: &computeapi.ReceiveVMRequest_Start{
+			Start: &computeapi.ReceiveVMStartRequest{
+				InstanceID:     instanceID,
+				SourceInstance: metadata.Instance,
+				BaseImageID:    metadata.BaseImageID,
+				Encrypted:      metadata.Encrypted,
+				EncryptionKey:  metadata.EncryptionKey,
+				GroupID:        metadata.Instance.GroupID,
+			},
+		},
+	}); err != nil {
+		return fmt.Errorf("failed to send receive start: %w", err)
+	}
+
+	// Wait for ready from target - tells us if target has base image
+	recvResp, err := recvStream.Recv()
+	if err != nil {
+		return fmt.Errorf("failed to receive ready: %w", err)
+	}
+	ready := recvResp.GetReady()
+	if ready == nil {
+		return fmt.Errorf("expected ready, got %T", recvResp.Type)
+	}
+
+	progress("Target ready (has_base_image=%v)", ready.HasBaseImage)
+
+	// NOTE: We always tell sender TargetHasBaseImage=true above, which makes it send
+	// a full stream of the instance. This is because ZFS incremental streams require
+	// the exact origin snapshot (with matching GUID) to exist on target. Even if target
+	// has the base image, it won't have the same origin snapshot GUID. Sending a full
+	// stream is less space-efficient but works reliably.
+	//
+	// If target doesn't have base image at all, the full stream will still work - it
+	// creates an independent dataset. The base image can be transferred separately
+	// if needed for future clones.
+
+	progress("Transferring disk data...")
+
+	// Pipe data chunks from source to target
+	var totalBytes uint64
+	lastReportedMB := uint64(0)
+	for {
+		resp, err := sendStream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to receive from source: %w", err)
+		}
+
+		switch v := resp.Type.(type) {
+		case *computeapi.SendVMResponse_Data:
+			totalBytes += uint64(len(v.Data.Data))
+
+			// Report progress every 10MB
+			currentMB := totalBytes / (1024 * 1024)
+			if currentMB >= lastReportedMB+10 {
+				progress("Transferred %d MB...", currentMB)
+				lastReportedMB = currentMB
+			}
+
+			if err := recvStream.Send(&computeapi.ReceiveVMRequest{
+				Type: &computeapi.ReceiveVMRequest_Data{
+					Data: &computeapi.ReceiveVMDataChunk{
+						Data:        v.Data.Data,
+						IsBaseImage: v.Data.IsBaseImage,
+					},
+				},
+			}); err != nil {
+				return fmt.Errorf("failed to send to target: %w", err)
+			}
+
+		case *computeapi.SendVMResponse_Complete:
+			progress("Transfer complete, verifying checksum...")
+			if err := recvStream.Send(&computeapi.ReceiveVMRequest{
+				Type: &computeapi.ReceiveVMRequest_Complete{
+					Complete: &computeapi.ReceiveVMComplete{
+						Checksum: v.Complete.Checksum,
+					},
+				},
+			}); err != nil {
+				return fmt.Errorf("failed to send complete: %w", err)
+			}
+		}
+	}
+
+	progress("Total transferred: %d MB", totalBytes/(1024*1024))
+
+	// Close send direction on target
+	if err := recvStream.CloseSend(); err != nil {
+		return fmt.Errorf("failed to close send: %w", err)
+	}
+
+	// Wait for result from target
+	progress("Waiting for target to finalize...")
+	for {
+		recvResp, err := recvStream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to receive result: %w", err)
+		}
+
+		if result := recvResp.GetResult(); result != nil {
+			if result.Error != "" {
+				return fmt.Errorf("target error: %s", result.Error)
+			}
+			progress("Target finalized successfully.")
+			break
+		}
+	}
+
+	return nil
 }
 
 // handleDebugBoxDetails displays detailed information about a specific box.

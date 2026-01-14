@@ -71,6 +71,11 @@ UPDATE boxes
 SET status = ?, updated_at = CURRENT_TIMESTAMP
 WHERE id = ?;
 
+-- name: UpdateBoxMigration :exec
+UPDATE boxes
+SET ctrhost = ?, ssh_port = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ?;
+
 -- name: GetBoxByNameAndAlloc :one
 SELECT * FROM boxes WHERE name = ? AND created_by_user_id = ?;
 

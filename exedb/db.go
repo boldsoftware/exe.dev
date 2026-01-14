@@ -543,6 +543,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateBoxCreationLogStmt, err = db.PrepareContext(ctx, updateBoxCreationLog); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxCreationLog: %w", err)
 	}
+	if q.updateBoxMigrationStmt, err = db.PrepareContext(ctx, updateBoxMigration); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxMigration: %w", err)
+	}
 	if q.updateBoxRoutesStmt, err = db.PrepareContext(ctx, updateBoxRoutes); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxRoutes: %w", err)
 	}
@@ -1473,6 +1476,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxCreationLogStmt: %w", cerr)
 		}
 	}
+	if q.updateBoxMigrationStmt != nil {
+		if cerr := q.updateBoxMigrationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxMigrationStmt: %w", cerr)
+		}
+	}
 	if q.updateBoxRoutesStmt != nil {
 		if cerr := q.updateBoxRoutesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxRoutesStmt: %w", cerr)
@@ -1785,6 +1793,7 @@ type Queries struct {
 	updateBoxContainerAndStatusStmt            *sql.Stmt
 	updateBoxContainerIDAndStatusStmt          *sql.Stmt
 	updateBoxCreationLogStmt                   *sql.Stmt
+	updateBoxMigrationStmt                     *sql.Stmt
 	updateBoxRoutesStmt                        *sql.Stmt
 	updateBoxSSHDetailsStmt                    *sql.Stmt
 	updateBoxStatusStmt                        *sql.Stmt
@@ -1984,6 +1993,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxContainerAndStatusStmt:            q.updateBoxContainerAndStatusStmt,
 		updateBoxContainerIDAndStatusStmt:          q.updateBoxContainerIDAndStatusStmt,
 		updateBoxCreationLogStmt:                   q.updateBoxCreationLogStmt,
+		updateBoxMigrationStmt:                     q.updateBoxMigrationStmt,
 		updateBoxRoutesStmt:                        q.updateBoxRoutesStmt,
 		updateBoxSSHDetailsStmt:                    q.updateBoxSSHDetailsStmt,
 		updateBoxStatusStmt:                        q.updateBoxStatusStmt,

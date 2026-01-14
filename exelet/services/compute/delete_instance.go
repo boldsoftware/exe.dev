@@ -15,6 +15,11 @@ import (
 func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceRequest) (*api.DeleteInstanceResponse, error) {
 	// use singleflight to ensure only one delete per instance
 	resp, err, _ := s.instanceDeleteGroup.Do(req.ID, func() (*api.DeleteInstanceResponse, error) {
+		// Check if instance is being migrated
+		if err := s.checkNotMigrating(req.ID); err != nil {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+
 		// Use WithoutCancel so the delete completes even if the gRPC request times out or client disconnects
 		ctx := context.WithoutCancel(ctx)
 

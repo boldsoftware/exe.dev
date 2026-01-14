@@ -12,6 +12,11 @@ import (
 )
 
 func (s *Service) StopInstance(ctx context.Context, req *api.StopInstanceRequest) (*api.StopInstanceResponse, error) {
+	// Check if instance is being migrated
+	if err := s.checkNotMigrating(req.ID); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
+
 	// Use WithoutCancel so the stop completes even if the gRPC request times out or client disconnects
 	ctx = context.WithoutCancel(ctx)
 

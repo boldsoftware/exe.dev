@@ -13,6 +13,11 @@ import (
 )
 
 func (s *Service) UpdateInstance(ctx context.Context, req *api.UpdateInstanceRequest) (*api.UpdateInstanceResponse, error) {
+	// Check if instance is being migrated
+	if err := s.checkNotMigrating(req.ID); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
+
 	// update instance
 	if err := s.updateInstance(ctx, req.ID, req.KernelImage, req.InitImage); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())

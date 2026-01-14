@@ -32,6 +32,7 @@ type Service struct {
 	instanceCreateGroup singleflight.Group[string, *api.Instance]
 	instanceDeleteGroup singleflight.Group[string, *api.DeleteInstanceResponse]
 	stopLogRotation     func()
+	migratingInstances  sync.Map // map[instanceID]struct{} - instances currently being migrated
 }
 
 // New returns a new service.
@@ -184,5 +185,27 @@ func (s *Service) Stop(ctx context.Context) error {
 		s.stopLogRotation()
 	}
 
+	return nil
+}
+
+// lockForMigration locks an instance for migration, preventing other operations.
+// Returns an error if the instance is already being migrated.
+func (s *Service) lockForMigration(id string) error {
+	if _, loaded := s.migratingInstances.LoadOrStore(id, struct{}{}); loaded {
+		return api.ErrMigrating
+	}
+	return nil
+}
+
+// unlockMigration unlocks an instance after migration completes or fails.
+func (s *Service) unlockMigration(id string) {
+	s.migratingInstances.Delete(id)
+}
+
+// checkNotMigrating returns an error if the instance is currently being migrated.
+func (s *Service) checkNotMigrating(id string) error {
+	if _, ok := s.migratingInstances.Load(id); ok {
+		return api.ErrMigrating
+	}
 	return nil
 }
