@@ -11,9 +11,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"os/exec"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -53,43 +51,15 @@ chmod +x /home/exedev/cgi-bin/headers
 		t.Fatalf("failed to configure header CGI: %v\n", err)
 	}
 
-	// startedServers tracks running httpd servers by port.
-	startedServers := make(map[int]*exec.Cmd)
-	t.Cleanup(func() {
-		for _, cmd := range startedServers {
-			if cmd.Process == nil {
-				continue
-			}
-			cmd.Process.Kill()
-			cmd.Process.Wait()
-		}
-	})
-
+	// startedServers tracks ports where httpd is already running (to avoid double-starting).
+	startedServers := make(map[int]bool)
 	serveHTTP := func(t *testing.T, port int) {
 		t.Helper()
-		if _, ok := startedServers[port]; ok {
+		if startedServers[port] {
 			return
 		}
-		httpdCmd := boxSSHCommand(t, box, keyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(port), "-h", "/home/exedev")
-		httpdCmd.Stdout = t.Output()
-		httpdCmd.Stderr = t.Output()
-		if err := httpdCmd.Start(); err != nil {
-			t.Fatalf("failed to start busybox HTTP server: %v\n", err)
-		}
-		startedServers[port] = httpdCmd
-
-		// TODO: arguably we shouldn't do this waiting.
-		// Instead, exed should be responsible for handling it for us.
-		// Early versions of this test accidentally did just that,
-		// and it was slow and flaky...but best would be to fix _that_
-		// and completely remove this stanza.
-		waitCmd := boxSSHCommand(t, box, keyFile, "timeout", "20", "sh", "-c",
-			fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", port))
-		waitCmd.Stdout = t.Output()
-		waitCmd.Stderr = t.Output()
-		if err := waitCmd.Run(); err != nil {
-			t.Fatalf("failed http server unavailable: %v\n", err)
-		}
+		startHTTPServer(t, box, keyFile, port)
+		startedServers[port] = true
 	}
 
 	t.Run("default_port", func(t *testing.T) {

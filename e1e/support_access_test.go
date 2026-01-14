@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"testing"
 
 	"exe.dev/e1e/testinfra"
@@ -47,24 +46,8 @@ func TestSupportAccess(t *testing.T) {
 	if err := makeIndex.Run(); err != nil {
 		t.Fatalf("failed to create index.html: %v", err)
 	}
-
-	// Start busybox httpd for proxy tests
 	const boxInternalPort = 8080
-	httpdCmd := boxSSHCommand(t, box, ownerKeyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(boxInternalPort), "-h", "/home/exedev")
-	if err := httpdCmd.Start(); err != nil {
-		t.Fatalf("failed to start busybox HTTP server: %v", err)
-	}
-	t.Cleanup(func() {
-		httpdCmd.Process.Kill()
-		httpdCmd.Wait()
-	})
-
-	// Wait for server to be ready
-	waitCmd := boxSSHCommand(t, box, ownerKeyFile, "timeout", "20", "sh", "-c",
-		fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", boxInternalPort))
-	if err := waitCmd.Run(); err != nil {
-		t.Fatalf("failed to wait for busybox to serve: %v", err)
-	}
+	startHTTPServer(t, box, ownerKeyFile, boxInternalPort)
 
 	// Configure proxy port and set private
 	httpPort := Env.servers.Exed.HTTPPort

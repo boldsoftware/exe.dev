@@ -577,25 +577,7 @@ func TestVanillaBox(t *testing.T) {
 		if err := makeIndex.Run(); err != nil {
 			t.Fatalf("failed to create index.html: %v", err)
 		}
-
-		// Start busybox httpd on port 8080
-		httpdCmd := boxSSHCommand(t, boxName, keyFile, "busybox", "httpd", "-f", "-p", "8080", "-h", "/home/exedev")
-		if err := httpdCmd.Start(); err != nil {
-			t.Fatalf("failed to start busybox httpd: %v", err)
-		}
-		t.Cleanup(func() {
-			if httpdCmd.Process != nil {
-				httpdCmd.Process.Kill()
-				httpdCmd.Process.Wait()
-			}
-		})
-
-		// Wait for httpd to be ready
-		waitCmd := boxSSHCommand(t, boxName, keyFile, "timeout", "10", "sh", "-c",
-			"'while ! curl -s http://localhost:8080/; do sleep 0.1; done'")
-		if err := waitCmd.Run(); err != nil {
-			t.Fatalf("httpd not ready: %v", err)
-		}
+		startHTTPServer(t, boxName, keyFile, 8080)
 
 		// Set up public proxy route to port 8080
 		exeShell := sshToExeDev(t, keyFile)
@@ -1044,21 +1026,7 @@ func TestRestartCommand(t *testing.T) {
 	if err := makeIndex.Run(); err != nil {
 		t.Fatalf("failed to create index.html: %v", err)
 	}
-	httpdCmd := boxSSHCommand(t, boxName, keyFile, "busybox", "httpd", "-f", "-p", "8080", "-h", "/home/exedev")
-	if err := httpdCmd.Start(); err != nil {
-		t.Fatalf("failed to start busybox httpd: %v", err)
-	}
-	t.Cleanup(func() {
-		if httpdCmd.Process != nil {
-			httpdCmd.Process.Kill()
-			httpdCmd.Process.Wait()
-		}
-	})
-	waitCmd := boxSSHCommand(t, boxName, keyFile, "timeout", "10", "sh", "-c",
-		"'while ! curl -s http://localhost:8080/; do sleep 0.1; done'")
-	if err := waitCmd.Run(); err != nil {
-		t.Fatalf("httpd not ready: %v", err)
-	}
+	startHTTPServer(t, boxName, keyFile, 8080)
 
 	// Set up public proxy route
 	exeShell := sshToExeDev(t, keyFile)
@@ -1137,21 +1105,7 @@ func TestRestartCommand(t *testing.T) {
 	if err := makeIndex.Run(); err != nil {
 		t.Fatalf("failed to create index.html after restart: %v", err)
 	}
-	httpdCmd2 := boxSSHCommand(t, boxName, keyFile, "busybox", "httpd", "-f", "-p", "8080", "-h", "/home/exedev")
-	if err := httpdCmd2.Start(); err != nil {
-		t.Fatalf("failed to restart busybox httpd: %v", err)
-	}
-	t.Cleanup(func() {
-		if httpdCmd2.Process != nil {
-			httpdCmd2.Process.Kill()
-			httpdCmd2.Process.Wait()
-		}
-	})
-	waitCmd = boxSSHCommand(t, boxName, keyFile, "timeout", "10", "sh", "-c",
-		"'while ! curl -s http://localhost:8080/; do sleep 0.1; done'")
-	if err := waitCmd.Run(); err != nil {
-		t.Fatalf("httpd not ready after restart: %v", err)
-	}
+	startHTTPServer(t, boxName, keyFile, 8080)
 
 	// Make proxy request AFTER restart to verify SSH pool handles stale connections
 	for range 30 {

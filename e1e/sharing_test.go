@@ -11,7 +11,6 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -33,26 +32,7 @@ func TestBoxSharing(t *testing.T) {
 	if err := makeIndex.Run(); err != nil {
 		t.Fatalf("failed to create index.html: %v\n", err)
 	}
-
-	httpdCmd := boxSSHCommand(t, box, ownerKeyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(boxInternalPort), "-h", "/home/exedev")
-	httpdCmd.Stdout = t.Output()
-	httpdCmd.Stderr = t.Output()
-	if err := httpdCmd.Start(); err != nil {
-		t.Fatalf("failed to start busybox HTTP server: %v\n", err)
-	}
-	t.Cleanup(func() {
-		httpdCmd.Process.Kill()
-		httpdCmd.Wait()
-	})
-
-	// Wait for server to be ready
-	waitCmd := boxSSHCommand(t, box, ownerKeyFile, "timeout", "20", "sh", "-c",
-		fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", boxInternalPort))
-	waitCmd.Stdout = t.Output()
-	waitCmd.Stderr = t.Output()
-	if err := waitCmd.Run(); err != nil {
-		t.Fatalf("failed to wait for busybox to serve: %v\n", err)
-	}
+	startHTTPServer(t, box, ownerKeyFile, boxInternalPort)
 
 	// httpPort is the exed HTTP proxy port, not the port inside the box
 	httpPort := Env.servers.Exed.HTTPPort
@@ -561,27 +541,7 @@ func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
 	if err := makeIndex.Run(); err != nil {
 		t.Fatalf("failed to create index.html: %v\n", err)
 	}
-
-	// Start HTTP server in the box
-	httpdCmd := boxSSHCommand(t, box, ownerKeyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(boxInternalPort), "-h", "/home/exedev")
-	httpdCmd.Stdout = t.Output()
-	httpdCmd.Stderr = t.Output()
-	if err := httpdCmd.Start(); err != nil {
-		t.Fatalf("failed to start busybox HTTP server: %v\n", err)
-	}
-	t.Cleanup(func() {
-		httpdCmd.Process.Kill()
-		httpdCmd.Wait()
-	})
-
-	// Wait for server to be ready
-	waitCmd := boxSSHCommand(t, box, ownerKeyFile, "timeout", "20", "sh", "-c",
-		fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", boxInternalPort))
-	waitCmd.Stdout = t.Output()
-	waitCmd.Stderr = t.Output()
-	if err := waitCmd.Run(); err != nil {
-		t.Fatalf("failed to wait for busybox to serve: %v\n", err)
-	}
+	startHTTPServer(t, box, ownerKeyFile, boxInternalPort)
 
 	httpPort := Env.servers.Exed.HTTPPort
 
@@ -688,27 +648,7 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 	if err := makeIndex.Run(); err != nil {
 		t.Fatalf("failed to create index.html: %v\n", err)
 	}
-
-	// Start HTTP server in the box
-	httpdCmd := boxSSHCommand(t, box, ownerKeyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(boxInternalPort), "-h", "/home/exedev")
-	httpdCmd.Stdout = t.Output()
-	httpdCmd.Stderr = t.Output()
-	if err := httpdCmd.Start(); err != nil {
-		t.Fatalf("failed to start busybox HTTP server: %v\n", err)
-	}
-	t.Cleanup(func() {
-		httpdCmd.Process.Kill()
-		httpdCmd.Wait()
-	})
-
-	// Wait for server to be ready
-	waitCmd := boxSSHCommand(t, box, ownerKeyFile, "timeout", "20", "sh", "-c",
-		fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", boxInternalPort))
-	waitCmd.Stdout = t.Output()
-	waitCmd.Stderr = t.Output()
-	if err := waitCmd.Run(); err != nil {
-		t.Fatalf("failed to wait for busybox to serve: %v\n", err)
-	}
+	startHTTPServer(t, box, ownerKeyFile, boxInternalPort)
 
 	httpPort := Env.servers.Exed.HTTPPort
 
@@ -829,27 +769,7 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 	if err := makeIndex.Run(); err != nil {
 		t.Fatalf("failed to create index.html: %v\n", err)
 	}
-
-	// Start HTTP server in the box
-	httpdCmd := boxSSHCommand(t, box, ownerKeyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(boxInternalPort), "-h", "/home/exedev")
-	httpdCmd.Stdout = t.Output()
-	httpdCmd.Stderr = t.Output()
-	if err := httpdCmd.Start(); err != nil {
-		t.Fatalf("failed to start busybox HTTP server: %v\n", err)
-	}
-	t.Cleanup(func() {
-		httpdCmd.Process.Kill()
-		httpdCmd.Wait()
-	})
-
-	// Wait for server to be ready
-	waitCmd := boxSSHCommand(t, box, ownerKeyFile, "timeout", "20", "sh", "-c",
-		fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", boxInternalPort))
-	waitCmd.Stdout = t.Output()
-	waitCmd.Stderr = t.Output()
-	if err := waitCmd.Run(); err != nil {
-		t.Fatalf("failed to wait for busybox to serve: %v\n", err)
-	}
+	startHTTPServer(t, box, ownerKeyFile, boxInternalPort)
 
 	httpPort := Env.servers.Exed.HTTPPort
 
@@ -963,23 +883,7 @@ func TestProxyCookieIsolation(t *testing.T) {
 		if err := makeIndex.Run(); err != nil {
 			t.Fatalf("failed to create index.html for %s: %v", setup.box, err)
 		}
-
-		httpdCmd := boxSSHCommand(t, setup.box, setup.keyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(boxInternalPort), "-h", "/home/exedev")
-		httpdCmd.Stdout = t.Output()
-		httpdCmd.Stderr = t.Output()
-		if err := httpdCmd.Start(); err != nil {
-			t.Fatalf("failed to start httpd for %s: %v", setup.box, err)
-		}
-		t.Cleanup(func() {
-			httpdCmd.Process.Kill()
-			httpdCmd.Wait()
-		})
-
-		waitCmd := boxSSHCommand(t, setup.box, setup.keyFile, "timeout", "20", "sh", "-c",
-			fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", boxInternalPort))
-		if err := waitCmd.Run(); err != nil {
-			t.Fatalf("httpd not ready for %s: %v", setup.box, err)
-		}
+		startHTTPServer(t, setup.box, setup.keyFile, boxInternalPort)
 
 		// Configure proxy port and make private
 		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), setup.keyFile, "share", "port", setup.box, fmt.Sprintf("%d", boxInternalPort))
@@ -1149,25 +1053,7 @@ func TestLoginWithExeFlow(t *testing.T) {
 	if err := makeIndex.Run(); err != nil {
 		t.Fatalf("failed to create index.html: %v", err)
 	}
-
-	// Start HTTP server in the box
-	httpdCmd := boxSSHCommand(t, box, ownerKeyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(boxInternalPort), "-h", "/home/exedev")
-	httpdCmd.Stdout = t.Output()
-	httpdCmd.Stderr = t.Output()
-	if err := httpdCmd.Start(); err != nil {
-		t.Fatalf("failed to start httpd: %v", err)
-	}
-	t.Cleanup(func() {
-		httpdCmd.Process.Kill()
-		httpdCmd.Wait()
-	})
-
-	// Wait for server
-	waitCmd := boxSSHCommand(t, box, ownerKeyFile, "timeout", "20", "sh", "-c",
-		fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", boxInternalPort))
-	if err := waitCmd.Run(); err != nil {
-		t.Fatalf("httpd not ready: %v", err)
-	}
+	startHTTPServer(t, box, ownerKeyFile, boxInternalPort)
 
 	// Configure proxy: set port and make it private (requires auth)
 	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))

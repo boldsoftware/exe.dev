@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -551,6 +552,27 @@ func waitForSSH(t *testing.T, boxName, keyFile string) {
 	if err := Env.servers.WaitForBoxSSHServer(Env.context(t), boxName, keyFile); err != nil {
 		t.Helper()
 		t.Fatal(err)
+	}
+}
+
+// startHTTPServer starts a busybox httpd server on the given port inside the box,
+// registers cleanup, and waits for it to be ready.
+func startHTTPServer(t *testing.T, box, keyFile string, port int) {
+	t.Helper()
+	httpdCmd := boxSSHCommand(t, box, keyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(port), "-h", "/home/exedev")
+	if err := httpdCmd.Start(); err != nil {
+		t.Fatalf("failed to start busybox httpd: %v", err)
+	}
+	t.Cleanup(func() {
+		if httpdCmd.Process != nil {
+			httpdCmd.Process.Kill()
+			httpdCmd.Process.Wait()
+		}
+	})
+	waitCmd := boxSSHCommand(t, box, keyFile, "timeout", "20", "sh", "-c",
+		fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.1; done'", port))
+	if err := waitCmd.Run(); err != nil {
+		t.Fatalf("httpd on port %d not ready: %v", port, err)
 	}
 }
 
