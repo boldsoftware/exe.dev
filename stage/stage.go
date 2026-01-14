@@ -216,7 +216,7 @@ func Staging() Env {
 		SSHCommandUsesAt:  false,
 		PostSlackFeed:     false,
 
-		LogCmdAttr:           false,
+		LogCmdAttr:           true,
 		LogFormat:            "json",
 		LogLevel:             "info",
 		LogErrorSlackChannel: "stag",
@@ -258,7 +258,7 @@ func Prod() Env {
 		SSHCommandUsesAt:  false,
 		PostSlackFeed:     true,
 
-		LogCmdAttr:           false,
+		LogCmdAttr:           true,
 		LogFormat:            "json",
 		LogLevel:             "info",
 		LogErrorSlackChannel: "errs",
