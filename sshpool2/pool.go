@@ -293,6 +293,13 @@ func isSSHConnError(err error) bool {
 	if strings.Contains(err.Error(), "ssh: unexpected packet in response to channel open") {
 		return true
 	}
+	// Timeout errors indicate the SSH connection is unresponsive, typically because
+	// the remote host rebooted and the TCP connection is now stale (half-open).
+	// We should remove these connections from the pool so subsequent requests can
+	// establish fresh connections.
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
 	return false
 }
 

@@ -811,3 +811,204 @@ func TestPoolSoak(t *testing.T) {
 	default:
 	}
 }
+
+// blockingProxy is a TCP proxy that can be blocked to simulate a hung connection.
+// When blocked, it stops forwarding packets but doesn't close connections,
+// simulating what happens when a VM reboots.
+type blockingProxy struct {
+	listener   net.Listener
+	targetAddr string
+	addr       string
+
+	mu          sync.Mutex
+	blocked     bool
+	clientConns []net.Conn
+	targetConns []net.Conn
+}
+
+func newBlockingProxy(t *testing.T, targetAddr string) *blockingProxy {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create blocking proxy listener: %v", err)
+	}
+
+	p := &blockingProxy{
+		listener:   listener,
+		targetAddr: targetAddr,
+		addr:       listener.Addr().String(),
+	}
+
+	go p.serve()
+	return p
+}
+
+func (p *blockingProxy) serve() {
+	for {
+		clientConn, err := p.listener.Accept()
+		if err != nil {
+			return
+		}
+
+		p.mu.Lock()
+		p.clientConns = append(p.clientConns, clientConn)
+		p.mu.Unlock()
+
+		go p.handleConn(clientConn)
+	}
+}
+
+func (p *blockingProxy) handleConn(clientConn net.Conn) {
+	targetConn, err := net.Dial("tcp", p.targetAddr)
+	if err != nil {
+		clientConn.Close()
+		return
+	}
+
+	p.mu.Lock()
+	p.targetConns = append(p.targetConns, targetConn)
+	p.mu.Unlock()
+
+	// Forward in both directions
+	done := make(chan struct{}, 2)
+
+	forward := func(dst, src net.Conn) {
+		defer func() { done <- struct{}{} }()
+		buf := make([]byte, 32*1024)
+		for {
+			p.mu.Lock()
+			blocked := p.blocked
+			p.mu.Unlock()
+
+			if blocked {
+				// When blocked, just sleep and don't forward anything.
+				// This simulates a hung connection.
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+
+			src.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+			n, err := src.Read(buf)
+			if err != nil {
+				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					continue
+				}
+				return
+			}
+			if n > 0 {
+				_, err = dst.Write(buf[:n])
+				if err != nil {
+					return
+				}
+			}
+		}
+	}
+
+	go forward(targetConn, clientConn)
+	go forward(clientConn, targetConn)
+
+	<-done
+	clientConn.Close()
+	targetConn.Close()
+	<-done
+}
+
+func (p *blockingProxy) block() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.blocked = true
+	// Close connections to the target to ensure any pending SSH channel opens
+	// will not complete. This simulates a VM reboot where the backend is gone
+	// but the client connection is still "open" (TCP half-open state).
+	for _, conn := range p.targetConns {
+		conn.Close()
+	}
+	p.targetConns = nil
+}
+
+func (p *blockingProxy) host() string {
+	host, _, _ := net.SplitHostPort(p.addr)
+	return host
+}
+
+func (p *blockingProxy) port() int {
+	_, portStr, _ := net.SplitHostPort(p.addr)
+	port, _ := strconv.Atoi(portStr)
+	return port
+}
+
+func (p *blockingProxy) close() {
+	p.listener.Close()
+	p.mu.Lock()
+	for _, conn := range p.clientConns {
+		conn.Close()
+	}
+	for _, conn := range p.targetConns {
+		conn.Close()
+	}
+	p.mu.Unlock()
+}
+
+// TestPoolStaleConnectionTimeout tests that the pool properly handles
+// connections that become unresponsive (timeout) rather than cleanly closed.
+// This simulates what happens when a VM reboots - the TCP connection hangs
+// rather than returning a clean error.
+//
+// BEFORE THE FIX: This test demonstrates the bug where timeout errors
+// are not recognized as SSH connection errors, so the stale connection
+// stays in the pool and subsequent requests also fail.
+func TestPoolStaleConnectionTimeout(t *testing.T) {
+	// Create real SSH server
+	server := newTestSSHServer(t)
+	defer server.close()
+
+	// Create a blocking proxy in front of it
+	proxy := newBlockingProxy(t, server.addr)
+	defer proxy.close()
+
+	pool := &Pool{TTL: time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+
+	config, signer := newTestClientConfig(t)
+
+	// Establish initial connection through the proxy
+	conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", proxy.host(), config.User, proxy.port(), signer, config)
+	if err != nil {
+		t.Fatalf("failed initial dial: %v", err)
+	}
+	conn.Close()
+
+	// Verify we have a pooled connection
+	original := getOnlyPooledConn(t, pool)
+
+	// Now block the proxy to simulate VM reboot (connection hangs, no clean close)
+	proxy.block()
+
+	// Try to dial through the stale connection - should fail
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+
+	_, err = pool.DialContext(ctx, "tcp", "127.0.0.1:80", proxy.host(), config.User, proxy.port(), signer, config)
+	if err == nil {
+		t.Fatal("expected dial to fail on blocked proxy")
+	}
+	t.Logf("first dial error (expected): %v", err)
+
+	// Check if the stale connection was removed from the pool
+	pool.mu.Lock()
+	connCount := len(pool.conns)
+	var current *pooledConn
+	for _, pc := range pool.conns {
+		current = pc
+	}
+	pool.mu.Unlock()
+
+	// THE FIX: After an error, the stale connection should be removed from the pool.
+	// Before the fix, connCount would be 1 and current == original (stale conn still there).
+	// After the fix, connCount should be 0 (stale connection removed).
+	if connCount != 0 {
+		t.Errorf("expected stale connection to be removed from pool, but pool has %d connections", connCount)
+		if current == original {
+			t.Error("the pooled connection is still the original stale one")
+		}
+	}
+}
