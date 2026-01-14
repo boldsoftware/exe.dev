@@ -336,6 +336,30 @@ func (p *Pool) removeConn(pc *pooledConn) {
 	delete(p.conns, pc.key)
 }
 
+// DropConnectionsTo removes all pooled connections to the specified host and port.
+// This should be called when you know a host is going down (e.g., VM restart or delete)
+// to ensure subsequent requests create fresh connections rather than using stale ones.
+func (p *Pool) DropConnectionsTo(host string, port int) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	for key, pc := range p.conns {
+		if key.host == host && key.port == port {
+			delete(p.conns, key)
+			if pc.timer != nil {
+				pc.timer.Stop()
+			}
+			if err := pc.client.Close(); err != nil {
+				p.log().Warn("error closing SSH connection during drop", "key", key.String(), "error", err)
+			}
+			p.log().Info("proactively dropped SSH connection", "key", key.String())
+		}
+	}
+}
+
 // Close shuts down the pool and closes all connections immediately.
 // Close is idempotent and safe to call multiple times.
 func (p *Pool) Close() error {

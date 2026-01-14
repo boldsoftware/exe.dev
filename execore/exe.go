@@ -1927,6 +1927,11 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 		if err != nil && !isExeletNotFoundError(err) {
 			return fmt.Errorf("failed to delete instance: %w", err)
 		}
+
+		// Drop any pooled SSH connections after deleting so proxy requests fail fast
+		if box.SSHPort != nil {
+			s.sshPool.DropConnectionsTo(box.SSHHost(), int(*box.SSHPort))
+		}
 	}
 
 	// Delete from database and track in deleted_boxes

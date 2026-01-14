@@ -1043,8 +1043,18 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 		if stopErr != nil {
 			return fmt.Errorf("failed to stop instance: %w", stopErr)
 		}
+		// Drop any pooled SSH connections after stopping so proxy requests fail fast
+		// and retry with fresh connections after restart.
+		if box.SSHPort != nil {
+			ss.server.sshPool.DropConnectionsTo(box.SSHHost(), int(*box.SSHPort))
+		}
 	case api.VMState_STOPPED, api.VMState_ERROR, api.VMState_CREATED:
-		// Instance is already stopped or in a restartable state, skip stop
+		// Instance is already stopped or in a restartable state, skip stop.
+		// But still drop any pooled SSH connections - they may be stale from
+		// before the VM was stopped (e.g., poweroff from inside the VM).
+		if box.SSHPort != nil {
+			ss.server.sshPool.DropConnectionsTo(box.SSHHost(), int(*box.SSHPort))
+		}
 	default:
 		// Unknown or transient state (STOPPING, CREATING, UPDATING, DELETED)
 		return cc.Errorf("VM is in state %q and cannot be restarted", state.String())

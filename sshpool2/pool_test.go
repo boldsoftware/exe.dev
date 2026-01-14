@@ -1012,3 +1012,76 @@ func TestPoolStaleConnectionTimeout(t *testing.T) {
 		}
 	}
 }
+
+// TestPoolDropConnectionsTo tests that DropConnectionsTo removes connections
+// to a specific host/port.
+func TestPoolDropConnectionsTo(t *testing.T) {
+	server := newTestSSHServer(t)
+	defer server.close()
+
+	pool := &Pool{TTL: time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+
+	config, signer := newTestClientConfig(t)
+
+	// Establish a connection
+	conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	if err != nil {
+		t.Fatalf("failed initial dial: %v", err)
+	}
+	conn.Close()
+
+	// Verify we have a pooled connection
+	pool.mu.Lock()
+	if len(pool.conns) != 1 {
+		pool.mu.Unlock()
+		t.Fatalf("expected 1 pooled connection, got %d", len(pool.conns))
+	}
+	pool.mu.Unlock()
+
+	// Drop connections to this host/port
+	pool.DropConnectionsTo(server.host(), server.port())
+
+	// Verify the connection was removed
+	pool.mu.Lock()
+	connCount := len(pool.conns)
+	pool.mu.Unlock()
+
+	if connCount != 0 {
+		t.Errorf("expected 0 connections after DropConnectionsTo, got %d", connCount)
+	}
+
+	// Verify we can establish a new connection
+	conn2, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	if err != nil {
+		t.Fatalf("failed to dial after drop: %v", err)
+	}
+	conn2.Close()
+}
+
+// TestIsSSHConnErrorRecognizesTimeouts tests that isSSHConnError correctly
+// identifies timeout and cancellation errors as connection errors.
+func TestIsSSHConnErrorRecognizesTimeouts(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"DeadlineExceeded", context.DeadlineExceeded, true},
+		{"Canceled", context.Canceled, true},
+		{"EOF", io.EOF, true},
+		{"ErrClosed", net.ErrClosed, true},
+		{"wrapped DeadlineExceeded", fmt.Errorf("dial failed: %w", context.DeadlineExceeded), true},
+		{"wrapped Canceled", fmt.Errorf("dial failed: %w", context.Canceled), true},
+		{"random error", errors.New("some random error"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isSSHConnError(tt.err)
+			if got != tt.want {
+				t.Errorf("isSSHConnError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
