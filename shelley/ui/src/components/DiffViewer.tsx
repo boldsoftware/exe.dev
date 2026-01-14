@@ -164,10 +164,16 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
     if (isOpen && !isMobile && !hasShownKeyboardHint.current && fileDiff) {
       hasShownKeyboardHint.current = true;
       setShowKeyboardHint(true);
+    }
+  }, [isOpen, isMobile, fileDiff]);
+
+  // Auto-hide keyboard hint after 6 seconds
+  useEffect(() => {
+    if (showKeyboardHint) {
       const timer = setTimeout(() => setShowKeyboardHint(false), 6000);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, isMobile, fileDiff]);
+  }, [showKeyboardHint]);
 
   // Load diffs when viewer opens, reset state when it closes
   useEffect(() => {
