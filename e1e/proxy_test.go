@@ -940,7 +940,7 @@ func localhostRequestWithHostHeader(method, urlS string, body io.Reader) (*http.
 	return req, nil
 }
 
-func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
+func proxyAssert(t *testing.T, boxName string, exp proxyExpectation, query ...string) {
 	t.Helper()
 	// t.Logf("Testing proxy expectation: %s port %d expected http status %d", exp.name, exp.httpPort, exp.httpCode)
 	jar, _ := cookiejar.New(nil) // no error possible
@@ -951,7 +951,11 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 	client := noRedirectClient(jar)
 
 	// We put in a GET parameter here to ensure that all the redirects preserve the parameters.
-	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/?foo=1", boxName, exp.httpPort)
+	q := "foo=1"
+	if len(query) > 0 {
+		q = query[0]
+	}
+	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/?%s", boxName, exp.httpPort, q)
 	req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
 	if err != nil {
 		t.Errorf("failed to make http request: %v", err)
