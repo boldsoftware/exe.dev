@@ -330,8 +330,8 @@ func (ss *SSHServer) handleSharePortCmd(ctx context.Context, cc *exemenu.Command
 
 	portStr := cc.Args[1]
 	port, err := strconv.Atoi(portStr)
-	if err != nil || port <= 0 || port > 65535 {
-		return cc.Errorf("port must be a valid port number (1-65535), got %q", portStr)
+	if err != nil || port < 3000 || port > 9999 {
+		return cc.Errorf("port must be between 3000 and 9999, got %q", portStr)
 	}
 
 	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {

@@ -1,0 +1,18 @@
+
+
+●
+● ssh localhost
+●
+
+share port BOX_NAME 2999
+
+- help to see a list of commands
+
+PROMPT ▶ share port BOX_NAME 2999
+port must be between 3000 and 9999, got "2999"
+PROMPT ▶ share port BOX_NAME 10000
+port must be between 3000 and 9999, got "10000"
+PROMPT ▶ share port BOX_NAME abc
+port must be between 3000 and 9999, got "abc"
+PROMPT ▶ exit
+Goodbye!

@@ -126,6 +126,27 @@ chmod +x /home/exedev/cgi-bin/headers
 			exeShell.disconnect()
 		})
 
+		t.Run("port_validation", func(t *testing.T) {
+			exeShell := sshToExeDev(t, keyFile)
+
+			// Port below range
+			exeShell.sendLine(fmt.Sprintf("share port %s 2999", box))
+			exeShell.want("port must be between 3000 and 9999")
+			exeShell.wantPrompt()
+
+			// Port above range
+			exeShell.sendLine(fmt.Sprintf("share port %s 10000", box))
+			exeShell.want("port must be between 3000 and 9999")
+			exeShell.wantPrompt()
+
+			// Invalid port
+			exeShell.sendLine(fmt.Sprintf("share port %s abc", box))
+			exeShell.want("port must be between 3000 and 9999")
+			exeShell.wantPrompt()
+
+			exeShell.disconnect()
+		})
+
 		t.Run("public_route", func(t *testing.T) {
 			sleepTimes := []time.Duration{
 				0, 100 * time.Millisecond,
