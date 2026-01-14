@@ -255,7 +255,7 @@ func TestCheckNewThrottleStripe(t *testing.T) {
 	// An email from a disposable name that we normally reject.
 	email := "user@mailinator.com"
 	publicKey := "ssh-rsa dummy-has-billing-test-key user@mailinator.com"
-	user, err := s.createUser(t.Context(), publicKey, email)
+	user, err := s.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatal(err)
 	}

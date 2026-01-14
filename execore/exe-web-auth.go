@@ -83,7 +83,12 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		verifiedEmail = verification.Email
 
 		// Create user record immediately - billing is checked when creating VMs, not at signup
-		user, err := s.createUserWithSSHKey(r.Context(), verification.Email, verification.PublicKey)
+		// Skip email quality check if user has an invite code
+		qc := AllQualityChecks
+		if verification.InviteCode != nil {
+			qc = SkipQualityChecks
+		}
+		user, err := s.createUserWithSSHKey(r.Context(), verification.Email, verification.PublicKey, qc)
 		if err != nil {
 			s.slog().ErrorContext(r.Context(), "failed to create user with SSH key during email verification", "error", err, "token", token)
 			http.Error(w, "failed to create user account", http.StatusInternalServerError)

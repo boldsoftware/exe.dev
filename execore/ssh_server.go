@@ -834,6 +834,7 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 		email:            email,
 		source:           "ssh",
 		trustedGitHubKey: ghInfo.IsGitHubUser && ghInfo.CreditOK,
+		hasInviteCode:    inviteCode != nil,
 	}); err != nil {
 		ss.server.slog().InfoContext(s.Context(), "signup blocked", "reason", err, "ip", ipStr, "email", email)
 		trace := tracing.TraceIDFromContext(s.Context())
@@ -857,7 +858,12 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 	} else {
 		// Email matches GitHub's. Rely on their verification; create user directly now.
 		ss.server.slog().InfoContext(ctx, "email matches GitHub, skipping verification", "email", email)
-		newUser, err := ss.server.createUserWithSSHKey(s.Context(), email, publicKey)
+		// Skip email quality check if user has an invite code
+		qc := AllQualityChecks
+		if inviteCode != nil {
+			qc = SkipQualityChecks
+		}
+		newUser, err := ss.server.createUserWithSSHKey(s.Context(), email, publicKey, qc)
 		if err != nil {
 			ss.server.slog().ErrorContext(ctx, "failed to create user with SSH key during github auto-verification", "error", err)
 			fmt.Fprintf(s, "\r\n\033[1;31minternal error: failed to create user account\033[0m\r\n")

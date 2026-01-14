@@ -2566,6 +2566,7 @@ type signupValidationParams struct {
 	email            string // Email address being registered
 	source           string // "web", "ssh", or "mobile"
 	trustedGitHubKey bool   // If true, bypass IP abuse check (user has verified GitHub SSH key with good standing)
+	hasInviteCode    bool   // If true, bypass all abuse checks (user has a valid invite code)
 }
 
 // validateNewSignup checks whether a possibly new user may sign up; it returns a user-friendly error if not.
@@ -2602,6 +2603,12 @@ func (s *Server) validateNewSignup(ctx context.Context, p signupValidationParams
 	// Skip IP abuse check for users with trusted GitHub SSH keys
 	if p.trustedGitHubKey {
 		s.slog().InfoContext(ctx, "signup quality checks bypassed for trusted GitHub key", "email", p.email)
+		return nil
+	}
+
+	// Skip all abuse checks for users with a valid invite code
+	if p.hasInviteCode {
+		s.slog().InfoContext(ctx, "signup quality checks bypassed for invite code", "email", p.email)
 		return nil
 	}
 
@@ -2729,9 +2736,17 @@ func (s *Server) cacheIPAbuseResult(ip string, recentAbuse bool) {
 	}
 }
 
+// QualityCheck specifies whether to run abuse/quality checks during signup.
+type QualityCheck int
+
+const (
+	AllQualityChecks  QualityCheck = iota // Run all IPQS quality checks
+	SkipQualityChecks                     // Skip quality checks (e.g., user has invite code)
+)
+
 // createUser creates a new user with their resource allocation.
 // This is used for SSH registration flow, not login-with-exe.
-func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exedb.User, error) {
+func (s *Server) createUser(ctx context.Context, publicKey, email string, qc QualityCheck) (*exedb.User, error) {
 	var user exedb.User
 
 	// First create the user and allocation in the database
@@ -2760,8 +2775,13 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exed
 	}
 
 	// Check email quality and disable VM creation if disposable
-	if err := s.checkEmailQuality(context.WithoutCancel(ctx), user.UserID, email); err != nil {
-		s.slog().WarnContext(ctx, "email quality check failed", "error", err, "email", email)
+	// Skip this check if user has an invite code
+	if qc == AllQualityChecks {
+		if err := s.checkEmailQuality(context.WithoutCancel(ctx), user.UserID, email); err != nil {
+			s.slog().WarnContext(ctx, "email quality check failed", "error", err, "email", email)
+		}
+	} else {
+		s.slog().InfoContext(ctx, "email quality check skipped for invite code user", "email", email)
 	}
 
 	// Resolve any pending shares for this email

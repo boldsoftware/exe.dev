@@ -1080,7 +1080,7 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 	s.renderTemplate(r.Context(), w, "email-verification-form.html", data)
 }
 
-func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey string) (*exedb.User, error) {
+func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey string, qc QualityCheck) (*exedb.User, error) {
 	// Create the user if they don't exist
 	// Note that this is called during email verification,
 	// so we must look up the user by email (verified),
@@ -1090,7 +1090,7 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 		s.slog().InfoContext(ctx, "User doesn't exist, creating", "email", email)
 		// User doesn't exist - create them with their alloc
 		// Note: createUser calls resolvePendingShares internally
-		user, err = s.createUser(context.WithoutCancel(ctx), publicKey, email)
+		user, err = s.createUser(context.WithoutCancel(ctx), publicKey, email, qc)
 		if err != nil {
 			return nil, fmt.Errorf("create user: %w", err)
 		}

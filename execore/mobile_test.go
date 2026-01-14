@@ -156,7 +156,7 @@ func TestRunCommandNotAllowed(t *testing.T) {
 	// Create a user and get auth cookie
 	email := "cmd-test@example.com"
 	publicKey := "ssh-rsa dummy-cmd-test-key cmd-test@example.com"
-	user, err := server.createUser(t.Context(), publicKey, email)
+	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}

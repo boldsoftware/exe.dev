@@ -32,7 +32,7 @@ func TestCustomDomainAuthFlow(t *testing.T) {
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest..."
 	email := "test@example.com"
 
-	_, err := server.createUser(t.Context(), publicKey, email)
+	_, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestCustomDomainReturnHostValidation(t *testing.T) {
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest-returnhost..."
 	email := "returnhost-test@example.com"
 
-	_, err := server.createUser(t.Context(), publicKey, email)
+	_, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
