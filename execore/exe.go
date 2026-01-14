@@ -983,6 +983,17 @@ func withTxRes0[T any](s *Server, ctx context.Context, fn func(*exedb.Queries, c
 	return result, err
 }
 
+// withTxRes1 executes a function with a read-write database transaction and one argument, returning a value.
+func withTxRes1[T, A any](s *Server, ctx context.Context, fn func(*exedb.Queries, context.Context, A) (T, error), a A) (T, error) {
+	var result T
+	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		result, err = fn(queries, ctx, a)
+		return err
+	})
+	return result, err
+}
+
 // DataPath returns a path under /data with the server's isolation subdirectory
 func (s *Server) DataPath(path string) string {
 	return fmt.Sprintf("/data/%s/%s", s.dataSubdir, strings.TrimPrefix(path, "/"))

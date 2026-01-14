@@ -43,7 +43,7 @@ func (q *Queries) GetEmailByUserID(ctx context.Context, userID string) (string, 
 }
 
 const getUserByDiscordID = `-- name: GetUserByDiscordID :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username FROM users WHERE discord_id = ?
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id FROM users WHERE discord_id = ?
 `
 
 func (q *Queries) GetUserByDiscordID(ctx context.Context, discordID *string) (User, error) {
@@ -58,12 +58,15 @@ func (q *Queries) GetUserByDiscordID(ctx context.Context, discordID *string) (Us
 		&i.NewVmCreationDisabled,
 		&i.DiscordID,
 		&i.DiscordUsername,
+		&i.BillingExemption,
+		&i.BillingTrialEndsAt,
+		&i.SignedUpWithInviteID,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id
 FROM users
 WHERE email = ?
 `
@@ -80,6 +83,9 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.NewVmCreationDisabled,
 		&i.DiscordID,
 		&i.DiscordUsername,
+		&i.BillingExemption,
+		&i.BillingTrialEndsAt,
+		&i.SignedUpWithInviteID,
 	)
 	return i, err
 }
@@ -118,7 +124,7 @@ func (q *Queries) GetUserRootSupport(ctx context.Context, userID string) (int64,
 }
 
 const getUserWithDetails = `-- name: GetUserWithDetails :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id
 FROM users
 WHERE user_id = ?
 `
@@ -135,6 +141,9 @@ func (q *Queries) GetUserWithDetails(ctx context.Context, userID string) (User, 
 		&i.NewVmCreationDisabled,
 		&i.DiscordID,
 		&i.DiscordUsername,
+		&i.BillingExemption,
+		&i.BillingTrialEndsAt,
+		&i.SignedUpWithInviteID,
 	)
 	return i, err
 }
@@ -155,7 +164,7 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 }
 
 const listAllUsers = `-- name: ListAllUsers :many
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username FROM users ORDER BY created_at DESC
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id FROM users ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
@@ -176,6 +185,9 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 			&i.NewVmCreationDisabled,
 			&i.DiscordID,
 			&i.DiscordUsername,
+			&i.BillingExemption,
+			&i.BillingTrialEndsAt,
+			&i.SignedUpWithInviteID,
 		); err != nil {
 			return nil, err
 		}

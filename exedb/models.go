@@ -128,6 +128,23 @@ type IPShard struct {
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
 
+type InviteCode struct {
+	ID               int64      `db:"id" json:"id"`
+	Code             string     `db:"code" json:"code"`
+	PlanType         string     `db:"plan_type" json:"plan_type"`
+	AssignedToUserID *string    `db:"assigned_to_user_id" json:"assigned_to_user_id"`
+	AssignedAt       *time.Time `db:"assigned_at" json:"assigned_at"`
+	AssignedBy       string     `db:"assigned_by" json:"assigned_by"`
+	AssignedFor      *string    `db:"assigned_for" json:"assigned_for"`
+	UsedByUserID     *string    `db:"used_by_user_id" json:"used_by_user_id"`
+	UsedAt           *time.Time `db:"used_at" json:"used_at"`
+}
+
+type InviteCodePool struct {
+	Code      string     `db:"code" json:"code"`
+	CreatedAt *time.Time `db:"created_at" json:"created_at"`
+}
+
 type Migration struct {
 	MigrationNumber int64      `db:"migration_number" json:"migration_number"`
 	MigrationName   string     `db:"migration_name" json:"migration_name"`
@@ -267,6 +284,9 @@ type User struct {
 	NewVmCreationDisabled  bool       `db:"new_vm_creation_disabled" json:"new_vm_creation_disabled"`
 	DiscordID              *string    `db:"discord_id" json:"discord_id"`
 	DiscordUsername        *string    `db:"discord_username" json:"discord_username"`
+	BillingExemption       *string    `db:"billing_exemption" json:"billing_exemption"`
+	BillingTrialEndsAt     *time.Time `db:"billing_trial_ends_at" json:"billing_trial_ends_at"`
+	SignedUpWithInviteID   *int64     `db:"signed_up_with_invite_id" json:"signed_up_with_invite_id"`
 }
 
 type UserDailyEmailCount struct {

@@ -59,6 +59,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/testimonials", s.handleDebugTestimonials)
 	mux.HandleFunc("GET /debug/email", s.handleDebugEmailForm)
 	mux.HandleFunc("POST /debug/email", s.handleDebugEmailSend)
+	mux.HandleFunc("/debug/invite", s.handleDebugInvite)
+	mux.HandleFunc("POST /debug/invite", s.handleDebugInvitePost)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -111,6 +113,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/log">/debug/log</a> (POST text=... to log an error)</li>
     <li><a href="/debug/testimonials">testimonials</a></li>
     <li><a href="/debug/email">email</a> (send test emails)</li>
+    <li><a href="/debug/invite">invite</a> (manage invite codes)</li>
 </ul>
 <p>Git version: %s %s</p>
 </body></html>
@@ -2371,4 +2374,165 @@ func (s *Server) handleDebugSignupRejectPost(w http.ResponseWriter, r *http.Requ
 	}
 
 	http.Redirect(w, r, "/debug/signup-reject", http.StatusSeeOther)
+}
+
+// handleDebugInvite displays the invite code management page.
+func (s *Server) handleDebugInvite(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Get counts
+	poolCount, err := withRxRes0(s, ctx, (*exedb.Queries).CountInviteCodePool)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to count pool: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Get unused system invite codes
+	systemCodes, err := withRxRes0(s, ctx, (*exedb.Queries).ListUnusedSystemInviteCodes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list system codes: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>Invite Codes</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
+table { border-collapse: collapse; margin: 10px 0; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+th { background: #f5f5f5; }
+.section { margin: 20px 0; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+.code { font-family: monospace; background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
+.create-btn { background: #28a745; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 14px; }
+.create-btn:hover { background: #218838; }
+select, input[type="number"] { padding: 8px; margin: 5px; }
+.stat { font-size: 24px; font-weight: bold; color: #007bff; }
+.warning { color: #dc3545; }
+</style>
+</head><body>
+<h1>Invite Codes</h1>
+<p><a href="/debug">/debug</a></p>
+
+<div class="section">
+<h2>Pool Status</h2>
+<p>Codes remaining in pool: <span class="stat %s">%d</span></p>
+</div>
+
+<div class="section">
+<h2>Create System Invite Code</h2>
+<form method="post" action="/debug/invite">
+<input type="hidden" name="action" value="create">
+<p>
+<label>Plan type:
+<select name="plan_type">
+<option value="trial">Trial (1 month free)</option>
+<option value="free">Free forever</option>
+</select>
+</label>
+</p>
+<p>
+<label>For (optional):
+<input type="text" name="assigned_for" placeholder="e.g. John Doe, friend referral">
+</label>
+</p>
+<p><button type="submit" class="create-btn">Create Invite Code</button></p>
+</form>
+</div>
+
+<div class="section">
+<h2>Unused System Invite Codes (%d)</h2>
+`, warningClass(poolCount), poolCount, len(systemCodes))
+
+	if len(systemCodes) == 0 {
+		fmt.Fprintf(w, "<p>No unused system invite codes.</p>\n")
+	} else {
+		fmt.Fprintf(w, `<table>
+<tr><th>Code</th><th>Plan Type</th><th>Created By</th><th>For</th><th>Created</th></tr>
+`)
+		for _, code := range systemCodes {
+			createdAt := "unknown"
+			if code.AssignedAt != nil {
+				createdAt = code.AssignedAt.Format("2006-01-02 15:04")
+			}
+			assignedFor := ""
+			if code.AssignedFor != nil {
+				assignedFor = *code.AssignedFor
+			}
+			fmt.Fprintf(w, `<tr><td class="code">%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>
+`, html.EscapeString(code.Code), html.EscapeString(code.PlanType), html.EscapeString(code.AssignedBy), html.EscapeString(assignedFor), createdAt)
+		}
+		fmt.Fprintf(w, "</table>\n")
+	}
+
+	fmt.Fprintf(w, `</div>
+</body></html>
+`)
+}
+
+func warningClass(count int64) string {
+	if count < 10 {
+		return "warning"
+	}
+	return ""
+}
+
+// handleDebugInvitePost handles creating a new invite code.
+func (s *Server) handleDebugInvitePost(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	action := r.FormValue("action")
+	if action != "create" {
+		http.Error(w, "invalid action", http.StatusBadRequest)
+		return
+	}
+
+	planType := r.FormValue("plan_type")
+	if planType != "trial" && planType != "free" {
+		http.Error(w, "invalid plan_type", http.StatusBadRequest)
+		return
+	}
+
+	// Get admin identity from Tailscale
+	assignedBy := "debug"
+	lc := new(local.Client)
+	if who, err := lc.WhoIs(ctx, r.RemoteAddr); err == nil && who.UserProfile != nil && who.UserProfile.LoginName != "" {
+		assignedBy = who.UserProfile.LoginName
+	}
+
+	// Get optional "for" field
+	assignedFor := r.FormValue("assigned_for")
+	var assignedForPtr *string
+	if assignedFor != "" {
+		assignedForPtr = &assignedFor
+	}
+
+	// Draw a code from the pool
+	code, err := withTxRes0(s, ctx, (*exedb.Queries).DrawInviteCodeFromPool)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "invite code pool is empty", http.StatusBadRequest)
+			return
+		}
+		http.Error(w, fmt.Sprintf("failed to draw code from pool: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Create the invite code (system code, so no assigned_to_user_id)
+	_, err = withTxRes1(s, ctx, (*exedb.Queries).CreateInviteCode, exedb.CreateInviteCodeParams{
+		Code:             code,
+		PlanType:         planType,
+		AssignedToUserID: nil,
+		AssignedBy:       assignedBy,
+		AssignedFor:      assignedForPtr,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create invite code: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "invite code created via debug page", "code", code, "plan_type", planType, "assigned_by", assignedBy, "assigned_for", assignedFor)
+
+	http.Redirect(w, r, "/debug/invite", http.StatusSeeOther)
 }
