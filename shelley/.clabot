@@ -12,7 +12,8 @@
 		"d2orbc",
 		"euank",
 		"anoworl",
-		"jmandel"
+		"jmandel",
+		"skybrian"
 	],
 	"message": "We require contributors to sign our Contributor License Agreement, and we don't have you on file. In order for us to review and merge your code, please contact @crawshaw to get yourself added."
 }
