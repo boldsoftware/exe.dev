@@ -162,15 +162,7 @@ chmod +x /home/exedev/cgi-bin/headers
 
 			setProxyPort := func(port int) {
 				t.Helper()
-				exeShell := sshToExeDev(t, keyFile)
-				exeShell.sendLine(fmt.Sprintf("share port %s %d", box, port))
-				exeShell.want("Route updated successfully")
-				exeShell.wantPrompt()
-
-				exeShell.sendLine(fmt.Sprintf("share set-public %s", box))
-				exeShell.want("Route updated successfully")
-				exeShell.wantPrompt()
-				exeShell.disconnect()
+				configureProxyRoute(t, keyFile, box, port, "public")
 			}
 
 			defer setProxyPort(defaultPort)
@@ -242,16 +234,7 @@ chmod +x /home/exedev/cgi-bin/headers
 	t.Run("basic_auth", func(t *testing.T) {
 		httpPort := Env.servers.Exed.HTTPPort
 		serveHTTP(t, 8080)
-
-		exeShell := sshToExeDev(t, keyFile)
-		exeShell.sendLine(fmt.Sprintf("share port %s 8080", box))
-		exeShell.want("Route updated successfully")
-		exeShell.wantPrompt()
-
-		exeShell.sendLine(fmt.Sprintf("share set-private %s", box))
-		exeShell.want("Route updated successfully")
-		exeShell.wantPrompt()
-		exeShell.disconnect()
+		configureProxyRoute(t, keyFile, box, 8080, "private")
 
 		resp, err := doProxyRequest(t, box, httpPort)
 		if err != nil {
@@ -366,16 +349,7 @@ chmod +x /home/exedev/cgi-bin/headers
 		httpPort := Env.servers.Exed.HTTPPort
 
 		serveHTTP(t, internalPort)
-
-		exeShell := sshToExeDev(t, keyFile)
-		exeShell.sendLine(fmt.Sprintf("share port %s %d", box, internalPort))
-		exeShell.want("Route updated successfully")
-		exeShell.wantPrompt()
-
-		exeShell.sendLine(fmt.Sprintf("share set-public %s", box))
-		exeShell.want("Route updated successfully")
-		exeShell.wantPrompt()
-		exeShell.disconnect()
+		configureProxyRoute(t, keyFile, box, internalPort, "public")
 
 		client := noRedirectClient(nil)
 
@@ -457,16 +431,7 @@ chmod +x /home/exedev/cgi-bin/headers
 		httpPort := Env.servers.Exed.HTTPPort
 
 		serveHTTP(t, internalPort)
-
-		exeShell := sshToExeDev(t, keyFile)
-		exeShell.sendLine(fmt.Sprintf("share port %s %d", box, internalPort))
-		exeShell.want("Route updated successfully")
-		exeShell.wantPrompt()
-
-		exeShell.sendLine(fmt.Sprintf("share set-public %s", box))
-		exeShell.want("Route updated successfully")
-		exeShell.wantPrompt()
-		exeShell.disconnect()
+		configureProxyRoute(t, keyFile, box, internalPort, "public")
 
 		client := noRedirectClient(nil)
 		req := makeProxyRequestWithPath(t, box, httpPort, "/cgi-bin/headers")

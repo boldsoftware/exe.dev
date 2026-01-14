@@ -479,15 +479,7 @@ func TestVanillaBox(t *testing.T) {
 		noGolden(t)
 
 		// Set custom proxy port (8000) and make it public
-		exeShell := sshToExeDev(t, keyFile)
-		exeShell.sendLine(fmt.Sprintf("share port %s 8000", boxName))
-		exeShell.want("Route updated successfully")
-		exeShell.wantPrompt()
-
-		exeShell.sendLine(fmt.Sprintf("share set-public %s", boxName))
-		exeShell.want("Route updated successfully")
-		exeShell.wantPrompt()
-		exeShell.disconnect()
+		configureProxyRoute(t, keyFile, boxName, 8000, "public")
 
 		// Fetch dashboard and check proxy port display
 		jar, err := cookiejar.New(nil)
@@ -522,15 +514,7 @@ func TestVanillaBox(t *testing.T) {
 		}
 
 		// Change to private and port 3000 to test another combination
-		exeShell = sshToExeDev(t, keyFile)
-		exeShell.sendLine(fmt.Sprintf("share port %s 3000", boxName))
-		exeShell.want("Route updated successfully")
-		exeShell.wantPrompt()
-
-		exeShell.sendLine(fmt.Sprintf("share set-private %s", boxName))
-		exeShell.want("Route updated successfully")
-		exeShell.wantPrompt()
-		exeShell.disconnect()
+		configureProxyRoute(t, keyFile, boxName, 3000, "private")
 
 		// Fetch dashboard again
 		resp, err = client.Get(fmt.Sprintf("http://localhost:%d/", Env.servers.Exed.HTTPPort))
@@ -578,17 +562,7 @@ func TestVanillaBox(t *testing.T) {
 			t.Fatalf("failed to create index.html: %v", err)
 		}
 		startHTTPServer(t, boxName, keyFile, 8080)
-
-		// Set up public proxy route to port 8080
-		exeShell := sshToExeDev(t, keyFile)
-		exeShell.sendLine(fmt.Sprintf("share port %s 8080", boxName))
-		exeShell.want("Route updated successfully")
-		exeShell.wantPrompt()
-
-		exeShell.sendLine(fmt.Sprintf("share set-public %s", boxName))
-		exeShell.want("Route updated successfully")
-		exeShell.wantPrompt()
-		exeShell.disconnect()
+		configureProxyRoute(t, keyFile, boxName, 8080, "public")
 
 		// Make a proxy request
 		proxyReq, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/", httpPort), nil)
@@ -1027,16 +1001,7 @@ func TestRestartCommand(t *testing.T) {
 		t.Fatalf("failed to create index.html: %v", err)
 	}
 	startHTTPServer(t, boxName, keyFile, 8080)
-
-	// Set up public proxy route
-	exeShell := sshToExeDev(t, keyFile)
-	exeShell.sendLine(fmt.Sprintf("share port %s 8080", boxName))
-	exeShell.want("Route updated successfully")
-	exeShell.wantPrompt()
-	exeShell.sendLine(fmt.Sprintf("share set-public %s", boxName))
-	exeShell.want("Route updated successfully")
-	exeShell.wantPrompt()
-	exeShell.disconnect()
+	configureProxyRoute(t, keyFile, boxName, 8080, "public")
 
 	// Helper to make proxy request
 	makeProxyRequest := func() (*http.Response, error) {
@@ -1157,16 +1122,7 @@ func TestRestartStoppedVM(t *testing.T) {
 		t.Fatalf("failed to create index.html: %v", err)
 	}
 	startHTTPServer(t, boxName, keyFile, 8080)
-
-	// Set up public proxy route
-	exeShell := sshToExeDev(t, keyFile)
-	exeShell.sendLine(fmt.Sprintf("share port %s 8080", boxName))
-	exeShell.want("Route updated successfully")
-	exeShell.wantPrompt()
-	exeShell.sendLine(fmt.Sprintf("share set-public %s", boxName))
-	exeShell.want("Route updated successfully")
-	exeShell.wantPrompt()
-	exeShell.disconnect()
+	configureProxyRoute(t, keyFile, boxName, 8080, "public")
 
 	// Helper to make proxy request
 	makeProxyRequest := func() (*http.Response, error) {

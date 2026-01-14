@@ -48,17 +48,8 @@ func TestSupportAccess(t *testing.T) {
 	}
 	const boxInternalPort = 8080
 	startHTTPServer(t, box, ownerKeyFile, boxInternalPort)
-
-	// Configure proxy port and set private
 	httpPort := Env.servers.Exed.HTTPPort
-	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
-	if err != nil {
-		t.Fatalf("failed to set proxy port: %v\n%s", err, out)
-	}
-	out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "set-private", box)
-	if err != nil {
-		t.Fatalf("failed to set proxy visibility: %v\n%s", err, out)
-	}
+	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "private")
 
 	supportBox := "support+" + box
 

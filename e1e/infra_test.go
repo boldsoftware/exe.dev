@@ -576,6 +576,20 @@ func startHTTPServer(t *testing.T, box, keyFile string, port int) {
 	}
 }
 
+// configureProxyRoute sets the proxy port and visibility for a box.
+// visibility must be "public" or "private".
+func configureProxyRoute(t *testing.T, keyFile, box string, port int, visibility string) {
+	t.Helper()
+	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "share", "port", box, strconv.Itoa(port))
+	if err != nil {
+		t.Fatalf("failed to set proxy port: %v\n%s", err, out)
+	}
+	out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "share", "set-"+visibility, box)
+	if err != nil {
+		t.Fatalf("failed to set proxy visibility: %v\n%s", err, out)
+	}
+}
+
 func sshToBox(t *testing.T, boxname, keyFile string) *expectPty {
 	pty := sshWithUsername(t, boxname, keyFile)
 	pty.pty.SetPromptRE(regexp.QuoteMeta(boxname) + ".*" + regexp.QuoteMeta("$"))
