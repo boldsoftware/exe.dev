@@ -48,7 +48,8 @@ I'm about to deploy exed to production, from this worktree.
 Exed ${EXED_SHA} is currently deployed.
 Exelet ${EXELET_SHA:-unknown} is currently deployed.
 
-Please inspect all the intervening commits. (You may ignore any devlog commits.)
+Please inspect all the intervening commits.
+You may ignore any commits that do not alter prod, e.g. changes that only touch the devlog, CI, or tests.
 
 You have three goals:
 
