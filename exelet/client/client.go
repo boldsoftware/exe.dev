@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/url"
+	"strings"
 
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
@@ -142,7 +143,22 @@ func getGRPCOptions(cfg *ClientConfig) []grpc.DialOption {
 
 	if cfg.Logger != nil {
 		loggerFunc := func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
-			cfg.Logger.Log(ctx, slog.Level(lvl), msg, fields...)
+			level := slog.Level(lvl)
+
+			// Downgrade canceled context from error to info.
+			// We have to look at the error string,
+			// as the grpc middlewarn doesn't pass the error value.
+			if level == slog.LevelError {
+				for i := 0; i < len(fields); i += 2 {
+					if fields[i] == "grpc.error" && i+1 < len(fields) {
+						if s, ok := fields[i+1].(string); ok && strings.Contains(s, "context canceled") {
+							level = slog.LevelInfo
+						}
+					}
+				}
+			}
+
+			cfg.Logger.Log(ctx, level, msg, fields...)
 		}
 		unaryInterceptors = append(unaryInterceptors, logging.UnaryClientInterceptor(logging.LoggerFunc(loggerFunc)))
 		streamInterceptors = append(streamInterceptors, logging.StreamClientInterceptor(logging.LoggerFunc(loggerFunc)))
