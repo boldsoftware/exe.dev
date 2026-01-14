@@ -1296,10 +1296,11 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.Comma
 
 	// Store verification in database using the existing email verification table
 	err := withTx1(ss.server, ctx, (*exedb.Queries).InsertEmailVerification, exedb.InsertEmailVerificationParams{
-		Token:     token,
-		Email:     cc.User.Email,
-		UserID:    cc.User.ID,
-		ExpiresAt: time.Now().Add(15 * time.Minute), // 15 minute expiry
+		Token:        token,
+		Email:        cc.User.Email,
+		UserID:       cc.User.ID,
+		ExpiresAt:    time.Now().Add(15 * time.Minute), // 15 minute expiry
+		InviteCodeID: nil,                              // browser command is for existing users, no invite
 	})
 	if err != nil {
 		return err

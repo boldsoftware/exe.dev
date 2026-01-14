@@ -17,6 +17,11 @@
 <body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
   <main class="w-full max-w-2xl">
     <h1 class="text-4xl font-semibold mb-6">Login (or create an account)</h1>
+    {{if .InviteCodeValid}}
+    <p class="text-green-600 mb-4">{{if eq .InvitePlanType "free"}}&#10003; Invite code accepted: free account{{else if eq .InvitePlanType "trial"}}&#10003; Invite code accepted: 1 month free trial{{else}}&#10003; Invite code accepted{{end}}</p>
+    {{else if .InviteCodeInvalid}}
+    <p class="text-red-600 mb-4">Invalid or already used invite code.</p>
+    {{end}}
     <form method="POST" action="{{if .BoxName}}/m/email-auth{{else}}/auth{{end}}">
       {{if .RedirectURL}}
       <input type="hidden" name="redirect" value="{{.RedirectURL}}">
@@ -32,6 +37,9 @@
       {{end}}
       {{if .Prompt}}
       <input type="hidden" name="prompt" value="{{.Prompt}}">
+      {{end}}
+      {{if .InviteCodeValid}}
+      <input type="hidden" name="invite" value="{{.InviteCode}}">
       {{end}}
       <input type="email" name="email" placeholder="you@example.com" required autofocus
         autocomplete="username webauthn" autocorrect="on" autocapitalize="none" spellcheck="true"

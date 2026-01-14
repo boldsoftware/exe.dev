@@ -432,12 +432,16 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 
 type authFormData struct {
 	stage.Env
-	RedirectURL  string
-	ReturnHost   string
-	LoginWithExe bool
-	SSHCommand   string
-	BoxName      string
-	Prompt       string
+	RedirectURL       string
+	ReturnHost        string
+	LoginWithExe      bool
+	SSHCommand        string
+	BoxName           string
+	Prompt            string
+	InviteCode        string
+	InviteCodeValid   bool   // true if invite code is valid and unused
+	InviteCodeInvalid bool   // true if invite code was provided but is invalid or already used
+	InvitePlanType    string // "free" or "trial" if valid
 }
 
 // handleMobileEmailAuth handles email authentication

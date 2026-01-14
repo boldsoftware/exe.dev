@@ -1478,11 +1478,27 @@ func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) 
 	return row, nil
 }
 
-// validateEmailVerificationToken validates an email verification token, consumes it, and returns the user ID
+// validateEmailVerificationToken validates an email verification token, consumes it, and returns the user ID.
+// If the verification has an associated invite code, it applies the invite code to the user.
 func (s *Server) validateEmailVerificationToken(ctx context.Context, token string) (string, error) {
 	row, err := s.checkEmailVerificationToken(ctx, token)
 	if err != nil {
 		return "", err
+	}
+
+	// Apply invite code if one was associated with this verification
+	if row.InviteCodeID != nil {
+		invite, err := withRxRes1(s, ctx, (*exedb.Queries).GetInviteCodeByID, *row.InviteCodeID)
+		if err != nil {
+			s.slog().ErrorContext(ctx, "failed to get invite code during verification", "error", err, "invite_code_id", *row.InviteCodeID)
+		} else if invite.UsedByUserID == nil {
+			// Only apply if not already used
+			if err := s.applyInviteCode(ctx, &invite, row.UserID); err != nil {
+				s.slog().ErrorContext(ctx, "failed to apply invite code during web verification", "error", err, "code", invite.Code)
+			} else {
+				s.slog().InfoContext(ctx, "invite code applied successfully via web", "code", invite.Code, "user_id", row.UserID, "plan_type", invite.PlanType)
+			}
+		}
 	}
 
 	// Clean up used token - use context.WithoutCancel to ensure cleanup completes even if client disconnects

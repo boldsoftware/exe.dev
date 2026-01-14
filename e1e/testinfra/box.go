@@ -292,6 +292,28 @@ func (se *ServerEnv) WebLoginWithEmail(email string) ([]*http.Cookie, error) {
 	return se.WaitForEmailAndVerify(email)
 }
 
+// WebLoginWithInvite performs a web-only login flow with an invite code.
+// This uses the /auth POST endpoint with invite=<code> to apply the invite code.
+func (se *ServerEnv) WebLoginWithInvite(email, inviteCode string) ([]*http.Cookie, error) {
+	// POST to /auth with email and invite code
+	authURL := fmt.Sprintf("http://localhost:%d/auth", se.Exed.HTTPPort)
+	resp, err := http.PostForm(authURL, url.Values{
+		"email":  {email},
+		"invite": {inviteCode},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to POST to /auth: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("POST /auth failed with status %d: %s", resp.StatusCode, body)
+	}
+
+	// Wait for verification email and click verification link
+	return se.WaitForEmailAndVerify(email)
+}
+
 // WebLoginWithExe performs a login flow with login_with_exe=1 set.
 // This simulates a user logging in via the proxy auth flow (login-with-exe).
 // Users created this way are "basic users" and should only see the profile tab.

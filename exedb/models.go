@@ -113,6 +113,7 @@ type EmailVerification struct {
 	ExpiresAt        time.Time  `db:"expires_at" json:"expires_at"`
 	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
 	VerificationCode *string    `db:"verification_code" json:"verification_code"`
+	InviteCodeID     *int64     `db:"invite_code_id" json:"invite_code_id"`
 }
 
 type HllSketch struct {

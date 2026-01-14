@@ -988,12 +988,29 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check invite code validity if provided
+	inviteCodeStr := q.Get("invite")
+	var inviteCodeValid, inviteCodeInvalid bool
+	var invitePlanType string
+	if inviteCodeStr != "" {
+		if invite := s.lookupUnusedInviteCode(r.Context(), inviteCodeStr); invite != nil {
+			inviteCodeValid = true
+			invitePlanType = invite.PlanType
+		} else {
+			inviteCodeInvalid = true
+		}
+	}
+
 	// Show authentication form with query parameters
 	data := authFormData{
-		Env:         s.env,
-		SSHCommand:  s.replSSHConnectionCommand(),
-		RedirectURL: q.Get("redirect"),
-		ReturnHost:  returnHost,
+		Env:               s.env,
+		SSHCommand:        s.replSSHConnectionCommand(),
+		RedirectURL:       q.Get("redirect"),
+		ReturnHost:        returnHost,
+		InviteCode:        inviteCodeStr,
+		InviteCodeValid:   inviteCodeValid,
+		InviteCodeInvalid: inviteCodeInvalid,
+		InvitePlanType:    invitePlanType,
 	}
 	s.renderTemplate(r.Context(), w, "auth-form.html", data)
 }
@@ -1040,6 +1057,7 @@ func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, ema
 		Redirect      string
 		ReturnHost    string
 		LoginWithExe  bool
+		InviteCode    string
 	}{
 		Env:           s.env,
 		Email:         email,
@@ -1048,6 +1066,7 @@ func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, ema
 		Redirect:      r.FormValue("redirect"),
 		ReturnHost:    r.FormValue("return_host"),
 		LoginWithExe:  r.FormValue("login_with_exe") == "1",
+		InviteCode:    r.FormValue("invite"),
 	}
 	s.renderTemplate(r.Context(), w, "auth-pow.html", data)
 }
@@ -1146,12 +1165,22 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// Generate verification token
 	token := generateRegistrationToken()
 
+	// Check for invite code in query parameters
+	var inviteCodeID *int64
+	if inviteCodeStr := r.FormValue("invite"); inviteCodeStr != "" {
+		if invite := s.lookupUnusedInviteCode(r.Context(), inviteCodeStr); invite != nil {
+			inviteCodeID = &invite.ID
+			s.slog().InfoContext(r.Context(), "valid invite code provided via web auth", "code", inviteCodeStr)
+		}
+	}
+
 	// Store verification in database (reuse existing email_verifications table)
 	err = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).InsertEmailVerification, exedb.InsertEmailVerificationParams{
-		Token:     token,
-		Email:     email,
-		UserID:    userID,
-		ExpiresAt: time.Now().Add(24 * time.Hour),
+		Token:        token,
+		Email:        email,
+		UserID:       userID,
+		ExpiresAt:    time.Now().Add(24 * time.Hour),
+		InviteCodeID: inviteCodeID,
 	})
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to store email verification", "error", err)
