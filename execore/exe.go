@@ -177,6 +177,10 @@ type EmailVerification struct {
 	// Err is set if billing checkout fails or is canceled. The SSH session
 	// checks this after CompleteChan closes.
 	Err error
+
+	// InviteCode is the invite code used during signup (from ssh username).
+	// If set, it will be applied after user creation.
+	InviteCode *exedb.InviteCode
 }
 
 // Close signals completion to the waiting SSH session.

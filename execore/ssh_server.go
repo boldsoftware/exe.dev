@@ -771,6 +771,16 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 	ss.showAnimatedWelcome(s)
 	ctx := s.Context()
 
+	// Check if the SSH username is a valid invite code
+	sshUsername := s.User()
+	var inviteCode *exedb.InviteCode
+	if sshUsername != "" {
+		inviteCode = ss.server.lookupUnusedInviteCode(ctx, sshUsername)
+		if inviteCode != nil {
+			ss.server.slog().InfoContext(ctx, "valid invite code provided via ssh username", "code", sshUsername)
+		}
+	}
+
 	// Attempt to identify this as a GitHub user based on their validated public key.
 	ghInfo, err := ss.server.githubUser.InfoString(s.Context(), publicKey)
 	if err != nil {
@@ -778,6 +788,14 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 	}
 
 	fmt.Fprint(s, "\r\n\033[1;33mEXE.DEV: get a VM over ssh\033[0m\r\n")
+	if inviteCode != nil {
+		switch inviteCode.PlanType {
+		case "free":
+			fmt.Fprint(s, "\r\n\033[1;32m✓ Invite code accepted: free account\033[0m\r\n")
+		case "trial":
+			fmt.Fprint(s, "\r\n\033[1;32m✓ Invite code accepted: 1 month free trial\033[0m\r\n")
+		}
+	}
 	if ghInfo.Email != "" {
 		fmt.Fprintf(s, "\r\n✨ Recognized \033[1m@%s\033[0m's public GitHub SSH key. ✨\r\n", ghInfo.Login)
 		fmt.Fprintf(s, "(This key and email are public on GitHub; see %s/docs/ssh-github)\r\n", ss.server.webBaseURLNoRequest())
@@ -826,7 +844,7 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 	needsEmailVerification := ghInfo.Email == "" || email != ghInfo.Email
 	var user *exedb.User
 	if needsEmailVerification {
-		user, err = ss.waitForEmailVerification(s, publicKey, email)
+		user, err = ss.waitForEmailVerification(s, publicKey, email, inviteCode)
 		if err != nil || user == nil {
 			if errors.Is(err, errRegistrationCancelled) {
 				ss.server.slog().InfoContext(ctx, "email registration cancelled", "email", email)
@@ -847,7 +865,16 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 		}
 		user = newUser
 		ss.server.slackFeed.EmailVerified(s.Context(), newUser.UserID)
-		// TODO: handle new device but existing user case!
+
+		// Apply invite code if one was provided
+		if inviteCode != nil {
+			if err := ss.server.applyInviteCode(ctx, inviteCode, user.UserID); err != nil {
+				ss.server.slog().ErrorContext(ctx, "failed to apply invite code", "error", err, "code", inviteCode.Code)
+				// Don't fail registration, just log the error
+			} else {
+				ss.server.slog().InfoContext(ctx, "invite code applied successfully", "code", inviteCode.Code, "user_id", user.UserID, "plan_type", inviteCode.PlanType)
+			}
+		}
 	}
 
 	// Get user's alloc for the menu
@@ -858,10 +885,10 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 	ss.runMainShellWithReadline(s, publicKey, user)
 }
 
-func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email string) (*exedb.User, error) {
+func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email string, inviteCode *exedb.InviteCode) (*exedb.User, error) {
 	ctx := s.Context()
 	ss.server.slog().DebugContext(ctx, "starting email verification", "email", email)
-	verification, err := ss.startEmailVerification(s, publicKey, email)
+	verification, err := ss.startEmailVerification(s, publicKey, email, inviteCode)
 	if err != nil {
 		switch {
 		case errors.Is(err, errNoEmailService):
@@ -1068,7 +1095,7 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 	fmt.Fprintf(s, "  \033[1m%s rm %s\033[0m\r\n", ss.server.replSSHConnectionCommand(), boxName)
 }
 
-func (ss *SSHServer) startEmailVerification(s *shellSession, publicKey, email string) (*EmailVerification, error) {
+func (ss *SSHServer) startEmailVerification(s *shellSession, publicKey, email string, inviteCode *exedb.InviteCode) (*EmailVerification, error) {
 	// Check whether this email already exists
 	_, err := withRxRes1(ss.server, s.Context(), (*exedb.Queries).GetUserIDByEmail, email)
 	var isNewAccount bool
@@ -1083,7 +1110,8 @@ func (ss *SSHServer) startEmailVerification(s *shellSession, publicKey, email st
 
 	if !isNewAccount {
 		// Email already exists - this is a new ssh key for an existing user.
-		verif := ss.server.addEmailVerification(publicKey, email, isNewAccount)
+		// Note: invite codes are only for new accounts, not existing users adding a device.
+		verif := ss.server.addEmailVerification(publicKey, email, isNewAccount, nil)
 
 		err := ss.server.withTx(s.Context(), func(ctx context.Context, q *exedb.Queries) error {
 			return q.InsertPendingSSHKey(ctx, exedb.InsertPendingSSHKeyParams{
@@ -1129,7 +1157,7 @@ The EXE.DEV team`, publicKey, verifyURL)
 	}
 
 	// New user registration
-	verif := ss.server.addEmailVerification(publicKey, email, isNewAccount)
+	verif := ss.server.addEmailVerification(publicKey, email, isNewAccount, inviteCode)
 
 	// Send verification email
 	subject := "Welcome to EXE.DEV - Verify Your Email"
@@ -1156,7 +1184,7 @@ The EXE.DEV team`, verifyURL)
 	return verif, nil
 }
 
-func (s *Server) addEmailVerification(publicKey, email string, isNewAccount bool) *EmailVerification {
+func (s *Server) addEmailVerification(publicKey, email string, isNewAccount bool, inviteCode *exedb.InviteCode) *EmailVerification {
 	token := generateRegistrationToken()
 	pairingCode := generatePairingCode()
 
@@ -1168,6 +1196,7 @@ func (s *Server) addEmailVerification(publicKey, email string, isNewAccount bool
 		CompleteChan: make(chan struct{}),
 		CreatedAt:    time.Now(),
 		IsNewAccount: isNewAccount,
+		InviteCode:   inviteCode,
 	}
 	s.emailVerificationsMu.Lock()
 	defer s.emailVerificationsMu.Unlock()
@@ -1185,6 +1214,61 @@ func (s *Server) lookUpEmailVerification(token string) *EmailVerification {
 	s.emailVerificationsMu.Lock()
 	defer s.emailVerificationsMu.Unlock()
 	return s.emailVerifications[token]
+}
+
+// lookupUnusedInviteCode checks if the given code is a valid, unused invite code.
+// Returns the invite code if valid, or nil if not found or already used.
+func (s *Server) lookupUnusedInviteCode(ctx context.Context, code string) *exedb.InviteCode {
+	invite, err := withRxRes1(s, ctx, (*exedb.Queries).GetInviteCodeByCode, code)
+	if err != nil {
+		// Not found or error
+		return nil
+	}
+	// Check if already used
+	if invite.UsedByUserID != nil {
+		return nil
+	}
+	return &invite
+}
+
+// applyInviteCode marks an invite code as used and sets the user's billing exemption.
+func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCode, userID string) error {
+	return s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		// Mark the invite code as used
+		if err := q.UseInviteCode(ctx, exedb.UseInviteCodeParams{
+			UsedByUserID: &userID,
+			ID:           inviteCode.ID,
+		}); err != nil {
+			return fmt.Errorf("failed to mark invite code as used: %w", err)
+		}
+
+		// Set user billing exemption based on plan type
+		var billingExemption *string
+		var trialEndsAt *time.Time
+
+		switch inviteCode.PlanType {
+		case "free":
+			exemption := "free"
+			billingExemption = &exemption
+		case "trial":
+			exemption := "trial"
+			billingExemption = &exemption
+			// Trial ends in 1 month
+			t := time.Now().AddDate(0, 1, 0)
+			trialEndsAt = &t
+		}
+
+		if err := q.SetUserBillingExemption(ctx, exedb.SetUserBillingExemptionParams{
+			BillingExemption:     billingExemption,
+			BillingTrialEndsAt:   trialEndsAt,
+			SignedUpWithInviteID: &inviteCode.ID,
+			UserID:               userID,
+		}); err != nil {
+			return fmt.Errorf("failed to set user billing exemption: %w", err)
+		}
+
+		return nil
+	})
 }
 
 // readLineWithCompletion reads a line from the terminal with tab completion support

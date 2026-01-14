@@ -92,6 +92,16 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		verifiedUserID = user.UserID
 		s.slackFeed.EmailVerified(r.Context(), user.UserID)
 
+		// Apply invite code if one was provided during signup
+		if verification.InviteCode != nil {
+			if err := s.applyInviteCode(r.Context(), verification.InviteCode, user.UserID); err != nil {
+				s.slog().ErrorContext(r.Context(), "failed to apply invite code", "error", err, "code", verification.InviteCode.Code)
+				// Don't fail registration, just log the error
+			} else {
+				s.slog().InfoContext(r.Context(), "invite code applied successfully", "code", verification.InviteCode.Code, "user_id", user.UserID, "plan_type", verification.InviteCode.PlanType)
+			}
+		}
+
 		// Create HTTP auth cookie for this user
 		cookieValue, err := s.createAuthCookie(context.WithoutCancel(r.Context()), user.UserID, r.Host)
 		if err != nil {
