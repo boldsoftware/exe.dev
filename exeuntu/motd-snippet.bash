@@ -7,14 +7,28 @@ if [[ $- == *i* ]]; then
     echo 'For support and documentation, "ssh exe.dev" or visit https://exe.dev/'
     echo ""
 
+    # Build shelley/xterm URLs based on hostname
+    _exe_url() {
+        local fqdn prefix suffix
+        fqdn=$(hostname -f)
+        if [[ "$fqdn" == *.* ]]; then
+            prefix=${fqdn%%.*}
+            suffix=${fqdn#*.}
+            echo "https://${prefix}.${1}.${suffix}/"
+        else
+            echo "https://${fqdn}.${1}.exe.xyz/"
+        fi
+    }
+
     hints=(
 	  $'Read exe.dev docs at https://exe.dev/docs'
-	  "$(printf 'Shelley, our coding agent, is running at https://%s:9999' "$(hostname -f)")"
+	  "$(printf 'Shelley, our coding agent, is running at %s' "$(_exe_url shelley)")"
 	  $'Docker is installed and works; try "docker run --rm alpine:latest echo hello world"'
 	  "$(printf 'If you run an http webserver on port 1234, you can access it securely at https://%s:1234\nTry it with "python3 -m http.server 1234"' "$(hostname -f)")"
 	  $'ssh into exe.dev to manage the HTTP proxy and sharing for this VM'
-	  "$(printf 'There is a web-based terminal at https://%s.xterm.exe.dev/' "$(hostname | cut -d. -f1)")"
+	  "$(printf 'There is a web-based terminal at %s' "$(_exe_url xterm)")"
     )
+    unset -f _exe_url
 
     hint_index=$((RANDOM % ${#hints[@]}))
     printf '%s\n' "${hints[hint_index]}"
