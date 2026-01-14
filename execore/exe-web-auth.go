@@ -1097,12 +1097,21 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// login_with_exe is explicitly set when logging into a site hosted by exe (proxy auth flow)
 	createdForLoginWithExe := r.FormValue("login_with_exe") == "1"
 
+	// Check for invite code early so we can bypass abuse checks if valid
+	var hasValidInviteCode bool
+	if inviteCodeStr := r.FormValue("invite"); inviteCodeStr != "" {
+		if invite := s.lookupUnusedInviteCode(r.Context(), inviteCodeStr); invite != nil {
+			hasValidInviteCode = true
+		}
+	}
+
 	// Validate signup eligibility (checks if new user and runs IPQS/disabled checks)
 	if err := s.validateNewSignup(r.Context(), signupValidationParams{
 		ip:               ip.String(),
 		email:            email,
 		source:           "web",
 		trustedGitHubKey: false,
+		hasInviteCode:    hasValidInviteCode,
 	}); err != nil {
 		s.slog().InfoContext(r.Context(), "signup validation failed", "error", err, "ip", ip, "email", email)
 		s.showAuthError(w, r, err.Error(), "")
