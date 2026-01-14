@@ -2,6 +2,7 @@
 package stage
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 
@@ -100,6 +101,8 @@ func Invalid() Env {
 	}
 }
 
+var envStripeKey = os.Getenv("STRIPE_API_KEY")
+
 // Local returns an Env configured for convenient local human development.
 // It enables more expensive features (cobble, auto-starting sshpiper),
 // and provides convenience shortcuts like email links in the console/web.
@@ -115,7 +118,7 @@ func Local() Env {
 		DiscoverPublicIPs: false,
 
 		FakeEmail:   true,
-		SkipBilling: true,
+		SkipBilling: envStripeKey == "",
 		ReplDev:     true,
 		WebDev:      true,
 		ProxyDev:    true,
@@ -141,7 +144,7 @@ func Local() Env {
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
 
-		StripeAPIKey: billing.TestAPIKey,
+		StripeAPIKey: cmp.Or(envStripeKey, billing.TestAPIKey),
 	}
 }
 
@@ -230,7 +233,7 @@ func Staging() Env {
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
 
-		StripeAPIKey: os.Getenv("STRIPE_API_KEY"),
+		StripeAPIKey: envStripeKey,
 	}
 }
 
@@ -272,7 +275,7 @@ func Prod() Env {
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
 
-		StripeAPIKey: os.Getenv("STRIPE_API_KEY"),
+		StripeAPIKey: envStripeKey,
 	}
 }
 

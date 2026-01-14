@@ -237,11 +237,19 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 	s.renderTemplate(r.Context(), w, "email-verified.html", data)
 }
 
-// handleBillingSubscribe handles billing subscription for authenticated users.
-// This is used when a user tries to create a VM but doesn't have billing info.
+// handleBillingSubscribe handles billing subscription.
+// Two flows are supported:
+// 1. Authenticated users: Used when a user tries to create a VM but doesn't have billing info.
+// 2. New user registration: When token query param is present, handles unauthenticated new users.
 // Accepts name and prompt query params to preserve VM creation details through Stripe checkout.
 func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) {
-	// Require authentication
+	// Check for pending registration token (new user flow)
+	if token := r.URL.Query().Get("token"); token != "" {
+		s.handleNewUserBillingSubscribe(w, r, token)
+		return
+	}
+
+	// Existing flow: require authentication
 	userID, err := s.validateAuthCookie(r)
 	if err != nil {
 		http.Redirect(w, r, "/auth?redirect="+url.QueryEscape(r.URL.String()), http.StatusSeeOther)
@@ -359,10 +367,21 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 
 // handleBillingSuccess activates the account after Stripe checkout completes.
 // Stripe redirects here with a session_id after successful checkout.
+// Two flows are supported:
+// 1. Authenticated users: Activates their account after billing.
+// 2. New user registration: When token query param is present, creates user and sends verification email.
 // If name and prompt query params are present, starts VM creation automatically.
 func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
-	source := r.URL.Query().Get("source")
 	sessionID := r.URL.Query().Get("session_id")
+
+	// Check for pending registration token (new user flow)
+	if token := r.URL.Query().Get("token"); token != "" {
+		s.handleNewUserBillingSuccess(w, r, sessionID, token)
+		return
+	}
+
+	// Existing flow for authenticated users
+	source := r.URL.Query().Get("source")
 	vmName := strings.TrimSpace(r.URL.Query().Get("name"))
 	vmPrompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
 
@@ -414,6 +433,176 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 		Source:  source,
 	}
 	s.renderTemplate(r.Context(), w, "billing-success.html", data)
+}
+
+// handleNewUserBillingSubscribe handles billing subscription for new (unauthenticated) users.
+// This is the billing-before-registration flow: new users get a pending registration token
+// from /auth, then are redirected here to complete Stripe checkout before their user
+// record is created.
+func (s *Server) handleNewUserBillingSubscribe(w http.ResponseWriter, r *http.Request, token string) {
+	// Get pending registration
+	pending, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetPendingRegistrationByToken, token)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// Token invalid - redirect back to /auth
+			http.Redirect(w, r, "/auth?error=expired", http.StatusSeeOther)
+			return
+		}
+		s.slog().ErrorContext(r.Context(), "failed to get pending registration", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Check expiry in Go code (SQLite datetime format comparison issues)
+	if time.Now().After(pending.ExpiresAt) {
+		// Token expired - redirect back to /auth
+		_ = withTx1(s, r.Context(), (*exedb.Queries).DeletePendingRegistrationByToken, token)
+		http.Redirect(w, r, "/auth?error=expired", http.StatusSeeOther)
+		return
+	}
+
+	// Create account ID for this registration
+	accountID := "exe_" + rand.Text()[:16]
+
+	// Build callback URLs
+	baseURL := s.webBaseURLNoRequest()
+	successURL := baseURL + "/billing/success?session_id={CHECKOUT_SESSION_ID}&token=" + url.QueryEscape(token)
+	cancelURL := baseURL + "/auth?email=" + url.QueryEscape(pending.Email) + "&cancel=billing"
+
+	checkoutURL, err := s.billing.Subscribe(r.Context(), accountID, &billing.SubscribeParams{
+		Email:      pending.Email,
+		SuccessURL: successURL,
+		CancelURL:  cancelURL,
+		TrialEnd:   time.Date(2026, time.February, 1, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to create billing checkout session", "error", err)
+		http.Error(w, "failed to start subscription", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, checkoutURL, http.StatusSeeOther)
+}
+
+// handleNewUserBillingSuccess completes registration for new users after Stripe checkout.
+// Creates the user record, activates the account, and sends the verification email.
+func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Request, sessionID, token string) {
+	ctx := r.Context()
+
+	// Verify Stripe checkout
+	billingID, err := s.billing.VerifyCheckout(ctx, sessionID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to verify checkout session", "error", err, "session_id", sessionID)
+		http.Error(w, "failed to verify billing", http.StatusBadRequest)
+		return
+	}
+
+	// Get pending registration
+	pending, err := withRxRes1(s, ctx, (*exedb.Queries).GetPendingRegistrationByToken, token)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			s.slog().ErrorContext(ctx, "pending registration not found", "token", token)
+			http.Error(w, "registration expired", http.StatusBadRequest)
+			return
+		}
+		s.slog().ErrorContext(ctx, "failed to get pending registration", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Check expiry in Go code (SQLite datetime format comparison issues)
+	if time.Now().After(pending.ExpiresAt) {
+		_ = withTx1(s, ctx, (*exedb.Queries).DeletePendingRegistrationByToken, token)
+		s.slog().ErrorContext(ctx, "pending registration expired", "token", token)
+		http.Error(w, "registration expired", http.StatusBadRequest)
+		return
+	}
+
+	// Create user + account in transaction
+	var userID string
+	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		userID, err = s.createUserRecord(ctx, queries, pending.Email, false)
+		if err != nil {
+			return fmt.Errorf("create user: %w", err)
+		}
+		if err := queries.InsertAccount(ctx, exedb.InsertAccountParams{
+			ID:        billingID,
+			CreatedBy: userID,
+		}); err != nil {
+			return fmt.Errorf("insert account: %w", err)
+		}
+		if err := queries.ActivateAccount(ctx, userID); err != nil {
+			return fmt.Errorf("activate account: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to create user account", "error", err)
+		http.Error(w, "failed to create account", http.StatusInternalServerError)
+		return
+	}
+
+	// Apply invite code if present
+	if pending.InviteCodeID != nil {
+		invite, err := withRxRes1(s, ctx, (*exedb.Queries).GetInviteCodeByID, *pending.InviteCodeID)
+		if err == nil && invite.UsedByUserID == nil {
+			if err := s.applyInviteCode(ctx, &invite, userID); err != nil {
+				s.slog().ErrorContext(ctx, "failed to apply invite code", "error", err)
+			}
+		}
+	}
+
+	// Clean up pending registration
+	_ = withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).DeletePendingRegistrationByToken, token)
+
+	// Notify about new user
+	s.slackFeed.NewUser(ctx, userID, pending.Email, "web-billing-first")
+	s.slackFeed.Subscribed(ctx, userID)
+
+	// Send verification email
+	verifyToken := generateRegistrationToken()
+	err = withTx1(s, ctx, (*exedb.Queries).InsertEmailVerification, exedb.InsertEmailVerificationParams{
+		Token:     verifyToken,
+		Email:     pending.Email,
+		UserID:    userID,
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	})
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to create email verification", "error", err)
+		// Don't fail the entire flow, user is created and billed
+	} else {
+		verifyURL := fmt.Sprintf("%s/verify-email?token=%s", s.webBaseURLNoRequest(), verifyToken)
+		subject := fmt.Sprintf("Verify your email - %s", s.env.WebHost)
+		body := fmt.Sprintf(`Hello,
+
+Please click the link below to verify your email address:
+
+%s
+
+This link will expire in 24 hours.
+
+Best regards,
+The %s team`, verifyURL, s.env.WebHost)
+		if err := s.sendEmail(ctx, emailpkg.TypeWebAuthVerification, pending.Email, subject, body); err != nil {
+			s.slog().ErrorContext(ctx, "failed to send verification email", "error", err, "email", pending.Email)
+		}
+	}
+
+	// Create auth cookie (user is logged in immediately)
+	cookieValue, err := s.createAuthCookie(context.WithoutCancel(ctx), userID, r.Host)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to create auth cookie", "error", err)
+	} else {
+		setExeAuthCookie(w, r, cookieValue)
+	}
+
+	// Show check-email page
+	var devURL string
+	if s.env.WebDev {
+		devURL = fmt.Sprintf("%s/verify-email?token=%s", s.webBaseURLNoRequest(), verifyToken)
+	}
+	s.showAuthEmailSent(w, r, pending.Email, devURL)
 }
 
 // unauthorizedData holds the template data for the 401.html page
@@ -1124,6 +1313,32 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	if err != nil && !isNewUser {
 		s.slog().ErrorContext(r.Context(), "Database error fetching user", "error", err)
 		s.showAuthError(w, r, "Database error occurred. Please try again.", "")
+		return
+	}
+
+	// NEW FLOW: Redirect new users to billing first (unless SkipBilling for tests).
+	// POW is skipped for billing-first flow - Stripe serves as sufficient friction.
+	if isNewUser && !s.env.SkipBilling {
+		// Create pending registration to track email through Stripe
+		token := generateRegistrationToken()
+		var inviteCodeID *int64
+		if inviteCodeStr := r.FormValue("invite"); inviteCodeStr != "" {
+			if invite := s.lookupUnusedInviteCode(r.Context(), inviteCodeStr); invite != nil {
+				inviteCodeID = &invite.ID
+			}
+		}
+		err = withTx1(s, r.Context(), (*exedb.Queries).InsertPendingRegistration, exedb.InsertPendingRegistrationParams{
+			Token:        token,
+			Email:        email,
+			InviteCodeID: inviteCodeID,
+			ExpiresAt:    time.Now().Add(1 * time.Hour),
+		})
+		if err != nil {
+			s.slog().ErrorContext(r.Context(), "Failed to create pending registration", "error", err)
+			s.showAuthError(w, r, "Failed to start registration. Please try again.", "")
+			return
+		}
+		http.Redirect(w, r, "/billing/subscribe?token="+url.QueryEscape(token), http.StatusSeeOther)
 		return
 	}
 

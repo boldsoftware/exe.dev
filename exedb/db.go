@@ -132,6 +132,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, deleteEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEmailVerificationByToken: %w", err)
 	}
+	if q.deleteExpiredPendingRegistrationsStmt, err = db.PrepareContext(ctx, deleteExpiredPendingRegistrations); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteExpiredPendingRegistrations: %w", err)
+	}
 	if q.deleteMobilePendingVMByTokenStmt, err = db.PrepareContext(ctx, deleteMobilePendingVMByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteMobilePendingVMByToken: %w", err)
 	}
@@ -146,6 +149,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deletePendingBoxShareByBoxAndEmailStmt, err = db.PrepareContext(ctx, deletePendingBoxShareByBoxAndEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingBoxShareByBoxAndEmail: %w", err)
+	}
+	if q.deletePendingRegistrationByTokenStmt, err = db.PrepareContext(ctx, deletePendingRegistrationByToken); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePendingRegistrationByToken: %w", err)
 	}
 	if q.deletePendingSSHKeyByTokenStmt, err = db.PrepareContext(ctx, deletePendingSSHKeyByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingSSHKeyByToken: %w", err)
@@ -285,6 +291,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getPendingBoxSharesByEmailStmt, err = db.PrepareContext(ctx, getPendingBoxSharesByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingBoxSharesByEmail: %w", err)
 	}
+	if q.getPendingRegistrationByTokenStmt, err = db.PrepareContext(ctx, getPendingRegistrationByToken); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPendingRegistrationByToken: %w", err)
+	}
 	if q.getPendingSSHKeyByTokenStmt, err = db.PrepareContext(ctx, getPendingSSHKeyByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingSSHKeyByToken: %w", err)
 	}
@@ -413,6 +422,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertPasskeyChallengeStmt, err = db.PrepareContext(ctx, insertPasskeyChallenge); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPasskeyChallenge: %w", err)
+	}
+	if q.insertPendingRegistrationStmt, err = db.PrepareContext(ctx, insertPendingRegistration); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertPendingRegistration: %w", err)
 	}
 	if q.insertPendingSSHKeyStmt, err = db.PrepareContext(ctx, insertPendingSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPendingSSHKey: %w", err)
@@ -767,6 +779,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteEmailVerificationByTokenStmt: %w", cerr)
 		}
 	}
+	if q.deleteExpiredPendingRegistrationsStmt != nil {
+		if cerr := q.deleteExpiredPendingRegistrationsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteExpiredPendingRegistrationsStmt: %w", cerr)
+		}
+	}
 	if q.deleteMobilePendingVMByTokenStmt != nil {
 		if cerr := q.deleteMobilePendingVMByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteMobilePendingVMByTokenStmt: %w", cerr)
@@ -790,6 +807,11 @@ func (q *Queries) Close() error {
 	if q.deletePendingBoxShareByBoxAndEmailStmt != nil {
 		if cerr := q.deletePendingBoxShareByBoxAndEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deletePendingBoxShareByBoxAndEmailStmt: %w", cerr)
+		}
+	}
+	if q.deletePendingRegistrationByTokenStmt != nil {
+		if cerr := q.deletePendingRegistrationByTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePendingRegistrationByTokenStmt: %w", cerr)
 		}
 	}
 	if q.deletePendingSSHKeyByTokenStmt != nil {
@@ -1022,6 +1044,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getPendingBoxSharesByEmailStmt: %w", cerr)
 		}
 	}
+	if q.getPendingRegistrationByTokenStmt != nil {
+		if cerr := q.getPendingRegistrationByTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPendingRegistrationByTokenStmt: %w", cerr)
+		}
+	}
 	if q.getPendingSSHKeyByTokenStmt != nil {
 		if cerr := q.getPendingSSHKeyByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getPendingSSHKeyByTokenStmt: %w", cerr)
@@ -1235,6 +1262,11 @@ func (q *Queries) Close() error {
 	if q.insertPasskeyChallengeStmt != nil {
 		if cerr := q.insertPasskeyChallengeStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertPasskeyChallengeStmt: %w", cerr)
+		}
+	}
+	if q.insertPendingRegistrationStmt != nil {
+		if cerr := q.insertPendingRegistrationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertPendingRegistrationStmt: %w", cerr)
 		}
 	}
 	if q.insertPendingSSHKeyStmt != nil {
@@ -1592,11 +1624,13 @@ type Queries struct {
 	deleteBoxShareLinkByBoxAndTokenStmt        *sql.Stmt
 	deleteEmailQualityBypassStmt               *sql.Stmt
 	deleteEmailVerificationByTokenStmt         *sql.Stmt
+	deleteExpiredPendingRegistrationsStmt      *sql.Stmt
 	deleteMobilePendingVMByTokenStmt           *sql.Stmt
 	deleteMobilePendingVMByUserAndHostnameStmt *sql.Stmt
 	deletePasskeyStmt                          *sql.Stmt
 	deletePasskeyChallengeStmt                 *sql.Stmt
 	deletePendingBoxShareByBoxAndEmailStmt     *sql.Stmt
+	deletePendingRegistrationByTokenStmt       *sql.Stmt
 	deletePendingSSHKeyByTokenStmt             *sql.Stmt
 	deleteSSHKeyForUserStmt                    *sql.Stmt
 	deleteTagResolutionStmt                    *sql.Stmt
@@ -1643,6 +1677,7 @@ type Queries struct {
 	getPasskeysByUserIDStmt                    *sql.Stmt
 	getPendingBoxSharesByBoxIDStmt             *sql.Stmt
 	getPendingBoxSharesByEmailStmt             *sql.Stmt
+	getPendingRegistrationByTokenStmt          *sql.Stmt
 	getPendingSSHKeyByTokenStmt                *sql.Stmt
 	getPendingSSHKeyEmailByPublicKeyStmt       *sql.Stmt
 	getPreferredExeletStmt                     *sql.Stmt
@@ -1686,6 +1721,7 @@ type Queries struct {
 	insertOrReplaceEmailVerificationStmt       *sql.Stmt
 	insertPasskeyStmt                          *sql.Stmt
 	insertPasskeyChallengeStmt                 *sql.Stmt
+	insertPendingRegistrationStmt              *sql.Stmt
 	insertPendingSSHKeyStmt                    *sql.Stmt
 	insertProxyBearerTokenStmt                 *sql.Stmt
 	insertSSHKeyStmt                           *sql.Stmt
@@ -1784,11 +1820,13 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteBoxShareLinkByBoxAndTokenStmt:        q.deleteBoxShareLinkByBoxAndTokenStmt,
 		deleteEmailQualityBypassStmt:               q.deleteEmailQualityBypassStmt,
 		deleteEmailVerificationByTokenStmt:         q.deleteEmailVerificationByTokenStmt,
+		deleteExpiredPendingRegistrationsStmt:      q.deleteExpiredPendingRegistrationsStmt,
 		deleteMobilePendingVMByTokenStmt:           q.deleteMobilePendingVMByTokenStmt,
 		deleteMobilePendingVMByUserAndHostnameStmt: q.deleteMobilePendingVMByUserAndHostnameStmt,
 		deletePasskeyStmt:                          q.deletePasskeyStmt,
 		deletePasskeyChallengeStmt:                 q.deletePasskeyChallengeStmt,
 		deletePendingBoxShareByBoxAndEmailStmt:     q.deletePendingBoxShareByBoxAndEmailStmt,
+		deletePendingRegistrationByTokenStmt:       q.deletePendingRegistrationByTokenStmt,
 		deletePendingSSHKeyByTokenStmt:             q.deletePendingSSHKeyByTokenStmt,
 		deleteSSHKeyForUserStmt:                    q.deleteSSHKeyForUserStmt,
 		deleteTagResolutionStmt:                    q.deleteTagResolutionStmt,
@@ -1835,6 +1873,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPasskeysByUserIDStmt:                    q.getPasskeysByUserIDStmt,
 		getPendingBoxSharesByBoxIDStmt:             q.getPendingBoxSharesByBoxIDStmt,
 		getPendingBoxSharesByEmailStmt:             q.getPendingBoxSharesByEmailStmt,
+		getPendingRegistrationByTokenStmt:          q.getPendingRegistrationByTokenStmt,
 		getPendingSSHKeyByTokenStmt:                q.getPendingSSHKeyByTokenStmt,
 		getPendingSSHKeyEmailByPublicKeyStmt:       q.getPendingSSHKeyEmailByPublicKeyStmt,
 		getPreferredExeletStmt:                     q.getPreferredExeletStmt,
@@ -1878,6 +1917,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertOrReplaceEmailVerificationStmt:       q.insertOrReplaceEmailVerificationStmt,
 		insertPasskeyStmt:                          q.insertPasskeyStmt,
 		insertPasskeyChallengeStmt:                 q.insertPasskeyChallengeStmt,
+		insertPendingRegistrationStmt:              q.insertPendingRegistrationStmt,
 		insertPendingSSHKeyStmt:                    q.insertPendingSSHKeyStmt,
 		insertProxyBearerTokenStmt:                 q.insertProxyBearerTokenStmt,
 		insertSSHKeyStmt:                           q.insertSSHKeyStmt,

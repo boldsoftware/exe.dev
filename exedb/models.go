@@ -190,6 +190,14 @@ type PendingBoxShare struct {
 	CreatedAt       *time.Time `db:"created_at" json:"created_at"`
 }
 
+type PendingRegistration struct {
+	Token        string    `db:"token" json:"token"`
+	Email        string    `db:"email" json:"email"`
+	InviteCodeID *int64    `db:"invite_code_id" json:"invite_code_id"`
+	CreatedAt    time.Time `db:"created_at" json:"created_at"`
+	ExpiresAt    time.Time `db:"expires_at" json:"expires_at"`
+}
+
 type PendingSSHKey struct {
 	Token     string     `db:"token" json:"token"`
 	PublicKey string     `db:"public_key" json:"public_key"`
