@@ -22,10 +22,11 @@ const (
 var ErrNotImplemented = errors.New("not implemented")
 
 type ZFS struct {
-	dataDir string
-	dsName  string
-	locks   sync.Map // map[string]*sync.Mutex - per-volume locks
-	log     *slog.Logger
+	dataDir  string
+	dsName   string
+	hostname string
+	locks    sync.Map // map[string]*sync.Mutex - per-volume locks
+	log      *slog.Logger
 }
 
 // NewZFS returns a new ZFS based storage manager
@@ -54,12 +55,15 @@ func NewZFS(addr string, log *slog.Logger) (*ZFS, error) {
 		return nil, fmt.Errorf("zfs storage manager dataset name cannot be blank")
 	}
 
+	hostname, _ := os.Hostname()
+
 	log.Debug("loaded zfs storage manager", "ds", dsName)
 
 	return &ZFS{
-		dataDir: dataDir,
-		dsName:  dsName,
-		log:     log,
+		dataDir:  dataDir,
+		dsName:   dsName,
+		hostname: hostname,
+		log:      log,
 	}, nil
 }
 

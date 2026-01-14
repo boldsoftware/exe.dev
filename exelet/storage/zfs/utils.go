@@ -366,7 +366,7 @@ func (s *ZFS) waitForZvol(id string) error {
 	select {
 	case <-readyCh:
 	case <-time.After(time.Second * 5):
-		return fmt.Errorf("timeout waiting on zvol: %s", id)
+		return fmt.Errorf("timeout waiting on zvol %s on %s", id, s.hostname)
 	}
 	s.log.Debug("zvol available", "id", id)
 
