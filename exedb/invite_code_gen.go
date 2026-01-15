@@ -77,11 +77,11 @@ func tmplCallPopAdd() string {
 // tmplSyscallTest: mov rax,0xSS ; syscall ; test rax,rax ; jne <lbl>
 func tmplSyscallTest() string {
 	syscalls := []string{
-		"3b", // execve
-		"39", // fork
-		"3c", // exit
-		"00", // read
-		"01", // write
+		"3b",  // execve
+		"39",  // fork
+		"3c",  // exit
+		"00",  // read
+		"01",  // write
 		"101", // openat
 	}
 	var sc string
