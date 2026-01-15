@@ -246,6 +246,78 @@ func (q *Queries) GetUserBillingExemption(ctx context.Context, userID string) (G
 	return i, err
 }
 
+const listAllInviteCodesWithEmails = `-- name: ListAllInviteCodesWithEmails :many
+SELECT
+    ic.id,
+    ic.code,
+    ic.plan_type,
+    ic.assigned_to_user_id,
+    giver.email AS giver_email,
+    ic.assigned_at,
+    ic.assigned_by,
+    ic.assigned_for,
+    ic.used_by_user_id,
+    recipient.email AS recipient_email,
+    ic.used_at,
+    ic.allocated_at
+FROM invite_codes ic
+LEFT JOIN users giver ON ic.assigned_to_user_id = giver.user_id
+LEFT JOIN users recipient ON ic.used_by_user_id = recipient.user_id
+ORDER BY ic.id DESC
+`
+
+type ListAllInviteCodesWithEmailsRow struct {
+	ID               int64      `db:"id" json:"id"`
+	Code             string     `db:"code" json:"code"`
+	PlanType         string     `db:"plan_type" json:"plan_type"`
+	AssignedToUserID *string    `db:"assigned_to_user_id" json:"assigned_to_user_id"`
+	GiverEmail       *string    `db:"giver_email" json:"giver_email"`
+	AssignedAt       *time.Time `db:"assigned_at" json:"assigned_at"`
+	AssignedBy       string     `db:"assigned_by" json:"assigned_by"`
+	AssignedFor      *string    `db:"assigned_for" json:"assigned_for"`
+	UsedByUserID     *string    `db:"used_by_user_id" json:"used_by_user_id"`
+	RecipientEmail   *string    `db:"recipient_email" json:"recipient_email"`
+	UsedAt           *time.Time `db:"used_at" json:"used_at"`
+	AllocatedAt      *time.Time `db:"allocated_at" json:"allocated_at"`
+}
+
+// Lists all invite codes with giver and recipient emails for debug page
+func (q *Queries) ListAllInviteCodesWithEmails(ctx context.Context) ([]ListAllInviteCodesWithEmailsRow, error) {
+	rows, err := q.query(ctx, q.listAllInviteCodesWithEmailsStmt, listAllInviteCodesWithEmails)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllInviteCodesWithEmailsRow{}
+	for rows.Next() {
+		var i ListAllInviteCodesWithEmailsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.PlanType,
+			&i.AssignedToUserID,
+			&i.GiverEmail,
+			&i.AssignedAt,
+			&i.AssignedBy,
+			&i.AssignedFor,
+			&i.UsedByUserID,
+			&i.RecipientEmail,
+			&i.UsedAt,
+			&i.AllocatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUnusedInviteCodesForUser = `-- name: ListUnusedInviteCodesForUser :many
 SELECT id, code, plan_type, assigned_to_user_id, assigned_at, assigned_by, assigned_for, used_by_user_id, used_at, allocated_at FROM invite_codes
 WHERE assigned_to_user_id = ? AND used_by_user_id IS NULL

@@ -64,6 +64,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/email", s.handleDebugEmailSend)
 	mux.HandleFunc("/debug/invite", s.handleDebugInvite)
 	mux.HandleFunc("POST /debug/invite", s.handleDebugInvitePost)
+	mux.HandleFunc("/debug/all-invite-codes", s.handleDebugAllInviteCodes)
+	mux.HandleFunc("/debug/invite-tree", s.handleDebugInviteTree)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -117,6 +119,8 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/testimonials">testimonials</a></li>
     <li><a href="/debug/email">email</a> (send test emails)</li>
     <li><a href="/debug/invite">invite</a> (manage invite codes)</li>
+    <li><a href="/debug/all-invite-codes">all-invite-codes</a> (<a href="/debug/all-invite-codes?format=json">json</a>) (view all invite codes)</li>
+    <li><a href="/debug/invite-tree">invite-tree</a> (invite tree visualization)</li>
 </ul>
 <p>Git version: %s %s</p>
 </body></html>
@@ -3141,4 +3145,459 @@ func (s *Server) handleDebugInviteGiveToUser(w http.ResponseWriter, r *http.Requ
 	}
 
 	http.Redirect(w, r, "/debug/invite", http.StatusSeeOther)
+}
+
+// handleDebugAllInviteCodes displays all invite codes with giver and recipient emails.
+func (s *Server) handleDebugAllInviteCodes(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Get all invite codes with emails
+	codes, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllInviteCodesWithEmails)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list invite codes: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// For JSON format
+	if r.URL.Query().Get("format") == "json" {
+		type inviteCodeInfo struct {
+			ID             int64   `json:"id"`
+			Code           string  `json:"code"`
+			PlanType       string  `json:"plan_type"`
+			GiverUserID    *string `json:"giver_user_id,omitempty"`
+			GiverEmail     string  `json:"giver_email"`
+			AssignedAt     string  `json:"assigned_at"`
+			AssignedBy     string  `json:"assigned_by"`
+			AssignedFor    string  `json:"assigned_for,omitempty"`
+			RecipientEmail string  `json:"recipient_email,omitempty"`
+			UsedAt         string  `json:"used_at,omitempty"`
+			AllocatedAt    string  `json:"allocated_at,omitempty"`
+			Status         string  `json:"status"`
+		}
+
+		result := make([]inviteCodeInfo, 0, len(codes))
+		for _, code := range codes {
+			info := inviteCodeInfo{
+				ID:         code.ID,
+				Code:       code.Code,
+				PlanType:   code.PlanType,
+				AssignedBy: code.AssignedBy,
+			}
+			if code.AssignedToUserID != nil {
+				info.GiverUserID = code.AssignedToUserID
+			}
+			if code.GiverEmail != nil {
+				info.GiverEmail = *code.GiverEmail
+			} else {
+				info.GiverEmail = "(system)"
+			}
+			if code.AssignedAt != nil {
+				info.AssignedAt = code.AssignedAt.Format("2006-01-02 15:04")
+			}
+			if code.AssignedFor != nil {
+				info.AssignedFor = *code.AssignedFor
+			}
+			if code.RecipientEmail != nil {
+				info.RecipientEmail = *code.RecipientEmail
+			}
+			if code.UsedAt != nil {
+				info.UsedAt = code.UsedAt.Format("2006-01-02 15:04")
+			}
+			if code.AllocatedAt != nil {
+				info.AllocatedAt = code.AllocatedAt.Format("2006-01-02 15:04")
+			}
+			if code.UsedByUserID != nil {
+				info.Status = "used"
+			} else if code.AllocatedAt != nil {
+				info.Status = "allocated"
+			} else {
+				info.Status = "unused"
+			}
+			result = append(result, info)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(result); err != nil {
+			s.slog().ErrorContext(ctx, "Failed to encode invite codes", "error", err)
+		}
+		return
+	}
+
+	// HTML format with DataTables
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>All Invite Codes</title>
+<link rel="stylesheet" href="/static/datatables.min.css">
+<script src="/static/jquery.min.js"></script>
+<script src="/static/datatables.min.js"></script>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
+h1 { margin-bottom: 10px; }
+#codesTable { width: 100%%; }
+#codesTable td, #codesTable th { font-size: 13px; }
+#codesTable thead tr.filters th { padding: 4px; }
+#codesTable thead tr.filters input { width: 100%%; box-sizing: border-box; font-size: 11px; padding: 4px; }
+.code { font-family: monospace; background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
+.status-used { color: #28a745; }
+.status-allocated { color: #ffc107; }
+.status-unused { color: #6c757d; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+</head><body>
+<h1>All Invite Codes</h1>
+<p><a href="/debug">/debug</a> | <a href="/debug/all-invite-codes?format=json">json</a> | <a href="/debug/invite-tree">tree visualization</a></p>
+
+<table id="codesTable" class="display stripe hover">
+<thead>
+<tr>
+<th>ID</th>
+<th>Code</th>
+<th>Plan</th>
+<th>Giver Email</th>
+<th>Assigned By</th>
+<th>Assigned For</th>
+<th>Assigned At</th>
+<th>Recipient Email</th>
+<th>Used At</th>
+<th>Status</th>
+</tr>
+<tr class="filters">
+<th></th>
+<th></th>
+<th>Plan</th>
+<th>Giver</th>
+<th>Assigned By</th>
+<th>For</th>
+<th></th>
+<th>Recipient</th>
+<th></th>
+<th>Status</th>
+</tr>
+</thead>
+</table>
+
+<script>
+$(document).ready(function() {
+    $('#codesTable thead tr.filters th').each(function(idx) {
+        var title = $(this).text();
+        if (title) {
+            $(this).html('<input type="text" placeholder="' + title + '">');
+        }
+    });
+
+    var table = $('#codesTable').DataTable({
+        ajax: {
+            url: '/debug/all-invite-codes?format=json',
+            dataSrc: ''
+        },
+        pageLength: 100,
+        lengthMenu: [[25, 50, 100, 250, -1], [25, 50, 100, 250, "All"]],
+        order: [[0, 'desc']],
+        orderCellsTop: true,
+        columns: [
+            { data: 'id' },
+            { data: 'code', render: function(d) {
+                return '<span class="code">' + d + '</span>';
+            }},
+            { data: 'plan_type' },
+            { data: 'giver_email' },
+            { data: 'assigned_by' },
+            { data: 'assigned_for', defaultContent: '' },
+            { data: 'assigned_at', defaultContent: '' },
+            { data: 'recipient_email', defaultContent: '' },
+            { data: 'used_at', defaultContent: '' },
+            { data: 'status', render: function(d) {
+                var cls = 'status-' + d;
+                return '<span class="' + cls + '">' + d + '</span>';
+            }}
+        ],
+        initComplete: function() {
+            this.api().columns().every(function(idx) {
+                var column = this;
+                $('input', $('#codesTable thead tr.filters th').eq(idx)).on('keyup change clear', function() {
+                    if (column.search() !== this.value) {
+                        column.search(this.value).draw();
+                    }
+                });
+            });
+        }
+    });
+});
+</script>
+</body></html>
+`)
+}
+
+// handleDebugInviteTree displays a tree visualization of invite codes using Vega.
+func (s *Server) handleDebugInviteTree(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Get all invite codes with emails
+	codes, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllInviteCodesWithEmails)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list invite codes: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Build tree data for Vega
+	// We need: nodes (users) and links (giver -> recipient)
+	type treeNode struct {
+		ID    string `json:"id"`
+		Email string `json:"email"`
+	}
+	type treeLink struct {
+		Source string `json:"source"`
+		Target string `json:"target"`
+	}
+
+	// Track unique users and links
+	nodeSet := make(map[string]string) // user_id -> email
+	var links []treeLink
+
+	// Add system user as the root
+	const systemUserID = "system"
+	nodeSet[systemUserID] = "(system)"
+
+	for _, code := range codes {
+		// Only process used invite codes for the tree
+		if code.UsedByUserID == nil || code.RecipientEmail == nil {
+			continue
+		}
+
+		recipientID := *code.UsedByUserID
+		recipientEmail := *code.RecipientEmail
+		nodeSet[recipientID] = recipientEmail
+
+		var giverID string
+		if code.AssignedToUserID != nil && code.GiverEmail != nil {
+			giverID = *code.AssignedToUserID
+			nodeSet[giverID] = *code.GiverEmail
+		} else {
+			giverID = systemUserID
+		}
+
+		links = append(links, treeLink{
+			Source: giverID,
+			Target: recipientID,
+		})
+	}
+
+	// Convert to node list
+	nodes := make([]treeNode, 0, len(nodeSet))
+	for id, email := range nodeSet {
+		nodes = append(nodes, treeNode{ID: id, Email: email})
+	}
+
+	// Sort nodes for consistent output
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].Email < nodes[j].Email
+	})
+
+	// For JSON format
+	if r.URL.Query().Get("format") == "json" {
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(map[string]any{
+			"nodes": nodes,
+			"links": links,
+		}); err != nil {
+			s.slog().ErrorContext(ctx, "Failed to encode tree data", "error", err)
+		}
+		return
+	}
+
+	// Marshal data for embedding in HTML
+	nodesJSON, _ := json.Marshal(nodes)
+	linksJSON, _ := json.Marshal(links)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>Invite Tree</title>
+<script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
+h1 { margin-bottom: 10px; }
+#vis { width: 100%%; height: calc(100vh - 150px); }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.stats { margin: 10px 0; color: #666; }
+</style>
+</head><body>
+<h1>Invite Tree Visualization</h1>
+<p><a href="/debug">/debug</a> | <a href="/debug/all-invite-codes">all invite codes</a> | <a href="/debug/invite-tree?format=json">json</a></p>
+<p class="stats">%d users | %d invite links (successful invites only)</p>
+<div id="vis"></div>
+
+<script>
+var nodes = %s;
+var links = %s;
+
+var spec = {
+  "$schema": "https://vega.github.io/schema/vega/v5.json",
+  "width": 1200,
+  "height": 800,
+  "padding": 0,
+  "autosize": "none",
+
+  "signals": [
+    { "name": "cx", "update": "width / 2" },
+    { "name": "cy", "update": "height / 2" },
+    { "name": "nodeRadius", "value": 8 },
+    { "name": "nodeCharge", "value": -300 },
+    { "name": "linkDistance", "value": 100 },
+    {
+      "name": "static", "value": false
+    },
+    {
+      "name": "fix", "value": false,
+      "on": [
+        {
+          "events": "symbol:mouseout[!event.buttons], window:mouseup",
+          "update": "false"
+        },
+        {
+          "events": "symbol:mouseover",
+          "update": "fix || true"
+        },
+        {
+          "events": "[symbol:mousedown, window:mouseup] > window:mousemove!",
+          "update": "xy()",
+          "force": true
+        }
+      ]
+    },
+    {
+      "name": "node", "value": null,
+      "on": [
+        {
+          "events": "symbol:mouseover",
+          "update": "fix === true ? item() : node"
+        }
+      ]
+    },
+    {
+      "name": "restart", "value": false,
+      "on": [
+        { "events": { "signal": "fix" }, "update": "fix && fix.length" }
+      ]
+    }
+  ],
+
+  "data": [
+    {
+      "name": "nodes",
+      "values": nodes,
+      "on": [
+        {
+          "trigger": "fix",
+          "modify": "node",
+          "values": "fix === true ? {fx: node.x, fy: node.y} : {fx: fix[0], fy: fix[1]}"
+        },
+        {
+          "trigger": "!fix",
+          "modify": "node", "values": "{fx: null, fy: null}"
+        }
+      ]
+    },
+    {
+      "name": "links",
+      "values": links
+    }
+  ],
+
+  "scales": [
+    {
+      "name": "color",
+      "type": "ordinal",
+      "domain": {"data": "nodes", "field": "id"},
+      "range": {"scheme": "category20"}
+    }
+  ],
+
+  "marks": [
+    {
+      "name": "linkMarks",
+      "type": "path",
+      "from": {"data": "links"},
+      "interactive": false,
+      "encode": {
+        "update": {
+          "stroke": {"value": "#ccc"},
+          "strokeWidth": {"value": 1}
+        }
+      },
+      "transform": [
+        {
+          "type": "linkpath",
+          "require": {"signal": "force"},
+          "shape": "line",
+          "sourceX": "datum.source.x", "sourceY": "datum.source.y",
+          "targetX": "datum.target.x", "targetY": "datum.target.y"
+        }
+      ]
+    },
+    {
+      "name": "nodeMarks",
+      "type": "symbol",
+      "zindex": 1,
+      "from": {"data": "nodes"},
+      "encode": {
+        "enter": {
+          "fill": {"scale": "color", "field": "id"},
+          "stroke": {"value": "white"}
+        },
+        "update": {
+          "size": {"signal": "2 * nodeRadius * nodeRadius"},
+          "cursor": {"value": "pointer"},
+          "tooltip": {"field": "email"}
+        }
+      },
+      "transform": [
+        {
+          "type": "force",
+          "iterations": 300,
+          "restart": {"signal": "restart"},
+          "static": {"signal": "static"},
+          "signal": "force",
+          "forces": [
+            {"force": "center", "x": {"signal": "cx"}, "y": {"signal": "cy"}},
+            {"force": "collide", "radius": {"signal": "nodeRadius"}},
+            {"force": "nbody", "strength": {"signal": "nodeCharge"}},
+            {"force": "link", "links": "links", "distance": {"signal": "linkDistance"}, "id": "datum.id"}
+          ]
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "from": {"data": "nodeMarks"},
+      "interactive": false,
+      "encode": {
+        "enter": {
+          "align": {"value": "center"},
+          "baseline": {"value": "bottom"},
+          "fontSize": {"value": 10},
+          "fontWeight": {"value": "bold"}
+        },
+        "update": {
+          "x": {"field": "x"},
+          "y": {"field": "y", "offset": -10},
+          "text": {"field": "datum.email"},
+          "fillOpacity": {"value": 1}
+        }
+      }
+    }
+  ]
+};
+
+vegaEmbed('#vis', spec, {actions: false}).catch(console.error);
+</script>
+</body></html>
+`, len(nodes), len(links), string(nodesJSON), string(linksJSON))
 }

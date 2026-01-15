@@ -82,3 +82,23 @@ WHERE user_id = ?;
 -- name: GetUserBillingExemption :one
 SELECT billing_exemption, billing_trial_ends_at, signed_up_with_invite_id
 FROM users WHERE user_id = ?;
+
+-- name: ListAllInviteCodesWithEmails :many
+-- Lists all invite codes with giver and recipient emails for debug page
+SELECT
+    ic.id,
+    ic.code,
+    ic.plan_type,
+    ic.assigned_to_user_id,
+    giver.email AS giver_email,
+    ic.assigned_at,
+    ic.assigned_by,
+    ic.assigned_for,
+    ic.used_by_user_id,
+    recipient.email AS recipient_email,
+    ic.used_at,
+    ic.allocated_at
+FROM invite_codes ic
+LEFT JOIN users giver ON ic.assigned_to_user_id = giver.user_id
+LEFT JOIN users recipient ON ic.used_by_user_id = recipient.user_id
+ORDER BY ic.id DESC;
