@@ -53,6 +53,9 @@ scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packagi
 echo "Applying zfs config fragment..."
 scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packaging/kernel/configs/fragments/zfs.conf
 
+echo "Applying Landlock config fragment..."
+scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packaging/kernel/configs/fragments/landlock.conf
+
 make olddefconfig
 
 # Build kernel
