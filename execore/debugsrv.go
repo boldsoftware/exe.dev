@@ -2860,13 +2860,6 @@ func (s *Server) handleDebugSignupRejectPost(w http.ResponseWriter, r *http.Requ
 func (s *Server) handleDebugInvite(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get counts
-	poolCount, err := withRxRes0(s, ctx, (*exedb.Queries).CountInviteCodePool)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to count pool: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	// Get unused system invite codes
 	systemCodes, err := withRxRes0(s, ctx, (*exedb.Queries).ListUnusedSystemInviteCodes)
 	if err != nil {
@@ -2888,17 +2881,10 @@ h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
 .create-btn { background: #28a745; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 14px; }
 .create-btn:hover { background: #218838; }
 select, input[type="number"] { padding: 8px; margin: 5px; }
-.stat { font-size: 24px; font-weight: bold; color: #007bff; }
-.warning { color: #dc3545; }
 </style>
 </head><body>
 <h1>Invite Codes</h1>
 <p><a href="/debug">/debug</a></p>
-
-<div class="section">
-<h2>Pool Status</h2>
-<p>Codes remaining in pool: <span class="stat %s">%d</span></p>
-</div>
 
 <div class="section">
 <h2>Create System Invite Code</h2>
@@ -2949,7 +2935,7 @@ select, input[type="number"] { padding: 8px; margin: 5px; }
 
 <div class="section">
 <h2>Unused System Invite Codes (%d)</h2>
-`, warningClass(poolCount), poolCount, len(systemCodes))
+`, len(systemCodes))
 
 	if len(systemCodes) == 0 {
 		fmt.Fprintf(w, "<p>No unused system invite codes.</p>\n")
@@ -2975,13 +2961,6 @@ select, input[type="number"] { padding: 8px; margin: 5px; }
 	fmt.Fprintf(w, `</div>
 </body></html>
 `)
-}
-
-func warningClass(count int64) string {
-	if count < 10 {
-		return "warning"
-	}
-	return ""
 }
 
 // handleDebugInvitePost handles creating a new invite code.
@@ -3021,14 +3000,10 @@ func (s *Server) handleDebugInviteCreate(w http.ResponseWriter, r *http.Request,
 		assignedForPtr = &assignedFor
 	}
 
-	// Draw a code from the pool
-	code, err := withTxRes0(s, ctx, (*exedb.Queries).DrawInviteCodeFromPool)
+	// Generate a unique code
+	code, err := withTxRes0(s, ctx, (*exedb.Queries).GenerateUniqueInviteCode)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "invite code pool is empty", http.StatusBadRequest)
-			return
-		}
-		http.Error(w, fmt.Sprintf("failed to draw code from pool: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to generate invite code: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -3079,14 +3054,10 @@ func (s *Server) handleDebugInviteGiveToUser(w http.ResponseWriter, r *http.Requ
 
 	// Create invite codes for the user
 	for i := 0; i < count; i++ {
-		// Draw a code from the pool
-		code, err := withTxRes0(s, ctx, (*exedb.Queries).DrawInviteCodeFromPool)
+		// Generate a unique code
+		code, err := withTxRes0(s, ctx, (*exedb.Queries).GenerateUniqueInviteCode)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				http.Error(w, fmt.Sprintf("invite code pool is empty (created %d of %d)", i, count), http.StatusBadRequest)
-				return
-			}
-			http.Error(w, fmt.Sprintf("failed to draw code from pool: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("failed to generate invite code: %v", err), http.StatusInternalServerError)
 			return
 		}
 
