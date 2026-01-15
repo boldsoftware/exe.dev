@@ -1,0 +1,63 @@
+#!/bin/bash
+set -euo pipefail
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <hostname>"
+    exit 1
+fi
+
+HOSTNAME="$1"
+GROW_BY=100
+
+echo "Finding data volume for $HOSTNAME..."
+# Get the non-root volume (data disk, not /dev/sda1 or /dev/xvda)
+VOL_ID=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=$HOSTNAME" \
+    --query 'Reservations[].Instances[].BlockDeviceMappings[?DeviceName!=`/dev/sda1` && DeviceName!=`/dev/xvda`].Ebs.VolumeId' \
+    --output text)
+
+if [ -z "$VOL_ID" ] || [ "$VOL_ID" = "None" ]; then
+    echo "Error: Could not find data volume for $HOSTNAME"
+    exit 1
+fi
+
+# Handle case where there might still be multiple volumes
+VOL_COUNT=$(echo "$VOL_ID" | wc -w | tr -d ' ')
+if [ "$VOL_COUNT" -gt 1 ]; then
+    echo "Error: Found multiple data volumes: $VOL_ID"
+    echo "Please specify which volume to grow."
+    exit 1
+fi
+
+echo "Found data volume: $VOL_ID"
+
+CURRENT=$(aws ec2 describe-volumes \
+    --volume-ids "$VOL_ID" \
+    --query 'Volumes[0].Size' \
+    --output text)
+
+NEW_SIZE=$((CURRENT + GROW_BY))
+echo "Current size: ${CURRENT}GB, growing to: ${NEW_SIZE}GB"
+
+aws ec2 modify-volume --volume-id "$VOL_ID" --size "$NEW_SIZE"
+
+echo "Waiting for volume modification to complete..."
+while true; do
+    STATE=$(aws ec2 describe-volumes-modifications \
+        --volume-ids "$VOL_ID" \
+        --query 'VolumesModifications[0].ModificationState' \
+        --output text)
+    echo "  State: $STATE"
+    if [ "$STATE" = "optimizing" ] || [ "$STATE" = "completed" ]; then
+        break
+    fi
+    sleep 5
+done
+
+echo "Expanding ZFS pool on $HOSTNAME..."
+DISK=$(ssh -lubuntu "$HOSTNAME" "zpool list -vHPp tank | awk '/^\t/{print \$1}'")
+echo "Found disk: $DISK"
+ssh -lubuntu "$HOSTNAME" "sudo zpool online -e tank $DISK"
+
+echo "Done! New pool status:"
+ssh -lubuntu "$HOSTNAME" "zpool list tank"

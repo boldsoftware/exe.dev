@@ -3233,7 +3233,7 @@ function makeHostsDashboard() {
         condition: "lt",
         forDuration: "1m",
         summary: "Exelet /data disk space is critically low",
-        description: "Exelet /data filesystem has less than 50GB available",
+        description: "Exelet /data filesystem has less than 50GB available. Run ops/grow-data-ebs-volume.sh <hostname> to expand.",
         labels: { signal: "strong" },
       },
       alertQueryOverride: `node_filesystem_avail_bytes{role="exelet",mountpoint="/data"}`,
