@@ -826,7 +826,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		billing:   cfg.Env.BillingClient(),
 		signupLimiter: &limiter.Limiter[netip.Addr]{
 			Size:           10000,           // Track up to 10k IPs
-			Max:            5,               // 5 requests max
+			Max:            20,              // 20 requests max
 			RefillInterval: time.Minute / 5, // Refill 1 token per 12 seconds
 		},
 		signupPOW: newSignupPOW(),

@@ -185,8 +185,8 @@ func TestPasskeyOpenRedirect(t *testing.T) {
 func TestSignupRateLimiting(t *testing.T) {
 	server := newTestServer(t)
 
-	// Send 5 requests (the limit) - all should succeed
-	for i := 0; i < 5; i++ {
+	// Send 20 requests (the limit) - all should succeed
+	for i := 0; i < 20; i++ {
 		req := httptest.NewRequest("POST", "/auth", strings.NewReader("email=test@example.com"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.RemoteAddr = "192.0.2.1:12345" // Use a test IP
@@ -198,7 +198,7 @@ func TestSignupRateLimiting(t *testing.T) {
 		}
 	}
 
-	// 6th request should be rate limited
+	// 21st request should be rate limited
 	req := httptest.NewRequest("POST", "/auth", strings.NewReader("email=test@example.com"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.RemoteAddr = "192.0.2.1:12345" // Same IP
@@ -206,7 +206,7 @@ func TestSignupRateLimiting(t *testing.T) {
 	server.handleAuthEmailSubmission(w, req)
 
 	if w.Code != http.StatusTooManyRequests {
-		t.Errorf("Request 6: got %d, want %d (Too Many Requests)", w.Code, http.StatusTooManyRequests)
+		t.Errorf("Request 21: got %d, want %d (Too Many Requests)", w.Code, http.StatusTooManyRequests)
 	}
 
 	// Different IP should not be rate limited
