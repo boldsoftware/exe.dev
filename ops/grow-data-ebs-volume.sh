@@ -1,13 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 <hostname>"
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <hostname> <grow-by-gb>"
     exit 1
 fi
 
 HOSTNAME="$1"
-GROW_BY=100
+GROW_BY="$2"
 
 echo "Finding data volume for $HOSTNAME..."
 # Get the non-root volume (data disk, not /dev/sda1 or /dev/xvda)
@@ -55,8 +55,11 @@ while true; do
 done
 
 echo "Expanding ZFS pool on $HOSTNAME..."
-DISK=$(ssh -lubuntu "$HOSTNAME" "zpool list -vHPp tank | awk '/^\t/{print \$1}'")
-echo "Found disk: $DISK"
+PART=$(ssh -lubuntu "$HOSTNAME" "zpool list -vHPp tank | awk '/^\t/{print \$1}'")
+# Strip partition suffix (e.g., /dev/nvme5n1p1 -> /dev/nvme5n1)
+DISK=$(ssh -lubuntu "$HOSTNAME" "echo $PART | sed -E 's/p[0-9]+\$//'")
+echo "Found partition: $PART, disk: $DISK"
+
 ssh -lubuntu "$HOSTNAME" "sudo zpool online -e tank $DISK"
 
 echo "Done! New pool status:"
