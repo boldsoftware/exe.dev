@@ -19,7 +19,7 @@
         }
 
         .main-container {
-            max-width: 600px;
+            max-width: 800px;
             margin: 0 auto;
             padding: 40px 20px;
         }
@@ -79,8 +79,9 @@
         }
 
         .usage-command {
-            background: #1a1a1a;
-            color: #fff;
+            background: #f5f5f5;
+            border: 1px solid #e0e0e0;
+            color: #d97706;
             padding: 14px 16px;
             border-radius: 4px;
             font-size: 14px;
@@ -96,15 +97,8 @@
             font-size: 13px;
             font-family: inherit;
             word-break: break-all;
-        }
-
-        .usage-url a {
-            color: #0066cc;
-            text-decoration: none;
-        }
-
-        .usage-url a:hover {
-            text-decoration: underline;
+            position: relative;
+            color: #d97706;
         }
 
         .copy-btn {
@@ -112,9 +106,9 @@
             right: 8px;
             top: 50%;
             transform: translateY(-50%);
-            background: #333;
-            border: 1px solid #555;
-            color: #fff;
+            background: #e0e0e0;
+            border: 1px solid #ccc;
+            color: #333;
             padding: 4px 8px;
             border-radius: 3px;
             font-size: 11px;
@@ -122,12 +116,13 @@
         }
 
         .copy-btn:hover {
-            background: #444;
+            background: #d0d0d0;
         }
 
         .copy-btn.copied {
             background: #22c55e;
             border-color: #22c55e;
+            color: #fff;
         }
 
         .back-link {
@@ -156,10 +151,10 @@
             </div>
 
             <div class="usage-section">
-                <div class="usage-title">Share this invite:</div>
+                <div class="usage-title">Share exe.dev with your friends!</div>
 
                 <div class="usage-method">
-                    <div class="usage-label">Via SSH:</div>
+                    <div class="usage-label">Via SSH</div>
                     <div class="usage-command">
                         ssh {{.InviteCode.Code}}@{{.ReplHost}}
                         <button class="copy-btn" onclick="copyToClipboard(this, 'ssh {{.InviteCode.Code}}@{{.ReplHost}}')">Copy</button>
@@ -167,9 +162,10 @@
                 </div>
 
                 <div class="usage-method">
-                    <div class="usage-label">Via Web:</div>
+                    <div class="usage-label">Via Web</div>
                     <div class="usage-url">
-                        <a href="https://{{.WebHost}}/auth?invite={{.InviteCode.Code}}">https://{{.WebHost}}/auth?invite={{.InviteCode.Code}}</a>
+                        https://{{.WebHost}}/auth?invite={{.InviteCode.Code}}
+                        <button class="copy-btn" onclick="copyToClipboard(this, 'https://{{.WebHost}}/auth?invite={{.InviteCode.Code}}')">Copy</button>
                     </div>
                 </div>
             </div>
