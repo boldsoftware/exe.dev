@@ -453,3 +453,276 @@ func TestInvalidInviteCodeIgnored(t *testing.T) {
 		t.Errorf("expected no billing exemption, got %v", *billingExemption)
 	}
 }
+
+// TestInviteAllocation tests that POSTing to /invite allocates one invite at a time
+// and each invite is only shown once.
+func TestInviteAllocation(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	ctx := context.Background()
+
+	// Open the test database
+	db, err := sqlite.New(Env.servers.Exed.DBPath, 1)
+	if err != nil {
+		t.Fatalf("failed to open test database: %v", err)
+	}
+	defer db.Close()
+
+	// Sign up a user first
+	email := t.Name() + testinfra.FakeEmailSuffix
+	cookies, err := Env.servers.WebLoginWithEmail(email)
+	if err != nil {
+		t.Fatalf("web login failed: %v", err)
+	}
+
+	// Get the user ID
+	var userID string
+	err = db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		queries := exedb.New(rx.Conn())
+		user, err := queries.GetUserByEmail(ctx, email)
+		if err != nil {
+			return err
+		}
+		userID = user.UserID
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("failed to get user: %v", err)
+	}
+
+	// Create invite codes assigned to the user
+	inviteCode1 := "USERINV1" + t.Name()
+	inviteCode2 := "USERINV2" + t.Name()
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+
+		// Create codes directly assigned to user (one at a time to ensure order)
+		for _, code := range []string{inviteCode1, inviteCode2} {
+			// Add to pool
+			if err := queries.AddInviteCodeToPool(ctx, code); err != nil {
+				return err
+			}
+			// Draw (will get the same code since only one in pool)
+			drawnCode, err := queries.DrawInviteCodeFromPool(ctx)
+			if err != nil {
+				return err
+			}
+			// Create invite assigned to user
+			_, err = queries.CreateInviteCode(ctx, exedb.CreateInviteCodeParams{
+				Code:             drawnCode,
+				PlanType:         "trial",
+				AssignedToUserID: &userID,
+				AssignedBy:       "test",
+				AssignedFor:      nil,
+			})
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("failed to create invite codes: %v", err)
+	}
+
+	// POST to /invite to allocate first invite
+	inviteURL := fmt.Sprintf("http://localhost:%d/invite", Env.servers.Exed.HTTPPort)
+	req, err := http.NewRequest("POST", inviteURL, nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("failed to POST /invite: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read response body: %v", err)
+	}
+
+	// Verify the page shows exactly ONE invite code (the first one)
+	if !strings.Contains(string(body), inviteCode1) {
+		t.Errorf("expected to see first invite code %s in response", inviteCode1)
+	}
+	// Should NOT show the second invite yet
+	if strings.Contains(string(body), inviteCode2) {
+		t.Errorf("should NOT see second invite code %s yet", inviteCode2)
+	}
+
+	// Verify it shows usage instructions
+	if !strings.Contains(string(body), "ssh ") {
+		t.Error("expected to see SSH usage instructions")
+	}
+	if !strings.Contains(string(body), "/auth?invite=") {
+		t.Error("expected to see web usage URL")
+	}
+
+	// POST again to allocate second invite
+	req2, err := http.NewRequest("POST", inviteURL, nil)
+	if err != nil {
+		t.Fatalf("failed to create second request: %v", err)
+	}
+	for _, c := range cookies {
+		req2.AddCookie(c)
+	}
+
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("failed to POST /invite second time: %v", err)
+	}
+	defer resp2.Body.Close()
+
+	body2, err := io.ReadAll(resp2.Body)
+	if err != nil {
+		t.Fatalf("failed to read second response body: %v", err)
+	}
+
+	// Second POST should show the second invite
+	if !strings.Contains(string(body2), inviteCode2) {
+		t.Errorf("expected to see second invite code %s in second response", inviteCode2)
+	}
+	// Should NOT show the first invite again
+	if strings.Contains(string(body2), inviteCode1) {
+		t.Errorf("should NOT see first invite code %s again", inviteCode1)
+	}
+
+	// Verify both invites are now allocated in the database
+	var allocatedCount int
+	err = db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		row := rx.Conn().QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM invite_codes WHERE assigned_to_user_id = ? AND allocated_at IS NOT NULL",
+			userID)
+		return row.Scan(&allocatedCount)
+	})
+	if err != nil {
+		t.Fatalf("failed to count allocated invites: %v", err)
+	}
+	if allocatedCount != 2 {
+		t.Errorf("expected 2 allocated invites, got %d", allocatedCount)
+	}
+}
+
+// TestDashboardShowsInviteCount tests that the dashboard shows the invite count
+// and appropriate links.
+func TestDashboardShowsInviteCount(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	ctx := context.Background()
+
+	// Open the test database
+	db, err := sqlite.New(Env.servers.Exed.DBPath, 1)
+	if err != nil {
+		t.Fatalf("failed to open test database: %v", err)
+	}
+	defer db.Close()
+
+	// Sign up a user
+	email := t.Name() + testinfra.FakeEmailSuffix
+	cookies, err := Env.servers.WebLoginWithEmail(email)
+	if err != nil {
+		t.Fatalf("web login failed: %v", err)
+	}
+
+	// Visit dashboard - should show "0 invites" with "Request More" link
+	dashboardURL := fmt.Sprintf("http://localhost:%d/", Env.servers.Exed.HTTPPort)
+	req, err := http.NewRequest("GET", dashboardURL, nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("failed to GET /: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read response body: %v", err)
+	}
+
+	// Should show "0 invites" and "Request More" link
+	if !strings.Contains(string(body), "0 invite") {
+		t.Error("expected to see '0 invites' on dashboard")
+	}
+	if !strings.Contains(string(body), "/invite/request") {
+		t.Error("expected to see 'Request More' link when user has 0 invites")
+	}
+
+	// Now add an invite code to the user
+	var userID string
+	err = db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		queries := exedb.New(rx.Conn())
+		user, err := queries.GetUserByEmail(ctx, email)
+		if err != nil {
+			return err
+		}
+		userID = user.UserID
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("failed to get user: %v", err)
+	}
+
+	inviteCode := "DASHTEST" + t.Name()
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		if err := queries.AddInviteCodeToPool(ctx, inviteCode); err != nil {
+			return err
+		}
+		code, err := queries.DrawInviteCodeFromPool(ctx)
+		if err != nil {
+			return err
+		}
+		_, err = queries.CreateInviteCode(ctx, exedb.CreateInviteCodeParams{
+			Code:             code,
+			PlanType:         "trial",
+			AssignedToUserID: &userID,
+			AssignedBy:       "test",
+			AssignedFor:      nil,
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed to create invite code: %v", err)
+	}
+
+	// Visit dashboard again - should show "1 invite" with "Allocate" link
+	req2, err := http.NewRequest("GET", dashboardURL, nil)
+	if err != nil {
+		t.Fatalf("failed to create second request: %v", err)
+	}
+	for _, c := range cookies {
+		req2.AddCookie(c)
+	}
+
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("failed to GET / second time: %v", err)
+	}
+	defer resp2.Body.Close()
+
+	body2, err := io.ReadAll(resp2.Body)
+	if err != nil {
+		t.Fatalf("failed to read response body: %v", err)
+	}
+
+	// Should show "1 invite" and "Allocate" form
+	if !strings.Contains(string(body2), "1 invite") {
+		t.Errorf("expected to see '1 invite' on dashboard, got body:\n%s", string(body2))
+	}
+	if !strings.Contains(string(body2), `action="/invite"`) {
+		t.Error("expected to see 'Allocate' form when user has invites")
+	}
+}

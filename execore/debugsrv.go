@@ -2442,6 +2442,32 @@ select, input[type="number"] { padding: 8px; margin: 5px; }
 </div>
 
 <div class="section">
+<h2>Give Invites to User</h2>
+<form method="post" action="/debug/invite">
+<input type="hidden" name="action" value="give_to_user">
+<p>
+<label>Email:
+<input type="email" name="email" placeholder="user@example.com" required>
+</label>
+</p>
+<p>
+<label>Number of invites:
+<input type="number" name="count" value="3" min="1" max="10" required>
+</label>
+</p>
+<p>
+<label>Plan type:
+<select name="plan_type">
+<option value="trial">Trial (1 month free)</option>
+<option value="free">Free forever</option>
+</select>
+</label>
+</p>
+<p><button type="submit" class="create-btn">Give Invites</button></p>
+</form>
+</div>
+
+<div class="section">
 <h2>Unused System Invite Codes (%d)</h2>
 `, warningClass(poolCount), poolCount, len(systemCodes))
 
@@ -2483,22 +2509,29 @@ func (s *Server) handleDebugInvitePost(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	action := r.FormValue("action")
-	if action != "create" {
-		http.Error(w, "invalid action", http.StatusBadRequest)
-		return
-	}
-
-	planType := r.FormValue("plan_type")
-	if planType != "trial" && planType != "free" {
-		http.Error(w, "invalid plan_type", http.StatusBadRequest)
-		return
-	}
 
 	// Get admin identity from Tailscale
 	assignedBy := "debug"
 	lc := new(local.Client)
 	if who, err := lc.WhoIs(ctx, r.RemoteAddr); err == nil && who.UserProfile != nil && who.UserProfile.LoginName != "" {
 		assignedBy = who.UserProfile.LoginName
+	}
+
+	switch action {
+	case "create":
+		s.handleDebugInviteCreate(w, r, ctx, assignedBy)
+	case "give_to_user":
+		s.handleDebugInviteGiveToUser(w, r, ctx, assignedBy)
+	default:
+		http.Error(w, "invalid action", http.StatusBadRequest)
+	}
+}
+
+func (s *Server) handleDebugInviteCreate(w http.ResponseWriter, r *http.Request, ctx context.Context, assignedBy string) {
+	planType := r.FormValue("plan_type")
+	if planType != "trial" && planType != "free" {
+		http.Error(w, "invalid plan_type", http.StatusBadRequest)
+		return
 	}
 
 	// Get optional "for" field
@@ -2533,6 +2566,70 @@ func (s *Server) handleDebugInvitePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.slog().InfoContext(ctx, "invite code created via debug page", "code", code, "plan_type", planType, "assigned_by", assignedBy, "assigned_for", assignedFor)
+
+	http.Redirect(w, r, "/debug/invite", http.StatusSeeOther)
+}
+
+func (s *Server) handleDebugInviteGiveToUser(w http.ResponseWriter, r *http.Request, ctx context.Context, assignedBy string) {
+	email := r.FormValue("email")
+	if email == "" {
+		http.Error(w, "email is required", http.StatusBadRequest)
+		return
+	}
+
+	countStr := r.FormValue("count")
+	count, err := strconv.Atoi(countStr)
+	if err != nil || count < 1 || count > 10 {
+		http.Error(w, "count must be between 1 and 10", http.StatusBadRequest)
+		return
+	}
+
+	planType := r.FormValue("plan_type")
+	if planType != "trial" && planType != "free" {
+		http.Error(w, "invalid plan_type", http.StatusBadRequest)
+		return
+	}
+
+	// Look up user by email
+	user, err := s.GetUserByEmail(ctx, email)
+	if err != nil || user == nil {
+		http.Error(w, fmt.Sprintf("user not found: %s", email), http.StatusBadRequest)
+		return
+	}
+
+	// Create invite codes for the user
+	for i := 0; i < count; i++ {
+		// Draw a code from the pool
+		code, err := withTxRes0(s, ctx, (*exedb.Queries).DrawInviteCodeFromPool)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				http.Error(w, fmt.Sprintf("invite code pool is empty (created %d of %d)", i, count), http.StatusBadRequest)
+				return
+			}
+			http.Error(w, fmt.Sprintf("failed to draw code from pool: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Create the invite code assigned to the user
+		_, err = withTxRes1(s, ctx, (*exedb.Queries).CreateInviteCode, exedb.CreateInviteCodeParams{
+			Code:             code,
+			PlanType:         planType,
+			AssignedToUserID: &user.UserID,
+			AssignedBy:       assignedBy,
+			AssignedFor:      nil,
+		})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to create invite code: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		s.slog().InfoContext(ctx, "invite code given to user via debug page",
+			"code", code,
+			"plan_type", planType,
+			"assigned_by", assignedBy,
+			"user_email", email,
+			"user_id", user.UserID)
+	}
 
 	http.Redirect(w, r, "/debug/invite", http.StatusSeeOther)
 }

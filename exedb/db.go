@@ -33,6 +33,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.addShellHistoryStmt, err = db.PrepareContext(ctx, addShellHistory); err != nil {
 		return nil, fmt.Errorf("error preparing query AddShellHistory: %w", err)
 	}
+	if q.allocateInviteCodeStmt, err = db.PrepareContext(ctx, allocateInviteCode); err != nil {
+		return nil, fmt.Errorf("error preparing query AllocateInviteCode: %w", err)
+	}
 	if q.boxNamedStmt, err = db.PrepareContext(ctx, boxNamed); err != nil {
 		return nil, fmt.Errorf("error preparing query BoxNamed: %w", err)
 	}
@@ -80,6 +83,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.countPendingBoxSharesStmt, err = db.PrepareContext(ctx, countPendingBoxShares); err != nil {
 		return nil, fmt.Errorf("error preparing query CountPendingBoxShares: %w", err)
+	}
+	if q.countUnusedInviteCodesForUserStmt, err = db.PrepareContext(ctx, countUnusedInviteCodesForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query CountUnusedInviteCodesForUser: %w", err)
 	}
 	if q.countUnusedSystemInviteCodesStmt, err = db.PrepareContext(ctx, countUnusedSystemInviteCodes); err != nil {
 		return nil, fmt.Errorf("error preparing query CountUnusedSystemInviteCodes: %w", err)
@@ -275,6 +281,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getNewThrottleMessageStmt, err = db.PrepareContext(ctx, getNewThrottleMessage); err != nil {
 		return nil, fmt.Errorf("error preparing query GetNewThrottleMessage: %w", err)
+	}
+	if q.getNextUnallocatedInviteForUserStmt, err = db.PrepareContext(ctx, getNextUnallocatedInviteForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query GetNextUnallocatedInviteForUser: %w", err)
 	}
 	if q.getPasskeyByCredentialIDStmt, err = db.PrepareContext(ctx, getPasskeyByCredentialID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPasskeyByCredentialID: %w", err)
@@ -614,6 +623,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing addShellHistoryStmt: %w", cerr)
 		}
 	}
+	if q.allocateInviteCodeStmt != nil {
+		if cerr := q.allocateInviteCodeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing allocateInviteCodeStmt: %w", cerr)
+		}
+	}
 	if q.boxNamedStmt != nil {
 		if cerr := q.boxNamedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing boxNamedStmt: %w", cerr)
@@ -692,6 +706,11 @@ func (q *Queries) Close() error {
 	if q.countPendingBoxSharesStmt != nil {
 		if cerr := q.countPendingBoxSharesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countPendingBoxSharesStmt: %w", cerr)
+		}
+	}
+	if q.countUnusedInviteCodesForUserStmt != nil {
+		if cerr := q.countUnusedInviteCodesForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countUnusedInviteCodesForUserStmt: %w", cerr)
 		}
 	}
 	if q.countUnusedSystemInviteCodesStmt != nil {
@@ -1017,6 +1036,11 @@ func (q *Queries) Close() error {
 	if q.getNewThrottleMessageStmt != nil {
 		if cerr := q.getNewThrottleMessageStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getNewThrottleMessageStmt: %w", cerr)
+		}
+	}
+	if q.getNextUnallocatedInviteForUserStmt != nil {
+		if cerr := q.getNextUnallocatedInviteForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getNextUnallocatedInviteForUserStmt: %w", cerr)
 		}
 	}
 	if q.getPasskeyByCredentialIDStmt != nil {
@@ -1591,6 +1615,7 @@ type Queries struct {
 	activateAccountStmt                        *sql.Stmt
 	addInviteCodeToPoolStmt                    *sql.Stmt
 	addShellHistoryStmt                        *sql.Stmt
+	allocateInviteCodeStmt                     *sql.Stmt
 	boxNamedStmt                               *sql.Stmt
 	boxWithNameExistsStmt                      *sql.Stmt
 	boxWithOwnerNamedStmt                      *sql.Stmt
@@ -1607,6 +1632,7 @@ type Queries struct {
 	countInviteCodePoolStmt                    *sql.Stmt
 	countLoginUsersStmt                        *sql.Stmt
 	countPendingBoxSharesStmt                  *sql.Stmt
+	countUnusedInviteCodesForUserStmt          *sql.Stmt
 	countUnusedSystemInviteCodesStmt           *sql.Stmt
 	countUsersWithBoxesStmt                    *sql.Stmt
 	createBoxShareStmt                         *sql.Stmt
@@ -1672,6 +1698,7 @@ type Queries struct {
 	getNewThrottleEmailPatternsStmt            *sql.Stmt
 	getNewThrottleEnabledStmt                  *sql.Stmt
 	getNewThrottleMessageStmt                  *sql.Stmt
+	getNextUnallocatedInviteForUserStmt        *sql.Stmt
 	getPasskeyByCredentialIDStmt               *sql.Stmt
 	getPasskeyChallengeStmt                    *sql.Stmt
 	getPasskeysByUserIDStmt                    *sql.Stmt
@@ -1787,6 +1814,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		activateAccountStmt:                        q.activateAccountStmt,
 		addInviteCodeToPoolStmt:                    q.addInviteCodeToPoolStmt,
 		addShellHistoryStmt:                        q.addShellHistoryStmt,
+		allocateInviteCodeStmt:                     q.allocateInviteCodeStmt,
 		boxNamedStmt:                               q.boxNamedStmt,
 		boxWithNameExistsStmt:                      q.boxWithNameExistsStmt,
 		boxWithOwnerNamedStmt:                      q.boxWithOwnerNamedStmt,
@@ -1803,6 +1831,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countInviteCodePoolStmt:                    q.countInviteCodePoolStmt,
 		countLoginUsersStmt:                        q.countLoginUsersStmt,
 		countPendingBoxSharesStmt:                  q.countPendingBoxSharesStmt,
+		countUnusedInviteCodesForUserStmt:          q.countUnusedInviteCodesForUserStmt,
 		countUnusedSystemInviteCodesStmt:           q.countUnusedSystemInviteCodesStmt,
 		countUsersWithBoxesStmt:                    q.countUsersWithBoxesStmt,
 		createBoxShareStmt:                         q.createBoxShareStmt,
@@ -1868,6 +1897,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getNewThrottleEmailPatternsStmt:            q.getNewThrottleEmailPatternsStmt,
 		getNewThrottleEnabledStmt:                  q.getNewThrottleEnabledStmt,
 		getNewThrottleMessageStmt:                  q.getNewThrottleMessageStmt,
+		getNextUnallocatedInviteForUserStmt:        q.getNextUnallocatedInviteForUserStmt,
 		getPasskeyByCredentialIDStmt:               q.getPasskeyByCredentialIDStmt,
 		getPasskeyChallengeStmt:                    q.getPasskeyChallengeStmt,
 		getPasskeysByUserIDStmt:                    q.getPasskeysByUserIDStmt,

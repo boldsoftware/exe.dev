@@ -881,14 +881,24 @@
                 <a href="/new" class="new-box-btn">+ New</a>
             </div>
             <div class="search-box">
-                <input type="text" 
-                       id="box-search" 
-                       placeholder="Search VMs..." 
+                <input type="text"
+                       id="box-search"
+                       placeholder="Search VMs..."
                        class="search-input">
                 <button class="search-clear" onclick="clearSearch()" title="Clear search">×</button>
             </div>
         </div>
-        
+        <div style="font-size: 13px; color: #d97706; margin-bottom: 16px;">
+            You have {{.InviteCount}} invite{{if ne .InviteCount 1}}s{{end}}.
+            {{if gt .InviteCount 0}}
+            <form method="POST" action="/invite" style="display: inline;">
+                <button type="submit" style="background: none; border: none; color: #d97706; text-decoration: underline; margin-left: 8px; cursor: pointer; font-size: 13px; font-family: inherit; padding: 0;">Allocate</button>
+            </form>
+            {{else}}
+            <a href="/invite/request" style="color: #d97706; text-decoration: underline; margin-left: 8px;">Request More</a>
+            {{end}}
+        </div>
+
         <div class="boxes-list" style="margin-bottom: 40px;">
         <div class="boxes-list">
             {{range .Boxes}}
@@ -1082,6 +1092,16 @@
                     <div class="section-title">My VMs</div>
                     <a href="/new" class="new-box-btn">+ New</a>
                 </div>
+            </div>
+            <div style="font-size: 13px; color: #d97706; margin-bottom: 16px;">
+                You have {{.InviteCount}} invite{{if ne .InviteCount 1}}s{{end}}.
+                {{if gt .InviteCount 0}}
+                <form method="POST" action="/invite" style="display: inline;">
+                    <button type="submit" style="background: none; border: none; color: #d97706; text-decoration: underline; margin-left: 8px; cursor: pointer; font-size: 13px; font-family: inherit; padding: 0;">Allocate</button>
+                </form>
+                {{else}}
+                <a href="/invite/request" style="color: #d97706; text-decoration: underline; margin-left: 8px;">Request More</a>
+                {{end}}
             </div>
             <div class="no-boxes">
                 <div class="no-boxes-message">No VMs yet. Create one with:</div>

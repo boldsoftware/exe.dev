@@ -139,7 +139,8 @@ type UserPageData struct {
 	IsLoggedIn   bool
 	// BasicUser is true if the user has no SSH keys, no boxes, and was created for login-with-exe.
 	// These users should only see the profile tab and a "what is exe?" section.
-	BasicUser bool
+	BasicUser   bool
+	InviteCount int64
 }
 
 // SiteSession represents an active session cookie for a site hosted by exe

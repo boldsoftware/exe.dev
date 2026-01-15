@@ -653,6 +653,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.handleUserProfile(w, r, userID)
 		return
+	case "/invite":
+		// Invite allocation page - require authentication, POST to allocate
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
+			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+			return
+		}
+		s.handleInvite(w, r, userID)
+		return
+	case "/invite/request":
+		// Request more invites - require authentication
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
+			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+			return
+		}
+		s.handleInviteRequest(w, r, userID)
+		return
 	case "/health":
 		s.handleHealth(w, r)
 	case "/pull-exeuntu-everywhere-517c8a904":
@@ -1274,7 +1294,15 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			ProxyURL:   s.boxProxyAddress(result.Name),
 		}
 		sharedBoxes[i] = sharedBoxInfo
-	} // Prepare template data
+	}
+
+	// Get invite count for user
+	inviteCount, err := withRxRes1(s, r.Context(), (*exedb.Queries).CountUnusedInviteCodesForUser, &user.UserID)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "Failed to get invite count for dashboard", "error", err, "user_id", userID)
+	}
+
+	// Prepare template data
 	data := UserPageData{
 		Env:         s.env,
 		SSHCommand:  s.replSSHConnectionCommand(),
@@ -1284,6 +1312,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		SharedBoxes: sharedBoxes,
 		ActivePage:  "boxes",
 		IsLoggedIn:  true,
+		InviteCount: inviteCount,
 	}
 
 	// Render template
@@ -1531,4 +1560,106 @@ func (s *Server) handleClearExeuntuLatestCache(w http.ResponseWriter, r *http.Re
 		"cleared": fmt.Sprintf("%s/%s:%s", registry, repository, tag),
 		"success": true,
 	})
+}
+
+// handleInvite allocates and displays a single invite code.
+// POST: allocates the next available invite and shows it.
+// GET: redirects to dashboard (must POST to allocate).
+func (s *Server) handleInvite(w http.ResponseWriter, r *http.Request, userID string) {
+	ctx := r.Context()
+
+	// Only POST can allocate an invite
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	// Get user info
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "User not found", http.StatusNotFound)
+		} else {
+			s.slog().ErrorContext(ctx, "Failed to get user info for invite", "error", err, "user_id", userID)
+			http.Error(w, "Failed to load user information", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Get and allocate the next unallocated invite
+	invite, err := withRxRes1(s, ctx, (*exedb.Queries).GetNextUnallocatedInviteForUser, &userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// No more invites available
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		s.slog().ErrorContext(ctx, "Failed to get invite code", "error", err, "user_id", userID)
+		http.Error(w, "Failed to load invite code", http.StatusInternalServerError)
+		return
+	}
+
+	// Mark the invite as allocated
+	err = withTx1(s, ctx, (*exedb.Queries).AllocateInviteCode, invite.ID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "Failed to allocate invite code", "error", err, "invite_id", invite.ID)
+		http.Error(w, "Failed to allocate invite code", http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		stage.Env
+		User       exedb.User
+		InviteCode exedb.InviteCode
+		IsLoggedIn bool
+		ActivePage string
+		BasicUser  bool
+	}{
+		Env:        s.env,
+		User:       user,
+		InviteCode: invite,
+		IsLoggedIn: true,
+		ActivePage: "invites",
+		BasicUser:  false,
+	}
+
+	s.renderTemplate(ctx, w, "invite.html", data)
+}
+
+// handleInviteRequest handles the request for more invite codes.
+// It sends a Slack notification to the #feed channel.
+func (s *Server) handleInviteRequest(w http.ResponseWriter, r *http.Request, userID string) {
+	ctx := r.Context()
+
+	// Get user info
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "User not found", http.StatusNotFound)
+		} else {
+			s.slog().ErrorContext(ctx, "Failed to get user info for invite request", "error", err, "user_id", userID)
+			http.Error(w, "Failed to load user information", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Send Slack notification
+	s.slackFeed.InviteRequest(ctx, user.Email)
+
+	// Render confirmation page
+	data := struct {
+		stage.Env
+		User       exedb.User
+		IsLoggedIn bool
+		ActivePage string
+		BasicUser  bool
+	}{
+		Env:        s.env,
+		User:       user,
+		IsLoggedIn: true,
+		ActivePage: "invites",
+		BasicUser:  false,
+	}
+
+	s.renderTemplate(ctx, w, "invite-requested.html", data)
 }

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EXE.DEV - Your Invite</title>
+    <link rel="stylesheet" href="/static/topbar.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #fafafa;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+            min-height: 100vh;
+        }
+
+        .main-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        .invite-card {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 32px;
+            text-align: center;
+        }
+
+        .invite-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .invite-code {
+            font-size: 28px;
+            font-weight: 600;
+            color: #000;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+            font-family: inherit;
+        }
+
+        .invite-type {
+            font-size: 12px;
+            color: #d97706;
+            margin-bottom: 32px;
+        }
+
+        .usage-section {
+            text-align: left;
+            border-top: 1px solid #f0f0f0;
+            padding-top: 24px;
+        }
+
+        .usage-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 16px;
+        }
+
+        .usage-method {
+            margin-bottom: 20px;
+        }
+
+        .usage-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 6px;
+        }
+
+        .usage-command {
+            background: #1a1a1a;
+            color: #fff;
+            padding: 14px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+            position: relative;
+        }
+
+        .usage-url {
+            background: #f5f5f5;
+            border: 1px solid #e0e0e0;
+            padding: 14px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+            word-break: break-all;
+        }
+
+        .usage-url a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+
+        .usage-url a:hover {
+            text-decoration: underline;
+        }
+
+        .copy-btn {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #333;
+            border: 1px solid #555;
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .copy-btn:hover {
+            background: #444;
+        }
+
+        .copy-btn.copied {
+            background: #22c55e;
+            border-color: #22c55e;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 24px;
+            color: #666;
+            text-decoration: none;
+            font-size: 13px;
+        }
+
+        .back-link:hover {
+            color: #333;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    {{template "topbar" .}}
+
+    <div class="main-container">
+        <div class="invite-card">
+            <div class="invite-label">Invite Code</div>
+            <div class="invite-code">{{.InviteCode.Code}}</div>
+            <div class="invite-type">
+                {{if eq .InviteCode.PlanType "trial"}}1 month free trial{{else if eq .InviteCode.PlanType "free"}}Free forever{{end}}
+            </div>
+
+            <div class="usage-section">
+                <div class="usage-title">Share this invite:</div>
+
+                <div class="usage-method">
+                    <div class="usage-label">Via SSH:</div>
+                    <div class="usage-command">
+                        ssh {{.InviteCode.Code}}@{{.ReplHost}}
+                        <button class="copy-btn" onclick="copyToClipboard(this, 'ssh {{.InviteCode.Code}}@{{.ReplHost}}')">Copy</button>
+                    </div>
+                </div>
+
+                <div class="usage-method">
+                    <div class="usage-label">Via Web:</div>
+                    <div class="usage-url">
+                        <a href="https://{{.WebHost}}/auth?invite={{.InviteCode.Code}}">https://{{.WebHost}}/auth?invite={{.InviteCode.Code}}</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <a href="/" class="back-link">&larr; Back to My VMs</a>
+    </div>
+
+    <script>
+        function copyToClipboard(btn, text) {
+            navigator.clipboard.writeText(text).then(function() {
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(function() {
+                    btn.textContent = 'Copy';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

@@ -37,6 +37,23 @@ SELECT * FROM invite_codes
 WHERE assigned_to_user_id = ? AND used_by_user_id IS NULL
 ORDER BY assigned_at DESC;
 
+-- name: CountUnusedInviteCodesForUser :one
+-- Counts unused AND unallocated invites for the user (available to allocate)
+SELECT COUNT(*) FROM invite_codes
+WHERE assigned_to_user_id = ? AND used_by_user_id IS NULL AND allocated_at IS NULL;
+
+-- name: GetNextUnallocatedInviteForUser :one
+-- Gets the next unallocated invite code for a user
+SELECT * FROM invite_codes
+WHERE assigned_to_user_id = ? AND used_by_user_id IS NULL AND allocated_at IS NULL
+ORDER BY assigned_at ASC
+LIMIT 1;
+
+-- name: AllocateInviteCode :exec
+-- Marks an invite code as allocated (shown to the user)
+UPDATE invite_codes SET allocated_at = CURRENT_TIMESTAMP
+WHERE id = ? AND allocated_at IS NULL;
+
 -- name: ListUnusedSystemInviteCodes :many
 -- Lists all unused system invite codes (not assigned to any user)
 SELECT * FROM invite_codes

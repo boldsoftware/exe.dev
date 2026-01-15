@@ -139,6 +139,7 @@ type InviteCode struct {
 	AssignedFor      *string    `db:"assigned_for" json:"assigned_for"`
 	UsedByUserID     *string    `db:"used_by_user_id" json:"used_by_user_id"`
 	UsedAt           *time.Time `db:"used_at" json:"used_at"`
+	AllocatedAt      *time.Time `db:"allocated_at" json:"allocated_at"`
 }
 
 type InviteCodePool struct {
