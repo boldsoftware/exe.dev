@@ -1559,6 +1559,8 @@ button {
   border-radius: 0.25rem;
   overflow: hidden;
   background: var(--bg-base);
+  width: fit-content;
+  max-width: 100%;
 }
 
 .screenshot-tool-image-container a {
