@@ -81,18 +81,7 @@ func TestBoxSharing(t *testing.T) {
 			httpCode: http.StatusOK,
 		})
 
-		jar2, err := cookiejar.New(nil)
-		if err != nil {
-			t.Fatalf("failed to create cookie jar: %v", err)
-		}
-		for _, cookie := range guestCookies {
-			cookie.Domain = "localhost"
-			jar2.SetCookies(&url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", Env.servers.Exed.HTTPPort)}, []*http.Cookie{cookie})
-		}
-		client2 := &http.Client{
-			Jar:     jar2,
-			Timeout: 10 * time.Second,
-		}
+		client2 := newClientWithCookies(t, guestCookies)
 		resp, err := client2.Get(fmt.Sprintf("http://localhost:%d/", Env.servers.Exed.HTTPPort))
 		if err != nil {
 			t.Fatalf("failed to get dashboard: %v", err)
@@ -688,22 +677,7 @@ func TestBasicUserDashboard(t *testing.T) {
 	cookies := webLoginWithExe(t, basicUserEmail)
 
 	// Set up HTTP client with the auth cookies
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatalf("failed to create cookie jar: %v", err)
-	}
-	for _, cookie := range cookies {
-		cookie.Domain = "localhost"
-		jar.SetCookies(&url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", Env.servers.Exed.HTTPPort)}, []*http.Cookie{cookie})
-	}
-	client := &http.Client{
-		Jar:     jar,
-		Timeout: 10 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			// Follow redirects but capture them
-			return nil
-		},
-	}
+	client := newClientWithCookies(t, cookies)
 
 	// Access the dashboard - basic users should be redirected to /user
 	dashboardURL := fmt.Sprintf("http://localhost:%d/", Env.servers.Exed.HTTPPort)

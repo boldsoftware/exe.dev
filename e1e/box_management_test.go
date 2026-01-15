@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/cookiejar"
-	"net/url"
 	"os"
 	"os/exec"
 	"regexp"
@@ -219,16 +217,7 @@ func TestVanillaBox(t *testing.T) {
 		// This tests the shelley subdomain routing added in proxy.go
 
 		httpPort := Env.servers.Exed.HTTPPort
-
-		// Set up cookie jar with auth cookies
-		jar, err := cookiejar.New(nil)
-		if err != nil {
-			t.Fatalf("failed to create cookie jar: %v", err)
-		}
-		for _, cookie := range cookies {
-			cookie.Domain = "localhost"
-			jar.SetCookies(&url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", httpPort)}, []*http.Cookie{cookie})
-		}
+		client := newClientWithCookies(t, cookies)
 
 		// Make a request to Shelley's /version endpoint via subdomain routing
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/version", httpPort), nil)
@@ -238,7 +227,6 @@ func TestVanillaBox(t *testing.T) {
 		// Set Host header to use shelley subdomain routing
 		req.Host = fmt.Sprintf("%s.shelley.exe.cloud:%d", boxName, httpPort)
 
-		client := &http.Client{Jar: jar, Timeout: 10 * time.Second}
 		var resp *http.Response
 		for range 50 {
 			resp, err = client.Do(req)
@@ -482,18 +470,7 @@ func TestVanillaBox(t *testing.T) {
 		configureProxyRoute(t, keyFile, boxName, 8000, "public")
 
 		// Fetch dashboard and check proxy port display
-		jar, err := cookiejar.New(nil)
-		if err != nil {
-			t.Fatalf("failed to create cookie jar: %v", err)
-		}
-		for _, cookie := range cookies {
-			cookie.Domain = "localhost"
-			jar.SetCookies(&url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", Env.servers.Exed.HTTPPort)}, []*http.Cookie{cookie})
-		}
-		client := &http.Client{
-			Jar:     jar,
-			Timeout: 10 * time.Second,
-		}
+		client := newClientWithCookies(t, cookies)
 		resp, err := client.Get(fmt.Sprintf("http://localhost:%d/", Env.servers.Exed.HTTPPort))
 		if err != nil {
 			t.Fatalf("failed to get dashboard: %v", err)

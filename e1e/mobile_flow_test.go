@@ -249,13 +249,7 @@ func TestNewPageRendersLoggedInAndOut(t *testing.T) {
 		pty, cookies, _, _ := registerForExeDevWithoutBilling(t)
 		pty.disconnect()
 
-		jar, err := cookiejar.New(nil)
-		if err != nil {
-			t.Fatalf("cookiejar.New: %v", err)
-		}
-		setCookiesForJar(t, jar, base, cookies)
-		client := &http.Client{Jar: jar, Timeout: 30 * time.Second}
-
+		client := newClientWithCookies(t, cookies)
 		resp, err := client.Get(base + "/new")
 		if err != nil {
 			t.Fatalf("GET /new: %v", err)
@@ -279,13 +273,7 @@ func TestNewPageRendersLoggedInAndOut(t *testing.T) {
 
 		// Billing is added automatically by registerForExeDev
 
-		jar, err := cookiejar.New(nil)
-		if err != nil {
-			t.Fatalf("cookiejar.New: %v", err)
-		}
-		setCookiesForJar(t, jar, base, cookies)
-		client := &http.Client{Jar: jar, Timeout: 30 * time.Second}
-
+		client := newClientWithCookies(t, cookies)
 		resp, err := client.Get(base + "/new")
 		if err != nil {
 			t.Fatalf("GET /new: %v", err)

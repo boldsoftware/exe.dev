@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"exe.dev/e1e/testinfra"
 )
@@ -734,6 +735,15 @@ func noRedirectClient(jar http.CookieJar) *http.Client {
 			return http.ErrUseLastResponse
 		},
 	}
+}
+
+// newClientWithCookies creates an http.Client with a cookie jar pre-populated
+// with the given cookies for the exed HTTP port.
+func newClientWithCookies(t testing.TB, cookies []*http.Cookie) *http.Client {
+	t.Helper()
+	jar, _ := cookiejar.New(nil) // no error possible
+	setCookiesForJar(t, jar, fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort), cookies)
+	return &http.Client{Jar: jar, Timeout: 10 * time.Second}
 }
 
 // newBox requests a new box from the open repl pty.
