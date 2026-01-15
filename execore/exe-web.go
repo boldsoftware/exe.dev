@@ -1100,7 +1100,7 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 	s.renderTemplate(r.Context(), w, "email-verification-form.html", data)
 }
 
-func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey string, qc QualityCheck) (*exedb.User, error) {
+func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey string, qc QualityCheck, inviterEmail string) (*exedb.User, error) {
 	// Create the user if they don't exist
 	// Note that this is called during email verification,
 	// so we must look up the user by email (verified),
@@ -1115,7 +1115,7 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 			return nil, fmt.Errorf("create user: %w", err)
 		}
 		s.slog().InfoContext(ctx, "Created new user", "email", email)
-		s.slackFeed.NewUser(ctx, user.UserID, email, "ssh")
+		s.slackFeed.NewUser(ctx, user.UserID, email, "ssh", inviterEmail)
 	} else {
 		s.slog().DebugContext(ctx, "User already exists", "email", email)
 		// User already exists - still need to resolve pending shares

@@ -15,7 +15,7 @@ func TestSlackFeed_NoClient(t *testing.T) {
 	sf := &SlackFeed{client: nil, log: tslog.Slogger(t)}
 
 	ctx := context.Background()
-	sf.NewUser(ctx, "user123", "test@example.com", "ssh")
+	sf.NewUser(ctx, "user123", "test@example.com", "ssh", "")
 	// NewUser with nil client doesn't store, so CreatedVM has nothing to find
 	sf.CreatedVM(ctx, "user123")
 }
@@ -66,4 +66,18 @@ func TestSlackFeed_NewSlackFeed_Disabled(t *testing.T) {
 	env.PostSlackFeed = false
 	sf := NewSlackFeed(tslog.Slogger(t), env)
 	require.Nil(t, sf.client, "client should be nil when disabled")
+}
+
+func TestSlackFeed_NewUser_WithInviter(t *testing.T) {
+	// Test that inviter email is included in the message
+	ctx := context.Background()
+
+	// Without inviter email
+	sf := &SlackFeed{client: nil, log: tslog.Slogger(t)}
+	sf.NewUser(ctx, "user1", "test@example.com", "ssh", "")
+	// Logs: "new user (ssh): `test@example.com`"
+
+	// With inviter email
+	sf.NewUser(ctx, "user2", "invited@example.com", "web", "inviter@example.com")
+	// Logs: "new user (web): `invited@example.com` (invited by `inviter@example.com`)"
 }

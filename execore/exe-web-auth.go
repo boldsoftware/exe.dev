@@ -88,7 +88,8 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		if verification.InviteCode != nil {
 			qc = SkipQualityChecks
 		}
-		user, err := s.createUserWithSSHKey(r.Context(), verification.Email, verification.PublicKey, qc)
+		inviterEmail := s.getInviteGiverEmail(r.Context(), verification.InviteCode)
+		user, err := s.createUserWithSSHKey(r.Context(), verification.Email, verification.PublicKey, qc, inviterEmail)
 		if err != nil {
 			s.slog().ErrorContext(r.Context(), "failed to create user with SSH key during email verification", "error", err, "token", token)
 			http.Error(w, "failed to create user account", http.StatusInternalServerError)
@@ -543,10 +544,12 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Apply invite code if present
+	// Apply invite code if present and get inviter email for notification
+	var inviterEmail string
 	if pending.InviteCodeID != nil {
 		invite, err := withRxRes1(s, ctx, (*exedb.Queries).GetInviteCodeByID, *pending.InviteCodeID)
 		if err == nil && invite.UsedByUserID == nil {
+			inviterEmail = s.getInviteGiverEmail(ctx, &invite)
 			if err := s.applyInviteCode(ctx, &invite, userID); err != nil {
 				s.slog().ErrorContext(ctx, "failed to apply invite code", "error", err)
 			}
@@ -557,7 +560,7 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 	_ = withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).DeletePendingRegistrationByToken, token)
 
 	// Notify about new user
-	s.slackFeed.NewUser(ctx, userID, pending.Email, "web-billing-first")
+	s.slackFeed.NewUser(ctx, userID, pending.Email, "web-billing-first", inviterEmail)
 	s.slackFeed.Subscribed(ctx, userID)
 
 	// Send verification email
@@ -1363,6 +1366,17 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	// Check for invite code in query parameters (needed for new user notification)
+	var inviteCodeID *int64
+	var inviterEmail string
+	if inviteCodeStr := r.FormValue("invite"); inviteCodeStr != "" {
+		if invite := s.lookupUnusedInviteCode(r.Context(), inviteCodeStr); invite != nil {
+			inviteCodeID = &invite.ID
+			inviterEmail = s.getInviteGiverEmail(r.Context(), invite)
+			s.slog().InfoContext(r.Context(), "valid invite code provided via web auth", "code", inviteCodeStr)
+		}
+	}
+
 	if isNewUser {
 		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
 			userID, err = s.createUserRecord(ctx, queries, email, createdForLoginWithExe)
@@ -1379,7 +1393,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		if returnHost := r.FormValue("return_host"); returnHost != "" {
 			source = "login " + returnHost
 		}
-		s.slackFeed.NewUser(r.Context(), userID, email, source)
+		s.slackFeed.NewUser(r.Context(), userID, email, source, inviterEmail)
 		// Check email quality and disable VM creation if disposable
 		if err := s.checkEmailQuality(context.WithoutCancel(r.Context()), userID, email); err != nil {
 			s.slog().WarnContext(r.Context(), "email quality check failed", "error", err, "email", email)
@@ -1388,15 +1402,6 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 
 	// Generate verification token
 	token := generateRegistrationToken()
-
-	// Check for invite code in query parameters
-	var inviteCodeID *int64
-	if inviteCodeStr := r.FormValue("invite"); inviteCodeStr != "" {
-		if invite := s.lookupUnusedInviteCode(r.Context(), inviteCodeStr); invite != nil {
-			inviteCodeID = &invite.ID
-			s.slog().InfoContext(r.Context(), "valid invite code provided via web auth", "code", inviteCodeStr)
-		}
-	}
 
 	// Store verification in database (reuse existing email_verifications table)
 	err = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).InsertEmailVerification, exedb.InsertEmailVerificationParams{

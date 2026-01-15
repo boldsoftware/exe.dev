@@ -863,7 +863,8 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 		if inviteCode != nil {
 			qc = SkipQualityChecks
 		}
-		newUser, err := ss.server.createUserWithSSHKey(s.Context(), email, publicKey, qc)
+		inviterEmail := ss.server.getInviteGiverEmail(ctx, inviteCode)
+		newUser, err := ss.server.createUserWithSSHKey(s.Context(), email, publicKey, qc, inviterEmail)
 		if err != nil {
 			ss.server.slog().ErrorContext(ctx, "failed to create user with SSH key during github auto-verification", "error", err)
 			fmt.Fprintf(s, "\r\n\033[1;31minternal error: failed to create user account\033[0m\r\n")
@@ -1275,6 +1276,20 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 
 		return nil
 	})
+}
+
+// getInviteGiverEmail returns the email of the user who owns the invite code.
+// Returns empty string if the invite code has no assigned user (system-generated).
+func (s *Server) getInviteGiverEmail(ctx context.Context, inviteCode *exedb.InviteCode) string {
+	if inviteCode == nil || inviteCode.AssignedToUserID == nil {
+		return ""
+	}
+	email, err := withRxRes1(s, ctx, (*exedb.Queries).GetEmailByUserID, *inviteCode.AssignedToUserID)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to get invite giver email", "error", err, "user_id", *inviteCode.AssignedToUserID)
+		return ""
+	}
+	return email
 }
 
 // readLineWithCompletion reads a line from the terminal with tab completion support

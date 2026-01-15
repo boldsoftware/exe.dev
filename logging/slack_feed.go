@@ -43,8 +43,12 @@ func NewSlackFeed(log *slog.Logger, env stage.Env) *SlackFeed {
 }
 
 // NewUser notifies Slack of a new user signup.
-func (sf *SlackFeed) NewUser(ctx context.Context, userID, email, source string) {
+// If inviterEmail is non-empty, includes it in the message (for invite link signups).
+func (sf *SlackFeed) NewUser(ctx context.Context, userID, email, source, inviterEmail string) {
 	message := fmt.Sprintf("new user (%s): `%s`", source, email)
+	if inviterEmail != "" {
+		message += fmt.Sprintf(" (invited by `%s`)", inviterEmail)
+	}
 	if sf.client == nil {
 		sf.log.InfoContext(ctx, "slack feed channel", "message", message)
 		return
