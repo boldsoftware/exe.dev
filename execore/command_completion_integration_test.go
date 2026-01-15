@@ -58,6 +58,18 @@ func TestCompletionIntegration(t *testing.T) {
 			cursor:   3,
 			expected: nil, // No containers available in test mode
 		},
+		{
+			name:     "complete help with partial command name",
+			line:     "help del",
+			cursor:   8,
+			expected: []string{"delete-ssh-key"},
+		},
+		{
+			name:     "complete help with space - shows all commands",
+			line:     "help ",
+			cursor:   5,
+			expected: []string{"help", "doc", "ls", "new", "rm", "restart", "share", "whoami", "delete-ssh-key", "shelley", "browser", "exit", "ssh"},
+		},
 	}
 
 	for _, tt := range tests {

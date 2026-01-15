@@ -104,6 +104,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Description:       "Show help information",
 			Handler:           ss.handleHelpCommand,
 			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeCommandNames,
 		},
 		{
 			Name:              "doc",
@@ -1518,6 +1519,23 @@ func (ss *SSHServer) completeDocSlugs(compCtx *exemenu.CompletionContext, cc *ex
 	for _, slug := range store.Slugs() {
 		if strings.HasPrefix(slug, prefix) {
 			completions = append(completions, slug)
+		}
+	}
+	return completions
+}
+
+func (ss *SSHServer) completeCommandNames(compCtx *exemenu.CompletionContext, cc *exemenu.CommandContext) []string {
+	if ss == nil || ss.commands == nil {
+		return nil
+	}
+	prefix := compCtx.CurrentWord
+	var completions []string
+	for _, cmd := range ss.commands.GetAvailableCommands(cc) {
+		if cmd.Hidden && !ss.commands.DevMode {
+			continue
+		}
+		if strings.HasPrefix(cmd.Name, prefix) {
+			completions = append(completions, cmd.Name)
 		}
 	}
 	return completions
