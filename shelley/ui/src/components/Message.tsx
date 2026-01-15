@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { linkifyText } from "../utils/linkify";
 import { Message as MessageType, LLMMessage, LLMContent, Usage } from "../types";
 import BashTool from "./BashTool";
@@ -13,8 +13,8 @@ import ReadImageTool from "./ReadImageTool";
 import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
 import ChangeDirTool from "./ChangeDirTool";
 import BrowserResizeTool from "./BrowserResizeTool";
-import ContextMenu from "./ContextMenu";
 import UsageDetailModal from "./UsageDetailModal";
+import MessageActionBar from "./MessageActionBar";
 
 // Display data types from different tools
 interface ToolDisplay {
@@ -110,11 +110,14 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
     );
   }
 
-  // Context menu state
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  // Action bar state (show on hover or tap)
+  const [showActionBar, setShowActionBar] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const [showUsageModal, setShowUsageModal] = useState(false);
-  const [longPressTimer, setLongPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   const messageRef = useRef<HTMLDivElement | null>(null);
+
+  // Show action bar on hover or when explicitly tapped
+  const actionBarVisible = showActionBar || isHovered;
 
   // Parse usage data if available (only for agent messages)
   let usage: Usage | null = null;
@@ -163,7 +166,7 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
     }
   };
 
-  // Get text content from message for copying
+  // Get text content from message for copying (includes tool results)
   const getMessageText = (): string => {
     if (!llmMessage?.Content) return "";
 
@@ -172,74 +175,58 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
       const contentType = getContentType(content.Type);
       if (contentType === "text" && content.Text) {
         textParts.push(content.Text);
+      } else if (contentType === "tool_result" && content.ToolResult) {
+        // Extract text from tool result content
+        content.ToolResult.forEach((result) => {
+          if (result.Text) {
+            textParts.push(result.Text);
+          }
+        });
       }
     });
     return textParts.join("\n");
   };
 
-  // Handle right-click (desktop)
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY });
-  };
-
-  // Handle long-press (mobile)
-  const handleTouchStart = (e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    const timer = setTimeout(() => {
-      setContextMenu({ x: touch.clientX, y: touch.clientY });
-    }, 500); // 500ms long press
-    setLongPressTimer(timer);
-  };
-
-  const handleTouchEnd = () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      setLongPressTimer(null);
+  // Handle tap on message to toggle action bar (for mobile)
+  const handleMessageClick = (e: React.MouseEvent) => {
+    // Don't toggle if clicking on a link, button, or interactive element
+    const target = e.target as HTMLElement;
+    if (
+      target.closest("a") ||
+      target.closest("button") ||
+      target.closest("[data-action-bar]") ||
+      target.closest(".bash-tool-header") ||
+      target.closest(".patch-tool-header") ||
+      target.closest(".generic-tool-header") ||
+      target.closest(".think-tool-header") ||
+      target.closest(".keyword-search-tool-header") ||
+      target.closest(".change-dir-tool-header") ||
+      target.closest(".browser-tool-header") ||
+      target.closest(".screenshot-tool-header")
+    ) {
+      return;
     }
+    setShowActionBar((prev) => !prev);
   };
 
-  const handleTouchMove = () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      setLongPressTimer(null);
-    }
-  };
+  // Handle mouse enter/leave for hover
+  const handleMouseEnter = () => setIsHovered(true);
+  const handleMouseLeave = () => setIsHovered(false);
 
-  // Copy icon SVG
-  const CopyIcon = () => (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-    </svg>
-  );
+  // Close action bar when clicking outside
+  useEffect(() => {
+    if (!showActionBar) return;
 
-  // Info icon SVG
-  const InfoIcon = () => (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="10"></circle>
-      <line x1="12" y1="16" x2="12" y2="12"></line>
-      <line x1="12" y1="8" x2="12.01" y2="8"></line>
-    </svg>
-  );
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!messageRef.current?.contains(target)) {
+        setShowActionBar(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showActionBar]);
 
   // Handle copy action
   const handleCopy = () => {
@@ -249,6 +236,13 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
         console.error("Failed to copy text:", err);
       });
     }
+    setShowActionBar(false);
+  };
+
+  // Handle usage detail action
+  const handleShowUsage = () => {
+    setShowUsageModal(true);
+    setShowActionBar(false);
   };
 
   let displayData: ToolDisplay[] | null = null;
@@ -278,27 +272,10 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
   const isTool = message.type === "tool" || hasToolContent(llmMessage);
   const isError = message.type === "error";
 
-  // Build context menu items after llmMessage is available
-  const contextMenuItems = [];
-
-  // Always show copy for messages with text content
+  // Determine which actions to show in action bar
   const messageText = getMessageText();
-  if (messageText) {
-    contextMenuItems.push({
-      label: "Copy",
-      icon: <CopyIcon />,
-      onClick: handleCopy,
-    });
-  }
-
-  // Show usage detail only for agent messages with usage data
-  if (message.type === "agent" && usage) {
-    contextMenuItems.push({
-      label: "Usage Detail",
-      icon: <InfoIcon />,
-      onClick: () => setShowUsageModal(true),
-    });
-  }
+  const hasCopyAction = !!messageText;
+  const hasUsageAction = message.type === "agent" && !!usage;
 
   // Build a map of tool use IDs to their inputs for linking tool_result back to tool_use
   const toolUseMap: Record<string, { name: string; input: unknown }> = {};
@@ -788,27 +765,24 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
         <div
           ref={messageRef}
           className={getMessageClasses()}
-          onContextMenu={handleContextMenu}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-          onTouchMove={handleTouchMove}
+          onClick={handleMessageClick}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
           style={{ position: "relative" }}
           data-testid="message"
           role="alert"
           aria-label="Error message"
         >
+          {actionBarVisible && (hasCopyAction || hasUsageAction) && (
+            <MessageActionBar
+              onCopy={hasCopyAction ? handleCopy : undefined}
+              onShowUsage={hasUsageAction ? handleShowUsage : undefined}
+            />
+          )}
           <div className="message-content" data-testid="message-content">
             <div className="whitespace-pre-wrap break-words">{errorText}</div>
           </div>
         </div>
-        {contextMenu && contextMenuItems.length > 0 && (
-          <ContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            onClose={() => setContextMenu(null)}
-            items={contextMenuItems}
-          />
-        )}
         {showUsageModal && usage && (
           <UsageDetailModal
             usage={usage}
@@ -827,28 +801,25 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
         <div
           ref={messageRef}
           className={getMessageClasses()}
-          onContextMenu={handleContextMenu}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-          onTouchMove={handleTouchMove}
+          onClick={handleMessageClick}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
           style={{ position: "relative" }}
           data-testid="message"
           role="article"
         >
+          {actionBarVisible && (hasCopyAction || hasUsageAction) && (
+            <MessageActionBar
+              onCopy={hasCopyAction ? handleCopy : undefined}
+              onShowUsage={hasUsageAction ? handleShowUsage : undefined}
+            />
+          )}
           <div className="message-content" data-testid="message-content">
             {displayData.map((toolDisplay, index) => (
               <div key={index}>{renderDisplayData(toolDisplay, toolDisplay.tool_name)}</div>
             ))}
           </div>
         </div>
-        {contextMenu && contextMenuItems.length > 0 && (
-          <ContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            onClose={() => setContextMenu(null)}
-            items={contextMenuItems}
-          />
-        )}
         {showUsageModal && usage && (
           <UsageDetailModal
             usage={usage}
@@ -899,14 +870,19 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
       <div
         ref={messageRef}
         className={getMessageClasses()}
-        onContextMenu={handleContextMenu}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        onTouchMove={handleTouchMove}
+        onClick={handleMessageClick}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         style={{ position: "relative" }}
         data-testid="message"
         role="article"
       >
+        {actionBarVisible && (hasCopyAction || hasUsageAction) && (
+          <MessageActionBar
+            onCopy={hasCopyAction ? handleCopy : undefined}
+            onShowUsage={hasUsageAction ? handleShowUsage : undefined}
+          />
+        )}
         {/* Message content */}
         <div className="message-content" data-testid="message-content">
           {contentToRender.map((content, index) => (
@@ -914,14 +890,6 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
           ))}
         </div>
       </div>
-      {contextMenu && contextMenuItems.length > 0 && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
-          items={contextMenuItems}
-        />
-      )}
       {showUsageModal && usage && (
         <UsageDetailModal
           usage={usage}
