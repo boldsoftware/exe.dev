@@ -576,6 +576,24 @@ func startHTTPServer(t *testing.T, box, keyFile string, port int) {
 	}
 }
 
+// serveIndex creates an index.html with the given content and starts busybox httpd on port 8080.
+func serveIndex(t *testing.T, box, keyFile, content string) {
+	t.Helper()
+	makeIndex := boxSSHCommand(t, box, keyFile, "sh", "-c", fmt.Sprintf("'echo %s > /home/exedev/index.html'", content))
+	if err := makeIndex.Run(); err != nil {
+		t.Fatalf("failed to create index.html: %v", err)
+	}
+	startHTTPServer(t, box, keyFile, 8080)
+}
+
+// cleanupBox connects to exed, deletes the box, and disconnects.
+func cleanupBox(t *testing.T, keyFile, boxName string) {
+	t.Helper()
+	pty := sshToExeDev(t, keyFile)
+	pty.deleteBox(boxName)
+	pty.disconnect()
+}
+
 // configureProxyRoute sets the proxy port and visibility for a box.
 // visibility must be "public" or "private".
 func configureProxyRoute(t *testing.T, keyFile, box string, port int, visibility string) {

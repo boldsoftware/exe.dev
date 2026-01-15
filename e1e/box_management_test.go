@@ -556,12 +556,7 @@ func TestVanillaBox(t *testing.T) {
 		}
 
 		// Set up proxy route and make a proxy request.
-		// Start a simple HTTP server on the box first.
-		makeIndex := boxSSHCommand(t, boxName, keyFile, "sh", "-c", "echo metrics-test > /home/exedev/index.html")
-		if err := makeIndex.Run(); err != nil {
-			t.Fatalf("failed to create index.html: %v", err)
-		}
-		startHTTPServer(t, boxName, keyFile, 8080)
+		serveIndex(t, boxName, keyFile, "metrics-test")
 		configureProxyRoute(t, keyFile, boxName, 8080, "public")
 
 		// Make a proxy request
@@ -626,9 +621,7 @@ func TestVanillaBox(t *testing.T) {
 	})
 
 	// Cleanup
-	pty = sshToExeDev(t, keyFile)
-	pty.deleteBox(boxName)
-	pty.disconnect()
+	cleanupBox(t, keyFile, boxName)
 }
 
 func TestStandardAlpineBox(t *testing.T) {
@@ -866,9 +859,7 @@ func TestBoxRestartShutdown(t *testing.T) {
 		}
 	})
 
-	cleanup := sshToExeDev(t, keyFile)
-	cleanup.deleteBox(boxName)
-	cleanup.disconnect()
+	cleanupBox(t, keyFile, boxName)
 }
 
 // TestNewWithEnvVars tests environment variable passing to boxes.
@@ -924,9 +915,7 @@ func TestNewWithEnvVars(t *testing.T) {
 	box.disconnect()
 
 	// Clean up
-	cleanup := sshToExeDev(t, keyFile)
-	cleanup.deleteBox(boxName)
-	cleanup.disconnect()
+	cleanupBox(t, keyFile, boxName)
 }
 
 func TestNewWithInvalidEnvVarFormat(t *testing.T) {
@@ -974,9 +963,7 @@ func TestNewBoxVariants(t *testing.T) {
 	pty.wantPrompt()
 
 	// Clean up
-	cleanup := sshToExeDev(t, keyFile)
-	cleanup.deleteBox(boxName)
-	cleanup.disconnect()
+	cleanupBox(t, keyFile, boxName)
 }
 
 func TestRestartCommand(t *testing.T) {
@@ -996,11 +983,7 @@ func TestRestartCommand(t *testing.T) {
 
 	// Start HTTP server and set up proxy route to test SSH pool handling across restart
 	httpPort := Env.servers.Exed.HTTPPort
-	makeIndex := boxSSHCommand(t, boxName, keyFile, "sh", "-c", "'echo proxy-restart-test > /home/exedev/index.html'")
-	if err := makeIndex.Run(); err != nil {
-		t.Fatalf("failed to create index.html: %v", err)
-	}
-	startHTTPServer(t, boxName, keyFile, 8080)
+	serveIndex(t, boxName, keyFile, "proxy-restart-test")
 	configureProxyRoute(t, keyFile, boxName, 8080, "public")
 
 	// Helper to make proxy request
@@ -1066,11 +1049,7 @@ func TestRestartCommand(t *testing.T) {
 	}
 
 	// Restart HTTP server and verify proxy works after restart (tests SSH pool stale connection handling)
-	makeIndex = boxSSHCommand(t, boxName, keyFile, "sh", "-c", "'echo proxy-restart-test-after > /home/exedev/index.html'")
-	if err := makeIndex.Run(); err != nil {
-		t.Fatalf("failed to create index.html after restart: %v", err)
-	}
-	startHTTPServer(t, boxName, keyFile, 8080)
+	serveIndex(t, boxName, keyFile, "proxy-restart-test-after")
 
 	// Make proxy request AFTER restart to verify SSH pool handles stale connections
 	for range 30 {
@@ -1093,9 +1072,7 @@ func TestRestartCommand(t *testing.T) {
 	}
 
 	// Cleanup
-	cleanup := sshToExeDev(t, keyFile)
-	cleanup.deleteBox(boxName)
-	cleanup.disconnect()
+	cleanupBox(t, keyFile, boxName)
 }
 
 func TestRestartStoppedVM(t *testing.T) {
@@ -1117,11 +1094,7 @@ func TestRestartStoppedVM(t *testing.T) {
 	// This specifically tests the scenario where pool connections become stale when the VM
 	// is stopped from inside (not via restart command) and then restarted.
 	httpPort := Env.servers.Exed.HTTPPort
-	makeIndex := boxSSHCommand(t, boxName, keyFile, "sh", "-c", "'echo proxy-stopped-test > /home/exedev/index.html'")
-	if err := makeIndex.Run(); err != nil {
-		t.Fatalf("failed to create index.html: %v", err)
-	}
-	startHTTPServer(t, boxName, keyFile, 8080)
+	serveIndex(t, boxName, keyFile, "proxy-stopped-test")
 	configureProxyRoute(t, keyFile, boxName, 8080, "public")
 
 	// Helper to make proxy request
@@ -1195,11 +1168,7 @@ func TestRestartStoppedVM(t *testing.T) {
 	// Restart HTTP server and verify proxy works after restart from stopped state.
 	// This tests that stale SSH pool connections are properly dropped when restarting
 	// from STOPPED state (not just RUNNING state).
-	makeIndex = boxSSHCommand(t, boxName, keyFile, "sh", "-c", "'echo proxy-stopped-test-after > /home/exedev/index.html'")
-	if err := makeIndex.Run(); err != nil {
-		t.Fatalf("failed to create index.html after restart: %v", err)
-	}
-	startHTTPServer(t, boxName, keyFile, 8080)
+	serveIndex(t, boxName, keyFile, "proxy-stopped-test-after")
 
 	// Make proxy request AFTER restart to verify SSH pool handles stale connections
 	for range 30 {
@@ -1222,9 +1191,7 @@ func TestRestartStoppedVM(t *testing.T) {
 	}
 
 	// Cleanup
-	cleanup := sshToExeDev(t, keyFile)
-	cleanup.deleteBox(boxName)
-	cleanup.disconnect()
+	cleanupBox(t, keyFile, boxName)
 }
 
 func truncate(s string, maxLen int) string {

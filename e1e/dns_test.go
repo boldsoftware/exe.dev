@@ -173,7 +173,5 @@ func TestEmbeddedDNS(t *testing.T) {
 		}
 	})
 
-	pty = sshToExeDev(t, keyFile)
-	pty.deleteBox(boxName)
-	pty.disconnect()
+	cleanupBox(t, keyFile, boxName)
 }

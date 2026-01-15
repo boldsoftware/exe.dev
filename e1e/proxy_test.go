@@ -552,9 +552,7 @@ chmod +x /home/exedev/cgi-bin/headers
 	})
 
 	// Cleanup
-	pty = sshToExeDev(t, keyFile)
-	pty.deleteBox(box)
-	pty.disconnect()
+	cleanupBox(t, keyFile, box)
 }
 
 type proxyExpectation struct {

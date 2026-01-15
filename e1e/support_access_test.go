@@ -41,13 +41,8 @@ func TestSupportAccess(t *testing.T) {
 		t.Fatalf("failed to create test file: %v\n%s", err, out)
 	}
 
-	// Create index.html for HTTP proxy tests
-	makeIndex := boxSSHCommand(t, box, ownerKeyFile, "echo", "support-proxy-test", ">", "/home/exedev/index.html")
-	if err := makeIndex.Run(); err != nil {
-		t.Fatalf("failed to create index.html: %v", err)
-	}
 	const boxInternalPort = 8080
-	startHTTPServer(t, box, ownerKeyFile, boxInternalPort)
+	serveIndex(t, box, ownerKeyFile, "support-proxy-test")
 	httpPort := Env.servers.Exed.HTTPPort
 	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "private")
 
@@ -180,9 +175,7 @@ func TestSupportAccess(t *testing.T) {
 
 	// Cleanup
 	supportPTY.disconnect()
-	ownerPTY = sshToExeDev(t, ownerKeyFile)
-	ownerPTY.deleteBox(box)
-	ownerPTY.disconnect()
+	cleanupBox(t, ownerKeyFile, box)
 }
 
 // enableRootSupport enables root_support for a user via the debug endpoint.

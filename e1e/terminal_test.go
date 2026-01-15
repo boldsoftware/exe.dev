@@ -247,9 +247,7 @@ func TestTerminalPermissions(t *testing.T) {
 	})
 
 	// Cleanup
-	pty = sshToExeDev(t, keyFile)
-	pty.deleteBox(box)
-	pty.disconnect()
+	cleanupBox(t, keyFile, box)
 }
 
 // terminalRequest makes a request to the terminal page without authentication

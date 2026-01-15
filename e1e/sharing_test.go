@@ -28,11 +28,7 @@ func TestBoxSharing(t *testing.T) {
 	waitForSSH(t, box, ownerKeyFile)
 
 	const boxInternalPort = 8080
-	makeIndex := boxSSHCommand(t, box, ownerKeyFile, "echo", "alive", ">", "/home/exedev/index.html")
-	if err := makeIndex.Run(); err != nil {
-		t.Fatalf("failed to create index.html: %v\n", err)
-	}
-	startHTTPServer(t, box, ownerKeyFile, boxInternalPort)
+	serveIndex(t, box, ownerKeyFile, "alive")
 
 	// httpPort is the exed HTTP proxy port, not the port inside the box
 	httpPort := Env.servers.Exed.HTTPPort
@@ -224,9 +220,7 @@ func TestBoxSharing(t *testing.T) {
 	})
 
 	// Cleanup
-	ownerCleanup := sshToExeDev(t, ownerKeyFile)
-	ownerCleanup.deleteBox(box)
-	ownerCleanup.disconnect()
+	cleanupBox(t, ownerKeyFile, box)
 }
 
 // TestShareCommands tests the share command SSH interface and captures output for golden files
@@ -329,12 +323,7 @@ func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
 
 	const boxInternalPort = 8080
 
-	// Create index.html to serve
-	makeIndex := boxSSHCommand(t, box, ownerKeyFile, "echo", "public-content", ">", "/home/exedev/index.html")
-	if err := makeIndex.Run(); err != nil {
-		t.Fatalf("failed to create index.html: %v\n", err)
-	}
-	startHTTPServer(t, box, ownerKeyFile, boxInternalPort)
+	serveIndex(t, box, ownerKeyFile, "public-content")
 
 	httpPort := Env.servers.Exed.HTTPPort
 	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "public")
@@ -395,9 +384,7 @@ func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
 	}
 
 	// Cleanup
-	ownerCleanup := sshToExeDev(t, ownerKeyFile)
-	ownerCleanup.deleteBox(box)
-	ownerCleanup.disconnect()
+	cleanupBox(t, ownerKeyFile, box)
 }
 
 // TestPendingShareResolvedOnRegistration tests that pending shares are converted to active
@@ -427,12 +414,7 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 
 	const boxInternalPort = 8080
 
-	// Create index.html to serve
-	makeIndex := boxSSHCommand(t, box, ownerKeyFile, "echo", "shared-content", ">", "/home/exedev/index.html")
-	if err := makeIndex.Run(); err != nil {
-		t.Fatalf("failed to create index.html: %v\n", err)
-	}
-	startHTTPServer(t, box, ownerKeyFile, boxInternalPort)
+	serveIndex(t, box, ownerKeyFile, "shared-content")
 
 	httpPort := Env.servers.Exed.HTTPPort
 	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "private")
@@ -507,9 +489,7 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 	})
 
 	// Cleanup
-	ownerCleanup := sshToExeDev(t, ownerKeyFile)
-	ownerCleanup.deleteBox(box)
-	ownerCleanup.disconnect()
+	cleanupBox(t, ownerKeyFile, box)
 }
 
 // TestPendingShareResolvedOnWebLogin tests that pending shares are converted to active
@@ -539,12 +519,7 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 
 	const boxInternalPort = 8080
 
-	// Create index.html to serve
-	makeIndex := boxSSHCommand(t, box, ownerKeyFile, "echo", "shared-content", ">", "/home/exedev/index.html")
-	if err := makeIndex.Run(); err != nil {
-		t.Fatalf("failed to create index.html: %v\n", err)
-	}
-	startHTTPServer(t, box, ownerKeyFile, boxInternalPort)
+	serveIndex(t, box, ownerKeyFile, "shared-content")
 
 	httpPort := Env.servers.Exed.HTTPPort
 	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "private")
@@ -609,9 +584,7 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 	})
 
 	// Cleanup
-	ownerCleanup := sshToExeDev(t, ownerKeyFile)
-	ownerCleanup.deleteBox(box)
-	ownerCleanup.disconnect()
+	cleanupBox(t, ownerKeyFile, box)
 }
 
 // TestProxyCookieIsolation verifies that a proxy auth cookie for one box cannot be
@@ -645,11 +618,7 @@ func TestProxyCookieIsolation(t *testing.T) {
 		{box1, user1KeyFile, "alive"},
 		{box2, user2KeyFile, "box2-content"},
 	} {
-		makeIndex := boxSSHCommand(t, setup.box, setup.keyFile, "echo", setup.content, ">", "/home/exedev/index.html")
-		if err := makeIndex.Run(); err != nil {
-			t.Fatalf("failed to create index.html for %s: %v", setup.box, err)
-		}
-		startHTTPServer(t, setup.box, setup.keyFile, boxInternalPort)
+		serveIndex(t, setup.box, setup.keyFile, setup.content)
 		configureProxyRoute(t, setup.keyFile, setup.box, boxInternalPort, "private")
 	}
 
@@ -701,13 +670,8 @@ func TestProxyCookieIsolation(t *testing.T) {
 	t.Logf("Correctly rejected box1's cookie for box2: status %d", resp.StatusCode)
 
 	// Cleanup
-	cleanup1 := sshToExeDev(t, user1KeyFile)
-	cleanup1.deleteBox(box1)
-	cleanup1.disconnect()
-
-	cleanup2 := sshToExeDev(t, user2KeyFile)
-	cleanup2.deleteBox(box2)
-	cleanup2.disconnect()
+	cleanupBox(t, user1KeyFile, box1)
+	cleanupBox(t, user2KeyFile, box2)
 }
 
 // TestBasicUserDashboard tests that a user created via the login-with-exe flow
@@ -805,12 +769,7 @@ func TestLoginWithExeFlow(t *testing.T) {
 	const boxInternalPort = 8080
 	httpPort := Env.servers.Exed.HTTPPort
 
-	// Create content to serve
-	makeIndex := boxSSHCommand(t, box, ownerKeyFile, "echo", "hello-from-box", ">", "/home/exedev/index.html")
-	if err := makeIndex.Run(); err != nil {
-		t.Fatalf("failed to create index.html: %v", err)
-	}
-	startHTTPServer(t, box, ownerKeyFile, boxInternalPort)
+	serveIndex(t, box, ownerKeyFile, "hello-from-box")
 	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "private")
 
 	// === Test: Unauthenticated user goes through login-with-exe flow ===
@@ -859,9 +818,7 @@ func TestLoginWithExeFlow(t *testing.T) {
 	flow.verifyCookiesOnBothDomains()
 
 	// Cleanup
-	cleanup := sshToExeDev(t, ownerKeyFile)
-	cleanup.deleteBox(box)
-	cleanup.disconnect()
+	cleanupBox(t, ownerKeyFile, box)
 }
 
 // verifyUserCreatedForLoginWithExe verifies that a user was created with the
