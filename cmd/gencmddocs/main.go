@@ -54,7 +54,6 @@ func run() error {
 		if err := os.WriteFile(outPath, []byte(doc), 0o644); err != nil {
 			return fmt.Errorf("writing %s: %w", outPath, err)
 		}
-		fmt.Printf("wrote %s\n", outPath)
 	}
 
 	return nil
