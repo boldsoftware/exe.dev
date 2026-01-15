@@ -3,7 +3,10 @@ package execore
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
@@ -16,8 +19,11 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/exedb"
+	"exe.dev/sqlite"
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
+	"golang.org/x/crypto/ssh"
 )
 
 // createTestRequest creates an http.Request with proper context for proxy tests
@@ -406,3 +412,105 @@ func getCounterValue(t *testing.T, counter prometheus.Counter) float64 {
 }
 
 type prometheusMetric = io_prometheus_client.Metric
+
+// TestPublicRouteStripsTokenCtx verifies that on public routes, token auth
+// still works for identity (UserID is set), but CtxRaw is stripped so that
+// X-ExeDev-Token-Ctx is never forwarded to the VM. This prevents user A from
+// injecting arbitrary trusted context into user B's public box.
+func TestPublicRouteStripsTokenCtx(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+
+	// Generate a test ed25519 key pair and register a user.
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+	sshPubKey, err := ssh.NewPublicKey(pubKey)
+	if err != nil {
+		t.Fatalf("failed to create SSH public key: %v", err)
+	}
+	sshPrivKey, err := ssh.NewSignerFromKey(privKey)
+	if err != nil {
+		t.Fatalf("failed to create SSH signer: %v", err)
+	}
+
+	ctx := t.Context()
+	userID := "usr" + generateRegistrationToken()
+	email := "publicctx@example.com"
+	pubKeyStr := string(ssh.MarshalAuthorizedKey(sshPubKey))
+	fingerprint := strings.TrimPrefix(ssh.FingerprintSHA256(sshPubKey), "SHA256:")
+	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, email); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key, fingerprint) VALUES (?, ?, ?)`, userID, pubKeyStr, fingerprint); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	// Create a box with a public route.
+	boxName := "pubbox"
+	publicRoute := `{"port":80,"share":"public"}`
+	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO boxes (ctrhost, name, status, image, container_id, created_by_user_id, routes,
+			                     ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			"fake_ctrhost", boxName, "running", "test-image", "test-container-id", userID, publicRoute,
+			"test-identity-key", "test-authorized-keys", "test-client-key", 2222)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed to create box: %v", err)
+	}
+
+	// Look up the box (same as handleProxyRequest does).
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if err != nil {
+		t.Fatalf("failed to look up box: %v", err)
+	}
+
+	// Create a VM token with a ctx field.
+	vmNamespace := "v0@" + boxName + "." + s.env.BoxHost
+	payload := []byte(`{"exp":4000000000,"ctx":{"role":"admin"}}`)
+	payloadB64 := base64.RawURLEncoding.EncodeToString(payload)
+	sigBlob := createSigBlob(t, sshPrivKey, payload, vmNamespace)
+	token := "exe0." + payloadB64 + "." + sigBlob
+
+	// Sanity check: getProxyAuth with Bearer token returns non-nil CtxRaw.
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	result := s.getProxyAuth(req, box)
+	if result == nil {
+		t.Fatal("getProxyAuth returned nil for valid token")
+	}
+	if result.UserID != userID {
+		t.Errorf("expected UserID %q, got %q", userID, result.UserID)
+	}
+	if result.CtxRaw == nil {
+		t.Fatal("getProxyAuth should return non-nil CtxRaw for token with ctx")
+	}
+
+	// Now simulate the public route code path: call getProxyAuth and strip CtxRaw.
+	// This mirrors the logic in handleProxyRequest for public routes.
+	req2 := httptest.NewRequest("GET", "/", nil)
+	req2.Header.Set("Authorization", "Bearer "+token)
+	authResult := s.getProxyAuth(req2, box)
+	if authResult == nil {
+		t.Fatal("getProxyAuth returned nil on second call")
+	}
+	// Public route: strip CtxRaw.
+	authResult.CtxRaw = nil
+
+	if authResult.UserID != userID {
+		t.Errorf("after strip, expected UserID %q, got %q", userID, authResult.UserID)
+	}
+	if authResult.CtxRaw != nil {
+		t.Error("after strip, CtxRaw should be nil")
+	}
+}

@@ -858,3 +858,32 @@ func TestSSHKeyCommand_SubcommandsExist(t *testing.T) {
 		t.Error("ssh-key add command should have examples with ssh-keygen instructions")
 	}
 }
+
+func TestResolveCommandNameCanonical(t *testing.T) {
+	t.Parallel()
+
+	server := &Server{log: tslog.Slogger(t)}
+	ss := &SSHServer{server: server}
+	ss.commands = NewCommandTree(ss)
+
+	tests := []struct {
+		input []string
+		want  string
+	}{
+		{[]string{"whoami"}, "whoami"},
+		{[]string{"ssh-key", "list"}, "ssh-key list"},
+		{[]string{"ssh-key", "list", "--json"}, "ssh-key list"},
+		// Subcommand aliases resolve to canonical names.
+		{[]string{"share", "add-share-link"}, "share add-link"},
+		{[]string{"share", "remove-share-link"}, "share remove-link"},
+		// Unknown command returns "".
+		{[]string{"nonexistent"}, ""},
+	}
+
+	for _, tt := range tests {
+		got := ss.commands.ResolveCommandName(tt.input)
+		if got != tt.want {
+			t.Errorf("ResolveCommandName(%v) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}

@@ -685,6 +685,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/shelley/download":
 		s.handleShelleyDownload(w, r)
 		return
+	case "/exec":
+		s.handleExec(w, r)
+		return
 	default:
 		// Handle mobile UI routes
 		if strings.HasPrefix(path, "/m") {

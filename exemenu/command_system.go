@@ -127,6 +127,10 @@ type CommandContext struct {
 	Terminal *term.Terminal // for interactive input (nil for non-interactive)
 	Logger   *slog.Logger   // for structured logging
 
+	// ForceJSON causes WantJSON to return true regardless of the --json flag.
+	// Used by the HTTP API to automatically produce JSON output.
+	ForceJSON bool
+
 	// ForceSpinner overrides spinner auto-detection for non-SSH contexts
 	// (e.g., HTTP/SSE driven flows). When true, progress spinner output
 	// will be enabled even without an SSH session.
@@ -245,8 +249,12 @@ func (cc *CommandContext) WriteInternalError(ctx context.Context, cmd string, er
 	cc.WriteError("%q: internal error, trace ID: %s", cmd, traceID)
 }
 
-// WantJSON reports whether the --json flag is set.
+// WantJSON reports whether JSON output is requested.
+// Returns true if ForceJSON is set or if the --json flag is set.
 func (ctx *CommandContext) WantJSON() bool {
+	if ctx.ForceJSON {
+		return true
+	}
 	if ctx.FlagSet == nil {
 		return false
 	}
@@ -368,6 +376,57 @@ func (ct *CommandTree) Help(cc *CommandContext) {
 		}
 	}
 	tabw.Flush()
+}
+
+// ResolveCommandName resolves commandPath to the canonical command name as it
+// would appear in a token cmds list (e.g., ["ssh-key", "list", "--json"] → "ssh-key list").
+// Aliases are resolved to their canonical names (e.g., ["add-share-link"] → "share add-link").
+// Returns "" if no matching command is found.
+func (ct *CommandTree) ResolveCommandName(commandPath []string) string {
+	for i := len(commandPath); i > 0; i-- {
+		names := ct.findCanonicalPath(commandPath[:i])
+		if names != nil {
+			return strings.Join(names, " ")
+		}
+	}
+	return ""
+}
+
+// findCanonicalPath returns the canonical name for each segment of path,
+// or nil if the final command has no Handler.
+func (ct *CommandTree) findCanonicalPath(path []string) []string {
+	if len(path) == 0 {
+		return nil
+	}
+	var cmd *Command
+	for _, c := range ct.Commands {
+		if c.Name == path[0] || slices.Contains(c.Aliases, path[0]) {
+			cmd = c
+			break
+		}
+	}
+	if cmd == nil {
+		return nil
+	}
+	names := []string{cmd.Name}
+	for _, segment := range path[1:] {
+		var sub *Command
+		for _, s := range cmd.Subcommands {
+			if s.Name == segment || slices.Contains(s.Aliases, segment) {
+				sub = s
+				break
+			}
+		}
+		if sub == nil {
+			return nil
+		}
+		names = append(names, sub.Name)
+		cmd = sub
+	}
+	if cmd.Handler == nil {
+		return nil
+	}
+	return names
 }
 
 // FindCommand finds a command by path (e.g., ["billing", "update"] -> "the 'update' subcommand of 'billing'")

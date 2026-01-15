@@ -181,6 +181,103 @@ func TestPasskeyOpenRedirect(t *testing.T) {
 	}
 }
 
+// TestMagicAuthOpenRedirect tests that handleMagicAuth validates redirect URLs.
+func TestMagicAuthOpenRedirect(t *testing.T) {
+	server := newTestServer(t)
+	ctx := t.Context()
+
+	// Create a user
+	user, err := server.createUser(ctx, testSSHPubKey, "magic-redirect@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	tests := []struct {
+		name           string
+		redirect       string
+		expectExternal bool
+	}{
+		{"safe relative path", "/dashboard", false},
+		{"external URL", "https://evil.com/phish", true},
+		{"protocol-relative", "//evil.com/phish", true},
+		{"javascript URL", "javascript:alert(1)", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a magic secret for authentication
+			secret, err := server.createMagicSecret(user.UserID, "box."+server.env.BoxHost, "/")
+			if err != nil {
+				t.Fatalf("Failed to create magic secret: %v", err)
+			}
+
+			req := httptest.NewRequest("GET", "/__exe.dev/magic-auth?secret="+secret+"&redirect="+url.QueryEscape(tt.redirect), nil)
+			req.Host = "box." + server.env.BoxHost
+			w := httptest.NewRecorder()
+			server.handleMagicAuth(w, req)
+
+			location := w.Header().Get("Location")
+			if tt.expectExternal {
+				if location == tt.redirect {
+					t.Errorf("Open redirect: redirected to %q", location)
+				}
+				if location != "/" {
+					t.Errorf("Expected fallback to '/', got %q", location)
+				}
+			} else {
+				if location != tt.redirect {
+					t.Errorf("Expected redirect to %q, got %q", tt.redirect, location)
+				}
+			}
+		})
+	}
+}
+
+// TestProxyLoginOpenRedirect tests that handleProxyLogin validates redirect URLs.
+func TestProxyLoginOpenRedirect(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t)
+
+	tests := []struct {
+		name            string
+		redirect        string
+		expectSanitized bool
+	}{
+		{"safe relative path", "/dashboard", false},
+		{"external URL", "https://evil.com/phish", true},
+		{"protocol-relative", "//evil.com/phish", true},
+		{"javascript URL", "javascript:alert(1)", true},
+		{"empty defaults to /", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			target := "/__exe.dev/login"
+			if tt.redirect != "" {
+				target += "?redirect=" + url.QueryEscape(tt.redirect)
+			}
+			req := httptest.NewRequest("GET", target, nil)
+			req.Host = "box." + server.env.BoxHost
+			w := httptest.NewRecorder()
+			server.handleProxyLogin(w, req)
+
+			location := w.Header().Get("Location")
+			if tt.expectSanitized {
+				// The redirect param embedded in the auth URL should be "/" (sanitized).
+				if strings.Contains(location, url.QueryEscape(tt.redirect)) && tt.redirect != "" {
+					t.Errorf("open redirect: location contains unsanitized redirect %q: %s", tt.redirect, location)
+				}
+			} else {
+				// The redirect param should be preserved.
+				if !strings.Contains(location, url.QueryEscape(tt.redirect)) {
+					t.Errorf("expected location to contain redirect=%q, got: %s", tt.redirect, location)
+				}
+			}
+		})
+	}
+}
+
 // TestSignupRateLimiting tests that signup endpoints are rate limited.
 func TestSignupRateLimiting(t *testing.T) {
 	server := newTestServer(t)

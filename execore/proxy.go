@@ -1,7 +1,6 @@
 package execore
 
 import (
-	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -130,6 +129,12 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reserve the /__exe.dev/ prefix — don't forward unknown paths to VMs.
+	if strings.HasPrefix(r.URL.Path, "/__exe.dev/") || r.URL.Path == "/__exe.dev" {
+		http.NotFound(w, r)
+		return
+	}
+
 	// Parse hostname to extract box name and optional explicit target port
 	boxName, err := s.resolveBoxName(r.Context(), hostHeaderHost)
 	if err != nil {
@@ -160,8 +165,14 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if box owner is locked out - their VMs should not accept proxy requests
-	if isLockedOut, err := s.isUserLockedOut(r.Context(), box.CreatedByUserID); err == nil && isLockedOut {
+	// Check if box owner is locked out - their VMs should not accept proxy requests (fail closed on DB error).
+	isLockedOut, lockoutErr := s.isUserLockedOut(r.Context(), box.CreatedByUserID)
+	if lockoutErr != nil {
+		s.slog().ErrorContext(r.Context(), "failed to check owner lockout status", "error", lockoutErr, "user_id", box.CreatedByUserID)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if isLockedOut {
 		sloghttp.AddCustomAttributes(r, slog.Bool("owner_locked_out", true))
 		sloghttp.AddCustomAttributes(r, slog.String("owner_user_id", box.CreatedByUserID))
 		s.renderAccessRequired(w, r)
@@ -191,15 +202,24 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Apply authentication based on route share setting
+	var authResult *proxyAuthResult
 	if route.Share == "private" {
-		// Check if user is authenticated on this subdomain
-		userID, authenticated := s.getAuthenticatedUserID(r)
-		if !authenticated {
-			// Not authenticated on subdomain - redirect to main domain auth
-			// This will check if they have exe-auth cookie and handle accordingly
+		// Check if user is authenticated (cookie, Bearer token, or Basic auth).
+		authResult = s.getProxyAuth(r, box)
+		if authResult == nil {
+			// Not authenticated by any method.
+			// If the request has an Authorization header, it's an API client;
+			// return 401 instead of redirecting to the login page.
+			if r.Header.Get("Authorization") != "" {
+				w.Header().Set("WWW-Authenticate", "Bearer, Basic")
+				http.Error(w, "invalid or missing authentication", http.StatusUnauthorized)
+				return
+			}
+			// Browser client - redirect to auth flow.
 			s.redirectToAuth(w, r)
 			return
 		}
+		userID := authResult.UserID
 
 		// Set user ID for HTTP logging
 		sloghttp.AddCustomAttributes(r, slog.String("user_id", userID))
@@ -276,8 +296,16 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve proxy auth once, reusing the result from the private-route check if available.
+	// On public routes this is best-effort: a valid token scoped to this VM
+	// will carry its ctx through, but a token for a different VM simply fails
+	// namespace validation and produces no auth result (no cross-container leak).
+	if authResult == nil {
+		authResult = s.getProxyAuth(r, box)
+	}
+
 	// Proxy the request to the container
-	err = s.proxyToContainer(w, r, &box, route)
+	err = s.proxyToContainer(w, r, &box, route, authResult)
 	if err != nil {
 		s.slog().DebugContext(r.Context(), "Failed to proxy request", "error", err, "box", boxName)
 
@@ -340,15 +368,72 @@ func (s *Server) isShelleyRequest(host string) bool {
 	return strings.HasSuffix(host, "."+shelleyBase)
 }
 
+// proxyAuthResult contains the result of proxy authentication.
+type proxyAuthResult struct {
+	UserID string // The authenticated user ID.
+	CtxRaw []byte // Non-nil if authenticated via token (raw bytes of the "ctx" field for verbatim passthrough).
+}
+
 // getAuthenticatedUserID checks if the user is authenticated and returns their userID
 // Returns (userID, true) if authenticated, ("", false) if not authenticated.
 // It may be called multiple times while handling a single request,
 // so it should not mutate r or have other side-effects.
+// Note: This only checks cookie-based auth. For full auth including tokens, use getProxyAuth.
 func (s *Server) getAuthenticatedUserID(r *http.Request) (string, bool) {
 	if userID, err := s.validateProxyAuthCookie(r); err == nil {
 		return userID, true
 	}
 	return "", false
+}
+
+// getProxyAuth checks if the user is authenticated for the proxy and returns the auth result.
+// Supports three authentication methods, tried in this order:
+//  1. Bearer token auth (Authorization: Bearer <token>)
+//  2. Basic auth with token as password (for git HTTPS, etc.)
+//  3. Cookie-based auth (login-with-exe-* cookies)
+//
+// For token-based auth, the namespace must be "v0@VMNAME.BOXHOST".
+// Returns nil if not authenticated.
+func (s *Server) getProxyAuth(r *http.Request, box exedb.Box) *proxyAuthResult {
+	// 1. Try Bearer token auth.
+	// RFC 7235: auth scheme is case-insensitive.
+	if auth := r.Header.Get("Authorization"); len(auth) >= len("Bearer ") && strings.EqualFold(auth[:len("Bearer ")], "Bearer ") {
+		token := auth[len("Bearer "):]
+		if result := s.validateVMToken(r.Context(), token, box.Name); result != nil {
+			return result
+		}
+	}
+
+	// 2. Try Basic auth (password is the token, username is ignored).
+	// This supports git HTTPS and other tools that use basic auth.
+	if _, password, ok := r.BasicAuth(); ok {
+		if result := s.validateVMToken(r.Context(), password, box.Name); result != nil {
+			return result
+		}
+	}
+
+	// 3. Fall back to cookie-based auth.
+	if userID, err := s.validateProxyAuthCookie(r); err == nil {
+		return &proxyAuthResult{UserID: userID}
+	}
+
+	return nil
+}
+
+// validateVMToken validates a token for VM access.
+// The namespace is "v0@VMNAME.BOXHOST" where VMNAME is the box name.
+// Returns the auth result if valid, nil otherwise.
+func (s *Server) validateVMToken(ctx context.Context, token, boxName string) *proxyAuthResult {
+	namespace := "v0@" + boxName + "." + s.env.BoxHost
+	result, err := s.validateToken(ctx, token, namespace)
+	if err != nil {
+		s.slog().DebugContext(ctx, "VM token validation failed", "error", err, "box", boxName)
+		return nil
+	}
+	return &proxyAuthResult{
+		UserID: result.UserID,
+		CtxRaw: result.CtxRaw,
+	}
 }
 
 func (s *Server) webBaseURLNoRequest() string {
@@ -451,21 +536,20 @@ func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request) {
 // redirectToAuth redirects the user to the /__exe.dev/login URL
 // which will then redirect to the main domain auth flow
 func (s *Server) redirectToAuth(w http.ResponseWriter, r *http.Request) {
-	// Redirect to /__exe.dev/login with the current URL as the redirect parameter.
-	// It must be absolute to avoid being treated as relative, which when local will
-	// redirect the user to localhost over https which does not have a valid cert.
-
-	// Do not modify r.URL in place so we don't mess with a caller's
-	// understanding of reality.
-	returnURL := *r.URL
-	returnURL.Scheme = getScheme(r)
-	returnURL.Host = cmp.Or(returnURL.Host, r.Host)
+	// Pass only path+query as the redirect target. The scheme and host
+	// are already conveyed via the Host header and return_host parameter,
+	// and downstream handlers (handleProxyLogin, handleMagicAuth) validate
+	// the redirect with isValidRedirectURL which only allows relative paths.
+	redirect := r.URL.Path
+	if r.URL.RawQuery != "" {
+		redirect += "?" + r.URL.RawQuery
+	}
 
 	authURL := makeAuthURL("login", r, url.Values{
-		"redirect": {returnURL.String()},
+		"redirect": {redirect},
 	})
 
-	s.slog().DebugContext(r.Context(), "[REDIRECT] redirectToAuth", "from", returnURL, "to", authURL)
+	s.slog().DebugContext(r.Context(), "[REDIRECT] redirectToAuth", "from", r.URL, "to", authURL)
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 }
 
@@ -513,13 +597,14 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 
 	setAuthCookie(w, r, cookieName, cookieValue)
 
-	// Redirect to the original URL or the redirect from the magic secret
+	// Redirect to the original URL or the redirect from the magic secret.
+	// Validate to prevent open redirect attacks.
 	finalRedirect := redirectURL
 	if finalRedirect == "" {
 		finalRedirect = magicSecret.RedirectURL
 	}
-	if finalRedirect == "" {
-		finalRedirect = "/" // Default fallback
+	if !isValidRedirectURL(finalRedirect) {
+		finalRedirect = "/"
 	}
 
 	s.slog().DebugContext(r.Context(), "[REDIRECT] handleMagicAuth redirecting", "to", finalRedirect)
@@ -532,7 +617,7 @@ func (s *Server) handleProxyLogin(w http.ResponseWriter, r *http.Request) {
 	s.slog().DebugContext(r.Context(), "[REDIRECT] handleProxyLogin called", "host", r.Host)
 
 	redirect := r.URL.Query().Get("redirect")
-	if redirect == "" {
+	if !isValidRedirectURL(redirect) {
 		redirect = "/"
 	}
 
@@ -633,7 +718,7 @@ func (s *Server) boxForNameUserID(ctx context.Context, boxName, userID string) (
 }
 
 // proxyToContainer proxies the HTTP request to a container via SSH port forwarding
-func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *exedb.Box, route exedb.Route) error {
+func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *exedb.Box, route exedb.Route, authResult *proxyAuthResult) error {
 	// Validate box has SSH credentials
 	if len(box.SSHClientPrivateKey) == 0 || box.SSHPort == nil {
 		return fmt.Errorf("VM missing SSH credentials")
@@ -649,7 +734,7 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *e
 	sshHost := box.SSHHost()
 
 	// Try to proxy to the configured port
-	err = s.proxyViaSSHPortForward(w, r, sshHost, box, sshKey, route.Port)
+	err = s.proxyViaSSHPortForward(w, r, sshHost, box, sshKey, route.Port, authResult)
 	if err != nil {
 		return fmt.Errorf("failed to proxy to port %d: %w", route.Port, err)
 	}
@@ -696,7 +781,7 @@ func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey
 }
 
 // proxyViaSSHPortForward establishes an SSH connection and proxies the HTTP request directly
-func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, sshHost string, box *exedb.Box, sshKey ssh.Signer, targetPort int) error {
+func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, sshHost string, box *exedb.Box, sshKey ssh.Signer, targetPort int, authResult *proxyAuthResult) error {
 	transport := s.createSSHTunnelTransport(sshHost, box, sshKey)
 
 	// Configure the reverse proxy using NewSingleHostReverseProxy
@@ -709,18 +794,26 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 	rp.Director = func(req *http.Request) {
 		defaultDirector(req)
 		clearExeDevHeaders(req)
+		req.Header.Del("Authorization")
 		setForwardedHeaders(req, r)
 
 		// Add user info headers if authenticated
-		if userID, ok := s.getAuthenticatedUserID(r); ok {
-			email, err := withRxRes1(s, req.Context(), (*exedb.Queries).GetEmailByUserID, userID)
+		if authResult != nil {
+			req.Header.Set("X-ExeDev-UserID", authResult.UserID)
+
+			email, err := withRxRes1(s, req.Context(), (*exedb.Queries).GetEmailByUserID, authResult.UserID)
 			if err != nil {
-				s.slog().ErrorContext(r.Context(), "failed to get user email for authenticated proxy headers", "error", err, "user_id", userID)
-				http.Error(w, "internal server error", http.StatusInternalServerError)
-				return
+				s.slog().ErrorContext(r.Context(), "failed to get user email for proxy headers", "error", err, "user_id", authResult.UserID)
+			} else {
+				req.Header.Set("X-ExeDev-Email", email)
 			}
-			req.Header.Set("X-ExeDev-UserID", userID)
-			req.Header.Set("X-ExeDev-Email", email)
+
+			// If authenticated via token, pass the ctx field as a header.
+			// This allows the VM's HTTP server to impose its own auth requirements.
+			// We pass the raw bytes verbatim to preserve exact formatting.
+			if authResult.CtxRaw != nil {
+				req.Header.Set("X-ExeDev-Token-Ctx", string(authResult.CtxRaw))
+			}
 		}
 
 		// Remove login-with-exe-* cookies (port-specific proxy auth cookies)

@@ -37,11 +37,13 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/emersion/go-smtp v0.24.0
 	github.com/gliderlabs/ssh v0.3.8
+	github.com/go-json-experiment/json v0.0.0-20250223041408-d3c622f1b874
 	github.com/go-webauthn/webauthn v0.15.0
 	github.com/go4org/hashtriemap v0.0.0-20251130024219-545ba229f689
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3
+	github.com/hiddeco/sshsig v0.2.0
 	github.com/lmittmann/tint v1.1.2
 	github.com/mailgun/mailgun-go/v4 v4.23.0
 	github.com/mdp/qrterminal/v3 v3.2.1
@@ -141,7 +143,6 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/getkin/kin-openapi v0.133.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.1 // indirect
-	github.com/go-json-experiment/json v0.0.0-20250223041408-d3c622f1b874 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

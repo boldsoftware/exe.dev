@@ -3,6 +3,7 @@
 package e1e
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"exe.dev/e1e/testinfra"
+	"exe.dev/stage"
 )
 
 func TestHTTPProxy(t *testing.T) {
@@ -352,7 +354,7 @@ chmod +x /home/exedev/cgi-bin/headers
 	t.Run("alternate_ports", func(t *testing.T) {
 		serveHTTP(t, Env.servers.Exed.ExtraPorts[0])
 
-		expectedRedirect := fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/login?redirect=http%%3A%%2F%%2F%s.exe.cloud%%3A%d%%2F%%3Ffoo%%3D1", box, Env.servers.Exed.ExtraPorts[0], box, Env.servers.Exed.ExtraPorts[0])
+		expectedRedirect := fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/login?redirect=%%2F%%3Ffoo%%3D1", box, Env.servers.Exed.ExtraPorts[0])
 		proxyAssert(t, box, proxyExpectation{
 			name:             "altport without auth redirects",
 			httpPort:         Env.servers.Exed.ExtraPorts[0],
@@ -561,6 +563,13 @@ func (f proxyAuthFixture) loginThroughProxy(jar *cookiejar.Jar) *http.Client {
 	}
 	defer resp.Body.Close()
 
+	// Track the logical current URL so relative redirects resolve against the
+	// correct origin. In tests the actual HTTP requests go to localhost with a
+	// Host-header override, so resp.Location() (which resolves against the
+	// transport URL) would lose track of which domain we're logically on.
+	// Updating currentBase after every redirect keeps both main-domain and
+	// box-subdomain relative redirects correct.
+	currentBase := mustParseURL(f.proxyURL)
 	redirectCount := 0
 	sawConfirmRedirect := false
 	for resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusSeeOther {
@@ -568,11 +577,16 @@ func (f proxyAuthFixture) loginThroughProxy(jar *cookiejar.Jar) *http.Client {
 			f.t.Fatalf("too many redirects")
 		}
 
-		location, err := resp.Location()
-		if err != nil {
+		rawLocation := resp.Header.Get("Location")
+		if rawLocation == "" {
 			body, _ := io.ReadAll(resp.Body)
-			f.t.Fatalf("failed to get redirect location: %v (status %d, body %s)", err, resp.StatusCode, body)
+			f.t.Fatalf("missing Location header (status %d, body %s)", resp.StatusCode, body)
 		}
+		location, err := currentBase.Parse(rawLocation)
+		if err != nil {
+			f.t.Fatalf("failed to parse redirect location %q: %v", rawLocation, err)
+		}
+		currentBase = location
 
 		req, err = localhostRequestWithHostHeader("GET", location.String(), nil)
 		if err != nil {
@@ -1133,4 +1147,632 @@ func parseForwardedFor(header string) []string {
 		return []string{header}
 	}
 	return trimmed
+}
+
+// TestProxyTokenNamespaceIsolation verifies that token-based proxy authentication
+// enforces strict namespace isolation:
+// - An API token must NOT work for VM proxy auth
+// - A token for VM1 must NOT work for VM2
+// - Only a token with the exact namespace (v0@vmname.BOXHOST) should work
+func TestProxyTokenNamespaceIsolation(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
+	pty.disconnect()
+	waitForSSH(t, box, keyFile)
+
+	// Start HTTP server on the box
+	startHTTPServer(t, box, keyFile, 8080)
+
+	// Make the route private (requires auth)
+	exeShell := sshToExeDev(t, keyFile)
+	exeShell.sendLine(fmt.Sprintf("share port %s 8080", box))
+	exeShell.want("Route updated successfully")
+	exeShell.wantPrompt()
+	exeShell.sendLine(fmt.Sprintf("share set-private %s", box))
+	exeShell.want("Route updated successfully")
+	exeShell.wantPrompt()
+	exeShell.disconnect()
+
+	// Load signer for generating signed tokens
+	ts := loadTestSigner(t, keyFile)
+
+	httpPort := Env.servers.Exed.HTTPPort
+	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/", box, httpPort)
+
+	// Helper to make a proxy request with a bearer token
+	makeTokenRequest := func(token string) (*http.Response, error) {
+		client := noRedirectClient(nil)
+		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		return client.Do(req)
+	}
+
+	// Helper to make a proxy request with basic auth (token as password)
+	makeBasicAuthRequest := func(token string) (*http.Response, error) {
+		client := noRedirectClient(nil)
+		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.SetBasicAuth("anyuser", token)
+		return client.Do(req)
+	}
+
+	t.Run("api_token_rejected_by_proxy", func(t *testing.T) {
+		// A token signed for the API namespace should NOT work for VM proxy
+		apiToken := generateToken(t, ts, `{}`, execAPINamespace)
+		resp, err := makeTokenRequest(apiToken)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// Should return 401 (Authorization header is present but token is invalid for this VM)
+		if resp.StatusCode != http.StatusUnauthorized {
+			body, _ := io.ReadAll(resp.Body)
+			t.Errorf("API token should be rejected by proxy: expected 401, got %d: %s",
+				resp.StatusCode, body)
+		}
+	})
+
+	t.Run("wrong_vm_token_rejected", func(t *testing.T) {
+		// A token for a different VM should NOT work
+		wrongVMToken := generateToken(t, ts, `{}`, "v0@othervmname."+stage.Test().BoxHost)
+		resp, err := makeTokenRequest(wrongVMToken)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// Should return 401 (Authorization header is present but token is invalid for this VM)
+		if resp.StatusCode != http.StatusUnauthorized {
+			body, _ := io.ReadAll(resp.Body)
+			t.Errorf("wrong VM token should be rejected: expected 401, got %d: %s",
+				resp.StatusCode, body)
+		}
+	})
+
+	t.Run("correct_vm_token_works_bearer", func(t *testing.T) {
+		// A token with the correct namespace should work
+		// The namespace format is v0@VMNAME.BOXHOST (using BoxHost from env)
+		correctToken := generateToken(t, ts, `{}`, "v0@"+box+"."+stage.Test().BoxHost)
+		resp, err := makeTokenRequest(correctToken)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// Should get 200 (or at least not a redirect to login)
+		if resp.StatusCode == http.StatusTemporaryRedirect {
+			location, _ := resp.Location()
+			if location != nil && strings.Contains(location.Path, "/__exe.dev/login") {
+				t.Errorf("correct VM token should authenticate, but got login redirect")
+			}
+		}
+		// Note: might get 502 if httpd isn't running, but that's OK - we're testing auth
+		if resp.StatusCode == http.StatusUnauthorized {
+			body, _ := io.ReadAll(resp.Body)
+			t.Errorf("correct VM token should authenticate: got 401: %s", body)
+		}
+	})
+
+	t.Run("correct_vm_token_works_basic_auth", func(t *testing.T) {
+		// Token as password in basic auth should also work
+		correctToken := generateToken(t, ts, `{}`, "v0@"+box+"."+stage.Test().BoxHost)
+		resp, err := makeBasicAuthRequest(correctToken)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// Should not redirect to login
+		if resp.StatusCode == http.StatusTemporaryRedirect {
+			location, _ := resp.Location()
+			if location != nil && strings.Contains(location.Path, "/__exe.dev/login") {
+				t.Errorf("basic auth with correct token should authenticate, but got login redirect")
+			}
+		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			body, _ := io.ReadAll(resp.Body)
+			t.Errorf("basic auth with correct token should authenticate: got 401: %s", body)
+		}
+	})
+
+	t.Run("api_token_rejected_via_basic_auth", func(t *testing.T) {
+		// API token via basic auth should also be rejected
+		apiToken := generateToken(t, ts, `{}`, execAPINamespace)
+		resp, err := makeBasicAuthRequest(apiToken)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// Should return 401 (Authorization header is present but token is invalid for this VM)
+		if resp.StatusCode != http.StatusUnauthorized {
+			body, _ := io.ReadAll(resp.Body)
+			t.Errorf("API token via basic auth should be rejected: expected 401, got %d: %s",
+				resp.StatusCode, body)
+		}
+	})
+
+	t.Run("token_payload_passed_to_server", func(t *testing.T) {
+		noGolden(t)
+		// Create a CGI script to echo headers
+		writeCGI := boxSSHCommand(t, box, keyFile, "sh", "-c", `set -e
+mkdir -p /home/exedev/cgi-bin
+cat <<'EOF' >/home/exedev/cgi-bin/headers
+#!/bin/sh
+echo "Content-Type: text/plain"
+echo
+env
+EOF
+chmod +x /home/exedev/cgi-bin/headers
+`)
+		if err := writeCGI.Run(); err != nil {
+			t.Fatalf("failed to configure header CGI: %v", err)
+		}
+
+		// Generate a token with ctx field containing custom data
+		// The ctx field is what gets passed to the VM's server
+		correctToken := generateToken(t, ts, `{"ctx":{"scope":"repo:push","repo":"myrepo"}}`, "v0@"+box+"."+stage.Test().BoxHost)
+
+		client := noRedirectClient(nil)
+		cgiURL := fmt.Sprintf("http://%s.exe.cloud:%d/cgi-bin/headers", box, httpPort)
+		req, err := localhostRequestWithHostHeader("GET", cgiURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+correctToken)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		envMap := parseCGIEnv(body)
+
+		// Check that the ctx field was passed as the token ctx header
+		tokenCtx := envMap["HTTP_X_EXEDEV_TOKEN_CTX"]
+		if tokenCtx == "" {
+			t.Errorf("expected X-ExeDev-Token-Ctx header, not found in: %s", body)
+		} else {
+			// Verify the ctx contains our custom data
+			var parsed map[string]any
+			if err := json.Unmarshal([]byte(tokenCtx), &parsed); err != nil {
+				t.Errorf("failed to parse token ctx: %v", err)
+			} else {
+				if parsed["scope"] != "repo:push" {
+					t.Errorf("expected scope=repo:push, got %v", parsed["scope"])
+				}
+				if parsed["repo"] != "myrepo" {
+					t.Errorf("expected repo=myrepo, got %v", parsed["repo"])
+				}
+			}
+		}
+
+		// Check that user headers were also set
+		if envMap["HTTP_X_EXEDEV_USERID"] == "" {
+			t.Errorf("expected X-ExeDev-UserID header")
+		}
+		if envMap["HTTP_X_EXEDEV_EMAIL"] == "" {
+			t.Errorf("expected X-ExeDev-Email header")
+		}
+	})
+
+	t.Run("token_ctx_passed_verbatim", func(t *testing.T) {
+		// This test verifies that ONLY the ctx field is passed to the VM,
+		// and that it's passed EXACTLY as it appears in the signed payload
+		// (not re-serialized through a JSON parser).
+		//
+		// The ctx field has unusual but valid JSON formatting that would
+		// not survive a json.Marshal round-trip:
+		// - Multiple spaces after colons
+		// - Tab characters
+		// - Non-canonical key ordering (z before a)
+		// Note: We avoid newlines since HTTP headers cannot contain them.
+		weirdCtx := `{"z":   1,	"a":  2,  "foo":"bar"}`
+		// The outer payload has other fields that should NOT be passed
+		fullPayload := `{"exp":4000000000,"ctx":` + weirdCtx + `}`
+
+		token := generateToken(t, ts, fullPayload, "v0@"+box+"."+stage.Test().BoxHost)
+
+		client := noRedirectClient(nil)
+		cgiURL := fmt.Sprintf("http://%s.exe.cloud:%d/cgi-bin/headers", box, httpPort)
+		req, err := localhostRequestWithHostHeader("GET", cgiURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		envMap := parseCGIEnv(body)
+
+		received := envMap["HTTP_X_EXEDEV_TOKEN_CTX"]
+		if received == "" {
+			t.Fatalf("expected X-ExeDev-Token-Ctx header, not found in: %s", body)
+		}
+
+		// The header MUST contain ONLY the ctx field value, byte-for-byte identical
+		if received != weirdCtx {
+			t.Errorf("ctx was not passed verbatim\nexpected: %q\nreceived: %q", weirdCtx, received)
+		}
+
+		// Verify it's valid JSON and has the expected content
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(received), &parsed); err != nil {
+			t.Fatalf("received ctx is not valid JSON: %v", err)
+		}
+		if parsed["z"] != float64(1) {
+			t.Errorf("expected z=1, got %v", parsed["z"])
+		}
+		if parsed["a"] != float64(2) {
+			t.Errorf("expected a=2, got %v", parsed["a"])
+		}
+		if parsed["foo"] != "bar" {
+			t.Errorf("expected foo=bar, got %v", parsed["foo"])
+		}
+
+		// Verify that outer payload fields (like exp) are NOT present in ctx
+		if _, hasExp := parsed["exp"]; hasExp {
+			t.Errorf("outer payload field 'exp' should not be in ctx header")
+		}
+	})
+
+	t.Run("token_without_ctx_no_header", func(t *testing.T) {
+		// When ctx is not present in the token, no X-ExeDev-Token-Ctx header should be set
+		payloadWithoutCtx := `{"exp":4000000000}`
+		token := generateToken(t, ts, payloadWithoutCtx, "v0@"+box+"."+stage.Test().BoxHost)
+
+		client := noRedirectClient(nil)
+		cgiURL := fmt.Sprintf("http://%s.exe.cloud:%d/cgi-bin/headers", box, httpPort)
+		req, err := localhostRequestWithHostHeader("GET", cgiURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		envMap := parseCGIEnv(body)
+
+		// When ctx is absent, the header should not be set
+		if received := envMap["HTTP_X_EXEDEV_TOKEN_CTX"]; received != "" {
+			t.Errorf("expected no X-ExeDev-Token-Ctx header when ctx absent, got: %q", received)
+		}
+	})
+
+	// Cleanup
+	cleanupBox(t, keyFile, box)
+}
+
+// TestProxyPrivateRouteTokenAuth verifies that token-based authentication
+// (Bearer and Basic) works on private proxy routes without needing cookies.
+// Private routes should:
+// - Accept valid Bearer tokens and proxy with X-ExeDev-* headers
+// - Accept valid Basic auth tokens and proxy with X-ExeDev-* headers
+// - Return 401 for invalid tokens when Authorization header is present
+// - Redirect (307) to login when no auth is provided
+func TestProxyPrivateRouteTokenAuth(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
+	pty.disconnect()
+	waitForSSH(t, box, keyFile)
+
+	// Start HTTP server on the box
+	startHTTPServer(t, box, keyFile, 8080)
+
+	// Create a CGI script that echoes all env vars (including proxied headers)
+	writeCGI := boxSSHCommand(t, box, keyFile, "sh", "-c", `set -e
+mkdir -p /home/exedev/cgi-bin
+cat <<'EOF' >/home/exedev/cgi-bin/headers
+#!/bin/sh
+echo "Content-Type: text/plain"
+echo
+env
+EOF
+chmod +x /home/exedev/cgi-bin/headers
+`)
+	if err := writeCGI.Run(); err != nil {
+		t.Fatalf("failed to configure header CGI: %v", err)
+	}
+
+	// Configure port 8080 as a PRIVATE route (private is default, but be explicit)
+	configureProxyRoute(t, keyFile, box, 8080, "private")
+
+	ts := loadTestSigner(t, keyFile)
+	httpPort := Env.servers.Exed.HTTPPort
+	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/cgi-bin/headers", box, httpPort)
+
+	t.Run("bearer_token_200_with_headers", func(t *testing.T) {
+		token := generateToken(t, ts, `{"ctx":{"role":"admin"}}`, "v0@"+box+"."+stage.Test().BoxHost)
+
+		client := noRedirectClient(nil)
+		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		envMap := parseCGIEnv(body)
+
+		if envMap["HTTP_X_EXEDEV_USERID"] == "" {
+			t.Errorf("expected X-ExeDev-UserID header, not found in: %s", body)
+		}
+		if envMap["HTTP_X_EXEDEV_EMAIL"] == "" {
+			t.Errorf("expected X-ExeDev-Email header, not found in: %s", body)
+		}
+
+		payload := envMap["HTTP_X_EXEDEV_TOKEN_CTX"]
+		if payload == "" {
+			t.Fatalf("expected X-ExeDev-Token-Ctx header, not found in: %s", body)
+		}
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
+			t.Fatalf("failed to parse token payload: %v", err)
+		}
+		if parsed["role"] != "admin" {
+			t.Errorf("expected role=admin, got %v", parsed["role"])
+		}
+	})
+
+	t.Run("basic_auth_token_200_with_headers", func(t *testing.T) {
+		token := generateToken(t, ts, `{"ctx":{"role":"reader"}}`, "v0@"+box+"."+stage.Test().BoxHost)
+
+		client := noRedirectClient(nil)
+		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.SetBasicAuth("anyuser", token)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		envMap := parseCGIEnv(body)
+
+		if envMap["HTTP_X_EXEDEV_USERID"] == "" {
+			t.Errorf("expected X-ExeDev-UserID header, not found in: %s", body)
+		}
+		if envMap["HTTP_X_EXEDEV_EMAIL"] == "" {
+			t.Errorf("expected X-ExeDev-Email header, not found in: %s", body)
+		}
+
+		payload := envMap["HTTP_X_EXEDEV_TOKEN_CTX"]
+		if payload == "" {
+			t.Fatalf("expected X-ExeDev-Token-Ctx header, not found in: %s", body)
+		}
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
+			t.Fatalf("failed to parse token payload: %v", err)
+		}
+		if parsed["role"] != "reader" {
+			t.Errorf("expected role=reader, got %v", parsed["role"])
+		}
+	})
+
+	t.Run("invalid_token_returns_401", func(t *testing.T) {
+		client := noRedirectClient(nil)
+		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer exe0.bogus.dG9rZW4.invalid")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusUnauthorized {
+			body, _ := io.ReadAll(resp.Body)
+			t.Errorf("expected 401 for invalid token, got %d: %s", resp.StatusCode, body)
+		}
+	})
+
+	t.Run("no_auth_redirects_to_login", func(t *testing.T) {
+		client := noRedirectClient(nil)
+		indexURL := fmt.Sprintf("http://%s.exe.cloud:%d/", box, httpPort)
+		req, err := localhostRequestWithHostHeader("GET", indexURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusTemporaryRedirect {
+			body, _ := io.ReadAll(resp.Body)
+			t.Errorf("expected 307 redirect for unauthenticated request, got %d: %s", resp.StatusCode, body)
+		}
+	})
+
+	cleanupBox(t, keyFile, box)
+}
+
+// TestProxyPublicRouteTokenCtx verifies token ctx behavior on public routes:
+//   - A valid token for THIS public VM should have its ctx forwarded normally
+//   - A token for a DIFFERENT VM fails namespace validation, so no ctx (or any
+//     auth headers) should reach the container
+func TestProxyPublicRouteTokenCtx(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
+	pty.disconnect()
+	waitForSSH(t, box, keyFile)
+
+	// Start HTTP server on the box
+	startHTTPServer(t, box, keyFile, 8080)
+
+	// Make the route public
+	configureProxyRoute(t, keyFile, box, 8080, "public")
+
+	// Create a CGI script that echoes all env vars (to inspect forwarded headers)
+	writeCGI := boxSSHCommand(t, box, keyFile, "sh", "-c", `set -e
+mkdir -p /home/exedev/cgi-bin
+cat <<'EOF' >/home/exedev/cgi-bin/headers
+#!/bin/sh
+echo "Content-Type: text/plain"
+echo
+env
+EOF
+chmod +x /home/exedev/cgi-bin/headers
+`)
+	if err := writeCGI.Run(); err != nil {
+		t.Fatalf("failed to configure header CGI: %v", err)
+	}
+
+	ts := loadTestSigner(t, keyFile)
+	httpPort := Env.servers.Exed.HTTPPort
+	cgiURL := fmt.Sprintf("http://%s.exe.cloud:%d/cgi-bin/headers", box, httpPort)
+
+	t.Run("same_vm_token_ctx_forwarded_on_public_route", func(t *testing.T) {
+		// A valid token for THIS VM on a public route should have ctx forwarded.
+		// The token is namespace-scoped to this VM and signed by a registered key,
+		// so there is no cross-container risk.
+		token := generateToken(t, ts, `{"ctx":{"role":"admin","secret":"data"}}`, "v0@"+box+"."+stage.Test().BoxHost)
+
+		client := noRedirectClient(nil)
+		req, err := localhostRequestWithHostHeader("GET", cgiURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		envMap := parseCGIEnv(body)
+
+		// ctx should be forwarded for a valid same-VM token.
+		received := envMap["HTTP_X_EXEDEV_TOKEN_CTX"]
+		if received == "" {
+			t.Fatalf("expected X-ExeDev-Token-Ctx on public route with valid same-VM token, not found in: %s", body)
+		}
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(received), &parsed); err != nil {
+			t.Fatalf("failed to parse token ctx: %v", err)
+		}
+		if parsed["role"] != "admin" {
+			t.Errorf("expected role=admin, got %v", parsed["role"])
+		}
+		if parsed["secret"] != "data" {
+			t.Errorf("expected secret=data, got %v", parsed["secret"])
+		}
+	})
+
+	t.Run("wrong_vm_token_ctx_not_forwarded_on_public_route", func(t *testing.T) {
+		// A token signed for a DIFFERENT VM should not forward ctx.
+		// The token validation fails (wrong namespace), so authResult is nil.
+		wrongVMToken := generateToken(t, ts, `{"ctx":{"role":"admin","secret":"data"}}`, "v0@othervmname."+stage.Test().BoxHost)
+
+		client := noRedirectClient(nil)
+		req, err := localhostRequestWithHostHeader("GET", cgiURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+wrongVMToken)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// Public route should still succeed (200) even with an invalid token.
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 200 on public route with wrong-VM token, got %d: %s", resp.StatusCode, body)
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		envMap := parseCGIEnv(body)
+
+		// No ctx should be forwarded.
+		if received := envMap["HTTP_X_EXEDEV_TOKEN_CTX"]; received != "" {
+			t.Errorf("expected no X-ExeDev-Token-Ctx for wrong-VM token on public route, got: %q", received)
+		}
+
+		// No user identity headers should be forwarded either.
+		if received := envMap["HTTP_X_EXEDEV_USERID"]; received != "" {
+			t.Errorf("expected no X-ExeDev-UserID for wrong-VM token on public route, got: %q", received)
+		}
+	})
+
+	cleanupBox(t, keyFile, box)
 }
