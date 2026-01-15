@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMobileHome(t *testing.T) {
@@ -221,5 +222,75 @@ func TestIsCommandAllowed(t *testing.T) {
 				t.Errorf("isCommandAllowed(%q) = %v, want %v", tt.command, result, tt.allowed)
 			}
 		})
+	}
+}
+
+func TestDashboardWaitsForCreatingBox(t *testing.T) {
+	// Test that the dashboard busy-waits for boxes that are being created.
+	// This tests the fix for the race where redirect happens before DB insert.
+	server := newTestServer(t)
+
+	// Create a user and get auth cookie
+	email := "creating-test@example.com"
+	publicKey := "ssh-rsa dummy-creating-test-key creating-test@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Create a creation stream (simulating startBoxCreation before the goroutine inserts into DB)
+	hostname := "my-new-vm"
+	cs := server.getOrCreateCreationStream(user.UserID, hostname)
+
+	// Start a goroutine that will insert the box after a short delay
+	// This simulates preCreateBox running in the background goroutine
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		_, err := server.preCreateBox(t.Context(), preCreateBoxOptions{
+			userID:  user.UserID,
+			ctrhost: "test-exelet",
+			name:    hostname,
+			image:   "exeuntu",
+			noShard: true,
+		})
+		if err != nil {
+			t.Errorf("preCreateBox failed: %v", err)
+		}
+		cs.MarkDone(nil)
+	}()
+
+	// Load the dashboard - it should wait for the box to appear
+	start := time.Now()
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+	elapsed := time.Since(start)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", w.Code)
+	}
+
+	// Should have waited at least 200ms for the box to appear
+	if elapsed < 150*time.Millisecond {
+		t.Errorf("Dashboard returned too quickly (%v), expected to wait for box creation", elapsed)
+	}
+
+	body := w.Body.String()
+
+	// The dashboard should show the hostname
+	if !strings.Contains(body, hostname) {
+		t.Errorf("Dashboard should contain hostname %q but it doesn't", hostname)
+	}
+
+	// The dashboard should show "creating" status (the box was inserted with status="creating")
+	if !strings.Contains(body, `class="status-dot creating"`) {
+		t.Errorf("Dashboard should contain creating status dot")
 	}
 }

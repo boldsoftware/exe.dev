@@ -1211,6 +1211,13 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		s.slog().ErrorContext(r.Context(), "Failed to get SSH keys for dashboard", "error", err, "email", user.Email)
 	}
 
+	// If there are active creation streams, give them a moment to appear in the DB.
+	// See https://github.com/boldsoftware/exe/issues/250.
+	deadline := time.Now().Add(5 * time.Second)
+	for s.userHasActiveCreationStreams(userID) && time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+	}
+
 	// Get user's boxes
 	boxResults, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetBoxesForUserDashboard, user.UserID)
 	if err != nil {
