@@ -100,6 +100,23 @@ func TestSupportAccess(t *testing.T) {
 		ownerPTY.disconnect()
 	})
 
+	// Test that share show --json returns support_has_root when enabled
+	t.Run("share_show_json_support_access", func(t *testing.T) {
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "show", box, "--json")
+		if err != nil {
+			t.Fatalf("failed to run share show: %v\n%s", err, out)
+		}
+		var shareInfo struct {
+			SupportHasRoot bool `json:"support_has_root"`
+		}
+		if err := json.Unmarshal(out, &shareInfo); err != nil {
+			t.Fatalf("failed to parse share info: %v\n%s", err, out)
+		}
+		if !shareInfo.SupportHasRoot {
+			t.Errorf("expected support_has_root=true in JSON output, got false. Full output: %s", out)
+		}
+	})
+
 	// Test that support user can now SSH to the box using support+ prefix
 	t.Run("ssh_granted", func(t *testing.T) {
 		cmd := boxSSHCommand(t, supportBox, supportKeyFile, "cat", "/home/exedev/support-test.txt")
@@ -171,6 +188,21 @@ func TestSupportAccess(t *testing.T) {
 			cookies:  supportCookies,
 			httpCode: http.StatusUnauthorized,
 		})
+	})
+
+	// Test that share show --json does NOT include support_has_root when disabled
+	t.Run("share_show_json_support_access_revoked", func(t *testing.T) {
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "show", box, "--json")
+		if err != nil {
+			t.Fatalf("failed to run share show: %v\n%s", err, out)
+		}
+		var shareInfo map[string]any
+		if err := json.Unmarshal(out, &shareInfo); err != nil {
+			t.Fatalf("failed to parse share info: %v\n%s", err, out)
+		}
+		if _, exists := shareInfo["support_has_root"]; exists {
+			t.Errorf("expected support_has_root to be absent when disabled, got: %v", shareInfo["support_has_root"])
+		}
 	})
 
 	// Cleanup

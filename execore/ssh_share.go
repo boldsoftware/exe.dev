@@ -233,14 +233,18 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 			links = append(links, ls)
 		}
 
-		cc.WriteJSON(map[string]any{
+		result := map[string]any{
 			"vm_name": box.Name,
 			"status":  route.Share,
 			"port":    route.Port,
 			"url":     ss.server.boxProxyAddress(box.Name),
 			"users":   users,
 			"links":   links,
-		})
+		}
+		if box.SupportAccessAllowed == 1 {
+			result["support_has_root"] = true
+		}
+		cc.WriteJSON(result)
 		return nil
 	}
 
@@ -262,6 +266,10 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 		cc.Writeln("\033[1;33mMode: PUBLIC\033[0m - Anyone can access this VM without authentication")
 	} else {
 		cc.Writeln("Mode: Private")
+	}
+	if box.SupportAccessAllowed == 1 {
+		cc.Writeln("\033[1;33mSupport access: ENABLED\033[0m - exe.dev support has root access")
+		cc.Writeln("  To disable: grant-support-root %s off", box.Name)
 	}
 	cc.Writeln("")
 
