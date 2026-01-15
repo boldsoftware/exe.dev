@@ -20,7 +20,7 @@ Two new gRPC RPCs in `ComputeService`:
 3. Server validates VM is stopped
 4. Server sends `SendVMMetadata` (instance config, base image ID, encryption key)
 5. Server creates migration snapshot (`{dataset}@migration`)
-6. Server streams ZFS send data in 64KB chunks (`SendVMDataChunk`)
+6. Server streams ZFS send data in 4MB chunks (`SendVMDataChunk`)
 7. Server sends `SendVMComplete` with SHA256 checksum
 8. Server cleans up migration snapshot and unlocks instance
 

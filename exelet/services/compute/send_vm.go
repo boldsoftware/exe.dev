@@ -13,7 +13,7 @@ import (
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
-const sendVMChunkSize = 64 * 1024 // 64KB chunks
+const sendVMChunkSize = 4 * 1024 * 1024 // 4MB chunks - optimized for multi-GB transfers
 
 // SendVM streams a stopped VM's disk and config to the caller for migration.
 func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
