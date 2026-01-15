@@ -1540,6 +1540,18 @@ func (s *Server) handleLinkDiscord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if user already has Discord linked (to prevent multiple invite grants)
+	existingUser, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "Failed to get user details", "error", err, "user_id", userID)
+		http.Error(w, "Failed to get user details", http.StatusInternalServerError)
+		return
+	}
+	alreadyLinked := existingUser.DiscordID != nil
+
+	// Add email to canonical log line
+	sloghttp.AddCustomAttributes(r, slog.String("email", existingUser.Email))
+
 	// Link the Discord account
 	err = withTx1(s, ctx, (*exedb.Queries).SetUserDiscord, exedb.SetUserDiscordParams{
 		DiscordID:       &discordID,
@@ -1552,7 +1564,38 @@ func (s *Server) handleLinkDiscord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.slog().InfoContext(ctx, "Discord account linked", "user_id", userID, "discord_id", discordID, "discord_username", discordUsername)
+	// Give the user 5 invite codes for linking Discord (only if not already linked)
+	invitesAdded := 0
+	if !alreadyLinked {
+		err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			for i := 0; i < 5; i++ {
+				code, err := queries.GenerateUniqueInviteCode(ctx)
+				if err != nil {
+					return fmt.Errorf("generate invite code: %w", err)
+				}
+
+				_, err = queries.CreateInviteCode(ctx, exedb.CreateInviteCodeParams{
+					Code:             code,
+					PlanType:         "trial",
+					AssignedToUserID: &userID,
+					AssignedBy:       "discord-link",
+					AssignedFor:      nil,
+				})
+				if err != nil {
+					return fmt.Errorf("create invite code: %w", err)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			s.slog().ErrorContext(ctx, "Failed to grant invite codes for Discord link", "error", err, "user_id", userID, "email", existingUser.Email)
+		} else {
+			invitesAdded = 5
+		}
+	}
+
+	// Add invites count to canonical log line
+	sloghttp.AddCustomAttributes(r, slog.Int("invites_added", invitesAdded))
 
 	// Show success page
 	data := struct {

@@ -219,4 +219,75 @@ func TestHandleLinkDiscordSuccess(t *testing.T) {
 	if user.DiscordUsername == nil || *user.DiscordUsername != discordUsername {
 		t.Errorf("discord_username not stored correctly, got %v, want %s", user.DiscordUsername, discordUsername)
 	}
+
+	// Verify 5 invite codes were created for the user
+	invites, err := withRxRes1(server, ctx, (*exedb.Queries).ListUnusedInviteCodesForUser, &userID)
+	if err != nil {
+		t.Fatalf("failed to list invite codes: %v", err)
+	}
+	if len(invites) != 5 {
+		t.Errorf("expected 5 invite codes, got %d", len(invites))
+	}
+}
+
+func TestHandleLinkDiscordNoInvitesIfAlreadyLinked(t *testing.T) {
+	server := newTestServer(t)
+	server.discordLinkSecret = "test-secret"
+
+	ctx := t.Context()
+	userID := createTestUser(t, server, "discord-already-linked@example.com")
+	cookieValue, err := server.createAuthCookie(ctx, userID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("failed to create auth cookie: %v", err)
+	}
+
+	// Pre-link the user's Discord account
+	existingDiscordID := "111111111"
+	err = withTx1(server, ctx, (*exedb.Queries).SetUserDiscord, exedb.SetUserDiscordParams{
+		DiscordID:       &existingDiscordID,
+		DiscordUsername: nil,
+		UserID:          userID,
+	})
+	if err != nil {
+		t.Fatalf("failed to pre-link discord: %v", err)
+	}
+
+	discordID := "987654321"
+	discordUsername := "newuser"
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+
+	// Compute valid HMAC
+	data := fmt.Sprintf("%s:%s:%s", discordID, discordUsername, ts)
+	mac := hmac.New(sha256.New, []byte(server.discordLinkSecret))
+	mac.Write([]byte(data))
+	validHMAC := hex.EncodeToString(mac.Sum(nil))
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/link-discord?discord_id=%s&discord_username=%s&ts=%s&hmac=%s",
+		discordID, discordUsername, ts, validHMAC), nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.handleLinkDiscord(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("got status %d, want %d: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	// Verify the discord_id was updated
+	user, err := withRxRes1(server, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		t.Fatalf("failed to get user: %v", err)
+	}
+	if user.DiscordID == nil || *user.DiscordID != discordID {
+		t.Errorf("discord_id not stored correctly, got %v, want %s", user.DiscordID, discordID)
+	}
+
+	// Verify NO invite codes were created (because Discord was already linked)
+	invites, err := withRxRes1(server, ctx, (*exedb.Queries).ListUnusedInviteCodesForUser, &userID)
+	if err != nil {
+		t.Fatalf("failed to list invite codes: %v", err)
+	}
+	if len(invites) != 0 {
+		t.Errorf("expected 0 invite codes (user already had discord linked), got %d", len(invites))
+	}
 }

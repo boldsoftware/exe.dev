@@ -1161,6 +1161,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			CreditTotalUsedUSD     float64 `json:"credit_total_used_usd"`
 			CreditLastRefreshAt    string  `json:"credit_last_refresh_at,omitempty"`
 			DiscordID              string  `json:"discord_id,omitempty"`
+			DiscordUsername        string  `json:"discord_username,omitempty"`
 			InviteCount            int64   `json:"invite_count"`
 		}
 		var usersJSON []userInfo
@@ -1184,6 +1185,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 				AccountID:              acctID,
 				BillingURL:             billingURL,
 				DiscordID:              ptrStr(u.DiscordID),
+				DiscordUsername:        ptrStr(u.DiscordUsername),
 				InviteCount:            invitesByUser[u.UserID],
 			}
 			if credit, ok := creditByUser[u.UserID]; ok {
@@ -1374,7 +1376,11 @@ $(document).ready(function() {
                     'data-email="' + d.email + '" data-userid="' + d.user_id + '" ' +
                     'data-enabled="' + d.root_support + '">' + btnText + '</button>';
             }},
-            { data: 'discord_id', defaultContent: '-' },
+            { data: null, render: function(d) {
+                if (!d.discord_id) return '-';
+                if (d.discord_username) return d.discord_username + ' (' + d.discord_id + ')';
+                return d.discord_id;
+            }},
             { data: null, render: function(d) {
                 return d.invite_count + ' <button class="toggle-btn add-invite-btn" ' +
                     'data-email="' + d.email + '">+1</button>';
