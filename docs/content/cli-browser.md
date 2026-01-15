@@ -2,7 +2,7 @@
 # DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "browser"
 description: "Generate a magic link to log in to the website"
-subheading: "4. CLI Reference"
+subheading: "8. CLI Reference"
 suborder: 12
 ---
 

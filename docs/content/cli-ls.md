@@ -2,7 +2,7 @@
 # DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "ls"
 description: "List your VMs"
-subheading: "4. CLI Reference"
+subheading: "8. CLI Reference"
 suborder: 3
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: Terms of Service
 description: Terms and conditions for using exe.dev
-subheading: "6. Other"
+subheading: "7. Other"
 suborder: 11
 published: true
 ---

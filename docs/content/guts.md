@@ -1,7 +1,7 @@
 ---
 title: The GUTS Stack
 description: Go, Unix, TypeScript, SQLite
-subheading: "5. Editorials"
+subheading: "6. Editorials"
 ---
 
 If you use our default `exeuntu` image and our Shelley coding agent, you'll

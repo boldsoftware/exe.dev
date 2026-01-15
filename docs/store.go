@@ -271,7 +271,12 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 	}
 
 	if path == "/docs/all.md" {
-		h.renderAllDocs(w, r)
+		h.renderAllDocsMD(w, r)
+		return true
+	}
+
+	if path == "/docs/all" {
+		h.renderAllDocsHTML(w, r)
 		return true
 	}
 
@@ -602,7 +607,7 @@ func parseTags(content string) (tags []string) {
 	return tags
 }
 
-func (h *Handler) renderAllDocs(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) renderAllDocsMD(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 
 	firstDoc := true
@@ -629,4 +634,59 @@ func (h *Handler) renderAllDocs(w http.ResponseWriter, _ *http.Request) {
 			fmt.Fprint(w, entry.Markdown)
 		}
 	}
+}
+
+func (h *Handler) renderAllDocsHTML(w http.ResponseWriter, r *http.Request) {
+	// Create combined content with anchors (TOC is in the sidebar)
+	var contentBuf bytes.Buffer
+	firstGroup := true
+	for _, group := range h.store.Groups() {
+		if !firstGroup {
+			contentBuf.WriteString("<hr style=\"margin: 48px 0;\">\n")
+		}
+		firstGroup = false
+
+		contentBuf.WriteString("<h2>")
+		contentBuf.WriteString(template.HTMLEscapeString(group.Heading))
+		contentBuf.WriteString("</h2>\n")
+
+		for _, entry := range group.Docs {
+			if !entry.Published && !h.showHidden {
+				continue
+			}
+			contentBuf.WriteString("<h3 id=\"")
+			contentBuf.WriteString(entry.Slug)
+			contentBuf.WriteString("\" class=\"anchor-heading\">")
+			contentBuf.WriteString(template.HTMLEscapeString(entry.Title))
+			contentBuf.WriteString("<a href=\"#")
+			contentBuf.WriteString(entry.Slug)
+			contentBuf.WriteString("\" class=\"anchor-link\" aria-label=\"Link to this section\">#</a>")
+			contentBuf.WriteString("</h3>\n")
+			contentBuf.WriteString(string(entry.Content))
+			contentBuf.WriteString("\n")
+		}
+	}
+
+	allEntry := &Entry{
+		Path:        "/docs/all",
+		Slug:        "all",
+		Title:       "exe.dev Documentation",
+		Description: "Complete exe.dev documentation in one page",
+		Content:     template.HTML(contentBuf.String()),
+	}
+
+	buf := new(bytes.Buffer)
+	data := map[string]any{
+		"Entry":      allEntry,
+		"Groups":     h.store.Groups(),
+		"ShowHidden": h.showHidden,
+	}
+
+	if err := docTemplates.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
+		http.Error(w, "error rendering doc", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
 }

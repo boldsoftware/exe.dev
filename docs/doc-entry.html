@@ -189,6 +189,21 @@
         line-height: 1.3;
       }
 
+      .doc-content h3.anchor-heading {
+        position: relative;
+      }
+
+      .doc-content .anchor-link {
+        margin-left: 8px;
+        color: #cccccc;
+        text-decoration: none;
+        font-weight: 400;
+      }
+
+      .doc-content .anchor-link:hover {
+        color: #0066cc;
+      }
+
       .doc-content ul,
       .doc-content ol {
         margin: 20px 0;
@@ -310,12 +325,28 @@
       <!-- Sidebar Navigation -->
       <div class="sidebar" role="navigation" aria-label="Documentation sections">
         <div>
+          {{$isAllDocs := eq .Entry.Path "/docs/all"}}
+          <div style="display: flex; gap: 8px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #e0e0e0; align-items: center;">
+            {{if $isAllDocs}}
+            <a href="/docs/what-is-exe" class="sidebar-link" style="padding: 0; margin: 0;">Many Pages</a>
+            {{else}}
+            <a href="/docs/all" class="sidebar-link" style="padding: 0; margin: 0;">One Page</a>
+            {{end}}
+            <span style="color: #cccccc;">&middot;</span>
+            <a href="/docs/all.md" class="sidebar-link" style="padding: 0; margin: 0;">docs.md</a>
+          </div>
           {{range .Groups}}
           <div class="sidebar-heading">{{.Heading}}</div>
           {{range .Docs}}
+          {{if $isAllDocs}}
+          <a href="#{{.Slug}}" class="sidebar-link">
+            {{.Title}}{{if and $.ShowHidden (not .Published)}} [draft]{{end}}
+          </a>
+          {{else}}
           <a href="{{.Path}}" class="sidebar-link{{if eq .Path $.Entry.Path}} active{{end}}">
             {{.Title}}{{if and $.ShowHidden (not .Published)}} [draft]{{end}}
           </a>
+          {{end}}
           {{end}} {{end}}
         </div>
       </div>
@@ -326,10 +357,12 @@
         <a class="back-to-list" href="/docs/list">&larr; All docs</a>
         <div class="doc-header">
           <h1 class="doc-title">{{.Title}}{{if and $.ShowHidden (not .Published)}} [draft]{{end}}</h1>
+          {{if .Markdown}}
           <button class="copy-md-btn" onclick="copyMarkdown()" title="Copy as Markdown">
             <span class="copy-btn-sizer" aria-hidden="true"><span class="copy-icon">&#x2398;</span> Copy as Markdown</span>
             <span class="copy-btn-text"><span class="copy-icon">&#x2398;</span> Copy as Markdown</span>
           </button>
+          {{end}}
         </div>
 
         <div class="doc-content">{{.Content}}</div>

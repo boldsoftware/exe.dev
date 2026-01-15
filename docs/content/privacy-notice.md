@@ -1,7 +1,7 @@
 ---
 title: Privacy Notice
 description: How exe.dev handles your data
-subheading: "6. Other"
+subheading: "7. Other"
 suborder: 10
 published: true
 ---

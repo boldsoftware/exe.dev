@@ -1,7 +1,7 @@
 ---
 title: Spinning up a Marimo Notebook
 description: an open source reactive notebook
-subheading: "3. Use Cases"
+subheading: "5. Use Cases"
 published: true
 ---
 
