@@ -181,11 +181,19 @@ vet: ## Run go vet
 	@go vet ./...
 	@echo "✓ Vet complete"
 
-lint: ## Run linters
-	@echo "Running linters..."
+lint: ## Run linters (matches CI checks)
+	@go generate ./...
+	@if [ -n "$$(git diff -- docs/content/)" ]; then \
+		echo "❌ docs/content/ has uncommitted changes. Commit generated code." >&2; \
+		exit 1; \
+	fi
+	@if git grep -n -- 'exe.dev/tslog' -- '*.go' ':!*_test.go' 2>/dev/null; then \
+		echo "❌ production code should not import exe.dev/tslog" >&2; \
+		exit 1; \
+	fi
+	@go build -o /tmp/exelint ./cmd/exelint
+	@go vet -vettool=/tmp/exelint ./...
 	@go vet ./...
-	@go fmt ./...
-	@echo "✓ Lint complete"
 
 sshd: container/rovol/arm64 container/rovol/amd64
 
