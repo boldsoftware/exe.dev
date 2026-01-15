@@ -64,6 +64,12 @@ ORDER BY assigned_at DESC;
 SELECT COUNT(*) FROM invite_codes
 WHERE assigned_to_user_id IS NULL AND used_by_user_id IS NULL;
 
+-- name: CountUnallocatedInviteCodesByUser :many
+-- Counts unallocated invite codes grouped by user (matches what users see in web UI)
+SELECT assigned_to_user_id, COUNT(*) as count FROM invite_codes
+WHERE assigned_to_user_id IS NOT NULL AND used_by_user_id IS NULL AND allocated_at IS NULL
+GROUP BY assigned_to_user_id;
+
 -- User billing exemption
 
 -- name: SetUserBillingExemption :exec

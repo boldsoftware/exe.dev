@@ -43,6 +43,41 @@ func (q *Queries) CountInviteCodePool(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countUnallocatedInviteCodesByUser = `-- name: CountUnallocatedInviteCodesByUser :many
+SELECT assigned_to_user_id, COUNT(*) as count FROM invite_codes
+WHERE assigned_to_user_id IS NOT NULL AND used_by_user_id IS NULL AND allocated_at IS NULL
+GROUP BY assigned_to_user_id
+`
+
+type CountUnallocatedInviteCodesByUserRow struct {
+	AssignedToUserID *string `db:"assigned_to_user_id" json:"assigned_to_user_id"`
+	Count            int64   `db:"count" json:"count"`
+}
+
+// Counts unallocated invite codes grouped by user (matches what users see in web UI)
+func (q *Queries) CountUnallocatedInviteCodesByUser(ctx context.Context) ([]CountUnallocatedInviteCodesByUserRow, error) {
+	rows, err := q.query(ctx, q.countUnallocatedInviteCodesByUserStmt, countUnallocatedInviteCodesByUser)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountUnallocatedInviteCodesByUserRow{}
+	for rows.Next() {
+		var i CountUnallocatedInviteCodesByUserRow
+		if err := rows.Scan(&i.AssignedToUserID, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countUnusedInviteCodesForUser = `-- name: CountUnusedInviteCodesForUser :one
 SELECT COUNT(*) FROM invite_codes
 WHERE assigned_to_user_id = ? AND used_by_user_id IS NULL AND allocated_at IS NULL

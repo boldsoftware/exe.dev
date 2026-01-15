@@ -1120,6 +1120,19 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 		creditByUser[c.UserID] = c
 	}
 
+	// Fetch unallocated invite counts by user (matches what users see in web UI)
+	inviteCounts, err := withRxRes0(s, ctx, (*exedb.Queries).CountUnallocatedInviteCodesByUser)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to list invite counts", "error", err)
+		inviteCounts = nil
+	}
+	invitesByUser := make(map[string]int64)
+	for _, ic := range inviteCounts {
+		if ic.AssignedToUserID != nil {
+			invitesByUser[*ic.AssignedToUserID] = ic.Count
+		}
+	}
+
 	// Count user types
 	var regularCount, loginWithExeCount int
 	for _, u := range users {
@@ -1148,6 +1161,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			CreditTotalUsedUSD     float64 `json:"credit_total_used_usd"`
 			CreditLastRefreshAt    string  `json:"credit_last_refresh_at,omitempty"`
 			DiscordID              string  `json:"discord_id,omitempty"`
+			InviteCount            int64   `json:"invite_count"`
 		}
 		var usersJSON []userInfo
 		for _, u := range users {
@@ -1170,6 +1184,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 				AccountID:              acctID,
 				BillingURL:             billingURL,
 				DiscordID:              ptrStr(u.DiscordID),
+				InviteCount:            invitesByUser[u.UserID],
 			}
 			if credit, ok := creditByUser[u.UserID]; ok {
 				ui.CreditAvailableUSD = credit.AvailableCredit
@@ -1244,6 +1259,7 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 <th>VM Creation Disabled</th>
 <th>Root Support</th>
 <th>Discord</th>
+<th>Invites</th>
 </tr>
 <tr class="filters">
 <th>Email</th>
@@ -1260,6 +1276,7 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 <th>VM Creation Disabled</th>
 <th>Root Support</th>
 <th>Discord</th>
+<th>Invites</th>
 </tr>
 </thead>
 </table>
@@ -1357,7 +1374,11 @@ $(document).ready(function() {
                     'data-email="' + d.email + '" data-userid="' + d.user_id + '" ' +
                     'data-enabled="' + d.root_support + '">' + btnText + '</button>';
             }},
-            { data: 'discord_id', defaultContent: '-' }
+            { data: 'discord_id', defaultContent: '-' },
+            { data: null, render: function(d) {
+                return d.invite_count + ' <button class="toggle-btn add-invite-btn" ' +
+                    'data-email="' + d.email + '">+1</button>';
+            }}
         ],
         initComplete: function() {
             this.api().columns().every(function(idx) {
@@ -1455,6 +1476,37 @@ document.addEventListener('click', function(e) {
 });
 document.getElementById('creditCancelBtn').addEventListener('click', function() {
     document.getElementById('creditDialog').close();
+});
+
+// Add invite button
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('add-invite-btn')) {
+        var email = e.target.dataset.email;
+        var body = new URLSearchParams();
+        body.append('action', 'give_to_user');
+        body.append('email', email);
+        body.append('count', '1');
+        body.append('plan_type', 'trial');
+
+        fetch('/debug/invite', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: body.toString()
+        }).then(function(resp) {
+            if (!resp.ok) {
+                alert('Failed to add invite');
+                return;
+            }
+            if (usersTable) {
+                usersTable.ajax.reload(null, false);
+            }
+        }).catch(function(err) {
+            console.error('Add invite failed', err);
+            alert('Failed to add invite');
+        });
+    }
 });
 </script>
 </body></html>

@@ -84,6 +84,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countPendingBoxSharesStmt, err = db.PrepareContext(ctx, countPendingBoxShares); err != nil {
 		return nil, fmt.Errorf("error preparing query CountPendingBoxShares: %w", err)
 	}
+	if q.countUnallocatedInviteCodesByUserStmt, err = db.PrepareContext(ctx, countUnallocatedInviteCodesByUser); err != nil {
+		return nil, fmt.Errorf("error preparing query CountUnallocatedInviteCodesByUser: %w", err)
+	}
 	if q.countUnusedInviteCodesForUserStmt, err = db.PrepareContext(ctx, countUnusedInviteCodesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query CountUnusedInviteCodesForUser: %w", err)
 	}
@@ -709,6 +712,11 @@ func (q *Queries) Close() error {
 	if q.countPendingBoxSharesStmt != nil {
 		if cerr := q.countPendingBoxSharesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countPendingBoxSharesStmt: %w", cerr)
+		}
+	}
+	if q.countUnallocatedInviteCodesByUserStmt != nil {
+		if cerr := q.countUnallocatedInviteCodesByUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countUnallocatedInviteCodesByUserStmt: %w", cerr)
 		}
 	}
 	if q.countUnusedInviteCodesForUserStmt != nil {
@@ -1640,6 +1648,7 @@ type Queries struct {
 	countInviteCodePoolStmt                    *sql.Stmt
 	countLoginUsersStmt                        *sql.Stmt
 	countPendingBoxSharesStmt                  *sql.Stmt
+	countUnallocatedInviteCodesByUserStmt      *sql.Stmt
 	countUnusedInviteCodesForUserStmt          *sql.Stmt
 	countUnusedSystemInviteCodesStmt           *sql.Stmt
 	countUsersWithBoxesStmt                    *sql.Stmt
@@ -1840,6 +1849,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countInviteCodePoolStmt:                    q.countInviteCodePoolStmt,
 		countLoginUsersStmt:                        q.countLoginUsersStmt,
 		countPendingBoxSharesStmt:                  q.countPendingBoxSharesStmt,
+		countUnallocatedInviteCodesByUserStmt:      q.countUnallocatedInviteCodesByUserStmt,
 		countUnusedInviteCodesForUserStmt:          q.countUnusedInviteCodesForUserStmt,
 		countUnusedSystemInviteCodesStmt:           q.countUnusedSystemInviteCodesStmt,
 		countUsersWithBoxesStmt:                    q.countUsersWithBoxesStmt,
