@@ -343,11 +343,13 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 
 	cmdOut, err := exeletCmd.StdoutPipe()
 	if err != nil {
+		exeletCancel()
 		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
 	}
 	exeletCmd.Stderr = exeletCmd.Stdout
 
 	if err := exeletCmd.Start(); err != nil {
+		exeletCancel()
 		return nil, fmt.Errorf("failed to start remote exelet: %w", err)
 	}
 
