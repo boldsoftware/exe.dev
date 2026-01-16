@@ -449,7 +449,6 @@ button {
   align-items: center;
   justify-content: space-between;
   padding: 1rem;
-  border-bottom: 1px solid var(--border);
 }
 
 .drawer-header-actions {
@@ -476,7 +475,6 @@ button {
 
 .drawer-footer {
   padding: 1rem;
-  border-top: 1px solid var(--border);
 }
 
 /* Backdrop */
