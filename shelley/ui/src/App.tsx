@@ -68,7 +68,10 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [subagentUpdate, setSubagentUpdate] = useState<Conversation | null>(null);
-  const [subagentStateUpdate, setSubagentStateUpdate] = useState<{ conversation_id: string; working: boolean } | null>(null);
+  const [subagentStateUpdate, setSubagentStateUpdate] = useState<{
+    conversation_id: string;
+    working: boolean;
+  } | null>(null);
   const initialSlugResolved = useRef(false);
 
   // Resolve initial slug from URL - uses the captured initialSlugFromUrl

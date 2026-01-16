@@ -88,7 +88,9 @@ function ConversationDrawer({
       setSubagents((prev) => {
         // Find which parent contains this subagent
         for (const [parentId, subs] of Object.entries(prev)) {
-          const subIndex = subs.findIndex((s) => s.conversation_id === subagentStateUpdate.conversation_id);
+          const subIndex = subs.findIndex(
+            (s) => s.conversation_id === subagentStateUpdate.conversation_id,
+          );
           if (subIndex >= 0) {
             const updated = [...subs];
             updated[subIndex] = { ...updated[subIndex], working: subagentStateUpdate.working };
@@ -485,7 +487,9 @@ function ConversationDrawer({
                                     padding: "0.125rem 0.25rem",
                                   }}
                                   title={isExpanded ? "Hide subagents" : "Show subagents"}
-                                  aria-label={isExpanded ? "Collapse subagents" : "Expand subagents"}
+                                  aria-label={
+                                    isExpanded ? "Collapse subagents" : "Expand subagents"
+                                  }
                                 >
                                   <span style={{ fontWeight: 500 }}>
                                     {conversationSubagents.length}
@@ -580,7 +584,9 @@ function ConversationDrawer({
                               }}
                             >
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                <div
+                                  style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+                                >
                                   <div style={{ flex: 1, minWidth: 0 }}>
                                     <div className="conversation-title">
                                       {sub.slug || sub.conversation_id}

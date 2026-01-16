@@ -992,7 +992,6 @@ button {
 }
 
 .bash-tool-emoji.running {
-  animation: rotate 1s linear infinite;
 }
 
 .bash-tool-command {
