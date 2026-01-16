@@ -34,10 +34,11 @@ function addStatusDot(svg: string, status: FaviconStatus): string {
   const svgWithoutClose = svg.substring(0, closingTagIndex);
 
   // Add the status dot in the bottom-right corner
+  // New viewBox is 400x400, so position dot near bottom-right at ~350,350
   const dotColor = status === "working" ? "#f59e0b" : "#22c55e";
   const statusDot = `
-  <circle cx="26" cy="26" r="6" fill="white"/>
-  <circle cx="26" cy="26" r="5" fill="${dotColor}"/>
+  <circle cx="340" cy="340" r="50" fill="white"/>
+  <circle cx="340" cy="340" r="40" fill="${dotColor}"/>
 `;
 
   return svgWithoutClose + statusDot + "</svg>";
