@@ -2692,6 +2692,10 @@ func (s *Server) recordSignupRejection(ctx context.Context, p signupValidationPa
 // Returns the flagged status and the raw JSON response (if available).
 // Fails open: returns false on errors.
 func (s *Server) ipFlaggedForAbuse(ctx context.Context, ip string) (flagged bool, ipqsResponseJSON string) {
+	// Check if IP abuse filter is disabled via debug page
+	if s.IsIPAbuseFilterDisabled(ctx) {
+		return false, ""
+	}
 	if s.ipqsAPIKey == "" {
 		return false, ""
 	}

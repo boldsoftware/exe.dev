@@ -258,6 +258,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getHLLSketchStmt, err = db.PrepareContext(ctx, getHLLSketch); err != nil {
 		return nil, fmt.Errorf("error preparing query GetHLLSketch: %w", err)
 	}
+	if q.getIPAbuseFilterDisabledStmt, err = db.PrepareContext(ctx, getIPAbuseFilterDisabled); err != nil {
+		return nil, fmt.Errorf("error preparing query GetIPAbuseFilterDisabled: %w", err)
+	}
 	if q.getIPShardByBoxNameStmt, err = db.PrepareContext(ctx, getIPShardByBoxName); err != nil {
 		return nil, fmt.Errorf("error preparing query GetIPShardByBoxName: %w", err)
 	}
@@ -509,6 +512,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setBoxSupportAccessAllowedStmt, err = db.PrepareContext(ctx, setBoxSupportAccessAllowed); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxSupportAccessAllowed: %w", err)
+	}
+	if q.setIPAbuseFilterDisabledStmt, err = db.PrepareContext(ctx, setIPAbuseFilterDisabled); err != nil {
+		return nil, fmt.Errorf("error preparing query SetIPAbuseFilterDisabled: %w", err)
 	}
 	if q.setLoginCreationDisabledStmt, err = db.PrepareContext(ctx, setLoginCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query SetLoginCreationDisabled: %w", err)
@@ -1013,6 +1019,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getHLLSketchStmt: %w", cerr)
 		}
 	}
+	if q.getIPAbuseFilterDisabledStmt != nil {
+		if cerr := q.getIPAbuseFilterDisabledStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getIPAbuseFilterDisabledStmt: %w", cerr)
+		}
+	}
 	if q.getIPShardByBoxNameStmt != nil {
 		if cerr := q.getIPShardByBoxNameStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getIPShardByBoxNameStmt: %w", cerr)
@@ -1433,6 +1444,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setBoxSupportAccessAllowedStmt: %w", cerr)
 		}
 	}
+	if q.setIPAbuseFilterDisabledStmt != nil {
+		if cerr := q.setIPAbuseFilterDisabledStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setIPAbuseFilterDisabledStmt: %w", cerr)
+		}
+	}
 	if q.setLoginCreationDisabledStmt != nil {
 		if cerr := q.setLoginCreationDisabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setLoginCreationDisabledStmt: %w", cerr)
@@ -1730,6 +1746,7 @@ type Queries struct {
 	getEmailVerificationByPartialTokenStmt     *sql.Stmt
 	getEmailVerificationByTokenStmt            *sql.Stmt
 	getHLLSketchStmt                           *sql.Stmt
+	getIPAbuseFilterDisabledStmt               *sql.Stmt
 	getIPShardByBoxNameStmt                    *sql.Stmt
 	getInviteCodeByCodeStmt                    *sql.Stmt
 	getInviteCodeByIDStmt                      *sql.Stmt
@@ -1814,6 +1831,7 @@ type Queries struct {
 	recordUserEventStmt                        *sql.Stmt
 	sSHKeyForBoxNamedStmt                      *sql.Stmt
 	setBoxSupportAccessAllowedStmt             *sql.Stmt
+	setIPAbuseFilterDisabledStmt               *sql.Stmt
 	setLoginCreationDisabledStmt               *sql.Stmt
 	setNewThrottleEmailPatternsStmt            *sql.Stmt
 	setNewThrottleEnabledStmt                  *sql.Stmt
@@ -1934,6 +1952,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailVerificationByPartialTokenStmt:     q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:            q.getEmailVerificationByTokenStmt,
 		getHLLSketchStmt:                           q.getHLLSketchStmt,
+		getIPAbuseFilterDisabledStmt:               q.getIPAbuseFilterDisabledStmt,
 		getIPShardByBoxNameStmt:                    q.getIPShardByBoxNameStmt,
 		getInviteCodeByCodeStmt:                    q.getInviteCodeByCodeStmt,
 		getInviteCodeByIDStmt:                      q.getInviteCodeByIDStmt,
@@ -2018,6 +2037,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		recordUserEventStmt:                        q.recordUserEventStmt,
 		sSHKeyForBoxNamedStmt:                      q.sSHKeyForBoxNamedStmt,
 		setBoxSupportAccessAllowedStmt:             q.setBoxSupportAccessAllowedStmt,
+		setIPAbuseFilterDisabledStmt:               q.setIPAbuseFilterDisabledStmt,
 		setLoginCreationDisabledStmt:               q.setLoginCreationDisabledStmt,
 		setNewThrottleEmailPatternsStmt:            q.setNewThrottleEmailPatternsStmt,
 		setNewThrottleEnabledStmt:                  q.setNewThrottleEnabledStmt,

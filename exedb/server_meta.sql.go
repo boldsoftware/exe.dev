@@ -18,6 +18,17 @@ func (q *Queries) ClearPreferredExelet(ctx context.Context) error {
 	return err
 }
 
+const getIPAbuseFilterDisabled = `-- name: GetIPAbuseFilterDisabled :one
+SELECT value FROM server_meta WHERE key = 'ip_abuse_filter_disabled'
+`
+
+func (q *Queries) GetIPAbuseFilterDisabled(ctx context.Context) (string, error) {
+	row := q.queryRow(ctx, q.getIPAbuseFilterDisabledStmt, getIPAbuseFilterDisabled)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
 const getLoginCreationDisabled = `-- name: GetLoginCreationDisabled :one
 SELECT value FROM server_meta WHERE key = 'login_creation_disabled'
 `
@@ -82,6 +93,16 @@ func (q *Queries) GetSignupPOWEnabled(ctx context.Context) (string, error) {
 	var value string
 	err := row.Scan(&value)
 	return value, err
+}
+
+const setIPAbuseFilterDisabled = `-- name: SetIPAbuseFilterDisabled :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('ip_abuse_filter_disabled', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+`
+
+func (q *Queries) SetIPAbuseFilterDisabled(ctx context.Context, value string) error {
+	_, err := q.exec(ctx, q.setIPAbuseFilterDisabledStmt, setIPAbuseFilterDisabled, value)
+	return err
 }
 
 const setLoginCreationDisabled = `-- name: SetLoginCreationDisabled :exec

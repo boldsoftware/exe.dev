@@ -54,6 +54,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/signup-limiter", s.handleDebugSignupLimiterPost)
 	mux.HandleFunc("/debug/signup-pow", s.handleDebugSignupPOW)
 	mux.HandleFunc("POST /debug/signup-pow", s.handleDebugSignupPOWPost)
+	mux.HandleFunc("/debug/ip-abuse-filter", s.handleDebugIPAbuseFilter)
+	mux.HandleFunc("POST /debug/ip-abuse-filter", s.handleDebugIPAbuseFilterPost)
 	mux.HandleFunc("/debug/signup-reject", s.handleDebugSignupReject)
 	mux.HandleFunc("POST /debug/signup-reject", s.handleDebugSignupRejectPost)
 	mux.HandleFunc("/debug/ipshards", s.handleDebugIPShards)
@@ -113,6 +115,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/new-throttle">new-throttle</a> (<a href="/debug/new-throttle?format=json">json</a>)</li>
     <li><a href="/debug/signup-limiter">signup-limiter</a></li>
     <li><a href="/debug/signup-pow">signup-pow</a></li>
+    <li><a href="/debug/ip-abuse-filter">ip-abuse-filter</a></li>
     <li><a href="/debug/signup-reject">signup-reject</a></li>
     <li><a href="/debug/ipshards">ipshards</a> (<a href="/debug/ipshards?format=json">json</a>)</li>
     <li><a href="/debug/log">/debug/log</a> (POST text=... to log an error)</li>
@@ -3600,4 +3603,87 @@ vegaEmbed('#vis', spec, {actions: false}).catch(console.error);
 </script>
 </body></html>
 `, len(nodes), len(links), string(nodesJSON), string(linksJSON))
+}
+
+// IsIPAbuseFilterDisabled returns true if the IP abuse filter is disabled.
+func (s *Server) IsIPAbuseFilterDisabled(ctx context.Context) bool {
+	val, err := withRxRes0(s, ctx, (*exedb.Queries).GetIPAbuseFilterDisabled)
+	if err != nil {
+		return false
+	}
+	return val == "true"
+}
+
+// handleDebugIPAbuseFilter displays the IP abuse filter configuration page.
+func (s *Server) handleDebugIPAbuseFilter(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	disabled := s.IsIPAbuseFilterDisabled(ctx)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><title>IP Abuse Filter</title>
+<style>
+.section { margin: 20px 0; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+.toggle-switch { display: inline-flex; align-items: center; cursor: pointer; }
+.toggle-switch input { display: none; }
+.toggle-slider { width: 50px; height: 26px; background: #ccc; border-radius: 13px; position: relative; transition: 0.3s; }
+.toggle-slider:before { content: ""; position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%%%%; top: 2px; left: 2px; transition: 0.3s; }
+.toggle-switch input:checked + .toggle-slider { background: #dc3545; }
+.toggle-switch input:checked + .toggle-slider:before { left: 26px; }
+.toggle-label { margin-left: 10px; font-weight: bold; }
+.save-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 16px; }
+.save-btn:hover { background: #0056b3; }
+.info { background: #e7f3ff; border: 1px solid #b6d4fe; padding: 10px; border-radius: 5px; margin: 10px 0; }
+.warning { background: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 5px; margin: 10px 0; }
+</style>
+</head><body>
+<h1>IP Abuse Filter</h1>
+<p><a href="/debug">/debug</a></p>
+
+<div class="info">
+<strong>Info:</strong> The IP abuse filter uses IPQS to check if an IP address has been flagged for recent abuse during signup.
+When enabled, users signing up from flagged IPs will be blocked.
+</div>
+
+<div class="section">
+<h2>Disable IP Abuse Filter</h2>
+<div class="warning">
+<strong>Warning:</strong> Disabling this filter will allow signups from IPs flagged for abuse.
+</div>
+<form method="post" action="/debug/ip-abuse-filter">
+<p>When disabled, the IPQS IP abuse check is skipped during signup validation.</p>
+<label class="toggle-switch">
+<input type="checkbox" name="disabled" value="true" %s>
+<span class="toggle-slider"></span>
+<span class="toggle-label">Disable IP abuse filter</span>
+</label>
+<p style="margin-top: 10px;">
+<button type="submit" class="save-btn">Save Settings</button>
+</p>
+</form>
+</div>
+
+</body></html>
+`, checkedAttr(disabled))
+}
+
+// handleDebugIPAbuseFilterPost handles saving the IP abuse filter disabled setting.
+func (s *Server) handleDebugIPAbuseFilterPost(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	disabled := r.FormValue("disabled") == "true"
+
+	disabledStr := "false"
+	if disabled {
+		disabledStr = "true"
+	}
+	if err := withTx1(s, ctx, (*exedb.Queries).SetIPAbuseFilterDisabled, disabledStr); err != nil {
+		http.Error(w, fmt.Sprintf("failed to save setting: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "IP abuse filter setting updated via debug page", "disabled", disabled)
+
+	http.Redirect(w, r, "/debug/ip-abuse-filter", http.StatusSeeOther)
 }
