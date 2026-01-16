@@ -2952,6 +2952,30 @@ function makeHostsDashboard() {
 
   addReadmePanel(dash);
 
+  // Host Availability Row
+  dash.withRow(
+    new RowBuilder("Host Availability").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  // Exelet host availability - alerts when any host stops reporting metrics
+  addTimeseriesChart(
+    "Exelet Host Up",
+    `up{job="node",role="exelet",stage=~"$stage"}`,
+    {
+      panelCustomization: (x) => x.min(0).max(1),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+      alert: {
+        threshold: 1,
+        condition: "lt",
+        forDuration: "3m",
+        summary: "Exelet host is not reporting metrics",
+        description: "A production exelet host has stopped reporting metrics to Prometheus for more than 3 minutes.",
+      },
+      alertQueryOverride: `up{job="node",role="exelet",stage="production"}`,
+    }
+  );
+
   // CPU Metrics Row
   dash.withRow(
     new RowBuilder("CPU Metrics").gridPos(gp({ w: 24, h: 1 }))
