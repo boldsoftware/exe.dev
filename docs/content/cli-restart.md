@@ -3,7 +3,7 @@
 title: "restart"
 description: "Restart a VM"
 subheading: "8. CLI Reference"
-suborder: 6
+suborder: 7
 ---
 
 # restart

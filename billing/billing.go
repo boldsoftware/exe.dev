@@ -247,14 +247,30 @@ func (m *Manager) DashboardURL(billingID string) string {
 	return "https://dashboard.stripe.com/customers/" + billingID
 }
 
+// CheckoutResult contains the result of a verified checkout session.
+type CheckoutResult struct {
+	BillingID string // Stripe customer ID
+	Email     string // Customer email from Stripe
+}
+
 // VerifyCheckout verifies that a checkout session was completed successfully.
 // It returns the billing ID if the session is valid, or an error if the account is not in good standing.
 func (m *Manager) VerifyCheckout(ctx context.Context, sessionID string) (billingID string, _ error) {
+	result, err := m.VerifyCheckoutFull(ctx, sessionID)
+	if err != nil {
+		return "", err
+	}
+	return result.BillingID, nil
+}
+
+// VerifyCheckoutFull verifies that a checkout session was completed successfully.
+// It returns the full checkout result including customer email.
+func (m *Manager) VerifyCheckoutFull(ctx context.Context, sessionID string) (*CheckoutResult, error) {
 	// TODO(bmizerany): This could take the URL string landed on and get all the
 	// info from there. This whould be nicer if Manager kept the success/cancel
 	// URLs, and we removed them from SubscribeParams?
 	if sessionID == "" {
-		return "", errors.New("session ID is required")
+		return nil, errors.New("session ID is required")
 	}
 
 	c := m.client()
@@ -263,7 +279,7 @@ func (m *Manager) VerifyCheckout(ctx context.Context, sessionID string) (billing
 		sess, err := c.V1CheckoutSessions.Retrieve(ctx, sessionID, nil)
 		if err != nil {
 			if !isRetryable(err) {
-				return "", fmt.Errorf("failed to retrieve checkout session: %w", err)
+				return nil, fmt.Errorf("failed to retrieve checkout session: %w", err)
 			}
 			m.slog().ErrorContext(ctx, "retrieve checkout session", "error", err)
 			continue
@@ -272,7 +288,7 @@ func (m *Manager) VerifyCheckout(ctx context.Context, sessionID string) (billing
 		// Verify the session status is complete
 		if sess.Status != stripe.CheckoutSessionStatusComplete {
 			m.slog().ErrorContext(ctx, "checkout session not complete", "status", sess.Status)
-			return "", fmt.Errorf("%s: status: %q", ErrIncomplete, sess.Status)
+			return nil, fmt.Errorf("%s: status: %q", ErrIncomplete, sess.Status)
 		}
 
 		// Verify payment status - for subscriptions with trials, this may be "no_payment_required"
@@ -280,14 +296,22 @@ func (m *Manager) VerifyCheckout(ctx context.Context, sessionID string) (billing
 		case stripe.CheckoutSessionPaymentStatusPaid, stripe.CheckoutSessionPaymentStatusNoPaymentRequired:
 			// Valid payment statuses
 			if sess.Customer == nil || sess.Customer.ID == "" {
-				return "", errors.New("checkout session has no customer")
+				return nil, errors.New("checkout session has no customer")
 			}
-			return sess.Customer.ID, nil
+			// Get email from session - Stripe provides it in CustomerEmail or CustomerDetails
+			email := sess.CustomerEmail
+			if email == "" && sess.CustomerDetails != nil {
+				email = sess.CustomerDetails.Email
+			}
+			return &CheckoutResult{
+				BillingID: sess.Customer.ID,
+				Email:     email,
+			}, nil
 		default:
-			return "", fmt.Errorf("checkout session payment not confirmed: payment_status=%s", sess.PaymentStatus)
+			return nil, fmt.Errorf("checkout session payment not confirmed: payment_status=%s", sess.PaymentStatus)
 		}
 
 	}
 
-	return "", ctx.Err()
+	return nil, ctx.Err()
 }

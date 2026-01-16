@@ -487,16 +487,18 @@ func (s *Server) handleNewUserBillingSubscribe(w http.ResponseWriter, r *http.Re
 
 // handleNewUserBillingSuccess completes registration for new users after Stripe checkout.
 // Creates the user record, activates the account, and sends the verification email.
+// Handles both web and SSH flows (SSH flow has public_key set in pending registration).
 func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Request, sessionID, token string) {
 	ctx := r.Context()
 
-	// Verify Stripe checkout
-	billingID, err := s.billing.VerifyCheckout(ctx, sessionID)
+	// Verify Stripe checkout and get the email from Stripe
+	checkoutResult, err := s.billing.VerifyCheckoutFull(ctx, sessionID)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "failed to verify checkout session", "error", err, "session_id", sessionID)
 		http.Error(w, "failed to verify billing", http.StatusBadRequest)
 		return
 	}
+	billingID := checkoutResult.BillingID
 
 	// Get pending registration
 	pending, err := withRxRes1(s, ctx, (*exedb.Queries).GetPendingRegistrationByToken, token)
@@ -519,11 +521,25 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Determine email: use pending.Email if set, otherwise get from Stripe checkout
+	email := pending.Email
+	if email == "" {
+		email = checkoutResult.Email
+	}
+	if email == "" {
+		s.slog().ErrorContext(ctx, "no email available for registration", "token", token)
+		http.Error(w, "email required for registration", http.StatusBadRequest)
+		return
+	}
+
+	// Determine if this is an SSH flow (public_key is set)
+	isSSHFlow := pending.PublicKey != nil && *pending.PublicKey != ""
+
 	// Create user + account in transaction
 	var userID string
 	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
-		userID, err = s.createUserRecord(ctx, queries, pending.Email, false)
+		userID, err = s.createUserRecord(ctx, queries, email, false)
 		if err != nil {
 			return fmt.Errorf("create user: %w", err)
 		}
@@ -535,6 +551,15 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 		}
 		if err := queries.ActivateAccount(ctx, userID); err != nil {
 			return fmt.Errorf("activate account: %w", err)
+		}
+		// For SSH flow, associate the SSH key with the user
+		if isSSHFlow {
+			if err := queries.InsertSSHKey(ctx, exedb.InsertSSHKeyParams{
+				PublicKey: *pending.PublicKey,
+				UserID:    userID,
+			}); err != nil {
+				return fmt.Errorf("insert ssh key: %w", err)
+			}
 		}
 		return nil
 	})
@@ -559,15 +584,41 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 	// Clean up pending registration
 	_ = withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).DeletePendingRegistrationByToken, token)
 
+	// Determine source for notification
+	source := "web-billing-first"
+	if isSSHFlow {
+		source = "ssh-billing-first"
+	}
+
 	// Notify about new user
-	s.slackFeed.NewUser(ctx, userID, pending.Email, "web-billing-first", inviterEmail)
+	s.slackFeed.NewUser(ctx, userID, email, source, inviterEmail)
 	s.slackFeed.Subscribed(ctx, userID)
 
-	// Send verification email
+	// For SSH flow, signal the waiting SSH session and show a different page
+	if isSSHFlow {
+		// Look up the in-memory verification by token and signal completion
+		verification := s.lookUpEmailVerification(token)
+		if verification != nil {
+			verification.Close()
+			s.deleteEmailVerification(verification)
+		}
+		s.slackFeed.EmailVerified(ctx, userID)
+
+		// Show SSH success page
+		data := struct {
+			WebHost string
+		}{
+			WebHost: s.env.WebHost,
+		}
+		s.renderTemplate(ctx, w, "ssh-billing-success.html", data)
+		return
+	}
+
+	// Web flow: Send verification email
 	verifyToken := generateRegistrationToken()
 	err = withTx1(s, ctx, (*exedb.Queries).InsertEmailVerification, exedb.InsertEmailVerificationParams{
 		Token:     verifyToken,
-		Email:     pending.Email,
+		Email:     email,
 		UserID:    userID,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 	})
@@ -587,8 +638,8 @@ This link will expire in 24 hours.
 
 Best regards,
 The %s team`, verifyURL, s.env.WebHost)
-		if err := s.sendEmail(ctx, emailpkg.TypeWebAuthVerification, pending.Email, subject, body); err != nil {
-			s.slog().ErrorContext(ctx, "failed to send verification email", "error", err, "email", pending.Email)
+		if err := s.sendEmail(ctx, emailpkg.TypeWebAuthVerification, email, subject, body); err != nil {
+			s.slog().ErrorContext(ctx, "failed to send verification email", "error", err, "email", email)
 		}
 	}
 
@@ -605,7 +656,7 @@ The %s team`, verifyURL, s.env.WebHost)
 	if s.env.WebDev {
 		devURL = fmt.Sprintf("%s/verify-email?token=%s", s.webBaseURLNoRequest(), verifyToken)
 	}
-	s.showAuthEmailSent(w, r, pending.Email, devURL)
+	s.showAuthEmailSent(w, r, email, devURL)
 }
 
 // unauthorizedData holds the template data for the 401.html page

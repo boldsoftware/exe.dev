@@ -133,6 +133,11 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			},
 		},
 		{
+			Name:        "subscribe",
+			Description: "Subscribe to exe.dev",
+			Handler:     ss.handleSubscribeCommand,
+		},
+		{
 			Name:              "rm",
 			Description:       "Delete a VM",
 			Handler:           ss.handleDeleteCommand,
@@ -285,6 +290,12 @@ func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *exemenu.CommandC
 }
 
 func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	// Anonymous users have no VMs
+	if cc.User == nil {
+		cc.Write("No VMs found. Create one with 'new'.\r\n")
+		return nil
+	}
+
 	boxes, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxesForUser, cc.User.ID)
 	if err != nil {
 		return err
@@ -344,6 +355,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 
 func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	user := cc.User
+
 	boxName := cc.FlagSet.Lookup("name").Value.String()
 	image := cc.FlagSet.Lookup("image").Value.String()
 	command := cc.FlagSet.Lookup("command").Value.String()
@@ -404,15 +416,6 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	// Check if user has VM creation disabled
 	if disabled, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserNewVMCreationDisabled, user.ID); err == nil && disabled && exeletOverride == "" {
 		return cc.Errorf("VM creation is not available for your account; contact support@exe.dev")
-	}
-
-	// Check if user needs billing (only new users created on/after 2026-01-03 need billing)
-	// Skip this check if SkipBilling is set (for tests)
-	if !ss.server.env.SkipBilling {
-		if needsBilling, err := withRxRes1(ss.server, ctx, (*exedb.Queries).UserNeedsBilling, user.ID); err == nil && needsBilling != nil && *needsBilling {
-			billingURL := ss.server.webBaseURLNoRequest() + "/billing/subscribe?source=exemenu"
-			return cc.Errorf("Billing Required\r\n\r\nYou need to add billing information before creating a VM.\r\n\r\nYou will not be charged during the Developer Preview. The preview ends February 1, 2026.\r\n\r\nVisit: %s", billingURL)
-		}
 	}
 
 	// Generate box name if not provided
@@ -1657,4 +1660,99 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 		session.Wait()
 	}
 	return nil
+}
+
+// handleSubscribeCommand handles the 'subscribe' command for setting up billing.
+// For anonymous users, it creates a pending registration and waits for completion.
+// For registered users who need billing, it shows the billing URL.
+func (ss *SSHServer) handleSubscribeCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	// For registered users, check if they need billing
+	if cc.User != nil {
+		if ss.server.env.SkipBilling {
+			cc.Writeln("You're already subscribed!")
+			return nil
+		}
+		needsBilling, err := withRxRes1(ss.server, ctx, (*exedb.Queries).UserNeedsBilling, cc.User.ID)
+		if err != nil {
+			return fmt.Errorf("failed to check billing status: %w", err)
+		}
+		if needsBilling == nil || !*needsBilling {
+			cc.Writeln("You're already subscribed!")
+			return nil
+		}
+		// Show billing URL for registered users who need billing
+		billingURL := ss.server.webBaseURLNoRequest() + "/billing/subscribe?source=exemenu"
+		cc.Writeln("")
+		cc.Writeln("\033[1;33mTry Individual (Developer Preview)\033[0m")
+		cc.Writeln("")
+		cc.Writeln("  15 days free")
+		cc.Writeln("  Then $20/month starting January 31, 2026")
+		cc.Writeln("  Up to 25 VMs that share 2 CPUs and 8GB RAM")
+		cc.Writeln("  Cancel anytime")
+		cc.Writeln("")
+		cc.Writeln("Visit: \033[1;36m%s\033[0m", billingURL)
+		cc.Writeln("")
+		return nil
+	}
+
+	// Anonymous user flow
+	publicKey := cc.PublicKey
+	if publicKey == "" {
+		return cc.Errorf("No SSH key found. Please connect with a valid SSH key.")
+	}
+
+	// Create pending registration with token
+	token := generateRegistrationToken()
+
+	// Store pending registration in database with public key
+	err := withTx1(ss.server, ctx, (*exedb.Queries).InsertPendingRegistrationWithKey, exedb.InsertPendingRegistrationWithKeyParams{
+		Token:       token,
+		Email:       "", // Email will be collected during checkout
+		ExpiresAt:   time.Now().Add(1 * time.Hour),
+		PublicKey:   &publicKey,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create registration: %w", err)
+	}
+
+	// Create an email verification object to track completion, using the same token
+	// so that the billing success handler can find and signal it
+	verification := ss.server.addEmailVerificationWithToken(token, publicKey, "", true, nil)
+
+	// Build the billing URL
+	billingURL := ss.server.webBaseURLNoRequest() + "/billing/subscribe?token=" + url.QueryEscape(token)
+
+	cc.Writeln("")
+	cc.Writeln("\033[1;33mTry Individual (Developer Preview)\033[0m")
+	cc.Writeln("")
+	cc.Writeln("  15 days free")
+	cc.Writeln("  Then $20/month starting January 31, 2026")
+	cc.Writeln("  Up to 25 VMs that share 2 CPUs and 8GB RAM")
+	cc.Writeln("  Cancel anytime")
+	cc.Writeln("")
+	cc.Writeln("Visit this URL to continue:")
+	cc.Writeln("")
+	cc.Writeln("\033[1;36m%s\033[0m", billingURL)
+	cc.Writeln("")
+	cc.Writeln("\033[2mWaiting for you to complete signup...\033[0m")
+
+	// Wait for the user to complete the billing/registration flow
+	select {
+	case <-verification.CompleteChan:
+		// Check if there was an error during verification
+		if verification.Err != nil {
+			cc.Writeln("\r\n\033[1;31m%s\033[0m", verification.Err.Error())
+			return nil
+		}
+		cc.Writeln("\r\n\033[1;32m✓ Signup complete!\033[0m\r\n")
+		// The runAnonymousRepl loop will detect the user is now registered and transition
+		return nil
+	case <-ctx.Done():
+		ss.server.deleteEmailVerification(verification)
+		return nil
+	case <-time.After(10 * time.Minute):
+		ss.server.deleteEmailVerification(verification)
+		cc.Writeln("\r\n\033[1;31mSignup timed out. Please try again.\033[0m")
+		return nil
+	}
 }

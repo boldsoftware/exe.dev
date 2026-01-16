@@ -3,7 +3,7 @@
 title: "rm"
 description: "Delete a VM"
 subheading: "8. CLI Reference"
-suborder: 5
+suborder: 6
 ---
 
 # rm

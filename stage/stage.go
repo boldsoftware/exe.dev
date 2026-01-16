@@ -101,7 +101,7 @@ func Invalid() Env {
 	}
 }
 
-var envStripeKey = os.Getenv("STRIPE_API_KEY")
+var envStripeKey = os.Getenv("STRIPE_SECRET_KEY")
 
 // Local returns an Env configured for convenient local human development.
 // It enables more expensive features (cobble, auto-starting sshpiper),

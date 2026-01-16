@@ -29,7 +29,7 @@ func (q *Queries) DeletePendingRegistrationByToken(ctx context.Context, token st
 }
 
 const getPendingRegistrationByToken = `-- name: GetPendingRegistrationByToken :one
-SELECT token, email, invite_code_id, created_at, expires_at
+SELECT token, email, invite_code_id, created_at, expires_at, public_key
 FROM pending_registrations
 WHERE token = ?
 `
@@ -43,6 +43,7 @@ func (q *Queries) GetPendingRegistrationByToken(ctx context.Context, token strin
 		&i.InviteCodeID,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.PublicKey,
 	)
 	return i, err
 }
@@ -65,6 +66,30 @@ func (q *Queries) InsertPendingRegistration(ctx context.Context, arg InsertPendi
 		arg.Email,
 		arg.InviteCodeID,
 		arg.ExpiresAt,
+	)
+	return err
+}
+
+const insertPendingRegistrationWithKey = `-- name: InsertPendingRegistrationWithKey :exec
+INSERT INTO pending_registrations (token, email, invite_code_id, expires_at, public_key)
+VALUES (?, ?, ?, ?, ?)
+`
+
+type InsertPendingRegistrationWithKeyParams struct {
+	Token        string    `db:"token" json:"token"`
+	Email        string    `db:"email" json:"email"`
+	InviteCodeID *int64    `db:"invite_code_id" json:"invite_code_id"`
+	ExpiresAt    time.Time `db:"expires_at" json:"expires_at"`
+	PublicKey    *string   `db:"public_key" json:"public_key"`
+}
+
+func (q *Queries) InsertPendingRegistrationWithKey(ctx context.Context, arg InsertPendingRegistrationWithKeyParams) error {
+	_, err := q.exec(ctx, q.insertPendingRegistrationWithKeyStmt, insertPendingRegistrationWithKey,
+		arg.Token,
+		arg.Email,
+		arg.InviteCodeID,
+		arg.ExpiresAt,
+		arg.PublicKey,
 	)
 	return err
 }

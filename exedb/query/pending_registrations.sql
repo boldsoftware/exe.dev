@@ -2,8 +2,12 @@
 INSERT INTO pending_registrations (token, email, invite_code_id, expires_at)
 VALUES (?, ?, ?, ?);
 
+-- name: InsertPendingRegistrationWithKey :exec
+INSERT INTO pending_registrations (token, email, invite_code_id, expires_at, public_key)
+VALUES (?, ?, ?, ?, ?);
+
 -- name: GetPendingRegistrationByToken :one
-SELECT token, email, invite_code_id, created_at, expires_at
+SELECT token, email, invite_code_id, created_at, expires_at, public_key
 FROM pending_registrations
 WHERE token = ?;
 
