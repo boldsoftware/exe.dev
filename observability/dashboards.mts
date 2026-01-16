@@ -2976,6 +2976,25 @@ function makeHostsDashboard() {
     }
   );
 
+  // Exelet application availability - alerts when exelet process stops reporting
+  addTimeseriesChart(
+    "Exelet App Up",
+    `up{job="exelet",stage=~"$stage"}`,
+    {
+      panelCustomization: (x) => x.min(0).max(1),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+      alert: {
+        threshold: 1,
+        condition: "lt",
+        forDuration: "3m",
+        summary: "Exelet application is not reporting metrics",
+        description: "An exelet process has stopped reporting metrics to Prometheus for more than 3 minutes.",
+      },
+      alertQueryOverride: `up{job="exelet",stage="production"}`,
+    }
+  );
+
   // CPU Metrics Row
   dash.withRow(
     new RowBuilder("CPU Metrics").gridPos(gp({ w: 24, h: 1 }))
