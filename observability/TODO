@@ -1,0 +1,4 @@
+1. Stop doing x, y; h and w is usually enough.
+2. Make typescript pass on the dashboard.
+3. [FIRING] exe-ctr-09: Exelet application is not reporting metrics (signal=strong, deploy)
+4. [FIRING] exe-ctr-09: Exelet host is not reporting metrics (signal=strong, deploy)
