@@ -172,16 +172,26 @@ $(document).ready(function() {
             }}
         ],
         initComplete: function() {
-            this.api().columns().every(function(idx) {
-                var column = this;
-                $('input', $('#usersTable thead tr.filters th').eq(idx)).on('keyup change clear', function() {
-                    if (column.search() !== this.value) {
-                        column.search(this.value).draw();
-                    }
+                var api = this.api();
+                api.columns().every(function(idx) {
+                    var column = this;
+                    $('input', $('#usersTable thead tr.filters th').eq(idx)).on('keyup change clear', function() {
+                        if (column.search() !== this.value) {
+                            column.search(this.value).draw();
+                        }
+                    });
                 });
-            });
-        }
-    });
+                // Check for search parameter in URL
+                var urlParams = new URLSearchParams(window.location.search);
+                var searchTerm = urlParams.get('search');
+                if (searchTerm) {
+                    // Search in the Email column (index 0)
+                    api.column(0).search(searchTerm).draw();
+                    // Also fill in the filter input
+                    $('input', $('#usersTable thead tr.filters th').eq(0)).val(searchTerm);
+                }
+            }
+        });
 });
 
 // Toggle root support dialog
