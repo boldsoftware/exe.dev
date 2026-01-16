@@ -32,9 +32,14 @@ func TestExeDevAPI(t *testing.T) {
 	foundCurrent := false
 	initialKey := strings.TrimSpace(who.SSHKeys[0].PublicKey)
 	for _, key := range who.SSHKeys {
+		if key.Fingerprint == "" {
+			t.Errorf("expected fingerprint for SSH key, got empty string")
+		}
+		if !strings.HasPrefix(key.Fingerprint, "SHA256:") {
+			t.Errorf("expected fingerprint to start with SHA256:, got %q", key.Fingerprint)
+		}
 		if key.Current {
 			foundCurrent = true
-			break
 		}
 	}
 	if !foundCurrent {
@@ -224,8 +229,9 @@ type browserCommandOutput struct {
 type whoamiOutput struct {
 	Email   string `json:"email"`
 	SSHKeys []struct {
-		PublicKey string `json:"public_key"`
-		Current   bool   `json:"current"`
+		PublicKey   string `json:"public_key"`
+		Fingerprint string `json:"fingerprint"`
+		Current     bool   `json:"current"`
 	} `json:"ssh_keys"`
 }
 

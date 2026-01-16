@@ -1172,8 +1172,9 @@ func (ss *SSHServer) handleSudoCommand(ctx context.Context, cc *exemenu.CommandC
 
 func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	type sshKeyRow struct {
-		PublicKey string `json:"public_key"`
-		Current   bool   `json:"current"`
+		PublicKey   string `json:"public_key"`
+		Fingerprint string `json:"fingerprint"`
+		Current     bool   `json:"current"`
 	}
 	ccPubKey := strings.TrimSpace(cc.PublicKey)
 	publicKeys, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetSSHKeysForUserByEmail, cc.User.Email)
@@ -1187,7 +1188,11 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 			continue
 		}
 		isCurrent := dbPublicKey == ccPubKey
-		sshKeys = append(sshKeys, sshKeyRow{PublicKey: dbPublicKey, Current: isCurrent})
+		fingerprint := ""
+		if parsedKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(dbPublicKey)); err == nil {
+			fingerprint = ssh.FingerprintSHA256(parsedKey)
+		}
+		sshKeys = append(sshKeys, sshKeyRow{PublicKey: dbPublicKey, Fingerprint: fingerprint, Current: isCurrent})
 	}
 
 	slices.SortFunc(sshKeys, func(a, b sshKeyRow) int {
