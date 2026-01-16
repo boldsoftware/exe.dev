@@ -28,6 +28,7 @@ const (
 	TypeShareInvitation        Type = "share_invitation"
 	TypeBoxCreated             Type = "box_created"
 	TypeDebugTest              Type = "debug_test"
+	TypeInvitesAllocated       Type = "invites_allocated"
 )
 
 var emailsSentTotal = prometheus.NewCounterVec(

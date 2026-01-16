@@ -2158,8 +2158,8 @@ func (s *Server) handleDebugInviteCreate(w http.ResponseWriter, r *http.Request,
 }
 
 func (s *Server) handleDebugInviteGiveToUser(w http.ResponseWriter, r *http.Request, ctx context.Context, assignedBy string) {
-	email := r.FormValue("email")
-	if email == "" {
+	userEmail := r.FormValue("email")
+	if userEmail == "" {
 		http.Error(w, "email is required", http.StatusBadRequest)
 		return
 	}
@@ -2178,9 +2178,9 @@ func (s *Server) handleDebugInviteGiveToUser(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Look up user by email
-	user, err := s.GetUserByEmail(ctx, email)
+	user, err := s.GetUserByEmail(ctx, userEmail)
 	if err != nil || user == nil {
-		http.Error(w, fmt.Sprintf("user not found: %s", email), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("user not found: %s", userEmail), http.StatusBadRequest)
 		return
 	}
 
@@ -2210,8 +2210,37 @@ func (s *Server) handleDebugInviteGiveToUser(w http.ResponseWriter, r *http.Requ
 			"code", code,
 			"plan_type", planType,
 			"assigned_by", assignedBy,
-			"user_email", email,
+			"user_email", userEmail,
 			"user_id", user.UserID)
+	}
+
+	// Send email notification
+	var planDesc string
+	if planType == "trial" {
+		planDesc = "1 month free trial"
+	} else {
+		planDesc = "free"
+	}
+	codeWord := "codes"
+	if count == 1 {
+		codeWord = "code"
+	}
+	subject := fmt.Sprintf("%s: you have invite %s to share", s.env.WebHost, codeWord)
+	body := fmt.Sprintf(`Hi,
+
+You have been given %d invite %s to share with friends.
+
+Each invite code grants the recipient a %s plan.
+
+To view and share your invite %s, visit:
+https://%s/invite
+
+---
+%s
+`, count, codeWord, planDesc, codeWord, s.env.WebHost, s.env.WebHost)
+
+	if err := s.sendEmail(ctx, email.TypeInvitesAllocated, userEmail, subject, body); err != nil {
+		s.slog().WarnContext(ctx, "failed to send invites allocated email", "to", userEmail, "error", err)
 	}
 
 	http.Redirect(w, r, "/debug/invite", http.StatusSeeOther)
