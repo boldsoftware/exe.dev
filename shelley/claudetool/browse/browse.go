@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
@@ -25,8 +26,27 @@ import (
 // ScreenshotDir is the directory where screenshots are stored
 const ScreenshotDir = "/tmp/shelley-screenshots"
 
+// DownloadDir is the directory where downloads are stored
+const DownloadDir = "/tmp/shelley-downloads"
+
+// ConsoleLogsDir is the directory where large console logs are stored
+const ConsoleLogsDir = "/tmp/shelley-console-logs"
+
+// ConsoleLogSizeThreshold is the size in bytes above which console logs are written to a file
+const ConsoleLogSizeThreshold = 1024
+
 // DefaultIdleTimeout is how long to wait before shutting down an idle browser
 const DefaultIdleTimeout = 30 * time.Minute
+
+// DownloadInfo tracks information about a completed download
+type DownloadInfo struct {
+	GUID              string
+	URL               string
+	SuggestedFilename string
+	FinalPath         string
+	Completed         bool
+	Error             string
+}
 
 // BrowseTools contains all browser tools and manages a shared browser instance
 type BrowseTools struct {
@@ -48,6 +68,10 @@ type BrowseTools struct {
 	idleTimer   *time.Timer
 	// Max image dimension for resizing (0 means use default)
 	maxImageDimension int
+	// Download tracking
+	downloads      map[string]*DownloadInfo // keyed by GUID
+	downloadsMutex sync.Mutex
+	downloadCond   *sync.Cond
 }
 
 // NewBrowseTools creates a new set of browser automation tools.
@@ -57,18 +81,23 @@ func NewBrowseTools(ctx context.Context, idleTimeout time.Duration, maxImageDime
 	if idleTimeout <= 0 {
 		idleTimeout = DefaultIdleTimeout
 	}
-	if err := os.MkdirAll(ScreenshotDir, 0o755); err != nil {
-		log.Printf("Failed to create screenshot directory: %v", err)
+	for _, dir := range []string{ScreenshotDir, DownloadDir, ConsoleLogsDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Printf("Failed to create directory %s: %v", dir, err)
+		}
 	}
 
-	return &BrowseTools{
+	bt := &BrowseTools{
 		ctx:               ctx,
 		screenshots:       make(map[string]time.Time),
 		consoleLogs:       make([]*runtime.EventConsoleAPICalled, 0),
 		maxConsoleLogs:    100,
 		maxImageDimension: maxImageDimension,
 		idleTimeout:       idleTimeout,
+		downloads:         make(map[string]*DownloadInfo),
 	}
+	bt.downloadCond = sync.NewCond(&bt.downloadsMutex)
+	return bt
 }
 
 // GetBrowserContext returns the browser context, initializing if needed and resetting the idle timer.
@@ -96,10 +125,15 @@ func (b *BrowseTools) GetBrowserContext() (context.Context, error) {
 		chromedp.WithBrowserOption(chromedp.WithDialTimeout(60*time.Second)),
 	)
 
-	// Set up console log listener
+	// Set up event listeners for console logs and downloads
 	chromedp.ListenTarget(browserCtx, func(ev any) {
-		if e, ok := ev.(*runtime.EventConsoleAPICalled); ok {
+		switch e := ev.(type) {
+		case *runtime.EventConsoleAPICalled:
 			b.captureConsoleLog(e)
+		case *browser.EventDownloadWillBegin:
+			b.handleDownloadWillBegin(e)
+		case *browser.EventDownloadProgress:
+			b.handleDownloadProgress(e)
 		}
 	})
 
@@ -114,6 +148,17 @@ func (b *BrowseTools) GetBrowserContext() (context.Context, error) {
 		browserCancel()
 		allocCancel()
 		return nil, fmt.Errorf("failed to set default viewport: %w", err)
+	}
+
+	// Configure download behavior to allow downloads and emit events
+	if err := chromedp.Run(browserCtx,
+		browser.SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorAllowAndName).
+			WithDownloadPath(DownloadDir).
+			WithEventsEnabled(true),
+	); err != nil {
+		browserCancel()
+		allocCancel()
+		return nil, fmt.Errorf("failed to configure download behavior: %w", err)
 	}
 
 	b.allocCtx = allocCtx
@@ -238,10 +283,29 @@ func (b *BrowseTools) navigateRun(ctx context.Context, m json.RawMessage) llm.To
 		chromedp.WaitReady("body"),
 	)
 	if err != nil {
+		// Navigation to download URLs fails with ERR_ABORTED, but the download may have succeeded.
+		// Wait briefly for download events to be processed, then check if we got any downloads.
+		if strings.Contains(err.Error(), "net::ERR_ABORTED") {
+			time.Sleep(500 * time.Millisecond)
+			downloads := b.GetRecentDownloads()
+			if len(downloads) > 0 {
+				// Download succeeded - report it instead of error
+				var sb strings.Builder
+				sb.WriteString("Navigation triggered download(s):")
+				for _, d := range downloads {
+					if d.Error != "" {
+						sb.WriteString(fmt.Sprintf("\n  - %s (from %s): ERROR: %s", d.SuggestedFilename, d.URL, d.Error))
+					} else {
+						sb.WriteString(fmt.Sprintf("\n  - %s (from %s) saved to: %s", d.SuggestedFilename, d.URL, d.FinalPath))
+					}
+				}
+				return llm.ToolOut{LLMContent: llm.TextContent(sb.String())}
+			}
+		}
 		return llm.ErrorToolOut(err)
 	}
 
-	return llm.ToolOut{LLMContent: llm.TextContent("done")}
+	return b.toolOutWithDownloads("done")
 }
 
 // ResizeTool definition
@@ -382,7 +446,19 @@ func (b *BrowseTools) evalRun(ctx context.Context, m json.RawMessage) llm.ToolOu
 		return llm.ErrorfToolOut("failed to marshal response: %w", err)
 	}
 
-	return llm.ToolOut{LLMContent: llm.TextContent("<javascript_result>" + string(response) + "</javascript_result>")}
+	// If output exceeds threshold, write to file
+	if len(response) > ConsoleLogSizeThreshold {
+		filename := fmt.Sprintf("js_result_%s.json", uuid.New().String()[:8])
+		filePath := filepath.Join(ConsoleLogsDir, filename)
+		if err := os.WriteFile(filePath, response, 0o644); err != nil {
+			return llm.ErrorfToolOut("failed to write JS result to file: %w", err)
+		}
+		return b.toolOutWithDownloads(fmt.Sprintf(
+			"JavaScript result (%d bytes) written to: %s\nUse `cat %s` to view the full content.",
+			len(response), filePath, filePath))
+	}
+
+	return b.toolOutWithDownloads("<javascript_result>" + string(response) + "</javascript_result>")
 }
 
 // ScreenshotTool definition
@@ -648,6 +724,111 @@ func (b *BrowseTools) captureConsoleLog(e *runtime.EventConsoleAPICalled) {
 	}
 }
 
+// handleDownloadWillBegin handles the browser download start event
+func (b *BrowseTools) handleDownloadWillBegin(e *browser.EventDownloadWillBegin) {
+	b.downloadsMutex.Lock()
+	defer b.downloadsMutex.Unlock()
+
+	b.downloads[e.GUID] = &DownloadInfo{
+		GUID:              e.GUID,
+		URL:               e.URL,
+		SuggestedFilename: e.SuggestedFilename,
+	}
+}
+
+// handleDownloadProgress handles the browser download progress event
+func (b *BrowseTools) handleDownloadProgress(e *browser.EventDownloadProgress) {
+	b.downloadsMutex.Lock()
+	defer b.downloadsMutex.Unlock()
+
+	info, ok := b.downloads[e.GUID]
+	if !ok {
+		// Download started before we started tracking, create entry
+		info = &DownloadInfo{GUID: e.GUID}
+		b.downloads[e.GUID] = info
+	}
+
+	switch e.State {
+	case browser.DownloadProgressStateCompleted:
+		info.Completed = true
+		// The file is downloaded with GUID as filename, rename to suggested filename with random suffix
+		guidPath := filepath.Join(DownloadDir, e.GUID)
+		finalName := b.generateDownloadFilename(info.SuggestedFilename)
+		finalPath := filepath.Join(DownloadDir, finalName)
+		// Retry rename a few times as file might still be being written
+		var renamed bool
+		for i := 0; i < 10; i++ {
+			if err := os.Rename(guidPath, finalPath); err == nil {
+				info.FinalPath = finalPath
+				renamed = true
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if !renamed {
+			// File might have different path or couldn't be renamed
+			if e.FilePath != "" {
+				info.FinalPath = e.FilePath
+			} else {
+				info.FinalPath = guidPath
+			}
+		}
+		b.downloadCond.Broadcast()
+	case browser.DownloadProgressStateCanceled:
+		info.Completed = true
+		info.Error = "download canceled"
+		b.downloadCond.Broadcast()
+	}
+}
+
+// generateDownloadFilename creates a filename with randomness
+func (b *BrowseTools) generateDownloadFilename(suggested string) string {
+	if suggested == "" {
+		suggested = "download"
+	}
+	// Extract extension if present
+	ext := filepath.Ext(suggested)
+	base := strings.TrimSuffix(suggested, ext)
+	// Add random suffix
+	randomSuffix := uuid.New().String()[:8]
+	return fmt.Sprintf("%s_%s%s", base, randomSuffix, ext)
+}
+
+// GetRecentDownloads returns download info for recently completed downloads and clears the list
+func (b *BrowseTools) GetRecentDownloads() []*DownloadInfo {
+	b.downloadsMutex.Lock()
+	defer b.downloadsMutex.Unlock()
+
+	var completed []*DownloadInfo
+	for guid, info := range b.downloads {
+		if info.Completed {
+			completed = append(completed, info)
+			delete(b.downloads, guid)
+		}
+	}
+	return completed
+}
+
+// toolOutWithDownloads creates a tool output that includes any completed downloads
+func (b *BrowseTools) toolOutWithDownloads(message string) llm.ToolOut {
+	downloads := b.GetRecentDownloads()
+	if len(downloads) == 0 {
+		return llm.ToolOut{LLMContent: llm.TextContent(message)}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(message)
+	sb.WriteString("\n\nDownloads completed:")
+	for _, d := range downloads {
+		if d.Error != "" {
+			sb.WriteString(fmt.Sprintf("\n  - %s (from %s): ERROR: %s", d.SuggestedFilename, d.URL, d.Error))
+		} else {
+			sb.WriteString(fmt.Sprintf("\n  - %s (from %s) saved to: %s", d.SuggestedFilename, d.URL, d.FinalPath))
+		}
+	}
+	return llm.ToolOut{LLMContent: llm.TextContent(sb.String())}
+}
+
 // RecentConsoleLogsTool definition
 type recentConsoleLogsInput struct {
 	Limit int `json:"limit,omitempty"`
@@ -703,6 +884,18 @@ func (b *BrowseTools) recentConsoleLogsRun(ctx context.Context, m json.RawMessag
 	logData, err := json.MarshalIndent(logs, "", "  ")
 	if err != nil {
 		return llm.ErrorfToolOut("failed to serialize logs: %w", err)
+	}
+
+	// If output exceeds threshold, write to file
+	if len(logData) > ConsoleLogSizeThreshold {
+		filename := fmt.Sprintf("console_logs_%s.json", uuid.New().String()[:8])
+		filePath := filepath.Join(ConsoleLogsDir, filename)
+		if err := os.WriteFile(filePath, logData, 0o644); err != nil {
+			return llm.ErrorfToolOut("failed to write console logs to file: %w", err)
+		}
+		return llm.ToolOut{LLMContent: llm.TextContent(fmt.Sprintf(
+			"Retrieved %d console log entries (%d bytes).\nOutput written to: %s\nUse `cat %s` to view the full content.",
+			len(logs), len(logData), filePath, filePath))}
 	}
 
 	// Format the logs

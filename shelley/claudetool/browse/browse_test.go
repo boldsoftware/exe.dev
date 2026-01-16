@@ -9,6 +9,8 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,7 +18,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chromedp/cdproto/browser"
+	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
+	"github.com/go-json-experiment/json/jsontext"
 	"shelley.exe.dev/llm"
 )
 
@@ -647,4 +652,479 @@ func TestSaveScreenshotErrorPath(t *testing.T) {
 	// Clean up the test file
 	filePath := GetScreenshotPath(id)
 	os.Remove(filePath)
+}
+
+// TestConsoleLogsWriteToFile tests that large console logs are written to file
+func TestConsoleLogsWriteToFile(t *testing.T) {
+	ctx := context.Background()
+	tools := NewBrowseTools(ctx, 0, 0)
+	t.Cleanup(func() {
+		tools.Close()
+	})
+
+	// Manually add many console logs to exceed threshold
+	tools.consoleLogsMutex.Lock()
+	for i := 0; i < 50; i++ {
+		tools.consoleLogs = append(tools.consoleLogs, &runtime.EventConsoleAPICalled{
+			Type: runtime.APITypeLog,
+			Args: []*runtime.RemoteObject{
+				{Type: runtime.TypeString, Value: jsontext.Value(`"This is a long log message that will help exceed the 1KB threshold when repeated many times"`)},
+			},
+		})
+	}
+	tools.consoleLogsMutex.Unlock()
+
+	// Mock browser context to avoid actual browser initialization
+	tools.mux.Lock()
+	tools.browserCtx = ctx
+	tools.mux.Unlock()
+
+	// Get console logs - should be written to file
+	input := []byte(`{}`)
+	toolOut := tools.recentConsoleLogsRun(ctx, input)
+	if toolOut.Error != nil {
+		t.Fatalf("Unexpected error: %v", toolOut.Error)
+	}
+
+	resultText := toolOut.LLMContent[0].Text
+	if !strings.Contains(resultText, "Output written to:") {
+		t.Errorf("Expected output to be written to file, got: %s", resultText)
+	}
+	if !strings.Contains(resultText, ConsoleLogsDir) {
+		t.Errorf("Expected file path to contain %s, got: %s", ConsoleLogsDir, resultText)
+	}
+
+	// Extract file path and verify file exists
+	parts := strings.Split(resultText, "Output written to: ")
+	if len(parts) < 2 {
+		t.Fatalf("Could not extract file path from: %s", resultText)
+	}
+	filePath := strings.Split(parts[1], "\n")[0]
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		t.Errorf("Expected file to exist at %s", filePath)
+	} else {
+		// Clean up
+		os.Remove(filePath)
+	}
+}
+
+// TestGenerateDownloadFilename tests filename generation with randomness
+func TestGenerateDownloadFilename(t *testing.T) {
+	ctx := context.Background()
+	tools := NewBrowseTools(ctx, 0, 0)
+	t.Cleanup(func() {
+		tools.Close()
+	})
+
+	tests := []struct {
+		suggested string
+		prefix    string
+		ext       string
+	}{
+		{"test.txt", "test_", ".txt"},
+		{"document.pdf", "document_", ".pdf"},
+		{"noextension", "noextension_", ""},
+		{"", "download_", ""},
+		{"file.tar.gz", "file.tar_", ".gz"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.suggested, func(t *testing.T) {
+			result := tools.generateDownloadFilename(tt.suggested)
+			if !strings.HasPrefix(result, tt.prefix) {
+				t.Errorf("Expected prefix %q, got %q", tt.prefix, result)
+			}
+			if !strings.HasSuffix(result, tt.ext) {
+				t.Errorf("Expected suffix %q, got %q", tt.ext, result)
+			}
+			// Verify randomness (8 chars between prefix and extension)
+			withoutPrefix := strings.TrimPrefix(result, tt.prefix)
+			withoutExt := strings.TrimSuffix(withoutPrefix, tt.ext)
+			if len(withoutExt) != 8 {
+				t.Errorf("Expected 8 random chars, got %d in %q", len(withoutExt), result)
+			}
+		})
+	}
+
+	// Verify different calls produce different results
+	result1 := tools.generateDownloadFilename("test.txt")
+	result2 := tools.generateDownloadFilename("test.txt")
+	if result1 == result2 {
+		t.Errorf("Expected different filenames, got same: %s", result1)
+	}
+}
+
+// TestDownloadTracking tests the download event handling
+func TestDownloadTracking(t *testing.T) {
+	ctx := context.Background()
+	tools := NewBrowseTools(ctx, 0, 0)
+	t.Cleanup(func() {
+		tools.Close()
+	})
+
+	// Simulate download start event
+	tools.handleDownloadWillBegin(&browser.EventDownloadWillBegin{
+		GUID:              "test-guid-123",
+		URL:               "http://example.com/file.txt",
+		SuggestedFilename: "file.txt",
+	})
+
+	// Verify download is tracked
+	tools.downloadsMutex.Lock()
+	info, exists := tools.downloads["test-guid-123"]
+	tools.downloadsMutex.Unlock()
+
+	if !exists {
+		t.Fatal("Expected download to be tracked")
+	}
+	if info.URL != "http://example.com/file.txt" {
+		t.Errorf("Expected URL %q, got %q", "http://example.com/file.txt", info.URL)
+	}
+	if info.Completed {
+		t.Error("Download should not be completed yet")
+	}
+
+	// Simulate download progress - canceled
+	tools.handleDownloadProgress(&browser.EventDownloadProgress{
+		GUID:  "test-guid-123",
+		State: browser.DownloadProgressStateCanceled,
+	})
+
+	// Verify download is marked as completed with error
+	tools.downloadsMutex.Lock()
+	info = tools.downloads["test-guid-123"]
+	tools.downloadsMutex.Unlock()
+
+	if !info.Completed {
+		t.Error("Download should be completed after cancel")
+	}
+	if info.Error != "download canceled" {
+		t.Errorf("Expected error %q, got %q", "download canceled", info.Error)
+	}
+}
+
+// TestToolOutWithDownloads tests the download info appending to tool output
+func TestToolOutWithDownloads(t *testing.T) {
+	ctx := context.Background()
+	tools := NewBrowseTools(ctx, 0, 0)
+	t.Cleanup(func() {
+		tools.Close()
+	})
+
+	// Test with no downloads
+	out := tools.toolOutWithDownloads("test message")
+	if out.LLMContent[0].Text != "test message" {
+		t.Errorf("Expected %q, got %q", "test message", out.LLMContent[0].Text)
+	}
+
+	// Add a completed download
+	tools.downloadsMutex.Lock()
+	tools.downloads["guid1"] = &DownloadInfo{
+		GUID:              "guid1",
+		URL:               "http://example.com/files/test.txt",
+		SuggestedFilename: "test.txt",
+		FinalPath:         "/tmp/test_abc123.txt",
+		Completed:         true,
+	}
+	tools.downloadsMutex.Unlock()
+
+	// Test with downloads
+	out = tools.toolOutWithDownloads("done")
+	result := out.LLMContent[0].Text
+	if !strings.Contains(result, "Downloads completed:") {
+		t.Errorf("Expected downloads section, got: %s", result)
+	}
+	if !strings.Contains(result, "test.txt") {
+		t.Errorf("Expected filename in output, got: %s", result)
+	}
+	if !strings.Contains(result, "http://example.com/files/test.txt") {
+		t.Errorf("Expected URL in output, got: %s", result)
+	}
+	if !strings.Contains(result, "saved to:") {
+		t.Errorf("Expected 'saved to:' in output, got: %s", result)
+	}
+	if !strings.Contains(result, "/tmp/test_abc123.txt") {
+		t.Errorf("Expected final path in output, got: %s", result)
+	}
+
+	// Verify download was cleared after retrieval
+	tools.downloadsMutex.Lock()
+	_, exists := tools.downloads["guid1"]
+	tools.downloadsMutex.Unlock()
+	if exists {
+		t.Error("Expected download to be cleared after retrieval")
+	}
+}
+
+// TestBrowserDownload tests the full browser download workflow with a real HTTP server
+func TestBrowserDownload(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping browser download test in short mode")
+	}
+
+	// Start a test HTTP server that triggers a download
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start listener: %v", err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/download", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", "attachment; filename=\"test.txt\"")
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write([]byte("Hello, this is a test file!"))
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<body>
+<a id="download-link" href="/download">Download</a>
+</body>
+</html>`)))
+	})
+
+	server := &http.Server{Handler: mux}
+	go server.Serve(listener)
+	defer server.Close()
+
+	// Create browser tools
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	tools := NewBrowseTools(ctx, 0, 0)
+	t.Cleanup(func() {
+		tools.Close()
+	})
+
+	// Navigate to the test page
+	navInput := []byte(fmt.Sprintf(`{"url": "http://127.0.0.1:%d/"}`, port))
+	toolOut := tools.NewNavigateTool().Run(ctx, navInput)
+	if toolOut.Error != nil {
+		if strings.Contains(toolOut.Error.Error(), "failed to start browser") {
+			t.Skip("Browser automation not available in this environment")
+		}
+		t.Fatalf("Navigation error: %v", toolOut.Error)
+	}
+
+	// Click the download link
+	evalInput := []byte(`{"expression": "document.getElementById('download-link').click()"}`)
+	toolOut = tools.NewEvalTool().Run(ctx, evalInput)
+	if toolOut.Error != nil {
+		t.Fatalf("Eval error: %v", toolOut.Error)
+	}
+
+	// Wait for download to complete (poll for completion)
+	var downloadFound bool
+	for i := 0; i < 20; i++ {
+		time.Sleep(100 * time.Millisecond)
+		files, err := os.ReadDir(DownloadDir)
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			// Check for renamed file (test_*) or GUID file
+			if strings.HasPrefix(f.Name(), "test_") || len(f.Name()) == 36 {
+				filePath := filepath.Join(DownloadDir, f.Name())
+				content, err := os.ReadFile(filePath)
+				if err == nil && string(content) == "Hello, this is a test file!" {
+					downloadFound = true
+					t.Logf("Found downloaded file: %s", f.Name())
+					// Clean up
+					os.Remove(filePath)
+					break
+				}
+			}
+		}
+		if downloadFound {
+			break
+		}
+	}
+
+	if !downloadFound {
+		// List what's in the directory for debugging
+		files, _ := os.ReadDir(DownloadDir)
+		var names []string
+		for _, f := range files {
+			names = append(names, f.Name())
+		}
+		t.Errorf("Download file not found. Files in %s: %v", DownloadDir, names)
+	}
+}
+
+// TestBrowserDownloadReported tests that downloads are reported in tool output
+func TestBrowserDownloadReported(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping browser download test in short mode")
+	}
+
+	// Start a test HTTP server that triggers a download
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start listener: %v", err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/download", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", "attachment; filename=\"report_test.txt\"")
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write([]byte("Download report test file content"))
+	})
+
+	server := &http.Server{Handler: mux}
+	go server.Serve(listener)
+	defer server.Close()
+
+	// Create browser tools
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	tools := NewBrowseTools(ctx, 0, 0)
+	t.Cleanup(func() {
+		tools.Close()
+	})
+
+	// Navigate directly to the download URL - should succeed with download info
+	navInput := []byte(fmt.Sprintf(`{"url": "http://127.0.0.1:%d/download"}`, port))
+	toolOut := tools.NewNavigateTool().Run(ctx, navInput)
+	if toolOut.Error != nil {
+		if strings.Contains(toolOut.Error.Error(), "failed to start browser") {
+			t.Skip("Browser automation not available in this environment")
+		}
+		t.Fatalf("Navigation returned unexpected error: %v", toolOut.Error)
+	}
+
+	result := toolOut.LLMContent[0].Text
+	t.Logf("Navigation result: %s", result)
+
+	// Navigation to download URL should report the download directly
+	if !strings.Contains(result, "download") {
+		t.Errorf("Expected 'download' in output, got: %s", result)
+	}
+	if !strings.Contains(result, "report_test") {
+		t.Errorf("Expected 'report_test' in download output, got: %s", result)
+	}
+	if !strings.Contains(result, DownloadDir) {
+		t.Errorf("Expected download path, got: %s", result)
+	}
+
+	// Clean up any downloaded files
+	files, _ := os.ReadDir(DownloadDir)
+	for _, f := range files {
+		if strings.HasPrefix(f.Name(), "report_test_") {
+			os.Remove(filepath.Join(DownloadDir, f.Name()))
+		}
+	}
+}
+
+// TestLargeJSOutputWriteToFile tests that large JS eval results are written to file
+func TestLargeJSOutputWriteToFile(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping browser test in short mode")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	tools := NewBrowseTools(ctx, 0, 0)
+	t.Cleanup(func() {
+		tools.Close()
+	})
+
+	// Navigate to about:blank first
+	navInput := []byte(`{"url": "about:blank"}`)
+	toolOut := tools.NewNavigateTool().Run(ctx, navInput)
+	if toolOut.Error != nil {
+		if strings.Contains(toolOut.Error.Error(), "failed to start browser") {
+			t.Skip("Browser automation not available in this environment")
+		}
+		t.Fatalf("Navigation error: %v", toolOut.Error)
+	}
+
+	// Execute JS that returns a large string (> 1KB)
+	evalInput := []byte(`{"expression": "'x'.repeat(2000)"}`)
+	toolOut = tools.NewEvalTool().Run(ctx, evalInput)
+	if toolOut.Error != nil {
+		t.Fatalf("Eval error: %v", toolOut.Error)
+	}
+
+	result := toolOut.LLMContent[0].Text
+	t.Logf("Result: %s", result[:min(200, len(result))])
+
+	// Should be written to file
+	if !strings.Contains(result, "JavaScript result") {
+		t.Errorf("Expected 'JavaScript result' in output, got: %s", result)
+	}
+	if !strings.Contains(result, "written to:") {
+		t.Errorf("Expected 'written to:' in output, got: %s", result)
+	}
+	if !strings.Contains(result, ConsoleLogsDir) {
+		t.Errorf("Expected file path to contain %s, got: %s", ConsoleLogsDir, result)
+	}
+
+	// Extract and verify file exists
+	parts := strings.Split(result, "written to: ")
+	if len(parts) >= 2 {
+		filePath := strings.Split(parts[1], "\n")[0]
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			t.Errorf("Expected file to exist at %s", filePath)
+		} else {
+			// Verify content
+			content, err := os.ReadFile(filePath)
+			if err != nil {
+				t.Errorf("Failed to read file: %v", err)
+			} else if len(content) < 2000 {
+				t.Errorf("Expected file to contain large result, got %d bytes", len(content))
+			}
+			// Clean up
+			os.Remove(filePath)
+		}
+	}
+}
+
+// TestSmallJSOutputInline tests that small JS results are returned inline
+func TestSmallJSOutputInline(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping browser test in short mode")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	tools := NewBrowseTools(ctx, 0, 0)
+	t.Cleanup(func() {
+		tools.Close()
+	})
+
+	// Navigate to about:blank first
+	navInput := []byte(`{"url": "about:blank"}`)
+	toolOut := tools.NewNavigateTool().Run(ctx, navInput)
+	if toolOut.Error != nil {
+		if strings.Contains(toolOut.Error.Error(), "failed to start browser") {
+			t.Skip("Browser automation not available in this environment")
+		}
+		t.Fatalf("Navigation error: %v", toolOut.Error)
+	}
+
+	// Execute JS that returns a small string (< 1KB)
+	evalInput := []byte(`{"expression": "'hello world'"}`)
+	toolOut = tools.NewEvalTool().Run(ctx, evalInput)
+	if toolOut.Error != nil {
+		t.Fatalf("Eval error: %v", toolOut.Error)
+	}
+
+	result := toolOut.LLMContent[0].Text
+
+	// Should be inline
+	if !strings.Contains(result, "<javascript_result>") {
+		t.Errorf("Expected '<javascript_result>' in output, got: %s", result)
+	}
+	if !strings.Contains(result, "hello world") {
+		t.Errorf("Expected 'hello world' in output, got: %s", result)
+	}
+	if strings.Contains(result, "written to:") {
+		t.Errorf("Small result should not be written to file, got: %s", result)
+	}
 }
