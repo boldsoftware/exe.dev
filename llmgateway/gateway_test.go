@@ -1,11 +1,15 @@
 package llmgateway
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -300,4 +304,344 @@ func TestGateway_ServeHTTP_UnrecognizedAlias(t *testing.T) {
 	if !strings.Contains(rr.Body.String(), "unrecognized origin alias") {
 		t.Errorf("Expected 'unrecognized origin alias' error, got: %s", rr.Body.String())
 	}
+}
+
+func TestGateway_GzipResponse(t *testing.T) {
+	// This test reproduces an issue where gzip-compressed responses from OpenAI
+	// were not being decompressed before JSON parsing, resulting in errors like:
+	// "openai json decode error: invalid character 'a' looking for beginning of value"
+	//
+	// The issue occurs because http.DefaultTransport has DisableCompression=false,
+	// which means it sends Accept-Encoding: gzip by default. When the upstream
+	// server responds with gzip-compressed content, the transport is supposed to
+	// decompress it automatically. However, there's a subtle issue: when using
+	// httputil.ReverseProxy, the automatic decompression doesn't always work as
+	// expected because the proxy copies the response headers including Content-Encoding.
+
+	gateway, _ := setupTestGateway(t)
+	gateway.devMode = true
+	gateway.apiKeys.OpenAI = "test-openai-key"
+	gateway.creditMgr = NewCreditManager(gateway.db)
+
+	// Create a gzip-compressed response body
+	jsonResponse := `{"id": "chatcmpl-123", "model": "gpt-4", "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}}`
+	var buf bytes.Buffer
+	gzWriter := gzip.NewWriter(&buf)
+	gzWriter.Write([]byte(jsonResponse))
+	gzWriter.Close()
+	gzippedData := buf.Bytes()
+
+	t.Run("with Content-Encoding gzip header", func(t *testing.T) {
+		// Create a mock response with gzip-compressed body and proper header
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       &readCloser{Reader: bytes.NewReader(gzippedData)},
+		}
+		resp.Header.Set("Content-Type", "application/json")
+		resp.Header.Set("Content-Encoding", "gzip")
+
+		// Create the accounting transport
+		incomingReq := httptest.NewRequest("GET", "/_/gateway/openai/v1/models", nil)
+		transport := &accountingTransport{
+			RoundTripper: http.DefaultTransport,
+			db:           gateway.db,
+			apiType:      "openai",
+			log:          gateway.log,
+			creditMgr:    gateway.creditMgr,
+			incomingReq:  incomingReq,
+			boxName:      "test-box",
+			userID:       "test-user-test-box",
+		}
+
+		// This should not return an error - the transport should decompress the gzip data
+		err := transport.modifyResponse(resp)
+		if err != nil {
+			t.Errorf("modifyResponse failed with gzip response: %v", err)
+		}
+	})
+
+	t.Run("gzip data without Content-Encoding header", func(t *testing.T) {
+		// This simulates the case where gzip data arrives without the header
+		// (could happen if some middleware strips the header but not the encoding)
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       &readCloser{Reader: bytes.NewReader(gzippedData)},
+		}
+		resp.Header.Set("Content-Type", "application/json")
+		// NOTE: No Content-Encoding header!
+
+		incomingReq := httptest.NewRequest("GET", "/_/gateway/openai/v1/models", nil)
+		transport := &accountingTransport{
+			RoundTripper: http.DefaultTransport,
+			db:           gateway.db,
+			apiType:      "openai",
+			log:          gateway.log,
+			creditMgr:    gateway.creditMgr,
+			incomingReq:  incomingReq,
+			boxName:      "test-box",
+			userID:       "test-user-test-box",
+		}
+
+		// The code should detect gzip via magic bytes even without the header
+		err := transport.modifyResponse(resp)
+		if err != nil {
+			t.Errorf("modifyResponse failed with gzip data (no header): %v", err)
+		}
+	})
+
+	t.Run("with non-standard Content-Encoding header value", func(t *testing.T) {
+		// Test with different Content-Encoding header formats
+		testCases := []string{
+			"GZIP",     // uppercase
+			"Gzip",     // mixed case
+			"gzip, br", // multiple values
+			" gzip",    // leading space
+			"gzip ",    // trailing space
+		}
+
+		for _, encoding := range testCases {
+			t.Run(encoding, func(t *testing.T) {
+				resp := &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       &readCloser{Reader: bytes.NewReader(gzippedData)},
+				}
+				resp.Header.Set("Content-Type", "application/json")
+				resp.Header.Set("Content-Encoding", encoding)
+
+				incomingReq := httptest.NewRequest("GET", "/_/gateway/openai/v1/models", nil)
+				transport := &accountingTransport{
+					RoundTripper: http.DefaultTransport,
+					db:           gateway.db,
+					apiType:      "openai",
+					log:          gateway.log,
+					creditMgr:    gateway.creditMgr,
+					incomingReq:  incomingReq,
+					boxName:      "test-box",
+					userID:       "test-user-test-box",
+				}
+
+				err := transport.modifyResponse(resp)
+				if err != nil {
+					t.Errorf("modifyResponse failed with Content-Encoding=%q: %v", encoding, err)
+				}
+			})
+		}
+	})
+}
+
+// TestGateway_GzipWithClientAcceptEncoding tests the full proxy flow when
+// the client explicitly sends Accept-Encoding: gzip. This reproduces the
+// actual bug where clients inside VMs would send Accept-Encoding: gzip,
+// OpenAI would respond with gzip-compressed data, but the proxy would
+// fail to decompress it before JSON parsing.
+func TestGateway_GzipWithClientAcceptEncoding(t *testing.T) {
+	gateway, _ := setupTestGateway(t)
+	gateway.devMode = true
+	gateway.apiKeys.OpenAI = "test-openai-key"
+	gateway.creditMgr = NewCreditManager(gateway.db)
+
+	// Create a mock "OpenAI" server that returns gzip when client requests it
+	jsonResponse := `{"id": "chatcmpl-123", "model": "gpt-4", "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}}`
+	mockOpenAI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if client accepts gzip (this is what OpenAI does)
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			var buf bytes.Buffer
+			gzWriter := gzip.NewWriter(&buf)
+			gzWriter.Write([]byte(jsonResponse))
+			gzWriter.Close()
+
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Content-Encoding", "gzip")
+			w.WriteHeader(http.StatusOK)
+			w.Write(buf.Bytes())
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(jsonResponse))
+		}
+	}))
+	defer mockOpenAI.Close()
+
+	// Parse the mock server URL
+	mockURL, _ := url.Parse(mockOpenAI.URL)
+
+	// Create a test request WITH Accept-Encoding: gzip (simulating curl --compressed)
+	incomingReq := httptest.NewRequest("GET", "/_/gateway/openai/v1/models", nil)
+	incomingReq.Header.Set("X-Exedev-Box", "test-box")
+	incomingReq.Header.Set("Accept-Encoding", "gzip") // This is the key!
+	incomingReq.RemoteAddr = "127.0.0.1:12345"
+
+	// Create a custom transport that points to our mock server
+	transport := &accountingTransport{
+		RoundTripper: http.DefaultTransport,
+		db:           gateway.db,
+		apiType:      "openai",
+		log:          gateway.log,
+		creditMgr:    gateway.creditMgr,
+		incomingReq:  incomingReq,
+		boxName:      "test-box",
+		userID:       "test-user-test-box",
+	}
+
+	// Create a reverse proxy that points to our mock server
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.Out.URL.Scheme = "http"
+			r.Out.URL.Host = mockURL.Host
+			r.Out.Host = mockURL.Host
+		},
+		Transport:      transport,
+		ModifyResponse: transport.modifyResponse,
+	}
+
+	// Make the request through the proxy
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, incomingReq)
+
+	// The proxy should succeed without errors
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// The response body should be readable (either compressed or decompressed)
+	body := rr.Body.Bytes()
+	if len(body) == 0 {
+		t.Error("Expected non-empty response body")
+	}
+}
+
+// TestGateway_OpenAIModelsEndpoint tests that the /v1/models endpoint works
+// correctly. This endpoint returns a list of models without usage data,
+// so the gateway should pass through the response without error.
+func TestGateway_OpenAIModelsEndpoint(t *testing.T) {
+	gateway, _ := setupTestGateway(t)
+	gateway.devMode = true
+	gateway.apiKeys.OpenAI = "test-openai-key"
+	gateway.creditMgr = NewCreditManager(gateway.db)
+
+	// This is what OpenAI's /v1/models endpoint actually returns (no usage field)
+	modelsResponse := `{"object": "list", "data": [{"id": "gpt-4", "object": "model", "owned_by": "openai"}]}`
+
+	mockOpenAI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(modelsResponse))
+	}))
+	defer mockOpenAI.Close()
+
+	mockURL, _ := url.Parse(mockOpenAI.URL)
+
+	// The path after the gateway strips the prefix is /v1/models
+	incomingReq := httptest.NewRequest("GET", "/v1/models", nil)
+	incomingReq.Header.Set("X-Exedev-Box", "test-box")
+	incomingReq.RemoteAddr = "127.0.0.1:12345"
+
+	transport := &accountingTransport{
+		RoundTripper: http.DefaultTransport,
+		db:           gateway.db,
+		apiType:      "openai",
+		log:          gateway.log,
+		creditMgr:    gateway.creditMgr,
+		incomingReq:  incomingReq,
+		boxName:      "test-box",
+		userID:       "test-user-test-box",
+	}
+
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.Out.URL.Scheme = "http"
+			r.Out.URL.Host = mockURL.Host
+			r.Out.Host = mockURL.Host
+		},
+		Transport:      transport,
+		ModifyResponse: transport.modifyResponse,
+	}
+
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, incomingReq)
+
+	// The proxy should succeed - no usage data is fine for /v1/models
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Verify the response body is the models list
+	if !strings.Contains(rr.Body.String(), "gpt-4") {
+		t.Errorf("Expected response to contain gpt-4, got: %s", rr.Body.String())
+	}
+}
+
+// TestGateway_OpenAIMissingUsageOnOtherEndpoints tests that endpoints other than
+// /v1/models fail if they return a response without usage data.
+func TestGateway_OpenAIMissingUsageOnOtherEndpoints(t *testing.T) {
+	gateway, _ := setupTestGateway(t)
+	gateway.devMode = true
+	gateway.apiKeys.OpenAI = "test-openai-key"
+	gateway.creditMgr = NewCreditManager(gateway.db)
+
+	// Response without usage data (which would be unexpected for chat completions)
+	badResponse := `{"id": "chatcmpl-123", "object": "chat.completion", "choices": []}`
+
+	mockOpenAI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(badResponse))
+	}))
+	defer mockOpenAI.Close()
+
+	mockURL, _ := url.Parse(mockOpenAI.URL)
+
+	// Test with chat completions endpoint - should fail without usage
+	incomingReq := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	incomingReq.Header.Set("X-Exedev-Box", "test-box")
+	incomingReq.RemoteAddr = "127.0.0.1:12345"
+
+	transport := &accountingTransport{
+		RoundTripper: http.DefaultTransport,
+		db:           gateway.db,
+		apiType:      "openai",
+		log:          gateway.log,
+		creditMgr:    gateway.creditMgr,
+		incomingReq:  incomingReq,
+		boxName:      "test-box",
+		userID:       "test-user-test-box",
+	}
+
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.Out.URL.Scheme = "http"
+			r.Out.URL.Host = mockURL.Host
+			r.Out.Host = mockURL.Host
+		},
+		Transport:      transport,
+		ModifyResponse: transport.modifyResponse,
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			http.Error(w, "openai api gateway error: "+err.Error(), http.StatusBadGateway)
+		},
+	}
+
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, incomingReq)
+
+	// The proxy should fail - missing usage on /v1/chat/completions is an error
+	if rr.Code != http.StatusBadGateway {
+		t.Errorf("Expected status 502 (BadGateway), got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Error message should mention the path
+	if !strings.Contains(rr.Body.String(), "/v1/chat/completions") {
+		t.Errorf("Expected error to mention path, got: %s", rr.Body.String())
+	}
+}
+
+// readCloser wraps a Reader to implement io.ReadCloser
+type readCloser struct {
+	*bytes.Reader
+}
+
+func (rc *readCloser) Close() error {
+	return nil
 }

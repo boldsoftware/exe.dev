@@ -18,7 +18,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -120,9 +119,12 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 			return err
 		}
 		resp.Body = io.NopCloser(bytes.NewReader(data))
-		contentEncoding := resp.Header["Content-Encoding"]
 
-		if slices.Contains(contentEncoding, "gzip") {
+		// Check if the data is gzip-compressed. We check both the Content-Encoding
+		// header and the gzip magic bytes because some proxies/servers may send
+		// gzip data with non-standard header values (different casing, multiple
+		// values like "gzip, br", etc.) or even missing headers.
+		if isGzipped(resp.Header.Get("Content-Encoding"), data) {
 			gzReader, err := gzip.NewReader(bytes.NewReader(data))
 			if err != nil {
 				a.log.ErrorContext(ctx, "accountingTransport couldn't create new gzip reader for unary response body", "error", err)
@@ -231,7 +233,8 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 		)
 	case "openai", "fireworks":
 		if len(data) == 0 {
-			return fmt.Errorf("empty openai response, skipping accounting")
+			// Empty response, nothing to account for
+			return nil
 		}
 
 		var oi openaiResponseUsageInfo
@@ -239,7 +242,18 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 			return fmt.Errorf("openai json decode error: %v, content: %s", err, string(data))
 		}
 		if oi.Usage.TotalTokens == 0 {
-			return fmt.Errorf("openai response missing usage data, skipping accounting")
+			// Only allow missing usage data for specific endpoints that don't return usage
+			path := m.incomingReq.URL.Path
+			if path == "/v1/models" {
+				return nil
+			}
+			m.log.WarnContext(ctx, "openai response missing usage data",
+				"path", path,
+				"method", m.incomingReq.Method,
+				"box", m.boxName,
+				"user_id", m.userID,
+			)
+			return fmt.Errorf("openai response missing usage data for path %s", path)
 		}
 
 		// Convert OpenAI usage to Usage format for accounting
@@ -472,4 +486,16 @@ func setRateLimitGauge(header http.Header, headerName, labelValue string) {
 			anthropicRateLimitGauge.WithLabelValues(labelValue).Set(float64(val))
 		}
 	}
+}
+
+// isGzipped returns true if the data appears to be gzip-compressed.
+// It checks both the Content-Encoding header (case-insensitive, handles multiple
+// values) and the gzip magic bytes (0x1f 0x8b) as a fallback.
+func isGzipped(contentEncoding string, data []byte) bool {
+	// Check header first (case-insensitive, handles "gzip", "GZIP", "gzip, br", etc.)
+	if strings.Contains(strings.ToLower(contentEncoding), "gzip") {
+		return true
+	}
+	// Fallback: check gzip magic bytes
+	return len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b
 }
