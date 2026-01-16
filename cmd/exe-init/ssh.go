@@ -89,7 +89,7 @@ func startSSH(imageConfig *v1.ImageConfig) error {
 
 	// Protect sshd from OOM killer by setting oom_score_adj to -1000
 	oomPath := fmt.Sprintf("/proc/%d/oom_score_adj", cmd.Process.Pid)
-	if err := os.WriteFile(oomPath, []byte("-1000"), 0644); err != nil {
+	if err := os.WriteFile(oomPath, []byte("-1000"), 0o644); err != nil {
 		slog.Warn("failed to set oom_score_adj for sshd", "err", err)
 	}
 
