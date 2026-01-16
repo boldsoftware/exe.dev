@@ -1141,3 +1141,65 @@ func TestExistingUserAuthUnchanged(t *testing.T) {
 		t.Errorf("Expected 'check your email' page for existing user. Body: %s", body[:min(500, len(body))])
 	}
 }
+
+func TestNewUserWithInviteCodeSkipsBilling(t *testing.T) {
+	// Test that new users with a valid invite code skip the Stripe billing flow.
+	// The invite code grants a billing exemption, so no payment is required.
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	inviteCode := "SKIPBILLING123"
+	email := "invite-skip-billing@example.com"
+
+	// Create an invite code in the database
+	err := server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		if err := queries.AddInviteCodeToPool(ctx, inviteCode); err != nil {
+			return err
+		}
+		code, err := queries.DrawInviteCodeFromPool(ctx)
+		if err != nil {
+			return err
+		}
+		if code != inviteCode {
+			t.Fatalf("expected code %s, got %s", inviteCode, code)
+		}
+		// Create the invite code with "free" plan type
+		_, err = queries.CreateInviteCode(ctx, exedb.CreateInviteCodeParams{
+			Code:             inviteCode,
+			PlanType:         "free",
+			AssignedToUserID: nil,
+			AssignedBy:       "test",
+			AssignedFor:      nil,
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed to create invite code: %v", err)
+	}
+
+	// POST to /auth with a new email AND a valid invite code
+	form := url.Values{}
+	form.Add("email", email)
+	form.Add("invite", inviteCode)
+	req := httptest.NewRequest("POST", "/auth", strings.NewReader(form.Encode()))
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	// BUG: Currently this redirects to /billing/subscribe, but it should NOT
+	// because the invite code grants a billing exemption.
+	// Expected: Show "check your email" page (200), NOT redirect to billing
+	if w.Code == http.StatusSeeOther {
+		location := w.Header().Get("Location")
+		if strings.Contains(location, "/billing/subscribe") {
+			t.Errorf("BUG: New user with valid invite code should NOT be redirected to billing! Got redirect to: %s", location)
+		}
+	}
+
+	// Should show the "check your email" page
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200 (check email page) for new user with invite code, got %d", w.Code)
+	}
+}

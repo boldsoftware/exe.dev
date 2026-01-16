@@ -1319,21 +1319,22 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// NEW FLOW: Redirect new users to billing first (unless SkipBilling for tests).
+	// Check for valid invite code early - users with valid invite codes skip billing
+	var invite *exedb.InviteCode
+	if inviteCodeStr := r.FormValue("invite"); inviteCodeStr != "" {
+		invite = s.lookupUnusedInviteCode(r.Context(), inviteCodeStr)
+	}
+
+	// NEW FLOW: Redirect new users to billing first (unless SkipBilling for tests or valid invite code).
 	// POW is skipped for billing-first flow - Stripe serves as sufficient friction.
-	if isNewUser && !s.env.SkipBilling {
+	// Users with valid invite codes get a billing exemption, so they skip Stripe.
+	if isNewUser && !s.env.SkipBilling && invite == nil {
 		// Create pending registration to track email through Stripe
 		token := generateRegistrationToken()
-		var inviteCodeID *int64
-		if inviteCodeStr := r.FormValue("invite"); inviteCodeStr != "" {
-			if invite := s.lookupUnusedInviteCode(r.Context(), inviteCodeStr); invite != nil {
-				inviteCodeID = &invite.ID
-			}
-		}
 		err = withTx1(s, r.Context(), (*exedb.Queries).InsertPendingRegistration, exedb.InsertPendingRegistrationParams{
 			Token:        token,
 			Email:        email,
-			InviteCodeID: inviteCodeID,
+			InviteCodeID: nil, // No invite code in billing flow
 			ExpiresAt:    time.Now().Add(1 * time.Hour),
 		})
 		if err != nil {
@@ -1366,15 +1367,13 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// Check for invite code in query parameters (needed for new user notification)
+	// Use the invite code we already looked up (needed for new user notification and email verification)
 	var inviteCodeID *int64
 	var inviterEmail string
-	if inviteCodeStr := r.FormValue("invite"); inviteCodeStr != "" {
-		if invite := s.lookupUnusedInviteCode(r.Context(), inviteCodeStr); invite != nil {
-			inviteCodeID = &invite.ID
-			inviterEmail = s.getInviteGiverEmail(r.Context(), invite)
-			s.slog().InfoContext(r.Context(), "valid invite code provided via web auth", "code", inviteCodeStr)
-		}
+	if invite != nil {
+		inviteCodeID = &invite.ID
+		inviterEmail = s.getInviteGiverEmail(r.Context(), invite)
+		s.slog().InfoContext(r.Context(), "valid invite code provided via web auth", "code", invite.Code)
 	}
 
 	if isNewUser {
