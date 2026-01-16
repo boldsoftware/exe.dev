@@ -268,18 +268,23 @@ func (q *Queries) GetBoxDetailsForSetup(ctx context.Context, id int) (GetBoxDeta
 	return i, err
 }
 
-const getBoxOwnerEmailByContainerID = `-- name: GetBoxOwnerEmailByContainerID :one
-SELECT u.email
+const getBoxOwnerByContainerID = `-- name: GetBoxOwnerByContainerID :one
+SELECT u.user_id, u.email
 FROM boxes b
 JOIN users u ON u.user_id = b.created_by_user_id
 WHERE b.container_id = ?
 `
 
-func (q *Queries) GetBoxOwnerEmailByContainerID(ctx context.Context, containerID *string) (string, error) {
-	row := q.queryRow(ctx, q.getBoxOwnerEmailByContainerIDStmt, getBoxOwnerEmailByContainerID, containerID)
-	var email string
-	err := row.Scan(&email)
-	return email, err
+type GetBoxOwnerByContainerIDRow struct {
+	UserID string `db:"user_id" json:"user_id"`
+	Email  string `db:"email" json:"email"`
+}
+
+func (q *Queries) GetBoxOwnerByContainerID(ctx context.Context, containerID *string) (GetBoxOwnerByContainerIDRow, error) {
+	row := q.queryRow(ctx, q.getBoxOwnerByContainerIDStmt, getBoxOwnerByContainerID, containerID)
+	var i GetBoxOwnerByContainerIDRow
+	err := row.Scan(&i.UserID, &i.Email)
+	return i, err
 }
 
 const getBoxSSHDetails = `-- name: GetBoxSSHDetails :one
@@ -458,7 +463,7 @@ func (q *Queries) InsertBox(ctx context.Context, arg InsertBoxParams) (int64, er
 }
 
 const listAllBoxesWithOwner = `-- name: ListAllBoxesWithOwner :many
-SELECT b.name, b.status, b.ctrhost, b.container_id, u.email as owner_email
+SELECT b.name, b.status, b.ctrhost, b.container_id, b.created_by_user_id as owner_user_id, u.email as owner_email
 FROM boxes b
 JOIN users u ON u.user_id = b.created_by_user_id
 ORDER BY b.name
@@ -469,6 +474,7 @@ type ListAllBoxesWithOwnerRow struct {
 	Status      string  `db:"status" json:"status"`
 	Ctrhost     string  `db:"ctrhost" json:"ctrhost"`
 	ContainerID *string `db:"container_id" json:"container_id"`
+	OwnerUserID string  `db:"owner_user_id" json:"owner_user_id"`
 	OwnerEmail  string  `db:"owner_email" json:"owner_email"`
 }
 
@@ -486,6 +492,7 @@ func (q *Queries) ListAllBoxesWithOwner(ctx context.Context) ([]ListAllBoxesWith
 			&i.Status,
 			&i.Ctrhost,
 			&i.ContainerID,
+			&i.OwnerUserID,
 			&i.OwnerEmail,
 		); err != nil {
 			return nil, err

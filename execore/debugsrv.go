@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"exe.dev/email"
+	"exe.dev/execore/debug_templates"
 	"exe.dev/exedb"
 	exeletclient "exe.dev/exelet/client"
 	"exe.dev/llmgateway"
@@ -43,6 +44,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("GET /debug/boxes/migrate", s.handleDebugBoxMigrateForm)
 	mux.HandleFunc("POST /debug/boxes/migrate", s.handleDebugBoxMigrate)
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
+	mux.HandleFunc("/debug/user", s.handleDebugUser)
 	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
 	mux.HandleFunc("POST /debug/users/toggle-vm-creation", s.handleDebugToggleVMCreation)
 	mux.HandleFunc("POST /debug/users/update-credit", s.handleDebugUpdateUserCredit)
@@ -246,7 +248,13 @@ $(document).ready(function() {
             }},
             { data: 'host' },
             { data: 'status' },
-            { data: 'owner_email', defaultContent: '' },
+            { data: null, defaultContent: '', render: function(d) {
+                if (!d.owner_email) return '';
+                if (d.owner_user_id) {
+                    return '<a href="/debug/user?userId=' + encodeURIComponent(d.owner_user_id) + '">' + d.owner_email + '</a>';
+                }
+                return d.owner_email;
+            }},
             { data: 'name', orderable: false, render: function(d) {
                 return '<a href="/debug/boxes/migrate?box_name=' + encodeURIComponent(d) + '" class="migrate-btn">Migrate</a> ' +
                        '<button class="delete-btn" data-box="' + d + '">Delete</button>';
@@ -292,34 +300,35 @@ document.getElementById('confirmInput').addEventListener('input', function() {
 
 	// JSON format requested
 	type boxInfo struct {
-		Host       string `json:"host"`
-		ID         string `json:"id,omitempty"`
-		Name       string `json:"name"`
-		Status     string `json:"status"`
-		OwnerEmail string `json:"owner_email,omitempty"`
+		Host        string `json:"host"`
+		ID          string `json:"id,omitempty"`
+		Name        string `json:"name"`
+		Status      string `json:"status"`
+		OwnerUserID string `json:"owner_user_id,omitempty"`
+		OwnerEmail  string `json:"owner_email,omitempty"`
 	}
 
 	var boxes []boxInfo
 
 	if source == "exelets" {
 		// Fetch from exelet hosts
-		emailCache := make(map[string]string)
-		getOwnerEmail := func(ctx context.Context, containerID string) (string, error) {
+		ownerCache := make(map[string]exedb.GetBoxOwnerByContainerIDRow)
+		getOwner := func(ctx context.Context, containerID string) (exedb.GetBoxOwnerByContainerIDRow, error) {
 			if containerID == "" {
-				return "", fmt.Errorf("empty container ID")
+				return exedb.GetBoxOwnerByContainerIDRow{}, fmt.Errorf("empty container ID")
 			}
-			if email, ok := emailCache[containerID]; ok {
-				return email, nil
+			if owner, ok := ownerCache[containerID]; ok {
+				return owner, nil
 			}
-			email, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxOwnerEmailByContainerID, &containerID)
+			owner, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxOwnerByContainerID, &containerID)
 			if err != nil {
 				if errors.Is(err, sql.ErrNoRows) {
-					return "", fmt.Errorf("container %q not present in database", containerID)
+					return exedb.GetBoxOwnerByContainerIDRow{}, fmt.Errorf("container %q not present in database", containerID)
 				}
-				return "", fmt.Errorf("failed to look up owner for container %q: %w", containerID, err)
+				return exedb.GetBoxOwnerByContainerIDRow{}, fmt.Errorf("failed to look up owner for container %q: %w", containerID, err)
 			}
-			emailCache[containerID] = email
-			return email, nil
+			ownerCache[containerID] = owner
+			return owner, nil
 		}
 
 		for addr, ec := range s.exeletClients {
@@ -344,10 +353,11 @@ document.getElementById('confirmInput').addEventListener('input', function() {
 					Name:   inst.Name,
 					Status: inst.State.String(),
 				}
-				if ownerEmail, err := getOwnerEmail(ctx, inst.ID); err == nil {
-					info.OwnerEmail = ownerEmail
+				if owner, err := getOwner(ctx, inst.ID); err == nil {
+					info.OwnerUserID = owner.UserID
+					info.OwnerEmail = owner.Email
 				} else {
-					s.slog().WarnContext(ctx, "failed to resolve box owner email", "boxName", inst.Name, "instanceID", inst.ID, "error", err)
+					s.slog().WarnContext(ctx, "failed to resolve box owner", "boxName", inst.Name, "instanceID", inst.ID, "error", err)
 				}
 				boxes = append(boxes, info)
 			}
@@ -362,10 +372,11 @@ document.getElementById('confirmInput').addEventListener('input', function() {
 		}
 		for _, b := range dbBoxes {
 			info := boxInfo{
-				Host:       b.Ctrhost,
-				Name:       b.Name,
-				Status:     b.Status,
-				OwnerEmail: b.OwnerEmail,
+				Host:        b.Ctrhost,
+				Name:        b.Name,
+				Status:      b.Status,
+				OwnerUserID: b.OwnerUserID,
+				OwnerEmail:  b.OwnerEmail,
 			}
 			if b.ContainerID != nil {
 				info.ID = *b.ContainerID
@@ -3686,4 +3697,144 @@ func (s *Server) handleDebugIPAbuseFilterPost(w http.ResponseWriter, r *http.Req
 	s.slog().InfoContext(ctx, "IP abuse filter setting updated via debug page", "disabled", disabled)
 
 	http.Redirect(w, r, "/debug/ip-abuse-filter", http.StatusSeeOther)
+}
+
+// handleDebugUser displays detailed information about a single user and their boxes.
+func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.URL.Query().Get("userId")
+	if userID == "" {
+		http.Error(w, "userId parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	// Look up the user
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, fmt.Sprintf("user %q not found", userID), http.StatusNotFound)
+			return
+		}
+		http.Error(w, fmt.Sprintf("failed to look up user: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Fetch account info
+	accounts, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllAccounts)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to list accounts", "error", err)
+	}
+	var accountID, billingURL string
+	for _, a := range accounts {
+		if a.CreatedBy == userID {
+			accountID = a.ID
+			billingURL = s.billing.DashboardURL(accountID)
+			break
+		}
+	}
+
+	// Fetch LLM credit info
+	credit, creditErr := withRxRes1(s, ctx, (*exedb.Queries).GetUserLLMCredit, userID)
+	hasCredit := creditErr == nil
+
+	var creditEffective float64
+	if hasCredit {
+		creditEffective, _ = llmgateway.CalculateRefreshedCredit(
+			credit.AvailableCredit,
+			credit.MaxCredit,
+			credit.RefreshPerHour,
+			credit.LastRefreshAt,
+			time.Now(),
+		)
+	}
+
+	// Fetch user's boxes
+	boxes, err := withRxRes1(s, ctx, (*exedb.Queries).BoxesForUser, userID)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to list boxes for user", "error", err)
+		boxes = nil
+	}
+
+	// Build template data
+	type boxInfo struct {
+		Name          string
+		Status        string
+		Image         string
+		Host          string
+		CreatedAt     string
+		LastStartedAt string
+	}
+
+	var boxList []boxInfo
+	for _, b := range boxes {
+		boxList = append(boxList, boxInfo{
+			Name:          b.Name,
+			Status:        b.Status,
+			Image:         b.Image,
+			Host:          b.Ctrhost,
+			CreatedAt:     formatTime(b.CreatedAt),
+			LastStartedAt: formatTime(b.LastStartedAt),
+		})
+	}
+
+	data := struct {
+		Email                  string
+		UserID                 string
+		CreatedAt              string
+		CreatedForLoginWithExe bool
+		RootSupport            bool
+		VMCreationDisabled     bool
+		DiscordID              string
+		DiscordUsername        string
+		BillingExemption       string
+		BillingTrialEndsAt     string
+		SignedUpWithInviteID   string
+		AccountID              string
+		BillingURL             string
+		HasCredit              bool
+		CreditAvailableUSD     float64
+		CreditEffectiveUSD     float64
+		CreditMaxUSD           float64
+		CreditRefreshPerHrUSD  float64
+		CreditTotalUsedUSD     float64
+		CreditLastRefreshAt    string
+		Boxes                  []boxInfo
+	}{
+		Email:                  user.Email,
+		UserID:                 user.UserID,
+		CreatedAt:              formatTime(user.CreatedAt),
+		CreatedForLoginWithExe: user.CreatedForLoginWithExe,
+		RootSupport:            user.RootSupport == 1,
+		VMCreationDisabled:     user.NewVmCreationDisabled,
+		DiscordID:              ptrStr(user.DiscordID),
+		DiscordUsername:        ptrStr(user.DiscordUsername),
+		BillingExemption:       ptrStr(user.BillingExemption),
+		BillingTrialEndsAt:     formatTime(user.BillingTrialEndsAt),
+		SignedUpWithInviteID:   formatInt64Ptr(user.SignedUpWithInviteID),
+		AccountID:              accountID,
+		BillingURL:             billingURL,
+		HasCredit:              hasCredit,
+		Boxes:                  boxList,
+	}
+
+	if hasCredit {
+		data.CreditAvailableUSD = credit.AvailableCredit
+		data.CreditEffectiveUSD = creditEffective
+		data.CreditMaxUSD = credit.MaxCredit
+		data.CreditRefreshPerHrUSD = credit.RefreshPerHour
+		data.CreditTotalUsedUSD = credit.TotalUsed
+		data.CreditLastRefreshAt = credit.LastRefreshAt.Format(time.RFC3339)
+	}
+
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, "user.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute user template", "error", err)
+	}
 }

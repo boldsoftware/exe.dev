@@ -207,8 +207,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxIPShardStmt, err = db.PrepareContext(ctx, getBoxIPShard); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxIPShard: %w", err)
 	}
-	if q.getBoxOwnerEmailByContainerIDStmt, err = db.PrepareContext(ctx, getBoxOwnerEmailByContainerID); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBoxOwnerEmailByContainerID: %w", err)
+	if q.getBoxOwnerByContainerIDStmt, err = db.PrepareContext(ctx, getBoxOwnerByContainerID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxOwnerByContainerID: %w", err)
 	}
 	if q.getBoxSSHDetailsStmt, err = db.PrepareContext(ctx, getBoxSSHDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxSSHDetails: %w", err)
@@ -934,9 +934,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxIPShardStmt: %w", cerr)
 		}
 	}
-	if q.getBoxOwnerEmailByContainerIDStmt != nil {
-		if cerr := q.getBoxOwnerEmailByContainerIDStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBoxOwnerEmailByContainerIDStmt: %w", cerr)
+	if q.getBoxOwnerByContainerIDStmt != nil {
+		if cerr := q.getBoxOwnerByContainerIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxOwnerByContainerIDStmt: %w", cerr)
 		}
 	}
 	if q.getBoxSSHDetailsStmt != nil {
@@ -1729,7 +1729,7 @@ type Queries struct {
 	getBoxByUserAndShardStmt                   *sql.Stmt
 	getBoxDetailsForSetupStmt                  *sql.Stmt
 	getBoxIPShardStmt                          *sql.Stmt
-	getBoxOwnerEmailByContainerIDStmt          *sql.Stmt
+	getBoxOwnerByContainerIDStmt               *sql.Stmt
 	getBoxSSHDetailsStmt                       *sql.Stmt
 	getBoxShareLinkByTokenAndBoxIDStmt         *sql.Stmt
 	getBoxShareLinksByBoxIDStmt                *sql.Stmt
@@ -1935,7 +1935,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxByUserAndShardStmt:                   q.getBoxByUserAndShardStmt,
 		getBoxDetailsForSetupStmt:                  q.getBoxDetailsForSetupStmt,
 		getBoxIPShardStmt:                          q.getBoxIPShardStmt,
-		getBoxOwnerEmailByContainerIDStmt:          q.getBoxOwnerEmailByContainerIDStmt,
+		getBoxOwnerByContainerIDStmt:               q.getBoxOwnerByContainerIDStmt,
 		getBoxSSHDetailsStmt:                       q.getBoxSSHDetailsStmt,
 		getBoxShareLinkByTokenAndBoxIDStmt:         q.getBoxShareLinkByTokenAndBoxIDStmt,
 		getBoxShareLinksByBoxIDStmt:                q.getBoxShareLinksByBoxIDStmt,
