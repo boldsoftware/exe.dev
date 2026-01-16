@@ -1,0 +1,125 @@
+<!doctype html>
+<html><head><title>Invite Tree</title>
+<script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
+h1 { margin-bottom: 10px; }
+#vis { width: 100%; overflow: auto; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.stats { margin: 10px 0; color: #666; }
+</style>
+</head><body>
+<h1>Invite Tree Visualization</h1>
+<p><a href="/debug">/debug</a> | <a href="/debug/all-invite-codes">all invite codes</a> | <a href="/debug/invite-tree?format=json">json</a></p>
+<p class="stats">{{.NodeCount}} users | {{.LinkCount}} invite links (successful invites only)</p>
+<div id="vis"></div>
+
+<script>
+var treeData = {{.TreeDataJSON}};
+
+var spec = {
+  "$schema": "https://vega.github.io/schema/vega/v5.json",
+  "description": "Invite tree showing user referrals from left to right",
+  "width": 1000,
+  "height": Math.max(400, treeData.length * 25),
+  "padding": 5,
+
+  "data": [
+    {
+      "name": "tree",
+      "values": treeData,
+      "transform": [
+        {
+          "type": "stratify",
+          "key": "id",
+          "parentKey": "parent"
+        },
+        {
+          "type": "tree",
+          "method": "tidy",
+          "size": [{"signal": "height"}, {"signal": "width - 150"}],
+          "separation": true,
+          "as": ["y", "x", "depth", "children"]
+        }
+      ]
+    },
+    {
+      "name": "links",
+      "source": "tree",
+      "transform": [
+        { "type": "treelinks" },
+        {
+          "type": "linkpath",
+          "orient": "horizontal",
+          "shape": "diagonal"
+        }
+      ]
+    }
+  ],
+
+  "scales": [
+    {
+      "name": "color",
+      "type": "linear",
+      "range": {"scheme": "blues"},
+      "domain": {"data": "tree", "field": "depth"},
+      "zero": true
+    }
+  ],
+
+  "marks": [
+    {
+      "type": "path",
+      "from": {"data": "links"},
+      "encode": {
+        "update": {
+          "path": {"field": "path"},
+          "stroke": {"value": "#ccc"},
+          "strokeWidth": {"value": 1.5}
+        }
+      }
+    },
+    {
+      "type": "symbol",
+      "from": {"data": "tree"},
+      "encode": {
+        "enter": {
+          "size": {"value": 100},
+          "stroke": {"value": "#fff"},
+          "strokeWidth": {"value": 1}
+        },
+        "update": {
+          "x": {"field": "x"},
+          "y": {"field": "y"},
+          "fill": {"scale": "color", "field": "depth"},
+          "tooltip": {"signal": "datum.email"}
+        }
+      }
+    },
+    {
+      "type": "text",
+      "from": {"data": "tree"},
+      "encode": {
+        "enter": {
+          "fontSize": {"value": 10},
+          "baseline": {"value": "middle"}
+        },
+        "update": {
+          "x": {"field": "x"},
+          "y": {"field": "y"},
+          "dx": {"signal": "datum.children ? -7 : 7"},
+          "align": {"signal": "datum.children ? 'right' : 'left'"},
+          "text": {"field": "email"},
+          "fillOpacity": {"value": 1}
+        }
+      }
+    }
+  ]
+};
+
+vegaEmbed('#vis', spec, {actions: false}).catch(console.error);
+</script>
+</body></html>

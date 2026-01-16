@@ -1232,309 +1232,26 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// HTML output
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		RegularCount      int
+		LoginWithExeCount int
+		TotalCount        int
+	}{
+		RegularCount:      regularCount,
+		LoginWithExeCount: loginWithExeCount,
+		TotalCount:        len(users),
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>Users</title>
-<link rel="stylesheet" href="/static/datatables.min.css">
-<script src="/static/jquery.min.js"></script>
-<script src="/static/datatables.min.js"></script>
-<style>
-.toggle-btn { padding: 4px 8px; cursor: pointer; border-radius: 3px; border: 1px solid #ccc; font-size: 11px; }
-.toggle-btn.enabled { background: #28a745; color: white; border-color: #28a745; }
-.toggle-btn.disabled { background: #6c757d; color: white; border-color: #6c757d; }
-.edit-btn { padding: 2px 6px; cursor: pointer; border-radius: 3px; border: 1px solid #007bff; background: #007bff; color: white; font-size: 11px; }
-dialog { padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
-dialog::backdrop { background: rgba(0,0,0,0.5); }
-dialog input[type="text"], dialog input[type="number"] { width: 100%%; padding: 8px; margin: 5px 0; box-sizing: border-box; }
-dialog button { margin-right: 10px; padding: 8px 16px; }
-dialog .confirm-btn { background: #28a745; color: white; border: none; cursor: pointer; }
-dialog .confirm-btn:disabled { background: #ccc; cursor: not-allowed; }
-dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: pointer; }
-#usersTable { width: 100%%; }
-#usersTable td, #usersTable th { font-size: 13px; }
-#usersTable thead tr.filters th { padding: 4px; }
-#usersTable thead tr.filters input { width: 100%%; box-sizing: border-box; font-size: 11px; padding: 4px; }
-.credit-cell { text-align: right; font-family: monospace; }
-.negative { color: red; }
-</style>
-</head><body>
-<h1>Users</h1>
-<p><a href="/debug">/debug</a> | <a href="/debug/users?format=json">json</a></p>
-<p>Regular users: %d | Login-with-exe users: %d | Total: %d</p>
-
-<table id="usersTable" class="display stripe hover">
-<thead>
-<tr>
-<th>Email</th>
-<th>User ID</th>
-<th>Created At</th>
-<th>Login-only</th>
-<th>Billing</th>
-<th>DB Credit ($)</th>
-<th>Effective ($)</th>
-<th>Max ($)</th>
-<th>Refresh/hr ($)</th>
-<th>Total Used ($)</th>
-<th>Last Refresh</th>
-<th>VM Creation Disabled</th>
-<th>Root Support</th>
-<th>Discord</th>
-<th>Invites</th>
-</tr>
-<tr class="filters">
-<th>Email</th>
-<th>User ID</th>
-<th>Created At</th>
-<th>Login-only</th>
-<th>Billing</th>
-<th>DB Credit ($)</th>
-<th>Effective ($)</th>
-<th>Max ($)</th>
-<th>Refresh/hr ($)</th>
-<th>Total Used ($)</th>
-<th>Last Refresh</th>
-<th>VM Creation Disabled</th>
-<th>Root Support</th>
-<th>Discord</th>
-<th>Invites</th>
-</tr>
-</thead>
-</table>
-
-<dialog id="toggleDialog">
-<form method="post" action="/debug/users/toggle-root-support">
-<p id="dialogMessage"></p>
-<p><strong id="emailDisplay"></strong></p>
-<input type="hidden" name="user_id" id="userIdInput">
-<input type="hidden" name="enable" id="enableInput">
-<div id="confirmSection" style="display:none;">
-<p>Type the email address to confirm:</p>
-<input type="text" name="confirm_email" id="confirmInput" autocomplete="off" placeholder="Type email to confirm">
-</div>
-<p>
-<button type="submit" class="confirm-btn" id="confirmBtn">Confirm</button>
-<button type="button" class="cancel-btn" id="cancelBtn">Cancel</button>
-</p>
-</form>
-</dialog>
-
-<dialog id="creditDialog">
-<form method="post" action="/debug/users/update-credit">
-<h3>Edit Gateway Credit</h3>
-<input type="hidden" name="user_id" id="creditUserIdInput">
-<p><label>Available Credit ($):<br><input type="number" name="available" id="creditAvailInput" step="0.01"></label></p>
-<p><label>Max Credit ($):<br><input type="number" name="max" id="creditMaxInput" step="0.01"></label></p>
-<p><label>Refresh per Hour ($):<br><input type="number" name="refresh" id="creditRefreshInput" step="0.01"></label></p>
-<p>
-<button type="submit" class="confirm-btn">Save</button>
-<button type="button" class="cancel-btn" id="creditCancelBtn">Cancel</button>
-</p>
-</form>
-</dialog>
-
-<script>
-var usersTable;
-
-$(document).ready(function() {
-    // Add column filter inputs to header filter row
-    $('#usersTable thead tr.filters th').each(function() {
-        var title = $(this).text();
-        $(this).html('<input type="text" placeholder="' + title + '">');
-    });
-
-    usersTable = $('#usersTable').DataTable({
-        ajax: {
-            url: '/debug/users?format=json',
-            dataSrc: ''
-        },
-        pageLength: 100,
-        lengthMenu: [[25, 50, 100, 250, -1], [25, 50, 100, 250, "All"]],
-        order: [[2, 'desc']],
-        orderCellsTop: true,
-        columns: [
-            { data: 'email' },
-            { data: 'user_id' },
-            { data: 'created_at', defaultContent: '-' },
-            { data: 'created_for_login_with_exe', render: function(d) { return d ? '✓' : ''; } },
-            { data: null, render: function(d) {
-                if (d.billing_url) return '<a href="' + d.billing_url + '" target="_blank">' + d.account_id + '</a>';
-                return '-';
-            }},
-            { data: null, className: 'credit-cell', render: function(d) {
-                var val = d.credit_available_usd ? d.credit_available_usd.toFixed(2) : '-';
-                var cls = d.credit_available_usd < 0 ? 'negative' : '';
-                return '<span class="' + cls + '">' + val + '</span> ' +
-                    '<button class="edit-btn" data-userid="' + d.user_id + '" ' +
-                    'data-avail="' + (d.credit_available_usd||0) + '" ' +
-                    'data-max="' + (d.credit_max_usd||100) + '" ' +
-                    'data-refresh="' + (d.credit_refresh_per_hr_usd||10) + '">✎</button>';
-            }},
-            { data: 'credit_effective_usd', className: 'credit-cell', render: function(d) {
-                if (!d && d !== 0) return '-';
-                var cls = d < 0 ? 'negative' : '';
-                return '<span class="' + cls + '">' + d.toFixed(2) + '</span>';
-            }},
-            { data: 'credit_max_usd', className: 'credit-cell', render: function(d) { return d ? d.toFixed(2) : '-'; } },
-            { data: 'credit_refresh_per_hr_usd', className: 'credit-cell', render: function(d) { return d ? d.toFixed(2) : '-'; } },
-            { data: 'credit_total_used_usd', className: 'credit-cell', render: function(d) { return d ? d.toFixed(2) : '-'; } },
-            { data: 'credit_last_refresh_at', defaultContent: '-' },
-            { data: 'vm_creation_disabled', render: function(d, type, row) {
-                var isDisabled = !!d;
-                var status = isDisabled ? 'Yes' : 'No';
-                var btnClass = isDisabled ? 'disabled' : 'enabled';
-                var btnText = isDisabled ? 'Enable' : 'Disable';
-                return status + ' <button class="toggle-btn vm-toggle-btn ' + btnClass + '" ' +
-                    'data-userid="' + row.user_id + '" data-disabled="' + isDisabled + '">' + btnText + '</button>';
-            }},
-            { data: null, render: function(d) {
-                var status = d.root_support ? 'Yes' : 'No';
-                var btnClass = d.root_support ? 'enabled' : 'disabled';
-                var btnText = d.root_support ? 'Disable' : 'Enable';
-                return status + ' <button class="toggle-btn root-toggle-btn ' + btnClass + '" ' +
-                    'data-email="' + d.email + '" data-userid="' + d.user_id + '" ' +
-                    'data-enabled="' + d.root_support + '">' + btnText + '</button>';
-            }},
-            { data: null, render: function(d) {
-                if (!d.discord_id) return '-';
-                if (d.discord_username) return d.discord_username + ' (' + d.discord_id + ')';
-                return d.discord_id;
-            }},
-            { data: null, render: function(d) {
-                return d.invite_count + ' <button class="toggle-btn add-invite-btn" ' +
-                    'data-email="' + d.email + '">+1</button>';
-            }}
-        ],
-        initComplete: function() {
-            this.api().columns().every(function(idx) {
-                var column = this;
-                $('input', $('#usersTable thead tr.filters th').eq(idx)).on('keyup change clear', function() {
-                    if (column.search() !== this.value) {
-                        column.search(this.value).draw();
-                    }
-                });
-            });
-        }
-    });
-});
-
-// Toggle root support dialog
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('root-toggle-btn')) {
-        var email = e.target.dataset.email;
-        var userId = e.target.dataset.userid;
-        var isEnabled = e.target.dataset.enabled === 'true';
-        var enabling = !isEnabled;
-
-        document.getElementById('emailDisplay').textContent = email;
-        document.getElementById('userIdInput').value = userId;
-        document.getElementById('enableInput').value = enabling ? '1' : '0';
-
-        var confirmSection = document.getElementById('confirmSection');
-        var confirmInput = document.getElementById('confirmInput');
-        var confirmBtn = document.getElementById('confirmBtn');
-
-        if (enabling) {
-            document.getElementById('dialogMessage').textContent = 'Enable root support access for this user?';
-            confirmSection.style.display = 'block';
-            confirmInput.value = '';
-            confirmBtn.disabled = true;
-        } else {
-            document.getElementById('dialogMessage').textContent = 'Disable root support access for this user?';
-            confirmSection.style.display = 'none';
-            confirmBtn.disabled = false;
-        }
-        document.getElementById('toggleDialog').showModal();
-    }
-});
-document.getElementById('cancelBtn').addEventListener('click', function() {
-    document.getElementById('toggleDialog').close();
-});
-document.getElementById('confirmInput').addEventListener('input', function() {
-    var expected = document.getElementById('emailDisplay').textContent;
-    document.getElementById('confirmBtn').disabled = (this.value !== expected);
-});
-
-// Toggle VM creation disabled
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('vm-toggle-btn')) {
-        var userId = e.target.dataset.userid;
-        var currentlyDisabled = e.target.dataset.disabled === 'true';
-        var body = new URLSearchParams();
-        body.append('user_id', userId);
-        body.append('disable', currentlyDisabled ? '0' : '1');
-
-        fetch('/debug/users/toggle-vm-creation', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: body.toString()
-        }).then(function(resp) {
-            if (!resp.ok) {
-                alert('Failed to update VM creation flag');
-                return;
-            }
-            if (usersTable) {
-                usersTable.ajax.reload(null, false);
-            }
-        }).catch(function(err) {
-            console.error('VM creation toggle failed', err);
-            alert('Failed to update VM creation flag');
-        });
-    }
-});
-
-// Credit edit dialog
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('edit-btn')) {
-        var userId = e.target.dataset.userid;
-        var avail = parseFloat(e.target.dataset.avail) || 0;
-        var max = parseFloat(e.target.dataset.max) || 100;
-        var refresh = parseFloat(e.target.dataset.refresh) || 10;
-        document.getElementById('creditUserIdInput').value = userId;
-        document.getElementById('creditAvailInput').value = avail.toFixed(2);
-        document.getElementById('creditMaxInput').value = max.toFixed(2);
-        document.getElementById('creditRefreshInput').value = refresh.toFixed(2);
-        document.getElementById('creditDialog').showModal();
-    }
-});
-document.getElementById('creditCancelBtn').addEventListener('click', function() {
-    document.getElementById('creditDialog').close();
-});
-
-// Add invite button
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('add-invite-btn')) {
-        var email = e.target.dataset.email;
-        var body = new URLSearchParams();
-        body.append('action', 'give_to_user');
-        body.append('email', email);
-        body.append('count', '1');
-        body.append('plan_type', 'trial');
-
-        fetch('/debug/invite', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: body.toString()
-        }).then(function(resp) {
-            if (!resp.ok) {
-                alert('Failed to add invite');
-                return;
-            }
-            if (usersTable) {
-                usersTable.ajax.reload(null, false);
-            }
-        }).catch(function(err) {
-            console.error('Add invite failed', err);
-            alert('Failed to add invite');
-        });
-    }
-});
-</script>
-</body></html>
-`, regularCount, loginWithExeCount, len(users))
+	if err := tmpl.ExecuteTemplate(w, "users.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute users template", "error", err)
+	}
 }
 
 // handleDebugToggleRootSupport toggles the root support flag for a user.
@@ -3356,25 +3073,22 @@ func (s *Server) handleDebugInviteTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build tree data for Vega
-	// We need: nodes (users) and links (giver -> recipient)
+	// Build tree data for Vega using stratify format (id + parent)
 	type treeNode struct {
-		ID    string `json:"id"`
-		Email string `json:"email"`
-	}
-	type treeLink struct {
-		Source string `json:"source"`
-		Target string `json:"target"`
+		ID     string  `json:"id"`
+		Parent *string `json:"parent"`
+		Email  string  `json:"email"`
 	}
 
-	// Track unique users and links
-	nodeSet := make(map[string]string) // user_id -> email
-	var links []treeLink
+	// Track unique users and their parents
+	nodeSet := make(map[string]string)   // user_id -> email
+	parentMap := make(map[string]string) // user_id -> parent_id
 
 	// Add system user as the root
 	const systemUserID = "system"
 	nodeSet[systemUserID] = "(system)"
 
+	linkCount := 0
 	for _, code := range codes {
 		// Only process used invite codes for the tree
 		if code.UsedByUserID == nil || code.RecipientEmail == nil {
@@ -3393,16 +3107,24 @@ func (s *Server) handleDebugInviteTree(w http.ResponseWriter, r *http.Request) {
 			giverID = systemUserID
 		}
 
-		links = append(links, treeLink{
-			Source: giverID,
-			Target: recipientID,
-		})
+		// Only set parent if not already set (first invite wins)
+		if _, hasParent := parentMap[recipientID]; !hasParent {
+			parentMap[recipientID] = giverID
+			linkCount++
+		}
 	}
 
-	// Convert to node list
+	// Convert to node list with parent references
 	nodes := make([]treeNode, 0, len(nodeSet))
 	for id, email := range nodeSet {
-		nodes = append(nodes, treeNode{ID: id, Email: email})
+		node := treeNode{
+			ID:    id,
+			Email: email,
+		}
+		if parent, ok := parentMap[id]; ok {
+			node.Parent = &parent
+		}
+		nodes = append(nodes, node)
 	}
 
 	// Sort nodes for consistent output
@@ -3415,205 +3137,35 @@ func (s *Server) handleDebugInviteTree(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(map[string]any{
-			"nodes": nodes,
-			"links": links,
-		}); err != nil {
+		if err := enc.Encode(nodes); err != nil {
 			s.slog().ErrorContext(ctx, "Failed to encode tree data", "error", err)
 		}
 		return
 	}
 
 	// Marshal data for embedding in HTML
-	nodesJSON, _ := json.Marshal(nodes)
-	linksJSON, _ := json.Marshal(links)
+	treeDataJSON, _ := json.Marshal(nodes)
+
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		NodeCount    int
+		LinkCount    int
+		TreeDataJSON string
+	}{
+		NodeCount:    len(nodes),
+		LinkCount:    linkCount,
+		TreeDataJSON: string(treeDataJSON),
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>Invite Tree</title>
-<script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
-<script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
-<script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
-<style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
-h1 { margin-bottom: 10px; }
-#vis { width: 100%%; height: calc(100vh - 150px); }
-a { color: #007bff; text-decoration: none; }
-a:hover { text-decoration: underline; }
-.stats { margin: 10px 0; color: #666; }
-</style>
-</head><body>
-<h1>Invite Tree Visualization</h1>
-<p><a href="/debug">/debug</a> | <a href="/debug/all-invite-codes">all invite codes</a> | <a href="/debug/invite-tree?format=json">json</a></p>
-<p class="stats">%d users | %d invite links (successful invites only)</p>
-<div id="vis"></div>
-
-<script>
-var nodes = %s;
-var links = %s;
-
-var spec = {
-  "$schema": "https://vega.github.io/schema/vega/v5.json",
-  "width": 1200,
-  "height": 800,
-  "padding": 0,
-  "autosize": "none",
-
-  "signals": [
-    { "name": "cx", "update": "width / 2" },
-    { "name": "cy", "update": "height / 2" },
-    { "name": "nodeRadius", "value": 8 },
-    { "name": "nodeCharge", "value": -300 },
-    { "name": "linkDistance", "value": 100 },
-    {
-      "name": "static", "value": false
-    },
-    {
-      "name": "fix", "value": false,
-      "on": [
-        {
-          "events": "symbol:mouseout[!event.buttons], window:mouseup",
-          "update": "false"
-        },
-        {
-          "events": "symbol:mouseover",
-          "update": "fix || true"
-        },
-        {
-          "events": "[symbol:mousedown, window:mouseup] > window:mousemove!",
-          "update": "xy()",
-          "force": true
-        }
-      ]
-    },
-    {
-      "name": "node", "value": null,
-      "on": [
-        {
-          "events": "symbol:mouseover",
-          "update": "fix === true ? item() : node"
-        }
-      ]
-    },
-    {
-      "name": "restart", "value": false,
-      "on": [
-        { "events": { "signal": "fix" }, "update": "fix && fix.length" }
-      ]
-    }
-  ],
-
-  "data": [
-    {
-      "name": "nodes",
-      "values": nodes,
-      "on": [
-        {
-          "trigger": "fix",
-          "modify": "node",
-          "values": "fix === true ? {fx: node.x, fy: node.y} : {fx: fix[0], fy: fix[1]}"
-        },
-        {
-          "trigger": "!fix",
-          "modify": "node", "values": "{fx: null, fy: null}"
-        }
-      ]
-    },
-    {
-      "name": "links",
-      "values": links
-    }
-  ],
-
-  "scales": [
-    {
-      "name": "color",
-      "type": "ordinal",
-      "domain": {"data": "nodes", "field": "id"},
-      "range": {"scheme": "category20"}
-    }
-  ],
-
-  "marks": [
-    {
-      "name": "linkMarks",
-      "type": "path",
-      "from": {"data": "links"},
-      "interactive": false,
-      "encode": {
-        "update": {
-          "stroke": {"value": "#ccc"},
-          "strokeWidth": {"value": 1}
-        }
-      },
-      "transform": [
-        {
-          "type": "linkpath",
-          "require": {"signal": "force"},
-          "shape": "line",
-          "sourceX": "datum.source.x", "sourceY": "datum.source.y",
-          "targetX": "datum.target.x", "targetY": "datum.target.y"
-        }
-      ]
-    },
-    {
-      "name": "nodeMarks",
-      "type": "symbol",
-      "zindex": 1,
-      "from": {"data": "nodes"},
-      "encode": {
-        "enter": {
-          "fill": {"scale": "color", "field": "id"},
-          "stroke": {"value": "white"}
-        },
-        "update": {
-          "size": {"signal": "2 * nodeRadius * nodeRadius"},
-          "cursor": {"value": "pointer"},
-          "tooltip": {"field": "email"}
-        }
-      },
-      "transform": [
-        {
-          "type": "force",
-          "iterations": 300,
-          "restart": {"signal": "restart"},
-          "static": {"signal": "static"},
-          "signal": "force",
-          "forces": [
-            {"force": "center", "x": {"signal": "cx"}, "y": {"signal": "cy"}},
-            {"force": "collide", "radius": {"signal": "nodeRadius"}},
-            {"force": "nbody", "strength": {"signal": "nodeCharge"}},
-            {"force": "link", "links": "links", "distance": {"signal": "linkDistance"}, "id": "datum.id"}
-          ]
-        }
-      ]
-    },
-    {
-      "type": "text",
-      "from": {"data": "nodeMarks"},
-      "interactive": false,
-      "encode": {
-        "enter": {
-          "align": {"value": "center"},
-          "baseline": {"value": "bottom"},
-          "fontSize": {"value": 10},
-          "fontWeight": {"value": "bold"}
-        },
-        "update": {
-          "x": {"field": "x"},
-          "y": {"field": "y", "offset": -10},
-          "text": {"field": "datum.email"},
-          "fillOpacity": {"value": 1}
-        }
-      }
-    }
-  ]
-};
-
-vegaEmbed('#vis', spec, {actions: false}).catch(console.error);
-</script>
-</body></html>
-`, len(nodes), len(links), string(nodesJSON), string(linksJSON))
+	if err := tmpl.ExecuteTemplate(w, "invite-tree.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute invite-tree template", "error", err)
+	}
 }
 
 // IsIPAbuseFilterDisabled returns true if the IP abuse filter is disabled.
