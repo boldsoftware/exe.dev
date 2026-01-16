@@ -1706,10 +1706,10 @@ func (ss *SSHServer) handleSubscribeCommand(ctx context.Context, cc *exemenu.Com
 
 	// Store pending registration in database with public key
 	err := withTx1(ss.server, ctx, (*exedb.Queries).InsertPendingRegistrationWithKey, exedb.InsertPendingRegistrationWithKeyParams{
-		Token:       token,
-		Email:       "", // Email will be collected during checkout
-		ExpiresAt:   time.Now().Add(1 * time.Hour),
-		PublicKey:   &publicKey,
+		Token:     token,
+		Email:     "", // Email will be collected during checkout
+		ExpiresAt: time.Now().Add(1 * time.Hour),
+		PublicKey: &publicKey,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create registration: %w", err)

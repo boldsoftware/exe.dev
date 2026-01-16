@@ -2860,24 +2860,21 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string, qc Qua
 	return &user, nil
 }
 
-// Stop gracefully shuts down all servers
+// Stop shuts down all servers immediately.
 func (s *Server) Stop() error {
 	s.stopping.Store(true)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
-	// Shutdown HTTP server
 	if s.httpServer != nil {
-		if err := s.httpServer.Shutdown(ctx); err != nil {
-			s.slog().ErrorContext(ctx, "HTTP server shutdown error", "error", err)
+		if err := s.httpServer.Close(); err != nil {
+			s.slog().ErrorContext(ctx, "HTTP server close error", "error", err)
 		}
 	}
 
-	// Shutdown HTTPS server if running
 	if s.httpsServer != nil {
-		if err := s.httpsServer.Shutdown(ctx); err != nil {
-			s.slog().ErrorContext(ctx, "HTTPS server shutdown error", "error", err)
+		if err := s.httpsServer.Close(); err != nil {
+			s.slog().ErrorContext(ctx, "HTTPS server close error", "error", err)
 		}
 	}
 
