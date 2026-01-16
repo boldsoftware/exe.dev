@@ -86,6 +86,13 @@ func startSSH(imageConfig *v1.ImageConfig) error {
 		slog.Error("failed to start ssh process", "err", err)
 		return fmt.Errorf("failed to start ssh process: %w", err)
 	}
+
+	// Protect sshd from OOM killer by setting oom_score_adj to -1000
+	oomPath := fmt.Sprintf("/proc/%d/oom_score_adj", cmd.Process.Pid)
+	if err := os.WriteFile(oomPath, []byte("-1000"), 0644); err != nil {
+		slog.Warn("failed to set oom_score_adj for sshd", "err", err)
+	}
+
 	if err := cmd.Process.Release(); err != nil {
 		slog.Error("failed to release ssh process", "err", err)
 		return fmt.Errorf("failed to release ssh process: %w", err)
