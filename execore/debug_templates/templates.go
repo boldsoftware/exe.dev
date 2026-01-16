@@ -8,7 +8,11 @@ import (
 //go:embed *.html
 var Files embed.FS
 
-// Parse parses all HTML templates.
+// Parse parses all HTML templates with common functions.
 func Parse() (*template.Template, error) {
-	return template.ParseFS(Files, "*.html")
+	return template.New("").Funcs(template.FuncMap{
+		"safeHTML": func(s string) template.HTML {
+			return template.HTML(s)
+		},
+	}).ParseFS(Files, "*.html")
 }

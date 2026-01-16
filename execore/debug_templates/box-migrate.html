@@ -1,0 +1,117 @@
+<!doctype html>
+<html><head><title>Migrate Box: {{.BoxName}}</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; max-width: 600px; }
+h1 { margin-bottom: 10px; }
+label { display: block; margin-top: 15px; font-weight: bold; }
+select, input[type="text"] { width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box; font-size: 14px; }
+button { margin-top: 20px; padding: 10px 20px; font-size: 14px; cursor: pointer; }
+button[type="submit"] { background: #007bff; color: white; border: none; }
+button[type="submit"]:disabled { background: #ccc; cursor: not-allowed; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+#progress { margin-top: 20px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; display: none; white-space: pre-wrap; font-family: monospace; font-size: 13px; max-height: 400px; overflow-y: auto; }
+#progress.active { display: block; }
+#progress.error { background: #f8d7da; border-color: #f5c6cb; }
+#progress.success { background: #d4edda; border-color: #c3e6cb; }
+.warning { background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 12px; margin: 15px 0; }
+.warning strong { color: #856404; }
+</style>
+</head><body>
+<h1>Migrate Box</h1>
+<p><a href="/debug/boxes">&larr; Back to boxes</a></p>
+
+<div class="warning"><strong>Warning:</strong> The VM will be stopped during migration and restarted on the target host.</div>
+
+<form id="migrateForm" method="post" action="/debug/boxes/migrate">
+<p>Box: <strong>{{.BoxName}}</strong></p>
+<input type="hidden" name="box_name" value="{{.BoxName}}">
+
+<label for="target">Target exelet:</label>
+<select name="target" id="target" required>
+<option value="">Select target exelet...</option>
+{{range .ExeletOptions}}
+<option value="{{.}}">{{.}}</option>
+{{end}}
+</select>
+
+<label for="confirm_name">Type box name to confirm:</label>
+<input type="text" name="confirm_name" id="confirm_name" autocomplete="off" placeholder="{{.BoxName}}">
+
+<p>
+<button type="submit" id="submitBtn" disabled>Migrate</button>
+<a href="/debug/boxes">Cancel</a>
+</p>
+</form>
+
+<div id="progress"></div>
+
+<script>
+var expectedName = {{.BoxNameJSON}};
+document.getElementById('confirm_name').addEventListener('input', function() {
+    var target = document.getElementById('target').value;
+    document.getElementById('submitBtn').disabled = (this.value !== expectedName || !target);
+});
+document.getElementById('target').addEventListener('change', function() {
+    var confirmed = document.getElementById('confirm_name').value;
+    document.getElementById('submitBtn').disabled = (confirmed !== expectedName || !this.value);
+});
+
+document.getElementById('migrateForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var form = this;
+    var progress = document.getElementById('progress');
+    var submitBtn = document.getElementById('submitBtn');
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Migrating...';
+    progress.className = 'active';
+    progress.textContent = 'Starting migration...\n';
+
+    fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form)
+    }).then(function(response) {
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+
+        function read() {
+            reader.read().then(function(result) {
+                if (result.done) {
+                    return;
+                }
+                var text = decoder.decode(result.value, {stream: true});
+                progress.textContent += text;
+                progress.scrollTop = progress.scrollHeight;
+
+                // Check for completion markers
+                if (text.includes('MIGRATION_SUCCESS:')) {
+                    progress.className = 'active success';
+                    var match = text.match(/MIGRATION_SUCCESS:(\S+)/);
+                    if (match) {
+                        // Add a clickable link instead of auto-redirecting
+                        var link = document.createElement('a');
+                        link.href = '/debug/boxes/' + match[1];
+                        link.textContent = 'Go to box details \u2192';
+                        link.style.cssText = 'display:inline-block;margin-top:15px;padding:10px 20px;background:#28a745;color:white;text-decoration:none;border-radius:4px;';
+                        progress.parentNode.insertBefore(link, progress.nextSibling);
+                    }
+                } else if (text.includes('MIGRATION_ERROR:')) {
+                    progress.className = 'active error';
+                    submitBtn.textContent = 'Migrate';
+                    submitBtn.disabled = false;
+                }
+
+                read();
+            });
+        }
+        read();
+    }).catch(function(err) {
+        progress.className = 'active error';
+        progress.textContent += '\nFetch error: ' + err;
+        submitBtn.textContent = 'Migrate';
+        submitBtn.disabled = false;
+    });
+});
+</script>
+</body></html>

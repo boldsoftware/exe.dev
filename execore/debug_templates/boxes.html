@@ -1,0 +1,134 @@
+<!doctype html>
+<html><head><title>Boxes/VMs</title>
+<link rel="stylesheet" href="/static/datatables.min.css">
+<script src="/static/jquery.min.js"></script>
+<script src="/static/datatables.min.js"></script>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
+h1 { margin-bottom: 10px; }
+#boxesTable { width: 100%; }
+#boxesTable td, #boxesTable th { font-size: 13px; }
+#boxesTable thead tr.filters th { padding: 4px; }
+#boxesTable thead tr.filters input { width: 100%; box-sizing: border-box; font-size: 11px; padding: 4px; }
+.migrate-btn { display: inline-block; background: #007bff; color: white; padding: 4px 8px; border-radius: 3px; font-size: 12px; margin-right: 4px; text-decoration: none; }
+.migrate-btn:hover { background: #0056b3; text-decoration: none; }
+.delete-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; }
+.delete-btn:hover { background: #c82333; }
+dialog { padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
+dialog::backdrop { background: rgba(0,0,0,0.5); }
+dialog input[type="text"] { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
+dialog button { margin-right: 10px; padding: 8px 16px; }
+dialog .confirm-btn { background: #dc3545; color: white; border: none; cursor: pointer; }
+dialog .confirm-btn:disabled { background: #ccc; cursor: not-allowed; }
+dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: pointer; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+</head><body>
+<h1>Boxes/VMs</h1>
+<p><a href="/debug">/debug</a> | <a href="/debug/boxes?format=json&source={{.Source}}">json</a></p>
+<p>Source: {{.SourceNav}}</p>
+
+<table id="boxesTable" class="display stripe hover">
+<thead>
+<tr>
+<th>Name</th>
+<th>Exelet</th>
+<th>Status</th>
+<th>Owner</th>
+<th>Actions</th>
+</tr>
+<tr class="filters">
+<th>Name</th>
+<th>Exelet</th>
+<th>Status</th>
+<th>Owner</th>
+<th></th>
+</tr>
+</thead>
+</table>
+
+<dialog id="deleteDialog">
+<form method="post" action="/debug/boxes/delete">
+<p>To delete this box, type its name to confirm:</p>
+<p><strong id="boxNameDisplay"></strong></p>
+<input type="hidden" name="box_name" id="boxNameInput">
+<input type="text" name="confirm_name" id="confirmInput" autocomplete="off" placeholder="Type box name to confirm">
+<p>
+<button type="submit" class="confirm-btn" id="confirmBtn" disabled>Delete</button>
+<button type="button" class="cancel-btn" id="cancelBtn">Cancel</button>
+</p>
+</form>
+</dialog>
+
+<script>
+$(document).ready(function() {
+    // Add column filter inputs to header filter row (except Actions column)
+    $('#boxesTable thead tr.filters th').each(function(idx) {
+        var title = $(this).text();
+        if (title) {
+            $(this).html('<input type="text" placeholder="' + title + '">');
+        }
+    });
+
+    var table = $('#boxesTable').DataTable({
+        ajax: {
+            url: '/debug/boxes?format=json&source={{.Source}}',
+            dataSrc: ''
+        },
+        pageLength: 100,
+        lengthMenu: [[25, 50, 100, 250, -1], [25, 50, 100, 250, "All"]],
+        order: [[0, 'asc']],
+        orderCellsTop: true,
+        columns: [
+            { data: 'name', render: function(d) {
+                return '<a href="/debug/boxes/' + d + '">' + d + '</a>';
+            }},
+            { data: 'host' },
+            { data: 'status' },
+            { data: null, defaultContent: '', render: function(d) {
+                if (!d.owner_email) return '';
+                if (d.owner_user_id) {
+                    return '<a href="/debug/user?userId=' + encodeURIComponent(d.owner_user_id) + '">' + d.owner_email + '</a>';
+                }
+                return d.owner_email;
+            }},
+            { data: 'name', orderable: false, render: function(d) {
+                return '<a href="/debug/boxes/migrate?box_name=' + encodeURIComponent(d) + '" class="migrate-btn">Migrate</a> ' +
+                       '<button class="delete-btn" data-box="' + d + '">Delete</button>';
+            }}
+        ],
+        initComplete: function() {
+            this.api().columns().every(function(idx) {
+                var column = this;
+                $('input', $('#boxesTable thead tr.filters th').eq(idx)).on('keyup change clear', function() {
+                    if (column.search() !== this.value) {
+                        column.search(this.value).draw();
+                    }
+                });
+            });
+        }
+    });
+});
+
+// Delete dialog
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('delete-btn')) {
+        var boxName = e.target.dataset.box;
+        document.getElementById('boxNameDisplay').textContent = boxName;
+        document.getElementById('boxNameInput').value = boxName;
+        document.getElementById('confirmInput').value = '';
+        document.getElementById('confirmBtn').disabled = true;
+        document.getElementById('deleteDialog').showModal();
+    }
+});
+document.getElementById('cancelBtn').addEventListener('click', function() {
+    document.getElementById('deleteDialog').close();
+});
+document.getElementById('confirmInput').addEventListener('input', function() {
+    var expected = document.getElementById('boxNameInput').value;
+    document.getElementById('confirmBtn').disabled = (this.value !== expected);
+});
+
+</script>
+</body></html>

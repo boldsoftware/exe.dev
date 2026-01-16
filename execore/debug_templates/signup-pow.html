@@ -1,0 +1,44 @@
+<!doctype html>
+<html><head><title>Signup Proof-of-Work</title>
+<style>
+.section { margin: 20px 0; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+.toggle-switch { display: inline-flex; align-items: center; cursor: pointer; }
+.toggle-switch input { display: none; }
+.toggle-slider { width: 50px; height: 26px; background: #ccc; border-radius: 13px; position: relative; transition: 0.3s; }
+.toggle-slider:before { content: ""; position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: 0.3s; }
+.toggle-switch input:checked + .toggle-slider { background: #28a745; }
+.toggle-switch input:checked + .toggle-slider:before { left: 26px; }
+.toggle-label { margin-left: 10px; font-weight: bold; }
+.save-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 16px; }
+.save-btn:hover { background: #0056b3; }
+.info { background: #e7f3ff; border: 1px solid #b6d4fe; padding: 10px; border-radius: 5px; margin: 10px 0; }
+code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+</head><body>
+<h1>Signup Proof-of-Work</h1>
+<p><a href="/debug">/debug</a></p>
+
+<div class="info">
+<strong>Info:</strong> When enabled, new users must complete a proof-of-work challenge before creating an account.
+This helps prevent automated signups. Difficulty is currently set to <code>{{.Difficulty}}</code> leading zero bits (~{{.AvgHashes}} hashes average).
+</div>
+
+<div class="section">
+<h2>Enable POW for New Signups</h2>
+<form method="post" action="/debug/signup-pow">
+<p>When enabled, new users will see a "Verifying..." interstitial while their browser solves a cryptographic puzzle.</p>
+<label class="toggle-switch">
+<input type="checkbox" name="enabled" value="true"{{if .Enabled}} checked{{end}}>
+<span class="toggle-slider"></span>
+<span class="toggle-label">Require POW for new signups</span>
+</label>
+<p style="margin-top: 10px;">
+<button type="submit" class="save-btn">Save Settings</button>
+</p>
+</form>
+</div>
+
+</body></html>

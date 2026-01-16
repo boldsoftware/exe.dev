@@ -1,0 +1,103 @@
+<!doctype html>
+<html><head><title>Box: {{.Name}}</title>
+<style>
+table { border-collapse: collapse; margin: 10px 0; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+th { background: #f5f5f5; }
+.section { margin: 20px 0; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+</head><body>
+<h1>Box: {{.Name}}</h1>
+<p><a href="/debug">/debug</a> | <a href="/debug/boxes">/debug/boxes</a></p>
+
+<div class="section">
+<h2>Basic Information</h2>
+<table>
+<tr><th>Name</th><td>{{.Name}}</td></tr>
+<tr><th>ID</th><td>{{.ID}}</td></tr>
+<tr><th>Status</th><td>{{.Status}}</td></tr>
+<tr><th>Image</th><td>{{.Image}}</td></tr>
+<tr><th>Container Host</th><td>{{.Ctrhost}}</td></tr>
+<tr><th>Container ID</th><td>{{.ContainerID}}</td></tr>
+<tr><th>Owner</th><td>{{.OwnerEmail}}</td></tr>
+<tr><th>Owner User ID</th><td>{{.OwnerUserID}}</td></tr>
+<tr><th>Created At</th><td>{{.CreatedAt}}</td></tr>
+<tr><th>Updated At</th><td>{{.UpdatedAt}}</td></tr>
+<tr><th>Last Started At</th><td>{{.LastStartedAt}}</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>Routing Configuration</h2>
+<table>
+<tr><th>Proxy Port</th><td>{{.ProxyPort}}</td></tr>
+<tr><th>Share Mode</th><td>{{.ShareMode}}</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>SSH Configuration</h2>
+<table>
+<tr><th>SSH Port</th><td>{{.SSHPort}}</td></tr>
+<tr><th>SSH User</th><td>{{.SSHUser}}</td></tr>
+<tr><th>SSH Host</th><td>{{.SSHHost}}</td></tr>
+<tr><th>Has Server Identity Key</th><td>{{.HasServerIdentityKey}}</td></tr>
+<tr><th>Has Client Private Key</th><td>{{.HasClientPrivateKey}}</td></tr>
+<tr><th>Has Authorized Keys</th><td>{{.HasAuthorizedKeys}}</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>Active Shares ({{len .ActiveShares}})</h2>
+{{if .ActiveShares}}
+<table>
+<tr><th>Email</th><th>Shared By</th><th>Message</th><th>Created At</th></tr>
+{{range .ActiveShares}}
+<tr><td>{{.Email}}</td><td>{{.SharedBy}}</td><td>{{.Message}}</td><td>{{.CreatedAt}}</td></tr>
+{{end}}
+</table>
+{{else}}
+<p>No active shares.</p>
+{{end}}
+</div>
+
+<div class="section">
+<h2>Pending Shares ({{len .PendingShares}})</h2>
+{{if .PendingShares}}
+<table>
+<tr><th>Email</th><th>Shared By</th><th>Message</th><th>Created At</th></tr>
+{{range .PendingShares}}
+<tr><td>{{.Email}}</td><td>{{.SharedBy}}</td><td>{{.Message}}</td><td>{{.CreatedAt}}</td></tr>
+{{end}}
+</table>
+{{else}}
+<p>No pending shares.</p>
+{{end}}
+</div>
+
+<div class="section">
+<h2>Share Links ({{len .ShareLinks}})</h2>
+{{if .ShareLinks}}
+<table>
+<tr><th>Token</th><th>Created By</th><th>Created At</th><th>Last Used</th><th>Use Count</th></tr>
+{{range .ShareLinks}}
+<tr><td><code>{{.Token}}</code></td><td>{{.CreatedBy}}</td><td>{{.CreatedAt}}</td><td>{{.LastUsed}}</td><td>{{.UseCount}}</td></tr>
+{{end}}
+</table>
+{{else}}
+<p>No share links.</p>
+{{end}}
+</div>
+
+{{if .CreationLog}}
+<div class="section">
+<h2>Creation Log</h2>
+<pre>{{.CreationLog}}</pre>
+</div>
+{{end}}
+
+</body></html>

@@ -1,0 +1,61 @@
+<!doctype html>
+<html><head><title>Send Test Email</title>
+<style>
+.section { margin: 20px 0; }
+input[type="text"], input[type="email"] { width: 300px; padding: 8px; }
+textarea { width: 400px; height: 100px; }
+.send-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; }
+.send-btn:hover { background: #0056b3; }
+.send-btn:disabled { background: #ccc; cursor: not-allowed; }
+.provider-status { margin: 10px 0; }
+.available { color: green; }
+.unavailable { color: red; }
+.result { margin: 20px 0; padding: 15px; border-radius: 5px; }
+.result.success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+.result.error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+</head><body>
+<h1>Send Test Email</h1>
+<p><a href="/debug">/debug</a></p>
+
+<div class="provider-status">
+<strong>Provider Status:</strong><br>
+<span class="{{if .PostmarkAvailable}}available{{else}}unavailable{{end}}">Postmark: {{if .PostmarkAvailable}}Available{{else}}Not configured{{end}}</span><br>
+<span class="{{if .MailgunAvailable}}available{{else}}unavailable{{end}}">Mailgun: {{if .MailgunAvailable}}Available{{else}}Not configured{{end}}</span>
+</div>
+
+{{if .Result}}
+<div class="result {{if .IsError}}error{{else}}success{{end}}">{{.Result}}</div>
+{{end}}
+
+<form method="post">
+<div class="section">
+<label><strong>To:</strong></label><br>
+<input type="email" name="to" required placeholder="recipient@example.com">
+</div>
+
+<div class="section">
+<label><strong>Subject:</strong></label><br>
+<input type="text" name="subject" value="Test email from exe.dev debug" required>
+</div>
+
+<div class="section">
+<label><strong>Body:</strong></label><br>
+<textarea name="body" required>This is a test email sent from the exe.dev debug page.</textarea>
+</div>
+
+<div class="section">
+<label><strong>Provider:</strong></label><br>
+<select name="provider">
+<option value="postmark"{{if not .PostmarkAvailable}} disabled{{end}}>Postmark</option>
+<option value="mailgun"{{if not .MailgunAvailable}} disabled{{end}}>Mailgun</option>
+</select>
+</div>
+
+<div class="section">
+<button type="submit" class="send-btn">Send Test Email</button>
+</div>
+</form>
+</body></html>

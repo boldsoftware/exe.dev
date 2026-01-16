@@ -1,0 +1,92 @@
+<!doctype html>
+<html><head><title>New Throttle Settings</title>
+<style>
+table { border-collapse: collapse; margin: 10px 0; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+th { background: #f5f5f5; }
+.section { margin: 20px 0; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+textarea { width: 100%; height: 150px; font-family: monospace; }
+input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; }
+.toggle-switch { display: inline-flex; align-items: center; cursor: pointer; }
+.toggle-switch input { display: none; }
+.toggle-slider { width: 50px; height: 26px; background: #ccc; border-radius: 13px; position: relative; transition: 0.3s; }
+.toggle-slider:before { content: ""; position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: 0.3s; }
+.toggle-switch input:checked + .toggle-slider { background: #dc3545; }
+.toggle-switch input:checked + .toggle-slider:before { left: 26px; }
+.toggle-label { margin-left: 10px; font-weight: bold; }
+.save-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 16px; }
+.save-btn:hover { background: #0056b3; }
+.warning { background: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 5px; margin: 10px 0; }
+.error-list { color: red; margin: 5px 0; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+</head><body>
+<h1>New Throttle Settings</h1>
+<p><a href="/debug">/debug</a> | <a href="/debug/new-throttle?format=json">json</a></p>
+
+<div class="warning">
+<strong>Warning:</strong> These settings control who can create new VMs. Enable with caution.
+</div>
+
+<form method="post" action="/debug/new-throttle" id="throttleForm">
+
+<div class="section">
+<h2>Global Throttle</h2>
+<p>When enabled, ALL users are blocked from creating new VMs.</p>
+<label class="toggle-switch">
+<input type="checkbox" name="enabled" value="true"{{if .Enabled}} checked{{end}}>
+<span class="toggle-slider"></span>
+<span class="toggle-label">Block all new VM creation</span>
+</label>
+</div>
+
+<div class="section">
+<h2>Email Pattern Throttle</h2>
+<p>Enter email patterns (regular expressions) to block, one per line. Users whose email matches any pattern will be blocked.</p>
+<p>Examples: <code>.*@example\.com$</code> (block all example.com), <code>^test@</code> (block emails starting with test@)</p>
+<textarea name="email_patterns" placeholder="Enter email regex patterns, one per line...">{{.EmailPatterns}}</textarea>
+<div id="patternErrors" class="error-list"></div>
+</div>
+
+<div class="section">
+<h2>Denial Message</h2>
+<p>Message shown to users when they are blocked from creating VMs. Leave empty for default message.</p>
+<input type="text" name="message" value="{{.Message}}" placeholder="VM creation is temporarily unavailable.">
+</div>
+
+<div class="section">
+<button type="submit" class="save-btn">Save Settings</button>
+</div>
+
+</form>
+
+<script>
+document.getElementById('throttleForm').addEventListener('submit', function(e) {
+    var patterns = document.querySelector('textarea[name="email_patterns"]').value;
+    var lines = patterns.split('\n');
+    var errors = [];
+
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (line === '') continue;
+        try {
+            new RegExp(line);
+        } catch (err) {
+            errors.push('Line ' + (i + 1) + ': ' + err.message);
+        }
+    }
+
+    var errorDiv = document.getElementById('patternErrors');
+    if (errors.length > 0) {
+        errorDiv.innerHTML = errors.join('<br>');
+        e.preventDefault();
+        return false;
+    }
+    errorDiv.innerHTML = '';
+    return true;
+});
+</script>
+
+</body></html>

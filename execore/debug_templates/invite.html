@@ -1,0 +1,83 @@
+<!doctype html>
+<html><head><title>Invite Codes</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
+table { border-collapse: collapse; margin: 10px 0; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+th { background: #f5f5f5; }
+.section { margin: 20px 0; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+.code { font-family: monospace; background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
+.create-btn { background: #28a745; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 14px; }
+.create-btn:hover { background: #218838; }
+select, input[type="number"] { padding: 8px; margin: 5px; }
+input[type="text"], input[type="email"] { padding: 8px; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+</head><body>
+<h1>Invite Codes</h1>
+<p><a href="/debug">/debug</a></p>
+
+<div class="section">
+<h2>Create System Invite Code</h2>
+<form method="post" action="/debug/invite">
+<input type="hidden" name="action" value="create">
+<p>
+<label>Plan type:
+<select name="plan_type">
+<option value="trial">Trial (1 month free)</option>
+<option value="free">Free forever</option>
+</select>
+</label>
+</p>
+<p>
+<label>For (optional):
+<input type="text" name="assigned_for" placeholder="e.g. John Doe, friend referral">
+</label>
+</p>
+<p><button type="submit" class="create-btn">Create Invite Code</button></p>
+</form>
+</div>
+
+<div class="section">
+<h2>Give Invites to User</h2>
+<form method="post" action="/debug/invite">
+<input type="hidden" name="action" value="give_to_user">
+<p>
+<label>Email:
+<input type="email" name="email" placeholder="user@example.com" required>
+</label>
+</p>
+<p>
+<label>Number of invites:
+<input type="number" name="count" value="3" min="1" max="10" required>
+</label>
+</p>
+<p>
+<label>Plan type:
+<select name="plan_type">
+<option value="trial">Trial (1 month free)</option>
+<option value="free">Free forever</option>
+</select>
+</label>
+</p>
+<p><button type="submit" class="create-btn">Give Invites</button></p>
+</form>
+</div>
+
+<div class="section">
+<h2>Unused System Invite Codes ({{len .SystemCodes}})</h2>
+
+{{if not .SystemCodes}}
+<p>No unused system invite codes.</p>
+{{else}}
+<table>
+<tr><th>Code</th><th>Plan Type</th><th>Created By</th><th>For</th><th>Created</th></tr>
+{{range .SystemCodes}}
+<tr><td class="code">{{.Code}}</td><td>{{.PlanType}}</td><td>{{.AssignedBy}}</td><td>{{.AssignedFor}}</td><td>{{.CreatedAt}}</td></tr>
+{{end}}
+</table>
+{{end}}
+</div>
+</body></html>

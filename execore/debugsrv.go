@@ -8,6 +8,7 @@ import (
 	"expvar"
 	"fmt"
 	"html"
+	"html/template"
 	"io"
 	"net/http"
 	"net/http/pprof"
@@ -98,38 +99,25 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
 	if commit == "" {
 		commit = "unknown"
 	}
+
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		GitCommit  string
+		GitHubLink template.HTML
+	}{
+		GitCommit:  commit,
+		GitHubLink: template.HTML(gitHubLink(commit)),
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>exed debug</title></head><body>
-<h1>exed debug</h1>
-<ul>
-    <li><a href="/debug/pprof/">pprof</a></li>
-    <li><a href="/debug/pprof/cmdline">pprof/cmdline</a></li>
-    <li><a href="/debug/pprof/profile">pprof/profile</a></li>
-    <li><a href="/debug/pprof/symbol">pprof/symbol</a></li>
-    <li><a href="/debug/pprof/trace">pprof/trace</a></li>
-    <li><a href="/debug/pprof/goroutine?debug=1">pprof/goroutine?debug=1</a></li>
-    <li><a href="/metrics">metrics</a></li>
-    <li><a href="/debug/gitsha">gitsha</a></li>
-    <li><a href="/debug/boxes">boxes</a> (<a href="/debug/boxes?format=json">json</a>)</li>
-    <li><a href="/debug/users">users</a> (<a href="/debug/users?format=json">json</a>)</li>
-    <li><a href="/debug/exelets">exelets</a> (<a href="/debug/exelets?format=json">json</a>)</li>
-    <li><a href="/debug/new-throttle">new-throttle</a> (<a href="/debug/new-throttle?format=json">json</a>)</li>
-    <li><a href="/debug/signup-limiter">signup-limiter</a></li>
-    <li><a href="/debug/signup-pow">signup-pow</a></li>
-    <li><a href="/debug/ip-abuse-filter">ip-abuse-filter</a></li>
-    <li><a href="/debug/signup-reject">signup-reject</a></li>
-    <li><a href="/debug/ipshards">ipshards</a> (<a href="/debug/ipshards?format=json">json</a>)</li>
-    <li><a href="/debug/log">/debug/log</a> (POST text=... to log an error)</li>
-    <li><a href="/debug/testimonials">testimonials</a></li>
-    <li><a href="/debug/email">email</a> (send test emails)</li>
-    <li><a href="/debug/invite">invite</a> (manage invite codes)</li>
-    <li><a href="/debug/all-invite-codes">all-invite-codes</a> (<a href="/debug/all-invite-codes?format=json">json</a>) (view all invite codes)</li>
-    <li><a href="/debug/invite-tree">invite-tree</a> (invite tree visualization)</li>
-</ul>
-<p>Git version: %s %s</p>
-</body></html>
-`, commit, gitHubLink(commit))
+	if err := tmpl.ExecuteTemplate(w, "index.html", data); err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to execute index template", "error", err)
+	}
 }
 
 func (s *Server) handleDebugGitsha(w http.ResponseWriter, r *http.Request) {
@@ -150,151 +138,32 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 	// For HTML requests, return the page shell immediately.
 	// DataTables will load data via AJAX from the JSON endpoint.
 	if r.URL.Query().Get("format") != "json" {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		tmpl, err := debug_templates.Parse()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+			return
+		}
 
 		// Build the navigation links
-		var sourceNav string
+		var sourceNav template.HTML
 		if source == "exelets" {
 			sourceNav = `<strong>exelets</strong> | <a href="/debug/boxes?source=db">db</a>`
 		} else {
 			sourceNav = `<a href="/debug/boxes?source=exelets">exelets</a> | <strong>db</strong>`
 		}
 
-		fmt.Fprintf(w, `<!doctype html>
-<html><head><title>Boxes/VMs</title>
-<link rel="stylesheet" href="/static/datatables.min.css">
-<script src="/static/jquery.min.js"></script>
-<script src="/static/datatables.min.js"></script>
-<style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
-h1 { margin-bottom: 10px; }
-#boxesTable { width: 100%%; }
-#boxesTable td, #boxesTable th { font-size: 13px; }
-#boxesTable thead tr.filters th { padding: 4px; }
-#boxesTable thead tr.filters input { width: 100%%; box-sizing: border-box; font-size: 11px; padding: 4px; }
-.migrate-btn { display: inline-block; background: #007bff; color: white; padding: 4px 8px; border-radius: 3px; font-size: 12px; margin-right: 4px; text-decoration: none; }
-.migrate-btn:hover { background: #0056b3; text-decoration: none; }
-.delete-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; }
-.delete-btn:hover { background: #c82333; }
-dialog { padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
-dialog::backdrop { background: rgba(0,0,0,0.5); }
-dialog input[type="text"] { width: 100%%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
-dialog button { margin-right: 10px; padding: 8px 16px; }
-dialog .confirm-btn { background: #dc3545; color: white; border: none; cursor: pointer; }
-dialog .confirm-btn:disabled { background: #ccc; cursor: not-allowed; }
-dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: pointer; }
-a { color: #007bff; text-decoration: none; }
-a:hover { text-decoration: underline; }
-</style>
-</head><body>
-<h1>Boxes/VMs</h1>
-<p><a href="/debug">/debug</a> | <a href="/debug/boxes?format=json&source=%s">json</a></p>
-<p>Source: %s</p>
+		data := struct {
+			Source    string
+			SourceNav template.HTML
+		}{
+			Source:    source,
+			SourceNav: sourceNav,
+		}
 
-<table id="boxesTable" class="display stripe hover">
-<thead>
-<tr>
-<th>Name</th>
-<th>Exelet</th>
-<th>Status</th>
-<th>Owner</th>
-<th>Actions</th>
-</tr>
-<tr class="filters">
-<th>Name</th>
-<th>Exelet</th>
-<th>Status</th>
-<th>Owner</th>
-<th></th>
-</tr>
-</thead>
-</table>
-
-<dialog id="deleteDialog">
-<form method="post" action="/debug/boxes/delete">
-<p>To delete this box, type its name to confirm:</p>
-<p><strong id="boxNameDisplay"></strong></p>
-<input type="hidden" name="box_name" id="boxNameInput">
-<input type="text" name="confirm_name" id="confirmInput" autocomplete="off" placeholder="Type box name to confirm">
-<p>
-<button type="submit" class="confirm-btn" id="confirmBtn" disabled>Delete</button>
-<button type="button" class="cancel-btn" id="cancelBtn">Cancel</button>
-</p>
-</form>
-</dialog>
-
-<script>
-$(document).ready(function() {
-    // Add column filter inputs to header filter row (except Actions column)
-    $('#boxesTable thead tr.filters th').each(function(idx) {
-        var title = $(this).text();
-        if (title) {
-            $(this).html('<input type="text" placeholder="' + title + '">');
-        }
-    });
-
-    var table = $('#boxesTable').DataTable({
-        ajax: {
-            url: '/debug/boxes?format=json&source=%s',
-            dataSrc: ''
-        },
-        pageLength: 100,
-        lengthMenu: [[25, 50, 100, 250, -1], [25, 50, 100, 250, "All"]],
-        order: [[0, 'asc']],
-        orderCellsTop: true,
-        columns: [
-            { data: 'name', render: function(d) {
-                return '<a href="/debug/boxes/' + d + '">' + d + '</a>';
-            }},
-            { data: 'host' },
-            { data: 'status' },
-            { data: null, defaultContent: '', render: function(d) {
-                if (!d.owner_email) return '';
-                if (d.owner_user_id) {
-                    return '<a href="/debug/user?userId=' + encodeURIComponent(d.owner_user_id) + '">' + d.owner_email + '</a>';
-                }
-                return d.owner_email;
-            }},
-            { data: 'name', orderable: false, render: function(d) {
-                return '<a href="/debug/boxes/migrate?box_name=' + encodeURIComponent(d) + '" class="migrate-btn">Migrate</a> ' +
-                       '<button class="delete-btn" data-box="' + d + '">Delete</button>';
-            }}
-        ],
-        initComplete: function() {
-            this.api().columns().every(function(idx) {
-                var column = this;
-                $('input', $('#boxesTable thead tr.filters th').eq(idx)).on('keyup change clear', function() {
-                    if (column.search() !== this.value) {
-                        column.search(this.value).draw();
-                    }
-                });
-            });
-        }
-    });
-});
-
-// Delete dialog
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('delete-btn')) {
-        var boxName = e.target.dataset.box;
-        document.getElementById('boxNameDisplay').textContent = boxName;
-        document.getElementById('boxNameInput').value = boxName;
-        document.getElementById('confirmInput').value = '';
-        document.getElementById('confirmBtn').disabled = true;
-        document.getElementById('deleteDialog').showModal();
-    }
-});
-document.getElementById('cancelBtn').addEventListener('click', function() {
-    document.getElementById('deleteDialog').close();
-});
-document.getElementById('confirmInput').addEventListener('input', function() {
-    var expected = document.getElementById('boxNameInput').value;
-    document.getElementById('confirmBtn').disabled = (this.value !== expected);
-});
-
-</script>
-</body></html>
-`, source, sourceNav, source)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := tmpl.ExecuteTemplate(w, "boxes.html", data); err != nil {
+			s.slog().ErrorContext(ctx, "failed to execute boxes template", "error", err)
+		}
 		return
 	}
 
@@ -472,131 +341,29 @@ func (s *Server) handleDebugBoxMigrateForm(w http.ResponseWriter, r *http.Reques
 	}
 	sort.Strings(addrs)
 
-	var exeletOptions string
-	for _, addr := range addrs {
-		exeletOptions += fmt.Sprintf(`<option value="%s">%s</option>`, html.EscapeString(addr), html.EscapeString(addr))
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
 	}
 
-	// Escape box name for safe HTML interpolation
-	escapedBoxName := html.EscapeString(boxName)
+	// JSON-encode the box name for use in JavaScript
+	boxNameJSON, _ := json.Marshal(boxName)
+
+	data := struct {
+		BoxName       string
+		BoxNameJSON   template.JS
+		ExeletOptions []string
+	}{
+		BoxName:       boxName,
+		BoxNameJSON:   template.JS(boxNameJSON),
+		ExeletOptions: addrs,
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>Migrate Box: %s</title>
-<style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; max-width: 600px; }
-h1 { margin-bottom: 10px; }
-label { display: block; margin-top: 15px; font-weight: bold; }
-select, input[type="text"] { width: 100%%; padding: 8px; margin-top: 5px; box-sizing: border-box; font-size: 14px; }
-button { margin-top: 20px; padding: 10px 20px; font-size: 14px; cursor: pointer; }
-button[type="submit"] { background: #007bff; color: white; border: none; }
-button[type="submit"]:disabled { background: #ccc; cursor: not-allowed; }
-a { color: #007bff; text-decoration: none; }
-a:hover { text-decoration: underline; }
-#progress { margin-top: 20px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; display: none; white-space: pre-wrap; font-family: monospace; font-size: 13px; max-height: 400px; overflow-y: auto; }
-#progress.active { display: block; }
-#progress.error { background: #f8d7da; border-color: #f5c6cb; }
-#progress.success { background: #d4edda; border-color: #c3e6cb; }
-.warning { background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 12px; margin: 15px 0; }
-.warning strong { color: #856404; }
-</style>
-</head><body>
-<h1>Migrate Box</h1>
-<p><a href="/debug/boxes">&larr; Back to boxes</a></p>
-
-<div class="warning"><strong>Warning:</strong> The VM will be stopped during migration and restarted on the target host.</div>
-
-<form id="migrateForm" method="post" action="/debug/boxes/migrate">
-<p>Box: <strong>%s</strong></p>
-<input type="hidden" name="box_name" value="%s">
-
-<label for="target">Target exelet:</label>
-<select name="target" id="target" required>
-<option value="">Select target exelet...</option>
-%s
-</select>
-
-<label for="confirm_name">Type box name to confirm:</label>
-<input type="text" name="confirm_name" id="confirm_name" autocomplete="off" placeholder="%s">
-
-<p>
-<button type="submit" id="submitBtn" disabled>Migrate</button>
-<a href="/debug/boxes">Cancel</a>
-</p>
-</form>
-
-<div id="progress"></div>
-
-<script>
-var expectedName = %q;
-document.getElementById('confirm_name').addEventListener('input', function() {
-    var target = document.getElementById('target').value;
-    document.getElementById('submitBtn').disabled = (this.value !== expectedName || !target);
-});
-document.getElementById('target').addEventListener('change', function() {
-    var confirmed = document.getElementById('confirm_name').value;
-    document.getElementById('submitBtn').disabled = (confirmed !== expectedName || !this.value);
-});
-
-document.getElementById('migrateForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    var form = this;
-    var progress = document.getElementById('progress');
-    var submitBtn = document.getElementById('submitBtn');
-
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Migrating...';
-    progress.className = 'active';
-    progress.textContent = 'Starting migration...\n';
-
-    fetch(form.action, {
-        method: 'POST',
-        body: new FormData(form)
-    }).then(function(response) {
-        var reader = response.body.getReader();
-        var decoder = new TextDecoder();
-
-        function read() {
-            reader.read().then(function(result) {
-                if (result.done) {
-                    return;
-                }
-                var text = decoder.decode(result.value, {stream: true});
-                progress.textContent += text;
-                progress.scrollTop = progress.scrollHeight;
-
-                // Check for completion markers
-                if (text.includes('MIGRATION_SUCCESS:')) {
-                    progress.className = 'active success';
-                    var match = text.match(/MIGRATION_SUCCESS:(\S+)/);
-                    if (match) {
-                        // Add a clickable link instead of auto-redirecting
-                        var link = document.createElement('a');
-                        link.href = '/debug/boxes/' + match[1];
-                        link.textContent = 'Go to box details \u2192';
-                        link.style.cssText = 'display:inline-block;margin-top:15px;padding:10px 20px;background:#28a745;color:white;text-decoration:none;border-radius:4px;';
-                        progress.parentNode.insertBefore(link, progress.nextSibling);
-                    }
-                } else if (text.includes('MIGRATION_ERROR:')) {
-                    progress.className = 'active error';
-                    submitBtn.textContent = 'Migrate';
-                    submitBtn.disabled = false;
-                }
-
-                read();
-            });
-        }
-        read();
-    }).catch(function(err) {
-        progress.className = 'active error';
-        progress.textContent += '\nFetch error: ' + err;
-        submitBtn.textContent = 'Migrate';
-        submitBtn.disabled = false;
-    });
-});
-</script>
-</body></html>
-`, escapedBoxName, escapedBoxName, escapedBoxName, exeletOptions, escapedBoxName, boxName)
+	if err := tmpl.ExecuteTemplate(w, "box-migrate.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute box-migrate template", "error", err)
+	}
 }
 
 // handleDebugBoxMigrate handles migration of a box to a different exelet.
@@ -953,157 +720,117 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 
 	route := box.GetRoute()
 
-	// Render HTML
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	type shareInfo struct {
+		Email     string
+		SharedBy  string
+		Message   string
+		CreatedAt string
+	}
+
+	type linkInfo struct {
+		Token     string
+		CreatedBy string
+		CreatedAt string
+		LastUsed  string
+		UseCount  string
+	}
+
+	var activeShareList []shareInfo
+	for _, share := range activeShares {
+		activeShareList = append(activeShareList, shareInfo{
+			Email:     share.SharedWithUserEmail,
+			SharedBy:  share.SharedByUserID,
+			Message:   ptrStr(share.Message),
+			CreatedAt: formatTime(share.CreatedAt),
+		})
+	}
+
+	var pendingShareList []shareInfo
+	for _, share := range pendingShares {
+		pendingShareList = append(pendingShareList, shareInfo{
+			Email:     share.SharedWithEmail,
+			SharedBy:  share.SharedByUserID,
+			Message:   ptrStr(share.Message),
+			CreatedAt: formatTime(share.CreatedAt),
+		})
+	}
+
+	var shareLinkList []linkInfo
+	for _, link := range shareLinks {
+		shareLinkList = append(shareLinkList, linkInfo{
+			Token:     link.ShareToken,
+			CreatedBy: link.CreatedByEmail,
+			CreatedAt: formatTime(link.CreatedAt),
+			LastUsed:  formatTime(link.LastUsedAt),
+			UseCount:  formatInt64Ptr(link.UseCount),
+		})
+	}
+
+	var creationLog string
+	if box.CreationLog != nil {
+		creationLog = *box.CreationLog
+	}
+
+	data := struct {
+		Name                 string
+		ID                   int64
+		Status               string
+		Image                string
+		Ctrhost              string
+		ContainerID          string
+		OwnerEmail           string
+		OwnerUserID          string
+		CreatedAt            string
+		UpdatedAt            string
+		LastStartedAt        string
+		ProxyPort            int
+		ShareMode            string
+		SSHPort              string
+		SSHUser              string
+		SSHHost              string
+		HasServerIdentityKey bool
+		HasClientPrivateKey  bool
+		HasAuthorizedKeys    bool
+		ActiveShares         []shareInfo
+		PendingShares        []shareInfo
+		ShareLinks           []linkInfo
+		CreationLog          string
+	}{
+		Name:                 box.Name,
+		ID:                   int64(box.ID),
+		Status:               box.Status,
+		Image:                box.Image,
+		Ctrhost:              box.Ctrhost,
+		ContainerID:          ptrStr(box.ContainerID),
+		OwnerEmail:           ownerEmail,
+		OwnerUserID:          box.CreatedByUserID,
+		CreatedAt:            formatTime(box.CreatedAt),
+		UpdatedAt:            formatTime(box.UpdatedAt),
+		LastStartedAt:        formatTime(box.LastStartedAt),
+		ProxyPort:            route.Port,
+		ShareMode:            route.Share,
+		SSHPort:              formatInt64Ptr(box.SSHPort),
+		SSHUser:              ptrStr(box.SSHUser),
+		SSHHost:              box.SSHHost(),
+		HasServerIdentityKey: len(box.SSHServerIdentityKey) > 0,
+		HasClientPrivateKey:  len(box.SSHClientPrivateKey) > 0,
+		HasAuthorizedKeys:    box.SSHAuthorizedKeys != nil && *box.SSHAuthorizedKeys != "",
+		ActiveShares:         activeShareList,
+		PendingShares:        pendingShareList,
+		ShareLinks:           shareLinkList,
+		CreationLog:          creationLog,
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>Box: %s</title>
-<style>
-table { border-collapse: collapse; margin: 10px 0; }
-th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-th { background: #f5f5f5; }
-.section { margin: 20px 0; }
-h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
-</style>
-</head><body>
-<h1>Box: %s</h1>
-<p><a href="/debug">/debug</a> | <a href="/debug/boxes">/debug/boxes</a> </p>
-`, html.EscapeString(box.Name), html.EscapeString(box.Name))
-
-	// Basic info
-	fmt.Fprintf(w, `<div class="section">
-<h2>Basic Information</h2>
-<table>
-<tr><th>Name</th><td>%s</td></tr>
-<tr><th>ID</th><td>%d</td></tr>
-<tr><th>Status</th><td>%s</td></tr>
-<tr><th>Image</th><td>%s</td></tr>
-<tr><th>Container Host</th><td>%s</td></tr>
-<tr><th>Container ID</th><td>%s</td></tr>
-<tr><th>Owner</th><td>%s</td></tr>
-<tr><th>Owner User ID</th><td>%s</td></tr>
-<tr><th>Created At</th><td>%s</td></tr>
-<tr><th>Updated At</th><td>%s</td></tr>
-<tr><th>Last Started At</th><td>%s</td></tr>
-</table>
-</div>
-`,
-		html.EscapeString(box.Name),
-		box.ID,
-		html.EscapeString(box.Status),
-		html.EscapeString(box.Image),
-		html.EscapeString(box.Ctrhost),
-		html.EscapeString(ptrStr(box.ContainerID)),
-		html.EscapeString(ownerEmail),
-		html.EscapeString(box.CreatedByUserID),
-		formatTime(box.CreatedAt),
-		formatTime(box.UpdatedAt),
-		formatTime(box.LastStartedAt),
-	)
-
-	// Route/sharing config
-	fmt.Fprintf(w, `<div class="section">
-<h2>Routing Configuration</h2>
-<table>
-<tr><th>Proxy Port</th><td>%d</td></tr>
-<tr><th>Share Mode</th><td>%s</td></tr>
-</table>
-</div>
-`, route.Port, html.EscapeString(route.Share))
-
-	// SSH info
-	fmt.Fprintf(w, `<div class="section">
-<h2>SSH Configuration</h2>
-<table>
-<tr><th>SSH Port</th><td>%s</td></tr>
-<tr><th>SSH User</th><td>%s</td></tr>
-<tr><th>SSH Host</th><td>%s</td></tr>
-<tr><th>Has Server Identity Key</th><td>%v</td></tr>
-<tr><th>Has Client Private Key</th><td>%v</td></tr>
-<tr><th>Has Authorized Keys</th><td>%v</td></tr>
-</table>
-</div>
-`,
-		formatInt64Ptr(box.SSHPort),
-		html.EscapeString(ptrStr(box.SSHUser)),
-		html.EscapeString(box.SSHHost()),
-		len(box.SSHServerIdentityKey) > 0,
-		len(box.SSHClientPrivateKey) > 0,
-		box.SSHAuthorizedKeys != nil && *box.SSHAuthorizedKeys != "",
-	)
-
-	// Active shares
-	fmt.Fprintf(w, `<div class="section">
-<h2>Active Shares (%d)</h2>
-`, len(activeShares))
-	if len(activeShares) == 0 {
-		fmt.Fprintf(w, "<p>No active shares.</p>\n")
-	} else {
-		fmt.Fprintf(w, "<table>\n<tr><th>Email</th><th>Shared By</th><th>Message</th><th>Created At</th></tr>\n")
-		for _, share := range activeShares {
-			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
-				html.EscapeString(share.SharedWithUserEmail),
-				html.EscapeString(share.SharedByUserID),
-				html.EscapeString(ptrStr(share.Message)),
-				formatTime(share.CreatedAt),
-			)
-		}
-		fmt.Fprintf(w, "</table>\n")
+	if err := tmpl.ExecuteTemplate(w, "box-details.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute box-details template", "error", err)
 	}
-	fmt.Fprintf(w, "</div>\n")
-
-	// Pending shares
-	fmt.Fprintf(w, `<div class="section">
-<h2>Pending Shares (%d)</h2>
-`, len(pendingShares))
-	if len(pendingShares) == 0 {
-		fmt.Fprintf(w, "<p>No pending shares.</p>\n")
-	} else {
-		fmt.Fprintf(w, "<table>\n<tr><th>Email</th><th>Shared By</th><th>Message</th><th>Created At</th></tr>\n")
-		for _, share := range pendingShares {
-			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
-				html.EscapeString(share.SharedWithEmail),
-				html.EscapeString(share.SharedByUserID),
-				html.EscapeString(ptrStr(share.Message)),
-				formatTime(share.CreatedAt),
-			)
-		}
-		fmt.Fprintf(w, "</table>\n")
-	}
-	fmt.Fprintf(w, "</div>\n")
-
-	// Share links
-	fmt.Fprintf(w, `<div class="section">
-<h2>Share Links (%d)</h2>
-`, len(shareLinks))
-	if len(shareLinks) == 0 {
-		fmt.Fprintf(w, "<p>No share links.</p>\n")
-	} else {
-		fmt.Fprintf(w, "<table>\n<tr><th>Token</th><th>Created By</th><th>Created At</th><th>Last Used</th><th>Use Count</th></tr>\n")
-		for _, link := range shareLinks {
-			fmt.Fprintf(w, "<tr><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
-				html.EscapeString(link.ShareToken),
-				html.EscapeString(link.CreatedByEmail),
-				formatTime(link.CreatedAt),
-				formatTime(link.LastUsedAt),
-				formatInt64Ptr(link.UseCount),
-			)
-		}
-		fmt.Fprintf(w, "</table>\n")
-	}
-	fmt.Fprintf(w, "</div>\n")
-
-	// Creation log
-	if box.CreationLog != nil && *box.CreationLog != "" {
-		fmt.Fprintf(w, `<div class="section">
-<h2>Creation Log</h2>
-<pre>%s</pre>
-</div>
-`, html.EscapeString(*box.CreationLog))
-	}
-
-	fmt.Fprintf(w, `</body></html>
-`)
 }
 
 // handleDebugUsers displays a list of all users with their root support and VM creation settings.
@@ -1493,69 +1220,22 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// HTML output
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>Exelets</title>
-<style>
-table { border-collapse: collapse; margin: 10px 0; }
-th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-th { background: #f5f5f5; }
-.status-healthy { color: green; font-weight: bold; }
-.status-error { color: red; font-weight: bold; }
-.preferred { background: #d4edda; }
-.set-btn { padding: 4px 12px; cursor: pointer; border-radius: 3px; border: 1px solid #007bff; background: #007bff; color: white; }
-.set-btn:hover { background: #0056b3; }
-.clear-btn { padding: 4px 12px; cursor: pointer; border-radius: 3px; border: 1px solid #dc3545; background: #dc3545; color: white; }
-.clear-btn:hover { background: #c82333; }
-</style>
-</head><body>
-<h1>Exelets</h1>
-<p><a href="/debug">/debug</a> | <a href="/debug/exelets?format=json">json</a></p>
-`)
-
-	if len(exelets) == 0 {
-		fmt.Fprintf(w, "<p>No exelets configured.</p>\n")
-	} else {
-		fmt.Fprintf(w, "<table>\n")
-		fmt.Fprintf(w, "<tr><th>Address</th><th>Status</th><th>Version</th><th>Arch</th><th>Instances</th><th>Actions</th></tr>\n")
-		for _, e := range exelets {
-			rowClass := ""
-			if e.IsPreferred {
-				rowClass = " class='preferred'"
-			}
-			statusClass := "status-healthy"
-			statusText := e.Status
-			if e.Status == "error" {
-				statusClass = "status-error"
-				statusText = fmt.Sprintf("error: %s", e.Error)
-			}
-
-			fmt.Fprintf(w, "<tr%s>", rowClass)
-			fmt.Fprintf(w, "<td><code>%s</code></td>", html.EscapeString(e.Address))
-			fmt.Fprintf(w, "<td class='%s'>%s</td>", statusClass, html.EscapeString(statusText))
-			fmt.Fprintf(w, "<td>%s</td>", html.EscapeString(e.Version))
-			fmt.Fprintf(w, "<td>%s</td>", html.EscapeString(e.Arch))
-			fmt.Fprintf(w, "<td>%d</td>", e.InstanceCount)
-			fmt.Fprintf(w, "<td>")
-			if !e.IsPreferred {
-				fmt.Fprintf(w, `<form method="post" action="/debug/exelets/set-preferred" style="display: inline;" onsubmit="return confirm('Set %s as the preferred exelet?');">
-<input type="hidden" name="address" value="%s">
-<button type="submit" class="set-btn">Set as Preferred</button>
-</form>`, html.EscapeString(e.Address), html.EscapeString(e.Address))
-			} else {
-				fmt.Fprintf(w, `⭐ <form method="post" action="/debug/exelets/set-preferred" style="display: inline;" onsubmit="return confirm('Clear preferred exelet?');">
-<input type="hidden" name="address" value="">
-<button type="submit" class="clear-btn">Clear Preference</button>
-</form>`)
-			}
-			fmt.Fprintf(w, "</td>")
-			fmt.Fprintf(w, "</tr>\n")
-		}
-		fmt.Fprintf(w, "</table>\n")
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
 	}
 
-	fmt.Fprintf(w, `</body></html>
-`)
+	data := struct {
+		Exelets []exeletInfo
+	}{
+		Exelets: exelets,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, "exelets.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute exelets template", "error", err)
+	}
 }
 
 // handleDebugSetPreferredExelet sets or clears the preferred exelet.
@@ -1701,69 +1381,37 @@ func (s *Server) handleDebugSignupLimiter(w http.ResponseWriter, r *http.Request
 	ctx := r.Context()
 	loginDisabled := s.IsLoginCreationDisabled(ctx)
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>Signup Limiter</title>
-<style>
-table { border-collapse: collapse; margin: 10px 0; }
-th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-th { background: #f5f5f5; }
-.section { margin: 20px 0; }
-h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-.toggle-switch { display: inline-flex; align-items: center; cursor: pointer; }
-.toggle-switch input { display: none; }
-.toggle-slider { width: 50px; height: 26px; background: #ccc; border-radius: 13px; position: relative; transition: 0.3s; }
-.toggle-slider:before { content: ""; position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%%; top: 2px; left: 2px; transition: 0.3s; }
-.toggle-switch input:checked + .toggle-slider { background: #dc3545; }
-.toggle-switch input:checked + .toggle-slider:before { left: 26px; }
-.toggle-label { margin-left: 10px; font-weight: bold; }
-.save-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 16px; }
-.save-btn:hover { background: #0056b3; }
-.warning { background: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 5px; margin: 10px 0; }
-</style>
-</head><body>
-<h1>Signup Limiter</h1>
-<p><a href="/debug">/debug</a></p>
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
 
-<div class="section">
-<h2>Block New Account Creation</h2>
-<div class="warning">
-<strong>Warning:</strong> When enabled, users with unrecognized email addresses cannot create new accounts.
-</div>
-<form method="post" action="/debug/signup-limiter">
-<p>When enabled, users trying to login with an email we haven't seen before will be blocked. Existing users can still log in and add new SSH keys.</p>
-<label class="toggle-switch">
-<input type="checkbox" name="disabled" value="true" %s>
-<span class="toggle-slider"></span>
-<span class="toggle-label">Block new account creation</span>
-</label>
-<p style="margin-top: 10px;">
-<button type="submit" class="save-btn">Save Settings</button>
-</p>
-</form>
-</div>
-
-<div class="section">
-<h2>Rate Limiter</h2>
-<p>Rate limit: 5 requests per minute per IP address.</p>
-<h3>Currently Rate-Limited IPs</h3>
-`, checkedAttr(loginDisabled))
+	// Capture rate limiter HTML output
+	var rateLimitedBuf, allTrackedBuf strings.Builder
 	if s.signupLimiter != nil {
 		s.signupLimiter.Allow(netip.Addr{}) // ensure internal cache is initialized
-		s.signupLimiter.DumpHTML(w, true)   // onlyLimited=true to show only rate-limited IPs
+		s.signupLimiter.DumpHTML(&rateLimitedBuf, true)
+		s.signupLimiter.DumpHTML(&allTrackedBuf, false)
 	} else {
-		fmt.Fprintf(w, "<p>No rate limiter configured.</p>\n")
+		rateLimitedBuf.WriteString("<p>No rate limiter configured.</p>\n")
+		allTrackedBuf.WriteString("<p>No rate limiter configured.</p>\n")
 	}
-	fmt.Fprintf(w, `
-<h3>All Tracked IPs</h3>
-`)
-	if s.signupLimiter != nil {
-		s.signupLimiter.DumpHTML(w, false) // show all tracked IPs
-	} else {
-		fmt.Fprintf(w, "<p>No rate limiter configured.</p>\n")
+
+	data := struct {
+		LoginDisabled   bool
+		RateLimitedHTML template.HTML
+		AllTrackedHTML  template.HTML
+	}{
+		LoginDisabled:   loginDisabled,
+		RateLimitedHTML: template.HTML(rateLimitedBuf.String()),
+		AllTrackedHTML:  template.HTML(allTrackedBuf.String()),
 	}
-	fmt.Fprintf(w, `</div>
-</body></html>`)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, "signup-limiter.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute signup-limiter template", "error", err)
+	}
 }
 
 // handleDebugSignupLimiterPost handles saving the login creation disabled setting.
@@ -1810,98 +1458,26 @@ func (s *Server) handleDebugNewThrottle(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// HTML output
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Enabled       bool
+		EmailPatterns string
+		Message       string
+	}{
+		Enabled:       config.Enabled,
+		EmailPatterns: strings.Join(config.EmailPatterns, "\n"),
+		Message:       config.Message,
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>New Throttle Settings</title>
-<style>
-table { border-collapse: collapse; margin: 10px 0; }
-th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-th { background: #f5f5f5; }
-.section { margin: 20px 0; }
-h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-textarea { width: 100%%; height: 150px; font-family: monospace; }
-input[type="text"] { width: 100%%; padding: 8px; box-sizing: border-box; }
-.toggle-switch { display: inline-flex; align-items: center; cursor: pointer; }
-.toggle-switch input { display: none; }
-.toggle-slider { width: 50px; height: 26px; background: #ccc; border-radius: 13px; position: relative; transition: 0.3s; }
-.toggle-slider:before { content: ""; position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%%; top: 2px; left: 2px; transition: 0.3s; }
-.toggle-switch input:checked + .toggle-slider { background: #dc3545; }
-.toggle-switch input:checked + .toggle-slider:before { left: 26px; }
-.toggle-label { margin-left: 10px; font-weight: bold; }
-.save-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 16px; }
-.save-btn:hover { background: #0056b3; }
-.warning { background: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 5px; margin: 10px 0; }
-.error-list { color: red; margin: 5px 0; }
-</style>
-</head><body>
-<h1>New Throttle Settings</h1>
-<p><a href="/debug">/debug</a> | <a href="/debug/new-throttle?format=json">json</a></p>
-
-<div class="warning">
-<strong>Warning:</strong> These settings control who can create new VMs. Enable with caution.
-</div>
-
-<form method="post" action="/debug/new-throttle" id="throttleForm">
-
-<div class="section">
-<h2>Global Throttle</h2>
-<p>When enabled, ALL users are blocked from creating new VMs.</p>
-<label class="toggle-switch">
-<input type="checkbox" name="enabled" value="true" %s>
-<span class="toggle-slider"></span>
-<span class="toggle-label">Block all new VM creation</span>
-</label>
-</div>
-
-<div class="section">
-<h2>Email Pattern Throttle</h2>
-<p>Enter email patterns (regular expressions) to block, one per line. Users whose email matches any pattern will be blocked.</p>
-<p>Examples: <code>.*@example\.com$</code> (block all example.com), <code>^test@</code> (block emails starting with test@)</p>
-<textarea name="email_patterns" placeholder="Enter email regex patterns, one per line...">%s</textarea>
-<div id="patternErrors" class="error-list"></div>
-</div>
-
-<div class="section">
-<h2>Denial Message</h2>
-<p>Message shown to users when they are blocked from creating VMs. Leave empty for default message.</p>
-<input type="text" name="message" value="%s" placeholder="VM creation is temporarily unavailable.">
-</div>
-
-<div class="section">
-<button type="submit" class="save-btn">Save Settings</button>
-</div>
-
-</form>
-
-<script>
-document.getElementById('throttleForm').addEventListener('submit', function(e) {
-    var patterns = document.querySelector('textarea[name="email_patterns"]').value;
-    var lines = patterns.split('\n');
-    var errors = [];
-
-    for (var i = 0; i < lines.length; i++) {
-        var line = lines[i].trim();
-        if (line === '') continue;
-        try {
-            new RegExp(line);
-        } catch (err) {
-            errors.push('Line ' + (i + 1) + ': ' + err.message);
-        }
-    }
-
-    var errorDiv = document.getElementById('patternErrors');
-    if (errors.length > 0) {
-        errorDiv.innerHTML = errors.join('<br>');
-        e.preventDefault();
-        return false;
-    }
-    errorDiv.innerHTML = '';
-    return true;
-});
-</script>
-
-</body></html>
-`, checkedAttr(config.Enabled), html.EscapeString(strings.Join(config.EmailPatterns, "\n")), html.EscapeString(config.Message))
+	if err := tmpl.ExecuteTemplate(w, "new-throttle.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute new-throttle template", "error", err)
+	}
 }
 
 func checkedAttr(checked bool) string {
@@ -2042,66 +1618,40 @@ func (s *Server) handleDebugIPShards(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// HTML output
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Shards         []ipShardInfo
+		UnmappedIPs    []string
+		UnmappedIPsStr string
+	}{
+		Shards:         shards,
+		UnmappedIPs:    unmappedIPs,
+		UnmappedIPsStr: strings.Join(unmappedIPs, ", "),
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>IP Shards</title>
-<style>
-table { border-collapse: collapse; margin: 10px 0; }
-th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-th { background: #f5f5f5; }
-.missing { background: #f8d7da; color: #721c24; }
-.unmapped { background: #fff3cd; padding: 10px; border-radius: 5px; margin: 10px 0; }
-</style>
-</head><body>
-<h1>IP Shards</h1>
-<p><a href="/debug">/debug</a> | <a href="/debug/ipshards?format=json">json</a></p>
-`)
-
-	if len(shards) == 0 {
-		fmt.Fprintf(w, "<p>No IP shards in database.</p>\n")
-	} else {
-		fmt.Fprintf(w, "<table>\n")
-		fmt.Fprintf(w, "<tr><th>Shard</th><th>Public IP</th><th>Private IP</th></tr>\n")
-		for _, shard := range shards {
-			rowClass := ""
-			privateIP := shard.PrivateIP
-			if shard.Missing {
-				rowClass = " class='missing'"
-				privateIP = "(not on this machine)"
-			}
-			fmt.Fprintf(w, "<tr%s><td>s%03d</td><td>%s</td><td>%s</td></tr>\n",
-				rowClass,
-				shard.Shard,
-				html.EscapeString(shard.PublicIP),
-				html.EscapeString(privateIP),
-			)
-		}
-		fmt.Fprintf(w, "</table>\n")
+	if err := tmpl.ExecuteTemplate(w, "ipshards.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute ipshards template", "error", err)
 	}
-
-	if len(unmappedIPs) > 0 {
-		fmt.Fprintf(w, "<div class='unmapped'>\n")
-		fmt.Fprintf(w, "<strong>IPs on this machine not in DB:</strong> %s\n", html.EscapeString(strings.Join(unmappedIPs, ", ")))
-		fmt.Fprintf(w, "</div>\n")
-	}
-
-	fmt.Fprintf(w, `</body></html>
-`)
 }
 
 // handleDebugLogForm renders a simple form to log an error message.
 func (s *Server) handleDebugLogForm(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>Log Error</title></head><body>
-<h1>Log Error</h1>
-<p><a href="/debug">/debug</a></p>
-<form method="post">
-<input type="text" name="text" value="testing" size="40">
-<button type="submit">Log That</button>
-</form>
-</body></html>
-`)
+	if err := tmpl.ExecuteTemplate(w, "log-form.html", nil); err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to execute log-form template", "error", err)
+	}
 }
 
 // handleDebugLog logs an error message provided via POST request.
@@ -2120,49 +1670,41 @@ func (s *Server) handleDebugLog(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDebugTestimonials(w http.ResponseWriter, r *http.Request) {
 	testimonials := AllTestimonials()
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>Testimonials</title>
-<style>
-.testimonial { border: 1px solid #ccc; padding: 15px; margin: 10px 0; border-radius: 5px; }
-.testimonial.approved { border-left: 4px solid #28a745; }
-.testimonial.unapproved { border-left: 4px solid #dc3545; opacity: 0.6; }
-.status { font-weight: bold; margin-bottom: 10px; }
-.status.approved { color: #28a745; }
-.status.unapproved { color: #dc3545; }
-</style>
-</head><body>
-<h1>Testimonials</h1>
-<p><a href="/debug">/debug</a></p>
-<p>Testimonials are stored in code (execore/testimonials.go). Edit that file to add or modify testimonials.</p>
-`)
-
-	if len(testimonials) == 0 {
-		fmt.Fprintf(w, "<p>No testimonials configured.</p>\n")
-	} else {
-		for i, t := range testimonials {
-			class := "unapproved"
-			statusClass := "unapproved"
-			statusText := "Not Approved"
-			if t.Approved {
-				class = "approved"
-				statusClass = "approved"
-				statusText = "Approved"
-			}
-			linkHTML := ""
-			if t.Link != "" {
-				linkHTML = fmt.Sprintf(` <a href="%s" target="_blank">[link]</a>`, t.Link)
-			}
-			fmt.Fprintf(w, `<div class="testimonial %s">
-<div class="status %s">#%d - %s</div>
-<div class="content">%s<br><br>&mdash; %s%s</div>
-</div>
-`, class, statusClass, i+1, statusText, strings.ReplaceAll(t.Quote, "\n\n", "<br><br>"), t.Author, linkHTML)
-		}
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
 	}
 
-	fmt.Fprintf(w, `</body></html>
-`)
+	type testimonialData struct {
+		Number    int
+		Approved  bool
+		QuoteHTML template.HTML
+		Author    string
+		Link      string
+	}
+
+	var testimonialList []testimonialData
+	for i, t := range testimonials {
+		testimonialList = append(testimonialList, testimonialData{
+			Number:    i + 1,
+			Approved:  t.Approved,
+			QuoteHTML: template.HTML(strings.ReplaceAll(html.EscapeString(t.Quote), "\n\n", "<br><br>")),
+			Author:    t.Author,
+			Link:      t.Link,
+		})
+	}
+
+	data := struct {
+		Testimonials []testimonialData
+	}{
+		Testimonials: testimonialList,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, "testimonials.html", data); err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to execute testimonials template", "error", err)
+	}
 }
 
 // IsLoginCreationDisabled returns true if new account creation is disabled.
@@ -2179,90 +1721,35 @@ func (s *Server) handleDebugEmailForm(w http.ResponseWriter, r *http.Request) {
 	postmarkAvailable := s.emailSenders.Postmark != nil
 	mailgunAvailable := s.emailSenders.Mailgun != nil
 
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var result string
+	var isError bool
+	if res := r.URL.Query().Get("result"); res != "" {
+		result = res
+		isError = r.URL.Query().Get("error") == "1"
+	}
+
+	data := struct {
+		PostmarkAvailable bool
+		MailgunAvailable  bool
+		Result            string
+		IsError           bool
+	}{
+		PostmarkAvailable: postmarkAvailable,
+		MailgunAvailable:  mailgunAvailable,
+		Result:            result,
+		IsError:           isError,
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>Send Test Email</title>
-<style>
-.section { margin: 20px 0; }
-input[type="text"], input[type="email"] { width: 300px; padding: 8px; }
-textarea { width: 400px; height: 100px; }
-.send-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; }
-.send-btn:hover { background: #0056b3; }
-.send-btn:disabled { background: #ccc; cursor: not-allowed; }
-.provider-status { margin: 10px 0; }
-.available { color: green; }
-.unavailable { color: red; }
-.result { margin: 20px 0; padding: 15px; border-radius: 5px; }
-.result.success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
-.result.error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
-</style>
-</head><body>
-<h1>Send Test Email</h1>
-<p><a href="/debug">/debug</a></p>
-
-<div class="provider-status">
-<strong>Provider Status:</strong><br>
-<span class="%s">Postmark: %s</span><br>
-<span class="%s">Mailgun: %s</span>
-</div>
-`,
-		availableClass(postmarkAvailable), availableText(postmarkAvailable),
-		availableClass(mailgunAvailable), availableText(mailgunAvailable))
-
-	// Show result if present
-	if result := r.URL.Query().Get("result"); result != "" {
-		resultClass := "success"
-		if r.URL.Query().Get("error") == "1" {
-			resultClass = "error"
-		}
-		fmt.Fprintf(w, `<div class="result %s">%s</div>`, resultClass, html.EscapeString(result))
+	if err := tmpl.ExecuteTemplate(w, "email-form.html", data); err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to execute email-form template", "error", err)
 	}
-
-	fmt.Fprintf(w, `
-<form method="post">
-<div class="section">
-<label><strong>To:</strong></label><br>
-<input type="email" name="to" required placeholder="recipient@example.com">
-</div>
-
-<div class="section">
-<label><strong>Subject:</strong></label><br>
-<input type="text" name="subject" value="Test email from exe.dev debug" required>
-</div>
-
-<div class="section">
-<label><strong>Body:</strong></label><br>
-<textarea name="body" required>This is a test email sent from the exe.dev debug page.</textarea>
-</div>
-
-<div class="section">
-<label><strong>Provider:</strong></label><br>
-<select name="provider">
-<option value="postmark" %s>Postmark</option>
-<option value="mailgun" %s>Mailgun</option>
-</select>
-</div>
-
-<div class="section">
-<button type="submit" class="send-btn">Send Test Email</button>
-</div>
-</form>
-</body></html>
-`, disabledAttr(!postmarkAvailable), disabledAttr(!mailgunAvailable))
-}
-
-func availableClass(available bool) string {
-	if available {
-		return "available"
-	}
-	return "unavailable"
-}
-
-func availableText(available bool) string {
-	if available {
-		return "Available"
-	}
-	return "Not configured"
 }
 
 func disabledAttr(disabled bool) string {
@@ -2330,50 +1817,28 @@ func (s *Server) handleDebugSignupPOW(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	enabled := s.IsSignupPOWEnabled(ctx)
 
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	difficulty := s.signupPOW.GetDifficulty()
+
+	data := struct {
+		Enabled    bool
+		Difficulty int
+		AvgHashes  int
+	}{
+		Enabled:    enabled,
+		Difficulty: difficulty,
+		AvgHashes:  1 << difficulty,
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>Signup Proof-of-Work</title>
-<style>
-.section { margin: 20px 0; }
-h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-.toggle-switch { display: inline-flex; align-items: center; cursor: pointer; }
-.toggle-switch input { display: none; }
-.toggle-slider { width: 50px; height: 26px; background: #ccc; border-radius: 13px; position: relative; transition: 0.3s; }
-.toggle-slider:before { content: ""; position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%%; top: 2px; left: 2px; transition: 0.3s; }
-.toggle-switch input:checked + .toggle-slider { background: #28a745; }
-.toggle-switch input:checked + .toggle-slider:before { left: 26px; }
-.toggle-label { margin-left: 10px; font-weight: bold; }
-.save-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 16px; }
-.save-btn:hover { background: #0056b3; }
-.info { background: #e7f3ff; border: 1px solid #b6d4fe; padding: 10px; border-radius: 5px; margin: 10px 0; }
-code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
-</style>
-</head><body>
-<h1>Signup Proof-of-Work</h1>
-<p><a href="/debug">/debug</a></p>
-
-<div class="info">
-<strong>Info:</strong> When enabled, new users must complete a proof-of-work challenge before creating an account.
-This helps prevent automated signups. Difficulty is currently set to <code>%d</code> leading zero bits (~%d hashes average).
-</div>
-
-<div class="section">
-<h2>Enable POW for New Signups</h2>
-<form method="post" action="/debug/signup-pow">
-<p>When enabled, new users will see a "Verifying..." interstitial while their browser solves a cryptographic puzzle.</p>
-<label class="toggle-switch">
-<input type="checkbox" name="enabled" value="true" %s>
-<span class="toggle-slider"></span>
-<span class="toggle-label">Require POW for new signups</span>
-</label>
-<p style="margin-top: 10px;">
-<button type="submit" class="save-btn">Save Settings</button>
-</p>
-</form>
-</div>
-
-</body></html>
-`, s.signupPOW.GetDifficulty(), 1<<s.signupPOW.GetDifficulty(), checkedAttr(enabled))
+	if err := tmpl.ExecuteTemplate(w, "signup-pow.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute signup-pow template", "error", err)
+	}
 }
 
 // handleDebugSignupPOWPost handles saving the signup POW enabled setting.
@@ -2408,195 +1873,120 @@ func (s *Server) handleDebugSignupReject(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Get bypass list
-	bypassList, err := withRxRes0(s, ctx, (*exedb.Queries).ListEmailQualityBypass)
+	bypassListDB, err := withRxRes0(s, ctx, (*exedb.Queries).ListEmailQualityBypass)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to get bypass list: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	type ipqsSummary struct {
-		display string
-		rawJSON string
-		hasJSON bool
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
 	}
 
-	summarizeIPQS := func(raw *string) ipqsSummary {
-		if raw == nil {
-			return ipqsSummary{display: "missing"}
-		}
-		rawJSON := strings.TrimSpace(*raw)
-		if rawJSON == "" {
-			return ipqsSummary{display: "missing"}
-		}
-
-		summary := ipqsSummary{
-			display: "no location data",
-			rawJSON: rawJSON,
-			hasJSON: true,
-		}
-
-		var payload struct {
-			CountryCode string `json:"country_code"`
-			Region      string `json:"region"`
-		}
-		if err := json.Unmarshal([]byte(rawJSON), &payload); err != nil {
-			summary.display = "invalid JSON"
-			return summary
-		}
-
-		parts := make([]string, 0, 2)
-		if payload.CountryCode != "" {
-			parts = append(parts, payload.CountryCode)
-		}
-		if payload.Region != "" {
-			parts = append(parts, payload.Region)
-		}
-		if len(parts) > 0 {
-			summary.display = strings.Join(parts, " / ")
-		}
-
-		return summary
+	// Build bypass set for quick lookup
+	bypassSet := make(map[string]bool)
+	for _, b := range bypassListDB {
+		bypassSet[b.Email] = true
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>Signup Rejections</title>
-<style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
-table { border-collapse: collapse; width: 100%%; margin: 10px 0; }
-th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-th { background: #f5f5f5; }
-.section { margin: 20px 0; }
-h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-.add-form { background: #f9f9f9; padding: 15px; border-radius: 5px; margin: 10px 0; }
-.add-form input[type="text"] { padding: 8px; width: 300px; }
-.add-form input[type="submit"] { padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer; border-radius: 3px; }
-.add-form input[type="submit"]:hover { background: #0056b3; }
-.delete-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; }
-.delete-btn:hover { background: #c82333; }
-.json-btn { background: none; border: none; color: #007bff; cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
-.json-btn:hover { color: #0056b3; }
-.json-btn:disabled { color: #6c757d; cursor: default; text-decoration: none; }
-</style>
-</head><body>
-<h1>Signup Rejections & Bypass</h1>
-<p><a href="/debug">/debug</a></p>
+	type bypassInfo struct {
+		Email   string
+		Reason  string
+		AddedAt string
+		AddedBy string
+	}
 
-<div class="section">
-<h2>Email Quality Bypass List</h2>
-<p>Emails in this list bypass IP abuse checks and email quality checks.</p>
+	type rejectionInfo struct {
+		Email           string
+		IP              string
+		IPQSDisplay     string
+		IPQSJSON        string
+		HasIPQS         bool
+		Reason          string
+		Source          string
+		RejectedAt      string
+		AlreadyBypassed bool
+	}
 
-<div class="add-form">
-<form method="post" action="/debug/signup-reject">
-<input type="hidden" name="action" value="add">
-<input type="text" name="email" placeholder="email@example.com" required>
-<input type="text" name="reason" placeholder="Reason for bypass" required>
-<input type="submit" value="Add to Bypass List">
-</form>
-</div>
-
-<table>
-<tr><th>Email</th><th>Reason</th><th>Added At</th><th>Added By</th><th>Action</th></tr>
-`)
-
-	for _, b := range bypassList {
+	var bypassList []bypassInfo
+	for _, b := range bypassListDB {
 		addedAt := ""
 		if b.AddedAt != nil {
 			addedAt = b.AddedAt.Format("2006-01-02 15:04:05")
 		}
-		fmt.Fprintf(w, `<tr>
-<td>%s</td>
-<td>%s</td>
-<td>%s</td>
-<td>%s</td>
-<td>
-<form method="post" action="/debug/signup-reject" style="display:inline;">
-<input type="hidden" name="action" value="delete">
-<input type="hidden" name="email" value="%s">
-<button type="submit" class="delete-btn" onclick="return confirm('Remove %s from bypass list?')">Remove</button>
-</form>
-</td>
-</tr>
-`, html.EscapeString(b.Email), html.EscapeString(b.Reason), addedAt, html.EscapeString(b.AddedBy),
-			html.EscapeString(b.Email), html.EscapeString(b.Email))
+		bypassList = append(bypassList, bypassInfo{
+			Email:   b.Email,
+			Reason:  b.Reason,
+			AddedAt: addedAt,
+			AddedBy: b.AddedBy,
+		})
 	}
 
-	if len(bypassList) == 0 {
-		fmt.Fprintf(w, "<tr><td colspan='5'>No emails in bypass list</td></tr>\n")
-	}
-
-	fmt.Fprintf(w, `</table>
-</div>
-
-<div class="section">
-<h2>Recent Signup Rejections (last 200)</h2>
-<table>
-<tr><th>Email</th><th>IP</th><th>Country/Region</th><th>Reason</th><th>Source</th><th>Rejected At</th><th>Action</th></tr>
-`)
-
-	for _, r := range rejections {
+	var rejectionList []rejectionInfo
+	for _, rej := range rejections {
 		rejectedAt := ""
-		if r.RejectedAt != nil {
-			rejectedAt = r.RejectedAt.Format("2006-01-02 15:04:05")
+		if rej.RejectedAt != nil {
+			rejectedAt = rej.RejectedAt.Format("2006-01-02 15:04:05")
 		}
-		ipqs := summarizeIPQS(r.IpqsResponseJson)
-		ipqsCell := html.EscapeString(ipqs.display)
-		if ipqs.hasJSON {
-			ipqsCell = fmt.Sprintf(`<button type="button" class="json-btn" data-json="%s">%s</button>`,
-				html.EscapeString(ipqs.rawJSON), html.EscapeString(ipqs.display))
-		}
-		// Check if this email is already in the bypass list
-		alreadyBypassed := false
-		for _, b := range bypassList {
-			if b.Email == r.Email {
-				alreadyBypassed = true
-				break
+
+		// Summarize IPQS
+		ipqsDisplay := "missing"
+		ipqsJSON := ""
+		hasIPQS := false
+		if rej.IpqsResponseJson != nil {
+			rawJSON := strings.TrimSpace(*rej.IpqsResponseJson)
+			if rawJSON != "" {
+				ipqsJSON = rawJSON
+				hasIPQS = true
+				ipqsDisplay = "no location data"
+				var payload struct {
+					CountryCode string `json:"country_code"`
+					Region      string `json:"region"`
+				}
+				if err := json.Unmarshal([]byte(rawJSON), &payload); err != nil {
+					ipqsDisplay = "invalid JSON"
+				} else {
+					var parts []string
+					if payload.CountryCode != "" {
+						parts = append(parts, payload.CountryCode)
+					}
+					if payload.Region != "" {
+						parts = append(parts, payload.Region)
+					}
+					if len(parts) > 0 {
+						ipqsDisplay = strings.Join(parts, " / ")
+					}
+				}
 			}
 		}
-		actionCell := ""
-		if !alreadyBypassed {
-			actionCell = fmt.Sprintf(`<form method="post" action="/debug/signup-reject" style="display:inline;">
-<input type="hidden" name="action" value="add">
-<input type="hidden" name="email" value="%s">
-<input type="hidden" name="reason" value="Added from rejection list">
-<button type="submit" style="padding: 4px 8px; cursor: pointer;">Bypass</button>
-</form>`, html.EscapeString(r.Email))
-		} else {
-			actionCell = "<em>bypassed</em>"
-		}
-		fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
-			html.EscapeString(r.Email), html.EscapeString(r.Ip), ipqsCell, html.EscapeString(r.Reason),
-			html.EscapeString(r.Source), rejectedAt, actionCell)
+
+		rejectionList = append(rejectionList, rejectionInfo{
+			Email:           rej.Email,
+			IP:              rej.Ip,
+			IPQSDisplay:     ipqsDisplay,
+			IPQSJSON:        ipqsJSON,
+			HasIPQS:         hasIPQS,
+			Reason:          rej.Reason,
+			Source:          rej.Source,
+			RejectedAt:      rejectedAt,
+			AlreadyBypassed: bypassSet[rej.Email],
+		})
 	}
 
-	if len(rejections) == 0 {
-		fmt.Fprintf(w, "<tr><td colspan='7'>No rejections recorded</td></tr>\n")
+	data := struct {
+		BypassList []bypassInfo
+		Rejections []rejectionInfo
+	}{
+		BypassList: bypassList,
+		Rejections: rejectionList,
 	}
 
-	fmt.Fprintf(w, `</table>
-</div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  document.querySelectorAll('.json-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var raw = btn.getAttribute('data-json');
-      if (!raw) {
-        return;
-      }
-      try {
-        var parsed = JSON.parse(raw);
-        alert(JSON.stringify(parsed, null, 2));
-      } catch (err) {
-        alert(raw);
-      }
-    });
-  });
-});
-</script>
-
-</body></html>
-`)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, "signup-reject.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute signup-reject template", "error", err)
+	}
 }
 
 // handleDebugSignupRejectPost handles adding/removing emails from the bypass list.
@@ -2654,106 +2044,55 @@ func (s *Server) handleDebugInvite(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Get unused system invite codes
-	systemCodes, err := withRxRes0(s, ctx, (*exedb.Queries).ListUnusedSystemInviteCodes)
+	systemCodesDB, err := withRxRes0(s, ctx, (*exedb.Queries).ListUnusedSystemInviteCodes)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to list system codes: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>Invite Codes</title>
-<style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
-table { border-collapse: collapse; margin: 10px 0; }
-th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-th { background: #f5f5f5; }
-.section { margin: 20px 0; }
-h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-.code { font-family: monospace; background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
-.create-btn { background: #28a745; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 14px; }
-.create-btn:hover { background: #218838; }
-select, input[type="number"] { padding: 8px; margin: 5px; }
-</style>
-</head><body>
-<h1>Invite Codes</h1>
-<p><a href="/debug">/debug</a></p>
-
-<div class="section">
-<h2>Create System Invite Code</h2>
-<form method="post" action="/debug/invite">
-<input type="hidden" name="action" value="create">
-<p>
-<label>Plan type:
-<select name="plan_type">
-<option value="trial">Trial (1 month free)</option>
-<option value="free">Free forever</option>
-</select>
-</label>
-</p>
-<p>
-<label>For (optional):
-<input type="text" name="assigned_for" placeholder="e.g. John Doe, friend referral">
-</label>
-</p>
-<p><button type="submit" class="create-btn">Create Invite Code</button></p>
-</form>
-</div>
-
-<div class="section">
-<h2>Give Invites to User</h2>
-<form method="post" action="/debug/invite">
-<input type="hidden" name="action" value="give_to_user">
-<p>
-<label>Email:
-<input type="email" name="email" placeholder="user@example.com" required>
-</label>
-</p>
-<p>
-<label>Number of invites:
-<input type="number" name="count" value="3" min="1" max="10" required>
-</label>
-</p>
-<p>
-<label>Plan type:
-<select name="plan_type">
-<option value="trial">Trial (1 month free)</option>
-<option value="free">Free forever</option>
-</select>
-</label>
-</p>
-<p><button type="submit" class="create-btn">Give Invites</button></p>
-</form>
-</div>
-
-<div class="section">
-<h2>Unused System Invite Codes (%d)</h2>
-`, len(systemCodes))
-
-	if len(systemCodes) == 0 {
-		fmt.Fprintf(w, "<p>No unused system invite codes.</p>\n")
-	} else {
-		fmt.Fprintf(w, `<table>
-<tr><th>Code</th><th>Plan Type</th><th>Created By</th><th>For</th><th>Created</th></tr>
-`)
-		for _, code := range systemCodes {
-			createdAt := "unknown"
-			if code.AssignedAt != nil {
-				createdAt = code.AssignedAt.Format("2006-01-02 15:04")
-			}
-			assignedFor := ""
-			if code.AssignedFor != nil {
-				assignedFor = *code.AssignedFor
-			}
-			fmt.Fprintf(w, `<tr><td class="code">%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>
-`, html.EscapeString(code.Code), html.EscapeString(code.PlanType), html.EscapeString(code.AssignedBy), html.EscapeString(assignedFor), createdAt)
-		}
-		fmt.Fprintf(w, "</table>\n")
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
 	}
 
-	fmt.Fprintf(w, `</div>
-</body></html>
-`)
+	type systemCode struct {
+		Code        string
+		PlanType    string
+		AssignedBy  string
+		AssignedFor string
+		CreatedAt   string
+	}
+
+	var systemCodes []systemCode
+	for _, code := range systemCodesDB {
+		createdAt := "unknown"
+		if code.AssignedAt != nil {
+			createdAt = code.AssignedAt.Format("2006-01-02 15:04")
+		}
+		assignedFor := ""
+		if code.AssignedFor != nil {
+			assignedFor = *code.AssignedFor
+		}
+		systemCodes = append(systemCodes, systemCode{
+			Code:        code.Code,
+			PlanType:    code.PlanType,
+			AssignedBy:  code.AssignedBy,
+			AssignedFor: assignedFor,
+			CreatedAt:   createdAt,
+		})
+	}
+
+	data := struct {
+		SystemCodes []systemCode
+	}{
+		SystemCodes: systemCodes,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, "invite.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute invite template", "error", err)
+	}
 }
 
 // handleDebugInvitePost handles creating a new invite code.
@@ -2957,109 +2296,16 @@ func (s *Server) handleDebugAllInviteCodes(w http.ResponseWriter, r *http.Reques
 	}
 
 	// HTML format with DataTables
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>All Invite Codes</title>
-<link rel="stylesheet" href="/static/datatables.min.css">
-<script src="/static/jquery.min.js"></script>
-<script src="/static/datatables.min.js"></script>
-<style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
-h1 { margin-bottom: 10px; }
-#codesTable { width: 100%%; }
-#codesTable td, #codesTable th { font-size: 13px; }
-#codesTable thead tr.filters th { padding: 4px; }
-#codesTable thead tr.filters input { width: 100%%; box-sizing: border-box; font-size: 11px; padding: 4px; }
-.code { font-family: monospace; background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
-.status-used { color: #28a745; }
-.status-allocated { color: #ffc107; }
-.status-unused { color: #6c757d; }
-a { color: #007bff; text-decoration: none; }
-a:hover { text-decoration: underline; }
-</style>
-</head><body>
-<h1>All Invite Codes</h1>
-<p><a href="/debug">/debug</a> | <a href="/debug/all-invite-codes?format=json">json</a> | <a href="/debug/invite-tree">tree visualization</a></p>
-
-<table id="codesTable" class="display stripe hover">
-<thead>
-<tr>
-<th>ID</th>
-<th>Code</th>
-<th>Plan</th>
-<th>Giver Email</th>
-<th>Assigned By</th>
-<th>Assigned For</th>
-<th>Assigned At</th>
-<th>Recipient Email</th>
-<th>Used At</th>
-<th>Status</th>
-</tr>
-<tr class="filters">
-<th></th>
-<th></th>
-<th>Plan</th>
-<th>Giver</th>
-<th>Assigned By</th>
-<th>For</th>
-<th></th>
-<th>Recipient</th>
-<th></th>
-<th>Status</th>
-</tr>
-</thead>
-</table>
-
-<script>
-$(document).ready(function() {
-    $('#codesTable thead tr.filters th').each(function(idx) {
-        var title = $(this).text();
-        if (title) {
-            $(this).html('<input type="text" placeholder="' + title + '">');
-        }
-    });
-
-    var table = $('#codesTable').DataTable({
-        ajax: {
-            url: '/debug/all-invite-codes?format=json',
-            dataSrc: ''
-        },
-        pageLength: 100,
-        lengthMenu: [[25, 50, 100, 250, -1], [25, 50, 100, 250, "All"]],
-        order: [[0, 'desc']],
-        orderCellsTop: true,
-        columns: [
-            { data: 'id' },
-            { data: 'code', render: function(d) {
-                return '<span class="code">' + d + '</span>';
-            }},
-            { data: 'plan_type' },
-            { data: 'giver_email' },
-            { data: 'assigned_by' },
-            { data: 'assigned_for', defaultContent: '' },
-            { data: 'assigned_at', defaultContent: '' },
-            { data: 'recipient_email', defaultContent: '' },
-            { data: 'used_at', defaultContent: '' },
-            { data: 'status', render: function(d) {
-                var cls = 'status-' + d;
-                return '<span class="' + cls + '">' + d + '</span>';
-            }}
-        ],
-        initComplete: function() {
-            this.api().columns().every(function(idx) {
-                var column = this;
-                $('input', $('#codesTable thead tr.filters th').eq(idx)).on('keyup change clear', function() {
-                    if (column.search() !== this.value) {
-                        column.search(this.value).draw();
-                    }
-                });
-            });
-        }
-    });
-});
-</script>
-</body></html>
-`)
+	if err := tmpl.ExecuteTemplate(w, "all-invite-codes.html", nil); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute all-invite-codes template", "error", err)
+	}
 }
 
 // handleDebugInviteTree displays a tree visualization of invite codes using Vega.
@@ -3182,53 +2428,22 @@ func (s *Server) handleDebugIPAbuseFilter(w http.ResponseWriter, r *http.Request
 	ctx := r.Context()
 	disabled := s.IsIPAbuseFilterDisabled(ctx)
 
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Disabled bool
+	}{
+		Disabled: disabled,
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
-<html><head><title>IP Abuse Filter</title>
-<style>
-.section { margin: 20px 0; }
-h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-.toggle-switch { display: inline-flex; align-items: center; cursor: pointer; }
-.toggle-switch input { display: none; }
-.toggle-slider { width: 50px; height: 26px; background: #ccc; border-radius: 13px; position: relative; transition: 0.3s; }
-.toggle-slider:before { content: ""; position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%%%%; top: 2px; left: 2px; transition: 0.3s; }
-.toggle-switch input:checked + .toggle-slider { background: #dc3545; }
-.toggle-switch input:checked + .toggle-slider:before { left: 26px; }
-.toggle-label { margin-left: 10px; font-weight: bold; }
-.save-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 16px; }
-.save-btn:hover { background: #0056b3; }
-.info { background: #e7f3ff; border: 1px solid #b6d4fe; padding: 10px; border-radius: 5px; margin: 10px 0; }
-.warning { background: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 5px; margin: 10px 0; }
-</style>
-</head><body>
-<h1>IP Abuse Filter</h1>
-<p><a href="/debug">/debug</a></p>
-
-<div class="info">
-<strong>Info:</strong> The IP abuse filter uses IPQS to check if an IP address has been flagged for recent abuse during signup.
-When enabled, users signing up from flagged IPs will be blocked.
-</div>
-
-<div class="section">
-<h2>Disable IP Abuse Filter</h2>
-<div class="warning">
-<strong>Warning:</strong> Disabling this filter will allow signups from IPs flagged for abuse.
-</div>
-<form method="post" action="/debug/ip-abuse-filter">
-<p>When disabled, the IPQS IP abuse check is skipped during signup validation.</p>
-<label class="toggle-switch">
-<input type="checkbox" name="disabled" value="true" %s>
-<span class="toggle-slider"></span>
-<span class="toggle-label">Disable IP abuse filter</span>
-</label>
-<p style="margin-top: 10px;">
-<button type="submit" class="save-btn">Save Settings</button>
-</p>
-</form>
-</div>
-
-</body></html>
-`, checkedAttr(disabled))
+	if err := tmpl.ExecuteTemplate(w, "ip-abuse-filter.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute ip-abuse-filter template", "error", err)
+	}
 }
 
 // handleDebugIPAbuseFilterPost handles saving the IP abuse filter disabled setting.

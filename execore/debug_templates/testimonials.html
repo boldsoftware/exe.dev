@@ -1,0 +1,29 @@
+<!doctype html>
+<html><head><title>Testimonials</title>
+<style>
+.testimonial { border: 1px solid #ccc; padding: 15px; margin: 10px 0; border-radius: 5px; }
+.testimonial.approved { border-left: 4px solid #28a745; }
+.testimonial.unapproved { border-left: 4px solid #dc3545; opacity: 0.6; }
+.status { font-weight: bold; margin-bottom: 10px; }
+.status.approved { color: #28a745; }
+.status.unapproved { color: #dc3545; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+</head><body>
+<h1>Testimonials</h1>
+<p><a href="/debug">/debug</a></p>
+<p>Testimonials are stored in code (execore/testimonials.go). Edit that file to add or modify testimonials.</p>
+
+{{if not .Testimonials}}
+<p>No testimonials configured.</p>
+{{else}}
+{{range $i, $t := .Testimonials}}
+<div class="testimonial {{if $t.Approved}}approved{{else}}unapproved{{end}}">
+<div class="status {{if $t.Approved}}approved{{else}}unapproved{{end}}">#{{$t.Number}} - {{if $t.Approved}}Approved{{else}}Not Approved{{end}}</div>
+<div class="content">{{$t.QuoteHTML}}<br><br>&mdash; {{$t.Author}}{{if $t.Link}} <a href="{{$t.Link}}" target="_blank">[link]</a>{{end}}</div>
+</div>
+{{end}}
+{{end}}
+
+</body></html>
