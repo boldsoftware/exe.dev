@@ -279,7 +279,7 @@ func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, a
 
 func isSSHConnError(err error) bool {
 	var openErr *ssh.OpenChannelError
-	if errors.As(err, &openErr) && openErr.Reason != ssh.ConnectionFailed {
+	if errors.As(err, &openErr) {
 		return true
 	}
 	if errors.Is(err, net.ErrClosed) {
