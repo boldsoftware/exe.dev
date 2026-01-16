@@ -256,6 +256,7 @@ type SshKey struct {
 	PublicKey  string     `db:"public_key" json:"public_key"`
 	AddedAt    *time.Time `db:"added_at" json:"added_at"`
 	LastUsedAt *time.Time `db:"last_used_at" json:"last_used_at"`
+	Comment    *string    `db:"comment" json:"comment"`
 }
 
 type TagResolution struct {

@@ -33,6 +33,7 @@ import (
 	"exe.dev/dnsresolver"
 	"exe.dev/domz"
 	"exe.dev/exedb"
+
 	"exe.dev/exens"
 	"exe.dev/llmgateway"
 	"exe.dev/metricsbag"
@@ -40,6 +41,7 @@ import (
 	"exe.dev/route53"
 	"exe.dev/stage"
 	"exe.dev/tracing"
+	"golang.org/x/crypto/ssh"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	sloghttp "github.com/samber/slog-http"
@@ -986,10 +988,17 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 
 	// Add the SSH key to the verified keys and clean up pending key
 	err = s.withTx(context.WithoutCancel(r.Context()), func(ctx context.Context, queries *exedb.Queries) error {
+		// Extract comment from the public key
+		var comment *string
+		if _, keyComment, _, _, err := ssh.ParseAuthorizedKey([]byte(pendingKey.PublicKey)); err == nil && keyComment != "" {
+			comment = &keyComment
+		}
+
 		// Add SSH key
 		err := queries.InsertSSHKeyForEmailUser(ctx, exedb.InsertSSHKeyForEmailUserParams{
 			Email:     pendingKey.UserEmail,
 			PublicKey: pendingKey.PublicKey,
+			Comment:   comment,
 		})
 		if err != nil {
 			return err
@@ -1128,9 +1137,28 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 
 	// Store the SSH key as verified
 	if publicKey != "" {
-		err = withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).InsertSSHKeyForEmailUser, exedb.InsertSSHKeyForEmailUserParams{
+		// First check if this key already belongs to another user
+		existingUserID, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDBySSHKey, publicKey)
+		if err == nil && existingUserID != user.UserID {
+			// Key belongs to another user - this is a security violation
+			s.slog().WarnContext(ctx, "Attempted to verify with SSH key belonging to another user",
+				"email", email, "key_owner_user_id", existingUserID)
+			return nil, fmt.Errorf("this SSH key is already associated with another account")
+		}
+
+		// Key doesn't exist or belongs to this user - safe to insert/skip
+		// Extract comment from the public key
+		var comment *string
+		if _, keyComment, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey)); err == nil && keyComment != "" {
+			comment = &keyComment
+		}
+
+		// Use InsertSSHKeyForEmailUserIfNotExists to handle the case where
+		// the key is already associated with this user (re-verification)
+		_, err = withTxRes1(s, context.WithoutCancel(ctx), (*exedb.Queries).InsertSSHKeyForEmailUserIfNotExists, exedb.InsertSSHKeyForEmailUserIfNotExistsParams{
 			Email:     email,
 			PublicKey: publicKey,
+			Comment:   comment,
 		})
 		if err != nil {
 			s.slog().ErrorContext(ctx, "Error storing SSH key during verification", "error", err)
@@ -1197,12 +1225,17 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 	// Get user's SSH keys
 	var sshKeys []SSHKey
 	err = s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-		publicKeys, err := queries.GetSSHKeysForUser(ctx, user.UserID)
+		dbKeys, err := queries.GetSSHKeysForUser(ctx, user.UserID)
 		if err != nil {
 			return err
 		}
-		for _, publicKey := range publicKeys {
-			key := SSHKey{PublicKey: publicKey}
+		for _, dbKey := range dbKeys {
+			key := SSHKey{
+				PublicKey:  dbKey.PublicKey,
+				Comment:    dbKey.Comment,
+				AddedAt:    dbKey.AddedAt,
+				LastUsedAt: dbKey.LastUsedAt,
+			}
 			sshKeys = append(sshKeys, key)
 		}
 		return nil
@@ -1342,12 +1375,17 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	// Get user's SSH keys
 	var sshKeys []SSHKey
 	err = s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-		publicKeys, err := queries.GetSSHKeysForUser(ctx, user.UserID)
+		dbKeys, err := queries.GetSSHKeysForUser(ctx, user.UserID)
 		if err != nil {
 			return err
 		}
-		for _, publicKey := range publicKeys {
-			key := SSHKey{PublicKey: publicKey}
+		for _, dbKey := range dbKeys {
+			key := SSHKey{
+				PublicKey:  dbKey.PublicKey,
+				Comment:    dbKey.Comment,
+				AddedAt:    dbKey.AddedAt,
+				LastUsedAt: dbKey.LastUsedAt,
+			}
 			sshKeys = append(sshKeys, key)
 		}
 		return nil

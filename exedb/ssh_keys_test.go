@@ -67,6 +67,7 @@ func TestInsertSSHKeyForEmailUser(t *testing.T) {
 	params := exedb.InsertSSHKeyForEmailUserParams{
 		Email:     userEmail,
 		PublicKey: publicKey,
+		Comment:   nil,
 	}
 
 	// This should work but currently fails due to parameter mismatch bug
@@ -97,8 +98,8 @@ func TestInsertSSHKeyForEmailUser(t *testing.T) {
 		t.Errorf("Expected 1 ssh key, found %d", count)
 	}
 
-	// Test the ON CONFLICT behavior by inserting the same key again
-	// but for a different user
+	// InsertSSHKeyForEmailUser does NOT have ON CONFLICT handling,
+	// so inserting a duplicate public key should fail with a UNIQUE constraint error.
 	userEmail2 := "test2@example.com"
 	userID2 := "usr2234567890123"
 
@@ -109,26 +110,31 @@ func TestInsertSSHKeyForEmailUser(t *testing.T) {
 	}
 
 	// Try to insert the same public key for the second user
-	// This should trigger the ON CONFLICT clause
+	// This should fail because public_key is UNIQUE and InsertSSHKeyForEmailUser
+	// does not have ON CONFLICT handling
 	params2 := exedb.InsertSSHKeyForEmailUserParams{
 		Email:     userEmail2,
-		PublicKey: publicKey, // Same public key
+		PublicKey: publicKey, // Same public key - should fail
+		Comment:   nil,
 	}
 
 	err = queries.InsertSSHKeyForEmailUser(ctx, params2)
-	if err != nil {
-		t.Fatalf("Second InsertSSHKeyForEmailUser failed: %v", err)
+	if err == nil {
+		t.Fatal("Expected UNIQUE constraint error when inserting duplicate public key, but got nil")
+	}
+	if !strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		t.Fatalf("Expected UNIQUE constraint error, got: %v", err)
 	}
 
-	// Verify the key now belongs to the second user (updated via ON CONFLICT)
+	// Verify the key still belongs to the first user
 	var keyOwnerUserID string
 	err = db.QueryRow(`SELECT user_id FROM ssh_keys WHERE public_key = ?`, publicKey).Scan(&keyOwnerUserID)
 	if err != nil {
 		t.Fatalf("Failed to query key owner: %v", err)
 	}
 
-	if keyOwnerUserID != userID2 {
-		t.Errorf("Expected key to belong to user %s, but belongs to %s", userID2, keyOwnerUserID)
+	if keyOwnerUserID != userID {
+		t.Errorf("Expected key to still belong to user %s, but belongs to %s", userID, keyOwnerUserID)
 	}
 
 	// Verify there's still only one entry for this key
@@ -138,6 +144,6 @@ func TestInsertSSHKeyForEmailUser(t *testing.T) {
 	}
 
 	if count != 1 {
-		t.Errorf("Expected 1 ssh key entry after conflict resolution, found %d", count)
+		t.Errorf("Expected 1 ssh key entry, found %d", count)
 	}
 }

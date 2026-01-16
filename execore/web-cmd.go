@@ -25,6 +25,9 @@ var allowedCommands = map[string]bool{
 	"share remove-link": true,
 	"share set-public":  true,
 	"share set-private": true,
+	"ssh-key add":       true,
+	"ssh-key remove":    true,
+	"ssh-key list":      true,
 }
 
 // isCommandAllowed checks if a command is in the allowlist

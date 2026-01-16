@@ -794,3 +794,42 @@ func TestValidateCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestSSHKeyCommand_SubcommandsExist(t *testing.T) {
+	sshServer := &SSHServer{}
+	ct := NewCommandTree(sshServer)
+
+	// Test that ssh-key command exists
+	cmd := ct.FindCommand([]string{"ssh-key"})
+	if cmd == nil {
+		t.Fatal("ssh-key command not found")
+	}
+
+	// Test that all subcommands exist
+	subcommands := []string{"list", "add", "remove"}
+	for _, subName := range subcommands {
+		subCmd := ct.FindCommand([]string{"ssh-key", subName})
+		if subCmd == nil {
+			t.Errorf("ssh-key %s subcommand not found", subName)
+		} else if subCmd.Name != subName {
+			t.Errorf("expected subcommand name %q, got %q", subName, subCmd.Name)
+		}
+	}
+
+	// Verify add subcommand has examples with ssh-keygen instructions
+	addCmd := ct.FindCommand([]string{"ssh-key", "add"})
+	if addCmd == nil {
+		t.Fatal("ssh-key add command not found")
+	}
+
+	hasKeygenExample := false
+	for _, example := range addCmd.Examples {
+		if strings.Contains(example, "ssh-keygen") {
+			hasKeygenExample = true
+			break
+		}
+	}
+	if !hasKeygenExample {
+		t.Error("ssh-key add command should have examples with ssh-keygen instructions")
+	}
+}

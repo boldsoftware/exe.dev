@@ -182,11 +182,13 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:     ss.handleWhoamiCommand,
 			FlagSetFunc: jsonOnlyFlags("whoami"),
 		},
+		ss.sshKeyCommand(),
 		{
 			Name:              "delete-ssh-key",
-			Description:       "Delete an SSH key",
+			Hidden:            true,
+			Description:       "Delete an SSH key (deprecated: use 'ssh-key remove' instead)",
 			Usage:             "delete-ssh-key <public-key>",
-			Handler:           ss.handleDeleteSSHKeyCommand,
+			Handler:           ss.handleSSHKeyRemoveCmd,
 			FlagSetFunc:       jsonOnlyFlags("delete-ssh-key"),
 			HasPositionalArgs: true,
 		},
@@ -1215,52 +1217,6 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 		}
 		cc.Writeln("")
 	}
-	return nil
-}
-
-func (ss *SSHServer) handleDeleteSSHKeyCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if len(cc.Args) == 0 {
-		return cc.Errorf("please provide the SSH public key to delete")
-	}
-	publicKey := strings.Join(cc.Args, " ")
-	publicKey = strings.TrimSpace(publicKey)
-	if publicKey == "" {
-		return cc.Errorf("SSH public key cannot be empty")
-	}
-
-	// Canonicalize the public key.
-	// This is dumb, but it means the key we attempt to delete here
-	// matches the format stored in the database,
-	// which is in the canonical form as presented
-	// by ssh.MarshalAuthorizedKey during registration.
-	parsedKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey))
-	if err != nil {
-		return cc.Errorf("invalid SSH public key: %v", err)
-	}
-	canonicalKey := string(ssh.MarshalAuthorizedKey(parsedKey))
-
-	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		_, err := queries.DeleteSSHKeyForUser(ctx, exedb.DeleteSSHKeyForUserParams{
-			UserID:    cc.User.ID,
-			PublicKey: canonicalKey,
-		})
-		return err
-	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("SSH key not found")
-	}
-	if err != nil {
-		return err
-	}
-
-	if cc.WantJSON() {
-		cc.WriteJSON(map[string]any{
-			"public_key": strings.TrimSpace(canonicalKey),
-			"status":     "deleted",
-		})
-		return nil
-	}
-	cc.Writeln("\033[1;32mDeleted SSH key.\033[0m")
 	return nil
 }
 

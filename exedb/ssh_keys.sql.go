@@ -7,6 +7,8 @@ package exedb
 
 import (
 	"context"
+	"database/sql"
+	"time"
 )
 
 const deleteSSHKeyForUser = `-- name: DeleteSSHKeyForUser :one
@@ -43,25 +45,37 @@ func (q *Queries) GetEmailBySSHKey(ctx context.Context, publicKey string) (strin
 }
 
 const getSSHKeysForUser = `-- name: GetSSHKeysForUser :many
-SELECT public_key
+SELECT public_key, comment, added_at, last_used_at
 FROM ssh_keys
 WHERE user_id = ?
 ORDER BY added_at DESC
 `
 
-func (q *Queries) GetSSHKeysForUser(ctx context.Context, userID string) ([]string, error) {
+type GetSSHKeysForUserRow struct {
+	PublicKey  string     `db:"public_key" json:"public_key"`
+	Comment    *string    `db:"comment" json:"comment"`
+	AddedAt    *time.Time `db:"added_at" json:"added_at"`
+	LastUsedAt *time.Time `db:"last_used_at" json:"last_used_at"`
+}
+
+func (q *Queries) GetSSHKeysForUser(ctx context.Context, userID string) ([]GetSSHKeysForUserRow, error) {
 	rows, err := q.query(ctx, q.getSSHKeysForUserStmt, getSSHKeysForUser, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []string{}
+	items := []GetSSHKeysForUserRow{}
 	for rows.Next() {
-		var public_key string
-		if err := rows.Scan(&public_key); err != nil {
+		var i GetSSHKeysForUserRow
+		if err := rows.Scan(
+			&i.PublicKey,
+			&i.Comment,
+			&i.AddedAt,
+			&i.LastUsedAt,
+		); err != nil {
 			return nil, err
 		}
-		items = append(items, public_key)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -151,34 +165,60 @@ func (q *Queries) InsertSSHKey(ctx context.Context, arg InsertSSHKeyParams) erro
 }
 
 const insertSSHKeyForEmailUser = `-- name: InsertSSHKeyForEmailUser :exec
-INSERT INTO ssh_keys (user_id, public_key)
-SELECT u.user_id, ? as public_key
+INSERT INTO ssh_keys (user_id, public_key, comment)
+SELECT u.user_id, ? as public_key, ? as comment
 FROM users u WHERE u.email = ?
-ON CONFLICT(public_key) DO UPDATE SET user_id = excluded.user_id
 `
 
 type InsertSSHKeyForEmailUserParams struct {
-	PublicKey string `db:"public_key" json:"public_key"`
-	Email     string `db:"email" json:"email"`
+	PublicKey string  `db:"public_key" json:"public_key"`
+	Comment   *string `db:"comment" json:"comment"`
+	Email     string  `db:"email" json:"email"`
 }
 
 func (q *Queries) InsertSSHKeyForEmailUser(ctx context.Context, arg InsertSSHKeyForEmailUserParams) error {
-	_, err := q.exec(ctx, q.insertSSHKeyForEmailUserStmt, insertSSHKeyForEmailUser, arg.PublicKey, arg.Email)
+	_, err := q.exec(ctx, q.insertSSHKeyForEmailUserStmt, insertSSHKeyForEmailUser, arg.PublicKey, arg.Comment, arg.Email)
 	return err
 }
 
-const upsertSSHKeyForUser = `-- name: UpsertSSHKeyForUser :exec
-INSERT INTO ssh_keys (user_id, public_key)
-VALUES (?, ?)
-ON CONFLICT(public_key) DO UPDATE SET user_id = excluded.user_id
+const insertSSHKeyForEmailUserIfNotExists = `-- name: InsertSSHKeyForEmailUserIfNotExists :execresult
+INSERT INTO ssh_keys (user_id, public_key, comment)
+SELECT u.user_id, ? as public_key, ? as comment
+FROM users u WHERE u.email = ?
+ON CONFLICT(public_key) DO NOTHING
 `
 
-type UpsertSSHKeyForUserParams struct {
-	UserID    string `db:"user_id" json:"user_id"`
-	PublicKey string `db:"public_key" json:"public_key"`
+type InsertSSHKeyForEmailUserIfNotExistsParams struct {
+	PublicKey string  `db:"public_key" json:"public_key"`
+	Comment   *string `db:"comment" json:"comment"`
+	Email     string  `db:"email" json:"email"`
 }
 
-func (q *Queries) UpsertSSHKeyForUser(ctx context.Context, arg UpsertSSHKeyForUserParams) error {
-	_, err := q.exec(ctx, q.upsertSSHKeyForUserStmt, upsertSSHKeyForUser, arg.UserID, arg.PublicKey)
+func (q *Queries) InsertSSHKeyForEmailUserIfNotExists(ctx context.Context, arg InsertSSHKeyForEmailUserIfNotExistsParams) (sql.Result, error) {
+	return q.exec(ctx, q.insertSSHKeyForEmailUserIfNotExistsStmt, insertSSHKeyForEmailUserIfNotExists, arg.PublicKey, arg.Comment, arg.Email)
+}
+
+const insertSSHKeyIfNotExists = `-- name: InsertSSHKeyIfNotExists :execresult
+INSERT INTO ssh_keys (user_id, public_key, comment)
+VALUES (?, ?, ?)
+ON CONFLICT(public_key) DO NOTHING
+`
+
+type InsertSSHKeyIfNotExistsParams struct {
+	UserID    string  `db:"user_id" json:"user_id"`
+	PublicKey string  `db:"public_key" json:"public_key"`
+	Comment   *string `db:"comment" json:"comment"`
+}
+
+func (q *Queries) InsertSSHKeyIfNotExists(ctx context.Context, arg InsertSSHKeyIfNotExistsParams) (sql.Result, error) {
+	return q.exec(ctx, q.insertSSHKeyIfNotExistsStmt, insertSSHKeyIfNotExists, arg.UserID, arg.PublicKey, arg.Comment)
+}
+
+const updateSSHKeyLastUsed = `-- name: UpdateSSHKeyLastUsed :exec
+UPDATE ssh_keys SET last_used_at = CURRENT_TIMESTAMP WHERE public_key = ?
+`
+
+func (q *Queries) UpdateSSHKeyLastUsed(ctx context.Context, publicKey string) error {
+	_, err := q.exec(ctx, q.updateSSHKeyLastUsedStmt, updateSSHKeyLastUsed, publicKey)
 	return err
 }

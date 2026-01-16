@@ -73,21 +73,153 @@
             gap: 12px;
         }
         
-        .ssh-key {
+        .ssh-key-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
             background: #f8f8f8;
             border: 1px solid #e0e0e0;
             border-radius: 4px;
             padding: 12px;
+        }
+
+        .ssh-key-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .ssh-key-comment {
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .ssh-key-fingerprint {
             font-family: inherit;
             font-size: 12px;
-            color: #333;
+            color: #666;
             word-break: break-all;
+        }
+
+        .ssh-key-meta {
+            font-size: 12px;
+            color: #999;
+            margin-top: 4px;
         }
         
         .no-keys {
             color: #999;
             font-size: 13px;
             font-style: italic;
+        }
+
+        .ssh-key-error {
+            color: #dc2626;
+            font-size: 13px;
+            margin-bottom: 12px;
+            display: none;
+        }
+
+        .ssh-key-success {
+            color: #16a34a;
+            font-size: 13px;
+            margin-bottom: 12px;
+            display: none;
+        }
+
+        /* Command Modal Styles */
+        .cmd-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s, visibility 0.15s;
+            z-index: 1000;
+        }
+
+        .cmd-modal-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .cmd-modal {
+            background: #fff;
+            border-radius: 8px;
+            padding: 24px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .cmd-modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 16px;
+        }
+
+        .cmd-display {
+            background: #f8f8f8;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: inherit;
+            font-size: 13px;
+            color: #333;
+            margin-bottom: 16px;
+            word-break: break-all;
+        }
+
+        .cmd-output {
+            font-size: 13px;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        .cmd-output.visible {
+            display: block;
+        }
+
+        .cmd-output.success {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            color: #166534;
+        }
+
+        .cmd-output.error {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            color: #991b1b;
+        }
+
+        .cmd-modal-buttons {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .cmd-modal-buttons .btn.danger {
+            background: #dc2626;
+            border-color: #dc2626;
+            color: white;
+        }
+
+        .cmd-modal-buttons .btn.danger:hover {
+            background: #b91c1c;
+            border-color: #b91c1c;
+        }
+
+        .cmd-modal-buttons .btn.danger:disabled {
+            background: #f87171;
+            border-color: #f87171;
         }
 
         .btn {
@@ -341,10 +473,26 @@
         {{if not .BasicUser}}
         <div class="section">
             <div class="section-title">SSH Keys</div>
+            <div class="section-help">SSH keys allow you to connect to exe.dev via <code>ssh exe.dev</code></div>
             {{if .SSHKeys}}
             <div class="ssh-keys-list">
                 {{range .SSHKeys}}
-                <div class="ssh-key">{{.PublicKey}}</div>
+                <div class="ssh-key-item">
+                    <div class="ssh-key-info">
+                        {{if .Comment}}
+                        <div class="ssh-key-comment">{{.Comment}}</div>
+                        {{end}}
+                        <div class="ssh-key-fingerprint">{{.PublicKey}}</div>
+                        {{if or .AddedAt .LastUsedAt}}
+                        <div class="ssh-key-meta">
+                            {{if .AddedAt}}Added {{formatTimeAgo .AddedAt}}{{end}}
+                            {{if and .AddedAt .LastUsedAt}} · {{end}}
+                            {{if .LastUsedAt}}Last used {{formatTimeAgo .LastUsedAt}}{{end}}
+                        </div>
+                        {{end}}
+                    </div>
+                    <button class="btn btn-danger btn-small" data-ssh-key="{{.PublicKey}}" onclick="openRemoveSSHKeyModal(this.dataset.sshKey)">Remove</button>
+                </div>
                 {{end}}
             </div>
             {{else}}
@@ -352,6 +500,9 @@
                 <div class="no-keys">No SSH keys registered yet.</div>
             </div>
             {{end}}
+            <div style="margin-top: 16px;">
+                <button class="btn" onclick="openAddSSHKeyModal()">Add SSH Key</button>
+            </div>
         </div>
         {{end}}
 
@@ -383,6 +534,38 @@
                     <button class="btn" onclick="addPasskey()">Add Passkey</button>
                 </div>
                 <div class="passkey-error" id="passkey-error"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Command Modal -->
+    <div class="cmd-modal-overlay" id="cmd-modal-overlay" onclick="if(event.target===this) cmdModal.close()">
+        <div class="cmd-modal">
+            <div class="cmd-modal-title" id="cmd-modal-title">Run Command</div>
+            <div class="cmd-display" id="cmd-display"></div>
+            <div class="cmd-output" id="cmd-output"></div>
+            <div class="cmd-modal-buttons">
+                <button class="btn" id="cmd-cancel-btn" onclick="cmdModal.close()">Cancel</button>
+                <button class="btn" id="cmd-run-btn" onclick="cmdModal.run()">Run</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add SSH Key Modal -->
+    <div class="cmd-modal-overlay" id="add-ssh-key-overlay" onclick="if(event.target===this) closeAddSSHKeyModal()">
+        <div class="cmd-modal" style="max-width: 600px;">
+            <div class="cmd-modal-title">Add SSH Key</div>
+            <div class="section-help" style="margin-bottom: 16px;">
+                <p style="margin-bottom: 12px;">To generate a new SSH key on your computer, run:</p>
+                <div class="cmd-display" style="margin-bottom: 12px;">ssh-keygen -t ed25519 -f ~/.ssh/id_exe</div>
+                <p>Then paste the contents of <code>~/.ssh/id_exe.pub</code> below:</p>
+            </div>
+            <textarea id="ssh-key-input" placeholder="ssh-ed25519 AAAA... user@host" style="width: 100%; min-height: 80px; padding: 12px; border: 1px solid #e0e0e0; border-radius: 4px; font-family: inherit; font-size: 12px; resize: vertical; margin-bottom: 12px;"></textarea>
+            <div class="ssh-key-error" id="ssh-key-error"></div>
+            <div class="ssh-key-success" id="ssh-key-success"></div>
+            <div class="cmd-modal-buttons">
+                <button class="btn" onclick="closeAddSSHKeyModal()">Cancel</button>
+                <button class="btn" id="add-ssh-key-btn" onclick="addSSHKey()">Add Key</button>
             </div>
         </div>
     </div>
@@ -422,6 +605,211 @@
                 passkey.delete(id);
             }
         }
+
+        // Command Modal for SSH key operations
+        const cmdModal = {
+            overlay: null,
+            title: null,
+            display: null,
+            output: null,
+            runBtn: null,
+            currentCommand: '',
+            isDanger: false,
+            commandSucceeded: false,
+            needsReload: false,
+
+            init() {
+                this.overlay = document.getElementById('cmd-modal-overlay');
+                this.title = document.getElementById('cmd-modal-title');
+                this.display = document.getElementById('cmd-display');
+                this.output = document.getElementById('cmd-output');
+                this.runBtn = document.getElementById('cmd-run-btn');
+                this.cancelBtn = document.getElementById('cmd-cancel-btn');
+            },
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            },
+
+            open(options) {
+                if (!this.overlay) this.init();
+
+                this.title.textContent = options.title || 'Run Command';
+                this.isDanger = options.danger || false;
+                this.currentCommand = options.command;
+
+                // Reset state
+                this.output.classList.remove('visible', 'success', 'error');
+                this.output.textContent = '';
+                this.runBtn.disabled = false;
+                this.runBtn.textContent = 'Run';
+                this.runBtn.style.display = '';
+                this.cancelBtn.textContent = 'Cancel';
+                this.commandSucceeded = false;
+                this.needsReload = false;
+
+                // Set button style
+                this.runBtn.classList.toggle('danger', this.isDanger);
+
+                // Show truncated command display
+                const displayCmd = options.command.length > 100 
+                    ? options.command.substring(0, 97) + '...'
+                    : options.command;
+                this.display.innerHTML = this.escapeHtml(displayCmd);
+
+                this.overlay.classList.add('visible');
+                document.addEventListener('keydown', this.handleEscape);
+            },
+
+            close() {
+                this.overlay?.classList.remove('visible');
+                document.removeEventListener('keydown', this.handleEscape);
+                if (this.needsReload) {
+                    window.location.reload();
+                }
+            },
+
+            handleEscape: function(e) {
+                if (e.key === 'Escape') {
+                    cmdModal.close();
+                }
+            },
+
+            async run() {
+                if (this.commandSucceeded) return;
+
+                this.runBtn.disabled = true;
+                this.runBtn.textContent = 'Running...';
+                this.output.classList.remove('success', 'error');
+
+                try {
+                    const response = await fetch('/m/cmd', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command: this.currentCommand }),
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        this.output.classList.add('visible', 'success');
+                        this.output.textContent = result.output || 'Done';
+                        this.runBtn.style.display = 'none';
+                        this.cancelBtn.textContent = 'Done';
+                        this.commandSucceeded = true;
+                        this.needsReload = true;
+                    } else {
+                        this.output.classList.add('visible', 'error');
+                        this.output.textContent = result.output || result.error || 'Command failed';
+                        this.runBtn.textContent = 'Run';
+                        this.runBtn.disabled = false;
+                    }
+                } catch (err) {
+                    this.output.classList.add('visible', 'error');
+                    this.output.textContent = 'Network error: ' + err.message;
+                    this.runBtn.textContent = 'Run';
+                    this.runBtn.disabled = false;
+                }
+            }
+        };
+
+        function openRemoveSSHKeyModal(publicKey) {
+            cmdModal.open({
+                title: 'Remove SSH Key',
+                command: 'ssh-key remove ' + publicKey,
+                danger: true
+            });
+        }
+
+        function openAddSSHKeyModal() {
+            const overlay = document.getElementById('add-ssh-key-overlay');
+            const textarea = document.getElementById('ssh-key-input');
+            const errorDiv = document.getElementById('ssh-key-error');
+            const successDiv = document.getElementById('ssh-key-success');
+            const addBtn = document.getElementById('add-ssh-key-btn');
+
+            // Reset state
+            textarea.value = '';
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+            addBtn.disabled = false;
+            addBtn.textContent = 'Add Key';
+
+            overlay.classList.add('visible');
+            setTimeout(() => textarea.focus(), 50);
+
+            document.addEventListener('keydown', handleAddSSHKeyEscape);
+        }
+
+        function closeAddSSHKeyModal() {
+            const overlay = document.getElementById('add-ssh-key-overlay');
+            overlay.classList.remove('visible');
+            document.removeEventListener('keydown', handleAddSSHKeyEscape);
+        }
+
+        function handleAddSSHKeyEscape(e) {
+            if (e.key === 'Escape') {
+                closeAddSSHKeyModal();
+            }
+        }
+
+        async function addSSHKey() {
+            const textarea = document.getElementById('ssh-key-input');
+            const errorDiv = document.getElementById('ssh-key-error');
+            const successDiv = document.getElementById('ssh-key-success');
+            const addBtn = document.getElementById('add-ssh-key-btn');
+            const publicKey = textarea.value.trim();
+
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+
+            if (!publicKey) {
+                errorDiv.textContent = 'Please enter an SSH public key';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            addBtn.disabled = true;
+            addBtn.textContent = 'Adding...';
+
+            try {
+                const response = await fetch('/m/cmd', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'ssh-key add ' + publicKey }),
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    successDiv.textContent = result.output || 'SSH key added';
+                    successDiv.style.display = 'block';
+                    addBtn.textContent = 'Done';
+                    // Reload after a brief delay to show the success message
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    errorDiv.textContent = result.output || result.error || 'Failed to add SSH key';
+                    errorDiv.style.display = 'block';
+                    addBtn.disabled = false;
+                    addBtn.textContent = 'Add Key';
+                }
+            } catch (err) {
+                errorDiv.textContent = 'Network error: ' + err.message;
+                errorDiv.style.display = 'block';
+                addBtn.disabled = false;
+                addBtn.textContent = 'Add Key';
+            }
+        }
+
+        // Allow Ctrl+Enter to add SSH key from textarea
+        document.getElementById('ssh-key-input')?.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                addSSHKey();
+            }
+        });
     </script>
 </body>
 </html>

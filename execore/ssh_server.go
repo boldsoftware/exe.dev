@@ -954,15 +954,8 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 		return nil, fmt.Errorf("internal error: user not found after verification")
 	}
 
-	// Store/update the SSH key as verified - use context.WithoutCancel to ensure cleanup completes even if client disconnects
-	storeErr := withTx1(ss.server, context.WithoutCancel(s.Context()), (*exedb.Queries).UpsertSSHKeyForUser, exedb.UpsertSSHKeyForUserParams{
-		UserID:    user.UserID,
-		PublicKey: publicKey,
-	})
-	if storeErr != nil {
-		ss.server.slog().WarnContext(s.Context(), "failed to store SSH key after registration", "user_id", user.UserID, "email", user.Email, "error", storeErr)
-		// Don't fail here, the key might already exist (TODO: is this right??)
-	}
+	// Note: The SSH key was already inserted by the HTTP handler that processed the email verification.
+	// We don't need to insert it again here.
 
 	// Registration complete - wait for user to press Enter
 	fmt.Fprintf(s, "\r\n%sRegistration complete!%s\r\n\r\n", "\033[1;32m", "\033[0m")
@@ -1103,8 +1096,14 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 }
 
 func (ss *SSHServer) startEmailVerification(s *shellSession, publicKey, email string, inviteCode *exedb.InviteCode) (*EmailVerification, error) {
+	// Check if this SSH key already belongs to another user
+	existingEmail, verified, err := ss.server.GetEmailBySSHKey(s.Context(), publicKey)
+	if err == nil && verified && existingEmail != email {
+		return nil, fmt.Errorf("this SSH key is already registered to another account")
+	}
+
 	// Check whether this email already exists
-	_, err := withRxRes1(ss.server, s.Context(), (*exedb.Queries).GetUserIDByEmail, email)
+	_, err = withRxRes1(ss.server, s.Context(), (*exedb.Queries).GetUserIDByEmail, email)
 	var isNewAccount bool
 	switch {
 	case err == nil:

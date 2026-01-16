@@ -152,8 +152,11 @@ type SiteSession struct {
 
 // SSHKey represents an SSH key for the user page
 type SSHKey struct {
-	UserID    string
-	PublicKey string
+	UserID     string
+	PublicKey  string
+	Comment    *string
+	AddedAt    *time.Time
+	LastUsedAt *time.Time
 }
 
 // EmailVerification represents a pending email verification (in-memory)
@@ -3038,7 +3041,7 @@ func generateUserID() (string, error) {
 	return "usr" + randomPart[:13], nil
 }
 
-// getUserIDByPublicKey gets user_id from an SSH public key
+// getUserIDByPublicKey gets user_id from an SSH public key and updates last_used_at
 func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicKey) (string, error) {
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(publicKey))
 	userID, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDBySSHKey, publicKeyStr)
@@ -3048,6 +3051,12 @@ func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicK
 		}
 		return "", fmt.Errorf("database error: %w", err)
 	}
+
+	// Update last_used_at timestamp
+	if err := withTx1(s, ctx, (*exedb.Queries).UpdateSSHKeyLastUsed, publicKeyStr); err != nil {
+		return "", fmt.Errorf("failed to update SSH key last_used_at: %w", err)
+	}
+
 	return userID, nil
 }
 

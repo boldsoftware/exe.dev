@@ -450,6 +450,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertSSHKeyForEmailUserStmt, err = db.PrepareContext(ctx, insertSSHKeyForEmailUser); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSSHKeyForEmailUser: %w", err)
 	}
+	if q.insertSSHKeyForEmailUserIfNotExistsStmt, err = db.PrepareContext(ctx, insertSSHKeyForEmailUserIfNotExists); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertSSHKeyForEmailUserIfNotExists: %w", err)
+	}
+	if q.insertSSHKeyIfNotExistsStmt, err = db.PrepareContext(ctx, insertSSHKeyIfNotExists); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertSSHKeyIfNotExists: %w", err)
+	}
 	if q.insertSignupRejectionStmt, err = db.PrepareContext(ctx, insertSignupRejection); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSignupRejection: %w", err)
 	}
@@ -567,6 +573,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateProxyBearerTokenLastUsedStmt, err = db.PrepareContext(ctx, updateProxyBearerTokenLastUsed); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateProxyBearerTokenLastUsed: %w", err)
 	}
+	if q.updateSSHKeyLastUsedStmt, err = db.PrepareContext(ctx, updateSSHKeyLastUsed); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateSSHKeyLastUsed: %w", err)
+	}
 	if q.updateTagResolutionCheckedStmt, err = db.PrepareContext(ctx, updateTagResolutionChecked); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTagResolutionChecked: %w", err)
 	}
@@ -590,9 +599,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertSSHHostKeyStmt, err = db.PrepareContext(ctx, upsertSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertSSHHostKey: %w", err)
-	}
-	if q.upsertSSHKeyForUserStmt, err = db.PrepareContext(ctx, upsertSSHKeyForUser); err != nil {
-		return nil, fmt.Errorf("error preparing query UpsertSSHKeyForUser: %w", err)
 	}
 	if q.upsertTagResolutionStmt, err = db.PrepareContext(ctx, upsertTagResolution); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertTagResolution: %w", err)
@@ -1327,6 +1333,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertSSHKeyForEmailUserStmt: %w", cerr)
 		}
 	}
+	if q.insertSSHKeyForEmailUserIfNotExistsStmt != nil {
+		if cerr := q.insertSSHKeyForEmailUserIfNotExistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertSSHKeyForEmailUserIfNotExistsStmt: %w", cerr)
+		}
+	}
+	if q.insertSSHKeyIfNotExistsStmt != nil {
+		if cerr := q.insertSSHKeyIfNotExistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertSSHKeyIfNotExistsStmt: %w", cerr)
+		}
+	}
 	if q.insertSignupRejectionStmt != nil {
 		if cerr := q.insertSignupRejectionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertSignupRejectionStmt: %w", cerr)
@@ -1522,6 +1538,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateProxyBearerTokenLastUsedStmt: %w", cerr)
 		}
 	}
+	if q.updateSSHKeyLastUsedStmt != nil {
+		if cerr := q.updateSSHKeyLastUsedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateSSHKeyLastUsedStmt: %w", cerr)
+		}
+	}
 	if q.updateTagResolutionCheckedStmt != nil {
 		if cerr := q.updateTagResolutionCheckedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateTagResolutionCheckedStmt: %w", cerr)
@@ -1560,11 +1581,6 @@ func (q *Queries) Close() error {
 	if q.upsertSSHHostKeyStmt != nil {
 		if cerr := q.upsertSSHHostKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertSSHHostKeyStmt: %w", cerr)
-		}
-	}
-	if q.upsertSSHKeyForUserStmt != nil {
-		if cerr := q.upsertSSHKeyForUserStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing upsertSSHKeyForUserStmt: %w", cerr)
 		}
 	}
 	if q.upsertTagResolutionStmt != nil {
@@ -1778,6 +1794,8 @@ type Queries struct {
 	insertProxyBearerTokenStmt                 *sql.Stmt
 	insertSSHKeyStmt                           *sql.Stmt
 	insertSSHKeyForEmailUserStmt               *sql.Stmt
+	insertSSHKeyForEmailUserIfNotExistsStmt    *sql.Stmt
+	insertSSHKeyIfNotExistsStmt                *sql.Stmt
 	insertSignupRejectionStmt                  *sql.Stmt
 	insertTagResolutionHistoryStmt             *sql.Stmt
 	insertUserStmt                             *sql.Stmt
@@ -1817,6 +1835,7 @@ type Queries struct {
 	updateBoxStatusStmt                        *sql.Stmt
 	updatePasskeySignCountStmt                 *sql.Stmt
 	updateProxyBearerTokenLastUsedStmt         *sql.Stmt
+	updateSSHKeyLastUsedStmt                   *sql.Stmt
 	updateTagResolutionCheckedStmt             *sql.Stmt
 	updateTagResolutionDigestStmt              *sql.Stmt
 	updateUserLLMAvailableCreditStmt           *sql.Stmt
@@ -1825,7 +1844,6 @@ type Queries struct {
 	upsertIPShardStmt                          *sql.Stmt
 	upsertMobilePendingVMStmt                  *sql.Stmt
 	upsertSSHHostKeyStmt                       *sql.Stmt
-	upsertSSHKeyForUserStmt                    *sql.Stmt
 	upsertTagResolutionStmt                    *sql.Stmt
 	upsertUserLLMCreditStmt                    *sql.Stmt
 	useInviteCodeStmt                          *sql.Stmt
@@ -1980,6 +1998,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertProxyBearerTokenStmt:                 q.insertProxyBearerTokenStmt,
 		insertSSHKeyStmt:                           q.insertSSHKeyStmt,
 		insertSSHKeyForEmailUserStmt:               q.insertSSHKeyForEmailUserStmt,
+		insertSSHKeyForEmailUserIfNotExistsStmt:    q.insertSSHKeyForEmailUserIfNotExistsStmt,
+		insertSSHKeyIfNotExistsStmt:                q.insertSSHKeyIfNotExistsStmt,
 		insertSignupRejectionStmt:                  q.insertSignupRejectionStmt,
 		insertTagResolutionHistoryStmt:             q.insertTagResolutionHistoryStmt,
 		insertUserStmt:                             q.insertUserStmt,
@@ -2019,6 +2039,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxStatusStmt:                        q.updateBoxStatusStmt,
 		updatePasskeySignCountStmt:                 q.updatePasskeySignCountStmt,
 		updateProxyBearerTokenLastUsedStmt:         q.updateProxyBearerTokenLastUsedStmt,
+		updateSSHKeyLastUsedStmt:                   q.updateSSHKeyLastUsedStmt,
 		updateTagResolutionCheckedStmt:             q.updateTagResolutionCheckedStmt,
 		updateTagResolutionDigestStmt:              q.updateTagResolutionDigestStmt,
 		updateUserLLMAvailableCreditStmt:           q.updateUserLLMAvailableCreditStmt,
@@ -2027,7 +2048,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertIPShardStmt:                          q.upsertIPShardStmt,
 		upsertMobilePendingVMStmt:                  q.upsertMobilePendingVMStmt,
 		upsertSSHHostKeyStmt:                       q.upsertSSHHostKeyStmt,
-		upsertSSHKeyForUserStmt:                    q.upsertSSHKeyForUserStmt,
 		upsertTagResolutionStmt:                    q.upsertTagResolutionStmt,
 		upsertUserLLMCreditStmt:                    q.upsertUserLLMCreditStmt,
 		useInviteCodeStmt:                          q.useInviteCodeStmt,
