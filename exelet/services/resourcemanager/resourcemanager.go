@@ -295,14 +295,14 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 
 			netDelta := (usage.netRxBytes - state.prevNetRxBytes) + (usage.netTxBytes - state.prevNetTxBytes)
 
-			m.log.DebugContext(ctx, "resource manager: activity check",
-				"id", id,
-				"cpu_seconds", usage.cpuSeconds,
-				"prev_cpu_seconds", state.prevCPUSeconds,
-				"cpu_delta", cpuDelta,
-				"elapsed", elapsed,
-				"cpu_percent", cpuPercent,
-				"net_delta", netDelta)
+			// m.log.DebugContext(ctx, "resource manager: activity check",
+			// 	"id", id,
+			// 	"cpu_seconds", usage.cpuSeconds,
+			// 	"prev_cpu_seconds", state.prevCPUSeconds,
+			// 	"cpu_delta", cpuDelta,
+			// 	"elapsed", elapsed,
+			// 	"cpu_percent", cpuPercent,
+			// 	"net_delta", netDelta)
 
 			// VM is active if CPU usage > threshold% OR significant network activity
 			if cpuPercent > DefaultCPUIdleThresholdPercent || netDelta > DefaultNetActivityThreshold {
