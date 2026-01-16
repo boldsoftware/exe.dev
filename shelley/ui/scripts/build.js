@@ -2,6 +2,7 @@ import * as esbuild from 'esbuild';
 import * as fs from 'fs';
 import * as zlib from 'zlib';
 import * as crypto from 'crypto';
+import { execSync } from 'child_process';
 
 const isWatch = process.argv.includes('--watch');
 const isProd = !isWatch;
@@ -72,10 +73,27 @@ async function build() {
     // Write build info
     // Get the absolute path to the src directory for staleness checking
     const srcDir = new URL('../src', import.meta.url).pathname;
+
+    // Get git commit info
+    let commit = '';
+    let commitTime = '';
+    let modified = false;
+    try {
+      commit = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
+      commitTime = execSync('git log -1 --format=%cI', { encoding: 'utf8' }).trim();
+      const status = execSync('git status --porcelain', { encoding: 'utf8' });
+      modified = status.length > 0;
+    } catch (e) {
+      // Git not available or not a git repo
+    }
+
     const buildInfo = {
       timestamp: Date.now(),
       date: new Date().toISOString(),
       srcDir: srcDir,
+      commit: commit,
+      commitTime: commitTime,
+      modified: modified,
     };
     fs.writeFileSync('dist/build-info.json', JSON.stringify(buildInfo, null, 2));
 
