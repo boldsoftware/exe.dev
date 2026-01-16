@@ -16,6 +16,7 @@ import (
 // allowedCommands defines which commands can be run via the web UI.
 // The key is the command prefix (first 1-2 words), value is true if allowed.
 var allowedCommands = map[string]bool{
+	"restart":           true,
 	"rm":                true,
 	"share show":        true,
 	"share port":        true,

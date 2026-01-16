@@ -588,6 +588,13 @@ class CommandModal {
         });
     }
 
+    static restartBox(boxName) {
+        cmdModal.open({
+            title: 'Restart VM',
+            command: `restart ${boxName}`
+        });
+    }
+
     static setPublic(boxName) {
         cmdModal.open({
             title: 'Make Public',
@@ -651,6 +658,7 @@ const openShareLinkModal = (boxName) => CommandModal.createShareLink(boxName);
 const openRemoveShareModal = (boxName, email) => CommandModal.removeShare(boxName, email);
 const openRemoveShareLinkModal = (boxName, token) => CommandModal.removeShareLink(boxName, token);
 const openDeleteBoxModal = (boxName) => CommandModal.deleteBox(boxName);
+const openRestartBoxModal = (boxName) => CommandModal.restartBox(boxName);
 const openSetPublicModal = (boxName) => CommandModal.setPublic(boxName);
 const openSetPrivateModal = (boxName) => CommandModal.setPrivate(boxName);
 const openSetPortModal = (boxName) => CommandModal.setPort(boxName);

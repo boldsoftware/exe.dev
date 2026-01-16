@@ -201,6 +201,7 @@ func TestIsCommandAllowed(t *testing.T) {
 		command string
 		allowed bool
 	}{
+		{"restart mybox", true},
 		{"rm mybox", true},
 		{"share show mybox", true},
 		{"share add mybox user@example.com", true},
