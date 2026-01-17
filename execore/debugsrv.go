@@ -2357,8 +2357,8 @@ func (s *Server) handleDebugInviteTree(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Track users and relationships
-	userEmails := make(map[string]string)   // user_id -> email
-	parentMap := make(map[string]string)    // user_id -> parent_id
+	userEmails := make(map[string]string) // user_id -> email
+	parentMap := make(map[string]string)  // user_id -> parent_id
 	hasInvitedSomeone := make(map[string]bool)
 
 	for _, code := range codes {
