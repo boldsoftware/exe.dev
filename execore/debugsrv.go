@@ -2337,89 +2337,106 @@ func (s *Server) handleDebugAllInviteCodes(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-// handleDebugInviteTree displays a tree visualization of invite codes using Vega.
+// InviteTreeNode represents a user node in the invite tree for template rendering.
+type InviteTreeNode struct {
+	ID          string
+	Email       string
+	Children    []*InviteTreeNode
+	DirectCount int // number of direct invites (children)
+	TotalCount  int // total descendants in tree
+}
+
+// handleDebugInviteTree displays a tree visualization of invite relationships.
 func (s *Server) handleDebugInviteTree(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get all invite codes with emails
 	codes, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllInviteCodesWithEmails)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to list invite codes: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Build tree data for Vega using stratify format (id + parent)
-	type treeNode struct {
-		ID     string  `json:"id"`
-		Parent *string `json:"parent"`
-		Email  string  `json:"email"`
-	}
+	// Track users and relationships
+	userEmails := make(map[string]string)   // user_id -> email
+	parentMap := make(map[string]string)    // user_id -> parent_id
+	hasInvitedSomeone := make(map[string]bool)
 
-	// Track unique users and their parents
-	nodeSet := make(map[string]string)   // user_id -> email
-	parentMap := make(map[string]string) // user_id -> parent_id
-
-	// Add system user as the root
-	const systemUserID = "system"
-	nodeSet[systemUserID] = "(system)"
-
-	linkCount := 0
 	for _, code := range codes {
-		// Only process used invite codes for the tree
 		if code.UsedByUserID == nil || code.RecipientEmail == nil {
 			continue
 		}
 
 		recipientID := *code.UsedByUserID
 		recipientEmail := *code.RecipientEmail
-		nodeSet[recipientID] = recipientEmail
+		userEmails[recipientID] = recipientEmail
 
-		var giverID string
 		if code.AssignedToUserID != nil && code.GiverEmail != nil {
-			giverID = *code.AssignedToUserID
-			nodeSet[giverID] = *code.GiverEmail
-		} else {
-			giverID = systemUserID
-		}
+			giverID := *code.AssignedToUserID
+			userEmails[giverID] = *code.GiverEmail
+			hasInvitedSomeone[giverID] = true
 
-		// Only set parent if not already set (first invite wins)
-		if _, hasParent := parentMap[recipientID]; !hasParent {
-			parentMap[recipientID] = giverID
-			linkCount++
+			// Only set parent if not already set (first invite wins)
+			if _, hasParent := parentMap[recipientID]; !hasParent {
+				parentMap[recipientID] = giverID
+			}
 		}
 	}
 
-	// Convert to node list with parent references
-	nodes := make([]treeNode, 0, len(nodeSet))
-	for id, email := range nodeSet {
-		node := treeNode{
-			ID:    id,
-			Email: email,
+	// Build tree nodes only for users who were invited OR have invited someone
+	nodes := make(map[string]*InviteTreeNode)
+	for id, email := range userEmails {
+		_, wasInvited := parentMap[id]
+		if wasInvited || hasInvitedSomeone[id] {
+			nodes[id] = &InviteTreeNode{ID: id, Email: email}
 		}
-		if parent, ok := parentMap[id]; ok {
-			node.Parent = &parent
-		}
-		nodes = append(nodes, node)
 	}
 
-	// Sort nodes for consistent output
-	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].Email < nodes[j].Email
+	// Link children to parents
+	var roots []*InviteTreeNode
+	for id, node := range nodes {
+		if parentID, ok := parentMap[id]; ok {
+			if parent, exists := nodes[parentID]; exists {
+				parent.Children = append(parent.Children, node)
+			} else {
+				// Parent not in tree (filtered out), this becomes a root
+				roots = append(roots, node)
+			}
+		} else if hasInvitedSomeone[id] {
+			// No parent but has invited someone: root node
+			roots = append(roots, node)
+		}
+	}
+
+	// Sort children and roots alphabetically by email
+	var sortChildren func(n *InviteTreeNode)
+	sortChildren = func(n *InviteTreeNode) {
+		sort.Slice(n.Children, func(i, j int) bool {
+			return n.Children[i].Email < n.Children[j].Email
+		})
+		for _, c := range n.Children {
+			sortChildren(c)
+		}
+	}
+	for _, root := range roots {
+		sortChildren(root)
+	}
+	sort.Slice(roots, func(i, j int) bool {
+		return roots[i].Email < roots[j].Email
 	})
 
-	// For JSON format
-	if r.URL.Query().Get("format") == "json" {
-		w.Header().Set("Content-Type", "application/json")
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(nodes); err != nil {
-			s.slog().ErrorContext(ctx, "Failed to encode tree data", "error", err)
+	// Compute counts (direct and total descendants)
+	var computeCounts func(n *InviteTreeNode) int
+	computeCounts = func(n *InviteTreeNode) int {
+		n.DirectCount = len(n.Children)
+		n.TotalCount = n.DirectCount
+		for _, c := range n.Children {
+			n.TotalCount += computeCounts(c)
 		}
-		return
+		return n.TotalCount
 	}
-
-	// Marshal data for embedding in HTML
-	treeDataJSON, _ := json.Marshal(nodes)
+	for _, root := range roots {
+		computeCounts(root)
+	}
 
 	tmpl, err := debug_templates.Parse()
 	if err != nil {
@@ -2427,18 +2444,8 @@ func (s *Server) handleDebugInviteTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := struct {
-		NodeCount    int
-		LinkCount    int
-		TreeDataJSON string
-	}{
-		NodeCount:    len(nodes),
-		LinkCount:    linkCount,
-		TreeDataJSON: string(treeDataJSON),
-	}
-
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "invite-tree.html", data); err != nil {
+	if err := tmpl.ExecuteTemplate(w, "invite-tree.html", roots); err != nil {
 		s.slog().ErrorContext(ctx, "failed to execute invite-tree template", "error", err)
 	}
 }
