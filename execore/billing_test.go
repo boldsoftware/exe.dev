@@ -1203,3 +1203,42 @@ func TestNewUserWithInviteCodeSkipsBilling(t *testing.T) {
 		t.Errorf("Expected status 200 (check email page) for new user with invite code, got %d", w.Code)
 	}
 }
+
+func TestLoginWithExeSkipsBilling(t *testing.T) {
+	// Test that new users signing up via "Login with Exe" (the proxy auth flow)
+	// are NOT redirected to the Stripe billing flow.
+	// These users are just authenticating to access someone else's app, not
+	// signing up to use exe.dev resources directly.
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	email := "login-with-exe-user@example.com"
+
+	// POST to /auth with a new email AND login_with_exe=1 (simulating proxy auth flow)
+	form := url.Values{}
+	form.Add("email", email)
+	form.Add("login_with_exe", "1")
+	req := httptest.NewRequest("POST", "/auth", strings.NewReader(form.Encode()))
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	// Should NOT redirect to billing
+	if w.Code == http.StatusSeeOther {
+		location := w.Header().Get("Location")
+		if strings.Contains(location, "/billing/subscribe") {
+			t.Fatalf("Login-with-exe users should NOT be redirected to billing! Got redirect to: %s", location)
+		}
+	}
+
+	// Should show the "check your email" page
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200 (check email page) for login-with-exe user, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Check Your Email") && !strings.Contains(body, "check your email") {
+		t.Errorf("Expected 'check your email' page. Body: %s", body[:min(500, len(body))])
+	}
+}

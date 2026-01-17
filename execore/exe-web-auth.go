@@ -1328,7 +1328,9 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// NEW FLOW: Redirect new users to billing first (unless SkipBilling for tests or valid invite code).
 	// POW is skipped for billing-first flow - Stripe serves as sufficient friction.
 	// Users with valid invite codes get a billing exemption, so they skip Stripe.
-	if isNewUser && !s.env.SkipBilling && invite == nil {
+	// Users signing in via "Login with Exe" (proxy auth flow) skip billing - they're just
+	// authenticating to access someone else's app, not signing up to use exe.dev resources.
+	if isNewUser && !s.env.SkipBilling && invite == nil && !createdForLoginWithExe {
 		// Create pending registration to track email through Stripe
 		token := generateRegistrationToken()
 		err = withTx1(s, r.Context(), (*exedb.Queries).InsertPendingRegistration, exedb.InsertPendingRegistrationParams{
