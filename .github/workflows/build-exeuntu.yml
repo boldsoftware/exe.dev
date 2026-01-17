@@ -7,11 +7,17 @@ on:
     paths:
       - "exeuntu/**"
       - "shelley/**"
+      - "scripts/find-shelley-release.py"
+      - "scripts/download-shelley.sh"
       - ".github/workflows/build-exeuntu.yml"
   workflow_dispatch:
     inputs:
       commit_subject:
         description: "Commit subject line"
+        required: false
+        type: string
+      shelley_version:
+        description: "Shelley version tag (e.g. v0.89.914374232). Leave empty to match shelley/ tree hash."
         required: false
         type: string
 
@@ -27,8 +33,10 @@ jobs:
         include:
           - platform: linux/amd64
             runner: ubuntu-latest
+            shelley_asset: shelley_linux_amd64
           - platform: linux/arm64
             runner: linux-arm64-ubuntu-2404-8-core
+            shelley_asset: shelley_linux_arm64
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -36,9 +44,9 @@ jobs:
 
     steps:
       - name: Prepare platform pair
-        run: |
-          platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+        run: echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+        env:
+          platform: ${{ matrix.platform }}
 
       - name: Install Docker and build tools (ARM64 runner)
         if: matrix.platform == 'linux/arm64'
@@ -57,36 +65,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-          cache-dependency-path: shelley/go.sum
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Build shelley for target platform
+      - name: Find matching Shelley release
+        id: find-release
         run: |
-          cd shelley
-          platform=${{ matrix.platform }}
-          case $platform in
-            linux/amd64)
-              make build-linux-x86
-              cp bin/shelley-linux-x86 ../exeuntu/shelley
-              ;;
-            linux/arm64)
-              make build-linux-aarch64
-              cp bin/shelley-linux-aarch64 ../exeuntu/shelley
-              ;;
-          esac
+          if [ -n "${{ inputs.shelley_version }}" ]; then
+            VERSION=$(./scripts/find-shelley-release.py --version="${{ inputs.shelley_version }}")
+          else
+            TREE_HASH=$(git rev-parse HEAD:shelley)
+            VERSION=$(./scripts/find-shelley-release.py "$TREE_HASH")
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download Shelley
+        run: |
+          ./scripts/download-shelley.sh "${{ steps.find-release.outputs.version }}" "${{ matrix.shelley_asset }}" exeuntu/shelley
+          echo "SHELLEY_VERSION=${{ steps.find-release.outputs.version }}" >> $GITHUB_ENV
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
