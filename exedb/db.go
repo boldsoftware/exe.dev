@@ -441,9 +441,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertPendingRegistrationStmt, err = db.PrepareContext(ctx, insertPendingRegistration); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPendingRegistration: %w", err)
 	}
-	if q.insertPendingRegistrationWithKeyStmt, err = db.PrepareContext(ctx, insertPendingRegistrationWithKey); err != nil {
-		return nil, fmt.Errorf("error preparing query InsertPendingRegistrationWithKey: %w", err)
-	}
 	if q.insertPendingSSHKeyStmt, err = db.PrepareContext(ctx, insertPendingSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPendingSSHKey: %w", err)
 	}
@@ -1327,11 +1324,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertPendingRegistrationStmt: %w", cerr)
 		}
 	}
-	if q.insertPendingRegistrationWithKeyStmt != nil {
-		if cerr := q.insertPendingRegistrationWithKeyStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing insertPendingRegistrationWithKeyStmt: %w", cerr)
-		}
-	}
 	if q.insertPendingSSHKeyStmt != nil {
 		if cerr := q.insertPendingSSHKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertPendingSSHKeyStmt: %w", cerr)
@@ -1815,7 +1807,6 @@ type Queries struct {
 	insertPasskeyStmt                          *sql.Stmt
 	insertPasskeyChallengeStmt                 *sql.Stmt
 	insertPendingRegistrationStmt              *sql.Stmt
-	insertPendingRegistrationWithKeyStmt       *sql.Stmt
 	insertPendingSSHKeyStmt                    *sql.Stmt
 	insertProxyBearerTokenStmt                 *sql.Stmt
 	insertSSHKeyStmt                           *sql.Stmt
@@ -2022,7 +2013,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertPasskeyStmt:                          q.insertPasskeyStmt,
 		insertPasskeyChallengeStmt:                 q.insertPasskeyChallengeStmt,
 		insertPendingRegistrationStmt:              q.insertPendingRegistrationStmt,
-		insertPendingRegistrationWithKeyStmt:       q.insertPendingRegistrationWithKeyStmt,
 		insertPendingSSHKeyStmt:                    q.insertPendingSSHKeyStmt,
 		insertProxyBearerTokenStmt:                 q.insertProxyBearerTokenStmt,
 		insertSSHKeyStmt:                           q.insertSSHKeyStmt,

@@ -423,13 +423,8 @@ func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered boo
 	}
 	shell := NewSSHShell(s, clientAddr)
 	if !registered {
-		// With SkipBilling (for tests), use the old email-based registration flow
-		// In production, drop anonymous users into the REPL with billing-first flow
-		if ss.server.env.SkipBilling {
-			ss.handleRegistration(shell, publicKey)
-		} else {
-			ss.runAnonymousRepl(shell, publicKey)
-		}
+		// Handle registration flow
+		ss.handleRegistration(shell, publicKey)
 		return
 	}
 
@@ -572,114 +567,12 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 	}
 }
 
-// runAnonymousRepl runs the REPL for anonymous (unregistered) users.
-// Anonymous users can browse help and try commands, but when they try to create
-// a VM, they're prompted to subscribe via the billing flow which also authenticates them.
-func (ss *SSHServer) runAnonymousRepl(s *shellSession, publicKey string) {
-	ctx := s.Context()
-	ss.server.slog().DebugContext(ctx, "start runAnonymousRepl", "public_key", publicKey)
-
-	// Show the animated welcome banner
-	ss.showAnimatedWelcome(s)
-
-	// Show welcome tips
-	fmt.Fprint(s, "\r\n")
-	fmt.Fprint(s, "Run \033[1msubscribe\033[0m to get started.\r\n")
-	fmt.Fprint(s, "\r\n")
-
-	// Create a terminal using golang.org/x/term
-	terminal := term.NewTerminal(s, fmt.Sprintf("\033[1;36m%s\033[0m \033[37m▶\033[0m ", ss.server.env.ReplHost))
-
-	// Set the terminal size to the pty size, and keep it updated whenever
-	// the pty changes.
-	pty, _ := s.Pty()
-	terminal.SetSize(pty.Window.Width, pty.Window.Height)
-
-	go func() {
-		for s.WaitWindowChange() {
-			pty, _ := s.Pty()
-			terminal.SetSize(pty.Window.Width, pty.Window.Height)
-		}
-	}()
-
-	ss.server.slog().InfoContext(ctx, "starting anonymous repl", "public_key", publicKey)
-	for {
-		line, err := terminal.ReadLine()
-		if err != nil {
-			if err == io.EOF {
-				fmt.Fprint(s, "Goodbye!\r\n")
-			}
-			return
-		}
-
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		ss.server.slog().DebugContext(ctx, "anonymous command received", "line", line)
-
-		parts, err := shlex.Split(line, true)
-		if err != nil {
-			fmt.Fprintf(s, "Error parsing command: %v\r\n", err)
-			continue
-		}
-		if len(parts) == 0 {
-			continue
-		}
-
-		// For anonymous users, User is nil and PublicKey is set
-		cc := &exemenu.CommandContext{
-			User:       nil, // Anonymous user
-			PublicKey:  publicKey,
-			Args:       []string{},
-			Output:     s,
-			SSHSession: s,
-			Terminal:   terminal,
-			DevMode:    ss.server.env.ReplDev,
-			Logger:     ss.server.slog(),
-		}
-
-		// Execute command
-		rc := ss.executeCommandWithLogging(ctx, cc, parts)
-		if rc == -1 {
-			// EOF
-			return
-		}
-
-		// Check if user got registered during command execution (e.g., after billing flow)
-		user, err := ss.server.getUserByPublicKey(ctx, publicKey)
-		if err == nil && user != nil {
-			// User is now registered! Transition to the main REPL
-			ss.server.slog().InfoContext(ctx, "anonymous user now registered, transitioning to main repl", "email", user.Email)
-			ss.runMainShellWithReadline(s, publicKey, user)
-			return
-		}
-	}
-}
-
 // executeCommandWithLogging wraps ExecuteCommand to add structured logging
 // with timing information and accumulated attributes (similar to sloghttp).
 func (ss *SSHServer) executeCommandWithLogging(ctx context.Context, cc *exemenu.CommandContext, parts []string) int {
 	start := time.Now()
 	cl := NewCommandLog(start)
 	ctx = WithCommandLog(ctx, cl)
-
-	// Check if user needs to subscribe before allowing most commands
-	// Allow: help, subscribe
-	if len(parts) > 0 && parts[0] != "help" && parts[0] != "subscribe" {
-		needsSubscribe := false
-		if cc.User == nil {
-			needsSubscribe = true
-		} else if !ss.server.env.SkipBilling {
-			if nb, err := withRxRes1(ss.server, ctx, (*exedb.Queries).UserNeedsBilling, cc.User.ID); err == nil && nb != nil && *nb {
-				needsSubscribe = true
-			}
-		}
-		if needsSubscribe {
-			cc.Writeln("\033[1;33mPlease run 'subscribe' first to set up your account.\033[0m")
-			return 0
-		}
-	}
 
 	rc := ss.commands.ExecuteCommand(ctx, cc, parts)
 
@@ -1299,12 +1192,6 @@ The EXE.DEV team`, verifyURL)
 
 func (s *Server) addEmailVerification(publicKey, email string, isNewAccount bool, inviteCode *exedb.InviteCode) *EmailVerification {
 	token := generateRegistrationToken()
-	return s.addEmailVerificationWithToken(token, publicKey, email, isNewAccount, inviteCode)
-}
-
-// addEmailVerificationWithToken creates and stores an email verification with a specific token.
-// This is useful when the token needs to match an external reference (e.g., pending registration token).
-func (s *Server) addEmailVerificationWithToken(token, publicKey, email string, isNewAccount bool, inviteCode *exedb.InviteCode) *EmailVerification {
 	pairingCode := generatePairingCode()
 
 	verification := &EmailVerification{
