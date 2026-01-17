@@ -192,8 +192,12 @@ func (sf *SlackFeed) PreferredExeletChanged(ctx context.Context, address string)
 }
 
 // InviteRequest notifies Slack that a user requested more invite codes.
-func (sf *SlackFeed) InviteRequest(ctx context.Context, email string) {
-	message := fmt.Sprintf("invite request: `%s` wants more invites", email)
+func (sf *SlackFeed) InviteRequest(ctx context.Context, email string, hasBilling bool) {
+	billingStatus := "no billing"
+	if hasBilling {
+		billingStatus = "💸"
+	}
+	message := fmt.Sprintf("invite request: `%s` (%s) wants more invites", email, billingStatus)
 	if sf.client == nil {
 		sf.log.InfoContext(ctx, "slack feed channel", "message", message)
 		return

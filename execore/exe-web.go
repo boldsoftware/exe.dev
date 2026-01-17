@@ -1688,8 +1688,17 @@ func (s *Server) handleInviteRequest(w http.ResponseWriter, r *http.Request, use
 		return
 	}
 
+	// Check if user has billing set up
+	hasBilling := false
+	needsBilling, err := withRxRes1(s, ctx, (*exedb.Queries).UserNeedsBilling, userID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "Failed to check billing status for invite request", "error", err, "user_id", userID)
+	} else if needsBilling != nil {
+		hasBilling = !*needsBilling
+	}
+
 	// Send Slack notification
-	s.slackFeed.InviteRequest(ctx, user.Email)
+	s.slackFeed.InviteRequest(ctx, user.Email, hasBilling)
 
 	// Render confirmation page
 	data := struct {
