@@ -49,3 +49,10 @@ SELECT value FROM server_meta WHERE key = 'ip_abuse_filter_disabled';
 -- name: SetIPAbuseFilterDisabled :exec
 INSERT INTO server_meta (key, value, updated_at) VALUES ('ip_abuse_filter_disabled', ?, CURRENT_TIMESTAMP)
 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP;
+
+-- name: GetLastBouncesPoll :one
+SELECT value FROM server_meta WHERE key = 'last_bounces_poll';
+
+-- name: SetLastBouncesPoll :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('last_bounces_poll', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP;

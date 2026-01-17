@@ -270,6 +270,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getInviteCodeByIDStmt, err = db.PrepareContext(ctx, getInviteCodeByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetInviteCodeByID: %w", err)
 	}
+	if q.getLastBouncesPollStmt, err = db.PrepareContext(ctx, getLastBouncesPoll); err != nil {
+		return nil, fmt.Errorf("error preparing query GetLastBouncesPoll: %w", err)
+	}
 	if q.getLatestMobilePendingVMByUserStmt, err = db.PrepareContext(ctx, getLatestMobilePendingVMByUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLatestMobilePendingVMByUser: %w", err)
 	}
@@ -509,6 +512,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setIPAbuseFilterDisabledStmt, err = db.PrepareContext(ctx, setIPAbuseFilterDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query SetIPAbuseFilterDisabled: %w", err)
+	}
+	if q.setLastBouncesPollStmt, err = db.PrepareContext(ctx, setLastBouncesPoll); err != nil {
+		return nil, fmt.Errorf("error preparing query SetLastBouncesPoll: %w", err)
 	}
 	if q.setLoginCreationDisabledStmt, err = db.PrepareContext(ctx, setLoginCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query SetLoginCreationDisabled: %w", err)
@@ -1030,6 +1036,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getInviteCodeByIDStmt: %w", cerr)
 		}
 	}
+	if q.getLastBouncesPollStmt != nil {
+		if cerr := q.getLastBouncesPollStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getLastBouncesPollStmt: %w", cerr)
+		}
+	}
 	if q.getLatestMobilePendingVMByUserStmt != nil {
 		if cerr := q.getLatestMobilePendingVMByUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getLatestMobilePendingVMByUserStmt: %w", cerr)
@@ -1430,6 +1441,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setIPAbuseFilterDisabledStmt: %w", cerr)
 		}
 	}
+	if q.setLastBouncesPollStmt != nil {
+		if cerr := q.setLastBouncesPollStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setLastBouncesPollStmt: %w", cerr)
+		}
+	}
 	if q.setLoginCreationDisabledStmt != nil {
 		if cerr := q.setLoginCreationDisabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setLoginCreationDisabledStmt: %w", cerr)
@@ -1726,6 +1742,7 @@ type Queries struct {
 	getIPShardByBoxNameStmt                    *sql.Stmt
 	getInviteCodeByCodeStmt                    *sql.Stmt
 	getInviteCodeByIDStmt                      *sql.Stmt
+	getLastBouncesPollStmt                     *sql.Stmt
 	getLatestMobilePendingVMByUserStmt         *sql.Stmt
 	getLoginCreationDisabledStmt               *sql.Stmt
 	getMobilePendingVMByTokenStmt              *sql.Stmt
@@ -1806,6 +1823,7 @@ type Queries struct {
 	sSHKeyForBoxNamedStmt                      *sql.Stmt
 	setBoxSupportAccessAllowedStmt             *sql.Stmt
 	setIPAbuseFilterDisabledStmt               *sql.Stmt
+	setLastBouncesPollStmt                     *sql.Stmt
 	setLoginCreationDisabledStmt               *sql.Stmt
 	setNewThrottleEmailPatternsStmt            *sql.Stmt
 	setNewThrottleEnabledStmt                  *sql.Stmt
@@ -1929,6 +1947,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getIPShardByBoxNameStmt:                    q.getIPShardByBoxNameStmt,
 		getInviteCodeByCodeStmt:                    q.getInviteCodeByCodeStmt,
 		getInviteCodeByIDStmt:                      q.getInviteCodeByIDStmt,
+		getLastBouncesPollStmt:                     q.getLastBouncesPollStmt,
 		getLatestMobilePendingVMByUserStmt:         q.getLatestMobilePendingVMByUserStmt,
 		getLoginCreationDisabledStmt:               q.getLoginCreationDisabledStmt,
 		getMobilePendingVMByTokenStmt:              q.getMobilePendingVMByTokenStmt,
@@ -2009,6 +2028,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		sSHKeyForBoxNamedStmt:                      q.sSHKeyForBoxNamedStmt,
 		setBoxSupportAccessAllowedStmt:             q.setBoxSupportAccessAllowedStmt,
 		setIPAbuseFilterDisabledStmt:               q.setIPAbuseFilterDisabledStmt,
+		setLastBouncesPollStmt:                     q.setLastBouncesPollStmt,
 		setLoginCreationDisabledStmt:               q.setLoginCreationDisabledStmt,
 		setNewThrottleEmailPatternsStmt:            q.setNewThrottleEmailPatternsStmt,
 		setNewThrottleEnabledStmt:                  q.setNewThrottleEnabledStmt,

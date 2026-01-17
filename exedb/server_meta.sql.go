@@ -29,6 +29,17 @@ func (q *Queries) GetIPAbuseFilterDisabled(ctx context.Context) (string, error) 
 	return value, err
 }
 
+const getLastBouncesPoll = `-- name: GetLastBouncesPoll :one
+SELECT value FROM server_meta WHERE key = 'last_bounces_poll'
+`
+
+func (q *Queries) GetLastBouncesPoll(ctx context.Context) (string, error) {
+	row := q.queryRow(ctx, q.getLastBouncesPollStmt, getLastBouncesPoll)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
 const getLoginCreationDisabled = `-- name: GetLoginCreationDisabled :one
 SELECT value FROM server_meta WHERE key = 'login_creation_disabled'
 `
@@ -102,6 +113,16 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIME
 
 func (q *Queries) SetIPAbuseFilterDisabled(ctx context.Context, value string) error {
 	_, err := q.exec(ctx, q.setIPAbuseFilterDisabledStmt, setIPAbuseFilterDisabled, value)
+	return err
+}
+
+const setLastBouncesPoll = `-- name: SetLastBouncesPoll :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('last_bounces_poll', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+`
+
+func (q *Queries) SetLastBouncesPoll(ctx context.Context, value string) error {
+	_, err := q.exec(ctx, q.setLastBouncesPollStmt, setLastBouncesPoll, value)
 	return err
 }
 

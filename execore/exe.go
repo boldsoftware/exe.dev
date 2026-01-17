@@ -314,6 +314,7 @@ type Server struct {
 	emailSenders           *email.Senders
 	fakeHTTPEmail          string // fake HTTP email server URL for sending emails (for e2e tests)
 	postmarkStatsCollector *email.PostmarkStatsCollector
+	bouncePoller           *email.PostmarkBouncePoller
 
 	// IPQS email quality service
 	ipqsAPIKey string
@@ -659,11 +660,17 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		slog.Info("no email provider configured, email verification will not work")
 	}
 
-	// Initialize Postmark stats collector
+	// Initialize Postmark stats collector and bounce poller
 	var postmarkStatsCollector *email.PostmarkStatsCollector
+	var bouncePoller *email.PostmarkBouncePoller
 	if postmarkAPIKey := os.Getenv("POSTMARK_API_KEY"); postmarkAPIKey != "" {
 		postmarkStatsCollector = email.NewPostmarkStatsCollector(postmarkAPIKey, slog)
 		postmarkStatsCollector.Start()
+
+		// Initialize bounce poller to sync bounces from Postmark to our database.
+		// Polls every 10 minutes.
+		bouncePoller = email.NewPostmarkBouncePoller(postmarkAPIKey, newBounceStore(db), slog, 10*time.Minute)
+		bouncePoller.Start()
 	}
 
 	// Initialize IPQS API key for email quality checks
@@ -811,6 +818,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		emailSenders:           emailSenders,
 		fakeHTTPEmail:          cfg.FakeEmailServer,
 		postmarkStatsCollector: postmarkStatsCollector,
+		bouncePoller:           bouncePoller,
 		ipqsAPIKey:             ipqsAPIKey,
 		discordLinkSecret:      discordLinkSecret,
 		PublicIPs:              map[netip.Addr]publicips.PublicIP{},
@@ -2883,6 +2891,9 @@ func (s *Server) Stop() error {
 	}
 	if s.postmarkStatsCollector != nil {
 		s.postmarkStatsCollector.Stop()
+	}
+	if s.bouncePoller != nil {
+		s.bouncePoller.Stop()
 	}
 	if s.dnsServer != nil {
 		s.dnsServer.Stop(ctx)
