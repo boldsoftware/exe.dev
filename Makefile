@@ -337,15 +337,32 @@ exelet/fs/rovol:
 
 .PHONY: package-exelet-fs
 package-exelet-fs:
+	@>&2 echo " -> starting kernel builders"
+	@./ops/setup-kernel-builders.sh start
 	@rm -rf /tmp/exelet-fs
 	@mkdir -p /tmp/exelet-fs
-	@>&2 echo " -> building exelet kernel"
-	@docker buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=/tmp/exelet-fs/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
-	@>&2 echo " -> building exelet rovol"
-	@docker buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=/tmp/exelet-fs/rovol/ -f ./exelet/rovol/Dockerfile .
-	@>&2 echo " -> building exe-init"
-	@cd ./cmd/exe-init && CGO_ENABLED=0 GOOS=linux go build -ldflags "-s -w" -o /tmp/exelet-fs/rovol/bin/exe-init .
-	@cd /tmp/exelet-fs && tar czvf $(ROOT_DIR)/exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz ./
+	@>&2 echo " -> building exelet kernel (amd64 + arm64)"
+	@$(DOCKER) buildx build --builder exe --platform linux/amd64,linux/arm64 $(BUILD_ARGS) --output type=local,dest=/tmp/exelet-fs/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
+	@>&2 echo " -> building exelet rovol (amd64 + arm64)"
+	@$(DOCKER) buildx build --builder exe --platform linux/amd64,linux/arm64 $(BUILD_ARGS) --output type=local,dest=/tmp/exelet-fs/rovol/ -f ./exelet/rovol/Dockerfile .
+	@>&2 echo " -> building exe-init (amd64 + arm64)"
+	@cd ./cmd/exe-init && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o /tmp/exelet-fs/rovol/linux_amd64/bin/exe-init .
+	@cd ./cmd/exe-init && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w" -o /tmp/exelet-fs/rovol/linux_arm64/bin/exe-init .
+	@>&2 echo " -> packaging exelet-fs tarballs"
+	@for arch in amd64 arm64; do \
+		mkdir -p /tmp/exelet-fs/$$arch/kernel /tmp/exelet-fs/$$arch/rovol; \
+		cp -r /tmp/exelet-fs/kernel/linux_$$arch/* /tmp/exelet-fs/$$arch/kernel/; \
+		cp -r /tmp/exelet-fs/rovol/linux_$$arch/* /tmp/exelet-fs/$$arch/rovol/; \
+		(cd /tmp/exelet-fs/$$arch && tar czvf $(ROOT_DIR)/exelet-fs-$$arch-$(EXELET_FS_HASH).tar.gz ./); \
+	done
+	@>&2 echo " -> created exelet-fs-amd64-$(EXELET_FS_HASH).tar.gz"
+	@>&2 echo " -> created exelet-fs-arm64-$(EXELET_FS_HASH).tar.gz"
+	@if [ -z "$(KERNEL_BUILDERS_KEEP_RUNNING)" ]; then \
+		>&2 echo " -> stopping kernel builders"; \
+		./ops/setup-kernel-builders.sh stop -y; \
+	else \
+		>&2 echo " -> keeping kernel builders running (KERNEL_BUILDERS_KEEP_RUNNING set)"; \
+	fi
 
 .PHONY: upload-exelet-fs
 upload-exelet-fs: package-exelet-fs ## Build and upload exelet-fs to Backblaze
@@ -358,10 +375,12 @@ upload-exelet-fs: package-exelet-fs ## Build and upload exelet-fs to Backblaze
 		fi; \
 		exit 1; \
 	fi
-	@>&2 echo " -> uploading exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz to Backblaze"
 	@echo " !! Be sure to have B2 write keys !!"
-	$(B2) file upload bold-exe exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz \
-		|| { echo "${RED}Failed to upload exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz${NC}" && exit 1; }
-	@echo "✓ Uploaded exelet-fs-$(GOARCH)-$(EXELET_FS_HASH).tar.gz"
+	@for arch in amd64 arm64; do \
+		>&2 echo " -> uploading exelet-fs-$$arch-$(EXELET_FS_HASH).tar.gz to Backblaze"; \
+		$(B2) file upload bold-exe exelet-fs-$$arch-$(EXELET_FS_HASH).tar.gz exelet-fs-$$arch-$(EXELET_FS_HASH).tar.gz \
+			|| { echo "${RED}Failed to upload exelet-fs-$$arch-$(EXELET_FS_HASH).tar.gz${NC}" && exit 1; }; \
+		echo "✓ Uploaded exelet-fs-$$arch-$(EXELET_FS_HASH).tar.gz"; \
+	done
 
 .DEFAULT_GOAL := help
