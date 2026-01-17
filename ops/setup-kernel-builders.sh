@@ -8,8 +8,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Configuration (can be overridden via environment variables)
 REGION="${REGION:-us-west-2}"
-SUBNET_ID="${SUBNET_ID:-}"  # Auto-discover first subnet if not specified
-NAT_GATEWAY="${NAT_GATEWAY:-}"  # Auto-discover first NAT Gateway if not specified
+SUBNET_ID="${SUBNET_ID:-}"     # Auto-discover first subnet if not specified
+NAT_GATEWAY="${NAT_GATEWAY:-}" # Auto-discover first NAT Gateway if not specified
 SECURITY_GROUP_NAME="buildkit"
 ROOT_VOLUME_SIZE="128"
 BUILDKIT_PORT=9500
@@ -18,22 +18,22 @@ BUILDKIT_VERSION="v0.17.3"
 # Helper functions to replace associative arrays (for macOS bash 3.x compatibility)
 get_instance_type() {
     case "$1" in
-        amd64) echo "t2.xlarge" ;;
-        arm64) echo "t4g.xlarge" ;;
+    amd64) echo "t2.xlarge" ;;
+    arm64) echo "t4g.xlarge" ;;
     esac
 }
 
 get_ami_arch() {
     case "$1" in
-        amd64) echo "x86_64" ;;
-        arm64) echo "arm64" ;;
+    amd64) echo "x86_64" ;;
+    arm64) echo "arm64" ;;
     esac
 }
 
 get_ami_name_pattern() {
     case "$1" in
-        amd64) echo "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*" ;;
-        arm64) echo "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-arm64-server-*" ;;
+    amd64) echo "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*" ;;
+    arm64) echo "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-arm64-server-*" ;;
     esac
 }
 
@@ -540,7 +540,7 @@ wait_for_instance() {
     aws ec2 wait instance-running --instance-ids "${instance_id}" --region "${REGION}"
 
     echo "Waiting for Tailscale SSH access to ${machine_name}..."
-    local max_wait=300  # 5 minutes
+    local max_wait=300 # 5 minutes
     local wait_interval=10
     local elapsed=0
 
@@ -671,8 +671,8 @@ ensure_buildx_builder() {
         inspect_output=$(docker buildx inspect "${builder_name}" 2>/dev/null)
 
         # Check if both endpoints are configured
-        if echo "$inspect_output" | grep -q "buildkit-amd64:${BUILDKIT_PORT}" && \
-           echo "$inspect_output" | grep -q "buildkit-arm64:${BUILDKIT_PORT}"; then
+        if echo "$inspect_output" | grep -q "buildkit-amd64:${BUILDKIT_PORT}" &&
+            echo "$inspect_output" | grep -q "buildkit-arm64:${BUILDKIT_PORT}"; then
             echo "Builder '${builder_name}' is already configured."
             return 0
         fi
@@ -724,23 +724,23 @@ start_single_builder() {
         state=$(echo "$info" | awk '{print $2}')
 
         case "$state" in
-            running)
-                echo "[${arch}] Instance is already running"
-                ;;
-            stopped)
-                start_instance "$instance_id" "$machine_name"
-                wait_for_instance "$machine_name" "$instance_id"
-                ;;
-            stopping)
-                echo "[${arch}] Instance is stopping, waiting..."
-                aws ec2 wait instance-stopped --instance-ids "${instance_id}" --region "${REGION}"
-                start_instance "$instance_id" "$machine_name"
-                wait_for_instance "$machine_name" "$instance_id"
-                ;;
-            pending)
-                echo "[${arch}] Instance is starting..."
-                wait_for_instance "$machine_name" "$instance_id"
-                ;;
+        running)
+            echo "[${arch}] Instance is already running"
+            ;;
+        stopped)
+            start_instance "$instance_id" "$machine_name"
+            wait_for_instance "$machine_name" "$instance_id"
+            ;;
+        stopping)
+            echo "[${arch}] Instance is stopping, waiting..."
+            aws ec2 wait instance-stopped --instance-ids "${instance_id}" --region "${REGION}"
+            start_instance "$instance_id" "$machine_name"
+            wait_for_instance "$machine_name" "$instance_id"
+            ;;
+        pending)
+            echo "[${arch}] Instance is starting..."
+            wait_for_instance "$machine_name" "$instance_id"
+            ;;
         esac
     fi
 
@@ -837,23 +837,23 @@ main() {
     local yes_flag="${2:-}"
 
     case "$action" in
-        start)
-            start_builders
-            ;;
-        stop)
-            if [ "$yes_flag" = "-y" ] || [ "$yes_flag" = "--yes" ]; then
-                stop_builders_no_confirm
-            else
-                stop_builders
-            fi
-            ;;
-        *)
-            echo "Usage: $0 [start|stop] [-y|--yes]"
-            echo "  start      - Start or create BuildKit builder instances (default)"
-            echo "  stop       - Stop BuildKit builder instances (with confirmation)"
-            echo "  stop -y    - Stop without confirmation"
-            exit 1
-            ;;
+    start)
+        start_builders
+        ;;
+    stop)
+        if [ "$yes_flag" = "-y" ] || [ "$yes_flag" = "--yes" ]; then
+            stop_builders_no_confirm
+        else
+            stop_builders
+        fi
+        ;;
+    *)
+        echo "Usage: $0 [start|stop] [-y|--yes]"
+        echo "  start      - Start or create BuildKit builder instances (default)"
+        echo "  stop       - Stop BuildKit builder instances (with confirmation)"
+        echo "  stop -y    - Stop without confirmation"
+        exit 1
+        ;;
     esac
 }
 
