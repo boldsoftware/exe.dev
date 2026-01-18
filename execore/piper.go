@@ -373,12 +373,19 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 			ID: *box.ContainerID,
 		})
 		if err != nil {
-			slog.InfoContext(ctx, "piper-plugin instance status check failed",
+			traceID := tracing.TraceIDFromContext(ctx)
+			slog.ErrorContext(ctx, "piper-plugin GetInstance failed (exelet unreachable?)",
 				"box_name", box.Name,
+				"vm_id", box.ID,
 				"container_id", *box.ContainerID,
+				"ctrhost", box.Ctrhost,
+				"user_id", userID,
+				"conn_id", connID,
 				"error", err,
 			)
-		} else if instanceResp.Instance != nil {
+			return nil, fmt.Errorf("internal error (trace: %s)", traceID)
+		}
+		if instanceResp.Instance != nil {
 			slog.InfoContext(ctx, "piper-plugin instance status check",
 				"box_name", box.Name,
 				"container_id", *box.ContainerID,
