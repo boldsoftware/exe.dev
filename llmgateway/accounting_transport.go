@@ -139,7 +139,8 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 			data = decoded
 		}
 		if err := a.processResponseData(data); err != nil {
-			a.log.ErrorContext(ctx, "accountingTransport couldn't process unary JSON response", "processResponseData error", err)
+			truncated := data[:min(len(data), 256)]
+			a.log.ErrorContext(ctx, "accountingTransport couldn't process unary JSON response", "error", err, "data", fmt.Sprintf("%q", truncated))
 			return err
 		}
 
@@ -213,8 +214,7 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 	case "anthropic":
 		var ui anthropicResponseUsageInfo
 		if err := json.Unmarshal(data, &ui); err != nil {
-			m.log.ErrorContext(ctx, "anthropic json decode", "data", string(data), "error", err)
-			return fmt.Errorf("json decode error: %w", err)
+			return fmt.Errorf("anthropic json decode error: %w", err)
 		}
 		if ui.Usage == nil {
 			// Nothing to bill for here.
@@ -239,7 +239,7 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 
 		var oi openaiResponseUsageInfo
 		if err := json.Unmarshal(data, &oi); err != nil {
-			return fmt.Errorf("openai json decode error: %v, content: %s", err, string(data))
+			return fmt.Errorf("openai json decode error: %v", err)
 		}
 		if oi.Usage.TotalTokens == 0 {
 			// Only allow missing usage data for specific endpoints that don't return usage
