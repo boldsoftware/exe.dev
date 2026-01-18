@@ -288,8 +288,11 @@ func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, a
 		// This caller should be retrying anyway.
 		return nil, fmt.Errorf("dialThroughClient: SSH connection pool entry is unexpectedly dead, is the TTL set low?")
 	}
-	// use a more aggressive timeout for the dial itself
-	shortCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	// Use a short timeout for the port forward dial to quickly detect:
+	// - Stale SSH connections (channel open hangs)
+	// - Unresponsive backends
+	// Note: "port not bound" still fails fast since connection refused is immediate
+	shortCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
 	conn, err := pc.client.DialContext(shortCtx, network, addr)
 	if err != nil {

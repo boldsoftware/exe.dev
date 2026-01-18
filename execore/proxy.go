@@ -700,11 +700,17 @@ func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey
 				HostKeyCallback: box.CreateHostKeyCallback(),
 				Timeout:         30 * time.Second,
 			}
-			// Use a tight deadline to quickly detect unbound ports
-			ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+			// Use a deadline that allows for stale connection recovery:
+			// - Each dial attempt is bounded to 500ms (in dialThroughClient)
+			// - If first attempt hits a stale connection, it times out and is removed
+			// - Retries can establish a fresh connection (up to 3s for SSH dial)
+			// Note: "port not bound" still fails fast since connection refused is immediate
+			ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 			defer cancel()
 			conn, err := s.sshPool.DialWithRetries(ctx, network, addr, sshHost, *box.SSHUser, int(*box.SSHPort), sshKey, cfg, []time.Duration{
-				10 * time.Millisecond,
+				50 * time.Millisecond,
+				100 * time.Millisecond,
+				200 * time.Millisecond,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("SSH dial failed: %w", err)
