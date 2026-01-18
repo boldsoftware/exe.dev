@@ -1,135 +1,66 @@
+// ==========================================================================
+// USER STATE DIAGRAM - exe.dev (Reference Only)
+// ==========================================================================
+//
+// NOTE: The SVG (user-states.svg) is now hand-crafted in Minard style.
+// This .dot file documents the state machine but does not generate the SVG.
+//
+// The visualization uses flowing bands where width represents user volume,
+// inspired by Charles Minard's Napoleon's March (1869).
+//
+// To edit the diagram, modify user-states.svg directly.
+//
+// ==========================================================================
+
 digraph UserStates {
-    // Tufte principles: maximize data-ink ratio, eliminate chartjunk
-    // Every stroke must carry meaning
+    // Reference graph showing the state machine logic
+    rankdir=LR;
+    node [shape=box fontname="Helvetica"];
+    edge [fontname="Helvetica" fontsize=9];
 
-    graph [
-        rankdir=TB
-        fontname="Palatino"
-        fontsize=10
-        bgcolor=white
-        margin=0.5
-        nodesep=0.4
-        ranksep=0.6
-        splines=true
-    ];
+    // Entry points
+    anonymous [style=bold];
 
-    node [
-        fontname="Palatino"
-        fontsize=9
-        shape=plaintext
-        margin=0
-    ];
+    // SSH registration path
+    anonymous -> pending_ssh [label="ssh exe.dev"];
+    pending_ssh [label="pending\n(ssh key)"];
+    pending_ssh -> registered [label="verify email"];
 
-    edge [
-        fontname="Palatino"
-        fontsize=7
-        arrowsize=0.5
-        color="#333333"
-    ];
-
-    //==========================================================================
-    // STATES
-    // Shape encodes category:
-    //   plaintext = transient/pre-registration
-    //   box = registered user state
-    //   ellipse = action/capability state
-    //==========================================================================
-
-    // Pre-registration (plaintext - they don't exist yet)
-    anonymous [label="anonymous"];
-    pending_ssh [label="pending\n(ssh key captured)"];
-    pending_web [label="pending\n(email entered)"];
-    pending_share [label="pending\n(share recipient)"];
-
-    // Billing states (box - core user identity)
-    grandfathered [label="grandfathered\n(pre-2026-01-06)" shape=box];
-    trial [label="trial\n(expires)" shape=box];
-    free [label="free\n(invite code)" shape=box];
-    paying [label="paying" shape=box];
-    billing_required [label="billing required" shape=box style=dashed];
-    trial_expired [label="trial expired" shape=box style=dashed];
-
-    // Capabilities (ellipse - what user can do)
-    has_ssh_key [label="has ssh key" shape=ellipse];
-    has_passkey [label="has passkey" shape=ellipse];
-    has_discord [label="discord linked" shape=ellipse];
-    has_vms [label="owns VMs" shape=ellipse];
-    has_share_access [label="share access" shape=ellipse];
-    support [label="support access" shape=ellipse];
-
-    // Blocked (dashed box - restricted)
-    disposable [label="disposable email\n(vm creation blocked)" shape=box style=dashed];
-
-    //==========================================================================
-    // REGISTRATION PATHS
-    // Solid = primary path, dashed = secondary/rare
-    //==========================================================================
-
-    // SSH registration
-    anonymous -> pending_ssh [label="ssh connect"];
-    pending_ssh -> has_ssh_key [label="verify email"];
-
-    // Web registration (billing-first)
+    // Web registration path (billing-first)
     anonymous -> pending_web [label="/auth"];
+    pending_web [label="pending\n(email)"];
     pending_web -> paying [label="stripe checkout"];
 
-    // Share invitation
-    anonymous -> pending_share [label="invited" style=dashed];
-    pending_share -> has_share_access [label="register"];
+    // Note: Box sharing is a per-box capability, not a user state.
+    // Invited users go through /auth and billing like anyone else.
+    // Their pending shares are resolved upon registration.
 
-    //==========================================================================
-    // BILLING TRANSITIONS
-    // From ssh registration, billing state depends on creation date
-    //==========================================================================
+    // Billing gate (SSH path only)
+    registered -> grandfathered [label="before 2026-01-06"];
+    registered -> billing_required [label="after 2026-01-06"];
+    registered -> blocked [label="flagged (ipqs)"];
 
-    has_ssh_key -> grandfathered [label="created\nbefore cutoff"];
-    has_ssh_key -> billing_required [label="created\nafter cutoff"];
-
+    // Billing resolution
     billing_required -> paying [label="checkout"];
     billing_required -> trial [label="trial code"];
-    billing_required -> free [label="free code"];
+    billing_required -> free [label="invite code"];
 
-    trial -> trial_expired [label="time passes"];
-    trial_expired -> paying [label="checkout"];
+    // Trial lifecycle
+    trial -> expired [label="time passes"];
+    expired -> paying [label="checkout"];
 
-    //==========================================================================
-    // CAPABILITY ADDITIONS
-    // Users accumulate capabilities; these are additive, not exclusive
-    //==========================================================================
+    // Final states
+    grandfathered [color=green fontcolor=green];
+    paying [style=filled fillcolor=lightgreen];
+    free [color=green fontcolor=green];
+    trial [color=orange fontcolor=orange];
+    expired [style=dashed];
+    blocked [style=filled fillcolor=mistyrose color=red fontcolor=red];
 
-    // Any billing-valid user can add auth methods
-    {grandfathered paying trial free} -> has_ssh_key [label="add key" style=dashed];
-    {grandfathered paying trial free} -> has_passkey [label="register" style=dashed];
-    {grandfathered paying trial free} -> has_discord [label="link" style=dashed];
-
-    // VM creation requires valid billing
-    {grandfathered paying trial free} -> has_vms [label="create vm"];
-
-    // Support access granted manually
-    {grandfathered paying} -> support [label="grant" style=dashed];
-
-    //==========================================================================
-    // SHARING
-    //==========================================================================
-
-    has_vms -> pending_share [label="invite\nunregistered" style=dashed];
-    has_vms -> has_share_access [label="invite\nregistered" style=dashed];
-
-    //==========================================================================
-    // RESTRICTIONS
-    // Red/dashed = blocking transition
-    //==========================================================================
-
-    has_ssh_key -> disposable [label="ipqs flag" color="#990000" style=dashed];
-
-    //==========================================================================
-    // LAYOUT HINTS
-    //==========================================================================
-
-    {rank=same; anonymous}
-    {rank=same; pending_ssh pending_web pending_share}
-    {rank=same; has_ssh_key billing_required}
-    {rank=same; grandfathered paying trial free trial_expired}
-    {rank=same; has_vms has_passkey has_discord has_share_access}
-    {rank=same; disposable support}
+    // Capabilities note
+    capabilities [shape=note label="All active tiers:\n- Create VMs\n- Add SSH keys\n- Add passkeys\n- Link Discord\n- Access shared boxes"];
+    grandfathered -> capabilities [style=dotted arrowhead=none];
+    paying -> capabilities [style=dotted arrowhead=none];
+    trial -> capabilities [style=dotted arrowhead=none];
+    free -> capabilities [style=dotted arrowhead=none];
 }
