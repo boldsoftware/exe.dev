@@ -1215,7 +1215,6 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 	return nil
 }
 
-
 func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	// Generate a verification token using the same system as email authentication.
 	// The verification code for email is anti-phishing, but not needed here since the user directly acquires the link.

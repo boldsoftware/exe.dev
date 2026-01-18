@@ -1101,4 +1101,3 @@ func parseForwardedFor(header string) []string {
 	}
 	return trimmed
 }
-
