@@ -164,16 +164,6 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:     ss.handleSudoCommand,
 			RawArgs:     true,
 		},
-		{
-			Name:              "proxy-token",
-			Hidden:            true,
-			Description:       "Generate a proxy bearer token",
-			FlagSetFunc:       jsonOnlyFlags("proxy-token"),
-			Handler:           ss.handleProxyTokenCommand,
-			Usage:             "proxy-token <vmname>",
-			HasPositionalArgs: true,
-			CompleterFunc:     ss.completeBoxNames,
-		},
 		ss.shareCommand(),
 		{
 			Name:        "whoami",
@@ -1225,41 +1215,6 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 	return nil
 }
 
-func (ss *SSHServer) handleProxyTokenCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if len(cc.Args) != 1 {
-		return cc.Errorf("please specify exactly one VM name")
-	}
-
-	boxName := ss.normalizeBoxName(cc.Args[0])
-
-	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
-		Name:            boxName,
-		CreatedByUserID: cc.User.ID,
-	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("VM %q not found", boxName)
-	}
-	if err != nil {
-		return err
-	}
-
-	token, err := ss.server.createProxyBearerToken(ctx, cc.User.ID, box.ID)
-	if err != nil {
-		return err
-	}
-	if cc.WantJSON() {
-		cc.WriteJSON(map[string]any{
-			"vm_name": boxName,
-			"token":   token,
-		})
-		return nil
-	}
-
-	cc.Writeln("This token may be used as a Bearer token or as a basic auth username to authenticate with the %s proxy for VM \033[1m%s\033[0m.", ss.server.env.BoxHost, boxName)
-	cc.Writeln("")
-	cc.Writeln("%s", token)
-	return nil
-}
 
 func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	// Generate a verification token using the same system as email authentication.

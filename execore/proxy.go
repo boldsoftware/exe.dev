@@ -369,35 +369,13 @@ func (s *Server) isShelleyRequest(host string) bool {
 }
 
 // getAuthenticatedUserID checks if the user is authenticated and returns their userID
-// Returns (userID, true) if authenticated, ("", false) if not authenticated
+// Returns (userID, true) if authenticated, ("", false) if not authenticated.
+// It may be called multiple times while handling a single request,
+// so it should not mutate r or have other side-effects.
 func (s *Server) getAuthenticatedUserID(r *http.Request, box exedb.Box) (string, bool) {
 	if userID, err := s.validateProxyAuthCookie(r); err == nil {
 		return userID, true
 	}
-
-	// Basic auth -- token is provided as username, password is ignored
-	if username, _, ok := r.BasicAuth(); ok && username != "" {
-		if userID, err := s.validateProxyBearerToken(r.Context(), username, box.ID); err == nil {
-			r.URL.User = nil
-			return userID, true
-		}
-	}
-
-	// Bearer token auth
-	authHeader := r.Header.Get("Authorization")
-	if authHeader != "" {
-		parts := strings.Fields(authHeader)
-		if len(parts) >= 2 && strings.EqualFold(parts[0], "Bearer") {
-			token := strings.TrimSpace(parts[1])
-			if token != "" {
-				if userID, err := s.validateProxyBearerToken(r.Context(), token, box.ID); err == nil {
-					r.Header.Del("Authorization")
-					return userID, true
-				}
-			}
-		}
-	}
-
 	return "", false
 }
 

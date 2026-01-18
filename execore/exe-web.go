@@ -53,10 +53,7 @@ import (
 	"tailscale.com/net/tsaddr"
 )
 
-const (
-	proxyBearerTokenTTL = 30 * 24 * time.Hour
-	sshKnownHostsPath   = "/.well-known/ssh-known-hosts"
-)
+const sshKnownHostsPath = "/.well-known/ssh-known-hosts"
 
 // acmeServerAdapter wraps exens.Server to implement route53.LocalACMEProvider.
 type acmeServerAdapter struct {

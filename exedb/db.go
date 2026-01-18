@@ -318,9 +318,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getPreferredExeletStmt, err = db.PrepareContext(ctx, getPreferredExelet); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPreferredExelet: %w", err)
 	}
-	if q.getProxyBearerTokenStmt, err = db.PrepareContext(ctx, getProxyBearerToken); err != nil {
-		return nil, fmt.Errorf("error preparing query GetProxyBearerToken: %w", err)
-	}
 	if q.getRecentSignupRejectionsStmt, err = db.PrepareContext(ctx, getRecentSignupRejections); err != nil {
 		return nil, fmt.Errorf("error preparing query GetRecentSignupRejections: %w", err)
 	}
@@ -443,9 +440,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertPendingSSHKeyStmt, err = db.PrepareContext(ctx, insertPendingSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPendingSSHKey: %w", err)
-	}
-	if q.insertProxyBearerTokenStmt, err = db.PrepareContext(ctx, insertProxyBearerToken); err != nil {
-		return nil, fmt.Errorf("error preparing query InsertProxyBearerToken: %w", err)
 	}
 	if q.insertSSHKeyStmt, err = db.PrepareContext(ctx, insertSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSSHKey: %w", err)
@@ -575,9 +569,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updatePasskeySignCountStmt, err = db.PrepareContext(ctx, updatePasskeySignCount); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdatePasskeySignCount: %w", err)
-	}
-	if q.updateProxyBearerTokenLastUsedStmt, err = db.PrepareContext(ctx, updateProxyBearerTokenLastUsed); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateProxyBearerTokenLastUsed: %w", err)
 	}
 	if q.updateSSHKeyLastUsedStmt, err = db.PrepareContext(ctx, updateSSHKeyLastUsed); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateSSHKeyLastUsed: %w", err)
@@ -1119,11 +1110,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getPreferredExeletStmt: %w", cerr)
 		}
 	}
-	if q.getProxyBearerTokenStmt != nil {
-		if cerr := q.getProxyBearerTokenStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getProxyBearerTokenStmt: %w", cerr)
-		}
-	}
 	if q.getRecentSignupRejectionsStmt != nil {
 		if cerr := q.getRecentSignupRejectionsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getRecentSignupRejectionsStmt: %w", cerr)
@@ -1327,11 +1313,6 @@ func (q *Queries) Close() error {
 	if q.insertPendingSSHKeyStmt != nil {
 		if cerr := q.insertPendingSSHKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertPendingSSHKeyStmt: %w", cerr)
-		}
-	}
-	if q.insertProxyBearerTokenStmt != nil {
-		if cerr := q.insertProxyBearerTokenStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing insertProxyBearerTokenStmt: %w", cerr)
 		}
 	}
 	if q.insertSSHKeyStmt != nil {
@@ -1549,11 +1530,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updatePasskeySignCountStmt: %w", cerr)
 		}
 	}
-	if q.updateProxyBearerTokenLastUsedStmt != nil {
-		if cerr := q.updateProxyBearerTokenLastUsedStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateProxyBearerTokenLastUsedStmt: %w", cerr)
-		}
-	}
 	if q.updateSSHKeyLastUsedStmt != nil {
 		if cerr := q.updateSSHKeyLastUsedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateSSHKeyLastUsedStmt: %w", cerr)
@@ -1766,7 +1742,6 @@ type Queries struct {
 	getPendingSSHKeyByTokenStmt                *sql.Stmt
 	getPendingSSHKeyEmailByPublicKeyStmt       *sql.Stmt
 	getPreferredExeletStmt                     *sql.Stmt
-	getProxyBearerTokenStmt                    *sql.Stmt
 	getRecentSignupRejectionsStmt              *sql.Stmt
 	getSSHHostKeyStmt                          *sql.Stmt
 	getSSHKeysForUserStmt                      *sql.Stmt
@@ -1808,7 +1783,6 @@ type Queries struct {
 	insertPasskeyChallengeStmt                 *sql.Stmt
 	insertPendingRegistrationStmt              *sql.Stmt
 	insertPendingSSHKeyStmt                    *sql.Stmt
-	insertProxyBearerTokenStmt                 *sql.Stmt
 	insertSSHKeyStmt                           *sql.Stmt
 	insertSSHKeyForEmailUserStmt               *sql.Stmt
 	insertSSHKeyForEmailUserIfNotExistsStmt    *sql.Stmt
@@ -1852,7 +1826,6 @@ type Queries struct {
 	updateBoxSSHDetailsStmt                    *sql.Stmt
 	updateBoxStatusStmt                        *sql.Stmt
 	updatePasskeySignCountStmt                 *sql.Stmt
-	updateProxyBearerTokenLastUsedStmt         *sql.Stmt
 	updateSSHKeyLastUsedStmt                   *sql.Stmt
 	updateTagResolutionCheckedStmt             *sql.Stmt
 	updateTagResolutionDigestStmt              *sql.Stmt
@@ -1972,7 +1945,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPendingSSHKeyByTokenStmt:                q.getPendingSSHKeyByTokenStmt,
 		getPendingSSHKeyEmailByPublicKeyStmt:       q.getPendingSSHKeyEmailByPublicKeyStmt,
 		getPreferredExeletStmt:                     q.getPreferredExeletStmt,
-		getProxyBearerTokenStmt:                    q.getProxyBearerTokenStmt,
 		getRecentSignupRejectionsStmt:              q.getRecentSignupRejectionsStmt,
 		getSSHHostKeyStmt:                          q.getSSHHostKeyStmt,
 		getSSHKeysForUserStmt:                      q.getSSHKeysForUserStmt,
@@ -2014,7 +1986,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertPasskeyChallengeStmt:                 q.insertPasskeyChallengeStmt,
 		insertPendingRegistrationStmt:              q.insertPendingRegistrationStmt,
 		insertPendingSSHKeyStmt:                    q.insertPendingSSHKeyStmt,
-		insertProxyBearerTokenStmt:                 q.insertProxyBearerTokenStmt,
 		insertSSHKeyStmt:                           q.insertSSHKeyStmt,
 		insertSSHKeyForEmailUserStmt:               q.insertSSHKeyForEmailUserStmt,
 		insertSSHKeyForEmailUserIfNotExistsStmt:    q.insertSSHKeyForEmailUserIfNotExistsStmt,
@@ -2058,7 +2029,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxSSHDetailsStmt:                    q.updateBoxSSHDetailsStmt,
 		updateBoxStatusStmt:                        q.updateBoxStatusStmt,
 		updatePasskeySignCountStmt:                 q.updatePasskeySignCountStmt,
-		updateProxyBearerTokenLastUsedStmt:         q.updateProxyBearerTokenLastUsedStmt,
 		updateSSHKeyLastUsedStmt:                   q.updateSSHKeyLastUsedStmt,
 		updateTagResolutionCheckedStmt:             q.updateTagResolutionCheckedStmt,
 		updateTagResolutionDigestStmt:              q.updateTagResolutionDigestStmt,
