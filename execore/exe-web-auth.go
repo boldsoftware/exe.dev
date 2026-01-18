@@ -500,12 +500,26 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 
 	// Get pending registration
 	pending, err := withRxRes1(s, ctx, (*exedb.Queries).GetPendingRegistrationByToken, token)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			s.slog().ErrorContext(ctx, "pending registration not found", "token", token)
-			http.Error(w, "registration expired", http.StatusBadRequest)
+	if errors.Is(err, sql.ErrNoRows) {
+		// Possibly a retry after successful registration (back button, refresh)...or maybe an expired/invalid token.
+		// If the billing account already exists, this is a retry and we should just log the user in.
+		if account, acctErr := withRxRes1(s, ctx, (*exedb.Queries).GetAccount, billingID); acctErr == nil {
+			s.slog().InfoContext(ctx, "billing retry success, user already registered", "billing_id", billingID, "user_id", account.CreatedBy)
+			cookieValue, cookieErr := s.createAuthCookie(ctx, account.CreatedBy, r.Host)
+			if cookieErr != nil {
+				s.slog().ErrorContext(ctx, "failed to create auth cookie for billing retry success", "error", cookieErr)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			setExeAuthCookie(w, r, cookieValue)
+			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
+		s.slog().ErrorContext(ctx, "pending registration not found", "token", token)
+		http.Error(w, "registration expired", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
 		s.slog().ErrorContext(ctx, "failed to get pending registration", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
