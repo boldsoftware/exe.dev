@@ -934,6 +934,41 @@ function makeDevExeDashboard() {
     );
   dash.withPanel(exeletUptimePanel);
 
+  // ========== SSH CONNECTION POOL ==========
+  dash.withRow(
+    new RowBuilder("SSH Connection Pool").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "SSH Pool Cache Hits/sec",
+    `sum(rate(sshpool_cache_total{result="hit",${STAGE_FILTER}}[$__rate_interval])) by (stage)`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{stage}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "SSH Pool Cache Misses/sec",
+    `sum(rate(sshpool_cache_total{result="miss",${STAGE_FILTER}}[$__rate_interval])) by (stage)`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{stage}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "SSH Pool Cache Hit Ratio",
+    `sum(rate(sshpool_cache_total{result="hit",${STAGE_FILTER}}[$__rate_interval])) by (stage) / (sum(rate(sshpool_cache_total{result="hit",${STAGE_FILTER}}[$__rate_interval])) by (stage) + sum(rate(sshpool_cache_total{result="miss",${STAGE_FILTER}}[$__rate_interval])) by (stage))`,
+    {
+      panelCustomization: (x) => x.unit("percentunit").min(0).max(1),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{stage}}"),
+    }
+  );
+
   // ========== SIGNUPS ==========
   dash.withRow(
     new RowBuilder("Signups").gridPos(gp({ w: 24, h: 1 }))
