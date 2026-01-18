@@ -19,28 +19,41 @@
     .legend { font-size: 8px; fill: #555; }
     .on-band { font-size: 8px; fill: #e8e8e0; }
     .on-gold { font-size: 8px; fill: #4a4020; }
+    path { cursor: pointer; }
   </style>
 
   <rect width="950" height="360" fill="#faf8f3"/>
 
   <text x="30" y="20" class="label title">THE FLOW OF USERS THROUGH EXE.DEV</text>
-  <text x="30" y="32" class="label subtitle">band width proportional to user volume</text>
+  <text x="30" y="32" class="label subtitle">band width proportional to user volume — hover for details</text>
 
   <!-- =====================================================================
        SSH PATH (main flow, top)
        ===================================================================== -->
 
   <!-- Enter via SSH: ~420 -->
-  <path fill="#c8b090" d="M 30,55 L 100,55 L 100,125 L 30,125 Z"/>
+  <path fill="#c8b090" d="M 30,55 L 100,55 L 100,125 L 30,125 Z">
+    <title>SSH Entry: 420 users
+84% of all visitors (500 total)
+Primary registration path</title>
+  </path>
   <text x="65" y="48" class="label stage" text-anchor="middle">ssh exe.dev</text>
   <text x="22" y="90" class="label num" text-anchor="end">420</text>
 
   <!-- Verify email: ~380 -->
-  <path fill="#c8b090" d="M 100,57 L 190,60 L 190,123 L 100,123 Z"/>
+  <path fill="#c8b090" d="M 100,57 L 190,60 L 190,123 L 100,123 Z">
+    <title>Email Verification: 380 users
+90% of SSH entrants proceed
+40 bounced (10% drop-off)</title>
+  </path>
   <text x="145" y="52" class="label stage" text-anchor="middle">verify email</text>
 
   <!-- Registered: ~360 -->
-  <path fill="#c8b090" d="M 190,62 L 280,65 L 280,121 L 190,121 Z"/>
+  <path fill="#c8b090" d="M 190,62 L 280,65 L 280,121 L 190,121 Z">
+    <title>Registered: 360 users
+95% of verified users
+20 blocked by fraud detection</title>
+  </path>
   <text x="235" y="56" class="label stage" text-anchor="middle">registered</text>
 
   <!-- ===== SPLIT at 2026-01-06 ===== -->
@@ -53,12 +66,22 @@
     L 720,78
     L 390,78
     Q 330,80 280,84
-    Z"/>
+    Z">
+    <title>GRANDFATHERED: 150 users
+42% of registered users
+Created before 2026-01-06 cutoff
+Free forever — no billing required</title>
+  </path>
   <text x="480" y="69" class="on-band" text-anchor="middle">GRANDFATHERED</text>
   <text x="580" y="69" class="small" fill="#c8c8c0">(before 2026-01-06)</text>
 
   <!-- Billing required (after cutoff): ~210 -->
-  <path fill="#c8b090" d="M 280,86 L 370,89 L 370,119 L 280,119 Z"/>
+  <path fill="#c8b090" d="M 280,86 L 370,89 L 370,119 L 280,119 Z">
+    <title>Billing Gate: 210 users
+58% of registered users
+Created after 2026-01-06 cutoff
+Must complete checkout, use trial code, or have invite</title>
+  </path>
   <text x="325" y="82" class="label num" text-anchor="middle">billing gate</text>
   <text x="325" y="92" class="small" text-anchor="middle">(after 2026-01-06)</text>
 
@@ -70,11 +93,21 @@
     L 720,102
     L 520,103
     Q 440,104 370,105
-    Z"/>
+    Z">
+    <title>PAYING (SSH): 65 users
+31% of billing gate converted
+Completed Stripe checkout
+Active subscription</title>
+  </path>
   <text x="550" y="95" class="on-band" text-anchor="middle">PAYING</text>
 
   <!-- From billing: trial code → TRIAL (~35) -->
-  <path fill="#c9a227" d="M 370,107 L 470,111 L 470,128 L 370,124 Z"/>
+  <path fill="#c9a227" d="M 370,107 L 470,111 L 470,128 L 370,124 Z">
+    <title>TRIAL: 35 users
+17% of billing gate
+Used trial code
+Time-limited access — will convert or expire</title>
+  </path>
   <text x="420" y="120" class="on-gold" text-anchor="middle">TRIAL</text>
 
   <!-- Trial → some convert to paying (~15) -->
@@ -85,7 +118,11 @@
     L 720,114
     L 620,115
     Q 540,116 470,118
-    Z"/>
+    Z">
+    <title>Trial → Paying: 15 users
+43% trial conversion rate
+Successfully converted after trial</title>
+  </path>
 
   <!-- From billing: invite code → FREE (~15) -->
   <path fill="#4a7c59" opacity="0.85" d="
@@ -95,7 +132,12 @@
     L 720,145
     L 550,145
     Q 450,143 370,140
-    Z"/>
+    Z">
+    <title>FREE: 15 users
+7% of billing gate
+Used invite code
+Full access without payment</title>
+  </path>
   <text x="550" y="140" class="on-band" text-anchor="middle">FREE (invite)</text>
 
   <!-- =====================================================================
@@ -103,7 +145,11 @@
        Separate smaller flow below
        ===================================================================== -->
 
-  <path fill="#c8b090" d="M 30,160 L 100,160 L 100,182 L 30,182 Z"/>
+  <path fill="#c8b090" d="M 30,160 L 100,160 L 100,182 L 30,182 Z">
+    <title>Web Entry (/auth): 80 users
+16% of all visitors
+Direct web registration path</title>
+  </path>
   <text x="65" y="155" class="label stage" text-anchor="middle">/auth</text>
   <text x="22" y="172" class="label num" text-anchor="end">80</text>
 
@@ -117,7 +163,12 @@
     L 650,166
     Q 500,168 350,170
     Q 200,172 100,175
-    Z"/>
+    Z">
+    <title>PAYING (Web): 50 users
+62.5% web conversion rate
+Completed Stripe checkout directly
+No SSH registration required</title>
+  </path>
   <text x="400" y="158" class="small" fill="#c8c8c0">stripe checkout</text>
   <text x="680" y="160" class="on-band">PAYING</text>
 
@@ -141,7 +192,16 @@
     Q 330,168 370,158
     Q 380,152 420,140
     Q 435,134 470,128
-    Z"/>
+    Z">
+    <title>SSH Path Losses: 230 total
+• 40 bounced (never verified email)
+• 40 unverified (started but didn't complete)
+• 20 blocked (fraud detection)
+• 110 abandoned checkout (52% of billing gate)
+• 20 trial expired (57% trial churn)
+
+55% of SSH entrants lost</title>
+  </path>
 
   <!-- Loss annotations -->
   <text x="460" y="155" class="small">20 expired</text>
@@ -156,7 +216,11 @@
     Q 70,185 50,190
     L 50,198
     Q 70,193 100,186
-    Z"/>
+    Z">
+    <title>Web Path Losses: 30 users
+37.5% of /auth visitors abandoned
+Did not complete Stripe checkout</title>
+  </path>
   <text x="75" y="210" class="small">30 web abandoned</text>
 
   <!-- =====================================================================
@@ -183,15 +247,21 @@
     <text x="22" y="5" class="label legend">registration</text>
 
     <rect x="100" y="0" width="16" height="5" fill="#4a7c59"/>
-    <text x="122" y="5" class="label legend">active</text>
+    <text x="122" y="5" class="label legend">grandfathered</text>
 
-    <rect x="170" y="0" width="16" height="5" fill="#c9a227"/>
-    <text x="192" y="5" class="label legend">trial</text>
+    <rect x="200" y="0" width="16" height="5" fill="#4a7c59"/>
+    <text x="222" y="5" class="label legend">paying</text>
 
-    <rect x="230" y="0" width="16" height="5" fill="#3d3d3d"/>
-    <text x="252" y="5" class="label legend">lost</text>
+    <rect x="270" y="0" width="16" height="5" fill="#c9a227"/>
+    <text x="292" y="5" class="label legend">trial</text>
 
-    <text x="310" y="5" class="label legend">width ∝ volume</text>
+    <rect x="330" y="0" width="16" height="5" fill="#4a7c59" opacity="0.85"/>
+    <text x="352" y="5" class="label legend">free</text>
+
+    <rect x="400" y="0" width="16" height="5" fill="#3d3d3d"/>
+    <text x="422" y="5" class="label legend">lost</text>
+
+    <text x="480" y="5" class="label legend">width ∝ volume</text>
   </g>
 
   <!-- Entry paths note -->
