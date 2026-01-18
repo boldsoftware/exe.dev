@@ -16,9 +16,30 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ssh"
 	"tailscale.com/util/singleflight"
 )
+
+// Metrics holds Prometheus metrics for the SSH connection pool.
+type Metrics struct {
+	cacheTotal *prometheus.CounterVec
+}
+
+// NewMetrics creates and registers pool metrics.
+func NewMetrics(registry *prometheus.Registry) *Metrics {
+	m := &Metrics{
+		cacheTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "sshpool_cache_total",
+				Help: "Total number of SSH pool cache lookups.",
+			},
+			[]string{"result"}, // "hit" or "miss"
+		),
+	}
+	registry.MustRegister(m.cacheTotal)
+	return m
+}
 
 // connKey uniquely identifies an SSH connection
 type connKey struct {
@@ -128,7 +149,8 @@ type Pool struct {
 	// a connection is closed just after being created but before being used.
 	TTL time.Duration
 
-	Logger *slog.Logger
+	Logger  *slog.Logger
+	Metrics *Metrics
 
 	sfGroup singleflight.Group[connKey, *pooledConn]
 
@@ -145,6 +167,12 @@ func (p *Pool) log() *slog.Logger {
 
 func (p *Pool) ttl() time.Duration {
 	return cmp.Or(p.TTL, time.Minute)
+}
+
+func (p *Pool) incCacheResult(result string) {
+	if p.Metrics != nil {
+		p.Metrics.cacheTotal.WithLabelValues(result).Inc()
+	}
 }
 
 // DialContext dials the target address through a pooled SSH connection.
@@ -225,9 +253,11 @@ func (p *Pool) connect(key connKey, config *ssh.ClientConfig) (*pooledConn, erro
 	pc := p.getConn(key)
 	connected := pc.connect()
 	if connected {
+		p.incCacheResult("hit")
 		pc.disconnected() // balance the connect() call
 		return pc, nil
 	}
+	p.incCacheResult("miss")
 
 	addr := net.JoinHostPort(key.host, strconv.Itoa(key.port))
 	prevTimeout := config.Timeout

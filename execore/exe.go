@@ -803,7 +803,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		tagResolver:            tagResolverInstance,
 		exeletClients:          exeletClients,
 		exeletAddrs:            validExeletAddrs,
-		sshPool:                &sshpool2.Pool{TTL: 10 * time.Minute},
+		sshPool:                &sshpool2.Pool{TTL: 10 * time.Minute, Metrics: sshpool2.NewMetrics(cfg.MetricsRegistry)},
 		emailVerifications:     make(map[string]*EmailVerification),
 		magicSecrets:           make(map[string]*MagicSecret),
 		creationStreams:        make(map[creationStreamKey]*CreationStream),
