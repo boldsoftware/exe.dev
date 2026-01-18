@@ -434,6 +434,47 @@ func TestRobotsTxtEndpoint(t *testing.T) {
 	}
 }
 
+func TestPricingRedirect(t *testing.T) {
+	server := newTestServer(t)
+	baseURL := server.httpURL()
+
+	// Create client that doesn't follow redirects
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	// Request /pricing
+	resp, err := client.Get(baseURL + "/pricing")
+	if err != nil {
+		t.Fatalf("Failed to fetch /pricing: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Check we get a 307 redirect
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		t.Errorf("Expected status %d, got %d", http.StatusTemporaryRedirect, resp.StatusCode)
+	}
+
+	// Check the Location header
+	location := resp.Header.Get("Location")
+	if location != "/docs/pricing" {
+		t.Errorf("Expected Location /docs/pricing, got %s", location)
+	}
+
+	// Verify /docs/pricing returns 200
+	resp2, err := http.Get(baseURL + location)
+	if err != nil {
+		t.Fatalf("Failed to fetch /docs/pricing: %v", err)
+	}
+	defer resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusOK {
+		t.Errorf("Expected /docs/pricing status 200, got %d", resp2.StatusCode)
+	}
+}
+
 // TestHTTPMetricsInstrumentation tests that HTTP requests are being instrumented
 func TestHTTPMetricsInstrumentation(t *testing.T) {
 	server := newTestServer(t)
