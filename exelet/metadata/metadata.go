@@ -34,6 +34,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -263,7 +264,7 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			if errors.Is(err, context.Canceled) {
+			if errors.Is(err, context.Canceled) || errors.Is(err, io.ErrUnexpectedEOF) {
 				return
 			}
 			http.Error(w, "gateway proxy error: "+err.Error(), http.StatusBadGateway)
