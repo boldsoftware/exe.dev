@@ -149,6 +149,9 @@ func ensureExeletCount(ctx context.Context, count int) error {
 	exeletsMu.Lock()
 	defer exeletsMu.Unlock()
 
+	// We don't want finishing the test to cancel the exelets.
+	ctx = context.WithoutCancel(ctx)
+
 	for len(exeletTestRunIDs) < count {
 		exeletTestRunIDs = append(exeletTestRunIDs, fmt.Sprintf("%04x", rand.Uint32()&0xFFFF))
 	}

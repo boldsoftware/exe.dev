@@ -473,6 +473,9 @@ func (ei *ExedInstance) checkBoxesCleanedUp(ctx context.Context, testRunID strin
 // set of exelets. If midTest is true, we are in the middle
 // of a test and should not remove the database.
 func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testRunID string, midTest bool) error {
+	// We don't want canceling the context passed here to stop exed.
+	ctx = context.WithoutCancel(ctx)
+
 	start := time.Now()
 	slog.InfoContext(ctx, "restarting exed", "exelets", exeletAddrs)
 	var logger *slog.Logger

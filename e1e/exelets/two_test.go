@@ -1,7 +1,6 @@
 package exelets
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,9 +11,7 @@ import (
 )
 
 func TestTwoHosts(t *testing.T) {
-	// Don't use t.Context here, the exelets should be around
-	// for other tests.
-	if err := ensureExeletCount(context.Background(), 2); err != nil {
+	if err := ensureExeletCount(t.Context(), 2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -25,7 +22,7 @@ func TestTwoHosts(t *testing.T) {
 
 	// Don't use t.Context here, the restarted exed should be
 	// around for other tests.
-	if err := serverEnv.Exed.Restart(context.Background(), exeletAddrs, exeletTestRunIDs[0], false); err != nil {
+	if err := serverEnv.Exed.Restart(t.Context(), exeletAddrs, exeletTestRunIDs[0], false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -44,13 +41,13 @@ func TestTwoHosts(t *testing.T) {
 }
 
 func TestUserOnSingleHost(t *testing.T) {
-	if err := ensureExeletCount(context.Background(), 2); err != nil {
+	if err := ensureExeletCount(t.Context(), 2); err != nil {
 		t.Fatal(err)
 	}
 
 	// Start exed with a single exelet.
 	exeletAddrs := []string{exelets[0].Address}
-	if err := serverEnv.Exed.Restart(context.Background(), exeletAddrs, exeletTestRunIDs[0], false); err != nil {
+	if err := serverEnv.Exed.Restart(t.Context(), exeletAddrs, exeletTestRunIDs[0], false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -64,7 +61,7 @@ func TestUserOnSingleHost(t *testing.T) {
 		exelets[0].Address,
 		exelets[1].Address,
 	}
-	if err := serverEnv.Exed.Restart(context.Background(), exeletAddrs, exeletTestRunIDs[0], true); err != nil {
+	if err := serverEnv.Exed.Restart(t.Context(), exeletAddrs, exeletTestRunIDs[0], true); err != nil {
 		t.Fatal(err)
 	}
 
