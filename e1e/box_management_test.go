@@ -168,6 +168,45 @@ func TestVanillaBox(t *testing.T) {
 		}
 	})
 
+	t.Run("sshd_oom_protection", func(t *testing.T) {
+		// Verify that the sshd process inside VMs is protected from the OOM killer
+		// by having oom_score_adj set to -1000. exe-init starts sshd and sets this.
+		out, err := boxSSHCommand(t, boxName, keyFile, "pgrep", "-x", "sshd").CombinedOutput()
+		if err != nil {
+			debug, _ := boxSSHCommand(t, boxName, keyFile, "ps", "aux").CombinedOutput()
+			t.Fatalf("failed to find sshd PID: %v\noutput: %s\nps aux:\n%s", err, out, debug)
+		}
+
+		pids := strings.Split(strings.TrimSpace(string(out)), "\n")
+		if len(pids) == 0 || pids[0] == "" {
+			t.Fatalf("no sshd process found")
+		}
+
+		// Find the parent sshd (the one with PPID 1, started by exe-init).
+		// Check oom_score_adj for each sshd until we find the one that's -1000.
+		var foundOOMProtected bool
+		for _, pid := range pids {
+			pid = strings.TrimSpace(pid)
+			if pid == "" {
+				continue
+			}
+			out, err = boxSSHCommand(t, boxName, keyFile, "cat", "/proc/"+pid+"/oom_score_adj").CombinedOutput()
+			if err != nil {
+				continue
+			}
+			if strings.TrimSpace(string(out)) == "-1000" {
+				foundOOMProtected = true
+				break
+			}
+		}
+
+		if !foundOOMProtected {
+			debug, _ := boxSSHCommand(t, boxName, keyFile,
+				"bash", "-c", "for pid in $(pgrep -x sshd); do echo \"PID $pid: oom_score_adj=$(cat /proc/$pid/oom_score_adj 2>/dev/null || echo N/A)\"; done").CombinedOutput()
+			t.Errorf("no sshd process has oom_score_adj=-1000\nsshd processes:\n%s", debug)
+		}
+	})
+
 	t.Run("shelley_install", func(t *testing.T) {
 		// Test the shelley install command
 		pty := sshToExeDev(t, keyFile)
