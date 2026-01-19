@@ -636,6 +636,54 @@ func TestVanillaBox(t *testing.T) {
 		}
 	})
 
+	// Exelet resource metrics tests - these verify the exelet reports VM resource usage.
+	// Skip if exelet HTTP address is not available.
+	if len(Env.servers.Exelets) > 0 && Env.servers.Exelets[0].HTTPAddress != "" {
+		exeletClient := Env.servers.Exelets[0].Client()
+		ctx := Env.context(t)
+		instanceID := instanceIDByName(t, ctx, exeletClient, boxName)
+		metricsURL := Env.servers.Exelets[0].HTTPAddress + "/metrics"
+
+		t.Run("exelet_network_metrics", func(t *testing.T) {
+			// Wait for network metrics to appear
+			rxMetric := fmt.Sprintf(`exelet_vm_net_rx_bytes_total{vm_id="%s"`, instanceID)
+			txMetric := fmt.Sprintf(`exelet_vm_net_tx_bytes_total{vm_id="%s"`, instanceID)
+
+			waitForMetric(t, metricsURL, rxMetric, true, 30*time.Second)
+			waitForMetric(t, metricsURL, txMetric, true, 30*time.Second)
+
+			// Generate some network traffic by running a command over SSH
+			if err := boxSSHCommand(t, boxName, keyFile, "echo", "hello").Run(); err != nil {
+				t.Fatalf("failed to run SSH command: %v", err)
+			}
+
+			// Wait a bit for metrics to update
+			time.Sleep(2 * time.Second)
+
+			// Verify metrics are still present and have non-zero values
+			body := fetchMetrics(t, metricsURL)
+			if !strings.Contains(body, rxMetric) {
+				t.Errorf("network RX metric not found after traffic generation")
+			}
+			if !strings.Contains(body, txMetric) {
+				t.Errorf("network TX metric not found after traffic generation")
+			}
+		})
+
+		t.Run("exelet_disk_metrics", func(t *testing.T) {
+			// Disk metrics are polled every cycle with the resource manager.
+			diskMetric := fmt.Sprintf(`exelet_vm_disk_used_bytes{vm_id="%s"`, instanceID)
+
+			waitForMetric(t, metricsURL, diskMetric, true, 30*time.Second)
+
+			// Verify the metric value is greater than 0 (disk should have some usage)
+			body := fetchMetrics(t, metricsURL)
+			if !strings.Contains(body, diskMetric) {
+				t.Errorf("disk metric not found")
+			}
+		})
+	}
+
 	// Cleanup
 	cleanupBox(t, keyFile, boxName)
 }
