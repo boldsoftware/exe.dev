@@ -441,6 +441,15 @@ func (l *Loop) handleToolCalls(ctx context.Context, content []llm.Content) error
 
 		l.mu.Lock()
 		l.history = append(l.history, toolMessage)
+		// Check for queued user messages (interruptions) before continuing.
+		// This allows user messages to be processed as soon as possible.
+		if len(l.messageQueue) > 0 {
+			for _, msg := range l.messageQueue {
+				l.history = append(l.history, msg)
+			}
+			l.messageQueue = l.messageQueue[:0]
+			l.logger.Info("processing user interruption during tool execution")
+		}
 		l.mu.Unlock()
 
 		// Record tool result message
