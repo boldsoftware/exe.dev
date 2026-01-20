@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"shelley.exe.dev/db/generated"
+	"shelley.exe.dev/llm"
 )
 
 // TestWorkingDirectoryConfiguration tests that the working directory (cwd) setting
@@ -292,5 +296,80 @@ func TestConversationCwdReturnedInList(t *testing.T) {
 
 	if !found {
 		t.Error("conversation not found in list")
+	}
+}
+
+// TestSystemPromptUsesCwdFromConversation verifies that when a conversation
+// is created with a specific cwd, the system prompt is generated using that
+// directory (not the server's working directory). This tests the fix for
+// https://github.com/boldsoftware/shelley/issues/30
+func TestSystemPromptUsesCwdFromConversation(t *testing.T) {
+	// Create a temp directory with an AGENTS.md file
+	tmpDir, err := os.MkdirTemp("", "shelley_cwd_test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create an AGENTS.md file with unique content we can search for
+	agentsContent := "UNIQUE_MARKER_FOR_CWD_TEST_XYZ123: This is test guidance."
+	agentsFile := filepath.Join(tmpDir, "AGENTS.md")
+	if err := os.WriteFile(agentsFile, []byte(agentsContent), 0o644); err != nil {
+		t.Fatalf("failed to write AGENTS.md: %v", err)
+	}
+
+	h := NewTestHarness(t)
+	defer h.Close()
+
+	// Create a conversation with the temp directory as cwd
+	h.NewConversation("bash: echo hello", tmpDir)
+	h.WaitToolResult()
+
+	// Get the system prompt from the database
+	var messages []generated.Message
+	err = h.db.Queries(context.Background(), func(q *generated.Queries) error {
+		var qerr error
+		messages, qerr = q.ListMessages(context.Background(), h.ConversationID())
+		return qerr
+	})
+	if err != nil {
+		t.Fatalf("failed to get messages: %v", err)
+	}
+
+	// Find the system message
+	var systemPrompt string
+	for _, msg := range messages {
+		if msg.Type == "system" && msg.LlmData != nil {
+			var llmMsg llm.Message
+			if err := json.Unmarshal([]byte(*msg.LlmData), &llmMsg); err == nil {
+				for _, content := range llmMsg.Content {
+					if content.Type == llm.ContentTypeText {
+						systemPrompt = content.Text
+						break
+					}
+				}
+			}
+			break
+		}
+	}
+
+	if systemPrompt == "" {
+		t.Fatal("no system prompt found in messages")
+	}
+
+	// Verify the system prompt contains our unique marker from AGENTS.md
+	if !strings.Contains(systemPrompt, "UNIQUE_MARKER_FOR_CWD_TEST_XYZ123") {
+		t.Errorf("system prompt should contain content from AGENTS.md in the cwd directory")
+		// Log first 1000 chars to help debug
+		if len(systemPrompt) > 1000 {
+			t.Logf("system prompt (first 1000 chars): %s...", systemPrompt[:1000])
+		} else {
+			t.Logf("system prompt: %s", systemPrompt)
+		}
+	}
+
+	// Verify the working directory in the prompt is our temp directory
+	if !strings.Contains(systemPrompt, tmpDir) {
+		t.Errorf("system prompt should reference the cwd directory: %s", tmpDir)
 	}
 }

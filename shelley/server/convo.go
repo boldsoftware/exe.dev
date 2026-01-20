@@ -124,6 +124,14 @@ func (cm *ConversationManager) Hydrate(ctx context.Context) error {
 		return fmt.Errorf("failed to get conversation history: %w", err)
 	}
 
+	// Load cwd from conversation if available - must happen before generating system prompt
+	// so that the system prompt includes guidance files from the context directory
+	cwd := ""
+	if conversation.Cwd != nil {
+		cwd = *conversation.Cwd
+	}
+	cm.cwd = cwd
+
 	// Generate system prompt if missing:
 	// - For user-initiated conversations: full system prompt
 	// - For subagent conversations (has parent): minimal subagent prompt
@@ -147,19 +155,12 @@ func (cm *ConversationManager) Hydrate(ctx context.Context) error {
 
 	history, system := cm.partitionMessages(messages)
 
-	// Load cwd from conversation if available
-	cwd := ""
-	if conversation.Cwd != nil {
-		cwd = *conversation.Cwd
-	}
-
 	cm.mu.Lock()
 	cm.history = history
 	cm.system = system
 	cm.hasConversationEvents = len(history) > 0
 	cm.lastActivity = time.Now()
 	cm.hydrated = true
-	cm.cwd = cwd
 	cm.mu.Unlock()
 
 	cm.logSystemPromptState(system, len(messages))
