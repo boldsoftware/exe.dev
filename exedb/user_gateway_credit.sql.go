@@ -122,12 +122,13 @@ WHERE user_id = ?
 `
 
 type UpdateUserLLMCreditSettingsParams struct {
-	AvailableCredit float64 `db:"available_credit" json:"available_credit"`
-	MaxCredit       float64 `db:"max_credit" json:"max_credit"`
-	RefreshPerHour  float64 `db:"refresh_per_hour" json:"refresh_per_hour"`
-	UserID          string  `db:"user_id" json:"user_id"`
+	AvailableCredit float64  `db:"available_credit" json:"available_credit"`
+	MaxCredit       *float64 `db:"max_credit" json:"max_credit"`
+	RefreshPerHour  *float64 `db:"refresh_per_hour" json:"refresh_per_hour"`
+	UserID          string   `db:"user_id" json:"user_id"`
 }
 
+// Updates credit settings. Pass NULL for max_credit/refresh_per_hour to clear overrides and use defaults.
 func (q *Queries) UpdateUserLLMCreditSettings(ctx context.Context, arg UpdateUserLLMCreditSettingsParams) error {
 	_, err := q.exec(ctx, q.updateUserLLMCreditSettingsStmt, updateUserLLMCreditSettings,
 		arg.AvailableCredit,
@@ -152,11 +153,12 @@ ON CONFLICT(user_id) DO UPDATE SET
 type UpsertUserLLMCreditParams struct {
 	UserID          string    `db:"user_id" json:"user_id"`
 	AvailableCredit float64   `db:"available_credit" json:"available_credit"`
-	MaxCredit       float64   `db:"max_credit" json:"max_credit"`
-	RefreshPerHour  float64   `db:"refresh_per_hour" json:"refresh_per_hour"`
+	MaxCredit       *float64  `db:"max_credit" json:"max_credit"`
+	RefreshPerHour  *float64  `db:"refresh_per_hour" json:"refresh_per_hour"`
 	LastRefreshAt   time.Time `db:"last_refresh_at" json:"last_refresh_at"`
 }
 
+// Used for setting explicit overrides. Pass NULL for max_credit/refresh_per_hour to use defaults.
 func (q *Queries) UpsertUserLLMCredit(ctx context.Context, arg UpsertUserLLMCreditParams) error {
 	_, err := q.exec(ctx, q.upsertUserLLMCreditStmt, upsertUserLLMCredit,
 		arg.UserID,

@@ -11,8 +11,31 @@ import (
 	"exe.dev/sqlite"
 )
 
+// Default credit settings. Used when max_credit or refresh_per_hour is NULL in the database.
+// These can be changed to adjust the default policy for all users without explicit overrides.
+const (
+	DefaultMaxCredit      = 100.0 // Maximum credit in USD
+	DefaultRefreshPerHour = 10.0  // Credit refresh rate per hour in USD
+)
+
 // ErrInsufficientCredit indicates insufficient credit for an LLM request
 var ErrInsufficientCredit = errors.New("insufficient LLM credit")
+
+// EffectiveMaxCredit returns the effective max credit, using the default if nil.
+func EffectiveMaxCredit(maxCredit *float64) float64 {
+	if maxCredit == nil {
+		return DefaultMaxCredit
+	}
+	return *maxCredit
+}
+
+// EffectiveRefreshPerHour returns the effective refresh rate, using the default if nil.
+func EffectiveRefreshPerHour(refreshPerHour *float64) float64 {
+	if refreshPerHour == nil {
+		return DefaultRefreshPerHour
+	}
+	return *refreshPerHour
+}
 
 // CreditManager handles token bucket credit for LLM gateway access
 type CreditManager struct {
@@ -78,11 +101,14 @@ func (m *CreditManager) CheckAndRefreshCredit(ctx context.Context, userID string
 			return err
 		}
 
+		maxCredit := EffectiveMaxCredit(credit.MaxCredit)
+		refreshPerHour := EffectiveRefreshPerHour(credit.RefreshPerHour)
+
 		now := m.now()
 		newAvailable, newLastRefresh := CalculateRefreshedCredit(
 			credit.AvailableCredit,
-			credit.MaxCredit,
-			credit.RefreshPerHour,
+			maxCredit,
+			refreshPerHour,
 			credit.LastRefreshAt,
 			now,
 		)
@@ -100,8 +126,8 @@ func (m *CreditManager) CheckAndRefreshCredit(ctx context.Context, userID string
 
 		info = &CreditInfo{
 			Available:      newAvailable,
-			Max:            credit.MaxCredit,
-			RefreshPerHour: credit.RefreshPerHour,
+			Max:            maxCredit,
+			RefreshPerHour: refreshPerHour,
 			LastRefresh:    newLastRefresh,
 		}
 		return nil
@@ -133,12 +159,15 @@ func (m *CreditManager) DebitCredit(ctx context.Context, userID string, costUSD 
 			return err
 		}
 
+		maxCredit := EffectiveMaxCredit(credit.MaxCredit)
+		refreshPerHour := EffectiveRefreshPerHour(credit.RefreshPerHour)
+
 		now := m.now()
 		// First apply any refresh
 		newAvailable, newLastRefresh := CalculateRefreshedCredit(
 			credit.AvailableCredit,
-			credit.MaxCredit,
-			credit.RefreshPerHour,
+			maxCredit,
+			refreshPerHour,
 			credit.LastRefreshAt,
 			now,
 		)
@@ -157,8 +186,8 @@ func (m *CreditManager) DebitCredit(ctx context.Context, userID string, costUSD 
 
 		info = &CreditInfo{
 			Available:      newAvailable,
-			Max:            credit.MaxCredit,
-			RefreshPerHour: credit.RefreshPerHour,
+			Max:            maxCredit,
+			RefreshPerHour: refreshPerHour,
 			LastRefresh:    newLastRefresh,
 		}
 		return nil

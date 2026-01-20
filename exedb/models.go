@@ -308,8 +308,8 @@ type UserEvent struct {
 type UserLlmCredit struct {
 	UserID          string     `db:"user_id" json:"user_id"`
 	AvailableCredit float64    `db:"available_credit" json:"available_credit"`
-	MaxCredit       float64    `db:"max_credit" json:"max_credit"`
-	RefreshPerHour  float64    `db:"refresh_per_hour" json:"refresh_per_hour"`
+	MaxCredit       *float64   `db:"max_credit" json:"max_credit"`
+	RefreshPerHour  *float64   `db:"refresh_per_hour" json:"refresh_per_hour"`
 	TotalUsed       float64    `db:"total_used" json:"total_used"`
 	LastRefreshAt   time.Time  `db:"last_refresh_at" json:"last_refresh_at"`
 	CreatedAt       *time.Time `db:"created_at" json:"created_at"`

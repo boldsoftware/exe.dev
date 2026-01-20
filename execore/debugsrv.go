@@ -901,12 +901,14 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			CreatedForLoginWithExe bool    `json:"created_for_login_with_exe"`
 			AccountID              string  `json:"account_id,omitempty"`
 			BillingURL             string  `json:"billing_url,omitempty"`
-			CreditAvailableUSD     float64 `json:"credit_available_usd"`
-			CreditEffectiveUSD     float64 `json:"credit_effective_usd"`
-			CreditMaxUSD           float64 `json:"credit_max_usd"`
-			CreditRefreshPerHrUSD  float64 `json:"credit_refresh_per_hr_usd"`
-			CreditTotalUsedUSD     float64 `json:"credit_total_used_usd"`
-			CreditLastRefreshAt    string  `json:"credit_last_refresh_at,omitempty"`
+			CreditAvailableUSD          float64  `json:"credit_available_usd"`
+			CreditEffectiveUSD          float64  `json:"credit_effective_usd"`
+			CreditMaxUSD                float64  `json:"credit_max_usd"`
+			CreditMaxUSDOverride        *float64 `json:"credit_max_usd_override"`
+			CreditRefreshPerHrUSD       float64  `json:"credit_refresh_per_hr_usd"`
+			CreditRefreshPerHrOverride  *float64 `json:"credit_refresh_per_hr_override"`
+			CreditTotalUsedUSD          float64  `json:"credit_total_used_usd"`
+			CreditLastRefreshAt         string   `json:"credit_last_refresh_at,omitempty"`
 			DiscordID              string  `json:"discord_id,omitempty"`
 			DiscordUsername        string  `json:"discord_username,omitempty"`
 			InviteCount            int64   `json:"invite_count"`
@@ -937,14 +939,16 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			}
 			if credit, ok := creditByUser[u.UserID]; ok {
 				ui.CreditAvailableUSD = credit.AvailableCredit
-				ui.CreditMaxUSD = credit.MaxCredit
-				ui.CreditRefreshPerHrUSD = credit.RefreshPerHour
+				ui.CreditMaxUSD = llmgateway.EffectiveMaxCredit(credit.MaxCredit)
+				ui.CreditMaxUSDOverride = credit.MaxCredit
+				ui.CreditRefreshPerHrUSD = llmgateway.EffectiveRefreshPerHour(credit.RefreshPerHour)
+				ui.CreditRefreshPerHrOverride = credit.RefreshPerHour
 				ui.CreditTotalUsedUSD = credit.TotalUsed
 				ui.CreditLastRefreshAt = credit.LastRefreshAt.Format(time.RFC3339)
 				ui.CreditEffectiveUSD, _ = llmgateway.CalculateRefreshedCredit(
 					credit.AvailableCredit,
-					credit.MaxCredit,
-					credit.RefreshPerHour,
+					ui.CreditMaxUSD,
+					ui.CreditRefreshPerHrUSD,
 					credit.LastRefreshAt,
 					time.Now(),
 				)
@@ -1068,6 +1072,7 @@ func (s *Server) handleDebugToggleVMCreation(w http.ResponseWriter, r *http.Requ
 }
 
 // handleDebugUpdateUserCredit updates a user's gateway credit settings.
+// Pass empty string for max/refresh to clear overrides and use defaults.
 func (s *Server) handleDebugUpdateUserCredit(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -1081,7 +1086,8 @@ func (s *Server) handleDebugUpdateUserCredit(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	var availableUSD, maxUSD, refreshUSD float64
+	var availableUSD float64
+	var maxUSD, refreshUSD *float64 // nil means use default
 	var err error
 	if availableStr != "" {
 		availableUSD, err = strconv.ParseFloat(availableStr, 64)
@@ -1091,18 +1097,20 @@ func (s *Server) handleDebugUpdateUserCredit(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	if maxStr != "" {
-		maxUSD, err = strconv.ParseFloat(maxStr, 64)
+		v, err := strconv.ParseFloat(maxStr, 64)
 		if err != nil {
 			http.Error(w, "invalid max value", http.StatusBadRequest)
 			return
 		}
+		maxUSD = &v
 	}
 	if refreshStr != "" {
-		refreshUSD, err = strconv.ParseFloat(refreshStr, 64)
+		v, err := strconv.ParseFloat(refreshStr, 64)
 		if err != nil {
 			http.Error(w, "invalid refresh value", http.StatusBadRequest)
 			return
 		}
+		refreshUSD = &v
 	}
 
 	// Upsert the credit record
@@ -2547,8 +2555,8 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 	if hasCredit {
 		creditEffective, _ = llmgateway.CalculateRefreshedCredit(
 			credit.AvailableCredit,
-			credit.MaxCredit,
-			credit.RefreshPerHour,
+			llmgateway.EffectiveMaxCredit(credit.MaxCredit),
+			llmgateway.EffectiveRefreshPerHour(credit.RefreshPerHour),
 			credit.LastRefreshAt,
 			time.Now(),
 		)
@@ -2597,14 +2605,16 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		SignedUpWithInviteID   string
 		AccountID              string
 		BillingURL             string
-		HasCredit              bool
-		CreditAvailableUSD     float64
-		CreditEffectiveUSD     float64
-		CreditMaxUSD           float64
-		CreditRefreshPerHrUSD  float64
-		CreditTotalUsedUSD     float64
-		CreditLastRefreshAt    string
-		Boxes                  []boxInfo
+		HasCredit                  bool
+		CreditAvailableUSD         float64
+		CreditEffectiveUSD         float64
+		CreditMaxUSD               float64
+		CreditMaxUSDOverride       *float64
+		CreditRefreshPerHrUSD      float64
+		CreditRefreshPerHrOverride *float64
+		CreditTotalUsedUSD         float64
+		CreditLastRefreshAt        string
+		Boxes                      []boxInfo
 	}{
 		Email:                  user.Email,
 		UserID:                 user.UserID,
@@ -2626,8 +2636,10 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 	if hasCredit {
 		data.CreditAvailableUSD = credit.AvailableCredit
 		data.CreditEffectiveUSD = creditEffective
-		data.CreditMaxUSD = credit.MaxCredit
-		data.CreditRefreshPerHrUSD = credit.RefreshPerHour
+		data.CreditMaxUSD = llmgateway.EffectiveMaxCredit(credit.MaxCredit)
+		data.CreditMaxUSDOverride = credit.MaxCredit
+		data.CreditRefreshPerHrUSD = llmgateway.EffectiveRefreshPerHour(credit.RefreshPerHour)
+		data.CreditRefreshPerHrOverride = credit.RefreshPerHour
 		data.CreditTotalUsedUSD = credit.TotalUsed
 		data.CreditLastRefreshAt = credit.LastRefreshAt.Format(time.RFC3339)
 	}

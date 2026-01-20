@@ -2,6 +2,7 @@
 SELECT * FROM user_llm_credit WHERE user_id = ?;
 
 -- name: UpsertUserLLMCredit :exec
+-- Used for setting explicit overrides. Pass NULL for max_credit/refresh_per_hour to use defaults.
 INSERT INTO user_llm_credit (user_id, available_credit, max_credit, refresh_per_hour, last_refresh_at)
 VALUES (?, ?, ?, ?, ?)
 ON CONFLICT(user_id) DO UPDATE SET
@@ -22,6 +23,7 @@ SET available_credit = ?, total_used = total_used + ?, last_refresh_at = ?, upda
 WHERE user_id = ?;
 
 -- name: UpdateUserLLMCreditSettings :exec
+-- Updates credit settings. Pass NULL for max_credit/refresh_per_hour to clear overrides and use defaults.
 UPDATE user_llm_credit
 SET available_credit = ?, max_credit = ?, refresh_per_hour = ?, updated_at = CURRENT_TIMESTAMP
 WHERE user_id = ?;

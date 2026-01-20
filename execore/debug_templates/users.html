@@ -88,8 +88,11 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 <h3>Edit Gateway Credit</h3>
 <input type="hidden" name="user_id" id="creditUserIdInput">
 <p><label>Available Credit ($):<br><input type="number" name="available" id="creditAvailInput" step="0.01"></label></p>
-<p><label>Max Credit ($):<br><input type="number" name="max" id="creditMaxInput" step="0.01"></label></p>
-<p><label>Refresh per Hour ($):<br><input type="number" name="refresh" id="creditRefreshInput" step="0.01"></label></p>
+<p><label>Max Credit ($): <span id="maxOverrideStatus" style="font-size:11px;color:#666;"></span><br>
+<input type="number" name="max" id="creditMaxInput" step="0.01" placeholder="empty = use default (100)"></label></p>
+<p><label>Refresh per Hour ($): <span id="refreshOverrideStatus" style="font-size:11px;color:#666;"></span><br>
+<input type="number" name="refresh" id="creditRefreshInput" step="0.01" placeholder="empty = use default (10)"></label></p>
+<p style="font-size:12px;color:#666;">Leave Max/Refresh empty to use defaults (100/10)</p>
 <p>
 <button type="submit" class="confirm-btn">Save</button>
 <button type="button" class="cancel-btn" id="creditCancelBtn">Cancel</button>
@@ -130,11 +133,13 @@ $(document).ready(function() {
             { data: null, className: 'credit-cell', render: function(d) {
                 var val = d.credit_available_usd ? d.credit_available_usd.toFixed(2) : '-';
                 var cls = d.credit_available_usd < 0 ? 'negative' : '';
+                var maxOverride = d.credit_max_usd_override;
+                var refreshOverride = d.credit_refresh_per_hr_override;
                 return '<span class="' + cls + '">' + val + '</span> ' +
                     '<button class="edit-btn" data-userid="' + d.user_id + '" ' +
                     'data-avail="' + (d.credit_available_usd||0) + '" ' +
-                    'data-max="' + (d.credit_max_usd||100) + '" ' +
-                    'data-refresh="' + (d.credit_refresh_per_hr_usd||10) + '">✎</button>';
+                    'data-max-override="' + (maxOverride !== null && maxOverride !== undefined ? maxOverride : '') + '" ' +
+                    'data-refresh-override="' + (refreshOverride !== null && refreshOverride !== undefined ? refreshOverride : '') + '">✎</button>';
             }},
             { data: 'credit_effective_usd', className: 'credit-cell', render: function(d) {
                 if (!d && d !== 0) return '-';
@@ -266,12 +271,30 @@ document.addEventListener('click', function(e) {
     if (e.target.classList.contains('edit-btn')) {
         var userId = e.target.dataset.userid;
         var avail = parseFloat(e.target.dataset.avail) || 0;
-        var max = parseFloat(e.target.dataset.max) || 100;
-        var refresh = parseFloat(e.target.dataset.refresh) || 10;
+        var maxOverride = e.target.dataset.maxOverride;
+        var refreshOverride = e.target.dataset.refreshOverride;
+
         document.getElementById('creditUserIdInput').value = userId;
         document.getElementById('creditAvailInput').value = avail.toFixed(2);
-        document.getElementById('creditMaxInput').value = max.toFixed(2);
-        document.getElementById('creditRefreshInput').value = refresh.toFixed(2);
+
+        // Max credit: show override value if set, otherwise leave empty (uses default)
+        if (maxOverride !== '' && maxOverride !== undefined) {
+            document.getElementById('creditMaxInput').value = parseFloat(maxOverride).toFixed(2);
+            document.getElementById('maxOverrideStatus').textContent = '(override)';
+        } else {
+            document.getElementById('creditMaxInput').value = '';
+            document.getElementById('maxOverrideStatus').textContent = '(using default: 100)';
+        }
+
+        // Refresh rate: show override value if set, otherwise leave empty (uses default)
+        if (refreshOverride !== '' && refreshOverride !== undefined) {
+            document.getElementById('creditRefreshInput').value = parseFloat(refreshOverride).toFixed(2);
+            document.getElementById('refreshOverrideStatus').textContent = '(override)';
+        } else {
+            document.getElementById('creditRefreshInput').value = '';
+            document.getElementById('refreshOverrideStatus').textContent = '(using default: 10)';
+        }
+
         document.getElementById('creditDialog').showModal();
     }
 });
