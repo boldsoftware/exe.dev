@@ -2,6 +2,7 @@
 package execore
 
 import (
+	"cmp"
 	"context"
 	crand "crypto/rand"
 	"crypto/rsa"
@@ -20,6 +21,7 @@ import (
 	"log"
 	"log/slog"
 	"maps"
+	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -27,6 +29,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"reflect"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -52,6 +55,7 @@ import (
 	"exe.dev/llmgateway"
 	"exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
+	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 	"exe.dev/pow"
 	"exe.dev/publicips"
 	"exe.dev/route53"
@@ -297,7 +301,6 @@ type Server struct {
 
 	// Exelet management (for VM-based instances)
 	exeletClients map[string]*exeletClient // addr -> client
-	exeletAddrs   []string                 // list of exelet addresses
 
 	// SSH connection pooling for HTTP proxying
 	sshPool *sshpool2.Pool
@@ -388,10 +391,15 @@ func newSignupPOW() *pow.Challenger {
 	return pow.NewChallenger(secret, 16, 2*time.Minute)
 }
 
-// exeletClient wraps an exelet client with its address
+// exeletClient is information about an exelet, including its client.
 type exeletClient struct {
+	up     atomic.Bool
 	addr   string
 	client *exeletclient.Client
+	// usage and count are updated every 10 minutes,
+	// so they can be old.
+	usage atomic.Pointer[resourceapi.MachineUsage]
+	count atomic.Int32 // instance count
 }
 
 // countInstances returns the number of instances on this exelet.
@@ -409,6 +417,27 @@ func (ec *exeletClient) countInstances(ctx context.Context) (int, error) {
 		count++
 	}
 	return count, nil
+}
+
+// updateUsage updates the current exelet machine usage.
+// This does not return an error; it just logs it
+// and doesn't update the usage.
+func (ec *exeletClient) updateUsage(ctx context.Context) {
+	usage, err := ec.client.GetMachineUsage(ctx, &resourceapi.GetMachineUsageRequest{})
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to update exelet machine usage", "addr", ec.addr, "error", err)
+		ec.up.Store(false)
+	} else {
+		ec.up.Store(usage.Available)
+		ec.usage.Store(usage.Usage)
+	}
+
+	count, err := ec.countInstances(ctx)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to count VM instances", "addr", ec.addr, "error", err)
+	} else {
+		ec.count.Store(int32(count))
+	}
 }
 
 func (s *Server) slog() *slog.Logger {
@@ -755,20 +784,31 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 	// Initialize exelet clients
 	exeletClients := make(map[string]*exeletClient)
-	var validExeletAddrs []string
 	exeletClientMetrics := exeletclient.NewClientMetrics(cfg.MetricsRegistry)
 	for _, addr := range cfg.ExeletAddresses {
 		if addr == "" {
 			continue
 		}
+		if _, ok := exeletClients[addr]; ok {
+			slog.Error("exelet address specified more than once in exed config, skipping", "addr", addr)
+			continue
+		}
+
 		client, err := exeletclient.NewClient(addr,
 			exeletclient.WithInsecure(),
 			exeletclient.WithLogger(slog),
 			exeletclient.WithClientMetrics(exeletClientMetrics))
 		if err != nil {
-			slog.Warn("failed to create exelet client, skipping host", "addr", addr, "error", err)
+			slog.Error("failed to create exelet client, skipping host", "addr", addr, "error", err)
 			continue
 		}
+
+		ec := &exeletClient{
+			addr:   addr,
+			client: client,
+		}
+		ec.up.Store(true)
+		exeletClients[addr] = ec
 
 		// Try to fetch system info to cache architecture and version.
 		// Log but don't fail startup if this fails - the host may be temporarily unavailable.
@@ -776,17 +816,13 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		_, err = client.GetSystemInfo(ctx, &computeapi.GetSystemInfoRequest{})
 		cancel()
 		if err != nil {
-			slog.Warn("failed to get system info from exelet, will retry later", "addr", addr, "error", err)
+			slog.Error("failed to get system info from exelet, will retry later", "addr", addr, "error", err)
+			ec.up.Store(false)
+		} else {
+			slog.Info("initialized exelet client", "addr", addr, "arch", client.Arch(), "version", client.Version())
 		}
-
-		exeletClients[addr] = &exeletClient{
-			addr:   addr,
-			client: client,
-		}
-		validExeletAddrs = append(validExeletAddrs, addr)
-		slog.Info("initialized exelet client", "addr", addr, "arch", client.Arch(), "version", client.Version())
 	}
-	slog.Info("exelet clients initialized", "count", len(validExeletAddrs))
+	slog.Info("exelet clients initialized", "count", len(exeletClients))
 
 	includeUnpublishedDocs := cfg.Env.ShowHiddenDocs
 	docsStore, err := docspkg.Load(includeUnpublishedDocs)
@@ -813,7 +849,6 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		db:                     db,
 		tagResolver:            tagResolverInstance,
 		exeletClients:          exeletClients,
-		exeletAddrs:            validExeletAddrs,
 		sshPool:                &sshpool2.Pool{TTL: 10 * time.Minute, Metrics: sshpool2.NewMetrics(cfg.MetricsRegistry)},
 		emailVerifications:     make(map[string]*EmailVerification),
 		magicSecrets:           make(map[string]*MagicSecret),
@@ -2026,6 +2061,17 @@ func (s *Server) getExeletClient(host string) *exeletClient {
 	return nil
 }
 
+// Return a list of addresses of working exelet clients.
+func (s *Server) exeletAddrs() []string {
+	ret := make([]string, 0, len(s.exeletClients))
+	for addr, client := range s.exeletClients {
+		if client.up.Load() {
+			ret = append(ret, addr)
+		}
+	}
+	return ret
+}
+
 // emailVerifier is used to check for disposable email domains.
 var emailVerifier = emailverifier.NewVerifier()
 
@@ -2354,6 +2400,8 @@ func (s *Server) Start() error {
 		s.slog().InfoContext(ctx, "Starting tag resolver for image tag management")
 		s.tagResolver.Start(ctx)
 	}
+
+	s.updateExeletUsageHeartbeat(ctx)
 
 	// Wait for interrupt signal or startup failure
 	sigChan := make(chan os.Signal, 1)
@@ -3095,13 +3143,11 @@ func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDet
 	}, nil
 }
 
-// selectExeletClient selects an exelet client. If a preferred exelet is configured and available,
-// it uses that. Otherwise, falls back to hash-based selection using user ID.
+// selectExeletClient selects an exelet client.
+// If the user has VMs on an existing exelet that is not too loaded,
+// it uses that. Otherwise, if a preferred exelet is configured and available,
+// it uses that. Otherwise, it picks a less loaded exelet.
 func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exeletClient, string, error) {
-	if len(s.exeletAddrs) == 0 {
-		return nil, "", fmt.Errorf("no exelet clients available")
-	}
-
 	// Check for existing VMs for this user.
 	// If there are any, use the exelet that holds the most VMs.
 	vms, err := withRxRes1(s, ctx, (*exedb.Queries).BoxesForUser, userID)
@@ -3160,16 +3206,40 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 	if err == nil && preferredAddr != "" {
 		// Preferred exelet is configured, try to use it
 		if client, ok := s.exeletClients[preferredAddr]; ok {
+			s.slog().DebugContext(ctx, "selecting preferred exelet", "user", userID, "host", preferredAddr)
 			return client, preferredAddr, nil
 		}
 		// Preferred exelet is not available, log error and fall back
 		slog.ErrorContext(ctx, "preferred exelet not available, falling back to hash-based selection",
 			"preferred_addr", preferredAddr,
-			"available_addrs", s.exeletAddrs)
+			"available_addrs", s.exeletAddrs())
 	}
 
-	// Fall back to hash-based selection
-	// TODO: consistent hashing? best-of-two random choices based on resource availability?
+	// Find the least loaded exelets.
+	ecs := make([]*exeletClient, 0, len(s.exeletClients))
+	for _, c := range s.exeletClients {
+		if c.up.Load() {
+			ecs = append(ecs, c)
+		}
+	}
+
+	if len(ecs) == 0 {
+		return nil, "", errors.New("no exelet clients available")
+	}
+
+	slices.SortFunc(ecs, exeletUsageCmp)
+
+	// Find the set at the start that are considered equal.
+	i := 1
+	if i < len(ecs) && exeletUsageCmp(ecs[0], ecs[i]) == 0 {
+		i++
+	}
+	ecs = ecs[:i]
+
+	if len(ecs) == 1 {
+		return ecs[0], ecs[0].addr, nil
+	}
+
 	hash := 0
 	for _, c := range userID {
 		hash = hash*31 + int(c)
@@ -3177,15 +3247,205 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 	if hash < 0 {
 		hash = -hash
 	}
-	idx := hash % len(s.exeletAddrs)
-	addr := s.exeletAddrs[idx]
+	idx := hash % len(ecs)
 
-	client, ok := s.exeletClients[addr]
-	if !ok {
-		return nil, "", fmt.Errorf("exelet client not found for address %s", addr)
+	s.slog().DebugContext(ctx, "chose exelet", "host", ecs[idx].addr, "idx", idx)
+
+	return ecs[idx], ecs[idx].addr, nil
+}
+
+// updateUsageConcurrency is the number of exelets for which
+// to update usage concurrently.
+const updateUsageConcurrency = 3
+
+// updateAllExeletUsage updates usage information for all exelets in parallel.
+func (s *Server) updateAllExeletUsage(ctx context.Context) {
+	concurrency := make(chan struct{}, updateUsageConcurrency)
+
+	var wg sync.WaitGroup
+	for _, ec := range s.exeletClients {
+		wg.Add(1)
+		go func() {
+			concurrency <- struct{}{}
+			defer func() {
+				<-concurrency
+				wg.Done()
+			}()
+
+			ec.updateUsage(ctx)
+		}()
 	}
 
-	return client, addr, nil
+	wg.Wait()
+}
+
+// updateUsageHeartbeat is how often to update exelet usage.
+const updateUsageHeartbeat = 10 * time.Minute
+
+// updateExeletUsageHeartbeat arranges to update usage information
+// for all exelets every updateUsageHeartbeat.
+func (s *Server) updateExeletUsageHeartbeat(ctx context.Context) {
+	// Initial update.
+	s.updateAllExeletUsage(ctx)
+
+	go func() {
+		ticker := time.NewTicker(updateUsageHeartbeat)
+		for {
+			select {
+			case <-ticker.C:
+				s.updateAllExeletUsage(ctx)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+// extremeUsage provides usage measurements that indicate that
+// an exelet is under heavy load, and should not be used for a new VM.
+// If a field in extremeUsage is positive, then an exelet with
+// a larger value for that field is under heavy load.
+// If a field is negative, then an exelet with a smaller value
+// for that field is under heavy load.
+//
+// If a field is zero in either extremeUsage or the input, it is ignored.
+//
+// These values are entirely heuristic and should be adjusted as we learn.
+var extremeUsage = resourceapi.MachineUsage{
+	LoadAverage:  100,
+	MemAvailable: -(1 << 20),  // value is KiB, this is 1 GiB
+	SwapFree:     -(10 << 20), // value is KiB, this is 10 GiB
+	DiskFree:     -(10 << 20), // value is KiB, this is 10 GiB
+}
+
+// isExtreme reports whether u indicates heavy load.
+func isExtreme(u *resourceapi.MachineUsage) bool {
+	uv := reflect.ValueOf(*u)
+	ev := reflect.ValueOf(extremeUsage)
+	typ := uv.Type()
+	for i := range typ.NumField() {
+		// We ignore zero values in ev because some fields
+		// don't matter. We ignore zero fields in uv to
+		// avoid false positives when we fail to measure
+		// some values.
+		if uv.Field(i).IsZero() || ev.Field(i).IsZero() {
+			continue
+		}
+		if ev.Field(i).CanInt() {
+			ui := uv.Field(i).Int()
+			ei := ev.Field(i).Int()
+			if ei < 0 {
+				if ui < -ei {
+					slog.Debug("isExtreme", "field", typ.Field(i).Name, "ui", ui, "-ei", -ei)
+					return true
+				}
+			} else {
+				if ui > ei {
+					slog.Debug("isExtreme", "field", typ.Field(i).Name, "ui", ui, "ei", ei)
+					return true
+				}
+			}
+		} else {
+			uf := uv.Field(i).Float()
+			ef := ev.Field(i).Float()
+			if ef < 0 {
+				if uf < -ef {
+					slog.Debug("isExtreme", "field", typ.Field(i).Name, "uf", u, "-ef", -ef)
+					return true
+				}
+			} else {
+				if uf > ef {
+					slog.Debug("isExtreme", "field", typ.Field(i).Name, "uf", uf, "ef", ef)
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// Compare exelet usage to pick the one with the least load.
+// Return -1 if the first exelet is preferred,
+// 1 if the second is preferred,
+// 0 if they are approximately the same.
+func exeletUsageCmp(a, b *exeletClient) int {
+	usageA := a.usage.Load()
+	countA := a.count.Load()
+
+	usageB := b.usage.Load()
+	countB := b.count.Load()
+
+	switch {
+	case usageA == nil && usageB == nil:
+		return 0
+	case usageA == nil:
+		return 1
+	case usageB == nil:
+		return -1
+	}
+
+	// First we check for extreme cases.
+	extremeA := isExtreme(usageA) || countA+10 >= autoThrottleVMLimit
+	extremeB := isExtreme(usageB) || countB+10 >= autoThrottleVMLimit
+	switch {
+	case extremeA && extremeB:
+		return 0
+	case extremeA:
+		return 1
+	case extremeB:
+		return -1
+	}
+
+	// Round load average to a multiple of 4 for comparison.
+	mult4 := func(avg float32) int {
+		return (int(math.Round(float64(avg))) + 2) / 4
+	}
+	loadA := mult4(usageA.LoadAverage)
+	loadB := mult4(usageB.LoadAverage)
+	if r := cmp.Compare(loadA, loadB); r != 0 {
+		return r
+	}
+
+	// Compare available memory in gigabytes.
+	memA := usageA.MemAvailable >> 20
+	memB := usageB.MemAvailable >> 20
+	if r := cmp.Compare(memA, memB); r != 0 {
+		return -r // negate to prefer larger value
+	}
+
+	// Compare free swap in gigabytes.
+	swapA := usageA.SwapFree >> 20
+	swapB := usageB.SwapFree >> 20
+	if r := cmp.Compare(swapA, swapB); r != 0 {
+		return -r // negate to prefer larger value
+	}
+
+	// Compare free disk in gigabytes.
+	diskA := usageA.DiskFree >> 30
+	diskB := usageB.DiskFree >> 30
+	if r := cmp.Compare(diskA, diskB); r != 0 {
+		return -r // negate to prefer larger value
+	}
+
+	// Compare network data in megabytes.
+	netA := int64(math.Round(float64(usageA.RxBytesRate))) >> 20
+	netB := int64(math.Round(float64(usageA.RxBytesRate))) >> 20
+	if r := cmp.Compare(netA, netB); r != 0 {
+		return r
+	}
+
+	netA = int64(math.Round(float64(usageA.TxBytesRate))) >> 20
+	netB = int64(math.Round(float64(usageA.TxBytesRate))) >> 20
+	if r := cmp.Compare(netA, netB); r != 0 {
+		return r
+	}
+
+	// Compare VM counts in multiples of 32.
+	if r := cmp.Compare((countA+16)/32, (countB+16)/32); r != 0 {
+		return r
+	}
+
+	return 0
 }
 
 // autoThrottleVMLimit is the VM count threshold that triggers automatic throttling.

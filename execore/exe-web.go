@@ -685,6 +685,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handlePullExeuntuEverywhere(w, r)
 	case "/clear-exeuntu-latest-cache-517c8a904":
 		s.handleClearExeuntuLatestCache(w, r)
+	case "/update-exelet-usage-517c8a904":
+		s.updateAllExeletUsage(r.Context())
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		io.WriteString(w, "ok")
 	case "/metrics":
 		requireLocalAccess(s.handleMetrics)(w, r)
 	case sshKnownHostsPath:
@@ -1543,35 +1547,37 @@ func (s *Server) handlePullExeuntuEverywhere(w http.ResponseWriter, r *http.Requ
 		Error  string `json:"error,omitempty"`
 	}
 
-	results := make([]pullResult, len(s.exeletAddrs))
+	results := make([]pullResult, len(s.exeletClients))
 	var wg sync.WaitGroup
 
-	for i, addr := range s.exeletAddrs {
+	idx := 0
+	for _, ec := range s.exeletClients {
+		if !ec.up.Load() {
+			continue
+		}
+
 		wg.Add(1)
-		go func(idx int, addr string) {
+		go func(idx int, ec *exeletClient) {
 			defer wg.Done()
 
-			result := pullResult{Host: addr}
-			ec, ok := s.exeletClients[addr]
-			if !ok {
-				result.Error = "client not found"
-				results[idx] = result
-				return
-			}
-
+			result := pullResult{Host: ec.addr}
 			resp, err := ec.client.LoadFilesystem(ctx, &storageapi.LoadFilesystemRequest{Image: image})
 			if err != nil {
-				s.slog().ErrorContext(ctx, "failed to pull image", "host", addr, "image", image, "error", err)
+				s.slog().ErrorContext(ctx, "failed to pull image", "host", ec.addr, "image", image, "error", err)
 				result.Error = err.Error()
 			} else {
-				s.slog().InfoContext(ctx, "image pulled successfully", "host", addr, "image", image, "digest", resp.ID)
+				s.slog().InfoContext(ctx, "image pulled successfully", "host", ec.addr, "image", image, "digest", resp.ID)
 				result.Digest = resp.ID
 			}
 			results[idx] = result
-		}(i, addr)
+		}(idx, ec)
+
+		idx++
 	}
 
 	wg.Wait()
+
+	results = results[:idx]
 
 	// Check if all succeeded
 	allSucceeded := true

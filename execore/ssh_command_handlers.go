@@ -470,8 +470,8 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 			return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", user.Email)
 		}
 		// Validate that the exelet is in the available list
-		if !slices.Contains(ss.server.exeletAddrs, exeletOverride) {
-			return cc.Errorf("exelet %q not found. Available exelets: %v", exeletOverride, ss.server.exeletAddrs)
+		if ss.server.getExeletClient(exeletOverride) == nil {
+			return cc.Errorf("exelet %q not found. Available exelets: %v", exeletOverride, ss.server.exeletAddrs())
 		}
 	}
 

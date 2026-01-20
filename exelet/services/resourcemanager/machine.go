@@ -44,7 +44,8 @@ func (m *ResourceManager) machineUsage(ctx context.Context) (*api.GetMachineUsag
 
 	// Otherwise, read from the system, and cache the result.
 	if usage == nil {
-		usage, err := m.readUsage(ctx)
+		var err error
+		usage, err = m.readUsage(ctx)
 		if err != nil {
 			m.machineUsageCacheTime = time.Time{}
 			return nil, err

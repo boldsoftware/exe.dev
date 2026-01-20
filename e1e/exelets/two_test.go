@@ -1,13 +1,13 @@
 package exelets
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
 	"testing"
 
 	"exe.dev/e1e/testinfra"
+	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 )
 
 func TestTwoHosts(t *testing.T) {
@@ -20,8 +20,6 @@ func TestTwoHosts(t *testing.T) {
 		exelets[1].Address,
 	}
 
-	// Don't use t.Context here, the restarted exed should be
-	// around for other tests.
 	if err := serverEnv.Exed.Restart(t.Context(), exeletAddrs, exeletTestRunIDs[0], false); err != nil {
 		t.Fatal(err)
 	}
@@ -55,6 +53,7 @@ func TestUserOnSingleHost(t *testing.T) {
 	pty, _, keyFile, email := register(t)
 	box1 := makeBox(t, pty, keyFile, email)
 	disconnect(t, pty)
+	defer deleteBox(t, box1, keyFile)
 
 	// Restart exed with two exelets.
 	exeletAddrs = []string{
@@ -78,42 +77,119 @@ func TestUserOnSingleHost(t *testing.T) {
 	pty.SetPrompt(testinfra.ExeDevPrompt)
 	box2 := makeBox(t, pty, keyFile, email)
 	disconnect(t, pty)
+	defer deleteBox(t, box2, keyFile)
 
 	// Check the list of boxes to see where they wound up.
-	url := fmt.Sprintf("http://localhost:%d/debug/boxes?format=json", serverEnv.Exed.HTTPPort)
-	resp, err := http.Get(url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("%s returned status %d", url, resp.StatusCode)
-	}
-
-	var boxes []struct {
-		Host string `json:"host"`
-		Name string `json:"name"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&boxes); err != nil {
-		t.Fatalf("failed to JSON decode %s: %v", url, err)
-	}
-
-	resp.Body.Close()
+	boxes := boxHosts(t)
 
 	t.Logf("after creating two boxes: %v", boxes)
 
-	if len(boxes) != 2 {
-		t.Errorf("got %d boxes, want 2", len(boxes))
+	cnt := 0
+	for _, boxList := range boxes {
+		cnt += len(boxList)
 	}
-	var exelets []string
-	for _, box := range boxes {
-		if !slices.Contains(exelets, box.Host) {
-			exelets = append(exelets, box.Host)
-		}
-	}
-	if len(exelets) != 1 {
-		t.Errorf("boxes found on %d exelets, want 1", len(exelets))
+	if cnt != 2 {
+		t.Errorf("got %d boxes, want 2", cnt)
 	}
 
-	deleteBox(t, box1, keyFile)
-	deleteBox(t, box2, keyFile)
+	if len(boxes) != 1 {
+		t.Errorf("boxes found on %d exelets, want 1", len(boxes))
+	}
+}
+
+func TestLoadedHost(t *testing.T) {
+	if err := ensureExeletCount(t.Context(), 2); err != nil {
+		t.Fatal(err)
+	}
+
+	exeletAddrs := []string{
+		exelets[0].Address,
+		exelets[1].Address,
+	}
+
+	if err := serverEnv.Exed.Restart(t.Context(), exeletAddrs, exeletTestRunIDs[0], false); err != nil {
+		t.Fatal(err)
+	}
+
+	email1 := "testloadedhost1" + testinfra.FakeEmailSuffix
+	pty1, _, keyFile1 := registerEmail(t, email1)
+	defer disconnect(t, pty1)
+
+	email2 := "testloadedhost2" + testinfra.FakeEmailSuffix
+	pty2, _, keyFile2 := registerEmail(t, email2)
+	defer disconnect(t, pty2)
+
+	boxName1 := makeBox(t, pty1, keyFile1, email1)
+	defer deleteBox(t, boxName1, keyFile1)
+
+	boxName2 := makeBox(t, pty2, keyFile2, email2)
+	defer deleteBox(t, boxName2, keyFile2)
+
+	boxes := boxHosts(t)
+
+	t.Logf("after creating two boxes: %v", boxes)
+
+	// Tell the first exelet to report a load of 50.
+
+	client := exelets[0].Client()
+	usageResponse, err := client.GetMachineUsage(t.Context(), &resourceapi.GetMachineUsageRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	usage := usageResponse.Usage
+	usage.LoadAverage = 50
+	_, err = client.SetMachineUsage(t.Context(),
+		&resourceapi.SetMachineUsageRequest{
+			Available: true,
+			Usage:     usage,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, err := client.SetMachineUsage(t.Context(),
+			&resourceapi.SetMachineUsageRequest{
+				Available: true,
+			},
+		)
+		if err != nil {
+			t.Errorf("failed to reset usage to default: %v", err)
+		}
+	}()
+
+	// Tell exed to update its view of exelet usage.
+	url := fmt.Sprintf("http://localhost:%d/update-exelet-usage-517c8a904", serverEnv.Exed.HTTPPort)
+	if _, err = http.Get(url); err != nil {
+		t.Fatalf("failed to tell exed to update exelet usage: %v", err)
+	}
+
+	// Make two new boxes.
+
+	email3 := "testloadedhost3" + testinfra.FakeEmailSuffix
+	pty3, _, keyFile3 := registerEmail(t, email3)
+	defer disconnect(t, pty3)
+
+	boxName3 := makeBox(t, pty3, keyFile3, email3)
+	defer deleteBox(t, boxName3, keyFile3)
+
+	email4 := "testloadedhost4" + testinfra.FakeEmailSuffix
+	pty4, _, keyFile4 := registerEmail(t, email4)
+	defer disconnect(t, pty4)
+
+	boxName4 := makeBox(t, pty4, keyFile4, email4)
+	defer deleteBox(t, boxName4, keyFile4)
+
+	// Both new boxes should wind up on the second exelet.
+
+	boxes = boxHosts(t)
+
+	t.Logf("after creating four boxes: %v", boxes)
+
+	if !slices.Contains(boxes[exeletAddrs[1]], boxName3) {
+		t.Errorf("box3 is not on expected exelet %s", exeletAddrs[1])
+	}
+	if !slices.Contains(boxes[exeletAddrs[1]], boxName4) {
+		t.Errorf("box4 is not on expected exelet %s", exeletAddrs[1])
+	}
 }

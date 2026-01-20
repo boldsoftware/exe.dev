@@ -3,6 +3,7 @@ package exelets
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"math/rand/v2"
@@ -182,6 +183,12 @@ func ensureExeletCount(ctx context.Context, count int) error {
 func register(t *testing.T) (pty *testinfra.PTY, cookies []*http.Cookie, keyFile, email string) {
 	name := strings.ReplaceAll(t.Name(), "/", ".")
 	email = name + testinfra.FakeEmailSuffix
+	pty, cookies, keyFile = registerEmail(t, email)
+	return pty, cookies, keyFile, email
+}
+
+// registerEmail is like register, but specifies the email address to use.
+func registerEmail(t *testing.T, email string) (pty *testinfra.PTY, cookies []*http.Cookie, keyFile string) {
 	pty, _, err := testinfra.MakePTY("", "ssh localhost", true)
 	if err != nil {
 		t.Fatal(err)
@@ -191,7 +198,7 @@ func register(t *testing.T) (pty *testinfra.PTY, cookies []*http.Cookie, keyFile
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sshCmd.Wait() })
-	return pty, cookies, keyFile, email
+	return pty, cookies, keyFile
 }
 
 // makeBox makes a new box given a PTY that is connected to exed.
@@ -253,4 +260,33 @@ func deleteBox(t *testing.T, boxName, keyFile string) {
 	if err := pty.Disconnect(); err != nil {
 		t.Error(err)
 	}
+}
+
+// boxHosts returns a mapping from exelet hosts to box names on that host.
+func boxHosts(t *testing.T) map[string][]string {
+	url := fmt.Sprintf("http://localhost:%d/debug/boxes?format=json", serverEnv.Exed.HTTPPort)
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("%s returned status %d", url, resp.StatusCode)
+	}
+
+	var boxes []struct {
+		Host string `json:"host"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&boxes); err != nil {
+		t.Fatalf("failed to JSON decode %s: %v", url, err)
+	}
+
+	resp.Body.Close()
+
+	ret := make(map[string][]string)
+	for _, box := range boxes {
+		ret[box.Host] = append(ret[box.Host], box.Name)
+	}
+
+	return ret
 }
