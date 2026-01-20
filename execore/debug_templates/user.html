@@ -51,10 +51,11 @@ a:hover { text-decoration: underline; }
 <div class="section">
 <h2>LLM Gateway Credit</h2>
 <table class="info">
-<tr><th>Available Credit</th><td{{if lt .CreditAvailableUSD 0.0}} class="negative"{{end}}>${{printf "%.2f" .CreditAvailableUSD}}</td></tr>
-<tr><th>Effective Credit</th><td{{if lt .CreditEffectiveUSD 0.0}} class="negative"{{end}}>${{printf "%.2f" .CreditEffectiveUSD}}</td></tr>
-<tr><th>Max Credit</th><td>${{printf "%.2f" .CreditMaxUSD}}{{if not .CreditMaxUSDOverride}} (default){{else}} (override){{end}}</td></tr>
-<tr><th>Refresh per Hour</th><td>${{printf "%.2f" .CreditRefreshPerHrUSD}}{{if not .CreditRefreshPerHrOverride}} (default){{else}} (override){{end}}</td></tr>
+<tr><th>Plan</th><td>{{.CreditPlanName}}</td></tr>
+<tr><th>Credit row in DB</th><td{{if lt .CreditAvailableUSD 0.0}} class="negative"{{end}}>${{printf "%.2f" .CreditAvailableUSD}}</td></tr>
+<tr><th>After applying refresh</th><td{{if lt .CreditEffectiveUSD 0.0}} class="negative"{{end}}>${{printf "%.2f" .CreditEffectiveUSD}}</td></tr>
+<tr><th>Max Credit</th><td>${{printf "%.2f" .CreditMaxUSD}}{{if not .CreditMaxUSDOverride}} (plan default){{else}} (override){{end}}</td></tr>
+<tr><th>Refresh per Hour</th><td>${{printf "%.2f" .CreditRefreshPerHrUSD}}{{if not .CreditRefreshPerHrOverride}} (plan default){{else}} (override){{end}}</td></tr>
 <tr><th>Total Used</th><td>${{printf "%.2f" .CreditTotalUsedUSD}}</td></tr>
 <tr><th>Last Refresh</th><td>{{.CreditLastRefreshAt}}</td></tr>
 </table>
@@ -62,11 +63,11 @@ a:hover { text-decoration: underline; }
 <form method="post" action="/debug/users/update-credit" style="max-width: 300px;">
 <input type="hidden" name="user_id" value="{{.UserID}}">
 <p><label>Available ($):<br><input type="number" name="available" value="{{printf "%.2f" .CreditAvailableUSD}}" step="0.01" style="width:100%;"></label></p>
-<p><label>Max ($): {{if not .CreditMaxUSDOverride}}(using default){{else}}(override){{end}}<br>
-<input type="number" name="max" value="{{if .CreditMaxUSDOverride}}{{printf "%.2f" .CreditMaxUSDOverride}}{{end}}" step="0.01" placeholder="empty = default (100)" style="width:100%;"></label></p>
-<p><label>Refresh/hr ($): {{if not .CreditRefreshPerHrOverride}}(using default){{else}}(override){{end}}<br>
-<input type="number" name="refresh" value="{{if .CreditRefreshPerHrOverride}}{{printf "%.2f" .CreditRefreshPerHrOverride}}{{end}}" step="0.01" placeholder="empty = default (10)" style="width:100%;"></label></p>
-<p style="font-size:12px;color:#666;">Leave Max/Refresh empty to use defaults</p>
+<p><label>Max ($): {{if not .CreditMaxUSDOverride}}(using plan default){{else}}(override){{end}}<br>
+<input type="number" name="max" value="{{if .CreditMaxUSDOverride}}{{printf "%.2f" .CreditMaxUSDOverride}}{{end}}" step="0.01" placeholder="empty = plan default" style="width:100%;"></label></p>
+<p><label>Refresh/hr ($): {{if not .CreditRefreshPerHrOverride}}(using plan default){{else}}(override){{end}}<br>
+<input type="number" name="refresh" value="{{if .CreditRefreshPerHrOverride}}{{printf "%.2f" .CreditRefreshPerHrOverride}}{{end}}" step="0.01" placeholder="empty = plan default" style="width:100%;"></label></p>
+<p style="font-size:12px;color:#666;">Leave Max/Refresh empty to use plan defaults</p>
 <button type="submit" style="padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Save</button>
 </form>
 </div>

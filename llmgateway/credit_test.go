@@ -34,6 +34,19 @@ func setupTestDB(t *testing.T) *sqlite.DB {
 	return db
 }
 
+func createTestUser(t *testing.T, db *sqlite.DB, userID, email string) {
+	t.Helper()
+	err := exedb.WithTx(db, context.Background(), func(ctx context.Context, q *exedb.Queries) error {
+		return q.InsertUser(ctx, exedb.InsertUserParams{
+			UserID: userID,
+			Email:  email,
+		})
+	})
+	if err != nil {
+		t.Fatalf("failed to create test user: %v", err)
+	}
+}
+
 // floatClose checks if two floats are close enough (within epsilon)
 func floatClose(a, b, epsilon float64) bool {
 	return math.Abs(a-b) < epsilon
@@ -46,6 +59,7 @@ func TestCreditManager_CheckAndRefreshCredit(t *testing.T) {
 	mgr := NewCreditManager(db)
 	ctx := context.Background()
 	userID := "test-user-123"
+	createTestUser(t, db, userID, "test123@example.com")
 
 	// First check should create a default credit record
 	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
@@ -55,7 +69,7 @@ func TestCreditManager_CheckAndRefreshCredit(t *testing.T) {
 	if info == nil {
 		t.Fatal("expected credit info, got nil")
 	}
-	// Default is $100
+	// Default for unpaid user is $100
 	if !floatClose(info.Available, 100.0, 0.01) {
 		t.Errorf("expected ~100.0, got %f", info.Available)
 	}
@@ -64,6 +78,9 @@ func TestCreditManager_CheckAndRefreshCredit(t *testing.T) {
 	}
 	if !floatClose(info.RefreshPerHour, 10.0, 0.01) {
 		t.Errorf("expected refresh ~10.0/hr, got %f", info.RefreshPerHour)
+	}
+	if info.Plan.Name != "no_billing" {
+		t.Errorf("expected plan name %q, got %q", "no_billing", info.Plan.Name)
 	}
 }
 
@@ -74,6 +91,7 @@ func TestCreditManager_DebitCredit(t *testing.T) {
 	mgr := NewCreditManager(db)
 	ctx := context.Background()
 	userID := "test-user-456"
+	createTestUser(t, db, userID, "test456@example.com")
 
 	// Create initial credit
 	_, err := mgr.CheckAndRefreshCredit(ctx, userID)
@@ -126,6 +144,7 @@ func TestCreditManager_InsufficientCredit(t *testing.T) {
 	mgr := NewCreditManager(db)
 	ctx := context.Background()
 	userID := "test-user-789"
+	createTestUser(t, db, userID, "test789@example.com")
 
 	// Create initial credit
 	_, err := mgr.CheckAndRefreshCredit(ctx, userID)
@@ -222,6 +241,7 @@ func TestCreditManager_TimestampRoundTrip(t *testing.T) {
 
 	ctx := context.Background()
 	userID := "test-timestamp-user"
+	createTestUser(t, db, userID, "timestamp@example.com")
 
 	// Create a fixed reference time for testing
 	refTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -268,4 +288,152 @@ func TestCreditManager_TimestampRoundTrip(t *testing.T) {
 	if !floatClose(info2.Available, 55.0, 0.1) {
 		t.Errorf("expected ~55.0 on second check (no time elapsed), got %f", info2.Available)
 	}
+}
+
+func TestPlanCategories(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	mgr := NewCreditManager(db)
+
+	// Test no_billing user (no billing, no exemptions)
+	t.Run("no_billing", func(t *testing.T) {
+		userID := "no-billing-user"
+		createTestUser(t, db, userID, "nobilling@example.com")
+
+		info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if info.Plan.Name != "no_billing" {
+			t.Errorf("expected plan name %q, got %q", "no_billing", info.Plan.Name)
+		}
+		if !floatClose(info.Max, 100.0, 0.01) {
+			t.Errorf("expected max 100.0, got %f", info.Max)
+		}
+		if !floatClose(info.RefreshPerHour, 10.0, 0.01) {
+			t.Errorf("expected refresh 10.0, got %f", info.RefreshPerHour)
+		}
+		// no_billing error message should include billing link
+		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time; for faster refresh, set up a subscription at https://exe.dev/take-my-money" {
+			t.Errorf("unexpected error message: %s", info.Plan.CreditExhaustedError)
+		}
+	})
+
+	// Test friend user (billing_exemption = 'free')
+	t.Run("friend", func(t *testing.T) {
+		userID := "friend-user"
+		createTestUser(t, db, userID, "friend@example.com")
+		// Set billing exemption to 'free'
+		err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+			return q.SetUserBillingExemption(ctx, exedb.SetUserBillingExemptionParams{
+				BillingExemption: strPtr("free"),
+				UserID:           userID,
+			})
+		})
+		if err != nil {
+			t.Fatalf("failed to set billing exemption: %v", err)
+		}
+
+		info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if info.Plan.Name != "friend" {
+			t.Errorf("expected plan name %q, got %q", "friend", info.Plan.Name)
+		}
+		if !floatClose(info.Max, 100.0, 0.01) {
+			t.Errorf("expected max 100.0, got %f", info.Max)
+		}
+		if !floatClose(info.RefreshPerHour, 10.0, 0.01) {
+			t.Errorf("expected refresh 10.0, got %f", info.RefreshPerHour)
+		}
+		// Friend user error message should NOT include billing link
+		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time" {
+			t.Errorf("unexpected error message: %s", info.Plan.CreditExhaustedError)
+		}
+	})
+
+	// Test has_billing user (active billing account)
+	t.Run("has_billing", func(t *testing.T) {
+		userID := "has-billing-user"
+		createTestUser(t, db, userID, "hasbilling@example.com")
+		// Create active billing account
+		err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+			if err := q.InsertAccount(ctx, exedb.InsertAccountParams{
+				ID:        "acct-has-billing",
+				CreatedBy: userID,
+			}); err != nil {
+				return err
+			}
+			return q.ActivateAccount(ctx, userID)
+		})
+		if err != nil {
+			t.Fatalf("failed to create billing account: %v", err)
+		}
+
+		info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if info.Plan.Name != "has_billing" {
+			t.Errorf("expected plan name %q, got %q", "has_billing", info.Plan.Name)
+		}
+		if !floatClose(info.Max, 100.0, 0.01) {
+			t.Errorf("expected max 100.0, got %f", info.Max)
+		}
+		if !floatClose(info.RefreshPerHour, 10.0, 0.01) {
+			t.Errorf("expected refresh 10.0, got %f", info.RefreshPerHour)
+		}
+		// has_billing user error message should NOT include billing link
+		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time" {
+			t.Errorf("unexpected error message: %s", info.Plan.CreditExhaustedError)
+		}
+	})
+
+	// Test overrides on top of base plan
+	t.Run("overrides", func(t *testing.T) {
+		userID := "override-user"
+		createTestUser(t, db, userID, "override@example.com")
+		// Set explicit credit overrides - user has no billing, so base plan is no_billing
+		maxCredit := 250.0
+		refreshRate := 25.0
+		err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+			return q.UpsertUserLLMCredit(ctx, exedb.UpsertUserLLMCreditParams{
+				UserID:          userID,
+				AvailableCredit: 250.0,
+				MaxCredit:       &maxCredit,
+				RefreshPerHour:  &refreshRate,
+				LastRefreshAt:   time.Now(),
+			})
+		})
+		if err != nil {
+			t.Fatalf("failed to set credit overrides: %v", err)
+		}
+
+		info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// Plan name should still be no_billing (the base plan)
+		if info.Plan.Name != "no_billing" {
+			t.Errorf("expected plan name %q, got %q", "no_billing", info.Plan.Name)
+		}
+		// But limits should be the overridden values
+		if !floatClose(info.Max, 250.0, 0.01) {
+			t.Errorf("expected max 250.0, got %f", info.Max)
+		}
+		if !floatClose(info.RefreshPerHour, 25.0, 0.01) {
+			t.Errorf("expected refresh 25.0, got %f", info.RefreshPerHour)
+		}
+		// Error message should still be the no_billing message (with billing link)
+		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time; for faster refresh, set up a subscription at https://exe.dev/take-my-money" {
+			t.Errorf("unexpected error message: %s", info.Plan.CreditExhaustedError)
+		}
+	})
+}
+
+func strPtr(s string) *string {
+	return &s
 }

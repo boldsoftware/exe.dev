@@ -40,3 +40,17 @@ FROM users u WHERE u.user_id = ?1;
 -- name: CountAccountsByBillingStatus :one
 -- CountAccountsByBillingStatus counts accounts with the given billing status.
 SELECT COUNT(*) FROM accounts WHERE billing_status = ?;
+
+-- name: GetUserPlanCategory :one
+-- GetUserPlanCategory determines the user's plan category for LLM gateway credit limits.
+-- Returns 'friend' if user has billing_exemption='free'
+-- Returns 'has_billing' if user has an active billing account
+-- Returns 'no_billing' otherwise
+-- Note: 'custom' category is determined by checking for explicit overrides in code, not SQL.
+SELECT
+    CASE
+        WHEN u.billing_exemption = 'free' THEN 'friend'
+        WHEN EXISTS (SELECT 1 FROM accounts WHERE created_by = ?1 AND billing_status = 'active') THEN 'has_billing'
+        ELSE 'no_billing'
+    END
+FROM users u WHERE u.user_id = ?1;

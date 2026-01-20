@@ -11,31 +11,90 @@ import (
 	"exe.dev/sqlite"
 )
 
-// Default credit settings. Used when max_credit or refresh_per_hour is NULL in the database.
-// These can be changed to adjust the default policy for all users without explicit overrides.
-const (
-	DefaultMaxCredit      = 100.0 // Maximum credit in USD
-	DefaultRefreshPerHour = 10.0  // Credit refresh rate per hour in USD
+// A Plan defines the base credit limits and error messages for a group of users.
+type Plan struct {
+	// Mnemonic name of the plan
+	Name string
+	// Maximum LLM credit that can be refreshed up to, in USD
+	MaxCredit float64
+	// Rate at which credit refreshes, in USD per hour
+	RefreshPerHour float64
+	// User-facing error message when credit is exhausted.
+	CreditExhaustedError string
+}
+
+// Base plans for each group
+var (
+	planHasBilling = Plan{
+		Name:                 "has_billing",
+		MaxCredit:            100.0,
+		RefreshPerHour:       10.0,
+		CreditExhaustedError: "LLM credits exhausted; credits refresh over time",
+	}
+	planNoBilling = Plan{
+		Name:                 "no_billing",
+		MaxCredit:            100.0,
+		RefreshPerHour:       10.0,
+		CreditExhaustedError: "LLM credits exhausted; credits refresh over time; for faster refresh, set up a subscription at https://exe.dev/take-my-money",
+	}
+	planFriend = Plan{
+		Name:                 "friend",
+		MaxCredit:            100.0,
+		RefreshPerHour:       10.0,
+		CreditExhaustedError: "LLM credits exhausted; credits refresh over time",
+	}
 )
+
+// planForUser determines the appropriate Plan for a user based on their billing status.
+// If the user has explicit overrides for max_credit or refresh_per_hour, those are applied
+// on top of the base plan.
+// This version takes a *exedb.Queries to be used within an existing transaction.
+func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *exedb.UserLlmCredit) (Plan, error) {
+	// Determine base plan from billing status
+	catResult, err := q.GetUserPlanCategory(ctx, userID)
+	if err != nil {
+		return Plan{}, fmt.Errorf("failed to get user plan category: %w", err)
+	}
+
+	var plan Plan
+	switch catResult {
+	case "has_billing":
+		plan = planHasBilling
+	case "friend":
+		plan = planFriend
+	case "no_billing":
+		plan = planNoBilling
+	default:
+		return Plan{}, fmt.Errorf("unknown plan category %q for user %s", catResult, userID)
+	}
+
+	// Apply any explicit overrides
+	if credit != nil {
+		if credit.MaxCredit != nil {
+			plan.MaxCredit = *credit.MaxCredit
+		}
+		if credit.RefreshPerHour != nil {
+			plan.RefreshPerHour = *credit.RefreshPerHour
+		}
+	}
+
+	return plan, nil
+}
+
+// PlanForUser looks up and returns the plan for a user, including any overrides.
+// This is useful for debug pages that need to display plan details.
+func PlanForUser(ctx context.Context, db *sqlite.DB, userID string, credit *exedb.UserLlmCredit) (Plan, error) {
+	var plan Plan
+	err := exedb.WithRx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		var err error
+		plan, err = planForUser(ctx, q, userID, credit)
+		return err
+	})
+	return plan, err
+}
 
 // ErrInsufficientCredit indicates insufficient credit for an LLM request
 var ErrInsufficientCredit = errors.New("insufficient LLM credit")
-
-// EffectiveMaxCredit returns the effective max credit, using the default if nil.
-func EffectiveMaxCredit(maxCredit *float64) float64 {
-	if maxCredit == nil {
-		return DefaultMaxCredit
-	}
-	return *maxCredit
-}
-
-// EffectiveRefreshPerHour returns the effective refresh rate, using the default if nil.
-func EffectiveRefreshPerHour(refreshPerHour *float64) float64 {
-	if refreshPerHour == nil {
-		return DefaultRefreshPerHour
-	}
-	return *refreshPerHour
-}
 
 // CreditManager handles token bucket credit for LLM gateway access
 type CreditManager struct {
@@ -57,6 +116,7 @@ type CreditInfo struct {
 	Max            float64
 	RefreshPerHour float64
 	LastRefresh    time.Time
+	Plan           Plan
 }
 
 // CalculateRefreshedCredit computes the current available credit after applying refresh
@@ -100,15 +160,16 @@ func (m *CreditManager) CheckAndRefreshCredit(ctx context.Context, userID string
 		if err != nil {
 			return err
 		}
-
-		maxCredit := EffectiveMaxCredit(credit.MaxCredit)
-		refreshPerHour := EffectiveRefreshPerHour(credit.RefreshPerHour)
+		plan, err := planForUser(ctx, q, userID, &credit)
+		if err != nil {
+			return err
+		}
 
 		now := m.now()
 		newAvailable, newLastRefresh := CalculateRefreshedCredit(
 			credit.AvailableCredit,
-			maxCredit,
-			refreshPerHour,
+			plan.MaxCredit,
+			plan.RefreshPerHour,
 			credit.LastRefreshAt,
 			now,
 		)
@@ -126,9 +187,10 @@ func (m *CreditManager) CheckAndRefreshCredit(ctx context.Context, userID string
 
 		info = &CreditInfo{
 			Available:      newAvailable,
-			Max:            maxCredit,
-			RefreshPerHour: refreshPerHour,
+			Max:            plan.MaxCredit,
+			RefreshPerHour: plan.RefreshPerHour,
 			LastRefresh:    newLastRefresh,
+			Plan:           plan,
 		}
 		return nil
 	})
@@ -158,16 +220,17 @@ func (m *CreditManager) DebitCredit(ctx context.Context, userID string, costUSD 
 		if err != nil {
 			return err
 		}
-
-		maxCredit := EffectiveMaxCredit(credit.MaxCredit)
-		refreshPerHour := EffectiveRefreshPerHour(credit.RefreshPerHour)
+		plan, err := planForUser(ctx, q, userID, &credit)
+		if err != nil {
+			return err
+		}
 
 		now := m.now()
 		// First apply any refresh
 		newAvailable, newLastRefresh := CalculateRefreshedCredit(
 			credit.AvailableCredit,
-			maxCredit,
-			refreshPerHour,
+			plan.MaxCredit,
+			plan.RefreshPerHour,
 			credit.LastRefreshAt,
 			now,
 		)
@@ -186,9 +249,10 @@ func (m *CreditManager) DebitCredit(ctx context.Context, userID string, costUSD 
 
 		info = &CreditInfo{
 			Available:      newAvailable,
-			Max:            maxCredit,
-			RefreshPerHour: refreshPerHour,
+			Max:            plan.MaxCredit,
+			RefreshPerHour: plan.RefreshPerHour,
 			LastRefresh:    newLastRefresh,
+			Plan:           plan,
 		}
 		return nil
 	})

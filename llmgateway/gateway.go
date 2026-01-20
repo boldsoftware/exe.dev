@@ -202,8 +202,8 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Check credit before allowing LLM request
 	creditInfo, err := m.creditMgr.CheckAndRefreshCredit(r.Context(), userID)
 	if errors.Is(err, ErrInsufficientCredit) {
-		m.log.WarnContext(r.Context(), "insufficient LLM credit", "user_id", userID, "box", boxName, "available_usd", creditInfo.Available)
-		m.httpError(w, r, "insufficient gateway credit", http.StatusPaymentRequired, boxName)
+		m.log.WarnContext(r.Context(), "insufficient LLM credit", "user_id", userID, "box", boxName, "available_usd", creditInfo.Available, "plan", creditInfo.Plan.Name)
+		m.httpError(w, r, creditInfo.Plan.CreditExhaustedError, http.StatusPaymentRequired, boxName)
 		return
 	}
 	if err != nil {

@@ -390,6 +390,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserNewVMCreationDisabledStmt, err = db.PrepareContext(ctx, getUserNewVMCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserNewVMCreationDisabled: %w", err)
 	}
+	if q.getUserPlanCategoryStmt, err = db.PrepareContext(ctx, getUserPlanCategory); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserPlanCategory: %w", err)
+	}
 	if q.getUserRootSupportStmt, err = db.PrepareContext(ctx, getUserRootSupport); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserRootSupport: %w", err)
 	}
@@ -1251,6 +1254,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserNewVMCreationDisabledStmt: %w", cerr)
 		}
 	}
+	if q.getUserPlanCategoryStmt != nil {
+		if cerr := q.getUserPlanCategoryStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserPlanCategoryStmt: %w", cerr)
+		}
+	}
 	if q.getUserRootSupportStmt != nil {
 		if cerr := q.getUserRootSupportStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserRootSupportStmt: %w", cerr)
@@ -1822,6 +1830,7 @@ type Queries struct {
 	getUserIDBySSHKeyStmt                      *sql.Stmt
 	getUserLLMCreditStmt                       *sql.Stmt
 	getUserNewVMCreationDisabledStmt           *sql.Stmt
+	getUserPlanCategoryStmt                    *sql.Stmt
 	getUserRootSupportStmt                     *sql.Stmt
 	getUserWithDetailsStmt                     *sql.Stmt
 	getUserWithSSHKeyStmt                      *sql.Stmt
@@ -2032,6 +2041,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserIDBySSHKeyStmt:                      q.getUserIDBySSHKeyStmt,
 		getUserLLMCreditStmt:                       q.getUserLLMCreditStmt,
 		getUserNewVMCreationDisabledStmt:           q.getUserNewVMCreationDisabledStmt,
+		getUserPlanCategoryStmt:                    q.getUserPlanCategoryStmt,
 		getUserRootSupportStmt:                     q.getUserRootSupportStmt,
 		getUserWithDetailsStmt:                     q.getUserWithDetailsStmt,
 		getUserWithSSHKeyStmt:                      q.getUserWithSSHKeyStmt,

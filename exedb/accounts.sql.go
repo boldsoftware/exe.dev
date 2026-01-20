@@ -63,6 +63,28 @@ func (q *Queries) GetAccountByUserID(ctx context.Context, createdBy string) (Acc
 	return i, err
 }
 
+const getUserPlanCategory = `-- name: GetUserPlanCategory :one
+SELECT
+    CASE
+        WHEN u.billing_exemption = 'free' THEN 'friend'
+        WHEN EXISTS (SELECT 1 FROM accounts WHERE created_by = ?1 AND billing_status = 'active') THEN 'has_billing'
+        ELSE 'no_billing'
+    END
+FROM users u WHERE u.user_id = ?1
+`
+
+// GetUserPlanCategory determines the user's plan category for LLM gateway credit limits.
+// Returns 'friend' if user has billing_exemption='free'
+// Returns 'has_billing' if user has an active billing account
+// Returns 'no_billing' otherwise
+// Note: 'custom' category is determined by checking for explicit overrides in code, not SQL.
+func (q *Queries) GetUserPlanCategory(ctx context.Context, createdBy string) (string, error) {
+	row := q.queryRow(ctx, q.getUserPlanCategoryStmt, getUserPlanCategory, createdBy)
+	var column_1 string
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const insertAccount = `-- name: InsertAccount :exec
 INSERT INTO accounts (id, created_by, billing_status) VALUES (?, ?, 'pending')
 `
