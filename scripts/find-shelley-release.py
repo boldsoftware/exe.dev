@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Find a Shelley release matching the given tree hash.
 
-Polls the boldsoftware/shelley GitHub releases until finding one whose
-root tree hash matches the expected hash. Used to coordinate exeuntu
-builds with the OSS Shelley repo.
+Clones boldsoftware/shelley and uses git operations to find which tag
+has the matching tree hash, then polls for that tag to appear in releases.
 
 Usage:
     find-shelley-release.py <expected_tree_hash> [--timeout=600] [--interval=10]
@@ -14,11 +13,15 @@ Outputs the matching version tag to stdout on success.
 
 import argparse
 import json
+import os
+import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 
 GITHUB_API = "https://api.github.com/repos/boldsoftware/shelley"
+SHELLEY_REPO = "https://github.com/boldsoftware/shelley.git"
 
 
 def fetch_json(url: str) -> dict:
@@ -28,50 +31,85 @@ def fetch_json(url: str) -> dict:
         return json.load(resp)
 
 
-def get_release_tree_hash(tag: str) -> str:
-    """Get the root tree hash for a release tag."""
-    # Get the tag ref
-    tag_ref = fetch_json(f"{GITHUB_API}/git/refs/tags/{tag}")
-    obj_sha = tag_ref["object"]["sha"]
-    obj_type = tag_ref["object"]["type"]
+def is_tag_released(tag: str) -> bool:
+    """Check if a tag has a GitHub release."""
+    try:
+        fetch_json(f"{GITHUB_API}/releases/tags/{tag}")
+        return True
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return False
+        raise
 
-    # If annotated tag, dereference to get commit
-    if obj_type == "tag":
-        tag_obj = fetch_json(f"{GITHUB_API}/git/tags/{obj_sha}")
-        commit_sha = tag_obj["object"]["sha"]
-    else:
-        commit_sha = obj_sha
 
-    # Get the tree hash from the commit
-    commit = fetch_json(f"{GITHUB_API}/git/commits/{commit_sha}")
-    return commit["tree"]["sha"]
+def run_git(args: list[str], cwd: str) -> str:
+    """Run a git command and return stdout."""
+    result = subprocess.run(
+        ["git"] + args,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
+def find_tag_for_tree(repo_dir: str, expected_tree: str) -> str:
+    """Find which tag in the repo has the given tree hash."""
+    # Get all tags
+    tags_output = run_git(["tag", "-l", "v*"], repo_dir)
+    if not tags_output:
+        return ""
+
+    for tag in tags_output.split("\n"):
+        tag = tag.strip()
+        if not tag:
+            continue
+        try:
+            tree_hash = run_git(["rev-parse", f"{tag}^{{tree}}"], repo_dir)
+            if tree_hash == expected_tree:
+                return tag
+        except subprocess.CalledProcessError:
+            continue
+    return ""
 
 
 def find_matching_release(expected_tree: str, timeout: int, interval: int) -> str:
-    """Poll releases until finding one with matching tree hash."""
+    """Find the tag with matching tree hash, then wait for its release."""
     deadline = time.time() + timeout
-    attempt = 0
 
-    while time.time() < deadline:
-        attempt += 1
-        print(f"Attempt {attempt}: checking releases...", file=sys.stderr)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        repo_dir = os.path.join(tmpdir, "shelley")
 
-        releases = fetch_json(f"{GITHUB_API}/releases?per_page=5")
+        # Clone shelley repo
+        print("Cloning shelley repository...", file=sys.stderr)
+        subprocess.run(
+            ["git", "clone", "--bare", "--filter=tree:0", SHELLEY_REPO, repo_dir],
+            check=True,
+            capture_output=True,
+        )
 
-        for release in releases:
-            tag = release["tag_name"]
-            try:
-                tree_hash = get_release_tree_hash(tag)
-                if tree_hash == expected_tree:
-                    print(f"Found matching release: {tag} (tree: {tree_hash})", file=sys.stderr)
-                    return tag
-                print(f"  {tag}: tree={tree_hash} (no match)", file=sys.stderr)
-            except Exception as e:
-                print(f"  {tag}: error fetching tree hash: {e}", file=sys.stderr)
+        # Find which tag has the matching tree hash
+        tag = find_tag_for_tree(repo_dir, expected_tree)
+        if not tag:
+            print(f"No tag found with tree hash {expected_tree}", file=sys.stderr)
+            return ""
 
-        if time.time() + interval < deadline:
-            print(f"No match yet, waiting {interval}s...", file=sys.stderr)
-            time.sleep(interval)
+        print(f"Found tag {tag} with matching tree hash", file=sys.stderr)
+
+        # Poll for the release to exist
+        attempt = 0
+        while time.time() < deadline:
+            attempt += 1
+            print(f"Attempt {attempt}: checking if {tag} is released...", file=sys.stderr)
+
+            if is_tag_released(tag):
+                print(f"Release {tag} exists!", file=sys.stderr)
+                return tag
+
+            if time.time() + interval < deadline:
+                print(f"Not yet released, waiting {interval}s...", file=sys.stderr)
+                time.sleep(interval)
 
     return ""
 
