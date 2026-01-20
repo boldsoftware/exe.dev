@@ -26,6 +26,7 @@ import BrowserResizeTool from "./BrowserResizeTool";
 import SubagentTool from "./SubagentTool";
 import OutputIframeTool from "./OutputIframeTool";
 import DirectoryPickerModal from "./DirectoryPickerModal";
+import { useVersionChecker } from "./VersionChecker";
 
 interface ContextUsageBarProps {
   contextWindowSize: number;
@@ -489,6 +490,7 @@ function ChatInterface({
   const terminalURL = window.__SHELLEY_INIT__?.terminal_url || null;
   const links = window.__SHELLEY_INIT__?.links || [];
   const hostname = window.__SHELLEY_INIT__?.hostname || "localhost";
+  const { hasUpdate, openModal: openVersionModal, VersionModal } = useVersionChecker();
   const [, setReconnectAttempts] = useState(0);
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -1168,6 +1170,7 @@ function ChatInterface({
                   d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
                 />
               </svg>
+              {hasUpdate && <span className="version-update-dot" />}
             </button>
 
             {showOverflowMenu && (
@@ -1249,6 +1252,32 @@ function ChatInterface({
                     {link.title}
                   </button>
                 ))}
+
+                {/* Version check */}
+                <div className="overflow-menu-divider" />
+                <button
+                  onClick={() => {
+                    setShowOverflowMenu(false);
+                    openVersionModal();
+                  }}
+                  className="overflow-menu-item"
+                >
+                  <svg
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    style={{ width: "1.25rem", height: "1.25rem", marginRight: "0.75rem" }}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
+                  </svg>
+                  Check for New Version
+                  {hasUpdate && <span className="version-menu-dot" />}
+                </button>
 
                 {/* Theme selector */}
                 <div className="overflow-menu-divider" />
@@ -1509,6 +1538,9 @@ function ChatInterface({
         onCommentTextChange={setDiffCommentText}
         initialCommit={diffViewerInitialCommit}
       />
+
+      {/* Version Checker Modal */}
+      {VersionModal}
     </div>
   );
 }

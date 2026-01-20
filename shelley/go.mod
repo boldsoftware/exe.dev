@@ -5,6 +5,7 @@ go 1.25.6
 require (
 	github.com/chromedp/cdproto v0.0.0-20250803210736-d308e07a266d
 	github.com/chromedp/chromedp v0.14.1
+	github.com/fynelabs/selfupdate v0.2.1
 	github.com/google/uuid v1.6.0
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/pkg/diff v0.0.0-20241224192749-4e6772a4315c
@@ -12,6 +13,7 @@ require (
 	github.com/samber/slog-http v1.8.2
 	github.com/sashabaranov/go-openai v1.41.1
 	go.skia.org/infra v0.0.0-20250421160028-59e18403fd4a
+	golang.org/x/image v0.34.0
 	golang.org/x/sync v0.19.0
 	mvdan.cc/sh/v3 v3.12.0
 	sketch.dev v0.0.33
@@ -63,7 +65,6 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
-	golang.org/x/image v0.34.0 // indirect
 	golang.org/x/mod v0.31.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
@@ -82,7 +83,7 @@ require (
 
 require (
 	github.com/chromedp/sysutil v1.1.0 // indirect
-	github.com/go-json-experiment/json v0.0.0-20250725192818-e39067aee2d2 // indirect
+	github.com/go-json-experiment/json v0.0.0-20250725192818-e39067aee2d2
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect

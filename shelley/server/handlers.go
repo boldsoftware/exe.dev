@@ -1103,3 +1103,71 @@ func (s *Server) handleRenameConversation(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(conversation)
 }
+
+// handleVersionCheck returns version check information including update availability
+func (s *Server) handleVersionCheck(w http.ResponseWriter, r *http.Request) {
+	forceRefresh := r.URL.Query().Get("refresh") == "true"
+
+	info, err := s.versionChecker.Check(r.Context(), forceRefresh)
+	if err != nil {
+		s.logger.Error("Version check failed", "error", err)
+		http.Error(w, "Version check failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(info)
+}
+
+// handleVersionChangelog returns the changelog between current and latest versions
+func (s *Server) handleVersionChangelog(w http.ResponseWriter, r *http.Request) {
+	currentTag := r.URL.Query().Get("current")
+	latestTag := r.URL.Query().Get("latest")
+
+	if currentTag == "" || latestTag == "" {
+		http.Error(w, "current and latest query parameters are required", http.StatusBadRequest)
+		return
+	}
+
+	commits, err := s.versionChecker.FetchChangelog(r.Context(), currentTag, latestTag)
+	if err != nil {
+		s.logger.Error("Failed to fetch changelog", "error", err, "current", currentTag, "latest", latestTag)
+		http.Error(w, "Failed to fetch changelog", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(commits)
+}
+
+// handleUpgrade performs a self-update of the Shelley binary
+func (s *Server) handleUpgrade(w http.ResponseWriter, r *http.Request) {
+	err := s.versionChecker.DoUpgrade(r.Context())
+	if err != nil {
+		s.logger.Error("Upgrade failed", "error", err)
+		http.Error(w, fmt.Sprintf("Upgrade failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": "Upgrade complete. Restart to apply."})
+}
+
+// handleExit exits the process, expecting systemd or similar to restart it
+func (s *Server) handleExit(w http.ResponseWriter, r *http.Request) {
+	// Send response before exiting
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": "Exiting..."})
+
+	// Flush the response
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+
+	// Exit after a short delay to allow response to be sent
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		s.logger.Info("Exiting Shelley via /exit endpoint")
+		os.Exit(0)
+	}()
+}

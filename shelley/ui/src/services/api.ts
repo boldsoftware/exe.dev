@@ -6,6 +6,8 @@ import {
   GitDiffInfo,
   GitFileInfo,
   GitFileDiff,
+  VersionInfo,
+  CommitInfo,
 } from "../types";
 
 class ApiService {
@@ -205,6 +207,48 @@ class ApiService {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/subagents`);
     if (!response.ok) {
       throw new Error(`Failed to get subagents: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  // Version check APIs
+  async checkVersion(forceRefresh = false): Promise<VersionInfo> {
+    const url = forceRefresh ? "/version-check?refresh=true" : "/version-check";
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to check version: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async getChangelog(currentTag: string, latestTag: string): Promise<CommitInfo[]> {
+    const params = new URLSearchParams({ current: currentTag, latest: latestTag });
+    const response = await fetch(`/version-changelog?${params}`);
+    if (!response.ok) {
+      throw new Error(`Failed to get changelog: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async upgrade(): Promise<{ status: string; message: string }> {
+    const response = await fetch("/upgrade", {
+      method: "POST",
+      headers: { "X-Shelley-Request": "1" },
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || response.statusText);
+    }
+    return response.json();
+  }
+
+  async exit(): Promise<{ status: string; message: string }> {
+    const response = await fetch("/exit", {
+      method: "POST",
+      headers: { "X-Shelley-Request": "1" },
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to exit: ${response.statusText}`);
     }
     return response.json();
   }

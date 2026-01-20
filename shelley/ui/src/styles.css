@@ -3755,3 +3755,227 @@ svg {
     display: none;
   }
 }
+
+/* Version Checker Styles */
+.version-update-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  background: #ef4444;
+  border-radius: 50%;
+  border: 2px solid var(--bg-base);
+}
+
+.version-menu-dot {
+  width: 8px;
+  height: 8px;
+  background: #ef4444;
+  border-radius: 50%;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.version-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.version-modal {
+  background: var(--bg-base);
+  border-radius: 0.5rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  max-width: 500px;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.version-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.version-modal-header h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.version-modal-close {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  border-radius: 0.25rem;
+}
+
+.version-modal-close:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.version-modal-close svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.version-modal-content {
+  padding: 1.25rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.version-info-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.version-label {
+  color: var(--text-secondary);
+}
+
+.version-value {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.version-date {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+}
+
+.version-error {
+  padding: 0.75rem;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--error-text);
+}
+
+.version-success {
+  padding: 0.75rem;
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--success-text);
+}
+
+.version-changelog {
+  border-top: 1px solid var(--border-color);
+  padding-top: 1rem;
+}
+
+.version-changelog h3 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.changelog-link {
+  color: var(--link-color);
+  text-decoration: none;
+}
+
+.changelog-link:hover {
+  text-decoration: underline;
+}
+
+.commit-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 250px;
+  overflow-y: auto;
+  font-size: 0.8125rem;
+}
+
+.commit-item {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-color);
+  align-items: flex-start;
+}
+
+.commit-item:last-child {
+  border-bottom: none;
+}
+
+.commit-sha {
+  font-family: var(--font-mono);
+  color: var(--link-color);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+
+.commit-sha:hover {
+  text-decoration: underline;
+}
+
+.commit-message {
+  color: var(--text-primary);
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.version-loading,
+.version-no-commits {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
+}
+
+.version-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-top: 1px solid var(--border-color);
+  padding-top: 1rem;
+}
+
+.version-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.version-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.version-btn-primary {
+  background: var(--primary);
+  color: white;
+  border: none;
+}
+
+.version-btn-primary:hover:not(:disabled) {
+  background: var(--primary-dark);
+}

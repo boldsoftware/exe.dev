@@ -218,6 +218,7 @@ type Server struct {
 	links               []Link
 	requireHeader       string
 	conversationGroup   singleflight.Group[string, *ConversationManager]
+	versionChecker      *VersionChecker
 }
 
 // NewServer creates a new server instance
@@ -233,6 +234,7 @@ func NewServer(database *db.DB, llmManager LLMProvider, toolSetConfig claudetool
 		defaultModel:        defaultModel,
 		requireHeader:       requireHeader,
 		links:               links,
+		versionChecker:      NewVersionChecker(),
 	}
 
 	// Set up subagent support
@@ -259,8 +261,12 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/read", s.handleRead)                          // Serves images
 	mux.Handle("/api/write-file", http.HandlerFunc(s.handleWriteFile)) // Small response
 
-	// Version endpoint
-	mux.Handle("/version", http.HandlerFunc(s.handleVersion)) // Small response
+	// Version endpoints
+	mux.Handle("GET /version", http.HandlerFunc(s.handleVersion))
+	mux.Handle("GET /version-check", http.HandlerFunc(s.handleVersionCheck))
+	mux.Handle("GET /version-changelog", http.HandlerFunc(s.handleVersionChangelog))
+	mux.Handle("POST /upgrade", http.HandlerFunc(s.handleUpgrade))
+	mux.Handle("POST /exit", http.HandlerFunc(s.handleExit))
 
 	// Debug routes
 

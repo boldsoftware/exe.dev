@@ -133,3 +133,29 @@ export interface ConversationListUpdate {
   conversation?: Conversation;
   conversation_id?: string; // For deletes
 }
+
+// Version check types
+export interface VersionInfo {
+  current_version: string;
+  current_tag?: string;
+  current_commit?: string;
+  current_commit_time?: string;
+  latest_version?: string;
+  latest_tag?: string;
+  published_at?: string;
+  has_update: boolean; // True if minor version is newer (show upgrade button)
+  should_notify: boolean; // True if should show red dot (newer + 5 days apart)
+  download_url?: string;
+  executable_path?: string;
+  commits?: CommitInfo[];
+  checked_at: string;
+  error?: string;
+  running_under_systemd: boolean; // True if INVOCATION_ID env var is set
+}
+
+export interface CommitInfo {
+  sha: string;
+  message: string;
+  author: string;
+  date: string;
+}

@@ -3,6 +3,7 @@ package version
 import (
 	"encoding/json"
 	"io/fs"
+	"os"
 	"runtime/debug"
 
 	"shelley.exe.dev/ui"
@@ -25,10 +26,16 @@ type Info struct {
 
 // GetInfo returns build information using runtime/debug.ReadBuildInfo,
 // falling back to the embedded build-info.json from the UI build.
+// The SHELLEY_VERSION_OVERRIDE environment variable can override the tag for testing.
 func GetInfo() Info {
+	tag := Tag
+	if override := os.Getenv("SHELLEY_VERSION_OVERRIDE"); override != "" {
+		tag = override
+	}
+
 	info := Info{
 		Version: Version,
-		Tag:     Tag,
+		Tag:     tag,
 	}
 
 	buildInfo, ok := debug.ReadBuildInfo()
