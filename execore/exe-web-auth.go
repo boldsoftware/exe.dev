@@ -1672,6 +1672,9 @@ func (s *Server) handleTakeMyMoney(w http.ResponseWriter, r *http.Request) {
 func (s *Server) processTakeMyMoneySubscription(w http.ResponseWriter, r *http.Request, userID, email string) {
 	ctx := r.Context()
 
+	// Notify Slack
+	s.slackFeed.TakeMyMoney(ctx, email)
+
 	// Check/create pending account (reuse existing pending account if any)
 	existingAccount, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
 	var accountID string
