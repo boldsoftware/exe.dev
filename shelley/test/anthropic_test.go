@@ -50,7 +50,7 @@ func TestWithAnthropicAPI(t *testing.T) {
 		FireworksAPIKey: os.Getenv("FIREWORKS_API_KEY"),
 		Logger:          logger,
 	}
-	llmManager := server.NewLLMServiceManager(llmConfig, nil)
+	llmManager := server.NewLLMServiceManager(llmConfig)
 
 	// Set up tools config
 	toolSetConfig := claudetool.ToolSetConfig{

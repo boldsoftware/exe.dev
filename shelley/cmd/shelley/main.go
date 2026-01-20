@@ -99,13 +99,10 @@ func runServe(global GlobalConfig, args []string) {
 	server.DBPath = global.DBPath
 
 	// Build LLM configuration
-	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL, global.DefaultModel)
-
-	// Create request history for debugging
-	llmHistory := models.NewLLMRequestHistory(10)
+	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL, global.DefaultModel, database)
 
 	// Initialize LLM service manager
-	llmManager := server.NewLLMServiceManager(llmConfig, llmHistory)
+	llmManager := server.NewLLMServiceManager(llmConfig)
 
 	// Log available models
 	availableModels := llmManager.GetAvailableModels()
@@ -251,7 +248,7 @@ func setupToolSetConfig(llmProvider claudetool.LLMServiceProvider) claudetool.To
 }
 
 // buildLLMConfig constructs LLMConfig from environment variables and optional config file
-func buildLLMConfig(logger *slog.Logger, configPath, terminalURL, defaultModel string) *server.LLMConfig {
+func buildLLMConfig(logger *slog.Logger, configPath, terminalURL, defaultModel string, database *db.DB) *server.LLMConfig {
 	llmCfg := &server.LLMConfig{
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 		OpenAIAPIKey:    os.Getenv("OPENAI_API_KEY"),
@@ -259,6 +256,7 @@ func buildLLMConfig(logger *slog.Logger, configPath, terminalURL, defaultModel s
 		FireworksAPIKey: os.Getenv("FIREWORKS_API_KEY"),
 		TerminalURL:     terminalURL,
 		DefaultModel:    defaultModel,
+		DB:              database,
 		Logger:          logger,
 	}
 

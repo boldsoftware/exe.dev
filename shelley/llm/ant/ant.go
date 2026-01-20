@@ -12,7 +12,6 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"strings"
-	"testing"
 	"time"
 
 	"shelley.exe.dev/llm"
@@ -80,19 +79,14 @@ func (s *Service) MaxImageDimension() int {
 	return 2000
 }
 
-// HTTPRecorder is a callback for recording HTTP request/response data for debugging
-type HTTPRecorder func(url string, requestBody, responseBody []byte, statusCode int, err error, duration time.Duration)
-
 // Service provides Claude completions.
 // Fields should not be altered concurrently with calling any method on Service.
 type Service struct {
-	HTTPC        *http.Client // defaults to http.DefaultClient if nil
-	URL          string       // defaults to DefaultURL if empty
-	APIKey       string       // must be non-empty
-	Model        string       // defaults to DefaultModel if empty
-	MaxTokens    int          // defaults to DefaultMaxTokens if zero
-	DumpLLM      bool         // whether to dump request/response text to files for debugging; defaults to false
-	HTTPRecorder HTTPRecorder // optional callback for recording HTTP requests/responses
+	HTTPC     *http.Client // defaults to http.DefaultClient if nil
+	URL       string       // defaults to DefaultURL if empty
+	APIKey    string       // must be non-empty
+	Model     string       // defaults to DefaultModel if empty
+	MaxTokens int          // defaults to DefaultMaxTokens if zero
 }
 
 var _ llm.Service = (*Service)(nil)
@@ -462,36 +456,16 @@ func toLLMResponse(r *response) *llm.Response {
 func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error) {
 	startTime := time.Now()
 	request := s.fromLLMRequest(ir)
-	var payload []byte
-	var err error
-	if s.DumpLLM || testing.Testing() {
-		payload, err = json.MarshalIndent(request, "", " ")
-	} else {
-		payload, err = json.Marshal(request)
-		payload = append(payload, '\n')
-	}
+	payload, err := json.Marshal(request)
 	if err != nil {
 		return nil, err
 	}
-
-	if false {
-		fmt.Printf("claude request payload:\n%s\n", payload)
-	}
+	payload = append(payload, '\n')
 
 	backoff := []time.Duration{15 * time.Second, 30 * time.Second, time.Minute}
 
 	url := cmp.Or(s.URL, DefaultURL)
 	httpc := cmp.Or(s.HTTPC, http.DefaultClient)
-
-	// For recording the last attempt's response
-	var lastResponseBody []byte
-	var lastStatusCode int
-	var finalErr error
-	defer func() {
-		if s.HTTPRecorder != nil {
-			s.HTTPRecorder(url, payload, lastResponseBody, lastStatusCode, finalErr, time.Since(startTime))
-		}
-	}()
 
 	// retry loop
 	var errs error // accumulated errors across all attempts
@@ -503,11 +477,6 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			sleep := backoff[min(attempts, len(backoff)-1)] + time.Duration(rand.Int64N(int64(time.Second)))
 			slog.WarnContext(ctx, "anthropic request sleep before retry", "sleep", sleep, "attempts", attempts)
 			time.Sleep(sleep)
-		}
-		if s.DumpLLM {
-			if err := llm.DumpToFile("request", url, payload); err != nil {
-				slog.WarnContext(ctx, "failed to dump request to file", "error", err)
-			}
 		}
 		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
 		if err != nil {
@@ -534,17 +503,8 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			continue
 		}
 
-		// Record response for HTTPRecorder callback
-		lastResponseBody = buf
-		lastStatusCode = resp.StatusCode
-
 		switch {
 		case resp.StatusCode == http.StatusOK:
-			if s.DumpLLM {
-				if err := llm.DumpToFile("response", "", buf); err != nil {
-					slog.WarnContext(ctx, "failed to dump response to file", "error", err)
-				}
-			}
 			var response response
 			err = json.NewDecoder(bytes.NewReader(buf)).Decode(&response)
 			if err != nil {
@@ -562,13 +522,11 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			// server error, retry
 			slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)
 			errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
-			finalErr = errs
 			continue
 		case resp.StatusCode == 429:
 			// rate limited, retry
 			slog.WarnContext(ctx, "anthropic_request_rate_limited", "response", string(buf), "url", url, "model", s.Model)
 			errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
-			finalErr = errs
 			continue
 		case resp.StatusCode >= 400 && resp.StatusCode < 500:
 			// some other 400, probably unrecoverable
@@ -578,7 +536,6 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			// ...retry, I guess?
 			slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)
 			errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
-			finalErr = errs
 			continue
 		}
 	}

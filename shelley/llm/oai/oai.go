@@ -314,7 +314,6 @@ type Service struct {
 	ModelURL  string       // optional, overrides Model.URL
 	MaxTokens int          // defaults to DefaultMaxTokens if zero
 	Org       string       // optional - organization ID
-	DumpLLM   bool         // whether to dump request/response text to files for debugging; defaults to false
 }
 
 var _ llm.Service = (*Service)(nil)
@@ -826,15 +825,6 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 	// Construct the full URL for logging and debugging
 	fullURL := baseURL + "/chat/completions"
 
-	// Dump request if enabled
-	if s.DumpLLM {
-		if reqJSON, err := json.MarshalIndent(req, "", "  "); err == nil {
-			if err := llm.DumpToFile("request", fullURL, reqJSON); err != nil {
-				slog.WarnContext(ctx, "failed to dump openai request to file", "error", err)
-			}
-		}
-	}
-
 	// Retry mechanism
 	backoff := []time.Duration{1 * time.Second, 2 * time.Second, 5 * time.Second, 10 * time.Second, 15 * time.Second}
 
@@ -854,14 +844,6 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 
 		// Handle successful response
 		if err == nil {
-			// Dump response if enabled
-			if s.DumpLLM {
-				if respJSON, jsonErr := json.MarshalIndent(resp, "", "  "); jsonErr == nil {
-					if dumpErr := llm.DumpToFile("response", "", respJSON); dumpErr != nil {
-						slog.WarnContext(ctx, "failed to dump openai response to file", "error", dumpErr)
-					}
-				}
-			}
 			return s.toLLMResponse(&resp), nil
 		}
 

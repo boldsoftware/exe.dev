@@ -23,11 +23,10 @@ const (
 // Service provides Gemini completions.
 // Fields should not be altered concurrently with calling any method on Service.
 type Service struct {
-	HTTPC   *http.Client // defaults to http.DefaultClient if nil
-	URL     string       // Gemini API URL, uses the gemini package default if empty
-	APIKey  string       // must be non-empty
-	Model   string       // defaults to DefaultModel if empty
-	DumpLLM bool         // whether to dump request/response text to files for debugging; defaults to false
+	HTTPC  *http.Client // defaults to http.DefaultClient if nil
+	URL    string       // Gemini API URL, uses the gemini package default if empty
+	APIKey string       // must be non-empty
+	Model  string       // defaults to DefaultModel if empty
 }
 
 var _ llm.Service = (*Service)(nil)
@@ -520,14 +519,6 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 	// Log the structured Gemini request for debugging
 	if reqJSON, err := json.MarshalIndent(gemReq, "", "  "); err == nil {
 		slog.DebugContext(ctx, "gemini_request_json", "request", string(reqJSON))
-		if s.DumpLLM {
-			// Construct the same URL that the Gemini client will use
-			endpoint := cmp.Or(s.URL, "https://generativelanguage.googleapis.com/v1beta")
-			url := fmt.Sprintf("%s/models/%s:generateContent?key=%s", endpoint, cmp.Or(s.Model, DefaultModel), s.APIKey)
-			if err := llm.DumpToFile("request", url, reqJSON); err != nil {
-				slog.WarnContext(ctx, "failed to dump gemini request to file", "error", err)
-			}
-		}
 	}
 
 	// Create a Gemini model instance
@@ -555,11 +546,6 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			// Log the structured Gemini response
 			if resJSON, err := json.MarshalIndent(gemRes, "", "  "); err == nil {
 				slog.DebugContext(ctx, "gemini_response_json", "response", string(resJSON))
-				if s.DumpLLM {
-					if err := llm.DumpToFile("response", "", resJSON); err != nil {
-						slog.WarnContext(ctx, "failed to dump gemini response to file", "error", err)
-					}
-				}
 			}
 			break
 		}

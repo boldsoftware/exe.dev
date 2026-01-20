@@ -72,7 +72,7 @@ type LLMProvider interface {
 }
 
 // NewLLMServiceManager creates a new LLM service manager from config
-func NewLLMServiceManager(cfg *LLMConfig, history *models.LLMRequestHistory) LLMProvider {
+func NewLLMServiceManager(cfg *LLMConfig) LLMProvider {
 	// Convert LLMConfig to models.Config
 	modelConfig := &models.Config{
 		AnthropicAPIKey: cfg.AnthropicAPIKey,
@@ -81,9 +81,10 @@ func NewLLMServiceManager(cfg *LLMConfig, history *models.LLMRequestHistory) LLM
 		FireworksAPIKey: cfg.FireworksAPIKey,
 		Gateway:         cfg.Gateway,
 		Logger:          cfg.Logger,
+		DB:              cfg.DB,
 	}
 
-	manager, err := models.NewManager(modelConfig, history)
+	manager, err := models.NewManager(modelConfig)
 	if err != nil {
 		// This shouldn't happen in practice, but handle it gracefully
 		cfg.Logger.Error("Failed to create models manager", "error", err)
@@ -262,7 +263,6 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/version", http.HandlerFunc(s.handleVersion)) // Small response
 
 	// Debug routes
-	mux.Handle("/debug/llm", gzipHandler(http.HandlerFunc(s.handleDebugLLM)))
 
 	// Serve embedded UI assets
 	mux.Handle("/", s.staticHandler(ui.Assets()))

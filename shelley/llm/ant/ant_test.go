@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 
 	"shelley.exe.dev/llm"
 )
@@ -1046,87 +1045,6 @@ func TestToLLMContentWithNestedToolResults(t *testing.T) {
 	}
 }
 
-func TestDoWithHTTPRecorder(t *testing.T) {
-	// Create a mock HTTP client that returns a predefined response
-	mockResponse := `{
-		"id": "msg_123",
-		"type": "message",
-		"role": "assistant",
-		"model": "claude-sonnet-4-5-20250929",
-		"content": [
-			{
-				"type": "text",
-				"text": "Hello, world!"
-			}
-		],
-		"stop_reason": "end_turn",
-		"usage": {
-			"input_tokens": 100,
-			"output_tokens": 50,
-			"cost_usd": 0.01
-		}
-	}`
-
-	// Variables to capture HTTPRecorder calls
-	var recorded bool
-	var recordedURL string
-	var recordedStatusCode int
-
-	// Create a service with a mock HTTP client and HTTPRecorder
-	client := &http.Client{
-		Transport: &mockHTTPTransport{responseBody: mockResponse, statusCode: 200},
-	}
-
-	s := &Service{
-		APIKey: "test-key",
-		HTTPC:  client,
-		HTTPRecorder: func(url string, payload, response []byte, statusCode int, err error, duration time.Duration) {
-			recorded = true
-			recordedURL = url
-			recordedStatusCode = statusCode
-		},
-	}
-
-	// Create a request
-	req := &llm.Request{
-		Messages: []llm.Message{
-			{
-				Role: llm.MessageRoleUser,
-				Content: []llm.Content{
-					{
-						Type: llm.ContentTypeText,
-						Text: "Hello, Claude!",
-					},
-				},
-			},
-		},
-	}
-
-	// Call Do
-	resp, err := s.Do(context.Background(), req)
-	if err != nil {
-		t.Fatalf("Do() error = %v, want nil", err)
-	}
-
-	// Check the response
-	if resp == nil {
-		t.Fatalf("Do() response = nil, want not nil")
-	}
-
-	// Check that HTTPRecorder was called
-	if !recorded {
-		t.Error("HTTPRecorder was not called")
-	}
-
-	if recordedURL == "" {
-		t.Error("HTTPRecorder did not record URL")
-	}
-
-	if recordedStatusCode != 200 {
-		t.Errorf("HTTPRecorder recordedStatusCode = %v, want %v", recordedStatusCode, 200)
-	}
-}
-
 func TestDoClientError(t *testing.T) {
 	// Create a mock HTTP client that returns a client error
 	mockResponse := `{"error": "bad request"}`
@@ -1164,65 +1082,6 @@ func TestDoClientError(t *testing.T) {
 
 	if resp != nil {
 		t.Errorf("Do() response = %v, want nil", resp)
-	}
-}
-
-func TestDoWithDumpLLM(t *testing.T) {
-	// Create a mock HTTP client that returns a predefined response
-	mockResponse := `{
-		"id": "msg_123",
-		"type": "message",
-		"role": "assistant",
-		"model": "claude-sonnet-4-5-20250929",
-		"content": [
-			{
-				"type": "text",
-				"text": "Hello, world!"
-			}
-		],
-		"stop_reason": "end_turn",
-		"usage": {
-			"input_tokens": 100,
-			"output_tokens": 50,
-			"cost_usd": 0.01
-		}
-	}`
-
-	// Create a service with a mock HTTP client and DumpLLM enabled
-	client := &http.Client{
-		Transport: &mockHTTPTransport{responseBody: mockResponse, statusCode: 200},
-	}
-
-	s := &Service{
-		APIKey:  "test-key",
-		HTTPC:   client,
-		DumpLLM: true,
-	}
-
-	// Create a request
-	req := &llm.Request{
-		Messages: []llm.Message{
-			{
-				Role: llm.MessageRoleUser,
-				Content: []llm.Content{
-					{
-						Type: llm.ContentTypeText,
-						Text: "Hello, Claude!",
-					},
-				},
-			},
-		},
-	}
-
-	// Call Do
-	resp, err := s.Do(context.Background(), req)
-	if err != nil {
-		t.Fatalf("Do() error = %v, want nil", err)
-	}
-
-	// Check the response
-	if resp == nil {
-		t.Fatalf("Do() response = nil, want not nil")
 	}
 }
 

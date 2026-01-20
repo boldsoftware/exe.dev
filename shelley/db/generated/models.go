@@ -19,6 +19,20 @@ type Conversation struct {
 	ParentConversationID *string   `json:"parent_conversation_id"`
 }
 
+type LlmRequest struct {
+	ID             int64     `json:"id"`
+	ConversationID *string   `json:"conversation_id"`
+	Model          string    `json:"model"`
+	Provider       string    `json:"provider"`
+	Url            string    `json:"url"`
+	RequestBody    *string   `json:"request_body"`
+	ResponseBody   *string   `json:"response_body"`
+	StatusCode     *int64    `json:"status_code"`
+	Error          *string   `json:"error"`
+	DurationMs     *int64    `json:"duration_ms"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
 type Message struct {
 	MessageID      string    `json:"message_id"`
 	ConversationID string    `json:"conversation_id"`

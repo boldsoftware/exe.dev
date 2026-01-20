@@ -689,3 +689,15 @@ func (a *SubagentDBAdapter) GetOrCreateSubagentConversation(ctx context.Context,
 
 	return "", "", fmt.Errorf("failed to create unique subagent slug after 100 attempts")
 }
+
+// InsertLLMRequest inserts a new LLM request record
+func (db *DB) InsertLLMRequest(ctx context.Context, params generated.InsertLLMRequestParams) (*generated.LlmRequest, error) {
+	var request generated.LlmRequest
+	err := db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		q := generated.New(tx.Conn())
+		var err error
+		request, err = q.InsertLLMRequest(ctx, params)
+		return err
+	})
+	return &request, err
+}

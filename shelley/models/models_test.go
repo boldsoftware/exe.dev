@@ -3,8 +3,8 @@ package models
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"testing"
-	"time"
 
 	"shelley.exe.dev/llm"
 )
@@ -95,7 +95,7 @@ func TestFactory(t *testing.T) {
 		t.Fatal("predictable model not found")
 	}
 
-	svc, err := m.Factory(cfg)
+	svc, err := m.Factory(cfg, nil)
 	if err != nil {
 		t.Fatalf("predictable Factory() failed: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestManagerGetAvailableModelsOrder(t *testing.T) {
 	cfg := &Config{}
 
 	// Create manager - should only have predictable model since no API keys
-	manager, err := NewManager(cfg, nil)
+	manager, err := NewManager(cfg)
 	if err != nil {
 		t.Fatalf("NewManager failed: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestManagerGetAvailableModelsMatchesAllOrder(t *testing.T) {
 		FireworksAPIKey: "test-key",
 	}
 
-	manager, err := NewManager(cfg, nil)
+	manager, err := NewManager(cfg)
 	if err != nil {
 		t.Fatalf("NewManager failed: %v", err)
 	}
@@ -176,80 +176,16 @@ func TestManagerGetAvailableModelsMatchesAllOrder(t *testing.T) {
 	}
 }
 
-func TestLLMRequestHistory(t *testing.T) {
-	// Test NewLLMRequestHistory
-	history := NewLLMRequestHistory(3)
-	if history == nil {
-		t.Fatal("NewLLMRequestHistory returned nil")
-	}
-
-	// Test Add and GetRecords
-	record1 := LLMRequestRecord{
-		Timestamp: time.Now(),
-		ModelID:   "test-model-1",
-		URL:       "http://test.com/1",
-	}
-
-	record2 := LLMRequestRecord{
-		Timestamp: time.Now(),
-		ModelID:   "test-model-2",
-		URL:       "http://test.com/2",
-	}
-
-	history.Add(record1)
-	history.Add(record2)
-
-	records := history.GetRecords()
-	if len(records) != 2 {
-		t.Errorf("Expected 2 records, got %d", len(records))
-	}
-
-	if records[0].ModelID != "test-model-1" {
-		t.Errorf("Expected first record model ID 'test-model-1', got %s", records[0].ModelID)
-	}
-
-	if records[1].ModelID != "test-model-2" {
-		t.Errorf("Expected second record model ID 'test-model-2', got %s", records[1].ModelID)
-	}
-
-	// Test circular buffer behavior
-	record3 := LLMRequestRecord{
-		Timestamp: time.Now(),
-		ModelID:   "test-model-3",
-		URL:       "http://test.com/3",
-	}
-
-	record4 := LLMRequestRecord{
-		Timestamp: time.Now(),
-		ModelID:   "test-model-4",
-		URL:       "http://test.com/4",
-	}
-
-	history.Add(record3)
-	history.Add(record4) // This should remove record1
-
-	records = history.GetRecords()
-	if len(records) != 3 {
-		t.Errorf("Expected 3 records (circular buffer), got %d", len(records))
-	}
-
-	// First record should now be record2 (record1 was removed)
-	if records[0].ModelID != "test-model-2" {
-		t.Errorf("Expected first record model ID 'test-model-2', got %s", records[0].ModelID)
-	}
-}
-
-func TestHistoryRecordingService(t *testing.T) {
+func TestLoggingService(t *testing.T) {
 	// Create a mock service for testing
 	mockService := &mockLLMService{}
-	history := NewLLMRequestHistory(10)
 	logger := slog.Default()
 
 	loggingSvc := &loggingService{
-		service: mockService,
-		logger:  logger,
-		modelID: "test-model",
-		history: history,
+		service:  mockService,
+		logger:   logger,
+		modelID:  "test-model",
+		provider: ProviderBuiltIn,
 	}
 
 	// Test Do method
@@ -327,9 +263,8 @@ func (m *mockLLMService) UseSimplifiedPatch() bool {
 func TestManagerGetService(t *testing.T) {
 	// Test with predictable model (no API keys needed)
 	cfg := &Config{}
-	history := NewLLMRequestHistory(10)
 
-	manager, err := NewManager(cfg, history)
+	manager, err := NewManager(cfg)
 	if err != nil {
 		t.Fatalf("NewManager failed: %v", err)
 	}
@@ -350,25 +285,10 @@ func TestManagerGetService(t *testing.T) {
 	}
 }
 
-func TestManagerGetHistory(t *testing.T) {
-	cfg := &Config{}
-	history := NewLLMRequestHistory(5)
-
-	manager, err := NewManager(cfg, history)
-	if err != nil {
-		t.Fatalf("NewManager failed: %v", err)
-	}
-
-	retrievedHistory := manager.GetHistory()
-	if retrievedHistory != history {
-		t.Error("GetHistory did not return the expected history instance")
-	}
-}
-
 func TestManagerHasModel(t *testing.T) {
 	cfg := &Config{}
 
-	manager, err := NewManager(cfg, nil)
+	manager, err := NewManager(cfg)
 	if err != nil {
 		t.Fatalf("NewManager failed: %v", err)
 	}
@@ -420,14 +340,13 @@ func TestConfigGetURLMethods(t *testing.T) {
 func TestUseSimplifiedPatch(t *testing.T) {
 	// Test with a service that doesn't implement SimplifiedPatcher
 	mockService := &mockLLMService{}
-	history := NewLLMRequestHistory(10)
 	logger := slog.Default()
 
 	loggingSvc := &loggingService{
-		service: mockService,
-		logger:  logger,
-		modelID: "test-model",
-		history: history,
+		service:  mockService,
+		logger:   logger,
+		modelID:  "test-model",
+		provider: ProviderBuiltIn,
 	}
 
 	// Should return false since mockService doesn't implement SimplifiedPatcher
@@ -439,10 +358,10 @@ func TestUseSimplifiedPatch(t *testing.T) {
 	// Test with a service that implements SimplifiedPatcher
 	mockSimplifiedService := &mockSimplifiedLLMService{useSimplified: true}
 	loggingSvc2 := &loggingService{
-		service: mockSimplifiedService,
-		logger:  logger,
-		modelID: "test-model-2",
-		history: history,
+		service:  mockSimplifiedService,
+		logger:   logger,
+		modelID:  "test-model-2",
+		provider: ProviderBuiltIn,
 	}
 
 	// Should return true since mockSimplifiedService implements SimplifiedPatcher and returns true
@@ -460,4 +379,28 @@ type mockSimplifiedLLMService struct {
 
 func (m *mockSimplifiedLLMService) UseSimplifiedPatch() bool {
 	return m.useSimplified
+}
+
+func TestHTTPClientPassedToFactory(t *testing.T) {
+	// Test that HTTP client is passed to factory and used by services
+	cfg := &Config{
+		AnthropicAPIKey: "test-key",
+	}
+
+	// Create a custom HTTP client
+	customClient := &http.Client{}
+
+	// Test that claude factory accepts HTTP client
+	m := ByID("claude-opus-4.5")
+	if m == nil {
+		t.Fatal("claude-opus-4.5 model not found")
+	}
+
+	svc, err := m.Factory(cfg, customClient)
+	if err != nil {
+		t.Fatalf("Factory with custom HTTP client failed: %v", err)
+	}
+	if svc == nil {
+		t.Fatal("Factory returned nil service")
+	}
 }

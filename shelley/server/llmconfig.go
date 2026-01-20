@@ -1,6 +1,10 @@
 package server
 
-import "log/slog"
+import (
+	"log/slog"
+
+	"shelley.exe.dev/db"
+)
 
 // Link represents a custom link to be displayed in the UI
 type Link struct {
@@ -28,6 +32,9 @@ type LLMConfig struct {
 
 	// Links are custom links to be displayed in the UI (optional)
 	Links []Link
+
+	// DB is the database for recording LLM requests (optional)
+	DB *db.DB
 
 	Logger *slog.Logger
 }

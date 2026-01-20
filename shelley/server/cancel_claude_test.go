@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -53,10 +55,18 @@ func NewClaudeTestHarness(t *testing.T) *ClaudeTestHarness {
 		requestTokens: make([]uint64, 0),
 	}
 
+	// Create HTTP client with custom transport for token tracking
+	httpc := &http.Client{
+		Transport: &tokenTrackingTransport{
+			base:        http.DefaultTransport,
+			recordToken: h.recordHTTPResponse,
+		},
+	}
+
 	service := &ant.Service{
-		APIKey:       apiKey,
-		Model:        ant.Claude45Haiku, // Use cheaper model for testing
-		HTTPRecorder: h.recordHTTPRequest,
+		APIKey: apiKey,
+		Model:  ant.Claude45Haiku, // Use cheaper model for testing
+		HTTPC:  httpc,
 	}
 	h.llmService = service
 
@@ -75,9 +85,30 @@ func NewClaudeTestHarness(t *testing.T) *ClaudeTestHarness {
 	return h
 }
 
-// recordHTTPRequest is a callback to record HTTP requests for token tracking
-func (h *ClaudeTestHarness) recordHTTPRequest(url string, requestBody, responseBody []byte, statusCode int, err error, duration time.Duration) {
-	h.t.Logf("HTTP callback: status=%d, err=%v, responseLen=%d", statusCode, err, len(responseBody))
+// tokenTrackingTransport wraps an HTTP transport to track token usage from responses
+type tokenTrackingTransport struct {
+	base        http.RoundTripper
+	recordToken func(responseBody []byte, statusCode int)
+}
+
+func (t *tokenTrackingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+
+	// Read and restore the response body
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+
+	t.recordToken(body, resp.StatusCode)
+	return resp, nil
+}
+
+// recordHTTPResponse is a callback to record HTTP responses for token tracking
+func (h *ClaudeTestHarness) recordHTTPResponse(responseBody []byte, statusCode int) {
+	h.t.Logf("HTTP callback: status=%d, responseLen=%d", statusCode, len(responseBody))
 
 	if statusCode != http.StatusOK || responseBody == nil {
 		return

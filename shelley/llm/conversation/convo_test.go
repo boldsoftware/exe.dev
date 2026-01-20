@@ -25,6 +25,8 @@ func TestBasicConvo(t *testing.T) {
 	}
 	rr.ScrubReq(func(req *http.Request) error {
 		req.Header.Del("x-api-key")
+		req.Header.Del("User-Agent")
+		req.Header.Del("Shelley-Conversation-Id")
 		return nil
 	})
 
