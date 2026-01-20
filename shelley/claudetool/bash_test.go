@@ -536,6 +536,78 @@ func TestBashTimeout(t *testing.T) {
 	})
 }
 
+func TestFormatForegroundBashOutput(t *testing.T) {
+	// Test small output (under threshold) - should pass through unchanged
+	t.Run("Small Output", func(t *testing.T) {
+		smallOutput := "line 1\nline 2\nline 3\n"
+		result, err := formatForegroundBashOutput(smallOutput)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if result != smallOutput {
+			t.Errorf("Expected small output to pass through unchanged, got %q", result)
+		}
+	})
+
+	// Test large output (over 50KB) - should save to file and return summary
+	t.Run("Large Output With Lines", func(t *testing.T) {
+		// Generate output > 50KB with many lines
+		var lines []string
+		for i := 1; i <= 1000; i++ {
+			lines = append(lines, strings.Repeat("x", 60)+" line "+string(rune('0'+i%10)))
+		}
+		largeOutput := strings.Join(lines, "\n")
+		if len(largeOutput) < largeOutputThreshold {
+			t.Fatalf("Test setup error: output is only %d bytes, need > %d", len(largeOutput), largeOutputThreshold)
+		}
+
+		result, err := formatForegroundBashOutput(largeOutput)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		// Should mention the file
+		if !strings.Contains(result, "saved to:") {
+			t.Errorf("Expected result to mention saved file, got:\n%s", result)
+		}
+
+		// Should have first 2 lines numbered
+		if !strings.Contains(result, "    1:") || !strings.Contains(result, "    2:") {
+			t.Errorf("Expected first 2 numbered lines, got:\n%s", result)
+		}
+
+		// Should have last 5 lines numbered
+		if !strings.Contains(result, "  996:") || !strings.Contains(result, " 1000:") {
+			t.Errorf("Expected last 5 numbered lines, got:\n%s", result)
+		}
+
+		t.Logf("Large output result:\n%s", result)
+	})
+
+	// Test large output with few/no lines (binary-like)
+	t.Run("Large Output No Lines", func(t *testing.T) {
+		// Generate > 50KB of data with no newlines
+		largeOutput := strings.Repeat("x", largeOutputThreshold+1000)
+
+		result, err := formatForegroundBashOutput(largeOutput)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		// Should mention the file
+		if !strings.Contains(result, "saved to:") {
+			t.Errorf("Expected result to mention saved file, got:\n%s", result)
+		}
+
+		// Should indicate line count
+		if !strings.Contains(result, "1 lines") {
+			t.Errorf("Expected result to indicate line count, got:\n%s", result)
+		}
+
+		t.Logf("Large binary-like output result:\n%s", result)
+	})
+}
+
 // waitForFile waits for a file to exist and be non-empty or times out
 func waitForFile(t *testing.T, filepath string) {
 	timeout := time.After(5 * time.Second)

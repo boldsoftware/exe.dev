@@ -224,7 +224,11 @@ func (b *BashTool) Run(ctx context.Context, m json.RawMessage) llm.ToolOut {
 	return llm.ToolOut{LLMContent: llm.TextContent(out), Display: display}
 }
 
-const maxBashOutputLength = 131072
+const (
+	largeOutputThreshold = 50 * 1024 // 50KB - threshold for saving to file
+	firstLinesCount      = 2
+	lastLinesCount       = 5
+)
 
 func (b *BashTool) makeBashCommand(ctx context.Context, command string, out io.Writer) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "bash", "-c", command)
@@ -281,8 +285,10 @@ func (b *BashTool) executeBash(ctx context.Context, req bashInput, timeout time.
 
 	err := cmdWait(cmd)
 
-	out := output.String()
-	out = formatForegroundBashOutput(out)
+	out, formatErr := formatForegroundBashOutput(output.String())
+	if formatErr != nil {
+		return "", formatErr
+	}
 
 	if execCtx.Err() == context.DeadlineExceeded {
 		return "", fmt.Errorf("[command timed out after %s, showing output until timeout]\n%s", timeout, out)
@@ -295,15 +301,52 @@ func (b *BashTool) executeBash(ctx context.Context, req bashInput, timeout time.
 }
 
 // formatForegroundBashOutput formats the output of a foreground bash command for display to the agent.
-func formatForegroundBashOutput(out string) string {
-	if len(out) > maxBashOutputLength {
-		const snipSize = 4096
-		out = fmt.Sprintf("[output truncated in middle: got %v, max is %v]\n%s\n\n[snip]\n\n%s",
-			humanizeBytes(len(out)), humanizeBytes(maxBashOutputLength),
-			out[:snipSize], out[len(out)-snipSize:],
-		)
+// If output exceeds largeOutputThreshold, it saves to a file and returns a summary.
+func formatForegroundBashOutput(out string) (string, error) {
+	if len(out) <= largeOutputThreshold {
+		return out, nil
 	}
-	return out
+
+	// Save full output to a temp file
+	tmpDir, err := os.MkdirTemp("", "shelley-output-")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp dir for large output: %w", err)
+	}
+
+	outFile := filepath.Join(tmpDir, "output")
+	if err := os.WriteFile(outFile, []byte(out), 0o644); err != nil {
+		os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("failed to write large output to file: %w", err)
+	}
+
+	// Split into lines
+	lines := strings.Split(out, "\n")
+
+	// If fewer than 3 lines total, likely binary or single-line output
+	if len(lines) < 3 {
+		return fmt.Sprintf("[output too large (%s, %d lines), saved to: %s]",
+			humanizeBytes(len(out)), len(lines), outFile), nil
+	}
+
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("[output too large (%s, %d lines), saved to: %s]\n\n",
+		humanizeBytes(len(out)), len(lines), outFile))
+
+	// First N lines
+	result.WriteString("First lines:\n")
+	firstN := min(firstLinesCount, len(lines))
+	for i := 0; i < firstN; i++ {
+		result.WriteString(fmt.Sprintf("%5d: %s\n", i+1, lines[i]))
+	}
+
+	// Last N lines
+	result.WriteString("\n...\n\nLast lines:\n")
+	startIdx := max(0, len(lines)-lastLinesCount)
+	for i := startIdx; i < len(lines); i++ {
+		result.WriteString(fmt.Sprintf("%5d: %s\n", i+1, lines[i]))
+	}
+
+	return result.String(), nil
 }
 
 func humanizeBytes(bytes int) string {
