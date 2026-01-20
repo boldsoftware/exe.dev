@@ -72,6 +72,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countDevUsersStmt, err = db.PrepareContext(ctx, countDevUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query CountDevUsers: %w", err)
 	}
+	if q.countEmailBouncesStmt, err = db.PrepareContext(ctx, countEmailBounces); err != nil {
+		return nil, fmt.Errorf("error preparing query CountEmailBounces: %w", err)
+	}
 	if q.countIPShardsStmt, err = db.PrepareContext(ctx, countIPShards); err != nil {
 		return nil, fmt.Errorf("error preparing query CountIPShards: %w", err)
 	}
@@ -134,6 +137,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteBoxShareLinkByBoxAndTokenStmt, err = db.PrepareContext(ctx, deleteBoxShareLinkByBoxAndToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBoxShareLinkByBoxAndToken: %w", err)
+	}
+	if q.deleteEmailBounceStmt, err = db.PrepareContext(ctx, deleteEmailBounce); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteEmailBounce: %w", err)
 	}
 	if q.deleteEmailQualityBypassStmt, err = db.PrepareContext(ctx, deleteEmailQualityBypass); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEmailQualityBypass: %w", err)
@@ -486,6 +492,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAllUsersStmt, err = db.PrepareContext(ctx, listAllUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllUsers: %w", err)
 	}
+	if q.listEmailBouncesStmt, err = db.PrepareContext(ctx, listEmailBounces); err != nil {
+		return nil, fmt.Errorf("error preparing query ListEmailBounces: %w", err)
+	}
 	if q.listEmailQualityBypassStmt, err = db.PrepareContext(ctx, listEmailQualityBypass); err != nil {
 		return nil, fmt.Errorf("error preparing query ListEmailQualityBypass: %w", err)
 	}
@@ -706,6 +715,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing countDevUsersStmt: %w", cerr)
 		}
 	}
+	if q.countEmailBouncesStmt != nil {
+		if cerr := q.countEmailBouncesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countEmailBouncesStmt: %w", cerr)
+		}
+	}
 	if q.countIPShardsStmt != nil {
 		if cerr := q.countIPShardsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countIPShardsStmt: %w", cerr)
@@ -809,6 +823,11 @@ func (q *Queries) Close() error {
 	if q.deleteBoxShareLinkByBoxAndTokenStmt != nil {
 		if cerr := q.deleteBoxShareLinkByBoxAndTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteBoxShareLinkByBoxAndTokenStmt: %w", cerr)
+		}
+	}
+	if q.deleteEmailBounceStmt != nil {
+		if cerr := q.deleteEmailBounceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteEmailBounceStmt: %w", cerr)
 		}
 	}
 	if q.deleteEmailQualityBypassStmt != nil {
@@ -1396,6 +1415,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAllUsersStmt: %w", cerr)
 		}
 	}
+	if q.listEmailBouncesStmt != nil {
+		if cerr := q.listEmailBouncesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listEmailBouncesStmt: %w", cerr)
+		}
+	}
 	if q.listEmailQualityBypassStmt != nil {
 		if cerr := q.listEmailQualityBypassStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listEmailQualityBypassStmt: %w", cerr)
@@ -1676,6 +1700,7 @@ type Queries struct {
 	countBoxesStmt                             *sql.Stmt
 	countBoxesForUserStmt                      *sql.Stmt
 	countDevUsersStmt                          *sql.Stmt
+	countEmailBouncesStmt                      *sql.Stmt
 	countIPShardsStmt                          *sql.Stmt
 	countInviteCodePoolStmt                    *sql.Stmt
 	countLoginUsersStmt                        *sql.Stmt
@@ -1697,6 +1722,7 @@ type Queries struct {
 	deleteBoxIPShardStmt                       *sql.Stmt
 	deleteBoxShareByBoxAndUserStmt             *sql.Stmt
 	deleteBoxShareLinkByBoxAndTokenStmt        *sql.Stmt
+	deleteEmailBounceStmt                      *sql.Stmt
 	deleteEmailQualityBypassStmt               *sql.Stmt
 	deleteEmailVerificationByTokenStmt         *sql.Stmt
 	deleteExpiredPendingRegistrationsStmt      *sql.Stmt
@@ -1814,6 +1840,7 @@ type Queries struct {
 	listAllInviteCodesWithEmailsStmt           *sql.Stmt
 	listAllUserLLMCreditsStmt                  *sql.Stmt
 	listAllUsersStmt                           *sql.Stmt
+	listEmailBouncesStmt                       *sql.Stmt
 	listEmailQualityBypassStmt                 *sql.Stmt
 	listIPShardsStmt                           *sql.Stmt
 	listIPShardsForUserStmt                    *sql.Stmt
@@ -1881,6 +1908,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countBoxesStmt:                             q.countBoxesStmt,
 		countBoxesForUserStmt:                      q.countBoxesForUserStmt,
 		countDevUsersStmt:                          q.countDevUsersStmt,
+		countEmailBouncesStmt:                      q.countEmailBouncesStmt,
 		countIPShardsStmt:                          q.countIPShardsStmt,
 		countInviteCodePoolStmt:                    q.countInviteCodePoolStmt,
 		countLoginUsersStmt:                        q.countLoginUsersStmt,
@@ -1902,6 +1930,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteBoxIPShardStmt:                       q.deleteBoxIPShardStmt,
 		deleteBoxShareByBoxAndUserStmt:             q.deleteBoxShareByBoxAndUserStmt,
 		deleteBoxShareLinkByBoxAndTokenStmt:        q.deleteBoxShareLinkByBoxAndTokenStmt,
+		deleteEmailBounceStmt:                      q.deleteEmailBounceStmt,
 		deleteEmailQualityBypassStmt:               q.deleteEmailQualityBypassStmt,
 		deleteEmailVerificationByTokenStmt:         q.deleteEmailVerificationByTokenStmt,
 		deleteExpiredPendingRegistrationsStmt:      q.deleteExpiredPendingRegistrationsStmt,
@@ -2019,6 +2048,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAllInviteCodesWithEmailsStmt:           q.listAllInviteCodesWithEmailsStmt,
 		listAllUserLLMCreditsStmt:                  q.listAllUserLLMCreditsStmt,
 		listAllUsersStmt:                           q.listAllUsersStmt,
+		listEmailBouncesStmt:                       q.listEmailBouncesStmt,
 		listEmailQualityBypassStmt:                 q.listEmailQualityBypassStmt,
 		listIPShardsStmt:                           q.listIPShardsStmt,
 		listIPShardsForUserStmt:                    q.listIPShardsForUserStmt,

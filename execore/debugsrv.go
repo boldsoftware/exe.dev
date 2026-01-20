@@ -71,6 +71,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/invite", s.handleDebugInvitePost)
 	mux.HandleFunc("/debug/all-invite-codes", s.handleDebugAllInviteCodes)
 	mux.HandleFunc("/debug/invite-tree", s.handleDebugInviteTree)
+	mux.HandleFunc("/debug/bounces", s.handleDebugBounces)
+	mux.HandleFunc("POST /debug/bounces", s.handleDebugBouncesPost)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -2640,4 +2642,112 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 	if err := tmpl.ExecuteTemplate(w, "user.html", data); err != nil {
 		s.slog().ErrorContext(ctx, "failed to execute user template", "error", err)
 	}
+}
+
+// handleDebugBounces displays the email bounces list.
+func (s *Server) handleDebugBounces(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	bounces, err := withRxRes0(s, ctx, (*exedb.Queries).ListEmailBounces)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get bounces: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Get total count
+	totalCount, err := withRxRes0(s, ctx, (*exedb.Queries).CountEmailBounces)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get bounce count: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Get last poll time
+	var lastPollTime string
+	lastPoll, err := withRxRes0(s, ctx, (*exedb.Queries).GetLastBouncesPoll)
+	if err == nil {
+		lastPollTime = lastPoll
+	}
+
+	// JSON response
+	if r.URL.Query().Get("format") == "json" {
+		w.Header().Set("Content-Type", "application/json")
+		type bounceJSON struct {
+			Email     string `json:"email"`
+			Reason    string `json:"reason"`
+			BouncedAt string `json:"bounced_at"`
+		}
+		var result []bounceJSON
+		for _, b := range bounces {
+			result = append(result, bounceJSON{
+				Email:     b.Email,
+				Reason:    b.Reason,
+				BouncedAt: formatTime(b.BouncedAt),
+			})
+		}
+		json.NewEncoder(w).Encode(result)
+		return
+	}
+
+	// Build template data
+	type bounceInfo struct {
+		Email     string
+		Reason    string
+		BouncedAt string
+	}
+	var bounceList []bounceInfo
+	for _, b := range bounces {
+		bounceList = append(bounceList, bounceInfo{
+			Email:     b.Email,
+			Reason:    b.Reason,
+			BouncedAt: formatTime(b.BouncedAt),
+		})
+	}
+
+	data := struct {
+		Bounces      []bounceInfo
+		TotalCount   int64
+		LastPollTime string
+	}{
+		Bounces:      bounceList,
+		TotalCount:   totalCount,
+		LastPollTime: lastPollTime,
+	}
+
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, "bounces.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute bounces template", "error", err)
+	}
+}
+
+// handleDebugBouncesPost handles POST actions on the bounces page.
+func (s *Server) handleDebugBouncesPost(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	action := r.FormValue("action")
+	email := r.FormValue("email")
+
+	switch action {
+	case "delete":
+		if email == "" {
+			http.Error(w, "email required", http.StatusBadRequest)
+			return
+		}
+		err := withTx1(s, ctx, (*exedb.Queries).DeleteEmailBounce, email)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to delete bounce: %v", err), http.StatusInternalServerError)
+			return
+		}
+		s.slog().InfoContext(ctx, "deleted email bounce via debug", "email", email)
+	default:
+		http.Error(w, "unknown action", http.StatusBadRequest)
+		return
+	}
+
+	http.Redirect(w, r, "/debug/bounces", http.StatusSeeOther)
 }

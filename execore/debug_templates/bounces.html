@@ -1,0 +1,84 @@
+<!doctype html>
+<html><head><title>Email Bounces</title>
+<link rel="stylesheet" href="/static/datatables.min.css">
+<script src="/static/jquery.min.js"></script>
+<script src="/static/datatables.min.js"></script>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
+h1 { margin-bottom: 10px; }
+.stats { margin: 10px 0; padding: 10px; background: #f5f5f5; border-radius: 5px; }
+#bouncesTable { width: 100%; }
+#bouncesTable td, #bouncesTable th { font-size: 13px; }
+#bouncesTable thead tr.filters th { padding: 4px; }
+#bouncesTable thead tr.filters input { width: 100%; box-sizing: border-box; font-size: 11px; padding: 4px; }
+.delete-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; }
+.delete-btn:hover { background: #c82333; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+</head><body>
+<h1>Email Bounces</h1>
+<p><a href="/debug">/debug</a> | <a href="/debug/bounces?format=json">json</a></p>
+
+<div class="stats">
+<strong>Total bounces:</strong> {{.TotalCount}} |
+<strong>Last poll:</strong> {{if .LastPollTime}}{{.LastPollTime}}{{else}}never{{end}}
+</div>
+
+<table id="bouncesTable" class="display stripe hover">
+<thead>
+<tr>
+<th>Email</th>
+<th>Reason</th>
+<th>Bounced At</th>
+<th>Actions</th>
+</tr>
+<tr class="filters">
+<th><input type="text" placeholder="Email"></th>
+<th><input type="text" placeholder="Reason"></th>
+<th><input type="text" placeholder="Bounced At"></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+{{range .Bounces}}
+<tr>
+<td>{{.Email}}</td>
+<td>{{.Reason}}</td>
+<td>{{.BouncedAt}}</td>
+<td>
+<form method="post" action="/debug/bounces" style="display:inline;">
+<input type="hidden" name="action" value="delete">
+<input type="hidden" name="email" value="{{.Email}}">
+<button type="submit" class="delete-btn" onclick="return confirm('Remove bounce record for {{.Email}}?')">Remove</button>
+</form>
+</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+
+<script>
+$(document).ready(function() {
+    var table = $('#bouncesTable').DataTable({
+        pageLength: 100,
+        lengthMenu: [[25, 50, 100, 250, -1], [25, 50, 100, 250, "All"]],
+        order: [[2, 'desc']],
+        orderCellsTop: true,
+        columnDefs: [
+            { orderable: false, targets: 3 }
+        ]
+    });
+
+    // Column filtering
+    $('#bouncesTable thead tr.filters th input').each(function(idx) {
+        $(this).on('keyup change clear', function() {
+            var column = table.column(idx);
+            if (column.search() !== this.value) {
+                column.search(this.value).draw();
+            }
+        });
+    });
+});
+</script>
+</body></html>

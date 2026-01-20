@@ -9,6 +9,26 @@ import (
 	"context"
 )
 
+const countEmailBounces = `-- name: CountEmailBounces :one
+SELECT COUNT(*) FROM email_bounces
+`
+
+func (q *Queries) CountEmailBounces(ctx context.Context) (int64, error) {
+	row := q.queryRow(ctx, q.countEmailBouncesStmt, countEmailBounces)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const deleteEmailBounce = `-- name: DeleteEmailBounce :exec
+DELETE FROM email_bounces WHERE email = ?
+`
+
+func (q *Queries) DeleteEmailBounce(ctx context.Context, email string) error {
+	_, err := q.exec(ctx, q.deleteEmailBounceStmt, deleteEmailBounce, email)
+	return err
+}
+
 const getEmailBounce = `-- name: GetEmailBounce :one
 SELECT email, reason, bounced_at FROM email_bounces WHERE email = ?
 `
@@ -43,4 +63,31 @@ func (q *Queries) IsEmailBounced(ctx context.Context, email string) (int64, erro
 	var bounced int64
 	err := row.Scan(&bounced)
 	return bounced, err
+}
+
+const listEmailBounces = `-- name: ListEmailBounces :many
+SELECT email, reason, bounced_at FROM email_bounces ORDER BY bounced_at DESC
+`
+
+func (q *Queries) ListEmailBounces(ctx context.Context) ([]EmailBounce, error) {
+	rows, err := q.query(ctx, q.listEmailBouncesStmt, listEmailBounces)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EmailBounce{}
+	for rows.Next() {
+		var i EmailBounce
+		if err := rows.Scan(&i.Email, &i.Reason, &i.BouncedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
