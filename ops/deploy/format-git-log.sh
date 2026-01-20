@@ -18,6 +18,7 @@ BEGIN {
     name["Shaun Loo"] = "Shaun"
 }
 {
+    if ($3 ~ /fix formatting/) next
     author = $2
     first = (author in name) ? name[author] : author
     printf "%s  %-6s  %s\n", $1, first, $3
