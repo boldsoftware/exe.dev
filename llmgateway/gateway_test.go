@@ -640,3 +640,28 @@ type readCloser struct {
 func (rc *readCloser) Close() error {
 	return nil
 }
+
+func TestParseShelleyVersion(t *testing.T) {
+	tests := []struct {
+		userAgent string
+		want      string
+	}{
+		{"Shelley/abcd1234", "abcd1234"},
+		{"Shelley/abcd1234 other-stuff", "abcd1234"},
+		{"Shelley/", ""},
+		{"Mozilla/5.0", ""},
+		{"", ""},
+		{"shelley/abcd1234", ""}, // case-sensitive
+		{"Shelley/v1.0.0-beta", "v1.0.0-beta"},
+		{"Shelley/abc123 (Linux; x86_64)", "abc123"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.userAgent, func(t *testing.T) {
+			got := parseShelleyVersion(tt.userAgent)
+			if got != tt.want {
+				t.Errorf("parseShelleyVersion(%q) = %q, want %q", tt.userAgent, got, tt.want)
+			}
+		})
+	}
+}

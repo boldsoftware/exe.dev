@@ -17,6 +17,7 @@ import (
 	"exe.dev/sqlite"
 	"exe.dev/stage"
 	"github.com/prometheus/client_golang/prometheus"
+	sloghttp "github.com/samber/slog-http"
 	"tailscale.com/net/tsaddr"
 )
 
@@ -175,6 +176,20 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Strip the header before forwarding
 	r.Header.Del("X-Exedev-Box")
+
+	// Extract Shelley conversation ID and version for logging
+	conversationID := r.Header.Get("Shelley-Conversation-Id")
+	userAgent := r.Header.Get("User-Agent")
+	shelleyVersion := parseShelleyVersion(userAgent)
+	if conversationID != "" {
+		sloghttp.AddCustomAttributes(r, slog.String("conversation_id", conversationID))
+	}
+	if userAgent != "" {
+		sloghttp.AddCustomAttributes(r, slog.String("user_agent", userAgent))
+	}
+	if shelleyVersion != "" {
+		sloghttp.AddCustomAttributes(r, slog.String("shelley_version", shelleyVersion))
+	}
 
 	// Handle /ready endpoint after authentication
 	// This ensures /ready validates that auth is working correctly
@@ -348,4 +363,19 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, us
 	}
 
 	return proxy, transport, nil
+}
+
+// parseShelleyVersion extracts the version from a User-Agent header like "Shelley/abcd1234".
+// Returns an empty string if the User-Agent doesn't match the expected format.
+func parseShelleyVersion(userAgent string) string {
+	const prefix = "Shelley/"
+	if !strings.HasPrefix(userAgent, prefix) {
+		return ""
+	}
+	version := strings.TrimPrefix(userAgent, prefix)
+	// The version might have additional content after a space (e.g., "Shelley/abcd1234 other-stuff")
+	if idx := strings.Index(version, " "); idx != -1 {
+		version = version[:idx]
+	}
+	return version
 }
