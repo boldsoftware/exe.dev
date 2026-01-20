@@ -37,13 +37,10 @@ func (v *VMM) State(ctx context.Context, id string) (api.VMState, error) {
 		// Check error string for EOF-related messages
 		// The HTTP client may wrap these in ways that errors.Is doesn't catch
 		errStr := err.Error()
-		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
-			errors.Is(err, io.ErrClosedPipe) ||
-			errStr == "EOF" || errStr == "unexpected EOF" ||
+		if errStr == "EOF" || errStr == "unexpected EOF" ||
 			strings.Contains(errStr, "EOF") || strings.Contains(errStr, "connection reset") {
 			return api.VMState_STOPPED, nil
 		}
-
 		// check for connect error and assume stopped if missing
 		if isNotConnected(err) {
 			return api.VMState_STOPPED, nil
