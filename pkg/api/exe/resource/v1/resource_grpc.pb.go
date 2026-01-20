@@ -19,10 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion8
 
 const (
-	ResourceManagerService_GetNodeStatus_FullMethodName = "/exe.resource.v1.ResourceManagerService/GetNodeStatus"
-	ResourceManagerService_GetVMUsage_FullMethodName    = "/exe.resource.v1.ResourceManagerService/GetVMUsage"
-	ResourceManagerService_ListVMUsage_FullMethodName   = "/exe.resource.v1.ResourceManagerService/ListVMUsage"
-	ResourceManagerService_SetVMPriority_FullMethodName = "/exe.resource.v1.ResourceManagerService/SetVMPriority"
+	ResourceManagerService_GetNodeStatus_FullMethodName   = "/exe.resource.v1.ResourceManagerService/GetNodeStatus"
+	ResourceManagerService_GetVMUsage_FullMethodName      = "/exe.resource.v1.ResourceManagerService/GetVMUsage"
+	ResourceManagerService_ListVMUsage_FullMethodName     = "/exe.resource.v1.ResourceManagerService/ListVMUsage"
+	ResourceManagerService_SetVMPriority_FullMethodName   = "/exe.resource.v1.ResourceManagerService/SetVMPriority"
+	ResourceManagerService_GetMachineUsage_FullMethodName = "/exe.resource.v1.ResourceManagerService/GetMachineUsage"
+	ResourceManagerService_SetMachineUsage_FullMethodName = "/exe.resource.v1.ResourceManagerService/SetMachineUsage"
 )
 
 // ResourceManagerServiceClient is the client API for ResourceManagerService service.
@@ -37,6 +39,10 @@ type ResourceManagerServiceClient interface {
 	ListVMUsage(ctx context.Context, in *ListVMUsageRequest, opts ...grpc.CallOption) (ResourceManagerService_ListVMUsageClient, error)
 	// SetVMPriority manually sets priority for a VM
 	SetVMPriority(ctx context.Context, in *SetVMPriorityRequest, opts ...grpc.CallOption) (*SetVMPriorityResponse, error)
+	// GetMachineUsage returns current usage stats for host machine
+	GetMachineUsage(ctx context.Context, in *GetMachineUsageRequest, opts ...grpc.CallOption) (*GetMachineUsageResponse, error)
+	// SetMachineUsage sets the reported usage, for testing.
+	SetMachineUsage(ctx context.Context, in *SetMachineUsageRequest, opts ...grpc.CallOption) (*SetMachineUsageResponse, error)
 }
 
 type resourceManagerServiceClient struct {
@@ -110,6 +116,26 @@ func (c *resourceManagerServiceClient) SetVMPriority(ctx context.Context, in *Se
 	return out, nil
 }
 
+func (c *resourceManagerServiceClient) GetMachineUsage(ctx context.Context, in *GetMachineUsageRequest, opts ...grpc.CallOption) (*GetMachineUsageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetMachineUsageResponse)
+	err := c.cc.Invoke(ctx, ResourceManagerService_GetMachineUsage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *resourceManagerServiceClient) SetMachineUsage(ctx context.Context, in *SetMachineUsageRequest, opts ...grpc.CallOption) (*SetMachineUsageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetMachineUsageResponse)
+	err := c.cc.Invoke(ctx, ResourceManagerService_SetMachineUsage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ResourceManagerServiceServer is the server API for ResourceManagerService service.
 // All implementations must embed UnimplementedResourceManagerServiceServer
 // for forward compatibility
@@ -122,6 +148,10 @@ type ResourceManagerServiceServer interface {
 	ListVMUsage(*ListVMUsageRequest, ResourceManagerService_ListVMUsageServer) error
 	// SetVMPriority manually sets priority for a VM
 	SetVMPriority(context.Context, *SetVMPriorityRequest) (*SetVMPriorityResponse, error)
+	// GetMachineUsage returns current usage stats for host machine
+	GetMachineUsage(context.Context, *GetMachineUsageRequest) (*GetMachineUsageResponse, error)
+	// SetMachineUsage sets the reported usage, for testing.
+	SetMachineUsage(context.Context, *SetMachineUsageRequest) (*SetMachineUsageResponse, error)
 	mustEmbedUnimplementedResourceManagerServiceServer()
 }
 
@@ -140,6 +170,12 @@ func (UnimplementedResourceManagerServiceServer) ListVMUsage(*ListVMUsageRequest
 }
 func (UnimplementedResourceManagerServiceServer) SetVMPriority(context.Context, *SetVMPriorityRequest) (*SetVMPriorityResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetVMPriority not implemented")
+}
+func (UnimplementedResourceManagerServiceServer) GetMachineUsage(context.Context, *GetMachineUsageRequest) (*GetMachineUsageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMachineUsage not implemented")
+}
+func (UnimplementedResourceManagerServiceServer) SetMachineUsage(context.Context, *SetMachineUsageRequest) (*SetMachineUsageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetMachineUsage not implemented")
 }
 func (UnimplementedResourceManagerServiceServer) mustEmbedUnimplementedResourceManagerServiceServer() {
 }
@@ -230,6 +266,42 @@ func _ResourceManagerService_SetVMPriority_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ResourceManagerService_GetMachineUsage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMachineUsageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ResourceManagerServiceServer).GetMachineUsage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ResourceManagerService_GetMachineUsage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ResourceManagerServiceServer).GetMachineUsage(ctx, req.(*GetMachineUsageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ResourceManagerService_SetMachineUsage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetMachineUsageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ResourceManagerServiceServer).SetMachineUsage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ResourceManagerService_SetMachineUsage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ResourceManagerServiceServer).SetMachineUsage(ctx, req.(*SetMachineUsageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ResourceManagerService_ServiceDesc is the grpc.ServiceDesc for ResourceManagerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -248,6 +320,14 @@ var ResourceManagerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetVMPriority",
 			Handler:    _ResourceManagerService_SetVMPriority_Handler,
+		},
+		{
+			MethodName: "GetMachineUsage",
+			Handler:    _ResourceManagerService_GetMachineUsage_Handler,
+		},
+		{
+			MethodName: "SetMachineUsage",
+			Handler:    _ResourceManagerService_SetMachineUsage_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

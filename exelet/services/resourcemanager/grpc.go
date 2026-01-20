@@ -147,3 +147,17 @@ func (m *ResourceManager) SetVMPriority(ctx context.Context, req *api.SetVMPrior
 
 	return &api.SetVMPriorityResponse{}, nil
 }
+
+// GetMachineUsage returns current usage stats for the host machine.
+func (m *ResourceManager) GetMachineUsage(ctx context.Context, req *api.GetMachineUsageRequest) (*api.GetMachineUsageResponse, error) {
+	return m.machineUsage(ctx)
+}
+
+// SetMachineUsage sets availability and usage states for the host machine.
+// This is for testing, and perhaps decommissioning.
+func (m *ResourceManager) SetMachineUsage(ctx context.Context, req *api.SetMachineUsageRequest) (*api.SetMachineUsageResponse, error) {
+	if err := m.setMachineUsage(ctx, req); err != nil {
+		return nil, err
+	}
+	return &api.SetMachineUsageResponse{}, nil
+}

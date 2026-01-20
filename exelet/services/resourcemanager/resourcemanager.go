@@ -43,9 +43,16 @@ type ResourceManager struct {
 	zfsPool      string
 	capacityOnce sync.Once
 
-	// Usage tracking
+	// VM usage tracking
 	usageMu    sync.Mutex
 	usageState map[string]*vmUsageState
+
+	// Host machine usage
+	machineUsageMu        sync.Mutex
+	machineAvailable      bool
+	machineSetUsage       *api.MachineUsage
+	machineUsageCache     *api.MachineUsage
+	machineUsageCacheTime time.Time
 
 	// Prometheus metrics
 	metrics *prometheusMetrics
@@ -126,6 +133,7 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 	return &ResourceManager{
 		config:           cfg,
 		log:              log,
+		machineAvailable: true,
 		zfsPool:          zfsPool,
 		usageState:       make(map[string]*vmUsageState),
 		priorityOverride: make(map[string]api.VMPriority),

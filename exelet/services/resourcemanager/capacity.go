@@ -1,11 +1,9 @@
 package resourcemanager
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -61,7 +59,7 @@ func (c *Capacity) Get(ctx context.Context) (cpus, memoryBytes, diskBytes uint64
 
 	c.cpus = uint64(runtime.NumCPU())
 
-	c.memoryBytes, err = c.detectMemory()
+	c.memoryBytes, err = c.detectMemory(ctx)
 	if err != nil {
 		c.refreshError = fmt.Errorf("failed to detect memory: %w", err)
 		return 0, 0, 0, c.refreshError
@@ -87,35 +85,12 @@ func (c *Capacity) Get(ctx context.Context) (cpus, memoryBytes, diskBytes uint64
 }
 
 // detectMemory reads total memory from /proc/meminfo.
-func (c *Capacity) detectMemory() (uint64, error) {
-	f, err := os.Open(c.procMeminfo)
+func (c *Capacity) detectMemory(ctx context.Context) (uint64, error) {
+	info, err := readMemInfoFile(ctx, c.procMeminfo)
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "MemTotal:") {
-			fields := strings.Fields(line)
-			if len(fields) < 2 {
-				return 0, fmt.Errorf("malformed MemTotal line: %s", line)
-			}
-			// Value is in kB
-			kb, err := strconv.ParseUint(fields[1], 10, 64)
-			if err != nil {
-				return 0, fmt.Errorf("failed to parse MemTotal: %w", err)
-			}
-			return kb * 1024, nil
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return 0, err
-	}
-
-	return 0, fmt.Errorf("MemTotal not found in %s", c.procMeminfo)
+	return uint64(info.memTotal) * 1024, nil
 }
 
 // detectZFSPoolSize returns the total size of the ZFS pool in bytes.

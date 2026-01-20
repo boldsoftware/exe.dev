@@ -19,6 +19,8 @@ func TestCapacityDetectMemory(t *testing.T) {
 	content := `MemTotal:       16384000 kB
 MemFree:         1234567 kB
 MemAvailable:    8000000 kB
+SwapTotal:       2097148 kB
+SwapFree:        2097148 kB
 Buffers:          123456 kB
 Cached:          4000000 kB
 `
@@ -31,7 +33,7 @@ Cached:          4000000 kB
 		log:         slog.Default(),
 	}
 
-	memBytes, err := c.detectMemory()
+	memBytes, err := c.detectMemory(t.Context())
 	if err != nil {
 		t.Fatalf("detectMemory failed: %v", err)
 	}
@@ -49,7 +51,7 @@ func TestCapacityDetectMemoryMissing(t *testing.T) {
 		log:         slog.Default(),
 	}
 
-	_, err := c.detectMemory()
+	_, err := c.detectMemory(t.Context())
 	if err == nil {
 		t.Error("detectMemory() expected error for missing file")
 	}
@@ -72,7 +74,7 @@ Buffers:          123456 kB
 		log:         slog.Default(),
 	}
 
-	_, err := c.detectMemory()
+	_, err := c.detectMemory(t.Context())
 	if err == nil {
 		t.Error("detectMemory() expected error for missing MemTotal")
 	}

@@ -16,6 +16,12 @@ service ResourceManagerService {
 
   // SetVMPriority manually sets priority for a VM
   rpc SetVMPriority(SetVMPriorityRequest) returns (SetVMPriorityResponse);
+
+  // GetMachineUsage returns current usage stats for host machine
+  rpc GetMachineUsage(GetMachineUsageRequest) returns (GetMachineUsageResponse);
+
+  // SetMachineUsage sets the reported usage, for testing.
+  rpc SetMachineUsage(SetMachineUsageRequest) returns (SetMachineUsageResponse);
 }
 
 message GetNodeStatusRequest {}
@@ -76,3 +82,37 @@ message SetVMPriorityRequest {
 }
 
 message SetVMPriorityResponse {}
+
+message GetMachineUsageRequest {}
+
+message GetMachineUsageResponse {
+  bool available = 1; // set manually, for testing and perhaps for decommissioning.
+  MachineUsage usage = 2;
+}
+
+message SetMachineUsageRequest {
+  bool available = 1;
+  MachineUsage usage = 2; // ignored if missing
+}
+
+message SetMachineUsageResponse {}
+
+message MachineUsage {
+  // From /proc/loadavg:
+  float load_average = 1;   // 15 minute load average
+
+  // From /proc/meminfo:
+  int64 mem_total = 2;     // total memory in KiB
+  int64 mem_free = 3;      // free memory in KiB
+  int64 mem_available = 4; // available memory in KiB
+  int64 swap_total = 5;    // total swap space in KiB
+  int64 swap_free = 6;     // free swap space in KiB
+
+  // From statfs(2):
+  int64 disk_total = 7;      // total disk space in KiB
+  int64 disk_free = 8;       // free disk space in KiB
+
+  // From sar -n:
+  float rx_bytes_rate = 9;  // bytes received per second ten minutes
+  float tx_bytes_rate = 10; // bytes transmitted per second ten minutes
+}
