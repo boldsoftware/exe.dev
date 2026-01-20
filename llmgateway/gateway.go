@@ -14,6 +14,7 @@ import (
 	"exe.dev/domz"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
+	"exe.dev/stage"
 	"github.com/prometheus/client_golang/prometheus"
 	"tailscale.com/net/tsaddr"
 )
@@ -86,7 +87,7 @@ type llmGateway struct {
 	now           func() time.Time
 	db            *sqlite.DB
 	apiKeys       APIKeys
-	devMode       bool      // if true, accept requests from any IP with X-Exedev-Box header
+	env           stage.Env
 	testDebitDone chan bool // for testing -- if non-nil, best effort send every time a debit occurs
 	log           *slog.Logger
 	creditMgr     *CreditManager
@@ -98,12 +99,12 @@ type APIKeys struct {
 	OpenAI    string
 }
 
-func NewGateway(log *slog.Logger, db *sqlite.DB, apiKeys APIKeys, devMode bool) *llmGateway {
+func NewGateway(log *slog.Logger, db *sqlite.DB, apiKeys APIKeys, env stage.Env) *llmGateway {
 	ret := &llmGateway{
 		now:       time.Now,
 		db:        db,
 		apiKeys:   apiKeys,
-		devMode:   devMode,
+		env:       env,
 		log:       log,
 		creditMgr: NewCreditManager(db),
 	}
@@ -141,7 +142,7 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	boxName := r.Header.Get("X-Exedev-Box")
 	host := domz.StripPort(r.RemoteAddr)
 	remoteIP, err := netip.ParseAddr(host)
-	if !m.devMode && (err != nil || !tsaddr.IsTailscaleIP(remoteIP)) {
+	if !m.env.GatewayDev && (err != nil || !tsaddr.IsTailscaleIP(remoteIP)) {
 		// This is super sketchy.
 		// Someone on the public internet is trying to access our gateway.
 		m.httpError(w, r, "hey go away", http.StatusUnauthorized, boxName)

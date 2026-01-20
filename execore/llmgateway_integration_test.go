@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"exe.dev/llmgateway"
+	"exe.dev/stage"
 	"exe.dev/tslog"
 )
 
@@ -19,7 +20,7 @@ func TestLLMGatewayIntegrationAuthFlow(t *testing.T) {
 	server := newTestServer(t)
 
 	// Create gateway in dev mode (allows X-Exedev-Box header from any IP)
-	gateway := llmgateway.NewGateway(tslog.Slogger(t), server.db, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, true)
+	gateway := llmgateway.NewGateway(tslog.Slogger(t), server.db, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, stage.Test())
 
 	// Create test HTTP server with the gateway
 	testServer := httptest.NewServer(gateway)
@@ -75,8 +76,10 @@ func TestLLMGatewayNonDevModeRejectsNonTailscale(t *testing.T) {
 	// Create exe.Server for full integration
 	server := newTestServer(t)
 
-	// Create gateway NOT in dev mode (requires Tailscale IP)
-	gateway := llmgateway.NewGateway(tslog.Slogger(t), server.db, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, false)
+	// Create gateway using stage.Prod (danger! danger!)
+	// This makes it require a Tailscale IP
+	env := stage.Prod()
+	gateway := llmgateway.NewGateway(tslog.Slogger(t), server.db, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, env)
 
 	// Create test HTTP server with the gateway
 	testServer := httptest.NewServer(gateway)

@@ -18,6 +18,7 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
+	"exe.dev/stage"
 	"exe.dev/tslog"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
@@ -94,7 +95,7 @@ func setupTestGateway(t *testing.T) (*llmGateway, *sqlite.DB) {
 		now:           time.Now,
 		db:            db,
 		apiKeys:       APIKeys{Anthropic: "test-api-key"},
-		devMode:       false,
+		env:           stage.Test(),
 		testDebitDone: make(chan bool, 10), // Buffered for tests
 		log:           tslog.Slogger(t),
 	}
@@ -186,6 +187,7 @@ func TestGateway_ProxyFunctionality_HeaderFiltering(t *testing.T) {
 
 func TestGateway_ServeHTTP_AuthenticationFailure(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
+	gateway.env.GatewayDev = false // Production mode - requires Tailscale IP
 
 	// Create request without authentication (from non-tailscale IP)
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
@@ -208,7 +210,6 @@ func TestGateway_ServeHTTP_AuthenticationFailure(t *testing.T) {
 
 func TestGateway_ServeHTTP_XExedevBoxAuthenticationInDevMode(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
-	gateway.devMode = true // Enable dev mode
 
 	// Test with X-Exedev-Box header in dev mode (should be accepted)
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
@@ -232,7 +233,7 @@ func TestGateway_ServeHTTP_XExedevBoxAuthenticationInDevMode(t *testing.T) {
 
 func TestGateway_ServeHTTP_XExedevBoxAuthenticationInProduction(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
-	gateway.devMode = false // Production mode
+	gateway.env.GatewayDev = false // Production mode
 
 	// Test with X-Exedev-Box header in production from non-tailscale IP (should be rejected)
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
@@ -255,7 +256,6 @@ func TestGateway_ServeHTTP_XExedevBoxAuthenticationInProduction(t *testing.T) {
 
 func TestGateway_ServeHTTP_ReadyEndpoint(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
-	gateway.devMode = true // Enable dev mode for easier testing
 
 	// Test /ready endpoint with X-Exedev-Box authentication (requires auth)
 	req := httptest.NewRequest("GET", "/_/gateway/ready", nil)
@@ -285,7 +285,6 @@ func TestGateway_ServeHTTP_ReadyEndpoint(t *testing.T) {
 
 func TestGateway_ServeHTTP_UnrecognizedAlias(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
-	gateway.devMode = true // Enable dev mode for easier testing
 
 	// Test with unrecognized alias
 	req := httptest.NewRequest("POST", "/_/gateway/unknown/v1/messages",
@@ -319,7 +318,6 @@ func TestGateway_GzipResponse(t *testing.T) {
 	// expected because the proxy copies the response headers including Content-Encoding.
 
 	gateway, _ := setupTestGateway(t)
-	gateway.devMode = true
 	gateway.apiKeys.OpenAI = "test-openai-key"
 	gateway.creditMgr = NewCreditManager(gateway.db)
 
@@ -439,7 +437,6 @@ func TestGateway_GzipResponse(t *testing.T) {
 // fail to decompress it before JSON parsing.
 func TestGateway_GzipWithClientAcceptEncoding(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
-	gateway.devMode = true
 	gateway.apiKeys.OpenAI = "test-openai-key"
 	gateway.creditMgr = NewCreditManager(gateway.db)
 
@@ -518,7 +515,6 @@ func TestGateway_GzipWithClientAcceptEncoding(t *testing.T) {
 // so the gateway should pass through the response without error.
 func TestGateway_OpenAIModelsEndpoint(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
-	gateway.devMode = true
 	gateway.apiKeys.OpenAI = "test-openai-key"
 	gateway.creditMgr = NewCreditManager(gateway.db)
 
@@ -578,7 +574,6 @@ func TestGateway_OpenAIModelsEndpoint(t *testing.T) {
 // /v1/models fail if they return a response without usage data.
 func TestGateway_OpenAIMissingUsageOnOtherEndpoints(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
-	gateway.devMode = true
 	gateway.apiKeys.OpenAI = "test-openai-key"
 	gateway.creditMgr = NewCreditManager(gateway.db)
 
