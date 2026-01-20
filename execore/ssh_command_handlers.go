@@ -224,6 +224,20 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			FlagSetFunc: jsonOnlyFlags("exelets"),
 			Handler:     ss.handleExeletsCommand,
 		},
+		// 'rename' is separated from the 'mv' command as it is different enough both
+		// semantically and in implementation - they are different enough in this
+		// "VM move/rename" context that having a different command for the two operations
+		// fits the *nix "do one thing and do it well" mantra better than if they were the same
+		{
+			Name:              "rename",
+			Hidden:            false,
+			Description:       "rename a vm",
+			Usage:             "rename <oldname> <newname>",
+			FlagSetFunc:       jsonOnlyFlags("rename"),
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeRenameArgs,
+			Handler:           ss.handleRenameCommand,
+		},
 		{
 			Name:        "exit",
 			Description: "Exit",
@@ -1398,6 +1412,277 @@ func (ss *SSHServer) handleExeletsCommand(ctx context.Context, cc *exemenu.Comma
 	return nil
 }
 
+func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	if len(cc.Args) != 2 {
+		return cc.Errorf("usage: rename <oldname> <newname>")
+	}
+
+	oldName := cc.Args[0]
+	newName := cc.Args[1]
+
+	// Check if renaming to the same name
+	if oldName == newName {
+		cc.Write("%s is already named %s\r\n", oldName, newName)
+		return nil
+	}
+
+	// Validate new name
+	if err := boxname.Valid(newName); err != nil {
+		return cc.Errorf("invalid new name: %v", err)
+	}
+
+	// Check if the box exists and belongs to this user
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            oldName,
+		CreatedByUserID: cc.User.ID,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return cc.Errorf("vm %q not found", oldName)
+		}
+		return cc.Errorf("failed to look up vm: %v", err)
+	}
+
+	// Check if new name already exists (globally)
+	exists, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithNameExists, newName)
+	if err != nil {
+		return cc.Errorf("failed to check name availability: %v", err)
+	}
+	if exists != 0 {
+		return cc.Errorf("name %q already exists", newName)
+	}
+
+	// // Check if box is running (currently we only support renaming running boxes)
+	// vmRunning := false
+	// if box.ContainerID != nil {
+	// 	exeletClient := ss.server.getExeletClient(box.Ctrhost)
+	// 	if exeletClient != nil {
+	// 		instanceResp, err := exeletClient.client.GetInstance(ctx, &api.GetInstanceRequest{
+	// 			ID: *box.ContainerID,
+	// 		})
+	// 		if err == nil && instanceResp.Instance != nil {
+	// 			vmRunning = instanceResp.Instance.State == api.VMState_RUNNING
+	// 		}
+	// 	}
+	// }
+	// if !vmRunning {
+	// 	return cc.Errorf("vm rename not supported when vm is not running!")
+	// }
+
+	if box.ContainerID == nil {
+		return cc.Errorf("vm %v not found", box.ContainerID)
+	}
+
+	exeletClient := ss.server.getExeletClient(box.Ctrhost)
+
+	if exeletClient == nil {
+		return cc.Errorf("internal error")
+	}
+
+	instanceResp, err := exeletClient.client.GetInstance(ctx, &api.GetInstanceRequest{
+		ID: *box.ContainerID,
+	})
+
+	if instanceResp == nil || err != nil || instanceResp.Instance.State != api.VMState_RUNNING {
+		return cc.Errorf("vm rename not supported when vm is not running!")
+	}
+
+	// Update the box name in the database
+	slog.InfoContext(ctx, "rename: starting DB update",
+		"box_id", box.ID,
+		"old_name", oldName,
+		"new_name", newName,
+		"user_id", cc.User.ID)
+	err = withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxName, exedb.UpdateBoxNameParams{
+		Name:            newName,
+		ID:              box.ID,
+		CreatedByUserID: cc.User.ID,
+	})
+	if err != nil {
+		slog.ErrorContext(ctx, "rename: DB update failed",
+			"box_id", box.ID,
+			"old_name", oldName,
+			"new_name", newName,
+			"error", err)
+		return cc.Errorf("failed to rename vm: %v", err)
+	}
+	slog.InfoContext(ctx, "rename: DB update complete",
+		"box_id", box.ID,
+		"old_name", oldName,
+		"new_name", newName,
+		"rollback_sql", fmt.Sprintf("UPDATE boxes SET name = '%s' WHERE id = %d", oldName, box.ID))
+
+	// Get the IP shard for DNS record update (need this early to create new DNS record)
+	ipShard, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetIPShardByBoxName, newName)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		slog.ErrorContext(ctx, "rename: failed to get IP shard for DNS - manual DNS check required",
+			"box_id", box.ID,
+			"old_name", oldName,
+			"new_name", newName,
+			"error", err)
+	}
+
+	// Create new DNS record immediately after DB update to ensure box is reachable at new name
+	if ipShard != 0 {
+		slog.InfoContext(ctx, "rename: creating new DNS record",
+			"box_id", box.ID,
+			"new_name", newName,
+			"ip_shard", ipShard)
+		if err := ss.server.createBoxShardDNSRecord(ctx, newName, int(ipShard)); err != nil {
+			slog.ErrorContext(ctx, "rename: failed to create new DNS record - box may be unreachable via DNS",
+				"box_id", box.ID,
+				"new_name", newName,
+				"ip_shard", ipShard,
+				"error", err,
+				"rollback_action", fmt.Sprintf("createBoxShardDNSRecord(%s, %d)", newName, ipShard))
+		} else {
+			slog.InfoContext(ctx, "rename: new DNS record created",
+				"box_id", box.ID,
+				"new_name", newName,
+				"ip_shard", ipShard)
+		}
+	}
+
+	// Invalidate all auth cookies for the old box name to prevent cookie hijacking.
+	// When a box is renamed, any cookies issued for the old name's domain (e.g., oldname.exe.dev)
+	// should be invalidated so that if someone else creates a box with the old name, they
+	// cannot use any lingering cookies from the original owner.
+	oldBoxDomain := ss.server.env.BoxSub(oldName)
+	if err := withTx1(ss.server, ctx, (*exedb.Queries).DeleteAuthCookiesByBoxName, &oldBoxDomain); err != nil {
+		slog.ErrorContext(ctx, "rename: failed to invalidate auth cookies for old box name",
+			"box_id", box.ID,
+			"old_name", oldName,
+			"old_domain", oldBoxDomain,
+			"error", err)
+	}
+
+	// Update hostname inside the running VM
+	// Re-fetch the box with the new name for SSH connection
+	slog.InfoContext(ctx, "rename: updating hostname inside VM",
+		"box_id", box.ID,
+		"old_name", oldName,
+		"new_name", newName)
+	updatedBox, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            newName,
+		CreatedByUserID: cc.User.ID,
+	})
+	if err == nil {
+		// Update /etc/hostname and /etc/hosts
+		// Use sed to replace old hostname with new hostname
+		hostnameCmd := fmt.Sprintf(
+			"sudo sed -i 's/\\b%s\\b/%s/g' /etc/hostname /etc/hosts 2>/dev/null; sudo hostname %s 2>/dev/null",
+			oldName, newName, newName,
+		)
+		if _, err := ss.runCommandOnBox(ctx, &updatedBox, hostnameCmd); err != nil {
+			slog.ErrorContext(ctx, "rename: failed to update hostname inside VM",
+				"box_id", box.ID,
+				"old_name", oldName,
+				"new_name", newName,
+				"error", err,
+				"rollback_cmd", fmt.Sprintf("sudo sed -i 's/\\b%s\\b/%s/g' /etc/hostname /etc/hosts; sudo hostname %s", newName, oldName, oldName))
+		} else {
+			slog.InfoContext(ctx, "rename: hostname update inside VM complete",
+				"box_id", box.ID,
+				"new_name", newName)
+		}
+	} else {
+		slog.ErrorContext(ctx, "rename: failed to re-fetch box for hostname update",
+			"box_id", box.ID,
+			"new_name", newName,
+			"error", err)
+	}
+
+	// Delete old DNS record last - orphaned records are acceptable, so this is low priority
+	if ipShard != 0 {
+		slog.InfoContext(ctx, "rename: deleting old DNS record",
+			"box_id", box.ID,
+			"old_name", oldName,
+			"ip_shard", ipShard)
+		if err := ss.server.deleteBoxShardDNSRecord(ctx, oldName, int(ipShard)); err != nil {
+			slog.ErrorContext(ctx, "rename: failed to delete old DNS record - orphaned record exists",
+				"box_id", box.ID,
+				"old_name", oldName,
+				"ip_shard", ipShard,
+				"error", err,
+				"rollback_action", "manually delete orphaned DNS record if needed")
+		} else {
+			slog.InfoContext(ctx, "rename: old DNS record deleted",
+				"box_id", box.ID,
+				"old_name", oldName,
+				"ip_shard", ipShard)
+		}
+	}
+
+	slog.InfoContext(ctx, "rename: completed successfully",
+		"box_id", box.ID,
+		"old_name", oldName,
+		"new_name", newName,
+		"user_id", cc.User.ID,
+		"ip_shard", ipShard)
+
+	if cc.WantJSON() {
+		cc.WriteJSON(map[string]string{
+			"old_name": oldName,
+			"new_name": newName,
+			"status":   "renamed",
+		})
+		return nil
+	}
+	cc.Write("Renamed %s to %s\r\n", oldName, newName)
+	return nil
+}
+
+// runCommandOnBox executes a command on a box via SSH and returns the combined output.
+// This is used for internal operations like updating the hostname during rename.
+func (ss *SSHServer) runCommandOnBox(ctx context.Context, box *exedb.Box, command string) ([]byte, error) {
+	if box.SSHPort == nil || box.SSHUser == nil || len(box.SSHClientPrivateKey) == 0 {
+		return nil, fmt.Errorf("box %q does not have SSH configured", box.Name)
+	}
+
+	sshSigner, err := ssh.ParsePrivateKey(box.SSHClientPrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse SSH key: %w", err)
+	}
+
+	sshHost := box.SSHHost()
+	sshAddr := fmt.Sprintf("%s:%d", sshHost, *box.SSHPort)
+
+	sshConfig := &ssh.ClientConfig{
+		User: *box.SSHUser,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(sshSigner),
+		},
+		HostKeyCallback: box.CreateHostKeyCallback(),
+		Timeout:         10 * time.Second,
+	}
+
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", sshAddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to box: %w", err)
+	}
+
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, sshAddr, sshConfig)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("SSH handshake failed: %w", err)
+	}
+	client := ssh.NewClient(sshConn, chans, reqs)
+	defer client.Close()
+
+	session, err := client.NewSession()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+	defer session.Close()
+
+	output, err := session.CombinedOutput(command)
+	if err != nil {
+		return output, fmt.Errorf("command failed: %w", err)
+	}
+	return output, nil
+}
+
 func (ss *SSHServer) completeBoxNames(compCtx *exemenu.CompletionContext, cc *exemenu.CommandContext) []string {
 	if ss == nil || ss.server == nil || len(ss.server.exeletClients) == 0 {
 		return nil
@@ -1419,6 +1704,16 @@ func (ss *SSHServer) completeBoxNames(compCtx *exemenu.CompletionContext, cc *ex
 		}
 	}
 	return completions
+}
+
+// completeRenameArgs completes the first argument (oldname) with existing box names,
+// but does not complete the second argument (newname) since that should be a new name.
+func (ss *SSHServer) completeRenameArgs(compCtx *exemenu.CompletionContext, cc *exemenu.CommandContext) []string {
+	// Only complete the first positional argument (the old name)
+	if compCtx.Position != 1 {
+		return nil
+	}
+	return ss.completeBoxNames(compCtx, cc)
 }
 
 func (ss *SSHServer) completeDocSlugs(compCtx *exemenu.CompletionContext, cc *exemenu.CommandContext) []string {

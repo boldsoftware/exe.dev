@@ -117,3 +117,6 @@ SELECT b.name, b.status, b.ctrhost, b.container_id, b.created_by_user_id as owne
 FROM boxes b
 JOIN users u ON u.user_id = b.created_by_user_id
 ORDER BY b.name;
+
+-- name: UpdateBoxName :exec
+UPDATE boxes SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND created_by_user_id = ?;

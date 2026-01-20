@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+rename BOX_NAME BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ rename BOX_NAME BOX_NAME
+BOX_NAME is already named BOX_NAME
+PROMPT ▶ exit
+Goodbye!

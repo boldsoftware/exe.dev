@@ -621,6 +621,21 @@ func (q *Queries) UpdateBoxMigration(ctx context.Context, arg UpdateBoxMigration
 	return err
 }
 
+const updateBoxName = `-- name: UpdateBoxName :exec
+UPDATE boxes SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND created_by_user_id = ?
+`
+
+type UpdateBoxNameParams struct {
+	Name            string `db:"name" json:"name"`
+	ID              int    `db:"id" json:"id"`
+	CreatedByUserID string `db:"created_by_user_id" json:"created_by_user_id"`
+}
+
+func (q *Queries) UpdateBoxName(ctx context.Context, arg UpdateBoxNameParams) error {
+	_, err := q.exec(ctx, q.updateBoxNameStmt, updateBoxName, arg.Name, arg.ID, arg.CreatedByUserID)
+	return err
+}
+
 const updateBoxRoutes = `-- name: UpdateBoxRoutes :exec
 UPDATE boxes SET routes = ? WHERE name = ? AND created_by_user_id = ?
 `

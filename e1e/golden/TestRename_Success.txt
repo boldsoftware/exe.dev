@@ -1,0 +1,30 @@
+
+
+●
+● ssh localhost
+●
+
+rename BOX_NAME box-reidentified
+
+- help to see a list of commands
+
+PROMPT ▶ rename BOX_NAME box-reidentified
+Renamed BOX_NAME to box-reidentified
+PROMPT ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+ls
+
+- help to see a list of commands
+
+PROMPT ▶ ls
+Your VMs:
+  • box-reidentified.exe.cloud - running (boldsoftware/exeuntu)
+  • BOX_NAME.exe.cloud - running (boldsoftware/exeuntu)
+PROMPT ▶ exit
+Goodbye!

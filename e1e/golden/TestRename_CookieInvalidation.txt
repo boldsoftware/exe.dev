@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+rename BOX_NAME box-cookietest-renamed
+
+- help to see a list of commands
+
+PROMPT ▶ rename BOX_NAME box-cookietest-renamed
+Renamed BOX_NAME to box-cookietest-renamed
+PROMPT ▶ exit
+Goodbye!

@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+rename BOX_NAME abc
+
+- help to see a list of commands
+
+PROMPT ▶ rename BOX_NAME abc
+invalid new name: invalid VM name, must be 5-52 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-vm-name)
+PROMPT ▶ exit
+Goodbye!

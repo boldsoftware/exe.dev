@@ -123,6 +123,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteAuthCookieByValueStmt, err = db.PrepareContext(ctx, deleteAuthCookieByValue); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAuthCookieByValue: %w", err)
 	}
+	if q.deleteAuthCookiesByBoxNameStmt, err = db.PrepareContext(ctx, deleteAuthCookiesByBoxName); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteAuthCookiesByBoxName: %w", err)
+	}
 	if q.deleteAuthCookiesByUserIDStmt, err = db.PrepareContext(ctx, deleteAuthCookiesByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAuthCookiesByUserID: %w", err)
 	}
@@ -573,6 +576,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateBoxMigrationStmt, err = db.PrepareContext(ctx, updateBoxMigration); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxMigration: %w", err)
 	}
+	if q.updateBoxNameStmt, err = db.PrepareContext(ctx, updateBoxName); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxName: %w", err)
+	}
 	if q.updateBoxRoutesStmt, err = db.PrepareContext(ctx, updateBoxRoutes); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxRoutes: %w", err)
 	}
@@ -798,6 +804,11 @@ func (q *Queries) Close() error {
 	if q.deleteAuthCookieByValueStmt != nil {
 		if cerr := q.deleteAuthCookieByValueStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteAuthCookieByValueStmt: %w", cerr)
+		}
+	}
+	if q.deleteAuthCookiesByBoxNameStmt != nil {
+		if cerr := q.deleteAuthCookiesByBoxNameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteAuthCookiesByBoxNameStmt: %w", cerr)
 		}
 	}
 	if q.deleteAuthCookiesByUserIDStmt != nil {
@@ -1550,6 +1561,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxMigrationStmt: %w", cerr)
 		}
 	}
+	if q.updateBoxNameStmt != nil {
+		if cerr := q.updateBoxNameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxNameStmt: %w", cerr)
+		}
+	}
 	if q.updateBoxRoutesStmt != nil {
 		if cerr := q.updateBoxRoutesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxRoutesStmt: %w", cerr)
@@ -1717,6 +1733,7 @@ type Queries struct {
 	debitUserLLMCreditStmt                     *sql.Stmt
 	deleteAuthCookieStmt                       *sql.Stmt
 	deleteAuthCookieByValueStmt                *sql.Stmt
+	deleteAuthCookiesByBoxNameStmt             *sql.Stmt
 	deleteAuthCookiesByUserIDStmt              *sql.Stmt
 	deleteBoxStmt                              *sql.Stmt
 	deleteBoxIPShardStmt                       *sql.Stmt
@@ -1867,6 +1884,7 @@ type Queries struct {
 	updateBoxContainerIDAndStatusStmt          *sql.Stmt
 	updateBoxCreationLogStmt                   *sql.Stmt
 	updateBoxMigrationStmt                     *sql.Stmt
+	updateBoxNameStmt                          *sql.Stmt
 	updateBoxRoutesStmt                        *sql.Stmt
 	updateBoxSSHDetailsStmt                    *sql.Stmt
 	updateBoxStatusStmt                        *sql.Stmt
@@ -1925,6 +1943,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		debitUserLLMCreditStmt:                     q.debitUserLLMCreditStmt,
 		deleteAuthCookieStmt:                       q.deleteAuthCookieStmt,
 		deleteAuthCookieByValueStmt:                q.deleteAuthCookieByValueStmt,
+		deleteAuthCookiesByBoxNameStmt:             q.deleteAuthCookiesByBoxNameStmt,
 		deleteAuthCookiesByUserIDStmt:              q.deleteAuthCookiesByUserIDStmt,
 		deleteBoxStmt:                              q.deleteBoxStmt,
 		deleteBoxIPShardStmt:                       q.deleteBoxIPShardStmt,
@@ -2075,6 +2094,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxContainerIDAndStatusStmt:          q.updateBoxContainerIDAndStatusStmt,
 		updateBoxCreationLogStmt:                   q.updateBoxCreationLogStmt,
 		updateBoxMigrationStmt:                     q.updateBoxMigrationStmt,
+		updateBoxNameStmt:                          q.updateBoxNameStmt,
 		updateBoxRoutesStmt:                        q.updateBoxRoutesStmt,
 		updateBoxSSHDetailsStmt:                    q.updateBoxSSHDetailsStmt,
 		updateBoxStatusStmt:                        q.updateBoxStatusStmt,

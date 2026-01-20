@@ -19,6 +19,9 @@ DELETE FROM auth_cookies WHERE user_id = ?;
 -- name: DeleteAuthCookieByValue :exec
 DELETE FROM auth_cookies WHERE cookie_value = ?;
 
+-- name: DeleteAuthCookiesByBoxName :exec
+DELETE FROM auth_cookies WHERE domain LIKE sqlc.arg(box_name) || '.%';
+
 -- name: UserHasAuthCookie :one
 SELECT EXISTS (
     SELECT 1
