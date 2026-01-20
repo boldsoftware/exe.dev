@@ -154,6 +154,7 @@ RUN usermod -l exedev -c "exe.dev user" ubuntu && \
 	usermod -aG docker exedev && \
 	sed -i 's/^ubuntu:/exedev:/' /etc/subuid /etc/subgid && \
 	echo 'exedev ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
+	echo 'Defaults:exedev verifypw=any' >> /etc/sudoers && \
 	# Manually enable linger, this should autopopulate /run/user/1000
 	mkdir -p /var/lib/systemd/linger && \
 	touch /var/lib/systemd/linger/exedev
