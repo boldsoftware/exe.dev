@@ -59,6 +59,20 @@ func (f *repeatedStringFlag) Set(value string) error {
 	return nil
 }
 
+// statusColor returns an ANSI color code for a container status.
+func statusColor(s container.ContainerStatus) string {
+	switch s {
+	case container.StatusRunning:
+		return "\033[1;32m" // green
+	case container.StatusStopped:
+		return "\033[1;31m" // red
+	case container.StatusPending:
+		return "\033[1;33m" // yellow
+	default:
+		return ""
+	}
+}
+
 // jsonOnlyFlags returns a FlagSet creation function for a FlagSet named name with only the --json flag.
 func jsonOnlyFlags(name string) func() *flag.FlagSet {
 	return func() *flag.FlagSet {
@@ -342,22 +356,13 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 		tw := tabwriter.NewWriter(cc.Output, 0, 0, 2, ' ', 0)
 		for _, b := range boxes {
 			status := container.ContainerStatus(b.Status)
-			var statusColor string
-			switch status {
-			case container.StatusRunning:
-				statusColor = "\033[1;32m" // green
-			case container.StatusStopped:
-				statusColor = "\033[1;31m" // red
-			case container.StatusPending:
-				statusColor = "\033[1;33m" // yellow
-			}
 			shelleyURL := "-"
 			if strings.Contains(b.Image, "exeuntu") {
 				shelleyURL = ss.server.shelleyURL(b.Name)
 			}
 			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\r\n",
 				ss.server.env.BoxSub(b.Name),
-				statusColor, status,
+				statusColor(status), status,
 				shelleyURL,
 				ss.server.boxProxyAddress(b.Name),
 			)
@@ -368,17 +373,8 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 
 	cc.Write("\033[1;36mYour VMs:\033[0m\r\n")
 	for _, b := range boxes {
-		var statusColor string
 		status := container.ContainerStatus(b.Status)
-		switch status {
-		case container.StatusRunning:
-			statusColor = "\033[1;32m" // green
-		case container.StatusStopped:
-			statusColor = "\033[1;31m" // red
-		case container.StatusPending:
-			statusColor = "\033[1;33m" // yellow
-		}
-		cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", ss.server.env.BoxSub(b.Name), statusColor, status.String())
+		cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", ss.server.env.BoxSub(b.Name), statusColor(status), status)
 		imageName := container.GetDisplayImageName(b.Image)
 		switch imageName {
 		case "exeuntu", "":
