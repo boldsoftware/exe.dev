@@ -252,13 +252,7 @@ func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) 
 
 // lookupShardA returns an A record for the given shard number.
 func (s *Server) lookupShardA(ctx context.Context, shard int, fqdn string, class uint16) ([]dns.RR, error) {
-	var publicIP string
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		queries := exedb.New(rx.Conn())
-		var err error
-		publicIP, err = queries.GetShardPublicIP(ctx, int64(shard))
-		return err
-	})
+	publicIP, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetShardPublicIP, int64(shard))
 	if err != nil {
 		// No record found is not an error, just return empty
 		return nil, nil
@@ -294,13 +288,7 @@ func (s *Server) lookupCNAME(ctx context.Context, qname, fqdn string, class uint
 		return nil, nil
 	}
 
-	var shard int64
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		queries := exedb.New(rx.Conn())
-		var err error
-		shard, err = queries.GetIPShardByBoxName(ctx, boxName)
-		return err
-	})
+	shard, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetIPShardByBoxName, boxName)
 	if err != nil {
 		// No record found
 		return nil, nil

@@ -156,15 +156,10 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Look up the box to get the user ID for logging and metrics
 	userID := ""
-	if err := m.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		box, err := exedb.New(rx.Conn()).BoxNamed(ctx, boxName)
-		if err != nil {
-			return err
-		}
-		userID = box.CreatedByUserID
-		return nil
-	}); err != nil {
+	if box, err := exedb.WithRxRes1(m.db, r.Context(), (*exedb.Queries).BoxNamed, boxName); err != nil {
 		m.log.WarnContext(r.Context(), "failed to look up box for user ID", "box", boxName, "error", err)
+	} else {
+		userID = box.CreatedByUserID
 	}
 
 	// Strip the header before forwarding

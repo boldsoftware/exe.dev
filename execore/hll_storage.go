@@ -21,29 +21,19 @@ func newHLLStorage(db *sqlite.DB) hll.Storage {
 }
 
 func (s *hllStorage) Load(ctx context.Context, key string) ([]byte, error) {
-	var data []byte
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		row, err := exedb.New(rx.Conn()).GetHLLSketch(ctx, key)
-		if err != nil {
-			return err
-		}
-		data = row.Data
-		return nil
-	})
+	row, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetHLLSketch, key)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return data, nil
+	return row.Data, nil
 }
 
 func (s *hllStorage) Save(ctx context.Context, key string, data []byte) error {
-	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		return exedb.New(tx.Conn()).UpsertHLLSketch(ctx, exedb.UpsertHLLSketchParams{
-			Key:  key,
-			Data: data,
-		})
+	return exedb.WithTx1(s.db, ctx, (*exedb.Queries).UpsertHLLSketch, exedb.UpsertHLLSketchParams{
+		Key:  key,
+		Data: data,
 	})
 }

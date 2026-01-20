@@ -15,13 +15,7 @@ import (
 // This should be called at boot after discovering public IPs.
 func PopulateIPShards(ctx context.Context, db *sqlite.DB, log *slog.Logger, publicIPs map[netip.Addr]publicips.PublicIP) error {
 	// Check if we already have shard records
-	var count int64
-	err := db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		queries := exedb.New(rx.Conn())
-		var err error
-		count, err = queries.CountIPShards(ctx)
-		return err
-	})
+	count, err := exedb.WithRxRes0(db, ctx, (*exedb.Queries).CountIPShards)
 	if err != nil {
 		return fmt.Errorf("exens: count ip_shards: %w", err)
 	}
@@ -39,12 +33,9 @@ func PopulateIPShards(ctx context.Context, db *sqlite.DB, log *slog.Logger, publ
 			// Skip the base domain (shard 0); only numbered shards go in ip_shards.
 			continue
 		}
-		err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			queries := exedb.New(tx.Conn())
-			return queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
-				Shard:    int64(info.Shard),
-				PublicIp: info.IP.String(),
-			})
+		err := exedb.WithTx1(db, ctx, (*exedb.Queries).UpsertIPShard, exedb.UpsertIPShardParams{
+			Shard:    int64(info.Shard),
+			PublicIp: info.IP.String(),
 		})
 		if err != nil {
 			return fmt.Errorf("exens: upsert ip_shard %d: %w", info.Shard, err)
@@ -60,11 +51,8 @@ func PopulateIPShards(ctx context.Context, db *sqlite.DB, log *slog.Logger, publ
 // UpsertIPShard updates a single shard's public IP.
 // Used when IP changes are detected.
 func UpsertIPShard(ctx context.Context, db *sqlite.DB, shard int, publicIP string) error {
-	return db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
-			Shard:    int64(shard),
-			PublicIp: publicIP,
-		})
+	return exedb.WithTx1(db, ctx, (*exedb.Queries).UpsertIPShard, exedb.UpsertIPShardParams{
+		Shard:    int64(shard),
+		PublicIp: publicIP,
 	})
 }

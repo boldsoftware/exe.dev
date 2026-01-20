@@ -142,8 +142,7 @@ func (tr *TagResolver) refreshStaleTags(ctx context.Context) {
 	var toRefresh []TagResolution
 
 	// Find tags that need refreshing
-	err := tr.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		queries := exedb.New(rx.Conn())
+	err := exedb.WithRx(tr.db, ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		results, err := queries.GetTagsNeedingRefresh(ctx, exedb.GetTagsNeedingRefreshParams{
 			LastCheckedAt: now,
 			Limit:         10,
@@ -204,9 +203,7 @@ func (tr *TagResolver) refreshTag(ctx context.Context, tag TagResolution) error 
 			tag.Registry, tag.Repository, tag.Tag, tag.PlatformDigest, newDigest)
 
 		// Update the database
-		err = tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			queries := exedb.New(tx.Conn())
-
+		err = exedb.WithTx(tr.db, ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			err := queries.UpdateTagResolutionDigest(ctx, exedb.UpdateTagResolutionDigestParams{
 				PlatformDigest: &newDigest,
 				LastCheckedAt:  now,
@@ -253,16 +250,13 @@ func (tr *TagResolver) refreshTag(ctx context.Context, tag TagResolution) error 
 		}
 	} else {
 		// Just update the last checked time
-		err = tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			queries := exedb.New(tx.Conn())
-			return queries.UpdateTagResolutionChecked(ctx, exedb.UpdateTagResolutionCheckedParams{
-				LastCheckedAt: now,
-				UpdatedAt:     now,
-				Registry:      tag.Registry,
-				Repository:    tag.Repository,
-				Tag:           tag.Tag,
-				Platform:      tag.Platform,
-			})
+		err = exedb.WithTx1(tr.db, ctx, (*exedb.Queries).UpdateTagResolutionChecked, exedb.UpdateTagResolutionCheckedParams{
+			LastCheckedAt: now,
+			UpdatedAt:     now,
+			Registry:      tag.Registry,
+			Repository:    tag.Repository,
+			Tag:           tag.Tag,
+			Platform:      tag.Platform,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to update last checked time: %w", err)
@@ -339,21 +333,18 @@ func (tr *TagResolver) ResolveTag(ctx context.Context, image, platform string) (
 		ttl = 24 * time.Hour // 24 hours for versioned tags
 	}
 
-	err = tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.UpsertTagResolution(ctx, exedb.UpsertTagResolutionParams{
-			Registry:       registry,
-			Repository:     repository,
-			Tag:            tag,
-			Platform:       platform,
-			PlatformDigest: &digest,
-			LastCheckedAt:  now,
-			LastChangedAt:  now,
-			TtlSeconds:     int64(ttl.Seconds()),
-			ImageSize:      &imageSize,
-			CreatedAt:      now,
-			UpdatedAt:      now,
-		})
+	err = exedb.WithTx1(tr.db, ctx, (*exedb.Queries).UpsertTagResolution, exedb.UpsertTagResolutionParams{
+		Registry:       registry,
+		Repository:     repository,
+		Tag:            tag,
+		Platform:       platform,
+		PlatformDigest: &digest,
+		LastCheckedAt:  now,
+		LastChangedAt:  now,
+		TtlSeconds:     int64(ttl.Seconds()),
+		ImageSize:      &imageSize,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	})
 	if err != nil {
 		log.Printf("Failed to store tag resolution: %v", err)
@@ -368,8 +359,7 @@ func (tr *TagResolver) getCachedResolution(ctx context.Context, registry, reposi
 	var lastCheckedUnix, lastChangedUnix int64
 	var found bool
 
-	err := tr.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		queries := exedb.New(rx.Conn())
+	err := exedb.WithRx(tr.db, ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		result, err := queries.GetTagResolution(ctx, exedb.GetTagResolutionParams{
 			Registry:   registry,
 			Repository: repository,
@@ -785,25 +775,19 @@ func parseImageReference(image string) (registry, repository, tag string) {
 
 // IncrementSeenOnHosts increments the seen_on_hosts counter for a resolution
 func (tr *TagResolver) IncrementSeenOnHosts(ctx context.Context, registry, repository, tag, platform string) error {
-	return tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.IncrementSeenOnHosts(ctx, exedb.IncrementSeenOnHostsParams{
-			Registry:   registry,
-			Repository: repository,
-			Tag:        tag,
-			Platform:   platform,
-		})
+	return exedb.WithTx1(tr.db, ctx, (*exedb.Queries).IncrementSeenOnHosts, exedb.IncrementSeenOnHostsParams{
+		Registry:   registry,
+		Repository: repository,
+		Tag:        tag,
+		Platform:   platform,
 	})
 }
 
 // DeleteTag removes a tag resolution from the cache, forcing a fresh lookup next time
 func (tr *TagResolver) DeleteTag(ctx context.Context, registry, repository, tag string) error {
-	return tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.DeleteTagResolution(ctx, exedb.DeleteTagResolutionParams{
-			Registry:   registry,
-			Repository: repository,
-			Tag:        tag,
-		})
+	return exedb.WithTx1(tr.db, ctx, (*exedb.Queries).DeleteTagResolution, exedb.DeleteTagResolutionParams{
+		Registry:   registry,
+		Repository: repository,
+		Tag:        tag,
 	})
 }

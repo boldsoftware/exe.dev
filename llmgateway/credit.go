@@ -67,9 +67,7 @@ func (m *CreditManager) CheckAndRefreshCredit(ctx context.Context, userID string
 		return nil, nil // No credit management configured
 	}
 	var info *CreditInfo
-	err := m.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		q := exedb.New(tx.Conn())
-
+	err := exedb.WithTx(m.db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		// Ensure record exists
 		if err := q.CreateUserLLMCreditIfNotExists(ctx, userID); err != nil {
 			return err
@@ -126,9 +124,7 @@ func (m *CreditManager) DebitCredit(ctx context.Context, userID string, costUSD 
 		return nil, nil // No credit management configured
 	}
 	var info *CreditInfo
-	err := m.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		q := exedb.New(tx.Conn())
-
+	err := exedb.WithTx(m.db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		credit, err := q.GetUserLLMCredit(ctx, userID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
