@@ -893,25 +893,25 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 	// Check if JSON format is requested
 	if r.URL.Query().Get("format") == "json" {
 		type userInfo struct {
-			UserID                 string  `json:"user_id"`
-			Email                  string  `json:"email"`
-			CreatedAt              string  `json:"created_at,omitempty"`
-			RootSupport            bool    `json:"root_support"`
-			VMCreationDisabled     bool    `json:"vm_creation_disabled"`
-			CreatedForLoginWithExe bool    `json:"created_for_login_with_exe"`
-			AccountID              string  `json:"account_id,omitempty"`
-			BillingURL             string  `json:"billing_url,omitempty"`
-			CreditAvailableUSD          float64  `json:"credit_available_usd"`
-			CreditEffectiveUSD          float64  `json:"credit_effective_usd"`
-			CreditMaxUSD                float64  `json:"credit_max_usd"`
-			CreditMaxUSDOverride        *float64 `json:"credit_max_usd_override"`
-			CreditRefreshPerHrUSD       float64  `json:"credit_refresh_per_hr_usd"`
-			CreditRefreshPerHrOverride  *float64 `json:"credit_refresh_per_hr_override"`
-			CreditTotalUsedUSD          float64  `json:"credit_total_used_usd"`
-			CreditLastRefreshAt         string   `json:"credit_last_refresh_at,omitempty"`
-			DiscordID              string  `json:"discord_id,omitempty"`
-			DiscordUsername        string  `json:"discord_username,omitempty"`
-			InviteCount            int64   `json:"invite_count"`
+			UserID                     string   `json:"user_id"`
+			Email                      string   `json:"email"`
+			CreatedAt                  string   `json:"created_at,omitempty"`
+			RootSupport                bool     `json:"root_support"`
+			VMCreationDisabled         bool     `json:"vm_creation_disabled"`
+			CreatedForLoginWithExe     bool     `json:"created_for_login_with_exe"`
+			AccountID                  string   `json:"account_id,omitempty"`
+			BillingURL                 string   `json:"billing_url,omitempty"`
+			CreditAvailableUSD         float64  `json:"credit_available_usd"`
+			CreditEffectiveUSD         float64  `json:"credit_effective_usd"`
+			CreditMaxUSD               float64  `json:"credit_max_usd"`
+			CreditMaxUSDOverride       *float64 `json:"credit_max_usd_override"`
+			CreditRefreshPerHrUSD      float64  `json:"credit_refresh_per_hr_usd"`
+			CreditRefreshPerHrOverride *float64 `json:"credit_refresh_per_hr_override"`
+			CreditTotalUsedUSD         float64  `json:"credit_total_used_usd"`
+			CreditLastRefreshAt        string   `json:"credit_last_refresh_at,omitempty"`
+			DiscordID                  string   `json:"discord_id,omitempty"`
+			DiscordUsername            string   `json:"discord_username,omitempty"`
+			InviteCount                int64    `json:"invite_count"`
 		}
 		var usersJSON []userInfo
 		for _, u := range users {
@@ -2592,19 +2592,19 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Email                  string
-		UserID                 string
-		CreatedAt              string
-		CreatedForLoginWithExe bool
-		RootSupport            bool
-		VMCreationDisabled     bool
-		DiscordID              string
-		DiscordUsername        string
-		BillingExemption       string
-		BillingTrialEndsAt     string
-		SignedUpWithInviteID   string
-		AccountID              string
-		BillingURL             string
+		Email                      string
+		UserID                     string
+		CreatedAt                  string
+		CreatedForLoginWithExe     bool
+		RootSupport                bool
+		VMCreationDisabled         bool
+		DiscordID                  string
+		DiscordUsername            string
+		BillingExemption           string
+		BillingTrialEndsAt         string
+		SignedUpWithInviteID       string
+		AccountID                  string
+		BillingURL                 string
 		HasCredit                  bool
 		CreditAvailableUSD         float64
 		CreditEffectiveUSD         float64
