@@ -706,6 +706,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleBillingSubscribe(w, r)
 	case "/billing/success":
 		s.handleBillingSuccess(w, r)
+	case "/take-my-money":
+		s.handleTakeMyMoney(w, r)
 	case "/auth":
 		s.handleAuth(w, r)
 	case "/auth/confirm":

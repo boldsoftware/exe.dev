@@ -1605,3 +1605,118 @@ func (s *Server) verifyDiscordLinkHMAC(discordID, discordUsername, ts, providedH
 
 	return hmac.Equal([]byte(expected), []byte(providedHMAC))
 }
+
+// handleTakeMyMoney handles voluntary billing enrollment.
+// Users who are already paying see a "you're set" message.
+// Everyone else can proceed to Stripe checkout (no trial - billing starts immediately).
+// GET shows an info page; POST redirects to Stripe checkout.
+func (s *Server) handleTakeMyMoney(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Require authentication
+	userID, err := s.validateAuthCookie(r)
+	if err != nil {
+		http.Redirect(w, r, "/auth?redirect="+url.QueryEscape(r.URL.String()), http.StatusSeeOther)
+		return
+	}
+
+	// Check if user is already paying
+	isPaying, err := withRxRes1(s, ctx, (*exedb.Queries).UserIsPaying, userID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to check payment status", "error", err)
+		http.Error(w, "failed to check payment status", http.StatusInternalServerError)
+		return
+	}
+	if isPaying {
+		// Already paying - show "you're set" message
+		s.renderTemplate(ctx, w, "take-my-money.html", struct {
+			WebHost       string
+			AlreadyPaying bool
+		}{
+			WebHost:       s.env.WebHost,
+			AlreadyPaying: true,
+		})
+		return
+	}
+
+	// Get user details to check for free exemption
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to get user details", "error", err)
+		http.Error(w, "failed to get user details", http.StatusInternalServerError)
+		return
+	}
+
+	// Handle POST - process subscription
+	if r.Method == http.MethodPost {
+		s.processTakeMyMoneySubscription(w, r, userID, user.Email)
+		return
+	}
+
+	// Check if user has free exemption (friends of exe)
+	isFreeUser := user.BillingExemption != nil && *user.BillingExemption == "free"
+
+	// GET - show info page
+	s.renderTemplate(ctx, w, "take-my-money.html", struct {
+		WebHost       string
+		AlreadyPaying bool
+		IsFreeUser    bool
+	}{
+		WebHost:       s.env.WebHost,
+		AlreadyPaying: false,
+		IsFreeUser:    isFreeUser,
+	})
+}
+
+// processTakeMyMoneySubscription creates a Stripe checkout session for voluntary billing.
+func (s *Server) processTakeMyMoneySubscription(w http.ResponseWriter, r *http.Request, userID, email string) {
+	ctx := r.Context()
+
+	// Check/create pending account (reuse existing pending account if any)
+	existingAccount, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
+	var accountID string
+	if err == nil && existingAccount.BillingStatus == "pending" {
+		// Reuse existing pending account
+		accountID = existingAccount.ID
+	} else if errors.Is(err, sql.ErrNoRows) {
+		// Create new account record
+		accountID = "exe_" + rand.Text()[:16]
+		if err := withTx1(s, ctx, (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
+			ID:        accountID,
+			CreatedBy: userID,
+		}); err != nil {
+			s.slog().ErrorContext(ctx, "failed to create account", "error", err)
+			http.Error(w, "failed to create account", http.StatusInternalServerError)
+			return
+		}
+	} else if err != nil {
+		s.slog().ErrorContext(ctx, "failed to check existing account", "error", err)
+		http.Error(w, "failed to check billing status", http.StatusInternalServerError)
+		return
+	} else {
+		// User has an active account - shouldn't happen, redirect to dashboard
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	// Build callback URLs
+	baseURL := s.webBaseURLNoRequest()
+	successURL := baseURL + "/billing/success?session_id={CHECKOUT_SESSION_ID}&source=take-my-money"
+	cancelURL := baseURL + "/take-my-money"
+
+	// Create Stripe checkout session - no trial, start billing immediately
+	checkoutURL, err := s.billing.Subscribe(ctx, accountID, &billing.SubscribeParams{
+		Email:      email,
+		SuccessURL: successURL,
+		CancelURL:  cancelURL,
+		// No TrialEnd - billing starts immediately
+	})
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to create billing checkout session", "error", err)
+		http.Error(w, "failed to start subscription", http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "take-my-money: redirecting to Stripe checkout", "user_id", userID, "email", email)
+	http.Redirect(w, r, checkoutURL, http.StatusSeeOther)
+}

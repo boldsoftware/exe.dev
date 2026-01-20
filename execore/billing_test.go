@@ -1242,3 +1242,268 @@ func TestLoginWithExeSkipsBilling(t *testing.T) {
 		t.Errorf("Expected 'check your email' page. Body: %s", body[:min(500, len(body))])
 	}
 }
+
+func TestTakeMyMoney_AlreadyPaying(t *testing.T) {
+	// Test that users who are already paying see the "already paying" message
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a user
+	email := "take-my-money-already-paying@example.com"
+	publicKey := "ssh-rsa dummy-take-my-money-paying take-my-money-already-paying@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Add an active account record
+	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
+		ID:        "exe_takemymoneypay",
+		CreatedBy: user.UserID,
+	})
+	if err != nil {
+		t.Fatalf("Failed to insert account: %v", err)
+	}
+	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, user.UserID)
+	if err != nil {
+		t.Fatalf("Failed to activate account: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Visit /take-my-money
+	req := httptest.NewRequest("GET", "/take-my-money", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "already paying") {
+		t.Errorf("Expected 'already paying' message in body. Got: %s", body[:min(500, len(body))])
+	}
+}
+
+func TestTakeMyMoney_LegacyUser(t *testing.T) {
+	// Test that legacy (grandfathered) users see the take-my-money form
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a user
+	email := "take-my-money-legacy@example.com"
+	publicKey := "ssh-rsa dummy-take-my-money-legacy take-my-money-legacy@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Set created_at to before billing requirement date (legacy user)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:09:59' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Visit /take-my-money
+	req := httptest.NewRequest("GET", "/take-my-money", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Start Paying") {
+		t.Errorf("Expected 'Start Paying' in body. Got: %s", body[:min(500, len(body))])
+	}
+	if !strings.Contains(body, "Continue to Stripe") {
+		t.Errorf("Expected 'Continue to Stripe' button in body. Got: %s", body[:min(500, len(body))])
+	}
+}
+
+func TestTakeMyMoney_UserNeedsBilling_ShowsForm(t *testing.T) {
+	// Test that users who need billing can still use /take-my-money
+	// (they explicitly want to pay, so we let them - no redirect)
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a user
+	email := "take-my-money-needs-billing@example.com"
+	publicKey := "ssh-rsa dummy-take-my-money-needs take-my-money-needs-billing@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Set created_at to after billing requirement date (user needs billing)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Visit /take-my-money - should show form, not redirect
+	req := httptest.NewRequest("GET", "/take-my-money", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Start Paying") {
+		t.Errorf("Expected 'Start Paying' in body. Got: %s", body[:min(500, len(body))])
+	}
+}
+
+func TestTakeMyMoney_FreeUser_ShowsWarning(t *testing.T) {
+	// Test that users with billing_exemption='free' see the warning message
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a user
+	email := "take-my-money-free@example.com"
+	publicKey := "ssh-rsa dummy-take-my-money-free take-my-money-free@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Set billing_exemption to 'free' (friends of exe)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET billing_exemption = 'free' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user billing_exemption: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Visit /take-my-money
+	req := httptest.NewRequest("GET", "/take-my-money", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "free-forever account") {
+		t.Errorf("Expected warning about free account in body. Got: %s", body[:min(500, len(body))])
+	}
+	if !strings.Contains(body, "return to free status") {
+		t.Errorf("Expected message about returning to free status in body. Got: %s", body[:min(500, len(body))])
+	}
+}
+
+func TestTakeMyMoney_POST_RedirectsToStripe(t *testing.T) {
+	// Test that POST to /take-my-money creates account and redirects to Stripe
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a user
+	email := "take-my-money-post@example.com"
+	publicKey := "ssh-rsa dummy-take-my-money-post take-my-money-post@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Set created_at to before billing requirement date (legacy user)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:09:59' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// POST to /take-my-money
+	req := httptest.NewRequest("POST", "/take-my-money", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("Expected redirect (303), got %d", w.Code)
+	}
+
+	location := w.Header().Get("Location")
+	// Should redirect to Stripe checkout
+	if !strings.Contains(location, "stripe.com") && !strings.Contains(location, "checkout") {
+		t.Errorf("Expected redirect to Stripe checkout, got %q", location)
+	}
+
+	// Verify account was created with pending status
+	account, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, user.UserID)
+	if err != nil {
+		t.Fatalf("Failed to get account: %v", err)
+	}
+	if account.BillingStatus != "pending" {
+		t.Errorf("Expected account status 'pending', got %q", account.BillingStatus)
+	}
+}
+
+func TestTakeMyMoney_Unauthenticated_RedirectsToAuth(t *testing.T) {
+	// Test that unauthenticated users are redirected to /auth
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Visit /take-my-money without auth cookie
+	req := httptest.NewRequest("GET", "/take-my-money", nil)
+	req.Host = server.env.WebHost
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("Expected redirect (303), got %d", w.Code)
+	}
+
+	location := w.Header().Get("Location")
+	if !strings.HasPrefix(location, "/auth") {
+		t.Errorf("Expected redirect to /auth, got %q", location)
+	}
+	if !strings.Contains(location, "redirect=") {
+		t.Errorf("Expected redirect param in URL, got %q", location)
+	}
+}
