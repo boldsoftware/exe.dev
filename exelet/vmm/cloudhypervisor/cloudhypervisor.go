@@ -197,7 +197,7 @@ func (v *VMM) shutdownVMM(ctx context.Context, id string) error {
 	// shutdown VMM
 	resp, err := c.ShutdownVMMWithResponse(ctx)
 	if err != nil {
-		if isNotConnected(err) {
+		if isStopped(err) {
 			return nil
 		}
 		return err

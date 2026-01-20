@@ -20,7 +20,7 @@ func (v *VMM) Stop(ctx context.Context, id string) error {
 	dResp, err := c.DeleteVMWithResponse(ctx)
 	if err != nil {
 		// instance already stopped
-		if isNotConnected(err) {
+		if isStopped(err) {
 			return nil
 		}
 		return err
