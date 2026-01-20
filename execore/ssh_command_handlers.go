@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -67,14 +68,21 @@ func jsonOnlyFlags(name string) func() *flag.FlagSet {
 	}
 }
 
-// addQRFlag wraps a FlagSet creation function to add the --qr flag.
-func addQRFlag(f func() *flag.FlagSet) func() *flag.FlagSet {
-	return func() *flag.FlagSet {
-		fs := f()
-		fs.Bool("qr", false, "show QR code for the URL")
-		return fs
+// addBoolFlag wraps a FlagSet creation function to add a boolean flag.
+func addBoolFlag(name, usage string) func(func() *flag.FlagSet) func() *flag.FlagSet {
+	return func(f func() *flag.FlagSet) func() *flag.FlagSet {
+		return func() *flag.FlagSet {
+			fs := f()
+			fs.Bool(name, false, usage)
+			return fs
+		}
 	}
 }
+
+var (
+	addQRFlag   = addBoolFlag("qr", "show QR code for the URL")
+	addLongFlag = addBoolFlag("l", "show detailed information")
+)
 
 // newCommandFlags creates a FlagSet for the new command
 func newCommandFlags() *flag.FlagSet {
@@ -118,8 +126,8 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Name:        "ls",
 			Description: "List your VMs",
 			Handler:     ss.handleListCommand,
-			FlagSetFunc: jsonOnlyFlags("ls"),
-			Usage:       "ls",
+			FlagSetFunc: addLongFlag(jsonOnlyFlags("ls")),
+			Usage:       "ls [-l]",
 		},
 		{
 			Name:        "new",
@@ -289,6 +297,13 @@ func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *exemenu.CommandC
 }
 
 func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	wantLong := cc.FlagSet.Lookup("l").Value.String() == "true"
+
+	// Disallow --json and -l together
+	if cc.WantJSON() && wantLong {
+		return cc.Errorf("cannot use --json and -l together")
+	}
+
 	boxes, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxesForUser, cc.User.ID)
 	if err != nil {
 		return err
@@ -319,6 +334,35 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 
 	if len(boxes) == 0 {
 		cc.Write("No VMs found. Create one with 'new'.\r\n")
+		return nil
+	}
+
+	if wantLong {
+		// Long format: one line per VM with all details, tabwriter-aligned
+		tw := tabwriter.NewWriter(cc.Output, 0, 0, 2, ' ', 0)
+		for _, b := range boxes {
+			status := container.ContainerStatus(b.Status)
+			var statusColor string
+			switch status {
+			case container.StatusRunning:
+				statusColor = "\033[1;32m" // green
+			case container.StatusStopped:
+				statusColor = "\033[1;31m" // red
+			case container.StatusPending:
+				statusColor = "\033[1;33m" // yellow
+			}
+			shelleyURL := "-"
+			if strings.Contains(b.Image, "exeuntu") {
+				shelleyURL = ss.server.shelleyURL(b.Name)
+			}
+			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\r\n",
+				ss.server.env.BoxSub(b.Name),
+				statusColor, status,
+				shelleyURL,
+				ss.server.boxProxyAddress(b.Name),
+			)
+		}
+		tw.Flush()
 		return nil
 	}
 

@@ -13,10 +13,11 @@ List your VMs
 ## Usage
 
 ```
-ls
+ls [-l] [name|pattern]
 ```
 
 ## Options
 
 - `--json`: output in JSON format
+- `--l`: show detailed information
 
