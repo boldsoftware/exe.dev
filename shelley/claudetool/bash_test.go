@@ -223,6 +223,45 @@ func TestExecuteBash(t *testing.T) {
 		}
 	})
 
+	// Test SHELLEY_CONVERSATION_ID environment variable is set when configured
+	t.Run("SHELLEY_CONVERSATION_ID Environment Variable", func(t *testing.T) {
+		bashWithConvID := &BashTool{
+			WorkingDir:     NewMutableWorkingDir("/"),
+			ConversationID: "test-conv-123",
+		}
+		req := bashInput{
+			Command: "echo $SHELLEY_CONVERSATION_ID",
+		}
+
+		output, err := bashWithConvID.executeBash(ctx, req, 5*time.Second)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		want := "test-conv-123\n"
+		if output != want {
+			t.Errorf("Expected SHELLEY_CONVERSATION_ID=test-conv-123, got %q", output)
+		}
+	})
+
+	// Test SHELLEY_CONVERSATION_ID is not set when not configured
+	t.Run("SHELLEY_CONVERSATION_ID Not Set When Empty", func(t *testing.T) {
+		req := bashInput{
+			Command: "echo \"conv_id:$SHELLEY_CONVERSATION_ID:\"",
+		}
+
+		output, err := bashTool.executeBash(ctx, req, 5*time.Second)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		// Should be empty since ConversationID is not set on bashTool
+		want := "conv_id::\n"
+		if output != want {
+			t.Errorf("Expected empty SHELLEY_CONVERSATION_ID, got %q", output)
+		}
+	})
+
 	// Test command with output to stderr
 	t.Run("Command with stderr", func(t *testing.T) {
 		req := bashInput{

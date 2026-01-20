@@ -36,6 +36,9 @@ type BashTool struct {
 	WorkingDir *MutableWorkingDir
 	// LLMProvider provides access to LLM services for tool validation
 	LLMProvider LLMServiceProvider
+	// ConversationID is the ID of the conversation this tool belongs to.
+	// It is exposed to invoked commands via SHELLEY_CONVERSATION_ID.
+	ConversationID string
 }
 
 const (
@@ -256,6 +259,9 @@ func (b *BashTool) makeBashCommand(ctx context.Context, command string, out io.W
 	})
 	env = append(env, "SKETCH=1")          // signal that this has been run by Sketch, sometimes useful for scripts
 	env = append(env, "EDITOR=/bin/false") // interactive editors won't work
+	if b.ConversationID != "" {
+		env = append(env, "SHELLEY_CONVERSATION_ID="+b.ConversationID)
+	}
 	cmd.Env = env
 	return cmd
 }

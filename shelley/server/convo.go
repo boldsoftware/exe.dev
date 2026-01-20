@@ -363,6 +363,7 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 	// Create tools for this conversation with the conversation's working directory
 	toolSetConfig.WorkingDir = cwd
 	toolSetConfig.ModelID = modelID
+	toolSetConfig.ConversationID = conversationID
 	toolSetConfig.ParentConversationID = conversationID // For subagent tool
 	toolSetConfig.OnWorkingDirChange = func(newDir string) {
 		// Persist working directory change to database

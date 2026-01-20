@@ -57,6 +57,9 @@ type ToolSetConfig struct {
 	SubagentDB SubagentDB
 	// ParentConversationID is the ID of the parent conversation (for subagent tool).
 	ParentConversationID string
+	// ConversationID is the ID of the conversation these tools belong to.
+	// This is exposed to bash commands via the SHELLEY_CONVERSATION_ID environment variable.
+	ConversationID string
 }
 
 // ToolSet holds a set of tools for a single conversation.
@@ -102,6 +105,7 @@ func NewToolSet(ctx context.Context, cfg ToolSetConfig) *ToolSet {
 		WorkingDir:       wd,
 		LLMProvider:      cfg.LLMProvider,
 		EnableJITInstall: cfg.EnableJITInstall,
+		ConversationID:   cfg.ConversationID,
 	}
 
 	// Use simplified patch schema for weaker models, full schema for sonnet/opus
