@@ -616,6 +616,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch path {
 	case "/":
+		// Easter egg: curl the homepage and get a shell script
+		if strings.HasPrefix(r.UserAgent(), "curl/") {
+			w.Header().Set("Content-Type", "text/x-shellscript")
+			// </dev/tty redirects stdin from the terminal (not the pipe)
+			fmt.Fprintf(w, "#!/bin/sh\n%s </dev/tty\n", s.replSSHConnectionCommand())
+			return
+		}
 		// If authenticated, show user dashboard; otherwise show index page
 		if userID, err := s.validateAuthCookie(r); err == nil {
 			s.handleUserDashboard(w, r, userID)

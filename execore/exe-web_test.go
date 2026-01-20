@@ -525,3 +525,83 @@ func TestExeNewRedirectsToWebHostNew(t *testing.T) {
 		})
 	}
 }
+
+func TestCurlHomepageEasterEgg(t *testing.T) {
+	t.Parallel()
+
+	s := newUnstartedServer(t)
+
+	tests := []struct {
+		name       string
+		userAgent  string
+		wantScript bool
+	}{
+		{
+			name:       "curl gets shell script",
+			userAgent:  "curl/7.64.1",
+			wantScript: true,
+		},
+		{
+			name:       "curl with different version",
+			userAgent:  "curl/8.0.0",
+			wantScript: true,
+		},
+		{
+			name:       "browser gets HTML",
+			userAgent:  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+			wantScript: false,
+		},
+		{
+			name:       "empty user agent gets HTML",
+			userAgent:  "",
+			wantScript: false,
+		},
+		{
+			name:       "wget gets HTML",
+			userAgent:  "Wget/1.21",
+			wantScript: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Host = s.env.WebHost
+			if tt.userAgent != "" {
+				req.Header.Set("User-Agent", tt.userAgent)
+			}
+			rr := httptest.NewRecorder()
+
+			s.ServeHTTP(rr, req)
+
+			if tt.wantScript {
+				if rr.Code != http.StatusOK {
+					t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+				}
+				body := rr.Body.String()
+				if !strings.HasPrefix(body, "#!/bin/sh\n") {
+					t.Errorf("expected shell script, got: %s", body)
+				}
+				if !strings.Contains(body, "ssh ") {
+					t.Errorf("expected 'ssh' command in body, got: %s", body)
+				}
+				if !strings.Contains(body, "</dev/tty") {
+					t.Errorf("expected '</dev/tty' redirect in body, got: %s", body)
+				}
+				if !strings.Contains(body, s.env.ReplHost) {
+					t.Errorf("expected ReplHost %q in body, got: %s", s.env.ReplHost, body)
+				}
+				ct := rr.Header().Get("Content-Type")
+				if ct != "text/x-shellscript" {
+					t.Errorf("content-type = %q, want %q", ct, "text/x-shellscript")
+				}
+			} else {
+				// For non-curl requests, we expect HTML (or a redirect for authenticated users)
+				ct := rr.Header().Get("Content-Type")
+				if strings.HasPrefix(ct, "text/x-shellscript") {
+					t.Errorf("non-curl request got shell script content-type: %s", ct)
+				}
+			}
+		})
+	}
+}
