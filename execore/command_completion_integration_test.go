@@ -59,6 +59,12 @@ func TestCompletionIntegration(t *testing.T) {
 			expected: nil, // No containers available in test mode
 		},
 		{
+			name:     "complete ls with space - should use box completer (but no containers in test)",
+			line:     "ls ",
+			cursor:   3,
+			expected: nil, // No containers available in test mode
+		},
+		{
 			name:     "complete help with partial command name",
 			line:     "help ss",
 			cursor:   7,

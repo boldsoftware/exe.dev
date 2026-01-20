@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"mvdan.cc/sh/v3/pattern"
 
 	"exe.dev/boxname"
 	"exe.dev/container"
@@ -137,11 +139,13 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			CompleterFunc:     ss.completeDocSlugs,
 		},
 		{
-			Name:        "ls",
-			Description: "List your VMs",
-			Handler:     ss.handleListCommand,
-			FlagSetFunc: addLongFlag(jsonOnlyFlags("ls")),
-			Usage:       "ls [-l]",
+			Name:              "ls",
+			Description:       "List your VMs",
+			Handler:           ss.handleListCommand,
+			FlagSetFunc:       addLongFlag(jsonOnlyFlags("ls")),
+			Usage:             "ls [-l] [name|pattern]",
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeBoxNames,
 		},
 		{
 			Name:        "new",
@@ -321,6 +325,37 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 	boxes, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxesForUser, cc.User.ID)
 	if err != nil {
 		return err
+	}
+
+	// Filter by name or glob pattern if specified
+	if len(cc.Args) > 0 {
+		var filtered []exedb.Box
+		for _, arg := range cc.Args {
+			if pattern.HasMeta(arg, 0) {
+				// Shell glob pattern
+				reStr, err := pattern.Regexp(arg, pattern.EntireString)
+				if err != nil {
+					return cc.Errorf("invalid pattern %q: %v", arg, err)
+				}
+				re, err := regexp.Compile(reStr)
+				if err != nil {
+					return cc.Errorf("invalid pattern %q: %v", arg, err)
+				}
+				for _, b := range boxes {
+					if re.MatchString(b.Name) {
+						filtered = append(filtered, b)
+					}
+				}
+			} else {
+				// Literal name
+				name := ss.normalizeBoxName(arg)
+				if idx := slices.IndexFunc(boxes, func(b exedb.Box) bool { return b.Name == name }); idx >= 0 {
+					filtered = append(filtered, boxes[idx])
+				}
+			}
+		}
+		slices.SortFunc(filtered, func(a, b exedb.Box) int { return cmp.Compare(a.Name, b.Name) })
+		boxes = slices.CompactFunc(filtered, func(a, b exedb.Box) bool { return a.Name == b.Name })
 	}
 
 	if cc.WantJSON() {
