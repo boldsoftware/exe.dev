@@ -2,6 +2,7 @@ package llmgateway
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -155,11 +156,21 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Look up the box to get the user ID for logging and metrics
-	userID := ""
-	if box, err := exedb.WithRxRes1(m.db, r.Context(), (*exedb.Queries).BoxNamed, boxName); err != nil {
+	box, err := exedb.WithRxRes1(m.db, r.Context(), (*exedb.Queries).BoxNamed, boxName)
+	if errors.Is(err, sql.ErrNoRows) {
+		m.httpError(w, r, "VM not found", http.StatusUnauthorized, boxName)
+		return
+	}
+	if err != nil {
 		m.log.WarnContext(r.Context(), "failed to look up box for user ID", "box", boxName, "error", err)
-	} else {
-		userID = box.CreatedByUserID
+		m.httpError(w, r, "internal server error", http.StatusInternalServerError, boxName)
+		return
+	}
+	userID := box.CreatedByUserID
+	if userID == "" {
+		m.log.WarnContext(r.Context(), "could not determine user ID for box", "box", boxName)
+		m.httpError(w, r, "user not found", http.StatusInternalServerError, boxName)
+		return
 	}
 
 	// Strip the header before forwarding
@@ -174,17 +185,15 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check credit before allowing LLM request
-	if userID != "" {
-		creditInfo, err := m.creditMgr.CheckAndRefreshCredit(r.Context(), userID)
-		if err != nil {
-			if errors.Is(err, ErrInsufficientCredit) {
-				m.log.WarnContext(r.Context(), "insufficient LLM credit", "user_id", userID, "box", boxName, "available_usd", creditInfo.Available)
-				m.httpError(w, r, "insufficient gateway credit", http.StatusPaymentRequired, boxName)
-				return
-			}
-			m.httpError(w, r, "failed to check gateway credit", http.StatusInternalServerError, boxName)
+	creditInfo, err := m.creditMgr.CheckAndRefreshCredit(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, ErrInsufficientCredit) {
+			m.log.WarnContext(r.Context(), "insufficient LLM credit", "user_id", userID, "box", boxName, "available_usd", creditInfo.Available)
+			m.httpError(w, r, "insufficient gateway credit", http.StatusPaymentRequired, boxName)
 			return
 		}
+		m.httpError(w, r, "failed to check gateway credit", http.StatusInternalServerError, boxName)
+		return
 	}
 
 	endpointPath := strings.TrimPrefix(r.URL.Path, "/_/gateway/")

@@ -1,16 +1,55 @@
 package execore
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"exe.dev/exedb"
 	"exe.dev/llmgateway"
+	"exe.dev/sqlite"
 	"exe.dev/stage"
 	"exe.dev/tslog"
 )
+
+// setupTestBox creates a user and box in the database for testing
+func setupTestBox(t *testing.T, db *sqlite.DB, boxName string) {
+	t.Helper()
+	err := db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+
+		userID := "test-user-" + boxName
+		err := queries.InsertUser(ctx, exedb.InsertUserParams{
+			UserID:                 userID,
+			Email:                  "test@example.com",
+			CreatedForLoginWithExe: false,
+		})
+		if err != nil {
+			return fmt.Errorf("insert user: %w", err)
+		}
+
+		_, err = queries.InsertBox(ctx, exedb.InsertBoxParams{
+			Ctrhost:         "test-ctrhost",
+			Name:            boxName,
+			Status:          "running",
+			Image:           "test-image",
+			CreatedByUserID: userID,
+			Routes:          nil,
+		})
+		if err != nil {
+			return fmt.Errorf("insert box: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("setupTestBox: %v", err)
+	}
+}
 
 // These tests cover interactions between Server and llmgateway.llmGateway.
 // Authentication is now done via X-Exedev-Box header from Tailscale IPs or dev mode.
@@ -18,6 +57,9 @@ import (
 func TestLLMGatewayIntegrationAuthFlow(t *testing.T) {
 	// Create exe.Server for full integration
 	server := newTestServer(t)
+
+	// Create the test box in the database (required since the gateway now fails closed)
+	setupTestBox(t, server.db, "test-box")
 
 	// Create gateway in dev mode (allows X-Exedev-Box header from any IP)
 	gateway := llmgateway.NewGateway(tslog.Slogger(t), server.db, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, stage.Test())
@@ -75,6 +117,9 @@ func TestLLMGatewayIntegrationAuthFlow(t *testing.T) {
 func TestLLMGatewayNonDevModeRejectsNonTailscale(t *testing.T) {
 	// Create exe.Server for full integration
 	server := newTestServer(t)
+
+	// Create the test box in the database (required since the gateway now fails closed)
+	setupTestBox(t, server.db, "test-box")
 
 	// Create gateway using stage.Prod (danger! danger!)
 	// This makes it require a Tailscale IP
