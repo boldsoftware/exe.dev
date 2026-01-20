@@ -8,8 +8,16 @@ import (
 	"shelley.exe.dev/ui"
 )
 
+// Version and Tag are set at build time via ldflags
+var (
+	Version = "dev"
+	Tag     = ""
+)
+
 // Info holds build information from runtime/debug.ReadBuildInfo
 type Info struct {
+	Version    string `json:"version,omitempty"`
+	Tag        string `json:"tag,omitempty"`
 	Commit     string `json:"commit,omitempty"`
 	CommitTime string `json:"commit_time,omitempty"`
 	Modified   bool   `json:"modified,omitempty"`
@@ -18,7 +26,10 @@ type Info struct {
 // GetInfo returns build information using runtime/debug.ReadBuildInfo,
 // falling back to the embedded build-info.json from the UI build.
 func GetInfo() Info {
-	var info Info
+	info := Info{
+		Version: Version,
+		Tag:     Tag,
+	}
 
 	buildInfo, ok := debug.ReadBuildInfo()
 	if ok {

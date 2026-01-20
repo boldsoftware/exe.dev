@@ -81,8 +81,13 @@ async function build() {
     try {
       commit = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
       commitTime = execSync('git log -1 --format=%cI', { encoding: 'utf8' }).trim();
-      const status = execSync('git status --porcelain', { encoding: 'utf8' });
-      modified = status.length > 0;
+      // Check for modifications, excluding the dist/ directory (which we're currently building)
+      const status = execSync('git status --porcelain --ignore-submodules', { encoding: 'utf8' });
+      // Filter out dist/ changes since those are expected during build
+      const significantChanges = status.split('\n').filter(line =>
+        line.trim() && !line.includes('dist/')
+      );
+      modified = significantChanges.length > 0;
     } catch (e) {
       // Git not available or not a git repo
     }
