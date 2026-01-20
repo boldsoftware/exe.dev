@@ -664,6 +664,16 @@ func (b *BrowseTools) readImageRun(ctx context.Context, m json.RawMessage) llm.T
 		return llm.ErrorfToolOut("failed to read image file: %w", err)
 	}
 
+	// Convert HEIC to PNG if needed (Go's image library doesn't support HEIC)
+	converted := false
+	if imageutil.IsHEIC(imageData) {
+		imageData, err = imageutil.ConvertHEICToPNG(imageData)
+		if err != nil {
+			return llm.ErrorfToolOut("failed to convert HEIC image: %w", err)
+		}
+		converted = true
+	}
+
 	detectedType := http.DetectContentType(imageData)
 	if !strings.HasPrefix(detectedType, "image/") {
 		return llm.ErrorfToolOut("file is not an image: %s", detectedType)
@@ -684,6 +694,9 @@ func (b *BrowseTools) readImageRun(ctx context.Context, m json.RawMessage) llm.T
 	mediaType := "image/" + format
 
 	description := fmt.Sprintf("Image from %s (type: %s)", input.Path, mediaType)
+	if converted {
+		description += " [converted from HEIC]"
+	}
 	if resized {
 		description += " [resized]"
 	}
