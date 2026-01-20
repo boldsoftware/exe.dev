@@ -37,6 +37,7 @@ function ContextUsageBar({ contextWindowSize, maxContextTokens }: ContextUsageBa
 
   const percentage = maxContextTokens > 0 ? (contextWindowSize / maxContextTokens) * 100 : 0;
   const clampedPercentage = Math.min(percentage, 100);
+  const showLongConversationWarning = contextWindowSize >= 100000;
 
   const getBarColor = () => {
     if (percentage >= 90) return "var(--error-text)";
@@ -104,20 +105,37 @@ function ContextUsageBar({ contextWindowSize, maxContextTokens }: ContextUsageBa
         >
           {formatTokens(contextWindowSize)} / {formatTokens(maxContextTokens)} (
           {percentage.toFixed(1)}%) tokens used
+          {showLongConversationWarning && (
+            <div style={{ marginTop: "6px", color: "var(--warning-text, #f59e0b)" }}>
+              This conversation is getting long.
+              <br />
+              For best results, start a new conversation.
+            </div>
+          )}
         </div>
       )}
-      <div
-        className="context-usage-bar"
-        onClick={handleClick}
-        title={`Context: ${formatTokens(contextWindowSize)} / ${formatTokens(maxContextTokens)} tokens (${percentage.toFixed(1)}%)`}
-      >
+      <div className="context-usage-bar-container">
+        {showLongConversationWarning && (
+          <span
+            className="context-warning-icon"
+            title="This conversation is getting long. For best results, start a new conversation."
+          >
+            ⚠️
+          </span>
+        )}
         <div
-          className="context-usage-fill"
-          style={{
-            width: `${clampedPercentage}%`,
-            backgroundColor: getBarColor(),
-          }}
-        />
+          className="context-usage-bar"
+          onClick={handleClick}
+          title={`Context: ${formatTokens(contextWindowSize)} / ${formatTokens(maxContextTokens)} tokens (${percentage.toFixed(1)}%)`}
+        >
+          <div
+            className="context-usage-fill"
+            style={{
+              width: `${clampedPercentage}%`,
+              backgroundColor: getBarColor(),
+            }}
+          />
+        </div>
       </div>
     </div>
   );

@@ -2681,6 +2681,18 @@ svg {
   }
 }
 
+.context-usage-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.context-warning-icon {
+  font-size: 14px;
+  line-height: 1;
+  cursor: help;
+}
+
 .context-usage-bar {
   width: 60px;
   height: 6px;
