@@ -20,12 +20,21 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"exe.dev/llmpricing"
 	"exe.dev/sqlite"
 	sloghttp "github.com/samber/slog-http"
 )
+
+const sseScannerBufSize = 256 * 1024
+
+var sseScannerBufPool = sync.Pool{
+	New: func() any {
+		return new([sseScannerBufSize]byte)
+	},
+}
 
 // errBodyNotReplayable is returned when HTTP/2 tries to retry a request but the body has already been consumed.
 var errBodyNotReplayable = errors.New("request body not replayable; caller should retry")
@@ -155,9 +164,12 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		bodyReader, bodyWriter := io.Pipe()
 		resp.Body = bodyReader
 		scanner := bufio.NewScanner(body)
+		bufp := sseScannerBufPool.Get().(*[sseScannerBufSize]byte)
+		scanner.Buffer(bufp[:], sseScannerBufSize)
 		// Set up channel to signal when SSE processing is complete
 		a.sseDone = make(chan struct{})
 		go func() {
+			defer sseScannerBufPool.Put(bufp)
 			defer close(a.sseDone)
 			for scanner.Scan() {
 				line := scanner.Text()
