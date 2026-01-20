@@ -71,8 +71,8 @@ If the user wants to refer to a previous conversation, you can read it using sql
 # List recent conversations:
 sqlite3 "{{.ShelleyDBPath}}" "SELECT conversation_id, slug, datetime(created_at, 'localtime') as created, datetime(updated_at, 'localtime') as updated FROM conversations ORDER BY updated_at DESC LIMIT 20;"
 
-# Get messages from a specific conversation (replace CONVERSATION_ID):
-sqlite3 "{{.ShelleyDBPath}}" "SELECT type, CASE WHEN type='user' THEN json_extract(user_data, '$.text') ELSE substr(llm_data, 1, 500) END as content FROM messages WHERE conversation_id='CONVERSATION_ID' ORDER BY sequence_id;"
+# Get user/agent messages from a conversation (replace CONVERSATION_ID):
+sqlite3 "{{.ShelleyDBPath}}" "SELECT CASE type WHEN 'user' THEN 'User' ELSE 'Agent' END, substr(json_extract(llm_data, '\$.Content[0].Text'), 1, 500) FROM messages WHERE conversation_id='CONVERSATION_ID' AND type IN ('user', 'agent') AND json_extract(llm_data, '\$.Content[0].Type') = 2 AND json_extract(llm_data, '\$.Content[0].Text') != '' ORDER BY sequence_id;"
 
 # Search conversations by slug:
 sqlite3 "{{.ShelleyDBPath}}" "SELECT conversation_id, slug FROM conversations WHERE slug LIKE '%SEARCH_TERM%';"
