@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 
 // Web Speech API types
 interface SpeechRecognitionEvent extends Event {
@@ -76,7 +76,12 @@ function MessageInput({
   const [uploadsInProgress, setUploadsInProgress] = useState(0);
   const [dragCounter, setDragCounter] = useState(0);
   const [isListening, setIsListening] = useState(false);
+  const [isSmallScreen, setIsSmallScreen] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth < 480;
+  });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   // Track the base text (before speech recognition started) and finalized speech text
   const baseTextRef = useRef<string>("");
@@ -85,6 +90,21 @@ function MessageInput({
   // Check if speech recognition is available
   const speechRecognitionAvailable =
     typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  // Responsive placeholder text
+  const placeholderText = useMemo(
+    () => (isSmallScreen ? "Message..." : "Message, paste image, or attach file..."),
+    [isSmallScreen],
+  );
+
+  // Track screen size for responsive placeholder
+  useEffect(() => {
+    const handleResize = () => {
+      setIsSmallScreen(window.innerWidth < 480);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {
@@ -170,13 +190,10 @@ function MessageInput({
     };
   }, []);
 
-  const uploadFile = async (file: File, insertPosition: number) => {
-    const textBefore = message.substring(0, insertPosition);
-    const textAfter = message.substring(insertPosition);
-
-    // Add a loading indicator
+  const uploadFile = async (file: File) => {
+    // Add a loading indicator at the end of the current message
     const loadingText = `[uploading ${file.name}...]`;
-    setMessage(`${textBefore}${loadingText}${textAfter}`);
+    setMessage((prev) => (prev ? prev + " " : "") + loadingText);
     setUploadsInProgress((prev) => prev + 1);
 
     try {
@@ -218,8 +235,7 @@ function MessageInput({
           const file = item.getAsFile();
           if (file) {
             event.preventDefault();
-            const cursorPos = textareaRef.current?.selectionStart ?? message.length;
-            await uploadFile(file, cursorPos);
+            await uploadFile(file);
             return;
           }
         }
@@ -253,15 +269,26 @@ function MessageInput({
       // Process all dropped files
       for (let i = 0; i < event.dataTransfer.files.length; i++) {
         const file = event.dataTransfer.files[i];
-        const insertPosition =
-          i === 0 ? (textareaRef.current?.selectionStart ?? message.length) : message.length;
-        await uploadFile(file, insertPosition);
-        // Add a space between files
-        if (i < event.dataTransfer.files.length - 1) {
-          setMessage((prev) => prev + " ");
-        }
+        await uploadFile(file);
       }
     }
+  };
+
+  const handleAttachClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      await uploadFile(file);
+    }
+
+    // Reset input so same file can be selected again
+    event.target.value = "";
   };
 
   // Auto-insert injected text (diff comments) directly into the textarea
@@ -374,6 +401,15 @@ function MessageInput({
         </div>
       )}
       <form onSubmit={handleSubmit} className="message-input-form">
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileSelect}
+          style={{ display: "none" }}
+          multiple
+          accept="image/*,video/*,audio/*,.pdf,.txt,.md,.json,.csv,.xml,.html,.css,.js,.ts,.tsx,.jsx,.py,.go,.rs,.java,.c,.cpp,.h,.hpp,.sh,.yaml,.yml,.toml,.sql,.log,*"
+          aria-hidden="true"
+        />
         <textarea
           ref={textareaRef}
           value={message}
@@ -386,7 +422,7 @@ function MessageInput({
               requestAnimationFrame(() => requestAnimationFrame(onFocus));
             }
           }}
-          placeholder="Message, paste image, or attach file..."
+          placeholder={placeholderText}
           className="message-textarea"
           disabled={isDisabled}
           rows={1}
@@ -394,6 +430,29 @@ function MessageInput({
           data-testid="message-input"
           autoFocus={autoFocus}
         />
+        <button
+          type="button"
+          onClick={handleAttachClick}
+          disabled={isDisabled}
+          className="message-attach-btn"
+          aria-label="Attach file"
+          data-testid="attach-button"
+        >
+          <svg
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+            />
+          </svg>
+        </button>
         {speechRecognitionAvailable && (
           <button
             type="button"
