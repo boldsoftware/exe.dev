@@ -125,6 +125,7 @@ func NewToolSet(ctx context.Context, cfg ToolSetConfig) *ToolSet {
 		patchTool.Tool(),
 		keywordTool.Tool(),
 		changeDirTool.Tool(),
+		OutputIframeTool,
 	}
 
 	// Add subagent tool if configured

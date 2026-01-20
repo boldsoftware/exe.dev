@@ -14,6 +14,7 @@ import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
 import ChangeDirTool from "./ChangeDirTool";
 import BrowserResizeTool from "./BrowserResizeTool";
 import SubagentTool from "./SubagentTool";
+import OutputIframeTool from "./OutputIframeTool";
 import UsageDetailModal from "./UsageDetailModal";
 import MessageActionBar from "./MessageActionBar";
 
@@ -375,6 +376,10 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
         if (content.ToolName === "subagent") {
           return <SubagentTool toolInput={content.ToolInput} isRunning={true} />;
         }
+        // Use specialized component for output iframe tool
+        if (content.ToolName === "output_iframe") {
+          return <OutputIframeTool toolInput={content.ToolInput} isRunning={true} />;
+        }
         // Use specialized component for browser console logs tools
         if (
           content.ToolName === "browser_recent_console_logs" ||
@@ -584,6 +589,20 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
               hasError={hasError}
               executionTime={executionTime}
               displayData={content.Display as { slug?: string; conversation_id?: string }}
+            />
+          );
+        }
+
+        // Use specialized component for output iframe tool
+        if (toolName === "output_iframe") {
+          return (
+            <OutputIframeTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+              display={content.Display}
             />
           );
         }
