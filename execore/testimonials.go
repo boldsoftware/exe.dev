@@ -48,6 +48,11 @@ var testimonials = []Testimonial{
 		Author:   "Asim, Discord",
 		Approved: true,
 	},
+	{
+		Quote:    "exe.dev removes the laborious barrier between managing cloud infrastructure, building software, prototyping and ridiculously lowers the barrier to entry for me, I haven't enjoyed building software this much since perhaps discovering Go or self teaching C",
+		Author:   "Emmanuel Odeke",
+		Approved: true,
+	},
 }
 
 // ApprovedTestimonials returns all approved testimonials.
