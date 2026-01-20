@@ -960,76 +960,42 @@ func (s *Server) validateIPShards(ctx context.Context) {
 
 // withRx executes a function with a read-only database transaction and exedb queries
 func (s *Server) withRx(ctx context.Context, fn func(context.Context, *exedb.Queries) error) error {
-	return s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		queries := exedb.New(rx.Conn())
-		return fn(ctx, queries)
-	})
+	return exedb.WithRx(s.db, ctx, fn)
 }
 
 // withTx executes a function with a read-write database transaction and exedb queries
 func (s *Server) withTx(ctx context.Context, fn func(context.Context, *exedb.Queries) error) error {
-	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return fn(ctx, queries)
-	})
+	return exedb.WithTx(s.db, ctx, fn)
 }
 
 // withRxRes0 executes a sqlc query with a read-only database transaction and no arguments, returning a value.
 func withRxRes0[T any](s *Server, ctx context.Context, fn func(*exedb.Queries, context.Context) (T, error)) (T, error) {
-	var result T
-	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		result, err = fn(queries, ctx)
-		return err
-	})
-	return result, err
+	return exedb.WithRxRes0(s.db, ctx, fn)
 }
 
 // withRxRes1 executes a sqlc query with a read-only database transaction and one argument, returning a value.
 func withRxRes1[T, A any](s *Server, ctx context.Context, fn func(*exedb.Queries, context.Context, A) (T, error), a A) (T, error) {
-	var result T
-	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		result, err = fn(queries, ctx, a)
-		return err
-	})
-	return result, err
+	return exedb.WithRxRes1(s.db, ctx, fn, a)
 }
 
 // withTx0 executes a sqlc query with a read-write database transaction and no arguments.
 func withTx0(s *Server, ctx context.Context, fn func(*exedb.Queries, context.Context) error) error {
-	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return fn(queries, ctx)
-	})
+	return exedb.WithTx0(s.db, ctx, fn)
 }
 
 // withTx1 executes a sqlc query with a read-write database transaction and one argument.
 func withTx1[A any](s *Server, ctx context.Context, fn func(*exedb.Queries, context.Context, A) error, a A) error {
-	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return fn(queries, ctx, a)
-	})
+	return exedb.WithTx1(s.db, ctx, fn, a)
 }
 
 // withTxRes0 executes a function with a read-write database transaction, returning a value.
 func withTxRes0[T any](s *Server, ctx context.Context, fn func(*exedb.Queries, context.Context) (T, error)) (T, error) {
-	var result T
-	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		result, err = fn(queries, ctx)
-		return err
-	})
-	return result, err
+	return exedb.WithTxRes0(s.db, ctx, fn)
 }
 
 // withTxRes1 executes a function with a read-write database transaction and one argument, returning a value.
 func withTxRes1[T, A any](s *Server, ctx context.Context, fn func(*exedb.Queries, context.Context, A) (T, error), a A) (T, error) {
-	var result T
-	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		result, err = fn(queries, ctx, a)
-		return err
-	})
-	return result, err
+	return exedb.WithTxRes1(s.db, ctx, fn, a)
 }
 
 // DataPath returns a path under /data with the server's isolation subdirectory
