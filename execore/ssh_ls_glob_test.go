@@ -141,8 +141,8 @@ func TestLsMultipleArgs(t *testing.T) {
 
 func TestPatternHasMeta(t *testing.T) {
 	tests := []struct {
-		pattern  string
-		hasMeta  bool
+		pattern string
+		hasMeta bool
 	}{
 		{"foo", false},
 		{"foo-bar", false},
