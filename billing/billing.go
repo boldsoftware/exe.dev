@@ -291,3 +291,38 @@ func (m *Manager) VerifyCheckout(ctx context.Context, sessionID string) (billing
 
 	return "", ctx.Err()
 }
+
+// PortalSession creates a Stripe billing portal session for a customer.
+// The portal allows customers to manage their subscription, update payment methods,
+// and view billing history. Returns the portal URL to redirect the customer to.
+func (m *Manager) PortalSession(ctx context.Context, billingID, returnURL string) (portalURL string, _ error) {
+	if billingID == "" {
+		return "", errors.New("billing ID is required")
+	}
+
+	c := m.client()
+
+	params := &stripe.BillingPortalSessionCreateParams{
+		Customer:  &billingID,
+		ReturnURL: &returnURL,
+	}
+
+	for err := range backoff.Loop(ctx, 1*time.Second) {
+		if err != nil {
+			return "", err
+		}
+
+		sess, err := c.V1BillingPortalSessions.Create(ctx, params)
+		if err != nil {
+			if !isRetryable(err) {
+				m.slog().WarnContext(ctx, "create billing portal session", "error", err)
+				return "", fmt.Errorf("failed to create billing portal session: %w", err)
+			}
+			m.slog().ErrorContext(ctx, "create billing portal session", "error", err)
+			continue
+		}
+		return sess.URL, nil
+	}
+
+	return "", ctx.Err()
+}

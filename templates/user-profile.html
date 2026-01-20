@@ -413,6 +413,25 @@
         <div class="section">
             <div class="section-title">Billing</div>
             <div class="info-card">
+                {{if .HasBilling}}
+                <div class="info-row">
+                    <div class="info-label">Status</div>
+                    <div class="info-value">Active</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Manage</div>
+                    <div class="info-value"><a href="/billing/portal">Update payment method, cancel, or view invoices</a></div>
+                </div>
+                {{else}}
+                <div class="info-row">
+                    <div class="info-label">Status</div>
+                    <div class="info-value">Developer Preview</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Subscribe</div>
+                    <div class="info-value"><a href="/take-my-money">Start paying now</a></div>
+                </div>
+                {{end}}
                 <div class="info-row">
                     <div class="info-label">Support</div>
                     <div class="info-value"><a href="mailto:support@exe.dev">support@exe.dev</a></div>
