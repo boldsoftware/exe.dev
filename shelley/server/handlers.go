@@ -579,11 +579,11 @@ func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request, c
 		conversation, err = q.GetConversation(ctx, conversationID)
 		return err
 	})
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "Conversation not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "Conversation not found", http.StatusNotFound)
-			return
-		}
 		s.logger.Error("Failed to get conversation messages", "conversationID", conversationID, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -642,11 +642,11 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 
 	// Get or create conversation manager
 	manager, err := s.getOrCreateConversationManager(ctx, conversationID)
+	if errors.Is(err, errConversationModelMismatch) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, errConversationModelMismatch) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
 		s.logger.Error("Failed to get conversation manager", "conversationID", conversationID, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -661,11 +661,11 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 	}
 
 	firstMessage, err := manager.AcceptUserMessage(ctx, llmService, modelID, userMessage)
+	if errors.Is(err, errConversationModelMismatch) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, errConversationModelMismatch) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
 		s.logger.Error("Failed to accept user message", "conversationID", conversationID, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -745,11 +745,11 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 
 	// Get or create conversation manager
 	manager, err := s.getOrCreateConversationManager(ctx, conversationID)
+	if errors.Is(err, errConversationModelMismatch) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, errConversationModelMismatch) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
 		s.logger.Error("Failed to get conversation manager", "conversationID", conversationID, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -764,11 +764,11 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	firstMessage, err := manager.AcceptUserMessage(ctx, llmService, modelID, userMessage)
+	if errors.Is(err, errConversationModelMismatch) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, errConversationModelMismatch) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
 		s.logger.Error("Failed to accept user message", "conversationID", conversationID, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return

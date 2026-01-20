@@ -91,10 +91,10 @@ func ec2IPMappings(ctx context.Context) ([]ipMapping, error) {
 	}
 
 	macs, err := client.macAddresses(ctx, token, useToken)
+	if errors.Is(err, errMetadataUnavailable) {
+		return nil, nil
+	}
 	if err != nil {
-		if errors.Is(err, errMetadataUnavailable) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("publicips: list interfaces: %w", err)
 	}
 
@@ -214,10 +214,10 @@ func (c *metadataClient) fetchToken(ctx context.Context) (string, error) {
 	req.Header.Set(headerIMDSTTL, tokenTTLSeconds)
 
 	resp, err := c.client.Do(req)
+	if isUnavailable(err) {
+		return "", errMetadataUnavailable
+	}
 	if err != nil {
-		if isUnavailable(err) {
-			return "", errMetadataUnavailable
-		}
 		return "", err
 	}
 	defer resp.Body.Close()
@@ -298,10 +298,10 @@ func (c *metadataClient) get(ctx context.Context, path, token string, useToken b
 	}
 
 	resp, err := c.client.Do(req)
+	if isUnavailable(err) {
+		return nil, 0, errMetadataUnavailable
+	}
 	if err != nil {
-		if isUnavailable(err) {
-			return nil, 0, errMetadataUnavailable
-		}
 		return nil, 0, err
 	}
 	defer resp.Body.Close()
@@ -343,11 +343,11 @@ func resolveDomains(ctx context.Context, mappings []ipMapping, boxDomain string)
 		}
 
 		addrs, err := lookupDomainIPs(ctx, "ip4", domain)
+		var dnsErr *net.DNSError
+		if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+			continue
+		}
 		if err != nil {
-			var dnsErr *net.DNSError
-			if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
-				continue
-			}
 			return nil, fmt.Errorf("lookup %q: %w", domain, err)
 		}
 

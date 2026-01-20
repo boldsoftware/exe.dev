@@ -443,12 +443,12 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleNewUserBillingSubscribe(w http.ResponseWriter, r *http.Request, token string) {
 	// Get pending registration
 	pending, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetPendingRegistrationByToken, token)
+	if errors.Is(err, sql.ErrNoRows) {
+		// Token invalid - redirect back to /auth
+		http.Redirect(w, r, "/auth?error=expired", http.StatusSeeOther)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			// Token invalid - redirect back to /auth
-			http.Redirect(w, r, "/auth?error=expired", http.StatusSeeOther)
-			return
-		}
 		s.slog().ErrorContext(r.Context(), "failed to get pending registration", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -727,10 +727,10 @@ func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (st
 		CookieValue: cookieValue,
 		Domain:      domain,
 	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("invalid cookie")
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("invalid cookie")
-		}
 		return "", fmt.Errorf("database error: %w", err)
 	}
 

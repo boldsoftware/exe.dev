@@ -192,10 +192,10 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 				return owner, nil
 			}
 			owner, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxOwnerByContainerID, &containerID)
+			if errors.Is(err, sql.ErrNoRows) {
+				return exedb.GetBoxOwnerByContainerIDRow{}, fmt.Errorf("container %q not present in database", containerID)
+			}
 			if err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					return exedb.GetBoxOwnerByContainerIDRow{}, fmt.Errorf("container %q not present in database", containerID)
-				}
 				return exedb.GetBoxOwnerByContainerIDRow{}, fmt.Errorf("failed to look up owner for container %q: %w", containerID, err)
 			}
 			ownerCache[containerID] = owner
@@ -296,11 +296,11 @@ func (s *Server) handleDebugBoxDelete(w http.ResponseWriter, r *http.Request) {
 
 	// Look up the box (without owner restriction - this is an admin page)
 	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("box %q not found", boxName), http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, fmt.Sprintf("box %q not found", boxName), http.StatusNotFound)
-			return
-		}
 		http.Error(w, fmt.Sprintf("/debug/boxes: failed to look up box by name: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -410,11 +410,11 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 
 	// Look up the box
 	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError("box %q not found", boxName)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeError("box %q not found", boxName)
-			return
-		}
 		writeError("failed to look up box: %v", err)
 		return
 	}
@@ -700,11 +700,11 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 
 	// Look up the box
 	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("box %q not found", boxName), http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, fmt.Sprintf("box %q not found", boxName), http.StatusNotFound)
-			return
-		}
 		http.Error(w, fmt.Sprintf("/debug/boxes/detail: failed to look up box by name: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -2516,11 +2516,11 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 
 	// Look up the user
 	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("user %q not found", userID), http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, fmt.Sprintf("user %q not found", userID), http.StatusNotFound)
-			return
-		}
 		http.Error(w, fmt.Sprintf("failed to look up user: %v", err), http.StatusInternalServerError)
 		return
 	}

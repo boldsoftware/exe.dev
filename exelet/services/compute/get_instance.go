@@ -15,10 +15,10 @@ import (
 
 func (s *Service) GetInstance(ctx context.Context, req *api.GetInstanceRequest) (*api.GetInstanceResponse, error) {
 	i, err := s.getInstance(ctx, req.ID)
+	if errors.Is(err, api.ErrNotFound) {
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
 	if err != nil {
-		if errors.Is(err, api.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -30,10 +30,10 @@ func (s *Service) GetInstance(ctx context.Context, req *api.GetInstanceRequest) 
 func (s *Service) getInstance(ctx context.Context, id string) (*api.Instance, error) {
 	configPath := s.getInstanceConfigPath(id)
 	data, err := os.ReadFile(configPath)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("%w: instance %s", api.ErrNotFound, id)
+	}
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%w: instance %s", api.ErrNotFound, id)
-		}
 		return nil, nil
 	}
 	i := &api.Instance{}

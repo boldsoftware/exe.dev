@@ -802,10 +802,10 @@ func (ss *SSHServer) handleShareRemoveLinkCmd(ctx context.Context, cc *exemenu.C
 			ShareToken: token,
 		})
 	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return cc.Errorf("VM %q not found or share link '%s' not found", boxName, token)
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return cc.Errorf("VM %q not found or share link '%s' not found", boxName, token)
-		}
 		return err
 	}
 

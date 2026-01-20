@@ -611,11 +611,11 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 
 	// Look up the most recent pending VM for this user
 	pendingVM, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetLatestMobilePendingVMByUser, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
 		s.slog().ErrorContext(r.Context(), "Failed to query pending mobile VM by user_id", "error", err)
 		http.Error(w, "Failed to process request", http.StatusInternalServerError)
 		return

@@ -1214,13 +1214,13 @@ func (s *Server) createUserWithSSHKeyAndID(ctx context.Context, userID, email, p
 func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, userID string) {
 	// Get user info
 	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "User not found", http.StatusNotFound)
-		} else {
-			s.slog().ErrorContext(r.Context(), "Failed to get user info for dashboard", "error", err, "user_id", userID)
-			http.Error(w, "Failed to load user information", http.StatusInternalServerError)
-		}
+		s.slog().ErrorContext(r.Context(), "Failed to get user info for dashboard", "error", err, "user_id", userID)
+		http.Error(w, "Failed to load user information", http.StatusInternalServerError)
 		return
 	}
 
@@ -1364,13 +1364,13 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userID string) {
 	// Get user info
 	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "User not found", http.StatusNotFound)
-		} else {
-			s.slog().ErrorContext(r.Context(), "Failed to get user info for profile", "error", err, "user_id", userID)
-			http.Error(w, "Failed to load user information", http.StatusInternalServerError)
-		}
+		s.slog().ErrorContext(r.Context(), "Failed to get user info for profile", "error", err, "user_id", userID)
+		http.Error(w, "Failed to load user information", http.StatusInternalServerError)
 		return
 	}
 
@@ -1623,24 +1623,24 @@ func (s *Server) handleInvite(w http.ResponseWriter, r *http.Request, userID str
 
 	// Get user info
 	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "User not found", http.StatusNotFound)
-		} else {
-			s.slog().ErrorContext(ctx, "Failed to get user info for invite", "error", err, "user_id", userID)
-			http.Error(w, "Failed to load user information", http.StatusInternalServerError)
-		}
+		s.slog().ErrorContext(ctx, "Failed to get user info for invite", "error", err, "user_id", userID)
+		http.Error(w, "Failed to load user information", http.StatusInternalServerError)
 		return
 	}
 
 	// Get and allocate the next unallocated invite
 	invite, err := withRxRes1(s, ctx, (*exedb.Queries).GetNextUnallocatedInviteForUser, &userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		// No more invites available
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			// No more invites available
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
 		s.slog().ErrorContext(ctx, "Failed to get invite code", "error", err, "user_id", userID)
 		http.Error(w, "Failed to load invite code", http.StatusInternalServerError)
 		return
@@ -1680,13 +1680,13 @@ func (s *Server) handleInviteRequest(w http.ResponseWriter, r *http.Request, use
 
 	// Get user info
 	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "User not found", http.StatusNotFound)
-		} else {
-			s.slog().ErrorContext(ctx, "Failed to get user info for invite request", "error", err, "user_id", userID)
-			http.Error(w, "Failed to load user information", http.StatusInternalServerError)
-		}
+		s.slog().ErrorContext(ctx, "Failed to get user info for invite request", "error", err, "user_id", userID)
+		http.Error(w, "Failed to load user information", http.StatusInternalServerError)
 		return
 	}
 

@@ -374,12 +374,12 @@ func (s *Server) handlePasskeyLoginFinish(w http.ResponseWriter, r *http.Request
 
 	// Look up the credential to find the user
 	passkey, err := withRxRes1(s, ctx, (*exedb.Queries).GetPasskeyByCredentialID, parsedResponse.RawID)
+	if errors.Is(err, sql.ErrNoRows) {
+		s.slog().WarnContext(ctx, "Passkey not found", "credential_id", base64.URLEncoding.EncodeToString(parsedResponse.RawID))
+		http.Error(w, "This passkey is no longer registered. It may have been deleted.", http.StatusUnauthorized)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			s.slog().WarnContext(ctx, "Passkey not found", "credential_id", base64.URLEncoding.EncodeToString(parsedResponse.RawID))
-			http.Error(w, "This passkey is no longer registered. It may have been deleted.", http.StatusUnauthorized)
-			return
-		}
 		s.slog().ErrorContext(ctx, "Failed to look up passkey", "error", err)
 		http.Error(w, "Failed to look up passkey", http.StatusInternalServerError)
 		return

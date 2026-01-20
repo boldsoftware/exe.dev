@@ -22,10 +22,10 @@ func newHLLStorage(db *sqlite.DB) hll.Storage {
 
 func (s *hllStorage) Load(ctx context.Context, key string) ([]byte, error) {
 	row, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetHLLSketch, key)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	return row.Data, nil

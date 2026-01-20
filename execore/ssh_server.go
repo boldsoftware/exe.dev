@@ -846,12 +846,13 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 	var user *exedb.User
 	if needsEmailVerification {
 		user, err = ss.waitForEmailVerification(s, publicKey, email, inviteCode)
+		if errors.Is(err, errRegistrationCancelled) {
+			ss.server.slog().InfoContext(ctx, "email registration cancelled", "email", email)
+			fmt.Fprintf(s, "\r\n\033[1;31m%v\033[0m\r\n", err)
+			return
+		}
 		if err != nil || user == nil {
-			if errors.Is(err, errRegistrationCancelled) {
-				ss.server.slog().InfoContext(ctx, "email registration cancelled", "email", email)
-			} else {
-				ss.server.slog().WarnContext(ctx, "email verification failed", "email", email, "error", err)
-			}
+			ss.server.slog().WarnContext(ctx, "email verification failed", "email", email, "error", err)
 			fmt.Fprintf(s, "\r\n\033[1;31m%v\033[0m\r\n", err)
 			return
 		}

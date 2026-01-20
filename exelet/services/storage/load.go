@@ -17,10 +17,10 @@ func (s *Service) LoadFilesystem(ctx context.Context, req *api.LoadFilesystemReq
 	platform := fmt.Sprintf("linux/%s", runtime.GOARCH)
 
 	imageID, err := s.LoadImage(ctx, req.Image, platform)
+	if errors.Is(err, api.ErrResourceExists) {
+		return nil, status.Error(codes.AlreadyExists, err.Error())
+	}
 	if err != nil {
-		if errors.Is(err, api.ErrResourceExists) {
-			return nil, status.Error(codes.AlreadyExists, err.Error())
-		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &api.LoadFilesystemResponse{

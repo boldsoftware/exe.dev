@@ -40,10 +40,10 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 
 	// Load instance
 	instance, err := s.getInstance(ctx, instanceID)
+	if errors.Is(err, api.ErrNotFound) {
+		return status.Errorf(codes.NotFound, "instance not found: %s", instanceID)
+	}
 	if err != nil {
-		if errors.Is(err, api.ErrNotFound) {
-			return status.Errorf(codes.NotFound, "instance not found: %s", instanceID)
-		}
 		return status.Errorf(codes.Internal, "failed to get instance: %v", err)
 	}
 

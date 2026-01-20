@@ -653,10 +653,10 @@ func (s *Server) boxForNameUserID(ctx context.Context, boxName, userID string) (
 		Name:            boxName,
 		CreatedByUserID: userID,
 	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("VM '%s' not found or access denied", boxName)
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("VM '%s' not found or access denied", boxName)
-		}
 		return nil, fmt.Errorf("database error: %v", err)
 	}
 	return &box, nil

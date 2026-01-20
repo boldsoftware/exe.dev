@@ -1571,12 +1571,12 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 		cmd := strings.Join(cmdArgs, " ")
 		err := session.Run(cmd)
 		cc.SSHSession.Write([]byte("\r")) // return cursor to column 0
+		var exitErr *ssh.ExitError
+		if errors.As(err, &exitErr) {
+			// Return nil since we already wrote output; exit code is informational
+			return nil
+		}
 		if err != nil {
-			var exitErr *ssh.ExitError
-			if errors.As(err, &exitErr) {
-				// Return nil since we already wrote output; exit code is informational
-				return nil
-			}
 			return cc.Errorf("command failed: %v", err)
 		}
 	} else {

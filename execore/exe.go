@@ -1461,10 +1461,10 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 // checkEmailVerificationToken checks if an email verification token is valid without consuming it
 func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) (exedb.GetEmailVerificationByTokenRow, error) {
 	row, err := withRxRes1(s, ctx, (*exedb.Queries).GetEmailVerificationByToken, token)
+	if errors.Is(err, sql.ErrNoRows) {
+		return exedb.GetEmailVerificationByTokenRow{}, fmt.Errorf("invalid verification token")
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return exedb.GetEmailVerificationByTokenRow{}, fmt.Errorf("invalid verification token")
-		}
 		return exedb.GetEmailVerificationByTokenRow{}, fmt.Errorf("database error: %w", err)
 	}
 
@@ -1569,10 +1569,10 @@ func (s *Server) validateEmailVerificationByToken(ctx context.Context, token str
 // validateAuthToken validates an authentication token and returns the user ID
 func (s *Server) validateAuthToken(ctx context.Context, token, expectedSubdomain string) (string, error) {
 	authToken, err := withRxRes1(s, ctx, (*exedb.Queries).GetAuthTokenInfo, token)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("invalid token")
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("invalid token")
-		}
 		return "", fmt.Errorf("database error: %w", err)
 	}
 
@@ -3023,10 +3023,10 @@ func generateUserID() (string, error) {
 func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicKey) (string, error) {
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(publicKey))
 	userID, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDBySSHKey, publicKeyStr)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("user not found for public key")
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("user not found for public key")
-		}
 		return "", fmt.Errorf("database error: %w", err)
 	}
 
@@ -3041,10 +3041,10 @@ func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicK
 // GetUserByEmail retrieves a user by their email address
 func (s *Server) GetUserByEmail(ctx context.Context, email string) (*exedb.User, error) {
 	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserByEmail, email)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, sql.ErrNoRows
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, sql.ErrNoRows
-		}
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 	return &user, nil

@@ -19,10 +19,10 @@ func (s *Service) SetInstanceGroup(ctx context.Context, req *api.SetInstanceGrou
 
 	// Load instance config
 	inst, err := s.loadInstanceConfig(req.ID)
+	if errors.Is(err, api.ErrNotFound) {
+		return nil, status.Errorf(codes.NotFound, "instance not found: %s", req.ID)
+	}
 	if err != nil {
-		if errors.Is(err, api.ErrNotFound) {
-			return nil, status.Errorf(codes.NotFound, "instance not found: %s", req.ID)
-		}
 		return nil, status.Errorf(codes.Internal, "failed to load instance config: %v", err)
 	}
 

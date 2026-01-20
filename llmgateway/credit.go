@@ -126,10 +126,10 @@ func (m *CreditManager) DebitCredit(ctx context.Context, userID string, costUSD 
 	var info *CreditInfo
 	err := exedb.WithTx(m.db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		credit, err := q.GetUserLLMCredit(ctx, userID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("no credit record for user %s", userID)
+		}
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("no credit record for user %s", userID)
-			}
 			return err
 		}
 
