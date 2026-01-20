@@ -26,5 +26,6 @@ if [ "$DEPLOYED_SHA" = "$CURRENT_SHA" ]; then
     echo "✅ already deployed: $DEPLOYED_SHA"
 else
     echo "🦦 commits that would be deployed (excluding devlog commits):"
-    git log --grep="^devlog" --invert-grep --format="%h %an: %s" "${DEPLOYED_SHA}".."${CURRENT_SHA}"
+    git log --grep="^devlog" --invert-grep --format="%h	%an	%s" "${DEPLOYED_SHA}".."${CURRENT_SHA}" | \
+        "$(dirname "$0")/format-git-log.sh"
 fi
