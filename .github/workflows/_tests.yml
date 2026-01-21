@@ -75,6 +75,8 @@ jobs:
 
   test-e1e:
     runs-on: [self-hosted, linux, x64, libvirt]
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -129,6 +131,20 @@ jobs:
             echo
             echo "Diff:"
             git diff e1e/golden/
+
+            # Push changes to a recovery branch
+            BRANCH="golden-${{ github.run_id }}"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add e1e/golden/
+            git commit -m "Golden file updates from CI run ${{ github.run_id }}"
+            git push origin "HEAD:refs/heads/$BRANCH"
+
+            echo
+            echo "📦 Golden file changes pushed to branch: $BRANCH"
+            echo "To apply these changes locally:"
+            echo "  git fetch origin $BRANCH"
+            echo "  git checkout origin/$BRANCH -- e1e/golden/"
             exit 1
           fi
 

@@ -189,6 +189,8 @@ jobs:
     uses: ./.github/workflows/_tests.yml
     with:
       ref: ${{ needs.commit-validation-and-formatting.outputs.commit_sha }}
+    permissions:
+      contents: write # needed by test-e1e to push golden file changes to recovery branch
 
   shelley-test:
     needs: [commit-validation-and-formatting]
