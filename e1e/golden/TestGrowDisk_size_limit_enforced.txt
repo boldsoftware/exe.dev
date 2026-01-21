@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+grow BOX_NAME 300
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ grow BOX_NAME 300
+size cannot exceed 250GB
+PROMPT ▶ exit
+Goodbye!

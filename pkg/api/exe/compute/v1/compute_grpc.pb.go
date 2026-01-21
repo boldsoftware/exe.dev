@@ -32,6 +32,7 @@ const (
 	ComputeService_GetSystemInfo_FullMethodName    = "/exe.compute.v1.ComputeService/GetSystemInfo"
 	ComputeService_SendVM_FullMethodName           = "/exe.compute.v1.ComputeService/SendVM"
 	ComputeService_ReceiveVM_FullMethodName        = "/exe.compute.v1.ComputeService/ReceiveVM"
+	ComputeService_GrowDisk_FullMethodName         = "/exe.compute.v1.ComputeService/GrowDisk"
 )
 
 // ComputeServiceClient is the client API for ComputeService service.
@@ -53,6 +54,8 @@ type ComputeServiceClient interface {
 	SendVM(ctx context.Context, opts ...grpc.CallOption) (ComputeService_SendVMClient, error)
 	// ReceiveVM receives a VM from another exelet
 	ReceiveVM(ctx context.Context, opts ...grpc.CallOption) (ComputeService_ReceiveVMClient, error)
+	// GrowDisk grows the disk of a running VM
+	GrowDisk(ctx context.Context, in *GrowDiskRequest, opts ...grpc.CallOption) (*GrowDiskResponse, error)
 }
 
 type computeServiceClient struct {
@@ -306,6 +309,16 @@ func (x *computeServiceReceiveVMClient) Recv() (*ReceiveVMResponse, error) {
 	return m, nil
 }
 
+func (c *computeServiceClient) GrowDisk(ctx context.Context, in *GrowDiskRequest, opts ...grpc.CallOption) (*GrowDiskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GrowDiskResponse)
+	err := c.cc.Invoke(ctx, ComputeService_GrowDisk_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ComputeServiceServer is the server API for ComputeService service.
 // All implementations must embed UnimplementedComputeServiceServer
 // for forward compatibility
@@ -325,6 +338,8 @@ type ComputeServiceServer interface {
 	SendVM(ComputeService_SendVMServer) error
 	// ReceiveVM receives a VM from another exelet
 	ReceiveVM(ComputeService_ReceiveVMServer) error
+	// GrowDisk grows the disk of a running VM
+	GrowDisk(context.Context, *GrowDiskRequest) (*GrowDiskResponse, error)
 	mustEmbedUnimplementedComputeServiceServer()
 }
 
@@ -370,6 +385,9 @@ func (UnimplementedComputeServiceServer) SendVM(ComputeService_SendVMServer) err
 }
 func (UnimplementedComputeServiceServer) ReceiveVM(ComputeService_ReceiveVMServer) error {
 	return status.Errorf(codes.Unimplemented, "method ReceiveVM not implemented")
+}
+func (UnimplementedComputeServiceServer) GrowDisk(context.Context, *GrowDiskRequest) (*GrowDiskResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GrowDisk not implemented")
 }
 func (UnimplementedComputeServiceServer) mustEmbedUnimplementedComputeServiceServer() {}
 
@@ -643,6 +661,24 @@ func (x *computeServiceReceiveVMServer) Recv() (*ReceiveVMRequest, error) {
 	return m, nil
 }
 
+func _ComputeService_GrowDisk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GrowDiskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).GrowDisk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_GrowDisk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).GrowDisk(ctx, req.(*GrowDiskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ComputeService_ServiceDesc is the grpc.ServiceDesc for ComputeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -681,6 +717,10 @@ var ComputeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSystemInfo",
 			Handler:    _ComputeService_GetSystemInfo_Handler,
+		},
+		{
+			MethodName: "GrowDisk",
+			Handler:    _ComputeService_GrowDisk_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

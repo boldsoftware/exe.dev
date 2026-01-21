@@ -1,0 +1,16 @@
+
+
+●
+● ssh localhost
+●
+
+grow
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ grow
+usage: grow <vmname> <size>
+Size is in GB (e.g., '10' for 10GB). Range: 1-250GB.
+PROMPT ▶ exit
+Goodbye!

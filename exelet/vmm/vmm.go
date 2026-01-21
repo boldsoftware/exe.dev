@@ -40,6 +40,8 @@ type VMM interface {
 	Stop(ctx context.Context, id string) error
 	// Delete implements VM delete
 	Delete(ctx context.Context, id, ip string) error
+	// ResizeDisk notifies the VMM that a disk has been resized
+	ResizeDisk(ctx context.Context, id, diskID string, newSize uint64) error
 	// RecoverProcesses adopts running processes and cleans up stale metadata on startup
 	RecoverProcesses(ctx context.Context) error
 	// StartLogRotation starts background log rotation and returns a function to stop it

@@ -20,6 +20,8 @@ service ComputeService {
   rpc SendVM(stream SendVMRequest) returns (stream SendVMResponse);
   // ReceiveVM receives a VM from another exelet
   rpc ReceiveVM(stream ReceiveVMRequest) returns (stream ReceiveVMResponse);
+  // GrowDisk grows the disk of a running VM
+  rpc GrowDisk(GrowDiskRequest) returns (GrowDiskResponse);
 }
 
 message CreateInstanceRequest {
@@ -349,4 +351,14 @@ message ReceiveVMReady {
 message ReceiveVMResult {
   Instance instance = 1;  // Created instance
   string error = 2;       // Error message if failed
+}
+
+message GrowDiskRequest {
+  string id = 1;                    // Instance ID
+  uint64 additional_bytes = 2;      // Additional bytes to add to the disk
+}
+
+message GrowDiskResponse {
+  uint64 old_size = 1;              // Previous disk size in bytes
+  uint64 new_size = 2;              // New disk size in bytes
 }

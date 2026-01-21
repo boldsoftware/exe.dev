@@ -44,31 +44,12 @@ func (s *ZFS) Expand(ctx context.Context, id string, size uint64) error {
 	// zfs needs to be 4K aligned
 	newSize := align4K(size)
 
-	diskPath, err := s.getDSDiskPath(id)
-	if err != nil {
-		return err
-	}
 	s.log.DebugContext(ctx, "expanding volume", "id", id, "size", newSize)
-	// for expand:
-	// - update zvol size
-	// - fsck disk
-	// - resize filesystem
+	// for expand, we only need to update the zvol size
+	// the filesystem resize must be done from inside the VM (resize2fs /dev/vda)
+	// since the filesystem is mounted there, not on the host
 	// note: volumes remain sparse (no refreservation) to allow efficient space sharing
 	if err := ds.SetProperty("volsize", fmt.Sprintf("%d", newSize)); err != nil {
-		return err
-	}
-
-	// TODO: inspect the actual disk to get the filesystem to perform the correct resizing
-	// for now we only support ext4 so this is fine.
-
-	// resize filesystem
-	// fsck
-	if err := fsck(ctx, diskPath); err != nil {
-		return err
-	}
-
-	// resize
-	if err := resize(ctx, diskPath, 0); err != nil {
 		return err
 	}
 

@@ -20,6 +20,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -263,6 +264,15 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeRenameArgs,
 			Handler:           ss.handleRenameCommand,
+		},
+		{
+			Name:              "grow",
+			Hidden:            true,
+			Description:       "Grow a VM's disk (support only)",
+			Usage:             "grow <vmname> <size>",
+			HasPositionalArgs: true,
+			FlagSetFunc:       jsonOnlyFlags("grow"),
+			Handler:           ss.handleGrowCommand,
 		},
 		{
 			Name:        "exit",
@@ -2005,5 +2015,107 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 		}
 		session.Wait()
 	}
+	return nil
+}
+
+const (
+	minDiskGrowth = 1 * 1024 * 1024 * 1024   // 1GB in bytes
+	maxDiskGrowth = 250 * 1024 * 1024 * 1024 // 250GB in bytes
+)
+
+func (ss *SSHServer) handleGrowCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	// Only support users can use this command
+	if !ss.server.UserHasExeSudo(ctx, cc.User.ID) {
+		return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", cc.User.Email)
+	}
+
+	if len(cc.Args) != 2 {
+		return cc.Errorf("usage: grow <vmname> <size>\nSize is in GB (e.g., '10' for 10GB). Range: 1-250GB.")
+	}
+
+	boxName := ss.normalizeBoxName(cc.Args[0])
+	sizeArg := cc.Args[1]
+
+	// Parse size - if it's just a number, treat it as GB (default unit)
+	var additionalBytes uint64
+	var err error
+	// Try parsing as plain number first (treat as GB)
+	if _, parseErr := fmt.Sscanf(sizeArg, "%d", &additionalBytes); parseErr == nil {
+		additionalBytes *= 1024 * 1024 * 1024 // Convert GB to bytes
+	} else {
+		// Try parsing with unit suffix
+		additionalBytes, err = humanize.ParseBytes(sizeArg)
+		if err != nil {
+			return cc.Errorf("invalid size %q: %v", sizeArg, err)
+		}
+	}
+
+	if additionalBytes < minDiskGrowth {
+		return cc.Errorf("size must be at least 1GB")
+	}
+
+	if additionalBytes > maxDiskGrowth {
+		return cc.Errorf("size cannot exceed 250GB")
+	}
+
+	// Look up the box by name (support users can look up any box)
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if errors.Is(err, sql.ErrNoRows) {
+		return cc.Errorf("VM %q not found", boxName)
+	}
+	if err != nil {
+		return cc.Errorf("failed to look up VM: %v", err)
+	}
+
+	if box.ContainerID == nil || *box.ContainerID == "" {
+		return cc.Errorf("VM %q has no container ID", boxName)
+	}
+
+	// Get the exelet client for this box's container host
+	exeletClient := ss.server.getExeletClient(box.Ctrhost)
+	if exeletClient == nil {
+		return cc.Errorf("no exelet client available for host %s", box.Ctrhost)
+	}
+
+	if !cc.WantJSON() {
+		cc.Writeln("Growing disk by %dGB...", additionalBytes/(1024*1024*1024))
+	}
+
+	// Call the exelet to grow the disk (expands the ZFS volume)
+	resp, err := exeletClient.client.GrowDisk(ctx, &api.GrowDiskRequest{
+		ID:              *box.ContainerID,
+		AdditionalBytes: additionalBytes,
+	})
+	if err != nil {
+		if st, ok := status.FromError(err); ok {
+			return cc.Errorf("failed to grow disk: %s", st.Message())
+		}
+		return cc.Errorf("failed to grow disk: %v", err)
+	}
+
+	oldSizeGB := fmt.Sprintf("%.1fGB", float64(resp.OldSize)/(1024*1024*1024))
+	newSizeGB := fmt.Sprintf("%.1fGB", float64(resp.NewSize)/(1024*1024*1024))
+
+	// Build result
+	if cc.WantJSON() {
+		result := map[string]any{
+			"vm_name":          boxName,
+			"volume_old_bytes": resp.OldSize,
+			"volume_new_bytes": resp.NewSize,
+		}
+		cc.WriteJSON(result)
+		return nil
+	}
+
+	// Human-readable output
+	// Note: Online resize doesn't work with cloud-hypervisor + ZFS zvols because
+	// the resize-disk API fails with EINVAL on block devices. The guest kernel
+	// won't see the new size until a reboot.
+	cc.Writeln("Volume grown from %s to %s", oldSizeGB, newSizeGB)
+	cc.Writeln("")
+	cc.Writeln("To use the new space:")
+	cc.Writeln("  1. Restart the VM: restart %s", boxName)
+	cc.Writeln("  2. Inside the VM, run: sudo resize2fs /dev/vda")
+
 	return nil
 }
