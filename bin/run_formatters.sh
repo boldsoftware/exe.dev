@@ -26,7 +26,7 @@ echo "✓ Go code formatted"
 echo "Checking shelley/ui formatting..."
 cd shelley/ui
 echo "Formatting TypeScript/JavaScript code with prettier..."
-pnpm exec prettier --write 'src/**/*.{ts,tsx,js,jsx,json,css,html}'
+pnpm exec prettier --log-level warn --write 'src/**/*.{ts,tsx,js,jsx,json,css,html}'
 echo "✓ shelley/ui code formatted"
 cd ../..
 
