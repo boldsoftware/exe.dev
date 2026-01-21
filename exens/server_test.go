@@ -303,6 +303,7 @@ func TestDNSServer(t *testing.T) {
 		if err := queries.InsertUser(ctx, exedb.InsertUserParams{
 			UserID: "test-user",
 			Email:  "test@example.com",
+			Region: "pdx",
 		}); err != nil {
 			return err
 		}
@@ -314,6 +315,7 @@ func TestDNSServer(t *testing.T) {
 			Image:           "ubuntu",
 			Ctrhost:         "localhost",
 			CreatedByUserID: "test-user",
+			Region:          "pdx",
 		})
 		if err != nil {
 			return err

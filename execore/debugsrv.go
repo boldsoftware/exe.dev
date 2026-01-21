@@ -184,6 +184,7 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 		Status      string `json:"status"`
 		OwnerUserID string `json:"owner_user_id,omitempty"`
 		OwnerEmail  string `json:"owner_email,omitempty"`
+		Region      string `json:"region"`
 	}
 
 	var boxes []boxInfo
@@ -230,6 +231,7 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 					ID:     inst.ID,
 					Name:   inst.Name,
 					Status: inst.State.String(),
+					Region: ec.region.Code,
 				}
 				if owner, err := getOwner(ctx, inst.ID); err == nil {
 					info.OwnerUserID = owner.UserID
@@ -255,6 +257,7 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 				Status:      b.Status,
 				OwnerUserID: b.OwnerUserID,
 				OwnerEmail:  b.OwnerEmail,
+				Region:      b.Region,
 			}
 			if b.ContainerID != nil {
 				info.ID = *b.ContainerID

@@ -262,6 +262,7 @@ func TestDashboardWaitsForCreatingBox(t *testing.T) {
 			name:    hostname,
 			image:   "exeuntu",
 			noShard: true,
+			region:  "pdx",
 		})
 		if err != nil {
 			t.Errorf("preCreateBox failed: %v", err)

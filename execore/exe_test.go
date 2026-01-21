@@ -521,6 +521,7 @@ func (s *Server) createTestBox(t *testing.T, userID, ctrhost, name, containerID,
 		name:    name,
 		image:   image,
 		noShard: false,
+		region:  "pdx",
 	})
 	if err != nil {
 		t.Fatalf("failed to create box with test SSH keys: %v", err)

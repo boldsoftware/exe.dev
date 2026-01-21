@@ -27,6 +27,7 @@ func setupTestBox(t *testing.T, db *sqlite.DB, boxName string) {
 			UserID:                 userID,
 			Email:                  "test@example.com",
 			CreatedForLoginWithExe: false,
+			Region:                 "pdx",
 		})
 		if err != nil {
 			return fmt.Errorf("insert user: %w", err)
@@ -39,6 +40,7 @@ func setupTestBox(t *testing.T, db *sqlite.DB, boxName string) {
 			Image:           "test-image",
 			CreatedByUserID: userID,
 			Routes:          nil,
+			Region:          "pdx",
 		})
 		if err != nil {
 			return fmt.Errorf("insert box: %w", err)

@@ -33,6 +33,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	api "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/region"
 	"exe.dev/stage"
 )
 
@@ -450,6 +451,10 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 				"vm_name":  vm.Name,
 				"ssh_dest": ss.server.env.BoxDest(vm.Name),
 				"status":   status,
+				"region":   vm.Region,
+			}
+			if r, err := region.ByCode(vm.Region); err == nil {
+				box["region_display"] = r.Display
 			}
 			imageName := container.GetDisplayImageName(vm.Image)
 			switch imageName {
@@ -479,9 +484,10 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			if strings.Contains(b.Image, "exeuntu") {
 				shelleyURL = ss.server.shelleyURL(b.Name)
 			}
-			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\r\n",
+			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\r\n",
 				ss.server.env.BoxSub(b.Name),
 				statusColor(status), status,
+				b.Region,
 				shelleyURL,
 				ss.server.boxProxyAddress(b.Name),
 			)
@@ -697,6 +703,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		name:    boxName,
 		image:   imageToStore,
 		noShard: noShard,
+		region:  exeletClient.region.Code,
 	})
 	switch {
 	case errors.Is(err, errNoIPShardsAvailable):
@@ -1942,6 +1949,7 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 		name:    newName,
 		image:   sourceBox.Image,
 		noShard: false,
+		region:  sourceBox.Region,
 	})
 	switch {
 	case errors.Is(err, errNoIPShardsAvailable):

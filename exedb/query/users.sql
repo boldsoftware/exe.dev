@@ -2,7 +2,7 @@
 SELECT user_id FROM users WHERE email = ?;
 
 -- name: InsertUser :exec
-INSERT INTO users (user_id, email, created_for_login_with_exe) VALUES (?, ?, ?);
+INSERT INTO users (user_id, email, created_for_login_with_exe, region) VALUES (?, ?, ?, ?);
 
 -- name: GetUserWithDetails :one
 SELECT *

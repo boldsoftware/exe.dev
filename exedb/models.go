@@ -66,6 +66,7 @@ type Box struct {
 	SSHUser              *string    `db:"ssh_user" json:"ssh_user"`
 	CreationLog          *string    `db:"creation_log" json:"creation_log"`
 	SupportAccessAllowed int64      `db:"support_access_allowed" json:"support_access_allowed"`
+	Region               string     `db:"region" json:"region"`
 }
 
 type BoxEmailCredit struct {
@@ -320,6 +321,7 @@ type User struct {
 	BillingTrialEndsAt     *time.Time `db:"billing_trial_ends_at" json:"billing_trial_ends_at"`
 	SignedUpWithInviteID   *int64     `db:"signed_up_with_invite_id" json:"signed_up_with_invite_id"`
 	NextSSHKeyNumber       int64      `db:"next_ssh_key_number" json:"next_ssh_key_number"`
+	Region                 string     `db:"region" json:"region"`
 }
 
 type UserDailyEmailCount struct {

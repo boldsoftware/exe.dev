@@ -56,6 +56,7 @@ import (
 	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 	"exe.dev/pow"
 	"exe.dev/publicips"
+	"exe.dev/region"
 	"exe.dev/sqlite"
 	"exe.dev/sshkey"
 	"exe.dev/sshpool2"
@@ -392,6 +393,7 @@ func newSignupPOW() *pow.Challenger {
 type exeletClient struct {
 	up     atomic.Bool
 	addr   string
+	region region.Region // region this exelet is in
 	client *exeletclient.Client
 	// usage and count are updated every 10 minutes,
 	// so they can be old.
@@ -784,6 +786,13 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 			continue
 		}
 
+		// Parse region from exelet address
+		exeletRegion, err := region.ParseExeletRegion(addr)
+		if err != nil {
+			slog.Error("failed to parse region from exelet address, skipping host", "addr", addr, "error", err)
+			continue
+		}
+
 		client, err := exeletclient.NewClient(addr,
 			exeletclient.WithInsecure(),
 			exeletclient.WithLogger(slog),
@@ -795,6 +804,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 		ec := &exeletClient{
 			addr:   addr,
+			region: exeletRegion,
 			client: client,
 		}
 		ec.up.Store(true)
@@ -809,7 +819,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 			slog.Error("failed to get system info from exelet, will retry later", "addr", addr, "error", err)
 			ec.up.Store(false)
 		} else {
-			slog.Info("initialized exelet client", "addr", addr, "arch", client.Arch(), "version", client.Version())
+			slog.Info("initialized exelet client", "addr", addr, "region", exeletRegion.Code, "arch", client.Arch(), "version", client.Version())
 		}
 	}
 	slog.Info("exelet clients initialized", "count", len(exeletClients))
@@ -1885,12 +1895,17 @@ type preCreateBoxOptions struct {
 	name    string
 	image   string
 	noShard bool
+	region  string // region code (e.g., "pdx", "lax")
 }
 
 func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (int, error) {
 	// Validate box name
 	if err := boxname.Valid(opts.name); err != nil {
 		return 0, err
+	}
+	// Validate region code
+	if _, err := region.ByCode(opts.region); err != nil {
+		return 0, fmt.Errorf("invalid region: %w", err)
 	}
 
 	routes := exedb.DefaultRouteJSON()
@@ -1903,6 +1918,7 @@ func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (in
 			Image:           opts.image,
 			CreatedByUserID: opts.userID,
 			Routes:          &routes,
+			Region:          opts.region,
 		})
 		if err != nil {
 			return err
@@ -2576,6 +2592,7 @@ func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, e
 		UserID:                 userID,
 		Email:                  email,
 		CreatedForLoginWithExe: createdForLoginWithExe,
+		Region:                 region.Default().Code,
 	}); err != nil {
 		return "", fmt.Errorf("failed to create user: %w", err)
 	}

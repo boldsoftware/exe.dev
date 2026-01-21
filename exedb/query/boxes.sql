@@ -11,8 +11,8 @@ SELECT * FROM boxes WHERE name = ?;
 
 -- name: InsertBox :execlastid
 INSERT INTO boxes (
-    ctrhost, name, status, image, container_id, created_by_user_id, routes
-) VALUES (?, ?, ?, ?, NULL, ?, ?);
+    ctrhost, name, status, image, container_id, created_by_user_id, routes, region
+) VALUES (?, ?, ?, ?, NULL, ?, ?, ?);
 
 -- name: BoxesForUser :many
 SELECT *
@@ -35,7 +35,7 @@ WHERE id = ?;
 SELECT m.id, m.name, m.status, COALESCE(m.image, '') as image,
        COALESCE(m.container_id, '') as container_id, m.created_by_user_id,
        m.created_at, m.updated_at, m.last_started_at,
-       COALESCE(m.creation_log, '') as creation_log, m.routes
+       COALESCE(m.creation_log, '') as creation_log, m.routes, m.region
 FROM boxes m
 WHERE m.created_by_user_id = ? AND m.status != 'failed'
 ORDER BY m.updated_at DESC;
@@ -94,7 +94,7 @@ SELECT COUNT(DISTINCT created_by_user_id) FROM boxes;
 UPDATE boxes SET creation_log = ? WHERE name = ?;
 
 -- name: ListAllBoxesWithOwner :many
-SELECT b.name, b.status, b.ctrhost, b.container_id, b.created_by_user_id as owner_user_id, u.email as owner_email
+SELECT b.name, b.status, b.ctrhost, b.container_id, b.created_by_user_id as owner_user_id, u.email as owner_email, b.region
 FROM boxes b
 JOIN users u ON u.user_id = b.created_by_user_id
 ORDER BY b.name;

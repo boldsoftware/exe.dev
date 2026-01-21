@@ -40,6 +40,7 @@ func createTestUser(t *testing.T, db *sqlite.DB, userID, email string) {
 		return q.InsertUser(ctx, exedb.InsertUserParams{
 			UserID: userID,
 			Email:  email,
+			Region: "pdx",
 		})
 	})
 	if err != nil {
