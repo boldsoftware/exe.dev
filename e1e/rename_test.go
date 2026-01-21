@@ -302,4 +302,3 @@ func TestRenameNoVM(t *testing.T) {
 
 	pty.disconnect()
 }
-
