@@ -260,13 +260,36 @@ func (p *Pool) connect(key connKey, config *ssh.ClientConfig) (*pooledConn, erro
 	p.incCacheResult("miss")
 
 	addr := net.JoinHostPort(key.host, strconv.Itoa(key.port))
-	prevTimeout := config.Timeout
-	config.Timeout = 3 * time.Second // fail fast on new connections
-	client, err := ssh.Dial("tcp", addr, config)
-	config.Timeout = prevTimeout
+	deadline := time.Now().Add(3 * time.Second) // fail fast on new connections
+
+	// Establish TCP connection with deadline.
+	// Use Deadline (not Timeout) so TCP connect + SSH handshake share the same 3s budget.
+	dialer := net.Dialer{Deadline: deadline}
+	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("SSH dial failed: %w", err)
 	}
+
+	// Set deadline covering the SSH handshake (version exchange, key exchange, auth).
+	// ssh.ClientConfig.Timeout only covers TCP connect, not the handshake.
+	if err := conn.SetDeadline(deadline); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to set deadline on ssh dialed conn: %w", err)
+	}
+
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, addr, config)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("SSH new client conn failed: %w", err)
+	}
+
+	// We're fully connected. Clear deadline for actual future use.
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		sshConn.Close()
+		return nil, fmt.Errorf("failed to clear deadline: %w", err)
+	}
+
+	client := ssh.NewClient(sshConn, chans, reqs)
 	p.log().Info("established new SSH connection in pool", "key", key.String())
 
 	pc = &pooledConn{client: client, key: key, pool: p, log: p.log()}

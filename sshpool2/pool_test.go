@@ -1059,6 +1059,66 @@ func TestPoolDropConnectionsTo(t *testing.T) {
 	conn2.Close()
 }
 
+// TestPoolHandshakeTimeout verifies that the 3s connection deadline applies to
+// the SSH handshake, not just TCP connect. Before the fix in commit 83ce803,
+// ssh.ClientConfig.Timeout only covered TCP connect, so a server that accepted
+// TCP but stalled during handshake would block for ~40s (TCP timeout) instead of 3s.
+func TestPoolHandshakeTimeout(t *testing.T) {
+	t.Skip("super slow, run manually as needed")
+
+	// Create a server that accepts TCP connections but never sends the SSH version banner.
+	// This simulates a server that's in a bad state - TCP works but SSH handshake stalls.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer listener.Close()
+
+	// Accept connections but never respond (stall the handshake)
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			// Hold the connection open but never send anything.
+			// This stalls the SSH handshake at version exchange.
+			go func(c net.Conn) {
+				// Just block until the connection is closed by the client
+				buf := make([]byte, 1)
+				c.Read(buf) // blocks until closed
+			}(conn)
+		}
+	}()
+
+	host, portStr, _ := net.SplitHostPort(listener.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+
+	pool := &Pool{TTL: time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+
+	config, signer := newTestClientConfig(t)
+
+	start := time.Now()
+	_, err = pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", host, config.User, port, signer, config)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected dial to fail on stalling server")
+	}
+
+	// The key assertion: with the fix, this should fail in ~3s (the deadline).
+	// Before the fix, it would take ~40s (TCP timeout waiting for handshake).
+	if elapsed > 5*time.Second {
+		t.Fatalf("dial took %v, expected ~3s (handshake timeout not working)", elapsed)
+	}
+	if elapsed < 2*time.Second {
+		t.Fatalf("dial took %v, expected ~3s (too fast, something else failed)", elapsed)
+	}
+
+	t.Logf("dial failed in %v as expected (error: %v)", elapsed, err)
+}
+
 // TestIsSSHConnErrorRecognizesTimeouts tests that isSSHConnError correctly
 // identifies timeout and cancellation errors as connection errors.
 func TestIsSSHConnErrorRecognizesTimeouts(t *testing.T) {
