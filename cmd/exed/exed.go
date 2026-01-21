@@ -84,7 +84,7 @@ func run() error {
 	metricsRegistry := prometheus.NewRegistry()
 	metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 	metricsRegistry.MustRegister(prometheus.NewGoCollector())
-	execore.RegisterBuildInfo(metricsRegistry)
+	version.RegisterBuildInfo(metricsRegistry)
 	logging.SetupLogger(env, metricsRegistry, &logging.ResourceAttrs{
 		ServiceVersion: version.BuildVersion(),
 		DeploymentEnv:  *stageName,

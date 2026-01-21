@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"runtime/debug"
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,35 +13,6 @@ import (
 	"exe.dev/metricsbag"
 	"exe.dev/sqlite"
 )
-
-var gitBuildInfo = prometheus.NewGaugeVec(
-	prometheus.GaugeOpts{
-		Name: "git_build_info",
-		Help: "Git build information.",
-	},
-	[]string{"commit"},
-)
-
-func init() {
-	commit := "unknown"
-	if buildInfo, ok := debug.ReadBuildInfo(); ok {
-		for _, setting := range buildInfo.Settings {
-			if setting.Key == "vcs.revision" {
-				commit = setting.Value
-				if len(commit) > 7 {
-					commit = commit[:7]
-				}
-				break
-			}
-		}
-	}
-	gitBuildInfo.WithLabelValues(commit).Set(1)
-}
-
-// RegisterBuildInfo registers the git_build_info metric with the given registry.
-func RegisterBuildInfo(registry *prometheus.Registry) {
-	registry.MustRegister(gitBuildInfo)
-}
 
 // SignupMetrics holds metrics for user signup operations.
 type SignupMetrics struct {
