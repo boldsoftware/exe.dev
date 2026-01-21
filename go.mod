@@ -37,7 +37,6 @@ require (
 	github.com/go4org/hashtriemap v0.0.0-20251130024219-545ba229f689
 	github.com/google/go-containerregistry v0.20.6
 	github.com/google/uuid v1.6.0
-	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3
 	github.com/keighl/postmark v0.0.0-20190821160221-28358b1a94e3

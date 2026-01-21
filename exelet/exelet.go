@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	grpcmiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/pkg/errors"
@@ -119,8 +118,8 @@ func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, env stage.Env, opts .
 	// TODO: auth middleware
 
 	grpcOpts = append(grpcOpts,
-		grpc.UnaryInterceptor(grpcmiddleware.ChainUnaryServer(unaryServerInterceptors...)),
-		grpc.StreamInterceptor(grpcmiddleware.ChainStreamServer(streamServerInterceptors...)),
+		grpc.ChainUnaryInterceptor(unaryServerInterceptors...),
+		grpc.ChainStreamInterceptor(streamServerInterceptors...),
 	)
 
 	grpcServer := grpc.NewServer(grpcOpts...)
