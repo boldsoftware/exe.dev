@@ -186,6 +186,11 @@ func (cce CommandClientError) Unwrap() error {
 	return cce.Err
 }
 
+func IsCommandClientError(err error) bool {
+	var cce CommandClientError
+	return errors.As(err, &cce)
+}
+
 // Errof returns an CommandClientError with a formatted message.
 func (ctx *CommandContext) Errorf(msg string, args ...any) error {
 	return CommandClientError{Err: fmt.Errorf(msg, args...)}
