@@ -74,6 +74,7 @@ func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstanc
 		})
 	}
 	sharedMemory := true
+	mergeableMemory := true
 	vCfg := &client.VmConfig{
 		Cpus: &client.CpusConfig{
 			BootVcpus: int(cfg.CPUs),
@@ -82,6 +83,7 @@ func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstanc
 		Memory: &client.MemoryConfig{
 			Size:      int64(vmMemory),
 			Shared:    &sharedMemory,
+			Mergeable: &mergeableMemory,
 			Hugepages: &v.enableHugepages,
 		},
 		Disks: &disks,
