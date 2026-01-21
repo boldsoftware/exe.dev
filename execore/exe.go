@@ -145,10 +145,6 @@ type UserPageData struct {
 	// These users should only see the profile tab and a "what is exe?" section.
 	BasicUser   bool
 	InviteCount int64
-
-	// Billing information
-	HasBilling       bool   // User has active billing (completed checkout)
-	BillingPortalURL string // URL to the billing portal (only set if HasBilling)
 }
 
 // SiteSession represents an active session cookie for a site hosted by exe

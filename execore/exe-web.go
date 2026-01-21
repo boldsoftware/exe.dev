@@ -717,8 +717,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleBillingSubscribe(w, r)
 	case "/billing/success":
 		s.handleBillingSuccess(w, r)
-	case "/billing/portal":
-		s.handleBillingPortal(w, r)
 	case "/take-my-money":
 		s.handleTakeMyMoney(w, r)
 	case "/auth":
@@ -1466,13 +1464,6 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	// Check if this is a basic user (created for login-with-exe, no SSH keys, no boxes)
 	basicUser := s.isBasicUser(r.Context(), user, len(sshKeys))
 
-	// Check billing status
-	var hasBilling bool
-	account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountByUserID, userID)
-	if err == nil && account.BillingStatus == "active" {
-		hasBilling = true
-	}
-
 	// Prepare template data
 	data := UserPageData{
 		Env:          s.env,
@@ -1484,7 +1475,6 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		ActivePage:   "profile",
 		IsLoggedIn:   true,
 		BasicUser:    basicUser,
-		HasBilling:   hasBilling,
 	}
 
 	// Render template
