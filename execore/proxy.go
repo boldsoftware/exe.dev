@@ -91,14 +91,14 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		if s.servingHTTPS() {
 			hostHeaderPort = s.httpsPort()
 		} else {
-			s.slog().ErrorContext(r.Context(), "Host header didn't have port but we're not using default ports.")
+			s.slog().ErrorContext(r.Context(), "Host header didn't have port but we're not using default ports", "host", r.Host, "error", err)
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 	} else {
 		hostHeaderPort, err = strconv.Atoi(hostPortStr)
 		if err != nil {
-			s.slog().ErrorContext(r.Context(), "Failed to convert host port to integer", "error", err)
+			s.slog().ErrorContext(r.Context(), "Failed to convert host port to integer", "host", r.Host, "error", err)
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
