@@ -73,21 +73,13 @@ function VersionModal({ isOpen, onClose, versionInfo, isLoading }: VersionModalP
 
   const formatDateTime = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString(undefined, {
+    return date.toLocaleString(undefined, {
       year: "numeric",
       month: "short",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-    });
-  };
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
+      timeZoneName: "short",
     });
   };
 
@@ -134,7 +126,9 @@ function VersionModal({ isOpen, onClose, versionInfo, isLoading }: VersionModalP
                   <span className="version-label">Latest:</span>
                   <span className="version-value">{versionInfo.latest_tag}</span>
                   {versionInfo.published_at && (
-                    <span className="version-date">({formatDate(versionInfo.published_at)})</span>
+                    <span className="version-date">
+                      ({formatDateTime(versionInfo.published_at)})
+                    </span>
                   )}
                 </div>
               )}

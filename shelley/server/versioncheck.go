@@ -7,10 +7,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
+	"os/exec"
 	"runtime"
 	"sort"
 	"strings"
@@ -422,9 +425,100 @@ func (vc *VersionChecker) DoUpgrade(ctx context.Context) error {
 	}
 
 	// Apply the update
-	if err := selfupdate.Apply(bytes.NewReader(binaryData), selfupdate.Options{}); err != nil {
+	err = selfupdate.Apply(bytes.NewReader(binaryData), selfupdate.Options{})
+	if err == nil {
+		return nil
+	}
+
+	// Check if the error is permission-related and sudo is available
+	if !isPermissionError(err) {
 		return fmt.Errorf("failed to apply update: %w", err)
 	}
+
+	if !isSudoAvailable() {
+		return fmt.Errorf("failed to apply update (no write permission and sudo not available): %w", err)
+	}
+
+	// Fall back to sudo-based upgrade
+	return vc.doSudoUpgrade(binaryData)
+}
+
+// isPermissionError checks if the error is related to file permissions.
+func isPermissionError(err error) bool {
+	return errors.Is(err, fs.ErrPermission) || errors.Is(err, os.ErrPermission)
+}
+
+// doSudoUpgrade performs the upgrade using sudo when the binary isn't writable.
+func (vc *VersionChecker) doSudoUpgrade(binaryData []byte) error {
+	// Get the path to the current executable
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	// Write the new binary to a temp file
+	tmpFile, err := os.CreateTemp("", "shelley-upgrade-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmpFile.Write(binaryData); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to write temp file: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	// Make the temp file executable
+	if err := os.Chmod(tmpPath, 0o755); err != nil {
+		return fmt.Errorf("failed to chmod temp file: %w", err)
+	}
+
+	// Use sudo to install the new binary. We can't cp over a running binary ("Text file busy"),
+	// so we cp to a .new file and then mv (which is atomic and works on running binaries).
+	newPath := exePath + ".new"
+	oldPath := exePath + ".old"
+
+	// Copy new binary to .new location
+	cmd := exec.Command("sudo", "cp", tmpPath, newPath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to copy new binary: %w: %s", err, output)
+	}
+
+	// Copy ownership and permissions from original
+	cmd = exec.Command("sudo", "chown", "--reference="+exePath, newPath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		exec.Command("sudo", "rm", "-f", newPath).Run()
+		return fmt.Errorf("failed to set ownership: %w: %s", err, output)
+	}
+
+	cmd = exec.Command("sudo", "chmod", "--reference="+exePath, newPath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		exec.Command("sudo", "rm", "-f", newPath).Run()
+		return fmt.Errorf("failed to set permissions: %w: %s", err, output)
+	}
+
+	// Rename old binary to .old (backup)
+	cmd = exec.Command("sudo", "mv", exePath, oldPath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		exec.Command("sudo", "rm", "-f", newPath).Run()
+		return fmt.Errorf("failed to backup old binary: %w: %s", err, output)
+	}
+
+	// Rename .new to target (atomic replacement)
+	cmd = exec.Command("sudo", "mv", newPath, exePath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		// Try to restore the old binary
+		exec.Command("sudo", "mv", oldPath, exePath).Run()
+		return fmt.Errorf("failed to install new binary: %w: %s", err, output)
+	}
+
+	// Remove the backup
+	cmd = exec.Command("sudo", "rm", "-f", oldPath)
+	cmd.Run() // Best effort, ignore errors
 
 	return nil
 }

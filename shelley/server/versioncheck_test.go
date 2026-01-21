@@ -3,8 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 )
@@ -188,6 +191,49 @@ func TestIndexOf(t *testing.T) {
 			result := indexOf(tt.s, tt.c)
 			if result != tt.expected {
 				t.Errorf("indexOf(%q, %q) = %d, want %d", tt.s, tt.c, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsPermissionError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "fs.ErrPermission",
+			err:      fs.ErrPermission,
+			expected: true,
+		},
+		{
+			name:     "os.ErrPermission",
+			err:      os.ErrPermission,
+			expected: true,
+		},
+		{
+			name:     "wrapped fs.ErrPermission",
+			err:      errors.Join(errors.New("outer"), fs.ErrPermission),
+			expected: true,
+		},
+		{
+			name:     "other error",
+			err:      errors.New("some other error"),
+			expected: false,
+		},
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isPermissionError(tt.err)
+			if result != tt.expected {
+				t.Errorf("isPermissionError(%v) = %v, want %v", tt.err, result, tt.expected)
 			}
 		})
 	}
