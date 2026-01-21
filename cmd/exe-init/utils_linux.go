@@ -39,6 +39,16 @@ func mountDev() error {
 		return fmt.Errorf("error mounting /dev/pts: %w", err)
 	}
 
+	if err := os.MkdirAll("/dev/shm", 0o1777); err != nil {
+		return err
+	}
+	if err := unix.Mount("shm", "/dev/shm", "tmpfs", unix.MS_NOSUID|unix.MS_NODEV, ""); err != nil {
+		if err == unix.EBUSY {
+			return nil
+		}
+		return fmt.Errorf("error mounting /dev/shm: %w", err)
+	}
+
 	// check for special devices -- this should only happen in "scratch" like environments
 
 	// check for /dev/console

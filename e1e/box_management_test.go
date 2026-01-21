@@ -168,6 +168,17 @@ func TestVanillaBox(t *testing.T) {
 		}
 	})
 
+	t.Run("dev_shm_mounted", func(t *testing.T) {
+		// Verify that /dev/shm is mounted as tmpfs (required for POSIX shared memory)
+		out, err := boxSSHCommand(t, boxName, keyFile, "findmnt", "-n", "-o", "FSTYPE", "/dev/shm").CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to check /dev/shm mount: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "tmpfs") {
+			t.Fatalf("expected /dev/shm to be tmpfs, got: %s", out)
+		}
+	})
+
 	t.Run("sshd_oom_protection", func(t *testing.T) {
 		// Verify that the sshd process inside VMs is protected from the OOM killer
 		// by having oom_score_adj set to -1000. exe-init starts sshd and sets this.
