@@ -25,6 +25,7 @@ const (
 	ResourceManagerService_SetVMPriority_FullMethodName   = "/exe.resource.v1.ResourceManagerService/SetVMPriority"
 	ResourceManagerService_GetMachineUsage_FullMethodName = "/exe.resource.v1.ResourceManagerService/GetMachineUsage"
 	ResourceManagerService_SetMachineUsage_FullMethodName = "/exe.resource.v1.ResourceManagerService/SetMachineUsage"
+	ResourceManagerService_ThrottleVM_FullMethodName      = "/exe.resource.v1.ResourceManagerService/ThrottleVM"
 )
 
 // ResourceManagerServiceClient is the client API for ResourceManagerService service.
@@ -43,6 +44,8 @@ type ResourceManagerServiceClient interface {
 	GetMachineUsage(ctx context.Context, in *GetMachineUsageRequest, opts ...grpc.CallOption) (*GetMachineUsageResponse, error)
 	// SetMachineUsage sets the reported usage, for testing.
 	SetMachineUsage(ctx context.Context, in *SetMachineUsageRequest, opts ...grpc.CallOption) (*SetMachineUsageResponse, error)
+	// ThrottleVM applies resource throttling to a VM via cgroup v2 controls.
+	ThrottleVM(ctx context.Context, in *ThrottleVMRequest, opts ...grpc.CallOption) (*ThrottleVMResponse, error)
 }
 
 type resourceManagerServiceClient struct {
@@ -136,6 +139,16 @@ func (c *resourceManagerServiceClient) SetMachineUsage(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *resourceManagerServiceClient) ThrottleVM(ctx context.Context, in *ThrottleVMRequest, opts ...grpc.CallOption) (*ThrottleVMResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ThrottleVMResponse)
+	err := c.cc.Invoke(ctx, ResourceManagerService_ThrottleVM_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ResourceManagerServiceServer is the server API for ResourceManagerService service.
 // All implementations must embed UnimplementedResourceManagerServiceServer
 // for forward compatibility
@@ -152,6 +165,8 @@ type ResourceManagerServiceServer interface {
 	GetMachineUsage(context.Context, *GetMachineUsageRequest) (*GetMachineUsageResponse, error)
 	// SetMachineUsage sets the reported usage, for testing.
 	SetMachineUsage(context.Context, *SetMachineUsageRequest) (*SetMachineUsageResponse, error)
+	// ThrottleVM applies resource throttling to a VM via cgroup v2 controls.
+	ThrottleVM(context.Context, *ThrottleVMRequest) (*ThrottleVMResponse, error)
 	mustEmbedUnimplementedResourceManagerServiceServer()
 }
 
@@ -176,6 +191,9 @@ func (UnimplementedResourceManagerServiceServer) GetMachineUsage(context.Context
 }
 func (UnimplementedResourceManagerServiceServer) SetMachineUsage(context.Context, *SetMachineUsageRequest) (*SetMachineUsageResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetMachineUsage not implemented")
+}
+func (UnimplementedResourceManagerServiceServer) ThrottleVM(context.Context, *ThrottleVMRequest) (*ThrottleVMResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ThrottleVM not implemented")
 }
 func (UnimplementedResourceManagerServiceServer) mustEmbedUnimplementedResourceManagerServiceServer() {
 }
@@ -302,6 +320,24 @@ func _ResourceManagerService_SetMachineUsage_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ResourceManagerService_ThrottleVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ThrottleVMRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ResourceManagerServiceServer).ThrottleVM(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ResourceManagerService_ThrottleVM_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ResourceManagerServiceServer).ThrottleVM(ctx, req.(*ThrottleVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ResourceManagerService_ServiceDesc is the grpc.ServiceDesc for ResourceManagerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -328,6 +364,10 @@ var ResourceManagerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetMachineUsage",
 			Handler:    _ResourceManagerService_SetMachineUsage_Handler,
+		},
+		{
+			MethodName: "ThrottleVM",
+			Handler:    _ResourceManagerService_ThrottleVM_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

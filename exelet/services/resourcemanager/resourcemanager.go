@@ -284,7 +284,16 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 			allocatedMemoryBytes: allocatedMemory,
 		}
 		m.usageState[id] = state
-	} else if state.groupID != groupID {
+	} else {
+		// Update allocatedMemoryBytes on each poll in case VM was resized
+		if cfg, ok := vmCfg.(*computeapi.VMConfig); ok && cfg != nil {
+			if newMemory := cfg.GetMemory(); newMemory != state.allocatedMemoryBytes {
+				state.allocatedMemoryBytes = newMemory
+			}
+		}
+	}
+
+	if state.groupID != groupID {
 		// Group ID changed (via SetInstanceGroup), update state so cgroup moves on next applyPriority
 		m.log.InfoContext(ctx, "resource manager: group ID changed", "id", id, "old_group", state.groupID, "new_group", groupID)
 		oldGroupID = state.groupID

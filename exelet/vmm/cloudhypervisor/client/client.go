@@ -59,12 +59,13 @@ func NewCloudHypervisorClient(ctx context.Context, apiSocketPath string, retry b
 func dialWithBackoff(ctx context.Context, socketPath string, retry bool, log *slog.Logger) (net.Conn, error) {
 	backoff := initialBackoff
 	attempt := 0
+	var lastErr error
 
 	for {
 		// Check context before attempting
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("unable to connect to api socket: %w", ErrNotConnected)
+			return nil, wrapDialError(lastErr)
 		default:
 		}
 
@@ -72,10 +73,11 @@ func dialWithBackoff(ctx context.Context, socketPath string, retry bool, log *sl
 		if err == nil {
 			return conn, nil
 		}
+		lastErr = err
 
 		// If not retrying, fail immediately
 		if !retry {
-			return nil, fmt.Errorf("unable to connect to api socket: %w", ErrNotConnected)
+			return nil, wrapDialError(err)
 		}
 
 		log.DebugContext(ctx, "error connecting to api socket; retrying", "path", socketPath, "error", err, "attempt", attempt, "backoff", backoff)
@@ -84,7 +86,7 @@ func dialWithBackoff(ctx context.Context, socketPath string, retry bool, log *sl
 		// Wait with backoff, respecting context
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("unable to connect to api socket: %w", ErrNotConnected)
+			return nil, wrapDialError(lastErr)
 		case <-time.After(backoff):
 		}
 
@@ -94,4 +96,33 @@ func dialWithBackoff(ctx context.Context, socketPath string, retry bool, log *sl
 			backoff = maxBackoff
 		}
 	}
+}
+
+// wrapDialError wraps a dial error to include both ErrNotConnected (for API compatibility)
+// and the underlying error (for precise error classification via errors.Is).
+func wrapDialError(err error) error {
+	if err == nil {
+		return fmt.Errorf("unable to connect to api socket: %w", ErrNotConnected)
+	}
+	// Create an error chain: message -> ErrNotConnected -> underlying error
+	// This allows errors.Is to find both ErrNotConnected and the root cause
+	return fmt.Errorf("unable to connect to api socket: %w", &chainedError{sentinel: ErrNotConnected, cause: err})
+}
+
+// chainedError wraps two errors so errors.Is can find both.
+type chainedError struct {
+	sentinel error
+	cause    error
+}
+
+func (e *chainedError) Error() string {
+	return fmt.Sprintf("%v: %v", e.sentinel, e.cause)
+}
+
+func (e *chainedError) Is(target error) bool {
+	return errors.Is(e.sentinel, target) || errors.Is(e.cause, target)
+}
+
+func (e *chainedError) Unwrap() []error {
+	return []error{e.sentinel, e.cause}
 }

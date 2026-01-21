@@ -22,6 +22,9 @@ service ResourceManagerService {
 
   // SetMachineUsage sets the reported usage, for testing.
   rpc SetMachineUsage(SetMachineUsageRequest) returns (SetMachineUsageResponse);
+
+  // ThrottleVM applies resource throttling to a VM via cgroup v2 controls.
+  rpc ThrottleVM(ThrottleVMRequest) returns (ThrottleVMResponse);
 }
 
 message GetNodeStatusRequest {}
@@ -116,3 +119,12 @@ message MachineUsage {
   float rx_bytes_rate = 9;  // bytes received per second ten minutes
   float tx_bytes_rate = 10; // bytes transmitted per second ten minutes
 }
+
+message ThrottleVMRequest {
+  string vm_id = 1;
+  bool clear = 2;                      // Remove all throttling
+  optional uint32 cpu_percent = 3;     // CPU limit (5 = 5% of CPU time)
+  optional uint32 memory_percent = 4;  // memory.high as % of allocated (50 = push to swap at 50%)
+}
+
+message ThrottleVMResponse {}
