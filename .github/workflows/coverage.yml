@@ -33,6 +33,9 @@ jobs:
             echo "$HOME/.local/bin" >> $GITHUB_PATH
           fi
 
+      - name: Download exelet-fs
+        run: make exelet-fs
+
       - name: Start ephemeral VM
         id: vm
         run: |
