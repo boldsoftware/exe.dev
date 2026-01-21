@@ -1,7 +1,6 @@
 package exelet
 
 import (
-	"embed"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -10,8 +9,17 @@ import (
 	"strings"
 )
 
-//go:embed *
-var Content embed.FS
+// Content is initialized from arch-specific embed in fs_amd64.go or fs_arm64.go.
+// The fs.Sub strips the architecture prefix so paths remain "kernel/kernel", "rovol/bin/...", etc.
+var Content fs.FS
+
+func init() {
+	var err error
+	Content, err = fs.Sub(archContent, archDir)
+	if err != nil {
+		panic("exelet/fs: failed to create sub-filesystem: " + err.Error())
+	}
+}
 
 // Get returns the specified file from the fs
 func Get(name string) (fs.File, error) {

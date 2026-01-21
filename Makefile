@@ -260,10 +260,10 @@ EXELET_FS_HASH := $(shell git rev-parse HEAD:exelet/kernel 2>/dev/null)$(shell g
 exelet-fs: ## Download exelet-fs from Backblaze if hash changed or doesn't exist
 	@CURRENT_HASH="$(EXELET_FS_HASH)"; \
 	STORED_HASH=""; \
-	if [ -f exelet/fs/.hash ]; then \
-		STORED_HASH=$$(cat exelet/fs/.hash); \
+	if [ -f exelet/fs/.hash-$(GOARCH) ]; then \
+		STORED_HASH=$$(cat exelet/fs/.hash-$(GOARCH)); \
 	fi; \
-	if [ ! -e exelet/fs/kernel/kernel ] || [ ! -e exelet/fs/rovol/bin/sshd ] || [ "$$CURRENT_HASH" != "$$STORED_HASH" ]; then \
+	if [ ! -e exelet/fs/$(GOARCH)/kernel/kernel ] || [ ! -e exelet/fs/$(GOARCH)/rovol/bin/sshd ] || [ "$$CURRENT_HASH" != "$$STORED_HASH" ]; then \
 		if ! command -v uv >/dev/null 2>&1; then \
 			echo "${RED}Error: uv command not found${NC}"; \
 			if [ "$$(uname)" = "Darwin" ]; then \
@@ -273,8 +273,9 @@ exelet-fs: ## Download exelet-fs from Backblaze if hash changed or doesn't exist
 			fi; \
 			exit 1; \
 		fi; \
-		echo "Downloading exelet-fs from Backblaze (hash: $$CURRENT_HASH)..."; \
-		rm -rf exelet/fs/kernel exelet/fs/rovol; \
+		echo "Downloading exelet-fs from Backblaze ($(GOARCH), hash: $$CURRENT_HASH)..."; \
+		rm -rf exelet/fs/$(GOARCH); \
+		mkdir -p exelet/fs/$(GOARCH); \
 		export B2_APPLICATION_KEY_ID="004edb881590a7d0000000008"; \
 		export B2_APPLICATION_KEY="K004hvv/i5raZbvKXARk+H7sZLZ5XtQ"; \
 		export COLUMNS="$${COLUMNS:-80}"; \
@@ -283,10 +284,10 @@ exelet-fs: ## Download exelet-fs from Backblaze if hash changed or doesn't exist
 		$(B2) file download b2://bold-exe/exelet-fs-$(GOARCH)-$$CURRENT_HASH.tar.gz .exelet-fs.tar.gz \
 			|| { echo "${RED}Failed to download exelet-fs-$(GOARCH)-$$CURRENT_HASH.tar.gz${NC}" && exit 1; }; \
 		echo "Decompressing exelet-fs..."; \
-		tar zxf .exelet-fs.tar.gz -C exelet/fs --exclude='._*' && \
+		tar zxf .exelet-fs.tar.gz -C exelet/fs/$(GOARCH) --exclude='._*' && \
 		rm .exelet-fs.tar.gz; \
-		echo "$$CURRENT_HASH" > exelet/fs/.hash; \
-		echo "✓ Downloaded and decompressed exelet-fs"; \
+		echo "$$CURRENT_HASH" > exelet/fs/.hash-$(GOARCH); \
+		echo "✓ Downloaded and decompressed exelet-fs ($(GOARCH))"; \
 	fi
 
 .PHONY: protos
@@ -314,26 +315,26 @@ exelet-ctl:
 exe-init:
 	@>&2 echo " -> building exe-init ${COMMIT}${BUILD}"
 	@# exelet only runs in linux
-	@cd ./cmd/exe-init && CGO_ENABLED=0 GOOS=linux go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/rovol/bin/exe-init .
+	@cd ./cmd/exe-init && CGO_ENABLED=0 GOOS=linux go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/$(GOARCH)/rovol/bin/exe-init .
 
 .PHONY: exe-ssh
 exe-ssh:
 	@>&2 echo " -> building exe-ssh ${COMMIT}${BUILD} (${GOOS}/${GOARCH})"
-	@cd ./cmd/exe-ssh && CGO_ENABLED=0 go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/rovol/bin/exe-ssh .
+	@cd ./cmd/exe-ssh && CGO_ENABLED=0 go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/$(GOARCH)/rovol/bin/exe-ssh .
 
 # kernel
-exelet-kernel: exelet/fs/kernel/kernel
-exelet/fs/kernel/kernel:
+exelet-kernel: exelet/fs/$(GOARCH)/kernel/kernel
+exelet/fs/$(GOARCH)/kernel/kernel:
 	@>&2 echo " -> building exelet kernel"
-	@mkdir -p exelet/fs/kernel
-	@$(DOCKER) buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=./exelet/fs/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
+	@mkdir -p exelet/fs/$(GOARCH)/kernel
+	@$(DOCKER) buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=./exelet/fs/$(GOARCH)/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
 
 # exelet rovol
-exelet-rovol: exelet/fs/rovol
-exelet/fs/rovol:
+exelet-rovol: exelet/fs/$(GOARCH)/rovol
+exelet/fs/$(GOARCH)/rovol:
 	@>&2 echo " -> building exelet rovol"
-	@mkdir -p exelet/fs/rovol
-	@$(DOCKER) buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=./exelet/fs/rovol -f ./exelet/rovol/Dockerfile .
+	@mkdir -p exelet/fs/$(GOARCH)/rovol
+	@$(DOCKER) buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=./exelet/fs/$(GOARCH)/rovol -f ./exelet/rovol/Dockerfile .
 
 .PHONY: package-exelet-fs
 package-exelet-fs:

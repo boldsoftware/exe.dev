@@ -25,10 +25,10 @@ tmpkey*
 # so i can 'go test -c ./...', and 'go test -race -c && stress foo.test'
 *.test
 
-# exelet embedded fs
-exelet/fs/kernel
-exelet/fs/rovol
-exelet/fs/.hash
+# exelet embedded fs (arch-specific)
+exelet/fs/amd64
+exelet/fs/arm64
+exelet/fs/.hash-*
 exelet/kernel/output
 exeletd
 /exelet-ctl

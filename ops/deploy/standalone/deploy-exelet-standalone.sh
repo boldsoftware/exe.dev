@@ -62,10 +62,8 @@ BINARY_NAME="exeletd.$TIMESTAMP"
 echo "=== Building binary ==="
 echo "Binary name: $BINARY_NAME"
 
-# Clear out and fetch the proper exelet-fs
-echo "Fetching exelet-fs content for target platform..."
+# Fetch exelet-fs for target platform (cached per-architecture)
 cd "$REPO_ROOT"
-rm -rf exelet/fs/{kernel,rovol}
 make GOARCH=${GOARCH} exelet-fs
 
 # Build the binary
@@ -178,12 +176,6 @@ echo ""
 echo "Recent service logs:"
 sudo journalctl -u exelet -n 5 --no-pager -o cat
 EOF
-
-# Restore local exelet-fs
-echo ""
-echo "Restoring exelet-fs content for current platform..."
-rm -rf exelet/fs/{kernel,rovol}
-make exelet-fs
 
 # Cleanup
 rm -f "/tmp/$BINARY_NAME"

@@ -74,9 +74,7 @@ BINARY_NAME="exeletd.$TIMESTAMP"
 echo -e "${YELLOW}Building binary...${NC}"
 echo "Binary name: $BINARY_NAME"
 
-# Clear out and fetch the proper exelet-fs
-echo -e "${YELLOW}Fetching exelet-fs content for target platform...${NC}"
-rm -rf exelet/fs/{kernel,rovol}
+# Fetch exelet-fs for target platform (cached per-architecture)
 make GOARCH=${ARCH} exelet-fs
 
 # Build the binary
@@ -164,11 +162,6 @@ sudo journalctl -u exelet -n 5 --no-pager -o cat
 EOF
 
 echo -e "${GREEN}✓ Service configuration completed${NC}"
-
-# Clear out and fetch the proper exelet-fs
-echo -e "${YELLOW}Restoring exelet-fs content for current platform...${NC}"
-rm -rf exelet/fs/{kernel,rovol}
-make exelet-fs
 
 echo ""
 echo -e "${GREEN}==========================================="
