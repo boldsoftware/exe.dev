@@ -18,6 +18,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 "$REPO_ROOT/scripts/check-deploy-safety.sh" "$@"
 
 INSTANCE_NAME="exed-02"
+
+# Check that deployed SHA exists locally (prevents rolling back someone else's code)
+"$REPO_ROOT/scripts/check-remote-sha.sh" "https://${INSTANCE_NAME}.crocodile-vector.ts.net/debug/gitsha"
+
 DOMAIN="exe.dev"
 
 # Get currently deployed SHA (best-effort, for Slack notification)

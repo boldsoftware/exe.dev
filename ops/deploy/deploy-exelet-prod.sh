@@ -28,6 +28,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Check deploy safety (dirty worktree, not on origin/main)
 "$REPO_ROOT/scripts/check-deploy-safety.sh" "$@"
 
+# Check that deployed SHA exists locally (prevents rolling back someone else's code)
+"$REPO_ROOT/scripts/check-remote-sha.sh" "http://${INSTANCE_NAME}.crocodile-vector.ts.net:9081/debug/gitsha"
+
 # Slack notification
 DEPLOY_TS=$("$REPO_ROOT/scripts/deploy-notify.sh" start exelet "" "$INSTANCE_NAME")
 cleanup_notify() {
