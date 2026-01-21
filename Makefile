@@ -294,7 +294,7 @@ protos:
 	@$(DOCKER) buildx build -f ./Dockerfile.protobuf --output type=local,dest=pkg .
 
 .PHONY: exelet
-exelet: exelet-fs
+exelet: exelet-fs exe-init
 	@>&2 echo " -> building exelet ${COMMIT}${BUILD}"
 	@# exelet only runs in linux
 	@GOOS=linux CGO_ENABLED=0 go build -ldflags="-s -w -X $(REPO)/version.Commit=$(COMMIT)" -o exeletd ./cmd/exelet
