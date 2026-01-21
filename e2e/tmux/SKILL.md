@@ -1,3 +1,8 @@
+---
+name: tmux
+description: Use tmux for non-blocking program testing - run services, send input, capture output without blocking.
+---
+
 # Using tmux for Non-Blocking Program Testing
 
 You will use **tmux** to run and test programs in a way that never blocks your own process.

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+
+	"shelley.exe.dev/skills"
 )
 
 //go:embed system_prompt.txt
@@ -25,6 +27,7 @@ type SystemPromptData struct {
 	IsSudoAvailable  bool
 	Hostname         string // For exe.dev, the public hostname (e.g., "vmname.exe.xyz")
 	ShelleyDBPath    string // Path to the shelley database
+	SkillsXML        string // XML block for available skills
 }
 
 // DBPath is the path to the shelley database, set at startup
@@ -118,6 +121,13 @@ func collectSystemData(workingDir string) (*SystemPromptData, error) {
 			data.ShelleyDBPath = DBPath
 		}
 	}
+
+	// Discover and load skills
+	var gitRoot string
+	if gitInfo != nil {
+		gitRoot = gitInfo.Root
+	}
+	data.SkillsXML = collectSkills(wd, gitRoot)
 
 	return data, nil
 }
@@ -283,6 +293,33 @@ func findAllGuidanceFiles(root string) []string {
 func isExeDev() bool {
 	_, err := os.Stat("/exe.dev")
 	return err == nil
+}
+
+// collectSkills discovers skills from default directories and project tree.
+func collectSkills(workingDir, gitRoot string) string {
+	// Start with default directories (user-level skills)
+	dirs := skills.DefaultDirs()
+
+	// Discover user-level skills from configured directories
+	foundSkills := skills.Discover(dirs)
+
+	// Also discover skills anywhere in the project tree
+	treeSkills := skills.DiscoverInTree(workingDir, gitRoot)
+
+	// Merge, avoiding duplicates by path
+	seen := make(map[string]bool)
+	for _, s := range foundSkills {
+		seen[s.Path] = true
+	}
+	for _, s := range treeSkills {
+		if !seen[s.Path] {
+			foundSkills = append(foundSkills, s)
+			seen[s.Path] = true
+		}
+	}
+
+	// Generate XML
+	return skills.ToPromptXML(foundSkills)
 }
 
 func isSudoAvailable() bool {
