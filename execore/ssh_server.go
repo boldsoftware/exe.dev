@@ -530,9 +530,11 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 		}
 		ss.server.slog().DebugContext(ctx, "command received", "line", line)
 
-		// Add to shell history in database (best-effort)
-		if err := withTx1(ss.server, ctx, (*exedb.Queries).AddShellHistory, exedb.AddShellHistoryParams{UserID: user.UserID, Command: line}); err != nil {
-			ss.server.slog().WarnContext(ctx, "failed to save shell history", "error", err)
+		// Add to shell history in database (best-effort), skip sensitive content
+		if shouldSaveToHistory(line) {
+			if err := withTx1(ss.server, ctx, (*exedb.Queries).AddShellHistory, exedb.AddShellHistoryParams{UserID: user.UserID, Command: line}); err != nil {
+				ss.server.slog().WarnContext(ctx, "failed to save shell history", "error", err)
+			}
 		}
 
 		parts, err := shlex.Split(line, true)
@@ -1391,3 +1393,8 @@ func (ss *SSHServer) normalizeBoxName(name string) string {
 	// Return as-is if not a full hostname
 	return name
 }
+
+func shouldSaveToHistory(line string) bool {
+	return !strings.Contains(line, "PRIVATE KEY")
+}
+
