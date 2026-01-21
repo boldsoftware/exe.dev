@@ -75,6 +75,10 @@ class TerminalClient {
     init() {
         this.updatePageTitle();
         
+        // Modifier state for control bar
+        this.ctrlActive = false;
+        this.altActive = false;
+        
         this.terminal = new Terminal({
             cursorBlink: true,
             fontSize: 14,
@@ -90,6 +94,7 @@ class TerminalClient {
         
         this.setupEventHandlers();
         this.setupThemeToggle();
+        this.setupControlBar();
         this.connect();
         this.fitTerminal();
         
@@ -109,7 +114,160 @@ class TerminalClient {
         }
     }
 
+    setupControlBar() {
+        const ctrlBtn = document.getElementById('ctrl-mod');
+        const altBtn = document.getElementById('alt-mod');
+        const kbToggle = document.getElementById('kb-toggle');
+        
+        // Handle modifier toggle
+        if (ctrlBtn) {
+            ctrlBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.ctrlActive = !this.ctrlActive;
+                ctrlBtn.classList.toggle('active', this.ctrlActive);
+                this.terminal.focus();
+            });
+        }
+        
+        if (altBtn) {
+            altBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.altActive = !this.altActive;
+                altBtn.classList.toggle('active', this.altActive);
+                this.terminal.focus();
+            });
+        }
+        
+        // Handle keyboard space toggle
+        this.keyboardMode = false;
+        if (kbToggle) {
+            kbToggle.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.keyboardMode = !this.keyboardMode;
+                kbToggle.classList.toggle('active', this.keyboardMode);
+                document.querySelector('.terminal-frame').classList.toggle('keyboard-mode', this.keyboardMode);
+                // Small delay to let CSS transition complete before resizing
+                setTimeout(() => {
+                    this.fitTerminal();
+                    this.terminal.focus();
+                }, 50);
+            });
+        }
+        
+        // Handle control buttons
+        const controlBar = document.getElementById('control-bar');
+        if (controlBar) {
+            controlBar.querySelectorAll('.control-btn:not(.modifier):not(#kb-toggle)').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.handleControlButton(btn);
+                });
+            });
+        }
+    }
+
+    handleControlButton(btn) {
+        let data = '';
+        const key = btn.dataset.key;
+        const ctrl = btn.dataset.ctrl;
+        
+        if (ctrl) {
+            // Ctrl+letter - send the control character
+            const charCode = ctrl.toLowerCase().charCodeAt(0) - 96;
+            data = String.fromCharCode(charCode);
+        } else if (key) {
+            // Special keys - apply modifiers if active
+            const seq = this.getKeySequence(key, this.ctrlActive, this.altActive);
+            data = seq;
+        }
+        
+        if (data && this.connected && this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({
+                type: 'input',
+                data: data
+            }));
+        }
+        
+        // Reset modifiers after use (one-shot behavior)
+        this.resetModifiers();
+        this.terminal.focus();
+    }
+
+    getKeySequence(key, ctrl, alt) {
+        // ANSI escape sequences for special keys
+        const sequences = {
+            'Escape': '\x1b',
+            'Tab': '\t',
+            'ArrowUp': '\x1b[A',
+            'ArrowDown': '\x1b[B',
+            'ArrowRight': '\x1b[C',
+            'ArrowLeft': '\x1b[D',
+            'Home': '\x1b[H',
+            'End': '\x1b[F',
+            'PageUp': '\x1b[5~',
+            'PageDown': '\x1b[6~',
+            'Delete': '\x1b[3~',
+        };
+        
+        let seq = sequences[key] || '';
+        
+        // Modify sequences for ctrl/alt if needed
+        if (seq && (ctrl || alt)) {
+            // For arrow keys with modifiers, use CSI u format
+            // Format: CSI code ; modifier ~
+            // Modifier: 1 + (shift ? 1 : 0) + (alt ? 2 : 0) + (ctrl ? 4 : 0)
+            const modifier = 1 + (alt ? 2 : 0) + (ctrl ? 4 : 0);
+            if (key.startsWith('Arrow')) {
+                const codes = { 'ArrowUp': 'A', 'ArrowDown': 'B', 'ArrowRight': 'C', 'ArrowLeft': 'D' };
+                seq = `\x1b[1;${modifier}${codes[key]}`;
+            }
+        }
+        
+        return seq;
+    }
+
+    resetModifiers() {
+        this.ctrlActive = false;
+        this.altActive = false;
+        const ctrlBtn = document.getElementById('ctrl-mod');
+        const altBtn = document.getElementById('alt-mod');
+        if (ctrlBtn) ctrlBtn.classList.remove('active');
+        if (altBtn) altBtn.classList.remove('active');
+    }
+
     setupEventHandlers() {
+        // Intercept keyboard events when modifiers are active
+        this.terminal.attachCustomKeyEventHandler((event) => {
+            // Only handle keydown for printable characters when modifiers are active
+            if (event.type !== 'keydown') return true;
+            if (!this.ctrlActive && !this.altActive) return true;
+            
+            // Check if it's a printable character (a-z)
+            if (event.key.length === 1 && event.key.match(/[a-z]/i)) {
+                event.preventDefault();
+                event.stopPropagation();
+                
+                let data;
+                if (this.ctrlActive) {
+                    // Convert to control character (Ctrl+A = 0x01, etc.)
+                    data = String.fromCharCode(event.key.toLowerCase().charCodeAt(0) - 96);
+                } else if (this.altActive) {
+                    // Alt sends ESC + character
+                    data = '\x1b' + event.key;
+                }
+                
+                if (data && this.connected && this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        type: 'input',
+                        data: data
+                    }));
+                }
+                this.resetModifiers();
+                return false; // Prevent default handling
+            }
+            return true;
+        });
+        
         this.terminal.onData(data => {
             if (this.connected && this.ws && this.ws.readyState === WebSocket.OPEN) {
                 this.ws.send(JSON.stringify({
@@ -222,21 +380,32 @@ class TerminalClient {
         if (!this.terminal) return;
 
         const terminalContainer = document.getElementById('terminal');
-        const rect = terminalContainer.getBoundingClientRect();
+        const terminalFrame = document.querySelector('.terminal-frame');
+        
+        // Check if we're on mobile (control bar visible)
+        const controlBar = document.getElementById('control-bar');
+        const isMobile = controlBar && window.getComputedStyle(controlBar).display !== 'none';
         
         // Calculate available space
-        const width = rect.width - 20; // Account for padding
-        const height = window.innerHeight - terminalContainer.offsetTop - 40;
+        const padding = isMobile ? 8 : 20;
+        const frameRect = terminalFrame.getBoundingClientRect();
+        const containerRect = terminalContainer.getBoundingClientRect();
+        
+        const width = containerRect.width - padding;
+        // Use the actual available height within the frame
+        const availableHeight = frameRect.height - (containerRect.top - frameRect.top) - (isMobile ? 10 : 40);
         
         // Calculate character dimensions (approximate)
-        const charWidth = 9; // Approximate character width
-        const lineHeight = 18; // Approximate line height
+        const charWidth = 9;
+        const lineHeight = 18;
         
         const cols = Math.floor(width / charWidth);
-        const rows = Math.floor(height / lineHeight);
+        const rows = Math.floor(availableHeight / lineHeight);
         
-        this.terminal.resize(cols, rows);
-        this.sendResize();
+        if (cols > 0 && rows > 0) {
+            this.terminal.resize(cols, rows);
+            this.sendResize();
+        }
     }
 
     base64ToUint8Array(base64String) {

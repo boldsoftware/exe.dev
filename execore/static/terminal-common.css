@@ -143,3 +143,98 @@ body {
     from { opacity: 0.4; }
     to { opacity: 1; }
 }
+
+/* Mobile control bar */
+.control-bar {
+    display: none;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 6px 8px;
+    gap: 4px;
+    flex-wrap: wrap;
+    align-items: center;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.control-bar.visible {
+    display: flex;
+}
+.control-btn {
+    background: var(--theme-button-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-family: 'Consolas', 'Liberation Mono', monospace;
+    color: var(--text-primary);
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    min-width: 40px;
+    text-align: center;
+    flex-shrink: 0;
+}
+.control-btn:active {
+    background: var(--theme-button-hover);
+}
+.control-btn.modifier {
+    background: var(--theme-button-bg);
+}
+.control-btn.modifier.active {
+    background: var(--text-primary);
+    color: var(--bg-secondary);
+}
+.control-btn.small {
+    padding: 8px 8px;
+    min-width: 32px;
+}
+.control-separator {
+    width: 1px;
+    height: 24px;
+    background: var(--border-color);
+    margin: 0 4px;
+    flex-shrink: 0;
+}
+.control-group {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* Mobile styles */
+@media (max-width: 768px) {
+    .terminal-frame {
+        padding: 0;
+        margin: 0;
+        border-radius: 0;
+        box-shadow: none;
+        max-width: none;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+    .terminal-frame.keyboard-mode {
+        height: 60vh;
+    }
+    .terminal-header {
+        display: none;
+    }
+    .control-bar {
+        display: flex;
+    }
+    #terminal {
+        border: none;
+        border-radius: 0;
+        padding: 4px;
+        flex: 1;
+        overflow: hidden;
+    }
+    .connection-status {
+        top: auto;
+        bottom: 10px;
+        right: 10px;
+    }
+    .keyboard-mode .connection-status {
+        bottom: calc(40vh + 10px);
+    }
+}
