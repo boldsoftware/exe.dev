@@ -1397,4 +1397,3 @@ func (ss *SSHServer) normalizeBoxName(name string) string {
 func shouldSaveToHistory(line string) bool {
 	return !strings.Contains(line, "PRIVATE KEY")
 }
-
