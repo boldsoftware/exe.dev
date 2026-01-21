@@ -16,11 +16,11 @@ import (
 )
 
 var machineCommand = &cli.Command{
-	Name:   "machine",
-	Usage:  "Get current machine resource usage",
-	Flags:  []cli.Flag{
+	Name:  "machine",
+	Usage: "Get current machine resource usage",
+	Flags: []cli.Flag{
 		&cli.BoolFlag{
-			Name:     "json",
+			Name:    "json",
 			Aliases: []string{"j"},
 			Usage:   "Output in JSON format",
 		},
