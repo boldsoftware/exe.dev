@@ -263,7 +263,7 @@ exelet-fs: ## Download exelet-fs from Backblaze if hash changed or doesn't exist
 	if [ -f exelet/fs/.hash ]; then \
 		STORED_HASH=$$(cat exelet/fs/.hash); \
 	fi; \
-	if [ ! -e exelet/fs/kernel ] || [ ! -e exelet/fs/rovol ] || [ "$$CURRENT_HASH" != "$$STORED_HASH" ]; then \
+	if [ ! -e exelet/fs/kernel/kernel ] || [ ! -e exelet/fs/rovol/bin/sshd ] || [ "$$CURRENT_HASH" != "$$STORED_HASH" ]; then \
 		if ! command -v uv >/dev/null 2>&1; then \
 			echo "${RED}Error: uv command not found${NC}"; \
 			if [ "$$(uname)" = "Darwin" ]; then \
