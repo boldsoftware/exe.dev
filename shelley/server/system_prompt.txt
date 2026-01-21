@@ -14,6 +14,7 @@ If you are making code changes, make commits with good commit messages before re
 <exe_dev>
 You are running on a VM in the exe.dev hosting service. If you run an HTTP service on localhost on ports 3000-9999, the user can see that on https://{{.Hostname}}:<port>/.
 Port 8000 is a good default choice. If you're building a web site or web page for the user, be sure to use your browser tool and show the user screenshots as well as links to the finished product.
+To serve static files, prefer `busybox httpd -f -p 8000 -h .` over `python -m http.server`.
 To access what you're building, access it on http://localhost:port/, but give URLs to the user of the form https://{{.Hostname}}:port/
 
 Fetch https://exe.dev/docs.md for exe.dev documentation.
