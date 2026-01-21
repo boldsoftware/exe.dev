@@ -14,6 +14,7 @@ service ComputeService {
   rpc UpdateInstance(UpdateInstanceRequest) returns (UpdateInstanceResponse);
   rpc DeleteInstance(DeleteInstanceRequest) returns (DeleteInstanceResponse);
   rpc SetInstanceGroup(SetInstanceGroupRequest) returns (SetInstanceGroupResponse);
+  rpc RenameInstance(RenameInstanceRequest) returns (RenameInstanceResponse);
   rpc GetSystemInfo(GetSystemInfoRequest) returns (GetSystemInfoResponse);
   // SendVM streams a stopped VM's disk and config to the caller for migration
   rpc SendVM(stream SendVMRequest) returns (stream SendVMResponse);
@@ -144,6 +145,13 @@ message SetInstanceGroupRequest {
 }
 
 message SetInstanceGroupResponse {}
+
+message RenameInstanceRequest {
+  string id = 1;
+  string name = 2;
+}
+
+message RenameInstanceResponse {}
 
 message UpdateInstanceRequest {
   string id = 1;

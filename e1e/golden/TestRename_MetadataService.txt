@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+rename BOX_NAME box-metadata-renamed
+
+- help to see a list of commands
+
+PROMPT ▶ rename BOX_NAME box-metadata-renamed
+Renamed BOX_NAME to box-metadata-renamed
+PROMPT ▶ exit
+Goodbye!

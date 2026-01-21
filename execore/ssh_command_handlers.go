@@ -1587,6 +1587,31 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 		"new_name", newName,
 		"rollback_sql", fmt.Sprintf("UPDATE boxes SET name = '%s' WHERE id = %d", oldName, box.ID))
 
+	// Update the instance name on the exelet so the metadata service returns the new name
+	slog.InfoContext(ctx, "rename: updating exelet instance config",
+		"box_id", box.ID,
+		"container_id", *box.ContainerID,
+		"new_name", newName)
+	_, err = exeletClient.client.RenameInstance(ctx, &api.RenameInstanceRequest{
+		ID:   *box.ContainerID,
+		Name: newName,
+	})
+	if err != nil {
+		slog.ErrorContext(ctx, "rename: failed to update exelet instance config",
+			"box_id", box.ID,
+			"container_id", *box.ContainerID,
+			"new_name", newName,
+			"error", err)
+		// Continue despite error - the DB rename succeeded, and the metadata service
+		// will return the old name until the VM is restarted, which is not ideal but
+		// not critical enough to roll back the entire rename.
+	} else {
+		slog.InfoContext(ctx, "rename: exelet instance config updated",
+			"box_id", box.ID,
+			"container_id", *box.ContainerID,
+			"new_name", newName)
+	}
+
 	// Get the IP shard for DNS record update (need this early to create new DNS record)
 	ipShard, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetIPShardByBoxName, newName)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {

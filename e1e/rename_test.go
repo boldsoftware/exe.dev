@@ -3,6 +3,7 @@
 package e1e
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -56,7 +57,79 @@ func TestRename(t *testing.T) {
 		repl.disconnect()
 	})
 
-	// Now do the actual rename test (this modifies box1)
+	// Test that the metadata service returns the correct box name after rename.
+	// This is critical for LLM gateway functionality - Shelley and other tools
+	// inside the VM use the metadata service to identify themselves.
+	// This test modifies box1, so it runs before the Success test.
+	t.Run("MetadataService", func(t *testing.T) {
+		// Helper to get metadata from inside the VM
+		getMetadata := func(t *testing.T, box string) (name, sourceIP string) {
+			t.Helper()
+			out, err := boxSSHCommand(t, box, keyFile, "curl", "--max-time", "10", "-s", "http://169.254.169.254/").CombinedOutput()
+			if err != nil {
+				t.Fatalf("failed to get metadata: %v\n%s", err, out)
+			}
+			var resp struct {
+				Name     string `json:"name"`
+				SourceIP string `json:"source_ip"`
+			}
+			if err := json.Unmarshal(out, &resp); err != nil {
+				t.Fatalf("failed to parse metadata response: %v\n%s", err, out)
+			}
+			return resp.Name, resp.SourceIP
+		}
+
+		// Helper to check LLM gateway is accessible (returns 200 on /ready)
+		checkGateway := func(t *testing.T, box string) {
+			t.Helper()
+			out, err := boxSSHCommand(t, box, keyFile, "curl", "--max-time", "10", "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://169.254.169.254/gateway/llm/ready").CombinedOutput()
+			if err != nil {
+				t.Fatalf("failed to check gateway: %v\n%s", err, out)
+			}
+			statusCode := strings.TrimSpace(string(out))
+			if statusCode != "200" {
+				t.Fatalf("expected gateway /ready to return 200, got %s", statusCode)
+			}
+		}
+
+		// Verify metadata service returns correct name before rename
+		name, _ := getMetadata(t, box1)
+		if name != box1 {
+			t.Fatalf("expected metadata name %q before rename, got %q", box1, name)
+		}
+
+		// Verify LLM gateway works before rename
+		checkGateway(t, box1)
+
+		// Rename the box
+		newName := "box-metadata-renamed"
+		repl := sshToExeDev(t, keyFile)
+		repl.sendLine("rename " + box1 + " " + newName)
+		repl.want(newName)
+		repl.wantPrompt()
+		repl.disconnect()
+
+		// Wait for SSH with new name
+		waitForSSH(t, newName, keyFile)
+
+		// Verify metadata service returns the NEW name after rename.
+		// This is the critical check - if exelet's config wasn't updated,
+		// this will still return the old name.
+		name, _ = getMetadata(t, newName)
+		if name != newName {
+			t.Fatalf("expected metadata name %q after rename, got %q (exelet config not updated?)", newName, name)
+		}
+
+		// Verify LLM gateway still works after rename.
+		// If the metadata service returns the old name, the gateway will fail
+		// with "VM not found" because the old name no longer exists in the DB.
+		checkGateway(t, newName)
+
+		// Update box1 for subsequent tests
+		box1 = newName
+	})
+
+	// Now do the actual rename test (this modifies box1 again)
 	t.Run("Success", func(t *testing.T) {
 		// Verify initial hostname inside the VM
 		out, err := boxSSHCommand(t, box1, keyFile, "hostname").CombinedOutput()
@@ -229,3 +302,4 @@ func TestRenameNoVM(t *testing.T) {
 
 	pty.disconnect()
 }
+

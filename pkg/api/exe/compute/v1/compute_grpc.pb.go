@@ -28,6 +28,7 @@ const (
 	ComputeService_UpdateInstance_FullMethodName   = "/exe.compute.v1.ComputeService/UpdateInstance"
 	ComputeService_DeleteInstance_FullMethodName   = "/exe.compute.v1.ComputeService/DeleteInstance"
 	ComputeService_SetInstanceGroup_FullMethodName = "/exe.compute.v1.ComputeService/SetInstanceGroup"
+	ComputeService_RenameInstance_FullMethodName   = "/exe.compute.v1.ComputeService/RenameInstance"
 	ComputeService_GetSystemInfo_FullMethodName    = "/exe.compute.v1.ComputeService/GetSystemInfo"
 	ComputeService_SendVM_FullMethodName           = "/exe.compute.v1.ComputeService/SendVM"
 	ComputeService_ReceiveVM_FullMethodName        = "/exe.compute.v1.ComputeService/ReceiveVM"
@@ -46,6 +47,7 @@ type ComputeServiceClient interface {
 	UpdateInstance(ctx context.Context, in *UpdateInstanceRequest, opts ...grpc.CallOption) (*UpdateInstanceResponse, error)
 	DeleteInstance(ctx context.Context, in *DeleteInstanceRequest, opts ...grpc.CallOption) (*DeleteInstanceResponse, error)
 	SetInstanceGroup(ctx context.Context, in *SetInstanceGroupRequest, opts ...grpc.CallOption) (*SetInstanceGroupResponse, error)
+	RenameInstance(ctx context.Context, in *RenameInstanceRequest, opts ...grpc.CallOption) (*RenameInstanceResponse, error)
 	GetSystemInfo(ctx context.Context, in *GetSystemInfoRequest, opts ...grpc.CallOption) (*GetSystemInfoResponse, error)
 	// SendVM streams a stopped VM's disk and config to the caller for migration
 	SendVM(ctx context.Context, opts ...grpc.CallOption) (ComputeService_SendVMClient, error)
@@ -220,6 +222,16 @@ func (c *computeServiceClient) SetInstanceGroup(ctx context.Context, in *SetInst
 	return out, nil
 }
 
+func (c *computeServiceClient) RenameInstance(ctx context.Context, in *RenameInstanceRequest, opts ...grpc.CallOption) (*RenameInstanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RenameInstanceResponse)
+	err := c.cc.Invoke(ctx, ComputeService_RenameInstance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *computeServiceClient) GetSystemInfo(ctx context.Context, in *GetSystemInfoRequest, opts ...grpc.CallOption) (*GetSystemInfoResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetSystemInfoResponse)
@@ -307,6 +319,7 @@ type ComputeServiceServer interface {
 	UpdateInstance(context.Context, *UpdateInstanceRequest) (*UpdateInstanceResponse, error)
 	DeleteInstance(context.Context, *DeleteInstanceRequest) (*DeleteInstanceResponse, error)
 	SetInstanceGroup(context.Context, *SetInstanceGroupRequest) (*SetInstanceGroupResponse, error)
+	RenameInstance(context.Context, *RenameInstanceRequest) (*RenameInstanceResponse, error)
 	GetSystemInfo(context.Context, *GetSystemInfoRequest) (*GetSystemInfoResponse, error)
 	// SendVM streams a stopped VM's disk and config to the caller for migration
 	SendVM(ComputeService_SendVMServer) error
@@ -345,6 +358,9 @@ func (UnimplementedComputeServiceServer) DeleteInstance(context.Context, *Delete
 }
 func (UnimplementedComputeServiceServer) SetInstanceGroup(context.Context, *SetInstanceGroupRequest) (*SetInstanceGroupResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetInstanceGroup not implemented")
+}
+func (UnimplementedComputeServiceServer) RenameInstance(context.Context, *RenameInstanceRequest) (*RenameInstanceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RenameInstance not implemented")
 }
 func (UnimplementedComputeServiceServer) GetSystemInfo(context.Context, *GetSystemInfoRequest) (*GetSystemInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSystemInfo not implemented")
@@ -539,6 +555,24 @@ func _ComputeService_SetInstanceGroup_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ComputeService_RenameInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenameInstanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).RenameInstance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_RenameInstance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).RenameInstance(ctx, req.(*RenameInstanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ComputeService_GetSystemInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetSystemInfoRequest)
 	if err := dec(in); err != nil {
@@ -639,6 +673,10 @@ var ComputeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetInstanceGroup",
 			Handler:    _ComputeService_SetInstanceGroup_Handler,
+		},
+		{
+			MethodName: "RenameInstance",
+			Handler:    _ComputeService_RenameInstance_Handler,
 		},
 		{
 			MethodName: "GetSystemInfo",

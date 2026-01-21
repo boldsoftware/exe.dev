@@ -4,12 +4,12 @@
 ● ssh localhost
 ●
 
-rename BOX_NAME box-reidentified
+rename box-metadata-renamed box-reidentified
 
 - help to see a list of commands
 
-PROMPT ▶ rename BOX_NAME box-reidentified
-Renamed BOX_NAME to box-reidentified
+PROMPT ▶ rename box-metadata-renamed box-reidentified
+Renamed box-metadata-renamed to box-reidentified
 PROMPT ▶ exit
 Goodbye!
 
