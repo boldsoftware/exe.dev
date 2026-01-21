@@ -123,6 +123,10 @@ echo ""
 echo "Deployed versions:"
 ls -la ~/exed.* | tail -5
 
+# Backup database before restart (emergency rollback)
+echo "Backing up database..."
+sqlite3 ~/exe.db .dump | zstd -o ~/exe.db.$TIMESTAMP.sql.zst
+
 # Restart the service with the new binary
 echo ""
 echo "Restarting exed service..."
@@ -183,9 +187,21 @@ echo "  ssh ubuntu@$INSTANCE_NAME journalctl -fu exed"
 echo ""
 echo "Rollback (if needed):"
 echo "  ssh ubuntu@$INSTANCE_NAME"
-echo "  ls -la ~/exed.*  # list all versions"
+echo "  ls -la ~/exed.*  # list all binary versions"
 echo "  sudo ln -sf ~/exed.TIMESTAMP ~/exed.latest"
 echo "  sudo systemctl restart exed"
+echo ""
+echo "Rollback with DB restore:"
+echo "  ssh ubuntu@$INSTANCE_NAME"
+echo "  ls -la ~/exed.*  # list all binary versions"
+echo "  ls -la ~/exe.db.*.sql.zst  # list all DB backups"
+echo "  sudo systemctl stop exed"
+echo "  mv ~/exe.db ~/exe.db.broken"
+echo "  mv ~/exe.db-wal ~/exe.db.broken-wal 2>/dev/null || true"
+echo "  mv ~/exe.db-shm ~/exe.db.broken-shm 2>/dev/null || true"
+echo "  zstd -d ~/exe.db.TIMESTAMP.sql.zst -c | sqlite3 ~/exe.db"
+echo "  sudo ln -sf ~/exed.TIMESTAMP ~/exed.latest"
+echo "  sudo systemctl start exed"
 
 # Mark deployment as successful
 "$REPO_ROOT/scripts/deploy-notify.sh" complete "$DEPLOY_TS"
