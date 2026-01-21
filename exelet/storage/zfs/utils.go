@@ -368,6 +368,12 @@ func (s *ZFS) waitForZvol(id string) error {
 	case <-time.After(time.Second * 5):
 		return fmt.Errorf("timeout waiting on zvol %s on %s", id, s.hostname)
 	}
+
+	// Wait for udev to finish processing the device
+	if err := exec.Command("udevadm", "settle").Run(); err != nil {
+		return fmt.Errorf("udevadm settle failed: %w", err)
+	}
+
 	s.log.Debug("zvol available", "id", id)
 
 	return nil
