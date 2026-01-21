@@ -78,6 +78,15 @@
     
     let checkTimeout;
     
+    function setHint(html) {
+        // Display toggle forces Safari to repaint after removing animated spinner
+        hostnameHint.style.display = 'none';
+        hostnameHint.innerHTML = html;
+        hostnameHint.className = html ? 'form-hint error' : 'form-hint';
+        hostnameHint.offsetHeight;
+        hostnameHint.style.display = '';
+    }
+
     function checkHostnameAvailability() {
         const hostname = hostnameInput.value.trim();
         
@@ -102,18 +111,15 @@
         .then(response => response.json())
         .then(data => {
             if (data.valid && data.available) {
-                hostnameHint.textContent = '';
-                hostnameHint.className = 'form-hint';
+                setHint('');
                 createButton.disabled = false;
             } else {
-                hostnameHint.textContent = '✗ ' + data.message;
-                hostnameHint.className = 'form-hint error';
+                setHint('✗ ' + data.message);
                 createButton.disabled = true;
             }
         })
         .catch(error => {
-            hostnameHint.textContent = '✗ Error checking availability';
-            hostnameHint.className = 'form-hint error';
+            setHint('✗ Error checking availability');
             createButton.disabled = true;
         });
     }
