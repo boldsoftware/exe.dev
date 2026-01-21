@@ -185,41 +185,31 @@ This is expected in local development.
 
 ## Production Deployment
 
-### To deploy production (exed and exelet)
-
-Run:
-
-```
-make deploy-prod
-```
-
 ### Deploying exed
 
 Run:
 
 ```
-make deploy-exed
+./ops/deploy/deploy-exed-prod.sh
 ```
 
 This builds a new exed, pushes it to the VM, and restarts the service.
 
-To see the commits that would ship before deploying, run `make deploy-what`.
+To see the commits that would ship before deploying, run `./ops/deploy/deploy-what-exed.sh`.
 
 To poke around production, ssh in using Tailscale:
 
 ```
-ssh ubuntu@exed-prod-01
+ssh ubuntu@exed-02
 ```
-
-There are other deployment options, like `make deploy-piperd`, but these are less frequently used.
 
 ### Deploying exelet
 
 To deploy exelet to production or staging:
 
 ```
-make deploy-exelet          # production
-make deploy-exelet-staging  # staging
+./ops/deploy/deploy-exelet-prod.sh <machine-name>
+./ops/deploy/deploy-exelet-staging.sh <machine-name>
 ```
 
 ### Building exelet-fs
@@ -234,33 +224,22 @@ This builds the kernel, rovol, and exe-init, then packages them into `exelet-fs-
 
 ## Production Container Host Configuration
 
-The script `./ops/setup-host-part1.sh` sets up more exe-ctr-NN hosts.
+The script `./ops/deploy/setup-exelet-host.sh` sets up more exe-ctr-NN hosts.
 
 ## Exeuntu Image
 
 The default container image is `exeuntu`, which is a Ubuntu 24.04 image with development tools pre-installed. The image is hosted on GitHub Container Registry at `ghcr.io/boldsoftware/exeuntu:latest`.
 
-To build and push the image:
-
-```bash
-# Build locally
-make build-exeuntu
-
-# Push to GitHub Container Registry (requires GitHub token with package write permissions)
-echo $GITHUB_TOKEN | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
-make push-exeuntu
-```
-
-The image is automatically built and pushed via GitHub Actions when the Dockerfile changes.
+The image is automatically built and pushed via GitHub Actions when files in `exeuntu/` or `shelley/` change. See `.github/workflows/build-exeuntu.yml` for details.
 
 # Production Operations
 
-Prod exed machine is `exed-01`.
+Prod exed machine is `exed-02`.
 
 Keys are in `/etc/systemd/system/exed.service.d/env.conf`
 
 Restart with `sudo systemctl daemon-reload && sudo systemctl restart exed`
 
-Deploy with `make deploy-exed`
+Deploy with `./ops/deploy/deploy-exed-prod.sh`
 
 Systemd unit is in `/etc/systemd/system/exed.service` (TODO: source control)
