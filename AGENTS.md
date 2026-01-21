@@ -11,6 +11,7 @@
 - don't add sleeps in tests; instead, add retry loops with a very small sleep
 - use await syntax instead of .then()/.catch() where possible
 - use sqlc to manage queries. avoid writing test-only queries. it is OK to use 'select *' in queries; sqlc will expand it out to an explicit list of fields. use withRxRes0/withRxRes1/withTx0/withTx1 to execute queries when possible.
+- for logging practices, see devdocs/logging.md
 - if you hit a permissions error, ask for more permissions, rather than working around it.
 - shell scripts should be concise with their output; set -e is more or less enough verbosity for finding when
   things are wrong; traps like
