@@ -147,7 +147,7 @@ type UserPageData struct {
 	InviteCount int64
 
 	// Billing information
-	HasBilling      bool   // User has active billing (completed checkout)
+	HasBilling       bool   // User has active billing (completed checkout)
 	BillingPortalURL string // URL to the billing portal (only set if HasBilling)
 }
 
