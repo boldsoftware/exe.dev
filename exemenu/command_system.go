@@ -474,8 +474,8 @@ func (ct *CommandTree) executeCommand(ctx context.Context, cc *CommandContext, c
 				posArgs = append(posArgs, allArgs[i+1:]...)
 				break
 			}
-			// Treat args starting with '-' as flags
-			if strings.HasPrefix(a, "-") {
+			// Treat args starting with '-' as flags, but not PEM headers like -----BEGIN
+			if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "-----") {
 				flagArgs = append(flagArgs, a)
 				// If next token looks like a value (doesn't start with '-') and current
 				// flag didn't include '=', treat it as the value for this flag.
@@ -489,8 +489,19 @@ func (ct *CommandTree) executeCommand(ctx context.Context, cc *CommandContext, c
 			posArgs = append(posArgs, a)
 		}
 		// Recombine: flags first, then positionals
-		combined := make([]string, 0, len(flagArgs)+len(posArgs))
+		// Add -- terminator if positional args contain flag-like content (e.g., PEM headers)
+		needsTerminator := false
+		for _, p := range posArgs {
+			if strings.HasPrefix(p, "-") {
+				needsTerminator = true
+				break
+			}
+		}
+		combined := make([]string, 0, len(flagArgs)+1+len(posArgs))
 		combined = append(combined, flagArgs...)
+		if needsTerminator {
+			combined = append(combined, "--")
+		}
 		combined = append(combined, posArgs...)
 		allArgs = combined
 	}

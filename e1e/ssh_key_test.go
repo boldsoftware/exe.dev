@@ -106,6 +106,19 @@ func TestSSHKeyCommand(t *testing.T) {
 		pty.wantPrompt()
 	})
 
+	t.Run("add_private_key_error", func(t *testing.T) {
+		noGolden(t)
+		pty := sshToExeDev(t, keyFile)
+		defer pty.disconnect()
+
+		// Try to add what looks like a private key - should get a helpful error
+		// explaining to use the public key instead
+		pty.sendLine("ssh-key add '-----BEGIN OPENSSH PRIVATE KEY-----'")
+		pty.want("private key")
+		pty.want("public key")
+		pty.wantPrompt()
+	})
+
 	t.Run("help_add", func(t *testing.T) {
 		noGolden(t)
 		pty := sshToExeDev(t, keyFile)

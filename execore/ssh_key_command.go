@@ -158,6 +158,11 @@ func (ss *SSHServer) handleSSHKeyAddCmd(ctx context.Context, cc *exemenu.Command
 		return cc.Errorf("SSH public key cannot be empty")
 	}
 
+	// Detect if user accidentally provided a private key
+	if strings.Contains(publicKey, "PRIVATE KEY") {
+		return cc.Errorf("this is a private key, please use the public key instead (typically found in a .pub file)")
+	}
+
 	// Validate and canonicalize the public key, extract comment
 	parsedKey, comment, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey))
 	if err != nil {
