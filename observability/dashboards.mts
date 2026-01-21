@@ -3006,6 +3006,7 @@ function makeHostsDashboard() {
         forDuration: "3m",
         summary: "Exelet host is not reporting metrics",
         description: "A production exelet host has stopped reporting metrics to Prometheus for more than 3 minutes.",
+        labels: { signal: "strong" },
       },
       alertQueryOverride: `up{job="node",role="exelet",stage="production"}`,
     }
@@ -3025,6 +3026,7 @@ function makeHostsDashboard() {
         forDuration: "3m",
         summary: "Exelet application is not reporting metrics",
         description: "An exelet process has stopped reporting metrics to Prometheus for more than 3 minutes.",
+        labels: { signal: "strong" },
       },
       alertQueryOverride: `up{job="exelet",stage="production"}`,
     }
