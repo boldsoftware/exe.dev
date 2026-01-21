@@ -7,6 +7,7 @@ import (
 	cli "github.com/urfave/cli/v2"
 
 	"exe.dev/cmd/exelet-ctl/compute"
+	"exe.dev/cmd/exelet-ctl/resources"
 	"exe.dev/cmd/exelet-ctl/storage"
 	"exe.dev/exelet/config"
 	"exe.dev/version"
@@ -52,6 +53,7 @@ func main() {
 	}
 	app.Commands = []*cli.Command{
 		compute.Command,
+		resources.Command,
 		storage.Command,
 	}
 
