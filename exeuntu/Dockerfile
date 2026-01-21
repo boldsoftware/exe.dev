@@ -166,10 +166,6 @@ ENV EXEUNTU=1
 # STOPSIGNAL SIGRTMIN+3
 
 
-# Copy the pre-built shelley binary (built externally for the target architecture)
-COPY shelley /usr/local/bin/shelley
-RUN chmod +x /usr/local/bin/shelley && /usr/local/bin/shelley -help
-
 # Copy the self-contained Chrome bundle from chromedp/headless-shell
 COPY --from=chrome /headless-shell /headless-shell
 ENV PATH="/usr/local/bin:/headless-shell:${PATH}"
@@ -256,6 +252,12 @@ RUN chmod 644 /var/www/html/index.html
 # Install xterm-ghostty terminfo for Ghostty terminal support
 COPY xterm-ghostty.terminfo /tmp/xterm-ghostty.terminfo
 RUN tic -x - < /tmp/xterm-ghostty.terminfo && rm /tmp/xterm-ghostty.terminfo
+
+# Copy the pre-built shelley binary (built externally for the target architecture)
+# This is placed late in the Dockerfile to maximize layer cache reuse, since
+# shelley is the most frequently changing component.
+COPY shelley /usr/local/bin/shelley
+RUN chmod +x /usr/local/bin/shelley && /usr/local/bin/shelley -help
 
 # Expose the web server ports
 EXPOSE 8000 9999

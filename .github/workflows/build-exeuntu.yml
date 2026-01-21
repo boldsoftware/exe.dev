@@ -106,8 +106,10 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=${{ github.ref == 'refs/heads/main' }}
-          cache-from: type=gha,scope=base-${{ env.PLATFORM_PAIR }}
-          cache-to: type=gha,mode=max,scope=base-${{ env.PLATFORM_PAIR }}
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:cache-${{ env.PLATFORM_PAIR }}
+          cache-to: |
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:cache-${{ env.PLATFORM_PAIR }},mode=max
 
       - name: Export digest
         if: github.ref == 'refs/heads/main'
