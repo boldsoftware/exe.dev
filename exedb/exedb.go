@@ -3,6 +3,7 @@ package exedb
 //go:generate go tool sqlc generate
 
 import (
+	"bytes"
 	"context"
 	crand "crypto/rand"
 	"database/sql"
@@ -20,6 +21,13 @@ import (
 //go:embed schema/*.sql
 var migrationFS embed.FS
 
+// codeMigrations maps migration numbers to code migration functions.
+// Each code migration must have a corresponding empty .sql file in schema/
+// to establish ordering. Add entries directly to this map.
+var codeMigrations = map[int]func(db *sql.DB) error{
+	60: testCodeMigration,
+}
+
 // SSHDetails holds SSH connection information for a machine
 type SSHDetails struct {
 	Port       int
@@ -29,7 +37,16 @@ type SSHDetails struct {
 	User       string  // User to connect as (from Docker image USER directive)
 }
 
-// RunMigrations executes database migrations in order
+// a migration represents a single migration (SQL or code).
+type migration struct {
+	number int
+	name   string
+	isCode bool
+	codeFn func(db *sql.DB) error
+}
+
+// RunMigrations executes database migrations in order.
+// SQL files establish ordering. Empty SQL files indicate code migrations.
 func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 	// Read all migration files
 	entries, err := migrationFS.ReadDir("schema")
@@ -38,7 +55,7 @@ func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 	}
 
 	// Filter and validate migration files
-	var migrations []string
+	var migrations []migration
 	migrationPattern := regexp.MustCompile(`^(\d{3})-.*\.sql$`)
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -47,11 +64,51 @@ func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 		if !migrationPattern.MatchString(entry.Name()) {
 			continue
 		}
-		migrations = append(migrations, entry.Name())
+
+		matches := migrationPattern.FindStringSubmatch(entry.Name())
+		number, err := strconv.Atoi(matches[1])
+		if err != nil {
+			return fmt.Errorf("failed to parse migration number from %s: %w", entry.Name(), err)
+		}
+
+		content, err := migrationFS.ReadFile("schema/" + entry.Name())
+		if err != nil {
+			return fmt.Errorf("failed to read migration file %s: %w", entry.Name(), err)
+		}
+
+		isEmpty := len(bytes.TrimSpace(content)) == 0
+		codeFn, hasCode := codeMigrations[number]
+
+		if isEmpty && !hasCode {
+			return fmt.Errorf("empty migration file %s has no corresponding code migration in codeMigrations[%d]", entry.Name(), number)
+		}
+		if !isEmpty && hasCode {
+			return fmt.Errorf("migration file %s is not empty but has code migration in codeMigrations[%d]", entry.Name(), number)
+		}
+
+		migrations = append(migrations, migration{
+			number: number,
+			name:   entry.Name(),
+			isCode: isEmpty,
+			codeFn: codeFn,
+		})
+	}
+
+	// Check for code migrations without corresponding SQL files
+	sqlNumbers := make(map[int]bool)
+	for _, m := range migrations {
+		sqlNumbers[m.number] = true
+	}
+	for number := range codeMigrations {
+		if !sqlNumbers[number] {
+			return fmt.Errorf("code migration %d has no corresponding SQL file in schema/", number)
+		}
 	}
 
 	// Sort migrations by number
-	sort.Strings(migrations)
+	sort.Slice(migrations, func(i, j int) bool {
+		return migrations[i].number < migrations[j].number
+	})
 
 	// Get executed migrations
 	executedMigrations := make(map[int]bool)
@@ -80,28 +137,26 @@ func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 	}
 
 	// Run any migrations that haven't been executed
-	for _, migration := range migrations {
-		// Extract migration number from filename (e.g., "001-base.sql" -> 001)
-		matches := migrationPattern.FindStringSubmatch(migration)
-		if len(matches) != 2 {
-			return fmt.Errorf("invalid migration filename format: %s", migration)
+	for _, m := range migrations {
+		if executedMigrations[m.number] {
+			continue
 		}
 
-		migrationNumber, err := strconv.Atoi(matches[1])
+		if m.isCode {
+			slog.Info("running code migration", "file", m.name, "number", m.number)
+			if err := m.codeFn(db); err != nil {
+				return fmt.Errorf("failed to execute code migration %s: %w", m.name, err)
+			}
+		} else {
+			slog.Info("running migration", "file", m.name, "number", m.number)
+			if err := executeMigration(db, m.name); err != nil {
+				return fmt.Errorf("failed to execute migration %s: %w", m.name, err)
+			}
+		}
+
+		_, err = db.Exec("INSERT INTO migrations (migration_number, migration_name) VALUES (?, ?)", m.number, m.name)
 		if err != nil {
-			return fmt.Errorf("failed to parse migration number from %s: %w", migration, err)
-		}
-
-		if !executedMigrations[migrationNumber] {
-			slog.Info("running migration", "file", migration, "number", migrationNumber)
-			if err := executeMigration(db, migration); err != nil {
-				return fmt.Errorf("failed to execute migration %s: %w", migration, err)
-			}
-
-			_, err = db.Exec("INSERT INTO migrations (migration_number, migration_name) VALUES (?, ?)", migrationNumber, migration)
-			if err != nil {
-				return fmt.Errorf("failed to record migration %s in migrations table: %w", migration, err)
-			}
+			return fmt.Errorf("failed to record migration %s in migrations table: %w", m.name, err)
 		}
 	}
 
