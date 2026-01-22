@@ -7,7 +7,7 @@ Content-Length: 183
 Anthropic-Version: 2023-06-01
 Content-Type: application/json
 
-{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":[{"type":"text","text":"Hi, my name is Cornelius","cache_control":{"type":"ephemeral"}}]}],"max_tokens":8192}
+{"model":"claude-sonnet-4-20250514","max_tokens":8192,"messages":[{"role":"user","content":[{"type":"text","text":"Hi, my name is Cornelius","cache_control":{"type":"ephemeral"}}]}]}
 HTTP/2.0 200 OK
 Anthropic-Organization-Id: 3c473a21-7208-450a-a9f8-80aebda45c1b
 Anthropic-Ratelimit-Input-Tokens-Limit: 4000000
@@ -37,7 +37,7 @@ Content-Length: 454
 Anthropic-Version: 2023-06-01
 Content-Type: application/json
 
-{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":[{"type":"text","text":"Hi, my name is Cornelius"}]},{"role":"assistant","content":[{"type":"text","text":"Hello Cornelius! It's nice to meet you. That's a distinctive and classic name. How are you doing today? Is there anything I can help you with?"}]},{"role":"user","content":[{"type":"text","text":"What is my name?","cache_control":{"type":"ephemeral"}}]}],"max_tokens":8192}
+{"model":"claude-sonnet-4-20250514","max_tokens":8192,"messages":[{"role":"user","content":[{"type":"text","text":"Hi, my name is Cornelius"}]},{"role":"assistant","content":[{"type":"text","text":"Hello Cornelius! It's nice to meet you. That's a distinctive and classic name. How are you doing today? Is there anything I can help you with?"}]},{"role":"user","content":[{"type":"text","text":"What is my name?","cache_control":{"type":"ephemeral"}}]}]}
 HTTP/2.0 200 OK
 Anthropic-Organization-Id: 3c473a21-7208-450a-a9f8-80aebda45c1b
 Anthropic-Ratelimit-Input-Tokens-Limit: 4000000

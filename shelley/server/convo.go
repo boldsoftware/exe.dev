@@ -13,6 +13,7 @@ import (
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/gitstate"
 	"shelley.exe.dev/llm"
+	"shelley.exe.dev/llm/llmhttp"
 	"shelley.exe.dev/loop"
 	"shelley.exe.dev/subpub"
 )
@@ -372,7 +373,9 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 		}
 	}
 
-	processCtx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
+	// Create a context with the conversation ID for LLM request recording/prefix dedup
+	baseCtx := llmhttp.WithConversationID(context.Background(), conversationID)
+	processCtx, cancel := context.WithTimeout(baseCtx, 12*time.Hour)
 	toolSet := claudetool.NewToolSet(processCtx, toolSetConfig)
 
 	loopInstance := loop.NewLoop(loop.Config{

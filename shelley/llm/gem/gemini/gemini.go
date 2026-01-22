@@ -11,12 +11,15 @@ import (
 
 // https://ai.google.dev/api/generate-content#request-body
 type Request struct {
-	Contents          []Content         `json:"contents"`
-	Tools             []Tool            `json:"tools,omitempty"`
-	SystemInstruction *Content          `json:"systemInstruction,omitempty"`
-	GenerationConfig  *GenerationConfig `json:"generationConfig,omitempty"`
+	// Field order matters for JSON serialization - stable fields should come first
+	// to maximize prefix deduplication when storing LLM requests.
 	CachedContent     string            `json:"cachedContent,omitempty"` // format: "cachedContents/{name}"
+	GenerationConfig  *GenerationConfig `json:"generationConfig,omitempty"`
+	SystemInstruction *Content          `json:"systemInstruction,omitempty"`
+	Tools             []Tool            `json:"tools,omitempty"`
 	// ToolConfig has been left out because it does not appear to be useful.
+	// Contents comes last since it grows with each request in a conversation
+	Contents []Content `json:"contents"`
 }
 
 // https://ai.google.dev/api/generate-content#response-body

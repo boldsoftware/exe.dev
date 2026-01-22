@@ -7,7 +7,83 @@ package generated
 
 import (
 	"context"
+	"time"
 )
+
+const getLLMRequestBody = `-- name: GetLLMRequestBody :one
+SELECT request_body FROM llm_requests WHERE id = ?
+`
+
+func (q *Queries) GetLLMRequestBody(ctx context.Context, id int64) (*string, error) {
+	row := q.db.QueryRowContext(ctx, getLLMRequestBody, id)
+	var request_body *string
+	err := row.Scan(&request_body)
+	return request_body, err
+}
+
+const getLLMRequestByID = `-- name: GetLLMRequestByID :one
+SELECT id, conversation_id, model, provider, url, request_body, response_body, status_code, error, duration_ms, created_at, prefix_request_id, prefix_length FROM llm_requests WHERE id = ?
+`
+
+func (q *Queries) GetLLMRequestByID(ctx context.Context, id int64) (LlmRequest, error) {
+	row := q.db.QueryRowContext(ctx, getLLMRequestByID, id)
+	var i LlmRequest
+	err := row.Scan(
+		&i.ID,
+		&i.ConversationID,
+		&i.Model,
+		&i.Provider,
+		&i.Url,
+		&i.RequestBody,
+		&i.ResponseBody,
+		&i.StatusCode,
+		&i.Error,
+		&i.DurationMs,
+		&i.CreatedAt,
+		&i.PrefixRequestID,
+		&i.PrefixLength,
+	)
+	return i, err
+}
+
+const getLLMResponseBody = `-- name: GetLLMResponseBody :one
+SELECT response_body FROM llm_requests WHERE id = ?
+`
+
+func (q *Queries) GetLLMResponseBody(ctx context.Context, id int64) (*string, error) {
+	row := q.db.QueryRowContext(ctx, getLLMResponseBody, id)
+	var response_body *string
+	err := row.Scan(&response_body)
+	return response_body, err
+}
+
+const getLastRequestForConversation = `-- name: GetLastRequestForConversation :one
+SELECT id, conversation_id, model, provider, url, request_body, response_body, status_code, error, duration_ms, created_at, prefix_request_id, prefix_length FROM llm_requests
+WHERE conversation_id = ?
+ORDER BY id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLastRequestForConversation(ctx context.Context, conversationID *string) (LlmRequest, error) {
+	row := q.db.QueryRowContext(ctx, getLastRequestForConversation, conversationID)
+	var i LlmRequest
+	err := row.Scan(
+		&i.ID,
+		&i.ConversationID,
+		&i.Model,
+		&i.Provider,
+		&i.Url,
+		&i.RequestBody,
+		&i.ResponseBody,
+		&i.StatusCode,
+		&i.Error,
+		&i.DurationMs,
+		&i.CreatedAt,
+		&i.PrefixRequestID,
+		&i.PrefixLength,
+	)
+	return i, err
+}
 
 const insertLLMRequest = `-- name: InsertLLMRequest :one
 INSERT INTO llm_requests (
@@ -19,21 +95,25 @@ INSERT INTO llm_requests (
     response_body,
     status_code,
     error,
-    duration_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, conversation_id, model, provider, url, request_body, response_body, status_code, error, duration_ms, created_at
+    duration_ms,
+    prefix_request_id,
+    prefix_length
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, conversation_id, model, provider, url, request_body, response_body, status_code, error, duration_ms, created_at, prefix_request_id, prefix_length
 `
 
 type InsertLLMRequestParams struct {
-	ConversationID *string `json:"conversation_id"`
-	Model          string  `json:"model"`
-	Provider       string  `json:"provider"`
-	Url            string  `json:"url"`
-	RequestBody    *string `json:"request_body"`
-	ResponseBody   *string `json:"response_body"`
-	StatusCode     *int64  `json:"status_code"`
-	Error          *string `json:"error"`
-	DurationMs     *int64  `json:"duration_ms"`
+	ConversationID  *string `json:"conversation_id"`
+	Model           string  `json:"model"`
+	Provider        string  `json:"provider"`
+	Url             string  `json:"url"`
+	RequestBody     *string `json:"request_body"`
+	ResponseBody    *string `json:"response_body"`
+	StatusCode      *int64  `json:"status_code"`
+	Error           *string `json:"error"`
+	DurationMs      *int64  `json:"duration_ms"`
+	PrefixRequestID *int64  `json:"prefix_request_id"`
+	PrefixLength    *int64  `json:"prefix_length"`
 }
 
 func (q *Queries) InsertLLMRequest(ctx context.Context, arg InsertLLMRequestParams) (LlmRequest, error) {
@@ -47,6 +127,8 @@ func (q *Queries) InsertLLMRequest(ctx context.Context, arg InsertLLMRequestPara
 		arg.StatusCode,
 		arg.Error,
 		arg.DurationMs,
+		arg.PrefixRequestID,
+		arg.PrefixLength,
 	)
 	var i LlmRequest
 	err := row.Scan(
@@ -61,6 +143,81 @@ func (q *Queries) InsertLLMRequest(ctx context.Context, arg InsertLLMRequestPara
 		&i.Error,
 		&i.DurationMs,
 		&i.CreatedAt,
+		&i.PrefixRequestID,
+		&i.PrefixLength,
 	)
 	return i, err
+}
+
+const listRecentLLMRequests = `-- name: ListRecentLLMRequests :many
+SELECT 
+    id, 
+    conversation_id, 
+    model, 
+    provider, 
+    url, 
+    LENGTH(request_body) as request_body_length,
+    LENGTH(response_body) as response_body_length,
+    status_code, 
+    error, 
+    duration_ms, 
+    created_at,
+    prefix_request_id,
+    prefix_length
+FROM llm_requests 
+ORDER BY id DESC 
+LIMIT ?
+`
+
+type ListRecentLLMRequestsRow struct {
+	ID                 int64     `json:"id"`
+	ConversationID     *string   `json:"conversation_id"`
+	Model              string    `json:"model"`
+	Provider           string    `json:"provider"`
+	Url                string    `json:"url"`
+	RequestBodyLength  *int64    `json:"request_body_length"`
+	ResponseBodyLength *int64    `json:"response_body_length"`
+	StatusCode         *int64    `json:"status_code"`
+	Error              *string   `json:"error"`
+	DurationMs         *int64    `json:"duration_ms"`
+	CreatedAt          time.Time `json:"created_at"`
+	PrefixRequestID    *int64    `json:"prefix_request_id"`
+	PrefixLength       *int64    `json:"prefix_length"`
+}
+
+func (q *Queries) ListRecentLLMRequests(ctx context.Context, limit int64) ([]ListRecentLLMRequestsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRecentLLMRequests, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRecentLLMRequestsRow{}
+	for rows.Next() {
+		var i ListRecentLLMRequestsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ConversationID,
+			&i.Model,
+			&i.Provider,
+			&i.Url,
+			&i.RequestBodyLength,
+			&i.ResponseBodyLength,
+			&i.StatusCode,
+			&i.Error,
+			&i.DurationMs,
+			&i.CreatedAt,
+			&i.PrefixRequestID,
+			&i.PrefixLength,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

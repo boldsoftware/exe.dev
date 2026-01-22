@@ -218,17 +218,20 @@ type systemContent struct {
 
 // request represents the request payload for creating a message.
 type request struct {
+	// Field order matters for JSON serialization - stable fields should come first
+	// to maximize prefix deduplication when storing LLM requests.
 	Model         string          `json:"model"`
-	Messages      []message       `json:"messages"`
-	ToolChoice    *toolChoice     `json:"tool_choice,omitempty"`
 	MaxTokens     int             `json:"max_tokens"`
-	Tools         []*tool         `json:"tools,omitempty"`
 	Stream        bool            `json:"stream,omitempty"`
 	System        []systemContent `json:"system,omitempty"`
+	Tools         []*tool         `json:"tools,omitempty"`
+	ToolChoice    *toolChoice     `json:"tool_choice,omitempty"`
 	Temperature   float64         `json:"temperature,omitempty"`
 	TopK          int             `json:"top_k,omitempty"`
 	TopP          float64         `json:"top_p,omitempty"`
 	StopSequences []string        `json:"stop_sequences,omitempty"`
+	// Messages comes last since it grows with each request in a conversation
+	Messages []message `json:"messages"`
 }
 
 func mapped[Slice ~[]E, E, T any](s Slice, f func(E) T) []T {

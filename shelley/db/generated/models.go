@@ -20,17 +20,19 @@ type Conversation struct {
 }
 
 type LlmRequest struct {
-	ID             int64     `json:"id"`
-	ConversationID *string   `json:"conversation_id"`
-	Model          string    `json:"model"`
-	Provider       string    `json:"provider"`
-	Url            string    `json:"url"`
-	RequestBody    *string   `json:"request_body"`
-	ResponseBody   *string   `json:"response_body"`
-	StatusCode     *int64    `json:"status_code"`
-	Error          *string   `json:"error"`
-	DurationMs     *int64    `json:"duration_ms"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID              int64     `json:"id"`
+	ConversationID  *string   `json:"conversation_id"`
+	Model           string    `json:"model"`
+	Provider        string    `json:"provider"`
+	Url             string    `json:"url"`
+	RequestBody     *string   `json:"request_body"`
+	ResponseBody    *string   `json:"response_body"`
+	StatusCode      *int64    `json:"status_code"`
+	Error           *string   `json:"error"`
+	DurationMs      *int64    `json:"duration_ms"`
+	CreatedAt       time.Time `json:"created_at"`
+	PrefixRequestID *int64    `json:"prefix_request_id"`
+	PrefixLength    *int64    `json:"prefix_length"`
 }
 
 type Message struct {

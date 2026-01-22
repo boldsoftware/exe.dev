@@ -695,9 +695,158 @@ func (db *DB) InsertLLMRequest(ctx context.Context, params generated.InsertLLMRe
 	var request generated.LlmRequest
 	err := db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
 		q := generated.New(tx.Conn())
+
+		// If we have a conversation ID and request body, try to find common prefix
+		if params.ConversationID != nil && params.RequestBody != nil {
+			// Get the last request for this conversation
+			lastReq, err := q.GetLastRequestForConversation(ctx, params.ConversationID)
+			if err == nil {
+				// Found a previous request - compute common prefix
+				prefixLen, fullPrevBody := computeSharedPrefixLength(lastReq, *params.RequestBody)
+				if prefixLen > 0 {
+					// Store only the suffix
+					suffix := (*params.RequestBody)[prefixLen:]
+					params.RequestBody = &suffix
+					params.PrefixRequestID = &lastReq.ID
+					prefixLen64 := int64(prefixLen)
+					params.PrefixLength = &prefixLen64
+					_ = fullPrevBody // silence unused warning, used for computing prefix
+				}
+			}
+			// If no previous request found or error, just store the full body
+		}
+
 		var err error
 		request, err = q.InsertLLMRequest(ctx, params)
 		return err
 	})
 	return &request, err
+}
+
+// computeSharedPrefixLength computes the length of the shared prefix between
+// the full previous request body (reconstructed by walking the chain) and the new request body.
+// It returns the prefix length and the fully reconstructed previous body.
+func computeSharedPrefixLength(prevReq generated.LlmRequest, newBody string) (int, string) {
+	// Get the stored body (which may be just a suffix if prevReq has a prefix reference)
+	prevBody := ""
+	if prevReq.RequestBody != nil {
+		prevBody = *prevReq.RequestBody
+	}
+
+	// If the previous request has a prefix reference, we need to account for that
+	// by prepending the prefix length worth of bytes from the new body.
+	// This works because in a conversation, request N+1 typically starts with
+	// all of request N plus new content at the end.
+	if prevReq.PrefixLength != nil && *prevReq.PrefixLength > 0 {
+		// The previous request's full body would be:
+		// [first prefix_length bytes that match its parent] + [stored suffix]
+		// If the new body is a continuation, its first prefix_length bytes
+		// should match those same bytes.
+		prefixLen := int(*prevReq.PrefixLength)
+		if prefixLen <= len(newBody) {
+			prevBody = newBody[:prefixLen] + prevBody
+		}
+	}
+
+	// Compute byte-by-byte shared prefix between reconstructed prevBody and newBody
+	minLen := len(prevBody)
+	if len(newBody) < minLen {
+		minLen = len(newBody)
+	}
+
+	prefixLen := 0
+	for i := 0; i < minLen; i++ {
+		if prevBody[i] != newBody[i] {
+			break
+		}
+		prefixLen++
+	}
+
+	// Only use prefix deduplication if we save meaningful space
+	// (at least 100 bytes saved)
+	if prefixLen < 100 {
+		return 0, prevBody
+	}
+
+	return prefixLen, prevBody
+}
+
+// ListRecentLLMRequests returns the most recent LLM requests
+func (db *DB) ListRecentLLMRequests(ctx context.Context, limit int64) ([]generated.ListRecentLLMRequestsRow, error) {
+	var requests []generated.ListRecentLLMRequestsRow
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		var err error
+		requests, err = q.ListRecentLLMRequests(ctx, limit)
+		return err
+	})
+	return requests, err
+}
+
+// GetLLMRequestBody returns the raw request body for a request
+func (db *DB) GetLLMRequestBody(ctx context.Context, id int64) (*string, error) {
+	var body *string
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		var err error
+		body, err = q.GetLLMRequestBody(ctx, id)
+		return err
+	})
+	return body, err
+}
+
+// GetLLMResponseBody returns the raw response body for a request
+func (db *DB) GetLLMResponseBody(ctx context.Context, id int64) (*string, error) {
+	var body *string
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		var err error
+		body, err = q.GetLLMResponseBody(ctx, id)
+		return err
+	})
+	return body, err
+}
+
+// GetFullLLMRequestBody reconstructs the full request body for a request,
+// following the prefix chain if necessary.
+func (db *DB) GetFullLLMRequestBody(ctx context.Context, requestID int64) (string, error) {
+	var result string
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		return reconstructRequestBody(ctx, q, requestID, &result)
+	})
+	return result, err
+}
+
+// reconstructRequestBody recursively reconstructs the full request body
+func reconstructRequestBody(ctx context.Context, q *generated.Queries, requestID int64, result *string) error {
+	req, err := q.GetLLMRequestByID(ctx, requestID)
+	if err != nil {
+		return err
+	}
+
+	suffix := ""
+	if req.RequestBody != nil {
+		suffix = *req.RequestBody
+	}
+
+	if req.PrefixRequestID == nil || req.PrefixLength == nil || *req.PrefixLength == 0 {
+		// No prefix reference - the stored body is the full body
+		*result = suffix
+		return nil
+	}
+
+	// Recursively get the parent's full body
+	var parentBody string
+	if err := reconstructRequestBody(ctx, q, *req.PrefixRequestID, &parentBody); err != nil {
+		return err
+	}
+
+	// The full body is the first prefix_length bytes from the parent + our suffix
+	prefixLen := int(*req.PrefixLength)
+	if prefixLen > len(parentBody) {
+		prefixLen = len(parentBody)
+	}
+	*result = parentBody[:prefixLen] + suffix
+	return nil
 }
