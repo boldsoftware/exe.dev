@@ -34,6 +34,9 @@ func (s *Service) getInstance(ctx context.Context, id string) (*api.Instance, er
 		return nil, fmt.Errorf("%w: instance %s", api.ErrNotFound, id)
 	}
 	if err != nil {
+		// Return nil, nil on read errors. This handles a tight race where
+		// GetInstance is called while the instance is still booting and the
+		// config file exists but isn't fully written yet.
 		return nil, nil
 	}
 	i := &api.Instance{}
