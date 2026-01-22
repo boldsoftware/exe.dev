@@ -1,7 +1,7 @@
 .PHONY: deploy-grafana deploy-prometheus deploy-node-exporter deploy-notifications typecheck
 
 # Hosts to deploy node-exporter to
-HOSTS := mon exed-02 exe-ctr-02 exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 ci.crocodile-vector.ts.net exed-staging-01 exe-ctr-staging-01
+HOSTS := mon exed-02 exe-ctr-02 exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 exe-ctr-15 ci.crocodile-vector.ts.net exed-staging-01 exe-ctr-staging-01
 
 # Dead hosts (terminated or unreachable)
 DEAD_HOSTS := exe-ctr-01 exe-ctr-06 exe-ctr-staging-02
