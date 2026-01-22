@@ -1,3 +1,10 @@
-exeuntu is a functional image based on ubuntu24.04 that includes systemd and a small Go web server.
+# exeuntu
 
-To run systemd with Docker, you need a bunch of flags.
+exeuntu is the default base image for [exe.dev](https://exe.dev/). It is based
+on ubuntu24.04, and includes systemd.
+
+We believe that minimal containers make for terrible developer (and agent) experiences,
+so exeuntu includes a lot of stuff, mostly from apt.
+
+You can build exeuntu with Docker, but running it, including systemd,
+is difficult with Docker.
