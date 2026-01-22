@@ -231,6 +231,7 @@ const (
 	largeOutputThreshold = 50 * 1024 // 50KB - threshold for saving to file
 	firstLinesCount      = 2
 	lastLinesCount       = 5
+	maxLineLength        = 200 // truncate displayed lines to this length
 )
 
 func (b *BashTool) makeBashCommand(ctx context.Context, command string, out io.Writer) *exec.Cmd {
@@ -342,17 +343,25 @@ func formatForegroundBashOutput(out string) (string, error) {
 	result.WriteString("First lines:\n")
 	firstN := min(firstLinesCount, len(lines))
 	for i := 0; i < firstN; i++ {
-		result.WriteString(fmt.Sprintf("%5d: %s\n", i+1, lines[i]))
+		result.WriteString(fmt.Sprintf("%5d: %s\n", i+1, truncateLine(lines[i])))
 	}
 
 	// Last N lines
 	result.WriteString("\n...\n\nLast lines:\n")
 	startIdx := max(0, len(lines)-lastLinesCount)
 	for i := startIdx; i < len(lines); i++ {
-		result.WriteString(fmt.Sprintf("%5d: %s\n", i+1, lines[i]))
+		result.WriteString(fmt.Sprintf("%5d: %s\n", i+1, truncateLine(lines[i])))
 	}
 
 	return result.String(), nil
+}
+
+// truncateLine truncates a line to maxLineLength characters, appending "..." if truncated.
+func truncateLine(line string) string {
+	if len(line) <= maxLineLength {
+		return line
+	}
+	return line[:maxLineLength] + "..."
 }
 
 func humanizeBytes(bytes int) string {

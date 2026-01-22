@@ -645,6 +645,39 @@ func TestFormatForegroundBashOutput(t *testing.T) {
 
 		t.Logf("Large binary-like output result:\n%s", result)
 	})
+
+	// Test large output with very long lines (e.g., minified JS)
+	t.Run("Large Output With Long Lines", func(t *testing.T) {
+		// Generate output > 50KB with few very long lines
+		longLine := strings.Repeat("abcdefghij", 1000) // 10KB per line
+		lines := []string{longLine, longLine, longLine, longLine, longLine, longLine}
+		largeOutput := strings.Join(lines, "\n")
+		if len(largeOutput) < largeOutputThreshold {
+			t.Fatalf("Test setup error: output is only %d bytes, need > %d", len(largeOutput), largeOutputThreshold)
+		}
+
+		result, err := formatForegroundBashOutput(largeOutput)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		// Result should be reasonable size (not blow up context)
+		if len(result) > 4096 {
+			t.Errorf("Expected truncated result < 4KB, got %d bytes:\n%s", len(result), result)
+		}
+
+		// Should mention the file
+		if !strings.Contains(result, "saved to:") {
+			t.Errorf("Expected result to mention saved file, got:\n%s", result)
+		}
+
+		// Lines should be truncated
+		if !strings.Contains(result, "...") {
+			t.Errorf("Expected truncated lines with '...', got:\n%s", result)
+		}
+
+		t.Logf("Large output with long lines result:\n%s", result)
+	})
 }
 
 // waitForFile waits for a file to exist and be non-empty or times out
