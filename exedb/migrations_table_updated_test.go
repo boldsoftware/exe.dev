@@ -3,6 +3,7 @@ package exedb
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -131,6 +132,74 @@ func readMigrationsTable(t *testing.T, db *sql.DB) map[int]string {
 	}
 
 	return migrations
+}
+
+func TestCodeMigrationRollback(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "rollback.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open sqlite database: %v", err)
+	}
+	t.Cleanup(func() {
+		if cerr := db.Close(); cerr != nil {
+			t.Fatalf("failed to close database: %v", cerr)
+		}
+	})
+
+	if err := sqlite.InitDB(db, 1); err != nil {
+		t.Fatalf("failed to initialize sqlite database: %v", err)
+	}
+
+	log := tslog.Slogger(t)
+
+	// Run normal migrations first to set up the migrations table
+	if err := RunMigrations(log, db); err != nil {
+		t.Fatalf("failed to run migrations: %v", err)
+	}
+
+	// Create a migration that makes changes then fails
+	failingMigration := migration{
+		number: 999,
+		name:   "999-failing-migration.sql",
+		isCode: true,
+		codeFn: func(tx *sql.Tx) error {
+			// Create a table - this should be rolled back
+			_, err := tx.Exec(`CREATE TABLE rollback_test (id INTEGER PRIMARY KEY)`)
+			if err != nil {
+				return err
+			}
+			// Return an error to trigger rollback
+			return errors.New("intentional failure")
+		},
+	}
+
+	// Run the failing migration
+	err = runMigration(log, db, failingMigration)
+	if err == nil {
+		t.Fatal("expected migration to fail")
+	}
+	if !strings.Contains(err.Error(), "intentional failure") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify the table was NOT created (rolled back)
+	var tableName string
+	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='rollback_test'").Scan(&tableName)
+	if err != sql.ErrNoRows {
+		t.Fatalf("expected rollback_test table to not exist, but it does (err=%v)", err)
+	}
+
+	// Verify the migration was NOT recorded
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM migrations WHERE migration_number = 999").Scan(&count)
+	if err != nil {
+		t.Fatalf("failed to query migrations table: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected migration 999 to not be recorded, but it was")
+	}
 }
 
 func TestCodeMigrationRuns(t *testing.T) {

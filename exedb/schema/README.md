@@ -30,7 +30,7 @@ existing data), use a code migration:
 3. Add an entry to `codeMigrations` in `exedb.go`:
 
 ```go
-var codeMigrations = map[int]func(db *sql.DB) error{
+var codeMigrations = map[int]func(tx *sql.Tx) error{
     60: testCodeMigration,
     61: addSSHFingerprints,  // add your entry here
 }
@@ -43,20 +43,15 @@ package exedb
 
 import "database/sql"
 
-func addSSHFingerprints(db *sql.DB) error {
-    tx, err := db.Begin()
-    if err != nil {
-        return err
-    }
-    defer tx.Rollback()
-
+func addSSHFingerprints(tx *sql.Tx) error {
     // Migration logic here using tx
-
-    return tx.Commit()
+    // Do NOT commit or rollback - the framework handles that
+    return nil
 }
 ```
 
-Code migrations must manage their own transactions if atomicity is required.
+Code migrations receive a transaction that includes recording the migration.
+Do not commit or rollback; the framework handles that. Use error returns to signal failure.
 
 ## Migration System Behavior
 

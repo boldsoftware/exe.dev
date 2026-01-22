@@ -24,7 +24,8 @@ var migrationFS embed.FS
 // codeMigrations maps migration numbers to code migration functions.
 // Each code migration must have a corresponding empty .sql file in schema/
 // to establish ordering. Add entries directly to this map.
-var codeMigrations = map[int]func(db *sql.DB) error{
+// Code migrations receive a transaction; they must not commit or rollback.
+var codeMigrations = map[int]func(tx *sql.Tx) error{
 	60: testCodeMigration,
 }
 
@@ -42,7 +43,7 @@ type migration struct {
 	number int
 	name   string
 	isCode bool
-	codeFn func(db *sql.DB) error
+	codeFn func(tx *sql.Tx) error
 }
 
 // RunMigrations executes database migrations in order.
@@ -142,35 +143,54 @@ func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 			continue
 		}
 
-		if m.isCode {
-			slog.Info("running code migration", "file", m.name, "number", m.number)
-			if err := m.codeFn(db); err != nil {
-				return fmt.Errorf("failed to execute code migration %s: %w", m.name, err)
-			}
-		} else {
-			slog.Info("running migration", "file", m.name, "number", m.number)
-			if err := executeMigration(db, m.name); err != nil {
-				return fmt.Errorf("failed to execute migration %s: %w", m.name, err)
-			}
-		}
-
-		_, err = db.Exec("INSERT INTO migrations (migration_number, migration_name) VALUES (?, ?)", m.number, m.name)
-		if err != nil {
-			return fmt.Errorf("failed to record migration %s in migrations table: %w", m.name, err)
+		if err := runMigration(slog, db, m); err != nil {
+			return err
 		}
 	}
 
 	return nil
 }
 
-// executeMigration executes a single migration file
-func executeMigration(db *sql.DB, filename string) error {
+// runMigration executes a single migration (SQL or code) within a transaction,
+// including recording it in the migrations table.
+func runMigration(slog *slog.Logger, db *sql.DB, m migration) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction for migration %s: %w", m.name, err)
+	}
+	defer tx.Rollback()
+
+	if m.isCode {
+		slog.Info("running code migration", "file", m.name, "number", m.number)
+		if err := m.codeFn(tx); err != nil {
+			return fmt.Errorf("failed to execute code migration %s: %w", m.name, err)
+		}
+	} else {
+		slog.Info("running sql migration", "file", m.name, "number", m.number)
+		if err := executeMigrationTx(tx, m.name); err != nil {
+			return fmt.Errorf("failed to execute migration %s: %w", m.name, err)
+		}
+	}
+
+	_, err = tx.Exec("INSERT INTO migrations (migration_number, migration_name) VALUES (?, ?)", m.number, m.name)
+	if err != nil {
+		return fmt.Errorf("failed to record migration %s in migrations table: %w", m.name, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit migration %s: %w", m.name, err)
+	}
+	return nil
+}
+
+// executeMigrationTx executes a single SQL migration file within the given transaction.
+func executeMigrationTx(tx *sql.Tx, filename string) error {
 	content, err := migrationFS.ReadFile("schema/" + filename)
 	if err != nil {
 		return fmt.Errorf("failed to read migration file %s: %w", filename, err)
 	}
 
-	_, err = db.Exec(string(content))
+	_, err = tx.Exec(string(content))
 	if err != nil {
 		return fmt.Errorf("failed to execute migration %s: %w", filename, err)
 	}
