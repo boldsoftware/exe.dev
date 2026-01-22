@@ -50,6 +50,7 @@ COPY nftables.conf configs/fragments/nftables.conf
 COPY kvm.conf configs/fragments/kvm.conf
 COPY zfs.conf configs/fragments/zfs.conf
 COPY landlock.conf configs/fragments/landlock.conf
+COPY wireguard.conf configs/fragments/wireguard.conf
 COPY build-kernel.sh /usr/local/bin/
 
 RUN chmod +x /usr/local/bin/build-kernel.sh && \

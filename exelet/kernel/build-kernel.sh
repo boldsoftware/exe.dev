@@ -56,6 +56,9 @@ scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packagi
 echo "Applying Landlock config fragment..."
 scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packaging/kernel/configs/fragments/landlock.conf
 
+echo "Applying WireGuard config fragment..."
+scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packaging/kernel/configs/fragments/wireguard.conf
+
 make olddefconfig
 
 # Build kernel
@@ -91,6 +94,14 @@ if grep -q "CONFIG_ZFS=y" "/output/config-${KERNEL_VERSION}-nftables"; then
     echo "✓ ZFS enabled in kernel config"
 else
     echo "✗ ZFS NOT enabled - build failed" >&2
+    exit 1
+fi
+
+# Verify WireGuard is enabled
+if grep -q "CONFIG_WIREGUARD=y" "/output/config-${KERNEL_VERSION}-nftables"; then
+    echo "✓ WireGuard enabled in kernel config"
+else
+    echo "✗ WireGuard NOT enabled - build failed" >&2
     exit 1
 fi
 
