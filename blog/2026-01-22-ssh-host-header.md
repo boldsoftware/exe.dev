@@ -38,7 +38,7 @@ $ dig undefined-behavior.exe.xyz
 ...
 ;; ANSWER SECTION:
 undefined-behavior.exe.xyz. 230 IN      CNAME   s003.exe.xyz.
-s024.exe.xyz.           230     IN      A       16.145.102.7
+s003.exe.xyz.           230     IN      A       16.145.102.7
 ```
 
 *Relative to its owner* means that while the IP represented by s003 is used by many VMs, it is only used by one VM owned by this user.
