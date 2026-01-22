@@ -223,6 +223,38 @@ func (m *CreditManager) CheckAndRefreshCredit(ctx context.Context, userID string
 	return info, nil
 }
 
+// TopUpOnBillingUpgrade tops up a user's credit to their new plan maximum
+// when they transition from no_billing to has_billing.
+// If the user has no existing credit record, this is a no-op
+// (their credit will be initialized at max when they first use the gateway).
+func (m *CreditManager) TopUpOnBillingUpgrade(ctx context.Context, userID string) error {
+	if m == nil || m.db == nil {
+		return nil
+	}
+	return exedb.WithTx(m.db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		credit, err := q.GetUserLLMCredit(ctx, userID)
+		if errors.Is(err, sql.ErrNoRows) {
+			// No credit record exists; nothing to top up
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		plan, err := planForUser(ctx, q, userID, &credit)
+		if err != nil {
+			return err
+		}
+
+		// Top up to the new plan's max
+		return q.UpdateUserLLMAvailableCredit(ctx, exedb.UpdateUserLLMAvailableCreditParams{
+			AvailableCredit: plan.MaxCredit,
+			LastRefreshAt:   m.now(),
+			UserID:          userID,
+		})
+	})
+}
+
 // DebitCredit subtracts the given cost (in USD) from the user's credit.
 // Returns the new credit info after the debit.
 func (m *CreditManager) DebitCredit(ctx context.Context, userID string, costUSD float64) (*CreditInfo, error) {

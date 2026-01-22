@@ -437,3 +437,112 @@ func TestPlanCategories(t *testing.T) {
 func strPtr(s string) *string {
 	return &s
 }
+
+func TestCreditManager_TopUpOnBillingUpgrade(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	mgr := NewCreditManager(db)
+
+	// Create a no_billing user who has used some credit
+	userID := "upgrade-user"
+	createTestUser(t, db, userID, "upgrade@example.com")
+
+	// Initialize their credit record (this happens on first LLM use)
+	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("initial check failed: %v", err)
+	}
+	if !floatClose(info.Available, 50.0, 0.01) {
+		t.Fatalf("expected 50.0, got %f", info.Available)
+	}
+
+	// User uses some credit
+	_, err = mgr.DebitCredit(ctx, userID, 30.0)
+	if err != nil {
+		t.Fatalf("debit failed: %v", err)
+	}
+
+	// Verify they're at $20
+	info, err = mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("check after debit failed: %v", err)
+	}
+	if !floatClose(info.Available, 20.0, 0.1) {
+		t.Fatalf("expected ~20.0, got %f", info.Available)
+	}
+
+	// Now user adds billing
+	err = exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		if err := q.InsertAccount(ctx, exedb.InsertAccountParams{
+			ID:        "acct-upgrade",
+			CreatedBy: userID,
+		}); err != nil {
+			return err
+		}
+		return q.ActivateAccount(ctx, userID)
+	})
+	if err != nil {
+		t.Fatalf("failed to create billing account: %v", err)
+	}
+
+	// Call the top-up method
+	err = mgr.TopUpOnBillingUpgrade(ctx, userID)
+	if err != nil {
+		t.Fatalf("top up failed: %v", err)
+	}
+
+	// User should now be at $100 (has_billing max)
+	info, err = mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("check after upgrade failed: %v", err)
+	}
+	if !floatClose(info.Available, 100.0, 0.01) {
+		t.Errorf("expected 100.0 after billing upgrade, got %f", info.Available)
+	}
+	if info.Plan.Name != "has_billing" {
+		t.Errorf("expected plan name %q, got %q", "has_billing", info.Plan.Name)
+	}
+}
+
+func TestCreditManager_TopUpOnBillingUpgrade_NoCreditRecord(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	mgr := NewCreditManager(db)
+
+	// Create a user who has never used the LLM gateway
+	userID := "fresh-upgrade-user"
+	createTestUser(t, db, userID, "freshupgrade@example.com")
+
+	// Activate billing without ever using LLM
+	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		if err := q.InsertAccount(ctx, exedb.InsertAccountParams{
+			ID:        "acct-fresh-upgrade",
+			CreatedBy: userID,
+		}); err != nil {
+			return err
+		}
+		return q.ActivateAccount(ctx, userID)
+	})
+	if err != nil {
+		t.Fatalf("failed to create billing account: %v", err)
+	}
+
+	// TopUp should be a no-op (no credit record exists)
+	err = mgr.TopUpOnBillingUpgrade(ctx, userID)
+	if err != nil {
+		t.Fatalf("top up should not error for user without credit record: %v", err)
+	}
+
+	// When they eventually use the gateway, they should get has_billing limits
+	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("check failed: %v", err)
+	}
+	if !floatClose(info.Available, 100.0, 0.01) {
+		t.Errorf("expected 100.0 for new has_billing user, got %f", info.Available)
+	}
+}

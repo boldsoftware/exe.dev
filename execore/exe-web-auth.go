@@ -30,6 +30,7 @@ import (
 	"exe.dev/domz"
 	emailpkg "exe.dev/email"
 	"exe.dev/exedb"
+	"exe.dev/llmgateway"
 	"exe.dev/pow"
 	"exe.dev/stage"
 	"exe.dev/tracing"
@@ -407,6 +408,11 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 			s.slog().ErrorContext(r.Context(), "failed to activate account", "error", err, "session_id", sessionID)
 			http.Error(w, "failed to activate billing", http.StatusInternalServerError)
 			return
+		}
+		// Top up LLM credits to the new (higher) max for paying users
+		if err := llmgateway.NewCreditManager(s.db).TopUpOnBillingUpgrade(r.Context(), userID); err != nil {
+			s.slog().ErrorContext(r.Context(), "failed to top up LLM credit after billing upgrade", "error", err)
+			// Don't fail the request - the account is activated, this is just a bonus
 		}
 		s.slog().InfoContext(r.Context(), "account activated after Stripe checkout", "user_id", userID, "session_id", sessionID, "billing_id", billingID)
 		s.slackFeed.Subscribed(r.Context(), userID)
