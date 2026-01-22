@@ -26,8 +26,10 @@ tmpkey*
 *.test
 
 # exelet embedded fs (arch-specific)
-exelet/fs/amd64
-exelet/fs/arm64
+exelet/fs/amd64/*
+!exelet/fs/amd64/.gitkeep
+exelet/fs/arm64/*
+!exelet/fs/arm64/.gitkeep
 exelet/fs/.hash-*
 exelet/kernel/output
 exeletd
