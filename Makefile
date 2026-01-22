@@ -274,7 +274,7 @@ exelet-fs: ## Download exelet-fs from Backblaze if hash changed or doesn't exist
 			exit 1; \
 		fi; \
 		echo "Downloading exelet-fs from Backblaze ($(GOARCH), hash: $$CURRENT_HASH)..."; \
-		rm -rf exelet/fs/$(GOARCH); \
+		rm -rf exelet/fs/$(GOARCH)/*; \
 		mkdir -p exelet/fs/$(GOARCH); \
 		export B2_APPLICATION_KEY_ID="004edb881590a7d0000000008"; \
 		export B2_APPLICATION_KEY="K004hvv/i5raZbvKXARk+H7sZLZ5XtQ"; \
