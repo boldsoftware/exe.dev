@@ -11,6 +11,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -1131,6 +1132,10 @@ func TestIsSSHConnErrorRecognizesTimeouts(t *testing.T) {
 		{"Canceled", context.Canceled, true},
 		{"EOF", io.EOF, true},
 		{"ErrClosed", net.ErrClosed, true},
+		{"ECONNRESET", syscall.ECONNRESET, true},
+		{"EPIPE", syscall.EPIPE, true},
+		{"wrapped ECONNRESET", &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}, true},
+		{"wrapped EPIPE", &net.OpError{Op: "write", Net: "tcp", Err: syscall.EPIPE}, true},
 		{"wrapped DeadlineExceeded", fmt.Errorf("dial failed: %w", context.DeadlineExceeded), true},
 		{"wrapped Canceled", fmt.Errorf("dial failed: %w", context.Canceled), true},
 		{"random error", errors.New("some random error"), false},

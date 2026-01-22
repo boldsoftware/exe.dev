@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -354,6 +355,12 @@ func isSSHConnError(err error) bool {
 	// We should remove these connections from the pool so subsequent requests can
 	// establish fresh connections.
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	// TCP-level errors indicate the underlying connection is dead.
+	// ECONNRESET: "connection reset by peer" - peer sent RST
+	// EPIPE: "broken pipe" - writing to a closed connection
+	if errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) {
 		return true
 	}
 	return false
