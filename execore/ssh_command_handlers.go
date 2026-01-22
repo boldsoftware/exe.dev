@@ -1542,23 +1542,6 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 		return cc.Errorf("name %q already exists", newName)
 	}
 
-	// // Check if box is running (currently we only support renaming running boxes)
-	// vmRunning := false
-	// if box.ContainerID != nil {
-	// 	exeletClient := ss.server.getExeletClient(box.Ctrhost)
-	// 	if exeletClient != nil {
-	// 		instanceResp, err := exeletClient.client.GetInstance(ctx, &api.GetInstanceRequest{
-	// 			ID: *box.ContainerID,
-	// 		})
-	// 		if err == nil && instanceResp.Instance != nil {
-	// 			vmRunning = instanceResp.Instance.State == api.VMState_RUNNING
-	// 		}
-	// 	}
-	// }
-	// if !vmRunning {
-	// 	return cc.Errorf("vm rename not supported when vm is not running!")
-	// }
-
 	if box.ContainerID == nil {
 		return cc.Errorf("vm %v not found", box.ContainerID)
 	}
@@ -1689,12 +1672,22 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 			oldName, newName, newName,
 		)
 		if _, err := ss.runCommandOnBox(ctx, &updatedBox, hostnameCmd); err != nil {
-			slog.ErrorContext(ctx, "rename: failed to update hostname inside VM",
-				"box_id", box.ID,
-				"old_name", oldName,
-				"new_name", newName,
-				"error", err,
-				"rollback_cmd", fmt.Sprintf("sudo sed -i 's/\\b%s\\b/%s/g' /etc/hostname /etc/hosts; sudo hostname %s", newName, oldName, oldName))
+			// Check if the error is exit code 127 (command not found - sed not available)
+			var exitErr *ssh.ExitError
+			if errors.As(err, &exitErr) && exitErr.ExitStatus() == 127 {
+				slog.WarnContext(ctx, "rename: no sed found in VM, manual hostname update required",
+					"box_id", box.ID,
+					"old_name", oldName,
+					"new_name", newName)
+				cc.Write("\033[1;33mWarning:\033[0m no sed found, you should manually update /etc/hosts and /etc/hostname\r\n")
+			} else {
+				slog.ErrorContext(ctx, "rename: failed to update hostname inside VM",
+					"box_id", box.ID,
+					"old_name", oldName,
+					"new_name", newName,
+					"error", err,
+					"rollback_cmd", fmt.Sprintf("sudo sed -i 's/\\b%s\\b/%s/g' /etc/hostname /etc/hosts; sudo hostname %s", newName, oldName, oldName))
+			}
 		} else {
 			slog.InfoContext(ctx, "rename: hostname update inside VM complete",
 				"box_id", box.ID,
