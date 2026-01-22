@@ -5,7 +5,7 @@ author: David Crawshaw
 date: 2026-01-22
 tags:
   - ssh
-published: false
+published: true
 ---
 
 We have a challenge with ssh. Every VM has a standard URL that we use for both HTTPS and SSH, e.g. `undefined-behavior.exe.xyz`. Just as you can type the domain into a web browser (and have TLS and auth taken care of for you), you can run:
