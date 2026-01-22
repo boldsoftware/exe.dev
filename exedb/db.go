@@ -114,6 +114,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createUserLLMCreditIfNotExistsStmt, err = db.PrepareContext(ctx, createUserLLMCreditIfNotExists); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateUserLLMCreditIfNotExists: %w", err)
 	}
+	if q.createUserLLMCreditWithInitialStmt, err = db.PrepareContext(ctx, createUserLLMCreditWithInitial); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateUserLLMCreditWithInitial: %w", err)
+	}
 	if q.debitUserLLMCreditStmt, err = db.PrepareContext(ctx, debitUserLLMCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query DebitUserLLMCredit: %w", err)
 	}
@@ -792,6 +795,11 @@ func (q *Queries) Close() error {
 	if q.createUserLLMCreditIfNotExistsStmt != nil {
 		if cerr := q.createUserLLMCreditIfNotExistsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing createUserLLMCreditIfNotExistsStmt: %w", cerr)
+		}
+	}
+	if q.createUserLLMCreditWithInitialStmt != nil {
+		if cerr := q.createUserLLMCreditWithInitialStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createUserLLMCreditWithInitialStmt: %w", cerr)
 		}
 	}
 	if q.debitUserLLMCreditStmt != nil {
@@ -1738,6 +1746,7 @@ type Queries struct {
 	createInviteCodeStmt                       *sql.Stmt
 	createPendingBoxShareStmt                  *sql.Stmt
 	createUserLLMCreditIfNotExistsStmt         *sql.Stmt
+	createUserLLMCreditWithInitialStmt         *sql.Stmt
 	debitUserLLMCreditStmt                     *sql.Stmt
 	deleteAuthCookieStmt                       *sql.Stmt
 	deleteAuthCookieByValueStmt                *sql.Stmt
@@ -1949,6 +1958,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createInviteCodeStmt:                       q.createInviteCodeStmt,
 		createPendingBoxShareStmt:                  q.createPendingBoxShareStmt,
 		createUserLLMCreditIfNotExistsStmt:         q.createUserLLMCreditIfNotExistsStmt,
+		createUserLLMCreditWithInitialStmt:         q.createUserLLMCreditWithInitialStmt,
 		debitUserLLMCreditStmt:                     q.debitUserLLMCreditStmt,
 		deleteAuthCookieStmt:                       q.deleteAuthCookieStmt,
 		deleteAuthCookieByValueStmt:                q.deleteAuthCookieByValueStmt,

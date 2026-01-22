@@ -19,6 +19,22 @@ func (q *Queries) CreateUserLLMCreditIfNotExists(ctx context.Context, userID str
 	return err
 }
 
+const createUserLLMCreditWithInitial = `-- name: CreateUserLLMCreditWithInitial :exec
+INSERT OR IGNORE INTO user_llm_credit (user_id, available_credit, last_refresh_at)
+VALUES (?, ?, ?)
+`
+
+type CreateUserLLMCreditWithInitialParams struct {
+	UserID          string    `db:"user_id" json:"user_id"`
+	AvailableCredit float64   `db:"available_credit" json:"available_credit"`
+	LastRefreshAt   time.Time `db:"last_refresh_at" json:"last_refresh_at"`
+}
+
+func (q *Queries) CreateUserLLMCreditWithInitial(ctx context.Context, arg CreateUserLLMCreditWithInitialParams) error {
+	_, err := q.exec(ctx, q.createUserLLMCreditWithInitialStmt, createUserLLMCreditWithInitial, arg.UserID, arg.AvailableCredit, arg.LastRefreshAt)
+	return err
+}
+
 const debitUserLLMCredit = `-- name: DebitUserLLMCredit :exec
 UPDATE user_llm_credit
 SET available_credit = ?, total_used = total_used + ?, last_refresh_at = ?, updated_at = CURRENT_TIMESTAMP

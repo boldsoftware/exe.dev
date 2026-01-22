@@ -151,12 +151,30 @@ func (m *CreditManager) CheckAndRefreshCredit(ctx context.Context, userID string
 	}
 	var info *CreditInfo
 	err := exedb.WithTx(m.db, ctx, func(ctx context.Context, q *exedb.Queries) error {
-		// Ensure record exists
-		if err := q.CreateUserLLMCreditIfNotExists(ctx, userID); err != nil {
-			return err
-		}
-
 		credit, err := q.GetUserLLMCredit(ctx, userID)
+		if errors.Is(err, sql.ErrNoRows) {
+			// New user: get their plan and initialize with plan.MaxCredit
+			plan, err := planForUser(ctx, q, userID, nil)
+			if err != nil {
+				return err
+			}
+			now := m.now()
+			if err := q.CreateUserLLMCreditWithInitial(ctx, exedb.CreateUserLLMCreditWithInitialParams{
+				UserID:          userID,
+				AvailableCredit: plan.MaxCredit,
+				LastRefreshAt:   now,
+			}); err != nil {
+				return err
+			}
+			info = &CreditInfo{
+				Available:      plan.MaxCredit,
+				Max:            plan.MaxCredit,
+				RefreshPerHour: plan.RefreshPerHour,
+				LastRefresh:    now,
+				Plan:           plan,
+			}
+			return nil
+		}
 		if err != nil {
 			return err
 		}
