@@ -113,11 +113,11 @@ func TestExeDevAPI(t *testing.T) {
 	// TODO: check image name
 
 	delResult := runParseExeDevJSON[deleteVMOutput](t, keyFile, "rm", nbo.VMName, "--json")
-	if delResult.VMName != nbo.VMName {
-		t.Errorf("expected VM name %q in rm output, got %q", nbo.VMName, delResult.VMName)
+	if len(delResult.Deleted) != 1 || delResult.Deleted[0] != nbo.VMName {
+		t.Errorf("expected deleted=[%q] in rm output, got %v", nbo.VMName, delResult.Deleted)
 	}
-	if delResult.Status != "deleted" {
-		t.Errorf("expected status 'deleted' in rm output, got %q", delResult.Status)
+	if len(delResult.Failed) != 0 {
+		t.Errorf("expected no failed VMs in rm output, got %v", delResult.Failed)
 	}
 
 	// Verify the VM is gone from the list
@@ -218,8 +218,8 @@ type vmListOutput struct {
 }
 
 type deleteVMOutput struct {
-	VMName string `json:"vm_name"`
-	Status string `json:"status"`
+	Deleted []string `json:"deleted"`
+	Failed  []string `json:"failed"`
 }
 
 type browserCommandOutput struct {

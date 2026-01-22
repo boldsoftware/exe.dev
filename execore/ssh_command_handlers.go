@@ -164,7 +164,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Description:       "Delete a VM",
 			Handler:           ss.handleDeleteCommand,
 			FlagSetFunc:       jsonOnlyFlags("rm"),
-			Usage:             "rm <vmname>",
+			Usage:             "rm <vmname>...",
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
 		},
@@ -1204,35 +1204,52 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 }
 
 func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if len(cc.Args) != 1 {
-		return cc.Errorf("please specify exactly one VM name to delete, got %d", len(cc.Args))
+	if len(cc.Args) < 1 {
+		return cc.Errorf("please specify at least one VM name to delete")
 	}
 
-	boxName := ss.normalizeBoxName(cc.Args[0])
-	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
-		Name:            boxName,
-		CreatedByUserID: cc.User.ID,
-	})
-	if err != nil {
-		cc.WriteError("VM %q not found", boxName)
-		return nil
-	}
+	var deleted []string
+	var failed []string
+	seen := make(map[string]bool)
 
-	cc.Writeln("Deleting \033[1m%s\033[0m...", boxName)
+	for _, arg := range cc.Args {
+		boxName := ss.normalizeBoxName(arg)
+		if seen[boxName] {
+			continue
+		}
+		seen[boxName] = true
+		box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+			Name:            boxName,
+			CreatedByUserID: cc.User.ID,
+		})
+		if err != nil {
+			failed = append(failed, boxName)
+			cc.WriteError("VM %q not found", boxName)
+			continue
+		}
 
-	if err := ss.server.deleteBox(ctx, box); err != nil {
-		return err
+		cc.Writeln("Deleting \033[1m%s\033[0m...", boxName)
+
+		if err := ss.server.deleteBox(ctx, box); err != nil {
+			failed = append(failed, boxName)
+			cc.WriteError("failed to delete %q: %v", boxName, err)
+			continue
+		}
+		deleted = append(deleted, boxName)
 	}
 
 	if cc.WantJSON() {
-		result := map[string]string{
-			"vm_name": boxName,
-			"status":  "deleted",
+		result := map[string]any{
+			"deleted": deleted,
+			"failed":  failed,
 		}
 		cc.WriteJSON(result)
 		return nil
 	}
-	cc.Write("\033[1;32mVM %q deleted successfully\033[0m\r\n", boxName)
+
+	if len(deleted) > 0 {
+		cc.Write("\033[1;32m%d VM(s) deleted successfully\033[0m\r\n", len(deleted))
+	}
 	return nil
 }
 
@@ -1804,9 +1821,17 @@ func (ss *SSHServer) completeBoxNames(compCtx *exemenu.CompletionContext, cc *ex
 		return nil
 	}
 
+	alreadySelected := make(map[string]bool)
+	for _, arg := range cc.Args {
+		alreadySelected[ss.normalizeBoxName(arg)] = true
+	}
+
 	var completions []string
 	prefix := compCtx.CurrentWord
 	for _, box := range boxes {
+		if alreadySelected[box.Name] {
+			continue
+		}
 		if strings.HasPrefix(box.Name, prefix) {
 			completions = append(completions, box.Name)
 		}

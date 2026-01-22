@@ -13,7 +13,7 @@ Delete a VM
 ## Usage
 
 ```
-rm <vmname>
+rm <vmname>...
 ```
 
 ## Options

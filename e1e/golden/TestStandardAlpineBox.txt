@@ -50,6 +50,6 @@ Your VMs:
   • BOX_NAME.exe.cloud - running (linuxcontainers/alpine)
 PROMPT ▶ rm BOX_NAME
 Deleting BOX_NAME...
-VM "BOX_NAME" deleted successfully
+1 VM(s) deleted successfully
 PROMPT ▶ exit
 Goodbye!
