@@ -10,7 +10,7 @@ import (
 )
 
 const insertDeletedBox = `-- name: InsertDeletedBox :exec
-INSERT INTO deleted_boxes (id, user_id) VALUES (?, ?)
+INSERT OR IGNORE INTO deleted_boxes (id, user_id) VALUES (?, ?)
 `
 
 type InsertDeletedBoxParams struct {
