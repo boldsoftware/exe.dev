@@ -40,7 +40,8 @@ func (i *ImageManager) Fetch(ctx context.Context, ref, platform, destDir string)
 		return nil, fmt.Errorf("error creating registry resolver: %v", err)
 	}
 
-	descriptor, err := registry.FetchDescriptor(resolver, contentStore, imageRef)
+	// Use platform-filtered fetch to avoid downloading layers for other architectures
+	descriptor, err := registry.FetchDescriptorForPlatform(ctx, resolver, contentStore, imageRef, platform)
 	if err != nil {
 		return nil, err
 	}

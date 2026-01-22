@@ -8,14 +8,16 @@ import (
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/remotes"
 	"github.com/containerd/containerd/remotes/docker"
+	"github.com/containerd/platforms"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"exe.dev/deps/image/store"
 	"exe.dev/deps/image/types"
 )
 
-// Fetch uses a registry (distribution spec) API to retrieve a specific image manifest from a registry
-func Fetch(ctx context.Context, cs *store.ContentStore, req *types.Request) (ocispec.Descriptor, error) {
+// Fetch uses a registry (distribution spec) API to retrieve a specific image manifest from a registry.
+// If platformMatcher is non-nil, only children matching the platform will be fetched.
+func Fetch(ctx context.Context, cs *store.ContentStore, req *types.Request, platformMatcher platforms.Matcher) (ocispec.Descriptor, error) {
 	resolver := req.Resolver()
 
 	// Retrieve manifest from registry
@@ -33,10 +35,15 @@ func Fetch(ctx context.Context, cs *store.ContentStore, req *types.Request) (oci
 		return ocispec.Descriptor{}, err
 	}
 
+	// Build the children handler, optionally filtered by platform
+	childrenHandler := images.ChildrenHandler(cs)
+	if platformMatcher != nil {
+		childrenHandler = images.FilterPlatforms(childrenHandler, platformMatcher)
+	}
+
 	handlers := []images.Handler{
 		remotes.FetchHandler(cs, fetcher),
-		// nonLayerChildHandler(cs),
-		images.ChildrenHandler(cs),
+		childrenHandler,
 		appendDistSrcLabelHandler,
 	}
 	// This traverses the OCI descriptor to fetch the image and store it into the local store initialized above.
