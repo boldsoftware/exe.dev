@@ -69,15 +69,15 @@ func TestCreditManager_CheckAndRefreshCredit(t *testing.T) {
 	if info == nil {
 		t.Fatal("expected credit info, got nil")
 	}
-	// Default for unpaid user is $100
-	if !floatClose(info.Available, 100.0, 0.01) {
-		t.Errorf("expected ~100.0, got %f", info.Available)
+	// Default for unpaid user is $50
+	if !floatClose(info.Available, 50.0, 0.01) {
+		t.Errorf("expected ~50.0, got %f", info.Available)
 	}
-	if !floatClose(info.Max, 100.0, 0.01) {
-		t.Errorf("expected max ~100.0, got %f", info.Max)
+	if !floatClose(info.Max, 50.0, 0.01) {
+		t.Errorf("expected max ~50.0, got %f", info.Max)
 	}
-	if !floatClose(info.RefreshPerHour, 10.0, 0.01) {
-		t.Errorf("expected refresh ~10.0/hr, got %f", info.RefreshPerHour)
+	if !floatClose(info.RefreshPerHour, 1.0, 0.01) {
+		t.Errorf("expected refresh ~1.0/hr, got %f", info.RefreshPerHour)
 	}
 	if info.Plan.Name != "no_billing" {
 		t.Errorf("expected plan name %q, got %q", "no_billing", info.Plan.Name)
@@ -104,8 +104,8 @@ func TestCreditManager_DebitCredit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
-	if !floatClose(info.Available, 95.0, 0.1) {
-		t.Errorf("expected ~95.0 after debit, got %f", info.Available)
+	if !floatClose(info.Available, 45.0, 0.1) {
+		t.Errorf("expected ~45.0 after debit, got %f", info.Available)
 	}
 
 	// Debit another $10
@@ -113,8 +113,8 @@ func TestCreditManager_DebitCredit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second debit failed: %v", err)
 	}
-	if !floatClose(info.Available, 85.0, 0.1) {
-		t.Errorf("expected ~85.0 after second debit, got %f", info.Available)
+	if !floatClose(info.Available, 35.0, 0.1) {
+		t.Errorf("expected ~35.0 after second debit, got %f", info.Available)
 	}
 
 	// Verify total_used is tracked correctly
@@ -250,17 +250,17 @@ func TestCreditManager_TimestampRoundTrip(t *testing.T) {
 		now: func() time.Time { return refTime },
 	}
 
-	// Create initial credit record at refTime
+	// Create initial credit record at refTime (no_billing plan: max=50, refresh=1/hr)
 	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
 	if err != nil {
 		t.Fatalf("initial check failed: %v", err)
 	}
-	if !floatClose(info.Available, 100.0, 0.01) {
-		t.Fatalf("expected 100.0, got %f", info.Available)
+	if !floatClose(info.Available, 50.0, 0.01) {
+		t.Fatalf("expected 50.0, got %f", info.Available)
 	}
 
-	// Debit to set available to 50
-	_, err = mgr.DebitCredit(ctx, userID, 50.0)
+	// Debit to set available to 10
+	_, err = mgr.DebitCredit(ctx, userID, 40.0)
 	if err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
@@ -274,9 +274,9 @@ func TestCreditManager_TimestampRoundTrip(t *testing.T) {
 		t.Fatalf("future check failed: %v", err)
 	}
 
-	// 50 available + (10/hr * 0.5hr) = 55
-	if !floatClose(info.Available, 55.0, 0.1) {
-		t.Errorf("expected ~55.0 after 30min refresh, got %f", info.Available)
+	// 10 available + (1/hr * 0.5hr) = 10.5
+	if !floatClose(info.Available, 10.5, 0.1) {
+		t.Errorf("expected ~10.5 after 30min refresh, got %f", info.Available)
 	}
 
 	// Verify that db-stored timestamp was correctly read back
@@ -285,8 +285,8 @@ func TestCreditManager_TimestampRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second check failed: %v", err)
 	}
-	if !floatClose(info2.Available, 55.0, 0.1) {
-		t.Errorf("expected ~55.0 on second check (no time elapsed), got %f", info2.Available)
+	if !floatClose(info2.Available, 10.5, 0.1) {
+		t.Errorf("expected ~10.5 on second check (no time elapsed), got %f", info2.Available)
 	}
 }
 
@@ -309,11 +309,11 @@ func TestPlanCategories(t *testing.T) {
 		if info.Plan.Name != "no_billing" {
 			t.Errorf("expected plan name %q, got %q", "no_billing", info.Plan.Name)
 		}
-		if !floatClose(info.Max, 100.0, 0.01) {
-			t.Errorf("expected max 100.0, got %f", info.Max)
+		if !floatClose(info.Max, 50.0, 0.01) {
+			t.Errorf("expected max 50.0, got %f", info.Max)
 		}
-		if !floatClose(info.RefreshPerHour, 10.0, 0.01) {
-			t.Errorf("expected refresh 10.0, got %f", info.RefreshPerHour)
+		if !floatClose(info.RefreshPerHour, 1.0, 0.01) {
+			t.Errorf("expected refresh 1.0, got %f", info.RefreshPerHour)
 		}
 		// no_billing error message should include billing link
 		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time; for faster refresh, set up a subscription at https://exe.dev/take-my-money" {
@@ -346,8 +346,8 @@ func TestPlanCategories(t *testing.T) {
 		if !floatClose(info.Max, 100.0, 0.01) {
 			t.Errorf("expected max 100.0, got %f", info.Max)
 		}
-		if !floatClose(info.RefreshPerHour, 10.0, 0.01) {
-			t.Errorf("expected refresh 10.0, got %f", info.RefreshPerHour)
+		if !floatClose(info.RefreshPerHour, 5.0, 0.01) {
+			t.Errorf("expected refresh 5.0, got %f", info.RefreshPerHour)
 		}
 		// Friend user error message should NOT include billing link
 		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time" {
@@ -383,8 +383,8 @@ func TestPlanCategories(t *testing.T) {
 		if !floatClose(info.Max, 100.0, 0.01) {
 			t.Errorf("expected max 100.0, got %f", info.Max)
 		}
-		if !floatClose(info.RefreshPerHour, 10.0, 0.01) {
-			t.Errorf("expected refresh 10.0, got %f", info.RefreshPerHour)
+		if !floatClose(info.RefreshPerHour, 5.0, 0.01) {
+			t.Errorf("expected refresh 5.0, got %f", info.RefreshPerHour)
 		}
 		// has_billing user error message should NOT include billing link
 		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time" {
