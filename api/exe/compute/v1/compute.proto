@@ -157,8 +157,8 @@ message RenameInstanceResponse {}
 
 message UpdateInstanceRequest {
   string id = 1;
-  string kernel_image = 2;
-  string init_image = 3;
+  // fields 2-3 reserved (previously kernel_image, init_image strings)
+  bool kernel = 4;
 }
 
 message UpdateInstanceResponse {}

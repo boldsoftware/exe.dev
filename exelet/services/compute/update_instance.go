@@ -3,89 +3,93 @@ package compute
 import (
 	"context"
 	"fmt"
-	"runtime"
+	"io"
+	"os"
+	"path/filepath"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"exe.dev/exelet/vmm"
+	exeletfs "exe.dev/exelet/fs"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
 func (s *Service) UpdateInstance(ctx context.Context, req *api.UpdateInstanceRequest) (*api.UpdateInstanceResponse, error) {
+	if req.ID == "" {
+		return nil, status.Error(codes.InvalidArgument, "instance ID is required")
+	}
+
+	// Check instance exists
+	instanceDir := s.getInstanceDir(req.ID)
+	if _, err := os.Stat(instanceDir); os.IsNotExist(err) {
+		return nil, status.Errorf(codes.NotFound, "instance %s not found", req.ID)
+	}
+
 	// Check if instance is being migrated
 	if err := s.checkNotMigrating(req.ID); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 
-	// update instance
-	if err := s.updateInstance(ctx, req.ID, req.KernelImage, req.InitImage); err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+	if req.Kernel {
+		if err := s.updateKernel(ctx, req.ID); err != nil {
+			return nil, err
+		}
 	}
 
 	return &api.UpdateInstanceResponse{}, nil
 }
 
-func (s *Service) updateInstance(ctx context.Context, id, kernelImage, initImage string) error {
-	var err error
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
+func (s *Service) updateKernel(ctx context.Context, id string) error {
+	instanceDir := s.getInstanceDir(id)
+	kernelPath := filepath.Join(instanceDir, kernelName)
+
+	s.log.InfoContext(ctx, "updating kernel", "id", id, "path", kernelPath)
+
+	kernel, err := exeletfs.Kernel()
 	if err != nil {
-		return fmt.Errorf("error getting vmm: %w", err)
+		return status.Errorf(codes.Internal, "failed to get embedded kernel: %v", err)
+	}
+	defer kernel.Close()
+
+	if err := atomicWriteFile(kernelPath, kernel); err != nil {
+		return status.Errorf(codes.Internal, "failed to write kernel: %v", err)
 	}
 
-	// stop instance
-	s.log.DebugContext(ctx, "stopping instance for update", "id", id)
-	if err := vmm.Stop(ctx, id); err != nil {
-		return fmt.Errorf("error stopping instance: %w", err)
-	}
+	s.log.InfoContext(ctx, "kernel updated", "id", id)
+	return nil
+}
 
-	// handle update errors to cleanup if needed
+func atomicWriteFile(path string, r io.Reader) error {
+	dir := filepath.Dir(path)
+	tmpFile, err := os.CreateTemp(dir, ".tmp-")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	closed := false
+
 	defer func() {
-		if err != nil {
-			s.log.WarnContext(ctx, "cleaning up failed update for instance", "id", id)
-			_ = s.context.StorageManager.Unmount(ctx, id)
+		if !closed {
+			tmpFile.Close()
 		}
+		os.Remove(tmpPath)
 	}()
 
-	platform := fmt.Sprintf("linux/%s", runtime.GOARCH)
-	instanceDir := s.getInstanceDir(id)
-
-	// mount
-	s.log.DebugContext(ctx, "mounting instance storage for update", "id", id)
-	mountConfig, err := s.context.StorageManager.Mount(ctx, id)
-	if err != nil {
-		return fmt.Errorf("error mounting instance storage: %w", err)
-	}
-	mountpoint := mountConfig.Path
-
-	// kernel
-	if kernelImage != "" {
-		s.log.DebugContext(ctx, "updating instance kernel", "id", id, "image", kernelImage)
-		// fetch / unpack image content to snapshot
-		s.log.DebugContext(ctx, "fetching and unpacking kernel", "image", kernelImage, "path", mountpoint)
-		if _, err := s.context.ImageManager.Fetch(ctx, kernelImage, platform, instanceDir); err != nil {
-			return fmt.Errorf("error updating kernel: %w", err)
-		}
-	}
-	// init
-	if initImage != "" {
-		s.log.DebugContext(ctx, "updating instance init", "id", id, "image", initImage)
-		// fetch / unpack image content to snapshot
-		s.log.DebugContext(ctx, "fetching and unpacking init", "image", initImage, "path", mountpoint)
-		if _, err := s.context.ImageManager.Fetch(ctx, initImage, platform, mountpoint); err != nil {
-			return fmt.Errorf("error updating init: %w", err)
-		}
+	if _, err := io.Copy(tmpFile, r); err != nil {
+		return fmt.Errorf("failed to write: %w", err)
 	}
 
-	// unmount
-	if err := s.context.StorageManager.Unmount(ctx, id); err != nil {
-		return fmt.Errorf("error unmounting instance storage: %w", err)
+	if err := tmpFile.Sync(); err != nil {
+		return fmt.Errorf("failed to sync: %w", err)
 	}
 
-	// start instance
-	s.log.DebugContext(ctx, "starting instance after update", "id", id)
-	if err := vmm.Start(ctx, id); err != nil {
-		return fmt.Errorf("error starting instance: %w", err)
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("failed to close: %w", err)
+	}
+	closed = true
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("failed to rename: %w", err)
 	}
 
 	return nil
