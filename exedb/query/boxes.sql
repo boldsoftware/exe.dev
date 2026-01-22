@@ -4,9 +4,6 @@ SELECT EXISTS ( SELECT 1 FROM boxes WHERE name = ? );
 -- name: BoxWithOwnerNamed :one
 SELECT * FROM boxes WHERE name = ? AND boxes.created_by_user_id = ?;
 
--- name: SSHKeyForBoxNamed :one
-SELECT ssh_server_identity_key FROM boxes WHERE name = ?;
-
 -- name: BoxNamed :one
 -- This is not a secure API!
 -- Whenever possible, use an alternative method that also checks the alloc/user and/or returns less data.
@@ -34,9 +31,6 @@ UPDATE boxes SET
     ssh_user = ?
 WHERE id = ?;
 
--- name: UpdateBoxContainerIDAndStatus :exec
-UPDATE boxes SET container_id = ?, status = 'running' WHERE id = ?;
-
 -- name: GetBoxesForUserDashboard :many
 SELECT m.id, m.name, m.status, COALESCE(m.image, '') as image,
        COALESCE(m.container_id, '') as container_id, m.created_by_user_id,
@@ -55,16 +49,6 @@ WHERE b.ctrhost = ? AND b.status != 'failed';
 SELECT m.ssh_port, m.ssh_client_private_key, m.ssh_server_identity_key, m.ctrhost, m.ssh_user
 FROM boxes m
 WHERE m.id = ?;
-
--- name: GetBoxDetailsForSetup :one
-SELECT container_id, created_by_user_id, name, image
-FROM boxes WHERE id = ?;
-
--- name: UpdateBoxSSHDetails :exec
-UPDATE boxes SET
-    ssh_server_identity_key = ?, ssh_authorized_keys = ?,
-    ssh_client_private_key = ?, ssh_port = ?
-WHERE id = ?;
 
 -- name: UpdateBoxStatus :exec
 UPDATE boxes
@@ -93,9 +77,6 @@ UPDATE boxes SET routes = ? WHERE name = ? AND created_by_user_id = ?;
 
 -- name: SetBoxSupportAccessAllowed :exec
 UPDATE boxes SET support_access_allowed = ? WHERE id = ?;
-
--- name: GetBoxSupportAccessAllowed :one
-SELECT support_access_allowed FROM boxes WHERE id = ?;
 
 -- name: GetBoxByNameWithSupportAccess :one
 SELECT * FROM boxes WHERE name = ? AND support_access_allowed = 1;

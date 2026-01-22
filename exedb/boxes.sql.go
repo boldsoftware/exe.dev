@@ -244,30 +244,6 @@ func (q *Queries) GetBoxByNameWithSupportAccess(ctx context.Context, name string
 	return i, err
 }
 
-const getBoxDetailsForSetup = `-- name: GetBoxDetailsForSetup :one
-SELECT container_id, created_by_user_id, name, image
-FROM boxes WHERE id = ?
-`
-
-type GetBoxDetailsForSetupRow struct {
-	ContainerID     *string `db:"container_id" json:"container_id"`
-	CreatedByUserID string  `db:"created_by_user_id" json:"created_by_user_id"`
-	Name            string  `db:"name" json:"name"`
-	Image           string  `db:"image" json:"image"`
-}
-
-func (q *Queries) GetBoxDetailsForSetup(ctx context.Context, id int) (GetBoxDetailsForSetupRow, error) {
-	row := q.queryRow(ctx, q.getBoxDetailsForSetupStmt, getBoxDetailsForSetup, id)
-	var i GetBoxDetailsForSetupRow
-	err := row.Scan(
-		&i.ContainerID,
-		&i.CreatedByUserID,
-		&i.Name,
-		&i.Image,
-	)
-	return i, err
-}
-
 const getBoxOwnerByContainerID = `-- name: GetBoxOwnerByContainerID :one
 SELECT u.user_id, u.email
 FROM boxes b
@@ -312,17 +288,6 @@ func (q *Queries) GetBoxSSHDetails(ctx context.Context, id int) (GetBoxSSHDetail
 		&i.SSHUser,
 	)
 	return i, err
-}
-
-const getBoxSupportAccessAllowed = `-- name: GetBoxSupportAccessAllowed :one
-SELECT support_access_allowed FROM boxes WHERE id = ?
-`
-
-func (q *Queries) GetBoxSupportAccessAllowed(ctx context.Context, id int) (int64, error) {
-	row := q.queryRow(ctx, q.getBoxSupportAccessAllowedStmt, getBoxSupportAccessAllowed, id)
-	var support_access_allowed int64
-	err := row.Scan(&support_access_allowed)
-	return support_access_allowed, err
 }
 
 const getBoxesByHost = `-- name: GetBoxesByHost :many
@@ -508,17 +473,6 @@ func (q *Queries) ListAllBoxesWithOwner(ctx context.Context) ([]ListAllBoxesWith
 	return items, nil
 }
 
-const sSHKeyForBoxNamed = `-- name: SSHKeyForBoxNamed :one
-SELECT ssh_server_identity_key FROM boxes WHERE name = ?
-`
-
-func (q *Queries) SSHKeyForBoxNamed(ctx context.Context, name string) ([]byte, error) {
-	row := q.queryRow(ctx, q.sSHKeyForBoxNamedStmt, sSHKeyForBoxNamed, name)
-	var ssh_server_identity_key []byte
-	err := row.Scan(&ssh_server_identity_key)
-	return ssh_server_identity_key, err
-}
-
 const setBoxSupportAccessAllowed = `-- name: SetBoxSupportAccessAllowed :exec
 UPDATE boxes SET support_access_allowed = ? WHERE id = ?
 `
@@ -567,20 +521,6 @@ func (q *Queries) UpdateBoxContainerAndStatus(ctx context.Context, arg UpdateBox
 		arg.SSHUser,
 		arg.ID,
 	)
-	return err
-}
-
-const updateBoxContainerIDAndStatus = `-- name: UpdateBoxContainerIDAndStatus :exec
-UPDATE boxes SET container_id = ?, status = 'running' WHERE id = ?
-`
-
-type UpdateBoxContainerIDAndStatusParams struct {
-	ContainerID *string `db:"container_id" json:"container_id"`
-	ID          int     `db:"id" json:"id"`
-}
-
-func (q *Queries) UpdateBoxContainerIDAndStatus(ctx context.Context, arg UpdateBoxContainerIDAndStatusParams) error {
-	_, err := q.exec(ctx, q.updateBoxContainerIDAndStatusStmt, updateBoxContainerIDAndStatus, arg.ContainerID, arg.ID)
 	return err
 }
 
@@ -648,32 +588,6 @@ type UpdateBoxRoutesParams struct {
 
 func (q *Queries) UpdateBoxRoutes(ctx context.Context, arg UpdateBoxRoutesParams) error {
 	_, err := q.exec(ctx, q.updateBoxRoutesStmt, updateBoxRoutes, arg.Routes, arg.Name, arg.CreatedByUserID)
-	return err
-}
-
-const updateBoxSSHDetails = `-- name: UpdateBoxSSHDetails :exec
-UPDATE boxes SET
-    ssh_server_identity_key = ?, ssh_authorized_keys = ?,
-    ssh_client_private_key = ?, ssh_port = ?
-WHERE id = ?
-`
-
-type UpdateBoxSSHDetailsParams struct {
-	SSHServerIdentityKey []byte  `db:"ssh_server_identity_key" json:"ssh_server_identity_key"`
-	SSHAuthorizedKeys    *string `db:"ssh_authorized_keys" json:"ssh_authorized_keys"`
-	SSHClientPrivateKey  []byte  `db:"ssh_client_private_key" json:"ssh_client_private_key"`
-	SSHPort              *int64  `db:"ssh_port" json:"ssh_port"`
-	ID                   int     `db:"id" json:"id"`
-}
-
-func (q *Queries) UpdateBoxSSHDetails(ctx context.Context, arg UpdateBoxSSHDetailsParams) error {
-	_, err := q.exec(ctx, q.updateBoxSSHDetailsStmt, updateBoxSSHDetails,
-		arg.SSHServerIdentityKey,
-		arg.SSHAuthorizedKeys,
-		arg.SSHClientPrivateKey,
-		arg.SSHPort,
-		arg.ID,
-	)
 	return err
 }
 

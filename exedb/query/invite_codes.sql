@@ -3,9 +3,6 @@
 -- name: AddInviteCodeToPool :exec
 INSERT INTO invite_code_pool (code) VALUES (?);
 
--- name: CountInviteCodePool :one
-SELECT COUNT(*) FROM invite_code_pool;
-
 -- name: DrawInviteCodeFromPool :one
 -- Removes and returns a random code from the pool
 DELETE FROM invite_code_pool WHERE code = (
@@ -59,10 +56,6 @@ WHERE id = ? AND allocated_at IS NULL;
 SELECT * FROM invite_codes
 WHERE assigned_to_user_id IS NULL AND used_by_user_id IS NULL
 ORDER BY assigned_at DESC;
-
--- name: CountUnusedSystemInviteCodes :one
-SELECT COUNT(*) FROM invite_codes
-WHERE assigned_to_user_id IS NULL AND used_by_user_id IS NULL;
 
 -- name: CountUnallocatedInviteCodesByUser :many
 -- Counts unallocated invite codes grouped by user (matches what users see in web UI)

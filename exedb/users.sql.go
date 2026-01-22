@@ -42,29 +42,6 @@ func (q *Queries) GetEmailByUserID(ctx context.Context, userID string) (string, 
 	return email, err
 }
 
-const getUserByDiscordID = `-- name: GetUserByDiscordID :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id FROM users WHERE discord_id = ?
-`
-
-func (q *Queries) GetUserByDiscordID(ctx context.Context, discordID *string) (User, error) {
-	row := q.queryRow(ctx, q.getUserByDiscordIDStmt, getUserByDiscordID, discordID)
-	var i User
-	err := row.Scan(
-		&i.UserID,
-		&i.Email,
-		&i.CreatedAt,
-		&i.RootSupport,
-		&i.CreatedForLoginWithExe,
-		&i.NewVmCreationDisabled,
-		&i.DiscordID,
-		&i.DiscordUsername,
-		&i.BillingExemption,
-		&i.BillingTrialEndsAt,
-		&i.SignedUpWithInviteID,
-	)
-	return i, err
-}
-
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id
 FROM users

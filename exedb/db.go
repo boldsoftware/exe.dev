@@ -78,9 +78,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countIPShardsStmt, err = db.PrepareContext(ctx, countIPShards); err != nil {
 		return nil, fmt.Errorf("error preparing query CountIPShards: %w", err)
 	}
-	if q.countInviteCodePoolStmt, err = db.PrepareContext(ctx, countInviteCodePool); err != nil {
-		return nil, fmt.Errorf("error preparing query CountInviteCodePool: %w", err)
-	}
 	if q.countLoginUsersStmt, err = db.PrepareContext(ctx, countLoginUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query CountLoginUsers: %w", err)
 	}
@@ -92,9 +89,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.countUnusedInviteCodesForUserStmt, err = db.PrepareContext(ctx, countUnusedInviteCodesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query CountUnusedInviteCodesForUser: %w", err)
-	}
-	if q.countUnusedSystemInviteCodesStmt, err = db.PrepareContext(ctx, countUnusedSystemInviteCodes); err != nil {
-		return nil, fmt.Errorf("error preparing query CountUnusedSystemInviteCodes: %w", err)
 	}
 	if q.countUsersWithBoxesStmt, err = db.PrepareContext(ctx, countUsersWithBoxes); err != nil {
 		return nil, fmt.Errorf("error preparing query CountUsersWithBoxes: %w", err)
@@ -153,9 +147,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, deleteEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEmailVerificationByToken: %w", err)
 	}
-	if q.deleteExpiredPendingRegistrationsStmt, err = db.PrepareContext(ctx, deleteExpiredPendingRegistrations); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteExpiredPendingRegistrations: %w", err)
-	}
 	if q.deleteMobilePendingVMByTokenStmt, err = db.PrepareContext(ctx, deleteMobilePendingVMByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteMobilePendingVMByToken: %w", err)
 	}
@@ -213,9 +204,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxByUserAndShardStmt, err = db.PrepareContext(ctx, getBoxByUserAndShard); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxByUserAndShard: %w", err)
 	}
-	if q.getBoxDetailsForSetupStmt, err = db.PrepareContext(ctx, getBoxDetailsForSetup); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBoxDetailsForSetup: %w", err)
-	}
 	if q.getBoxIPShardStmt, err = db.PrepareContext(ctx, getBoxIPShard); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxIPShard: %w", err)
 	}
@@ -234,9 +222,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxSharesByBoxIDStmt, err = db.PrepareContext(ctx, getBoxSharesByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxSharesByBoxID: %w", err)
 	}
-	if q.getBoxSupportAccessAllowedStmt, err = db.PrepareContext(ctx, getBoxSupportAccessAllowed); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBoxSupportAccessAllowed: %w", err)
-	}
 	if q.getBoxesByHostStmt, err = db.PrepareContext(ctx, getBoxesByHost); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesByHost: %w", err)
 	}
@@ -246,9 +231,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxesSharedWithUserStmt, err = db.PrepareContext(ctx, getBoxesSharedWithUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesSharedWithUser: %w", err)
 	}
-	if q.getEmailAddressQualityByEmailStmt, err = db.PrepareContext(ctx, getEmailAddressQualityByEmail); err != nil {
-		return nil, fmt.Errorf("error preparing query GetEmailAddressQualityByEmail: %w", err)
-	}
 	if q.getEmailBounceStmt, err = db.PrepareContext(ctx, getEmailBounce); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailBounce: %w", err)
 	}
@@ -257,9 +239,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getEmailByUserIDStmt, err = db.PrepareContext(ctx, getEmailByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailByUserID: %w", err)
-	}
-	if q.getEmailQualityBypassStmt, err = db.PrepareContext(ctx, getEmailQualityBypass); err != nil {
-		return nil, fmt.Errorf("error preparing query GetEmailQualityBypass: %w", err)
 	}
 	if q.getEmailVerificationByPartialTokenStmt, err = db.PrepareContext(ctx, getEmailVerificationByPartialToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailVerificationByPartialToken: %w", err)
@@ -354,12 +333,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getSignupPOWEnabledStmt, err = db.PrepareContext(ctx, getSignupPOWEnabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSignupPOWEnabled: %w", err)
 	}
-	if q.getSignupRejectionsByEmailStmt, err = db.PrepareContext(ctx, getSignupRejectionsByEmail); err != nil {
-		return nil, fmt.Errorf("error preparing query GetSignupRejectionsByEmail: %w", err)
-	}
-	if q.getSignupRejectionsByIPStmt, err = db.PrepareContext(ctx, getSignupRejectionsByIP); err != nil {
-		return nil, fmt.Errorf("error preparing query GetSignupRejectionsByIP: %w", err)
-	}
 	if q.getSiteCookiesForUserStmt, err = db.PrepareContext(ctx, getSiteCookiesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSiteCookiesForUser: %w", err)
 	}
@@ -371,9 +344,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getUserBillingExemptionStmt, err = db.PrepareContext(ctx, getUserBillingExemption); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserBillingExemption: %w", err)
-	}
-	if q.getUserByDiscordIDStmt, err = db.PrepareContext(ctx, getUserByDiscordID); err != nil {
-		return nil, fmt.Errorf("error preparing query GetUserByDiscordID: %w", err)
 	}
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
@@ -522,9 +492,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.recordUserEventStmt, err = db.PrepareContext(ctx, recordUserEvent); err != nil {
 		return nil, fmt.Errorf("error preparing query RecordUserEvent: %w", err)
 	}
-	if q.sSHKeyForBoxNamedStmt, err = db.PrepareContext(ctx, sSHKeyForBoxNamed); err != nil {
-		return nil, fmt.Errorf("error preparing query SSHKeyForBoxNamed: %w", err)
-	}
 	if q.setBoxSupportAccessAllowedStmt, err = db.PrepareContext(ctx, setBoxSupportAccessAllowed); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxSupportAccessAllowed: %w", err)
 	}
@@ -573,9 +540,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateBoxContainerAndStatusStmt, err = db.PrepareContext(ctx, updateBoxContainerAndStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxContainerAndStatus: %w", err)
 	}
-	if q.updateBoxContainerIDAndStatusStmt, err = db.PrepareContext(ctx, updateBoxContainerIDAndStatus); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateBoxContainerIDAndStatus: %w", err)
-	}
 	if q.updateBoxCreationLogStmt, err = db.PrepareContext(ctx, updateBoxCreationLog); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxCreationLog: %w", err)
 	}
@@ -587,9 +551,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateBoxRoutesStmt, err = db.PrepareContext(ctx, updateBoxRoutes); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxRoutes: %w", err)
-	}
-	if q.updateBoxSSHDetailsStmt, err = db.PrepareContext(ctx, updateBoxSSHDetails); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateBoxSSHDetails: %w", err)
 	}
 	if q.updateBoxStatusStmt, err = db.PrepareContext(ctx, updateBoxStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxStatus: %w", err)
@@ -737,11 +698,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing countIPShardsStmt: %w", cerr)
 		}
 	}
-	if q.countInviteCodePoolStmt != nil {
-		if cerr := q.countInviteCodePoolStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing countInviteCodePoolStmt: %w", cerr)
-		}
-	}
 	if q.countLoginUsersStmt != nil {
 		if cerr := q.countLoginUsersStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countLoginUsersStmt: %w", cerr)
@@ -760,11 +716,6 @@ func (q *Queries) Close() error {
 	if q.countUnusedInviteCodesForUserStmt != nil {
 		if cerr := q.countUnusedInviteCodesForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countUnusedInviteCodesForUserStmt: %w", cerr)
-		}
-	}
-	if q.countUnusedSystemInviteCodesStmt != nil {
-		if cerr := q.countUnusedSystemInviteCodesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing countUnusedSystemInviteCodesStmt: %w", cerr)
 		}
 	}
 	if q.countUsersWithBoxesStmt != nil {
@@ -862,11 +813,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteEmailVerificationByTokenStmt: %w", cerr)
 		}
 	}
-	if q.deleteExpiredPendingRegistrationsStmt != nil {
-		if cerr := q.deleteExpiredPendingRegistrationsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteExpiredPendingRegistrationsStmt: %w", cerr)
-		}
-	}
 	if q.deleteMobilePendingVMByTokenStmt != nil {
 		if cerr := q.deleteMobilePendingVMByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteMobilePendingVMByTokenStmt: %w", cerr)
@@ -962,11 +908,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxByUserAndShardStmt: %w", cerr)
 		}
 	}
-	if q.getBoxDetailsForSetupStmt != nil {
-		if cerr := q.getBoxDetailsForSetupStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBoxDetailsForSetupStmt: %w", cerr)
-		}
-	}
 	if q.getBoxIPShardStmt != nil {
 		if cerr := q.getBoxIPShardStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxIPShardStmt: %w", cerr)
@@ -997,11 +938,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxSharesByBoxIDStmt: %w", cerr)
 		}
 	}
-	if q.getBoxSupportAccessAllowedStmt != nil {
-		if cerr := q.getBoxSupportAccessAllowedStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBoxSupportAccessAllowedStmt: %w", cerr)
-		}
-	}
 	if q.getBoxesByHostStmt != nil {
 		if cerr := q.getBoxesByHostStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxesByHostStmt: %w", cerr)
@@ -1017,11 +953,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxesSharedWithUserStmt: %w", cerr)
 		}
 	}
-	if q.getEmailAddressQualityByEmailStmt != nil {
-		if cerr := q.getEmailAddressQualityByEmailStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getEmailAddressQualityByEmailStmt: %w", cerr)
-		}
-	}
 	if q.getEmailBounceStmt != nil {
 		if cerr := q.getEmailBounceStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailBounceStmt: %w", cerr)
@@ -1035,11 +966,6 @@ func (q *Queries) Close() error {
 	if q.getEmailByUserIDStmt != nil {
 		if cerr := q.getEmailByUserIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailByUserIDStmt: %w", cerr)
-		}
-	}
-	if q.getEmailQualityBypassStmt != nil {
-		if cerr := q.getEmailQualityBypassStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getEmailQualityBypassStmt: %w", cerr)
 		}
 	}
 	if q.getEmailVerificationByPartialTokenStmt != nil {
@@ -1197,16 +1123,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getSignupPOWEnabledStmt: %w", cerr)
 		}
 	}
-	if q.getSignupRejectionsByEmailStmt != nil {
-		if cerr := q.getSignupRejectionsByEmailStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getSignupRejectionsByEmailStmt: %w", cerr)
-		}
-	}
-	if q.getSignupRejectionsByIPStmt != nil {
-		if cerr := q.getSignupRejectionsByIPStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getSignupRejectionsByIPStmt: %w", cerr)
-		}
-	}
 	if q.getSiteCookiesForUserStmt != nil {
 		if cerr := q.getSiteCookiesForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSiteCookiesForUserStmt: %w", cerr)
@@ -1225,11 +1141,6 @@ func (q *Queries) Close() error {
 	if q.getUserBillingExemptionStmt != nil {
 		if cerr := q.getUserBillingExemptionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserBillingExemptionStmt: %w", cerr)
-		}
-	}
-	if q.getUserByDiscordIDStmt != nil {
-		if cerr := q.getUserByDiscordIDStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getUserByDiscordIDStmt: %w", cerr)
 		}
 	}
 	if q.getUserByEmailStmt != nil {
@@ -1477,11 +1388,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing recordUserEventStmt: %w", cerr)
 		}
 	}
-	if q.sSHKeyForBoxNamedStmt != nil {
-		if cerr := q.sSHKeyForBoxNamedStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing sSHKeyForBoxNamedStmt: %w", cerr)
-		}
-	}
 	if q.setBoxSupportAccessAllowedStmt != nil {
 		if cerr := q.setBoxSupportAccessAllowedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setBoxSupportAccessAllowedStmt: %w", cerr)
@@ -1562,11 +1468,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxContainerAndStatusStmt: %w", cerr)
 		}
 	}
-	if q.updateBoxContainerIDAndStatusStmt != nil {
-		if cerr := q.updateBoxContainerIDAndStatusStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateBoxContainerIDAndStatusStmt: %w", cerr)
-		}
-	}
 	if q.updateBoxCreationLogStmt != nil {
 		if cerr := q.updateBoxCreationLogStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxCreationLogStmt: %w", cerr)
@@ -1585,11 +1486,6 @@ func (q *Queries) Close() error {
 	if q.updateBoxRoutesStmt != nil {
 		if cerr := q.updateBoxRoutesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxRoutesStmt: %w", cerr)
-		}
-	}
-	if q.updateBoxSSHDetailsStmt != nil {
-		if cerr := q.updateBoxSSHDetailsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateBoxSSHDetailsStmt: %w", cerr)
 		}
 	}
 	if q.updateBoxStatusStmt != nil {
@@ -1734,12 +1630,10 @@ type Queries struct {
 	countDevUsersStmt                          *sql.Stmt
 	countEmailBouncesStmt                      *sql.Stmt
 	countIPShardsStmt                          *sql.Stmt
-	countInviteCodePoolStmt                    *sql.Stmt
 	countLoginUsersStmt                        *sql.Stmt
 	countPendingBoxSharesStmt                  *sql.Stmt
 	countUnallocatedInviteCodesByUserStmt      *sql.Stmt
 	countUnusedInviteCodesForUserStmt          *sql.Stmt
-	countUnusedSystemInviteCodesStmt           *sql.Stmt
 	countUsersWithBoxesStmt                    *sql.Stmt
 	createBoxShareStmt                         *sql.Stmt
 	createBoxShareLinkStmt                     *sql.Stmt
@@ -1759,7 +1653,6 @@ type Queries struct {
 	deleteEmailBounceStmt                      *sql.Stmt
 	deleteEmailQualityBypassStmt               *sql.Stmt
 	deleteEmailVerificationByTokenStmt         *sql.Stmt
-	deleteExpiredPendingRegistrationsStmt      *sql.Stmt
 	deleteMobilePendingVMByTokenStmt           *sql.Stmt
 	deleteMobilePendingVMByUserAndHostnameStmt *sql.Stmt
 	deletePasskeyStmt                          *sql.Stmt
@@ -1779,22 +1672,18 @@ type Queries struct {
 	getBoxByNameAndAllocStmt                   *sql.Stmt
 	getBoxByNameWithSupportAccessStmt          *sql.Stmt
 	getBoxByUserAndShardStmt                   *sql.Stmt
-	getBoxDetailsForSetupStmt                  *sql.Stmt
 	getBoxIPShardStmt                          *sql.Stmt
 	getBoxOwnerByContainerIDStmt               *sql.Stmt
 	getBoxSSHDetailsStmt                       *sql.Stmt
 	getBoxShareLinkByTokenAndBoxIDStmt         *sql.Stmt
 	getBoxShareLinksByBoxIDStmt                *sql.Stmt
 	getBoxSharesByBoxIDStmt                    *sql.Stmt
-	getBoxSupportAccessAllowedStmt             *sql.Stmt
 	getBoxesByHostStmt                         *sql.Stmt
 	getBoxesForUserDashboardStmt               *sql.Stmt
 	getBoxesSharedWithUserStmt                 *sql.Stmt
-	getEmailAddressQualityByEmailStmt          *sql.Stmt
 	getEmailBounceStmt                         *sql.Stmt
 	getEmailBySSHKeyStmt                       *sql.Stmt
 	getEmailByUserIDStmt                       *sql.Stmt
-	getEmailQualityBypassStmt                  *sql.Stmt
 	getEmailVerificationByPartialTokenStmt     *sql.Stmt
 	getEmailVerificationByTokenStmt            *sql.Stmt
 	getHLLSketchStmt                           *sql.Stmt
@@ -1826,13 +1715,10 @@ type Queries struct {
 	getShardPublicIPStmt                       *sql.Stmt
 	getShellHistoryStmt                        *sql.Stmt
 	getSignupPOWEnabledStmt                    *sql.Stmt
-	getSignupRejectionsByEmailStmt             *sql.Stmt
-	getSignupRejectionsByIPStmt                *sql.Stmt
 	getSiteCookiesForUserStmt                  *sql.Stmt
 	getTagResolutionStmt                       *sql.Stmt
 	getTagsNeedingRefreshStmt                  *sql.Stmt
 	getUserBillingExemptionStmt                *sql.Stmt
-	getUserByDiscordIDStmt                     *sql.Stmt
 	getUserByEmailStmt                         *sql.Stmt
 	getUserEmailCountForDateStmt               *sql.Stmt
 	getUserIDByEmailStmt                       *sql.Stmt
@@ -1882,7 +1768,6 @@ type Queries struct {
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
 	listUnusedSystemInviteCodesStmt            *sql.Stmt
 	recordUserEventStmt                        *sql.Stmt
-	sSHKeyForBoxNamedStmt                      *sql.Stmt
 	setBoxSupportAccessAllowedStmt             *sql.Stmt
 	setIPAbuseFilterDisabledStmt               *sql.Stmt
 	setLastBouncesPollStmt                     *sql.Stmt
@@ -1899,12 +1784,10 @@ type Queries struct {
 	updateAuthCookieLastUsedStmt               *sql.Stmt
 	updateAuthTokenUsedAtStmt                  *sql.Stmt
 	updateBoxContainerAndStatusStmt            *sql.Stmt
-	updateBoxContainerIDAndStatusStmt          *sql.Stmt
 	updateBoxCreationLogStmt                   *sql.Stmt
 	updateBoxMigrationStmt                     *sql.Stmt
 	updateBoxNameStmt                          *sql.Stmt
 	updateBoxRoutesStmt                        *sql.Stmt
-	updateBoxSSHDetailsStmt                    *sql.Stmt
 	updateBoxStatusStmt                        *sql.Stmt
 	updatePasskeySignCountStmt                 *sql.Stmt
 	updateSSHKeyLastUsedStmt                   *sql.Stmt
@@ -1946,12 +1829,10 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countDevUsersStmt:                          q.countDevUsersStmt,
 		countEmailBouncesStmt:                      q.countEmailBouncesStmt,
 		countIPShardsStmt:                          q.countIPShardsStmt,
-		countInviteCodePoolStmt:                    q.countInviteCodePoolStmt,
 		countLoginUsersStmt:                        q.countLoginUsersStmt,
 		countPendingBoxSharesStmt:                  q.countPendingBoxSharesStmt,
 		countUnallocatedInviteCodesByUserStmt:      q.countUnallocatedInviteCodesByUserStmt,
 		countUnusedInviteCodesForUserStmt:          q.countUnusedInviteCodesForUserStmt,
-		countUnusedSystemInviteCodesStmt:           q.countUnusedSystemInviteCodesStmt,
 		countUsersWithBoxesStmt:                    q.countUsersWithBoxesStmt,
 		createBoxShareStmt:                         q.createBoxShareStmt,
 		createBoxShareLinkStmt:                     q.createBoxShareLinkStmt,
@@ -1971,7 +1852,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteEmailBounceStmt:                      q.deleteEmailBounceStmt,
 		deleteEmailQualityBypassStmt:               q.deleteEmailQualityBypassStmt,
 		deleteEmailVerificationByTokenStmt:         q.deleteEmailVerificationByTokenStmt,
-		deleteExpiredPendingRegistrationsStmt:      q.deleteExpiredPendingRegistrationsStmt,
 		deleteMobilePendingVMByTokenStmt:           q.deleteMobilePendingVMByTokenStmt,
 		deleteMobilePendingVMByUserAndHostnameStmt: q.deleteMobilePendingVMByUserAndHostnameStmt,
 		deletePasskeyStmt:                          q.deletePasskeyStmt,
@@ -1991,22 +1871,18 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxByNameAndAllocStmt:                   q.getBoxByNameAndAllocStmt,
 		getBoxByNameWithSupportAccessStmt:          q.getBoxByNameWithSupportAccessStmt,
 		getBoxByUserAndShardStmt:                   q.getBoxByUserAndShardStmt,
-		getBoxDetailsForSetupStmt:                  q.getBoxDetailsForSetupStmt,
 		getBoxIPShardStmt:                          q.getBoxIPShardStmt,
 		getBoxOwnerByContainerIDStmt:               q.getBoxOwnerByContainerIDStmt,
 		getBoxSSHDetailsStmt:                       q.getBoxSSHDetailsStmt,
 		getBoxShareLinkByTokenAndBoxIDStmt:         q.getBoxShareLinkByTokenAndBoxIDStmt,
 		getBoxShareLinksByBoxIDStmt:                q.getBoxShareLinksByBoxIDStmt,
 		getBoxSharesByBoxIDStmt:                    q.getBoxSharesByBoxIDStmt,
-		getBoxSupportAccessAllowedStmt:             q.getBoxSupportAccessAllowedStmt,
 		getBoxesByHostStmt:                         q.getBoxesByHostStmt,
 		getBoxesForUserDashboardStmt:               q.getBoxesForUserDashboardStmt,
 		getBoxesSharedWithUserStmt:                 q.getBoxesSharedWithUserStmt,
-		getEmailAddressQualityByEmailStmt:          q.getEmailAddressQualityByEmailStmt,
 		getEmailBounceStmt:                         q.getEmailBounceStmt,
 		getEmailBySSHKeyStmt:                       q.getEmailBySSHKeyStmt,
 		getEmailByUserIDStmt:                       q.getEmailByUserIDStmt,
-		getEmailQualityBypassStmt:                  q.getEmailQualityBypassStmt,
 		getEmailVerificationByPartialTokenStmt:     q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:            q.getEmailVerificationByTokenStmt,
 		getHLLSketchStmt:                           q.getHLLSketchStmt,
@@ -2038,13 +1914,10 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getShardPublicIPStmt:                       q.getShardPublicIPStmt,
 		getShellHistoryStmt:                        q.getShellHistoryStmt,
 		getSignupPOWEnabledStmt:                    q.getSignupPOWEnabledStmt,
-		getSignupRejectionsByEmailStmt:             q.getSignupRejectionsByEmailStmt,
-		getSignupRejectionsByIPStmt:                q.getSignupRejectionsByIPStmt,
 		getSiteCookiesForUserStmt:                  q.getSiteCookiesForUserStmt,
 		getTagResolutionStmt:                       q.getTagResolutionStmt,
 		getTagsNeedingRefreshStmt:                  q.getTagsNeedingRefreshStmt,
 		getUserBillingExemptionStmt:                q.getUserBillingExemptionStmt,
-		getUserByDiscordIDStmt:                     q.getUserByDiscordIDStmt,
 		getUserByEmailStmt:                         q.getUserByEmailStmt,
 		getUserEmailCountForDateStmt:               q.getUserEmailCountForDateStmt,
 		getUserIDByEmailStmt:                       q.getUserIDByEmailStmt,
@@ -2094,7 +1967,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
 		listUnusedSystemInviteCodesStmt:            q.listUnusedSystemInviteCodesStmt,
 		recordUserEventStmt:                        q.recordUserEventStmt,
-		sSHKeyForBoxNamedStmt:                      q.sSHKeyForBoxNamedStmt,
 		setBoxSupportAccessAllowedStmt:             q.setBoxSupportAccessAllowedStmt,
 		setIPAbuseFilterDisabledStmt:               q.setIPAbuseFilterDisabledStmt,
 		setLastBouncesPollStmt:                     q.setLastBouncesPollStmt,
@@ -2111,12 +1983,10 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateAuthCookieLastUsedStmt:               q.updateAuthCookieLastUsedStmt,
 		updateAuthTokenUsedAtStmt:                  q.updateAuthTokenUsedAtStmt,
 		updateBoxContainerAndStatusStmt:            q.updateBoxContainerAndStatusStmt,
-		updateBoxContainerIDAndStatusStmt:          q.updateBoxContainerIDAndStatusStmt,
 		updateBoxCreationLogStmt:                   q.updateBoxCreationLogStmt,
 		updateBoxMigrationStmt:                     q.updateBoxMigrationStmt,
 		updateBoxNameStmt:                          q.updateBoxNameStmt,
 		updateBoxRoutesStmt:                        q.updateBoxRoutesStmt,
-		updateBoxSSHDetailsStmt:                    q.updateBoxSSHDetailsStmt,
 		updateBoxStatusStmt:                        q.updateBoxStatusStmt,
 		updatePasskeySignCountStmt:                 q.updatePasskeySignCountStmt,
 		updateSSHKeyLastUsedStmt:                   q.updateSSHKeyLastUsedStmt,

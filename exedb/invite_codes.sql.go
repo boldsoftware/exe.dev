@@ -32,17 +32,6 @@ func (q *Queries) AllocateInviteCode(ctx context.Context, id int64) error {
 	return err
 }
 
-const countInviteCodePool = `-- name: CountInviteCodePool :one
-SELECT COUNT(*) FROM invite_code_pool
-`
-
-func (q *Queries) CountInviteCodePool(ctx context.Context) (int64, error) {
-	row := q.queryRow(ctx, q.countInviteCodePoolStmt, countInviteCodePool)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const countUnallocatedInviteCodesByUser = `-- name: CountUnallocatedInviteCodesByUser :many
 SELECT assigned_to_user_id, COUNT(*) as count FROM invite_codes
 WHERE assigned_to_user_id IS NOT NULL AND used_by_user_id IS NULL AND allocated_at IS NULL
@@ -86,18 +75,6 @@ WHERE assigned_to_user_id = ? AND used_by_user_id IS NULL AND allocated_at IS NU
 // Counts unused AND unallocated invites for the user (available to allocate)
 func (q *Queries) CountUnusedInviteCodesForUser(ctx context.Context, assignedToUserID *string) (int64, error) {
 	row := q.queryRow(ctx, q.countUnusedInviteCodesForUserStmt, countUnusedInviteCodesForUser, assignedToUserID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countUnusedSystemInviteCodes = `-- name: CountUnusedSystemInviteCodes :one
-SELECT COUNT(*) FROM invite_codes
-WHERE assigned_to_user_id IS NULL AND used_by_user_id IS NULL
-`
-
-func (q *Queries) CountUnusedSystemInviteCodes(ctx context.Context) (int64, error) {
-	row := q.queryRow(ctx, q.countUnusedSystemInviteCodesStmt, countUnusedSystemInviteCodes)
 	var count int64
 	err := row.Scan(&count)
 	return count, err

@@ -9,23 +9,6 @@ import (
 	"context"
 )
 
-const getEmailAddressQualityByEmail = `-- name: GetEmailAddressQualityByEmail :one
-SELECT id, email, queried_at, response_json, disposable FROM email_address_quality WHERE email = ? ORDER BY queried_at DESC LIMIT 1
-`
-
-func (q *Queries) GetEmailAddressQualityByEmail(ctx context.Context, email string) (EmailAddressQuality, error) {
-	row := q.queryRow(ctx, q.getEmailAddressQualityByEmailStmt, getEmailAddressQualityByEmail, email)
-	var i EmailAddressQuality
-	err := row.Scan(
-		&i.ID,
-		&i.Email,
-		&i.QueriedAt,
-		&i.ResponseJson,
-		&i.Disposable,
-	)
-	return i, err
-}
-
 const insertEmailAddressQuality = `-- name: InsertEmailAddressQuality :exec
 INSERT INTO email_address_quality (email, response_json) VALUES (?, ?)
 `

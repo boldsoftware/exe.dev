@@ -18,22 +18,6 @@ func (q *Queries) DeleteEmailQualityBypass(ctx context.Context, email string) er
 	return err
 }
 
-const getEmailQualityBypass = `-- name: GetEmailQualityBypass :one
-SELECT email, reason, added_at, added_by FROM email_quality_bypass WHERE email = ?
-`
-
-func (q *Queries) GetEmailQualityBypass(ctx context.Context, email string) (EmailQualityBypass, error) {
-	row := q.queryRow(ctx, q.getEmailQualityBypassStmt, getEmailQualityBypass, email)
-	var i EmailQualityBypass
-	err := row.Scan(
-		&i.Email,
-		&i.Reason,
-		&i.AddedAt,
-		&i.AddedBy,
-	)
-	return i, err
-}
-
 const insertEmailQualityBypass = `-- name: InsertEmailQualityBypass :exec
 INSERT INTO email_quality_bypass (email, reason, added_by) VALUES (?, ?, ?)
 `

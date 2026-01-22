@@ -9,6 +9,3 @@ WHERE token = ?;
 
 -- name: DeletePendingRegistrationByToken :exec
 DELETE FROM pending_registrations WHERE token = ?;
-
--- name: DeleteExpiredPendingRegistrations :exec
-DELETE FROM pending_registrations WHERE expires_at <= datetime('now');

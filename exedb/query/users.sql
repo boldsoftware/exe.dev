@@ -40,6 +40,3 @@ UPDATE users SET new_vm_creation_disabled = ? WHERE user_id = ?;
 
 -- name: SetUserDiscord :exec
 UPDATE users SET discord_id = ?, discord_username = ? WHERE user_id = ?;
-
--- name: GetUserByDiscordID :one
-SELECT * FROM users WHERE discord_id = ?;
