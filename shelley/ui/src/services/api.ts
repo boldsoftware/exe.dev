@@ -27,6 +27,16 @@ class ApiService {
     return response.json();
   }
 
+  async getModels(): Promise<
+    Array<{ id: string; display_name?: string; ready: boolean; max_context_tokens?: number }>
+  > {
+    const response = await fetch(`${this.baseUrl}/models`);
+    if (!response.ok) {
+      throw new Error(`Failed to get models: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
   async searchConversations(query: string): Promise<ConversationWithState[]> {
     const params = new URLSearchParams({
       q: query,
@@ -255,3 +265,115 @@ class ApiService {
 }
 
 export const api = new ApiService();
+
+// Custom models API
+export interface CustomModel {
+  model_id: string;
+  display_name: string;
+  provider_type: "anthropic" | "openai" | "openai-responses" | "gemini";
+  endpoint: string;
+  api_key: string;
+  model_name: string;
+  max_tokens: number;
+  tags: string; // Comma-separated tags (e.g., "slug" for slug generation)
+}
+
+export interface CreateCustomModelRequest {
+  display_name: string;
+  provider_type: "anthropic" | "openai" | "openai-responses" | "gemini";
+  endpoint: string;
+  api_key: string;
+  model_name: string;
+  max_tokens: number;
+  tags: string; // Comma-separated tags
+}
+
+export interface TestCustomModelRequest {
+  model_id?: string; // If provided with empty api_key, use stored key
+  provider_type: "anthropic" | "openai" | "openai-responses" | "gemini";
+  endpoint: string;
+  api_key: string;
+  model_name: string;
+}
+
+class CustomModelsApi {
+  private baseUrl = "/api";
+
+  private postHeaders = {
+    "Content-Type": "application/json",
+    "X-Shelley-Request": "1",
+  };
+
+  async getCustomModels(): Promise<CustomModel[]> {
+    const response = await fetch(`${this.baseUrl}/custom-models`);
+    if (!response.ok) {
+      throw new Error(`Failed to get custom models: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async createCustomModel(request: CreateCustomModelRequest): Promise<CustomModel> {
+    const response = await fetch(`${this.baseUrl}/custom-models`, {
+      method: "POST",
+      headers: this.postHeaders,
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to create custom model: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async updateCustomModel(
+    modelId: string,
+    request: Partial<CreateCustomModelRequest>,
+  ): Promise<CustomModel> {
+    const response = await fetch(`${this.baseUrl}/custom-models/${modelId}`, {
+      method: "PUT",
+      headers: this.postHeaders,
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to update custom model: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async deleteCustomModel(modelId: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/custom-models/${modelId}`, {
+      method: "DELETE",
+      headers: { "X-Shelley-Request": "1" },
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to delete custom model: ${response.statusText}`);
+    }
+  }
+
+  async duplicateCustomModel(modelId: string, displayName?: string): Promise<CustomModel> {
+    const response = await fetch(`${this.baseUrl}/custom-models/${modelId}/duplicate`, {
+      method: "POST",
+      headers: this.postHeaders,
+      body: JSON.stringify({ display_name: displayName }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to duplicate custom model: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async testCustomModel(
+    request: TestCustomModelRequest,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${this.baseUrl}/custom-models-test`, {
+      method: "POST",
+      headers: this.postHeaders,
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to test custom model: ${response.statusText}`);
+    }
+    return response.json();
+  }
+}
+
+export const customModelsApi = new CustomModelsApi();

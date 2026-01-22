@@ -49,6 +49,7 @@ export interface LLMContent {
 // API types
 export interface Model {
   id: string;
+  display_name?: string;
   ready: boolean;
   max_context_tokens?: number;
 }

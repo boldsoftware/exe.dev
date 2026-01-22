@@ -15,6 +15,7 @@ import (
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/loop"
+	"shelley.exe.dev/models"
 )
 
 // setupTestDB creates a test database
@@ -373,4 +374,8 @@ func (m *testLLMManager) GetAvailableModels() []string {
 
 func (m *testLLMManager) HasModel(modelID string) bool {
 	return modelID == "predictable"
+}
+
+func (m *testLLMManager) GetModelInfo(modelID string) *models.ModelInfo {
+	return nil
 }

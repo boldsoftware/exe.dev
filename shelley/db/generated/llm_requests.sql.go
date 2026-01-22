@@ -150,22 +150,24 @@ func (q *Queries) InsertLLMRequest(ctx context.Context, arg InsertLLMRequestPara
 }
 
 const listRecentLLMRequests = `-- name: ListRecentLLMRequests :many
-SELECT 
-    id, 
-    conversation_id, 
-    model, 
-    provider, 
-    url, 
-    LENGTH(request_body) as request_body_length,
-    LENGTH(response_body) as response_body_length,
-    status_code, 
-    error, 
-    duration_ms, 
-    created_at,
-    prefix_request_id,
-    prefix_length
-FROM llm_requests 
-ORDER BY id DESC 
+SELECT
+    r.id,
+    r.conversation_id,
+    r.model,
+    m.display_name as model_display_name,
+    r.provider,
+    r.url,
+    LENGTH(r.request_body) as request_body_length,
+    LENGTH(r.response_body) as response_body_length,
+    r.status_code,
+    r.error,
+    r.duration_ms,
+    r.created_at,
+    r.prefix_request_id,
+    r.prefix_length
+FROM llm_requests r
+LEFT JOIN models m ON r.model = m.model_id
+ORDER BY r.id DESC
 LIMIT ?
 `
 
@@ -173,6 +175,7 @@ type ListRecentLLMRequestsRow struct {
 	ID                 int64     `json:"id"`
 	ConversationID     *string   `json:"conversation_id"`
 	Model              string    `json:"model"`
+	ModelDisplayName   *string   `json:"model_display_name"`
 	Provider           string    `json:"provider"`
 	Url                string    `json:"url"`
 	RequestBodyLength  *int64    `json:"request_body_length"`
@@ -198,6 +201,7 @@ func (q *Queries) ListRecentLLMRequests(ctx context.Context, limit int64) ([]Lis
 			&i.ID,
 			&i.ConversationID,
 			&i.Model,
+			&i.ModelDisplayName,
 			&i.Provider,
 			&i.Url,
 			&i.RequestBodyLength,

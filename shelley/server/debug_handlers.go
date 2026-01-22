@@ -182,6 +182,8 @@ tr:hover { background: #252525; }
 }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
+.model-display { color: #a5d6ff; }
+.model-id { color: #888; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -228,6 +230,13 @@ function formatDuration(ms) {
 	return (ms / 1000).toFixed(2) + 's';
 }
 
+function formatModel(model, displayName) {
+	if (displayName) {
+		return '<span class="model-display">' + displayName + '</span> <span class="model-id">(' + model + ')</span>';
+	}
+	return model;
+}
+
 function syntaxHighlight(json) {
 	if (typeof json !== 'string') json = JSON.stringify(json, null, 2);
 	json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -254,7 +263,7 @@ async function loadRequests() {
 		const data = await resp.json();
 		renderTable(data);
 	} catch (e) {
-		document.getElementById('requests-body').innerHTML = 
+		document.getElementById('requests-body').innerHTML =
 			'<tr><td colspan="10" class="error">Error loading requests: ' + e.message + '</td></tr>';
 	}
 }
@@ -269,20 +278,20 @@ function renderTable(requests) {
 	for (const req of requests) {
 		const tr = document.createElement('tr');
 		tr.id = 'row-' + req.id;
-		
-		const statusClass = req.status_code && req.status_code >= 200 && req.status_code < 300 ? 'success' : 
+
+		const statusClass = req.status_code && req.status_code >= 200 && req.status_code < 300 ? 'success' :
 			(req.status_code ? 'error' : '');
-		
+
 		let prefixInfo = '-';
 		if (req.prefix_request_id) {
-			prefixInfo = '<span class="dedup-info">prefix from #' + req.prefix_request_id + 
+			prefixInfo = '<span class="dedup-info">prefix from #' + req.prefix_request_id +
 				' (' + formatSize(req.prefix_length) + ')</span>';
 		}
-		
+
 		tr.innerHTML = ` + "`" + `
 			<td class="mono">${req.id}</td>
 			<td>${formatDate(req.created_at)}</td>
-			<td>${req.model}</td>
+			<td>${formatModel(req.model, req.model_display_name)}</td>
 			<td>${req.provider}</td>
 			<td class="${statusClass}">${req.status_code || '-'}${req.error ? ' ⚠' : ''}</td>
 			<td>${formatDuration(req.duration_ms)}</td>
@@ -302,7 +311,7 @@ async function toggleExpand(id) {
 		expandedRows.delete(id);
 		return;
 	}
-	
+
 	expandedRows.add(id);
 	const row = document.getElementById('row-' + id);
 	const expandRow = document.createElement('tr');
@@ -325,7 +334,7 @@ async function toggleExpand(id) {
 		</td>
 	` + "`" + `;
 	row.after(expandRow);
-	
+
 	// Load request body
 	loadBody(id, 'request');
 }
@@ -336,9 +345,9 @@ async function loadBody(id, type) {
 		renderBody(id, type, loadedData[key]);
 		return;
 	}
-	
+
 	try {
-		const url = type === 'request' 
+		const url = type === 'request'
 			? '/debug/llm_requests/' + id + '/request'
 			: '/debug/llm_requests/' + id + '/response';
 		const resp = await fetch(url);
@@ -363,13 +372,13 @@ async function loadBody(id, type) {
 function renderBody(id, type, data) {
 	const container = document.querySelector('#tab-' + type + '-' + id + ' pre');
 	if (!container) return;
-	
+
 	if (data === null) {
 		container.className = '';
 		container.textContent = '(empty)';
 		return;
 	}
-	
+
 	container.className = '';
 	if (typeof data === 'object') {
 		container.innerHTML = syntaxHighlight(JSON.stringify(data, null, 2));
@@ -382,14 +391,14 @@ function showTab(id, tab) {
 	// Update tab buttons
 	const expandRow = document.getElementById('expand-' + id);
 	if (!expandRow) return;
-	
+
 	expandRow.querySelectorAll('.tab-btn').forEach(btn => {
 		btn.classList.remove('active');
 		if (btn.textContent.toLowerCase() === tab) {
 			btn.classList.add('active');
 		}
 	});
-	
+
 	// Update tab content
 	expandRow.querySelectorAll('.tab-content').forEach(content => {
 		content.classList.remove('active');

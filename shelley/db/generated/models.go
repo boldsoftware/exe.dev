@@ -52,3 +52,16 @@ type Migration struct {
 	MigrationName   string     `json:"migration_name"`
 	ExecutedAt      *time.Time `json:"executed_at"`
 }
+
+type Model struct {
+	ModelID      string    `json:"model_id"`
+	DisplayName  string    `json:"display_name"`
+	ProviderType string    `json:"provider_type"`
+	Endpoint     string    `json:"endpoint"`
+	ApiKey       string    `json:"api_key"`
+	ModelName    string    `json:"model_name"`
+	MaxTokens    int64     `json:"max_tokens"`
+	Tags         string    `json:"tags"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}

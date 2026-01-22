@@ -101,7 +101,7 @@ func runServe(global GlobalConfig, args []string) {
 	// Build LLM configuration
 	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL, global.DefaultModel, database)
 
-	// Initialize LLM service manager
+	// Initialize LLM service manager (includes custom model support via database)
 	llmManager := server.NewLLMServiceManager(llmConfig)
 
 	// Log available models

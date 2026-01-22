@@ -69,6 +69,7 @@ type LLMProvider interface {
 	GetService(modelID string) (llm.Service, error)
 	GetAvailableModels() []string
 	HasModel(modelID string) bool
+	GetModelInfo(modelID string) *models.ModelInfo
 }
 
 // NewLLMServiceManager creates a new LLM service manager from config
@@ -260,6 +261,14 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/upload", s.handleUpload)                      // Binary uploads
 	mux.HandleFunc("/api/read", s.handleRead)                          // Serves images
 	mux.Handle("/api/write-file", http.HandlerFunc(s.handleWriteFile)) // Small response
+
+	// Custom models API
+	mux.Handle("/api/custom-models", http.HandlerFunc(s.handleCustomModels))
+	mux.Handle("/api/custom-models/", http.HandlerFunc(s.handleCustomModel))
+	mux.Handle("/api/custom-models-test", http.HandlerFunc(s.handleTestModel))
+
+	// Models API (dynamic list refresh)
+	mux.Handle("/api/models", http.HandlerFunc(s.handleModels))
 
 	// Version endpoints
 	mux.Handle("GET /version", http.HandlerFunc(s.handleVersion))

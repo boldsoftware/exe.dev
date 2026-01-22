@@ -284,6 +284,7 @@ func TestResponsesServiceTokenContextWindow(t *testing.T) {
 		model    Model
 		expected int
 	}{
+		{model: GPT52Codex, expected: 272000},
 		{model: GPT5Codex, expected: 256000},
 		{model: GPT41, expected: 200000},
 		{model: GPT4o, expected: 128000},

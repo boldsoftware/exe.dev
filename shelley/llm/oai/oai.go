@@ -292,6 +292,13 @@ var (
 		APIKeyEnv: OpenAIAPIKeyEnv,
 	}
 
+	GPT52Codex = Model{
+		UserName:  "gpt-5.2-codex",
+		ModelName: "gpt-5.2-codex",
+		URL:       OpenAIURL,
+		APIKeyEnv: OpenAIAPIKeyEnv,
+	}
+
 	// Skaband-specific model names.
 	// Provider details (URL and APIKeyEnv) are handled by skaband
 	Qwen = Model{
@@ -329,6 +336,7 @@ var ModelsRegistry = []Model{
 	GPT5Mini,
 	GPT5Nano,
 	GPT5Codex,
+	GPT52Codex,
 	O3,
 	O4Mini,
 	Gemini25Flash,
@@ -523,22 +531,6 @@ func fromLLMMessage(msg llm.Message) []openai.ChatCompletionMessage {
 	}
 
 	return messages
-}
-
-// requiresMaxCompletionTokens returns true if the model requires max_completion_tokens instead of max_tokens.
-func (m Model) requiresMaxCompletionTokens() bool {
-	// Reasoning models always use max_completion_tokens
-	if m.IsReasoningModel {
-		return true
-	}
-
-	// GPT-5 series models also require max_completion_tokens
-	switch m.ModelName {
-	case "gpt-5.1", "gpt-5.1-mini", "gpt-5.1-nano":
-		return true
-	default:
-		return false
-	}
 }
 
 // fromLLMToolChoice converts llm.ToolChoice to the format expected by OpenAI.
@@ -812,15 +804,11 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 
 	// Create the OpenAI request
 	req := openai.ChatCompletionRequest{
-		Model:      model.ModelName,
-		Messages:   allMessages,
-		Tools:      tools,
-		ToolChoice: fromLLMToolChoice(ir.ToolChoice), // TODO: make fromLLMToolChoice return an error when a perfect translation is not possible
-	}
-	if model.requiresMaxCompletionTokens() {
-		req.MaxCompletionTokens = cmp.Or(s.MaxTokens, DefaultMaxTokens)
-	} else {
-		req.MaxTokens = cmp.Or(s.MaxTokens, DefaultMaxTokens)
+		Model:               model.ModelName,
+		Messages:            allMessages,
+		Tools:               tools,
+		ToolChoice:          fromLLMToolChoice(ir.ToolChoice), // TODO: make fromLLMToolChoice return an error when a perfect translation is not possible
+		MaxCompletionTokens: cmp.Or(s.MaxTokens, DefaultMaxTokens),
 	}
 	// Construct the full URL for logging and debugging
 	fullURL := baseURL + "/chat/completions"

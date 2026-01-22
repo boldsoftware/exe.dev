@@ -10,15 +10,18 @@ import (
 
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/llm"
+	"shelley.exe.dev/models"
 )
 
 // LLMServiceProvider defines the interface for getting LLM services
 type LLMServiceProvider interface {
 	GetService(modelID string) (llm.Service, error)
+	GetAvailableModels() []string
+	GetModelInfo(modelID string) *models.ModelInfo
 }
 
 // GenerateSlug generates a slug for a conversation and updates the database
-// If conversationModelID is provided, it will try to use that model first before falling back to the default list
+// If conversationModelID is provided, it will be used as a fallback if no model is tagged with "slug"
 func GenerateSlug(ctx context.Context, llmProvider LLMServiceProvider, database *db.DB, logger *slog.Logger, conversationID, userMessage, conversationModelID string) (string, error) {
 	baseSlug, err := generateSlugText(ctx, llmProvider, logger, userMessage, conversationModelID)
 	if err != nil {
@@ -53,14 +56,13 @@ func GenerateSlug(ctx context.Context, llmProvider LLMServiceProvider, database 
 }
 
 // generateSlugText generates a human-readable slug for a conversation based on the user message
-// If conversationModelID is "predictable", it will be used instead of the default preferred models
+// Priority order:
+// 1. If conversationModelID is "predictable", use it
+// 2. Try models tagged with "slug"
+// 3. Fall back to the conversation's model (conversationModelID)
 func generateSlugText(ctx context.Context, llmProvider LLMServiceProvider, logger *slog.Logger, userMessage, conversationModelID string) (string, error) {
-	// Try different models in order of preference
 	var llmService llm.Service
 	var err error
-
-	// Preferred models in order of preference
-	preferredModels := []string{"qwen3-coder-fireworks", "gpt5-mini", "gpt-5-thinking-mini", "claude-sonnet-4.5", "predictable"}
 
 	// If conversation is using predictable model, use it for slug generation too
 	if conversationModelID == "predictable" {
@@ -72,15 +74,29 @@ func generateSlugText(ctx context.Context, llmProvider LLMServiceProvider, logge
 		}
 	}
 
-	// If we didn't get the predictable service, try the preferred models
+	// Try models tagged with "slug"
 	if llmService == nil {
-		for _, model := range preferredModels {
-			llmService, err = llmProvider.GetService(model)
-			if err == nil {
-				logger.Debug("Using preferred model for slug generation", "model", model)
+		for _, modelID := range llmProvider.GetAvailableModels() {
+			info := llmProvider.GetModelInfo(modelID)
+			if info != nil && strings.Contains(info.Tags, "slug") {
+				llmService, err = llmProvider.GetService(modelID)
+				if err == nil {
+					logger.Debug("Using slug-tagged model for slug generation", "model", modelID)
+				} else {
+					logger.Debug("Failed to get slug-tagged model", "model", modelID, "error", err)
+				}
 				break
 			}
-			logger.Debug("Model not available for slug generation", "model", model, "error", err)
+		}
+	}
+
+	// Fall back to the conversation's model
+	if llmService == nil && conversationModelID != "" && conversationModelID != "predictable" {
+		llmService, err = llmProvider.GetService(conversationModelID)
+		if err == nil {
+			logger.Debug("Using conversation model for slug generation", "model", conversationModelID)
+		} else {
+			logger.Debug("Conversation model not available for slug generation", "model", conversationModelID, "error", err)
 		}
 	}
 
@@ -133,9 +149,6 @@ Respond with only the slug, nothing else.`, userMessage)
 	if slug == "" {
 		return "", fmt.Errorf("generated slug is empty after sanitization")
 	}
-
-	// Note: We don't check for uniqueness here since we're generating for a new conversation
-	// and the database will handle any conflicts
 
 	return slug, nil
 }

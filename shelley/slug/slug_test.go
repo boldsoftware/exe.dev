@@ -9,6 +9,7 @@ import (
 
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/llm"
+	"shelley.exe.dev/models"
 )
 
 func TestSanitize(t *testing.T) {
@@ -100,6 +101,14 @@ func (m *MockLLMProvider) GetService(modelID string) (llm.Service, error) {
 	return m.Service, nil
 }
 
+func (m *MockLLMProvider) GetAvailableModels() []string {
+	return []string{"mock"}
+}
+
+func (m *MockLLMProvider) GetModelInfo(modelID string) *models.ModelInfo {
+	return nil
+}
+
 // TestGenerateSlug_DatabaseIntegration tests slug generation with actual database conflicts
 func TestGenerateSlug_DatabaseIntegration(t *testing.T) {
 	// Create temporary database
@@ -135,7 +144,7 @@ func TestGenerateSlug_DatabaseIntegration(t *testing.T) {
 	}
 
 	// Generate first slug - should succeed with "test-slug"
-	slug1, err := GenerateSlug(ctx, mockLLM, database, logger, conv1.ConversationID, "Test message", "")
+	slug1, err := GenerateSlug(ctx, mockLLM, database, logger, conv1.ConversationID, "Test message", "test-model")
 	if err != nil {
 		t.Fatalf("Failed to generate first slug: %v", err)
 	}
@@ -150,7 +159,7 @@ func TestGenerateSlug_DatabaseIntegration(t *testing.T) {
 	}
 
 	// Generate second slug - should get "test-slug-1" due to conflict
-	slug2, err := GenerateSlug(ctx, mockLLM, database, logger, conv2.ConversationID, "Test message", "")
+	slug2, err := GenerateSlug(ctx, mockLLM, database, logger, conv2.ConversationID, "Test message", "test-model")
 	if err != nil {
 		t.Fatalf("Failed to generate second slug: %v", err)
 	}
@@ -165,7 +174,7 @@ func TestGenerateSlug_DatabaseIntegration(t *testing.T) {
 	}
 
 	// Generate third slug - should get "test-slug-2" due to conflict
-	slug3, err := GenerateSlug(ctx, mockLLM, database, logger, conv3.ConversationID, "Test message", "")
+	slug3, err := GenerateSlug(ctx, mockLLM, database, logger, conv3.ConversationID, "Test message", "test-model")
 	if err != nil {
 		t.Fatalf("Failed to generate third slug: %v", err)
 	}
@@ -203,11 +212,27 @@ func (m *MockLLMProviderWithError) GetService(modelID string) (llm.Service, erro
 	return nil, fmt.Errorf("model not available")
 }
 
+func (m *MockLLMProviderWithError) GetAvailableModels() []string {
+	return []string{}
+}
+
+func (m *MockLLMProviderWithError) GetModelInfo(modelID string) *models.ModelInfo {
+	return nil
+}
+
 // MockLLMProviderWithServiceError provides a mock LLM provider that returns a service with error
 type MockLLMProviderWithServiceError struct{}
 
 func (m *MockLLMProviderWithServiceError) GetService(modelID string) (llm.Service, error) {
 	return &MockLLMServiceWithError{}, nil
+}
+
+func (m *MockLLMProviderWithServiceError) GetAvailableModels() []string {
+	return []string{"mock"}
+}
+
+func (m *MockLLMProviderWithServiceError) GetModelInfo(modelID string) *models.ModelInfo {
+	return nil
 }
 
 // TestGenerateSlug_LLMError tests error handling when LLM service fails
@@ -218,8 +243,8 @@ func TestGenerateSlug_LLMError(t *testing.T) {
 		Level: slog.LevelWarn,
 	}))
 
-	// Test that LLM error is properly propagated
-	_, err := generateSlugText(context.Background(), mockLLM, logger, "Test message", "")
+	// Test that LLM error is properly propagated (pass a model ID so we get a service)
+	_, err := generateSlugText(context.Background(), mockLLM, logger, "Test message", "test-model")
 	if err == nil {
 		t.Error("Expected error from LLM service, got nil")
 	}
@@ -255,7 +280,7 @@ func TestGenerateSlug_EmptyResponse(t *testing.T) {
 		Level: slog.LevelWarn,
 	}))
 
-	_, err := generateSlugText(context.Background(), mockLLM, logger, "Test message", "")
+	_, err := generateSlugText(context.Background(), mockLLM, logger, "Test message", "test-model")
 	if err == nil {
 		t.Error("Expected error for empty LLM response, got nil")
 	}
@@ -269,6 +294,14 @@ type MockLLMProviderWithEmptyResponse struct{}
 
 func (m *MockLLMProviderWithEmptyResponse) GetService(modelID string) (llm.Service, error) {
 	return &MockLLMServiceEmptyResponse{}, nil
+}
+
+func (m *MockLLMProviderWithEmptyResponse) GetAvailableModels() []string {
+	return []string{"mock"}
+}
+
+func (m *MockLLMProviderWithEmptyResponse) GetModelInfo(modelID string) *models.ModelInfo {
+	return nil
 }
 
 // MockLLMServiceEmptyResponse provides a mock LLM service that returns empty response
@@ -301,7 +334,7 @@ func TestGenerateSlug_SanitizationError(t *testing.T) {
 		Level: slog.LevelWarn,
 	}))
 
-	_, err := generateSlugText(context.Background(), mockLLM, logger, "Test message", "")
+	_, err := generateSlugText(context.Background(), mockLLM, logger, "Test message", "test-model")
 	if err == nil {
 		t.Error("Expected error for empty slug after sanitization, got nil")
 	}
@@ -357,7 +390,7 @@ func TestGenerateSlug_DatabaseError(t *testing.T) {
 	}
 	closedDB.Close()
 
-	_, err = GenerateSlug(ctx, mockLLM, closedDB, logger, "test-conversation-id", "Test message", "")
+	_, err = GenerateSlug(ctx, mockLLM, closedDB, logger, "test-conversation-id", "Test message", "test-model")
 	if err == nil {
 		t.Error("Expected database error, got nil")
 	}
@@ -386,9 +419,9 @@ func TestGenerateSlug_PredictableModel(t *testing.T) {
 	}
 }
 
-// TestGenerateSlug_PredictableModelFallback tests fallback when predictable model is not available
-func TestGenerateSlug_PredictableModelFallback(t *testing.T) {
-	// Mock LLM provider that doesn't have predictable model but has other models
+// TestGenerateSlug_ConversationModelFallback tests fallback to conversation model when no slug-tagged models exist
+func TestGenerateSlug_ConversationModelFallback(t *testing.T) {
+	// Mock LLM provider that doesn't have predictable model but has a conversation model
 	mockLLM := &MockLLMProviderPredictableFallback{
 		fallbackService: &MockLLMService{
 			ResponseText: "fallback-slug",
@@ -399,10 +432,10 @@ func TestGenerateSlug_PredictableModelFallback(t *testing.T) {
 		Level: slog.LevelDebug,
 	}))
 
-	// Test that fallback to preferred models works when predictable is not available
-	slug, err := generateSlugText(context.Background(), mockLLM, logger, "Test message", "predictable")
+	// Test that fallback to conversation model works when no slug-tagged models exist
+	slug, err := generateSlugText(context.Background(), mockLLM, logger, "Test message", "my-custom-model")
 	if err != nil {
-		t.Fatalf("Failed to generate slug with fallback: %v", err)
+		t.Fatalf("Failed to generate slug with conversation model fallback: %v", err)
 	}
 	if slug != "fallback-slug" {
 		t.Errorf("Expected 'fallback-slug', got %q", slug)
@@ -419,4 +452,12 @@ func (m *MockLLMProviderPredictableFallback) GetService(modelID string) (llm.Ser
 		return nil, fmt.Errorf("predictable model not available")
 	}
 	return m.fallbackService, nil
+}
+
+func (m *MockLLMProviderPredictableFallback) GetAvailableModels() []string {
+	return []string{"my-custom-model"}
+}
+
+func (m *MockLLMProviderPredictableFallback) GetModelInfo(modelID string) *models.ModelInfo {
+	return nil
 }

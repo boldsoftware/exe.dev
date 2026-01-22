@@ -27,3 +27,5 @@
     ./bin/shelley -config /exe.dev/shelley.json -db /tmp/shelley-test.db serve -port 8002
     ```
     Then use browser tools to navigate to http://localhost:8002/ and interact with the UI.
+13. NEVER use alert(), confirm(), or prompt(). Use proper UI components like tooltips, modals, or toasts instead.
+14. SQL migrations and frontend changes require rebuilding the binary (`make build` or `go generate ./... && cd ui && pnpm run build`).

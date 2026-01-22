@@ -19,6 +19,7 @@ import (
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/llm/ant"
+	"shelley.exe.dev/models"
 )
 
 // ClaudeTestHarness extends TestHarness with Claude-specific functionality
@@ -542,6 +543,13 @@ func (m *claudeLLMManager) GetAvailableModels() []string {
 
 func (m *claudeLLMManager) HasModel(modelID string) bool {
 	return modelID == "claude" || modelID == "claude-haiku-4.5"
+}
+
+func (m *claudeLLMManager) GetModelInfo(modelID string) *models.ModelInfo {
+	if modelID == "claude-haiku-4.5" {
+		return &models.ModelInfo{DisplayName: "Claude Haiku", Tags: "slug"}
+	}
+	return nil
 }
 
 // TestClaudeCancelDuringToolCall tests cancellation during tool execution with Claude

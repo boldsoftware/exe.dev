@@ -394,6 +394,7 @@ interface ChatInterfaceProps {
   isDrawerCollapsed?: boolean;
   onToggleDrawerCollapse?: () => void;
   openDiffViewerTrigger?: number; // increment to trigger opening diff viewer
+  modelsRefreshTrigger?: number; // increment to trigger models list refresh
 }
 
 function ChatInterface({
@@ -409,12 +410,15 @@ function ChatInterface({
   isDrawerCollapsed,
   onToggleDrawerCollapse,
   openDiffViewerTrigger,
+  modelsRefreshTrigger,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const models = window.__SHELLEY_INIT__?.models || [];
+  const [models, setModels] = useState<
+    Array<{ id: string; display_name?: string; ready: boolean; max_context_tokens?: number }>
+  >(window.__SHELLEY_INIT__?.models || []);
   const [selectedModel, setSelectedModelState] = useState<string>(() => {
     // First check localStorage for a sticky model preference
     const storedModel = localStorage.getItem("shelley_selected_model");
@@ -473,6 +477,26 @@ function ChatInterface({
       setCwdInitialized(true);
     }
   }, [mostRecentCwd, cwdInitialized]);
+
+  // Refresh models list when triggered (e.g., after custom model changes) or when starting new conversation
+  useEffect(() => {
+    // Skip on initial mount with trigger=0, but always refresh when starting a new conversation
+    if (modelsRefreshTrigger === undefined) return;
+    if (modelsRefreshTrigger === 0 && conversationId !== null) return;
+    api
+      .getModels()
+      .then((newModels) => {
+        setModels(newModels);
+        // Also update the global init data so other components see the change
+        if (window.__SHELLEY_INIT__) {
+          window.__SHELLEY_INIT__.models = newModels;
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to refresh models:", err);
+      });
+  }, [modelsRefreshTrigger, conversationId]);
+
   const [cwdError, setCwdError] = useState<string | null>(null);
   const [editingModel, setEditingModel] = useState(false);
   const [showDirectoryPicker, setShowDirectoryPicker] = useState(false);
@@ -1459,7 +1483,7 @@ function ChatInterface({
                   >
                     {models.map((model) => (
                       <option key={model.id} value={model.id} disabled={!model.ready}>
-                        {model.id} {!model.ready ? "(not ready)" : ""}
+                        {model.display_name || model.id} {!model.ready ? "(not ready)" : ""}
                       </option>
                     ))}
                   </select>
@@ -1469,7 +1493,7 @@ function ChatInterface({
                     onClick={() => setEditingModel(true)}
                     disabled={sending}
                   >
-                    {selectedModel}
+                    {models.find((m) => m.id === selectedModel)?.display_name || selectedModel}
                   </button>
                 )}
               </div>

@@ -23,6 +23,7 @@ import (
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/loop"
+	"shelley.exe.dev/models"
 	"shelley.exe.dev/server"
 	"shelley.exe.dev/slug"
 )
@@ -905,6 +906,10 @@ func (m *inspectableLLMManager) GetAvailableModels() []string {
 
 func (m *inspectableLLMManager) HasModel(modelID string) bool {
 	return modelID == "predictable"
+}
+
+func (m *inspectableLLMManager) GetModelInfo(modelID string) *models.ModelInfo {
+	return nil
 }
 
 func TestVersionEndpoint(t *testing.T) {

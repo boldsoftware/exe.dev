@@ -4,10 +4,12 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
+  titleRight?: React.ReactNode;
   children: React.ReactNode;
+  className?: string;
 }
 
-function Modal({ isOpen, onClose, title, children }: ModalProps) {
+function Modal({ isOpen, onClose, title, titleRight, children, className }: ModalProps) {
   if (!isOpen) return null;
 
   const handleBackdropClick = (e: React.MouseEvent) => {
@@ -18,10 +20,11 @@ function Modal({ isOpen, onClose, title, children }: ModalProps) {
 
   return (
     <div className="modal-overlay" onClick={handleBackdropClick}>
-      <div className="modal">
+      <div className={`modal ${className || ""}`}>
         {/* Header */}
         <div className="modal-header">
           <h2 className="modal-title">{title}</h2>
+          {titleRight && <div className="modal-title-right">{titleRight}</div>}
           <button onClick={onClose} className="btn-icon" aria-label="Close modal">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path

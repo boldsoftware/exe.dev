@@ -357,30 +357,7 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 	}
 
 	// Build initialization data
-	type ModelInfo struct {
-		ID               string `json:"id"`
-		Ready            bool   `json:"ready"`
-		MaxContextTokens int    `json:"max_context_tokens,omitempty"`
-	}
-
-	var modelList []ModelInfo
-	if s.predictableOnly {
-		modelList = append(modelList, ModelInfo{ID: "predictable", Ready: true, MaxContextTokens: 200000})
-	} else {
-		modelIDs := s.llmManager.GetAvailableModels()
-		for _, id := range modelIDs {
-			// Skip predictable model unless predictable-only flag is set
-			if id == "predictable" {
-				continue
-			}
-			svc, err := s.llmManager.GetService(id)
-			maxCtx := 0
-			if err == nil && svc != nil {
-				maxCtx = svc.TokenContextWindow()
-			}
-			modelList = append(modelList, ModelInfo{ID: id, Ready: err == nil, MaxContextTokens: maxCtx})
-		}
-	}
+	modelList := s.getModelList()
 
 	// Select default model - use configured default if available, otherwise first ready model
 	defaultModel := s.defaultModel
@@ -911,6 +888,52 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(version.GetInfo())
+}
+
+// ModelInfo represents a model in the API response
+type ModelInfo struct {
+	ID               string `json:"id"`
+	DisplayName      string `json:"display_name,omitempty"`
+	Ready            bool   `json:"ready"`
+	MaxContextTokens int    `json:"max_context_tokens,omitempty"`
+}
+
+// getModelList returns the list of available models
+func (s *Server) getModelList() []ModelInfo {
+	var modelList []ModelInfo
+	if s.predictableOnly {
+		modelList = append(modelList, ModelInfo{ID: "predictable", Ready: true, MaxContextTokens: 200000})
+	} else {
+		modelIDs := s.llmManager.GetAvailableModels()
+		for _, id := range modelIDs {
+			// Skip predictable model unless predictable-only flag is set
+			if id == "predictable" {
+				continue
+			}
+			svc, err := s.llmManager.GetService(id)
+			maxCtx := 0
+			if err == nil && svc != nil {
+				maxCtx = svc.TokenContextWindow()
+			}
+			info := ModelInfo{ID: id, Ready: err == nil, MaxContextTokens: maxCtx}
+			// Add display name from model info
+			if modelInfo := s.llmManager.GetModelInfo(id); modelInfo != nil {
+				info.DisplayName = modelInfo.DisplayName
+			}
+			modelList = append(modelList, info)
+		}
+	}
+	return modelList
+}
+
+// handleModels returns the list of available models
+func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(s.getModelList())
 }
 
 // handleArchivedConversations handles GET /api/conversations/archived

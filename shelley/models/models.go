@@ -148,47 +148,15 @@ func All() []Model {
 			},
 		},
 		{
-			ID:              "gpt-5",
+			ID:              "gpt-5.2-codex",
 			Provider:        ProviderOpenAI,
-			Description:     "GPT-5",
+			Description:     "GPT-5.2 Codex",
 			RequiredEnvVars: []string{"OPENAI_API_KEY"},
 			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
 				if config.OpenAIAPIKey == "" {
-					return nil, fmt.Errorf("gpt-5 requires OPENAI_API_KEY")
+					return nil, fmt.Errorf("gpt-5.2-codex requires OPENAI_API_KEY")
 				}
-				svc := &oai.Service{Model: oai.GPT5, APIKey: config.OpenAIAPIKey, HTTPC: httpc}
-				if url := config.getOpenAIURL(); url != "" {
-					svc.ModelURL = url
-				}
-				return svc, nil
-			},
-		},
-		{
-			ID:              "gpt-5-nano",
-			Provider:        ProviderOpenAI,
-			Description:     "GPT-5 Nano",
-			RequiredEnvVars: []string{"OPENAI_API_KEY"},
-			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
-				if config.OpenAIAPIKey == "" {
-					return nil, fmt.Errorf("gpt-5-nano requires OPENAI_API_KEY")
-				}
-				svc := &oai.Service{Model: oai.GPT5Nano, APIKey: config.OpenAIAPIKey, HTTPC: httpc}
-				if url := config.getOpenAIURL(); url != "" {
-					svc.ModelURL = url
-				}
-				return svc, nil
-			},
-		},
-		{
-			ID:              "gpt-5.1-codex",
-			Provider:        ProviderOpenAI,
-			Description:     "GPT-5.1 Codex (uses Responses API)",
-			RequiredEnvVars: []string{"OPENAI_API_KEY"},
-			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
-				if config.OpenAIAPIKey == "" {
-					return nil, fmt.Errorf("gpt-5.1-codex requires OPENAI_API_KEY")
-				}
-				svc := &oai.ResponsesService{Model: oai.GPT5Codex, APIKey: config.OpenAIAPIKey, HTTPC: httpc}
+				svc := &oai.ResponsesService{Model: oai.GPT52Codex, APIKey: config.OpenAIAPIKey, HTTPC: httpc}
 				if url := config.getOpenAIURL(); url != "" {
 					svc.ModelURL = url
 				}
@@ -260,38 +228,6 @@ func All() []Model {
 			},
 		},
 		{
-			ID:              "gemini-2.5-pro",
-			Provider:        ProviderGemini,
-			Description:     "Gemini 2.5 Pro",
-			RequiredEnvVars: []string{"GEMINI_API_KEY"},
-			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
-				if config.GeminiAPIKey == "" {
-					return nil, fmt.Errorf("gemini-2.5-pro requires GEMINI_API_KEY")
-				}
-				svc := &gem.Service{APIKey: config.GeminiAPIKey, Model: "gemini-2.5-pro", HTTPC: httpc}
-				if url := config.getGeminiURL(); url != "" {
-					svc.URL = url
-				}
-				return svc, nil
-			},
-		},
-		{
-			ID:              "gemini-2.5-flash",
-			Provider:        ProviderGemini,
-			Description:     "Gemini 2.5 Flash",
-			RequiredEnvVars: []string{"GEMINI_API_KEY"},
-			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
-				if config.GeminiAPIKey == "" {
-					return nil, fmt.Errorf("gemini-2.5-flash requires GEMINI_API_KEY")
-				}
-				svc := &gem.Service{APIKey: config.GeminiAPIKey, Model: "gemini-2.5-flash", HTTPC: httpc}
-				if url := config.getGeminiURL(); url != "" {
-					svc.URL = url
-				}
-				return svc, nil
-			},
-		},
-		{
 			ID:              "predictable",
 			Provider:        ProviderBuiltIn,
 			Description:     "Deterministic test model (no API key)",
@@ -332,7 +268,8 @@ func Default() Model {
 type Manager struct {
 	services map[string]serviceEntry
 	logger   *slog.Logger
-	db       *db.DB
+	db       *db.DB       // for custom models and LLM request recording
+	httpc    *http.Client // HTTP client with recording middleware
 }
 
 type serviceEntry struct {
@@ -502,6 +439,9 @@ func NewManager(cfg *Config) (*Manager, error) {
 		httpc = llmhttp.NewClient(nil, nil)
 	}
 
+	// Store the HTTP client for use with custom models
+	manager.httpc = httpc
+
 	for _, model := range All() {
 		svc, err := model.Factory(cfg, httpc)
 		if err != nil {
@@ -520,6 +460,34 @@ func NewManager(cfg *Config) (*Manager, error) {
 
 // GetService returns the LLM service for the given model ID, wrapped with logging
 func (m *Manager) GetService(modelID string) (llm.Service, error) {
+	// Check custom models first if we have a database
+	if m.db != nil {
+		dbModels, err := m.db.GetModels(context.Background())
+		if err == nil && len(dbModels) > 0 {
+			// Custom models exist - only serve custom models, not built-in ones
+			for _, model := range dbModels {
+				if model.ModelID == modelID {
+					svc := m.createServiceFromModel(&model)
+					if svc != nil {
+						if m.logger != nil {
+							return &loggingService{
+								service:  svc,
+								logger:   m.logger,
+								modelID:  modelID,
+								provider: Provider(model.ProviderType),
+								db:       m.db,
+							}, nil
+						}
+						return svc, nil
+					}
+				}
+			}
+			// Custom models exist but this model ID wasn't found among them
+			return nil, fmt.Errorf("unsupported model: %s", modelID)
+		}
+	}
+
+	// No custom models - fall back to built-in models
 	if entry, ok := m.services[modelID]; ok {
 		// Wrap with logging if we have a logger
 		if m.logger != nil {
@@ -538,9 +506,20 @@ func (m *Manager) GetService(modelID string) (llm.Service, error) {
 
 // GetAvailableModels returns a list of available model IDs in the same order as All()
 func (m *Manager) GetAvailableModels() []string {
-	// Return IDs in the same order as All() for consistency
-	all := All()
 	var ids []string
+
+	// If we have custom models in the database, use ONLY those
+	if m.db != nil {
+		if dbModels, err := m.db.GetModels(context.Background()); err == nil && len(dbModels) > 0 {
+			for _, model := range dbModels {
+				ids = append(ids, model.ModelID)
+			}
+			return ids
+		}
+	}
+
+	// No custom models - fall back to built-in models in the same order as All()
+	all := All()
 	for _, model := range all {
 		if _, ok := m.services[model.ID]; ok {
 			ids = append(ids, model.ID)
@@ -551,6 +530,80 @@ func (m *Manager) GetAvailableModels() []string {
 
 // HasModel reports whether the manager has a service for the given model ID
 func (m *Manager) HasModel(modelID string) bool {
+	// Check custom models first
+	if m.db != nil {
+		if model, err := m.db.GetModel(context.Background(), modelID); err == nil && model != nil {
+			return true
+		}
+	}
 	_, ok := m.services[modelID]
 	return ok
+}
+
+// ModelInfo contains display name and tags for a model
+type ModelInfo struct {
+	DisplayName string
+	Tags        string
+}
+
+// GetModelInfo returns the display name and tags for a model
+func (m *Manager) GetModelInfo(modelID string) *ModelInfo {
+	if m.db == nil {
+		return nil
+	}
+	model, err := m.db.GetModel(context.Background(), modelID)
+	if err != nil {
+		return nil
+	}
+	return &ModelInfo{
+		DisplayName: model.DisplayName,
+		Tags:        model.Tags,
+	}
+}
+
+// createServiceFromModel creates an LLM service from a database model configuration
+func (m *Manager) createServiceFromModel(model *generated.Model) llm.Service {
+	switch model.ProviderType {
+	case "anthropic":
+		return &ant.Service{
+			APIKey: model.ApiKey,
+			URL:    model.Endpoint,
+			Model:  model.ModelName,
+			HTTPC:  m.httpc,
+		}
+	case "openai":
+		return &oai.Service{
+			APIKey:   model.ApiKey,
+			ModelURL: model.Endpoint,
+			Model: oai.Model{
+				ModelName: model.ModelName,
+				URL:       model.Endpoint,
+			},
+			MaxTokens: int(model.MaxTokens),
+			HTTPC:     m.httpc,
+		}
+	case "openai-responses":
+		return &oai.ResponsesService{
+			APIKey:   model.ApiKey,
+			ModelURL: model.Endpoint,
+			Model: oai.Model{
+				ModelName: model.ModelName,
+				URL:       model.Endpoint,
+			},
+			MaxTokens: int(model.MaxTokens),
+			HTTPC:     m.httpc,
+		}
+	case "gemini":
+		return &gem.Service{
+			APIKey: model.ApiKey,
+			URL:    model.Endpoint,
+			Model:  model.ModelName,
+			HTTPC:  m.httpc,
+		}
+	default:
+		if m.logger != nil {
+			m.logger.Error("Unknown provider type for model", "model_id", model.ModelID, "provider_type", model.ProviderType)
+		}
+		return nil
+	}
 }

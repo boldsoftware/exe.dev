@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import ChatInterface from "./components/ChatInterface";
 import ConversationDrawer from "./components/ConversationDrawer";
 import CommandPalette from "./components/CommandPalette";
+import ModelsModal from "./components/ModelsModal";
 import { Conversation, ConversationWithState, ConversationListUpdate } from "./types";
 import { api } from "./services/api";
 
@@ -65,6 +66,8 @@ function App() {
   const [drawerCollapsed, setDrawerCollapsed] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [diffViewerTrigger, setDiffViewerTrigger] = useState(0);
+  const [modelsModalOpen, setModelsModalOpen] = useState(false);
+  const [modelsRefreshTrigger, setModelsRefreshTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [subagentUpdate, setSubagentUpdate] = useState<Conversation | null>(null);
@@ -348,6 +351,7 @@ function App() {
           isDrawerCollapsed={drawerCollapsed}
           onToggleDrawerCollapse={toggleDrawerCollapsed}
           openDiffViewerTrigger={diffViewerTrigger}
+          modelsRefreshTrigger={modelsRefreshTrigger}
         />
       </div>
 
@@ -368,7 +372,17 @@ function App() {
           setDiffViewerTrigger((prev) => prev + 1);
           setCommandPaletteOpen(false);
         }}
+        onOpenModelsModal={() => {
+          setModelsModalOpen(true);
+          setCommandPaletteOpen(false);
+        }}
         hasCwd={!!(currentConversation?.cwd || mostRecentCwd)}
+      />
+
+      <ModelsModal
+        isOpen={modelsModalOpen}
+        onClose={() => setModelsModalOpen(false)}
+        onModelsChanged={() => setModelsRefreshTrigger((prev) => prev + 1)}
       />
 
       {/* Backdrop for mobile drawer */}

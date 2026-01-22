@@ -115,6 +115,20 @@ func (db *DB) Migrate(ctx context.Context) error {
 	// Sort migrations by number
 	sort.Strings(migrations)
 
+	// Check for duplicate migration numbers
+	seenNumbers := make(map[string]string) // number -> filename
+	for _, migration := range migrations {
+		matches := migrationPattern.FindStringSubmatch(migration)
+		if len(matches) < 2 {
+			continue
+		}
+		num := matches[1]
+		if existing, ok := seenNumbers[num]; ok {
+			return fmt.Errorf("duplicate migration number %s: %s and %s", num, existing, migration)
+		}
+		seenNumbers[num] = migration
+	}
+
 	// Get executed migrations
 	executedMigrations := make(map[int]bool)
 	var tableName string
@@ -849,4 +863,69 @@ func reconstructRequestBody(ctx context.Context, q *generated.Queries, requestID
 	}
 	*result = parentBody[:prefixLen] + suffix
 	return nil
+}
+
+// GetModels returns all models from the database
+func (db *DB) GetModels(ctx context.Context) ([]generated.Model, error) {
+	var models []generated.Model
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		var err error
+		models, err = q.GetModels(ctx)
+		return err
+	})
+	return models, err
+}
+
+// GetModel returns a model by ID
+func (db *DB) GetModel(ctx context.Context, modelID string) (*generated.Model, error) {
+	var model generated.Model
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		var err error
+		model, err = q.GetModel(ctx, modelID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &model, nil
+}
+
+// CreateModel creates a new model
+func (db *DB) CreateModel(ctx context.Context, params generated.CreateModelParams) (*generated.Model, error) {
+	var model generated.Model
+	err := db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		q := generated.New(tx.Conn())
+		var err error
+		model, err = q.CreateModel(ctx, params)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &model, nil
+}
+
+// UpdateModel updates a model
+func (db *DB) UpdateModel(ctx context.Context, params generated.UpdateModelParams) (*generated.Model, error) {
+	var model generated.Model
+	err := db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		q := generated.New(tx.Conn())
+		var err error
+		model, err = q.UpdateModel(ctx, params)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &model, nil
+}
+
+// DeleteModel deletes a model
+func (db *DB) DeleteModel(ctx context.Context, modelID string) error {
+	return db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		q := generated.New(tx.Conn())
+		return q.DeleteModel(ctx, modelID)
+	})
 }
