@@ -245,6 +245,7 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 	resp, err := llmService.Do(llmCtx, req)
 	if err != nil {
 		// Record the error as a message so it can be displayed in the UI
+		// EndOfTurn must be true so the agent working state is properly updated
 		errorMessage := llm.Message{
 			Role: llm.MessageRoleAssistant,
 			Content: []llm.Content{
@@ -253,6 +254,7 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 					Text: fmt.Sprintf("LLM request failed: %v", err),
 				},
 			},
+			EndOfTurn: true,
 		}
 		if recordErr := l.recordMessage(ctx, errorMessage, llm.Usage{}); recordErr != nil {
 			l.logger.Error("failed to record error message", "error", recordErr)

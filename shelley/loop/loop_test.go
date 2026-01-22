@@ -1548,6 +1548,11 @@ func TestProcessLLMRequestError(t *testing.T) {
 	if !strings.Contains(recordedMessages[0].Content[0].Text, "LLM request failed") {
 		t.Errorf("expected error message to contain 'LLM request failed', got: %s", recordedMessages[0].Content[0].Text)
 	}
+
+	// Verify EndOfTurn is set so the agent working state is properly updated
+	if !recordedMessages[0].EndOfTurn {
+		t.Error("expected error message to have EndOfTurn=true so agent working state is updated")
+	}
 }
 
 // errorLLMService is a test LLM service that always returns an error
