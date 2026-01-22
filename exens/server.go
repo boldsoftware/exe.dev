@@ -35,6 +35,10 @@ type Server struct {
 	// webHost is the domain for the name servers (e.g., "exe.dev" or "exe-staging.dev")
 	webHost string
 
+	// lobbyIP is the public IP for the lobby/REPL (ssh exe.dev), used for apex domain resolution.
+	// Set via SetLobbyIP after discovering IPs at startup.
+	lobbyIP netip.Addr
+
 	mu        sync.Mutex
 	listeners []net.PacketConn
 	servers   []*dns.Server
@@ -57,6 +61,12 @@ func NewServer(db *sqlite.DB, log *slog.Logger, boxHost, webHost string) *Server
 		webHost:    webHost,
 		txtRecords: make(map[string][]string),
 	}
+}
+
+// SetLobbyIP sets the lobby IP used for apex domain (exe.xyz) resolution.
+// The lobby IP is the public IP for ssh exe.dev, not associated with any box shard.
+func (s *Server) SetLobbyIP(ip netip.Addr) {
+	s.lobbyIP = ip
 }
 
 // Start starts the DNS server listening on the given private IP addresses.
@@ -211,12 +221,12 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 // lookupA handles A record queries.
 // Format: sNNN.{domain} where NNN is a shard number (001-025)
 // For box names, returns the CNAME and chases it to get the A record.
-// For *.xterm.{boxHost}, returns the base public IP (shard 1).
-// For the base domain ({boxHost}), returns the base public IP (shard 1).
+// For *.xterm.{boxHost}, returns the lobby IP.
+// For the base domain ({boxHost}), returns the lobby IP.
 func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
-	// Check for base domain (exe.xyz) - return shard 1 IP for web redirect
+	// Check for base domain (exe.xyz) - return lobby IP
 	if qname == s.boxHost {
-		return s.lookupShardA(ctx, 1, fqdn, class)
+		return s.lookupLobbyA(fqdn, class)
 	}
 
 	// Check for xterm/shelley wildcard (*.xterm.{boxHost} or *.shelley.{boxHost})
@@ -224,8 +234,8 @@ func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) 
 	xtermSuffix := ".xterm." + s.boxHost
 	shelleySuffix := ".shelley." + s.boxHost
 	if strings.HasSuffix(qname, xtermSuffix) || strings.HasSuffix(qname, shelleySuffix) {
-		// Return shard 1 (base public IP) for all xterm/shelley subdomains
-		return s.lookupShardA(ctx, 1, fqdn, class)
+		// Return lobby IP for all xterm/shelley subdomains
+		return s.lookupLobbyA(fqdn, class)
 	}
 
 	// Parse shard from name (e.g., "s001.exe.xyz" -> shard 1)
@@ -268,6 +278,19 @@ func (s *Server) lookupShardA(ctx context.Context, shard int, fqdn string, class
 		&dns.A{
 			Hdr: dns.Header{Name: fqdn, Class: class, TTL: 300},
 			A:   ip.To4(),
+		},
+	}, nil
+}
+
+// lookupLobbyA returns an A record for the lobby IP (apex domain, xterm, shelley).
+func (s *Server) lookupLobbyA(fqdn string, class uint16) ([]dns.RR, error) {
+	if !s.lobbyIP.IsValid() {
+		return nil, nil
+	}
+	return []dns.RR{
+		&dns.A{
+			Hdr: dns.Header{Name: fqdn, Class: class, TTL: 300},
+			A:   s.lobbyIP.AsSlice(),
 		},
 	}, nil
 }

@@ -252,6 +252,9 @@ type Server struct {
 	piperdPort int // what port sshpiperd is listening on, typically 2222
 	// PublicIPs maps private (local address) IPs to public IP / domain / shard.
 	PublicIPs map[netip.Addr]publicips.PublicIP
+	// LobbyIP is the public IP for the lobby/REPL (ssh exe.dev), not associated with any shard.
+	// Used for the apex domain (exe.xyz) DNS resolution.
+	LobbyIP netip.Addr
 
 	// ready indicates that the server is fully ready and serving.
 	// ready must not be waited on prior to calling Start.
@@ -948,6 +951,8 @@ func (s *Server) initShardIPs(ctx context.Context) {
 			return
 		}
 		s.PublicIPs = ips
+		// For local dev, use 127.21.0.0 as the lobby IP
+		s.LobbyIP = netip.AddrFrom4([4]byte{127, 21, 0, 0})
 		return
 	}
 
@@ -1003,9 +1008,10 @@ func (s *Server) loadPublicIPsFromDB(ctx context.Context) (map[netip.Addr]public
 	for _, mapping := range ec2Mappings {
 		info, ok := publicToShard[mapping.Public]
 		if !ok {
-			// In practice, as of 2026-01-21, this happens for a shard "0" IP
-			// address we have allocated exed that we have not given a shard number.
-			s.slog().WarnContext(ctx, "public IP from EC2 metadata not in ip_shards table", "public_ip", mapping.Public)
+			// This is the lobby IP - the public IP for ssh exe.dev / exe.xyz apex domain,
+			// not associated with any box shard.
+			s.LobbyIP = mapping.Public
+			s.slog().InfoContext(ctx, "discovered lobby IP (no shard)", "public_ip", mapping.Public)
 			continue
 		}
 		result[mapping.Private] = info
@@ -2355,6 +2361,11 @@ func (s *Server) Start() error {
 	}
 
 	s.initShardIPs(ctx)
+
+	// Pass lobby IP to DNS server for apex domain resolution
+	if s.dnsServer != nil && s.LobbyIP.IsValid() {
+		s.dnsServer.SetLobbyIP(s.LobbyIP)
+	}
 
 	// Populate ip_shards table and validate (after initShardIPs populates PublicIPs)
 	if s.dnsServer != nil && len(s.PublicIPs) > 0 {

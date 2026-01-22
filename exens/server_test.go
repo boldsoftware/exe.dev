@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net"
+	"net/netip"
 	"path/filepath"
 	"testing"
 
@@ -177,7 +178,7 @@ func TestXtermWildcardA(t *testing.T) {
 	ctx := context.Background()
 	log := tslog.Slogger(t)
 
-	// Add shard 1 IP (the base IP)
+	// Add shard 1 IP (for box resolution, not used for xterm/shelley/apex)
 	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 		return queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
@@ -189,7 +190,9 @@ func TestXtermWildcardA(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	lobbyIP := netip.MustParseAddr("10.0.0.100")
 	server := NewServer(db, log, "exe.xyz", "exe.dev")
+	server.SetLobbyIP(lobbyIP)
 
 	// Test wildcard xterm subdomain
 	t.Run("WildcardXterm", func(t *testing.T) {
@@ -205,8 +208,8 @@ func TestXtermWildcardA(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected *dns.A, got %T", rrs[0])
 		}
-		if a.A.String() != "10.0.0.1" {
-			t.Errorf("expected 10.0.0.1, got %s", a.A.String())
+		if a.A.String() != "10.0.0.100" {
+			t.Errorf("expected 10.0.0.100 (lobby IP), got %s", a.A.String())
 		}
 	})
 
@@ -221,8 +224,8 @@ func TestXtermWildcardA(t *testing.T) {
 		}
 
 		a := rrs[0].(*dns.A)
-		if a.A.String() != "10.0.0.1" {
-			t.Errorf("expected 10.0.0.1, got %s", a.A.String())
+		if a.A.String() != "10.0.0.100" {
+			t.Errorf("expected 10.0.0.100 (lobby IP), got %s", a.A.String())
 		}
 	})
 
@@ -240,14 +243,15 @@ func TestXtermWildcardA(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected *dns.A, got %T", rrs[0])
 		}
-		if a.A.String() != "10.0.0.1" {
-			t.Errorf("expected 10.0.0.1, got %s", a.A.String())
+		if a.A.String() != "10.0.0.100" {
+			t.Errorf("expected 10.0.0.100 (lobby IP), got %s", a.A.String())
 		}
 	})
 
 	// Test staging domain
 	t.Run("StagingXterm", func(t *testing.T) {
 		stagingServer := NewServer(db, log, "exe-staging.xyz", "exe-staging.dev")
+		stagingServer.SetLobbyIP(lobbyIP)
 
 		rrs, err := stagingServer.lookupA(ctx, "test.xterm.exe-staging.xyz", "test.xterm.exe-staging.xyz.", dns.ClassINET)
 		if err != nil {
@@ -258,7 +262,7 @@ func TestXtermWildcardA(t *testing.T) {
 		}
 	})
 
-	// Test base domain A record (exe.xyz -> shard 1 IP)
+	// Test base domain A record (exe.xyz -> lobby IP)
 	t.Run("BaseDomain", func(t *testing.T) {
 		rrs, err := server.lookupA(ctx, "exe.xyz", "exe.xyz.", dns.ClassINET)
 		if err != nil {
@@ -272,8 +276,8 @@ func TestXtermWildcardA(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected *dns.A, got %T", rrs[0])
 		}
-		if a.A.String() != "10.0.0.1" {
-			t.Errorf("expected 10.0.0.1, got %s", a.A.String())
+		if a.A.String() != "10.0.0.100" {
+			t.Errorf("expected 10.0.0.100 (lobby IP), got %s", a.A.String())
 		}
 	})
 }
@@ -529,6 +533,7 @@ func TestDNSServerIntegration(t *testing.T) {
 	// Start a custom DNS server on a high port for testing
 	mux := dns.NewServeMux()
 	server := NewServer(db, log, "exe.xyz", "exe.dev")
+	server.SetLobbyIP(netip.MustParseAddr("192.168.0.1")) // lobby IP for testing
 	mux.HandleFunc(".", server.handleDNS)
 
 	// Find an available port
@@ -649,9 +654,9 @@ func TestDNSServerIntegration(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected A record, got %T", resp.Answer[0])
 		}
-		// Should return shard 1 IP (192.168.1.1 from test setup)
-		if a.A.String() != "192.168.1.1" {
-			t.Errorf("expected 192.168.1.1, got %s", a.A.String())
+		// Should return lobby IP (192.168.0.1 from test setup)
+		if a.A.String() != "192.168.0.1" {
+			t.Errorf("expected 192.168.0.1, got %s", a.A.String())
 		}
 	})
 
@@ -671,9 +676,9 @@ func TestDNSServerIntegration(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected A record, got %T", resp.Answer[0])
 		}
-		// Should return shard 1 IP (192.168.1.1 from test setup)
-		if a.A.String() != "192.168.1.1" {
-			t.Errorf("expected 192.168.1.1, got %s", a.A.String())
+		// Should return lobby IP (192.168.0.1 from test setup)
+		if a.A.String() != "192.168.0.1" {
+			t.Errorf("expected 192.168.0.1, got %s", a.A.String())
 		}
 	})
 
