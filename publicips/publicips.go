@@ -68,6 +68,26 @@ type ipMapping struct {
 	private netip.Addr
 }
 
+// IPMapping describes a public/private IPv4 address pair from EC2 metadata.
+type IPMapping struct {
+	Public  netip.Addr
+	Private netip.Addr
+}
+
+// EC2IPMappings queries EC2 metadata to get (public, private) IP pairs.
+// This does NOT do any DNS lookups. Returns nil if not running on EC2.
+func EC2IPMappings(ctx context.Context) ([]IPMapping, error) {
+	mappings, err := ec2IPMappings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]IPMapping, len(mappings))
+	for i, m := range mappings {
+		result[i] = IPMapping{Public: m.public, Private: m.private}
+	}
+	return result, nil
+}
+
 // ec2IPMappings queries EC2 metadata to get (public, private) IP pairs.
 // This does NOT do any DNS lookups. Returns nil if not running on EC2.
 func ec2IPMappings(ctx context.Context) ([]ipMapping, error) {

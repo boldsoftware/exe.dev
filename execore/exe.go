@@ -927,7 +927,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 }
 
 // initShardIPs sets up the IP resolver for mapping local IPs to public IP info.
-// DiscoverPublicIPs=true: use EC2 metadata to discover private->public IP mappings (required because EC2 has a 1:1 NAT).
+// DiscoverPublicIPs=true: use EC2 metadata + ip_shards DB table to discover private->public IP mappings.
 // DiscoverPublicIPs=false: use 127.21.0.x where x is the shard number.
 func (s *Server) initShardIPs(ctx context.Context) {
 	defer s.logIPResolver()
@@ -940,18 +940,82 @@ func (s *Server) initShardIPs(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	discoverIPs := publicips.EC2IPs // EC2 metadata-based discovery
 	if !s.env.DiscoverPublicIPs {
-		discoverIPs = publicips.LocalhostIPs // 127.21.0.x
 		s.slog().InfoContext(ctx, "using dev IP resolver", "box_host", s.env.BoxHost)
+		ips, err := publicips.LocalhostIPs(ctx, s.env.BoxHost)
+		if err != nil {
+			s.slog().ErrorContext(ctx, "localhost IP setup failed", "error", err)
+			return
+		}
+		s.PublicIPs = ips
+		return
 	}
 
-	ips, err := discoverIPs(ctx, s.env.BoxHost)
+	// Production: combine EC2 metadata with ip_shards DB table.
+	// EC2 metadata gives us private->public IP mappings.
+	// ip_shards table gives us public_ip->shard mappings.
+	ips, err := s.loadPublicIPsFromDB(ctx)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "public IP discovery failed", "error", err)
 		return
 	}
 	s.PublicIPs = ips
+}
+
+// loadPublicIPsFromDB loads PublicIPs by combining EC2 metadata with the ip_shards DB table.
+// This avoids DNS lookups which would create a circular dependency with the DNS server.
+func (s *Server) loadPublicIPsFromDB(ctx context.Context) (map[netip.Addr]publicips.PublicIP, error) {
+	// Get private->public IP mappings from EC2 metadata (no DNS lookups)
+	ec2Mappings, err := publicips.EC2IPMappings(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("EC2 metadata lookup failed: %w", err)
+	}
+	if len(ec2Mappings) == 0 {
+		return nil, fmt.Errorf("no EC2 IP mappings found (not running on EC2?)")
+	}
+
+	// Get shard->public_ip mappings from the database
+	dbShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListIPShards)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ip_shards: %w", err)
+	}
+	if len(dbShards) == 0 {
+		return nil, fmt.Errorf("ip_shards table is empty; populate it before starting")
+	}
+
+	// Build public_ip -> (shard, domain) lookup
+	publicToShard := make(map[netip.Addr]publicips.PublicIP, len(dbShards))
+	for _, row := range dbShards {
+		ip, err := netip.ParseAddr(row.PublicIp)
+		if err != nil {
+			s.slog().WarnContext(ctx, "invalid public IP in ip_shards", "shard", row.Shard, "ip", row.PublicIp, "error", err)
+			continue
+		}
+		publicToShard[ip] = publicips.PublicIP{
+			IP:     ip,
+			Domain: publicips.ShardSub(int(row.Shard)) + "." + s.env.BoxHost,
+			Shard:  int(row.Shard),
+		}
+	}
+
+	// Combine: for each EC2 mapping, look up the shard info by public IP
+	result := make(map[netip.Addr]publicips.PublicIP, len(ec2Mappings))
+	for _, mapping := range ec2Mappings {
+		info, ok := publicToShard[mapping.Public]
+		if !ok {
+			// In practice, as of 2026-01-21, this happens for a shard "0" IP
+			// address we have allocated exed that we have not given a shard number.
+			s.slog().WarnContext(ctx, "public IP from EC2 metadata not in ip_shards table", "public_ip", mapping.Public)
+			continue
+		}
+		result[mapping.Private] = info
+	}
+
+	if len(result) == 0 {
+		return nil, fmt.Errorf("no EC2 IPs matched ip_shards table")
+	}
+
+	return result, nil
 }
 
 func (s *Server) logIPResolver() {
@@ -2274,10 +2338,7 @@ func (s *Server) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start embedded DNS server FIRST, before initShardIPs.
-	// initShardIPs does DNS lookups for sNNN.exe.xyz to map public IPs to shards.
-	// Starting DNS first avoids a deadlock when NS records point to this server.
-	// The DNS server reads from the ip_shards DB table (populated on previous boots).
+	// Start embedded DNS server.
 	if s.dnsServer != nil && s.env.DiscoverPublicIPs {
 		dnsCtx, dnsCancel := context.WithTimeout(ctx, 10*time.Second)
 		privateIPs, err := publicips.EC2PrivateIPs(dnsCtx)
