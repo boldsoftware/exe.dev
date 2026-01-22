@@ -317,8 +317,8 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	}
 	rb.instanceCloned = true
 
-	// resize
-	if err = s.context.StorageManager.Expand(ctx, instanceID, req.Disk); err != nil {
+	// resize - pass resizeFilesystem=true since the filesystem is not mounted yet
+	if err = s.context.StorageManager.Expand(ctx, instanceID, req.Disk, true); err != nil {
 		return nil, status.Errorf(codes.Internal, "error resizing instance filesystem storage: %s", err)
 	}
 

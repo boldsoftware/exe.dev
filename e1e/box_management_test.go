@@ -16,6 +16,7 @@ import (
 
 	"exe.dev/bsdns/alley53"
 	"exe.dev/e1e/testinfra"
+	"exe.dev/stage"
 )
 
 // TestVanillaBox tests functionality of a vanilla box.
@@ -49,6 +50,48 @@ func TestVanillaBox(t *testing.T) {
 	})
 
 	waitForSSH(t, boxName, keyFile)
+
+	// Verify disk size is correct (block device and filesystem match configured size)
+	t.Run("disk_size", func(t *testing.T) {
+		noGolden(t)
+		expectedDiskBytes := uint64(stage.Test().DefaultDisk)
+
+		// Check block device size
+		out, err := boxSSHCommand(t, boxName, keyFile, "sudo", "blockdev", "--getsize64", "/dev/vda").CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to get block device size: %v\n%s", err, out)
+		}
+		var blockDevSize uint64
+		if _, err := fmt.Sscanf(string(out), "%d", &blockDevSize); err != nil {
+			t.Fatalf("failed to parse blockdev output: %v\n%s", err, out)
+		}
+		if blockDevSize < expectedDiskBytes {
+			t.Errorf("block device too small: got %d, want at least %d", blockDevSize, expectedDiskBytes)
+		}
+
+		// Check filesystem size using dumpe2fs (Block count * Block size)
+		out, err = boxSSHCommand(t, boxName, keyFile, "sudo", "dumpe2fs", "-h", "/dev/vda").CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to run dumpe2fs: %v\n%s", err, out)
+		}
+		var blockCount, blockSize uint64
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.HasPrefix(line, "Block count:") {
+				fmt.Sscanf(line, "Block count: %d", &blockCount)
+			} else if strings.HasPrefix(line, "Block size:") {
+				fmt.Sscanf(line, "Block size: %d", &blockSize)
+			}
+		}
+		if blockCount == 0 || blockSize == 0 {
+			t.Fatalf("failed to parse dumpe2fs output: blockCount=%d blockSize=%d\n%s", blockCount, blockSize, out)
+		}
+		fsSize := blockCount * blockSize
+		// Filesystem should be at least 99% of block device (small overhead for ext4 superblocks)
+		minExpectedFS := uint64(float64(blockDevSize) * 0.99)
+		if fsSize < minExpectedFS {
+			t.Errorf("filesystem too small: got %d, want at least %d (99%% of block device %d)", fsSize, minExpectedFS, blockDevSize)
+		}
+	})
 
 	// Ensure sudo hints are suppressed so golden output stays consistent
 	// regardless of whether previous sudo commands were run on this box during image creation.

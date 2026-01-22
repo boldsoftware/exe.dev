@@ -52,7 +52,9 @@ func (s *Service) GrowDisk(ctx context.Context, req *api.GrowDiskRequest) (*api.
 	)
 
 	// Expand the ZFS volume (this works while the VM is running)
-	if err := s.context.StorageManager.Expand(ctx, req.ID, newSize); err != nil {
+	// Pass resizeFilesystem=false since the filesystem is mounted inside the running VM
+	// The user must run resize2fs /dev/vda from inside the VM after restarting
+	if err := s.context.StorageManager.Expand(ctx, req.ID, newSize, false); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to expand disk: %v", err))
 	}
 

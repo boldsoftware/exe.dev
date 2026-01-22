@@ -188,7 +188,7 @@ func Test() Env {
 		ProxyPorts: nil, // no proxy ports in tests to avoid conflicts
 
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
-		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
+		DefaultDisk:   11 * 1000 * 1000 * 1000, // 11GB
 
 		StripeAPIKey: billing.TestAPIKey,
 	}
