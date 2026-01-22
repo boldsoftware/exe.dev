@@ -1,31 +1,11 @@
 default: build-exeuntu
 
-# Build shelley for the current platform
-build-shelley:
-	@echo "Building shelley..."
-	@cd ../shelley && make build-linux
-	@cp ../shelley/bin/shelley-linux shelley
-	@echo "✓ Shelley built"
-
 build-exeuntu: build-shelley ## Build the exeuntu Docker image locally
 	@echo "Building exeuntu Docker image..."
 	docker build -t ghcr.io/boldsoftware/exeuntu:latest .
 	@echo "✓ Image built locally as ghcr.io/boldsoftware/exeuntu:latest"
 
-push-local-exeuntu: build-exeuntu ## Build and push exeuntu image to local lima-exe-ctr
-	@echo "Loading image into lima-exe-ctr..."
-	@docker save ghcr.io/boldsoftware/exeuntu:latest | ssh lima-exe-ctr 'sudo nerdctl --namespace=exe load'
-
 build: build-exeuntu
-
-push-exeuntu: build-exeuntu ## Build and push exeuntu image to GitHub Container Registry
-	@echo "Pushing exeuntu image to GitHub Container Registry..."
-	@echo "Note: You need to be logged in to ghcr.io first:"
-	@echo "  echo \$$GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin"
-	@docker push ghcr.io/boldsoftware/exeuntu:latest
-	@echo "✓ Image pushed to ghcr.io/boldsoftware/exeuntu:latest"
-
-push: push-exeuntu ## Build and push image to GitHub Container Registry
 
 run: build-exeuntu
 	docker run -it \
