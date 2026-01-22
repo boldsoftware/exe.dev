@@ -2,10 +2,9 @@ package slogslack
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"time"
-
-	"log/slog"
 
 	slogcommon "github.com/samber/slog-common"
 	"github.com/slack-go/slack"
