@@ -34,7 +34,7 @@ func (s *Service) getInstance(ctx context.Context, id string) (*api.Instance, er
 		return nil, fmt.Errorf("%w: instance %s", api.ErrNotFound, id)
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil
 	}
 	i := &api.Instance{}
 	if err := i.Unmarshal(data); err != nil {
