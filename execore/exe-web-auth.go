@@ -1636,10 +1636,10 @@ func (s *Server) handleTakeMyMoney(w http.ResponseWriter, r *http.Request) {
 	if isPaying {
 		// Already paying - show "you're set" message
 		s.renderTemplate(ctx, w, "take-my-money.html", struct {
-			WebHost       string
+			stage.Env
 			AlreadyPaying bool
 		}{
-			WebHost:       s.env.WebHost,
+			Env:           s.env,
 			AlreadyPaying: true,
 		})
 		return
@@ -1664,14 +1664,39 @@ func (s *Server) handleTakeMyMoney(w http.ResponseWriter, r *http.Request) {
 
 	// GET - show info page
 	s.renderTemplate(ctx, w, "take-my-money.html", struct {
-		WebHost       string
+		stage.Env
 		AlreadyPaying bool
 		IsFreeUser    bool
 	}{
-		WebHost:       s.env.WebHost,
+		Env:           s.env,
 		AlreadyPaying: false,
 		IsFreeUser:    isFreeUser,
 	})
+}
+
+// getOrCreatePendingAccount ensures a pending account exists for the user.
+// Returns the account ID, or empty string if the user already has an active account.
+func (s *Server) getOrCreatePendingAccount(ctx context.Context, userID string) (accountID string, err error) {
+	existingAccount, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
+	if err == nil && existingAccount.BillingStatus == "pending" {
+		return existingAccount.ID, nil
+	}
+	if err == nil {
+		// User has an active account
+		return "", nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	// Create new account record
+	accountID = "exe_" + rand.Text()[:16]
+	if err := withTx1(s, ctx, (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
+		ID:        accountID,
+		CreatedBy: userID,
+	}); err != nil {
+		return "", err
+	}
+	return accountID, nil
 }
 
 // processTakeMyMoneySubscription creates a Stripe checkout session for voluntary billing.
@@ -1681,29 +1706,14 @@ func (s *Server) processTakeMyMoneySubscription(w http.ResponseWriter, r *http.R
 	// Notify Slack
 	s.slackFeed.TakeMyMoney(ctx, email)
 
-	// Check/create pending account (reuse existing pending account if any)
-	existingAccount, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
-	var accountID string
-	if err == nil && existingAccount.BillingStatus == "pending" {
-		// Reuse existing pending account
-		accountID = existingAccount.ID
-	} else if errors.Is(err, sql.ErrNoRows) {
-		// Create new account record
-		accountID = "exe_" + rand.Text()[:16]
-		if err := withTx1(s, ctx, (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-			ID:        accountID,
-			CreatedBy: userID,
-		}); err != nil {
-			s.slog().ErrorContext(ctx, "failed to create account", "error", err)
-			http.Error(w, "failed to create account", http.StatusInternalServerError)
-			return
-		}
-	} else if err != nil {
-		s.slog().ErrorContext(ctx, "failed to check existing account", "error", err)
-		http.Error(w, "failed to check billing status", http.StatusInternalServerError)
+	accountID, err := s.getOrCreatePendingAccount(ctx, userID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to create account", "error", err)
+		http.Error(w, "failed to create account", http.StatusInternalServerError)
 		return
-	} else {
-		// User has an active account - shouldn't happen, redirect to dashboard
+	}
+	if accountID == "" {
+		// User already has active account
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
