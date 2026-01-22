@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	DefaultModel    = "gemini-2.5-pro-preview-03-25"
+	DefaultModel    = "gemini-2.5-pro"
 	GeminiAPIKeyEnv = "GEMINI_API_KEY"
 )
 
@@ -210,13 +210,16 @@ func (s *Service) buildGeminiRequest(req *llm.Request) (*gemini.Request, error) 
 				slog.DebugContext(context.Background(), "gemini_preparing_tool_use",
 					"tool_name", c.ToolName,
 					"tool_id", c.ID,
-					"input", string(c.ToolInput))
+					"input", string(c.ToolInput),
+					"thought_signature", c.Signature)
 
 				content.Parts = append(content.Parts, gemini.Part{
 					FunctionCall: &gemini.FunctionCall{
 						Name: c.ToolName,
 						Args: args,
 					},
+					// Gemini 3 requires thought signatures to be passed back for function calls
+					ThoughtSignature: c.Signature,
 				})
 			case llm.ContentTypeToolResult:
 				// Tool result becomes a function response
@@ -320,15 +323,16 @@ func convertGeminiResponseToContent(res *gemini.Response) []llm.Content {
 		if part.Text != "" {
 			// Simple text response
 			contents = append(contents, llm.Content{
-				Type: llm.ContentTypeText,
-				Text: part.Text,
+				Type:      llm.ContentTypeText,
+				Text:      part.Text,
+				Signature: part.ThoughtSignature, // Capture thought signature for text parts too
 			})
 		} else if part.FunctionCall != nil {
 			// Function call (tool use)
 			args, err := json.Marshal(part.FunctionCall.Args)
 			if err != nil {
 				// If we can't marshal, use empty args
-				slog.DebugContext(context.Background(), "gemini_failed_to_markshal_args",
+				slog.DebugContext(context.Background(), "gemini_failed_to_marshal_args",
 					"tool_name", part.FunctionCall.Name,
 					"args", string(args),
 					"err", err.Error(),
@@ -345,12 +349,15 @@ func convertGeminiResponseToContent(res *gemini.Response) []llm.Content {
 				Type:      llm.ContentTypeToolUse,
 				ToolName:  part.FunctionCall.Name,
 				ToolInput: json.RawMessage(args),
+				// Capture thought signature - required for Gemini 3 function calling
+				Signature: part.ThoughtSignature,
 			})
 
 			slog.DebugContext(context.Background(), "gemini_tool_call",
 				"tool_id", toolID,
 				"tool_name", part.FunctionCall.Name,
-				"args", string(args))
+				"args", string(args),
+				"thought_signature", part.ThoughtSignature)
 		} else if part.FunctionResponse != nil {
 			// We shouldn't normally get function responses from the model, but just in case
 			respData, _ := json.Marshal(part.FunctionResponse.Response)
@@ -446,9 +453,11 @@ func (s *Service) TokenContextWindow() int {
 
 	// Gemini models generally have large context windows
 	switch model {
-	case "gemini-2.5-pro-preview-03-25":
-		return 1000000 // 1M tokens for Gemini 2.5 Pro
-	case "gemini-2.0-flash-exp":
+	case "gemini-3-pro-preview", "gemini-3-flash-preview":
+		return 1000000 // 1M tokens for Gemini 3
+	case "gemini-2.5-pro", "gemini-2.5-flash":
+		return 1000000 // 1M tokens for Gemini 2.5
+	case "gemini-2.0-flash-exp", "gemini-2.0-flash":
 		return 1000000 // 1M tokens for Gemini 2.0 Flash
 	case "gemini-1.5-pro", "gemini-1.5-pro-latest":
 		return 2000000 // 2M tokens for Gemini 1.5 Pro

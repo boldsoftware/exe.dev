@@ -372,13 +372,33 @@ func TestTokenContextWindow(t *testing.T) {
 		expected int
 	}{
 		{
-			name:     "gemini-2.5-pro-preview-03-25",
-			model:    "gemini-2.5-pro-preview-03-25",
+			name:     "gemini-3-pro-preview",
+			model:    "gemini-3-pro-preview",
+			expected: 1000000,
+		},
+		{
+			name:     "gemini-3-flash-preview",
+			model:    "gemini-3-flash-preview",
+			expected: 1000000,
+		},
+		{
+			name:     "gemini-2.5-pro",
+			model:    "gemini-2.5-pro",
+			expected: 1000000,
+		},
+		{
+			name:     "gemini-2.5-flash",
+			model:    "gemini-2.5-flash",
 			expected: 1000000,
 		},
 		{
 			name:     "gemini-2.0-flash-exp",
 			model:    "gemini-2.0-flash-exp",
+			expected: 1000000,
+		},
+		{
+			name:     "gemini-2.0-flash",
+			model:    "gemini-2.0-flash",
 			expected: 1000000,
 		},
 		{

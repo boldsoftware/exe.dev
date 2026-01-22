@@ -228,6 +228,38 @@ func All() []Model {
 			},
 		},
 		{
+			ID:              "gemini-3-pro",
+			Provider:        ProviderGemini,
+			Description:     "Gemini 3 Pro",
+			RequiredEnvVars: []string{"GEMINI_API_KEY"},
+			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
+				if config.GeminiAPIKey == "" {
+					return nil, fmt.Errorf("gemini-3-pro requires GEMINI_API_KEY")
+				}
+				svc := &gem.Service{APIKey: config.GeminiAPIKey, Model: "gemini-3-pro-preview", HTTPC: httpc}
+				if url := config.getGeminiURL(); url != "" {
+					svc.URL = url
+				}
+				return svc, nil
+			},
+		},
+		{
+			ID:              "gemini-3-flash",
+			Provider:        ProviderGemini,
+			Description:     "Gemini 3 Flash",
+			RequiredEnvVars: []string{"GEMINI_API_KEY"},
+			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
+				if config.GeminiAPIKey == "" {
+					return nil, fmt.Errorf("gemini-3-flash requires GEMINI_API_KEY")
+				}
+				svc := &gem.Service{APIKey: config.GeminiAPIKey, Model: "gemini-3-flash-preview", HTTPC: httpc}
+				if url := config.getGeminiURL(); url != "" {
+					svc.URL = url
+				}
+				return svc, nil
+			},
+		},
+		{
 			ID:              "gemini-2.5-pro",
 			Provider:        ProviderGemini,
 			Description:     "Gemini 2.5 Pro",
@@ -236,7 +268,23 @@ func All() []Model {
 				if config.GeminiAPIKey == "" {
 					return nil, fmt.Errorf("gemini-2.5-pro requires GEMINI_API_KEY")
 				}
-				svc := &gem.Service{APIKey: config.GeminiAPIKey, Model: gem.DefaultModel, HTTPC: httpc}
+				svc := &gem.Service{APIKey: config.GeminiAPIKey, Model: "gemini-2.5-pro", HTTPC: httpc}
+				if url := config.getGeminiURL(); url != "" {
+					svc.URL = url
+				}
+				return svc, nil
+			},
+		},
+		{
+			ID:              "gemini-2.5-flash",
+			Provider:        ProviderGemini,
+			Description:     "Gemini 2.5 Flash",
+			RequiredEnvVars: []string{"GEMINI_API_KEY"},
+			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
+				if config.GeminiAPIKey == "" {
+					return nil, fmt.Errorf("gemini-2.5-flash requires GEMINI_API_KEY")
+				}
+				svc := &gem.Service{APIKey: config.GeminiAPIKey, Model: "gemini-2.5-flash", HTTPC: httpc}
 				if url := config.getGeminiURL(); url != "" {
 					svc.URL = url
 				}

@@ -50,6 +50,9 @@ type Part struct {
 	FunctionResponse    *FunctionResponse    `json:"functionResponse,omitempty"`
 	ExecutableCode      *ExecutableCode      `json:"executableCode,omitempty"`
 	CodeExecutionResult *CodeExecutionResult `json:"codeExecutionResult,omitempty"`
+	// ThoughtSignature is required for Gemini 3 models when using function calling.
+	// It must be passed back exactly as received when sending the conversation history.
+	ThoughtSignature string `json:"thoughtSignature,omitempty"`
 	// TODO inlineData
 	// TODO fileData
 }
