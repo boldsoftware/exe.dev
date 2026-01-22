@@ -137,7 +137,9 @@ func (s *Server) setupHTTPSServer() {
 
 	s.slog().Info("set up wildcard TLS certificates with Route 53", "decision", s.env.UseRoute53, "stage", s.env.String())
 	if s.env.UseRoute53 {
-		wildcardDomains := []string{s.env.WebHost, s.env.BoxHost, s.env.BoxSub("xterm"), s.env.BoxSub("shelley")}
+		// Only use DNS-01 wildcards for BoxHost (exe.xyz) domains.
+		// WebHost (exe.dev) uses standard autocert with TLS-ALPN-01.
+		wildcardDomains := []string{s.env.BoxHost, s.env.BoxSub("xterm"), s.env.BoxSub("shelley")}
 		wildcardDomains = dedupInPlace(wildcardDomains)
 		wildcardDomains = domz.FilterEmpty(wildcardDomains)
 		s.wildcardCertManager = route53.NewWildcardCertManager(
@@ -333,8 +335,8 @@ func (s *Server) validateHostForTLSCert(ctx context.Context, host string) error 
 // getCertificate is the single TLS certificate dispatcher for HTTPS.
 // It serves:
 // - Tailscale node certificate for the machine's Tailscale DNS name
-// - Wildcard exe.dev certificates (via Route 53 DNS-01) when configured
-// - Standard autocert for exe.dev when wildcard manager is not configured
+// - Wildcard exe.xyz certificates (via Route 53 DNS-01) when configured
+// - Standard autocert for exe.dev and custom domains
 func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if hello == nil || hello.ServerName == "" {
 		return nil, fmt.Errorf("no server name provided")
@@ -351,8 +353,8 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 		return cert, nil
 	}
 
-	// 2) Main domain handling
-	if domz.FirstMatch(serverName, s.env.BoxHost, s.env.WebHost) != "" {
+	// 2) BoxHost (exe.xyz) uses wildcard certs via DNS-01
+	if domz.FirstMatch(serverName, s.env.BoxHost) != "" {
 		if s.wildcardCertManager != nil {
 			cert, err := s.wildcardCertManager.GetCertificate(hello)
 			if errors.Is(err, route53.ErrUnrecognizedDomain) {
@@ -363,8 +365,10 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 			return cert, err
 		}
 
-		// fall through to standard autocert for custom domains
+		// fall through to standard autocert
 	}
+
+	// 3) WebHost (exe.dev) and custom domains use standard autocert (TLS-ALPN-01)
 
 	if s.certManager == nil {
 		s.slog().Error("no certificate manager configured; was https enabled at startup?", "serverName", serverName)
