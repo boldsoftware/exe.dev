@@ -95,29 +95,33 @@ func (s *Service) Start(ctx context.Context) error {
 		}
 	}
 
-	// Apply connection limits and bandwidth limits for existing running instances
-	for _, i := range instances {
-		// Skip stopped instances - they don't have TAP devices
-		if i.State == api.VMState_STOPPED || i.State == api.VMState_CREATING {
-			continue
-		}
-
-		if i.VMConfig != nil && i.VMConfig.NetworkInterface != nil && i.VMConfig.NetworkInterface.IP != nil {
-			ipStr := i.VMConfig.NetworkInterface.IP.IPV4
-			ip, _, err := net.ParseCIDR(ipStr)
-			if err != nil {
-				s.log.WarnContext(ctx, "failed to parse instance IP", "instance", i.ID, "ip", ipStr, "error", err)
+	// Apply connection limits and bandwidth limits in the background.
+	// This allows the gRPC server to start faster.
+	go func() {
+		for _, i := range instances {
+			// Skip stopped instances - they don't have TAP devices
+			if i.State == api.VMState_STOPPED || i.State == api.VMState_CREATING {
 				continue
 			}
-			if err := s.context.NetworkManager.ApplyConnectionLimit(ctx, ip.String()); err != nil {
-				s.log.WarnContext(ctx, "failed to apply connection limit", "instance", i.ID, "ip", ip.String(), "error", err)
+
+			if i.VMConfig != nil && i.VMConfig.NetworkInterface != nil && i.VMConfig.NetworkInterface.IP != nil {
+				ipStr := i.VMConfig.NetworkInterface.IP.IPV4
+				ip, _, err := net.ParseCIDR(ipStr)
+				if err != nil {
+					s.log.WarnContext(ctx, "failed to parse instance IP", "instance", i.ID, "ip", ipStr, "error", err)
+					continue
+				}
+				if err := s.context.NetworkManager.ApplyConnectionLimit(ctx, ip.String()); err != nil {
+					s.log.WarnContext(ctx, "failed to apply connection limit", "instance", i.ID, "ip", ip.String(), "error", err)
+				}
+			}
+			// Apply bandwidth limit to existing TAP device
+			if err := s.context.NetworkManager.ApplyBandwidthLimit(ctx, i.ID); err != nil {
+				s.log.WarnContext(ctx, "failed to apply bandwidth limit", "instance", i.ID, "error", err)
 			}
 		}
-		// Apply bandwidth limit to existing TAP device
-		if err := s.context.NetworkManager.ApplyBandwidthLimit(ctx, i.ID); err != nil {
-			s.log.WarnContext(ctx, "failed to apply bandwidth limit", "instance", i.ID, "error", err)
-		}
-	}
+		s.log.InfoContext(ctx, "background network limits applied", "count", len(instances))
+	}()
 
 	// Recover existing SSH proxies from disk
 	// This will find existing socat processes and adopt them, or restart dead ones
