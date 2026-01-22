@@ -26,6 +26,7 @@ import (
 	"exe.dev/exelet/network/nat"
 	"exe.dev/exelet/services"
 	computeservice "exe.dev/exelet/services/compute"
+	replicationservice "exe.dev/exelet/services/replication"
 	resourcemanagerservice "exe.dev/exelet/services/resourcemanager"
 	storageservice "exe.dev/exelet/services/storage"
 	"exe.dev/exelet/storage"
@@ -169,6 +170,49 @@ func main() {
 			Value:   "",
 			EnvVars: []string{"EXELET_STAGE"},
 		},
+		&cli.BoolFlag{
+			Name:    "storage-replication-enabled",
+			Usage:   "enable storage replication",
+			EnvVars: []string{"EXELET_STORAGE_REPLICATION_ENABLED"},
+		},
+		&cli.DurationFlag{
+			Name:    "storage-replication-interval",
+			Usage:   "interval between replication cycles (e.g., 1h, 30m)",
+			Value:   config.DefaultReplicationInterval,
+			EnvVars: []string{"EXELET_STORAGE_REPLICATION_INTERVAL"},
+		},
+		&cli.StringFlag{
+			Name:    "storage-replication-target",
+			Usage:   "replication target URL (ssh://user@host/pool or file:///path)",
+			EnvVars: []string{"EXELET_STORAGE_REPLICATION_TARGET"},
+		},
+		&cli.StringFlag{
+			Name:    "storage-replication-ssh-key",
+			Usage:   "path to SSH private key (required for SSH targets)",
+			EnvVars: []string{"EXELET_STORAGE_REPLICATION_SSH_KEY"},
+		},
+		&cli.StringFlag{
+			Name:    "storage-replication-known-hosts",
+			Usage:   "path to known_hosts file for SSH host key verification (default: ~/.ssh/known_hosts)",
+			EnvVars: []string{"EXELET_STORAGE_REPLICATION_KNOWN_HOSTS"},
+		},
+		&cli.IntFlag{
+			Name:    "storage-replication-retention",
+			Usage:   "number of snapshots to keep on the target",
+			Value:   config.DefaultReplicationRetention,
+			EnvVars: []string{"EXELET_STORAGE_REPLICATION_RETENTION"},
+		},
+		&cli.StringFlag{
+			Name:    "storage-replication-bandwidth-limit",
+			Usage:   "maximum transfer rate (e.g., 100M, 1G)",
+			EnvVars: []string{"EXELET_STORAGE_REPLICATION_BANDWIDTH_LIMIT"},
+		},
+		&cli.BoolFlag{
+			Name:    "storage-replication-prune",
+			Usage:   "remove orphaned backups from target",
+			Value:   config.DefaultReplicationPrune,
+			EnvVars: []string{"EXELET_STORAGE_REPLICATION_PRUNE"},
+		},
 	}
 	app.Action = serveAction
 
@@ -220,6 +264,19 @@ func serveAction(clix *cli.Context) error {
 	idleThreshold := clix.Duration("idle-threshold")
 	enableHugepages := clix.Bool("enable-hugepages")
 	proxyBindIP := clix.String("proxy-bind-ip")
+	replicationEnabled := clix.Bool("storage-replication-enabled")
+	replicationInterval := clix.Duration("storage-replication-interval")
+	replicationTarget := clix.String("storage-replication-target")
+	replicationSSHKey := clix.String("storage-replication-ssh-key")
+	replicationKnownHosts := clix.String("storage-replication-known-hosts")
+	replicationRetention := clix.Int("storage-replication-retention")
+	replicationBandwidthLimit := clix.String("storage-replication-bandwidth-limit")
+	replicationPrune := clix.Bool("storage-replication-prune")
+
+	// Validate replication config
+	if replicationEnabled && replicationTarget == "" {
+		return fmt.Errorf("--storage-replication-target is required when replication is enabled")
+	}
 
 	cfg := &config.ExeletConfig{
 		Name:                        name,
@@ -239,6 +296,14 @@ func serveAction(clix *cli.Context) error {
 		IdleThreshold:               idleThreshold,
 		EnableHugepages:             enableHugepages,
 		ProxyBindIP:                 proxyBindIP,
+		ReplicationEnabled:          replicationEnabled,
+		ReplicationInterval:         replicationInterval,
+		ReplicationTarget:           replicationTarget,
+		ReplicationSSHKey:           replicationSSHKey,
+		ReplicationKnownHostsPath:   replicationKnownHosts,
+		ReplicationRetention:        replicationRetention,
+		ReplicationBandwidthLimit:   replicationBandwidthLimit,
+		ReplicationPrune:            replicationPrune,
 	}
 
 	opts := []exelet.ServerOpt{
@@ -314,6 +379,7 @@ func serveAction(clix *cli.Context) error {
 		func(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 			return storageSvc, nil
 		},
+		replicationservice.New,
 	}
 
 	if err := srv.Register(serviceContext, svcs); err != nil {

@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+package exe.replication.v1;
+
+option go_package = "exe.dev/pkg/api/exe/replication/v1";
+
+service ReplicationService {
+  // GetStatus returns current replicator status and queue
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+
+  // TriggerReplication triggers an immediate replication cycle
+  rpc TriggerReplication(TriggerReplicationRequest) returns (TriggerReplicationResponse);
+
+  // GetHistory streams recent replication history entries (deprecated: use ListRemoteSnapshots)
+  rpc GetHistory(GetHistoryRequest) returns (stream GetHistoryResponse);
+
+  // RestoreVolume restores a volume from a backup
+  rpc RestoreVolume(RestoreVolumeRequest) returns (RestoreVolumeResponse);
+
+  // ListSnapshots lists available snapshots for a volume
+  rpc ListSnapshots(ListSnapshotsRequest) returns (ListSnapshotsResponse);
+
+  // ListRemoteSnapshots lists all snapshots on the remote target across all volumes
+  rpc ListRemoteSnapshots(ListRemoteSnapshotsRequest) returns (stream ListRemoteSnapshotsResponse);
+}
+
+// Replication states
+enum ReplicationState {
+  REPLICATION_STATE_UNSPECIFIED = 0;
+  REPLICATION_STATE_IDLE = 1;
+  REPLICATION_STATE_PENDING = 2;
+  REPLICATION_STATE_SNAPSHOTTING = 3;
+  REPLICATION_STATE_SENDING = 4;
+  REPLICATION_STATE_COMPLETE = 5;
+  REPLICATION_STATE_FAILED = 6;
+}
+
+// Status messages
+message GetStatusRequest {}
+
+message GetStatusResponse {
+  ReplicatorStatus status = 1;
+}
+
+message ReplicatorStatus {
+  bool enabled = 1;
+  string target = 2;
+  string target_type = 3;  // "ssh" or "file"
+  int64 interval_seconds = 4;
+  int64 next_run_seconds = 5;  // Seconds until next scheduled run
+  int32 workers_busy = 6;
+  int32 workers_total = 7;
+  repeated QueueEntry queue = 8;
+}
+
+message QueueEntry {
+  string volume_id = 1;
+  string volume_name = 2;
+  ReplicationState state = 3;
+  double progress_percent = 4;  // 0-100
+  int64 bytes_transferred = 5;
+  int64 bytes_total = 6;
+  string error_message = 7;
+  int64 completed_at = 8;  // Unix timestamp, 0 if not completed
+}
+
+// Trigger messages
+message TriggerReplicationRequest {
+  string volume_id = 1;  // Optional: specific volume, empty for all
+}
+
+message TriggerReplicationResponse {
+  int32 queued_count = 1;
+  repeated string volume_ids = 2;
+}
+
+// History messages
+message GetHistoryRequest {
+  int32 limit = 1;  // Max entries to return, default 100
+}
+
+message GetHistoryResponse {
+  HistoryEntry entry = 1;
+}
+
+message HistoryEntry {
+  string volume_id = 1;
+  string volume_name = 2;
+  int64 started_at = 3;  // Unix timestamp
+  int64 completed_at = 4;  // Unix timestamp
+  int64 duration_ms = 5;
+  int64 bytes_transferred = 6;
+  bool success = 7;
+  string error_message = 8;
+  string snapshot_name = 9;
+  bool incremental = 10;
+}
+
+// Restore messages
+message RestoreVolumeRequest {
+  string target_ref = 1;  // Snapshot name or backup file path
+  string volume_id = 2;   // Target volume ID to restore to
+  bool force = 3;         // Overwrite existing volume if present
+}
+
+message RestoreVolumeResponse {
+  string volume_id = 1;
+  int64 bytes_restored = 2;
+}
+
+// ListSnapshots messages
+message ListSnapshotsRequest {
+  string volume_id = 1;  // Volume ID to list snapshots for
+}
+
+message ListSnapshotsResponse {
+  string volume_id = 1;
+  repeated SnapshotInfo local_snapshots = 2;   // Snapshots available locally
+  repeated SnapshotInfo remote_snapshots = 3;  // Snapshots available on remote target
+}
+
+message SnapshotInfo {
+  string name = 1;           // Snapshot name (e.g., repl-20240115T143022Z)
+  int64 created_at = 2;      // Unix timestamp of creation (if available)
+  int64 size_bytes = 3;      // Size in bytes (if available)
+  bool is_replication = 4;   // True if this is a replication snapshot (has repl- prefix)
+}
+
+// ListRemoteSnapshots messages
+message ListRemoteSnapshotsRequest {
+  int32 limit = 1;  // Max entries to return (0 for all)
+}
+
+message ListRemoteSnapshotsResponse {
+  string volume_id = 1;
+  SnapshotInfo snapshot = 2;
+}

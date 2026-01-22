@@ -79,6 +79,57 @@ func (s *Service) Instances(ctx context.Context) ([]*api.Instance, error) {
 	return s.listInstances(ctx)
 }
 
+// GetInstanceByID returns instance details by ID (for InstanceLookup interface)
+func (s *Service) GetInstanceByID(ctx context.Context, id string) (*api.Instance, error) {
+	return s.getInstance(ctx, id)
+}
+
+// StopInstanceByID stops an instance by ID (for InstanceLookup interface)
+func (s *Service) StopInstanceByID(ctx context.Context, id string) error {
+	// Check if instance is being migrated
+	if err := s.checkNotMigrating(id); err != nil {
+		return err
+	}
+
+	i, err := s.getInstance(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if i.State == api.VMState_STOPPED {
+		return nil // Already stopped
+	}
+
+	if i.State != api.VMState_RUNNING {
+		return fmt.Errorf("instance in invalid state to stop: %s", i.State)
+	}
+
+	return s.stopInstance(ctx, id)
+}
+
+// StartInstanceByID starts an instance by ID (for InstanceLookup interface)
+func (s *Service) StartInstanceByID(ctx context.Context, id string) error {
+	// Check if instance is being migrated
+	if err := s.checkNotMigrating(id); err != nil {
+		return err
+	}
+
+	i, err := s.getInstance(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if i.State == api.VMState_RUNNING {
+		return nil // Already running
+	}
+
+	if i.State != api.VMState_STOPPED {
+		return fmt.Errorf("instance in invalid state to start: %s", i.State)
+	}
+
+	return s.startInstance(ctx, id)
+}
+
 // GetInstanceByIP looks up an instance by its assigned IP address
 // TODO(philip): Beware that this is linear in number of instances,
 // and those are read from JSON files at the moment!

@@ -21,12 +21,20 @@ const (
 	StorageService Type = "exe.services.storage.v1"
 	// ResourceManagerService is the service that manages resource quotas and priorities
 	ResourceManagerService Type = "exe.services.resource_manager.v1"
+	// ReplicationService is the service that manages storage replication
+	ReplicationService Type = "exe.services.replication.v1"
 )
 
 // InstanceLookup provides a method to look up instances by IP address
 type InstanceLookup interface {
 	GetInstanceByIP(ctx context.Context, ip string) (id, name string, err error)
 	Instances(ctx context.Context) ([]*api.Instance, error)
+	// GetInstanceByID returns detailed information about a specific instance
+	GetInstanceByID(ctx context.Context, id string) (*api.Instance, error)
+	// StopInstanceByID stops a running instance
+	StopInstanceByID(ctx context.Context, id string) error
+	// StartInstanceByID starts a stopped instance
+	StartInstanceByID(ctx context.Context, id string) error
 }
 
 // ImageLoader provides image loading with singleflight coordination

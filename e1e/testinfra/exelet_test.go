@@ -52,7 +52,7 @@ func TestExelet(t *testing.T) {
 	go fakeExedProxy.Serve(t.Context())
 	defer fakeExedProxy.Close()
 
-	ei, err := StartExelet(t.Context(), exeletBinary, ctrHost, fakeExedProxy.Port(), testRunID, nil, false)
+	ei, err := StartExelet(t.Context(), exeletBinary, ctrHost, fakeExedProxy.Port(), testRunID, nil, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

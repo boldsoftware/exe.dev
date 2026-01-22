@@ -361,7 +361,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	if *flagVerboseExelet {
 		exeletLog = logFileFor("exelet")
 	}
-	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, ctrHost, exedHTTPProxy.Port(), testRunID, exeletLog, *flagVerbosePorts)
+	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, ctrHost, exedHTTPProxy.Port(), testRunID, exeletLog, *flagVerbosePorts, nil)
 	if err != nil {
 		return env, err
 	}

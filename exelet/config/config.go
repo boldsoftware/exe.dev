@@ -20,6 +20,13 @@ const (
 	// DefaultBootLogKeepBytes is how many bytes to keep after rotation (32 KB)
 	DefaultBootLogKeepBytes = 32 * 1024
 
+	// DefaultReplicationInterval is the default interval for storage replication
+	DefaultReplicationInterval = 1 * time.Hour
+	// DefaultReplicationRetention is the default number of snapshots to keep
+	DefaultReplicationRetention = 24
+	// DefaultReplicationPrune enables pruning orphaned backups by default
+	DefaultReplicationPrune = true
+
 	// DefaultNameserver is the default instance nameserver
 	DefaultNameserver = "1.1.1.1"
 
@@ -125,4 +132,21 @@ type ExeletConfig struct {
 	BootLogMaxBytes int64
 	// BootLogKeepBytes is how many bytes to keep after rotation
 	BootLogKeepBytes int64
+
+	// ReplicationEnabled enables storage replication
+	ReplicationEnabled bool
+	// ReplicationInterval is the interval between replication cycles
+	ReplicationInterval time.Duration
+	// ReplicationTarget is the target URL (ssh://user@host/pool or file:///path)
+	ReplicationTarget string
+	// ReplicationSSHKey is the path to the SSH private key for SSH targets
+	ReplicationSSHKey string
+	// ReplicationKnownHostsPath is the path to known_hosts for SSH host key verification (empty uses ~/.ssh/known_hosts)
+	ReplicationKnownHostsPath string
+	// ReplicationRetention is the number of snapshots to keep on the target
+	ReplicationRetention int
+	// ReplicationBandwidthLimit is the maximum transfer rate (e.g., "100M", "1G")
+	ReplicationBandwidthLimit string
+	// ReplicationPrune enables pruning orphaned backups from the target
+	ReplicationPrune bool
 }

@@ -26,6 +26,14 @@ import (
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
+// ReplicationConfig configures storage replication for an exelet.
+type ReplicationConfig struct {
+	Enabled   bool
+	Target    string        // e.g., "file:///path/to/backups"
+	Interval  time.Duration // e.g., 10*time.Second for fast tests
+	Retention int           // number of snapshots to keep
+}
+
 // ExeletInstance describes a single running exelet.
 type ExeletInstance struct {
 	Address      string                // e.g., "tcp://192.168.5.15:9080"
@@ -201,7 +209,9 @@ func parseAndCreateClient(ctx context.Context, grpcAddr, httpAddr, host string) 
 // logFile, if not nil, is a file to write logs to.
 //
 // logPorts is whether to log port numbers using slog.InfoContext.
-func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int, testRunID string, logFile io.Writer, logPorts bool) (ei *ExeletInstance, err error) {
+//
+// replication, if not nil, configures storage replication.
+func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int, testRunID string, logFile io.Writer, logPorts bool, replication *ReplicationConfig) (ei *ExeletInstance, err error) {
 	start := time.Now()
 	slog.InfoContext(ctx, "starting exelet", "ID", testRunID)
 
@@ -216,7 +226,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 
 	// For localhost, run exelet directly without SSH
 	if host == "localhost" {
-		return startExeletLocal(ctx, exeletBinary, exedPort, testRunID, logFile, logPorts, start)
+		return startExeletLocal(ctx, exeletBinary, exedPort, testRunID, logFile, logPorts, replication, start)
 	}
 
 	// Get the gateway address of the VM.
@@ -330,6 +340,17 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 		"--exed-url", exedProxyURL,
 		"--enable-hugepages",
 	}
+
+	// Add replication flags if configured
+	if replication != nil && replication.Enabled {
+		args = append(args,
+			"--storage-replication-enabled",
+			"--storage-replication-target", replication.Target,
+			"--storage-replication-interval", replication.Interval.String(),
+			"--storage-replication-retention", strconv.Itoa(replication.Retention),
+		)
+	}
+
 	slog.DebugContext(ctx, "starting exelet", "cmd", args)
 
 	exeletCtx, exeletCancel := context.WithCancel(ctx)
@@ -410,7 +431,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 }
 
 // startExeletLocal starts exelet locally (for CTR_HOST=localhost).
-func startExeletLocal(ctx context.Context, exeletBinary string, exedPort int, testRunID string, logFile io.Writer, logPorts bool, start time.Time) (*ExeletInstance, error) {
+func startExeletLocal(ctx context.Context, exeletBinary string, exedPort int, testRunID string, logFile io.Writer, logPorts bool, replication *ReplicationConfig, start time.Time) (*ExeletInstance, error) {
 	// For localhost, exelet can directly reach exed via localhost
 	exedProxyURL := fmt.Sprintf("http://localhost:%d", exedPort)
 	slog.InfoContext(ctx, "using localhost for exelet->exed", "port", exedPort)
@@ -434,6 +455,12 @@ func startExeletLocal(ctx context.Context, exeletBinary string, exedPort int, te
 
 	localCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --stage test --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s&disable_bandwidth=true" --proxy-port-min %d --proxy-port-max %d --resource-manager-interval 5s --idle-threshold 10m --exed-url %s --enable-hugepages`,
 		res.coverDir, exeletBinary, res.dataDir, res.dataDir, res.dataDir, res.zfsDataset, res.dataDir, res.bridgeName, encodedNetwork, res.proxyPortMin, res.proxyPortMax, exedProxyURL)
+
+	// Add replication flags if configured
+	if replication != nil && replication.Enabled {
+		localCmd += fmt.Sprintf(` --storage-replication-enabled --storage-replication-target %s --storage-replication-interval %s --storage-replication-retention %d`,
+			replication.Target, replication.Interval.String(), replication.Retention)
+	}
 
 	// Start exelet directly
 	exeletCtx, exeletCancel := context.WithCancel(ctx)

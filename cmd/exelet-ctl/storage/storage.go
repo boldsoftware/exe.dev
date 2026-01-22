@@ -4,6 +4,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"exe.dev/cmd/exelet-ctl/storage/filesystems"
+	"exe.dev/cmd/exelet-ctl/storage/replication"
 )
 
 var Command = &cli.Command{
@@ -11,5 +12,6 @@ var Command = &cli.Command{
 	Usage: "Manage Storage Resources",
 	Subcommands: []*cli.Command{
 		filesystems.Command,
+		replication.Command,
 	},
 }

@@ -80,8 +80,12 @@ ensure_packages() {
     apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get install -y -q \
         avahi-daemon \
+        libnss-mdns \
         socat \
         zfsutils-linux
+    # Ensure avahi-daemon is running for mDNS resolution
+    systemctl enable avahi-daemon
+    systemctl start avahi-daemon
 }
 
 ensure_ubuntu_user() {
@@ -96,6 +100,44 @@ prepare_directories() {
     mkdir -p /data /local "${ASSETS_DIR}"
     chmod 755 /data /local
     chown ubuntu:ubuntu "${ASSETS_DIR}"
+}
+
+setup_replication_ssh_key() {
+    # Generate a dedicated SSH key for storage replication between lima VMs
+    # This key is shared between exe-ctr and exe-ctr-tests so they can replicate to each other
+    local key_dir="/root/.ssh"
+    local key_path="${key_dir}/replication_ed25519"
+
+    mkdir -p "${key_dir}"
+    chmod 700 "${key_dir}"
+
+    if [ ! -f "${key_path}" ]; then
+        echo "Generating replication SSH key..."
+        ssh-keygen -t ed25519 -f "${key_path}" -N "" -C "exelet-replication@lima"
+    fi
+
+    # Add the public key to root's authorized_keys so other VMs can SSH in
+    local auth_keys="${key_dir}/authorized_keys"
+    local pub_key
+    pub_key="$(cat "${key_path}.pub")"
+
+    touch "${auth_keys}"
+    chmod 600 "${auth_keys}"
+
+    if ! grep -qF "${pub_key}" "${auth_keys}" 2>/dev/null; then
+        echo "${pub_key}" >>"${auth_keys}"
+        echo "Added replication key to authorized_keys"
+    fi
+
+    # Create a wrapper script that uses this key for replication targets
+    cat >/usr/local/bin/replication-ssh <<'EOFSCRIPT'
+#!/bin/bash
+# SSH wrapper for exelet replication - uses the dedicated replication key
+exec ssh -i /root/.ssh/replication_ed25519 -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$@"
+EOFSCRIPT
+    chmod +x /usr/local/bin/replication-ssh
+
+    echo "Replication SSH key configured at ${key_path}"
 }
 
 configure_hugepages() {
@@ -168,6 +210,10 @@ bootstrap_vm() {
     ensure_packages
     ensure_ubuntu_user
     prepare_directories
+    echo "=========================================="
+    echo "Configuring replication SSH keys"
+    echo "=========================================="
+    setup_replication_ssh_key
     echo "=========================================="
     echo "Configuring hugepages for Cloud Hypervisor"
     echo "=========================================="
