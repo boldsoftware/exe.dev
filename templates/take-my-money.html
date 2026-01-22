@@ -58,6 +58,18 @@
       <p class="text-zinc-400 text-sm mt-6">
         You'll be redirected to Stripe to enter your payment information.
       </p>
+      {{if .WebDev}}
+      <form method="POST" action="/take-my-money" class="mt-8 pt-6 border-t border-zinc-200">
+        <input type="hidden" name="dev_bypass" value="1" />
+        <button
+          type="submit"
+          class="inline-block px-4 py-2 bg-amber-500 text-white text-sm rounded hover:bg-amber-600 cursor-pointer"
+        >
+          Skip Stripe (Dev)
+        </button>
+        <p class="text-amber-600 text-xs mt-2">Dev mode only</p>
+      </form>
+      {{end}}
       {{end}}
     </main>
   </body>

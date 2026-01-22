@@ -394,15 +394,23 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Activate the account if we have a valid session_id.
+	// Activate the account if we have a valid session_id (or dev bypass).
 	// Verify the session with Stripe to prevent bypass attacks where users
 	// craft fake session_id parameters without completing checkout.
-	if sessionID != "" {
-		billingID, err := s.billing.VerifyCheckout(r.Context(), sessionID)
-		if err != nil {
-			s.slog().ErrorContext(r.Context(), "failed to verify checkout session", "error", err, "session_id", sessionID)
-			http.Error(w, "failed to verify billing", http.StatusBadRequest)
-			return
+	devBypass := s.env.WebDev && r.URL.Query().Get("dev_bypass") == "1"
+	if sessionID != "" || devBypass {
+		var billingID string
+		if devBypass {
+			billingID = "dev_bypass"
+			s.slog().InfoContext(r.Context(), "billing success: dev bypass", "user_id", userID)
+		} else {
+			var err error
+			billingID, err = s.billing.VerifyCheckout(r.Context(), sessionID)
+			if err != nil {
+				s.slog().ErrorContext(r.Context(), "failed to verify checkout session", "error", err, "session_id", sessionID)
+				http.Error(w, "failed to verify billing", http.StatusBadRequest)
+				return
+			}
 		}
 		if err := withTx1(s, r.Context(), (*exedb.Queries).ActivateAccount, userID); err != nil {
 			s.slog().ErrorContext(r.Context(), "failed to activate account", "error", err, "session_id", sessionID)
@@ -1715,6 +1723,12 @@ func (s *Server) processTakeMyMoneySubscription(w http.ResponseWriter, r *http.R
 	if accountID == "" {
 		// User already has active account
 		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	devBypass := s.env.WebDev && r.FormValue("dev_bypass") == "1"
+	if devBypass {
+		http.Redirect(w, r, "/billing/success?dev_bypass=1&source=take-my-money", http.StatusSeeOther)
 		return
 	}
 
