@@ -1,6 +1,6 @@
 -- name: CreateConversation :one
-INSERT INTO conversations (conversation_id, slug, user_initiated, cwd)
-VALUES (?, ?, ?, ?)
+INSERT INTO conversations (conversation_id, slug, user_initiated, cwd, model)
+VALUES (?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetConversation :one
@@ -102,3 +102,8 @@ ORDER BY created_at ASC;
 -- name: GetConversationBySlugAndParent :one
 SELECT * FROM conversations
 WHERE slug = ? AND parent_conversation_id = ?;
+
+-- name: UpdateConversationModel :exec
+UPDATE conversations
+SET model = ?
+WHERE conversation_id = ? AND model IS NULL;

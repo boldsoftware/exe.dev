@@ -50,7 +50,7 @@ func TestOrphanToolResultAfterCancellation(t *testing.T) {
 	server := NewServer(database, llmManager, toolSetConfig, logger, true, "", "predictable", "", nil)
 
 	// Create conversation
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestOrphanToolResultFiltering(t *testing.T) {
 
 	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
 
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}

@@ -82,6 +82,7 @@ func (cm *ConversationManager) SetAgentWorking(working bool) {
 	cm.agentWorking = working
 	onStateChange := cm.onStateChange
 	convID := cm.conversationID
+	modelID := cm.modelID
 	cm.mu.Unlock()
 
 	cm.logger.Debug("agent working state changed", "working", working)
@@ -89,6 +90,7 @@ func (cm *ConversationManager) SetAgentWorking(working bool) {
 		onStateChange(ConversationState{
 			ConversationID: convID,
 			Working:        working,
+			Model:          modelID,
 		})
 	}
 }
@@ -98,6 +100,13 @@ func (cm *ConversationManager) IsAgentWorking() bool {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	return cm.agentWorking
+}
+
+// GetModel returns the model ID used by this conversation.
+func (cm *ConversationManager) GetModel() string {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	return cm.modelID
 }
 
 // Hydrate loads conversation state from the database, generating a system prompt if missing.
@@ -133,6 +142,12 @@ func (cm *ConversationManager) Hydrate(ctx context.Context) error {
 	}
 	cm.cwd = cwd
 
+	// Load model from conversation if available
+	var modelID string
+	if conversation.Model != nil {
+		modelID = *conversation.Model
+	}
+
 	// Generate system prompt if missing:
 	// - For user-initiated conversations: full system prompt
 	// - For subagent conversations (has parent): minimal subagent prompt
@@ -162,8 +177,12 @@ func (cm *ConversationManager) Hydrate(ctx context.Context) error {
 	cm.hasConversationEvents = len(history) > 0
 	cm.lastActivity = time.Now()
 	cm.hydrated = true
+	cm.modelID = modelID
 	cm.mu.Unlock()
 
+	if modelID != "" {
+		cm.logger.Info("Loaded model from conversation", "model", modelID)
+	}
 	cm.logSystemPromptState(system, len(messages))
 
 	return nil
@@ -403,6 +422,8 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 		}
 		return nil
 	}
+	// Check if we need to persist the model (for conversations created before model column existed)
+	needsPersist := cm.modelID == "" && modelID != ""
 	cm.loop = loopInstance
 	cm.loopCancel = cancel
 	cm.loopCtx = processCtx
@@ -411,6 +432,13 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 	cm.history = nil
 	cm.system = nil
 	cm.mu.Unlock()
+
+	// Persist model for legacy conversations
+	if needsPersist {
+		if err := db.UpdateConversationModel(context.Background(), conversationID, modelID); err != nil {
+			logger.Error("failed to persist model for legacy conversation", "error", err)
+		}
+	}
 
 	go func() {
 		if err := loopInstance.Go(processCtx); err != nil && err != context.DeadlineExceeded && err != context.Canceled {

@@ -49,7 +49,7 @@ func TestConversationStateAfterServerRestart(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a conversation with some messages (simulating previous activity)
-	conv, err := database.CreateConversation(ctx, nil, true, nil)
+	conv, err := database.CreateConversation(ctx, nil, true, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create conversation: %v", err)
 	}
@@ -143,5 +143,100 @@ func TestConversationStateAfterServerRestart(t *testing.T) {
 	// Verify messages were loaded
 	if len(response.Messages) != 2 {
 		t.Errorf("Expected 2 messages, got %d", len(response.Messages))
+	}
+}
+
+// TestModelRestorationAfterServerRestart verifies that when a conversation is
+// resumed after a server restart, the model is correctly loaded from the database
+// and reported in the ConversationState.
+func TestModelRestorationAfterServerRestart(t *testing.T) {
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a conversation with a specific model
+	modelID := "claude-sonnet-4-20250514"
+	conv, err := database.CreateConversation(ctx, nil, true, nil, &modelID)
+	if err != nil {
+		t.Fatalf("Failed to create conversation: %v", err)
+	}
+
+	// Add a user message
+	userMsg := llm.Message{
+		Role:    llm.MessageRoleUser,
+		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Hello"}},
+	}
+	_, err = database.CreateMessage(ctx, db.CreateMessageParams{
+		ConversationID: conv.ConversationID,
+		Type:           db.MessageTypeUser,
+		LLMData:        userMsg,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create user message: %v", err)
+	}
+
+	// Add an agent message
+	agentMsg := llm.Message{
+		Role:      llm.MessageRoleAssistant,
+		Content:   []llm.Content{{Type: llm.ContentTypeText, Text: "Hi there!"}},
+		EndOfTurn: true,
+	}
+	_, err = database.CreateMessage(ctx, db.CreateMessageParams{
+		ConversationID: conv.ConversationID,
+		Type:           db.MessageTypeAgent,
+		LLMData:        agentMsg,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create agent message: %v", err)
+	}
+
+	// Create a NEW server (simulating server restart or different browser session)
+	predictableService := loop.NewPredictableService()
+	llmManager := &testLLMManager{service: predictableService}
+	toolSetConfig := claudetool.ToolSetConfig{EnableBrowser: false}
+	server := NewServer(database, llmManager, toolSetConfig, nil, true, "", "predictable", "", nil)
+
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	// Make a streaming request
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	req := httptest.NewRequest("GET", "/api/conversation/"+conv.ConversationID+"/stream", nil).WithContext(ctx)
+	req.Header.Set("Accept", "text/event-stream")
+
+	w := newResponseRecorderWithClose()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		mux.ServeHTTP(w, req)
+	}()
+
+	time.Sleep(500 * time.Millisecond)
+	w.Close()
+	cancel()
+	<-done
+
+	// Parse the first SSE message
+	body := w.Body.String()
+	if !strings.HasPrefix(body, "data: ") {
+		t.Fatalf("Expected SSE data, got: %s", body)
+	}
+
+	jsonData := strings.TrimPrefix(strings.Split(body, "\n")[0], "data: ")
+	var response StreamResponse
+	if err := json.Unmarshal([]byte(jsonData), &response); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// Verify conversation state includes the model from the database
+	if response.ConversationState == nil {
+		t.Fatal("Expected ConversationState in response")
+	}
+	if response.ConversationState.Model != modelID {
+		t.Errorf("Expected Model='%s', got '%s'", modelID, response.ConversationState.Model)
 	}
 }

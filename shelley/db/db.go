@@ -233,7 +233,7 @@ func WithTxRes[T any](db *DB, ctx context.Context, fn func(*generated.Queries) (
 // Conversation methods (moved from ConversationService)
 
 // CreateConversation creates a new conversation with an optional slug
-func (db *DB) CreateConversation(ctx context.Context, slug *string, userInitiated bool, cwd *string) (*generated.Conversation, error) {
+func (db *DB) CreateConversation(ctx context.Context, slug *string, userInitiated bool, cwd, model *string) (*generated.Conversation, error) {
 	conversationID, err := generateConversationID()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate conversation ID: %w", err)
@@ -246,6 +246,7 @@ func (db *DB) CreateConversation(ctx context.Context, slug *string, userInitiate
 			Slug:           slug,
 			UserInitiated:  userInitiated,
 			Cwd:            cwd,
+			Model:          model,
 		})
 		return err
 	})
@@ -357,6 +358,18 @@ func (db *DB) UpdateConversationCwd(ctx context.Context, conversationID, cwd str
 			ConversationID: conversationID,
 		})
 		return err
+	})
+}
+
+// UpdateConversationModel sets the model for a conversation that doesn't have one yet.
+// This is used to backfill the model for conversations created before the model column existed.
+func (db *DB) UpdateConversationModel(ctx context.Context, conversationID, model string) error {
+	return db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		q := generated.New(tx.Conn())
+		return q.UpdateConversationModel(ctx, generated.UpdateConversationModelParams{
+			Model:          &model,
+			ConversationID: conversationID,
+		})
 	})
 }
 

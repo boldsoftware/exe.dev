@@ -46,6 +46,7 @@ type APIMessage struct {
 type ConversationState struct {
 	ConversationID string `json:"conversation_id"`
 	Working        bool   `json:"working"`
+	Model          string `json:"model,omitempty"`
 }
 
 // ConversationWithState combines a conversation with its working state.

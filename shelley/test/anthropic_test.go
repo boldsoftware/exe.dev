@@ -72,7 +72,7 @@ func TestWithAnthropicAPI(t *testing.T) {
 		// Create a conversation
 		// Using database directly instead of service
 		slug := "claude-test"
-		conv, err := database.CreateConversation(context.Background(), &slug, true, nil)
+		conv, err := database.CreateConversation(context.Background(), &slug, true, nil, nil)
 		if err != nil {
 			t.Fatalf("Failed to create conversation: %v", err)
 		}
@@ -181,7 +181,7 @@ func TestWithAnthropicAPI(t *testing.T) {
 		// Create a conversation
 		// Using database directly instead of service
 		slug := "tool-test"
-		conv, err := database.CreateConversation(context.Background(), &slug, true, nil)
+		conv, err := database.CreateConversation(context.Background(), &slug, true, nil, nil)
 		if err != nil {
 			t.Fatalf("Failed to create conversation: %v", err)
 		}
@@ -247,7 +247,7 @@ func TestWithAnthropicAPI(t *testing.T) {
 		// Using database directly instead of service
 		// Using database directly instead of service
 		slug := "stream-test"
-		conv, err := database.CreateConversation(context.Background(), &slug, true, nil)
+		conv, err := database.CreateConversation(context.Background(), &slug, true, nil, nil)
 		if err != nil {
 			t.Fatalf("Failed to create conversation: %v", err)
 		}

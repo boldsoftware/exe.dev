@@ -54,7 +54,7 @@ func TestCancelWithPredictableModel(t *testing.T) {
 	server := NewServer(database, llmManager, toolSetConfig, logger, true, "", "predictable", "", nil)
 
 	// Create conversation
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestCancelWithNoActiveConversation(t *testing.T) {
 	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
 
 	// Create a conversation but don't start it
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestCancelDuringTextGeneration(t *testing.T) {
 	logger := slog.Default()
 	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
 
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}

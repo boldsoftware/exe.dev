@@ -17,6 +17,7 @@ type Conversation struct {
 	Cwd                  *string   `json:"cwd"`
 	Archived             bool      `json:"archived"`
 	ParentConversationID *string   `json:"parent_conversation_id"`
+	Model                *string   `json:"model"`
 }
 
 type LlmRequest struct {

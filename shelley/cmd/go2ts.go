@@ -91,6 +91,7 @@ type apiMessageForTS struct {
 type conversationStateForTS struct {
 	ConversationID string `json:"conversation_id"`
 	Working        bool   `json:"working"`
+	Model          string `json:"model,omitempty"`
 }
 
 type conversationWithStateForTS struct {
@@ -102,6 +103,7 @@ type conversationWithStateForTS struct {
 	Cwd                  *string `json:"cwd"`
 	Archived             bool    `json:"archived"`
 	ParentConversationID *string `json:"parent_conversation_id"`
+	Model                *string `json:"model"`
 	Working              bool    `json:"working"`
 }
 

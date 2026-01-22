@@ -706,7 +706,7 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 	if req.Cwd != "" {
 		cwdPtr = &req.Cwd
 	}
-	conversation, err := s.db.CreateConversation(ctx, nil, true, cwdPtr)
+	conversation, err := s.db.CreateConversation(ctx, nil, true, cwdPtr, &modelID)
 	if err != nil {
 		s.logger.Error("Failed to create conversation", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -854,6 +854,7 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 		ConversationState: &ConversationState{
 			ConversationID: conversationID,
 			Working:        manager.IsAgentWorking(),
+			Model:          manager.GetModel(),
 		},
 		ContextWindowSize: calculateContextWindowSize(apiMessages),
 	}

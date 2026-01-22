@@ -12,6 +12,7 @@ export interface Conversation {
   cwd: string | null;
   archived: boolean;
   parent_conversation_id: string | null;
+  model: string | null;
 }
 
 export interface Usage {
@@ -41,6 +42,7 @@ export interface ApiMessageForTS {
 export interface ConversationStateForTS {
   conversation_id: string;
   working: boolean;
+  model?: string;
 }
 
 export interface StreamResponseForTS {
@@ -58,6 +60,7 @@ export interface ConversationWithStateForTS {
   cwd: string | null;
   archived: boolean;
   parent_conversation_id: string | null;
+  model: string | null;
   working: boolean;
 }
 

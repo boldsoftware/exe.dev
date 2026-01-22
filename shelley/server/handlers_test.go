@@ -46,7 +46,7 @@ func TestHandleArchivedConversations(t *testing.T) {
 	// Create a test conversation and archive it
 	ctx := context.Background()
 	slug := "test-conversation"
-	conv, err := h.db.CreateConversation(ctx, &slug, true, nil)
+	conv, err := h.db.CreateConversation(ctx, &slug, true, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create conversation: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestHandleArchiveConversation(t *testing.T) {
 	// Create a test conversation
 	ctx := context.Background()
 	slug := "test-conversation"
-	conv, err := h.db.CreateConversation(ctx, &slug, true, nil)
+	conv, err := h.db.CreateConversation(ctx, &slug, true, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create conversation: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestHandleUnarchiveConversation(t *testing.T) {
 	// Create a test conversation and archive it
 	ctx := context.Background()
 	slug := "test-conversation"
-	conv, err := h.db.CreateConversation(ctx, &slug, true, nil)
+	conv, err := h.db.CreateConversation(ctx, &slug, true, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create conversation: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestHandleDeleteConversation(t *testing.T) {
 	// Create a test conversation
 	ctx := context.Background()
 	slug := "test-conversation"
-	conv, err := h.db.CreateConversation(ctx, &slug, true, nil)
+	conv, err := h.db.CreateConversation(ctx, &slug, true, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create conversation: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestHandleRenameConversation(t *testing.T) {
 	// Create a test conversation
 	ctx := context.Background()
 	slug := "test-conversation"
-	conv, err := h.db.CreateConversation(ctx, &slug, true, nil)
+	conv, err := h.db.CreateConversation(ctx, &slug, true, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create conversation: %v", err)
 	}

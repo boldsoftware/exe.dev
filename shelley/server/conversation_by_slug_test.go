@@ -15,7 +15,7 @@ func TestGetConversationBySlug(t *testing.T) {
 
 	// Create a conversation with a slug
 	slug := "my-test-slug"
-	conv, err := h.db.CreateConversation(t.Context(), &slug, true, nil)
+	conv, err := h.db.CreateConversation(t.Context(), &slug, true, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create conversation: %v", err)
 	}

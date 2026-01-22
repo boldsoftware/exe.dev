@@ -379,6 +379,7 @@ function AnimatedWorkingStatus() {
 interface ConversationStateUpdate {
   conversation_id: string;
   working: boolean;
+  model?: string;
 }
 
 interface ChatInterfaceProps {
@@ -703,6 +704,10 @@ function ChatInterface({
           // Update local state if this is for our conversation
           if (streamResponse.conversation_state.conversation_id === conversationId) {
             setAgentWorking(streamResponse.conversation_state.working);
+            // Update selected model from conversation (ensures consistency across sessions)
+            if (streamResponse.conversation_state.model) {
+              setSelectedModel(streamResponse.conversation_state.model);
+            }
           }
         }
 

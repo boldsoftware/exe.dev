@@ -27,7 +27,7 @@ func TestConversationStreamReceivesListUpdateForNewConversation(t *testing.T) {
 	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
 
 	// Create a conversation to subscribe to
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}
@@ -125,11 +125,11 @@ func TestConversationStreamReceivesListUpdateForRename(t *testing.T) {
 	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
 
 	// Create two conversations
-	conv1, err := database.CreateConversation(context.Background(), nil, true, nil)
+	conv1, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create conversation 1: %v", err)
 	}
-	conv2, err := database.CreateConversation(context.Background(), nil, true, nil)
+	conv2, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create conversation 2: %v", err)
 	}
@@ -216,11 +216,11 @@ func TestConversationStreamReceivesListUpdateForDelete(t *testing.T) {
 	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
 
 	// Create two conversations
-	conv1, err := database.CreateConversation(context.Background(), nil, true, nil)
+	conv1, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create conversation 1: %v", err)
 	}
-	conv2, err := database.CreateConversation(context.Background(), nil, true, nil)
+	conv2, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create conversation 2: %v", err)
 	}
@@ -306,11 +306,11 @@ func TestConversationStreamReceivesListUpdateForArchive(t *testing.T) {
 	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
 
 	// Create two conversations
-	conv1, err := database.CreateConversation(context.Background(), nil, true, nil)
+	conv1, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create conversation 1: %v", err)
 	}
-	conv2, err := database.CreateConversation(context.Background(), nil, true, nil)
+	conv2, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create conversation 2: %v", err)
 	}
