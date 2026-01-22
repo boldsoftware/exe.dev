@@ -63,11 +63,6 @@ type PublicIP struct {
 	Shard  int    // shard number, e.g. 7
 }
 
-type ipMapping struct {
-	public  netip.Addr
-	private netip.Addr
-}
-
 // IPMapping describes a public/private IPv4 address pair from EC2 metadata.
 type IPMapping struct {
 	Public  netip.Addr
@@ -77,20 +72,6 @@ type IPMapping struct {
 // EC2IPMappings queries EC2 metadata to get (public, private) IP pairs.
 // This does NOT do any DNS lookups. Returns nil if not running on EC2.
 func EC2IPMappings(ctx context.Context) ([]IPMapping, error) {
-	mappings, err := ec2IPMappings(ctx)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]IPMapping, len(mappings))
-	for i, m := range mappings {
-		result[i] = IPMapping{Public: m.public, Private: m.private}
-	}
-	return result, nil
-}
-
-// ec2IPMappings queries EC2 metadata to get (public, private) IP pairs.
-// This does NOT do any DNS lookups. Returns nil if not running on EC2.
-func ec2IPMappings(ctx context.Context) ([]ipMapping, error) {
 	if ctx == nil {
 		return nil, errors.New("publicips: context must not be nil")
 	}
@@ -118,7 +99,7 @@ func ec2IPMappings(ctx context.Context) ([]ipMapping, error) {
 		return nil, fmt.Errorf("publicips: list interfaces: %w", err)
 	}
 
-	mappings := make([]ipMapping, 0, len(macs))
+	mappings := make([]IPMapping, 0, len(macs))
 	for _, mac := range macs {
 		mac = strings.TrimSuffix(mac, "/")
 		if mac == "" {
@@ -147,9 +128,9 @@ func ec2IPMappings(ctx context.Context) ([]ipMapping, error) {
 			if err != nil {
 				return nil, fmt.Errorf("publicips: invalid private IPv4 %q for %s: %w", privateStr, publicStr, err)
 			}
-			mappings = append(mappings, ipMapping{
-				public:  publicAddr,
-				private: privateAddr,
+			mappings = append(mappings, IPMapping{
+				Public:  publicAddr,
+				Private: privateAddr,
 			})
 		}
 	}
@@ -160,7 +141,7 @@ func ec2IPMappings(ctx context.Context) ([]ipMapping, error) {
 // This does NOT do any DNS lookups - it only queries EC2 metadata.
 // Returns nil if not running on EC2.
 func EC2PrivateIPs(ctx context.Context) ([]netip.Addr, error) {
-	mappings, err := ec2IPMappings(ctx)
+	mappings, err := EC2IPMappings(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +150,7 @@ func EC2PrivateIPs(ctx context.Context) ([]netip.Addr, error) {
 	}
 	result := make([]netip.Addr, 0, len(mappings))
 	for _, m := range mappings {
-		result = append(result, m.private)
+		result = append(result, m.Private)
 	}
 	return result, nil
 }
@@ -187,7 +168,7 @@ func EC2IPs(ctx context.Context, boxDomain string) (map[netip.Addr]PublicIP, err
 		return nil, errors.New("publicips: box domain must not be empty")
 	}
 
-	mappings, err := ec2IPMappings(ctx)
+	mappings, err := EC2IPMappings(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -204,11 +185,11 @@ func EC2IPs(ctx context.Context, boxDomain string) (map[netip.Addr]PublicIP, err
 	}
 
 	for _, mapping := range mappings {
-		info, ok := byPublicIP[mapping.public]
+		info, ok := byPublicIP[mapping.Public]
 		if !ok {
-			return nil, fmt.Errorf("publicips: missing domain for public IP %s", mapping.public)
+			return nil, fmt.Errorf("publicips: missing domain for public IP %s", mapping.Public)
 		}
-		result[mapping.private] = info
+		result[mapping.Private] = info
 	}
 
 	return result, nil
@@ -333,7 +314,7 @@ func (c *metadataClient) get(ctx context.Context, path, token string, useToken b
 	return body, resp.StatusCode, nil
 }
 
-func resolveDomains(ctx context.Context, mappings []ipMapping, boxDomain string) (map[netip.Addr]PublicIP, error) {
+func resolveDomains(ctx context.Context, mappings []IPMapping, boxDomain string) (map[netip.Addr]PublicIP, error) {
 	if boxDomain == "" {
 		return nil, fmt.Errorf("box domain must not be empty")
 	}
@@ -345,7 +326,7 @@ func resolveDomains(ctx context.Context, mappings []ipMapping, boxDomain string)
 
 	needed := make(map[netip.Addr]struct{}, len(mappings))
 	for _, mapping := range mappings {
-		needed[mapping.public] = struct{}{}
+		needed[mapping.Public] = struct{}{}
 	}
 
 	// Try shards s001-s025, then fall back to the base domain itself (shard 0).
