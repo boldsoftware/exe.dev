@@ -181,6 +181,10 @@ packages:
   - curl
   - jq
   - docker.io
+  - atop
+  - btop
+  - htop
+  - igzip
 
 runcmd:
   - echo "Starting Tailscale setup..."
