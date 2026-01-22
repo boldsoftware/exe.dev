@@ -245,10 +245,27 @@ jobs:
           git config --global user.email "bot@exe.dev"
 
           git remote add shelley git@github.com:boldsoftware/shelley.git
+          git remote add exeuntu git@github.com:boldsoftware/exeuntu.git
           mkdir -p ~/.ssh
           ssh-keyscan github.com >> ~/.ssh/known_hosts
-          echo "${SHELLEY_REPO_DEPLOY_KEY}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+          echo "${SHELLEY_REPO_DEPLOY_KEY}" > ~/.ssh/shelley_key
+          echo "${EXEUNTU_REPO_DEPLOY_KEY}" > ~/.ssh/exeuntu_key
+          chmod 600 ~/.ssh/shelley_key ~/.ssh/exeuntu_key
+          printf '%s\n' \
+            'Host github.com-shelley' \
+            '  HostName github.com' \
+            '  User git' \
+            '  IdentityFile ~/.ssh/shelley_key' \
+            '  IdentitiesOnly yes' \
+            '' \
+            'Host github.com-exeuntu' \
+            '  HostName github.com' \
+            '  User git' \
+            '  IdentityFile ~/.ssh/exeuntu_key' \
+            '  IdentitiesOnly yes' \
+            >> ~/.ssh/config
+          git remote set-url shelley git@github.com-shelley:boldsoftware/shelley.git
+          git remote set-url exeuntu git@github.com-exeuntu:boldsoftware/exeuntu.git
 
           # Try to rebase onto main and push
           git fetch origin main
@@ -262,14 +279,22 @@ jobs:
           # Check if main can be fast-forwarded to HEAD
           if git merge-base --is-ancestor origin/main HEAD; then
             echo "Fast-forward main to HEAD"
-            bin/push-to-both-repos.sh main shelley shelley
           elif git rebase origin/main; then
             echo "Successfully rebased onto main"
-            bin/push-to-both-repos.sh main shelley shelley
           else
             echo "Failed to rebase - conflicts detected"
             exit 1
           fi
+
+          # Dry-run origin push first to fail fast
+          git push --dry-run origin HEAD:main
+
+          # Push to subrepos
+          bin/push-to-subrepo.sh main shelley shelley
+          bin/push-to-subrepo.sh main exeuntu exeuntu
+
+          # Push to origin
+          git push origin HEAD:main
 
           # Check if exeuntu/, shelley/, or the build workflow were modified
           if git diff --name-only "$ORIGIN_MAIN_BEFORE" HEAD | grep -qE '^(exeuntu|shelley)/|^\.github/workflows/build-exeuntu\.yml$'; then
@@ -281,6 +306,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SHELLEY_REPO_DEPLOY_KEY: ${{ secrets.SHELLEY_REPO_DEPLOY_KEY }}
+          EXEUNTU_REPO_DEPLOY_KEY: ${{ secrets.EXEUNTU_REPO_DEPLOY_KEY }}
       - name: Ensure GitHub CLI installed
         if: steps.push.outputs.exeuntu_or_shelley_changed == 'true'
         run: |

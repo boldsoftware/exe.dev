@@ -1,10 +1,9 @@
 #!/bin/bash
 #
-# Monorepo sync script. Keeps a "subrepo" in sync with a "main" repo.
+# Subrepo sync script. Keeps a "subrepo" in sync with a "main" repo.
 #
-# Given a range origin/main..HEAD, this pushes HEAD to origin/main, but also
-# filters down the range for commits that apply to subrepo.git and pushes
-# those to subrepo/main.
+# Given a range origin/main..HEAD, this filters down the range for commits
+# that apply to subrepo.git and pushes those to subrepo/main.
 #
 # The git magic is that we are keeping subrepo/main^{tree} in sync
 # with "git ls-tree origin/main SUBREPO_DIR"; that is, the SUBREPO_DIR subdirectory
@@ -27,25 +26,19 @@ SUBREPO=$2
 SUBREPO_DIR=$3
 
 [ $TARGET ] || (
-    echo "Usage: $0 <target-branch-for-both-repos> <subrepo> <subrepo_dir>"
+    echo "Usage: $0 <target-branch> <subrepo> <subrepo_dir>"
     exit 1
 )
 [ $SUBREPO ] || (
-    echo "Usage: $0 <target-branch-for-both-repos> <subrepo> <subrepo_dir>"
+    echo "Usage: $0 <target-branch> <subrepo> <subrepo_dir>"
     exit 1
 )
 [ $SUBREPO_DIR ] || (
-    echo "Usage: $0 <target-branch-for-both-repos> <subrepo> <subrepo_dir>"
+    echo "Usage: $0 <target-branch> <subrepo> <subrepo_dir>"
     exit 1
 )
 
 git remote get-url $SUBREPO || "$SUBREPO must exist as a remote"
-
-# TODO: Should we assert that the history we're about to push is linear? Small?
-
-# Fail fast if it's not a fast-forward, and can't be pushed.
-# (set -e exits at this point if necessary)
-git push --dry-run origin HEAD:"${TARGET}"
 
 # Fail fast if there are any merge commits
 if git rev-list --merges "origin/${TARGET}"..HEAD | grep -q .; then
@@ -67,8 +60,7 @@ done
 PREV_SUBREPO_TREE_OBJ=$(git ls-tree origin/"${TARGET}" $SUBREPO_DIR --format "%(objectname)")
 
 if [ $NEED_SUBREPO = 0 ]; then
-    echo "No changes to ${SUBREPO_DIR}/ folder; pushing as usual."
-    git push origin HEAD:"${TARGET}"
+    echo "No changes to ${SUBREPO_DIR}/ folder; nothing to push to ${SUBREPO}."
     exit 0
 fi
 
@@ -92,23 +84,16 @@ for c in $(git rev-list --reverse "origin/${TARGET}"..HEAD); do
     fi
     PREV_SUBREPO_TREE_OBJ=$SUBREPO_TREE_OBJ
 
-    # TODO: avoid tmp file?
-
     GIT_AUTHOR_NAME="$(git log -1 --pretty=format:%an $c)" \
     GIT_AUTHOR_EMAIL="$(git log -1 --pretty=format:%ae $c)" \
     GIT_AUTHOR_DATE="$(git log -1 --pretty=format:%ad $c)" \
     GIT_COMMITTER_NAME="$(git log -1 --pretty=format:%cn $c)" \
     GIT_COMMITTER_EMAIL="$(git log -1 --pretty=format:%ce $c)" \
     GIT_COMMITTER_DATE="$(git log -1 --pretty=format:%cd $c)" \
-        git commit-tree $SUBREPO_TREE_OBJ -p $PREV_SUBREPO_COMMIT -m "$(git log -1 --pretty=format:%B $c)" | tee /tmp/commit
-    PREV_SUBREPO_COMMIT=$(cat /tmp/commit)
+        git commit-tree $SUBREPO_TREE_OBJ -p $PREV_SUBREPO_COMMIT -m "$(git log -1 --pretty=format:%B $c)" | tee /tmp/${SUBREPO}-commit
+    PREV_SUBREPO_COMMIT=$(cat /tmp/${SUBREPO}-commit)
     echo "created commit $PREV_SUBREPO_COMMIT for commit $c"
 done
 
-git push --dry-run origin HEAD:"${TARGET}"
 git push --dry-run $SUBREPO $PREV_SUBREPO_COMMIT:$TARGET
-
-# TODO, do it with leases?
-#
-git push origin HEAD:"${TARGET}"
-git push $SUBREPO $(cat /tmp/commit):$TARGET
+git push $SUBREPO $(cat /tmp/${SUBREPO}-commit):$TARGET
