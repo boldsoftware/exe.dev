@@ -31,9 +31,6 @@ WHERE user_id = ?;
 -- name: ListAllUserLLMCredits :many
 SELECT * FROM user_llm_credit ORDER BY user_id;
 
--- name: CreateUserLLMCreditIfNotExists :exec
-INSERT OR IGNORE INTO user_llm_credit (user_id) VALUES (?);
-
 -- name: CreateUserLLMCreditWithInitial :exec
 INSERT OR IGNORE INTO user_llm_credit (user_id, available_credit, last_refresh_at)
 VALUES (?, ?, ?);

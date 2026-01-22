@@ -1099,16 +1099,12 @@ func (s *Server) handleDebugUpdateUserCredit(w http.ResponseWriter, r *http.Requ
 
 	// Upsert the credit record
 	err = s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
-		// First ensure record exists
-		if err := q.CreateUserLLMCreditIfNotExists(ctx, userID); err != nil {
-			return err
-		}
-		// Then update settings
-		return q.UpdateUserLLMCreditSettings(ctx, exedb.UpdateUserLLMCreditSettingsParams{
+		return q.UpsertUserLLMCredit(ctx, exedb.UpsertUserLLMCreditParams{
+			UserID:          userID,
 			AvailableCredit: availableUSD,
 			MaxCredit:       maxUSD,
 			RefreshPerHour:  refreshUSD,
-			UserID:          userID,
+			LastRefreshAt:   time.Now(),
 		})
 	})
 	if err != nil {
