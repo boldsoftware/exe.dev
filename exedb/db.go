@@ -315,6 +315,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getSSHHostKeyStmt, err = db.PrepareContext(ctx, getSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHHostKey: %w", err)
 	}
+	if q.getSSHKeyByFingerprintStmt, err = db.PrepareContext(ctx, getSSHKeyByFingerprint); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSSHKeyByFingerprint: %w", err)
+	}
 	if q.getSSHKeysForUserStmt, err = db.PrepareContext(ctx, getSSHKeysForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHKeysForUser: %w", err)
 	}
@@ -1090,6 +1093,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getSSHHostKeyStmt: %w", cerr)
 		}
 	}
+	if q.getSSHKeyByFingerprintStmt != nil {
+		if cerr := q.getSSHKeyByFingerprintStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSSHKeyByFingerprintStmt: %w", cerr)
+		}
+	}
 	if q.getSSHKeysForUserStmt != nil {
 		if cerr := q.getSSHKeysForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSSHKeysForUserStmt: %w", cerr)
@@ -1701,6 +1709,7 @@ type Queries struct {
 	getPreferredExeletStmt                     *sql.Stmt
 	getRecentSignupRejectionsStmt              *sql.Stmt
 	getSSHHostKeyStmt                          *sql.Stmt
+	getSSHKeyByFingerprintStmt                 *sql.Stmt
 	getSSHKeysForUserStmt                      *sql.Stmt
 	getSSHKeysForUserByEmailStmt               *sql.Stmt
 	getShardPublicIPStmt                       *sql.Stmt
@@ -1899,6 +1908,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPreferredExeletStmt:                     q.getPreferredExeletStmt,
 		getRecentSignupRejectionsStmt:              q.getRecentSignupRejectionsStmt,
 		getSSHHostKeyStmt:                          q.getSSHHostKeyStmt,
+		getSSHKeyByFingerprintStmt:                 q.getSSHKeyByFingerprintStmt,
 		getSSHKeysForUserStmt:                      q.getSSHKeysForUserStmt,
 		getSSHKeysForUserByEmailStmt:               q.getSSHKeysForUserByEmailStmt,
 		getShardPublicIPStmt:                       q.getShardPublicIPStmt,

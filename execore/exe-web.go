@@ -33,15 +33,14 @@ import (
 	"exe.dev/dnsresolver"
 	"exe.dev/domz"
 	"exe.dev/exedb"
-
 	"exe.dev/exens"
 	"exe.dev/llmgateway"
 	"exe.dev/metricsbag"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
 	"exe.dev/route53"
+	"exe.dev/sshkey"
 	"exe.dev/stage"
 	"exe.dev/tracing"
-
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	sloghttp "github.com/samber/slog-http"
 	"golang.org/x/crypto/acme"
@@ -1004,10 +1003,15 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 
 	// Add the SSH key to the verified keys and clean up pending key
 	err = s.withTx(context.WithoutCancel(r.Context()), func(ctx context.Context, queries *exedb.Queries) error {
-		err := queries.InsertSSHKeyForEmailUser(ctx, exedb.InsertSSHKeyForEmailUserParams{
-			Email:     pendingKey.UserEmail,
-			PublicKey: pendingKey.PublicKey,
-			Comment:   nil, // comment was stripped earlier by SSH key canonicalization
+		fingerprint, err := sshkey.Fingerprint(pendingKey.PublicKey)
+		if err != nil {
+			return fmt.Errorf("failed to parse public key: %w", err)
+		}
+		err = queries.InsertSSHKeyForEmailUser(ctx, exedb.InsertSSHKeyForEmailUserParams{
+			Email:       pendingKey.UserEmail,
+			PublicKey:   pendingKey.PublicKey,
+			Comment:     nil, // comment was stripped earlier by SSH key canonicalization
+			Fingerprint: fingerprint,
 		})
 		if err != nil {
 			return err
@@ -1155,13 +1159,18 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 			return nil, fmt.Errorf("this SSH key is already associated with another account")
 		}
 
+		fingerprint, err := sshkey.Fingerprint(publicKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse public key: %w", err)
+		}
 		// Key doesn't exist or belongs to this user - safe to insert/skip
 		// Use InsertSSHKeyForEmailUserIfNotExists to handle the case where
 		// the key is already associated with this user (re-verification)
 		_, err = withTxRes1(s, context.WithoutCancel(ctx), (*exedb.Queries).InsertSSHKeyForEmailUserIfNotExists, exedb.InsertSSHKeyForEmailUserIfNotExistsParams{
-			Email:     email,
-			PublicKey: publicKey,
-			Comment:   nil, // comment was stripped earlier by SSH key canonicalization
+			Email:       email,
+			PublicKey:   publicKey,
+			Comment:     nil, // comment was stripped earlier by SSH key canonicalization
+			Fingerprint: fingerprint,
 		})
 		if err != nil {
 			s.slog().ErrorContext(ctx, "Error storing SSH key during verification", "error", err)

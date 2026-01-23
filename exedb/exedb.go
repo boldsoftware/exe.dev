@@ -27,6 +27,7 @@ var migrationFS embed.FS
 // Code migrations receive a transaction; they must not commit or rollback.
 var codeMigrations = map[int]func(tx *sql.Tx) error{
 	60: testCodeMigration,
+	62: backfillSSHFingerprints,
 }
 
 // SSHDetails holds SSH connection information for a machine

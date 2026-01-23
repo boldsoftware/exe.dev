@@ -60,6 +60,7 @@ import (
 	"exe.dev/publicips"
 	"exe.dev/route53"
 	"exe.dev/sqlite"
+	"exe.dev/sshkey"
 	"exe.dev/sshpool2"
 	"exe.dev/stage"
 	"exe.dev/tagresolver"
@@ -2919,9 +2920,14 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string, qc Qua
 		}
 
 		// Add the SSH key to ssh_keys table
+		fingerprint, err := sshkey.Fingerprint(publicKey)
+		if err != nil {
+			return fmt.Errorf("failed to compute SSH key fingerprint: %w", err)
+		}
 		if err := queries.InsertSSHKey(ctx, exedb.InsertSSHKeyParams{
-			UserID:    userID,
-			PublicKey: publicKey,
+			UserID:      userID,
+			PublicKey:   publicKey,
+			Fingerprint: fingerprint,
 		}); err != nil {
 			return err
 		}

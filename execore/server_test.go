@@ -10,6 +10,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// testSSHPubKey is a valid SSH public key for use in tests.
+const testSSHPubKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKmvM4PVNt905k8sp9UYnPzlFgR8J6k64U3qIFkJvvy8 test@example.com"
+
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	s := newUnstartedServer(t)

@@ -12,6 +12,7 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
+	"exe.dev/sshkey"
 )
 
 // sshKeyCommand returns the command definition for the ssh-key command
@@ -180,9 +181,10 @@ func (ss *SSHServer) handleSSHKeyAddCmd(ctx context.Context, cc *exemenu.Command
 	var rowsAffected int64
 	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		result, err := queries.InsertSSHKeyIfNotExists(ctx, exedb.InsertSSHKeyIfNotExistsParams{
-			UserID:    cc.User.ID,
-			PublicKey: canonicalKey,
-			Comment:   commentPtr,
+			UserID:      cc.User.ID,
+			PublicKey:   canonicalKey,
+			Comment:     commentPtr,
+			Fingerprint: sshkey.FingerprintForKey(parsedKey),
 		})
 		if err != nil {
 			return err

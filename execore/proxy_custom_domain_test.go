@@ -29,7 +29,7 @@ func TestCustomDomainAuthFlow(t *testing.T) {
 	server.magicSecrets = make(map[string]*MagicSecret)
 
 	// Create test user and box
-	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest..."
+	publicKey := testSSHPubKey
 	email := "test@example.com"
 
 	_, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
@@ -160,7 +160,7 @@ func TestCustomDomainReturnHostValidation(t *testing.T) {
 	server.magicSecrets = make(map[string]*MagicSecret)
 
 	// Create test user
-	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest-returnhost..."
+	publicKey := testSSHPubKey
 	email := "returnhost-test@example.com"
 
 	_, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)

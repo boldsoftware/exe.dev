@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"exe.dev/sqlite"
+	"exe.dev/sshkey"
 	"exe.dev/tslog"
 	_ "modernc.org/sqlite"
 )
@@ -257,5 +258,85 @@ func TestCodeMigrationRuns(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected 1 row in code_migration_test, got %d", count)
+	}
+}
+
+func TestSSHFingerprintBackfillMigration(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "fingerprint_backfill.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open sqlite database: %v", err)
+	}
+	t.Cleanup(func() {
+		if cerr := db.Close(); cerr != nil {
+			t.Fatalf("failed to close database: %v", cerr)
+		}
+	})
+
+	if err := sqlite.InitDB(db, 1); err != nil {
+		t.Fatalf("failed to initialize sqlite database: %v", err)
+	}
+
+	log := tslog.Slogger(t)
+
+	// Run all migrations
+	if err := RunMigrations(log, db); err != nil {
+		t.Fatalf("failed to run migrations: %v", err)
+	}
+
+	// Create a test user
+	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES ('usr1234567890123', 'test@example.com')`)
+	if err != nil {
+		t.Fatalf("failed to insert test user: %v", err)
+	}
+
+	// Insert an SSH key with empty fingerprint (simulating pre-migration data)
+	pubKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFMHqzR0MJL7cH9K0S3f4CZ9j0BmT8L9KKpSTqj9Zqwo test@example.com"
+	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, fingerprint) VALUES ('usr1234567890123', ?, '')`, pubKey)
+	if err != nil {
+		t.Fatalf("failed to insert SSH key: %v", err)
+	}
+
+	// Verify the fingerprint is empty
+	var fingerprint string
+	err = db.QueryRow(`SELECT fingerprint FROM ssh_keys WHERE public_key = ?`, pubKey).Scan(&fingerprint)
+	if err != nil {
+		t.Fatalf("failed to query SSH key: %v", err)
+	}
+	if fingerprint != "" {
+		t.Fatalf("expected fingerprint to be empty, got %q", fingerprint)
+	}
+
+	// Run the backfill migration directly
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("failed to begin transaction: %v", err)
+	}
+	if err := backfillSSHFingerprints(tx); err != nil {
+		tx.Rollback()
+		t.Fatalf("backfillSSHFingerprints failed: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("failed to commit: %v", err)
+	}
+
+	// Verify the fingerprint was filled in
+	err = db.QueryRow(`SELECT fingerprint FROM ssh_keys WHERE public_key = ?`, pubKey).Scan(&fingerprint)
+	if err != nil {
+		t.Fatalf("failed to query SSH key after backfill: %v", err)
+	}
+	if fingerprint == "" {
+		t.Fatal("expected fingerprint to be set after backfill, but it's still empty")
+	}
+
+	// Verify the fingerprint matches what we'd compute directly
+	expectedFingerprint, err := sshkey.Fingerprint(pubKey)
+	if err != nil {
+		t.Fatalf("failed to compute fingerprint: %v", err)
+	}
+	if fingerprint != expectedFingerprint {
+		t.Fatalf("fingerprint mismatch: got %q, want %q", fingerprint, expectedFingerprint)
 	}
 }

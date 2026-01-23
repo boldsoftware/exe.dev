@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"exe.dev/exedb"
+	"exe.dev/sshkey"
 	"exe.dev/tslog"
 	_ "modernc.org/sqlite"
 )
@@ -63,11 +64,13 @@ func TestInsertSSHKeyForEmailUser(t *testing.T) {
 
 	// Test the function that should work but might have a bug
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7vbqajDhA test@example.com"
+	fingerprint, _ := sshkey.Fingerprint(publicKey)
 
 	params := exedb.InsertSSHKeyForEmailUserParams{
-		Email:     userEmail,
-		PublicKey: publicKey,
-		Comment:   nil,
+		Email:       userEmail,
+		PublicKey:   publicKey,
+		Comment:     nil,
+		Fingerprint: fingerprint,
 	}
 
 	// This should work but currently fails due to parameter mismatch bug
@@ -113,9 +116,10 @@ func TestInsertSSHKeyForEmailUser(t *testing.T) {
 	// This should fail because public_key is UNIQUE and InsertSSHKeyForEmailUser
 	// does not have ON CONFLICT handling
 	params2 := exedb.InsertSSHKeyForEmailUserParams{
-		Email:     userEmail2,
-		PublicKey: publicKey, // Same public key - should fail
-		Comment:   nil,
+		Email:       userEmail2,
+		PublicKey:   publicKey, // Same public key - should fail
+		Comment:     nil,
+		Fingerprint: fingerprint,
 	}
 
 	err = queries.InsertSSHKeyForEmailUser(ctx, params2)

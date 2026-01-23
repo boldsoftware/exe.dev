@@ -21,7 +21,7 @@ func TestBillingRequiredForNewVM_WebUI(t *testing.T) {
 
 	// Create a user without billing info
 	email := "no-billing@example.com"
-	publicKey := "ssh-rsa dummy-billing-test-key no-billing@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -65,7 +65,7 @@ func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
 
 	// Create a user without billing info
 	email := "no-billing-create@example.com"
-	publicKey := "ssh-rsa dummy-billing-create-test-key no-billing-create@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -118,7 +118,7 @@ func TestUserWithBillingCanAccessNewVM_WebUI(t *testing.T) {
 
 	// Create a user with billing info
 	email := "has-billing@example.com"
-	publicKey := "ssh-rsa dummy-has-billing-test-key has-billing@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -190,7 +190,7 @@ func TestUserIsPayingQuery(t *testing.T) {
 
 	// Create a user without billing info
 	email := "ispaying-test@example.com"
-	publicKey := "ssh-rsa dummy-ispaying-test-key ispaying-test@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -233,7 +233,7 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 
 	// Create a user
 	email := "needsbilling-test@example.com"
-	publicKey := "ssh-rsa dummy-needsbilling-test-key needsbilling-test@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -291,7 +291,7 @@ func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
 
 	// Create a user
 	email := "legacy-user@example.com"
-	publicKey := "ssh-rsa dummy-legacy-test-key legacy-user@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -335,7 +335,7 @@ func TestBillingBypassBug(t *testing.T) {
 
 	// Create a new user
 	email := "billing-bypass@example.com"
-	publicKey := "ssh-rsa dummy-billing-bypass-key billing-bypass@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -428,7 +428,7 @@ func TestBillingSuccessBypassWithFakeSessionID(t *testing.T) {
 
 	// Create a new user
 	email := "bypass-fake-session@example.com"
-	publicKey := "ssh-rsa dummy-bypass-fake-session bypass-fake-session@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -499,7 +499,7 @@ func TestDebugForceBillingForLegacyUser(t *testing.T) {
 
 	// Create a user
 	email := "legacy-force-billing@example.com"
-	publicKey := "ssh-rsa dummy-legacy-force-billing legacy-force-billing@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -567,7 +567,7 @@ func TestNewPageAlwaysShowsForm_EvenWhenBillingRequired(t *testing.T) {
 
 	// Create a user without billing info
 	email := "new-flow-test@example.com"
-	publicKey := "ssh-rsa dummy-new-flow-test-key new-flow-test@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -635,7 +635,7 @@ func TestCreateVMRedirectsToBillingWithParams(t *testing.T) {
 
 	// Create a user without billing info
 	email := "create-vm-params@example.com"
-	publicKey := "ssh-rsa dummy-create-vm-params-key create-vm-params@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -690,7 +690,7 @@ func TestBillingSubscribePreservesVMParams(t *testing.T) {
 
 	// Create a user without billing info
 	email := "billing-params@example.com"
-	publicKey := "ssh-rsa dummy-billing-params-key billing-params@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -737,7 +737,7 @@ func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
 
 	// Create a user without billing
 	email := "duplicate-account-test@example.com"
-	publicKey := "ssh-rsa dummy-duplicate-account-test duplicate-account-test@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -861,7 +861,7 @@ func TestBillingCancelCreatesNoVMState(t *testing.T) {
 
 	// Create a user without billing
 	email := "cancel-no-vm@example.com"
-	publicKey := "ssh-rsa dummy-cancel-no-vm cancel-no-vm@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -1107,7 +1107,7 @@ func TestExistingUserAuthUnchanged(t *testing.T) {
 
 	// Create an existing user first
 	email := "existing-user@example.com"
-	publicKey := "ssh-rsa dummy-existing-user-key existing-user@example.com"
+	publicKey := testSSHPubKey
 	_, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -1250,7 +1250,7 @@ func TestTakeMyMoney_AlreadyPaying(t *testing.T) {
 
 	// Create a user
 	email := "take-my-money-already-paying@example.com"
-	publicKey := "ssh-rsa dummy-take-my-money-paying take-my-money-already-paying@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -1298,7 +1298,7 @@ func TestTakeMyMoney_LegacyUser(t *testing.T) {
 
 	// Create a user
 	email := "take-my-money-legacy@example.com"
-	publicKey := "ssh-rsa dummy-take-my-money-legacy take-my-money-legacy@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -1346,7 +1346,7 @@ func TestTakeMyMoney_UserNeedsBilling_ShowsForm(t *testing.T) {
 
 	// Create a user
 	email := "take-my-money-needs-billing@example.com"
-	publicKey := "ssh-rsa dummy-take-my-money-needs take-my-money-needs-billing@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -1390,7 +1390,7 @@ func TestTakeMyMoney_FreeUser_ShowsWarning(t *testing.T) {
 
 	// Create a user
 	email := "take-my-money-free@example.com"
-	publicKey := "ssh-rsa dummy-take-my-money-free take-my-money-free@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -1437,7 +1437,7 @@ func TestTakeMyMoney_POST_RedirectsToStripe(t *testing.T) {
 
 	// Create a user
 	email := "take-my-money-post@example.com"
-	publicKey := "ssh-rsa dummy-take-my-money-post take-my-money-post@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)

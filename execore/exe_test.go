@@ -122,7 +122,7 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 	// Create a test user
 	email := "test@example.com"
 	// Create user with generated user_id
-	publicKey := "ssh-rsa dummy-test-key test@example.com"
+	publicKey := testSSHPubKey
 	_, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user : %v", err)
@@ -206,7 +206,7 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 
 	// Create a test user
 	email := "test-home@example.com"
-	publicKey := "ssh-rsa dummy-test-key test-home@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -887,7 +887,7 @@ func TestNormalUserProfileShowsSSHKeys(t *testing.T) {
 
 	// Create a normal user (with SSH key)
 	email := "normaluser-profile@example.com"
-	publicKey := "ssh-rsa dummy-test-key test@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -945,7 +945,7 @@ func TestNormalUserDashboardShowsAllTabs(t *testing.T) {
 
 	// Create a normal user (with SSH key)
 	email := "normaluser-dashboard@example.com"
-	publicKey := "ssh-rsa dummy-test-key test@example.com"
+	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)

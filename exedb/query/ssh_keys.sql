@@ -1,11 +1,11 @@
 -- name: InsertSSHKeyForEmailUser :exec
-INSERT INTO ssh_keys (user_id, public_key, comment)
-SELECT u.user_id, ? as public_key, ? as comment
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint)
+SELECT u.user_id, ? as public_key, ? as comment, ? as fingerprint
 FROM users u WHERE u.email = ?;
 
 -- name: InsertSSHKeyForEmailUserIfNotExists :execresult
-INSERT INTO ssh_keys (user_id, public_key, comment)
-SELECT u.user_id, ? as public_key, ? as comment
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint)
+SELECT u.user_id, ? as public_key, ? as comment, ? as fingerprint
 FROM users u WHERE u.email = ?
 ON CONFLICT(public_key) DO NOTHING;
 
@@ -25,7 +25,7 @@ WHERE s.public_key = ?;
 SELECT user_id FROM ssh_keys WHERE public_key = ?;
 
 -- name: InsertSSHKey :exec
-INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?);
+INSERT INTO ssh_keys (user_id, public_key, fingerprint) VALUES (?, ?, ?);
 
 -- name: GetUserWithSSHKey :one
 SELECT u.*
@@ -34,8 +34,8 @@ JOIN ssh_keys s ON u.user_id = s.user_id
 WHERE s.public_key = ?;
 
 -- name: InsertSSHKeyIfNotExists :execresult
-INSERT INTO ssh_keys (user_id, public_key, comment)
-VALUES (?, ?, ?)
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint)
+VALUES (?, ?, ?, ?)
 ON CONFLICT(public_key) DO NOTHING;
 
 -- name: GetSSHKeysForUserByEmail :many
@@ -49,3 +49,6 @@ RETURNING 1 AS deleted;
 
 -- name: UpdateSSHKeyLastUsed :exec
 UPDATE ssh_keys SET last_used_at = CURRENT_TIMESTAMP WHERE public_key = ?;
+
+-- name: GetSSHKeyByFingerprint :one
+SELECT user_id, public_key FROM ssh_keys WHERE fingerprint = ?;

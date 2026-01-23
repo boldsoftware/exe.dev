@@ -44,6 +44,22 @@ func (q *Queries) GetEmailBySSHKey(ctx context.Context, publicKey string) (strin
 	return email, err
 }
 
+const getSSHKeyByFingerprint = `-- name: GetSSHKeyByFingerprint :one
+SELECT user_id, public_key FROM ssh_keys WHERE fingerprint = ?
+`
+
+type GetSSHKeyByFingerprintRow struct {
+	UserID    string `db:"user_id" json:"user_id"`
+	PublicKey string `db:"public_key" json:"public_key"`
+}
+
+func (q *Queries) GetSSHKeyByFingerprint(ctx context.Context, fingerprint string) (GetSSHKeyByFingerprintRow, error) {
+	row := q.queryRow(ctx, q.getSSHKeyByFingerprintStmt, getSSHKeyByFingerprint, fingerprint)
+	var i GetSSHKeyByFingerprintRow
+	err := row.Scan(&i.UserID, &i.PublicKey)
+	return i, err
+}
+
 const getSSHKeysForUser = `-- name: GetSSHKeysForUser :many
 SELECT public_key, comment, added_at, last_used_at
 FROM ssh_keys
@@ -151,67 +167,86 @@ func (q *Queries) GetUserWithSSHKey(ctx context.Context, publicKey string) (User
 }
 
 const insertSSHKey = `-- name: InsertSSHKey :exec
-INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)
+INSERT INTO ssh_keys (user_id, public_key, fingerprint) VALUES (?, ?, ?)
 `
 
 type InsertSSHKeyParams struct {
-	UserID    string `db:"user_id" json:"user_id"`
-	PublicKey string `db:"public_key" json:"public_key"`
+	UserID      string `db:"user_id" json:"user_id"`
+	PublicKey   string `db:"public_key" json:"public_key"`
+	Fingerprint string `db:"fingerprint" json:"fingerprint"`
 }
 
 func (q *Queries) InsertSSHKey(ctx context.Context, arg InsertSSHKeyParams) error {
-	_, err := q.exec(ctx, q.insertSSHKeyStmt, insertSSHKey, arg.UserID, arg.PublicKey)
+	_, err := q.exec(ctx, q.insertSSHKeyStmt, insertSSHKey, arg.UserID, arg.PublicKey, arg.Fingerprint)
 	return err
 }
 
 const insertSSHKeyForEmailUser = `-- name: InsertSSHKeyForEmailUser :exec
-INSERT INTO ssh_keys (user_id, public_key, comment)
-SELECT u.user_id, ? as public_key, ? as comment
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint)
+SELECT u.user_id, ? as public_key, ? as comment, ? as fingerprint
 FROM users u WHERE u.email = ?
 `
 
 type InsertSSHKeyForEmailUserParams struct {
-	PublicKey string  `db:"public_key" json:"public_key"`
-	Comment   *string `db:"comment" json:"comment"`
-	Email     string  `db:"email" json:"email"`
+	PublicKey   string  `db:"public_key" json:"public_key"`
+	Comment     *string `db:"comment" json:"comment"`
+	Fingerprint string  `db:"fingerprint" json:"fingerprint"`
+	Email       string  `db:"email" json:"email"`
 }
 
 func (q *Queries) InsertSSHKeyForEmailUser(ctx context.Context, arg InsertSSHKeyForEmailUserParams) error {
-	_, err := q.exec(ctx, q.insertSSHKeyForEmailUserStmt, insertSSHKeyForEmailUser, arg.PublicKey, arg.Comment, arg.Email)
+	_, err := q.exec(ctx, q.insertSSHKeyForEmailUserStmt, insertSSHKeyForEmailUser,
+		arg.PublicKey,
+		arg.Comment,
+		arg.Fingerprint,
+		arg.Email,
+	)
 	return err
 }
 
 const insertSSHKeyForEmailUserIfNotExists = `-- name: InsertSSHKeyForEmailUserIfNotExists :execresult
-INSERT INTO ssh_keys (user_id, public_key, comment)
-SELECT u.user_id, ? as public_key, ? as comment
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint)
+SELECT u.user_id, ? as public_key, ? as comment, ? as fingerprint
 FROM users u WHERE u.email = ?
 ON CONFLICT(public_key) DO NOTHING
 `
 
 type InsertSSHKeyForEmailUserIfNotExistsParams struct {
-	PublicKey string  `db:"public_key" json:"public_key"`
-	Comment   *string `db:"comment" json:"comment"`
-	Email     string  `db:"email" json:"email"`
+	PublicKey   string  `db:"public_key" json:"public_key"`
+	Comment     *string `db:"comment" json:"comment"`
+	Fingerprint string  `db:"fingerprint" json:"fingerprint"`
+	Email       string  `db:"email" json:"email"`
 }
 
 func (q *Queries) InsertSSHKeyForEmailUserIfNotExists(ctx context.Context, arg InsertSSHKeyForEmailUserIfNotExistsParams) (sql.Result, error) {
-	return q.exec(ctx, q.insertSSHKeyForEmailUserIfNotExistsStmt, insertSSHKeyForEmailUserIfNotExists, arg.PublicKey, arg.Comment, arg.Email)
+	return q.exec(ctx, q.insertSSHKeyForEmailUserIfNotExistsStmt, insertSSHKeyForEmailUserIfNotExists,
+		arg.PublicKey,
+		arg.Comment,
+		arg.Fingerprint,
+		arg.Email,
+	)
 }
 
 const insertSSHKeyIfNotExists = `-- name: InsertSSHKeyIfNotExists :execresult
-INSERT INTO ssh_keys (user_id, public_key, comment)
-VALUES (?, ?, ?)
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint)
+VALUES (?, ?, ?, ?)
 ON CONFLICT(public_key) DO NOTHING
 `
 
 type InsertSSHKeyIfNotExistsParams struct {
-	UserID    string  `db:"user_id" json:"user_id"`
-	PublicKey string  `db:"public_key" json:"public_key"`
-	Comment   *string `db:"comment" json:"comment"`
+	UserID      string  `db:"user_id" json:"user_id"`
+	PublicKey   string  `db:"public_key" json:"public_key"`
+	Comment     *string `db:"comment" json:"comment"`
+	Fingerprint string  `db:"fingerprint" json:"fingerprint"`
 }
 
 func (q *Queries) InsertSSHKeyIfNotExists(ctx context.Context, arg InsertSSHKeyIfNotExistsParams) (sql.Result, error) {
-	return q.exec(ctx, q.insertSSHKeyIfNotExistsStmt, insertSSHKeyIfNotExists, arg.UserID, arg.PublicKey, arg.Comment)
+	return q.exec(ctx, q.insertSSHKeyIfNotExistsStmt, insertSSHKeyIfNotExists,
+		arg.UserID,
+		arg.PublicKey,
+		arg.Comment,
+		arg.Fingerprint,
+	)
 }
 
 const updateSSHKeyLastUsed = `-- name: UpdateSSHKeyLastUsed :exec
