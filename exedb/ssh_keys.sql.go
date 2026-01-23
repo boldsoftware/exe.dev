@@ -103,22 +103,30 @@ func (q *Queries) GetSSHKeysForUser(ctx context.Context, userID string) ([]GetSS
 }
 
 const getSSHKeysForUserByEmail = `-- name: GetSSHKeysForUserByEmail :many
-SELECT public_key FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key
+SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key
 `
 
-func (q *Queries) GetSSHKeysForUserByEmail(ctx context.Context, email string) ([]string, error) {
+func (q *Queries) GetSSHKeysForUserByEmail(ctx context.Context, email string) ([]SshKey, error) {
 	rows, err := q.query(ctx, q.getSSHKeysForUserByEmailStmt, getSSHKeysForUserByEmail, email)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []string{}
+	items := []SshKey{}
 	for rows.Next() {
-		var public_key string
-		if err := rows.Scan(&public_key); err != nil {
+		var i SshKey
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.PublicKey,
+			&i.AddedAt,
+			&i.LastUsedAt,
+			&i.Comment,
+			&i.Fingerprint,
+		); err != nil {
 			return nil, err
 		}
-		items = append(items, public_key)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

@@ -1288,22 +1288,20 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 		Current     bool   `json:"current"`
 	}
 	ccPubKey := strings.TrimSpace(cc.PublicKey)
-	publicKeys, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetSSHKeysForUserByEmail, cc.User.Email)
+	dbKeys, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetSSHKeysForUserByEmail, cc.User.Email)
 	if err != nil {
 		return err
 	}
 	var sshKeys []sshKeyRow
-	for _, dbPublicKey := range publicKeys {
-		dbPublicKey = strings.TrimSpace(dbPublicKey)
-		if dbPublicKey == "" {
+	for _, dbKey := range dbKeys {
+		pubKey := strings.TrimSpace(dbKey.PublicKey)
+		if pubKey == "" {
 			continue
 		}
-		isCurrent := dbPublicKey == ccPubKey
-		fingerprint := ""
-		if parsedKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(dbPublicKey)); err == nil {
-			fingerprint = ssh.FingerprintSHA256(parsedKey)
-		}
-		sshKeys = append(sshKeys, sshKeyRow{PublicKey: dbPublicKey, Fingerprint: fingerprint, Current: isCurrent})
+		isCurrent := pubKey == ccPubKey
+		// DB stores fingerprint without prefix; add "SHA256:" for display
+		fingerprint := "SHA256:" + dbKey.Fingerprint
+		sshKeys = append(sshKeys, sshKeyRow{PublicKey: pubKey, Fingerprint: fingerprint, Current: isCurrent})
 	}
 
 	slices.SortFunc(sshKeys, func(a, b sshKeyRow) int {
