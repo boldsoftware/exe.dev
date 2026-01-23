@@ -3,6 +3,7 @@
 package e1e
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -278,6 +279,352 @@ func TestSSHKeyRemoveCurrentKey(t *testing.T) {
 	cleanup.want("Deleted SSH key")
 	cleanup.wantPrompt()
 	cleanup.disconnect()
+}
+
+// TestSSHKeyAddFromStdin tests that ssh-key add can read from stdin
+// (e.g., cat id_exe.pub | ssh exe.dev ssh-key add)
+func TestSSHKeyAddFromStdin(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	_, _, keyFile, _ := registerForExeDev(t)
+
+	// Helper to remove a key (used by subtests that add keys)
+	removeKey := func(t *testing.T, pubKey string) {
+		pty := sshToExeDev(t, keyFile)
+		pty.sendLine("ssh-key remove '" + strings.TrimSpace(pubKey) + "'")
+		pty.want("Deleted SSH key")
+		pty.wantPrompt()
+		pty.disconnect()
+	}
+
+	t.Run("basic", func(t *testing.T) {
+		noGolden(t)
+
+		// Generate a new key to add via stdin
+		_, testPubKey, err := testinfra.GenSSHKey(t.TempDir())
+		if err != nil {
+			t.Fatalf("failed to generate test SSH key: %v", err)
+		}
+
+		// Add via stdin (simulates: cat key.pub | ssh exe.dev ssh-key add)
+		out, err := Env.servers.RunExeDevSSHCommandWithStdin(
+			Env.context(t),
+			keyFile,
+			[]byte(testPubKey),
+			"ssh-key", "add",
+		)
+		if err != nil {
+			t.Fatalf("ssh-key add from stdin failed: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "Added SSH key") {
+			t.Errorf("expected 'Added SSH key' in output, got: %s", out)
+		}
+
+		// Verify via ssh-key list --json
+		out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "ssh-key", "list", "--json")
+		if err != nil {
+			t.Fatalf("ssh-key list --json failed: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "ssh-ed25519") {
+			t.Errorf("expected ssh-ed25519 in output, got: %s", out)
+		}
+
+		removeKey(t, testPubKey)
+	})
+
+	t.Run("empty_stdin", func(t *testing.T) {
+		noGolden(t)
+
+		out, err := Env.servers.RunExeDevSSHCommandWithStdin(
+			Env.context(t),
+			keyFile,
+			[]byte(""),
+			"ssh-key", "add",
+		)
+		if err == nil {
+			t.Fatalf("expected ssh-key add with empty stdin to fail, got: %s", out)
+		}
+		if !strings.Contains(string(out), "please provide the SSH public key to add") {
+			t.Errorf("expected 'please provide the SSH public key to add' in output, got: %s", out)
+		}
+	})
+
+	t.Run("whitespace_only_stdin", func(t *testing.T) {
+		noGolden(t)
+
+		out, err := Env.servers.RunExeDevSSHCommandWithStdin(
+			Env.context(t),
+			keyFile,
+			[]byte("   \n\t\n   "),
+			"ssh-key", "add",
+		)
+		if err == nil {
+			t.Fatalf("expected ssh-key add with whitespace-only stdin to fail, got: %s", out)
+		}
+		if !strings.Contains(string(out), "please provide the SSH public key to add") {
+			t.Errorf("expected 'please provide the SSH public key to add' in output, got: %s", out)
+		}
+	})
+
+	t.Run("both_args_and_stdin", func(t *testing.T) {
+		noGolden(t)
+
+		_, testPubKey, err := testinfra.GenSSHKey(t.TempDir())
+		if err != nil {
+			t.Fatalf("failed to generate test SSH key: %v", err)
+		}
+
+		out, err := Env.servers.RunExeDevSSHCommandWithStdin(
+			Env.context(t),
+			keyFile,
+			[]byte(testPubKey),
+			"ssh-key", "add", testPubKey,
+		)
+		if err == nil {
+			t.Fatalf("expected ssh-key add with both args and stdin to fail, got: %s", out)
+		}
+		if !strings.Contains(string(out), "either as an argument or via stdin, not both") {
+			t.Errorf("expected 'either as an argument or via stdin, not both' in output, got: %s", out)
+		}
+	})
+
+	t.Run("invalid_key", func(t *testing.T) {
+		noGolden(t)
+
+		out, err := Env.servers.RunExeDevSSHCommandWithStdin(
+			Env.context(t),
+			keyFile,
+			[]byte("not-a-valid-ssh-key"),
+			"ssh-key", "add",
+		)
+		if err == nil {
+			t.Fatalf("expected ssh-key add with invalid key via stdin to fail, got: %s", out)
+		}
+		if !strings.Contains(string(out), "invalid SSH public key") {
+			t.Errorf("expected 'invalid SSH public key' in output, got: %s", out)
+		}
+	})
+
+	t.Run("private_key", func(t *testing.T) {
+		noGolden(t)
+
+		privateKey := `-----BEGIN OPENSSH PRIVATE KEY-----
+aGVsbG8gaSBhbSBub3QgYWN0dWFsbHkgYSBwcml2YXRlIGtleQ==
+-----END OPENSSH PRIVATE KEY-----`
+
+		out, err := Env.servers.RunExeDevSSHCommandWithStdin(
+			Env.context(t),
+			keyFile,
+			[]byte(privateKey),
+			"ssh-key", "add",
+		)
+		if err == nil {
+			t.Fatalf("expected ssh-key add with private key via stdin to fail, got: %s", out)
+		}
+		if !strings.Contains(string(out), "private key") || !strings.Contains(string(out), "public key") {
+			t.Errorf("expected error about private key and public key in output, got: %s", out)
+		}
+	})
+
+	t.Run("with_whitespace", func(t *testing.T) {
+		noGolden(t)
+
+		_, testPubKey, err := testinfra.GenSSHKey(t.TempDir())
+		if err != nil {
+			t.Fatalf("failed to generate test SSH key: %v", err)
+		}
+
+		// Add via stdin with extra whitespace/newlines
+		keyWithWhitespace := "\n\n  " + testPubKey + "  \n\n\n"
+		out, err := Env.servers.RunExeDevSSHCommandWithStdin(
+			Env.context(t),
+			keyFile,
+			[]byte(keyWithWhitespace),
+			"ssh-key", "add",
+		)
+		if err != nil {
+			t.Fatalf("ssh-key add with whitespace should succeed: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "Added SSH key") {
+			t.Errorf("expected 'Added SSH key' in output, got: %s", out)
+		}
+
+		// Verify the key was added via list --json
+		out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "ssh-key", "list", "--json")
+		if err != nil {
+			t.Fatalf("ssh-key list --json failed: %v\n%s", err, out)
+		}
+
+		var listOutput sshKeyListOutput
+		if err := json.Unmarshal(out, &listOutput); err != nil {
+			t.Fatalf("failed to parse JSON: %v\n%s", err, out)
+		}
+
+		// Should have at least 2 keys (the original + the one we added)
+		if len(listOutput.SSHKeys) < 2 {
+			t.Errorf("expected at least 2 keys, got %d", len(listOutput.SSHKeys))
+		}
+
+		removeKey(t, testPubKey)
+	})
+
+	t.Run("duplicate_key", func(t *testing.T) {
+		noGolden(t)
+
+		_, testPubKey, err := testinfra.GenSSHKey(t.TempDir())
+		if err != nil {
+			t.Fatalf("failed to generate test SSH key: %v", err)
+		}
+
+		// Add it first time via stdin
+		out, err := Env.servers.RunExeDevSSHCommandWithStdin(
+			Env.context(t),
+			keyFile,
+			[]byte(testPubKey),
+			"ssh-key", "add",
+		)
+		if err != nil {
+			t.Fatalf("first ssh-key add should succeed: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "Added SSH key") {
+			t.Errorf("expected 'Added SSH key' in output, got: %s", out)
+		}
+
+		// Try to add it again via stdin - should fail
+		out, err = Env.servers.RunExeDevSSHCommandWithStdin(
+			Env.context(t),
+			keyFile,
+			[]byte(testPubKey),
+			"ssh-key", "add",
+		)
+		if err == nil {
+			t.Fatalf("expected duplicate key via stdin to fail, got: %s", out)
+		}
+		if !strings.Contains(string(out), "already associated with your account") {
+			t.Errorf("expected 'already associated with your account' in output, got: %s", out)
+		}
+
+		removeKey(t, testPubKey)
+	})
+
+	t.Run("json_output", func(t *testing.T) {
+		noGolden(t)
+
+		_, testPubKey, err := testinfra.GenSSHKey(t.TempDir())
+		if err != nil {
+			t.Fatalf("failed to generate test SSH key: %v", err)
+		}
+
+		// Add via stdin with --json flag
+		out, err := Env.servers.RunExeDevSSHCommandWithStdin(
+			Env.context(t),
+			keyFile,
+			[]byte(testPubKey),
+			"ssh-key", "add", "--json",
+		)
+		if err != nil {
+			t.Fatalf("ssh-key add --json from stdin failed: %v\n%s", err, out)
+		}
+
+		// Parse JSON output
+		var result struct {
+			PublicKey string  `json:"public_key"`
+			Status    string  `json:"status"`
+			Comment   *string `json:"comment,omitempty"`
+		}
+		if err := json.Unmarshal(out, &result); err != nil {
+			t.Fatalf("failed to parse JSON output: %v\n%s", err, out)
+		}
+		if result.Status != "added" {
+			t.Errorf("expected status 'added', got %q", result.Status)
+		}
+		if result.PublicKey == "" {
+			t.Error("expected public_key to be non-empty")
+		}
+		if !strings.Contains(result.PublicKey, "ssh-ed25519") {
+			t.Errorf("expected public_key to contain 'ssh-ed25519', got %q", result.PublicKey)
+		}
+
+		removeKey(t, testPubKey)
+	})
+
+	t.Run("can_authenticate", func(t *testing.T) {
+		noGolden(t)
+
+		newKeyPath, testPubKey, err := testinfra.GenSSHKey(t.TempDir())
+		if err != nil {
+			t.Fatalf("failed to generate test SSH key: %v", err)
+		}
+
+		// Add via stdin
+		out, err := Env.servers.RunExeDevSSHCommandWithStdin(
+			Env.context(t),
+			keyFile,
+			[]byte(testPubKey),
+			"ssh-key", "add",
+		)
+		if err != nil {
+			t.Fatalf("ssh-key add from stdin failed: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "Added SSH key") {
+			t.Errorf("expected 'Added SSH key' in output, got: %s", out)
+		}
+
+		// Now authenticate with the new key
+		pty2 := sshToExeDev(t, newKeyPath)
+		pty2.wantPrompt()
+
+		// Verify we're logged in as the same user by checking ssh-key list shows the key as current
+		pty2.sendLine("ssh-key list")
+		pty2.want("SSH Keys:")
+		pty2.want("current") // the new key should show as current
+		pty2.wantPrompt()
+		pty2.disconnect()
+
+		removeKey(t, testPubKey)
+	})
+
+	t.Run("another_users_key", func(t *testing.T) {
+		noGolden(t)
+
+		// Register a second user for this subtest
+		pty1, _, keyFile1, _ := registerForExeDevWithEmail(t, "stdin-user1@ssh-key-stdin-cross-user.example")
+
+		// Generate a key that user1 will own
+		_, sharedPubKey, err := testinfra.GenSSHKey(t.TempDir())
+		if err != nil {
+			t.Fatalf("failed to generate shared SSH key: %v", err)
+		}
+
+		// User1 adds the shared key
+		pty1.sendLine("ssh-key add '" + sharedPubKey + "'")
+		pty1.want("Added SSH key")
+		pty1.wantPrompt()
+		pty1.disconnect()
+
+		// Original user (from parent test) tries to add the same key via stdin - should fail
+		out, err := Env.servers.RunExeDevSSHCommandWithStdin(
+			Env.context(t),
+			keyFile,
+			[]byte(sharedPubKey),
+			"ssh-key", "add",
+		)
+		if err == nil {
+			t.Fatalf("expected adding another user's key via stdin to fail, got: %s", out)
+		}
+		if !strings.Contains(string(out), "already associated with another account") {
+			t.Errorf("expected 'already associated with another account' in output, got: %s", out)
+		}
+
+		// Clean up: user1 removes the shared key
+		cleanup := sshToExeDev(t, keyFile1)
+		cleanup.sendLine("ssh-key remove '" + strings.TrimSpace(sharedPubKey) + "'")
+		cleanup.want("Deleted SSH key")
+		cleanup.wantPrompt()
+		cleanup.disconnect()
+	})
 }
 
 // TestSSHKeyCannotAddKeyFromAnotherUser tests that a user cannot add an SSH key

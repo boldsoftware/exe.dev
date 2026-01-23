@@ -96,12 +96,22 @@ func (se *ServerEnv) SSHWithUserName(ctx context.Context, pty *PTY, username, ke
 // using the given private key file.
 // It returns the command output.
 func (se *ServerEnv) RunExeDevSSHCommand(ctx context.Context, keyFile string, args ...string) ([]byte, error) {
+	return se.RunExeDevSSHCommandWithStdin(ctx, keyFile, nil, args...)
+}
+
+// RunExeDevSSHCommandWithStdin runs an ssh command on the test exed
+// using the given private key file and stdin data.
+// It returns the command output.
+func (se *ServerEnv) RunExeDevSSHCommandWithStdin(ctx context.Context, keyFile string, stdin []byte, args ...string) ([]byte, error) {
 	sshArgs := se.BaseSSHArgs("", keyFile)
 	sshArgs = append(sshArgs, args...)
 	sshCmd := exec.CommandContext(ctx, "ssh", sshArgs...)
 	sshCmd.Env = append(sshCmd.Environ(),
 		"SSH_AUTH_SOCK=", // disable SSH agent.
 	)
+	if stdin != nil {
+		sshCmd.Stdin = bytes.NewReader(stdin)
+	}
 
 	out, err1 := sshCmd.CombinedOutput()
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io"
 	"strings"
 	"time"
 
@@ -46,7 +47,7 @@ func (ss *SSHServer) sshKeyCommand() *exemenu.Command {
 					"  ssh-keygen -t ed25519 -f ~/.ssh/id_exe",
 					"",
 					"Then add the public key from your local shell:",
-					`  ssh exe.dev ssh-key add "\"$(cat ~/.ssh/id_exe.pub)\""`,
+					"  cat ~/.ssh/id_exe.pub | ssh exe.dev ssh-key add",
 					"",
 					"Or from the exe.dev shell:",
 					"  ssh-key add 'ssh-ed25519 AAAA... user@host'",
@@ -119,7 +120,7 @@ func (ss *SSHServer) handleSSHKeyListCmd(ctx context.Context, cc *exemenu.Comman
 		cc.Writeln("  ssh-keygen -t ed25519 -f ~/.ssh/id_exe")
 		cc.Writeln("")
 		cc.Writeln("Then add the public key from your local shell:")
-		cc.Writeln(`  ssh exe.dev ssh-key add "\"$(cat ~/.ssh/id_exe.pub)\""`)
+		cc.Writeln("  cat ~/.ssh/id_exe.pub | ssh exe.dev ssh-key add")
 		return nil
 	}
 
@@ -152,13 +153,30 @@ func (ss *SSHServer) handleSSHKeyListCmd(ctx context.Context, cc *exemenu.Comman
 }
 
 func (ss *SSHServer) handleSSHKeyAddCmd(ctx context.Context, cc *exemenu.CommandContext) error {
-	if len(cc.Args) == 0 {
-		return cc.Errorf("please provide the SSH public key to add")
+	// Read public key from args
+	args := strings.Join(cc.Args, " ")
+	args = strings.TrimSpace(args)
+
+	// Read public key from stdin
+	var stdin string
+	if !cc.IsInteractive() {
+		data, err := io.ReadAll(io.LimitReader(cc.SSHSession, 16*1024))
+		if err != nil {
+			return cc.Errorf("failed to read from stdin: %v", err)
+		}
+		stdin = strings.TrimSpace(string(data))
 	}
-	publicKey := strings.Join(cc.Args, " ")
-	publicKey = strings.TrimSpace(publicKey)
-	if publicKey == "" {
-		return cc.Errorf("SSH public key cannot be empty")
+
+	var publicKey string
+	switch {
+	case args != "" && stdin != "":
+		return cc.Errorf("please provide the SSH public key either as an argument or via stdin, not both")
+	case args != "":
+		publicKey = args
+	case stdin != "":
+		publicKey = stdin
+	default:
+		return cc.Errorf("please provide the SSH public key to add")
 	}
 
 	// Detect if user accidentally provided a private key

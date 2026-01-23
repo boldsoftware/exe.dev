@@ -54,7 +54,7 @@ To generate a new key locally:
   ssh-keygen -t ed25519 -f ~/.ssh/id_exe
 
 Then add the public key from your local shell:
-  ssh exe.dev ssh-key add "\"$(cat ~/.ssh/id_exe.pub)\""
+  cat ~/.ssh/id_exe.pub | ssh exe.dev ssh-key add
 
 Or from the exe.dev shell:
   ssh-key add 'ssh-ed25519 AAAA... user@host'
