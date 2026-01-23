@@ -159,7 +159,7 @@ func (ss *SSHServer) handleSSHKeyAddCmd(ctx context.Context, cc *exemenu.Command
 
 	// Read public key from stdin
 	var stdin string
-	if !cc.IsInteractive() {
+	if !cc.IsInteractive() && cc.SSHSession != nil {
 		data, err := io.ReadAll(io.LimitReader(cc.SSHSession, 16*1024))
 		if err != nil {
 			return cc.Errorf("failed to read from stdin: %v", err)
