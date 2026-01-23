@@ -3379,7 +3379,7 @@ func (s *Server) updateExeletUsageHeartbeat(ctx context.Context) {
 // If a field is zero in either extremeUsage or the input, it is ignored.
 //
 // These values are entirely heuristic and should be adjusted as we learn.
-var extremeUsage = resourceapi.MachineUsage{
+var extremeUsage = &resourceapi.MachineUsage{
 	LoadAverage:  100,
 	MemAvailable: -(1 << 20),  // value is KiB, this is 1 GiB
 	SwapFree:     -(10 << 20), // value is KiB, this is 10 GiB
@@ -3388,8 +3388,8 @@ var extremeUsage = resourceapi.MachineUsage{
 
 // isExtreme reports whether u indicates heavy load.
 func isExtreme(u *resourceapi.MachineUsage) bool {
-	uv := reflect.ValueOf(*u)
-	ev := reflect.ValueOf(extremeUsage)
+	uv := reflect.ValueOf(u).Elem()
+	ev := reflect.ValueOf(extremeUsage).Elem()
 	typ := uv.Type()
 	for i := range typ.NumField() {
 		// We ignore zero values in ev because some fields

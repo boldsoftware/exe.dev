@@ -66,7 +66,7 @@ var machineCommand = &cli.Command{
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		showFields(w, reflect.ValueOf(*usage))
+		showFields(w, reflect.ValueOf(usage).Elem())
 		if err := w.Flush(); err != nil {
 			return err
 		}
