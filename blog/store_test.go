@@ -1,6 +1,7 @@
 package blog
 
 import (
+	"encoding/xml"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -109,6 +110,35 @@ func TestHandlerAtomFeed(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "<feed") {
 		t.Fatal("expected atom output")
+	}
+}
+
+func TestAtomFeedValidXML(t *testing.T) {
+	store, err := Load(false)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if len(store.Entries()) == 0 {
+		t.Skip("no published blog entries available")
+	}
+	handler := NewHandler(store, false)
+	if handler == nil {
+		t.Fatal("expected handler")
+	}
+
+	req := httptest.NewRequest("GET", "/atom.xml", nil)
+	w := httptest.NewRecorder()
+	if !handler.Handle(w, req) {
+		t.Fatal("handler did not handle /atom.xml")
+	}
+	if got := w.Result().StatusCode; got != http.StatusOK {
+		t.Fatalf("status = %d; want %d", got, http.StatusOK)
+	}
+
+	// Validate that the atom feed parses as valid XML.
+	var feed any
+	if err := xml.Unmarshal(w.Body.Bytes(), &feed); err != nil {
+		t.Fatalf("atom.xml is not valid XML: %v\n\nContent:\n%s", err, w.Body.String())
 	}
 }
 

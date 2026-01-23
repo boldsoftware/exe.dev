@@ -45,6 +45,6 @@ s003.exe.xyz.           230     IN      A       16.145.102.7
 
 This is all the extra information we need to route SSH connections. When SSH connects, it presents a public key, and comes in via a particular IP address. The public key tells us the user, and the `{user, IP}` tuple uniquely identifies the VM they are connecting to. In diagram form:
 
-<img src="/assets/ssh-proxy-tuple.svg" alt="A diagram of ssh'ing into an exe.dev VM" style="max-width: 100%; height: auto;">
+<img src="/assets/ssh-proxy-tuple.svg" alt="A diagram of ssh'ing into an exe.dev VM" style="max-width: 100%; height: auto;" />
 
 Building a proxy that does this requires some cross-system communication: when we create a VM we have to allocate it an IP carefully based on the user (or in the near future: team) that owns it. Our ssh proxy has to be able to determine the local IP a request came in on, which is easy on bare metal, harder in a cloud environment where public IPs are NATed on to private VPC addresses. All of this requires bespoke management software, so we cannot recommend it as a general solution to people who want to multiplex VM SSH access onto an IP. But uniform, predictable domain name behavior is important to us, so we took the time to build this for exe.dev.
