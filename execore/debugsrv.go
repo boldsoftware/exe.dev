@@ -109,9 +109,11 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
+		Stage      string
 		GitCommit  string
 		GitHubLink template.HTML
 	}{
+		Stage:      s.env.String(),
 		GitCommit:  commit,
 		GitHubLink: template.HTML(gitHubLink(commit)),
 	}
