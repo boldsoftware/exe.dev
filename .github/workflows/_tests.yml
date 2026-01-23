@@ -75,8 +75,9 @@ jobs:
       - name: Download exelet-fs
         run: make exelet-fs
 
-      - name: Verify custom linters pass
+      - name: Verify linters pass
         run: |
+          go vet ./...
           go build -o /tmp/exelint ./cmd/exelint
           go vet -vettool=/tmp/exelint ./...
 
