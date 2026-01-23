@@ -3,14 +3,12 @@ INSERT INTO passkeys (user_id, credential_id, public_key, sign_count, aaguid, na
 VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetPasskeysByUserID :many
-SELECT id, user_id, credential_id, public_key, sign_count, aaguid, name, created_at, last_used_at, flags
-FROM passkeys
+SELECT * FROM passkeys
 WHERE user_id = ?
 ORDER BY created_at DESC;
 
 -- name: GetPasskeyByCredentialID :one
-SELECT id, user_id, credential_id, public_key, sign_count, aaguid, name, created_at, last_used_at, flags
-FROM passkeys
+SELECT * FROM passkeys
 WHERE credential_id = ?;
 
 -- name: UpdatePasskeySignCount :exec

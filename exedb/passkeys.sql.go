@@ -43,27 +43,13 @@ func (q *Queries) DeletePasskeyChallenge(ctx context.Context, challenge string) 
 }
 
 const getPasskeyByCredentialID = `-- name: GetPasskeyByCredentialID :one
-SELECT id, user_id, credential_id, public_key, sign_count, aaguid, name, created_at, last_used_at, flags
-FROM passkeys
+SELECT id, user_id, credential_id, public_key, sign_count, aaguid, name, flags, created_at, last_used_at FROM passkeys
 WHERE credential_id = ?
 `
 
-type GetPasskeyByCredentialIDRow struct {
-	ID           int64      `db:"id" json:"id"`
-	UserID       string     `db:"user_id" json:"user_id"`
-	CredentialID []byte     `db:"credential_id" json:"credential_id"`
-	PublicKey    []byte     `db:"public_key" json:"public_key"`
-	SignCount    int64      `db:"sign_count" json:"sign_count"`
-	Aaguid       []byte     `db:"aaguid" json:"aaguid"`
-	Name         string     `db:"name" json:"name"`
-	CreatedAt    *time.Time `db:"created_at" json:"created_at"`
-	LastUsedAt   *time.Time `db:"last_used_at" json:"last_used_at"`
-	Flags        int64      `db:"flags" json:"flags"`
-}
-
-func (q *Queries) GetPasskeyByCredentialID(ctx context.Context, credentialID []byte) (GetPasskeyByCredentialIDRow, error) {
+func (q *Queries) GetPasskeyByCredentialID(ctx context.Context, credentialID []byte) (Passkey, error) {
 	row := q.queryRow(ctx, q.getPasskeyByCredentialIDStmt, getPasskeyByCredentialID, credentialID)
-	var i GetPasskeyByCredentialIDRow
+	var i Passkey
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -72,9 +58,9 @@ func (q *Queries) GetPasskeyByCredentialID(ctx context.Context, credentialID []b
 		&i.SignCount,
 		&i.Aaguid,
 		&i.Name,
+		&i.Flags,
 		&i.CreatedAt,
 		&i.LastUsedAt,
-		&i.Flags,
 	)
 	return i, err
 }
@@ -105,34 +91,20 @@ func (q *Queries) GetPasskeyChallenge(ctx context.Context, challenge string) (Ge
 }
 
 const getPasskeysByUserID = `-- name: GetPasskeysByUserID :many
-SELECT id, user_id, credential_id, public_key, sign_count, aaguid, name, created_at, last_used_at, flags
-FROM passkeys
+SELECT id, user_id, credential_id, public_key, sign_count, aaguid, name, flags, created_at, last_used_at FROM passkeys
 WHERE user_id = ?
 ORDER BY created_at DESC
 `
 
-type GetPasskeysByUserIDRow struct {
-	ID           int64      `db:"id" json:"id"`
-	UserID       string     `db:"user_id" json:"user_id"`
-	CredentialID []byte     `db:"credential_id" json:"credential_id"`
-	PublicKey    []byte     `db:"public_key" json:"public_key"`
-	SignCount    int64      `db:"sign_count" json:"sign_count"`
-	Aaguid       []byte     `db:"aaguid" json:"aaguid"`
-	Name         string     `db:"name" json:"name"`
-	CreatedAt    *time.Time `db:"created_at" json:"created_at"`
-	LastUsedAt   *time.Time `db:"last_used_at" json:"last_used_at"`
-	Flags        int64      `db:"flags" json:"flags"`
-}
-
-func (q *Queries) GetPasskeysByUserID(ctx context.Context, userID string) ([]GetPasskeysByUserIDRow, error) {
+func (q *Queries) GetPasskeysByUserID(ctx context.Context, userID string) ([]Passkey, error) {
 	rows, err := q.query(ctx, q.getPasskeysByUserIDStmt, getPasskeysByUserID, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []GetPasskeysByUserIDRow{}
+	items := []Passkey{}
 	for rows.Next() {
-		var i GetPasskeysByUserIDRow
+		var i Passkey
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
@@ -141,9 +113,9 @@ func (q *Queries) GetPasskeysByUserID(ctx context.Context, userID string) ([]Get
 			&i.SignCount,
 			&i.Aaguid,
 			&i.Name,
+			&i.Flags,
 			&i.CreatedAt,
 			&i.LastUsedAt,
-			&i.Flags,
 		); err != nil {
 			return nil, err
 		}
