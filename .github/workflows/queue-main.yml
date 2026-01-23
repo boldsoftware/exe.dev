@@ -32,9 +32,17 @@ jobs:
       shelley_changed: ${{ steps.changes.outputs.shelley_changed }}
       exe_changed: ${{ steps.changes.outputs.exe_changed }}
     steps:
+      - name: Create GitHub App Token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: 2710433
+          private-key: ${{ secrets.EXE_COMMIT_QUEUE_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Validate commits for WIP, DO NOT SUBMIT, and VIBES
         run: |
@@ -209,6 +217,15 @@ jobs:
       issues: write
       actions: write
     steps:
+      - name: Create GitHub App Token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: 2710433
+          private-key: ${{ secrets.EXE_COMMIT_QUEUE_APP_PRIVATE_KEY }}
+          owner: boldsoftware
+          repositories: exe,shelley,exeuntu
+
       - name: Abort stale rebase (pre-checkout)
         run: |
           # On self-hosted runners the workspace persists; clear any stale rebase state
@@ -225,6 +242,7 @@ jobs:
         with:
           ref: ${{ needs.commit-validation-and-formatting.outputs.commit_sha }}
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
       - name: Verify expected commit checked out
         run: |
           set -euo pipefail
@@ -244,28 +262,9 @@ jobs:
           git config --global user.name "Auto-rebaser"
           git config --global user.email "bot@exe.dev"
 
-          git remote add shelley git@github.com:boldsoftware/shelley.git
-          git remote add exeuntu git@github.com:boldsoftware/exeuntu.git
-          mkdir -p ~/.ssh
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
-          echo "${SHELLEY_REPO_DEPLOY_KEY}" > ~/.ssh/shelley_key
-          echo "${EXEUNTU_REPO_DEPLOY_KEY}" > ~/.ssh/exeuntu_key
-          chmod 600 ~/.ssh/shelley_key ~/.ssh/exeuntu_key
-          printf '%s\n' \
-            'Host github.com-shelley' \
-            '  HostName github.com' \
-            '  User git' \
-            '  IdentityFile ~/.ssh/shelley_key' \
-            '  IdentitiesOnly yes' \
-            '' \
-            'Host github.com-exeuntu' \
-            '  HostName github.com' \
-            '  User git' \
-            '  IdentityFile ~/.ssh/exeuntu_key' \
-            '  IdentitiesOnly yes' \
-            >> ~/.ssh/config
-          git remote set-url shelley git@github.com-shelley:boldsoftware/shelley.git
-          git remote set-url exeuntu git@github.com-exeuntu:boldsoftware/exeuntu.git
+          # Set up HTTPS remotes with app token for shelley and exeuntu
+          git remote add shelley "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/shelley.git"
+          git remote add exeuntu "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exeuntu.git"
 
           # Try to rebase onto main and push
           git fetch origin main
@@ -305,8 +304,7 @@ jobs:
 
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          SHELLEY_REPO_DEPLOY_KEY: ${{ secrets.SHELLEY_REPO_DEPLOY_KEY }}
-          EXEUNTU_REPO_DEPLOY_KEY: ${{ secrets.EXEUNTU_REPO_DEPLOY_KEY }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
       - name: Ensure GitHub CLI installed
         if: steps.push.outputs.exeuntu_or_shelley_changed == 'true'
         run: |
