@@ -122,30 +122,6 @@ func (q *Queries) UpdateUserLLMAvailableCredit(ctx context.Context, arg UpdateUs
 	return err
 }
 
-const updateUserLLMCreditSettings = `-- name: UpdateUserLLMCreditSettings :exec
-UPDATE user_llm_credit
-SET available_credit = ?, max_credit = ?, refresh_per_hour = ?, updated_at = CURRENT_TIMESTAMP
-WHERE user_id = ?
-`
-
-type UpdateUserLLMCreditSettingsParams struct {
-	AvailableCredit float64  `db:"available_credit" json:"available_credit"`
-	MaxCredit       *float64 `db:"max_credit" json:"max_credit"`
-	RefreshPerHour  *float64 `db:"refresh_per_hour" json:"refresh_per_hour"`
-	UserID          string   `db:"user_id" json:"user_id"`
-}
-
-// Updates credit settings. Pass NULL for max_credit/refresh_per_hour to clear overrides and use defaults.
-func (q *Queries) UpdateUserLLMCreditSettings(ctx context.Context, arg UpdateUserLLMCreditSettingsParams) error {
-	_, err := q.exec(ctx, q.updateUserLLMCreditSettingsStmt, updateUserLLMCreditSettings,
-		arg.AvailableCredit,
-		arg.MaxCredit,
-		arg.RefreshPerHour,
-		arg.UserID,
-	)
-	return err
-}
-
 const upsertUserLLMCredit = `-- name: UpsertUserLLMCredit :exec
 INSERT INTO user_llm_credit (user_id, available_credit, max_credit, refresh_per_hour, last_refresh_at)
 VALUES (?, ?, ?, ?, ?)

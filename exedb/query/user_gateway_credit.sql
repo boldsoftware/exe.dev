@@ -22,12 +22,6 @@ UPDATE user_llm_credit
 SET available_credit = ?, total_used = total_used + ?, last_refresh_at = ?, updated_at = CURRENT_TIMESTAMP
 WHERE user_id = ?;
 
--- name: UpdateUserLLMCreditSettings :exec
--- Updates credit settings. Pass NULL for max_credit/refresh_per_hour to clear overrides and use defaults.
-UPDATE user_llm_credit
-SET available_credit = ?, max_credit = ?, refresh_per_hour = ?, updated_at = CURRENT_TIMESTAMP
-WHERE user_id = ?;
-
 -- name: ListAllUserLLMCredits :many
 SELECT * FROM user_llm_credit ORDER BY user_id;
 

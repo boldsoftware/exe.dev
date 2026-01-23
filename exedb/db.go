@@ -570,9 +570,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateUserLLMAvailableCreditStmt, err = db.PrepareContext(ctx, updateUserLLMAvailableCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateUserLLMAvailableCredit: %w", err)
 	}
-	if q.updateUserLLMCreditSettingsStmt, err = db.PrepareContext(ctx, updateUserLLMCreditSettings); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateUserLLMCreditSettings: %w", err)
-	}
 	if q.upsertHLLSketchStmt, err = db.PrepareContext(ctx, upsertHLLSketch); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertHLLSketch: %w", err)
 	}
@@ -1518,11 +1515,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateUserLLMAvailableCreditStmt: %w", cerr)
 		}
 	}
-	if q.updateUserLLMCreditSettingsStmt != nil {
-		if cerr := q.updateUserLLMCreditSettingsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateUserLLMCreditSettingsStmt: %w", cerr)
-		}
-	}
 	if q.upsertHLLSketchStmt != nil {
 		if cerr := q.upsertHLLSketchStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertHLLSketchStmt: %w", cerr)
@@ -1794,7 +1786,6 @@ type Queries struct {
 	updateTagResolutionCheckedStmt             *sql.Stmt
 	updateTagResolutionDigestStmt              *sql.Stmt
 	updateUserLLMAvailableCreditStmt           *sql.Stmt
-	updateUserLLMCreditSettingsStmt            *sql.Stmt
 	upsertHLLSketchStmt                        *sql.Stmt
 	upsertIPShardStmt                          *sql.Stmt
 	upsertMobilePendingVMStmt                  *sql.Stmt
@@ -1993,7 +1984,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateTagResolutionCheckedStmt:             q.updateTagResolutionCheckedStmt,
 		updateTagResolutionDigestStmt:              q.updateTagResolutionDigestStmt,
 		updateUserLLMAvailableCreditStmt:           q.updateUserLLMAvailableCreditStmt,
-		updateUserLLMCreditSettingsStmt:            q.updateUserLLMCreditSettingsStmt,
 		upsertHLLSketchStmt:                        q.upsertHLLSketchStmt,
 		upsertIPShardStmt:                          q.upsertIPShardStmt,
 		upsertMobilePendingVMStmt:                  q.upsertMobilePendingVMStmt,
