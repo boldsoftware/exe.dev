@@ -207,6 +207,16 @@ type PendingSSHKey struct {
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
 }
 
+type SSHKey struct {
+	ID          int64      `db:"id" json:"id"`
+	UserID      string     `db:"user_id" json:"user_id"`
+	PublicKey   string     `db:"public_key" json:"public_key"`
+	AddedAt     *time.Time `db:"added_at" json:"added_at"`
+	LastUsedAt  *time.Time `db:"last_used_at" json:"last_used_at"`
+	Comment     *string    `db:"comment" json:"comment"`
+	Fingerprint string     `db:"fingerprint" json:"fingerprint"`
+}
+
 type ServerMetum struct {
 	Key       string     `db:"key" json:"key"`
 	Value     string     `db:"value" json:"value"`
@@ -239,16 +249,6 @@ type SshHostKey struct {
 	CreatedAt   *time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt   *time.Time `db:"updated_at" json:"updated_at"`
 	CertSig     *string    `db:"cert_sig" json:"cert_sig"`
-}
-
-type SshKey struct {
-	ID          int64      `db:"id" json:"id"`
-	UserID      string     `db:"user_id" json:"user_id"`
-	PublicKey   string     `db:"public_key" json:"public_key"`
-	AddedAt     *time.Time `db:"added_at" json:"added_at"`
-	LastUsedAt  *time.Time `db:"last_used_at" json:"last_used_at"`
-	Comment     *string    `db:"comment" json:"comment"`
-	Fingerprint string     `db:"fingerprint" json:"fingerprint"`
 }
 
 type TagResolution struct {

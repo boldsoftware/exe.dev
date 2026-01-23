@@ -106,15 +106,15 @@ const getSSHKeysForUserByEmail = `-- name: GetSSHKeysForUserByEmail :many
 SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key
 `
 
-func (q *Queries) GetSSHKeysForUserByEmail(ctx context.Context, email string) ([]SshKey, error) {
+func (q *Queries) GetSSHKeysForUserByEmail(ctx context.Context, email string) ([]SSHKey, error) {
 	rows, err := q.query(ctx, q.getSSHKeysForUserByEmailStmt, getSSHKeysForUserByEmail, email)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []SshKey{}
+	items := []SSHKey{}
 	for rows.Next() {
-		var i SshKey
+		var i SSHKey
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,

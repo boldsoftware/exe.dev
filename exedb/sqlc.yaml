@@ -33,4 +33,5 @@ sql:
           ssh_client_private_key: "SSHClientPrivateKey"
           ssh_port: "SSHPort"
           ssh_user: "SSHUser"
+          ssh_key: "SSHKey"
           pending_ssh_key: "PendingSSHKey"
