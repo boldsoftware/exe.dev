@@ -109,6 +109,9 @@ jobs:
             exit 1
           fi
 
+      - name: Run go vet
+        run: go vet ./...
+
       - name: Run Go tests
         run: go tool gotestsum --format testname -- -race ./...
 
