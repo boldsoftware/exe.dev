@@ -10,18 +10,13 @@ import (
 )
 
 const getHLLSketch = `-- name: GetHLLSketch :one
-SELECT key, data FROM hll_sketches WHERE key = ?
+SELECT "key", data, updated_at FROM hll_sketches WHERE key = ?
 `
 
-type GetHLLSketchRow struct {
-	Key  string `db:"key" json:"key"`
-	Data []byte `db:"data" json:"data"`
-}
-
-func (q *Queries) GetHLLSketch(ctx context.Context, key string) (GetHLLSketchRow, error) {
+func (q *Queries) GetHLLSketch(ctx context.Context, key string) (HllSketch, error) {
 	row := q.queryRow(ctx, q.getHLLSketchStmt, getHLLSketch, key)
-	var i GetHLLSketchRow
-	err := row.Scan(&i.Key, &i.Data)
+	var i HllSketch
+	err := row.Scan(&i.Key, &i.Data, &i.UpdatedAt)
 	return i, err
 }
 

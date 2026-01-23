@@ -20,8 +20,7 @@ func (q *Queries) DeletePendingRegistrationByToken(ctx context.Context, token st
 }
 
 const getPendingRegistrationByToken = `-- name: GetPendingRegistrationByToken :one
-SELECT token, email, invite_code_id, created_at, expires_at
-FROM pending_registrations
+SELECT token, email, invite_code_id, created_at, expires_at FROM pending_registrations
 WHERE token = ?
 `
 

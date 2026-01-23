@@ -24,8 +24,7 @@ INSERT INTO passkey_challenges (challenge, session_data, user_id, expires_at)
 VALUES (?, ?, ?, ?);
 
 -- name: GetPasskeyChallenge :one
-SELECT challenge, session_data, user_id, expires_at
-FROM passkey_challenges
+SELECT * FROM passkey_challenges
 WHERE challenge = ?;
 
 -- name: DeletePasskeyChallenge :exec

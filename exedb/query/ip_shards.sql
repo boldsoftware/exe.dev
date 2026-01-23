@@ -11,8 +11,7 @@ FROM ip_shards
 WHERE shard = ?;
 
 -- name: ListIPShards :many
-SELECT shard, public_ip
-FROM ip_shards
+SELECT * FROM ip_shards
 ORDER BY shard;
 
 -- name: CountIPShards :one

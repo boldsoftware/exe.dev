@@ -34,26 +34,25 @@ func (q *Queries) GetShardPublicIP(ctx context.Context, shard int64) (string, er
 }
 
 const listIPShards = `-- name: ListIPShards :many
-SELECT shard, public_ip
-FROM ip_shards
+SELECT shard, public_ip, created_at, updated_at FROM ip_shards
 ORDER BY shard
 `
 
-type ListIPShardsRow struct {
-	Shard    int64  `db:"shard" json:"shard"`
-	PublicIp string `db:"public_ip" json:"public_ip"`
-}
-
-func (q *Queries) ListIPShards(ctx context.Context) ([]ListIPShardsRow, error) {
+func (q *Queries) ListIPShards(ctx context.Context) ([]IPShard, error) {
 	rows, err := q.query(ctx, q.listIPShardsStmt, listIPShards)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListIPShardsRow{}
+	items := []IPShard{}
 	for rows.Next() {
-		var i ListIPShardsRow
-		if err := rows.Scan(&i.Shard, &i.PublicIp); err != nil {
+		var i IPShard
+		if err := rows.Scan(
+			&i.Shard,
+			&i.PublicIp,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

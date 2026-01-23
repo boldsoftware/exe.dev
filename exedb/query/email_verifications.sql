@@ -6,8 +6,7 @@ INSERT INTO email_verifications (token, email, user_id, expires_at, verification
 VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: GetEmailVerificationByToken :one
-SELECT user_id, email, expires_at, verification_code, invite_code_id
-FROM email_verifications
+SELECT * FROM email_verifications
 WHERE token = ?;
 
 -- name: InsertOrReplaceEmailVerification :exec

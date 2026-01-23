@@ -34,26 +34,19 @@ func (q *Queries) GetEmailVerificationByPartialToken(ctx context.Context, token 
 }
 
 const getEmailVerificationByToken = `-- name: GetEmailVerificationByToken :one
-SELECT user_id, email, expires_at, verification_code, invite_code_id
-FROM email_verifications
+SELECT token, email, user_id, expires_at, created_at, verification_code, invite_code_id FROM email_verifications
 WHERE token = ?
 `
 
-type GetEmailVerificationByTokenRow struct {
-	UserID           string    `db:"user_id" json:"user_id"`
-	Email            string    `db:"email" json:"email"`
-	ExpiresAt        time.Time `db:"expires_at" json:"expires_at"`
-	VerificationCode *string   `db:"verification_code" json:"verification_code"`
-	InviteCodeID     *int64    `db:"invite_code_id" json:"invite_code_id"`
-}
-
-func (q *Queries) GetEmailVerificationByToken(ctx context.Context, token string) (GetEmailVerificationByTokenRow, error) {
+func (q *Queries) GetEmailVerificationByToken(ctx context.Context, token string) (EmailVerification, error) {
 	row := q.queryRow(ctx, q.getEmailVerificationByTokenStmt, getEmailVerificationByToken, token)
-	var i GetEmailVerificationByTokenRow
+	var i EmailVerification
 	err := row.Scan(
-		&i.UserID,
+		&i.Token,
 		&i.Email,
+		&i.UserID,
 		&i.ExpiresAt,
+		&i.CreatedAt,
 		&i.VerificationCode,
 		&i.InviteCodeID,
 	)

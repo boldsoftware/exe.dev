@@ -1565,20 +1565,20 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 }
 
 // checkEmailVerificationToken checks if an email verification token is valid without consuming it
-func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) (exedb.GetEmailVerificationByTokenRow, error) {
+func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) (exedb.EmailVerification, error) {
 	row, err := withRxRes1(s, ctx, (*exedb.Queries).GetEmailVerificationByToken, token)
 	if errors.Is(err, sql.ErrNoRows) {
-		return exedb.GetEmailVerificationByTokenRow{}, fmt.Errorf("invalid verification token")
+		return exedb.EmailVerification{}, fmt.Errorf("invalid verification token")
 	}
 	if err != nil {
-		return exedb.GetEmailVerificationByTokenRow{}, fmt.Errorf("database error: %w", err)
+		return exedb.EmailVerification{}, fmt.Errorf("database error: %w", err)
 	}
 
 	// Check if token has expired
 	if time.Now().After(row.ExpiresAt) {
 		// Clean up expired token
 		withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).DeleteEmailVerificationByToken, token)
-		return exedb.GetEmailVerificationByTokenRow{}, fmt.Errorf("verification token expired")
+		return exedb.EmailVerification{}, fmt.Errorf("verification token expired")
 	}
 
 	return row, nil

@@ -66,26 +66,19 @@ func (q *Queries) GetPasskeyByCredentialID(ctx context.Context, credentialID []b
 }
 
 const getPasskeyChallenge = `-- name: GetPasskeyChallenge :one
-SELECT challenge, session_data, user_id, expires_at
-FROM passkey_challenges
+SELECT challenge, session_data, user_id, expires_at, created_at FROM passkey_challenges
 WHERE challenge = ?
 `
 
-type GetPasskeyChallengeRow struct {
-	Challenge   string    `db:"challenge" json:"challenge"`
-	SessionData []byte    `db:"session_data" json:"session_data"`
-	UserID      *string   `db:"user_id" json:"user_id"`
-	ExpiresAt   time.Time `db:"expires_at" json:"expires_at"`
-}
-
-func (q *Queries) GetPasskeyChallenge(ctx context.Context, challenge string) (GetPasskeyChallengeRow, error) {
+func (q *Queries) GetPasskeyChallenge(ctx context.Context, challenge string) (PasskeyChallenge, error) {
 	row := q.queryRow(ctx, q.getPasskeyChallengeStmt, getPasskeyChallenge, challenge)
-	var i GetPasskeyChallengeRow
+	var i PasskeyChallenge
 	err := row.Scan(
 		&i.Challenge,
 		&i.SessionData,
 		&i.UserID,
 		&i.ExpiresAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
