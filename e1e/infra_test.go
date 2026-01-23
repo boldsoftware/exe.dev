@@ -307,10 +307,12 @@ func (e *testEnv) Close() error {
 	}
 
 	// Collect and merge coverage data from exed and exelet
-	slog.Info("COVERAGE", "exed_dir", e.servers.Exed.CoverDir, "exelet_dir", coverDirs)
+	if e.servers != nil && e.servers.Exed != nil {
+		slog.Info("COVERAGE", "exed_dir", e.servers.Exed.CoverDir, "exelet_dir", coverDirs)
 
-	if cd := e.servers.Exed.CoverDir; cd != "" {
-		coverDirs = append(coverDirs, cd)
+		if cd := e.servers.Exed.CoverDir; cd != "" {
+			coverDirs = append(coverDirs, cd)
+		}
 	}
 
 	if len(coverDirs) > 0 {
