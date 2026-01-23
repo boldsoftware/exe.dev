@@ -130,6 +130,60 @@ func TestResolveBoxNameApexDomain(t *testing.T) {
 	}
 }
 
+// TestResolveBoxNameApexDomainWithLobbyIP tests that apex domains can point to the
+// lobby IP (the IP for ssh exe.dev), not just shard IPs. This is important because
+// users often set their apex domain A record to point at exe.xyz (which resolves to
+// the lobby IP), rather than a shard IP like s001.exe.xyz.
+func TestResolveBoxNameApexDomainWithLobbyIP(t *testing.T) {
+	t.Parallel()
+
+	lobbyIP := netip.MustParseAddr("203.0.113.99") // The lobby IP (ssh exe.dev)
+	shardIP := netip.MustParseAddr("203.0.113.10") // A shard IP (s001.exe.xyz)
+
+	s := &Server{
+		env:     stage.Prod(),
+		LobbyIP: lobbyIP,
+		PublicIPs: map[netip.Addr]publicips.PublicIP{
+			netip.MustParseAddr("10.0.0.5"): {
+				IP:     shardIP,
+				Domain: "s001.exe.xyz",
+				Shard:  1,
+			},
+		},
+		log: tslog.Slogger(t),
+	}
+
+	s.lookupCNAMEFunc = func(_ context.Context, host string) (string, error) {
+		switch host {
+		case "example.com":
+			// Apex domain - no CNAME, return itself
+			return "example.com.", nil
+		case "www.example.com":
+			// www CNAME points to the box
+			return "mybox.exe.xyz.", nil
+		default:
+			return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+		}
+	}
+	s.lookupAFunc = func(_ context.Context, network, host string) ([]netip.Addr, error) {
+		switch host {
+		case "example.com":
+			// Customer's apex domain points to the lobby IP (exe.xyz's IP)
+			return []netip.Addr{lobbyIP}, nil
+		default:
+			return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+		}
+	}
+
+	boxName, err := s.resolveBoxName(context.Background(), "example.com")
+	if err != nil {
+		t.Fatalf("resolveBoxName(%q) error = %v, want nil", "example.com", err)
+	}
+	if boxName != "mybox" {
+		t.Fatalf("resolveBoxName(%q) = %q, want %q", "example.com", boxName, "mybox")
+	}
+}
+
 func TestResolveBoxNameShelleySubdomain(t *testing.T) {
 	t.Parallel()
 

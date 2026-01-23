@@ -82,6 +82,11 @@ func (s *Server) resolveApexDomainBoxName(ctx context.Context, host string) (str
 
 func (s *Server) apexPointsToPublicIP(ips []netip.Addr) bool {
 	for _, addr := range ips {
+		// Check lobby IP (the IP for exe.xyz / ssh exe.dev)
+		if s.LobbyIP.IsValid() && addr == s.LobbyIP {
+			return true
+		}
+		// Check shard IPs (s001-s025.exe.xyz)
 		for _, info := range s.PublicIPs {
 			if addr == info.IP {
 				return true
