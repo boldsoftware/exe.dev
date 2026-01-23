@@ -25,7 +25,7 @@ While we are in alpha, every new account automatically runs on a free trial with
           <li>2 CPUs</li>
           <li>8GB RAM</li>
           <li>25GB&nbsp;disk<sup>+</sup></li>
-          <li>100GB&nbsp;bandwidth<sup>+</sup></li>
+          <li>100GB&nbsp;data transfer<sup>+</sup></li>
         </ul>
       </td>
       <td style="border: 1px solid #000; padding: 12px; vertical-align: top;">
@@ -35,7 +35,7 @@ While we are in alpha, every new account automatically runs on a free trial with
           <li>2 CPUs</li>
           <li>8GB RAM</li>
           <li>25GB disk<sup>+</sup></li>
-          <li>100GB bandwidth<sup>+</sup></li>
+          <li>100GB data transfer<sup>+</sup></li>
           <li>Admin and user management for shared environments</li>
           <li>SSO</li>
         </ul>
@@ -47,7 +47,7 @@ While we are in alpha, every new account automatically runs on a free trial with
           <li>2 CPUs</li>
           <li>16GB RAM</li>
           <li>25GB disk<sup>+</sup></li>
-          <li>100GB bandwidth<sup>+</sup></li>
+          <li>100GB data transfer<sup>+</sup></li>
           <li>Admin and user management for shared environments</li>
           <li>SSO</li>
           <li>AWS VPC integration</li>
@@ -57,7 +57,7 @@ While we are in alpha, every new account automatically runs on a free trial with
   </tbody>
 </table>
 
-<p style="font-size: 11px;"><sup>+</sup> Additional disk $0.08/GB/month; additional bandwidth $0.07/GB/month.</p>
+<p style="font-size: 11px;"><sup>+</sup> Additional disk $0.08/GB/month; additional data transfer $0.07/GB/month.</p>
 
 VMs share the resources allocated to the user.
 
