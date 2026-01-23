@@ -10,6 +10,20 @@ import (
 	"database/sql"
 )
 
+const deleteSSHKeyByID = `-- name: DeleteSSHKeyByID :exec
+DELETE FROM ssh_keys WHERE id = ? AND user_id = ?
+`
+
+type DeleteSSHKeyByIDParams struct {
+	ID     int64  `db:"id" json:"id"`
+	UserID string `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) DeleteSSHKeyByID(ctx context.Context, arg DeleteSSHKeyByIDParams) error {
+	_, err := q.exec(ctx, q.deleteSSHKeyByIDStmt, deleteSSHKeyByID, arg.ID, arg.UserID)
+	return err
+}
+
 const deleteSSHKeyForUser = `-- name: DeleteSSHKeyForUser :one
 DELETE FROM ssh_keys
 WHERE user_id = ?
@@ -96,12 +110,92 @@ func (q *Queries) GetSSHKeysForUser(ctx context.Context, userID string) ([]SSHKe
 	return items, nil
 }
 
+const getSSHKeysForUserByComment = `-- name: GetSSHKeysForUserByComment :many
+SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint FROM ssh_keys WHERE user_id = ? AND comment = ?
+`
+
+type GetSSHKeysForUserByCommentParams struct {
+	UserID  string `db:"user_id" json:"user_id"`
+	Comment string `db:"comment" json:"comment"`
+}
+
+func (q *Queries) GetSSHKeysForUserByComment(ctx context.Context, arg GetSSHKeysForUserByCommentParams) ([]SSHKey, error) {
+	rows, err := q.query(ctx, q.getSSHKeysForUserByCommentStmt, getSSHKeysForUserByComment, arg.UserID, arg.Comment)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SSHKey{}
+	for rows.Next() {
+		var i SSHKey
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.PublicKey,
+			&i.AddedAt,
+			&i.LastUsedAt,
+			&i.Comment,
+			&i.Fingerprint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSSHKeysForUserByEmail = `-- name: GetSSHKeysForUserByEmail :many
 SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key
 `
 
 func (q *Queries) GetSSHKeysForUserByEmail(ctx context.Context, email string) ([]SSHKey, error) {
 	rows, err := q.query(ctx, q.getSSHKeysForUserByEmailStmt, getSSHKeysForUserByEmail, email)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SSHKey{}
+	for rows.Next() {
+		var i SSHKey
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.PublicKey,
+			&i.AddedAt,
+			&i.LastUsedAt,
+			&i.Comment,
+			&i.Fingerprint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSSHKeysForUserByFingerprint = `-- name: GetSSHKeysForUserByFingerprint :many
+SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint FROM ssh_keys WHERE user_id = ? AND fingerprint = ?
+`
+
+type GetSSHKeysForUserByFingerprintParams struct {
+	UserID      string `db:"user_id" json:"user_id"`
+	Fingerprint string `db:"fingerprint" json:"fingerprint"`
+}
+
+func (q *Queries) GetSSHKeysForUserByFingerprint(ctx context.Context, arg GetSSHKeysForUserByFingerprintParams) ([]SSHKey, error) {
+	rows, err := q.query(ctx, q.getSSHKeysForUserByFingerprintStmt, getSSHKeysForUserByFingerprint, arg.UserID, arg.Fingerprint)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +237,7 @@ func (q *Queries) GetUserIDBySSHKey(ctx context.Context, publicKey string) (stri
 }
 
 const getUserWithSSHKey = `-- name: GetUserWithSSHKey :one
-SELECT u.user_id, u.email, u.created_at, u.root_support, u.created_for_login_with_exe, u.new_vm_creation_disabled, u.discord_id, u.discord_username, u.billing_exemption, u.billing_trial_ends_at, u.signed_up_with_invite_id
+SELECT u.user_id, u.email, u.created_at, u.root_support, u.created_for_login_with_exe, u.new_vm_creation_disabled, u.discord_id, u.discord_username, u.billing_exemption, u.billing_trial_ends_at, u.signed_up_with_invite_id, u.next_ssh_key_number
 FROM users u
 JOIN ssh_keys s ON u.user_id = s.user_id
 WHERE s.public_key = ?
@@ -164,22 +258,29 @@ func (q *Queries) GetUserWithSSHKey(ctx context.Context, publicKey string) (User
 		&i.BillingExemption,
 		&i.BillingTrialEndsAt,
 		&i.SignedUpWithInviteID,
+		&i.NextSSHKeyNumber,
 	)
 	return i, err
 }
 
 const insertSSHKey = `-- name: InsertSSHKey :exec
-INSERT INTO ssh_keys (user_id, public_key, fingerprint) VALUES (?, ?, ?)
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint) VALUES (?, ?, ?, ?)
 `
 
 type InsertSSHKeyParams struct {
 	UserID      string `db:"user_id" json:"user_id"`
 	PublicKey   string `db:"public_key" json:"public_key"`
+	Comment     string `db:"comment" json:"comment"`
 	Fingerprint string `db:"fingerprint" json:"fingerprint"`
 }
 
 func (q *Queries) InsertSSHKey(ctx context.Context, arg InsertSSHKeyParams) error {
-	_, err := q.exec(ctx, q.insertSSHKeyStmt, insertSSHKey, arg.UserID, arg.PublicKey, arg.Fingerprint)
+	_, err := q.exec(ctx, q.insertSSHKeyStmt, insertSSHKey,
+		arg.UserID,
+		arg.PublicKey,
+		arg.Comment,
+		arg.Fingerprint,
+	)
 	return err
 }
 
@@ -190,10 +291,10 @@ FROM users u WHERE u.email = ?
 `
 
 type InsertSSHKeyForEmailUserParams struct {
-	PublicKey   string  `db:"public_key" json:"public_key"`
-	Comment     *string `db:"comment" json:"comment"`
-	Fingerprint string  `db:"fingerprint" json:"fingerprint"`
-	Email       string  `db:"email" json:"email"`
+	PublicKey   string `db:"public_key" json:"public_key"`
+	Comment     string `db:"comment" json:"comment"`
+	Fingerprint string `db:"fingerprint" json:"fingerprint"`
+	Email       string `db:"email" json:"email"`
 }
 
 func (q *Queries) InsertSSHKeyForEmailUser(ctx context.Context, arg InsertSSHKeyForEmailUserParams) error {
@@ -214,10 +315,10 @@ ON CONFLICT(public_key) DO NOTHING
 `
 
 type InsertSSHKeyForEmailUserIfNotExistsParams struct {
-	PublicKey   string  `db:"public_key" json:"public_key"`
-	Comment     *string `db:"comment" json:"comment"`
-	Fingerprint string  `db:"fingerprint" json:"fingerprint"`
-	Email       string  `db:"email" json:"email"`
+	PublicKey   string `db:"public_key" json:"public_key"`
+	Comment     string `db:"comment" json:"comment"`
+	Fingerprint string `db:"fingerprint" json:"fingerprint"`
+	Email       string `db:"email" json:"email"`
 }
 
 func (q *Queries) InsertSSHKeyForEmailUserIfNotExists(ctx context.Context, arg InsertSSHKeyForEmailUserIfNotExistsParams) (sql.Result, error) {
@@ -236,10 +337,10 @@ ON CONFLICT(public_key) DO NOTHING
 `
 
 type InsertSSHKeyIfNotExistsParams struct {
-	UserID      string  `db:"user_id" json:"user_id"`
-	PublicKey   string  `db:"public_key" json:"public_key"`
-	Comment     *string `db:"comment" json:"comment"`
-	Fingerprint string  `db:"fingerprint" json:"fingerprint"`
+	UserID      string `db:"user_id" json:"user_id"`
+	PublicKey   string `db:"public_key" json:"public_key"`
+	Comment     string `db:"comment" json:"comment"`
+	Fingerprint string `db:"fingerprint" json:"fingerprint"`
 }
 
 func (q *Queries) InsertSSHKeyIfNotExists(ctx context.Context, arg InsertSSHKeyIfNotExistsParams) (sql.Result, error) {
@@ -249,6 +350,21 @@ func (q *Queries) InsertSSHKeyIfNotExists(ctx context.Context, arg InsertSSHKeyI
 		arg.Comment,
 		arg.Fingerprint,
 	)
+}
+
+const updateSSHKeyComment = `-- name: UpdateSSHKeyComment :exec
+UPDATE ssh_keys SET comment = ? WHERE id = ? AND user_id = ?
+`
+
+type UpdateSSHKeyCommentParams struct {
+	Comment string `db:"comment" json:"comment"`
+	ID      int64  `db:"id" json:"id"`
+	UserID  string `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) UpdateSSHKeyComment(ctx context.Context, arg UpdateSSHKeyCommentParams) error {
+	_, err := q.exec(ctx, q.updateSSHKeyCommentStmt, updateSSHKeyComment, arg.Comment, arg.ID, arg.UserID)
+	return err
 }
 
 const updateSSHKeyLastUsed = `-- name: UpdateSSHKeyLastUsed :exec

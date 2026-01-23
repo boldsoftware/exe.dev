@@ -157,11 +157,12 @@ type SiteSession struct {
 
 // SSHKey represents an SSH key for the user page
 type SSHKey struct {
-	UserID     string
-	PublicKey  string
-	Comment    *string
-	AddedAt    *time.Time
-	LastUsedAt *time.Time
+	UserID      string
+	PublicKey   string
+	Comment     string
+	Fingerprint string
+	AddedAt     *time.Time
+	LastUsedAt  *time.Time
 }
 
 // EmailVerification represents a pending email verification (in-memory)
@@ -2919,14 +2920,20 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string, qc Qua
 			return err
 		}
 
-		// Add the SSH key to ssh_keys table
+		// Add the SSH key to ssh_keys table with generated comment.
+		// New users start with next_ssh_key_number=1, so first key is "key-1".
 		fingerprint, err := sshkey.Fingerprint(publicKey)
 		if err != nil {
 			return fmt.Errorf("failed to compute SSH key fingerprint: %w", err)
 		}
+		comment, err := nextSSHKeyComment(ctx, queries, userID)
+		if err != nil {
+			return fmt.Errorf("failed to generate SSH key comment: %w", err)
+		}
 		if err := queries.InsertSSHKey(ctx, exedb.InsertSSHKeyParams{
 			UserID:      userID,
 			PublicKey:   publicKey,
+			Comment:     comment,
 			Fingerprint: fingerprint,
 		}); err != nil {
 			return err

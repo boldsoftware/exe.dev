@@ -34,7 +34,7 @@ Welcome to EXE.DEV!
 PROMPT ▶ whoami
 Email Address: TestExeDevAPI@example.com
 SSH Keys:
-  Public Key: SSH_PUBKEY ← current
+  Public Key: SSH_PUBKEY (key-1) ← current
 PROMPT ▶ new --name=VM_NAME
 VM name "VM_NAME" is not available
 PROMPT ▶ whoami

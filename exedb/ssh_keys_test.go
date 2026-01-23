@@ -69,7 +69,7 @@ func TestInsertSSHKeyForEmailUser(t *testing.T) {
 	params := exedb.InsertSSHKeyForEmailUserParams{
 		Email:       userEmail,
 		PublicKey:   publicKey,
-		Comment:     nil,
+		Comment:     "",
 		Fingerprint: fingerprint,
 	}
 
@@ -118,7 +118,7 @@ func TestInsertSSHKeyForEmailUser(t *testing.T) {
 	params2 := exedb.InsertSSHKeyForEmailUserParams{
 		Email:       userEmail2,
 		PublicKey:   publicKey, // Same public key - should fail
-		Comment:     nil,
+		Comment:     "",
 		Fingerprint: fingerprint,
 	}
 

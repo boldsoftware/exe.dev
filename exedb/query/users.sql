@@ -40,3 +40,8 @@ UPDATE users SET new_vm_creation_disabled = ? WHERE user_id = ?;
 
 -- name: SetUserDiscord :exec
 UPDATE users SET discord_id = ?, discord_username = ? WHERE user_id = ?;
+
+-- name: GetAndIncrementNextSSHKeyNumber :one
+UPDATE users SET next_ssh_key_number = next_ssh_key_number + 1
+WHERE user_id = ?
+RETURNING next_ssh_key_number - 1 AS key_number;

@@ -213,7 +213,7 @@ type SSHKey struct {
 	PublicKey   string     `db:"public_key" json:"public_key"`
 	AddedAt     *time.Time `db:"added_at" json:"added_at"`
 	LastUsedAt  *time.Time `db:"last_used_at" json:"last_used_at"`
-	Comment     *string    `db:"comment" json:"comment"`
+	Comment     string     `db:"comment" json:"comment"`
 	Fingerprint string     `db:"fingerprint" json:"fingerprint"`
 }
 
@@ -290,6 +290,7 @@ type User struct {
 	BillingExemption       *string    `db:"billing_exemption" json:"billing_exemption"`
 	BillingTrialEndsAt     *time.Time `db:"billing_trial_ends_at" json:"billing_trial_ends_at"`
 	SignedUpWithInviteID   *int64     `db:"signed_up_with_invite_id" json:"signed_up_with_invite_id"`
+	NextSSHKeyNumber       int64      `db:"next_ssh_key_number" json:"next_ssh_key_number"`
 }
 
 type UserDailyEmailCount struct {

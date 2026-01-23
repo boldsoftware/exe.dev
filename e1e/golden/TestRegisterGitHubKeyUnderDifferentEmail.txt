@@ -38,6 +38,6 @@ Welcome to EXE.DEV!
 PROMPT ▶ whoami
 Email Address: also-fake-for-tests@example.combinatorics
 SSH Keys:
-  Public Key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB+zhJasLRGZPtFeAAtPiP+JnaaSOWb61BHilYsQumop ← current
+  Public Key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB+zhJasLRGZPtFeAAtPiP+JnaaSOWb61BHilYsQumop (key-1) ← current
 PROMPT ▶ exit
 Goodbye!

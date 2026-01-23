@@ -1295,9 +1295,11 @@ func (ss *SSHServer) handleSudoCommand(ctx context.Context, cc *exemenu.CommandC
 
 func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	type sshKeyRow struct {
-		PublicKey   string `json:"public_key"`
-		Fingerprint string `json:"fingerprint"`
-		Current     bool   `json:"current"`
+		PublicKey   string    `json:"public_key"`
+		Fingerprint string    `json:"fingerprint"`
+		Name        string    `json:"name,omitempty"`
+		Current     bool      `json:"current"`
+		addedAt     time.Time // unexported; for sorting only
 	}
 	ccPubKey := strings.TrimSpace(cc.PublicKey)
 	dbKeys, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetSSHKeysForUserByEmail, cc.User.Email)
@@ -1313,7 +1315,11 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 		isCurrent := pubKey == ccPubKey
 		// DB stores fingerprint without prefix; add "SHA256:" for display
 		fingerprint := "SHA256:" + dbKey.Fingerprint
-		sshKeys = append(sshKeys, sshKeyRow{PublicKey: pubKey, Fingerprint: fingerprint, Current: isCurrent})
+		var addedAt time.Time
+		if dbKey.AddedAt != nil {
+			addedAt = *dbKey.AddedAt
+		}
+		sshKeys = append(sshKeys, sshKeyRow{PublicKey: pubKey, Fingerprint: fingerprint, Name: dbKey.Comment, Current: isCurrent, addedAt: addedAt})
 	}
 
 	slices.SortFunc(sshKeys, func(a, b sshKeyRow) int {
@@ -1322,6 +1328,9 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 				return -1
 			}
 			return 1
+		}
+		if c := a.addedAt.Compare(b.addedAt); c != 0 {
+			return c
 		}
 		return cmp.Compare(a.PublicKey, b.PublicKey)
 	})
@@ -1338,6 +1347,9 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 	cc.Writeln("\033[1mSSH Keys:\033[0m")
 	for _, key := range sshKeys {
 		cc.Write("  \033[1mPublic Key:\033[0m %s", key.PublicKey)
+		if key.Name != "" {
+			cc.Write(" \033[2m(%s)\033[0m", key.Name)
+		}
 		if key.Current {
 			cc.Write(" \033[1;32m← current\033[0m")
 		}

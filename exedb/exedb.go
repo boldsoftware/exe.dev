@@ -28,6 +28,7 @@ var migrationFS embed.FS
 var codeMigrations = map[int]func(tx *sql.Tx) error{
 	60: testCodeMigration,
 	62: backfillSSHFingerprints,
+	64: backfillSSHKeyComments,
 }
 
 // SSHDetails holds SSH connection information for a machine

@@ -24,7 +24,7 @@ WHERE s.public_key = ?;
 SELECT user_id FROM ssh_keys WHERE public_key = ?;
 
 -- name: InsertSSHKey :exec
-INSERT INTO ssh_keys (user_id, public_key, fingerprint) VALUES (?, ?, ?);
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint) VALUES (?, ?, ?, ?);
 
 -- name: GetUserWithSSHKey :one
 SELECT u.*
@@ -51,3 +51,15 @@ UPDATE ssh_keys SET last_used_at = CURRENT_TIMESTAMP WHERE public_key = ?;
 
 -- name: GetSSHKeyByFingerprint :one
 SELECT user_id, public_key FROM ssh_keys WHERE fingerprint = ?;
+
+-- name: GetSSHKeysForUserByComment :many
+SELECT * FROM ssh_keys WHERE user_id = ? AND comment = ?;
+
+-- name: GetSSHKeysForUserByFingerprint :many
+SELECT * FROM ssh_keys WHERE user_id = ? AND fingerprint = ?;
+
+-- name: DeleteSSHKeyByID :exec
+DELETE FROM ssh_keys WHERE id = ? AND user_id = ?;
+
+-- name: UpdateSSHKeyComment :exec
+UPDATE ssh_keys SET comment = ? WHERE id = ? AND user_id = ?;

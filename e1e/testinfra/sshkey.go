@@ -47,3 +47,15 @@ func GenSSHKey(dir string) (path, publicKey string, err error) {
 	AddCanonicalization(pubStr, "SSH_PUBKEY")
 	return privKeyPath, pubStr, nil
 }
+
+// GenSSHKeyWithComment generates an SSH keypair with a custom comment.
+// The private half goes into a file in dir to satisfy ssh,
+// and the public half (with comment appended) is returned as a string.
+func GenSSHKeyWithComment(dir, comment string) (path, publicKey string, err error) {
+	path, pubKey, err := GenSSHKey(dir)
+	if err != nil {
+		return "", "", err
+	}
+	// Append the comment to the public key
+	return path, pubKey + " " + comment, nil
+}

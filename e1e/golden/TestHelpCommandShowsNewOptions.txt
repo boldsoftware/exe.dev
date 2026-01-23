@@ -34,7 +34,7 @@ Welcome to EXE.DEV!
 PROMPT ▶ whoami
 Email Address: TestHelpCommandShowsNewOptions@example.com
 SSH Keys:
-  Public Key: SSH_PUBKEY ← current
+  Public Key: SSH_PUBKEY (key-1) ← current
 PROMPT ▶ help new
 
 Command: new

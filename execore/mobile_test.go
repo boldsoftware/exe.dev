@@ -213,6 +213,7 @@ func TestIsCommandAllowed(t *testing.T) {
 		{"ssh-key list", true},
 		{"ssh-key add ssh-ed25519 AAAA...", true},
 		{"ssh-key remove ssh-ed25519 AAAA...", true},
+		{"ssh-key rename old-name new-name", true},
 		{"new --name=test", false},
 		{"help", false},
 		{"ls", false},

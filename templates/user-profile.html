@@ -491,6 +491,7 @@
                         </div>
                         {{end}}
                     </div>
+                    <button class="btn btn-small" data-ssh-key-name="{{.Comment}}" data-ssh-key-fingerprint="{{.Fingerprint}}" onclick="openRenameSSHKeyModal(this.dataset.sshKeyName, this.dataset.sshKeyFingerprint)">Rename</button>
                     <button class="btn btn-danger btn-small" data-ssh-key="{{.PublicKey}}" onclick="openRemoveSSHKeyModal(this.dataset.sshKey)">Remove</button>
                 </div>
                 {{end}}
@@ -557,15 +558,33 @@
             <div class="cmd-modal-title">Add SSH Key</div>
             <div class="section-help" style="margin-bottom: 16px;">
                 <p style="margin-bottom: 12px;">To generate a new SSH key on your computer, run:</p>
-                <div class="cmd-display" style="margin-bottom: 12px;">ssh-keygen -t ed25519 -f ~/.ssh/id_exe</div>
+                <div class="cmd-display" style="margin-bottom: 12px;">ssh-keygen -t ed25519 -C "mnemonic-for-this-key" -f ~/.ssh/id_exe</div>
                 <p>Then paste the contents of <code>~/.ssh/id_exe.pub</code> below:</p>
             </div>
-            <textarea id="ssh-key-input" placeholder="ssh-ed25519 AAAA... user@host" style="width: 100%; min-height: 80px; padding: 12px; border: 1px solid #e0e0e0; border-radius: 4px; font-family: inherit; font-size: 12px; resize: vertical; margin-bottom: 12px;"></textarea>
+            <textarea id="ssh-key-input" placeholder="ssh-ed25519 AAAA... my-laptop" style="width: 100%; min-height: 80px; padding: 12px; border: 1px solid #e0e0e0; border-radius: 4px; font-family: inherit; font-size: 12px; resize: vertical; margin-bottom: 12px;"></textarea>
             <div class="ssh-key-error" id="ssh-key-error"></div>
             <div class="ssh-key-success" id="ssh-key-success"></div>
             <div class="cmd-modal-buttons">
                 <button class="btn" onclick="closeAddSSHKeyModal()">Cancel</button>
                 <button class="btn" id="add-ssh-key-btn" onclick="addSSHKey()">Add Key</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename SSH Key Modal -->
+    <div class="cmd-modal-overlay" id="rename-ssh-key-overlay" onclick="if(event.target===this) closeRenameSSHKeyModal()">
+        <div class="cmd-modal">
+            <div class="cmd-modal-title">Rename SSH Key</div>
+            <div class="section-help" style="margin-bottom: 16px;">
+                <p>Enter a new name for this SSH key:</p>
+            </div>
+            <input type="text" id="ssh-key-new-name" placeholder="my-laptop" style="width: 100%; padding: 12px; border: 1px solid #e0e0e0; border-radius: 4px; font-family: inherit; font-size: 13px; margin-bottom: 12px;">
+            <input type="hidden" id="ssh-key-old-name">
+            <div class="ssh-key-error" id="rename-ssh-key-error"></div>
+            <div class="ssh-key-success" id="rename-ssh-key-success"></div>
+            <div class="cmd-modal-buttons">
+                <button class="btn" onclick="closeRenameSSHKeyModal()">Cancel</button>
+                <button class="btn" id="rename-ssh-key-btn" onclick="renameSSHKey()">Rename</button>
             </div>
         </div>
     </div>
@@ -808,6 +827,103 @@
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
                 addSSHKey();
+            }
+        });
+
+        function openRenameSSHKeyModal(oldName, fingerprint) {
+            const overlay = document.getElementById('rename-ssh-key-overlay');
+            const input = document.getElementById('ssh-key-new-name');
+            const oldNameInput = document.getElementById('ssh-key-old-name');
+            const errorDiv = document.getElementById('rename-ssh-key-error');
+            const successDiv = document.getElementById('rename-ssh-key-success');
+            const renameBtn = document.getElementById('rename-ssh-key-btn');
+
+            // Reset state
+            input.value = oldName || '';
+            // Store the identifier (use name if available, otherwise use SHA256:-prefixed fingerprint)
+            oldNameInput.value = oldName || ('SHA256:' + fingerprint);
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+            renameBtn.disabled = false;
+            renameBtn.textContent = 'Rename';
+
+            overlay.classList.add('visible');
+            setTimeout(() => {
+                input.focus();
+                input.select();
+            }, 50);
+
+            document.addEventListener('keydown', handleRenameSSHKeyEscape);
+        }
+
+        function closeRenameSSHKeyModal() {
+            const overlay = document.getElementById('rename-ssh-key-overlay');
+            overlay.classList.remove('visible');
+            document.removeEventListener('keydown', handleRenameSSHKeyEscape);
+        }
+
+        function handleRenameSSHKeyEscape(e) {
+            if (e.key === 'Escape') {
+                closeRenameSSHKeyModal();
+            }
+        }
+
+        async function renameSSHKey() {
+            const input = document.getElementById('ssh-key-new-name');
+            const oldNameInput = document.getElementById('ssh-key-old-name');
+            const errorDiv = document.getElementById('rename-ssh-key-error');
+            const successDiv = document.getElementById('rename-ssh-key-success');
+            const renameBtn = document.getElementById('rename-ssh-key-btn');
+
+            const newName = input.value.trim();
+            const oldName = oldNameInput.value;
+
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+
+            if (!newName) {
+                errorDiv.textContent = 'Please enter a new name';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            renameBtn.disabled = true;
+            renameBtn.textContent = 'Renaming...';
+
+            try {
+                const response = await fetch('/m/cmd', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'ssh-key rename ' + oldName + ' ' + newName }),
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    successDiv.textContent = result.output || 'SSH key renamed';
+                    successDiv.style.display = 'block';
+                    renameBtn.textContent = 'Done';
+                    // Reload after a brief delay to show the success message
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    errorDiv.textContent = result.output || result.error || 'Failed to rename SSH key';
+                    errorDiv.style.display = 'block';
+                    renameBtn.disabled = false;
+                    renameBtn.textContent = 'Rename';
+                }
+            } catch (err) {
+                errorDiv.textContent = 'Network error: ' + err.message;
+                errorDiv.style.display = 'block';
+                renameBtn.disabled = false;
+                renameBtn.textContent = 'Rename';
+            }
+        }
+
+        // Allow Enter to rename SSH key from input
+        document.getElementById('ssh-key-new-name')?.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                renameSSHKey();
             }
         });
     </script>

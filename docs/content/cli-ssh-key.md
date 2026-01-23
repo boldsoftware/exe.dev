@@ -48,16 +48,18 @@ ssh-key add <public-key>
 
 **Examples:**
 ```
-ssh-key add 'ssh-ed25519 AAAA... user@host'
+ssh-key add 'ssh-ed25519 AAAA... my-laptop'
 
 To generate a new key locally:
-  ssh-keygen -t ed25519 -f ~/.ssh/id_exe
+  ssh-keygen -t ed25519 -C "mnemonic-for-this-key" -f ~/.ssh/id_exe
+
+The -C flag sets a name for the key.
 
 Then add the public key from your local shell:
   cat ~/.ssh/id_exe.pub | ssh exe.dev ssh-key add
 
 Or from the exe.dev shell:
-  ssh-key add 'ssh-ed25519 AAAA... user@host'
+  ssh-key add 'ssh-ed25519 AAAA... my-laptop'
 ```
 
 ### ssh-key remove
@@ -66,7 +68,19 @@ Remove an SSH key from your account
 
 **Usage:**
 ```
-ssh-key remove <public-key>
+ssh-key remove <name|fingerprint|public-key>
+```
+
+**Options:**
+- `--json`: output in JSON format
+
+### ssh-key rename
+
+Rename an SSH key
+
+**Usage:**
+```
+ssh-key rename <old-name> <new-name>
 ```
 
 **Options:**

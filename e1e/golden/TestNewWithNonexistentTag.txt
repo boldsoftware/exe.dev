@@ -34,7 +34,7 @@ Welcome to EXE.DEV!
 PROMPT ▶ whoami
 Email Address: TestNewWithNonexistentTag@example.com
 SSH Keys:
-  Public Key: SSH_PUBKEY ← current
+  Public Key: SSH_PUBKEY (key-1) ← current
 PROMPT ▶ new --name=BOX_NAME --image=alpine:nonexistent-tag-xyz123
 Creating BOX_NAME using image alpine:nonexistent-tag-xyz123...
 image "docker.io/library/alpine:nonexistent-tag-xyz123" not found or not accessible

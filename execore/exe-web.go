@@ -1001,16 +1001,25 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Add the SSH key to the verified keys and clean up pending key
+	// Add the SSH key to the verified keys and clean up pending key.
+	// Generate a key-N comment since SSH key canonicalization strips comments.
 	err = s.withTx(context.WithoutCancel(r.Context()), func(ctx context.Context, queries *exedb.Queries) error {
 		fingerprint, err := sshkey.Fingerprint(pendingKey.PublicKey)
 		if err != nil {
 			return fmt.Errorf("failed to parse public key: %w", err)
 		}
+		userID, err := queries.GetUserIDByEmail(ctx, pendingKey.UserEmail)
+		if err != nil {
+			return fmt.Errorf("failed to get user ID: %w", err)
+		}
+		comment, err := nextSSHKeyComment(ctx, queries, userID)
+		if err != nil {
+			return fmt.Errorf("failed to generate SSH key comment: %w", err)
+		}
 		err = queries.InsertSSHKeyForEmailUser(ctx, exedb.InsertSSHKeyForEmailUserParams{
 			Email:       pendingKey.UserEmail,
 			PublicKey:   pendingKey.PublicKey,
-			Comment:     nil, // comment was stripped earlier by SSH key canonicalization
+			Comment:     comment,
 			Fingerprint: fingerprint,
 		})
 		if err != nil {
@@ -1165,12 +1174,20 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 		}
 		// Key doesn't exist or belongs to this user - safe to insert/skip
 		// Use InsertSSHKeyForEmailUserIfNotExists to handle the case where
-		// the key is already associated with this user (re-verification)
-		_, err = withTxRes1(s, context.WithoutCancel(ctx), (*exedb.Queries).InsertSSHKeyForEmailUserIfNotExists, exedb.InsertSSHKeyForEmailUserIfNotExistsParams{
-			Email:       email,
-			PublicKey:   publicKey,
-			Comment:     nil, // comment was stripped earlier by SSH key canonicalization
-			Fingerprint: fingerprint,
+		// the key is already associated with this user (re-verification).
+		// Generate a key-N comment since SSH key canonicalization strips comments.
+		err = s.withTx(context.WithoutCancel(ctx), func(ctx context.Context, queries *exedb.Queries) error {
+			comment, err := nextSSHKeyComment(ctx, queries, user.UserID)
+			if err != nil {
+				return fmt.Errorf("failed to generate SSH key comment: %w", err)
+			}
+			_, err = queries.InsertSSHKeyForEmailUserIfNotExists(ctx, exedb.InsertSSHKeyForEmailUserIfNotExistsParams{
+				Email:       email,
+				PublicKey:   publicKey,
+				Comment:     comment,
+				Fingerprint: fingerprint,
+			})
+			return err
 		})
 		if err != nil {
 			s.slog().ErrorContext(ctx, "Error storing SSH key during verification", "error", err)
@@ -1203,10 +1220,11 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		}
 		for _, dbKey := range dbKeys {
 			key := SSHKey{
-				PublicKey:  dbKey.PublicKey,
-				Comment:    dbKey.Comment,
-				AddedAt:    dbKey.AddedAt,
-				LastUsedAt: dbKey.LastUsedAt,
+				PublicKey:   dbKey.PublicKey,
+				Comment:     dbKey.Comment,
+				Fingerprint: dbKey.Fingerprint,
+				AddedAt:     dbKey.AddedAt,
+				LastUsedAt:  dbKey.LastUsedAt,
 			}
 			sshKeys = append(sshKeys, key)
 		}
@@ -1353,10 +1371,11 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		}
 		for _, dbKey := range dbKeys {
 			key := SSHKey{
-				PublicKey:  dbKey.PublicKey,
-				Comment:    dbKey.Comment,
-				AddedAt:    dbKey.AddedAt,
-				LastUsedAt: dbKey.LastUsedAt,
+				PublicKey:   dbKey.PublicKey,
+				Comment:     dbKey.Comment,
+				Fingerprint: dbKey.Fingerprint,
+				AddedAt:     dbKey.AddedAt,
+				LastUsedAt:  dbKey.LastUsedAt,
 			}
 			sshKeys = append(sshKeys, key)
 		}

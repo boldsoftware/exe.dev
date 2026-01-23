@@ -165,6 +165,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deletePendingSSHKeyByTokenStmt, err = db.PrepareContext(ctx, deletePendingSSHKeyByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingSSHKeyByToken: %w", err)
 	}
+	if q.deleteSSHKeyByIDStmt, err = db.PrepareContext(ctx, deleteSSHKeyByID); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteSSHKeyByID: %w", err)
+	}
 	if q.deleteSSHKeyForUserStmt, err = db.PrepareContext(ctx, deleteSSHKeyForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteSSHKeyForUser: %w", err)
 	}
@@ -185,6 +188,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getAllUserEventsStmt, err = db.PrepareContext(ctx, getAllUserEvents); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllUserEvents: %w", err)
+	}
+	if q.getAndIncrementNextSSHKeyNumberStmt, err = db.PrepareContext(ctx, getAndIncrementNextSSHKeyNumber); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAndIncrementNextSSHKeyNumber: %w", err)
 	}
 	if q.getAuthCookieInfoStmt, err = db.PrepareContext(ctx, getAuthCookieInfo); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAuthCookieInfo: %w", err)
@@ -321,8 +327,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getSSHKeysForUserStmt, err = db.PrepareContext(ctx, getSSHKeysForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHKeysForUser: %w", err)
 	}
+	if q.getSSHKeysForUserByCommentStmt, err = db.PrepareContext(ctx, getSSHKeysForUserByComment); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSSHKeysForUserByComment: %w", err)
+	}
 	if q.getSSHKeysForUserByEmailStmt, err = db.PrepareContext(ctx, getSSHKeysForUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHKeysForUserByEmail: %w", err)
+	}
+	if q.getSSHKeysForUserByFingerprintStmt, err = db.PrepareContext(ctx, getSSHKeysForUserByFingerprint); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSSHKeysForUserByFingerprint: %w", err)
 	}
 	if q.getShardPublicIPStmt, err = db.PrepareContext(ctx, getShardPublicIP); err != nil {
 		return nil, fmt.Errorf("error preparing query GetShardPublicIP: %w", err)
@@ -557,6 +569,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updatePasskeySignCountStmt, err = db.PrepareContext(ctx, updatePasskeySignCount); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdatePasskeySignCount: %w", err)
+	}
+	if q.updateSSHKeyCommentStmt, err = db.PrepareContext(ctx, updateSSHKeyComment); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateSSHKeyComment: %w", err)
 	}
 	if q.updateSSHKeyLastUsedStmt, err = db.PrepareContext(ctx, updateSSHKeyLastUsed); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateSSHKeyLastUsed: %w", err)
@@ -840,6 +855,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deletePendingSSHKeyByTokenStmt: %w", cerr)
 		}
 	}
+	if q.deleteSSHKeyByIDStmt != nil {
+		if cerr := q.deleteSSHKeyByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteSSHKeyByIDStmt: %w", cerr)
+		}
+	}
 	if q.deleteSSHKeyForUserStmt != nil {
 		if cerr := q.deleteSSHKeyForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteSSHKeyForUserStmt: %w", cerr)
@@ -873,6 +893,11 @@ func (q *Queries) Close() error {
 	if q.getAllUserEventsStmt != nil {
 		if cerr := q.getAllUserEventsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAllUserEventsStmt: %w", cerr)
+		}
+	}
+	if q.getAndIncrementNextSSHKeyNumberStmt != nil {
+		if cerr := q.getAndIncrementNextSSHKeyNumberStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAndIncrementNextSSHKeyNumberStmt: %w", cerr)
 		}
 	}
 	if q.getAuthCookieInfoStmt != nil {
@@ -1100,9 +1125,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getSSHKeysForUserStmt: %w", cerr)
 		}
 	}
+	if q.getSSHKeysForUserByCommentStmt != nil {
+		if cerr := q.getSSHKeysForUserByCommentStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSSHKeysForUserByCommentStmt: %w", cerr)
+		}
+	}
 	if q.getSSHKeysForUserByEmailStmt != nil {
 		if cerr := q.getSSHKeysForUserByEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSSHKeysForUserByEmailStmt: %w", cerr)
+		}
+	}
+	if q.getSSHKeysForUserByFingerprintStmt != nil {
+		if cerr := q.getSSHKeysForUserByFingerprintStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSSHKeysForUserByFingerprintStmt: %w", cerr)
 		}
 	}
 	if q.getShardPublicIPStmt != nil {
@@ -1495,6 +1530,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updatePasskeySignCountStmt: %w", cerr)
 		}
 	}
+	if q.updateSSHKeyCommentStmt != nil {
+		if cerr := q.updateSSHKeyCommentStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateSSHKeyCommentStmt: %w", cerr)
+		}
+	}
 	if q.updateSSHKeyLastUsedStmt != nil {
 		if cerr := q.updateSSHKeyLastUsedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateSSHKeyLastUsedStmt: %w", cerr)
@@ -1651,6 +1691,7 @@ type Queries struct {
 	deletePendingBoxShareByBoxAndEmailStmt     *sql.Stmt
 	deletePendingRegistrationByTokenStmt       *sql.Stmt
 	deletePendingSSHKeyByTokenStmt             *sql.Stmt
+	deleteSSHKeyByIDStmt                       *sql.Stmt
 	deleteSSHKeyForUserStmt                    *sql.Stmt
 	deleteTagResolutionStmt                    *sql.Stmt
 	drawInviteCodeFromPoolStmt                 *sql.Stmt
@@ -1658,6 +1699,7 @@ type Queries struct {
 	getAccountByUserIDStmt                     *sql.Stmt
 	getAllBoxShareLinksByBoxIDStmt             *sql.Stmt
 	getAllUserEventsStmt                       *sql.Stmt
+	getAndIncrementNextSSHKeyNumberStmt        *sql.Stmt
 	getAuthCookieInfoStmt                      *sql.Stmt
 	getAuthTokenInfoStmt                       *sql.Stmt
 	getBoxByNameAndAllocStmt                   *sql.Stmt
@@ -1703,7 +1745,9 @@ type Queries struct {
 	getSSHHostKeyStmt                          *sql.Stmt
 	getSSHKeyByFingerprintStmt                 *sql.Stmt
 	getSSHKeysForUserStmt                      *sql.Stmt
+	getSSHKeysForUserByCommentStmt             *sql.Stmt
 	getSSHKeysForUserByEmailStmt               *sql.Stmt
+	getSSHKeysForUserByFingerprintStmt         *sql.Stmt
 	getShardPublicIPStmt                       *sql.Stmt
 	getShellHistoryStmt                        *sql.Stmt
 	getSignupPOWEnabledStmt                    *sql.Stmt
@@ -1782,6 +1826,7 @@ type Queries struct {
 	updateBoxRoutesStmt                        *sql.Stmt
 	updateBoxStatusStmt                        *sql.Stmt
 	updatePasskeySignCountStmt                 *sql.Stmt
+	updateSSHKeyCommentStmt                    *sql.Stmt
 	updateSSHKeyLastUsedStmt                   *sql.Stmt
 	updateTagResolutionCheckedStmt             *sql.Stmt
 	updateTagResolutionDigestStmt              *sql.Stmt
@@ -1849,6 +1894,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deletePendingBoxShareByBoxAndEmailStmt:     q.deletePendingBoxShareByBoxAndEmailStmt,
 		deletePendingRegistrationByTokenStmt:       q.deletePendingRegistrationByTokenStmt,
 		deletePendingSSHKeyByTokenStmt:             q.deletePendingSSHKeyByTokenStmt,
+		deleteSSHKeyByIDStmt:                       q.deleteSSHKeyByIDStmt,
 		deleteSSHKeyForUserStmt:                    q.deleteSSHKeyForUserStmt,
 		deleteTagResolutionStmt:                    q.deleteTagResolutionStmt,
 		drawInviteCodeFromPoolStmt:                 q.drawInviteCodeFromPoolStmt,
@@ -1856,6 +1902,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAccountByUserIDStmt:                     q.getAccountByUserIDStmt,
 		getAllBoxShareLinksByBoxIDStmt:             q.getAllBoxShareLinksByBoxIDStmt,
 		getAllUserEventsStmt:                       q.getAllUserEventsStmt,
+		getAndIncrementNextSSHKeyNumberStmt:        q.getAndIncrementNextSSHKeyNumberStmt,
 		getAuthCookieInfoStmt:                      q.getAuthCookieInfoStmt,
 		getAuthTokenInfoStmt:                       q.getAuthTokenInfoStmt,
 		getBoxByNameAndAllocStmt:                   q.getBoxByNameAndAllocStmt,
@@ -1901,7 +1948,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getSSHHostKeyStmt:                          q.getSSHHostKeyStmt,
 		getSSHKeyByFingerprintStmt:                 q.getSSHKeyByFingerprintStmt,
 		getSSHKeysForUserStmt:                      q.getSSHKeysForUserStmt,
+		getSSHKeysForUserByCommentStmt:             q.getSSHKeysForUserByCommentStmt,
 		getSSHKeysForUserByEmailStmt:               q.getSSHKeysForUserByEmailStmt,
+		getSSHKeysForUserByFingerprintStmt:         q.getSSHKeysForUserByFingerprintStmt,
 		getShardPublicIPStmt:                       q.getShardPublicIPStmt,
 		getShellHistoryStmt:                        q.getShellHistoryStmt,
 		getSignupPOWEnabledStmt:                    q.getSignupPOWEnabledStmt,
@@ -1980,6 +2029,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxRoutesStmt:                        q.updateBoxRoutesStmt,
 		updateBoxStatusStmt:                        q.updateBoxStatusStmt,
 		updatePasskeySignCountStmt:                 q.updatePasskeySignCountStmt,
+		updateSSHKeyCommentStmt:                    q.updateSSHKeyCommentStmt,
 		updateSSHKeyLastUsedStmt:                   q.updateSSHKeyLastUsedStmt,
 		updateTagResolutionCheckedStmt:             q.updateTagResolutionCheckedStmt,
 		updateTagResolutionDigestStmt:              q.updateTagResolutionDigestStmt,

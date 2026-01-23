@@ -26,6 +26,6 @@ Welcome to EXE.DEV!
 PROMPT ▶ whoami
 Email Address: fake-for-tests@example.com
 SSH Keys:
-  Public Key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKDUsg5GPLRH7cnv3GDE2fKTeI7RCceQ3oQd0cVuts/m ← current
+  Public Key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKDUsg5GPLRH7cnv3GDE2fKTeI7RCceQ3oQd0cVuts/m (key-1) ← current
 PROMPT ▶ exit
 Goodbye!
