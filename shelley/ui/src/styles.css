@@ -1188,6 +1188,13 @@ button {
   flex-shrink: 0;
 }
 
+.patch-tool-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
 .patch-tool-toggle {
   background: none;
   border: none;
@@ -1202,6 +1209,26 @@ button {
 
 .patch-tool-toggle:hover {
   color: var(--text-primary);
+}
+
+.patch-tool-diff-mode-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.patch-tool-diff-mode-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border-color: var(--text-tertiary);
 }
 
 .patch-tool-details {
@@ -1293,6 +1320,41 @@ button {
 .patch-diff-header {
   color: var(--text-tertiary);
   font-style: italic;
+}
+
+/* Patch Tool Monaco Container */
+.patch-tool-monaco-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* Patch Tool Monaco Placeholder (for lazy loading) */
+.patch-tool-monaco-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.spinner-small {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Patch Tool Monaco Editor */

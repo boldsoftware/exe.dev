@@ -3,12 +3,38 @@ import type * as Monaco from "monaco-editor";
 import { LLMContent } from "../types";
 import { isDarkModeActive } from "../services/theme";
 
-// Feature flag for Monaco diff view (set localStorage.setItem('shelley-use-monaco-diff', 'true') to enable)
+// LocalStorage keys for preferences
+const STORAGE_KEY_MONACO_ENABLED = "shelley-use-monaco-diff";
+const STORAGE_KEY_SIDE_BY_SIDE = "shelley-diff-side-by-side";
+
+// Feature flag for Monaco diff view
 function useMonacoDiff(): boolean {
   try {
-    return localStorage.getItem("shelley-use-monaco-diff") === "true";
+    return localStorage.getItem(STORAGE_KEY_MONACO_ENABLED) === "true";
   } catch {
     return false;
+  }
+}
+
+// Get saved side-by-side preference (default: true for desktop)
+function getSideBySidePreference(): boolean {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_SIDE_BY_SIDE);
+    if (stored !== null) {
+      return stored === "true";
+    }
+    // Default to side-by-side on desktop, inline on mobile
+    return window.innerWidth >= 768;
+  } catch {
+    return window.innerWidth >= 768;
+  }
+}
+
+function setSideBySidePreference(value: boolean): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_SIDE_BY_SIDE, value ? "true" : "false");
+  } catch {
+    // Ignore storage errors
   }
 }
 
@@ -72,13 +98,7 @@ function loadMonaco(): Promise<typeof Monaco> {
 }
 
 // Simple diff view component (default)
-function SimpleDiffView({
-  displayData,
-  executionTime,
-}: {
-  displayData: PatchDisplayData | null;
-  executionTime?: string;
-}) {
+function SimpleDiffView({ displayData }: { displayData: PatchDisplayData | null }) {
   // Get diff text from displayData or fall back to empty
   const diff = displayData?.diff || "";
 
@@ -86,35 +106,27 @@ function SimpleDiffView({
   const lines = diff ? diff.split("\n") : [];
 
   return (
-    <div className="patch-tool-section">
-      {executionTime && (
-        <div className="patch-tool-label">
-          <span>Diff:</span>
-          <span className="patch-tool-time">{executionTime}</span>
-        </div>
-      )}
-      <pre className="patch-tool-diff">
-        {lines.map((line, idx) => {
-          // Determine line type for styling
-          let className = "patch-diff-line";
-          if (line.startsWith("+") && !line.startsWith("+++")) {
-            className += " patch-diff-addition";
-          } else if (line.startsWith("-") && !line.startsWith("---")) {
-            className += " patch-diff-deletion";
-          } else if (line.startsWith("@@")) {
-            className += " patch-diff-hunk";
-          } else if (line.startsWith("---") || line.startsWith("+++")) {
-            className += " patch-diff-header";
-          }
+    <pre className="patch-tool-diff">
+      {lines.map((line, idx) => {
+        // Determine line type for styling
+        let className = "patch-diff-line";
+        if (line.startsWith("+") && !line.startsWith("+++")) {
+          className += " patch-diff-addition";
+        } else if (line.startsWith("-") && !line.startsWith("---")) {
+          className += " patch-diff-deletion";
+        } else if (line.startsWith("@@")) {
+          className += " patch-diff-hunk";
+        } else if (line.startsWith("---") || line.startsWith("+++")) {
+          className += " patch-diff-header";
+        }
 
-          return (
-            <div key={idx} className={className}>
-              {line || " "}
-            </div>
-          );
-        })}
-      </pre>
-    </div>
+        return (
+          <div key={idx} className={className}>
+            {line || " "}
+          </div>
+        );
+      })}
+    </pre>
   );
 }
 
@@ -122,26 +134,32 @@ function SimpleDiffView({
 function MonacoDiffView({
   displayData,
   isMobile,
+  sideBySide,
   onCommentTextChange,
   filename,
 }: {
   displayData: PatchDisplayData;
   isMobile: boolean;
+  sideBySide: boolean;
   onCommentTextChange?: (text: string) => void;
   filename: string;
 }) {
   const [monacoLoaded, setMonacoLoaded] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+  const [editorHeight, setEditorHeight] = useState<number>(100);
   const [showCommentDialog, setShowCommentDialog] = useState<{
     line: number;
     selectedText?: string;
   } | null>(null);
   const [commentText, setCommentText] = useState("");
 
+  const containerRef = useRef<HTMLDivElement>(null);
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Monaco.editor.IStandaloneDiffEditor | null>(null);
   const monacoRef = useRef<typeof Monaco | null>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const hoverDecorationsRef = useRef<string[]>([]);
+  const heightSetRef = useRef(false);
   const modelsRef = useRef<{
     original: Monaco.editor.ITextModel | null;
     modified: Monaco.editor.ITextModel | null;
@@ -150,23 +168,58 @@ function MonacoDiffView({
     modified: null,
   });
 
-  // Load Monaco
+  // Intersection observer for lazy loading
   useEffect(() => {
-    if (!monacoLoaded) {
-      loadMonaco()
-        .then((monaco) => {
-          monacoRef.current = monaco;
-          setMonacoLoaded(true);
-        })
-        .catch((err) => {
-          console.error("Failed to load Monaco:", err);
-        });
-    }
-  }, [monacoLoaded]);
+    const container = containerRef.current;
+    if (!container) return;
 
-  // Create Monaco editor when data is ready
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+            // Once visible, we don't need to observe anymore
+            observer.disconnect();
+          }
+        }
+      },
+      {
+        rootMargin: "100px", // Start loading a bit before it's visible
+        threshold: 0,
+      },
+    );
+
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  }, []);
+
+  // Load Monaco only when visible
   useEffect(() => {
-    if (!monacoLoaded || !editorContainerRef.current || !monacoRef.current) {
+    if (!isVisible || monacoLoaded) return;
+
+    loadMonaco()
+      .then((monaco) => {
+        monacoRef.current = monaco;
+        setMonacoLoaded(true);
+      })
+      .catch((err) => {
+        console.error("Failed to load Monaco:", err);
+      });
+  }, [isVisible, monacoLoaded]);
+
+  // Update side-by-side mode when prop changes
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.updateOptions({ renderSideBySide: sideBySide });
+      // Reset height flag to allow recalculation after mode change
+      heightSetRef.current = false;
+    }
+  }, [sideBySide]);
+
+  // Create Monaco editor when data is ready and visible
+  useEffect(() => {
+    if (!monacoLoaded || !isVisible || !editorContainerRef.current || !monacoRef.current) {
       return;
     }
 
@@ -185,6 +238,9 @@ function MonacoDiffView({
       modelsRef.current.modified.dispose();
       modelsRef.current.modified = null;
     }
+
+    // Reset height tracking for new editor
+    heightSetRef.current = false;
 
     // Get language from file extension
     const ext = "." + (displayData.path.split(".").pop()?.toLowerCase() || "");
@@ -212,13 +268,13 @@ function MonacoDiffView({
     const modifiedModel = monaco.editor.createModel(displayData.newContent, language, modifiedUri);
     modelsRef.current = { original: originalModel, modified: modifiedModel };
 
-    // Create diff editor
+    // Create diff editor with collapsed unchanged regions
     const diffEditor = monaco.editor.createDiffEditor(editorContainerRef.current, {
       theme: isDarkModeActive() ? "vs-dark" : "vs",
       readOnly: true,
       originalEditable: false,
       automaticLayout: true,
-      renderSideBySide: !isMobile,
+      renderSideBySide: sideBySide,
       enableSplitViewResizing: true,
       renderIndicators: true,
       renderMarginRevertIcon: false,
@@ -236,6 +292,19 @@ function MonacoDiffView({
       contextmenu: false,
       links: false,
       folding: !isMobile,
+      // Hide unchanged regions to show only edited sections
+      hideUnchangedRegions: {
+        enabled: true,
+        revealLineCount: 2, // Show 2 lines of context around changes
+        minimumLineCount: 3, // Hide regions with 3+ unchanged lines
+        contextLineCount: 2, // Context lines to show when expanding
+      },
+      // Disable scrollbar when content fits
+      scrollbar: {
+        vertical: "auto",
+        horizontal: "auto",
+        alwaysConsumeMouseWheel: false,
+      },
     });
 
     diffEditor.setModel({
@@ -245,10 +314,33 @@ function MonacoDiffView({
 
     editorRef.current = diffEditor;
 
+    // Function to update height - only do this once to avoid scroll disruption
+    const updateHeight = () => {
+      if (heightSetRef.current) return;
+
+      const modifiedEditor = diffEditor.getModifiedEditor();
+      const contentHeight = modifiedEditor.getContentHeight();
+
+      if (contentHeight > 0) {
+        // Add small buffer, no max height - let it expand fully
+        const newHeight = Math.max(60, contentHeight + 4);
+        heightSetRef.current = true;
+        setEditorHeight(newHeight);
+      }
+    };
+
+    // Update height after diff is computed
+    // Monaco needs time to compute the diff and layout
+    const heightUpdateTimer = setTimeout(updateHeight, 200);
+
+    // Also listen for content size change (fires when diff is computed)
+    const modifiedEditor = diffEditor.getModifiedEditor();
+    const contentSizeDisposable = modifiedEditor.onDidContentSizeChange(() => {
+      updateHeight();
+    });
+
     // Add click handler for commenting if callback is provided
     if (onCommentTextChange) {
-      const modifiedEditor = diffEditor.getModifiedEditor();
-
       const openCommentDialog = (lineNumber: number) => {
         const model = modifiedEditor.getModel();
         const selection = modifiedEditor.getSelection();
@@ -323,6 +415,8 @@ function MonacoDiffView({
 
     // Cleanup function
     return () => {
+      clearTimeout(heightUpdateTimer);
+      contentSizeDisposable.dispose();
       if (editorRef.current) {
         editorRef.current.dispose();
         editorRef.current = null;
@@ -336,7 +430,7 @@ function MonacoDiffView({
         modelsRef.current.modified = null;
       }
     };
-  }, [monacoLoaded, displayData, isMobile, onCommentTextChange]);
+  }, [monacoLoaded, isVisible, displayData, isMobile, onCommentTextChange, sideBySide]);
 
   // Update Monaco theme when dark mode changes
   useEffect(() => {
@@ -385,24 +479,25 @@ function MonacoDiffView({
     setCommentText("");
   }, [showCommentDialog, commentText, onCommentTextChange, filename]);
 
-  // Calculate editor height based on content
-  const getEditorHeight = () => {
-    const lineCount = Math.max(
-      displayData.oldContent.split("\n").length,
-      displayData.newContent.split("\n").length,
-    );
-    // Clamp between 100px and 400px, with 18px per line
-    const height = Math.min(400, Math.max(100, lineCount * 18 + 20));
-    return `${height}px`;
-  };
-
   return (
-    <>
-      <div
-        ref={editorContainerRef}
-        className="patch-tool-monaco-editor"
-        style={{ height: getEditorHeight(), width: "100%" }}
-      />
+    <div ref={containerRef} className="patch-tool-monaco-container">
+      {/* Monaco editor container */}
+      {!isVisible ? (
+        <div className="patch-tool-monaco-placeholder" style={{ height: "100px" }}>
+          <span>Scroll to load diff...</span>
+        </div>
+      ) : !monacoLoaded ? (
+        <div className="patch-tool-monaco-placeholder" style={{ height: "100px" }}>
+          <div className="spinner-small" />
+          <span>Loading editor...</span>
+        </div>
+      ) : (
+        <div
+          ref={editorContainerRef}
+          className="patch-tool-monaco-editor"
+          style={{ height: `${editorHeight}px`, width: "100%" }}
+        />
+      )}
 
       {/* Comment dialog */}
       {showCommentDialog && onCommentTextChange && (
@@ -443,7 +538,71 @@ function MonacoDiffView({
           </div>
         </div>
       )}
-    </>
+    </div>
+  );
+}
+
+// Side-by-side toggle icon component
+function DiffModeToggle({ sideBySide, onToggle }: { sideBySide: boolean; onToggle: () => void }) {
+  return (
+    <button
+      className="patch-tool-diff-mode-toggle"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      title={sideBySide ? "Switch to inline diff" : "Switch to side-by-side diff"}
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 14 14"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        {sideBySide ? (
+          // Side-by-side icon (two columns)
+          <>
+            <rect
+              x="1"
+              y="2"
+              width="5"
+              height="10"
+              rx="1"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              fill="none"
+            />
+            <rect
+              x="8"
+              y="2"
+              width="5"
+              height="10"
+              rx="1"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              fill="none"
+            />
+          </>
+        ) : (
+          // Inline icon (single column with horizontal lines)
+          <>
+            <rect
+              x="2"
+              y="2"
+              width="10"
+              height="10"
+              rx="1"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              fill="none"
+            />
+            <line x1="4" y1="5" x2="10" y2="5" stroke="currentColor" strokeWidth="1.5" />
+            <line x1="4" y1="9" x2="10" y2="9" stroke="currentColor" strokeWidth="1.5" />
+          </>
+        )}
+      </svg>
+    </button>
   );
 }
 
@@ -452,13 +611,13 @@ function PatchTool({
   isRunning,
   toolResult,
   hasError,
-  executionTime,
   display,
   onCommentTextChange,
 }: PatchToolProps) {
   // Default to collapsed for errors (since agents typically recover), expanded otherwise
   const [isExpanded, setIsExpanded] = useState(!hasError);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [sideBySide, setSideBySide] = useState(() => !isMobile && getSideBySidePreference());
 
   // Check feature flag for Monaco diff view
   const useMonaco = useMonacoDiff();
@@ -471,6 +630,13 @@ function PatchTool({
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  // Toggle side-by-side mode
+  const toggleSideBySide = useCallback(() => {
+    const newValue = !sideBySide;
+    setSideBySide(newValue);
+    setSideBySidePreference(newValue);
+  }, [sideBySide]);
 
   // Extract path from toolInput
   const path =
@@ -502,6 +668,10 @@ function PatchTool({
   // Extract filename from path or diff headers
   const filename = displayData?.path || path || "patch";
 
+  // Show toggle only for Monaco view on desktop when expanded and complete
+  const showDiffToggle =
+    useMonaco && !isMobile && isExpanded && isComplete && !hasError && displayData;
+
   return (
     <div
       className="patch-tool"
@@ -514,66 +684,56 @@ function PatchTool({
           {isComplete && hasError && <span className="patch-tool-error">✗</span>}
           {isComplete && !hasError && <span className="patch-tool-success">✓</span>}
         </div>
-        <button
-          className="patch-tool-toggle"
-          aria-label={isExpanded ? "Collapse" : "Expand"}
-          aria-expanded={isExpanded}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 12 12"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            style={{
-              transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
-              transition: "transform 0.2s",
-            }}
+        <div className="patch-tool-header-controls">
+          {showDiffToggle && <DiffModeToggle sideBySide={sideBySide} onToggle={toggleSideBySide} />}
+          <button
+            className="patch-tool-toggle"
+            aria-label={isExpanded ? "Collapse" : "Expand"}
+            aria-expanded={isExpanded}
           >
-            <path
-              d="M4.5 3L7.5 6L4.5 9"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              style={{
+                transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+                transition: "transform 0.2s",
+              }}
+            >
+              <path
+                d="M4.5 3L7.5 6L4.5 9"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {isExpanded && (
         <div className="patch-tool-details">
           {isComplete && !hasError && displayData && (
             <div className="patch-tool-section">
-              {executionTime && (
-                <div className="patch-tool-label">
-                  <span>Diff:</span>
-                  <span className="patch-tool-time">{executionTime}</span>
-                </div>
-              )}
-
               {useMonaco ? (
                 <MonacoDiffView
                   displayData={displayData}
                   isMobile={isMobile}
+                  sideBySide={sideBySide}
                   onCommentTextChange={onCommentTextChange}
                   filename={filename}
                 />
               ) : (
-                <SimpleDiffView
-                  displayData={displayData}
-                  executionTime={undefined} // Already shown above
-                />
+                <SimpleDiffView displayData={displayData} />
               )}
             </div>
           )}
 
           {isComplete && hasError && (
             <div className="patch-tool-section">
-              <div className="patch-tool-label">
-                <span>Error:</span>
-                {executionTime && <span className="patch-tool-time">{executionTime}</span>}
-              </div>
               <pre className="patch-tool-error-message">{errorMessage || "Patch failed"}</pre>
             </div>
           )}
