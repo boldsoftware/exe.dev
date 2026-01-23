@@ -43,7 +43,7 @@ s003.exe.xyz.           230     IN      A       16.145.102.7
 
 *Relative to its owner* means that while the IP represented by s003 is used by many VMs, it is only used by one VM owned by this user.
 
-This is all the extra information we need to route SSH connections. When SSH connects, it presents a public key, and comes in via a particular IP address. The public key tells us the user, and the `{user, IP}` tuple uniquely identifies the VM they are connecting to. In diagram form:
+This is all the extra information we need to route SSH connections. When SSH connects, it presents a public key and comes in via a particular IP address. The public key tells us the user, and the `{user, IP}` tuple uniquely identifies the VM they are connecting to. In diagram form:
 
 <img src="/assets/ssh-proxy-tuple.svg" alt="A diagram of ssh'ing into an exe.dev VM" style="max-width: 100%; height: auto;" />
 
