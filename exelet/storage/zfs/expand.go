@@ -5,6 +5,7 @@ package zfs
 import (
 	"context"
 	"fmt"
+	"os/exec"
 
 	"github.com/dustin/go-humanize"
 	"github.com/mistifyio/go-zfs/v3"
@@ -51,6 +52,11 @@ func (s *ZFS) Expand(ctx context.Context, id string, size uint64, resizeFilesyst
 	// note: volumes remain sparse (no refreservation) to allow efficient space sharing
 	if err := ds.SetProperty("volsize", fmt.Sprintf("%d", newSize)); err != nil {
 		return err
+	}
+
+	// Wait for udev to process the device size change
+	if err := exec.Command("udevadm", "settle").Run(); err != nil {
+		return fmt.Errorf("udevadm settle failed: %w", err)
 	}
 
 	// If resizeFilesystem is true, run fsck and resize2fs to expand the filesystem
