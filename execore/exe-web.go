@@ -1185,46 +1185,6 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 	return user, nil
 }
 
-// createUserWithSSHKeyAndID creates a new user with a pre-specified user ID.
-// This is used when the user ID was generated earlier (e.g., for billing).
-func (s *Server) createUserWithSSHKeyAndID(ctx context.Context, userID, email, publicKey string) (*exedb.User, error) {
-	user, err := withTxRes0(s, ctx, func(queries *exedb.Queries, ctx context.Context) (exedb.User, error) {
-		if err := queries.InsertUser(ctx, exedb.InsertUserParams{
-			UserID:                 userID,
-			Email:                  email,
-			CreatedForLoginWithExe: false,
-		}); err != nil {
-			return exedb.User{}, fmt.Errorf("failed to create user: %w", err)
-		}
-
-		if publicKey != "" {
-			if err := queries.InsertSSHKey(ctx, exedb.InsertSSHKeyParams{
-				UserID:    userID,
-				PublicKey: publicKey,
-			}); err != nil {
-				return exedb.User{}, err
-			}
-		}
-
-		return queries.GetUserWithDetails(ctx, userID)
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Check email quality and disable VM creation if disposable
-	if err := s.checkEmailQuality(ctx, user.UserID, email); err != nil {
-		return nil, fmt.Errorf("email quality check failed: %w", err)
-	}
-
-	// Resolve any pending shares for this email
-	if err := s.resolvePendingShares(ctx, email, user.UserID); err != nil {
-		return nil, fmt.Errorf("failed to resolve pending shares: %w", err)
-	}
-
-	return &user, nil
-}
-
 // handleUserDashboard renders the user dashboard page
 func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, userID string) {
 	// Get user info
