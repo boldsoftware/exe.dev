@@ -79,11 +79,12 @@ func (ss *SSHServer) handleSSHKeyListCmd(ctx context.Context, cc *exemenu.Comman
 	}
 
 	type sshKeyRow struct {
-		PublicKey  string     `json:"public_key"`
-		Comment    *string    `json:"comment,omitempty"`
-		AddedAt    *time.Time `json:"added_at,omitempty"`
-		LastUsedAt *time.Time `json:"last_used_at,omitempty"`
-		Current    bool       `json:"current"`
+		PublicKey   string     `json:"public_key"`
+		Fingerprint string     `json:"fingerprint"`
+		Comment     *string    `json:"comment,omitempty"`
+		AddedAt     *time.Time `json:"added_at,omitempty"`
+		LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
+		Current     bool       `json:"current"`
 	}
 
 	ccPubKey := strings.TrimSpace(cc.PublicKey)
@@ -95,11 +96,12 @@ func (ss *SSHServer) handleSSHKeyListCmd(ctx context.Context, cc *exemenu.Comman
 		}
 		isCurrent := pubKey == ccPubKey
 		sshKeys = append(sshKeys, sshKeyRow{
-			PublicKey:  pubKey,
-			Comment:    dbKey.Comment,
-			AddedAt:    dbKey.AddedAt,
-			LastUsedAt: dbKey.LastUsedAt,
-			Current:    isCurrent,
+			PublicKey:   pubKey,
+			Fingerprint: "SHA256:" + dbKey.Fingerprint,
+			Comment:     dbKey.Comment,
+			AddedAt:     dbKey.AddedAt,
+			LastUsedAt:  dbKey.LastUsedAt,
+			Current:     isCurrent,
 		})
 	}
 

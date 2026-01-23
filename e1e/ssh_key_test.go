@@ -5,9 +5,23 @@ package e1e
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"exe.dev/e1e/testinfra"
 )
+
+type sshKeyListOutput struct {
+	SSHKeys []sshKeyEntry `json:"ssh_keys"`
+}
+
+type sshKeyEntry struct {
+	PublicKey   string     `json:"public_key"`
+	Fingerprint string     `json:"fingerprint"`
+	Comment     *string    `json:"comment,omitempty"`
+	AddedAt     *time.Time `json:"added_at,omitempty"`
+	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
+	Current     bool       `json:"current"`
+}
 
 // TestSSHKeyCommand tests the ssh-key command with list, add, and remove subcommands.
 func TestSSHKeyCommand(t *testing.T) {
@@ -52,15 +66,29 @@ func TestSSHKeyCommand(t *testing.T) {
 
 	t.Run("list_json", func(t *testing.T) {
 		noGolden(t)
-		pty := sshToExeDev(t, keyFile)
-		defer pty.disconnect()
 
-		// List with --json flag
-		pty.sendLine("ssh-key list --json")
-		pty.want("ssh_keys")
-		pty.want("public_key")
-		pty.want("current")
-		pty.wantPrompt()
+		out := runParseExeDevJSON[sshKeyListOutput](t, keyFile, "ssh-key", "list", "--json")
+		if len(out.SSHKeys) == 0 {
+			t.Fatal("expected at least one SSH key in output")
+		}
+		foundCurrent := false
+		for _, key := range out.SSHKeys {
+			if key.PublicKey == "" {
+				t.Error("expected public_key to be non-empty")
+			}
+			if key.Fingerprint == "" {
+				t.Error("expected fingerprint to be non-empty")
+			}
+			if !strings.HasPrefix(key.Fingerprint, "SHA256:") {
+				t.Errorf("expected fingerprint to start with SHA256:, got %q", key.Fingerprint)
+			}
+			if key.Current {
+				foundCurrent = true
+			}
+		}
+		if !foundCurrent {
+			t.Error("expected at least one key to be marked as current")
+		}
 	})
 
 	t.Run("add_and_remove", func(t *testing.T) {

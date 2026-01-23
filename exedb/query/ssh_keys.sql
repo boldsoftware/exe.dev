@@ -10,8 +10,7 @@ FROM users u WHERE u.email = ?
 ON CONFLICT(public_key) DO NOTHING;
 
 -- name: GetSSHKeysForUser :many
-SELECT public_key, comment, added_at, last_used_at
-FROM ssh_keys
+SELECT * FROM ssh_keys
 WHERE user_id = ?
 ORDER BY added_at DESC;
 

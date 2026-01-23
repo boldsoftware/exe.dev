@@ -8,7 +8,6 @@ package exedb
 import (
 	"context"
 	"database/sql"
-	"time"
 )
 
 const deleteSSHKeyForUser = `-- name: DeleteSSHKeyForUser :one
@@ -61,33 +60,28 @@ func (q *Queries) GetSSHKeyByFingerprint(ctx context.Context, fingerprint string
 }
 
 const getSSHKeysForUser = `-- name: GetSSHKeysForUser :many
-SELECT public_key, comment, added_at, last_used_at
-FROM ssh_keys
+SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint FROM ssh_keys
 WHERE user_id = ?
 ORDER BY added_at DESC
 `
 
-type GetSSHKeysForUserRow struct {
-	PublicKey  string     `db:"public_key" json:"public_key"`
-	Comment    *string    `db:"comment" json:"comment"`
-	AddedAt    *time.Time `db:"added_at" json:"added_at"`
-	LastUsedAt *time.Time `db:"last_used_at" json:"last_used_at"`
-}
-
-func (q *Queries) GetSSHKeysForUser(ctx context.Context, userID string) ([]GetSSHKeysForUserRow, error) {
+func (q *Queries) GetSSHKeysForUser(ctx context.Context, userID string) ([]SSHKey, error) {
 	rows, err := q.query(ctx, q.getSSHKeysForUserStmt, getSSHKeysForUser, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []GetSSHKeysForUserRow{}
+	items := []SSHKey{}
 	for rows.Next() {
-		var i GetSSHKeysForUserRow
+		var i SSHKey
 		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
 			&i.PublicKey,
-			&i.Comment,
 			&i.AddedAt,
 			&i.LastUsedAt,
+			&i.Comment,
+			&i.Fingerprint,
 		); err != nil {
 			return nil, err
 		}
