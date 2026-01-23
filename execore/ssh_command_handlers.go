@@ -96,9 +96,21 @@ func addBoolFlag(name, usage string) func(func() *flag.FlagSet) func() *flag.Fla
 	}
 }
 
+// addStringFlag wraps a FlagSet creation function to add a string flag.
+func addStringFlag(name, defaultVal, usage string) func(func() *flag.FlagSet) func() *flag.FlagSet {
+	return func(f func() *flag.FlagSet) func() *flag.FlagSet {
+		return func() *flag.FlagSet {
+			fs := f()
+			fs.String(name, defaultVal, usage)
+			return fs
+		}
+	}
+}
+
 var (
-	addQRFlag   = addBoolFlag("qr", "show QR code for the URL")
-	addLongFlag = addBoolFlag("l", "show detailed information")
+	addQRFlag           = addBoolFlag("qr", "show QR code for the URL")
+	addLongFlag         = addBoolFlag("l", "show detailed information")
+	addShareMessageFlag = addStringFlag("message", "", "message to include in share invitation")
 )
 
 // newCommandFlags creates a FlagSet for the new command

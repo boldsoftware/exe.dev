@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"strconv"
@@ -24,15 +23,6 @@ import (
 
 // This file contains SSH command handlers for the 'share' command.
 // The share command allows users to share box access with others via email or share links.
-
-// shareAddFlags creates a FlagSet for the share add subcommand
-func shareAddFlags() *flag.FlagSet {
-	fs := flag.NewFlagSet("share-add", flag.ContinueOnError)
-	fs.String("message", "", "message to include in share invitation")
-	fs.Bool("json", false, "output in JSON format")
-	fs.Bool("qr", false, "show QR code for the share URL")
-	return fs
-}
 
 // writeQRCode writes a QR code for the given URL to the writer.
 func writeQRCode(w io.Writer, url string) {
@@ -92,7 +82,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 				Description:       "Share VM with a user via email",
 				Usage:             "share add <vm> <email> [--message='...']",
 				Handler:           ss.handleShareAddCmd,
-				FlagSetFunc:       shareAddFlags,
+				FlagSetFunc:       addQRFlag(addShareMessageFlag(jsonOnlyFlags("share-add"))),
 				HasPositionalArgs: true,
 				CompleterFunc:     ss.completeBoxNames,
 				Examples: []string{
