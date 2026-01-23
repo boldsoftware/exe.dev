@@ -46,6 +46,7 @@ type Env struct {
 	LogErrorSlackChannel string // Slack channel for error logs; empty means no Slack posting
 	SlackFeedChannel     string // Slack channel for user activity feed (signups, etc.); empty means no posting
 	SlackOpsChannel      string // Slack channel for ops notifications (server starts, exelet changes); empty means no posting
+	SlackPageChannel     string // Slack channel for urgent pages (capacity warnings, etc.); empty means no posting
 	HoneycombEnv         string // Honeycomb environment name for trace links in Slack ("production", "staging"); empty means no links
 
 	NumShards  int   // number of IP shards available for box allocation, max 253
@@ -89,6 +90,7 @@ func Invalid() Env {
 		LogErrorSlackChannel: "",
 		SlackFeedChannel:     "",
 		SlackOpsChannel:      "",
+		SlackPageChannel:     "",
 		HoneycombEnv:         "",
 
 		NumShards:  0, // invalid: must be >= 1
@@ -136,6 +138,7 @@ func Local() Env {
 		LogErrorSlackChannel: "",
 		SlackFeedChannel:     "",
 		SlackOpsChannel:      "",
+		SlackPageChannel:     "",
 		HoneycombEnv:         "",
 
 		NumShards:  25,
@@ -182,6 +185,7 @@ func Test() Env {
 		LogErrorSlackChannel: "",
 		SlackFeedChannel:     "",
 		SlackOpsChannel:      "",
+		SlackPageChannel:     "",
 		HoneycombEnv:         "",
 
 		NumShards:  25,
@@ -225,6 +229,7 @@ func Staging() Env {
 		LogErrorSlackChannel: "stag",
 		SlackFeedChannel:     "stag",
 		SlackOpsChannel:      "stag",
+		SlackPageChannel:     "stag",
 		HoneycombEnv:         "staging",
 
 		NumShards:  25,
@@ -267,6 +272,7 @@ func Prod() Env {
 		LogErrorSlackChannel: "errs",
 		SlackFeedChannel:     "feed",
 		SlackOpsChannel:      "buzz",
+		SlackPageChannel:     "page",
 		HoneycombEnv:         "production",
 
 		NumShards:  25,

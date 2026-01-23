@@ -224,3 +224,18 @@ func (sf *SlackFeed) TakeMyMoney(ctx context.Context, email string) {
 		}
 	}()
 }
+
+// PreferredExeletCapacityWarning posts an urgent page when the preferred exelet is approaching capacity.
+func (sf *SlackFeed) PreferredExeletCapacityWarning(ctx context.Context, exelet string, count int) {
+	message := fmt.Sprintf("preferred exelet `%s` has %d VMs", exelet, count)
+	if sf.client == nil {
+		sf.log.InfoContext(ctx, "slack page channel", "message", message)
+		return
+	}
+	go func() {
+		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), sf.env.SlackPageChannel, slack.MsgOptionText(message, false))
+		if err != nil {
+			sf.log.WarnContext(ctx, "failed to post to page channel", "error", err)
+		}
+	}()
+}

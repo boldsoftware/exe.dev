@@ -3519,6 +3519,9 @@ func exeletUsageCmp(a, b *exeletClient) int {
 // autoThrottleVMLimit is the VM count threshold that triggers automatic throttling.
 const autoThrottleVMLimit = 400
 
+// autoThrottleVMWarning is the VM count at which we send a page warning.
+const autoThrottleVMWarning = 390
+
 // autoThrottleVMCreation enables throttling if the preferred exelet has hit its VM limit.
 func (s *Server) autoThrottleVMCreation(ctx context.Context) {
 	preferredAddr, err := withRxRes0(s, ctx, (*exedb.Queries).GetPreferredExelet)
@@ -3536,6 +3539,10 @@ func (s *Server) autoThrottleVMCreation(ctx context.Context) {
 	if err != nil {
 		s.slog().ErrorContext(ctx, "auto-throttle: failed to list instances", "exelet", preferredAddr, "error", err)
 		return
+	}
+
+	if count == autoThrottleVMWarning {
+		s.slackFeed.PreferredExeletCapacityWarning(ctx, preferredAddr, count)
 	}
 
 	if count < autoThrottleVMLimit {
