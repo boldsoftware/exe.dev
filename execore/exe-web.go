@@ -41,7 +41,6 @@ import (
 	"exe.dev/route53"
 	"exe.dev/stage"
 	"exe.dev/tracing"
-	"golang.org/x/crypto/ssh"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	sloghttp "github.com/samber/slog-http"
@@ -1005,17 +1004,10 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 
 	// Add the SSH key to the verified keys and clean up pending key
 	err = s.withTx(context.WithoutCancel(r.Context()), func(ctx context.Context, queries *exedb.Queries) error {
-		// Extract comment from the public key
-		var comment *string
-		if _, keyComment, _, _, err := ssh.ParseAuthorizedKey([]byte(pendingKey.PublicKey)); err == nil && keyComment != "" {
-			comment = &keyComment
-		}
-
-		// Add SSH key
 		err := queries.InsertSSHKeyForEmailUser(ctx, exedb.InsertSSHKeyForEmailUserParams{
 			Email:     pendingKey.UserEmail,
 			PublicKey: pendingKey.PublicKey,
-			Comment:   comment,
+			Comment:   nil, // comment was stripped earlier by SSH key canonicalization
 		})
 		if err != nil {
 			return err
@@ -1164,18 +1156,12 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 		}
 
 		// Key doesn't exist or belongs to this user - safe to insert/skip
-		// Extract comment from the public key
-		var comment *string
-		if _, keyComment, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey)); err == nil && keyComment != "" {
-			comment = &keyComment
-		}
-
 		// Use InsertSSHKeyForEmailUserIfNotExists to handle the case where
 		// the key is already associated with this user (re-verification)
 		_, err = withTxRes1(s, context.WithoutCancel(ctx), (*exedb.Queries).InsertSSHKeyForEmailUserIfNotExists, exedb.InsertSSHKeyForEmailUserIfNotExistsParams{
 			Email:     email,
 			PublicKey: publicKey,
-			Comment:   comment,
+			Comment:   nil, // comment was stripped earlier by SSH key canonicalization
 		})
 		if err != nil {
 			s.slog().ErrorContext(ctx, "Error storing SSH key during verification", "error", err)
