@@ -117,8 +117,9 @@ func NewGateway(log *slog.Logger, db *sqlite.DB, apiKeys APIKeys, env stage.Env)
 }
 
 // httpError reports an error on w.
-func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, errstr string, code int, boxName string) {
-	http.Error(w, errstr, code)
+// userMsg is shown to the user; err (if non-nil) is logged but not shown.
+func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, userMsg string, code int, boxName string, err error) {
+	http.Error(w, userMsg, code)
 	var logger func(context.Context, string, ...any)
 	switch code {
 	case http.StatusPaymentRequired:
@@ -131,7 +132,7 @@ func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, errstr st
 	default:
 		logger = m.log.ErrorContext
 	}
-	logger(r.Context(), "llmgateway.httpError", "method", r.Method, "path", r.URL.Path, "code", code, "error", errstr, "boxName", boxName)
+	logger(r.Context(), "llmgateway.httpError", "method", r.Method, "path", r.URL.Path, "code", code, "error", userMsg, "boxName", boxName, "cause", err)
 }
 
 func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -147,30 +148,28 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !m.env.GatewayDev && (err != nil || !tsaddr.IsTailscaleIP(remoteIP)) {
 		// This is super sketchy.
 		// Someone on the public internet is trying to access our gateway.
-		m.httpError(w, r, "hey go away", http.StatusUnauthorized, boxName)
+		m.httpError(w, r, "hey go away", http.StatusUnauthorized, boxName, nil)
 		return
 	}
 
 	if boxName == "" {
-		m.httpError(w, r, "X-Exedev-Box header required", http.StatusUnauthorized, boxName)
+		m.httpError(w, r, "X-Exedev-Box header required", http.StatusUnauthorized, boxName, nil)
 		return
 	}
 
 	// Look up the box to get the user ID for logging and metrics
 	box, err := exedb.WithRxRes1(m.db, r.Context(), (*exedb.Queries).BoxNamed, boxName)
 	if errors.Is(err, sql.ErrNoRows) {
-		m.httpError(w, r, "VM not found", http.StatusUnauthorized, boxName)
+		m.httpError(w, r, "VM not found", http.StatusUnauthorized, boxName, nil)
 		return
 	}
 	if err != nil {
-		m.log.WarnContext(r.Context(), "failed to look up box for user ID", "box", boxName, "error", err)
-		m.httpError(w, r, "internal server error", http.StatusInternalServerError, boxName)
+		m.httpError(w, r, "internal server error", http.StatusInternalServerError, boxName, fmt.Errorf("failed to look up box: %w", err))
 		return
 	}
 	userID := box.CreatedByUserID
 	if userID == "" {
-		m.log.WarnContext(r.Context(), "could not determine user ID for box", "box", boxName)
-		m.httpError(w, r, "user not found", http.StatusInternalServerError, boxName)
+		m.httpError(w, r, "user not found", http.StatusInternalServerError, boxName, fmt.Errorf("could not determine user ID for box %s", boxName))
 		return
 	}
 
@@ -203,11 +202,11 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	creditInfo, err := m.creditMgr.CheckAndRefreshCredit(r.Context(), userID)
 	if errors.Is(err, ErrInsufficientCredit) {
 		m.log.WarnContext(r.Context(), "insufficient LLM credit", "user_id", userID, "box", boxName, "available_usd", creditInfo.Available, "plan", creditInfo.Plan.Name)
-		m.httpError(w, r, creditInfo.Plan.CreditExhaustedError, http.StatusPaymentRequired, boxName)
+		m.httpError(w, r, creditInfo.Plan.CreditExhaustedError, http.StatusPaymentRequired, boxName, nil)
 		return
 	}
 	if err != nil {
-		m.httpError(w, r, "failed to check gateway credit", http.StatusInternalServerError, boxName)
+		m.httpError(w, r, "failed to check gateway credit", http.StatusInternalServerError, boxName, err)
 		return
 	}
 
@@ -241,11 +240,11 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "fireworks":
 		proxy, transport, proxyErr = m.createFireworksProxy(r, boxName, userID)
 	default:
-		m.httpError(w, r, "unrecognized origin alias "+alias, http.StatusNotFound, boxName)
+		m.httpError(w, r, "unrecognized origin alias "+alias, http.StatusNotFound, boxName, nil)
 		return
 	}
 	if proxyErr != nil {
-		m.httpError(w, r, proxyErr.Error(), http.StatusInternalServerError, boxName)
+		m.httpError(w, r, "proxy configuration error", http.StatusInternalServerError, boxName, proxyErr)
 		return
 	}
 	proxy.ServeHTTP(w, r)
@@ -281,8 +280,7 @@ func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, us
 			if errors.Is(err, context.Canceled) || errors.Is(err, errBodyNotReplayable) {
 				return
 			}
-			m.log.ErrorContext(r.Context(), "anthropic api gateway", "error", err)
-			m.httpError(w, r, "anthropic api gateway error: "+err.Error(), http.StatusBadGateway, boxName)
+			m.httpError(w, r, "anthropic api gateway error", http.StatusBadGateway, boxName, err)
 		},
 	}
 
@@ -319,8 +317,7 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userI
 			if errors.Is(err, context.Canceled) || errors.Is(err, errBodyNotReplayable) {
 				return
 			}
-			m.log.ErrorContext(r.Context(), "openai api gateway", "error", err)
-			m.httpError(w, r, "openai api gateway error: "+err.Error(), http.StatusBadGateway, boxName)
+			m.httpError(w, r, "openai api gateway error", http.StatusBadGateway, boxName, err)
 		},
 	}
 
@@ -357,8 +354,7 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, us
 			if errors.Is(err, context.Canceled) || errors.Is(err, errBodyNotReplayable) {
 				return
 			}
-			m.log.ErrorContext(r.Context(), "fireworks api gateway", "error", err)
-			m.httpError(w, r, "fireworks api gateway error: "+err.Error(), http.StatusBadGateway, boxName)
+			m.httpError(w, r, "fireworks api gateway error", http.StatusBadGateway, boxName, err)
 		},
 	}
 
