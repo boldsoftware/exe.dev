@@ -2,7 +2,7 @@
 title: Pricing
 description: Plan options for individuals, teams, and enterprises.
 subheading: "1. Introduction"
-suborder: 2
+suborder: 3
 published: true
 ---
 
