@@ -118,6 +118,18 @@ class ApiService {
     return response.json();
   }
 
+  async createDirectory(path: string): Promise<{ path?: string; error?: string }> {
+    const response = await fetch(`${this.baseUrl}/create-directory`, {
+      method: "POST",
+      headers: this.postHeaders,
+      body: JSON.stringify({ path }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to create directory: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
   async getArchivedConversations(): Promise<Conversation[]> {
     const response = await fetch(`${this.baseUrl}/conversations/archived`);
     if (!response.ok) {

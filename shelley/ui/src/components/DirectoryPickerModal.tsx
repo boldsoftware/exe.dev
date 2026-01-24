@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useId } from "react";
 import { api } from "../services/api";
 
 interface DirectoryEntry {
@@ -32,6 +32,14 @@ function DirectoryPickerModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // State for create directory mode
+  const [isCreating, setIsCreating] = useState(false);
+  const [newDirName, setNewDirName] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createLoading, setCreateLoading] = useState(false);
+  const newDirInputRef = useRef<HTMLInputElement>(null);
+  const createInputId = useId();
 
   // Cache for directory listings
   const cacheRef = useRef<Map<string, CachedDirectory>>(new Map());
@@ -190,6 +198,75 @@ function DirectoryPickerModal({
     onClose();
   };
 
+  // Focus the new directory input when entering create mode
+  useEffect(() => {
+    if (isCreating && newDirInputRef.current) {
+      newDirInputRef.current.focus();
+    }
+  }, [isCreating]);
+
+  const handleStartCreate = () => {
+    setIsCreating(true);
+    setNewDirName("");
+    setCreateError(null);
+  };
+
+  const handleCancelCreate = () => {
+    setIsCreating(false);
+    setNewDirName("");
+    setCreateError(null);
+  };
+
+  const handleCreateDirectory = async () => {
+    if (!newDirName.trim()) {
+      setCreateError("Directory name is required");
+      return;
+    }
+
+    // Validate directory name (no path separators or special chars)
+    if (newDirName.includes("/") || newDirName.includes("\\")) {
+      setCreateError("Directory name cannot contain slashes");
+      return;
+    }
+
+    const basePath = displayDir?.path || "/";
+    const newPath = basePath === "/" ? `/${newDirName}` : `${basePath}/${newDirName}`;
+
+    setCreateLoading(true);
+    setCreateError(null);
+
+    try {
+      const result = await api.createDirectory(newPath);
+      if (result.error) {
+        setCreateError(result.error);
+        return;
+      }
+
+      // Clear the cache for the current directory so it reloads with the new dir
+      cacheRef.current.delete(basePath);
+
+      // Exit create mode and navigate to the new directory
+      setIsCreating(false);
+      setNewDirName("");
+      setInputPath(newPath + "/");
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create directory");
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
+  const handleCreateKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleCreateDirectory();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      handleCancelCreate();
+    }
+  };
+
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
       onClose();
@@ -313,8 +390,78 @@ function DirectoryPickerModal({
                 </button>
               ))}
 
+              {/* Create new directory inline form */}
+              {isCreating && (
+                <div className="directory-picker-create-form">
+                  <svg
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    className="directory-picker-icon"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+                    />
+                  </svg>
+                  <label htmlFor={createInputId} className="sr-only">
+                    New folder name
+                  </label>
+                  <input
+                    id={createInputId}
+                    ref={newDirInputRef}
+                    type="text"
+                    value={newDirName}
+                    onChange={(e) => setNewDirName(e.target.value)}
+                    onKeyDown={handleCreateKeyDown}
+                    placeholder="New folder name"
+                    className="directory-picker-create-input"
+                    disabled={createLoading}
+                  />
+                  <button
+                    className="directory-picker-create-btn"
+                    onClick={handleCreateDirectory}
+                    disabled={createLoading || !newDirName.trim()}
+                    title="Create"
+                  >
+                    {createLoading ? (
+                      <div className="spinner spinner-small"></div>
+                    ) : (
+                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    className="directory-picker-create-btn directory-picker-cancel-btn"
+                    onClick={handleCancelCreate}
+                    disabled={createLoading}
+                    title="Cancel"
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              )}
+
+              {/* Create error message */}
+              {createError && <div className="directory-picker-create-error">{createError}</div>}
+
               {/* Empty state */}
-              {filteredEntries.length === 0 && !showParent && (
+              {filteredEntries.length === 0 && !showParent && !isCreating && (
                 <div className="directory-picker-empty">
                   {filterPrefix ? "No matching directories" : "No subdirectories"}
                 </div>
@@ -325,6 +472,30 @@ function DirectoryPickerModal({
 
         {/* Footer */}
         <div className="directory-picker-footer">
+          {/* New Folder button */}
+          {!isCreating && !loading && !error && (
+            <button
+              className="btn directory-picker-new-btn"
+              onClick={handleStartCreate}
+              title="Create new folder"
+            >
+              <svg
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                className="directory-picker-new-icon"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+                />
+              </svg>
+              New Folder
+            </button>
+          )}
+          <div className="directory-picker-footer-spacer"></div>
           <button className="btn" onClick={onClose}>
             Cancel
           </button>

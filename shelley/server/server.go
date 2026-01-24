@@ -256,6 +256,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/conversation-by-slug/", gzipHandler(http.HandlerFunc(s.handleConversationBySlug)))
 	mux.Handle("/api/validate-cwd", http.HandlerFunc(s.handleValidateCwd)) // Small response
 	mux.Handle("/api/list-directory", gzipHandler(http.HandlerFunc(s.handleListDirectory)))
+	mux.Handle("/api/create-directory", http.HandlerFunc(s.handleCreateDirectory))
 	mux.Handle("/api/git/diffs", gzipHandler(http.HandlerFunc(s.handleGitDiffs)))
 	mux.Handle("/api/git/diffs/", gzipHandler(http.HandlerFunc(s.handleGitDiffFiles)))
 	mux.Handle("/api/git/file-diff/", gzipHandler(http.HandlerFunc(s.handleGitFileDiff)))
@@ -446,6 +447,75 @@ func (s *Server) handleListDirectory(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// handleCreateDirectory creates a new directory
+func (s *Server) handleCreateDirectory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "invalid request body",
+		})
+		return
+	}
+
+	if req.Path == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "path is required",
+		})
+		return
+	}
+
+	// Clean the path
+	path := filepath.Clean(req.Path)
+
+	// Check if path already exists
+	if _, err := os.Stat(path); err == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "path already exists",
+		})
+		return
+	}
+
+	// Verify parent directory exists
+	parentDir := filepath.Dir(path)
+	if _, err := os.Stat(parentDir); os.IsNotExist(err) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "parent directory does not exist",
+		})
+		return
+	}
+
+	// Create the directory (only the final directory, not parents)
+	if err := os.Mkdir(path, 0o755); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		if os.IsPermission(err) {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "permission denied",
+			})
+		} else {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"path": path,
+	})
 }
 
 // getOrCreateConversationManager gets an existing conversation manager or creates a new one.
