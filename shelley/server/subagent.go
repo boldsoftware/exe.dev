@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"shelley.exe.dev/claudetool"
+	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
 )
 
@@ -45,6 +46,19 @@ func (r *SubagentRunner) RunSubagent(ctx context.Context, conversationID, prompt
 		return "", fmt.Errorf("failed to get LLM service: %w", err)
 	}
 
+	// If the subagent is currently working, stop it first before sending new message
+	if manager.IsAgentWorking() {
+		s.logger.Info("Subagent is working, stopping before sending new message", "conversationID", conversationID)
+		if err := manager.CancelConversation(ctx); err != nil {
+			s.logger.Error("Failed to cancel subagent conversation", "error", err)
+			// Continue anyway - we still want to send the new message
+		}
+		// Re-hydrate the manager after cancellation
+		if err := manager.Hydrate(ctx); err != nil {
+			return "", fmt.Errorf("failed to hydrate after cancellation: %w", err)
+		}
+	}
+
 	// Create user message
 	userMessage := llm.Message{
 		Role:    llm.MessageRoleUser,
@@ -62,10 +76,10 @@ func (r *SubagentRunner) RunSubagent(ctx context.Context, conversationID, prompt
 	}
 
 	// Wait for the agent to finish (or timeout)
-	return r.waitForResponse(ctx, conversationID, timeout)
+	return r.waitForResponse(ctx, conversationID, modelID, llmService, timeout)
 }
 
-func (r *SubagentRunner) waitForResponse(ctx context.Context, conversationID string, timeout time.Duration) (string, error) {
+func (r *SubagentRunner) waitForResponse(ctx context.Context, conversationID, modelID string, llmService llm.Service, timeout time.Duration) (string, error) {
 	s := r.server
 
 	deadline := time.Now().Add(timeout)
@@ -79,7 +93,8 @@ func (r *SubagentRunner) waitForResponse(ctx context.Context, conversationID str
 		}
 
 		if time.Now().After(deadline) {
-			return "Subagent is still working (timeout reached). Send another message to check status.", nil
+			// Timeout reached - generate a progress summary
+			return r.generateProgressSummary(ctx, conversationID, modelID, llmService)
 		}
 
 		// Check if agent is still working
@@ -152,6 +167,154 @@ func (r *SubagentRunner) getLastAssistantResponse(ctx context.Context, conversat
 	}
 
 	return strings.Join(texts, "\n"), nil
+}
+
+// generateProgressSummary makes a non-conversation LLM call to summarize the subagent's progress.
+// This is called when the timeout is reached and the subagent is still working.
+func (r *SubagentRunner) generateProgressSummary(ctx context.Context, conversationID, modelID string, llmService llm.Service) (string, error) {
+	s := r.server
+
+	// Get the conversation messages
+	var messages []generated.Message
+	err := s.db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		messages, err = q.ListMessages(ctx, conversationID)
+		return err
+	})
+	if err != nil {
+		s.logger.Error("Failed to get messages for progress summary", "error", err)
+		return "[Subagent is still working (timeout reached). Failed to generate progress summary.]", nil
+	}
+
+	if len(messages) == 0 {
+		return "[Subagent is still working (timeout reached). No messages yet.]", nil
+	}
+
+	// Build a summary of the conversation for the LLM
+	conversationSummary := r.buildConversationSummary(messages)
+
+	// Make a non-conversation LLM call to summarize progress
+	summaryPrompt := `You are summarizing the current progress of a subagent task for a parent agent.
+
+The subagent was given a task and has been working on it, but the timeout was reached before it completed.
+Below is the conversation history showing what the subagent has done so far.
+
+Please provide a brief, actionable summary (2-4 sentences) that tells the parent agent:
+1. What the subagent has accomplished so far
+2. What it appears to be currently working on
+3. Whether it seems to be making progress or stuck
+
+Conversation history:
+` + conversationSummary + `
+
+Provide your summary now:`
+
+	req := &llm.Request{
+		Messages: []llm.Message{
+			{
+				Role:    llm.MessageRoleUser,
+				Content: []llm.Content{{Type: llm.ContentTypeText, Text: summaryPrompt}},
+			},
+		},
+	}
+
+	// Use a short timeout for the summary call
+	summaryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	resp, err := llmService.Do(summaryCtx, req)
+	if err != nil {
+		s.logger.Error("Failed to generate progress summary via LLM", "error", err)
+		return "[Subagent is still working (timeout reached). Failed to generate progress summary.]", nil
+	}
+
+	// Extract the summary text
+	var summaryText string
+	for _, content := range resp.Content {
+		if content.Type == llm.ContentTypeText && content.Text != "" {
+			summaryText = content.Text
+			break
+		}
+	}
+
+	if summaryText == "" {
+		return "[Subagent is still working (timeout reached). No summary available.]", nil
+	}
+
+	return fmt.Sprintf("[Subagent is still working (timeout reached). Progress summary:]\n%s", summaryText), nil
+}
+
+// buildConversationSummary creates a text summary of the conversation messages for the LLM.
+func (r *SubagentRunner) buildConversationSummary(messages []generated.Message) string {
+	var sb strings.Builder
+
+	for _, msg := range messages {
+		// Skip system messages
+		if msg.Type == "system" {
+			continue
+		}
+
+		if msg.LlmData == nil {
+			continue
+		}
+
+		var llmMsg llm.Message
+		if err := json.Unmarshal([]byte(*msg.LlmData), &llmMsg); err != nil {
+			continue
+		}
+
+		roleStr := "User"
+		if llmMsg.Role == llm.MessageRoleAssistant {
+			roleStr = "Assistant"
+		}
+
+		for _, content := range llmMsg.Content {
+			switch content.Type {
+			case llm.ContentTypeText:
+				if content.Text != "" {
+					// Truncate very long text
+					text := content.Text
+					if len(text) > 500 {
+						text = text[:500] + "...[truncated]"
+					}
+					sb.WriteString(fmt.Sprintf("[%s]: %s\n\n", roleStr, text))
+				}
+			case llm.ContentTypeToolUse:
+				// Truncate tool input if long
+				inputStr := string(content.ToolInput)
+				if len(inputStr) > 200 {
+					inputStr = inputStr[:200] + "...[truncated]"
+				}
+				sb.WriteString(fmt.Sprintf("[%s used tool %s]: %s\n\n", roleStr, content.ToolName, inputStr))
+			case llm.ContentTypeToolResult:
+				// Summarize tool results
+				resultText := ""
+				for _, r := range content.ToolResult {
+					if r.Type == llm.ContentTypeText && r.Text != "" {
+						resultText = r.Text
+						break
+					}
+				}
+				if len(resultText) > 300 {
+					resultText = resultText[:300] + "...[truncated]"
+				}
+				errorStr := ""
+				if content.ToolError {
+					errorStr = " (error)"
+				}
+				sb.WriteString(fmt.Sprintf("[Tool result%s]: %s\n\n", errorStr, resultText))
+			}
+		}
+	}
+
+	// Limit total size
+	result := sb.String()
+	if len(result) > 8000 {
+		// Keep the last 8000 chars (most recent activity)
+		result = "...[earlier messages truncated]...\n" + result[len(result)-8000:]
+	}
+
+	return result
 }
 
 // createSubagentToolSetConfig creates a ToolSetConfig for subagent conversations.
