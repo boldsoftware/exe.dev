@@ -1003,6 +1003,8 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 
 	// Add the SSH key to the verified keys and clean up pending key.
 	// Generate a key-N comment since SSH key canonicalization strips comments.
+	// Use InsertSSHKeyForEmailUserIfNotExists to handle concurrent requests gracefully
+	// (e.g., user double-clicking the verification link).
 	err = s.withTx(context.WithoutCancel(r.Context()), func(ctx context.Context, queries *exedb.Queries) error {
 		fingerprint, err := sshkey.Fingerprint(pendingKey.PublicKey)
 		if err != nil {
@@ -1016,7 +1018,7 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		if err != nil {
 			return fmt.Errorf("failed to generate SSH key comment: %w", err)
 		}
-		err = queries.InsertSSHKeyForEmailUser(ctx, exedb.InsertSSHKeyForEmailUserParams{
+		result, err := queries.InsertSSHKeyForEmailUserIfNotExists(ctx, exedb.InsertSSHKeyForEmailUserIfNotExistsParams{
 			Email:       pendingKey.UserEmail,
 			PublicKey:   pendingKey.PublicKey,
 			Comment:     comment,
@@ -1026,11 +1028,27 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 			return err
 		}
 
+		// Security check: if the key already exists, verify it belongs to this user.
+		// This prevents a TOCTOU attack where two users race to register the same key.
+		rowsAffected, _ := result.RowsAffected()
+		if rowsAffected == 0 {
+			existingUserID, err := queries.GetUserIDBySSHKey(ctx, pendingKey.PublicKey)
+			if err != nil {
+				return fmt.Errorf("failed to verify key ownership: %w", err)
+			}
+			if existingUserID != userID {
+				return errKeyBelongsToOther
+			}
+			// Key already belongs to this user (double-click scenario) - that's fine
+		}
+
 		// Clean up the pending key
 		return queries.DeletePendingSSHKeyByToken(ctx, token)
 	})
 	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to add SSH key", "error", err)
+		if !errors.Is(err, errKeyBelongsToOther) {
+			s.slog().ErrorContext(r.Context(), "Failed to add SSH key", "error", err)
+		}
 		http.Error(w, "Failed to verify device", http.StatusInternalServerError)
 		return
 	}
@@ -1054,6 +1072,7 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 var (
 	errExpiredToken         = errors.New("verification token has expired")
 	errVerificationNotFound = errors.New("verification session not found")
+	errKeyBelongsToOther    = errors.New("SSH key is already registered to another account")
 )
 
 func (s *Server) lookUpDeviceVerification(ctx context.Context, token string) (*exedb.PendingSSHKey, *EmailVerification, error) {
