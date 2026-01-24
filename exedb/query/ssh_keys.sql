@@ -12,7 +12,7 @@ ON CONFLICT(public_key) DO NOTHING;
 -- name: GetSSHKeysForUser :many
 SELECT * FROM ssh_keys
 WHERE user_id = ?
-ORDER BY added_at DESC;
+ORDER BY id ASC;
 
 -- name: GetEmailBySSHKey :one
 SELECT u.email
@@ -36,9 +36,6 @@ WHERE s.public_key = ?;
 INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint)
 VALUES (?, ?, ?, ?)
 ON CONFLICT(public_key) DO NOTHING;
-
--- name: GetSSHKeysForUserByEmail :many
-SELECT * FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key;
 
 -- name: DeleteSSHKeyForUser :one
 DELETE FROM ssh_keys

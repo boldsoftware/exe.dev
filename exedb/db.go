@@ -330,9 +330,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getSSHKeysForUserByCommentStmt, err = db.PrepareContext(ctx, getSSHKeysForUserByComment); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHKeysForUserByComment: %w", err)
 	}
-	if q.getSSHKeysForUserByEmailStmt, err = db.PrepareContext(ctx, getSSHKeysForUserByEmail); err != nil {
-		return nil, fmt.Errorf("error preparing query GetSSHKeysForUserByEmail: %w", err)
-	}
 	if q.getSSHKeysForUserByFingerprintStmt, err = db.PrepareContext(ctx, getSSHKeysForUserByFingerprint); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHKeysForUserByFingerprint: %w", err)
 	}
@@ -1130,11 +1127,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getSSHKeysForUserByCommentStmt: %w", cerr)
 		}
 	}
-	if q.getSSHKeysForUserByEmailStmt != nil {
-		if cerr := q.getSSHKeysForUserByEmailStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getSSHKeysForUserByEmailStmt: %w", cerr)
-		}
-	}
 	if q.getSSHKeysForUserByFingerprintStmt != nil {
 		if cerr := q.getSSHKeysForUserByFingerprintStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSSHKeysForUserByFingerprintStmt: %w", cerr)
@@ -1746,7 +1738,6 @@ type Queries struct {
 	getSSHKeyByFingerprintStmt                 *sql.Stmt
 	getSSHKeysForUserStmt                      *sql.Stmt
 	getSSHKeysForUserByCommentStmt             *sql.Stmt
-	getSSHKeysForUserByEmailStmt               *sql.Stmt
 	getSSHKeysForUserByFingerprintStmt         *sql.Stmt
 	getShardPublicIPStmt                       *sql.Stmt
 	getShellHistoryStmt                        *sql.Stmt
@@ -1949,7 +1940,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getSSHKeyByFingerprintStmt:                 q.getSSHKeyByFingerprintStmt,
 		getSSHKeysForUserStmt:                      q.getSSHKeysForUserStmt,
 		getSSHKeysForUserByCommentStmt:             q.getSSHKeysForUserByCommentStmt,
-		getSSHKeysForUserByEmailStmt:               q.getSSHKeysForUserByEmailStmt,
 		getSSHKeysForUserByFingerprintStmt:         q.getSSHKeysForUserByFingerprintStmt,
 		getShardPublicIPStmt:                       q.getShardPublicIPStmt,
 		getShellHistoryStmt:                        q.getShellHistoryStmt,

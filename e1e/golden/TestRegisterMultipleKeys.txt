@@ -110,7 +110,7 @@ PROMPT ▶ whoami
 Email Address: TestRegisterMultipleKeys@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY (key-4) ← current
-  Public Key: SSH_PUBKEY (key-3)
   Public Key: SSH_PUBKEY (key-1)
+  Public Key: SSH_PUBKEY (key-3)
 PROMPT ▶ exit
 Goodbye!

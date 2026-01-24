@@ -76,7 +76,7 @@ func (q *Queries) GetSSHKeyByFingerprint(ctx context.Context, fingerprint string
 const getSSHKeysForUser = `-- name: GetSSHKeysForUser :many
 SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint FROM ssh_keys
 WHERE user_id = ?
-ORDER BY added_at DESC
+ORDER BY id ASC
 `
 
 func (q *Queries) GetSSHKeysForUser(ctx context.Context, userID string) ([]SSHKey, error) {
@@ -121,41 +121,6 @@ type GetSSHKeysForUserByCommentParams struct {
 
 func (q *Queries) GetSSHKeysForUserByComment(ctx context.Context, arg GetSSHKeysForUserByCommentParams) ([]SSHKey, error) {
 	rows, err := q.query(ctx, q.getSSHKeysForUserByCommentStmt, getSSHKeysForUserByComment, arg.UserID, arg.Comment)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []SSHKey{}
-	for rows.Next() {
-		var i SSHKey
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.PublicKey,
-			&i.AddedAt,
-			&i.LastUsedAt,
-			&i.Comment,
-			&i.Fingerprint,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getSSHKeysForUserByEmail = `-- name: GetSSHKeysForUserByEmail :many
-SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key
-`
-
-func (q *Queries) GetSSHKeysForUserByEmail(ctx context.Context, email string) ([]SSHKey, error) {
-	rows, err := q.query(ctx, q.getSSHKeysForUserByEmailStmt, getSSHKeysForUserByEmail, email)
 	if err != nil {
 		return nil, err
 	}
