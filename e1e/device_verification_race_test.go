@@ -72,11 +72,7 @@ func TestDeviceVerificationDoubleClick(t *testing.T) {
 	}
 
 	// Extract hidden inputs from the form
-	hiddenRe := regexp.MustCompile(`<input[^>]+name="([^"]+)"[^>]+value="([^"]*)"[^>]*>`)
-	formData := url.Values{}
-	for _, match := range hiddenRe.FindAllSubmatch(htmlBody, -1) {
-		formData.Set(string(match[1]), string(match[2]))
-	}
+	formData := testinfra.ExtractFormFields(htmlBody)
 
 	token := formData.Get("token")
 	if token == "" {
@@ -84,12 +80,7 @@ func TestDeviceVerificationDoubleClick(t *testing.T) {
 	}
 
 	// Determine form action
-	actionRe := regexp.MustCompile(`<form[^>]+action="([^"]+)"`)
-	actionMatch := actionRe.FindSubmatch(htmlBody)
-	actionPath := "/verify-device"
-	if len(actionMatch) >= 2 {
-		actionPath = string(actionMatch[1])
-	}
+	actionPath := testinfra.ExtractFormAction(htmlBody, "/verify-device")
 
 	postURL := fmt.Sprintf("http://localhost:%d%s", Env.servers.Exed.HTTPPort, actionPath)
 
@@ -235,18 +226,9 @@ func TestDeviceVerificationKeyTheft(t *testing.T) {
 			t.Fatalf("Failed to read verification page for %s: %v", email, err)
 		}
 
-		hiddenRe := regexp.MustCompile(`<input[^>]+name="([^"]+)"[^>]+value="([^"]*)"[^>]*>`)
-		formData = url.Values{}
-		for _, match := range hiddenRe.FindAllSubmatch(htmlBody, -1) {
-			formData.Set(string(match[1]), string(match[2]))
-		}
+		formData = testinfra.ExtractFormFields(htmlBody)
 
-		actionRe := regexp.MustCompile(`<form[^>]+action="([^"]+)"`)
-		actionMatch := actionRe.FindSubmatch(htmlBody)
-		actionPath := "/verify-device"
-		if len(actionMatch) >= 2 {
-			actionPath = string(actionMatch[1])
-		}
+		actionPath := testinfra.ExtractFormAction(htmlBody, "/verify-device")
 
 		postURL = fmt.Sprintf("http://localhost:%d%s", Env.servers.Exed.HTTPPort, actionPath)
 		return postURL, formData

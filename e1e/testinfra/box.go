@@ -188,11 +188,45 @@ func (se *ServerEnv) WaitForEmailAndVerify(to string) ([]*http.Cookie, error) {
 	return se.ClickVerifyLinkInEmail(msg)
 }
 
-// hiddenRE gets the hidden inputs for ClickVerifyLInkInEmail.
+// hiddenRe matches hidden input fields in HTML forms.
+// It handles inputs where name appears before value.
 var hiddenRe = regexp.MustCompile(`<input[^>]+name="([^"]+)"[^>]+value="([^"]*)"[^>]*>`)
 
-// actionRE finds the form action for ClickVerifyLinkInEmail.
+// hiddenReReverse matches hidden input fields where value appears before name.
+var hiddenReReverse = regexp.MustCompile(`<input[^>]+value="([^"]*)"[^>]+name="([^"]+)"`)
+
+// actionRe finds the form action attribute.
 var actionRe = regexp.MustCompile(`<form[^>]+action="([^"]+)"`)
+
+// ExtractFormFields extracts all input fields from HTML into url.Values.
+// It handles both name-before-value and value-before-name orderings.
+func ExtractFormFields(htmlBody []byte) url.Values {
+	formData := url.Values{}
+	for _, match := range hiddenRe.FindAllSubmatch(htmlBody, -1) {
+		name := string(match[1])
+		value := html.UnescapeString(string(match[2]))
+		formData.Set(name, value)
+	}
+	// Also try the reverse order (value before name)
+	for _, match := range hiddenReReverse.FindAllSubmatch(htmlBody, -1) {
+		name := string(match[2])
+		if formData.Get(name) == "" {
+			value := html.UnescapeString(string(match[1]))
+			formData.Set(name, value)
+		}
+	}
+	return formData
+}
+
+// ExtractFormAction extracts the form action from HTML.
+// Returns defaultPath if no action is found.
+func ExtractFormAction(htmlBody []byte, defaultPath string) string {
+	actionMatch := actionRe.FindSubmatch(htmlBody)
+	if len(actionMatch) >= 2 {
+		return string(actionMatch[1])
+	}
+	return defaultPath
+}
 
 // ClickVerifyLinkInEmail looks for a verification link in an email message,
 // and clicks it. It returns HTTP authorization cookies.
@@ -229,12 +263,7 @@ func (se *ServerEnv) ClickVerifyLinkInEmail(emailMsg *EmailMessage) ([]*http.Coo
 	// }
 
 	// Extract hidden inputs so we can POST the same form fields back
-	formData := url.Values{}
-	for _, match := range hiddenRe.FindAllSubmatch(htmlBody, -1) {
-		name := string(match[1])
-		value := html.UnescapeString(string(match[2]))
-		formData.Set(name, value)
-	}
+	formData := ExtractFormFields(htmlBody)
 
 	token := formData.Get("token")
 	if token == "" {
@@ -243,11 +272,7 @@ func (se *ServerEnv) ClickVerifyLinkInEmail(emailMsg *EmailMessage) ([]*http.Coo
 	AddCanonicalization(token, "EMAIL_VERIFICATION_TOKEN")
 
 	// Determine form action (defaults to /verify-email if not found)
-	actionMatch := actionRe.FindSubmatch(htmlBody)
-	actionPath := "/verify-email"
-	if len(actionMatch) >= 2 {
-		actionPath = string(actionMatch[1])
-	}
+	actionPath := ExtractFormAction(htmlBody, "/verify-email")
 	if !strings.HasPrefix(actionPath, "/") {
 		actionPath = "/" + actionPath
 	}

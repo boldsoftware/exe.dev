@@ -1009,18 +1009,7 @@ func (f *loginWithExeFlow) submitEmailForAuth() {
 	f.t.Helper()
 
 	// Extract form fields from the 401 page (including redirect URL)
-	formData := url.Values{}
-	hiddenRe := regexp.MustCompile(`<input[^>]+type="hidden"[^>]+name="([^"]+)"[^>]+value="([^"]*)"`)
-	for _, match := range hiddenRe.FindAllStringSubmatch(f.auth401PageBody, -1) {
-		formData.Set(match[1], html.UnescapeString(match[2]))
-	}
-	// Also try the reverse order (value before name)
-	hiddenRe2 := regexp.MustCompile(`<input[^>]+value="([^"]*)"[^>]+name="([^"]+)"`)
-	for _, match := range hiddenRe2.FindAllStringSubmatch(f.auth401PageBody, -1) {
-		if formData.Get(match[2]) == "" {
-			formData.Set(match[2], html.UnescapeString(match[1]))
-		}
-	}
+	formData := testinfra.ExtractFormFields([]byte(f.auth401PageBody))
 
 	// Add the email
 	formData.Set("email", f.email)
@@ -1074,19 +1063,10 @@ func (f *loginWithExeFlow) completeEmailVerification() {
 	}
 
 	// Extract hidden inputs for form submission
-	hiddenRe := regexp.MustCompile(`<input[^>]+name="([^"]+)"[^>]+value="([^"]*)"[^>]*>`)
-	formData := url.Values{}
-	for _, match := range hiddenRe.FindAllStringSubmatch(string(htmlBody), -1) {
-		formData.Set(match[1], html.UnescapeString(match[2]))
-	}
+	formData := testinfra.ExtractFormFields(htmlBody)
 
 	// Determine form action
-	actionRe := regexp.MustCompile(`<form[^>]+action="([^"]+)"`)
-	actionMatch := actionRe.FindStringSubmatch(string(htmlBody))
-	actionPath := "/verify-email"
-	if len(actionMatch) >= 2 {
-		actionPath = actionMatch[1]
-	}
+	actionPath := testinfra.ExtractFormAction(htmlBody, "/verify-email")
 
 	f.t.Logf("Verification form data: %v", formData)
 
