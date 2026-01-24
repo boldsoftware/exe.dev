@@ -1,9 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import JSZip from "jszip";
 import { LLMContent } from "../types";
+
+interface EmbeddedFile {
+  name: string;
+  path: string;
+  content: string;
+  type: string;
+}
 
 interface OutputIframeToolProps {
   // For tool_use (pending state)
-  toolInput?: unknown; // { html: string, title?: string }
+  toolInput?: unknown; // { path: string, title?: string, files?: object }
   isRunning?: boolean;
 
   // For tool_result (completed state)
@@ -49,6 +57,22 @@ const HEIGHT_REPORTER_SCRIPT = `
 const MIN_HEIGHT = 100;
 const MAX_HEIGHT = 600;
 
+// Remove injected scripts/styles from HTML to get the original version for download
+function getOriginalHtml(html: string): string {
+  // Remove the window.__FILES__ script block
+  let result = html.replace(
+    /<script>\s*window\.__FILES__\s*=\s*window\.__FILES__\s*\|\|\s*\{\};[\s\S]*?<\/script>\s*/g,
+    "",
+  );
+  // Remove injected style tags
+  result = result.replace(/<style data-file="[^"]*">[\s\S]*?<\/style>\s*/g, "");
+  // Remove injected script tags
+  result = result.replace(/<script data-file="[^"]*">[\s\S]*?<\/script>\s*/g, "");
+  // Remove empty head tags that might have been added
+  result = result.replace(/<head>\s*<\/head>\s*/g, "");
+  return result;
+}
+
 function OutputIframeTool({
   toolInput,
   isRunning,
@@ -88,13 +112,25 @@ function OutputIframeTool({
   };
 
   // Get display data - prefer from display prop, fall back to toolInput
-  const getDisplayData = (): { html?: string; title?: string } => {
+  const getDisplayData = (): {
+    html?: string;
+    title?: string;
+    filename?: string;
+    files?: EmbeddedFile[];
+  } => {
     // First try display prop (from tool result)
     if (display && typeof display === "object" && display !== null) {
-      const d = display as { html?: string; title?: string };
+      const d = display as {
+        html?: string;
+        title?: string;
+        filename?: string;
+        files?: EmbeddedFile[];
+      };
       return {
         html: typeof d.html === "string" ? d.html : undefined,
         title: typeof d.title === "string" ? d.title : undefined,
+        filename: typeof d.filename === "string" ? d.filename : undefined,
+        files: Array.isArray(d.files) ? d.files : undefined,
       };
     }
     // Fall back to toolInput
@@ -107,6 +143,9 @@ function OutputIframeTool({
   const displayData = getDisplayData();
   const title = displayData.title || "HTML Output";
   const html = displayData.html;
+  const filename = displayData.filename || "output.html";
+  const files = displayData.files || [];
+  const hasMultipleFiles = files.length > 0;
 
   // Inject height reporter script into HTML
   const htmlWithHeightReporter = html
@@ -184,7 +223,52 @@ function OutputIframeTool({
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  // Download files - single HTML or zip with all files
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!html) return;
+
+    if (hasMultipleFiles) {
+      // Create a zip file with all files
+      const zip = new JSZip();
+
+      // Add the original HTML (without injected content)
+      const originalHtml = getOriginalHtml(html);
+      zip.file(filename, originalHtml);
+
+      // Add all embedded files
+      for (const file of files) {
+        zip.file(file.path || file.name, file.content);
+      }
+
+      // Generate and download the zip
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      // Use the HTML filename without extension for the zip name
+      const zipName = filename.replace(/\.[^.]+$/, "") + ".zip";
+      a.download = zipName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } else {
+      // Single file download
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  };
+
   const isComplete = !isRunning && toolResult !== undefined;
+  const downloadLabel = hasMultipleFiles ? "Download ZIP" : "Download HTML";
 
   return (
     <div
@@ -200,27 +284,50 @@ function OutputIframeTool({
         </div>
         <div className="output-iframe-tool-actions">
           {isComplete && !hasError && html && (
-            <button
-              className="output-iframe-tool-open-btn"
-              onClick={handleOpenInNewTab}
-              aria-label="Open in new tab"
-              title="Open in new tab"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <>
+              <button
+                className="output-iframe-tool-download-btn"
+                onClick={handleDownload}
+                aria-label={downloadLabel}
+                title={downloadLabel}
               >
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                <polyline points="15 3 21 3 21 9" />
-                <line x1="10" y1="14" x2="21" y2="3" />
-              </svg>
-            </button>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </button>
+              <button
+                className="output-iframe-tool-open-btn"
+                onClick={handleOpenInNewTab}
+                aria-label="Open in new tab"
+                title="Open in new tab"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                  <polyline points="15 3 21 3 21 9" />
+                  <line x1="10" y1="14" x2="21" y2="3" />
+                </svg>
+              </button>
+            </>
           )}
           <button
             className="output-iframe-tool-toggle"

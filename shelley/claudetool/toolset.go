@@ -123,13 +123,15 @@ func NewToolSet(ctx context.Context, cfg ToolSetConfig) *ToolSet {
 		OnChange:   cfg.OnWorkingDirChange,
 	}
 
+	outputIframeTool := &OutputIframeTool{WorkingDir: wd}
+
 	tools := []*llm.Tool{
 		Think,
 		bashTool.Tool(),
 		patchTool.Tool(),
 		keywordTool.Tool(),
 		changeDirTool.Tool(),
-		OutputIframeTool,
+		outputIframeTool.Tool(),
 	}
 
 	// Add subagent tool if configured

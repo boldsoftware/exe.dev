@@ -1664,7 +1664,8 @@ button {
   flex-shrink: 0;
 }
 
-.output-iframe-tool-open-btn {
+.output-iframe-tool-open-btn,
+.output-iframe-tool-download-btn {
   background: none;
   border: none;
   padding: 0.25rem;
@@ -1676,12 +1677,14 @@ button {
   border-radius: 4px;
 }
 
-.output-iframe-tool-open-btn:hover {
+.output-iframe-tool-open-btn:hover,
+.output-iframe-tool-download-btn:hover {
   color: var(--text-primary);
   background: var(--gray-200);
 }
 
-.dark .output-iframe-tool-open-btn:hover {
+.dark .output-iframe-tool-open-btn:hover,
+.dark .output-iframe-tool-download-btn:hover {
   background: var(--gray-700);
 }
 
@@ -2897,33 +2900,15 @@ svg {
   }
 }
 
-.context-usage-bar-container {
+.context-usage-indicator {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 4px;
-}
-
-.context-warning-icon {
-  font-size: 14px;
-  line-height: 1;
-  cursor: help;
-}
-
-.context-usage-bar {
-  width: 60px;
-  height: 6px;
-  background: var(--bg-tertiary);
-  border-radius: 3px;
-  overflow: hidden;
-  cursor: pointer;
-}
-
-.context-usage-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition:
-    width 0.3s ease,
-    background-color 0.3s ease;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 /* Mobile optimizations for tighter spacing */
