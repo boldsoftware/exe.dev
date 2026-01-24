@@ -3062,15 +3062,33 @@ svg {
   }
 }
 
-.context-usage-indicator {
-  position: relative;
-  width: 24px;
-  height: 24px;
-  cursor: pointer;
+.context-usage-bar-container {
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  gap: 4px;
+}
+
+.context-warning-icon {
+  font-size: 14px;
+  line-height: 1;
+  cursor: help;
+}
+
+.context-usage-bar {
+  width: 60px;
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.context-usage-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition:
+    width 0.3s ease,
+    background-color 0.3s ease;
 }
 
 /* Mobile optimizations for tighter spacing */
