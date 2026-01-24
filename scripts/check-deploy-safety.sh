@@ -43,6 +43,19 @@ if ! git merge-base --is-ancestor origin/main HEAD 2>/dev/null; then
     fi
 fi
 
+# Check if HEAD is equal to or an ancestor of origin/main (no unpushed commits)
+# This prevents deploying local commits that haven't been pushed.
+# Requires DEPLOY_UNPUSHED=1 to bypass (not -f, to make it harder).
+if ! git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
+    if [ "$DEPLOY_UNPUSHED" = "1" ]; then
+        echo -e "${RED}WARNING: Deploying unpushed commit (DEPLOY_UNPUSHED=1)${NC}" >&2
+    else
+        echo -e "${RED}ERROR: HEAD contains commits not in origin/main.${NC}" >&2
+        echo "Push your changes to main, or set DEPLOY_UNPUSHED=1 to deploy anyway." >&2
+        errors=1
+    fi
+fi
+
 if [ "$errors" -ne 0 ]; then
     exit 1
 fi
