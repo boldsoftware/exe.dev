@@ -597,9 +597,18 @@ func (ct *CommandTree) CompleteCommand(line string, cursor int, cc *CommandConte
 
 		// Try to find if we've already selected a subcommand
 		if argsAfterCommand > 0 {
+			// Filter out flag-like words when finding subcommands, since flags
+			// can appear anywhere in the command line
+			nonFlagWords := make([]string, 0, len(words))
+			for _, w := range words {
+				if !strings.HasPrefix(w, "-") {
+					nonFlagWords = append(nonFlagWords, w)
+				}
+			}
+
 			// Use the shared function to find the deepest subcommand
-			deepestCmd, remainingArgs := ct.findDeepestSubcommand(words)
-			if deepestCmd != nil && len(remainingArgs) == 0 {
+			deepestCmd, remainingArgs := ct.findDeepestSubcommand(nonFlagWords)
+			if deepestCmd != nil && (len(remainingArgs) == 0 || deepestCmd.HasPositionalArgs) {
 				cmd = deepestCmd
 			} else {
 				// We're still in the process of completing subcommand names

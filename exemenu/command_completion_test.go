@@ -208,6 +208,86 @@ func TestCompleteCommand(t *testing.T) {
 	}
 }
 
+func TestCompleteSubcommandWithFlags(t *testing.T) {
+	// Create a command tree with subcommands that have positional args
+	commands := &CommandTree{
+		Commands: []*Command{
+			{
+				Name: "share",
+				Subcommands: []*Command{
+					{
+						Name:              "show",
+						HasPositionalArgs: true,
+						FlagSetFunc: func() *flag.FlagSet {
+							fs := flag.NewFlagSet("show", flag.ContinueOnError)
+							fs.Bool("qr", false, "show QR code")
+							fs.Bool("json", false, "output JSON")
+							return fs
+						},
+						CompleterFunc: func(compCtx *CompletionContext, cc *CommandContext) []string {
+							return []string{"vm1", "vm2", "myvm"}
+						},
+					},
+					{
+						Name:              "add",
+						HasPositionalArgs: true,
+						CompleterFunc: func(compCtx *CompletionContext, cc *CommandContext) []string {
+							return []string{"vm1", "vm2", "myvm"}
+						},
+					},
+				},
+			},
+		},
+	}
+
+	cc := &CommandContext{}
+
+	tests := []struct {
+		name     string
+		line     string
+		cursor   int
+		expected []string
+	}{
+		{
+			name:     "complete subcommand args without flags",
+			line:     "share show ",
+			cursor:   11,
+			expected: []string{"vm1", "vm2", "myvm"},
+		},
+		{
+			name:     "complete subcommand args with flag before",
+			line:     "share show --qr ",
+			cursor:   16,
+			expected: []string{"vm1", "vm2", "myvm"},
+		},
+		{
+			name:     "complete subcommand args with flag after vm",
+			line:     "share show myvm --qr ",
+			cursor:   21,
+			expected: []string{"vm1", "vm2", "myvm"},
+		},
+		{
+			name:     "complete subcommand args with flag before command",
+			line:     "share --json show ",
+			cursor:   18,
+			expected: []string{"vm1", "vm2", "myvm"},
+		},
+		{
+			name:     "complete partial with flag present",
+			line:     "share show --qr my",
+			cursor:   18,
+			expected: []string{"vm1", "vm2", "myvm"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := commands.CompleteCommand(tt.line, tt.cursor, cc)
+			assert.ElementsMatch(t, tt.expected, result)
+		})
+	}
+}
+
 func TestCompleteFlagHidesHiddenFlags(t *testing.T) {
 	// Create a command with both visible and hidden flags
 	commands := &CommandTree{
