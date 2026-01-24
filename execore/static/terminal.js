@@ -380,27 +380,32 @@ class TerminalClient {
         if (!this.terminal) return;
 
         const terminalContainer = document.getElementById('terminal');
-        const terminalFrame = document.querySelector('.terminal-frame');
+        const rect = terminalContainer.getBoundingClientRect();
         
         // Check if we're on mobile (control bar visible)
         const controlBar = document.getElementById('control-bar');
         const isMobile = controlBar && window.getComputedStyle(controlBar).display !== 'none';
         
         // Calculate available space
-        const padding = isMobile ? 8 : 20;
-        const frameRect = terminalFrame.getBoundingClientRect();
-        const containerRect = terminalContainer.getBoundingClientRect();
+        const width = rect.width - (isMobile ? 8 : 20);
+        let height;
         
-        const width = containerRect.width - padding;
-        // Use the actual available height within the frame
-        const availableHeight = frameRect.height - (containerRect.top - frameRect.top) - (isMobile ? 10 : 40);
+        if (isMobile) {
+            // On mobile, terminal-frame has explicit height, use its bounds
+            const terminalFrame = document.querySelector('.terminal-frame');
+            const frameRect = terminalFrame.getBoundingClientRect();
+            height = frameRect.height - (rect.top - frameRect.top) - 10;
+        } else {
+            // On desktop, calculate from viewport height
+            height = window.innerHeight - terminalContainer.offsetTop - 40;
+        }
         
         // Calculate character dimensions (approximate)
         const charWidth = 9;
         const lineHeight = 18;
         
         const cols = Math.floor(width / charWidth);
-        const rows = Math.floor(availableHeight / lineHeight);
+        const rows = Math.floor(height / lineHeight);
         
         if (cols > 0 && rows > 0) {
             this.terminal.resize(cols, rows);
