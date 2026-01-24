@@ -90,6 +90,36 @@ func (s *Server) handleDebugLLMResponseBody(w http.ResponseWriter, r *http.Reque
 	w.Write([]byte(*body))
 }
 
+// handleDebugLLMRequestBodyFull returns the full reconstructed request body,
+// including prefix data from the prefix chain.
+func (s *Server) handleDebugLLMRequestBodyFull(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	// Use the existing DB method to reconstruct the full body
+	fullBody, err := s.db.GetFullLLMRequestBody(ctx, id)
+	if err != nil {
+		s.logger.Error("Failed to get full LLM request body", "error", err, "id", id)
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
+	if fullBody == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("null"))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(fullBody))
+}
+
 const debugLLMRequestsHTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -102,10 +132,10 @@ body {
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 	margin: 0;
 	padding: 20px;
-	background: #1a1a1a;
-	color: #e0e0e0;
+	background: #fff;
+	color: #1a1a1a;
 }
-h1 { margin: 0 0 20px 0; font-size: 24px; color: #fff; }
+h1 { margin: 0 0 20px 0; font-size: 24px; color: #000; }
 table {
 	width: 100%;
 	border-collapse: collapse;
@@ -114,38 +144,40 @@ table {
 th, td {
 	padding: 8px 12px;
 	text-align: left;
-	border-bottom: 1px solid #333;
+	border-bottom: 1px solid #e0e0e0;
 }
 th {
-	background: #252525;
+	background: #f5f5f5;
 	font-weight: 600;
 	position: sticky;
 	top: 0;
 }
-tr:hover { background: #252525; }
+tr:hover { background: #f8f8f8; }
 .mono { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; }
-.error { color: #ff6b6b; }
-.success { color: #69db7c; }
+.error { color: #d32f2f; }
+.success { color: #2e7d32; }
 .btn {
-	background: #333;
-	border: 1px solid #444;
-	color: #e0e0e0;
+	background: #f5f5f5;
+	border: 1px solid #ccc;
+	color: #333;
 	padding: 4px 8px;
 	border-radius: 4px;
 	cursor: pointer;
 	font-size: 12px;
 }
-.btn:hover { background: #444; }
+.btn:hover { background: #e8e8e8; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.active { background: #1976d2; color: #fff; border-color: #1565c0; }
 .json-viewer {
-	background: #1e1e1e;
-	border: 1px solid #333;
+	background: #fafafa;
+	border: 1px solid #e0e0e0;
 	border-radius: 4px;
 	padding: 12px;
-	margin-top: 8px;
 	overflow-x: auto;
-	max-height: 400px;
+	max-height: 600px;
 	overflow-y: auto;
+	flex: 1;
+	min-width: 0;
 }
 .json-viewer pre {
 	margin: 0;
@@ -155,35 +187,42 @@ tr:hover { background: #252525; }
 	word-wrap: break-word;
 }
 .collapsed { display: none; }
-.size { color: #888; font-size: 11px; }
-.prefix { color: #ffd43b; }
-.dedup-info { color: #74c0fc; font-size: 11px; }
-.loading { color: #888; font-style: italic; }
-.expand-row { background: #1e1e1e; }
+.size { color: #666; font-size: 11px; }
+.prefix { color: #f57c00; }
+.dedup-info { color: #1976d2; font-size: 11px; }
+.loading { color: #666; font-style: italic; }
+.expand-row { background: #fafafa; }
 .expand-row td { padding: 0; }
 .expand-content { padding: 12px; }
-.expand-tabs {
+.panels {
 	display: flex;
+	gap: 16px;
+}
+.panel {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+.panel-header {
+	font-weight: 600;
+	margin-bottom: 8px;
+	color: #333;
+	display: flex;
+	align-items: center;
 	gap: 8px;
-	margin-bottom: 12px;
 }
-.tab-btn {
-	background: transparent;
-	border: 1px solid #444;
-	color: #888;
-	padding: 6px 12px;
-	border-radius: 4px;
-	cursor: pointer;
+.panel-header .btn {
+	font-size: 11px;
+	padding: 2px 6px;
 }
-.tab-btn.active {
-	background: #333;
-	color: #fff;
-	border-color: #555;
-}
-.tab-content { display: none; }
-.tab-content.active { display: block; }
-.model-display { color: #a5d6ff; }
-.model-id { color: #888; font-size: 11px; }
+.model-display { color: #1976d2; }
+.model-id { color: #666; font-size: 11px; }
+.string { color: #2e7d32; }
+.number { color: #e65100; }
+.boolean { color: #0097a7; }
+.null { color: #7b1fa2; }
+.key { color: #c62828; }
 </style>
 </head>
 <body>
@@ -298,13 +337,13 @@ function renderTable(requests) {
 			<td class="size">${formatSize(req.request_body_length)}</td>
 			<td class="size">${formatSize(req.response_body_length)}</td>
 			<td>${prefixInfo}</td>
-			<td><button class="btn" onclick="toggleExpand(${req.id})">Expand</button></td>
+			<td><button class="btn" onclick="toggleExpand(${req.id}, ${req.prefix_request_id !== null})">Expand</button></td>
 		` + "`" + `;
 		tbody.appendChild(tr);
 	}
 }
 
-async function toggleExpand(id) {
+async function toggleExpand(id, hasPrefix) {
 	const existingExpand = document.getElementById('expand-' + id);
 	if (existingExpand) {
 		existingExpand.remove();
@@ -320,23 +359,27 @@ async function toggleExpand(id) {
 	expandRow.innerHTML = ` + "`" + `
 		<td colspan="10">
 			<div class="expand-content">
-				<div class="expand-tabs">
-					<button class="tab-btn active" onclick="showTab(${id}, 'request')">Request</button>
-					<button class="tab-btn" onclick="showTab(${id}, 'response')">Response</button>
-				</div>
-				<div id="tab-request-${id}" class="tab-content active">
-					<div class="json-viewer"><pre class="loading">Loading request...</pre></div>
-				</div>
-				<div id="tab-response-${id}" class="tab-content">
-					<div class="json-viewer"><pre class="loading">Loading response...</pre></div>
+				<div class="panels">
+					<div class="panel">
+						<div class="panel-header">
+							Request
+							${hasPrefix ? '<button class="btn" id="toggle-full-' + id + '" onclick="toggleFullRequest(' + id + ')">Show Full</button>' : ''}
+						</div>
+						<div class="json-viewer" id="request-panel-${id}"><pre class="loading">Loading request...</pre></div>
+					</div>
+					<div class="panel">
+						<div class="panel-header">Response</div>
+						<div class="json-viewer" id="response-panel-${id}"><pre class="loading">Loading response...</pre></div>
+					</div>
 				</div>
 			</div>
 		</td>
 	` + "`" + `;
 	row.after(expandRow);
 
-	// Load request body
+	// Load both request and response
 	loadBody(id, 'request');
+	loadBody(id, 'response');
 }
 
 async function loadBody(id, type) {
@@ -361,7 +404,8 @@ async function loadBody(id, type) {
 		loadedData[key] = data;
 		renderBody(id, type, data);
 	} catch (e) {
-		const container = document.querySelector('#tab-' + type + '-' + id + ' pre');
+		const panelId = type === 'request' ? 'request-panel-' + id : 'response-panel-' + id;
+		const container = document.querySelector('#' + panelId + ' pre');
 		if (container) {
 			container.className = 'error';
 			container.textContent = 'Error loading: ' + e.message;
@@ -369,8 +413,57 @@ async function loadBody(id, type) {
 	}
 }
 
+async function loadFullBody(id) {
+	const key = id + '-request-full';
+	if (loadedData[key]) {
+		return loadedData[key];
+	}
+
+	try {
+		const resp = await fetch('/debug/llm_requests/' + id + '/request_full');
+		const text = await resp.text();
+		let data;
+		try {
+			data = JSON.parse(text);
+		} catch {
+			data = text;
+		}
+		loadedData[key] = data;
+		return data;
+	} catch (e) {
+		throw e;
+	}
+}
+
+async function toggleFullRequest(id) {
+	const btn = document.getElementById('toggle-full-' + id);
+	if (!btn) return;
+
+	const isShowingFull = btn.classList.contains('active');
+
+	if (isShowingFull) {
+		// Switch back to suffix-only
+		btn.classList.remove('active');
+		btn.textContent = 'Show Full';
+		renderBody(id, 'request', loadedData[id + '-request']);
+	} else {
+		// Load and show full request
+		btn.textContent = 'Loading...';
+		try {
+			const fullData = await loadFullBody(id);
+			btn.classList.add('active');
+			btn.textContent = 'Show Suffix Only';
+			renderBody(id, 'request', fullData);
+		} catch (e) {
+			btn.textContent = 'Error';
+			setTimeout(() => { btn.textContent = 'Show Full'; }, 2000);
+		}
+	}
+}
+
 function renderBody(id, type, data) {
-	const container = document.querySelector('#tab-' + type + '-' + id + ' pre');
+	const panelId = type === 'request' ? 'request-panel-' + id : 'response-panel-' + id;
+	const container = document.querySelector('#' + panelId + ' pre');
 	if (!container) return;
 
 	if (data === null) {
@@ -386,40 +479,6 @@ function renderBody(id, type, data) {
 		container.textContent = data;
 	}
 }
-
-function showTab(id, tab) {
-	// Update tab buttons
-	const expandRow = document.getElementById('expand-' + id);
-	if (!expandRow) return;
-
-	expandRow.querySelectorAll('.tab-btn').forEach(btn => {
-		btn.classList.remove('active');
-		if (btn.textContent.toLowerCase() === tab) {
-			btn.classList.add('active');
-		}
-	});
-
-	// Update tab content
-	expandRow.querySelectorAll('.tab-content').forEach(content => {
-		content.classList.remove('active');
-	});
-	const activeTab = document.getElementById('tab-' + tab + '-' + id);
-	if (activeTab) {
-		activeTab.classList.add('active');
-		loadBody(id, tab);
-	}
-}
-
-// Add syntax highlighting styles
-const style = document.createElement('style');
-style.textContent = ` + "`" + `
-	.string { color: #98c379; }
-	.number { color: #d19a66; }
-	.boolean { color: #56b6c2; }
-	.null { color: #c678dd; }
-	.key { color: #e06c75; }
-` + "`" + `;
-document.head.appendChild(style);
 
 loadRequests();
 </script>
