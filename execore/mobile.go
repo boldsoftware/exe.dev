@@ -331,7 +331,14 @@ func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
 	// Use the prefilled name or generate a random suggestion
 	hostnameSuggestion := name
 	if hostnameSuggestion == "" {
-		hostnameSuggestion = boxname.Random()
+		// Generate random names until we find one that's available
+		// (limit attempts to avoid infinite loop in pathological cases)
+		for range 10 {
+			hostnameSuggestion = boxname.Random()
+			if s.isBoxNameAvailable(r.Context(), hostnameSuggestion) {
+				break
+			}
+		}
 	}
 
 	// Check if user is logged in
