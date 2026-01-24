@@ -165,14 +165,14 @@ func calculateContextWindowSize(messages []APIMessage) uint64 {
 	return 0
 }
 
-// isAgentEndOfTurn checks if a message is an agent message with end_of_turn=true.
+// isAgentEndOfTurn checks if a message is an agent or error message with end_of_turn=true.
 // This indicates the agent loop has finished processing.
 func isAgentEndOfTurn(msg *generated.Message) bool {
 	if msg == nil {
 		return false
 	}
-	// Only agent messages can have end_of_turn
-	if msg.Type != string(db.MessageTypeAgent) {
+	// Agent and error messages can have end_of_turn
+	if msg.Type != string(db.MessageTypeAgent) && msg.Type != string(db.MessageTypeError) {
 		return false
 	}
 	if msg.LlmData == nil {
@@ -599,12 +599,13 @@ func (s *Server) recordMessage(ctx context.Context, conversationID string, messa
 
 	// Create message
 	createdMsg, err := s.db.CreateMessage(ctx, db.CreateMessageParams{
-		ConversationID: conversationID,
-		Type:           messageType,
-		LLMData:        message,
-		UserData:       nil,
-		UsageData:      usage,
-		DisplayData:    displayDataToStore,
+		ConversationID:      conversationID,
+		Type:                messageType,
+		LLMData:             message,
+		UserData:            nil,
+		UsageData:           usage,
+		DisplayData:         displayDataToStore,
+		ExcludedFromContext: message.ExcludedFromContext,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create message: %w", err)
@@ -635,16 +636,15 @@ func (s *Server) recordMessage(ctx context.Context, conversationID string, messa
 
 // getMessageType determines the message type from an LLM message
 func (s *Server) getMessageType(message llm.Message) (db.MessageType, error) {
+	// System-generated errors are stored as error type
+	if message.ErrorType != llm.ErrorTypeNone {
+		return db.MessageTypeError, nil
+	}
+
 	switch message.Role {
 	case llm.MessageRoleUser:
 		return db.MessageTypeUser, nil
 	case llm.MessageRoleAssistant:
-		// Check if this is an error message by looking at content
-		for _, content := range message.Content {
-			if content.Type == llm.ContentTypeText && strings.HasPrefix(content.Text, "LLM request failed:") {
-				return db.MessageTypeError, nil
-			}
-		}
 		return db.MessageTypeAgent, nil
 	default:
 		// For tool messages, check if it's a tool call or tool result

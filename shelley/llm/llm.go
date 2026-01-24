@@ -60,6 +60,15 @@ func EmptySchema() json.RawMessage {
 	return MustSchema(`{"type": "object", "properties": {}}`)
 }
 
+// ErrorType identifies system-generated error messages (not LLM content).
+type ErrorType string
+
+const (
+	ErrorTypeNone       ErrorType = ""            // Not an error
+	ErrorTypeTruncation ErrorType = "truncation"  // Response truncated due to max tokens
+	ErrorTypeLLMRequest ErrorType = "llm_request" // LLM request failed
+)
+
 type Request struct {
 	Messages   []Message
 	ToolChoice *ToolChoice
@@ -73,6 +82,14 @@ type Message struct {
 	Content   []Content   `json:"Content"`
 	ToolUse   *ToolUse    `json:"ToolUse,omitempty"` // use to control whether/which tool to use
 	EndOfTurn bool        `json:"EndOfTurn"`         // true if this message completes the agent's turn (no tool calls to make)
+
+	// ExcludedFromContext indicates this message should be stored but not sent back to the LLM.
+	// Used for truncated responses we want to keep for cost tracking but that would confuse the LLM.
+	ExcludedFromContext bool `json:"ExcludedFromContext,omitempty"`
+
+	// ErrorType indicates this is a system-generated error message (not LLM content).
+	// Empty string means not an error. Values: "truncation", "llm_request".
+	ErrorType ErrorType `json:"ErrorType,omitempty"`
 }
 
 // ToolUse represents a tool use in the message content.

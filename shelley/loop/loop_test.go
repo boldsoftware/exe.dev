@@ -1797,6 +1797,97 @@ func TestHandleToolCallsWithErrorTool(t *testing.T) {
 	}
 }
 
+func TestMaxTokensTruncation(t *testing.T) {
+	var mu sync.Mutex
+	var recordedMessages []llm.Message
+	recordFunc := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
+		mu.Lock()
+		recordedMessages = append(recordedMessages, message)
+		mu.Unlock()
+		return nil
+	}
+
+	service := NewPredictableService()
+	loop := NewLoop(Config{
+		LLM:           service,
+		History:       []llm.Message{},
+		Tools:         []*llm.Tool{},
+		RecordMessage: recordFunc,
+	})
+
+	// Queue a user message that triggers max tokens truncation
+	userMessage := llm.Message{
+		Role:    llm.MessageRoleUser,
+		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "maxTokens"}},
+	}
+	loop.QueueUserMessage(userMessage)
+
+	// Run the loop - it should stop after handling truncation
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	err := loop.Go(ctx)
+	if err != context.DeadlineExceeded {
+		t.Errorf("expected context deadline exceeded, got %v", err)
+	}
+
+	// Check recorded messages
+	mu.Lock()
+	numMessages := len(recordedMessages)
+	messages := make([]llm.Message, len(recordedMessages))
+	copy(messages, recordedMessages)
+	mu.Unlock()
+
+	// We should see two messages:
+	// 1. The truncated message (with ExcludedFromContext=true) for cost tracking
+	// 2. The truncation error message (with ErrorType=truncation)
+	if numMessages != 2 {
+		t.Errorf("Expected 2 recorded messages (truncated + error), got %d", numMessages)
+		for i, msg := range messages {
+			t.Logf("Message %d: Role=%v, EndOfTurn=%v, ExcludedFromContext=%v, ErrorType=%v",
+				i, msg.Role, msg.EndOfTurn, msg.ExcludedFromContext, msg.ErrorType)
+		}
+		return
+	}
+
+	// First message: truncated response (for cost tracking, excluded from context)
+	truncatedMsg := messages[0]
+	if truncatedMsg.Role != llm.MessageRoleAssistant {
+		t.Errorf("Truncated message should be assistant, got %v", truncatedMsg.Role)
+	}
+	if !truncatedMsg.ExcludedFromContext {
+		t.Error("Truncated message should have ExcludedFromContext=true")
+	}
+
+	// Second message: truncation error
+	errorMsg := messages[1]
+	if errorMsg.Role != llm.MessageRoleAssistant {
+		t.Errorf("Error message should be assistant, got %v", errorMsg.Role)
+	}
+	if !errorMsg.EndOfTurn {
+		t.Error("Error message should have EndOfTurn=true")
+	}
+	if errorMsg.ErrorType != llm.ErrorTypeTruncation {
+		t.Errorf("Error message should have ErrorType=truncation, got %v", errorMsg.ErrorType)
+	}
+	if errorMsg.ExcludedFromContext {
+		t.Error("Error message should not be excluded from context")
+	}
+	if !strings.Contains(errorMsg.Content[0].Text, "SYSTEM ERROR") {
+		t.Errorf("Error message should contain SYSTEM ERROR, got: %s", errorMsg.Content[0].Text)
+	}
+
+	// Verify history contains user message + error message, but NOT the truncated response
+	loop.mu.Lock()
+	history := loop.history
+	loop.mu.Unlock()
+
+	// History should have: user message + error message (the truncated response is NOT added to history)
+	if len(history) != 2 {
+		t.Errorf("History should have 2 messages (user + error), got %d", len(history))
+	}
+}
+
 //func TestInsertMissingToolResultsEdgeCases(t *testing.T) {
 //	loop := NewLoop(Config{
 //		LLM:     NewPredictableService(),

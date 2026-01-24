@@ -1,6 +1,6 @@
 -- name: CreateMessage :one
-INSERT INTO messages (message_id, conversation_id, sequence_id, type, llm_data, user_data, usage_data, display_data)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO messages (message_id, conversation_id, sequence_id, type, llm_data, user_data, usage_data, display_data, excluded_from_context)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetNextSequenceID :one
@@ -15,6 +15,11 @@ WHERE message_id = ?;
 -- name: ListMessages :many
 SELECT * FROM messages
 WHERE conversation_id = ?
+ORDER BY sequence_id ASC;
+
+-- name: ListMessagesForContext :many
+SELECT * FROM messages
+WHERE conversation_id = ? AND excluded_from_context = FALSE
 ORDER BY sequence_id ASC;
 
 -- name: ListMessagesPaginated :many

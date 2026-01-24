@@ -255,6 +255,7 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 				},
 			},
 			EndOfTurn: true,
+			ErrorType: llm.ErrorTypeLLMRequest,
 		}
 		if recordErr := l.recordMessage(ctx, errorMessage, llm.Usage{}); recordErr != nil {
 			l.logger.Error("failed to record error message", "error", recordErr)
@@ -268,6 +269,13 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 	l.mu.Lock()
 	l.totalUsage.Add(resp.Usage)
 	l.mu.Unlock()
+
+	// Handle max tokens truncation BEFORE adding to history - truncated responses
+	// should not be added to history normally (they get special handling)
+	if resp.StopReason == llm.StopReasonMaxTokens {
+		l.logger.Warn("LLM response truncated due to max tokens")
+		return l.handleMaxTokensTruncation(ctx, resp)
+	}
 
 	// Convert response to message and add to history
 	assistantMessage := resp.ToMessage()
@@ -288,12 +296,6 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 	if resp.StopReason == llm.StopReasonToolUse {
 		l.logger.Debug("handling tool calls", "content_count", len(resp.Content))
 		return l.handleToolCalls(ctx, resp.Content)
-	}
-
-	// Handle max tokens truncation - record error message for the user
-	if resp.StopReason == llm.StopReasonMaxTokens {
-		l.logger.Warn("LLM response truncated due to max tokens")
-		return l.handleMaxTokensTruncation(ctx)
 	}
 
 	// End of turn - check for git state changes
@@ -340,11 +342,26 @@ func (l *Loop) checkGitStateChange(ctx context.Context) {
 }
 
 // handleMaxTokensTruncation handles the case where the LLM response was truncated
-// due to hitting the maximum output token limit. It records an error message
-// informing the user and instructing the LLM to use smaller outputs.
-func (l *Loop) handleMaxTokensTruncation(ctx context.Context) error {
+// due to hitting the maximum output token limit. It records the truncated message
+// for cost tracking (excluded from context) and an error message for the user.
+func (l *Loop) handleMaxTokensTruncation(ctx context.Context, resp *llm.Response) error {
+	// Record the truncated message for cost tracking, but mark it as excluded from context.
+	// This preserves billing information without confusing the LLM on future turns.
+	truncatedMessage := resp.ToMessage()
+	truncatedMessage.ExcludedFromContext = true
+
+	// Record the truncated message with usage metadata
+	usageWithMeta := resp.Usage
+	usageWithMeta.Model = resp.Model
+	usageWithMeta.StartTime = resp.StartTime
+	usageWithMeta.EndTime = resp.EndTime
+	if err := l.recordMessage(ctx, truncatedMessage, usageWithMeta); err != nil {
+		l.logger.Error("failed to record truncated message", "error", err)
+	}
+
+	// Record a truncation error message with EndOfTurn=true to properly signal end of turn.
 	errorMessage := llm.Message{
-		Role: llm.MessageRoleUser,
+		Role: llm.MessageRoleAssistant,
 		Content: []llm.Content{
 			{
 				Type: llm.ContentTypeText,
@@ -354,13 +371,15 @@ func (l *Loop) handleMaxTokensTruncation(ctx context.Context) error {
 					"The user can ask you to continue if needed.]",
 			},
 		},
+		EndOfTurn: true,
+		ErrorType: llm.ErrorTypeTruncation,
 	}
 
 	l.mu.Lock()
 	l.history = append(l.history, errorMessage)
 	l.mu.Unlock()
 
-	// Record the error message
+	// Record the truncation error message
 	if err := l.recordMessage(ctx, errorMessage, llm.Usage{}); err != nil {
 		l.logger.Error("failed to record truncation error message", "error", err)
 	}

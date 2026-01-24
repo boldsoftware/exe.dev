@@ -127,7 +127,8 @@ func (cm *ConversationManager) Hydrate(ctx context.Context) error {
 	var messages []generated.Message
 	err = cm.db.Queries(ctx, func(q *generated.Queries) error {
 		var err error
-		messages, err = q.ListMessages(ctx, cm.conversationID)
+		// Use ListMessagesForContext to exclude messages marked as excluded_from_context
+		messages, err = q.ListMessagesForContext(ctx, cm.conversationID)
 		return err
 	})
 	if err != nil {
@@ -322,6 +323,12 @@ func (cm *ConversationManager) partitionMessages(messages []generated.Message) (
 	for _, msg := range messages {
 		// Skip gitinfo messages - they are user-visible only, not sent to LLM
 		if msg.Type == string(db.MessageTypeGitInfo) {
+			continue
+		}
+
+		// Skip error messages - they are system-generated for user visibility,
+		// but should not be sent to the LLM as they are not part of the conversation
+		if msg.Type == string(db.MessageTypeError) {
 			continue
 		}
 

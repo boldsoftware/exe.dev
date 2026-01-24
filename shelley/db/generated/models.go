@@ -37,15 +37,16 @@ type LlmRequest struct {
 }
 
 type Message struct {
-	MessageID      string    `json:"message_id"`
-	ConversationID string    `json:"conversation_id"`
-	SequenceID     int64     `json:"sequence_id"`
-	Type           string    `json:"type"`
-	LlmData        *string   `json:"llm_data"`
-	UserData       *string   `json:"user_data"`
-	UsageData      *string   `json:"usage_data"`
-	CreatedAt      time.Time `json:"created_at"`
-	DisplayData    *string   `json:"display_data"`
+	MessageID           string    `json:"message_id"`
+	ConversationID      string    `json:"conversation_id"`
+	SequenceID          int64     `json:"sequence_id"`
+	Type                string    `json:"type"`
+	LlmData             *string   `json:"llm_data"`
+	UserData            *string   `json:"user_data"`
+	UsageData           *string   `json:"usage_data"`
+	CreatedAt           time.Time `json:"created_at"`
+	DisplayData         *string   `json:"display_data"`
+	ExcludedFromContext bool      `json:"excluded_from_context"`
 }
 
 type Migration struct {

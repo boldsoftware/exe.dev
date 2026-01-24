@@ -391,12 +391,13 @@ const (
 
 // CreateMessageParams contains parameters for creating a message
 type CreateMessageParams struct {
-	ConversationID string
-	Type           MessageType
-	LLMData        interface{} // Will be JSON marshalled
-	UserData       interface{} // Will be JSON marshalled
-	UsageData      interface{} // Will be JSON marshalled
-	DisplayData    interface{} // Will be JSON marshalled, tool-specific display content
+	ConversationID      string
+	Type                MessageType
+	LLMData             interface{} // Will be JSON marshalled
+	UserData            interface{} // Will be JSON marshalled
+	UsageData           interface{} // Will be JSON marshalled
+	DisplayData         interface{} // Will be JSON marshalled, tool-specific display content
+	ExcludedFromContext bool        // If true, message is stored but not sent to LLM
 }
 
 // CreateMessage creates a new message
@@ -453,14 +454,15 @@ func (db *DB) CreateMessage(ctx context.Context, params CreateMessageParams) (*g
 		}
 
 		message, err = q.CreateMessage(ctx, generated.CreateMessageParams{
-			MessageID:      messageID,
-			ConversationID: params.ConversationID,
-			SequenceID:     sequenceID,
-			Type:           string(params.Type),
-			LlmData:        llmDataJSON,
-			UserData:       userDataJSON,
-			UsageData:      usageDataJSON,
-			DisplayData:    displayDataJSON,
+			MessageID:           messageID,
+			ConversationID:      params.ConversationID,
+			SequenceID:          sequenceID,
+			Type:                string(params.Type),
+			LlmData:             llmDataJSON,
+			UserData:            userDataJSON,
+			UsageData:           usageDataJSON,
+			DisplayData:         displayDataJSON,
+			ExcludedFromContext: params.ExcludedFromContext,
 		})
 		return err
 	})
@@ -493,6 +495,18 @@ func (db *DB) ListMessagesByConversationPaginated(ctx context.Context, conversat
 			Limit:          limit,
 			Offset:         offset,
 		})
+		return err
+	})
+	return messages, err
+}
+
+// ListMessagesForContext retrieves messages that should be sent to the LLM (excludes excluded_from_context=true)
+func (db *DB) ListMessagesForContext(ctx context.Context, conversationID string) ([]generated.Message, error) {
+	var messages []generated.Message
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		var err error
+		messages, err = q.ListMessagesForContext(ctx, conversationID)
 		return err
 	})
 	return messages, err
