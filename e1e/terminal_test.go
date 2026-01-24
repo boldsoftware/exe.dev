@@ -17,6 +17,94 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
+func TestTerminalWorkingDirectory(t *testing.T) {
+	t.Skip("skipping CI - looks flakey (https://github.com/boldsoftware/exe/issues/87)")
+	e1eTestsOnlyRunOnce(t)
+	t.Parallel()
+	noGolden(t)
+
+	// Create user and box
+	pty, cookies, keyFile, _ := registerForExeDev(t)
+	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
+	pty.disconnect()
+
+	// Create an authenticated client
+	client := createAuthenticatedTerminalClient(t, box, cookies)
+
+	t.Run("terminal_with_working_directory", func(t *testing.T) {
+		// Connect with a specific working directory
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		conn, err := connectTerminalWebSocket(t, box, client, "/tmp")
+		if err != nil {
+			t.Fatalf("failed to connect to terminal: %v", err)
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
+
+		// Start reading output in background
+		outputChan := make(chan string, 100)
+		errChan := make(chan error, 1)
+		go func() {
+			for {
+				var msg map[string]interface{}
+				err := wsjson.Read(ctx, conn, &msg)
+				if err != nil {
+					if websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+						errChan <- err
+					}
+					return
+				}
+
+				if msgType, ok := msg["type"].(string); ok && msgType == "output" {
+					if dataStr, ok := msg["data"].(string); ok {
+						decoded, err := base64.StdEncoding.DecodeString(dataStr)
+						if err == nil {
+							outputChan <- string(decoded)
+						}
+					}
+				}
+			}
+		}()
+
+		// Send initial resize message
+		if err := wsjson.Write(ctx, conn, map[string]interface{}{
+			"type": "resize",
+			"cols": 80,
+			"rows": 24,
+		}); err != nil {
+			t.Fatalf("failed to send resize: %v", err)
+		}
+
+		// Send pwd command to check working directory
+		if err := wsjson.Write(ctx, conn, map[string]interface{}{
+			"type": "input",
+			"data": "pwd\n",
+		}); err != nil {
+			t.Fatalf("failed to send input: %v", err)
+		}
+
+		// Wait for /tmp in output
+		timeout := time.After(10 * time.Second)
+		var foundTmp bool
+		for !foundTmp {
+			select {
+			case output := <-outputChan:
+				if strings.Contains(output, "/tmp") {
+					foundTmp = true
+				}
+			case err := <-errChan:
+				t.Fatalf("error reading terminal output: %v", err)
+			case <-timeout:
+				t.Fatal("timeout waiting for '/tmp' in terminal output")
+			}
+		}
+	})
+
+	// Cleanup
+	cleanupBox(t, keyFile, box)
+}
+
 func TestTerminalPermissions(t *testing.T) {
 	t.Skip("skipping CI - looks flakey (https://github.com/boldsoftware/exe/issues/87)")
 	e1eTestsOnlyRunOnce(t)
@@ -123,7 +211,7 @@ func TestTerminalPermissions(t *testing.T) {
 			case <-retryTicker.C:
 				// Try to connect and test if it works by sending a command
 				testCtx, testCancel := context.WithTimeout(context.Background(), 3*time.Second)
-				testConn, err := connectTerminalWebSocket(t, box, client)
+				testConn, err := connectTerminalWebSocket(t, box, client, "")
 				if err != nil {
 					lastErr = err
 					testCancel()
@@ -181,7 +269,7 @@ func TestTerminalPermissions(t *testing.T) {
 		ctx, cancel = context.WithCancel(context.Background())
 		defer cancel()
 		var err error
-		conn, err = connectTerminalWebSocket(t, box, client)
+		conn, err = connectTerminalWebSocket(t, box, client, "")
 		if err != nil {
 			t.Fatalf("failed to connect after successful test: %v", err)
 		}
@@ -469,8 +557,8 @@ func createAuthenticatedTerminalClient(t *testing.T, boxName string, baseCookies
 	return client
 }
 
-// connectTerminalWebSocket connects to the terminal WebSocket endpoint
-func connectTerminalWebSocket(t *testing.T, boxName string, client *http.Client) (*websocket.Conn, error) {
+// connectTerminalWebSocket connects to the terminal WebSocket endpoint with an optional working directory
+func connectTerminalWebSocket(t *testing.T, boxName string, client *http.Client, workingDir string) (*websocket.Conn, error) {
 	t.Helper()
 
 	if client == nil {
@@ -482,6 +570,9 @@ func connectTerminalWebSocket(t *testing.T, boxName string, client *http.Client)
 	terminalID := "test-terminal-1"
 	// Use localhost in the URL but set the Host header to the subdomain
 	wsURL := fmt.Sprintf("ws://localhost:%d/terminal/ws/%s?name=%s", Env.servers.Exed.HTTPPort, terminalID, sessionName)
+	if workingDir != "" {
+		wsURL += "&d=" + url.QueryEscape(workingDir)
+	}
 	originalHost := fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.servers.Exed.HTTPPort)
 
 	// Create context for the WebSocket connection

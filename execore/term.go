@@ -19,6 +19,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"golang.org/x/crypto/ssh"
+	"mvdan.cc/sh/v3/syntax"
 
 	"exe.dev/boxname"
 	"exe.dev/container"
@@ -220,6 +221,9 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Get optional working directory from query parameter
+	workingDir := r.URL.Query().Get("d")
+
 	// Get auth info from context
 	authInfo := getTerminalAuthInfo(r)
 	if authInfo == nil {
@@ -250,7 +254,7 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 	needsExtraResize := false
 	if !exists {
 		// Create new terminal session without holding the lock
-		newSession, err := s.createTerminalSession(r.Context(), userID, boxName, sessionName)
+		newSession, err := s.createTerminalSession(r.Context(), userID, boxName, sessionName, workingDir)
 		if err != nil {
 			conn.Close(websocket.StatusInternalError, fmt.Sprintf("Failed to create terminal: %v", err))
 			return
@@ -397,7 +401,7 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 }
 
 // createTerminalSession creates a new terminal session for a user's box
-func (s *Server) createTerminalSession(ctx context.Context, userID, boxName, sessionName string) (*TerminalSession, error) {
+func (s *Server) createTerminalSession(ctx context.Context, userID, boxName, sessionName, workingDir string) (*TerminalSession, error) {
 	session := &TerminalSession{
 		EventsClients: make(map[chan []byte]bool),
 		BoxName:       boxName,
@@ -417,7 +421,7 @@ func (s *Server) createTerminalSession(ctx context.Context, userID, boxName, ses
 	}
 
 	// Establish SSH shell session with dtach
-	err = s.createContainerExecSession(session, box, sessionName)
+	err = s.createContainerExecSession(session, box, sessionName, workingDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create container session: %w", err)
 	}
@@ -425,7 +429,7 @@ func (s *Server) createTerminalSession(ctx context.Context, userID, boxName, ses
 	return session, nil
 }
 
-func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb.Box, sessionName string) error {
+func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb.Box, sessionName, workingDir string) error {
 	if len(box.SSHClientPrivateKey) == 0 || box.SSHPort == nil || box.SSHUser == nil {
 		return fmt.Errorf("VM missing SSH credentials")
 	}
@@ -478,7 +482,13 @@ func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb
 	// Run dtach for persistent session
 	dtachPath := "/exe.dev/bin/dtach"
 	socketPath := fmt.Sprintf("/tmp/xterm-exe.dev-%s.sock", sessionName)
-	dtachCmd := fmt.Sprintf("%s -A %s -z -E /bin/bash -i", dtachPath, socketPath)
+	var dtachCmd string
+	if workingDir != "" {
+		quotedDir, _ := syntax.Quote(workingDir, syntax.LangBash)
+		dtachCmd = fmt.Sprintf("%s -A %s -z -E env -C %s /bin/bash -i", dtachPath, socketPath, quotedDir)
+	} else {
+		dtachCmd = fmt.Sprintf("%s -A %s -z -E /bin/bash -i", dtachPath, socketPath)
+	}
 
 	if err := sess.Start(dtachCmd); err != nil {
 		sess.Close()
