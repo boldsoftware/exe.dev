@@ -1,8 +1,7 @@
 ---
-title: Why EXE?
+title: Why exe.dev?
 description: EXE is just a computer.
-subheading: "1. Introduction"
-suborder: 1
+subheading: "6. Editorials"
 published: true
 ---
 
