@@ -270,6 +270,7 @@ func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, us
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.Out.Header.Del("Authorization") // Remove our bearer token so we don't leak them to the origin server.
 			r.Out.Header.Set("X-API-Key", m.apiKeys.Anthropic)
+			r.Out.Header.Set("Accept-Encoding", "gzip")
 			r.Out.Host = "api.anthropic.com"
 			r.Out.URL.Scheme = "https"
 			r.Out.URL.Host = "api.anthropic.com"
@@ -307,6 +308,7 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userI
 			m.log.InfoContext(r.In.Context(), "ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
 			r.Out.Header.Set("Authorization", "Bearer "+m.apiKeys.OpenAI)
 			r.Out.Header.Set("X-API-Key", m.apiKeys.OpenAI)
+			r.Out.Header.Set("Accept-Encoding", "gzip")
 			r.Out.Host = "api.openai.com"
 			r.Out.URL.Scheme = "https"
 			r.Out.URL.Host = "api.openai.com"
@@ -344,6 +346,7 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, us
 			m.log.InfoContext(r.In.Context(), "ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
 			r.Out.Header.Set("Authorization", "Bearer "+m.apiKeys.Fireworks)
 			r.Out.Header.Set("X-API-Key", m.apiKeys.Fireworks)
+			r.Out.Header.Set("Accept-Encoding", "gzip")
 			r.Out.Host = "api.fireworks.ai"
 			r.Out.URL.Scheme = "https"
 			r.Out.URL.Host = "api.fireworks.ai"
