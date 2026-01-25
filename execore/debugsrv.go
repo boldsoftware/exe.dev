@@ -1334,8 +1334,8 @@ func (s *Server) CheckNewThrottle(ctx context.Context, userID, email string) (bo
 	if userID != "" {
 		// Check whether billing is enabled--don't throttle people
 		// who have valid billing information.
-		isPaying, err := withRxRes1(s, ctx, (*exedb.Queries).UserIsPaying, userID)
-		if err == nil && isPaying {
+		billingStatus, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBillingStatus, userID)
+		if err == nil && userIsPaying(&billingStatus) {
 			return false, ""
 		}
 	}

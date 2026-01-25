@@ -35,7 +35,7 @@ var (
 		Name:                 "no_billing",
 		MaxCredit:            50.0,
 		RefreshPerHour:       1.0,
-		CreditExhaustedError: "LLM credits exhausted; credits refresh over time; for faster refresh, set up a subscription at https://exe.dev/take-my-money",
+		CreditExhaustedError: "LLM credits exhausted; credits refresh over time; for faster refresh, set up a subscription at https://exe.dev/billing/update",
 	}
 	planFriend = Plan{
 		Name:                 "friend",

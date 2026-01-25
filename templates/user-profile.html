@@ -413,6 +413,34 @@
         <div class="section">
             <div class="section-title">Billing</div>
             <div class="info-card">
+                {{if eq .BillingStatus "active"}}
+                <div class="info-row">
+                    <div class="info-label">Status</div>
+                    <div class="info-value">Active</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Payment &amp; Plan</div>
+                    <div class="info-value"><a href="/billing/update?source=profile">Manage</a></div>
+                </div>
+                {{else if eq .BillingStatus "canceled"}}
+                <div class="info-row">
+                    <div class="info-label">Status</div>
+                    <div class="info-value">Canceled</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Subscription</div>
+                    <div class="info-value"><a href="/billing/update?source=profile">Renew</a></div>
+                </div>
+                {{else}}
+                <div class="info-row">
+                    <div class="info-label">Status</div>
+                    <div class="info-value">Developer Preview</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Subscribe</div>
+                    <div class="info-value"><a href="/billing/update?source=profile">Start paying now</a></div>
+                </div>
+                {{end}}
                 <div class="info-row">
                     <div class="info-label">Support</div>
                     <div class="info-value"><a href="mailto:support@exe.dev">support@exe.dev</a></div>

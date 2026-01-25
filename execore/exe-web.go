@@ -715,12 +715,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleEmailVerificationHTTP(w, r)
 	case "/verify-device":
 		s.handleDeviceVerificationHTTP(w, r)
-	case "/billing/subscribe":
-		s.handleBillingSubscribe(w, r)
+	case "/billing/update":
+		s.handleBillingUpdate(w, r)
 	case "/billing/success":
 		s.handleBillingSuccess(w, r)
-	case "/take-my-money":
-		s.handleTakeMyMoney(w, r)
 	case "/auth":
 		s.handleAuth(w, r)
 	case "/auth/confirm":
@@ -1461,17 +1459,33 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	// Check if this is a basic user (created for login-with-exe, no SSH keys, no boxes)
 	basicUser := s.isBasicUser(r.Context(), user, len(sshKeys))
 
+	// Check billing status
+	var hasBilling bool
+	var billingStatus string
+	account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountWithBillingStatus, userID)
+	if err == nil {
+		// BillingStatus_2 is the derived status from billing_events table
+		if statusVal, ok := account.BillingStatus_2.(string); ok {
+			billingStatus = statusVal
+		}
+		if billingStatus == "active" {
+			hasBilling = true
+		}
+	}
+
 	// Prepare template data
 	data := UserPageData{
-		Env:          s.env,
-		User:         user,
-		SSHKeys:      sshKeys,
-		Passkeys:     passkeys,
-		SiteSessions: siteSessions,
-		SharedBoxes:  sharedBoxes,
-		ActivePage:   "profile",
-		IsLoggedIn:   true,
-		BasicUser:    basicUser,
+		Env:           s.env,
+		User:          user,
+		SSHKeys:       sshKeys,
+		Passkeys:      passkeys,
+		SiteSessions:  siteSessions,
+		SharedBoxes:   sharedBoxes,
+		ActivePage:    "profile",
+		IsLoggedIn:    true,
+		BasicUser:     basicUser,
+		HasBilling:    hasBilling,
+		BillingStatus: billingStatus,
 	}
 
 	// Render template
@@ -1702,11 +1716,11 @@ func (s *Server) handleInviteRequest(w http.ResponseWriter, r *http.Request, use
 
 	// Check if user has billing set up
 	hasBilling := false
-	needsBilling, err := withRxRes1(s, ctx, (*exedb.Queries).UserNeedsBilling, userID)
+	billingStatus, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBillingStatus, userID)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "Failed to check billing status for invite request", "error", err, "user_id", userID)
-	} else if needsBilling != nil {
-		hasBilling = !*needsBilling
+	} else {
+		hasBilling = !userNeedsBilling(&billingStatus)
 	}
 
 	// Send Slack notification

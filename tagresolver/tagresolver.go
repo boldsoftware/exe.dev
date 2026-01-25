@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"exe.dev/exedb"
@@ -43,6 +44,7 @@ type TagResolver struct {
 	updateChan chan TagUpdate
 
 	// Control channels
+	stopped  atomic.Bool
 	stopChan chan struct{}
 	wg       sync.WaitGroup
 }
@@ -98,13 +100,18 @@ func New(db *sqlite.DB) *TagResolver {
 
 // Start begins the background refresh loop
 func (tr *TagResolver) Start(ctx context.Context) {
+	if tr.stopped.Load() {
+		panic("Start called on already stopped TagResolver")
+	}
 	tr.wg.Add(1)
 	go tr.refreshLoop(ctx)
 }
 
 // Stop stops the background refresh loop
 func (tr *TagResolver) Stop() {
-	close(tr.stopChan)
+	if !tr.stopped.Swap(true) {
+		close(tr.stopChan)
+	}
 	tr.wg.Wait()
 }
 

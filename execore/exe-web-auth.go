@@ -32,6 +32,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	"exe.dev/pow"
+	"exe.dev/sqlite"
 	"exe.dev/stage"
 	"exe.dev/tracing"
 	_ "modernc.org/sqlite"
@@ -188,10 +189,10 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 
 			// Check if user needs billing before starting creation
 			if !s.env.SkipBilling {
-				needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
-				if err == nil && needsBilling != nil && *needsBilling {
+				billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
+				if err == nil && userNeedsBilling(&billingStatus) {
 					// Preserve hostname/prompt through billing flow
-					billingURL := "/billing/subscribe?name=" + url.QueryEscape(hostname)
+					billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
 					if prompt != "" {
 						billingURL += "&prompt=" + url.QueryEscape(prompt)
 					}
@@ -239,19 +240,19 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 	s.renderTemplate(r.Context(), w, "email-verified.html", data)
 }
 
-// handleBillingSubscribe handles billing subscription.
-// Two flows are supported:
-// 1. Authenticated users: Used when a user tries to create a VM but doesn't have billing info.
-// 2. New user registration: When token query param is present, handles unauthenticated new users.
-// Accepts name and prompt query params to preserve VM creation details through Stripe checkout.
-func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) {
+// handleBillingUpdate manages billing for authenticated users.
+// Uses the billing package to automatically redirect to the appropriate destination:
+// - Stripe billing portal if user has an active subscription
+// - Stripe checkout if user needs to create/renew subscription
+// Also supports new user registration flow when token query param is present.
+func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 	// Check for pending registration token (new user flow)
 	if token := r.URL.Query().Get("token"); token != "" {
 		s.handleNewUserBillingSubscribe(w, r, token)
 		return
 	}
 
-	// Existing flow: require authentication
+	// Require authentication
 	userID, err := s.validateAuthCookie(r)
 	if err != nil {
 		http.Redirect(w, r, "/auth?redirect="+url.QueryEscape(r.URL.String()), http.StatusSeeOther)
@@ -261,29 +262,7 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 	// Read VM creation params to preserve through checkout
 	vmName := strings.TrimSpace(r.URL.Query().Get("name"))
 	vmPrompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
-
-	// Check if user needs billing (only new users need billing, legacy users are grandfathered)
-	// Skip this check if SkipBilling is set (for tests)
-	if s.env.SkipBilling {
-		http.Redirect(w, r, "/new", http.StatusSeeOther)
-		return
-	}
-
-	// _debug_force_billing=1 forces billing flow even for grandfathered users.
-	// This is used for canary testing billing before the official billing start date.
-	forceBilling := r.URL.Query().Get("_debug_force_billing") == "1"
-
-	needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "failed to check user account", "error", err)
-		http.Error(w, "failed to check billing status", http.StatusInternalServerError)
-		return
-	}
-	if !forceBilling && (needsBilling == nil || !*needsBilling) {
-		// User doesn't need billing (already has it or is a legacy user), redirect to new VM page
-		http.Redirect(w, r, "/new", http.StatusSeeOther)
-		return
-	}
+	source := r.URL.Query().Get("source")
 
 	// Get user email
 	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
@@ -293,13 +272,11 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Check if user already has a pending account (from previous incomplete checkout)
-	existingAccount, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountByUserID, userID)
+	// Get or create account
+	existingAccount, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountWithBillingStatus, userID)
 	var accountID string
-	if err == nil && existingAccount.BillingStatus == "pending" {
-		// Reuse existing pending account
-		accountID = existingAccount.ID
-	} else if errors.Is(err, sql.ErrNoRows) {
+	var hasActiveBilling bool
+	if errors.Is(err, sql.ErrNoRows) {
 		// Create new account record
 		accountID = "exe_" + rand.Text()[:16]
 		if err := withTx1(s, r.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
@@ -310,26 +287,32 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, "failed to create account", http.StatusInternalServerError)
 			return
 		}
+		hasActiveBilling = false
 	} else if err != nil {
 		s.slog().ErrorContext(r.Context(), "failed to check existing account", "error", err)
 		http.Error(w, "failed to check billing status", http.StatusInternalServerError)
 		return
 	} else {
-		// User has an active account - shouldn't get here due to earlier check, but redirect safely
+		accountID = existingAccount.ID
+		// BillingStatus_2 contains the computed status from billing_events
+		if status, ok := existingAccount.BillingStatus_2.(string); ok {
+			hasActiveBilling = status == "active"
+		}
+	}
+
+	// Skip billing for users without active billing if SkipBilling is set (for tests)
+	// Users with active billing can always access the portal even in test environments
+	if s.env.SkipBilling && !hasActiveBilling {
 		http.Redirect(w, r, "/new", http.StatusSeeOther)
 		return
 	}
 
 	// Build callback URLs
-	// Always route through /billing/success to activate the account after Stripe checkout.
-	// The {CHECKOUT_SESSION_ID} placeholder is replaced by Stripe with the actual session ID.
 	baseURL := s.webBaseURLNoRequest()
-	source := r.URL.Query().Get("source")
 	successURL := baseURL + "/billing/success?session_id={CHECKOUT_SESSION_ID}"
 	if source != "" {
 		successURL += "&source=" + url.QueryEscape(source)
 	}
-	// Include VM creation params in success URL so we can create the VM after checkout
 	if vmName != "" {
 		successURL += "&name=" + url.QueryEscape(vmName)
 	}
@@ -337,34 +320,51 @@ func (s *Server) handleBillingSubscribe(w http.ResponseWriter, r *http.Request) 
 		successURL += "&prompt=" + url.QueryEscape(vmPrompt)
 	}
 
-	// If user cancels checkout, send them back to /new with their form data preserved
-	cancelURL := baseURL + "/new"
-	if vmName != "" || vmPrompt != "" {
-		cancelURL += "?"
-		if vmName != "" {
-			cancelURL += "name=" + url.QueryEscape(vmName)
-			if vmPrompt != "" {
-				cancelURL += "&"
+	// Return URL for billing portal (if user has active subscription)
+	// Cancel URL for checkout (if user cancels)
+	// Both should always go back to where the user came from
+	var returnURL, cancelURL string
+	if source == "profile" || hasActiveBilling {
+		// User came from profile page OR has active billing (managing subscription)
+		// Always return to /user profile page for active subscribers
+		returnURL = baseURL + "/user"
+		cancelURL = baseURL + "/user"
+	} else {
+		// User came from VM creation flow - return to /new
+		returnURL = baseURL + "/new"
+		cancelURL = baseURL + "/new"
+		// Preserve VM params in cancel URL if present
+		if vmName != "" || vmPrompt != "" {
+			cancelURL += "?"
+			if vmName != "" {
+				cancelURL += "name=" + url.QueryEscape(vmName)
 			}
-		}
-		if vmPrompt != "" {
-			cancelURL += "prompt=" + url.QueryEscape(vmPrompt)
+			if vmPrompt != "" {
+				if vmName != "" {
+					cancelURL += "&"
+				}
+				cancelURL += "prompt=" + url.QueryEscape(vmPrompt)
+			}
 		}
 	}
 
-	checkoutURL, err := s.billing.Subscribe(r.Context(), accountID, &billing.SubscribeParams{
-		Email:      user.Email,
-		SuccessURL: successURL,
-		CancelURL:  cancelURL,
-		TrialEnd:   time.Date(2026, time.February, 1, 0, 0, 0, 0, time.UTC),
+	// Use billing package to determine correct redirect URL
+	// This automatically returns portal URL for active subscribers, checkout URL otherwise
+	redirectURL, err := s.billing.Subscribe(r.Context(), accountID, &billing.SubscribeParams{
+		Email:            user.Email,
+		SuccessURL:       successURL,
+		CancelURL:        cancelURL,
+		TrialEnd:         time.Date(2026, time.February, 1, 0, 0, 0, 0, time.UTC),
+		RedirectToPortal: true,
+		PortalReturnURL:  returnURL,
 	})
 	if err != nil {
-		s.slog().ErrorContext(r.Context(), "failed to create billing checkout session", "error", err)
-		http.Error(w, "failed to start subscription", http.StatusInternalServerError)
+		s.slog().ErrorContext(r.Context(), "failed to create billing session", "error", err)
+		http.Error(w, "failed to manage subscription", http.StatusInternalServerError)
 		return
 	}
 
-	http.Redirect(w, r, checkoutURL, http.StatusSeeOther)
+	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
 // handleBillingSuccess activates the account after Stripe checkout completes.
@@ -412,7 +412,24 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if err := withTx1(s, r.Context(), (*exedb.Queries).ActivateAccount, userID); err != nil {
+		now := sqlite.NormalizeTime(time.Now())
+		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+			if err := queries.ActivateAccount(ctx, exedb.ActivateAccountParams{
+				CreatedBy: userID,
+				EventAt:   now,
+			}); err != nil {
+				return fmt.Errorf("activate account: %w", err)
+			}
+			if err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
+				AccountID: billingID,
+				EventType: "active",
+				EventAt:   now,
+			}); err != nil {
+				return fmt.Errorf("insert billing event: %w", err)
+			}
+			return nil
+		})
+		if err != nil {
 			s.slog().ErrorContext(r.Context(), "failed to activate account", "error", err, "session_id", sessionID)
 			http.Error(w, "failed to activate billing", http.StatusInternalServerError)
 			return
@@ -433,8 +450,13 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If not from exemenu, redirect to /new to create a VM
-	if source != "exemenu" {
+	// Redirect based on source
+	if source == "profile" {
+		// User came from profile page, redirect back to profile
+		http.Redirect(w, r, "/user", http.StatusSeeOther)
+		return
+	} else if source != "exemenu" {
+		// Default: redirect to /new to create a VM
 		http.Redirect(w, r, "/new", http.StatusSeeOther)
 		return
 	}
@@ -548,6 +570,7 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Create user + account in transaction
+	now := sqlite.NormalizeTime(time.Now())
 	var userID string
 	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
@@ -561,8 +584,18 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 		}); err != nil {
 			return fmt.Errorf("insert account: %w", err)
 		}
-		if err := queries.ActivateAccount(ctx, userID); err != nil {
+		if err := queries.ActivateAccount(ctx, exedb.ActivateAccountParams{
+			CreatedBy: userID,
+			EventAt:   now,
+		}); err != nil {
 			return fmt.Errorf("activate account: %w", err)
+		}
+		if err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
+			AccountID: billingID,
+			EventType: "active",
+			EventAt:   now,
+		}); err != nil {
+			return fmt.Errorf("insert billing event: %w", err)
 		}
 		return nil
 	})
@@ -1325,7 +1358,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 			s.showAuthError(w, r, "Failed to start registration. Please try again.", "")
 			return
 		}
-		http.Redirect(w, r, "/billing/subscribe?token="+url.QueryEscape(token), http.StatusSeeOther)
+		http.Redirect(w, r, "/billing/update?token="+url.QueryEscape(token), http.StatusSeeOther)
 		return
 	}
 
@@ -1620,136 +1653,3 @@ func (s *Server) verifyDiscordLinkHMAC(discordID, discordUsername, ts, providedH
 	return hmac.Equal([]byte(expected), []byte(providedHMAC))
 }
 
-// handleTakeMyMoney handles voluntary billing enrollment.
-// Users who are already paying see a "you're set" message.
-// Everyone else can proceed to Stripe checkout (no trial - billing starts immediately).
-// GET shows an info page; POST redirects to Stripe checkout.
-func (s *Server) handleTakeMyMoney(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// Require authentication
-	userID, err := s.validateAuthCookie(r)
-	if err != nil {
-		http.Redirect(w, r, "/auth?redirect="+url.QueryEscape(r.URL.String()), http.StatusSeeOther)
-		return
-	}
-
-	// Check if user is already paying
-	isPaying, err := withRxRes1(s, ctx, (*exedb.Queries).UserIsPaying, userID)
-	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to check payment status", "error", err)
-		http.Error(w, "failed to check payment status", http.StatusInternalServerError)
-		return
-	}
-	if isPaying {
-		// Already paying - show "you're set" message
-		s.renderTemplate(ctx, w, "take-my-money.html", struct {
-			stage.Env
-			AlreadyPaying bool
-		}{
-			Env:           s.env,
-			AlreadyPaying: true,
-		})
-		return
-	}
-
-	// Get user details to check for free exemption
-	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
-	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to get user details", "error", err)
-		http.Error(w, "failed to get user details", http.StatusInternalServerError)
-		return
-	}
-
-	// Handle POST - process subscription
-	if r.Method == http.MethodPost {
-		s.processTakeMyMoneySubscription(w, r, userID, user.Email)
-		return
-	}
-
-	// Check if user has free exemption (friends of exe)
-	isFreeUser := user.BillingExemption != nil && *user.BillingExemption == "free"
-
-	// GET - show info page
-	s.renderTemplate(ctx, w, "take-my-money.html", struct {
-		stage.Env
-		AlreadyPaying bool
-		IsFreeUser    bool
-	}{
-		Env:           s.env,
-		AlreadyPaying: false,
-		IsFreeUser:    isFreeUser,
-	})
-}
-
-// getOrCreatePendingAccount ensures a pending account exists for the user.
-// Returns the account ID, or empty string if the user already has an active account.
-func (s *Server) getOrCreatePendingAccount(ctx context.Context, userID string) (accountID string, err error) {
-	existingAccount, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
-	if err == nil && existingAccount.BillingStatus == "pending" {
-		return existingAccount.ID, nil
-	}
-	if err == nil {
-		// User has an active account
-		return "", nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return "", err
-	}
-	// Create new account record
-	accountID = "exe_" + rand.Text()[:16]
-	if err := withTx1(s, ctx, (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        accountID,
-		CreatedBy: userID,
-	}); err != nil {
-		return "", err
-	}
-	return accountID, nil
-}
-
-// processTakeMyMoneySubscription creates a Stripe checkout session for voluntary billing.
-func (s *Server) processTakeMyMoneySubscription(w http.ResponseWriter, r *http.Request, userID, email string) {
-	ctx := r.Context()
-
-	// Notify Slack
-	s.slackFeed.TakeMyMoney(ctx, email)
-
-	accountID, err := s.getOrCreatePendingAccount(ctx, userID)
-	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to create account", "error", err)
-		http.Error(w, "failed to create account", http.StatusInternalServerError)
-		return
-	}
-	if accountID == "" {
-		// User already has active account
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	devBypass := s.env.WebDev && r.FormValue("dev_bypass") == "1"
-	if devBypass {
-		http.Redirect(w, r, "/billing/success?dev_bypass=1&source=take-my-money", http.StatusSeeOther)
-		return
-	}
-
-	// Build callback URLs
-	baseURL := s.webBaseURLNoRequest()
-	successURL := baseURL + "/billing/success?session_id={CHECKOUT_SESSION_ID}&source=take-my-money"
-	cancelURL := baseURL + "/take-my-money"
-
-	// Create Stripe checkout session - no trial, start billing immediately
-	checkoutURL, err := s.billing.Subscribe(ctx, accountID, &billing.SubscribeParams{
-		Email:      email,
-		SuccessURL: successURL,
-		CancelURL:  cancelURL,
-		// No TrialEnd - billing starts immediately
-	})
-	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to create billing checkout session", "error", err)
-		http.Error(w, "failed to start subscription", http.StatusInternalServerError)
-		return
-	}
-
-	s.slog().InfoContext(ctx, "take-my-money: redirecting to Stripe checkout", "user_id", userID, "email", email)
-	http.Redirect(w, r, checkoutURL, http.StatusSeeOther)
-}

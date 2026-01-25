@@ -1,7 +1,11 @@
 package execore
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
@@ -32,8 +36,52 @@ func (s *Server) startAndAwaitReady() {
 
 func newUnstartedServer(t testing.TB) *Server {
 	t.Helper()
+
+	// Create a fake Stripe server that handles common billing endpoints.
+	// This allows tests to run without hitting real Stripe.
+	fakeStripe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/v1/subscriptions":
+			// Cancelation poller endpoint
+			json.NewEncoder(w).Encode(map[string]any{
+				"data":     []map[string]any{},
+				"has_more": false,
+			})
+		case r.Method == "GET" && r.URL.Path == "/v1/prices":
+			// Price lookup for checkout
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{
+					{"id": "price_test123", "lookup_key": "individual"},
+				},
+			})
+		case r.Method == "POST" && r.URL.Path == "/v1/customers":
+			// Create customer
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":    "cus_test123",
+				"email": r.FormValue("email"),
+			})
+		case r.Method == "POST" && r.URL.Path == "/v1/checkout/sessions":
+			// Create checkout session
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":  "cs_test_session",
+				"url": "https://checkout.stripe.com/pay/cs_test_session",
+			})
+		case r.Method == "POST" && r.URL.Path == "/v1/billing_portal/sessions":
+			// Create billing portal session
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":  "bps_test_session",
+				"url": "https://billing.stripe.com/session/bps_test_session",
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			io.WriteString(w, `{"code":"not_found","message":"Not found"}`)
+		}
+	}))
+	t.Cleanup(fakeStripe.Close)
+
 	dbPath := filepath.Join(t.TempDir(), "test.sqlite3")
 	env := stage.Test()
+	env.StripeURL = fakeStripe.URL
 	registry := prometheus.NewRegistry()
 	s, err := NewServer(ServerConfig{
 		Logger:          tslog.Slogger(t),

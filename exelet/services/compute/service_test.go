@@ -102,9 +102,14 @@ func TestCreateSSHProxy(t *testing.T) {
 		t.Errorf("failed to connect to SSH proxy at %s: %v", proxyAddr, connErr)
 	}
 
-	// Test that calling CreateProxy again fails (not idempotent - proxy already exists)
-	if err := computeSvc.proxyManager.CreateProxy(instanceID, vmIP, sshPort, instanceDir); err == nil {
-		t.Errorf("CreateProxy should fail when proxy already exists")
+	// Test that calling CreateProxy again is idempotent (stops old, creates new)
+	if err := computeSvc.proxyManager.CreateProxy(instanceID, vmIP, sshPort, instanceDir); err != nil {
+		t.Errorf("CreateProxy should be idempotent: %v", err)
+	}
+
+	// Verify proxy still exists after idempotent call
+	if _, exists := computeSvc.proxyManager.GetPort(instanceID); !exists {
+		t.Errorf("proxy should still exist after idempotent CreateProxy call")
 	}
 
 	// Cleanup

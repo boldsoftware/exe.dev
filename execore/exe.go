@@ -146,6 +146,10 @@ type UserPageData struct {
 	// These users should only see the profile tab and a "what is exe?" section.
 	BasicUser   bool
 	InviteCount int64
+
+	// Billing information
+	HasBilling    bool   // User has active billing (completed checkout)
+	BillingStatus string // Billing status: "active", "canceled", "pending", or "" if no account
 }
 
 // SiteSession represents an active session cookie for a site hosted by exe
@@ -323,6 +327,7 @@ type Server struct {
 	fakeHTTPEmail          string // fake HTTP email server URL for sending emails (for e2e tests)
 	postmarkStatsCollector *email.PostmarkStatsCollector
 	bouncePoller           *email.PostmarkBouncePoller
+	subscriptionPoller     *SubscriptionPoller
 
 	// IPQS email quality service
 	ipqsAPIKey string
@@ -920,6 +925,11 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s.setupHTTPSServer()
 	s.setupProxyServers()
 	s.setupSSHServer()
+
+	// Initialize billing subscription poller to sync subscription events from Stripe.
+	if s.billing != nil {
+		s.subscriptionPoller = StartSubscriptionPoller(s.billing, s.db, slog)
+	}
 
 	s.ready.Add(1) // matched with final done at bottom of Start
 	go func() {
@@ -2993,6 +3003,9 @@ func (s *Server) Stop() error {
 	}
 	if s.bouncePoller != nil {
 		s.bouncePoller.Stop()
+	}
+	if s.subscriptionPoller != nil {
+		s.subscriptionPoller.Stop()
 	}
 	if s.dnsServer != nil {
 		s.dnsServer.Stop(ctx)

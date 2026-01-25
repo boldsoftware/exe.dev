@@ -210,21 +210,6 @@ func (sf *SlackFeed) InviteRequest(ctx context.Context, email string, hasBilling
 	}()
 }
 
-// TakeMyMoney notifies Slack that a user clicked "take my money" to start paying.
-func (sf *SlackFeed) TakeMyMoney(ctx context.Context, email string) {
-	message := fmt.Sprintf("take my money: `%s`", email)
-	if sf.client == nil {
-		sf.log.InfoContext(ctx, "slack feed channel", "message", message)
-		return
-	}
-	go func() {
-		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), sf.env.SlackFeedChannel, slack.MsgOptionText(message, true))
-		if err != nil {
-			sf.log.WarnContext(ctx, "failed to post take my money to feed channel", "error", err)
-		}
-	}()
-}
-
 // PreferredExeletCapacityWarning posts an urgent page when the preferred exelet is approaching capacity.
 func (sf *SlackFeed) PreferredExeletCapacityWarning(ctx context.Context, exelet string, count int) {
 	message := fmt.Sprintf("preferred exelet `%s` has %d VMs", exelet, count)

@@ -183,6 +183,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getAccountByUserIDStmt, err = db.PrepareContext(ctx, getAccountByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAccountByUserID: %w", err)
 	}
+	if q.getAccountWithBillingStatusStmt, err = db.PrepareContext(ctx, getAccountWithBillingStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAccountWithBillingStatus: %w", err)
+	}
 	if q.getAllBoxShareLinksByBoxIDStmt, err = db.PrepareContext(ctx, getAllBoxShareLinksByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllBoxShareLinksByBoxID: %w", err)
 	}
@@ -266,6 +269,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getLastBouncesPollStmt, err = db.PrepareContext(ctx, getLastBouncesPoll); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLastBouncesPoll: %w", err)
+	}
+	if q.getLatestBillingStatusStmt, err = db.PrepareContext(ctx, getLatestBillingStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query GetLatestBillingStatus: %w", err)
 	}
 	if q.getLatestMobilePendingVMByUserStmt, err = db.PrepareContext(ctx, getLatestMobilePendingVMByUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLatestMobilePendingVMByUser: %w", err)
@@ -354,6 +360,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserBillingExemptionStmt, err = db.PrepareContext(ctx, getUserBillingExemption); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserBillingExemption: %w", err)
 	}
+	if q.getUserBillingStatusStmt, err = db.PrepareContext(ctx, getUserBillingStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserBillingStatus: %w", err)
+	}
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
 	}
@@ -401,6 +410,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertAuthCookieStmt, err = db.PrepareContext(ctx, insertAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAuthCookie: %w", err)
+	}
+	if q.insertBillingEventStmt, err = db.PrepareContext(ctx, insertBillingEvent); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertBillingEvent: %w", err)
 	}
 	if q.insertBoxStmt, err = db.PrepareContext(ctx, insertBox); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertBox: %w", err)
@@ -605,12 +617,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.userHasAuthCookieStmt, err = db.PrepareContext(ctx, userHasAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query UserHasAuthCookie: %w", err)
-	}
-	if q.userIsPayingStmt, err = db.PrepareContext(ctx, userIsPaying); err != nil {
-		return nil, fmt.Errorf("error preparing query UserIsPaying: %w", err)
-	}
-	if q.userNeedsBillingStmt, err = db.PrepareContext(ctx, userNeedsBilling); err != nil {
-		return nil, fmt.Errorf("error preparing query UserNeedsBilling: %w", err)
 	}
 	return &q, nil
 }
@@ -882,6 +888,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getAccountByUserIDStmt: %w", cerr)
 		}
 	}
+	if q.getAccountWithBillingStatusStmt != nil {
+		if cerr := q.getAccountWithBillingStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAccountWithBillingStatusStmt: %w", cerr)
+		}
+	}
 	if q.getAllBoxShareLinksByBoxIDStmt != nil {
 		if cerr := q.getAllBoxShareLinksByBoxIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAllBoxShareLinksByBoxIDStmt: %w", cerr)
@@ -1020,6 +1031,11 @@ func (q *Queries) Close() error {
 	if q.getLastBouncesPollStmt != nil {
 		if cerr := q.getLastBouncesPollStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getLastBouncesPollStmt: %w", cerr)
+		}
+	}
+	if q.getLatestBillingStatusStmt != nil {
+		if cerr := q.getLatestBillingStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getLatestBillingStatusStmt: %w", cerr)
 		}
 	}
 	if q.getLatestMobilePendingVMByUserStmt != nil {
@@ -1167,6 +1183,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserBillingExemptionStmt: %w", cerr)
 		}
 	}
+	if q.getUserBillingStatusStmt != nil {
+		if cerr := q.getUserBillingStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserBillingStatusStmt: %w", cerr)
+		}
+	}
 	if q.getUserByEmailStmt != nil {
 		if cerr := q.getUserByEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserByEmailStmt: %w", cerr)
@@ -1245,6 +1266,11 @@ func (q *Queries) Close() error {
 	if q.insertAuthCookieStmt != nil {
 		if cerr := q.insertAuthCookieStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertAuthCookieStmt: %w", cerr)
+		}
+	}
+	if q.insertBillingEventStmt != nil {
+		if cerr := q.insertBillingEventStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertBillingEventStmt: %w", cerr)
 		}
 	}
 	if q.insertBoxStmt != nil {
@@ -1587,16 +1613,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing userHasAuthCookieStmt: %w", cerr)
 		}
 	}
-	if q.userIsPayingStmt != nil {
-		if cerr := q.userIsPayingStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing userIsPayingStmt: %w", cerr)
-		}
-	}
-	if q.userNeedsBillingStmt != nil {
-		if cerr := q.userNeedsBillingStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing userNeedsBillingStmt: %w", cerr)
-		}
-	}
 	return err
 }
 
@@ -1689,6 +1705,7 @@ type Queries struct {
 	drawInviteCodeFromPoolStmt                 *sql.Stmt
 	getAccountStmt                             *sql.Stmt
 	getAccountByUserIDStmt                     *sql.Stmt
+	getAccountWithBillingStatusStmt            *sql.Stmt
 	getAllBoxShareLinksByBoxIDStmt             *sql.Stmt
 	getAllUserEventsStmt                       *sql.Stmt
 	getAndIncrementNextSSHKeyNumberStmt        *sql.Stmt
@@ -1717,6 +1734,7 @@ type Queries struct {
 	getInviteCodeByCodeStmt                    *sql.Stmt
 	getInviteCodeByIDStmt                      *sql.Stmt
 	getLastBouncesPollStmt                     *sql.Stmt
+	getLatestBillingStatusStmt                 *sql.Stmt
 	getLatestMobilePendingVMByUserStmt         *sql.Stmt
 	getLoginCreationDisabledStmt               *sql.Stmt
 	getMobilePendingVMByTokenStmt              *sql.Stmt
@@ -1746,6 +1764,7 @@ type Queries struct {
 	getTagResolutionStmt                       *sql.Stmt
 	getTagsNeedingRefreshStmt                  *sql.Stmt
 	getUserBillingExemptionStmt                *sql.Stmt
+	getUserBillingStatusStmt                   *sql.Stmt
 	getUserByEmailStmt                         *sql.Stmt
 	getUserEmailCountForDateStmt               *sql.Stmt
 	getUserIDByEmailStmt                       *sql.Stmt
@@ -1762,6 +1781,7 @@ type Queries struct {
 	incrementUserEmailCountStmt                *sql.Stmt
 	insertAccountStmt                          *sql.Stmt
 	insertAuthCookieStmt                       *sql.Stmt
+	insertBillingEventStmt                     *sql.Stmt
 	insertBoxStmt                              *sql.Stmt
 	insertBoxIPShardStmt                       *sql.Stmt
 	insertDeletedBoxStmt                       *sql.Stmt
@@ -1830,8 +1850,6 @@ type Queries struct {
 	upsertUserLLMCreditStmt                    *sql.Stmt
 	useInviteCodeStmt                          *sql.Stmt
 	userHasAuthCookieStmt                      *sql.Stmt
-	userIsPayingStmt                           *sql.Stmt
-	userNeedsBillingStmt                       *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
@@ -1891,6 +1909,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		drawInviteCodeFromPoolStmt:                 q.drawInviteCodeFromPoolStmt,
 		getAccountStmt:                             q.getAccountStmt,
 		getAccountByUserIDStmt:                     q.getAccountByUserIDStmt,
+		getAccountWithBillingStatusStmt:            q.getAccountWithBillingStatusStmt,
 		getAllBoxShareLinksByBoxIDStmt:             q.getAllBoxShareLinksByBoxIDStmt,
 		getAllUserEventsStmt:                       q.getAllUserEventsStmt,
 		getAndIncrementNextSSHKeyNumberStmt:        q.getAndIncrementNextSSHKeyNumberStmt,
@@ -1919,6 +1938,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getInviteCodeByCodeStmt:                    q.getInviteCodeByCodeStmt,
 		getInviteCodeByIDStmt:                      q.getInviteCodeByIDStmt,
 		getLastBouncesPollStmt:                     q.getLastBouncesPollStmt,
+		getLatestBillingStatusStmt:                 q.getLatestBillingStatusStmt,
 		getLatestMobilePendingVMByUserStmt:         q.getLatestMobilePendingVMByUserStmt,
 		getLoginCreationDisabledStmt:               q.getLoginCreationDisabledStmt,
 		getMobilePendingVMByTokenStmt:              q.getMobilePendingVMByTokenStmt,
@@ -1948,6 +1968,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTagResolutionStmt:                       q.getTagResolutionStmt,
 		getTagsNeedingRefreshStmt:                  q.getTagsNeedingRefreshStmt,
 		getUserBillingExemptionStmt:                q.getUserBillingExemptionStmt,
+		getUserBillingStatusStmt:                   q.getUserBillingStatusStmt,
 		getUserByEmailStmt:                         q.getUserByEmailStmt,
 		getUserEmailCountForDateStmt:               q.getUserEmailCountForDateStmt,
 		getUserIDByEmailStmt:                       q.getUserIDByEmailStmt,
@@ -1964,6 +1985,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		incrementUserEmailCountStmt:                q.incrementUserEmailCountStmt,
 		insertAccountStmt:                          q.insertAccountStmt,
 		insertAuthCookieStmt:                       q.insertAuthCookieStmt,
+		insertBillingEventStmt:                     q.insertBillingEventStmt,
 		insertBoxStmt:                              q.insertBoxStmt,
 		insertBoxIPShardStmt:                       q.insertBoxIPShardStmt,
 		insertDeletedBoxStmt:                       q.insertDeletedBoxStmt,
@@ -2032,7 +2054,5 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertUserLLMCreditStmt:                    q.upsertUserLLMCreditStmt,
 		useInviteCodeStmt:                          q.useInviteCodeStmt,
 		userHasAuthCookieStmt:                      q.userHasAuthCookieStmt,
-		userIsPayingStmt:                           q.userIsPayingStmt,
-		userNeedsBillingStmt:                       q.userNeedsBillingStmt,
 	}
 }

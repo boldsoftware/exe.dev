@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"exe.dev/exedb"
 )
@@ -273,7 +274,10 @@ func TestCheckNewThrottleStripe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = withTx1(s, t.Context(), (*exedb.Queries).ActivateAccount, user.UserID); err != nil {
+	if err = withTx1(s, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
+		CreatedBy: user.UserID,
+		EventAt:   time.Now(),
+	}); err != nil {
 		t.Fatal(err)
 	}
 

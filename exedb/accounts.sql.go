@@ -7,25 +7,51 @@ package exedb
 
 import (
 	"context"
+	"time"
 )
 
 const activateAccount = `-- name: ActivateAccount :exec
-UPDATE accounts SET billing_status = 'active' WHERE created_by = ?
+INSERT INTO billing_events (account_id, event_type, event_at)
+SELECT id, 'active', ?2 FROM accounts WHERE created_by = ?1
 `
 
+type ActivateAccountParams struct {
+	CreatedBy string    `db:"created_by" json:"created_by"`
+	EventAt   time.Time `db:"event_at" json:"event_at"`
+}
+
 // ActivateAccount marks an account as active after Stripe checkout completes.
-func (q *Queries) ActivateAccount(ctx context.Context, createdBy string) error {
-	_, err := q.exec(ctx, q.activateAccountStmt, activateAccount, createdBy)
+// Inserts an 'active' billing event for the account owned by the given user.
+// Timestamp should be normalized to Time10 format by caller.
+func (q *Queries) ActivateAccount(ctx context.Context, arg ActivateAccountParams) error {
+	_, err := q.exec(ctx, q.activateAccountStmt, activateAccount, arg.CreatedBy, arg.EventAt)
 	return err
 }
 
 const countAccountsByBillingStatus = `-- name: CountAccountsByBillingStatus :one
-SELECT COUNT(*) FROM accounts WHERE billing_status = ?
+SELECT COUNT(*) FROM accounts a
+WHERE (
+    ?1 = 'pending' AND NOT EXISTS (SELECT 1 FROM billing_events WHERE account_id = a.id)
+) OR (
+    ?1 != 'pending' AND EXISTS (
+        SELECT 1 FROM billing_events e1
+        WHERE e1.account_id = a.id
+        AND e1.event_type = ?1
+        AND e1.id = (
+            SELECT e2.id FROM billing_events e2
+            WHERE e2.account_id = a.id
+            ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
+            LIMIT 1
+        )
+    )
+)
 `
 
 // CountAccountsByBillingStatus counts accounts with the given billing status.
-func (q *Queries) CountAccountsByBillingStatus(ctx context.Context, billingStatus string) (int64, error) {
-	row := q.queryRow(ctx, q.countAccountsByBillingStatusStmt, countAccountsByBillingStatus, billingStatus)
+// For 'active' or 'canceled', counts accounts whose most recent billing event matches.
+// For 'pending', counts accounts with no billing events.
+func (q *Queries) CountAccountsByBillingStatus(ctx context.Context, dollar_1 interface{}) (int64, error) {
+	row := q.queryRow(ctx, q.countAccountsByBillingStatusStmt, countAccountsByBillingStatus, dollar_1)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -63,11 +89,95 @@ func (q *Queries) GetAccountByUserID(ctx context.Context, createdBy string) (Acc
 	return i, err
 }
 
+const getAccountWithBillingStatus = `-- name: GetAccountWithBillingStatus :one
+SELECT a.id, a.created_by, a.created_at, a.billing_status,
+    COALESCE(
+        (SELECT e.event_type FROM billing_events e
+         WHERE e.account_id = a.id
+         ORDER BY parse_timestamp(e.event_at) DESC, e.id DESC LIMIT 1),
+        'pending'
+    ) AS billing_status
+FROM accounts a WHERE a.created_by = ?
+`
+
+type GetAccountWithBillingStatusRow struct {
+	ID              string      `db:"id" json:"id"`
+	CreatedBy       string      `db:"created_by" json:"created_by"`
+	CreatedAt       time.Time   `db:"created_at" json:"created_at"`
+	BillingStatus   string      `db:"billing_status" json:"billing_status"`
+	BillingStatus_2 interface{} `db:"billing_status_2" json:"billing_status_2"`
+}
+
+// Returns account info with billing status derived from billing_events.
+// billing_status is 'pending' if no events, otherwise the most recent event_type.
+func (q *Queries) GetAccountWithBillingStatus(ctx context.Context, createdBy string) (GetAccountWithBillingStatusRow, error) {
+	row := q.queryRow(ctx, q.getAccountWithBillingStatusStmt, getAccountWithBillingStatus, createdBy)
+	var i GetAccountWithBillingStatusRow
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.BillingStatus,
+		&i.BillingStatus_2,
+	)
+	return i, err
+}
+
+const getUserBillingStatus = `-- name: GetUserBillingStatus :one
+SELECT e.event_type AS billing_status,
+u.created_at,
+u.billing_exemption,
+u.billing_trial_ends_at
+FROM users u
+LEFT JOIN accounts a ON a.created_by = u.user_id
+LEFT JOIN billing_events e ON e.account_id = a.id AND e.id = (
+    SELECT e2.id FROM billing_events e2
+    WHERE e2.account_id = a.id
+    ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
+    LIMIT 1
+)
+WHERE u.user_id = ?1
+`
+
+type GetUserBillingStatusRow struct {
+	BillingStatus      *string    `db:"billing_status" json:"billing_status"`
+	CreatedAt          *time.Time `db:"created_at" json:"created_at"`
+	BillingExemption   *string    `db:"billing_exemption" json:"billing_exemption"`
+	BillingTrialEndsAt *time.Time `db:"billing_trial_ends_at" json:"billing_trial_ends_at"`
+}
+
+// Returns the user's billing information for determining payment status.
+// billing_status is NULL if no billing events exist, or the most recent event_type ('active' or 'canceled').
+// Uses parse_timestamp() to handle various timestamp formats including Go's time.String().
+// Uses id DESC as tiebreaker when timestamps are equal.
+func (q *Queries) GetUserBillingStatus(ctx context.Context, userID string) (GetUserBillingStatusRow, error) {
+	row := q.queryRow(ctx, q.getUserBillingStatusStmt, getUserBillingStatus, userID)
+	var i GetUserBillingStatusRow
+	err := row.Scan(
+		&i.BillingStatus,
+		&i.CreatedAt,
+		&i.BillingExemption,
+		&i.BillingTrialEndsAt,
+	)
+	return i, err
+}
+
 const getUserPlanCategory = `-- name: GetUserPlanCategory :one
 SELECT
     CASE
         WHEN u.billing_exemption = 'free' THEN 'friend'
-        WHEN EXISTS (SELECT 1 FROM accounts WHERE created_by = ?1 AND billing_status = 'active') THEN 'has_billing'
+        WHEN EXISTS (
+            SELECT 1 FROM accounts a
+            JOIN billing_events e ON e.account_id = a.id
+            WHERE a.created_by = ?1
+            AND e.event_type = 'active'
+            AND e.id = (
+                SELECT e2.id FROM billing_events e2
+                WHERE e2.account_id = a.id
+                ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
+                LIMIT 1
+            )
+        ) THEN 'has_billing'
         ELSE 'no_billing'
     END
 FROM users u WHERE u.user_id = ?1
@@ -75,7 +185,7 @@ FROM users u WHERE u.user_id = ?1
 
 // GetUserPlanCategory determines the user's plan category for LLM gateway credit limits.
 // Returns 'friend' if user has billing_exemption='free'
-// Returns 'has_billing' if user has an active billing account
+// Returns 'has_billing' if user has an active billing account (most recent billing event is 'active')
 // Returns 'no_billing' otherwise
 // Note: 'custom' category is determined by checking for explicit overrides in code, not SQL.
 func (q *Queries) GetUserPlanCategory(ctx context.Context, createdBy string) (string, error) {
@@ -86,7 +196,7 @@ func (q *Queries) GetUserPlanCategory(ctx context.Context, createdBy string) (st
 }
 
 const insertAccount = `-- name: InsertAccount :exec
-INSERT INTO accounts (id, created_by, billing_status) VALUES (?, ?, 'pending')
+INSERT INTO accounts (id, created_by) VALUES (?, ?)
 `
 
 type InsertAccountParams struct {
@@ -129,43 +239,4 @@ func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
 		return nil, err
 	}
 	return items, nil
-}
-
-const userIsPaying = `-- name: UserIsPaying :one
-SELECT COUNT(*) > 0 FROM accounts WHERE created_by = ? AND billing_status = 'active'
-`
-
-// UserIsPaying checks if a user has billing information on file.
-// Users with an active account record have completed the Stripe subscription flow.
-func (q *Queries) UserIsPaying(ctx context.Context, createdBy string) (bool, error) {
-	row := q.queryRow(ctx, q.userIsPayingStmt, userIsPaying, createdBy)
-	var column_1 bool
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
-const userNeedsBilling = `-- name: UserNeedsBilling :one
-SELECT
-    NOT EXISTS (SELECT 1 FROM accounts WHERE created_by = ?1 AND billing_status = 'active')
-    AND u.created_at >= '2026-01-06 23:10:00'
-    AND (
-        u.billing_exemption IS NULL
-        OR (u.billing_exemption = 'trial' AND u.billing_trial_ends_at <= datetime('now'))
-    )
-FROM users u WHERE u.user_id = ?1
-`
-
-// UserNeedsBilling checks if a user needs to add billing before creating VMs.
-// Returns true only if:
-// 1. The user doesn't have an ACTIVE account record (pending accounts don't count)
-// 2. AND the user was created on or after 2026-01-06 23:10:00 UTC (3:10pm PST) (billing requirement date)
-// 3. AND the user doesn't have a 'free' billing exemption
-// 4. AND the user doesn't have an active 'trial' exemption (trial_ends_at in the future)
-// Legacy users created before this date are grandfathered and don't need billing.
-// Users with invite code exemptions may also bypass billing.
-func (q *Queries) UserNeedsBilling(ctx context.Context, userID string) (*bool, error) {
-	row := q.queryRow(ctx, q.userNeedsBillingStmt, userNeedsBilling, userID)
-	var column_1 *bool
-	err := row.Scan(&column_1)
-	return column_1, err
 }

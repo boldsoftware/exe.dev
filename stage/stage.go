@@ -56,6 +56,7 @@ type Env struct {
 	DefaultDisk   uint64 // default disk size for new boxes in bytes
 
 	StripeAPIKey string // Stripe API key for billing operations
+	StripeURL    string // Stripe API URL (for testing); empty means use real Stripe
 }
 
 // Invalid returns an Env with obviously invalid values.
@@ -100,10 +101,11 @@ func Invalid() Env {
 		DefaultDisk:   0, // invalid: must be > 0
 
 		StripeAPIKey: "", // invalid: no API key
+		StripeURL:    "", // invalid: no Stripe URL
 	}
 }
 
-var envStripeKey = os.Getenv("STRIPE_API_KEY")
+var envStripeKey = os.Getenv("STRIPE_SECRET_KEY")
 
 // Local returns an Env configured for convenient local human development.
 // It enables more expensive features (cobble, auto-starting sshpiper),
@@ -148,6 +150,7 @@ func Local() Env {
 		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
 
 		StripeAPIKey: cmp.Or(envStripeKey, billing.TestAPIKey),
+		StripeURL:    "",
 	}
 }
 
@@ -195,6 +198,7 @@ func Test() Env {
 		DefaultDisk:   11 * 1000 * 1000 * 1000, // 11GB
 
 		StripeAPIKey: billing.TestAPIKey,
+		StripeURL:    "",
 	}
 }
 
@@ -239,6 +243,7 @@ func Staging() Env {
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
 
 		StripeAPIKey: envStripeKey,
+		StripeURL:    "",
 	}
 }
 
@@ -282,6 +287,7 @@ func Prod() Env {
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
 
 		StripeAPIKey: envStripeKey,
+		StripeURL:    "",
 	}
 }
 
@@ -336,7 +342,7 @@ func (e Env) BoxDest(boxName string) string {
 
 // BillingClient returns a configured billing manager for this environment.
 func (e Env) BillingClient() *billing.Manager {
-	return &billing.Manager{APIKey: e.StripeAPIKey}
+	return &billing.Manager{APIKey: e.StripeAPIKey, StripeURL: e.StripeURL}
 }
 
 // MailgunDomain returns the Mailgun sending domain for this environment.

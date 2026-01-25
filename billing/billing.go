@@ -4,10 +4,13 @@ package billing
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"iter"
 	"log/slog"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -15,17 +18,13 @@ import (
 	"github.com/stripe/stripe-go/v82"
 )
 
-// Errors
-var (
-	// ErrIncomplete is returned when a billing operation is incomplete.
-	ErrIncomplete = errors.New("incomplete")
-)
+var ErrIncomplete = errors.New("incomplete")
 
 // TestAPIKey is the Stripe test API key. It is safe to check into source code
 // and easy to revoke should someone want to spam our test account.
 const TestAPIKey = "rk_test_51SjuBkGpGU0hqBfTf92SNWOBza7zn6pZygtbG7kRdquppHsnJGVZtPfwpZFt9PjoAUCegMS1JCwtawjbWXMx2fPZ008Jgd7CKi"
 
-var stripeKey = os.Getenv("STRIPE_API_KEY")
+var stripeKey = os.Getenv("STRIPE_SECRET_KEY")
 
 const DefaultPlan = "individual"
 
@@ -34,9 +33,18 @@ type Manager struct {
 	// APIKey specifies the Stripe API key to use for requests.
 	// If empty, it will use any of the following in order of precedence:
 	//
-	//   1. The STRIPE_API_KEY environment variable
+	//   1. The STRIPE_SECRET_KEY environment variable
 	//   2. The sandboxAPIKey
 	APIKey string
+
+	// StripeURL is the base URL for Stripe API requests.
+	// If empty, the default Stripe API URL is used.
+	StripeURL string
+
+	// Client is the Stripe client to use for requests.
+	// If nil, a new client is created using APIKey and StripeURL.
+	// This field is primarily for testing.
+	Client *stripe.Client
 
 	Logger *slog.Logger
 
@@ -71,6 +79,20 @@ type SubscribeParams struct {
 	// TrialEnd specifies when the trial period ends. If set, billing will
 	// not start until this time. If zero, billing starts immediately.
 	TrialEnd time.Time
+
+	// RedirectToPortal, when true, redirects existing subscribers to the
+	// billing portal instead of creating a new checkout session.
+	RedirectToPortal bool
+
+	// PortalReturnURL is the URL to return to after visiting the billing portal.
+	// Only used when RedirectToPortal is true.
+	PortalReturnURL string
+}
+
+// PortalParams contains the parameters for opening the billing portal.
+type PortalParams struct {
+	// ReturnURL is the URL to return to after visiting the billing portal.
+	ReturnURL string
 }
 
 // Profile contains account profile information.
@@ -78,53 +100,48 @@ type Profile struct {
 	Email string
 }
 
-func (m *Manager) client() *stripe.Client {
-	apiKey := m.APIKey
-	if apiKey == "" {
-		apiKey = stripeKey
-	}
-	return stripe.NewClient(apiKey)
+// SubscriptionEvent represents a subscription state change from Stripe.
+type SubscriptionEvent struct {
+	// AccountID is the Stripe customer ID (billing ID).
+	AccountID string
+	// EventType is the type of event: "active" or "canceled".
+	EventType string
+	// EventAt is when the event occurred in Stripe.
+	EventAt time.Time
 }
 
-// upsertCustomer creates a customer in Stripe if one does not already exist for the provided billing ID.
-// If the customer already exists, nothing happens.
+func (m *Manager) client() *stripe.Client {
+	if m.Client != nil {
+		return m.Client
+	}
+	var opts []stripe.ClientOption
+	if m.StripeURL != "" {
+		backends := stripe.NewBackendsWithConfig(&stripe.BackendConfig{
+			URL: &m.StripeURL,
+		})
+		opts = append(opts, stripe.WithBackends(backends))
+	}
+	apiKey := cmp.Or(m.APIKey, stripeKey)
+	return stripe.NewClient(apiKey, opts...)
+}
+
 func (m *Manager) upsertCustomer(ctx context.Context, billingID, email string) error {
 	c := m.client()
-	custParams := &stripe.CustomerCreateParams{
+	params := &stripe.CustomerCreateParams{
 		Email: &email,
 	}
-	custParams.AddExtra("id", billingID)
+	params.AddExtra("id", billingID)
 
-	_, err := c.V1Customers.Create(ctx, custParams)
-	if err != nil && !isExists(err) {
-		return err
+	_, err := c.V1Customers.Create(ctx, params)
+	if isExists(err) {
+		return nil
 	}
-	return nil
+	return err
 }
 
 func isExists(err error) bool {
 	var stripeErr *stripe.Error
 	return errors.As(err, &stripeErr) && stripeErr.Code == stripe.ErrorCodeResourceAlreadyExists
-}
-
-// isRetryable returns true if the error is a transient error that should be retried.
-// 4xx errors (except 429 rate limit) are not retryable.
-func isRetryable(err error) bool {
-	var stripeErr *stripe.Error
-	if !errors.As(err, &stripeErr) {
-		// Network errors and other non-Stripe errors are retryable
-		return true
-	}
-	// Rate limit errors (429) are retryable
-	if stripeErr.HTTPStatusCode == 429 {
-		return true
-	}
-	// Other 4xx errors are not retryable (bad request, not found, etc.)
-	if stripeErr.HTTPStatusCode >= 400 && stripeErr.HTTPStatusCode < 500 {
-		return false
-	}
-	// 5xx errors are retryable
-	return true
 }
 
 // Subscribe generates a payment link for subscribing an account to a plan.
@@ -138,23 +155,26 @@ func (m *Manager) Subscribe(ctx context.Context, billingID string, p *SubscribeP
 	c := m.client()
 
 	plan := cmp.Or(p.Plan, DefaultPlan)
-
-	// Look up the price by its lookup key
 	priceID, err := m.lookupPriceID(ctx, c, plan)
 	if err != nil {
 		return "", fmt.Errorf("lookup price %q: %w", plan, err)
 	}
 
-	for err := range backoff.Loop(ctx, 1*time.Second) {
+	err = m.upsertCustomer(ctx, billingID, p.Email)
+	if err != nil {
+		return "", fmt.Errorf("upsert customer: %w", err)
+	}
+
+	if p.RedirectToPortal {
+		hasSubscription, err := m.hasActiveSubscription(ctx, c, billingID)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("check active subscription: %w", err)
 		}
-		err := m.upsertCustomer(ctx, billingID, p.Email)
-		if err != nil {
-			m.slog().ErrorContext(ctx, "upsert customer", "error", err)
-			continue
+		if hasSubscription {
+			return m.OpenPortal(ctx, billingID, &PortalParams{
+				ReturnURL: cmp.Or(p.PortalReturnURL, p.SuccessURL),
+			})
 		}
-		break
 	}
 
 	params := &stripe.CheckoutSessionCreateParams{
@@ -170,33 +190,36 @@ func (m *Manager) Subscribe(ctx context.Context, billingID string, p *SubscribeP
 		CancelURL:  &p.CancelURL,
 	}
 
-	// Set trial end if specified (defers first billing until that date)
 	if !p.TrialEnd.IsZero() {
 		params.SubscriptionData = &stripe.CheckoutSessionCreateSubscriptionDataParams{
 			TrialEnd: stripe.Int64(p.TrialEnd.Unix()),
 		}
 	}
 
-	for err := range backoff.Loop(ctx, 1*time.Second) {
-		if err != nil {
-			m.slog().ErrorContext(ctx, "create checkout session", "error", err)
-			return "", err
-		}
-
-		sess, err := c.V1CheckoutSessions.Create(ctx, params)
-		if err != nil {
-			if !isRetryable(err) {
-				// Client errors (4xx) won't succeed on retry
-				m.slog().WarnContext(ctx, "create checkout session", "error", err)
-				return "", err
-			}
-			m.slog().ErrorContext(ctx, "create checkout session", "error", err)
-			continue
-		}
-		return sess.URL, nil
+	sess, err := c.V1CheckoutSessions.Create(ctx, params)
+	if err != nil {
+		return "", err
 	}
+	return sess.URL, nil
+}
 
-	panic("unreachable")
+func (m *Manager) hasActiveSubscription(ctx context.Context, c *stripe.Client, customerID string) (bool, error) {
+	params := &stripe.SubscriptionListParams{
+		Customer: &customerID,
+		Status:   stripe.String("all"),
+	}
+	for sub, err := range c.V1Subscriptions.List(ctx, params) {
+		if err != nil {
+			return false, err
+		}
+		switch sub.Status {
+		case stripe.SubscriptionStatusActive,
+			stripe.SubscriptionStatusTrialing,
+			stripe.SubscriptionStatusPastDue:
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // lookupPriceID finds the price ID for a given lookup key, caching results.
@@ -250,44 +273,183 @@ func (m *Manager) DashboardURL(billingID string) string {
 // VerifyCheckout verifies that a checkout session was completed successfully.
 // It returns the billing ID if the session is valid, or an error if the account is not in good standing.
 func (m *Manager) VerifyCheckout(ctx context.Context, sessionID string) (billingID string, _ error) {
-	// TODO(bmizerany): This could take the URL string landed on and get all the
-	// info from there. This whould be nicer if Manager kept the success/cancel
-	// URLs, and we removed them from SubscribeParams?
 	if sessionID == "" {
 		return "", errors.New("session ID is required")
 	}
 
 	c := m.client()
-
-	for range backoff.Loop(ctx, 1*time.Second) {
-		sess, err := c.V1CheckoutSessions.Retrieve(ctx, sessionID, nil)
-		if err != nil {
-			if !isRetryable(err) {
-				return "", fmt.Errorf("failed to retrieve checkout session: %w", err)
-			}
-			m.slog().ErrorContext(ctx, "retrieve checkout session", "error", err)
-			continue
+	sess, err := c.V1CheckoutSessions.Retrieve(ctx, sessionID, nil)
+	if err != nil {
+		return "", err
+	}
+	if sess.Status != stripe.CheckoutSessionStatusComplete {
+		return "", fmt.Errorf("%w: status: %q", ErrIncomplete, sess.Status)
+	}
+	switch sess.PaymentStatus {
+	case stripe.CheckoutSessionPaymentStatusPaid, stripe.CheckoutSessionPaymentStatusNoPaymentRequired:
+		if sess.Customer == nil || sess.Customer.ID == "" {
+			return "", errors.New("checkout session has no customer")
 		}
+		return sess.Customer.ID, nil
+	default:
+		return "", fmt.Errorf("checkout session payment not confirmed: payment_status=%s", sess.PaymentStatus)
+	}
+}
 
-		// Verify the session status is complete
-		if sess.Status != stripe.CheckoutSessionStatusComplete {
-			m.slog().ErrorContext(ctx, "checkout session not complete", "status", sess.Status)
-			return "", fmt.Errorf("%s: status: %q", ErrIncomplete, sess.Status)
-		}
-
-		// Verify payment status - for subscriptions with trials, this may be "no_payment_required"
-		switch sess.PaymentStatus {
-		case stripe.CheckoutSessionPaymentStatusPaid, stripe.CheckoutSessionPaymentStatusNoPaymentRequired:
-			// Valid payment statuses
-			if sess.Customer == nil || sess.Customer.ID == "" {
-				return "", errors.New("checkout session has no customer")
-			}
-			return sess.Customer.ID, nil
-		default:
-			return "", fmt.Errorf("checkout session payment not confirmed: payment_status=%s", sess.PaymentStatus)
-		}
-
+// PortalSession creates a Stripe billing portal session for a customer.
+// The portal allows customers to manage their subscription, update payment methods,
+// and view billing history. Returns the portal URL to redirect the customer to.
+func (m *Manager) PortalSession(ctx context.Context, billingID, returnURL string) (portalURL string, _ error) {
+	if billingID == "" {
+		return "", errors.New("billing ID is required")
 	}
 
-	return "", ctx.Err()
+	c := m.client()
+	params := &stripe.BillingPortalSessionCreateParams{
+		Customer:  &billingID,
+		ReturnURL: &returnURL,
+	}
+	sess, err := c.V1BillingPortalSessions.Create(ctx, params)
+	if err != nil {
+		return "", err
+	}
+	return sess.URL, nil
+}
+
+// OpenPortal creates a billing portal session using PortalParams.
+// This is a convenience wrapper around PortalSession that validates the return URL.
+func (m *Manager) OpenPortal(ctx context.Context, billingID string, p *PortalParams) (portalURL string, _ error) {
+	if p == nil || p.ReturnURL == "" {
+		return "", errors.New("return URL is required")
+	}
+	return m.PortalSession(ctx, billingID, p.ReturnURL)
+}
+
+// SubscriptionEvents polls the Stripe Events API for subscription changes.
+// Events are yielded in chronological order (sorted by Stripe event created time).
+// The iterator stops when the context is canceled.
+func (m *Manager) SubscriptionEvents(ctx context.Context, since time.Time) iter.Seq[SubscriptionEvent] {
+	return func(yield func(SubscriptionEvent) bool) {
+		c := m.client()
+		t := time.NewTicker(3 * time.Second)
+		defer t.Stop()
+		sinceUnix := since.Unix()
+
+		logErr := func(err error) {
+			var stripeErr *stripe.Error
+			if errors.As(err, &stripeErr) && stripeErr.HTTPStatusCode == 429 {
+				m.slog().WarnContext(ctx, "rate limited listing subscription events", "error", err)
+			} else {
+				m.slog().ErrorContext(ctx, "error listing subscription events", "error", err)
+			}
+		}
+
+		poll := func() (stop bool, err error) {
+			params := &stripe.EventListParams{
+				Types: []*string{
+					stripe.String("customer.subscription.created"),
+					stripe.String("customer.subscription.updated"),
+					stripe.String("customer.subscription.deleted"),
+				},
+				CreatedRange: &stripe.RangeQueryParams{
+					GreaterThan: sinceUnix,
+				},
+			}
+
+			var events []SubscriptionEvent
+			for event, err := range c.V1Events.List(ctx, params) {
+				if err != nil {
+					return false, err
+				}
+
+				// Parse subscription from event data
+				var sub stripe.Subscription
+				if err := json.Unmarshal(event.Data.Raw, &sub); err != nil {
+					continue
+				}
+				if sub.Customer == nil || sub.Customer.ID == "" {
+					continue
+				}
+
+				// Determine event type based on subscription status
+				var eventType string
+				switch event.Type {
+				case "customer.subscription.deleted":
+					eventType = "canceled"
+				case "customer.subscription.created":
+					// Only record created events for active subscriptions
+					// Trialing subscriptions count as active
+					switch sub.Status {
+					case stripe.SubscriptionStatusActive,
+						stripe.SubscriptionStatusTrialing:
+						eventType = "active"
+					default:
+						// Skip non-active created events
+						continue
+					}
+				case "customer.subscription.updated":
+					// Record status changes for updated events
+					switch sub.Status {
+					case stripe.SubscriptionStatusActive,
+						stripe.SubscriptionStatusTrialing:
+						eventType = "active"
+					case stripe.SubscriptionStatusCanceled,
+						stripe.SubscriptionStatusIncomplete,
+						stripe.SubscriptionStatusIncompleteExpired,
+						stripe.SubscriptionStatusUnpaid:
+						eventType = "canceled"
+					case stripe.SubscriptionStatusPastDue:
+						// Past due still has access until it becomes unpaid
+						eventType = "active"
+					default:
+						// Skip unknown statuses
+						continue
+					}
+				default:
+					// Skip unknown event types
+					continue
+				}
+
+				events = append(events, SubscriptionEvent{
+					AccountID: sub.Customer.ID,
+					EventType: eventType,
+					EventAt:   time.Unix(event.Created, 0),
+				})
+			}
+
+			// Sort by EventAt (chronological order)
+			slices.SortFunc(events, func(a, b SubscriptionEvent) int {
+				return a.EventAt.Compare(b.EventAt)
+			})
+
+			var maxEventAt int64
+			for _, e := range events {
+				maxEventAt = max(maxEventAt, e.EventAt.Unix())
+				if !yield(e) {
+					if maxEventAt > sinceUnix {
+						sinceUnix = maxEventAt
+					}
+					return true, nil
+				}
+			}
+			if maxEventAt > sinceUnix {
+				sinceUnix = maxEventAt
+			}
+			return false, nil
+		}
+
+		// Continue polling on interval
+		for {
+			_, err := poll()
+			if err != nil && !errors.Is(err, context.Canceled) {
+				logErr(err)
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+		}
+	}
 }

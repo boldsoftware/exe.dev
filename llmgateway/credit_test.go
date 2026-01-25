@@ -316,7 +316,7 @@ func TestPlanCategories(t *testing.T) {
 			t.Errorf("expected refresh 1.0, got %f", info.RefreshPerHour)
 		}
 		// no_billing error message should include billing link
-		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time; for faster refresh, set up a subscription at https://exe.dev/take-my-money" {
+		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time; for faster refresh, set up a subscription at https://exe.dev/billing/update" {
 			t.Errorf("unexpected error message: %s", info.Plan.CreditExhaustedError)
 		}
 	})
@@ -367,7 +367,10 @@ func TestPlanCategories(t *testing.T) {
 			}); err != nil {
 				return err
 			}
-			return q.ActivateAccount(ctx, userID)
+			return q.ActivateAccount(ctx, exedb.ActivateAccountParams{
+				CreatedBy: userID,
+				EventAt:   sqlite.NormalizeTime(time.Now()),
+			})
 		})
 		if err != nil {
 			t.Fatalf("failed to create billing account: %v", err)
@@ -428,7 +431,7 @@ func TestPlanCategories(t *testing.T) {
 			t.Errorf("expected refresh 25.0, got %f", info.RefreshPerHour)
 		}
 		// Error message should still be the no_billing message (with billing link)
-		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time; for faster refresh, set up a subscription at https://exe.dev/take-my-money" {
+		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time; for faster refresh, set up a subscription at https://exe.dev/billing/update" {
 			t.Errorf("unexpected error message: %s", info.Plan.CreditExhaustedError)
 		}
 	})
@@ -481,7 +484,10 @@ func TestCreditManager_TopUpOnBillingUpgrade(t *testing.T) {
 		}); err != nil {
 			return err
 		}
-		return q.ActivateAccount(ctx, userID)
+		return q.ActivateAccount(ctx, exedb.ActivateAccountParams{
+			CreatedBy: userID,
+			EventAt:   sqlite.NormalizeTime(time.Now()),
+		})
 	})
 	if err != nil {
 		t.Fatalf("failed to create billing account: %v", err)
@@ -525,7 +531,10 @@ func TestCreditManager_TopUpOnBillingUpgrade_NoCreditRecord(t *testing.T) {
 		}); err != nil {
 			return err
 		}
-		return q.ActivateAccount(ctx, userID)
+		return q.ActivateAccount(ctx, exedb.ActivateAccountParams{
+			CreatedBy: userID,
+			EventAt:   sqlite.NormalizeTime(time.Now()),
+		})
 	})
 	if err != nil {
 		t.Fatalf("failed to create billing account: %v", err)

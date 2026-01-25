@@ -430,11 +430,11 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 		// Check if user needs billing (only new users need billing)
 		// Skip this check if SkipBilling is set (for tests)
 		if !s.env.SkipBilling {
-			needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
-			if err == nil && needsBilling != nil && *needsBilling {
+			billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
+			if err == nil && userNeedsBilling(&billingStatus) {
 				// User is logged in but needs to add billing info
 				// Preserve the name and prompt so they can be passed to Stripe and restored after checkout
-				billingURL := "/billing/subscribe?name=" + url.QueryEscape(hostname)
+				billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
 				if prompt != "" {
 					billingURL += "&prompt=" + url.QueryEscape(prompt)
 				}
@@ -641,10 +641,10 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 		// Check if user needs billing before starting creation (only new users need billing)
 		// Skip this check if SkipBilling is set (for tests)
 		if !s.env.SkipBilling {
-			needsBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).UserNeedsBilling, userID)
-			if err == nil && needsBilling != nil && *needsBilling {
+			billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
+			if err == nil && userNeedsBilling(&billingStatus) {
 				// User needs to add billing before creating a VM
-				http.Redirect(w, r, "/billing/subscribe", http.StatusSeeOther)
+				http.Redirect(w, r, "/billing/update", http.StatusSeeOther)
 				return
 			}
 		}

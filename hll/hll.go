@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/axiomhq/hyperloglog"
@@ -60,8 +61,10 @@ type Tracker struct {
 	sketches map[string]*sketch // key: "event:day" or "event:week"
 
 	saveInterval time.Duration
-	done         chan struct{}
-	wg           sync.WaitGroup
+
+	stopped atomic.Bool
+	stop    chan struct{}
+	wg      sync.WaitGroup
 }
 
 type sketch struct {
@@ -77,13 +80,11 @@ func NewTracker(storage Storage) *Tracker {
 		storage:      storage,
 		sketches:     make(map[string]*sketch),
 		saveInterval: 30 * time.Second,
-		done:         make(chan struct{}),
+		stop:         make(chan struct{}),
 	}
 
 	// Start background save goroutine
-	t.wg.Add(1)
-	go t.saveLoop()
-
+	t.wg.Go(t.saveLoop)
 	return t
 }
 
@@ -137,7 +138,9 @@ func (t *Tracker) GetCurrentWeeklyCount(event string) uint64 {
 
 // Close stops the background save loop and saves all modified sketches.
 func (t *Tracker) Close() error {
-	close(t.done)
+	if !t.stopped.Swap(true) {
+		close(t.stop)
+	}
 	t.wg.Wait()
 	return t.saveAllModified()
 }
@@ -187,7 +190,6 @@ func (t *Tracker) loadSketch(key, currentPeriod string) *sketch {
 }
 
 func (t *Tracker) saveLoop() {
-	defer t.wg.Done()
 	ticker := time.NewTicker(t.saveInterval)
 	defer ticker.Stop()
 
@@ -195,7 +197,7 @@ func (t *Tracker) saveLoop() {
 		select {
 		case <-ticker.C:
 			_ = t.saveAllModified()
-		case <-t.done:
+		case <-t.stop:
 			return
 		}
 	}
