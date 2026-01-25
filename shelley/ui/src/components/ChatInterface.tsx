@@ -1364,7 +1364,9 @@ function ChatInterface({
                   <button
                     onClick={() => {
                       setShowOverflowMenu(false);
-                      window.open(terminalURL, "_blank");
+                      const cwd = currentConversation?.cwd || selectedCwd || "";
+                      const url = terminalURL.replace("WORKING_DIR", encodeURIComponent(cwd));
+                      window.open(url, "_blank");
                     }}
                     className="overflow-menu-item"
                   >

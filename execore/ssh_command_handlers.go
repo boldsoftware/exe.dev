@@ -609,7 +609,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	exedevURL := ss.server.webBaseURLNoRequest()
 	terminalURL := ss.server.xtermURL(boxName, ss.server.servingHTTPS())
 	shelleyJSON := map[string]any{
-		"terminal_url":  terminalURL,
+		"terminal_url":  terminalURL + "?d=WORKING_DIR",
 		"default_model": shelleyDefaultModel,
 	}
 	// Use the metadata service for the gateway
