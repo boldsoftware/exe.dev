@@ -317,6 +317,26 @@ function App() {
     }
   };
 
+  const handleContinueConversation = async (
+    sourceConversationId: string,
+    model: string,
+    cwd?: string,
+  ) => {
+    try {
+      const response = await api.continueConversation(sourceConversationId, model, cwd);
+      const newConversationId = response.conversation_id;
+
+      // Fetch the new conversation details
+      const updatedConvs = await api.getConversations();
+      setConversations(updatedConvs);
+      setCurrentConversationId(newConversationId);
+    } catch (err) {
+      console.error("Failed to continue conversation:", err);
+      setError("Failed to continue conversation");
+      throw err;
+    }
+  };
+
   return (
     <div className="app-container">
       {/* Conversations drawer */}
@@ -347,6 +367,7 @@ function App() {
           onConversationListUpdate={handleConversationListUpdate}
           onConversationStateUpdate={handleConversationStateUpdate}
           onFirstMessage={handleFirstMessage}
+          onContinueConversation={handleContinueConversation}
           mostRecentCwd={mostRecentCwd}
           isDrawerCollapsed={drawerCollapsed}
           onToggleDrawerCollapse={toggleDrawerCollapsed}

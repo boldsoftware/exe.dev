@@ -1268,3 +1268,192 @@ func TestSubagentEndToEnd(t *testing.T) {
 	}
 	t.Logf("Subagent conversation has %d messages", len(subConvData.Messages))
 }
+
+func TestContinueConversation(t *testing.T) {
+	// Create temporary database
+	tempDB := t.TempDir() + "/test.db"
+	database, err := db.New(db.Config{DSN: tempDB})
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer database.Close()
+
+	// Run migrations
+	if err := database.Migrate(context.Background()); err != nil {
+		t.Fatalf("Failed to migrate database: %v", err)
+	}
+
+	// Create logger
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	// Create LLM service manager
+	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger, DB: database})
+
+	// Set up tools config
+	toolSetConfig := claudetool.ToolSetConfig{
+		WorkingDir:    t.TempDir(),
+		EnableBrowser: false,
+	}
+
+	// Create server
+	svr := server.NewServer(database, llmManager, toolSetConfig, logger, false, "", "", "", nil)
+
+	// Set up HTTP server
+	mux := http.NewServeMux()
+	svr.RegisterRoutes(mux)
+	testServer := httptest.NewServer(mux)
+	defer testServer.Close()
+
+	ctx := context.Background()
+
+	// Create source conversation with a slug and some messages
+	sourceSlug := "source-conversation"
+	cwd := "/tmp/testdir"
+	model := "predictable"
+	sourceConv, err := database.CreateConversation(ctx, &sourceSlug, true, &cwd, &model)
+	if err != nil {
+		t.Fatalf("Failed to create source conversation: %v", err)
+	}
+
+	// Add some messages to the source conversation
+	userMessage := llm.Message{
+		Role:    llm.MessageRoleUser,
+		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Hello, this is a test message"}},
+	}
+	_, err = database.CreateMessage(ctx, db.CreateMessageParams{
+		ConversationID: sourceConv.ConversationID,
+		Type:           db.MessageTypeUser,
+		LLMData:        userMessage,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create user message: %v", err)
+	}
+
+	agentMessage := llm.Message{
+		Role:    llm.MessageRoleAssistant,
+		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Hello! How can I help you?"}},
+	}
+	_, err = database.CreateMessage(ctx, db.CreateMessageParams{
+		ConversationID: sourceConv.ConversationID,
+		Type:           db.MessageTypeAgent,
+		LLMData:        agentMessage,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create agent message: %v", err)
+	}
+
+	// Create a tool use message
+	toolMessage := llm.Message{
+		Role: llm.MessageRoleAssistant,
+		Content: []llm.Content{{
+			Type:      llm.ContentTypeToolUse,
+			ToolName:  "bash",
+			ToolInput: json.RawMessage(`{"command": "echo hello world this is a long command that should be truncated if it exceeds the limit"}`),
+		}},
+	}
+	_, err = database.CreateMessage(ctx, db.CreateMessageParams{
+		ConversationID: sourceConv.ConversationID,
+		Type:           db.MessageTypeAgent,
+		LLMData:        toolMessage,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create tool message: %v", err)
+	}
+
+	// Test the continue conversation endpoint
+	reqBody := map[string]string{
+		"source_conversation_id": sourceConv.ConversationID,
+		"model":                  "predictable",
+	}
+	body, _ := json.Marshal(reqBody)
+
+	resp, err := http.Post(testServer.URL+"/api/conversations/continue", "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		t.Fatalf("Failed to continue conversation: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		t.Fatalf("Expected status 201, got %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	newConversationID, ok := result["conversation_id"].(string)
+	if !ok || newConversationID == "" {
+		t.Fatal("Response should contain conversation_id")
+	}
+
+	// Verify new conversation was created
+	newConv, err := database.GetConversationByID(ctx, newConversationID)
+	if err != nil {
+		t.Fatalf("Failed to get new conversation: %v", err)
+	}
+
+	// Verify the new conversation inherited the cwd
+	if newConv.Cwd == nil || *newConv.Cwd != cwd {
+		t.Errorf("Expected cwd %s, got %v", cwd, newConv.Cwd)
+	}
+
+	// Verify the new conversation has a user message with the summary
+	messages, err := database.ListMessages(ctx, newConversationID)
+	if err != nil {
+		t.Fatalf("Failed to list messages: %v", err)
+	}
+
+	if len(messages) < 1 {
+		t.Fatal("Expected at least 1 message in new conversation")
+	}
+
+	// Find the user message with the summary (may be after system prompt)
+	var summaryText string
+	for _, msg := range messages {
+		if msg.Type != string(db.MessageTypeUser) {
+			continue
+		}
+		if msg.LlmData == nil {
+			continue
+		}
+		var llmMsg llm.Message
+		if err := json.Unmarshal([]byte(*msg.LlmData), &llmMsg); err != nil {
+			continue
+		}
+		for _, content := range llmMsg.Content {
+			if content.Type == llm.ContentTypeText && strings.Contains(content.Text, "Continue the conversation") {
+				summaryText = content.Text
+				break
+			}
+		}
+		if summaryText != "" {
+			break
+		}
+	}
+
+	if summaryText == "" {
+		t.Fatal("Could not find summary message in new conversation")
+	}
+
+	if !strings.Contains(summaryText, sourceSlug) {
+		t.Errorf("Summary should reference source conversation slug %q, got: %s", sourceSlug, summaryText)
+	}
+
+	if !strings.Contains(summaryText, "Hello, this is a test message") {
+		t.Error("Summary should contain user message text")
+	}
+
+	if !strings.Contains(summaryText, "Hello! How can I help you?") {
+		t.Error("Summary should contain agent message text")
+	}
+
+	if !strings.Contains(summaryText, "Tool: bash") {
+		t.Error("Summary should contain tool name")
+	}
+
+	t.Logf("Successfully continued conversation from %s to %s", sourceConv.ConversationID, newConversationID)
+}

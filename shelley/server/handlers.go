@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"shelley.exe.dev/claudetool/browse"
+	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/models"
@@ -771,6 +772,216 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 		"status":          "accepted",
 		"conversation_id": conversationID,
 	})
+}
+
+// ContinueConversationRequest represents the request to continue a conversation in a new one
+type ContinueConversationRequest struct {
+	SourceConversationID string `json:"source_conversation_id"`
+	Model                string `json:"model,omitempty"`
+	Cwd                  string `json:"cwd,omitempty"`
+}
+
+// handleContinueConversation handles POST /api/conversations/continue
+// Creates a new conversation with a summary of the source conversation as the initial message
+func (s *Server) handleContinueConversation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx := r.Context()
+
+	// Parse request
+	var req ContinueConversationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.SourceConversationID == "" {
+		http.Error(w, "source_conversation_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Get source conversation
+	sourceConv, err := s.db.GetConversationByID(ctx, req.SourceConversationID)
+	if err != nil {
+		s.logger.Error("Failed to get source conversation", "conversationID", req.SourceConversationID, "error", err)
+		http.Error(w, "Source conversation not found", http.StatusNotFound)
+		return
+	}
+
+	// Get messages from source conversation
+	messages, err := s.db.ListMessages(ctx, req.SourceConversationID)
+	if err != nil {
+		s.logger.Error("Failed to get messages", "conversationID", req.SourceConversationID, "error", err)
+		http.Error(w, "Failed to get messages", http.StatusInternalServerError)
+		return
+	}
+
+	// Build summary message
+	sourceSlug := "unknown"
+	if sourceConv.Slug != nil {
+		sourceSlug = *sourceConv.Slug
+	}
+	summary := buildConversationSummary(sourceSlug, messages)
+
+	// Get LLM service for the requested model
+	modelID := req.Model
+	if modelID == "" && sourceConv.Model != nil {
+		modelID = *sourceConv.Model
+	}
+	if modelID == "" {
+		modelID = "qwen3-coder-fireworks"
+	}
+
+	llmService, err := s.llmManager.GetService(modelID)
+	if err != nil {
+		s.logger.Error("Unsupported model requested", "model", modelID, "error", err)
+		http.Error(w, fmt.Sprintf("Unsupported model: %s", modelID), http.StatusBadRequest)
+		return
+	}
+
+	// Create new conversation with cwd from request or source conversation
+	var cwdPtr *string
+	if req.Cwd != "" {
+		cwdPtr = &req.Cwd
+	} else if sourceConv.Cwd != nil {
+		cwdPtr = sourceConv.Cwd
+	}
+	conversation, err := s.db.CreateConversation(ctx, nil, true, cwdPtr, &modelID)
+	if err != nil {
+		s.logger.Error("Failed to create conversation", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	conversationID := conversation.ConversationID
+
+	// Notify conversation list subscribers about the new conversation
+	go s.publishConversationListUpdate(ConversationListUpdate{
+		Type:         "update",
+		Conversation: conversation,
+	})
+
+	// Get or create conversation manager
+	manager, err := s.getOrCreateConversationManager(ctx, conversationID)
+	if errors.Is(err, errConversationModelMismatch) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		s.logger.Error("Failed to get conversation manager", "conversationID", conversationID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Create user message with the summary
+	userMessage := llm.Message{
+		Role: llm.MessageRoleUser,
+		Content: []llm.Content{
+			{Type: llm.ContentTypeText, Text: summary},
+		},
+	}
+
+	firstMessage, err := manager.AcceptUserMessage(ctx, llmService, modelID, userMessage)
+	if errors.Is(err, errConversationModelMismatch) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		s.logger.Error("Failed to accept user message", "conversationID", conversationID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Generate slug for the new conversation
+	if firstMessage {
+		ctxNoCancel := context.WithoutCancel(ctx)
+		go func() {
+			slugCtx, cancel := context.WithTimeout(ctxNoCancel, 15*time.Second)
+			defer cancel()
+			_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, summary, modelID)
+			if err != nil {
+				s.logger.Warn("Failed to generate slug for conversation", "conversationID", conversationID, "error", err)
+			} else {
+				go s.notifySubscribers(ctxNoCancel, conversationID)
+			}
+		}()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":          "accepted",
+		"conversation_id": conversationID,
+	})
+}
+
+// buildConversationSummary creates a summary of messages from a conversation
+// for use as the initial prompt in a continuation conversation
+func buildConversationSummary(slug string, messages []generated.Message) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Continue the conversation with slug %q. Here are the user and agent messages so far (including tool inputs up to ~250 characters and tool outputs up to ~250 characters); use sqlite to look up additional details.\n\n", slug))
+
+	for _, msg := range messages {
+		if msg.Type != string(db.MessageTypeUser) && msg.Type != string(db.MessageTypeAgent) {
+			continue
+		}
+
+		if msg.LlmData == nil {
+			continue
+		}
+
+		var llmMsg llm.Message
+		if err := json.Unmarshal([]byte(*msg.LlmData), &llmMsg); err != nil {
+			continue
+		}
+
+		var role string
+		if msg.Type == string(db.MessageTypeUser) {
+			role = "User"
+		} else {
+			role = "Agent"
+		}
+
+		for _, content := range llmMsg.Content {
+			switch content.Type {
+			case llm.ContentTypeText:
+				if content.Text != "" {
+					sb.WriteString(fmt.Sprintf("%s: %s\n\n", role, content.Text))
+				}
+			case llm.ContentTypeToolUse:
+				inputStr := string(content.ToolInput)
+				if len(inputStr) > 250 {
+					inputStr = inputStr[:250] + "..."
+				}
+				sb.WriteString(fmt.Sprintf("%s: [Tool: %s] %s\n\n", role, content.ToolName, inputStr))
+			case llm.ContentTypeToolResult:
+				// Get the text content from tool result
+				var resultText string
+				for _, res := range content.ToolResult {
+					if res.Type == llm.ContentTypeText && res.Text != "" {
+						resultText = res.Text
+						break
+					}
+				}
+				if len(resultText) > 250 {
+					resultText = resultText[:250] + "..."
+				}
+				if resultText != "" {
+					errStr := ""
+					if content.ToolError {
+						errStr = " (error)"
+					}
+					sb.WriteString(fmt.Sprintf("%s: [Tool Result%s] %s\n\n", role, errStr, resultText))
+				}
+			case llm.ContentTypeThinking:
+				// Skip thinking blocks - they're internal
+			}
+		}
+	}
+
+	return sb.String()
 }
 
 // handleCancelConversation handles POST /conversation/<id>/cancel

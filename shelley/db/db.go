@@ -500,6 +500,18 @@ func (db *DB) ListMessagesByConversationPaginated(ctx context.Context, conversat
 	return messages, err
 }
 
+// ListMessages retrieves all messages in a conversation ordered by sequence
+func (db *DB) ListMessages(ctx context.Context, conversationID string) ([]generated.Message, error) {
+	var messages []generated.Message
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		var err error
+		messages, err = q.ListMessages(ctx, conversationID)
+		return err
+	})
+	return messages, err
+}
+
 // ListMessagesForContext retrieves messages that should be sent to the LLM (excludes excluded_from_context=true)
 func (db *DB) ListMessagesForContext(ctx context.Context, conversationID string) ([]generated.Message, error) {
 	var messages []generated.Message

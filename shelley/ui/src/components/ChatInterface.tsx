@@ -31,11 +31,20 @@ import { useVersionChecker } from "./VersionChecker";
 interface ContextUsageBarProps {
   contextWindowSize: number;
   maxContextTokens: number;
+  conversationId?: string | null;
+  onContinueConversation?: () => void;
 }
 
-function ContextUsageBar({ contextWindowSize, maxContextTokens }: ContextUsageBarProps) {
+function ContextUsageBar({
+  contextWindowSize,
+  maxContextTokens,
+  conversationId,
+  onContinueConversation,
+}: ContextUsageBarProps) {
   const [showPopup, setShowPopup] = useState(false);
+  const [continuing, setContinuing] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
+  const hasAutoOpenedRef = useRef<string | null>(null);
 
   const percentage = maxContextTokens > 0 ? (contextWindowSize / maxContextTokens) * 100 : 0;
   const clampedPercentage = Math.min(percentage, 100);
@@ -56,6 +65,18 @@ function ContextUsageBar({ contextWindowSize, maxContextTokens }: ContextUsageBa
   const handleClick = () => {
     setShowPopup(!showPopup);
   };
+
+  // Auto-open popup when hitting 100k tokens (once per conversation)
+  useEffect(() => {
+    if (
+      showLongConversationWarning &&
+      conversationId &&
+      hasAutoOpenedRef.current !== conversationId
+    ) {
+      hasAutoOpenedRef.current = conversationId;
+      setShowPopup(true);
+    }
+  }, [showLongConversationWarning, conversationId]);
 
   // Close popup when clicking outside
   useEffect(() => {
@@ -86,6 +107,17 @@ function ContextUsageBar({ contextWindowSize, maxContextTokens }: ContextUsageBa
     }
   }, [showPopup]);
 
+  const handleContinue = async () => {
+    if (continuing || !onContinueConversation) return;
+    setContinuing(true);
+    try {
+      await onContinueConversation();
+      setShowPopup(false);
+    } finally {
+      setContinuing(false);
+    }
+  };
+
   return (
     <div ref={barRef}>
       {showPopup && popupPosition && (
@@ -113,6 +145,26 @@ function ContextUsageBar({ contextWindowSize, maxContextTokens }: ContextUsageBa
               <br />
               For best results, start a new conversation.
             </div>
+          )}
+          {onContinueConversation && conversationId && (
+            <button
+              onClick={handleContinue}
+              disabled={continuing}
+              style={{
+                display: "block",
+                marginTop: "8px",
+                padding: "4px 8px",
+                backgroundColor: "var(--blue-text)",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: continuing ? "not-allowed" : "pointer",
+                fontSize: "12px",
+                opacity: continuing ? 0.7 : 1,
+              }}
+            >
+              {continuing ? "Continuing..." : "Continue in new conversation"}
+            </button>
           )}
         </div>
       )}
@@ -391,6 +443,11 @@ interface ChatInterfaceProps {
   onConversationListUpdate?: (update: ConversationListUpdate) => void;
   onConversationStateUpdate?: (state: ConversationStateUpdate) => void;
   onFirstMessage?: (message: string, model: string, cwd?: string) => Promise<void>;
+  onContinueConversation?: (
+    sourceConversationId: string,
+    model: string,
+    cwd?: string,
+  ) => Promise<void>;
   mostRecentCwd?: string | null;
   isDrawerCollapsed?: boolean;
   onToggleDrawerCollapse?: () => void;
@@ -407,6 +464,7 @@ function ChatInterface({
   onConversationListUpdate,
   onConversationStateUpdate,
   onFirstMessage,
+  onContinueConversation,
   mostRecentCwd,
   isDrawerCollapsed,
   onToggleDrawerCollapse,
@@ -858,6 +916,16 @@ function ChatInterface({
     } finally {
       setCancelling(false);
     }
+  };
+
+  // Handler to continue conversation in a new one
+  const handleContinueConversation = async () => {
+    if (!conversationId || !onContinueConversation) return;
+    await onContinueConversation(
+      conversationId,
+      selectedModel,
+      currentConversation?.cwd || selectedCwd || undefined,
+    );
   };
 
   const getDisplayTitle = () => {
@@ -1464,6 +1532,10 @@ function ChatInterface({
                 maxContextTokens={
                   models.find((m) => m.id === selectedModel)?.max_context_tokens || 200000
                 }
+                conversationId={conversationId}
+                onContinueConversation={
+                  onContinueConversation ? handleContinueConversation : undefined
+                }
               />
             </div>
           ) : // Idle state - show ready message, or configuration for empty conversation
@@ -1527,13 +1599,16 @@ function ChatInterface({
                 maxContextTokens={
                   models.find((m) => m.id === selectedModel)?.max_context_tokens || 200000
                 }
+                conversationId={conversationId}
+                onContinueConversation={
+                  onContinueConversation ? handleContinueConversation : undefined
+                }
               />
             </div>
           )}
         </div>
       </div>
 
-      {/* Message input */}
       {/* Message input */}
       <MessageInput
         key={conversationId || "new"}
