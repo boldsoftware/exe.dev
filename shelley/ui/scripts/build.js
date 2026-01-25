@@ -105,7 +105,7 @@ async function build() {
     // Generate gzip versions of large files and remove originals to reduce binary size
     // The server will decompress on-the-fly for the rare clients that don't support gzip
     log('\nGenerating gzip compressed files...');
-    const filesToCompress = ['monaco-editor.js', 'editor.worker.js', 'main.js', 'monaco-editor.css', 'styles.css'];
+    const filesToCompress = ['monaco-editor.js', 'editor.worker.js', 'main.js', 'monaco-editor.css', 'styles.css', 'main.css'];
     const checksums = {};
     let totalOrigSize = 0;
     let totalGzSize = 0;

@@ -264,6 +264,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/upload", s.handleUpload)                      // Binary uploads
 	mux.HandleFunc("/api/read", s.handleRead)                          // Serves images
 	mux.Handle("/api/write-file", http.HandlerFunc(s.handleWriteFile)) // Small response
+	mux.HandleFunc("/api/exec-ws", s.handleExecWS)                     // Websocket for shell commands
 
 	// Custom models API
 	mux.Handle("/api/custom-models", http.HandlerFunc(s.handleCustomModels))

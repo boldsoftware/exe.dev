@@ -41,6 +41,9 @@ body {
   --error-bg: #fef2f2;
   --error-border: #fecaca;
   --error-text: #991b1b;
+  --warning-bg: #fffbeb;
+  --warning-border: #fcd34d;
+  --warning-text: #92400e;
   --blue-bg: #eff6ff;
   --blue-border: #bfdbfe;
   --blue-text: #1e40af;
@@ -74,6 +77,9 @@ body {
   --error-bg: rgba(239, 68, 68, 0.1);
   --error-border: rgba(239, 68, 68, 0.3);
   --error-text: #fca5a5;
+  --warning-bg: rgba(251, 191, 36, 0.15);
+  --warning-border: #fbbf24;
+  --warning-text: #fcd34d;
   --blue-bg: rgba(59, 130, 246, 0.1);
   --blue-border: rgba(59, 130, 246, 0.3);
   --blue-text: #93c5fd;
@@ -2016,6 +2022,34 @@ button {
 
 .message-input-container.drag-over {
   border-color: var(--primary);
+}
+
+.message-input-container.shell-mode .message-input-form {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+
+.message-input-container.shell-mode .message-textarea {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  background: transparent;
+  padding-left: 36px;
+}
+
+.message-input-container.shell-mode .message-textarea::placeholder {
+  font-family: inherit;
+}
+
+.shell-mode-indicator {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--warning-text);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .drag-overlay {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Message,
   Conversation,
@@ -27,6 +27,15 @@ import SubagentTool from "./SubagentTool";
 import OutputIframeTool from "./OutputIframeTool";
 import DirectoryPickerModal from "./DirectoryPickerModal";
 import { useVersionChecker } from "./VersionChecker";
+import TerminalWidget from "./TerminalWidget";
+
+// Ephemeral terminal instance (not persisted to database)
+interface EphemeralTerminal {
+  id: string;
+  command: string;
+  cwd: string;
+  createdAt: Date;
+}
 
 interface ContextUsageBarProps {
   contextWindowSize: number;
@@ -584,6 +593,9 @@ function ChatInterface({
   const [, setReconnectAttempts] = useState(0);
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  // Ephemeral terminals are local-only and not persisted to the database
+  const [ephemeralTerminals, setEphemeralTerminals] = useState<EphemeralTerminal[]>([]);
+  const [terminalInjectedText, setTerminalInjectedText] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -594,6 +606,9 @@ function ChatInterface({
 
   // Load messages and set up streaming
   useEffect(() => {
+    // Clear ephemeral terminals when conversation changes
+    setEphemeralTerminals([]);
+
     if (conversationId) {
       setAgentWorking(false);
       loadMessages();
@@ -840,6 +855,25 @@ function ChatInterface({
   const sendMessage = async (message: string) => {
     if (!message.trim() || sending) return;
 
+    // Check if this is a shell command (starts with "!")
+    const trimmedMessage = message.trim();
+    if (trimmedMessage.startsWith("!")) {
+      const shellCommand = trimmedMessage.slice(1).trim();
+      if (shellCommand) {
+        // Create an ephemeral terminal
+        const terminal: EphemeralTerminal = {
+          id: `term-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          command: shellCommand,
+          cwd: selectedCwd || window.__SHELLEY_INIT__?.default_cwd || "/",
+          createdAt: new Date(),
+        };
+        setEphemeralTerminals((prev) => [...prev, terminal]);
+        // Scroll to bottom to show the new terminal
+        setTimeout(() => scrollToBottom(), 100);
+      }
+      return;
+    }
+
     try {
       setSending(true);
       setError(null);
@@ -877,6 +911,11 @@ function ChatInterface({
     userScrolledRef.current = false;
     setShowScrollToBottom(false);
   };
+
+  // Callback for terminals to insert text into the message input
+  const handleInsertFromTerminal = useCallback((text: string) => {
+    setTerminalInjectedText(text);
+  }, []);
 
   const handleManualReconnect = () => {
     if (!conversationId || eventSourceRef.current) return;
@@ -1124,7 +1163,18 @@ function ChatInterface({
   };
 
   const renderMessages = () => {
-    if (messages.length === 0) {
+    // Build ephemeral terminal elements first - they should always render
+    const terminalElements = ephemeralTerminals.map((terminal) => (
+      <TerminalWidget
+        key={terminal.id}
+        command={terminal.command}
+        cwd={terminal.cwd}
+        onInsertIntoInput={handleInsertFromTerminal}
+        onClose={() => setEphemeralTerminals((prev) => prev.filter((t) => t.id !== terminal.id))}
+      />
+    ));
+
+    if (messages.length === 0 && ephemeralTerminals.length === 0) {
       const proxyURL = `https://${hostname}/`;
       return (
         <div className="empty-state">
@@ -1158,6 +1208,11 @@ function ChatInterface({
           </div>
         </div>
       );
+    }
+
+    // If we have terminals but no messages, just show terminals
+    if (messages.length === 0) {
+      return terminalElements;
     }
 
     const coalescedItems = processMessages();
@@ -1194,7 +1249,8 @@ function ChatInterface({
       return null;
     });
 
-    return rendered;
+    // Append ephemeral terminals at the end
+    return [...rendered, ...terminalElements];
   };
 
   return (
@@ -1622,8 +1678,11 @@ function ChatInterface({
         onSend={sendMessage}
         disabled={sending || loading}
         autoFocus={true}
-        injectedText={diffCommentText}
-        onClearInjectedText={() => setDiffCommentText("")}
+        injectedText={terminalInjectedText || diffCommentText}
+        onClearInjectedText={() => {
+          setDiffCommentText("");
+          setTerminalInjectedText(null);
+        }}
         persistKey={conversationId || "new-conversation"}
       />
 
