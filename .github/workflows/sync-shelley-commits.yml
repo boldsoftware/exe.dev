@@ -13,19 +13,31 @@ jobs:
       contents: write
 
     steps:
+      - name: Create GitHub App Token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: 2710433
+          private-key: ${{ secrets.EXE_COMMIT_QUEUE_APP_PRIVATE_KEY }}
+          owner: boldsoftware
+          repositories: exe,shelley
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Need full history for the sync script
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Run sync script
         id: sync
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          git remote add shelley https://github.com/boldsoftware/shelley.git
+          git remote add shelley "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/shelley.git"
           git fetch shelley
           if ./bin/sync-commits-from-shelley.sh shelley/main; then
             if git tag -l | grep -q "^new-exe-commit$"; then
+              git remote set-url origin "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exe.git"
               git push origin new-exe-commit:main
               git tag -d new-exe-commit || true
             fi
