@@ -2810,11 +2810,32 @@ svg {
 }
 
 .directory-picker-current {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.75rem;
   color: var(--text-secondary);
   font-family: var(--font-mono);
   margin-bottom: 0.5rem;
   padding: 0.25rem 0;
+}
+
+.directory-picker-current-path {
+  flex-shrink: 0;
+}
+
+.directory-picker-current-git .directory-picker-current-path {
+  color: var(--accent-color, #f97316);
+}
+
+.directory-picker-current-subject {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
 }
 
 .directory-picker-filter {
@@ -2885,6 +2906,25 @@ svg {
   height: 1rem;
   flex-shrink: 0;
   color: var(--text-secondary);
+}
+
+.directory-picker-entry-name {
+  flex-shrink: 0;
+}
+
+.directory-picker-entry-git .directory-picker-icon {
+  color: var(--accent-color, #f97316);
+}
+
+.directory-picker-git-subject {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
 }
 
 .directory-picker-empty {

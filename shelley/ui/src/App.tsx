@@ -215,7 +215,11 @@ function App() {
   };
 
   const startNewConversation = () => {
-    // Just clear the current conversation - a new one will be created when the user sends their first message
+    // Save the current conversation's cwd to localStorage so the new conversation picks it up
+    if (currentConversation?.cwd) {
+      localStorage.setItem("shelley_selected_cwd", currentConversation.cwd);
+    }
+    // Clear the current conversation - a new one will be created when the user sends their first message
     setCurrentConversationId(null);
     setDrawerOpen(false);
   };
@@ -298,8 +302,9 @@ function App() {
     (conv) => conv.conversation_id === currentConversationId,
   );
 
-  // Get the CWD from the most recent conversation (first in list, sorted by updated_at desc)
-  const mostRecentCwd = conversations.length > 0 ? conversations[0].cwd : null;
+  // Get the CWD from the current conversation, or fall back to the most recent conversation
+  const mostRecentCwd =
+    currentConversation?.cwd || (conversations.length > 0 ? conversations[0].cwd : null);
 
   const handleFirstMessage = async (message: string, model: string, cwd?: string) => {
     try {

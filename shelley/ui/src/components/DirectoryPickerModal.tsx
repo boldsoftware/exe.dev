@@ -4,12 +4,14 @@ import { api } from "../services/api";
 interface DirectoryEntry {
   name: string;
   is_dir: boolean;
+  git_head_subject?: string;
 }
 
 interface CachedDirectory {
   path: string;
   parent: string;
   entries: DirectoryEntry[];
+  git_head_subject?: string;
 }
 
 interface DirectoryPickerModalProps {
@@ -100,6 +102,7 @@ function DirectoryPickerModal({
         path: result.path,
         parent: result.parent,
         entries: result.entries || [],
+        git_head_subject: result.git_head_subject,
       };
 
       // Cache it
@@ -114,6 +117,9 @@ function DirectoryPickerModal({
     }
   }, []);
 
+  // Track the current expected path to avoid race conditions
+  const expectedPathRef = useRef<string>("");
+
   // Update display when input changes
   useEffect(() => {
     if (!isOpen) return;
@@ -121,9 +127,14 @@ function DirectoryPickerModal({
     const { dirPath, prefix } = parseInputPath(inputPath);
     setFilterPrefix(prefix);
 
+    // Track which path we expect to display
+    const normalizedDirPath = dirPath || "/";
+    expectedPathRef.current = normalizedDirPath;
+
     // Load the directory
     loadDirectory(dirPath).then((dir) => {
-      if (dir) {
+      // Only update if this is still the path we want
+      if (dir && expectedPathRef.current === normalizedDirPath) {
         setDisplayDir(dir);
         setError(null);
       }
@@ -313,9 +324,21 @@ function DirectoryPickerModal({
 
           {/* Current directory indicator */}
           {displayDir && (
-            <div className="directory-picker-current">
-              {displayDir.path}
-              {filterPrefix && <span className="directory-picker-filter">/{filterPrefix}*</span>}
+            <div
+              className={`directory-picker-current${displayDir.git_head_subject ? " directory-picker-current-git" : ""}`}
+            >
+              <span className="directory-picker-current-path">
+                {displayDir.path}
+                {filterPrefix && <span className="directory-picker-filter">/{filterPrefix}*</span>}
+              </span>
+              {displayDir.git_head_subject && (
+                <span
+                  className="directory-picker-current-subject"
+                  title={displayDir.git_head_subject}
+                >
+                  {displayDir.git_head_subject}
+                </span>
+              )}
             </div>
           )}
 
@@ -360,7 +383,7 @@ function DirectoryPickerModal({
               {filteredEntries.map((entry) => (
                 <button
                   key={entry.name}
-                  className="directory-picker-entry"
+                  className={`directory-picker-entry${entry.git_head_subject ? " directory-picker-entry-git" : ""}`}
                   onClick={() => handleEntryClick(entry)}
                 >
                   <svg
@@ -376,7 +399,7 @@ function DirectoryPickerModal({
                       d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
                     />
                   </svg>
-                  <span>
+                  <span className="directory-picker-entry-name">
                     {filterPrefix &&
                     entry.name.toLowerCase().startsWith(filterPrefix.toLowerCase()) ? (
                       <>
@@ -387,6 +410,11 @@ function DirectoryPickerModal({
                       entry.name
                     )}
                   </span>
+                  {entry.git_head_subject && (
+                    <span className="directory-picker-git-subject" title={entry.git_head_subject}>
+                      {entry.git_head_subject}
+                    </span>
+                  )}
                 </button>
               ))}
 

@@ -125,7 +125,8 @@ class ApiService {
   async listDirectory(path?: string): Promise<{
     path: string;
     parent: string;
-    entries: Array<{ name: string; is_dir: boolean }>;
+    entries: Array<{ name: string; is_dir: boolean; git_head_subject?: string }>;
+    git_head_subject?: string;
     error?: string;
   }> {
     const url = path

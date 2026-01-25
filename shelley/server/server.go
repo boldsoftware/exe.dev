@@ -342,15 +342,17 @@ func (s *Server) handleValidateCwd(w http.ResponseWriter, r *http.Request) {
 
 // DirectoryEntry represents a single directory entry for the directory picker
 type DirectoryEntry struct {
-	Name  string `json:"name"`
-	IsDir bool   `json:"is_dir"`
+	Name           string `json:"name"`
+	IsDir          bool   `json:"is_dir"`
+	GitHeadSubject string `json:"git_head_subject,omitempty"`
 }
 
 // ListDirectoryResponse is the response from the list-directory endpoint
 type ListDirectoryResponse struct {
-	Path    string           `json:"path"`
-	Parent  string           `json:"parent"`
-	Entries []DirectoryEntry `json:"entries"`
+	Path           string           `json:"path"`
+	Parent         string           `json:"parent"`
+	Entries        []DirectoryEntry `json:"entries"`
+	GitHeadSubject string           `json:"git_head_subject,omitempty"`
 }
 
 // handleListDirectory lists the contents of a directory for the directory picker
@@ -421,16 +423,22 @@ func (s *Server) handleListDirectory(w http.ResponseWriter, r *http.Request) {
 	// Build response with only directories (for directory picker)
 	var entries []DirectoryEntry
 	for _, entry := range dirEntries {
-		// Skip hidden files/directories (starting with .)
-		if strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
 		// Only include directories
 		if entry.IsDir() {
-			entries = append(entries, DirectoryEntry{
+			dirEntry := DirectoryEntry{
 				Name:  entry.Name(),
 				IsDir: true,
-			})
+			}
+
+			// Check if this is a git repo root and get HEAD commit subject
+			entryPath := filepath.Join(path, entry.Name())
+			if isGitRepo(entryPath) {
+				if subject := getGitHeadSubject(entryPath); subject != "" {
+					dirEntry.GitHeadSubject = subject
+				}
+			}
+
+			entries = append(entries, dirEntry)
 		}
 	}
 
@@ -447,8 +455,48 @@ func (s *Server) handleListDirectory(w http.ResponseWriter, r *http.Request) {
 		Entries: entries,
 	}
 
+	// Check if the current directory itself is a git repo
+	if isGitRepo(path) {
+		response.GitHeadSubject = getGitHeadSubject(path)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// getGitHeadSubject returns the subject line of HEAD commit for a git repository.
+// Returns empty string if unable to get the subject.
+// isGitRepo checks if the given path is a git repository root.
+// Returns true for both regular repos (.git directory) and worktrees (.git file with gitdir:).
+func isGitRepo(dirPath string) bool {
+	gitPath := filepath.Join(dirPath, ".git")
+	fi, err := os.Stat(gitPath)
+	if err != nil {
+		return false
+	}
+	if fi.IsDir() {
+		return true // regular .git directory
+	}
+	if fi.Mode().IsRegular() {
+		// Check if it's a worktree .git file
+		content, err := os.ReadFile(gitPath)
+		if err == nil && strings.HasPrefix(string(content), "gitdir:") {
+			return true
+		}
+	}
+	return false
+}
+
+// getGitHeadSubject returns the subject line of HEAD commit for a git repository.
+// Returns empty string if unable to get the subject.
+func getGitHeadSubject(repoPath string) string {
+	cmd := exec.Command("git", "log", "-1", "--format=%s")
+	cmd.Dir = repoPath
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
 }
 
 // handleCreateDirectory creates a new directory

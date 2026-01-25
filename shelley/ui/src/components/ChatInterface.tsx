@@ -510,6 +510,13 @@ function ChatInterface({
     localStorage.setItem("shelley_selected_cwd", cwd);
   };
 
+  // Reset cwdInitialized when switching to a new conversation so we re-read from localStorage
+  useEffect(() => {
+    if (conversationId === null) {
+      setCwdInitialized(false);
+    }
+  }, [conversationId]);
+
   // Initialize CWD with priority: localStorage > mostRecentCwd > server default
   useEffect(() => {
     if (cwdInitialized) return;

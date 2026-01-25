@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -207,7 +208,7 @@ func TestListDirectory(t *testing.T) {
 		}
 	})
 
-	t.Run("hidden_directories_excluded", func(t *testing.T) {
+	t.Run("hidden_directories_included", func(t *testing.T) {
 		// Create a temp directory with a hidden directory
 		tmpDir, err := os.MkdirTemp("", "listdir_hidden_test")
 		if err != nil {
@@ -240,13 +241,227 @@ func TestListDirectory(t *testing.T) {
 			t.Fatalf("failed to parse response: %v", err)
 		}
 
-		// Should only include the visible directory, not the hidden one
-		if len(resp.Entries) != 1 {
-			t.Errorf("expected 1 entry, got: %d", len(resp.Entries))
+		// Should include both visible and hidden directories
+		if len(resp.Entries) != 2 {
+			t.Errorf("expected 2 entries, got: %d", len(resp.Entries))
 		}
 
-		if len(resp.Entries) > 0 && resp.Entries[0].Name != "visible" {
-			t.Errorf("expected entry 'visible', got: %s", resp.Entries[0].Name)
+		// Check that both directories are present (sorted alphabetically, hidden first)
+		names := make(map[string]bool)
+		for _, e := range resp.Entries {
+			names[e.Name] = true
+		}
+		if !names[".hidden"] {
+			t.Errorf("expected .hidden to be included")
+		}
+		if !names["visible"] {
+			t.Errorf("expected visible to be included")
+		}
+	})
+
+	t.Run("git_repo_head_subject", func(t *testing.T) {
+		// Create a temp directory containing a git repo
+		tmpDir, err := os.MkdirTemp("", "listdir_git_test")
+		if err != nil {
+			t.Fatalf("failed to create temp dir: %v", err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		// Create a subdirectory that will be a git repo
+		repoDir := tmpDir + "/myrepo"
+		if err := os.Mkdir(repoDir, 0o755); err != nil {
+			t.Fatalf("failed to create repo dir: %v", err)
+		}
+
+		// Initialize git repo and create a commit
+		cmd := exec.Command("git", "init")
+		cmd.Dir = repoDir
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("failed to init git: %v", err)
+		}
+
+		cmd = exec.Command("git", "config", "user.email", "test@example.com")
+		cmd.Dir = repoDir
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("failed to config git email: %v", err)
+		}
+
+		cmd = exec.Command("git", "config", "user.name", "Test User")
+		cmd.Dir = repoDir
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("failed to config git name: %v", err)
+		}
+
+		// Create a file and commit it
+		if err := os.WriteFile(repoDir+"/README.md", []byte("# Hello"), 0o644); err != nil {
+			t.Fatalf("failed to write file: %v", err)
+		}
+
+		cmd = exec.Command("git", "add", "README.md")
+		cmd.Dir = repoDir
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("failed to git add: %v", err)
+		}
+
+		cmd = exec.Command("git", "commit", "-m", "Test commit subject line\n\nPrompt: test")
+		cmd.Dir = repoDir
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("failed to git commit: %v", err)
+		}
+
+		// Create another directory that is not a git repo
+		nonRepoDir := tmpDir + "/notarepo"
+		if err := os.Mkdir(nonRepoDir, 0o755); err != nil {
+			t.Fatalf("failed to create non-repo dir: %v", err)
+		}
+
+		req := httptest.NewRequest("GET", "/api/list-directory?path="+tmpDir, nil)
+		w := httptest.NewRecorder()
+		h.server.handleListDirectory(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var resp ListDirectoryResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to parse response: %v", err)
+		}
+
+		if len(resp.Entries) != 2 {
+			t.Fatalf("expected 2 entries, got: %d", len(resp.Entries))
+		}
+
+		// Find the git repo entry and verify it has the commit subject
+		var gitEntry, nonGitEntry *DirectoryEntry
+		for i := range resp.Entries {
+			if resp.Entries[i].Name == "myrepo" {
+				gitEntry = &resp.Entries[i]
+			} else if resp.Entries[i].Name == "notarepo" {
+				nonGitEntry = &resp.Entries[i]
+			}
+		}
+
+		if gitEntry == nil {
+			t.Fatal("expected to find myrepo entry")
+		}
+		if nonGitEntry == nil {
+			t.Fatal("expected to find notarepo entry")
+		}
+
+		// Git repo should have the HEAD commit subject
+		if gitEntry.GitHeadSubject != "Test commit subject line" {
+			t.Errorf("expected git_head_subject 'Test commit subject line', got: %q", gitEntry.GitHeadSubject)
+		}
+
+		// Non-git dir should not have a subject
+		if nonGitEntry.GitHeadSubject != "" {
+			t.Errorf("expected empty git_head_subject for non-git dir, got: %q", nonGitEntry.GitHeadSubject)
+		}
+	})
+
+	t.Run("git_worktree_head_subject", func(t *testing.T) {
+		// Create a temp directory containing a git repo and a worktree
+		tmpDir, err := os.MkdirTemp("", "listdir_worktree_test")
+		if err != nil {
+			t.Fatalf("failed to create temp dir: %v", err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		// Create a main git repo
+		mainRepo := tmpDir + "/main-repo"
+		if err := os.Mkdir(mainRepo, 0o755); err != nil {
+			t.Fatalf("failed to create main repo dir: %v", err)
+		}
+
+		// Initialize git repo and create a commit
+		cmd := exec.Command("git", "init")
+		cmd.Dir = mainRepo
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("failed to init git: %v", err)
+		}
+
+		cmd = exec.Command("git", "config", "user.email", "test@example.com")
+		cmd.Dir = mainRepo
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("failed to config git email: %v", err)
+		}
+
+		cmd = exec.Command("git", "config", "user.name", "Test User")
+		cmd.Dir = mainRepo
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("failed to config git name: %v", err)
+		}
+
+		// Create a file and commit it
+		if err := os.WriteFile(mainRepo+"/README.md", []byte("# Hello"), 0o644); err != nil {
+			t.Fatalf("failed to write file: %v", err)
+		}
+
+		cmd = exec.Command("git", "add", "README.md")
+		cmd.Dir = mainRepo
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("failed to git add: %v", err)
+		}
+
+		cmd = exec.Command("git", "commit", "-m", "Main repo commit\n\nPrompt: test")
+		cmd.Dir = mainRepo
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("failed to git commit: %v", err)
+		}
+
+		// Create a branch and worktree
+		cmd = exec.Command("git", "branch", "feature-branch")
+		cmd.Dir = mainRepo
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("failed to create branch: %v", err)
+		}
+
+		worktreePath := tmpDir + "/worktree-dir"
+		cmd = exec.Command("git", "worktree", "add", worktreePath, "feature-branch")
+		cmd.Dir = mainRepo
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("failed to create worktree: %v", err)
+		}
+
+		// Verify the worktree has a .git file (not directory)
+		gitPath := worktreePath + "/.git"
+		fi, err := os.Stat(gitPath)
+		if err != nil {
+			t.Fatalf("failed to stat worktree .git: %v", err)
+		}
+		if fi.IsDir() {
+			t.Fatalf("expected .git to be a file for worktree, got directory")
+		}
+
+		req := httptest.NewRequest("GET", "/api/list-directory?path="+tmpDir, nil)
+		w := httptest.NewRecorder()
+		h.server.handleListDirectory(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var resp ListDirectoryResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to parse response: %v", err)
+		}
+
+		// Find the worktree entry and verify it has the commit subject
+		var worktreeEntry *DirectoryEntry
+		for i := range resp.Entries {
+			if resp.Entries[i].Name == "worktree-dir" {
+				worktreeEntry = &resp.Entries[i]
+			}
+		}
+
+		if worktreeEntry == nil {
+			t.Fatal("expected to find worktree-dir entry")
+		}
+
+		// Worktree should have the HEAD commit subject
+		if worktreeEntry.GitHeadSubject != "Main repo commit" {
+			t.Errorf("expected git_head_subject 'Main repo commit', got: %q", worktreeEntry.GitHeadSubject)
 		}
 	})
 }

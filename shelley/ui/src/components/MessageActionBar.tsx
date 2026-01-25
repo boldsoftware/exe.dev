@@ -30,7 +30,7 @@ function MessageActionBar({ onCopy, onShowUsage }: MessageActionBarProps) {
       data-action-bar
       style={{
         position: "absolute",
-        top: "-28px",
+        top: "8px",
         right: "8px",
         display: "flex",
         gap: "2px",
@@ -38,7 +38,6 @@ function MessageActionBar({ onCopy, onShowUsage }: MessageActionBarProps) {
         border: "1px solid var(--border)",
         borderRadius: "4px",
         padding: "2px",
-
         zIndex: 10,
       }}
     >
