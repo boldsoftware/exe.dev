@@ -719,6 +719,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleBillingUpdate(w, r)
 	case "/billing/success":
 		s.handleBillingSuccess(w, r)
+	case "/take-my-money":
+		http.Redirect(w, r, "/billing/update", http.StatusMovedPermanently)
 	case "/auth":
 		s.handleAuth(w, r)
 	case "/auth/confirm":
