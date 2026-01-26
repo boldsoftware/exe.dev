@@ -294,10 +294,8 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	} else {
 		accountID = existingAccount.ID
-		// BillingStatus_2 contains the computed status from billing_events
-		if status, ok := existingAccount.BillingStatus_2.(string); ok {
-			hasActiveBilling = status == "active"
-		}
+		// BillingStatus contains the computed status from billing_events
+		hasActiveBilling = existingAccount.BillingStatus == "active"
 	}
 
 	// Skip billing for users without active billing if SkipBilling is set (for tests)

@@ -9,25 +9,25 @@ INSERT INTO billing_events (account_id, event_type, event_at)
 SELECT id, 'active', ?2 FROM accounts WHERE created_by = ?1;
 
 -- name: GetAccount :one
-SELECT * FROM accounts WHERE id = ?;
+SELECT id, created_by, created_at FROM accounts WHERE id = ?;
 
 -- name: GetAccountByUserID :one
-SELECT * FROM accounts WHERE created_by = ?;
+SELECT id, created_by, created_at FROM accounts WHERE created_by = ?;
 
 -- name: GetAccountWithBillingStatus :one
 -- Returns account info with billing status derived from billing_events.
 -- billing_status is 'pending' if no events, otherwise the most recent event_type.
-SELECT a.*,
-    COALESCE(
+SELECT a.id, a.created_by, a.created_at,
+    CAST(COALESCE(
         (SELECT e.event_type FROM billing_events e
          WHERE e.account_id = a.id
          ORDER BY parse_timestamp(e.event_at) DESC, e.id DESC LIMIT 1),
         'pending'
-    ) AS billing_status
+    ) AS TEXT) AS billing_status
 FROM accounts a WHERE a.created_by = ?;
 
 -- name: ListAllAccounts :many
-SELECT * FROM accounts;
+SELECT id, created_by, created_at FROM accounts;
 
 -- name: GetUserBillingStatus :one
 -- Returns the user's billing information for determining payment status.

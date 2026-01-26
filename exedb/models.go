@@ -9,10 +9,9 @@ import (
 )
 
 type Account struct {
-	ID            string    `db:"id" json:"id"`
-	CreatedBy     string    `db:"created_by" json:"created_by"`
-	CreatedAt     time.Time `db:"created_at" json:"created_at"`
-	BillingStatus string    `db:"billing_status" json:"billing_status"`
+	ID        string    `db:"id" json:"id"`
+	CreatedBy string    `db:"created_by" json:"created_by"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
 }
 
 type AuthCookie struct {

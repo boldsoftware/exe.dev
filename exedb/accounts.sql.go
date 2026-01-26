@@ -58,54 +58,43 @@ func (q *Queries) CountAccountsByBillingStatus(ctx context.Context, dollar_1 int
 }
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, created_by, created_at, billing_status FROM accounts WHERE id = ?
+SELECT id, created_by, created_at FROM accounts WHERE id = ?
 `
 
 func (q *Queries) GetAccount(ctx context.Context, id string) (Account, error) {
 	row := q.queryRow(ctx, q.getAccountStmt, getAccount, id)
 	var i Account
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.BillingStatus,
-	)
+	err := row.Scan(&i.ID, &i.CreatedBy, &i.CreatedAt)
 	return i, err
 }
 
 const getAccountByUserID = `-- name: GetAccountByUserID :one
-SELECT id, created_by, created_at, billing_status FROM accounts WHERE created_by = ?
+SELECT id, created_by, created_at FROM accounts WHERE created_by = ?
 `
 
 func (q *Queries) GetAccountByUserID(ctx context.Context, createdBy string) (Account, error) {
 	row := q.queryRow(ctx, q.getAccountByUserIDStmt, getAccountByUserID, createdBy)
 	var i Account
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.BillingStatus,
-	)
+	err := row.Scan(&i.ID, &i.CreatedBy, &i.CreatedAt)
 	return i, err
 }
 
 const getAccountWithBillingStatus = `-- name: GetAccountWithBillingStatus :one
-SELECT a.id, a.created_by, a.created_at, a.billing_status,
-    COALESCE(
+SELECT a.id, a.created_by, a.created_at,
+    CAST(COALESCE(
         (SELECT e.event_type FROM billing_events e
          WHERE e.account_id = a.id
          ORDER BY parse_timestamp(e.event_at) DESC, e.id DESC LIMIT 1),
         'pending'
-    ) AS billing_status
+    ) AS TEXT) AS billing_status
 FROM accounts a WHERE a.created_by = ?
 `
 
 type GetAccountWithBillingStatusRow struct {
-	ID              string      `db:"id" json:"id"`
-	CreatedBy       string      `db:"created_by" json:"created_by"`
-	CreatedAt       time.Time   `db:"created_at" json:"created_at"`
-	BillingStatus   string      `db:"billing_status" json:"billing_status"`
-	BillingStatus_2 interface{} `db:"billing_status_2" json:"billing_status_2"`
+	ID            string    `db:"id" json:"id"`
+	CreatedBy     string    `db:"created_by" json:"created_by"`
+	CreatedAt     time.Time `db:"created_at" json:"created_at"`
+	BillingStatus string    `db:"billing_status" json:"billing_status"`
 }
 
 // Returns account info with billing status derived from billing_events.
@@ -118,7 +107,6 @@ func (q *Queries) GetAccountWithBillingStatus(ctx context.Context, createdBy str
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.BillingStatus,
-		&i.BillingStatus_2,
 	)
 	return i, err
 }
@@ -210,7 +198,7 @@ func (q *Queries) InsertAccount(ctx context.Context, arg InsertAccountParams) er
 }
 
 const listAllAccounts = `-- name: ListAllAccounts :many
-SELECT id, created_by, created_at, billing_status FROM accounts
+SELECT id, created_by, created_at FROM accounts
 `
 
 func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
@@ -222,12 +210,7 @@ func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
 	items := []Account{}
 	for rows.Next() {
 		var i Account
-		if err := rows.Scan(
-			&i.ID,
-			&i.CreatedBy,
-			&i.CreatedAt,
-			&i.BillingStatus,
-		); err != nil {
+		if err := rows.Scan(&i.ID, &i.CreatedBy, &i.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

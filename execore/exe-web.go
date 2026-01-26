@@ -1466,10 +1466,8 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	var billingStatus string
 	account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountWithBillingStatus, userID)
 	if err == nil {
-		// BillingStatus_2 is the derived status from billing_events table
-		if statusVal, ok := account.BillingStatus_2.(string); ok {
-			billingStatus = statusVal
-		}
+		// BillingStatus is the derived status from billing_events table
+		billingStatus = account.BillingStatus
 		if billingStatus == "active" {
 			hasBilling = true
 		}
