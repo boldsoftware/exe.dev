@@ -26,6 +26,7 @@ import (
 	"exe.dev/llmpricing"
 	"exe.dev/sqlite"
 	sloghttp "github.com/samber/slog-http"
+	"golang.org/x/net/http2"
 )
 
 const sseScannerBufSize = 256 * 1024
@@ -124,7 +125,10 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		data, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			a.log.ErrorContext(ctx, "couldn't read unary response body", "error", err)
+			var streamErr http2.StreamError
+			if !errors.As(err, &streamErr) {
+				a.log.ErrorContext(ctx, "couldn't read unary response body", "error", err)
+			}
 			return err
 		}
 		resp.Body = io.NopCloser(bytes.NewReader(data))
@@ -183,8 +187,14 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 				}
 				fmt.Fprintln(bodyWriter, line)
 			}
-			if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
-				a.log.ErrorContext(ctx, "Proxy SSE scanner", "error", err)
+			if err := scanner.Err(); err != nil {
+				var streamErr http2.StreamError
+				switch {
+				case errors.Is(err, context.Canceled), errors.As(err, &streamErr):
+					// common, uninteresting error, ignore
+				default:
+					a.log.ErrorContext(ctx, "Proxy SSE scanner", "error", err)
+				}
 			}
 			bodyWriter.Close()
 		}()
