@@ -73,8 +73,12 @@ func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstanc
 			QueueSize: 64,
 		})
 	}
-	sharedMemory := true
-	mergeableMemory := true
+
+	// Using virtiofs requires using shared memory.
+	// When not using shared memory, enable KSM.
+	sharedMemory := len(virtiofsInstances) > 0
+	mergeableMemory := len(virtiofsInstances) == 0
+
 	vCfg := &client.VmConfig{
 		Cpus: &client.CpusConfig{
 			BootVcpus: int(cfg.CPUs),
