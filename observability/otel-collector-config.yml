@@ -250,6 +250,8 @@ exporters:
       s3_bucket: exe.dev-logs
       s3_prefix: staging
       s3_partition_format: 'year=%Y/month=%m/day=%d/hour=%H'
+      file_prefix: logs
+      compression: gzip
     marshaler: otlp_json
 
   # S3 exporter for production logs
@@ -260,6 +262,8 @@ exporters:
       s3_bucket: exe.dev-logs
       s3_prefix: production
       s3_partition_format: 'year=%Y/month=%m/day=%d/hour=%H'
+      file_prefix: logs
+      compression: gzip
     marshaler: otlp_json
 
   # S3 exporter for unknown environment logs
@@ -269,6 +273,8 @@ exporters:
       s3_bucket: exe.dev-logs
       s3_prefix: unknown
       s3_partition_format: 'year=%Y/month=%m/day=%d/hour=%H'
+      file_prefix: logs
+      compression: gzip
     marshaler: otlp_json
 
   # S3 exporter for staging metrics
@@ -279,6 +285,8 @@ exporters:
       s3_bucket: exe.dev-logs
       s3_prefix: metrics/staging
       s3_partition_format: 'year=%Y/month=%m/day=%d/hour=%H'
+      file_prefix: metrics
+      compression: gzip
     marshaler: otlp_json
 
   # S3 exporter for production metrics
@@ -289,6 +297,8 @@ exporters:
       s3_bucket: exe.dev-logs
       s3_prefix: metrics/production
       s3_partition_format: 'year=%Y/month=%m/day=%d/hour=%H'
+      file_prefix: metrics
+      compression: gzip
     marshaler: otlp_json
 
 extensions:
