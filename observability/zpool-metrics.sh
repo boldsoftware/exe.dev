@@ -9,7 +9,7 @@ mkdir -p "$OUTPUT_DIR"
 CAPACITY=$(zpool list -H -o capacity tank 2>/dev/null | tr -d '%')
 
 if [ -n "$CAPACITY" ]; then
-    cat > "$OUTPUT_FILE.tmp" <<EOF
+    cat >"$OUTPUT_FILE.tmp" <<EOF
 # HELP zpool_capacity_percent ZFS pool capacity percentage used
 # TYPE zpool_capacity_percent gauge
 zpool_capacity_percent{pool="tank"} $CAPACITY
