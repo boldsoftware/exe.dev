@@ -1652,4 +1652,3 @@ func (s *Server) verifyDiscordLinkHMAC(discordID, discordUsername, ts, providedH
 
 	return hmac.Equal([]byte(expected), []byte(providedHMAC))
 }
-

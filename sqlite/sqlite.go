@@ -76,7 +76,7 @@ func init() {
 		formats := []string{
 			time.RFC3339,
 			time.RFC3339Nano,
-			"2006-01-02 15:04:05.999999999-07:00", // Time10
+			"2006-01-02 15:04:05.999999999-07:00",     // Time10
 			"2006-01-02 15:04:05.999999999 -0700 MST", // Go time.String()
 			"2006-01-02 15:04:05 -0700 MST",           // Go time.String() without subseconds
 			"2006-01-02 15:04:05.999999999",           // Without timezone

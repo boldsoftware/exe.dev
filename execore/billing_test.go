@@ -1735,9 +1735,9 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 			t.Fatalf("Failed to insert account: %v", err)
 		}
 		err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
-		CreatedBy: user.UserID,
-		EventAt:   time.Now(),
-	})
+			CreatedBy: user.UserID,
+			EventAt:   time.Now(),
+		})
 		if err != nil {
 			t.Fatalf("Failed to activate account: %v", err)
 		}
