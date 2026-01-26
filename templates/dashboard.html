@@ -560,6 +560,27 @@
             padding: 20px;
         }
 
+        .cmd-description {
+            display: none;
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+
+        .cmd-description.visible {
+            display: block;
+        }
+
+        .cmd-description a {
+            color: #2563eb;
+            text-decoration: none;
+        }
+
+        .cmd-description a:hover {
+            text-decoration: underline;
+        }
+
         .cmd-input-row {
             display: flex;
             align-items: center;
@@ -1156,6 +1177,7 @@
                 <button class="cmd-modal-close" onclick="cmdModal.close()">&times;</button>
             </div>
             <div class="cmd-modal-body">
+                <div class="cmd-description" id="cmd-description"></div>
                 <div class="cmd-input-row" id="cmd-input-row">
                     <span class="cmd-prompt">$</span>
                     <span class="cmd-text" id="cmd-display"></span>

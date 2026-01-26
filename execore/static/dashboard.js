@@ -392,6 +392,7 @@ function showCreationStream(hostname, boxRow) {
 class CommandModal {
     #overlay = null;
     #title = null;
+    #description = null;
     #display = null;
     #output = null;
     #runBtn = null;
@@ -411,6 +412,7 @@ class CommandModal {
     #init() {
         this.#overlay = document.getElementById('cmd-modal-overlay');
         this.#title = document.getElementById('cmd-modal-title');
+        this.#description = document.getElementById('cmd-description');
         this.#display = document.getElementById('cmd-display');
         this.#output = document.getElementById('cmd-output');
         this.#runBtn = document.getElementById('cmd-run-btn');
@@ -481,6 +483,15 @@ class CommandModal {
 
         // Set button style
         this.#runBtn.classList.toggle('danger', this.#isDanger);
+
+        // Set description (allows HTML for links)
+        if (options.description) {
+            this.#description.innerHTML = options.description;
+            this.#description.classList.add('visible');
+        } else {
+            this.#description.innerHTML = '';
+            this.#description.classList.remove('visible');
+        }
 
         if (options.command) {
             this.#currentCommand = options.command;
@@ -553,14 +564,16 @@ class CommandModal {
         cmdModal.open({
             title: 'Share VM',
             commandPrefix: `share add ${boxName}`,
-            inputPlaceholder: 'user@example.com'
+            inputPlaceholder: 'user@example.com',
+            description: 'Sharing allows the given user to access this VM\'s web server. <a href="/docs/sharing">Docs</a>'
         });
     }
 
     static createShareLink(boxName) {
         cmdModal.open({
             title: 'Create Share Link',
-            command: `share add-link ${boxName}`
+            command: `share add-link ${boxName}`,
+            description: 'A share link allows anyone with the link to create an account and then access this VM\'s web server. <a href="/docs/sharing">Docs</a>'
         });
     }
 
