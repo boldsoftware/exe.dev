@@ -40,10 +40,10 @@ func StartSubscriptionPoller(billing *billing.Manager, db *sqlite.DB, logger *sl
 func (p *SubscriptionPoller) poll() {
 	defer close(p.done)
 
-	// Look back an arbitrary 24 hours to catch any missed events.
+	// Look back an arbitrary 60 days to catch any missed events.
 	// This covers us in the unlikely event that the poller is down
 	// for a period of up to 24 hours.
-	since := time.Now().Add(-24 * time.Hour)
+	since := time.Now().Add(-60 * 24 * time.Hour)
 
 	for e := range p.billing.SubscriptionEvents(p.ctx, since) {
 		// Normalize the Stripe event timestamp for consistent storage
