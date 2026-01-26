@@ -92,5 +92,5 @@ func (s *Exelet) handleVersion(w http.ResponseWriter, r *http.Request) {
 
 func (s *Exelet) handleGitSHA(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
-	fmt.Fprint(w, version.Commit)
+	fmt.Fprint(w, logging.GitCommit())
 }

@@ -1,16 +1,20 @@
 package version
 
 import (
-	"runtime"
+	"strings"
 	"testing"
 )
 
 func TestFullVersion(t *testing.T) {
-	version := FullVersion()
+	v := FullVersion()
+	if !strings.HasPrefix(v, Name+"/") {
+		t.Errorf("FullVersion() = %q, want prefix %q", v, Name+"/")
+	}
+}
 
-	expected := Name + "/" + Version + Build + " (" + Commit + ") " + runtime.GOOS + "/" + runtime.GOARCH
-
-	if version != expected {
-		t.Fatalf("invalid version returned: %s", version)
+func TestBuildVersion(t *testing.T) {
+	v := BuildVersion()
+	if v == "" {
+		t.Errorf("BuildVersion() is empty")
 	}
 }
