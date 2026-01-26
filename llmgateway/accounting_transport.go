@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/errorz"
 	"exe.dev/llmpricing"
 	"exe.dev/sqlite"
 	sloghttp "github.com/samber/slog-http"
@@ -125,8 +126,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		data, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			var streamErr http2.StreamError
-			if !errors.As(err, &streamErr) {
+			if !errorz.HasType[http2.StreamError](err) {
 				a.log.ErrorContext(ctx, "couldn't read unary response body", "error", err)
 			}
 			return err
@@ -188,9 +188,8 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 				fmt.Fprintln(bodyWriter, line)
 			}
 			if err := scanner.Err(); err != nil {
-				var streamErr http2.StreamError
 				switch {
-				case errors.Is(err, context.Canceled), errors.As(err, &streamErr):
+				case errors.Is(err, context.Canceled), errorz.HasType[http2.StreamError](err):
 					// common, uninteresting error, ignore
 				default:
 					a.log.ErrorContext(ctx, "Proxy SSE scanner", "error", err)

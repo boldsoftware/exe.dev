@@ -28,6 +28,7 @@ import (
 
 	"exe.dev/boxname"
 	"exe.dev/container"
+	"exe.dev/errorz"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	api "exe.dev/pkg/api/exe/compute/v1"
@@ -2014,8 +2015,7 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 		cmd := strings.Join(cmdArgs, " ")
 		err := session.Run(cmd)
 		cc.SSHSession.Write([]byte("\r")) // return cursor to column 0
-		var exitErr *ssh.ExitError
-		if errors.As(err, &exitErr) {
+		if errorz.HasType[*ssh.ExitError](err) {
 			// Return nil since we already wrote output; exit code is informational
 			return nil
 		}

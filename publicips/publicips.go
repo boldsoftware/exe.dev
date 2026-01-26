@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"exe.dev/errorz"
 )
 
 const (
@@ -406,8 +408,7 @@ func isUnavailable(err error) bool {
 			return true
 		}
 	}
-	var opErr *net.OpError
-	return errors.As(err, &opErr)
+	return errorz.HasType[*net.OpError](err)
 }
 
 func defaultHTTPClient() *http.Client {

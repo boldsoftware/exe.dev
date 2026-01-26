@@ -31,6 +31,7 @@ import (
 	"exe.dev/boxname"
 	"exe.dev/cobble"
 	"exe.dev/dnsresolver"
+	"exe.dev/errorz"
 	"exe.dev/domz"
 	"exe.dev/exedb"
 	"exe.dev/exens"
@@ -283,8 +284,7 @@ func (s *Server) lookupCNAME(ctx context.Context, host string) (string, error) {
 	if err == nil {
 		return cname, nil
 	}
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
+	if errorz.HasType[*net.DNSError](err) {
 		return "", err
 	}
 	s.slog().WarnContext(ctx, "lookupCNAME: fallback to net resolver", "host", host, "error", err)

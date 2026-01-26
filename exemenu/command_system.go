@@ -17,6 +17,8 @@ import (
 	"github.com/gliderlabs/ssh"
 	"github.com/google/uuid"
 	"golang.org/x/term"
+
+	"exe.dev/errorz"
 )
 
 // CompletionContext provides context for tab completion
@@ -187,8 +189,7 @@ func (cce CommandClientError) Unwrap() error {
 }
 
 func IsCommandClientError(err error) bool {
-	var cce CommandClientError
-	return errors.As(err, &cce)
+	return errorz.HasType[CommandClientError](err)
 }
 
 // Errof returns an CommandClientError with a formatted message.
@@ -401,8 +402,7 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 	if err == nil {
 		return 0
 	}
-	var cce CommandClientError
-	if ok := errors.As(err, &cce); ok {
+	if IsCommandClientError(err) {
 		cc.WriteError("%v", err)
 	} else {
 		cc.WriteInternalError(ctx, strings.Join(commandPath, " "), err)

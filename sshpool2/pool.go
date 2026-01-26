@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"exe.dev/errorz"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ssh"
 	"tailscale.com/util/singleflight"
@@ -335,8 +336,7 @@ func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, a
 }
 
 func isSSHConnError(err error) bool {
-	var openErr *ssh.OpenChannelError
-	if errors.As(err, &openErr) {
+	if errorz.HasType[*ssh.OpenChannelError](err) {
 		return true
 	}
 	if errors.Is(err, net.ErrClosed) {
