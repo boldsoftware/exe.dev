@@ -132,11 +132,40 @@ func (m *Manager) upsertCustomer(ctx context.Context, billingID, email string) e
 	}
 	params.AddExtra("id", billingID)
 
-	_, err := c.V1Customers.Create(ctx, params)
+	customer, err := c.V1Customers.Create(ctx, params)
+
+	var requestID string
+	if err != nil {
+		var stripeErr *stripe.Error
+		if errors.As(err, &stripeErr) && stripeErr.LastResponse != nil {
+			requestID = stripeErr.LastResponse.RequestID
+		}
+	} else if customer.LastResponse != nil {
+		requestID = customer.LastResponse.RequestID
+	}
+
 	if isExists(err) {
+		m.slog().InfoContext(ctx, "customer already exists",
+			"stripe_request_id", requestID,
+			"billing_id", billingID,
+		)
 		return nil
 	}
-	return err
+	if err != nil {
+		m.slog().ErrorContext(ctx, "failed to create customer",
+			"stripe_request_id", requestID,
+			"billing_id", billingID,
+			"error", err,
+		)
+		return err
+	}
+
+	m.slog().InfoContext(ctx, "customer created",
+		"stripe_request_id", requestID,
+		"billing_id", billingID,
+		"email", email,
+	)
+	return nil
 }
 
 func isExists(err error) bool {
@@ -200,6 +229,17 @@ func (m *Manager) Subscribe(ctx context.Context, billingID string, p *SubscribeP
 	if err != nil {
 		return "", err
 	}
+
+	var requestID string
+	if sess.LastResponse != nil {
+		requestID = sess.LastResponse.RequestID
+	}
+	m.slog().InfoContext(ctx, "checkout session created",
+		"stripe_request_id", requestID,
+		"session_id", sess.ID,
+		"billing_id", billingID,
+	)
+
 	return sess.URL, nil
 }
 
@@ -210,6 +250,16 @@ func (m *Manager) hasActiveSubscription(ctx context.Context, c *stripe.Client, c
 	}
 	for sub, err := range c.V1Subscriptions.List(ctx, params) {
 		if err != nil {
+			var requestID string
+			var stripeErr *stripe.Error
+			if errors.As(err, &stripeErr) && stripeErr.LastResponse != nil {
+				requestID = stripeErr.LastResponse.RequestID
+			}
+			m.slog().ErrorContext(ctx, "failed to list subscriptions",
+				"stripe_request_id", requestID,
+				"customer_id", customerID,
+				"error", err,
+			)
 			return false, err
 		}
 		switch sub.Status {
@@ -234,6 +284,16 @@ func (m *Manager) lookupPriceID(ctx context.Context, c *stripe.Client, lookupKey
 		Active:     stripe.Bool(true),
 	}) {
 		if err != nil {
+			var requestID string
+			var stripeErr *stripe.Error
+			if errors.As(err, &stripeErr) && stripeErr.LastResponse != nil {
+				requestID = stripeErr.LastResponse.RequestID
+			}
+			m.slog().ErrorContext(ctx, "failed to lookup price",
+				"stripe_request_id", requestID,
+				"lookup_key", lookupKey,
+				"error", err,
+			)
 			return "", err
 		}
 		m.priceIDCache.Store(cacheKey, price.ID)
@@ -256,11 +316,29 @@ func (m *Manager) UpdateProfile(ctx context.Context, billingID string, p *Profil
 	}
 
 	for range backoff.Loop(ctx, 1*time.Second) {
-		_, err := c.V1Customers.Update(ctx, billingID, params)
+		customer, err := c.V1Customers.Update(ctx, billingID, params)
 		if err == nil {
+			var requestID string
+			if customer.LastResponse != nil {
+				requestID = customer.LastResponse.RequestID
+			}
+			m.slog().InfoContext(ctx, "customer profile updated",
+				"stripe_request_id", requestID,
+				"billing_id", billingID,
+			)
 			return nil
 		}
-		m.slog().ErrorContext(ctx, "update customer profile", "error", err)
+
+		var requestID string
+		var stripeErr *stripe.Error
+		if errors.As(err, &stripeErr) && stripeErr.LastResponse != nil {
+			requestID = stripeErr.LastResponse.RequestID
+		}
+		m.slog().ErrorContext(ctx, "update customer profile",
+			"stripe_request_id", requestID,
+			"billing_id", billingID,
+			"error", err,
+		)
 	}
 	return ctx.Err()
 }
@@ -282,16 +360,43 @@ func (m *Manager) VerifyCheckout(ctx context.Context, sessionID string) (billing
 	if err != nil {
 		return "", err
 	}
+
+	var requestID string
+	if sess.LastResponse != nil {
+		requestID = sess.LastResponse.RequestID
+	}
+
 	if sess.Status != stripe.CheckoutSessionStatusComplete {
+		m.slog().ErrorContext(ctx, "checkout session incomplete",
+			"stripe_request_id", requestID,
+			"session_id", sessionID,
+			"status", sess.Status,
+		)
 		return "", fmt.Errorf("%w: status: %q", ErrIncomplete, sess.Status)
 	}
+
 	switch sess.PaymentStatus {
 	case stripe.CheckoutSessionPaymentStatusPaid, stripe.CheckoutSessionPaymentStatusNoPaymentRequired:
 		if sess.Customer == nil || sess.Customer.ID == "" {
+			m.slog().ErrorContext(ctx, "checkout session has no customer",
+				"stripe_request_id", requestID,
+				"session_id", sessionID,
+			)
 			return "", errors.New("checkout session has no customer")
 		}
+		m.slog().InfoContext(ctx, "checkout session verified",
+			"stripe_request_id", requestID,
+			"session_id", sessionID,
+			"billing_id", sess.Customer.ID,
+			"payment_status", sess.PaymentStatus,
+		)
 		return sess.Customer.ID, nil
 	default:
+		m.slog().ErrorContext(ctx, "checkout payment not confirmed",
+			"stripe_request_id", requestID,
+			"session_id", sessionID,
+			"payment_status", sess.PaymentStatus,
+		)
 		return "", fmt.Errorf("checkout session payment not confirmed: payment_status=%s", sess.PaymentStatus)
 	}
 }
@@ -313,6 +418,16 @@ func (m *Manager) PortalSession(ctx context.Context, billingID, returnURL string
 	if err != nil {
 		return "", err
 	}
+
+	var requestID string
+	if sess.LastResponse != nil {
+		requestID = sess.LastResponse.RequestID
+	}
+	m.slog().InfoContext(ctx, "billing portal session created",
+		"stripe_request_id", requestID,
+		"billing_id", billingID,
+	)
+
 	return sess.URL, nil
 }
 
@@ -337,10 +452,21 @@ func (m *Manager) SubscriptionEvents(ctx context.Context, since time.Time) iter.
 
 		logErr := func(err error) {
 			var stripeErr *stripe.Error
+			var requestID string
+			if errors.As(err, &stripeErr) && stripeErr.LastResponse != nil {
+				requestID = stripeErr.LastResponse.RequestID
+			}
+
 			if errors.As(err, &stripeErr) && stripeErr.HTTPStatusCode == 429 {
-				m.slog().WarnContext(ctx, "rate limited listing subscription events", "error", err)
+				m.slog().WarnContext(ctx, "rate limited listing subscription events",
+					"stripe_request_id", requestID,
+					"error", err,
+				)
 			} else {
-				m.slog().ErrorContext(ctx, "error listing subscription events", "error", err)
+				m.slog().ErrorContext(ctx, "error listing subscription events",
+					"stripe_request_id", requestID,
+					"error", err,
+				)
 			}
 		}
 

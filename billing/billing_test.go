@@ -1038,6 +1038,199 @@ func TestSubscriptionEvents_YieldFalseStopsIterator(t *testing.T) {
 	}
 }
 
+func TestSubscribe_LogsStripeRequestID(t *testing.T) {
+	var logBuf strings.Builder
+	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+
+	m := &Manager{
+		Client: stripetest.Client(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == "POST" && r.URL.Path == "/v1/customers":
+				json.NewEncoder(w).Encode(map[string]any{"id": "cus_log_test"})
+			case r.Method == "GET" && r.URL.Path == "/v1/prices":
+				json.NewEncoder(w).Encode(map[string]any{
+					"data": []map[string]any{{"id": "price_log_test"}},
+				})
+			case r.Method == "POST" && r.URL.Path == "/v1/checkout/sessions":
+				json.NewEncoder(w).Encode(map[string]any{
+					"id":  "cs_log_test",
+					"url": "https://checkout.stripe.com/pay/cs_log_test",
+				})
+			default:
+				http.Error(w, "not found", http.StatusNotFound)
+			}
+		}),
+		Logger: logger,
+	}
+
+	_, err := m.Subscribe(context.Background(), "cus_log_test", &SubscribeParams{
+		Email:      "log@example.com",
+		SuccessURL: "https://example.com/success",
+		CancelURL:  "https://example.com/cancel",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	logs := logBuf.String()
+	if !strings.Contains(logs, "stripe_request_id") {
+		t.Error("expected stripe_request_id in logs")
+	}
+	if !strings.Contains(logs, "req_test_") {
+		t.Error("expected req_test_ prefix in stripe_request_id")
+	}
+	if !strings.Contains(logs, "checkout session created") {
+		t.Error("expected 'checkout session created' log message")
+	}
+	if !strings.Contains(logs, "customer created") {
+		t.Error("expected 'customer created' log message")
+	}
+}
+
+func TestVerifyCheckout_LogsStripeRequestID(t *testing.T) {
+	var logBuf strings.Builder
+	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+
+	m := &Manager{
+		Client: stripetest.Client(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/v1/checkout/sessions/") {
+				json.NewEncoder(w).Encode(map[string]any{
+					"id":             "cs_verify_log",
+					"status":         "complete",
+					"payment_status": "paid",
+					"customer":       map[string]any{"id": "cus_verify_log"},
+				})
+				return
+			}
+			http.Error(w, "not found", http.StatusNotFound)
+		}),
+		Logger: logger,
+	}
+
+	_, err := m.VerifyCheckout(context.Background(), "cs_verify_log")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	logs := logBuf.String()
+	if !strings.Contains(logs, "stripe_request_id") {
+		t.Error("expected stripe_request_id in logs")
+	}
+	if !strings.Contains(logs, "req_test_") {
+		t.Error("expected req_test_ prefix in stripe_request_id")
+	}
+	if !strings.Contains(logs, "checkout session verified") {
+		t.Error("expected 'checkout session verified' log message")
+	}
+}
+
+func TestUpdateProfile_LogsStripeRequestID(t *testing.T) {
+	var logBuf strings.Builder
+	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+
+	m := &Manager{
+		Client: stripetest.Client(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "POST" && strings.HasPrefix(r.URL.Path, "/v1/customers/") {
+				json.NewEncoder(w).Encode(map[string]any{
+					"id":    "cus_profile_log",
+					"email": r.FormValue("email"),
+				})
+				return
+			}
+			http.Error(w, "not found", http.StatusNotFound)
+		}),
+		Logger: logger,
+	}
+
+	err := m.UpdateProfile(context.Background(), "cus_profile_log", &Profile{
+		Email: "updated@example.com",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	logs := logBuf.String()
+	if !strings.Contains(logs, "stripe_request_id") {
+		t.Error("expected stripe_request_id in logs")
+	}
+	if !strings.Contains(logs, "req_test_") {
+		t.Error("expected req_test_ prefix in stripe_request_id")
+	}
+	if !strings.Contains(logs, "customer profile updated") {
+		t.Error("expected 'customer profile updated' log message")
+	}
+}
+
+func TestOpenPortal_LogsStripeRequestID(t *testing.T) {
+	var logBuf strings.Builder
+	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+
+	m := &Manager{
+		Client: stripetest.Client(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "POST" && r.URL.Path == "/v1/billing_portal/sessions" {
+				json.NewEncoder(w).Encode(map[string]any{
+					"id":  "bps_log_test",
+					"url": "https://billing.stripe.com/session/bps_log_test",
+				})
+				return
+			}
+			http.Error(w, "not found", http.StatusNotFound)
+		}),
+		Logger: logger,
+	}
+
+	_, err := m.OpenPortal(context.Background(), "cus_portal_log", &PortalParams{
+		ReturnURL: "https://example.com/return",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	logs := logBuf.String()
+	if !strings.Contains(logs, "stripe_request_id") {
+		t.Error("expected stripe_request_id in logs")
+	}
+	if !strings.Contains(logs, "req_test_") {
+		t.Error("expected req_test_ prefix in stripe_request_id")
+	}
+	if !strings.Contains(logs, "billing portal session created") {
+		t.Error("expected 'billing portal session created' log message")
+	}
+}
+
+func TestVerifyCheckout_LogsStripeRequestIDOnError(t *testing.T) {
+	var logBuf strings.Builder
+	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+
+	m := &Manager{
+		Client: stripetest.Client(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/v1/checkout/sessions/") {
+				json.NewEncoder(w).Encode(map[string]any{
+					"id":             "cs_error_log",
+					"status":         "open",
+					"payment_status": "unpaid",
+				})
+				return
+			}
+			http.Error(w, "not found", http.StatusNotFound)
+		}),
+		Logger: logger,
+	}
+
+	_, err := m.VerifyCheckout(context.Background(), "cs_error_log")
+	if err == nil {
+		t.Fatal("expected error for incomplete session")
+	}
+
+	logs := logBuf.String()
+	if !strings.Contains(logs, "stripe_request_id") {
+		t.Error("expected stripe_request_id in error logs")
+	}
+	if !strings.Contains(logs, "checkout session incomplete") {
+		t.Error("expected 'checkout session incomplete' log message")
+	}
+}
+
 func trimLines(s string) string {
 	var b strings.Builder
 	for line := range strings.Lines(s) {

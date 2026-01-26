@@ -22,6 +22,7 @@ func Client(h func(w http.ResponseWriter, r *http.Request)) *stripe.Client {
 		HTTPClient: &http.Client{
 			Transport: roundTripperFunc(func(req *http.Request) *http.Response {
 				w := httptest.NewRecorder()
+				w.Header().Set("Request-Id", "req_test_"+req.URL.Path)
 				h(w, req.Clone(req.Context()))
 				return w.Result()
 			}),
