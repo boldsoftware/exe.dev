@@ -907,7 +907,7 @@ function ChatInterface({
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
     userScrolledRef.current = false;
     setShowScrollToBottom(false);
   };
