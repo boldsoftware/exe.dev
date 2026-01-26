@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"exe.dev/domz"
+	"exe.dev/errorz"
 )
 
 // errHostIsIPAddress is returned when a custom domain request uses an IP address
@@ -40,8 +41,7 @@ func (s *Server) resolveCustomDomainBoxName(ctx context.Context, host string) (s
 		return s.resolveApexDomainBoxName(ctx, host)
 	}
 
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+	if dnsErr, ok := errorz.AsType[*net.DNSError](err); ok && dnsErr.IsNotFound {
 		// No CNAME found for host – treat as apex domain.
 		return s.resolveApexDomainBoxName(ctx, host)
 	}

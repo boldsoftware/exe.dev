@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"exe.dev/backoff"
+	"exe.dev/errorz"
 	"github.com/stripe/stripe-go/v82"
 )
 
@@ -136,8 +137,7 @@ func (m *Manager) upsertCustomer(ctx context.Context, billingID, email string) e
 
 	var requestID string
 	if err != nil {
-		var stripeErr *stripe.Error
-		if errors.As(err, &stripeErr) && stripeErr.LastResponse != nil {
+		if stripeErr, ok := errorz.AsType[*stripe.Error](err); ok && stripeErr.LastResponse != nil {
 			requestID = stripeErr.LastResponse.RequestID
 		}
 	} else if customer.LastResponse != nil {
@@ -169,8 +169,8 @@ func (m *Manager) upsertCustomer(ctx context.Context, billingID, email string) e
 }
 
 func isExists(err error) bool {
-	var stripeErr *stripe.Error
-	return errors.As(err, &stripeErr) && stripeErr.Code == stripe.ErrorCodeResourceAlreadyExists
+	stripeErr, ok := errorz.AsType[*stripe.Error](err)
+	return ok && stripeErr.Code == stripe.ErrorCodeResourceAlreadyExists
 }
 
 // Subscribe generates a payment link for subscribing an account to a plan.
@@ -251,8 +251,7 @@ func (m *Manager) hasActiveSubscription(ctx context.Context, c *stripe.Client, c
 	for sub, err := range c.V1Subscriptions.List(ctx, params) {
 		if err != nil {
 			var requestID string
-			var stripeErr *stripe.Error
-			if errors.As(err, &stripeErr) && stripeErr.LastResponse != nil {
+			if stripeErr, ok := errorz.AsType[*stripe.Error](err); ok && stripeErr.LastResponse != nil {
 				requestID = stripeErr.LastResponse.RequestID
 			}
 			m.slog().ErrorContext(ctx, "failed to list subscriptions",
@@ -285,8 +284,7 @@ func (m *Manager) lookupPriceID(ctx context.Context, c *stripe.Client, lookupKey
 	}) {
 		if err != nil {
 			var requestID string
-			var stripeErr *stripe.Error
-			if errors.As(err, &stripeErr) && stripeErr.LastResponse != nil {
+			if stripeErr, ok := errorz.AsType[*stripe.Error](err); ok && stripeErr.LastResponse != nil {
 				requestID = stripeErr.LastResponse.RequestID
 			}
 			m.slog().ErrorContext(ctx, "failed to lookup price",
@@ -330,8 +328,7 @@ func (m *Manager) UpdateProfile(ctx context.Context, billingID string, p *Profil
 		}
 
 		var requestID string
-		var stripeErr *stripe.Error
-		if errors.As(err, &stripeErr) && stripeErr.LastResponse != nil {
+		if stripeErr, ok := errorz.AsType[*stripe.Error](err); ok && stripeErr.LastResponse != nil {
 			requestID = stripeErr.LastResponse.RequestID
 		}
 		m.slog().ErrorContext(ctx, "update customer profile",
@@ -451,13 +448,13 @@ func (m *Manager) SubscriptionEvents(ctx context.Context, since time.Time) iter.
 		sinceUnix := since.Unix()
 
 		logErr := func(err error) {
-			var stripeErr *stripe.Error
+			stripeErr, _ := errorz.AsType[*stripe.Error](err)
 			var requestID string
-			if errors.As(err, &stripeErr) && stripeErr.LastResponse != nil {
+			if stripeErr != nil && stripeErr.LastResponse != nil {
 				requestID = stripeErr.LastResponse.RequestID
 			}
 
-			if errors.As(err, &stripeErr) && stripeErr.HTTPStatusCode == 429 {
+			if stripeErr != nil && stripeErr.HTTPStatusCode == 429 {
 				m.slog().WarnContext(ctx, "rate limited listing subscription events",
 					"stripe_request_id", requestID,
 					"error", err,

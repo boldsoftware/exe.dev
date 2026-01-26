@@ -346,8 +346,7 @@ func resolveDomains(ctx context.Context, mappings []IPMapping, boxDomain string)
 		}
 
 		addrs, err := lookupDomainIPs(ctx, "ip4", domain)
-		var dnsErr *net.DNSError
-		if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+		if dnsErr, ok := errorz.AsType[*net.DNSError](err); ok && dnsErr.IsNotFound {
 			continue
 		}
 		if err != nil {
@@ -402,8 +401,7 @@ func isUnavailable(err error) bool {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
-	var netErr net.Error
-	if errors.As(err, &netErr) {
+	if netErr, ok := errorz.AsType[net.Error](err); ok {
 		if netErr.Timeout() {
 			return true
 		}

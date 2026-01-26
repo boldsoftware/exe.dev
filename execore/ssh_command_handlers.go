@@ -914,8 +914,7 @@ done:
 		}
 		// Check if this is a gRPC user error (e.g., invalid image name)
 		// and convert it to a CommandClientError for proper display.
-		var gs grpcStatuser
-		if errors.As(createErr, &gs) {
+		if gs, ok := errorz.AsType[grpcStatuser](createErr); ok {
 			switch gs.GRPCStatus().Code() {
 			case codes.InvalidArgument, codes.FailedPrecondition:
 				return cc.Errorf("%s", gs.GRPCStatus().Message())
@@ -1706,8 +1705,7 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 		)
 		if _, err := ss.runCommandOnBox(ctx, &updatedBox, hostnameCmd); err != nil {
 			// Check if the error is exit code 127 (command not found - sed not available)
-			var exitErr *ssh.ExitError
-			if errors.As(err, &exitErr) && exitErr.ExitStatus() == 127 {
+			if exitErr, ok := errorz.AsType[*ssh.ExitError](err); ok && exitErr.ExitStatus() == 127 {
 				slog.WarnContext(ctx, "rename: no sed found in VM, manual hostname update required",
 					"box_id", box.ID,
 					"old_name", oldName,
