@@ -56,13 +56,6 @@ func main() {
 	flag.Parse()
 	args := flag.Args()
 
-	// Apply seccomp filter early, before spawning any child processes.
-	// This prevents child processes from killing shelley.
-	// Turns out this doesn't work, because it blocks sudo, which we want to work.
-	// if err := seccomp.BlockKillSelf(); err != nil {
-	// 	slog.Info("seccomp filter not installed", "error", err)
-	// }
-
 	if len(args) == 0 {
 		flag.Usage()
 		os.Exit(1)
