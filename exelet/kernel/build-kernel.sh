@@ -3,8 +3,8 @@ set -euo pipefail
 
 # Build kernel using Kata's official build-kernel.sh with nftables and ZFS support
 
-KERNEL_VERSION="${KERNEL_VERSION:-6.12.42}"
-ZFS_VERSION="${ZFS_VERSION:-zfs-2.2.8}"
+KERNEL_VERSION="${KERNEL_VERSION:-6.12.67}"
+ZFS_VERSION="${ZFS_VERSION:-zfs-2.2.9}"
 ARCH=$(uname -m)
 
 echo "Building kernel $KERNEL_VERSION with ZFS $ZFS_VERSION for $ARCH..."
@@ -58,6 +58,12 @@ scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packagi
 
 echo "Applying WireGuard config fragment..."
 scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packaging/kernel/configs/fragments/wireguard.conf
+
+echo "Applying eBPF config fragment..."
+scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packaging/kernel/configs/fragments/ebpf.conf
+
+echo "Applying devmapper config fragment..."
+scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packaging/kernel/configs/fragments/devmapper.conf
 
 make olddefconfig
 

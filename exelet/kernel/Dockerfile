@@ -4,7 +4,7 @@
 
 FROM ubuntu:24.04 AS build
 
-ARG KERNEL_VERSION=6.12.42
+ARG KERNEL_VERSION=6.12.67
 ARG KATA_BRANCH=main
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -51,6 +51,8 @@ COPY kvm.conf configs/fragments/kvm.conf
 COPY zfs.conf configs/fragments/zfs.conf
 COPY landlock.conf configs/fragments/landlock.conf
 COPY wireguard.conf configs/fragments/wireguard.conf
+COPY ebpf.conf configs/fragments/ebpf.conf
+COPY devmapper.conf configs/fragments/devmapper.conf
 COPY build-kernel.sh /usr/local/bin/
 
 RUN chmod +x /usr/local/bin/build-kernel.sh && \

@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Build custom kernel with nftables support for Cloud Hypervisor
 
-KERNEL_VERSION="6.12.42"
+KERNEL_VERSION="6.12.67"
 OUTPUT_DIR="output"
 IMAGE_TAG="exe-kernel-builder:${KERNEL_VERSION}"
 container_id=""
