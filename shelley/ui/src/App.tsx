@@ -113,10 +113,14 @@ function App() {
     loadConversations();
   }, []);
 
-  // Global keyboard shortcut for command palette (Cmd+K / Ctrl+K)
+  // Global keyboard shortcut for command palette (Cmd+K on macOS, Ctrl+K elsewhere)
   useEffect(() => {
+    const isMac = navigator.platform.toUpperCase().includes("MAC");
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      // On macOS use Cmd+K, on other platforms use Ctrl+K
+      // This preserves native Ctrl+K (kill to end of line) on macOS
+      const modifierPressed = isMac ? e.metaKey : e.ctrlKey;
+      if (modifierPressed && e.key === "k") {
         e.preventDefault();
         setCommandPaletteOpen((prev) => !prev);
       }
