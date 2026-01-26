@@ -1,4 +1,4 @@
-.PHONY: deploy-grafana deploy-prometheus deploy-node-exporter deploy-notifications typecheck
+.PHONY: deploy-grafana deploy-prometheus deploy-node-exporter deploy-zpool-metrics deploy-notifications typecheck
 
 # Hosts to deploy node-exporter to
 HOSTS := mon exed-02 exe-ctr-02 exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 exe-ctr-15 ci.crocodile-vector.ts.net exed-staging-01 exe-ctr-staging-01
@@ -76,12 +76,30 @@ deploy-node-exporter:
 		sudo mkdir -p /etc/systemd/system/prometheus-node-exporter.service.d && \
 		echo '[Service]' | sudo tee /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null && \
 		echo 'ExecStart=' | sudo tee -a /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null && \
-		echo 'ExecStart=/usr/bin/prometheus-node-exporter --web.listen-address=:$$port --collector.cgroups --collector.systemd' | sudo tee -a /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null && \
+		echo 'ExecStart=/usr/bin/prometheus-node-exporter --web.listen-address=:$$port --collector.cgroups --collector.systemd --collector.textfile --collector.textfile.directory=/var/lib/prometheus/node-exporter' | sudo tee -a /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null && \
 		sudo systemctl daemon-reload && \
 		sudo systemctl enable prometheus-node-exporter && \
 		sudo systemctl restart prometheus-node-exporter && \
 		echo 'Verifying node-exporter is running...' && \
 		curl -s http://localhost:$$port/metrics | head -n 5\""; \
+		echo ""; \
+	done
+
+# Exelet hosts (hosts with ZFS pools)
+EXELET_HOSTS := exe-ctr-02 exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 exe-ctr-15 exe-ctr-staging-01
+
+# Deploy zpool metrics script to exelet hosts
+deploy-zpool-metrics:
+	@for host in $(EXELET_HOSTS); do \
+		echo "Deploying zpool-metrics to $$host..."; \
+		scp zpool-metrics.sh ubuntu@$$host:/tmp/zpool-metrics.sh && \
+		ssh ubuntu@$$host "bash -c \" \
+			sudo mkdir -p /var/lib/prometheus/node-exporter && \
+			sudo mv /tmp/zpool-metrics.sh /usr/local/bin/zpool-metrics.sh && \
+			sudo chmod +x /usr/local/bin/zpool-metrics.sh && \
+			sudo /usr/local/bin/zpool-metrics.sh && \
+			(sudo crontab -l 2>/dev/null | grep -v zpool-metrics; echo '* * * * * /usr/local/bin/zpool-metrics.sh') | sudo crontab - && \
+			echo 'Cron job installed:' && sudo crontab -l | grep zpool-metrics\""; \
 		echo ""; \
 	done
 

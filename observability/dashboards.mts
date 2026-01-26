@@ -4453,6 +4453,25 @@ function makeZFSDashboard() {
     );
   dash.withPanel(zfsSpacePanel);
 
+  // ZFS Pool Capacity % (from textfile collector)
+  addTimeseriesChart(
+    "Tank Pool Capacity %",
+    `zpool_capacity_percent{pool="tank",${HOST_FILTER}}`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      gridPos: { w: 12, h: 8 },
+      alert: {
+        threshold: 80,
+        condition: "gt",
+        forDuration: "5m",
+        summary: "ZFS pool tank capacity > 80%",
+        description: "ZFS pool 'tank' is at {{$value}}% capacity on {{$labels.instance}}. Consider expanding storage or cleaning up unused volumes.",
+        labels: { signal: "strong" },
+      },
+      alertQueryOverride: `zpool_capacity_percent{pool="tank",role="exelet"}`,
+    }
+  );
+
   // ========== ARC (Adaptive Replacement Cache) ==========
   dash.withRow(new RowBuilder("ARC (Adaptive Replacement Cache)"));
 
