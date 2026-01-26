@@ -4465,7 +4465,7 @@ function makeZFSDashboard() {
         condition: "gt",
         forDuration: "5m",
         summary: "ZFS pool tank capacity > 80%",
-        description: "ZFS pool 'tank' is at {{$value}}% capacity on {{$labels.instance}}. Consider expanding storage or cleaning up unused volumes.",
+        description: "ZFS pool 'tank' is at {{$value}}% capacity on {{$labels.instance}}. Consider expanding storage or cleaning up unused volumes. See ops/grow-data-ebs-volume.sh and playbook: https://slinky.exe.xyz/ops-resize-ebs-zvol",
         labels: { signal: "strong" },
       },
       alertQueryOverride: `zpool_capacity_percent{pool="tank",role="exelet"}`,
