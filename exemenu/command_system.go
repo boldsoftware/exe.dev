@@ -231,7 +231,11 @@ func (cc *CommandContext) WriteInternalError(ctx context.Context, cmd string, er
 		"guid", guid,
 	}
 	attrs = append(attrs, slogDetails...)
-	cc.slog().ErrorContext(ctx, "ssh command failed unexpectedly", attrs...)
+	if errors.Is(err, context.Canceled) {
+		cc.slog().InfoContext(ctx, "ssh command failed unexpectedly", attrs...)
+	} else {
+		cc.slog().ErrorContext(ctx, "ssh command failed unexpectedly", attrs...)
+	}
 	cc.WriteError("%q: internal error, error ID: %s", cmd, guid)
 }
 
