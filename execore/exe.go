@@ -3371,6 +3371,8 @@ func (s *Server) updateAllExeletUsage(ctx context.Context) {
 	}
 
 	wg.Wait()
+
+	s.autoThrottleVMCreation(ctx)
 }
 
 // updateUsageHeartbeat is how often to update exelet usage.
@@ -3548,38 +3550,50 @@ const autoThrottleVMLimit = 400
 // autoThrottleVMWarning is the VM count at which we send a page warning.
 const autoThrottleVMWarning = 390
 
-// autoThrottleVMCreation enables throttling if the preferred exelet has hit its VM limit.
+// autoThrottleVMCreation enables throttling if all exelets have hit the VM limit.
 func (s *Server) autoThrottleVMCreation(ctx context.Context) {
-	preferredAddr, err := withRxRes0(s, ctx, (*exedb.Queries).GetPreferredExelet)
-	if err != nil || preferredAddr == "" {
-		slog.WarnContext(ctx, "autoThrottleVMCreation no preferred exelet configured", "error", err)
-		return
-	}
-	ec, ok := s.exeletClients[preferredAddr]
-	if !ok {
-		s.slog().ErrorContext(ctx, "auto-throttle: preferred exelet client not found", "exelet", preferredAddr, "clients", s.exeletClients)
+	if len(s.exeletClients) == 0 {
 		return
 	}
 
-	count, err := ec.countInstances(ctx)
-	if err != nil {
-		s.slog().ErrorContext(ctx, "auto-throttle: failed to list instances", "exelet", preferredAddr, "error", err)
+	someBelowLimit := false
+	for _, ec := range s.exeletClients {
+		count := ec.count.Load()
+		if count < autoThrottleVMWarning {
+			// We still have capacity, nothing to do.
+			return
+		}
+		if count < autoThrottleVMLimit {
+			someBelowLimit = true
+		}
+	}
+
+	// Every exelet is at the warning level.
+
+	enabledStr, err := withRxRes0(s, ctx, (*exedb.Queries).GetNewThrottleEnabled)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		slog.ErrorContext(ctx, "failed to get throttle enabled", "error", err)
+		return
+	}
+	if enabledStr == "true" {
+		// VMs are currently throttled, nothing to do.
 		return
 	}
 
-	if count == autoThrottleVMWarning {
-		s.slackFeed.PreferredExeletCapacityWarning(ctx, preferredAddr, count)
-	}
-
-	if count < autoThrottleVMLimit {
+	if someBelowLimit {
+		// There is still a bit of room. Warn.
+		// Right now this will warn every updateUsageHeartbeat,
+		// which is 10 minutes.
+		slog.WarnContext(ctx, "all exelets near VM limit", "limit", autoThrottleVMLimit)
+		s.slackFeed.ExeletCapacityWarning(ctx, autoThrottleVMLimit)
 		return
 	}
 
-	// There's a logical race here: multiple attempts could all write "true" here. No harm done, though.
+	// There is no room. Throttle.
 	if err := withTx1(s, ctx, (*exedb.Queries).SetNewThrottleEnabled, "true"); err != nil {
 		s.slog().ErrorContext(ctx, "auto-throttle: failed to enable throttle", "error", err)
 		return
 	}
 
-	s.slog().ErrorContext(ctx, "auto-throttle: VM limit reached on preferred exelet, throttle enabled", "exelet", preferredAddr, "vm_count", count, "limit", autoThrottleVMLimit)
+	s.slog().ErrorContext(ctx, "auto-throttle: VM limit reached on all exelets, throttle enabled", "limit", autoThrottleVMLimit)
 }

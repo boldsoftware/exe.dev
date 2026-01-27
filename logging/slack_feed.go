@@ -224,3 +224,19 @@ func (sf *SlackFeed) PreferredExeletCapacityWarning(ctx context.Context, exelet 
 		}
 	}()
 }
+
+// ExeletCapacityWarning posts an urgent page that all exelets
+// are approaching capacity.
+func (sf *SlackFeed) ExeletCapacityWarning(ctx context.Context, limit int) {
+	message := fmt.Sprintf("all exelets have at least %d VMs", limit)
+	if sf.client == nil {
+		sf.log.InfoContext(ctx, "slack page channel", "message", message)
+		return
+	}
+	go func() {
+		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), sf.env.SlackPageChannel, slack.MsgOptionText(message, false))
+		if err != nil {
+			sf.log.WarnContext(ctx, "failed to post to page channel", "error", err)
+		}
+	}()
+}
