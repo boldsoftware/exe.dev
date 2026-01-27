@@ -62,6 +62,8 @@ function updatePageTitle(conversation: Conversation | undefined) {
 function App() {
   const [conversations, setConversations] = useState<ConversationWithState[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  // Track viewed conversation separately (needed for subagents which aren't in main list)
+  const [viewedConversation, setViewedConversation] = useState<Conversation | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerCollapsed, setDrawerCollapsed] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -78,35 +80,33 @@ function App() {
   const initialSlugResolved = useRef(false);
 
   // Resolve initial slug from URL - uses the captured initialSlugFromUrl
-  const resolveInitialSlug = useCallback(async (convs: Conversation[]) => {
-    if (initialSlugResolved.current) return null;
-    initialSlugResolved.current = true;
+  // Returns the conversation if found, null otherwise
+  const resolveInitialSlug = useCallback(
+    async (convs: Conversation[]): Promise<Conversation | null> => {
+      if (initialSlugResolved.current) return null;
+      initialSlugResolved.current = true;
 
-    // Use the slug captured at module load time, not the current URL
-    // (which may have been changed by updateUrlWithSlug before this runs)
-    const urlSlug = initialSlugFromUrl;
-    if (!urlSlug) return null;
+      const urlSlug = initialSlugFromUrl;
+      if (!urlSlug) return null;
 
-    // First check if we already have this conversation in our list
-    const existingConv = convs.find((c) => c.slug === urlSlug);
-    if (existingConv) {
-      return existingConv.conversation_id;
-    }
+      // First check if we already have this conversation in our list
+      const existingConv = convs.find((c) => c.slug === urlSlug);
+      if (existingConv) return existingConv;
 
-    // Otherwise, try to fetch by slug
-    try {
-      const conv = await api.getConversationBySlug(urlSlug);
-      if (conv) {
-        return conv.conversation_id;
+      // Otherwise, try to fetch by slug (may be a subagent)
+      try {
+        const conv = await api.getConversationBySlug(urlSlug);
+        if (conv) return conv;
+      } catch (err) {
+        console.error("Failed to resolve slug:", err);
       }
-    } catch (err) {
-      console.error("Failed to resolve slug:", err);
-    }
 
-    // Slug not found, clear the URL
-    window.history.replaceState({}, "", "/");
-    return null;
-  }, []);
+      // Slug not found, clear the URL
+      window.history.replaceState({}, "", "/");
+      return null;
+    },
+    [],
+  );
 
   // Load conversations on mount
   useEffect(() => {
@@ -128,6 +128,36 @@ function App() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  // Handle popstate events (browser back/forward and SubagentTool navigation)
+  useEffect(() => {
+    const handlePopState = async () => {
+      const slug = getSlugFromPath();
+      if (!slug) return;
+
+      // Try to find in existing conversations first
+      const existingConv = conversations.find((c) => c.slug === slug);
+      if (existingConv) {
+        setCurrentConversationId(existingConv.conversation_id);
+        setViewedConversation(existingConv);
+        return;
+      }
+
+      // Otherwise fetch by slug (may be a subagent)
+      try {
+        const conv = await api.getConversationBySlug(slug);
+        if (conv) {
+          setCurrentConversationId(conv.conversation_id);
+          setViewedConversation(conv);
+        }
+      } catch (err) {
+        console.error("Failed to navigate to conversation:", err);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [conversations]);
 
   // Handle conversation list updates from the message stream
   const handleConversationListUpdate = useCallback((update: ConversationListUpdate) => {
@@ -186,12 +216,16 @@ function App() {
 
   // Update page title and URL when conversation changes
   useEffect(() => {
-    const currentConv = conversations.find(
-      (conv) => conv.conversation_id === currentConversationId,
-    );
-    updatePageTitle(currentConv);
-    updateUrlWithSlug(currentConv);
-  }, [currentConversationId, conversations]);
+    // Use viewedConversation if it matches (handles subagents), otherwise look up from list
+    const currentConv =
+      viewedConversation?.conversation_id === currentConversationId
+        ? viewedConversation
+        : conversations.find((conv) => conv.conversation_id === currentConversationId);
+    if (currentConv) {
+      updatePageTitle(currentConv);
+      updateUrlWithSlug(currentConv);
+    }
+  }, [currentConversationId, viewedConversation, conversations]);
 
   const loadConversations = async () => {
     try {
@@ -201,12 +235,14 @@ function App() {
       setConversations(convs);
 
       // Try to resolve conversation from URL slug first
-      const slugConvId = await resolveInitialSlug(convs);
-      if (slugConvId) {
-        setCurrentConversationId(slugConvId);
+      const slugConv = await resolveInitialSlug(convs);
+      if (slugConv) {
+        setCurrentConversationId(slugConv.conversation_id);
+        setViewedConversation(slugConv);
       } else if (!currentConversationId && convs.length > 0) {
         // If we have conversations and no current one selected, select the first
         setCurrentConversationId(convs[0].conversation_id);
+        setViewedConversation(convs[0]);
       }
       // If no conversations exist, leave currentConversationId as null
       // The UI will show the welcome screen and create conversation on first message
@@ -225,11 +261,15 @@ function App() {
     }
     // Clear the current conversation - a new one will be created when the user sends their first message
     setCurrentConversationId(null);
+    setViewedConversation(null);
+    // Clear URL when starting new conversation
+    window.history.replaceState({}, "", "/");
     setDrawerOpen(false);
   };
 
-  const selectConversation = (conversationId: string) => {
-    setCurrentConversationId(conversationId);
+  const selectConversation = (conversation: Conversation) => {
+    setCurrentConversationId(conversation.conversation_id);
+    setViewedConversation(conversation);
     setDrawerOpen(false);
   };
 
@@ -356,6 +396,7 @@ function App() {
         onToggleCollapse={toggleDrawerCollapsed}
         conversations={conversations}
         currentConversationId={currentConversationId}
+        viewedConversation={viewedConversation}
         onSelectConversation={selectConversation}
         onNewConversation={startNewConversation}
         onConversationArchived={handleConversationArchived}
@@ -395,8 +436,8 @@ function App() {
           startNewConversation();
           setCommandPaletteOpen(false);
         }}
-        onSelectConversation={(id) => {
-          selectConversation(id);
+        onSelectConversation={(conversation) => {
+          selectConversation(conversation);
           setCommandPaletteOpen(false);
         }}
         onOpenDiffViewer={() => {

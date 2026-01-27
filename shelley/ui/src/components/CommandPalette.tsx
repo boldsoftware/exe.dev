@@ -17,7 +17,7 @@ interface CommandPaletteProps {
   onClose: () => void;
   conversations: Conversation[];
   onNewConversation: () => void;
-  onSelectConversation: (id: string) => void;
+  onSelectConversation: (conversation: Conversation) => void;
   onOpenDiffViewer: () => void;
   onOpenModelsModal: () => void;
   hasCwd: boolean;
@@ -222,7 +222,7 @@ function CommandPalette({
         </svg>
       ),
       action: () => {
-        onSelectConversation(conv.conversation_id);
+        onSelectConversation(conv);
         onClose();
       },
     }),

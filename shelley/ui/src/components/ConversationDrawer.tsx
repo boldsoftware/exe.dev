@@ -9,7 +9,8 @@ interface ConversationDrawerProps {
   onToggleCollapse: () => void;
   conversations: ConversationWithState[];
   currentConversationId: string | null;
-  onSelectConversation: (id: string) => void;
+  viewedConversation?: Conversation | null; // The currently viewed conversation (may be a subagent)
+  onSelectConversation: (conversation: Conversation) => void;
   onNewConversation: () => void;
   onConversationArchived?: (id: string) => void;
   onConversationUnarchived?: (conversation: Conversation) => void;
@@ -25,6 +26,7 @@ function ConversationDrawer({
   onToggleCollapse,
   conversations,
   currentConversationId,
+  viewedConversation,
   onSelectConversation,
   onNewConversation,
   onConversationArchived,
@@ -48,14 +50,20 @@ function ConversationDrawer({
     }
   }, [showArchived]);
 
-  // Load subagents for the current conversation
+  // Load subagents for the current conversation (or parent if viewing a subagent)
   useEffect(() => {
-    if (currentConversationId && !showArchived) {
-      loadSubagents(currentConversationId);
-      // Auto-expand the current conversation's subagents
-      setExpandedSubagents((prev) => new Set([...prev, currentConversationId]));
+    if (!showArchived && currentConversationId) {
+      // If viewing a subagent, also load and expand the parent's subagents
+      const parentId = viewedConversation?.parent_conversation_id;
+      if (parentId) {
+        loadSubagents(parentId);
+        setExpandedSubagents((prev) => new Set([...prev, parentId]));
+      } else {
+        loadSubagents(currentConversationId);
+        setExpandedSubagents((prev) => new Set([...prev, currentConversationId]));
+      }
     }
-  }, [currentConversationId, showArchived]);
+  }, [currentConversationId, viewedConversation, showArchived]);
 
   // Handle real-time subagent updates
   useEffect(() => {
@@ -366,7 +374,7 @@ function ConversationDrawer({
                       className={`conversation-item ${isActive ? "active" : ""}`}
                       onClick={() => {
                         if (!showArchived) {
-                          onSelectConversation(conversation.conversation_id);
+                          onSelectConversation(conversation);
                         }
                       }}
                       style={{ cursor: showArchived ? "default" : "pointer" }}
@@ -575,7 +583,7 @@ function ConversationDrawer({
                             <div
                               key={sub.conversation_id}
                               className={`conversation-item subagent-item ${isSubActive ? "active" : ""}`}
-                              onClick={() => onSelectConversation(sub.conversation_id)}
+                              onClick={() => onSelectConversation(sub)}
                               style={{
                                 cursor: "pointer",
                                 fontSize: "0.9em",
