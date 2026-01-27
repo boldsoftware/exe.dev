@@ -1277,10 +1277,25 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		s.slog().ErrorContext(r.Context(), "Failed to get SSH keys for dashboard", "error", err, "email", user.Email)
 	}
 
-	// If there are active creation streams, give them a moment to appear in the DB.
+	// If there are active creation streams, wait for the boxes to appear in the DB.
+	// We poll until all actively-being-created boxes appear, so the dashboard shows
+	// them with status="creating" and can display the live creation output.
 	// See https://github.com/boldsoftware/exe/issues/250.
+	creatingHostnames := s.getActiveCreationHostnames(userID)
 	deadline := time.Now().Add(5 * time.Second)
-	for s.userHasActiveCreationStreams(userID) && time.Now().Before(deadline) {
+	for len(creatingHostnames) > 0 && time.Now().Before(deadline) {
+		// Check which boxes have appeared in the DB
+		var stillMissing []string
+		for _, hostname := range creatingHostnames {
+			exists, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxWithNameExists, hostname)
+			if err != nil || exists == 0 {
+				stillMissing = append(stillMissing, hostname)
+			}
+		}
+		if len(stillMissing) == 0 {
+			break
+		}
+		creatingHostnames = stillMissing
 		time.Sleep(100 * time.Millisecond)
 	}
 

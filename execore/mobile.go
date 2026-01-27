@@ -179,6 +179,25 @@ func (s *Server) userHasActiveCreationStreams(userID string) bool {
 	return false
 }
 
+// getActiveCreationHostnames returns the hostnames of active (non-done) creation streams for a user.
+func (s *Server) getActiveCreationHostnames(userID string) []string {
+	s.creationStreamsMu.Lock()
+	defer s.creationStreamsMu.Unlock()
+	var hostnames []string
+	for key, cs := range s.creationStreams {
+		if key.userID != userID || cs == nil {
+			continue
+		}
+		cs.mu.Lock()
+		done := cs.done
+		cs.mu.Unlock()
+		if !done {
+			hostnames = append(hostnames, key.hostname)
+		}
+	}
+	return hostnames
+}
+
 // startBoxCreation starts creating a box in the background
 func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID string) {
 	// Check if already creating
