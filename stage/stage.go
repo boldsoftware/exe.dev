@@ -9,6 +9,19 @@ import (
 	"exe.dev/billing"
 )
 
+// Resource limits for VM creation
+const (
+	// Minimum resource limits (all users)
+	MinMemory = 2 * 1000 * 1000 * 1000 // 2GB minimum RAM
+	MinDisk   = 4 * 1000 * 1000 * 1000 // 4GB minimum disk (for ZFS base image)
+	MinCPUs   = 1                      // 1 CPU minimum
+
+	// Maximum resource limits for support users (root_support=1)
+	SupportMaxMemory = 32 * 1000 * 1000 * 1000  // 32GB max RAM for support
+	SupportMaxDisk   = 128 * 1000 * 1000 * 1000 // 128GB max disk for support
+	SupportMaxCPUs   = 8                        // 8 CPUs max for support
+)
+
 // An Env represents a deployment stage/environment.
 //
 //exe:completeinit
@@ -54,6 +67,7 @@ type Env struct {
 
 	DefaultMemory uint64 // default memory for new boxes in bytes
 	DefaultDisk   uint64 // default disk size for new boxes in bytes
+	DefaultCPUs   uint64 // default number of CPUs for new boxes
 
 	StripeAPIKey string // Stripe API key for billing operations
 	StripeURL    string // Stripe API URL (for testing); empty means use real Stripe
@@ -99,6 +113,7 @@ func Invalid() Env {
 
 		DefaultMemory: 0, // invalid: must be > 0
 		DefaultDisk:   0, // invalid: must be > 0
+		DefaultCPUs:   0, // invalid: must be > 0
 
 		StripeAPIKey: "", // invalid: no API key
 		StripeURL:    "", // invalid: no Stripe URL
@@ -148,6 +163,7 @@ func Local() Env {
 
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
+		DefaultCPUs:   2,
 
 		StripeAPIKey: cmp.Or(envStripeKey, billing.TestAPIKey),
 		StripeURL:    "",
@@ -196,6 +212,7 @@ func Test() Env {
 
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   11 * 1000 * 1000 * 1000, // 11GB
+		DefaultCPUs:   2,
 
 		StripeAPIKey: billing.TestAPIKey,
 		StripeURL:    "",
@@ -241,6 +258,7 @@ func Staging() Env {
 
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
+		DefaultCPUs:   2,
 
 		StripeAPIKey: envStripeKey,
 		StripeURL:    "",
@@ -285,6 +303,7 @@ func Prod() Env {
 
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
+		DefaultCPUs:   2,
 
 		StripeAPIKey: envStripeKey,
 		StripeURL:    "",

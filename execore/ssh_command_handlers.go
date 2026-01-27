@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -32,6 +33,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	api "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/stage"
 )
 
 // grpcStatuser is an interface for errors that wrap a gRPC status.
@@ -114,6 +116,23 @@ var (
 	addShareMessageFlag = addStringFlag("message", "", "message to include in share invitation")
 )
 
+// parseSize parses a human-readable size string into bytes using humanize.ParseBytes.
+// Numbers without a suffix are treated as GB (e.g., "4" means 4GB).
+func parseSize(s string) (uint64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("empty size string")
+	}
+
+	// Try parsing as plain number first (treat as GB)
+	if bytes, err := strconv.ParseUint(s, 10, 64); err == nil {
+		return bytes * 1024 * 1024 * 1024, nil // Convert GB to bytes
+	}
+
+	// Try parsing with unit suffix using humanize
+	return humanize.ParseBytes(s)
+}
+
 // newCommandFlags creates a FlagSet for the new command
 func newCommandFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
@@ -126,6 +145,10 @@ func newCommandFlags() *flag.FlagSet {
 	fs.String("prompt-model", shelleyDefaultModel, "[hidden] override the prompt model") // for testing
 	fs.Bool("no-shard", false, "[hidden] skip shard allocation")
 	fs.String("exelet", "", "[hidden] create VM on specified exelet (support only)")
+	// Resource allocation flags (defaults: 8GB memory, 20GB disk, 2 CPUs)
+	fs.String("memory", "", "[hidden] memory allocation (e.g., 4, 4GB, 8G)")
+	fs.String("disk", "", "[hidden] disk size (e.g., 20, 20GB, 50G)")
+	fs.Uint("cpu", 0, "[hidden] number of CPUs (default 2)")
 	// Environment variables (can be specified multiple times)
 	var envVars repeatedStringFlag
 	fs.Var(&envVars, "env", "environment variable in KEY=VALUE format (can be specified multiple times)")
@@ -498,6 +521,72 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		}
 	}
 
+	// Parse and validate resource allocation flags
+	memoryStr := cc.FlagSet.Lookup("memory").Value.String()
+	diskStr := cc.FlagSet.Lookup("disk").Value.String()
+	cpuVal, _ := strconv.ParseUint(cc.FlagSet.Lookup("cpu").Value.String(), 10, 64)
+
+	// Determine if user has support privileges for higher limits
+	isSupport := ss.server.UserHasExeSudo(ctx, user.ID)
+
+	// Set defaults from environment
+	memory := ss.server.env.DefaultMemory
+	disk := ss.server.env.DefaultDisk
+	cpus := ss.server.env.DefaultCPUs
+
+	// Determine max limits based on user type
+	// For normal users, max is the environment default (but at least the minimum)
+	// For support users, max is the higher support limit
+	maxMemory := max(ss.server.env.DefaultMemory, stage.MinMemory)
+	maxDisk := max(ss.server.env.DefaultDisk, stage.MinDisk)
+	maxCPUs := max(ss.server.env.DefaultCPUs, uint64(stage.MinCPUs))
+	if isSupport {
+		maxMemory = stage.SupportMaxMemory
+		maxDisk = stage.SupportMaxDisk
+		maxCPUs = stage.SupportMaxCPUs
+	}
+
+	// Parse memory if provided
+	if memoryStr != "" {
+		parsedMemory, err := parseSize(memoryStr)
+		if err != nil {
+			return cc.Errorf("invalid --memory value: %s", err)
+		}
+		if parsedMemory < stage.MinMemory {
+			return cc.Errorf("--memory must be at least %s", humanize.Bytes(stage.MinMemory))
+		}
+		if parsedMemory > maxMemory {
+			return cc.Errorf("--memory cannot exceed %s", humanize.Bytes(maxMemory))
+		}
+		memory = parsedMemory
+	}
+
+	// Parse disk if provided
+	if diskStr != "" {
+		parsedDisk, err := parseSize(diskStr)
+		if err != nil {
+			return cc.Errorf("invalid --disk value: %s", err)
+		}
+		if parsedDisk < stage.MinDisk {
+			return cc.Errorf("--disk must be at least %s", humanize.Bytes(stage.MinDisk))
+		}
+		if parsedDisk > maxDisk {
+			return cc.Errorf("--disk cannot exceed %s", humanize.Bytes(maxDisk))
+		}
+		disk = parsedDisk
+	}
+
+	// Parse CPU if provided
+	if cpuVal > 0 {
+		if cpuVal < stage.MinCPUs {
+			return cc.Errorf("--cpu must be at least %d", stage.MinCPUs)
+		}
+		if cpuVal > maxCPUs {
+			return cc.Errorf("--cpu cannot exceed %d", maxCPUs)
+		}
+		cpus = cpuVal
+	}
+
 	// Check if user is throttled from creating new VMs
 	if throttled, msg := ss.server.CheckNewThrottle(ctx, user.ID, user.Email); throttled && exeletOverride == "" {
 		return cc.Errorf("%s", msg)
@@ -684,9 +773,9 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 			ID: fmt.Sprintf("vm%06d-%s", boxID, boxName),
 
 			Image:   imageRef,
-			CPUs:    2,
-			Memory:  ss.server.env.DefaultMemory,
-			Disk:    ss.server.env.DefaultDisk,
+			CPUs:    cpus,
+			Memory:  memory,
+			Disk:    disk,
 			Env:     envVars,                // Environment variables
 			SSHKeys: []string{cc.PublicKey}, // Pass user's SSH key
 			Configs: []*api.Config{
