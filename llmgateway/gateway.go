@@ -163,6 +163,9 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.httpError(w, r, "VM not found", http.StatusUnauthorized, boxName, nil)
 		return
 	}
+	if errors.Is(err, context.Canceled) {
+		return // Client disconnected
+	}
 	if err != nil {
 		m.httpError(w, r, "internal server error", http.StatusInternalServerError, boxName, fmt.Errorf("failed to look up box: %w", err))
 		return
@@ -204,6 +207,9 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.log.WarnContext(r.Context(), "insufficient LLM credit", "user_id", userID, "box", boxName, "available_usd", creditInfo.Available, "plan", creditInfo.Plan.Name)
 		m.httpError(w, r, creditInfo.Plan.CreditExhaustedError, http.StatusPaymentRequired, boxName, nil)
 		return
+	}
+	if errors.Is(err, context.Canceled) {
+		return // Client disconnected
 	}
 	if err != nil {
 		m.httpError(w, r, "failed to check gateway credit", http.StatusInternalServerError, boxName, err)
