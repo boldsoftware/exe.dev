@@ -345,9 +345,6 @@ type Server struct {
 	hllTracker      *hll.Tracker
 	hllCollector    *hll.Collector
 
-	// Data isolation
-	dataSubdir string // subdirectory under /data for container isolation
-
 	docs *docspkg.Handler
 
 	// HTML templates (parsed at startup)
@@ -686,13 +683,6 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 	slog.Debug("opened database connection pool", "dbPath", cfg.DBPath, "nReaders", nReaders)
 
-	// Initialize data subdirectory for container isolation
-	dataSubdir, err := exedb.InitDataSubdir(slog, db)
-	if err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to initialize data subdir: %w", err)
-	}
-
 	// Initialize email senders
 	emailSenders := email.NewSendersFromEnv(cfg.Env.MailgunDomain())
 	if emailSenders.Any() == nil {
@@ -874,7 +864,6 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		signupMetrics:   signupMetrics,
 		hllTracker:      hllTracker,
 		hllCollector:    hllCollector,
-		dataSubdir:      dataSubdir,
 
 		docs:      docsHandler,
 		templates: tmpl,
@@ -1113,11 +1102,6 @@ func withTxRes0[T any](s *Server, ctx context.Context, fn func(*exedb.Queries, c
 // withTxRes1 executes a function with a read-write database transaction and one argument, returning a value.
 func withTxRes1[T, A any](s *Server, ctx context.Context, fn func(*exedb.Queries, context.Context, A) (T, error), a A) (T, error) {
 	return exedb.WithTxRes1(s.db, ctx, fn, a)
-}
-
-// DataPath returns a path under /data with the server's isolation subdirectory
-func (s *Server) DataPath(path string) string {
-	return fmt.Sprintf("/data/%s/%s", s.dataSubdir, strings.TrimPrefix(path, "/"))
 }
 
 // setupSSHServer configures the SSH server
