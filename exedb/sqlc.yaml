@@ -36,3 +36,4 @@ sql:
           ssh_key: "SSHKey"
           pending_ssh_key: "PendingSSHKey"
           next_ssh_key_number: "NextSSHKeyNumber"
+          new_vm_email: "NewVMEmail"

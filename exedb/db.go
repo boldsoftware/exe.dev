@@ -174,6 +174,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteTagResolutionStmt, err = db.PrepareContext(ctx, deleteTagResolution); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTagResolution: %w", err)
 	}
+	if q.deleteUserDefaultNewVMEmailStmt, err = db.PrepareContext(ctx, deleteUserDefaultNewVMEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteUserDefaultNewVMEmail: %w", err)
+	}
 	if q.drawInviteCodeFromPoolStmt, err = db.PrepareContext(ctx, drawInviteCodeFromPool); err != nil {
 		return nil, fmt.Errorf("error preparing query DrawInviteCodeFromPool: %w", err)
 	}
@@ -365,6 +368,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
+	}
+	if q.getUserDefaultsStmt, err = db.PrepareContext(ctx, getUserDefaults); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserDefaults: %w", err)
 	}
 	if q.getUserEmailCountForDateStmt, err = db.PrepareContext(ctx, getUserEmailCountForDate); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserEmailCountForDate: %w", err)
@@ -608,6 +614,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertTagResolutionStmt, err = db.PrepareContext(ctx, upsertTagResolution); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertTagResolution: %w", err)
+	}
+	if q.upsertUserDefaultNewVMEmailStmt, err = db.PrepareContext(ctx, upsertUserDefaultNewVMEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertUserDefaultNewVMEmail: %w", err)
 	}
 	if q.upsertUserLLMCreditStmt, err = db.PrepareContext(ctx, upsertUserLLMCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertUserLLMCredit: %w", err)
@@ -871,6 +880,11 @@ func (q *Queries) Close() error {
 	if q.deleteTagResolutionStmt != nil {
 		if cerr := q.deleteTagResolutionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteTagResolutionStmt: %w", cerr)
+		}
+	}
+	if q.deleteUserDefaultNewVMEmailStmt != nil {
+		if cerr := q.deleteUserDefaultNewVMEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteUserDefaultNewVMEmailStmt: %w", cerr)
 		}
 	}
 	if q.drawInviteCodeFromPoolStmt != nil {
@@ -1191,6 +1205,11 @@ func (q *Queries) Close() error {
 	if q.getUserByEmailStmt != nil {
 		if cerr := q.getUserByEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserByEmailStmt: %w", cerr)
+		}
+	}
+	if q.getUserDefaultsStmt != nil {
+		if cerr := q.getUserDefaultsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserDefaultsStmt: %w", cerr)
 		}
 	}
 	if q.getUserEmailCountForDateStmt != nil {
@@ -1598,6 +1617,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertTagResolutionStmt: %w", cerr)
 		}
 	}
+	if q.upsertUserDefaultNewVMEmailStmt != nil {
+		if cerr := q.upsertUserDefaultNewVMEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertUserDefaultNewVMEmailStmt: %w", cerr)
+		}
+	}
 	if q.upsertUserLLMCreditStmt != nil {
 		if cerr := q.upsertUserLLMCreditStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertUserLLMCreditStmt: %w", cerr)
@@ -1702,6 +1726,7 @@ type Queries struct {
 	deleteSSHKeyByIDStmt                       *sql.Stmt
 	deleteSSHKeyForUserStmt                    *sql.Stmt
 	deleteTagResolutionStmt                    *sql.Stmt
+	deleteUserDefaultNewVMEmailStmt            *sql.Stmt
 	drawInviteCodeFromPoolStmt                 *sql.Stmt
 	getAccountStmt                             *sql.Stmt
 	getAccountByUserIDStmt                     *sql.Stmt
@@ -1766,6 +1791,7 @@ type Queries struct {
 	getUserBillingExemptionStmt                *sql.Stmt
 	getUserBillingStatusStmt                   *sql.Stmt
 	getUserByEmailStmt                         *sql.Stmt
+	getUserDefaultsStmt                        *sql.Stmt
 	getUserEmailCountForDateStmt               *sql.Stmt
 	getUserIDByEmailStmt                       *sql.Stmt
 	getUserIDBySSHKeyStmt                      *sql.Stmt
@@ -1847,6 +1873,7 @@ type Queries struct {
 	upsertMobilePendingVMStmt                  *sql.Stmt
 	upsertSSHHostKeyStmt                       *sql.Stmt
 	upsertTagResolutionStmt                    *sql.Stmt
+	upsertUserDefaultNewVMEmailStmt            *sql.Stmt
 	upsertUserLLMCreditStmt                    *sql.Stmt
 	useInviteCodeStmt                          *sql.Stmt
 	userHasAuthCookieStmt                      *sql.Stmt
@@ -1906,6 +1933,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteSSHKeyByIDStmt:                       q.deleteSSHKeyByIDStmt,
 		deleteSSHKeyForUserStmt:                    q.deleteSSHKeyForUserStmt,
 		deleteTagResolutionStmt:                    q.deleteTagResolutionStmt,
+		deleteUserDefaultNewVMEmailStmt:            q.deleteUserDefaultNewVMEmailStmt,
 		drawInviteCodeFromPoolStmt:                 q.drawInviteCodeFromPoolStmt,
 		getAccountStmt:                             q.getAccountStmt,
 		getAccountByUserIDStmt:                     q.getAccountByUserIDStmt,
@@ -1970,6 +1998,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserBillingExemptionStmt:                q.getUserBillingExemptionStmt,
 		getUserBillingStatusStmt:                   q.getUserBillingStatusStmt,
 		getUserByEmailStmt:                         q.getUserByEmailStmt,
+		getUserDefaultsStmt:                        q.getUserDefaultsStmt,
 		getUserEmailCountForDateStmt:               q.getUserEmailCountForDateStmt,
 		getUserIDByEmailStmt:                       q.getUserIDByEmailStmt,
 		getUserIDBySSHKeyStmt:                      q.getUserIDBySSHKeyStmt,
@@ -2051,6 +2080,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertMobilePendingVMStmt:                  q.upsertMobilePendingVMStmt,
 		upsertSSHHostKeyStmt:                       q.upsertSSHHostKeyStmt,
 		upsertTagResolutionStmt:                    q.upsertTagResolutionStmt,
+		upsertUserDefaultNewVMEmailStmt:            q.upsertUserDefaultNewVMEmailStmt,
 		upsertUserLLMCreditStmt:                    q.upsertUserLLMCreditStmt,
 		useInviteCodeStmt:                          q.useInviteCodeStmt,
 		userHasAuthCookieStmt:                      q.userHasAuthCookieStmt,

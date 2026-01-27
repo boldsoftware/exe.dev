@@ -306,6 +306,13 @@ type UserDailyEmailCount struct {
 	EmailCount int64  `db:"email_count" json:"email_count"`
 }
 
+type UserDefault struct {
+	UserID     string     `db:"user_id" json:"user_id"`
+	NewVMEmail *int64     `db:"new_vm_email" json:"new_vm_email"`
+	CreatedAt  *time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt  *time.Time `db:"updated_at" json:"updated_at"`
+}
+
 type UserEvent struct {
 	UserID          string     `db:"user_id" json:"user_id"`
 	Event           string     `db:"event" json:"event"`
