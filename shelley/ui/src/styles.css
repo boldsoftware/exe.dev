@@ -1841,7 +1841,7 @@ button {
 
 .message-textarea {
   flex: 1;
-  min-height: 44px;
+  min-height: 46px;
   max-height: 200px;
   padding: 0.625rem 1rem;
   border: 1.5px solid var(--border);
