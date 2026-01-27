@@ -314,6 +314,9 @@ func (s *Server) validateHostForTLSCert(ctx context.Context, host string) error 
 	if host == "exe.new" {
 		return nil
 	}
+	if host == "bold.dev" {
+		return nil
+	}
 
 	boxName, err := s.resolveCustomDomainBoxName(ctx, host)
 	if err != nil {
@@ -552,6 +555,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// This is a vanity domain that lets users start a new box from a memorable URL.
 	if hostname == "exe.new" {
 		target := fmt.Sprintf("%s://%s/new", getScheme(r), s.env.WebHost)
+		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+		return
+	}
+
+	// Redirect requests to bold.dev to WebHost (exe.dev).
+	if hostname == "bold.dev" {
+		target := fmt.Sprintf("https://%s%s", s.env.WebHost, r.URL.RequestURI())
 		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 		return
 	}

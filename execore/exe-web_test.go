@@ -74,6 +74,17 @@ func TestHostPolicyAcceptsApexARecord(t *testing.T) {
 	}
 }
 
+func TestBoldDevAllowedForTLSCert(t *testing.T) {
+	t.Parallel()
+
+	s := &Server{env: stage.Prod(), log: tslog.Slogger(t)}
+	ctx := context.Background()
+
+	if err := s.validateHostForTLSCert(ctx, "bold.dev"); err != nil {
+		t.Fatalf("validateHostForTLSCert(%q) error = %v, want nil", "bold.dev", err)
+	}
+}
+
 func TestResolveCustomDomainRejectsIPAddress(t *testing.T) {
 	t.Parallel()
 
@@ -574,6 +585,68 @@ func TestExeNewRedirectsToWebHostNew(t *testing.T) {
 			} else {
 				if rr.Code == http.StatusTemporaryRedirect && rr.Header().Get("Location") == "http://"+s.env.WebHost+"/new" {
 					t.Errorf("unexpected redirect to %s", rr.Header().Get("Location"))
+				}
+			}
+		})
+	}
+}
+
+func TestBoldDevRedirectsToWebHost(t *testing.T) {
+	t.Parallel()
+
+	s := newUnstartedServer(t)
+
+	tests := []struct {
+		name         string
+		host         string
+		path         string
+		wantRedirect bool
+		wantLocation string
+	}{
+		{
+			name:         "bold.dev redirects to https WebHost",
+			host:         "bold.dev",
+			path:         "/",
+			wantRedirect: true,
+			wantLocation: "https://" + s.env.WebHost + "/",
+		},
+		{
+			name:         "bold.dev preserves path",
+			host:         "bold.dev",
+			path:         "/foo/bar",
+			wantRedirect: true,
+			wantLocation: "https://" + s.env.WebHost + "/foo/bar",
+		},
+		{
+			name:         "bold.dev with port redirects",
+			host:         "bold.dev:443",
+			path:         "/",
+			wantRedirect: true,
+			wantLocation: "https://" + s.env.WebHost + "/",
+		},
+		{
+			name:         "bold.dev preserves query string",
+			host:         "bold.dev",
+			path:         "/new?foo=bar",
+			wantRedirect: true,
+			wantLocation: "https://" + s.env.WebHost + "/new?foo=bar",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req.Host = tt.host
+			rr := httptest.NewRecorder()
+
+			s.ServeHTTP(rr, req)
+
+			if tt.wantRedirect {
+				if rr.Code != http.StatusTemporaryRedirect {
+					t.Errorf("status = %d, want %d", rr.Code, http.StatusTemporaryRedirect)
+				}
+				if loc := rr.Header().Get("Location"); loc != tt.wantLocation {
+					t.Errorf("Location = %q, want %q", loc, tt.wantLocation)
 				}
 			}
 		})
