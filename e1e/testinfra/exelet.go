@@ -666,13 +666,19 @@ func (ei *ExeletInstance) Stop(ctx context.Context) string {
 		slog.ErrorContext(cleanupCtx, "failed to remove bridge", "bridge", ei.BridgeName, "error", err, "output", out)
 	}
 
+	// Promote any new images to the shared cache before destroying the test dataset.
+	remoteExecutor := func(ctx context.Context, cmd string) ([]byte, error) {
+		return sshExec(ctx, ei.RemoteHost, cmd)
+	}
+	promoteImageVolumesWithExecutor(cleanupCtx, remoteExecutor, ei.ZFSDataset)
+
 	// Remove the ZFS dataset, including the cloned image volumes.
 	slog.InfoContext(cleanupCtx, "removing ZFS dataset", "dataset", ei.ZFSDataset)
 	if out, err := sshExec(cleanupCtx, ei.RemoteHost, "sudo zfs destroy -r "+ei.ZFSDataset); err != nil {
 		slog.ErrorContext(cleanupCtx, "failed to remove ZFS dataset", "dataset", ei.ZFSDataset, "error", err, "output", out)
 	}
 	// Clean up snapshots we create on source image volumes for cloning.
-	cleanupSnapshotsCmd := fmt.Sprintf("sudo zfs list -H -t snapshot -o name | grep '@ele-%s$' | xargs -r -n1 sudo zfs destroy", ei.testRunID)
+	cleanupSnapshotsCmd := fmt.Sprintf("sudo zfs list -H -t snapshot -o name | grep '@e1e-%s$' | xargs -r -n1 sudo zfs destroy", ei.testRunID)
 	if out, err := sshExec(cleanupCtx, ei.RemoteHost, cleanupSnapshotsCmd); err != nil {
 		slog.ErrorContext(cleanupCtx, "failed to cleanup image snapshots", "error", err, "output", out)
 	}
@@ -748,6 +754,12 @@ func (ei *ExeletInstance) stopLocal(ctx context.Context) string {
 
 	// Remove ZFS dataset
 	if ei.ZFSDataset != "" {
+		// Promote any new images to the shared cache before destroying the test dataset.
+		localExecutor := func(ctx context.Context, cmd string) ([]byte, error) {
+			return exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+		}
+		promoteImageVolumesWithExecutor(cleanupCtx, localExecutor, ei.ZFSDataset)
+
 		slog.InfoContext(cleanupCtx, "removing ZFS dataset", "dataset", ei.ZFSDataset)
 		if out, err := exec.CommandContext(cleanupCtx, "sudo", "zfs", "destroy", "-r", ei.ZFSDataset).CombinedOutput(); err != nil {
 			slog.ErrorContext(cleanupCtx, "failed to remove ZFS dataset", "dataset", ei.ZFSDataset, "error", err, "output", string(out))
@@ -778,9 +790,8 @@ func (ei *ExeletInstance) stopLocal(ctx context.Context) string {
 // making tests much faster since images don't need to be re-downloaded
 // and provisioned for each test run.
 //
-// TODO: After test run completes, promote new images from tank/e1e-XXXX/sha256:*
-// to tank/sha256:* so subsequent runs can reuse them. Currently the shared cache
-// at tank/sha256:* must be seeded manually.
+// It also promotes new images from tank/e1e-XXXX/sha256:* to tank/sha256:*
+// during cleanup so subsequent runs can reuse them.
 func cloneImageVolumesWithExecutor(ctx context.Context, execute cmdExecutor, zfsDataset, runID string) error {
 	// List all ZFS datasets
 	out, err := execute(ctx, "sudo zfs list -H -o name")
@@ -830,6 +841,68 @@ func cloneImageVolumesWithExecutor(ctx context.Context, execute cmdExecutor, zfs
 	}
 
 	return nil
+}
+
+// promoteImageVolumesWithExecutor promotes image volumes from a test dataset to the shared cache.
+// This copies tank/e1e-XXXX/sha256:* to tank/sha256:* so subsequent test runs can reuse them.
+// Uses ZFS send/receive to create independent copies (not clones) that don't depend on the test dataset.
+func promoteImageVolumesWithExecutor(ctx context.Context, execute cmdExecutor, zfsDataset string) {
+	// List all datasets under the test dataset
+	out, err := execute(ctx, "sudo zfs list -H -o name -r "+zfsDataset)
+	if err != nil {
+		return
+	}
+
+	// Find sha256:* volumes (completed images, not tmp-sha256:*)
+	for _, line := range bytes.Split(bytes.TrimSpace(out), []byte{'\n'}) {
+		line = bytes.TrimSpace(line)
+		dsName := string(line)
+
+		// Skip non-sha256 volumes and temp volumes
+		if !strings.Contains(dsName, "/sha256:") || strings.Contains(dsName, "/tmp-sha256:") {
+			continue
+		}
+
+		// Extract the sha256:... part
+		parts := strings.SplitN(dsName, "/sha256:", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		imageID := "sha256:" + parts[1]
+		destVolume := "tank/" + imageID
+
+		// Check if destination already exists
+		if _, err := execute(ctx, "sudo zfs list "+destVolume+" 2>/dev/null"); err == nil {
+			// Already cached
+			continue
+		}
+
+		slog.InfoContext(ctx, "promoting image to shared cache", "src", dsName, "dest", destVolume)
+
+		// Use zfs send/receive to create an independent copy
+		// Create a temporary snapshot for the send
+		snapName := dsName + "@promote"
+		if _, err := execute(ctx, "sudo zfs snapshot "+snapName); err != nil {
+			slog.WarnContext(ctx, "failed to create snapshot for promotion", "src", dsName, "error", err)
+			continue
+		}
+
+		// Send/receive to create independent copy
+		sendRecvCmd := fmt.Sprintf("sudo zfs send %s | sudo zfs receive %s", snapName, destVolume)
+		if _, err := execute(ctx, sendRecvCmd); err != nil {
+			slog.WarnContext(ctx, "failed to promote image", "src", dsName, "dest", destVolume, "error", err)
+			// Clean up snapshot
+			execute(ctx, "sudo zfs destroy "+snapName+" 2>/dev/null || true")
+			continue
+		}
+
+		// Clean up the promotion snapshot on the source
+		execute(ctx, "sudo zfs destroy "+snapName+" 2>/dev/null || true")
+		// Clean up the snapshot that zfs receive creates on the destination
+		execute(ctx, "sudo zfs destroy "+destVolume+"@promote 2>/dev/null || true")
+
+		slog.InfoContext(ctx, "promoted image to shared cache", "imageID", imageID)
+	}
 }
 
 // resolveGateway returns the gateway address of the VM.
