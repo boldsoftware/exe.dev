@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -552,6 +553,20 @@ func TestExeNewRedirectsToWebHostNew(t *testing.T) {
 			path:         "/",
 			wantRedirect: true,
 			wantLocation: "http://" + s.env.WebHost + "/new",
+		},
+		{
+			name:         "exe.new/moltbot redirects with prompt",
+			host:         "exe.new",
+			path:         "/moltbot",
+			wantRedirect: true,
+			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeNewPathPrompts["/moltbot"]),
+		},
+		{
+			name:         "exe.new/clawdbot redirects with prompt",
+			host:         "exe.new",
+			path:         "/clawdbot",
+			wantRedirect: true,
+			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeNewPathPrompts["/clawdbot"]),
 		},
 		{
 			name:         "WebHost does not redirect",

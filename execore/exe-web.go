@@ -238,6 +238,16 @@ var (
 	errInvalidBoxName = errors.New("invalid box name")
 )
 
+// exeNewPathPrompts maps paths on exe.new to pre-filled prompts for the /new page.
+var moltbotPrompt = `ANTHROPIC_API_KEY=<fill-this-in>
+
+Set up Moltbot (https://github.com/moltbot/moltbot?tab=readme-ov-file#install-recommended) on this VM running on port 8000. Use "uvx nodeenv -n lts node" to install Node.`
+
+var exeNewPathPrompts = map[string]string{
+	"/moltbot":  moltbotPrompt,
+	"/clawdbot": moltbotPrompt,
+}
+
 // resolveBoxName converts a hostname to a box name.
 // If hostname is a subdomain of the main domain (e.g., box.exe.dev),
 // it returns the box name with the main domain suffix stripped (e.g., "box").
@@ -553,8 +563,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect requests to exe.new to WebHost/new (exe.dev/new).
 	// This is a vanity domain that lets users start a new box from a memorable URL.
+	// Special paths like /moltbot and /clawdbot redirect with a pre-filled prompt.
 	if hostname == "exe.new" {
 		target := fmt.Sprintf("%s://%s/new", getScheme(r), s.env.WebHost)
+		if prompt := exeNewPathPrompts[r.URL.Path]; prompt != "" {
+			target += "?prompt=" + url.QueryEscape(prompt)
+		}
 		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 		return
 	}
