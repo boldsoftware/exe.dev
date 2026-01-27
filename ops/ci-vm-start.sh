@@ -498,9 +498,8 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
     EXELETCTL_BIN="$HOME/.cache/exedops/exelet-ctl-${VM_ARCH}"
 
     # Build from repository root
-    COMMIT=$(git rev-parse --short HEAD)
-    (cd "${SCRIPT_DIR}/.." && GOOS=linux GOARCH=${VM_ARCH} go build -ldflags="-X exe.dev/version.Commit=${COMMIT}" -o "${EXELETD_BIN}" ./cmd/exelet)
-    (cd "${SCRIPT_DIR}/.." && GOOS=linux GOARCH=${VM_ARCH} go build -ldflags="-X exe.dev/version.Commit=${COMMIT}" -o "${EXELETCTL_BIN}" ./cmd/exelet-ctl)
+    (cd "${SCRIPT_DIR}/.." && GOOS=linux GOARCH=${VM_ARCH} go build -o "${EXELETD_BIN}" ./cmd/exelet)
+    (cd "${SCRIPT_DIR}/.." && GOOS=linux GOARCH=${VM_ARCH} go build -o "${EXELETCTL_BIN}" ./cmd/exelet-ctl)
     echo "Built exeletd and exelet-ctl binaries"
 
     echo "Copying setup scripts and binaries to VM ${IP}..."

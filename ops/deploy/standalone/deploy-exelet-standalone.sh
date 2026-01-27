@@ -67,8 +67,7 @@ cd "$REPO_ROOT"
 make GOARCH=${GOARCH} exelet-fs
 
 # Build the binary
-COMMIT=$(git rev-parse --short HEAD)
-GOOS=linux GOARCH=${GOARCH} CGO_ENABLED=0 go build -ldflags="-s -w -X exe.dev/version.Commit=${COMMIT}" -o "/tmp/$BINARY_NAME" ./cmd/exelet
+GOOS=linux GOARCH=${GOARCH} CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$BINARY_NAME" ./cmd/exelet
 
 if [ ! -f "/tmp/$BINARY_NAME" ]; then
     echo "ERROR: Failed to build binary" >&2
