@@ -419,6 +419,168 @@ func TestHasSketchWipBranchChanges(t *testing.T) {
 	}
 }
 
+func TestDangerousRmRf(t *testing.T) {
+	tests := []struct {
+		name     string
+		script   string
+		wantErr  bool
+		errMatch string
+	}{
+		// Dangerous rm -rf commands that should be blocked
+		{
+			name:     "rm -rf .git",
+			script:   "rm -rf .git",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:     "rm -rf with path ending in .git",
+			script:   "rm -rf /path/to/.git",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:     "rm -rf ~ (home directory)",
+			script:   "rm -rf ~",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:     "rm -rf ~/ (home directory with slash)",
+			script:   "rm -rf ~/",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:     "rm -rf ~/path",
+			script:   "rm -rf ~/Documents",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:     "rm -rf $HOME",
+			script:   "rm -rf $HOME",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:     "rm -rf ${HOME}",
+			script:   "rm -rf ${HOME}",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:     "rm -rf / (root)",
+			script:   "rm -rf /",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:     "rm -rf .* (hidden files wildcard)",
+			script:   "rm -rf .*",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:     "rm -rf * (all files wildcard)",
+			script:   "rm -rf *",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:     "rm -rf /* (root wildcard)",
+			script:   "rm -rf /*",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:     "rm -rf with separate flags",
+			script:   "rm -r -f .git",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:     "rm -Rf .git (capital R)",
+			script:   "rm -Rf .git",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:     "rm --recursive --force .git",
+			script:   "rm --recursive --force .git",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:     "rm -rf path/.*/",
+			script:   "rm -rf path/.*",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		// Safe rm commands that should be allowed
+		{
+			name:    "rm -rf specific directory",
+			script:  "rm -rf /tmp/build",
+			wantErr: false,
+		},
+		{
+			name:    "rm -rf node_modules",
+			script:  "rm -rf node_modules",
+			wantErr: false,
+		},
+		{
+			name:    "rm -rf specific file",
+			script:  "rm -rf /tmp/file.txt",
+			wantErr: false,
+		},
+		{
+			name:    "rm without recursive (safe)",
+			script:  "rm -f .git",
+			wantErr: false,
+		},
+		{
+			name:    "rm without force (safe)",
+			script:  "rm -r .git",
+			wantErr: false,
+		},
+		{
+			name:    "rm single file",
+			script:  "rm file.txt",
+			wantErr: false,
+		},
+		{
+			name:    "rm -rf with quoted $HOME (literal string)",
+			script:  "rm -rf '$HOME'",
+			wantErr: false, // single quotes make it literal
+		},
+		// Complex commands
+		{
+			name:     "multiline with dangerous rm",
+			script:   "echo cleaning && rm -rf .git && echo done",
+			wantErr:  true,
+			errMatch: "could delete critical data",
+		},
+		{
+			name:    "multiline with safe rm",
+			script:  "echo cleaning && rm -rf /tmp/build && echo done",
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Check(tc.script)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("Check() error = %v, wantErr %v", err, tc.wantErr)
+				return
+			}
+			if tc.wantErr && err != nil && !strings.Contains(err.Error(), tc.errMatch) {
+				t.Errorf("Check() error message = %v, want containing %v", err, tc.errMatch)
+			}
+		})
+	}
+}
+
 func TestEdgeCases(t *testing.T) {
 	tests := []struct {
 		name        string

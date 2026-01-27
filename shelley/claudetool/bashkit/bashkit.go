@@ -11,6 +11,7 @@ import (
 
 var checks = []func(*syntax.CallExpr) error{
 	noBlindGitAdd,
+	noDangerousRmRf,
 }
 
 // Process-level checks that track state across calls
@@ -101,6 +102,122 @@ func WillRunGitCommit(bashScript string) (bool, error) {
 	})
 
 	return willCommit, nil
+}
+
+// noDangerousRmRf checks for rm -rf commands that could delete critical directories.
+// It rejects patterns that could delete .git directories, home directories (~, $HOME),
+// or root directories.
+func noDangerousRmRf(cmd *syntax.CallExpr) error {
+	if hasDangerousRmRf(cmd) {
+		return fmt.Errorf("permission denied: this rm command could delete critical data (.git, home directory, or root). If you really need to run this command, spell out the full path explicitly (no wildcards, ~, or $HOME). Consider confirming with the user before running destructive cleanup commands")
+	}
+	return nil
+}
+
+// hasDangerousRmRf checks if an rm command could delete critical directories.
+func hasDangerousRmRf(cmd *syntax.CallExpr) bool {
+	if len(cmd.Args) < 1 {
+		return false
+	}
+
+	// Check if the command is rm
+	firstArg := cmd.Args[0].Lit()
+	if firstArg != "rm" {
+		return false
+	}
+
+	// Check if -r or -R is present (recursive)
+	hasRecursive := false
+	hasForce := false
+	for _, arg := range cmd.Args[1:] {
+		lit := arg.Lit()
+		// Handle combined flags like -rf, -fr, -Rf, etc.
+		if strings.HasPrefix(lit, "-") && !strings.HasPrefix(lit, "--") {
+			if strings.ContainsAny(lit, "rR") {
+				hasRecursive = true
+			}
+			if strings.Contains(lit, "f") {
+				hasForce = true
+			}
+		}
+		if lit == "--recursive" {
+			hasRecursive = true
+		}
+		if lit == "--force" {
+			hasForce = true
+		}
+	}
+
+	// Only check for dangerous paths if it's a recursive and forced rm
+	if !hasRecursive || !hasForce {
+		return false
+	}
+
+	// Check arguments for dangerous patterns
+	for _, arg := range cmd.Args[1:] {
+		lit := arg.Lit()
+		// Skip flags
+		if strings.HasPrefix(lit, "-") {
+			continue
+		}
+
+		// Check for .git directory patterns
+		if lit == ".git" || strings.HasSuffix(lit, "/.git") ||
+			strings.Contains(lit, ".git/") || strings.Contains(lit, ".git ") {
+			return true
+		}
+
+		// Check for home directory patterns
+		if lit == "~" || lit == "~/" || strings.HasPrefix(lit, "~/") {
+			return true
+		}
+
+		// Check for root directory
+		if lit == "/" {
+			return true
+		}
+
+		// Check for wildcards that could match .git
+		if lit == ".*" || strings.HasSuffix(lit, "/.*") {
+			return true
+		}
+
+		// Check for broad wildcards at dangerous locations
+		if lit == "*" || lit == "/*" {
+			return true
+		}
+	}
+
+	// Also check if the argument uses variable expansion (like $HOME)
+	// We need to walk the AST more carefully for this
+	for _, arg := range cmd.Args[1:] {
+		if containsHomeVariable(arg) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// containsHomeVariable checks if a word contains $HOME or ${HOME} expansion
+func containsHomeVariable(word *syntax.Word) bool {
+	for _, part := range word.Parts {
+		switch p := part.(type) {
+		case *syntax.ParamExp:
+			if p.Param != nil && p.Param.Value == "HOME" {
+				return true
+			}
+		case *syntax.DblQuoted:
+			for _, inner := range p.Parts {
+				if pe, ok := inner.(*syntax.ParamExp); ok {
+					if pe.Param != nil && pe.Param.Value == "HOME" {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 // noBlindGitAdd checks for git add commands that blindly add all files.

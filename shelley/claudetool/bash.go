@@ -107,6 +107,10 @@ Use background for servers/demos that need to stay running.
 MUST set slow_ok=true for potentially slow commands: builds, downloads,
 installs, tests, or any other substantive operation.
 
+Avoid overly destructive cleanup commands. Commands that could delete .git
+directories, home directories, or use broad wildcards require explicit paths.
+Confirm with the user before running destructive operations.
+
 To change the working directory persistently, use the change_dir tool.
 
 IMPORTANT: Keep commands concise. The command input must be less than 60k tokens.
