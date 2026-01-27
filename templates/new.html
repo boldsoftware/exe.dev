@@ -5,6 +5,7 @@
             <h1 class="form-title">Create a New VM</h1>
             
             <form id="create-vm-form" method="POST" action="/create-vm">
+                {{if .InviteCode}}<input type="hidden" name="invite" value="{{.InviteCode}}">{{end}}
                 <div class="form-group">
                     <div class="form-input-group">
                         <input

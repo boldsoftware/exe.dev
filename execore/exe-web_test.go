@@ -569,6 +569,27 @@ func TestExeNewRedirectsToWebHostNew(t *testing.T) {
 			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeNewPathPrompts["/clawdbot"]),
 		},
 		{
+			name:         "exe.new/moltbot with invite passes through invite",
+			host:         "exe.new",
+			path:         "/moltbot?invite=TESTCODE",
+			wantRedirect: true,
+			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeNewPathPrompts["/moltbot"]) + "&invite=TESTCODE",
+		},
+		{
+			name:         "exe.new/clawdbot with invite passes through invite",
+			host:         "exe.new",
+			path:         "/clawdbot?invite=TESTCODE",
+			wantRedirect: true,
+			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeNewPathPrompts["/clawdbot"]) + "&invite=TESTCODE",
+		},
+		{
+			name:         "exe.new with invite but no prompt",
+			host:         "exe.new",
+			path:         "/?invite=TESTCODE",
+			wantRedirect: true,
+			wantLocation: "http://" + s.env.WebHost + "/new?invite=TESTCODE",
+		},
+		{
 			name:         "WebHost does not redirect",
 			host:         s.env.WebHost,
 			path:         "/new",

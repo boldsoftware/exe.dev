@@ -320,6 +320,7 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	prompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
+	inviteCode := strings.TrimSpace(r.URL.Query().Get("invite"))
 
 	// Generate a random hostname suggestion
 	hostnameSuggestion := boxname.Random()
@@ -328,11 +329,13 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 		stage.Env
 		HostnameSuggestion string
 		Prompt             string
+		InviteCode         string
 		IsLoggedIn         bool
 	}{
 		Env:                s.env,
 		HostnameSuggestion: hostnameSuggestion,
 		Prompt:             prompt,
+		InviteCode:         inviteCode,
 		IsLoggedIn:         false, // Already checked auth above, if we're here user is not logged in
 	}
 
@@ -341,11 +344,12 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 
 // handleMobileNew renders the new box form.
 // Always shows the form - billing is requested when the user clicks "Create VM".
-// Accepts name and prompt query params to prefill the form (used after billing cancel).
+// Accepts name, prompt, and invite query params to prefill the form (used after billing cancel or from exe.new).
 func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
-	// Read name and prompt from query params (used when redirecting back after billing cancel)
+	// Read name, prompt, and invite from query params
 	name := strings.TrimSpace(r.URL.Query().Get("name"))
 	prompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
+	inviteCode := strings.TrimSpace(r.URL.Query().Get("invite"))
 
 	// Use the prefilled name or generate a random suggestion
 	hostnameSuggestion := name
@@ -368,6 +372,7 @@ func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
 		stage.Env
 		HostnameSuggestion string
 		Prompt             string
+		InviteCode         string
 		IsLoggedIn         bool
 		ActivePage         string
 		BasicUser          bool
@@ -375,6 +380,7 @@ func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
 		Env:                s.env,
 		HostnameSuggestion: hostnameSuggestion,
 		Prompt:             prompt,
+		InviteCode:         inviteCode,
 		IsLoggedIn:         isLoggedIn,
 		ActivePage:         "",
 		BasicUser:          false, // Users creating boxes are never basic users
@@ -441,6 +447,7 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 
 	hostname := strings.ToLower(strings.TrimSpace(r.FormValue("hostname")))
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
+	inviteCodeStr := strings.TrimSpace(r.FormValue("invite"))
 
 	s.slog().InfoContext(r.Context(), "Mobile VM creation request", "hostname", hostname, "prompt", prompt)
 
@@ -468,12 +475,28 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate invite code if provided
+	var inviteCodeValid, inviteCodeInvalid bool
+	var invitePlanType string
+	if inviteCodeStr != "" {
+		if invite := s.lookupUnusedInviteCode(r.Context(), inviteCodeStr); invite != nil {
+			inviteCodeValid = true
+			invitePlanType = invite.PlanType
+		} else {
+			inviteCodeInvalid = true
+		}
+	}
+
 	// Otherwise, proceed to email auth, carrying the VM details as hidden fields
 	data := authFormData{
-		Env:        s.env,
-		SSHCommand: s.replSSHConnectionCommand(),
-		BoxName:    hostname,
-		Prompt:     prompt,
+		Env:               s.env,
+		SSHCommand:        s.replSSHConnectionCommand(),
+		BoxName:           hostname,
+		Prompt:            prompt,
+		InviteCode:        inviteCodeStr,
+		InviteCodeValid:   inviteCodeValid,
+		InviteCodeInvalid: inviteCodeInvalid,
+		InvitePlanType:    invitePlanType,
 	}
 
 	s.renderTemplate(r.Context(), w, "auth-form.html", data)
@@ -511,6 +534,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(r.FormValue("email"))
 	hostname := strings.ToLower(strings.TrimSpace(r.FormValue("hostname")))
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
+	inviteCodeStr := strings.TrimSpace(r.FormValue("invite"))
 	if email == "" {
 		http.Error(w, "Email is required", http.StatusBadRequest)
 		return
@@ -522,13 +546,19 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for valid invite code early so we can bypass abuse checks if valid
+	var invite *exedb.InviteCode
+	if inviteCodeStr != "" {
+		invite = s.lookupUnusedInviteCode(r.Context(), inviteCodeStr)
+	}
+
 	// Validate signup eligibility
 	if err := s.validateNewSignup(r.Context(), signupValidationParams{
 		ip:               ip.String(),
 		email:            email,
 		source:           "mobile",
 		trustedGitHubKey: false,
-		hasInviteCode:    false,
+		hasInviteCode:    invite != nil,
 	}); err != nil {
 		s.slog().InfoContext(r.Context(), "signup validation failed", "error", err, "ip", ip, "email", email)
 		http.Error(w, err.Error(), http.StatusForbidden)
@@ -538,8 +568,12 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 	// Generate verification token
 	token := generateRegistrationToken()
 
-	// Store email verification token in database
-	err := s.storeEmailVerification(r.Context(), email, token)
+	// Store email verification token in database (creates user if needed)
+	var inviteCodeID *int64
+	if invite != nil {
+		inviteCodeID = &invite.ID
+	}
+	err := s.storeEmailVerification(r.Context(), email, token, inviteCodeID)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to store email verification", "error", err)
 		http.Error(w, "Failed to process request", http.StatusInternalServerError)

@@ -578,6 +578,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if prompt := exeNewPathPrompts[r.URL.Path]; prompt != "" {
 			target += "?prompt=" + url.QueryEscape(prompt)
 		}
+		if invite := r.URL.Query().Get("invite"); invite != "" {
+			if strings.Contains(target, "?") {
+				target += "&invite=" + url.QueryEscape(invite)
+			} else {
+				target += "?invite=" + url.QueryEscape(invite)
+			}
+		}
 		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 		return
 	}

@@ -1608,8 +1608,9 @@ func (s *Server) validateEmailVerificationToken(ctx context.Context, token strin
 	return row.UserID, nil
 }
 
-// storeEmailVerification stores an email verification token
-func (s *Server) storeEmailVerification(ctx context.Context, email, token string) error {
+// storeEmailVerification stores an email verification token.
+// inviteCodeID may be nil.
+func (s *Server) storeEmailVerification(ctx context.Context, email, token string, inviteCodeID *int64) error {
 	var userID string
 	var isNewUser bool
 
@@ -1631,10 +1632,11 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 		// Store verification token
 		expiresAt := time.Now().Add(24 * time.Hour)
 		return queries.InsertOrReplaceEmailVerification(ctx, exedb.InsertOrReplaceEmailVerificationParams{
-			Token:     token,
-			UserID:    userID,
-			Email:     email,
-			ExpiresAt: expiresAt,
+			Token:        token,
+			UserID:       userID,
+			Email:        email,
+			ExpiresAt:    expiresAt,
+			InviteCodeID: inviteCodeID,
 		})
 	})
 	if err != nil {

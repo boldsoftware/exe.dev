@@ -357,3 +357,62 @@ func TestDashboardShowsInviteCount(t *testing.T) {
 		t.Error("expected to see 'Allocate' form when user has invites")
 	}
 }
+
+// TestInviteCodePassthrough tests that invite codes are passed through
+// the /new and /create-vm forms correctly.
+func TestInviteCodePassthrough(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	inviteCode, err := Env.servers.CreateInviteCode("free")
+	if err != nil {
+		t.Fatalf("failed to create invite code: %v", err)
+	}
+
+	// Step 1: GET /new?invite=CODE should include invite in hidden form field
+	newURL := fmt.Sprintf("http://localhost:%d/new?invite=%s", Env.servers.Exed.HTTPPort, inviteCode)
+	resp, err := http.Get(newURL)
+	if err != nil {
+		t.Fatalf("failed to GET /new: %v", err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("failed to read response body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+	// Verify the invite code is in a hidden field
+	if !strings.Contains(string(body), fmt.Sprintf(`name="invite" value="%s"`, inviteCode)) {
+		t.Errorf("expected hidden invite field with value %q in /new form", inviteCode)
+	}
+
+	// Step 2: POST /create-vm with invite should pass it to auth form with "Invite code accepted"
+	createURL := fmt.Sprintf("http://localhost:%d/create-vm", Env.servers.Exed.HTTPPort)
+	resp2, err := http.PostForm(createURL, map[string][]string{
+		"hostname": {"testvm"},
+		"prompt":   {"test prompt"},
+		"invite":   {inviteCode},
+	})
+	if err != nil {
+		t.Fatalf("failed to POST /create-vm: %v", err)
+	}
+	body2, err := io.ReadAll(resp2.Body)
+	resp2.Body.Close()
+	if err != nil {
+		t.Fatalf("failed to read response body: %v", err)
+	}
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp2.StatusCode)
+	}
+	// Valid invite code should show acceptance message
+	if !strings.Contains(string(body2), "Invite code accepted") {
+		t.Errorf("expected 'Invite code accepted' message for valid invite code")
+	}
+	// The form should include the invite hidden field for valid codes
+	if !strings.Contains(string(body2), `name="invite"`) {
+		t.Errorf("expected invite hidden field for valid code")
+	}
+}
