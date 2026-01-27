@@ -125,6 +125,8 @@ message ThrottleVMRequest {
   bool clear = 2;                      // Remove all throttling
   optional uint32 cpu_percent = 3;     // CPU limit (5 = 5% of CPU time)
   optional uint32 memory_percent = 4;  // memory.high as % of allocated (50 = push to swap at 50%)
+  optional uint64 io_read_bps = 5;     // Read bandwidth limit in bytes/sec (0 = unlimited)
+  optional uint64 io_write_bps = 6;    // Write bandwidth limit in bytes/sec (0 = unlimited)
 }
 
 message ThrottleVMResponse {}

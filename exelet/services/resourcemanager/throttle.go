@@ -7,8 +7,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -24,8 +27,8 @@ func (m *ResourceManager) ThrottleVM(ctx context.Context, req *api.ThrottleVMReq
 	}
 
 	// Validate that clear is not combined with other fields
-	if req.Clear && (req.CpuPercent != nil || req.MemoryPercent != nil) {
-		return nil, status.Error(codes.InvalidArgument, "clear cannot be combined with cpu or memory options")
+	if req.Clear && (req.CpuPercent != nil || req.MemoryPercent != nil || req.IoReadBps != nil || req.IoWriteBps != nil) {
+		return nil, status.Error(codes.InvalidArgument, "clear cannot be combined with throttle options")
 	}
 
 	// Validate cpu_percent > 0
@@ -41,8 +44,8 @@ func (m *ResourceManager) ThrottleVM(ctx context.Context, req *api.ThrottleVMReq
 	}
 
 	// Validate that at least one option is specified
-	if !req.Clear && req.CpuPercent == nil && req.MemoryPercent == nil {
-		return nil, status.Error(codes.InvalidArgument, "at least one of clear, cpu_percent, or memory_percent is required")
+	if !req.Clear && req.CpuPercent == nil && req.MemoryPercent == nil && req.IoReadBps == nil && req.IoWriteBps == nil {
+		return nil, status.Error(codes.InvalidArgument, "at least one of clear, cpu_percent, memory_percent, io_read_bps, or io_write_bps is required")
 	}
 
 	// Get VM PID for cgroup operations
@@ -102,6 +105,37 @@ func (m *ResourceManager) applyThrottling(ctx context.Context, req *api.Throttle
 		m.log.InfoContext(ctx, "applied memory throttle", "vm_id", req.VmID, "memory_percent", *req.MemoryPercent)
 	}
 
+	// IO throttling
+	if req.IoReadBps != nil || req.IoWriteBps != nil {
+		if m.context == nil || m.context.StorageManager == nil {
+			return nil, status.Error(codes.FailedPrecondition, "storage manager not available for IO throttling")
+		}
+
+		fs, err := m.context.StorageManager.Get(ctx, req.VmID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get filesystem for IO throttle: %v", err)
+		}
+
+		majMin, err := getDeviceMajorMinor(fs.Path)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get device info: %v", err)
+		}
+
+		readBPS := uint64(0)
+		if req.IoReadBps != nil {
+			readBPS = *req.IoReadBps
+		}
+		writeBPS := uint64(0)
+		if req.IoWriteBps != nil {
+			writeBPS = *req.IoWriteBps
+		}
+
+		if err := setIOMax(cgroupPath, majMin, readBPS, writeBPS); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to set IO throttle: %v", err)
+		}
+		m.log.InfoContext(ctx, "applied IO throttle", "vm_id", req.VmID, "read_bps", readBPS, "write_bps", writeBPS)
+	}
+
 	return &api.ThrottleVMResponse{}, nil
 }
 
@@ -119,6 +153,21 @@ func (m *ResourceManager) clearThrottling(ctx context.Context, vmID, cgroupPath 
 	if err := m.setMemoryHigh(cgroupPath, "max"); err != nil {
 		m.log.WarnContext(ctx, "failed to clear memory throttle", "vm_id", vmID, "error", err)
 		errs = append(errs, fmt.Sprintf("memory: %v", err))
+	}
+
+	// Clear IO throttle if storage manager is available
+	if m.context != nil && m.context.StorageManager != nil {
+		fs, err := m.context.StorageManager.Get(ctx, vmID)
+		if err != nil {
+			m.log.WarnContext(ctx, "failed to get filesystem for IO throttle clear", "vm_id", vmID, "error", err)
+			errs = append(errs, fmt.Sprintf("io (get filesystem): %v", err))
+		} else if majMin, err := getDeviceMajorMinor(fs.Path); err != nil {
+			m.log.WarnContext(ctx, "failed to get device info for IO throttle clear", "vm_id", vmID, "path", fs.Path, "error", err)
+			errs = append(errs, fmt.Sprintf("io (get device): %v", err))
+		} else if err := clearIOMax(cgroupPath, majMin); err != nil {
+			m.log.WarnContext(ctx, "failed to clear IO throttle", "vm_id", vmID, "error", err)
+			errs = append(errs, fmt.Sprintf("io: %v", err))
+		}
 	}
 
 	if len(errs) > 0 {
@@ -150,6 +199,144 @@ func (m *ResourceManager) clearCPUMax(cgroupPath string) error {
 func (m *ResourceManager) setMemoryHighPercent(cgroupPath string, percent uint32, allocatedBytes uint64) error {
 	highBytes := (uint64(percent) * allocatedBytes) / 100
 	return os.WriteFile(filepath.Join(cgroupPath, "memory.high"), []byte(fmt.Sprintf("%d", highBytes)), 0o644)
+}
+
+// getDeviceMajorMinor returns "MAJ:MIN" for a device path.
+// If the path is a symlink (like /dev/zvol/...), it resolves to the real device.
+func getDeviceMajorMinor(devicePath string) (string, error) {
+	// Resolve symlinks to get the real device path
+	// /dev/zvol/tank/vm-id -> /dev/zd0 (or similar)
+	realPath, err := filepath.EvalSymlinks(devicePath)
+	if err != nil {
+		return "", fmt.Errorf("resolve symlink %s: %w", devicePath, err)
+	}
+
+	var stat unix.Stat_t
+	if err := unix.Stat(realPath, &stat); err != nil {
+		return "", fmt.Errorf("stat device %s: %w", realPath, err)
+	}
+	major := unix.Major(uint64(stat.Rdev))
+	minor := unix.Minor(uint64(stat.Rdev))
+	return strconv.FormatUint(uint64(major), 10) + ":" + strconv.FormatUint(uint64(minor), 10), nil
+}
+
+// setIOMax sets io.max bandwidth limits for a device.
+// readBPS/writeBPS of 0 means unlimited (use "max").
+// Preserves existing limits for other devices and other keys (riops/wiops) for this device.
+func setIOMax(cgroupPath, deviceMajMin string, readBPS, writeBPS uint64) error {
+	ioMaxFile := filepath.Join(cgroupPath, "io.max")
+
+	readLimit := "max"
+	if readBPS > 0 {
+		readLimit = strconv.FormatUint(readBPS, 10)
+	}
+	writeLimit := "max"
+	if writeBPS > 0 {
+		writeLimit = strconv.FormatUint(writeBPS, 10)
+	}
+
+	updates := map[string]string{
+		"rbps": readLimit,
+		"wbps": writeLimit,
+	}
+	return updateIOMaxLine(ioMaxFile, deviceMajMin, updates)
+}
+
+// clearIOMax removes io.max bandwidth limits for a device by setting them to max.
+// Preserves existing limits for other devices and other keys (riops/wiops) for this device.
+func clearIOMax(cgroupPath, deviceMajMin string) error {
+	ioMaxFile := filepath.Join(cgroupPath, "io.max")
+	updates := map[string]string{
+		"rbps": "max",
+		"wbps": "max",
+	}
+	return updateIOMaxLine(ioMaxFile, deviceMajMin, updates)
+}
+
+// updateIOMaxLine updates specific keys for a device in io.max,
+// preserving lines for other devices and other keys for this device.
+func updateIOMaxLine(ioMaxFile, deviceMajMin string, updates map[string]string) error {
+	// Read existing content
+	existing, err := os.ReadFile(ioMaxFile)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read io.max: %w", err)
+	}
+
+	// Parse existing lines
+	var lines []string
+	found := false
+	prefix := deviceMajMin + " "
+
+	for _, line := range strings.Split(string(existing), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, prefix) {
+			// Parse existing key=value pairs and merge with updates
+			merged := mergeIOMaxKeys(line, deviceMajMin, updates)
+			lines = append(lines, merged)
+			found = true
+		} else {
+			// Preserve lines for other devices
+			lines = append(lines, line)
+		}
+	}
+
+	if !found {
+		// No existing line for this device, create new one
+		lines = append(lines, buildIOMaxLine(deviceMajMin, updates))
+	}
+
+	content := strings.Join(lines, "\n")
+	return os.WriteFile(ioMaxFile, []byte(content), 0o644)
+}
+
+// mergeIOMaxKeys parses an existing io.max line and merges in the updates,
+// preserving any keys not being updated.
+func mergeIOMaxKeys(existingLine, deviceMajMin string, updates map[string]string) string {
+	// Parse existing line: "MAJ:MIN key1=val1 key2=val2 ..."
+	parts := strings.Fields(existingLine)
+	if len(parts) < 1 {
+		return buildIOMaxLine(deviceMajMin, updates)
+	}
+
+	// Extract existing key=value pairs (skip the MAJ:MIN prefix)
+	existing := make(map[string]string)
+	for _, part := range parts[1:] {
+		if kv := strings.SplitN(part, "=", 2); len(kv) == 2 {
+			existing[kv[0]] = kv[1]
+		}
+	}
+
+	// Merge updates into existing
+	for k, v := range updates {
+		existing[k] = v
+	}
+
+	return buildIOMaxLine(deviceMajMin, existing)
+}
+
+// buildIOMaxLine constructs an io.max line from device and key=value pairs.
+func buildIOMaxLine(deviceMajMin string, kvs map[string]string) string {
+	// Build line with consistent key ordering for predictable output
+	var parts []string
+	parts = append(parts, deviceMajMin)
+
+	// Standard key order
+	for _, key := range []string{"rbps", "wbps", "riops", "wiops"} {
+		if val, ok := kvs[key]; ok {
+			parts = append(parts, key+"="+val)
+		}
+	}
+	// Any other keys (future-proofing)
+	for key, val := range kvs {
+		if key != "rbps" && key != "wbps" && key != "riops" && key != "wiops" {
+			parts = append(parts, key+"="+val)
+		}
+	}
+
+	return strings.Join(parts, " ")
 }
 
 // classifyVMPIDError maps getVMPID errors to appropriate gRPC status codes.

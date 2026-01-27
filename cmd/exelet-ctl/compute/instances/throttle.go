@@ -26,6 +26,14 @@ var throttleInstanceCommand = &cli.Command{
 			Name:  "memory",
 			Usage: "memory.high threshold as percentage of allocated (e.g., '50%')",
 		},
+		&cli.StringFlag{
+			Name:  "io-read",
+			Usage: "IO read bandwidth limit (e.g., '10M', '1G', '500K', or bytes)",
+		},
+		&cli.StringFlag{
+			Name:  "io-write",
+			Usage: "IO write bandwidth limit (e.g., '10M', '1G', '500K', or bytes)",
+		},
 		&cli.BoolFlag{
 			Name:  "clear",
 			Usage: "remove all throttling",
@@ -67,9 +75,27 @@ func throttleAction(clix *cli.Context) error {
 		memoryPercent = &pct
 	}
 
+	var ioReadBps *uint64
+	if ioReadStr := clix.String("io-read"); ioReadStr != "" {
+		bps, err := parseBandwidth(ioReadStr)
+		if err != nil {
+			return fmt.Errorf("invalid --io-read value: %w", err)
+		}
+		ioReadBps = &bps
+	}
+
+	var ioWriteBps *uint64
+	if ioWriteStr := clix.String("io-write"); ioWriteStr != "" {
+		bps, err := parseBandwidth(ioWriteStr)
+		if err != nil {
+			return fmt.Errorf("invalid --io-write value: %w", err)
+		}
+		ioWriteBps = &bps
+	}
+
 	// Validate that at least one option is specified
-	if !clear && cpuPercent == nil && memoryPercent == nil {
-		return fmt.Errorf("at least one throttle option (--cpu, --memory) or --clear is required")
+	if !clear && cpuPercent == nil && memoryPercent == nil && ioReadBps == nil && ioWriteBps == nil {
+		return fmt.Errorf("at least one throttle option (--cpu, --memory, --io-read, --io-write) or --clear is required")
 	}
 
 	ctx := context.WithoutCancel(clix.Context)
@@ -87,6 +113,8 @@ func throttleAction(clix *cli.Context) error {
 				Clear:         clear,
 				CpuPercent:    cpuPercent,
 				MemoryPercent: memoryPercent,
+				IoReadBps:     ioReadBps,
+				IoWriteBps:    ioWriteBps,
 			}
 
 			if _, err := c.ThrottleVM(ctx, req); err != nil {
@@ -138,4 +166,41 @@ func parseMemoryPercent(s string) (uint32, error) {
 		return 0, fmt.Errorf("memory percentage must be between 1 and 100, got %d", pct)
 	}
 	return uint32(pct), nil
+}
+
+// parseBandwidth parses a bandwidth string like "10M", "1G", "500K", or plain bytes.
+// Supported suffixes: K/k (1024), M/m (1024^2), G/g (1024^3).
+func parseBandwidth(s string) (uint64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("empty bandwidth value")
+	}
+
+	var multiplier uint64 = 1
+	lastChar := s[len(s)-1]
+
+	switch lastChar {
+	case 'k', 'K':
+		multiplier = 1024
+		s = s[:len(s)-1]
+	case 'm', 'M':
+		multiplier = 1024 * 1024
+		s = s[:len(s)-1]
+	case 'g', 'G':
+		multiplier = 1024 * 1024 * 1024
+		s = s[:len(s)-1]
+	}
+
+	val, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid bandwidth value: %s", s)
+	}
+
+	// Check for overflow before multiplication
+	const maxUint64 = ^uint64(0)
+	if val > maxUint64/multiplier {
+		return 0, fmt.Errorf("bandwidth value too large: %s (would overflow)", s)
+	}
+
+	return val * multiplier, nil
 }
