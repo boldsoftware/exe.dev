@@ -28,6 +28,7 @@ import OutputIframeTool from "./OutputIframeTool";
 import DirectoryPickerModal from "./DirectoryPickerModal";
 import { useVersionChecker } from "./VersionChecker";
 import TerminalWidget from "./TerminalWidget";
+import ModelPicker from "./ModelPicker";
 
 // Ephemeral terminal instance (not persisted to database)
 interface EphemeralTerminal {
@@ -462,6 +463,7 @@ interface ChatInterfaceProps {
   onToggleDrawerCollapse?: () => void;
   openDiffViewerTrigger?: number; // increment to trigger opening diff viewer
   modelsRefreshTrigger?: number; // increment to trigger models list refresh
+  onOpenModelsModal?: () => void;
 }
 
 function ChatInterface({
@@ -479,6 +481,7 @@ function ChatInterface({
   onToggleDrawerCollapse,
   openDiffViewerTrigger,
   modelsRefreshTrigger,
+  onOpenModelsModal,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -573,7 +576,6 @@ function ChatInterface({
   }, [modelsRefreshTrigger, conversationId]);
 
   const [cwdError, setCwdError] = useState<string | null>(null);
-  const [editingModel, setEditingModel] = useState(false);
   const [showDirectoryPicker, setShowDirectoryPicker] = useState(false);
   // Settings modal removed - configuration moved to status bar for empty conversations
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
@@ -1613,31 +1615,13 @@ function ChatInterface({
                 title="AI model to use for this conversation"
               >
                 <span className="status-field-label">Model:</span>
-                {editingModel ? (
-                  <select
-                    id="model-select-status"
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    onBlur={() => setEditingModel(false)}
-                    disabled={sending}
-                    className="status-select"
-                    autoFocus
-                  >
-                    {models.map((model) => (
-                      <option key={model.id} value={model.id} disabled={!model.ready}>
-                        {model.display_name || model.id} {!model.ready ? "(not ready)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <button
-                    className="status-chip"
-                    onClick={() => setEditingModel(true)}
-                    disabled={sending}
-                  >
-                    {models.find((m) => m.id === selectedModel)?.display_name || selectedModel}
-                  </button>
-                )}
+                <ModelPicker
+                  models={models}
+                  selectedModel={selectedModel}
+                  onSelectModel={setSelectedModel}
+                  onManageModels={() => onOpenModelsModal?.()}
+                  disabled={sending}
+                />
               </div>
 
               {/* CWD indicator - far right */}

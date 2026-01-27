@@ -382,6 +382,7 @@ function App() {
           onToggleDrawerCollapse={toggleDrawerCollapsed}
           openDiffViewerTrigger={diffViewerTrigger}
           modelsRefreshTrigger={modelsRefreshTrigger}
+          onOpenModelsModal={() => setModelsModalOpen(true)}
         />
       </div>
 
