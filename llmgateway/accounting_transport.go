@@ -525,6 +525,16 @@ func isFreeEndpoint(path string) bool {
 	return false
 }
 
+// isBlockedEndpoint returns true if the path is an endpoint that we don't
+// support because it has non-token-based pricing that we can't easily track.
+func isBlockedEndpoint(path string) bool {
+	switch path {
+	case "/v1/images/generations", "/v1/images/edits":
+		return true
+	}
+	return false
+}
+
 // isGzipped returns true if the data appears to be gzip-compressed.
 // It checks both the Content-Encoding header (case-insensitive, handles multiple
 // values) and the gzip magic bytes (0x1f 0x8b) as a fallback.

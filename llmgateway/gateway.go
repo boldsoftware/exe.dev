@@ -224,6 +224,12 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	requestsCounter.WithLabelValues("attempted", alias).Inc()
 
+	// Check if this endpoint is blocked (e.g., image generation with per-image pricing)
+	if isBlockedEndpoint(remainder) {
+		m.httpError(w, r, "endpoint not supported: "+remainder, http.StatusForbidden, boxName, nil)
+		return
+	}
+
 	// Construct filtered header to send to origin server
 	hh := http.Header{}
 	for hk := range r.Header {

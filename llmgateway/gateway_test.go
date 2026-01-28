@@ -701,6 +701,35 @@ func (rc *readCloser) Close() error {
 	return nil
 }
 
+func TestIsBlockedEndpoint(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		// Blocked endpoints (per-image pricing)
+		{"/v1/images/generations", true},
+		{"/v1/images/edits", true},
+
+		// Allowed endpoints
+		{"/v1/chat/completions", false},
+		{"/v1/completions", false},
+		{"/v1/models", false},
+		{"/v1/embeddings", false},
+		{"/v1/audio/transcriptions", false},
+		{"/inference/v1/chat/completions", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := isBlockedEndpoint(tt.path)
+			if got != tt.want {
+				t.Errorf("isBlockedEndpoint(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsFreeEndpoint(t *testing.T) {
 	tests := []struct {
 		path string
