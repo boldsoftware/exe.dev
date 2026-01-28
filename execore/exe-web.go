@@ -241,7 +241,16 @@ var (
 // exeNewPathPrompts maps paths on exe.new to pre-filled prompts for the /new page.
 var moltbotPrompt = `ANTHROPIC_API_KEY=<fill-this-in>
 
-Set up Moltbot (https://github.com/moltbot/moltbot?tab=readme-ov-file#install-recommended) on this VM running on port 8000. Use "uvx nodeenv -n lts node" to install Node.`
+Set up Moltbot (https://docs.molt.bot/install) on this VM. Moltbot used to be 
+called Clawdbot until recently, so be aware if the executable or other docs 
+still refer to Clawdbot. Use the non-interactive and accept-risk flags for 
+moltbot onboarding. Add the supplied auth or token as needed. Configure nginx 
+to forward from the default port 18789 to the root location on the default 
+enabled site config, making sure to enable Websocket support. Pairing is done 
+by "clawdbot devices list" and "clawdbot device approve <request id>". Make 
+sure the dashboard shows that Moltbot's health is OK. exe.dev handles forwarding 
+from port 8000 to port 80/443 and HTTPS for us, so the final "reachable" 
+should be https://<vm-name>.exe.xyz without port specification.`
 
 var exeNewPathPrompts = map[string]string{
 	"/moltbot":  moltbotPrompt,
