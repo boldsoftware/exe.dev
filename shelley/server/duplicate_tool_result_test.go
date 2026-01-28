@@ -108,9 +108,6 @@ func TestCancelAfterToolCompletesCreatesDuplicateToolResult(t *testing.T) {
 		t.Fatal("tool result was not found - tool didn't complete")
 	}
 
-	// Give a tiny bit more time for the loop to stabilize
-	time.Sleep(100 * time.Millisecond)
-
 	// Now cancel the conversation AFTER the tool has completed
 	// This should NOT create a new tool_result because the tool already finished
 	cancelReq := httptest.NewRequest("POST", "/api/conversation/"+conversationID+"/cancel", nil)
@@ -121,8 +118,14 @@ func TestCancelAfterToolCompletesCreatesDuplicateToolResult(t *testing.T) {
 		t.Fatalf("cancel: expected status 200, got %d: %s", cancelW.Code, cancelW.Body.String())
 	}
 
-	// Wait for cancel to process
-	time.Sleep(200 * time.Millisecond)
+	// Wait for agent to stop working (cancel to process)
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if !server.IsAgentWorking(conversationID) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	// Check the messages to see if there are duplicate tool_results for the same tool_use_id
 	var messages []generated.Message
@@ -179,8 +182,14 @@ func TestCancelAfterToolCompletesCreatesDuplicateToolResult(t *testing.T) {
 		t.Fatalf("resume: expected status 202, got %d: %s", resumeW.Code, resumeW.Body.String())
 	}
 
-	// Wait for the request to be processed
-	time.Sleep(300 * time.Millisecond)
+	// Wait for agent to stop working
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if !server.IsAgentWorking(conversationID) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	// Check the last request sent to the LLM for duplicate tool_results
 	lastRequest := predictableService.GetLastRequest()

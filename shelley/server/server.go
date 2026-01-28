@@ -857,6 +857,18 @@ func (s *Server) getWorkingConversations() map[string]bool {
 	return working
 }
 
+// IsAgentWorking returns whether the agent is currently working on the given conversation.
+// Returns false if the conversation doesn't have an active manager.
+func (s *Server) IsAgentWorking(conversationID string) bool {
+	s.mu.Lock()
+	manager, exists := s.activeConversations[conversationID]
+	s.mu.Unlock()
+	if !exists {
+		return false
+	}
+	return manager.IsAgentWorking()
+}
+
 // Cleanup removes inactive conversation managers
 func (s *Server) Cleanup() {
 	s.mu.Lock()

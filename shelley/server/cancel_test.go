@@ -39,6 +39,19 @@ func setupTestDB(t *testing.T) (*db.DB, func()) {
 	}
 }
 
+// waitFor polls a condition until it returns true or the timeout is reached.
+func waitFor(t *testing.T, timeout time.Duration, condition func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if condition() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for condition")
+}
+
 // TestCancelWithPredictableModel tests cancellation with the predictable model
 func TestCancelWithPredictableModel(t *testing.T) {
 	// Create test database
@@ -77,24 +90,34 @@ func TestCancelWithPredictableModel(t *testing.T) {
 		t.Fatalf("expected status 202, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// Wait for the tool to start executing
-	time.Sleep(300 * time.Millisecond)
-
-	// Verify agent is working
-	var messages []generated.Message
-	err = database.Queries(context.Background(), func(q *generated.Queries) error {
-		var qerr error
-		messages, qerr = q.ListMessages(context.Background(), conversationID)
-		return qerr
+	// Wait for agent to record an assistant message with tool use
+	waitFor(t, 5*time.Second, func() bool {
+		var messages []generated.Message
+		err := database.Queries(context.Background(), func(q *generated.Queries) error {
+			var qerr error
+			messages, qerr = q.ListMessages(context.Background(), conversationID)
+			return qerr
+		})
+		if err != nil || len(messages) < 2 {
+			return false
+		}
+		// Check for assistant message with tool use
+		for _, msg := range messages {
+			if msg.Type != string(db.MessageTypeAgent) || msg.LlmData == nil {
+				continue
+			}
+			var llmMsg llm.Message
+			if err := json.Unmarshal([]byte(*msg.LlmData), &llmMsg); err != nil {
+				continue
+			}
+			for _, content := range llmMsg.Content {
+				if content.Type == llm.ContentTypeToolUse {
+					return true
+				}
+			}
+		}
+		return false
 	})
-	if err != nil {
-		t.Fatalf("failed to get messages: %v", err)
-	}
-
-	// Should have user message and assistant message with tool use
-	if len(messages) < 2 {
-		t.Fatalf("expected at least 2 messages, got %d", len(messages))
-	}
 
 	// Cancel the conversation
 	cancelReq := httptest.NewRequest("POST", "/api/conversation/"+conversationID+"/cancel", nil)
@@ -115,10 +138,13 @@ func TestCancelWithPredictableModel(t *testing.T) {
 		t.Errorf("expected status 'cancelled', got '%s'", cancelResp["status"])
 	}
 
-	// Wait for cancellation to complete and cancelled message to be recorded
-	time.Sleep(300 * time.Millisecond)
+	// Wait for agent to stop working (cancellation complete)
+	waitFor(t, 5*time.Second, func() bool {
+		return !server.IsAgentWorking(conversationID)
+	})
 
 	// Verify that a cancelled tool result was recorded
+	var messages []generated.Message
 	err = database.Queries(context.Background(), func(q *generated.Queries) error {
 		var qerr error
 		messages, qerr = q.ListMessages(context.Background(), conversationID)
@@ -195,8 +221,10 @@ func TestCancelWithPredictableModel(t *testing.T) {
 		t.Fatalf("expected status 202 for resume, got %d: %s", resumeW.Code, resumeW.Body.String())
 	}
 
-	// Wait for the response
-	time.Sleep(300 * time.Millisecond)
+	// Wait for agent to finish processing the resumed conversation
+	waitFor(t, 5*time.Second, func() bool {
+		return !server.IsAgentWorking(conversationID)
+	})
 
 	// Verify conversation continued
 	err = database.Queries(context.Background(), func(q *generated.Queries) error {
@@ -312,8 +340,10 @@ func TestCancelDuringTextGeneration(t *testing.T) {
 		t.Fatalf("expected status 202, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// Wait briefly for processing to start
-	time.Sleep(100 * time.Millisecond)
+	// Wait for agent to start working
+	waitFor(t, 5*time.Second, func() bool {
+		return server.IsAgentWorking(conversationID)
+	})
 
 	// Cancel during text generation
 	cancelReq := httptest.NewRequest("POST", "/api/conversation/"+conversationID+"/cancel", nil)
@@ -325,8 +355,10 @@ func TestCancelDuringTextGeneration(t *testing.T) {
 		t.Fatalf("expected status 200, got %d: %s", cancelW.Code, cancelW.Body.String())
 	}
 
-	// Wait for cancellation
-	time.Sleep(200 * time.Millisecond)
+	// Wait for agent to stop working (cancellation complete)
+	waitFor(t, 5*time.Second, func() bool {
+		return !server.IsAgentWorking(conversationID)
+	})
 
 	// Verify that no cancelled tool result was added (since there was no tool call)
 	var messages []generated.Message
