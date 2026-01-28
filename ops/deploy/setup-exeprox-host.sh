@@ -377,7 +377,8 @@ echo "  SSH Keys: ${SSH_KEY_IDS}"
 echo ""
 
 # Create the server
-CREATE_RESPONSE=$(latitude_api POST "/servers" "$(cat <<EOF
+CREATE_RESPONSE=$(latitude_api POST "/servers" "$(
+    cat <<EOF
 {
   "data": {
     "type": "servers",
@@ -436,7 +437,7 @@ echo "Waiting for server to be provisioned..."
 echo "(This can take several minutes for bare metal servers)"
 echo ""
 
-MAX_WAIT=1800  # 30 minutes
+MAX_WAIT=1800 # 30 minutes
 WAIT_INTERVAL=30
 ELAPSED=0
 SERVER_IP=""
