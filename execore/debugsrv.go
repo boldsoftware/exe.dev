@@ -2146,6 +2146,13 @@ func (s *Server) handleDebugInviteCreate(w http.ResponseWriter, r *http.Request,
 
 	s.slog().InfoContext(ctx, "invite code created via debug page", "code", code, "plan_type", planType, "assigned_by", assignedBy, "assigned_for", assignedFor)
 
+	// Return JSON if requested (for programmatic access)
+	if r.Header.Get("Accept") == "application/json" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"code": code})
+		return
+	}
+
 	http.Redirect(w, r, "/debug/invite", http.StatusSeeOther)
 }
 

@@ -581,3 +581,63 @@ func (se *ServerEnv) NewBox(testName, testRunID string, pty *PTY, opts ...BoxOpt
 
 	return boxName, nil
 }
+
+// CreateInviteCode creates a new invite code via the debug API.
+// planType must be "trial" or "free".
+// Returns the generated invite code.
+func (se *ServerEnv) CreateInviteCode(planType string) (string, error) {
+	createURL := fmt.Sprintf("http://localhost:%d/debug/invite", se.Exed.HTTPPort)
+	req, err := http.NewRequest("POST", createURL, strings.NewReader(url.Values{
+		"action":    {"create"},
+		"plan_type": {planType},
+	}.Encode()))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to POST to /debug/invite: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("POST /debug/invite failed with status %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to decode response: %v", err)
+	}
+
+	return result.Code, nil
+}
+
+// GiveInvitesToUser assigns invite codes to a user via the debug API.
+// The user must already exist.
+func (se *ServerEnv) GiveInvitesToUser(email string, count int, planType string) error {
+	giveURL := fmt.Sprintf("http://localhost:%d/debug/invite", se.Exed.HTTPPort)
+	resp, err := http.PostForm(giveURL, url.Values{
+		"action":    {"give_to_user"},
+		"email":     {email},
+		"count":     {fmt.Sprintf("%d", count)},
+		"plan_type": {planType},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to POST to /debug/invite: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// The endpoint redirects on success, so we might get 200 or 303
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSeeOther {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("POST /debug/invite failed with status %d: %s", resp.StatusCode, body)
+	}
+
+	return nil
+}

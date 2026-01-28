@@ -11,12 +11,12 @@ EXE.DEV: get a VM over ssh
 ✓ Invite code accepted: 1 month free trial
 To sign up, please verify your email.
 
-Please enter your email address: TestInviteCodeTrialExpiry@example.com
+Please enter your email address: TestInviteCodeTrial@example.com
 
 [DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
 
 
-Verification email sent to: TestInviteCodeTrialExpiry@example.com
+Verification email sent to: TestInviteCodeTrial@example.com
 Waiting for email verification...
 ✓ Email verified successfully!
 

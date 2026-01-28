@@ -25,7 +25,7 @@ type ExedInstance struct {
 	Exited          <-chan struct{} // closed when exed exits.
 	Cause           func() error    // why context was canceled
 	Cmd             *exec.Cmd       // exed command
-	DBPath          string          // database location
+	dbPath          string          // database location (unexported to prevent e1e tests from accessing it)
 	SSHPort         int             // exed ssh local host port
 	HTTPPort        int             // exed HTTP local hostport
 	PiperPluginPort int             // piper plugin gPRC server port
@@ -330,7 +330,7 @@ ProcessLogs:
 		Exited:          cmdCtx.Done(),
 		Cause:           cause,
 		Cmd:             exedCmd,
-		DBPath:          dbPath.Name(),
+		dbPath:          dbPath.Name(),
 		SSHPort:         sshPort,
 		HTTPPort:        httpPort,
 		PiperPluginPort: piperPluginPort,
@@ -393,7 +393,7 @@ func (ei *ExedInstance) Stop(ctx context.Context, testRunID string, midTest bool
 			slog.ErrorContext(ctx, "boxes not cleaned up", "error", err)
 		}
 
-		os.Remove(ei.DBPath)
+		os.Remove(ei.dbPath)
 	}
 
 	// Gracefully stop exed with SIGTERM so it writes coverage data.
@@ -488,7 +488,7 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 	ei.Stop(ctx, testRunID, midTest)
 
 	exedCmd := exec.Command(ei.binPath,
-		"-db="+ei.DBPath,
+		"-db="+ei.dbPath,
 		"-stage=test",
 		"-http=:"+strconv.Itoa(ei.HTTPPort),
 		"-ssh=:"+strconv.Itoa(ei.SSHPort),
