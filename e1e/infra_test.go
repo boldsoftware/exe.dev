@@ -38,6 +38,7 @@ var (
 	flagVerboseAll      = flag.Bool("vv", false, "enable ALL verbose logging (shorthand for all -v* flags)")
 	flagCinema          = flag.Bool("cinema", true, "enable ASCIIcinema recordings")
 	flagCoverProfile    = flag.String("coverage-out", "e1e.cover", "path to write merged coverage profile")
+	flagPlaywright      = flag.Bool("playwright", true, "enable Playwright browser tests (requires installed browsers)")
 
 	// testRunID is a random identifier for this test invocation.
 	// A single container host is often shared across test and dev runs.
@@ -215,6 +216,20 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 	})
 
 	Env = env
+
+	// Initialize Playwright if enabled
+	if *flagPlaywright {
+		slog.Info("starting playwright")
+		if err := testinfra.StartPlaywright(); err != nil {
+			slog.Error("failed to start playwright", "error", err)
+			fmt.Fprintf(os.Stderr, "failed to start playwright: %v\n", err)
+			exit(1)
+		}
+		testinfra.AddCleanup(func() {
+			testinfra.StopPlaywright()
+		})
+	}
+
 	slog.Info("running tests")
 
 	exitCode = m.Run()

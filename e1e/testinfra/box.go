@@ -636,6 +636,7 @@ func BoxName(testName, testRunID string) string {
 type BoxOpts struct {
 	Image   string
 	Command string
+	NoEmail bool
 }
 
 // NewBox requests a new box from the open repl pty.
@@ -657,6 +658,9 @@ func (se *ServerEnv) NewBox(testName, testRunID string, pty *PTY, opts ...BoxOpt
 	}
 	if opt.Command != "" {
 		cmdLine += " --command=" + strconv.Quote(opt.Command)
+	}
+	if opt.NoEmail {
+		cmdLine += " --no-email"
 	}
 
 	if err := pty.SendLine(cmdLine); err != nil {
