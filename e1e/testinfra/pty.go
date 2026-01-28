@@ -397,6 +397,8 @@ func canonicalizeString(s string) string {
 	// Now canonicalize some other stuff using regexps :/.
 	s = regexp.MustCompile(`\(boldsoftware/exeuntu@sha256:[a-f0-9]{8}\)`).ReplaceAllString(s, `(boldsoftware/exeuntu@sha256:IMAGE_HASH)`)
 	s = regexp.MustCompile(`Ready in [0-9.]+s!`).ReplaceAllString(s, `Ready in ELAPSED_TIME!`)
+	// Canonicalize clone/copy timing (e.g., "Created foo from bar in 0.4s").
+	s = regexp.MustCompile(` in [0-9.]+s(\r?\n)`).ReplaceAllString(s, ` in ELAPSED_TIME$1`)
 	s = regexp.MustCompile(`(?m)^.*?@localhost: Permission denied`).ReplaceAllString(s, `USER@localhost: Permission denied`)
 	s = strings.ReplaceAll(s, "Press Enter to close this connection.\n", "Press Enter to close this connection.")
 	// Canonicalize share tokens (26-character alphanumeric tokens
