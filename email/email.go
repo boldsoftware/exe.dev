@@ -21,14 +21,15 @@ import (
 type Type string
 
 const (
-	TypeNewUserVerification    Type = "new_user_verification"
-	TypeDeviceVerification     Type = "device_verification"
-	TypeWebAuthVerification    Type = "web_auth_verification"
-	TypeMobileAuthVerification Type = "mobile_auth_verification"
-	TypeShareInvitation        Type = "share_invitation"
-	TypeBoxCreated             Type = "box_created"
-	TypeDebugTest              Type = "debug_test"
-	TypeInvitesAllocated       Type = "invites_allocated"
+	TypeNewUserVerification      Type = "new_user_verification"
+	TypeDeviceVerification       Type = "device_verification"
+	TypeWebAuthVerification      Type = "web_auth_verification"
+	TypeMobileAuthVerification   Type = "mobile_auth_verification"
+	TypeLoginWithExeVerification Type = "login_with_exe_verification"
+	TypeShareInvitation          Type = "share_invitation"
+	TypeBoxCreated               Type = "box_created"
+	TypeDebugTest                Type = "debug_test"
+	TypeInvitesAllocated         Type = "invites_allocated"
 )
 
 var emailsSentTotal = prometheus.NewCounterVec(
