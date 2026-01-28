@@ -263,9 +263,9 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 			return fmt.Errorf("openai json decode error: %v", err)
 		}
 		if oi.Usage.TotalTokens == 0 {
-			// Only allow missing usage data for specific endpoints that don't return usage
+			// Check if this is a free endpoint that doesn't return usage data
 			path := m.incomingReq.URL.Path
-			if path == "/v1/models" {
+			if isFreeEndpoint(path) {
 				return nil
 			}
 			m.log.WarnContext(ctx, "openai response missing usage data",
@@ -507,6 +507,22 @@ func setRateLimitGauge(header http.Header, headerName, labelValue string) {
 			anthropicRateLimitGauge.WithLabelValues(labelValue).Set(float64(val))
 		}
 	}
+}
+
+// isFreeEndpoint returns true if the path is a free endpoint that doesn't
+// return usage data. These are endpoints like /models that just list
+// available models without consuming any tokens.
+func isFreeEndpoint(path string) bool {
+	// Exact matches
+	switch path {
+	case "/v1/models", "/inference/v1/models":
+		return true
+	}
+	// Prefix matches for model details (e.g., /v1/models/gpt-4)
+	if strings.HasPrefix(path, "/v1/models/") || strings.HasPrefix(path, "/inference/v1/models/") {
+		return true
+	}
+	return false
 }
 
 // isGzipped returns true if the data appears to be gzip-compressed.

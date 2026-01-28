@@ -570,6 +570,66 @@ func TestGateway_OpenAIModelsEndpoint(t *testing.T) {
 	}
 }
 
+// TestGateway_FireworksModelsEndpoint tests that the /inference/v1/models endpoint works
+// correctly. This endpoint returns a list of models without usage data,
+// so the gateway should pass through the response without error.
+func TestGateway_FireworksModelsEndpoint(t *testing.T) {
+	gateway, _ := setupTestGateway(t)
+	gateway.apiKeys.Fireworks = "test-fireworks-key"
+	gateway.creditMgr = NewCreditManager(gateway.db)
+
+	// This is what Fireworks' /inference/v1/models endpoint returns (no usage field)
+	modelsResponse := `{"data":[{"id":"accounts/fireworks/models/qwen3-vl-30b-a3b-instruct","object":"model","owned_by":"fireworks","created":1759959171}]}`
+
+	mockFireworks := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(modelsResponse))
+	}))
+	defer mockFireworks.Close()
+
+	mockURL, _ := url.Parse(mockFireworks.URL)
+
+	// The path after the gateway strips the prefix is /inference/v1/models
+	incomingReq := httptest.NewRequest("GET", "/inference/v1/models", nil)
+	incomingReq.Header.Set("X-Exedev-Box", "test-box")
+	incomingReq.RemoteAddr = "127.0.0.1:12345"
+
+	transport := &accountingTransport{
+		RoundTripper: http.DefaultTransport,
+		db:           gateway.db,
+		apiType:      "fireworks",
+		log:          gateway.log,
+		creditMgr:    gateway.creditMgr,
+		incomingReq:  incomingReq,
+		boxName:      "test-box",
+		userID:       "test-user-test-box",
+	}
+
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.Out.URL.Scheme = "http"
+			r.Out.URL.Host = mockURL.Host
+			r.Out.Host = mockURL.Host
+		},
+		Transport:      transport,
+		ModifyResponse: transport.modifyResponse,
+	}
+
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, incomingReq)
+
+	// The proxy should succeed - no usage data is fine for /inference/v1/models
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Verify the response body is the models list
+	if !strings.Contains(rr.Body.String(), "qwen3-vl-30b-a3b-instruct") {
+		t.Errorf("Expected response to contain qwen3-vl-30b-a3b-instruct, got: %s", rr.Body.String())
+	}
+}
+
 // TestGateway_OpenAIMissingUsageOnOtherEndpoints tests that endpoints other than
 // /v1/models fail if they return a response without usage data.
 func TestGateway_OpenAIMissingUsageOnOtherEndpoints(t *testing.T) {
@@ -639,6 +699,44 @@ type readCloser struct {
 
 func (rc *readCloser) Close() error {
 	return nil
+}
+
+func TestIsFreeEndpoint(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		// OpenAI models endpoints (free)
+		{"/v1/models", true},
+		{"/v1/models/gpt-4", true},
+		{"/v1/models/gpt-4-turbo-preview", true},
+
+		// Fireworks models endpoints (free)
+		{"/inference/v1/models", true},
+		{"/inference/v1/models/accounts/fireworks/models/llama-v3", true},
+
+		// Non-free endpoints
+		{"/v1/chat/completions", false},
+		{"/v1/completions", false},
+		{"/v1/embeddings", false},
+		{"/v1/images/generations", false},
+		{"/v1/audio/transcriptions", false},
+		{"/inference/v1/chat/completions", false},
+
+		// Edge cases
+		{"/v2/models", false},
+		{"/models", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := isFreeEndpoint(tt.path)
+			if got != tt.want {
+				t.Errorf("isFreeEndpoint(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
 }
 
 func TestParseShelleyVersion(t *testing.T) {
