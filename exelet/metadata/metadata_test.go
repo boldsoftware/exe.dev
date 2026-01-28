@@ -186,6 +186,83 @@ func TestMetadataServiceLoggingMiddleware(t *testing.T) {
 	}
 }
 
+func TestMetadataServiceEmailProxyHandler(t *testing.T) {
+	log := slog.Default()
+
+	// Start a mock backend that receives the proxied request
+	var receivedBoxHeader string
+	var receivedPath string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedBoxHeader = r.Header.Get("X-Exedev-Box")
+		receivedPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"success":true}`))
+	}))
+	defer backend.Close()
+
+	svc, err := NewService(log, &mockInstanceLookup{}, backend.URL, "127.0.0.1:18080", nil)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	// Test the handler directly using httptest.NewRequest
+	t.Run("POST email send proxies with correct headers", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"to":"test@example.com","subject":"Test","body":"Hello"}`)
+		req := httptest.NewRequest("POST", "/email/send", body)
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "10.0.0.1:12345"
+		w := httptest.NewRecorder()
+
+		svc.handleEmailProxy(w, req)
+
+		// Expect 200 from the mock backend
+		if w.Code != http.StatusOK {
+			t.Errorf("got status %d, want %d, body: %s", w.Code, http.StatusOK, w.Body.String())
+		}
+
+		// Verify the proxy set the correct headers
+		if receivedBoxHeader != "test-box" {
+			t.Errorf("got X-Exedev-Box header %q, want %q", receivedBoxHeader, "test-box")
+		}
+
+		// Verify the path was rewritten correctly
+		if receivedPath != "/_/vm/email/send" {
+			t.Errorf("got path %q, want %q", receivedPath, "/_/vm/email/send")
+		}
+	})
+}
+
+func TestMetadataServiceEmailProxyNoBox(t *testing.T) {
+	log := slog.Default()
+
+	// Mock that returns empty box name (box not found)
+	emptyLookup := &emptyInstanceLookup{}
+
+	svc, err := NewService(log, emptyLookup, "http://localhost:8080", "127.0.0.1:18080", nil)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	body := bytes.NewBufferString(`{"to":"test@example.com","subject":"Test","body":"Hello"}`)
+	req := httptest.NewRequest("POST", "/email/send", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.1:12345"
+	w := httptest.NewRecorder()
+
+	svc.handleEmailProxy(w, req)
+
+	// Expect Forbidden because no box was found for the IP
+	if w.Code != http.StatusForbidden {
+		t.Errorf("got status %d, want %d, body: %s", w.Code, http.StatusForbidden, w.Body.String())
+	}
+}
+
+type emptyInstanceLookup struct{}
+
+func (m *emptyInstanceLookup) GetInstanceByIP(ctx context.Context, ip string) (id, name string, err error) {
+	return "", "", nil // No box found
+}
+
 func TestMetadataServiceTraceIDIsUnique(t *testing.T) {
 	seen := make(map[string]bool)
 

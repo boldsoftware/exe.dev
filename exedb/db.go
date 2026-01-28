@@ -90,6 +90,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countUsersWithBoxesStmt, err = db.PrepareContext(ctx, countUsersWithBoxes); err != nil {
 		return nil, fmt.Errorf("error preparing query CountUsersWithBoxes: %w", err)
 	}
+	if q.createBoxEmailCreditStmt, err = db.PrepareContext(ctx, createBoxEmailCredit); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateBoxEmailCredit: %w", err)
+	}
 	if q.createBoxShareStmt, err = db.PrepareContext(ctx, createBoxShare); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateBoxShare: %w", err)
 	}
@@ -213,6 +216,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxByUserAndShardStmt, err = db.PrepareContext(ctx, getBoxByUserAndShard); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxByUserAndShard: %w", err)
 	}
+	if q.getBoxEmailCreditStmt, err = db.PrepareContext(ctx, getBoxEmailCredit); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxEmailCredit: %w", err)
+	}
 	if q.getBoxIPShardStmt, err = db.PrepareContext(ctx, getBoxIPShard); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxIPShard: %w", err)
 	}
@@ -230,6 +236,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getBoxSharesByBoxIDStmt, err = db.PrepareContext(ctx, getBoxSharesByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxSharesByBoxID: %w", err)
+	}
+	if q.getBoxWithOwnerEmailStmt, err = db.PrepareContext(ctx, getBoxWithOwnerEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxWithOwnerEmail: %w", err)
 	}
 	if q.getBoxesByHostStmt, err = db.PrepareContext(ctx, getBoxesByHost); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesByHost: %w", err)
@@ -576,6 +585,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateBoxCreationLogStmt, err = db.PrepareContext(ctx, updateBoxCreationLog); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxCreationLog: %w", err)
 	}
+	if q.updateBoxEmailCreditStmt, err = db.PrepareContext(ctx, updateBoxEmailCredit); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxEmailCredit: %w", err)
+	}
 	if q.updateBoxMigrationStmt, err = db.PrepareContext(ctx, updateBoxMigration); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxMigration: %w", err)
 	}
@@ -749,6 +761,11 @@ func (q *Queries) Close() error {
 	if q.countUsersWithBoxesStmt != nil {
 		if cerr := q.countUsersWithBoxesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countUsersWithBoxesStmt: %w", cerr)
+		}
+	}
+	if q.createBoxEmailCreditStmt != nil {
+		if cerr := q.createBoxEmailCreditStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createBoxEmailCreditStmt: %w", cerr)
 		}
 	}
 	if q.createBoxShareStmt != nil {
@@ -956,6 +973,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxByUserAndShardStmt: %w", cerr)
 		}
 	}
+	if q.getBoxEmailCreditStmt != nil {
+		if cerr := q.getBoxEmailCreditStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxEmailCreditStmt: %w", cerr)
+		}
+	}
 	if q.getBoxIPShardStmt != nil {
 		if cerr := q.getBoxIPShardStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxIPShardStmt: %w", cerr)
@@ -984,6 +1006,11 @@ func (q *Queries) Close() error {
 	if q.getBoxSharesByBoxIDStmt != nil {
 		if cerr := q.getBoxSharesByBoxIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxSharesByBoxIDStmt: %w", cerr)
+		}
+	}
+	if q.getBoxWithOwnerEmailStmt != nil {
+		if cerr := q.getBoxWithOwnerEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxWithOwnerEmailStmt: %w", cerr)
 		}
 	}
 	if q.getBoxesByHostStmt != nil {
@@ -1561,6 +1588,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxCreationLogStmt: %w", cerr)
 		}
 	}
+	if q.updateBoxEmailCreditStmt != nil {
+		if cerr := q.updateBoxEmailCreditStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxEmailCreditStmt: %w", cerr)
+		}
+	}
 	if q.updateBoxMigrationStmt != nil {
 		if cerr := q.updateBoxMigrationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxMigrationStmt: %w", cerr)
@@ -1722,6 +1754,7 @@ type Queries struct {
 	countUnallocatedInviteCodesByUserStmt      *sql.Stmt
 	countUnusedInviteCodesForUserStmt          *sql.Stmt
 	countUsersWithBoxesStmt                    *sql.Stmt
+	createBoxEmailCreditStmt                   *sql.Stmt
 	createBoxShareStmt                         *sql.Stmt
 	createBoxShareLinkStmt                     *sql.Stmt
 	createInviteCodeStmt                       *sql.Stmt
@@ -1763,12 +1796,14 @@ type Queries struct {
 	getBoxByNameAndAllocStmt                   *sql.Stmt
 	getBoxByNameWithSupportAccessStmt          *sql.Stmt
 	getBoxByUserAndShardStmt                   *sql.Stmt
+	getBoxEmailCreditStmt                      *sql.Stmt
 	getBoxIPShardStmt                          *sql.Stmt
 	getBoxOwnerByContainerIDStmt               *sql.Stmt
 	getBoxSSHDetailsStmt                       *sql.Stmt
 	getBoxShareLinkByTokenAndBoxIDStmt         *sql.Stmt
 	getBoxShareLinksByBoxIDStmt                *sql.Stmt
 	getBoxSharesByBoxIDStmt                    *sql.Stmt
+	getBoxWithOwnerEmailStmt                   *sql.Stmt
 	getBoxesByHostStmt                         *sql.Stmt
 	getBoxesForUserDashboardStmt               *sql.Stmt
 	getBoxesSharedWithUserStmt                 *sql.Stmt
@@ -1884,6 +1919,7 @@ type Queries struct {
 	updateAuthTokenUsedAtStmt                  *sql.Stmt
 	updateBoxContainerAndStatusStmt            *sql.Stmt
 	updateBoxCreationLogStmt                   *sql.Stmt
+	updateBoxEmailCreditStmt                   *sql.Stmt
 	updateBoxMigrationStmt                     *sql.Stmt
 	updateBoxNameStmt                          *sql.Stmt
 	updateBoxRoutesStmt                        *sql.Stmt
@@ -1932,6 +1968,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countUnallocatedInviteCodesByUserStmt:      q.countUnallocatedInviteCodesByUserStmt,
 		countUnusedInviteCodesForUserStmt:          q.countUnusedInviteCodesForUserStmt,
 		countUsersWithBoxesStmt:                    q.countUsersWithBoxesStmt,
+		createBoxEmailCreditStmt:                   q.createBoxEmailCreditStmt,
 		createBoxShareStmt:                         q.createBoxShareStmt,
 		createBoxShareLinkStmt:                     q.createBoxShareLinkStmt,
 		createInviteCodeStmt:                       q.createInviteCodeStmt,
@@ -1973,12 +2010,14 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxByNameAndAllocStmt:                   q.getBoxByNameAndAllocStmt,
 		getBoxByNameWithSupportAccessStmt:          q.getBoxByNameWithSupportAccessStmt,
 		getBoxByUserAndShardStmt:                   q.getBoxByUserAndShardStmt,
+		getBoxEmailCreditStmt:                      q.getBoxEmailCreditStmt,
 		getBoxIPShardStmt:                          q.getBoxIPShardStmt,
 		getBoxOwnerByContainerIDStmt:               q.getBoxOwnerByContainerIDStmt,
 		getBoxSSHDetailsStmt:                       q.getBoxSSHDetailsStmt,
 		getBoxShareLinkByTokenAndBoxIDStmt:         q.getBoxShareLinkByTokenAndBoxIDStmt,
 		getBoxShareLinksByBoxIDStmt:                q.getBoxShareLinksByBoxIDStmt,
 		getBoxSharesByBoxIDStmt:                    q.getBoxSharesByBoxIDStmt,
+		getBoxWithOwnerEmailStmt:                   q.getBoxWithOwnerEmailStmt,
 		getBoxesByHostStmt:                         q.getBoxesByHostStmt,
 		getBoxesForUserDashboardStmt:               q.getBoxesForUserDashboardStmt,
 		getBoxesSharedWithUserStmt:                 q.getBoxesSharedWithUserStmt,
@@ -2094,6 +2133,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateAuthTokenUsedAtStmt:                  q.updateAuthTokenUsedAtStmt,
 		updateBoxContainerAndStatusStmt:            q.updateBoxContainerAndStatusStmt,
 		updateBoxCreationLogStmt:                   q.updateBoxCreationLogStmt,
+		updateBoxEmailCreditStmt:                   q.updateBoxEmailCreditStmt,
 		updateBoxMigrationStmt:                     q.updateBoxMigrationStmt,
 		updateBoxNameStmt:                          q.updateBoxNameStmt,
 		updateBoxRoutesStmt:                        q.updateBoxRoutesStmt,

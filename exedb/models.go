@@ -68,6 +68,14 @@ type Box struct {
 	SupportAccessAllowed int64      `db:"support_access_allowed" json:"support_access_allowed"`
 }
 
+type BoxEmailCredit struct {
+	BoxID           int64      `db:"box_id" json:"box_id"`
+	AvailableCredit float64    `db:"available_credit" json:"available_credit"`
+	LastRefreshAt   time.Time  `db:"last_refresh_at" json:"last_refresh_at"`
+	TotalSent       int64      `db:"total_sent" json:"total_sent"`
+	CreatedAt       *time.Time `db:"created_at" json:"created_at"`
+}
+
 type BoxIPShard struct {
 	BoxID   int    `db:"box_id" json:"box_id"`
 	UserID  string `db:"user_id" json:"user_id"`

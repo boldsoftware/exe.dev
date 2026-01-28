@@ -121,6 +121,9 @@ func (s *Service) Start(ctx context.Context) error {
 	// Add gateway proxy handler
 	mux.HandleFunc("/gateway/llm/", s.handleGatewayProxy)
 
+	// Add email proxy handler
+	mux.HandleFunc("POST /email/send", s.handleEmailProxy)
+
 	// Build the handler with logging middleware chain.
 	// The middleware chain (in order of execution) is:
 	//  1. tracing.HTTPMiddleware - generates trace_id and adds to context
@@ -277,6 +280,47 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 				s.gatewayRequests.WithLabelValues("unknown_error").Inc()
 				s.log.ErrorContext(r.Context(), "gateway proxy error", "error", err, "box", boxName)
 			}
+		},
+	}
+
+	proxy.ServeHTTP(w, r)
+}
+
+// handleEmailProxy proxies email send requests to exed
+func (s *Service) handleEmailProxy(w http.ResponseWriter, r *http.Request) {
+	// Look up the box name for this connection
+	sourceIP := requestSourceIP(r)
+	_, boxName, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP)
+	if err != nil {
+		s.log.ErrorContext(r.Context(), "failed to lookup box by IP", "ip", sourceIP, "error", err)
+		http.Error(w, "Failed to identify box", http.StatusInternalServerError)
+		return
+	}
+	if boxName == "" {
+		s.log.ErrorContext(r.Context(), "no box found for IP", "ip", sourceIP)
+		http.Error(w, "No box found for this IP", http.StatusForbidden)
+		return
+	}
+
+	sloghttp.AddCustomAttributes(r, slog.String("vm_name", boxName))
+
+	// Create a reverse proxy for this request
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(s.exedTargetURL)
+			pr.Out.URL.Path = "/_/vm/email/send"
+			pr.Out.Host = s.exedTargetURL.Host
+			// Add header to identify the box making the request
+			pr.Out.Header.Set("X-Exedev-Box", boxName)
+			// Propagate trace_id to downstream service
+			tracing.SetTraceIDHeader(pr.In.Context(), pr.Out.Header)
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if errors.Is(err, context.Canceled) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return
+			}
+			http.Error(w, "email proxy error: "+err.Error(), http.StatusBadGateway)
+			s.log.ErrorContext(r.Context(), "email proxy error", "error", err, "box", boxName)
 		},
 	}
 

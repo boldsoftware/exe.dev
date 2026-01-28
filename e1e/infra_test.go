@@ -4,6 +4,7 @@ package e1e
 
 import (
 	"context"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"io"
@@ -556,6 +557,18 @@ func runParseExeDevJSON[T any](t *testing.T, keyFile string, args ...string) T {
 
 func boxSSHCommand(t *testing.T, boxname, keyFile string, args ...string) *exec.Cmd {
 	return Env.servers.BoxSSHCommand(Env.context(t), boxname, keyFile, args...)
+}
+
+// boxSSHShell runs a shell command on the box via SSH.
+// The command is base64-encoded to avoid quoting issues when passing
+// commands with special characters through SSH.
+func boxSSHShell(t *testing.T, boxname, keyFile, shellCmd string) *exec.Cmd {
+	t.Helper()
+	encoded := base64.StdEncoding.EncodeToString([]byte(shellCmd))
+	// Wrap in single quotes so the remote shell treats this as a single argument to sh -c.
+	// Base64 output contains only alphanumeric, +, /, and = characters, so no escaping needed.
+	wrapper := fmt.Sprintf("'echo %s | base64 -d | sh'", encoded)
+	return boxSSHCommand(t, boxname, keyFile, "sh", "-c", wrapper)
 }
 
 // waitForSSH blocks until SSH is responsive on the given box.
