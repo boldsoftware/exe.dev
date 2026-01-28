@@ -41,6 +41,12 @@ if [ $# -ne 2 ]; then
     echo "  LATITUDE_PROD_API_KEY  Latitude API key"
     echo "  TS_OAUTH_CLIENT_ID     Tailscale OAuth client ID"
     echo "  TS_OAUTH_CLIENT_SECRET Tailscale OAuth client secret"
+    echo "  HOST_PRIVATE_KEY       SSH host private key"
+    echo "  HOST_CERT_SIG          SSH host certificate signature"
+    echo ""
+    echo "To get HOST_PRIVATE_KEY and HOST_CERT_SIG, run:"
+    echo "  ssh exed-02 sqlite3 /home/ubuntu/exe.db \"SELECT private_key FROM ssh_host_key WHERE id = 1;\""
+    echo "  ssh exed-02 sqlite3 /home/ubuntu/exe.db \"SELECT cert_sig FROM ssh_host_key WHERE id = 1;\""
     echo ""
 
     # List available regions if API key is set
@@ -107,6 +113,14 @@ if [ -z "${TS_OAUTH_CLIENT_ID:-}" ] || [ -z "${TS_OAUTH_CLIENT_SECRET:-}" ]; the
     echo ""
     echo "You can get these credentials from the Tailscale admin console:"
     echo "  https://login.tailscale.com/admin/settings/oauth"
+    exit 1
+fi
+
+if [ -z "${HOST_PRIVATE_KEY:-}" ] || [ -z "${HOST_CERT_SIG:-}" ]; then
+    echo "ERROR: HOST_PRIVATE_KEY and/or HOST_CERT_SIG not set"
+    echo ""
+    echo 'export HOST_PRIVATE_KEY="$(ssh exed-02 '\''sqlite3 /home/ubuntu/exe.db "SELECT private_key FROM ssh_host_key WHERE id = 1"'\'')"'
+    echo 'export HOST_CERT_SIG="$(ssh exed-02 '\''sqlite3 /home/ubuntu/exe.db "SELECT cert_sig FROM ssh_host_key WHERE id = 1"'\'')"'
     exit 1
 fi
 
@@ -212,6 +226,53 @@ done
 NEXT_NUM=$((HIGHEST_NUM + 1))
 MACHINE_NAME="${PREFIX}-$(printf '%02d' $NEXT_NUM)"
 echo "Hostname: ${MACHINE_NAME}"
+
+# Check if hostname already exists in Tailscale
+echo "Checking Tailscale for existing device..."
+TS_OAUTH_RESPONSE=$(curl -s -X POST \
+    "https://api.tailscale.com/api/v2/oauth/token" \
+    -d "client_id=${TS_OAUTH_CLIENT_ID}" \
+    -d "client_secret=${TS_OAUTH_CLIENT_SECRET}" \
+    -d "grant_type=client_credentials")
+
+TS_ACCESS_TOKEN=$(echo "$TS_OAUTH_RESPONSE" | python3 -c '
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get("access_token", ""))
+except:
+    pass
+')
+
+if [ -n "$TS_ACCESS_TOKEN" ]; then
+    TS_DEVICES=$(curl -s -X GET \
+        "https://api.tailscale.com/api/v2/tailnet/-/devices" \
+        -H "Authorization: Bearer $TS_ACCESS_TOKEN")
+
+    TS_EXISTS=$(echo "$TS_DEVICES" | python3 -c '
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    target = "'"$MACHINE_NAME"'"
+    for device in data.get("devices", []):
+        hostname = device.get("hostname", "")
+        name = device.get("name", "").split(".")[0]  # name is like "hostname.tailnet.ts.net"
+        if hostname == target or name == target:
+            print("exists")
+            sys.exit(0)
+except:
+    pass
+')
+
+    if [ "$TS_EXISTS" = "exists" ]; then
+        echo "ERROR: Hostname ${MACHINE_NAME} already exists in Tailscale"
+        echo ""
+        echo "Delete the device from Tailscale admin console before retrying:"
+        echo "  https://login.tailscale.com/admin/machines"
+        exit 1
+    fi
+    echo "Hostname available in Tailscale"
+fi
 echo ""
 
 # Check plan availability - try m4.metal.small first (cheaper), then f4.metal.small
@@ -563,7 +624,120 @@ if [ $TS_ELAPSED -ge $MAX_TS_WAIT ]; then
     echo "WARNING: Machine is not accessible via Tailscale after ${MAX_TS_WAIT} seconds"
     echo "You may need to check the Tailscale setup manually"
     echo "Direct SSH: ssh ubuntu@${SERVER_IP}"
+    exit 1
 fi
+
+# Now use Tailscale SSH for the rest of setup
+SSH_TARGET="ubuntu@${MACHINE_NAME}"
+
+# Disable OpenSSH server now that Tailscale SSH is working
+echo ""
+echo "Disabling OpenSSH server (sshpiper will use port 22)..."
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SSH_TARGET}" \
+    'sudo systemctl disable ssh ssh.socket && sudo systemctl stop ssh ssh.socket'
+echo "OpenSSH server disabled"
+
+echo ""
+echo "=========================================="
+echo "Building sshpiper binaries"
+echo "=========================================="
+
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+BINARY_NAME="sshpiperd.$TIMESTAMP"
+METRICS_NAME="metrics.$TIMESTAMP"
+
+echo "Building sshpiper binary..."
+(
+    cd "${SCRIPT_DIR}/../../deps/sshpiper"
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$BINARY_NAME" ./cmd/sshpiperd
+)
+
+if [ ! -f "/tmp/$BINARY_NAME" ]; then
+    echo "ERROR: Failed to build sshpiper binary"
+    exit 1
+fi
+echo "Built /tmp/$BINARY_NAME"
+
+echo "Building metrics binary..."
+(
+    cd "${SCRIPT_DIR}/../../deps/sshpiper"
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$METRICS_NAME" ./plugin/metrics
+)
+
+if [ ! -f "/tmp/$METRICS_NAME" ]; then
+    echo "ERROR: Failed to build metrics binary"
+    exit 1
+fi
+echo "Built /tmp/$METRICS_NAME"
+
+echo ""
+echo "=========================================="
+echo "Deploying sshpiper to ${MACHINE_NAME}"
+echo "=========================================="
+
+# Copy binaries
+echo "Copying binaries..."
+scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "/tmp/$BINARY_NAME" "/tmp/$METRICS_NAME" \
+    "${SSH_TARGET}:~/"
+
+# Copy start script and service file
+echo "Copying start script and service file..."
+scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "${SCRIPT_DIR}/exeprox-sshpiper.sh" \
+    "${SCRIPT_DIR}/exeprox-sshpiper.service" \
+    "${SSH_TARGET}:~/"
+
+# Write host key files and configure service
+echo "Configuring sshpiper..."
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SSH_TARGET}" bash -s "$BINARY_NAME" "$METRICS_NAME" <<'CONFIGURE_SSHPIPER'
+set -euo pipefail
+BINARY_NAME="$1"
+METRICS_NAME="$2"
+
+# Rename scripts to standard names
+mv ~/exeprox-sshpiper.sh ~/start-sshpiper.sh
+mv ~/exeprox-sshpiper.service ~/sshpiper.service
+
+# Make binaries executable
+chmod +x ~/$BINARY_NAME ~/$METRICS_NAME ~/start-sshpiper.sh
+
+# Create symlinks to latest versions
+ln -sf ~/$BINARY_NAME ~/sshpiperd.latest
+ln -sf ~/$METRICS_NAME ~/metrics.latest
+
+# Install systemd service file
+sudo mv ~/sshpiper.service /etc/systemd/system/sshpiper.service
+sudo systemctl daemon-reload
+CONFIGURE_SSHPIPER
+
+# Write the host key files (done separately to handle special characters)
+echo "Writing host key files..."
+printf '%s' "$HOST_PRIVATE_KEY" | ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "${SSH_TARGET}" "cat > ~/host_private_key && chmod 600 ~/host_private_key"
+
+printf '%s' "$HOST_CERT_SIG" | ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "${SSH_TARGET}" "cat > ~/host_cert_sig && chmod 600 ~/host_cert_sig"
+
+# Enable and start the service
+echo "Starting sshpiper service..."
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SSH_TARGET}" bash <<'START_SERVICE'
+set -euo pipefail
+sudo systemctl enable sshpiper
+sudo systemctl restart sshpiper
+
+# Wait and check status
+sleep 2
+if sudo systemctl is-active --quiet sshpiper; then
+    echo "sshpiper service started successfully"
+else
+    echo "WARNING: sshpiper service may have issues"
+    sudo journalctl -u sshpiper -n 20 --no-pager
+fi
+START_SERVICE
+
+# Cleanup
+rm -f "/tmp/$BINARY_NAME" "/tmp/$METRICS_NAME"
 
 echo ""
 echo "=========================================="
