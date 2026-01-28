@@ -1757,27 +1757,6 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 			"error", err)
 	}
 
-	// Create new DNS record immediately after DB update to ensure box is reachable at new name
-	if ipShard != 0 {
-		slog.InfoContext(ctx, "rename: creating new DNS record",
-			"box_id", box.ID,
-			"new_name", newName,
-			"ip_shard", ipShard)
-		if err := ss.server.createBoxShardDNSRecord(ctx, newName, int(ipShard)); err != nil {
-			slog.ErrorContext(ctx, "rename: failed to create new DNS record - box may be unreachable via DNS",
-				"box_id", box.ID,
-				"new_name", newName,
-				"ip_shard", ipShard,
-				"error", err,
-				"rollback_action", fmt.Sprintf("createBoxShardDNSRecord(%s, %d)", newName, ipShard))
-		} else {
-			slog.InfoContext(ctx, "rename: new DNS record created",
-				"box_id", box.ID,
-				"new_name", newName,
-				"ip_shard", ipShard)
-		}
-	}
-
 	// Invalidate all auth cookies for the old box name to prevent cookie hijacking.
 	// When a box is renamed, any cookies issued for the old name's domain (e.g., oldname.exe.dev)
 	// should be invalidated so that if someone else creates a box with the old name, they
@@ -1867,27 +1846,6 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 			"box_id", box.ID,
 			"new_name", newName,
 			"error", err)
-	}
-
-	// Delete old DNS record last - orphaned records are acceptable, so this is low priority
-	if ipShard != 0 {
-		slog.InfoContext(ctx, "rename: deleting old DNS record",
-			"box_id", box.ID,
-			"old_name", oldName,
-			"ip_shard", ipShard)
-		if err := ss.server.deleteBoxShardDNSRecord(ctx, oldName, int(ipShard)); err != nil {
-			slog.ErrorContext(ctx, "rename: failed to delete old DNS record - orphaned record exists",
-				"box_id", box.ID,
-				"old_name", oldName,
-				"ip_shard", ipShard,
-				"error", err,
-				"rollback_action", "manually delete orphaned DNS record if needed")
-		} else {
-			slog.InfoContext(ctx, "rename: old DNS record deleted",
-				"box_id", box.ID,
-				"old_name", oldName,
-				"ip_shard", ipShard)
-		}
 	}
 
 	slog.InfoContext(ctx, "rename: completed successfully",

@@ -1,4 +1,6 @@
-package route53
+// Package wildcardcert manages wildcard TLS certificates using DNS-01 challenges.
+// It uses the exens DNS server for ACME challenge TXT records.
+package wildcardcert
 
 import (
 	"bytes"
@@ -26,7 +28,7 @@ import (
 )
 
 // ErrUnrecognizedDomain is returned when GetCertificate is called with a domain
-// that is not managed by this WildcardCertManager.
+// that is not managed by this Manager.
 var ErrUnrecognizedDomain = errors.New("unrecognized domain")
 
 func pkFromData(keyData []byte) (*rsa.PrivateKey, error) {
@@ -82,27 +84,27 @@ func loadOrGenerateACMEKey(cache autocert.Cache) (*rsa.PrivateKey, error) {
 	return key, nil
 }
 
-// WildcardCertManager manages wildcard certificates using DNS-01 challenge
 const (
 	certificateCacheTimeout = 5 * time.Second
 	certificateRenewBefore  = 10 * 24 * time.Hour
 )
 
-// LocalACMEProvider is an optional interface for writing ACME TXT records to a local database.
-// This is used for dual-write during the transition from Route53 to embedded DNS.
-type LocalACMEProvider interface {
-	UpsertTXTRecord(ctx context.Context, name, value string, ttl int64) error
-	DeleteTXTRecord(ctx context.Context, name, value string) error
+// DNSProvider is the interface for managing ACME DNS-01 challenge TXT records.
+type DNSProvider interface {
+	// SetTXTRecord sets an in-memory TXT record for ACME challenges.
+	SetTXTRecord(name, value string)
+	// DeleteTXTRecord removes an in-memory TXT record.
+	DeleteTXTRecord(name, value string)
 }
 
-type WildcardCertManager struct {
-	dnsProvider      *DNSProvider
-	localDNSProvider LocalACMEProvider // optional, for dual-write during transition
-	diskCache        autocert.Cache    // persistent cache for certificates
-	acmeClient       *acme.Client
-	domains          []string // list of domains managed by this cert manager; each entry covers itself and a wildcard cert
-	certRequests     prometheus.Counter
-	sf               singleflight.Group[string, *tls.Certificate] // singleflight group for certificate requests
+// Manager manages wildcard certificates using DNS-01 challenges.
+type Manager struct {
+	dnsProvider  DNSProvider
+	diskCache    autocert.Cache // persistent cache for certificates
+	acmeClient   *acme.Client
+	domains      []string // list of domains managed by this cert manager; each entry covers itself and a wildcard cert
+	certRequests prometheus.Counter
+	sf           singleflight.Group[string, *tls.Certificate] // singleflight group for certificate requests
 
 	renewalsInFlight sync.Map // background renewals currently running per domain
 
@@ -110,16 +112,19 @@ type WildcardCertManager struct {
 	memCerts map[string]*tls.Certificate // in-memory cache of certificates to avoid repeated decoding and disk reads
 }
 
-// NewWildcardCertManager creates a new wildcard certificate manager
-func NewWildcardCertManager(domains []string, diskCache autocert.Cache, certRequests prometheus.Counter) *WildcardCertManager {
+// NewManager creates a new wildcard certificate manager.
+func NewManager(domains []string, diskCache autocert.Cache, certRequests prometheus.Counter, dnsProvider DNSProvider) *Manager {
 	if len(domains) == 0 {
-		panic("NewWildcardCertManager: no domains provided")
+		panic("NewManager: no domains provided")
 	}
 	if diskCache == nil {
-		panic("NewWildcardCertManager: nil diskCache")
+		panic("NewManager: nil diskCache")
 	}
 	if certRequests == nil {
-		panic("NewWildcardCertManager: nil certRequests counter")
+		panic("NewManager: nil certRequests counter")
+	}
+	if dnsProvider == nil {
+		panic("NewManager: nil dnsProvider")
 	}
 
 	// Try to load existing ACME account key from cache, or generate new one
@@ -145,9 +150,9 @@ func NewWildcardCertManager(domains []string, diskCache autocert.Cache, certRequ
 		panic(fmt.Sprintf("failed to register ACME account: %v", err))
 	}
 
-	manager := &WildcardCertManager{
+	manager := &Manager{
 		memCerts:     make(map[string]*tls.Certificate),
-		dnsProvider:  NewDNSProvider(),
+		dnsProvider:  dnsProvider,
 		diskCache:    diskCache,
 		acmeClient:   client,
 		domains:      domains,
@@ -159,14 +164,8 @@ func NewWildcardCertManager(domains []string, diskCache autocert.Cache, certRequ
 	return manager
 }
 
-// SetLocalDNSProvider sets an optional local DNS provider for dual-write ACME challenges.
-// This enables writing TXT records to both Route53 and a local database.
-func (w *WildcardCertManager) SetLocalDNSProvider(provider LocalACMEProvider) {
-	w.localDNSProvider = provider
-}
-
 // GetCertificate implements the tls.Config.GetCertificate interface
-func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+func (w *Manager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if hello.ServerName == "" {
 		return nil, fmt.Errorf("no server name provided")
 	}
@@ -188,7 +187,7 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 	return cert, nil
 }
 
-func (w *WildcardCertManager) ensureCertificateForDomain(rootDomain string) (*tls.Certificate, error) {
+func (w *Manager) ensureCertificateForDomain(rootDomain string) (*tls.Certificate, error) {
 	cert := w.memCert(rootDomain)
 	if w.isCertValid(rootDomain, cert) {
 		return cert, nil
@@ -216,7 +215,7 @@ func (w *WildcardCertManager) ensureCertificateForDomain(rootDomain string) (*tl
 	return newCert, nil
 }
 
-func (w *WildcardCertManager) warmManagedDomains() {
+func (w *Manager) warmManagedDomains() {
 	for _, domain := range w.domains {
 		go func() {
 			if _, err := w.ensureCertificateForDomain(domain); err != nil {
@@ -226,13 +225,13 @@ func (w *WildcardCertManager) warmManagedDomains() {
 	}
 }
 
-func (w *WildcardCertManager) memCert(domain string) *tls.Certificate {
+func (w *Manager) memCert(domain string) *tls.Certificate {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.memCerts[domain]
 }
 
-func (w *WildcardCertManager) setMemCert(domain string, cert *tls.Certificate) {
+func (w *Manager) setMemCert(domain string, cert *tls.Certificate) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.memCerts[domain] = cert
@@ -254,7 +253,7 @@ func isSingleLevelSubdomain(domain, serverName string) bool {
 // domainForServerName returns the (possibly wildcard) domain corresponding to serverName.
 // If domainForServerName returns an empty string, we do not manager serverName.
 // It assumes that serverName is canonicalized.
-func (w *WildcardCertManager) domainForServerName(serverName string) string {
+func (w *Manager) domainForServerName(serverName string) string {
 	// We accept apex domains and single-level subdomains.
 	// Note that when the set of domains includes subdomains,
 	// such as {"exe.dev", "xterm.exe.dev"},
@@ -282,7 +281,7 @@ func (w *WildcardCertManager) domainForServerName(serverName string) string {
 	return ""
 }
 
-func (w *WildcardCertManager) isCertValid(domain string, cert *tls.Certificate) bool {
+func (w *Manager) isCertValid(domain string, cert *tls.Certificate) bool {
 	if cert == nil {
 		return false
 	}
@@ -313,7 +312,7 @@ func (w *WildcardCertManager) isCertValid(domain string, cert *tls.Certificate) 
 	return true
 }
 
-func (w *WildcardCertManager) triggerRenewal(domain string) {
+func (w *Manager) triggerRenewal(domain string) {
 	if _, loaded := w.renewalsInFlight.LoadOrStore(domain, struct{}{}); loaded {
 		return
 	}
@@ -342,7 +341,7 @@ func (w *WildcardCertManager) triggerRenewal(domain string) {
 // obtainCertificate obtains a new wildcard certificate from Let's Encrypt.
 // domain must be the root domain for the certificate, as obtained from domainForServerName.
 // obtainCertificate is single-flighted.
-func (w *WildcardCertManager) obtainCertificate(domain string) (*tls.Certificate, error) {
+func (w *Manager) obtainCertificate(domain string) (*tls.Certificate, error) {
 	cert, err, _ := w.sf.Do(domain, func() (*tls.Certificate, error) {
 		return w.requestCertificateFromLE(domain)
 	})
@@ -354,7 +353,7 @@ func (w *WildcardCertManager) obtainCertificate(domain string) (*tls.Certificate
 
 // requestCertificateFromLE implements obtainCertificate.
 // Do not call it directly; use obtainCertificate instead.
-func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Certificate, error) {
+func (w *Manager) requestCertificateFromLE(domain string) (*tls.Certificate, error) {
 	w.certRequests.Inc()
 
 	domains := []string{domain, "*." + domain} // always request both root and wildcard
@@ -375,22 +374,15 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 		authzURL  string
 		challenge *acme.Challenge
 		keyAuth   string
-		recordID  string
 	}
 
 	var staged []stagedChallenge
 	cleanUpChallenges := func() {
 		for _, c := range staged {
-			w.dnsProvider.CleanupACMEChallenge(ctx, c.domain, c.keyAuth)
-			// Also clean up from local DNS provider if configured
-			if w.localDNSProvider != nil {
-				acmeName := acmeChallengeName(c.domain)
-				baseDomain := extractDomain(c.domain)
-				fullName := acmeName + "." + baseDomain
-				if err := w.localDNSProvider.DeleteTXTRecord(ctx, fullName, c.keyAuth); err != nil {
-					slog.WarnContext(ctx, "failed to delete ACME TXT from local DNS", "name", fullName, "error", err)
-				}
-			}
+			acmeName := acmeChallengeName(c.domain)
+			baseDomain := extractDomain(c.domain)
+			fullName := acmeName + "." + baseDomain
+			w.dnsProvider.DeleteTXTRecord(fullName, c.keyAuth)
 		}
 	}
 
@@ -429,31 +421,18 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 			return nil, fmt.Errorf("failed to calculate key authorization: %w", err)
 		}
 
-		slog.InfoContext(ctx, "creating DNS TXT record for ACME challenge", "domain", authorization.Identifier.Value)
-		recordID, err := w.dnsProvider.CreateACMEChallenge(ctx, authorization.Identifier.Value, keyAuth)
-		if err != nil {
-			cleanUpChallenges()
-			return nil, fmt.Errorf("failed to create ACME challenge: %w", err)
-		}
-		slog.InfoContext(ctx, "DNS TXT record created for ACME challenge", "recordID", recordID)
-
-		// Also write to local DNS provider if configured (dual-write during transition)
-		if w.localDNSProvider != nil {
-			acmeName := acmeChallengeName(authorization.Identifier.Value)
-			baseDomain := extractDomain(authorization.Identifier.Value)
-			fullName := acmeName + "." + baseDomain
-			if err := w.localDNSProvider.UpsertTXTRecord(ctx, fullName, keyAuth, 600); err != nil {
-				slog.WarnContext(ctx, "failed to write ACME TXT to local DNS", "name", fullName, "error", err)
-				// Don't fail - Route53 write succeeded
-			}
-		}
+		// Create TXT record for ACME challenge
+		acmeName := acmeChallengeName(authorization.Identifier.Value)
+		baseDomain := extractDomain(authorization.Identifier.Value)
+		fullName := acmeName + "." + baseDomain
+		slog.InfoContext(ctx, "creating DNS TXT record for ACME challenge", "domain", authorization.Identifier.Value, "name", fullName)
+		w.dnsProvider.SetTXTRecord(fullName, keyAuth)
 
 		staged = append(staged, stagedChallenge{
 			domain:    authorization.Identifier.Value,
 			authzURL:  authzURL,
 			challenge: challenge,
 			keyAuth:   keyAuth,
-			recordID:  recordID,
 		})
 	}
 
@@ -461,19 +440,10 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 		return nil, fmt.Errorf("no challenges staged for order")
 	}
 
-	// Allow the staged TXT records to propagate before any challenge is validated.
-	//
-	// The AWS console Route53 banner says:
-	// "Route 53 propagates your changes to all of the Route 53 authoritative DNS servers within 60 seconds."
-	//
-	// TODO: in theory we could do DNS lookups earlier, and in a retry loop to verify propagation.
-	// This gets messy to Do Right, though: we have to avoid caching,
-	// check every single authoritative nameserver, etc.
-	//
-	// In practice, a fixed sleep seems to work fine so far.
-	// And except for the very first time, we'll be refreshing certs
-	// in the background, so it's invisible anyway.
-	time.Sleep(time.Minute)
+	// Allow the staged TXT records to propagate.
+	// Since we're using our own DNS server, propagation should be instant,
+	// but we give a brief moment for any caching to settle.
+	time.Sleep(5 * time.Second)
 
 	for _, c := range staged {
 		// Accept the challenge
@@ -493,9 +463,7 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 		}
 
 		// Log successful challenge
-		slog.InfoContext(ctx, "completed DNS-01 challenge",
-			"domain", c.domain,
-			"recordID", c.recordID)
+		slog.InfoContext(ctx, "completed DNS-01 challenge", "domain", c.domain)
 	}
 
 	// Clean up challenges now that all authorizations have finished.
@@ -556,7 +524,7 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 	return cert, nil
 }
 
-func (w *WildcardCertManager) writeCertificateToDisk(domain string, cert *tls.Certificate) error {
+func (w *Manager) writeCertificateToDisk(domain string, cert *tls.Certificate) error {
 	if w.diskCache == nil || cert == nil {
 		return autocert.ErrCacheMiss
 	}
@@ -571,7 +539,7 @@ func (w *WildcardCertManager) writeCertificateToDisk(domain string, cert *tls.Ce
 	return w.diskCache.Put(ctx, domain, data)
 }
 
-func (w *WildcardCertManager) loadCertificateFromDisk(domain string) (*tls.Certificate, error) {
+func (w *Manager) loadCertificateFromDisk(domain string) (*tls.Certificate, error) {
 	if w.diskCache == nil {
 		return nil, autocert.ErrCacheMiss
 	}
@@ -675,4 +643,33 @@ func decodeCertificate(data []byte) (*tls.Certificate, error) {
 	}
 
 	return result, nil
+}
+
+// extractDomain extracts the base domain from a FQDN
+// For wildcard certificates, we need to extract the domain that's registered
+func extractDomain(fqdn string) string {
+	parts := strings.Split(fqdn, ".")
+	if len(parts) >= 2 {
+		return strings.Join(parts[len(parts)-2:], ".")
+	}
+	return fqdn
+}
+
+// acmeChallengeName returns the TXT record prefix for a domain (wildcard or otherwise).
+func acmeChallengeName(domain string) string {
+	baseDomain := extractDomain(domain)
+	target := strings.TrimPrefix(domain, "*.")
+	if target == baseDomain {
+		// "*.exe.dev" -> "_acme-challenge"
+		return "_acme-challenge"
+	}
+
+	sub, ok := strings.CutSuffix(target, "."+baseDomain)
+	if ok {
+		// "*.sub.exe.dev" -> "_acme-challenge.sub"
+		return "_acme-challenge." + sub
+	}
+
+	// "exe.dev" -> "_acme-challenge"
+	return "_acme-challenge"
 }

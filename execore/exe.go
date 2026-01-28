@@ -41,8 +41,6 @@ import (
 
 	"exe.dev/billing"
 	"exe.dev/boxname"
-	"exe.dev/bsdns"
-	"exe.dev/bsdns/alley53"
 	"exe.dev/container"
 	docspkg "exe.dev/docs"
 	"exe.dev/domz"
@@ -58,7 +56,6 @@ import (
 	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 	"exe.dev/pow"
 	"exe.dev/publicips"
-	"exe.dev/route53"
 	"exe.dev/sqlite"
 	"exe.dev/sshkey"
 	"exe.dev/sshpool2"
@@ -66,6 +63,7 @@ import (
 	"exe.dev/tagresolver"
 	templatespkg "exe.dev/templates"
 	"exe.dev/tracing"
+	"exe.dev/wildcardcert"
 	emailverifier "github.com/AfterShip/email-verifier"
 	sloghttp "github.com/samber/slog-http"
 
@@ -275,13 +273,9 @@ type Server struct {
 	sshServer   *SSHServer
 
 	certManager         *autocert.Manager
-	wildcardCertManager *route53.WildcardCertManager
+	wildcardCertManager *wildcardcert.Manager
 
-	// route53Provider answers ACME DNS challenges (only when UseRoute53)
-	route53Provider *route53.DNSProvider
-	// bsdns manages box shard DNS records (route53 or alley53)
-	bsdns bsdns.Provider
-	// dnsServer is the embedded DNS nameserver (only when UseRoute53)
+	// dnsServer is the embedded DNS nameserver for BoxHost (prod/staging only)
 	dnsServer *exens.Server
 
 	// Testing hooks
@@ -891,23 +885,9 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		return domz.Label(hostname, s.env.BoxHost)
 	})
 
-	// Initialize DNS providers (both ACME and box shard DNS)
-	if cfg.Env.UseRoute53 {
-		// Prod/staging: Use embedded DNS server for exe.xyz, Route53 for exe.dev
-		// During transition, Route53 is also used for exe.xyz box CNAMEs
-		s.route53Provider = route53.NewDNSProvider()
+	// Initialize embedded DNS server for BoxHost (exe.xyz) in prod/staging
+	if cfg.Env.DiscoverPublicIPs {
 		s.dnsServer = exens.NewServer(s.db, s.log, cfg.Env.BoxHost, cfg.Env.WebHost)
-		s.bsdns = s.route53Provider // Route53 for box CNAME updates during transition
-	} else {
-		// Use alley53 if available. If not, fall back to a no-op provider.
-		c := alley53.NewClient("localhost:5380")
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		if c.IsRunning(ctx) {
-			s.bsdns = c
-		} else {
-			s.bsdns = bsdns.Discard{}
-		}
 	}
 
 	s.setupHTTPServer()
@@ -1915,7 +1895,6 @@ func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (in
 
 	routes := exedb.DefaultRouteJSON()
 	var boxID int
-	var assignedShard int
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		id, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
 			Ctrhost:         opts.ctrhost,
@@ -1934,26 +1913,11 @@ func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (in
 			return nil
 		}
 
-		shard, err := s.allocateIPShard(ctx, queries, opts.userID, boxID)
-		if err != nil {
-			return err
-		}
-		assignedShard = shard
-
-		return nil
+		_, err = s.allocateIPShard(ctx, queries, opts.userID, boxID)
+		return err
 	})
 	if err != nil {
 		return 0, err
-	}
-
-	if !opts.noShard {
-		if err := s.createBoxShardDNSRecord(ctx, opts.name, assignedShard); err != nil {
-			cleanupErr := s.rollbackBoxPreCreation(ctx, boxID)
-			if cleanupErr != nil {
-				s.slog().ErrorContext(ctx, "failed to roll back box after DNS error", "box_id", boxID, "cleanup_error", cleanupErr, "dns_error", err)
-			}
-			return 0, err
-		}
 	}
 
 	s.recordUserEventBestEffort(ctx, opts.userID, userEventCreatedBox)
@@ -1998,41 +1962,6 @@ func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, us
 	return assigned, nil
 }
 
-func (s *Server) createBoxShardDNSRecord(ctx context.Context, boxName string, shard int) error {
-	if !s.env.ShardIsValid(shard) {
-		return fmt.Errorf("invalid IP shard %d for box %s", shard, boxName)
-	}
-
-	dnsCtx, cancel := context.WithTimeout(ctx, 30*time.Second) // TODO: 30s seems like a lot
-	defer cancel()
-
-	start := time.Now()
-	err := s.bsdns.UpsertBoxRecord(dnsCtx, s.env.BoxHost, boxName, shard)
-	CommandLogAddDuration(ctx, "dns", time.Since(start))
-
-	if err != nil {
-		return fmt.Errorf("failed to create DNS record for box %s: %w", boxName, err)
-	}
-	return nil
-}
-
-func (s *Server) deleteBoxShardDNSRecord(ctx context.Context, boxName string, shard int) error {
-	if !s.env.ShardIsValid(shard) {
-		return fmt.Errorf("invalid IP shard %d for box %s", shard, boxName)
-	}
-	if s.bsdns == nil {
-		return nil // no DNS provider configured, skip
-	}
-
-	dnsCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	if err := s.bsdns.DeleteBoxRecord(dnsCtx, s.env.BoxHost, boxName, shard); err != nil {
-		return fmt.Errorf("failed to delete DNS record for box %s: %w", boxName, err)
-	}
-	return nil
-}
-
 // isExeletNotFoundError checks if an error from exelet indicates the instance doesn't exist.
 // This handles the case where execore's database has a ContainerID but the instance
 // is no longer present on the exelet (e.g., after exelet data loss or failed creation).
@@ -2046,16 +1975,6 @@ func isExeletNotFoundError(err error) bool {
 func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 	// Commit to the whole thing. Avoid partial deletions on client disconnect.
 	ctx = context.WithoutCancel(ctx)
-
-	// Get IP shard before deletion for DNS cleanup
-	var ipShard int64
-	if s.env.UseRoute53 {
-		shard, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxIPShard, box.ID)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("failed to get IP shard for DNS cleanup: %w", err)
-		}
-		ipShard = shard
-	}
 
 	// Delete the instance if it exists
 	if box.ContainerID != nil {
@@ -2095,18 +2014,7 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 		}
 		return queries.DeleteBox(ctx, box.ID)
 	})
-	if err != nil {
-		return err
-	}
-
-	// Clean up DNS record
-	if ipShard > 0 {
-		if err := s.deleteBoxShardDNSRecord(ctx, box.Name, int(ipShard)); err != nil {
-			s.slog().WarnContext(ctx, "failed to delete DNS record", "box", box.Name, "shard", ipShard, "error", err)
-		}
-	}
-
-	return nil
+	return err
 }
 
 func (s *Server) rollbackBoxPreCreation(ctx context.Context, boxID int) error {
@@ -2457,10 +2365,6 @@ func (s *Server) Start() error {
 				cancel()
 			}
 		}()
-
-		if s.wildcardCertManager != nil {
-			s.slog().InfoContext(ctx, "Using DNS challenges for wildcard main domain certificate")
-		}
 	}
 
 	// Start proxy listeners with the same handlers. Prefer https if it's available

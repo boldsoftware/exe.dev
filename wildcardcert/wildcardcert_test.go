@@ -1,4 +1,4 @@
-package route53
+package wildcardcert
 
 import (
 	"crypto/rand"
@@ -64,7 +64,7 @@ func TestIsSingleLevelSubdomain(t *testing.T) {
 	}
 }
 
-func TestWildcardCertManager_domainForServerName(t *testing.T) {
+func TestManager_domainForServerName(t *testing.T) {
 	t.Parallel()
 
 	tcs := []struct {
@@ -115,7 +115,7 @@ func TestWildcardCertManager_domainForServerName(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			w := &WildcardCertManager{
+			w := &Manager{
 				domains: tc.domains,
 			}
 			got := w.domainForServerName(tc.serverName)
@@ -126,12 +126,12 @@ func TestWildcardCertManager_domainForServerName(t *testing.T) {
 	}
 }
 
-func TestWildcardCertManager_isCertValid(t *testing.T) {
+func TestManager_isCertValid(t *testing.T) {
 	t.Parallel()
 
 	const testDomain = "example.com"
 
-	w := &WildcardCertManager{}
+	w := &Manager{}
 	// Prevent background renewals from running because this test does not
 	// configure the dependencies required by obtainCertificate.
 	w.renewalsInFlight.Store(testDomain, struct{}{})

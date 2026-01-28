@@ -34,14 +34,13 @@ import (
 	"exe.dev/domz"
 	"exe.dev/errorz"
 	"exe.dev/exedb"
-	"exe.dev/exens"
 	"exe.dev/llmgateway"
 	"exe.dev/metricsbag"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
-	"exe.dev/route53"
 	"exe.dev/sshkey"
 	"exe.dev/stage"
 	"exe.dev/tracing"
+	"exe.dev/wildcardcert"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	sloghttp "github.com/samber/slog-http"
 	"golang.org/x/crypto/acme"
@@ -53,21 +52,6 @@ import (
 )
 
 const sshKnownHostsPath = "/.well-known/ssh-known-hosts"
-
-// acmeServerAdapter wraps exens.Server to implement route53.LocalACMEProvider.
-type acmeServerAdapter struct {
-	server *exens.Server
-}
-
-func (a *acmeServerAdapter) UpsertTXTRecord(ctx context.Context, name, value string, ttl int64) error {
-	a.server.SetTXTRecord(name, value)
-	return nil
-}
-
-func (a *acmeServerAdapter) DeleteTXTRecord(ctx context.Context, name, value string) error {
-	a.server.DeleteTXTRecord(name, value)
-	return nil
-}
 
 func (s *Server) prepareHandler() http.Handler {
 	lg := s.prepareLlmGateway()
@@ -135,22 +119,19 @@ func (s *Server) setupHTTPSServer() {
 		return
 	}
 
-	s.slog().Info("set up wildcard TLS certificates with Route 53", "decision", s.env.UseRoute53, "stage", s.env.String())
-	if s.env.UseRoute53 {
-		// Only use DNS-01 wildcards for BoxHost (exe.xyz) domains.
-		// WebHost (exe.dev) uses standard autocert with TLS-ALPN-01.
+	// Set up wildcard certificate manager for BoxHost (exe.xyz) using DNS-01 challenges
+	// This requires the embedded DNS server (exens) to be running
+	if s.dnsServer != nil {
 		wildcardDomains := []string{s.env.BoxHost, s.env.BoxSub("xterm"), s.env.BoxSub("shelley")}
 		wildcardDomains = dedupInPlace(wildcardDomains)
 		wildcardDomains = domz.FilterEmpty(wildcardDomains)
-		s.wildcardCertManager = route53.NewWildcardCertManager(
+		s.wildcardCertManager = wildcardcert.NewManager(
 			wildcardDomains,
 			autocert.DirCache("certs"),
 			s.sshMetrics.letsencryptRequests,
+			s.dnsServer,
 		)
-		// Enable dual-write ACME TXT records to local DNS server during transition
-		if s.dnsServer != nil {
-			s.wildcardCertManager.SetLocalDNSProvider(&acmeServerAdapter{s.dnsServer})
-		}
+		s.slog().Info("wildcard certificate manager initialized", "domains", wildcardDomains)
 	}
 
 	s.certManager = &autocert.Manager{
@@ -357,8 +338,8 @@ func (s *Server) validateHostForTLSCert(ctx context.Context, host string) error 
 // getCertificate is the single TLS certificate dispatcher for HTTPS.
 // It serves:
 // - Tailscale node certificate for the machine's Tailscale DNS name
-// - Wildcard exe.xyz certificates (via Route 53 DNS-01) when configured
-// - Standard autocert for exe.dev and custom domains
+// - Wildcard certificates for BoxHost (exe.xyz) via DNS-01 challenges
+// - Standard autocert (TLS-ALPN-01) for WebHost (exe.dev) and custom domains
 func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if hello == nil || hello.ServerName == "" {
 		return nil, fmt.Errorf("no server name provided")
@@ -379,19 +360,17 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 	if domz.FirstMatch(serverName, s.env.BoxHost) != "" {
 		if s.wildcardCertManager != nil {
 			cert, err := s.wildcardCertManager.GetCertificate(hello)
-			if errors.Is(err, route53.ErrUnrecognizedDomain) {
+			if errors.Is(err, wildcardcert.ErrUnrecognizedDomain) {
 				s.slog().Debug("wildcard GetCertificate rejected unrecognized domain", "error", err)
 			} else if err != nil {
 				s.slog().Error("wildcard GetCertificate failed; giving up", "error", err)
 			}
 			return cert, err
 		}
-
-		// fall through to standard autocert
+		// fall through to standard autocert if no wildcard manager
 	}
 
 	// 3) WebHost (exe.dev) and custom domains use standard autocert (TLS-ALPN-01)
-
 	if s.certManager == nil {
 		s.slog().Error("no certificate manager configured; was https enabled at startup?", "serverName", serverName)
 		return nil, fmt.Errorf("no certificate manager configured for %s", serverName)

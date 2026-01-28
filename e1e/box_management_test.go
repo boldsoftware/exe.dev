@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"exe.dev/bsdns/alley53"
 	"exe.dev/e1e/testinfra"
 	"exe.dev/stage"
 )
@@ -510,13 +509,12 @@ func TestVanillaBox(t *testing.T) {
 
 	t.Run("shard_routing", func(t *testing.T) {
 		// shard_routing tests that `ssh vmname.exe.cloud` routes to the correct box.
-		// Skip if alley53 isn't running
-		if !alley53.NewClient("localhost:5380").IsRunning(Env.context(t)) {
-			t.Skip("alley53 is not running - skipping box hostname routing test")
-		}
+		// This requires local DNS setup that resolves vmname.exe.cloud to shard IPs.
+		// In prod/staging, exens serves this DNS. In local dev, this test is skipped.
+		t.Skip("shard routing test requires DNS setup not available in local dev")
 
 		// This is the full flow:
-		// 1. alley53 DNS resolves vmname.exe.cloud to a shard IP (e.g., 127.21.0.1)
+		// 1. DNS resolves vmname.exe.cloud to a shard IP (e.g., 127.21.0.1)
 		// 2. SSH connects to that IP
 		// 3. sshpiper sees the local address and routes to the box based on (user + shard)
 

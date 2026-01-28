@@ -36,7 +36,6 @@ type Env struct {
 	ReplHost string // the base hostname of the repl; prod is "exe.dev"
 	BoxHost  string // the base hostname of boxes; prod is "exe.dev" (but soon will be "exe.xyz"), dev is "exe.cloud"
 
-	UseRoute53        bool // whether to use Route53 for DNS management and LetsEncrypt DNS challenges; when false, uses alley53 if available, otherwise noop
 	UseCobble         bool // whether to start cobble/pebble for local ACME testing
 	DiscoverPublicIPs bool // whether to attempt to discover public IPs of the server using EC2 metadata service
 
@@ -82,7 +81,6 @@ func Invalid() Env {
 		ReplHost: "INVALID.INVALID",
 		BoxHost:  "INVALID.INVALID",
 
-		UseRoute53:        false,
 		UseCobble:         false,
 		DiscoverPublicIPs: false,
 
@@ -131,9 +129,7 @@ func Local() Env {
 		ReplHost: "localhost",
 		BoxHost:  "exe.cloud",
 
-		// auto-start cobble/pebble for ACME testing
-		UseRoute53:        false,
-		UseCobble:         true,
+		UseCobble:         true, // auto-start cobble/pebble for ACME testing
 		DiscoverPublicIPs: false,
 
 		FakeEmail:   true,
@@ -180,9 +176,7 @@ func Test() Env {
 		ReplHost: "localhost",
 		BoxHost:  "exe.cloud",
 
-		// tests start their own cobble/pebble instances as needed
-		UseRoute53:        false,
-		UseCobble:         false,
+		UseCobble:         false, // tests start their own cobble/pebble instances as needed
 		DiscoverPublicIPs: false,
 
 		FakeEmail:   true,
@@ -227,7 +221,6 @@ func Staging() Env {
 		ReplHost: "exe-staging.dev",
 		BoxHost:  "exe-staging.xyz",
 
-		UseRoute53:        true,
 		UseCobble:         false,
 		DiscoverPublicIPs: true,
 
@@ -272,7 +265,6 @@ func Prod() Env {
 		ReplHost: "exe.dev",
 		BoxHost:  "exe.xyz",
 
-		UseRoute53:        true,
 		UseCobble:         false,
 		DiscoverPublicIPs: true,
 
