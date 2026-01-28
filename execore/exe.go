@@ -931,7 +931,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 }
 
 // initShardIPs sets up the IP resolver for mapping local IPs to public IP info.
-// DiscoverPublicIPs=true: use EC2 metadata + ip_shards DB table to discover private->public IP mappings.
+// DiscoverPublicIPs=true: use EC2 metadata + regional IP shard tables.
 // DiscoverPublicIPs=false: use 127.21.0.x where x is the shard number.
 func (s *Server) initShardIPs(ctx context.Context) {
 	defer s.logIPResolver()
@@ -957,9 +957,9 @@ func (s *Server) initShardIPs(ctx context.Context) {
 		return
 	}
 
-	// Production: combine EC2 metadata with ip_shards DB table.
-	// EC2 metadata gives us private->public IP mappings.
-	// ip_shards table gives us public_ip->shard mappings.
+	// Production: combine EC2 metadata with regional IP shard tables.
+	// EC2 metadata gives us private->public IP mappings for AWS.
+	// aws_ip_shards + latitude_ip_shards give us public_ip->shard mappings.
 	ips, err := s.loadPublicIPsFromDB(ctx)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "public IP discovery failed", "error", err)
@@ -968,8 +968,14 @@ func (s *Server) initShardIPs(ctx context.Context) {
 	s.PublicIPs = ips
 }
 
-// loadPublicIPsFromDB loads PublicIPs by combining EC2 metadata with the ip_shards DB table.
+// loadPublicIPsFromDB loads PublicIPs by combining EC2 metadata with regional IP shard tables.
 // This avoids DNS lookups which would create a circular dependency with the DNS server.
+//
+// AWS IPs: Combines EC2 metadata (private->public) with aws_ip_shards (public->shard)
+// to get private->shard mappings. AWS NATs public IPs to private IPs on the ENI.
+//
+// Latitude IPs: Adds latitude_ip_shards entries directly (public->shard) since
+// Latitude doesn't NAT, so we see the public IP directly.
 func (s *Server) loadPublicIPsFromDB(ctx context.Context) (map[netip.Addr]publicips.PublicIP, error) {
 	// Get private->public IP mappings from EC2 metadata (no DNS lookups)
 	ec2Mappings, err := publicips.EC2IPMappings(ctx)
@@ -980,34 +986,35 @@ func (s *Server) loadPublicIPsFromDB(ctx context.Context) (map[netip.Addr]public
 		return nil, fmt.Errorf("no EC2 IP mappings found (not running on EC2?)")
 	}
 
-	// Get shard->public_ip mappings from the database
-	dbShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListIPShards)
+	// Get AWS shard->public_ip mappings from the database
+	awsShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListAWSIPShards)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list ip_shards: %w", err)
+		return nil, fmt.Errorf("failed to list aws_ip_shards: %w", err)
 	}
-	if len(dbShards) == 0 {
-		return nil, fmt.Errorf("ip_shards table is empty; populate it before starting")
+	if len(awsShards) == 0 {
+		return nil, fmt.Errorf("aws_ip_shards table is empty; populate it before starting")
 	}
 
-	// Build public_ip -> (shard, domain) lookup
-	publicToShard := make(map[netip.Addr]publicips.PublicIP, len(dbShards))
-	for _, row := range dbShards {
+	// Build AWS public_ip -> (shard, domain) lookup
+	awsPublicToShard := make(map[netip.Addr]publicips.PublicIP, len(awsShards))
+	for _, row := range awsShards {
 		ip, err := netip.ParseAddr(row.PublicIp)
 		if err != nil {
-			s.slog().WarnContext(ctx, "invalid public IP in ip_shards", "shard", row.Shard, "ip", row.PublicIp, "error", err)
+			s.slog().WarnContext(ctx, "invalid public IP in aws_ip_shards", "shard", row.Shard, "ip", row.PublicIp, "error", err)
 			continue
 		}
-		publicToShard[ip] = publicips.PublicIP{
+		awsPublicToShard[ip] = publicips.PublicIP{
 			IP:     ip,
 			Domain: publicips.ShardSub(int(row.Shard)) + "." + s.env.BoxHost,
 			Shard:  int(row.Shard),
 		}
 	}
 
-	// Combine: for each EC2 mapping, look up the shard info by public IP
-	result := make(map[netip.Addr]publicips.PublicIP, len(ec2Mappings))
+	// Combine AWS: for each EC2 mapping, look up the shard info by "public" IP...
+	// but the public IP from our perspective is the private IP from EC2 metadata.
+	result := make(map[netip.Addr]publicips.PublicIP, len(ec2Mappings)+publicips.MaxDomainShards)
 	for _, mapping := range ec2Mappings {
-		info, ok := publicToShard[mapping.Public]
+		info, ok := awsPublicToShard[mapping.Public]
 		if !ok {
 			// This is the lobby IP - the public IP for ssh exe.dev / exe.xyz apex domain,
 			// not associated with any box shard.
@@ -1019,7 +1026,27 @@ func (s *Server) loadPublicIPsFromDB(ctx context.Context) (map[netip.Addr]public
 	}
 
 	if len(result) == 0 {
-		return nil, fmt.Errorf("no EC2 IPs matched ip_shards table")
+		return nil, fmt.Errorf("no EC2 IPs matched aws_ip_shards table")
+	}
+
+	// Get Latitude shard->public_ip mappings from the database.
+	// Latitude doesn't NAT, so sshpiper sees the public IP directly.
+	// Add these directly to the result keyed by the public IP.
+	latitudeShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListLatitudeIPShards)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list latitude_ip_shards: %w", err)
+	}
+	for _, row := range latitudeShards {
+		ip, err := netip.ParseAddr(row.PublicIp)
+		if err != nil {
+			s.slog().WarnContext(ctx, "invalid public IP in latitude_ip_shards", "shard", row.Shard, "ip", row.PublicIp, "error", err)
+			continue
+		}
+		result[ip] = publicips.PublicIP{
+			IP:     ip,
+			Domain: publicips.ShardSub(int(row.Shard)) + "." + s.env.BoxHost,
+			Shard:  int(row.Shard),
+		}
 	}
 
 	return result, nil
@@ -1039,27 +1066,62 @@ func (s *Server) logIPResolver() {
 	s.slog().Info("public IP assignments loaded", "assignments", assignments)
 }
 
-// validateIPShards checks that all IP shards in the DB have corresponding private IPs
-// on this machine. Logs an error for each shard that is missing.
+// validateIPShards validates IP shard configuration:
+//  1. All AWS shards should have corresponding local (private) IPs on this machine.
+//  2. All serving shards (ip_shards) should match either AWS or Latitude IPs.
 func (s *Server) validateIPShards(ctx context.Context) {
-	dbShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListIPShards)
+	awsShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListAWSIPShards)
 	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to list IP shards for validation", "error", err)
+		s.slog().ErrorContext(ctx, "failed to list aws_ip_shards for validation", "error", err)
 		return
 	}
 
-	// Build a set of shards we have on this machine
-	localShards := make(map[int]bool)
-	for _, info := range s.PublicIPs {
-		localShards[info.Shard] = true
+	// For each aws_ip_shard, verify there's a PublicIPs entry with matching shard and IP.
+	for _, awsShard := range awsShards {
+		found := false
+		for _, info := range s.PublicIPs {
+			if info.Shard == int(awsShard.Shard) && info.IP.String() == awsShard.PublicIp {
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.slog().ErrorContext(ctx, "aws_ip_shard not routable on this machine",
+				"shard", awsShard.Shard,
+				"public_ip", awsShard.PublicIp)
+		}
 	}
 
-	// Check each DB shard
-	for _, dbShard := range dbShards {
-		if !localShards[int(dbShard.Shard)] {
-			s.slog().ErrorContext(ctx, "ip_shard in DB missing from this machine",
-				"shard", dbShard.Shard,
-				"public_ip", dbShard.PublicIp)
+	// All serving shards should match either AWS or Latitude IP for that shard.
+	servingShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListIPShards)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to list ip_shards for validation", "error", err)
+		return
+	}
+	latitudeShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListLatitudeIPShards)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to list latitude_ip_shards for validation", "error", err)
+		return
+	}
+
+	awsByS := make([]string, publicips.MaxDomainShards+1)
+	for _, row := range awsShards {
+		awsByS[row.Shard] = row.PublicIp
+	}
+	latByS := make([]string, publicips.MaxDomainShards+1)
+	for _, row := range latitudeShards {
+		latByS[row.Shard] = row.PublicIp
+	}
+
+	for _, serving := range servingShards {
+		shard := int(serving.Shard)
+		ip := serving.PublicIp
+		if ip != awsByS[shard] && ip != latByS[shard] {
+			s.slog().ErrorContext(ctx, "ip_shard serving IP doesn't match AWS or Latitude",
+				"shard", shard,
+				"serving_ip", ip,
+				"aws_ip", awsByS[shard],
+				"latitude_ip", latByS[shard])
 		}
 	}
 }
@@ -2365,13 +2427,7 @@ func (s *Server) Start() error {
 		s.dnsServer.SetLobbyIP(s.LobbyIP)
 	}
 
-	// Populate ip_shards table and validate (after initShardIPs populates PublicIPs)
 	if s.dnsServer != nil && len(s.PublicIPs) > 0 {
-		if err := exens.PopulateIPShards(ctx, s.db, s.log, s.PublicIPs); err != nil {
-			s.slog().ErrorContext(ctx, "ip_shards population failed", "error", err)
-		}
-
-		// Validate that all DB shards have corresponding private IPs on this machine
 		s.validateIPShards(ctx)
 	}
 

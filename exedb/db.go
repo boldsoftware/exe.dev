@@ -75,9 +75,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countEmailBouncesStmt, err = db.PrepareContext(ctx, countEmailBounces); err != nil {
 		return nil, fmt.Errorf("error preparing query CountEmailBounces: %w", err)
 	}
-	if q.countIPShardsStmt, err = db.PrepareContext(ctx, countIPShards); err != nil {
-		return nil, fmt.Errorf("error preparing query CountIPShards: %w", err)
-	}
 	if q.countLoginUsersStmt, err = db.PrepareContext(ctx, countLoginUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query CountLoginUsers: %w", err)
 	}
@@ -143,6 +140,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, deleteEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEmailVerificationByToken: %w", err)
+	}
+	if q.deleteLatitudeIPShardStmt, err = db.PrepareContext(ctx, deleteLatitudeIPShard); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteLatitudeIPShard: %w", err)
 	}
 	if q.deleteMobilePendingVMByTokenStmt, err = db.PrepareContext(ctx, deleteMobilePendingVMByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteMobilePendingVMByToken: %w", err)
@@ -483,6 +483,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.isEmailQualityBypassedStmt, err = db.PrepareContext(ctx, isEmailQualityBypassed); err != nil {
 		return nil, fmt.Errorf("error preparing query IsEmailQualityBypassed: %w", err)
 	}
+	if q.listAWSIPShardsStmt, err = db.PrepareContext(ctx, listAWSIPShards); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAWSIPShards: %w", err)
+	}
 	if q.listAllAccountsStmt, err = db.PrepareContext(ctx, listAllAccounts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllAccounts: %w", err)
 	}
@@ -509,6 +512,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listIPShardsForUserStmt, err = db.PrepareContext(ctx, listIPShardsForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIPShardsForUser: %w", err)
+	}
+	if q.listLatitudeIPShardsStmt, err = db.PrepareContext(ctx, listLatitudeIPShards); err != nil {
+		return nil, fmt.Errorf("error preparing query ListLatitudeIPShards: %w", err)
 	}
 	if q.listUnusedInviteCodesForUserStmt, err = db.PrepareContext(ctx, listUnusedInviteCodesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUnusedInviteCodesForUser: %w", err)
@@ -605,6 +611,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertIPShardStmt, err = db.PrepareContext(ctx, upsertIPShard); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertIPShard: %w", err)
+	}
+	if q.upsertLatitudeIPShardStmt, err = db.PrepareContext(ctx, upsertLatitudeIPShard); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertLatitudeIPShard: %w", err)
 	}
 	if q.upsertMobilePendingVMStmt, err = db.PrepareContext(ctx, upsertMobilePendingVM); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertMobilePendingVM: %w", err)
@@ -717,11 +726,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing countEmailBouncesStmt: %w", cerr)
 		}
 	}
-	if q.countIPShardsStmt != nil {
-		if cerr := q.countIPShardsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing countIPShardsStmt: %w", cerr)
-		}
-	}
 	if q.countLoginUsersStmt != nil {
 		if cerr := q.countLoginUsersStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countLoginUsersStmt: %w", cerr)
@@ -830,6 +834,11 @@ func (q *Queries) Close() error {
 	if q.deleteEmailVerificationByTokenStmt != nil {
 		if cerr := q.deleteEmailVerificationByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteEmailVerificationByTokenStmt: %w", cerr)
+		}
+	}
+	if q.deleteLatitudeIPShardStmt != nil {
+		if cerr := q.deleteLatitudeIPShardStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteLatitudeIPShardStmt: %w", cerr)
 		}
 	}
 	if q.deleteMobilePendingVMByTokenStmt != nil {
@@ -1397,6 +1406,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing isEmailQualityBypassedStmt: %w", cerr)
 		}
 	}
+	if q.listAWSIPShardsStmt != nil {
+		if cerr := q.listAWSIPShardsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAWSIPShardsStmt: %w", cerr)
+		}
+	}
 	if q.listAllAccountsStmt != nil {
 		if cerr := q.listAllAccountsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllAccountsStmt: %w", cerr)
@@ -1440,6 +1454,11 @@ func (q *Queries) Close() error {
 	if q.listIPShardsForUserStmt != nil {
 		if cerr := q.listIPShardsForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listIPShardsForUserStmt: %w", cerr)
+		}
+	}
+	if q.listLatitudeIPShardsStmt != nil {
+		if cerr := q.listLatitudeIPShardsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listLatitudeIPShardsStmt: %w", cerr)
 		}
 	}
 	if q.listUnusedInviteCodesForUserStmt != nil {
@@ -1602,6 +1621,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertIPShardStmt: %w", cerr)
 		}
 	}
+	if q.upsertLatitudeIPShardStmt != nil {
+		if cerr := q.upsertLatitudeIPShardStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertLatitudeIPShardStmt: %w", cerr)
+		}
+	}
 	if q.upsertMobilePendingVMStmt != nil {
 		if cerr := q.upsertMobilePendingVMStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertMobilePendingVMStmt: %w", cerr)
@@ -1693,7 +1717,6 @@ type Queries struct {
 	countBoxesForUserStmt                      *sql.Stmt
 	countDevUsersStmt                          *sql.Stmt
 	countEmailBouncesStmt                      *sql.Stmt
-	countIPShardsStmt                          *sql.Stmt
 	countLoginUsersStmt                        *sql.Stmt
 	countPendingBoxSharesStmt                  *sql.Stmt
 	countUnallocatedInviteCodesByUserStmt      *sql.Stmt
@@ -1716,6 +1739,7 @@ type Queries struct {
 	deleteEmailBounceStmt                      *sql.Stmt
 	deleteEmailQualityBypassStmt               *sql.Stmt
 	deleteEmailVerificationByTokenStmt         *sql.Stmt
+	deleteLatitudeIPShardStmt                  *sql.Stmt
 	deleteMobilePendingVMByTokenStmt           *sql.Stmt
 	deleteMobilePendingVMByUserAndHostnameStmt *sql.Stmt
 	deletePasskeyStmt                          *sql.Stmt
@@ -1829,6 +1853,7 @@ type Queries struct {
 	insertUserStmt                             *sql.Stmt
 	isEmailBouncedStmt                         *sql.Stmt
 	isEmailQualityBypassedStmt                 *sql.Stmt
+	listAWSIPShardsStmt                        *sql.Stmt
 	listAllAccountsStmt                        *sql.Stmt
 	listAllBoxesWithOwnerStmt                  *sql.Stmt
 	listAllInviteCodesWithEmailsStmt           *sql.Stmt
@@ -1838,6 +1863,7 @@ type Queries struct {
 	listEmailQualityBypassStmt                 *sql.Stmt
 	listIPShardsStmt                           *sql.Stmt
 	listIPShardsForUserStmt                    *sql.Stmt
+	listLatitudeIPShardsStmt                   *sql.Stmt
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
 	listUnusedSystemInviteCodesStmt            *sql.Stmt
 	recordUserEventStmt                        *sql.Stmt
@@ -1870,6 +1896,7 @@ type Queries struct {
 	updateUserLLMAvailableCreditStmt           *sql.Stmt
 	upsertHLLSketchStmt                        *sql.Stmt
 	upsertIPShardStmt                          *sql.Stmt
+	upsertLatitudeIPShardStmt                  *sql.Stmt
 	upsertMobilePendingVMStmt                  *sql.Stmt
 	upsertSSHHostKeyStmt                       *sql.Stmt
 	upsertTagResolutionStmt                    *sql.Stmt
@@ -1900,7 +1927,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countBoxesForUserStmt:                      q.countBoxesForUserStmt,
 		countDevUsersStmt:                          q.countDevUsersStmt,
 		countEmailBouncesStmt:                      q.countEmailBouncesStmt,
-		countIPShardsStmt:                          q.countIPShardsStmt,
 		countLoginUsersStmt:                        q.countLoginUsersStmt,
 		countPendingBoxSharesStmt:                  q.countPendingBoxSharesStmt,
 		countUnallocatedInviteCodesByUserStmt:      q.countUnallocatedInviteCodesByUserStmt,
@@ -1923,6 +1949,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteEmailBounceStmt:                      q.deleteEmailBounceStmt,
 		deleteEmailQualityBypassStmt:               q.deleteEmailQualityBypassStmt,
 		deleteEmailVerificationByTokenStmt:         q.deleteEmailVerificationByTokenStmt,
+		deleteLatitudeIPShardStmt:                  q.deleteLatitudeIPShardStmt,
 		deleteMobilePendingVMByTokenStmt:           q.deleteMobilePendingVMByTokenStmt,
 		deleteMobilePendingVMByUserAndHostnameStmt: q.deleteMobilePendingVMByUserAndHostnameStmt,
 		deletePasskeyStmt:                          q.deletePasskeyStmt,
@@ -2036,6 +2063,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertUserStmt:                             q.insertUserStmt,
 		isEmailBouncedStmt:                         q.isEmailBouncedStmt,
 		isEmailQualityBypassedStmt:                 q.isEmailQualityBypassedStmt,
+		listAWSIPShardsStmt:                        q.listAWSIPShardsStmt,
 		listAllAccountsStmt:                        q.listAllAccountsStmt,
 		listAllBoxesWithOwnerStmt:                  q.listAllBoxesWithOwnerStmt,
 		listAllInviteCodesWithEmailsStmt:           q.listAllInviteCodesWithEmailsStmt,
@@ -2045,6 +2073,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listEmailQualityBypassStmt:                 q.listEmailQualityBypassStmt,
 		listIPShardsStmt:                           q.listIPShardsStmt,
 		listIPShardsForUserStmt:                    q.listIPShardsForUserStmt,
+		listLatitudeIPShardsStmt:                   q.listLatitudeIPShardsStmt,
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
 		listUnusedSystemInviteCodesStmt:            q.listUnusedSystemInviteCodesStmt,
 		recordUserEventStmt:                        q.recordUserEventStmt,
@@ -2077,6 +2106,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateUserLLMAvailableCreditStmt:           q.updateUserLLMAvailableCreditStmt,
 		upsertHLLSketchStmt:                        q.upsertHLLSketchStmt,
 		upsertIPShardStmt:                          q.upsertIPShardStmt,
+		upsertLatitudeIPShardStmt:                  q.upsertLatitudeIPShardStmt,
 		upsertMobilePendingVMStmt:                  q.upsertMobilePendingVMStmt,
 		upsertSSHHostKeyStmt:                       q.upsertSSHHostKeyStmt,
 		upsertTagResolutionStmt:                    q.upsertTagResolutionStmt,

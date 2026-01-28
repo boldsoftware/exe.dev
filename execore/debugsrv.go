@@ -27,6 +27,7 @@ import (
 	"exe.dev/llmgateway"
 	"exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/publicips"
 
 	"tailscale.com/client/local"
 )
@@ -63,6 +64,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/signup-reject", s.handleDebugSignupReject)
 	mux.HandleFunc("POST /debug/signup-reject", s.handleDebugSignupRejectPost)
 	mux.HandleFunc("/debug/ipshards", s.handleDebugIPShards)
+	mux.HandleFunc("POST /debug/ipshards/toggle", s.handleDebugIPShardsToggle)
+	mux.HandleFunc("POST /debug/ipshards/latitude", s.handleDebugIPShardsLatitude)
 	mux.HandleFunc("GET /debug/log", s.handleDebugLogForm)
 	mux.HandleFunc("POST /debug/log", s.handleDebugLog)
 	mux.HandleFunc("/debug/testimonials", s.handleDebugTestimonials)
@@ -1539,72 +1542,77 @@ func (s *Server) handleDebugNewThrottlePost(w http.ResponseWriter, r *http.Reque
 	http.Redirect(w, r, "/debug/new-throttle", http.StatusSeeOther)
 }
 
-// handleDebugIPShards displays the IP shard assignments.
+// ipShardEntry represents a single shard's IP configuration across all tables.
+type ipShardEntry struct {
+	Shard       int    // 1-25
+	ServingIP   string // current ip_shards value (what DNS returns)
+	AWSIP       string // aws_ip_shards value
+	LatitudeIP  string // latitude_ip_shards value
+	ServingFrom string // "aws", "latitude", or "unknown"
+}
+
+// handleDebugIPShards displays all IP shard tables and allows toggling the serving source.
 func (s *Server) handleDebugIPShards(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	type ipShardInfo struct {
-		Shard     int    `json:"shard"`
-		PublicIP  string `json:"public_ip"`
-		PrivateIP string `json:"private_ip,omitempty"`
-		Missing   bool   `json:"missing,omitempty"`
-	}
-
-	// Get all shards from DB
-	dbShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListIPShards)
+	// Get all three tables
+	servingShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListIPShards)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to list IP shards: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to list ip_shards: %v", err), http.StatusInternalServerError)
+		return
+	}
+	awsShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListAWSIPShards)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list aws_ip_shards: %v", err), http.StatusInternalServerError)
+		return
+	}
+	latitudeShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListLatitudeIPShards)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list latitude_ip_shards: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Build a reverse map: shard -> private IP from the server's PublicIPs
-	shardToPrivateIP := make(map[int]string)
-	for privateIP, info := range s.PublicIPs {
-		shardToPrivateIP[info.Shard] = privateIP.String()
+	// Build lookup slices (indexed by shard number)
+	servingByS := make([]string, publicips.MaxDomainShards+1)
+	for _, row := range servingShards {
+		servingByS[row.Shard] = row.PublicIp
+	}
+	awsByS := make([]string, publicips.MaxDomainShards+1)
+	for _, row := range awsShards {
+		awsByS[row.Shard] = row.PublicIp
+	}
+	latByS := make([]string, publicips.MaxDomainShards+1)
+	for _, row := range latitudeShards {
+		latByS[row.Shard] = row.PublicIp
 	}
 
-	// Build the shard info list
-	var shards []ipShardInfo
-	for _, dbShard := range dbShards {
-		info := ipShardInfo{
-			Shard:    int(dbShard.Shard),
-			PublicIP: dbShard.PublicIp,
+	// Build unified shard list
+	var entries []ipShardEntry
+	for shard := 1; shard <= publicips.MaxDomainShards; shard++ {
+		entry := ipShardEntry{
+			Shard:       shard,
+			ServingIP:   servingByS[shard],
+			AWSIP:       awsByS[shard],
+			LatitudeIP:  latByS[shard],
+			ServingFrom: "unknown",
 		}
-		if privateIP, ok := shardToPrivateIP[int(dbShard.Shard)]; ok {
-			info.PrivateIP = privateIP
-		} else {
-			info.Missing = true
-		}
-		shards = append(shards, info)
-	}
-
-	// Find unmapped IPs (on this machine but not in DB)
-	var unmappedIPs []string
-	for privateIP, info := range s.PublicIPs {
-		// Check if this shard exists in DB
-		found := false
-		for _, dbShard := range dbShards {
-			if int(dbShard.Shard) == info.Shard {
-				found = true
-				break
+		// Determine serving source
+		if entry.ServingIP != "" {
+			if entry.ServingIP == entry.AWSIP {
+				entry.ServingFrom = "aws"
+			} else if entry.ServingIP == entry.LatitudeIP {
+				entry.ServingFrom = "latitude"
 			}
 		}
-		if !found {
-			unmappedIPs = append(unmappedIPs, fmt.Sprintf("%s (public: %s, s%03d)", privateIP, info.IP, info.Shard))
-		}
+		entries = append(entries, entry)
 	}
-	sort.Strings(unmappedIPs)
 
 	// Check if JSON format is requested
 	if r.URL.Query().Get("format") == "json" {
-		type jsonResponse struct {
-			Shards     []ipShardInfo `json:"shards"`
-			UnmappedIP []string      `json:"unmapped_ips,omitempty"`
-		}
 		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(jsonResponse{Shards: shards, UnmappedIP: unmappedIPs}); err != nil {
+		if err := enc.Encode(entries); err != nil {
 			s.slog().ErrorContext(ctx, "Failed to encode IP shards", "error", err)
 		}
 		return
@@ -1618,19 +1626,174 @@ func (s *Server) handleDebugIPShards(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Shards         []ipShardInfo
-		UnmappedIPs    []string
-		UnmappedIPsStr string
+		Entries []ipShardEntry
+		LobbyIP string
 	}{
-		Shards:         shards,
-		UnmappedIPs:    unmappedIPs,
-		UnmappedIPsStr: strings.Join(unmappedIPs, ", "),
+		Entries: entries,
+		LobbyIP: s.LobbyIP.String(),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := tmpl.ExecuteTemplate(w, "ipshards.html", data); err != nil {
 		s.slog().ErrorContext(ctx, "failed to execute ipshards template", "error", err)
 	}
+}
+
+// handleDebugIPShardsToggle switches a shard's serving IP between AWS and Latitude.
+func (s *Server) handleDebugIPShardsToggle(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	shardStr := r.FormValue("shard")
+	target := r.FormValue("target") // "aws" or "latitude"
+
+	shard, err := strconv.Atoi(shardStr)
+	if err != nil || !publicips.ShardIsValid(shard) {
+		http.Error(w, "invalid shard number", http.StatusBadRequest)
+		return
+	}
+	if target != "aws" && target != "latitude" {
+		http.Error(w, "target must be 'aws' or 'latitude'", http.StatusBadRequest)
+		return
+	}
+
+	// Get the IP from the target table
+	var newIP string
+	if target == "aws" {
+		awsShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListAWSIPShards)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to list aws_ip_shards: %v", err), http.StatusInternalServerError)
+			return
+		}
+		for _, row := range awsShards {
+			if int(row.Shard) == shard {
+				newIP = row.PublicIp
+				break
+			}
+		}
+	} else {
+		latShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListLatitudeIPShards)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to list latitude_ip_shards: %v", err), http.StatusInternalServerError)
+			return
+		}
+		for _, row := range latShards {
+			if int(row.Shard) == shard {
+				newIP = row.PublicIp
+				break
+			}
+		}
+	}
+
+	if newIP == "" {
+		http.Error(w, fmt.Sprintf("no %s IP found for shard %d", target, shard), http.StatusBadRequest)
+		return
+	}
+
+	// Update the serving table
+	err = withTx1(s, ctx, (*exedb.Queries).UpsertIPShard, exedb.UpsertIPShardParams{
+		Shard:    int64(shard),
+		PublicIp: newIP,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to update ip_shards: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "switched shard serving IP",
+		"shard", shard,
+		"target", target,
+		"new_ip", newIP)
+
+	// Redirect back to the ipshards page
+	http.Redirect(w, r, "/debug/ipshards", http.StatusSeeOther)
+}
+
+// handleDebugIPShardsLatitude handles upsert/delete of Latitude IP addresses.
+func (s *Server) handleDebugIPShardsLatitude(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	shardStr := r.FormValue("shard")
+	ip := strings.TrimSpace(r.FormValue("ip"))
+
+	shard, err := strconv.Atoi(shardStr)
+	if err != nil || !publicips.ShardIsValid(shard) {
+		http.Error(w, "invalid shard number", http.StatusBadRequest)
+		return
+	}
+
+	// Empty IP means delete
+	if ip == "" {
+		if err := withTx1(s, ctx, (*exedb.Queries).DeleteLatitudeIPShard, int64(shard)); err != nil {
+			http.Error(w, fmt.Sprintf("failed to delete latitude_ip_shards: %v", err), http.StatusInternalServerError)
+			return
+		}
+		s.slog().InfoContext(ctx, "deleted latitude IP shard", "shard", shard)
+		http.Redirect(w, r, "/debug/ipshards", http.StatusSeeOther)
+		return
+	}
+
+	// Validate IP format
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid IP address: %v", err), http.StatusBadRequest)
+		return
+	}
+	if !addr.Is4() {
+		http.Error(w, "must be an IPv4 address", http.StatusBadRequest)
+		return
+	}
+
+	// Check for duplicates across all IP shard tables
+	servingShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListIPShards)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list ip_shards: %v", err), http.StatusInternalServerError)
+		return
+	}
+	awsShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListAWSIPShards)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list aws_ip_shards: %v", err), http.StatusInternalServerError)
+		return
+	}
+	latitudeShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListLatitudeIPShards)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list latitude_ip_shards: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Check serving shards
+	for _, row := range servingShards {
+		if row.PublicIp == ip {
+			http.Error(w, fmt.Sprintf("IP %s already in use in ip_shards (shard %d)", ip, row.Shard), http.StatusBadRequest)
+			return
+		}
+	}
+	// Check AWS shards
+	for _, row := range awsShards {
+		if row.PublicIp == ip {
+			http.Error(w, fmt.Sprintf("IP %s already in use in aws_ip_shards (shard %d)", ip, row.Shard), http.StatusBadRequest)
+			return
+		}
+	}
+	// Check Latitude shards (excluding current shard being updated)
+	for _, row := range latitudeShards {
+		if row.PublicIp == ip && int(row.Shard) != shard {
+			http.Error(w, fmt.Sprintf("IP %s already in use in latitude_ip_shards (shard %d)", ip, row.Shard), http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Upsert
+	err = withTx1(s, ctx, (*exedb.Queries).UpsertLatitudeIPShard, exedb.UpsertLatitudeIPShardParams{
+		Shard:    int64(shard),
+		PublicIp: ip,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to upsert latitude_ip_shards: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "upserted latitude IP shard", "shard", shard, "ip", ip)
+	http.Redirect(w, r, "/debug/ipshards", http.StatusSeeOther)
 }
 
 // handleDebugLogForm renders a simple form to log an error message.

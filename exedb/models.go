@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+type AWSIPShard struct {
+	Shard     int64     `db:"shard" json:"shard"`
+	PublicIp  string    `db:"public_ip" json:"public_ip"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+}
+
 type Account struct {
 	ID        string    `db:"id" json:"id"`
 	CreatedBy string    `db:"created_by" json:"created_by"`
@@ -152,6 +159,13 @@ type InviteCode struct {
 type InviteCodePool struct {
 	Code      string     `db:"code" json:"code"`
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
+}
+
+type LatitudeIPShard struct {
+	Shard     int64     `db:"shard" json:"shard"`
+	PublicIp  string    `db:"public_ip" json:"public_ip"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
 
 type Migration struct {
