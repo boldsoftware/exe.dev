@@ -3256,7 +3256,7 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 		// Special case: don't pick exe-ctr-02 because it has
 		// huge pages. TODO: Clean this up sometime.
 		if strings.Contains(maxHost, "exe-ctr-02:") {
-			s.slog().DebugContext(ctx, "not selecting exelet because it is exe-ctr-02", "user", userID, "host", maxHost, "userVMCount", maxCnt)
+			s.slog().DebugContext(ctx, "not selecting exelet because it is exe-ctr-02", "user", userID, "exelet", maxHost, "userVMCount", maxCnt)
 			client = nil
 		}
 
@@ -3268,13 +3268,13 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 				return nil, "", err
 			}
 			if count >= autoThrottleVMLimit {
-				s.slog().DebugContext(ctx, "not selecting exelet because it is over threshold", "user", userID, "host", maxHost, "userVMCount", maxCnt, "exeletVMCount", count)
+				s.slog().DebugContext(ctx, "not selecting exelet because it is over threshold", "user", userID, "exelet", maxHost, "userVMCount", maxCnt, "exeletVMCount", count)
 				client = nil
 			}
 		}
 
 		if client != nil {
-			s.slog().DebugContext(ctx, "selecting exelet with most VMs for user", "user", userID, "host", maxHost, "userVMCount", maxCnt, "exeletVMCount", count)
+			s.slog().DebugContext(ctx, "selecting exelet with most VMs for user", "user", userID, "exelet", maxHost, "userVMCount", maxCnt, "exeletVMCount", count)
 			return client, maxHost, nil
 		}
 	}
@@ -3284,7 +3284,7 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 	if err == nil && preferredAddr != "" {
 		// Preferred exelet is configured, try to use it
 		if client, ok := s.exeletClients[preferredAddr]; ok {
-			s.slog().DebugContext(ctx, "selecting preferred exelet", "user", userID, "host", preferredAddr)
+			s.slog().DebugContext(ctx, "selecting preferred exelet", "user", userID, "exelet", preferredAddr)
 			return client, preferredAddr, nil
 		}
 		// Preferred exelet is not available, log error and fall back
@@ -3315,6 +3315,7 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 	ecs = ecs[:i]
 
 	if len(ecs) == 1 {
+		s.slog().DebugContext(ctx, "chose least loaded exelet", "exelet", ecs[0].addr, "exeletVMCount", ecs[0].count.Load())
 		return ecs[0], ecs[0].addr, nil
 	}
 
@@ -3327,7 +3328,7 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 	}
 	idx := hash % len(ecs)
 
-	s.slog().DebugContext(ctx, "chose exelet", "host", ecs[idx].addr, "idx", idx)
+	s.slog().DebugContext(ctx, "chose exelet", "exelet", ecs[idx].addr, "exeletVMCount", ecs[idx].count.Load(), "idx", idx, "equivalentExelets", len(ecs))
 
 	return ecs[idx], ecs[idx].addr, nil
 }
