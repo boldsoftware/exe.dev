@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+cp BOX_NAME abc
+
+- help to see a list of commands
+
+PROMPT ▶ cp BOX_NAME abc
+invalid name: invalid VM name, must be 5-52 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-vm-name)
+PROMPT ▶ exit
+Goodbye!

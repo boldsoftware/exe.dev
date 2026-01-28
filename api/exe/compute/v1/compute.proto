@@ -22,6 +22,8 @@ service ComputeService {
   rpc ReceiveVM(stream ReceiveVMRequest) returns (stream ReceiveVMResponse);
   // GrowDisk grows the disk of a running VM
   rpc GrowDisk(GrowDiskRequest) returns (GrowDiskResponse);
+  // CloneInstance clones an existing VM using ZFS copy-on-write snapshots
+  rpc CloneInstance(CloneInstanceRequest) returns (stream CloneInstanceResponse);
 }
 
 message CreateInstanceRequest {
@@ -361,4 +363,37 @@ message GrowDiskRequest {
 message GrowDiskResponse {
   uint64 old_size = 1;              // Previous disk size in bytes
   uint64 new_size = 2;              // New disk size in bytes
+}
+
+// CloneInstance messages
+message CloneInstanceRequest {
+  string source_instance_id = 1;    // ID of the source instance to clone
+  string new_instance_id = 2;       // ID for the new cloned instance
+  string new_name = 3;              // Name for the new cloned instance
+  string group_id = 4;              // Group ID for per-account cgroup grouping
+  repeated string ssh_keys = 5;     // SSH keys for the new instance
+  repeated Config configs = 6;      // Config files to write to the new instance
+}
+
+message CloneInstanceStatus {
+  string id = 1;
+  enum State {
+    UNKNOWN = 0;
+    INIT = 1;
+    SNAPSHOT = 2;
+    CLONE = 3;
+    NETWORK = 4;
+    CONFIG = 5;
+    BOOT = 6;
+    COMPLETE = 7;
+  }
+  State state = 2;
+  string message = 3;
+}
+
+message CloneInstanceResponse {
+  oneof Type {
+    CloneInstanceStatus status = 1;
+    Instance instance = 2;
+  }
 }

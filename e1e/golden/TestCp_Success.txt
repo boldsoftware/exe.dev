@@ -1,0 +1,18 @@
+
+
+●
+● ssh localhost
+●
+
+cp BOX_NAME copied-from-source
+
+- help to see a list of commands
+
+PROMPT ▶ cp BOX_NAME copied-from-source
+Copying BOX_NAME to copied-from-source...
+Created copied-from-source from BOX_NAME in 0.4s
+
+  SSH: copied-from-source@exe.cloud
+  Web: http://copied-from-source.exe.cloud:EXED_HTTP_PORT
+PROMPT ▶ exit
+Goodbye!

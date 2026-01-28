@@ -33,6 +33,7 @@ const (
 	ComputeService_SendVM_FullMethodName           = "/exe.compute.v1.ComputeService/SendVM"
 	ComputeService_ReceiveVM_FullMethodName        = "/exe.compute.v1.ComputeService/ReceiveVM"
 	ComputeService_GrowDisk_FullMethodName         = "/exe.compute.v1.ComputeService/GrowDisk"
+	ComputeService_CloneInstance_FullMethodName    = "/exe.compute.v1.ComputeService/CloneInstance"
 )
 
 // ComputeServiceClient is the client API for ComputeService service.
@@ -56,6 +57,8 @@ type ComputeServiceClient interface {
 	ReceiveVM(ctx context.Context, opts ...grpc.CallOption) (ComputeService_ReceiveVMClient, error)
 	// GrowDisk grows the disk of a running VM
 	GrowDisk(ctx context.Context, in *GrowDiskRequest, opts ...grpc.CallOption) (*GrowDiskResponse, error)
+	// CloneInstance clones an existing VM using ZFS copy-on-write snapshots
+	CloneInstance(ctx context.Context, in *CloneInstanceRequest, opts ...grpc.CallOption) (ComputeService_CloneInstanceClient, error)
 }
 
 type computeServiceClient struct {
@@ -319,6 +322,39 @@ func (c *computeServiceClient) GrowDisk(ctx context.Context, in *GrowDiskRequest
 	return out, nil
 }
 
+func (c *computeServiceClient) CloneInstance(ctx context.Context, in *CloneInstanceRequest, opts ...grpc.CallOption) (ComputeService_CloneInstanceClient, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ComputeService_ServiceDesc.Streams[5], ComputeService_CloneInstance_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &computeServiceCloneInstanceClient{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type ComputeService_CloneInstanceClient interface {
+	Recv() (*CloneInstanceResponse, error)
+	grpc.ClientStream
+}
+
+type computeServiceCloneInstanceClient struct {
+	grpc.ClientStream
+}
+
+func (x *computeServiceCloneInstanceClient) Recv() (*CloneInstanceResponse, error) {
+	m := new(CloneInstanceResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ComputeServiceServer is the server API for ComputeService service.
 // All implementations must embed UnimplementedComputeServiceServer
 // for forward compatibility
@@ -340,6 +376,8 @@ type ComputeServiceServer interface {
 	ReceiveVM(ComputeService_ReceiveVMServer) error
 	// GrowDisk grows the disk of a running VM
 	GrowDisk(context.Context, *GrowDiskRequest) (*GrowDiskResponse, error)
+	// CloneInstance clones an existing VM using ZFS copy-on-write snapshots
+	CloneInstance(*CloneInstanceRequest, ComputeService_CloneInstanceServer) error
 	mustEmbedUnimplementedComputeServiceServer()
 }
 
@@ -388,6 +426,9 @@ func (UnimplementedComputeServiceServer) ReceiveVM(ComputeService_ReceiveVMServe
 }
 func (UnimplementedComputeServiceServer) GrowDisk(context.Context, *GrowDiskRequest) (*GrowDiskResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GrowDisk not implemented")
+}
+func (UnimplementedComputeServiceServer) CloneInstance(*CloneInstanceRequest, ComputeService_CloneInstanceServer) error {
+	return status.Errorf(codes.Unimplemented, "method CloneInstance not implemented")
 }
 func (UnimplementedComputeServiceServer) mustEmbedUnimplementedComputeServiceServer() {}
 
@@ -679,6 +720,27 @@ func _ComputeService_GrowDisk_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ComputeService_CloneInstance_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(CloneInstanceRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ComputeServiceServer).CloneInstance(m, &computeServiceCloneInstanceServer{ServerStream: stream})
+}
+
+type ComputeService_CloneInstanceServer interface {
+	Send(*CloneInstanceResponse) error
+	grpc.ServerStream
+}
+
+type computeServiceCloneInstanceServer struct {
+	grpc.ServerStream
+}
+
+func (x *computeServiceCloneInstanceServer) Send(m *CloneInstanceResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // ComputeService_ServiceDesc is the grpc.ServiceDesc for ComputeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -750,6 +812,11 @@ var ComputeService_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _ComputeService_ReceiveVM_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "CloneInstance",
+			Handler:       _ComputeService_CloneInstance_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "exe/compute/v1/compute.proto",

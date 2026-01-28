@@ -257,6 +257,13 @@ func (s *ZFS) removeInstanceFS(id string) error {
 	// Get origin before destroying (zfs get is faster than zfs list at scale)
 	origin := s.getDatasetOrigin(dsName)
 
+	// Promote any dependent clones before destroying
+	// This handles the case where this dataset was cloned and we need to
+	// "unlink" the clones so they become independent datasets
+	if err := s.promoteDependentClones(dsName); err != nil {
+		return fmt.Errorf("error promoting dependent clones for %s: %w", id, err)
+	}
+
 	// Remove the instance data directly using zfs destroy
 	// NOTE: this has to be done before removing the image snapshot because
 	// otherwise it will report an error as there is still a dependent clone
@@ -264,13 +271,11 @@ func (s *ZFS) removeInstanceFS(id string) error {
 		return fmt.Errorf("error removing instance filesystem %s: %w", id, err)
 	}
 
-	// remove origin snapshot
+	// Try to remove origin snapshot (single attempt, no retries)
+	// This often fails silently if promoted clones now depend on it, which is expected
 	if origin != "" {
-		s.log.Debug("removing image fs snapshot", "origin", origin, "id", id)
-		if err := s.destroyDataset(origin); err != nil {
-			// Log but don't fail - origin may already be gone or have other clones
-			s.log.Warn("unable to destroy origin snapshot", "origin", origin, "id", id, "error", err)
-		}
+		cmd := exec.Command("zfs", "destroy", origin)
+		_ = cmd.Run()
 	}
 
 	return nil
@@ -288,6 +293,70 @@ func (s *ZFS) getDatasetOrigin(dsName string) string {
 		return ""
 	}
 	return origin
+}
+
+// getDependentClones returns all clones that depend on this dataset's snapshots.
+// It does this in a single ZFS command by listing snapshots with their clones property.
+func (s *ZFS) getDependentClones(dsName string) ([]string, error) {
+	// Get all snapshots and their clones in one command
+	// Format: snapshot_name<tab>clones_value
+	cmd := exec.Command("zfs", "list", "-t", "snapshot", "-H", "-o", "name,clones", "-d", "1", dsName)
+	out, err := cmd.Output()
+	if err != nil {
+		// If dataset doesn't exist or has no snapshots, return empty
+		return nil, nil
+	}
+
+	var clones []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		clonesStr := strings.TrimSpace(parts[1])
+		if clonesStr == "-" || clonesStr == "" {
+			continue
+		}
+		// Clones are comma-separated
+		for _, clone := range strings.Split(clonesStr, ",") {
+			clone = strings.TrimSpace(clone)
+			if clone != "" {
+				clones = append(clones, clone)
+			}
+		}
+	}
+	return clones, nil
+}
+
+// promoteDataset promotes a clone to be independent of its origin
+func (s *ZFS) promoteDataset(dsName string) error {
+	cmd := exec.Command("zfs", "promote", dsName)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("zfs promote %s failed: %w (%s)", dsName, err, string(out))
+	}
+	return nil
+}
+
+// promoteDependentClones promotes all clones that depend on this dataset's snapshots.
+// This allows the dataset to be deleted even if it has been cloned.
+func (s *ZFS) promoteDependentClones(dsName string) error {
+	clones, err := s.getDependentClones(dsName)
+	if err != nil {
+		return err
+	}
+
+	for _, clone := range clones {
+		s.log.Debug("promoting dependent clone", "clone", clone)
+		if err := s.promoteDataset(clone); err != nil {
+			return fmt.Errorf("failed to promote clone %s: %w", clone, err)
+		}
+	}
+
+	return nil
 }
 
 // destroyDataset destroys a ZFS dataset directly by name with retry logic

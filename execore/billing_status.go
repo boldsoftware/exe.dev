@@ -1,9 +1,11 @@
 package execore
 
 import (
+	"context"
 	"time"
 
 	"exe.dev/exedb"
+	"exe.dev/exemenu"
 )
 
 // billingRequiredDate is when billing became required for new users.
@@ -41,4 +43,33 @@ func userNeedsBilling(status *exedb.GetUserBillingStatusRow) bool {
 		return false
 	}
 	return true
+}
+
+// checkCanCreateVM validates that a user is allowed to create a new VM.
+// Returns an error message if blocked, or empty string if allowed.
+// The allowOverride parameter bypasses throttle and disabled checks (used for exelet override).
+func (ss *SSHServer) checkCanCreateVM(ctx context.Context, user *exemenu.UserInfo, allowOverride bool) string {
+	// Check if user is throttled from creating new VMs
+	if !allowOverride {
+		if throttled, msg := ss.server.CheckNewThrottle(ctx, user.ID, user.Email); throttled {
+			return msg
+		}
+	}
+
+	// Check if user has VM creation disabled
+	if !allowOverride {
+		if disabled, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserNewVMCreationDisabled, user.ID); err == nil && disabled {
+			return "VM creation is not available for your account; contact support@exe.dev"
+		}
+	}
+
+	// Check if user needs billing
+	if !ss.server.env.SkipBilling {
+		if billingStatus, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserBillingStatus, user.ID); err == nil && userNeedsBilling(&billingStatus) {
+			billingURL := ss.server.webBaseURLNoRequest() + "/billing/update?source=exemenu"
+			return "Billing Required\r\n\r\nYou need to add billing information before creating a VM.\r\n\r\nYou will not be charged during the Developer Preview. The preview ends February 1, 2026.\r\n\r\nVisit: " + billingURL
+		}
+	}
+
+	return ""
 }

@@ -1,0 +1,33 @@
+
+
+●
+● ssh localhost
+●
+
+cp BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ cp BOX_NAME
+Copying BOX_NAME to RANDOM_COPY_NAME...
+Created RANDOM_COPY_NAME from BOX_NAME in 0.4s
+
+  SSH: RANDOM_COPY_NAME@exe.cloud
+  Web: http://RANDOM_COPY_NAME.exe.cloud:EXED_HTTP_PORT
+PROMPT ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+rm RANDOM_COPY_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ rm RANDOM_COPY_NAME
+Deleting RANDOM_COPY_NAME...
+1 VM(s) deleted successfully
+PROMPT ▶ exit
+Goodbye!

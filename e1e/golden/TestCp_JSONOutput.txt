@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+rm copied-json-test
+
+- help to see a list of commands
+
+PROMPT ▶ rm copied-json-test
+Deleting copied-json-test...
+1 VM(s) deleted successfully
+PROMPT ▶ exit
+Goodbye!

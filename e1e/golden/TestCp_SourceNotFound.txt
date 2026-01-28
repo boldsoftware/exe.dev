@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+cp nonexistent-vm-xyz copied-box
+
+- help to see a list of commands
+
+PROMPT ▶ cp nonexistent-vm-xyz copied-box
+vm "nonexistent-vm-xyz" not found
+PROMPT ▶ exit
+Goodbye!
