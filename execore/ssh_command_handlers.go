@@ -2527,7 +2527,7 @@ func (ss *SSHServer) handleGrowCommand(ctx context.Context, cc *exemenu.CommandC
 	}
 
 	if len(cc.Args) != 2 {
-		return cc.Errorf("usage: grow <vmname> <size>\nSize is in GB (e.g., '10' for 10GB). Range: 1-250GB.")
+		return cc.Errorf("usage: grow <vmname> <additional_size>\nSize is in GB (e.g., '10' for 10GB). Range: 1-250GB.")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -2611,8 +2611,8 @@ func (ss *SSHServer) handleGrowCommand(ctx context.Context, cc *exemenu.CommandC
 	cc.Writeln("Volume grown from %s to %s", oldSizeGB, newSizeGB)
 	cc.Writeln("")
 	cc.Writeln("To use the new space:")
-	cc.Writeln("  1. Restart the VM: restart %s", boxName)
-	cc.Writeln("  2. Inside the VM, run: sudo resize2fs /dev/vda")
+	cc.Writeln("  1. Restart the VM: %s restart %s", ss.server.replSSHConnectionCommand(), boxName)
+	cc.Writeln("  2. Run resize2fs inside the VM: ssh %s sudo resize2fs /dev/vda", ss.server.env.BoxDest(boxName))
 
 	return nil
 }
