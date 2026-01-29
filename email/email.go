@@ -32,6 +32,9 @@ const (
 	TypeInvitesAllocated         Type = "invites_allocated"
 )
 
+// postmarkMessageStreams maps email types to Postmark message stream IDs.
+var postmarkMessageStreams = map[Type]string{}
+
 var emailsSentTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "emails_sent_total",
@@ -121,10 +124,11 @@ func NewPostmarkSender(apiKey string) *PostmarkSender {
 // Send sends an email via Postmark.
 func (s *PostmarkSender) Send(ctx context.Context, emailType Type, from, to, subject, body string) error {
 	email := postmark.Email{
-		From:     from,
-		To:       to,
-		Subject:  subject,
-		TextBody: body,
+		From:          from,
+		To:            to,
+		Subject:       subject,
+		TextBody:      body,
+		MessageStream: postmarkMessageStreams[emailType],
 	}
 	_, err := s.client.SendEmail(context.WithoutCancel(ctx), email)
 	if err == nil {
