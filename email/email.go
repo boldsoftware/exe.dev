@@ -33,7 +33,19 @@ const (
 )
 
 // postmarkMessageStreams maps email types to Postmark message stream IDs.
-var postmarkMessageStreams = map[Type]string{}
+// To add new message streams, visit https://account.postmarkapp.com/servers/15045167/streams.
+// Every type should be listed here, even if it is explicitly the empty string (for default stream).
+var postmarkMessageStreams = map[Type]string{
+	TypeNewUserVerification:      "primary-verification",
+	TypeDeviceVerification:       "primary-verification",
+	TypeWebAuthVerification:      "primary-verification",
+	TypeMobileAuthVerification:   "primary-verification",
+	TypeLoginWithExeVerification: "login-with-exe",
+	TypeShareInvitation:          "share-invitation",
+	TypeBoxCreated:               "general-notification",
+	TypeDebugTest:                "",
+	TypeInvitesAllocated:         "general-notification",
+}
 
 var emailsSentTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
