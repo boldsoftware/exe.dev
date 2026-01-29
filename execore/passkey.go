@@ -251,7 +251,7 @@ func (s *Server) handlePasskeyRegisterFinish(w http.ResponseWriter, r *http.Requ
 		return queries.DeletePasskeyChallenge(ctx, challengeStr)
 	})
 	if err != nil {
-		s.slog().ErrorContext(ctx, "Failed to get challenge", "error", err)
+		s.slog().InfoContext(ctx, "Failed to get challenge", "error", err)
 		http.Error(w, "Registration challenge not found or expired", http.StatusBadRequest)
 		return
 	}
@@ -433,7 +433,7 @@ func (s *Server) handlePasskeyLoginFinish(w http.ResponseWriter, r *http.Request
 		return nil
 	})
 	if err != nil {
-		s.slog().ErrorContext(ctx, "Failed to find challenge", "error", err)
+		s.slog().InfoContext(ctx, "Failed to find challenge", "error", err)
 		http.Error(w, "Login challenge not found or expired", http.StatusBadRequest)
 		return
 	}
