@@ -840,6 +840,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
             {getStatusSymbol(file.status)} {file.path}
             {file.additions > 0 && ` (+${file.additions})`}
             {file.deletions > 0 && ` (-${file.deletions})`}
+            {file.isGenerated && " [generated]"}
           </option>
         ))}
       </select>

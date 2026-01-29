@@ -108,6 +108,7 @@ export interface GitFileInfo {
   status: "added" | "modified" | "deleted";
   additions: number;
   deletions: number;
+  isGenerated: boolean;
 }
 
 export interface GitFileDiff {
