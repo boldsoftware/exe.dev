@@ -1,0 +1,16 @@
+
+
+●
+● ssh localhost
+●
+
+resize
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ resize
+usage: resize <vmname> [--memory=<size>] [--cpu=<count>]
+Memory is in GB (e.g., '8' for 8GB). CPU is the number of vCPUs.
+PROMPT ▶ exit
+Goodbye!

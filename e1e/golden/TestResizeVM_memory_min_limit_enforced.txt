@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+resize BOX_NAME --memory=1
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ resize BOX_NAME --memory=1
+--memory must be at least 2.0 GB
+PROMPT ▶ exit
+Goodbye!

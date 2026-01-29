@@ -162,6 +162,14 @@ func cpCommandFlags() *flag.FlagSet {
 	return fs
 }
 
+func resizeCommandFlags() *flag.FlagSet {
+	fs := flag.NewFlagSet("resize", flag.ContinueOnError)
+	fs.String("memory", "", "memory allocation (e.g., 4, 4GB, 8G)")
+	fs.Uint("cpu", 0, "number of CPUs")
+	fs.Bool("json", false, "output in JSON format")
+	return fs
+}
+
 //go:generate go run ../cmd/gencmddocs
 
 // NewCommandTree creates a new command tree with all exe.dev commands
@@ -330,6 +338,15 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			HasPositionalArgs: true,
 			FlagSetFunc:       jsonOnlyFlags("grow"),
 			Handler:           ss.handleGrowCommand,
+		},
+		{
+			Name:              "resize",
+			Hidden:            true,
+			Description:       "Resize a VM's memory or CPU (support only)",
+			Usage:             "resize <vmname> [--memory=<size>] [--cpu=<count>]",
+			HasPositionalArgs: true,
+			FlagSetFunc:       resizeCommandFlags,
+			Handler:           ss.handleResizeCommand,
 		},
 		{
 			Name:        "exit",
@@ -2613,6 +2630,125 @@ func (ss *SSHServer) handleGrowCommand(ctx context.Context, cc *exemenu.CommandC
 	cc.Writeln("To use the new space:")
 	cc.Writeln("  1. Restart the VM: %s restart %s", ss.server.replSSHConnectionCommand(), boxName)
 	cc.Writeln("  2. Run resize2fs inside the VM: ssh %s sudo resize2fs /dev/vda", ss.server.env.BoxDest(boxName))
+
+	return nil
+}
+
+func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	// Only support users can use this command
+	if !ss.server.UserHasExeSudo(ctx, cc.User.ID) {
+		return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", cc.User.Email)
+	}
+
+	if len(cc.Args) != 1 {
+		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>]\nMemory is in GB (e.g., '8' for 8GB). CPU is the number of vCPUs.")
+	}
+
+	boxName := ss.normalizeBoxName(cc.Args[0])
+	memoryStr := cc.FlagSet.Lookup("memory").Value.String()
+	cpuVal, _ := strconv.ParseUint(cc.FlagSet.Lookup("cpu").Value.String(), 10, 64)
+
+	// Validate at least one option is specified
+	if memoryStr == "" && cpuVal == 0 {
+		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>]\nAt least one of --memory or --cpu must be specified.")
+	}
+
+	// Look up the box by name (support users can look up any box)
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if errors.Is(err, sql.ErrNoRows) {
+		return cc.Errorf("VM %q not found", boxName)
+	}
+	if err != nil {
+		return cc.Errorf("failed to look up VM: %v", err)
+	}
+
+	if box.ContainerID == nil || *box.ContainerID == "" {
+		return cc.Errorf("VM %q has no container ID", boxName)
+	}
+
+	// Get the exelet client for this box's container host
+	exeletClient := ss.server.getExeletClient(box.Ctrhost)
+	if exeletClient == nil {
+		return cc.Errorf("no exelet client available for host %s", box.Ctrhost)
+	}
+
+	// Build the resize request
+	req := &api.ResizeVMRequest{
+		ID: *box.ContainerID,
+	}
+
+	// Parse and validate memory if specified
+	if memoryStr != "" {
+		memoryBytes, err := parseSize(memoryStr)
+		if err != nil {
+			return cc.Errorf("invalid --memory value: %s", err)
+		}
+		if memoryBytes < stage.MinMemory {
+			return cc.Errorf("--memory must be at least %s", humanize.Bytes(stage.MinMemory))
+		}
+		if memoryBytes > stage.SupportMaxMemory {
+			return cc.Errorf("--memory cannot exceed %s", humanize.Bytes(stage.SupportMaxMemory))
+		}
+		req.Memory = &memoryBytes
+	}
+
+	// Validate CPU if specified
+	if cpuVal > 0 {
+		if cpuVal < stage.MinCPUs {
+			return cc.Errorf("--cpu must be at least %d", stage.MinCPUs)
+		}
+		if cpuVal > stage.SupportMaxCPUs {
+			return cc.Errorf("--cpu cannot exceed %d", stage.SupportMaxCPUs)
+		}
+		req.CPUs = &cpuVal
+	}
+
+	if !cc.WantJSON() {
+		var changes []string
+		if req.Memory != nil {
+			changes = append(changes, fmt.Sprintf("memory to %s", humanize.Bytes(*req.Memory)))
+		}
+		if req.CPUs != nil {
+			changes = append(changes, fmt.Sprintf("CPU to %d", *req.CPUs))
+		}
+		cc.Writeln("Resizing %s...", strings.Join(changes, " and "))
+	}
+
+	// Call the exelet to resize the VM
+	resp, err := exeletClient.client.ResizeVM(ctx, req)
+	if err != nil {
+		if st, ok := status.FromError(err); ok {
+			return cc.Errorf("failed to resize VM: %s", st.Message())
+		}
+		return cc.Errorf("failed to resize VM: %v", err)
+	}
+
+	// Build result
+	if cc.WantJSON() {
+		result := map[string]any{
+			"vm_name":    boxName,
+			"old_memory": resp.OldMemory,
+			"new_memory": resp.NewMemory,
+			"old_cpus":   resp.OldCPUs,
+			"new_cpus":   resp.NewCPUs,
+		}
+		cc.WriteJSON(result)
+		return nil
+	}
+
+	// Human-readable output
+	oldMemoryGB := fmt.Sprintf("%.1fGB", float64(resp.OldMemory)/(1024*1024*1024))
+	newMemoryGB := fmt.Sprintf("%.1fGB", float64(resp.NewMemory)/(1024*1024*1024))
+
+	if resp.OldMemory != resp.NewMemory {
+		cc.Writeln("Memory: %s -> %s", oldMemoryGB, newMemoryGB)
+	}
+	if resp.OldCPUs != resp.NewCPUs {
+		cc.Writeln("CPUs: %d -> %d", resp.OldCPUs, resp.NewCPUs)
+	}
+	cc.Writeln("")
+	cc.Writeln("Configuration updated. Restart the VM to apply changes:")
+	cc.Writeln("  %s restart %s", ss.server.replSSHConnectionCommand(), boxName)
 
 	return nil
 }

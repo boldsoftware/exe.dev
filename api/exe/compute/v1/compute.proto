@@ -22,6 +22,8 @@ service ComputeService {
   rpc ReceiveVM(stream ReceiveVMRequest) returns (stream ReceiveVMResponse);
   // GrowDisk grows the disk of a running VM
   rpc GrowDisk(GrowDiskRequest) returns (GrowDiskResponse);
+  // ResizeVM resizes the memory and/or CPU allocation of a VM (requires restart)
+  rpc ResizeVM(ResizeVMRequest) returns (ResizeVMResponse);
   // CloneInstance clones an existing VM using ZFS copy-on-write snapshots
   rpc CloneInstance(CloneInstanceRequest) returns (stream CloneInstanceResponse);
 }
@@ -396,4 +398,17 @@ message CloneInstanceResponse {
     CloneInstanceStatus status = 1;
     Instance instance = 2;
   }
+}
+
+message ResizeVMRequest {
+  string id = 1;                    // Instance ID
+  optional uint64 memory = 2;       // New memory size in bytes (if set)
+  optional uint64 cpus = 3;         // New CPU count (if set)
+}
+
+message ResizeVMResponse {
+  uint64 old_memory = 1;            // Previous memory size in bytes
+  uint64 new_memory = 2;            // New memory size in bytes
+  uint64 old_cpus = 3;              // Previous CPU count
+  uint64 new_cpus = 4;              // New CPU count
 }

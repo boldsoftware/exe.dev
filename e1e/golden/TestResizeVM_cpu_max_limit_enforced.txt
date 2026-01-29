@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+resize BOX_NAME --cpu=16
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ resize BOX_NAME --cpu=16
+--cpu cannot exceed 8
+PROMPT ▶ exit
+Goodbye!

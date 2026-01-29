@@ -33,6 +33,7 @@ const (
 	ComputeService_SendVM_FullMethodName           = "/exe.compute.v1.ComputeService/SendVM"
 	ComputeService_ReceiveVM_FullMethodName        = "/exe.compute.v1.ComputeService/ReceiveVM"
 	ComputeService_GrowDisk_FullMethodName         = "/exe.compute.v1.ComputeService/GrowDisk"
+	ComputeService_ResizeVM_FullMethodName         = "/exe.compute.v1.ComputeService/ResizeVM"
 	ComputeService_CloneInstance_FullMethodName    = "/exe.compute.v1.ComputeService/CloneInstance"
 )
 
@@ -57,6 +58,8 @@ type ComputeServiceClient interface {
 	ReceiveVM(ctx context.Context, opts ...grpc.CallOption) (ComputeService_ReceiveVMClient, error)
 	// GrowDisk grows the disk of a running VM
 	GrowDisk(ctx context.Context, in *GrowDiskRequest, opts ...grpc.CallOption) (*GrowDiskResponse, error)
+	// ResizeVM resizes the memory and/or CPU allocation of a VM (requires restart)
+	ResizeVM(ctx context.Context, in *ResizeVMRequest, opts ...grpc.CallOption) (*ResizeVMResponse, error)
 	// CloneInstance clones an existing VM using ZFS copy-on-write snapshots
 	CloneInstance(ctx context.Context, in *CloneInstanceRequest, opts ...grpc.CallOption) (ComputeService_CloneInstanceClient, error)
 }
@@ -322,6 +325,16 @@ func (c *computeServiceClient) GrowDisk(ctx context.Context, in *GrowDiskRequest
 	return out, nil
 }
 
+func (c *computeServiceClient) ResizeVM(ctx context.Context, in *ResizeVMRequest, opts ...grpc.CallOption) (*ResizeVMResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResizeVMResponse)
+	err := c.cc.Invoke(ctx, ComputeService_ResizeVM_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *computeServiceClient) CloneInstance(ctx context.Context, in *CloneInstanceRequest, opts ...grpc.CallOption) (ComputeService_CloneInstanceClient, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ComputeService_ServiceDesc.Streams[5], ComputeService_CloneInstance_FullMethodName, cOpts...)
@@ -376,6 +389,8 @@ type ComputeServiceServer interface {
 	ReceiveVM(ComputeService_ReceiveVMServer) error
 	// GrowDisk grows the disk of a running VM
 	GrowDisk(context.Context, *GrowDiskRequest) (*GrowDiskResponse, error)
+	// ResizeVM resizes the memory and/or CPU allocation of a VM (requires restart)
+	ResizeVM(context.Context, *ResizeVMRequest) (*ResizeVMResponse, error)
 	// CloneInstance clones an existing VM using ZFS copy-on-write snapshots
 	CloneInstance(*CloneInstanceRequest, ComputeService_CloneInstanceServer) error
 	mustEmbedUnimplementedComputeServiceServer()
@@ -426,6 +441,9 @@ func (UnimplementedComputeServiceServer) ReceiveVM(ComputeService_ReceiveVMServe
 }
 func (UnimplementedComputeServiceServer) GrowDisk(context.Context, *GrowDiskRequest) (*GrowDiskResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GrowDisk not implemented")
+}
+func (UnimplementedComputeServiceServer) ResizeVM(context.Context, *ResizeVMRequest) (*ResizeVMResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ResizeVM not implemented")
 }
 func (UnimplementedComputeServiceServer) CloneInstance(*CloneInstanceRequest, ComputeService_CloneInstanceServer) error {
 	return status.Errorf(codes.Unimplemented, "method CloneInstance not implemented")
@@ -720,6 +738,24 @@ func _ComputeService_GrowDisk_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ComputeService_ResizeVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResizeVMRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).ResizeVM(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_ResizeVM_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).ResizeVM(ctx, req.(*ResizeVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ComputeService_CloneInstance_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(CloneInstanceRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -783,6 +819,10 @@ var ComputeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GrowDisk",
 			Handler:    _ComputeService_GrowDisk_Handler,
+		},
+		{
+			MethodName: "ResizeVM",
+			Handler:    _ComputeService_ResizeVM_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

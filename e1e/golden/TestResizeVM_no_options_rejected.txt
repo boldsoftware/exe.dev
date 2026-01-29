@@ -1,0 +1,16 @@
+
+
+●
+● ssh localhost
+●
+
+resize BOX_NAME
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ resize BOX_NAME
+usage: resize <vmname> [--memory=<size>] [--cpu=<count>]
+At least one of --memory or --cpu must be specified.
+PROMPT ▶ exit
+Goodbye!

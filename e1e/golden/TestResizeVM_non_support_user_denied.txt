@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+resize BOX_NAME --memory=2
+
+- help to see a list of commands
+
+PROMPT ▶ resize BOX_NAME --memory=2
+owner@test-resize-vm.example is not in the sudoers file. This incident will be reported.
+PROMPT ▶ exit
+Goodbye!
