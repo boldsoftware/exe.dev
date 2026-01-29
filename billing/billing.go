@@ -96,12 +96,6 @@ type SubscribeParams struct {
 	PortalReturnURL string
 }
 
-// PortalParams contains the parameters for opening the billing portal.
-type PortalParams struct {
-	// ReturnURL is the URL to return to after visiting the billing portal.
-	ReturnURL string
-}
-
 // Profile contains account profile information.
 type Profile struct {
 	Email string
@@ -206,9 +200,8 @@ func (m *Manager) Subscribe(ctx context.Context, billingID string, p *SubscribeP
 			return "", fmt.Errorf("check active subscription: %w", err)
 		}
 		if hasSubscription {
-			return m.OpenPortal(ctx, billingID, &PortalParams{
-				ReturnURL: cmp.Or(p.PortalReturnURL, p.SuccessURL),
-			})
+			returnURL := cmp.Or(p.PortalReturnURL, p.SuccessURL)
+			return m.openPortal(ctx, billingID, returnURL)
 		}
 	}
 
@@ -359,20 +352,20 @@ func (m *Manager) VerifyCheckout(ctx context.Context, sessionID string) (billing
 	}
 }
 
-// OpenPortal creates a billing portal session using PortalParams.
+// openPortal creates a billing portal session using PortalParams.
 // This is a convenience wrapper around PortalSession that validates the return URL.
-func (m *Manager) OpenPortal(ctx context.Context, billingID string, p *PortalParams) (portalURL string, _ error) {
-	if p == nil || p.ReturnURL == "" {
-		return "", errors.New("return URL is required")
-	}
+func (m *Manager) openPortal(ctx context.Context, billingID, returnURL string) (portalURL string, _ error) {
 	if billingID == "" {
 		return "", errors.New("billing ID is required")
+	}
+	if returnURL == "" {
+		return "", errors.New("return URL is required")
 	}
 
 	c := m.client()
 	params := &stripe.BillingPortalSessionCreateParams{
 		Customer:  &billingID,
-		ReturnURL: &p.ReturnURL,
+		ReturnURL: &returnURL,
 	}
 	sess, err := c.V1BillingPortalSessions.Create(ctx, params)
 	if err != nil {

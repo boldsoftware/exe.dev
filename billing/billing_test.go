@@ -506,9 +506,7 @@ func TestOpenPortal(t *testing.T) {
 		}),
 	}
 
-	url, err := m.OpenPortal(context.Background(), "exe_test123", &PortalParams{
-		ReturnURL: "https://example.com/profile",
-	})
+	url, err := m.openPortal(context.Background(), "exe_test123", "https://example.com/profile")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,14 +519,9 @@ func TestOpenPortal(t *testing.T) {
 func TestOpenPortal_RequiresReturnURL(t *testing.T) {
 	m := &Manager{}
 
-	_, err := m.OpenPortal(context.Background(), "exe_test123", nil)
-	if err == nil {
-		t.Error("expected error for nil params")
-	}
-
-	_, err = m.OpenPortal(context.Background(), "exe_test123", &PortalParams{})
-	if err == nil {
-		t.Error("expected error for empty ReturnURL")
+	_, err := m.openPortal(context.Background(), "exe_test123", "")
+	if err == nil || !strings.Contains(err.Error(), "return URL is required") {
+		t.Error("expected error for missing return URL")
 	}
 }
 
@@ -547,9 +540,7 @@ func TestOpenPortal_NoRetry4xx(t *testing.T) {
 		}),
 	}
 
-	_, err := m.OpenPortal(context.Background(), "exe_notfound", &PortalParams{
-		ReturnURL: "https://example.com/profile",
-	})
+	_, err := m.openPortal(context.Background(), "exe_notfound", "https://example.com/profile")
 	if err == nil {
 		t.Error("expected error for 400 response")
 	}
@@ -1141,9 +1132,7 @@ func TestOpenPortal_LogsStripeRequestID(t *testing.T) {
 		Logger: logger,
 	}
 
-	_, err := m.OpenPortal(context.Background(), "cus_portal_log", &PortalParams{
-		ReturnURL: "https://example.com/return",
-	})
+	_, err := m.openPortal(context.Background(), "cus_portal_log", "https://example.com/return")
 	if err != nil {
 		t.Fatal(err)
 	}
