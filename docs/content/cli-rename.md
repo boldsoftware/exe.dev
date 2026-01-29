@@ -3,7 +3,7 @@
 title: "rename"
 description: "rename a vm"
 subheading: "8. CLI Reference"
-suborder: 13
+suborder: 7
 ---
 
 # rename

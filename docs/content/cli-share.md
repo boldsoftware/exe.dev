@@ -3,7 +3,7 @@
 title: "share"
 description: "Share HTTPS VM access with others"
 subheading: "8. CLI Reference"
-suborder: 7
+suborder: 9
 ---
 
 # share

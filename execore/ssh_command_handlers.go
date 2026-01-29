@@ -220,6 +220,33 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
 		},
+		// 'rename' is separated from the 'mv' command as it is different enough both
+		// semantically and in implementation - they are different enough in this
+		// "VM move/rename" context that having a different command for the two operations
+		// fits the *nix "do one thing and do it well" mantra better than if they were the same
+		{
+			Name:              "rename",
+			Hidden:            false,
+			Description:       "rename a vm",
+			Usage:             "rename <oldname> <newname>",
+			FlagSetFunc:       jsonOnlyFlags("rename"),
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeRenameArgs,
+			Handler:           ss.handleRenameCommand,
+		},
+		{
+			Name:              "cp",
+			Description:       "Copy an existing VM",
+			Usage:             "cp <source-vm> [new-name]",
+			FlagSetFunc:       cpCommandFlags,
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeBoxNames,
+			Handler:           ss.handleCpCommand,
+			Examples: []string{
+				"cp my-vm              # copy with auto-generated name",
+				"cp my-vm my-vm-copy   # copy with specific name",
+			},
+		},
 		{
 			Name:        "hireme",
 			Aliases:     boxname.JobsRelated,
@@ -255,19 +282,19 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		ss.defaultsCommand(),
 		ss.shelleyCommand(),
 		{
+			Name:        "browser",
+			Description: "Generate a magic link to log in to the website",
+			Usage:       "browser",
+			Handler:     ss.handleBrowserCommand,
+			FlagSetFunc: addQRFlag(jsonOnlyFlags("browser")),
+		},
+		{
 			Name:              "ssh",
 			Description:       "SSH into a VM",
 			Usage:             "ssh <vmname> [command...]",
 			Handler:           ss.handleSSHCommand,
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
-		},
-		{
-			Name:        "browser",
-			Description: "Generate a magic link to log in to the website",
-			Usage:       "browser",
-			Handler:     ss.handleBrowserCommand,
-			FlagSetFunc: addQRFlag(jsonOnlyFlags("browser")),
 		},
 		{
 			Name:        "clear",
@@ -294,33 +321,6 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Description: "List all exelets (support only)",
 			FlagSetFunc: jsonOnlyFlags("exelets"),
 			Handler:     ss.handleExeletsCommand,
-		},
-		// 'rename' is separated from the 'mv' command as it is different enough both
-		// semantically and in implementation - they are different enough in this
-		// "VM move/rename" context that having a different command for the two operations
-		// fits the *nix "do one thing and do it well" mantra better than if they were the same
-		{
-			Name:              "rename",
-			Hidden:            false,
-			Description:       "rename a vm",
-			Usage:             "rename <oldname> <newname>",
-			FlagSetFunc:       jsonOnlyFlags("rename"),
-			HasPositionalArgs: true,
-			CompleterFunc:     ss.completeRenameArgs,
-			Handler:           ss.handleRenameCommand,
-		},
-		{
-			Name:              "cp",
-			Description:       "Copy an existing VM",
-			Usage:             "cp <source-vm> [new-name]",
-			FlagSetFunc:       cpCommandFlags,
-			HasPositionalArgs: true,
-			CompleterFunc:     ss.completeBoxNames,
-			Handler:           ss.handleCpCommand,
-			Examples: []string{
-				"cp my-vm              # copy with auto-generated name",
-				"cp my-vm my-vm-copy   # copy with specific name",
-			},
 		},
 		{
 			Name:              "grow",
@@ -1786,31 +1786,64 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 	})
 	if err == nil {
 		// Update /etc/hostname and /etc/hosts
-		// Use sed to replace old hostname with new hostname
+		// Use busybox shell and sed to replace old hostname with new hostname
+		// We use /exe.dev/bin/sh (busybox) to ensure sed/hostname are available even on minimal images
 		hostnameCmd := fmt.Sprintf(
-			"sudo sed -i 's/\\b%s\\b/%s/g' /etc/hostname /etc/hosts 2>/dev/null; sudo hostname %s 2>/dev/null",
+			"sudo /exe.dev/bin/sh -c 'sed -i \"s/\\b%s\\b/%s/g\" /etc/hostname /etc/hosts 2>/dev/null; hostname %s 2>/dev/null'",
 			oldName, newName, newName,
 		)
 		if _, err := ss.runCommandOnBox(ctx, &updatedBox, hostnameCmd); err != nil {
-			// Check if the error is exit code 127 (command not found - sed not available)
-			if exitErr, ok := errorz.AsType[*ssh.ExitError](err); ok && exitErr.ExitStatus() == 127 {
-				slog.WarnContext(ctx, "rename: no sed found in VM, manual hostname update required",
-					"box_id", box.ID,
-					"old_name", oldName,
-					"new_name", newName)
-				cc.Write("\033[1;33mWarning:\033[0m no sed found, you should manually update /etc/hosts and /etc/hostname\r\n")
-			} else {
-				slog.ErrorContext(ctx, "rename: failed to update hostname inside VM",
-					"box_id", box.ID,
-					"old_name", oldName,
-					"new_name", newName,
-					"error", err,
-					"rollback_cmd", fmt.Sprintf("sudo sed -i 's/\\b%s\\b/%s/g' /etc/hostname /etc/hosts; sudo hostname %s", newName, oldName, oldName))
-			}
+			slog.ErrorContext(ctx, "rename: failed to update hostname inside VM",
+				"box_id", box.ID,
+				"old_name", oldName,
+				"new_name", newName,
+				"error", err)
 		} else {
 			slog.InfoContext(ctx, "rename: hostname update inside VM complete",
 				"box_id", box.ID,
 				"new_name", newName)
+		}
+
+		// Update /exe.dev/shelley.json with the new box name
+		// This file contains URLs with the box name embedded
+		exedevURL := ss.server.webBaseURLNoRequest()
+		terminalURL := ss.server.xtermURL(newName, ss.server.servingHTTPS())
+		shelleyJSON := map[string]any{
+			"terminal_url":  terminalURL + "?d=WORKING_DIR",
+			"default_model": shelleyDefaultModel,
+			"llm_gateway":   "http://169.254.169.254/gateway/llm",
+			"key_generator": "echo irrelevant",
+			"links": []map[string]string{
+				{
+					"title":    fmt.Sprintf("Back to %s", ss.server.env.WebHost),
+					"icon_svg": "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
+					"url":      exedevURL,
+				},
+				{
+					"title":    ss.server.env.BoxSub(newName),
+					"icon_svg": "M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244",
+					"url":      ss.server.boxProxyAddress(newName),
+				},
+			},
+		}
+		shelleyConf, err := json.Marshal(shelleyJSON)
+		if err != nil {
+			slog.ErrorContext(ctx, "rename: failed to marshal shelley.json",
+				"box_id", box.ID,
+				"new_name", newName,
+				"error", err)
+		} else {
+			shelleyCmd := fmt.Sprintf("sudo /exe.dev/bin/sh -c 'cat > /exe.dev/shelley.json << \"SHELLEY_EOF\"\n%s\nSHELLEY_EOF'", shelleyConf)
+			if _, err := ss.runCommandOnBox(ctx, &updatedBox, shelleyCmd); err != nil {
+				slog.ErrorContext(ctx, "rename: failed to update shelley.json inside VM",
+					"box_id", box.ID,
+					"new_name", newName,
+					"error", err)
+			} else {
+				slog.InfoContext(ctx, "rename: shelley.json update inside VM complete",
+					"box_id", box.ID,
+					"new_name", newName)
+			}
 		}
 	} else {
 		slog.ErrorContext(ctx, "rename: failed to re-fetch box for hostname update",
