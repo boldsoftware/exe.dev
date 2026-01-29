@@ -2848,8 +2848,23 @@ svg {
   cursor: not-allowed;
 }
 
-.model-picker-option-name {
+.model-picker-option-content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.model-picker-option-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-picker-option-source {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4271,6 +4286,31 @@ svg {
   background: var(--bg-tertiary);
   border-radius: 0.25rem;
   color: var(--text-secondary);
+}
+
+.model-source {
+  font-size: 0.75rem;
+  padding: 0.125rem 0.5rem;
+  background: var(--bg-tertiary);
+  border-radius: 0.25rem;
+  color: var(--text-secondary);
+}
+
+.model-card-builtin {
+  opacity: 0.8;
+  background: var(--bg-secondary);
+}
+
+.models-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.models-empty-hint {
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  color: var(--text-tertiary);
 }
 
 .model-badge {

@@ -912,6 +912,10 @@ func (m *inspectableLLMManager) GetModelInfo(modelID string) *models.ModelInfo {
 	return nil
 }
 
+func (m *inspectableLLMManager) RefreshCustomModels() error {
+	return nil
+}
+
 func TestVersionEndpoint(t *testing.T) {
 	// Create temp DB-backed server
 	ctx := context.Background()

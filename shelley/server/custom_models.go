@@ -141,6 +141,11 @@ func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Refresh the model manager's cache
+	if err := s.llmManager.RefreshCustomModels(); err != nil {
+		s.logger.Warn("Failed to refresh custom models cache", "error", err)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(toModelAPI(*model))
@@ -234,6 +239,11 @@ func (s *Server) handleUpdateModel(w http.ResponseWriter, r *http.Request, model
 		return
 	}
 
+	// Refresh the model manager's cache
+	if err := s.llmManager.RefreshCustomModels(); err != nil {
+		s.logger.Warn("Failed to refresh custom models cache", "error", err)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(toModelAPI(*model))
 }
@@ -243,6 +253,11 @@ func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request, model
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to delete model: %v", err), http.StatusInternalServerError)
 		return
+	}
+
+	// Refresh the model manager's cache
+	if err := s.llmManager.RefreshCustomModels(); err != nil {
+		s.logger.Warn("Failed to refresh custom models cache", "error", err)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -290,6 +305,11 @@ func (s *Server) handleDuplicateModel(w http.ResponseWriter, r *http.Request, mo
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to duplicate model: %v", err), http.StatusInternalServerError)
 		return
+	}
+
+	// Refresh the model manager's cache
+	if err := s.llmManager.RefreshCustomModels(); err != nil {
+		s.logger.Warn("Failed to refresh custom models cache", "error", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

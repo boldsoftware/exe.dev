@@ -28,6 +28,15 @@ const (
 	ProviderBuiltIn   Provider = "builtin"
 )
 
+// ModelSource describes where a model's configuration comes from
+type ModelSource string
+
+const (
+	SourceGateway ModelSource = "exe.dev gateway"
+	SourceEnvVar  ModelSource = "env"    // Will be combined with env var name
+	SourceCustom  ModelSource = "custom" // User-configured custom model
+)
+
 // Model represents a configured LLM model in Shelley
 type Model struct {
 	// ID is the user-facing identifier for this model
@@ -44,6 +53,48 @@ type Model struct {
 
 	// Factory creates an llm.Service instance for this model
 	Factory func(config *Config, httpc *http.Client) (llm.Service, error)
+}
+
+// Source returns a human-readable description of where this model's configuration comes from.
+// For example: "exe.dev gateway", "$ANTHROPIC_API_KEY", etc.
+func (m Model) Source(cfg *Config) string {
+	// Predictable model has no source
+	if m.ID == "predictable" {
+		return ""
+	}
+
+	// Check if using gateway with implicit keys
+	if cfg.Gateway != "" {
+		// Gateway is configured - check if this model is using gateway (implicit key)
+		switch m.Provider {
+		case ProviderAnthropic:
+			if cfg.AnthropicAPIKey == "implicit" {
+				return string(SourceGateway)
+			}
+			return "$ANTHROPIC_API_KEY"
+		case ProviderOpenAI:
+			if cfg.OpenAIAPIKey == "implicit" {
+				return string(SourceGateway)
+			}
+			return "$OPENAI_API_KEY"
+		case ProviderFireworks:
+			if cfg.FireworksAPIKey == "implicit" {
+				return string(SourceGateway)
+			}
+			return "$FIREWORKS_API_KEY"
+		case ProviderGemini:
+			if cfg.GeminiAPIKey == "implicit" {
+				return string(SourceGateway)
+			}
+			return "$GEMINI_API_KEY"
+		}
+	}
+
+	// No gateway - use env var names based on RequiredEnvVars
+	if len(m.RequiredEnvVars) > 0 {
+		return "$" + m.RequiredEnvVars[0]
+	}
+	return ""
 }
 
 // Config holds the configuration needed to create LLM services
@@ -266,16 +317,21 @@ func Default() Model {
 
 // Manager manages LLM services for all configured models
 type Manager struct {
-	services map[string]serviceEntry
-	logger   *slog.Logger
-	db       *db.DB       // for custom models and LLM request recording
-	httpc    *http.Client // HTTP client with recording middleware
+	services   map[string]serviceEntry
+	modelOrder []string // ordered list of model IDs (built-in first, then custom)
+	logger     *slog.Logger
+	db         *db.DB       // for custom models and LLM request recording
+	httpc      *http.Client // HTTP client with recording middleware
+	cfg        *Config      // retained for refreshing custom models
 }
 
 type serviceEntry struct {
-	service  llm.Service
-	provider Provider
-	modelID  string
+	service     llm.Service
+	provider    Provider
+	modelID     string
+	source      string // Human-readable source (e.g., "exe.dev gateway", "$ANTHROPIC_API_KEY")
+	displayName string // For custom models, the user-provided display name
+	tags        string // For custom models, user-provided tags
 }
 
 // ConfigInfo is an optional interface that services can implement to provide configuration details for logging
@@ -439,125 +495,148 @@ func NewManager(cfg *Config) (*Manager, error) {
 		httpc = llmhttp.NewClient(nil, nil)
 	}
 
-	// Store the HTTP client for use with custom models
+	// Store the HTTP client and config for use with custom models
 	manager.httpc = httpc
+	manager.cfg = cfg
 
+	// Load built-in models first
 	for _, model := range All() {
 		svc, err := model.Factory(cfg, httpc)
 		if err != nil {
 			// Model not available (e.g., missing API key) - skip it
 			continue
 		}
+
 		manager.services[model.ID] = serviceEntry{
-			service:  svc,
-			provider: model.Provider,
-			modelID:  model.ID,
+			service:     svc,
+			provider:    model.Provider,
+			modelID:     model.ID,
+			source:      model.Source(cfg),
+			displayName: model.ID, // built-in models use ID as display name
 		}
+		manager.modelOrder = append(manager.modelOrder, model.ID)
+	}
+
+	// Load custom models from database
+	if err := manager.loadCustomModels(); err != nil && cfg.Logger != nil {
+		cfg.Logger.Warn("Failed to load custom models", "error", err)
 	}
 
 	return manager, nil
 }
 
-// GetService returns the LLM service for the given model ID, wrapped with logging
-func (m *Manager) GetService(modelID string) (llm.Service, error) {
-	// Check custom models first if we have a database
-	if m.db != nil {
-		dbModels, err := m.db.GetModels(context.Background())
-		if err == nil && len(dbModels) > 0 {
-			// Custom models exist - only serve custom models, not built-in ones
-			for _, model := range dbModels {
-				if model.ModelID == modelID {
-					svc := m.createServiceFromModel(&model)
-					if svc != nil {
-						if m.logger != nil {
-							return &loggingService{
-								service:  svc,
-								logger:   m.logger,
-								modelID:  modelID,
-								provider: Provider(model.ProviderType),
-								db:       m.db,
-							}, nil
-						}
-						return svc, nil
-					}
-				}
-			}
-			// Custom models exist but this model ID wasn't found among them
-			return nil, fmt.Errorf("unsupported model: %s", modelID)
-		}
+// loadCustomModels loads custom models from the database into the manager.
+// It adds them after built-in models in the order.
+func (m *Manager) loadCustomModels() error {
+	if m.db == nil {
+		return nil
 	}
 
-	// No custom models - fall back to built-in models
-	if entry, ok := m.services[modelID]; ok {
-		// Wrap with logging if we have a logger
-		if m.logger != nil {
-			return &loggingService{
-				service:  entry.service,
-				logger:   m.logger,
-				modelID:  entry.modelID,
-				provider: entry.provider,
-				db:       m.db,
-			}, nil
-		}
-		return entry.service, nil
+	dbModels, err := m.db.GetModels(context.Background())
+	if err != nil {
+		return err
 	}
-	return nil, fmt.Errorf("unsupported model: %s", modelID)
+
+	for _, model := range dbModels {
+		// Skip if this model ID is already registered (built-in takes precedence)
+		if _, exists := m.services[model.ModelID]; exists {
+			continue
+		}
+
+		svc := m.createServiceFromModel(&model)
+		if svc == nil {
+			continue
+		}
+
+		m.services[model.ModelID] = serviceEntry{
+			service:     svc,
+			provider:    Provider(model.ProviderType),
+			modelID:     model.ModelID,
+			source:      string(SourceCustom),
+			displayName: model.DisplayName,
+			tags:        model.Tags,
+		}
+		m.modelOrder = append(m.modelOrder, model.ModelID)
+	}
+
+	return nil
 }
 
-// GetAvailableModels returns a list of available model IDs in the same order as All()
+// RefreshCustomModels reloads custom models from the database.
+// Call this after adding or removing custom models via the UI.
+func (m *Manager) RefreshCustomModels() error {
+	if m.db == nil {
+		return nil
+	}
+
+	// Remove existing custom models from services and modelOrder
+	newOrder := make([]string, 0, len(m.modelOrder))
+	for _, id := range m.modelOrder {
+		entry, ok := m.services[id]
+		if ok && entry.source != string(SourceCustom) {
+			newOrder = append(newOrder, id)
+		} else {
+			delete(m.services, id)
+		}
+	}
+	m.modelOrder = newOrder
+
+	// Reload custom models
+	return m.loadCustomModels()
+}
+
+// GetService returns the LLM service for the given model ID, wrapped with logging
+func (m *Manager) GetService(modelID string) (llm.Service, error) {
+	entry, ok := m.services[modelID]
+	if !ok {
+		return nil, fmt.Errorf("unsupported model: %s", modelID)
+	}
+
+	// Wrap with logging if we have a logger
+	if m.logger != nil {
+		return &loggingService{
+			service:  entry.service,
+			logger:   m.logger,
+			modelID:  entry.modelID,
+			provider: entry.provider,
+			db:       m.db,
+		}, nil
+	}
+	return entry.service, nil
+}
+
+// GetAvailableModels returns a list of available model IDs.
+// Returns union of built-in models (in order) followed by custom models.
 func (m *Manager) GetAvailableModels() []string {
-	var ids []string
-
-	// If we have custom models in the database, use ONLY those
-	if m.db != nil {
-		if dbModels, err := m.db.GetModels(context.Background()); err == nil && len(dbModels) > 0 {
-			for _, model := range dbModels {
-				ids = append(ids, model.ModelID)
-			}
-			return ids
-		}
-	}
-
-	// No custom models - fall back to built-in models in the same order as All()
-	all := All()
-	for _, model := range all {
-		if _, ok := m.services[model.ID]; ok {
-			ids = append(ids, model.ID)
-		}
-	}
-	return ids
+	// Return a copy to prevent external modification
+	result := make([]string, len(m.modelOrder))
+	copy(result, m.modelOrder)
+	return result
 }
 
 // HasModel reports whether the manager has a service for the given model ID
 func (m *Manager) HasModel(modelID string) bool {
-	// Check custom models first
-	if m.db != nil {
-		if model, err := m.db.GetModel(context.Background(), modelID); err == nil && model != nil {
-			return true
-		}
-	}
 	_, ok := m.services[modelID]
 	return ok
 }
 
-// ModelInfo contains display name and tags for a model
+// ModelInfo contains display name, tags, and source for a model
 type ModelInfo struct {
 	DisplayName string
 	Tags        string
+	Source      string // Human-readable source (e.g., "exe.dev gateway", "$ANTHROPIC_API_KEY", "custom")
 }
 
-// GetModelInfo returns the display name and tags for a model
+// GetModelInfo returns the display name, tags, and source for a model
 func (m *Manager) GetModelInfo(modelID string) *ModelInfo {
-	if m.db == nil {
-		return nil
-	}
-	model, err := m.db.GetModel(context.Background(), modelID)
-	if err != nil {
+	entry, ok := m.services[modelID]
+	if !ok {
 		return nil
 	}
 	return &ModelInfo{
-		DisplayName: model.DisplayName,
-		Tags:        model.Tags,
+		DisplayName: entry.displayName,
+		Tags:        entry.tags,
+		Source:      entry.source,
 	}
 }
 

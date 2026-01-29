@@ -404,3 +404,110 @@ func TestHTTPClientPassedToFactory(t *testing.T) {
 		t.Fatal("Factory returned nil service")
 	}
 }
+
+func TestGetModelSource(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     *Config
+		modelID string
+		want    string
+	}{
+		{
+			name:    "anthropic with env var only",
+			cfg:     &Config{AnthropicAPIKey: "test-key"},
+			modelID: "claude-opus-4.5",
+			want:    "$ANTHROPIC_API_KEY",
+		},
+		{
+			name:    "anthropic with gateway implicit key",
+			cfg:     &Config{Gateway: "https://gateway.example.com", AnthropicAPIKey: "implicit"},
+			modelID: "claude-opus-4.5",
+			want:    "exe.dev gateway",
+		},
+		{
+			name:    "anthropic with gateway but explicit key",
+			cfg:     &Config{Gateway: "https://gateway.example.com", AnthropicAPIKey: "actual-key"},
+			modelID: "claude-opus-4.5",
+			want:    "$ANTHROPIC_API_KEY",
+		},
+		{
+			name:    "fireworks with env var only",
+			cfg:     &Config{FireworksAPIKey: "test-key"},
+			modelID: "qwen3-coder-fireworks",
+			want:    "$FIREWORKS_API_KEY",
+		},
+		{
+			name:    "fireworks with gateway implicit key",
+			cfg:     &Config{Gateway: "https://gateway.example.com", FireworksAPIKey: "implicit"},
+			modelID: "qwen3-coder-fireworks",
+			want:    "exe.dev gateway",
+		},
+		{
+			name:    "openai with env var only",
+			cfg:     &Config{OpenAIAPIKey: "test-key"},
+			modelID: "gpt-5.2-codex",
+			want:    "$OPENAI_API_KEY",
+		},
+		{
+			name:    "gemini with env var only",
+			cfg:     &Config{GeminiAPIKey: "test-key"},
+			modelID: "gemini-3-pro",
+			want:    "$GEMINI_API_KEY",
+		},
+		{
+			name:    "predictable has no source",
+			cfg:     &Config{},
+			modelID: "predictable",
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager, err := NewManager(tt.cfg)
+			if err != nil {
+				t.Fatalf("NewManager failed: %v", err)
+			}
+
+			info := manager.GetModelInfo(tt.modelID)
+			if info == nil {
+				t.Fatalf("GetModelInfo(%q) returned nil", tt.modelID)
+			}
+			if info.Source != tt.want {
+				t.Errorf("GetModelInfo(%q).Source = %q, want %q", tt.modelID, info.Source, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetAvailableModelsUnion(t *testing.T) {
+	// Test that GetAvailableModels returns both built-in and custom models
+	// This test just verifies the union behavior with built-in models only
+	// (testing with custom models requires a database)
+	cfg := &Config{
+		AnthropicAPIKey: "test-key",
+		FireworksAPIKey: "test-key",
+	}
+
+	manager, err := NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	models := manager.GetAvailableModels()
+
+	// Should have anthropic models and fireworks models, plus predictable
+	expectedModels := []string{"claude-opus-4.5", "qwen3-coder-fireworks", "glm-4p6-fireworks", "claude-sonnet-4.5", "claude-haiku-4.5", "predictable"}
+	for _, expected := range expectedModels {
+		found := false
+		for _, m := range models {
+			if m == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected model %q not found in available models: %v", expected, models)
+		}
+	}
+}

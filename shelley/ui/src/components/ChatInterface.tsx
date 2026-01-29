@@ -489,7 +489,13 @@ function ChatInterface({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<
-    Array<{ id: string; display_name?: string; ready: boolean; max_context_tokens?: number }>
+    Array<{
+      id: string;
+      display_name?: string;
+      source?: string;
+      ready: boolean;
+      max_context_tokens?: number;
+    }>
   >(window.__SHELLEY_INIT__?.models || []);
   const [selectedModel, setSelectedModelState] = useState<string>(() => {
     // First check localStorage for a sticky model preference
@@ -1208,7 +1214,11 @@ function ChatInterface({
             {models.length === 0 ? (
               <div className="add-model-hint">
                 <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                  No AI models configured. Press <kbd>Ctrl</kbd><span>+</span><kbd>K</kbd> or <kbd>⌘</kbd><span>+</span><kbd>K</kbd> to add a model.
+                  No AI models configured. Press <kbd>Ctrl</kbd>
+                  <span>+</span>
+                  <kbd>K</kbd> or <kbd>⌘</kbd>
+                  <span>+</span>
+                  <kbd>K</kbd> to add a model.
                 </p>
               </div>
             ) : (

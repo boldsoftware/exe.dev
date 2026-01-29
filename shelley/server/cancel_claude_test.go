@@ -552,6 +552,10 @@ func (m *claudeLLMManager) GetModelInfo(modelID string) *models.ModelInfo {
 	return nil
 }
 
+func (m *claudeLLMManager) RefreshCustomModels() error {
+	return nil
+}
+
 // TestClaudeCancelDuringToolCall tests cancellation during tool execution with Claude
 func TestClaudeCancelDuringToolCall(t *testing.T) {
 	h := NewClaudeTestHarness(t)

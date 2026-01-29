@@ -28,7 +28,13 @@ class ApiService {
   }
 
   async getModels(): Promise<
-    Array<{ id: string; display_name?: string; ready: boolean; max_context_tokens?: number }>
+    Array<{
+      id: string;
+      display_name?: string;
+      source?: string;
+      ready: boolean;
+      max_context_tokens?: number;
+    }>
   > {
     const response = await fetch(`${this.baseUrl}/models`);
     if (!response.ok) {

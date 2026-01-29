@@ -361,23 +361,27 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 	modelList := s.getModelList()
 
 	// Select default model - use configured default if available, otherwise first ready model
-	defaultModel := s.defaultModel
-	if defaultModel == "" {
-		defaultModel = models.Default().ID
-	}
-	defaultModelAvailable := false
-	for _, m := range modelList {
-		if m.ID == defaultModel && m.Ready {
-			defaultModelAvailable = true
-			break
+	// If no models are available, default_model should be empty
+	defaultModel := ""
+	if len(modelList) > 0 {
+		defaultModel = s.defaultModel
+		if defaultModel == "" {
+			defaultModel = models.Default().ID
 		}
-	}
-	if !defaultModelAvailable {
-		// Fall back to first ready model
+		defaultModelAvailable := false
 		for _, m := range modelList {
-			if m.Ready {
-				defaultModel = m.ID
+			if m.ID == defaultModel && m.Ready {
+				defaultModelAvailable = true
 				break
+			}
+		}
+		if !defaultModelAvailable {
+			// Fall back to first ready model
+			for _, m := range modelList {
+				if m.Ready {
+					defaultModel = m.ID
+					break
+				}
 			}
 		}
 	}
@@ -1082,6 +1086,7 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 type ModelInfo struct {
 	ID               string `json:"id"`
 	DisplayName      string `json:"display_name,omitempty"`
+	Source           string `json:"source,omitempty"` // Human-readable source (e.g., "exe.dev gateway", "$ANTHROPIC_API_KEY")
 	Ready            bool   `json:"ready"`
 	MaxContextTokens int    `json:"max_context_tokens,omitempty"`
 }
@@ -1104,9 +1109,10 @@ func (s *Server) getModelList() []ModelInfo {
 				maxCtx = svc.TokenContextWindow()
 			}
 			info := ModelInfo{ID: id, Ready: err == nil, MaxContextTokens: maxCtx}
-			// Add display name from model info
+			// Add display name and source from model info
 			if modelInfo := s.llmManager.GetModelInfo(id); modelInfo != nil {
 				info.DisplayName = modelInfo.DisplayName
+				info.Source = modelInfo.Source
 			}
 			modelList = append(modelList, info)
 		}

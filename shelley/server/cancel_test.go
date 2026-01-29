@@ -411,3 +411,7 @@ func (m *testLLMManager) HasModel(modelID string) bool {
 func (m *testLLMManager) GetModelInfo(modelID string) *models.ModelInfo {
 	return nil
 }
+
+func (m *testLLMManager) RefreshCustomModels() error {
+	return nil
+}

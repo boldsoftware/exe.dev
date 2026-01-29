@@ -61,6 +61,10 @@ function ModelPicker({
 
   const selectedModelObj = models.find((m) => m.id === selectedModel);
   const displayName = selectedModelObj?.display_name || selectedModel;
+  const displayWithSource =
+    selectedModelObj?.source && selectedModelObj.source !== "custom"
+      ? `${displayName} (${selectedModelObj.source})`
+      : displayName;
 
   const handleSelect = (modelId: string) => {
     onSelectModel(modelId);
@@ -80,7 +84,7 @@ function ModelPicker({
         disabled={disabled}
         type="button"
       >
-        <span className="model-picker-value">{displayName}</span>
+        <span className="model-picker-value">{displayWithSource}</span>
         <svg
           className={`model-picker-chevron ${isOpen ? "open" : ""}`}
           width="12"
@@ -108,7 +112,12 @@ function ModelPicker({
                 disabled={!model.ready}
                 type="button"
               >
-                <span className="model-picker-option-name">{model.display_name || model.id}</span>
+                <div className="model-picker-option-content">
+                  <span className="model-picker-option-name">{model.display_name || model.id}</span>
+                  {model.source && (
+                    <span className="model-picker-option-source">{model.source}</span>
+                  )}
+                </div>
                 {!model.ready && <span className="model-picker-option-badge">not ready</span>}
                 {model.id === selectedModel && (
                   <svg
