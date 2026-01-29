@@ -21,6 +21,8 @@ import (
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // ResourceAttrs contains optional OTEL resource attributes for logging.
@@ -219,6 +221,12 @@ func (h *detachContextHandler) Handle(ctx context.Context, r slog.Record) error 
 		}
 		if errors.Is(err, context.Canceled) {
 			suppress = true
+		} else {
+			if grpcStatus, ok := status.FromError(err); ok {
+				if grpcStatus.Code() == codes.Canceled {
+					suppress = true
+				}
+			}
 		}
 		return false
 	})
