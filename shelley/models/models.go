@@ -48,8 +48,14 @@ type Model struct {
 	// Description is a human-readable description
 	Description string
 
+	// Tags is a comma-separated list of tags (e.g., "slug")
+	Tags string
+
 	// RequiredEnvVars are the environment variables required for this model
 	RequiredEnvVars []string
+
+	// GatewayEnabled indicates whether this model is available when using a gateway
+	GatewayEnabled bool
 
 	// Factory creates an llm.Service instance for this model
 	Factory func(config *Config, httpc *http.Client) (llm.Service, error)
@@ -155,6 +161,7 @@ func All() []Model {
 			Provider:        ProviderAnthropic,
 			Description:     "Claude Opus 4.5 (default)",
 			RequiredEnvVars: []string{"ANTHROPIC_API_KEY"},
+			GatewayEnabled:  true,
 			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
 				if config.AnthropicAPIKey == "" {
 					return nil, fmt.Errorf("claude-opus-4.5 requires ANTHROPIC_API_KEY")
@@ -167,10 +174,80 @@ func All() []Model {
 			},
 		},
 		{
+			ID:              "claude-sonnet-4.5",
+			Provider:        ProviderAnthropic,
+			Description:     "Claude Sonnet 4.5",
+			RequiredEnvVars: []string{"ANTHROPIC_API_KEY"},
+			GatewayEnabled:  true,
+			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
+				if config.AnthropicAPIKey == "" {
+					return nil, fmt.Errorf("claude-sonnet-4.5 requires ANTHROPIC_API_KEY")
+				}
+				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude45Sonnet, HTTPC: httpc}
+				if url := config.getAnthropicURL(); url != "" {
+					svc.URL = url
+				}
+				return svc, nil
+			},
+		},
+		{
+			ID:              "claude-haiku-4.5",
+			Provider:        ProviderAnthropic,
+			Description:     "Claude Haiku 4.5",
+			RequiredEnvVars: []string{"ANTHROPIC_API_KEY"},
+			GatewayEnabled:  true,
+			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
+				if config.AnthropicAPIKey == "" {
+					return nil, fmt.Errorf("claude-haiku-4.5 requires ANTHROPIC_API_KEY")
+				}
+				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude45Haiku, HTTPC: httpc}
+				if url := config.getAnthropicURL(); url != "" {
+					svc.URL = url
+				}
+				return svc, nil
+			},
+		},
+		{
+			ID:              "glm-4.7-fireworks",
+			Provider:        ProviderFireworks,
+			Description:     "GLM-4.7 on Fireworks",
+			RequiredEnvVars: []string{"FIREWORKS_API_KEY"},
+			GatewayEnabled:  true,
+			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
+				if config.FireworksAPIKey == "" {
+					return nil, fmt.Errorf("glm-4.7-fireworks requires FIREWORKS_API_KEY")
+				}
+				svc := &oai.Service{Model: oai.GLM47Fireworks, APIKey: config.FireworksAPIKey, HTTPC: httpc}
+				if url := config.getFireworksURL(); url != "" {
+					svc.ModelURL = url
+				}
+				return svc, nil
+			},
+		},
+		{
+			ID:              "gpt-5.2-codex",
+			Provider:        ProviderOpenAI,
+			Description:     "GPT-5.2 Codex",
+			RequiredEnvVars: []string{"OPENAI_API_KEY"},
+			GatewayEnabled:  true,
+			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
+				if config.OpenAIAPIKey == "" {
+					return nil, fmt.Errorf("gpt-5.2-codex requires OPENAI_API_KEY")
+				}
+				svc := &oai.ResponsesService{Model: oai.GPT52Codex, APIKey: config.OpenAIAPIKey, HTTPC: httpc}
+				if url := config.getOpenAIURL(); url != "" {
+					svc.ModelURL = url
+				}
+				return svc, nil
+			},
+		},
+		{
 			ID:              "qwen3-coder-fireworks",
 			Provider:        ProviderFireworks,
 			Description:     "Qwen3 Coder 480B on Fireworks",
+			Tags:            "slug",
 			RequiredEnvVars: []string{"FIREWORKS_API_KEY"},
+			GatewayEnabled:  true,
 			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
 				if config.FireworksAPIKey == "" {
 					return nil, fmt.Errorf("qwen3-coder-fireworks requires FIREWORKS_API_KEY")
@@ -194,54 +271,6 @@ func All() []Model {
 				svc := &oai.Service{Model: oai.GLM4P6Fireworks, APIKey: config.FireworksAPIKey, HTTPC: httpc}
 				if url := config.getFireworksURL(); url != "" {
 					svc.ModelURL = url
-				}
-				return svc, nil
-			},
-		},
-		{
-			ID:              "gpt-5.2-codex",
-			Provider:        ProviderOpenAI,
-			Description:     "GPT-5.2 Codex",
-			RequiredEnvVars: []string{"OPENAI_API_KEY"},
-			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
-				if config.OpenAIAPIKey == "" {
-					return nil, fmt.Errorf("gpt-5.2-codex requires OPENAI_API_KEY")
-				}
-				svc := &oai.ResponsesService{Model: oai.GPT52Codex, APIKey: config.OpenAIAPIKey, HTTPC: httpc}
-				if url := config.getOpenAIURL(); url != "" {
-					svc.ModelURL = url
-				}
-				return svc, nil
-			},
-		},
-		{
-			ID:              "claude-sonnet-4.5",
-			Provider:        ProviderAnthropic,
-			Description:     "Claude Sonnet 4.5",
-			RequiredEnvVars: []string{"ANTHROPIC_API_KEY"},
-			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
-				if config.AnthropicAPIKey == "" {
-					return nil, fmt.Errorf("claude-sonnet-4.5 requires ANTHROPIC_API_KEY")
-				}
-				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude45Sonnet, HTTPC: httpc}
-				if url := config.getAnthropicURL(); url != "" {
-					svc.URL = url
-				}
-				return svc, nil
-			},
-		},
-		{
-			ID:              "claude-haiku-4.5",
-			Provider:        ProviderAnthropic,
-			Description:     "Claude Haiku 4.5",
-			RequiredEnvVars: []string{"ANTHROPIC_API_KEY"},
-			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
-				if config.AnthropicAPIKey == "" {
-					return nil, fmt.Errorf("claude-haiku-4.5 requires ANTHROPIC_API_KEY")
-				}
-				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude45Haiku, HTTPC: httpc}
-				if url := config.getAnthropicURL(); url != "" {
-					svc.URL = url
 				}
 				return svc, nil
 			},
@@ -500,7 +529,12 @@ func NewManager(cfg *Config) (*Manager, error) {
 	manager.cfg = cfg
 
 	// Load built-in models first
+	useGateway := cfg.Gateway != ""
 	for _, model := range All() {
+		// Skip non-gateway-enabled models when using a gateway
+		if useGateway && !model.GatewayEnabled {
+			continue
+		}
 		svc, err := model.Factory(cfg, httpc)
 		if err != nil {
 			// Model not available (e.g., missing API key) - skip it
@@ -513,6 +547,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 			modelID:     model.ID,
 			source:      model.Source(cfg),
 			displayName: model.ID, // built-in models use ID as display name
+			tags:        model.Tags,
 		}
 		manager.modelOrder = append(manager.modelOrder, model.ID)
 	}
