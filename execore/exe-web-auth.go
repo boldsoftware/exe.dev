@@ -1299,7 +1299,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 
 	// login_with_exe is explicitly set when logging into a site hosted by exe (proxy auth flow)
-	createdForLoginWithExe := r.FormValue("login_with_exe") == "1"
+	isLoginWithExe := r.FormValue("login_with_exe") == "1"
 
 	// Check for invite code early so we can bypass abuse checks if valid
 	var hasValidInviteCode bool
@@ -1342,7 +1342,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// Users with valid invite codes get a billing exemption, so they skip Stripe.
 	// Users signing in via "Login with Exe" (proxy auth flow) skip billing - they're just
 	// authenticating to access someone else's app, not signing up to use exe.dev resources.
-	if isNewUser && !s.env.SkipBilling && invite == nil && !createdForLoginWithExe {
+	if isNewUser && !s.env.SkipBilling && invite == nil && !isLoginWithExe {
 		// Create pending registration to track email through Stripe
 		token := generateRegistrationToken()
 		err = withTx1(s, r.Context(), (*exedb.Queries).InsertPendingRegistration, exedb.InsertPendingRegistrationParams{
@@ -1392,7 +1392,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 
 	if isNewUser {
 		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-			userID, err = s.createUserRecord(ctx, queries, addr, createdForLoginWithExe)
+			userID, err = s.createUserRecord(ctx, queries, addr, isLoginWithExe)
 			return err
 		})
 		if err != nil {
@@ -1468,7 +1468,7 @@ Best regards,
 The %s team`, verifyEmailURL, webHost)
 
 	emailType := email.TypeWebAuthVerification
-	if createdForLoginWithExe {
+	if isLoginWithExe {
 		emailType = email.TypeLoginWithExeVerification
 	}
 	err = s.sendEmail(r.Context(), emailType, addr, subject, body)
