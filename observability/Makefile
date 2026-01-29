@@ -49,7 +49,7 @@ deploy-notifications: node_modules
 deploy-prometheus:
 	@echo "Deploying Prometheus configuration to ubuntu@mon..."; \
 	scp prometheus.yml ubuntu@mon:/home/ubuntu/prometheus/prometheus.yml; \
-	ssh ubuntu@mon sudo systemctl restart prometheus; \
+	ssh ubuntu@mon sudo systemctl reload prometheus; \
 	echo "Prometheus configuration deployed and service restarted"
 
 # Deploy node-exporter to all hosts
