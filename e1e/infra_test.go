@@ -94,7 +94,15 @@ func TestMain(m *testing.M) {
 		exit(1)
 	}
 
-	if testing.Verbose() && !*flagVerboseAll && !*flagVerbosePiperd && !*flagVerboseExed && !*flagVerboseExelet && !*flagVerbosePorts && !*flagVerboseEmail && !*flagVerbosePty && !*flagVerboseSlog {
+	// Show the verbosity hint unless:
+	// - any verbose flag is already set, OR
+	// - a specific test is requested via -run (user likely knows what they're doing)
+	runFilter := ""
+	if f := flag.Lookup("test.run"); f != nil {
+		runFilter = f.Value.String()
+	}
+	hasSpecificRun := runFilter != "" && runFilter != "." && runFilter != ".*"
+	if testing.Verbose() && !hasSpecificRun && !*flagVerboseAll && !*flagVerbosePiperd && !*flagVerboseExed && !*flagVerboseExelet && !*flagVerbosePorts && !*flagVerboseEmail && !*flagVerbosePty && !*flagVerboseSlog {
 		fmt.Print(`
 ════════
 -v requested, but the e1e tests generate lots of output, and they run in parallel.
