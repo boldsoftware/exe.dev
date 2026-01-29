@@ -28,7 +28,7 @@ import (
 
 	"exe.dev/billing"
 	"exe.dev/domz"
-	emailpkg "exe.dev/email"
+	"exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	"exe.dev/pow"
@@ -646,7 +646,7 @@ This link will expire in 24 hours.
 
 Best regards,
 The %s team`, verifyURL, s.env.WebHost)
-		if err := s.sendEmail(ctx, emailpkg.TypeWebAuthVerification, pending.Email, subject, body); err != nil {
+		if err := s.sendEmail(ctx, email.TypeWebAuthVerification, pending.Email, subject, body); err != nil {
 			s.slog().ErrorContext(ctx, "failed to send verification email", "error", err, "email", pending.Email)
 		}
 	}
@@ -1277,14 +1277,14 @@ func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, ema
 
 // handleAuthEmailSubmission handles the email form submission for web auth
 func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Request) {
-	email := strings.TrimSpace(r.FormValue("email"))
-	if email == "" {
+	addr := strings.TrimSpace(r.FormValue("email"))
+	if addr == "" {
 		s.showAuthError(w, r, "Please enter a valid email address", "")
 		return
 	}
 
 	// Basic email validation
-	if !isValidEmail(email) {
+	if !isValidEmail(addr) {
 		s.showAuthError(w, r, "Please enter a valid email address", "")
 		return
 	}
@@ -1292,7 +1292,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// TODO: This applies to existing users, which seems wrong.
 	ip, allowed := s.checkSignupRateLimit(r)
 	if !allowed {
-		s.slog().WarnContext(r.Context(), "signup rate limit exceeded", "ip", ip, "email", email)
+		s.slog().WarnContext(r.Context(), "signup rate limit exceeded", "ip", ip, "email", addr)
 		s.signupMetrics.IncBlocked("rate_limit", "web")
 		http.Error(w, "Too many requests. Please try again later. + "+tracing.TraceIDFromContext(r.Context()), http.StatusTooManyRequests)
 		return
@@ -1312,18 +1312,18 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// Validate signup eligibility (checks if new user and runs IPQS/disabled checks)
 	if err := s.validateNewSignup(r.Context(), signupValidationParams{
 		ip:               ip.String(),
-		email:            email,
+		email:            addr,
 		source:           "web",
 		trustedGitHubKey: false,
 		hasInviteCode:    hasValidInviteCode,
 	}); err != nil {
-		s.slog().InfoContext(r.Context(), "signup validation failed", "error", err, "ip", ip, "email", email)
+		s.slog().InfoContext(r.Context(), "signup validation failed", "error", err, "ip", ip, "email", addr)
 		s.showAuthError(w, r, err.Error(), "")
 		return
 	}
 
 	// Get or create the user
-	userID, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserIDByEmail, email)
+	userID, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserIDByEmail, addr)
 	isNewUser := errors.Is(err, sql.ErrNoRows)
 	if err != nil && !isNewUser {
 		s.slog().ErrorContext(r.Context(), "Database error fetching user", "error", err)
@@ -1347,7 +1347,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		token := generateRegistrationToken()
 		err = withTx1(s, r.Context(), (*exedb.Queries).InsertPendingRegistration, exedb.InsertPendingRegistrationParams{
 			Token:        token,
-			Email:        email,
+			Email:        addr,
 			InviteCodeID: nil, // No invite code in billing flow
 			ExpiresAt:    time.Now().Add(1 * time.Hour),
 		})
@@ -1365,14 +1365,14 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		// Check if POW was submitted
 		if r.FormValue("pow_token") == "" {
 			// No POW submitted - show interstitial to solve it
-			s.showPOWInterstitial(w, r, email)
+			s.showPOWInterstitial(w, r, addr)
 			return
 		}
 		// Verify the submitted POW
 		if err := s.verifySignupPOW(r); err != nil {
-			s.slog().InfoContext(r.Context(), "signup POW verification failed", "error", err, "ip", ip, "email", email)
+			s.slog().InfoContext(r.Context(), "signup POW verification failed", "error", err, "ip", ip, "email", addr)
 			// Show interstitial again with fresh challenge
-			s.showPOWInterstitial(w, r, email)
+			s.showPOWInterstitial(w, r, addr)
 			return
 		}
 		// Record the client-reported solve time in the HTTP request log
@@ -1392,7 +1392,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 
 	if isNewUser {
 		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-			userID, err = s.createUserRecord(ctx, queries, email, createdForLoginWithExe)
+			userID, err = s.createUserRecord(ctx, queries, addr, createdForLoginWithExe)
 			return err
 		})
 		if err != nil {
@@ -1406,10 +1406,10 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		if returnHost := r.FormValue("return_host"); returnHost != "" {
 			source = "login " + returnHost
 		}
-		s.slackFeed.NewUser(r.Context(), userID, email, source, inviterEmail)
+		s.slackFeed.NewUser(r.Context(), userID, addr, source, inviterEmail)
 		// Check email quality and disable VM creation if disposable
-		if err := s.checkEmailQuality(context.WithoutCancel(r.Context()), userID, email); err != nil {
-			s.slog().WarnContext(r.Context(), "email quality check failed", "error", err, "email", email)
+		if err := s.checkEmailQuality(context.WithoutCancel(r.Context()), userID, addr); err != nil {
+			s.slog().WarnContext(r.Context(), "email quality check failed", "error", err, "email", addr)
 		}
 	}
 
@@ -1419,7 +1419,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// Store verification in database (reuse existing email_verifications table)
 	err = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).InsertEmailVerification, exedb.InsertEmailVerificationParams{
 		Token:        token,
-		Email:        email,
+		Email:        addr,
 		UserID:       userID,
 		ExpiresAt:    time.Now().Add(24 * time.Hour),
 		InviteCodeID: inviteCodeID,
@@ -1467,13 +1467,13 @@ This link will expire in 24 hours.
 Best regards,
 The %s team`, verifyEmailURL, webHost)
 
-	emailType := emailpkg.TypeWebAuthVerification
+	emailType := email.TypeWebAuthVerification
 	if createdForLoginWithExe {
-		emailType = emailpkg.TypeLoginWithExeVerification
+		emailType = email.TypeLoginWithExeVerification
 	}
-	err = s.sendEmail(r.Context(), emailType, email, subject, body)
+	err = s.sendEmail(r.Context(), emailType, addr, subject, body)
 	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to send auth email", "error", err, "email", email)
+		s.slog().ErrorContext(r.Context(), "Failed to send auth email", "error", err, "email", addr)
 		s.showAuthError(w, r, "Failed to send email. Please try again or contact support.", "")
 		return
 	}
@@ -1483,7 +1483,7 @@ The %s team`, verifyEmailURL, webHost)
 	if s.env.WebDev {
 		devURL = verifyEmailURL
 	}
-	s.showAuthEmailSent(w, r, email, devURL)
+	s.showAuthEmailSent(w, r, addr, devURL)
 }
 
 // showAuthError displays an authentication error page
