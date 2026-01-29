@@ -14,20 +14,26 @@ import (
 	"sync"
 	"time"
 
-	"exe.dev/backoff"
 	"exe.dev/errorz"
 	"github.com/stripe/stripe-go/v82"
 )
 
-var ErrIncomplete = errors.New("incomplete")
+// MakeCustomerDashboardURL returns the Stripe dashboard URL for a customer.
+func MakeCustomerDashboardURL(billingID string) string {
+	return "https://dashboard.stripe.com/customers/" + billingID
+}
 
-// TestAPIKey is the Stripe test API key. It is safe to check into source code
-// and easy to revoke should someone want to spam our test account.
-const TestAPIKey = "rk_test_51SjuBkGpGU0hqBfTf92SNWOBza7zn6pZygtbG7kRdquppHsnJGVZtPfwpZFt9PjoAUCegMS1JCwtawjbWXMx2fPZ008Jgd7CKi"
+var ErrIncomplete = errors.New("incomplete")
 
 var stripeKey = os.Getenv("STRIPE_SECRET_KEY")
 
-const DefaultPlan = "individual"
+const (
+	DefaultPlan = "individual"
+
+	// TestAPIKey is the Stripe test API key. It is safe to check into source code
+	// and easy to revoke should someone want to spam our test account.
+	TestAPIKey = "rk_test_51SjuBkGpGU0hqBfTf92SNWOBza7zn6pZygtbG7kRdquppHsnJGVZtPfwpZFt9PjoAUCegMS1JCwtawjbWXMx2fPZ008Jgd7CKi"
+)
 
 // Manager handles billing operations.
 type Manager struct {
@@ -298,51 +304,6 @@ func (m *Manager) lookupPriceID(ctx context.Context, c *stripe.Client, lookupKey
 		return price.ID, nil
 	}
 	return "", fmt.Errorf("no active price found with lookup key %q", lookupKey)
-}
-
-// UpdateProfile updates the account's profile information.
-func (m *Manager) UpdateProfile(ctx context.Context, billingID string, p *Profile) error {
-	if p == nil {
-		return nil
-	}
-
-	c := m.client()
-
-	params := &stripe.CustomerUpdateParams{}
-	if p.Email != "" {
-		params.Email = &p.Email
-	}
-
-	for range backoff.Loop(ctx, 1*time.Second) {
-		customer, err := c.V1Customers.Update(ctx, billingID, params)
-		if err == nil {
-			var requestID string
-			if customer.LastResponse != nil {
-				requestID = customer.LastResponse.RequestID
-			}
-			m.slog().InfoContext(ctx, "customer profile updated",
-				"stripe_request_id", requestID,
-				"billing_id", billingID,
-			)
-			return nil
-		}
-
-		var requestID string
-		if stripeErr, ok := errorz.AsType[*stripe.Error](err); ok && stripeErr.LastResponse != nil {
-			requestID = stripeErr.LastResponse.RequestID
-		}
-		m.slog().ErrorContext(ctx, "update customer profile",
-			"stripe_request_id", requestID,
-			"billing_id", billingID,
-			"error", err,
-		)
-	}
-	return ctx.Err()
-}
-
-// DashboardURL returns the Stripe dashboard URL for a customer.
-func (m *Manager) DashboardURL(billingID string) string {
-	return "https://dashboard.stripe.com/customers/" + billingID
 }
 
 // VerifyCheckout verifies that a checkout session was completed successfully.

@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/billing"
 	"exe.dev/email"
 	"exe.dev/execore/debug_templates"
 	"exe.dev/exedb"
@@ -919,7 +920,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			acctID := accountByUser[u.UserID]
 			var billingURL string
 			if acctID != "" {
-				billingURL = s.billing.DashboardURL(acctID)
+				billingURL = billing.MakeCustomerDashboardURL(acctID)
 			}
 			ui := userInfo{
 				UserID:                 u.UserID,
@@ -2531,7 +2532,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 	for _, a := range accounts {
 		if a.CreatedBy == userID {
 			accountID = a.ID
-			billingURL = s.billing.DashboardURL(accountID)
+			billingURL = billing.MakeCustomerDashboardURL(accountID)
 			break
 		}
 	}

@@ -288,8 +288,7 @@ func TestVerifyCheckout(t *testing.T) {
 }
 
 func TestDashboardURL(t *testing.T) {
-	m := &Manager{}
-	url := m.DashboardURL("cus_abc123")
+	url := MakeCustomerDashboardURL("cus_abc123")
 	if url != "https://dashboard.stripe.com/customers/cus_abc123" {
 		t.Errorf("got %q", url)
 	}
@@ -1121,43 +1120,6 @@ func TestVerifyCheckout_LogsStripeRequestID(t *testing.T) {
 	}
 	if !strings.Contains(logs, "checkout session verified") {
 		t.Error("expected 'checkout session verified' log message")
-	}
-}
-
-func TestUpdateProfile_LogsStripeRequestID(t *testing.T) {
-	var logBuf strings.Builder
-	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
-
-	m := &Manager{
-		Client: stripetest.Client(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == "POST" && strings.HasPrefix(r.URL.Path, "/v1/customers/") {
-				json.NewEncoder(w).Encode(map[string]any{
-					"id":    "cus_profile_log",
-					"email": r.FormValue("email"),
-				})
-				return
-			}
-			http.Error(w, "not found", http.StatusNotFound)
-		}),
-		Logger: logger,
-	}
-
-	err := m.UpdateProfile(context.Background(), "cus_profile_log", &Profile{
-		Email: "updated@example.com",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	logs := logBuf.String()
-	if !strings.Contains(logs, "stripe_request_id") {
-		t.Error("expected stripe_request_id in logs")
-	}
-	if !strings.Contains(logs, "req_test_") {
-		t.Error("expected req_test_ prefix in stripe_request_id")
-	}
-	if !strings.Contains(logs, "customer profile updated") {
-		t.Error("expected 'customer profile updated' log message")
 	}
 }
 
