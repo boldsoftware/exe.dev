@@ -42,11 +42,11 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3
-	github.com/keighl/postmark v0.0.0-20190821160221-28358b1a94e3
 	github.com/lmittmann/tint v1.1.2
 	github.com/mailgun/mailgun-go/v4 v4.23.0
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/mistifyio/go-zfs/v3 v3.1.0
+	github.com/mrz1836/postmark v1.8.2
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/pkg/errors v0.9.1
@@ -256,7 +256,6 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
-	goji.io v2.0.2+incompatible // indirect
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20240314144324-c7f7c6466f7f // indirect
 	golang.org/x/mod v0.31.0 // indirect

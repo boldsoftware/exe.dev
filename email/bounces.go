@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/keighl/postmark"
+	"github.com/mrz1836/postmark"
 )
 
 const (
@@ -115,7 +115,7 @@ func (p *PostmarkBouncePoller) pollOnce() {
 	// Paginate through all bounces
 	offset := int64(0)
 	for {
-		bounces, totalCount, err := p.client.GetBounces(bouncesPageSize, offset, options)
+		bounces, totalCount, err := p.client.GetBounces(ctx, bouncesPageSize, offset, options)
 		if err != nil {
 			p.logger.ErrorContext(ctx, "failed to fetch bounces from Postmark", "error", err, "offset", offset)
 			return

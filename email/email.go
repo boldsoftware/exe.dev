@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/keighl/postmark"
 	"github.com/mailgun/mailgun-go/v4"
+	"github.com/mrz1836/postmark"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -125,7 +125,7 @@ func (s *PostmarkSender) Send(ctx context.Context, emailType Type, from, to, sub
 		Subject:  subject,
 		TextBody: body,
 	}
-	_, err := s.client.SendEmail(email)
+	_, err := s.client.SendEmail(context.WithoutCancel(ctx), email)
 	if err == nil {
 		emailsSentTotal.WithLabelValues("postmark", string(emailType)).Inc()
 		slog.InfoContext(ctx, "email sent", "provider", "postmark", "type", emailType, "to", to, "subject", subject)
