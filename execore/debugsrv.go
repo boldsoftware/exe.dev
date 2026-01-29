@@ -1586,15 +1586,15 @@ func (s *Server) handleDebugIPShards(w http.ResponseWriter, r *http.Request) {
 	// Build lookup slices (indexed by shard number)
 	servingByS := make([]string, publicips.MaxDomainShards+1)
 	for _, row := range servingShards {
-		servingByS[row.Shard] = row.PublicIp
+		servingByS[row.Shard] = row.PublicIP
 	}
 	awsByS := make([]string, publicips.MaxDomainShards+1)
 	for _, row := range awsShards {
-		awsByS[row.Shard] = row.PublicIp
+		awsByS[row.Shard] = row.PublicIP
 	}
 	latByS := make([]string, publicips.MaxDomainShards+1)
 	for _, row := range latitudeShards {
-		latByS[row.Shard] = row.PublicIp
+		latByS[row.Shard] = row.PublicIP
 	}
 
 	// Build unified shard list
@@ -1677,7 +1677,7 @@ func (s *Server) handleDebugIPShardsToggle(w http.ResponseWriter, r *http.Reques
 		}
 		for _, row := range awsShards {
 			if int(row.Shard) == shard {
-				newIP = row.PublicIp
+				newIP = row.PublicIP
 				break
 			}
 		}
@@ -1689,7 +1689,7 @@ func (s *Server) handleDebugIPShardsToggle(w http.ResponseWriter, r *http.Reques
 		}
 		for _, row := range latShards {
 			if int(row.Shard) == shard {
-				newIP = row.PublicIp
+				newIP = row.PublicIP
 				break
 			}
 		}
@@ -1703,7 +1703,7 @@ func (s *Server) handleDebugIPShardsToggle(w http.ResponseWriter, r *http.Reques
 	// Update the serving table
 	err = withTx1(s, ctx, (*exedb.Queries).UpsertIPShard, exedb.UpsertIPShardParams{
 		Shard:    int64(shard),
-		PublicIp: newIP,
+		PublicIP: newIP,
 	})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to update ip_shards: %v", err), http.StatusInternalServerError)
@@ -1773,21 +1773,21 @@ func (s *Server) handleDebugIPShardsLatitude(w http.ResponseWriter, r *http.Requ
 
 	// Check serving shards
 	for _, row := range servingShards {
-		if row.PublicIp == ip {
+		if row.PublicIP == ip {
 			http.Error(w, fmt.Sprintf("IP %s already in use in ip_shards (shard %d)", ip, row.Shard), http.StatusBadRequest)
 			return
 		}
 	}
 	// Check AWS shards
 	for _, row := range awsShards {
-		if row.PublicIp == ip {
+		if row.PublicIP == ip {
 			http.Error(w, fmt.Sprintf("IP %s already in use in aws_ip_shards (shard %d)", ip, row.Shard), http.StatusBadRequest)
 			return
 		}
 	}
 	// Check Latitude shards (excluding current shard being updated)
 	for _, row := range latitudeShards {
-		if row.PublicIp == ip && int(row.Shard) != shard {
+		if row.PublicIP == ip && int(row.Shard) != shard {
 			http.Error(w, fmt.Sprintf("IP %s already in use in latitude_ip_shards (shard %d)", ip, row.Shard), http.StatusBadRequest)
 			return
 		}
@@ -1796,7 +1796,7 @@ func (s *Server) handleDebugIPShardsLatitude(w http.ResponseWriter, r *http.Requ
 	// Upsert
 	err = withTx1(s, ctx, (*exedb.Queries).UpsertLatitudeIPShard, exedb.UpsertLatitudeIPShardParams{
 		Shard:    int64(shard),
-		PublicIp: ip,
+		PublicIP: ip,
 	})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to upsert latitude_ip_shards: %v", err), http.StatusInternalServerError)

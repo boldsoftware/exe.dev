@@ -183,7 +183,7 @@ func TestXtermWildcardA(t *testing.T) {
 		queries := exedb.New(tx.Conn())
 		return queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
 			Shard:    1,
-			PublicIp: "10.0.0.1",
+			PublicIP: "10.0.0.1",
 		})
 	})
 	if err != nil {
@@ -294,7 +294,7 @@ func TestDNSServer(t *testing.T) {
 		// Add ip_shard
 		if err := queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
 			Shard:    1,
-			PublicIp: "1.2.3.4",
+			PublicIP: "1.2.3.4",
 		}); err != nil {
 			return err
 		}
@@ -523,7 +523,7 @@ func TestDNSServerIntegration(t *testing.T) {
 		queries := exedb.New(tx.Conn())
 		return queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
 			Shard:    1,
-			PublicIp: "192.168.1.1",
+			PublicIP: "192.168.1.1",
 		})
 	})
 	if err != nil {

@@ -39,3 +39,4 @@ sql:
           new_vm_email: "NewVMEmail"
           aws_ip_shard: "AWSIPShard"
           latitude_ip_shard: "LatitudeIPShard"
+          public_ip: "PublicIP"

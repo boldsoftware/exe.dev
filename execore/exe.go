@@ -998,9 +998,9 @@ func (s *Server) loadPublicIPsFromDB(ctx context.Context) (map[netip.Addr]public
 	// Build AWS public_ip -> (shard, domain) lookup
 	awsPublicToShard := make(map[netip.Addr]publicips.PublicIP, len(awsShards))
 	for _, row := range awsShards {
-		ip, err := netip.ParseAddr(row.PublicIp)
+		ip, err := netip.ParseAddr(row.PublicIP)
 		if err != nil {
-			s.slog().WarnContext(ctx, "invalid public IP in aws_ip_shards", "shard", row.Shard, "ip", row.PublicIp, "error", err)
+			s.slog().WarnContext(ctx, "invalid public IP in aws_ip_shards", "shard", row.Shard, "ip", row.PublicIP, "error", err)
 			continue
 		}
 		awsPublicToShard[ip] = publicips.PublicIP{
@@ -1037,9 +1037,9 @@ func (s *Server) loadPublicIPsFromDB(ctx context.Context) (map[netip.Addr]public
 		return nil, fmt.Errorf("failed to list latitude_ip_shards: %w", err)
 	}
 	for _, row := range latitudeShards {
-		ip, err := netip.ParseAddr(row.PublicIp)
+		ip, err := netip.ParseAddr(row.PublicIP)
 		if err != nil {
-			s.slog().WarnContext(ctx, "invalid public IP in latitude_ip_shards", "shard", row.Shard, "ip", row.PublicIp, "error", err)
+			s.slog().WarnContext(ctx, "invalid public IP in latitude_ip_shards", "shard", row.Shard, "ip", row.PublicIP, "error", err)
 			continue
 		}
 		result[ip] = publicips.PublicIP{
@@ -1080,7 +1080,7 @@ func (s *Server) validateIPShards(ctx context.Context) {
 	for _, awsShard := range awsShards {
 		found := false
 		for _, info := range s.PublicIPs {
-			if info.Shard == int(awsShard.Shard) && info.IP.String() == awsShard.PublicIp {
+			if info.Shard == int(awsShard.Shard) && info.IP.String() == awsShard.PublicIP {
 				found = true
 				break
 			}
@@ -1088,7 +1088,7 @@ func (s *Server) validateIPShards(ctx context.Context) {
 		if !found {
 			s.slog().ErrorContext(ctx, "aws_ip_shard not routable on this machine",
 				"shard", awsShard.Shard,
-				"public_ip", awsShard.PublicIp)
+				"public_ip", awsShard.PublicIP)
 		}
 	}
 
@@ -1106,16 +1106,16 @@ func (s *Server) validateIPShards(ctx context.Context) {
 
 	awsByS := make([]string, publicips.MaxDomainShards+1)
 	for _, row := range awsShards {
-		awsByS[row.Shard] = row.PublicIp
+		awsByS[row.Shard] = row.PublicIP
 	}
 	latByS := make([]string, publicips.MaxDomainShards+1)
 	for _, row := range latitudeShards {
-		latByS[row.Shard] = row.PublicIp
+		latByS[row.Shard] = row.PublicIP
 	}
 
 	for _, serving := range servingShards {
 		shard := int(serving.Shard)
-		ip := serving.PublicIp
+		ip := serving.PublicIP
 		if ip != awsByS[shard] && ip != latByS[shard] {
 			s.slog().ErrorContext(ctx, "ip_shard serving IP doesn't match AWS or Latitude",
 				"shard", shard,

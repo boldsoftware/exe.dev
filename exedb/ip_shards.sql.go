@@ -47,7 +47,7 @@ func (q *Queries) ListAWSIPShards(ctx context.Context) ([]AWSIPShard, error) {
 		var i AWSIPShard
 		if err := rows.Scan(
 			&i.Shard,
-			&i.PublicIp,
+			&i.PublicIP,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -80,7 +80,7 @@ func (q *Queries) ListIPShards(ctx context.Context) ([]IPShard, error) {
 		var i IPShard
 		if err := rows.Scan(
 			&i.Shard,
-			&i.PublicIp,
+			&i.PublicIP,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -113,7 +113,7 @@ func (q *Queries) ListLatitudeIPShards(ctx context.Context) ([]LatitudeIPShard, 
 		var i LatitudeIPShard
 		if err := rows.Scan(
 			&i.Shard,
-			&i.PublicIp,
+			&i.PublicIP,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -140,11 +140,11 @@ ON CONFLICT (shard) DO UPDATE SET
 
 type UpsertIPShardParams struct {
 	Shard    int64  `db:"shard" json:"shard"`
-	PublicIp string `db:"public_ip" json:"public_ip"`
+	PublicIP string `db:"public_ip" json:"public_ip"`
 }
 
 func (q *Queries) UpsertIPShard(ctx context.Context, arg UpsertIPShardParams) error {
-	_, err := q.exec(ctx, q.upsertIPShardStmt, upsertIPShard, arg.Shard, arg.PublicIp)
+	_, err := q.exec(ctx, q.upsertIPShardStmt, upsertIPShard, arg.Shard, arg.PublicIP)
 	return err
 }
 
@@ -158,10 +158,10 @@ ON CONFLICT (shard) DO UPDATE SET
 
 type UpsertLatitudeIPShardParams struct {
 	Shard    int64  `db:"shard" json:"shard"`
-	PublicIp string `db:"public_ip" json:"public_ip"`
+	PublicIP string `db:"public_ip" json:"public_ip"`
 }
 
 func (q *Queries) UpsertLatitudeIPShard(ctx context.Context, arg UpsertLatitudeIPShardParams) error {
-	_, err := q.exec(ctx, q.upsertLatitudeIPShardStmt, upsertLatitudeIPShard, arg.Shard, arg.PublicIp)
+	_, err := q.exec(ctx, q.upsertLatitudeIPShardStmt, upsertLatitudeIPShard, arg.Shard, arg.PublicIP)
 	return err
 }

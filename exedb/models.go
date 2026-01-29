@@ -10,7 +10,7 @@ import (
 
 type AWSIPShard struct {
 	Shard     int64     `db:"shard" json:"shard"`
-	PublicIp  string    `db:"public_ip" json:"public_ip"`
+	PublicIP  string    `db:"public_ip" json:"public_ip"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
@@ -138,7 +138,7 @@ type HllSketch struct {
 
 type IPShard struct {
 	Shard     int64     `db:"shard" json:"shard"`
-	PublicIp  string    `db:"public_ip" json:"public_ip"`
+	PublicIP  string    `db:"public_ip" json:"public_ip"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
@@ -163,7 +163,7 @@ type InviteCodePool struct {
 
 type LatitudeIPShard struct {
 	Shard     int64     `db:"shard" json:"shard"`
-	PublicIp  string    `db:"public_ip" json:"public_ip"`
+	PublicIP  string    `db:"public_ip" json:"public_ip"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
