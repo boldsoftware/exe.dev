@@ -2,7 +2,6 @@
 title: Send email
 description: Send emails to yourself from your VM
 subheading: "2. Features"
-published: false
 ---
 
 Your VM can send emails to you (the VM owner).
