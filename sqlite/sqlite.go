@@ -47,13 +47,6 @@ func NormalizeTime(t time.Time) time.Time {
 }
 
 func init() {
-	// now() -> UTC timestamp compatible with SQLite datetime helpers
-	sqlite.MustRegisterScalarFunction("now", 0, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
-		// SQLite emits "YYYY-MM-DD HH:MM:SS" strings for datetime arithmetic,
-		// so stick to the same layout to keep lexicographical comparisons valid.
-		return time.Now().UTC().Format(Time10), nil
-	})
-
 	// parse_timestamp(text) -> normalized UTC timestamp
 	// Parses various timestamp formats (including Go's time.String() format)
 	// and returns a SQLite-compatible datetime string.
