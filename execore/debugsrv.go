@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"exe.dev/billing"
@@ -1166,38 +1167,48 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 	preferredAddr, _ := withRxRes0(s, ctx, (*exedb.Queries).GetPreferredExelet)
 
 	var exelets []exeletInfo
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 
-	// Gather info from all exelet clients
+	// Gather info from all exelet clients in parallel
 	for addr, ec := range s.exeletClients {
-		info := exeletInfo{
-			Address:     addr,
-			Version:     ec.client.Version(),
-			Arch:        ec.client.Arch(),
-			IsPreferred: addr == preferredAddr,
-		}
+		wg.Add(1)
+		go func(addr string, ec *exeletClient) {
+			defer wg.Done()
 
-		// Try to get system info to verify connectivity
-		sysInfoCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		resp, err := ec.client.GetSystemInfo(sysInfoCtx, &computeapi.GetSystemInfoRequest{})
-		cancel()
-		if err != nil {
-			info.Status = "error"
-			info.Error = err.Error()
-		} else {
-			info.Status = "healthy"
-			info.Version = resp.Version
-			info.Arch = resp.Arch
-		}
+			info := exeletInfo{
+				Address:     addr,
+				Version:     ec.client.Version(),
+				Arch:        ec.client.Arch(),
+				IsPreferred: addr == preferredAddr,
+			}
 
-		// Count instances
-		listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		if count, err := ec.countInstances(listCtx); err == nil {
-			info.InstanceCount = count
-		}
-		cancel()
+			// Try to get system info to verify connectivity
+			sysInfoCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			resp, err := ec.client.GetSystemInfo(sysInfoCtx, &computeapi.GetSystemInfoRequest{})
+			cancel()
+			if err != nil {
+				info.Status = "error"
+				info.Error = err.Error()
+			} else {
+				info.Status = "healthy"
+				info.Version = resp.Version
+				info.Arch = resp.Arch
+			}
 
-		exelets = append(exelets, info)
+			// Count instances
+			listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			if count, err := ec.countInstances(listCtx); err == nil {
+				info.InstanceCount = count
+			}
+			cancel()
+
+			mu.Lock()
+			exelets = append(exelets, info)
+			mu.Unlock()
+		}(addr, ec)
 	}
+	wg.Wait()
 
 	// Sort exelets by address for consistent display
 	sort.Slice(exelets, func(i, j int) bool {
