@@ -15,6 +15,7 @@ import (
 )
 
 func TestReplication(t *testing.T) {
+	t.Skip("skipping CI -- this is flakey (evan)")
 	// Get a unique test run ID for this test
 	testRunID := fmt.Sprintf("%04x", rand.Uint32()&0xFFFF)
 

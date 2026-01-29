@@ -33,10 +33,11 @@ Storage replication provides continuous backup of VM volumes to a remote target.
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--storage-replication-enabled` | false | Enable replication |
-| `--storage-replication-target` | - | Target URL (e.g., `ssh://user@host/pool`) |
+| `--storage-replication-target` | - | Target URL (e.g., `ssh://user@host/pool` or `file:///path`) |
 | `--storage-replication-interval` | 1h | Time between replication cycles |
 | `--storage-replication-retention` | 24 | Number of snapshots to keep on remote |
-| `--storage-replication-ssh-key` | ~/.ssh/id_rsa | SSH private key for authentication |
+| `--storage-replication-ssh-key` | - | SSH private key for authentication (falls back to SSH agent, then `~/.ssh/id_ed25519` and `~/.ssh/id_rsa`) |
+| `--storage-replication-known-hosts` | ~/.ssh/known_hosts | Path to known_hosts file for SSH host key verification |
 | `--storage-replication-bandwidth-limit` | - | Rate limit (e.g., "100M", "1G") |
 | `--storage-replication-prune` | true | Enable pruning of orphaned backups |
 
@@ -47,7 +48,8 @@ Storage replication provides continuous backup of VM volumes to a remote target.
 1. **Instance Discovery**: Get all VM instances from compute service
 2. **Filter**: Only replicate VMs in RUNNING state
 3. **Queue**: Add volumes to worker pool for parallel processing
-4. **Prune**: Remove backups for volumes that no longer exist locally
+4. **Wait**: Block until all queued volumes finish processing
+5. **Prune**: Remove backups for volumes that no longer exist locally
 
 ### Per-Volume Replication
 
@@ -64,9 +66,9 @@ For each volume, the worker performs:
    - If found: incremental send from that base
    - If not found: full send
 
-3. **Transfer**: Pipe `zfs send` through SSH to remote `zfs recv -F`
+3. **Transfer**: Pipe `zfs send` to the target (SSH or file)
 
-4. **Remote Retention**: Delete oldest remote snapshots to maintain retention count
+4. **Remote Retention**: Delete oldest remote replication snapshots to maintain retention count
 
 5. **Local Cleanup**: Keep only the most recent local replication snapshot (for incremental base)
 
@@ -140,23 +142,39 @@ Replicates to a remote ZFS pool over SSH.
 ssh://user@host[:port]/pool
 ```
 
-- Uses `zfs send | ssh | zfs recv` pipeline
+- Uses `zfs send | ssh | zfs recv -F` pipeline
 - Supports bandwidth limiting via `pv`
 - Reuses SSH connections for efficiency
+- SSH authentication: explicit key, SSH agent, or default keys (`~/.ssh/id_ed25519`, `~/.ssh/id_rsa`)
+- Host key verification via `known_hosts` file
 
 ### File Target
 
-Creates compressed tar archives locally (primarily for testing).
+Creates compressed `zfs send` streams locally.
 
 ```
 file:///path/to/backups
 ```
+
+- Uses `zfs send -c | gzip > file` for backups
+- Uses `gunzip | zfs receive -F` for restore
+- Supports incremental sends
+- Primarily for testing or local backup
 
 ## Failure Handling
 
 - **Transient Failures**: Retries up to 3 times with exponential backoff
 - **Failed Snapshots**: Cleaned up on send failure
 - **Connection Issues**: SSH connections are pooled and revalidated
+- **Queue Blocking**: Volume queue blocks on context cancellation rather than silently dropping volumes
+
+## Pruning
+
+The pruner removes backups for volumes that no longer exist locally:
+
+- Only prunes volumes whose IDs are valid UUIDs (instance IDs), to avoid deleting unrelated datasets on a shared pool
+- Supports both volume-level deletion (if the target implements `VolumeDeleter`) and individual snapshot deletion as a fallback
+- Runs at the end of each replication cycle after all volumes finish
 
 ## Metrics
 
@@ -199,3 +217,7 @@ The remote target is authoritative for backup history:
 VMs are automatically started after restore if the instance exists:
 - Users expect the VM to be usable after restore
 - Starting an already-running VM is harmless
+
+### ZFS Rollback Limitation
+
+If a volume is restored to an earlier snapshot via `zfs rollback`, all newer snapshots on that dataset are destroyed. The next replication cycle will perform a full send since the common incremental base no longer exists locally. This is a fundamental ZFS constraint.
