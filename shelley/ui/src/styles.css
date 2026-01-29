@@ -862,7 +862,6 @@ button {
 }
 
 .tool-emoji.running {
-  animation: rotate 1s linear infinite;
 }
 
 .tool-command {
@@ -1161,7 +1160,6 @@ button {
 }
 
 .patch-tool-emoji.running {
-  animation: rotate 1s linear infinite;
 }
 
 .patch-tool-filename {
@@ -1547,7 +1545,6 @@ button {
 }
 
 .screenshot-tool-emoji.running {
-  animation: rotate 1s linear infinite;
 }
 
 .screenshot-tool-filename {
@@ -1700,7 +1697,6 @@ button {
 }
 
 .output-iframe-tool-emoji.running {
-  animation: rotate 1s linear infinite;
 }
 
 .output-iframe-tool-title {
@@ -2561,16 +2557,6 @@ svg {
 @media (max-width: 767px) {
   .show-on-desktop-only {
     display: none !important;
-  }
-}
-
-/* Rotation animation for running tools */
-@keyframes rotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
   }
 }
 
