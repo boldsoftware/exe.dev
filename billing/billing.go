@@ -398,10 +398,12 @@ func (m *Manager) VerifyCheckout(ctx context.Context, sessionID string) (billing
 	}
 }
 
-// PortalSession creates a Stripe billing portal session for a customer.
-// The portal allows customers to manage their subscription, update payment methods,
-// and view billing history. Returns the portal URL to redirect the customer to.
-func (m *Manager) PortalSession(ctx context.Context, billingID, returnURL string) (portalURL string, _ error) {
+// OpenPortal creates a billing portal session using PortalParams.
+// This is a convenience wrapper around PortalSession that validates the return URL.
+func (m *Manager) OpenPortal(ctx context.Context, billingID string, p *PortalParams) (portalURL string, _ error) {
+	if p == nil || p.ReturnURL == "" {
+		return "", errors.New("return URL is required")
+	}
 	if billingID == "" {
 		return "", errors.New("billing ID is required")
 	}
@@ -409,7 +411,7 @@ func (m *Manager) PortalSession(ctx context.Context, billingID, returnURL string
 	c := m.client()
 	params := &stripe.BillingPortalSessionCreateParams{
 		Customer:  &billingID,
-		ReturnURL: &returnURL,
+		ReturnURL: &p.ReturnURL,
 	}
 	sess, err := c.V1BillingPortalSessions.Create(ctx, params)
 	if err != nil {
@@ -424,17 +426,7 @@ func (m *Manager) PortalSession(ctx context.Context, billingID, returnURL string
 		"stripe_request_id", requestID,
 		"billing_id", billingID,
 	)
-
 	return sess.URL, nil
-}
-
-// OpenPortal creates a billing portal session using PortalParams.
-// This is a convenience wrapper around PortalSession that validates the return URL.
-func (m *Manager) OpenPortal(ctx context.Context, billingID string, p *PortalParams) (portalURL string, _ error) {
-	if p == nil || p.ReturnURL == "" {
-		return "", errors.New("return URL is required")
-	}
-	return m.PortalSession(ctx, billingID, p.ReturnURL)
 }
 
 // SubscriptionEvents polls the Stripe Events API for subscription changes.
