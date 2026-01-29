@@ -86,7 +86,7 @@ deploy-node-exporter:
 	done
 
 # Exelet hosts (hosts with ZFS pools)
-EXELET_HOSTS := exe-ctr-02 exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 exe-ctr-15 exe-ctr-16 exe-ctr-staging-01
+EXELET_HOSTS := exe-ctr-02 exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 exe-ctr-15 exe-ctr-16 exe-ctr-staging-01 exe-ctr-staging-02
 
 # Deploy zpool metrics script to exelet hosts
 deploy-zpool-metrics:
