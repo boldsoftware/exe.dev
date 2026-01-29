@@ -45,7 +45,7 @@ var errBodyNotReplayable = errors.New("request body not replayable; caller shoul
 type accountingTransport struct {
 	http.RoundTripper
 	db            *sqlite.DB
-	apiType       string
+	provider      llmpricing.Provider
 	testDebitDone chan bool // for testing -- if non-nil, best effort send every time a debit occurs
 	log           *slog.Logger
 	creditMgr     *CreditManager
@@ -77,7 +77,7 @@ func (a *accountingTransport) RoundTrip(r *http.Request) (*http.Response, error)
 	}
 
 	// Increment the requests counter with status="attempted"
-	requestsCounter.WithLabelValues("attempted", a.apiType).Inc()
+	requestsCounter.WithLabelValues("attempted", string(a.provider)).Inc()
 	ret, err := a.RoundTripper.RoundTrip(r)
 
 	if ret != nil {
@@ -86,11 +86,11 @@ func (a *accountingTransport) RoundTrip(r *http.Request) (*http.Response, error)
 		if err == nil {
 			status = fmt.Sprintf("%d", ret.StatusCode)
 		}
-		requestsCounter.WithLabelValues(status, a.apiType).Inc()
+		requestsCounter.WithLabelValues(status, string(a.provider)).Inc()
 	}
 
 	// Extract and record Anthropic rate limit headers if present
-	if ret != nil && err == nil && a.apiType == "anthropic" {
+	if ret != nil && err == nil && string(a.provider) == "anthropic" {
 		// Extract the rate limit headers and publish as gauge metrics
 		setRateLimitGauge(ret.Header, "Anthropic-Ratelimit-Input-Tokens-Remaining", "input_tokens")
 		setRateLimitGauge(ret.Header, "Anthropic-Ratelimit-Output-Tokens-Remaining", "output_tokens")
@@ -151,10 +151,16 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 			gzReader.Close()
 			data = decoded
 		}
-		if err := a.processResponseData(data); err != nil {
+		costInfo, err := a.processResponseData(data)
+		if err != nil {
 			truncated := data[:min(len(data), 256)]
 			a.log.ErrorContext(ctx, "accountingTransport couldn't process unary JSON response", "error", err, "data", fmt.Sprintf("%q", truncated))
 			return err
+		}
+
+		// Add cost header to response
+		if costInfo != nil {
+			resp.Header.Set("Exedev-Gateway-Cost", fmt.Sprintf("%.6f", costInfo.CostUSD))
 		}
 
 	// Handle SSE streams by scanning messages, parsing, and re-writing as we go.
@@ -219,6 +225,16 @@ type Usage struct {
 	CostUSD                  float64 `json:"cost_usd"`
 }
 
+// CostInfo holds cost information to be added to response headers.
+type CostInfo struct {
+	CostUSD          float64
+	RemainingCredit  float64
+	InputTokens      uint64
+	OutputTokens     uint64
+	CacheReadTokens  uint64
+	CacheWriteTokens uint64
+}
+
 type UsageDebit struct {
 	Usage Usage `json:"usage"`
 
@@ -227,19 +243,19 @@ type UsageDebit struct {
 	Created   time.Time `json:"created"`
 }
 
-func (m *accountingTransport) processResponseData(data []byte) error {
+func (m *accountingTransport) processResponseData(data []byte) (*CostInfo, error) {
 	usageDebit := UsageDebit{Created: time.Now()}
 	ctx := m.incomingReq.Context()
 
-	switch m.apiType {
-	case "anthropic":
+	switch m.provider {
+	case llmpricing.ProviderAnthropic:
 		var ui anthropicResponseUsageInfo
 		if err := json.Unmarshal(data, &ui); err != nil {
-			return fmt.Errorf("anthropic json decode error: %w", err)
+			return nil, fmt.Errorf("anthropic json decode error: %w", err)
 		}
 		if ui.Usage == nil {
 			// Nothing to bill for here.
-			return nil
+			return nil, nil
 		}
 		usageDebit.Usage = *ui.Usage
 		usageDebit.Model = ui.Model
@@ -252,21 +268,21 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 			"cache_creation_tokens", ui.Usage.CacheCreationInputTokens,
 			"cache_read_tokens", ui.Usage.CacheReadInputTokens,
 		)
-	case "openai", "fireworks":
+	case llmpricing.ProviderOpenAI, llmpricing.ProviderFireworks:
 		if len(data) == 0 {
 			// Empty response, nothing to account for
-			return nil
+			return nil, nil
 		}
 
 		var oi openaiResponseUsageInfo
 		if err := json.Unmarshal(data, &oi); err != nil {
-			return fmt.Errorf("openai json decode error: %v", err)
+			return nil, fmt.Errorf("openai json decode error: %v", err)
 		}
 		if oi.Usage.TotalTokens == 0 {
 			// Check if this is a free endpoint that doesn't return usage data
 			path := m.incomingReq.URL.Path
 			if isFreeEndpoint(path) {
-				return nil
+				return nil, nil
 			}
 			m.log.WarnContext(ctx, "openai response missing usage data",
 				"path", path,
@@ -274,7 +290,7 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 				"box", m.boxName,
 				"user_id", m.userID,
 			)
-			return fmt.Errorf("openai response missing usage data for path %s", path)
+			return nil, fmt.Errorf("openai response missing usage data for path %s", path)
 		}
 
 		// Convert OpenAI usage to Usage format for accounting
@@ -306,13 +322,14 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 		)
 
 	default:
-		m.log.ErrorContext(ctx, "accountingTransport.processResponseData: unknown API type", "apiType", m.apiType)
+		m.log.ErrorContext(ctx, "accountingTransport.processResponseData: unknown provider", "provider", m.provider)
 	}
 
 	// Calculate cost based on model pricing
 	usage := usageDebit.Usage
 	model := usageDebit.Model
-	costUSD := llmpricing.CalculateCost(model, llmpricing.Usage{
+	providerStr := string(m.provider)
+	costUSD := llmpricing.CalculateCost(m.provider, model, llmpricing.Usage{
 		InputTokens:              usage.InputTokens,
 		OutputTokens:             usage.OutputTokens,
 		CacheCreationInputTokens: usage.CacheCreationInputTokens,
@@ -320,11 +337,11 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 	})
 
 	// Update Prometheus metrics
-	tokensCounter.WithLabelValues("input", model, m.apiType, m.boxName, m.userID).Add(float64(usage.InputTokens))
-	tokensCounter.WithLabelValues("cache_creation", model, m.apiType, m.boxName, m.userID).Add(float64(usage.CacheCreationInputTokens))
-	tokensCounter.WithLabelValues("cache_read", model, m.apiType, m.boxName, m.userID).Add(float64(usage.CacheReadInputTokens))
-	tokensCounter.WithLabelValues("output", model, m.apiType, m.boxName, m.userID).Add(float64(usage.OutputTokens))
-	costUSDCounter.WithLabelValues(model, m.apiType, m.boxName, m.userID).Add(costUSD)
+	tokensCounter.WithLabelValues("input", model, providerStr, m.boxName, m.userID).Add(float64(usage.InputTokens))
+	tokensCounter.WithLabelValues("cache_creation", model, providerStr, m.boxName, m.userID).Add(float64(usage.CacheCreationInputTokens))
+	tokensCounter.WithLabelValues("cache_read", model, providerStr, m.boxName, m.userID).Add(float64(usage.CacheReadInputTokens))
+	tokensCounter.WithLabelValues("output", model, providerStr, m.boxName, m.userID).Add(float64(usage.OutputTokens))
+	costUSDCounter.WithLabelValues(model, providerStr, m.boxName, m.userID).Add(costUSD)
 
 	// Debit credit from user's balance
 	var remainingCredit float64 = -1
@@ -351,7 +368,14 @@ func (m *accountingTransport) processResponseData(data []byte) error {
 		}
 	}
 
-	return nil
+	return &CostInfo{
+		CostUSD:          costUSD,
+		RemainingCredit:  remainingCredit,
+		InputTokens:      usage.InputTokens,
+		OutputTokens:     usage.OutputTokens,
+		CacheReadTokens:  usage.CacheReadInputTokens,
+		CacheWriteTokens: usage.CacheCreationInputTokens,
+	}, nil
 }
 
 // processResponseDataSSE is like processResponseData but stores usage for later attribute addition.
@@ -360,8 +384,8 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 	usageDebit := UsageDebit{Created: time.Now()}
 	ctx := m.incomingReq.Context()
 
-	switch m.apiType {
-	case "anthropic":
+	switch m.provider {
+	case llmpricing.ProviderAnthropic:
 		var ui anthropicResponseUsageInfo
 		if err := json.Unmarshal(data, &ui); err != nil {
 			// SSE events that aren't JSON are common (empty lines, etc.)
@@ -382,7 +406,7 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 			"cache_creation_tokens", ui.Usage.CacheCreationInputTokens,
 			"cache_read_tokens", ui.Usage.CacheReadInputTokens,
 		)
-	case "openai", "fireworks":
+	case llmpricing.ProviderOpenAI, llmpricing.ProviderFireworks:
 		if len(data) == 0 {
 			return nil
 		}
@@ -425,7 +449,8 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 	// Calculate cost based on model pricing
 	usage := usageDebit.Usage
 	model := usageDebit.Model
-	costUSD := llmpricing.CalculateCost(model, llmpricing.Usage{
+	providerStr := string(m.provider)
+	costUSD := llmpricing.CalculateCost(m.provider, model, llmpricing.Usage{
 		InputTokens:              usage.InputTokens,
 		OutputTokens:             usage.OutputTokens,
 		CacheCreationInputTokens: usage.CacheCreationInputTokens,
@@ -433,11 +458,11 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 	})
 
 	// Update Prometheus metrics immediately
-	tokensCounter.WithLabelValues("input", model, m.apiType, m.boxName, m.userID).Add(float64(usage.InputTokens))
-	tokensCounter.WithLabelValues("cache_creation", model, m.apiType, m.boxName, m.userID).Add(float64(usage.CacheCreationInputTokens))
-	tokensCounter.WithLabelValues("cache_read", model, m.apiType, m.boxName, m.userID).Add(float64(usage.CacheReadInputTokens))
-	tokensCounter.WithLabelValues("output", model, m.apiType, m.boxName, m.userID).Add(float64(usage.OutputTokens))
-	costUSDCounter.WithLabelValues(model, m.apiType, m.boxName, m.userID).Add(costUSD)
+	tokensCounter.WithLabelValues("input", model, providerStr, m.boxName, m.userID).Add(float64(usage.InputTokens))
+	tokensCounter.WithLabelValues("cache_creation", model, providerStr, m.boxName, m.userID).Add(float64(usage.CacheCreationInputTokens))
+	tokensCounter.WithLabelValues("cache_read", model, providerStr, m.boxName, m.userID).Add(float64(usage.CacheReadInputTokens))
+	tokensCounter.WithLabelValues("output", model, providerStr, m.boxName, m.userID).Add(float64(usage.OutputTokens))
+	costUSDCounter.WithLabelValues(model, providerStr, m.boxName, m.userID).Add(costUSD)
 
 	// Store for later attribute addition (only keep the last one with usage data)
 	usageDebit.Usage.CostUSD = costUSD
@@ -520,16 +545,6 @@ func isFreeEndpoint(path string) bool {
 	}
 	// Prefix matches for model details (e.g., /v1/models/gpt-4)
 	if strings.HasPrefix(path, "/v1/models/") || strings.HasPrefix(path, "/inference/v1/models/") {
-		return true
-	}
-	return false
-}
-
-// isBlockedEndpoint returns true if the path is an endpoint that we don't
-// support because it has non-token-based pricing that we can't easily track.
-func isBlockedEndpoint(path string) bool {
-	switch path {
-	case "/v1/images/generations", "/v1/images/edits":
 		return true
 	}
 	return false

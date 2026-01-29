@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"exe.dev/exedb"
+	"exe.dev/llmpricing"
 	"exe.dev/sqlite"
 	"exe.dev/stage"
 	"exe.dev/tslog"
@@ -344,7 +346,7 @@ func TestGateway_GzipResponse(t *testing.T) {
 		transport := &accountingTransport{
 			RoundTripper: http.DefaultTransport,
 			db:           gateway.db,
-			apiType:      "openai",
+			provider:     llmpricing.ProviderOpenAI,
 			log:          gateway.log,
 			creditMgr:    gateway.creditMgr,
 			incomingReq:  incomingReq,
@@ -374,7 +376,7 @@ func TestGateway_GzipResponse(t *testing.T) {
 		transport := &accountingTransport{
 			RoundTripper: http.DefaultTransport,
 			db:           gateway.db,
-			apiType:      "openai",
+			provider:     llmpricing.ProviderOpenAI,
 			log:          gateway.log,
 			creditMgr:    gateway.creditMgr,
 			incomingReq:  incomingReq,
@@ -413,7 +415,7 @@ func TestGateway_GzipResponse(t *testing.T) {
 				transport := &accountingTransport{
 					RoundTripper: http.DefaultTransport,
 					db:           gateway.db,
-					apiType:      "openai",
+					provider:     llmpricing.ProviderOpenAI,
 					log:          gateway.log,
 					creditMgr:    gateway.creditMgr,
 					incomingReq:  incomingReq,
@@ -475,7 +477,7 @@ func TestGateway_GzipWithClientAcceptEncoding(t *testing.T) {
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
 		db:           gateway.db,
-		apiType:      "openai",
+		provider:     llmpricing.ProviderOpenAI,
 		log:          gateway.log,
 		creditMgr:    gateway.creditMgr,
 		incomingReq:  incomingReq,
@@ -538,7 +540,7 @@ func TestGateway_OpenAIModelsEndpoint(t *testing.T) {
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
 		db:           gateway.db,
-		apiType:      "openai",
+		provider:     llmpricing.ProviderOpenAI,
 		log:          gateway.log,
 		creditMgr:    gateway.creditMgr,
 		incomingReq:  incomingReq,
@@ -598,7 +600,7 @@ func TestGateway_FireworksModelsEndpoint(t *testing.T) {
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
 		db:           gateway.db,
-		apiType:      "fireworks",
+		provider:     llmpricing.ProviderFireworks,
 		log:          gateway.log,
 		creditMgr:    gateway.creditMgr,
 		incomingReq:  incomingReq,
@@ -657,7 +659,7 @@ func TestGateway_OpenAIMissingUsageOnOtherEndpoints(t *testing.T) {
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
 		db:           gateway.db,
-		apiType:      "openai",
+		provider:     llmpricing.ProviderOpenAI,
 		log:          gateway.log,
 		creditMgr:    gateway.creditMgr,
 		incomingReq:  incomingReq,
@@ -790,5 +792,199 @@ func TestParseShelleyVersion(t *testing.T) {
 				t.Errorf("parseShelleyVersion(%q) = %q, want %q", tt.userAgent, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestExtractModelFromRequest(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		wantModel string
+		wantErr   bool
+	}{
+		{
+			name:      "anthropic request",
+			body:      `{"model": "claude-3-haiku-20240307", "messages": [{"role": "user", "content": "Hello"}]}`,
+			wantModel: "claude-3-haiku-20240307",
+		},
+		{
+			name:      "openai request",
+			body:      `{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}`,
+			wantModel: "gpt-4o",
+		},
+		{
+			name:      "fireworks request",
+			body:      `{"model": "accounts/fireworks/models/qwen3-coder-480b-a35b-instruct", "messages": []}`,
+			wantModel: "accounts/fireworks/models/qwen3-coder-480b-a35b-instruct",
+		},
+		{
+			name:      "empty body",
+			body:      "",
+			wantModel: "",
+		},
+		{
+			name:      "no model field",
+			body:      `{"messages": [{"role": "user", "content": "Hello"}]}`,
+			wantModel: "",
+		},
+		{
+			name:      "invalid json",
+			body:      `{invalid json`,
+			wantModel: "",
+			wantErr:   true, // Invalid JSON now returns an error
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body io.Reader
+			if tt.body != "" {
+				body = strings.NewReader(tt.body)
+			}
+			req := httptest.NewRequest("POST", "/v1/messages", body)
+			gotModel, gotBytes, err := extractModelFromRequest(req)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("extractModelFromRequest() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotModel != tt.wantModel {
+				t.Errorf("extractModelFromRequest() model = %q, want %q", gotModel, tt.wantModel)
+			}
+			// Verify body was preserved for replay
+			if tt.body != "" && string(gotBytes) != tt.body {
+				t.Errorf("extractModelFromRequest() body not preserved: got %q, want %q", string(gotBytes), tt.body)
+			}
+		})
+	}
+}
+
+func TestGateway_UnknownModelAllowedWithLogging(t *testing.T) {
+	// Unknown models are currently allowed through but logged.
+	// TODO: This test should be updated to expect rejection once we have complete model coverage.
+	db := newDB(t)
+	setupTestBox(t, db, "test-box")
+
+	// We can't easily test that unknown models are proxied without mocking the upstream,
+	// so we just verify the request doesn't get rejected with 400.
+	// The logging is verified by inspecting test output.
+	gateway := &llmGateway{
+		now:     time.Now,
+		db:      db,
+		apiKeys: APIKeys{Anthropic: "test-key", OpenAI: "test-key", Fireworks: "test-key"},
+		env:     stage.Test(),
+		log:     tslog.Slogger(t),
+	}
+
+	tests := []struct {
+		name string
+		path string
+		body string
+	}{
+		{
+			name: "unknown anthropic model logged",
+			path: "/_/gateway/anthropic/v1/messages",
+			body: `{"model": "unknown-model-xyz", "messages": []}`,
+		},
+		{
+			name: "unknown openai model logged",
+			path: "/_/gateway/openai/v1/chat/completions",
+			body: `{"model": "gpt-99", "messages": []}`,
+		},
+		{
+			name: "unknown fireworks model logged",
+			path: "/_/gateway/fireworks/inference/v1/chat/completions",
+			body: `{"model": "accounts/fireworks/models/unknown-model", "messages": []}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", tt.path, strings.NewReader(tt.body))
+			req.Header.Set("X-Exedev-Box", "test-box")
+			req.Header.Set("Content-Type", "application/json")
+			req.RemoteAddr = "100.100.100.100:12345" // Tailscale IP
+
+			w := httptest.NewRecorder()
+			gateway.ServeHTTP(w, req)
+
+			// Should NOT return 400 - unknown models are allowed through (for now)
+			if w.Code == http.StatusBadRequest {
+				t.Errorf("got status 400, but unknown models should be allowed through (with logging)")
+			}
+			// Note: The request will fail with 502 since we don't have a real backend,
+			// but that's fine - we just want to verify it wasn't rejected at the gateway level.
+		})
+	}
+}
+
+func TestGateway_CostHeaders(t *testing.T) {
+	gateway, _ := setupTestGateway(t)
+	gateway.apiKeys.Anthropic = "test-anthropic-key"
+	gateway.creditMgr = NewCreditManager(gateway.db)
+
+	// Create a mock Anthropic server that returns usage info
+	jsonResponse := `{
+		"id": "msg_123",
+		"model": "claude-sonnet-4-20250514",
+		"usage": {
+			"input_tokens": 100,
+			"output_tokens": 50,
+			"cache_creation_input_tokens": 0,
+			"cache_read_input_tokens": 25
+		}
+	}`
+	mockAnthropic := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(jsonResponse))
+	}))
+	defer mockAnthropic.Close()
+
+	mockURL, _ := url.Parse(mockAnthropic.URL)
+
+	// Create a test request
+	incomingReq := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(`{"model": "claude-sonnet-4-20250514", "messages": []}`))
+	incomingReq.Header.Set("X-Exedev-Box", "test-box")
+	incomingReq.Header.Set("Content-Type", "application/json")
+	incomingReq.RemoteAddr = "127.0.0.1:12345"
+
+	// Create the accounting transport
+	transport := &accountingTransport{
+		RoundTripper: http.DefaultTransport,
+		db:           gateway.db,
+		provider:     llmpricing.ProviderAnthropic,
+		log:          gateway.log,
+		creditMgr:    gateway.creditMgr,
+		incomingReq:  incomingReq,
+		boxName:      "test-box",
+		userID:       "test-user-test-box",
+	}
+
+	// Create a reverse proxy that points to our mock server
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.Out.URL.Scheme = "http"
+			r.Out.URL.Host = mockURL.Host
+			r.Out.Host = mockURL.Host
+		},
+		Transport:      transport,
+		ModifyResponse: transport.modifyResponse,
+	}
+
+	// Make the request through the proxy
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, incomingReq)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200; body: %s", rr.Code, rr.Body.String())
+	}
+
+	// Check that cost header is present
+	costHeader := rr.Header().Get("Exedev-Gateway-Cost")
+	if costHeader == "" {
+		t.Error("missing Exedev-Gateway-Cost header")
+	} else {
+		t.Logf("Exedev-Gateway-Cost: %s", costHeader)
 	}
 }

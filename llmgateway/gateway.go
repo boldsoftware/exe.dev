@@ -1,10 +1,13 @@
 package llmgateway
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
@@ -14,6 +17,7 @@ import (
 
 	"exe.dev/domz"
 	"exe.dev/exedb"
+	"exe.dev/llmpricing"
 	"exe.dev/sqlite"
 	"exe.dev/stage"
 	"github.com/prometheus/client_golang/prometheus"
@@ -230,6 +234,51 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Map alias to provider
+	var provider llmpricing.Provider
+	switch alias {
+	case "anthropic":
+		provider = llmpricing.ProviderAnthropic
+	case "openai":
+		provider = llmpricing.ProviderOpenAI
+	case "fireworks":
+		provider = llmpricing.ProviderFireworks
+	default:
+		m.httpError(w, r, "unrecognized origin alias "+alias, http.StatusNotFound, boxName, nil)
+		return
+	}
+
+	// Extract model from request body and validate it's allowed
+	// We need to buffer the body to read it and then replay it for the proxy
+	model, bodyBytes, err := extractModelFromRequest(r)
+	if err != nil {
+		m.httpError(w, r, "failed to parse request body: "+err.Error(), http.StatusBadRequest, boxName, err)
+		return
+	}
+
+	// Check if the model is in our allowlist (only if a model was specified)
+	if model != "" {
+		if !llmpricing.IsModelAllowed(provider, model) {
+			// TODO: reject unknown models once we have complete coverage
+			// For now, log and allow through
+			m.log.WarnContext(r.Context(), "model not in allowlist (allowing for now)",
+				"provider", provider,
+				"model", model,
+				"user_id", userID,
+				"box", boxName,
+			)
+			sloghttp.AddCustomAttributes(r, slog.String("unknown_model", model))
+			sloghttp.AddCustomAttributes(r, slog.Bool("model_not_in_allowlist", true))
+		}
+		sloghttp.AddCustomAttributes(r, slog.String("requested_model", model))
+	}
+
+	// Restore the body for the proxy
+	if bodyBytes != nil {
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		r.ContentLength = int64(len(bodyBytes))
+	}
+
 	// Construct filtered header to send to origin server
 	hh := http.Header{}
 	for hk := range r.Header {
@@ -251,9 +300,6 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		proxy, transport, proxyErr = m.createOpenAIProxy(r, boxName, userID)
 	case "fireworks":
 		proxy, transport, proxyErr = m.createFireworksProxy(r, boxName, userID)
-	default:
-		m.httpError(w, r, "unrecognized origin alias "+alias, http.StatusNotFound, boxName, nil)
-		return
 	}
 	if proxyErr != nil {
 		m.httpError(w, r, "proxy configuration error", http.StatusInternalServerError, boxName, proxyErr)
@@ -271,7 +317,7 @@ func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, us
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
 		db:           m.db,
-		apiType:      "anthropic",
+		provider:     llmpricing.ProviderAnthropic,
 		log:          m.log,
 		creditMgr:    m.creditMgr,
 		incomingReq:  incomingReq,
@@ -307,7 +353,7 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userI
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
 		db:           m.db,
-		apiType:      "openai",
+		provider:     llmpricing.ProviderOpenAI,
 		log:          m.log,
 		creditMgr:    m.creditMgr,
 		incomingReq:  incomingReq,
@@ -345,7 +391,7 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, us
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
 		db:           m.db,
-		apiType:      "fireworks",
+		provider:     llmpricing.ProviderFireworks,
 		log:          m.log,
 		creditMgr:    m.creditMgr,
 		incomingReq:  incomingReq,
@@ -389,4 +435,50 @@ func parseShelleyVersion(userAgent string) string {
 		version = version[:idx]
 	}
 	return version
+}
+
+// extractModelFromRequest extracts the model name from the request body.
+// Returns the model name, the full body bytes (for replay), and any error.
+// If no body or no model field, returns empty string with nil error.
+func extractModelFromRequest(r *http.Request) (string, []byte, error) {
+	if r.Body == nil {
+		return "", nil, nil
+	}
+
+	// Read the body
+	bodyBytes, err := io.ReadAll(r.Body)
+	r.Body.Close()
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to read request body: %w", err)
+	}
+
+	if len(bodyBytes) == 0 {
+		return "", nil, nil
+	}
+
+	// Parse just the model field - both Anthropic and OpenAI/Fireworks use
+	// {"model": "..."} at the top level of their request bodies
+	var req struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		return "", bodyBytes, fmt.Errorf("invalid JSON in request body: %w", err)
+	}
+
+	return req.Model, bodyBytes, nil
+}
+
+// isBlockedEndpoint returns true if the endpoint path should be blocked.
+// Some endpoints (like image generation) have per-image pricing that we don't support.
+func isBlockedEndpoint(path string) bool {
+	blockedPrefixes := []string{
+		"/v1/images/",      // OpenAI image generation
+		"/v1/audio/speech", // OpenAI TTS (per-character pricing)
+	}
+	for _, prefix := range blockedPrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
 }
