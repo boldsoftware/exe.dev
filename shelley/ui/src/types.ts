@@ -65,6 +65,7 @@ export interface StreamResponse extends Omit<StreamResponseForTS, "messages"> {
   messages: Message[];
   context_window_size?: number;
   conversation_list_update?: ConversationListUpdate;
+  heartbeat?: boolean;
 }
 
 // Link represents a custom link that can be added to the UI

@@ -63,6 +63,8 @@ type StreamResponse struct {
 	ContextWindowSize uint64                 `json:"context_window_size,omitempty"`
 	// ConversationListUpdate is set when another conversation in the list changed
 	ConversationListUpdate *ConversationListUpdate `json:"conversation_list_update,omitempty"`
+	// Heartbeat indicates this is a heartbeat message (no new data, just keeping connection alive)
+	Heartbeat bool `json:"heartbeat,omitempty"`
 }
 
 // LLMProvider is an interface for getting LLM services

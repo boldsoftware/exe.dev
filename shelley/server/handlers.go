@@ -998,6 +998,8 @@ func (s *Server) handleCancelConversation(w http.ResponseWriter, r *http.Request
 }
 
 // handleStreamConversation handles GET /conversation/<id>/stream
+// Query parameters:
+//   - last_sequence_id: Resume from this sequence ID (skip messages up to and including this ID)
 func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request, conversationID string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1006,59 +1008,140 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 
 	ctx := r.Context()
 
+	// Parse last_sequence_id for resuming streams
+	lastSeqID := int64(-1)
+	if lastSeqStr := r.URL.Query().Get("last_sequence_id"); lastSeqStr != "" {
+		if parsed, err := strconv.ParseInt(lastSeqStr, 10, 64); err == nil {
+			lastSeqID = parsed
+		}
+	}
+
 	// Set up SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// Get current messages and conversation data
+	// For fresh connections, get messages BEFORE calling getOrCreateConversationManager.
+	// This is important because getOrCreateConversationManager may create a system prompt
+	// message during hydration, and we want to return the messages as they were before.
 	var messages []generated.Message
 	var conversation generated.Conversation
-	err := s.db.Queries(ctx, func(q *generated.Queries) error {
-		var err error
-		messages, err = q.ListMessages(ctx, conversationID)
-		if err != nil {
+	if lastSeqID < 0 {
+		err := s.db.Queries(ctx, func(q *generated.Queries) error {
+			var err error
+			messages, err = q.ListMessages(ctx, conversationID)
+			if err != nil {
+				return err
+			}
+			conversation, err = q.GetConversation(ctx, conversationID)
 			return err
+		})
+		if err != nil {
+			s.logger.Error("Failed to get conversation data", "conversationID", conversationID, "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
 		}
-		conversation, err = q.GetConversation(ctx, conversationID)
-		return err
-	})
-	if err != nil {
-		s.logger.Error("Failed to get conversation data", "conversationID", conversationID, "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
+		// Update lastSeqID based on messages we're sending
+		if len(messages) > 0 {
+			lastSeqID = messages[len(messages)-1].SequenceID
+		}
+	} else {
+		// Resuming - just get conversation metadata
+		err := s.db.Queries(ctx, func(q *generated.Queries) error {
+			var err error
+			conversation, err = q.GetConversation(ctx, conversationID)
+			return err
+		})
+		if err != nil {
+			s.logger.Error("Failed to get conversation data", "conversationID", conversationID, "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Get or create conversation manager to access working state
 	manager, err := s.getOrCreateConversationManager(ctx, conversationID)
 	if err != nil {
 		s.logger.Error("Failed to get conversation manager", "conversationID", conversationID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	// Send current messages, conversation data, and conversation state
-	apiMessages := toAPIMessages(messages)
-	streamData := StreamResponse{
-		Messages:     apiMessages,
-		Conversation: conversation,
-		ConversationState: &ConversationState{
-			ConversationID: conversationID,
-			Working:        manager.IsAgentWorking(),
-			Model:          manager.GetModel(),
-		},
-		ContextWindowSize: calculateContextWindowSize(apiMessages),
+	// Send initial response
+	if len(messages) > 0 {
+		// Fresh connection - send all messages
+		apiMessages := toAPIMessages(messages)
+		streamData := StreamResponse{
+			Messages:     apiMessages,
+			Conversation: conversation,
+			ConversationState: &ConversationState{
+				ConversationID: conversationID,
+				Working:        manager.IsAgentWorking(),
+				Model:          manager.GetModel(),
+			},
+			ContextWindowSize: calculateContextWindowSize(apiMessages),
+		}
+		data, _ := json.Marshal(streamData)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		w.(http.Flusher).Flush()
+	} else {
+		// Either resuming or no messages yet - send current state as heartbeat
+		streamData := StreamResponse{
+			Conversation: conversation,
+			ConversationState: &ConversationState{
+				ConversationID: conversationID,
+				Working:        manager.IsAgentWorking(),
+				Model:          manager.GetModel(),
+			},
+			Heartbeat: true,
+		}
+		data, _ := json.Marshal(streamData)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		w.(http.Flusher).Flush()
 	}
-	data, _ := json.Marshal(streamData)
-	fmt.Fprintf(w, "data: %s\n\n", data)
-	w.(http.Flusher).Flush()
 
 	// Subscribe to new messages after the last one we sent
-	last := int64(-1)
-	if len(messages) > 0 {
-		last = messages[len(messages)-1].SequenceID
-	}
-	next := manager.subpub.Subscribe(ctx, last)
+	next := manager.subpub.Subscribe(ctx, lastSeqID)
+
+	// Start heartbeat goroutine - sends state every 30 seconds if no other messages
+	heartbeatDone := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-heartbeatDone:
+				return
+			case <-ticker.C:
+				// Get current conversation state for heartbeat
+				var conv generated.Conversation
+				err := s.db.Queries(ctx, func(q *generated.Queries) error {
+					var err error
+					conv, err = q.GetConversation(ctx, conversationID)
+					return err
+				})
+				if err != nil {
+					continue // Skip heartbeat on error
+				}
+
+				heartbeat := StreamResponse{
+					Conversation: conv,
+					ConversationState: &ConversationState{
+						ConversationID: conversationID,
+						Working:        manager.IsAgentWorking(),
+						Model:          manager.GetModel(),
+					},
+					Heartbeat: true,
+				}
+				manager.subpub.Broadcast(heartbeat)
+			}
+		}
+	}()
+	defer close(heartbeatDone)
+
 	for {
 		streamData, cont := next()
 		if !cont {

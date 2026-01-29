@@ -611,6 +611,8 @@ function ChatInterface({
   const overflowMenuRef = useRef<HTMLDivElement>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const periodicRetryRef = useRef<number | null>(null);
+  const heartbeatTimeoutRef = useRef<number | null>(null);
+  const lastSequenceIdRef = useRef<number>(-1);
   const userScrolledRef = useRef(false);
 
   // Load messages and set up streaming
@@ -639,6 +641,11 @@ function ChatInterface({
       if (periodicRetryRef.current) {
         clearInterval(periodicRetryRef.current);
       }
+      if (heartbeatTimeoutRef.current) {
+        clearTimeout(heartbeatTimeoutRef.current);
+      }
+      // Reset sequence ID when conversation changes
+      lastSequenceIdRef.current = -1;
     };
   }, [conversationId]);
 
@@ -740,6 +747,22 @@ function ChatInterface({
     }
   };
 
+  // Reset heartbeat timeout - called on every message received
+  const resetHeartbeatTimeout = () => {
+    if (heartbeatTimeoutRef.current) {
+      clearTimeout(heartbeatTimeoutRef.current);
+    }
+    // If we don't receive any message (including heartbeat) within 60 seconds, reconnect
+    heartbeatTimeoutRef.current = window.setTimeout(() => {
+      console.warn("No heartbeat received in 60 seconds, reconnecting...");
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      setupMessageStream();
+    }, 60000);
+  };
+
   const setupMessageStream = () => {
     if (!conversationId) return;
 
@@ -747,18 +770,39 @@ function ChatInterface({
       eventSourceRef.current.close();
     }
 
-    const eventSource = api.createMessageStream(conversationId);
+    // Clear any existing heartbeat timeout
+    if (heartbeatTimeoutRef.current) {
+      clearTimeout(heartbeatTimeoutRef.current);
+    }
+
+    // Use last_sequence_id to resume from where we left off (avoids resending all messages)
+    const lastSeqId = lastSequenceIdRef.current;
+    const eventSource = api.createMessageStream(
+      conversationId,
+      lastSeqId >= 0 ? lastSeqId : undefined,
+    );
     eventSourceRef.current = eventSource;
 
     eventSource.onmessage = (event) => {
+      // Reset heartbeat timeout on every message
+      resetHeartbeatTimeout();
+
       try {
         const streamResponse: StreamResponse = JSON.parse(event.data);
         const incomingMessages = Array.isArray(streamResponse.messages)
           ? streamResponse.messages
           : [];
 
+        // Track the latest sequence ID for reconnection
+        if (incomingMessages.length > 0) {
+          const maxSeqId = Math.max(...incomingMessages.map((m) => m.sequence_id));
+          if (maxSeqId > lastSequenceIdRef.current) {
+            lastSequenceIdRef.current = maxSeqId;
+          }
+        }
+
         // Merge new messages without losing existing ones.
-        // If no new messages (e.g., only conversation/slug update), keep existing list.
+        // If no new messages (e.g., only conversation/slug update or heartbeat), keep existing list.
         if (incomingMessages.length > 0) {
           setMessages((prev) => {
             const byId = new Map<string, Message>();
@@ -816,6 +860,12 @@ function ChatInterface({
         eventSourceRef.current = null;
       }
 
+      // Clear heartbeat timeout on error
+      if (heartbeatTimeoutRef.current) {
+        clearTimeout(heartbeatTimeoutRef.current);
+        heartbeatTimeoutRef.current = null;
+      }
+
       // Backoff delays: 1s, 2s, 5s, then show disconnected but keep retrying periodically
       const delays = [1000, 2000, 5000];
 
@@ -858,6 +908,8 @@ function ChatInterface({
         clearInterval(periodicRetryRef.current);
         periodicRetryRef.current = null;
       }
+      // Start heartbeat timeout monitoring
+      resetHeartbeatTimeout();
     };
   };
 

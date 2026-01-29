@@ -106,8 +106,12 @@ class ApiService {
     }
   }
 
-  createMessageStream(conversationId: string): EventSource {
-    return new EventSource(`${this.baseUrl}/conversation/${conversationId}/stream`);
+  createMessageStream(conversationId: string, lastSequenceId?: number): EventSource {
+    let url = `${this.baseUrl}/conversation/${conversationId}/stream`;
+    if (lastSequenceId !== undefined && lastSequenceId >= 0) {
+      url += `?last_sequence_id=${lastSequenceId}`;
+    }
+    return new EventSource(url);
   }
 
   async cancelConversation(conversationId: string): Promise<void> {

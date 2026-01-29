@@ -49,6 +49,7 @@ export interface StreamResponseForTS {
   messages: ApiMessageForTS[] | null;
   conversation: Conversation;
   conversation_state?: ConversationStateForTS | null;
+  heartbeat?: boolean;
 }
 
 export interface ConversationWithStateForTS {
