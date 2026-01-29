@@ -10,7 +10,7 @@ Your VM can send emails to you (the VM owner).
 ## Request
 
 ```bash
-curl -X POST http://169.254.169.254/email/send \
+curl -X POST http://169.254.169.254/gateway/email/send \
   -H "Content-Type: application/json" \
   -d '{
     "to": "you@example.com",

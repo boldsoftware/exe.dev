@@ -208,7 +208,7 @@ func TestMetadataServiceEmailProxyHandler(t *testing.T) {
 	// Test the handler directly using httptest.NewRequest
 	t.Run("POST email send proxies with correct headers", func(t *testing.T) {
 		body := bytes.NewBufferString(`{"to":"test@example.com","subject":"Test","body":"Hello"}`)
-		req := httptest.NewRequest("POST", "/email/send", body)
+		req := httptest.NewRequest("POST", "/gateway/email/send", body)
 		req.Header.Set("Content-Type", "application/json")
 		req.RemoteAddr = "10.0.0.1:12345"
 		w := httptest.NewRecorder()
@@ -226,8 +226,8 @@ func TestMetadataServiceEmailProxyHandler(t *testing.T) {
 		}
 
 		// Verify the path was rewritten correctly
-		if receivedPath != "/_/vm/email/send" {
-			t.Errorf("got path %q, want %q", receivedPath, "/_/vm/email/send")
+		if receivedPath != "/_/gateway/email/send" {
+			t.Errorf("got path %q, want %q", receivedPath, "/_/gateway/email/send")
 		}
 	})
 }
@@ -244,7 +244,7 @@ func TestMetadataServiceEmailProxyNoBox(t *testing.T) {
 	}
 
 	body := bytes.NewBufferString(`{"to":"test@example.com","subject":"Test","body":"Hello"}`)
-	req := httptest.NewRequest("POST", "/email/send", body)
+	req := httptest.NewRequest("POST", "/gateway/email/send", body)
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = "10.0.0.1:12345"
 	w := httptest.NewRecorder()

@@ -39,7 +39,7 @@ type vmEmailResponse struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// handleVMEmailSend handles POST /_/vm/email/send from the metadata proxy
+// handleVMEmailSend handles POST /_/gateway/email/send from the metadata proxy
 func (s *Server) handleVMEmailSend(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	w.Header().Set("Content-Type", "application/json")

@@ -50,7 +50,7 @@ func TestVMEmailSend_Success(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Exedev-Box", boxName)
 	w := httptest.NewRecorder()
@@ -82,7 +82,7 @@ func TestVMEmailSend_MissingBoxHeader(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	// No X-Exedev-Box header
 	w := httptest.NewRecorder()
@@ -106,7 +106,7 @@ func TestVMEmailSend_RejectNonTailscaleIP(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Exedev-Box", "any-box")
 	// Default httptest.NewRequest uses 192.0.2.1:1234 as RemoteAddr (non-Tailscale)
@@ -136,7 +136,7 @@ func TestVMEmailSend_BoxNotFound(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Exedev-Box", "nonexistent-box")
 	w := httptest.NewRecorder()
@@ -184,7 +184,7 @@ func TestVMEmailSend_NonOwnerRecipient(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Exedev-Box", boxName)
 	w := httptest.NewRecorder()
@@ -231,7 +231,7 @@ func TestVMEmailSend_MissingFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body, _ := json.Marshal(tt.req)
-			req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader(body))
+			req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Exedev-Box", "any-box")
 			w := httptest.NewRecorder()
@@ -268,7 +268,7 @@ func TestVMEmailSend_SubjectTooLong(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Exedev-Box", "any-box")
 	w := httptest.NewRecorder()
@@ -309,7 +309,7 @@ func TestVMEmailSend_SubjectWithCRLF(t *testing.T) {
 			}
 			body, _ := json.Marshal(reqBody)
 
-			req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader(body))
+			req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Exedev-Box", "any-box")
 			w := httptest.NewRecorder()
@@ -346,7 +346,7 @@ func TestVMEmailSend_BodyTooLong(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Exedev-Box", "any-box")
 	w := httptest.NewRecorder()
@@ -383,7 +383,7 @@ func TestVMEmailSend_RequestBodyTooLarge(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Exedev-Box", "any-box")
 	w := httptest.NewRecorder()
@@ -442,7 +442,7 @@ func TestVMEmailSend_SubjectAtLimit(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Exedev-Box", boxName)
 	w := httptest.NewRecorder()
@@ -495,7 +495,7 @@ func TestVMEmailSend_BodyAtLimit(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Exedev-Box", boxName)
 	w := httptest.NewRecorder()
@@ -511,7 +511,7 @@ func TestVMEmailSend_InvalidJSON(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 
-	req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader([]byte("not valid json")))
+	req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader([]byte("not valid json")))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Exedev-Box", "any-box")
 	w := httptest.NewRecorder()
@@ -579,7 +579,7 @@ func TestVMEmailSend_RateLimiting(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Exedev-Box", boxName)
 	w := httptest.NewRecorder()
@@ -698,7 +698,7 @@ func TestVMEmailSend_CaseInsensitiveEmailMatch(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest("POST", "/_/vm/email/send", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/_/gateway/email/send", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Exedev-Box", boxName)
 	w := httptest.NewRecorder()

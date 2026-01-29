@@ -122,7 +122,7 @@ func (s *Service) Start(ctx context.Context) error {
 	mux.HandleFunc("/gateway/llm/", s.handleGatewayProxy)
 
 	// Add email proxy handler
-	mux.HandleFunc("POST /email/send", s.handleEmailProxy)
+	mux.HandleFunc("POST /gateway/email/send", s.handleEmailProxy)
 
 	// Build the handler with logging middleware chain.
 	// The middleware chain (in order of execution) is:
@@ -308,7 +308,7 @@ func (s *Service) handleEmailProxy(w http.ResponseWriter, r *http.Request) {
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(s.exedTargetURL)
-			pr.Out.URL.Path = "/_/vm/email/send"
+			pr.Out.URL.Path = "/_/gateway/email/send"
 			pr.Out.Host = s.exedTargetURL.Host
 			// Add header to identify the box making the request
 			pr.Out.Header.Set("X-Exedev-Box", boxName)
