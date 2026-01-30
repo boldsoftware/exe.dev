@@ -1122,6 +1122,8 @@ button {
   border-radius: 0.5rem;
   margin: 0.5rem 0;
   width: 100%;
+  /* Performance: isolate layout/paint for each patch tool */
+  contain: layout style;
 }
 
 .dark .patch-tool {
@@ -1326,179 +1328,20 @@ button {
   font-style: italic;
 }
 
-/* Patch Tool Monaco Container */
-.patch-tool-monaco-container {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-/* Patch Tool Monaco Placeholder (for lazy loading) */
-.patch-tool-monaco-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: 0.25rem;
-  color: var(--text-secondary);
-  font-size: 0.75rem;
-}
-
-.spinner-small {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--border);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Patch Tool Monaco Editor */
-.patch-tool-monaco-editor {
-  border: 1px solid var(--border);
+/* Patch Tool Diffs Container */
+.patch-tool-diffs-container {
   border-radius: 0.25rem;
   overflow: hidden;
+  font-size: 0.8125rem;
+  /* Performance: allow browser to skip rendering off-screen diffs */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 200px;
 }
 
-/* Monaco line hover highlighting (via decoration API) */
-.patch-tool-monaco-editor .monaco-editor .patch-line-hover {
-  background-color: rgba(37, 99, 235, 0.08) !important;
-}
-
-.dark .patch-tool-monaco-editor .monaco-editor .patch-line-hover {
-  background-color: rgba(96, 165, 250, 0.12) !important;
-}
-
-/* Comment indicator glyph in margin */
-.patch-tool-monaco-editor .monaco-editor .patch-comment-glyph {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'%3E%3C/path%3E%3Cline x1='9' y1='10' x2='15' y2='10'%3E%3C/line%3E%3C/svg%3E");
-  background-size: 14px 14px;
-  background-repeat: no-repeat;
-  background-position: center;
-  opacity: 0.6;
-  cursor: pointer;
-}
-
-.patch-tool-monaco-editor .monaco-editor .patch-comment-glyph:hover {
-  opacity: 1;
-}
-
-.dark .patch-tool-monaco-editor .monaco-editor .patch-comment-glyph {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'%3E%3C/path%3E%3Cline x1='9' y1='10' x2='15' y2='10'%3E%3C/line%3E%3C/svg%3E");
-}
-
-/* Make Monaco lines clickable with pointer cursor */
-.patch-tool-monaco-editor .monaco-editor .view-lines {
-  cursor: pointer;
-}
-
-/* Patch Tool Comment Dialog */
-.patch-tool-comment-dialog {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  padding: 1rem;
-  z-index: 1000;
-  max-width: 500px;
-  width: 90%;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-}
-
-.dark .patch-tool-comment-dialog {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-}
-
-.patch-tool-comment-dialog h4 {
-  margin: 0 0 0.75rem 0;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.patch-tool-selected-text {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: 0.25rem;
-  padding: 0.5rem;
-  margin: 0 0 0.75rem 0;
-  overflow-x: auto;
-  max-height: 100px;
-  white-space: pre;
-  color: var(--text-secondary);
-}
-
-.patch-tool-comment-input {
-  width: 100%;
-  min-height: 80px;
-  padding: 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 0.25rem;
-  background: var(--bg-base);
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: 0.875rem;
-  resize: vertical;
-  box-sizing: border-box;
-}
-
-.patch-tool-comment-input:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
-}
-
-.patch-tool-comment-actions {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-  margin-top: 0.75rem;
-}
-
-.patch-tool-btn {
-  padding: 0.5rem 1rem;
-  border-radius: 0.25rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  border: none;
-  transition: background-color 0.15s;
-}
-
-.patch-tool-btn-primary {
-  background: var(--primary);
-  color: white;
-}
-
-.patch-tool-btn-primary:hover:not(:disabled) {
-  background: var(--primary-dark);
-}
-
-.patch-tool-btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.patch-tool-btn-secondary {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-}
-
-.patch-tool-btn-secondary:hover {
-  background: var(--bg-secondary);
+/* Target the diffs-container custom element from @pierre/diffs */
+.patch-tool-diffs-container diffs-container {
+  display: block;
+  contain: content;
 }
 
 /* Screenshot Tool */
@@ -3941,35 +3784,6 @@ svg {
 
   .diff-viewer-comment-input {
     min-height: 60px;
-  }
-
-  /* Patch Tool Monaco editor mobile styles - hide gutters completely */
-  .patch-tool-monaco-editor .monaco-editor .margin {
-    display: none !important;
-    width: 0 !important;
-  }
-
-  .patch-tool-monaco-editor .monaco-editor .margin-view-overlays {
-    display: none !important;
-    width: 0 !important;
-  }
-
-  .patch-tool-monaco-editor .monaco-editor .editor-scrollable {
-    left: 0 !important;
-  }
-
-  .patch-tool-monaco-editor .monaco-editor .lines-content {
-    margin-left: 0 !important;
-  }
-
-  /* Ensure patch tool diff editor uses full width */
-  .patch-tool-monaco-editor .monaco-diff-editor {
-    width: 100% !important;
-  }
-
-  .patch-tool-monaco-editor .monaco-diff-editor .editor.modified {
-    width: 100% !important;
-    left: 0 !important;
   }
 }
 
