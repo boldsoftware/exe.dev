@@ -180,6 +180,7 @@ package_upgrade: false
 packages:
   - curl
   - jq
+  - pv
   - docker.io
   - atop
   - btop
@@ -606,6 +607,33 @@ if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     "ubuntu@${MACHINE_NAME}" \
     'chmod +x ~/sysctl.sh && sudo ~/sysctl.sh'; then
     echo "ERROR: Setup script failed"
+    exit 1
+fi
+
+# needrestart: auto-restart services without prompting
+cat <<'EXELET_NEEDRESTART' >/tmp/needrestart.sh
+#!/bin/bash
+set -euo pipefail
+echo "Configuring needrestart"
+mkdir -p /etc/needrestart/conf.d
+cat <<'EOF' >/etc/needrestart/conf.d/exe.conf
+$nrconf{restart} = 'l';
+EOF
+EXELET_NEEDRESTART
+
+if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    /tmp/needrestart.sh \
+    "ubuntu@${MACHINE_NAME}:~/"; then
+    echo "ERROR: Failed to copy needrestart setup script"
+    rm -f /tmp/needrestart.sh
+    exit 1
+fi
+
+echo "Executing needrestart script on ${MACHINE_NAME}..."
+if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "ubuntu@${MACHINE_NAME}" \
+    'chmod +x ~/needrestart.sh && sudo ~/needrestart.sh'; then
+    echo "ERROR: needrestart setup script failed"
     exit 1
 fi
 
