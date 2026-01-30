@@ -100,6 +100,7 @@ func (s *Service) Register(ctx *services.ServiceContext, server *grpc.Server) er
 	target, err := ParseTarget(
 		s.config.ReplicationTarget,
 		s.config.ReplicationSSHKey,
+		s.config.ReplicationSSHCommand,
 		s.config.ReplicationKnownHostsPath,
 		s.config.ReplicationBandwidthLimit,
 	)

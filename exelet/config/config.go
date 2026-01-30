@@ -141,6 +141,10 @@ type ExeletConfig struct {
 	ReplicationTarget string
 	// ReplicationSSHKey is the path to the SSH private key for SSH targets
 	ReplicationSSHKey string
+	// ReplicationSSHCommand is the path to the system SSH binary (e.g. "ssh").
+	// When set, uses the system SSH binary instead of Go's built-in SSH client,
+	// which allows Tailscale SSH, ProxyCommand, and other system SSH config to work.
+	ReplicationSSHCommand string
 	// ReplicationKnownHostsPath is the path to known_hosts for SSH host key verification (empty uses ~/.ssh/known_hosts)
 	ReplicationKnownHostsPath string
 	// ReplicationRetention is the number of snapshots to keep on the target

@@ -86,22 +86,27 @@ type TargetConfig struct {
 	Pool           string // Remote ZFS pool (ssh only)
 	Path           string // Local path (file only)
 	SSHKeyPath     string // Path to SSH private key
+	SSHCommand     string // System SSH binary (e.g. "ssh"); when set, uses system SSH instead of Go's built-in client
 	KnownHostsPath string // Path to known_hosts file (ssh only, empty uses ~/.ssh/known_hosts)
 	BandwidthLimit string
 }
 
 // ParseTarget parses a target URL and returns a configured target
-func ParseTarget(targetURL, sshKeyPath, knownHostsPath, bandwidthLimit string) (Target, error) {
+func ParseTarget(targetURL, sshKeyPath, sshCommand, knownHostsPath, bandwidthLimit string) (Target, error) {
 	cfg, err := ParseTargetConfig(targetURL)
 	if err != nil {
 		return nil, err
 	}
 	cfg.SSHKeyPath = sshKeyPath
+	cfg.SSHCommand = sshCommand
 	cfg.KnownHostsPath = knownHostsPath
 	cfg.BandwidthLimit = bandwidthLimit
 
 	switch cfg.Type {
 	case "ssh":
+		if cfg.SSHCommand != "" {
+			return NewSystemSSHTarget(cfg), nil
+		}
 		return NewSSHTarget(cfg)
 	case "file":
 		return NewFileTarget(cfg)

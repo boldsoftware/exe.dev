@@ -192,6 +192,11 @@ func main() {
 			EnvVars: []string{"EXELET_STORAGE_REPLICATION_SSH_KEY"},
 		},
 		&cli.StringFlag{
+			Name:    "storage-replication-ssh-command",
+			Usage:   "use system SSH binary (e.g. \"ssh\") instead of built-in SSH client, enabling Tailscale SSH and system SSH config",
+			EnvVars: []string{"EXELET_STORAGE_REPLICATION_SSH_COMMAND"},
+		},
+		&cli.StringFlag{
 			Name:    "storage-replication-known-hosts",
 			Usage:   "path to known_hosts file for SSH host key verification (default: ~/.ssh/known_hosts)",
 			EnvVars: []string{"EXELET_STORAGE_REPLICATION_KNOWN_HOSTS"},
@@ -268,6 +273,7 @@ func serveAction(clix *cli.Context) error {
 	replicationInterval := clix.Duration("storage-replication-interval")
 	replicationTarget := clix.String("storage-replication-target")
 	replicationSSHKey := clix.String("storage-replication-ssh-key")
+	replicationSSHCommand := clix.String("storage-replication-ssh-command")
 	replicationKnownHosts := clix.String("storage-replication-known-hosts")
 	replicationRetention := clix.Int("storage-replication-retention")
 	replicationBandwidthLimit := clix.String("storage-replication-bandwidth-limit")
@@ -300,6 +306,7 @@ func serveAction(clix *cli.Context) error {
 		ReplicationInterval:         replicationInterval,
 		ReplicationTarget:           replicationTarget,
 		ReplicationSSHKey:           replicationSSHKey,
+		ReplicationSSHCommand:       replicationSSHCommand,
 		ReplicationKnownHostsPath:   replicationKnownHosts,
 		ReplicationRetention:        replicationRetention,
 		ReplicationBandwidthLimit:   replicationBandwidthLimit,
