@@ -391,6 +391,12 @@ func (ei *ExedInstance) Stop(ctx context.Context, testRunID string, midTest bool
 	if !midTest {
 		if err := ei.checkBoxesCleanedUp(ctx, testRunID); err != nil {
 			slog.ErrorContext(ctx, "boxes not cleaned up", "error", err)
+			// Send to Errors channel so the test fails.
+			// The channel is buffered and drained by a cleanup in infra_test.go.
+			select {
+			case ei.Errors <- fmt.Sprintf("boxes not cleaned up: %v", err):
+			default:
+			}
 		}
 
 		os.Remove(ei.dbPath)
