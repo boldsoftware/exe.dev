@@ -304,9 +304,16 @@ func (m *accountingTransport) processResponseData(data []byte) (*CostInfo, error
 			completionTokens = 1
 		}
 
+		// Extract cached tokens if available
+		var cachedTokens uint64
+		if oi.Usage.PromptTokensDetails != nil {
+			cachedTokens = uint64(oi.Usage.PromptTokensDetails.CachedTokens)
+		}
+
 		usage := Usage{
-			InputTokens:  uint64(promptTokens),
-			OutputTokens: uint64(completionTokens),
+			InputTokens:          uint64(promptTokens),
+			OutputTokens:         uint64(completionTokens),
+			CacheReadInputTokens: cachedTokens,
 		}
 
 		// Use the model from the response, or unknown if not provided
@@ -319,6 +326,7 @@ func (m *accountingTransport) processResponseData(data []byte) (*CostInfo, error
 			"model", model,
 			"input_tokens", promptTokens,
 			"output_tokens", completionTokens,
+			"cache_read_tokens", cachedTokens,
 		)
 
 	default:
@@ -426,9 +434,16 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 			completionTokens = 1
 		}
 
+		// Extract cached tokens if available
+		var cachedTokens uint64
+		if oi.Usage.PromptTokensDetails != nil {
+			cachedTokens = uint64(oi.Usage.PromptTokensDetails.CachedTokens)
+		}
+
 		usage := Usage{
-			InputTokens:  uint64(promptTokens),
-			OutputTokens: uint64(completionTokens),
+			InputTokens:          uint64(promptTokens),
+			OutputTokens:         uint64(completionTokens),
+			CacheReadInputTokens: cachedTokens,
 		}
 
 		model := cmp.Or(oi.Model, "oai-unknown")
@@ -440,6 +455,7 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 			"model", model,
 			"input_tokens", promptTokens,
 			"output_tokens", completionTokens,
+			"cache_read_tokens", cachedTokens,
 		)
 
 	default:
@@ -519,9 +535,12 @@ type openaiResponseUsageInfo struct {
 	ID    string `json:"id"`
 	Model string `json:"model"`
 	Usage struct {
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
-		TotalTokens      int `json:"total_tokens"`
+		PromptTokens        int `json:"prompt_tokens"`
+		CompletionTokens    int `json:"completion_tokens"`
+		TotalTokens         int `json:"total_tokens"`
+		PromptTokensDetails *struct {
+			CachedTokens int `json:"cached_tokens"`
+		} `json:"prompt_tokens_details,omitempty"`
 	} `json:"usage"`
 }
 

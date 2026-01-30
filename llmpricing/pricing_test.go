@@ -160,6 +160,32 @@ func TestCalculateCost_Fireworks(t *testing.T) {
 			},
 			wantUSD: 11.0, // $3 + $8
 		},
+		{
+			name:  "qwen3-coder with cache (Fireworks cache is 50% of input)",
+			model: "accounts/fireworks/models/qwen3-coder-480b-a35b-instruct",
+			usage: Usage{
+				InputTokens:          500_000, // 500K uncached
+				OutputTokens:         100_000,
+				CacheReadInputTokens: 500_000, // 500K cached
+			},
+			// 500K input @ $0.45 = $0.225
+			// 100K output @ $1.80 = $0.18
+			// 500K cache read @ $0.22 (50% of $0.45) = $0.11
+			wantUSD: 0.515,
+		},
+		{
+			name:  "deepseek-v3 with cache",
+			model: "accounts/fireworks/models/deepseek-v3-0324",
+			usage: Usage{
+				InputTokens:          200_000,
+				OutputTokens:         100_000,
+				CacheReadInputTokens: 800_000,
+			},
+			// 200K input @ $0.90 = $0.18
+			// 100K output @ $0.90 = $0.09
+			// 800K cache read @ $0.45 = $0.36
+			wantUSD: 0.63,
+		},
 	}
 
 	for _, tt := range tests {
