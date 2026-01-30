@@ -352,7 +352,6 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 		Email:            user.Email,
 		SuccessURL:       successURL,
 		CancelURL:        cancelURL,
-		TrialEnd:         time.Date(2026, time.February, 1, 0, 0, 0, 0, time.UTC),
 		RedirectToPortal: true,
 		PortalReturnURL:  returnURL,
 	})
@@ -508,7 +507,6 @@ func (s *Server) handleNewUserBillingSubscribe(w http.ResponseWriter, r *http.Re
 		Email:      pending.Email,
 		SuccessURL: successURL,
 		CancelURL:  cancelURL,
-		TrialEnd:   time.Date(2026, time.February, 1, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "failed to create billing checkout session", "error", err)
