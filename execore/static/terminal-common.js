@@ -84,3 +84,4 @@ class ThemeManager {
         return this.themes[this.currentTheme];
     }
 }
+

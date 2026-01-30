@@ -67,6 +67,14 @@ body {
 .theme-toggle:hover {
     background: var(--theme-button-hover);
 }
+.theme-toggle:focus {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
+}
+.theme-toggle.active {
+    background: var(--text-primary);
+    color: var(--bg-secondary);
+}
 #terminal {
     border: 1px solid var(--border-color);
     border-radius: 4px;
@@ -176,6 +184,10 @@ body {
 }
 .control-btn:active {
     background: var(--theme-button-hover);
+}
+.control-btn:focus {
+    outline: 2px solid var(--text-primary);
+    outline-offset: 2px;
 }
 .control-btn.modifier {
     background: var(--theme-button-bg);

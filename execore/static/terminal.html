@@ -8,40 +8,40 @@
     <link rel="stylesheet" href="/static/terminal-common.css">
 </head>
 <body>
-    <div class="terminal-frame">
-        <div class="terminal-header">
-            <div class="terminal-title" id="terminal-title">Terminal</div>
+    <div class="terminal-frame" role="application" aria-label="Terminal application">
+        <div class="terminal-header" role="banner">
+            <div class="terminal-title" id="terminal-title" aria-live="polite">Terminal</div>
             <div class="terminal-info">
-                <button class="theme-toggle" id="theme-toggle" title="Toggle theme">
-                    <span class="theme-icon">◐</span>
+                <button class="theme-toggle" id="theme-toggle" title="Toggle theme" aria-label="Toggle color theme">
+                    <span class="theme-icon" aria-hidden="true">◐</span>
                 </button>
             </div>
         </div>
-        <div id="control-bar" class="control-bar">
-            <button class="control-btn modifier" id="ctrl-mod" title="Ctrl modifier">Ctrl</button>
-            <button class="control-btn modifier" id="alt-mod" title="Alt modifier">Alt</button>
-            <div class="control-separator"></div>
-            <button class="control-btn" data-key="Escape" title="Escape">Esc</button>
-            <button class="control-btn" data-key="Tab" title="Tab">Tab</button>
-            <div class="control-separator"></div>
-            <button class="control-btn" data-ctrl="c" title="Ctrl-C (interrupt)">^C</button>
-            <button class="control-btn" data-ctrl="d" title="Ctrl-D (EOF)">^D</button>
-            <button class="control-btn" data-ctrl="z" title="Ctrl-Z (suspend)">^Z</button>
-            <div class="control-separator"></div>
-            <span class="control-group">
-                <button class="control-btn small" data-key="ArrowUp" title="Up">↑</button>
-                <button class="control-btn small" data-key="ArrowDown" title="Down">↓</button>
-                <button class="control-btn small" data-key="ArrowLeft" title="Left">←</button>
-                <button class="control-btn small" data-key="ArrowRight" title="Right">→</button>
+        <div id="control-bar" class="control-bar" role="toolbar" aria-label="Terminal controls">
+            <button class="control-btn modifier" id="ctrl-mod" title="Ctrl modifier" aria-pressed="false" aria-label="Control modifier key">Ctrl</button>
+            <button class="control-btn modifier" id="alt-mod" title="Alt modifier" aria-pressed="false" aria-label="Alt modifier key">Alt</button>
+            <div class="control-separator" role="separator"></div>
+            <button class="control-btn" data-key="Escape" title="Escape" aria-label="Escape key">Esc</button>
+            <button class="control-btn" data-key="Tab" title="Tab" aria-label="Tab key">Tab</button>
+            <div class="control-separator" role="separator"></div>
+            <button class="control-btn" data-ctrl="c" title="Ctrl-C (interrupt)" aria-label="Control C, interrupt">^C</button>
+            <button class="control-btn" data-ctrl="d" title="Ctrl-D (EOF)" aria-label="Control D, end of file">^D</button>
+            <button class="control-btn" data-ctrl="z" title="Ctrl-Z (suspend)" aria-label="Control Z, suspend">^Z</button>
+            <div class="control-separator" role="separator"></div>
+            <span class="control-group" role="group" aria-label="Arrow keys">
+                <button class="control-btn small" data-key="ArrowUp" title="Up" aria-label="Arrow up">↑</button>
+                <button class="control-btn small" data-key="ArrowDown" title="Down" aria-label="Arrow down">↓</button>
+                <button class="control-btn small" data-key="ArrowLeft" title="Left" aria-label="Arrow left">←</button>
+                <button class="control-btn small" data-key="ArrowRight" title="Right" aria-label="Arrow right">→</button>
             </span>
-            <div class="control-separator"></div>
-            <button class="control-btn" id="kb-toggle" title="Toggle keyboard space">⌨</button>
+            <div class="control-separator" role="separator"></div>
+            <button class="control-btn" id="kb-toggle" title="Toggle keyboard space" aria-pressed="false" aria-label="Toggle on-screen keyboard space">⌨</button>
         </div>
-        <div id="connection-status" class="connection-status">
-            <div class="status-icon"></div>
+        <div id="connection-status" class="connection-status" role="status" aria-live="polite">
+            <div class="status-icon" aria-hidden="true"></div>
             <span class="status-text">Connecting...</span>
         </div>
-        <div id="terminal"></div>
+        <div id="terminal" role="region" aria-label="Terminal output"></div>
     </div>
 
     <script src="/static/xterm.js"></script>

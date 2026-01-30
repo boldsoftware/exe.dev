@@ -83,7 +83,8 @@ class TerminalClient {
             cursorBlink: true,
             fontSize: 14,
             fontFamily: 'Consolas, "Liberation Mono", Menlo, Courier, monospace',
-            theme: this.themeManager.getTerminalTheme()
+            theme: this.themeManager.getTerminalTheme(),
+            screenReaderMode: true
         });
 
         this.terminal.open(document.getElementById('terminal'));
@@ -125,6 +126,7 @@ class TerminalClient {
                 e.preventDefault();
                 this.ctrlActive = !this.ctrlActive;
                 ctrlBtn.classList.toggle('active', this.ctrlActive);
+                ctrlBtn.setAttribute('aria-pressed', this.ctrlActive ? 'true' : 'false');
                 this.terminal.focus();
             });
         }
@@ -134,6 +136,7 @@ class TerminalClient {
                 e.preventDefault();
                 this.altActive = !this.altActive;
                 altBtn.classList.toggle('active', this.altActive);
+                altBtn.setAttribute('aria-pressed', this.altActive ? 'true' : 'false');
                 this.terminal.focus();
             });
         }
@@ -145,6 +148,7 @@ class TerminalClient {
                 e.preventDefault();
                 this.keyboardMode = !this.keyboardMode;
                 kbToggle.classList.toggle('active', this.keyboardMode);
+                kbToggle.setAttribute('aria-pressed', this.keyboardMode ? 'true' : 'false');
                 document.querySelector('.terminal-frame').classList.toggle('keyboard-mode', this.keyboardMode);
                 // Small delay to let CSS transition complete before resizing
                 setTimeout(() => {
@@ -231,8 +235,14 @@ class TerminalClient {
         this.altActive = false;
         const ctrlBtn = document.getElementById('ctrl-mod');
         const altBtn = document.getElementById('alt-mod');
-        if (ctrlBtn) ctrlBtn.classList.remove('active');
-        if (altBtn) altBtn.classList.remove('active');
+        if (ctrlBtn) {
+            ctrlBtn.classList.remove('active');
+            ctrlBtn.setAttribute('aria-pressed', 'false');
+        }
+        if (altBtn) {
+            altBtn.classList.remove('active');
+            altBtn.setAttribute('aria-pressed', 'false');
+        }
     }
 
     setupEventHandlers() {
