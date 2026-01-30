@@ -242,4 +242,6 @@ func TestVMEmail(t *testing.T) {
 			t.Errorf("expected status 413 for request too large, got %s", statusCode)
 		}
 	})
+
+	cleanupBox(t, keyFile, box)
 }
