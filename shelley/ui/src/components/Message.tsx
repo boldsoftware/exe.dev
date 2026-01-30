@@ -31,6 +31,191 @@ interface MessageProps {
   onCommentTextChange?: (text: string) => void;
 }
 
+// Copy icon for the commit hash copy button
+const CopyIcon = () => (
+  <svg
+    width="12"
+    height="12"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ verticalAlign: "middle" }}
+  >
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg
+    width="12"
+    height="12"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ verticalAlign: "middle" }}
+  >
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);
+
+// GitInfoMessage renders a compact git state notification
+function GitInfoMessage({
+  message,
+  onOpenDiffViewer,
+}: {
+  message: MessageType;
+  onOpenDiffViewer?: (commit: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  // Parse user_data which contains structured git state info
+  let commitHash: string | null = null;
+  let subject: string | null = null;
+  let branch: string | null = null;
+  let worktree: string | null = null;
+
+  if (message.user_data) {
+    try {
+      const userData =
+        typeof message.user_data === "string" ? JSON.parse(message.user_data) : message.user_data;
+      if (userData.commit) {
+        commitHash = userData.commit;
+      }
+      if (userData.subject) {
+        subject = userData.subject;
+      }
+      if (userData.branch) {
+        branch = userData.branch;
+      }
+      if (userData.worktree) {
+        worktree = userData.worktree;
+      }
+    } catch (err) {
+      console.error("Failed to parse gitinfo user_data:", err);
+    }
+  }
+
+  if (!commitHash) {
+    return null;
+  }
+
+  const canShowDiff = commitHash && onOpenDiffViewer;
+
+  const handleDiffClick = () => {
+    if (commitHash && onOpenDiffViewer) {
+      onOpenDiffViewer(commitHash);
+    }
+  };
+
+  const handleCopyHash = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (commitHash) {
+      navigator.clipboard.writeText(commitHash).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      });
+    }
+  };
+
+  // Truncate subject if too long
+  const truncatedSubject = subject && subject.length > 40 ? subject.slice(0, 37) + "..." : subject;
+
+  return (
+    <div
+      className="message message-gitinfo"
+      data-testid="message-gitinfo"
+      style={{
+        padding: "0.4rem 1rem",
+        fontSize: "0.8rem",
+        color: "var(--text-secondary)",
+        textAlign: "center",
+        fontStyle: "italic",
+      }}
+    >
+      <span>
+        {worktree && (
+          <span
+            style={{
+              fontFamily: "monospace",
+              fontSize: "0.75rem",
+              marginRight: "0.5em",
+            }}
+          >
+            {worktree}
+          </span>
+        )}
+        {branch && (
+          <span
+            style={{
+              fontWeight: 500,
+              fontStyle: "normal",
+            }}
+          >
+            {branch}
+          </span>
+        )}
+        {branch ? " now at " : "now at "}
+        <code
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.75rem",
+            background: "var(--bg-tertiary)",
+            padding: "0.1em 0.3em",
+            borderRadius: "3px",
+          }}
+        >
+          {commitHash}
+        </code>
+        <button
+          onClick={handleCopyHash}
+          title="Copy commit hash"
+          style={{
+            background: "none",
+            border: "none",
+            padding: "0.1em 0.3em",
+            cursor: "pointer",
+            color: copied ? "var(--success-color, #22c55e)" : "var(--text-tertiary)",
+            verticalAlign: "middle",
+            marginLeft: "0.2em",
+          }}
+        >
+          {copied ? <CheckIcon /> : <CopyIcon />}
+        </button>
+        {truncatedSubject && (
+          <span style={{ marginLeft: "0.3em" }} title={subject || undefined}>
+            "{truncatedSubject}"
+          </span>
+        )}
+        {canShowDiff && (
+          <>
+            {" "}
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                handleDiffClick();
+              }}
+              style={{
+                color: "var(--link-color, #0066cc)",
+                textDecoration: "underline",
+              }}
+            >
+              diff
+            </a>
+          </>
+        )}
+      </span>
+    </div>
+  );
+}
+
 function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProps) {
   // Hide system messages from the UI
   if (message.type === "system") {
@@ -39,77 +224,7 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
 
   // Render gitinfo messages as compact status updates
   if (message.type === "gitinfo") {
-    // Parse user_data which contains structured git state info
-    let commitHash: string | null = null;
-    let subject: string | null = null;
-    let branch: string | null = null;
-
-    if (message.user_data) {
-      try {
-        const userData =
-          typeof message.user_data === "string" ? JSON.parse(message.user_data) : message.user_data;
-        if (userData.commit) {
-          commitHash = userData.commit;
-        }
-        if (userData.subject) {
-          subject = userData.subject;
-        }
-        if (userData.branch) {
-          branch = userData.branch;
-        }
-      } catch (err) {
-        console.error("Failed to parse gitinfo user_data:", err);
-      }
-    }
-
-    if (!commitHash) {
-      return null;
-    }
-
-    const canShowDiff = commitHash && onOpenDiffViewer;
-
-    const handleDiffClick = () => {
-      if (commitHash && onOpenDiffViewer) {
-        onOpenDiffViewer(commitHash);
-      }
-    };
-
-    return (
-      <div
-        className="message message-gitinfo"
-        data-testid="message-gitinfo"
-        style={{
-          padding: "0.4rem 1rem",
-          fontSize: "0.8rem",
-          color: "var(--text-secondary)",
-          textAlign: "center",
-          fontStyle: "italic",
-        }}
-      >
-        <span>
-          {branch} now at {commitHash}
-          {subject && ` "${subject}"`}
-          {canShowDiff && (
-            <>
-              {" "}
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleDiffClick();
-                }}
-                style={{
-                  color: "var(--link-color, #0066cc)",
-                  textDecoration: "underline",
-                }}
-              >
-                diff
-              </a>
-            </>
-          )}
-        </span>
-      </div>
-    );
+    return <GitInfoMessage message={message} onOpenDiffViewer={onOpenDiffViewer} />;
   }
 
   // Action bar state (show on hover or tap)
