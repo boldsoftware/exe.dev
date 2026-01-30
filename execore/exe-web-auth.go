@@ -417,7 +417,7 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 			}); err != nil {
 				return fmt.Errorf("activate account: %w", err)
 			}
-			if err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
+			if _, err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
 				AccountID: billingID,
 				EventType: "active",
 				EventAt:   now,
@@ -586,7 +586,7 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 		}); err != nil {
 			return fmt.Errorf("activate account: %w", err)
 		}
-		if err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
+		if _, err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "active",
 			EventAt:   now,

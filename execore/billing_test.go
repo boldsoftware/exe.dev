@@ -225,7 +225,7 @@ func TestUserIsPayingQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to activate account: %v", err)
 	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 		AccountID: billingID,
 		EventType: "active",
 		EventAt:   time.Now(),
@@ -289,7 +289,7 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to activate account: %v", err)
 	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 		AccountID: billingID,
 		EventType: "active",
 		EventAt:   time.Now(),
@@ -543,7 +543,7 @@ func TestBillingEventRaceCondition(t *testing.T) {
 	t2 := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC) // Newer activation
 
 	// Insert activation event at T2 first (user subscribed)
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 		AccountID: billingID,
 		EventType: "active",
 		EventAt:   t2,
@@ -553,7 +553,7 @@ func TestBillingEventRaceCondition(t *testing.T) {
 	}
 
 	// Insert backdated cancellation event at T1 (as if poller processed old cancellation late)
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 		AccountID: billingID,
 		EventType: "canceled",
 		EventAt:   t1,
@@ -1515,7 +1515,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		// Use specific timestamps to ensure canceled is the most recent
 		t1 := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC) // Active
 		t2 := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC) // Canceled (later)
-		err = withTx1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "active",
 			EventAt:   t1,
@@ -1523,7 +1523,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to insert active event: %v", err)
 		}
-		err = withTx1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "canceled",
 			EventAt:   t2,
@@ -1605,7 +1605,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		// Insert active then canceled events
 		t1 := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 		t2 := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
-		err = withTx1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "active",
 			EventAt:   t1,
@@ -1613,7 +1613,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to insert active event: %v", err)
 		}
-		err = withTx1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "canceled",
 			EventAt:   t2,
@@ -1672,7 +1672,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		// Insert active then canceled events
 		t1 := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 		t2 := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
-		err = withTx1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "active",
 			EventAt:   t1,
@@ -1680,7 +1680,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to insert active event: %v", err)
 		}
-		err = withTx1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "canceled",
 			EventAt:   t2,
@@ -1747,7 +1747,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		t2 := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
 		t3 := time.Date(2026, 1, 20, 12, 0, 0, 0, time.UTC)
 
-		err = withTx1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "active",
 			EventAt:   t1,
@@ -1755,7 +1755,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to insert first active event: %v", err)
 		}
-		err = withTx1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "canceled",
 			EventAt:   t2,
@@ -1763,7 +1763,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to insert canceled event: %v", err)
 		}
-		err = withTx1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "active",
 			EventAt:   t3,

@@ -48,13 +48,20 @@ func (p *SubscriptionPoller) poll() {
 	for e := range p.billing.SubscriptionEvents(p.ctx, since) {
 		// Normalize the Stripe event timestamp for consistent storage
 		eventAt := sqlite.NormalizeTime(e.EventAt)
+		var inserted bool
 		err := p.db.Tx(p.ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 			q := exedb.New(tx.Conn())
-			return q.InsertBillingEvent(p.ctx, exedb.InsertBillingEventParams{
+			res, err := q.InsertBillingEvent(p.ctx, exedb.InsertBillingEventParams{
 				AccountID: e.AccountID,
 				EventType: e.EventType,
 				EventAt:   eventAt,
 			})
+			if err != nil {
+				return err
+			}
+			n, _ := res.RowsAffected()
+			inserted = n > 0
+			return nil
 		})
 		if err != nil {
 			p.log.ErrorContext(p.ctx, "failed to record subscription event",
@@ -64,10 +71,12 @@ func (p *SubscriptionPoller) poll() {
 				"error", err)
 			continue
 		}
-		p.log.InfoContext(p.ctx, "subscription event recorded",
-			"account_id", e.AccountID,
-			"event_type", e.EventType,
-			"event_at", e.EventAt)
+		if inserted {
+			p.log.InfoContext(p.ctx, "subscription event recorded",
+				"account_id", e.AccountID,
+				"event_type", e.EventType,
+				"event_at", e.EventAt)
+		}
 	}
 }
 
