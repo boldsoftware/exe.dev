@@ -308,9 +308,11 @@ func All() []Model {
 			},
 		},
 		{
-			ID:              "predictable",
-			Provider:        ProviderBuiltIn,
-			Description:     "Deterministic test model (no API key)",
+			ID:          "predictable",
+			Provider:    ProviderBuiltIn,
+			Description: "Deterministic test model (no API key)",
+			// Used for testing; should be harmless.
+			GatewayEnabled:  true,
 			RequiredEnvVars: []string{},
 			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
 				return loop.NewPredictableService(), nil
