@@ -3,7 +3,9 @@ package loop
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -242,7 +244,24 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 	llmCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
-	resp, err := llmService.Do(llmCtx, req)
+	// Retry LLM requests that fail with retryable errors (EOF, connection reset)
+	const maxRetries = 2
+	var resp *llm.Response
+	var err error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		resp, err = llmService.Do(llmCtx, req)
+		if err == nil {
+			break
+		}
+		if !isRetryableError(err) || attempt == maxRetries {
+			break
+		}
+		l.logger.Warn("LLM request failed with retryable error, retrying",
+			"error", err,
+			"attempt", attempt,
+			"max_retries", maxRetries)
+		time.Sleep(time.Second * time.Duration(attempt)) // Simple backoff
+	}
 	if err != nil {
 		// Record the error as a message so it can be displayed in the UI
 		// EndOfTurn must be true so the agent working state is properly updated
@@ -646,4 +665,32 @@ func (l *Loop) insertMissingToolResults(req *llm.Request) {
 			l.logger.Debug("removed orphan tool results", "count", totalRemoved)
 		}
 	}
+}
+
+// isRetryableError checks if an error is transient and should be retried.
+// This includes EOF errors (connection closed unexpectedly) and similar network issues.
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Check for io.EOF and io.ErrUnexpectedEOF
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
+		return true
+	}
+	// Check error message for common retryable patterns
+	errStr := err.Error()
+	retryablePatterns := []string{
+		"EOF",
+		"connection reset",
+		"connection refused",
+		"no such host",
+		"network is unreachable",
+		"i/o timeout",
+	}
+	for _, pattern := range retryablePatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+	return false
 }
