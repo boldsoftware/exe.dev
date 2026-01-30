@@ -256,6 +256,7 @@ should be https://<vm-name>.exe.xyz without port specification.`
 var exeNewPathPrompts = map[string]string{
 	"/moltbot":  moltbotPrompt,
 	"/clawdbot": moltbotPrompt,
+	"/openclaw": moltbotPrompt,
 }
 
 // resolveBoxName converts a hostname to a box name.
@@ -573,7 +574,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect requests to exe.new to WebHost/new (exe.dev/new).
 	// This is a vanity domain that lets users start a new box from a memorable URL.
-	// Special paths like /moltbot and /clawdbot redirect with a pre-filled prompt.
+	// Special paths like /moltbot, /clawdbot, and /openclaw redirect with a pre-filled prompt.
 	if hostname == "exe.new" {
 		target := fmt.Sprintf("%s://%s/new", getScheme(r), s.env.WebHost)
 		if prompt := exeNewPathPrompts[r.URL.Path]; prompt != "" {

@@ -583,6 +583,20 @@ func TestExeNewRedirectsToWebHostNew(t *testing.T) {
 			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeNewPathPrompts["/clawdbot"]) + "&invite=TESTCODE",
 		},
 		{
+			name:         "exe.new/openclaw redirects with prompt",
+			host:         "exe.new",
+			path:         "/openclaw",
+			wantRedirect: true,
+			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeNewPathPrompts["/openclaw"]),
+		},
+		{
+			name:         "exe.new/openclaw with invite passes through invite",
+			host:         "exe.new",
+			path:         "/openclaw?invite=TESTCODE",
+			wantRedirect: true,
+			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeNewPathPrompts["/openclaw"]) + "&invite=TESTCODE",
+		},
+		{
 			name:         "exe.new with invite but no prompt",
 			host:         "exe.new",
 			path:         "/?invite=TESTCODE",
