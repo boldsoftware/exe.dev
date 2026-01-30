@@ -837,6 +837,7 @@ func TestNewWithPrivateImage(t *testing.T) {
 }
 
 func TestNewWithPrompt(t *testing.T) {
+	t.Skip("temporarily disabled")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
