@@ -7,8 +7,8 @@ source ${SCRIPT_DIR}/ci-vm-env.sh
 # TODO(philip): rewrite these cleanup functions in python
 # Cleanup old VMs and unused images
 cleanup_old_vms() {
-    echo "Cleaning up VMs older than 1 day..."
-    local one_day_ago=$(($(date +%s) - 86400))
+    echo "Cleaning up VMs older than 6 hours..."
+    local six_hours_ago=$(($(date +%s) - 21600))
 
     # Get all VMs that start with "ci-ubuntu-"
     for vm in $(sudo virsh list --all --name | grep -E '^ci-ubuntu-' || true); do
@@ -39,7 +39,7 @@ cleanup_old_vms() {
             continue
         fi
 
-        if [[ $vm_epoch -lt $one_day_ago ]]; then
+        if [[ $vm_epoch -lt $six_hours_ago ]]; then
             local age_hours=$((($(date +%s) - vm_epoch) / 3600))
             echo "  Destroying and removing old VM: $vm (age: ${age_hours}h)"
             sudo virsh destroy "$vm" 2>/dev/null || true
