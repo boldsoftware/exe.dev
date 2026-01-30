@@ -112,15 +112,15 @@ header .btn .btn-text {
   header .nav-links {
     gap: 16px;
   }
-  
+
   header .nav-links a {
     font-size: 13px;
   }
-  
+
   header .btn .btn-text {
     display: none;
   }
-  
+
   header .btn {
     padding: 8px 12px;
   }
@@ -129,8 +129,61 @@ header .btn .btn-text {
   header .nav-left {
     gap: 16px;
   }
-  
+
   header .nav-right {
     gap: 8px;
+  }
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  header {
+    background: #1a1a1a;
+    border-bottom-color: #333;
+  }
+
+  header .nav-logo {
+    color: #f3f4f6;
+  }
+
+  header .nav-links a {
+    color: #9ca3af;
+  }
+
+  header .nav-links a:hover {
+    color: #f3f4f6;
+  }
+
+  header .btn {
+    background: #2a2a2a;
+    border-color: #333;
+    color: #9ca3af;
+  }
+
+  header .btn:hover {
+    background: #333;
+    border-color: #444;
+    color: #f3f4f6;
+  }
+
+  header .btn-active {
+    background: #333;
+    color: #f3f4f6;
+    border-color: #444;
+  }
+
+  header .btn-active:hover {
+    background: #333;
+    border-color: #444;
+  }
+
+  header .btn-primary {
+    background: #f3f4f6;
+    color: #111;
+    border-color: #f3f4f6;
+  }
+
+  header .btn-primary:hover {
+    background: #d1d5db;
   }
 }

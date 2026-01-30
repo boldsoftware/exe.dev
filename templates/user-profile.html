@@ -371,14 +371,226 @@
             .main-container {
                 padding: 20px 12px;
             }
-            
+
             .info-row {
                 flex-direction: column;
                 gap: 4px;
             }
-            
+
             .info-label {
                 width: auto;
+            }
+        }
+
+        /* Dark mode */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background-color: #111;
+            }
+
+            .section-title {
+                color: #9ca3af;
+            }
+
+            .section-help {
+                color: #9ca3af;
+            }
+
+            .section-help a {
+                color: #60a5fa;
+            }
+
+            .section-help code {
+                background: #2a2a2a;
+                color: #f3f4f6;
+            }
+
+            .info-card {
+                background: #1f1f1f;
+                border-color: #333;
+            }
+
+            .info-row {
+                border-bottom-color: #333;
+            }
+
+            .info-label {
+                color: #6b7280;
+            }
+
+            .info-value {
+                color: #f3f4f6;
+            }
+
+            .info-value a {
+                color: #60a5fa;
+            }
+
+            .ssh-key-item {
+                background: #2a2a2a;
+                border-color: #333;
+            }
+
+            .ssh-key-comment {
+                color: #f3f4f6;
+            }
+
+            .ssh-key-fingerprint {
+                color: #9ca3af;
+            }
+
+            .ssh-key-meta {
+                color: #6b7280;
+            }
+
+            .no-keys {
+                color: #6b7280;
+            }
+
+            .btn {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #9ca3af;
+            }
+
+            .btn:hover {
+                background: #333;
+                border-color: #444;
+                color: #f3f4f6;
+            }
+
+            .btn-danger {
+                color: #f87171;
+                border-color: #dc2626;
+            }
+
+            .btn-danger:hover {
+                background: #dc2626;
+                color: white;
+            }
+
+            .passkey-item {
+                background: #2a2a2a;
+                border-color: #333;
+            }
+
+            .passkey-name {
+                color: #f3f4f6;
+            }
+
+            .passkey-meta {
+                color: #9ca3af;
+            }
+
+            .add-passkey-form input {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #f3f4f6;
+            }
+
+            .add-passkey-form input::placeholder {
+                color: #6b7280;
+            }
+
+            .add-passkey-form input:focus {
+                border-color: #555;
+            }
+
+            .passkey-error {
+                color: #f87171;
+            }
+
+            .passkey-unsupported {
+                color: #6b7280;
+            }
+
+            .sites-table th {
+                color: #9ca3af;
+            }
+
+            .sites-table td {
+                color: #f3f4f6;
+                border-bottom-color: #333;
+            }
+
+            .sites-table a {
+                color: #60a5fa;
+            }
+
+            .site-last-used {
+                color: #9ca3af;
+            }
+
+            /* Command Modal */
+            .cmd-modal {
+                background: #1f1f1f;
+            }
+
+            .cmd-modal-title {
+                color: #f3f4f6;
+            }
+
+            .cmd-display {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #f3f4f6;
+            }
+
+            .cmd-output.success {
+                background: #052e16;
+                border-color: #166534;
+                color: #86efac;
+            }
+
+            .cmd-output.error {
+                background: #450a0a;
+                border-color: #991b1b;
+                color: #fca5a5;
+            }
+
+            .cmd-modal-buttons .btn.danger {
+                background: #dc2626;
+                border-color: #dc2626;
+            }
+
+            .cmd-modal-buttons .btn.danger:hover {
+                background: #b91c1c;
+                border-color: #b91c1c;
+            }
+
+            .cmd-modal-buttons .btn.danger:disabled {
+                background: #7f1d1d;
+                border-color: #7f1d1d;
+            }
+
+            /* Add SSH Key Modal */
+            #ssh-key-input {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #f3f4f6;
+            }
+
+            #ssh-key-input::placeholder {
+                color: #6b7280;
+            }
+
+            .ssh-key-error {
+                color: #f87171;
+            }
+
+            .ssh-key-success {
+                color: #86efac;
+            }
+
+            /* Rename SSH Key Modal */
+            #ssh-key-new-name {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #f3f4f6;
+            }
+
+            #ssh-key-new-name::placeholder {
+                color: #6b7280;
             }
         }
     </style>

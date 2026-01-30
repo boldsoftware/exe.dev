@@ -180,6 +180,62 @@
           gap: 8px;
         }
       }
+
+      /* Dark mode */
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #111;
+          color: #e5e5e5;
+        }
+
+        .post-title {
+          color: #f3f4f6;
+        }
+
+        .post-meta {
+          color: rgba(255, 255, 255, 0.6);
+        }
+
+        .unpublished-note {
+          color: rgba(255, 255, 255, 0.55);
+        }
+
+        .post-content {
+          color: #d1d5db;
+        }
+
+        .post-content h1,
+        .post-content h2,
+        .post-content h3,
+        .post-content h4 {
+          color: #f3f4f6;
+        }
+
+        .post-content a {
+          color: #60a5fa;
+        }
+
+        .post-content blockquote {
+          border-left-color: rgba(255, 255, 255, 0.15);
+          background: #1a1a1a;
+        }
+
+        .post-content pre.code {
+          background: #1a1a1a;
+        }
+
+        .post-content img[src$=".svg"] {
+          filter: invert(1) hue-rotate(180deg);
+        }
+
+        .post-footer {
+          border-top-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .post-footer a {
+          color: #60a5fa;
+        }
+      }
     </style>
   </head>
   <body>

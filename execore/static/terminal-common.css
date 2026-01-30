@@ -8,6 +8,31 @@
     --theme-button-hover: #e9ecef;
 }
 
+/* System dark mode preference */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-primary: #0d1117;
+        --bg-secondary: #161b22;
+        --border-color: #30363d;
+        --text-primary: #e6edf3;
+        --text-secondary: #8b949e;
+        --theme-button-bg: #21262d;
+        --theme-button-hover: #30363d;
+    }
+}
+
+/* Explicit light theme override */
+[data-theme="light"] {
+    --bg-primary: #f8f9fa;
+    --bg-secondary: white;
+    --border-color: #e9ecef;
+    --text-primary: #343a40;
+    --text-secondary: #6c757d;
+    --theme-button-bg: #f8f9fa;
+    --theme-button-hover: #e9ecef;
+}
+
+/* Explicit dark theme override */
 [data-theme="dark"] {
     --bg-primary: #0d1117;
     --bg-secondary: #161b22;
@@ -54,18 +79,51 @@ body {
     align-items: center;
     gap: 12px;
 }
-.theme-toggle {
+.theme-toggle-row {
+    display: flex;
+    gap: 2px;
+}
+.theme-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 10px;
     background: var(--theme-button-bg);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 6px 12px;
+    border-radius: 4px;
     cursor: pointer;
-    font-size: 14px;
-    color: var(--text-primary);
-    transition: background-color 0.2s ease;
+    color: var(--text-secondary);
+    transition: all 0.15s ease;
 }
-.theme-toggle:hover {
+.theme-toggle-btn svg {
+    width: 16px;
+    height: 16px;
+}
+.theme-toggle-btn:hover {
     background: var(--theme-button-hover);
+    color: var(--text-primary);
+}
+.theme-toggle-btn.selected {
+    background: #0969da;
+    border-color: #0969da;
+    color: white;
+}
+@media (prefers-color-scheme: dark) {
+    .theme-toggle-btn.selected {
+        background: #58a6ff;
+        border-color: #58a6ff;
+        color: #0d1117;
+    }
+}
+[data-theme="light"] .theme-toggle-btn.selected {
+    background: #0969da;
+    border-color: #0969da;
+    color: white;
+}
+[data-theme="dark"] .theme-toggle-btn.selected {
+    background: #58a6ff;
+    border-color: #58a6ff;
+    color: #0d1117;
 }
 .theme-toggle:focus {
     outline: 2px solid var(--text-primary);

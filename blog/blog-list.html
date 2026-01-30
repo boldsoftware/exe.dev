@@ -87,6 +87,34 @@
           padding: 0 16px;
         }
       }
+
+      /* Dark mode */
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #111;
+          color: #e5e5e5;
+        }
+
+        .post-card h2 {
+          color: #f3f4f6;
+        }
+
+        .post-card a {
+          color: inherit;
+        }
+
+        .post-meta {
+          color: rgba(255, 255, 255, 0.55);
+        }
+
+        .unpublished-note {
+          color: rgba(255, 255, 255, 0.55);
+        }
+
+        .post-description {
+          color: rgba(255, 255, 255, 0.75);
+        }
+      }
     </style>
   </head>
   <body>

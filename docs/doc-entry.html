@@ -316,6 +316,119 @@
           align-self: flex-start;
         }
       }
+
+      /* Dark mode */
+      @media (prefers-color-scheme: dark) {
+        body {
+          color: #d1d5db;
+          background-color: #111;
+        }
+
+        .sidebar {
+          background: #1f1f1f;
+          border-color: #333;
+        }
+
+        .sidebar-heading {
+          color: #f3f4f6;
+        }
+
+        .sidebar-link {
+          color: #9ca3af;
+        }
+
+        .sidebar-link:hover {
+          color: #f3f4f6;
+        }
+
+        .sidebar-link.active {
+          color: #f3f4f6;
+        }
+
+        .sidebar > div > div[style*="border-bottom"] {
+          border-bottom-color: #333 !important;
+        }
+
+        .main {
+          background: #1f1f1f;
+          border-color: #333;
+        }
+
+        h1 {
+          color: #f3f4f6;
+        }
+
+        .copy-md-btn {
+          color: #9ca3af;
+          background: #2a2a2a;
+          border-color: #333;
+        }
+
+        .copy-md-btn:hover {
+          color: #f3f4f6;
+          background: #333;
+          border-color: #444;
+        }
+
+        .copy-md-btn.copied {
+          color: #86efac;
+          background: #052e16;
+          border-color: #166534;
+        }
+
+        .doc-content {
+          color: #d1d5db;
+        }
+
+        .doc-content h1,
+        .doc-content h2,
+        .doc-content h3 {
+          color: #f3f4f6;
+        }
+
+        .doc-content a {
+          color: #60a5fa;
+        }
+
+        .doc-content a:hover {
+          color: #93c5fd;
+        }
+
+        .doc-content code {
+          background: #2a2a2a;
+          color: #f3f4f6;
+        }
+
+        .doc-content pre {
+          background: #1a1a1a;
+          border-color: #333;
+        }
+
+        .doc-content blockquote {
+          border-left-color: #444;
+          background: #1a1a1a;
+        }
+
+        .doc-content .anchor-link {
+          color: #4b5563;
+        }
+
+        .doc-content .anchor-link:hover {
+          color: #60a5fa;
+        }
+
+        .doc-content img[src$=".svg"] {
+          filter: invert(1) hue-rotate(180deg);
+        }
+
+        .back-to-list {
+          color: #9ca3af;
+        }
+
+        .back-to-list:hover {
+          color: #f3f4f6;
+        }
+      }
     </style>
   </head>
   <body>

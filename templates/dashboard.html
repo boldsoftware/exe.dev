@@ -889,6 +889,364 @@
             background: #f5f5f5;
             border-color: #d0d0d0;
         }
+
+        /* Dark mode */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background-color: #111;
+            }
+
+            .section-title {
+                color: #9ca3af;
+            }
+
+            .new-box-btn {
+                background: #2a2a2a;
+                color: #9ca3af;
+                border-color: #333;
+            }
+
+            .new-box-btn:hover {
+                background: #333;
+                border-color: #444;
+                color: #f3f4f6;
+            }
+
+            .boxes-list {
+                background: #333;
+                border-color: #333;
+            }
+
+            .box-row {
+                background: #1f1f1f;
+            }
+
+            .box-row:hover {
+                background: #252525;
+            }
+
+            .search-input {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #f3f4f6;
+            }
+
+            .search-input::placeholder {
+                color: #6b7280;
+            }
+
+            .search-input:focus {
+                border-color: #555;
+            }
+
+            .search-clear {
+                color: #6b7280;
+            }
+
+            .search-clear:hover {
+                color: #f3f4f6;
+            }
+
+            .box-details {
+                border-top-color: #333;
+            }
+
+            .box-info-grid {
+                color: #f3f4f6;
+            }
+
+            .box-info-label {
+                color: #6b7280;
+            }
+
+            .box-info-value {
+                color: #f3f4f6;
+            }
+
+            .box-name {
+                color: #f3f4f6;
+            }
+
+            .expand-btn {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #9ca3af;
+            }
+
+            .expand-btn:hover {
+                background: #333;
+                border-color: #444;
+                color: #f3f4f6;
+            }
+
+            .action-btn {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #9ca3af;
+            }
+
+            .action-btn:hover {
+                background: #333;
+                border-color: #444;
+                color: #f3f4f6;
+            }
+
+            .action-btn-expanded {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #9ca3af;
+            }
+
+            .action-btn-expanded:hover {
+                background: #333;
+                border-color: #444;
+                color: #f3f4f6;
+            }
+
+            .copy-btn {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #9ca3af;
+            }
+
+            .copy-btn:hover {
+                background: #333;
+                border-color: #444;
+            }
+
+            .edit-btn {
+                border-color: #333;
+                color: #6b7280;
+            }
+
+            .edit-btn:hover {
+                background: #333;
+                border-color: #444;
+                color: #f3f4f6;
+            }
+
+            .toast {
+                background: #f3f4f6;
+                color: #111;
+            }
+
+            .ssh-command-display {
+                background: #2a2a2a;
+                border-color: #333;
+            }
+
+            .ssh-command-display code {
+                color: #f3f4f6;
+            }
+
+            .no-boxes {
+                background: #1f1f1f;
+                border-color: #333;
+                color: #9ca3af;
+            }
+
+            .no-boxes code {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #f3f4f6;
+            }
+
+            /* Command Modal */
+            .cmd-modal {
+                background: #1f1f1f;
+            }
+
+            .cmd-modal-header {
+                border-bottom-color: #333;
+            }
+
+            .cmd-modal-title {
+                color: #f3f4f6;
+            }
+
+            .cmd-modal-close {
+                color: #6b7280;
+            }
+
+            .cmd-modal-close:hover {
+                color: #f3f4f6;
+            }
+
+            .cmd-description {
+                color: #9ca3af;
+            }
+
+            .cmd-description a {
+                color: #60a5fa;
+            }
+
+            .cmd-input-row {
+                background: #2a2a2a;
+                border-color: #333;
+            }
+
+            .cmd-prompt {
+                color: #6b7280;
+            }
+
+            .cmd-text {
+                color: #f3f4f6;
+            }
+
+            .cmd-input {
+                background: #1f1f1f;
+                border-color: #444;
+                color: #f3f4f6;
+            }
+
+            .cmd-input:focus {
+                border-color: #555;
+            }
+
+            .cmd-btn-inline {
+                background: #f3f4f6;
+                border-color: #f3f4f6;
+                color: #111;
+            }
+
+            .cmd-btn-inline:hover {
+                background: #d1d5db;
+            }
+
+            .cmd-btn-inline:disabled {
+                background: #4b5563;
+                border-color: #4b5563;
+                color: #9ca3af;
+            }
+
+            .cmd-output {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #f3f4f6;
+            }
+
+            .cmd-output.success {
+                background: #052e16;
+                border-color: #166534;
+                color: #86efac;
+            }
+
+            .cmd-output.error {
+                background: #450a0a;
+                border-color: #991b1b;
+                color: #fca5a5;
+            }
+
+            .cmd-btn-cancel {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #9ca3af;
+            }
+
+            .cmd-btn-cancel:hover {
+                background: #333;
+                border-color: #444;
+            }
+
+            .cmd-btn-run {
+                background: #f3f4f6;
+                border-color: #f3f4f6;
+                color: #111;
+            }
+
+            .cmd-btn-run:hover {
+                background: #d1d5db;
+            }
+
+            .cmd-btn-run:disabled {
+                background: #4b5563;
+                border-color: #4b5563;
+                color: #9ca3af;
+            }
+
+            /* VSCode Modal */
+            .vscode-modal-content {
+                background: #1f1f1f;
+            }
+
+            .vscode-modal-title {
+                color: #f3f4f6;
+            }
+
+            .vscode-modal-close {
+                color: #6b7280;
+            }
+
+            .vscode-modal-close:hover {
+                color: #f3f4f6;
+            }
+
+            .vscode-modal-body {
+                color: #9ca3af;
+            }
+
+            .vscode-modal-label {
+                color: #9ca3af;
+            }
+
+            .vscode-modal-input {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #f3f4f6;
+            }
+
+            .vscode-modal-input:focus {
+                border-color: #555;
+            }
+
+            .vscode-modal-url-box {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #f3f4f6;
+            }
+
+            .vscode-modal-btn-primary {
+                background: #f3f4f6;
+                color: #111;
+                border-color: #f3f4f6;
+            }
+
+            .vscode-modal-btn-primary:hover {
+                background: #d1d5db;
+            }
+
+            .vscode-modal-btn-secondary {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #9ca3af;
+            }
+
+            .vscode-modal-btn-secondary:hover {
+                background: #333;
+                border-color: #444;
+            }
+
+            /* Shared boxes section */
+            [style*="color: #d97706"] {
+                color: #fbbf24 !important;
+            }
+
+            [style*="background: #f9fafb"] {
+                background: #2a2a2a !important;
+            }
+
+            [style*="color: #374151"] {
+                color: #d1d5db !important;
+            }
+
+            [style*="color: #6b7280"] {
+                color: #9ca3af !important;
+            }
+
+            [style*="border-top: 1px solid #e5e7eb"] {
+                border-top-color: #333 !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -898,7 +1256,7 @@
         {{if .Boxes}}
         <div class="section-header">
             <div class="section-left">
-                <a href="/" class="section-title" style="text-decoration: none; color: inherit;">My VMs</a>
+                <a href="/" class="section-title" style="text-decoration: none;">My VMs</a>
                 <a href="/new" class="new-box-btn">+ New</a>
             </div>
             <div class="search-box">

@@ -83,18 +83,33 @@
     .form-card {
         padding: 16px 12px;
     }
-    
+
     .form-title {
         font-size: 18px;
         margin-bottom: 16px;
     }
-    
+
     .form-input-large {
         font-size: 15px;
         padding: 11px 8px;
     }
-    
+
     .form-input-suffix-large {
         font-size: 13px;
+    }
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+    body {
+        background: #111;
+    }
+
+    .new-view {
+        background: #111;
+    }
+
+    .form-input-suffix-large {
+        color: #9ca3af;
     }
 }

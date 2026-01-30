@@ -151,3 +151,75 @@
     background: #f5f5f5;
     border-color: #999;
 }
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+    .form-card {
+        background: #1f1f1f;
+        border-color: #333;
+    }
+
+    .form-title {
+        color: #f3f4f6;
+    }
+
+    .form-description {
+        color: #9ca3af;
+    }
+
+    .form-label {
+        color: #d1d5db;
+    }
+
+    .form-input {
+        background: #2a2a2a;
+        border-color: #333;
+        color: #f3f4f6;
+    }
+
+    .form-input:focus {
+        border-color: #555;
+    }
+
+    .form-input::placeholder {
+        color: #6b7280;
+    }
+
+    .form-input-suffix {
+        color: #9ca3af;
+    }
+
+    .form-hint {
+        color: #9ca3af;
+    }
+
+    .form-hint .spinner {
+        border-color: #444;
+        border-top-color: #9ca3af;
+    }
+
+    .form-button {
+        background: #f3f4f6;
+        color: #111;
+    }
+
+    .form-button:hover {
+        background: #d1d5db;
+    }
+
+    .form-button:disabled {
+        background: #4b5563;
+        color: #9ca3af;
+    }
+
+    .form-secondary-button {
+        background: #2a2a2a;
+        border-color: #333;
+        color: #9ca3af;
+    }
+
+    .form-secondary-button:hover {
+        background: #333;
+        border-color: #444;
+    }
+}

@@ -139,7 +139,57 @@
         .doc-title {
           font-size: 18px;
         }
+      }
 
+      /* Dark mode */
+      @media (prefers-color-scheme: dark) {
+        body {
+          color: #d1d5db;
+          background-color: #111;
+          background-image: none;
+        }
+
+        .main {
+          background: #1f1f1f;
+          border-color: #333;
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .page-title {
+          color: #f3f4f6;
+        }
+
+        .page-subtitle {
+          color: #9ca3af;
+        }
+
+        .section-title {
+          color: #f3f4f6;
+        }
+
+        .doc-item {
+          border-bottom-color: #333;
+        }
+
+        .doc-title {
+          color: #f3f4f6;
+        }
+
+        .doc-title a {
+          color: inherit;
+        }
+
+        .doc-description {
+          color: #9ca3af;
+        }
+
+        a[style*="color: #0066cc"] {
+          color: #60a5fa !important;
+        }
+
+        p[style*="color: #666666"] {
+          color: #9ca3af !important;
+        }
       }
     </style>
   </head>

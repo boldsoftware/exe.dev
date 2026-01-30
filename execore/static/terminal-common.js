@@ -48,40 +48,75 @@ class ThemeManager {
                 brightWhite: '#f0f6fc'
             }
         };
-        this.currentTheme = this.loadTheme();
-        this.applyTheme(this.currentTheme);
+        // 'system', 'light', or 'dark'
+        this.mode = this.loadMode();
+        this.applyMode(this.mode, false);
     }
 
-    loadTheme() {
+    loadMode() {
         const saved = localStorage.getItem('terminal-theme');
-        if (saved === 'dark' || saved === 'light') {
+        if (saved === 'dark' || saved === 'light' || saved === 'system') {
             return saved;
         }
-        // Default to system preference, or dark if no preference
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-            return 'light';
+        return 'system';
+    }
+
+    saveMode(mode) {
+        if (mode === 'system') {
+            localStorage.removeItem('terminal-theme');
+        } else {
+            localStorage.setItem('terminal-theme', mode);
         }
-        return 'dark';
     }
 
-    saveTheme(theme) {
-        localStorage.setItem('terminal-theme', theme);
+    getSystemTheme() {
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            return 'dark';
+        }
+        return 'light';
     }
 
-    applyTheme(theme) {
-        document.documentElement.setAttribute('data-theme', theme);
-        this.currentTheme = theme;
-        this.saveTheme(theme);
+    onSystemThemeChange(callback) {
+        if (window.matchMedia) {
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+                if (this.mode === 'system') {
+                    callback(this.getEffectiveTheme());
+                }
+            });
+        }
     }
 
-    toggle() {
-        const newTheme = this.currentTheme === 'light' ? 'dark' : 'light';
-        this.applyTheme(newTheme);
-        return newTheme;
+    applyMode(mode, save = true) {
+        this.mode = mode;
+        if (mode === 'system') {
+            document.documentElement.removeAttribute('data-theme');
+        } else {
+            document.documentElement.setAttribute('data-theme', mode);
+        }
+        if (save) {
+            this.saveMode(mode);
+        }
+    }
+
+    setMode(mode) {
+        if (mode === 'system' || mode === 'light' || mode === 'dark') {
+            this.applyMode(mode);
+        }
+    }
+
+    getMode() {
+        return this.mode;
+    }
+
+    getEffectiveTheme() {
+        if (this.mode === 'system') {
+            return this.getSystemTheme();
+        }
+        return this.mode;
     }
 
     getTerminalTheme() {
-        return this.themes[this.currentTheme];
+        return this.themes[this.getEffectiveTheme()];
     }
 }
 
