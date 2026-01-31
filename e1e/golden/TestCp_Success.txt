@@ -12,7 +12,9 @@ PROMPT ▶ cp BOX_NAME copied-from-source
 Copying BOX_NAME to copied-from-source...
 Created copied-from-source from BOX_NAME in ELAPSED_TIME
 
-  SSH: copied-from-source@exe.cloud
-  Web: http://copied-from-source.exe.cloud:EXED_HTTP_PORT
+http://copied-from-source.exe.cloud:EXED_HTTP_PORT
+
+ssh copied-from-source@exe.cloud
+
 PROMPT ▶ exit
 Goodbye!

@@ -2209,8 +2209,8 @@ done:
 	// Show completion message
 	cc.Write("Created \033[1m%s\033[0m from \033[1m%s\033[0m in %.1fs\r\n", newName, sourceVMName, totalTime.Seconds())
 	cc.Write("\r\n")
-	cc.Write("  SSH: \033[1m%s\033[0m\r\n", ss.server.env.BoxDest(newName))
-	cc.Write("  Web: \033[1m%s\033[0m\r\n", ss.server.boxProxyAddress(newName))
+	cc.Write("\033[1m%s\033[0m\r\n\r\n", ss.server.boxProxyAddress(newName))
+	cc.Write("ssh \033[1m%s\033[0m\r\n\r\n", ss.server.env.BoxDest(newName))
 
 	return nil
 }
