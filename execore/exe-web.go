@@ -1501,10 +1501,11 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	// Check billing status
 	var hasBilling bool
 	var billingStatus string
-	account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountWithBillingStatus, userID)
+	userBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
 	if err == nil {
 		// BillingStatus is the derived status from billing_events table
-		billingStatus = account.BillingStatus
+		// GetUserBillingStatus checks if ANY account connected to the user has active billing
+		billingStatus = userBilling.BillingStatus
 		if billingStatus == "active" {
 			hasBilling = true
 		}
