@@ -38,6 +38,9 @@ type Env struct {
 
 	UseCobble         bool // whether to start cobble/pebble for local ACME testing
 	DiscoverPublicIPs bool // whether to attempt to discover public IPs of the server using EC2 metadata service
+	EnableLMTP        bool // whether to start the LMTP server for inbound email delivery
+
+	MaxMaildirEmails int // max emails allowed in ~/Maildir/new before auto-disabling receive
 
 	FakeEmail   bool // whether to log emails instead of sending them
 	SkipBilling bool // whether to skip billing/Stripe checkout for new signups (for tests)
@@ -83,6 +86,9 @@ func Invalid() Env {
 
 		UseCobble:         false,
 		DiscoverPublicIPs: false,
+		EnableLMTP:        false,
+
+		MaxMaildirEmails: 0,
 
 		FakeEmail:   true, // something is wrong, so don't send real email
 		SkipBilling: true, // something is wrong, so skip billing
@@ -131,6 +137,9 @@ func Local() Env {
 
 		UseCobble:         true, // auto-start cobble/pebble for ACME testing
 		DiscoverPublicIPs: false,
+		EnableLMTP:        true,
+
+		MaxMaildirEmails: 5, // low limit for local dev/testing
 
 		FakeEmail:   true,
 		SkipBilling: envStripeKey == "",
@@ -178,6 +187,9 @@ func Test() Env {
 
 		UseCobble:         false, // tests start their own cobble/pebble instances as needed
 		DiscoverPublicIPs: false,
+		EnableLMTP:        true,
+
+		MaxMaildirEmails: 5, // low limit for testing
 
 		FakeEmail:   true,
 		SkipBilling: true,
@@ -223,6 +235,9 @@ func Staging() Env {
 
 		UseCobble:         false,
 		DiscoverPublicIPs: true,
+		EnableLMTP:        true,
+
+		MaxMaildirEmails: 1000, // 1000 emails before auto-disable
 
 		FakeEmail:   false,
 		SkipBilling: false,
@@ -267,6 +282,9 @@ func Prod() Env {
 
 		UseCobble:         false,
 		DiscoverPublicIPs: true,
+		EnableLMTP:        true,
+
+		MaxMaildirEmails: 1000, // 1000 emails before auto-disable
 
 		FakeEmail:   false,
 		SkipBilling: false,

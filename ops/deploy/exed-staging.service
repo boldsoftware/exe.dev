@@ -9,6 +9,8 @@ User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu
 EnvironmentFile=/etc/default/exed
+RuntimeDirectory=exed
+RuntimeDirectoryMode=0755
 
 # The EnvironmentFile contains these variables, some redacted here:
 #

@@ -2221,7 +2221,10 @@ func scpToBox(ctx context.Context, pool *sshpool2.Pool, box *exedb.Box, content 
 
 	// On failure, remove temp file.
 	cleanup := func() {
-		runCommandOnBox(ctx, pool, box, fmt.Sprintf("rm -f %s", tmpPath))
+		// Use a fresh context so cleanup runs even if the original context was canceled.
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		runCommandOnBox(cleanupCtx, pool, box, fmt.Sprintf("rm -f %s", tmpPath))
 	}
 
 	// Write content to temp file

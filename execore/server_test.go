@@ -96,6 +96,7 @@ func newUnstartedServer(t testing.TB) *Server {
 		ExeletAddresses: nil,
 		Env:             env,
 		MetricsRegistry: registry,
+		LMTPSocketPath:  "",
 	})
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)

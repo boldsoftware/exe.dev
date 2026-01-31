@@ -119,6 +119,20 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 				HasPositionalArgs: true,
 				CompleterFunc:     ss.completeBoxNames,
 			},
+			{
+				Name:              "receive-email",
+				Description:       "Enable or disable inbound email for a VM",
+				Usage:             "share receive-email <vm> [on|off]",
+				Handler:           ss.handleShareReceiveEmailCmd,
+				FlagSetFunc:       jsonOnlyFlags("share-receive-email"),
+				HasPositionalArgs: true,
+				CompleterFunc:     ss.completeBoxNames,
+				Examples: []string{
+					"share receive-email mybox on",
+					"share receive-email mybox off",
+					"share receive-email mybox",
+				},
+			},
 		},
 	}
 }
@@ -812,4 +826,142 @@ func (ss *SSHServer) handleShareRemoveLinkCmd(ctx context.Context, cc *exemenu.C
 	cc.Writeln("\033[1;32m✓\033[0m Removed share link %s", token)
 	cc.Writeln("")
 	return nil
+}
+
+func (ss *SSHServer) handleShareReceiveEmailCmd(ctx context.Context, cc *exemenu.CommandContext) error {
+	if len(cc.Args) == 0 {
+		return cc.Errorf("usage: share receive-email <vm> [on|off]")
+	}
+
+	boxName := ss.normalizeBoxName(cc.Args[0])
+
+	// Get the box and verify ownership
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            boxName,
+		CreatedByUserID: cc.User.ID,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return cc.Errorf("VM %q not found or access denied", boxName)
+	}
+	if err != nil {
+		return err
+	}
+
+	emailAddr := fmt.Sprintf("anything@%s.%s", box.Name, ss.server.env.BoxHost)
+
+	// If no on/off argument, show current status
+	if len(cc.Args) == 1 {
+		enabled := box.EmailReceiveEnabled == 1
+
+		if cc.WantJSON() {
+			cc.WriteJSON(map[string]any{
+				"vm_name":       box.Name,
+				"email_enabled": enabled,
+				"email_address": emailAddr,
+			})
+			return nil
+		}
+
+		cc.Writeln("")
+		if enabled {
+			cc.Writeln("Inbound email for VM %q is \033[1;32menabled\033[0m", box.Name)
+			cc.Writeln("Email address: %s", emailAddr)
+			cc.Writeln("Emails are delivered to ~/Maildir/new/")
+		} else {
+			cc.Writeln("Inbound email for VM %q is \033[1;31mdisabled\033[0m", box.Name)
+			cc.Writeln("To enable: share receive-email %s on", box.Name)
+		}
+		cc.Writeln("")
+		return nil
+	}
+
+	// Parse on/off
+	onOff := strings.ToLower(cc.Args[1])
+	var enabling bool
+	switch onOff {
+	case "on", "true", "1":
+		enabling = true
+	case "off", "false", "0":
+		enabling = false
+	default:
+		return cc.Errorf("invalid value %q: use on or off", cc.Args[1])
+	}
+
+	// If enabling, set up maildir and test delivery before updating DB.
+	if enabling {
+		setupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+
+		// Create maildir directories (standard Maildir structure)
+		_, err = runCommandOnBox(setupCtx, ss.server.sshPool, &box, "mkdir -p ~/Maildir/{new,cur,tmp}")
+		if err != nil {
+			return cc.Errorf("failed to create maildir on VM: %v", err)
+		}
+
+		// Write a welcome email to verify delivery works
+		welcomeEmail := ss.generateWelcomeEmail(box.Name)
+		welcomeRecipient := fmt.Sprintf("welcome@%s.%s", box.Name, ss.server.env.BoxHost)
+		if err := deliverEmailToBox(setupCtx, ss.server.sshPool, &box, welcomeRecipient, welcomeEmail); err != nil {
+			return cc.Errorf("failed to deliver welcome email: %v", err)
+		}
+	}
+
+	// Update the database last, after verifying setup works
+	var newValue int64
+	if enabling {
+		newValue = 1
+	}
+	err = withTx1(ss.server, ctx, (*exedb.Queries).SetBoxEmailReceiveEnabled, exedb.SetBoxEmailReceiveEnabledParams{
+		EmailReceiveEnabled: newValue,
+		ID:                  box.ID,
+	})
+	if err != nil {
+		return err
+	}
+
+	if cc.WantJSON() {
+		result := map[string]any{
+			"status":        "success",
+			"vm_name":       box.Name,
+			"email_enabled": enabling,
+		}
+		if enabling {
+			result["email_address"] = emailAddr
+		}
+		cc.WriteJSON(result)
+		return nil
+	}
+
+	cc.Writeln("")
+	if enabling {
+		cc.Writeln("\033[1;32m✓\033[0m Inbound email enabled for VM %q", box.Name)
+		cc.Writeln("Email address: %s", emailAddr)
+		cc.Writeln("Emails will be delivered to ~/Maildir/new/")
+	} else {
+		cc.Writeln("\033[1;32m✓\033[0m Inbound email disabled for VM %q", box.Name)
+	}
+	cc.Writeln("")
+	return nil
+}
+
+func (ss *SSHServer) generateWelcomeEmail(boxName string) []byte {
+	env := ss.server.env
+	now := time.Now().UTC().Format(time.RFC1123Z)
+	emailAddr := fmt.Sprintf("anything@%s.%s", boxName, env.BoxHost)
+	body := fmt.Sprintf(`From: %s <support@%s>
+To: <%s>
+Subject: Welcome to exe.dev inbound email
+Date: %s
+Content-Type: text/plain; charset=utf-8
+
+Inbound email is now enabled for your VM.
+
+Any email sent to *@%s.%s will be delivered to ~/Maildir/new/
+
+For documentation, visit: https://%s/docs/receive-email
+
+---
+%s
+`, env.WebHost, env.WebHost, emailAddr, now, boxName, env.BoxHost, env.WebHost, env.WebHost)
+	return []byte(body)
 }

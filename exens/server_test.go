@@ -523,9 +523,38 @@ func TestDNSServerIntegration(t *testing.T) {
 	// Add test data
 	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
-		return queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
+		if err := queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
 			Shard:    1,
 			PublicIP: "192.168.1.1",
+		}); err != nil {
+			return err
+		}
+
+		// Add a user for box ownership
+		if err := queries.InsertUser(ctx, exedb.InsertUserParams{
+			UserID: "integration-user",
+			Email:  "integration@example.com",
+			Region: "pdx",
+		}); err != nil {
+			return err
+		}
+
+		// Add a box with email enabled for MX testing
+		boxID, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
+			Name:            "mxtest",
+			Status:          "running",
+			Image:           "ubuntu",
+			Ctrhost:         "localhost",
+			CreatedByUserID: "integration-user",
+			Region:          "pdx",
+		})
+		if err != nil {
+			return err
+		}
+
+		return queries.SetBoxEmailReceiveEnabled(ctx, exedb.SetBoxEmailReceiveEnabledParams{
+			EmailReceiveEnabled: 1,
+			ID:                  int(boxID),
 		})
 	})
 	if err != nil {
@@ -684,6 +713,28 @@ func TestDNSServerIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("QueryMailSubdomain", func(t *testing.T) {
+		msg := dns.NewMsg("mail.exe.xyz.", dns.TypeA)
+
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(resp.Answer) != 1 {
+			t.Fatalf("expected 1 A answer for mail subdomain, got %d", len(resp.Answer))
+		}
+
+		a, ok := resp.Answer[0].(*dns.A)
+		if !ok {
+			t.Fatalf("expected A record, got %T", resp.Answer[0])
+		}
+		// mail.exe.xyz should return lobby IP (192.168.0.1 from test setup)
+		if a.A.String() != "192.168.0.1" {
+			t.Errorf("expected 192.168.0.1, got %s", a.A.String())
+		}
+	})
+
 	t.Run("QuerySOARecord", func(t *testing.T) {
 		msg := dns.NewMsg("exe.xyz.", dns.TypeSOA)
 
@@ -702,6 +753,181 @@ func TestDNSServerIntegration(t *testing.T) {
 		}
 		if soa.Ns != "ns1.exe.dev." {
 			t.Errorf("expected ns1.exe.dev., got %s", soa.Ns)
+		}
+	})
+
+	t.Run("QueryMXRecord", func(t *testing.T) {
+		msg := dns.NewMsg("mxtest.exe.xyz.", dns.TypeMX)
+
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(resp.Answer) != 1 {
+			t.Fatalf("expected 1 MX answer, got %d", len(resp.Answer))
+		}
+
+		mx, ok := resp.Answer[0].(*dns.MX)
+		if !ok {
+			t.Fatalf("expected MX record, got %T", resp.Answer[0])
+		}
+		if mx.Preference != 10 {
+			t.Errorf("expected preference 10, got %d", mx.Preference)
+		}
+		if mx.Mx != "mail.exe.xyz." {
+			t.Errorf("expected mail.exe.xyz., got %s", mx.Mx)
+		}
+	})
+
+	t.Run("QueryMXRecordNotEnabled", func(t *testing.T) {
+		// Query MX for a domain that doesn't exist or doesn't have email enabled
+		msg := dns.NewMsg("nonexistent.exe.xyz.", dns.TypeMX)
+
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Should return NXDOMAIN or empty answer for nonexistent box
+		if len(resp.Answer) != 0 {
+			t.Errorf("expected 0 MX answers for nonexistent box, got %d", len(resp.Answer))
+		}
+	})
+}
+
+func TestMXRecords(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	log := tslog.Slogger(t)
+
+	// Add test data: user and box with email enabled
+	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+
+		// Add ip_shard
+		if err := queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
+			Shard:    1,
+			PublicIP: "1.2.3.4",
+		}); err != nil {
+			return err
+		}
+
+		// Add a user (required for box)
+		if err := queries.InsertUser(ctx, exedb.InsertUserParams{
+			UserID: "test-user",
+			Email:  "test@example.com",
+			Region: "pdx",
+		}); err != nil {
+			return err
+		}
+
+		// Add a box with email enabled
+		boxID, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
+			Name:            "emailbox",
+			Status:          "running",
+			Image:           "ubuntu",
+			Ctrhost:         "localhost",
+			CreatedByUserID: "test-user",
+			Region:          "pdx",
+		})
+		if err != nil {
+			return err
+		}
+
+		// Enable email receive
+		if err := queries.SetBoxEmailReceiveEnabled(ctx, exedb.SetBoxEmailReceiveEnabledParams{
+			EmailReceiveEnabled: 1,
+			ID:                  int(boxID),
+		}); err != nil {
+			return err
+		}
+
+		// Add another box without email enabled
+		_, err = queries.InsertBox(ctx, exedb.InsertBoxParams{
+			Name:            "noemailbox",
+			Status:          "running",
+			Image:           "ubuntu",
+			Ctrhost:         "localhost",
+			CreatedByUserID: "test-user",
+			Region:          "pdx",
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, log, "exe.xyz", "exe.dev")
+
+	t.Run("MX_for_email_enabled_box", func(t *testing.T) {
+		rrs, err := server.lookupMX(ctx, "emailbox.exe.xyz", "emailbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 MX record, got %d", len(rrs))
+		}
+
+		mx, ok := rrs[0].(*dns.MX)
+		if !ok {
+			t.Fatalf("expected *dns.MX, got %T", rrs[0])
+		}
+		if mx.Preference != 10 {
+			t.Errorf("expected preference 10, got %d", mx.Preference)
+		}
+		if mx.Mx != "mail.exe.xyz." {
+			t.Errorf("expected mail.exe.xyz., got %s", mx.Mx)
+		}
+	})
+
+	t.Run("NoMX_for_email_disabled_box", func(t *testing.T) {
+		rrs, err := server.lookupMX(ctx, "noemailbox.exe.xyz", "noemailbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 0 {
+			t.Errorf("expected 0 MX records for box without email, got %d", len(rrs))
+		}
+	})
+
+	t.Run("NoMX_for_nonexistent_box", func(t *testing.T) {
+		rrs, err := server.lookupMX(ctx, "nonexistent.exe.xyz", "nonexistent.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 0 {
+			t.Errorf("expected 0 MX records for nonexistent box, got %d", len(rrs))
+		}
+	})
+
+	t.Run("NoMX_for_apex_domain", func(t *testing.T) {
+		rrs, err := server.lookupMX(ctx, "exe.xyz", "exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 0 {
+			t.Errorf("expected 0 MX records for apex domain, got %d", len(rrs))
+		}
+	})
+
+	t.Run("NoMX_for_nested_subdomain", func(t *testing.T) {
+		rrs, err := server.lookupMX(ctx, "foo.bar.exe.xyz", "foo.bar.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 0 {
+			t.Errorf("expected 0 MX records for nested subdomain, got %d", len(rrs))
+		}
+	})
+
+	t.Run("NoMX_for_wrong_domain", func(t *testing.T) {
+		rrs, err := server.lookupMX(ctx, "box.other.com", "box.other.com.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 0 {
+			t.Errorf("expected 0 MX records for wrong domain, got %d", len(rrs))
 		}
 	})
 }

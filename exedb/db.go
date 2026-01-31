@@ -210,6 +210,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxByNameAndAllocStmt, err = db.PrepareContext(ctx, getBoxByNameAndAlloc); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxByNameAndAlloc: %w", err)
 	}
+	if q.getBoxByNameWithEmailReceiveEnabledStmt, err = db.PrepareContext(ctx, getBoxByNameWithEmailReceiveEnabled); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxByNameWithEmailReceiveEnabled: %w", err)
+	}
 	if q.getBoxByNameWithSupportAccessStmt, err = db.PrepareContext(ctx, getBoxByNameWithSupportAccess); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxByNameWithSupportAccess: %w", err)
 	}
@@ -533,6 +536,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.recordUserEventStmt, err = db.PrepareContext(ctx, recordUserEvent); err != nil {
 		return nil, fmt.Errorf("error preparing query RecordUserEvent: %w", err)
+	}
+	if q.setBoxEmailReceiveEnabledStmt, err = db.PrepareContext(ctx, setBoxEmailReceiveEnabled); err != nil {
+		return nil, fmt.Errorf("error preparing query SetBoxEmailReceiveEnabled: %w", err)
 	}
 	if q.setBoxSupportAccessAllowedStmt, err = db.PrepareContext(ctx, setBoxSupportAccessAllowed); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxSupportAccessAllowed: %w", err)
@@ -961,6 +967,11 @@ func (q *Queries) Close() error {
 	if q.getBoxByNameAndAllocStmt != nil {
 		if cerr := q.getBoxByNameAndAllocStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxByNameAndAllocStmt: %w", cerr)
+		}
+	}
+	if q.getBoxByNameWithEmailReceiveEnabledStmt != nil {
+		if cerr := q.getBoxByNameWithEmailReceiveEnabledStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxByNameWithEmailReceiveEnabledStmt: %w", cerr)
 		}
 	}
 	if q.getBoxByNameWithSupportAccessStmt != nil {
@@ -1503,6 +1514,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing recordUserEventStmt: %w", cerr)
 		}
 	}
+	if q.setBoxEmailReceiveEnabledStmt != nil {
+		if cerr := q.setBoxEmailReceiveEnabledStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setBoxEmailReceiveEnabledStmt: %w", cerr)
+		}
+	}
 	if q.setBoxSupportAccessAllowedStmt != nil {
 		if cerr := q.setBoxSupportAccessAllowedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setBoxSupportAccessAllowedStmt: %w", cerr)
@@ -1794,6 +1810,7 @@ type Queries struct {
 	getAuthCookieInfoStmt                      *sql.Stmt
 	getAuthTokenInfoStmt                       *sql.Stmt
 	getBoxByNameAndAllocStmt                   *sql.Stmt
+	getBoxByNameWithEmailReceiveEnabledStmt    *sql.Stmt
 	getBoxByNameWithSupportAccessStmt          *sql.Stmt
 	getBoxByUserAndShardStmt                   *sql.Stmt
 	getBoxEmailCreditStmt                      *sql.Stmt
@@ -1902,6 +1919,7 @@ type Queries struct {
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
 	listUnusedSystemInviteCodesStmt            *sql.Stmt
 	recordUserEventStmt                        *sql.Stmt
+	setBoxEmailReceiveEnabledStmt              *sql.Stmt
 	setBoxSupportAccessAllowedStmt             *sql.Stmt
 	setIPAbuseFilterDisabledStmt               *sql.Stmt
 	setLastBouncesPollStmt                     *sql.Stmt
@@ -2008,6 +2026,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAuthCookieInfoStmt:                      q.getAuthCookieInfoStmt,
 		getAuthTokenInfoStmt:                       q.getAuthTokenInfoStmt,
 		getBoxByNameAndAllocStmt:                   q.getBoxByNameAndAllocStmt,
+		getBoxByNameWithEmailReceiveEnabledStmt:    q.getBoxByNameWithEmailReceiveEnabledStmt,
 		getBoxByNameWithSupportAccessStmt:          q.getBoxByNameWithSupportAccessStmt,
 		getBoxByUserAndShardStmt:                   q.getBoxByUserAndShardStmt,
 		getBoxEmailCreditStmt:                      q.getBoxEmailCreditStmt,
@@ -2116,6 +2135,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
 		listUnusedSystemInviteCodesStmt:            q.listUnusedSystemInviteCodesStmt,
 		recordUserEventStmt:                        q.recordUserEventStmt,
+		setBoxEmailReceiveEnabledStmt:              q.setBoxEmailReceiveEnabledStmt,
 		setBoxSupportAccessAllowedStmt:             q.setBoxSupportAccessAllowedStmt,
 		setIPAbuseFilterDisabledStmt:               q.setIPAbuseFilterDisabledStmt,
 		setLastBouncesPollStmt:                     q.setLastBouncesPollStmt,

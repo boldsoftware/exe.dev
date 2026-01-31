@@ -278,6 +278,8 @@ type Server struct {
 
 	// dnsServer is the embedded DNS nameserver for BoxHost (prod/staging only)
 	dnsServer *exens.Server
+	// lmtpServer handles inbound email delivery
+	lmtpServer *LMTPServer
 
 	// Testing hooks
 	lookupCNAMEFunc func(context.Context, string) (string, error)
@@ -661,6 +663,7 @@ type ServerConfig struct {
 	ExeletAddresses []string
 	Env             stage.Env
 	MetricsRegistry *prometheus.Registry
+	LMTPSocketPath  string // path to LMTP Unix socket; empty disables LMTP
 }
 
 // NewServer creates a new Server instance with database and container management.
@@ -898,6 +901,11 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// Initialize embedded DNS server for BoxHost (exe.xyz) in prod/staging
 	if cfg.Env.DiscoverPublicIPs {
 		s.dnsServer = exens.NewServer(s.db, s.log, cfg.Env.BoxHost, cfg.Env.WebHost)
+	}
+
+	// Initialize LMTP server for inbound email delivery
+	if cfg.LMTPSocketPath != "" {
+		s.lmtpServer = NewLMTPServer(s, cfg.LMTPSocketPath)
 	}
 
 	s.setupHTTPServer()
@@ -2355,6 +2363,15 @@ func (s *Server) Start() error {
 		s.validateIPShards(ctx)
 	}
 
+	// Start LMTP server for inbound email
+	if s.lmtpServer != nil {
+		if err := s.lmtpServer.Start(ctx); err != nil {
+			s.slog().ErrorContext(ctx, "LMTP server failed to start", "error", err)
+		} else {
+			s.slog().InfoContext(ctx, "LMTP server started", "socket", s.lmtpServer.SocketPath())
+		}
+	}
+
 	s.slackFeed.ServiceStarted(ctx, "exed")
 
 	// Start HTTP server in a goroutine if configured
@@ -2972,6 +2989,9 @@ func (s *Server) Stop() error {
 	}
 	if s.dnsServer != nil {
 		s.dnsServer.Stop(ctx)
+	}
+	if s.lmtpServer != nil {
+		s.lmtpServer.Stop(ctx)
 	}
 	if err := s.sshPool.Close(); err != nil {
 		s.slog().ErrorContext(ctx, "SSH pool close error", "error", err)

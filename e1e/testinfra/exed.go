@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -33,6 +34,7 @@ type ExedInstance struct {
 	CoverDir        string          // where coverage data is written
 	Errors          chan string     // exed errors are sent on this channel
 	GUIDLog         chan string     // exed GUID logs sent on this channel
+	LMTPSocketPath  string          // path to LMTP Unix socket
 
 	binPath        string    // exed binary we executed
 	logFile        io.Writer // exed log file; may be nil for no logs
@@ -117,6 +119,14 @@ func StartExed(ctx context.Context, emailServerPort, piperPort int, extraProxyPo
 		return nil, fmt.Errorf("failed to create coverage dir: %w", err)
 	}
 
+	// Create a temp directory for the LMTP socket (socket paths have length limits)
+	lmtpDir, err := os.MkdirTemp("", "lmtp")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create LMTP socket dir: %w", err)
+	}
+	lmtpSocketPath := filepath.Join(lmtpDir, "lmtp.sock")
+	AddCleanup(func() { os.RemoveAll(lmtpDir) })
+
 	emailServerURL := fmt.Sprintf("http://localhost:%d", emailServerPort)
 
 	whoamiPath := "../ghuser/whoami.sqlite3"
@@ -134,6 +144,7 @@ func StartExed(ctx context.Context, emailServerPort, piperPort int, extraProxyPo
 		"-fake-email-server="+emailServerURL,
 		"-gh-whoami="+whoamiPath,
 		"-exelet-addresses="+strings.Join(exeletAddrs, ","),
+		"-lmtp-socket="+lmtpSocketPath,
 	)
 
 	// Convert extra proxy ports to comma-delimited string
@@ -338,6 +349,7 @@ ProcessLogs:
 		CoverDir:        coverDir,
 		Errors:          exedSlogErrC,
 		GUIDLog:         exedGUIDLogC,
+		LMTPSocketPath:  lmtpSocketPath,
 		binPath:         binPath,
 		logFile:         logFile,
 		piperPort:       piperPort,
@@ -503,6 +515,7 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 		"-fake-email-server="+ei.emailServerURL,
 		"-gh-whoami="+ei.whoamiPath,
 		"-exelet-addresses="+strings.Join(exeletAddrs, ","),
+		"-lmtp-socket="+ei.LMTPSocketPath,
 	)
 
 	exedCmd.Env = append(

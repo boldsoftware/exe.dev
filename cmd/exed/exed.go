@@ -52,12 +52,18 @@ func run() error {
 	startExelet := flag.Bool("start-exelet", false, "Build and start exelet on lima-exe-ctr (local/test only)")
 	multiExelet := flag.Bool("multi-exelet", false, "with -start-exelet, also start exelet on lima-exe-ctr-tests; may interact badly with concurrent automated tests")
 	enableExeletStorageReplication := flag.Bool("enable-exelet-storage-replication", false, "with -multi-exelet, enable storage replication from exe-ctr to exe-ctr-tests")
+	lmtpSocket := flag.String("lmtp-socket", "/var/run/exed/lmtp.sock", "LMTP socket path; empty to disable")
 	flag.Parse()
 
 	// Parse stage
 	env, err := stage.Parse(*stageName)
 	if err != nil {
 		return err
+	}
+
+	// Disable LMTP if the stage doesn't enable it
+	if !env.EnableLMTP {
+		*lmtpSocket = ""
 	}
 
 	// Validate -open flag (local/test only)
@@ -194,6 +200,7 @@ func run() error {
 		ExeletAddresses: exeletAddrs,
 		Env:             env,
 		MetricsRegistry: metricsRegistry,
+		LMTPSocketPath:  *lmtpSocket,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)

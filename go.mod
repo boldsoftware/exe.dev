@@ -32,6 +32,7 @@ require (
 	github.com/docker/cli v28.2.2+incompatible
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/dustin/go-humanize v1.0.1
+	github.com/emersion/go-smtp v0.24.0
 	github.com/gliderlabs/ssh v0.3.8
 	github.com/go-webauthn/webauthn v0.15.0
 	github.com/go4org/hashtriemap v0.0.0-20251130024219-545ba229f689
@@ -124,6 +125,7 @@ require (
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/fatih/structtag v1.2.0 // indirect

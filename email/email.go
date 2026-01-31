@@ -31,6 +31,7 @@ const (
 	TypeDebugTest                Type = "debug_test"
 	TypeInvitesAllocated         Type = "invites_allocated"
 	TypeSendFromInsideVM         Type = "send_from_inside_vm"
+	TypeEmailLimitExceeded       Type = "email_limit_exceeded"
 )
 
 // postmarkMessageStreams maps email types to Postmark message stream IDs.
@@ -47,6 +48,7 @@ var postmarkMessageStreams = map[Type]string{
 	TypeDebugTest:                "",
 	TypeInvitesAllocated:         "general-notification",
 	TypeSendFromInsideVM:         "send-from-inside-vm",
+	TypeEmailLimitExceeded:       "general-notification",
 }
 
 var emailsSentTotal = prometheus.NewCounterVec(

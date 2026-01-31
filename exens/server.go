@@ -186,6 +186,8 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 			rrs, err = s.lookupCNAME(ctx, qname, header.Name, header.Class)
 		case dns.TypeTXT:
 			rrs, err = s.lookupTXT(ctx, qname, header.Name, header.Class)
+		case dns.TypeMX:
+			rrs, err = s.lookupMX(ctx, qname, header.Name, header.Class)
 		case dns.TypeNS:
 			rrs, err = s.lookupNS(ctx, qname, header.Name, header.Class)
 		case dns.TypeSOA:
@@ -223,9 +225,15 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 // For box names, returns the CNAME and chases it to get the A record.
 // For *.xterm.{boxHost}, returns the lobby IP.
 // For the base domain ({boxHost}), returns the lobby IP.
+// For mail.{boxHost}, returns the lobby IP (mail server).
 func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
 	// Check for base domain (exe.xyz) - return lobby IP
 	if qname == s.boxHost {
+		return s.lookupLobbyA(fqdn, class)
+	}
+
+	// Check for mail subdomain (mail.exe.xyz) - return lobby IP for mail server
+	if qname == "mail."+s.boxHost {
 		return s.lookupLobbyA(fqdn, class)
 	}
 
@@ -363,6 +371,40 @@ func (s *Server) lookupNS(ctx context.Context, qname, fqdn string, class uint16)
 		&dns.NS{
 			Hdr: dns.Header{Name: fqdn, Class: class, TTL: 86400},
 			Ns:  "ns2." + s.webHost + ".",
+		},
+	}, nil
+}
+
+// lookupMX handles MX record queries for VM subdomains.
+// Only returns MX for boxes with email_receive_enabled=1.
+// MX points to mail.{boxHost} (e.g., mail.exe.xyz).
+func (s *Server) lookupMX(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
+	// Only handle subdomains of boxHost (not the apex)
+	suffix := "." + s.boxHost
+	if !strings.HasSuffix(qname, suffix) {
+		return nil, nil
+	}
+
+	// Extract box name (everything before the domain suffix)
+	boxName := strings.TrimSuffix(qname, suffix)
+	if boxName == "" || strings.Contains(boxName, ".") {
+		// Empty name (apex) or nested subdomain - no MX
+		return nil, nil
+	}
+
+	// Check if box exists and has email receive enabled
+	_, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetBoxByNameWithEmailReceiveEnabled, boxName)
+	if err != nil {
+		// Box not found or email not enabled
+		return nil, nil
+	}
+
+	// Return MX pointing to mail.{boxHost}
+	return []dns.RR{
+		&dns.MX{
+			Hdr:        dns.Header{Name: fqdn, Class: class, TTL: 300},
+			Preference: 10,
+			Mx:         "mail." + s.boxHost + ".",
 		},
 	}, nil
 }
