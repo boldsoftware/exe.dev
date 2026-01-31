@@ -51,6 +51,31 @@ The user has just created this VM, and wants to do the following with it.
 
 const shelleyDefaultModel = "claude-opus-4.5"
 
+// makeShelleyConfig generates the shelley.json config for a box.
+func (ss *SSHServer) makeShelleyConfig(boxName string) ([]byte, error) {
+	exedevURL := ss.server.webBaseURLNoRequest()
+	terminalURL := ss.server.xtermURL(boxName, ss.server.servingHTTPS())
+	shelleyJSON := map[string]any{
+		"terminal_url":  terminalURL + "?d=WORKING_DIR",
+		"default_model": shelleyDefaultModel,
+		"llm_gateway":   "http://169.254.169.254/gateway/llm",
+		"key_generator": "echo irrelevant", // TODO: remove once exeuntu is rebuilt without it
+		"links": []map[string]string{
+			{
+				"title":    fmt.Sprintf("Back to %s", ss.server.env.WebHost),
+				"icon_svg": "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
+				"url":      exedevURL,
+			},
+			{
+				"title":    ss.server.env.BoxSub(boxName),
+				"icon_svg": "M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244",
+				"url":      ss.server.boxProxyAddress(boxName),
+			},
+		},
+	}
+	return json.Marshal(shelleyJSON)
+}
+
 // repeatedStringFlag is a flag.Value implementation that allows a flag to be specified multiple times
 type repeatedStringFlag []string
 
@@ -727,29 +752,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		cc.Write("\r\n\033[1A")
 	}
 
-	exedevURL := ss.server.webBaseURLNoRequest()
-	terminalURL := ss.server.xtermURL(boxName, ss.server.servingHTTPS())
-	shelleyJSON := map[string]any{
-		"terminal_url":  terminalURL + "?d=WORKING_DIR",
-		"default_model": shelleyDefaultModel,
-	}
-	// Use the metadata service for the gateway
-	shelleyJSON["llm_gateway"] = "http://169.254.169.254/gateway/llm"
-	// TODO: remove key_generator once exeuntu is rebuilt without it
-	shelleyJSON["key_generator"] = "echo irrelevant"
-	shelleyJSON["links"] = []map[string]string{
-		{
-			"title":    fmt.Sprintf("Back to %s", ss.server.env.WebHost),
-			"icon_svg": "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
-			"url":      exedevURL,
-		},
-		{
-			"title":    ss.server.env.BoxSub(boxName),
-			"icon_svg": "M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244",
-			"url":      ss.server.boxProxyAddress(boxName),
-		},
-	}
-	shelleyConf, err := json.Marshal(shelleyJSON)
+	shelleyConf, err := ss.makeShelleyConfig(boxName)
 	if err != nil {
 		return fmt.Errorf("error generating shelley config: %w", err)
 	}
@@ -1808,30 +1811,9 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 		}
 
 		// Update /exe.dev/shelley.json with the new box name
-		// This file contains URLs with the box name embedded
-		exedevURL := ss.server.webBaseURLNoRequest()
-		terminalURL := ss.server.xtermURL(newName, ss.server.servingHTTPS())
-		shelleyJSON := map[string]any{
-			"terminal_url":  terminalURL + "?d=WORKING_DIR",
-			"default_model": shelleyDefaultModel,
-			"llm_gateway":   "http://169.254.169.254/gateway/llm",
-			"key_generator": "echo irrelevant",
-			"links": []map[string]string{
-				{
-					"title":    fmt.Sprintf("Back to %s", ss.server.env.WebHost),
-					"icon_svg": "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
-					"url":      exedevURL,
-				},
-				{
-					"title":    ss.server.env.BoxSub(newName),
-					"icon_svg": "M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244",
-					"url":      ss.server.boxProxyAddress(newName),
-				},
-			},
-		}
-		shelleyConf, err := json.Marshal(shelleyJSON)
+		shelleyConf, err := ss.makeShelleyConfig(newName)
 		if err != nil {
-			slog.ErrorContext(ctx, "rename: failed to marshal shelley.json",
+			slog.ErrorContext(ctx, "rename: failed to generate shelley.json",
 				"box_id", box.ID,
 				"new_name", newName,
 				"error", err)
@@ -1995,28 +1977,7 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 	}
 	hostPublicKey := ssh.MarshalAuthorizedKey(hostSigner.PublicKey())
 
-	// Build shelley config for exeuntu clones
-	exedevURL := ss.server.webBaseURLNoRequest()
-	terminalURL := ss.server.xtermURL(newName, ss.server.servingHTTPS())
-	shelleyJSON := map[string]any{
-		"terminal_url":  terminalURL + "?d=WORKING_DIR",
-		"default_model": shelleyDefaultModel,
-		"llm_gateway":   "http://169.254.169.254/gateway/llm",
-		"key_generator": "echo irrelevant",
-		"links": []map[string]string{
-			{
-				"title":    fmt.Sprintf("Back to %s", ss.server.env.WebHost),
-				"icon_svg": "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
-				"url":      exedevURL,
-			},
-			{
-				"title":    ss.server.env.BoxSub(newName),
-				"icon_svg": "M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244",
-				"url":      ss.server.boxProxyAddress(newName),
-			},
-		},
-	}
-	shelleyConf, err := json.Marshal(shelleyJSON)
+	shelleyConf, err := ss.makeShelleyConfig(newName)
 	if err != nil {
 		_ = withTx1(ss.server, context.WithoutCancel(ctx), (*exedb.Queries).DeleteBox, boxID)
 		return fmt.Errorf("error generating shelley config: %w", err)
