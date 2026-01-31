@@ -10,6 +10,7 @@ import (
 	mathrand "math/rand"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -1118,6 +1119,416 @@ func TestPoolHandshakeTimeout(t *testing.T) {
 	}
 
 	t.Logf("dial failed in %v as expected (error: %v)", elapsed, err)
+}
+
+// TestDialWithRetriesRetriesDialThroughClient tests that DialWithRetries
+// retries failures that occur during dialThroughClient (port forwarding),
+// not just during connection establishment.
+func TestDialWithRetriesRetriesDialThroughClient(t *testing.T) {
+	// Create a server that rejects the first N port-forward attempts
+	// but accepts subsequent ones.
+	server := newTestSSHServerWithFailingPortForward(t, 2) // fail first 2 attempts
+	defer server.close()
+
+	pool := &Pool{TTL: time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+
+	config, signer := newTestClientConfig(t)
+
+	// Use retries that should be enough to get past the 2 failures
+	retries := []time.Duration{10 * time.Millisecond, 10 * time.Millisecond, 10 * time.Millisecond}
+
+	// DialWithRetries should retry the entire operation (connect + dialThroughClient),
+	// so it should eventually succeed after the first 2 port-forward failures.
+	// Note: err may be non-nil even on success (contains errors from prior attempts).
+	conn, err := pool.DialWithRetries(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config, retries)
+	if conn == nil {
+		t.Fatalf("DialWithRetries failed to get connection: %v", err)
+	}
+	if err != nil {
+		t.Logf("DialWithRetries succeeded with prior errors (expected): %v", err)
+	}
+	conn.Close()
+
+	// Verify we made at least 3 port-forward attempts (2 failures + 1 success)
+	if server.portForwardAttempts() < 3 {
+		t.Errorf("expected at least 3 port forward attempts, got %d", server.portForwardAttempts())
+	}
+}
+
+// testSSHServerWithFailingPortForward is a test SSH server that fails
+// the first N port-forward (direct-tcpip channel) requests.
+type testSSHServerWithFailingPortForward struct {
+	*testSSHServer
+	failCount int // how many port-forwards to fail
+
+	mu       sync.Mutex
+	attempts int // count of port-forward attempts
+}
+
+func newTestSSHServerWithFailingPortForward(t *testing.T, failCount int) *testSSHServerWithFailingPortForward {
+	// Generate server key
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate server key: %v", err)
+	}
+
+	signer, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		t.Fatalf("failed to create signer: %v", err)
+	}
+
+	config := &ssh.ServerConfig{
+		NoClientAuth: true,
+	}
+	config.AddHostKey(signer)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+
+	s := &testSSHServerWithFailingPortForward{
+		testSSHServer: &testSSHServer{
+			listener: listener,
+			config:   config,
+			addr:     listener.Addr().String(),
+		},
+		failCount: failCount,
+	}
+
+	go s.serveWithFailingPortForward()
+
+	return s
+}
+
+func (s *testSSHServerWithFailingPortForward) serveWithFailingPortForward() {
+	for {
+		conn, err := s.listener.Accept()
+		if err != nil {
+			return
+		}
+
+		go func(conn net.Conn) {
+			_, chans, reqs, err := ssh.NewServerConn(conn, s.config)
+			if err != nil {
+				conn.Close()
+				return
+			}
+
+			go ssh.DiscardRequests(reqs)
+
+			for newChannel := range chans {
+				go func(newChannel ssh.NewChannel) {
+					if newChannel.ChannelType() == "direct-tcpip" {
+						s.mu.Lock()
+						s.attempts++
+						shouldFail := s.attempts <= s.failCount
+						s.mu.Unlock()
+
+						if shouldFail {
+							newChannel.Reject(ssh.ConnectionFailed, "simulated port-forward failure")
+							return
+						}
+
+						channel, _, err := newChannel.Accept()
+						if err != nil {
+							return
+						}
+						channel.Close()
+					} else {
+						newChannel.Reject(ssh.UnknownChannelType, "not supported")
+					}
+				}(newChannel)
+			}
+		}(conn)
+	}
+}
+
+func (s *testSSHServerWithFailingPortForward) portForwardAttempts() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.attempts
+}
+
+// TestDialWithRetriesStaleConnectionRecovery tests that DialWithRetries
+// can recover from a stale pooled connection within a single call.
+//
+// Scenario:
+// 1. Establish a connection, close it (remains in pool)
+// 2. Kill the underlying SSH client (simulating VM reboot)
+// 3. Call DialWithRetries - it should recover via retries
+func TestDialWithRetriesStaleConnectionRecovery(t *testing.T) {
+	server := newTestSSHServer(t)
+	defer server.close()
+
+	pool := &Pool{TTL: time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+
+	config, signer := newTestClientConfig(t)
+
+	// Step 1: Establish a connection
+	conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	if err != nil {
+		t.Fatalf("initial dial failed: %v", err)
+	}
+	conn.Close()
+
+	// Step 2: Get the pooled connection and close its underlying SSH client
+	// (simulating the server going away / VM reboot)
+	pc := getOnlyPooledConn(t, pool)
+	if err := pc.client.Close(); err != nil {
+		t.Fatalf("failed to close underlying client: %v", err)
+	}
+	t.Log("Closed underlying SSH client to simulate stale connection")
+
+	// Step 3: Try to dial with retries - should recover within single call
+	// Note: err may be non-nil even on success (contains errors from prior attempts).
+	retries := []time.Duration{10 * time.Millisecond, 50 * time.Millisecond, 100 * time.Millisecond}
+	conn2, err := pool.DialWithRetries(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config, retries)
+	if conn2 == nil {
+		t.Fatalf("DialWithRetries failed to recover from stale connection: %v", err)
+	}
+	if err != nil {
+		t.Logf("DialWithRetries recovered with prior errors (expected): %v", err)
+	}
+	t.Log("DialWithRetries recovered from stale connection within single call")
+	conn2.Close()
+}
+
+// TestRunCommandBasic tests the RunCommand functionality
+func TestRunCommandBasic(t *testing.T) {
+	server := newTestSSHServerWithExec(t)
+	defer server.close()
+
+	pool := &Pool{TTL: time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+
+	config, signer := newTestClientConfig(t)
+	connRetries := []time.Duration{10 * time.Millisecond, 50 * time.Millisecond}
+
+	output, err := pool.RunCommand(t.Context(), server.host(), config.User, server.port(), signer, config, "echo hello", nil, connRetries)
+	if err != nil {
+		t.Fatalf("RunCommand failed: %v", err)
+	}
+
+	if string(output) != "hello\n" {
+		t.Errorf("unexpected output: %q, expected %q", string(output), "hello\n")
+	}
+}
+
+// TestRunCommandWithStdin tests RunCommand with stdin
+func TestRunCommandWithStdin(t *testing.T) {
+	server := newTestSSHServerWithExec(t)
+	defer server.close()
+
+	pool := &Pool{TTL: time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+
+	config, signer := newTestClientConfig(t)
+	connRetries := []time.Duration{10 * time.Millisecond, 50 * time.Millisecond}
+
+	stdin := strings.NewReader("world")
+	output, err := pool.RunCommand(t.Context(), server.host(), config.User, server.port(), signer, config, "cat", stdin, connRetries)
+	if err != nil {
+		t.Fatalf("RunCommand with stdin failed: %v", err)
+	}
+
+	if string(output) != "world" {
+		t.Errorf("unexpected output: %q, expected %q", string(output), "world")
+	}
+}
+
+// TestRunCommandStaleConnectionRecovery tests that RunCommand retries connection
+// establishment when encountering a stale pooled connection.
+// Note: only the connection is retried, not the command itself (commands are not idempotent).
+func TestRunCommandStaleConnectionRecovery(t *testing.T) {
+	server := newTestSSHServerWithExec(t)
+	defer server.close()
+
+	pool := &Pool{TTL: time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+
+	config, signer := newTestClientConfig(t)
+	connRetries := []time.Duration{10 * time.Millisecond, 50 * time.Millisecond, 100 * time.Millisecond}
+
+	// Establish a connection
+	output, err := pool.RunCommand(t.Context(), server.host(), config.User, server.port(), signer, config, "echo hello", nil, connRetries)
+	if err != nil {
+		t.Fatalf("initial RunCommand failed: %v", err)
+	}
+	t.Logf("Initial command output: %s", output)
+
+	// Close the underlying SSH client to simulate stale connection
+	pc := getOnlyPooledConn(t, pool)
+	if err := pc.client.Close(); err != nil {
+		t.Fatalf("failed to close underlying client: %v", err)
+	}
+	t.Log("Closed underlying SSH client to simulate stale connection")
+
+	// RunCommand should fail on this stale connection (connection retries don't help
+	// because the stale connection is already in the pool and looks "alive").
+	// The stale connection will be removed, so a subsequent call should work.
+	output, err = pool.RunCommand(t.Context(), server.host(), config.User, server.port(), signer, config, "echo recovered", nil, connRetries)
+	if err == nil {
+		// If it somehow succeeded, that's fine too
+		t.Log("RunCommand succeeded on first try after stale connection")
+		t.Logf("Output: %s", output)
+		return
+	}
+
+	t.Logf("RunCommand failed on stale connection (expected): %v", err)
+
+	// Verify the stale connection was removed
+	pool.mu.Lock()
+	connCount := len(pool.conns)
+	pool.mu.Unlock()
+	if connCount != 0 {
+		t.Errorf("expected stale connection to be removed, pool has %d connections", connCount)
+	}
+
+	// A subsequent call SHOULD work because stale connection was removed
+	output, err = pool.RunCommand(t.Context(), server.host(), config.User, server.port(), signer, config, "echo recovered", nil, connRetries)
+	if err != nil {
+		t.Fatalf("second RunCommand failed: %v", err)
+	}
+	t.Log("Second RunCommand succeeded (fresh connection)")
+	t.Logf("Output: %s", output)
+}
+
+// testSSHServerWithExec is a test SSH server that can execute commands
+type testSSHServerWithExec struct {
+	listener net.Listener
+	config   *ssh.ServerConfig
+	addr     string
+}
+
+func newTestSSHServerWithExec(t *testing.T) *testSSHServerWithExec {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate server key: %v", err)
+	}
+
+	signer, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		t.Fatalf("failed to create signer: %v", err)
+	}
+
+	config := &ssh.ServerConfig{
+		NoClientAuth: true,
+	}
+	config.AddHostKey(signer)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+
+	s := &testSSHServerWithExec{
+		listener: listener,
+		config:   config,
+		addr:     listener.Addr().String(),
+	}
+
+	go s.serve(t)
+
+	return s
+}
+
+func (s *testSSHServerWithExec) serve(t *testing.T) {
+	for {
+		conn, err := s.listener.Accept()
+		if err != nil {
+			return
+		}
+
+		go func(conn net.Conn) {
+			_, chans, reqs, err := ssh.NewServerConn(conn, s.config)
+			if err != nil {
+				conn.Close()
+				return
+			}
+
+			go ssh.DiscardRequests(reqs)
+
+			for newChannel := range chans {
+				go func(newChannel ssh.NewChannel) {
+					if newChannel.ChannelType() == "session" {
+						channel, requests, err := newChannel.Accept()
+						if err != nil {
+							return
+						}
+
+						go func() {
+							for req := range requests {
+								switch req.Type {
+								case "exec":
+									// Parse the command
+									if len(req.Payload) < 4 {
+										req.Reply(false, nil)
+										continue
+									}
+									cmdLen := int(req.Payload[0])<<24 | int(req.Payload[1])<<16 | int(req.Payload[2])<<8 | int(req.Payload[3])
+									if len(req.Payload) < 4+cmdLen {
+										req.Reply(false, nil)
+										continue
+									}
+									cmd := string(req.Payload[4 : 4+cmdLen])
+									req.Reply(true, nil)
+
+									// Execute the command (simple simulation)
+									var output string
+									switch {
+									case strings.HasPrefix(cmd, "echo "):
+										output = strings.TrimPrefix(cmd, "echo ") + "\n"
+									case cmd == "cat":
+										// Read from channel (stdin)
+										buf := make([]byte, 1024)
+										n, _ := channel.Read(buf)
+										output = string(buf[:n])
+									default:
+										output = "unknown command\n"
+									}
+
+									channel.Write([]byte(output))
+
+									// Send exit status
+									channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+									channel.Close()
+									return
+								default:
+									req.Reply(false, nil)
+								}
+							}
+						}()
+					} else if newChannel.ChannelType() == "direct-tcpip" {
+						channel, _, err := newChannel.Accept()
+						if err != nil {
+							return
+						}
+						channel.Close()
+					} else {
+						newChannel.Reject(ssh.UnknownChannelType, "not supported")
+					}
+				}(newChannel)
+			}
+		}(conn)
+	}
+}
+
+func (s *testSSHServerWithExec) close() {
+	s.listener.Close()
+}
+
+func (s *testSSHServerWithExec) host() string {
+	host, _, _ := net.SplitHostPort(s.addr)
+	return host
+}
+
+func (s *testSSHServerWithExec) port() int {
+	_, portStr, _ := net.SplitHostPort(s.addr)
+	port, _ := strconv.Atoi(portStr)
+	return port
 }
 
 // TestIsSSHConnErrorRecognizesTimeouts tests that isSSHConnError correctly

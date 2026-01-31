@@ -3,6 +3,7 @@ package execore
 import (
 	"cmp"
 	"context"
+	crand "crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -26,6 +27,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"mvdan.cc/sh/v3/pattern"
+	"mvdan.cc/sh/v3/syntax"
 
 	"exe.dev/boxname"
 	"exe.dev/container"
@@ -34,6 +36,7 @@ import (
 	"exe.dev/exemenu"
 	api "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/region"
+	"exe.dev/sshpool2"
 	"exe.dev/stage"
 )
 
@@ -1798,7 +1801,7 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 			"sudo /exe.dev/bin/sh -c 'sed -i \"s/\\b%s\\b/%s/g\" /etc/hostname /etc/hosts 2>/dev/null; hostname %s 2>/dev/null'",
 			oldName, newName, newName,
 		)
-		if _, err := ss.runCommandOnBox(ctx, &updatedBox, hostnameCmd); err != nil {
+		if _, err := runCommandOnBox(ctx, ss.server.sshPool, &updatedBox, hostnameCmd); err != nil {
 			slog.ErrorContext(ctx, "rename: failed to update hostname inside VM",
 				"box_id", box.ID,
 				"old_name", oldName,
@@ -1819,7 +1822,7 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 				"error", err)
 		} else {
 			shelleyCmd := fmt.Sprintf("sudo /exe.dev/bin/sh -c 'cat > /exe.dev/shelley.json << \"SHELLEY_EOF\"\n%s\nSHELLEY_EOF'", shelleyConf)
-			if _, err := ss.runCommandOnBox(ctx, &updatedBox, shelleyCmd); err != nil {
+			if _, err := runCommandOnBox(ctx, ss.server.sshPool, &updatedBox, shelleyCmd); err != nil {
 				slog.ErrorContext(ctx, "rename: failed to update shelley.json inside VM",
 					"box_id", box.ID,
 					"new_name", newName,
@@ -2177,8 +2180,12 @@ done:
 }
 
 // runCommandOnBox executes a command on a box via SSH and returns the combined output.
-// This is used for internal operations like updating the hostname during rename.
-func (ss *SSHServer) runCommandOnBox(ctx context.Context, box *exedb.Box, command string) ([]byte, error) {
+func runCommandOnBox(ctx context.Context, pool *sshpool2.Pool, box *exedb.Box, command string) ([]byte, error) {
+	return runCommandOnBoxWithStdin(ctx, pool, box, command, nil)
+}
+
+// runCommandOnBoxWithStdin executes a command on a box via SSH with optional stdin.
+func runCommandOnBoxWithStdin(ctx context.Context, pool *sshpool2.Pool, box *exedb.Box, command string, stdin io.Reader) ([]byte, error) {
 	if box.SSHPort == nil || box.SSHUser == nil || len(box.SSHClientPrivateKey) == 0 {
 		return nil, fmt.Errorf("box %q does not have SSH configured", box.Name)
 	}
@@ -2189,42 +2196,48 @@ func (ss *SSHServer) runCommandOnBox(ctx context.Context, box *exedb.Box, comman
 	}
 
 	sshHost := box.SSHHost()
-	sshAddr := fmt.Sprintf("%s:%d", sshHost, *box.SSHPort)
-
 	sshConfig := &ssh.ClientConfig{
-		User: *box.SSHUser,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(sshSigner),
-		},
+		User:            *box.SSHUser,
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(sshSigner)},
 		HostKeyCallback: box.CreateHostKeyCallback(),
 		Timeout:         10 * time.Second,
 	}
 
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "tcp", sshAddr)
+	connRetries := []time.Duration{10 * time.Millisecond, 50 * time.Millisecond, 100 * time.Millisecond}
+	return pool.RunCommand(ctx, sshHost, *box.SSHUser, int(*box.SSHPort), sshSigner, sshConfig, command, stdin, connRetries)
+}
+
+// scpToBox copies content to a remote file on a box via SSH.
+// It writes to a temp file in /tmp, then uses sudo mv to move it to the final destination.
+// remotePath must be an absolute path.
+func scpToBox(ctx context.Context, pool *sshpool2.Pool, box *exedb.Box, content io.Reader, remotePath string, mode os.FileMode) error {
+	// Write to temp file, then sudo mv to final destination
+	tmpPath := fmt.Sprintf("/tmp/scp.%s", crand.Text()) // doesn't need quoting
+	quotedDest, err := syntax.Quote(remotePath, syntax.LangBash)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to box: %w", err)
+		// exceedingly unlikely, but check anyway
+		return fmt.Errorf("failed to quote remote path: %w", err)
 	}
 
-	sshConn, chans, reqs, err := ssh.NewClientConn(conn, sshAddr, sshConfig)
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("SSH handshake failed: %w", err)
+	// On failure, remove temp file.
+	cleanup := func() {
+		runCommandOnBox(ctx, pool, box, fmt.Sprintf("rm -f %s", tmpPath))
 	}
-	client := ssh.NewClient(sshConn, chans, reqs)
-	defer client.Close()
 
-	session, err := client.NewSession()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create session: %w", err)
+	// Write content to temp file
+	writeCmd := fmt.Sprintf("cat > %s && chmod %04o %s", tmpPath, mode, tmpPath)
+	if _, err := runCommandOnBoxWithStdin(ctx, pool, box, writeCmd, content); err != nil {
+		cleanup()
+		return err
 	}
-	defer session.Close()
 
-	output, err := session.CombinedOutput(command)
-	if err != nil {
-		return output, fmt.Errorf("command failed: %w", err)
+	// Move to final destination with sudo
+	mvCmd := fmt.Sprintf("sudo mv %s %s", tmpPath, quotedDest)
+	if _, err := runCommandOnBox(ctx, pool, box, mvCmd); err != nil {
+		cleanup()
+		return err
 	}
-	return output, nil
+	return nil
 }
 
 func (ss *SSHServer) completeBoxNames(compCtx *exemenu.CompletionContext, cc *exemenu.CommandContext) []string {

@@ -177,18 +177,8 @@ func (p *Pool) incCacheResult(result string) {
 	}
 }
 
-// DialContext dials the target address through a pooled SSH connection.
-//
-// network and addr specify the target to dial (e.g., "tcp", "example.com:80").
-// host, user, port, and signer specify the SSH connection to use.
-//
-// Pooling occurs on a per-(host,user,port,publicKey) basis.
-// Config is used only when establishing a new SSH connection.
-//
-// DialContext is a low level function that does no retries.
-// The caller is strongly encouraged to use DialWithRetries,
-// as there are many ways that dialing through an SSH pool can fail transiently.
-func (p *Pool) DialContext(ctx context.Context, network, addr, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig) (net.Conn, error) {
+// connectTo returns a pooled connection for the given host, user, port, and signer.
+func (p *Pool) connectTo(ctx context.Context, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig) (*pooledConn, error) {
 	key := connKey{
 		host:      host,
 		user:      user,
@@ -206,33 +196,25 @@ func (p *Pool) DialContext(ctx context.Context, network, addr, host, user string
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	return p.dialThroughClient(ctx, pc, network, addr)
+	return pc, nil
 }
 
-// DialWithRetries calls Dial with a set of retry delays.
-// The returned set of errors contains all errors encountered during dialing, one per failed attempt.
-// It may be non-empty even on success.
-//
-// There are multiple levels at which Dial attempts can fail:
-//   - connecting to the SSH host
-//   - establishing the SSH session
-//   - connecting to the target address via port forwarding
-//   - broken pooled connections
-//
-// This retry loop covers all of these failure modes.
-func (p *Pool) DialWithRetries(ctx context.Context, network, addr, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig, retries []time.Duration) (net.Conn, error) {
+// retryLoop retries work until success or retries exhausted.
+// Returns the result and any errors (may include errors from prior attempts even on success).
+func retryLoop[T any](ctx context.Context, retries []time.Duration, work func() (T, error)) (T, error) {
 	retries = slices.Clone(retries)
 	retries = append(retries, 0) // final attempt has no sleep after it
+	var zero T
 	var errs []error
 	for _, delay := range retries {
 		if err := ctx.Err(); err != nil {
 			errs = append(errs, err)
-			return nil, errors.Join(errs...)
+			return zero, errors.Join(errs...)
 		}
 
-		conn, err := p.DialContext(ctx, network, addr, host, user, port, signer, config)
+		result, err := work()
 		if err == nil {
-			return conn, errors.Join(errs...)
+			return result, errors.Join(errs...)
 		}
 		errs = append(errs, err)
 
@@ -243,9 +225,44 @@ func (p *Pool) DialWithRetries(ctx context.Context, network, addr, host, user st
 	}
 
 	if err := ctx.Err(); err != nil {
-		errs = append(errs, ctx.Err())
+		errs = append(errs, err)
 	}
-	return nil, errors.Join(errs...)
+	return zero, errors.Join(errs...)
+}
+
+// connectToWithRetries returns a pooled connection, retrying on failure.
+func (p *Pool) connectToWithRetries(ctx context.Context, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig, retries []time.Duration) (*pooledConn, error) {
+	return retryLoop(ctx, retries, func() (*pooledConn, error) {
+		return p.connectTo(ctx, host, user, port, signer, config)
+	})
+}
+
+// DialContext dials the target address through a pooled SSH connection.
+//
+// network and addr specify the target to dial (e.g., "tcp", "example.com:80").
+// host, user, port, and signer specify the SSH connection to use.
+//
+// Pooling occurs on a per-(host,user,port,publicKey) basis.
+// Config is used only when establishing a new SSH connection.
+//
+// DialContext is a low level function that does no retries.
+// The caller is strongly encouraged to use DialWithRetries,
+// as there are many ways that dialing through an SSH pool can fail transiently.
+func (p *Pool) DialContext(ctx context.Context, network, addr, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig) (net.Conn, error) {
+	pc, err := p.connectTo(ctx, host, user, port, signer, config)
+	if err != nil {
+		return nil, err
+	}
+	return p.dialThroughClient(ctx, pc, network, addr)
+}
+
+// DialWithRetries dials with retries on the entire operation (connect + port-forward).
+// This is safe because dialing is idempotent.
+// The returned error may contain errors from prior attempts, even on success.
+func (p *Pool) DialWithRetries(ctx context.Context, network, addr, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig, retries []time.Duration) (net.Conn, error) {
+	return retryLoop(ctx, retries, func() (net.Conn, error) {
+		return p.DialContext(ctx, network, addr, host, user, port, signer, config)
+	})
 }
 
 // connect establishes an SSH connection.
@@ -333,6 +350,51 @@ func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, a
 		// Set up a tracked connection that calls pc.disconnected() when conn closes.
 	}
 	return &trackedConn{Conn: conn, pc: pc}, nil
+}
+
+// RunCommand runs a command on a remote host through a pooled SSH connection.
+// Connection establishment is retried according to connRetries; the command itself runs at most once.
+// stdin is optional; pass nil if the command doesn't need input.
+func (p *Pool) RunCommand(ctx context.Context, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig, command string, stdin io.Reader, connRetries []time.Duration) ([]byte, error) {
+	pc, err := p.connectToWithRetries(ctx, host, user, port, signer, config, connRetries)
+	if pc == nil {
+		return nil, err
+	}
+	output, cmdErr := p.runCommandOnClient(ctx, pc, command, stdin)
+	return output, errors.Join(err, cmdErr)
+}
+
+// runCommandOnClient runs a command through the SSH client.
+func (p *Pool) runCommandOnClient(ctx context.Context, pc *pooledConn, command string, stdin io.Reader) ([]byte, error) {
+	alive := pc.connect()
+	if !alive {
+		return nil, fmt.Errorf("runCommandOnClient: SSH connection pool entry is unexpectedly dead")
+	}
+	defer pc.disconnected() // balance the connect() call
+
+	session, err := pc.client.NewSession()
+	if err != nil {
+		if isSSHConnError(err) {
+			p.log().InfoContext(ctx, "dropping dead ssh connection", "key", pc.key.String(), "err", err)
+			p.removeConn(pc)
+		}
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+	defer session.Close()
+
+	if stdin != nil {
+		session.Stdin = stdin
+	}
+	output, err := session.CombinedOutput(command)
+	if err != nil {
+		// Check if the error indicates a dead connection
+		if isSSHConnError(err) {
+			p.log().InfoContext(ctx, "dropping dead ssh connection after command", "key", pc.key.String(), "err", err)
+			p.removeConn(pc)
+		}
+		return output, fmt.Errorf("command failed: %w", err)
+	}
+	return output, nil
 }
 
 func isSSHConnError(err error) bool {
