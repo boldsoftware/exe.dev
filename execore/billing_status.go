@@ -14,19 +14,19 @@ var billingRequiredDate = time.Date(2026, 1, 6, 23, 10, 0, 0, time.UTC)
 
 // userIsPaying returns true if the user has an active billing status.
 func userIsPaying(status *exedb.GetUserBillingStatusRow) bool {
-	return status.BillingStatus != nil && *status.BillingStatus == "active"
+	return status.BillingStatus == "active"
 }
 
 // userNeedsBilling returns true if the user needs to add billing before creating VMs.
 func userNeedsBilling(status *exedb.GetUserBillingStatusRow) bool {
 	// Active users don't need billing
-	if status.BillingStatus != nil && *status.BillingStatus == "active" {
+	if status.BillingStatus == "active" {
 		return false
 	}
 	// CANCELED users ALWAYS need billing (check BEFORE exemptions)
 	// This prevents canceled users from bypassing billing even if they have
 	// legacy status, free tier, or trial exemptions.
-	if status.BillingStatus != nil && *status.BillingStatus == "canceled" {
+	if status.BillingStatus == "canceled" {
 		return true
 	}
 	// Users created before billing requirement date are grandfathered

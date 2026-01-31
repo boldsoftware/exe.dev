@@ -31,21 +31,42 @@ SELECT id, created_by, created_at FROM accounts;
 
 -- name: GetUserBillingStatus :one
 -- Returns the user's billing information for determining payment status.
--- billing_status is NULL if no billing events exist, or the most recent event_type ('active' or 'canceled').
--- Uses parse_timestamp() to handle various timestamp formats including Go's time.String().
--- Uses id DESC as tiebreaker when timestamps are equal.
-SELECT e.event_type AS billing_status,
-u.created_at,
-u.billing_exemption,
-u.billing_trial_ends_at
+-- billing_status is 'active' if ANY account has active billing as its most recent event,
+-- 'canceled' if ANY account has canceled as its most recent event (and none have active),
+-- or empty string if no billing events exist.
+-- This handles users with multiple accounts correctly by checking across all accounts.
+SELECT
+    CASE
+        WHEN EXISTS (
+            SELECT 1 FROM accounts a
+            JOIN billing_events e ON e.account_id = a.id
+            WHERE a.created_by = u.user_id
+            AND e.event_type = 'active'
+            AND e.id = (
+                SELECT e2.id FROM billing_events e2
+                WHERE e2.account_id = a.id
+                ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
+                LIMIT 1
+            )
+        ) THEN 'active'
+        WHEN EXISTS (
+            SELECT 1 FROM accounts a
+            JOIN billing_events e ON e.account_id = a.id
+            WHERE a.created_by = u.user_id
+            AND e.event_type = 'canceled'
+            AND e.id = (
+                SELECT e2.id FROM billing_events e2
+                WHERE e2.account_id = a.id
+                ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
+                LIMIT 1
+            )
+        ) THEN 'canceled'
+        ELSE ''
+    END AS billing_status,
+    u.created_at,
+    u.billing_exemption,
+    u.billing_trial_ends_at
 FROM users u
-LEFT JOIN accounts a ON a.created_by = u.user_id
-LEFT JOIN billing_events e ON e.account_id = a.id AND e.id = (
-    SELECT e2.id FROM billing_events e2
-    WHERE e2.account_id = a.id
-    ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
-    LIMIT 1
-)
 WHERE u.user_id = ?1;
 
 -- name: CountAccountsByBillingStatus :one

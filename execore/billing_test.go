@@ -1477,6 +1477,196 @@ func TestUserProfile_ShowsBillingSection_ActiveAccount(t *testing.T) {
 	}
 }
 
+func TestUserWithMultipleAccounts_OnlyOneActive(t *testing.T) {
+	// This test reproduces the bug where a user with multiple accounts
+	// (created from multiple checkout attempts) has active billing on one
+	// account but the query non-deterministically returns a different account.
+	// The fix: GetUserBillingStatus should check if ANY account has active billing.
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a user
+	email := "multi-account@example.com"
+	publicKey := testSSHPubKey
+	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Set user's created_at to after the billing requirement date
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	// Create MULTIPLE accounts for this user (simulating multiple checkout attempts)
+	// This is what happens when a user visits /billing/update multiple times
+	// before the fix that reuses existing pending accounts.
+	accountIDs := []string{
+		"exe_ACCOUNT1_NO_BILLING",
+		"exe_ACCOUNT2_NO_BILLING",
+		"exe_ACCOUNT3_NO_BILLING",
+		"exe_ACCOUNT4_NO_BILLING",
+		"exe_ACCOUNT5_ACTIVE", // Only this one has active billing
+	}
+
+	for _, accountID := range accountIDs {
+		err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
+			ID:        accountID,
+			CreatedBy: user.UserID,
+		})
+		if err != nil {
+			t.Fatalf("Failed to insert account %s: %v", accountID, err)
+		}
+	}
+
+	// Only activate the LAST account (exe_ACCOUNT5_ACTIVE)
+	// The bug: GetUserBillingStatus may return one of the other accounts due to
+	// non-deterministic JOIN behavior, making billing_status NULL.
+	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		AccountID: "exe_ACCOUNT5_ACTIVE",
+		EventType: "active",
+		EventAt:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("Failed to insert billing event: %v", err)
+	}
+
+	// Check billing status - should be "active" since one account is active
+	billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
+	if err != nil {
+		t.Fatalf("GetUserBillingStatus query failed: %v", err)
+	}
+
+	// User should be paying (at least one account is active)
+	if !userIsPaying(&billingStatus) {
+		t.Errorf("BUG: User with active billing on one of multiple accounts should be paying. Got billing_status=%v", billingStatus.BillingStatus)
+	}
+
+	// User should NOT need billing
+	if userNeedsBilling(&billingStatus) {
+		t.Errorf("BUG: User with active billing on one account should NOT need billing. Got billing_status=%v", billingStatus.BillingStatus)
+	}
+
+	// Try to create VM - should succeed (not redirect to billing)
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	form := url.Values{}
+	form.Add("hostname", "multi-account-vm")
+	form.Add("prompt", "test")
+	req := httptest.NewRequest("POST", "/create-vm", strings.NewReader(form.Encode()))
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	// Should NOT redirect to billing
+	if w.Code == http.StatusSeeOther {
+		location := w.Header().Get("Location")
+		if strings.HasPrefix(location, "/billing/update") {
+			t.Errorf("User with active billing on one account was redirected to billing! Location: %s", location)
+		}
+	}
+}
+
+func TestUserWithMultipleAccounts_OneActiveOneCanceled(t *testing.T) {
+	// Test that if ANY account is active, the user is considered active,
+	// even if another account is canceled.
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a user
+	email := "multi-account-mixed@example.com"
+	publicKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZh3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZx multi-mixed"
+	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Set user's created_at to after the billing requirement date
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	// Create two accounts
+	canceledAccountID := "exe_CANCELED_ACCOUNT"
+	activeAccountID := "exe_ACTIVE_ACCOUNT"
+
+	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
+		ID:        canceledAccountID,
+		CreatedBy: user.UserID,
+	})
+	if err != nil {
+		t.Fatalf("Failed to insert canceled account: %v", err)
+	}
+
+	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
+		ID:        activeAccountID,
+		CreatedBy: user.UserID,
+	})
+	if err != nil {
+		t.Fatalf("Failed to insert active account: %v", err)
+	}
+
+	// First account: active -> canceled
+	t1 := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
+	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		AccountID: canceledAccountID,
+		EventType: "active",
+		EventAt:   t1,
+	})
+	if err != nil {
+		t.Fatalf("Failed to insert active event: %v", err)
+	}
+	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		AccountID: canceledAccountID,
+		EventType: "canceled",
+		EventAt:   t2,
+	})
+	if err != nil {
+		t.Fatalf("Failed to insert canceled event: %v", err)
+	}
+
+	// Second account: active (and stays active)
+	t3 := time.Date(2026, 1, 20, 12, 0, 0, 0, time.UTC)
+	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		AccountID: activeAccountID,
+		EventType: "active",
+		EventAt:   t3,
+	})
+	if err != nil {
+		t.Fatalf("Failed to insert active event: %v", err)
+	}
+
+	// Check billing status - should be "active" since one account is active
+	billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
+	if err != nil {
+		t.Fatalf("GetUserBillingStatus query failed: %v", err)
+	}
+
+	// User should be paying (one account is active, even though another is canceled)
+	if !userIsPaying(&billingStatus) {
+		t.Errorf("User with one active and one canceled account should be paying. Got billing_status=%v", billingStatus.BillingStatus)
+	}
+
+	// User should NOT need billing
+	if userNeedsBilling(&billingStatus) {
+		t.Errorf("User with one active account should NOT need billing. Got billing_status=%v", billingStatus.BillingStatus)
+	}
+}
+
 func TestCanceledUserCannotCreateVM(t *testing.T) {
 	// Test that users with canceled subscriptions cannot create VMs,
 	// even if they have exemptions (legacy, free tier, trial).
@@ -1537,11 +1727,8 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetUserBillingStatus query failed: %v", err)
 		}
-		if billingStatus.BillingStatus == nil {
-			t.Fatalf("Expected billing status to be 'canceled', got nil")
-		}
-		if *billingStatus.BillingStatus != "canceled" {
-			t.Fatalf("Expected user to be canceled, got %q", *billingStatus.BillingStatus)
+		if billingStatus.BillingStatus != "canceled" {
+			t.Fatalf("Expected user to be canceled, got %q", billingStatus.BillingStatus)
 		}
 
 		// CRITICAL: Canceled legacy user MUST need billing (regression test)
@@ -1627,11 +1814,8 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetUserBillingStatus query failed: %v", err)
 		}
-		if billingStatus.BillingStatus == nil {
-			t.Fatalf("Expected billing status to be 'canceled', got nil")
-		}
-		if *billingStatus.BillingStatus != "canceled" {
-			t.Fatalf("Expected user to be canceled, got %q", *billingStatus.BillingStatus)
+		if billingStatus.BillingStatus != "canceled" {
+			t.Fatalf("Expected user to be canceled, got %q", billingStatus.BillingStatus)
 		}
 
 		// CRITICAL: Canceled free tier user MUST need billing
@@ -1694,11 +1878,8 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetUserBillingStatus query failed: %v", err)
 		}
-		if billingStatus.BillingStatus == nil {
-			t.Fatalf("Expected billing status to be 'canceled', got nil")
-		}
-		if *billingStatus.BillingStatus != "canceled" {
-			t.Fatalf("Expected user to be canceled, got %q", *billingStatus.BillingStatus)
+		if billingStatus.BillingStatus != "canceled" {
+			t.Fatalf("Expected user to be canceled, got %q", billingStatus.BillingStatus)
 		}
 
 		// CRITICAL: Canceled trial user MUST need billing, even with active trial
@@ -1777,8 +1958,8 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetUserBillingStatus query failed: %v", err)
 		}
-		if billingStatus.BillingStatus == nil || *billingStatus.BillingStatus != "active" {
-			t.Fatalf("Expected user to be active (reactivated), got %v", billingStatus.BillingStatus)
+		if billingStatus.BillingStatus != "active" {
+			t.Fatalf("Expected user to be active (reactivated), got %q", billingStatus.BillingStatus)
 		}
 
 		// Reactivated user should NOT need billing
