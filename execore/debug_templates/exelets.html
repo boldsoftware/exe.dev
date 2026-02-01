@@ -22,7 +22,7 @@ a:hover { text-decoration: underline; }
 <p>No exelets configured.</p>
 {{else}}
 <table>
-<tr><th>Address</th><th>Status</th><th>Version</th><th>Arch</th><th>Instances</th><th>Actions</th></tr>
+<tr><th>Address</th><th>Status</th><th>Available</th><th>Version</th><th>Arch</th><th>Instances</th><th>Load</th><th>MemFree</th><th>SwapFree</th><th>DiskFree</th><th>RxBytesRate</th><th>TxBytesRate</th><th>Actions</th></tr>
 {{range .Exelets}}
 <tr{{if .IsPreferred}} class="preferred"{{end}}>
 <td><code>{{.Address}}</code></td>
@@ -30,6 +30,12 @@ a:hover { text-decoration: underline; }
 <td>{{.Version}}</td>
 <td>{{.Arch}}</td>
 <td>{{.InstanceCount}}</td>
+<td>{{.LoadAverage}}</td>
+<td>{{.MemFree}}</td>
+<td>{{.SwapFree}}</td>
+<td>{{.DiskFree}}</td>
+<td>{{.RxBytesRate}}</td>
+<td>{{.TxBytesRate}}</td>
 <td>
 {{if .IsPreferred}}
 ⭐ <form method="post" action="/debug/exelets/set-preferred" style="display: inline;" onsubmit="return confirm('Clear preferred exelet?');">

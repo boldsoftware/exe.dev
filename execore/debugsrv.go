@@ -28,6 +28,7 @@ import (
 	"exe.dev/llmgateway"
 	"exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
+	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 	"exe.dev/publicips"
 
 	"tailscale.com/client/local"
@@ -1157,13 +1158,20 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	type exeletInfo struct {
-		Address       string `json:"address"`
-		Version       string `json:"version"`
-		Arch          string `json:"arch"`
-		Status        string `json:"status"`
-		IsPreferred   bool   `json:"is_preferred"`
-		InstanceCount int    `json:"instance_count"`
-		Error         string `json:"error,omitempty"`
+		Address       string  `json:"address"`
+		Version       string  `json:"version"`
+		Available     bool    `json:"available"`
+		Arch          string  `json:"arch"`
+		Status        string  `json:"status"`
+		IsPreferred   bool    `json:"is_preferred"`
+		InstanceCount int     `json:"instance_count"`
+		LoadAverage   float64 `json:"load_average"`
+		MemFree       int64   `json:"mem_free"`
+		SwapFree      int64   `json:"swap_free"`
+		DiskFree      int64   `json:"disk_free"`
+		RxBytesRate   float32 `json:"rx_bytes_rate"`
+		TxBytesRate   float32 `json:"tx_bytes_rate"`
+		Error         string  `json:"error,omitempty"`
 	}
 
 	// Get the preferred exelet setting
@@ -1203,6 +1211,18 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 			listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			if count, err := ec.countInstances(listCtx); err == nil {
 				info.InstanceCount = count
+			}
+			cancel()
+
+			// Get load information.
+			usageCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			if usage, err := ec.client.GetMachineUsage(usageCtx, &resourceapi.GetMachineUsageRequest{}); err == nil {
+				info.Available = usage.Available
+				info.MemFree = usage.Usage.MemFree
+				info.SwapFree = usage.Usage.SwapFree
+				info.DiskFree = usage.Usage.DiskFree
+				info.RxBytesRate = usage.Usage.RxBytesRate
+				info.TxBytesRate = usage.Usage.TxBytesRate
 			}
 			cancel()
 
