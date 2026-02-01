@@ -2,6 +2,7 @@
 title: Receive email
 description: Receive emails to your VM
 subheading: "2. Features"
+published: false
 ---
 
 Your VM can receive emails at `*@vmname.exe.xyz`.

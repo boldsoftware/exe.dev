@@ -137,22 +137,3 @@ share remove-link <vm> <token>
 **Options:**
 - `--json`: output in JSON format
 
-### share receive-email
-
-Enable or disable inbound email for a VM
-
-**Usage:**
-```
-share receive-email <vm> [on|off]
-```
-
-**Options:**
-- `--json`: output in JSON format
-
-**Examples:**
-```
-share receive-email mybox on
-share receive-email mybox off
-share receive-email mybox
-```
-
