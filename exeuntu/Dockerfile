@@ -59,6 +59,9 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		/etc/systemd/system/multi-user.target.wants/unattended-upgrades.* \
 		/etc/systemd/system/multi-user.target.wants/ubuntu-advantage.service && \
 	systemctl mask -- getty.target \
+		fwupd.service \
+		fwupd-refresh.service \
+		fwupd-refresh.timer \
 		systemd-random-seed.service \
 		iscsid.socket \
 		dm-event.socket \
