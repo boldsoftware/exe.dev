@@ -543,7 +543,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	command := cc.FlagSet.Lookup("command").Value.String()
 	prompt := cc.FlagSet.Lookup("prompt").Value.String()
 	model := cc.FlagSet.Lookup("prompt-model").Value.String()
-	noEmail := cc.FlagSet.Lookup("no-email").Value.String() == "true" || !ss.getUserDefaultNewVMEmail(ctx, cc.User.ID)
+	noEmail := !cc.IsInteractive() || cc.FlagSet.Lookup("no-email").Value.String() == "true" || !ss.getUserDefaultNewVMEmail(ctx, cc.User.ID)
 	noShard := cc.FlagSet.Lookup("no-shard").Value.String() == "true"
 	exeletOverride := cc.FlagSet.Lookup("exelet").Value.String()
 
