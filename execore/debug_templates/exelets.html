@@ -27,6 +27,7 @@ a:hover { text-decoration: underline; }
 <tr{{if .IsPreferred}} class="preferred"{{end}}>
 <td><code>{{.Address}}</code></td>
 <td class="{{if eq .Status "error"}}status-error{{else}}status-healthy{{end}}">{{if eq .Status "error"}}error: {{.Error}}{{else}}{{.Status}}{{end}}</td>
+<td>{{.Available}}</td>
 <td>{{.Version}}</td>
 <td>{{.Arch}}</td>
 <td>{{.InstanceCount}}</td>
