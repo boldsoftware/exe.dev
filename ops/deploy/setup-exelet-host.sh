@@ -276,7 +276,7 @@ INSTANCE_ID=$(aws ec2 run-instances \
     --user-data "${USER_DATA}" \
     --block-device-mappings \
     "DeviceName=/dev/sda1,Ebs={VolumeSize=${ROOT_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
-    "DeviceName=/dev/xvdf,Ebs={VolumeSize=${DATA_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
+    "DeviceName=/dev/xvdf,Ebs={VolumeSize=${DATA_VOLUME_SIZE},VolumeType=gp3,Iops=12000,Throughput=250,DeleteOnTermination=true}" \
     --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${MACHINE_NAME}},{Key=role,Value=${ROLE}},{Key=stage,Value=${STAGE}}]" \
     --query 'Instances[0].InstanceId' \
     --output text \
