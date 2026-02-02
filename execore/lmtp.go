@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-smtp"
+	"mvdan.cc/sh/v3/syntax"
 
 	"exe.dev/email"
 	"exe.dev/exedb"
@@ -123,7 +124,6 @@ type lmtpSession struct {
 
 type recipientInfo struct {
 	address string
-	boxName string
 	box     exedb.Box
 }
 
@@ -194,8 +194,7 @@ func (s *lmtpSession) Rcpt(to string, opts *smtp.RcptOptions) error {
 	defer cancel()
 	box, err := exedb.WithRxRes1(s.backend.server.db, ctx, (*exedb.Queries).GetBoxByNameWithEmailReceiveEnabled, boxName)
 	if err != nil {
-		s.backend.server.slog().DebugContext(ctx, "LMTP recipient rejected",
-			"to", to, "box", boxName, "reason", "not found or email disabled")
+		s.backend.server.slog().DebugContext(ctx, "LMTP recipient rejected", "to", to, "box", boxName, "reason", "not found or email disabled")
 		return &smtp.SMTPError{
 			Code:         550,
 			EnhancedCode: smtp.EnhancedCode{5, 1, 1},
@@ -205,7 +204,6 @@ func (s *lmtpSession) Rcpt(to string, opts *smtp.RcptOptions) error {
 
 	s.recipients = append(s.recipients, recipientInfo{
 		address: to,
-		boxName: boxName,
 		box:     box,
 	})
 	return nil
@@ -250,19 +248,18 @@ func (s *lmtpSession) LMTPData(r io.Reader, status smtp.StatusCollector) error {
 	for _, rcpt := range s.recipients {
 		if err := deliverEmailToBox(ctx, s.backend.server.sshPool, &rcpt.box, rcpt.address, data); err != nil {
 			s.backend.server.slog().ErrorContext(ctx, "LMTP delivery failed",
-				"to", rcpt.address, "box", rcpt.boxName, "error", err)
+				"to", rcpt.address, "box", rcpt.box.Name, "error", err)
 			status.SetStatus(rcpt.address, &smtp.SMTPError{
 				Code:         451,
 				EnhancedCode: smtp.EnhancedCode{4, 3, 0},
 				Message:      "Temporary delivery failure",
 			})
 		} else {
-			s.backend.server.slog().InfoContext(ctx, "LMTP delivery succeeded",
-				"from", s.from, "to", rcpt.address, "box", rcpt.boxName)
+			s.backend.server.slog().InfoContext(ctx, "LMTP delivery succeeded", "from", s.from, "to", rcpt.address, "box", rcpt.box.Name)
 			status.SetStatus(rcpt.address, nil)
 
 			// Check email count and auto-disable if over limit
-			s.checkAndEnforceEmailLimit(ctx, &rcpt.box, rcpt.boxName)
+			s.checkAndEnforceEmailLimit(ctx, &rcpt.box)
 		}
 	}
 
@@ -280,10 +277,14 @@ func (s *lmtpSession) Logout() error {
 
 // deliverEmailToBox delivers an email to a box via SSH using the connection pool.
 // It uses a content-addressable filename based on the SHA256 hash of the data.
-// The maildir directories (~/Maildir/new) are created when email receiving
-// is enabled via the share receive-email command.
+// The maildir directories are created when email receiving is enabled via the
+// share receive-email command.
 // A Delivered-To header is prepended to identify the envelope recipient.
 func deliverEmailToBox(ctx context.Context, pool *sshpool2.Pool, box *exedb.Box, recipient string, data []byte) error {
+	if box.EmailMaildirPath == "" {
+		return fmt.Errorf("maildir path not configured")
+	}
+
 	// Prepend Delivered-To header
 	header := fmt.Appendf(nil, "Delivered-To: %s\r\n", recipient)
 
@@ -294,20 +295,20 @@ func deliverEmailToBox(ctx context.Context, pool *sshpool2.Pool, box *exedb.Box,
 	hash := h.Sum(nil)
 
 	filename := hex.EncodeToString(hash) + ".eml"
-	remotePath := fmt.Sprintf("/home/%s/Maildir/new/%s", *box.SSHUser, filename)
+	remotePath := box.EmailMaildirPath + "/new/" + filename
 	reader := io.MultiReader(bytes.NewReader(header), bytes.NewReader(data))
 	return scpToBox(ctx, pool, box, reader, remotePath, 0o644)
 }
 
-// checkAndEnforceEmailLimit checks if the number of emails in ~/Maildir/new exceeds the limit.
+// checkAndEnforceEmailLimit checks if the number of emails in the maildir exceeds the limit.
 // If so, it disables email receiving for the box and sends a notification to the owner.
-func (s *lmtpSession) checkAndEnforceEmailLimit(ctx context.Context, box *exedb.Box, boxName string) {
+func (s *lmtpSession) checkAndEnforceEmailLimit(ctx context.Context, box *exedb.Box) {
 	srv := s.backend.server
 
 	// Count emails in Maildir/new
 	count, err := s.countMaildirEmails(ctx, box)
 	if err != nil {
-		srv.slog().WarnContext(ctx, "failed to count maildir emails", "box", boxName, "error", err)
+		srv.slog().WarnContext(ctx, "failed to count maildir emails", "box", box.Name, "error", err)
 		return
 	}
 
@@ -316,25 +317,34 @@ func (s *lmtpSession) checkAndEnforceEmailLimit(ctx context.Context, box *exedb.
 	}
 
 	srv.slog().WarnContext(ctx, "email limit exceeded, disabling receive",
-		"box", boxName, "count", count, "limit", srv.env.MaxMaildirEmails)
+		"box", box.Name, "count", count, "limit", srv.env.MaxMaildirEmails)
 
-	// Disable email receiving in the database
-	if err := exedb.WithTx1(srv.db, ctx, (*exedb.Queries).SetBoxEmailReceiveEnabled, exedb.SetBoxEmailReceiveEnabledParams{
+	// Disable email receiving in the database (clear maildir path too)
+	if err := exedb.WithTx1(srv.db, ctx, (*exedb.Queries).SetBoxEmailReceive, exedb.SetBoxEmailReceiveParams{
 		EmailReceiveEnabled: 0,
+		EmailMaildirPath:    "",
 		ID:                  box.ID,
 	}); err != nil {
-		srv.slog().ErrorContext(ctx, "failed to disable email receive", "box", boxName, "error", err)
+		srv.slog().ErrorContext(ctx, "failed to disable email receive", "box", box.Name, "error", err)
 		return
 	}
 
 	// Notify the box owner
-	s.notifyOwnerEmailLimitExceeded(ctx, boxName, count)
+	s.notifyOwnerEmailLimitExceeded(ctx, box.Name, count)
 }
 
-// countMaildirEmails counts the number of files in ~/Maildir/new on the box.
+// countMaildirEmails counts the number of files in the maildir's new directory.
 func (s *lmtpSession) countMaildirEmails(ctx context.Context, box *exedb.Box) (int, error) {
-	// Count files in Maildir/new using find with -printf for accurate counting
-	cmd := "find ~/Maildir/new -maxdepth 1 -type f -printf '.' 2>/dev/null | wc -c"
+	if box.EmailMaildirPath == "" {
+		return 0, fmt.Errorf("maildir path not configured")
+	}
+	// Count files in Maildir/new using find with -printf for accurate counting.
+	// The path is quoted to handle spaces safely.
+	quotedPath, err := syntax.Quote(box.EmailMaildirPath+"/new", syntax.LangBash)
+	if err != nil {
+		return 0, fmt.Errorf("failed to quote maildir path: %w", err)
+	}
+	cmd := fmt.Sprintf("find %s -maxdepth 1 -type f -printf '.' 2>/dev/null | wc -c", quotedPath)
 	output, err := runCommandOnBox(ctx, s.backend.server.sshPool, box, cmd)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count emails: %w", err)

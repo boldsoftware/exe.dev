@@ -10,7 +10,7 @@ import (
 )
 
 const getBoxByNameWithEmailReceiveEnabled = `-- name: GetBoxByNameWithEmailReceiveEnabled :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled FROM boxes WHERE name = ? AND email_receive_enabled = 1
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path FROM boxes WHERE name = ? AND email_receive_enabled = 1
 `
 
 func (q *Queries) GetBoxByNameWithEmailReceiveEnabled(ctx context.Context, name string) (Box, error) {
@@ -37,20 +37,23 @@ func (q *Queries) GetBoxByNameWithEmailReceiveEnabled(ctx context.Context, name 
 		&i.SupportAccessAllowed,
 		&i.Region,
 		&i.EmailReceiveEnabled,
+		&i.EmailMaildirPath,
 	)
 	return i, err
 }
 
-const setBoxEmailReceiveEnabled = `-- name: SetBoxEmailReceiveEnabled :exec
-UPDATE boxes SET email_receive_enabled = ? WHERE id = ?
+const setBoxEmailReceive = `-- name: SetBoxEmailReceive :exec
+UPDATE boxes SET email_receive_enabled = ?, email_maildir_path = ? WHERE id = ?
 `
 
-type SetBoxEmailReceiveEnabledParams struct {
-	EmailReceiveEnabled int64 `db:"email_receive_enabled" json:"email_receive_enabled"`
-	ID                  int   `db:"id" json:"id"`
+type SetBoxEmailReceiveParams struct {
+	EmailReceiveEnabled int64  `db:"email_receive_enabled" json:"email_receive_enabled"`
+	EmailMaildirPath    string `db:"email_maildir_path" json:"email_maildir_path"`
+	ID                  int    `db:"id" json:"id"`
 }
 
-func (q *Queries) SetBoxEmailReceiveEnabled(ctx context.Context, arg SetBoxEmailReceiveEnabledParams) error {
-	_, err := q.exec(ctx, q.setBoxEmailReceiveEnabledStmt, setBoxEmailReceiveEnabled, arg.EmailReceiveEnabled, arg.ID)
+// Sets email receive status and maildir path. Pass empty string when disabling.
+func (q *Queries) SetBoxEmailReceive(ctx context.Context, arg SetBoxEmailReceiveParams) error {
+	_, err := q.exec(ctx, q.setBoxEmailReceiveStmt, setBoxEmailReceive, arg.EmailReceiveEnabled, arg.EmailMaildirPath, arg.ID)
 	return err
 }

@@ -39,8 +39,9 @@ func TestLMTP_PerRecipientStatus(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		return queries.SetBoxEmailReceiveEnabled(ctx, exedb.SetBoxEmailReceiveEnabledParams{
+		return queries.SetBoxEmailReceive(ctx, exedb.SetBoxEmailReceiveParams{
 			EmailReceiveEnabled: 1,
+			EmailMaildirPath:    "/home/testuser/Maildir",
 			ID:                  int(boxID),
 		})
 	})
@@ -158,8 +159,9 @@ func TestLMTP_PerRecipientStatus(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			return queries.SetBoxEmailReceiveEnabled(ctx, exedb.SetBoxEmailReceiveEnabledParams{
+			return queries.SetBoxEmailReceive(ctx, exedb.SetBoxEmailReceiveParams{
 				EmailReceiveEnabled: 1,
+				EmailMaildirPath:    "/home/testuser/Maildir",
 				ID:                  int(boxID),
 			})
 		})

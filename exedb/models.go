@@ -68,6 +68,7 @@ type Box struct {
 	SupportAccessAllowed int64      `db:"support_access_allowed" json:"support_access_allowed"`
 	Region               string     `db:"region" json:"region"`
 	EmailReceiveEnabled  int64      `db:"email_receive_enabled" json:"email_receive_enabled"`
+	EmailMaildirPath     string     `db:"email_maildir_path" json:"email_maildir_path"`
 }
 
 type BoxEmailCredit struct {

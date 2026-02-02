@@ -537,8 +537,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.recordUserEventStmt, err = db.PrepareContext(ctx, recordUserEvent); err != nil {
 		return nil, fmt.Errorf("error preparing query RecordUserEvent: %w", err)
 	}
-	if q.setBoxEmailReceiveEnabledStmt, err = db.PrepareContext(ctx, setBoxEmailReceiveEnabled); err != nil {
-		return nil, fmt.Errorf("error preparing query SetBoxEmailReceiveEnabled: %w", err)
+	if q.setBoxEmailReceiveStmt, err = db.PrepareContext(ctx, setBoxEmailReceive); err != nil {
+		return nil, fmt.Errorf("error preparing query SetBoxEmailReceive: %w", err)
 	}
 	if q.setBoxSupportAccessAllowedStmt, err = db.PrepareContext(ctx, setBoxSupportAccessAllowed); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxSupportAccessAllowed: %w", err)
@@ -1514,9 +1514,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing recordUserEventStmt: %w", cerr)
 		}
 	}
-	if q.setBoxEmailReceiveEnabledStmt != nil {
-		if cerr := q.setBoxEmailReceiveEnabledStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing setBoxEmailReceiveEnabledStmt: %w", cerr)
+	if q.setBoxEmailReceiveStmt != nil {
+		if cerr := q.setBoxEmailReceiveStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setBoxEmailReceiveStmt: %w", cerr)
 		}
 	}
 	if q.setBoxSupportAccessAllowedStmt != nil {
@@ -1919,7 +1919,7 @@ type Queries struct {
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
 	listUnusedSystemInviteCodesStmt            *sql.Stmt
 	recordUserEventStmt                        *sql.Stmt
-	setBoxEmailReceiveEnabledStmt              *sql.Stmt
+	setBoxEmailReceiveStmt                     *sql.Stmt
 	setBoxSupportAccessAllowedStmt             *sql.Stmt
 	setIPAbuseFilterDisabledStmt               *sql.Stmt
 	setLastBouncesPollStmt                     *sql.Stmt
@@ -2135,7 +2135,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
 		listUnusedSystemInviteCodesStmt:            q.listUnusedSystemInviteCodesStmt,
 		recordUserEventStmt:                        q.recordUserEventStmt,
-		setBoxEmailReceiveEnabledStmt:              q.setBoxEmailReceiveEnabledStmt,
+		setBoxEmailReceiveStmt:                     q.setBoxEmailReceiveStmt,
 		setBoxSupportAccessAllowedStmt:             q.setBoxSupportAccessAllowedStmt,
 		setIPAbuseFilterDisabledStmt:               q.setIPAbuseFilterDisabledStmt,
 		setLastBouncesPollStmt:                     q.setLastBouncesPollStmt,

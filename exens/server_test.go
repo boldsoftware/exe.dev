@@ -552,8 +552,9 @@ func TestDNSServerIntegration(t *testing.T) {
 			return err
 		}
 
-		return queries.SetBoxEmailReceiveEnabled(ctx, exedb.SetBoxEmailReceiveEnabledParams{
+		return queries.SetBoxEmailReceive(ctx, exedb.SetBoxEmailReceiveParams{
 			EmailReceiveEnabled: 1,
+			EmailMaildirPath:    "/home/testuser/Maildir",
 			ID:                  int(boxID),
 		})
 	})
@@ -836,8 +837,9 @@ func TestMXRecords(t *testing.T) {
 		}
 
 		// Enable email receive
-		if err := queries.SetBoxEmailReceiveEnabled(ctx, exedb.SetBoxEmailReceiveEnabledParams{
+		if err := queries.SetBoxEmailReceive(ctx, exedb.SetBoxEmailReceiveParams{
 			EmailReceiveEnabled: 1,
+			EmailMaildirPath:    "/home/testuser/Maildir",
 			ID:                  int(boxID),
 		}); err != nil {
 			return err

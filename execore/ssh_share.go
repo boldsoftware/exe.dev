@@ -15,6 +15,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	qrterminal "github.com/mdp/qrterminal/v3"
+	"mvdan.cc/sh/v3/syntax"
 
 	emailpkg "exe.dev/email"
 	"exe.dev/exedb"
@@ -888,15 +889,36 @@ func (ss *SSHServer) handleShareReceiveEmailCmd(ctx context.Context, cc *exemenu
 	}
 
 	// If enabling, set up maildir and test delivery before updating DB.
+	var maildirPath string
 	if enabling {
 		setupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 
+		// Resolve $HOME to get the absolute path - this ensures consistency
+		// across BYO images with non-standard home directories.
+		homeOutput, err := runCommandOnBox(setupCtx, ss.server.sshPool, &box, "echo $HOME")
+		if err != nil {
+			return cc.Errorf("failed to determine home directory on VM: %v", err)
+		}
+		homeDir := strings.TrimSpace(string(homeOutput))
+		if homeDir == "" || homeDir[0] != '/' {
+			return cc.Errorf("invalid home directory on VM: %q", homeDir)
+		}
+		maildirPath = homeDir + "/Maildir"
+
 		// Create maildir directories (standard Maildir structure)
-		_, err = runCommandOnBox(setupCtx, ss.server.sshPool, &box, "mkdir -p ~/Maildir/{new,cur,tmp}")
+		quotedPath, err := syntax.Quote(maildirPath, syntax.LangBash)
+		if err != nil {
+			return cc.Errorf("failed to quote maildir path: %v", err)
+		}
+		mkdirCmd := fmt.Sprintf("mkdir -p %s/new %s/cur %s/tmp", quotedPath, quotedPath, quotedPath)
+		_, err = runCommandOnBox(setupCtx, ss.server.sshPool, &box, mkdirCmd)
 		if err != nil {
 			return cc.Errorf("failed to create maildir on VM: %v", err)
 		}
+
+		// Set maildir path on local box copy for deliverEmailToBox
+		box.EmailMaildirPath = maildirPath
 
 		// Write a welcome email to verify delivery works
 		welcomeEmail := ss.generateWelcomeEmail(box.Name)
@@ -911,8 +933,9 @@ func (ss *SSHServer) handleShareReceiveEmailCmd(ctx context.Context, cc *exemenu
 	if enabling {
 		newValue = 1
 	}
-	err = withTx1(ss.server, ctx, (*exedb.Queries).SetBoxEmailReceiveEnabled, exedb.SetBoxEmailReceiveEnabledParams{
+	err = withTx1(ss.server, ctx, (*exedb.Queries).SetBoxEmailReceive, exedb.SetBoxEmailReceiveParams{
 		EmailReceiveEnabled: newValue,
+		EmailMaildirPath:    maildirPath, // empty string when disabling
 		ID:                  box.ID,
 	})
 	if err != nil {
