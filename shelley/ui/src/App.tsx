@@ -1,10 +1,50 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { WorkerPoolContextProvider } from "@pierre/diffs/react";
+import type { SupportedLanguages } from "@pierre/diffs";
 import ChatInterface from "./components/ChatInterface";
 import ConversationDrawer from "./components/ConversationDrawer";
 import CommandPalette from "./components/CommandPalette";
 import ModelsModal from "./components/ModelsModal";
 import { Conversation, ConversationWithState, ConversationListUpdate } from "./types";
 import { api } from "./services/api";
+
+// Worker pool configuration for @pierre/diffs syntax highlighting
+// Workers run tokenization off the main thread for better performance with large diffs
+const diffsPoolOptions = {
+  workerFactory: () => new Worker("/diffs-worker.js"),
+};
+
+// Languages to preload in the highlighter (matches PatchTool.tsx langMap)
+const diffsHighlighterOptions = {
+  langs: [
+    "typescript",
+    "tsx",
+    "javascript",
+    "jsx",
+    "python",
+    "ruby",
+    "go",
+    "rust",
+    "java",
+    "c",
+    "cpp",
+    "csharp",
+    "php",
+    "swift",
+    "kotlin",
+    "scala",
+    "bash",
+    "sql",
+    "html",
+    "css",
+    "scss",
+    "json",
+    "xml",
+    "yaml",
+    "toml",
+    "markdown",
+  ] as SupportedLanguages[],
+};
 
 // Check if a slug is a generated ID (format: cXXXX where X is alphanumeric)
 function isGeneratedId(slug: string | null): boolean {
@@ -387,81 +427,86 @@ function App() {
   };
 
   return (
-    <div className="app-container">
-      {/* Conversations drawer */}
-      <ConversationDrawer
-        isOpen={drawerOpen}
-        isCollapsed={drawerCollapsed}
-        onClose={() => setDrawerOpen(false)}
-        onToggleCollapse={toggleDrawerCollapsed}
-        conversations={conversations}
-        currentConversationId={currentConversationId}
-        viewedConversation={viewedConversation}
-        onSelectConversation={selectConversation}
-        onNewConversation={startNewConversation}
-        onConversationArchived={handleConversationArchived}
-        onConversationUnarchived={handleConversationUnarchived}
-        onConversationRenamed={handleConversationRenamed}
-        subagentUpdate={subagentUpdate}
-        subagentStateUpdate={subagentStateUpdate}
-      />
-
-      {/* Main chat interface */}
-      <div className="main-content">
-        <ChatInterface
-          conversationId={currentConversationId}
-          onOpenDrawer={() => setDrawerOpen(true)}
+    <WorkerPoolContextProvider
+      poolOptions={diffsPoolOptions}
+      highlighterOptions={diffsHighlighterOptions}
+    >
+      <div className="app-container">
+        {/* Conversations drawer */}
+        <ConversationDrawer
+          isOpen={drawerOpen}
+          isCollapsed={drawerCollapsed}
+          onClose={() => setDrawerOpen(false)}
+          onToggleCollapse={toggleDrawerCollapsed}
+          conversations={conversations}
+          currentConversationId={currentConversationId}
+          viewedConversation={viewedConversation}
+          onSelectConversation={selectConversation}
           onNewConversation={startNewConversation}
-          currentConversation={currentConversation}
-          onConversationUpdate={updateConversation}
-          onConversationListUpdate={handleConversationListUpdate}
-          onConversationStateUpdate={handleConversationStateUpdate}
-          onFirstMessage={handleFirstMessage}
-          onContinueConversation={handleContinueConversation}
-          mostRecentCwd={mostRecentCwd}
-          isDrawerCollapsed={drawerCollapsed}
-          onToggleDrawerCollapse={toggleDrawerCollapsed}
-          openDiffViewerTrigger={diffViewerTrigger}
-          modelsRefreshTrigger={modelsRefreshTrigger}
-          onOpenModelsModal={() => setModelsModalOpen(true)}
+          onConversationArchived={handleConversationArchived}
+          onConversationUnarchived={handleConversationUnarchived}
+          onConversationRenamed={handleConversationRenamed}
+          subagentUpdate={subagentUpdate}
+          subagentStateUpdate={subagentStateUpdate}
         />
+
+        {/* Main chat interface */}
+        <div className="main-content">
+          <ChatInterface
+            conversationId={currentConversationId}
+            onOpenDrawer={() => setDrawerOpen(true)}
+            onNewConversation={startNewConversation}
+            currentConversation={currentConversation}
+            onConversationUpdate={updateConversation}
+            onConversationListUpdate={handleConversationListUpdate}
+            onConversationStateUpdate={handleConversationStateUpdate}
+            onFirstMessage={handleFirstMessage}
+            onContinueConversation={handleContinueConversation}
+            mostRecentCwd={mostRecentCwd}
+            isDrawerCollapsed={drawerCollapsed}
+            onToggleDrawerCollapse={toggleDrawerCollapsed}
+            openDiffViewerTrigger={diffViewerTrigger}
+            modelsRefreshTrigger={modelsRefreshTrigger}
+            onOpenModelsModal={() => setModelsModalOpen(true)}
+          />
+        </div>
+
+        {/* Command Palette */}
+        <CommandPalette
+          isOpen={commandPaletteOpen}
+          onClose={() => setCommandPaletteOpen(false)}
+          conversations={conversations}
+          onNewConversation={() => {
+            startNewConversation();
+            setCommandPaletteOpen(false);
+          }}
+          onSelectConversation={(conversation) => {
+            selectConversation(conversation);
+            setCommandPaletteOpen(false);
+          }}
+          onOpenDiffViewer={() => {
+            setDiffViewerTrigger((prev) => prev + 1);
+            setCommandPaletteOpen(false);
+          }}
+          onOpenModelsModal={() => {
+            setModelsModalOpen(true);
+            setCommandPaletteOpen(false);
+          }}
+          hasCwd={!!(currentConversation?.cwd || mostRecentCwd)}
+        />
+
+        <ModelsModal
+          isOpen={modelsModalOpen}
+          onClose={() => setModelsModalOpen(false)}
+          onModelsChanged={() => setModelsRefreshTrigger((prev) => prev + 1)}
+        />
+
+        {/* Backdrop for mobile drawer */}
+        {drawerOpen && (
+          <div className="backdrop hide-on-desktop" onClick={() => setDrawerOpen(false)} />
+        )}
       </div>
-
-      {/* Command Palette */}
-      <CommandPalette
-        isOpen={commandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-        conversations={conversations}
-        onNewConversation={() => {
-          startNewConversation();
-          setCommandPaletteOpen(false);
-        }}
-        onSelectConversation={(conversation) => {
-          selectConversation(conversation);
-          setCommandPaletteOpen(false);
-        }}
-        onOpenDiffViewer={() => {
-          setDiffViewerTrigger((prev) => prev + 1);
-          setCommandPaletteOpen(false);
-        }}
-        onOpenModelsModal={() => {
-          setModelsModalOpen(true);
-          setCommandPaletteOpen(false);
-        }}
-        hasCwd={!!(currentConversation?.cwd || mostRecentCwd)}
-      />
-
-      <ModelsModal
-        isOpen={modelsModalOpen}
-        onClose={() => setModelsModalOpen(false)}
-        onModelsChanged={() => setModelsRefreshTrigger((prev) => prev + 1)}
-      />
-
-      {/* Backdrop for mobile drawer */}
-      {drawerOpen && (
-        <div className="backdrop hide-on-desktop" onClick={() => setDrawerOpen(false)} />
-      )}
-    </div>
+    </WorkerPoolContextProvider>
   );
 }
 
