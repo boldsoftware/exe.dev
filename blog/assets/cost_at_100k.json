@@ -1,0 +1,1634 @@
+[
+  {
+    "conversation_id": "c001",
+    "turns": 19,
+    "cost": 1.476379,
+    "cache_read_cost": 0.336708,
+    "cache_read_pct": 22.8,
+    "context_size": 125190
+  },
+  {
+    "conversation_id": "c002",
+    "turns": 219,
+    "cost": 8.651136,
+    "cache_read_cost": 5.798457,
+    "cache_read_pct": 67.0,
+    "context_size": 100685
+  },
+  {
+    "conversation_id": "c003",
+    "turns": 118,
+    "cost": 7.403102,
+    "cache_read_cost": 3.258163,
+    "cache_read_pct": 44.0,
+    "context_size": 101517
+  },
+  {
+    "conversation_id": "c004",
+    "turns": 1,
+    "cost": 0.062961,
+    "cache_read_cost": 0.057937,
+    "cache_read_pct": 92.0,
+    "context_size": 116038
+  },
+  {
+    "conversation_id": "c005",
+    "turns": 48,
+    "cost": 1.030204,
+    "cache_read_cost": 0.536702,
+    "cache_read_pct": 52.1,
+    "context_size": 131069
+  },
+  {
+    "conversation_id": "c006",
+    "turns": 183,
+    "cost": 6.731425,
+    "cache_read_cost": 4.741146,
+    "cache_read_pct": 70.4,
+    "context_size": 100514
+  },
+  {
+    "conversation_id": "c007",
+    "turns": 8,
+    "cost": 0.67013,
+    "cache_read_cost": 0.351804,
+    "cache_read_pct": 52.5,
+    "context_size": 132315
+  },
+  {
+    "conversation_id": "c008",
+    "turns": 7,
+    "cost": 0.366543,
+    "cache_read_cost": 0.316851,
+    "cache_read_pct": 86.4,
+    "context_size": 153799
+  },
+  {
+    "conversation_id": "c009",
+    "turns": 215,
+    "cost": 10.975924,
+    "cache_read_cost": 6.059011,
+    "cache_read_pct": 55.2,
+    "context_size": 100449
+  },
+  {
+    "conversation_id": "c010",
+    "turns": 141,
+    "cost": 6.999754,
+    "cache_read_cost": 3.827565,
+    "cache_read_pct": 54.7,
+    "context_size": 100801
+  },
+  {
+    "conversation_id": "c011",
+    "turns": 111,
+    "cost": 5.817388,
+    "cache_read_cost": 3.060563,
+    "cache_read_pct": 52.6,
+    "context_size": 100166
+  },
+  {
+    "conversation_id": "c012",
+    "turns": 44,
+    "cost": 1.352708,
+    "cache_read_cost": 0.963131,
+    "cache_read_pct": 71.2,
+    "context_size": 106314
+  },
+  {
+    "conversation_id": "c013",
+    "turns": 103,
+    "cost": 5.464467,
+    "cache_read_cost": 3.358,
+    "cache_read_pct": 61.5,
+    "context_size": 100106
+  },
+  {
+    "conversation_id": "c014",
+    "turns": 159,
+    "cost": 5.971579,
+    "cache_read_cost": 3.884979,
+    "cache_read_pct": 65.1,
+    "context_size": 100732
+  },
+  {
+    "conversation_id": "c015",
+    "turns": 1,
+    "cost": 0.081876,
+    "cache_read_cost": 0.07474,
+    "cache_read_pct": 91.3,
+    "context_size": 149922
+  },
+  {
+    "conversation_id": "c016",
+    "turns": 11,
+    "cost": 1.213397,
+    "cache_read_cost": 0.457455,
+    "cache_read_pct": 37.7,
+    "context_size": 109922
+  },
+  {
+    "conversation_id": "c017",
+    "turns": 121,
+    "cost": 4.799404,
+    "cache_read_cost": 3.12051,
+    "cache_read_pct": 65.0,
+    "context_size": 110656
+  },
+  {
+    "conversation_id": "c018",
+    "turns": 54,
+    "cost": 3.094724,
+    "cache_read_cost": 1.383173,
+    "cache_read_pct": 44.7,
+    "context_size": 109791
+  },
+  {
+    "conversation_id": "c019",
+    "turns": 170,
+    "cost": 5.529156,
+    "cache_read_cost": 4.301164,
+    "cache_read_pct": 77.8,
+    "context_size": 100799
+  },
+  {
+    "conversation_id": "c020",
+    "turns": 18,
+    "cost": 1.055339,
+    "cache_read_cost": 0.842362,
+    "cache_read_pct": 79.8,
+    "context_size": 100133
+  },
+  {
+    "conversation_id": "c021",
+    "turns": 122,
+    "cost": 3.808794,
+    "cache_read_cost": 2.823616,
+    "cache_read_pct": 74.1,
+    "context_size": 100059
+  },
+  {
+    "conversation_id": "c022",
+    "turns": 8,
+    "cost": 0.843195,
+    "cache_read_cost": 0.298247,
+    "cache_read_pct": 35.4,
+    "context_size": 103658
+  },
+  {
+    "conversation_id": "c023",
+    "turns": 1,
+    "cost": 0.804534,
+    "cache_read_cost": 0.0,
+    "cache_read_pct": 0.0,
+    "context_size": 128218
+  },
+  {
+    "conversation_id": "c024",
+    "turns": 1,
+    "cost": 0.077817,
+    "cache_read_cost": 0.055613,
+    "cache_read_pct": 71.5,
+    "context_size": 111838
+  },
+  {
+    "conversation_id": "c025",
+    "turns": 129,
+    "cost": 6.164436,
+    "cache_read_cost": 3.494097,
+    "cache_read_pct": 56.7,
+    "context_size": 102973
+  },
+  {
+    "conversation_id": "c026",
+    "turns": 1,
+    "cost": 0.942702,
+    "cache_read_cost": 0.0,
+    "cache_read_pct": 0.0,
+    "context_size": 150485
+  },
+  {
+    "conversation_id": "c027",
+    "turns": 23,
+    "cost": 1.753455,
+    "cache_read_cost": 1.056383,
+    "cache_read_pct": 60.2,
+    "context_size": 100163
+  },
+  {
+    "conversation_id": "c028",
+    "turns": 153,
+    "cost": 7.535862,
+    "cache_read_cost": 4.459528,
+    "cache_read_pct": 59.2,
+    "context_size": 101298
+  },
+  {
+    "conversation_id": "c029",
+    "turns": 90,
+    "cost": 6.180437,
+    "cache_read_cost": 2.402425,
+    "cache_read_pct": 38.9,
+    "context_size": 100734
+  },
+  {
+    "conversation_id": "c030",
+    "turns": 136,
+    "cost": 8.742327,
+    "cache_read_cost": 3.429188,
+    "cache_read_pct": 39.2,
+    "context_size": 100172
+  },
+  {
+    "conversation_id": "c031",
+    "turns": 133,
+    "cost": 6.614139,
+    "cache_read_cost": 4.185255,
+    "cache_read_pct": 63.3,
+    "context_size": 100084
+  },
+  {
+    "conversation_id": "c032",
+    "turns": 172,
+    "cost": 12.008104,
+    "cache_read_cost": 5.716705,
+    "cache_read_pct": 47.6,
+    "context_size": 101259
+  },
+  {
+    "conversation_id": "c033",
+    "turns": 134,
+    "cost": 4.674338,
+    "cache_read_cost": 3.160083,
+    "cache_read_pct": 67.6,
+    "context_size": 100763
+  },
+  {
+    "conversation_id": "c034",
+    "turns": 17,
+    "cost": 1.006204,
+    "cache_read_cost": 0.797971,
+    "cache_read_pct": 79.3,
+    "context_size": 100194
+  },
+  {
+    "conversation_id": "c035",
+    "turns": 1,
+    "cost": 0.064092,
+    "cache_read_cost": 0.054112,
+    "cache_read_pct": 84.4,
+    "context_size": 109185
+  },
+  {
+    "conversation_id": "c036",
+    "turns": 144,
+    "cost": 6.979769,
+    "cache_read_cost": 4.283136,
+    "cache_read_pct": 61.4,
+    "context_size": 100117
+  },
+  {
+    "conversation_id": "c037",
+    "turns": 152,
+    "cost": 6.631234,
+    "cache_read_cost": 3.90431,
+    "cache_read_pct": 58.9,
+    "context_size": 161998
+  },
+  {
+    "conversation_id": "c038",
+    "turns": 2,
+    "cost": 0.075679,
+    "cache_read_cost": 0.052713,
+    "cache_read_pct": 69.7,
+    "context_size": 105947
+  },
+  {
+    "conversation_id": "c039",
+    "turns": 1,
+    "cost": 0.079644,
+    "cache_read_cost": 0.076088,
+    "cache_read_pct": 95.5,
+    "context_size": 152449
+  },
+  {
+    "conversation_id": "c040",
+    "turns": 30,
+    "cost": 1.80855,
+    "cache_read_cost": 1.34685,
+    "cache_read_pct": 74.5,
+    "context_size": 100150
+  },
+  {
+    "conversation_id": "c041",
+    "turns": 205,
+    "cost": 8.027245,
+    "cache_read_cost": 5.251579,
+    "cache_read_pct": 65.4,
+    "context_size": 100104
+  },
+  {
+    "conversation_id": "c042",
+    "turns": 116,
+    "cost": 6.211626,
+    "cache_read_cost": 3.432685,
+    "cache_read_pct": 55.3,
+    "context_size": 100123
+  },
+  {
+    "conversation_id": "c043",
+    "turns": 10,
+    "cost": 0.429329,
+    "cache_read_cost": 0.345483,
+    "cache_read_pct": 80.5,
+    "context_size": 100087
+  },
+  {
+    "conversation_id": "c044",
+    "turns": 195,
+    "cost": 7.831339,
+    "cache_read_cost": 5.853948,
+    "cache_read_pct": 74.8,
+    "context_size": 100033
+  },
+  {
+    "conversation_id": "c045",
+    "turns": 20,
+    "cost": 0.571632,
+    "cache_read_cost": 0.29061,
+    "cache_read_pct": 50.8,
+    "context_size": 111181
+  },
+  {
+    "conversation_id": "c046",
+    "turns": 5,
+    "cost": 0.597491,
+    "cache_read_cost": 0.18049,
+    "cache_read_pct": 30.2,
+    "context_size": 168383
+  },
+  {
+    "conversation_id": "c047",
+    "turns": 135,
+    "cost": 6.420129,
+    "cache_read_cost": 3.614132,
+    "cache_read_pct": 56.3,
+    "context_size": 100197
+  },
+  {
+    "conversation_id": "c048",
+    "turns": 15,
+    "cost": 2.179751,
+    "cache_read_cost": 0.310152,
+    "cache_read_pct": 14.2,
+    "context_size": 102231
+  },
+  {
+    "conversation_id": "c049",
+    "turns": 1,
+    "cost": 0.082162,
+    "cache_read_cost": 0.075329,
+    "cache_read_pct": 91.7,
+    "context_size": 151095
+  },
+  {
+    "conversation_id": "c050",
+    "turns": 1,
+    "cost": 0.058176,
+    "cache_read_cost": 0.053061,
+    "cache_read_pct": 91.2,
+    "context_size": 106586
+  },
+  {
+    "conversation_id": "c051",
+    "turns": 1,
+    "cost": 0.115599,
+    "cache_read_cost": 0.096976,
+    "cache_read_pct": 83.9,
+    "context_size": 195751
+  },
+  {
+    "conversation_id": "c052",
+    "turns": 177,
+    "cost": 7.393029,
+    "cache_read_cost": 5.216159,
+    "cache_read_pct": 70.6,
+    "context_size": 100112
+  },
+  {
+    "conversation_id": "c053",
+    "turns": 56,
+    "cost": 4.324647,
+    "cache_read_cost": 1.756468,
+    "cache_read_pct": 40.6,
+    "context_size": 100074
+  },
+  {
+    "conversation_id": "c054",
+    "turns": 1,
+    "cost": 0.078662,
+    "cache_read_cost": 0.066081,
+    "cache_read_pct": 84.0,
+    "context_size": 132722
+  },
+  {
+    "conversation_id": "c055",
+    "turns": 213,
+    "cost": 8.507082,
+    "cache_read_cost": 6.32059,
+    "cache_read_pct": 74.3,
+    "context_size": 102695
+  },
+  {
+    "conversation_id": "c056",
+    "turns": 109,
+    "cost": 6.279884,
+    "cache_read_cost": 3.586682,
+    "cache_read_pct": 57.1,
+    "context_size": 100227
+  },
+  {
+    "conversation_id": "c057",
+    "turns": 121,
+    "cost": 6.035891,
+    "cache_read_cost": 4.017646,
+    "cache_read_pct": 66.6,
+    "context_size": 100140
+  },
+  {
+    "conversation_id": "c058",
+    "turns": 112,
+    "cost": 4.442093,
+    "cache_read_cost": 3.109254,
+    "cache_read_pct": 70.0,
+    "context_size": 100411
+  },
+  {
+    "conversation_id": "c059",
+    "turns": 16,
+    "cost": 0.995985,
+    "cache_read_cost": 0.729312,
+    "cache_read_pct": 73.2,
+    "context_size": 100513
+  },
+  {
+    "conversation_id": "c060",
+    "turns": 33,
+    "cost": 3.242499,
+    "cache_read_cost": 1.250923,
+    "cache_read_pct": 38.6,
+    "context_size": 100775
+  },
+  {
+    "conversation_id": "c061",
+    "turns": 222,
+    "cost": 7.495974,
+    "cache_read_cost": 5.639984,
+    "cache_read_pct": 75.2,
+    "context_size": 100374
+  },
+  {
+    "conversation_id": "c062",
+    "turns": 62,
+    "cost": 4.202308,
+    "cache_read_cost": 1.588719,
+    "cache_read_pct": 37.8,
+    "context_size": 100281
+  },
+  {
+    "conversation_id": "c063",
+    "turns": 16,
+    "cost": 0.929386,
+    "cache_read_cost": 0.765934,
+    "cache_read_pct": 82.4,
+    "context_size": 100048
+  },
+  {
+    "conversation_id": "c064",
+    "turns": 83,
+    "cost": 3.316169,
+    "cache_read_cost": 2.259431,
+    "cache_read_pct": 68.1,
+    "context_size": 101895
+  },
+  {
+    "conversation_id": "c065",
+    "turns": 26,
+    "cost": 1.30518,
+    "cache_read_cost": 1.161371,
+    "cache_read_pct": 89.0,
+    "context_size": 158721
+  },
+  {
+    "conversation_id": "c066",
+    "turns": 102,
+    "cost": 5.863032,
+    "cache_read_cost": 3.100902,
+    "cache_read_pct": 52.9,
+    "context_size": 100057
+  },
+  {
+    "conversation_id": "c067",
+    "turns": 130,
+    "cost": 6.331474,
+    "cache_read_cost": 3.601947,
+    "cache_read_pct": 56.9,
+    "context_size": 101226
+  },
+  {
+    "conversation_id": "c068",
+    "turns": 122,
+    "cost": 6.056893,
+    "cache_read_cost": 3.761213,
+    "cache_read_pct": 62.1,
+    "context_size": 100173
+  },
+  {
+    "conversation_id": "c069",
+    "turns": 16,
+    "cost": 0.89611,
+    "cache_read_cost": 0.165726,
+    "cache_read_pct": 18.5,
+    "context_size": 100059
+  },
+  {
+    "conversation_id": "c070",
+    "turns": 216,
+    "cost": 8.501053,
+    "cache_read_cost": 6.174165,
+    "cache_read_pct": 72.6,
+    "context_size": 101154
+  },
+  {
+    "conversation_id": "c071",
+    "turns": 60,
+    "cost": 3.595348,
+    "cache_read_cost": 1.610834,
+    "cache_read_pct": 44.8,
+    "context_size": 100562
+  },
+  {
+    "conversation_id": "c072",
+    "turns": 8,
+    "cost": 0.216053,
+    "cache_read_cost": 0.146116,
+    "cache_read_pct": 67.6,
+    "context_size": 101244
+  },
+  {
+    "conversation_id": "c073",
+    "turns": 175,
+    "cost": 9.965416,
+    "cache_read_cost": 5.767613,
+    "cache_read_pct": 57.9,
+    "context_size": 100468
+  },
+  {
+    "conversation_id": "c074",
+    "turns": 11,
+    "cost": 1.180649,
+    "cache_read_cost": 0.042543,
+    "cache_read_pct": 3.6,
+    "context_size": 118848
+  },
+  {
+    "conversation_id": "c075",
+    "turns": 65,
+    "cost": 2.093453,
+    "cache_read_cost": 1.121579,
+    "cache_read_pct": 53.6,
+    "context_size": 104664
+  },
+  {
+    "conversation_id": "c076",
+    "turns": 149,
+    "cost": 5.503898,
+    "cache_read_cost": 3.739342,
+    "cache_read_pct": 67.9,
+    "context_size": 100771
+  },
+  {
+    "conversation_id": "c077",
+    "turns": 2,
+    "cost": 0.153492,
+    "cache_read_cost": 0.134219,
+    "cache_read_pct": 87.4,
+    "context_size": 172712
+  },
+  {
+    "conversation_id": "c078",
+    "turns": 122,
+    "cost": 5.632375,
+    "cache_read_cost": 3.074432,
+    "cache_read_pct": 54.6,
+    "context_size": 100315
+  },
+  {
+    "conversation_id": "c079",
+    "turns": 210,
+    "cost": 7.940483,
+    "cache_read_cost": 4.981468,
+    "cache_read_pct": 62.7,
+    "context_size": 101916
+  },
+  {
+    "conversation_id": "c080",
+    "turns": 122,
+    "cost": 6.343457,
+    "cache_read_cost": 3.657812,
+    "cache_read_pct": 57.7,
+    "context_size": 100437
+  },
+  {
+    "conversation_id": "c081",
+    "turns": 145,
+    "cost": 5.254998,
+    "cache_read_cost": 4.060859,
+    "cache_read_pct": 77.3,
+    "context_size": 100128
+  },
+  {
+    "conversation_id": "c082",
+    "turns": 122,
+    "cost": 4.693556,
+    "cache_read_cost": 2.870739,
+    "cache_read_pct": 61.2,
+    "context_size": 100563
+  },
+  {
+    "conversation_id": "c083",
+    "turns": 5,
+    "cost": 0.639703,
+    "cache_read_cost": 0.159299,
+    "cache_read_pct": 24.9,
+    "context_size": 104519
+  },
+  {
+    "conversation_id": "c084",
+    "turns": 118,
+    "cost": 4.887575,
+    "cache_read_cost": 3.376936,
+    "cache_read_pct": 69.1,
+    "context_size": 101424
+  },
+  {
+    "conversation_id": "c085",
+    "turns": 91,
+    "cost": 3.427793,
+    "cache_read_cost": 2.394652,
+    "cache_read_pct": 69.9,
+    "context_size": 117678
+  },
+  {
+    "conversation_id": "c086",
+    "turns": 255,
+    "cost": 12.248335,
+    "cache_read_cost": 8.029281,
+    "cache_read_pct": 65.6,
+    "context_size": 100296
+  },
+  {
+    "conversation_id": "c087",
+    "turns": 111,
+    "cost": 6.280861,
+    "cache_read_cost": 3.524326,
+    "cache_read_pct": 56.1,
+    "context_size": 100437
+  },
+  {
+    "conversation_id": "c088",
+    "turns": 1,
+    "cost": 0.114354,
+    "cache_read_cost": 0.05223,
+    "cache_read_pct": 45.7,
+    "context_size": 104584
+  },
+  {
+    "conversation_id": "c089",
+    "turns": 114,
+    "cost": 5.323237,
+    "cache_read_cost": 3.504425,
+    "cache_read_pct": 65.8,
+    "context_size": 102239
+  },
+  {
+    "conversation_id": "c090",
+    "turns": 141,
+    "cost": 6.927207,
+    "cache_read_cost": 4.78424,
+    "cache_read_pct": 69.1,
+    "context_size": 100963
+  },
+  {
+    "conversation_id": "c091",
+    "turns": 16,
+    "cost": 0.905772,
+    "cache_read_cost": 0.767949,
+    "cache_read_pct": 84.8,
+    "context_size": 100575
+  },
+  {
+    "conversation_id": "c092",
+    "turns": 120,
+    "cost": 5.449603,
+    "cache_read_cost": 3.474973,
+    "cache_read_pct": 63.8,
+    "context_size": 101134
+  },
+  {
+    "conversation_id": "c093",
+    "turns": 101,
+    "cost": 4.56794,
+    "cache_read_cost": 2.952228,
+    "cache_read_pct": 64.6,
+    "context_size": 101446
+  },
+  {
+    "conversation_id": "c094",
+    "turns": 116,
+    "cost": 6.030057,
+    "cache_read_cost": 3.894803,
+    "cache_read_pct": 64.6,
+    "context_size": 100890
+  },
+  {
+    "conversation_id": "c095",
+    "turns": 1,
+    "cost": 0.179544,
+    "cache_read_cost": 0.058802,
+    "cache_read_pct": 32.8,
+    "context_size": 117739
+  },
+  {
+    "conversation_id": "c096",
+    "turns": 52,
+    "cost": 2.136877,
+    "cache_read_cost": 0.768769,
+    "cache_read_pct": 36.0,
+    "context_size": 130492
+  },
+  {
+    "conversation_id": "c097",
+    "turns": 164,
+    "cost": 5.874594,
+    "cache_read_cost": 4.311479,
+    "cache_read_pct": 73.4,
+    "context_size": 102085
+  },
+  {
+    "conversation_id": "c098",
+    "turns": 211,
+    "cost": 8.345279,
+    "cache_read_cost": 5.610264,
+    "cache_read_pct": 67.2,
+    "context_size": 100490
+  },
+  {
+    "conversation_id": "c099",
+    "turns": 131,
+    "cost": 6.66686,
+    "cache_read_cost": 4.113597,
+    "cache_read_pct": 61.7,
+    "context_size": 100976
+  },
+  {
+    "conversation_id": "c100",
+    "turns": 181,
+    "cost": 8.283738,
+    "cache_read_cost": 4.810632,
+    "cache_read_pct": 58.1,
+    "context_size": 100634
+  },
+  {
+    "conversation_id": "c101",
+    "turns": 2,
+    "cost": 0.575176,
+    "cache_read_cost": 0.057218,
+    "cache_read_pct": 9.9,
+    "context_size": 114731
+  },
+  {
+    "conversation_id": "c102",
+    "turns": 115,
+    "cost": 6.160479,
+    "cache_read_cost": 3.220061,
+    "cache_read_pct": 52.3,
+    "context_size": 101274
+  },
+  {
+    "conversation_id": "c103",
+    "turns": 167,
+    "cost": 7.809187,
+    "cache_read_cost": 5.109572,
+    "cache_read_pct": 65.4,
+    "context_size": 100212
+  },
+  {
+    "conversation_id": "c104",
+    "turns": 173,
+    "cost": 6.705613,
+    "cache_read_cost": 5.167131,
+    "cache_read_pct": 77.1,
+    "context_size": 100200
+  },
+  {
+    "conversation_id": "c105",
+    "turns": 8,
+    "cost": 0.723039,
+    "cache_read_cost": 0.259217,
+    "cache_read_pct": 35.9,
+    "context_size": 110247
+  },
+  {
+    "conversation_id": "c106",
+    "turns": 29,
+    "cost": 1.894062,
+    "cache_read_cost": 0.941101,
+    "cache_read_pct": 49.7,
+    "context_size": 111144
+  },
+  {
+    "conversation_id": "c107",
+    "turns": 128,
+    "cost": 6.314812,
+    "cache_read_cost": 3.842572,
+    "cache_read_pct": 60.9,
+    "context_size": 101677
+  },
+  {
+    "conversation_id": "c108",
+    "turns": 1,
+    "cost": 0.08257,
+    "cache_read_cost": 0.074057,
+    "cache_read_pct": 89.7,
+    "context_size": 149081
+  },
+  {
+    "conversation_id": "c109",
+    "turns": 52,
+    "cost": 2.014209,
+    "cache_read_cost": 0.986047,
+    "cache_read_pct": 49.0,
+    "context_size": 100131
+  },
+  {
+    "conversation_id": "c110",
+    "turns": 176,
+    "cost": 7.221157,
+    "cache_read_cost": 4.982797,
+    "cache_read_pct": 69.0,
+    "context_size": 101045
+  },
+  {
+    "conversation_id": "c111",
+    "turns": 194,
+    "cost": 6.975396,
+    "cache_read_cost": 5.235134,
+    "cache_read_pct": 75.1,
+    "context_size": 100249
+  },
+  {
+    "conversation_id": "c112",
+    "turns": 172,
+    "cost": 6.72793,
+    "cache_read_cost": 4.405816,
+    "cache_read_pct": 65.5,
+    "context_size": 100275
+  },
+  {
+    "conversation_id": "c113",
+    "turns": 110,
+    "cost": 4.296333,
+    "cache_read_cost": 2.833224,
+    "cache_read_pct": 65.9,
+    "context_size": 102152
+  },
+  {
+    "conversation_id": "c114",
+    "turns": 145,
+    "cost": 6.288008,
+    "cache_read_cost": 3.021634,
+    "cache_read_pct": 48.1,
+    "context_size": 100588
+  },
+  {
+    "conversation_id": "c115",
+    "turns": 36,
+    "cost": 1.429359,
+    "cache_read_cost": 1.282781,
+    "cache_read_pct": 89.7,
+    "context_size": 100113
+  },
+  {
+    "conversation_id": "c116",
+    "turns": 8,
+    "cost": 0.432873,
+    "cache_read_cost": 0.393605,
+    "cache_read_pct": 90.9,
+    "context_size": 100147
+  },
+  {
+    "conversation_id": "c117",
+    "turns": 58,
+    "cost": 2.032136,
+    "cache_read_cost": 1.647439,
+    "cache_read_pct": 81.1,
+    "context_size": 110139
+  },
+  {
+    "conversation_id": "c118",
+    "turns": 1,
+    "cost": 0.076366,
+    "cache_read_cost": 0.057379,
+    "cache_read_pct": 75.1,
+    "context_size": 115397
+  },
+  {
+    "conversation_id": "c119",
+    "turns": 24,
+    "cost": 0.880251,
+    "cache_read_cost": 0.639652,
+    "cache_read_pct": 72.7,
+    "context_size": 198108
+  },
+  {
+    "conversation_id": "c120",
+    "turns": 131,
+    "cost": 4.195372,
+    "cache_read_cost": 2.891281,
+    "cache_read_pct": 68.9,
+    "context_size": 100100
+  },
+  {
+    "conversation_id": "c121",
+    "turns": 186,
+    "cost": 7.044033,
+    "cache_read_cost": 5.719686,
+    "cache_read_pct": 81.2,
+    "context_size": 100059
+  },
+  {
+    "conversation_id": "c122",
+    "turns": 145,
+    "cost": 6.544171,
+    "cache_read_cost": 4.157043,
+    "cache_read_pct": 63.5,
+    "context_size": 100587
+  },
+  {
+    "conversation_id": "c123",
+    "turns": 125,
+    "cost": 5.690666,
+    "cache_read_cost": 3.573577,
+    "cache_read_pct": 62.8,
+    "context_size": 100304
+  },
+  {
+    "conversation_id": "c124",
+    "turns": 20,
+    "cost": 1.477481,
+    "cache_read_cost": 0.445102,
+    "cache_read_pct": 30.1,
+    "context_size": 120192
+  },
+  {
+    "conversation_id": "c125",
+    "turns": 84,
+    "cost": 5.481751,
+    "cache_read_cost": 2.74482,
+    "cache_read_pct": 50.1,
+    "context_size": 102794
+  },
+  {
+    "conversation_id": "c126",
+    "turns": 39,
+    "cost": 5.108247,
+    "cache_read_cost": 0.900491,
+    "cache_read_pct": 17.6,
+    "context_size": 101755
+  },
+  {
+    "conversation_id": "c127",
+    "turns": 124,
+    "cost": 5.376601,
+    "cache_read_cost": 3.715168,
+    "cache_read_pct": 69.1,
+    "context_size": 101051
+  },
+  {
+    "conversation_id": "c128",
+    "turns": 96,
+    "cost": 4.85713,
+    "cache_read_cost": 2.555234,
+    "cache_read_pct": 52.6,
+    "context_size": 100209
+  },
+  {
+    "conversation_id": "c129",
+    "turns": 1,
+    "cost": 0.0835,
+    "cache_read_cost": 0.081558,
+    "cache_read_pct": 97.7,
+    "context_size": 163274
+  },
+  {
+    "conversation_id": "c130",
+    "turns": 20,
+    "cost": 0.784853,
+    "cache_read_cost": 0.389968,
+    "cache_read_pct": 49.7,
+    "context_size": 142429
+  },
+  {
+    "conversation_id": "c131",
+    "turns": 77,
+    "cost": 2.49609,
+    "cache_read_cost": 0.82804,
+    "cache_read_pct": 33.2,
+    "context_size": 135099
+  },
+  {
+    "conversation_id": "c132",
+    "turns": 1,
+    "cost": 0.647903,
+    "cache_read_cost": 0.0,
+    "cache_read_pct": 0.0,
+    "context_size": 103353
+  },
+  {
+    "conversation_id": "c133",
+    "turns": 1,
+    "cost": 0.066744,
+    "cache_read_cost": 0.05909,
+    "cache_read_pct": 88.5,
+    "context_size": 118440
+  },
+  {
+    "conversation_id": "c134",
+    "turns": 107,
+    "cost": 5.362971,
+    "cache_read_cost": 3.288545,
+    "cache_read_pct": 61.3,
+    "context_size": 100604
+  },
+  {
+    "conversation_id": "c135",
+    "turns": 1,
+    "cost": 0.065829,
+    "cache_read_cost": 0.063512,
+    "cache_read_pct": 96.5,
+    "context_size": 127139
+  },
+  {
+    "conversation_id": "c136",
+    "turns": 159,
+    "cost": 5.861555,
+    "cache_read_cost": 4.671292,
+    "cache_read_pct": 79.7,
+    "context_size": 100003
+  },
+  {
+    "conversation_id": "c137",
+    "turns": 27,
+    "cost": 0.767409,
+    "cache_read_cost": 0.613769,
+    "cache_read_pct": 80.0,
+    "context_size": 115483
+  },
+  {
+    "conversation_id": "c138",
+    "turns": 239,
+    "cost": 8.768041,
+    "cache_read_cost": 6.842604,
+    "cache_read_pct": 78.0,
+    "context_size": 101220
+  },
+  {
+    "conversation_id": "c139",
+    "turns": 83,
+    "cost": 4.632949,
+    "cache_read_cost": 2.925718,
+    "cache_read_pct": 63.2,
+    "context_size": 100634
+  },
+  {
+    "conversation_id": "c140",
+    "turns": 54,
+    "cost": 1.502015,
+    "cache_read_cost": 0.901798,
+    "cache_read_pct": 60.0,
+    "context_size": 183823
+  },
+  {
+    "conversation_id": "c141",
+    "turns": 17,
+    "cost": 0.921121,
+    "cache_read_cost": 0.691152,
+    "cache_read_pct": 75.0,
+    "context_size": 110390
+  },
+  {
+    "conversation_id": "c142",
+    "turns": 4,
+    "cost": 0.981701,
+    "cache_read_cost": 0.017624,
+    "cache_read_pct": 1.8,
+    "context_size": 134059
+  },
+  {
+    "conversation_id": "c143",
+    "turns": 107,
+    "cost": 4.677467,
+    "cache_read_cost": 2.892525,
+    "cache_read_pct": 61.8,
+    "context_size": 101767
+  },
+  {
+    "conversation_id": "c144",
+    "turns": 1,
+    "cost": 0.078208,
+    "cache_read_cost": 0.055655,
+    "cache_read_pct": 71.2,
+    "context_size": 111852
+  },
+  {
+    "conversation_id": "c145",
+    "turns": 50,
+    "cost": 3.426096,
+    "cache_read_cost": 1.410648,
+    "cache_read_pct": 41.2,
+    "context_size": 100299
+  },
+  {
+    "conversation_id": "c146",
+    "turns": 106,
+    "cost": 6.043758,
+    "cache_read_cost": 2.587283,
+    "cache_read_pct": 42.8,
+    "context_size": 100200
+  },
+  {
+    "conversation_id": "c147",
+    "turns": 1,
+    "cost": 0.860252,
+    "cache_read_cost": 0.0,
+    "cache_read_pct": 0.0,
+    "context_size": 137269
+  },
+  {
+    "conversation_id": "c148",
+    "turns": 97,
+    "cost": 4.960961,
+    "cache_read_cost": 3.07249,
+    "cache_read_pct": 61.9,
+    "context_size": 100653
+  },
+  {
+    "conversation_id": "c149",
+    "turns": 166,
+    "cost": 5.221186,
+    "cache_read_cost": 3.786652,
+    "cache_read_pct": 72.5,
+    "context_size": 102760
+  },
+  {
+    "conversation_id": "c150",
+    "turns": 1,
+    "cost": 0.649086,
+    "cache_read_cost": 0.0,
+    "cache_read_pct": 0.0,
+    "context_size": 103362
+  },
+  {
+    "conversation_id": "c151",
+    "turns": 116,
+    "cost": 4.569387,
+    "cache_read_cost": 3.402719,
+    "cache_read_pct": 74.5,
+    "context_size": 100392
+  },
+  {
+    "conversation_id": "c152",
+    "turns": 175,
+    "cost": 7.718948,
+    "cache_read_cost": 4.813357,
+    "cache_read_pct": 62.4,
+    "context_size": 100280
+  },
+  {
+    "conversation_id": "c153",
+    "turns": 1,
+    "cost": 0.070202,
+    "cache_read_cost": 0.06511,
+    "cache_read_pct": 92.7,
+    "context_size": 130338
+  },
+  {
+    "conversation_id": "c154",
+    "turns": 107,
+    "cost": 5.482763,
+    "cache_read_cost": 2.690441,
+    "cache_read_pct": 49.1,
+    "context_size": 100037
+  },
+  {
+    "conversation_id": "c155",
+    "turns": 102,
+    "cost": 5.607605,
+    "cache_read_cost": 2.087741,
+    "cache_read_pct": 37.2,
+    "context_size": 157403
+  },
+  {
+    "conversation_id": "c156",
+    "turns": 108,
+    "cost": 6.330348,
+    "cache_read_cost": 3.674911,
+    "cache_read_pct": 58.1,
+    "context_size": 100141
+  },
+  {
+    "conversation_id": "c157",
+    "turns": 7,
+    "cost": 0.5033,
+    "cache_read_cost": 0.334743,
+    "cache_read_pct": 66.5,
+    "context_size": 103291
+  },
+  {
+    "conversation_id": "c158",
+    "turns": 117,
+    "cost": 3.856638,
+    "cache_read_cost": 2.557737,
+    "cache_read_pct": 66.3,
+    "context_size": 100202
+  },
+  {
+    "conversation_id": "c159",
+    "turns": 98,
+    "cost": 4.346649,
+    "cache_read_cost": 2.279544,
+    "cache_read_pct": 52.4,
+    "context_size": 101568
+  },
+  {
+    "conversation_id": "c160",
+    "turns": 88,
+    "cost": 5.260978,
+    "cache_read_cost": 3.0197,
+    "cache_read_pct": 57.4,
+    "context_size": 100042
+  },
+  {
+    "conversation_id": "c161",
+    "turns": 136,
+    "cost": 8.090131,
+    "cache_read_cost": 3.855576,
+    "cache_read_pct": 47.7,
+    "context_size": 100337
+  },
+  {
+    "conversation_id": "c162",
+    "turns": 160,
+    "cost": 6.021802,
+    "cache_read_cost": 3.771848,
+    "cache_read_pct": 62.6,
+    "context_size": 101172
+  },
+  {
+    "conversation_id": "c163",
+    "turns": 34,
+    "cost": 1.737469,
+    "cache_read_cost": 1.115832,
+    "cache_read_pct": 64.2,
+    "context_size": 150584
+  },
+  {
+    "conversation_id": "c164",
+    "turns": 93,
+    "cost": 5.511885,
+    "cache_read_cost": 2.78666,
+    "cache_read_pct": 50.6,
+    "context_size": 100434
+  },
+  {
+    "conversation_id": "c165",
+    "turns": 155,
+    "cost": 7.220877,
+    "cache_read_cost": 4.680512,
+    "cache_read_pct": 64.8,
+    "context_size": 100085
+  },
+  {
+    "conversation_id": "c166",
+    "turns": 203,
+    "cost": 7.170306,
+    "cache_read_cost": 5.861795,
+    "cache_read_pct": 81.8,
+    "context_size": 100013
+  },
+  {
+    "conversation_id": "c167",
+    "turns": 1,
+    "cost": 0.073873,
+    "cache_read_cost": 0.062868,
+    "cache_read_pct": 85.1,
+    "context_size": 125936
+  },
+  {
+    "conversation_id": "c168",
+    "turns": 114,
+    "cost": 5.216875,
+    "cache_read_cost": 2.995913,
+    "cache_read_pct": 57.4,
+    "context_size": 100147
+  },
+  {
+    "conversation_id": "c169",
+    "turns": 18,
+    "cost": 1.227569,
+    "cache_read_cost": 0.150953,
+    "cache_read_pct": 12.3,
+    "context_size": 135585
+  },
+  {
+    "conversation_id": "c170",
+    "turns": 26,
+    "cost": 1.540389,
+    "cache_read_cost": 0.909387,
+    "cache_read_pct": 59.0,
+    "context_size": 144583
+  },
+  {
+    "conversation_id": "c171",
+    "turns": 151,
+    "cost": 4.933691,
+    "cache_read_cost": 3.842932,
+    "cache_read_pct": 77.9,
+    "context_size": 100156
+  },
+  {
+    "conversation_id": "c172",
+    "turns": 15,
+    "cost": 0.717097,
+    "cache_read_cost": 0.668402,
+    "cache_read_pct": 93.2,
+    "context_size": 174942
+  },
+  {
+    "conversation_id": "c173",
+    "turns": 143,
+    "cost": 6.007775,
+    "cache_read_cost": 4.49503,
+    "cache_read_pct": 74.8,
+    "context_size": 100173
+  },
+  {
+    "conversation_id": "c174",
+    "turns": 220,
+    "cost": 7.378572,
+    "cache_read_cost": 5.966737,
+    "cache_read_pct": 80.9,
+    "context_size": 100510
+  },
+  {
+    "conversation_id": "c175",
+    "turns": 1,
+    "cost": 0.666915,
+    "cache_read_cost": 0.0,
+    "cache_read_pct": 0.0,
+    "context_size": 105331
+  },
+  {
+    "conversation_id": "c176",
+    "turns": 139,
+    "cost": 6.450774,
+    "cache_read_cost": 4.36015,
+    "cache_read_pct": 67.6,
+    "context_size": 100321
+  },
+  {
+    "conversation_id": "c177",
+    "turns": 1,
+    "cost": 0.056451,
+    "cache_read_cost": 0.053483,
+    "cache_read_pct": 94.7,
+    "context_size": 107089
+  },
+  {
+    "conversation_id": "c178",
+    "turns": 26,
+    "cost": 0.556714,
+    "cache_read_cost": 0.376009,
+    "cache_read_pct": 67.5,
+    "context_size": 156784
+  },
+  {
+    "conversation_id": "c179",
+    "turns": 141,
+    "cost": 6.775115,
+    "cache_read_cost": 3.957054,
+    "cache_read_pct": 58.4,
+    "context_size": 101193
+  },
+  {
+    "conversation_id": "c180",
+    "turns": 1,
+    "cost": 0.080456,
+    "cache_read_cost": 0.074883,
+    "cache_read_pct": 93.1,
+    "context_size": 150125
+  },
+  {
+    "conversation_id": "c181",
+    "turns": 12,
+    "cost": 0.660479,
+    "cache_read_cost": 0.588969,
+    "cache_read_pct": 89.2,
+    "context_size": 100467
+  },
+  {
+    "conversation_id": "c182",
+    "turns": 140,
+    "cost": 7.511061,
+    "cache_read_cost": 4.383133,
+    "cache_read_pct": 58.4,
+    "context_size": 100172
+  },
+  {
+    "conversation_id": "c183",
+    "turns": 41,
+    "cost": 2.774514,
+    "cache_read_cost": 1.030564,
+    "cache_read_pct": 37.1,
+    "context_size": 100441
+  },
+  {
+    "conversation_id": "c184",
+    "turns": 62,
+    "cost": 2.859469,
+    "cache_read_cost": 1.530413,
+    "cache_read_pct": 53.5,
+    "context_size": 104974
+  },
+  {
+    "conversation_id": "c185",
+    "turns": 120,
+    "cost": 7.078514,
+    "cache_read_cost": 3.896689,
+    "cache_read_pct": 55.0,
+    "context_size": 100099
+  },
+  {
+    "conversation_id": "c186",
+    "turns": 62,
+    "cost": 1.761322,
+    "cache_read_cost": 1.161753,
+    "cache_read_pct": 66.0,
+    "context_size": 100758
+  },
+  {
+    "conversation_id": "c187",
+    "turns": 81,
+    "cost": 4.919277,
+    "cache_read_cost": 2.226739,
+    "cache_read_pct": 45.3,
+    "context_size": 100247
+  },
+  {
+    "conversation_id": "c188",
+    "turns": 81,
+    "cost": 4.291225,
+    "cache_read_cost": 2.150242,
+    "cache_read_pct": 50.1,
+    "context_size": 100372
+  },
+  {
+    "conversation_id": "c189",
+    "turns": 153,
+    "cost": 7.896611,
+    "cache_read_cost": 4.140708,
+    "cache_read_pct": 52.4,
+    "context_size": 100630
+  },
+  {
+    "conversation_id": "c190",
+    "turns": 139,
+    "cost": 6.312424,
+    "cache_read_cost": 3.900223,
+    "cache_read_pct": 61.8,
+    "context_size": 100593
+  },
+  {
+    "conversation_id": "c191",
+    "turns": 6,
+    "cost": 0.204753,
+    "cache_read_cost": 0.099163,
+    "cache_read_pct": 48.4,
+    "context_size": 162565
+  },
+  {
+    "conversation_id": "c192",
+    "turns": 1,
+    "cost": 0.833652,
+    "cache_read_cost": 0.0,
+    "cache_read_pct": 0.0,
+    "context_size": 133009
+  },
+  {
+    "conversation_id": "c193",
+    "turns": 141,
+    "cost": 7.29554,
+    "cache_read_cost": 4.418256,
+    "cache_read_pct": 60.6,
+    "context_size": 101070
+  },
+  {
+    "conversation_id": "c194",
+    "turns": 1,
+    "cost": 0.061106,
+    "cache_read_cost": 0.056719,
+    "cache_read_pct": 92.8,
+    "context_size": 113705
+  },
+  {
+    "conversation_id": "c195",
+    "turns": 129,
+    "cost": 5.614559,
+    "cache_read_cost": 4.13685,
+    "cache_read_pct": 73.7,
+    "context_size": 100912
+  },
+  {
+    "conversation_id": "c196",
+    "turns": 5,
+    "cost": 0.269317,
+    "cache_read_cost": 0.24903,
+    "cache_read_pct": 92.5,
+    "context_size": 100182
+  },
+  {
+    "conversation_id": "c197",
+    "turns": 179,
+    "cost": 7.018683,
+    "cache_read_cost": 4.589145,
+    "cache_read_pct": 65.4,
+    "context_size": 101028
+  },
+  {
+    "conversation_id": "c198",
+    "turns": 138,
+    "cost": 6.598789,
+    "cache_read_cost": 3.021367,
+    "cache_read_pct": 45.8,
+    "context_size": 102508
+  },
+  {
+    "conversation_id": "c199",
+    "turns": 1,
+    "cost": 0.107522,
+    "cache_read_cost": 0.095942,
+    "cache_read_pct": 89.2,
+    "context_size": 192401
+  },
+  {
+    "conversation_id": "c200",
+    "turns": 184,
+    "cost": 6.931757,
+    "cache_read_cost": 5.104879,
+    "cache_read_pct": 73.6,
+    "context_size": 101224
+  },
+  {
+    "conversation_id": "c201",
+    "turns": 107,
+    "cost": 7.4919,
+    "cache_read_cost": 2.884139,
+    "cache_read_pct": 38.5,
+    "context_size": 100092
+  },
+  {
+    "conversation_id": "c202",
+    "turns": 169,
+    "cost": 6.83276,
+    "cache_read_cost": 5.557673,
+    "cache_read_pct": 81.3,
+    "context_size": 100151
+  },
+  {
+    "conversation_id": "c203",
+    "turns": 157,
+    "cost": 5.365359,
+    "cache_read_cost": 4.096829,
+    "cache_read_pct": 76.4,
+    "context_size": 100997
+  },
+  {
+    "conversation_id": "c204",
+    "turns": 77,
+    "cost": 4.191816,
+    "cache_read_cost": 2.282512,
+    "cache_read_pct": 54.5,
+    "context_size": 101360
+  }
+]

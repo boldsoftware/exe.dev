@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Token Spend Visualization</title>
+  
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+  
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #fff;
+      color: #1a1a1a;
+    }
+    h1 { margin: 0 0 16px 0; font-size: 24px; }
+    .input-section {
+      margin-bottom: 20px;
+    }
+    label { display: block; font-weight: 500; margin-bottom: 8px; }
+    textarea {
+      width: 100%;
+      max-width: 800px;
+      height: 200px;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 12px;
+      padding: 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      resize: vertical;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: #1976d2;
+    }
+    button {
+      margin-top: 12px;
+      padding: 10px 20px;
+      font-size: 14px;
+      background: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover { background: #1565c0; }
+    #visualization {
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 20px;
+      background: #fafafa;
+      min-height: 200px;
+      margin-top: 20px;
+    }
+    .stats {
+      margin-top: 16px;
+      padding: 12px;
+      background: #f5f5f5;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .error { color: #d32f2f; }
+    .format-help {
+      font-size: 13px;
+      color: #666;
+      margin-top: 8px;
+    }
+    .format-help code {
+      background: #f5f5f5;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>Token Spend Visualization</h1>
+  
+  <div class="input-section">
+    <label for="csv-input">Paste CSV data:</label>
+    <textarea id="csv-input" placeholder="input_tokens,cache_write_tokens,cache_read_tokens,output_tokens
+3,10817,0,88
+1,166,10817,70
+..."></textarea>
+    <div class="format-help">
+      CSV format: <code>input_tokens,cache_write_tokens,cache_read_tokens,output_tokens</code><br>
+      Header row is optional. One row per message.
+    </div>
+    <button onclick="renderVisualization()">Render</button>
+  </div>
+  
+  <div id="visualization" style="display: none;"></div>
+  <div id="stats" class="stats" style="display: none;"></div>
+  
+  
+  <script>
+    // Opus 4.5 pricing (per million tokens)
+    const PRICE_INPUT = 5.0;
+    const PRICE_CACHE_WRITE = 6.25;
+    const PRICE_OUTPUT = 25.0;
+    const PRICE_CACHE_READ = 0.50;
+    
+    function parseCSV(text) {
+      const lines = text.trim().split('\n').filter(l => l.trim());
+      if (lines.length === 0) throw new Error('No data');
+      
+      // Check if first line is a header
+      const firstLine = lines[0].toLowerCase();
+      const hasHeader = firstLine.includes('input') || firstLine.includes('token');
+      const dataLines = hasHeader ? lines.slice(1) : lines;
+      
+      return dataLines.map((line, idx) => {
+        const parts = line.split(',').map(s => parseInt(s.trim(), 10) || 0);
+        if (parts.length < 4) {
+          throw new Error(`Line ${idx + 1}: expected 4 columns, got ${parts.length}`);
+        }
+        return {
+          input_tokens: parts[0],
+          cache_write_tokens: parts[1],
+          cache_read_tokens: parts[2],
+          output_tokens: parts[3]
+        };
+      });
+    }
+    
+    function processData(messages) {
+      const tokenRecords = [];
+      const costRecords = [];
+      
+      let cumulativeInputContext = 0;
+      let cacheReadLayer = 0;
+      
+      let cumulativeTotalCost = 0;
+      let cumulativeInputCost = 0;
+      let cumulativeCacheWriteCost = 0;
+      let cumulativeCacheReadCost = 0;
+      let cumulativeOutputCost = 0;
+      
+      for (let msgIdx = 0; msgIdx < messages.length; msgIdx++) {
+        const msg = messages[msgIdx];
+        const inputTokens = msg.input_tokens;
+        const cacheWrite = msg.cache_write_tokens;
+        const cacheRead = msg.cache_read_tokens;
+        const outputTokens = msg.output_tokens;
+        
+        // Calculate costs
+        const msgInputCost = inputTokens * PRICE_INPUT / 1_000_000;
+        const msgCacheWriteCost = cacheWrite * PRICE_CACHE_WRITE / 1_000_000;
+        const msgCacheReadCost = cacheRead * PRICE_CACHE_READ / 1_000_000;
+        const msgOutputCost = outputTokens * PRICE_OUTPUT / 1_000_000;
+        
+        cumulativeTotalCost += msgInputCost + msgCacheWriteCost + msgCacheReadCost + msgOutputCost;
+        cumulativeInputCost += msgInputCost;
+        cumulativeCacheWriteCost += msgCacheWriteCost;
+        cumulativeCacheReadCost += msgCacheReadCost;
+        cumulativeOutputCost += msgOutputCost;
+        
+        // Cache read tokens
+        if (cacheRead > 0) {
+          tokenRecords.push({
+            msg_idx: msgIdx, type: 'cache_read',
+            x: 0, x2: cacheRead, width: cacheRead,
+            price: PRICE_CACHE_READ, row: 'cache_read', y_offset: cacheReadLayer
+          });
+          cacheReadLayer++;
+        }
+        
+        const xInputStart = cumulativeInputContext;
+        
+        if (inputTokens > 0) {
+          tokenRecords.push({
+            msg_idx: msgIdx, type: 'input',
+            x: xInputStart, x2: xInputStart + inputTokens, width: inputTokens,
+            price: PRICE_INPUT, row: 'input', y_offset: 0
+          });
+        }
+        
+        if (cacheWrite > 0) {
+          tokenRecords.push({
+            msg_idx: msgIdx, type: 'cache_write',
+            x: xInputStart + inputTokens, x2: xInputStart + inputTokens + cacheWrite,
+            width: cacheWrite, price: PRICE_CACHE_WRITE, row: 'input', y_offset: 0
+          });
+        }
+        
+        if (outputTokens > 0) {
+          tokenRecords.push({
+            msg_idx: msgIdx, type: 'output',
+            x: xInputStart + inputTokens + cacheWrite,
+            x2: xInputStart + inputTokens + cacheWrite + outputTokens,
+            width: outputTokens, price: PRICE_OUTPUT, row: 'output', y_offset: 0
+          });
+        }
+        
+        const xEnd = xInputStart + inputTokens + cacheWrite + outputTokens;
+        const pctCacheRead = cumulativeTotalCost > 0 ? (cumulativeCacheReadCost / cumulativeTotalCost * 100) : 0;
+        costRecords.push({
+          msg_idx: msgIdx, x: xEnd,
+          total_cost: cumulativeTotalCost,
+          cache_read_cost: cumulativeCacheReadCost,
+          pct_cache_read: pctCacheRead
+        });
+        
+        cumulativeInputContext += inputTokens + cacheWrite;
+      }
+      
+      return {
+        tokenRecords, costRecords,
+        stats: {
+          totalMessages: messages.length,
+          totalCost: cumulativeTotalCost,
+          inputCost: cumulativeInputCost,
+          cacheWriteCost: cumulativeCacheWriteCost,
+          cacheReadCost: cumulativeCacheReadCost,
+          outputCost: cumulativeOutputCost,
+          contextSize: cumulativeInputContext
+        }
+      };
+    }
+    
+    async function renderVisualization() {
+      const vizDiv = document.getElementById('visualization');
+      const statsDiv = document.getElementById('stats');
+      const csvText = document.getElementById('csv-input').value;
+      
+      try {
+        const messages = parseCSV(csvText);
+        const { tokenRecords, costRecords, stats } = processData(messages);
+        
+        if (tokenRecords.length === 0) {
+          vizDiv.innerHTML = '<p class="error">No token data found</p>';
+          vizDiv.style.display = 'block';
+          statsDiv.style.display = 'none';
+          return;
+        }
+        
+        const maxX = Math.max(...tokenRecords.map(r => r.x2), ...costRecords.map(r => r.x)) * 1.05;
+        
+        const spec = {
+          "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+          "vconcat": [
+            {
+              "width": 1200, "height": 350,
+              "data": {"values": tokenRecords},
+              "transform": [
+                {"calculate": "datum.row === 'output' ? 12 : (datum.row === 'input' ? 0 : -2 - (datum.y_offset * 0.5))", "as": "y"},
+                {"calculate": "datum.row === 'output' ? 12 + datum.price : (datum.row === 'input' ? datum.price : -2 - (datum.y_offset * 0.5) - datum.price)", "as": "y2"}
+              ],
+              "mark": {"type": "rect", "opacity": 1},
+              "encoding": {
+                "x": {"field": "x", "type": "quantitative", "axis": null, "scale": {"domain": [0, maxX]}},
+                "x2": {"field": "x2"},
+                "y": {"field": "y", "type": "quantitative", "axis": null},
+                "y2": {"field": "y2"},
+                "color": {"field": "msg_idx", "type": "quantitative", "scale": {"scheme": "viridis"}, "legend": null},
+                "tooltip": [
+                  {"field": "msg_idx", "title": "Message"},
+                  {"field": "type", "title": "Type"},
+                  {"field": "width", "title": "Tokens"},
+                  {"field": "price", "title": "$/M tokens"}
+                ]
+              }
+            },
+            {
+              "width": 1200, "height": 120,
+              "data": {"values": costRecords},
+              "layer": [
+                {
+                  "mark": {"type": "line", "strokeWidth": 2},
+                  "encoding": {
+                    "x": {"field": "x", "type": "quantitative", "title": "Context Position (tokens)", "scale": {"domain": [0, maxX]}},
+                    "y": {"field": "total_cost", "type": "quantitative", "title": "Cumulative Cost ($)"},
+                    "color": {"datum": "Total Cost", "scale": {"domain": ["Total Cost", "Cache Read Cost", "% Cache Read"], "range": ["steelblue", "orange", "green"]}, "legend": {"title": null}}
+                  }
+                },
+                {
+                  "mark": {"type": "line", "strokeWidth": 2},
+                  "encoding": {
+                    "x": {"field": "x", "type": "quantitative"},
+                    "y": {"field": "cache_read_cost", "type": "quantitative"},
+                    "color": {"datum": "Cache Read Cost"}
+                  }
+                },
+                {
+                  "mark": {"type": "line", "strokeWidth": 2, "strokeDash": [4, 4]},
+                  "encoding": {
+                    "x": {"field": "x", "type": "quantitative"},
+                    "y": {"field": "pct_cache_read", "type": "quantitative", "title": "% Cache Read", "axis": {"orient": "right", "grid": false}},
+                    "color": {"datum": "% Cache Read"}
+                  }
+                }
+              ],
+              "resolve": {"scale": {"y": "independent"}}
+            }
+          ]
+        };
+        
+        vizDiv.innerHTML = '';
+        vizDiv.style.display = 'block';
+        await vegaEmbed(vizDiv, spec, {actions: false});
+        
+        statsDiv.style.display = 'block';
+        statsDiv.innerHTML = `
+          <strong>Summary:</strong>
+          ${stats.totalMessages} messages |
+          Context: ${stats.contextSize.toLocaleString()} tokens |
+          <strong>Total Cost: $${stats.totalCost.toFixed(2)}</strong>
+          (Input: $${stats.inputCost.toFixed(4)},
+          Cache Write: $${stats.cacheWriteCost.toFixed(2)},
+          Cache Read: $${stats.cacheReadCost.toFixed(2)},
+          Output: $${stats.outputCost.toFixed(2)})
+        `;
+      } catch (e) {
+        vizDiv.innerHTML = `<p class="error">Error: ${e.message}</p>`;
+        vizDiv.style.display = 'block';
+        statsDiv.style.display = 'none';
+      }
+    }
+  </script>
+</body>
+</html>

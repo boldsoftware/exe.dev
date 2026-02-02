@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cost at 100k Tokens</title>
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+      text-align: center;
+    }
+    #chart {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+  <h1>Cost at 100k Context Tokens</h1>
+  <div id="chart"></div>
+
+  <script>
+    async function renderChart() {
+      const response = await fetch('cost_at_100k.json');
+      const data = await response.json();
+      
+      const spec = {
+        $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+        data: { values: data },
+        width: 600,
+        height: 400,
+        mark: { type: 'circle', size: 120, opacity: 0.8 },
+        encoding: {
+          x: { field: 'turns', type: 'quantitative', title: 'Number of Turns' },
+          y: { field: 'cost', type: 'quantitative', title: 'Cumulative Cost', axis: { format: '$,.2f' } },
+          color: {
+            field: 'cache_read_pct',
+            type: 'quantitative',
+            title: 'Cache Read %',
+            scale: { scheme: 'viridis' }
+          },
+          tooltip: [
+            { field: 'conversation_id', title: 'Conversation' },
+            { field: 'turns', title: 'Turns' },
+            { field: 'cost', title: 'Total Cost', format: '$,.2f' },
+            { field: 'cache_read_cost', title: 'Cache Read Cost', format: '$,.2f' },
+            { field: 'cache_read_pct', title: 'Cache Read %', format: '.1f' },
+            { field: 'context_size', title: 'Context Size', format: ',.0f' }
+          ]
+        }
+      };
+      
+      vegaEmbed('#chart', spec, { actions: false });
+    }
+    
+    renderChart();
+  </script>
+</body>
+</html>

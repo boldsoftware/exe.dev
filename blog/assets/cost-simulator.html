@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM Cost Simulator</title>
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 0 20px;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .control {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    label {
+      font-size: 13px;
+      font-weight: 500;
+      color: #555;
+    }
+    input[type="number"] {
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    #viz { margin-top: 20px; }
+    .summary {
+      margin-top: 12px;
+      font-size: 13px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <h2>LLM Agentic Cost Simulator</h2>
+
+  <div class="controls">
+    <div class="control">
+      <label for="initialPrompt">Initial Prompt (cache write)</label>
+      <input type="number" id="initialPrompt" value="10000" min="0" step="1000">
+    </div>
+    <div class="control">
+      <label for="inputPerCall">Input per Call (cache write)</label>
+      <input type="number" id="inputPerCall" value="250" min="0" step="50">
+    </div>
+    <div class="control">
+      <label for="outputPerCall">Output per Call (tokens)</label>
+      <input type="number" id="outputPerCall" value="100" min="0" step="50">
+    </div>
+    <div class="control">
+      <label for="finalContext">Final Context Length</label>
+      <input type="number" id="finalContext" value="150000" min="1000" step="10000">
+    </div>
+  </div>
+
+  <div id="viz"></div>
+  <div id="summary" class="summary"></div>
+
+  <script>
+    const PRICE_INPUT = 5.0;
+    const PRICE_CACHE_WRITE = 6.25;
+    const PRICE_OUTPUT = 25.0;
+    const PRICE_CACHE_READ = 0.50;
+
+    function simulate() {
+      const initialPrompt = parseInt(document.getElementById('initialPrompt').value) || 0;
+      const inputPerCall = parseInt(document.getElementById('inputPerCall').value) || 0;
+      const outputPerCall = parseInt(document.getElementById('outputPerCall').value) || 0;
+      const finalContext = parseInt(document.getElementById('finalContext').value) || 150000;
+
+      // Calculate number of calls needed to reach final context length
+      const tokensPerCall = inputPerCall + outputPerCall;
+      const firstCallContext = initialPrompt + outputPerCall;
+      const numCalls = tokensPerCall > 0
+        ? Math.max(1, Math.ceil(1 + (finalContext - firstCallContext) / tokensPerCall))
+        : 1;
+
+      const records = [];
+      let cumulativeCost = 0;
+      let cumulativeCacheReadCost = 0;
+      let contextSize = 0;
+
+      // Starting point: just the initial prompt, no cost yet
+      records.push({
+        call: 0,
+        contextSize: initialPrompt,
+        totalCost: 0,
+        cacheReadCost: 0,
+        pctCacheRead: 0
+      });
+
+      for (let i = 0; i < numCalls; i++) {
+        let cacheWriteTokens, cacheReadTokens, outputTokens;
+
+        if (i === 0) {
+          cacheWriteTokens = initialPrompt;
+          cacheReadTokens = 0;
+          outputTokens = outputPerCall;
+        } else {
+          cacheWriteTokens = inputPerCall + outputPerCall;
+          cacheReadTokens = contextSize;
+          outputTokens = outputPerCall;
+        }
+
+        const cacheWriteCost = cacheWriteTokens * PRICE_CACHE_WRITE / 1_000_000;
+        const cacheReadCost = cacheReadTokens * PRICE_CACHE_READ / 1_000_000;
+        const outputCost = outputTokens * PRICE_OUTPUT / 1_000_000;
+
+        cumulativeCost += cacheWriteCost + cacheReadCost + outputCost;
+        cumulativeCacheReadCost += cacheReadCost;
+
+        if (i === 0) {
+          contextSize = initialPrompt + outputPerCall;
+        } else {
+          contextSize += inputPerCall + outputPerCall;
+        }
+
+        const pctCacheRead = cumulativeCost > 0 ? (cumulativeCacheReadCost / cumulativeCost * 100) : 0;
+
+        records.push({
+          call: i + 1,
+          contextSize: contextSize,
+          totalCost: cumulativeCost,
+          cacheReadCost: cumulativeCacheReadCost,
+          pctCacheRead: pctCacheRead
+        });
+      }
+
+      renderChart(records);
+      updateSummary(records, numCalls);
+    }
+
+    function renderChart(records) {
+      const maxX = Math.max(...records.map(r => r.contextSize)) * 1.05;
+
+      // Transform records for combined cost lines
+      const costLines = [];
+      for (const r of records) {
+        costLines.push({...r, metric: 'Total Cost', value: r.totalCost});
+        costLines.push({...r, metric: 'Cache Read Cost', value: r.cacheReadCost});
+      }
+
+      const spec = {
+        "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+        "width": 700,
+        "height": 200,
+        "layer": [
+          {
+            "data": {"values": costLines},
+            "mark": {"type": "line", "strokeWidth": 2},
+            "encoding": {
+              "x": {"field": "contextSize", "type": "quantitative", "title": "Context Size (tokens)", "scale": {"domain": [0, maxX]}},
+              "y": {"field": "value", "type": "quantitative", "title": "Cumulative Cost ($)"},
+              "color": {"field": "metric", "type": "nominal", "scale": {"domain": ["Total Cost", "Cache Read Cost", "% Cache Read"], "range": ["steelblue", "orange", "green"]}, "legend": {"title": null}}
+            }
+          },
+          {
+            "data": {"values": records},
+            "mark": {"type": "line", "strokeWidth": 2, "strokeDash": [4, 4]},
+            "encoding": {
+              "x": {"field": "contextSize", "type": "quantitative"},
+              "y": {"field": "pctCacheRead", "type": "quantitative", "title": "% Cache Read", "scale": {"domain": [0, 100]}, "axis": {"orient": "right", "grid": false}},
+              "color": {"datum": "% Cache Read"}
+            }
+          },
+          {
+            "data": {"values": [{"pctCacheRead": 50}]},
+            "mark": {"type": "rule", "strokeDash": [2, 2], "stroke": "#999", "strokeWidth": 1},
+            "encoding": {
+              "y": {"field": "pctCacheRead", "type": "quantitative", "scale": {"domain": [0, 100]}, "axis": null}
+            }
+          },
+          {
+            "data": {"values": records},
+            "params": [{
+              "name": "hover",
+              "select": {"type": "point", "on": "mouseover", "nearest": true, "clear": "mouseout"}
+            }],
+            "mark": {"type": "rule", "strokeWidth": 1, "stroke": "#999"},
+            "encoding": {
+              "x": {"field": "contextSize", "type": "quantitative"},
+              "opacity": {"condition": {"param": "hover", "empty": false, "value": 0.7}, "value": 0},
+              "tooltip": [
+                {"field": "call", "title": "Call #"},
+                {"field": "contextSize", "title": "Context Size", "format": ","},
+                {"field": "totalCost", "title": "Total Cost", "format": "$.2f"},
+                {"field": "cacheReadCost", "title": "Cache Read Cost", "format": "$.2f"},
+                {"field": "pctCacheRead", "title": "% Cache Read", "format": ".1f"}
+              ]
+            }
+          }
+        ],
+        "resolve": {"scale": {"y": "independent"}}
+      };
+
+      vegaEmbed('#viz', spec, {actions: false});
+    }
+
+    function updateSummary(records, numCalls) {
+      const final = records[records.length - 1];
+      document.getElementById('summary').innerHTML = `
+        ${final.contextSize.toLocaleString()} tokens, ${numCalls} calls, <strong>$${final.totalCost.toFixed(2)}</strong> (cache read $${final.cacheReadCost.toFixed(2)}, ${final.pctCacheRead.toFixed(1)}%)
+      `;
+    }
+
+    // Initial render
+    simulate();
+
+    // Update on input change
+    document.querySelectorAll('input').forEach(input => {
+      input.addEventListener('input', simulate);
+    });
+  </script>
+</body>
+</html>
