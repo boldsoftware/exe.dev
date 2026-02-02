@@ -16,6 +16,8 @@ import (
 
 	"exe.dev/errorz"
 	"github.com/stripe/stripe-go/v82"
+	"tailscale.com/syncs"
+	"tailscale.com/types/result"
 )
 
 // MakeCustomerDashboardURL returns the Stripe dashboard URL for a customer.
@@ -32,7 +34,7 @@ const (
 
 	// TestAPIKey is the Stripe test API key. It is safe to check into source code
 	// and easy to revoke should someone want to spam our test account.
-	TestAPIKey = "rk_test_51SjuBkGpGU0hqBfTf92SNWOBza7zn6pZygtbG7kRdquppHsnJGVZtPfwpZFt9PjoAUCegMS1JCwtawjbWXMx2fPZ008Jgd7CKi"
+	TestAPIKey = "sk_test_51SjuBkGpGU0hqBfTJ2Bkl1cKcayvyCEpugA9WfvYFQLIV6qkfmM2lcgicYfG6yJUsDXdmlYx217xYE349efIFwAx00OiQwF5jA"
 )
 
 // Manager handles billing operations.
@@ -55,7 +57,12 @@ type Manager struct {
 
 	Logger *slog.Logger
 
-	priceIDCache sync.Map // "apiKey:lookupKey" -> price ID
+	priceIDCache syncs.Map[string, func() result.Of[string]]
+
+	// testClockID is the ID of the Stripe test clock to use for requests
+	// that need to be associated with the clock. This field is primarily
+	// for testing and owned by test_test.go
+	testClockID string
 }
 
 func (m *Manager) slog() *slog.Logger {
@@ -132,6 +139,9 @@ func (m *Manager) upsertCustomer(ctx context.Context, billingID, email string) e
 		Email: &email,
 	}
 	params.AddExtra("id", billingID)
+	if m.testClockID != "" {
+		params.TestClock = &m.testClockID
+	}
 
 	customer, err := c.V1Customers.Create(ctx, params)
 
@@ -184,7 +194,7 @@ func (m *Manager) Subscribe(ctx context.Context, billingID string, p *SubscribeP
 	c := m.client()
 
 	plan := cmp.Or(p.Plan, DefaultPlan)
-	priceID, err := m.lookupPriceID(ctx, c, plan)
+	priceID, err := m.lookupPriceIDCached(ctx, plan)
 	if err != nil {
 		return "", fmt.Errorf("lookup price %q: %w", plan, err)
 	}
@@ -194,14 +204,16 @@ func (m *Manager) Subscribe(ctx context.Context, billingID string, p *SubscribeP
 		return "", fmt.Errorf("upsert customer: %w", err)
 	}
 
-	if p.RedirectToPortal {
-		hasSubscription, err := m.hasActiveSubscription(ctx, c, billingID)
-		if err != nil {
-			return "", fmt.Errorf("check active subscription: %w", err)
-		}
-		if hasSubscription {
+	hasSubscription, err := m.hasActiveSubscription(ctx, c, billingID)
+	if err != nil {
+		return "", fmt.Errorf("check active subscription: %w", err)
+	}
+	if hasSubscription {
+		if p.RedirectToPortal {
 			returnURL := cmp.Or(p.PortalReturnURL, p.SuccessURL)
 			return m.openPortal(ctx, billingID, returnURL)
+		} else {
+			return p.SuccessURL, nil
 		}
 	}
 
@@ -270,33 +282,40 @@ func (m *Manager) hasActiveSubscription(ctx context.Context, c *stripe.Client, c
 	return false, nil
 }
 
-// lookupPriceID finds the price ID for a given lookup key, caching results.
-func (m *Manager) lookupPriceID(ctx context.Context, c *stripe.Client, lookupKey string) (string, error) {
-	cacheKey := m.APIKey + ":" + lookupKey
-	if v, ok := m.priceIDCache.Load(cacheKey); ok {
-		return v.(string), nil
+func withRequestID(err error) slog.Attr {
+	var requestID string
+	if stripeErr, ok := errorz.AsType[*stripe.Error](err); ok && stripeErr.LastResponse != nil {
+		requestID = stripeErr.LastResponse.RequestID
 	}
+	return slog.String("stripe_request_id", requestID)
+}
 
-	for price, err := range c.V1Prices.List(ctx, &stripe.PriceListParams{
+// lookupPriceID finds the price ID for a given lookup key, caching results.
+func (m *Manager) lookupPriceID(ctx context.Context, lookupKey string) (string, error) {
+	for price, err := range m.client().V1Prices.List(ctx, &stripe.PriceListParams{
 		LookupKeys: []*string{&lookupKey},
 		Active:     stripe.Bool(true),
 	}) {
 		if err != nil {
-			var requestID string
-			if stripeErr, ok := errorz.AsType[*stripe.Error](err); ok && stripeErr.LastResponse != nil {
-				requestID = stripeErr.LastResponse.RequestID
-			}
-			m.slog().ErrorContext(ctx, "failed to lookup price",
-				"stripe_request_id", requestID,
-				"lookup_key", lookupKey,
-				"error", err,
-			)
 			return "", err
 		}
-		m.priceIDCache.Store(cacheKey, price.ID)
 		return price.ID, nil
 	}
 	return "", fmt.Errorf("no active price found with lookup key %q", lookupKey)
+}
+
+func (m *Manager) lookupPriceIDCached(ctx context.Context, lookupKey string) (string, error) {
+	res, _ := m.priceIDCache.LoadOrInit(lookupKey, func() func() result.Of[string] {
+		return sync.OnceValue(func() result.Of[string] {
+			priceID, err := m.lookupPriceID(ctx, lookupKey)
+			if err != nil {
+				m.priceIDCache.Delete(lookupKey) // enable retries
+				return result.Error[string](err)
+			}
+			return result.Value(priceID)
+		})
+	})
+	return res().Value()
 }
 
 // VerifyCheckout verifies that a checkout session was completed successfully.

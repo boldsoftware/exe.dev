@@ -1,0 +1,1280 @@
+httprr trace v1
+196 1929
+GET https://api.stripe.com/v1/prices?lookup_keys[0]=individual HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_1
+
+HTTP/2.0 200 OK
+Content-Length: 831
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:46 GMT
+Request-Id: req_iYhZJiy2NlgLZ9
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "price_1SjvIjGpGU0hqBfTG9g0NMXZ",
+      "object": "price",
+      "active": true,
+      "billing_scheme": "per_unit",
+      "created": 1767071817,
+      "currency": "usd",
+      "custom_unit_amount": null,
+      "livemode": false,
+      "lookup_key": "individual",
+      "metadata": {},
+      "nickname": "Individual",
+      "product": "prod_ThJwQiEvUUkhSZ",
+      "recurring": {
+        "interval": "month",
+        "interval_count": 1,
+        "meter": null,
+        "trial_period_days": null,
+        "usage_type": "licensed"
+      },
+      "tax_behavior": "unspecified",
+      "tiers_mode": null,
+      "transform_quantity": null,
+      "type": "recurring",
+      "unit_amount": 2000,
+      "unit_amount_decimal": "2000"
+    }
+  ],
+  "has_more": false,
+  "url": "/v1/prices"
+}251 1483
+POST https://api.stripe.com/v1/test_helpers/test_clocks HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Length: 42
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_2
+
+frozen_time=1577836800&name=TestNormalizedHTTP/2.0 200 OK
+Content-Length: 274
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:46 GMT
+Idempotency-Key: 1770079546318410000_fECE1w
+Original-Request: req_kkpv6pfLWz2asC
+Request-Id: req_kkpv6pfLWz2asC
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Should-Retry: false
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "id": "clock_1SwXkUGpGU0hqBfTvP0ruNLc",
+  "object": "test_helpers.test_clock",
+  "created": 1770079546,
+  "deletes_after": 1772671546,
+  "frozen_time": 1577836800,
+  "livemode": false,
+  "name": "TestSubscribeNewThenActive",
+  "status": "ready",
+  "status_details": {}
+}208 1929
+GET https://api.stripe.com/v1/prices?active=true&lookup_keys[0]=individual HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_3
+
+HTTP/2.0 200 OK
+Content-Length: 831
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:46 GMT
+Request-Id: req_Ey60637f2Vajqk
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "price_1SjvIjGpGU0hqBfTG9g0NMXZ",
+      "object": "price",
+      "active": true,
+      "billing_scheme": "per_unit",
+      "created": 1767071817,
+      "currency": "usd",
+      "custom_unit_amount": null,
+      "livemode": false,
+      "lookup_key": "individual",
+      "metadata": {},
+      "nickname": "Individual",
+      "product": "prod_ThJwQiEvUUkhSZ",
+      "recurring": {
+        "interval": "month",
+        "interval_count": 1,
+        "meter": null,
+        "trial_period_days": null,
+        "usage_type": "licensed"
+      },
+      "tax_behavior": "unspecified",
+      "tiers_mode": null,
+      "transform_quantity": null,
+      "type": "recurring",
+      "unit_amount": 2000,
+      "unit_amount_decimal": "2000"
+    }
+  ],
+  "has_more": false,
+  "url": "/v1/prices"
+}304 1914
+POST https://api.stripe.com/v1/customers HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Length: 109
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_4
+
+id=exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc&email=user%40example.com&test_clock=clock_1SwXkUGpGU0hqBfTvP0ruNLcHTTP/2.0 200 OK
+Content-Length: 705
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:47 GMT
+Idempotency-Key: 1770079546832579000_moKgVg
+Original-Request: req_XgGttf1f9EbWFZ
+Request-Id: req_XgGttf1f9EbWFZ
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Should-Retry: false
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "id": "exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc",
+  "object": "customer",
+  "address": null,
+  "balance": 0,
+  "created": 1577836800,
+  "currency": null,
+  "customer_account": null,
+  "default_source": null,
+  "delinquent": false,
+  "description": null,
+  "discount": null,
+  "email": "user@example.com",
+  "invoice_prefix": "0XSMSYWQ",
+  "invoice_settings": {
+    "custom_fields": null,
+    "default_payment_method": null,
+    "footer": null,
+    "rendering_options": null
+  },
+  "livemode": false,
+  "metadata": {},
+  "name": null,
+  "next_invoice_sequence": 1,
+  "phone": null,
+  "preferred_locales": [],
+  "shipping": null,
+  "tax_exempt": "none",
+  "test_clock": "clock_1SwXkUGpGU0hqBfTvP0ruNLc"
+}237 1184
+GET https://api.stripe.com/v1/subscriptions?customer=exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc&status=all HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_5
+
+HTTP/2.0 200 OK
+Content-Length: 87
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:47 GMT
+Request-Id: req_jlCDGxzXL4Hw9Q
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "object": "list",
+  "data": [],
+  "has_more": false,
+  "url": "/v1/subscriptions"
+}436 4508
+POST https://api.stripe.com/v1/checkout/sessions HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Length: 233
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_6
+
+cancel_url=https%3A%2F%2Ffirst.com%2Fcancel&customer=exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc&line_items[0][price]=price_1SjvIjGpGU0hqBfTG9g0NMXZ&line_items[0][quantity]=1&mode=subscription&success_url=https%3A%2F%2Ffirst.com%2FreturnHTTP/2.0 200 OK
+Content-Length: 3298
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:48 GMT
+Idempotency-Key: 1770079547396608000_dMyMcw
+Original-Request: req_laU14aeI9Xtufi
+Request-Id: req_laU14aeI9Xtufi
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Should-Retry: false
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "id": "cs_test_a1uFvf0t5JTXlXR8JAVrkbNNbunENeP2jNv0oTJ3SB55vtjFEKuYlT8oNP",
+  "object": "checkout.session",
+  "adaptive_pricing": {
+    "enabled": true
+  },
+  "after_expiration": null,
+  "allow_promotion_codes": null,
+  "amount_subtotal": 2000,
+  "amount_total": 2000,
+  "automatic_tax": {
+    "enabled": false,
+    "liability": null,
+    "provider": null,
+    "status": null
+  },
+  "billing_address_collection": null,
+  "branding_settings": {
+    "background_color": "#ffffff",
+    "border_style": "rounded",
+    "button_color": "#4583b5",
+    "display_name": "Blake",
+    "font_family": "default",
+    "icon": null,
+    "logo": null
+  },
+  "cancel_url": "https://first.com/cancel",
+  "client_reference_id": null,
+  "client_secret": null,
+  "collected_information": {
+    "business_name": null,
+    "individual_name": null,
+    "shipping_details": null
+  },
+  "consent": null,
+  "consent_collection": null,
+  "created": 1770079547,
+  "currency": "usd",
+  "currency_conversion": null,
+  "custom_fields": [],
+  "custom_text": {
+    "after_submit": null,
+    "shipping_address": null,
+    "submit": null,
+    "terms_of_service_acceptance": null
+  },
+  "customer": "exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc",
+  "customer_account": null,
+  "customer_creation": null,
+  "customer_details": {
+    "address": null,
+    "business_name": null,
+    "email": "user@example.com",
+    "individual_name": null,
+    "name": null,
+    "phone": null,
+    "tax_exempt": "none",
+    "tax_ids": null
+  },
+  "customer_email": null,
+  "discounts": [],
+  "expires_at": 1770165947,
+  "invoice": null,
+  "invoice_creation": null,
+  "livemode": false,
+  "locale": null,
+  "metadata": {},
+  "mode": "subscription",
+  "origin_context": null,
+  "payment_intent": null,
+  "payment_link": null,
+  "payment_method_collection": "always",
+  "payment_method_configuration_details": {
+    "id": "pmc_1SjuBuGpGU0hqBfT8IO5p9oJ",
+    "parent": null
+  },
+  "payment_method_options": {
+    "card": {
+      "request_three_d_secure": "automatic"
+    }
+  },
+  "payment_method_types": [
+    "card",
+    "klarna",
+    "link",
+    "cashapp",
+    "amazon_pay"
+  ],
+  "payment_status": "unpaid",
+  "permissions": null,
+  "phone_number_collection": {
+    "enabled": false
+  },
+  "recovered_from": null,
+  "saved_payment_method_options": {
+    "allow_redisplay_filters": [
+      "always"
+    ],
+    "payment_method_remove": "disabled",
+    "payment_method_save": null
+  },
+  "setup_intent": null,
+  "shipping_address_collection": null,
+  "shipping_cost": null,
+  "shipping_options": [],
+  "status": "open",
+  "submit_type": null,
+  "subscription": null,
+  "success_url": "https://first.com/return",
+  "total_details": {
+    "amount_discount": 0,
+    "amount_shipping": 0,
+    "amount_tax": 0
+  },
+  "ui_mode": "hosted",
+  "url": "https://checkout.stripe.com/c/pay/cs_test_a1uFvf0t5JTXlXR8JAVrkbNNbunENeP2jNv0oTJ3SB55vtjFEKuYlT8oNP#fidnandhYHdWcXxpYCc%2FJ2FgY2RwaXEnKSd2cGd2ZndsdXFsamtQa2x0cGBrYHZ2QGtkZ2lgYSc%2FY2RpdmApJ2R1bE5gfCc%2FJ3VuWnFgdnFaMDRWb3BHbkJ1QlA1bXRHY1FPRm9PRGlgVX9MQWMxUkx0RjVrbmxMc2JRYD1CaGZqaz1kMD1qVF9wUj1mNW00THxGPTJnM0c3SF9zcENBZzF0aE00fHJoTm41NVZtbXxMaDFdJyknY3dqaFZgd3Ngdyc%2FcXdwYCknZ2RmbmJ3anBrYUZqaWp3Jz8nJmNjY2NjYycpJ2lkfGpwcVF8dWAnPyd2bGtiaWBabHFgaCcpJ2BrZGdpYFVpZGZgbWppYWB3dic%2FcXdwYHgl",
+  "wallet_options": null
+}208 1929
+GET https://api.stripe.com/v1/prices?active=true&lookup_keys[0]=individual HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_7
+
+HTTP/2.0 200 OK
+Content-Length: 831
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:48 GMT
+Request-Id: req_wAVvcYjJFccW8U
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "price_1SjvIjGpGU0hqBfTG9g0NMXZ",
+      "object": "price",
+      "active": true,
+      "billing_scheme": "per_unit",
+      "created": 1767071817,
+      "currency": "usd",
+      "custom_unit_amount": null,
+      "livemode": false,
+      "lookup_key": "individual",
+      "metadata": {},
+      "nickname": "Individual",
+      "product": "prod_ThJwQiEvUUkhSZ",
+      "recurring": {
+        "interval": "month",
+        "interval_count": 1,
+        "meter": null,
+        "trial_period_days": null,
+        "usage_type": "licensed"
+      },
+      "tax_behavior": "unspecified",
+      "tiers_mode": null,
+      "transform_quantity": null,
+      "type": "recurring",
+      "unit_amount": 2000,
+      "unit_amount_decimal": "2000"
+    }
+  ],
+  "has_more": false,
+  "url": "/v1/prices"
+}268 2324
+POST https://api.stripe.com/v1/payment_methods/pm_card_visa/attach HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Length: 48
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_8
+
+customer=exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLcHTTP/2.0 200 OK
+Content-Length: 1114
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:48 GMT
+Idempotency-Key: 1770079548178043000_qMoB6Q
+Original-Request: req_oCAHJZF6luRCgz
+Request-Id: req_oCAHJZF6luRCgz
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Should-Retry: false
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "id": "pm_1SwXkWGpGU0hqBfT8ps9UJgC",
+  "object": "payment_method",
+  "allow_redisplay": "unspecified",
+  "billing_details": {
+    "address": {
+      "city": null,
+      "country": null,
+      "line1": null,
+      "line2": null,
+      "postal_code": null,
+      "state": null
+    },
+    "email": null,
+    "name": null,
+    "phone": null,
+    "tax_id": null
+  },
+  "card": {
+    "brand": "visa",
+    "checks": {
+      "address_line1_check": null,
+      "address_postal_code_check": null,
+      "cvc_check": "pass"
+    },
+    "country": "US",
+    "display_brand": "visa",
+    "exp_month": 2,
+    "exp_year": 2027,
+    "fingerprint": "JlhGTqCfjQXiXOiP",
+    "funding": "credit",
+    "generated_from": null,
+    "last4": "4242",
+    "networks": {
+      "available": [
+        "visa"
+      ],
+      "preferred": null
+    },
+    "regulated_status": "unregulated",
+    "three_d_secure_usage": {
+      "supported": true
+    },
+    "wallet": null
+  },
+  "created": 1770079548,
+  "customer": "exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc",
+  "customer_account": null,
+  "livemode": false,
+  "metadata": {},
+  "type": "card"
+}345 5631
+POST https://api.stripe.com/v1/subscriptions HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Length: 146
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_9
+
+customer=exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc&default_payment_method=pm_1SwXkWGpGU0hqBfT8ps9UJgC&items[0][price]=price_1SjvIjGpGU0hqBfTG9g0NMXZHTTP/2.0 200 OK
+Content-Length: 4421
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:51 GMT
+Idempotency-Key: 1770079548850067000_BNSQUg
+Original-Request: req_jjpumQtSgdOtTa
+Request-Id: req_jjpumQtSgdOtTa
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Should-Retry: false
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "id": "sub_1SwXkXGpGU0hqBfT68tC9gIZ",
+  "object": "subscription",
+  "application": null,
+  "application_fee_percent": null,
+  "automatic_tax": {
+    "disabled_reason": null,
+    "enabled": false,
+    "liability": null
+  },
+  "billing_cycle_anchor": 1577836800,
+  "billing_cycle_anchor_config": null,
+  "billing_mode": {
+    "flexible": null,
+    "type": "classic"
+  },
+  "billing_thresholds": null,
+  "cancel_at": null,
+  "cancel_at_period_end": false,
+  "canceled_at": null,
+  "cancellation_details": {
+    "comment": null,
+    "feedback": null,
+    "reason": null
+  },
+  "collection_method": "charge_automatically",
+  "created": 1577836800,
+  "currency": "usd",
+  "customer": "exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc",
+  "customer_account": null,
+  "days_until_due": null,
+  "default_payment_method": "pm_1SwXkWGpGU0hqBfT8ps9UJgC",
+  "default_source": null,
+  "default_tax_rates": [],
+  "description": null,
+  "discounts": [],
+  "ended_at": null,
+  "invoice_settings": {
+    "account_tax_ids": null,
+    "issuer": {
+      "type": "self"
+    }
+  },
+  "items": {
+    "object": "list",
+    "data": [
+      {
+        "id": "si_TuMTnX8rdGc8AI",
+        "object": "subscription_item",
+        "billing_thresholds": null,
+        "created": 1577836800,
+        "current_period_end": 1580515200,
+        "current_period_start": 1577836800,
+        "discounts": [],
+        "metadata": {},
+        "plan": {
+          "id": "price_1SjvIjGpGU0hqBfTG9g0NMXZ",
+          "object": "plan",
+          "active": true,
+          "amount": 2000,
+          "amount_decimal": "2000",
+          "billing_scheme": "per_unit",
+          "created": 1767071817,
+          "currency": "usd",
+          "interval": "month",
+          "interval_count": 1,
+          "livemode": false,
+          "metadata": {},
+          "meter": null,
+          "nickname": "Individual",
+          "product": "prod_ThJwQiEvUUkhSZ",
+          "tiers_mode": null,
+          "transform_usage": null,
+          "trial_period_days": null,
+          "usage_type": "licensed"
+        },
+        "price": {
+          "id": "price_1SjvIjGpGU0hqBfTG9g0NMXZ",
+          "object": "price",
+          "active": true,
+          "billing_scheme": "per_unit",
+          "created": 1767071817,
+          "currency": "usd",
+          "custom_unit_amount": null,
+          "livemode": false,
+          "lookup_key": "individual",
+          "metadata": {},
+          "nickname": "Individual",
+          "product": "prod_ThJwQiEvUUkhSZ",
+          "recurring": {
+            "interval": "month",
+            "interval_count": 1,
+            "meter": null,
+            "trial_period_days": null,
+            "usage_type": "licensed"
+          },
+          "tax_behavior": "unspecified",
+          "tiers_mode": null,
+          "transform_quantity": null,
+          "type": "recurring",
+          "unit_amount": 2000,
+          "unit_amount_decimal": "2000"
+        },
+        "quantity": 1,
+        "subscription": "sub_1SwXkXGpGU0hqBfT68tC9gIZ",
+        "tax_rates": []
+      }
+    ],
+    "has_more": false,
+    "total_count": 1,
+    "url": "/v1/subscription_items?subscription=sub_1SwXkXGpGU0hqBfT68tC9gIZ"
+  },
+  "latest_invoice": "in_1SwXkXGpGU0hqBfTwUn3S3z3",
+  "livemode": false,
+  "metadata": {},
+  "next_pending_invoice_item_invoice": null,
+  "on_behalf_of": null,
+  "pause_collection": null,
+  "payment_settings": {
+    "payment_method_options": null,
+    "payment_method_types": null,
+    "save_default_payment_method": "off"
+  },
+  "pending_invoice_item_interval": null,
+  "pending_setup_intent": null,
+  "pending_update": null,
+  "plan": {
+    "id": "price_1SjvIjGpGU0hqBfTG9g0NMXZ",
+    "object": "plan",
+    "active": true,
+    "amount": 2000,
+    "amount_decimal": "2000",
+    "billing_scheme": "per_unit",
+    "created": 1767071817,
+    "currency": "usd",
+    "interval": "month",
+    "interval_count": 1,
+    "livemode": false,
+    "metadata": {},
+    "meter": null,
+    "nickname": "Individual",
+    "product": "prod_ThJwQiEvUUkhSZ",
+    "tiers_mode": null,
+    "transform_usage": null,
+    "trial_period_days": null,
+    "usage_type": "licensed"
+  },
+  "quantity": 1,
+  "schedule": null,
+  "start_date": 1577836800,
+  "status": "active",
+  "test_clock": "clock_1SwXkUGpGU0hqBfTvP0ruNLc",
+  "transfer_data": null,
+  "trial_end": null,
+  "trial_settings": {
+    "end_behavior": {
+      "missing_payment_method": "create_invoice"
+    }
+  },
+  "trial_start": null
+}305 1558
+POST https://api.stripe.com/v1/customers HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Length: 109
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_10
+
+id=exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc&email=user%40example.com&test_clock=clock_1SwXkUGpGU0hqBfTvP0ruNLcHTTP/2.0 400 Bad Request
+Content-Length: 340
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:52 GMT
+Idempotency-Key: 1770079552033336000_c6C4Og
+Original-Request: req_Sq3PEoDHXQT5xv
+Request-Id: req_Sq3PEoDHXQT5xv
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Should-Retry: false
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "error": {
+    "code": "resource_already_exists",
+    "doc_url": "https://stripe.com/docs/error-codes/resource-already-exists",
+    "message": "Customer already exists.",
+    "request_log_url": "https://dashboard.stripe.com/acct_1SjuBkGpGU0hqBfT/test/workbench/logs?object=req_Sq3PEoDHXQT5xv",
+    "type": "invalid_request_error"
+  }
+}
+238 6255
+GET https://api.stripe.com/v1/subscriptions?customer=exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc&status=all HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_11
+
+HTTP/2.0 200 OK
+Content-Length: 5156
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:52 GMT
+Request-Id: req_hzfUaakHJgGazX
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "sub_1SwXkXGpGU0hqBfT68tC9gIZ",
+      "object": "subscription",
+      "application": null,
+      "application_fee_percent": null,
+      "automatic_tax": {
+        "disabled_reason": null,
+        "enabled": false,
+        "liability": null
+      },
+      "billing_cycle_anchor": 1577836800,
+      "billing_cycle_anchor_config": null,
+      "billing_mode": {
+        "flexible": null,
+        "type": "classic"
+      },
+      "billing_thresholds": null,
+      "cancel_at": null,
+      "cancel_at_period_end": false,
+      "canceled_at": null,
+      "cancellation_details": {
+        "comment": null,
+        "feedback": null,
+        "reason": null
+      },
+      "collection_method": "charge_automatically",
+      "created": 1577836800,
+      "currency": "usd",
+      "customer": "exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc",
+      "customer_account": null,
+      "days_until_due": null,
+      "default_payment_method": "pm_1SwXkWGpGU0hqBfT8ps9UJgC",
+      "default_source": null,
+      "default_tax_rates": [],
+      "description": null,
+      "discounts": [],
+      "ended_at": null,
+      "invoice_settings": {
+        "account_tax_ids": null,
+        "issuer": {
+          "type": "self"
+        }
+      },
+      "items": {
+        "object": "list",
+        "data": [
+          {
+            "id": "si_TuMTnX8rdGc8AI",
+            "object": "subscription_item",
+            "billing_thresholds": null,
+            "created": 1577836800,
+            "current_period_end": 1580515200,
+            "current_period_start": 1577836800,
+            "discounts": [],
+            "metadata": {},
+            "plan": {
+              "id": "price_1SjvIjGpGU0hqBfTG9g0NMXZ",
+              "object": "plan",
+              "active": true,
+              "amount": 2000,
+              "amount_decimal": "2000",
+              "billing_scheme": "per_unit",
+              "created": 1767071817,
+              "currency": "usd",
+              "interval": "month",
+              "interval_count": 1,
+              "livemode": false,
+              "metadata": {},
+              "meter": null,
+              "nickname": "Individual",
+              "product": "prod_ThJwQiEvUUkhSZ",
+              "tiers_mode": null,
+              "transform_usage": null,
+              "trial_period_days": null,
+              "usage_type": "licensed"
+            },
+            "price": {
+              "id": "price_1SjvIjGpGU0hqBfTG9g0NMXZ",
+              "object": "price",
+              "active": true,
+              "billing_scheme": "per_unit",
+              "created": 1767071817,
+              "currency": "usd",
+              "custom_unit_amount": null,
+              "livemode": false,
+              "lookup_key": "individual",
+              "metadata": {},
+              "nickname": "Individual",
+              "product": "prod_ThJwQiEvUUkhSZ",
+              "recurring": {
+                "interval": "month",
+                "interval_count": 1,
+                "meter": null,
+                "trial_period_days": null,
+                "usage_type": "licensed"
+              },
+              "tax_behavior": "unspecified",
+              "tiers_mode": null,
+              "transform_quantity": null,
+              "type": "recurring",
+              "unit_amount": 2000,
+              "unit_amount_decimal": "2000"
+            },
+            "quantity": 1,
+            "subscription": "sub_1SwXkXGpGU0hqBfT68tC9gIZ",
+            "tax_rates": []
+          }
+        ],
+        "has_more": false,
+        "total_count": 1,
+        "url": "/v1/subscription_items?subscription=sub_1SwXkXGpGU0hqBfT68tC9gIZ"
+      },
+      "latest_invoice": "in_1SwXkXGpGU0hqBfTwUn3S3z3",
+      "livemode": false,
+      "metadata": {},
+      "next_pending_invoice_item_invoice": null,
+      "on_behalf_of": null,
+      "pause_collection": null,
+      "payment_settings": {
+        "payment_method_options": null,
+        "payment_method_types": null,
+        "save_default_payment_method": "off"
+      },
+      "pending_invoice_item_interval": null,
+      "pending_setup_intent": null,
+      "pending_update": null,
+      "plan": {
+        "id": "price_1SjvIjGpGU0hqBfTG9g0NMXZ",
+        "object": "plan",
+        "active": true,
+        "amount": 2000,
+        "amount_decimal": "2000",
+        "billing_scheme": "per_unit",
+        "created": 1767071817,
+        "currency": "usd",
+        "interval": "month",
+        "interval_count": 1,
+        "livemode": false,
+        "metadata": {},
+        "meter": null,
+        "nickname": "Individual",
+        "product": "prod_ThJwQiEvUUkhSZ",
+        "tiers_mode": null,
+        "transform_usage": null,
+        "trial_period_days": null,
+        "usage_type": "licensed"
+      },
+      "quantity": 1,
+      "schedule": null,
+      "start_date": 1577836800,
+      "status": "active",
+      "test_clock": "clock_1SwXkUGpGU0hqBfTvP0ruNLc",
+      "transfer_data": null,
+      "trial_end": null,
+      "trial_settings": {
+        "end_behavior": {
+          "missing_payment_method": "create_invoice"
+        }
+      },
+      "trial_start": null
+    }
+  ],
+  "has_more": false,
+  "url": "/v1/subscriptions"
+}302 1713
+POST https://api.stripe.com/v1/billing_portal/sessions HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Length: 93
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_12
+
+customer=exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc&return_url=https%3A%2F%2Fsecond.com%2FreturnHTTP/2.0 200 OK
+Content-Length: 504
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:52 GMT
+Idempotency-Key: 1770079552540459000_ZBXJpw
+Original-Request: req_8ptpHv1g6eZuZA
+Request-Id: req_8ptpHv1g6eZuZA
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Should-Retry: false
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "id": "bps_1SwXkaGpGU0hqBfTRmveg6uH",
+  "object": "billing_portal.session",
+  "configuration": "bpc_1SjuN4GpGU0hqBfT4lakZrwV",
+  "created": 1770079552,
+  "customer": "exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc",
+  "customer_account": null,
+  "flow": null,
+  "livemode": false,
+  "locale": null,
+  "on_behalf_of": null,
+  "return_url": "https://second.com/return",
+  "url": "https://billing.stripe.com/p/session/test_YWNjdF8xU2p1QmtHcEdVMGhxQmZULF9UdU1UU2tzZlF2VzRpcDFlaHJ1RjJBQnlSMnBVb0ZE0100M69NNZcB"
+}305 1558
+POST https://api.stripe.com/v1/customers HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Length: 109
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_13
+
+id=exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc&email=user%40example.com&test_clock=clock_1SwXkUGpGU0hqBfTvP0ruNLcHTTP/2.0 400 Bad Request
+Content-Length: 340
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:53 GMT
+Idempotency-Key: 1770079552949622000_0SJ2PA
+Original-Request: req_I4mEJzUBzCecHp
+Request-Id: req_I4mEJzUBzCecHp
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Should-Retry: false
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "error": {
+    "code": "resource_already_exists",
+    "doc_url": "https://stripe.com/docs/error-codes/resource-already-exists",
+    "message": "Customer already exists.",
+    "request_log_url": "https://dashboard.stripe.com/acct_1SjuBkGpGU0hqBfT/test/workbench/logs?object=req_I4mEJzUBzCecHp",
+    "type": "invalid_request_error"
+  }
+}
+238 6255
+GET https://api.stripe.com/v1/subscriptions?customer=exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc&status=all HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_14
+
+HTTP/2.0 200 OK
+Content-Length: 5156
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:53 GMT
+Request-Id: req_Xdv0bmFaC1AjJn
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "sub_1SwXkXGpGU0hqBfT68tC9gIZ",
+      "object": "subscription",
+      "application": null,
+      "application_fee_percent": null,
+      "automatic_tax": {
+        "disabled_reason": null,
+        "enabled": false,
+        "liability": null
+      },
+      "billing_cycle_anchor": 1577836800,
+      "billing_cycle_anchor_config": null,
+      "billing_mode": {
+        "flexible": null,
+        "type": "classic"
+      },
+      "billing_thresholds": null,
+      "cancel_at": null,
+      "cancel_at_period_end": false,
+      "canceled_at": null,
+      "cancellation_details": {
+        "comment": null,
+        "feedback": null,
+        "reason": null
+      },
+      "collection_method": "charge_automatically",
+      "created": 1577836800,
+      "currency": "usd",
+      "customer": "exe_test_clock_1SwXkUGpGU0hqBfTvP0ruNLc",
+      "customer_account": null,
+      "days_until_due": null,
+      "default_payment_method": "pm_1SwXkWGpGU0hqBfT8ps9UJgC",
+      "default_source": null,
+      "default_tax_rates": [],
+      "description": null,
+      "discounts": [],
+      "ended_at": null,
+      "invoice_settings": {
+        "account_tax_ids": null,
+        "issuer": {
+          "type": "self"
+        }
+      },
+      "items": {
+        "object": "list",
+        "data": [
+          {
+            "id": "si_TuMTnX8rdGc8AI",
+            "object": "subscription_item",
+            "billing_thresholds": null,
+            "created": 1577836800,
+            "current_period_end": 1580515200,
+            "current_period_start": 1577836800,
+            "discounts": [],
+            "metadata": {},
+            "plan": {
+              "id": "price_1SjvIjGpGU0hqBfTG9g0NMXZ",
+              "object": "plan",
+              "active": true,
+              "amount": 2000,
+              "amount_decimal": "2000",
+              "billing_scheme": "per_unit",
+              "created": 1767071817,
+              "currency": "usd",
+              "interval": "month",
+              "interval_count": 1,
+              "livemode": false,
+              "metadata": {},
+              "meter": null,
+              "nickname": "Individual",
+              "product": "prod_ThJwQiEvUUkhSZ",
+              "tiers_mode": null,
+              "transform_usage": null,
+              "trial_period_days": null,
+              "usage_type": "licensed"
+            },
+            "price": {
+              "id": "price_1SjvIjGpGU0hqBfTG9g0NMXZ",
+              "object": "price",
+              "active": true,
+              "billing_scheme": "per_unit",
+              "created": 1767071817,
+              "currency": "usd",
+              "custom_unit_amount": null,
+              "livemode": false,
+              "lookup_key": "individual",
+              "metadata": {},
+              "nickname": "Individual",
+              "product": "prod_ThJwQiEvUUkhSZ",
+              "recurring": {
+                "interval": "month",
+                "interval_count": 1,
+                "meter": null,
+                "trial_period_days": null,
+                "usage_type": "licensed"
+              },
+              "tax_behavior": "unspecified",
+              "tiers_mode": null,
+              "transform_quantity": null,
+              "type": "recurring",
+              "unit_amount": 2000,
+              "unit_amount_decimal": "2000"
+            },
+            "quantity": 1,
+            "subscription": "sub_1SwXkXGpGU0hqBfT68tC9gIZ",
+            "tax_rates": []
+          }
+        ],
+        "has_more": false,
+        "total_count": 1,
+        "url": "/v1/subscription_items?subscription=sub_1SwXkXGpGU0hqBfT68tC9gIZ"
+      },
+      "latest_invoice": "in_1SwXkXGpGU0hqBfTwUn3S3z3",
+      "livemode": false,
+      "metadata": {},
+      "next_pending_invoice_item_invoice": null,
+      "on_behalf_of": null,
+      "pause_collection": null,
+      "payment_settings": {
+        "payment_method_options": null,
+        "payment_method_types": null,
+        "save_default_payment_method": "off"
+      },
+      "pending_invoice_item_interval": null,
+      "pending_setup_intent": null,
+      "pending_update": null,
+      "plan": {
+        "id": "price_1SjvIjGpGU0hqBfTG9g0NMXZ",
+        "object": "plan",
+        "active": true,
+        "amount": 2000,
+        "amount_decimal": "2000",
+        "billing_scheme": "per_unit",
+        "created": 1767071817,
+        "currency": "usd",
+        "interval": "month",
+        "interval_count": 1,
+        "livemode": false,
+        "metadata": {},
+        "meter": null,
+        "nickname": "Individual",
+        "product": "prod_ThJwQiEvUUkhSZ",
+        "tiers_mode": null,
+        "transform_usage": null,
+        "trial_period_days": null,
+        "usage_type": "licensed"
+      },
+      "quantity": 1,
+      "schedule": null,
+      "start_date": 1577836800,
+      "status": "active",
+      "test_clock": "clock_1SwXkUGpGU0hqBfTvP0ruNLc",
+      "transfer_data": null,
+      "trial_end": null,
+      "trial_settings": {
+        "end_behavior": {
+          "missing_payment_method": "create_invoice"
+        }
+      },
+      "trial_start": null
+    }
+  ],
+  "has_more": false,
+  "url": "/v1/subscriptions"
+}223 1245
+DELETE https://api.stripe.com/v1/test_helpers/test_clocks/clock_1SwXkUGpGU0hqBfTvP0ruNLc HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_15
+
+HTTP/2.0 200 OK
+Content-Length: 102
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ToGFzh0eCPHTxybHp2MWXbSA2CS2j750d487a56gY05aZxxr0uYp_UxWu5ara2lTJ8WkosAncTN6R8I3
+Content-Type: application/json
+Date: Tue, 03 Feb 2026 00:45:54 GMT
+Idempotency-Key: 1770079553424339000_TK0GZA
+Request-Id: req_UGmcw7D9JWSkeI
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "id": "clock_1SwXkUGpGU0hqBfTvP0ruNLc",
+  "object": "test_helpers.test_clock",
+  "deleted": true
+}

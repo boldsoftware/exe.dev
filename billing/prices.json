@@ -1,0 +1,55 @@
+{
+  "data": [
+    {
+      "active": true,
+      "billing_scheme": "per_unit",
+      "created": 1770019222,
+      "currency": "usd",
+      "currency_options": null,
+      "custom_unit_amount": null,
+      "deleted": false,
+      "id": "price_1SwI3WGWIXq1kJnorPaqvufu",
+      "livemode": false,
+      "lookup_key": "individual",
+      "metadata": {},
+      "nickname": "",
+      "object": "price",
+      "product": {
+        "active": false,
+        "created": 0,
+        "default_price": null,
+        "deleted": false,
+        "description": "",
+        "id": "prod_Tu6G7ryKeSRsqx",
+        "images": null,
+        "livemode": false,
+        "marketing_features": null,
+        "metadata": null,
+        "name": "",
+        "object": "",
+        "package_dimensions": null,
+        "shippable": false,
+        "statement_descriptor": "",
+        "tax_code": null,
+        "type": "",
+        "unit_label": "",
+        "updated": 0,
+        "url": ""
+      },
+      "recurring": {
+        "interval": "month",
+        "interval_count": 1,
+        "meter": "",
+        "trial_period_days": 0,
+        "usage_type": "licensed"
+      },
+      "tax_behavior": "unspecified",
+      "tiers": null,
+      "tiers_mode": "",
+      "transform_quantity": null,
+      "type": "recurring",
+      "unit_amount": 2000,
+      "unit_amount_decimal": "2000"
+    }
+  ]
+}
