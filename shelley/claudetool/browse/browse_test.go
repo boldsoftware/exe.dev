@@ -151,9 +151,9 @@ func TestNavigateTool(t *testing.T) {
 		t.Skip("skipping navigate tool test in short mode")
 	}
 
-	// Skip on ci.bold.dev where chromium snap doesn't work in cgroups
-	if hostname, _ := os.Hostname(); strings.Contains(hostname, "bold.dev") {
-		t.Skip("skipping browser test on ci.bold.dev")
+	// Skip in CI where chromium snap doesn't work in cgroups
+	if os.Getenv("CI") != "" {
+		t.Skip("skipping browser test in CI")
 	}
 
 	// Create browser tools instance
@@ -175,6 +175,9 @@ func TestNavigateTool(t *testing.T) {
 	// Call the tool
 	toolOut := navTool.Run(ctx, []byte(inputJSON))
 	if toolOut.Error != nil {
+		if strings.Contains(toolOut.Error.Error(), "failed to start browser") {
+			t.Skip("Browser automation not available in this environment")
+		}
 		t.Fatalf("Error running navigate tool: %v", toolOut.Error)
 	}
 	result := toolOut.LLMContent
