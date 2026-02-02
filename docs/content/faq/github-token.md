@@ -25,3 +25,7 @@ $ gh auth login --with-token < token
 $ gh auth setup-git
 $ git clone https://github.com/USER/REPO
 ```
+
+You must use HTTPS URLs (like `https://github.com/USER/REPO`) when cloning
+repositories, not SSH URLs (like `git@github.com:USER/REPO`), when using
+personal access tokens.
