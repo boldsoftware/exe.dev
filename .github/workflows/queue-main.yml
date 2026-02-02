@@ -209,7 +209,7 @@ jobs:
       run_playwright: false
 
   push-to-main:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: [commit-validation-and-formatting, test, shelley-test]
     if: ${{ !cancelled() && !failure() }}
     permissions:
