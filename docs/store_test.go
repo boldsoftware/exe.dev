@@ -201,3 +201,49 @@ func TestHandlerDocsMdIndex(t *testing.T) {
 		}
 	}
 }
+
+func TestHandlerLLMsTxt(t *testing.T) {
+	store, err := Load(true)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	handler := NewHandler(store, true)
+	if handler == nil {
+		t.Fatal("NewHandler returned nil")
+	}
+
+	// Get expected content from /docs/all.md
+	allMdReq := httptest.NewRequest("GET", "/docs/all.md", nil)
+	allMdW := httptest.NewRecorder()
+	handler.Handle(allMdW, allMdReq)
+	expectedBody := allMdW.Body.String()
+
+	// Test both /llms.txt and /llms-full.txt serve the same content
+	for _, path := range []string{"/llms.txt", "/llms-full.txt"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", path, nil)
+			w := httptest.NewRecorder()
+
+			handled := handler.Handle(w, req)
+			if !handled {
+				t.Fatalf("Handler did not handle %s", path)
+			}
+
+			resp := w.Result()
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("got status code %d, want %d", resp.StatusCode, http.StatusOK)
+			}
+
+			contentType := resp.Header.Get("Content-Type")
+			if contentType != "text/markdown; charset=utf-8" {
+				t.Errorf("got content type %q, want %q", contentType, "text/markdown; charset=utf-8")
+			}
+
+			body := w.Body.String()
+			if body != expectedBody {
+				t.Errorf("%s content differs from /docs/all.md", path)
+			}
+		})
+	}
+}

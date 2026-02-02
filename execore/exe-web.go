@@ -631,7 +631,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(path, "/debug") {
 		requireLocalAccess(s.handleDebug)(w, r)
 		return
-	} else if strings.HasPrefix(path, "/docs") || path == "/llms.txt" || path == "/docs.md" {
+	} else if strings.HasPrefix(path, "/docs") || path == "/llms.txt" || path == "/llms-full.txt" || path == "/docs.md" {
 		if s.docs != nil && s.docs.Handle(w, r) {
 			return
 		}
