@@ -237,11 +237,18 @@ func TestHandlerPreviewUnpublished(t *testing.T) {
 		t.Fatal("expected unpublished marker in list output")
 	}
 
-	// Entry request without header should be denied.
+	// Entry request without header should redirect to login.
 	req = httptest.NewRequest("GET", draft.Path, nil)
 	w = httptest.NewRecorder()
-	if handler.Handle(w, req) {
-		t.Fatal("expected handler to refuse unpublished entry without header")
+	if !handler.Handle(w, req) {
+		t.Fatal("expected handler to handle unpublished entry without header")
+	}
+	if w.Result().StatusCode != http.StatusFound {
+		t.Fatalf("status = %d; want %d", w.Result().StatusCode, http.StatusFound)
+	}
+	wantLocation := "/__exe.dev/login?redirect=" + draft.Path
+	if got := w.Result().Header.Get("Location"); got != wantLocation {
+		t.Fatalf("Location = %q; want %q", got, wantLocation)
 	}
 
 	// Entry request with header should render successfully.

@@ -371,7 +371,8 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 
 	if entry, ok := h.store.Entry(path); ok {
 		if !showHidden && !entry.Published {
-			return false
+			http.Redirect(w, r, "/__exe.dev/login?redirect="+path, http.StatusFound)
+			return true
 		}
 		h.recordPageHit(entry.Path)
 		h.renderEntry(w, r, entry, showHidden)
