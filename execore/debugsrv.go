@@ -179,13 +179,14 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 
 	// JSON format requested
 	type boxInfo struct {
-		Host        string `json:"host"`
-		ID          string `json:"id,omitempty"`
-		Name        string `json:"name"`
-		Status      string `json:"status"`
-		OwnerUserID string `json:"owner_user_id,omitempty"`
-		OwnerEmail  string `json:"owner_email,omitempty"`
-		Region      string `json:"region"`
+		Host             string `json:"host"`
+		ID               string `json:"id,omitempty"`
+		Name             string `json:"name"`
+		Status           string `json:"status"`
+		OwnerUserID      string `json:"owner_user_id,omitempty"`
+		OwnerEmail       string `json:"owner_email,omitempty"`
+		Region           string `json:"region"`
+		OwnerRootSupport bool   `json:"owner_root_support"`
 	}
 
 	var boxes []boxInfo
@@ -237,6 +238,7 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 				if owner, err := getOwner(ctx, inst.ID); err == nil {
 					info.OwnerUserID = owner.UserID
 					info.OwnerEmail = owner.Email
+					info.OwnerRootSupport = owner.RootSupport == 1
 				} else {
 					s.slog().WarnContext(ctx, "failed to resolve box owner", "boxName", inst.Name, "instanceID", inst.ID, "error", err)
 				}
@@ -253,12 +255,13 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, b := range dbBoxes {
 			info := boxInfo{
-				Host:        b.Ctrhost,
-				Name:        b.Name,
-				Status:      b.Status,
-				OwnerUserID: b.OwnerUserID,
-				OwnerEmail:  b.OwnerEmail,
-				Region:      b.Region,
+				Host:             b.Ctrhost,
+				Name:             b.Name,
+				Status:           b.Status,
+				OwnerUserID:      b.OwnerUserID,
+				OwnerEmail:       b.OwnerEmail,
+				Region:           b.Region,
+				OwnerRootSupport: b.OwnerRootSupport == 1,
 			}
 			if b.ContainerID != nil {
 				info.ID = *b.ContainerID

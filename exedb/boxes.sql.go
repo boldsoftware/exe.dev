@@ -250,21 +250,22 @@ func (q *Queries) GetBoxByNameWithSupportAccess(ctx context.Context, name string
 }
 
 const getBoxOwnerByContainerID = `-- name: GetBoxOwnerByContainerID :one
-SELECT u.user_id, u.email
+SELECT u.user_id, u.email, u.root_support
 FROM boxes b
 JOIN users u ON u.user_id = b.created_by_user_id
 WHERE b.container_id = ?
 `
 
 type GetBoxOwnerByContainerIDRow struct {
-	UserID string `db:"user_id" json:"user_id"`
-	Email  string `db:"email" json:"email"`
+	UserID      string `db:"user_id" json:"user_id"`
+	Email       string `db:"email" json:"email"`
+	RootSupport int64  `db:"root_support" json:"root_support"`
 }
 
 func (q *Queries) GetBoxOwnerByContainerID(ctx context.Context, containerID *string) (GetBoxOwnerByContainerIDRow, error) {
 	row := q.queryRow(ctx, q.getBoxOwnerByContainerIDStmt, getBoxOwnerByContainerID, containerID)
 	var i GetBoxOwnerByContainerIDRow
-	err := row.Scan(&i.UserID, &i.Email)
+	err := row.Scan(&i.UserID, &i.Email, &i.RootSupport)
 	return i, err
 }
 
@@ -438,20 +439,21 @@ func (q *Queries) InsertBox(ctx context.Context, arg InsertBoxParams) (int64, er
 }
 
 const listAllBoxesWithOwner = `-- name: ListAllBoxesWithOwner :many
-SELECT b.name, b.status, b.ctrhost, b.container_id, b.created_by_user_id as owner_user_id, u.email as owner_email, b.region
+SELECT b.name, b.status, b.ctrhost, b.container_id, b.created_by_user_id as owner_user_id, u.email as owner_email, b.region, u.root_support as owner_root_support
 FROM boxes b
 JOIN users u ON u.user_id = b.created_by_user_id
 ORDER BY b.name
 `
 
 type ListAllBoxesWithOwnerRow struct {
-	Name        string  `db:"name" json:"name"`
-	Status      string  `db:"status" json:"status"`
-	Ctrhost     string  `db:"ctrhost" json:"ctrhost"`
-	ContainerID *string `db:"container_id" json:"container_id"`
-	OwnerUserID string  `db:"owner_user_id" json:"owner_user_id"`
-	OwnerEmail  string  `db:"owner_email" json:"owner_email"`
-	Region      string  `db:"region" json:"region"`
+	Name             string  `db:"name" json:"name"`
+	Status           string  `db:"status" json:"status"`
+	Ctrhost          string  `db:"ctrhost" json:"ctrhost"`
+	ContainerID      *string `db:"container_id" json:"container_id"`
+	OwnerUserID      string  `db:"owner_user_id" json:"owner_user_id"`
+	OwnerEmail       string  `db:"owner_email" json:"owner_email"`
+	Region           string  `db:"region" json:"region"`
+	OwnerRootSupport int64   `db:"owner_root_support" json:"owner_root_support"`
 }
 
 func (q *Queries) ListAllBoxesWithOwner(ctx context.Context) ([]ListAllBoxesWithOwnerRow, error) {
@@ -471,6 +473,7 @@ func (q *Queries) ListAllBoxesWithOwner(ctx context.Context) ([]ListAllBoxesWith
 			&i.OwnerUserID,
 			&i.OwnerEmail,
 			&i.Region,
+			&i.OwnerRootSupport,
 		); err != nil {
 			return nil, err
 		}
