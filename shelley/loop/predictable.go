@@ -22,6 +22,7 @@ import (
 //   - "bash: <command>" - triggers bash tool with command
 //   - "think: <thoughts>" - triggers think tool
 //   - "subagent: <slug> <prompt>" - triggers subagent tool
+//   - "change_dir: <path>" - triggers change_dir tool
 //   - "delay: <seconds>" - delays response by specified seconds
 //   - See Do() method for complete list of supported patterns
 type PredictableService struct {
@@ -83,16 +84,23 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 
 	// Extract the text content from the last user message
 	var inputText string
+	var hasToolResult bool
 	if len(req.Messages) > 0 {
 		lastMessage := req.Messages[len(req.Messages)-1]
 		if lastMessage.Role == llm.MessageRoleUser {
 			for _, content := range lastMessage.Content {
 				if content.Type == llm.ContentTypeText {
 					inputText = strings.TrimSpace(content.Text)
-					break
+				} else if content.Type == llm.ContentTypeToolResult {
+					hasToolResult = true
 				}
 			}
 		}
+	}
+
+	// If the message is purely a tool result (no text), acknowledge it and end turn
+	if hasToolResult && inputText == "" {
+		return s.makeResponse("Done.", inputTokens), nil
 	}
 
 	// Handle input using case statements
@@ -174,6 +182,11 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 				prompt = parts[1]
 			}
 			return s.makeSubagentToolResponse(slug, prompt, inputTokens), nil
+		}
+
+		if strings.HasPrefix(inputText, "change_dir: ") {
+			path := strings.TrimPrefix(inputText, "change_dir: ")
+			return s.makeChangeDirToolResponse(path, inputTokens), nil
 		}
 
 		if strings.HasPrefix(inputText, "delay: ") {
@@ -528,6 +541,39 @@ func (s *PredictableService) makeScreenshotToolResponse(selector string, inputTo
 			InputTokens:  inputTokens,
 			OutputTokens: outputTokens,
 			CostUSD:      0.0,
+		},
+	}
+}
+
+// makeChangeDirToolResponse creates a response that calls the change_dir tool
+func (s *PredictableService) makeChangeDirToolResponse(path string, inputTokens uint64) *llm.Response {
+	toolInputData := map[string]string{"path": path}
+	toolInputBytes, _ := json.Marshal(toolInputData)
+	toolInput := json.RawMessage(toolInputBytes)
+	responseText := fmt.Sprintf("I'll change to directory: %s", path)
+	outputTokens := uint64(len(responseText)/4 + len(toolInputBytes)/4)
+	if outputTokens == 0 {
+		outputTokens = 1
+	}
+	return &llm.Response{
+		ID:    fmt.Sprintf("pred-change_dir-%d", time.Now().UnixNano()),
+		Type:  "message",
+		Role:  llm.MessageRoleAssistant,
+		Model: "predictable-v1",
+		Content: []llm.Content{
+			{Type: llm.ContentTypeText, Text: responseText},
+			{
+				ID:        fmt.Sprintf("tool_%d", time.Now().UnixNano()%1000),
+				Type:      llm.ContentTypeToolUse,
+				ToolName:  "change_dir",
+				ToolInput: toolInput,
+			},
+		},
+		StopReason: llm.StopReasonToolUse,
+		Usage: llm.Usage{
+			InputTokens:  inputTokens,
+			OutputTokens: outputTokens,
+			CostUSD:      0.001,
 		},
 	}
 }
