@@ -228,6 +228,15 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 		return nil, status.Errorf(codes.Internal, "failed to update hosts: %v", err)
 	}
 
+	// 2.5. Ensure /etc/fstab has x-systemd.growfs for auto-resize on boot
+	s.log.DebugContext(ctx, "ensuring fstab in clone", "id", newInstanceID)
+	fstabPath := filepath.Join(mountpoint, "etc", "fstab")
+	fstabContents := `/dev/vda / ext4 defaults,x-systemd.growfs 0 1
+`
+	if err := os.WriteFile(fstabPath, []byte(fstabContents), 0o644); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to write fstab: %v", err)
+	}
+
 	// 3. Generate new /etc/machine-id
 	machineIDPath := filepath.Join(mountpoint, "etc", "machine-id")
 	s.log.DebugContext(ctx, "generating new machine-id for clone", "id", newInstanceID, "path", machineIDPath)

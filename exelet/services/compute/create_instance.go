@@ -497,6 +497,18 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// set /etc/fstab for root filesystem with x-systemd.growfs to auto-resize on boot
+	s.log.DebugContext(ctx, "configuring fstab", "id", instanceID)
+	fstabPath := filepath.Join(mountpoint, "etc", "fstab")
+	if err := os.MkdirAll(filepath.Dir(fstabPath), 0o755); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	fstabContents := `/dev/vda / ext4 defaults,x-systemd.growfs 0 1
+`
+	if err := os.WriteFile(fstabPath, []byte(fstabContents), 0o644); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
 	// set instance env
 	s.log.DebugContext(ctx, "configuring instance environment", "id", instanceID)
 	envConfPath := filepath.Join(mountpoint, config.EnvConfigPath)
