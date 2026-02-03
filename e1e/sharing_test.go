@@ -597,19 +597,11 @@ func TestProxyCookieIsolation(t *testing.T) {
 	const boxInternalPort = 8080
 	httpPort := Env.servers.Exed.HTTPPort
 
-	// Set up HTTP servers in both boxes
-	// Note: loginThroughProxy expects "alive" in the response body
-	for _, setup := range []struct {
-		box     string
-		keyFile string
-		content string
-	}{
-		{box1, user1KeyFile, "alive"},
-		{box2, user2KeyFile, "box2-content"},
-	} {
-		serveIndex(t, setup.box, setup.keyFile, setup.content)
-		configureProxyRoute(t, setup.keyFile, setup.box, boxInternalPort, "private")
-	}
+	// Set up HTTP server only in box1. Box2 doesn't need one because the test
+	// verifies cookie rejection at the proxy level, before reaching box2's internal server.
+	serveIndex(t, box1, user1KeyFile, "alive")
+	configureProxyRoute(t, user1KeyFile, box1, boxInternalPort, "private")
+	configureProxyRoute(t, user2KeyFile, box2, boxInternalPort, "private")
 
 	// User 1 logs in to box1 through the proxy and gets a proxy auth cookie
 	fixture1 := newProxyAuthFixture(t, box1, httpPort, user1Cookies)
