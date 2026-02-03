@@ -140,6 +140,8 @@ type EmailVerification struct {
 	VerificationCode *string    `db:"verification_code" json:"verification_code"`
 	InviteCodeID     *int64     `db:"invite_code_id" json:"invite_code_id"`
 	IsNewUser        bool       `db:"is_new_user" json:"is_new_user"`
+	RedirectUrl      *string    `db:"redirect_url" json:"redirect_url"`
+	ReturnHost       *string    `db:"return_host" json:"return_host"`
 }
 
 type HllSketch struct {

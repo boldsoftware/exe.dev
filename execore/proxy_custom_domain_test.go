@@ -207,15 +207,15 @@ func TestCustomDomainReturnHostValidation(t *testing.T) {
 		return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
 	}
 
-	// Helper to create a verification token
-	createToken := func(t *testing.T) string {
+	// Helper to create a verification token with redirect info stored in DB
+	createToken := func(t *testing.T, redirectURL, returnHost string) string {
 		token := "test-token-" + t.Name()
 		expires := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
 		err := server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 			_, err := tx.Exec(`
-				INSERT INTO email_verifications (token, email, user_id, expires_at, verification_code)
-				VALUES (?, ?, ?, ?, ?)`,
-				token, email, user.UserID, expires, "123456")
+				INSERT INTO email_verifications (token, email, user_id, expires_at, verification_code, redirect_url, return_host)
+				VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				token, email, user.UserID, expires, "123456", redirectURL, returnHost)
 			return err
 		})
 		if err != nil {
@@ -225,12 +225,11 @@ func TestCustomDomainReturnHostValidation(t *testing.T) {
 	}
 
 	t.Run("valid_custom_domain_return_host", func(t *testing.T) {
-		token := createToken(t)
+		// Create token with redirect info stored in DB (no longer passed via form)
+		token := createToken(t, "/dashboard", validCustomDomain)
 
 		form := url.Values{}
 		form.Set("token", token)
-		form.Set("return_host", validCustomDomain)
-		form.Set("redirect", "/dashboard")
 
 		req := httptest.NewRequest("POST", "/verify-email", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -255,12 +254,11 @@ func TestCustomDomainReturnHostValidation(t *testing.T) {
 	})
 
 	t.Run("invalid_custom_domain_return_host_rejected", func(t *testing.T) {
-		token := createToken(t)
+		// Create token with invalid return_host stored in DB
+		token := createToken(t, "/steal-cookies", invalidCustomDomain)
 
 		form := url.Values{}
 		form.Set("token", token)
-		form.Set("return_host", invalidCustomDomain)
-		form.Set("redirect", "/steal-cookies")
 
 		req := httptest.NewRequest("POST", "/verify-email", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -277,13 +275,12 @@ func TestCustomDomainReturnHostValidation(t *testing.T) {
 	})
 
 	t.Run("subdomain_return_host_works", func(t *testing.T) {
-		token := createToken(t)
 		boxSubdomain := server.env.BoxSub(boxName)
+		// Create token with box subdomain as return_host stored in DB
+		token := createToken(t, "/", boxSubdomain)
 
 		form := url.Values{}
 		form.Set("token", token)
-		form.Set("return_host", boxSubdomain)
-		form.Set("redirect", "/")
 
 		req := httptest.NewRequest("POST", "/verify-email", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

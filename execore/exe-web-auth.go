@@ -162,19 +162,17 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 
 		setExeAuthCookie(w, r, cookieValue)
 
-		// Clean up the database token (single use)
-		err = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).DeleteEmailVerificationByToken, token)
-		if err != nil {
-			s.slog().ErrorContext(r.Context(), "Failed to cleanup email verification token", "error", err)
-			// Continue anyway
+		// Check if redirect info was stored with the token (login-with-exe flow)
+		// This replaces the need for redirect params in the email URL
+		var redirectURL, returnHost string
+		if emailVerif.RedirectUrl != nil {
+			redirectURL = *emailVerif.RedirectUrl
 		}
-
-		// Check if this is part of a web auth flow with redirect parameters (from form for POST)
-		redirectURL := r.FormValue("redirect")
-		returnHost := r.FormValue("return_host")
+		if emailVerif.ReturnHost != nil {
+			returnHost = *emailVerif.ReturnHost
+		}
 		if redirectURL != "" || returnHost != "" {
-			// This is a web auth flow, perform redirect after authentication
-			s.redirectAfterAuth(w, r, verifiedUserID)
+			s.redirectAfterAuthWithParams(w, r, verifiedUserID, redirectURL, returnHost)
 			return
 		}
 
@@ -876,7 +874,8 @@ func (s *Server) cleanupExpiredMagicSecrets() {
 	}
 }
 
-// redirectAfterAuth handles redirecting user after successful authentication
+// redirectAfterAuth handles redirecting user after successful authentication.
+// It extracts redirect params from the request query/form values.
 func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userID string) {
 	// Check both URL query params (for GET) and form values (for POST)
 	redirectURL := r.URL.Query().Get("redirect")
@@ -887,7 +886,12 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 	if returnHost == "" {
 		returnHost = r.FormValue("return_host")
 	}
+	s.redirectAfterAuthWithParams(w, r, userID, redirectURL, returnHost)
+}
 
+// redirectAfterAuthWithParams handles redirecting user after successful authentication
+// with explicit redirect parameters (used when params come from DB rather than request).
+func (s *Server) redirectAfterAuthWithParams(w http.ResponseWriter, r *http.Request, userID, redirectURL, returnHost string) {
 	s.slog().DebugContext(r.Context(), "[REDIRECT] redirectAfterAuth called", "redirectURL", redirectURL, "returnHost", returnHost, "user_id", userID)
 
 	// Check if returnHost is actually a proxy/terminal host that needs subdomain auth
@@ -1122,6 +1126,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 // handleAuthCallback handles authentication callbacks with magic tokens
 func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	var userID string
+	var redirectURL, returnHost string // From email verification token, if present
 
 	// Check if this is an email verification request (/auth/verify?token=...)
 	if strings.HasPrefix(r.URL.Path, "/auth/verify") {
@@ -1139,6 +1144,13 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		userID = emailVerif.UserID
+		// Extract redirect info stored with the token
+		if emailVerif.RedirectUrl != nil {
+			redirectURL = *emailVerif.RedirectUrl
+		}
+		if emailVerif.ReturnHost != nil {
+			returnHost = *emailVerif.ReturnHost
+		}
 	} else {
 		// Extract token from path /auth/<token>
 		token := strings.TrimPrefix(r.URL.Path, "/auth/")
@@ -1169,7 +1181,12 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	s.recordUserEventBestEffort(r.Context(), userID, userEventSetBrowserCookies)
 
 	// Handle redirect after authentication
-	s.redirectAfterAuth(w, r, userID)
+	// If redirect info was stored with the token, use it; otherwise fall back to request params
+	if redirectURL != "" || returnHost != "" {
+		s.redirectAfterAuthWithParams(w, r, userID, redirectURL, returnHost)
+	} else {
+		s.redirectAfterAuth(w, r, userID)
+	}
 }
 
 // handleAuth handles the main domain authentication flow
@@ -1421,43 +1438,34 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// Generate verification token
 	token := generateRegistrationToken()
 
-	// Store verification in database (reuse existing email_verifications table)
-	err = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).InsertEmailVerification, exedb.InsertEmailVerificationParams{
+	// Get redirect params to store with the token (avoids putting them in email URLs which get spam-filtered)
+	redirectURL := r.FormValue("redirect")
+	returnHost := r.FormValue("return_host")
+
+	// Store verification in database with redirect info
+	insertParams := exedb.InsertEmailVerificationParams{
 		Token:        token,
 		Email:        addr,
 		UserID:       userID,
 		ExpiresAt:    time.Now().Add(24 * time.Hour),
 		InviteCodeID: inviteCodeID,
 		IsNewUser:    isNewUser,
-	})
+	}
+	if redirectURL != "" {
+		insertParams.RedirectUrl = &redirectURL
+	}
+	if returnHost != "" {
+		insertParams.ReturnHost = &returnHost
+	}
+	err = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).InsertEmailVerification, insertParams)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to store email verification", "error", err)
 		s.showAuthError(w, r, "Failed to create verification. Please try again.", "")
 		return
 	}
 
-	// Create verification link
-	verificationURL := fmt.Sprintf("%s://%s/auth/verify?token=%s", getScheme(r), r.Host, token)
-
-	// Add redirect parameters to the verification URL if present (from form values for POST)
-	if redirect := r.FormValue("redirect"); redirect != "" {
-		verificationURL += "&redirect=" + url.QueryEscape(redirect)
-	}
-	if returnHost := r.FormValue("return_host"); returnHost != "" {
-		verificationURL += "&return_host=" + url.QueryEscape(returnHost)
-	}
-
-	// Send email with proper verification URL that includes redirect params
+	// Send email with clean verification URL (no redirect params - they're stored in DB)
 	verifyEmailURL := fmt.Sprintf("%s://%s/verify-email?token=%s", getScheme(r), r.Host, token)
-
-	// Add redirect parameters to the verify-email URL if present (from form values for POST)
-	// Both params needed: redirect=path, return_host=subdomain for cross-domain auth flow
-	if redirect := r.FormValue("redirect"); redirect != "" {
-		verifyEmailURL += "&redirect=" + url.QueryEscape(redirect)
-	}
-	if returnHost := r.FormValue("return_host"); returnHost != "" {
-		verifyEmailURL += "&return_host=" + url.QueryEscape(returnHost)
-	}
 
 	// Send custom email for web auth with the proper URL
 	webHost := s.env.WebHost
