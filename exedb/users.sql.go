@@ -56,13 +56,13 @@ func (q *Queries) GetEmailByUserID(ctx context.Context, userID string) (string, 
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email
 FROM users
-WHERE email = ?
+WHERE canonical_email = ?
 `
 
-func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
-	row := q.queryRow(ctx, q.getUserByEmailStmt, getUserByEmail, email)
+func (q *Queries) GetUserByEmail(ctx context.Context, canonicalEmail *string) (User, error) {
+	row := q.queryRow(ctx, q.getUserByEmailStmt, getUserByEmail, canonicalEmail)
 	var i User
 	err := row.Scan(
 		&i.UserID,
@@ -78,16 +78,17 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.SignedUpWithInviteID,
 		&i.NextSSHKeyNumber,
 		&i.Region,
+		&i.CanonicalEmail,
 	)
 	return i, err
 }
 
 const getUserIDByEmail = `-- name: GetUserIDByEmail :one
-SELECT user_id FROM users WHERE email = ?
+SELECT user_id FROM users WHERE canonical_email = ?
 `
 
-func (q *Queries) GetUserIDByEmail(ctx context.Context, email string) (string, error) {
-	row := q.queryRow(ctx, q.getUserIDByEmailStmt, getUserIDByEmail, email)
+func (q *Queries) GetUserIDByEmail(ctx context.Context, canonicalEmail *string) (string, error) {
+	row := q.queryRow(ctx, q.getUserIDByEmailStmt, getUserIDByEmail, canonicalEmail)
 	var user_id string
 	err := row.Scan(&user_id)
 	return user_id, err
@@ -116,7 +117,7 @@ func (q *Queries) GetUserRootSupport(ctx context.Context, userID string) (int64,
 }
 
 const getUserWithDetails = `-- name: GetUserWithDetails :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email
 FROM users
 WHERE user_id = ?
 `
@@ -138,25 +139,28 @@ func (q *Queries) GetUserWithDetails(ctx context.Context, userID string) (User, 
 		&i.SignedUpWithInviteID,
 		&i.NextSSHKeyNumber,
 		&i.Region,
+		&i.CanonicalEmail,
 	)
 	return i, err
 }
 
 const insertUser = `-- name: InsertUser :exec
-INSERT INTO users (user_id, email, created_for_login_with_exe, region) VALUES (?, ?, ?, ?)
+INSERT INTO users (user_id, email, canonical_email, created_for_login_with_exe, region) VALUES (?, ?, ?, ?, ?)
 `
 
 type InsertUserParams struct {
-	UserID                 string `db:"user_id" json:"user_id"`
-	Email                  string `db:"email" json:"email"`
-	CreatedForLoginWithExe bool   `db:"created_for_login_with_exe" json:"created_for_login_with_exe"`
-	Region                 string `db:"region" json:"region"`
+	UserID                 string  `db:"user_id" json:"user_id"`
+	Email                  string  `db:"email" json:"email"`
+	CanonicalEmail         *string `db:"canonical_email" json:"canonical_email"`
+	CreatedForLoginWithExe bool    `db:"created_for_login_with_exe" json:"created_for_login_with_exe"`
+	Region                 string  `db:"region" json:"region"`
 }
 
 func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 	_, err := q.exec(ctx, q.insertUserStmt, insertUser,
 		arg.UserID,
 		arg.Email,
+		arg.CanonicalEmail,
 		arg.CreatedForLoginWithExe,
 		arg.Region,
 	)
@@ -164,7 +168,7 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 }
 
 const listAllUsers = `-- name: ListAllUsers :many
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region FROM users ORDER BY created_at DESC
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email FROM users ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
@@ -190,6 +194,7 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 			&i.SignedUpWithInviteID,
 			&i.NextSSHKeyNumber,
 			&i.Region,
+			&i.CanonicalEmail,
 		); err != nil {
 			return nil, err
 		}

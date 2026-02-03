@@ -1345,7 +1345,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Get or create the user
-	userID, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserIDByEmail, addr)
+	userID, err := s.GetUserIDByEmail(r.Context(), addr)
 	isNewUser := errors.Is(err, sql.ErrNoRows)
 	if err != nil && !isNewUser {
 		s.slog().ErrorContext(r.Context(), "Database error fetching user", "error", err)

@@ -636,7 +636,7 @@ func TestWebAuthFlowCreatesNewUser(t *testing.T) {
 	email := "newuser@example.com"
 
 	// Verify user doesn't exist yet
-	userID, err := withRxRes1(server, context.Background(), (*exedb.Queries).GetUserIDByEmail, email)
+	userID, err := server.GetUserIDByEmail(context.Background(), email)
 	if err == nil {
 		t.Fatalf("User should not exist yet, but got user ID: %s", userID)
 	}
@@ -665,7 +665,7 @@ func TestWebAuthFlowCreatesNewUser(t *testing.T) {
 	}
 
 	// Verify user was created
-	userID, err = withRxRes1(server, context.Background(), (*exedb.Queries).GetUserIDByEmail, email)
+	userID, err = server.GetUserIDByEmail(context.Background(), email)
 	if err != nil {
 		t.Fatalf("User should exist after web auth, but got error: %v", err)
 	}
@@ -711,7 +711,7 @@ func TestBasicUserCreatedForLoginWithExe(t *testing.T) {
 	}
 
 	// Verify user was created with the flag set
-	user, err := withRxRes1(server, context.Background(), (*exedb.Queries).GetUserByEmail, email)
+	user, err := server.GetUserByEmail(context.Background(), email)
 	if err != nil {
 		t.Fatalf("User should exist after web auth, but got error: %v", err)
 	}
@@ -746,7 +746,7 @@ func TestNormalUserCreatedWithoutFlag(t *testing.T) {
 	}
 
 	// Verify user was created WITHOUT the flag
-	user, err := withRxRes1(server, context.Background(), (*exedb.Queries).GetUserByEmail, email)
+	user, err := server.GetUserByEmail(context.Background(), email)
 	if err != nil {
 		t.Fatalf("User should exist after web auth, but got error: %v", err)
 	}

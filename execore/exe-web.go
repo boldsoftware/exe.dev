@@ -1008,7 +1008,11 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		if err != nil {
 			return fmt.Errorf("failed to parse public key: %w", err)
 		}
-		userID, err := queries.GetUserIDByEmail(ctx, pendingKey.UserEmail)
+		canonicalEmail, err := canonicalEmailPtr(pendingKey.UserEmail)
+		if err != nil {
+			return fmt.Errorf("invalid email: %w", err)
+		}
+		userID, err := queries.GetUserIDByEmail(ctx, canonicalEmail)
 		if err != nil {
 			return fmt.Errorf("failed to get user ID: %w", err)
 		}

@@ -1104,7 +1104,7 @@ func (ss *SSHServer) startEmailVerification(s *shellSession, publicKey, email st
 	}
 
 	// Check whether this email already exists
-	_, err = withRxRes1(ss.server, s.Context(), (*exedb.Queries).GetUserIDByEmail, email)
+	_, err = ss.server.GetUserIDByEmail(s.Context(), email)
 	var isNewAccount bool
 	switch {
 	case err == nil:

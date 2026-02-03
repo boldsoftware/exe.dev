@@ -1,8 +1,8 @@
 -- name: GetUserIDByEmail :one
-SELECT user_id FROM users WHERE email = ?;
+SELECT user_id FROM users WHERE canonical_email = ?;
 
 -- name: InsertUser :exec
-INSERT INTO users (user_id, email, created_for_login_with_exe, region) VALUES (?, ?, ?, ?);
+INSERT INTO users (user_id, email, canonical_email, created_for_login_with_exe, region) VALUES (?, ?, ?, ?, ?);
 
 -- name: GetUserWithDetails :one
 SELECT *
@@ -12,7 +12,7 @@ WHERE user_id = ?;
 -- name: GetUserByEmail :one
 SELECT *
 FROM users
-WHERE email = ?;
+WHERE canonical_email = ?;
 
 -- name: GetEmailByUserID :one
 SELECT email FROM users WHERE user_id = ?;

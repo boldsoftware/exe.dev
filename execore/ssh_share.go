@@ -517,7 +517,7 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 
 	// Check if user exists
 	var userExists bool
-	targetUserID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, email)
+	targetUserID, err := ss.server.GetUserIDByEmail(ctx, email)
 	if errors.Is(err, sql.ErrNoRows) {
 		userExists = false
 		err = nil
@@ -663,7 +663,7 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 	}
 
 	// Try to delete active share if user exists
-	targetUserID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, email)
+	targetUserID, err := ss.server.GetUserIDByEmail(ctx, email)
 	if err == nil {
 		// User exists, try to delete their active share
 		err = withTx1(ss.server, ctx, (*exedb.Queries).DeleteBoxShareByBoxAndUser, exedb.DeleteBoxShareByBoxAndUserParams{

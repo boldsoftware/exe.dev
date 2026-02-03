@@ -1583,7 +1583,7 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 
 	if email != "" && verified {
 		// This is a verified key, check if user exists
-		_, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDByEmail, email)
+		_, err := s.GetUserIDByEmail(ctx, email)
 		if err == nil {
 			// User exists and has verified their email, they're fully registered
 			return &ssh.Permissions{
@@ -1676,8 +1676,11 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		// Check if user exists, create if not
-		var err error
-		userID, err = queries.GetUserIDByEmail(ctx, email)
+		canonicalEmail, err := canonicalEmailPtr(email)
+		if err != nil {
+			return fmt.Errorf("invalid email: %w", err)
+		}
+		userID, err = queries.GetUserIDByEmail(ctx, canonicalEmail)
 		if errors.Is(err, sql.ErrNoRows) {
 			// User doesn't exist, create them (mobile flow, not login-with-exe)
 			userID, err = s.createUserRecord(ctx, queries, email, false)
@@ -2590,15 +2593,21 @@ func (s *Server) isBasicUser(ctx context.Context, user exedb.User, sshKeyCount i
 // createUserRecord creates a user record and returns the new user ID.
 // If createdForLoginWithExe is true, the user was created during the login flow
 // when trying to log into a site hosted by exe (via proxy auth with return_host).
-func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, email string, createdForLoginWithExe bool) (string, error) {
+func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, emailAddr string, createdForLoginWithExe bool) (string, error) {
 	userID, err := generateUserID()
 	if err != nil {
 		return "", fmt.Errorf("failed to generate user ID: %w", err)
 	}
 
+	canonicalEmail, err := email.CanonicalizeEmail(emailAddr)
+	if err != nil {
+		return "", fmt.Errorf("failed to canonicalize email: %w", err)
+	}
+
 	if err := queries.InsertUser(ctx, exedb.InsertUserParams{
 		UserID:                 userID,
-		Email:                  email,
+		Email:                  emailAddr,
+		CanonicalEmail:         &canonicalEmail,
 		CreatedForLoginWithExe: createdForLoginWithExe,
 		Region:                 region.Default().Code,
 	}); err != nil {
@@ -2698,7 +2707,7 @@ type signupValidationParams struct {
 // This is the single chokepoint for new signup attempts (web, SSH, mobile).
 // Rate limiting is handled separately, earlier in each flow, by checkSignupRateLimit.
 func (s *Server) validateNewSignup(ctx context.Context, p signupValidationParams) error {
-	_, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDByEmail, p.email)
+	_, err := s.GetUserIDByEmail(ctx, p.email)
 	if err == nil {
 		return nil // user exists, no checks needed
 	}
@@ -3158,9 +3167,14 @@ func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicK
 	return userID, nil
 }
 
-// GetUserByEmail retrieves a user by their email address
-func (s *Server) GetUserByEmail(ctx context.Context, email string) (*exedb.User, error) {
-	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserByEmail, email)
+// GetUserByEmail retrieves a user by their canonical email address.
+// The input email is canonicalized before lookup.
+func (s *Server) GetUserByEmail(ctx context.Context, emailAddr string) (*exedb.User, error) {
+	canonicalEmail, err := email.CanonicalizeEmail(emailAddr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid email: %w", err)
+	}
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserByEmail, &canonicalEmail)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, sql.ErrNoRows
 	}
@@ -3168,6 +3182,25 @@ func (s *Server) GetUserByEmail(ctx context.Context, email string) (*exedb.User,
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 	return &user, nil
+}
+
+// GetUserIDByEmail retrieves a user ID by their canonical email address.
+// The input email is canonicalized before lookup.
+func (s *Server) GetUserIDByEmail(ctx context.Context, emailAddr string) (string, error) {
+	canonicalEmail, err := email.CanonicalizeEmail(emailAddr)
+	if err != nil {
+		return "", fmt.Errorf("invalid email: %w", err)
+	}
+	return withRxRes1(s, ctx, (*exedb.Queries).GetUserIDByEmail, &canonicalEmail)
+}
+
+// canonicalEmailPtr returns a pointer to the canonicalized email, for use in queries within transactions.
+func canonicalEmailPtr(emailAddr string) (*string, error) {
+	canonical, err := email.CanonicalizeEmail(emailAddr)
+	if err != nil {
+		return nil, err
+	}
+	return &canonical, nil
 }
 
 // GetBoxSSHDetails retrieves SSH connection details from the boxes table

@@ -564,7 +564,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 
 	// Record pending VM creation details for this user+token so we can create after verification
 	// Lookup user_id by email (storeEmailVerification ensures user+alloc exists)
-	userID, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserIDByEmail, email)
+	userID, err := s.GetUserIDByEmail(r.Context(), email)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to lookup user after email auth", "email", email, "error", err)
 		http.Error(w, "Failed to process request", http.StatusInternalServerError)
