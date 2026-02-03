@@ -132,9 +132,27 @@ sudo systemctl daemon-reload
 echo ""
 echo "Deployed versions:"
 ls -la ~/exeletd.* | tail -5
+EOF
+
+# Show rollback instructions BEFORE restarting the service
+echo ""
+echo -e "${YELLOW}==========================================="
+echo "Rollback Instructions"
+echo "==========================================="
+echo -e "${NC}"
+echo "If the deployment fails, use these commands to rollback:"
+echo ""
+echo "  ssh ubuntu@$INSTANCE_NAME"
+echo "  ls -la ~/exeletd.*  # list all versions"
+echo "  sudo ln -sf ~/exeletd.TIMESTAMP ~/exeletd.latest"
+echo "  sudo systemctl restart exelet"
+echo ""
+echo -e "${YELLOW}==========================================="
+echo -e "${NC}"
+echo ""
 
 # Restart the service with the new binary
-echo ""
+ssh -o StrictHostKeyChecking=no "$TAILSCALE_HOST" <<EOF
 echo "Restarting exelet service..."
 sudo systemctl restart exelet
 
@@ -170,12 +188,6 @@ echo "  ssh ubuntu@$INSTANCE_NAME"
 echo ""
 echo "View logs:"
 echo "  ssh ubuntu@$INSTANCE_NAME journalctl -fu exelet"
-echo ""
-echo "Rollback (if needed):"
-echo "  ssh ubuntu@$INSTANCE_NAME"
-echo "  ls -la ~/exeletd.*  # list all versions"
-echo "  sudo ln -sf ~/exeletd.TIMESTAMP ~/exeletd.latest"
-echo "  sudo systemctl restart exelet"
 
 # Mark deployment as successful
 "$REPO_ROOT/scripts/deploy-notify.sh" complete "$DEPLOY_TS"
