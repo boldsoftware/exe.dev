@@ -2532,16 +2532,16 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 
 		currentDiskSize := instanceResp.Instance.VMConfig.Disk
 		if newDiskSize <= currentDiskSize {
-			return cc.Errorf("--disk must be larger than current size (%s)", humanize.Bytes(currentDiskSize))
+			return cc.Errorf("--disk must be larger than current size (%s)", humanize.IBytes(currentDiskSize))
 		}
 
 		additionalBytes := newDiskSize - currentDiskSize
 		if additionalBytes > maxDiskGrowth {
-			return cc.Errorf("disk growth cannot exceed %s in a single operation", humanize.Bytes(maxDiskGrowth))
+			return cc.Errorf("disk growth cannot exceed %s in a single operation", humanize.IBytes(maxDiskGrowth))
 		}
 
 		if !cc.WantJSON() {
-			cc.Writeln("Growing disk to %s...", humanize.Bytes(newDiskSize))
+			cc.Writeln("Growing disk to %s...", humanize.IBytes(newDiskSize))
 		}
 
 		diskGrowResult, err = exeletClient.client.GrowDisk(ctx, &api.GrowDiskRequest{
@@ -2632,9 +2632,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	// Human-readable output
 	if resizeResult != nil {
 		if resizeResult.OldMemory != resizeResult.NewMemory {
-			oldMemoryGB := fmt.Sprintf("%.1fGB", float64(resizeResult.OldMemory)/(1024*1024*1024))
-			newMemoryGB := fmt.Sprintf("%.1fGB", float64(resizeResult.NewMemory)/(1024*1024*1024))
-			cc.Writeln("Memory: %s -> %s", oldMemoryGB, newMemoryGB)
+			cc.Writeln("Memory: %s -> %s", humanize.IBytes(resizeResult.OldMemory), humanize.IBytes(resizeResult.NewMemory))
 		}
 		if resizeResult.OldCPUs != resizeResult.NewCPUs {
 			cc.Writeln("CPUs: %d -> %d", resizeResult.OldCPUs, resizeResult.NewCPUs)
@@ -2642,9 +2640,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	}
 
 	if diskGrowResult != nil {
-		oldSizeGB := fmt.Sprintf("%.1fGB", float64(diskGrowResult.OldSize)/(1024*1024*1024))
-		newSizeGB := fmt.Sprintf("%.1fGB", float64(diskGrowResult.NewSize)/(1024*1024*1024))
-		cc.Writeln("Disk: %s -> %s", oldSizeGB, newSizeGB)
+		cc.Writeln("Disk: %s -> %s", humanize.IBytes(diskGrowResult.OldSize), humanize.IBytes(diskGrowResult.NewSize))
 	}
 
 	cc.Writeln("")

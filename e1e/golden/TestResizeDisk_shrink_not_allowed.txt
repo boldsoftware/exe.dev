@@ -10,6 +10,6 @@ resize BOX_NAME --disk=5
 - help to see a list of commands
 
 PROMPT ▶ resize BOX_NAME --disk=5
---disk must be larger than current size (13 GB)
+--disk must be larger than current size (12 GiB)
 PROMPT ▶ exit
 Goodbye!
