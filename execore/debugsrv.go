@@ -45,6 +45,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/gitsha", s.handleDebugGitsha)
 	mux.HandleFunc("/debug/boxes", s.handleDebugBoxes)
 	mux.HandleFunc("/debug/boxes/{name}", s.handleDebugBoxDetails)
+	mux.HandleFunc("GET /debug/boxes/{name}/logs", s.handleDebugBoxLogs)
 	mux.HandleFunc("POST /debug/boxes/delete", s.handleDebugBoxDelete)
 	mux.HandleFunc("GET /debug/boxes/migrate", s.handleDebugBoxMigrateForm)
 	mux.HandleFunc("POST /debug/boxes/migrate", s.handleDebugBoxMigrate)
@@ -847,6 +848,68 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 	if err := tmpl.ExecuteTemplate(w, "box-details.html", data); err != nil {
 		s.slog().ErrorContext(ctx, "failed to execute box-details template", "error", err)
 	}
+}
+
+// handleDebugBoxLogs fetches the instance logs from the exelet and returns them.
+func (s *Server) handleDebugBoxLogs(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	boxName := r.PathValue("name")
+
+	if boxName == "" {
+		http.Error(w, "box name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Look up the box
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("box %q not found", boxName), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to look up box by name: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if box.ContainerID == nil {
+		http.Error(w, "box has no container_id", http.StatusBadRequest)
+		return
+	}
+
+	// Get the exelet client for this box's host
+	ec := s.getExeletClient(box.Ctrhost)
+	if ec == nil {
+		http.Error(w, fmt.Sprintf("exelet %q not available", box.Ctrhost), http.StatusServiceUnavailable)
+		return
+	}
+
+	// Call GetInstanceLogs on the exelet
+	stream, err := ec.client.GetInstanceLogs(ctx, &computeapi.GetInstanceLogsRequest{
+		ID: *box.ContainerID,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get instance logs: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Collect all log messages
+	var logs strings.Builder
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error reading logs: %v", err), http.StatusInternalServerError)
+			return
+		}
+		if resp.Log != nil {
+			logs.WriteString(resp.Log.Message)
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write([]byte(logs.String()))
 }
 
 // handleDebugUsers displays a list of all users with their root support and VM creation settings.

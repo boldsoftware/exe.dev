@@ -9,6 +9,12 @@ h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
 pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
 a { color: #007bff; text-decoration: none; }
 a:hover { text-decoration: underline; }
+.logs-btn { background: #007bff; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 3px; font-size: 14px; }
+.logs-btn:hover { background: #0056b3; }
+.logs-btn:disabled { background: #ccc; cursor: not-allowed; }
+#vmLogsContent { display: none; margin-top: 10px; }
+#vmLogsContent.loaded { display: block; }
+#vmLogsError { color: #dc3545; margin-top: 10px; }
 </style>
 </head><body>
 <h1>Box: {{.Name}}</h1>
@@ -99,5 +105,48 @@ a:hover { text-decoration: underline; }
 <pre>{{.CreationLog}}</pre>
 </div>
 {{end}}
+
+<div class="section">
+<h2>VM Logs</h2>
+<button id="fetchLogsBtn" class="logs-btn">Fetch Logs</button>
+<div id="vmLogsError"></div>
+<div id="vmLogsContent">
+<pre id="vmLogsText"></pre>
+</div>
+</div>
+
+<script>
+document.getElementById('fetchLogsBtn').addEventListener('click', function() {
+    var btn = this;
+    var errorDiv = document.getElementById('vmLogsError');
+    var contentDiv = document.getElementById('vmLogsContent');
+    var logsText = document.getElementById('vmLogsText');
+
+    btn.disabled = true;
+    btn.textContent = 'Loading...';
+    errorDiv.textContent = '';
+
+    fetch('/debug/boxes/{{.Name}}/logs')
+        .then(function(response) {
+            if (!response.ok) {
+                return response.text().then(function(text) {
+                    throw new Error(text || 'Failed to fetch logs');
+                });
+            }
+            return response.text();
+        })
+        .then(function(text) {
+            logsText.textContent = text || '(no logs)';
+            contentDiv.classList.add('loaded');
+            btn.textContent = 'Refresh Logs';
+        })
+        .catch(function(err) {
+            errorDiv.textContent = 'Error: ' + err.message;
+        })
+        .finally(function() {
+            btn.disabled = false;
+        });
+});
+</script>
 
 </body></html>
