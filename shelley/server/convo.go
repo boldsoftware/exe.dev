@@ -396,7 +396,28 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 		// Persist working directory change to database
 		if err := db.UpdateConversationCwd(context.Background(), conversationID, newDir); err != nil {
 			logger.Error("failed to persist working directory change", "error", err, "newDir", newDir)
+			return
 		}
+
+		// Update local cwd
+		cm.mu.Lock()
+		cm.cwd = newDir
+		cm.mu.Unlock()
+
+		// Broadcast conversation update to subscribers so UI gets the new cwd
+		var conv generated.Conversation
+		err := db.Queries(context.Background(), func(q *generated.Queries) error {
+			var err error
+			conv, err = q.GetConversation(context.Background(), conversationID)
+			return err
+		})
+		if err != nil {
+			logger.Error("failed to get conversation for cwd broadcast", "error", err)
+			return
+		}
+		cm.subpub.Broadcast(StreamResponse{
+			Conversation: conv,
+		})
 	}
 
 	// Create a context with the conversation ID for LLM request recording/prefix dedup
