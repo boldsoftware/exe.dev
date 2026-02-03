@@ -184,7 +184,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	// Apply authentication based on route share setting
 	if route.Share == "private" {
 		// Check if user is authenticated on this subdomain
-		userID, authenticated := s.getAuthenticatedUserID(r, box)
+		userID, authenticated := s.getAuthenticatedUserID(r)
 		if !authenticated {
 			// Not authenticated on subdomain - redirect to main domain auth
 			// This will check if they have exe-auth cookie and handle accordingly
@@ -274,7 +274,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 		// Determine if the requester is the owner of the box
 		isOwner := false
-		if userID, ok := s.getAuthenticatedUserID(r, box); ok {
+		if userID, ok := s.getAuthenticatedUserID(r); ok {
 			if box.CreatedByUserID == userID {
 				isOwner = true
 			}
@@ -372,7 +372,7 @@ func (s *Server) isShelleyRequest(host string) bool {
 // Returns (userID, true) if authenticated, ("", false) if not authenticated.
 // It may be called multiple times while handling a single request,
 // so it should not mutate r or have other side-effects.
-func (s *Server) getAuthenticatedUserID(r *http.Request, box exedb.Box) (string, bool) {
+func (s *Server) getAuthenticatedUserID(r *http.Request) (string, bool) {
 	if userID, err := s.validateProxyAuthCookie(r); err == nil {
 		return userID, true
 	}
@@ -742,7 +742,7 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 		setForwardedHeaders(req, r)
 
 		// Add user info headers if authenticated
-		if userID, ok := s.getAuthenticatedUserID(r, *box); ok {
+		if userID, ok := s.getAuthenticatedUserID(r); ok {
 			email, err := withRxRes1(s, req.Context(), (*exedb.Queries).GetEmailByUserID, userID)
 			if err != nil {
 				s.slog().ErrorContext(r.Context(), "failed to get user email for authenticated proxy headers", "error", err, "user_id", userID)

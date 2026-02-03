@@ -1410,15 +1410,16 @@ func TestBillingPortal_ActiveAccount_RedirectsToStripe(t *testing.T) {
 
 	// With proper Stripe permissions, expect redirect to Stripe portal (303)
 	// With restricted test key, may get 500 due to missing portal permissions
-	if w.Code == http.StatusSeeOther {
+	switch w.Code {
+	case http.StatusSeeOther:
 		location := w.Header().Get("Location")
 		if !strings.Contains(location, "stripe.com") && !strings.Contains(location, "billing") {
 			t.Errorf("Expected redirect to Stripe billing portal, got %q", location)
 		}
-	} else if w.Code == http.StatusInternalServerError {
+	case http.StatusInternalServerError:
 		// Expected with test API key that lacks portal permissions
 		t.Log("Stripe portal creation failed (expected with restricted test API key)")
-	} else {
+	default:
 		t.Errorf("Expected redirect (303) or server error (500), got %d", w.Code)
 	}
 }

@@ -1513,13 +1513,6 @@ func (s *Server) handleDebugNewThrottle(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func checkedAttr(checked bool) string {
-	if checked {
-		return "checked"
-	}
-	return ""
-}
-
 // handleDebugNewThrottlePost handles saving the new-throttle configuration.
 func (s *Server) handleDebugNewThrottlePost(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -1634,12 +1627,13 @@ func (s *Server) handleDebugIPShards(w http.ResponseWriter, r *http.Request) {
 			ServingFrom: "unknown",
 		}
 		// Determine serving source
-		if entry.ServingIP != "" {
-			if entry.ServingIP == entry.AWSIP {
-				entry.ServingFrom = "aws"
-			} else if entry.ServingIP == entry.LatitudeIP {
-				entry.ServingFrom = "latitude"
-			}
+		switch entry.ServingIP {
+		case "":
+			// leave as unknown
+		case entry.AWSIP:
+			entry.ServingFrom = "aws"
+		case entry.LatitudeIP:
+			entry.ServingFrom = "latitude"
 		}
 		entries = append(entries, entry)
 	}
@@ -1943,13 +1937,6 @@ func (s *Server) handleDebugEmailForm(w http.ResponseWriter, r *http.Request) {
 	if err := tmpl.ExecuteTemplate(w, "email-form.html", data); err != nil {
 		s.slog().ErrorContext(r.Context(), "failed to execute email-form template", "error", err)
 	}
-}
-
-func disabledAttr(disabled bool) string {
-	if disabled {
-		return "disabled"
-	}
-	return ""
 }
 
 // handleDebugEmailSend sends a test email via the selected provider.

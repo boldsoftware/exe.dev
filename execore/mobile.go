@@ -161,23 +161,6 @@ func (s *Server) removeCreationStream(userID, hostname string) {
 	delete(s.creationStreams, creationStreamKey{userID: userID, hostname: hostname})
 }
 
-// userHasActiveCreationStreams reports whether the user has any active (non-done) creation streams.
-func (s *Server) userHasActiveCreationStreams(userID string) bool {
-	s.creationStreamsMu.Lock()
-	defer s.creationStreamsMu.Unlock()
-	for key, cs := range s.creationStreams {
-		if key.userID != userID || cs == nil {
-			continue
-		}
-		cs.mu.Lock()
-		done := cs.done
-		cs.mu.Unlock()
-		if !done {
-			return true
-		}
-	}
-	return false
-}
 
 // getActiveCreationHostnames returns the hostnames of active (non-done) creation streams for a user.
 func (s *Server) getActiveCreationHostnames(userID string) []string {

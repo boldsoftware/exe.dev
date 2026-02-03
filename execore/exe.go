@@ -2041,15 +2041,6 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 	return err
 }
 
-func (s *Server) rollbackBoxPreCreation(ctx context.Context, boxID int) error {
-	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		if err := queries.DeleteBoxIPShard(ctx, boxID); err != nil {
-			return err
-		}
-		return queries.DeleteBox(ctx, boxID)
-	})
-}
-
 // updateBoxWithContainer updates a box with container info and SSH keys after container creation
 func (s *Server) updateBoxWithContainer(ctx context.Context, boxID int, containerID, sshUser string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
 	return withTx1(s, ctx, (*exedb.Queries).UpdateBoxContainerAndStatus, exedb.UpdateBoxContainerAndStatusParams{

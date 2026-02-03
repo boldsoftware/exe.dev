@@ -447,31 +447,6 @@ func (s *Server) setupProxyServers() {
 	}
 }
 
-// isClientDisconnectError returns true for errors caused by client disconnects
-// (e.g., user navigated away, refreshed, or closed the connection).
-func isClientDisconnectError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, io.ErrShortWrite) {
-		return true
-	}
-	msg := err.Error()
-	disconnectPatterns := []string{
-		"http2: stream closed",
-		"broken pipe",
-		"connection reset by peer",
-		"client disconnected",
-		"connection timed out",
-	}
-	for _, pattern := range disconnectPatterns {
-		if strings.Contains(msg, pattern) {
-			return true
-		}
-	}
-	return false
-}
-
 // renderTemplate is a helper method that handles template parsing and execution
 func (s *Server) renderTemplate(ctx context.Context, w http.ResponseWriter, templateName string, data interface{}) error {
 	w.Header().Set("Content-Type", "text/html")
