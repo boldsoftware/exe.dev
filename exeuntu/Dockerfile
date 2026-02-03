@@ -47,7 +47,10 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 	# Allow non-root users to use ping without sudo by granting CAP_NET_RAW
 	setcap cap_net_raw=+ep /usr/bin/ping && \
 	fc-cache -f -v && \
-	apt-get clean
+	apt-get clean && \
+	# Remove policy-rc.d so services can start normally (the base image includes this
+	# to prevent services from starting during build, but we run systemd at runtime)
+	rm -f /usr/sbin/policy-rc.d
 
 # Install uv to /usr/local/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
