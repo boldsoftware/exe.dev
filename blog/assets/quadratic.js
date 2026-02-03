@@ -208,18 +208,22 @@ function renderCostSimulator(selector) {
     <div class="sim-controls" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px;">
       <div style="display: flex; flex-direction: column; gap: 4px;">
         <label style="font-size: 12px; color: #555;">Initial Prompt (cache write)</label>
+        <input type="range" id="sim-initialPrompt-range" value="10000" min="0" max="50000" step="1000" style="width: 100%;">
         <input type="number" id="sim-initialPrompt" value="10000" min="0" step="1000" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
       </div>
       <div style="display: flex; flex-direction: column; gap: 4px;">
         <label style="font-size: 12px; color: #555;">Input per Call (cache write)</label>
+        <input type="range" id="sim-inputPerCall-range" value="250" min="0" max="2000" step="50" style="width: 100%;">
         <input type="number" id="sim-inputPerCall" value="250" min="0" step="50" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
       </div>
       <div style="display: flex; flex-direction: column; gap: 4px;">
         <label style="font-size: 12px; color: #555;">Output per Call (tokens)</label>
+        <input type="range" id="sim-outputPerCall-range" value="100" min="0" max="2000" step="50" style="width: 100%;">
         <input type="number" id="sim-outputPerCall" value="100" min="0" step="50" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
       </div>
       <div style="display: flex; flex-direction: column; gap: 4px;">
         <label style="font-size: 12px; color: #555;">Final Context Length</label>
+        <input type="range" id="sim-finalContext-range" value="150000" min="10000" max="500000" step="10000" style="width: 100%;">
         <input type="number" id="sim-finalContext" value="150000" min="1000" step="10000" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
       </div>
     </div>
@@ -363,10 +367,16 @@ function renderCostSimulator(selector) {
     `;
   }
 
-  simulate();
-  container.querySelectorAll('input').forEach(input => {
-    input.addEventListener('input', simulate);
+  // Sync range and number inputs
+  const pairs = ['initialPrompt', 'inputPerCall', 'outputPerCall', 'finalContext'];
+  pairs.forEach(name => {
+    const range = document.getElementById(`sim-${name}-range`);
+    const number = document.getElementById(`sim-${name}`);
+    range.addEventListener('input', () => { number.value = range.value; simulate(); });
+    number.addEventListener('input', () => { range.value = number.value; simulate(); });
   });
+
+  simulate();
 }
 
 // Renders multi-conversation cumulative cost visualization
@@ -378,6 +388,7 @@ async function renderCostAt100k(jsonUrl, selector) {
   const spec = {
     $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
     data: { values: data },
+    transform: [{ filter: 'datum.turns >= 20' }],
     width: 500,
     height: 300,
     mark: { type: 'circle', size: 100, opacity: 0.7 },
@@ -430,85 +441,151 @@ async function renderConversationCosts(jsonUrl, selector) {
 
   const spec = {
     $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
-    params: [
+    vconcat: [
       {
-        name: 'hover',
-        select: {
-          type: 'point',
-          fields: ['conversation_id'],
-          on: 'pointerover',
-          clear: 'pointerout'
-        }
-      }
-    ],
-    hconcat: [
-      {
-        width: 340,
-        height: 250,
-        title: 'Total Cost',
-        layer: [
+        hconcat: [
           {
-            data: { values: data },
-            mark: { type: 'line', strokeWidth: 1.5 },
-            encoding: {
-              x: { field: 'monotonic_context', type: 'quantitative', title: 'Context Length', axis: { format: '~s' } },
-              y: { field: 'cum_cost_total', type: 'quantitative', title: 'Cumulative Cost ($)', axis: { format: '$,.0f' }, scale: { domain: [0, 30] } },
-              color: { field: 'conversation_id', type: 'nominal', legend: null },
-              opacity: { condition: { param: 'hover', empty: false, value: 1 }, value: 0.3 },
-              strokeWidth: { condition: { param: 'hover', empty: false, value: 6 }, value: 1 },
-              tooltip: [
-                { field: 'conversation_id', title: 'Conversation' },
-                { field: 'turn', title: 'Turn' },
-                { field: 'monotonic_context', title: 'Context', format: ',.0f' },
-                { field: 'cum_cost_total', title: 'Total Cost', format: '$,.2f' },
-                { field: 'cum_cost_cache_read', title: 'Cache Read Cost', format: '$,.2f' }
-              ]
-            }
+            width: 340,
+            height: 200,
+            title: 'Total Cost',
+            layer: [
+              {
+                data: { values: data },
+                params: [
+                  {
+                    name: 'hover',
+                    select: {
+                      type: 'point',
+                      fields: ['conversation_id'],
+                      on: 'pointerover',
+                      clear: 'pointerout'
+                    }
+                  }
+                ],
+                mark: { type: 'line', strokeWidth: 1.5 },
+                encoding: {
+                  x: { field: 'monotonic_context', type: 'quantitative', title: 'Context Length', axis: { format: '~s' } },
+                  y: { field: 'cum_cost_total', type: 'quantitative', title: 'Cumulative Cost ($)', axis: { format: '$,.0f' }, scale: { domain: [0, 30] } },
+                  color: { field: 'conversation_id', type: 'nominal', legend: null },
+                  opacity: { condition: { param: 'hover', empty: false, value: 1 }, value: 0.3 },
+                  strokeWidth: { condition: { param: 'hover', empty: false, value: 6 }, value: 1 },
+                  tooltip: [
+                    { field: 'conversation_id', title: 'Conversation' },
+                    { field: 'turn', title: 'Turn' },
+                    { field: 'monotonic_context', title: 'Context', format: ',.0f' },
+                    { field: 'cum_cost_total', title: 'Total Cost', format: '$,.2f' },
+                    { field: 'cum_cost_cache_read', title: 'Cache Read Cost', format: '$,.2f' }
+                  ]
+                }
+              },
+              {
+                data: { values: endpoints },
+                mark: { type: 'text', align: 'left', dx: 5, fontSize: 11 },
+                encoding: {
+                  x: { field: 'monotonic_context', type: 'quantitative' },
+                  y: { field: 'cum_cost_total', type: 'quantitative' },
+                  text: { field: 'cum_cost_total', format: '$,.2f' },
+                  opacity: { condition: { param: 'hover', empty: false, value: 1 }, value: 0 }
+                }
+              }
+            ]
           },
           {
-            data: { values: endpoints },
-            mark: { type: 'text', align: 'left', dx: 5, fontSize: 11 },
-            encoding: {
-              x: { field: 'monotonic_context', type: 'quantitative' },
-              y: { field: 'cum_cost_total', type: 'quantitative' },
-              text: { field: 'cum_cost_total', format: '$,.2f' },
-              opacity: { condition: { param: 'hover', empty: false, value: 1 }, value: 0 }
-            }
+            width: 340,
+            height: 200,
+            title: 'Cache Read Cost',
+            layer: [
+              {
+                data: { values: data },
+                mark: { type: 'line', strokeWidth: 1.5 },
+                encoding: {
+                  x: { field: 'monotonic_context', type: 'quantitative', title: 'Context Length', axis: { format: '~s' } },
+                  y: { field: 'cum_cost_cache_read', type: 'quantitative', title: 'Cumulative Cost ($)', axis: { format: '$,.0f' }, scale: { domain: [0, 30] } },
+                  color: { field: 'conversation_id', type: 'nominal', legend: null },
+                  opacity: { condition: { param: 'hover', empty: false, value: 1 }, value: 0.3 },
+                  strokeWidth: { condition: { param: 'hover', empty: false, value: 6 }, value: 1 },
+                  tooltip: [
+                    { field: 'conversation_id', title: 'Conversation' },
+                    { field: 'turn', title: 'Turn' },
+                    { field: 'monotonic_context', title: 'Context', format: ',.0f' },
+                    { field: 'cum_cost_total', title: 'Total Cost', format: '$,.2f' },
+                    { field: 'cum_cost_cache_read', title: 'Cache Read Cost', format: '$,.2f' }
+                  ]
+                }
+              },
+              {
+                data: { values: endpoints },
+                mark: { type: 'text', align: 'left', dx: 5, fontSize: 11 },
+                encoding: {
+                  x: { field: 'monotonic_context', type: 'quantitative' },
+                  y: { field: 'cum_cost_cache_read', type: 'quantitative' },
+                  text: { field: 'cum_cost_cache_read', format: '$,.2f' },
+                  opacity: { condition: { param: 'hover', empty: false, value: 1 }, value: 0 }
+                }
+              }
+            ]
           }
         ]
       },
       {
-        width: 340,
-        height: 250,
-        title: 'Cache Read Cost',
-        layer: [
+        hconcat: [
           {
-            data: { values: data },
-            mark: { type: 'line', strokeWidth: 1.5 },
-            encoding: {
-              x: { field: 'monotonic_context', type: 'quantitative', title: 'Context Length', axis: { format: '~s' } },
-              y: { field: 'cum_cost_cache_read', type: 'quantitative', title: 'Cumulative Cost ($)', axis: { format: '$,.0f' }, scale: { domain: [0, 30] } },
-              color: { field: 'conversation_id', type: 'nominal', legend: null },
-              opacity: { condition: { param: 'hover', empty: false, value: 1 }, value: 0.3 },
-              strokeWidth: { condition: { param: 'hover', empty: false, value: 6 }, value: 1 },
-              tooltip: [
-                { field: 'conversation_id', title: 'Conversation' },
-                { field: 'turn', title: 'Turn' },
-                { field: 'monotonic_context', title: 'Context', format: ',.0f' },
-                { field: 'cum_cost_total', title: 'Total Cost', format: '$,.2f' },
-                { field: 'cum_cost_cache_read', title: 'Cache Read Cost', format: '$,.2f' }
-              ]
-            }
+            width: 340,
+            height: 50,
+            title: 'Output Tokens per Turn',
+            layer: [
+              {
+                data: { values: data },
+                mark: { type: 'boxplot', color: 'steelblue', opacity: 0.2, size: 20, outliers: { size: 3, opacity: 0.05 } },
+                encoding: {
+                  x: {
+                    field: 'output_tokens',
+                    type: 'quantitative',
+                    title: 'Tokens',
+                    scale: { type: 'log', domain: [1, 10000] }
+                  }
+                }
+              },
+              {
+                data: { values: data },
+                transform: [{ filter: { param: 'hover', empty: true } }],
+                mark: { type: 'boxplot', color: 'steelblue', size: 20, outliers: { size: 5, opacity: 0.15 } },
+                encoding: {
+                  x: { field: 'output_tokens', type: 'quantitative' }
+                }
+              }
+            ]
           },
           {
-            data: { values: endpoints },
-            mark: { type: 'text', align: 'left', dx: 5, fontSize: 11 },
-            encoding: {
-              x: { field: 'monotonic_context', type: 'quantitative' },
-              y: { field: 'cum_cost_cache_read', type: 'quantitative' },
-              text: { field: 'cum_cost_cache_read', format: '$,.2f' },
-              opacity: { condition: { param: 'hover', empty: false, value: 1 }, value: 0 }
-            }
+            width: 340,
+            height: 50,
+            title: 'Cache Write Tokens per Turn',
+            layer: [
+              {
+                data: { values: data },
+                transform: [{ filter: 'datum.cache_creation_tokens > 0' }],
+                mark: { type: 'boxplot', color: 'orange', opacity: 0.2, size: 20, outliers: { size: 3, opacity: 0.05 } },
+                encoding: {
+                  x: {
+                    field: 'cache_creation_tokens',
+                    type: 'quantitative',
+                    title: 'Tokens',
+                    scale: { type: 'log', domain: [1, 200000] }
+                  }
+                }
+              },
+              {
+                data: { values: data },
+                transform: [
+                  { filter: 'datum.cache_creation_tokens > 0' },
+                  { filter: { param: 'hover', empty: true } }
+                ],
+                mark: { type: 'boxplot', color: 'orange', size: 20, outliers: { size: 5, opacity: 0.15 } },
+                encoding: {
+                  x: { field: 'cache_creation_tokens', type: 'quantitative' }
+                }
+              }
+            ]
           }
         ]
       }
