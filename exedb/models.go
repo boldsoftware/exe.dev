@@ -43,7 +43,7 @@ type BillingEvent struct {
 	ID        int64     `db:"id" json:"id"`
 	AccountID string    `db:"account_id" json:"account_id"`
 	EventType string    `db:"event_type" json:"event_type"`
-	EventAt   time.Time `db:"event_at" json:"event_at"`
+	EventAt   string    `db:"event_at" json:"event_at"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 }
 

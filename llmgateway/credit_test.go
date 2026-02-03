@@ -370,7 +370,7 @@ func TestPlanCategories(t *testing.T) {
 			}
 			return q.ActivateAccount(ctx, exedb.ActivateAccountParams{
 				CreatedBy: userID,
-				EventAt:   sqlite.NormalizeTime(time.Now()),
+				EventAt:   sqlite.FormatTime(time.Now()),
 			})
 		})
 		if err != nil {
@@ -487,7 +487,7 @@ func TestCreditManager_TopUpOnBillingUpgrade(t *testing.T) {
 		}
 		return q.ActivateAccount(ctx, exedb.ActivateAccountParams{
 			CreatedBy: userID,
-			EventAt:   sqlite.NormalizeTime(time.Now()),
+			EventAt:   sqlite.FormatTime(time.Now()),
 		})
 	})
 	if err != nil {
@@ -534,7 +534,7 @@ func TestCreditManager_TopUpOnBillingUpgrade_NoCreditRecord(t *testing.T) {
 		}
 		return q.ActivateAccount(ctx, exedb.ActivateAccountParams{
 			CreatedBy: userID,
-			EventAt:   sqlite.NormalizeTime(time.Now()),
+			EventAt:   sqlite.FormatTime(time.Now()),
 		})
 	})
 	if err != nil {

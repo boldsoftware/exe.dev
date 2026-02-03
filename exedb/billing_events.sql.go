@@ -8,11 +8,10 @@ package exedb
 import (
 	"context"
 	"database/sql"
-	"time"
 )
 
 const getLatestBillingStatus = `-- name: GetLatestBillingStatus :one
-SELECT event_type FROM billing_events WHERE account_id = ? ORDER BY parse_timestamp(event_at) DESC, id DESC LIMIT 1
+SELECT event_type FROM billing_events WHERE account_id = ? ORDER BY event_at DESC, id DESC LIMIT 1
 `
 
 func (q *Queries) GetLatestBillingStatus(ctx context.Context, accountID string) (string, error) {
@@ -27,13 +26,11 @@ INSERT OR IGNORE INTO billing_events (account_id, event_type, event_at) VALUES (
 `
 
 type InsertBillingEventParams struct {
-	AccountID string    `db:"account_id" json:"account_id"`
-	EventType string    `db:"event_type" json:"event_type"`
-	EventAt   time.Time `db:"event_at" json:"event_at"`
+	AccountID string `db:"account_id" json:"account_id"`
+	EventType string `db:"event_type" json:"event_type"`
+	EventAt   string `db:"event_at" json:"event_at"`
 }
 
-// event_at should be a string in Time10 format (YYYY-MM-DD HH:MM:SS.nnnnnnnnn-HH:MM)
-// to ensure consistent storage and comparison. Use sqlite.FormatTime(t) to format.
 func (q *Queries) InsertBillingEvent(ctx context.Context, arg InsertBillingEventParams) (sql.Result, error) {
 	return q.exec(ctx, q.insertBillingEventStmt, insertBillingEvent, arg.AccountID, arg.EventType, arg.EventAt)
 }

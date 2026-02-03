@@ -46,15 +46,13 @@ func (p *SubscriptionPoller) poll() {
 	since := time.Now().Add(-60 * 24 * time.Hour)
 
 	for e := range p.billing.SubscriptionEvents(p.ctx, since) {
-		// Normalize the Stripe event timestamp for consistent storage
-		eventAt := sqlite.NormalizeTime(e.EventAt)
 		var inserted bool
 		err := p.db.Tx(p.ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 			q := exedb.New(tx.Conn())
 			res, err := q.InsertBillingEvent(p.ctx, exedb.InsertBillingEventParams{
 				AccountID: e.AccountID,
 				EventType: e.EventType,
-				EventAt:   eventAt,
+				EventAt:   sqlite.FormatTime(e.EventAt),
 			})
 			if err != nil {
 				return err

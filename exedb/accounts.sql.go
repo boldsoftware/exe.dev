@@ -16,13 +16,12 @@ SELECT id, 'active', ?2 FROM accounts WHERE created_by = ?1
 `
 
 type ActivateAccountParams struct {
-	CreatedBy string    `db:"created_by" json:"created_by"`
-	EventAt   time.Time `db:"event_at" json:"event_at"`
+	CreatedBy string `db:"created_by" json:"created_by"`
+	EventAt   string `db:"event_at" json:"event_at"`
 }
 
 // ActivateAccount marks an account as active after Stripe checkout completes.
 // Inserts an 'active' billing event for the account owned by the given user.
-// Timestamp should be normalized to Time10 format by caller.
 func (q *Queries) ActivateAccount(ctx context.Context, arg ActivateAccountParams) error {
 	_, err := q.exec(ctx, q.activateAccountStmt, activateAccount, arg.CreatedBy, arg.EventAt)
 	return err
@@ -40,7 +39,7 @@ WHERE (
         AND e1.id = (
             SELECT e2.id FROM billing_events e2
             WHERE e2.account_id = a.id
-            ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
+            ORDER BY e2.event_at DESC, e2.id DESC
             LIMIT 1
         )
     )
@@ -84,7 +83,7 @@ SELECT a.id, a.created_by, a.created_at,
     CAST(COALESCE(
         (SELECT e.event_type FROM billing_events e
          WHERE e.account_id = a.id
-         ORDER BY parse_timestamp(e.event_at) DESC, e.id DESC LIMIT 1),
+         ORDER BY e.event_at DESC, e.id DESC LIMIT 1),
         'pending'
     ) AS TEXT) AS billing_status
 FROM accounts a WHERE a.created_by = ?
@@ -122,7 +121,7 @@ SELECT
             AND e.id = (
                 SELECT e2.id FROM billing_events e2
                 WHERE e2.account_id = a.id
-                ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
+                ORDER BY e2.event_at DESC, e2.id DESC
                 LIMIT 1
             )
         ) THEN 'active'
@@ -134,7 +133,7 @@ SELECT
             AND e.id = (
                 SELECT e2.id FROM billing_events e2
                 WHERE e2.account_id = a.id
-                ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
+                ORDER BY e2.event_at DESC, e2.id DESC
                 LIMIT 1
             )
         ) THEN 'canceled'
@@ -183,7 +182,7 @@ SELECT
             AND e.id = (
                 SELECT e2.id FROM billing_events e2
                 WHERE e2.account_id = a.id
-                ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
+                ORDER BY e2.event_at DESC, e2.id DESC
                 LIMIT 1
             )
         ) THEN 'has_billing'

@@ -25,6 +25,8 @@ sql:
             go_type: "bool"
           - column: "email_verifications.is_new_user"
             go_type: "bool"
+          - column: "billing_events.event_at"
+            go_type: "string"
         rename:
           box_ip_shard: "BoxIPShard"
           ip_shard: "IPShard"

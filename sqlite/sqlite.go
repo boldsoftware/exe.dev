@@ -17,7 +17,6 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -27,71 +26,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	sqlite "modernc.org/sqlite"
 )
-
-const (
-	// Time10 is the sqlite-compatible time format with nanosecond
-	// precision and time zone offset.
-	Time10 = "2006-01-02 15:04:05.999999999-07:00"
-)
-
-// NormalizeTime strips the monotonic clock reading from a time.Time and converts to UTC.
-// This ensures consistent storage in SQLite and proper timestamp comparisons.
-// The modernc.org/sqlite driver converts time.Time to string using time.String(),
-// which includes the monotonic clock reading (m=+...). We normalize to UTC and
-// strip the monotonic portion to ensure lexicographical comparisons work correctly.
-func NormalizeTime(t time.Time) time.Time {
-	// Round(0) strips the monotonic clock reading
-	return t.UTC().Round(0)
-}
-
-func init() {
-	// parse_timestamp(text) -> normalized UTC timestamp
-	// Parses various timestamp formats (including Go's time.String() format)
-	// and returns a SQLite-compatible datetime string.
-	sqlite.MustRegisterScalarFunction("parse_timestamp", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
-		if args[0] == nil {
-			return nil, nil
-		}
-		s, ok := args[0].(string)
-		if !ok {
-			return nil, fmt.Errorf("parse_timestamp: expected string, got %T", args[0])
-		}
-
-		// Strip monotonic clock reading if present (e.g., "m=+123.456")
-		// This appears at the end of time.String() output
-		if idx := strings.Index(s, " m="); idx > 0 {
-			s = s[:idx]
-		}
-
-		// Try parsing with various formats
-		formats := []string{
-			time.RFC3339,
-			time.RFC3339Nano,
-			"2006-01-02 15:04:05.999999999-07:00",     // Time10
-			"2006-01-02 15:04:05.999999999 -0700 MST", // Go time.String()
-			"2006-01-02 15:04:05 -0700 MST",           // Go time.String() without subseconds
-			"2006-01-02 15:04:05.999999999",           // Without timezone
-			"2006-01-02 15:04:05.999999",              // Microsecond precision
-			"2006-01-02 15:04:05",                     // SQLite's CURRENT_TIMESTAMP
-			"2006-01-02T15:04:05Z07:00",               // ISO8601
-		}
-
-		var parsedTime time.Time
-		var err error
-		for _, format := range formats {
-			parsedTime, err = time.Parse(format, s)
-			if err == nil {
-				// Successfully parsed - return normalized UTC timestamp in Time10 format
-				return parsedTime.UTC().Format(Time10), nil
-			}
-		}
-
-		// If all formats fail, return NULL so the query can handle it
-		return nil, nil
-	})
-}
 
 // TODO: add instrumentation, so we can measure how long we are waiting
 // for DB connections and see the slow points. E.g. add an HTTP handler.

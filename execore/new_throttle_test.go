@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"exe.dev/exedb"
+	"exe.dev/sqlite"
 )
 
 func TestNewThrottleConfig(t *testing.T) {
@@ -276,7 +277,7 @@ func TestCheckNewThrottleStripe(t *testing.T) {
 	}
 	if err = withTx1(s, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
 		CreatedBy: user.UserID,
-		EventAt:   time.Now(),
+		EventAt:   sqlite.FormatTime(time.Now()),
 	}); err != nil {
 		t.Fatal(err)
 	}
