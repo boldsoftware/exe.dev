@@ -146,6 +146,9 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
     		echo 'LogLevel=info' >> /etc/systemd/system.conf.d/container-overrides.conf && \
     		echo 'LogTarget=console' >> /etc/systemd/system.conf.d/container-overrides.conf && \
     		echo 'SystemCallArchitectures=native' >> /etc/systemd/system.conf.d/container-overrides.conf && \
+	mkdir -p /etc/systemd/journald.conf.d && \
+		echo '[Journal]' > /etc/systemd/journald.conf.d/persistent.conf && \
+		echo 'Storage=persistent' >> /etc/systemd/journald.conf.d/persistent.conf && \
 	systemctl set-default multi-user.target
 
 # Modify existing ubuntu user (UID 1000) to become exedev user
