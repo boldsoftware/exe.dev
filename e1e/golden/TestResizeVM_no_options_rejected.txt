@@ -10,7 +10,7 @@ resize BOX_NAME
 - help to see a list of commands
 
 PROMPT ▶ resize BOX_NAME
-usage: resize <vmname> [--memory=<size>] [--cpu=<count>]
-At least one of --memory or --cpu must be specified.
+usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]
+At least one of --memory, --cpu, or --disk must be specified.
 PROMPT ▶ exit
 Goodbye!

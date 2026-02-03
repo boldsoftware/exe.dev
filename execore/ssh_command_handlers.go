@@ -195,6 +195,7 @@ func resizeCommandFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("resize", flag.ContinueOnError)
 	fs.String("memory", "", "memory allocation (e.g., 4, 4GB, 8G)")
 	fs.Uint("cpu", 0, "number of CPUs")
+	fs.String("disk", "", "new total disk size (e.g., 25, 25GB) - must be larger than current size")
 	fs.Bool("json", false, "output in JSON format")
 	return fs
 }
@@ -360,19 +361,10 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:     ss.handleExeletsCommand,
 		},
 		{
-			Name:              "grow",
-			Hidden:            true,
-			Description:       "Grow a VM's disk (support only)",
-			Usage:             "grow <vmname> <size>",
-			HasPositionalArgs: true,
-			FlagSetFunc:       jsonOnlyFlags("grow"),
-			Handler:           ss.handleGrowCommand,
-		},
-		{
 			Name:              "resize",
 			Hidden:            true,
-			Description:       "Resize a VM's memory or CPU (support only)",
-			Usage:             "resize <vmname> [--memory=<size>] [--cpu=<count>]",
+			Description:       "Resize a VM's memory, CPU, or disk (support only)",
+			Usage:             "resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]",
 			HasPositionalArgs: true,
 			FlagSetFunc:       resizeCommandFlags,
 			Handler:           ss.handleResizeCommand,
@@ -2477,106 +2469,8 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 }
 
 const (
-	minDiskGrowth = 1 * 1024 * 1024 * 1024   // 1GB in bytes
-	maxDiskGrowth = 250 * 1024 * 1024 * 1024 // 250GB in bytes
+	maxDiskGrowth = 250 * 1024 * 1024 * 1024 // 250GB max growth in a single operation
 )
-
-func (ss *SSHServer) handleGrowCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	// Only support users can use this command
-	if !ss.server.UserHasExeSudo(ctx, cc.User.ID) {
-		return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", cc.User.Email)
-	}
-
-	if len(cc.Args) != 2 {
-		return cc.Errorf("usage: grow <vmname> <additional_size>\nSize is in GB (e.g., '10' for 10GB). Range: 1-250GB.")
-	}
-
-	boxName := ss.normalizeBoxName(cc.Args[0])
-	sizeArg := cc.Args[1]
-
-	// Parse size - if it's just a number, treat it as GB (default unit)
-	var additionalBytes uint64
-	var err error
-	// Try parsing as plain number first (treat as GB)
-	if _, parseErr := fmt.Sscanf(sizeArg, "%d", &additionalBytes); parseErr == nil {
-		additionalBytes *= 1024 * 1024 * 1024 // Convert GB to bytes
-	} else {
-		// Try parsing with unit suffix
-		additionalBytes, err = humanize.ParseBytes(sizeArg)
-		if err != nil {
-			return cc.Errorf("invalid size %q: %v", sizeArg, err)
-		}
-	}
-
-	if additionalBytes < minDiskGrowth {
-		return cc.Errorf("size must be at least 1GB")
-	}
-
-	if additionalBytes > maxDiskGrowth {
-		return cc.Errorf("size cannot exceed 250GB")
-	}
-
-	// Look up the box by name (support users can look up any box)
-	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxNamed, boxName)
-	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("VM %q not found", boxName)
-	}
-	if err != nil {
-		return cc.Errorf("failed to look up VM: %v", err)
-	}
-
-	if box.ContainerID == nil || *box.ContainerID == "" {
-		return cc.Errorf("VM %q has no container ID", boxName)
-	}
-
-	// Get the exelet client for this box's container host
-	exeletClient := ss.server.getExeletClient(box.Ctrhost)
-	if exeletClient == nil {
-		return cc.Errorf("no exelet client available for host %s", box.Ctrhost)
-	}
-
-	if !cc.WantJSON() {
-		cc.Writeln("Growing disk by %dGB...", additionalBytes/(1024*1024*1024))
-	}
-
-	// Call the exelet to grow the disk (expands the ZFS volume)
-	resp, err := exeletClient.client.GrowDisk(ctx, &api.GrowDiskRequest{
-		ID:              *box.ContainerID,
-		AdditionalBytes: additionalBytes,
-	})
-	if err != nil {
-		if st, ok := status.FromError(err); ok {
-			return cc.Errorf("failed to grow disk: %s", st.Message())
-		}
-		return cc.Errorf("failed to grow disk: %v", err)
-	}
-
-	oldSizeGB := fmt.Sprintf("%.1fGB", float64(resp.OldSize)/(1024*1024*1024))
-	newSizeGB := fmt.Sprintf("%.1fGB", float64(resp.NewSize)/(1024*1024*1024))
-
-	// Build result
-	if cc.WantJSON() {
-		result := map[string]any{
-			"vm_name":          boxName,
-			"volume_old_bytes": resp.OldSize,
-			"volume_new_bytes": resp.NewSize,
-		}
-		cc.WriteJSON(result)
-		return nil
-	}
-
-	// Human-readable output
-	// Note: Online resize doesn't work with cloud-hypervisor + ZFS zvols because
-	// the resize-disk API fails with EINVAL on block devices. The guest kernel
-	// won't see the new size until a reboot.
-	cc.Writeln("Volume grown from %s to %s", oldSizeGB, newSizeGB)
-	cc.Writeln("")
-	cc.Writeln("To use the new space:")
-	cc.Writeln("  1. Restart the VM: %s restart %s", ss.server.replSSHConnectionCommand(), boxName)
-	cc.Writeln("  2. Run resize2fs inside the VM: ssh %s sudo resize2fs /dev/vda", ss.server.env.BoxDest(boxName))
-
-	return nil
-}
 
 func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	// Only support users can use this command
@@ -2585,16 +2479,17 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	}
 
 	if len(cc.Args) != 1 {
-		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>]\nMemory is in GB (e.g., '8' for 8GB). CPU is the number of vCPUs.")
+		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nMemory/disk are in GB (e.g., '8' for 8GB). CPU is the number of vCPUs. Disk can only be grown, not shrunk.")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
 	memoryStr := cc.FlagSet.Lookup("memory").Value.String()
 	cpuVal, _ := strconv.ParseUint(cc.FlagSet.Lookup("cpu").Value.String(), 10, 64)
+	diskStr := cc.FlagSet.Lookup("disk").Value.String()
 
 	// Validate at least one option is specified
-	if memoryStr == "" && cpuVal == 0 {
-		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>]\nAt least one of --memory or --cpu must be specified.")
+	if memoryStr == "" && cpuVal == 0 && diskStr == "" {
+		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nAt least one of --memory, --cpu, or --disk must be specified.")
 	}
 
 	// Look up the box by name (support users can look up any box)
@@ -2616,83 +2511,149 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 		return cc.Errorf("no exelet client available for host %s", box.Ctrhost)
 	}
 
-	// Build the resize request
-	req := &api.ResizeVMRequest{
-		ID: *box.ContainerID,
-	}
-
-	// Parse and validate memory if specified
-	if memoryStr != "" {
-		memoryBytes, err := parseSize(memoryStr)
+	// Handle disk resize if specified
+	var diskGrowResult *api.GrowDiskResponse
+	if diskStr != "" {
+		newDiskSize, err := parseSize(diskStr)
 		if err != nil {
-			return cc.Errorf("invalid --memory value: %s", err)
+			return cc.Errorf("invalid --disk value: %s", err)
 		}
-		if memoryBytes < stage.MinMemory {
-			return cc.Errorf("--memory must be at least %s", humanize.Bytes(stage.MinMemory))
+
+		// Get current instance to check current disk size
+		instanceResp, err := exeletClient.client.GetInstance(ctx, &api.GetInstanceRequest{
+			ID: *box.ContainerID,
+		})
+		if err != nil {
+			if st, ok := status.FromError(err); ok {
+				return cc.Errorf("failed to get instance info: %s", st.Message())
+			}
+			return cc.Errorf("failed to get instance info: %v", err)
 		}
-		if memoryBytes > stage.SupportMaxMemory {
-			return cc.Errorf("--memory cannot exceed %s", humanize.Bytes(stage.SupportMaxMemory))
+
+		currentDiskSize := instanceResp.Instance.VMConfig.Disk
+		if newDiskSize <= currentDiskSize {
+			return cc.Errorf("--disk must be larger than current size (%s)", humanize.Bytes(currentDiskSize))
 		}
-		req.Memory = &memoryBytes
+
+		additionalBytes := newDiskSize - currentDiskSize
+		if additionalBytes > maxDiskGrowth {
+			return cc.Errorf("disk growth cannot exceed %s in a single operation", humanize.Bytes(maxDiskGrowth))
+		}
+
+		if !cc.WantJSON() {
+			cc.Writeln("Growing disk to %s...", humanize.Bytes(newDiskSize))
+		}
+
+		diskGrowResult, err = exeletClient.client.GrowDisk(ctx, &api.GrowDiskRequest{
+			ID:              *box.ContainerID,
+			AdditionalBytes: additionalBytes,
+		})
+		if err != nil {
+			if st, ok := status.FromError(err); ok {
+				return cc.Errorf("failed to grow disk: %s", st.Message())
+			}
+			return cc.Errorf("failed to grow disk: %v", err)
+		}
 	}
 
-	// Validate CPU if specified
-	if cpuVal > 0 {
-		if cpuVal < stage.MinCPUs {
-			return cc.Errorf("--cpu must be at least %d", stage.MinCPUs)
+	// Handle memory/CPU resize if specified
+	var resizeResult *api.ResizeVMResponse
+	if memoryStr != "" || cpuVal > 0 {
+		req := &api.ResizeVMRequest{
+			ID: *box.ContainerID,
 		}
-		if cpuVal > stage.SupportMaxCPUs {
-			return cc.Errorf("--cpu cannot exceed %d", stage.SupportMaxCPUs)
-		}
-		req.CPUs = &cpuVal
-	}
 
-	if !cc.WantJSON() {
-		var changes []string
-		if req.Memory != nil {
-			changes = append(changes, fmt.Sprintf("memory to %s", humanize.Bytes(*req.Memory)))
+		// Parse and validate memory if specified
+		if memoryStr != "" {
+			memoryBytes, err := parseSize(memoryStr)
+			if err != nil {
+				return cc.Errorf("invalid --memory value: %s", err)
+			}
+			if memoryBytes < stage.MinMemory {
+				return cc.Errorf("--memory must be at least %s", humanize.Bytes(stage.MinMemory))
+			}
+			if memoryBytes > stage.SupportMaxMemory {
+				return cc.Errorf("--memory cannot exceed %s", humanize.Bytes(stage.SupportMaxMemory))
+			}
+			req.Memory = &memoryBytes
 		}
-		if req.CPUs != nil {
-			changes = append(changes, fmt.Sprintf("CPU to %d", *req.CPUs))
-		}
-		cc.Writeln("Resizing %s...", strings.Join(changes, " and "))
-	}
 
-	// Call the exelet to resize the VM
-	resp, err := exeletClient.client.ResizeVM(ctx, req)
-	if err != nil {
-		if st, ok := status.FromError(err); ok {
-			return cc.Errorf("failed to resize VM: %s", st.Message())
+		// Validate CPU if specified
+		if cpuVal > 0 {
+			if cpuVal < stage.MinCPUs {
+				return cc.Errorf("--cpu must be at least %d", stage.MinCPUs)
+			}
+			if cpuVal > stage.SupportMaxCPUs {
+				return cc.Errorf("--cpu cannot exceed %d", stage.SupportMaxCPUs)
+			}
+			req.CPUs = &cpuVal
 		}
-		return cc.Errorf("failed to resize VM: %v", err)
+
+		if !cc.WantJSON() {
+			var changes []string
+			if req.Memory != nil {
+				changes = append(changes, fmt.Sprintf("memory to %s", humanize.Bytes(*req.Memory)))
+			}
+			if req.CPUs != nil {
+				changes = append(changes, fmt.Sprintf("CPU to %d", *req.CPUs))
+			}
+			cc.Writeln("Resizing %s...", strings.Join(changes, " and "))
+		}
+
+		// Call the exelet to resize the VM
+		resizeResult, err = exeletClient.client.ResizeVM(ctx, req)
+		if err != nil {
+			if st, ok := status.FromError(err); ok {
+				return cc.Errorf("failed to resize VM: %s", st.Message())
+			}
+			return cc.Errorf("failed to resize VM: %v", err)
+		}
 	}
 
 	// Build result
 	if cc.WantJSON() {
 		result := map[string]any{
-			"vm_name":    boxName,
-			"old_memory": resp.OldMemory,
-			"new_memory": resp.NewMemory,
-			"old_cpus":   resp.OldCPUs,
-			"new_cpus":   resp.NewCPUs,
+			"vm_name": boxName,
+		}
+		if resizeResult != nil {
+			result["old_memory"] = resizeResult.OldMemory
+			result["new_memory"] = resizeResult.NewMemory
+			result["old_cpus"] = resizeResult.OldCPUs
+			result["new_cpus"] = resizeResult.NewCPUs
+		}
+		if diskGrowResult != nil {
+			result["disk_old_bytes"] = diskGrowResult.OldSize
+			result["disk_new_bytes"] = diskGrowResult.NewSize
 		}
 		cc.WriteJSON(result)
 		return nil
 	}
 
 	// Human-readable output
-	oldMemoryGB := fmt.Sprintf("%.1fGB", float64(resp.OldMemory)/(1024*1024*1024))
-	newMemoryGB := fmt.Sprintf("%.1fGB", float64(resp.NewMemory)/(1024*1024*1024))
+	if resizeResult != nil {
+		if resizeResult.OldMemory != resizeResult.NewMemory {
+			oldMemoryGB := fmt.Sprintf("%.1fGB", float64(resizeResult.OldMemory)/(1024*1024*1024))
+			newMemoryGB := fmt.Sprintf("%.1fGB", float64(resizeResult.NewMemory)/(1024*1024*1024))
+			cc.Writeln("Memory: %s -> %s", oldMemoryGB, newMemoryGB)
+		}
+		if resizeResult.OldCPUs != resizeResult.NewCPUs {
+			cc.Writeln("CPUs: %d -> %d", resizeResult.OldCPUs, resizeResult.NewCPUs)
+		}
+	}
 
-	if resp.OldMemory != resp.NewMemory {
-		cc.Writeln("Memory: %s -> %s", oldMemoryGB, newMemoryGB)
+	if diskGrowResult != nil {
+		oldSizeGB := fmt.Sprintf("%.1fGB", float64(diskGrowResult.OldSize)/(1024*1024*1024))
+		newSizeGB := fmt.Sprintf("%.1fGB", float64(diskGrowResult.NewSize)/(1024*1024*1024))
+		cc.Writeln("Disk: %s -> %s", oldSizeGB, newSizeGB)
 	}
-	if resp.OldCPUs != resp.NewCPUs {
-		cc.Writeln("CPUs: %d -> %d", resp.OldCPUs, resp.NewCPUs)
-	}
+
 	cc.Writeln("")
 	cc.Writeln("Configuration updated. Restart the VM to apply changes:")
 	cc.Writeln("  %s restart %s", ss.server.replSSHConnectionCommand(), boxName)
+	if diskGrowResult != nil {
+		cc.Writeln("After restart, run resize2fs inside the VM:")
+		cc.Writeln("  ssh %s sudo resize2fs /dev/vda", ss.server.env.BoxDest(boxName))
+	}
 
 	return nil
 }

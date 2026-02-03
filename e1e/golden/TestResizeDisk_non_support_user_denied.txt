@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+resize BOX_NAME --disk=20
+
+- help to see a list of commands
+
+PROMPT ▶ resize BOX_NAME --disk=20
+owner@test-resize-disk.example is not in the sudoers file. This incident will be reported.
+PROMPT ▶ exit
+Goodbye!

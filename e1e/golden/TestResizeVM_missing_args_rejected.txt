@@ -10,7 +10,7 @@ resize
 - help to see a list of commands
 
 PROMPT ▶ resize
-usage: resize <vmname> [--memory=<size>] [--cpu=<count>]
-Memory is in GB (e.g., '8' for 8GB). CPU is the number of vCPUs.
+usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]
+Memory/disk are in GB (e.g., '8' for 8GB). CPU is the number of vCPUs. Disk can only be grown, not shrunk.
 PROMPT ▶ exit
 Goodbye!

@@ -12,6 +12,175 @@ import (
 	"exe.dev/e1e/testinfra"
 )
 
+// TestResizeDisk tests the resize --disk command end-to-end.
+func TestResizeDisk(t *testing.T) {
+	t.Parallel()
+	noGolden(t)
+
+	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, "owner@test-resize-disk.example")
+	supportPTY, _, supportKeyFile, supportEmail := registerForExeDevWithEmail(t, "support@test-resize-disk.example")
+
+	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
+	ownerPTY.wantPrompt()
+	ownerPTY.disconnect()
+
+	waitForSSH(t, box, ownerKeyFile)
+
+	// Test that non-support user cannot use resize --disk
+	t.Run("non_support_user_denied", func(t *testing.T) {
+		ownerPTY = sshToExeDev(t, ownerKeyFile)
+		ownerPTY.sendLine(fmt.Sprintf("resize %s --disk=20", box))
+		ownerPTY.want("not in the sudoers file")
+		ownerPTY.wantPrompt()
+		ownerPTY.disconnect()
+	})
+
+	enableRootSupport(t, supportEmail)
+
+	// Get initial filesystem size and volume size
+	var initialFSBytes uint64
+	var initialVolumeBytes uint64
+	t.Run("get_initial_size", func(t *testing.T) {
+		out, err := boxSSHCommand(t, box, ownerKeyFile, "df", "--block-size=1", "--output=size", "/").CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to get initial disk size: %v\n%s", err, out)
+		}
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		if len(lines) < 2 {
+			t.Fatalf("unexpected df output: %s", out)
+		}
+		if _, err := fmt.Sscanf(strings.TrimSpace(lines[1]), "%d", &initialFSBytes); err != nil {
+			t.Fatalf("failed to parse df output: %v\n%s", err, out)
+		}
+		t.Logf("Initial filesystem size: %d bytes (%.2f GB)", initialFSBytes, float64(initialFSBytes)/(1024*1024*1024))
+
+		// Get volume size from block device
+		out, err = boxSSHCommand(t, box, ownerKeyFile, "sudo", "blockdev", "--getsize64", "/dev/vda").CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to get block device size: %v\n%s", err, out)
+		}
+		if _, err := fmt.Sscanf(string(out), "%d", &initialVolumeBytes); err != nil {
+			t.Fatalf("failed to parse blockdev output: %v\n%s", err, out)
+		}
+		t.Logf("Initial volume size: %d bytes (%.2f GB)", initialVolumeBytes, float64(initialVolumeBytes)/(1024*1024*1024))
+	})
+
+	// Test resize --disk (specifying new total size = current + 1GB)
+	var diskNewBytes uint64
+	t.Run("resize_disk", func(t *testing.T) {
+		// Calculate new size: round up current to nearest GB and add 1GB
+		newSizeGB := (initialVolumeBytes/(1024*1024*1024) + 1) + 1
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), supportKeyFile, "resize", box, fmt.Sprintf("--disk=%d", newSizeGB), "--json")
+		if err != nil {
+			t.Fatalf("resize --disk failed: %v\n%s", err, out)
+		}
+
+		var result struct {
+			VMName       string `json:"vm_name"`
+			DiskOldBytes uint64 `json:"disk_old_bytes"`
+			DiskNewBytes uint64 `json:"disk_new_bytes"`
+		}
+		if err := json.Unmarshal(out, &result); err != nil {
+			t.Fatalf("failed to parse JSON: %v\n%s", err, out)
+		}
+
+		if result.DiskNewBytes <= result.DiskOldBytes {
+			t.Errorf("disk did not grow: old=%d, new=%d", result.DiskOldBytes, result.DiskNewBytes)
+		}
+
+		// Verify new size matches what we requested
+		expectedNewSize := newSizeGB * 1024 * 1024 * 1024
+		if result.DiskNewBytes != expectedNewSize {
+			t.Errorf("unexpected new disk size: got %d, want %d", result.DiskNewBytes, expectedNewSize)
+		}
+
+		diskNewBytes = result.DiskNewBytes
+		t.Logf("Disk grew from %d to %d bytes", result.DiskOldBytes, result.DiskNewBytes)
+	})
+
+	// Restart VM
+	t.Run("restart_vm", func(t *testing.T) {
+		repl := sshToExeDev(t, ownerKeyFile)
+		repl.sendLine("restart " + box)
+		repl.want("Restarting")
+		repl.want("restarted successfully")
+		repl.wantPrompt()
+		repl.disconnect()
+		waitForSSH(t, box, ownerKeyFile)
+	})
+
+	// Verify kernel sees new disk size
+	t.Run("verify_kernel_sees_new_size", func(t *testing.T) {
+		out, err := boxSSHCommand(t, box, ownerKeyFile, "sudo", "blockdev", "--getsize64", "/dev/vda").CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to get block device size: %v\n%s", err, out)
+		}
+		var kernelSize uint64
+		if _, err := fmt.Sscanf(string(out), "%d", &kernelSize); err != nil {
+			t.Fatalf("failed to parse blockdev output: %v\n%s", err, out)
+		}
+		t.Logf("Kernel sees disk size: %d bytes (%.2f GB)", kernelSize, float64(kernelSize)/(1024*1024*1024))
+		if kernelSize < diskNewBytes-1024*1024 {
+			t.Errorf("kernel does not see full disk size: kernel=%d, volume=%d", kernelSize, diskNewBytes)
+		}
+	})
+
+	// Run resize2fs
+	t.Run("resize_filesystem", func(t *testing.T) {
+		out, err := boxSSHCommand(t, box, ownerKeyFile, "sudo", "resize2fs", "/dev/vda").CombinedOutput()
+		if err != nil {
+			t.Fatalf("resize2fs failed: %v\n%s", err, out)
+		}
+		t.Logf("resize2fs output: %s", out)
+	})
+
+	// Verify filesystem grew
+	t.Run("verify_filesystem_grew", func(t *testing.T) {
+		out, err := boxSSHCommand(t, box, ownerKeyFile, "df", "--block-size=1", "--output=size", "/").CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to get final disk size: %v\n%s", err, out)
+		}
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		if len(lines) < 2 {
+			t.Fatalf("unexpected df output: %s", out)
+		}
+		var finalSize uint64
+		if _, err := fmt.Sscanf(strings.TrimSpace(lines[1]), "%d", &finalSize); err != nil {
+			t.Fatalf("failed to parse df output: %v\n%s", err, out)
+		}
+		t.Logf("Final filesystem size: %d bytes (%.2f GB)", finalSize, float64(finalSize)/(1024*1024*1024))
+		if finalSize <= initialFSBytes {
+			t.Errorf("filesystem did not grow: initial=%d, final=%d", initialFSBytes, finalSize)
+		}
+		minExpectedSize := uint64(float64(diskNewBytes) * 0.90)
+		if finalSize < minExpectedSize {
+			t.Errorf("filesystem size %d is too small compared to volume size %d", finalSize, diskNewBytes)
+		}
+	})
+
+	// Test disk limits - trying to grow by more than 250GB in one operation
+	t.Run("disk_growth_limit_enforced", func(t *testing.T) {
+		supportPTY = sshToExeDev(t, supportKeyFile)
+		// Current disk is ~12GB, asking for 300GB would be ~288GB growth which exceeds 250GB limit
+		supportPTY.sendLine(fmt.Sprintf("resize %s --disk=300", box))
+		supportPTY.want("cannot exceed")
+		supportPTY.wantPrompt()
+		supportPTY.disconnect()
+	})
+
+	// Test that shrinking is not allowed
+	t.Run("shrink_not_allowed", func(t *testing.T) {
+		supportPTY = sshToExeDev(t, supportKeyFile)
+		// Try to shrink to 5GB when current is ~12GB
+		supportPTY.sendLine(fmt.Sprintf("resize %s --disk=5", box))
+		supportPTY.want("must be larger than current size")
+		supportPTY.wantPrompt()
+		supportPTY.disconnect()
+	})
+
+	cleanupBox(t, ownerKeyFile, box)
+}
+
 // TestResizeVM tests the resize command end-to-end.
 // This verifies that support users can resize the memory and CPU of a VM.
 func TestResizeVM(t *testing.T) {

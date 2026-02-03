@@ -4,12 +4,12 @@
 ● ssh localhost
 ●
 
-grow BOX_NAME 300
+resize BOX_NAME --disk=5
 
 - new to create your first VM
 - help to see a list of commands
 
-PROMPT ▶ grow BOX_NAME 300
-size cannot exceed 250GB
+PROMPT ▶ resize BOX_NAME --disk=5
+--disk must be larger than current size (13 GB)
 PROMPT ▶ exit
 Goodbye!
