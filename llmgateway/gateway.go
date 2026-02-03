@@ -132,7 +132,8 @@ func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, userMsg s
 	switch {
 	case strings.Contains(errStr, "stream error"),
 		strings.Contains(errStr, "unexpected end of JSON"),
-		strings.Contains(errStr, "stream closed"):
+		strings.Contains(errStr, "stream closed"),
+		strings.Contains(errStr, "client disconnected"):
 		// Client cancelled request (HTTP/2 stream cancel). Not an error.
 		logger = m.log.InfoContext
 	case code == http.StatusPaymentRequired:
