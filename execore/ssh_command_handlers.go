@@ -2222,16 +2222,16 @@ func scpToBox(ctx context.Context, pool *sshpool2.Pool, box *exedb.Box, content 
 
 	// Write content to temp file
 	writeCmd := fmt.Sprintf("cat > %s && chmod %04o %s", tmpPath, mode, tmpPath)
-	if _, err := runCommandOnBoxWithStdin(ctx, pool, box, writeCmd, content); err != nil {
+	if output, err := runCommandOnBoxWithStdin(ctx, pool, box, writeCmd, content); err != nil {
 		cleanup()
-		return err
+		return fmt.Errorf("write to temp file failed: cmd=%q output=%q: %w", writeCmd, output, err)
 	}
 
 	// Move to final destination with sudo
 	mvCmd := fmt.Sprintf("sudo mv %s %s", tmpPath, quotedDest)
-	if _, err := runCommandOnBox(ctx, pool, box, mvCmd); err != nil {
+	if output, err := runCommandOnBox(ctx, pool, box, mvCmd); err != nil {
 		cleanup()
-		return err
+		return fmt.Errorf("move to destination failed: cmd=%q output=%q: %w", mvCmd, output, err)
 	}
 	return nil
 }
