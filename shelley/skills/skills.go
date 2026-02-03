@@ -306,41 +306,39 @@ func ToPromptXML(skills []Skill) string {
 func DefaultDirs() []string {
 	dirs := []string{}
 
-	// User-level skills from ~/.config/shelley/ (XDG convention)
-	// We scan all subdirectories of ~/.config/shelley/ for skills
-	if home, err := os.UserHomeDir(); err == nil {
-		configDir := filepath.Join(home, ".config", "shelley")
-		if entries, err := os.ReadDir(configDir); err == nil {
-			for _, entry := range entries {
-				if entry.IsDir() {
-					subdir := filepath.Join(configDir, entry.Name())
-					// Check if this directory contains skills (has subdirs with SKILL.md)
-					// or is itself a skill directory
-					if findSkillMD(subdir) != "" {
-						// This is a skill directory itself, add parent
-						dirs = append(dirs, configDir)
-						break
-					}
-					// Otherwise check if it's a container of skills
-					if hasSkillSubdirs(subdir) {
-						dirs = append(dirs, subdir)
-					}
-				}
-			}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return dirs
+	}
+
+	// Search these directories for skills:
+	// 1. ~/.config/shelley/ (XDG convention for Shelley)
+	// 2. ~/.config/agents/skills (shared agents skills directory)
+	// 3. ~/.shelley/ (legacy location)
+	candidateDirs := []string{
+		filepath.Join(home, ".config", "shelley"),
+		filepath.Join(home, ".config", "agents", "skills"),
+		filepath.Join(home, ".shelley"),
+	}
+
+	for _, candidateDir := range candidateDirs {
+		entries, err := os.ReadDir(candidateDir)
+		if err != nil {
+			continue
 		}
-		// Also check legacy ~/.shelley/ location
-		shelleyDir := filepath.Join(home, ".shelley")
-		if entries, err := os.ReadDir(shelleyDir); err == nil {
-			for _, entry := range entries {
-				if entry.IsDir() {
-					subdir := filepath.Join(shelleyDir, entry.Name())
-					if findSkillMD(subdir) != "" {
-						dirs = append(dirs, shelleyDir)
-						break
-					}
-					if hasSkillSubdirs(subdir) {
-						dirs = append(dirs, subdir)
-					}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				subdir := filepath.Join(candidateDir, entry.Name())
+				// Check if this directory contains skills (has subdirs with SKILL.md)
+				// or is itself a skill directory
+				if findSkillMD(subdir) != "" {
+					// This is a skill directory itself, add parent
+					dirs = append(dirs, candidateDir)
+					break
+				}
+				// Otherwise check if it's a container of skills
+				if hasSkillSubdirs(subdir) {
+					dirs = append(dirs, subdir)
 				}
 			}
 		}
