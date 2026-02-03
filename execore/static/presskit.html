@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Press Kit - exe.dev</title>
+    <meta
+      name="description"
+      content="Brand assets and media resources for exe.dev"
+    />
+    <link rel="canonical" href="https://exe.dev/presskit" />
+    <meta property="og:title" content="Press Kit - exe.dev" />
+    <meta
+      property="og:description"
+      content="Brand assets and media resources for exe.dev"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://exe.dev/presskit" />
+    <meta property="og:site_name" content="exe.dev" />
+    <link rel="stylesheet" href="exe.css" />
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 60px 20px;
+      }
+      main {
+        text-align: left;
+      }
+      main > p {
+        max-width: 720px;
+        margin: 0 auto 1.5em;
+        line-height: 1.7;
+        color: #333;
+      }
+      h2 {
+        font-size: 28px;
+        font-weight: normal;
+        margin: 60px 0 24px;
+        color: #000;
+      }
+      .resources {
+        list-style: none;
+        margin: 32px 0;
+        padding: 0;
+      }
+      .resources li {
+        margin: 12px 0;
+        font-size: 20px;
+      }
+      .resources li::before {
+        content: "→";
+        margin-right: 12px;
+        opacity: 0.4;
+      }
+      .resources a {
+        color: #000;
+        text-decoration: none;
+      }
+      .resources a:hover {
+        text-decoration: underline;
+      }
+      .asset-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 32px;
+        margin: 24px 0 40px;
+      }
+      .asset-card {
+        text-align: center;
+      }
+      .asset-card img {
+        max-width: 100%;
+        height: 120px;
+        object-fit: contain;
+        margin-bottom: 12px;
+        background: rgba(0, 0, 0, 0.02);
+        border-radius: 8px;
+        padding: 16px;
+      }
+      .asset-card .asset-name {
+        font-size: 14px;
+        font-weight: 600;
+        color: #000;
+        margin-bottom: 4px;
+      }
+      .asset-card .asset-links {
+        font-size: 13px;
+      }
+      .asset-card .asset-links a {
+        color: #333;
+        text-decoration: none;
+        margin: 0 4px;
+      }
+      .asset-card .asset-links a:hover {
+        text-decoration: underline;
+      }
+      @media (max-width: 600px) {
+        h2 {
+          font-size: 24px;
+        }
+        .asset-grid {
+          grid-template-columns: repeat(2, 1fr);
+          gap: 20px;
+        }
+        .asset-card img {
+          height: 80px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Press Kit</h1>
+
+      <p>
+        Brand assets and resources for press coverage of exe.dev. For press
+        inquiries, contact <a href="mailto:press@exe.dev">press@exe.dev</a>.
+      </p>
+
+      <ul class="resources">
+        <li><a href="/docs">Documentation</a></li>
+        <li><a href="/blog">Blog</a></li>
+      </ul>
+
+      <h2>Exy</h2>
+
+      <div class="asset-grid">
+        <div class="asset-card">
+          <img src="/static/exy.png" alt="Exy mascot" />
+          <div class="asset-name">Exy</div>
+          <div class="asset-links">
+            <a href="/static/exy.png">PNG</a>
+            <a href="/static/exy.webp">WebP</a>
+          </div>
+        </div>
+        <div class="asset-card">
+          <img src="/static/exy-beret.png" alt="Exy with beret" />
+          <div class="asset-name">Exy Beret</div>
+          <div class="asset-links">
+            <a href="/static/exy-beret.png">PNG</a>
+            <a href="/static/exy-beret.webp">WebP</a>
+          </div>
+        </div>
+        <div class="asset-card">
+          <img src="/static/exy-hardhat.png" alt="Exy with hardhat" />
+          <div class="asset-name">Exy Hardhat</div>
+          <div class="asset-links">
+            <a href="/static/exy-hardhat.png">PNG</a>
+            <a href="/static/exy-hardhat.webp">WebP</a>
+          </div>
+        </div>
+        <div class="asset-card">
+          <img src="/static/exy-tophat.png" alt="Exy with top hat" />
+          <div class="asset-name">Exy Top Hat</div>
+          <div class="asset-links">
+            <a href="/static/exy-tophat.png">PNG</a>
+            <a href="/static/exy-tophat.webp">WebP</a>
+          </div>
+        </div>
+        <div class="asset-card">
+          <img src="/static/exy-vest.png" alt="Exy with vest" />
+          <div class="asset-name">Exy Vest</div>
+          <div class="asset-links">
+            <a href="/static/exy-vest.png">PNG</a>
+            <a href="/static/exy-vest.webp">WebP</a>
+          </div>
+        </div>
+        <div class="asset-card">
+          <img src="/static/exy-bowl.png" alt="Exy with bowl" />
+          <div class="asset-name">Exy Bowl</div>
+          <div class="asset-links">
+            <a href="/static/exy-bowl.png">PNG</a>
+          </div>
+        </div>
+      </div>
+
+      <hr />
+
+      <nav>
+        <a href="/about">about</a>
+        <a href="/blog">blog</a>
+        <a href="/jobs">jobs</a>
+      </nav>
+    </main>
+  </body>
+</html>

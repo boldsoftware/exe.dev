@@ -705,6 +705,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleLovePage(w, r)
 	case "/jobs":
 		s.serveStaticFile(w, r, "jobs.html")
+	case "/presskit":
+		s.serveStaticFile(w, r, "presskit.html")
 	case "/shelley":
 		s.serveStaticFile(w, r, "shelley.html")
 	case "/verify-email":
