@@ -10,7 +10,7 @@ on:
 
 jobs:
   test-non-e1e:
-    runs-on: [self-hosted, linux, x64, libvirt]
+    runs-on: linux-x64-ubuntu-latest-8-core
     steps:
       - name: Checkout
         uses: actions/checkout@v6

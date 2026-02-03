@@ -151,11 +151,6 @@ func TestNavigateTool(t *testing.T) {
 		t.Skip("skipping navigate tool test in short mode")
 	}
 
-	// Skip on ci.bold.dev where chromium snap doesn't work in cgroups
-	if hostname, _ := os.Hostname(); strings.Contains(hostname, "bold.dev") {
-		t.Skip("skipping browser test on ci.bold.dev")
-	}
-
 	// Create browser tools instance
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
