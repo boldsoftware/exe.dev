@@ -263,8 +263,10 @@ jobs:
           git config --global user.email "bot@exe.dev"
 
           # Set up HTTPS remotes with app token for shelley and exeuntu
-          git remote add shelley "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/shelley.git"
-          git remote add exeuntu "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exeuntu.git"
+          git remote set-url shelley "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/shelley.git" 2>/dev/null || \
+            git remote add shelley "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/shelley.git"
+          git remote set-url exeuntu "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exeuntu.git" 2>/dev/null || \
+            git remote add exeuntu "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exeuntu.git"
 
           # Try to rebase onto main and push
           git fetch origin main
