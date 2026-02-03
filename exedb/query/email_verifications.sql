@@ -2,8 +2,8 @@
 DELETE FROM email_verifications WHERE token = ?;
 
 -- name: InsertEmailVerification :exec
-INSERT INTO email_verifications (token, email, user_id, expires_at, verification_code, invite_code_id)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO email_verifications (token, email, user_id, expires_at, verification_code, invite_code_id, is_new_user)
+VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetEmailVerificationByToken :one
 SELECT * FROM email_verifications

@@ -1639,12 +1639,12 @@ func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) 
 	return row, nil
 }
 
-// validateEmailVerificationToken validates an email verification token, consumes it, and returns the user ID.
+// validateEmailVerificationToken validates an email verification token, consumes it, and returns the verification record.
 // If the verification has an associated invite code, it applies the invite code to the user.
-func (s *Server) validateEmailVerificationToken(ctx context.Context, token string) (string, error) {
+func (s *Server) validateEmailVerificationToken(ctx context.Context, token string) (exedb.EmailVerification, error) {
 	row, err := s.checkEmailVerificationToken(ctx, token)
 	if err != nil {
-		return "", err
+		return exedb.EmailVerification{}, err
 	}
 
 	// Apply invite code if one was associated with this verification
@@ -1665,7 +1665,7 @@ func (s *Server) validateEmailVerificationToken(ctx context.Context, token strin
 	// Clean up used token - use context.WithoutCancel to ensure cleanup completes even if client disconnects
 	withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).DeleteEmailVerificationByToken, token)
 
-	return row.UserID, nil
+	return row, nil
 }
 
 // storeEmailVerification stores an email verification token.

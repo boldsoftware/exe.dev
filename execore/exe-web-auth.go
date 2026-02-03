@@ -76,6 +76,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 	// Track the verified email and user ID for the success page
 	var verifiedEmail string
 	var verifiedUserID string
+	var isNewUser bool
 
 	// First check if this is an SSH session token (in-memory)
 	verification := s.lookUpEmailVerification(token)
@@ -127,23 +128,24 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 	} else {
 		// Not an SSH token, check database for HTTP auth token
 		// Try to validate as database token
-		userID, err := s.validateEmailVerificationToken(r.Context(), token)
+		emailVerif, err := s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
 			s.slog().InfoContext(r.Context(), "invalid email verification token during verification", "error", err, "token", token, "remote_addr", r.RemoteAddr)
 			s.render401(w, r, unauthorizedData{InvalidToken: true})
 			return
 		}
-		verifiedUserID = userID
-		s.slackFeed.EmailVerified(r.Context(), userID)
+		verifiedUserID = emailVerif.UserID
+		isNewUser = emailVerif.IsNewUser
+		s.slackFeed.EmailVerified(r.Context(), emailVerif.UserID)
 
 		// Look up the user to get their email for the success page
-		user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
+		user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, verifiedUserID)
 		if err == nil {
 			verifiedEmail = user.Email
 
 			// Resolve any pending shares for this email
 			// This handles the case where someone shared a box with this email before the user registered
-			if err := s.resolvePendingShares(r.Context(), user.Email, userID); err != nil {
+			if err := s.resolvePendingShares(r.Context(), user.Email, verifiedUserID); err != nil {
 				s.slog().ErrorContext(r.Context(), "Failed to resolve pending shares during web login", "error", err, "email", user.Email)
 				http.Error(w, "Failed to resolve pending shares", http.StatusInternalServerError)
 				return
@@ -151,7 +153,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		}
 
 		// Create HTTP auth cookie for this user
-		cookieValue, err := s.createAuthCookie(context.WithoutCancel(r.Context()), userID, r.Host)
+		cookieValue, err := s.createAuthCookie(context.WithoutCancel(r.Context()), verifiedUserID, r.Host)
 		if err != nil {
 			s.slog().ErrorContext(r.Context(), "Failed to create auth cookie during HTTP email verification", "error", err)
 			http.Error(w, "Failed to create authentication session", http.StatusInternalServerError)
@@ -172,7 +174,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		returnHost := r.FormValue("return_host")
 		if redirectURL != "" || returnHost != "" {
 			// This is a web auth flow, perform redirect after authentication
-			s.redirectAfterAuth(w, r, userID)
+			s.redirectAfterAuth(w, r, verifiedUserID)
 			return
 		}
 
@@ -189,7 +191,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 
 			// Check if user needs billing before starting creation
 			if !s.env.SkipBilling {
-				billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
+				billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, verifiedUserID)
 				if err == nil && userNeedsBilling(&billingStatus) {
 					// Preserve hostname/prompt through billing flow
 					billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
@@ -202,7 +204,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			}
 
 			// Start box creation in background and redirect to dashboard
-			s.startBoxCreation(r.Context(), hostname, prompt, userID)
+			s.startBoxCreation(r.Context(), hostname, prompt, verifiedUserID)
 			http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
 			return
 		}
@@ -216,6 +218,10 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			hasPasskeys = true
 		}
 	}
+
+	// Determine if this is a new user
+	// SSH verifications always create new users; HTTP verifications track isNewUser in the token
+	isWelcome := verification != nil || isNewUser
 
 	// Send success response (for SSH registrations or standalone verifications)
 	data := struct {
@@ -235,7 +241,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		HasPasskeys:  hasPasskeys,
 		NeedsBilling: false,
 		BillingToken: "",
-		IsWelcome:    false,
+		IsWelcome:    isWelcome,
 	}
 	s.renderTemplate(r.Context(), w, "email-verified.html", data)
 }
@@ -627,6 +633,7 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 		Email:     pending.Email,
 		UserID:    userID,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
+		IsNewUser: true, // billing-first flow is always for new users
 	})
 	if err != nil {
 		s.slog().ErrorContext(ctx, "failed to create email verification", "error", err)
@@ -1125,13 +1132,13 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Validate email verification token
-		var err error
-		userID, err = s.validateEmailVerificationToken(r.Context(), token)
+		emailVerif, err := s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
 			s.slog().InfoContext(r.Context(), "invalid email verification token during auth callback", "error", err, "token", token, "remote_addr", r.RemoteAddr)
 			s.render401(w, r, unauthorizedData{InvalidToken: true})
 			return
 		}
+		userID = emailVerif.UserID
 	} else {
 		// Extract token from path /auth/<token>
 		token := strings.TrimPrefix(r.URL.Path, "/auth/")
@@ -1421,6 +1428,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		UserID:       userID,
 		ExpiresAt:    time.Now().Add(24 * time.Hour),
 		InviteCodeID: inviteCodeID,
+		IsNewUser:    isNewUser,
 	})
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to store email verification", "error", err)

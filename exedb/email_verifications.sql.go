@@ -34,7 +34,7 @@ func (q *Queries) GetEmailVerificationByPartialToken(ctx context.Context, token 
 }
 
 const getEmailVerificationByToken = `-- name: GetEmailVerificationByToken :one
-SELECT token, email, user_id, expires_at, created_at, verification_code, invite_code_id FROM email_verifications
+SELECT token, email, user_id, expires_at, created_at, verification_code, invite_code_id, is_new_user FROM email_verifications
 WHERE token = ?
 `
 
@@ -49,13 +49,14 @@ func (q *Queries) GetEmailVerificationByToken(ctx context.Context, token string)
 		&i.CreatedAt,
 		&i.VerificationCode,
 		&i.InviteCodeID,
+		&i.IsNewUser,
 	)
 	return i, err
 }
 
 const insertEmailVerification = `-- name: InsertEmailVerification :exec
-INSERT INTO email_verifications (token, email, user_id, expires_at, verification_code, invite_code_id)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO email_verifications (token, email, user_id, expires_at, verification_code, invite_code_id, is_new_user)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertEmailVerificationParams struct {
@@ -65,6 +66,7 @@ type InsertEmailVerificationParams struct {
 	ExpiresAt        time.Time `db:"expires_at" json:"expires_at"`
 	VerificationCode *string   `db:"verification_code" json:"verification_code"`
 	InviteCodeID     *int64    `db:"invite_code_id" json:"invite_code_id"`
+	IsNewUser        bool      `db:"is_new_user" json:"is_new_user"`
 }
 
 func (q *Queries) InsertEmailVerification(ctx context.Context, arg InsertEmailVerificationParams) error {
@@ -75,6 +77,7 @@ func (q *Queries) InsertEmailVerification(ctx context.Context, arg InsertEmailVe
 		arg.ExpiresAt,
 		arg.VerificationCode,
 		arg.InviteCodeID,
+		arg.IsNewUser,
 	)
 	return err
 }

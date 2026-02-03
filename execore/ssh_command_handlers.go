@@ -1481,6 +1481,7 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.Comma
 		UserID:       cc.User.ID,
 		ExpiresAt:    time.Now().Add(15 * time.Minute), // 15 minute expiry
 		InviteCodeID: nil,                              // browser command is for existing users, no invite
+		IsNewUser:    false,                            // browser command is for existing users
 	})
 	if err != nil {
 		return err

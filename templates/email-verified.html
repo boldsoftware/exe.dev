@@ -28,12 +28,12 @@
     <p class="text-zinc-500 mt-8">Return to your terminal to continue.</p>
     {{else}}
     <div class="mt-8">
-      <a href="/" class="text-zinc-600 hover:text-zinc-900 underline">Continue to Dashboard</a>
+      <a href="/" class="inline-block px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700">Continue to Dashboard</a>
     </div>
     {{end}}
     {{if and (not .HasPasskeys) (not .NeedsBilling)}}
     <div id="passkey-section" class="mt-12 border-t border-zinc-200 pt-8" style="display: none;">
-      <p class="text-zinc-500 text-sm mb-4">Optional: Add a passkey for passwordless sign-in from this browser.</p>
+      <p class="text-zinc-500 text-sm mb-4">Optional: Add a passkey for passwordless sign-in from this browser. You can also do this later on your user profile page.</p>
       <div class="flex flex-col gap-2">
         <label for="passkey-name" class="text-zinc-600 text-sm">Passkey name</label>
         <div class="flex gap-3 items-center">
@@ -48,11 +48,16 @@
   </main>
   <script src="/static/passkey.js"></script>
   <script>
+    const isNewUser = {{if .IsWelcome}}true{{else}}false{{end}};
+
     document.addEventListener('DOMContentLoaded', function() {
       const section = document.getElementById('passkey-section');
       if (section && passkey.isSupported()) {
         section.style.display = 'block';
         document.getElementById('passkey-name').placeholder = passkey.getDefaultName();
+        if (isNewUser) {
+          addPasskey();
+        }
       }
     });
 
@@ -73,6 +78,10 @@
         document.querySelector('#passkey-section button').classList.remove('bg-zinc-900', 'hover:bg-zinc-700');
         document.querySelector('#passkey-section button').classList.add('bg-zinc-400');
       } catch (err) {
+        if (err.name === 'NotAllowedError') {
+          // User cancelled the passkey prompt, that's fine
+          return;
+        }
         errorDiv.textContent = err.message;
         errorDiv.style.display = 'block';
       }
