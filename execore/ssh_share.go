@@ -127,7 +127,6 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 				Handler:           ss.handleShareReceiveEmailCmd,
 				FlagSetFunc:       jsonOnlyFlags("share-receive-email"),
 				HasPositionalArgs: true,
-				Hidden:            true,
 				CompleterFunc:     ss.completeBoxNames,
 				Examples: []string{
 					"share receive-email mybox on",
