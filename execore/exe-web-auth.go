@@ -413,7 +413,7 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		now := sqlite.FormatTime(time.Now())
+		now := sqlite.NormalizeTime(time.Now())
 		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
 			if err := queries.ActivateAccount(ctx, exedb.ActivateAccountParams{
 				CreatedBy: userID,
@@ -570,7 +570,7 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Create user + account in transaction
-	now := sqlite.FormatTime(time.Now())
+	now := sqlite.NormalizeTime(time.Now())
 	var userID string
 	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error

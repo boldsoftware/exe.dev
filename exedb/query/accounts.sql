@@ -4,6 +4,7 @@ INSERT INTO accounts (id, created_by) VALUES (?, ?);
 -- name: ActivateAccount :exec
 -- ActivateAccount marks an account as active after Stripe checkout completes.
 -- Inserts an 'active' billing event for the account owned by the given user.
+-- Timestamp should be normalized to Time10 format by caller.
 INSERT INTO billing_events (account_id, event_type, event_at)
 SELECT id, 'active', ?2 FROM accounts WHERE created_by = ?1;
 
@@ -20,7 +21,7 @@ SELECT a.id, a.created_by, a.created_at,
     CAST(COALESCE(
         (SELECT e.event_type FROM billing_events e
          WHERE e.account_id = a.id
-         ORDER BY e.event_at DESC, e.id DESC LIMIT 1),
+         ORDER BY parse_timestamp(e.event_at) DESC, e.id DESC LIMIT 1),
         'pending'
     ) AS TEXT) AS billing_status
 FROM accounts a WHERE a.created_by = ?;
@@ -44,7 +45,7 @@ SELECT
             AND e.id = (
                 SELECT e2.id FROM billing_events e2
                 WHERE e2.account_id = a.id
-                ORDER BY e2.event_at DESC, e2.id DESC
+                ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
                 LIMIT 1
             )
         ) THEN 'active'
@@ -56,7 +57,7 @@ SELECT
             AND e.id = (
                 SELECT e2.id FROM billing_events e2
                 WHERE e2.account_id = a.id
-                ORDER BY e2.event_at DESC, e2.id DESC
+                ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
                 LIMIT 1
             )
         ) THEN 'canceled'
@@ -83,7 +84,7 @@ WHERE (
         AND e1.id = (
             SELECT e2.id FROM billing_events e2
             WHERE e2.account_id = a.id
-            ORDER BY e2.event_at DESC, e2.id DESC
+            ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
             LIMIT 1
         )
     )
@@ -106,7 +107,7 @@ SELECT
             AND e.id = (
                 SELECT e2.id FROM billing_events e2
                 WHERE e2.account_id = a.id
-                ORDER BY e2.event_at DESC, e2.id DESC
+                ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
                 LIMIT 1
             )
         ) THEN 'has_billing'

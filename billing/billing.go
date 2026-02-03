@@ -433,10 +433,6 @@ func (m *Manager) SubscriptionEvents(ctx context.Context, since time.Time) iter.
 		}
 
 		poll := func() (stop bool, err error) {
-			// Prevent wedging on long requests; we can just poll again
-			ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-			defer cancel()
-
 			params := &stripe.EventListParams{
 				Types: []*string{
 					stripe.String("customer.subscription.created"),
@@ -516,7 +512,7 @@ func (m *Manager) SubscriptionEvents(ctx context.Context, since time.Time) iter.
 
 			var maxEventAt int64
 			for _, e := range events {
-				// maxEventAt tracking removed - using string comparison
+				maxEventAt = max(maxEventAt, e.EventAt.Unix())
 				if !yield(e) {
 					if maxEventAt > sinceUnix {
 						sinceUnix = maxEventAt

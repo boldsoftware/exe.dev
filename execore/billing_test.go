@@ -135,7 +135,7 @@ func TestUserWithBillingCanAccessNewVM_WebUI(t *testing.T) {
 	}
 	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
 		CreatedBy: user.UserID,
-		EventAt:   sqlite.FormatTime(time.Now()),
+		EventAt:   time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("Failed to activate account: %v", err)
@@ -220,7 +220,7 @@ func TestUserIsPayingQuery(t *testing.T) {
 	}
 	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
 		CreatedBy: user.UserID,
-		EventAt:   sqlite.FormatTime(time.Now()),
+		EventAt:   time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("Failed to activate account: %v", err)
@@ -228,7 +228,7 @@ func TestUserIsPayingQuery(t *testing.T) {
 	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 		AccountID: billingID,
 		EventType: "active",
-		EventAt:   sqlite.FormatTime(time.Now()),
+		EventAt:   time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("Failed to insert billing event: %v", err)
@@ -284,7 +284,7 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 	}
 	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
 		CreatedBy: user.UserID,
-		EventAt:   sqlite.FormatTime(time.Now()),
+		EventAt:   time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("Failed to activate account: %v", err)
@@ -292,7 +292,7 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 		AccountID: billingID,
 		EventType: "active",
-		EventAt:   sqlite.FormatTime(time.Now()),
+		EventAt:   time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("Failed to insert billing event: %v", err)
@@ -546,7 +546,7 @@ func TestBillingEventRaceCondition(t *testing.T) {
 	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 		AccountID: billingID,
 		EventType: "active",
-		EventAt:   sqlite.FormatTime(t2),
+		EventAt:   t2,
 	})
 	if err != nil {
 		t.Fatalf("Failed to insert activation event: %v", err)
@@ -556,7 +556,7 @@ func TestBillingEventRaceCondition(t *testing.T) {
 	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 		AccountID: billingID,
 		EventType: "canceled",
-		EventAt:   sqlite.FormatTime(t1),
+		EventAt:   t1,
 	})
 	if err != nil {
 		t.Fatalf("Failed to insert cancellation event: %v", err)
@@ -1390,7 +1390,7 @@ func TestBillingPortal_ActiveAccount_RedirectsToStripe(t *testing.T) {
 	}
 	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
 		CreatedBy: user.UserID,
-		EventAt:   sqlite.FormatTime(time.Now()),
+		EventAt:   time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("Failed to activate account: %v", err)
@@ -1446,7 +1446,7 @@ func TestUserProfile_ShowsBillingSection_ActiveAccount(t *testing.T) {
 	}
 	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
 		CreatedBy: user.UserID,
-		EventAt:   sqlite.FormatTime(time.Now()),
+		EventAt:   time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("Failed to activate account: %v", err)
@@ -1530,7 +1530,7 @@ func TestUserWithMultipleAccounts_OnlyOneActive(t *testing.T) {
 	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 		AccountID: "exe_ACCOUNT5_ACTIVE",
 		EventType: "active",
-		EventAt:   sqlite.FormatTime(time.Now()),
+		EventAt:   time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("Failed to insert billing event: %v", err)
@@ -1626,7 +1626,7 @@ func TestUserWithMultipleAccounts_OneActiveOneCanceled(t *testing.T) {
 	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 		AccountID: canceledAccountID,
 		EventType: "active",
-		EventAt:   sqlite.FormatTime(t1),
+		EventAt:   t1,
 	})
 	if err != nil {
 		t.Fatalf("Failed to insert active event: %v", err)
@@ -1634,7 +1634,7 @@ func TestUserWithMultipleAccounts_OneActiveOneCanceled(t *testing.T) {
 	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 		AccountID: canceledAccountID,
 		EventType: "canceled",
-		EventAt:   sqlite.FormatTime(t2),
+		EventAt:   t2,
 	})
 	if err != nil {
 		t.Fatalf("Failed to insert canceled event: %v", err)
@@ -1645,7 +1645,7 @@ func TestUserWithMultipleAccounts_OneActiveOneCanceled(t *testing.T) {
 	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 		AccountID: activeAccountID,
 		EventType: "active",
-		EventAt:   sqlite.FormatTime(t3),
+		EventAt:   t3,
 	})
 	if err != nil {
 		t.Fatalf("Failed to insert active event: %v", err)
@@ -1709,7 +1709,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "active",
-			EventAt:   sqlite.FormatTime(t1),
+			EventAt:   t1,
 		})
 		if err != nil {
 			t.Fatalf("Failed to insert active event: %v", err)
@@ -1717,7 +1717,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "canceled",
-			EventAt:   sqlite.FormatTime(t2),
+			EventAt:   t2,
 		})
 		if err != nil {
 			t.Fatalf("Failed to insert canceled event: %v", err)
@@ -1796,7 +1796,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "active",
-			EventAt:   sqlite.FormatTime(t1),
+			EventAt:   t1,
 		})
 		if err != nil {
 			t.Fatalf("Failed to insert active event: %v", err)
@@ -1804,7 +1804,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "canceled",
-			EventAt:   sqlite.FormatTime(t2),
+			EventAt:   t2,
 		})
 		if err != nil {
 			t.Fatalf("Failed to insert canceled event: %v", err)
@@ -1860,7 +1860,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "active",
-			EventAt:   sqlite.FormatTime(t1),
+			EventAt:   t1,
 		})
 		if err != nil {
 			t.Fatalf("Failed to insert active event: %v", err)
@@ -1868,7 +1868,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "canceled",
-			EventAt:   sqlite.FormatTime(t2),
+			EventAt:   t2,
 		})
 		if err != nil {
 			t.Fatalf("Failed to insert canceled event: %v", err)
@@ -1918,7 +1918,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		}
 		err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
 			CreatedBy: user.UserID,
-			EventAt:   sqlite.FormatTime(time.Now()),
+			EventAt:   time.Now(),
 		})
 		if err != nil {
 			t.Fatalf("Failed to activate account: %v", err)
@@ -1932,7 +1932,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "active",
-			EventAt:   sqlite.FormatTime(t1),
+			EventAt:   t1,
 		})
 		if err != nil {
 			t.Fatalf("Failed to insert first active event: %v", err)
@@ -1940,7 +1940,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "canceled",
-			EventAt:   sqlite.FormatTime(t2),
+			EventAt:   t2,
 		})
 		if err != nil {
 			t.Fatalf("Failed to insert canceled event: %v", err)
@@ -1948,7 +1948,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "active",
-			EventAt:   sqlite.FormatTime(t3),
+			EventAt:   t3,
 		})
 		if err != nil {
 			t.Fatalf("Failed to insert reactivation event: %v", err)
