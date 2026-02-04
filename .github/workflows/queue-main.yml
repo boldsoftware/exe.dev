@@ -32,6 +32,15 @@ jobs:
       shelley_changed: ${{ steps.changes.outputs.shelley_changed }}
       exe_changed: ${{ steps.changes.outputs.exe_changed }}
     steps:
+      - name: Check if self-hosted
+        id: check-host
+        run: |
+          if hostname -f | grep -qE '\.(exe\.dev|exe\.xyz)$'; then
+            echo "self_hosted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "self_hosted=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub App Token
         uses: actions/create-github-app-token@v1
         id: app-token
@@ -132,6 +141,7 @@ jobs:
         id: pnpm-cache
 
       - name: Cache pnpm store
+        if: steps.check-host.outputs.self_hosted != 'true'
         uses: actions/cache@v5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
@@ -209,7 +219,7 @@ jobs:
       run_playwright: false
 
   push-to-main:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, exe-ci]
     needs: [commit-validation-and-formatting, test, shelley-test]
     if: ${{ !cancelled() && !failure() }}
     permissions:

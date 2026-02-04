@@ -10,8 +10,17 @@ on:
 
 jobs:
   test-non-e1e:
-    runs-on: linux-x64-ubuntu-latest-8-core
+    runs-on: [self-hosted, exe-ci]
     steps:
+      - name: Check if self-hosted
+        id: check-host
+        run: |
+          if hostname -f | grep -qE '\.(exe\.dev|exe\.xyz)$'; then
+            echo "self_hosted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "self_hosted=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
         uses: actions/checkout@v6
         with:
@@ -24,6 +33,7 @@ jobs:
           cache: false
 
       - name: Cache Go modules and build
+        if: steps.check-host.outputs.self_hosted != 'true'
         uses: actions/cache@v5
         with:
           path: |
