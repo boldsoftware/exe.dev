@@ -81,7 +81,7 @@ PLAN="${LATITUDE_PLAN:-rs4-metal-xlarge}"
 # Latitude website shows plans with dots, but API requires hyphens
 PLAN="${PLAN//./-}"
 OS="ubuntu_24_04_x64_lts"
-SSH_TIMEOUT=1800  # 30 minutes
+SSH_TIMEOUT=1800 # 30 minutes
 BASE_SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o BatchMode=yes"
 
 # SSH options for Tailscale access (no key needed)
