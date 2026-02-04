@@ -56,4 +56,11 @@ type StorageManager interface {
 	SnapshotExists(snapName string) bool
 	// CreateSnapshot creates a ZFS snapshot with the given full name (e.g., "tank/sha256:...@instance-id")
 	CreateSnapshot(ctx context.Context, snapName string) error
+	// PruneOrphanedBaseImages removes base image datasets (sha256:xxx) that have no dependent clones.
+	// Returns the number of datasets pruned.
+	PruneOrphanedBaseImages(ctx context.Context) (int, error)
+	// SetUserProperty sets a user-defined property on a dataset (e.g., "exe:imageref=ghcr.io/org/image:tag")
+	SetUserProperty(ctx context.Context, id, property, value string) error
+	// GetUserProperty gets a user-defined property from a dataset, returns empty string if not set
+	GetUserProperty(ctx context.Context, id, property string) (string, error)
 }

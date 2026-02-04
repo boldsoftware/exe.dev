@@ -270,6 +270,16 @@ func (s *Service) runReplicationCycle(ctx context.Context) {
 		s.log.ErrorContext(ctx, "pruning failed", "error", err)
 	}
 
+	// Prune orphaned base images (sha256: datasets with no dependent clones)
+	if s.config.ReplicationPrune {
+		pruned, err := storageManager.PruneOrphanedBaseImages(ctx)
+		if err != nil {
+			s.log.ErrorContext(ctx, "base image pruning failed", "error", err)
+		} else if pruned > 0 {
+			s.log.InfoContext(ctx, "pruned orphaned base images", "count", pruned)
+		}
+	}
+
 	duration := time.Since(startTime)
 	s.metrics.SetLastSuccessTimestamp(float64(time.Now().Unix()))
 	s.log.InfoContext(ctx, "replication cycle complete", "duration", duration, "volumes", len(volumes))

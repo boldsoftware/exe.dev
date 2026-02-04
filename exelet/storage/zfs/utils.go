@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -297,14 +298,22 @@ func (s *ZFS) getDatasetOrigin(dsName string) string {
 
 // getDependentClones returns all clones that depend on this dataset's snapshots.
 // It does this in a single ZFS command by listing snapshots with their clones property.
+// Returns (nil, nil) only if the dataset doesn't exist. Other errors are propagated.
 func (s *ZFS) getDependentClones(dsName string) ([]string, error) {
 	// Get all snapshots and their clones in one command
 	// Format: snapshot_name<tab>clones_value
 	cmd := exec.Command("zfs", "list", "-t", "snapshot", "-H", "-o", "name,clones", "-d", "1", dsName)
 	out, err := cmd.Output()
 	if err != nil {
-		// If dataset doesn't exist or has no snapshots, return empty
-		return nil, nil
+		// Check if this is a "does not exist" error - that's expected and safe
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr := string(exitErr.Stderr)
+			if strings.Contains(stderr, "does not exist") {
+				return nil, nil
+			}
+		}
+		// Any other error should be propagated - could be transient failure
+		return nil, fmt.Errorf("zfs list snapshots for %s failed: %w", dsName, err)
 	}
 
 	var clones []string
@@ -450,6 +459,126 @@ func (s *ZFS) waitForZvol(id string) error {
 
 func zfsNotExist(err error) bool {
 	return strings.Contains(err.Error(), "does not exist")
+}
+
+// baseImageMinAge is the minimum age a base image must have before it can be pruned.
+// This prevents deleting recently created base images that simply haven't been used yet.
+const baseImageMinAge = 14 * 24 * time.Hour // 2 weeks
+
+// PruneOrphanedBaseImages removes base image datasets (sha256:xxx) that have no dependent clones
+// and are older than baseImageMinAge. Returns the number of datasets pruned.
+func (s *ZFS) PruneOrphanedBaseImages(ctx context.Context) (int, error) {
+	// List all child datasets of the pool
+	cmd := exec.CommandContext(ctx, "zfs", "list", "-H", "-o", "name", "-t", "filesystem,volume", "-r", "-d", "1", s.dsName)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("failed to list datasets: %w", err)
+	}
+
+	var pruned int
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		dsName := strings.TrimSpace(line)
+		if dsName == "" || dsName == s.dsName {
+			continue
+		}
+
+		// Extract the child name (remove pool prefix)
+		childName := strings.TrimPrefix(dsName, s.dsName+"/")
+
+		// Only consider sha256: prefixed datasets (base images)
+		if !strings.HasPrefix(childName, "sha256:") {
+			continue
+		}
+
+		// Lock the base image to prevent races with concurrent clone operations.
+		// Clone() locks on srcID (which would be this childName for base images).
+		unlock := s.lockVolume(childName)
+
+		// Check if the base image is old enough to be pruned
+		creation, err := s.getDatasetCreation(ctx, dsName)
+		if err != nil {
+			s.log.WarnContext(ctx, "failed to get creation time for base image, skipping", "dataset", dsName, "error", err)
+			unlock()
+			continue
+		}
+		age := time.Since(creation)
+		if age < baseImageMinAge {
+			s.log.DebugContext(ctx, "skipping base image that is too new", "dataset", dsName, "age", age.Round(time.Hour))
+			unlock()
+			continue
+		}
+
+		// Check if dataset has any dependent clones
+		clones, err := s.getDependentClones(dsName)
+		if err != nil {
+			s.log.WarnContext(ctx, "failed to get dependent clones for base image, skipping", "dataset", dsName, "error", err)
+			unlock()
+			continue
+		}
+
+		if len(clones) > 0 {
+			s.log.DebugContext(ctx, "skipping base image with dependent clones", "dataset", dsName, "clones", len(clones))
+			unlock()
+			continue
+		}
+
+		// No dependents and old enough - safe to delete
+		// Try to get the image reference for logging (best effort)
+		imageRef, _ := s.GetUserProperty(ctx, childName, "exe:imageref")
+		s.log.InfoContext(ctx, "pruning orphaned base image", "dataset", dsName, "imageref", imageRef, "age", age.Round(time.Hour))
+		if err := s.destroyDataset(dsName); err != nil {
+			s.log.ErrorContext(ctx, "failed to prune orphaned base image", "dataset", dsName, "error", err)
+			unlock()
+			continue
+		}
+		pruned++
+		unlock()
+	}
+
+	return pruned, nil
+}
+
+// getDatasetCreation returns the creation time of a ZFS dataset.
+func (s *ZFS) getDatasetCreation(ctx context.Context, dsName string) (time.Time, error) {
+	cmd := exec.CommandContext(ctx, "zfs", "get", "-Hp", "-o", "value", "creation", dsName)
+	out, err := cmd.Output()
+	if err != nil {
+		return time.Time{}, fmt.Errorf("zfs get creation failed: %w", err)
+	}
+	timestamp := strings.TrimSpace(string(out))
+	sec, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse creation timestamp %q: %w", timestamp, err)
+	}
+	return time.Unix(sec, 0), nil
+}
+
+// SetUserProperty sets a user-defined property on a dataset.
+// Property names should be namespaced (e.g., "exe:imageref").
+func (s *ZFS) SetUserProperty(ctx context.Context, id, property, value string) error {
+	dsName := s.getDSName(id)
+	cmd := exec.CommandContext(ctx, "zfs", "set", fmt.Sprintf("%s=%s", property, value), dsName)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("zfs set %s failed: %w (%s)", property, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// GetUserProperty gets a user-defined property from a dataset.
+// Returns empty string if the property is not set (value is "-").
+func (s *ZFS) GetUserProperty(ctx context.Context, id, property string) (string, error) {
+	dsName := s.getDSName(id)
+	cmd := exec.CommandContext(ctx, "zfs", "get", "-Hp", "-o", "value", property, dsName)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("zfs get %s failed: %w", property, err)
+	}
+	value := strings.TrimSpace(string(out))
+	if value == "-" {
+		return "", nil
+	}
+	return value, nil
 }
 
 func loadKey(ds, keyPath string) error {

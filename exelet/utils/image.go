@@ -126,6 +126,12 @@ func LoadImageWithMetadata(ctx context.Context, imageRef, platform string, metad
 		return "", fmt.Errorf("error renaming image volume: %w", err)
 	}
 
+	// set user property with the image reference for later identification
+	if err := storageManager.SetUserProperty(opCtx, imageFSID, "exe:imageref", imageRef); err != nil {
+		// non-fatal: log warning but don't fail the load
+		log.WarnContext(ctx, "failed to set image reference property", "error", err)
+	}
+
 	log.DebugContext(ctx, "image loaded successfully", "image", imageRef, "imageFSID", imageFSID)
 	return imageFSID, nil
 }
