@@ -18,12 +18,12 @@ func TestHTTPMetricsNonProxy(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		metricsbag.SetLabel(r.Context(), LabelProxy, "false")
-		metricsbag.SetLabel(r.Context(), LabelPath, r.URL.Path)
+		metricsbag.SetLabel(r.Context(), LabelPath, sanitizePath(r.URL.Path))
 		switch r.URL.Path {
 		case "/auth":
 			w.WriteHeader(http.StatusUnauthorized)
 		case "/notfound":
-			w.WriteHeader(http.StatusNotFound)
+			w.WriteHeader(http.StatusNotFound) // 404 clears path label
 		default:
 			w.WriteHeader(http.StatusOK)
 		}
@@ -41,7 +41,7 @@ func TestHTTPMetricsNonProxy(t *testing.T) {
 	makeRequest("/")
 	makeRequest("/health")
 	makeRequest("/auth")
-	makeRequest("/notfound")
+	makeRequest("/notfound") // 404 clears path label
 
 	expected := `
 		# HELP http_requests_total Total number of HTTP requests.
@@ -49,7 +49,7 @@ func TestHTTPMetricsNonProxy(t *testing.T) {
 		http_requests_total{box="",code="200",path="/",proxy="false"} 2
 		http_requests_total{box="",code="200",path="/health",proxy="false"} 1
 		http_requests_total{box="",code="401",path="/auth",proxy="false"} 1
-		http_requests_total{box="",code="404",path="/notfound",proxy="false"} 1
+		http_requests_total{box="",code="404",path="",proxy="false"} 1
 	`
 	if err := testutil.CollectAndCompare(m.requestsTotal, strings.NewReader(expected)); err != nil {
 		t.Errorf("http_requests_total mismatch: %v", err)
@@ -141,6 +141,33 @@ func TestNormalizePath(t *testing.T) {
 			result := normalizePath(tt.path)
 			if result != tt.expected {
 				t.Errorf("normalizePath(%q) = %q, want %q", tt.path, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSanitizePath(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		expected string
+	}{
+		// Valid paths
+		{"root", "/", "/"},
+		{"health", "/health", "/health"},
+		{"trailing slash", "/health/", "/health"},
+		{"nested", "/foo/bar/baz", "/foo/bar/baz"},
+
+		// Invalid UTF-8 (should return empty string)
+		{"invalid utf8", "/\xc0", ""},
+		{"invalid utf8 mid", "/foo\xc0bar", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := sanitizePath(tt.path)
+			if result != tt.expected {
+				t.Errorf("sanitizePath(%q) = %q, want %q", tt.path, result, tt.expected)
 			}
 		})
 	}
