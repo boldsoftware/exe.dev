@@ -133,7 +133,7 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 	defer shelleyFile.Close()
 
 	if err := scpToBox(ctx, ss.server.sshPool, box, shelleyFile, "/usr/local/bin/shelley", 0o755); err != nil {
-		return fmt.Errorf("failed to install shelley binary: %w", err)
+		return cc.Errorf("failed to install shelley binary: %v", err)
 	}
 	cc.Writeln("Copied shelley binary")
 	cc.Writeln("Installed shelley to /usr/local/bin/shelley")
