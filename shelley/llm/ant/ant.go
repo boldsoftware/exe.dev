@@ -32,6 +32,7 @@ const (
 	Claude4Sonnet  = "claude-sonnet-4-20250514"
 	Claude45Sonnet = "claude-sonnet-4-5-20250929"
 	Claude45Opus   = "claude-opus-4-5-20251101"
+	Claude46Opus   = "claude-opus-4-6"
 )
 
 // IsClaudeModel reports whether userName is a user-friendly Claude model.
@@ -65,7 +66,7 @@ func (s *Service) TokenContextWindow() int {
 		return 200000
 	case Claude45Haiku:
 		return 200000
-	case Claude45Opus:
+	case Claude45Opus, Claude46Opus:
 		return 200000
 	default:
 		// Default for unknown models
