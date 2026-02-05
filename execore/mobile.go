@@ -22,11 +22,8 @@ import (
 	"exe.dev/stage"
 )
 
-const (
-
-	// creationStreamIdleTimeout is how long to keep a creation stream after last access
-	creationStreamIdleTimeout = 10 * time.Minute
-)
+// creationStreamIdleTimeout is how long to keep a creation stream after last access
+const creationStreamIdleTimeout = 10 * time.Minute
 
 // creationStreamKey uniquely identifies a creation stream
 //
@@ -224,12 +221,17 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 		// Run the creation
 		err := ss.handleNewCommand(createCtx, cc)
 
-		// Save creation log to database
+		// Shelley can run for a long time.
+		// When this happens, createCtx may be exhausted.
+		// Make a fresh context for this cleanup work.
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+
 		cs.mu.Lock()
 		creationLog := cs.logBuf.String()
 		cs.mu.Unlock()
 
-		if saveErr := withTx1(s, createCtx, (*exedb.Queries).UpdateBoxCreationLog, exedb.UpdateBoxCreationLogParams{
+		if saveErr := withTx1(s, cleanupCtx, (*exedb.Queries).UpdateBoxCreationLog, exedb.UpdateBoxCreationLogParams{
 			CreationLog: &creationLog,
 			Name:        hostname,
 		}); saveErr != nil {
@@ -248,7 +250,7 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 		}
 
 		// Clean up pending VM entry if it exists
-		if err := withTx1(s, createCtx, (*exedb.Queries).DeleteMobilePendingVMByUserAndHostname, exedb.DeleteMobilePendingVMByUserAndHostnameParams{
+		if err := withTx1(s, cleanupCtx, (*exedb.Queries).DeleteMobilePendingVMByUserAndHostname, exedb.DeleteMobilePendingVMByUserAndHostnameParams{
 			UserID:   userID,
 			Hostname: hostname,
 		}); err != nil {
