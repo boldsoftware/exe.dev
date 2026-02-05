@@ -3,18 +3,7 @@ package execore
 import (
 	"context"
 	"errors"
-	"exe.dev/boxname"
-	"exe.dev/container"
-	"exe.dev/errorz"
-	"exe.dev/exedb"
-	"exe.dev/exemenu"
-	api "exe.dev/pkg/api/exe/compute/v1"
-	"exe.dev/stage"
 	"fmt"
-	"github.com/dustin/go-humanize"
-	"golang.org/x/crypto/ssh"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"io"
 	"log/slog"
 	"os"
@@ -22,6 +11,19 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"exe.dev/boxname"
+	"exe.dev/container"
+	"exe.dev/errorz"
+	"exe.dev/exedb"
+	"exe.dev/exemenu"
+	api "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/stage"
+
+	"github.com/dustin/go-humanize"
+	"golang.org/x/crypto/ssh"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandContext) error {

@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"log/slog"
+
 	"exe.dev/boxname"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	api "exe.dev/pkg/api/exe/compute/v1"
-	"fmt"
-	"log/slog"
 )
 
 func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.CommandContext) error {
