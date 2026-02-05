@@ -4,6 +4,7 @@ package e1e
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 
 	"exe.dev/e1e/testinfra"
 	"exe.dev/stage"
@@ -735,6 +739,145 @@ func TestVanillaBox(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("xterm_websocket", func(t *testing.T) {
+		// Test xterm websocket connectivity to the VM.
+		// This test verifies that the websocket upgrade works correctly through
+		// all middleware layers (metrics, logging, etc). This caught a regression
+		// where statusClearingWriter didn't implement http.Hijacker.
+		noGolden(t)
+
+		client := createAuthenticatedTerminalClient(t, boxName, cookies)
+
+		// Connect to the terminal websocket
+		conn, err := connectTerminalWebSocket(t, boxName, client, "")
+		if err != nil {
+			t.Fatalf("failed to connect to terminal websocket: %v", err)
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		// Start reading output in background
+		outputChan := make(chan string, 100)
+		errChan := make(chan error, 1)
+		go func() {
+			for {
+				var msg map[string]interface{}
+				err := wsjson.Read(ctx, conn, &msg)
+				if err != nil {
+					if websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+						errChan <- err
+					}
+					return
+				}
+				if msgType, ok := msg["type"].(string); ok && msgType == "output" {
+					if dataStr, ok := msg["data"].(string); ok {
+						decoded, _ := base64.StdEncoding.DecodeString(dataStr)
+						outputChan <- string(decoded)
+					}
+				}
+			}
+		}()
+
+		// Send initial resize
+		if err := wsjson.Write(ctx, conn, map[string]interface{}{
+			"type": "resize",
+			"cols": 80,
+			"rows": 24,
+		}); err != nil {
+			t.Fatalf("failed to send resize: %v", err)
+		}
+
+		// Send a command
+		if err := wsjson.Write(ctx, conn, map[string]interface{}{
+			"type": "input",
+			"data": "echo xterm-test-ok\n",
+		}); err != nil {
+			t.Fatalf("failed to send input: %v", err)
+		}
+
+		// Wait for expected output
+		timeout := time.After(10 * time.Second)
+		var found bool
+		for !found {
+			select {
+			case output := <-outputChan:
+				if strings.Contains(output, "xterm-test-ok") {
+					found = true
+				}
+			case err := <-errChan:
+				t.Fatalf("error reading terminal output: %v", err)
+			case <-timeout:
+				t.Fatal("timeout waiting for 'xterm-test-ok' in terminal output")
+			}
+		}
+	})
+
+	t.Run("shell_websocket", func(t *testing.T) {
+		// Test exe.dev /shell/ws websocket connectivity.
+		// This tests the web shell at exe.dev/shell (different from xterm which is per-VM).
+		// This verifies websocket upgrades work through the middleware on the main domain.
+		noGolden(t)
+
+		// Connect to /shell/ws on the main exe.dev domain
+		conn, err := connectShellWebSocket(t, cookies)
+		if err != nil {
+			t.Fatalf("failed to connect to shell websocket: %v", err)
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		// Start reading output in background
+		outputChan := make(chan string, 100)
+		errChan := make(chan error, 1)
+		go func() {
+			for {
+				var msg map[string]interface{}
+				err := wsjson.Read(ctx, conn, &msg)
+				if err != nil {
+					if websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+						errChan <- err
+					}
+					return
+				}
+				if msgType, ok := msg["type"].(string); ok && msgType == "output" {
+					if dataStr, ok := msg["data"].(string); ok {
+						outputChan <- string(dataStr)
+					}
+				}
+			}
+		}()
+
+		// Send initial resize (required to start the shell)
+		if err := wsjson.Write(ctx, conn, map[string]interface{}{
+			"type": "init",
+			"cols": 80,
+			"rows": 24,
+		}); err != nil {
+			t.Fatalf("failed to send init: %v", err)
+		}
+
+		// Wait for prompt (REPL prompt contains "▶" and the ReplHost)
+		timeout := time.After(10 * time.Second)
+		var found bool
+		for !found {
+			select {
+			case output := <-outputChan:
+				// In dev, ReplHost is "localhost"; prompt looks like "localhost ▶ "
+				if strings.Contains(output, "▶") || strings.Contains(output, "localhost") {
+					found = true
+				}
+			case err := <-errChan:
+				t.Fatalf("error reading shell output: %v", err)
+			case <-timeout:
+				t.Fatal("timeout waiting for shell prompt")
+			}
+		}
+	})
 
 	// Cleanup
 	cleanupBox(t, keyFile, boxName)
