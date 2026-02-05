@@ -192,39 +192,12 @@ func (m *HTTPMetrics) Wrap(next http.Handler) http.Handler {
 			}
 		}
 
-		// TODO: in-flight gauge may still have cardinality explosion from arbitrary
-		// paths since we don't know the status code yet. These are transient (cleared
-		// when request ends) but could still be problematic under attack.
 		g := m.requestsInFlight.WithLabelValues(proxy, path, box)
 		g.Inc()
 		defer g.Dec()
 
-		// Wrap response to clear path label on 404 (avoids cardinality explosion)
-		sw := &statusClearingWriter{
-			ResponseWriter: w,
-			ctx:            r.Context(),
-		}
-		counter.ServeHTTP(sw, r)
+		counter.ServeHTTP(w, r)
 	})
-}
-
-// statusClearingWriter clears the path label when a 404 is written.
-type statusClearingWriter struct {
-	http.ResponseWriter
-	ctx     context.Context
-	cleared bool
-}
-
-func (w *statusClearingWriter) WriteHeader(code int) {
-	if code == http.StatusNotFound && !w.cleared {
-		metricsbag.SetLabel(w.ctx, LabelPath, "")
-		w.cleared = true
-	}
-	w.ResponseWriter.WriteHeader(code)
-}
-
-func (w *statusClearingWriter) Unwrap() http.ResponseWriter {
-	return w.ResponseWriter
 }
 
 // normalizePath strips trailing slashes from paths (except for root "/").

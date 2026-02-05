@@ -23,7 +23,7 @@ func TestHTTPMetricsNonProxy(t *testing.T) {
 		case "/auth":
 			w.WriteHeader(http.StatusUnauthorized)
 		case "/notfound":
-			w.WriteHeader(http.StatusNotFound) // 404 clears path label
+			w.WriteHeader(http.StatusNotFound)
 		default:
 			w.WriteHeader(http.StatusOK)
 		}
@@ -41,7 +41,7 @@ func TestHTTPMetricsNonProxy(t *testing.T) {
 	makeRequest("/")
 	makeRequest("/health")
 	makeRequest("/auth")
-	makeRequest("/notfound") // 404 clears path label
+	makeRequest("/notfound")
 
 	expected := `
 		# HELP http_requests_total Total number of HTTP requests.
@@ -49,7 +49,7 @@ func TestHTTPMetricsNonProxy(t *testing.T) {
 		http_requests_total{box="",code="200",path="/",proxy="false"} 2
 		http_requests_total{box="",code="200",path="/health",proxy="false"} 1
 		http_requests_total{box="",code="401",path="/auth",proxy="false"} 1
-		http_requests_total{box="",code="404",path="",proxy="false"} 1
+		http_requests_total{box="",code="404",path="/notfound",proxy="false"} 1
 	`
 	if err := testutil.CollectAndCompare(m.requestsTotal, strings.NewReader(expected)); err != nil {
 		t.Errorf("http_requests_total mismatch: %v", err)
