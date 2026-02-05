@@ -719,6 +719,11 @@ func TestIsImageResolutionUserError(t *testing.T) {
 			err:      errors.New("failed to authorize: failed to fetch anonymous token"),
 			expected: true,
 		},
+		{
+			name:     "no manifest found for platform",
+			err:      errors.New("no manifest found for platform: linux/amd64"),
+			expected: true,
+		},
 	}
 
 	for _, tt := range tests {

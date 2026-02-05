@@ -1,9 +1,13 @@
 package exemenu
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"flag"
 	"testing"
 
+	"exe.dev/tracing"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -130,4 +134,35 @@ func TestWantQR(t *testing.T) {
 			assert.Equal(t, tt.want, cc.WantQR())
 		})
 	}
+}
+
+func TestWriteInternalError(t *testing.T) {
+	t.Run("with trace ID from context", func(t *testing.T) {
+		var buf bytes.Buffer
+		cc := &CommandContext{
+			Output: &buf,
+			User:   &UserInfo{ID: "user123"},
+		}
+		ctx := tracing.ContextWithTraceID(context.Background(), "abc123")
+		cc.WriteInternalError(ctx, "test-cmd", errors.New("something broke"))
+
+		output := buf.String()
+		assert.Contains(t, output, "internal error")
+		assert.Contains(t, output, "trace ID: abc123")
+	})
+
+	t.Run("generates trace ID when not in context", func(t *testing.T) {
+		var buf bytes.Buffer
+		cc := &CommandContext{
+			Output: &buf,
+			User:   &UserInfo{ID: "user123"},
+		}
+		cc.WriteInternalError(context.Background(), "test-cmd", errors.New("something broke"))
+
+		output := buf.String()
+		assert.Contains(t, output, "internal error")
+		assert.Contains(t, output, "trace ID:")
+		// Should have a 32-char hex trace ID (16 bytes = 32 hex chars)
+		assert.Regexp(t, `trace ID: [0-9a-f]{32}`, output)
+	})
 }

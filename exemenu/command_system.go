@@ -15,10 +15,10 @@ import (
 	"github.com/anmitsu/go-shlex"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gliderlabs/ssh"
-	"github.com/google/uuid"
 	"golang.org/x/term"
 
 	"exe.dev/errorz"
+	"exe.dev/tracing"
 )
 
 // CompletionContext provides context for tab completion
@@ -221,14 +221,17 @@ func (cc *CommandContext) WriteInternalError(ctx context.Context, cmd string, er
 	if cc.DevMode {
 		cc.Write("\033[1;31mRaw error (dev only):\r\n%v\033[0m\r\n\r\n", err)
 	}
-	guid := uuid.New().String() // for x-ref on support tickets
+	traceID := tracing.TraceIDFromContext(ctx)
+	if traceID == "" {
+		traceID = tracing.GenerateTraceID()
+	}
 	attrs := []any{
 		"error", err,
 		"user_id", cc.User.ID,
 		"public_key", cc.PublicKey,
 		"cmd", cmd,
 		"args", cc.Args,
-		"guid", guid,
+		"trace_id", traceID,
 	}
 	attrs = append(attrs, slogDetails...)
 	if errors.Is(err, context.Canceled) {
@@ -236,7 +239,7 @@ func (cc *CommandContext) WriteInternalError(ctx context.Context, cmd string, er
 	} else {
 		cc.slog().ErrorContext(ctx, "ssh command failed unexpectedly", attrs...)
 	}
-	cc.WriteError("%q: internal error, error ID: %s", cmd, guid)
+	cc.WriteError("%q: internal error, trace ID: %s", cmd, traceID)
 }
 
 // WantJSON reports whether the --json flag is set.

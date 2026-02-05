@@ -59,7 +59,7 @@ func shellEscapeValue(s string) string {
 }
 
 // isImageResolutionUserError reports whether the error is an image resolution error caused by bad user input.
-// Example: image not found, unauthorized (private), invalid reference.
+// Example: image not found, unauthorized (private), invalid reference, wrong architecture.
 func isImageResolutionUserError(err error) bool {
 	if err == nil {
 		return false
@@ -77,6 +77,7 @@ func isImageResolutionUserError(err error) bool {
 		"denied",
 		"forbidden",
 		"failed to authorize",
+		"no manifest found for platform",
 	}
 	for _, pattern := range userErrorPatterns {
 		if strings.Contains(errStr, pattern) {
@@ -272,6 +273,10 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	if err != nil {
 		if isImageResolutionUserError(err) {
 			s.log.WarnContext(ctx, "failed to fetch image manifest (user error)", "instance_id", instanceID, "image", req.Image, "platform", platform, "error", err)
+			// Provide a more specific error message for platform mismatches
+			if strings.Contains(err.Error(), "no manifest found for platform") {
+				return nil, status.Errorf(codes.InvalidArgument, "image %q is not available for %s (check the image supports this architecture)", req.Image, platform)
+			}
 			return nil, status.Errorf(codes.InvalidArgument, "image %q not found or not accessible", req.Image)
 		}
 		s.log.ErrorContext(ctx, "failed to fetch image manifest", "instance_id", instanceID, "image", req.Image, "platform", platform, "error", err)
