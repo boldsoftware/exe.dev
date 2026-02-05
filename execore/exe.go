@@ -2032,6 +2032,24 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 			return fmt.Errorf("deleting IP shard: %w", err)
 		}
 
+		// Delete auth cookies for all box subdomains (otherwise they show up on
+		// users' profile pages and cause consternation). We explicitly delete the
+		// three known subdomain patterns rather than using LIKE.
+		// Errors here are logged but don't fail the deletion.
+		for _, domain := range []string{
+			s.env.BoxSub(box.Name),        // boxname.exe.cloud
+			s.env.BoxXtermSub(box.Name),   // boxname.xterm.exe.cloud
+			s.env.BoxShelleySub(box.Name), // boxname.shelley.exe.cloud
+		} {
+			if err := queries.DeleteAuthCookiesByDomain(ctx, domain); err != nil {
+				s.slog().ErrorContext(ctx, "failed to delete auth cookies",
+					"box_id", box.ID,
+					"box_name", box.Name,
+					"domain", domain,
+					"error", err)
+			}
+		}
+
 		err := queries.InsertDeletedBox(ctx, exedb.InsertDeletedBoxParams{
 			ID:     int64(box.ID),
 			UserID: userID,

@@ -1773,13 +1773,18 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 	// When a box is renamed, any cookies issued for the old name's domain (e.g., oldname.exe.dev)
 	// should be invalidated so that if someone else creates a box with the old name, they
 	// cannot use any lingering cookies from the original owner.
-	oldBoxDomain := ss.server.env.BoxSub(oldName)
-	if err := withTx1(ss.server, ctx, (*exedb.Queries).DeleteAuthCookiesByBoxName, &oldBoxDomain); err != nil {
-		slog.ErrorContext(ctx, "rename: failed to invalidate auth cookies for old box name",
-			"box_id", box.ID,
-			"old_name", oldName,
-			"old_domain", oldBoxDomain,
-			"error", err)
+	for _, oldDomain := range []string{
+		ss.server.env.BoxSub(oldName),        // oldname.exe.cloud
+		ss.server.env.BoxXtermSub(oldName),   // oldname.xterm.exe.cloud
+		ss.server.env.BoxShelleySub(oldName), // oldname.shelley.exe.cloud
+	} {
+		if err := withTx1(ss.server, ctx, (*exedb.Queries).DeleteAuthCookiesByDomain, oldDomain); err != nil {
+			slog.ErrorContext(ctx, "rename: failed to invalidate auth cookies for old box name",
+				"box_id", box.ID,
+				"old_name", oldName,
+				"old_domain", oldDomain,
+				"error", err)
+		}
 	}
 
 	// Update hostname inside the running VM

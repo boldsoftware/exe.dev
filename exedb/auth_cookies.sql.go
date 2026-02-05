@@ -28,12 +28,12 @@ func (q *Queries) DeleteAuthCookieByValue(ctx context.Context, cookieValue strin
 	return err
 }
 
-const deleteAuthCookiesByBoxName = `-- name: DeleteAuthCookiesByBoxName :exec
-DELETE FROM auth_cookies WHERE domain LIKE ?1 || '.%'
+const deleteAuthCookiesByDomain = `-- name: DeleteAuthCookiesByDomain :exec
+DELETE FROM auth_cookies WHERE domain = ?
 `
 
-func (q *Queries) DeleteAuthCookiesByBoxName(ctx context.Context, boxName *string) error {
-	_, err := q.exec(ctx, q.deleteAuthCookiesByBoxNameStmt, deleteAuthCookiesByBoxName, boxName)
+func (q *Queries) DeleteAuthCookiesByDomain(ctx context.Context, domain string) error {
+	_, err := q.exec(ctx, q.deleteAuthCookiesByDomainStmt, deleteAuthCookiesByDomain, domain)
 	return err
 }
 

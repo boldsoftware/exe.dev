@@ -437,8 +437,41 @@ chmod +x /home/exedev/cgi-bin/headers
 		}
 	})
 
-	// Cleanup
-	cleanupBox(t, keyFile, box)
+	// Test that deleting a box also deletes its auth cookies.
+	t.Run("delete_removes_auth_cookies", func(t *testing.T) {
+		noGolden(t)
+
+		// The auth_confirm_owner_skip and logout_flow subtests above already created
+		// auth cookies for this box. Verify they appear on the profile page.
+		client := newClientWithCookies(t, cookies)
+		profileURL := fmt.Sprintf("http://localhost:%d/user", Env.servers.Exed.HTTPPort)
+		resp, err := client.Get(profileURL)
+		if err != nil {
+			t.Fatalf("failed to get profile page: %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		boxDomain := fmt.Sprintf("%s.exe.cloud", box)
+		if !strings.Contains(string(body), boxDomain) {
+			t.Fatalf("profile page should show box domain %q in site sessions before deletion", boxDomain)
+		}
+
+		// Delete the box
+		cleanupBox(t, keyFile, box)
+
+		// Verify the box domain is no longer on the profile page
+		resp, err = client.Get(profileURL)
+		if err != nil {
+			t.Fatalf("failed to get profile page after deletion: %v", err)
+		}
+		body, _ = io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if strings.Contains(string(body), boxDomain) {
+			t.Errorf("profile page should NOT show box domain %q in site sessions after deletion", boxDomain)
+		}
+	})
 }
 
 type proxyExpectation struct {
