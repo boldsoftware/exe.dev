@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -21,13 +20,6 @@ import (
 	"exe.dev/exemenu"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
-
-// cpCommandFlags creates a FlagSet for the cp command
-func cpCommandFlags() *flag.FlagSet {
-	fs := flag.NewFlagSet("cp", flag.ContinueOnError)
-	fs.Bool("json", false, "output in JSON format")
-	return fs
-}
 
 // handleCpCommand implements the cp command - copy an existing VM using ZFS snapshots
 func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandContext) error {
