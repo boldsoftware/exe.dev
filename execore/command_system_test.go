@@ -9,6 +9,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"exe.dev/tslog"
+	"github.com/gliderlabs/ssh"
 )
 
 // MockOutput captures output for testing
@@ -23,6 +24,19 @@ func (m *MockOutput) Write(p []byte) (n int, err error) {
 func (m *MockOutput) String() string {
 	return m.output.String()
 }
+
+// mockShellSession is a minimal implementation of exemenu.ShellSession for testing
+type mockShellSession struct{}
+
+func (m *mockShellSession) Read(p []byte) (n int, err error)  { return 0, nil }
+func (m *mockShellSession) Write(p []byte) (n int, err error) { return len(p), nil }
+func (m *mockShellSession) Close() error                      { return nil }
+func (m *mockShellSession) Push([]byte)                       {}
+func (m *mockShellSession) Context() context.Context          { return context.Background() }
+func (m *mockShellSession) Environ() []string                 { return nil }
+func (m *mockShellSession) User() string                      { return "test" }
+func (m *mockShellSession) Pty() (ssh.Pty, bool)              { return ssh.Pty{}, false }
+func (m *mockShellSession) WaitWindowChange() bool            { return false }
 
 // Helper to create test context
 func createTestContext(user *exedb.User, output *MockOutput, args []string) *exemenu.CommandContext {
@@ -122,6 +136,17 @@ func TestCommandContext_HelperMethods(t *testing.T) {
 	// Test non-interactive context
 	if ctx.IsInteractive() {
 		t.Errorf("IsInteractive() = true, want false when terminal is nil")
+	}
+
+	// Test IsSSHExec - no SSHSession, not interactive (web/mobile flow)
+	if ctx.IsSSHExec() {
+		t.Errorf("IsSSHExec() = true, want false when SSHSession is nil")
+	}
+
+	// Test IsSSHExec - has SSHSession, not interactive (ssh exec)
+	ctx.SSHSession = &mockShellSession{}
+	if !ctx.IsSSHExec() {
+		t.Errorf("IsSSHExec() = false, want true for non-interactive SSH session")
 	}
 
 	_, err := ctx.ReadLine()

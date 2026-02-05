@@ -297,6 +297,15 @@ func (ctx *CommandContext) IsInteractive() bool {
 	return ctx.Terminal != nil
 }
 
+// IsSSHExec reports whether cc is a non-interactive SSH exec session.
+// It returns true e.g. for `ssh user@exe.dev new -name foo`.
+// It is distinct from web/mobile flows which also lack a terminal
+// but don't have an SSHSession.
+// The intent here is to distinguish "probably scripted" vs "probably a human typing".
+func (ctx *CommandContext) IsSSHExec() bool {
+	return ctx.SSHSession != nil && !ctx.IsInteractive()
+}
+
 // ValidateCommand validates a command's configuration to catch common mistakes
 func ValidateCommand(cmd *Command) error {
 	if cmd.HasPositionalArgs && len(cmd.Subcommands) > 0 {
