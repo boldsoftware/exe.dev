@@ -819,7 +819,7 @@ func (s *Server) isUserLockedOut(ctx context.Context, userID string) (bool, erro
 	return withRxRes1(s, ctx, (*exedb.Queries).GetUserIsLockedOut, userID)
 }
 
-// renderLockedOutPage renders the account-locked page and returns true if the user is locked out.
+// renderLockedOutPage renders the account-locked page and reports whether userID is locked out.
 // If there's an error checking lockout status, it logs the error and returns false (allows access).
 func (s *Server) renderLockedOutPage(w http.ResponseWriter, r *http.Request, userID string) bool {
 	ctx := r.Context()

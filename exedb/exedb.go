@@ -202,7 +202,7 @@ func executeMigrationTx(tx *sql.Tx, filename string) error {
 	return nil
 }
 
-// isBaseMigration returns true if the migration filename indicates a base migration.
+// isBaseMigration reports whether filename indicates a base migration (e.g., "078-base.sql").
 // Base migrations are consolidated schema snapshots (e.g., "078-base.sql").
 func isBaseMigration(filename string) bool {
 	return strings.HasSuffix(filename, "-base.sql")

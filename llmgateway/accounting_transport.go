@@ -553,9 +553,8 @@ func setRateLimitGauge(header http.Header, headerName, labelValue string) {
 	}
 }
 
-// isFreeEndpoint returns true if the path is a free endpoint that doesn't
-// return usage data. These are endpoints like /models that just list
-// available models without consuming any tokens.
+// isFreeEndpoint reports whether path is a free endpoint that doesn't
+// return usage data, such as /models.
 func isFreeEndpoint(path string) bool {
 	// Exact matches
 	switch path {
@@ -569,9 +568,9 @@ func isFreeEndpoint(path string) bool {
 	return false
 }
 
-// isGzipped returns true if the data appears to be gzip-compressed.
-// It checks both the Content-Encoding header (case-insensitive, handles multiple
-// values) and the gzip magic bytes (0x1f 0x8b) as a fallback.
+// isGzipped reports whether data appears to be gzip-compressed.
+// It checks both contentEncoding (case-insensitive, handles multiple values)
+// and the gzip magic bytes (0x1f 0x8b) as a fallback.
 func isGzipped(contentEncoding string, data []byte) bool {
 	// Check header first (case-insensitive, handles "gzip", "GZIP", "gzip, br", etc.)
 	if strings.Contains(strings.ToLower(contentEncoding), "gzip") {

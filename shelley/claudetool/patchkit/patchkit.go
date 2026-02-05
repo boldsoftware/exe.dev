@@ -390,9 +390,9 @@ func commonWhitespacePrefix(x []string) string {
 	return pre
 }
 
-// commonPrefixLen returns the length of the common prefix of two strings.
-// TODO: optimize, see e.g. https://go-review.googlesource.com/c/go/+/408116
+// commonPrefixLen returns the length of the common prefix of a and b.
 func commonPrefixLen(a, b string) int {
+	// TODO: optimize, see https://go-review.googlesource.com/c/go/+/408116
 	shortest := min(len(a), len(b))
 	for i := range shortest {
 		if a[i] != b[i] {
@@ -402,9 +402,9 @@ func commonPrefixLen(a, b string) int {
 	return shortest
 }
 
-// commonSuffixLen returns the length of the common suffix of two strings.
-// TODO: optimize
+// commonSuffixLen returns the length of the common suffix of a and b.
 func commonSuffixLen(a, b string) int {
+	// TODO: optimize
 	shortest := min(len(a), len(b))
 	for i := 0; i < shortest; i++ {
 		if a[len(a)-i-1] != b[len(b)-i-1] {

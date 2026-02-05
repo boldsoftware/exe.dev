@@ -363,7 +363,7 @@ func (c *Console) StopRecording() error {
 	return err
 }
 
-// IsRecording returns true if ASCIIcinema recording is currently active.
+// IsRecording reports whether ASCIIcinema recording is currently active.
 func (c *Console) IsRecording() bool {
 	return c.opts.AsciinemaWriter != nil
 }

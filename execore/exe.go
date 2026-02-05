@@ -582,7 +582,7 @@ func (s *Server) httpsPort() int {
 	return -1
 }
 
-// isMainListenerPort returns true if the port is the server's main HTTP or HTTPS port.
+// isMainListenerPort reports whether port is the server's main HTTP or HTTPS port.
 func (s *Server) isMainListenerPort(port int) bool {
 	return port == s.httpPort() || port == s.httpsPort()
 }
@@ -2594,7 +2594,7 @@ func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*
 	return &user, nil
 }
 
-// isBasicUser returns true if the user is a "basic user" - created for login-with-exe,
+// isBasicUser reports whether user is a "basic user" — created for login-with-exe,
 // has no SSH keys, and has no boxes. These users should only see the profile tab.
 func (s *Server) isBasicUser(ctx context.Context, user exedb.User, sshKeyCount int) bool {
 	if !user.CreatedForLoginWithExe || sshKeyCount > 0 {

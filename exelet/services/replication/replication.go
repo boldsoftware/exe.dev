@@ -608,7 +608,7 @@ func (s *Service) destroyDataset(ctx context.Context, dataset string) error {
 	return nil
 }
 
-// IsRestoring returns true if the volume is currently being restored
+// IsRestoring reports whether volumeID is currently being restored.
 func (s *Service) IsRestoring(volumeID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -701,8 +701,7 @@ func (s *Service) ListRemoteSnapshots(req *api.ListRemoteSnapshotsRequest, strea
 	return nil
 }
 
-// isVMInstanceID returns true if the ID matches the vm\d{6}-* pattern
-// (e.g., vm000123-blue-falcon), which is globally unique.
+// isVMInstanceID reports whether id matches the globally unique vm\d{6}-* pattern (e.g., vm000123-blue-falcon).
 func isVMInstanceID(id string) bool {
 	// vm followed by exactly 6 digits then a dash: vm000123-...
 	if len(id) < 9 || id[0] != 'v' || id[1] != 'm' || id[8] != '-' {

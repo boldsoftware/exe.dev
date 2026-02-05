@@ -406,8 +406,8 @@ func (s *Server) getProxyPorts() []int {
 	return s.env.ProxyPorts
 }
 
-// isDefaultServerPort returns true if the port should use the box's default route
-// This includes port 443 (HTTPS) and the server's main HTTP port
+// isDefaultServerPort reports whether port should use the box's default route.
+// This includes port 443 (HTTPS) and the server's main HTTP port.
 func (s *Server) isDefaultServerPort(port int) bool {
 	// Port 443 always uses default route
 	if port == 443 {

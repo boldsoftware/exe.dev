@@ -45,7 +45,7 @@ func Platform() string {
 	return runtime.GOOS + "/" + runtime.GOARCH
 }
 
-// IsRoot returns true if the current process is running as root (uid 0).
+// IsRoot reports whether the current process is running as root (uid 0).
 func IsRoot() bool {
 	return os.Getuid() == 0
 }

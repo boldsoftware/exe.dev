@@ -2033,7 +2033,7 @@ func (s *Server) handleDebugTestimonials(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-// IsLoginCreationDisabled returns true if new account creation is disabled.
+// IsLoginCreationDisabled reports whether new account creation is disabled.
 func (s *Server) IsLoginCreationDisabled(ctx context.Context) bool {
 	val, err := withRxRes0(s, ctx, (*exedb.Queries).GetLoginCreationDisabled)
 	if err != nil {
@@ -2122,7 +2122,7 @@ func (s *Server) handleDebugEmailSend(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/debug/email?result=Email+sent+successfully+via+%s+to+%s", provider, html.EscapeString(to)), http.StatusSeeOther)
 }
 
-// IsSignupPOWEnabled returns true if proof-of-work is required for new signups.
+// IsSignupPOWEnabled reports whether proof-of-work is required for new signups.
 func (s *Server) IsSignupPOWEnabled(ctx context.Context) bool {
 	val, err := withRxRes0(s, ctx, (*exedb.Queries).GetSignupPOWEnabled)
 	if err != nil {
@@ -2776,7 +2776,7 @@ func (s *Server) handleDebugInviteTree(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// IsIPAbuseFilterDisabled returns true if the IP abuse filter is disabled.
+// IsIPAbuseFilterDisabled reports whether the IP abuse filter is disabled.
 func (s *Server) IsIPAbuseFilterDisabled(ctx context.Context) bool {
 	val, err := withRxRes0(s, ctx, (*exedb.Queries).GetIPAbuseFilterDisabled)
 	if err != nil {

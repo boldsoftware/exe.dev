@@ -48,9 +48,8 @@ func buildEntrypointAndCmdArgs(useExetini bool, override string, imageEntrypoint
 	return nil
 }
 
-// ChooseBestPortToRoute determines the best port to use for automatic routing
-// This is a wrapper around the main routing logic for testing purposes
-// Priority: tcp/80 first, then smallest TCP port >= 1024
+// ChooseBestPortToRoute returns the best port from exposedPorts for automatic routing.
+// Priority: tcp/80 first, then smallest TCP port >= 1024.
 func ChooseBestPortToRoute(exposedPorts map[string]struct{}) int {
 	if len(exposedPorts) == 0 {
 		return 0 // No exposed ports

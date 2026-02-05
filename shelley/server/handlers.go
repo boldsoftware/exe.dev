@@ -189,7 +189,7 @@ func isConversationSlugPath(path string) bool {
 	return strings.HasPrefix(path, "/c/")
 }
 
-// acceptsGzip returns true if the client accepts gzip encoding
+// acceptsGzip reports whether r accepts gzip encoding.
 func acceptsGzip(r *http.Request) bool {
 	return strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
 }

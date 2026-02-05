@@ -295,7 +295,7 @@ func (ctx *CommandContext) SetPrompt(prompt string) {
 	}
 }
 
-// IsInteractive returns true if this is an interactive session
+// IsInteractive reports whether this is an interactive session.
 func (ctx *CommandContext) IsInteractive() bool {
 	return ctx.Terminal != nil
 }

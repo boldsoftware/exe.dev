@@ -122,8 +122,7 @@ type HTTPMetrics struct {
 	requestsInFlight *prometheus.GaugeVec
 	proxyBytesTotal  *prometheus.CounterVec
 
-	// isProxyHost returns true if the host should be treated as a proxy request.
-	// This is set by the Server when creating HTTPMetrics.
+	// isProxyHost reports whether host should be treated as a proxy request.
 	isProxyHost func(host string) bool
 	// boxFromHost extracts the box name from a proxy host.
 	boxFromHost func(host string) string

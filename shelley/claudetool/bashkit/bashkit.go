@@ -76,8 +76,7 @@ func Check(bashScript string) error {
 	return err
 }
 
-// WillRunGitCommit checks if the provided bash script will run 'git commit'.
-// It returns true if any command in the script is a git commit command.
+// WillRunGitCommit reports whether bashScript contains a git commit command.
 func WillRunGitCommit(bashScript string) (bool, error) {
 	r := strings.NewReader(bashScript)
 	parser := syntax.NewParser()

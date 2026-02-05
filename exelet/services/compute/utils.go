@@ -130,10 +130,10 @@ func (s *Service) StartInstanceByID(ctx context.Context, id string) error {
 	return s.startInstance(ctx, id)
 }
 
-// GetInstanceByIP looks up an instance by its assigned IP address
-// TODO(philip): Beware that this is linear in number of instances,
-// and those are read from JSON files at the moment!
+// GetInstanceByIP looks up an instance by its assigned IP address.
 func (s *Service) GetInstanceByIP(ctx context.Context, ip string) (string, string, error) {
+	// TODO(philip): This is linear in number of instances,
+	// and those are read from JSON files at the moment.
 	instances, err := s.listInstances(ctx)
 	if err != nil {
 		return "", "", err

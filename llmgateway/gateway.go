@@ -472,7 +472,7 @@ func extractModelFromRequest(r *http.Request) (string, []byte, error) {
 	return req.Model, bodyBytes, nil
 }
 
-// isBlockedEndpoint returns true if the endpoint path should be blocked.
+// isBlockedEndpoint reports whether path should be blocked.
 // Some endpoints (like image generation) have per-image pricing that we don't support.
 func isBlockedEndpoint(path string) bool {
 	blockedPrefixes := []string{

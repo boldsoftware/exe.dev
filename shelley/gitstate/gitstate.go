@@ -80,7 +80,7 @@ func GetGitState(dir string) *GitState {
 	return state
 }
 
-// Equal returns true if two git states are equal.
+// Equal reports whether g and other represent the same git state.
 func (g *GitState) Equal(other *GitState) bool {
 	if g == nil && other == nil {
 		return true

@@ -12,12 +12,12 @@ import (
 // Users created before this date are grandfathered and don't need billing.
 var billingRequiredDate = time.Date(2026, 1, 6, 23, 10, 0, 0, time.UTC)
 
-// userIsPaying returns true if the user has an active billing status.
+// userIsPaying reports whether status indicates an active billing subscription.
 func userIsPaying(status *exedb.GetUserBillingStatusRow) bool {
 	return status.BillingStatus == "active"
 }
 
-// userNeedsBilling returns true if the user needs to add billing before creating VMs.
+// userNeedsBilling reports whether the user must add billing before creating VMs.
 func userNeedsBilling(status *exedb.GetUserBillingStatusRow) bool {
 	// Active users don't need billing
 	if status.BillingStatus == "active" {
