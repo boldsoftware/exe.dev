@@ -176,43 +176,45 @@ func (s *Server) setupHTTPSServer() {
 	// Discover Tailscale DNS name early; certificate retrieval can happen lazily in getCertificate
 	// If certs don't work, you might need to run the following in prod:
 	//  sudo tailscale set --operator=$USER
-	func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		tailscaleAcknowledgeUnstableAPI()
-		lc := new(local.Client)
-		st, err := lc.Status(ctx)
-		if err != nil || st == nil || st.Self == nil || st.Self.DNSName == "" {
-			if err != nil {
-				s.slog().ErrorContext(ctx, "tailscale status unavailable", "error", err)
-			} else {
-				s.slog().ErrorContext(ctx, "tailscale DNS name not found")
+	if s.env.PreloadTailscaleCert {
+		func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			tailscaleAcknowledgeUnstableAPI()
+			lc := new(local.Client)
+			st, err := lc.Status(ctx)
+			if err != nil || st == nil || st.Self == nil || st.Self.DNSName == "" {
+				if err != nil {
+					s.slog().ErrorContext(ctx, "tailscale status unavailable", "error", err)
+				} else {
+					s.slog().ErrorContext(ctx, "tailscale DNS name not found")
+				}
+				return
 			}
-			return
-		}
-		s.tsDomain = domz.Canonicalize(st.Self.DNSName)
+			s.tsDomain = domz.Canonicalize(st.Self.DNSName)
 
-		// Try to eagerly fetch and cache cert, but it's optional
-		certPEM, keyPEM, err := lc.CertPair(ctx, s.tsDomain)
-		if err != nil {
-			s.slog().ErrorContext(ctx, "tailscale cert pair not preloaded", "error", err)
-			return
-		}
-		c, err := tls.X509KeyPair(certPEM, keyPEM)
-		if err != nil {
-			s.slog().ErrorContext(ctx, "tailscale x509 keypair parse error", "error", err)
-			return
-		}
-		if len(c.Certificate) > 0 {
-			if leaf, err := x509.ParseCertificate(c.Certificate[0]); err == nil {
-				c.Leaf = leaf
+			// Try to eagerly fetch and cache cert, but it's optional
+			certPEM, keyPEM, err := lc.CertPair(ctx, s.tsDomain)
+			if err != nil {
+				s.slog().ErrorContext(ctx, "tailscale cert pair not preloaded", "error", err)
+				return
 			}
-		}
-		s.tsCertMu.Lock()
-		s.tsCert = &c
-		s.tsCertMu.Unlock()
-		s.slog().InfoContext(ctx, "tailscale cert loaded", "domain", s.tsDomain)
-	}()
+			c, err := tls.X509KeyPair(certPEM, keyPEM)
+			if err != nil {
+				s.slog().ErrorContext(ctx, "tailscale x509 keypair parse error", "error", err)
+				return
+			}
+			if len(c.Certificate) > 0 {
+				if leaf, err := x509.ParseCertificate(c.Certificate[0]); err == nil {
+					c.Leaf = leaf
+				}
+			}
+			s.tsCertMu.Lock()
+			s.tsCert = &c
+			s.tsCertMu.Unlock()
+			s.slog().InfoContext(ctx, "tailscale cert loaded", "domain", s.tsDomain)
+		}()
+	}
 }
 
 var (

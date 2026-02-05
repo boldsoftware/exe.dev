@@ -36,9 +36,10 @@ type Env struct {
 	ReplHost string // the base hostname of the repl; prod is "exe.dev"
 	BoxHost  string // the base hostname of boxes; prod is "exe.dev" (but soon will be "exe.xyz"), dev is "exe.cloud"
 
-	UseCobble         bool // whether to start cobble/pebble for local ACME testing
-	DiscoverPublicIPs bool // whether to attempt to discover public IPs of the server using EC2 metadata service
-	EnableLMTP        bool // whether to start the LMTP server for inbound email delivery
+	UseCobble            bool // whether to start cobble/pebble for local ACME testing
+	DiscoverPublicIPs    bool // whether to attempt to discover public IPs of the server using EC2 metadata service
+	PreloadTailscaleCert bool // whether to preload tailscale cert at startup (has 10s timeout, skip in tests)
+	EnableLMTP           bool // whether to start the LMTP server for inbound email delivery
 
 	MaxMaildirEmails int // max emails allowed in ~/Maildir/new before auto-disabling receive
 
@@ -84,9 +85,10 @@ func Invalid() Env {
 		ReplHost: "INVALID.INVALID",
 		BoxHost:  "INVALID.INVALID",
 
-		UseCobble:         false,
-		DiscoverPublicIPs: false,
-		EnableLMTP:        false,
+		UseCobble:            false,
+		DiscoverPublicIPs:    false,
+		PreloadTailscaleCert: false,
+		EnableLMTP:           false,
 
 		MaxMaildirEmails: 0,
 
@@ -135,9 +137,10 @@ func Local() Env {
 		ReplHost: "localhost",
 		BoxHost:  "exe.cloud",
 
-		UseCobble:         true, // auto-start cobble/pebble for ACME testing
-		DiscoverPublicIPs: false,
-		EnableLMTP:        true,
+		UseCobble:            true, // auto-start cobble/pebble for ACME testing
+		DiscoverPublicIPs:    false,
+		PreloadTailscaleCert: false,
+		EnableLMTP:           true,
 
 		MaxMaildirEmails: 5, // low limit for local dev/testing
 
@@ -185,9 +188,10 @@ func Test() Env {
 		ReplHost: "localhost",
 		BoxHost:  "exe.cloud",
 
-		UseCobble:         false, // tests start their own cobble/pebble instances as needed
-		DiscoverPublicIPs: false,
-		EnableLMTP:        true,
+		UseCobble:            false, // tests start their own cobble/pebble instances as needed
+		DiscoverPublicIPs:    false,
+		PreloadTailscaleCert: false,
+		EnableLMTP:           true,
 
 		MaxMaildirEmails: 5, // low limit for testing
 
@@ -233,9 +237,10 @@ func Staging() Env {
 		ReplHost: "exe-staging.dev",
 		BoxHost:  "exe-staging.xyz",
 
-		UseCobble:         false,
-		DiscoverPublicIPs: true,
-		EnableLMTP:        true,
+		UseCobble:            false,
+		DiscoverPublicIPs:    true,
+		PreloadTailscaleCert: true,
+		EnableLMTP:           true,
 
 		MaxMaildirEmails: 1000, // 1000 emails before auto-disable
 
@@ -280,9 +285,10 @@ func Prod() Env {
 		ReplHost: "exe.dev",
 		BoxHost:  "exe.xyz",
 
-		UseCobble:         false,
-		DiscoverPublicIPs: true,
-		EnableLMTP:        true,
+		UseCobble:            false,
+		DiscoverPublicIPs:    true,
+		PreloadTailscaleCert: true,
+		EnableLMTP:           true,
 
 		MaxMaildirEmails: 1000, // 1000 emails before auto-disable
 
