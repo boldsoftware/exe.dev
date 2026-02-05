@@ -121,6 +121,10 @@ jobs:
       - name: Download exelet-fs
         run: make exelet-fs
 
+      - name: destroy stale VMs
+        run: |
+          sudo virsh list --name | grep ci-ubuntu | xargs -r -n 1 sudo virsh destroy || true
+
       - name: ensure vm snapshot exists
         id: vm
         run: |
