@@ -141,6 +141,26 @@ class TerminalClient {
             });
         }
         
+        // Handle paste button
+        const pasteBtn = document.getElementById('paste-btn');
+        if (pasteBtn) {
+            pasteBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                try {
+                    const text = await navigator.clipboard.readText();
+                    if (text && this.connected && this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({
+                            type: 'input',
+                            data: text
+                        }));
+                    }
+                } catch (err) {
+                    console.error('Failed to read clipboard:', err);
+                }
+                this.terminal.focus();
+            });
+        }
+
         // Handle keyboard space toggle
         this.keyboardMode = false;
         if (kbToggle) {
