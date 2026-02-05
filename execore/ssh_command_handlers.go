@@ -345,6 +345,12 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			},
 		},
 		{
+			Name:        "true",
+			Description: "Do nothing, successfully",
+			Hidden:      true,
+			Handler:     func(ctx context.Context, cc *exemenu.CommandContext) error { return nil },
+		},
+		{
 			Name:              "grant-support-root",
 			Hidden:            true,
 			Description:       "Grant or revoke exe.dev support root access to a VM",
