@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path"
 	"regexp"
 	"slices"
 	"strconv"
@@ -1029,15 +1030,31 @@ func runCommandOnBoxWithStdin(ctx context.Context, pool *sshpool2.Pool, box *exe
 }
 
 // scpToBox copies content to a remote file on a box via SSH.
-// It writes to a temp file in /tmp, then uses sudo mv to move it to the final destination.
+// It writes to a temp file, then uses sudo mv to move it to the final destination.
 // remotePath must be an absolute path.
 func scpToBox(ctx context.Context, pool *sshpool2.Pool, box *exedb.Box, content io.Reader, remotePath string, mode os.FileMode) error {
-	// Write to temp file, then sudo mv to final destination
-	tmpPath := fmt.Sprintf("/tmp/scp.%s", crand.Text()) // doesn't need quoting
+	// We use a .exe-tmp dir in the *parent* of the destination directory.
+	// Three constraints drive this:
+	//   1. Must be on the same volume as the destination so mv is atomic.
+	//   2. Must not be /tmp, which systemd-tmpfiles-setup cleans on boot,
+	//      racing with in-flight copies. See boldsoftware/exe.dev#147.
+	//   3. Must not be inside the destination directory itself, because
+	//      mkdir/rmdir would generate spurious inotify events that
+	//      interfere with user inotifywait scripts (e.g. email delivery).
+	// The parent of the destination directory satisfies all three.
+	destDir := path.Dir(remotePath)
+	tmpDir := path.Dir(destDir) + "/.exe-tmp"
+	tmpFile := fmt.Sprintf("%s/scp.%s", tmpDir, crand.Text())
 	quotedDest, err := syntax.Quote(remotePath, syntax.LangBash)
 	if err != nil {
-		// exceedingly unlikely, but check anyway
 		return fmt.Errorf("failed to quote remote path: %w", err)
+	}
+	// tmpDir and tmpFile are quote-safe by construction (crand.Text is alphanumeric).
+
+	// Create .exe-tmp dir (sudo in case parent dir is owned by root, e.g. /usr/local).
+	mkdirCmd := fmt.Sprintf("sudo mkdir -p %s && sudo chmod 1777 %s", tmpDir, tmpDir)
+	if output, err := runCommandOnBox(ctx, pool, box, mkdirCmd); err != nil {
+		return fmt.Errorf("failed to create temp dir: cmd=%q output=%q: %w", mkdirCmd, output, err)
 	}
 
 	// On failure, remove temp file.
@@ -1045,22 +1062,25 @@ func scpToBox(ctx context.Context, pool *sshpool2.Pool, box *exedb.Box, content 
 		// Use a fresh context so cleanup runs even if the original context was canceled.
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		runCommandOnBox(cleanupCtx, pool, box, fmt.Sprintf("rm -f %s", tmpPath))
+		runCommandOnBox(cleanupCtx, pool, box, fmt.Sprintf("rm -f %s", tmpFile))
 	}
 
 	// Write content to temp file
-	writeCmd := fmt.Sprintf("cat > %s && chmod %04o %s", tmpPath, mode, tmpPath)
+	writeCmd := fmt.Sprintf("cat > %s && chmod %04o %s", tmpFile, mode, tmpFile)
 	if output, err := runCommandOnBoxWithStdin(ctx, pool, box, writeCmd, content); err != nil {
 		cleanup()
 		return fmt.Errorf("write to temp file failed: cmd=%q output=%q: %w", writeCmd, output, err)
 	}
 
 	// Move to final destination with sudo
-	mvCmd := fmt.Sprintf("sudo mv %s %s", tmpPath, quotedDest)
+	mvCmd := fmt.Sprintf("sudo mv %s %s", tmpFile, quotedDest)
 	if output, err := runCommandOnBox(ctx, pool, box, mvCmd); err != nil {
 		cleanup()
 		return fmt.Errorf("move to destination failed: cmd=%q output=%q: %w", mvCmd, output, err)
 	}
+
+	// Best-effort cleanup of the temp dir. Fails harmlessly if another scp is in flight.
+	runCommandOnBox(ctx, pool, box, fmt.Sprintf("sudo rmdir %s 2>/dev/null", tmpDir))
 	return nil
 }
 
