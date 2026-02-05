@@ -91,6 +91,10 @@ type ModelCost struct {
 //   - models.dev: https://models.dev/api.json
 var allowedModels = map[Provider]map[string]ModelCost{
 	ProviderAnthropic: {
+		// Claude 4.6 models
+		"claude-opus-4-6":          {Input: 500, Output: 2500, CacheRead: 50, CacheCreation: 625},
+		"claude-opus-4-6-20260115": {Input: 500, Output: 2500, CacheRead: 50, CacheCreation: 625},
+
 		// Claude 4.5 models
 		"claude-opus-4-5-20251101":   {Input: 500, Output: 2500, CacheRead: 50, CacheCreation: 625},
 		"claude-opus-4-5":            {Input: 500, Output: 2500, CacheRead: 50, CacheCreation: 625},
