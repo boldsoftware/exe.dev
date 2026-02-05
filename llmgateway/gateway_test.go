@@ -860,15 +860,10 @@ func TestExtractModelFromRequest(t *testing.T) {
 	}
 }
 
-func TestGateway_UnknownModelAllowedWithLogging(t *testing.T) {
-	// Unknown models are currently allowed through but logged.
-	// TODO: This test should be updated to expect rejection once we have complete model coverage.
+func TestGateway_UnknownModelRejected(t *testing.T) {
 	db := newDB(t)
 	setupTestBox(t, db, "test-box")
 
-	// We can't easily test that unknown models are proxied without mocking the upstream,
-	// so we just verify the request doesn't get rejected with 400.
-	// The logging is verified by inspecting test output.
 	gateway := &llmGateway{
 		now:     time.Now,
 		db:      db,
@@ -878,24 +873,28 @@ func TestGateway_UnknownModelAllowedWithLogging(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string
-		path string
-		body string
+		name  string
+		path  string
+		body  string
+		model string
 	}{
 		{
-			name: "unknown anthropic model logged",
-			path: "/_/gateway/anthropic/v1/messages",
-			body: `{"model": "unknown-model-xyz", "messages": []}`,
+			name:  "unknown anthropic model rejected",
+			path:  "/_/gateway/anthropic/v1/messages",
+			body:  `{"model": "unknown-model-xyz", "messages": []}`,
+			model: "unknown-model-xyz",
 		},
 		{
-			name: "unknown openai model logged",
-			path: "/_/gateway/openai/v1/chat/completions",
-			body: `{"model": "gpt-99", "messages": []}`,
+			name:  "unknown openai model rejected",
+			path:  "/_/gateway/openai/v1/chat/completions",
+			body:  `{"model": "gpt-99", "messages": []}`,
+			model: "gpt-99",
 		},
 		{
-			name: "unknown fireworks model logged",
-			path: "/_/gateway/fireworks/inference/v1/chat/completions",
-			body: `{"model": "accounts/fireworks/models/unknown-model", "messages": []}`,
+			name:  "unknown fireworks model rejected",
+			path:  "/_/gateway/fireworks/inference/v1/chat/completions",
+			body:  `{"model": "accounts/fireworks/models/unknown-model", "messages": []}`,
+			model: "accounts/fireworks/models/unknown-model",
 		},
 	}
 
@@ -909,12 +908,12 @@ func TestGateway_UnknownModelAllowedWithLogging(t *testing.T) {
 			w := httptest.NewRecorder()
 			gateway.ServeHTTP(w, req)
 
-			// Should NOT return 400 - unknown models are allowed through (for now)
-			if w.Code == http.StatusBadRequest {
-				t.Errorf("got status 400, but unknown models should be allowed through (with logging)")
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("got status %d, want 400 for unknown model", w.Code)
 			}
-			// Note: The request will fail with 502 since we don't have a real backend,
-			// but that's fine - we just want to verify it wasn't rejected at the gateway level.
+			if !strings.Contains(w.Body.String(), tt.model) {
+				t.Errorf("response body %q should mention the model %q", w.Body.String(), tt.model)
+			}
 		})
 	}
 }

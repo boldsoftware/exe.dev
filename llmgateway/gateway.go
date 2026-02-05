@@ -268,19 +268,12 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Check if the model is in our allowlist (only if a model was specified)
 	if model != "" {
-		if !llmpricing.IsModelAllowed(provider, model) {
-			// TODO: reject unknown models once we have complete coverage
-			// For now, log and allow through
-			m.log.WarnContext(r.Context(), "model not in allowlist (allowing for now)",
-				"provider", provider,
-				"model", model,
-				"user_id", userID,
-				"box", boxName,
-			)
-			sloghttp.AddCustomAttributes(r, slog.String("unknown_model", model))
-			sloghttp.AddCustomAttributes(r, slog.Bool("model_not_in_allowlist", true))
-		}
 		sloghttp.AddCustomAttributes(r, slog.String("requested_model", model))
+		if !llmpricing.IsModelAllowed(provider, model) {
+			sloghttp.AddCustomAttributes(r, slog.String("unknown_model", model))
+			m.httpError(w, r, fmt.Sprintf("model %q is not supported", model), http.StatusBadRequest, boxName, nil)
+			return
+		}
 	}
 
 	// Restore the body for the proxy
