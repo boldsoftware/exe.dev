@@ -56,7 +56,7 @@ func (q *Queries) GetEmailByUserID(ctx context.Context, userID string) (string, 
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits
 FROM users
 WHERE canonical_email = ?
 `
@@ -80,6 +80,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, canonicalEmail *string) (U
 		&i.Region,
 		&i.CanonicalEmail,
 		&i.IsLockedOut,
+		&i.Limits,
 	)
 	return i, err
 }
@@ -106,6 +107,17 @@ func (q *Queries) GetUserIsLockedOut(ctx context.Context, userID string) (bool, 
 	return is_locked_out, err
 }
 
+const getUserLimits = `-- name: GetUserLimits :one
+SELECT limits FROM users WHERE user_id = ?
+`
+
+func (q *Queries) GetUserLimits(ctx context.Context, userID string) (*string, error) {
+	row := q.queryRow(ctx, q.getUserLimitsStmt, getUserLimits, userID)
+	var limits *string
+	err := row.Scan(&limits)
+	return limits, err
+}
+
 const getUserNewVMCreationDisabled = `-- name: GetUserNewVMCreationDisabled :one
 SELECT new_vm_creation_disabled FROM users WHERE user_id = ?
 `
@@ -129,7 +141,7 @@ func (q *Queries) GetUserRootSupport(ctx context.Context, userID string) (int64,
 }
 
 const getUserWithDetails = `-- name: GetUserWithDetails :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits
 FROM users
 WHERE user_id = ?
 `
@@ -153,6 +165,7 @@ func (q *Queries) GetUserWithDetails(ctx context.Context, userID string) (User, 
 		&i.Region,
 		&i.CanonicalEmail,
 		&i.IsLockedOut,
+		&i.Limits,
 	)
 	return i, err
 }
@@ -181,7 +194,7 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 }
 
 const listAllUsers = `-- name: ListAllUsers :many
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out FROM users ORDER BY created_at DESC
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits FROM users ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
@@ -209,6 +222,7 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 			&i.Region,
 			&i.CanonicalEmail,
 			&i.IsLockedOut,
+			&i.Limits,
 		); err != nil {
 			return nil, err
 		}
@@ -249,6 +263,20 @@ type SetUserIsLockedOutParams struct {
 
 func (q *Queries) SetUserIsLockedOut(ctx context.Context, arg SetUserIsLockedOutParams) error {
 	_, err := q.exec(ctx, q.setUserIsLockedOutStmt, setUserIsLockedOut, arg.IsLockedOut, arg.UserID)
+	return err
+}
+
+const setUserLimits = `-- name: SetUserLimits :exec
+UPDATE users SET limits = ? WHERE user_id = ?
+`
+
+type SetUserLimitsParams struct {
+	Limits *string `db:"limits" json:"limits"`
+	UserID string  `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) SetUserLimits(ctx context.Context, arg SetUserLimitsParams) error {
+	_, err := q.exec(ctx, q.setUserLimitsStmt, setUserLimits, arg.Limits, arg.UserID)
 	return err
 }
 

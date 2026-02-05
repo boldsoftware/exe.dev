@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+cp BOX_NAME lo-disk --disk=2GB
+
+- help to see a list of commands
+
+PROMPT ▶ cp BOX_NAME lo-disk --disk=2GB
+--disk must be at least 4.0 GB
+PROMPT ▶ exit
+Goodbye!

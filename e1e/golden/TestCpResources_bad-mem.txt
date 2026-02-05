@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+cp BOX_NAME inv-mem --memory=abc
+
+- help to see a list of commands
+
+PROMPT ▶ cp BOX_NAME inv-mem --memory=abc
+invalid --memory value: strconv.ParseFloat: parsing "": invalid syntax
+PROMPT ▶ exit
+Goodbye!

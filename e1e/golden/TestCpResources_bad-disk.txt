@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+cp BOX_NAME inv-disk --disk=xyz
+
+- help to see a list of commands
+
+PROMPT ▶ cp BOX_NAME inv-disk --disk=xyz
+invalid --disk value: strconv.ParseFloat: parsing "": invalid syntax
+PROMPT ▶ exit
+Goodbye!

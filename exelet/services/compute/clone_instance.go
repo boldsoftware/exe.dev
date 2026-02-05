@@ -184,6 +184,15 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 	}
 	rb.instanceCloned = true
 
+	// Expand disk if requested (must happen before mount/boot)
+	if req.Disk != nil && *req.Disk > sourceInstance.VMConfig.Disk {
+		s.log.DebugContext(ctx, "expanding cloned disk", "id", newInstanceID, "from", sourceInstance.VMConfig.Disk, "to", *req.Disk)
+		// resizeFilesystem=false because VM hasn't booted yet and fstab has x-systemd.growfs
+		if err := s.context.StorageManager.Expand(ctx, newInstanceID, *req.Disk, false); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to expand disk: %v", err)
+		}
+	}
+
 	// Mount the cloned volume
 	if err := s.updateCloneStatus(stream, &api.CloneInstanceStatus{
 		ID:      newInstanceID,
@@ -323,13 +332,32 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 	}
 
 	// Create VM configuration (copy from source, update for new instance)
+	// Apply resource overrides if specified
+	cpus := sourceInstance.VMConfig.CPUs
+	if req.CPUs != nil && *req.CPUs > 0 {
+		cpus = *req.CPUs
+	}
+	memory := sourceInstance.VMConfig.Memory
+	if req.Memory != nil && *req.Memory > 0 {
+		memory = *req.Memory
+	}
+	disk := sourceInstance.VMConfig.Disk
+	if req.Disk != nil && *req.Disk > 0 {
+		// Disk can only grow, not shrink
+		if *req.Disk < sourceInstance.VMConfig.Disk {
+			return nil, status.Errorf(codes.InvalidArgument, "disk size cannot be smaller than source (%d bytes)", sourceInstance.VMConfig.Disk)
+		}
+
+		disk = *req.Disk
+	}
+
 	bootArgs := getBootArgs()
 	vmCfg := &api.VMConfig{
 		ID:               newInstanceID,
 		Name:             req.NewName,
-		CPUs:             sourceInstance.VMConfig.CPUs,
-		Memory:           sourceInstance.VMConfig.Memory,
-		Disk:             sourceInstance.VMConfig.Disk,
+		CPUs:             cpus,
+		Memory:           memory,
+		Disk:             disk,
 		RootDiskPath:     instanceFS.Path,
 		KernelPath:       kernelFilePath,
 		Args:             bootArgs,

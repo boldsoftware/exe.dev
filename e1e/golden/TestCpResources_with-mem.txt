@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+rm cp-with-mem
+
+- help to see a list of commands
+
+PROMPT ▶ rm cp-with-mem
+Deleting cp-with-mem...
+1 VM(s) deleted successfully
+PROMPT ▶ exit
+Goodbye!

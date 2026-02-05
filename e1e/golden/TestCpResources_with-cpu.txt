@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+rm cp-with-cpu
+
+- help to see a list of commands
+
+PROMPT ▶ rm cp-with-cpu
+Deleting cp-with-cpu...
+1 VM(s) deleted successfully
+PROMPT ▶ exit
+Goodbye!

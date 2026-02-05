@@ -188,6 +188,10 @@ func newCommandFlags() *flag.FlagSet {
 func cpCommandFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("cp", flag.ContinueOnError)
 	fs.Bool("json", false, "output in JSON format")
+	// Resource allocation flags - copy uses source values if not specified
+	fs.String("memory", "", "[hidden] memory allocation (e.g., 4, 4GB, 8G)")
+	fs.String("disk", "", "[hidden] disk size (e.g., 20, 20GB, 50G)")
+	fs.Uint("cpu", 0, "[hidden] number of CPUs")
 	return fs
 }
 
@@ -596,25 +600,22 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	diskStr := cc.FlagSet.Lookup("disk").Value.String()
 	cpuVal, _ := strconv.ParseUint(cc.FlagSet.Lookup("cpu").Value.String(), 10, 64)
 
-	// Determine if user has support privileges for higher limits
-	isSupport := ss.server.UserHasExeSudo(ctx, user.ID)
-
 	// Set defaults from environment
 	memory := ss.server.env.DefaultMemory
 	disk := ss.server.env.DefaultDisk
 	cpus := ss.server.env.DefaultCPUs
 
-	// Determine max limits based on user type
-	// For normal users, max is the environment default (but at least the minimum)
-	// For support users, max is the higher support limit
-	maxMemory := max(ss.server.env.DefaultMemory, stage.MinMemory)
-	maxDisk := max(ss.server.env.DefaultDisk, stage.MinDisk)
-	maxCPUs := max(ss.server.env.DefaultCPUs, uint64(stage.MinCPUs))
-	if isSupport {
-		maxMemory = stage.SupportMaxMemory
-		maxDisk = stage.SupportMaxDisk
-		maxCPUs = stage.SupportMaxCPUs
+	// Get user-specific limit overrides (fetch full user to get limits)
+	fullUser, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserWithDetails, user.ID)
+	var userLimits *UserLimits
+	if err == nil {
+		userLimits = ParseUserLimits(&fullUser)
 	}
+
+	// Determine max limits based on user-specific overrides
+	maxMemory := GetMaxMemory(ss.server.env, userLimits)
+	maxDisk := GetMaxDisk(ss.server.env, userLimits)
+	maxCPUs := GetMaxCPUs(ss.server.env, userLimits)
 
 	// Parse memory if provided
 	if memoryStr != "" {
@@ -1900,6 +1901,67 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 		return cc.Errorf("vm %q has no container to copy", sourceVMName)
 	}
 
+	// Parse and validate resource allocation flags
+	memoryStr := cc.FlagSet.Lookup("memory").Value.String()
+	diskStr := cc.FlagSet.Lookup("disk").Value.String()
+	cpuVal, _ := strconv.ParseUint(cc.FlagSet.Lookup("cpu").Value.String(), 10, 64)
+
+	// Get user-specific limit overrides (fetch full user to get limits)
+	fullUser, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserWithDetails, user.ID)
+	var userLimits *UserLimits
+	if err == nil {
+		userLimits = ParseUserLimits(&fullUser)
+	}
+
+	// Determine max limits based on user-specific overrides
+	maxMemory := GetMaxMemory(ss.server.env, userLimits)
+	maxDisk := GetMaxDisk(ss.server.env, userLimits)
+	maxCPUs := GetMaxCPUs(ss.server.env, userLimits)
+
+	// Resource overrides for clone (0 = use source)
+	var memoryOverride, diskOverride, cpuOverride uint64
+
+	// Parse memory if provided
+	if memoryStr != "" {
+		parsedMemory, err := parseSize(memoryStr)
+		if err != nil {
+			return cc.Errorf("invalid --memory value: %s", err)
+		}
+		if parsedMemory < stage.MinMemory {
+			return cc.Errorf("--memory must be at least %s", humanize.Bytes(stage.MinMemory))
+		}
+		if parsedMemory > maxMemory {
+			return cc.Errorf("--memory cannot exceed %s", humanize.Bytes(maxMemory))
+		}
+		memoryOverride = parsedMemory
+	}
+
+	// Parse disk if provided
+	if diskStr != "" {
+		parsedDisk, err := parseSize(diskStr)
+		if err != nil {
+			return cc.Errorf("invalid --disk value: %s", err)
+		}
+		if parsedDisk < stage.MinDisk {
+			return cc.Errorf("--disk must be at least %s", humanize.Bytes(stage.MinDisk))
+		}
+		if parsedDisk > maxDisk {
+			return cc.Errorf("--disk cannot exceed %s", humanize.Bytes(maxDisk))
+		}
+		diskOverride = parsedDisk
+	}
+
+	// Parse CPU if provided
+	if cpuVal > 0 {
+		if cpuVal < stage.MinCPUs {
+			return cc.Errorf("--cpu must be at least %d", stage.MinCPUs)
+		}
+		if cpuVal > maxCPUs {
+			return cc.Errorf("--cpu cannot exceed %d", maxCPUs)
+		}
+		cpuOverride = cpuVal
+	}
+
 	// Generate clone name if not provided
 	if newName == "" {
 		for range 10 {
@@ -2035,6 +2097,17 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 				},
 			},
 		},
+	}
+
+	// Add resource overrides if specified
+	if memoryOverride > 0 {
+		cloneReq.Memory = &memoryOverride
+	}
+	if diskOverride > 0 {
+		cloneReq.Disk = &diskOverride
+	}
+	if cpuOverride > 0 {
+		cloneReq.CPUs = &cpuOverride
 	}
 
 	// Create channels for progress and completion

@@ -1,6 +1,6 @@
 // This file tests the --memory, --disk, and --cpu flags for the new command.
-// Normal users are limited to the environment defaults, while support users
-// can specify higher limits.
+// Normal users are limited to the environment defaults, while users with
+// per-user limits can specify higher values.
 
 package e1e
 
@@ -15,9 +15,9 @@ func TestResVal(t *testing.T) {
 	t.Parallel()
 	noGolden(t)
 
-	// Create two users: a regular user and a support user
+	// Create two users: a regular user and one that will get elevated limits
 	regularPTY, _, _, _ := registerForExeDevWithEmail(t, "regular@test-resval.example")
-	supportPTY, _, _, supportEmail := registerForExeDevWithEmail(t, "support@test-resval.example")
+	elevatedPTY, _, _, elevatedEmail := registerForExeDevWithEmail(t, "elevated@test-resval.example")
 
 	// Test minimum validation for regular user
 	t.Run("mem-low", func(t *testing.T) {
@@ -74,38 +74,38 @@ func TestResVal(t *testing.T) {
 		regularPTY.wantPrompt()
 	})
 
-	// Enable root_support for the support user
-	t.Run("sudo", func(t *testing.T) {
-		enableRootSupport(t, supportEmail)
+	// Set elevated per-user limits
+	t.Run("set-lim", func(t *testing.T) {
+		setUserLimits(t, elevatedEmail, `{"max_memory": 32000000000, "max_disk": 128000000000, "max_cpus": 8}`)
 	})
 
-	// Test that support user still cannot exceed support limits
+	// Test that elevated user still cannot exceed their limits
 	t.Run("s-mem-hi", func(t *testing.T) {
 		bn := boxName(t)
-		// 64GB exceeds support max of 32GB
-		supportPTY.sendLine(fmt.Sprintf("new --name=%s --memory=64GB", bn))
-		supportPTY.want("--memory cannot exceed")
-		supportPTY.wantPrompt()
+		// 64GB exceeds the 32GB per-user limit
+		elevatedPTY.sendLine(fmt.Sprintf("new --name=%s --memory=64GB", bn))
+		elevatedPTY.want("--memory cannot exceed")
+		elevatedPTY.wantPrompt()
 	})
 
 	t.Run("s-cpu-hi", func(t *testing.T) {
 		bn := boxName(t)
-		// 16 CPUs exceeds support max of 8
-		supportPTY.sendLine(fmt.Sprintf("new --name=%s --cpu=16", bn))
-		supportPTY.want("--cpu cannot exceed")
-		supportPTY.wantPrompt()
+		// 16 CPUs exceeds the 8 CPU per-user limit
+		elevatedPTY.sendLine(fmt.Sprintf("new --name=%s --cpu=16", bn))
+		elevatedPTY.want("--cpu cannot exceed")
+		elevatedPTY.wantPrompt()
 	})
 
 	t.Run("s-disk-hi", func(t *testing.T) {
 		bn := boxName(t)
-		// 256GB exceeds support max of 128GB
-		supportPTY.sendLine(fmt.Sprintf("new --name=%s --disk=256GB", bn))
-		supportPTY.want("--disk cannot exceed")
-		supportPTY.wantPrompt()
+		// 256GB exceeds the 128GB per-user limit
+		elevatedPTY.sendLine(fmt.Sprintf("new --name=%s --disk=256GB", bn))
+		elevatedPTY.want("--disk cannot exceed")
+		elevatedPTY.wantPrompt()
 	})
 
 	regularPTY.disconnect()
-	supportPTY.disconnect()
+	elevatedPTY.disconnect()
 }
 
 // TestResCreate tests creating VMs with custom resource flags.
@@ -115,7 +115,7 @@ func TestResCreate(t *testing.T) {
 	noGolden(t)
 
 	regularPTY, _, _, _ := registerForExeDevWithEmail(t, "regular@test-rescreate.example")
-	supportPTY, _, _, supportEmail := registerForExeDevWithEmail(t, "support@test-rescreate.example")
+	elevatedPTY, _, _, elevatedEmail := registerForExeDevWithEmail(t, "elevated@test-rescreate.example")
 
 	// Test that regular user can create with defaults (cpu=0 means use default)
 	t.Run("def", func(t *testing.T) {
@@ -140,40 +140,34 @@ func TestResCreate(t *testing.T) {
 		regularPTY.deleteBox(bn)
 	})
 
-	// Enable root_support for the support user
-	t.Run("sudo", func(t *testing.T) {
-		enableRootSupport(t, supportEmail)
+	// Set elevated per-user limits
+	t.Run("set-lim", func(t *testing.T) {
+		setUserLimits(t, elevatedEmail, `{"max_memory": 8000000000, "max_cpus": 4}`)
 	})
 
-	// Test that support user can exceed regular limits
+	// Test that elevated user can exceed regular limits
 	t.Run("s-mem", func(t *testing.T) {
 		bn := boxName(t)
-		// 4GB exceeds test default but is within support limits
-		supportPTY.sendLine(fmt.Sprintf("new --name=%s --memory=4GB", bn))
-		supportPTY.wantRe("Creating")
-		supportPTY.want("Ready")
-		supportPTY.wantPrompt()
-		supportPTY.deleteBox(bn)
+		// 4GB exceeds test default but is within per-user limit of 8GB
+		elevatedPTY.sendLine(fmt.Sprintf("new --name=%s --memory=4GB", bn))
+		elevatedPTY.wantRe("Creating")
+		elevatedPTY.want("Ready")
+		elevatedPTY.wantPrompt()
+		elevatedPTY.deleteBox(bn)
 	})
 
-	// Note: The s-cpu test is skipped in environments with <4 CPUs.
-	// Support users can exceed regular limits (2 CPUs) but only up to the physical limit.
 	t.Run("s-cpu", func(t *testing.T) {
-		// Skip if we don't have enough CPUs to test elevated limits
-		// Support max is 8, regular default is 2, so we need at least 3 CPUs to test
 		if testing.Short() {
 			t.Skip("skipping CPU test in short mode")
 		}
-		// Just test that support users can create with the default CPU count
-		// (the validation tests already cover the limit enforcement)
 		bn := boxName(t)
-		supportPTY.sendLine(fmt.Sprintf("new --name=%s --cpu=2", bn))
-		supportPTY.wantRe("Creating")
-		supportPTY.want("Ready")
-		supportPTY.wantPrompt()
-		supportPTY.deleteBox(bn)
+		elevatedPTY.sendLine(fmt.Sprintf("new --name=%s --cpu=2", bn))
+		elevatedPTY.wantRe("Creating")
+		elevatedPTY.want("Ready")
+		elevatedPTY.wantPrompt()
+		elevatedPTY.deleteBox(bn)
 	})
 
 	regularPTY.disconnect()
-	supportPTY.disconnect()
+	elevatedPTY.disconnect()
 }

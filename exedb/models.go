@@ -329,6 +329,7 @@ type User struct {
 	Region                 string     `db:"region" json:"region"`
 	CanonicalEmail         *string    `db:"canonical_email" json:"canonical_email"`
 	IsLockedOut            bool       `db:"is_locked_out" json:"is_locked_out"`
+	Limits                 *string    `db:"limits" json:"limits"`
 }
 
 type UserDailyEmailCount struct {

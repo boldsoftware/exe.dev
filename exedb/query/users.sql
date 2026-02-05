@@ -51,3 +51,9 @@ SELECT is_locked_out FROM users WHERE user_id = ?;
 
 -- name: SetUserIsLockedOut :exec
 UPDATE users SET is_locked_out = ? WHERE user_id = ?;
+
+-- name: SetUserLimits :exec
+UPDATE users SET limits = ? WHERE user_id = ?;
+
+-- name: GetUserLimits :one
+SELECT limits FROM users WHERE user_id = ?;

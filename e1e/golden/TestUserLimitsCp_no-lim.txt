@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+cp BOX_NAME copied-test --memory=3GB
+
+- help to see a list of commands
+
+PROMPT ▶ cp BOX_NAME copied-test --memory=3GB
+--memory cannot exceed 2.0 GB
+PROMPT ▶ exit
+Goodbye!

@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+cp BOX_NAME lo-mem --memory=1GB
+
+- help to see a list of commands
+
+PROMPT ▶ cp BOX_NAME lo-mem --memory=1GB
+--memory must be at least 2.0 GB
+PROMPT ▶ exit
+Goodbye!

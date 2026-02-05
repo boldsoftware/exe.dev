@@ -375,6 +375,10 @@ message CloneInstanceRequest {
   string group_id = 4;              // Group ID for per-account cgroup grouping
   repeated string ssh_keys = 5;     // SSH keys for the new instance
   repeated Config configs = 6;      // Config files to write to the new instance
+  // Resource overrides - if set, use these values instead of source instance values
+  optional uint64 memory = 7;       // Memory in bytes (0 or unset = use source)
+  optional uint64 disk = 8;         // Disk size in bytes (0 or unset = use source)
+  optional uint64 cpus = 9;         // Number of CPUs (0 or unset = use source)
 }
 
 message CloneInstanceStatus {

@@ -399,6 +399,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserLLMCreditStmt, err = db.PrepareContext(ctx, getUserLLMCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserLLMCredit: %w", err)
 	}
+	if q.getUserLimitsStmt, err = db.PrepareContext(ctx, getUserLimits); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserLimits: %w", err)
+	}
 	if q.getUserNewVMCreationDisabledStmt, err = db.PrepareContext(ctx, getUserNewVMCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserNewVMCreationDisabled: %w", err)
 	}
@@ -578,6 +581,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setUserIsLockedOutStmt, err = db.PrepareContext(ctx, setUserIsLockedOut); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserIsLockedOut: %w", err)
+	}
+	if q.setUserLimitsStmt, err = db.PrepareContext(ctx, setUserLimits); err != nil {
+		return nil, fmt.Errorf("error preparing query SetUserLimits: %w", err)
 	}
 	if q.setUserNewVMCreationDisabledStmt, err = db.PrepareContext(ctx, setUserNewVMCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserNewVMCreationDisabled: %w", err)
@@ -1290,6 +1296,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserLLMCreditStmt: %w", cerr)
 		}
 	}
+	if q.getUserLimitsStmt != nil {
+		if cerr := q.getUserLimitsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserLimitsStmt: %w", cerr)
+		}
+	}
 	if q.getUserNewVMCreationDisabledStmt != nil {
 		if cerr := q.getUserNewVMCreationDisabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserNewVMCreationDisabledStmt: %w", cerr)
@@ -1588,6 +1599,11 @@ func (q *Queries) Close() error {
 	if q.setUserIsLockedOutStmt != nil {
 		if cerr := q.setUserIsLockedOutStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setUserIsLockedOutStmt: %w", cerr)
+		}
+	}
+	if q.setUserLimitsStmt != nil {
+		if cerr := q.setUserLimitsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setUserLimitsStmt: %w", cerr)
 		}
 	}
 	if q.setUserNewVMCreationDisabledStmt != nil {
@@ -1889,6 +1905,7 @@ type Queries struct {
 	getUserIDBySSHKeyStmt                      *sql.Stmt
 	getUserIsLockedOutStmt                     *sql.Stmt
 	getUserLLMCreditStmt                       *sql.Stmt
+	getUserLimitsStmt                          *sql.Stmt
 	getUserNewVMCreationDisabledStmt           *sql.Stmt
 	getUserPlanCategoryStmt                    *sql.Stmt
 	getUserRootSupportStmt                     *sql.Stmt
@@ -1949,6 +1966,7 @@ type Queries struct {
 	setUserBillingExemptionStmt                *sql.Stmt
 	setUserDiscordStmt                         *sql.Stmt
 	setUserIsLockedOutStmt                     *sql.Stmt
+	setUserLimitsStmt                          *sql.Stmt
 	setUserNewVMCreationDisabledStmt           *sql.Stmt
 	setUserRootSupportStmt                     *sql.Stmt
 	updateAuthCookieLastUsedStmt               *sql.Stmt
@@ -2107,6 +2125,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserIDBySSHKeyStmt:                      q.getUserIDBySSHKeyStmt,
 		getUserIsLockedOutStmt:                     q.getUserIsLockedOutStmt,
 		getUserLLMCreditStmt:                       q.getUserLLMCreditStmt,
+		getUserLimitsStmt:                          q.getUserLimitsStmt,
 		getUserNewVMCreationDisabledStmt:           q.getUserNewVMCreationDisabledStmt,
 		getUserPlanCategoryStmt:                    q.getUserPlanCategoryStmt,
 		getUserRootSupportStmt:                     q.getUserRootSupportStmt,
@@ -2167,6 +2186,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setUserBillingExemptionStmt:                q.setUserBillingExemptionStmt,
 		setUserDiscordStmt:                         q.setUserDiscordStmt,
 		setUserIsLockedOutStmt:                     q.setUserIsLockedOutStmt,
+		setUserLimitsStmt:                          q.setUserLimitsStmt,
 		setUserNewVMCreationDisabledStmt:           q.setUserNewVMCreationDisabledStmt,
 		setUserRootSupportStmt:                     q.setUserRootSupportStmt,
 		updateAuthCookieLastUsedStmt:               q.updateAuthCookieLastUsedStmt,

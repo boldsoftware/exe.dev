@@ -55,6 +55,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/toggle-vm-creation", s.handleDebugToggleVMCreation)
 	mux.HandleFunc("POST /debug/users/toggle-lockout", s.handleDebugToggleLockout)
 	mux.HandleFunc("POST /debug/users/update-credit", s.handleDebugUpdateUserCredit)
+	mux.HandleFunc("POST /debug/users/set-limits", s.handleDebugSetUserLimits)
 	mux.HandleFunc("/debug/exelets", s.handleDebugExelets)
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
 	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
@@ -986,6 +987,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			DiscordID              string  `json:"discord_id,omitempty"`
 			DiscordUsername        string  `json:"discord_username,omitempty"`
 			InviteCount            int64   `json:"invite_count"`
+			Limits                 string  `json:"limits,omitempty"`
 		}
 		var usersJSON []userInfo
 		for _, u := range users {
@@ -1011,6 +1013,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 				DiscordID:              ptrStr(u.DiscordID),
 				DiscordUsername:        ptrStr(u.DiscordUsername),
 				InviteCount:            invitesByUser[u.UserID],
+				Limits:                 ptrStr(u.Limits),
 			}
 			if credit, ok := creditByUser[u.UserID]; ok {
 				ui.CreditAvailableUSD = credit.AvailableCredit
@@ -1161,6 +1164,46 @@ func (s *Server) handleDebugToggleLockout(w http.ResponseWriter, r *http.Request
 	}
 	s.slog().InfoContext(ctx, "user lockout toggled via debug page", "user_id", userID, "action", action)
 
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleDebugSetUserLimits sets resource limit overrides for a user.
+// Pass JSON like {"max_memory": 8000000000, "max_disk": 20000000000, "max_cpus": 4}
+// Pass empty string or "{}" to clear overrides.
+func (s *Server) handleDebugSetUserLimits(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	limitsJSON := r.FormValue("limits")
+
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate JSON if provided (non-empty)
+	var limitsPtr *string
+	if limitsJSON != "" && limitsJSON != "{}" {
+		// Validate it's valid JSON
+		var parsed UserLimits
+		if err := json.Unmarshal([]byte(limitsJSON), &parsed); err != nil {
+			http.Error(w, fmt.Sprintf("invalid limits JSON: %v", err), http.StatusBadRequest)
+			return
+		}
+		limitsPtr = &limitsJSON
+	}
+
+	// Update the limits
+	err := withTx1(s, ctx, (*exedb.Queries).SetUserLimits, exedb.SetUserLimitsParams{
+		Limits: limitsPtr,
+		UserID: userID,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to update limits: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "user limits updated via debug page", "user_id", userID, "limits", limitsJSON)
 	w.WriteHeader(http.StatusOK)
 }
 

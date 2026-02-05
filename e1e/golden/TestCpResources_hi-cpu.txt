@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+cp BOX_NAME hi-cpu --cpu=99
+
+- help to see a list of commands
+
+PROMPT ▶ cp BOX_NAME hi-cpu --cpu=99
+--cpu cannot exceed 4
+PROMPT ▶ exit
+Goodbye!

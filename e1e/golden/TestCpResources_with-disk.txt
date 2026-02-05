@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+rm cp-with-disk
+
+- help to see a list of commands
+
+PROMPT ▶ rm cp-with-disk
+Deleting cp-with-disk...
+1 VM(s) deleted successfully
+PROMPT ▶ exit
+Goodbye!

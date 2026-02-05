@@ -1,0 +1,35 @@
+
+
+●
+● ssh localhost
+●
+
+cp BOX_NAME copied-with-mem --memory=3GB
+
+- help to see a list of commands
+
+PROMPT ▶ cp BOX_NAME copied-with-mem --memory=3GB
+Copying BOX_NAME to copied-with-mem...
+Created copied-with-mem from BOX_NAME in ELAPSED_TIME
+
+http://copied-with-mem.exe.cloud:EXED_HTTP_PORT
+
+ssh copied-with-mem@exe.cloud
+
+PROMPT ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+rm copied-with-mem
+
+- help to see a list of commands
+
+PROMPT ▶ rm copied-with-mem
+Deleting copied-with-mem...
+1 VM(s) deleted successfully
+PROMPT ▶ exit
+Goodbye!
