@@ -23,6 +23,8 @@ const (
 	ResourceManagerService Type = "exe.services.resource_manager.v1"
 	// ReplicationService is the service that manages storage replication
 	ReplicationService Type = "exe.services.replication.v1"
+	// PktFlowService collects per-tap network stats for abuse detection
+	PktFlowService Type = "exe.services.pktflow.v1"
 )
 
 // InstanceLookup provides a method to look up instances by IP address

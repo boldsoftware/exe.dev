@@ -28,6 +28,9 @@ const (
 	// DefaultMetricsDaemonInterval is the default interval for sending metrics to the daemon
 	DefaultMetricsDaemonInterval = 10 * time.Minute
 
+	// DefaultPktFlowInterval is the default collection interval for pktflow reports
+	DefaultPktFlowInterval = 5 * time.Second
+
 	// DefaultNameserver is the default instance nameserver
 	DefaultNameserver = "1.1.1.1"
 
@@ -162,4 +165,17 @@ type ExeletConfig struct {
 	// When > 0, cpuset.cpus on the exelet.slice will be set to exclude the
 	// first N cores (e.g., ReservedCPUs=2 on a 64-core machine → cpuset.cpus="2-63").
 	ReservedCPUs int
+
+	// PktFlowEnabled enables the pktflow collector
+	PktFlowEnabled bool
+	// PktFlowInterval is the collection interval for pktflow reports
+	PktFlowInterval time.Duration
+	// PktFlowHostID overrides the host id reported to pktflow
+	PktFlowHostID string
+	// PktFlowMappingRefresh controls how often instance mappings are refreshed
+	PktFlowMappingRefresh time.Duration
+	// PktFlowSampleRate controls packet sampling (power of two, e.g., 1024)
+	PktFlowSampleRate uint32
+	// PktFlowMaxFlows caps the number of flow records per tap interval
+	PktFlowMaxFlows int
 }

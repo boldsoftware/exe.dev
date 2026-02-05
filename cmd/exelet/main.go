@@ -29,6 +29,7 @@ import (
 	"exe.dev/exelet/network/nat"
 	"exe.dev/exelet/services"
 	computeservice "exe.dev/exelet/services/compute"
+	pktflowservice "exe.dev/exelet/services/pktflow"
 	replicationservice "exe.dev/exelet/services/replication"
 	resourcemanagerservice "exe.dev/exelet/services/resourcemanager"
 	storageservice "exe.dev/exelet/services/storage"
@@ -238,6 +239,40 @@ func main() {
 			Value:   config.DefaultMetricsDaemonInterval,
 			EnvVars: []string{"EXELET_METRICS_DAEMON_INTERVAL"},
 		},
+		&cli.BoolFlag{
+			Name:    "pktflow-enabled",
+			Usage:   "enable pktflow collector",
+			EnvVars: []string{"EXELET_PKTFLOW_ENABLED"},
+			Value:   true,
+		},
+		&cli.DurationFlag{
+			Name:    "pktflow-interval",
+			Usage:   "pktflow collection interval (e.g., 5s, 10s)",
+			EnvVars: []string{"EXELET_PKTFLOW_INTERVAL"},
+			Value:   config.DefaultPktFlowInterval,
+		},
+		&cli.StringFlag{
+			Name:    "pktflow-host-id",
+			Usage:   "override host id for pktflow reports",
+			EnvVars: []string{"EXELET_PKTFLOW_HOST_ID"},
+		},
+		&cli.DurationFlag{
+			Name:    "pktflow-mapping-refresh",
+			Usage:   "pktflow instance mapping refresh interval (e.g., 1m)",
+			EnvVars: []string{"EXELET_PKTFLOW_MAPPING_REFRESH"},
+		},
+		&cli.UintFlag{
+			Name:    "pktflow-sample-rate",
+			Usage:   "pktflow packet sample rate (power of two, e.g., 1024)",
+			EnvVars: []string{"EXELET_PKTFLOW_SAMPLE_RATE"},
+			Value:   1024,
+		},
+		&cli.IntFlag{
+			Name:    "pktflow-max-flows",
+			Usage:   "max flow records per tap interval",
+			EnvVars: []string{"EXELET_PKTFLOW_MAX_FLOWS"},
+			Value:   200,
+		},
 		&cli.IntFlag{
 			Name:    "reserved-cpus",
 			Usage:   "number of CPUs to reserve for the host system via cpuset (0 to disable)",
@@ -305,12 +340,26 @@ func serveAction(clix *cli.Context) error {
 	replicationPrune := clix.Bool("storage-replication-prune")
 	metricsDaemonURL := clix.String("metrics-daemon-url")
 	metricsDaemonInterval := clix.Duration("metrics-daemon-interval")
+	pktflowEnabled := clix.Bool("pktflow-enabled")
+	pktflowInterval := clix.Duration("pktflow-interval")
+	pktflowHostID := clix.String("pktflow-host-id")
+	pktflowMappingRefresh := clix.Duration("pktflow-mapping-refresh")
+	pktflowSampleRate := clix.Uint("pktflow-sample-rate")
+	pktflowMaxFlows := clix.Int("pktflow-max-flows")
 
 	reservedCPUs := clix.Int("reserved-cpus")
 
 	// Validate replication config
 	if replicationEnabled && replicationTarget == "" {
 		return fmt.Errorf("--storage-replication-target is required when replication is enabled")
+	}
+	if pktflowEnabled {
+		if pktflowSampleRate == 0 || (pktflowSampleRate&(pktflowSampleRate-1)) != 0 {
+			return fmt.Errorf("--pktflow-sample-rate must be a power of two")
+		}
+		if pktflowMaxFlows <= 0 {
+			return fmt.Errorf("--pktflow-max-flows must be > 0")
+		}
 	}
 
 	cfg := &config.ExeletConfig{
@@ -342,6 +391,12 @@ func serveAction(clix *cli.Context) error {
 		MetricsDaemonURL:            metricsDaemonURL,
 		MetricsDaemonInterval:       metricsDaemonInterval,
 		ReservedCPUs:                reservedCPUs,
+		PktFlowEnabled:              pktflowEnabled,
+		PktFlowInterval:             pktflowInterval,
+		PktFlowHostID:               pktflowHostID,
+		PktFlowMappingRefresh:       pktflowMappingRefresh,
+		PktFlowSampleRate:           uint32(pktflowSampleRate),
+		PktFlowMaxFlows:             pktflowMaxFlows,
 	}
 
 	opts := []exelet.ServerOpt{
@@ -414,6 +469,7 @@ func serveAction(clix *cli.Context) error {
 			return computeSvc, nil
 		},
 		resourcemanagerservice.New,
+		pktflowservice.New,
 		func(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 			return storageSvc, nil
 		},
