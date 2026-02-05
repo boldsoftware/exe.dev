@@ -1316,6 +1316,7 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 			usageCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			if usage, err := ec.client.GetMachineUsage(usageCtx, &resourceapi.GetMachineUsageRequest{}); err == nil {
 				info.Available = usage.Available
+				info.LoadAverage = float64(usage.Usage.LoadAverage)
 				info.MemFree = usage.Usage.MemFree
 				info.SwapFree = usage.Usage.SwapFree
 				info.DiskFree = usage.Usage.DiskFree
