@@ -333,10 +333,10 @@ func TestPredictableServiceWithTools(t *testing.T) {
 		t.Fatal("Expected greeting to mention Shelley")
 	}
 
-	// Second call should return tool use
+	// Second call should return tool use (bash command)
 	resp2, err := service.Do(context.Background(), &llm.Request{
 		Messages: []llm.Message{
-			{Role: llm.MessageRoleUser, Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Create an example"}}},
+			{Role: llm.MessageRoleUser, Content: []llm.Content{{Type: llm.ContentTypeText, Text: "bash: echo hello"}}},
 		},
 	})
 	if err != nil {
@@ -364,8 +364,8 @@ func TestPredictableServiceWithTools(t *testing.T) {
 		t.Fatal("Expected tool use content")
 	}
 
-	if toolUse.ToolName != "think" {
-		t.Fatalf("Expected think tool, got %s", toolUse.ToolName)
+	if toolUse.ToolName != "bash" {
+		t.Fatalf("Expected bash tool, got %s", toolUse.ToolName)
 	}
 }
 

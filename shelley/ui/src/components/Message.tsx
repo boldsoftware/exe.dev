@@ -5,7 +5,7 @@ import BashTool from "./BashTool";
 import PatchTool from "./PatchTool";
 import ScreenshotTool from "./ScreenshotTool";
 import GenericTool from "./GenericTool";
-import ThinkTool from "./ThinkTool";
+
 import KeywordSearchTool from "./KeywordSearchTool";
 import BrowserNavigateTool from "./BrowserNavigateTool";
 import BrowserEvalTool from "./BrowserEvalTool";
@@ -15,6 +15,7 @@ import ChangeDirTool from "./ChangeDirTool";
 import BrowserResizeTool from "./BrowserResizeTool";
 import SubagentTool from "./SubagentTool";
 import OutputIframeTool from "./OutputIframeTool";
+import ThinkingContent from "./ThinkingContent";
 import UsageDetailModal from "./UsageDetailModal";
 import MessageActionBar from "./MessageActionBar";
 
@@ -283,7 +284,7 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
     }
   };
 
-  // Get text content from message for copying (includes tool results)
+  // Get text content from message for copying (includes tool results and thinking)
   const getMessageText = (): string => {
     if (!llmMessage?.Content) return "";
 
@@ -292,6 +293,12 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
       const contentType = getContentType(content.Type);
       if (contentType === "text" && content.Text) {
         textParts.push(content.Text);
+      } else if (contentType === "thinking") {
+        // Include thinking content
+        const thinkingText = content.Thinking || content.Text;
+        if (thinkingText) {
+          textParts.push(`[Thinking]\n${thinkingText}`);
+        }
       } else if (contentType === "tool_result" && content.ToolResult) {
         // Extract text from tool result content
         content.ToolResult.forEach((result) => {
@@ -459,10 +466,7 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
         if (content.ToolName === "screenshot" || content.ToolName === "browser_take_screenshot") {
           return <ScreenshotTool toolInput={content.ToolInput} isRunning={true} />;
         }
-        // Use specialized component for think tool
-        if (content.ToolName === "think") {
-          return <ThinkTool toolInput={content.ToolInput} isRunning={true} />;
-        }
+
         // Use specialized component for change_dir tool
         if (content.ToolName === "change_dir") {
           return <ChangeDirTool toolInput={content.ToolInput} isRunning={true} />;
@@ -593,20 +597,6 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
         if (toolName === "screenshot" || toolName === "browser_take_screenshot") {
           return (
             <ScreenshotTool
-              toolInput={toolInput}
-              isRunning={false}
-              toolResult={content.ToolResult}
-              hasError={hasError}
-              executionTime={executionTime}
-              display={content.Display}
-            />
-          );
-        }
-
-        // Use specialized component for think tool
-        if (toolName === "think") {
-          return (
-            <ThinkTool
               toolInput={toolInput}
               isRunning={false}
               toolResult={content.ToolResult}
@@ -753,9 +743,11 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
       }
       case "redacted_thinking":
         return <div className="text-tertiary italic text-sm">[Thinking content hidden]</div>;
-      case "thinking":
-        // Hide thinking content by default in main flow, but could be made expandable
-        return null;
+      case "thinking": {
+        const thinkingText = content.Thinking || content.Text || "";
+        if (!thinkingText) return null;
+        return <ThinkingContent thinking={thinkingText} />;
+      }
       default: {
         // For unknown content types, show the type and try to display useful content
         const displayText = content.Text || content.Data || "";
@@ -989,18 +981,22 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
     return null;
   }
 
-  // Filter out thinking content, empty content, tool_use, and tool_result
+  // Filter out redacted thinking, empty content, tool_use, and tool_result
+  // Keep thinking content (3) for display
   const meaningfulContent =
     llmMessage?.Content?.filter((c) => {
       const contentType = c.Type;
-      // Filter out thinking (3), redacted thinking (4), tool_use (5), tool_result (6), and empty text content
+      // Filter out redacted thinking (4), tool_use (5), tool_result (6), and empty text content
+      // Keep thinking (3) if it has content
+      if (contentType === 3) {
+        return !!(c.Thinking || c.Text);
+      }
       return (
-        contentType !== 3 &&
         contentType !== 4 &&
         contentType !== 5 &&
         contentType !== 6 &&
         (c.Text?.trim() || contentType !== 2)
-      ); // 3 = thinking, 4 = redacted_thinking, 5 = tool_use, 6 = tool_result, 2 = text
+      ); // 4 = redacted_thinking, 5 = tool_use, 6 = tool_result, 2 = text
     }) || [];
 
   // Don't filter out messages that contain operation status like "[Operation cancelled]"

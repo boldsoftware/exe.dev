@@ -20,7 +20,7 @@ import (
 // Available patterns include:
 //   - "echo: <text>" - echoes the text back
 //   - "bash: <command>" - triggers bash tool with command
-//   - "think: <thoughts>" - triggers think tool
+//   - "think: <thoughts>" - returns response with extended thinking content
 //   - "subagent: <slug> <prompt>" - triggers subagent tool
 //   - "change_dir: <path>" - triggers change_dir tool
 //   - "delay: <seconds>" - delays response by specified seconds
@@ -112,7 +112,7 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 		return s.makeResponse("Hello! I'm Shelley, your AI assistant. How can I help you today?", inputTokens), nil
 
 	case "Create an example":
-		return s.makeThinkToolResponse("I'll create a simple example for you.", inputTokens), nil
+		return s.makeThinkingResponse("I'll create a simple example for you.", inputTokens), nil
 
 	case "screenshot":
 		// Trigger a screenshot of the current page
@@ -155,7 +155,7 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 
 		if strings.HasPrefix(inputText, "think: ") {
 			thoughts := strings.TrimPrefix(inputText, "think: ")
-			return s.makeThinkToolResponse(thoughts, inputTokens), nil
+			return s.makeThinkingResponse(thoughts, inputTokens), nil
 		}
 
 		if strings.HasPrefix(inputText, "patch: ") {
@@ -288,32 +288,23 @@ func (s *PredictableService) makeBashToolResponse(command string, inputTokens ui
 	}
 }
 
-// makeThinkToolResponse creates a response that calls the think tool
-func (s *PredictableService) makeThinkToolResponse(thoughts string, inputTokens uint64) *llm.Response {
-	// Properly marshal the thoughts to avoid JSON escaping issues
-	toolInputData := map[string]string{"thoughts": thoughts}
-	toolInputBytes, _ := json.Marshal(toolInputData)
-	toolInput := json.RawMessage(toolInputBytes)
-	responseText := "Let me think about this."
-	outputTokens := uint64(len(responseText)/4 + len(toolInputBytes)/4)
+// makeThinkingResponse creates a response with extended thinking content
+func (s *PredictableService) makeThinkingResponse(thoughts string, inputTokens uint64) *llm.Response {
+	responseText := "I've considered my approach."
+	outputTokens := uint64(len(responseText)/4 + len(thoughts)/4)
 	if outputTokens == 0 {
 		outputTokens = 1
 	}
 	return &llm.Response{
-		ID:    fmt.Sprintf("pred-think-%d", time.Now().UnixNano()),
+		ID:    fmt.Sprintf("pred-thinking-%d", time.Now().UnixNano()),
 		Type:  "message",
 		Role:  llm.MessageRoleAssistant,
 		Model: "predictable-v1",
 		Content: []llm.Content{
+			{Type: llm.ContentTypeThinking, Thinking: thoughts},
 			{Type: llm.ContentTypeText, Text: responseText},
-			{
-				ID:        fmt.Sprintf("tool_%d", time.Now().UnixNano()%1000),
-				Type:      llm.ContentTypeToolUse,
-				ToolName:  "think",
-				ToolInput: toolInput,
-			},
 		},
-		StopReason: llm.StopReasonToolUse,
+		StopReason: llm.StopReasonEndTurn,
 		Usage: llm.Usage{
 			InputTokens:  inputTokens,
 			OutputTokens: outputTokens,
@@ -629,13 +620,10 @@ func (s *PredictableService) makeToolSmorgasbordResponse(inputTokens uint64) *ll
 		ToolInput: json.RawMessage(bashInput),
 	})
 
-	// think tool
-	thinkInput, _ := json.Marshal(map[string]string{"thoughts": "I'm thinking about the best approach for this task. Let me consider all the options available."})
+	// extended thinking content (not a tool)
 	content = append(content, llm.Content{
-		ID:        fmt.Sprintf("tool_think_%d", (baseNano+1)%1000),
-		Type:      llm.ContentTypeToolUse,
-		ToolName:  "think",
-		ToolInput: json.RawMessage(thinkInput),
+		Type:     llm.ContentTypeThinking,
+		Thinking: "I'm thinking about the best approach for this task. Let me consider all the options available.",
 	})
 
 	// patch tool

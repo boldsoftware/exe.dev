@@ -82,11 +82,12 @@ func (s *Service) MaxImageDimension() int {
 // Service provides Claude completions.
 // Fields should not be altered concurrently with calling any method on Service.
 type Service struct {
-	HTTPC     *http.Client // defaults to http.DefaultClient if nil
-	URL       string       // defaults to DefaultURL if empty
-	APIKey    string       // must be non-empty
-	Model     string       // defaults to DefaultModel if empty
-	MaxTokens int          // defaults to DefaultMaxTokens if zero
+	HTTPC         *http.Client      // defaults to http.DefaultClient if nil
+	URL           string            // defaults to DefaultURL if empty
+	APIKey        string            // must be non-empty
+	Model         string            // defaults to DefaultModel if empty
+	MaxTokens     int               // defaults to DefaultMaxTokens if zero
+	ThinkingLevel llm.ThinkingLevel // thinking level (ThinkingLevelOff disables, default is ThinkingLevelMedium)
 }
 
 var _ llm.Service = (*Service)(nil)
@@ -217,6 +218,12 @@ type systemContent struct {
 }
 
 // request represents the request payload for creating a message.
+// thinking configures extended thinking for Claude models.
+type thinking struct {
+	Type         string `json:"type"`                    // "enabled"
+	BudgetTokens int    `json:"budget_tokens,omitempty"` // Max tokens for thinking
+}
+
 type request struct {
 	// Field order matters for JSON serialization - stable fields should come first
 	// to maximize prefix deduplication when storing LLM requests.
@@ -226,6 +233,7 @@ type request struct {
 	System        []systemContent `json:"system,omitempty"`
 	Tools         []*tool         `json:"tools,omitempty"`
 	ToolChoice    *toolChoice     `json:"tool_choice,omitempty"`
+	Thinking      *thinking       `json:"thinking,omitempty"`
 	Temperature   float64         `json:"temperature,omitempty"`
 	TopK          int             `json:"top_k,omitempty"`
 	TopP          float64         `json:"top_p,omitempty"`
@@ -393,14 +401,27 @@ func fromLLMSystem(s llm.SystemContent) systemContent {
 }
 
 func (s *Service) fromLLMRequest(r *llm.Request) *request {
-	return &request{
+	maxTokens := cmp.Or(s.MaxTokens, DefaultMaxTokens)
+
+	req := &request{
 		Model:      cmp.Or(s.Model, DefaultModel),
 		Messages:   mapped(r.Messages, fromLLMMessage),
-		MaxTokens:  cmp.Or(s.MaxTokens, DefaultMaxTokens),
+		MaxTokens:  maxTokens,
 		ToolChoice: fromLLMToolChoice(r.ToolChoice),
 		Tools:      mapped(r.Tools, fromLLMTool),
 		System:     mapped(r.System, fromLLMSystem),
 	}
+
+	// Enable extended thinking if a thinking level is set
+	if s.ThinkingLevel != llm.ThinkingLevelOff {
+		budget := s.ThinkingLevel.ThinkingBudgetTokens()
+		// Ensure max_tokens > budget_tokens as required by Anthropic API
+		if maxTokens <= budget {
+			req.MaxTokens = budget + 1024
+		}
+		req.Thinking = &thinking{Type: "enabled", BudgetTokens: budget}
+	}
+	return req
 }
 
 func toLLMUsage(u usage) llm.Usage {

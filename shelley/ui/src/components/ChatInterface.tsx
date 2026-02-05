@@ -15,7 +15,7 @@ import DiffViewer from "./DiffViewer";
 import BashTool from "./BashTool";
 import PatchTool from "./PatchTool";
 import ScreenshotTool from "./ScreenshotTool";
-import ThinkTool from "./ThinkTool";
+
 import KeywordSearchTool from "./KeywordSearchTool";
 import BrowserNavigateTool from "./BrowserNavigateTool";
 import BrowserEvalTool from "./BrowserEvalTool";
@@ -227,7 +227,7 @@ const TOOL_COMPONENTS: Record<string, React.ComponentType<any>> = {
   patch: PatchTool,
   screenshot: ScreenshotTool,
   browser_take_screenshot: ScreenshotTool,
-  think: ThinkTool,
+
   keyword_search: KeywordSearchTool,
   browser_navigate: BrowserNavigateTool,
   browser_eval: BrowserEvalTool,
@@ -1192,6 +1192,9 @@ function ChatInterface({
               coalescedItems.push({ type: "message", message });
             }
 
+            // Check if this message was truncated (tool calls lost)
+            const wasTruncated = llmData.ExcludedFromContext === true;
+
             // Add tool uses as separate items
             toolUses.forEach((toolUse) => {
               const resultData = toolUse.ID ? toolResultMap[toolUse.ID] : undefined;
@@ -1203,10 +1206,12 @@ function ChatInterface({
                 toolName: toolUse.ToolName,
                 toolInput: toolUse.ToolInput,
                 toolResult: resultData?.result,
-                toolError: resultData?.error,
+                // Mark as error if truncated and no result
+                toolError: resultData?.error || (wasTruncated && !resultData),
                 toolStartTime: resultData?.startTime,
                 toolEndTime: resultData?.endTime,
-                hasResult: !!resultData || completedViaDisplay,
+                // Mark as complete if truncated (tool was lost, not running)
+                hasResult: !!resultData || completedViaDisplay || wasTruncated,
                 display: displayData,
               });
             });

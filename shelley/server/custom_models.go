@@ -349,9 +349,10 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 	switch req.ProviderType {
 	case "anthropic":
 		service = &ant.Service{
-			APIKey: req.APIKey,
-			URL:    req.Endpoint,
-			Model:  req.ModelName,
+			APIKey:        req.APIKey,
+			URL:           req.Endpoint,
+			Model:         req.ModelName,
+			ThinkingLevel: llm.ThinkingLevelMedium,
 		}
 	case "openai":
 		service = &oai.Service{

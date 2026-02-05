@@ -1183,7 +1183,7 @@ func TestPredictableServiceMaxImageDimension(t *testing.T) {
 	}
 }
 
-func TestPredictableServiceThinkTool(t *testing.T) {
+func TestPredictableServiceThinking(t *testing.T) {
 	service := NewPredictableService()
 
 	ctx := context.Background()
@@ -1195,34 +1195,30 @@ func TestPredictableServiceThinkTool(t *testing.T) {
 
 	resp, err := service.Do(ctx, req)
 	if err != nil {
-		t.Fatalf("think tool test failed: %v", err)
+		t.Fatalf("thinking test failed: %v", err)
 	}
 
-	if resp.StopReason != llm.StopReasonToolUse {
-		t.Errorf("expected tool use stop reason, got %v", resp.StopReason)
+	// Now returns EndTurn since thinking is content, not a tool
+	if resp.StopReason != llm.StopReasonEndTurn {
+		t.Errorf("expected end turn stop reason, got %v", resp.StopReason)
 	}
 
-	// Find the tool use content
-	var toolUseContent *llm.Content
+	// Find the thinking content
+	var thinkingContent *llm.Content
 	for _, content := range resp.Content {
-		if content.Type == llm.ContentTypeToolUse && content.ToolName == "think" {
-			toolUseContent = &content
+		if content.Type == llm.ContentTypeThinking {
+			thinkingContent = &content
 			break
 		}
 	}
 
-	if toolUseContent == nil {
-		t.Fatal("no think tool use content found")
+	if thinkingContent == nil {
+		t.Fatal("no thinking content found")
 	}
 
-	// Check tool input contains the thoughts
-	var toolInput map[string]interface{}
-	if err := json.Unmarshal(toolUseContent.ToolInput, &toolInput); err != nil {
-		t.Fatalf("failed to parse tool input: %v", err)
-	}
-
-	if toolInput["thoughts"] != "This is a test thought" {
-		t.Errorf("expected thoughts 'This is a test thought', got '%v'", toolInput["thoughts"])
+	// Check thinking content contains the thoughts
+	if thinkingContent.Thinking != "This is a test thought" {
+		t.Errorf("expected thinking 'This is a test thought', got '%v'", thinkingContent.Thinking)
 	}
 }
 

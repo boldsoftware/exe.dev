@@ -166,7 +166,7 @@ func All() []Model {
 				if config.AnthropicAPIKey == "" {
 					return nil, fmt.Errorf("claude-opus-4.5 requires ANTHROPIC_API_KEY")
 				}
-				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude45Opus, HTTPC: httpc}
+				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude45Opus, HTTPC: httpc, ThinkingLevel: llm.ThinkingLevelMedium}
 				if url := config.getAnthropicURL(); url != "" {
 					svc.URL = url
 				}
@@ -183,7 +183,7 @@ func All() []Model {
 				if config.AnthropicAPIKey == "" {
 					return nil, fmt.Errorf("claude-sonnet-4.5 requires ANTHROPIC_API_KEY")
 				}
-				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude45Sonnet, HTTPC: httpc}
+				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude45Sonnet, HTTPC: httpc, ThinkingLevel: llm.ThinkingLevelMedium}
 				if url := config.getAnthropicURL(); url != "" {
 					svc.URL = url
 				}
@@ -200,7 +200,7 @@ func All() []Model {
 				if config.AnthropicAPIKey == "" {
 					return nil, fmt.Errorf("claude-haiku-4.5 requires ANTHROPIC_API_KEY")
 				}
-				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude45Haiku, HTTPC: httpc}
+				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude45Haiku, HTTPC: httpc, ThinkingLevel: llm.ThinkingLevelMedium}
 				if url := config.getAnthropicURL(); url != "" {
 					svc.URL = url
 				}
@@ -234,7 +234,7 @@ func All() []Model {
 				if config.OpenAIAPIKey == "" {
 					return nil, fmt.Errorf("gpt-5.2-codex requires OPENAI_API_KEY")
 				}
-				svc := &oai.ResponsesService{Model: oai.GPT52Codex, APIKey: config.OpenAIAPIKey, HTTPC: httpc}
+				svc := &oai.ResponsesService{Model: oai.GPT52Codex, APIKey: config.OpenAIAPIKey, HTTPC: httpc, ThinkingLevel: llm.ThinkingLevelMedium}
 				if url := config.getOpenAIURL(); url != "" {
 					svc.ModelURL = url
 				}
@@ -682,10 +682,11 @@ func (m *Manager) createServiceFromModel(model *generated.Model) llm.Service {
 	switch model.ProviderType {
 	case "anthropic":
 		return &ant.Service{
-			APIKey: model.ApiKey,
-			URL:    model.Endpoint,
-			Model:  model.ModelName,
-			HTTPC:  m.httpc,
+			APIKey:        model.ApiKey,
+			URL:           model.Endpoint,
+			Model:         model.ModelName,
+			HTTPC:         m.httpc,
+			ThinkingLevel: llm.ThinkingLevelMedium,
 		}
 	case "openai":
 		return &oai.Service{
@@ -706,8 +707,9 @@ func (m *Manager) createServiceFromModel(model *generated.Model) llm.Service {
 				ModelName: model.ModelName,
 				URL:       model.Endpoint,
 			},
-			MaxTokens: int(model.MaxTokens),
-			HTTPC:     m.httpc,
+			MaxTokens:     int(model.MaxTokens),
+			HTTPC:         m.httpc,
+			ThinkingLevel: llm.ThinkingLevelMedium,
 		}
 	case "gemini":
 		return &gem.Service{

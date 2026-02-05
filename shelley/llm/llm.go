@@ -198,7 +198,7 @@ func ContentsAttr(contents []Content) slog.Attr {
 			attrs = append(attrs, slog.Any("tool_result", content.ToolResult))
 			attrs = append(attrs, slog.Bool("tool_error", content.ToolError))
 		case ContentTypeThinking:
-			attrs = append(attrs, slog.String("thinking", content.Text))
+			attrs = append(attrs, slog.String("thinking", content.Thinking))
 		default:
 			attrs = append(attrs, slog.String("unknown_content_type", content.Type.String()))
 			attrs = append(attrs, slog.Any("text", content)) // just log it all raw, better to have too much than not enough
@@ -213,9 +213,10 @@ type (
 	ContentType    int
 	ToolChoiceType int
 	StopReason     int
+	ThinkingLevel  int
 )
 
-//go:generate go tool golang.org/x/tools/cmd/stringer -type=MessageRole,ContentType,ToolChoiceType,StopReason -output=llm_string.go
+//go:generate go tool golang.org/x/tools/cmd/stringer -type=MessageRole,ContentType,ToolChoiceType,StopReason,ThinkingLevel -output=llm_string.go
 
 const (
 	MessageRoleUser MessageRole = iota
@@ -238,6 +239,48 @@ const (
 	StopReasonToolUse
 	StopReasonRefusal
 )
+
+// ThinkingLevel controls how much thinking/reasoning the model does.
+// ThinkingLevelOff is the zero value and disables thinking.
+const (
+	ThinkingLevelOff     ThinkingLevel = iota // No thinking (zero value)
+	ThinkingLevelMinimal                      // Minimal thinking (1024 tokens / "minimal")
+	ThinkingLevelLow                          // Low thinking (2048 tokens / "low")
+	ThinkingLevelMedium                       // Medium thinking (8192 tokens / "medium")
+	ThinkingLevelHigh                         // High thinking (16384 tokens / "high")
+)
+
+// ThinkingBudgetTokens returns the recommended budget_tokens for Anthropic's extended thinking.
+func (t ThinkingLevel) ThinkingBudgetTokens() int {
+	switch t {
+	case ThinkingLevelMinimal:
+		return 1024
+	case ThinkingLevelLow:
+		return 2048
+	case ThinkingLevelMedium:
+		return 8192
+	case ThinkingLevelHigh:
+		return 16384
+	default:
+		return 0
+	}
+}
+
+// ThinkingEffort returns the reasoning effort string for OpenAI's reasoning API.
+func (t ThinkingLevel) ThinkingEffort() string {
+	switch t {
+	case ThinkingLevelMinimal:
+		return "minimal"
+	case ThinkingLevelLow:
+		return "low"
+	case ThinkingLevelMedium:
+		return "medium"
+	case ThinkingLevelHigh:
+		return "high"
+	default:
+		return ""
+	}
+}
 
 type Response struct {
 	ID           string

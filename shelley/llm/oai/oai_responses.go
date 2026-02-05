@@ -21,13 +21,14 @@ import (
 // This API is required for models like gpt-5.1-codex.
 // Fields should not be altered concurrently with calling any method on ResponsesService.
 type ResponsesService struct {
-	HTTPC     *http.Client // defaults to http.DefaultClient if nil
-	APIKey    string       // optional, if not set will try to load from env var
-	Model     Model        // defaults to DefaultModel if zero value
-	ModelURL  string       // optional, overrides Model.URL
-	MaxTokens int          // defaults to DefaultMaxTokens if zero
-	Org       string       // optional - organization ID
-	DumpLLM   bool         // whether to dump request/response text to files for debugging; defaults to false
+	HTTPC         *http.Client      // defaults to http.DefaultClient if nil
+	APIKey        string            // optional, if not set will try to load from env var
+	Model         Model             // defaults to DefaultModel if zero value
+	ModelURL      string            // optional, overrides Model.URL
+	MaxTokens     int               // defaults to DefaultMaxTokens if zero
+	Org           string            // optional - organization ID
+	DumpLLM       bool              // whether to dump request/response text to files for debugging; defaults to false
+	ThinkingLevel llm.ThinkingLevel // thinking level (ThinkingLevelOff disables reasoning)
 }
 
 var _ llm.Service = (*ResponsesService)(nil)
@@ -389,6 +390,14 @@ func (s *ResponsesService) Do(ctx context.Context, ir *llm.Request) (*llm.Respon
 		Input:           allInput,
 		Tools:           tools,
 		MaxOutputTokens: cmp.Or(s.MaxTokens, DefaultMaxTokens),
+	}
+
+	// Add reasoning if thinking is enabled
+	if s.ThinkingLevel != llm.ThinkingLevelOff {
+		effort := s.ThinkingLevel.ThinkingEffort()
+		if effort != "" {
+			req.Reasoning = &responsesReasoning{Effort: effort}
+		}
 	}
 
 	// Add tool choice if specified
