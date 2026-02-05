@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 //go:embed schema/*.sql
@@ -21,11 +22,7 @@ var migrationFS embed.FS
 // Each code migration must have a corresponding empty .sql file in schema/
 // to establish ordering. Add entries directly to this map.
 // Code migrations receive a transaction; they must not commit or rollback.
-var codeMigrations = map[int]func(tx *sql.Tx) error{
-	60: testCodeMigration,
-	62: backfillSSHFingerprints,
-	64: backfillSSHKeyComments,
-}
+var codeMigrations = map[int]func(tx *sql.Tx) error{}
 
 // SSHDetails holds SSH connection information for a machine
 type SSHDetails struct {
@@ -136,8 +133,17 @@ func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 	}
 
 	// Run any migrations that haven't been executed
+	dbAlreadyExists := len(executedMigrations) > 0
 	for _, m := range migrations {
 		if executedMigrations[m.number] {
+			continue
+		}
+
+		// Skip base migrations if the database already exists.
+		// Base migrations are consolidated snapshots that include all prior migrations.
+		// They should only run on fresh databases.
+		if dbAlreadyExists && isBaseMigration(m.name) {
+			slog.Info("skipping base migration on existing database", "file", m.name)
 			continue
 		}
 
@@ -194,4 +200,10 @@ func executeMigrationTx(tx *sql.Tx, filename string) error {
 	}
 
 	return nil
+}
+
+// isBaseMigration returns true if the migration filename indicates a base migration.
+// Base migrations are consolidated schema snapshots (e.g., "078-base.sql").
+func isBaseMigration(filename string) bool {
+	return strings.HasSuffix(filename, "-base.sql")
 }

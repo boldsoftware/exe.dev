@@ -60,8 +60,15 @@ func TestMigrationNumbersAreUnique(t *testing.T) {
 		t.Errorf("expected at least 1 migration file, found %d", len(migrationNumbers))
 	}
 
-	// Check that we have 001
-	if _, exists := migrationNumbers[1]; !exists {
-		t.Error("missing base migration 001-base.sql")
+	// Check that we have at least one base migration (named XXX-base.sql)
+	hasBase := false
+	for _, name := range migrationNumbers {
+		if strings.HasSuffix(name, "-base.sql") {
+			hasBase = true
+			break
+		}
+	}
+	if !hasBase {
+		t.Error("missing base migration (XXX-base.sql)")
 	}
 }
