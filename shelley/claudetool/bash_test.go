@@ -207,23 +207,6 @@ func TestExecuteBash(t *testing.T) {
 		}
 	})
 
-	// Test SKETCH=1 environment variable is set
-	t.Run("SKETCH Environment Variable", func(t *testing.T) {
-		req := bashInput{
-			Command: "echo $SKETCH",
-		}
-
-		output, err := bashTool.executeBash(ctx, req, 5*time.Second)
-		if err != nil {
-			t.Fatalf("Unexpected error: %v", err)
-		}
-
-		want := "1\n"
-		if output != want {
-			t.Errorf("Expected SKETCH=1, got %q", output)
-		}
-	})
-
 	// Test SHELLEY_CONVERSATION_ID environment variable is set when configured
 	t.Run("SHELLEY_CONVERSATION_ID Environment Variable", func(t *testing.T) {
 		bashWithConvID := &BashTool{
@@ -260,6 +243,23 @@ func TestExecuteBash(t *testing.T) {
 		want := "conv_id::\n"
 		if output != want {
 			t.Errorf("Expected empty SHELLEY_CONVERSATION_ID, got %q", output)
+		}
+	})
+
+	// Test that bash runs as a login shell (sources user profile)
+	t.Run("Login Shell", func(t *testing.T) {
+		req := bashInput{
+			Command: "shopt login_shell | grep -q on && echo login",
+		}
+
+		output, err := bashTool.executeBash(ctx, req, 5*time.Second)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		want := "login\n"
+		if output != want {
+			t.Errorf("Expected bash to run as login shell, got %q", output)
 		}
 	})
 
@@ -327,7 +327,7 @@ func TestBackgroundBash(t *testing.T) {
 			Command    string `json:"command"`
 			Background bool   `json:"background"`
 		}{
-			Command:    "echo 'Hello from background' $SKETCH",
+			Command:    "echo 'Hello from background'",
 			Background: true,
 		}
 		inputJSON, err := json.Marshal(inputObj)
@@ -387,8 +387,8 @@ func TestBackgroundBash(t *testing.T) {
 		}
 		// The implementation appends a completion message to the output
 		outputStr := string(outputContent)
-		if !strings.Contains(outputStr, "Hello from background 1") {
-			t.Errorf("Expected output to contain 'Hello from background 1', got %q", outputStr)
+		if !strings.Contains(outputStr, "Hello from background") {
+			t.Errorf("Expected output to contain 'Hello from background', got %q", outputStr)
 		}
 		if !strings.Contains(outputStr, "[background process completed]") {
 			t.Errorf("Expected output to contain completion message, got %q", outputStr)

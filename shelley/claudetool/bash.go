@@ -107,7 +107,7 @@ func (b *BashTool) isNoTrailerSet() bool {
 
 const (
 	bashName        = "bash"
-	bashDescription = `Executes shell commands via bash -c, returning combined stdout/stderr.
+	bashDescription = `Executes shell commands via bash --login -c, returning combined stdout/stderr.
 Bash state changes (working dir, variables, aliases) don't persist between calls.
 
 With background=true, returns immediately, with output redirected to a file.
@@ -250,7 +250,7 @@ const (
 )
 
 func (b *BashTool) makeBashCommand(ctx context.Context, command string, out io.Writer) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, "bash", "-c", command)
+	cmd := exec.CommandContext(ctx, "bash", "--login", "-c", command)
 	// Use shared WorkingDir if available, then context, then Pwd fallback
 	cmd.Dir = b.getWorkingDir()
 	cmd.Stdin = nil
@@ -267,11 +267,9 @@ func (b *BashTool) makeBashCommand(ctx context.Context, command string, out io.W
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) // kill entire process group
 	}
 	cmd.WaitDelay = 15 * time.Second // prevent indefinite hangs when child processes keep pipes open
-	// Remove SKETCH_MODEL_URL, SKETCH_PUB_KEY, SKETCH_MODEL_API_KEY,
-	// and any other future SKETCH_ goodies from the environment.
-	// ...except for SKETCH_PROXY_ID, which is intentionally available.
+	// Remove SHELLEY_CONVERSATION_ID so we control it explicitly below.
 	env := slices.DeleteFunc(os.Environ(), func(s string) bool {
-		return strings.HasPrefix(s, "SKETCH_") && s != "SKETCH_PROXY_ID"
+		return strings.HasPrefix(s, "SHELLEY_CONVERSATION_ID=")
 	})
 	env = append(env, "SKETCH=1")          // signal that this has been run by Sketch, sometimes useful for scripts
 	env = append(env, "EDITOR=/bin/false") // interactive editors won't work
