@@ -133,8 +133,9 @@ func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, userMsg s
 	case strings.Contains(errStr, "stream error"),
 		strings.Contains(errStr, "unexpected end of JSON"),
 		strings.Contains(errStr, "stream closed"),
-		strings.Contains(errStr, "client disconnected"):
-		// Client cancelled request (HTTP/2 stream cancel). Not an error.
+		strings.Contains(errStr, "client disconnected"),
+		strings.Contains(errStr, "connection reset by peer"):
+		// Client cancelled request or transient network error. Not an error.
 		logger = m.log.InfoContext
 	case code == http.StatusPaymentRequired:
 		// Running out of LLM credit is not an error.
