@@ -3,8 +3,7 @@ package replication
 import (
 	"context"
 	"log/slog"
-
-	"github.com/google/uuid"
+	"strings"
 )
 
 // VolumeDeleter is an interface for targets that support deleting entire volumes
@@ -14,17 +13,19 @@ type VolumeDeleter interface {
 
 // Pruner handles removal of orphaned backups from the target
 type Pruner struct {
-	target  Target
-	log     *slog.Logger
-	enabled bool
+	target   Target
+	log      *slog.Logger
+	enabled  bool
+	nodeName string
 }
 
 // NewPruner creates a new pruner
-func NewPruner(target Target, enabled bool, log *slog.Logger) *Pruner {
+func NewPruner(target Target, enabled bool, nodeName string, log *slog.Logger) *Pruner {
 	return &Pruner{
-		target:  target,
-		log:     log,
-		enabled: enabled,
+		target:   target,
+		log:      log,
+		enabled:  enabled,
+		nodeName: nodeName,
 	}
 }
 
@@ -40,13 +41,19 @@ func (p *Pruner) Prune(ctx context.Context, localVolumeIDs map[string]struct{}) 
 		return err
 	}
 
-	// Find orphaned volumes. Only consider volumes whose names are valid
-	// UUIDs (instance IDs) to avoid deleting unrelated datasets on a
-	// shared pool.
+	// Find orphaned volumes belonging to this node.
+	// Only consider volumes in this node's namespace:
+	//   - VM instance IDs (vm\d{6}-*): globally unique, safe to prune
+	//   - Non-VM datasets ending with -<nodeName>: belong to this node
+	// Skip everything else (base images, other nodes' datasets).
+	suffix := "-" + p.nodeName
 	var orphaned []string
 	for _, tv := range targetVolumes {
-		if _, err := uuid.Parse(tv); err != nil {
-			p.log.DebugContext(ctx, "skipping non-instance volume during prune", "volume", tv)
+		if strings.HasPrefix(tv, "sha256:") {
+			continue
+		}
+		if !isVMInstanceID(tv) && !strings.HasSuffix(tv, suffix) {
+			p.log.DebugContext(ctx, "skipping volume from another node during prune", "volume", tv)
 			continue
 		}
 		if _, exists := localVolumeIDs[tv]; !exists {

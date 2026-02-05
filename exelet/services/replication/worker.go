@@ -24,7 +24,8 @@ const (
 
 // VolumeInfo holds information about a volume to replicate
 type VolumeInfo struct {
-	ID      string
+	ID      string // Remote volume ID (may include node-name suffix)
+	LocalID string // Local dataset child name (for isRestoring checks)
 	Name    string
 	Dataset string // Full ZFS dataset path
 }
@@ -140,17 +141,17 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 	// Remove from pending queue now that we're processing
 	wp.removeFromPending(volume.ID)
 
-	// Skip if volume is being restored
-	if wp.isRestoring != nil && wp.isRestoring(volume.ID) {
-		wp.log.Info("skipping replication, volume is being restored", "volume_id", volume.ID)
+	// Skip if volume is being restored (use LocalID since restoringVolumes tracks local IDs)
+	if wp.isRestoring != nil && wp.isRestoring(volume.LocalID) {
+		wp.log.Info("skipping replication, volume is being restored", "volume_id", volume.LocalID)
 		return
 	}
 
 	startTime := time.Now()
 
-	// Create job entry
+	// Create job entry (VolumeID uses LocalID for API-visible output)
 	job := &Job{
-		VolumeID:   volume.ID,
+		VolumeID:   volume.LocalID,
 		VolumeName: volume.Name,
 		State:      api.ReplicationState_REPLICATION_STATE_SNAPSHOTTING,
 		StartedAt:  startTime,
@@ -158,7 +159,7 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 	wp.setJob(volume.ID, job)
 	defer wp.removeJob(volume.ID)
 
-	wp.log.Info("starting replication", "volume_id", volume.ID, "volume_name", volume.Name)
+	wp.log.Info("starting replication", "volume_id", volume.LocalID, "volume_name", volume.Name)
 
 	// Create snapshot
 	snapshotName := fmt.Sprintf("%s%s", SnapshotPrefix, time.Now().UTC().Format("20060102T150405Z"))
@@ -166,7 +167,7 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 		wp.recordFailure(job, volume, startTime, fmt.Errorf("failed to create snapshot: %w", err))
 		return
 	}
-	wp.log.Debug("created snapshot", "volume_id", volume.ID, "snapshot", snapshotName)
+	wp.log.Debug("created snapshot", "volume_id", volume.LocalID, "snapshot", snapshotName)
 
 	// Update job state
 	job.mu.Lock()
@@ -203,9 +204,9 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 	}
 
 	if incremental {
-		wp.log.Debug("using incremental send", "volume_id", volume.ID, "base", baseSnapshot)
+		wp.log.Debug("using incremental send", "volume_id", volume.LocalID, "base", baseSnapshot)
 	} else {
-		wp.log.Debug("using full send", "volume_id", volume.ID)
+		wp.log.Debug("using full send", "volume_id", volume.LocalID)
 	}
 
 	// Send with retries
@@ -234,7 +235,7 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 		if sendErr == nil {
 			break
 		}
-		wp.log.Warn("send attempt failed", "volume_id", volume.ID, "attempt", attempt, "error", sendErr)
+		wp.log.Warn("send attempt failed", "volume_id", volume.LocalID, "attempt", attempt, "error", sendErr)
 		if attempt < MaxRetries {
 			backoff := []time.Duration{0, 5 * time.Second, 30 * time.Second}[attempt]
 			select {
@@ -268,9 +269,9 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 			toDelete := len(replSnapshots) - wp.retention + 1 // +1 for the new one we just sent
 			for i := 0; i < toDelete; i++ {
 				if err := wp.target.Delete(wp.ctx, volume.ID, replSnapshots[i]); err != nil {
-					wp.log.Warn("failed to delete old snapshot", "volume_id", volume.ID, "snapshot", replSnapshots[i], "error", err)
+					wp.log.Warn("failed to delete old snapshot", "volume_id", volume.LocalID, "snapshot", replSnapshots[i], "error", err)
 				} else {
-					wp.log.Debug("deleted old snapshot", "volume_id", volume.ID, "snapshot", replSnapshots[i])
+					wp.log.Debug("deleted old snapshot", "volume_id", volume.LocalID, "snapshot", replSnapshots[i])
 				}
 			}
 		}
@@ -288,7 +289,7 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 	job.mu.Unlock()
 
 	historyEntry := HistoryEntry{
-		VolumeID:         volume.ID,
+		VolumeID:         volume.LocalID,
 		VolumeName:       volume.Name,
 		StartedAt:        startTime,
 		CompletedAt:      job.CompletedAt,
@@ -299,9 +300,9 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 		Incremental:      incremental,
 	}
 	wp.state.AddHistory(historyEntry)
-	wp.metrics.RecordSuccess(volume.ID, wp.target.Type(), bytesTransferred, duration.Seconds())
+	wp.metrics.RecordSuccess(volume.LocalID, wp.target.Type(), bytesTransferred, duration.Seconds())
 
-	wp.log.Info("replication complete", "volume_id", volume.ID, "duration", duration, "incremental", incremental)
+	wp.log.Info("replication complete", "volume_id", volume.LocalID, "duration", duration, "incremental", incremental)
 }
 
 // recordFailure records a failed replication
@@ -314,7 +315,7 @@ func (wp *WorkerPool) recordFailure(job *Job, volume VolumeInfo, startTime time.
 
 	duration := time.Since(startTime)
 	historyEntry := HistoryEntry{
-		VolumeID:     volume.ID,
+		VolumeID:     volume.LocalID,
 		VolumeName:   volume.Name,
 		StartedAt:    startTime,
 		CompletedAt:  job.CompletedAt,
@@ -325,7 +326,7 @@ func (wp *WorkerPool) recordFailure(job *Job, volume VolumeInfo, startTime time.
 	wp.state.AddHistory(historyEntry)
 	wp.metrics.RecordFailure(wp.target.Type())
 
-	wp.log.Error("replication failed", "volume_id", volume.ID, "error", err)
+	wp.log.Error("replication failed", "volume_id", volume.LocalID, "error", err)
 }
 
 // setJob sets a job in the active jobs map
@@ -452,7 +453,7 @@ func (wp *WorkerPool) GetStatus() (busyWorkers, totalWorkers int, jobs []*Job) {
 			continue
 		}
 		jobs = append(jobs, &Job{
-			VolumeID:   v.ID,
+			VolumeID:   v.LocalID,
 			VolumeName: v.Name,
 			State:      api.ReplicationState_REPLICATION_STATE_PENDING,
 		})

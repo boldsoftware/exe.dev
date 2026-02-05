@@ -82,6 +82,9 @@ func (s *Service) Register(ctx *services.ServiceContext, server *grpc.Server) er
 	if ctx.ComputeService == nil {
 		return fmt.Errorf("compute service is required for replication")
 	}
+	if s.config.Name == "" {
+		return fmt.Errorf("exelet name is required for replication dataset namespacing")
+	}
 
 	s.context = ctx
 
@@ -110,7 +113,7 @@ func (s *Service) Register(ctx *services.ServiceContext, server *grpc.Server) er
 	s.target = target
 
 	// Initialize pruner
-	s.pruner = NewPruner(target, s.config.ReplicationPrune, s.log)
+	s.pruner = NewPruner(target, s.config.ReplicationPrune, s.config.Name, s.log)
 
 	// Initialize worker pool
 	s.workerPool = NewWorkerPool(
@@ -220,37 +223,44 @@ func (s *Service) runReplicationCycle(ctx context.Context) {
 	s.log.InfoContext(ctx, "starting replication cycle")
 	startTime := time.Now()
 
-	// Get all instances from compute service
-	instances, err := s.context.ComputeService.Instances(ctx)
+	storageManager := s.context.StorageManager
+
+	// Get all datasets from storage (excludes base images)
+	datasetIDs, err := storageManager.ListDatasets(ctx)
 	if err != nil {
-		s.log.ErrorContext(ctx, "failed to get instances", "error", err)
+		s.log.ErrorContext(ctx, "failed to list datasets", "error", err)
 		return
 	}
 
-	// Build volume list
-	volumes := make([]VolumeInfo, 0, len(instances))
+	// Build instance name lookup (best-effort, for logging only)
+	nameByID := make(map[string]string)
+	instances, err := s.context.ComputeService.Instances(ctx)
+	if err != nil {
+		s.log.WarnContext(ctx, "failed to get instances for name lookup", "error", err)
+	} else {
+		for _, inst := range instances {
+			nameByID[inst.ID] = inst.Name
+		}
+	}
+
+	// Build volume list from all datasets
+	volumes := make([]VolumeInfo, 0, len(datasetIDs))
 	localVolumeIDs := make(map[string]struct{})
-	storageManager := s.context.StorageManager
 
-	for _, inst := range instances {
-		volumeID := inst.ID
-		localVolumeIDs[volumeID] = struct{}{}
-
-		// Only replicate running VMs
-		if inst.State != computeapi.VMState_RUNNING {
-			s.log.DebugContext(ctx, "skipping non-running instance", "instance_id", volumeID, "state", inst.State)
-			continue
-		}
-
-		dataset := storageManager.GetDatasetName(volumeID)
+	for _, id := range datasetIDs {
+		dataset := storageManager.GetDatasetName(id)
 		if dataset == "" {
-			s.log.WarnContext(ctx, "skipping instance with no dataset", "instance_id", volumeID)
+			s.log.WarnContext(ctx, "skipping dataset with no dataset name", "id", id)
 			continue
 		}
+
+		remoteID := remoteVolumeID(id, s.config.Name)
+		localVolumeIDs[remoteID] = struct{}{}
 
 		volumes = append(volumes, VolumeInfo{
-			ID:      volumeID,
-			Name:    inst.Name,
+			ID:      remoteID,
+			LocalID: id,
+			Name:    nameByID[id],
 			Dataset: dataset,
 		})
 	}
@@ -341,35 +351,35 @@ func (s *Service) GetStatus(ctx context.Context, req *api.GetStatusRequest) (*ap
 // TriggerReplication implements ReplicationService.TriggerReplication
 func (s *Service) TriggerReplication(ctx context.Context, req *api.TriggerReplicationRequest) (*api.TriggerReplicationResponse, error) {
 	if req.VolumeID != "" {
-		// Replicate specific volume
-		instances, err := s.context.ComputeService.Instances(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get instances: %w", err)
+		// Replicate specific volume - verify dataset exists
+		dataset := s.context.StorageManager.GetDatasetName(req.VolumeID)
+		if dataset == "" {
+			return nil, fmt.Errorf("volume %s has no dataset", req.VolumeID)
+		}
+		if _, err := s.context.StorageManager.Get(ctx, req.VolumeID); err != nil {
+			return nil, fmt.Errorf("volume not found: %s", req.VolumeID)
 		}
 
-		for _, inst := range instances {
-			if inst.ID == req.VolumeID {
-				dataset := s.context.StorageManager.GetDatasetName(inst.ID)
-				if dataset == "" {
-					return nil, fmt.Errorf("instance %s has no dataset", inst.ID)
-				}
-
-				volume := VolumeInfo{
-					ID:      inst.ID,
-					Name:    inst.Name,
-					Dataset: dataset,
-				}
-				if err := s.workerPool.QueueVolume(volume); err != nil {
-					return nil, err
-				}
-
-				return &api.TriggerReplicationResponse{
-					QueuedCount: 1,
-					VolumeIds:   []string{inst.ID},
-				}, nil
-			}
+		// Best-effort name resolution from compute service
+		var name string
+		if inst, err := s.context.ComputeService.GetInstanceByID(ctx, req.VolumeID); err == nil && inst != nil {
+			name = inst.Name
 		}
-		return nil, fmt.Errorf("volume not found: %s", req.VolumeID)
+
+		volume := VolumeInfo{
+			ID:      remoteVolumeID(req.VolumeID, s.config.Name),
+			LocalID: req.VolumeID,
+			Name:    name,
+			Dataset: dataset,
+		}
+		if err := s.workerPool.QueueVolume(volume); err != nil {
+			return nil, err
+		}
+
+		return &api.TriggerReplicationResponse{
+			QueuedCount: 1,
+			VolumeIds:   []string{req.VolumeID},
+		}, nil
 	}
 
 	// Check if a cycle is already running before launching a new one
@@ -520,7 +530,8 @@ func (s *Service) RestoreVolume(ctx context.Context, req *api.RestoreVolumeReque
 	// Normalize TargetRef to basename so callers can pass either a bare snapshot name
 	// or a full path (e.g., for file-based targets).
 	targetRef := filepath.Base(req.TargetRef)
-	remoteSnapshots, err := s.target.ListSnapshots(ctx, req.VolumeID)
+	remoteID := remoteVolumeID(req.VolumeID, s.config.Name)
+	remoteSnapshots, err := s.target.ListSnapshots(ctx, remoteID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list remote snapshots: %w", err)
 	}
@@ -554,7 +565,7 @@ func (s *Service) RestoreVolume(ctx context.Context, req *api.RestoreVolumeReque
 
 	// Perform restore from remote
 	err = s.target.Receive(ctx, ReceiveOptions{
-		VolumeID:     req.VolumeID,
+		VolumeID:     remoteID,
 		SnapshotName: targetRef,
 		Dataset:      dataset,
 		Force:        req.Force,
@@ -628,7 +639,7 @@ func (s *Service) ListSnapshots(ctx context.Context, req *api.ListSnapshotsReque
 
 	// Get remote snapshots from target with full metadata
 	if s.target != nil {
-		remoteSnapshots, err := s.target.ListSnapshotsWithMetadata(ctx, req.VolumeID)
+		remoteSnapshots, err := s.target.ListSnapshotsWithMetadata(ctx, remoteVolumeID(req.VolumeID, s.config.Name))
 		if err != nil {
 			s.log.WarnContext(ctx, "failed to list remote snapshots", "volume_id", req.VolumeID, "error", err)
 		} else {
@@ -688,6 +699,36 @@ func (s *Service) ListRemoteSnapshots(req *api.ListRemoteSnapshotsRequest, strea
 	}
 
 	return nil
+}
+
+// isVMInstanceID returns true if the ID matches the vm\d{6}-* pattern
+// (e.g., vm000123-blue-falcon), which is globally unique.
+func isVMInstanceID(id string) bool {
+	// vm followed by exactly 6 digits then a dash: vm000123-...
+	if len(id) < 9 || id[0] != 'v' || id[1] != 'm' || id[8] != '-' {
+		return false
+	}
+	for i := 2; i < 8; i++ {
+		if id[i] < '0' || id[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// remoteVolumeID transforms a local dataset ID into a remote-safe ID.
+// VM instance IDs are already globally unique and returned as-is.
+// Non-VM datasets get a -<nodeName> suffix to avoid collisions when
+// multiple exelets target the same replication pool.
+func remoteVolumeID(localID, nodeName string) string {
+	if isVMInstanceID(localID) {
+		return localID
+	}
+	suffix := "-" + nodeName
+	if strings.HasSuffix(localID, suffix) {
+		return localID
+	}
+	return localID + suffix
 }
 
 // listLocalSnapshots lists all snapshots for a dataset

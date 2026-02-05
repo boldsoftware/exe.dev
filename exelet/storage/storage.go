@@ -59,6 +59,9 @@ type StorageManager interface {
 	// PruneOrphanedBaseImages removes base image datasets (sha256:xxx) that have no dependent clones.
 	// Returns the number of datasets pruned.
 	PruneOrphanedBaseImages(ctx context.Context) (int, error)
+	// ListDatasets returns the IDs of all datasets in the pool, excluding the pool
+	// root and base images (sha256:xxx).
+	ListDatasets(ctx context.Context) ([]string, error)
 	// SetUserProperty sets a user-defined property on a dataset (e.g., "exe:imageref=ghcr.io/org/image:tag")
 	SetUserProperty(ctx context.Context, id, property, value string) error
 	// GetUserProperty gets a user-defined property from a dataset, returns empty string if not set

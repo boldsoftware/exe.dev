@@ -538,6 +538,33 @@ func (s *ZFS) PruneOrphanedBaseImages(ctx context.Context) (int, error) {
 	return pruned, nil
 }
 
+// ListDatasets returns the IDs of all datasets in the pool, excluding the pool
+// root and base images (sha256:xxx).
+func (s *ZFS) ListDatasets(ctx context.Context) ([]string, error) {
+	cmd := exec.CommandContext(ctx, "zfs", "list", "-H", "-o", "name", "-t", "filesystem,volume", "-r", "-d", "1", s.dsName)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list datasets: %w", err)
+	}
+
+	var ids []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		dsName := strings.TrimSpace(line)
+		if dsName == "" || dsName == s.dsName {
+			continue
+		}
+
+		childName := strings.TrimPrefix(dsName, s.dsName+"/")
+		if strings.HasPrefix(childName, "sha256:") {
+			continue
+		}
+
+		ids = append(ids, childName)
+	}
+
+	return ids, nil
+}
+
 // getDatasetCreation returns the creation time of a ZFS dataset.
 func (s *ZFS) getDatasetCreation(ctx context.Context, dsName string) (time.Time, error) {
 	cmd := exec.CommandContext(ctx, "zfs", "get", "-Hp", "-o", "value", "creation", dsName)
