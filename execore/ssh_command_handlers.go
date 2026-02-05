@@ -269,7 +269,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Name:              "cp",
 			Description:       "Copy an existing VM",
 			Usage:             "cp <source-vm> [new-name]",
-			FlagSetFunc:       jsonOnlyFlags("cp"),
+			FlagSetFunc:       cpCommandFlags,
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
 			Handler:           ss.handleCpCommand,
