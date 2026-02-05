@@ -1018,6 +1018,14 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		if err != nil {
 			return fmt.Errorf("failed to get user ID: %w", err)
 		}
+		// Check if user is locked out - don't add SSH key for locked out users
+		isLockedOut, err := queries.GetUserIsLockedOut(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("failed to check lockout status: %w", err)
+		}
+		if isLockedOut {
+			return errUserLockedOut
+		}
 		comment, err := nextSSHKeyComment(ctx, queries, userID)
 		if err != nil {
 			return fmt.Errorf("failed to generate SSH key comment: %w", err)
@@ -1050,6 +1058,18 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		return queries.DeletePendingSSHKeyByToken(ctx, token)
 	})
 	if err != nil {
+		if errors.Is(err, errUserLockedOut) {
+			// Signal failure to waiting SSH session
+			verification.Err = fmt.Errorf("account locked")
+			verification.Close()
+			s.deleteEmailVerification(verification)
+			// Show lockout message
+			traceID := tracing.TraceIDFromContext(r.Context())
+			s.slog().WarnContext(r.Context(), "locked out user attempted device verification", "email", pendingKey.UserEmail, "trace_id", traceID)
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprintf(w, "contact support@exe.dev (trace: %s)", traceID)
+			return
+		}
 		if !errors.Is(err, errKeyBelongsToOther) {
 			s.slog().ErrorContext(r.Context(), "Failed to add SSH key", "error", err)
 		}
@@ -1077,6 +1097,7 @@ var (
 	errExpiredToken         = errors.New("verification token has expired")
 	errVerificationNotFound = errors.New("verification session not found")
 	errKeyBelongsToOther    = errors.New("SSH key is already registered to another account")
+	errUserLockedOut        = errors.New("user account is locked out")
 )
 
 func (s *Server) lookUpDeviceVerification(ctx context.Context, token string) (*exedb.PendingSSHKey, *EmailVerification, error) {
@@ -1231,6 +1252,12 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to get user info for dashboard", "error", err, "user_id", userID)
 		http.Error(w, "Failed to load user information", http.StatusInternalServerError)
+		return
+	}
+
+	// Check if user is locked out
+	if user.IsLockedOut {
+		s.renderLockedOutPage(w, r, userID)
 		return
 	}
 
@@ -1398,6 +1425,12 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to get user info for profile", "error", err, "user_id", userID)
 		http.Error(w, "Failed to load user information", http.StatusInternalServerError)
+		return
+	}
+
+	// Check if user is locked out
+	if user.IsLockedOut {
+		s.renderLockedOutPage(w, r, userID)
 		return
 	}
 

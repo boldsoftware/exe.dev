@@ -2,7 +2,7 @@
 
 ## Booleans
 
-SQLite stores booleans as INTEGER. Add column overrides in `sqlc.yaml` to map them to Go `bool`:
+SQLite stores booleans as INTEGER. Always add column overrides in `sqlc.yaml` to map boolean columns to Go `bool`:
 
 ```yaml
 overrides:
@@ -10,4 +10,4 @@ overrides:
     go_type: "bool"
 ```
 
-Then run `sqlc generate`.
+Then run `go generate ./exedb`.

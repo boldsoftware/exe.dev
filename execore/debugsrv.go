@@ -53,6 +53,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/user", s.handleDebugUser)
 	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
 	mux.HandleFunc("POST /debug/users/toggle-vm-creation", s.handleDebugToggleVMCreation)
+	mux.HandleFunc("POST /debug/users/toggle-lockout", s.handleDebugToggleLockout)
 	mux.HandleFunc("POST /debug/users/update-credit", s.handleDebugUpdateUserCredit)
 	mux.HandleFunc("/debug/exelets", s.handleDebugExelets)
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
@@ -975,6 +976,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			CreatedAt              string  `json:"created_at,omitempty"`
 			RootSupport            bool    `json:"root_support"`
 			VMCreationDisabled     bool    `json:"vm_creation_disabled"`
+			IsLockedOut            bool    `json:"is_locked_out"`
 			CreatedForLoginWithExe bool    `json:"created_for_login_with_exe"`
 			AccountID              string  `json:"account_id,omitempty"`
 			BillingURL             string  `json:"billing_url,omitempty"`
@@ -1002,6 +1004,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 				CreatedAt:              createdAt,
 				RootSupport:            u.RootSupport == 1,
 				VMCreationDisabled:     u.NewVmCreationDisabled,
+				IsLockedOut:            u.IsLockedOut,
 				CreatedForLoginWithExe: u.CreatedForLoginWithExe,
 				AccountID:              acctID,
 				BillingURL:             billingURL,
@@ -1128,6 +1131,35 @@ func (s *Server) handleDebugToggleVMCreation(w http.ResponseWriter, r *http.Requ
 		action = "disabled"
 	}
 	s.slog().InfoContext(ctx, "vm creation toggled via debug page", "user_id", userID, "action", action)
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) handleDebugToggleLockout(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	lockout := r.FormValue("lockout") == "1"
+
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	err := withTx1(s, ctx, (*exedb.Queries).SetUserIsLockedOut, exedb.SetUserIsLockedOutParams{
+		IsLockedOut: lockout,
+		UserID:      userID,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to update lockout status: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	action := "unlocked"
+	if lockout {
+		action = "locked out"
+	}
+	s.slog().InfoContext(ctx, "user lockout toggled via debug page", "user_id", userID, "action", action)
 
 	w.WriteHeader(http.StatusOK)
 }

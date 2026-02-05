@@ -56,7 +56,7 @@ func (q *Queries) GetEmailByUserID(ctx context.Context, userID string) (string, 
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out
 FROM users
 WHERE canonical_email = ?
 `
@@ -79,6 +79,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, canonicalEmail *string) (U
 		&i.NextSSHKeyNumber,
 		&i.Region,
 		&i.CanonicalEmail,
+		&i.IsLockedOut,
 	)
 	return i, err
 }
@@ -92,6 +93,17 @@ func (q *Queries) GetUserIDByEmail(ctx context.Context, canonicalEmail *string) 
 	var user_id string
 	err := row.Scan(&user_id)
 	return user_id, err
+}
+
+const getUserIsLockedOut = `-- name: GetUserIsLockedOut :one
+SELECT is_locked_out FROM users WHERE user_id = ?
+`
+
+func (q *Queries) GetUserIsLockedOut(ctx context.Context, userID string) (bool, error) {
+	row := q.queryRow(ctx, q.getUserIsLockedOutStmt, getUserIsLockedOut, userID)
+	var is_locked_out bool
+	err := row.Scan(&is_locked_out)
+	return is_locked_out, err
 }
 
 const getUserNewVMCreationDisabled = `-- name: GetUserNewVMCreationDisabled :one
@@ -117,7 +129,7 @@ func (q *Queries) GetUserRootSupport(ctx context.Context, userID string) (int64,
 }
 
 const getUserWithDetails = `-- name: GetUserWithDetails :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out
 FROM users
 WHERE user_id = ?
 `
@@ -140,6 +152,7 @@ func (q *Queries) GetUserWithDetails(ctx context.Context, userID string) (User, 
 		&i.NextSSHKeyNumber,
 		&i.Region,
 		&i.CanonicalEmail,
+		&i.IsLockedOut,
 	)
 	return i, err
 }
@@ -168,7 +181,7 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 }
 
 const listAllUsers = `-- name: ListAllUsers :many
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email FROM users ORDER BY created_at DESC
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out FROM users ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
@@ -195,6 +208,7 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 			&i.NextSSHKeyNumber,
 			&i.Region,
 			&i.CanonicalEmail,
+			&i.IsLockedOut,
 		); err != nil {
 			return nil, err
 		}
@@ -221,6 +235,20 @@ type SetUserDiscordParams struct {
 
 func (q *Queries) SetUserDiscord(ctx context.Context, arg SetUserDiscordParams) error {
 	_, err := q.exec(ctx, q.setUserDiscordStmt, setUserDiscord, arg.DiscordID, arg.DiscordUsername, arg.UserID)
+	return err
+}
+
+const setUserIsLockedOut = `-- name: SetUserIsLockedOut :exec
+UPDATE users SET is_locked_out = ? WHERE user_id = ?
+`
+
+type SetUserIsLockedOutParams struct {
+	IsLockedOut bool   `db:"is_locked_out" json:"is_locked_out"`
+	UserID      string `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) SetUserIsLockedOut(ctx context.Context, arg SetUserIsLockedOutParams) error {
+	_, err := q.exec(ctx, q.setUserIsLockedOutStmt, setUserIsLockedOut, arg.IsLockedOut, arg.UserID)
 	return err
 }
 

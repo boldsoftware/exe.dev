@@ -328,6 +328,7 @@ type User struct {
 	NextSSHKeyNumber       int64      `db:"next_ssh_key_number" json:"next_ssh_key_number"`
 	Region                 string     `db:"region" json:"region"`
 	CanonicalEmail         *string    `db:"canonical_email" json:"canonical_email"`
+	IsLockedOut            bool       `db:"is_locked_out" json:"is_locked_out"`
 }
 
 type UserDailyEmailCount struct {

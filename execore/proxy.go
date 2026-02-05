@@ -159,6 +159,14 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if box owner is locked out - their VMs should not accept proxy requests
+	if isLockedOut, err := s.isUserLockedOut(r.Context(), box.CreatedByUserID); err == nil && isLockedOut {
+		sloghttp.AddCustomAttributes(r, slog.Bool("owner_locked_out", true))
+		sloghttp.AddCustomAttributes(r, slog.String("owner_user_id", box.CreatedByUserID))
+		s.renderAccessRequired(w, r)
+		return
+	}
+
 	// Determine final route:
 	// - Shelley subdomain (box.shelley.exe.xyz) always routes to port 9999 as private
 	// - If no explicit targetPort (0), or it matches server default ports, or equals box's default, use box route

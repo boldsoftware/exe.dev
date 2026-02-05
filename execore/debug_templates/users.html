@@ -38,6 +38,7 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 <th>LLM$ Total Used</th>
 <th>Last Refresh</th>
 <th>VM Creation Disabled</th>
+<th>Locked Out</th>
 <th>Root Support</th>
 <th>Discord</th>
 <th>Invites</th>
@@ -52,6 +53,7 @@ dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: po
 <th>Total Used ($)</th>
 <th>Last Refresh</th>
 <th>VM Creation Disabled</th>
+<th>Locked Out</th>
 <th>Root Support</th>
 <th>Discord</th>
 <th>Invites</th>
@@ -121,6 +123,14 @@ $(document).ready(function() {
                 var btnText = isDisabled ? 'Enable' : 'Disable';
                 return status + ' <button class="toggle-btn vm-toggle-btn ' + btnClass + '" ' +
                     'data-userid="' + row.user_id + '" data-disabled="' + isDisabled + '">' + btnText + '</button>';
+            }},
+            { data: 'is_locked_out', render: function(d, type, row) {
+                var isLocked = !!d;
+                var status = isLocked ? 'Yes' : 'No';
+                var btnClass = isLocked ? 'enabled' : 'disabled';
+                var btnText = isLocked ? 'Unlock' : 'Lock';
+                return status + ' <button class="toggle-btn lockout-toggle-btn ' + btnClass + '" ' +
+                    'data-userid="' + row.user_id + '" data-locked="' + isLocked + '">' + btnText + '</button>';
             }},
             { data: null, render: function(d) {
                 var status = d.root_support ? 'Yes' : 'No';
@@ -226,6 +236,36 @@ document.addEventListener('click', function(e) {
         }).catch(function(err) {
             console.error('VM creation toggle failed', err);
             alert('Failed to update VM creation flag');
+        });
+    }
+});
+
+// Toggle lockout status
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('lockout-toggle-btn')) {
+        var userId = e.target.dataset.userid;
+        var currentlyLocked = e.target.dataset.locked === 'true';
+        var body = new URLSearchParams();
+        body.append('user_id', userId);
+        body.append('lockout', currentlyLocked ? '0' : '1');
+
+        fetch('/debug/users/toggle-lockout', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: body.toString()
+        }).then(function(resp) {
+            if (!resp.ok) {
+                alert('Failed to update lockout status');
+                return;
+            }
+            if (usersTable) {
+                usersTable.ajax.reload(null, false);
+            }
+        }).catch(function(err) {
+            console.error('Lockout toggle failed', err);
+            alert('Failed to update lockout status');
         });
     }
 });

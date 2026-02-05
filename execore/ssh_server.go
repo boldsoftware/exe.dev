@@ -438,6 +438,14 @@ func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered boo
 		return
 	}
 
+	// Check if user is locked out
+	if user.IsLockedOut {
+		traceID := tracing.TraceIDFromContext(s.Context())
+		ss.server.slog().WarnContext(s.Context(), "locked out user attempted SSH access", "userID", user.UserID, "trace_id", traceID)
+		fmt.Fprintf(s, "\r\ncontact support@exe.dev (trace: %s)\r\n", traceID)
+		return
+	}
+
 	ss.runMainShellWithReadline(shell, publicKey, user)
 }
 
@@ -958,6 +966,14 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 	// Note: The SSH key was already inserted by the HTTP handler that processed the email verification.
 	// We don't need to insert it again here.
 
+	// Check if user is locked out - reject registration if so
+	if user.IsLockedOut {
+		traceID := tracing.TraceIDFromContext(s.Context())
+		ss.server.slog().WarnContext(s.Context(), "locked out user attempted registration", "userID", user.UserID, "trace_id", traceID)
+		fmt.Fprintf(s, "\r\ncontact support@exe.dev (trace: %s)\r\n", traceID)
+		return nil, fmt.Errorf("account locked")
+	}
+
 	// Registration complete - wait for user to press Enter
 	fmt.Fprintf(s, "\r\n%sRegistration complete!%s\r\n\r\n", "\033[1;32m", "\033[0m")
 	if verification.IsNewAccount {
@@ -984,6 +1000,15 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 	user, err := ss.server.getUserByPublicKey(s.Context(), publicKey)
 	if err != nil {
 		fmt.Fprintf(s, "Authentication error: %v\r\n", err)
+		return
+	}
+
+	// Check if user is locked out
+	if user != nil && user.IsLockedOut {
+		traceID := tracing.TraceIDFromContext(s.Context())
+		ss.server.slog().WarnContext(s.Context(), "locked out user attempted SSH exec", "userID", user.UserID, "trace_id", traceID)
+		fmt.Fprintf(s, "contact support@exe.dev (trace: %s)\r\n", traceID)
+		s.Exit(1)
 		return
 	}
 

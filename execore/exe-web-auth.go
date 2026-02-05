@@ -814,6 +814,39 @@ func (s *Server) userHasActiveAuthCookieBestEffort(ctx context.Context, userID s
 	return hasCookie
 }
 
+// isUserLockedOut checks if a user account is locked out.
+func (s *Server) isUserLockedOut(ctx context.Context, userID string) (bool, error) {
+	return withRxRes1(s, ctx, (*exedb.Queries).GetUserIsLockedOut, userID)
+}
+
+// renderLockedOutPage renders the account-locked page and returns true if the user is locked out.
+// If there's an error checking lockout status, it logs the error and returns false (allows access).
+func (s *Server) renderLockedOutPage(w http.ResponseWriter, r *http.Request, userID string) bool {
+	ctx := r.Context()
+	isLockedOut, err := s.isUserLockedOut(ctx, userID)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to check user lockout status", "userID", userID, "error", err)
+		return false
+	}
+	if !isLockedOut {
+		return false
+	}
+
+	traceID := tracing.TraceIDFromContext(ctx)
+	s.slog().WarnContext(ctx, "locked out user attempted access", "userID", userID, "trace_id", traceID)
+
+	w.WriteHeader(http.StatusForbidden)
+	data := struct {
+		TraceID string
+	}{
+		TraceID: traceID,
+	}
+	if err := s.renderTemplate(ctx, w, "account-locked.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to render account-locked template", "error", err)
+	}
+	return true
+}
+
 // createMagicSecret creates a temporary magic secret for proxy authentication
 func (s *Server) createMagicSecret(userID, boxName, redirectURL string) (string, error) {
 	// Generate a random secret

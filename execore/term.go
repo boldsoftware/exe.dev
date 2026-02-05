@@ -567,9 +567,15 @@ func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check authentication for other paths
-	if _, err := s.validateAuthCookie(r); err != nil {
+	userID, err := s.validateAuthCookie(r)
+	if err != nil {
 		// Invalid cookie, redirect to auth
 		http.Redirect(w, r, s.xtermAuthURL(r), http.StatusTemporaryRedirect)
+		return
+	}
+
+	// Check if user is locked out
+	if s.renderLockedOutPage(w, r, userID) {
 		return
 	}
 
