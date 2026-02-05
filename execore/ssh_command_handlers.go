@@ -846,7 +846,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 					Mode:        uint64(0o600),
 					Source: &api.Config_File{
 						File: &api.FileConfig{
-							Data: []byte(sshKeys.AuthorizedKeys + cc.PublicKey),
+							Data: []byte("# This file is managed by exe.dev - do not modify\n" + sshKeys.AuthorizedKeys + cc.PublicKey),
 						},
 					},
 				},
@@ -2030,7 +2030,7 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 				Mode:        uint64(0o600),
 				Source: &api.Config_File{
 					File: &api.FileConfig{
-						Data: []byte(sshKeys.AuthorizedKeys + cc.PublicKey),
+						Data: []byte("# This file is managed by exe.dev - do not modify\n" + sshKeys.AuthorizedKeys + cc.PublicKey),
 					},
 				},
 			},
