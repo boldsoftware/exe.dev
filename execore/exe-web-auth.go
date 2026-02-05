@@ -1196,7 +1196,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		var err error
 		userID, err = s.validateAuthToken(r.Context(), token, "")
 		if err != nil {
-			s.slog().ErrorContext(r.Context(), "Invalid auth token in callback", "error", err)
+			s.slog().InfoContext(r.Context(), "invalid auth token in callback", "error", err)
 			http.Error(w, "Invalid or expired authentication token", http.StatusUnauthorized)
 			return
 		}
