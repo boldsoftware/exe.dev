@@ -48,6 +48,16 @@ sudo virsh list --name | grep -E "^${PREFIX}" | xargs -r -n 1 sudo virsh destroy
 
 This is implemented in `e1e/testinfra/vm.go`. If `E1E_VM_PREFIX` is unset, it defaults to `ci-ubuntu` for backward compatibility.
 
+Similarly, `ops/ci-vm-env.sh` includes `$(whoami)` in the default VM name so that snapshot creation VMs don't collide between concurrent runners.
+
+## `/tmp` Isolation
+
+The **non-e1e** runner services (`edric-ci-*`) have `PrivateTmp=true`, which gives each runner its own private `/tmp` namespace. This prevents collisions on hardcoded `/tmp/` paths (e.g. `/tmp/exelint`, `/tmp/exelet-fs/`) between concurrent runners without needing to change any code.
+
+The **e1e** runner services (`edric-*`) do **not** use `PrivateTmp` because e1e tests use `os.Rename` to move the exelet binary into `/tmp`, which fails across filesystem boundaries. E1e `/tmp` paths are already isolated by the random `testRunID` suffix (e.g. `/tmp/exelet-test-{testRunID}`).
+
+If you add a new non-e1e runner service, include `PrivateTmp=true` in the `[Service]` section.
+
 ## Disk Layout
 
 VM disk images are on a 4-drive NVMe RAID0 for I/O throughput:

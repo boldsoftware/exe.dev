@@ -1,7 +1,7 @@
 # Environment variables shared by CI scripts that manage VMs.
 # Use as "source ci-vm-env.sh".
 
-NAME="${NAME:-ci-ubuntu-$(date +%Y%m%d%H%M%S)}"
+NAME="${NAME:-ci-ubuntu-$(whoami)-$(date +%Y%m%d%H%M%S)}"
 VCPUS="${VCPUS:-4}"
 RAM_MB="${RAM_MB:-16384}"          # 16GiB
 DISK_GB="${DISK_GB:-40}"           # thin-provisioned
