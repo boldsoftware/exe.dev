@@ -21,10 +21,9 @@ import (
 	"golang.org/x/crypto/ssh"
 	"mvdan.cc/sh/v3/syntax"
 
-	"exe.dev/boxname"
 	"exe.dev/container"
-	"exe.dev/domz"
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 )
 
 // TerminalSession represents a terminal session with its event channels
@@ -554,8 +553,7 @@ type terminalAuthKey struct{}
 
 // isTerminalRequest determines if a request is for a terminal subdomain
 func (s *Server) isTerminalRequest(host string) bool {
-	_, err := s.parseTerminalHostname(host)
-	return err == nil
+	return exeweb.IsTerminalRequest(&s.env, host)
 }
 
 // handleTerminalRequest handles requests to terminal subdomains
@@ -601,23 +599,5 @@ func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
 
 // parseTerminalHostname extracts box name from terminal hostname
 func (s *Server) parseTerminalHostname(hostname string) (string, error) {
-	hostname = domz.Canonicalize(domz.StripPort(hostname))
-	if box, ok := s.terminalBoxForBase(hostname); ok {
-		return box, nil
-	}
-	return "", fmt.Errorf("not a terminal hostname")
-}
-
-func (s *Server) terminalBoxForBase(hostname string) (string, bool) {
-	if hostname == "" {
-		return "", false
-	}
-	boxName, ok := domz.CutBase(hostname, s.env.BoxSub("xterm"))
-	if !ok {
-		return "", false
-	}
-	if !boxname.IsValid(boxName) {
-		return "", false
-	}
-	return boxName, true
+	return exeweb.ParseTerminalHostname(&s.env, hostname)
 }

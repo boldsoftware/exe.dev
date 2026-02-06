@@ -34,6 +34,7 @@ import (
 	"exe.dev/domz"
 	"exe.dev/errorz"
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
 	"exe.dev/metricsbag"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
@@ -50,8 +51,6 @@ import (
 	"tailscale.com/client/tailscale"
 	"tailscale.com/net/tsaddr"
 )
-
-const sshKnownHostsPath = "/.well-known/ssh-known-hosts"
 
 func (s *Server) prepareHandler() http.Handler {
 	lg := s.prepareLlmGateway()
@@ -221,26 +220,6 @@ var (
 	errBoxNotFound    = errors.New("box not found")
 	errInvalidBoxName = errors.New("invalid box name")
 )
-
-// exeNewPathPrompts maps paths on exe.new to pre-filled prompts for the /new page.
-var moltbotPrompt = `ANTHROPIC_API_KEY=<fill-this-in>
-
-Set up Moltbot (https://docs.molt.bot/install) on this VM. Moltbot used to be 
-called Clawdbot until recently, so be aware if the executable or other docs 
-still refer to Clawdbot. Use the non-interactive and accept-risk flags for 
-moltbot onboarding. Add the supplied auth or token as needed. Configure nginx 
-to forward from the default port 18789 to the root location on the default 
-enabled site config, making sure to enable Websocket support. Pairing is done 
-by "clawdbot devices list" and "clawdbot device approve <request id>". Make 
-sure the dashboard shows that Moltbot's health is OK. exe.dev handles forwarding 
-from port 8000 to port 80/443 and HTTPS for us, so the final "reachable" 
-should be https://<vm-name>.exe.xyz without port specification.`
-
-var exeNewPathPrompts = map[string]string{
-	"/moltbot":  moltbotPrompt,
-	"/clawdbot": moltbotPrompt,
-	"/openclaw": moltbotPrompt,
-}
 
 // resolveBoxName converts a hostname to a box name.
 // If hostname is a subdomain of the main domain (e.g., box.exe.dev),
@@ -514,42 +493,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	isKnownHostsRequest := r.URL.Path == sshKnownHostsPath
-	hostname := domz.Canonicalize(domz.StripPort(r.Host))
-
-	// Redirect requests to BoxHost apex (exe.xyz) to WebHost (exe.dev).
-	// BoxHost is only for box subdomains (vmname.exe.xyz); the apex itself should
-	// redirect to WebHost to avoid passkey RPID mismatch errors during auth.
-	if s.env.BoxHost != s.env.WebHost {
-		if hostname == s.env.BoxHost && !isKnownHostsRequest {
-			target := fmt.Sprintf("%s://%s%s", getScheme(r), s.env.WebHost, r.URL.RequestURI())
-			http.Redirect(w, r, target, http.StatusTemporaryRedirect)
-			return
-		}
-	}
-
-	// Redirect requests to exe.new to WebHost/new (exe.dev/new).
-	// This is a vanity domain that lets users start a new box from a memorable URL.
-	// Special paths like /moltbot, /clawdbot, and /openclaw redirect with a pre-filled prompt.
-	if hostname == "exe.new" {
-		target := fmt.Sprintf("%s://%s/new", getScheme(r), s.env.WebHost)
-		if prompt := exeNewPathPrompts[r.URL.Path]; prompt != "" {
-			target += "?prompt=" + url.QueryEscape(prompt)
-		}
-		if invite := r.URL.Query().Get("invite"); invite != "" {
-			if strings.Contains(target, "?") {
-				target += "&invite=" + url.QueryEscape(invite)
-			} else {
-				target += "?invite=" + url.QueryEscape(invite)
-			}
-		}
-		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
-		return
-	}
-
-	// Redirect requests to bold.dev to WebHost (exe.dev).
-	if hostname == "bold.dev" {
-		target := fmt.Sprintf("https://%s%s", s.env.WebHost, r.URL.RequestURI())
+	if target := exeweb.NonProxyRedirect(&s.env, r); target != "" {
 		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 		return
 	}
@@ -575,7 +519,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isProxy {
-		metricsbag.SetLabel(r.Context(), LabelProxy, "true")
+		metricsbag.SetLabel(r.Context(), exeweb.LabelProxy, "true")
 		// box label is set in handleProxyRequest after resolving the box name
 		s.handleProxyRequest(w, r)
 		return
@@ -587,15 +531,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isTerminal {
-		metricsbag.SetLabel(r.Context(), LabelProxy, "false")
-		metricsbag.SetLabel(r.Context(), LabelPath, "/terminal")
+		metricsbag.SetLabel(r.Context(), exeweb.LabelProxy, "false")
+		metricsbag.SetLabel(r.Context(), exeweb.LabelPath, "/terminal")
 		s.handleTerminalRequest(w, r)
 		return
 	}
 
 	// Set labels for non-proxy HTTP metrics
-	metricsbag.SetLabel(r.Context(), LabelProxy, "false")
-	metricsbag.SetLabel(r.Context(), LabelPath, sanitizePath(r.URL.Path))
+	metricsbag.SetLabel(r.Context(), exeweb.LabelProxy, "false")
+	metricsbag.SetLabel(r.Context(), exeweb.LabelPath, sanitizePath(r.URL.Path))
 
 	// Track unique web visitors (main site only, not proxy or terminal)
 	if s.hllTracker != nil && loggedUserID != "" {
@@ -691,7 +635,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "ok")
 	case "/metrics":
 		requireLocalAccess(s.handleMetrics)(w, r)
-	case sshKnownHostsPath:
+	case exeweb.SSHKnownHostsPath:
 		s.handleKnownHosts(w, r)
 		return
 	case "/sitemap.xml":

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	"exe.dev/publicips"
 	"exe.dev/sqlite"
 	"exe.dev/stage"
@@ -305,7 +306,7 @@ func TestHandleKnownHostsSuccess(t *testing.T) {
 	s := newUnstartedServer(t)
 	ca := installTestHostCertificate(t, s)
 
-	req := httptest.NewRequest(http.MethodGet, sshKnownHostsPath, nil)
+	req := httptest.NewRequest(http.MethodGet, exeweb.SSHKnownHostsPath, nil)
 	req.Host = s.env.ReplHost
 	rr := httptest.NewRecorder()
 
@@ -336,7 +337,7 @@ func TestHandleKnownHostsBoxHost(t *testing.T) {
 	s.piperdPort = 22
 	ca := installTestHostCertificate(t, s)
 
-	req := httptest.NewRequest(http.MethodGet, sshKnownHostsPath, nil)
+	req := httptest.NewRequest(http.MethodGet, exeweb.SSHKnownHostsPath, nil)
 	req.Host = s.env.BoxHost
 	rr := httptest.NewRecorder()
 
@@ -356,7 +357,7 @@ func TestHandleKnownHostsMissingCert(t *testing.T) {
 	t.Parallel()
 
 	s := newUnstartedServer(t)
-	req := httptest.NewRequest(http.MethodGet, sshKnownHostsPath, nil)
+	req := httptest.NewRequest(http.MethodGet, exeweb.SSHKnownHostsPath, nil)
 	req.Host = s.env.ReplHost
 	rr := httptest.NewRecorder()
 
@@ -480,7 +481,7 @@ func TestBoxHostApexRedirectsToWebHost(t *testing.T) {
 		{
 			name:         "known hosts on BoxHost apex does not redirect",
 			host:         s.env.BoxHost,
-			path:         sshKnownHostsPath,
+			path:         exeweb.SSHKnownHostsPath,
 			wantRedirect: false,
 		},
 		{
@@ -559,42 +560,42 @@ func TestExeNewRedirectsToWebHostNew(t *testing.T) {
 			host:         "exe.new",
 			path:         "/moltbot",
 			wantRedirect: true,
-			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeNewPathPrompts["/moltbot"]),
+			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeweb.ExeNewPathPrompts["/moltbot"]),
 		},
 		{
 			name:         "exe.new/clawdbot redirects with prompt",
 			host:         "exe.new",
 			path:         "/clawdbot",
 			wantRedirect: true,
-			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeNewPathPrompts["/clawdbot"]),
+			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeweb.ExeNewPathPrompts["/clawdbot"]),
 		},
 		{
 			name:         "exe.new/moltbot with invite passes through invite",
 			host:         "exe.new",
 			path:         "/moltbot?invite=TESTCODE",
 			wantRedirect: true,
-			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeNewPathPrompts["/moltbot"]) + "&invite=TESTCODE",
+			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeweb.ExeNewPathPrompts["/moltbot"]) + "&invite=TESTCODE",
 		},
 		{
 			name:         "exe.new/clawdbot with invite passes through invite",
 			host:         "exe.new",
 			path:         "/clawdbot?invite=TESTCODE",
 			wantRedirect: true,
-			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeNewPathPrompts["/clawdbot"]) + "&invite=TESTCODE",
+			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeweb.ExeNewPathPrompts["/clawdbot"]) + "&invite=TESTCODE",
 		},
 		{
 			name:         "exe.new/openclaw redirects with prompt",
 			host:         "exe.new",
 			path:         "/openclaw",
 			wantRedirect: true,
-			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeNewPathPrompts["/openclaw"]),
+			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeweb.ExeNewPathPrompts["/openclaw"]),
 		},
 		{
 			name:         "exe.new/openclaw with invite passes through invite",
 			host:         "exe.new",
 			path:         "/openclaw?invite=TESTCODE",
 			wantRedirect: true,
-			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeNewPathPrompts["/openclaw"]) + "&invite=TESTCODE",
+			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeweb.ExeNewPathPrompts["/openclaw"]) + "&invite=TESTCODE",
 		},
 		{
 			name:         "exe.new with invite but no prompt",

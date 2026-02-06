@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
+	"exe.dev/exeweb"
 	"exe.dev/metricsbag"
 )
 
@@ -17,8 +18,8 @@ func TestHTTPMetricsNonProxy(t *testing.T) {
 	m := NewHTTPMetrics(registry)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		metricsbag.SetLabel(r.Context(), LabelProxy, "false")
-		metricsbag.SetLabel(r.Context(), LabelPath, sanitizePath(r.URL.Path))
+		metricsbag.SetLabel(r.Context(), exeweb.LabelProxy, "false")
+		metricsbag.SetLabel(r.Context(), exeweb.LabelPath, sanitizePath(r.URL.Path))
 		switch r.URL.Path {
 		case "/auth":
 			w.WriteHeader(http.StatusUnauthorized)
@@ -61,9 +62,9 @@ func TestHTTPMetricsProxy(t *testing.T) {
 	m := NewHTTPMetrics(registry)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		metricsbag.SetLabel(r.Context(), LabelProxy, "true")
+		metricsbag.SetLabel(r.Context(), exeweb.LabelProxy, "true")
 		boxName := r.Header.Get("X-Box-Name")
-		metricsbag.SetLabel(r.Context(), LabelBox, boxName)
+		metricsbag.SetLabel(r.Context(), exeweb.LabelBox, boxName)
 		switch boxName {
 		case "errorbox":
 			w.WriteHeader(http.StatusBadGateway)

@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	"exe.dev/metricsbag"
 	"exe.dev/sqlite"
 )
@@ -109,13 +110,6 @@ func NewSSHMetrics(registry *prometheus.Registry) *SSHMetrics {
 	return metrics
 }
 
-// Label names for HTTP metrics
-const (
-	LabelProxy = "proxy"
-	LabelPath  = "path"
-	LabelBox   = "box"
-)
-
 // HTTPMetrics holds HTTP request metrics.
 type HTTPMetrics struct {
 	requestsTotal    *prometheus.CounterVec
@@ -137,8 +131,8 @@ type HTTPMetrics struct {
 // The path metrics are generally fine, unless we start having paths with
 // id's in them.
 func NewHTTPMetrics(registry *prometheus.Registry) *HTTPMetrics {
-	counterLabels := []string{"code", LabelProxy, LabelPath, LabelBox}
-	inFlightLabels := []string{LabelProxy, LabelPath, LabelBox}
+	counterLabels := []string{"code", exeweb.LabelProxy, exeweb.LabelPath, exeweb.LabelBox}
+	inFlightLabels := []string{exeweb.LabelProxy, exeweb.LabelPath, exeweb.LabelBox}
 	metrics := &HTTPMetrics{
 		requestsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "http_requests_total",
@@ -172,9 +166,9 @@ func (m *HTTPMetrics) AddProxyBytes(direction string, n int) {
 // Wrap wraps a handler with HTTP metrics instrumentation.
 func (m *HTTPMetrics) Wrap(next http.Handler) http.Handler {
 	counter := promhttp.InstrumentHandlerCounter(m.requestsTotal, next,
-		promhttp.WithLabelFromCtx(LabelProxy, metricsbag.LabelFromCtx(LabelProxy)),
-		promhttp.WithLabelFromCtx(LabelPath, metricsbag.LabelFromCtx(LabelPath)),
-		promhttp.WithLabelFromCtx(LabelBox, metricsbag.LabelFromCtx(LabelBox)))
+		promhttp.WithLabelFromCtx(exeweb.LabelProxy, metricsbag.LabelFromCtx(exeweb.LabelProxy)),
+		promhttp.WithLabelFromCtx(exeweb.LabelPath, metricsbag.LabelFromCtx(exeweb.LabelPath)),
+		promhttp.WithLabelFromCtx(exeweb.LabelBox, metricsbag.LabelFromCtx(exeweb.LabelBox)))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Determine labels from request for in-flight tracking.

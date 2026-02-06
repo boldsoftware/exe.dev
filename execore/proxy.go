@@ -22,6 +22,7 @@ import (
 	"exe.dev/container"
 	"exe.dev/domz"
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	"exe.dev/metricsbag"
 	"exe.dev/stage"
 )
@@ -143,7 +144,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set box name label for metrics
-	metricsbag.SetLabel(r.Context(), LabelBox, boxName)
+	metricsbag.SetLabel(r.Context(), exeweb.LabelBox, boxName)
 
 	// Find the box.
 	// Careful: we aren't checking the team or owner in this look-up, so we must do it below.
@@ -328,44 +329,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 // The proxy handles requests to VMs, which are can single subdomains of the box domain,
 // or third party domains pointing here.
 func (s *Server) isProxyRequest(host string) bool {
-	// DANGER ZONE: This function is load-bearing and empirically bug-prone.
-	// Please take extra care when working on it.
-
-	// Given that we cannot enumerate all proxy hosts,
-	// implement by explicitly excluding known non-proxy hosts, and then allowing the rest through.
-	// TODO: When we have public ips, we could make this decision based on the IP the request came in on,
-	// or at least note when that decision varies from the hostname-based one.
-	host = domz.Canonicalize(domz.StripPort(host))
-	switch host {
-	case "":
-		return false // refuse the temptation to guess
-	case s.env.BoxHost:
-		return false // box apex is not a proxy target
-	case "blog." + s.env.WebHost:
-		return true // special main webserver subdomains that are actually served on VMs, whee
-	}
-	if s.env.WebDev {
-		// When doing local development, it's useful to be able to reach the webserver
-		// via the local machine's hostname, not just localhost.
-		// This lets you do something like "socat TCP-LISTEN:8081,fork TCP:localhost:8080"
-		// and try out the mobile dashboard from your phone.
-		oshost, err := os.Hostname()
-		if err == nil && host == oshost {
-			return false
-		}
-	}
-	// Exclude pages that we serve: our internal debug pages (on Tailscale), the public web server ([*.]exe.dev),
-	// and web-based xterm (foo.xterm.exe.xyz).
-	// Note: shelley subdomain (foo.shelley.exe.xyz) IS a proxy request - it proxies to port 9999.
-	if domz.FirstMatch(host, s.tsDomain, s.env.WebHost, s.env.BoxSub("xterm")) != "" {
-		return false
-	}
-	if domz.IsIPAddr(host) {
-		return false // refuse IP addresses
-	}
-	// We've excluded known non-proxy hosts.
-	// At this point, anything domain-like is fair game.
-	return strings.Contains(host, ".")
+	return exeweb.IsProxyRequest(&s.env, s.tsDomain, host)
 }
 
 // isShelleyRequest determines if a request is for a Shelley subdomain (vm.shelley.exe.xyz)
