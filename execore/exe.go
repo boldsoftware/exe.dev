@@ -3574,7 +3574,7 @@ func exeletUsageCmp(a, b *exeletClient) int {
 const autoThrottleVMLimit = 400
 
 // autoThrottleVMWarning is the VM count at which we send a page warning.
-const autoThrottleVMWarning = 390
+const autoThrottleVMWarning = 350
 
 // autoThrottleVMCreation enables throttling if all exelets have hit the VM limit.
 func (s *Server) autoThrottleVMCreation(ctx context.Context) {
