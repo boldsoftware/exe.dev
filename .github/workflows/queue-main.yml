@@ -119,7 +119,47 @@ jobs:
           if [ $has_errors -eq 1 ]; then
               echo ""
               echo "❌ Validation failed! Please fix the above issues and try again."
-              echo "Commits with 'WIP' or 'VIBES' in the subject line, 'DO NOT SUBMIT' anywhere in the message, or merge commits are not allowed."
+              echo "Commits with 'WIP' or 'VIBES' in the subject line, 'DO NOT SUBMIT' anywhere in the message, merge commits, or cross-domain changes are not allowed."
+              exit 1
+          fi
+
+          # Check that each commit touches only one domain:
+          # exeuntu/ only, shelley/ only, or neither.
+          for commit in $commits; do
+              files=$(git diff-tree --no-commit-id --name-only -r "$commit")
+              if [ -z "$files" ]; then
+                  continue
+              fi
+
+              has_exeuntu=false
+              has_shelley=false
+              has_other=false
+
+              while IFS= read -r file; do
+                  case "$file" in
+                      exeuntu/*) has_exeuntu=true ;;
+                      shelley/*) has_shelley=true ;;
+                      *)         has_other=true ;;
+                  esac
+              done <<< "$files"
+
+              count=0
+              [ "$has_exeuntu" = true ] && count=$((count + 1))
+              [ "$has_shelley" = true ] && count=$((count + 1))
+              [ "$has_other" = true ] && count=$((count + 1))
+
+              if [ "$count" -gt 1 ]; then
+                  echo "❌ ERROR: Commit $(git log --oneline -n 1 $commit) mixes files across domains."
+                  echo "Each commit must touch only exeuntu/, only shelley/, or only other files."
+                  echo "Files in this commit:"
+                  echo "$files"
+                  has_errors=1
+              fi
+          done
+
+          if [ $has_errors -eq 1 ]; then
+              echo ""
+              echo "❌ Validation failed! Please fix the above issues and try again."
               exit 1
           fi
 
