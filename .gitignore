@@ -37,6 +37,11 @@ exeletd
 exelet-fs-*
 ops/kernel-builder/output
 
+# data analysis outputs
+data/vm-memory-data.csv
+data/vm-memory-report.html
+snapshot.db
+
 # assorted cmd/* binaries that LLMs like to drop straight in the repo root, natch
 blogd
 e3e
