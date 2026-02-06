@@ -115,6 +115,13 @@ var allowedModels = map[Provider]map[string]ModelCost{
 	},
 
 	ProviderOpenAI: {
+		// GPT-5.3 models
+		"gpt-5.3-codex":       {Input: 175, Output: 1400, CacheRead: 17},
+		"gpt-5.3-2025-12-19":  {Input: 175, Output: 1400, CacheRead: 17},
+		"gpt-5.3-chat-latest": {Input: 175, Output: 1400, CacheRead: 17},
+		"gpt-5.3":             {Input: 175, Output: 1400, CacheRead: 17},
+		"gpt-5.3-pro":         {Input: 2100, Output: 16800},
+
 		// GPT-5.2 models
 		"gpt-5.2-codex":       {Input: 175, Output: 1400, CacheRead: 17},
 		"gpt-5.2-2025-12-11":  {Input: 175, Output: 1400, CacheRead: 17},
