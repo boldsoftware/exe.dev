@@ -1,0 +1,275 @@
+<!doctype html>
+<html><head><title>Migrate</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; max-width: 900px; }
+h1 { margin-bottom: 10px; }
+fieldset { margin: 15px 0; padding: 15px; }
+legend { font-weight: bold; }
+label.exelet-label { display: inline-block; margin-right: 15px; }
+select, input[type="text"] { width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box; font-size: 14px; }
+button { margin-top: 10px; padding: 10px 20px; font-size: 14px; cursor: pointer; }
+button.primary { background: #dc3545; color: white; border: none; }
+button.primary:disabled { background: #ccc; cursor: not-allowed; }
+button.secondary { background: #6c757d; color: white; border: none; margin-right: 8px; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.box-list { max-height: 400px; overflow-y: auto; border: 1px solid #dee2e6; padding: 10px; margin-top: 5px; }
+.box-item { padding: 4px 0; }
+.box-item .status { margin-left: 8px; font-size: 12px; color: #666; }
+.box-item .host { margin-left: 8px; font-size: 12px; color: #999; }
+#progress { margin-top: 20px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; display: none; white-space: pre-wrap; font-family: monospace; font-size: 13px; max-height: 600px; overflow-y: auto; }
+#progress.active { display: block; }
+#progress.error { background: #f8d7da; border-color: #f5c6cb; }
+#progress.success { background: #d4edda; border-color: #c3e6cb; }
+.warning { background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 12px; margin: 15px 0; }
+.warning strong { color: #856404; }
+.summary { margin-top: 10px; font-size: 14px; }
+</style>
+</head><body>
+<h1>Migrate</h1>
+<p><a href="/debug/boxes">&larr; Back to boxes</a></p>
+
+<div class="warning"><strong>Warning:</strong> VMs will be stopped during migration and restarted on the target host. This may take a long time for many boxes.</div>
+
+<div id="formSection">
+
+<fieldset>
+<legend>1. Select source exelets</legend>
+{{range .Exelets}}
+<label class="exelet-label"><input type="checkbox" class="source-cb" value="{{.}}"> {{.}}</label>
+{{end}}
+</fieldset>
+
+<fieldset>
+<legend>2. Select boxes to migrate</legend>
+<div id="boxList">Select source exelets above to load boxes.</div>
+<p>
+<button type="button" class="secondary" id="selectAll" style="display:none">Select All</button>
+<button type="button" class="secondary" id="deselectAll" style="display:none">Deselect All</button>
+</p>
+<div class="summary" id="boxSummary"></div>
+</fieldset>
+
+<fieldset>
+<legend>3. Select target exelet</legend>
+<select id="target">
+<option value="">Select target exelet...</option>
+</select>
+</fieldset>
+
+<fieldset>
+<legend>4. Confirm</legend>
+<p id="confirmPrompt">Select boxes and target to continue.</p>
+<input type="text" id="confirm" autocomplete="off" placeholder="" style="display:none">
+</fieldset>
+
+<p>
+<button class="primary" id="submitBtn" disabled>Start Migration</button>
+<a href="/debug/boxes">Cancel</a>
+</p>
+
+</div>
+
+<div id="progress"></div>
+
+<script>
+var allExelets = [];
+document.querySelectorAll('.source-cb').forEach(function(cb) {
+    allExelets.push(cb.value);
+});
+
+function updateTargetDropdown() {
+    var sources = getSelectedSources();
+    var target = document.getElementById('target');
+    var prev = target.value;
+    target.length = 1; // keep the placeholder
+    allExelets.forEach(function(addr) {
+        if (sources.indexOf(addr) === -1) {
+            var opt = document.createElement('option');
+            opt.value = addr;
+            opt.textContent = addr;
+            if (addr === prev) opt.selected = true;
+            target.appendChild(opt);
+        }
+    });
+    updateState();
+}
+
+function getSelectedSources() {
+    var sources = [];
+    document.querySelectorAll('.source-cb:checked').forEach(function(cb) {
+        sources.push(cb.value);
+    });
+    return sources;
+}
+
+function getSelectedBoxNames() {
+    var names = [];
+    document.querySelectorAll('.box-cb:checked').forEach(function(cb) {
+        names.push(cb.value);
+    });
+    return names;
+}
+
+function updateState() {
+    var selected = getSelectedBoxNames();
+    var target = document.getElementById('target').value;
+    var confirm = document.getElementById('confirm');
+    var confirmPrompt = document.getElementById('confirmPrompt');
+    var summary = document.getElementById('boxSummary');
+
+    summary.textContent = selected.length + ' box(es) selected';
+
+    if (selected.length > 0 && target) {
+        confirmPrompt.textContent = 'Type "' + selected.length + '" to confirm migrating ' + selected.length + ' box(es):';
+        confirm.style.display = '';
+        confirm.placeholder = selected.length.toString();
+    } else {
+        confirmPrompt.textContent = 'Select boxes and target to continue.';
+        confirm.style.display = 'none';
+    }
+
+    var valid = selected.length > 0 && target && confirm.value === selected.length.toString();
+    document.getElementById('submitBtn').disabled = !valid;
+}
+
+function loadBoxes() {
+    updateTargetDropdown();
+    var sources = getSelectedSources();
+    var boxList = document.getElementById('boxList');
+    var selectAll = document.getElementById('selectAll');
+    var deselectAll = document.getElementById('deselectAll');
+
+    if (sources.length === 0) {
+        boxList.textContent = 'Select source exelets above to load boxes.';
+        selectAll.style.display = 'none';
+        deselectAll.style.display = 'none';
+        updateState();
+        return;
+    }
+
+    boxList.textContent = 'Loading...';
+    var url = '/debug/migrate/boxes?' + sources.map(function(s) { return 'source=' + encodeURIComponent(s); }).join('&');
+    fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+        var boxes = data || [];
+        if (boxes.length === 0) {
+            boxList.textContent = 'No migratable boxes found on selected exelets.';
+            selectAll.style.display = 'none';
+            deselectAll.style.display = 'none';
+            updateState();
+            return;
+        }
+
+        var list = document.createElement('div');
+        list.className = 'box-list';
+        boxes.forEach(function(b) {
+            var item = document.createElement('div');
+            item.className = 'box-item';
+
+            var label = document.createElement('label');
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.className = 'box-cb';
+            cb.value = b.name;
+            cb.checked = true;
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(' ' + b.name));
+            item.appendChild(label);
+
+            var status = document.createElement('span');
+            status.className = 'status';
+            status.textContent = '[' + b.status + ']';
+            item.appendChild(status);
+
+            var host = document.createElement('span');
+            host.className = 'host';
+            host.textContent = b.host;
+            item.appendChild(host);
+
+            list.appendChild(item);
+        });
+        boxList.textContent = '';
+        boxList.appendChild(list);
+
+        selectAll.style.display = '';
+        deselectAll.style.display = '';
+
+        document.querySelectorAll('.box-cb').forEach(function(cb) {
+            cb.addEventListener('change', updateState);
+        });
+
+        updateState();
+    }).catch(function(err) {
+        boxList.textContent = 'Error loading boxes: ' + err;
+    });
+}
+
+document.querySelectorAll('.source-cb').forEach(function(cb) {
+    cb.addEventListener('change', loadBoxes);
+});
+
+document.getElementById('target').addEventListener('change', updateState);
+document.getElementById('confirm').addEventListener('input', updateState);
+
+document.getElementById('selectAll').addEventListener('click', function() {
+    document.querySelectorAll('.box-cb').forEach(function(cb) { cb.checked = true; });
+    updateState();
+});
+document.getElementById('deselectAll').addEventListener('click', function() {
+    document.querySelectorAll('.box-cb').forEach(function(cb) { cb.checked = false; });
+    updateState();
+});
+
+document.getElementById('submitBtn').addEventListener('click', function() {
+    var selected = getSelectedBoxNames();
+    var target = document.getElementById('target').value;
+    var confirm = document.getElementById('confirm').value;
+
+    var btn = this;
+    var progress = document.getElementById('progress');
+    var formSection = document.getElementById('formSection');
+
+    btn.disabled = true;
+    btn.textContent = 'Migrating...';
+    progress.className = 'active';
+    progress.textContent = 'Starting migration...\n';
+    formSection.style.display = 'none';
+
+    var params = new URLSearchParams();
+    params.append('target', target);
+    params.append('confirm', confirm);
+    selected.forEach(function(name) {
+        params.append('box_names', name);
+    });
+
+    fetch('/debug/migrate', {
+        method: 'POST',
+        body: params
+    }).then(function(response) {
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+
+        function read() {
+            reader.read().then(function(result) {
+                if (result.done) return;
+                var text = decoder.decode(result.value, {stream: true});
+                progress.textContent += text;
+                progress.scrollTop = progress.scrollHeight;
+
+                if (text.includes('MIGRATION_SUCCESS')) {
+                    progress.className = 'active success';
+                } else if (text.includes('MIGRATION_ERROR')) {
+                    progress.className = 'active error';
+                }
+
+                read();
+            });
+        }
+        read();
+    }).catch(function(err) {
+        progress.className = 'active error';
+        progress.textContent += '\nFetch error: ' + err;
+    });
+});
+</script>
+</body></html>

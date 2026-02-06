@@ -49,6 +49,9 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/boxes/delete", s.handleDebugBoxDelete)
 	mux.HandleFunc("GET /debug/boxes/migrate", s.handleDebugBoxMigrateForm)
 	mux.HandleFunc("POST /debug/boxes/migrate", s.handleDebugBoxMigrate)
+	mux.HandleFunc("GET /debug/migrate", s.handleDebugMassMigrateForm)
+	mux.HandleFunc("GET /debug/migrate/boxes", s.handleDebugMassMigrateBoxes)
+	mux.HandleFunc("POST /debug/migrate", s.handleDebugMassMigrate)
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
 	mux.HandleFunc("/debug/user", s.handleDebugUser)
 	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
@@ -477,11 +480,37 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	}
 	writeProgress("VM stopped.")
 
+	// restartSource restarts the VM on source if migration fails after stopping it.
+	// Uses exponential backoff retry in case the exelet is temporarily unavailable.
+	restartSource := func(reason string) {
+		writeProgress("Restarting VM on source exelet to restore service...")
+		s.slog().ErrorContext(ctx, "migration failed, restarting VM on source",
+			"box", boxName, "container_id", containerID, "source", box.Ctrhost, "reason", reason)
+		delay := 100 * time.Millisecond
+		deadline := time.Now().Add(10 * time.Second)
+		for attempt := 1; ; attempt++ {
+			if _, err := sourceClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err == nil {
+				writeProgress("VM restarted on source.")
+				return
+			} else if time.Now().After(deadline) {
+				writeProgress("ERROR: failed to restart VM on source after %d attempts: %v", attempt, err)
+				s.slog().ErrorContext(ctx, "failed to restart VM on source after migration failure",
+					"box", boxName, "container_id", containerID, "source", box.Ctrhost, "attempts", attempt, "error", err)
+				return
+			} else {
+				writeProgress("Restart attempt %d failed (%v), retrying...", attempt, err)
+			}
+			time.Sleep(delay)
+			delay *= 2
+		}
+	}
+
 	// Step 2: Perform migration
 	writeProgress("Starting disk transfer from %s to %s...", box.Ctrhost, targetAddr)
 	s.slog().InfoContext(ctx, "starting migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
 	if err := s.migrateVM(ctx, sourceClient.client, targetClient.client, containerID, writeProgress); err != nil {
 		writeError("migration failed: %v", err)
+		restartSource(err.Error())
 		return
 	}
 	writeProgress("Disk transfer complete.")
@@ -490,7 +519,8 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	writeProgress("Starting VM on target exelet...")
 	s.slog().InfoContext(ctx, "starting VM on target", "box", boxName, "target", targetAddr)
 	if _, err := targetClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err != nil {
-		writeError("migration succeeded but failed to start VM on target: %v", err)
+		writeError("failed to start VM on target: %v", err)
+		restartSource(err.Error())
 		return
 	}
 	writeProgress("VM started on target.")
@@ -499,7 +529,8 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	writeProgress("Getting new SSH port...")
 	instance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
 	if err != nil {
-		writeError("migration succeeded but failed to get instance info: %v", err)
+		writeError("failed to get instance info from target: %v", err)
+		restartSource(err.Error())
 		return
 	}
 	newSSHPort := int64(instance.Instance.SSHPort)
@@ -513,7 +544,8 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 		Status:  "running",
 		ID:      box.ID,
 	}); err != nil {
-		writeError("migration succeeded but failed to update database: %v", err)
+		writeError("failed to update database: %v", err)
+		restartSource(err.Error())
 		return
 	}
 	writeProgress("Database updated.")
@@ -542,9 +574,35 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	writeProgress("MIGRATION_SUCCESS:%s", boxName)
 }
 
+// recvTargetError attempts to retrieve the server-side error from a ReceiveVM
+// stream after a Send failure. It uses a short timeout to avoid blocking
+// forever if the server is unreachable.
+func recvTargetError(stream computeapi.ComputeService_ReceiveVMClient) error {
+	ch := make(chan error, 1)
+	go func() {
+		_, err := stream.Recv()
+		ch <- err
+	}()
+	select {
+	case err := <-ch:
+		if err != nil && err != io.EOF {
+			return err
+		}
+		return nil
+	case <-time.After(5 * time.Second):
+		return nil
+	}
+}
+
 // migrateVM performs the SendVM/ReceiveVM streaming between source and target exelets.
 // The progress callback is called periodically with status updates.
 func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Client, instanceID string, progress func(string, ...any)) error {
+	// Wrap context with cancel so gRPC streams are cleaned up when this
+	// function returns. Without this, a failed migration leaves the source
+	// exelet's SendVM stream open, which holds the migration lock forever.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	// Start SendVM on source
 	sendStream, err := source.SendVM(ctx)
 	if err != nil {
@@ -658,6 +716,9 @@ func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Cli
 					},
 				},
 			}); err != nil {
+				if recvErr := recvTargetError(recvStream); recvErr != nil {
+					return fmt.Errorf("target error: %w", recvErr)
+				}
 				return fmt.Errorf("failed to send to target: %w", err)
 			}
 
@@ -670,6 +731,9 @@ func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Cli
 					},
 				},
 			}); err != nil {
+				if recvErr := recvTargetError(recvStream); recvErr != nil {
+					return fmt.Errorf("target error: %w", recvErr)
+				}
 				return fmt.Errorf("failed to send complete: %w", err)
 			}
 		}
@@ -703,6 +767,269 @@ func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Cli
 	}
 
 	return nil
+}
+
+// handleDebugMassMigrateForm shows the migration form for multiple boxes.
+func (s *Server) handleDebugMassMigrateForm(w http.ResponseWriter, r *http.Request) {
+	var addrs []string
+	for addr := range s.exeletClients {
+		addrs = append(addrs, addr)
+	}
+	sort.Strings(addrs)
+
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Exelets []string
+	}{
+		Exelets: addrs,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, "mass-migrate.html", data); err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to execute mass-migrate template", "error", err)
+	}
+}
+
+// handleDebugMassMigrateBoxes returns JSON list of boxes on selected exelets.
+func (s *Server) handleDebugMassMigrateBoxes(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sources := r.URL.Query()["source"]
+
+	type boxInfo struct {
+		Name        string `json:"name"`
+		Host        string `json:"host"`
+		ContainerID string `json:"container_id"`
+		Status      string `json:"status"`
+	}
+
+	var boxes []boxInfo
+	for _, source := range sources {
+		dbBoxes, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxesByHost, source)
+		if err != nil {
+			s.slog().ErrorContext(ctx, "failed to get boxes for host", "host", source, "error", err)
+			continue
+		}
+		for _, b := range dbBoxes {
+			if b.ContainerID == nil {
+				continue
+			}
+			boxes = append(boxes, boxInfo{
+				Name:        b.Name,
+				Host:        b.Ctrhost,
+				ContainerID: *b.ContainerID,
+				Status:      b.Status,
+			})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(boxes)
+}
+
+// handleDebugMassMigrate handles migration of multiple boxes to a target exelet.
+// It streams progress updates to the client.
+func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse form: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	boxNames := r.PostForm["box_names"]
+	targetAddr := r.FormValue("target")
+	confirm := r.FormValue("confirm")
+
+	// Set up streaming response
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	writeProgress := func(format string, args ...any) {
+		fmt.Fprintf(w, format+"\n", args...)
+		flusher.Flush()
+	}
+
+	writeError := func(format string, args ...any) {
+		writeProgress("ERROR: "+format, args...)
+	}
+
+	if len(boxNames) == 0 || targetAddr == "" {
+		writeError("box_names and target are required")
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+
+	expectedConfirm := strconv.Itoa(len(boxNames))
+	if confirm != expectedConfirm {
+		writeError("confirm must be %q (the number of boxes to migrate)", expectedConfirm)
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+
+	targetClient := s.getExeletClient(targetAddr)
+	if targetClient == nil {
+		writeError("target exelet %q not configured", targetAddr)
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+
+	// Use a background context so migrations complete even if the browser disconnects.
+	ctx := context.Background()
+
+	writeProgress("Starting migration of %d boxes to %s", len(boxNames), targetAddr)
+	writeProgress("")
+
+	var succeeded, failed int
+
+	for i, boxName := range boxNames {
+		writeProgress("=== [%d/%d] Migrating %s ===", i+1, len(boxNames), boxName)
+
+		box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
+		if err != nil {
+			writeError("box %q not found: %v", boxName, err)
+			failed++
+			writeProgress("")
+			continue
+		}
+
+		if box.ContainerID == nil {
+			writeError("box %q has no container_id", boxName)
+			failed++
+			writeProgress("")
+			continue
+		}
+
+		if box.Ctrhost == targetAddr {
+			writeError("box %q is already on target exelet", boxName)
+			failed++
+			writeProgress("")
+			continue
+		}
+
+		containerID := *box.ContainerID
+		sourceClient := s.getExeletClient(box.Ctrhost)
+		if sourceClient == nil {
+			writeError("source exelet %q not available for box %q", box.Ctrhost, boxName)
+			failed++
+			writeProgress("")
+			continue
+		}
+
+		writeProgress("Stopping VM on %s...", box.Ctrhost)
+		s.slog().InfoContext(ctx, "migration: stopping VM", "box", boxName, "container_id", containerID, "source", box.Ctrhost)
+		if _, err := sourceClient.client.StopInstance(ctx, &computeapi.StopInstanceRequest{ID: containerID}); err != nil {
+			writeError("failed to stop VM: %v", err)
+			failed++
+			writeProgress("")
+			continue
+		}
+		writeProgress("VM stopped.")
+
+		// restartSource restarts the VM on source if migration fails.
+		// Uses exponential backoff retry in case the exelet is temporarily unavailable.
+		restartSource := func(reason string) {
+			writeProgress("Restarting VM on source exelet to restore service...")
+			s.slog().ErrorContext(ctx, "migration failed, restarting VM on source",
+				"box", boxName, "container_id", containerID, "source", box.Ctrhost, "reason", reason)
+			delay := 100 * time.Millisecond
+			deadline := time.Now().Add(10 * time.Second)
+			for attempt := 1; ; attempt++ {
+				if _, err := sourceClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err == nil {
+					writeProgress("VM restarted on source.")
+					return
+				} else if time.Now().After(deadline) {
+					writeProgress("ERROR: failed to restart VM on source after %d attempts: %v", attempt, err)
+					s.slog().ErrorContext(ctx, "failed to restart VM on source after migration failure",
+						"box", boxName, "container_id", containerID, "source", box.Ctrhost, "attempts", attempt, "error", err)
+					return
+				} else {
+					writeProgress("Restart attempt %d failed (%v), retrying...", attempt, err)
+				}
+				time.Sleep(delay)
+				delay *= 2
+			}
+		}
+
+		writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
+		s.slog().InfoContext(ctx, "migration: starting disk transfer", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
+		if err := s.migrateVM(ctx, sourceClient.client, targetClient.client, containerID, writeProgress); err != nil {
+			writeError("disk transfer failed: %v", err)
+			restartSource(err.Error())
+			failed++
+			writeProgress("")
+			continue
+		}
+		writeProgress("Disk transfer complete.")
+
+		writeProgress("Starting VM on target...")
+		s.slog().InfoContext(ctx, "migration: starting VM on target", "box", boxName, "target", targetAddr)
+		if _, err := targetClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err != nil {
+			writeError("failed to start VM on target: %v", err)
+			restartSource(err.Error())
+			failed++
+			writeProgress("")
+			continue
+		}
+		writeProgress("VM started on target.")
+
+		writeProgress("Getting new SSH port...")
+		instance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+		if err != nil {
+			writeError("failed to get instance info from target: %v", err)
+			restartSource(err.Error())
+			failed++
+			writeProgress("")
+			continue
+		}
+		newSSHPort := int64(instance.Instance.SSHPort)
+		writeProgress("New SSH port: %d", newSSHPort)
+
+		writeProgress("Updating database...")
+		if err := withTx1(s, ctx, (*exedb.Queries).UpdateBoxMigration, exedb.UpdateBoxMigrationParams{
+			Ctrhost: targetAddr,
+			SSHPort: &newSSHPort,
+			Status:  "running",
+			ID:      box.ID,
+		}); err != nil {
+			writeError("failed to update database: %v", err)
+			restartSource(err.Error())
+			failed++
+			writeProgress("")
+			continue
+		}
+		writeProgress("Database updated.")
+
+		s.slog().WarnContext(ctx, "VM migrated via bulk migration - source instance needs manual cleanup",
+			"box_name", boxName,
+			"container_id", containerID,
+			"source_host", box.Ctrhost,
+			"target_host", targetAddr,
+		)
+
+		writeProgress("Box %s migrated successfully.", boxName)
+		succeeded++
+		writeProgress("")
+	}
+
+	writeProgress("=== Migration complete ===")
+	writeProgress("Succeeded: %d, Failed: %d, Total: %d", succeeded, failed, len(boxNames))
+	writeProgress("")
+	writeProgress("After confirming target instances are working correctly,")
+	writeProgress("remove old instances from source exelets.")
+
+	if failed == 0 {
+		writeProgress("MIGRATION_SUCCESS")
+	} else {
+		writeProgress("MIGRATION_ERROR")
+	}
 }
 
 // handleDebugBoxDetails displays detailed information about a specific box.

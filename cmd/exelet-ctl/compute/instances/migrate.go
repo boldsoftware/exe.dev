@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/urfave/cli/v2"
@@ -46,7 +47,11 @@ var migrateInstanceCommand = &cli.Command{
 		}
 		defer targetClient.Close()
 
-		ctx := context.WithoutCancel(clix.Context)
+		// WithoutCancel prevents Ctrl-C from aborting a migration midway.
+		// WithCancel lets us clean up gRPC streams on return, which
+		// releases the source exelet's migration lock.
+		ctx, cancel := context.WithCancel(context.WithoutCancel(clix.Context))
+		defer cancel()
 
 		// Start spinner
 		sp := helpers.NewSpinner("starting migration...")
@@ -147,6 +152,9 @@ var migrateInstanceCommand = &cli.Command{
 						},
 					},
 				}); err != nil {
+					if recvErr := recvTargetErr(recvStream); recvErr != nil {
+						return fmt.Errorf("target error: %w", recvErr)
+					}
 					return fmt.Errorf("failed to send to target: %w", err)
 				}
 
@@ -159,6 +167,9 @@ var migrateInstanceCommand = &cli.Command{
 						},
 					},
 				}); err != nil {
+					if recvErr := recvTargetErr(recvStream); recvErr != nil {
+						return fmt.Errorf("target error: %w", recvErr)
+					}
 					return fmt.Errorf("failed to send complete: %w", err)
 				}
 			}
@@ -200,4 +211,24 @@ var migrateInstanceCommand = &cli.Command{
 
 		return nil
 	},
+}
+
+// recvTargetErr attempts to retrieve the server-side error from a ReceiveVM
+// stream after a Send failure. It uses a short timeout to avoid blocking
+// forever if the server is unreachable.
+func recvTargetErr(stream api.ComputeService_ReceiveVMClient) error {
+	ch := make(chan error, 1)
+	go func() {
+		_, err := stream.Recv()
+		ch <- err
+	}()
+	select {
+	case err := <-ch:
+		if err != nil && err != io.EOF {
+			return err
+		}
+		return nil
+	case <-time.After(5 * time.Second):
+		return nil
+	}
 }
