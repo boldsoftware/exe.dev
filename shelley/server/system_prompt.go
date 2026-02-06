@@ -80,7 +80,7 @@ func collectSystemData(workingDir string) (*SystemPromptData, error) {
 	}
 
 	// Try to collect git info
-	gitInfo, err := collectGitInfo()
+	gitInfo, err := collectGitInfo(wd)
 	if err == nil {
 		data.GitInfo = gitInfo
 	}
@@ -132,9 +132,12 @@ func collectSystemData(workingDir string) (*SystemPromptData, error) {
 	return data, nil
 }
 
-func collectGitInfo() (*GitInfo, error) {
+func collectGitInfo(dir string) (*GitInfo, error) {
 	// Find git root
 	rootCmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	if dir != "" {
+		rootCmd.Dir = dir
+	}
 	rootOutput, err := rootCmd.Output()
 	if err != nil {
 		return nil, err
@@ -350,7 +353,7 @@ func GenerateSubagentSystemPrompt(workingDir string) (string, error) {
 	}
 
 	// Try to collect git info
-	gitInfo, err := collectGitInfo()
+	gitInfo, err := collectGitInfo(wd)
 	if err == nil {
 		data.GitInfo = gitInfo
 	}
