@@ -50,7 +50,6 @@ func TestExeDevRejectsSCP(t *testing.T) {
 
 	pty, _, keyFile, _ := registerForExeDev(t)
 	pty.disconnect()
-	pty.close() // Close the PTY to release resources before creating a new one
 
 	pty = makePty(t, "scp localhost")
 
