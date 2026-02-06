@@ -56,9 +56,11 @@ var startLinuxVMMu sync.Mutex
 // startLinuxVM starts a VM on Linux to run the exelet.
 // It returns the ssh address for the host.
 func startLinuxVM(testRunID string) (string, error) {
-	// Use the same sort of prefix that ci-vm-start defaults to,
-	// but add in testRunID.
-	name := "ci-ubuntu-" + testRunID + "-" + time.Now().Format("20060102150405")
+	prefix := os.Getenv("E1E_VM_PREFIX")
+	if prefix == "" {
+		prefix = "ci-ubuntu"
+	}
+	name := prefix + "-" + testRunID + "-" + time.Now().Format("20060102150405")
 	outdir, err := os.MkdirTemp("", "ci-vm-start-")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary directory: %v", err)
