@@ -12,6 +12,36 @@ import (
 	"time"
 )
 
+func TestExtractSHAFromTag(t *testing.T) {
+	tests := []struct {
+		tag      string
+		expected string
+	}{
+		// Tag format: v0.COUNT.9OCTAL where OCTAL is the SHA in octal
+		// For example, 6-char hex SHA "abc123" (hex) = 0xabc123 = 11256099 (decimal)
+		// In octal: 52740443
+		{"v0.178.952740443", "abc123"}, // SHA abc123 in octal is 52740443
+		{"v0.178.933471105", "6e7245"}, // Real release tag
+		{"v0.1.90", "000000"},          // SHA 0
+		{"", ""},
+		{"invalid", ""},
+		{"v", ""},
+		{"v0", ""},
+		{"v0.1", ""},
+		{"v0.1.0", ""},  // No '9' prefix
+		{"v0.1.8x", ""}, // Invalid octal digit
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.tag, func(t *testing.T) {
+			result := extractSHAFromTag(tt.tag)
+			if result != tt.expected {
+				t.Errorf("extractSHAFromTag(%q) = %q, want %q", tt.tag, result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestParseMinorVersion(t *testing.T) {
 	tests := []struct {
 		tag      string
@@ -113,14 +143,14 @@ func TestVersionCheckerCache(t *testing.T) {
 	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
-		release := GitHubRelease{
+		release := ReleaseInfo{
 			TagName:     "v0.10.0",
-			Name:        "Release v0.10.0",
-			PublishedAt: time.Now().Add(-10 * 24 * time.Hour),
-			Assets: []struct {
-				Name               string `json:"name"`
-				BrowserDownloadURL string `json:"browser_download_url"`
-			}{},
+			Version:     "0.10.0",
+			PublishedAt: time.Now().Add(-10 * 24 * time.Hour).Format(time.RFC3339),
+			DownloadURLs: map[string]string{
+				"linux_amd64":  "https://example.com/linux_amd64",
+				"darwin_arm64": "https://example.com/darwin_arm64",
+			},
 		}
 		json.NewEncoder(w).Encode(release)
 	}))
@@ -138,7 +168,7 @@ func TestVersionCheckerCache(t *testing.T) {
 
 	// First call - should not use cache
 	_, err := vc.Check(ctx, false)
-	// Will fail because we're not actually calling GitHub, but that's OK for this test
+	// Will fail because we're not actually calling the static site, but that's OK for this test
 	// The important thing is that it tried to fetch
 
 	// Second call immediately after - should use cache if first succeeded
@@ -153,16 +183,13 @@ func TestVersionCheckerCache(t *testing.T) {
 func TestFindDownloadURL(t *testing.T) {
 	vc := &VersionChecker{}
 
-	release := &GitHubRelease{
+	release := &ReleaseInfo{
 		TagName: "v0.1.0",
-		Assets: []struct {
-			Name               string `json:"name"`
-			BrowserDownloadURL string `json:"browser_download_url"`
-		}{
-			{Name: "shelley_linux_amd64", BrowserDownloadURL: "https://example.com/linux_amd64"},
-			{Name: "shelley_linux_arm64", BrowserDownloadURL: "https://example.com/linux_arm64"},
-			{Name: "shelley_darwin_amd64", BrowserDownloadURL: "https://example.com/darwin_amd64"},
-			{Name: "shelley_darwin_arm64", BrowserDownloadURL: "https://example.com/darwin_arm64"},
+		DownloadURLs: map[string]string{
+			"linux_amd64":  "https://example.com/linux_amd64",
+			"linux_arm64":  "https://example.com/linux_arm64",
+			"darwin_amd64": "https://example.com/darwin_amd64",
+			"darwin_arm64": "https://example.com/darwin_arm64",
 		},
 	}
 
@@ -171,28 +198,6 @@ func TestFindDownloadURL(t *testing.T) {
 	// Just verify it doesn't panic and returns something for known platforms
 	if url == "" {
 		t.Log("No matching download URL found for current platform - this is expected on some platforms")
-	}
-}
-
-func TestIndexOf(t *testing.T) {
-	tests := []struct {
-		s        string
-		c        byte
-		expected int
-	}{
-		{"hello\nworld", '\n', 5},
-		{"hello", '\n', -1},
-		{"", '\n', -1},
-		{"\n", '\n', 0},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.s, func(t *testing.T) {
-			result := indexOf(tt.s, tt.c)
-			if result != tt.expected {
-				t.Errorf("indexOf(%q, %q) = %d, want %d", tt.s, tt.c, result, tt.expected)
-			}
-		})
 	}
 }
 

@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -37,22 +36,22 @@ type VersionChecker struct {
 
 // VersionInfo contains version check results.
 type VersionInfo struct {
-	CurrentVersion      string         `json:"current_version"`
-	CurrentTag          string         `json:"current_tag,omitempty"`
-	CurrentCommit       string         `json:"current_commit,omitempty"`
-	CurrentCommitTime   string         `json:"current_commit_time,omitempty"`
-	LatestVersion       string         `json:"latest_version,omitempty"`
-	LatestTag           string         `json:"latest_tag,omitempty"`
-	PublishedAt         time.Time      `json:"published_at,omitempty"`
-	HasUpdate           bool           `json:"has_update"`    // True if minor version is newer (for showing upgrade button)
-	ShouldNotify        bool           `json:"should_notify"` // True if should show red dot (newer + 5 days old)
-	DownloadURL         string         `json:"download_url,omitempty"`
-	ExecutablePath      string         `json:"executable_path,omitempty"`
-	Commits             []CommitInfo   `json:"commits,omitempty"`
-	CheckedAt           time.Time      `json:"checked_at"`
-	Error               string         `json:"error,omitempty"`
-	RunningUnderSystemd bool           `json:"running_under_systemd"` // True if INVOCATION_ID env var is set (systemd)
-	ReleaseInfo         *GitHubRelease `json:"-"`                     // Internal, not exposed to JSON
+	CurrentVersion      string       `json:"current_version"`
+	CurrentTag          string       `json:"current_tag,omitempty"`
+	CurrentCommit       string       `json:"current_commit,omitempty"`
+	CurrentCommitTime   string       `json:"current_commit_time,omitempty"`
+	LatestVersion       string       `json:"latest_version,omitempty"`
+	LatestTag           string       `json:"latest_tag,omitempty"`
+	PublishedAt         time.Time    `json:"published_at,omitempty"`
+	HasUpdate           bool         `json:"has_update"`    // True if minor version is newer (for showing upgrade button)
+	ShouldNotify        bool         `json:"should_notify"` // True if should show red dot (newer + 5 days old)
+	DownloadURL         string       `json:"download_url,omitempty"`
+	ExecutablePath      string       `json:"executable_path,omitempty"`
+	Commits             []CommitInfo `json:"commits,omitempty"`
+	CheckedAt           time.Time    `json:"checked_at"`
+	Error               string       `json:"error,omitempty"`
+	RunningUnderSystemd bool         `json:"running_under_systemd"` // True if INVOCATION_ID env var is set (systemd)
+	ReleaseInfo         *ReleaseInfo `json:"-"`                     // Internal, not exposed to JSON
 }
 
 // CommitInfo represents a commit in the changelog.
@@ -63,28 +62,29 @@ type CommitInfo struct {
 	Date    time.Time `json:"date"`
 }
 
-// GitHubRelease represents a GitHub release from the API.
-type GitHubRelease struct {
-	TagName     string    `json:"tag_name"`
-	Name        string    `json:"name"`
-	PublishedAt time.Time `json:"published_at"`
-	Assets      []struct {
-		Name               string `json:"name"`
-		BrowserDownloadURL string `json:"browser_download_url"`
-	} `json:"assets"`
+// ReleaseInfo represents release metadata.
+type ReleaseInfo struct {
+	TagName      string            `json:"tag_name"`
+	Version      string            `json:"version"`
+	Commit       string            `json:"commit"`
+	CommitFull   string            `json:"commit_full"`
+	CommitTime   string            `json:"commit_time"`
+	PublishedAt  string            `json:"published_at"`
+	DownloadURLs map[string]string `json:"download_urls"`
+	ChecksumsURL string            `json:"checksums_url"`
 }
 
-// GitHubCommit represents a commit from the GitHub API.
-type GitHubCommit struct {
-	SHA    string `json:"sha"`
-	Commit struct {
-		Message string `json:"message"`
-		Author  struct {
-			Name string    `json:"name"`
-			Date time.Time `json:"date"`
-		} `json:"author"`
-	} `json:"commit"`
+// StaticCommitInfo represents a commit from commits.json.
+type StaticCommitInfo struct {
+	SHA     string `json:"sha"`
+	Subject string `json:"subject"`
 }
+
+const (
+	// staticMetadataURL is the base URL for version metadata on GitHub Pages.
+	// This avoids GitHub API rate limits.
+	staticMetadataURL = "https://boldsoftware.github.io/shelley"
+)
 
 // NewVersionChecker creates a new version checker.
 func NewVersionChecker() *VersionChecker {
@@ -138,7 +138,7 @@ func (vc *VersionChecker) Check(ctx context.Context, forceRefresh bool) (*Versio
 	return info, nil
 }
 
-// fetchVersionInfo fetches the latest release info from GitHub.
+// fetchVersionInfo fetches the latest release info from GitHub Pages.
 func (vc *VersionChecker) fetchVersionInfo(ctx context.Context) (*VersionInfo, error) {
 	currentInfo := version.GetInfo()
 	execPath, _ := os.Executable()
@@ -152,7 +152,7 @@ func (vc *VersionChecker) fetchVersionInfo(ctx context.Context) (*VersionInfo, e
 		RunningUnderSystemd: os.Getenv("INVOCATION_ID") != "",
 	}
 
-	// Fetch latest release
+	// Fetch latest release from static metadata
 	latestRelease, err := vc.fetchLatestRelease(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch latest release: %w", err)
@@ -160,8 +160,12 @@ func (vc *VersionChecker) fetchVersionInfo(ctx context.Context) (*VersionInfo, e
 
 	info.LatestTag = latestRelease.TagName
 	info.LatestVersion = latestRelease.TagName
-	info.PublishedAt = latestRelease.PublishedAt
 	info.ReleaseInfo = latestRelease
+
+	// Parse the published_at time
+	if publishedAt, err := time.Parse(time.RFC3339, latestRelease.PublishedAt); err == nil {
+		info.PublishedAt = publishedAt
+	}
 
 	// Find the download URL for the current platform
 	info.DownloadURL = vc.findDownloadURL(latestRelease)
@@ -169,16 +173,16 @@ func (vc *VersionChecker) fetchVersionInfo(ctx context.Context) (*VersionInfo, e
 	// Check if latest has a newer minor version
 	info.HasUpdate = vc.isNewerMinor(currentInfo.Tag, latestRelease.TagName)
 
-	// For ShouldNotify, we need to check if the versions are 5+ days apart
-	// Fetch the current version's release to compare dates
-	if info.HasUpdate && currentInfo.Tag != "" {
-		currentRelease, err := vc.fetchRelease(ctx, currentInfo.Tag)
-		if err == nil && currentRelease != nil {
+	// For ShouldNotify, compare commit times if we have an update
+	if info.HasUpdate && currentInfo.CommitTime != "" {
+		currentTime, err1 := time.Parse(time.RFC3339, currentInfo.CommitTime)
+		latestTime, err2 := time.Parse(time.RFC3339, latestRelease.CommitTime)
+		if err1 == nil && err2 == nil {
 			// Show notification if the latest release is 5+ days newer than current
-			timeBetween := latestRelease.PublishedAt.Sub(currentRelease.PublishedAt)
+			timeBetween := latestTime.Sub(currentTime)
 			info.ShouldNotify = timeBetween >= 5*24*time.Hour
 		} else {
-			// Can't fetch current release info, just notify if there's an update
+			// Can't parse times, just notify if there's an update
 			info.ShouldNotify = true
 		}
 	}
@@ -192,14 +196,12 @@ func (vc *VersionChecker) FetchChangelog(ctx context.Context, currentTag, latest
 		return nil, nil
 	}
 
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/compare/%s...%s",
-		vc.githubOwner, vc.githubRepo, currentTag, latestTag)
+	url := staticMetadataURL + "/commits.json"
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("User-Agent", "Shelley-VersionChecker")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -209,58 +211,103 @@ func (vc *VersionChecker) FetchChangelog(ctx context.Context, currentTag, latest
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("static commits returned status %d", resp.StatusCode)
 	}
 
-	var compareResp struct {
-		Commits []GitHubCommit `json:"commits"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&compareResp); err != nil {
+	var staticCommits []StaticCommitInfo
+	if err := json.NewDecoder(resp.Body).Decode(&staticCommits); err != nil {
 		return nil, err
 	}
 
-	var commits []CommitInfo
-	for _, c := range compareResp.Commits {
-		// Get first line of commit message
-		message := c.Commit.Message
-		if idx := indexOf(message, '\n'); idx != -1 {
-			message = message[:idx]
-		}
-		commits = append(commits, CommitInfo{
-			SHA:     c.SHA[:7],
-			Message: message,
-			Author:  c.Commit.Author.Name,
-			Date:    c.Commit.Author.Date,
-		})
+	// Extract short SHAs from tags (tags are v0.X.YSHA where SHA is octal-encoded)
+	currentSHA := extractSHAFromTag(currentTag)
+	latestSHA := extractSHAFromTag(latestTag)
+
+	if currentSHA == "" || latestSHA == "" {
+		return nil, fmt.Errorf("could not extract SHAs from tags")
 	}
 
-	// Sort commits by date, newest first
-	sort.Slice(commits, func(i, j int) bool {
-		return commits[i].Date.After(commits[j].Date)
-	})
+	// Find the range of commits between current and latest
+	var commits []CommitInfo
+	var foundLatest, foundCurrent bool
+
+	for _, c := range staticCommits {
+		if c.SHA == latestSHA {
+			foundLatest = true
+		}
+		if foundLatest && !foundCurrent {
+			commits = append(commits, CommitInfo{
+				SHA:     c.SHA,
+				Message: c.Subject,
+			})
+		}
+		if c.SHA == currentSHA {
+			foundCurrent = true
+			break
+		}
+	}
+
+	// If we didn't find both SHAs, the commits might be too old (outside 500 range)
+	if !foundLatest || !foundCurrent {
+		return nil, fmt.Errorf("commits not found in static list")
+	}
+
+	// Remove the current commit itself from the list (we want commits after current)
+	if len(commits) > 0 && commits[len(commits)-1].SHA == currentSHA {
+		commits = commits[:len(commits)-1]
+	}
 
 	return commits, nil
 }
 
-func indexOf(s string, c byte) int {
-	for i := 0; i < len(s); i++ {
-		if s[i] == c {
-			return i
+// extractSHAFromTag extracts the short commit SHA from a version tag.
+// Tags are formatted as v0.COUNT.9OCTAL where OCTAL is the SHA in octal.
+func extractSHAFromTag(tag string) string {
+	// Tag format: v0.178.9XXXXX where XXXXX is octal-encoded 6-char hex SHA
+	if len(tag) < 3 || tag[0] != 'v' {
+		return ""
+	}
+
+	// Find the last dot
+	lastDot := -1
+	for i := len(tag) - 1; i >= 0; i-- {
+		if tag[i] == '.' {
+			lastDot = i
+			break
 		}
 	}
-	return -1
+	if lastDot == -1 {
+		return ""
+	}
+
+	// Extract the patch part (9XXXXX)
+	patch := tag[lastDot+1:]
+	if len(patch) < 2 || patch[0] != '9' {
+		return ""
+	}
+
+	// Parse the octal number after '9'
+	octal := patch[1:]
+	var hexVal uint64
+	for _, c := range octal {
+		if c < '0' || c > '7' {
+			return ""
+		}
+		hexVal = hexVal*8 + uint64(c-'0')
+	}
+
+	// Convert back to 6-char hex SHA (short SHA)
+	return fmt.Sprintf("%06x", hexVal)
 }
 
-// fetchRelease fetches a specific release by tag from GitHub.
-func (vc *VersionChecker) fetchRelease(ctx context.Context, tag string) (*GitHubRelease, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/tags/%s",
-		vc.githubOwner, vc.githubRepo, tag)
+// fetchLatestRelease fetches the latest release info from GitHub Pages.
+func (vc *VersionChecker) fetchLatestRelease(ctx context.Context) (*ReleaseInfo, error) {
+	url := staticMetadataURL + "/release.json"
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("User-Agent", "Shelley-VersionChecker")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -270,40 +317,10 @@ func (vc *VersionChecker) fetchRelease(ctx context.Context, tag string) (*GitHub
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("failed to fetch release info: status %d", resp.StatusCode)
 	}
 
-	var release GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return nil, err
-	}
-
-	return &release, nil
-}
-
-// fetchLatestRelease fetches the latest release from GitHub.
-func (vc *VersionChecker) fetchLatestRelease(ctx context.Context) (*GitHubRelease, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest",
-		vc.githubOwner, vc.githubRepo)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("User-Agent", "Shelley-VersionChecker")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
-	}
-
-	var release GitHubRelease
+	var release ReleaseInfo
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
 		return nil, err
 	}
@@ -312,16 +329,11 @@ func (vc *VersionChecker) fetchLatestRelease(ctx context.Context) (*GitHubReleas
 }
 
 // findDownloadURL finds the appropriate download URL for the current platform.
-func (vc *VersionChecker) findDownloadURL(release *GitHubRelease) string {
-	// Build expected asset name: shelley_<os>_<arch>
-	expectedName := fmt.Sprintf("shelley_%s_%s", runtime.GOOS, runtime.GOARCH)
-
-	for _, asset := range release.Assets {
-		if asset.Name == expectedName {
-			return asset.BrowserDownloadURL
-		}
+func (vc *VersionChecker) findDownloadURL(release *ReleaseInfo) string {
+	key := fmt.Sprintf("%s_%s", runtime.GOOS, runtime.GOARCH)
+	if url, ok := release.DownloadURLs[key]; ok {
+		return url
 	}
-
 	return ""
 }
 
@@ -524,17 +536,10 @@ func (vc *VersionChecker) doSudoUpgrade(binaryData []byte) error {
 }
 
 // fetchExpectedChecksum downloads checksums.txt and extracts the expected checksum for our binary.
-func (vc *VersionChecker) fetchExpectedChecksum(ctx context.Context, release *GitHubRelease) (string, error) {
-	// Find checksums.txt URL
-	var checksumURL string
-	for _, asset := range release.Assets {
-		if asset.Name == "checksums.txt" {
-			checksumURL = asset.BrowserDownloadURL
-			break
-		}
-	}
+func (vc *VersionChecker) fetchExpectedChecksum(ctx context.Context, release *ReleaseInfo) (string, error) {
+	checksumURL := release.ChecksumsURL
 	if checksumURL == "" {
-		return "", fmt.Errorf("checksums.txt not found in release")
+		return "", fmt.Errorf("checksums.txt URL not found in release")
 	}
 
 	// Download checksums.txt
