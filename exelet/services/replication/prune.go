@@ -49,7 +49,7 @@ func (p *Pruner) Prune(ctx context.Context, localVolumeIDs map[string]struct{}) 
 	suffix := "-" + p.nodeName
 	var orphaned []string
 	for _, tv := range targetVolumes {
-		if strings.HasPrefix(tv, "sha256:") {
+		if strings.HasPrefix(tv, "sha256:") || strings.HasPrefix(tv, "tmp-sha256:") {
 			continue
 		}
 		if !isVMInstanceID(tv) && !strings.HasSuffix(tv, suffix) {

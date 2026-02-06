@@ -248,6 +248,11 @@ func (s *Service) runReplicationCycle(ctx context.Context) {
 	localVolumeIDs := make(map[string]struct{})
 
 	for _, id := range datasetIDs {
+		// Skip temporary image extraction datasets
+		if strings.HasPrefix(id, "tmp-sha256:") {
+			continue
+		}
+
 		dataset := storageManager.GetDatasetName(id)
 		if dataset == "" {
 			s.log.WarnContext(ctx, "skipping dataset with no dataset name", "id", id)
