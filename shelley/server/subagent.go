@@ -27,6 +27,10 @@ func NewSubagentRunner(s *Server) *SubagentRunner {
 func (r *SubagentRunner) RunSubagent(ctx context.Context, conversationID, prompt string, wait bool, timeout time.Duration) (string, error) {
 	s := r.server
 
+	// Notify the UI about the subagent conversation.
+	// This ensures the sidebar shows the subagent even if it's a newly created conversation.
+	go r.notifySubagentConversation(ctx, conversationID)
+
 	// Get or create conversation manager for the subagent
 	manager, err := s.getOrCreateConversationManager(ctx, conversationID)
 	if err != nil {
@@ -315,6 +319,40 @@ func (r *SubagentRunner) buildConversationSummary(messages []generated.Message) 
 	}
 
 	return result
+}
+
+// notifySubagentConversation fetches the subagent conversation and publishes it
+// to all SSE streams so the UI can update the sidebar.
+func (r *SubagentRunner) notifySubagentConversation(ctx context.Context, conversationID string) {
+	s := r.server
+
+	// Fetch the conversation from the database
+	var conv generated.Conversation
+	err := s.db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		conv, err = q.GetConversation(ctx, conversationID)
+		return err
+	})
+	if err != nil {
+		s.logger.Error("Failed to get subagent conversation for notification", "error", err, "conversationID", conversationID)
+		return
+	}
+
+	// Only notify if this is actually a subagent (has parent)
+	if conv.ParentConversationID == nil {
+		return
+	}
+
+	// Publish the subagent conversation to all active streams
+	s.publishConversationListUpdate(ConversationListUpdate{
+		Type:         "update",
+		Conversation: &conv,
+	})
+
+	s.logger.Debug("Notified UI about subagent conversation",
+		"conversationID", conversationID,
+		"parentID", *conv.ParentConversationID,
+		"slug", conv.Slug)
 }
 
 // createSubagentToolSetConfig creates a ToolSetConfig for subagent conversations.
