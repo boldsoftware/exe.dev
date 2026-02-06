@@ -87,7 +87,7 @@ func unlockpt(f *os.File) error {
 	return ioctl(f, I_STR, uintptr(unsafe.Pointer(&istr)))
 }
 
-func minor(x uint64) uint64 { return x & 0377 }
+func minor(x uint64) uint64 { return x & 0o377 }
 
 func ptsdev(f *os.File) (uint64, error) {
 	istr := strioctl{
@@ -100,8 +100,8 @@ func ptsdev(f *os.File) (uint64, error) {
 	if err := ioctl(f, I_STR, uintptr(unsafe.Pointer(&istr))); err != nil {
 		return 0, err
 	}
-	var errors = make(chan error, 1)
-	var results = make(chan uint64, 1)
+	errors := make(chan error, 1)
+	results := make(chan uint64, 1)
 	defer close(errors)
 	defer close(results)
 

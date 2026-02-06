@@ -14,9 +14,9 @@ var procioctl uintptr
 
 const (
 	// see /usr/include/sys/stropts.h
-	I_PUSH = uintptr((int32('S')<<8 | 002))
-	I_STR  = uintptr((int32('S')<<8 | 010))
-	I_FIND = uintptr((int32('S')<<8 | 013))
+	I_PUSH = uintptr((int32('S')<<8 | 0o02))
+	I_STR  = uintptr((int32('S')<<8 | 0o10))
+	I_FIND = uintptr((int32('S')<<8 | 0o13))
 
 	// see /usr/include/sys/ptms.h
 	ISPTM   = (int32('P') << 8) | 1

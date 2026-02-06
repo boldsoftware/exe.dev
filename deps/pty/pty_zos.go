@@ -92,7 +92,7 @@ func openpt(oflag int) (fd int, err error) {
 	if e1 != 0 {
 		err = syscall.Errno(e1)
 	}
-	return
+	return fd, err
 }
 
 func fcntl(fd uintptr, cmd int, arg uintptr) (val int, err error) {
@@ -101,7 +101,7 @@ func fcntl(fd uintptr, cmd int, arg uintptr) (val int, err error) {
 	if e1 != 0 {
 		err = syscall.Errno(e1)
 	}
-	return
+	return val, err
 }
 
 func ptsname(fd int) (name string, err error) {
@@ -110,7 +110,7 @@ func ptsname(fd int) (name string, err error) {
 	if e1 != 0 {
 		err = syscall.Errno(e1)
 	}
-	return
+	return name, err
 }
 
 func grantpt(fildes int) (rc int, err error) {
@@ -119,7 +119,7 @@ func grantpt(fildes int) (rc int, err error) {
 	if e1 != 0 {
 		err = syscall.Errno(e1)
 	}
-	return
+	return rc, err
 }
 
 func unlockpt(fildes int) (rc int, err error) {
@@ -128,7 +128,7 @@ func unlockpt(fildes int) (rc int, err error) {
 	if e1 != 0 {
 		err = syscall.Errno(e1)
 	}
-	return
+	return rc, err
 }
 
 func u2s(cstr unsafe.Pointer) string {
