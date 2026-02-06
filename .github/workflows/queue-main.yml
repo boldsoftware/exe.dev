@@ -53,32 +53,23 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Verify branch includes last repaired industrial accident
+      - name: Fetch gate files from origin/main
+        run: |
+          # The gate files (.github/queue-gate-*) live on origin/main so that
+          # updates take effect immediately for all queue pushes, even if the
+          # pusher hasn't fetched. We need a fresh fetch to read the latest.
+          git fetch origin main
+
+      - name: Verify branch includes required ancestor
         run: |
           set -euo pipefail
 
-          # LAST_REPAIRED_INDUSTRIAL_ACCIDENT
-          #
-          # After a bad commit reaches main and is reverted, there is a
-          # window where developers who fetched the bad commit can
-          # accidentally reintroduce it by pushing a branch to the commit
-          # queue that was based on the bad state of main. To close this
-          # window, we record the "post-fix" commit SHA here. Any branch
-          # submitted to the commit queue must contain this SHA as an
-          # ancestor, proving the submitter has rebased onto the fix.
-          #
-          # It is still possible for someone to accidentally reintroduce
-          # the bad change by rebasing it themselves.
-          # Life is hard. But we can at least avoid simple accidents.
-          #
-          # How to update after an incident:
-          #   1. Fix the problem.
-          #   2. Set this value to a SHA that you want all future commits to be based on.
-          #   3. Push this file to main.
-          LAST_REPAIRED_INDUSTRIAL_ACCIDENT=3ac009b
+          # Read required ancestor from origin/main's gate file.
+          REQUIRED_ANCESTOR=$(git show origin/main:.github/queue-gate-ancestor | grep -v '^#' | grep -v '^$' | head -1)
+          REQUIRED_ANCESTOR=$(printf '%s' "$REQUIRED_ANCESTOR" | tr -d '[:space:]')
 
-          if ! git merge-base --is-ancestor "$LAST_REPAIRED_INDUSTRIAL_ACCIDENT" HEAD; then
-            echo "❌ ERROR: Your branch does not include commit $LAST_REPAIRED_INDUSTRIAL_ACCIDENT."
+          if ! git merge-base --is-ancestor "$REQUIRED_ANCESTOR" HEAD; then
+            echo "❌ ERROR: Your branch does not include commit $REQUIRED_ANCESTOR."
             echo ""
             echo "This commit is required because it fixes a previously-landed bad commit."
             echo "Please fetch origin--be prepared for someone else having force-pushed!--and rebase"
@@ -86,29 +77,22 @@ jobs:
             echo ""
             echo "********** Please BE CAREFUL NOT TO REINTRODUCE THE BAD COMMIT! **********"
             echo ""
-            echo "grep for LAST_REPAIRED_INDUSTRIAL_ACCIDENT to see more context."
+            echo "See .github/queue-gate-ancestor on main for context."
             echo ""
             echo "Then push to the commit queue again."
             exit 1
           fi
 
-          echo "✅ Branch includes post-incident fix ($LAST_REPAIRED_INDUSTRIAL_ACCIDENT)"
+          echo "✅ Branch includes required ancestor ($REQUIRED_ANCESTOR)"
 
       - name: Validate commits for WIP, DO NOT SUBMIT, and VIBES
         run: |
           set -e
           set -o pipefail
 
-          # KNOWN_BAD_SUBJECTS
-          #
-          # Commit subjects that were intentionally reverted from main.
-          # If any commit in the queue has a subject matching one of these
-          # (byte-for-byte after stripping leading/trailing whitespace),
-          # the push is blocked. This catches accidental reintroduction
-          # of reverted commits via rebase.
-          KNOWN_BAD_SUBJECTS=(
-            "execore: extract cp command from ssh command handlers"
-          )
+          # Read known-bad subjects from origin/main's gate file.
+          # Already fetched in the "Fetch gate files" step above.
+          mapfile -t KNOWN_BAD_SUBJECTS < <(git show origin/main:.github/queue-gate-bad-subjects | grep -v '^#' | grep -v '^$')
 
           base_ref="origin/main"
           end_ref="HEAD"
