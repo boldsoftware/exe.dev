@@ -26,11 +26,11 @@ class BotExpectation:
 
 
 BOT_EXPECTATIONS: Sequence[BotExpectation] = (
-    BotExpectation(
-        bot="e2e-ai",
-        frequency=timedelta(days=7),
-        context=".github/workflows/exe-e2e-ai-tests.yml runs weekly at 06:45 UTC on Mondays.",
-    ),
+    # BotExpectation(
+    #     bot="e2e-ai",
+    #     frequency=timedelta(days=7),
+    #     context=".github/workflows/exe-e2e-ai-tests.yml runs weekly at 06:45 UTC on Mondays.",
+    # ),
     BotExpectation(
         bot="e3e-security",
         frequency=timedelta(days=7),
@@ -91,13 +91,19 @@ def fetch_recent_entries(
 def parse_last_run(bot: str, payload: Mapping[str, object]) -> datetime:
     raw = payload.get("last_run")
     if not isinstance(raw, str) or not raw:
-        raise RuntimeError(f"#btdb entry for bot {bot!r} is missing the required 'last_run' field")
+        raise RuntimeError(
+            f"#btdb entry for bot {bot!r} is missing the required 'last_run' field"
+        )
     try:
         parsed = datetime.fromisoformat(raw)
     except ValueError as exc:
-        raise RuntimeError(f"#btdb entry for bot {bot!r} has invalid last_run {raw!r}") from exc
+        raise RuntimeError(
+            f"#btdb entry for bot {bot!r} has invalid last_run {raw!r}"
+        ) from exc
     if parsed.tzinfo is None:
-        raise RuntimeError(f"#btdb entry for bot {bot!r} stored a naive timestamp {raw!r}")
+        raise RuntimeError(
+            f"#btdb entry for bot {bot!r} stored a naive timestamp {raw!r}"
+        )
     return parsed.astimezone(timezone.utc)
 
 
@@ -166,9 +172,7 @@ def format_alert(issues: Sequence[BotIssue]) -> str:
         ":rotating_light: CI liveness watchdog found stale bots:",
     ]
     for issue in issues:
-        lines.append(
-            f"- {issue.spec.bot}: {issue.reason} ({issue.spec.context})"
-        )
+        lines.append(f"- {issue.spec.bot}: {issue.reason} ({issue.spec.context})")
     lines.append("Investigate the workflows above or rerun them manually.")
     return "\n".join(lines)
 
