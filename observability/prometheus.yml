@@ -61,6 +61,7 @@ scrape_configs:
           role: 'exed'
       - targets:
         - 'exe-ctr-staging-01:9100'
+        - 'exelet-lax2-staging-01:9100'
         labels:
           stage: 'staging'
           role: 'exelet'
@@ -120,7 +121,7 @@ scrape_configs:
       - targets: ["exe-ctr-02:9081", "exe-ctr-03:9081", "exe-ctr-04:9081", "exe-ctr-05:9081", "exe-ctr-07:9081", "exe-ctr-08:9081", "exe-ctr-09:9081", "exe-ctr-10:9081", "exe-ctr-11:9081", "exe-ctr-12:9081", "exe-ctr-13:9081", "exe-ctr-14:9081", "exe-ctr-15:9081", "exe-ctr-16:9081", "exe-ctr-18:9081"]
         labels:
           stage: 'production'
-      - targets: ["exe-ctr-staging-01:9081"]
+      - targets: ["exe-ctr-staging-01:9081", "exelet-lax2-staging-01"]
         labels:
           stage: 'staging'
     metrics_path: '/metrics'

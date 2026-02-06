@@ -123,7 +123,7 @@ setup_tailscale() {
     local hostname="$2"
 
     echo "Installing Tailscale..."
-    ssh $DIRECT_SSH_OPTS "$target" 'sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y curl jq'
+    ssh $DIRECT_SSH_OPTS "$target" 'sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y curl jq pv'
     ssh $DIRECT_SSH_OPTS "$target" 'curl -fsSL https://tailscale.com/install.sh | sudo sh'
 
     echo "Generating Tailscale auth key via OAuth..."
@@ -413,6 +413,45 @@ provision_server() {
     echo "=== Running setup-iptables-exelet.sh ==="
     copy_to_remote "$STANDALONE_DIR/setup-iptables-exelet.sh" "/tmp/setup-iptables-exelet.sh" "ubuntu@$host"
     ssh $SSH_OPTS "ubuntu@$host" "sudo /tmp/setup-iptables-exelet.sh && rm -f /tmp/setup-iptables-exelet.sh"
+
+    # Install and configure node_exporter for monitoring
+    echo ""
+    echo "=== Installing node_exporter for monitoring ==="
+    ssh $SSH_OPTS "ubuntu@$host" 'bash -s' <<'NODE_EXPORTER_SCRIPT'
+set -euo pipefail
+if ! dpkg -l | grep -q prometheus-node-exporter; then
+    echo "Installing prometheus-node-exporter..."
+    sudo apt-get update && sudo apt-get install -y prometheus-node-exporter
+else
+    echo "prometheus-node-exporter already installed"
+fi
+
+# Create wrapper script that dynamically gets Tailscale IP at start time
+cat <<'WRAPPER' | sudo tee /usr/local/bin/node-exporter-wrapper > /dev/null
+#!/bin/bash
+TAILSCALE_IP=$(tailscale ip -4)
+if [ -z "$TAILSCALE_IP" ]; then
+    echo "ERROR: Failed to get Tailscale IP" >&2
+    exit 1
+fi
+exec /usr/bin/prometheus-node-exporter --web.listen-address=${TAILSCALE_IP}:9100 --collector.cgroups --collector.systemd "$@"
+WRAPPER
+sudo chmod +x /usr/local/bin/node-exporter-wrapper
+
+sudo mkdir -p /etc/systemd/system/prometheus-node-exporter.service.d
+cat <<EOF | sudo tee /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null
+[Unit]
+After=tailscaled.service
+Wants=tailscaled.service
+
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/node-exporter-wrapper
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable prometheus-node-exporter
+sudo systemctl restart prometheus-node-exporter
+NODE_EXPORTER_SCRIPT
 }
 
 # Check if server with this hostname already exists
