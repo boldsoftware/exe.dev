@@ -99,6 +99,17 @@ jobs:
           set -e
           set -o pipefail
 
+          # KNOWN_BAD_SUBJECTS
+          #
+          # Commit subjects that were intentionally reverted from main.
+          # If any commit in the queue has a subject matching one of these
+          # (byte-for-byte after stripping leading/trailing whitespace),
+          # the push is blocked. This catches accidental reintroduction
+          # of reverted commits via rebase.
+          KNOWN_BAD_SUBJECTS=(
+            "execore: extract cp command from ssh command handlers"
+          )
+
           base_ref="origin/main"
           end_ref="HEAD"
 
@@ -120,6 +131,15 @@ jobs:
               # Get the commit message (subject + body)
               subject=$(git log --format="%s" -n 1 "$commit")
               full_message=$(git log --format="%B" -n 1 "$commit")
+
+              # Check for known-bad commit subjects (reverted commits)
+              trimmed_subject=$(printf '%s' "$subject" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              for bad in "${KNOWN_BAD_SUBJECTS[@]}"; do
+                if [ "$trimmed_subject" = "$bad" ]; then
+                  echo "❌ ERROR: Commit $commit has a known-bad subject (previously reverted): $subject"
+                  has_errors=1
+                fi
+              done
 
               # Check for WIP in subject line (case insensitive)
               if echo "$subject" | grep -i "WIP" >/dev/null 2>&1; then
