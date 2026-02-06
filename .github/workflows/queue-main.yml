@@ -53,6 +53,47 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
+      - name: Verify branch includes last repaired industrial accident
+        run: |
+          set -euo pipefail
+
+          # LAST_REPAIRED_INDUSTRIAL_ACCIDENT
+          #
+          # After a bad commit reaches main and is reverted, there is a
+          # window where developers who fetched the bad commit can
+          # accidentally reintroduce it by pushing a branch to the commit
+          # queue that was based on the bad state of main. To close this
+          # window, we record the "post-fix" commit SHA here. Any branch
+          # submitted to the commit queue must contain this SHA as an
+          # ancestor, proving the submitter has rebased onto the fix.
+          #
+          # It is still possible for someone to accidentally reintroduce
+          # the bad change by rebasing it themselves.
+          # Life is hard. But we can at least avoid simple accidents.
+          #
+          # How to update after an incident:
+          #   1. Fix the problem.
+          #   2. Set this value to a SHA that you want all future commits to be based on.
+          #   3. Push this file to main.
+          LAST_REPAIRED_INDUSTRIAL_ACCIDENT=3ac009b
+
+          if ! git merge-base --is-ancestor "$LAST_REPAIRED_INDUSTRIAL_ACCIDENT" HEAD; then
+            echo "❌ ERROR: Your branch does not include commit $LAST_REPAIRED_INDUSTRIAL_ACCIDENT."
+            echo ""
+            echo "This commit is required because it fixes a previously-landed bad commit."
+            echo "Please fetch origin--be prepared for someone else having force-pushed!--and rebase"
+            echo "your work on it."
+            echo ""
+            echo "********** Please BE CAREFUL NOT TO REINTRODUCE THE BAD COMMIT! **********"
+            echo ""
+            echo "grep for LAST_REPAIRED_INDUSTRIAL_ACCIDENT to see more context."
+            echo ""
+            echo "Then push to the commit queue again."
+            exit 1
+          fi
+
+          echo "✅ Branch includes post-incident fix ($LAST_REPAIRED_INDUSTRIAL_ACCIDENT)"
+
       - name: Validate commits for WIP, DO NOT SUBMIT, and VIBES
         run: |
           set -e
