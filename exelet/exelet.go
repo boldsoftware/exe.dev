@@ -107,12 +107,12 @@ func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, env stage.Env, opts .
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
 		tracing.UnaryServerInterceptor(),
 		grpcMetrics.UnaryServerInterceptor(),
-		logging.UnaryServerInterceptor(logging.LoggerFunc(loggerFunc)),
+		logging.UnaryServerInterceptor(logging.LoggerFunc(loggerFunc), logging.WithLogOnEvents(logging.FinishCall)),
 	}
 	streamServerInterceptors := []grpc.StreamServerInterceptor{
 		tracing.StreamServerInterceptor(),
 		grpcMetrics.StreamServerInterceptor(),
-		logging.StreamServerInterceptor(logging.LoggerFunc(loggerFunc)),
+		logging.StreamServerInterceptor(logging.LoggerFunc(loggerFunc), logging.WithLogOnEvents(logging.FinishCall)),
 	}
 
 	// TODO: auth middleware

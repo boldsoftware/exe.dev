@@ -193,7 +193,8 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 		case dns.TypeSOA:
 			rrs, err = s.lookupSOA(ctx, qname, header.Name, header.Class)
 		default:
-			s.log.DebugContext(ctx, "unsupported query type", "name", qname, "type", dns.TypeToString[qtype])
+			// This is a very common log line if enabled.
+			// s.log.DebugContext(ctx, "unsupported query type", "name", qname, "type", dns.TypeToString[qtype])
 		}
 
 		if err != nil {

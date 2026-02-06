@@ -163,8 +163,8 @@ func getGRPCOptions(cfg *ClientConfig) []grpc.DialOption {
 
 			cfg.Logger.Log(ctx, level, msg, fields...)
 		}
-		unaryInterceptors = append(unaryInterceptors, logging.UnaryClientInterceptor(logging.LoggerFunc(loggerFunc)))
-		streamInterceptors = append(streamInterceptors, logging.StreamClientInterceptor(logging.LoggerFunc(loggerFunc)))
+		unaryInterceptors = append(unaryInterceptors, logging.UnaryClientInterceptor(logging.LoggerFunc(loggerFunc), logging.WithLogOnEvents(logging.FinishCall)))
+		streamInterceptors = append(streamInterceptors, logging.StreamClientInterceptor(logging.LoggerFunc(loggerFunc), logging.WithLogOnEvents(logging.FinishCall)))
 	}
 
 	opts = append(opts,

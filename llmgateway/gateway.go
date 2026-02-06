@@ -154,8 +154,6 @@ func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, userMsg s
 }
 
 func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	m.log.InfoContext(r.Context(), "llmGateway.ServeHTTP", "r.URL.Path", r.URL.Path)
-
 	// Authenticate request
 	// The request must come from a Tailscale IP (or be in devMode),
 	// AND must have "X-Exedev-Box: <boxname>" header.
@@ -238,7 +236,6 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(endpointPath, "/")
 	alias := parts[0]
 	remainder := endpointPath[len(alias):]
-	m.log.InfoContext(r.Context(), "llmGateway.ServeHTTP", "alias", alias, "remaimder", remainder, "method", r.Method, "url", r.URL, "boxname", boxName)
 
 	requestsCounter.WithLabelValues("attempted", alias).Inc()
 
