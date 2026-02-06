@@ -242,6 +242,23 @@ func All() []Model {
 			},
 		},
 		{
+			ID:              "gpt-5.3-codex",
+			Provider:        ProviderOpenAI,
+			Description:     "GPT-5.3 Codex",
+			RequiredEnvVars: []string{"OPENAI_API_KEY"},
+			GatewayEnabled:  true,
+			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
+				if config.OpenAIAPIKey == "" {
+					return nil, fmt.Errorf("gpt-5.3-codex requires OPENAI_API_KEY")
+				}
+				svc := &oai.ResponsesService{Model: oai.GPT53Codex, APIKey: config.OpenAIAPIKey, HTTPC: httpc, ThinkingLevel: llm.ThinkingLevelMedium}
+				if url := config.getOpenAIURL(); url != "" {
+					svc.ModelURL = url
+				}
+				return svc, nil
+			},
+		},
+		{
 			ID:              "gpt-5.2-codex",
 			Provider:        ProviderOpenAI,
 			Description:     "GPT-5.2 Codex",
