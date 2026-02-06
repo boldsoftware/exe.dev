@@ -61,7 +61,7 @@ func Default() Region {
 // Naming conventions:
 //   - "exe-ctr-*" -> pdx (legacy AWS EC2 hosts)
 //   - "lima-*", "localhost", "127.0.0.1" -> dev (local development)
-//   - "*-REGION-*" -> parsed region (looks for known region codes in hostname)
+//   - "*-REGION-*" or "*-REGION<digits>-*" -> parsed region (e.g., "exelet-lax2-staging-01" -> lax)
 func ParseExeletRegion(host string) (Region, error) {
 	// Remove scheme if present (e.g., "tcp://")
 	if idx := strings.Index(host, "://"); idx != -1 {
@@ -85,13 +85,34 @@ func ParseExeletRegion(host string) (Region, error) {
 		return ByCode("ci")
 	}
 
-	// Look for -REGION- pattern in hostname
-	for _, r := range allRegions {
-		marker := "-" + r.Code + "-"
-		if strings.Contains(host, marker) {
-			return r, nil
+	// Look for -REGION- or -REGION<digits>- pattern in hostname.
+	// Split into segments and match each against known region codes.
+	// A segment matches if it equals the region code exactly or if
+	// it starts with the region code and the rest is all digits
+	// (e.g., "lax2", "pdx1").
+	segments := strings.Split(host, "-")
+	for _, seg := range segments {
+		for _, r := range allRegions {
+			if seg == r.Code {
+				return r, nil
+			}
+			if strings.HasPrefix(seg, r.Code) {
+				suffix := seg[len(r.Code):]
+				if len(suffix) > 0 && isAllDigits(suffix) {
+					return r, nil
+				}
+			}
 		}
 	}
 
 	return Region{Code: "", Display: "", Active: false}, fmt.Errorf("cannot parse region from exelet host %q", host)
+}
+
+func isAllDigits(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }

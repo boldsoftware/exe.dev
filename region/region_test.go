@@ -89,6 +89,12 @@ func TestParseExeletRegion(t *testing.T) {
 		{"ctr-syd-prod-01", "syd", false},
 		{"ctr-ci-prod-01", "ci", false},
 		{"tcp://ctr-lax-prod-01:9080", "lax", false},
+		// Exelet hosts with region+datacenter number
+		{"exelet-lax2-staging-01", "lax", false},
+		{"exelet-lax2-staging-01:9080", "lax", false},
+		{"tcp://exelet-lax2-staging-01:9080", "lax", false},
+		{"exelet-pdx1-prod-01", "pdx", false},
+		{"exelet-fra3-prod-02:9080", "fra", false},
 		// Different prefixes work too
 		{"foo-pdx-bar", "pdx", false},
 		{"host-syd-123", "syd", false},
