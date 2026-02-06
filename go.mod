@@ -8,6 +8,8 @@ replace github.com/Netflix/go-expect => ./deps/go-expect
 
 replace github.com/samber/slog-slack/v2 => ./deps/slog-slack
 
+replace github.com/creack/pty => ./deps/pty
+
 require (
 	codeberg.org/miekg/dns v0.5.26
 	github.com/AfterShip/email-verifier v1.4.1

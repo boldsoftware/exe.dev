@@ -1,0 +1,60 @@
+---
+name: Test
+
+"on":
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  test:
+    name: "Test go ${{ matrix.go_version }} on ${{ matrix.platform }}"
+    runs-on: ${{ matrix.platform }}
+
+    strategy:
+      matrix:
+        platform:
+          - ubuntu-latest
+          - macos-latest
+        go_version:
+          # Test the two currently supported releases.
+          # (https://go.dev/doc/devel/release#policy).
+          - stable
+          - oldstable
+        include:
+          # Also sanity test a very old release on linux.
+          - platform: ubuntu-latest
+            go_version: 1.6.x
+
+    steps:
+      # 1.6 doesn't seem to default GOPATH to anything,
+      # so we set it explicitly here.
+      - if: ${{ matrix.go_version == '1.6.x' }}
+        name: Set GOPATH
+        run: echo "GOPATH=$HOME/go" >> $GITHUB_ENV
+
+      - name: Set up Go ${{ matrix.go_version }}
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go_version }}
+          check-latest: true
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: go build -v
+
+      # Skip tests for 1.6 as we use modern Go.
+      # If the main lib builds and tests pass on other versions, we are good.
+      - if: ${{ matrix.go_version != '1.6.x' }}
+        name: Single Test
+        run: go test -v
+
+      # Run the tests again 100 times without verbose.
+      - if: ${{ matrix.go_version != '1.6.x' }}
+        name: Many Tests
+        run: go test -count=100 -timeout=30s
