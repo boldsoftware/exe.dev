@@ -1,0 +1,13 @@
+# Bad commit subjects blocked by the commit queue.
+#
+# This file is read from origin/main at CI time, so changes here
+# take effect immediately for all new queue pushes — even if the
+# pusher hasn't fetched.
+#
+# One subject per line. Lines starting with # and blank lines are
+# ignored. Matching is byte-for-byte after trimming whitespace.
+#
+# How to update after an incident:
+#   1. Add the reverted commit's subject below.
+#   2. Push to main.
+execore: extract cp command from ssh command handlers
