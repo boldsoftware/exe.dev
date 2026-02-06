@@ -140,6 +140,9 @@ func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, userMsg s
 	case code == http.StatusPaymentRequired:
 		// Running out of LLM credit is not an error.
 		logger = m.log.InfoContext
+	case code == http.StatusBadRequest:
+		// Client sent a bad request (e.g. unsupported model). Not an error.
+		logger = m.log.InfoContext
 	case code == http.StatusNotFound:
 		// This is probably a user poking around the gateway.
 		// Possibly sketchy...but not necessarily an error.
