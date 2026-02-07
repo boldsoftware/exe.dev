@@ -108,6 +108,12 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
       - name: Set PATH
         run: echo "$HOME/go/bin" >> $GITHUB_PATH
 
