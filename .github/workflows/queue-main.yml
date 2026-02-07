@@ -31,6 +31,7 @@ jobs:
       commit_sha: ${{ steps.get_commit.outputs.commit_sha }}
       shelley_changed: ${{ steps.changes.outputs.shelley_changed }}
       exe_changed: ${{ steps.changes.outputs.exe_changed }}
+      ci_only: ${{ steps.ci_only.outputs.ci_only }}
     steps:
       - name: Check if self-hosted
         id: check-host
@@ -212,6 +213,24 @@ jobs:
 
           echo "✅ All commits passed validation"
 
+      - name: Check for CI ONLY marker
+        id: ci_only
+        run: |
+          set -euo pipefail
+          base_ref="origin/main"
+          end_ref="HEAD"
+          commits=$(git rev-list --reverse "${base_ref}".."${end_ref}" || true)
+          for commit in $commits; do
+            subject=$(git log --format="%s" -n 1 "$commit")
+            if echo "$subject" | grep -qi "CI ONLY"; then
+              echo "🔬 CI ONLY marker found in: $subject"
+              echo "   Tests will run but push to main will be skipped."
+              echo "ci_only=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "ci_only=false" >> "$GITHUB_OUTPUT"
+
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
@@ -308,7 +327,7 @@ jobs:
   push-to-main:
     runs-on: [self-hosted, exe-ci, edric]
     needs: [commit-validation-and-formatting, test, shelley-test]
-    if: ${{ !cancelled() && !failure() }}
+    if: ${{ !cancelled() && !failure() && needs.commit-validation-and-formatting.outputs.ci_only != 'true' }}
     permissions:
       contents: write
       issues: write
