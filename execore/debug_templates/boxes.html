@@ -12,6 +12,10 @@ h1 { margin-bottom: 10px; }
 #boxesTable thead tr.filters input { width: 100%; box-sizing: border-box; font-size: 11px; padding: 4px; }
 .migrate-btn { display: inline-block; background: #007bff; color: white; padding: 4px 8px; border-radius: 3px; font-size: 12px; margin-right: 4px; text-decoration: none; }
 .migrate-btn:hover { background: #0056b3; text-decoration: none; }
+.stop-btn { background: #fd7e14; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; margin-right: 4px; }
+.stop-btn:hover { background: #e8590c; }
+.start-btn { background: #28a745; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; margin-right: 4px; }
+.start-btn:hover { background: #218838; }
 .delete-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; }
 .delete-btn:hover { background: #c82333; }
 dialog { padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
@@ -98,9 +102,15 @@ $(document).ready(function() {
             { data: 'owner_root_support', render: function(d) {
                 return d ? 'Yes' : 'No';
             }},
-            { data: 'name', orderable: false, render: function(d) {
-                return '<a href="/debug/boxes/migrate?box_name=' + encodeURIComponent(d) + '" class="migrate-btn">Migrate</a> ' +
-                       '<button class="delete-btn" data-box="' + d + '">Delete</button>';
+            { data: null, orderable: false, render: function(d) {
+                var actions = '<a href="/debug/boxes/migrate?box_name=' + encodeURIComponent(d.name) + '" class="migrate-btn">Migrate</a> ';
+                if (d.status === 'running') {
+                    actions += '<button class="stop-btn" data-box="' + d.name + '">Stop</button> ';
+                } else if (d.status === 'stopped') {
+                    actions += '<button class="start-btn" data-box="' + d.name + '">Start</button> ';
+                }
+                actions += '<button class="delete-btn" data-box="' + d.name + '">Delete</button>';
+                return actions;
             }}
         ],
         initComplete: function() {
@@ -114,6 +124,22 @@ $(document).ready(function() {
             });
         }
     });
+});
+
+// Stop/Start handlers (no confirmation needed - these are reversible)
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('stop-btn') || e.target.classList.contains('start-btn')) {
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = e.target.classList.contains('stop-btn') ? '/debug/boxes/stop' : '/debug/boxes/start';
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'box_name';
+        input.value = e.target.dataset.box;
+        form.appendChild(input);
+        document.body.appendChild(form);
+        form.submit();
+    }
 });
 
 // Delete dialog

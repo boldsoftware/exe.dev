@@ -47,6 +47,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/boxes/{name}", s.handleDebugBoxDetails)
 	mux.HandleFunc("GET /debug/boxes/{name}/logs", s.handleDebugBoxLogs)
 	mux.HandleFunc("POST /debug/boxes/delete", s.handleDebugBoxDelete)
+	mux.HandleFunc("POST /debug/boxes/stop", s.handleDebugBoxStop)
+	mux.HandleFunc("POST /debug/boxes/start", s.handleDebugBoxStart)
 	mux.HandleFunc("GET /debug/boxes/migrate", s.handleDebugBoxMigrateForm)
 	mux.HandleFunc("POST /debug/boxes/migrate", s.handleDebugBoxMigrate)
 	mux.HandleFunc("GET /debug/migrate", s.handleDebugMassMigrateForm)
@@ -334,6 +336,100 @@ func (s *Server) handleDebugBoxDelete(w http.ResponseWriter, r *http.Request) {
 	s.slog().InfoContext(ctx, "box deleted via debug page", "box", boxName)
 
 	// Redirect back to the boxes page
+	http.Redirect(w, r, "/debug/boxes", http.StatusSeeOther)
+}
+
+// handleDebugBoxStop stops a running box via the exelet gRPC API.
+func (s *Server) handleDebugBoxStop(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	boxName := r.FormValue("box_name")
+	if boxName == "" {
+		http.Error(w, "box_name is required", http.StatusBadRequest)
+		return
+	}
+
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("box %q not found", boxName), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to look up box: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if box.ContainerID == nil {
+		http.Error(w, "box has no container_id", http.StatusBadRequest)
+		return
+	}
+
+	ec := s.getExeletClient(box.Ctrhost)
+	if ec == nil {
+		http.Error(w, fmt.Sprintf("exelet %q not available", box.Ctrhost), http.StatusServiceUnavailable)
+		return
+	}
+
+	if _, err := ec.client.StopInstance(ctx, &computeapi.StopInstanceRequest{ID: *box.ContainerID}); err != nil {
+		http.Error(w, fmt.Sprintf("failed to stop instance: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if box.SSHPort != nil {
+		s.sshPool.DropConnectionsTo(box.SSHHost(), int(*box.SSHPort))
+	}
+
+	if err := s.updateBoxStatus(ctx, box.ID, "stopped"); err != nil {
+		http.Error(w, fmt.Sprintf("failed to update box status: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "box stopped via debug page", "box", boxName)
+	http.Redirect(w, r, "/debug/boxes", http.StatusSeeOther)
+}
+
+// handleDebugBoxStart starts a stopped box via the exelet gRPC API.
+func (s *Server) handleDebugBoxStart(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	boxName := r.FormValue("box_name")
+	if boxName == "" {
+		http.Error(w, "box_name is required", http.StatusBadRequest)
+		return
+	}
+
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("box %q not found", boxName), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to look up box: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if box.ContainerID == nil {
+		http.Error(w, "box has no container_id", http.StatusBadRequest)
+		return
+	}
+
+	ec := s.getExeletClient(box.Ctrhost)
+	if ec == nil {
+		http.Error(w, fmt.Sprintf("exelet %q not available", box.Ctrhost), http.StatusServiceUnavailable)
+		return
+	}
+
+	if _, err := ec.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: *box.ContainerID}); err != nil {
+		http.Error(w, fmt.Sprintf("failed to start instance: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.updateBoxStatus(ctx, box.ID, "running"); err != nil {
+		http.Error(w, fmt.Sprintf("failed to update box status: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "box started via debug page", "box", boxName)
 	http.Redirect(w, r, "/debug/boxes", http.StatusSeeOther)
 }
 
