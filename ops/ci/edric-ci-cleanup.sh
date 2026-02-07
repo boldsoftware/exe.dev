@@ -6,7 +6,7 @@
 set -euo pipefail
 
 LOG="/var/log/edric-ci-cleanup.log"
-exec >> "$LOG" 2>&1
+exec >>"$LOG" 2>&1
 echo "=== $(date) === cleanup starting ==="
 
 # Destroy any VMs that have been running for more than 30 minutes.
@@ -28,7 +28,7 @@ for VM in $(virsh list --name 2>/dev/null | grep -v "^$"); do
         continue
     fi
 
-    AGE=$(( NOW - VM_EPOCH ))
+    AGE=$((NOW - VM_EPOCH))
     if [[ $AGE -gt $THRESHOLD ]]; then
         echo "Destroying stale VM: $VM (age: ${AGE}s)"
         virsh destroy "$VM" || true
@@ -43,7 +43,7 @@ for IMG in /var/lib/libvirt/images/e1e-runner*.qcow2 /var/lib/libvirt/images/ci-
     # Strip -data suffix to get the base VM name
     VM=$(echo "$VM" | sed 's/-data$//')
     if ! virsh list --name 2>/dev/null | grep -q "^${VM}$"; then
-        AGE=$(( NOW - $(stat -c %Y "$IMG") ))
+        AGE=$((NOW - $(stat -c %Y "$IMG")))
         if [[ $AGE -gt $THRESHOLD ]]; then
             echo "Removing orphaned image: $IMG (age: ${AGE}s)"
             rm -f "$IMG"

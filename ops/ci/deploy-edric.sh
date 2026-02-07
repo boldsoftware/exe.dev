@@ -34,9 +34,9 @@ trap 'rm -rf "$TMPDIR"' EXIT
 
 for i in $(seq 0 $((NUM_RUNNERS - 1))); do
     # e1e runner service
-    sed "s/%i/${i}/g" "$SCRIPT_DIR/edric-e1e.service" > "$TMPDIR/actions.runner.boldsoftware.edric-${i}.service"
+    sed "s/%i/${i}/g" "$SCRIPT_DIR/edric-e1e.service" >"$TMPDIR/actions.runner.boldsoftware.edric-${i}.service"
     # CI runner service
-    sed "s/%i/${i}/g" "$SCRIPT_DIR/edric-ci.service" > "$TMPDIR/actions.runner.boldsoftware.edric-ci-${i}.service"
+    sed "s/%i/${i}/g" "$SCRIPT_DIR/edric-ci.service" >"$TMPDIR/actions.runner.boldsoftware.edric-ci-${i}.service"
 done
 
 scp "$TMPDIR"/actions.runner.boldsoftware.edric*.service "$HOST:/etc/systemd/system/"

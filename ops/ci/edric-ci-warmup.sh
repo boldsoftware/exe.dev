@@ -6,7 +6,7 @@
 set -euo pipefail
 
 LOG="/var/log/edric-ci-warmup.log"
-exec >> "$LOG" 2>&1
+exec >>"$LOG" 2>&1
 echo "=== $(date) === warmup starting ==="
 
 DEPLOY_KEY="/etc/edric-ci-deploy-key"
