@@ -14,14 +14,14 @@ import (
 	"shelley.exe.dev/llm"
 )
 
-// MessageRecordFunc is called to record new messages to persistent storage
+// MessageRecordFunc is called to record new messages to persistent storage.
 type MessageRecordFunc func(ctx context.Context, message llm.Message, usage llm.Usage) error
 
 // GitStateChangeFunc is called when the git state changes at the end of a turn.
 // This is used to record user-visible notifications about git changes.
 type GitStateChangeFunc func(ctx context.Context, state *gitstate.GitState)
 
-// Config contains all configuration needed to create a Loop
+// Config contains all configuration needed to create a Loop.
 type Config struct {
 	LLM              llm.Service
 	History          []llm.Message
