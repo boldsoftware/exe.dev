@@ -237,12 +237,6 @@ function MessageInput({
             event.preventDefault();
             // Fire and forget - uploadFile handles state updates internally.
             uploadFile(file);
-            // Restore focus after React updates. We use setTimeout(0) to ensure
-            // the focus happens after React's state update commits to the DOM.
-            // The timeout must be longer than 0 to reliably work across browsers.
-            setTimeout(() => {
-              textareaRef.current?.focus();
-            }, 10);
             return;
           }
         }
@@ -411,8 +405,8 @@ function MessageInput({
     };
   }, []);
 
-  const isDisabled = disabled || uploadsInProgress > 0;
-  const canSubmit = message.trim() && !isDisabled && !submitting;
+  const isDisabled = disabled;
+  const canSubmit = message.trim() && !isDisabled && !submitting && uploadsInProgress === 0;
 
   const isDraggingOver = dragCounter > 0;
   // Check if user is typing a shell command (starts with !)

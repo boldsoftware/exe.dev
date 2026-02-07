@@ -195,7 +195,6 @@ test.describe('File Upload via Paste and Drag', () => {
     // Both are acceptable as we're testing the UI flow
     expect(inputValue).toBeTruthy();
   });
-});
 
   test('focus is retained in input after pasting image', async ({ page }) => {
     await page.goto('/');
@@ -246,3 +245,4 @@ test.describe('File Upload via Paste and Drag', () => {
     const inputValue = await messageInput.inputValue();
     expect(inputValue).toContain('Testing paste focus:');
   });
+});
