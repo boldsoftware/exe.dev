@@ -713,16 +713,17 @@ func TestVanillaBox(t *testing.T) {
 				t.Fatalf("failed to run SSH command: %v", err)
 			}
 
-			// Wait a bit for metrics to update
-			time.Sleep(2 * time.Second)
-
-			// Verify metrics are still present and have non-zero values
-			body := fetchMetrics(t, metricsURL)
-			if !strings.Contains(body, rxMetric) {
-				t.Errorf("network RX metric not found after traffic generation")
-			}
-			if !strings.Contains(body, txMetric) {
-				t.Errorf("network TX metric not found after traffic generation")
+			// Poll until metrics show non-zero values (traffic was generated above)
+			deadline := time.Now().Add(10 * time.Second)
+			for {
+				body := fetchMetrics(t, metricsURL)
+				if strings.Contains(body, rxMetric) && strings.Contains(body, txMetric) {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("network metrics not found after traffic generation within 10s")
+				}
+				time.Sleep(200 * time.Millisecond)
 			}
 		})
 
