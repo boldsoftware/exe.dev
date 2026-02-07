@@ -1,0 +1,7 @@
+# Pre-warm CI caches every 5 minutes during working hours
+# 6am Eastern (11:00 UTC) through 9pm Pacific (05:00 UTC next day)
+# = hours 0-4 and 11-23 UTC
+*/5 0-4,11-23 * * * root /usr/local/bin/edric-ci-warmup.sh
+
+# Clean up stale VMs and disk images every 15 minutes
+*/15 * * * * root /usr/local/bin/edric-ci-cleanup.sh

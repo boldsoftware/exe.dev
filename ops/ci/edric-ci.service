@@ -1,0 +1,16 @@
+[Unit]
+Description=GitHub Actions Runner (boldsoftware.edric-ci-%i)
+After=network-online.target
+
+[Service]
+Environment="PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+PrivateTmp=true
+ExecStart=/home/runner%i/actions-runner-ci/runsvc.sh
+User=runner%i
+WorkingDirectory=/home/runner%i/actions-runner-ci
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=5min
+
+[Install]
+WantedBy=multi-user.target

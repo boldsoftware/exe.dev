@@ -1,0 +1,16 @@
+[Unit]
+Description=GitHub Actions Runner (boldsoftware.edric-%i)
+After=network-online.target
+
+[Service]
+Environment="PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+Environment="E1E_VM_PREFIX=e1e-runner%i"
+ExecStart=/home/runner%i/actions-runner/runsvc.sh
+User=runner%i
+WorkingDirectory=/home/runner%i/actions-runner
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=5min
+
+[Install]
+WantedBy=multi-user.target

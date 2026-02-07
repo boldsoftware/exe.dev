@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+#
+# Pre-warm CI caches for all runner users on edric.
+# Run via cron to ensure CI runs start fast.
+#
+set -euo pipefail
+
+LOG="/var/log/edric-ci-warmup.log"
+exec >> "$LOG" 2>&1
+echo "=== $(date) === warmup starting ==="
+
+DEPLOY_KEY="/etc/edric-ci-deploy-key"
+GIT_SSH_CMD="ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=accept-new"
+PREFETCH_URL="git@github.com:boldsoftware/exe.git"
+PREFETCH_REFSPEC="+refs/heads/*:refs/prefetch/remotes/origin/*"
+
+for i in $(seq 0 7); do
+    USER="runner${i}"
+    HOME="/home/${USER}"
+
+    echo "--- warming ${USER} ---"
+
+    # 1. Git prefetch in both workdirs (e1e and ci).
+    # Fetches to refs/prefetch/ so it never conflicts with actions/checkout.
+    # Objects are shared, so subsequent checkouts are fast.
+    for WORKDIR in "${HOME}/_work/exe/exe" "${HOME}/_work-ci/exe/exe"; do
+        if [[ -d "${WORKDIR}/.git" ]]; then
+            su - "$USER" -c "GIT_SSH_COMMAND='$GIT_SSH_CMD' git -C ${WORKDIR} fetch --quiet $PREFETCH_URL $PREFETCH_REFSPEC" || true
+        fi
+    done
+
+    # 2. Go module download + build cache (use e1e workdir if it exists, else ci)
+    WORKDIR=""
+    if [[ -f "${HOME}/_work/exe/exe/go.mod" ]]; then
+        WORKDIR="${HOME}/_work/exe/exe"
+    elif [[ -f "${HOME}/_work-ci/exe/exe/go.mod" ]]; then
+        WORKDIR="${HOME}/_work-ci/exe/exe"
+    fi
+
+    if [[ -n "$WORKDIR" ]]; then
+        su - "$USER" -c "cd ${WORKDIR} && go mod download" || true
+        su - "$USER" -c "cd ${WORKDIR} && go build ./..." || true
+        su - "$USER" -c "cd ${WORKDIR} && make exelet-fs" || true
+
+        # 2b. Shelley Go module download + build cache
+        if [[ -f "${WORKDIR}/shelley/go.mod" ]]; then
+            su - "$USER" -c "cd ${WORKDIR}/shelley && go mod download" || true
+            su - "$USER" -c "cd ${WORKDIR}/shelley && go build ./..." || true
+        fi
+
+        # 2c. Shelley UI dependencies
+        if [[ -f "${WORKDIR}/shelley/ui/pnpm-lock.yaml" ]]; then
+            su - "$USER" -c "cd ${WORKDIR}/shelley/ui && pnpm install --frozen-lockfile --silent" || true
+        fi
+    fi
+
+    # 3. VM snapshot (only needed for e1e runners, and only runner0 needs to
+    #    actually create it since the backing images are shared).
+    #    Use flock to prevent concurrent cron invocations from starting multiple
+    #    VMs when the snapshot doesn't exist yet (e.g., after midnight date rollover).
+    if [[ $i -eq 0 && -d "${HOME}/_work/exe/exe/ops" ]]; then
+        flock -n /tmp/edric-ci-snapshot.lock \
+            su - "$USER" -c "cd ${HOME}/_work/exe/exe && ./ops/ci-vm-snapshot.sh" || true
+    fi
+
+    # 4. Copy snapshot cache markers to all runner users
+    if [[ $i -gt 0 ]]; then
+        SNAPSHOT_CACHE=$(ls -td /home/runner0/.cache/exedev/ci-vm-* 2>/dev/null | head -1)
+        if [[ -n "$SNAPSHOT_CACHE" ]]; then
+            CACHE_NAME=$(basename "$SNAPSHOT_CACHE")
+            DEST="${HOME}/.cache/exedev/${CACHE_NAME}"
+            if [[ ! -d "$DEST" ]]; then
+                mkdir -p "$DEST"
+                cp /home/runner0/.cache/exedev/${CACHE_NAME}/*.qcow2 "$DEST/" 2>/dev/null || true
+                chown -R "${USER}:${USER}" "${HOME}/.cache"
+            fi
+        fi
+    fi
+done
+
+echo "=== $(date) === warmup complete ==="
