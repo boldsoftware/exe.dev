@@ -11,7 +11,7 @@ Primary CI machine. Ubuntu 24.04, 64 CPUs, 503GB RAM, 4x 3.6TB NVMe.
 | Name | Labels | Purpose |
 |------|--------|---------|
 | `edric-0` .. `edric-7` | `self-hosted, Linux, X64, libvirt, edric` | e1e tests (VM-based) |
-| `edric-ci-0` .. `edric-ci-7` | `self-hosted, Linux, X64, exe-ci, edric` | non-e1e tests (unit tests, linting) |
+| `edric-ci-0` .. `edric-ci-7` | `self-hosted, Linux, X64, exe-ci, edric` | non-e1e tests, shelley tests |
 
 All 16 runners are org-level (registered under `boldsoftware`, not a specific repo).
 
@@ -28,6 +28,26 @@ actions.runner.boldsoftware.edric-ci-{0..7}
 ### ci.bold.dev (`ssh root@ci.bold.dev`)
 
 Original CI machine. Runs the existing `exe-ci` and `libvirt` runners.
+
+## Shelley Tests
+
+Shelley tests run on the `edric-ci-*` runners (same pool as non-e1e tests). The shelley-tests.yml workflow uses `runs-on: [self-hosted, exe-ci]`.
+
+**Installed software for shelley:**
+- Google Chrome (`google-chrome-stable`) — needed by Go browse tests (chromedp)
+- pnpm 10 (global) — used by warmup; CI also installs via `pnpm/action-setup`
+- Node.js and Go versions are managed per-run by `actions/setup-node` and `actions/setup-go`
+
+Playwright E2E tests (`run_playwright: true`) are skipped in the commit queue but run in the standalone shelley-tests.yml workflow. The `npx playwright install --with-deps chromium` step installs the Playwright-specific chromium binary; the Google Chrome system deps satisfy the shared library requirements.
+
+## Targeting Edric
+
+All edric runners have the `edric` label. To force a CI run onto edric (e.g. for testing), add `edric` to the `runs-on` array:
+
+```yaml
+runs-on: [self-hosted, exe-ci, edric]  # only edric CI runners
+runs-on: [self-hosted, libvirt, edric]  # only edric e1e runners
+```
 
 ## How e1e Test Isolation Works
 
@@ -88,19 +108,31 @@ When the cache is cold, `ci-vm-snapshot.sh` creates a VM, lets it fully provisio
 Defined in `/etc/cron.d/edric-ci` on edric:
 
 **Warmup** (`/usr/local/bin/edric-ci-warmup.sh`): Runs every 5 minutes during working hours (6am ET – 9pm PT). Pre-warms:
-- Git fetch (so checkout is fast)
-- Go module cache (`go mod download`)
-- Go build cache (`go build ./...`)
+- Git prefetch via SSH deploy key (fetches to `refs/prefetch/`, see below)
+- Go module cache (`go mod download`) for both main and shelley modules
+- Go build cache (`go build ./...`) for both main and shelley modules
 - `exelet-fs` download (`make exelet-fs`)
+- Shelley UI dependencies (`pnpm install` in `shelley/ui/`)
 - VM snapshot creation (for the new day's cache key)
 - Snapshot cache propagation from runner0 to runner1-7
 
 Almost always a no-op (all checks are idempotent). Only does real work when code changes or the date rolls over.
 
+**Git maintenance**: Each runner workdir has `git maintenance start` enabled (per-user crontab). This handles local repo housekeeping (gc, loose-objects, incremental-repack) on an hourly/daily/weekly schedule. The `prefetch` task is handled by the warmup script instead (see below) because it needs SSH credentials.
+
 **Cleanup** (`/usr/local/bin/edric-ci-cleanup.sh`): Runs every 15 minutes. Cleans up:
 - Stale VMs running longer than 30 minutes
 - Orphaned disk images with no matching running VM
 - Old snapshot caches (>2 days)
+
+## Git Prefetch
+
+The warmup script pre-fetches git objects so that `actions/checkout` is fast. This is done carefully to avoid collisions:
+
+- **Problem**: A naive `git fetch origin` in the warmup cron would update `refs/remotes/origin/*` at the same time as `actions/checkout`, causing ref lock errors (`cannot lock ref`).
+- **Solution**: The warmup fetches to `refs/prefetch/remotes/origin/*` instead. Git objects are shared across all refs, so when `actions/checkout` later does its real fetch, the objects are already local and only ref pointers need updating.
+
+The prefetch uses a read-only SSH deploy key at `/etc/edric-ci-deploy-key` (the repo is private, so HTTPS without credentials won't work). The key is owned by `root:ci-runners` with mode `640`, readable by all runner users via the `ci-runners` group.
 
 ## Debugging
 
