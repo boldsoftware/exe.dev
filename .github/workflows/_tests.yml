@@ -123,7 +123,7 @@ jobs:
 
       - name: destroy stale VMs
         run: |
-          sudo virsh list --name | grep ci-ubuntu | xargs -r -n 1 sudo virsh destroy || true
+          sudo virsh list --name | grep ci-ubuntu-$(whoami) | xargs -r -n 1 sudo virsh destroy || true
 
       - name: ensure vm snapshot exists
         id: vm
