@@ -17,6 +17,8 @@ jobs:
         run: |
           if hostname -f | grep -qE '\.(exe\.dev|exe\.xyz)$'; then
             echo "self_hosted=true" >> "$GITHUB_OUTPUT"
+          elif test `hostname` = edric; then
+            echo "self_hosted=true" >> "$GITHUB_OUTPUT"
           else
             echo "self_hosted=false" >> "$GITHUB_OUTPUT"
           fi
