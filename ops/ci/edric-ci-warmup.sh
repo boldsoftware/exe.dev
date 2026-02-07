@@ -38,9 +38,16 @@ for i in $(seq 0 7); do
     fi
 
     if [[ -n "$WORKDIR" ]]; then
+        # Restore any tracked files that were accidentally deleted (e.g. by a
+        # previous make exelet-fs with empty GOARCH). Without this, go build
+        # fails because the exelet/fs Go source files are missing.
+        su - "$USER" -c "cd ${WORKDIR} && git checkout -- exelet/fs/*.go exelet/fs/*/.gitkeep" 2>/dev/null || true
+
         su - "$USER" -c "cd ${WORKDIR} && go mod download" || true
-        su - "$USER" -c "cd ${WORKDIR} && go build ./..." || true
+        # Download exelet-fs BEFORE go build, since go build needs the
+        # embedded files that make exelet-fs provides.
         su - "$USER" -c "cd ${WORKDIR} && make exelet-fs" || true
+        su - "$USER" -c "cd ${WORKDIR} && go build ./..." || true
 
         # 2b. Shelley Go module download + build cache
         if [[ -f "${WORKDIR}/shelley/go.mod" ]]; then
@@ -59,8 +66,23 @@ for i in $(seq 0 7); do
     #    Use flock to prevent concurrent cron invocations from starting multiple
     #    VMs when the snapshot doesn't exist yet (e.g., after midnight date rollover).
     if [[ $i -eq 0 && -d "${HOME}/_work/exe/exe/ops" ]]; then
-        flock -n /tmp/edric-ci-snapshot.lock \
-            su - "$USER" -c "cd ${HOME}/_work/exe/exe && ./ops/ci-vm-snapshot.sh" || true
+        # Clean up any VMs left from previous failed snapshot attempts.
+        for VM in $(virsh list --name 2>/dev/null | grep "^ci-ubuntu-${USER}" || true); do
+            echo "Destroying leftover snapshot VM: $VM"
+            virsh destroy "$VM" || true
+        done
+
+        if flock -n /tmp/edric-ci-snapshot.lock \
+            su - "$USER" -c "cd ${HOME}/_work/exe/exe && ./ops/ci-vm-snapshot.sh"; then
+            echo "Snapshot creation succeeded"
+        else
+            echo "Snapshot creation failed or skipped (lock held)"
+            # Clean up any VMs left by the failed attempt.
+            for VM in $(virsh list --name 2>/dev/null | grep "^ci-ubuntu-${USER}" || true); do
+                echo "Destroying snapshot VM after failure: $VM"
+                virsh destroy "$VM" || true
+            done
+        fi
     fi
 
     # 4. Copy snapshot cache markers to all runner users
