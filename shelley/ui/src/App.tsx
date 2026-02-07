@@ -119,6 +119,7 @@ function App() {
   // Global ephemeral terminals - persist across conversation switches
   const [ephemeralTerminals, setEphemeralTerminals] = useState<EphemeralTerminal[]>([]);
   const [subagentUpdate, setSubagentUpdate] = useState<Conversation | null>(null);
+  const [showActiveTrigger, setShowActiveTrigger] = useState(0);
   const [subagentStateUpdate, setSubagentStateUpdate] = useState<{
     conversation_id: string;
     working: boolean;
@@ -465,8 +466,19 @@ function App() {
   };
 
   const handleConversationUnarchived = (conversation: Conversation) => {
-    // Add the unarchived conversation back to the list (not working by default)
-    setConversations((prev) => [{ ...conversation, working: false }, ...prev]);
+    // Add the unarchived conversation back to the list if not already present
+    setConversations((prev) => {
+      if (prev.some((c) => c.conversation_id === conversation.conversation_id)) {
+        return prev;
+      }
+      return [{ ...conversation, working: false }, ...prev];
+    });
+    // Update viewedConversation so archived state reflects immediately
+    if (conversation.conversation_id === currentConversationId) {
+      setViewedConversation(conversation);
+    }
+    // Switch drawer back to active conversations view
+    setShowActiveTrigger((prev) => prev + 1);
   };
 
   const handleConversationRenamed = (conversation: Conversation) => {
@@ -506,9 +518,11 @@ function App() {
     );
   }
 
-  const currentConversation = conversations.find(
-    (conv) => conv.conversation_id === currentConversationId,
-  );
+  const currentConversation =
+    conversations.find((conv) => conv.conversation_id === currentConversationId) ||
+    (viewedConversation?.conversation_id === currentConversationId
+      ? { ...viewedConversation, working: false }
+      : undefined);
 
   // Get the CWD from the current conversation, or fall back to the most recent conversation
   const mostRecentCwd =
@@ -592,6 +606,7 @@ function App() {
           onConversationRenamed={handleConversationRenamed}
           subagentUpdate={subagentUpdate}
           subagentStateUpdate={subagentStateUpdate}
+          showActiveTrigger={showActiveTrigger}
         />
 
         {/* Main chat interface */}
@@ -617,6 +632,7 @@ function App() {
             ephemeralTerminals={ephemeralTerminals}
             setEphemeralTerminals={setEphemeralTerminals}
             navigateUserMessageTrigger={navigateUserMessageTrigger}
+            onConversationUnarchived={handleConversationUnarchived}
           />
         </div>
 

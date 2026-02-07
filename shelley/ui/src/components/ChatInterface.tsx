@@ -509,6 +509,7 @@ interface ChatInterfaceProps {
   ephemeralTerminals: EphemeralTerminal[];
   setEphemeralTerminals: React.Dispatch<React.SetStateAction<EphemeralTerminal[]>>;
   navigateUserMessageTrigger?: number; // positive = next, negative = previous
+  onConversationUnarchived?: (conversation: Conversation) => void;
 }
 
 function ChatInterface({
@@ -532,6 +533,7 @@ function ChatInterface({
   ephemeralTerminals,
   setEphemeralTerminals,
   navigateUserMessageTrigger,
+  onConversationUnarchived,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1218,8 +1220,22 @@ function ChatInterface({
     return modelObj?.display_name || selectedModel;
   })();
 
+  const handleUnarchive = async () => {
+    if (!conversationId) return;
+    try {
+      const conversation = await api.unarchiveConversation(conversationId);
+      onConversationUnarchived?.(conversation);
+    } catch (err) {
+      console.error("Failed to unarchive conversation:", err);
+    }
+  };
+
   const getDisplayTitle = () => {
-    return currentConversation?.slug || "Shelley";
+    const title = currentConversation?.slug || "Shelley";
+    if (currentConversation?.archived) {
+      return `${title} (archived)`;
+    }
+    return title;
   };
 
   // Process messages to coalesce tool calls
@@ -1871,7 +1887,15 @@ function ChatInterface({
       {/* Unified Status Bar */}
       <div className="status-bar">
         <div className="status-bar-content">
-          {isDisconnected ? (
+          {currentConversation?.archived ? (
+            // Archived state
+            <>
+              <span className="status-message">This conversation is archived.</span>
+              <button onClick={handleUnarchive} className="status-button status-button-primary">
+                Unarchive
+              </button>
+            </>
+          ) : isDisconnected ? (
             // Disconnected state
             <>
               <span className="status-message status-warning">Disconnected</span>
@@ -1994,19 +2018,21 @@ function ChatInterface({
         </div>
       </div>
 
-      {/* Message input */}
-      <MessageInput
-        key={conversationId || "new"}
-        onSend={sendMessage}
-        disabled={sending || loading}
-        autoFocus={true}
-        injectedText={terminalInjectedText || diffCommentText}
-        onClearInjectedText={() => {
-          setDiffCommentText("");
-          setTerminalInjectedText(null);
-        }}
-        persistKey={conversationId || "new-conversation"}
-      />
+      {/* Message input - hidden for archived conversations */}
+      {!currentConversation?.archived && (
+        <MessageInput
+          key={conversationId || "new"}
+          onSend={sendMessage}
+          disabled={sending || loading}
+          autoFocus={true}
+          injectedText={terminalInjectedText || diffCommentText}
+          onClearInjectedText={() => {
+            setDiffCommentText("");
+            setTerminalInjectedText(null);
+          }}
+          persistKey={conversationId || "new-conversation"}
+        />
+      )}
 
       {/* Directory Picker Modal */}
       <DirectoryPickerModal

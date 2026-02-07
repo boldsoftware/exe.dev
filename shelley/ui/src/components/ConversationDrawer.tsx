@@ -17,6 +17,7 @@ interface ConversationDrawerProps {
   onConversationRenamed?: (conversation: Conversation) => void;
   subagentUpdate?: Conversation | null; // When a subagent is created/updated
   subagentStateUpdate?: { conversation_id: string; working: boolean } | null; // When a subagent's working state changes
+  showActiveTrigger?: number; // Increment to switch back to active conversations view
 }
 
 function ConversationDrawer({
@@ -34,6 +35,7 @@ function ConversationDrawer({
   onConversationRenamed,
   subagentUpdate,
   subagentStateUpdate,
+  showActiveTrigger,
 }: ConversationDrawerProps) {
   const [showArchived, setShowArchived] = useState(false);
   const [archivedConversations, setArchivedConversations] = useState<Conversation[]>([]);
@@ -49,6 +51,13 @@ function ConversationDrawer({
       loadArchivedConversations();
     }
   }, [showArchived]);
+
+  // Switch back to active conversations when triggered externally (e.g., after unarchive)
+  useEffect(() => {
+    if (showActiveTrigger && showActiveTrigger > 0) {
+      setShowArchived(false);
+    }
+  }, [showActiveTrigger]);
 
   // Load subagents for the current conversation (or parent if viewing a subagent)
   useEffect(() => {
@@ -374,12 +383,8 @@ function ConversationDrawer({
                   <React.Fragment key={conversation.conversation_id}>
                     <div
                       className={`conversation-item ${isActive ? "active" : ""}`}
-                      onClick={() => {
-                        if (!showArchived) {
-                          onSelectConversation(conversation);
-                        }
-                      }}
-                      style={{ cursor: showArchived ? "default" : "pointer" }}
+                      onClick={() => onSelectConversation(conversation)}
+                      style={{ cursor: "pointer" }}
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
