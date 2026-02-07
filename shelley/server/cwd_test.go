@@ -208,24 +208,18 @@ func TestListDirectory(t *testing.T) {
 		}
 	})
 
-	t.Run("hidden_directories_included", func(t *testing.T) {
-		// Create a temp directory with a hidden directory
+	t.Run("hidden_directories_sorted_last", func(t *testing.T) {
+		// Create a temp directory with hidden and non-hidden directories
 		tmpDir, err := os.MkdirTemp("", "listdir_hidden_test")
 		if err != nil {
 			t.Fatalf("failed to create temp dir: %v", err)
 		}
 		defer os.RemoveAll(tmpDir)
 
-		// Create a visible subdirectory
-		visibleDir := tmpDir + "/visible"
-		if err := os.Mkdir(visibleDir, 0o755); err != nil {
-			t.Fatalf("failed to create visible dir: %v", err)
-		}
-
-		// Create a hidden subdirectory
-		hiddenDir := tmpDir + "/.hidden"
-		if err := os.Mkdir(hiddenDir, 0o755); err != nil {
-			t.Fatalf("failed to create hidden dir: %v", err)
+		for _, name := range []string{".alpha", "beta", ".gamma", "delta", "alpha"} {
+			if err := os.Mkdir(filepath.Join(tmpDir, name), 0o755); err != nil {
+				t.Fatalf("failed to create dir %s: %v", name, err)
+			}
 		}
 
 		req := httptest.NewRequest("GET", "/api/list-directory?path="+tmpDir, nil)
@@ -241,21 +235,16 @@ func TestListDirectory(t *testing.T) {
 			t.Fatalf("failed to parse response: %v", err)
 		}
 
-		// Should include both visible and hidden directories
-		if len(resp.Entries) != 2 {
-			t.Errorf("expected 2 entries, got: %d", len(resp.Entries))
+		if len(resp.Entries) != 5 {
+			t.Fatalf("expected 5 entries, got: %d", len(resp.Entries))
 		}
 
-		// Check that both directories are present (sorted alphabetically, hidden first)
-		names := make(map[string]bool)
-		for _, e := range resp.Entries {
-			names[e.Name] = true
-		}
-		if !names[".hidden"] {
-			t.Errorf("expected .hidden to be included")
-		}
-		if !names["visible"] {
-			t.Errorf("expected visible to be included")
+		// Non-hidden sorted first, then hidden sorted
+		want := []string{"alpha", "beta", "delta", ".alpha", ".gamma"}
+		for i, e := range resp.Entries {
+			if e.Name != want[i] {
+				t.Errorf("entry[%d]: expected %q, got %q", i, want[i], e.Name)
+			}
 		}
 	})
 
@@ -357,6 +346,86 @@ func TestListDirectory(t *testing.T) {
 		// Non-git dir should not have a subject
 		if nonGitEntry.GitHeadSubject != "" {
 			t.Errorf("expected empty git_head_subject for non-git dir, got: %q", nonGitEntry.GitHeadSubject)
+		}
+	})
+
+	t.Run("git_worktree_root", func(t *testing.T) {
+		// Create a main git repo and a worktree, then verify that
+		// listing the worktree returns git_worktree_root pointing to the main repo.
+		tmpDir, err := os.MkdirTemp("", "listdir_wtroot_test")
+		if err != nil {
+			t.Fatalf("failed to create temp dir: %v", err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		mainRepo := filepath.Join(tmpDir, "main-repo")
+		if err := os.Mkdir(mainRepo, 0o755); err != nil {
+			t.Fatalf("failed to create main repo dir: %v", err)
+		}
+
+		for _, args := range [][]string{
+			{"git", "init"},
+			{"git", "config", "user.email", "test@example.com"},
+			{"git", "config", "user.name", "Test User"},
+		} {
+			cmd := exec.Command(args[0], args[1:]...)
+			cmd.Dir = mainRepo
+			if err := cmd.Run(); err != nil {
+				t.Fatalf("%v failed: %v", args, err)
+			}
+		}
+
+		if err := os.WriteFile(filepath.Join(mainRepo, "README.md"), []byte("# Hi"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command("git", "add", ".")
+		cmd.Dir = mainRepo
+		if err := cmd.Run(); err != nil {
+			t.Fatal(err)
+		}
+		cmd = exec.Command("git", "commit", "-m", "init\n\nPrompt: test")
+		cmd.Dir = mainRepo
+		if err := cmd.Run(); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create a worktree
+		cmd = exec.Command("git", "branch", "wt-branch")
+		cmd.Dir = mainRepo
+		if err := cmd.Run(); err != nil {
+			t.Fatal(err)
+		}
+		worktreePath := filepath.Join(tmpDir, "my-worktree")
+		cmd = exec.Command("git", "worktree", "add", worktreePath, "wt-branch")
+		cmd.Dir = mainRepo
+		if err := cmd.Run(); err != nil {
+			t.Fatal(err)
+		}
+
+		// List the worktree directory itself - should have git_worktree_root
+		req := httptest.NewRequest("GET", "/api/list-directory?path="+worktreePath, nil)
+		w := httptest.NewRecorder()
+		h.server.handleListDirectory(w, req)
+
+		var resp ListDirectoryResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to parse response: %v", err)
+		}
+		if resp.GitWorktreeRoot != mainRepo {
+			t.Errorf("expected git_worktree_root=%q, got %q", mainRepo, resp.GitWorktreeRoot)
+		}
+
+		// List the main repo directory - should NOT have git_worktree_root
+		req = httptest.NewRequest("GET", "/api/list-directory?path="+mainRepo, nil)
+		w = httptest.NewRecorder()
+		h.server.handleListDirectory(w, req)
+
+		var resp2 ListDirectoryResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp2); err != nil {
+			t.Fatalf("failed to parse response: %v", err)
+		}
+		if resp2.GitWorktreeRoot != "" {
+			t.Errorf("main repo should not have git_worktree_root, got %q", resp2.GitWorktreeRoot)
 		}
 	})
 

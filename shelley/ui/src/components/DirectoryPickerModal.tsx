@@ -12,6 +12,7 @@ interface CachedDirectory {
   parent: string;
   entries: DirectoryEntry[];
   git_head_subject?: string;
+  git_worktree_root?: string;
 }
 
 interface DirectoryPickerModalProps {
@@ -103,6 +104,7 @@ function DirectoryPickerModal({
         parent: result.parent,
         entries: result.entries || [],
         git_head_subject: result.git_head_subject,
+        git_worktree_root: result.git_worktree_root,
       };
 
       // Cache it
@@ -340,6 +342,30 @@ function DirectoryPickerModal({
                 </span>
               )}
             </div>
+          )}
+
+          {/* Go to git root button for worktrees */}
+          {displayDir?.git_worktree_root && (
+            <button
+              className="directory-picker-git-root-btn"
+              onClick={() => setInputPath(displayDir.git_worktree_root + "/")}
+            >
+              <svg
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                className="directory-picker-icon"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
+                />
+              </svg>
+              <span>Go to git root</span>
+              <span className="directory-picker-git-root-path">{displayDir.git_worktree_root}</span>
+            </button>
           )}
 
           {/* Error message */}

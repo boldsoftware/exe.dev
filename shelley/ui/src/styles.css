@@ -2891,6 +2891,39 @@ svg {
   font-weight: 500;
 }
 
+.directory-picker-git-root-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.375rem 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.375rem;
+  color: var(--accent-color, #f97316);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.directory-picker-git-root-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-color, #f97316);
+}
+
+.directory-picker-git-root-btn .directory-picker-icon {
+  flex-shrink: 0;
+}
+
+.directory-picker-git-root-path {
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-left: auto;
+}
+
 .directory-picker-error {
   padding: 0.5rem 0.75rem;
   background: var(--error-bg);

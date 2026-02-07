@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -354,10 +355,11 @@ type DirectoryEntry struct {
 
 // ListDirectoryResponse is the response from the list-directory endpoint
 type ListDirectoryResponse struct {
-	Path           string           `json:"path"`
-	Parent         string           `json:"parent"`
-	Entries        []DirectoryEntry `json:"entries"`
-	GitHeadSubject string           `json:"git_head_subject,omitempty"`
+	Path            string           `json:"path"`
+	Parent          string           `json:"parent"`
+	Entries         []DirectoryEntry `json:"entries"`
+	GitHeadSubject  string           `json:"git_head_subject,omitempty"`
+	GitWorktreeRoot string           `json:"git_worktree_root,omitempty"`
 }
 
 // handleListDirectory lists the contents of a directory for the directory picker
@@ -447,6 +449,16 @@ func (s *Server) handleListDirectory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Sort entries: non-hidden first, then hidden (.*), alphabetically within each group
+	sort.Slice(entries, func(i, j int) bool {
+		iHidden := strings.HasPrefix(entries[i].Name, ".")
+		jHidden := strings.HasPrefix(entries[j].Name, ".")
+		if iHidden != jHidden {
+			return !iHidden // non-hidden comes first
+		}
+		return entries[i].Name < entries[j].Name
+	})
+
 	// Calculate parent directory
 	parent := filepath.Dir(path)
 	if parent == path {
@@ -463,6 +475,9 @@ func (s *Server) handleListDirectory(w http.ResponseWriter, r *http.Request) {
 	// Check if the current directory itself is a git repo
 	if isGitRepo(path) {
 		response.GitHeadSubject = getGitHeadSubject(path)
+		if root := getGitWorktreeRoot(path); root != "" {
+			response.GitWorktreeRoot = root
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -502,6 +517,42 @@ func getGitHeadSubject(repoPath string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(output))
+}
+
+// getGitWorktreeRoot returns the main repository root if the given path is
+// a git worktree (not the main repo itself). Returns "" otherwise.
+func getGitWorktreeRoot(repoPath string) string {
+	// Get the worktree's git dir and the common (main repo) git dir
+	cmd := exec.Command("git", "rev-parse", "--git-dir", "--git-common-dir")
+	cmd.Dir = repoPath
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	lines := strings.SplitN(strings.TrimSpace(string(output)), "\n", 2)
+	if len(lines) != 2 {
+		return ""
+	}
+	gitDir := lines[0]
+	commonDir := lines[1]
+
+	// Resolve relative paths
+	if !filepath.IsAbs(gitDir) {
+		gitDir = filepath.Join(repoPath, gitDir)
+	}
+	if !filepath.IsAbs(commonDir) {
+		commonDir = filepath.Join(repoPath, commonDir)
+	}
+	gitDir = filepath.Clean(gitDir)
+	commonDir = filepath.Clean(commonDir)
+
+	// If they're the same, this is the main repo, not a worktree
+	if gitDir == commonDir {
+		return ""
+	}
+
+	// The main repo root is the parent of the common .git dir
+	return filepath.Dir(commonDir)
 }
 
 // handleCreateDirectory creates a new directory
