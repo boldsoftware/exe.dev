@@ -52,7 +52,11 @@ func run() error {
 	startExelet := flag.Bool("start-exelet", false, "Build and start exelet on lima-exe-ctr (local/test only)")
 	multiExelet := flag.Bool("multi-exelet", false, "with -start-exelet, also start exelet on lima-exe-ctr-tests; may interact badly with concurrent automated tests")
 	enableExeletStorageReplication := flag.Bool("enable-exelet-storage-replication", false, "with -multi-exelet, enable storage replication from exe-ctr to exe-ctr-tests")
-	lmtpSocket := flag.String("lmtp-socket", "/var/run/exed/lmtp.sock", "LMTP socket path; empty to disable")
+	lmtpSocketDefault := "/var/run/exed/lmtp.sock"
+	if runtime.GOOS == "darwin" {
+		lmtpSocketDefault = filepath.Join(os.TempDir(), "exed-lmtp.sock")
+	}
+	lmtpSocket := flag.String("lmtp-socket", lmtpSocketDefault, "LMTP socket path; empty to disable")
 	flag.Parse()
 
 	// Parse stage
