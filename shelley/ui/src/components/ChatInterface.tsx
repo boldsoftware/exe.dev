@@ -599,8 +599,9 @@ function ChatInterface({
   const links = window.__SHELLEY_INIT__?.links || [];
   const hostname = window.__SHELLEY_INIT__?.hostname || "localhost";
   const { hasUpdate, openModal: openVersionModal, VersionModal } = useVersionChecker();
-  const [, setReconnectAttempts] = useState(0);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [isDisconnected, setIsDisconnected] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   // Ephemeral terminals are local-only and not persisted to the database
   const [ephemeralTerminals, setEphemeralTerminals] = useState<EphemeralTerminal[]>([]);
@@ -697,19 +698,47 @@ function ChatInterface({
   // Store reconnect function in a ref so event listeners always have the latest version
   const reconnectRef = useRef<() => void>(() => {});
 
+  // Check connection health - returns true if connection needs to be re-established
+  const checkConnectionHealth = useCallback(() => {
+    if (!conversationId) return false;
+
+    const es = eventSourceRef.current;
+    // No connection exists
+    if (!es) return true;
+    // EventSource.CLOSED = 2, EventSource.CONNECTING = 0
+    // If closed or errored, we need to reconnect
+    if (es.readyState === 2) return true;
+    // If still connecting after coming back, that's fine
+    return false;
+  }, [conversationId]);
+
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        reconnectRef.current();
+        // When tab becomes visible, always check connection health
+        if (checkConnectionHealth()) {
+          console.log("Tab visible: connection unhealthy, reconnecting");
+          reconnectRef.current();
+        } else {
+          console.log("Tab visible: connection healthy");
+        }
       }
     };
 
     const handleFocus = () => {
-      reconnectRef.current();
+      // On focus, check connection health
+      if (checkConnectionHealth()) {
+        console.log("Window focus: connection unhealthy, reconnecting");
+        reconnectRef.current();
+      }
     };
 
     const handleOnline = () => {
-      reconnectRef.current();
+      // Coming back online - definitely try to reconnect if needed
+      if (checkConnectionHealth()) {
+        console.log("Online: connection unhealthy, reconnecting");
+        reconnectRef.current();
+      }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -721,7 +750,7 @@ function ChatInterface({
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("online", handleOnline);
     };
-  }, []);
+  }, [checkConnectionHealth]);
 
   const loadMessages = async () => {
     if (!conversationId) return;
@@ -874,6 +903,7 @@ function ChatInterface({
 
         if (attempts > delays.length) {
           // Show disconnected UI but start periodic retry every 30 seconds
+          setIsReconnecting(false);
           setIsDisconnected(true);
           if (!periodicRetryRef.current) {
             periodicRetryRef.current = window.setInterval(() => {
@@ -886,6 +916,8 @@ function ChatInterface({
           return attempts;
         }
 
+        // Show reconnecting indicator during backoff attempts
+        setIsReconnecting(true);
         const delay = delays[attempts - 1];
         console.log(`Reconnecting in ${delay}ms (attempt ${attempts}/${delays.length})`);
 
@@ -904,6 +936,7 @@ function ChatInterface({
       // Reset reconnect attempts and clear periodic retry on successful connection
       setReconnectAttempts(0);
       setIsDisconnected(false);
+      setIsReconnecting(false);
       if (periodicRetryRef.current) {
         clearInterval(periodicRetryRef.current);
         periodicRetryRef.current = null;
@@ -981,6 +1014,7 @@ function ChatInterface({
   const handleManualReconnect = () => {
     if (!conversationId || eventSourceRef.current) return;
     setIsDisconnected(false);
+    setIsReconnecting(false);
     setReconnectAttempts(0);
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -993,15 +1027,30 @@ function ChatInterface({
     setupMessageStream();
   };
 
-  // Update the reconnect ref when isDisconnected or conversationId changes
+  // Update the reconnect ref - always attempt reconnect if connection is unhealthy
   useEffect(() => {
     reconnectRef.current = () => {
-      if (isDisconnected && conversationId && !eventSourceRef.current) {
-        console.log("Visibility/focus/online triggered reconnect attempt");
-        handleManualReconnect();
+      if (!conversationId) return;
+      // Always try to reconnect if there's no active connection
+      if (!eventSourceRef.current || eventSourceRef.current.readyState === 2) {
+        console.log("Reconnect triggered: no active connection");
+        // Clear any pending reconnect attempts
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
+        if (periodicRetryRef.current) {
+          clearInterval(periodicRetryRef.current);
+          periodicRetryRef.current = null;
+        }
+        // Reset state and reconnect
+        setIsDisconnected(false);
+        setIsReconnecting(false);
+        setReconnectAttempts(0);
+        setupMessageStream();
       }
     };
-  }, [isDisconnected, conversationId]);
+  }, [conversationId]);
 
   // Handle external trigger to open diff viewer
   useEffect(() => {
@@ -1644,6 +1693,14 @@ function ChatInterface({
               >
                 Retry
               </button>
+            </>
+          ) : isReconnecting ? (
+            // Reconnecting state - show during backoff attempts
+            <>
+              <span className="status-message status-reconnecting">
+                Reconnecting{reconnectAttempts > 0 ? ` (${reconnectAttempts}/3)` : ""}
+                <span className="reconnecting-dots">...</span>
+              </span>
             </>
           ) : error ? (
             // Error state

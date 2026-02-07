@@ -2073,6 +2073,26 @@ select:disabled {
   font-weight: 500;
 }
 
+.status-message.status-reconnecting {
+  color: var(--blue-text);
+  font-weight: 500;
+}
+
+.reconnecting-dots {
+  display: inline-block;
+  animation: reconnecting-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes reconnecting-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .animated-working {
   display: inline;
 }
