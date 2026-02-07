@@ -23,7 +23,7 @@ permissions:
 jobs:
   commit-validation-and-formatting:
     name: Commit Validation and Formatting
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, exe-ci]
     permissions:
       contents: write # needed for git push
       actions: write # needed to save caches
