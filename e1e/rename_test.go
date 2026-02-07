@@ -21,6 +21,31 @@ func TestRename(t *testing.T) {
 
 	pty, cookies, keyFile, _ := registerForExeDev(t)
 
+	// Run error cases that don't need VMs first
+	t.Run("Usage", func(t *testing.T) {
+		// Test with no arguments
+		pty.sendLine("rename")
+		pty.want("usage")
+		pty.wantPrompt()
+
+		// Test with one argument
+		pty.sendLine("rename onlyarg")
+		pty.want("usage")
+		pty.wantPrompt()
+
+		// Test with three arguments
+		pty.sendLine("rename arg1 arg2 arg3")
+		pty.want("usage")
+		pty.wantPrompt()
+	})
+
+	t.Run("NotFound", func(t *testing.T) {
+		// Try to rename a non-existent VM
+		pty.sendLine("rename nonexistent-vm-abc newname-xyz")
+		pty.want("not found")
+		pty.wantPrompt()
+	})
+
 	// Create two VMs upfront - they'll be shared by subtests
 	box1 := newBox(t, pty)
 	box2 := newBox(t, pty)
@@ -266,39 +291,4 @@ func TestRename(t *testing.T) {
 	// Cleanup both boxes
 	cleanupBox(t, keyFile, box1)
 	cleanupBox(t, keyFile, box2)
-}
-
-// TestRenameNoVM tests rename command behavior that doesn't require a VM.
-// This includes usage errors and not-found errors.
-func TestRenameNoVM(t *testing.T) {
-	t.Parallel()
-	e1eTestsOnlyRunOnce(t)
-
-	pty, _, _, _ := registerForExeDev(t)
-
-	t.Run("Usage", func(t *testing.T) {
-		// Test with no arguments
-		pty.sendLine("rename")
-		pty.want("usage")
-		pty.wantPrompt()
-
-		// Test with one argument
-		pty.sendLine("rename onlyarg")
-		pty.want("usage")
-		pty.wantPrompt()
-
-		// Test with three arguments
-		pty.sendLine("rename arg1 arg2 arg3")
-		pty.want("usage")
-		pty.wantPrompt()
-	})
-
-	t.Run("NotFound", func(t *testing.T) {
-		// Try to rename a non-existent VM
-		pty.sendLine("rename nonexistent-vm-abc newname-xyz")
-		pty.want("not found")
-		pty.wantPrompt()
-	})
-
-	pty.disconnect()
 }
