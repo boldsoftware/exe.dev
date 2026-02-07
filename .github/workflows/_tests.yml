@@ -10,7 +10,7 @@ on:
 
 jobs:
   test-non-e1e:
-    runs-on: [self-hosted, exe-ci]
+    runs-on: [self-hosted, exe-ci, edric]
     steps:
       - name: Check if self-hosted
         id: check-host
@@ -99,7 +99,7 @@ jobs:
           go tool gotestsum --format testname -- -race $PKGS
 
   test-e1e:
-    runs-on: [self-hosted, linux, x64, libvirt]
+    runs-on: [self-hosted, linux, x64, libvirt, edric]
     permissions:
       contents: write
     steps:

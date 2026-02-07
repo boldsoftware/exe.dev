@@ -28,7 +28,7 @@ on:
 
 jobs:
   test:
-    runs-on: [self-hosted, exe-ci]
+    runs-on: [self-hosted, exe-ci, edric]
     defaults:
       run:
         working-directory: shelley

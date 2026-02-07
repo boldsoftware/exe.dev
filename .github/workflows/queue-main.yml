@@ -23,7 +23,7 @@ permissions:
 jobs:
   commit-validation-and-formatting:
     name: Commit Validation and Formatting
-    runs-on: [self-hosted, exe-ci]
+    runs-on: [self-hosted, exe-ci, edric]
     permissions:
       contents: write # needed for git push
       actions: write # needed to save caches
@@ -306,7 +306,7 @@ jobs:
       run_playwright: false
 
   push-to-main:
-    runs-on: [self-hosted, exe-ci]
+    runs-on: [self-hosted, exe-ci, edric]
     needs: [commit-validation-and-formatting, test, shelley-test]
     if: ${{ !cancelled() && !failure() }}
     permissions:
