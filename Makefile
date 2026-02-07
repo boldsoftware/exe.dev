@@ -257,7 +257,8 @@ whoami-clean: ## Remove ghuser/whoami.sqlite3 so it can be re-downloaded
 EXELET_FS_HASH := $(shell git rev-parse HEAD:exelet/kernel 2>/dev/null)$(shell git rev-parse HEAD:exelet/rovol 2>/dev/null)
 
 exelet-fs: ## Download exelet-fs from Backblaze if hash changed or doesn't exist
-	@CURRENT_HASH="$(EXELET_FS_HASH)"; \
+	@if [ -z "$(GOARCH)" ]; then echo "ERROR: GOARCH is empty (is go in PATH?)" >&2; exit 1; fi; \
+	CURRENT_HASH="$(EXELET_FS_HASH)"; \
 	STORED_HASH=""; \
 	if [ -f exelet/fs/.hash-$(GOARCH) ]; then \
 		STORED_HASH=$$(cat exelet/fs/.hash-$(GOARCH)); \
