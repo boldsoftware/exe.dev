@@ -67,7 +67,7 @@ func (ss *SSHServer) checkCanCreateVM(ctx context.Context, user *exemenu.UserInf
 	if !ss.server.env.SkipBilling {
 		if billingStatus, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserBillingStatus, user.ID); err == nil && userNeedsBilling(&billingStatus) {
 			billingURL := ss.server.webBaseURLNoRequest() + "/billing/update?source=exemenu"
-			return "Billing Required\r\n\r\nYou need to add billing information before creating a VM.\r\n\r\nYou will not be charged during the Developer Preview. The preview ends February 1, 2026.\r\n\r\nVisit: " + billingURL
+			return "Billing Required\r\n\r\nYou need to add billing information before creating a VM.\r\n\r\nVisit: " + billingURL
 		}
 	}
 
