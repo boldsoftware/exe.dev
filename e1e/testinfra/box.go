@@ -168,13 +168,18 @@ func (se *ServerEnv) BoxSSHCommand(ctx context.Context, boxName, keyFile string,
 func (se *ServerEnv) WaitForBoxSSHServer(ctx context.Context, boxName, keyFile string) error {
 	var err error
 	for range 300 {
-		err = se.BoxSSHCommand(ctx, boxName, keyFile, "true").Run()
+		attemptCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		err = se.BoxSSHCommand(attemptCtx, boxName, keyFile, "true").Run()
+		cancel()
 		if err == nil {
 			return nil
 		}
+		if ctx.Err() != nil {
+			return fmt.Errorf("box ssh did not come up, context cancelled: %w", ctx.Err())
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return fmt.Errorf("box ssh did not come up, last error: %v", err)
+	return fmt.Errorf("box ssh did not come up after 300 attempts, last error: %v", err)
 }
 
 // WaitForEmailAndVerify waits for an email message to an address,
