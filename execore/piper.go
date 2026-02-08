@@ -158,7 +158,10 @@ func (p *PiperPlugin) Serve(lis net.Listener) error {
 
 	err = plugin.Serve()
 	if err != nil {
-		slog.Error("Plugin server error", "component", "piper-plugin", "error", err)
+		// Don't log "use of closed network connection" as error - it's expected during shutdown
+		if !strings.Contains(err.Error(), "use of closed network connection") {
+			slog.Error("Plugin server error", "component", "piper-plugin", "error", err)
+		}
 	}
 	return err
 }

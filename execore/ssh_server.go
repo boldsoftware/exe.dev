@@ -165,8 +165,12 @@ func (s *shellSession) Context() context.Context {
 
 // SSHServer wraps the gliderlabs SSH server implementation
 type SSHServer struct {
-	server   *Server
-	srv      *ssh.Server
+	server *Server
+
+	srvMu   sync.Mutex
+	srv     *ssh.Server
+	stopped bool
+
 	commands *exemenu.CommandTree
 }
 
@@ -183,6 +187,10 @@ func NewSSHServer(s *Server) *SSHServer {
 // Start initializes and starts the SSH server
 func (ss *SSHServer) Start(ln net.Listener) error {
 	// Initialize the gliderlabs SSH server
+	ss.srvMu.Lock()
+	if ss.stopped {
+		return errors.New("starting closed SSH server")
+	}
 	ss.srv = &ssh.Server{
 		Addr:             ln.Addr().String(),
 		Handler:          ss.handleSession,
@@ -208,6 +216,7 @@ func (ss *SSHServer) Start(ln net.Listener) error {
 	} else {
 		ss.server.slog().Warn("no host key found in main server configuration")
 	}
+	ss.srvMu.Unlock()
 
 	return ss.srv.Serve(ln)
 }
@@ -226,6 +235,14 @@ func sshSessionHandlerWithJobEasterEgg(srv *ssh.Server, conn *gossh.ServerConn, 
 
 // Stop gracefully stops the SSH server
 func (ss *SSHServer) Stop() error {
+	ss.srvMu.Lock()
+	defer ss.srvMu.Unlock()
+
+	if ss.stopped {
+		return nil
+	}
+	ss.stopped = true
+
 	if ss.srv != nil {
 		return ss.srv.Close()
 	}
