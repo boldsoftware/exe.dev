@@ -1,6 +1,6 @@
 ![exe.dev](exe.dev.png)
 
-This is the public issue tracker for [exe.dev](https://exe.dev).
+This is the public issue tracker and open source repo for [exe.dev](https://exe.dev).
 
 Other ways to reach/follow us:
 
