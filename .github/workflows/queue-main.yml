@@ -172,7 +172,7 @@ jobs:
           fi
 
           # Check that each commit touches only one domain:
-          # exeuntu/ only, shelley/ only, or neither.
+          # exeuntu/ only, shelley/ only, oss/ only, or neither.
           for commit in $commits; do
               files=$(git diff-tree --no-commit-id --name-only -r "$commit")
               if [ -z "$files" ]; then
@@ -181,12 +181,14 @@ jobs:
 
               has_exeuntu=false
               has_shelley=false
+              has_oss=false
               has_other=false
 
               while IFS= read -r file; do
                   case "$file" in
                       exeuntu/*) has_exeuntu=true ;;
                       shelley/*) has_shelley=true ;;
+                      oss/*)     has_oss=true ;;
                       *)         has_other=true ;;
                   esac
               done <<< "$files"
@@ -194,11 +196,12 @@ jobs:
               count=0
               [ "$has_exeuntu" = true ] && count=$((count + 1))
               [ "$has_shelley" = true ] && count=$((count + 1))
+              [ "$has_oss" = true ] && count=$((count + 1))
               [ "$has_other" = true ] && count=$((count + 1))
 
               if [ "$count" -gt 1 ]; then
                   echo "❌ ERROR: Commit $(git log --oneline -n 1 $commit) mixes files across domains."
-                  echo "Each commit must touch only exeuntu/, only shelley/, or only other files."
+                  echo "Each commit must touch only exeuntu/, only shelley/, only oss/, or only other files."
                   echo "Files in this commit:"
                   echo "$files"
                   has_errors=1
@@ -340,7 +343,7 @@ jobs:
           app-id: 2710433
           private-key: ${{ secrets.EXE_COMMIT_QUEUE_APP_PRIVATE_KEY }}
           owner: boldsoftware
-          repositories: exe,shelley,exeuntu
+          repositories: exe,shelley,exeuntu,exe.dev
 
       - name: Abort stale rebase (pre-checkout)
         run: |
@@ -383,6 +386,8 @@ jobs:
             git remote add shelley "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/shelley.git"
           git remote set-url exeuntu "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exeuntu.git" 2>/dev/null || \
             git remote add exeuntu "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exeuntu.git"
+          git remote set-url oss "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exe.dev.git" 2>/dev/null || \
+            git remote add oss "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exe.dev.git"
 
           # Try to rebase onto main and push
           git fetch origin main
@@ -409,6 +414,7 @@ jobs:
           # Push to subrepos
           bin/push-to-subrepo.sh main shelley shelley
           bin/push-to-subrepo.sh main exeuntu exeuntu
+          bin/push-to-subrepo.sh main oss oss
 
           # Push to origin
           git push origin HEAD:main
