@@ -79,7 +79,14 @@ func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstanc
 	sharedMemory := len(virtiofsInstances) > 0
 	mergeableMemory := len(virtiofsInstances) == 0
 
+	freePageReporting := true
+	deflateOnOom := true
 	vCfg := &client.VmConfig{
+		Balloon: &client.BalloonConfig{
+			Size:              0,
+			FreePageReporting: &freePageReporting,
+			DeflateOnOom:      &deflateOnOom,
+		},
 		Cpus: &client.CpusConfig{
 			BootVcpus: int(cfg.CPUs),
 			MaxVcpus:  int(cfg.CPUs),
