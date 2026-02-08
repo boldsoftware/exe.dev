@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"exe.dev/stage"
@@ -47,6 +48,12 @@ func newUnstartedServer(t testing.TB) *Server {
 				"data":     []map[string]any{},
 				"has_more": false,
 			})
+		case r.Method == "GET" && r.URL.Path == "/v1/events":
+			// Subscription event poller endpoint
+			json.NewEncoder(w).Encode(map[string]any{
+				"data":     []map[string]any{},
+				"has_more": false,
+			})
 		case r.Method == "GET" && r.URL.Path == "/v1/prices":
 			// Price lookup for checkout
 			json.NewEncoder(w).Encode(map[string]any{
@@ -72,7 +79,28 @@ func newUnstartedServer(t testing.TB) *Server {
 				"id":  "bps_test_session",
 				"url": "https://billing.stripe.com/session/bps_test_session",
 			})
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/v1/checkout/sessions/"):
+			// Retrieve checkout session (used by VerifyCheckout).
+			// Only return success for the session ID we actually created.
+			sessionID := strings.TrimPrefix(r.URL.Path, "/v1/checkout/sessions/")
+			if sessionID != "cs_test_session" {
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]any{
+					"error": map[string]any{
+						"type":    "invalid_request_error",
+						"message": "No such checkout session: " + sessionID,
+					},
+				})
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":             sessionID,
+				"status":         "complete",
+				"payment_status": "paid",
+				"customer":       map[string]any{"id": "cus_test123"},
+			})
 		default:
+			t.Errorf("unhandled fake Stripe request: %s %s", r.Method, r.URL)
 			w.WriteHeader(http.StatusNotFound)
 			io.WriteString(w, `{"code":"not_found","message":"Not found"}`)
 		}
