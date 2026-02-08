@@ -3279,14 +3279,24 @@ function makeHostsDashboard() {
       gridPos: { w: 8, h: 6 },
   });
 
+  addTimeseriesChart("Swap In Rate", `rate(node_vmstat_pswpin{${HOST_FILTER}}[$__interval])`, {
+    panelCustomization: (x) => x.unit("ops").min(0),
+      gridPos: { w: 8, h: 6 },
+  });
+
+  addTimeseriesChart("Swap Out Rate", `rate(node_vmstat_pswpout{${HOST_FILTER}}[$__interval])`, {
+    panelCustomization: (x) => x.unit("ops").min(0),
+      gridPos: { w: 8, h: 6 },
+  });
+
   // Disk Metrics Row
   dash.withRow(
     new RowBuilder("Disk Metrics").gridPos(gp({ w: 24, h: 1 }))
   );
 
   addTimeseriesChart(
-    "Disk Usage %",
-    `(1 - (node_filesystem_avail_bytes{${HOST_FILTER},fstype!="tmpfs",fstype!="devtmpfs"} / node_filesystem_size_bytes{${HOST_FILTER},fstype!="tmpfs",fstype!="devtmpfs"})) * 100`,
+    "Disk Usage % (excl. zd*)",
+    `(1 - (node_filesystem_avail_bytes{${HOST_FILTER},fstype!="tmpfs",fstype!="devtmpfs",device!~"/dev/zd.*"} / node_filesystem_size_bytes{${HOST_FILTER},fstype!="tmpfs",fstype!="devtmpfs",device!~"/dev/zd.*"})) * 100`,
     {
       panelCustomization: (x) =>
         x.unit("percent").min(0).max(100),
@@ -3320,12 +3330,12 @@ function makeHostsDashboard() {
     }
   );
 
-  addTimeseriesChart("Disk I/O Read", `irate(node_disk_read_bytes_total{${HOST_FILTER}}[5m])`, {
+  addTimeseriesChart("Disk I/O Read (excl. zd*)", `irate(node_disk_read_bytes_total{${HOST_FILTER},device!~"zd.*"}[5m])`, {
     panelCustomization: (x) => x.unit("Bps"),
       gridPos: { w: 8, h: 6 },
   });
 
-  addTimeseriesChart("Disk I/O Write", `irate(node_disk_written_bytes_total{${HOST_FILTER}}[5m])`, {
+  addTimeseriesChart("Disk I/O Write (excl. zd*)", `irate(node_disk_written_bytes_total{${HOST_FILTER},device!~"zd.*"}[5m])`, {
     panelCustomization: (x) => x.unit("Bps"),
       gridPos: { w: 8, h: 6 },
   });
@@ -3336,8 +3346,8 @@ function makeHostsDashboard() {
   );
 
   addTimeseriesChart(
-    "Network Receive",
-    `irate(node_network_receive_bytes_total{${HOST_FILTER},device!="lo"}[5m])`,
+    "Network Receive (excl. tap*, ifb*)",
+    `irate(node_network_receive_bytes_total{${HOST_FILTER},device!="lo",device!~"tap.*",device!~"ifb.*"}[5m])`,
     {
       panelCustomization: (x) => x.unit("Bps"),
       gridPos: { w: 8, h: 6 },
@@ -3345,8 +3355,8 @@ function makeHostsDashboard() {
   );
 
   addTimeseriesChart(
-    "Network Transmit",
-    `irate(node_network_transmit_bytes_total{${HOST_FILTER},device!="lo"}[5m])`,
+    "Network Transmit (excl. tap*, ifb*)",
+    `irate(node_network_transmit_bytes_total{${HOST_FILTER},device!="lo",device!~"tap.*",device!~"ifb.*"}[5m])`,
     {
       panelCustomization: (x) => x.unit("Bps"),
       gridPos: { w: 8, h: 6 },
@@ -3354,8 +3364,8 @@ function makeHostsDashboard() {
   );
 
   addTimeseriesChart(
-    "Network Errors",
-    `irate(node_network_receive_errs_total{${HOST_FILTER},device!="lo"}[5m]) + irate(node_network_transmit_errs_total{${HOST_FILTER},device!="lo"}[5m])`,
+    "Network Errors (excl. tap*, ifb*)",
+    `irate(node_network_receive_errs_total{${HOST_FILTER},device!="lo",device!~"tap.*",device!~"ifb.*"}[5m]) + irate(node_network_transmit_errs_total{${HOST_FILTER},device!="lo",device!~"tap.*",device!~"ifb.*"}[5m])`,
     {
       gridPos: { w: 8, h: 6 },
     }
