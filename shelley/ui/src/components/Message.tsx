@@ -10,15 +10,15 @@ import {
 import BashTool from "./BashTool";
 import PatchTool from "./PatchTool";
 import ScreenshotTool from "./ScreenshotTool";
-import GenericTool from "./GenericTool";
-
-import KeywordSearchTool from "./KeywordSearchTool";
+import BrowserTool from "./BrowserTool";
 import BrowserNavigateTool from "./BrowserNavigateTool";
 import BrowserEvalTool from "./BrowserEvalTool";
-import ReadImageTool from "./ReadImageTool";
-import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
-import ChangeDirTool from "./ChangeDirTool";
 import BrowserResizeTool from "./BrowserResizeTool";
+import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
+import GenericTool from "./GenericTool";
+import KeywordSearchTool from "./KeywordSearchTool";
+import ReadImageTool from "./ReadImageTool";
+import ChangeDirTool from "./ChangeDirTool";
 import SubagentTool from "./SubagentTool";
 import OutputIframeTool from "./OutputIframeTool";
 import ThinkingContent from "./ThinkingContent";
@@ -525,44 +525,40 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
             />
           );
         }
-        // Use specialized component for screenshot tool
+        if (content.ToolName === "browser") {
+          return <BrowserTool toolInput={content.ToolInput} isRunning={true} />;
+        }
         if (content.ToolName === "screenshot" || content.ToolName === "browser_take_screenshot") {
           return <ScreenshotTool toolInput={content.ToolInput} isRunning={true} />;
         }
-
-        // Use specialized component for change_dir tool
         if (content.ToolName === "change_dir") {
           return <ChangeDirTool toolInput={content.ToolInput} isRunning={true} />;
         }
-        // Use specialized component for keyword search tool
         if (content.ToolName === "keyword_search") {
           return <KeywordSearchTool toolInput={content.ToolInput} isRunning={true} />;
         }
-        // Use specialized component for browser navigate tool
-        if (content.ToolName === "browser_navigate") {
-          return <BrowserNavigateTool toolInput={content.ToolInput} isRunning={true} />;
-        }
-        // Use specialized component for browser eval tool
-        if (content.ToolName === "browser_eval") {
-          return <BrowserEvalTool toolInput={content.ToolInput} isRunning={true} />;
-        }
-        // Use specialized component for read image tool
         if (content.ToolName === "read_image") {
           return <ReadImageTool toolInput={content.ToolInput} isRunning={true} />;
         }
-        // Use specialized component for browser resize tool
-        if (content.ToolName === "browser_resize") {
-          return <BrowserResizeTool toolInput={content.ToolInput} isRunning={true} />;
-        }
-        // Use specialized component for subagent tool
         if (content.ToolName === "subagent") {
           return <SubagentTool toolInput={content.ToolInput} isRunning={true} />;
         }
-        // Use specialized component for output iframe tool
         if (content.ToolName === "output_iframe") {
           return <OutputIframeTool toolInput={content.ToolInput} isRunning={true} />;
         }
-        // Use specialized component for browser console logs tools
+        // Backwards compat: old per-action tool names stored in existing databases.
+        if (content.ToolName === "browser_take_screenshot") {
+          return <ScreenshotTool toolInput={content.ToolInput} isRunning={true} />;
+        }
+        if (content.ToolName === "browser_navigate") {
+          return <BrowserNavigateTool toolInput={content.ToolInput} isRunning={true} />;
+        }
+        if (content.ToolName === "browser_eval") {
+          return <BrowserEvalTool toolInput={content.ToolInput} isRunning={true} />;
+        }
+        if (content.ToolName === "browser_resize") {
+          return <BrowserResizeTool toolInput={content.ToolInput} isRunning={true} />;
+        }
         if (
           content.ToolName === "browser_recent_console_logs" ||
           content.ToolName === "browser_clear_console_logs"
@@ -622,11 +618,12 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
 
         // Get tool information from the toolUseMap or fallback to content
         const toolInfo = toolUseId && toolUseMap && toolUseMap[toolUseId];
-        const toolName =
+        const rawToolName =
           (toolInfo && typeof toolInfo === "object" && toolInfo.name) ||
           content.ToolName ||
           "Unknown Tool";
         const toolInput = toolInfo && typeof toolInfo === "object" ? toolInfo.input : undefined;
+        const toolName = rawToolName;
 
         // Use specialized component for bash tool
         if (toolName === "bash") {
@@ -656,7 +653,19 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
           );
         }
 
-        // Use specialized component for screenshot tool
+        if (toolName === "browser") {
+          return (
+            <BrowserTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+              display={content.Display}
+            />
+          );
+        }
+
         if (toolName === "screenshot" || toolName === "browser_take_screenshot") {
           return (
             <ScreenshotTool
@@ -669,7 +678,6 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
           );
         }
 
-        // Use specialized component for change_dir tool
         if (toolName === "change_dir") {
           return (
             <ChangeDirTool
@@ -682,7 +690,6 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
           );
         }
 
-        // Use specialized component for keyword search tool
         if (toolName === "keyword_search") {
           return (
             <KeywordSearchTool
@@ -695,33 +702,6 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
           );
         }
 
-        // Use specialized component for browser navigate tool
-        if (toolName === "browser_navigate") {
-          return (
-            <BrowserNavigateTool
-              toolInput={toolInput}
-              isRunning={false}
-              toolResult={content.ToolResult}
-              hasError={hasError}
-              executionTime={executionTime}
-            />
-          );
-        }
-
-        // Use specialized component for browser eval tool
-        if (toolName === "browser_eval") {
-          return (
-            <BrowserEvalTool
-              toolInput={toolInput}
-              isRunning={false}
-              toolResult={content.ToolResult}
-              hasError={hasError}
-              executionTime={executionTime}
-            />
-          );
-        }
-
-        // Use specialized component for read image tool
         if (toolName === "read_image") {
           return (
             <ReadImageTool
@@ -734,20 +714,6 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
           );
         }
 
-        // Use specialized component for browser resize tool
-        if (toolName === "browser_resize") {
-          return (
-            <BrowserResizeTool
-              toolInput={toolInput}
-              isRunning={false}
-              toolResult={content.ToolResult}
-              hasError={hasError}
-              executionTime={executionTime}
-            />
-          );
-        }
-
-        // Use specialized component for subagent tool
         if (toolName === "subagent") {
           return (
             <SubagentTool
@@ -761,7 +727,6 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
           );
         }
 
-        // Use specialized component for output iframe tool
         if (toolName === "output_iframe") {
           return (
             <OutputIframeTool
@@ -775,7 +740,51 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
           );
         }
 
-        // Use specialized component for browser console logs tools
+        // Backwards compat: old per-action tool names stored in existing databases.
+        if (toolName === "browser_take_screenshot") {
+          return (
+            <ScreenshotTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+            />
+          );
+        }
+        if (toolName === "browser_navigate") {
+          return (
+            <BrowserNavigateTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+            />
+          );
+        }
+        if (toolName === "browser_eval") {
+          return (
+            <BrowserEvalTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+            />
+          );
+        }
+        if (toolName === "browser_resize") {
+          return (
+            <BrowserResizeTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+            />
+          );
+        }
         if (
           toolName === "browser_recent_console_logs" ||
           toolName === "browser_clear_console_logs"

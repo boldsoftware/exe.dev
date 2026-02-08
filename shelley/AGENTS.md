@@ -29,3 +29,11 @@
     Then use browser tools to navigate to http://localhost:8002/ and interact with the UI.
 13. NEVER use alert(), confirm(), or prompt(). Use proper UI components like tooltips, modals, or toasts instead.
 14. SQL migrations and frontend changes require rebuilding the binary (`make build` or `go generate ./... && cd ui && pnpm run build`).
+15. Tool changes and UI tool widget updates go hand in hand. When you add, rename, remove, or
+    restructure a tool (in `claudetool/`), you MUST update the UI components that render it:
+    - `ui/src/components/ChatInterface.tsx` (`TOOL_COMPONENTS` map)
+    - `ui/src/components/Message.tsx` (both `tool_use` and `tool_result` rendering)
+    - `ui/src/components/BrowserTool.tsx` (if the tool is a browser action — this component
+      reads the `action` field from the input and dispatches to the right sub-component)
+    - `loop/predictable.go` (the "tool smorgasbord" demo response)
+    - See `ui/src/components/AGENTS.md` for more detail.

@@ -1435,7 +1435,7 @@ func TestPredictableServiceScreenshotTool(t *testing.T) {
 	// Find the tool use content
 	var toolUseContent *llm.Content
 	for _, content := range resp.Content {
-		if content.Type == llm.ContentTypeToolUse && content.ToolName == "browser_take_screenshot" {
+		if content.Type == llm.ContentTypeToolUse && content.ToolName == "browser" {
 			toolUseContent = &content
 			break
 		}

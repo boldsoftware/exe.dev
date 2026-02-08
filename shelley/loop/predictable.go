@@ -523,7 +523,7 @@ func (s *PredictableService) makeScreenshotToolResponse(selector string, inputTo
 			{
 				ID:        fmt.Sprintf("tool_%d", time.Now().UnixNano()%1000),
 				Type:      llm.ContentTypeToolUse,
-				ToolName:  "browser_take_screenshot",
+				ToolName:  "browser",
 				ToolInput: toolInput,
 			},
 		},
@@ -640,12 +640,12 @@ func (s *PredictableService) makeToolSmorgasbordResponse(inputTokens uint64) *ll
 		ToolInput: json.RawMessage(patchInput),
 	})
 
-	// screenshot tool
-	screenshotInput, _ := json.Marshal(map[string]string{})
+	// browser: screenshot action
+	screenshotInput, _ := json.Marshal(map[string]string{"action": "screenshot"})
 	content = append(content, llm.Content{
 		ID:        fmt.Sprintf("tool_screenshot_%d", (baseNano+3)%1000),
 		Type:      llm.ContentTypeToolUse,
-		ToolName:  "browser_take_screenshot",
+		ToolName:  "browser",
 		ToolInput: json.RawMessage(screenshotInput),
 	})
 
@@ -661,25 +661,25 @@ func (s *PredictableService) makeToolSmorgasbordResponse(inputTokens uint64) *ll
 		ToolInput: json.RawMessage(keywordInput),
 	})
 
-	// browser_navigate tool
-	navigateInput, _ := json.Marshal(map[string]string{"url": "https://example.com"})
+	// browser: navigate action
+	navigateInput, _ := json.Marshal(map[string]string{"action": "navigate", "url": "https://example.com"})
 	content = append(content, llm.Content{
 		ID:        fmt.Sprintf("tool_navigate_%d", (baseNano+5)%1000),
 		Type:      llm.ContentTypeToolUse,
-		ToolName:  "browser_navigate",
+		ToolName:  "browser",
 		ToolInput: json.RawMessage(navigateInput),
 	})
 
-	// browser_eval tool
-	evalInput, _ := json.Marshal(map[string]string{"expression": "document.title"})
+	// browser: eval action
+	evalInput, _ := json.Marshal(map[string]string{"action": "eval", "expression": "document.title"})
 	content = append(content, llm.Content{
 		ID:        fmt.Sprintf("tool_eval_%d", (baseNano+6)%1000),
 		Type:      llm.ContentTypeToolUse,
-		ToolName:  "browser_eval",
+		ToolName:  "browser",
 		ToolInput: json.RawMessage(evalInput),
 	})
 
-	// read_image tool
+	// read_image tool (separate from browser)
 	readImageInput, _ := json.Marshal(map[string]string{"path": "/tmp/image.png"})
 	content = append(content, llm.Content{
 		ID:        fmt.Sprintf("tool_readimg_%d", (baseNano+7)%1000),
@@ -688,12 +688,12 @@ func (s *PredictableService) makeToolSmorgasbordResponse(inputTokens uint64) *ll
 		ToolInput: json.RawMessage(readImageInput),
 	})
 
-	// browser_recent_console_logs tool
-	consoleInput, _ := json.Marshal(map[string]string{})
+	// browser: console_logs action
+	consoleInput, _ := json.Marshal(map[string]string{"action": "console_logs"})
 	content = append(content, llm.Content{
 		ID:        fmt.Sprintf("tool_console_%d", (baseNano+8)%1000),
 		Type:      llm.ContentTypeToolUse,
-		ToolName:  "browser_recent_console_logs",
+		ToolName:  "browser",
 		ToolInput: json.RawMessage(consoleInput),
 	})
 

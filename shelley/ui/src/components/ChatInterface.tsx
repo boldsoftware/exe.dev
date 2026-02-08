@@ -23,14 +23,14 @@ import DiffViewer from "./DiffViewer";
 import BashTool from "./BashTool";
 import PatchTool from "./PatchTool";
 import ScreenshotTool from "./ScreenshotTool";
-
-import KeywordSearchTool from "./KeywordSearchTool";
+import BrowserTool from "./BrowserTool";
 import BrowserNavigateTool from "./BrowserNavigateTool";
 import BrowserEvalTool from "./BrowserEvalTool";
-import ReadImageTool from "./ReadImageTool";
-import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
-import ChangeDirTool from "./ChangeDirTool";
 import BrowserResizeTool from "./BrowserResizeTool";
+import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
+import KeywordSearchTool from "./KeywordSearchTool";
+import ReadImageTool from "./ReadImageTool";
+import ChangeDirTool from "./ChangeDirTool";
 import SubagentTool from "./SubagentTool";
 import OutputIframeTool from "./OutputIframeTool";
 import DirectoryPickerModal from "./DirectoryPickerModal";
@@ -264,19 +264,20 @@ interface CoalescedToolCallProps {
 const TOOL_COMPONENTS: Record<string, React.ComponentType<any>> = {
   bash: BashTool,
   patch: PatchTool,
+  browser: BrowserTool,
   screenshot: ScreenshotTool,
-  browser_take_screenshot: ScreenshotTool,
-
-  keyword_search: KeywordSearchTool,
-  browser_navigate: BrowserNavigateTool,
-  browser_eval: BrowserEvalTool,
   read_image: ReadImageTool,
-  browser_recent_console_logs: BrowserConsoleLogsTool,
-  browser_clear_console_logs: BrowserConsoleLogsTool,
+  keyword_search: KeywordSearchTool,
   change_dir: ChangeDirTool,
-  browser_resize: BrowserResizeTool,
   subagent: SubagentTool,
   output_iframe: OutputIframeTool,
+  // Backwards compat: old per-action tool names stored in existing databases.
+  browser_take_screenshot: ScreenshotTool,
+  browser_navigate: BrowserNavigateTool,
+  browser_eval: BrowserEvalTool,
+  browser_resize: BrowserResizeTool,
+  browser_recent_console_logs: BrowserConsoleLogsTool,
+  browser_clear_console_logs: BrowserConsoleLogsTool,
 };
 
 function CoalescedToolCall({
@@ -313,11 +314,6 @@ function CoalescedToolCall({
       hasError: toolError,
       executionTime,
       display,
-      // BrowserConsoleLogsTool needs the toolName prop
-      ...(toolName === "browser_recent_console_logs" || toolName === "browser_clear_console_logs"
-        ? { toolName }
-        : {}),
-      // Patch tool can add comments
       ...(toolName === "patch" && onCommentTextChange ? { onCommentTextChange } : {}),
     };
     return <ToolComponent {...props} />;

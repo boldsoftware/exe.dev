@@ -22,88 +22,78 @@ import (
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 	"github.com/go-json-experiment/json/jsontext"
-	"shelley.exe.dev/llm"
 )
 
-func TestToolCreation(t *testing.T) {
-	// Create browser tools instance
+func TestCombinedTool(t *testing.T) {
 	tools := NewBrowseTools(context.Background(), 0, 0)
 	t.Cleanup(func() {
 		tools.Close()
 	})
 
-	// Test each tool has correct name and description
-	toolTests := []struct {
-		tool          *llm.Tool
-		expectedName  string
-		shortDesc     string
-		requiredProps []string
-	}{
-		{tools.NewNavigateTool(), "browser_navigate", "Navigate", []string{"url"}},
-		{tools.NewEvalTool(), "browser_eval", "Evaluate", []string{"expression"}},
-		{tools.NewResizeTool(), "browser_resize", "Resize", []string{"width", "height"}},
-		{tools.NewScreenshotTool(), "browser_take_screenshot", "Take", nil},
+	tool := tools.CombinedTool()
+	if tool.Name != "browser" {
+		t.Errorf("expected name %q, got %q", "browser", tool.Name)
 	}
 
-	for _, tt := range toolTests {
-		t.Run(tt.expectedName, func(t *testing.T) {
-			if tt.tool.Name != tt.expectedName {
-				t.Errorf("expected name %q, got %q", tt.expectedName, tt.tool.Name)
-			}
+	// Verify schema has action as required
+	var schema struct {
+		Required   []string `json:"required"`
+		Properties map[string]struct {
+			Enum []string `json:"enum"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
+		t.Fatalf("failed to unmarshal schema: %v", err)
+	}
+	if !slices.Contains(schema.Required, "action") {
+		t.Error("action should be required")
+	}
 
-			if !strings.Contains(tt.tool.Description, tt.shortDesc) {
-				t.Errorf("description %q should contain %q", tt.tool.Description, tt.shortDesc)
-			}
+	// Verify all actions are listed in the enum
+	expectedActions := []string{"navigate", "eval", "resize", "console_logs", "clear_console_logs", "screenshot"}
+	for _, action := range expectedActions {
+		if !slices.Contains(schema.Properties["action"].Enum, action) {
+			t.Errorf("action %q not in enum", action)
+		}
+	}
 
-			// Verify schema has required properties
-			if len(tt.requiredProps) > 0 {
-				var schema struct {
-					Required []string `json:"required"`
-				}
-				if err := json.Unmarshal(tt.tool.InputSchema, &schema); err != nil {
-					t.Fatalf("failed to unmarshal schema: %v", err)
-				}
+	// Verify description mentions all actions
+	for _, keyword := range []string{"navigate", "eval", "resize", "console_logs", "screenshot"} {
+		if !strings.Contains(tool.Description, keyword) {
+			t.Errorf("description missing %q", keyword)
+		}
+	}
+}
 
-				for _, prop := range tt.requiredProps {
-					if !slices.Contains(schema.Required, prop) {
-						t.Errorf("property %q should be required", prop)
-					}
-				}
-			}
-		})
+func TestCombinedToolUnknownAction(t *testing.T) {
+	tools := NewBrowseTools(context.Background(), 0, 0)
+	t.Cleanup(func() {
+		tools.Close()
+	})
+
+	tool := tools.CombinedTool()
+	toolOut := tool.Run(context.Background(), []byte(`{"action": "bogus"}`))
+	if toolOut.Error == nil {
+		t.Error("Expected error for unknown action")
 	}
 }
 
 func TestGetTools(t *testing.T) {
-	// Create browser tools instance
 	tools := NewBrowseTools(context.Background(), 0, 0)
 	t.Cleanup(func() {
 		tools.Close()
 	})
 
-	// Test with screenshot tools included
-	t.Run("with screenshots", func(t *testing.T) {
-		toolsWithScreenshots := tools.GetTools(true)
-		if len(toolsWithScreenshots) != 7 {
-			t.Errorf("expected 7 tools with screenshots, got %d", len(toolsWithScreenshots))
-		}
-
-		// Check tool naming convention
-		for _, tool := range toolsWithScreenshots {
-			// Most tools have browser_ prefix, except for read_image
-			if tool.Name != "read_image" && !strings.HasPrefix(tool.Name, "browser_") {
-				t.Errorf("tool name %q does not have prefix 'browser_'", tool.Name)
-			}
-		}
-	})
-
-	// Test without screenshot tools
-	t.Run("without screenshots", func(t *testing.T) {
-		noScreenshotTools := tools.GetTools(false)
-		if len(noScreenshotTools) != 5 {
-			t.Errorf("expected 5 tools without screenshots, got %d", len(noScreenshotTools))
-		}
-	})
+	result := tools.GetTools()
+	if len(result) != 2 {
+		t.Fatalf("GetTools: expected 2 tools, got %d", len(result))
+	}
+	if result[0].Name != "browser" {
+		t.Errorf("expected first tool name %q, got %q", "browser", result[0].Name)
+	}
+	if result[1].Name != "read_image" {
+		t.Errorf("expected second tool name %q, got %q", "read_image", result[1].Name)
+	}
 }
 
 // TestBrowserInitialization verifies that the browser can start correctly
@@ -144,14 +134,12 @@ func TestBrowserInitialization(t *testing.T) {
 	t.Logf("Successfully navigated to about:blank, title: %q", title)
 }
 
-// TestNavigateTool verifies that the navigate tool works correctly
+// TestNavigateTool verifies that the navigate action works correctly
 func TestNavigateTool(t *testing.T) {
-	// Skip long tests in short mode
 	if testing.Short() {
 		t.Skip("skipping navigate tool test in short mode")
 	}
 
-	// Create browser tools instance
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -160,40 +148,28 @@ func TestNavigateTool(t *testing.T) {
 		tools.Close()
 	})
 
-	// Get the navigate tool
-	navTool := tools.NewNavigateTool()
+	tool := tools.CombinedTool()
 
-	// Create input for the navigate tool
-	input := map[string]string{"url": "https://example.com"}
-	inputJSON, _ := json.Marshal(input)
-
-	// Call the tool
-	toolOut := navTool.Run(ctx, []byte(inputJSON))
+	inputJSON := []byte(`{"action": "navigate", "url": "https://example.com"}`)
+	toolOut := tool.Run(ctx, inputJSON)
 	if toolOut.Error != nil {
-		t.Fatalf("Error running navigate tool: %v", toolOut.Error)
+		t.Fatalf("Error running navigate: %v", toolOut.Error)
 	}
-	result := toolOut.LLMContent
 
-	// Verify the response is successful
-	resultText := result[0].Text
+	resultText := toolOut.LLMContent[0].Text
 	if !strings.Contains(resultText, "done") {
-		// If browser automation is not available, skip the test
 		if strings.Contains(resultText, "browser automation not available") {
 			t.Skip("Browser automation not available in this environment")
-		} else {
-			t.Fatalf("Expected done in result text, got: %s", resultText)
 		}
+		t.Fatalf("Expected done in result text, got: %s", resultText)
 	}
 
-	// Try to get the page title to verify the navigation worked
 	browserCtx, err := tools.GetBrowserContext()
 	if err != nil {
-		// If browser automation is not available, skip the test
 		if strings.Contains(err.Error(), "browser automation not available") {
 			t.Skip("Browser automation not available in this environment")
-		} else {
-			t.Fatalf("Failed to get browser context: %v", err)
 		}
+		t.Fatalf("Failed to get browser context: %v", err)
 	}
 
 	var title string
@@ -202,7 +178,6 @@ func TestNavigateTool(t *testing.T) {
 		t.Fatalf("Failed to get page title: %v", err)
 	}
 
-	t.Logf("Successfully navigated to example.com, title: %q", title)
 	if title != "Example Domain" {
 		t.Errorf("Expected title 'Example Domain', got '%s'", title)
 	}
@@ -247,18 +222,15 @@ func TestScreenshotTool(t *testing.T) {
 }
 
 func TestReadImageTool(t *testing.T) {
-	// Create a test BrowseTools instance
 	ctx := context.Background()
 	browseTools := NewBrowseTools(ctx, 0, 0)
 	t.Cleanup(func() {
 		browseTools.Close()
 	})
 
-	// Create a test image
 	testDir := t.TempDir()
 	testImagePath := filepath.Join(testDir, "test_image.png")
 
-	// Create a small 1x1 black PNG image
 	smallPng := []byte{
 		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
 		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
@@ -267,38 +239,26 @@ func TestReadImageTool(t *testing.T) {
 		0x42, 0x60, 0x82,
 	}
 
-	// Write the test image
 	err := os.WriteFile(testImagePath, smallPng, 0o644)
 	if err != nil {
 		t.Fatalf("Failed to create test image: %v", err)
 	}
 
-	// Create the tool
-	readImageTool := browseTools.NewReadImageTool()
-
-	// Prepare input
+	tool := browseTools.ReadImageTool()
 	input := fmt.Sprintf(`{"path": "%s"}`, testImagePath)
 
-	// Run the tool
-	toolOut := readImageTool.Run(ctx, []byte(input))
+	toolOut := tool.Run(ctx, []byte(input))
 	if toolOut.Error != nil {
 		t.Fatalf("Read image tool failed: %v", toolOut.Error)
 	}
-	result := toolOut.LLMContent
 
-	// In the updated code, result is already a []llm.Content
-	contents := result
-
-	// Check that we got at least two content objects
+	contents := toolOut.LLMContent
 	if len(contents) < 2 {
 		t.Fatalf("Expected at least 2 content objects, got %d", len(contents))
 	}
-
-	// Check that the second content has image data
 	if contents[1].MediaType == "" {
 		t.Errorf("Expected MediaType in second content")
 	}
-
 	if contents[1].Data == "" {
 		t.Errorf("Expected Data in second content")
 	}
@@ -309,7 +269,6 @@ func TestDefaultViewportSize(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Skip if CI or headless testing environment
 	if os.Getenv("CI") != "" || os.Getenv("HEADLESS_TEST") != "" {
 		t.Skip("Skipping browser test in CI/headless environment")
 	}
@@ -319,51 +278,44 @@ func TestDefaultViewportSize(t *testing.T) {
 		tools.Close()
 	})
 
-	// Navigate to a simple page to ensure the browser is ready
-	navInput := []byte(`{"url": "about:blank"}`)
-	toolOut := tools.NewNavigateTool().Run(ctx, navInput)
+	tool := tools.CombinedTool()
+
+	// Navigate
+	toolOut := tool.Run(ctx, []byte(`{"action": "navigate", "url": "about:blank"}`))
 	if toolOut.Error != nil {
 		if strings.Contains(toolOut.Error.Error(), "browser automation not available") {
 			t.Skip("Browser automation not available in this environment")
 		}
 		t.Fatalf("Navigation error: %v", toolOut.Error)
 	}
-	content := toolOut.LLMContent
-	if !strings.Contains(content[0].Text, "done") {
-		t.Fatalf("Expected done in navigation response, got: %s", content[0].Text)
+	if !strings.Contains(toolOut.LLMContent[0].Text, "done") {
+		t.Fatalf("Expected done in navigation response, got: %s", toolOut.LLMContent[0].Text)
 	}
 
-	// Check default viewport dimensions via JavaScript
-	evalInput := []byte(`{"expression": "({width: window.innerWidth, height: window.innerHeight})"}`)
-	toolOut = tools.NewEvalTool().Run(ctx, evalInput)
+	// Eval
+	toolOut = tool.Run(ctx, []byte(`{"action": "eval", "expression": "({width: window.innerWidth, height: window.innerHeight})"}`))
 	if toolOut.Error != nil {
 		t.Fatalf("Evaluation error: %v", toolOut.Error)
 	}
-	content = toolOut.LLMContent
 
-	// Parse the result to verify dimensions
 	var response struct {
 		Width  float64 `json:"width"`
 		Height float64 `json:"height"`
 	}
 
-	text := content[0].Text
+	text := toolOut.LLMContent[0].Text
 	text = strings.TrimPrefix(text, "<javascript_result>")
 	text = strings.TrimSuffix(text, "</javascript_result>")
 
 	if err := json.Unmarshal([]byte(text), &response); err != nil {
-		t.Fatalf("Failed to parse evaluation response (%q => %q): %v", content[0].Text, text, err)
+		t.Fatalf("Failed to parse evaluation response: %v", err)
 	}
 
-	// Verify the default viewport size is 1280x720
-	expectedWidth := 1280.0
-	expectedHeight := 720.0
-
-	if response.Width != expectedWidth {
-		t.Errorf("Expected default width %v, got %v", expectedWidth, response.Width)
+	if response.Width != 1280 {
+		t.Errorf("Expected default width 1280, got %v", response.Width)
 	}
-	if response.Height != expectedHeight {
-		t.Errorf("Expected default height %v, got %v", expectedHeight, response.Height)
+	if response.Height != 720 {
+		t.Errorf("Expected default height 720, got %v", response.Height)
 	}
 }
 
@@ -372,14 +324,12 @@ func TestBrowserIdleShutdownAndRestart(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Use a short idle timeout for testing
 	idleTimeout := 100 * time.Millisecond
 	tools := NewBrowseTools(ctx, idleTimeout, 0)
 	t.Cleanup(func() {
 		tools.Close()
 	})
 
-	// First use - should start the browser
 	browserCtx1, err := tools.GetBrowserContext()
 	if err != nil {
 		if strings.Contains(err.Error(), "failed to start browser") {
@@ -391,10 +341,8 @@ func TestBrowserIdleShutdownAndRestart(t *testing.T) {
 		t.Fatal("Expected non-nil browser context")
 	}
 
-	// Wait for idle timeout to fire
 	time.Sleep(idleTimeout + 50*time.Millisecond)
 
-	// Second use - should start a new browser (old one was killed)
 	browserCtx2, err := tools.GetBrowserContext()
 	if err != nil {
 		t.Fatalf("Failed to get browser context after idle: %v", err)
@@ -403,15 +351,13 @@ func TestBrowserIdleShutdownAndRestart(t *testing.T) {
 		t.Fatal("Expected non-nil browser context after restart")
 	}
 
-	// The contexts should be different (new browser instance)
 	if browserCtx1 == browserCtx2 {
 		t.Error("Expected different browser context after idle shutdown")
 	}
 
-	// Verify the new browser actually works
-	navTool := tools.NewNavigateTool()
-	input := []byte(`{"url": "about:blank"}`)
-	toolOut := navTool.Run(ctx, input)
+	// Verify the new browser actually works via combined tool
+	tool := tools.CombinedTool()
+	toolOut := tool.Run(ctx, []byte(`{"action": "navigate", "url": "about:blank"}`))
 	if toolOut.Error != nil {
 		t.Fatalf("Navigate failed after restart: %v", toolOut.Error)
 	}
@@ -463,27 +409,23 @@ func TestBrowserCrashRecovery(t *testing.T) {
 	}
 
 	// Verify the new browser actually works
-	navTool := tools.NewNavigateTool()
-	input := []byte(`{"url": "about:blank"}`)
-	toolOut := navTool.Run(ctx, input)
+	tool := tools.CombinedTool()
+	toolOut := tool.Run(ctx, []byte(`{"action": "navigate", "url": "about:blank"}`))
 	if toolOut.Error != nil {
 		t.Fatalf("Navigate failed after crash recovery: %v", toolOut.Error)
 	}
 }
 
 func TestReadImageToolResizesLargeImage(t *testing.T) {
-	// Create a test BrowseTools instance with max dimension of 2000
 	ctx := context.Background()
 	browseTools := NewBrowseTools(ctx, 0, 2000)
 	t.Cleanup(func() {
 		browseTools.Close()
 	})
 
-	// Create a large test image (3000x2500 pixels)
 	testDir := t.TempDir()
 	testImagePath := filepath.Join(testDir, "large_image.png")
 
-	// Create a large image using image package
 	img := image.NewRGBA(image.Rect(0, 0, 3000, 2500))
 	for y := 0; y < 2500; y++ {
 		for x := 0; x < 3000; x++ {
@@ -501,30 +443,22 @@ func TestReadImageToolResizesLargeImage(t *testing.T) {
 	}
 	f.Close()
 
-	// Create the tool
-	readImageTool := browseTools.NewReadImageTool()
-
-	// Prepare input
+	tool := browseTools.ReadImageTool()
 	input := fmt.Sprintf(`{"path": "%s"}`, testImagePath)
 
-	// Run the tool
-	toolOut := readImageTool.Run(ctx, []byte(input))
+	toolOut := tool.Run(ctx, []byte(input))
 	if toolOut.Error != nil {
 		t.Fatalf("Read image tool failed: %v", toolOut.Error)
 	}
 	result := toolOut.LLMContent
 
-	// Check that we got at least two content objects
 	if len(result) < 2 {
 		t.Fatalf("Expected at least 2 content objects, got %d", len(result))
 	}
-
-	// Check that the description mentions resizing
 	if !strings.Contains(result[0].Text, "resized") {
 		t.Errorf("Expected description to mention resizing, got: %s", result[0].Text)
 	}
 
-	// Decode the returned image and verify dimensions are within limits
 	imageData, err := base64.StdEncoding.DecodeString(result[1].Data)
 	if err != nil {
 		t.Fatalf("Failed to decode base64 image: %v", err)
@@ -569,7 +503,7 @@ func TestIsPort80(t *testing.T) {
 	}
 }
 
-// TestResizeRunErrorPaths tests error paths in resizeRun
+// TestResizeRunErrorPaths tests error paths in resize action
 func TestResizeRunErrorPaths(t *testing.T) {
 	ctx := context.Background()
 	tools := NewBrowseTools(ctx, 0, 0)
@@ -577,29 +511,28 @@ func TestResizeRunErrorPaths(t *testing.T) {
 		tools.Close()
 	})
 
+	tool := tools.CombinedTool()
+
 	// Test with invalid JSON input
-	invalidInput := []byte(`{"width": "not-a-number"}`)
-	toolOut := tools.resizeRun(ctx, invalidInput)
+	toolOut := tool.Run(ctx, []byte(`{"action": "resize", "width": "not-a-number"}`))
 	if toolOut.Error == nil {
-		t.Error("No error expected for invalid JSON input in clearConsoleLogsRun")
+		t.Error("Expected error for invalid JSON input")
 	}
 
 	// Test with negative dimensions
-	negativeInput := []byte(`{"width": -100, "height": 100}`)
-	toolOut = tools.resizeRun(ctx, negativeInput)
+	toolOut = tool.Run(ctx, []byte(`{"action": "resize", "width": -100, "height": 100}`))
 	if toolOut.Error == nil {
 		t.Error("Expected error for negative width")
 	}
 
 	// Test with zero dimensions
-	zeroInput := []byte(`{"width": 0, "height": 100}`)
-	toolOut = tools.resizeRun(ctx, zeroInput)
+	toolOut = tool.Run(ctx, []byte(`{"action": "resize", "width": 0, "height": 100}`))
 	if toolOut.Error == nil {
 		t.Error("Expected error for zero width")
 	}
 }
 
-// TestScreenshotRunErrorPaths tests error paths in screenshotRun
+// TestScreenshotRunErrorPaths tests error paths in screenshot action
 func TestScreenshotRunErrorPaths(t *testing.T) {
 	ctx := context.Background()
 	tools := NewBrowseTools(ctx, 0, 0)
@@ -607,11 +540,12 @@ func TestScreenshotRunErrorPaths(t *testing.T) {
 		tools.Close()
 	})
 
+	tool := tools.CombinedTool()
+
 	// Test with invalid JSON input
-	invalidInput := []byte(`{"selector": 123}`)
-	toolOut := tools.screenshotRun(ctx, invalidInput)
+	toolOut := tool.Run(ctx, []byte(`{"action": "screenshot", "selector": 123}`))
 	if toolOut.Error == nil {
-		t.Error("No error expected for invalid JSON input in clearConsoleLogsRun")
+		t.Error("Expected error for invalid JSON input")
 	}
 }
 
@@ -622,11 +556,12 @@ func TestRecentConsoleLogsRunErrorPaths(t *testing.T) {
 		tools.Close()
 	})
 
+	tool := tools.CombinedTool()
+
 	// Test with invalid JSON input
-	invalidInput := []byte(`{"limit": "not-a-number"}`)
-	toolOut := tools.recentConsoleLogsRun(ctx, invalidInput)
+	toolOut := tool.Run(ctx, []byte(`{"action": "console_logs", "limit": "not-a-number"}`))
 	if toolOut.Error == nil {
-		t.Error("No error expected for invalid JSON input in clearConsoleLogsRun")
+		t.Error("Expected error for invalid JSON input")
 	}
 }
 
@@ -658,23 +593,18 @@ func TestParseTimeout(t *testing.T) {
 func TestRegisterBrowserTools(t *testing.T) {
 	ctx := context.Background()
 
-	// Test with screenshots enabled
-	tools, cleanup := RegisterBrowserTools(ctx, true, 0)
+	tools, cleanup := RegisterBrowserTools(ctx, 0)
 	t.Cleanup(cleanup)
 
-	if len(tools) != 7 {
-		t.Errorf("Expected 7 tools with screenshots, got %d", len(tools))
+	if len(tools) != 2 {
+		t.Fatalf("RegisterBrowserTools: expected 2 tools, got %d", len(tools))
 	}
-
-	// Test with screenshots disabled
-	tools, cleanup = RegisterBrowserTools(ctx, false, 0)
-	t.Cleanup(cleanup)
-
-	if len(tools) != 5 {
-		t.Errorf("Expected 5 tools without screenshots, got %d", len(tools))
+	if tools[0].Name != "browser" {
+		t.Errorf("expected first tool name %q, got %q", "browser", tools[0].Name)
 	}
-
-	// Verify that cleanup function works (doesn't panic)
+	if tools[1].Name != "read_image" {
+		t.Errorf("expected second tool name %q, got %q", "read_image", tools[1].Name)
+	}
 	cleanup()
 }
 
@@ -716,7 +646,6 @@ func TestConsoleLogsWriteToFile(t *testing.T) {
 		tools.Close()
 	})
 
-	// Manually add many console logs to exceed threshold
 	tools.consoleLogsMutex.Lock()
 	for i := 0; i < 50; i++ {
 		tools.consoleLogs = append(tools.consoleLogs, &runtime.EventConsoleAPICalled{
@@ -733,9 +662,8 @@ func TestConsoleLogsWriteToFile(t *testing.T) {
 	tools.browserCtx = ctx
 	tools.mux.Unlock()
 
-	// Get console logs - should be written to file
-	input := []byte(`{}`)
-	toolOut := tools.recentConsoleLogsRun(ctx, input)
+	tool := tools.CombinedTool()
+	toolOut := tool.Run(ctx, []byte(`{"action": "console_logs"}`))
 	if toolOut.Error != nil {
 		t.Fatalf("Unexpected error: %v", toolOut.Error)
 	}
@@ -748,7 +676,6 @@ func TestConsoleLogsWriteToFile(t *testing.T) {
 		t.Errorf("Expected file path to contain %s, got: %s", ConsoleLogsDir, resultText)
 	}
 
-	// Extract file path and verify file exists
 	parts := strings.Split(resultText, "Output written to: ")
 	if len(parts) < 2 {
 		t.Fatalf("Could not extract file path from: %s", resultText)
@@ -757,7 +684,6 @@ func TestConsoleLogsWriteToFile(t *testing.T) {
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		t.Errorf("Expected file to exist at %s", filePath)
 	} else {
-		// Clean up
 		os.Remove(filePath)
 	}
 }
@@ -953,8 +879,9 @@ func TestBrowserDownload(t *testing.T) {
 	})
 
 	// Navigate to the test page
-	navInput := []byte(fmt.Sprintf(`{"url": "http://127.0.0.1:%d/"}`, port))
-	toolOut := tools.NewNavigateTool().Run(ctx, navInput)
+	tool := tools.CombinedTool()
+	navInput := []byte(fmt.Sprintf(`{"action": "navigate", "url": "http://127.0.0.1:%d/"}`, port))
+	toolOut := tool.Run(ctx, navInput)
 	if toolOut.Error != nil {
 		if strings.Contains(toolOut.Error.Error(), "failed to start browser") {
 			t.Skip("Browser automation not available in this environment")
@@ -963,8 +890,7 @@ func TestBrowserDownload(t *testing.T) {
 	}
 
 	// Click the download link
-	evalInput := []byte(`{"expression": "document.getElementById('download-link').click()"}`)
-	toolOut = tools.NewEvalTool().Run(ctx, evalInput)
+	toolOut = tool.Run(ctx, []byte(`{"action": "eval", "expression": "document.getElementById('download-link').click()"}`))
 	if toolOut.Error != nil {
 		t.Fatalf("Eval error: %v", toolOut.Error)
 	}
@@ -1041,8 +967,9 @@ func TestBrowserDownloadReported(t *testing.T) {
 	})
 
 	// Navigate directly to the download URL - should succeed with download info
-	navInput := []byte(fmt.Sprintf(`{"url": "http://127.0.0.1:%d/download"}`, port))
-	toolOut := tools.NewNavigateTool().Run(ctx, navInput)
+	tool := tools.CombinedTool()
+	navInput := []byte(fmt.Sprintf(`{"action": "navigate", "url": "http://127.0.0.1:%d/download"}`, port))
+	toolOut := tool.Run(ctx, navInput)
 	if toolOut.Error != nil {
 		if strings.Contains(toolOut.Error.Error(), "failed to start browser") {
 			t.Skip("Browser automation not available in this environment")
@@ -1087,9 +1014,9 @@ func TestLargeJSOutputWriteToFile(t *testing.T) {
 		tools.Close()
 	})
 
-	// Navigate to about:blank first
-	navInput := []byte(`{"url": "about:blank"}`)
-	toolOut := tools.NewNavigateTool().Run(ctx, navInput)
+	tool := tools.CombinedTool()
+
+	toolOut := tool.Run(ctx, []byte(`{"action": "navigate", "url": "about:blank"}`))
 	if toolOut.Error != nil {
 		if strings.Contains(toolOut.Error.Error(), "failed to start browser") {
 			t.Skip("Browser automation not available in this environment")
@@ -1097,9 +1024,8 @@ func TestLargeJSOutputWriteToFile(t *testing.T) {
 		t.Fatalf("Navigation error: %v", toolOut.Error)
 	}
 
-	// Execute JS that returns a large string (> 1KB)
-	evalInput := []byte(`{"expression": "'x'.repeat(2000)"}`)
-	toolOut = tools.NewEvalTool().Run(ctx, evalInput)
+	toolOut = tool.Run(ctx, []byte(`{"action": "eval", "expression": "'x'.repeat(2000)"}`))
+
 	if toolOut.Error != nil {
 		t.Fatalf("Eval error: %v", toolOut.Error)
 	}
@@ -1152,9 +1078,9 @@ func TestSmallJSOutputInline(t *testing.T) {
 		tools.Close()
 	})
 
-	// Navigate to about:blank first
-	navInput := []byte(`{"url": "about:blank"}`)
-	toolOut := tools.NewNavigateTool().Run(ctx, navInput)
+	tool := tools.CombinedTool()
+
+	toolOut := tool.Run(ctx, []byte(`{"action": "navigate", "url": "about:blank"}`))
 	if toolOut.Error != nil {
 		if strings.Contains(toolOut.Error.Error(), "failed to start browser") {
 			t.Skip("Browser automation not available in this environment")
@@ -1162,9 +1088,8 @@ func TestSmallJSOutputInline(t *testing.T) {
 		t.Fatalf("Navigation error: %v", toolOut.Error)
 	}
 
-	// Execute JS that returns a small string (< 1KB)
-	evalInput := []byte(`{"expression": "'hello world'"}`)
-	toolOut = tools.NewEvalTool().Run(ctx, evalInput)
+	toolOut = tool.Run(ctx, []byte(`{"action": "eval", "expression": "'hello world'"}`))
+
 	if toolOut.Error != nil {
 		t.Fatalf("Eval error: %v", toolOut.Error)
 	}

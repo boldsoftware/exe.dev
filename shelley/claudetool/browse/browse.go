@@ -232,7 +232,7 @@ func (b *BrowseTools) Close() {
 	b.closeBrowserLocked()
 }
 
-// NavigateTool definition
+// navigateInput is the input for the navigate action.
 type navigateInput struct {
 	URL     string `json:"url"`
 	Timeout string `json:"timeout,omitempty"`
@@ -246,29 +246,6 @@ func isPort80(urlStr string) bool {
 	}
 	port := parsedURL.Port()
 	return port == "80" || (port == "" && parsedURL.Scheme == "http")
-}
-
-// NewNavigateTool creates a tool for navigating to URLs
-func (b *BrowseTools) NewNavigateTool() *llm.Tool {
-	return &llm.Tool{
-		Name:        "browser_navigate",
-		Description: "Navigate the browser to a specific URL and wait for page to load",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"url": {
-					"type": "string",
-					"description": "The URL to navigate to"
-				},
-				"timeout": {
-					"type": "string",
-					"description": "Timeout as a Go duration string (default: 15s)"
-				}
-			},
-			"required": ["url"]
-		}`),
-		Run: b.navigateRun,
-	}
 }
 
 func (b *BrowseTools) navigateRun(ctx context.Context, m json.RawMessage) llm.ToolOut {
@@ -320,38 +297,10 @@ func (b *BrowseTools) navigateRun(ctx context.Context, m json.RawMessage) llm.To
 	return b.toolOutWithDownloads("done")
 }
 
-// ResizeTool definition
 type resizeInput struct {
 	Width   int    `json:"width"`
 	Height  int    `json:"height"`
 	Timeout string `json:"timeout,omitempty"`
-}
-
-// NewResizeTool creates a tool for resizing the browser viewport
-func (b *BrowseTools) NewResizeTool() *llm.Tool {
-	return &llm.Tool{
-		Name:        "browser_resize",
-		Description: "Resize the browser viewport to a specific width and height",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"width": {
-					"type": "integer",
-					"description": "Viewport width in pixels"
-				},
-				"height": {
-					"type": "integer",
-					"description": "Viewport height in pixels"
-				},
-				"timeout": {
-					"type": "string",
-					"description": "Timeout as a Go duration string (default: 15s)"
-				}
-			},
-			"required": ["width", "height"]
-		}`),
-		Run: b.resizeRun,
-	}
 }
 
 func (b *BrowseTools) resizeRun(ctx context.Context, m json.RawMessage) llm.ToolOut {
@@ -382,39 +331,10 @@ func (b *BrowseTools) resizeRun(ctx context.Context, m json.RawMessage) llm.Tool
 	return llm.ToolOut{LLMContent: llm.TextContent("done")}
 }
 
-// EvalTool definition
 type evalInput struct {
 	Expression string `json:"expression"`
 	Timeout    string `json:"timeout,omitempty"`
 	Await      *bool  `json:"await,omitempty"`
-}
-
-// NewEvalTool creates a tool for evaluating JavaScript
-func (b *BrowseTools) NewEvalTool() *llm.Tool {
-	return &llm.Tool{
-		Name: "browser_eval",
-		Description: `Evaluate JavaScript in the browser context.
-Your go-to tool for interacting with content: clicking buttons, typing, getting content, scrolling, resizing, waiting for content/selector to be ready, etc.`,
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"expression": {
-					"type": "string",
-					"description": "JavaScript expression to evaluate"
-				},
-				"timeout": {
-					"type": "string",
-					"description": "Timeout as a Go duration string (default: 15s)"
-				},
-				"await": {
-					"type": "boolean",
-					"description": "If true, wait for promises to resolve and return their resolved value (default: true)"
-				}
-			},
-			"required": ["expression"]
-		}`),
-		Run: b.evalRun,
-	}
 }
 
 func (b *BrowseTools) evalRun(ctx context.Context, m json.RawMessage) llm.ToolOut {
@@ -473,32 +393,9 @@ func (b *BrowseTools) evalRun(ctx context.Context, m json.RawMessage) llm.ToolOu
 	return b.toolOutWithDownloads("<javascript_result>" + string(response) + "</javascript_result>")
 }
 
-// ScreenshotTool definition
 type screenshotInput struct {
 	Selector string `json:"selector,omitempty"`
 	Timeout  string `json:"timeout,omitempty"`
-}
-
-// NewScreenshotTool creates a tool for taking screenshots
-func (b *BrowseTools) NewScreenshotTool() *llm.Tool {
-	return &llm.Tool{
-		Name:        "browser_take_screenshot",
-		Description: "Take a screenshot of the page or a specific element",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"selector": {
-					"type": "string",
-					"description": "CSS selector for the element to screenshot (optional)"
-				},
-				"timeout": {
-					"type": "string",
-					"description": "Timeout as a Go duration string (default: 15s)"
-				}
-			}
-		}`),
-		Run: b.screenshotRun,
-	}
 }
 
 func (b *BrowseTools) screenshotRun(ctx context.Context, m json.RawMessage) llm.ToolOut {
@@ -586,23 +483,151 @@ func (b *BrowseTools) screenshotRun(ctx context.Context, m json.RawMessage) llm.
 	}, Display: display}
 }
 
-// GetTools returns browser tools, optionally filtering out screenshot-related tools
-func (b *BrowseTools) GetTools(includeScreenshotTools bool) []*llm.Tool {
-	tools := []*llm.Tool{
-		b.NewNavigateTool(),
-		b.NewEvalTool(),
-		b.NewResizeTool(),
-		b.NewRecentConsoleLogsTool(),
-		b.NewClearConsoleLogsTool(),
-	}
+// GetTools returns browser tools: the combined browser tool and the read_image tool.
+func (b *BrowseTools) GetTools() []*llm.Tool {
+	return []*llm.Tool{b.CombinedTool(), b.ReadImageTool()}
+}
 
-	// Add screenshot-related tools if supported
-	if includeScreenshotTools {
-		tools = append(tools, b.NewScreenshotTool())
-		tools = append(tools, b.NewReadImageTool())
-	}
+// CombinedTool returns a single tool that handles all browser actions via an "action" field.
+func (b *BrowseTools) CombinedTool() *llm.Tool {
+	description := `Browser automation tool. Use the "action" field to select an operation:
 
-	return tools
+- action: "navigate"
+  Navigate the browser to a specific URL and wait for page to load.
+  Parameters: url (string, required), timeout (string, optional)
+
+- action: "eval"
+  Evaluate JavaScript in the browser context. Your go-to for interacting with content: clicking buttons, typing, getting content, scrolling, waiting for content/selector to be ready, etc.
+  Parameters: expression (string, required), timeout (string, optional), await (boolean, default true)
+
+- action: "resize"
+  Resize the browser viewport to a specific width and height.
+  Parameters: width (integer, required), height (integer, required), timeout (string, optional)
+
+- action: "screenshot"
+  Take a screenshot of the page or a specific element.
+  Parameters: selector (string, optional), timeout (string, optional)
+
+- action: "console_logs"
+  Get recent browser console logs.
+  Parameters: limit (integer, optional, default 100)
+
+- action: "clear_console_logs"
+  Clear all captured browser console logs.
+  No additional parameters.`
+
+	schema := `{
+		"type": "object",
+		"properties": {
+			"action": {
+				"type": "string",
+				"description": "The browser action to perform",
+				"enum": ["navigate", "eval", "resize", "screenshot", "console_logs", "clear_console_logs"]
+			},
+			"url": {
+				"type": "string",
+				"description": "URL to navigate to (navigate action)"
+			},
+			"expression": {
+				"type": "string",
+				"description": "JavaScript expression to evaluate (eval action)"
+			},
+			"await": {
+				"type": "boolean",
+				"description": "Wait for promises to resolve (eval action, default true)"
+			},
+			"width": {
+				"type": "integer",
+				"description": "Viewport width in pixels (resize action)"
+			},
+			"height": {
+				"type": "integer",
+				"description": "Viewport height in pixels (resize action)"
+			},
+			"limit": {
+				"type": "integer",
+				"description": "Max log entries to return (console_logs action, default 100)"
+			},
+			"selector": {
+				"type": "string",
+				"description": "CSS selector for element to screenshot (screenshot action)"
+			},
+			"timeout": {
+				"type": "string",
+				"description": "Timeout as a Go duration string (default: 15s)"
+			}
+		},
+		"required": ["action"]
+	}`
+
+	return &llm.Tool{
+		Name:        "browser",
+		Description: description,
+		InputSchema: json.RawMessage(schema),
+		Run:         b.combinedRun(),
+	}
+}
+
+// ReadImageTool returns a standalone tool for reading image files.
+func (b *BrowseTools) ReadImageTool() *llm.Tool {
+	return &llm.Tool{
+		Name:        "read_image",
+		Description: "Read an image file (such as a screenshot) and encode it for sending to the LLM",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"path": {
+					"type": "string",
+					"description": "Path to the image file to read"
+				},
+				"timeout": {
+					"type": "string",
+					"description": "Timeout as a Go duration string (default: 15s)"
+				}
+			},
+			"required": ["path"]
+		}`),
+		Run: b.readImageRun,
+	}
+}
+
+// combinedInput is the unified input for the combined browser tool.
+type combinedInput struct {
+	Action     string `json:"action"`
+	URL        string `json:"url,omitempty"`
+	Expression string `json:"expression,omitempty"`
+	Await      *bool  `json:"await,omitempty"`
+	Width      int    `json:"width,omitempty"`
+	Height     int    `json:"height,omitempty"`
+	Limit      int    `json:"limit,omitempty"`
+	Selector   string `json:"selector,omitempty"`
+	Timeout    string `json:"timeout,omitempty"`
+}
+
+func (b *BrowseTools) combinedRun() func(context.Context, json.RawMessage) llm.ToolOut {
+	return func(ctx context.Context, m json.RawMessage) llm.ToolOut {
+		var input combinedInput
+		if err := json.Unmarshal(m, &input); err != nil {
+			return llm.ErrorfToolOut("invalid input: %w", err)
+		}
+
+		switch input.Action {
+		case "navigate":
+			return b.navigateRun(ctx, m)
+		case "eval":
+			return b.evalRun(ctx, m)
+		case "resize":
+			return b.resizeRun(ctx, m)
+		case "screenshot":
+			return b.screenshotRun(ctx, m)
+		case "console_logs":
+			return b.recentConsoleLogsRun(ctx, m)
+		case "clear_console_logs":
+			return b.clearConsoleLogsRun(ctx, m)
+		default:
+			return llm.ErrorfToolOut("unknown action: %q", input.Action)
+		}
+	}
 }
 
 // SaveScreenshot saves a screenshot to disk and returns its ID
@@ -630,33 +655,9 @@ func GetScreenshotPath(id string) string {
 	return filepath.Join(ScreenshotDir, id+".png")
 }
 
-// ReadImageTool definition
 type readImageInput struct {
 	Path    string `json:"path"`
 	Timeout string `json:"timeout,omitempty"`
-}
-
-// NewReadImageTool creates a tool for reading images and returning them as base64 encoded data
-func (b *BrowseTools) NewReadImageTool() *llm.Tool {
-	return &llm.Tool{
-		Name:        "read_image",
-		Description: "Read an image file (such as a screenshot) and encode it for sending to the LLM",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"path": {
-					"type": "string",
-					"description": "Path to the image file to read"
-				},
-				"timeout": {
-					"type": "string",
-					"description": "Timeout as a Go duration string (default: 15s)"
-				}
-			},
-			"required": ["path"]
-		}`),
-		Run: b.readImageRun,
-	}
 }
 
 func (b *BrowseTools) readImageRun(ctx context.Context, m json.RawMessage) llm.ToolOut {
@@ -854,27 +855,8 @@ func (b *BrowseTools) toolOutWithDownloads(message string) llm.ToolOut {
 	return llm.ToolOut{LLMContent: llm.TextContent(sb.String())}
 }
 
-// RecentConsoleLogsTool definition
 type recentConsoleLogsInput struct {
 	Limit int `json:"limit,omitempty"`
-}
-
-// NewRecentConsoleLogsTool creates a tool for retrieving recent console logs
-func (b *BrowseTools) NewRecentConsoleLogsTool() *llm.Tool {
-	return &llm.Tool{
-		Name:        "browser_recent_console_logs",
-		Description: "Get recent browser console logs",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"limit": {
-					"type": "integer",
-					"description": "Maximum number of log entries to return (default: 100)"
-				}
-			}
-		}`),
-		Run: b.recentConsoleLogsRun,
-	}
 }
 
 func (b *BrowseTools) recentConsoleLogsRun(ctx context.Context, m json.RawMessage) llm.ToolOut {
@@ -937,18 +919,7 @@ func (b *BrowseTools) recentConsoleLogsRun(ctx context.Context, m json.RawMessag
 	return llm.ToolOut{LLMContent: llm.TextContent(sb.String())}
 }
 
-// ClearConsoleLogsTool definition
 type clearConsoleLogsInput struct{}
-
-// NewClearConsoleLogsTool creates a tool for clearing console logs
-func (b *BrowseTools) NewClearConsoleLogsTool() *llm.Tool {
-	return &llm.Tool{
-		Name:        "browser_clear_console_logs",
-		Description: "Clear all captured browser console logs",
-		InputSchema: llm.EmptySchema(),
-		Run:         b.clearConsoleLogsRun,
-	}
-}
 
 func (b *BrowseTools) clearConsoleLogsRun(ctx context.Context, m json.RawMessage) llm.ToolOut {
 	var input clearConsoleLogsInput

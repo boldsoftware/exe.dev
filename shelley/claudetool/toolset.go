@@ -163,7 +163,7 @@ func NewToolSet(ctx context.Context, cfg ToolSetConfig) *ToolSet {
 				maxImageDimension = svc.MaxImageDimension()
 			}
 		}
-		browserTools, browserCleanup := browse.RegisterBrowserTools(ctx, true, maxImageDimension)
+		browserTools, browserCleanup := browse.RegisterBrowserTools(ctx, maxImageDimension)
 		if len(browserTools) > 0 {
 			tools = append(tools, browserTools...)
 		}
