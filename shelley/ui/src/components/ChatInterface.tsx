@@ -591,6 +591,7 @@ function ChatInterface({
   const [diffViewerInitialCommit, setDiffViewerInitialCommit] = useState<string | undefined>(
     undefined,
   );
+  const [diffViewerCwd, setDiffViewerCwd] = useState<string | undefined>(undefined);
   const [diffCommentText, setDiffCommentText] = useState("");
   const [agentWorking, setAgentWorking] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -1350,8 +1351,9 @@ function ChatInterface({
           <MessageComponent
             key={item.message.message_id}
             message={item.message}
-            onOpenDiffViewer={(commit) => {
+            onOpenDiffViewer={(commit, cwd) => {
               setDiffViewerInitialCommit(commit);
+              setDiffViewerCwd(cwd);
               setShowDiffViewer(true);
             }}
             onCommentTextChange={setDiffCommentText}
@@ -1825,14 +1827,16 @@ function ChatInterface({
 
       {/* Diff Viewer */}
       <DiffViewer
-        cwd={currentConversation?.cwd || selectedCwd}
+        cwd={diffViewerCwd || currentConversation?.cwd || selectedCwd}
         isOpen={showDiffViewer}
         onClose={() => {
           setShowDiffViewer(false);
           setDiffViewerInitialCommit(undefined);
+          setDiffViewerCwd(undefined);
         }}
         onCommentTextChange={setDiffCommentText}
         initialCommit={diffViewerInitialCommit}
+        onCwdChange={setDiffViewerCwd}
       />
 
       {/* Version Checker Modal */}

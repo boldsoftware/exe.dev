@@ -20,6 +20,7 @@ interface DirectoryPickerModalProps {
   onClose: () => void;
   onSelect: (path: string) => void;
   initialPath?: string;
+  foldersOnly?: boolean; // If true, only show directories (hide files)
 }
 
 function DirectoryPickerModal({
@@ -27,6 +28,7 @@ function DirectoryPickerModal({
   onClose,
   onSelect,
   initialPath,
+  foldersOnly,
 }: DirectoryPickerModalProps) {
   const [inputPath, setInputPath] = useState(() => {
     if (!initialPath) return "";
@@ -173,6 +175,7 @@ function DirectoryPickerModal({
   // Filter entries based on prefix (case-insensitive)
   const filteredEntries =
     displayDir?.entries.filter((entry) => {
+      if (foldersOnly && !entry.is_dir) return false;
       if (!filterPrefix) return true;
       return entry.name.toLowerCase().startsWith(filterPrefix.toLowerCase());
     }) || [];

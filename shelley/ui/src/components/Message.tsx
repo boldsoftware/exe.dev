@@ -28,7 +28,7 @@ interface ToolDisplay {
 
 interface MessageProps {
   message: MessageType;
-  onOpenDiffViewer?: (commit: string) => void;
+  onOpenDiffViewer?: (commit: string, cwd?: string) => void;
   onCommentTextChange?: (text: string) => void;
 }
 
@@ -72,7 +72,7 @@ function GitInfoMessage({
   onOpenDiffViewer,
 }: {
   message: MessageType;
-  onOpenDiffViewer?: (commit: string) => void;
+  onOpenDiffViewer?: (commit: string, cwd?: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -111,7 +111,7 @@ function GitInfoMessage({
 
   const handleDiffClick = () => {
     if (commitHash && onOpenDiffViewer) {
-      onOpenDiffViewer(commitHash);
+      onOpenDiffViewer(commitHash, worktree || undefined);
     }
   };
 

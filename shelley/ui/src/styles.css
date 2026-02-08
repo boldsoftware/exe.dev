@@ -3502,6 +3502,26 @@ svg {
   font-size: 0.875rem;
 }
 
+.diff-viewer-dir-btn {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.diff-viewer-dir-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
 .diff-viewer-close {
   width: 2rem;
   height: 2rem;

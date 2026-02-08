@@ -3,6 +3,7 @@ import type * as Monaco from "monaco-editor";
 import { api } from "../services/api";
 import { isDarkModeActive } from "../services/theme";
 import { GitDiffInfo, GitFileInfo, GitFileDiff } from "../types";
+import DirectoryPickerModal from "./DirectoryPickerModal";
 
 interface DiffViewerProps {
   cwd: string;
@@ -10,6 +11,7 @@ interface DiffViewerProps {
   onClose: () => void;
   onCommentTextChange: (text: string) => void;
   initialCommit?: string; // If set, select this commit when opening
+  onCwdChange?: (cwd: string) => void; // Called when user picks a different git directory
 }
 
 // Icon components for cleaner JSX
@@ -79,9 +81,17 @@ function loadMonaco(): Promise<typeof Monaco> {
 
 type ViewMode = "comment" | "edit";
 
-function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }: DiffViewerProps) {
+function DiffViewer({
+  cwd,
+  isOpen,
+  onClose,
+  onCommentTextChange,
+  initialCommit,
+  onCwdChange,
+}: DiffViewerProps) {
   const [diffs, setDiffs] = useState<GitDiffInfo[]>([]);
   const [gitRoot, setGitRoot] = useState<string | null>(null);
+  const [showDirPicker, setShowDirPicker] = useState(false);
   const [selectedDiff, setSelectedDiff] = useState<string | null>(null);
   const [files, setFiles] = useState<GitFileInfo[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -904,6 +914,27 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
     </div>
   );
 
+  const dirButton = (
+    <button
+      className="diff-viewer-dir-btn"
+      onClick={() => setShowDirPicker(true)}
+      title={`Git directory: ${cwd}\nClick to change`}
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      </svg>
+    </button>
+  );
+
   return (
     <div className="diff-viewer-overlay">
       <div className="diff-viewer-container">
@@ -929,6 +960,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
               {commitSelector}
               {fileSelector}
             </div>
+            {dirButton}
             <button className="diff-viewer-close" onClick={onClose} title="Close (Esc)">
               ×
             </button>
@@ -944,6 +976,7 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
               <div className="diff-viewer-controls-row">
                 {navButtons}
                 {modeToggle}
+                {dirButton}
                 <button className="diff-viewer-close" onClick={onClose} title="Close (Esc)">
                   ×
                 </button>
@@ -1072,6 +1105,18 @@ function DiffViewer({ cwd, isOpen, onClose, onCommentTextChange, initialCommit }
           </div>
         )}
       </div>
+
+      {/* Directory picker for changing git directory */}
+      <DirectoryPickerModal
+        isOpen={showDirPicker}
+        onClose={() => setShowDirPicker(false)}
+        onSelect={(path) => {
+          onCwdChange?.(path);
+          setShowDirPicker(false);
+        }}
+        initialPath={cwd}
+        foldersOnly
+      />
     </div>
   );
 }
