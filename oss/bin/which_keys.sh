@@ -40,7 +40,7 @@ while IFS= read -r key_path; do
         fi
         exit 0
     fi
-done <<< "$identity_files"
+done <<<"$identity_files"
 
 echo "error: no matching private key for $fingerprint" >&2
 exit 1
