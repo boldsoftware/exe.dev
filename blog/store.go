@@ -369,6 +369,12 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 
+	// Redirect old slug from filename typo.
+	if path == "/jan06-update" {
+		http.Redirect(w, r, "/jan26-update", http.StatusMovedPermanently)
+		return true
+	}
+
 	if entry, ok := h.store.Entry(path); ok {
 		if !showHidden && !entry.Published {
 			http.Redirect(w, r, "/__exe.dev/login?redirect="+path, http.StatusFound)
