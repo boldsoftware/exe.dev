@@ -457,6 +457,7 @@ interface ChatInterfaceProps {
   openDiffViewerTrigger?: number; // increment to trigger opening diff viewer
   modelsRefreshTrigger?: number; // increment to trigger models list refresh
   onOpenModelsModal?: () => void;
+  onReconnect?: () => void;
 }
 
 function ChatInterface({
@@ -475,6 +476,7 @@ function ChatInterface({
   openDiffViewerTrigger,
   modelsRefreshTrigger,
   onOpenModelsModal,
+  onReconnect,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -607,6 +609,7 @@ function ChatInterface({
   const periodicRetryRef = useRef<number | null>(null);
   const heartbeatTimeoutRef = useRef<number | null>(null);
   const lastSequenceIdRef = useRef<number>(-1);
+  const hasConnectedRef = useRef(false);
   const userScrolledRef = useRef(false);
 
   // Load messages and set up streaming
@@ -638,8 +641,9 @@ function ChatInterface({
       if (heartbeatTimeoutRef.current) {
         clearTimeout(heartbeatTimeoutRef.current);
       }
-      // Reset sequence ID when conversation changes
+      // Reset sequence ID and connection tracking when conversation changes
       lastSequenceIdRef.current = -1;
+      hasConnectedRef.current = false;
     };
   }, [conversationId]);
 
@@ -926,6 +930,11 @@ function ChatInterface({
 
     eventSource.onopen = () => {
       console.log("Message stream connected");
+      // Refresh conversations list on reconnect (may have missed updates while disconnected)
+      if (hasConnectedRef.current) {
+        onReconnect?.();
+      }
+      hasConnectedRef.current = true;
       // Reset reconnect attempts and clear periodic retry on successful connection
       setReconnectAttempts(0);
       setIsDisconnected(false);

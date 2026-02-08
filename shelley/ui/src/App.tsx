@@ -294,6 +294,15 @@ function App() {
     }
   };
 
+  const refreshConversations = async () => {
+    try {
+      const convs = await api.getConversations();
+      setConversations(convs);
+    } catch (err) {
+      console.error("Failed to refresh conversations:", err);
+    }
+  };
+
   const startNewConversation = () => {
     // Save the current conversation's cwd to localStorage so the new conversation picks it up
     if (currentConversation?.cwd) {
@@ -468,6 +477,7 @@ function App() {
             openDiffViewerTrigger={diffViewerTrigger}
             modelsRefreshTrigger={modelsRefreshTrigger}
             onOpenModelsModal={() => setModelsModalOpen(true)}
+            onReconnect={refreshConversations}
           />
         </div>
 
