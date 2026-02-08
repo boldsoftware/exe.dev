@@ -214,7 +214,8 @@ export default function TerminalPanel({
 }: TerminalPanelProps) {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [height, setHeight] = useState(300);
-  const [userResized, setUserResized] = useState(false);
+  const [heightLocked, setHeightLocked] = useState(false);
+  const isFirstTerminalRef = useRef(true);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [statusMap, setStatusMap] = useState<
     Map<string, { status: TermStatus; exitCode: number | null; contentLines: number }>
@@ -244,7 +245,6 @@ export default function TerminalPanel({
     if (terminals.length > 0) {
       const lastTerminal = terminals[terminals.length - 1];
       setActiveTabId(lastTerminal.id);
-      setUserResized(false); // Reset so new terminal auto-sizes
     } else {
       setActiveTabId(null);
     }
@@ -287,9 +287,10 @@ export default function TerminalPanel({
     [],
   );
 
-  // Auto-size based on content when the active terminal exits or has short output
+  // Auto-size only for the very first terminal. After that, keep whatever height we have.
   useEffect(() => {
-    if (userResized || !activeTabId) return;
+    if (heightLocked || !activeTabId) return;
+    if (!isFirstTerminalRef.current) return;
     const info = statusMap.get(activeTabId);
     if (!info) return;
 
@@ -299,21 +300,22 @@ export default function TerminalPanel({
     const tabBarHeight = 38;
 
     if (info.status === "exited" || info.status === "error") {
-      // Shrink to fit content
       const needed = Math.min(
         maxHeight,
         Math.max(minHeight, info.contentLines * cellHeight + tabBarHeight + 16),
       );
       setHeight(needed);
+      setHeightLocked(true);
+      isFirstTerminalRef.current = false;
     } else if (info.status === "running") {
-      // While running, grow if needed but don't shrink
+      // While the first command is still running, grow if needed
       const needed = Math.min(
         maxHeight,
         Math.max(minHeight, info.contentLines * cellHeight + tabBarHeight + 16),
       );
       setHeight((prev) => Math.max(prev, needed));
     }
-  }, [statusMap, activeTabId, userResized]);
+  }, [statusMap, activeTabId, heightLocked]);
 
   // Resize drag
   const handleResizeMouseDown = useCallback(
@@ -328,7 +330,8 @@ export default function TerminalPanel({
         // Dragging up increases height
         const delta = startYRef.current - e.clientY;
         setHeight(Math.max(80, Math.min(800, startHeightRef.current + delta)));
-        setUserResized(true);
+        setHeightLocked(true);
+        isFirstTerminalRef.current = false;
       };
 
       const handleMouseUp = () => {
