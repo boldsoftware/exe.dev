@@ -298,12 +298,16 @@ func isExeDev() bool {
 	return err == nil
 }
 
-// collectSkills discovers skills from default directories and project tree.
+// collectSkills discovers skills from default directories, project .skills dirs,
+// and the project tree.
 func collectSkills(workingDir, gitRoot string) string {
 	// Start with default directories (user-level skills)
 	dirs := skills.DefaultDirs()
 
-	// Discover user-level skills from configured directories
+	// Add .skills directories found in the project tree
+	dirs = append(dirs, skills.ProjectSkillsDirs(workingDir, gitRoot)...)
+
+	// Discover skills from all directories
 	foundSkills := skills.Discover(dirs)
 
 	// Also discover skills anywhere in the project tree

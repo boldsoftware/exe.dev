@@ -112,3 +112,37 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// TestSystemPromptIncludesSkillsFromAnyWorkingDir verifies that user-level
+// skills (e.g. from ~/.config/agents/skills) appear in the system prompt
+// regardless of the conversation's working directory.
+// Regression test for https://github.com/boldsoftware/shelley/issues/83
+func TestSystemPromptIncludesSkillsFromAnyWorkingDir(t *testing.T) {
+	// Create a fake home with a skill
+	tmpHome := t.TempDir()
+	skillDir := filepath.Join(tmpHome, ".config", "agents", "skills", "test-skill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: test-skill\ndescription: A test skill for issue 83.\n---\nInstructions.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpHome)
+	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+
+	// Generate system prompt from a directory completely unrelated to home
+	unrelatedDir := t.TempDir()
+	prompt, err := GenerateSystemPrompt(unrelatedDir)
+	if err != nil {
+		t.Fatalf("GenerateSystemPrompt failed: %v", err)
+	}
+
+	if !strings.Contains(prompt, "test-skill") {
+		t.Error("system prompt should contain skill 'test-skill' even when working dir is unrelated to home")
+	}
+	if !strings.Contains(prompt, "A test skill for issue 83.") {
+		t.Error("system prompt should contain the skill description")
+	}
+}

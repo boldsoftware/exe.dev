@@ -445,3 +445,118 @@ func TestProjectSkillsDirs(t *testing.T) {
 		t.Errorf("second dir = %q, want %q", dirs[1], expectedSecond)
 	}
 }
+
+func TestDefaultDirsReturnsExistingCandidates(t *testing.T) {
+	// Create a fake home directory with skill directories
+	tmpHome := t.TempDir()
+
+	// Create all three candidate directories
+	configShelley := filepath.Join(tmpHome, ".config", "shelley")
+	configAgents := filepath.Join(tmpHome, ".config", "agents", "skills")
+	dotShelley := filepath.Join(tmpHome, ".shelley")
+
+	for _, dir := range []string{configShelley, configAgents, dotShelley} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Override HOME
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpHome)
+	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+
+	dirs := DefaultDirs()
+
+	if len(dirs) != 3 {
+		t.Fatalf("expected 3 dirs, got %d: %v", len(dirs), dirs)
+	}
+
+	// Verify all three candidates are returned
+	want := map[string]bool{
+		configShelley: true,
+		configAgents:  true,
+		dotShelley:    true,
+	}
+	for _, d := range dirs {
+		if !want[d] {
+			t.Errorf("unexpected dir in result: %s", d)
+		}
+	}
+}
+
+func TestDefaultDirsSkipsMissingDirs(t *testing.T) {
+	tmpHome := t.TempDir()
+
+	// Only create one of the candidate directories
+	configAgents := filepath.Join(tmpHome, ".config", "agents", "skills")
+	if err := os.MkdirAll(configAgents, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpHome)
+	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+
+	dirs := DefaultDirs()
+
+	if len(dirs) != 1 {
+		t.Fatalf("expected 1 dir, got %d: %v", len(dirs), dirs)
+	}
+	if dirs[0] != configAgents {
+		t.Errorf("expected %s, got %s", configAgents, dirs[0])
+	}
+}
+
+func TestSkillsFoundRegardlessOfWorkingDir(t *testing.T) {
+	// This is a regression test for:
+	// https://github.com/boldsoftware/shelley/issues/83
+	//
+	// Skills from ~/.config/agents/skills should be discovered
+	// regardless of the current working directory.
+
+	tmpHome := t.TempDir()
+
+	// Create a skill in ~/.config/agents/skills/
+	skillDir := filepath.Join(tmpHome, ".config", "agents", "skills", "my-skill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: my-skill\ndescription: A test skill.\n---\nContent\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpHome)
+	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+
+	// Create a project directory far from home
+	projectDir := t.TempDir()
+
+	// Simulate what collectSkills does:
+	// DefaultDirs + Discover should find the skill regardless of project dir
+	dirs := DefaultDirs()
+	found := Discover(dirs)
+
+	if len(found) != 1 {
+		t.Fatalf("expected 1 skill, got %d (dirs=%v)", len(found), dirs)
+	}
+	if found[0].Name != "my-skill" {
+		t.Errorf("expected my-skill, got %s", found[0].Name)
+	}
+
+	// DiscoverInTree from the project dir should NOT find user-level skills
+	// (they're in hidden directories which are skipped)
+	treeSkills := DiscoverInTree(projectDir, projectDir)
+	if len(treeSkills) != 0 {
+		t.Errorf("expected 0 tree skills from unrelated project, got %d", len(treeSkills))
+	}
+
+	// But the combined result should still have the skill
+	all := append(found, treeSkills...)
+	if len(all) != 1 {
+		t.Fatalf("expected 1 total skill, got %d", len(all))
+	}
+
+	_ = projectDir // used above
+}

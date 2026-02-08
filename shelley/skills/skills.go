@@ -303,8 +303,9 @@ func ToPromptXML(skills []Skill) string {
 }
 
 // DefaultDirs returns the default skill directories to search.
+// These are always returned if they exist, regardless of the current working directory.
 func DefaultDirs() []string {
-	dirs := []string{}
+	var dirs []string
 
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -321,46 +322,13 @@ func DefaultDirs() []string {
 		filepath.Join(home, ".shelley"),
 	}
 
-	for _, candidateDir := range candidateDirs {
-		entries, err := os.ReadDir(candidateDir)
-		if err != nil {
-			continue
-		}
-		for _, entry := range entries {
-			if entry.IsDir() {
-				subdir := filepath.Join(candidateDir, entry.Name())
-				// Check if this directory contains skills (has subdirs with SKILL.md)
-				// or is itself a skill directory
-				if findSkillMD(subdir) != "" {
-					// This is a skill directory itself, add parent
-					dirs = append(dirs, candidateDir)
-					break
-				}
-				// Otherwise check if it's a container of skills
-				if hasSkillSubdirs(subdir) {
-					dirs = append(dirs, subdir)
-				}
-			}
+	for _, dir := range candidateDirs {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			dirs = append(dirs, dir)
 		}
 	}
 
 	return dirs
-}
-
-// hasSkillSubdirs checks if a directory contains any skill subdirectories.
-func hasSkillSubdirs(dir string) bool {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			if findSkillMD(filepath.Join(dir, entry.Name())) != "" {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // expandPath expands ~ to the user's home directory.
