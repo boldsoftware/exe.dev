@@ -2498,6 +2498,12 @@ svg {
 
   .status-field {
     width: 100%;
+    max-width: none;
+  }
+
+  .status-field-label {
+    width: 2.5rem;
+    text-align: right;
   }
 }
 
@@ -2818,12 +2824,12 @@ svg {
 
   .status-field-model {
     min-width: 120px;
-    max-width: 200px;
+    max-width: none;
   }
 
   .status-field-cwd {
     min-width: 140px;
-    max-width: 250px;
+    max-width: none;
   }
 }
 
