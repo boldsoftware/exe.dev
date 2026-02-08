@@ -4,6 +4,17 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 
+function base64ToUint8Array(base64String: string): Uint8Array {
+  // This isn't yet available in Chrome, but Safari has it!
+  // @ts-expect-error Uint8Array.fromBase64 is a newer API
+  if (Uint8Array.fromBase64) {
+    // @ts-expect-error Uint8Array.fromBase64 is a newer API
+    return Uint8Array.fromBase64(base64String);
+  }
+  const binaryString = atob(base64String);
+  return Uint8Array.from(binaryString, (char) => char.charCodeAt(0));
+}
+
 interface TerminalWidgetProps {
   command: string;
   cwd: string;
@@ -425,9 +436,7 @@ export default function TerminalWidget({
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === "output" && msg.data) {
-          // Decode base64 data
-          const decoded = atob(msg.data);
-          term.write(decoded);
+          term.write(base64ToUint8Array(msg.data));
           // Track line count for auto-sizing
           lineCountRef.current = term.buffer.active.length;
         } else if (msg.type === "exit") {
