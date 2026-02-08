@@ -1660,7 +1660,6 @@ function ChatInterface({
       <TerminalPanel
         terminals={ephemeralTerminals}
         onClose={(id) => setEphemeralTerminals((prev) => prev.filter((t) => t.id !== id))}
-        onCloseAll={() => setEphemeralTerminals([])}
         onInsertIntoInput={handleInsertFromTerminal}
       />
 

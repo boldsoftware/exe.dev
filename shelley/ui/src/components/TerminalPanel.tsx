@@ -25,7 +25,6 @@ export interface EphemeralTerminal {
 interface TerminalPanelProps {
   terminals: EphemeralTerminal[];
   onClose: (id: string) => void;
-  onCloseAll: () => void;
   onInsertIntoInput?: (text: string) => void;
 }
 
@@ -210,7 +209,6 @@ function ActionButton({
 export default function TerminalPanel({
   terminals,
   onClose,
-  onCloseAll,
   onInsertIntoInput,
 }: TerminalPanelProps) {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
@@ -247,7 +245,7 @@ export default function TerminalPanel({
     } else {
       setActiveTabId(null);
     }
-  }, [terminals.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [terminals.length]);
 
   // If active tab got closed, switch to the last remaining
   useEffect(() => {
@@ -416,8 +414,6 @@ export default function TerminalPanel({
   }, [activeTabId, onClose]);
 
   if (terminals.length === 0) return null;
-
-  const activeInfo = activeTabId ? statusMap.get(activeTabId) : null;
 
   // Truncate command for tab label
   const tabLabel = (cmd: string) => {
@@ -659,7 +655,6 @@ function TerminalInstanceWithRegistry({
       xterm.dispose();
       onUnregister(term.id);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [term.id, term.command, term.cwd]);
 
   // Update theme
