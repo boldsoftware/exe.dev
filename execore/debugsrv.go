@@ -359,33 +359,33 @@ func (s *Server) handleDebugBoxStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if box.ContainerID == nil {
-		http.Error(w, "box has no container_id", http.StatusBadRequest)
-		return
-	}
-
-	ec := s.getExeletClient(box.Ctrhost)
-	if ec == nil {
-		http.Error(w, fmt.Sprintf("exelet %q not available", box.Ctrhost), http.StatusServiceUnavailable)
-		return
-	}
-
-	if _, err := ec.client.StopInstance(ctx, &computeapi.StopInstanceRequest{ID: *box.ContainerID}); err != nil {
-		http.Error(w, fmt.Sprintf("failed to stop instance: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	if box.SSHPort != nil {
-		s.sshPool.DropConnectionsTo(box.SSHHost(), int(*box.SSHPort))
-	}
-
-	if err := s.updateBoxStatus(ctx, box.ID, "stopped"); err != nil {
-		http.Error(w, fmt.Sprintf("failed to update box status: %v", err), http.StatusInternalServerError)
+	if err := s.stopBox(ctx, box); err != nil {
+		http.Error(w, fmt.Sprintf("failed to stop box: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	s.slog().InfoContext(ctx, "box stopped via debug page", "box", boxName)
 	http.Redirect(w, r, "/debug/boxes", http.StatusSeeOther)
+}
+
+// stopUserBoxes stops all running boxes belonging to a user.
+func (s *Server) stopUserBoxes(ctx context.Context, userID string) error {
+	boxes, err := withRxRes1(s, ctx, (*exedb.Queries).BoxesForUser, userID)
+	if err != nil {
+		return fmt.Errorf("failed to list boxes for user: %w", err)
+	}
+
+	for _, box := range boxes {
+		if box.Status != "running" {
+			continue
+		}
+		if err := s.stopBox(ctx, box); err != nil {
+			s.slog().WarnContext(ctx, "failed to stop box during user lockout", "box", box.Name, "error", err)
+		} else {
+			s.slog().InfoContext(ctx, "box stopped due to user lockout", "box", box.Name, "user_id", userID)
+		}
+	}
+	return nil
 }
 
 // handleDebugBoxStart starts a stopped box via the exelet gRPC API.
@@ -1584,6 +1584,11 @@ func (s *Server) handleDebugToggleLockout(w http.ResponseWriter, r *http.Request
 	action := "unlocked"
 	if lockout {
 		action = "locked out"
+		if err := s.stopUserBoxes(ctx, userID); err != nil {
+			s.slog().ErrorContext(ctx, "failed to stop user boxes during lockout", "user_id", userID, "error", err)
+			http.Error(w, fmt.Sprintf("user locked out but failed to stop boxes: %v", err), http.StatusInternalServerError)
+			return
+		}
 	}
 	s.slog().InfoContext(ctx, "user lockout toggled via debug page", "user_id", userID, "action", action)
 

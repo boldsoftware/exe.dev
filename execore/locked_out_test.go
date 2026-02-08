@@ -344,3 +344,78 @@ func TestLockedOutUserCannotAddNewSSHKey(t *testing.T) {
 		t.Error("Verification channel should have been closed")
 	}
 }
+
+// TestLockoutStopsUserBoxes tests that locking out a user stops all their running boxes.
+func TestLockoutStopsUserBoxes(t *testing.T) {
+	server := newTestServer(t)
+	ctx := t.Context()
+
+	// Create a user
+	user, err := server.createUser(ctx, testSSHPubKey, "lockout-boxes@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Insert two running boxes and one stopped box for this user
+	err = server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		if _, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
+			Ctrhost:         "test-host",
+			Name:            "lockout-running1",
+			Status:          "running",
+			Image:           "test-image",
+			CreatedByUserID: user.UserID,
+		}); err != nil {
+			return err
+		}
+		if _, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
+			Ctrhost:         "test-host",
+			Name:            "lockout-running2",
+			Status:          "running",
+			Image:           "test-image",
+			CreatedByUserID: user.UserID,
+		}); err != nil {
+			return err
+		}
+		if _, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
+			Ctrhost:         "test-host",
+			Name:            "lockout-stopped",
+			Status:          "stopped",
+			Image:           "test-image",
+			CreatedByUserID: user.UserID,
+		}); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test boxes: %v", err)
+	}
+
+	// Lock out the user via the debug toggle endpoint
+	form := url.Values{}
+	form.Set("user_id", user.UserID)
+	form.Set("lockout", "1")
+	req := httptest.NewRequest("POST", "/debug/users/toggle-lockout", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	server.handleDebugToggleLockout(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 from toggle-lockout, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify all boxes are now stopped
+	boxes, err := withRxRes1(server, ctx, (*exedb.Queries).BoxesForUser, user.UserID)
+	if err != nil {
+		t.Fatalf("Failed to list boxes: %v", err)
+	}
+	if len(boxes) != 3 {
+		t.Fatalf("Expected 3 boxes, got %d", len(boxes))
+	}
+	for _, box := range boxes {
+		if box.Status != "stopped" {
+			t.Errorf("Box %q should be stopped, got %q", box.Name, box.Status)
+		}
+	}
+}

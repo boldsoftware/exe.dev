@@ -2338,6 +2338,30 @@ func (s *Server) updateBoxStatus(ctx context.Context, boxID int, status string) 
 	})
 }
 
+// stopBox stops a running box via the exelet and updates its status in the database.
+// If the exelet is unavailable or the stop call fails, the box status is still
+// updated to "stopped" in the database and the error is logged.
+func (s *Server) stopBox(ctx context.Context, box exedb.Box) error {
+	if box.ContainerID == nil {
+		return s.updateBoxStatus(ctx, box.ID, "stopped")
+	}
+
+	ec := s.getExeletClient(box.Ctrhost)
+	if ec != nil {
+		if _, err := ec.client.StopInstance(ctx, &computeapi.StopInstanceRequest{ID: *box.ContainerID}); err != nil {
+			s.slog().WarnContext(ctx, "failed to stop instance on exelet", "box", box.Name, "error", err)
+		}
+	} else {
+		s.slog().WarnContext(ctx, "exelet not available for box stop", "box", box.Name, "ctrhost", box.Ctrhost)
+	}
+
+	if box.SSHPort != nil {
+		s.sshPool.DropConnectionsTo(box.SSHHost(), int(*box.SSHPort))
+	}
+
+	return s.updateBoxStatus(ctx, box.ID, "stopped")
+}
+
 // Start starts HTTP, HTTPS (if configured), and SSH servers
 func (s *Server) Start() error {
 	if s.stopping.Load() {
