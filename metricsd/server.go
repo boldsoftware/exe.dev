@@ -8,14 +8,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/pprof"
+	"net/netip"
 	"sync"
 	"time"
 
 	"github.com/duckdb/duckdb-go/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"tailscale.com/net/tsaddr"
 )
 
 // Server handles HTTP requests for metrics collection.
@@ -36,6 +39,8 @@ type Server struct {
 	insertRowSeconds   prometheus.Histogram
 	startTime          time.Time
 
+	requireTailscale bool // whether to verify requests come from tailscale/loopback
+
 	// Last batch info
 	lastBatchMu   sync.RWMutex
 	lastBatchTime time.Time
@@ -43,7 +48,8 @@ type Server struct {
 }
 
 // NewServer creates a new metrics server with the given DuckDB connector and database.
-func NewServer(connector *duckdb.Connector, db *sql.DB) *Server {
+// If requireTailscale is true, all requests must originate from a tailscale or loopback IP.
+func NewServer(connector *duckdb.Connector, db *sql.DB, requireTailscale bool) *Server {
 	reg := prometheus.NewRegistry()
 
 	uptimeGauge := prometheus.NewGauge(prometheus.GaugeOpts{
@@ -73,6 +79,7 @@ func NewServer(connector *duckdb.Connector, db *sql.DB) *Server {
 	s := &Server{
 		db:                 db,
 		connector:          connector,
+		requireTailscale:   requireTailscale,
 		registry:           reg,
 		uptimeGauge:        uptimeGauge,
 		rowsInsertedTotal:  rowsInsertedTotal,
@@ -177,7 +184,27 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /debug/pprof/mutex", pprof.Handler("mutex"))
 	mux.Handle("GET /debug/pprof/threadcreate", pprof.Handler("threadcreate"))
 
+	if s.requireTailscale {
+		return tailscaleOnly(mux)
+	}
 	return mux
+}
+
+// tailscaleOnly wraps an http.Handler to reject requests not from tailscale or loopback IPs.
+func tailscaleOnly(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, _ := net.SplitHostPort(r.RemoteAddr)
+		remoteIP, err := netip.ParseAddr(host)
+		if err != nil {
+			http.Error(w, "bad remote addr", http.StatusInternalServerError)
+			return
+		}
+		if !remoteIP.IsLoopback() && !tsaddr.IsTailscaleIP(remoteIP) {
+			http.Error(w, "access denied", http.StatusUnauthorized)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {

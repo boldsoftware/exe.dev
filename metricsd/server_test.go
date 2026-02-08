@@ -21,7 +21,7 @@ func TestServer(t *testing.T) {
 	defer db.Close()
 	defer connector.Close()
 
-	srv := NewServer(connector, db)
+	srv := NewServer(connector, db, false)
 	defer srv.Close()
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -199,7 +199,7 @@ func TestInsertMetrics_DefaultTimestamp(t *testing.T) {
 	defer db.Close()
 	defer connector.Close()
 
-	srv := NewServer(connector, db)
+	srv := NewServer(connector, db, false)
 	defer srv.Close()
 
 	// Insert metric without timestamp

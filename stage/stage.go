@@ -5,6 +5,8 @@ import (
 	"cmp"
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 
 	"exe.dev/billing"
 )
@@ -72,6 +74,8 @@ type Env struct {
 	DefaultDisk   uint64 // default disk size for new boxes in bytes
 	DefaultCPUs   uint64 // default number of CPUs for new boxes
 
+	ListenOnTailscaleOnly bool // whether auxiliary daemons (metricsd) should bind only to the tailscale interface
+
 	StripeAPIKey string // Stripe API key for billing operations
 	StripeURL    string // Stripe API URL (for testing); empty means use real Stripe
 }
@@ -121,6 +125,8 @@ func Invalid() Env {
 		DefaultDisk:   0, // invalid: must be > 0
 		DefaultCPUs:   0, // invalid: must be > 0
 
+		ListenOnTailscaleOnly: false,
+
 		StripeAPIKey: "", // invalid: no API key
 		StripeURL:    "", // invalid: no Stripe URL
 	}
@@ -168,6 +174,8 @@ func Local() Env {
 
 		NumShards:  25,
 		ProxyPorts: []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 9999},
+
+		ListenOnTailscaleOnly: false,
 
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
@@ -220,6 +228,8 @@ func Test() Env {
 		NumShards:  25,
 		ProxyPorts: nil, // no proxy ports in tests to avoid conflicts
 
+		ListenOnTailscaleOnly: false,
+
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   11 * 1000 * 1000 * 1000, // 11GB
 		DefaultCPUs:   2,
@@ -265,6 +275,8 @@ func Staging() Env {
 		SlackOpsChannel:      "stag",
 		SlackPageChannel:     "stag",
 		HoneycombEnv:         "staging",
+
+		ListenOnTailscaleOnly: true,
 
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
@@ -313,6 +325,8 @@ func Prod() Env {
 		SlackOpsChannel:      "buzz",
 		SlackPageChannel:     "page",
 		HoneycombEnv:         "production",
+
+		ListenOnTailscaleOnly: true,
 
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
@@ -378,6 +392,23 @@ func (e Env) BoxDest(boxName string) string {
 // BillingClient returns a configured billing manager for this environment.
 func (e Env) BillingClient() *billing.Manager {
 	return &billing.Manager{APIKey: e.StripeAPIKey, StripeURL: e.StripeURL}
+}
+
+// TailscaleListenAddr returns a listen address bound to the tailscale interface
+// for the given port. If ListenOnTailscaleOnly is false, it returns ":port".
+func (e Env) TailscaleListenAddr(port string) (string, error) {
+	if !e.ListenOnTailscaleOnly {
+		return ":" + port, nil
+	}
+	out, err := exec.Command("tailscale", "ip", "-4").Output()
+	if err != nil {
+		return "", fmt.Errorf("tailscale ip -4: %w", err)
+	}
+	ip := strings.TrimSpace(string(out))
+	if ip == "" {
+		return "", fmt.Errorf("tailscale ip -4 returned empty")
+	}
+	return ip + ":" + port, nil
 }
 
 // MailgunDomain returns the Mailgun sending domain for this environment.

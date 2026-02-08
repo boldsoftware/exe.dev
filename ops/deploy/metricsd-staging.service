@@ -1,0 +1,23 @@
+[Unit]
+Description=exe.dev metricsd (staging)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu
+EnvironmentFile=/etc/default/metricsd
+
+# Use the latest timestamp version
+ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/metricsd.* | head -n1)" -db /home/ubuntu/metrics.duckdb -stage staging'
+
+Restart=always
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

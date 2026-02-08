@@ -67,7 +67,7 @@ func StartMetricsd(ctx context.Context, logFile io.Writer, logPorts bool) (*Metr
 	// Start metricsd with random port
 	metricsdCtx, metricsdCancel := context.WithCancel(ctx)
 	metricsdCmd := exec.CommandContext(metricsdCtx, binPath,
-		"-addr", ":0",
+		"-port", "0",
 		"-db", dbPath,
 		"-stage", "test",
 	)

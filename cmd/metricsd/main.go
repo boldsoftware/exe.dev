@@ -24,7 +24,7 @@ func main() {
 
 func run() error {
 	dbPath := flag.String("db", "metrics.duckdb", "path to DuckDB database file")
-	addr := flag.String("addr", ":8090", "HTTP listen address")
+	port := flag.String("port", "21090", "HTTP listen port")
 	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test"`)
 	flag.Parse()
 
@@ -37,6 +37,11 @@ func run() error {
 
 	ctx := context.Background()
 
+	addr, err := env.TailscaleListenAddr(*port)
+	if err != nil {
+		return err
+	}
+
 	connector, db, err := metricsd.OpenDB(ctx, *dbPath)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
@@ -44,11 +49,10 @@ func run() error {
 	defer db.Close()
 	defer connector.Close()
 
-	srv := metricsd.NewServer(connector, db)
+	srv := metricsd.NewServer(connector, db, env.ListenOnTailscaleOnly)
 	defer srv.Close()
 
-	// Create listener first so we can get the actual bound address
-	ln, err := net.Listen("tcp", *addr)
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
@@ -57,8 +61,7 @@ func run() error {
 		Handler: srv.Handler(),
 	}
 
-	slog.InfoContext(ctx, "starting metricsd", "addr", ln.Addr().String(), "db", *dbPath)
+	slog.InfoContext(ctx, "starting metricsd", "addr", ln.Addr().String(), "db", *dbPath, "tailscale_only", env.ListenOnTailscaleOnly)
 
-	// Serve until killed - no graceful shutdown for fast deployments
 	return httpServer.Serve(ln)
 }
