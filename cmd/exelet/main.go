@@ -218,6 +218,17 @@ func main() {
 			Value:   config.DefaultReplicationPrune,
 			EnvVars: []string{"EXELET_STORAGE_REPLICATION_PRUNE"},
 		},
+		&cli.StringFlag{
+			Name:    "metrics-daemon-url",
+			Usage:   "URL of the metrics daemon (e.g., http://localhost:8090)",
+			EnvVars: []string{"EXELET_METRICS_DAEMON_URL"},
+		},
+		&cli.DurationFlag{
+			Name:    "metrics-daemon-interval",
+			Usage:   "interval for sending metrics to the daemon",
+			Value:   config.DefaultMetricsDaemonInterval,
+			EnvVars: []string{"EXELET_METRICS_DAEMON_INTERVAL"},
+		},
 	}
 	app.Action = serveAction
 
@@ -278,6 +289,8 @@ func serveAction(clix *cli.Context) error {
 	replicationRetention := clix.Int("storage-replication-retention")
 	replicationBandwidthLimit := clix.String("storage-replication-bandwidth-limit")
 	replicationPrune := clix.Bool("storage-replication-prune")
+	metricsDaemonURL := clix.String("metrics-daemon-url")
+	metricsDaemonInterval := clix.Duration("metrics-daemon-interval")
 
 	// Validate replication config
 	if replicationEnabled && replicationTarget == "" {
@@ -311,6 +324,8 @@ func serveAction(clix *cli.Context) error {
 		ReplicationRetention:        replicationRetention,
 		ReplicationBandwidthLimit:   replicationBandwidthLimit,
 		ReplicationPrune:            replicationPrune,
+		MetricsDaemonURL:            metricsDaemonURL,
+		MetricsDaemonInterval:       metricsDaemonInterval,
 	}
 
 	opts := []exelet.ServerOpt{

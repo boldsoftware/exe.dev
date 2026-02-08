@@ -52,6 +52,7 @@ func run() error {
 	startExelet := flag.Bool("start-exelet", false, "Build and start exelet on lima-exe-ctr (local/test only)")
 	multiExelet := flag.Bool("multi-exelet", false, "with -start-exelet, also start exelet on lima-exe-ctr-tests; may interact badly with concurrent automated tests")
 	enableExeletStorageReplication := flag.Bool("enable-exelet-storage-replication", false, "with -multi-exelet, enable storage replication from exe-ctr to exe-ctr-tests")
+	startMetricsd := flag.Bool("start-metricsd", false, "with -start-exelet, also start metricsd locally and configure exelet to send metrics")
 	lmtpSocketDefault := "/var/run/exed/lmtp.sock"
 	if runtime.GOOS == "darwin" {
 		lmtpSocketDefault = filepath.Join(os.TempDir(), "exed-lmtp.sock")
@@ -90,6 +91,11 @@ func run() error {
 		return fmt.Errorf("-enable-exelet-storage-replication requires -multi-exelet")
 	}
 
+	// -start-metricsd requires -start-exelet
+	if *startMetricsd && !*startExelet {
+		return fmt.Errorf("-start-metricsd requires -start-exelet")
+	}
+
 	// Validate -start-exelet is incompatible with explicit addresses
 	if *startExelet {
 		if *exeletAddresses != "" {
@@ -110,7 +116,21 @@ func run() error {
 
 	// Start exelet(s) if requested
 	if *startExelet {
-		addr, gw, cleanupForwarder, err := startExeletsRemote(env, *httpAddr, *multiExelet, *enableExeletStorageReplication)
+		// Start metricsd if requested (must start before exelet so we have the URL)
+		var metricsdURL string
+		if *startMetricsd {
+			url, cleanup, err := startMetricsdLocal(*dbPath)
+			if err != nil {
+				return fmt.Errorf("failed to start metricsd: %w", err)
+			}
+			if cleanup != nil {
+				defer cleanup()
+			}
+			metricsdURL = url
+			slog.Info("metricsd started", "url", metricsdURL)
+		}
+
+		addr, gw, cleanupForwarder, err := startExeletsRemote(env, *httpAddr, *multiExelet, *enableExeletStorageReplication, metricsdURL)
 		if err != nil {
 			return fmt.Errorf("failed to start exelets: %w", err)
 		}
@@ -303,7 +323,7 @@ func testRemoteToLocalConnectivity(ctx context.Context, host, gateway string, po
 // If multiExelet is true, also starts on lima-exe-ctr-tests.
 // If enableReplication is true, enables storage replication from primary to secondary host.
 // Returns a comma-separated list of exelet addresses and gateway address.
-func startExeletsRemote(env stage.Env, httpAddr string, multiExelet, enableReplication bool) (_, _ string, cleanup func(), retErr error) {
+func startExeletsRemote(env stage.Env, httpAddr string, multiExelet, enableReplication bool, metricsdURL string) (_, _ string, cleanup func(), retErr error) {
 	const (
 		// Primary, normal dev lima VM
 		limaDevHost = "lima-exe-ctr.local"
@@ -387,6 +407,15 @@ func startExeletsRemote(env stage.Env, httpAddr string, multiExelet, enableRepli
 		slog.InfoContext(ctx, "replication forwarder started", "target", replicationTarget, "pid", socatCmd.Process.Pid)
 	}
 
+	// Transform metricsd URL from localhost/127.0.0.1/0.0.0.0/[::] to gateway so exelet in VM can reach it
+	if metricsdURL != "" {
+		metricsdURL = strings.Replace(metricsdURL, "://localhost:", "://"+gateway+":", 1)
+		metricsdURL = strings.Replace(metricsdURL, "://127.0.0.1:", "://"+gateway+":", 1)
+		metricsdURL = strings.Replace(metricsdURL, "://0.0.0.0:", "://"+gateway+":", 1)
+		metricsdURL = strings.Replace(metricsdURL, "://[::]:", "://"+gateway+":", 1)
+		slog.InfoContext(ctx, "metricsd URL adjusted for VM access", "url", metricsdURL)
+	}
+
 	var exeletAddrs []string
 	for i, host := range hosts {
 		// Only enable replication on the primary host (first one), replicating to the secondary
@@ -394,7 +423,7 @@ func startExeletsRemote(env stage.Env, httpAddr string, multiExelet, enableRepli
 		if enableReplication && i == 0 {
 			hostReplicationTarget = replicationTarget
 		}
-		addr, err := startExeletOnHost(ctx, host, binPath, env.LogFormat, env.LogLevel, httpAddr, gateway, needsTunnel, hostReplicationTarget)
+		addr, err := startExeletOnHost(ctx, host, binPath, env.LogFormat, env.LogLevel, httpAddr, gateway, needsTunnel, hostReplicationTarget, metricsdURL)
 		if err != nil {
 			retErr = fmt.Errorf("failed to start exelet on %q: %w", host, err)
 			return
@@ -500,7 +529,7 @@ func startReplicationForwarder(ctx context.Context, gateway string, forwarderPor
 
 // startExeletOnHost starts exelet on a single host. Returns the exelet address.
 // If replicationTarget is non-empty, configures storage replication to that target.
-func startExeletOnHost(ctx context.Context, host, binPath, logFormat, logLevel, httpAddr, gateway string, needsTunnel bool, replicationTarget string) (string, error) {
+func startExeletOnHost(ctx context.Context, host, binPath, logFormat, logLevel, httpAddr, gateway string, needsTunnel bool, replicationTarget, metricsdURL string) (string, error) {
 	slog.InfoContext(ctx, "starting remote exelet", "host", host)
 
 	// Stop any existing exelet instances
@@ -543,7 +572,7 @@ func startExeletOnHost(ctx context.Context, host, binPath, logFormat, logLevel, 
 			// Parse failed, or dynamic port. Use gateway approach.
 			exedURL = fmt.Sprintf("http://%s%s", gateway, httpAddr)
 			slog.InfoContext(ctx, "starting exeletd on remote host", "exed_url", exedURL)
-			if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL, replicationTarget, replicationKnownHosts); err != nil {
+			if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL, replicationTarget, replicationKnownHosts, metricsdURL); err != nil {
 				return "", err
 			}
 			return waitForExeletAddress(host)
@@ -565,7 +594,7 @@ func startExeletOnHost(ctx context.Context, host, binPath, logFormat, logLevel, 
 
 	// Start exelet via SSH - the SSH command will keep running
 	slog.InfoContext(ctx, "starting exeletd on remote host", "exed_url", exedURL, "replication_target", replicationTarget)
-	if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL, replicationTarget, replicationKnownHosts); err != nil {
+	if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL, replicationTarget, replicationKnownHosts, metricsdURL); err != nil {
 		return "", err
 	}
 	return waitForExeletAddress(host)
@@ -660,7 +689,8 @@ func generateReplicationKnownHosts(ctx context.Context, exeletHost, replicationT
 
 // startExeletProcess starts the exelet process on the remote host via SSH.
 // If replicationTarget is non-empty, adds storage replication flags.
-func startExeletProcess(ctx context.Context, host, logFormat, logLevel, exedURL, replicationTarget, replicationKnownHosts string) error {
+// If metricsdURL is non-empty, adds metrics daemon flags.
+func startExeletProcess(ctx context.Context, host, logFormat, logLevel, exedURL, replicationTarget, replicationKnownHosts, metricsdURL string) error {
 	baseCmd := fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --stage local --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://:9080 --http-addr :9081 --exed-url %s --instance-domain exe.cloud --enable-hugepages`,
 		logFormat, logLevel, exedURL)
 
@@ -669,6 +699,11 @@ func startExeletProcess(ctx context.Context, host, logFormat, logLevel, exedURL,
 		if replicationKnownHosts != "" {
 			baseCmd += fmt.Sprintf(` --storage-replication-known-hosts=%s`, replicationKnownHosts)
 		}
+	}
+
+	if metricsdURL != "" {
+		// Use a short interval for local dev so metrics appear quickly
+		baseCmd += fmt.Sprintf(` --metrics-daemon-url=%s --metrics-daemon-interval=10s`, metricsdURL)
 	}
 
 	cmd := exec.CommandContext(ctx, "ssh",
@@ -724,6 +759,92 @@ func waitForExeletAddress(host string) (string, error) {
 
 	slog.Info("exelet startup complete", "address", exeletAddr)
 	return exeletAddr, nil
+}
+
+// startMetricsdLocal builds and starts metricsd locally, returning the URL and a cleanup function.
+func startMetricsdLocal(exeDBPath string) (url string, cleanup func(), retErr error) {
+	slog.Info("building metricsd binary")
+
+	binPath := filepath.Join(os.TempDir(), "metricsd")
+	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/metricsd")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", nil, fmt.Errorf("go build metricsd failed: %w\n%s", err, out)
+	}
+
+	// Put metrics.duckdb in the same directory as exe.db
+	dbPath := filepath.Join(filepath.Dir(exeDBPath), "metrics.duckdb")
+
+	slog.Info("starting metricsd", "binary", binPath, "db", dbPath)
+
+	ctx := context.Background()
+	metricsdCmd := exec.CommandContext(ctx, binPath, "-addr", "0.0.0.0:0", "-db", dbPath, "-stage", "local")
+	metricsdCmd.Env = os.Environ() // inherit env including LOG_FORMAT
+
+	// Capture stdout/stderr to find the listen address
+	stdoutPipe, err := metricsdCmd.StdoutPipe()
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create stdout pipe: %w", err)
+	}
+	metricsdCmd.Stderr = metricsdCmd.Stdout // combine stderr
+
+	if err := metricsdCmd.Start(); err != nil {
+		return "", nil, fmt.Errorf("failed to start metricsd: %w", err)
+	}
+
+	cleanup = func() {
+		if metricsdCmd.Process != nil {
+			metricsdCmd.Process.Kill()
+		}
+		// Don't remove dbPath - metrics.duckdb is persistent
+		os.Remove(binPath)
+	}
+	defer func() {
+		if retErr != nil && cleanup != nil {
+			cleanup()
+			cleanup = nil
+		}
+	}()
+
+	// Read output to find the listen address
+	// Strip ANSI escape codes from a string
+	stripANSI := func(s string) string {
+		ansiRE := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+		return ansiRE.ReplaceAllString(s, "")
+	}
+
+	addrCh := make(chan string, 1)
+	go func() {
+		scanner := bufio.NewScanner(stdoutPipe)
+		// Match both JSON format ("addr":"...") and tint/text format (addr=...)
+		addrJSONRE := regexp.MustCompile(`"addr":"([^"]+)"`)
+		addrTextRE := regexp.MustCompile(`addr=([^\s]+)`)
+		for scanner.Scan() {
+			line := scanner.Text()
+			fmt.Println(line) // echo to stdout
+			if strings.Contains(line, "starting metricsd") {
+				var addr string
+				if matches := addrJSONRE.FindStringSubmatch(line); len(matches) > 1 {
+					addr = matches[1]
+				} else if matches := addrTextRE.FindStringSubmatch(line); len(matches) > 1 {
+					addr = stripANSI(matches[1])
+				}
+				if addr != "" {
+					select {
+					case addrCh <- addr:
+					default:
+					}
+				}
+			}
+		}
+	}()
+
+	// Wait for metricsd to report its address
+	select {
+	case addr := <-addrCh:
+		return "http://" + addr, cleanup, nil
+	case <-time.After(10 * time.Second):
+		return "", nil, fmt.Errorf("timeout waiting for metricsd to start")
+	}
 }
 
 // buildExeletBinary builds exelet for Linux and returns path to the binary

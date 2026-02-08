@@ -23,6 +23,7 @@ type prometheusMetrics struct {
 	netTxCounter *prometheus.CounterVec
 	diskGauge    *prometheus.GaugeVec
 	memoryGauge  *prometheus.GaugeVec
+	swapGauge    *prometheus.GaugeVec
 
 	mu    sync.Mutex
 	state map[string]*metricsState // vm_id -> state
@@ -85,12 +86,24 @@ func newPrometheusMetrics(registry *prometheus.Registry) *prometheusMetrics {
 	)
 	registry.MustRegister(memoryGauge)
 
+	swapGauge := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "exelet",
+			Subsystem: "vm",
+			Name:      "swap_bytes",
+			Help:      "Current swap usage (VmSwap) of the VM in bytes.",
+		},
+		[]string{"vm_id", "vm_name"},
+	)
+	registry.MustRegister(swapGauge)
+
 	return &prometheusMetrics{
 		cpuCounter:   cpuCounter,
 		netRxCounter: netRxCounter,
 		netTxCounter: netTxCounter,
 		diskGauge:    diskGauge,
 		memoryGauge:  memoryGauge,
+		swapGauge:    swapGauge,
 		state:        make(map[string]*metricsState),
 	}
 }
@@ -109,6 +122,7 @@ func (p *prometheusMetrics) update(id, name string, usage *vmUsageState) {
 			p.netTxCounter.DeleteLabelValues(id, state.name)
 			p.diskGauge.DeleteLabelValues(id, state.name)
 			p.memoryGauge.DeleteLabelValues(id, state.name)
+			p.swapGauge.DeleteLabelValues(id, state.name)
 		}
 		// Initialize with current values - add full amount on first observation
 		p.state[id] = &metricsState{
@@ -130,6 +144,7 @@ func (p *prometheusMetrics) update(id, name string, usage *vmUsageState) {
 		// Set gauges directly
 		p.diskGauge.WithLabelValues(id, name).Set(float64(usage.diskBytes))
 		p.memoryGauge.WithLabelValues(id, name).Set(float64(usage.memoryBytes))
+		p.swapGauge.WithLabelValues(id, name).Set(float64(usage.swapBytes))
 		return
 	}
 
@@ -173,6 +188,7 @@ func (p *prometheusMetrics) update(id, name string, usage *vmUsageState) {
 	// Set gauges directly (they represent current state, not cumulative)
 	p.diskGauge.WithLabelValues(id, name).Set(float64(usage.diskBytes))
 	p.memoryGauge.WithLabelValues(id, name).Set(float64(usage.memoryBytes))
+	p.swapGauge.WithLabelValues(id, name).Set(float64(usage.swapBytes))
 }
 
 // delete removes metrics for a VM.
@@ -190,5 +206,6 @@ func (p *prometheusMetrics) delete(id string) {
 	p.netTxCounter.DeleteLabelValues(id, state.name)
 	p.diskGauge.DeleteLabelValues(id, state.name)
 	p.memoryGauge.DeleteLabelValues(id, state.name)
+	p.swapGauge.DeleteLabelValues(id, state.name)
 	delete(p.state, id)
 }

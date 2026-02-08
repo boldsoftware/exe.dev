@@ -18,11 +18,14 @@ import (
 
 // usageData holds collected usage metrics for a VM
 type usageData struct {
-	cpuSeconds  float64
-	memoryBytes uint64
-	diskBytes   uint64
-	netRxBytes  uint64
-	netTxBytes  uint64
+	cpuSeconds       float64
+	memoryBytes      uint64
+	swapBytes        uint64
+	diskVolsizeBytes uint64 // ZFS volsize (provisioned size)
+	diskBytes        uint64 // ZFS used (actual compressed bytes on disk)
+	diskLogicalBytes uint64 // ZFS logicalused (uncompressed)
+	netRxBytes       uint64
+	netTxBytes       uint64
 }
 
 // collectUsage collects resource usage for a VM.
@@ -44,10 +47,20 @@ func (m *ResourceManager) collectUsage(ctx context.Context, id, name string) (*u
 	// Memory from cloud-hypervisor API (actual guest memory)
 	usage.memoryBytes = memoryBytes
 
-	// Disk usage from ZFS
-	usage.diskBytes, err = m.readDiskUsage(ctx, id)
+	// Swap usage from /proc/<pid>/status (VmSwap line)
+	usage.swapBytes, err = m.readSwapUsage(pid)
 	if err != nil {
-		m.log.DebugContext(ctx, "failed to read disk usage", "id", id, "error", err)
+		m.log.DebugContext(ctx, "failed to read swap usage", "id", id, "error", err)
+	}
+
+	// Disk info from ZFS (volsize, used, and logicalused)
+	zfsInfo, err := m.readZFSVolumeInfo(ctx, id)
+	if err != nil {
+		m.log.DebugContext(ctx, "failed to read ZFS volume info", "id", id, "error", err)
+	} else if zfsInfo != nil {
+		usage.diskVolsizeBytes = zfsInfo.Volsize
+		usage.diskBytes = zfsInfo.Used
+		usage.diskLogicalBytes = zfsInfo.LogicalUsed
 	}
 
 	// Network usage from tap device
@@ -110,6 +123,33 @@ func (m *ResourceManager) getVMPID(ctx context.Context, id string) (int, error) 
 	return pid, err
 }
 
+// readSwapUsage reads swap usage from /proc/<pid>/status (VmSwap line).
+func (m *ResourceManager) readSwapUsage(pid int) (uint64, error) {
+	statusPath := fmt.Sprintf("/proc/%d/status", pid)
+	data, err := os.ReadFile(statusPath)
+	if err != nil {
+		return 0, err
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "VmSwap:") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 {
+				return 0, fmt.Errorf("malformed VmSwap line: %q", line)
+			}
+			// Value is in kB
+			kb, err := strconv.ParseUint(fields[1], 10, 64)
+			if err != nil {
+				return 0, fmt.Errorf("parse VmSwap: %w", err)
+			}
+			return kb * 1024, nil // Convert to bytes
+		}
+	}
+
+	// VmSwap line not found - could be a kernel thread or similar
+	return 0, nil
+}
+
 // readCPUUsage reads total CPU seconds from /proc/<pid>/stat.
 func (m *ResourceManager) readCPUUsage(pid int) (float64, error) {
 	statPath := fmt.Sprintf("/proc/%d/stat", pid)
@@ -144,24 +184,32 @@ func (m *ResourceManager) readCPUUsage(pid int) (float64, error) {
 	return float64(utime+stime) / clockTicks, nil
 }
 
-// readDiskUsage reads disk usage from ZFS.
-func (m *ResourceManager) readDiskUsage(ctx context.Context, id string) (uint64, error) {
+// zfsVolumeInfo contains ZFS volume properties.
+type zfsVolumeInfo struct {
+	Volsize     uint64 // Provisioned size of the volume
+	Used        uint64 // Actual compressed bytes on disk
+	LogicalUsed uint64 // Uncompressed logical bytes
+}
+
+// readZFSVolumeInfo reads volume properties from ZFS.
+// Returns volsize, used, and logicalused for the volume.
+func (m *ResourceManager) readZFSVolumeInfo(ctx context.Context, id string) (*zfsVolumeInfo, error) {
 	if m.config.StorageManagerAddress == "" {
-		return 0, nil
+		return nil, nil
 	}
 
 	storageURL, err := url.Parse(m.config.StorageManagerAddress)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	if storageURL.Scheme != "zfs" {
-		return 0, nil
+		return nil, nil
 	}
 
 	dataset := storageURL.Query().Get("dataset")
 	if dataset == "" {
-		return 0, nil
+		return nil, nil
 	}
 
 	dsName := filepath.Join(dataset, id)
@@ -169,13 +217,50 @@ func (m *ResourceManager) readDiskUsage(ctx context.Context, id string) (uint64,
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "zfs", "get", "-Hp", "-o", "value", "used", dsName)
+	// Get volsize, used, and logicalused in a single zfs command
+	cmd := exec.CommandContext(ctx, "zfs", "get", "-Hp", "-o", "value", "volsize,used,logicalused", dsName)
 	output, err := cmd.Output()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	return strconv.ParseUint(strings.TrimSpace(string(output)), 10, 64)
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) < 3 {
+		return nil, fmt.Errorf("unexpected zfs output: %q", string(output))
+	}
+
+	info := &zfsVolumeInfo{}
+
+	info.Volsize, err = strconv.ParseUint(strings.TrimSpace(lines[0]), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse volsize: %w", err)
+	}
+
+	info.Used, err = strconv.ParseUint(strings.TrimSpace(lines[1]), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse used: %w", err)
+	}
+
+	info.LogicalUsed, err = strconv.ParseUint(strings.TrimSpace(lines[2]), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse logicalused: %w", err)
+	}
+
+	return info, nil
+}
+
+// readDiskUsage reads disk usage from ZFS.
+// Returns (used, logicalused, error) where used is compressed bytes on disk
+// and logicalused is uncompressed logical bytes.
+func (m *ResourceManager) readDiskUsage(ctx context.Context, id string) (used, logicalUsed uint64, err error) {
+	info, err := m.readZFSVolumeInfo(ctx, id)
+	if err != nil {
+		return 0, 0, err
+	}
+	if info == nil {
+		return 0, 0, nil
+	}
+	return info.Used, info.LogicalUsed, nil
 }
 
 // readNetworkUsage reads network RX/TX bytes from the tap device.

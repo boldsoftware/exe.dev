@@ -66,6 +66,9 @@ type ResourceManager struct {
 	pollInterval  time.Duration
 	idleThreshold time.Duration
 
+	// Metrics daemon reporter
+	metricsReporter *MetricsDaemonReporter
+
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -78,8 +81,11 @@ type vmUsageState struct {
 	cpuSeconds           float64
 	cpuPercent           float64 // CPU usage percentage from last poll interval
 	memoryBytes          uint64
+	swapBytes            uint64 // Per-VM swap usage from /proc/<pid>/status VmSwap
 	allocatedMemoryBytes uint64 // VM's allocated memory from config (for memory.high calculation)
-	diskBytes            uint64
+	diskVolsizeBytes     uint64 // ZFS volsize (provisioned size)
+	diskBytes            uint64 // ZFS used (actual compressed bytes on disk)
+	diskLogicalBytes     uint64 // ZFS logicalused (uncompressed)
 	netRxBytes           uint64
 	netTxBytes           uint64
 	lastActivity         time.Time
@@ -164,6 +170,22 @@ func (m *ResourceManager) Register(ctx *services.ServiceContext, server *grpc.Se
 	m.context = ctx
 	m.metrics = newPrometheusMetrics(ctx.MetricsRegistry)
 	api.RegisterResourceManagerServiceServer(server, m)
+
+	// Initialize metrics daemon reporter if configured
+	if m.config.MetricsDaemonURL != "" {
+		interval := m.config.MetricsDaemonInterval
+		if interval == 0 {
+			interval = config.DefaultMetricsDaemonInterval
+		}
+		m.metricsReporter = NewMetricsDaemonReporter(
+			m.config.MetricsDaemonURL,
+			m.config.Name,
+			interval,
+			m.log,
+			m.collectMetricsFromRM,
+		)
+	}
+
 	return nil
 }
 
@@ -198,6 +220,11 @@ func (m *ResourceManager) Start(ctx context.Context) error {
 		"idle_threshold", m.idleThreshold,
 		"zfs_pool", m.zfsPool)
 
+	// Start metrics daemon reporter if configured
+	if m.metricsReporter != nil {
+		m.metricsReporter.Start(ctx)
+	}
+
 	return nil
 }
 
@@ -210,6 +237,11 @@ func (m *ResourceManager) Stop(ctx context.Context) error {
 
 	if cancel == nil {
 		return nil
+	}
+
+	// Stop metrics daemon reporter
+	if m.metricsReporter != nil {
+		m.metricsReporter.Stop()
 	}
 
 	cancel()
@@ -338,7 +370,10 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 	state.cpuSeconds = usage.cpuSeconds
 	state.cpuPercent = cpuPercent
 	state.memoryBytes = usage.memoryBytes
+	state.swapBytes = usage.swapBytes
+	state.diskVolsizeBytes = usage.diskVolsizeBytes
 	state.diskBytes = usage.diskBytes
+	state.diskLogicalBytes = usage.diskLogicalBytes
 	state.netRxBytes = usage.netRxBytes
 	state.netTxBytes = usage.netTxBytes
 	state.prevCPUSeconds = usage.cpuSeconds

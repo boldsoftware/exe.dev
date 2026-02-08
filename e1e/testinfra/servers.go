@@ -15,6 +15,7 @@ type ServerEnv struct {
 	ExedHTTPProxy *TCPProxy
 	SSHPiperd     *SSHPiperdInstance
 	Email         *EmailServer
+	Metricsd      *MetricsdInstance
 }
 
 // StartServers takes a list of exelets that have already been started,
@@ -28,10 +29,13 @@ type ServerEnv struct {
 // logPorts is whether to log port numbers using slog.InfoContext.
 //
 // verboseEmailServer is whether email server should be verbose.
-func StartServers(ctx context.Context, exelets []*ExeletInstance, exedHTTPProxy *TCPProxy, exedLog, piperLog io.Writer, logPorts, verboseEmailServer bool) (*ServerEnv, error) {
+//
+// metricsd, if not nil, is a metricsd instance to include in the environment.
+func StartServers(ctx context.Context, exelets []*ExeletInstance, exedHTTPProxy *TCPProxy, exedLog, piperLog io.Writer, logPorts, verboseEmailServer bool, metricsd *MetricsdInstance) (*ServerEnv, error) {
 	env := &ServerEnv{
 		Exelets:       exelets,
 		ExedHTTPProxy: exedHTTPProxy,
+		Metricsd:      metricsd,
 	}
 
 	// We have a circular dependency around ports.
@@ -138,5 +142,17 @@ func (env *ServerEnv) Stop(ctx context.Context, testRunID string) []string {
 		env.ExedHTTPProxy.Close()
 	}
 
+	if env.Metricsd != nil {
+		env.Metricsd.Stop(ctx)
+	}
+
 	return coverDirs
+}
+
+// MetricsdURL returns the URL of the metricsd server, or empty string if not running.
+func (env *ServerEnv) MetricsdURL() string {
+	if env.Metricsd == nil {
+		return ""
+	}
+	return env.Metricsd.Address
 }

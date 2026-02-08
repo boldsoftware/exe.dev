@@ -34,6 +34,12 @@ type ReplicationConfig struct {
 	Retention int           // number of snapshots to keep
 }
 
+// MetricsConfig configures metrics collection for an exelet.
+type MetricsConfig struct {
+	DaemonURL string        // e.g., "http://localhost:8090"
+	Interval  time.Duration // e.g., 5*time.Second for tests
+}
+
 // ExeletInstance describes a single running exelet.
 type ExeletInstance struct {
 	Address      string                // e.g., "tcp://192.168.5.15:9080"
@@ -211,7 +217,9 @@ func parseAndCreateClient(ctx context.Context, grpcAddr, httpAddr, host string) 
 // logPorts is whether to log port numbers using slog.InfoContext.
 //
 // replication, if not nil, configures storage replication.
-func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int, testRunID string, logFile io.Writer, logPorts bool, replication *ReplicationConfig) (ei *ExeletInstance, err error) {
+//
+// metrics, if not nil, configures metrics collection.
+func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int, testRunID string, logFile io.Writer, logPorts bool, replication *ReplicationConfig, metrics *MetricsConfig) (ei *ExeletInstance, err error) {
 	start := time.Now()
 	slog.InfoContext(ctx, "starting exelet", "ID", testRunID)
 
@@ -226,7 +234,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 
 	// For localhost, run exelet directly without SSH
 	if host == "localhost" {
-		return startExeletLocal(ctx, exeletBinary, exedPort, testRunID, logFile, logPorts, replication, start)
+		return startExeletLocal(ctx, exeletBinary, exedPort, testRunID, logFile, logPorts, replication, metrics, start)
 	}
 
 	// Get the gateway address of the VM.
@@ -351,6 +359,18 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 		)
 	}
 
+	// Add metrics flags if configured.
+	// Rewrite localhost to the gateway address so the remote exelet
+	// can reach metricsd running on the test host.
+	if metrics != nil && metrics.DaemonURL != "" {
+		daemonURL := metrics.DaemonURL
+		daemonURL = strings.Replace(daemonURL, "://localhost:", "://"+gateway+":", 1)
+		args = append(args,
+			"--metrics-daemon-url", daemonURL,
+			"--metrics-daemon-interval", metrics.Interval.String(),
+		)
+	}
+
 	slog.DebugContext(ctx, "starting exelet", "cmd", args)
 
 	exeletCtx, exeletCancel := context.WithCancel(ctx)
@@ -431,7 +451,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 }
 
 // startExeletLocal starts exelet locally (for CTR_HOST=localhost).
-func startExeletLocal(ctx context.Context, exeletBinary string, exedPort int, testRunID string, logFile io.Writer, logPorts bool, replication *ReplicationConfig, start time.Time) (*ExeletInstance, error) {
+func startExeletLocal(ctx context.Context, exeletBinary string, exedPort int, testRunID string, logFile io.Writer, logPorts bool, replication *ReplicationConfig, metrics *MetricsConfig, start time.Time) (*ExeletInstance, error) {
 	// For localhost, exelet can directly reach exed via localhost
 	exedProxyURL := fmt.Sprintf("http://localhost:%d", exedPort)
 	slog.InfoContext(ctx, "using localhost for exelet->exed", "port", exedPort)
@@ -460,6 +480,12 @@ func startExeletLocal(ctx context.Context, exeletBinary string, exedPort int, te
 	if replication != nil && replication.Enabled {
 		localCmd += fmt.Sprintf(` --storage-replication-enabled --storage-replication-target %s --storage-replication-interval %s --storage-replication-retention %d`,
 			replication.Target, replication.Interval.String(), replication.Retention)
+	}
+
+	// Add metrics flags if configured
+	if metrics != nil && metrics.DaemonURL != "" {
+		localCmd += fmt.Sprintf(` --metrics-daemon-url %s --metrics-daemon-interval %s`,
+			metrics.DaemonURL, metrics.Interval.String())
 	}
 
 	// Start exelet directly

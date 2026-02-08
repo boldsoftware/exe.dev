@@ -27,16 +27,17 @@ import (
 )
 
 var (
-	flagVerbosePiperd = flag.Bool("vpiperd", false, "enable verbose logging from sshpiperd")
-	flagVerboseExed   = flag.Bool("vexed", false, "enable verbose logging from exed")
-	flagVerboseExelet = flag.Bool("vexelet", false, "enable verbose logging from exelet")
-	flagVerbosePorts  = flag.Bool("vports", false, "enable verbose logging about ports")
-	flagVerboseEmail  = flag.Bool("vemail", false, "enable verbose logging from email server")
-	flagVerbosePty    = flag.Bool("vpty", false, "enable verbose logging from pty connections")
-	flagVerboseSlog   = flag.Bool("vslog", false, "enable verbose logging from slogs")
-	flagVerboseAll    = flag.Bool("vv", false, "enable ALL verbose logging (shorthand for all -v* flags)")
-	flagCinema        = flag.Bool("cinema", true, "enable ASCIIcinema recordings")
-	flagCoverProfile  = flag.String("coverage-out", "e1e.cover", "path to write merged coverage profile")
+	flagVerbosePiperd   = flag.Bool("vpiperd", false, "enable verbose logging from sshpiperd")
+	flagVerboseExed     = flag.Bool("vexed", false, "enable verbose logging from exed")
+	flagVerboseExelet   = flag.Bool("vexelet", false, "enable verbose logging from exelet")
+	flagVerbosePorts    = flag.Bool("vports", false, "enable verbose logging about ports")
+	flagVerboseEmail    = flag.Bool("vemail", false, "enable verbose logging from email server")
+	flagVerbosePty      = flag.Bool("vpty", false, "enable verbose logging from pty connections")
+	flagVerboseSlog     = flag.Bool("vslog", false, "enable verbose logging from slogs")
+	flagVerboseMetricsd = flag.Bool("vmetricsd", false, "enable verbose logging from metricsd")
+	flagVerboseAll      = flag.Bool("vv", false, "enable ALL verbose logging (shorthand for all -v* flags)")
+	flagCinema          = flag.Bool("cinema", true, "enable ASCIIcinema recordings")
+	flagCoverProfile    = flag.String("coverage-out", "e1e.cover", "path to write merged coverage profile")
 
 	// testRunID is a random identifier for this test invocation.
 	// A single container host is often shared across test and dev runs.
@@ -56,6 +57,7 @@ func TestMain(m *testing.M) {
 		*flagVerboseEmail = true
 		*flagVerbosePty = true
 		*flagVerboseSlog = true
+		*flagVerboseMetricsd = true
 	}
 
 	// Resolve coverage output path relative to repo root (parent of e1e directory)
@@ -358,6 +360,16 @@ func setup(ctrHost string) (*testEnv, error) {
 		slog.Info("exed HTTP proxy listening", "port", exedHTTPProxy.Port())
 	}
 
+	// Start metricsd before exelet so we can pass its URL to exelet
+	var metricsdLog io.Writer
+	if *flagVerboseMetricsd {
+		metricsdLog = logFileFor("metricsd")
+	}
+	metricsdInstance, err := testinfra.StartMetricsd(context.Background(), metricsdLog, *flagVerbosePorts)
+	if err != nil {
+		return env, fmt.Errorf("failed to start metricsd: %w", err)
+	}
+
 	exeletBinary, err := testinfra.BuildExeletBinary(testRunID)
 	if err != nil {
 		return env, err
@@ -370,7 +382,14 @@ func setup(ctrHost string) (*testEnv, error) {
 	if *flagVerboseExelet {
 		exeletLog = logFileFor("exelet")
 	}
-	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, ctrHost, exedHTTPProxy.Port(), testRunID, exeletLog, *flagVerbosePorts, nil)
+
+	// Configure metrics collection for exelet
+	metricsConfig := &testinfra.MetricsConfig{
+		DaemonURL: metricsdInstance.Address,
+		Interval:  20 * time.Second,
+	}
+
+	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, ctrHost, exedHTTPProxy.Port(), testRunID, exeletLog, *flagVerbosePorts, nil, metricsConfig)
 	if err != nil {
 		return env, err
 	}
@@ -392,6 +411,7 @@ func setup(ctrHost string) (*testEnv, error) {
 		piperLog,
 		*flagVerbosePorts,
 		*flagVerboseEmail,
+		metricsdInstance,
 	)
 	env.servers = serverEnv
 	if err != nil {

@@ -27,6 +27,9 @@ const (
 	// DefaultReplicationPrune enables pruning orphaned backups by default
 	DefaultReplicationPrune = true
 
+	// DefaultMetricsDaemonInterval is the default interval for sending metrics to the daemon
+	DefaultMetricsDaemonInterval = 10 * time.Minute
+
 	// DefaultNameserver is the default instance nameserver
 	DefaultNameserver = "1.1.1.1"
 
@@ -153,4 +156,9 @@ type ExeletConfig struct {
 	ReplicationBandwidthLimit string
 	// ReplicationPrune enables pruning orphaned backups from the target
 	ReplicationPrune bool
+
+	// MetricsDaemonURL is the URL of the metrics daemon (e.g., http://localhost:8090)
+	MetricsDaemonURL string
+	// MetricsDaemonInterval is the interval for sending metrics to the daemon
+	MetricsDaemonInterval time.Duration
 }
