@@ -436,41 +436,43 @@ function MessageInput({
           accept="image/*,video/*,audio/*,.pdf,.txt,.md,.json,.csv,.xml,.html,.css,.js,.ts,.tsx,.jsx,.py,.go,.rs,.java,.c,.cpp,.h,.hpp,.sh,.yaml,.yml,.toml,.sql,.log,*"
           aria-hidden="true"
         />
-        {isShellMode && (
-          <div className="shell-mode-indicator" title="This will run as a shell command">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <polyline points="4 17 10 11 4 5" />
-              <line x1="12" y1="19" x2="20" y2="19" />
-            </svg>
-          </div>
-        )}
-        <textarea
-          ref={textareaRef}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          onFocus={() => {
-            // Scroll to bottom after keyboard animation settles
-            if (onFocus) {
-              requestAnimationFrame(() => requestAnimationFrame(onFocus));
-            }
-          }}
-          placeholder={placeholderText}
-          className="message-textarea"
-          disabled={isDisabled}
-          rows={1}
-          aria-label="Message input"
-          data-testid="message-input"
-          autoFocus={autoFocus}
-        />
+        <div className="textarea-wrapper">
+          {isShellMode && (
+            <div className="shell-mode-indicator" title="This will run as a shell command">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <polyline points="4 17 10 11 4 5" />
+                <line x1="12" y1="19" x2="20" y2="19" />
+              </svg>
+            </div>
+          )}
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            onFocus={() => {
+              // Scroll to bottom after keyboard animation settles
+              if (onFocus) {
+                requestAnimationFrame(() => requestAnimationFrame(onFocus));
+              }
+            }}
+            placeholder={placeholderText}
+            className="message-textarea"
+            disabled={isDisabled}
+            rows={1}
+            aria-label="Message input"
+            data-testid="message-input"
+            autoFocus={autoFocus}
+          />
+        </div>
         <button
           type="button"
           onClick={handleAttachClick}

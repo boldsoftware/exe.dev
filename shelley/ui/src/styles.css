@@ -1679,7 +1679,8 @@ button {
 }
 
 .message-textarea {
-  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
   min-height: 46px;
   max-height: 200px;
   padding: 0.625rem 1rem;
@@ -1872,6 +1873,13 @@ button {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   background: transparent;
   padding-left: 36px;
+  width: 100%;
+}
+
+.textarea-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 0;
 }
 
 .message-input-container.shell-mode .message-textarea::placeholder {
@@ -1881,8 +1889,7 @@ button {
 .shell-mode-indicator {
   position: absolute;
   left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
