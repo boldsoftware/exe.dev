@@ -47,6 +47,10 @@ type PiperPlugin struct {
 	server      *Server
 	exedSSHPort int // exed's SSH port, usually 2223
 
+	grpcMu   sync.Mutex
+	grpcSrv  *grpc.Server
+	grpcDone bool
+
 	// proxyKeyMappings maps SSH public key fingerprints of ephemeral proxy keys
 	// to the original user's public key. This allows us to:
 	// 1. Generate a unique proxy key for each user connection
@@ -143,6 +147,15 @@ func (p *PiperPlugin) Serve(lis net.Listener) error {
 
 	s := grpc.NewServer()
 
+	p.grpcMu.Lock()
+	if p.grpcDone {
+		p.grpcMu.Unlock()
+		s.Stop()
+		return nil
+	}
+	p.grpcSrv = s
+	p.grpcMu.Unlock()
+
 	// Enable gRPC reflection for service discovery.
 	// Use grpcurl to interact with this server: https://github.com/fullstorydev/grpcurl
 	// Example: grpcurl -plaintext localhost:2224 list
@@ -164,6 +177,19 @@ func (p *PiperPlugin) Serve(lis net.Listener) error {
 		}
 	}
 	return err
+}
+
+// Stop gracefully stops the piper plugin gRPC server.
+func (p *PiperPlugin) Stop() {
+	p.grpcMu.Lock()
+	defer p.grpcMu.Unlock()
+	if p.grpcDone {
+		return
+	}
+	p.grpcDone = true
+	if p.grpcSrv != nil {
+		p.grpcSrv.Stop()
+	}
 }
 
 // handleNextAuthMethods advertises available authentication methods

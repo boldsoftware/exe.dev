@@ -3,7 +3,6 @@ package execore
 import (
 	"context"
 	"crypto/tls"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -18,12 +17,6 @@ import (
 // TestCustomDomainAuthFlow tests the complete auth flow for a box accessed via custom domain
 // NOTE: This is vibe coded SLOP. Keeping for reference about auth flow for future improvements coming soon.
 func TestCustomDomainAuthFlow(t *testing.T) {
-	slog0 := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	})))
-	defer slog.SetDefault(slog0)
-
 	t.Parallel()
 	server := newTestServer(t)
 	server.magicSecrets = make(map[string]*MagicSecret)

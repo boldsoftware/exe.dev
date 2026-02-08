@@ -347,7 +347,12 @@ type Server struct {
 	// HTML templates (parsed at startup)
 	templates *template.Template
 
-	stopping atomic.Bool
+	startOnce   sync.Once
+	startCancel context.CancelFunc // cancel function for start's context
+	serveWg     sync.WaitGroup
+	stopOnce    sync.Once
+	stopChan    chan struct{} // closed by Stop to unblock start's select
+	stopping    atomic.Bool
 
 	// General purpose slogger
 	log *slog.Logger
@@ -874,6 +879,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 		docs:      docsHandler,
 		templates: tmpl,
+		stopChan:  make(chan struct{}),
 		log:       slog,
 		slackFeed: logging.NewSlackFeed(slog, cfg.Env),
 		billing:   cfg.Env.BillingClient(),
@@ -2365,11 +2371,23 @@ func (s *Server) stopBox(ctx context.Context, box exedb.Box) error {
 // Start starts HTTP, HTTPS (if configured), and SSH servers
 func (s *Server) Start() error {
 	if s.stopping.Load() {
-		return fmt.Errorf("illegal start after stop")
+		return fmt.Errorf("server is stopping")
 	}
+	s.slog().Info("Starting exed server")
+	var err error
+	s.startOnce.Do(func() {
+		err = s.start()
+	})
+	return err
+}
 
-	// Create a cancellable context for startup
+func (s *Server) start() error {
+	// Create a cancellable context for startup.
+	// The cancel function is stored so Stop() can cancel the context
+	// before stopping subsystems, ensuring background goroutines see
+	// the cancellation before they try to log errors.
 	ctx, cancel := context.WithCancel(context.Background())
+	s.startCancel = cancel
 	defer cancel()
 
 	// Start embedded DNS server.
@@ -2455,24 +2473,27 @@ func (s *Server) Start() error {
 		}(proxyLn)
 	}
 
+	// Initialize SSH server and piper plugin before launching goroutines
+	// so that Stop() can always reach them.
+	s.sshServer = NewSSHServer(s)
+	s.piperPlugin = NewPiperPlugin(s, s.sshLn.tcp.Port)
+
 	// Start SSH server in a goroutine
-	go func() {
-		s.sshServer = NewSSHServer(s)
-		if err := s.sshServer.Start(s.sshLn.ln); err != nil {
+	s.serveWg.Go(func() {
+		if err := s.sshServer.Start(s.sshLn.ln); err != nil && !s.stopping.Load() {
 			s.slog().ErrorContext(ctx, "SSH server startup failed", "error", err)
 			cancel()
 		}
-	}()
+	})
 
 	// Start piper plugin server in a goroutine
 	s.slog().InfoContext(ctx, "piper plugin server listening", "addr", s.pluginLn.addr, "port", s.pluginLn.tcp.Port)
-	s.piperPlugin = NewPiperPlugin(s, s.sshLn.tcp.Port)
-	go func() {
-		if err := s.piperPlugin.Serve(s.pluginLn.ln); err != nil {
+	s.serveWg.Go(func() {
+		if err := s.piperPlugin.Serve(s.pluginLn.ln); err != nil && !s.stopping.Load() {
 			s.slog().ErrorContext(ctx, "Piper plugin server startup failed", "error", err)
 			cancel()
 		}
-	}()
+	})
 
 	if s.env.AutoStartSSHPiper {
 		// In dev mode, automatically start sshpiper if not already running
@@ -2508,6 +2529,8 @@ func (s *Server) Start() error {
 	case <-sigChan:
 		s.slog().InfoContext(ctx, "Shutting down servers...")
 		return s.Stop()
+	case <-s.stopChan:
+		return nil // Stop was called externally
 	case <-ctx.Done():
 		s.slog().ErrorContext(ctx, "Server startup failed, shutting down")
 		s.Stop()
@@ -3001,7 +3024,11 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string, qc Qua
 
 // Stop shuts down all servers immediately.
 func (s *Server) Stop() error {
+	s.stopOnce.Do(func() { close(s.stopChan) })
 	s.stopping.Store(true)
+	if s.startCancel != nil {
+		s.startCancel()
+	}
 
 	ctx := context.Background()
 
@@ -3035,6 +3062,17 @@ func (s *Server) Stop() error {
 	if s.lmtpServer != nil {
 		s.lmtpServer.Stop(ctx)
 	}
+	if s.sshServer != nil {
+		if err := s.sshServer.Stop(); err != nil {
+			s.slog().ErrorContext(ctx, "SSH server close error", "error", err)
+		}
+	}
+	if s.piperPlugin != nil {
+		s.piperPlugin.Stop()
+	}
+
+	s.serveWg.Wait()
+
 	if err := s.sshPool.Close(); err != nil {
 		s.slog().ErrorContext(ctx, "SSH pool close error", "error", err)
 	}
