@@ -27,17 +27,9 @@ import SubagentTool from "./SubagentTool";
 import OutputIframeTool from "./OutputIframeTool";
 import DirectoryPickerModal from "./DirectoryPickerModal";
 import { useVersionChecker } from "./VersionChecker";
-import TerminalWidget from "./TerminalWidget";
+import TerminalPanel, { EphemeralTerminal } from "./TerminalPanel";
 import ModelPicker from "./ModelPicker";
 import SystemPromptView from "./SystemPromptView";
-
-// Ephemeral terminal instance (not persisted to database)
-interface EphemeralTerminal {
-  id: string;
-  command: string;
-  cwd: string;
-  createdAt: Date;
-}
 
 interface ContextUsageBarProps {
   contextWindowSize: number;
@@ -1279,18 +1271,7 @@ function ChatInterface({
   };
 
   const renderMessages = () => {
-    // Build ephemeral terminal elements first - they should always render
-    const terminalElements = ephemeralTerminals.map((terminal) => (
-      <TerminalWidget
-        key={terminal.id}
-        command={terminal.command}
-        cwd={terminal.cwd}
-        onInsertIntoInput={handleInsertFromTerminal}
-        onClose={() => setEphemeralTerminals((prev) => prev.filter((t) => t.id !== terminal.id))}
-      />
-    ));
-
-    if (messages.length === 0 && ephemeralTerminals.length === 0) {
+    if (messages.length === 0) {
       const proxyURL = `https://${hostname}/`;
       return (
         <div className="empty-state">
@@ -1338,11 +1319,6 @@ function ChatInterface({
       );
     }
 
-    // If we have terminals but no messages, just show terminals
-    if (messages.length === 0) {
-      return terminalElements;
-    }
-
     const coalescedItems = processMessages();
 
     const rendered = coalescedItems.map((item, index) => {
@@ -1381,11 +1357,9 @@ function ChatInterface({
     // Find system message to render at the top
     const systemMessage = messages.find((m) => m.type === "system");
 
-    // Append ephemeral terminals at the end
     return [
       systemMessage && <SystemPromptView key="system-prompt" message={systemMessage} />,
       ...rendered,
-      ...terminalElements,
     ];
   };
 
@@ -1681,6 +1655,14 @@ function ChatInterface({
           </button>
         )}
       </div>
+
+      {/* Terminal Panel - between messages and status bar */}
+      <TerminalPanel
+        terminals={ephemeralTerminals}
+        onClose={(id) => setEphemeralTerminals((prev) => prev.filter((t) => t.id !== id))}
+        onCloseAll={() => setEphemeralTerminals([])}
+        onInsertIntoInput={handleInsertFromTerminal}
+      />
 
       {/* Unified Status Bar */}
       <div className="status-bar">
