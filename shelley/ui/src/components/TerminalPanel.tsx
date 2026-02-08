@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { isDarkModeActive } from "../services/theme";
 import "@xterm/xterm/css/xterm.css";
 
 function base64ToUint8Array(base64String: string): Uint8Array {
@@ -225,17 +226,15 @@ export default function TerminalPanel({
   const startHeightRef = useRef(0);
 
   // Detect dark mode
-  const [isDark, setIsDark] = useState(
-    document.documentElement.getAttribute("data-theme") === "dark",
-  );
+  const [isDark, setIsDark] = useState(isDarkModeActive);
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
-      setIsDark(document.documentElement.getAttribute("data-theme") === "dark");
+      setIsDark(isDarkModeActive());
     });
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme"],
+      attributeFilter: ["class"],
     });
     return () => observer.disconnect();
   }, []);

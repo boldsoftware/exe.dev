@@ -4995,4 +4995,5 @@ kbd {
 .terminal-panel-content > div {
   position: absolute;
   inset: 0;
+  padding: 8px 12px;
 }
