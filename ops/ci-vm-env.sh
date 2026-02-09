@@ -16,7 +16,7 @@ USER_NAME="${USER_NAME:-ubuntu}"
 CLOUD_HYPERVISOR_VERSION="${CLOUD_HYPERVISOR_VERSION:-48.0}"
 VIRTIOFSD_VERSION="${VIRTIOFSD_VERSION:-1.13.2}"
 
-CACHE_DIR="${EXEDEV_CACHE:-$HOME/.cache/exedev}"
+CACHE_DIR="${EXEDEV_CACHE:-/data/ci-snapshots}"
 
 # Determine setup hash based on ops/ directory
 SETUP_HASH="$(git rev-parse HEAD:ops/)"

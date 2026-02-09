@@ -85,19 +85,6 @@ for i in $(seq 0 7); do
         fi
     fi
 
-    # 4. Copy snapshot cache markers to all runner users
-    if [[ $i -gt 0 ]]; then
-        SNAPSHOT_CACHE=$(ls -td /home/runner0/.cache/exedev/ci-vm-* 2>/dev/null | head -1)
-        if [[ -n "$SNAPSHOT_CACHE" ]]; then
-            CACHE_NAME=$(basename "$SNAPSHOT_CACHE")
-            DEST="${USER_HOME}/.cache/exedev/${CACHE_NAME}"
-            if [[ ! -d "$DEST" ]]; then
-                mkdir -p "$DEST"
-                cp /home/runner0/.cache/exedev/${CACHE_NAME}/*.qcow2 "$DEST/" 2>/dev/null || true
-                chown -R "${USER}:${USER}" "${USER_HOME}/.cache"
-            fi
-        fi
-    fi
 done
 
 echo "=== $(date) === warmup complete ==="

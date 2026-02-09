@@ -109,7 +109,7 @@ cleanup_unused_images() {
 }
 
 cleanup_cache_snapshots() {
-    local cache_dir="${EXEDEV_CACHE:-$HOME/.cache/exedev}"
+    local cache_dir="${CACHE_DIR}"
     if [[ ! -d "$cache_dir" ]]; then
         return
     fi
@@ -120,7 +120,7 @@ cleanup_cache_snapshots() {
     find "$cache_dir" -maxdepth 1 -type d -name 'ci-vm-*' -printf '%T@ %p\n' 2>/dev/null |
         sort -n | head -n -5 | cut -d' ' -f2- | while read dir; do
         echo "  Removing old cache snapshot: $(basename "$dir")"
-        rm -rf "$dir"
+        sudo rm -rf "$dir"
     done
 }
 
@@ -130,8 +130,8 @@ cleanup_cache_snapshots
 # END TODO(philip)
 
 # Cache/snapshot settings (hash of ops/ as determined by git tree (must be checked in))
-mkdir -p "${CACHE_DIR}"
-sudo chown $USER "${CACHE_DIR}"
+sudo mkdir -p "${CACHE_DIR}"
+sudo chmod 777 "${CACHE_DIR}"
 
 cp_clone_file() {
     # Clone/copy SRC to DEST efficiently if supported by FS
@@ -527,10 +527,12 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
     # 6b) Create snapshot cache of the prepared disks (clone, leveraging XFS reflink when available)
     echo "Creating snapshot cache at ${SNAPSHOT_DIR}..."
     mkdir -p "${SNAPSHOT_DIR}"
+    chmod 777 "${SNAPSHOT_DIR}"
     # Copy/clone the prepared disks into the snapshot location
     # Note: This clones the qcow2 backing with current state; safe for reuse with overlays.
     cp_clone_file "${DISK}" "${SNAPSHOT_BASE}"
     cp_clone_file "${DATA_DISK}" "${SNAPSHOT_DATA}"
+    chmod a+r "${SNAPSHOT_BASE}" "${SNAPSHOT_DATA}"
 
     # Also maintain local copies in WORKDIR for fast reuse within libvirt
     cp_clone_file "${SNAPSHOT_BASE}" "${LOCAL_BASE_COPY}"
