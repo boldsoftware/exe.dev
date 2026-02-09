@@ -1313,13 +1313,18 @@ func TestRestartCommand(t *testing.T) {
 		t.Fatalf("expected marker file to contain 'restart-test', got: %s", out)
 	}
 
-	// Verify network works by checking metadata service
-	out, err = boxSSHCommand(t, boxName, keyFile, "curl", "-s", "--max-time", "10", "http://169.254.169.254/").CombinedOutput()
-	if err != nil {
-		t.Fatalf("failed to reach metadata service after restart: %v", err)
+	// Verify network works by checking metadata service.
+	// After restart, the VM's network route to 169.254.169.254 may take time
+	// to be fully re-established, so retry instead of a single attempt.
+	for range 10 {
+		out, err = boxSSHCommand(t, boxName, keyFile, "curl", "-s", "--max-time", "1", "http://169.254.169.254/").CombinedOutput()
+		if err == nil && strings.Contains(string(out), boxName) {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
-	if !strings.Contains(string(out), boxName) {
-		t.Fatalf("expected metadata service to return box name, got: %s", out)
+	if err != nil || !strings.Contains(string(out), boxName) {
+		t.Fatalf("failed to reach metadata service after restart: err=%v, output=%s", err, out)
 	}
 
 	// Restart HTTP server and verify proxy works after restart (tests SSH pool stale connection handling)
