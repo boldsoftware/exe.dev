@@ -162,6 +162,8 @@ if [ -z "$TS_OAUTH_CLIENT_ID" ] || [ -z "$TS_OAUTH_CLIENT_SECRET" ]; then
 fi
 
 # Create user data script with Tailscale setup
+#   package isal installs igzip which is supposed to speed up image
+#   decompression
 USER_DATA=$(
     cat <<EOF
 #cloud-config
@@ -185,6 +187,7 @@ packages:
   - atop
   - btop
   - htop
+  - isal
 
 runcmd:
   - echo "Starting Tailscale setup..."
