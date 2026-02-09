@@ -44,6 +44,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/", s.handleDebugIndex)
 	mux.HandleFunc("/debug/gitsha", s.handleDebugGitsha)
 	mux.HandleFunc("/debug/boxes", s.handleDebugBoxes)
+	mux.HandleFunc("GET /debug/vmlist", s.handleDebugVMList)
 	mux.HandleFunc("/debug/boxes/{name}", s.handleDebugBoxDetails)
 	mux.HandleFunc("GET /debug/boxes/{name}/logs", s.handleDebugBoxLogs)
 	mux.HandleFunc("POST /debug/boxes/delete", s.handleDebugBoxDelete)
@@ -386,6 +387,48 @@ func (s *Server) stopUserBoxes(ctx context.Context, userID string) error {
 		}
 	}
 	return nil
+}
+
+// handleDebugVMList returns container IDs as plain text, one per line,
+// excluding boxes belonging to locked-out users. Designed for shell loops:
+//
+//	for vm in $(curl http://exed/debug/vmlist?host=tcp://HOST:9080); do
+//	    ./exelet-ctl -a tcp://HOST:9080 compute instances start $vm
+//	done
+func (s *Server) handleDebugVMList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	dbBoxes, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllBoxesWithOwner)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list boxes: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	lockedOutCache := make(map[string]bool)
+	isLocked := func(userID string) bool {
+		locked, ok := lockedOutCache[userID]
+		if !ok {
+			locked, _ = s.isUserLockedOut(ctx, userID)
+			lockedOutCache[userID] = locked
+		}
+		return locked
+	}
+
+	host := r.URL.Query().Get("host")
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	for _, b := range dbBoxes {
+		if b.ContainerID == nil {
+			continue
+		}
+		if host != "" && b.Ctrhost != host {
+			continue
+		}
+		if isLocked(b.OwnerUserID) {
+			continue
+		}
+		fmt.Fprintln(w, *b.ContainerID)
+	}
 }
 
 // handleDebugBoxStart starts a stopped box via the exelet gRPC API.

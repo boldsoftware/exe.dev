@@ -419,3 +419,112 @@ func TestLockoutStopsUserBoxes(t *testing.T) {
 		}
 	}
 }
+
+// TestDebugVMList tests that /debug/vmlist returns container IDs excluding
+// locked-out users, and supports host filtering.
+func TestDebugVMList(t *testing.T) {
+	server := newTestServer(t)
+	ctx := t.Context()
+
+	normalUser, err := server.createUser(ctx, testSSHPubKey, "normal-user@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create normal user: %v", err)
+	}
+	lockedUser, err := server.createUser(ctx, "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBb locked@example.com", "locked-user@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create locked user: %v", err)
+	}
+
+	normalCID := "ctr-normal-abc"
+	lockedCID := "ctr-locked-xyz"
+	otherHostCID := "ctr-other-host"
+	err = server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		normalBoxID, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
+			Ctrhost:         "tcp://host1:9080",
+			Name:            "normal-box",
+			Status:          "running",
+			Image:           "test-image",
+			CreatedByUserID: normalUser.UserID,
+		})
+		if err != nil {
+			return err
+		}
+		if err := queries.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+			ContainerID: &normalCID,
+			Status:      "running",
+			ID:          int(normalBoxID),
+		}); err != nil {
+			return err
+		}
+		lockedBoxID, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
+			Ctrhost:         "tcp://host1:9080",
+			Name:            "locked-box",
+			Status:          "running",
+			Image:           "test-image",
+			CreatedByUserID: lockedUser.UserID,
+		})
+		if err != nil {
+			return err
+		}
+		if err := queries.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+			ContainerID: &lockedCID,
+			Status:      "running",
+			ID:          int(lockedBoxID),
+		}); err != nil {
+			return err
+		}
+		otherBoxID, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
+			Ctrhost:         "tcp://host2:9080",
+			Name:            "other-host-box",
+			Status:          "running",
+			Image:           "test-image",
+			CreatedByUserID: normalUser.UserID,
+		})
+		if err != nil {
+			return err
+		}
+		return queries.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+			ContainerID: &otherHostCID,
+			Status:      "running",
+			ID:          int(otherBoxID),
+		})
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test boxes: %v", err)
+	}
+
+	err = withTx1(server, ctx, (*exedb.Queries).SetUserIsLockedOut, exedb.SetUserIsLockedOutParams{
+		IsLockedOut: true,
+		UserID:      lockedUser.UserID,
+	})
+	if err != nil {
+		t.Fatalf("Failed to lock out user: %v", err)
+	}
+
+	// /debug/vmlist returns all non-locked-out container IDs
+	req := httptest.NewRequest("GET", "/debug/vmlist", nil)
+	w := httptest.NewRecorder()
+	server.handleDebugVMList(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	lines := strings.Split(strings.TrimSpace(w.Body.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("Expected 2 container IDs, got %d: %v", len(lines), lines)
+	}
+
+	// With host filter, only that host's VMs
+	req = httptest.NewRequest("GET", "/debug/vmlist?host=tcp://host1:9080", nil)
+	w = httptest.NewRecorder()
+	server.handleDebugVMList(w, req)
+
+	lines = strings.Split(strings.TrimSpace(w.Body.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("Expected 1 container ID for host1, got %d: %v", len(lines), lines)
+	}
+	if lines[0] != normalCID {
+		t.Errorf("Expected %q, got %q", normalCID, lines[0])
+	}
+}
