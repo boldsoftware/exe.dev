@@ -45,3 +45,6 @@ snapshot.db
 # assorted cmd/* binaries that LLMs like to drop straight in the repo root, natch
 blogd
 e3e
+
+# https://github.com/wedow/ticket tickets
+.tickets
