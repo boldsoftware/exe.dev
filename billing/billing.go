@@ -549,14 +549,15 @@ func (m *Manager) SubscriptionEvents(ctx context.Context, since time.Time) iter.
 }
 
 // UseCredits deducts credits from the account's credit balance.
-// The amount should be a positive number representing microcents to deduct.
+// total is the number of units consumed and perUnit is the price
+// per unit in microcents. The deduction is total * perUnit.
 // Negative balances are allowed — deductions always succeed.
-// Returns the remaining balance after deduction.
-func (m *Manager) UseCredits(ctx context.Context, billingID string, amount int64) (remaining int64, _ error) {
+// Returns the remaining balance in microcents after deduction.
+func (m *Manager) UseCredits(ctx context.Context, billingID string, total, perUnit int64) (remaining int64, _ error) {
 	return exedb.WithTxRes0(m.DB, ctx, func(q *exedb.Queries, ctx context.Context) (int64, error) {
 		return q.UseCredits(ctx, exedb.UseCreditsParams{
 			AccountID: billingID,
-			Amount:    -amount,
+			Amount:    -(total * perUnit),
 		})
 	})
 }
@@ -566,7 +567,7 @@ type BuyCreditsParams struct {
 	// Email is the customer's email address.
 	Email string
 
-	// Amount is the number of microcents to purchase.
+	// Amount is the number of cents to purchase (1 cent = 1/100 USD).
 	Amount int64
 
 	// SuccessURL is the URL to redirect to after successful checkout.
@@ -578,13 +579,10 @@ type BuyCreditsParams struct {
 
 // BuyCredits creates a Stripe checkout session for a one-time credit purchase.
 // It returns the checkout URL for the customer to complete payment.
-// The amount is specified in microcents and converted to cents for Stripe.
+// The amount is specified in cents and stored as microcents in the database.
 func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCreditsParams) (checkoutURL string, _ error) {
 	if p.Amount <= 0 {
 		return "", fmt.Errorf("amount must be positive, got %d", p.Amount)
-	}
-	if p.Amount%10000 != 0 {
-		return "", fmt.Errorf("amount must be cent-aligned (divisible by 10000), got %d", p.Amount)
 	}
 	err := m.upsertCustomer(ctx, billingID, p.Email)
 	if err != nil {
@@ -593,7 +591,7 @@ func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCredit
 
 	c := m.client()
 
-	cents := p.Amount / 10000 // microcents to cents
+	microcents := p.Amount * 10000 // cents to microcents for ledger storage
 	params := &stripe.CheckoutSessionCreateParams{
 		Customer:           &billingID,
 		Mode:               stripe.String("payment"),
@@ -605,7 +603,7 @@ func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCredit
 					ProductData: &stripe.CheckoutSessionCreateLineItemPriceDataProductDataParams{
 						Name: stripe.String("Account Credits"),
 					},
-					UnitAmount: &cents,
+					UnitAmount: &p.Amount,
 				},
 				Quantity: stripe.Int64(1),
 			},
@@ -614,11 +612,11 @@ func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCredit
 		CancelURL:  &p.CancelURL,
 	}
 	params.AddMetadata("type", "credit_purchase")
-	params.AddMetadata("microcents", fmt.Sprintf("%d", p.Amount))
+	params.AddMetadata("microcents", fmt.Sprintf("%d", microcents))
 	params.PaymentIntentData = &stripe.CheckoutSessionCreatePaymentIntentDataParams{
 		Metadata: map[string]string{
 			"type":       "credit_purchase",
-			"microcents": fmt.Sprintf("%d", p.Amount),
+			"microcents": fmt.Sprintf("%d", microcents),
 		},
 	}
 
@@ -635,7 +633,7 @@ func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCredit
 		"stripe_request_id", requestID,
 		"session_id", sess.ID,
 		"billing_id", billingID,
-		"microcents", p.Amount,
+		"cents", p.Amount,
 	)
 	return sess.URL, nil
 }

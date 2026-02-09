@@ -121,22 +121,22 @@ func TestUseCredits(t *testing.T) {
 		t.Fatalf("seed credits: %v", err)
 	}
 
-	// Deduct 400 microcents; expect 600 remaining.
-	remaining, err := m.UseCredits(ctx, accountID, 400)
+	// Deduct 2 units at 200 microcents each (400 total); expect 600 remaining.
+	remaining, err := m.UseCredits(ctx, accountID, 2, 200)
 	if err != nil {
-		t.Fatalf("UseCredits(400): %v", err)
+		t.Fatalf("UseCredits(2, 200): %v", err)
 	}
 	if remaining != 600 {
-		t.Fatalf("UseCredits(400): remaining = %d, want 600", remaining)
+		t.Fatalf("UseCredits(2, 200): remaining = %d, want 600", remaining)
 	}
 
-	// Deduct 800 more; balance goes negative to -200. Negative balances are allowed.
-	remaining, err = m.UseCredits(ctx, accountID, 800)
+	// Deduct 4 units at 200 microcents each (800 total); balance goes negative to -200.
+	remaining, err = m.UseCredits(ctx, accountID, 4, 200)
 	if err != nil {
-		t.Fatalf("UseCredits(800): %v", err)
+		t.Fatalf("UseCredits(4, 200): %v", err)
 	}
 	if remaining != -200 {
-		t.Fatalf("UseCredits(800): remaining = %d, want -200", remaining)
+		t.Fatalf("UseCredits(4, 200): remaining = %d, want -200", remaining)
 	}
 }
 
@@ -149,7 +149,7 @@ func TestBuyCredits(t *testing.T) {
 
 	link, err := m.BuyCredits(ctx, customerID, &BuyCreditsParams{
 		Email:      "buyer@example.com",
-		Amount:     500_000_000, // 500M microcents = $50
+		Amount:     50000, // 50000 cents = $500
 		SuccessURL: "https://example.com/success",
 		CancelURL:  "https://example.com/cancel",
 	})
@@ -171,9 +171,7 @@ func TestBuyCreditsValidation(t *testing.T) {
 		errStr string
 	}{
 		{"zero", 0, "must be positive"},
-		{"negative", -10000, "must be positive"},
-		{"not cent-aligned", 5000, "cent-aligned"},
-		{"fractional cents", 10001, "cent-aligned"},
+		{"negative", -100, "must be positive"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
