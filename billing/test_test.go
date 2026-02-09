@@ -3,7 +3,6 @@ package billing
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,12 +21,7 @@ import (
 	exesqlite "exe.dev/sqlite"
 	"exe.dev/tslog"
 	"github.com/stripe/stripe-go/v82"
-	"modernc.org/sqlite"
 )
-
-func inBubble() bool {
-	return time.Now().Equal(time.Now()) // monotonic clock does not progress in bubbles until a time.Sleep
-}
 
 // newTestManager returns a Manager configured to use an httprr recorder
 // for the test named t.Name(). It also returns a cleanup function that
@@ -126,19 +120,6 @@ type testClock struct {
 	*stripetest.Clock
 }
 
-var nowFunc = time.Now
-
-func init() {
-	register := func(name, format string) {
-		sqlite.MustRegisterScalarFunction(name, 0, func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
-			return nowFunc().UTC().Round(0).Format(format), nil
-		})
-	}
-	register("CURRENT_TIMESTAMP", "2006-01-02 15:04:05")
-	register("CURRENT_DATE", "2006-01-02")
-	register("CURRENT_TIME", "15:04:05")
-}
-
 // startClock starts a new test clock for the provided Manager and
 // registers a t.Cleanup function to delete the clock when the test
 // completes successfully, or preserve it for debugging if the test failed.
@@ -170,12 +151,6 @@ func (tc *testClock) Sleep(d time.Duration) {
 	})
 	if err != nil {
 		tc.t.Fatalf("clock.Sleep(%v): %v", d, err)
-	}
-}
-
-func checkTime(t *testing.T, got, want time.Time) {
-	if !got.Equal(want) {
-		t.Fatalf("got = %v; want %v (%s)", got, want, want.Sub(got))
 	}
 }
 
@@ -285,11 +260,10 @@ func installTestPrices(m *Manager) error {
 		}
 
 		// Create the price
-		currency := string(got.Currency)
 		params := &stripe.PriceCreateParams{
-			LookupKey:  &got.LookupKey,
-			Currency:   &currency,
-			UnitAmount: &got.UnitAmount,
+			LookupKey:  &want.LookupKey,
+			Currency:   new_(string(want.Currency)),
+			UnitAmount: &want.UnitAmount,
 		}
 
 		if want.Recurring != nil {
