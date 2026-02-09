@@ -136,16 +136,20 @@ func (p *TCPProxy) proxy(ctx context.Context, c *net.TCPConn) {
 
 	go func() {
 		defer wg.Done()
-		cnt := 0
-		for cnt < 2 {
-			select {
-			case <-copyDone:
-				cnt++
-			case <-ctx.Done():
-				c.Close()
-				dst.Close()
-				return
-			}
+		select {
+		case <-copyDone:
+			// One direction finished. Close both connections
+			// to unblock the other direction's io.Copy.
+			c.Close()
+			dst.Close()
+			<-copyDone
+		case <-ctx.Done():
+			// Context cancelled. Close both connections
+			// to unblock both io.Copy goroutines.
+			c.Close()
+			dst.Close()
+			<-copyDone
+			<-copyDone
 		}
 	}()
 
