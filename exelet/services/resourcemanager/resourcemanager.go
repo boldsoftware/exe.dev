@@ -76,9 +76,9 @@ type vmUsageState struct {
 	diskVolsizeBytes     uint64 // ZFS volsize (provisioned size)
 	diskBytes            uint64 // ZFS used (actual compressed bytes on disk)
 	diskLogicalBytes     uint64 // ZFS logicalused (uncompressed)
-	netRxBytes uint64
-	netTxBytes uint64
-	priority   api.VMPriority
+	netRxBytes           uint64
+	netTxBytes           uint64
+	priority             api.VMPriority
 
 	// Previous poll values for delta calculation
 	prevCPUSeconds float64
