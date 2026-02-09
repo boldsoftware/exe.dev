@@ -5340,6 +5340,125 @@ function makeAbuseSignalsDashboard() {
   return dash;
 }
 
+function makeMetricsdDashboard() {
+  resetLayout();
+  const dash = new DashboardBuilder("Metricsd");
+  dash
+    .uid("metricsd-dashboard")
+    .tags(["generated", "metricsd"])
+    .refresh("1m")
+    .time({ from: "now-6h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  addStageVariable(dash);
+
+  dash.withVariable(
+    new QueryVariableBuilder("instance")
+      .label("Instance")
+      .includeAll(true)
+      .query('label_values(metricsd_uptime_seconds{stage=~"$stage"}, instance)')
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+      .sort(1)
+  );
+
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "metricsd-dashboard");
+  const FILTER = 'stage=~"$stage",instance=~"$instance"';
+
+  addReadmePanel(dash);
+
+  // Uptime
+  addTimeseriesChart(
+    "Uptime",
+    `metricsd_uptime_seconds{${FILTER}}`,
+    {
+      panelCustomization: (x) => x.unit("s"),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  // Row insertion rate
+  addTimeseriesChart(
+    "Row Insertion Rate",
+    `rate(metricsd_rows_inserted_total{${FILTER}}[5m])`,
+    {
+      panelCustomization: (x) => x.unit("ops"),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  // Total rows inserted
+  addTimeseriesChart(
+    "Total Rows Inserted",
+    `metricsd_rows_inserted_total{${FILTER}}`,
+    {
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  // Batch insert latency
+  dash.withRow(
+    new RowBuilder("Insert Latency").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "Batch Insert Latency (p95)",
+    `histogram_quantile(0.95, rate(metricsd_insert_batch_duration_seconds_bucket{${FILTER}}[5m]))`,
+    {
+      panelCustomization: (x) => x.unit("s"),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  addTimeseriesChart(
+    "Batch Insert Latency (p99)",
+    `histogram_quantile(0.99, rate(metricsd_insert_batch_duration_seconds_bucket{${FILTER}}[5m]))`,
+    {
+      panelCustomization: (x) => x.unit("s"),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  addTimeseriesChart(
+    "Batch Insert Rate",
+    `rate(metricsd_insert_batch_duration_seconds_count{${FILTER}}[5m])`,
+    {
+      panelCustomization: (x) => x.unit("ops"),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  addTimeseriesChart(
+    "Row Insert Latency (p95)",
+    `histogram_quantile(0.95, rate(metricsd_insert_row_duration_seconds_bucket{${FILTER}}[5m]))`,
+    {
+      panelCustomization: (x) => x.unit("s"),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  addTimeseriesChart(
+    "Row Insert Latency (p99)",
+    `histogram_quantile(0.99, rate(metricsd_insert_row_duration_seconds_bucket{${FILTER}}[5m]))`,
+    {
+      panelCustomization: (x) => x.unit("s"),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  addTimeseriesChart(
+    "Avg Row Insert Latency",
+    `rate(metricsd_insert_row_duration_seconds_sum{${FILTER}}[5m]) / rate(metricsd_insert_row_duration_seconds_count{${FILTER}}[5m])`,
+    {
+      panelCustomization: (x) => x.unit("s"),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  return dash;
+}
+
 async function main() {
   if (TOKEN === undefined) {
     console.error(
@@ -5365,6 +5484,7 @@ async function main() {
   await createDashboard(makeLLMGatewayDashboard());
   await createDashboard(makeZFSDashboard());
   await createDashboard(makeAbuseSignalsDashboard());
+  await createDashboard(makeMetricsdDashboard());
 
   // Create alerts after dashboards are created
   await createAlerts();

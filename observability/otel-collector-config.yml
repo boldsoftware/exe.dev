@@ -55,6 +55,15 @@ receivers:
                 stage: 'staging'
           metrics_path: '/metrics'
 
+        - job_name: 'metricsd-staging'
+          scrape_interval: 60s
+          scheme: http
+          static_configs:
+            - targets: ["exed-staging-01.crocodile-vector.ts.net:21090"]
+              labels:
+                stage: 'staging'
+          metrics_path: '/metrics'
+
         - job_name: 'exelet-staging'
           scrape_interval: 60s
           scheme: http
@@ -161,6 +170,15 @@ receivers:
           scheme: http
           static_configs:
             - targets: ["exe-ctr-02:9081", "exe-ctr-03:9081", "exe-ctr-04:9081", "exe-ctr-05:9081", "exe-ctr-07:9081", "exe-ctr-08:9081", "exe-ctr-09:9081", "exe-ctr-10:9081", "exe-ctr-11:9081"]
+              labels:
+                stage: 'production'
+          metrics_path: '/metrics'
+
+        - job_name: 'metricsd-production'
+          scrape_interval: 60s
+          scheme: http
+          static_configs:
+            - targets: ["exed-02.crocodile-vector.ts.net:21090"]
               labels:
                 stage: 'production'
           metrics_path: '/metrics'

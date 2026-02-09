@@ -127,6 +127,17 @@ scrape_configs:
           stage: 'staging'
     metrics_path: '/metrics'
 
+  - job_name: 'metricsd'
+    scheme: http
+    static_configs:
+      - targets: ["exed-02.crocodile-vector.ts.net:21090"]
+        labels:
+          stage: 'production'
+      - targets: ["exed-staging-01.crocodile-vector.ts.net:21090"]
+        labels:
+          stage: 'staging'
+    metrics_path: '/metrics'
+
   - job_name: 'yace'
     scheme: http
     static_configs:
