@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"time"
 
 	"shelley.exe.dev/skills"
 )
@@ -259,6 +261,9 @@ func findGuidanceFilesInDir(dir string) []string {
 }
 
 func findAllGuidanceFiles(root string) []string {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	guidanceNames := map[string]bool{
 		"agent.md":    true,
 		"agents.md":   true,
@@ -270,6 +275,9 @@ func findAllGuidanceFiles(root string) []string {
 	seen := make(map[string]bool)
 
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if ctx.Err() != nil {
+			return filepath.SkipAll
+		}
 		if err != nil {
 			return nil // Continue on errors
 		}
