@@ -237,6 +237,7 @@ packages:
   - atop
   - btop
   - htop
+  - isal
 runcmd:
   - echo runcmd
   - systemctl enable --now qemu-guest-agent
