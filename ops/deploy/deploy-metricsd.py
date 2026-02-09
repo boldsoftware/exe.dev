@@ -1,9 +1,27 @@
 #!/usr/bin/env python3
-"""Deploy metricsd to staging. Pushes source via git, builds on the VM."""
+"""Deploy metricsd to staging or prod. Pushes source via git, builds on the VM."""
 
 import subprocess, sys, os, datetime, time, atexit
 
-HOST = "ubuntu@exed-staging-01"
+ENVS = {
+    "staging": {
+        "host": "ubuntu@exed-staging-01",
+        "service_file": "metricsd-staging.service",
+        "notify_name": "metricsd-staging",
+    },
+    "prod": {
+        "host": "ubuntu@exed-02",
+        "service_file": "metricsd-prod.service",
+        "notify_name": "metricsd",
+    },
+}
+
+if len(sys.argv) < 2 or sys.argv[1] not in ENVS:
+    print(f"Usage: {sys.argv[0]} <staging|prod> [-f]", file=sys.stderr)
+    sys.exit(1)
+
+env = ENVS[sys.argv[1]]
+HOST = env["host"]
 REMOTE_REPO = "/home/ubuntu/exe-metricsd-git-repo"
 TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 BINARY = f"metricsd.{TIMESTAMP}"
@@ -24,15 +42,24 @@ def notify(action, *args):
     r = subprocess.run([NOTIFY, action, *args], capture_output=True, text=True)
     return r.stdout.strip()
 
+if not os.environ.get("EXE_SLACK_BOT_TOKEN"):
+    print("ERROR: EXE_SLACK_BOT_TOKEN is not set. Deployments require Slack notifications.", file=sys.stderr)
+    sys.exit(1)
+
+# Prod deploys require safety checks
+if sys.argv[1] == "prod":
+    safety = os.path.join(REPO, "scripts/check-deploy-safety.sh")
+    run([safety] + sys.argv[2:])
+
 # Slack: post start, mark fail on exit unless we mark complete
-deploy_ts = notify("start", "metricsd-staging")
+deploy_ts = notify("start", env["notify_name"])
 failed = True
 def on_exit():
     if failed and deploy_ts:
         notify("fail", deploy_ts)
 atexit.register(on_exit)
 
-print(f"=== Deploying metricsd to staging ({BINARY}) ===\n")
+print(f"=== Deploying metricsd to {sys.argv[1]} ({BINARY}) ===\n")
 
 # Check connectivity
 run(["ssh", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes", HOST, "true"])
@@ -67,7 +94,7 @@ ls -lh ~/{BINARY}
 ssh("test -f /etc/default/metricsd || { echo 'ERROR: /etc/default/metricsd not found'; exit 1; }")
 
 # Install service
-scp(os.path.join(REPO, "ops/deploy/metricsd-staging.service"), "~/metricsd.service")
+scp(os.path.join(REPO, f"ops/deploy/{env['service_file']}"), "~/metricsd.service")
 ssh("""
 sudo mv ~/metricsd.service /etc/systemd/system/metricsd.service
 sudo systemctl daemon-reload
