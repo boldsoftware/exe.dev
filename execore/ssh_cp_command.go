@@ -189,26 +189,26 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 	sshKeys, err := container.GenerateContainerSSHKeys()
 	if err != nil {
 		// Clean up pre-created box
-		_ = withTx1(ss.server, context.WithoutCancel(ctx), (*exedb.Queries).DeleteBox, boxID)
+		_ = ss.server.cleanupPreCreatedBox(ctx, boxID)
 		return fmt.Errorf("failed to generate SSH keys: %w", err)
 	}
 
 	// Extract host public key
 	hostPrivKey, err := container.ParsePrivateKey(sshKeys.ServerIdentityKey)
 	if err != nil {
-		_ = withTx1(ss.server, context.WithoutCancel(ctx), (*exedb.Queries).DeleteBox, boxID)
+		_ = ss.server.cleanupPreCreatedBox(ctx, boxID)
 		return fmt.Errorf("failed to parse host private key: %w", err)
 	}
 	hostSigner, err := ssh.NewSignerFromKey(hostPrivKey)
 	if err != nil {
-		_ = withTx1(ss.server, context.WithoutCancel(ctx), (*exedb.Queries).DeleteBox, boxID)
+		_ = ss.server.cleanupPreCreatedBox(ctx, boxID)
 		return fmt.Errorf("failed to create signer from host key: %w", err)
 	}
 	hostPublicKey := ssh.MarshalAuthorizedKey(hostSigner.PublicKey())
 
 	shelleyConf, err := ss.makeShelleyConfig(newName)
 	if err != nil {
-		_ = withTx1(ss.server, context.WithoutCancel(ctx), (*exedb.Queries).DeleteBox, boxID)
+		_ = ss.server.cleanupPreCreatedBox(ctx, boxID)
 		return fmt.Errorf("error generating shelley config: %w", err)
 	}
 
@@ -355,8 +355,8 @@ done:
 	}
 
 	if cloneErr != nil {
-		// Clean up pre-created box
-		if err := withTx1(ss.server, context.WithoutCancel(ctx), (*exedb.Queries).DeleteBox, boxID); err != nil {
+		// Clean up pre-created box and IP shard
+		if err := ss.server.cleanupPreCreatedBox(ctx, boxID); err != nil {
 			slog.ErrorContext(ctx, "Failed to clean up box entry after clone failure", "boxID", boxID, "error", err)
 		}
 		var gs grpcStatuser

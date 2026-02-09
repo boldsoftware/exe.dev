@@ -1986,6 +1986,19 @@ func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (in
 	return boxID, nil
 }
 
+// cleanupPreCreatedBox removes a box and its IP shard allocation after a
+// failed creation attempt. Unlike deleteBox, this does not attempt to delete
+// a container (none exists yet) or track the deletion in deleted_boxes.
+func (s *Server) cleanupPreCreatedBox(ctx context.Context, boxID int) error {
+	ctx = context.WithoutCancel(ctx)
+	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		if err := queries.DeleteBoxIPShard(ctx, boxID); err != nil {
+			return fmt.Errorf("deleting IP shard: %w", err)
+		}
+		return queries.DeleteBox(ctx, boxID)
+	})
+}
+
 var errNoIPShardsAvailable = errors.New("no IP shards available")
 
 func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, userID string, boxID int) (int, error) {

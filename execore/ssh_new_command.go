@@ -518,8 +518,8 @@ done:
 	}
 
 	if createErr != nil {
-		// Clean up the pre-created box entry since container creation failed
-		if err := withTx1(ss.server, context.WithoutCancel(ctx), (*exedb.Queries).DeleteBox, boxID); err != nil {
+		// Clean up the pre-created box entry and IP shard since container creation failed
+		if err := ss.server.cleanupPreCreatedBox(ctx, boxID); err != nil {
 			slog.ErrorContext(ctx, "Failed to clean up box entry after container creation failure", "boxID", boxID, "error", err)
 		}
 		// Check if this is a gRPC user error (e.g., invalid image name)
