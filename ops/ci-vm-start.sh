@@ -396,12 +396,7 @@ for i in $(seq 1 60); do
     if ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'true' 2>/dev/null; then break; fi
     sleep 2
 done
-CLOUD_INIT_STATUS=$(ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo cloud-init status --wait' 2>/dev/null || true)
-echo "cloud-init: ${CLOUD_INIT_STATUS}"
-if echo "${CLOUD_INIT_STATUS}" | grep -q "error"; then
-    echo "cloud-init finished with errors (non-fatal on snapshot-based VMs):"
-    ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo cloud-init status --long' 2>/dev/null || true
-fi
+ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo cloud-init status --wait'
 
 ensure_cloud_hypervisor_artifacts() {
     local arch="$1"
