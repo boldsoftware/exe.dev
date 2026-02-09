@@ -2,11 +2,13 @@ package billing
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -16,6 +18,9 @@ import (
 	"exe.dev/billing/httprr"
 	"exe.dev/billing/stripetest"
 	"exe.dev/errorz"
+	"exe.dev/exedb"
+	exesqlite "exe.dev/sqlite"
+	"exe.dev/tslog"
 	"github.com/stripe/stripe-go/v82"
 	"modernc.org/sqlite"
 )
@@ -183,6 +188,50 @@ func isStripeParamError(err error, param string) bool {
 		return e.Param == param
 	}
 	return false
+}
+
+// newTestDB creates a test database with all migrations applied and returns
+// an exe.dev/sqlite.DB suitable for use in billing Manager tests.
+func newTestDB(t *testing.T) *exesqlite.DB {
+	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "billing_test.db")
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open database: %v", err)
+	}
+	if err := exedb.RunMigrations(tslog.Slogger(t), rawDB); err != nil {
+		rawDB.Close()
+		t.Fatalf("failed to run migrations: %v", err)
+	}
+	rawDB.Close()
+
+	db, err := exesqlite.New(dbPath, 1)
+	if err != nil {
+		t.Fatalf("failed to create sqlite wrapper: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+// createTestAccount creates a test user and account in the DB for billing tests.
+func createTestAccount(t *testing.T, db *exesqlite.DB, accountID, userID string) {
+	t.Helper()
+	err := exedb.WithTx(db, context.Background(), func(ctx context.Context, q *exedb.Queries) error {
+		if err := q.InsertUser(ctx, exedb.InsertUserParams{
+			UserID: userID,
+			Email:  userID + "@example.com",
+			Region: "pdx",
+		}); err != nil {
+			return err
+		}
+		return q.InsertAccount(ctx, exedb.InsertAccountParams{
+			ID:        accountID,
+			CreatedBy: userID,
+		})
+	})
+	if err != nil {
+		t.Fatalf("createTestAccount: %v", err)
+	}
 }
 
 // installTestPrices reads prices.json and creates any prices that do not

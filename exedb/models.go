@@ -21,6 +21,14 @@ type Account struct {
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 }
 
+type AccountCreditLedger struct {
+	ID            int64     `db:"id" json:"id"`
+	AccountID     string    `db:"account_id" json:"account_id"`
+	Amount        int64     `db:"amount" json:"amount"`
+	StripeEventID *string   `db:"stripe_event_id" json:"stripe_event_id"`
+	CreatedAt     time.Time `db:"created_at" json:"created_at"`
+}
+
 type AuthCookie struct {
 	CookieValue string     `db:"cookie_value" json:"cookie_value"`
 	UserID      string     `db:"user_id" json:"user_id"`

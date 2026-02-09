@@ -11,10 +11,13 @@ import (
 	"log/slog"
 	"os"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
+	"exe.dev/exedb"
 	"exe.dev/errorz"
+	"exe.dev/sqlite"
 	"github.com/stripe/stripe-go/v82"
 	"tailscale.com/syncs"
 	"tailscale.com/types/result"
@@ -54,6 +57,9 @@ type Manager struct {
 	// If nil, a new client is created using APIKey and StripeURL.
 	// This field is primarily for testing.
 	Client *stripe.Client
+
+	// DB is the database connection for credit ledger operations.
+	DB *sqlite.DB
 
 	Logger *slog.Logger
 
@@ -540,4 +546,153 @@ func (m *Manager) SubscriptionEvents(ctx context.Context, since time.Time) iter.
 			}
 		}
 	}
+}
+
+// UseCredits deducts credits from the account's credit balance.
+// The amount should be a positive number representing microcents to deduct.
+// Negative balances are allowed — deductions always succeed.
+// Returns the remaining balance after deduction.
+func (m *Manager) UseCredits(ctx context.Context, billingID string, amount int64) (remaining int64, _ error) {
+	return exedb.WithTxRes0(m.DB, ctx, func(q *exedb.Queries, ctx context.Context) (int64, error) {
+		return q.UseCredits(ctx, exedb.UseCreditsParams{
+			AccountID: billingID,
+			Amount:    -amount,
+		})
+	})
+}
+
+// BuyCreditsParams contains the parameters for purchasing credits.
+type BuyCreditsParams struct {
+	// Email is the customer's email address.
+	Email string
+
+	// Amount is the number of microcents to purchase.
+	Amount int64
+
+	// SuccessURL is the URL to redirect to after successful checkout.
+	SuccessURL string
+
+	// CancelURL is the URL to redirect to if checkout is canceled.
+	CancelURL string
+}
+
+// BuyCredits creates a Stripe checkout session for a one-time credit purchase.
+// It returns the checkout URL for the customer to complete payment.
+// The amount is specified in microcents and converted to cents for Stripe.
+func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCreditsParams) (checkoutURL string, _ error) {
+	err := m.upsertCustomer(ctx, billingID, p.Email)
+	if err != nil {
+		return "", fmt.Errorf("upsert customer: %w", err)
+	}
+
+	c := m.client()
+
+	cents := p.Amount / 10000 // microcents to cents
+	params := &stripe.CheckoutSessionCreateParams{
+		Customer:           &billingID,
+		Mode:               stripe.String("payment"),
+		PaymentMethodTypes: []*string{stripe.String("card")},
+		LineItems: []*stripe.CheckoutSessionCreateLineItemParams{
+			{
+				PriceData: &stripe.CheckoutSessionCreateLineItemPriceDataParams{
+					Currency: stripe.String("usd"),
+					ProductData: &stripe.CheckoutSessionCreateLineItemPriceDataProductDataParams{
+						Name: stripe.String("Account Credits"),
+					},
+					UnitAmount: &cents,
+				},
+				Quantity: stripe.Int64(1),
+			},
+		},
+		SuccessURL: &p.SuccessURL,
+		CancelURL:  &p.CancelURL,
+	}
+	params.AddMetadata("type", "credit_purchase")
+	params.AddMetadata("microcents", fmt.Sprintf("%d", p.Amount))
+	params.PaymentIntentData = &stripe.CheckoutSessionCreatePaymentIntentDataParams{
+		Metadata: map[string]string{
+			"type":       "credit_purchase",
+			"microcents": fmt.Sprintf("%d", p.Amount),
+		},
+	}
+
+	sess, err := c.V1CheckoutSessions.Create(ctx, params)
+	if err != nil {
+		return "", err
+	}
+
+	var requestID string
+	if sess.LastResponse != nil {
+		requestID = sess.LastResponse.RequestID
+	}
+	m.slog().InfoContext(ctx, "credit checkout session created",
+		"stripe_request_id", requestID,
+		"session_id", sess.ID,
+		"billing_id", billingID,
+		"microcents", p.Amount,
+	)
+	return sess.URL, nil
+}
+
+// SyncCredits polls Stripe for completed credit-purchase payments
+// and records them in the database. Each event is processed idempotently.
+// It looks for payment_intent.succeeded events with credit_purchase metadata,
+// which are generated when a BuyCredits checkout session is completed.
+func (m *Manager) SyncCredits(ctx context.Context, billingID string, since time.Time) error {
+	c := m.client()
+
+	params := &stripe.PaymentIntentListParams{
+		Customer: stripe.String(billingID),
+		CreatedRange: &stripe.RangeQueryParams{
+			GreaterThan: since.Unix(),
+		},
+	}
+
+	for pi, err := range c.V1PaymentIntents.List(ctx, params) {
+		if err != nil {
+			return fmt.Errorf("list payment intents: %w", err)
+		}
+
+		if pi.Status != stripe.PaymentIntentStatusSucceeded {
+			continue
+		}
+		if pi.Metadata["type"] != "credit_purchase" {
+			continue
+		}
+
+		microcents, err := strconv.ParseInt(pi.Metadata["microcents"], 10, 64)
+		if err != nil {
+			m.slog().ErrorContext(ctx, "invalid microcents in credit purchase",
+				"pi_id", pi.ID,
+				"microcents", pi.Metadata["microcents"],
+				"error", err,
+			)
+			continue
+		}
+
+		eventAt := sqlite.NormalizeTime(time.Unix(pi.Created, 0))
+
+		if err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
+			if err := q.SyncCreditEvent(ctx, exedb.SyncCreditEventParams{
+				AccountID: billingID,
+				EventAt:   eventAt,
+			}); err != nil {
+				return err
+			}
+			return q.SyncCreditLedger(ctx, exedb.SyncCreditLedgerParams{
+				AccountID:     billingID,
+				Amount:        microcents,
+				StripeEventID: &pi.ID,
+			})
+		}); err != nil {
+			return fmt.Errorf("sync credit purchase %s: %w", pi.ID, err)
+		}
+
+		m.slog().InfoContext(ctx, "credit purchase synced",
+			"pi_id", pi.ID,
+			"billing_id", billingID,
+			"microcents", microcents,
+		)
+	}
+	return nil
 }

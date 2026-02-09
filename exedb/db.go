@@ -252,6 +252,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxesSharedWithUserStmt, err = db.PrepareContext(ctx, getBoxesSharedWithUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesSharedWithUser: %w", err)
 	}
+	if q.getCreditBalanceStmt, err = db.PrepareContext(ctx, getCreditBalance); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCreditBalance: %w", err)
+	}
 	if q.getEmailBounceStmt, err = db.PrepareContext(ctx, getEmailBounce); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailBounce: %w", err)
 	}
@@ -591,6 +594,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.setUserRootSupportStmt, err = db.PrepareContext(ctx, setUserRootSupport); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserRootSupport: %w", err)
 	}
+	if q.syncCreditEventStmt, err = db.PrepareContext(ctx, syncCreditEvent); err != nil {
+		return nil, fmt.Errorf("error preparing query SyncCreditEvent: %w", err)
+	}
+	if q.syncCreditLedgerStmt, err = db.PrepareContext(ctx, syncCreditLedger); err != nil {
+		return nil, fmt.Errorf("error preparing query SyncCreditLedger: %w", err)
+	}
 	if q.updateAuthCookieLastUsedStmt, err = db.PrepareContext(ctx, updateAuthCookieLastUsed); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateAuthCookieLastUsed: %w", err)
 	}
@@ -659,6 +668,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertUserLLMCreditStmt, err = db.PrepareContext(ctx, upsertUserLLMCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertUserLLMCredit: %w", err)
+	}
+	if q.useCreditsStmt, err = db.PrepareContext(ctx, useCredits); err != nil {
+		return nil, fmt.Errorf("error preparing query UseCredits: %w", err)
 	}
 	if q.useInviteCodeStmt, err = db.PrepareContext(ctx, useInviteCode); err != nil {
 		return nil, fmt.Errorf("error preparing query UseInviteCode: %w", err)
@@ -1049,6 +1061,11 @@ func (q *Queries) Close() error {
 	if q.getBoxesSharedWithUserStmt != nil {
 		if cerr := q.getBoxesSharedWithUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxesSharedWithUserStmt: %w", cerr)
+		}
+	}
+	if q.getCreditBalanceStmt != nil {
+		if cerr := q.getCreditBalanceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCreditBalanceStmt: %w", cerr)
 		}
 	}
 	if q.getEmailBounceStmt != nil {
@@ -1616,6 +1633,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setUserRootSupportStmt: %w", cerr)
 		}
 	}
+	if q.syncCreditEventStmt != nil {
+		if cerr := q.syncCreditEventStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing syncCreditEventStmt: %w", cerr)
+		}
+	}
+	if q.syncCreditLedgerStmt != nil {
+		if cerr := q.syncCreditLedgerStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing syncCreditLedgerStmt: %w", cerr)
+		}
+	}
 	if q.updateAuthCookieLastUsedStmt != nil {
 		if cerr := q.updateAuthCookieLastUsedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateAuthCookieLastUsedStmt: %w", cerr)
@@ -1729,6 +1756,11 @@ func (q *Queries) Close() error {
 	if q.upsertUserLLMCreditStmt != nil {
 		if cerr := q.upsertUserLLMCreditStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertUserLLMCreditStmt: %w", cerr)
+		}
+	}
+	if q.useCreditsStmt != nil {
+		if cerr := q.useCreditsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing useCreditsStmt: %w", cerr)
 		}
 	}
 	if q.useInviteCodeStmt != nil {
@@ -1856,6 +1888,7 @@ type Queries struct {
 	getBoxesByHostStmt                         *sql.Stmt
 	getBoxesForUserDashboardStmt               *sql.Stmt
 	getBoxesSharedWithUserStmt                 *sql.Stmt
+	getCreditBalanceStmt                       *sql.Stmt
 	getEmailBounceStmt                         *sql.Stmt
 	getEmailBySSHKeyStmt                       *sql.Stmt
 	getEmailByUserIDStmt                       *sql.Stmt
@@ -1969,6 +2002,8 @@ type Queries struct {
 	setUserLimitsStmt                          *sql.Stmt
 	setUserNewVMCreationDisabledStmt           *sql.Stmt
 	setUserRootSupportStmt                     *sql.Stmt
+	syncCreditEventStmt                        *sql.Stmt
+	syncCreditLedgerStmt                       *sql.Stmt
 	updateAuthCookieLastUsedStmt               *sql.Stmt
 	updateAuthTokenUsedAtStmt                  *sql.Stmt
 	updateBoxContainerAndStatusStmt            *sql.Stmt
@@ -1992,6 +2027,7 @@ type Queries struct {
 	upsertTagResolutionStmt                    *sql.Stmt
 	upsertUserDefaultNewVMEmailStmt            *sql.Stmt
 	upsertUserLLMCreditStmt                    *sql.Stmt
+	useCreditsStmt                             *sql.Stmt
 	useInviteCodeStmt                          *sql.Stmt
 	userHasAuthCookieStmt                      *sql.Stmt
 }
@@ -2076,6 +2112,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxesByHostStmt:                         q.getBoxesByHostStmt,
 		getBoxesForUserDashboardStmt:               q.getBoxesForUserDashboardStmt,
 		getBoxesSharedWithUserStmt:                 q.getBoxesSharedWithUserStmt,
+		getCreditBalanceStmt:                       q.getCreditBalanceStmt,
 		getEmailBounceStmt:                         q.getEmailBounceStmt,
 		getEmailBySSHKeyStmt:                       q.getEmailBySSHKeyStmt,
 		getEmailByUserIDStmt:                       q.getEmailByUserIDStmt,
@@ -2189,6 +2226,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setUserLimitsStmt:                          q.setUserLimitsStmt,
 		setUserNewVMCreationDisabledStmt:           q.setUserNewVMCreationDisabledStmt,
 		setUserRootSupportStmt:                     q.setUserRootSupportStmt,
+		syncCreditEventStmt:                        q.syncCreditEventStmt,
+		syncCreditLedgerStmt:                       q.syncCreditLedgerStmt,
 		updateAuthCookieLastUsedStmt:               q.updateAuthCookieLastUsedStmt,
 		updateAuthTokenUsedAtStmt:                  q.updateAuthTokenUsedAtStmt,
 		updateBoxContainerAndStatusStmt:            q.updateBoxContainerAndStatusStmt,
@@ -2212,6 +2251,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertTagResolutionStmt:                    q.upsertTagResolutionStmt,
 		upsertUserDefaultNewVMEmailStmt:            q.upsertUserDefaultNewVMEmailStmt,
 		upsertUserLLMCreditStmt:                    q.upsertUserLLMCreditStmt,
+		useCreditsStmt:                             q.useCreditsStmt,
 		useInviteCodeStmt:                          q.useInviteCodeStmt,
 		userHasAuthCookieStmt:                      q.userHasAuthCookieStmt,
 	}
