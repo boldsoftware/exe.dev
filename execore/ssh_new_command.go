@@ -90,17 +90,13 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	disk := ss.server.env.DefaultDisk
 	cpus := ss.server.env.DefaultCPUs
 
-	// Get user-specific limit overrides (fetch full user to get limits)
-	fullUser, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserWithDetails, user.ID)
-	var userLimits *UserLimits
-	if err == nil {
-		userLimits = ParseUserLimits(&fullUser)
-	}
+	// Get effective limits (team limits if in a team, otherwise user limits)
+	effectiveLimits, _ := ss.server.GetEffectiveLimits(ctx, user.ID)
 
-	// Determine max limits based on user-specific overrides
-	maxMemory := GetMaxMemory(ss.server.env, userLimits)
-	maxDisk := GetMaxDisk(ss.server.env, userLimits)
-	maxCPUs := GetMaxCPUs(ss.server.env, userLimits)
+	// Determine max limits based on effective limits
+	maxMemory := GetMaxMemory(ss.server.env, effectiveLimits)
+	maxDisk := GetMaxDisk(ss.server.env, effectiveLimits)
+	maxCPUs := GetMaxCPUs(ss.server.env, effectiveLimits)
 
 	// Parse memory if provided
 	if memoryStr != "" {

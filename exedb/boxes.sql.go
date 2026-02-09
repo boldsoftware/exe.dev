@@ -188,6 +188,39 @@ func (q *Queries) DeleteBox(ctx context.Context, id int) error {
 	return err
 }
 
+const getBoxByID = `-- name: GetBoxByID :one
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path FROM boxes WHERE id = ?
+`
+
+func (q *Queries) GetBoxByID(ctx context.Context, id int) (Box, error) {
+	row := q.queryRow(ctx, q.getBoxByIDStmt, getBoxByID, id)
+	var i Box
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Status,
+		&i.Image,
+		&i.Ctrhost,
+		&i.ContainerID,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastStartedAt,
+		&i.Routes,
+		&i.SSHServerIdentityKey,
+		&i.SSHAuthorizedKeys,
+		&i.SSHClientPrivateKey,
+		&i.SSHPort,
+		&i.SSHUser,
+		&i.CreationLog,
+		&i.SupportAccessAllowed,
+		&i.Region,
+		&i.EmailReceiveEnabled,
+		&i.EmailMaildirPath,
+	)
+	return i, err
+}
+
 const getBoxByNameAndAlloc = `-- name: GetBoxByNameAndAlloc :one
 SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path FROM boxes WHERE name = ? AND created_by_user_id = ?
 `
@@ -600,6 +633,20 @@ type UpdateBoxNameParams struct {
 
 func (q *Queries) UpdateBoxName(ctx context.Context, arg UpdateBoxNameParams) error {
 	_, err := q.exec(ctx, q.updateBoxNameStmt, updateBoxName, arg.Name, arg.ID, arg.CreatedByUserID)
+	return err
+}
+
+const updateBoxNameByID = `-- name: UpdateBoxNameByID :exec
+UPDATE boxes SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+`
+
+type UpdateBoxNameByIDParams struct {
+	Name string `db:"name" json:"name"`
+	ID   int    `db:"id" json:"id"`
+}
+
+func (q *Queries) UpdateBoxNameByID(ctx context.Context, arg UpdateBoxNameByIDParams) error {
+	_, err := q.exec(ctx, q.updateBoxNameByIDStmt, updateBoxNameByID, arg.Name, arg.ID)
 	return err
 }
 

@@ -1,0 +1,24 @@
+
+
+●
+● ssh localhost
+●
+
+cp RENAMED_BOX copied-vm
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ cp RENAMED_BOX copied-vm
+Copying RENAMED_BOX to copied-vm...
+Created copied-vm from RENAMED_BOX in ELAPSED_TIME
+
+http://copied-vm.exe.cloud:EXED_HTTP_PORT
+
+ssh copied-vm@exe.cloud
+
+PROMPT ▶ rm copied-vm
+Deleting copied-vm...
+1 VM(s) deleted successfully
+PROMPT ▶ exit
+Goodbye!

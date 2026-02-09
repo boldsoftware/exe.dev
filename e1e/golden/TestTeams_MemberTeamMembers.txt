@@ -1,0 +1,17 @@
+
+
+●
+● ssh localhost
+●
+
+team members
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team members
+Team members:
+  member@test-teams.example
+  owner@test-teams.example (owner)
+PROMPT ▶ exit
+Goodbye!

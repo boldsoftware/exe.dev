@@ -2,7 +2,6 @@ package execore
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -44,16 +43,10 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 		return cc.Errorf("%s", errMsg)
 	}
 
-	// Check if the source box exists and belongs to this user
-	sourceBox, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
-		Name:            sourceVMName,
-		CreatedByUserID: user.ID,
-	})
+	// Check if the source box exists and user has access (owner or team owner)
+	sourceBox, _, err := ss.server.FindAccessibleBox(ctx, user.ID, sourceVMName)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return cc.Errorf("vm %q not found", sourceVMName)
-		}
-		return cc.Errorf("failed to look up vm: %v", err)
+		return cc.Errorf("vm %q not found", sourceVMName)
 	}
 
 	// Ensure source VM has a container
@@ -66,17 +59,13 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 	diskStr := cc.FlagSet.Lookup("disk").Value.String()
 	cpuVal, _ := strconv.ParseUint(cc.FlagSet.Lookup("cpu").Value.String(), 10, 64)
 
-	// Get user-specific limit overrides (fetch full user to get limits)
-	fullUser, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserWithDetails, user.ID)
-	var userLimits *UserLimits
-	if err == nil {
-		userLimits = ParseUserLimits(&fullUser)
-	}
+	// Get effective limits (team limits if in a team, otherwise user limits)
+	effectiveLimits, _ := ss.server.GetEffectiveLimits(ctx, user.ID)
 
-	// Determine max limits based on user-specific overrides
-	maxMemory := GetMaxMemory(ss.server.env, userLimits)
-	maxDisk := GetMaxDisk(ss.server.env, userLimits)
-	maxCPUs := GetMaxCPUs(ss.server.env, userLimits)
+	// Determine max limits based on effective limits
+	maxMemory := GetMaxMemory(ss.server.env, effectiveLimits)
+	maxDisk := GetMaxDisk(ss.server.env, effectiveLimits)
+	maxCPUs := GetMaxCPUs(ss.server.env, effectiveLimits)
 
 	// Resource overrides for clone (0 = use source)
 	var memoryOverride, diskOverride, cpuOverride uint64

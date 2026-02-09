@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+rm RENAMED_BOX
+
+- help to see a list of commands
+
+PROMPT ▶ rm RENAMED_BOX
+Deleting team VM RENAMED_BOX...
+1 VM(s) deleted successfully
+PROMPT ▶ exit
+Goodbye!

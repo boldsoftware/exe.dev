@@ -209,7 +209,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 		// Check access
 		accessType, err := s.hasUserAccessToBox(r.Context(), userID, &box)
-		if err == nil && (accessType == BoxAccessOwner || accessType == BoxAccessEmailShare) {
+		if err == nil && (accessType == BoxAccessOwner || accessType == BoxAccessEmailShare || accessType == BoxAccessTeamShare) {
 			hasAccess = true
 		}
 

@@ -89,6 +89,9 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/invite-tree", s.handleDebugInviteTree)
 	mux.HandleFunc("/debug/bounces", s.handleDebugBounces)
 	mux.HandleFunc("POST /debug/bounces", s.handleDebugBouncesPost)
+	mux.HandleFunc("POST /debug/teams/create", s.handleDebugTeamCreate)
+	mux.HandleFunc("POST /debug/teams/add-member", s.handleDebugTeamAddMember)
+	mux.HandleFunc("GET /debug/teams/members", s.handleDebugTeamMembers)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -3638,4 +3641,105 @@ func (s *Server) handleDebugBouncesPost(w http.ResponseWriter, r *http.Request) 
 	}
 
 	http.Redirect(w, r, "/debug/bounces", http.StatusSeeOther)
+}
+
+// handleDebugTeamCreate creates a team and adds a user as owner.
+// POST /debug/teams/create with team_id, display_name, owner_user_id
+func (s *Server) handleDebugTeamCreate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	teamID := r.FormValue("team_id")
+	displayName := r.FormValue("display_name")
+	ownerUserID := r.FormValue("owner_user_id")
+
+	if teamID == "" || displayName == "" || ownerUserID == "" {
+		http.Error(w, "team_id, display_name, and owner_user_id are required", http.StatusBadRequest)
+		return
+	}
+
+	// Create the team
+	err := withTx1(s, ctx, (*exedb.Queries).InsertTeam, exedb.InsertTeamParams{
+		TeamID:      teamID,
+		DisplayName: displayName,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create team: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Add the owner
+	err = withTx1(s, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
+		TeamID: teamID,
+		UserID: ownerUserID,
+		Role:   "owner",
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to add owner: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "created team via debug", "team_id", teamID, "owner", ownerUserID)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "created team %s with owner %s", teamID, ownerUserID)
+}
+
+// handleDebugTeamAddMember adds a user to an existing team.
+// POST /debug/teams/add-member with team_id, user_id, role (owner or user)
+func (s *Server) handleDebugTeamAddMember(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	teamID := r.FormValue("team_id")
+	userID := r.FormValue("user_id")
+	role := r.FormValue("role")
+
+	if teamID == "" || userID == "" {
+		http.Error(w, "team_id and user_id are required", http.StatusBadRequest)
+		return
+	}
+	if role == "" {
+		role = "user"
+	}
+	if role != "owner" && role != "user" {
+		http.Error(w, "role must be 'owner' or 'user'", http.StatusBadRequest)
+		return
+	}
+
+	err := withTx1(s, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
+		TeamID: teamID,
+		UserID: userID,
+		Role:   role,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to add team member: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "added team member via debug", "team_id", teamID, "user_id", userID, "role", role)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "added %s to team %s as %s", userID, teamID, role)
+}
+
+// handleDebugTeamMembers lists members of a team.
+// GET /debug/teams/members?team_id=xxx
+func (s *Server) handleDebugTeamMembers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	teamID := r.URL.Query().Get("team_id")
+	if teamID == "" {
+		http.Error(w, "team_id is required", http.StatusBadRequest)
+		return
+	}
+
+	members, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamMembers, teamID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get team members: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(members); err != nil {
+		s.slog().ErrorContext(ctx, "Failed to encode team members", "error", err)
+	}
 }

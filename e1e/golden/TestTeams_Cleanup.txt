@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+rm BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ rm BOX_NAME
+Deleting BOX_NAME...
+1 VM(s) deleted successfully
+PROMPT ▶ exit
+Goodbye!

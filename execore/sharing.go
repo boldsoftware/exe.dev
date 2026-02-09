@@ -64,6 +64,7 @@ const (
 	BoxAccessOwner
 	BoxAccessEmailShare
 	BoxAccessShareLink
+	BoxAccessTeamShare
 	BoxAccessPublic
 )
 
@@ -128,6 +129,15 @@ func (s *Server) hasUserAccessToBox(ctx context.Context, userID string, box *exe
 
 	if hasAccess {
 		return BoxAccessEmailShare, nil
+	}
+
+	// Check if box is shared with user's team
+	isTeamShared, err := withRxRes1(s, ctx, (*exedb.Queries).IsBoxSharedWithUserTeam, exedb.IsBoxSharedWithUserTeamParams{
+		BoxID:  int64(box.ID),
+		UserID: userID,
+	})
+	if err == nil && isTeamShared {
+		return BoxAccessTeamShare, nil
 	}
 
 	// Check if box is public - any authenticated user can access public boxes

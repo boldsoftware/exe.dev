@@ -112,6 +112,13 @@ type BoxShareLink struct {
 	UseCount        *int64     `db:"use_count" json:"use_count"`
 }
 
+type BoxTeamShare struct {
+	BoxID     int64  `db:"box_id" json:"box_id"`
+	TeamID    string `db:"team_id" json:"team_id"`
+	SharedBy  string `db:"shared_by" json:"shared_by"`
+	CreatedAt string `db:"created_at" json:"created_at"`
+}
+
 type CheckoutParam struct {
 	Token     string    `db:"token" json:"token"`
 	UserID    string    `db:"user_id" json:"user_id"`
@@ -328,6 +335,20 @@ type TagResolutionHistory struct {
 	OldDigest  *string `db:"old_digest" json:"old_digest"`
 	NewDigest  string  `db:"new_digest" json:"new_digest"`
 	ChangedAt  int64   `db:"changed_at" json:"changed_at"`
+}
+
+type Team struct {
+	TeamID      string  `db:"team_id" json:"team_id"`
+	DisplayName string  `db:"display_name" json:"display_name"`
+	Limits      *string `db:"limits" json:"limits"`
+	CreatedAt   string  `db:"created_at" json:"created_at"`
+}
+
+type TeamMember struct {
+	TeamID    string `db:"team_id" json:"team_id"`
+	UserID    string `db:"user_id" json:"user_id"`
+	Role      string `db:"role" json:"role"`
+	CreatedAt string `db:"created_at" json:"created_at"`
 }
 
 type User struct {

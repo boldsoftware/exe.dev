@@ -1,0 +1,24 @@
+
+
+●
+● ssh localhost
+●
+
+share show BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ share show BOX_NAME
+
+Sharing for VM 'BOX_NAME'
+URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
+Port: 8000
+Mode: Private
+
+Shared with teams:
+  Share Team
+
+No individual user shares or share links.
+
+PROMPT ▶ exit
+Goodbye!

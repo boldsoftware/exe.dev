@@ -1498,13 +1498,49 @@
         </div>
         {{end}}
         
+        {{if .TeamBoxes}}
+        <div class="section-header">
+            <div class="section-left">
+                <div class="section-title">Team VMs</div>
+            </div>
+        </div>
+
+        <div class="boxes-list" style="margin-bottom: 40px;">
+            {{range .TeamBoxes}}
+            <div class="box-row">
+                <div class="box-main" onclick="handleBoxRowClick(event, this)">
+                    <span class="status-dot {{.Status}}" title="{{.Status}}"></span>
+                    <span class="box-name">{{.Name}}</span>
+                    <span style="font-size: 11px; color: #999; margin-left: 8px;">by {{.CreatorEmail}}</span>
+                    <div class="box-actions">
+                        <button class="copy-btn" onclick="copyToClipboard(this, '{{.SSHCommand}}')" title="SSH">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+                            </svg>
+                            <span class="btn-text">SSH</span>
+                        </button>
+                        <a href="{{.ProxyURL}}" class="action-btn" target="_blank" title="HTTPS">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                <polyline points="15 3 21 3 21 9"></polyline>
+                                <line x1="10" y1="14" x2="21" y2="3"></line>
+                            </svg>
+                            <span class="btn-text">HTTPS</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+
         {{if .SharedBoxes}}
         <div class="section-header">
             <div class="section-left">
                 <div class="section-title">Shared with Me</div>
             </div>
         </div>
-        
+
         <div class="boxes-list">
             {{range .SharedBoxes}}
             <div class="box-row">

@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+rename BOX_NAME RENAMED_BOX
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ rename BOX_NAME RENAMED_BOX
+Renamed BOX_NAME to RENAMED_BOX
+PROMPT ▶ exit
+Goodbye!

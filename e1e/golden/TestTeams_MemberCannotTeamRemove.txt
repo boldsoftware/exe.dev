@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+team remove someone@example.com
+
+- help to see a list of commands
+
+PROMPT ▶ team remove someone@example.com
+exe.dev repl: command not available: "team remove someone@example.com"
+PROMPT ▶ exit
+Goodbye!

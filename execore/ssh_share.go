@@ -81,7 +81,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			{
 				Name:              "add",
 				Description:       "Share VM with a user via email",
-				Usage:             "share add <vm> <email> [--message='...']",
+				Usage:             "share add <vm> <email|team> [--message='...']",
 				Handler:           ss.handleShareAddCmd,
 				FlagSetFunc:       addQRFlag(addShareMessageFlag(jsonOnlyFlags("share-add"))),
 				HasPositionalArgs: true,
@@ -89,12 +89,13 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 				Examples: []string{
 					"share add mybox user@example.com",
 					"share add mybox user@example.com --message='Check this out'",
+					"share add mybox team",
 				},
 			},
 			{
 				Name:              "remove",
 				Description:       "Revoke a user's access to a VM",
-				Usage:             "share remove <vm> <email>",
+				Usage:             "share remove <vm> <email|team>",
 				Handler:           ss.handleShareRemoveCmd,
 				FlagSetFunc:       jsonOnlyFlags("share-remove"),
 				HasPositionalArgs: true,
@@ -191,6 +192,14 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 		return err
 	}
 
+	// Get team shares
+	teamShares, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetBoxTeamSharesByBoxID, int64(box.ID))
+	if err != nil {
+		return err
+	}
+
+	totalShares := len(pendingShares) + len(activeShares) + len(shareLinks) + len(teamShares)
+
 	if cc.WantJSON() {
 		route := box.GetRoute()
 		// JSON output
@@ -204,6 +213,10 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 			CreatedAt  string  `json:"created_at"`
 			UseCount   int64   `json:"use_count"`
 			LastUsedAt *string `json:"last_used_at"`
+		}
+		type teamShare struct {
+			TeamID   string `json:"team_id"`
+			TeamName string `json:"team_name"`
 		}
 
 		var users []userShare
@@ -238,6 +251,11 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 			links = append(links, ls)
 		}
 
+		var teams []teamShare
+		for _, ts := range teamShares {
+			teams = append(teams, teamShare{TeamID: ts.TeamID, TeamName: ts.TeamName})
+		}
+
 		result := map[string]any{
 			"vm_name": box.Name,
 			"status":  route.Share,
@@ -245,6 +263,7 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 			"url":     ss.server.boxProxyAddress(box.Name),
 			"users":   users,
 			"links":   links,
+			"teams":   teams,
 		}
 		if box.SupportAccessAllowed == 1 {
 			result["support_has_root"] = true
@@ -282,14 +301,14 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 		cc.Writeln("\033[1;33mNote:\033[0m This VM is publicly accessible. Individual shares are not needed.")
 		cc.Writeln("To make it private, use: share set-private %s", box.Name)
 		cc.Writeln("")
-		if len(pendingShares)+len(activeShares)+len(shareLinks) == 0 {
+		if totalShares == 0 {
 			return nil
 		}
 		cc.Writeln("Existing shares (will take effect if VM becomes private):")
 		cc.Writeln("")
 	}
 
-	if !isPublic && len(pendingShares)+len(activeShares)+len(shareLinks) == 0 {
+	if !isPublic && totalShares == 0 {
 		cc.Writeln("No shares configured.")
 		cc.Writeln("")
 		cc.Writeln("To share with someone, use:")
@@ -297,6 +316,14 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 		cc.Writeln("  share add-link %s", box.Name)
 		cc.Writeln("")
 		return nil
+	}
+
+	if len(teamShares) > 0 {
+		cc.Writeln("\033[1mShared with teams:\033[0m")
+		for _, ts := range teamShares {
+			cc.Writeln("  %s", ts.TeamName)
+		}
+		cc.Writeln("")
 	}
 
 	if len(pendingShares)+len(activeShares) > 0 {
@@ -310,9 +337,6 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 			cc.Writeln("  %s (active, invited %s)", as.SharedWithUserEmail, age)
 		}
 		cc.Writeln("")
-	} else {
-		cc.Writeln("No users shared yet.")
-		cc.Writeln("")
 	}
 
 	if len(shareLinks) > 0 {
@@ -322,9 +346,10 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 			cc.Writeln("  %s (created %s, used %d times)", sl.ShareToken, age, *sl.UseCount)
 		}
 		cc.Writeln("")
-	} else {
-		cc.Writeln("No share links yet. Create one with:")
-		cc.Writeln("  share add-link %s", box.Name)
+	}
+
+	if len(pendingShares)+len(activeShares) == 0 && len(shareLinks) == 0 && len(teamShares) > 0 {
+		cc.Writeln("No individual user shares or share links.")
 		cc.Writeln("")
 	}
 
@@ -467,9 +492,8 @@ func formatAge(t *time.Time) string {
 }
 
 func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandContext) error {
-	// share add <box> <email> [--message=...]
 	if len(cc.Args) < 2 {
-		return cc.Errorf("usage: share add <vm> <email> [--message='...']")
+		return cc.Errorf("usage: share add <vm> <email|team> [--message='...']")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -484,6 +508,11 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 	}
 	if err != nil {
 		return err
+	}
+
+	// Handle team sharing
+	if strings.ToLower(cc.Args[1]) == "team" {
+		return ss.handleShareAddTeam(ctx, cc, &box)
 	}
 
 	email := strings.ToLower(strings.TrimSpace(cc.Args[1]))
@@ -626,10 +655,64 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 	return nil
 }
 
+// handleShareAddTeam shares a VM with the user's team (dynamic - new members auto-inherit)
+func (ss *SSHServer) handleShareAddTeam(ctx context.Context, cc *exemenu.CommandContext, box *exedb.Box) error {
+	team, err := ss.server.GetTeamForUser(ctx, cc.User.ID)
+	if err != nil {
+		return err
+	}
+	if team == nil {
+		return cc.Errorf("You're not in a team")
+	}
+
+	// Insert into box_team_shares (idempotent - UNIQUE constraint)
+	err = withTx1(ss.server, ctx, (*exedb.Queries).InsertBoxTeamShare, exedb.InsertBoxTeamShareParams{
+		BoxID:    int64(box.ID),
+		TeamID:   team.TeamID,
+		SharedBy: cc.User.ID,
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint") {
+			if cc.WantJSON() {
+				cc.WriteJSON(map[string]any{
+					"status":  "success",
+					"vm_name": box.Name,
+					"message": "Already shared with team",
+				})
+				return nil
+			}
+			cc.Writeln("Already shared %s with team %s", box.Name, team.DisplayName)
+			return nil
+		}
+		return err
+	}
+
+	if cc.WantJSON() {
+		cc.WriteJSON(map[string]any{
+			"status":    "success",
+			"vm_name":   box.Name,
+			"team_name": team.DisplayName,
+		})
+		return nil
+	}
+
+	cc.Writeln("")
+	cc.Writeln("\033[1;32m✓\033[0m Shared %s with team %s", box.Name, team.DisplayName)
+
+	// Warn if box is public
+	route := box.GetRoute()
+	if route.Share == "public" {
+		cc.Writeln("")
+		cc.Writeln("\033[1;33mNote:\033[0m This VM is currently PUBLIC. The share will only take effect if you make it private.")
+		cc.Writeln("To make it private: share set-private %s", box.Name)
+	}
+	cc.Writeln("")
+	return nil
+}
+
 func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.CommandContext) error {
-	// share remove <box> <email>
 	if len(cc.Args) < 2 {
-		return cc.Errorf("usage: share remove <vm> <email>")
+		return cc.Errorf("usage: share remove <vm> <email|team>")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -644,6 +727,16 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 	}
 	if err != nil {
 		return err
+	}
+
+	// Handle team unsharing
+	if strings.ToLower(cc.Args[1]) == "team" {
+		return ss.handleShareRemoveTeam(ctx, cc, &box)
+	}
+
+	// Email-based removal requires email argument
+	if len(cc.Args) < 2 {
+		return cc.Errorf("usage: share remove <vm> <email>")
 	}
 
 	email := strings.ToLower(strings.TrimSpace(cc.Args[1]))
@@ -702,6 +795,39 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 	if userShares == 0 && linkShares == 0 {
 		cc.Writeln("\033[1;32m✓\033[0m VM '%s' is now private (no shares remaining)", box.Name)
 	}
+	cc.Writeln("")
+	return nil
+}
+
+// handleShareRemoveTeam removes the team share from a VM
+func (ss *SSHServer) handleShareRemoveTeam(ctx context.Context, cc *exemenu.CommandContext, box *exedb.Box) error {
+	team, err := ss.server.GetTeamForUser(ctx, cc.User.ID)
+	if err != nil {
+		return err
+	}
+	if team == nil {
+		return cc.Errorf("You're not in a team")
+	}
+
+	err = withTx1(ss.server, ctx, (*exedb.Queries).DeleteBoxTeamShare, exedb.DeleteBoxTeamShareParams{
+		BoxID:  int64(box.ID),
+		TeamID: team.TeamID,
+	})
+	if err != nil {
+		return err
+	}
+
+	if cc.WantJSON() {
+		cc.WriteJSON(map[string]any{
+			"status":    "success",
+			"vm_name":   box.Name,
+			"team_name": team.DisplayName,
+		})
+		return nil
+	}
+
+	cc.Writeln("")
+	cc.Writeln("\033[1;32m✓\033[0m Removed team access from %s", box.Name)
 	cc.Writeln("")
 	return nil
 }

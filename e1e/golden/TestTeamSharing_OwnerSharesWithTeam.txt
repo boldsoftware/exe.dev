@@ -1,0 +1,16 @@
+
+
+●
+● ssh localhost
+●
+
+share add BOX_NAME team
+
+- help to see a list of commands
+
+PROMPT ▶ share add BOX_NAME team
+
+✓ Shared BOX_NAME with team Share Team
+
+PROMPT ▶ exit
+Goodbye!

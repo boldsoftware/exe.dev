@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+rename BOX_NAME stolen-box
+
+- help to see a list of commands
+
+PROMPT ▶ rename BOX_NAME stolen-box
+vm "BOX_NAME" not found
+PROMPT ▶ exit
+Goodbye!

@@ -322,6 +322,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			HasPositionalArgs: true,
 		},
 		ss.defaultsCommand(),
+		ss.teamCommand(),
 		ss.shelleyCommand(),
 		{
 			Name:        "browser",
@@ -494,13 +495,43 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			}
 			vmList = append(vmList, box)
 		}
-		cc.WriteJSON(map[string]any{
-			"vms": vmList,
-		})
+
+		// Include team VMs for team owners
+		teamBoxes, _ := ss.server.ListTeamBoxesForOwner(ctx, cc.User.ID)
+		var teamVMList []map[string]any
+		for _, vm := range teamBoxes {
+			status := container.ContainerStatus(vm.Status).String()
+			box := map[string]any{
+				"vm_name":       vm.Name,
+				"ssh_dest":      ss.server.env.BoxDest(vm.Name),
+				"status":        status,
+				"region":        vm.Region,
+				"creator_email": vm.CreatorEmail,
+			}
+			if r, err := region.ByCode(vm.Region); err == nil {
+				box["region_display"] = r.Display
+			}
+			imageName := container.GetDisplayImageName(vm.Image)
+			switch imageName {
+			case "exeuntu", "":
+			default:
+				box["image"] = imageName
+			}
+			teamVMList = append(teamVMList, box)
+		}
+
+		result := map[string]any{"vms": vmList}
+		if len(teamVMList) > 0 {
+			result["team_vms"] = teamVMList
+		}
+		cc.WriteJSON(result)
 		return nil
 	}
 
-	if len(boxes) == 0 {
+	// Check if user is a team owner and get team boxes (need this early to decide output)
+	teamBoxes, _ := ss.server.ListTeamBoxesForOwner(ctx, cc.User.ID)
+
+	if len(boxes) == 0 && len(teamBoxes) == 0 {
 		cc.Write("No VMs found. Create one with 'new'.\r\n")
 		return nil
 	}
@@ -526,7 +557,10 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 		return nil
 	}
 
-	cc.Write("\033[1;36mYour VMs:\033[0m\r\n")
+	// Show user's own VMs
+	if len(boxes) > 0 {
+		cc.Write("\033[1;36mYour VMs:\033[0m\r\n")
+	}
 	for _, b := range boxes {
 		status := container.ContainerStatus(b.Status)
 		cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", ss.server.env.BoxSub(b.Name), statusColor(status), status)
@@ -538,6 +572,24 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 		}
 		cc.Write("\r\n")
 	}
+
+	// Show team VMs for team owners
+	if len(teamBoxes) > 0 {
+		cc.Write("\r\n\033[1;33mTeam VMs:\033[0m\r\n")
+		for _, b := range teamBoxes {
+			status := container.ContainerStatus(b.Status)
+			cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", ss.server.env.BoxSub(b.Name), statusColor(status), status)
+			imageName := container.GetDisplayImageName(b.Image)
+			switch imageName {
+			case "exeuntu", "":
+			default:
+				cc.Write(" (%s)", imageName)
+			}
+			cc.Write(" \033[90mby %s\033[0m", b.CreatorEmail)
+			cc.Write("\r\n")
+		}
+	}
+
 	return nil
 }
 
@@ -560,11 +612,8 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
 
-	// Verify the box exists and belongs to this user
-	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
-		Name:            boxName,
-		CreatedByUserID: cc.User.ID,
-	})
+	// Verify the box exists and user has access (owner or team owner)
+	box, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, boxName)
 	if err != nil {
 		return cc.Errorf("VM %q not found", boxName)
 	}
@@ -696,19 +745,20 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 			continue
 		}
 		seen[boxName] = true
-		box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
-			Name:            boxName,
-			CreatedByUserID: cc.User.ID,
-		})
+		box, accessType, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, boxName)
 		if err != nil {
 			failed = append(failed, boxName)
 			cc.WriteError("VM %q not found", boxName)
 			continue
 		}
 
-		cc.Writeln("Deleting \033[1m%s\033[0m...", boxName)
+		if accessType == TeamBoxAccessTeamOwner {
+			cc.Writeln("Deleting team VM \033[1m%s\033[0m...", boxName)
+		} else {
+			cc.Writeln("Deleting \033[1m%s\033[0m...", boxName)
+		}
 
-		if err := ss.server.deleteBox(ctx, box); err != nil {
+		if err := ss.server.deleteBox(ctx, *box); err != nil {
 			failed = append(failed, boxName)
 			cc.WriteError("failed to delete %q: %v", boxName, err)
 			continue
@@ -1209,16 +1259,10 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 	// Also handle boxname.host format (e.g., "connx.exe.xyz")
 	name = ss.normalizeBoxName(name)
 
-	// Look up the box
-	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
-		Name:            name,
-		CreatedByUserID: cc.User.ID,
-	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("VM %q not found", name)
-	}
+	// Look up the box (owner or team owner access)
+	box, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, name)
 	if err != nil {
-		return fmt.Errorf("failed to look up VM: %w", err)
+		return cc.Errorf("VM %q not found", name)
 	}
 
 	// Validate box has SSH credentials

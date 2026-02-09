@@ -335,10 +335,16 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	// IP-based box routing (like SNI but for SSH):
 	// If `ssh vmname.exe.cloud` resolves to a shard IP (127.21.0.X), then look up the box by that shard/user combo.
 	// This makes `ssh vmname.exe.cloud` work like `ssh vmname@exe.cloud`.
-	// If this fails, continue on with normal routing.
+	// If this fails, try team owner fallback, then continue on with normal routing.
 	slog.InfoContext(ctx, "piper public key auth checking for box by shard", "component", "piper-plugin", "user_id", userID, "local_address", localAddress)
 	if box := p.server.FindBoxByIPShard(ctx, userID, localAddress); box != nil {
 		slog.InfoContext(ctx, "piper pk auth found box by IP shard, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "local_address", localAddress)
+		return p.handleBoxAccess(ctx, box, userID, conn.UniqueID())
+	}
+
+	// Team owner fallback: if user is a team owner, try to find a team member's box on this shard
+	if box := p.server.FindTeamBoxByIPShard(ctx, userID, localAddress); box != nil {
+		slog.InfoContext(ctx, "piper pk auth found team box by IP shard, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "local_address", localAddress, "owner_id", userID)
 		return p.handleBoxAccess(ctx, box, userID, conn.UniqueID())
 	}
 

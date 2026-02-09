@@ -79,9 +79,6 @@ Mode: Private
 Shared with users:
   friend@example.com (invited INVITE_AGE)
 
-No share links yet. Create one with:
-  share add-link BOX_NAME
-
 PROMPT ▶ share add-share-link BOX_NAME
 
 ✓ Share link created
@@ -115,8 +112,6 @@ Sharing for VM 'BOX_NAME'
 URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 Port: 8000
 Mode: Private
-
-No users shared yet.
 
 Share links:
   SHARE_TOKEN (created SHARE_AGE, used 0 times)

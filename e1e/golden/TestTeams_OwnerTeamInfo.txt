@@ -1,0 +1,18 @@
+
+
+●
+● ssh localhost
+●
+
+team
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team
+Team: Test Team
+Your role: owner
+Members: 2
+VMs: 0
+PROMPT ▶ exit
+Goodbye!

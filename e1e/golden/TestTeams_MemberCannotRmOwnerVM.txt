@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+rm BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ rm BOX_NAME
+VM "BOX_NAME" not found
+PROMPT ▶ exit
+Goodbye!

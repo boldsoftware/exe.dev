@@ -138,6 +138,7 @@ type UserPageData struct {
 	Passkeys     []PasskeyInfo
 	Boxes        []BoxDisplayInfo
 	SharedBoxes  []SharedBoxDisplayInfo
+	TeamBoxes    []TeamBoxDisplayInfo // Team VMs (for team owners)
 	SiteSessions []SiteSession
 	ActivePage   string
 	IsLoggedIn   bool
@@ -149,6 +150,15 @@ type UserPageData struct {
 	// Billing information
 	HasBilling    bool   // User has active billing (completed checkout)
 	BillingStatus string // Billing status: "active", "canceled", "pending", or "" if no account
+}
+
+// TeamBoxDisplayInfo represents a team member's box for the dashboard
+type TeamBoxDisplayInfo struct {
+	Name         string
+	CreatorEmail string
+	Status       string
+	ProxyURL     string
+	SSHCommand   string
 }
 
 // SiteSession represents an active session cookie for a site hosted by exe
@@ -2002,9 +2012,25 @@ func (s *Server) cleanupPreCreatedBox(ctx context.Context, boxID int) error {
 var errNoIPShardsAvailable = errors.New("no IP shards available")
 
 func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, userID string, boxID int) (int, error) {
-	shards, err := queries.ListIPShardsForUser(ctx, userID)
-	if err != nil {
-		return 0, fmt.Errorf("failed to list IP shards for user %s: %w", userID, err)
+	// Check if user is in a team - if so, use team-wide shard pool
+	// Use queries directly since we're inside a transaction
+	team, teamErr := queries.GetTeamForUser(ctx, userID)
+	inTeam := teamErr == nil && team.TeamID != ""
+
+	var shards []int64
+	var err error
+	if inTeam {
+		// User is in a team - get all shards used by team members
+		shards, err = queries.ListIPShardsForTeam(ctx, userID)
+		if err != nil {
+			return 0, fmt.Errorf("failed to list IP shards for team: %w", err)
+		}
+	} else {
+		// Individual user - get their personal shards
+		shards, err = queries.ListIPShardsForUser(ctx, userID)
+		if err != nil {
+			return 0, fmt.Errorf("failed to list IP shards for user %s: %w", userID, err)
+		}
 	}
 
 	used := make([]bool, s.env.NumShards+1)

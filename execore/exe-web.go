@@ -1313,6 +1313,20 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		s.slog().ErrorContext(r.Context(), "Failed to get invite count for dashboard", "error", err, "user_id", userID)
 	}
 
+	// Get team VMs for team owners
+	var teamBoxes []TeamBoxDisplayInfo
+	teamBoxResults, _ := s.ListTeamBoxesForOwner(r.Context(), user.UserID)
+	for _, result := range teamBoxResults {
+		teamBoxInfo := TeamBoxDisplayInfo{
+			Name:         result.Name,
+			CreatorEmail: result.CreatorEmail,
+			Status:       result.Status,
+			ProxyURL:     s.boxProxyAddress(result.Name),
+			SSHCommand:   s.boxSSHConnectionCommand(result.Name),
+		}
+		teamBoxes = append(teamBoxes, teamBoxInfo)
+	}
+
 	// Prepare template data
 	data := UserPageData{
 		Env:         s.env,
@@ -1321,6 +1335,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		SSHKeys:     sshKeys,
 		Boxes:       boxes,
 		SharedBoxes: sharedBoxes,
+		TeamBoxes:   teamBoxes,
 		ActivePage:  "boxes",
 		IsLoggedIn:  true,
 		InviteCount: inviteCount,

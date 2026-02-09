@@ -1,0 +1,16 @@
+
+
+●
+● ssh localhost
+●
+
+share remove BOX_NAME team
+
+- help to see a list of commands
+
+PROMPT ▶ share remove BOX_NAME team
+
+✓ Removed team access from BOX_NAME
+
+PROMPT ▶ exit
+Goodbye!

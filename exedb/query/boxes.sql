@@ -101,3 +101,9 @@ ORDER BY b.name;
 
 -- name: UpdateBoxName :exec
 UPDATE boxes SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND created_by_user_id = ?;
+
+-- name: UpdateBoxNameByID :exec
+UPDATE boxes SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
+
+-- name: GetBoxByID :one
+SELECT * FROM boxes WHERE id = ?;

@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+cp BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ cp BOX_NAME
+vm "BOX_NAME" not found
+PROMPT ▶ exit
+Goodbye!

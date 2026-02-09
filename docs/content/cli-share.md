@@ -82,7 +82,7 @@ Share VM with a user via email
 
 **Usage:**
 ```
-share add <vm> <email> [--message='...']
+share add <vm> <email|team> [--message='...']
 ```
 
 **Options:**
@@ -94,6 +94,7 @@ share add <vm> <email> [--message='...']
 ```
 share add mybox user@example.com
 share add mybox user@example.com --message='Check this out'
+share add mybox team
 ```
 
 ### share remove
@@ -102,7 +103,7 @@ Revoke a user's access to a VM
 
 **Usage:**
 ```
-share remove <vm> <email>
+share remove <vm> <email|team>
 ```
 
 **Options:**

@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+team add someone@example.com
+
+- help to see a list of commands
+
+PROMPT ▶ team add someone@example.com
+exe.dev repl: command not available: "team add someone@example.com"
+PROMPT ▶ exit
+Goodbye!

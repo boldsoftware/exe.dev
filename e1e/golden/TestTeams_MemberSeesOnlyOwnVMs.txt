@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+ls
+
+- help to see a list of commands
+
+PROMPT ▶ ls
+Your VMs:
+  • BOX_NAME.exe.cloud - running (boldsoftware/exeuntu)
+PROMPT ▶ exit
+Goodbye!

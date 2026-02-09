@@ -32,16 +32,10 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 		return cc.Errorf("invalid new name: %v", err)
 	}
 
-	// Check if the box exists and belongs to this user
-	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
-		Name:            oldName,
-		CreatedByUserID: cc.User.ID,
-	})
+	// Check if the box exists and user has access (owner or team owner)
+	box, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, oldName)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return cc.Errorf("vm %q not found", oldName)
-		}
-		return cc.Errorf("failed to look up vm: %v", err)
+		return cc.Errorf("vm %q not found", oldName)
 	}
 
 	// Check if new name already exists (globally)
@@ -77,10 +71,9 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 		"old_name", oldName,
 		"new_name", newName,
 		"user_id", cc.User.ID)
-	err = withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxName, exedb.UpdateBoxNameParams{
-		Name:            newName,
-		ID:              box.ID,
-		CreatedByUserID: cc.User.ID,
+	err = withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxNameByID, exedb.UpdateBoxNameByIDParams{
+		Name: newName,
+		ID:   box.ID,
 	})
 	if err != nil {
 		slog.ErrorContext(ctx, "rename: DB update failed",
@@ -155,10 +148,7 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 		"box_id", box.ID,
 		"old_name", oldName,
 		"new_name", newName)
-	updatedBox, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
-		Name:            newName,
-		CreatedByUserID: cc.User.ID,
-	})
+	updatedBox, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, newName)
 	if err == nil {
 		// Update /etc/hostname and /etc/hosts
 		// Use busybox shell and sed to replace old hostname with new hostname
@@ -167,7 +157,7 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 			"sudo /exe.dev/bin/sh -c 'sed -i \"s/\\b%s\\b/%s/g\" /etc/hostname /etc/hosts 2>/dev/null; hostname %s 2>/dev/null'",
 			oldName, newName, newName,
 		)
-		if _, err := runCommandOnBox(ctx, ss.server.sshPool, &updatedBox, hostnameCmd); err != nil {
+		if _, err := runCommandOnBox(ctx, ss.server.sshPool, updatedBox, hostnameCmd); err != nil {
 			slog.ErrorContext(ctx, "rename: failed to update hostname inside VM",
 				"box_id", box.ID,
 				"old_name", oldName,
@@ -188,7 +178,7 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 				"error", err)
 		} else {
 			shelleyCmd := fmt.Sprintf("sudo /exe.dev/bin/sh -c 'cat > /exe.dev/shelley.json << \"SHELLEY_EOF\"\n%s\nSHELLEY_EOF'", shelleyConf)
-			if _, err := runCommandOnBox(ctx, ss.server.sshPool, &updatedBox, shelleyCmd); err != nil {
+			if _, err := runCommandOnBox(ctx, ss.server.sshPool, updatedBox, shelleyCmd); err != nil {
 				slog.ErrorContext(ctx, "rename: failed to update shelley.json inside VM",
 					"box_id", box.ID,
 					"new_name", newName,
