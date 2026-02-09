@@ -239,7 +239,7 @@ func deleteBox(t *testing.T, boxName, keyFile string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sshCmd, err := serverEnv.SSHToExeDev(t.Context(), pty, keyFile)
+	sshCmd, err := serverEnv.SSHToExeDev(context.WithoutCancel(t.Context()), pty, keyFile)
 	if err != nil {
 		t.Fatal(err)
 	}
