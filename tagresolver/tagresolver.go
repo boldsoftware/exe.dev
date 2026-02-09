@@ -12,11 +12,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,6 +42,10 @@ type ImageConfig struct {
 type TagResolver struct {
 	db         *sqlite.DB
 	httpClient *http.Client
+
+	// registryCredentials maps registry hostnames to basic auth credentials
+	// (username, password). Loaded from ~/.docker/config.json.
+	registryCredentials map[string][2]string
 
 	// Channel for notifying about tag updates
 	updateChan chan TagUpdate
@@ -83,7 +90,7 @@ type RegistryAuth struct {
 
 // New creates a new TagResolver
 func New(db *sqlite.DB) *TagResolver {
-	return &TagResolver{
+	tr := &TagResolver{
 		db: db,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
@@ -96,6 +103,72 @@ func New(db *sqlite.DB) *TagResolver {
 		updateChan: make(chan TagUpdate, 100),
 		stopChan:   make(chan struct{}),
 	}
+	tr.registryCredentials = loadDockerConfig()
+	return tr
+}
+
+// loadDockerConfig reads ~/.docker/config.json and extracts registry
+// credentials. Returns a map from registry hostname to [username, password].
+func loadDockerConfig() map[string][2]string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".docker", "config.json"))
+	if err != nil {
+		return nil
+	}
+	var cfg struct {
+		Auths map[string]struct {
+			Auth string `json:"auth"`
+		} `json:"auths"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		log.Printf("tagresolver: failed to parse ~/.docker/config.json: %v", err)
+		return nil
+	}
+	creds := make(map[string][2]string)
+	for registry, auth := range cfg.Auths {
+		if auth.Auth == "" {
+			continue
+		}
+		decoded, err := base64.StdEncoding.DecodeString(auth.Auth)
+		if err != nil {
+			continue
+		}
+		username, password, ok := strings.Cut(string(decoded), ":")
+		if !ok {
+			continue
+		}
+		creds[registry] = [2]string{username, password}
+	}
+	if len(creds) > 0 {
+		names := make([]string, 0, len(creds))
+		for k := range creds {
+			names = append(names, k)
+		}
+		log.Printf("tagresolver: loaded Docker credentials for: %s", strings.Join(names, ", "))
+	}
+	return creds
+}
+
+// dockerHubCredentials returns Docker Hub username and password if available.
+func (tr *TagResolver) dockerHubCredentials() (username, password string, ok bool) {
+	if tr.registryCredentials == nil {
+		return "", "", false
+	}
+	// Docker CLI stores Docker Hub credentials under these keys.
+	for _, key := range []string{
+		"https://index.docker.io/v1/",
+		"https://index.docker.io/v2/",
+		"docker.io",
+		"registry-1.docker.io",
+	} {
+		if cred, found := tr.registryCredentials[key]; found {
+			return cred[0], cred[1], true
+		}
+	}
+	return "", "", false
 }
 
 // Start begins the background refresh loop
@@ -574,6 +647,10 @@ func (tr *TagResolver) getAuthToken(ctx context.Context, registry, repository st
 			return "", err
 		}
 
+		if username, password, ok := tr.dockerHubCredentials(); ok {
+			req.SetBasicAuth(username, password)
+		}
+
 		resp, err := tr.httpClient.Do(req)
 		if err != nil {
 			return "", err
@@ -639,8 +716,20 @@ func (tr *TagResolver) getAuthToken(ctx context.Context, registry, repository st
 
 // getRegistryAuth returns authentication details for a registry
 func (tr *TagResolver) getRegistryAuth(registry string) *RegistryAuth {
-	// This would typically load from config or environment
-	// For now, return nil to use anonymous access
+	if tr.registryCredentials == nil {
+		return nil
+	}
+	// Try the registry as-is and with common URL prefixes.
+	for _, key := range []string{
+		registry,
+		"https://" + registry,
+		"https://" + registry + "/v1/",
+		"https://" + registry + "/v2/",
+	} {
+		if cred, ok := tr.registryCredentials[key]; ok {
+			return &RegistryAuth{Username: cred[0], Password: cred[1]}
+		}
+	}
 	return nil
 }
 
