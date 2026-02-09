@@ -100,6 +100,28 @@ ssh "$HOST" '
     fi
 '
 
+# --- Verify Docker Hub auth ---
+echo "--- Checking Docker Hub auth ---"
+ssh "$HOST" '
+    FAILED=0
+    for i in $(seq 0 7); do
+        USER="runner${i}"
+        CFG="/home/${USER}/.docker/config.json"
+        if [[ ! -s "$CFG" ]]; then
+            echo "ERROR: $CFG is missing or empty"
+            echo "  Docker Hub requests will be rate-limited without auth."
+            echo "  Copy a valid docker config with Docker Hub credentials to $CFG"
+            echo "  and ensure it is owned by ${USER}:${USER} with mode 600."
+            FAILED=1
+        fi
+    done
+    if [[ $FAILED -eq 0 ]]; then
+        echo "All runners have Docker Hub auth configured"
+    else
+        exit 1
+    fi
+'
+
 # --- Reload, enable, and restart ---
 echo "--- Reloading systemd ---"
 ssh "$HOST" "systemctl daemon-reload"
