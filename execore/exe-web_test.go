@@ -95,7 +95,7 @@ func TestResolveCustomDomainRejectsIPAddress(t *testing.T) {
 	// IP addresses should be rejected without any DNS lookups
 	for _, ip := range []string{"35.95.182.1", "192.168.1.1", "::1", "2001:db8::1"} {
 		_, err := s.resolveCustomDomainBoxName(context.Background(), ip)
-		if err != errHostIsIPAddress {
+		if err != exeweb.ErrHostIsIPAddress {
 			t.Errorf("resolveCustomDomainBoxName(%q) = %v, want errHostIsIPAddress", ip, err)
 		}
 	}

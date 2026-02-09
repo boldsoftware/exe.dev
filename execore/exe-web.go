@@ -30,9 +30,7 @@ import (
 
 	"exe.dev/boxname"
 	"exe.dev/cobble"
-	"exe.dev/dnsresolver"
 	"exe.dev/domz"
-	"exe.dev/errorz"
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
@@ -257,33 +255,6 @@ func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, e
 	}
 
 	return s.resolveCustomDomainBoxName(ctx, hostname)
-}
-
-func (s *Server) lookupCNAME(ctx context.Context, host string) (string, error) {
-	if s.lookupCNAMEFunc != nil {
-		return s.lookupCNAMEFunc(ctx, host)
-	}
-	cname, err := dnsresolver.LookupCNAME(ctx, host)
-	if err == nil {
-		return cname, nil
-	}
-	if errorz.HasType[*net.DNSError](err) {
-		return "", err
-	}
-	s.slog().WarnContext(ctx, "lookupCNAME: fallback to net resolver", "host", host, "error", err)
-	return net.DefaultResolver.LookupCNAME(ctx, host)
-}
-
-func (s *Server) lookupA(ctx context.Context, host string) ([]netip.Addr, error) {
-	fn := net.DefaultResolver.LookupNetIP
-	if s.lookupAFunc != nil {
-		fn = s.lookupAFunc
-	}
-	addrs, err := fn(ctx, "ip4", host)
-	for i, addr := range addrs {
-		addrs[i] = addr.Unmap()
-	}
-	return addrs, err
 }
 
 // validateHostForTLSCert checks if the given host is valid for TLS certificate issuance.
