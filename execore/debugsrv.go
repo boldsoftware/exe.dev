@@ -64,6 +64,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/set-limits", s.handleDebugSetUserLimits)
 	mux.HandleFunc("/debug/exelets", s.handleDebugExelets)
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
+	mux.HandleFunc("POST /debug/exelets/recover", s.handleDebugExeletRecover)
 	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
 	mux.HandleFunc("POST /debug/new-throttle", s.handleDebugNewThrottlePost)
 	mux.HandleFunc("/debug/signup-limiter", s.handleDebugSignupLimiter)
@@ -1922,6 +1923,92 @@ func (s *Server) handleDebugSetPreferredExelet(w http.ResponseWriter, r *http.Re
 
 	// Redirect back to the exelets page
 	http.Redirect(w, r, "/debug/exelets", http.StatusSeeOther)
+}
+
+// handleDebugExeletRecover restarts all VMs that should be running on a given exelet.
+// This is the equivalent of the manual one-liner:
+//
+//	for vm in $(curl .../debug/vmlist?host=$HOST); do exelet-ctl ... start $vm; done
+func (s *Server) handleDebugExeletRecover(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	address := r.FormValue("address")
+	if address == "" {
+		http.Error(w, "address is required", http.StatusBadRequest)
+		return
+	}
+
+	ec := s.getExeletClient(address)
+	if ec == nil {
+		http.Error(w, fmt.Sprintf("unknown exelet address: %s", address), http.StatusBadRequest)
+		return
+	}
+
+	// Get list of VMs that should be on this host (same logic as handleDebugVMList).
+	dbBoxes, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllBoxesWithOwner)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list boxes: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	lockedOutCache := make(map[string]bool)
+	isLocked := func(userID string) bool {
+		locked, ok := lockedOutCache[userID]
+		if !ok {
+			locked, _ = s.isUserLockedOut(ctx, userID)
+			lockedOutCache[userID] = locked
+		}
+		return locked
+	}
+
+	var containerIDs []string
+	var skippedNoContainer, skippedLocked int
+	for _, b := range dbBoxes {
+		if b.Ctrhost != address {
+			continue
+		}
+		if b.ContainerID == nil {
+			skippedNoContainer++
+			continue
+		}
+		if isLocked(b.OwnerUserID) {
+			skippedLocked++
+			continue
+		}
+		containerIDs = append(containerIDs, *b.ContainerID)
+	}
+
+	// Stream results to the browser as we start instances serially.
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	flusher, _ := w.(http.Flusher)
+	flush := func() {
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	fmt.Fprintf(w, "recovering %s\n", address)
+	fmt.Fprintf(w, "starting %d VMs (skipped: %d no container_id, %d locked out)\n\n", len(containerIDs), skippedNoContainer, skippedLocked)
+	flush()
+
+	var started, failed int
+	for i, id := range containerIDs {
+		startCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		_, err := ec.client.StartInstance(startCtx, &computeapi.StartInstanceRequest{ID: id})
+		cancel()
+		if err != nil {
+			fmt.Fprintf(w, "[%d/%d] %s ERR: %v\n", i+1, len(containerIDs), id, err)
+			s.slog().ErrorContext(ctx, "failed to start instance during recover", "address", address, "id", id, "error", err)
+			failed++
+		} else {
+			fmt.Fprintf(w, "[%d/%d] %s ok\n", i+1, len(containerIDs), id)
+			started++
+		}
+		flush()
+	}
+
+	fmt.Fprintf(w, "\ndone: %d started, %d failed\n", started, failed)
+	s.slog().InfoContext(ctx, "exelet recover completed", "address", address, "started", started, "failed", failed, "total", len(containerIDs))
 }
 
 // NewThrottleConfig represents the configuration for throttling "new" VM creation.
