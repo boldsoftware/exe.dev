@@ -69,6 +69,20 @@ func newUnstartedServer(t testing.TB) *Server {
 			})
 		case r.Method == "POST" && r.URL.Path == "/v1/checkout/sessions":
 			// Create checkout session
+			// Enforce Stripe's 5000-character limit on URLs.
+			for _, param := range []string{"success_url", "cancel_url"} {
+				if u := r.FormValue(param); len(u) > 5000 {
+					w.WriteHeader(http.StatusBadRequest)
+					json.NewEncoder(w).Encode(map[string]any{
+						"error": map[string]any{
+							"type":    "invalid_request_error",
+							"message": "Invalid URL: URL must be 5000 characters or less.",
+							"param":   param,
+						},
+					})
+					return
+				}
+			}
 			json.NewEncoder(w).Encode(map[string]any{
 				"id":  "cs_test_session",
 				"url": "https://checkout.stripe.com/pay/cs_test_session",

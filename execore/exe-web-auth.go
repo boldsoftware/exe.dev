@@ -6,9 +6,9 @@ package execore
 // including SSH, web, and proxy ("Login with Exe") flows.
 
 import (
+	"cmp"
 	"context"
 	"crypto/hmac"
-	"crypto/rand"
 	crand "crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -282,7 +282,7 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 	var hasActiveBilling bool
 	if errors.Is(err, sql.ErrNoRows) {
 		// Create new account record
-		accountID = "exe_" + rand.Text()[:16]
+		accountID = "exe_" + crand.Text()[:16]
 		if err := withTx1(s, r.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
 			ID:        accountID,
 			CreatedBy: userID,
@@ -309,17 +309,29 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build callback URLs
+	// Build callback URLs.
+	// VM params (name, prompt) are stored server-side and referenced by a short
+	// token to keep URLs within Stripe's 5000-character limit.
 	baseURL := s.webBaseURLNoRequest()
+	var cpToken string
+	if source != "" || vmName != "" || vmPrompt != "" {
+		cpToken = crand.Text()
+		if err := withTx1(s, r.Context(), (*exedb.Queries).InsertCheckoutParams, exedb.InsertCheckoutParamsParams{
+			Token:    cpToken,
+			UserID:   userID,
+			Source:   source,
+			VMName:   vmName,
+			VMPrompt: vmPrompt,
+		}); err != nil {
+			s.slog().ErrorContext(r.Context(), "failed to save checkout params", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	successURL := baseURL + "/billing/success?session_id={CHECKOUT_SESSION_ID}"
-	if source != "" {
-		successURL += "&source=" + url.QueryEscape(source)
-	}
-	if vmName != "" {
-		successURL += "&name=" + url.QueryEscape(vmName)
-	}
-	if vmPrompt != "" {
-		successURL += "&prompt=" + url.QueryEscape(vmPrompt)
+	if cpToken != "" {
+		successURL += "&cp=" + cpToken
 	}
 
 	// Return URL for billing portal (if user has active subscription)
@@ -335,18 +347,8 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 		// User came from VM creation flow - return to /new
 		returnURL = baseURL + "/new"
 		cancelURL = baseURL + "/new"
-		// Preserve VM params in cancel URL if present
-		if vmName != "" || vmPrompt != "" {
-			cancelURL += "?"
-			if vmName != "" {
-				cancelURL += "name=" + url.QueryEscape(vmName)
-			}
-			if vmPrompt != "" {
-				if vmName != "" {
-					cancelURL += "&"
-				}
-				cancelURL += "prompt=" + url.QueryEscape(vmPrompt)
-			}
+		if cpToken != "" {
+			cancelURL += "?cp=" + cpToken
 		}
 	}
 
@@ -383,17 +385,38 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Existing flow for authenticated users
-	source := r.URL.Query().Get("source")
-	vmName := strings.TrimSpace(r.URL.Query().Get("name"))
-	vmPrompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
-
-	// Require authentication
+	// Require authentication before reading checkout params,
+	// so that an unauthenticated request cannot consume a valid token.
 	userID, err := s.validateAuthCookie(r)
 	if err != nil {
 		http.Redirect(w, r, "/auth?redirect="+url.QueryEscape(r.URL.String()), http.StatusSeeOther)
 		return
 	}
+
+	// VM params may come from the checkout_params table (referenced by cp token)
+	// or directly as query parameters.
+	// Read params first (don't delete yet) so that if Stripe verification fails
+	// below, the token is preserved and the user can retry.
+	// TODO: remove the query parameter fallback once all in-flight sessions have completed.
+	var source, vmName, vmPrompt string
+	cpToken := r.URL.Query().Get("cp")
+	if cpToken != "" {
+		cp, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetCheckoutParams, exedb.GetCheckoutParamsParams{
+			Token:  cpToken,
+			UserID: userID,
+		})
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			s.slog().ErrorContext(r.Context(), "failed to read checkout params", "error", err)
+		}
+		if err == nil {
+			source = cp.Source
+			vmName = cp.VMName
+			vmPrompt = cp.VMPrompt
+		}
+	}
+	source = cmp.Or(source, r.URL.Query().Get("source"))
+	vmName = cmp.Or(vmName, strings.TrimSpace(r.URL.Query().Get("name")))
+	vmPrompt = cmp.Or(vmPrompt, strings.TrimSpace(r.URL.Query().Get("prompt")))
 
 	// Activate the account if we have a valid session_id (or dev bypass).
 	// Verify the session with Stripe to prevent bypass attacks where users
@@ -442,6 +465,17 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 		}
 		s.slog().InfoContext(r.Context(), "account activated after Stripe checkout", "user_id", userID, "session_id", sessionID, "billing_id", billingID)
 		s.slackFeed.Subscribed(r.Context(), userID)
+
+		// Best-effort cleanup of the checkout params token.
+		// If this fails, the row is harmless junk cleaned up on next boot.
+		if cpToken != "" {
+			if _, err := withTxRes1(s, r.Context(), (*exedb.Queries).ConsumeCheckoutParams, exedb.ConsumeCheckoutParamsParams{
+				Token:  cpToken,
+				UserID: userID,
+			}); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				s.slog().ErrorContext(r.Context(), "failed to delete checkout params", "error", err)
+			}
+		}
 	}
 
 	// If VM name was provided, start VM creation and redirect to dashboard
@@ -500,9 +534,12 @@ func (s *Server) handleNewUserBillingSubscribe(w http.ResponseWriter, r *http.Re
 	}
 
 	// Create account ID for this registration
-	accountID := "exe_" + rand.Text()[:16]
+	accountID := "exe_" + crand.Text()[:16]
 
-	// Build callback URLs
+	// Build callback URLs.
+	// This flow doesn't use checkout_params because we don't have a user_id yet
+	// (the user is registering). The URLs here are short (just a token and email),
+	// well within Stripe's 5000-character limit.
 	baseURL := s.webBaseURLNoRequest()
 	successURL := baseURL + "/billing/success?session_id={CHECKOUT_SESSION_ID}&token=" + url.QueryEscape(token)
 	cancelURL := baseURL + "/auth?email=" + url.QueryEscape(pending.Email) + "&cancel=billing"

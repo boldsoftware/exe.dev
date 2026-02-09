@@ -54,6 +54,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.clearPreferredExeletStmt, err = db.PrepareContext(ctx, clearPreferredExelet); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearPreferredExelet: %w", err)
 	}
+	if q.consumeCheckoutParamsStmt, err = db.PrepareContext(ctx, consumeCheckoutParams); err != nil {
+		return nil, fmt.Errorf("error preparing query ConsumeCheckoutParams: %w", err)
+	}
 	if q.countAccountsByBillingStatusStmt, err = db.PrepareContext(ctx, countAccountsByBillingStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query CountAccountsByBillingStatus: %w", err)
 	}
@@ -153,6 +156,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteMobilePendingVMByUserAndHostnameStmt, err = db.PrepareContext(ctx, deleteMobilePendingVMByUserAndHostname); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteMobilePendingVMByUserAndHostname: %w", err)
 	}
+	if q.deleteOldCheckoutParamsStmt, err = db.PrepareContext(ctx, deleteOldCheckoutParams); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteOldCheckoutParams: %w", err)
+	}
 	if q.deletePasskeyStmt, err = db.PrepareContext(ctx, deletePasskey); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePasskey: %w", err)
 	}
@@ -251,6 +257,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getBoxesSharedWithUserStmt, err = db.PrepareContext(ctx, getBoxesSharedWithUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesSharedWithUser: %w", err)
+	}
+	if q.getCheckoutParamsStmt, err = db.PrepareContext(ctx, getCheckoutParams); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCheckoutParams: %w", err)
 	}
 	if q.getCreditBalanceStmt, err = db.PrepareContext(ctx, getCreditBalance); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCreditBalance: %w", err)
@@ -446,6 +455,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertBoxIPShardStmt, err = db.PrepareContext(ctx, insertBoxIPShard); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertBoxIPShard: %w", err)
+	}
+	if q.insertCheckoutParamsStmt, err = db.PrepareContext(ctx, insertCheckoutParams); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertCheckoutParams: %w", err)
 	}
 	if q.insertDeletedBoxStmt, err = db.PrepareContext(ctx, insertDeletedBox); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertDeletedBox: %w", err)
@@ -730,6 +742,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing clearPreferredExeletStmt: %w", cerr)
 		}
 	}
+	if q.consumeCheckoutParamsStmt != nil {
+		if cerr := q.consumeCheckoutParamsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing consumeCheckoutParamsStmt: %w", cerr)
+		}
+	}
 	if q.countAccountsByBillingStatusStmt != nil {
 		if cerr := q.countAccountsByBillingStatusStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countAccountsByBillingStatusStmt: %w", cerr)
@@ -895,6 +912,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteMobilePendingVMByUserAndHostnameStmt: %w", cerr)
 		}
 	}
+	if q.deleteOldCheckoutParamsStmt != nil {
+		if cerr := q.deleteOldCheckoutParamsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteOldCheckoutParamsStmt: %w", cerr)
+		}
+	}
 	if q.deletePasskeyStmt != nil {
 		if cerr := q.deletePasskeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deletePasskeyStmt: %w", cerr)
@@ -1058,6 +1080,11 @@ func (q *Queries) Close() error {
 	if q.getBoxesSharedWithUserStmt != nil {
 		if cerr := q.getBoxesSharedWithUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxesSharedWithUserStmt: %w", cerr)
+		}
+	}
+	if q.getCheckoutParamsStmt != nil {
+		if cerr := q.getCheckoutParamsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCheckoutParamsStmt: %w", cerr)
 		}
 	}
 	if q.getCreditBalanceStmt != nil {
@@ -1383,6 +1410,11 @@ func (q *Queries) Close() error {
 	if q.insertBoxIPShardStmt != nil {
 		if cerr := q.insertBoxIPShardStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertBoxIPShardStmt: %w", cerr)
+		}
+	}
+	if q.insertCheckoutParamsStmt != nil {
+		if cerr := q.insertCheckoutParamsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertCheckoutParamsStmt: %w", cerr)
 		}
 	}
 	if q.insertDeletedBoxStmt != nil {
@@ -1814,6 +1846,7 @@ type Queries struct {
 	boxesForUserStmt                           *sql.Stmt
 	cleanupExpiredPasskeyChallengesStmt        *sql.Stmt
 	clearPreferredExeletStmt                   *sql.Stmt
+	consumeCheckoutParamsStmt                  *sql.Stmt
 	countAccountsByBillingStatusStmt           *sql.Stmt
 	countBoxShareLinksStmt                     *sql.Stmt
 	countBoxSharesStmt                         *sql.Stmt
@@ -1847,6 +1880,7 @@ type Queries struct {
 	deleteLatitudeIPShardStmt                  *sql.Stmt
 	deleteMobilePendingVMByTokenStmt           *sql.Stmt
 	deleteMobilePendingVMByUserAndHostnameStmt *sql.Stmt
+	deleteOldCheckoutParamsStmt                *sql.Stmt
 	deletePasskeyStmt                          *sql.Stmt
 	deletePasskeyChallengeStmt                 *sql.Stmt
 	deletePendingBoxShareByBoxAndEmailStmt     *sql.Stmt
@@ -1880,6 +1914,7 @@ type Queries struct {
 	getBoxesByHostStmt                         *sql.Stmt
 	getBoxesForUserDashboardStmt               *sql.Stmt
 	getBoxesSharedWithUserStmt                 *sql.Stmt
+	getCheckoutParamsStmt                      *sql.Stmt
 	getCreditBalanceStmt                       *sql.Stmt
 	getEmailBounceStmt                         *sql.Stmt
 	getEmailBySSHKeyStmt                       *sql.Stmt
@@ -1945,6 +1980,7 @@ type Queries struct {
 	insertBillingEventStmt                     *sql.Stmt
 	insertBoxStmt                              *sql.Stmt
 	insertBoxIPShardStmt                       *sql.Stmt
+	insertCheckoutParamsStmt                   *sql.Stmt
 	insertDeletedBoxStmt                       *sql.Stmt
 	insertEmailAddressQualityStmt              *sql.Stmt
 	insertEmailBounceStmt                      *sql.Stmt
@@ -2037,6 +2073,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		boxesForUserStmt:                           q.boxesForUserStmt,
 		cleanupExpiredPasskeyChallengesStmt:        q.cleanupExpiredPasskeyChallengesStmt,
 		clearPreferredExeletStmt:                   q.clearPreferredExeletStmt,
+		consumeCheckoutParamsStmt:                  q.consumeCheckoutParamsStmt,
 		countAccountsByBillingStatusStmt:           q.countAccountsByBillingStatusStmt,
 		countBoxShareLinksStmt:                     q.countBoxShareLinksStmt,
 		countBoxSharesStmt:                         q.countBoxSharesStmt,
@@ -2070,6 +2107,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteLatitudeIPShardStmt:                  q.deleteLatitudeIPShardStmt,
 		deleteMobilePendingVMByTokenStmt:           q.deleteMobilePendingVMByTokenStmt,
 		deleteMobilePendingVMByUserAndHostnameStmt: q.deleteMobilePendingVMByUserAndHostnameStmt,
+		deleteOldCheckoutParamsStmt:                q.deleteOldCheckoutParamsStmt,
 		deletePasskeyStmt:                          q.deletePasskeyStmt,
 		deletePasskeyChallengeStmt:                 q.deletePasskeyChallengeStmt,
 		deletePendingBoxShareByBoxAndEmailStmt:     q.deletePendingBoxShareByBoxAndEmailStmt,
@@ -2103,6 +2141,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxesByHostStmt:                         q.getBoxesByHostStmt,
 		getBoxesForUserDashboardStmt:               q.getBoxesForUserDashboardStmt,
 		getBoxesSharedWithUserStmt:                 q.getBoxesSharedWithUserStmt,
+		getCheckoutParamsStmt:                      q.getCheckoutParamsStmt,
 		getCreditBalanceStmt:                       q.getCreditBalanceStmt,
 		getEmailBounceStmt:                         q.getEmailBounceStmt,
 		getEmailBySSHKeyStmt:                       q.getEmailBySSHKeyStmt,
@@ -2168,6 +2207,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertBillingEventStmt:                     q.insertBillingEventStmt,
 		insertBoxStmt:                              q.insertBoxStmt,
 		insertBoxIPShardStmt:                       q.insertBoxIPShardStmt,
+		insertCheckoutParamsStmt:                   q.insertCheckoutParamsStmt,
 		insertDeletedBoxStmt:                       q.insertDeletedBoxStmt,
 		insertEmailAddressQualityStmt:              q.insertEmailAddressQualityStmt,
 		insertEmailBounceStmt:                      q.insertEmailBounceStmt,

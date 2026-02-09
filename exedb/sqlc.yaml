@@ -44,3 +44,5 @@ sql:
           aws_ip_shard: "AWSIPShard"
           latitude_ip_shard: "LatitudeIPShard"
           public_ip: "PublicIP"
+          vm_name: "VMName"
+          vm_prompt: "VMPrompt"

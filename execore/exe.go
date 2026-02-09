@@ -653,6 +653,31 @@ func runMigrations(slog *slog.Logger, dbPath string) error {
 	return nil
 }
 
+// bootCleanups are best-effort cleanup functions run at server startup.
+// Running only on boot is sufficient: we deploy frequently and stale rows
+// are low-cost, so periodic cleanup is not worth the complexity.
+var bootCleanups = []struct {
+	name string
+	fn   func(ctx context.Context, slog *slog.Logger, db *sqlite.DB) error
+}{
+	{
+		name: "old checkout params",
+		fn: func(ctx context.Context, _ *slog.Logger, db *sqlite.DB) error {
+			cutoff := sqlite.NormalizeTime(time.Now().Add(-48 * time.Hour))
+			return exedb.WithTx1(db, ctx, (*exedb.Queries).DeleteOldCheckoutParams, cutoff)
+		},
+	},
+}
+
+func cleanupOnBoot(slog *slog.Logger, db *sqlite.DB) {
+	ctx := context.Background()
+	for _, c := range bootCleanups {
+		if err := c.fn(ctx, slog, db); err != nil {
+			slog.ErrorContext(ctx, "boot cleanup failed", "cleanup", c.name, "error", err)
+		}
+	}
+}
+
 // ServerConfig contains all configuration for creating a new Server.
 //
 //exe:completeinit
@@ -687,6 +712,9 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 
 	slog.Debug("opened database connection pool", "dbPath", cfg.DBPath, "nReaders", nReaders)
+
+	// Clean up stale data on boot.
+	cleanupOnBoot(slog, db)
 
 	// Initialize email senders
 	emailSenders := email.NewSendersFromEnv(cfg.Env.MailgunDomain())

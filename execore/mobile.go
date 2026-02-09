@@ -2,6 +2,7 @@ package execore
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/base64"
@@ -329,11 +330,31 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 // handleMobileNew renders the new box form.
 // Always shows the form - billing is requested when the user clicks "Create VM".
 // Accepts name, prompt, and invite query params to prefill the form (used after billing cancel or from exe.new).
+// Also accepts a cp query param referencing checkout_params for restoring long prompts.
 func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
 	// Read name, prompt, and invite from query params
 	name := strings.TrimSpace(r.URL.Query().Get("name"))
 	prompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
 	inviteCode := strings.TrimSpace(r.URL.Query().Get("invite"))
+
+	// Check if user is logged in (also needed for cp token handling below).
+	userID, err := s.validateAuthCookie(r)
+	isLoggedIn := err == nil
+
+	// Restore VM params from checkout_params if cp token is present.
+	// Requires authentication so that only the user who created the params can read them.
+	// The token is intentionally not deleted here (read-only) so the user can retry checkout.
+	// Stranded tokens from users who never complete checkout are cleaned up on next exed boot.
+	if cpToken := r.URL.Query().Get("cp"); cpToken != "" && isLoggedIn {
+		cp, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetCheckoutParams, exedb.GetCheckoutParamsParams{
+			Token:  cpToken,
+			UserID: userID,
+		})
+		if err == nil {
+			name = cmp.Or(name, cp.VMName)
+			prompt = cmp.Or(prompt, cp.VMPrompt)
+		}
+	}
 
 	// Use the prefilled name or generate a random suggestion
 	hostnameSuggestion := name
@@ -347,10 +368,6 @@ func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-
-	// Check if user is logged in
-	_, err := s.validateAuthCookie(r)
-	isLoggedIn := err == nil
 
 	data := struct {
 		stage.Env

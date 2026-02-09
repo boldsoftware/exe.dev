@@ -395,7 +395,7 @@ func TestBillingBypassBug(t *testing.T) {
 		t.Fatalf("Expected redirect to Stripe, got status %d", w.Code)
 	}
 	location := w.Header().Get("Location")
-	if !strings.Contains(location, "stripe.com") && !strings.Contains(location, "checkout") {
+	if !strings.Contains(location, "stripe.com") || !strings.Contains(location, "checkout") {
 		t.Fatalf("Expected redirect to Stripe checkout, got %q", location)
 	}
 
@@ -1992,4 +1992,212 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestBillingUpdateLongPromptSucceeds(t *testing.T) {
+	// Reproduce the billing-session-failed / checkout-url-too-long error:
+	// Stripe rejects success_url over 5000 characters. Long VM prompts
+	// were encoded directly into the success_url, causing the limit to be exceeded.
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	email := "long-prompt@example.com"
+	publicKey := testSSHPubKey
+	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Build a prompt that would push the success_url over 5000 chars when URL-encoded.
+	longPrompt := strings.Repeat("Build me a comprehensive full-stack web application with authentication, database, and API. ", 60)
+
+	req := httptest.NewRequest("GET", "/billing/update?name=my-vm&prompt="+url.QueryEscape(longPrompt), nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Expected redirect to Stripe (303), got %d; long prompt should not cause Stripe error", w.Code)
+	}
+
+	location := w.Header().Get("Location")
+	if !strings.Contains(location, "stripe.com") || !strings.Contains(location, "checkout") {
+		t.Fatalf("Expected redirect to Stripe checkout, got %q", location)
+	}
+}
+
+func TestBillingSuccessWithLongPromptCreatesVM(t *testing.T) {
+	// End-to-end test: a long prompt stored via checkout_params is retrieved
+	// on billing success and used to create a VM.
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	email := "long-prompt-e2e@example.com"
+	publicKey := testSSHPubKey
+	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	longPrompt := strings.Repeat("Set up a server. ", 300)
+	vmName := "long-prompt-vm"
+
+	// Step 1: Visit /billing/update with long prompt to store checkout params.
+	req := httptest.NewRequest("GET", "/billing/update?name="+vmName+"&prompt="+url.QueryEscape(longPrompt), nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Expected redirect to Stripe, got %d", w.Code)
+	}
+
+	// Step 2: Look up the cp token that was stored in step 1.
+	var cpToken string
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		return tx.Conn().QueryRowContext(ctx, `SELECT token FROM checkout_params LIMIT 1`).Scan(&cpToken)
+	})
+	if err != nil {
+		t.Fatalf("Failed to find checkout_params token: %v", err)
+	}
+
+	// Step 3: Simulate billing success using the cp token (as Stripe would redirect).
+	server.env.WebDev = true
+	req = httptest.NewRequest("GET", "/billing/success?dev_bypass=1&cp="+cpToken, nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Expected redirect after billing success, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	location := w.Header().Get("Location")
+	if !strings.Contains(location, vmName) {
+		t.Errorf("Expected redirect to include VM name %q, got %q", vmName, location)
+	}
+
+	// Verify the checkout_params row was deleted after use.
+	var count int
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		return tx.Conn().QueryRowContext(ctx, `SELECT count(*) FROM checkout_params WHERE token = ?`, cpToken).Scan(&count)
+	})
+	if err != nil {
+		t.Fatalf("Failed to check checkout_params: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Expected checkout_params row to be deleted after use, but found %d rows", count)
+	}
+}
+
+func TestBillingCancelRestoresLongPrompt(t *testing.T) {
+	// When a user cancels Stripe checkout, they are redirected to /new?cp=<token>.
+	// The cancel handler should restore VM params from checkout_params so the form
+	// is pre-filled, and the token should survive (not be deleted) so the user can retry.
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+
+	email := "cancel-prompt@example.com"
+	publicKey := testSSHPubKey
+	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update user created_at: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	longPrompt := strings.Repeat("Set up a comprehensive server with many features. ", 100)
+	vmName := "cancel-test-vm"
+
+	// Step 1: Visit /billing/update to store checkout params and get redirected to Stripe.
+	req := httptest.NewRequest("GET", "/billing/update?name="+vmName+"&prompt="+url.QueryEscape(longPrompt), nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Expected redirect to Stripe, got %d", w.Code)
+	}
+
+	// Step 2: Look up the cp token that was stored.
+	var cpToken string
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		return tx.Conn().QueryRowContext(ctx, `SELECT token FROM checkout_params LIMIT 1`).Scan(&cpToken)
+	})
+	if err != nil {
+		t.Fatalf("Failed to find checkout_params token: %v", err)
+	}
+
+	// Step 3: Simulate cancel by visiting /new?cp=<token> (the cancel URL).
+	req = httptest.NewRequest("GET", "/new?cp="+cpToken, nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 from /new, got %d", w.Code)
+	}
+
+	// Verify the response body contains the VM name and prompt.
+	body := w.Body.String()
+	if !strings.Contains(body, vmName) {
+		t.Errorf("Expected /new response to contain VM name %q", vmName)
+	}
+	if !strings.Contains(body, "Set up a comprehensive server") {
+		t.Errorf("Expected /new response to contain the prompt text")
+	}
+
+	// Step 4: Verify the checkout_params row was NOT deleted (so the user can retry).
+	var count int
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		return tx.Conn().QueryRowContext(ctx, `SELECT count(*) FROM checkout_params WHERE token = ?`, cpToken).Scan(&count)
+	})
+	if err != nil {
+		t.Fatalf("Failed to check checkout_params: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected checkout_params row to survive cancel, but found %d rows", count)
+	}
 }

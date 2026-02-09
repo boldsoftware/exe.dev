@@ -112,6 +112,15 @@ type BoxShareLink struct {
 	UseCount        *int64     `db:"use_count" json:"use_count"`
 }
 
+type CheckoutParam struct {
+	Token     string     `db:"token" json:"token"`
+	UserID    string     `db:"user_id" json:"user_id"`
+	Source    string     `db:"source" json:"source"`
+	VMName    string     `db:"vm_name" json:"vm_name"`
+	VMPrompt  string    `db:"vm_prompt" json:"vm_prompt"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+}
+
 type DeletedBox struct {
 	ID        int64      `db:"id" json:"id"`
 	UserID    string     `db:"user_id" json:"user_id"`
