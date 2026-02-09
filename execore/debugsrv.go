@@ -1771,20 +1771,19 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	type exeletInfo struct {
-		Address       string  `json:"address"`
-		Version       string  `json:"version"`
-		Available     bool    `json:"available"`
-		Arch          string  `json:"arch"`
-		Status        string  `json:"status"`
-		IsPreferred   bool    `json:"is_preferred"`
-		InstanceCount int     `json:"instance_count"`
-		LoadAverage   float64 `json:"load_average"`
-		MemFree       int64   `json:"mem_free"`
-		SwapFree      int64   `json:"swap_free"`
-		DiskFree      int64   `json:"disk_free"`
-		RxBytesRate   float32 `json:"rx_bytes_rate"`
-		TxBytesRate   float32 `json:"tx_bytes_rate"`
-		Error         string  `json:"error,omitempty"`
+		Address       string `json:"address"`
+		Version       string `json:"version"`
+		Available     bool   `json:"available"`
+		Status        string `json:"status"`
+		IsPreferred   bool   `json:"is_preferred"`
+		InstanceCount int    `json:"instance_count"`
+		LoadAverage   string `json:"load_average"`
+		MemFree       string `json:"mem_free"`
+		SwapFree      string `json:"swap_free"`
+		DiskFree      string `json:"disk_free"`
+		RxRate        string `json:"rx_rate"`
+		TxRate        string `json:"tx_rate"`
+		Error         string `json:"error,omitempty"`
 	}
 
 	// Get the preferred exelet setting
@@ -1803,7 +1802,6 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 			info := exeletInfo{
 				Address:     addr,
 				Version:     ec.client.Version(),
-				Arch:        ec.client.Arch(),
 				IsPreferred: addr == preferredAddr,
 			}
 
@@ -1817,7 +1815,6 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 			} else {
 				info.Status = "healthy"
 				info.Version = resp.Version
-				info.Arch = resp.Arch
 			}
 
 			// Count instances
@@ -1828,15 +1825,16 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 			cancel()
 
 			// Get load information.
+			kibToGB := func(kib int64) string { return fmt.Sprintf("%.1f", float64(kib)/1048576.0) }
 			usageCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			if usage, err := ec.client.GetMachineUsage(usageCtx, &resourceapi.GetMachineUsageRequest{}); err == nil {
 				info.Available = usage.Available
-				info.LoadAverage = float64(usage.Usage.LoadAverage)
-				info.MemFree = usage.Usage.MemFree
-				info.SwapFree = usage.Usage.SwapFree
-				info.DiskFree = usage.Usage.DiskFree
-				info.RxBytesRate = usage.Usage.RxBytesRate
-				info.TxBytesRate = usage.Usage.TxBytesRate
+				info.LoadAverage = fmt.Sprintf("%.2f", usage.Usage.LoadAverage)
+				info.MemFree = kibToGB(usage.Usage.MemFree)
+				info.SwapFree = kibToGB(usage.Usage.SwapFree)
+				info.DiskFree = kibToGB(usage.Usage.DiskFree)
+				info.RxRate = fmt.Sprintf("%.1f", float64(usage.Usage.RxBytesRate)*8/1000000)
+				info.TxRate = fmt.Sprintf("%.1f", float64(usage.Usage.TxBytesRate)*8/1000000)
 			}
 			cancel()
 
