@@ -580,6 +580,12 @@ type BuyCreditsParams struct {
 // It returns the checkout URL for the customer to complete payment.
 // The amount is specified in microcents and converted to cents for Stripe.
 func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCreditsParams) (checkoutURL string, _ error) {
+	if p.Amount <= 0 {
+		return "", fmt.Errorf("amount must be positive, got %d", p.Amount)
+	}
+	if p.Amount%10000 != 0 {
+		return "", fmt.Errorf("amount must be cent-aligned (divisible by 10000), got %d", p.Amount)
+	}
 	err := m.upsertCustomer(ctx, billingID, p.Email)
 	if err != nil {
 		return "", fmt.Errorf("upsert customer: %w", err)
@@ -670,15 +676,7 @@ func (m *Manager) SyncCredits(ctx context.Context, billingID string, since time.
 			continue
 		}
 
-		eventAt := sqlite.NormalizeTime(time.Unix(pi.Created, 0))
-
 		if err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
-			if err := q.SyncCreditEvent(ctx, exedb.SyncCreditEventParams{
-				AccountID: billingID,
-				EventAt:   eventAt,
-			}); err != nil {
-				return err
-			}
 			return q.SyncCreditLedger(ctx, exedb.SyncCreditLedgerParams{
 				AccountID:     billingID,
 				Amount:        microcents,

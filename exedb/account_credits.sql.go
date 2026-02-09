@@ -7,7 +7,6 @@ package exedb
 
 import (
 	"context"
-	"time"
 )
 
 const getCreditBalance = `-- name: GetCreditBalance :one
@@ -20,22 +19,6 @@ func (q *Queries) GetCreditBalance(ctx context.Context, accountID string) (int64
 	var balance int64
 	err := row.Scan(&balance)
 	return balance, err
-}
-
-const syncCreditEvent = `-- name: SyncCreditEvent :exec
-INSERT OR IGNORE INTO billing_events (account_id, event_type, event_at)
-VALUES (?1, 'credit_purchase', ?2)
-`
-
-type SyncCreditEventParams struct {
-	AccountID string    `db:"account_id" json:"account_id"`
-	EventAt   time.Time `db:"event_at" json:"event_at"`
-}
-
-// SyncCreditEvent records a Stripe credit-purchase billing event, idempotent via UNIQUE index.
-func (q *Queries) SyncCreditEvent(ctx context.Context, arg SyncCreditEventParams) error {
-	_, err := q.exec(ctx, q.syncCreditEventStmt, syncCreditEvent, arg.AccountID, arg.EventAt)
-	return err
 }
 
 const syncCreditLedger = `-- name: SyncCreditLedger :exec

@@ -594,9 +594,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.setUserRootSupportStmt, err = db.PrepareContext(ctx, setUserRootSupport); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserRootSupport: %w", err)
 	}
-	if q.syncCreditEventStmt, err = db.PrepareContext(ctx, syncCreditEvent); err != nil {
-		return nil, fmt.Errorf("error preparing query SyncCreditEvent: %w", err)
-	}
 	if q.syncCreditLedgerStmt, err = db.PrepareContext(ctx, syncCreditLedger); err != nil {
 		return nil, fmt.Errorf("error preparing query SyncCreditLedger: %w", err)
 	}
@@ -1633,11 +1630,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setUserRootSupportStmt: %w", cerr)
 		}
 	}
-	if q.syncCreditEventStmt != nil {
-		if cerr := q.syncCreditEventStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing syncCreditEventStmt: %w", cerr)
-		}
-	}
 	if q.syncCreditLedgerStmt != nil {
 		if cerr := q.syncCreditLedgerStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing syncCreditLedgerStmt: %w", cerr)
@@ -2002,7 +1994,6 @@ type Queries struct {
 	setUserLimitsStmt                          *sql.Stmt
 	setUserNewVMCreationDisabledStmt           *sql.Stmt
 	setUserRootSupportStmt                     *sql.Stmt
-	syncCreditEventStmt                        *sql.Stmt
 	syncCreditLedgerStmt                       *sql.Stmt
 	updateAuthCookieLastUsedStmt               *sql.Stmt
 	updateAuthTokenUsedAtStmt                  *sql.Stmt
@@ -2226,7 +2217,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setUserLimitsStmt:                          q.setUserLimitsStmt,
 		setUserNewVMCreationDisabledStmt:           q.setUserNewVMCreationDisabledStmt,
 		setUserRootSupportStmt:                     q.setUserRootSupportStmt,
-		syncCreditEventStmt:                        q.syncCreditEventStmt,
 		syncCreditLedgerStmt:                       q.syncCreditLedgerStmt,
 		updateAuthCookieLastUsedStmt:               q.updateAuthCookieLastUsedStmt,
 		updateAuthTokenUsedAtStmt:                  q.updateAuthTokenUsedAtStmt,

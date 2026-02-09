@@ -161,6 +161,38 @@ func TestBuyCredits(t *testing.T) {
 	}
 }
 
+func TestBuyCreditsValidation(t *testing.T) {
+	m := &Manager{} // no Stripe client needed; validation happens before any API call
+	ctx := t.Context()
+
+	tests := []struct {
+		name   string
+		amount int64
+		errStr string
+	}{
+		{"zero", 0, "must be positive"},
+		{"negative", -10000, "must be positive"},
+		{"not cent-aligned", 5000, "cent-aligned"},
+		{"fractional cents", 10001, "cent-aligned"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := m.BuyCredits(ctx, "cus_test", &BuyCreditsParams{
+				Email:      "test@example.com",
+				Amount:     tt.amount,
+				SuccessURL: "https://example.com/success",
+				CancelURL:  "https://example.com/cancel",
+			})
+			if err == nil {
+				t.Fatalf("expected error for amount %d", tt.amount)
+			}
+			if !strings.Contains(err.Error(), tt.errStr) {
+				t.Fatalf("error %q does not contain %q", err, tt.errStr)
+			}
+		})
+	}
+}
+
 // stripeCompleteCreditPurchase simulates a completed credit purchase by creating
 // and confirming a PaymentIntent with credit_purchase metadata. This generates the
 // payment_intent.succeeded event that SyncCredits processes.

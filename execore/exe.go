@@ -348,6 +348,7 @@ type Server struct {
 	templates *template.Template
 
 	startOnce   sync.Once
+	startErr    error              // result of first start attempt
 	startCancel context.CancelFunc // cancel function for start's context
 	serveWg     sync.WaitGroup
 	stopOnce    sync.Once
@@ -2374,11 +2375,10 @@ func (s *Server) Start() error {
 		return fmt.Errorf("server is stopping")
 	}
 	s.slog().Info("Starting exed server")
-	var err error
 	s.startOnce.Do(func() {
-		err = s.start()
+		s.startErr = s.start()
 	})
-	return err
+	return s.startErr
 }
 
 func (s *Server) start() error {
