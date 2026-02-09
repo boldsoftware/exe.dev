@@ -182,8 +182,22 @@ func TestVanillaBox(t *testing.T) {
 			t.Fatalf("docker not available after waiting, last error: %v", err)
 		}
 
+		// Pull the image first with retries, since pulls from ghcr.io can
+		// hit transient TLS handshake timeouts inside nested VMs.
+		var out []byte
+		for attempt := range 3 {
+			out, err = boxSSHCommand(t, boxName, keyFile, "sudo", "docker", "pull", "ghcr.io/linuxcontainers/alpine:latest").CombinedOutput()
+			if err == nil {
+				break
+			}
+			t.Logf("docker pull attempt %d/3 failed: %v\n%s", attempt+1, err, out)
+		}
+		if err != nil {
+			t.Fatalf("failed to pull docker image after retries: %v\n%s", err, out)
+		}
+
 		// Run a simple docker container to verify Docker works in exeuntu.
-		out, err := boxSSHCommand(t, boxName, keyFile, "sudo", "docker", "run", "--rm", "ghcr.io/linuxcontainers/alpine:latest", "echo", "hello").CombinedOutput()
+		out, err = boxSSHCommand(t, boxName, keyFile, "sudo", "docker", "run", "--rm", "ghcr.io/linuxcontainers/alpine:latest", "echo", "hello").CombinedOutput()
 		if err != nil {
 			t.Fatalf("failed to run docker command: %v\n%s", err, out)
 		}
