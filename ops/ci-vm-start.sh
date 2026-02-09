@@ -237,7 +237,6 @@ packages:
   - atop
   - btop
   - htop
-  - igzip
 runcmd:
   - echo runcmd
   - systemctl enable --now qemu-guest-agent

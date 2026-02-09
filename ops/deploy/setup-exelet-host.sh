@@ -185,7 +185,6 @@ packages:
   - atop
   - btop
   - htop
-  - igzip
 
 runcmd:
   - echo "Starting Tailscale setup..."
