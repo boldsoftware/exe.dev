@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>metricsd sparklines</title>
+<link rel="stylesheet" href="/static/sparklines.css">
+</head>
+<body>
+<h1><a href="/">metricsd</a> / sparklines <span id="range" style="font-weight:normal;font-size:0.8em;color:#666"></span> <span id="stats"></span></h1>
+<div id="controls">
+  <label>Host: <select id="hostFilter"><option value="">All</option></select></label>
+  <label>Name: <input type="text" id="nameFilter" placeholder="filter VMs..."></label>
+</div>
+<div id="error"></div>
+<div id="loading">Loading metrics...</div>
+<div id="vis"></div>
+<script src="/static/sparklines.js"></script>
+</body>
+</html>
