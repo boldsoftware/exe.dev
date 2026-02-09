@@ -64,16 +64,15 @@ func (m *ResourceManager) GetVMUsage(ctx context.Context, req *api.GetVMUsageReq
 
 	return &api.GetVMUsageResponse{
 		Usage: &api.VMUsage{
-			ID:           req.VmID,
-			Name:         state.name,
-			CpuSeconds:   state.cpuSeconds,
-			CpuPercent:   state.cpuPercent,
-			MemoryBytes:  state.memoryBytes,
-			DiskBytes:    state.diskBytes,
-			NetRxBytes:   state.netRxBytes,
-			NetTxBytes:   state.netTxBytes,
-			LastActivity: state.lastActivity.UnixNano(),
-			Priority:     state.priority,
+			ID:          req.VmID,
+			Name:        state.name,
+			CpuSeconds:  state.cpuSeconds,
+			CpuPercent:  state.cpuPercent,
+			MemoryBytes: state.memoryBytes,
+			DiskBytes:   state.diskBytes,
+			NetRxBytes:  state.netRxBytes,
+			NetTxBytes:  state.netTxBytes,
+			Priority:    state.priority,
 		},
 	}, nil
 }
@@ -86,16 +85,15 @@ func (m *ResourceManager) ListVMUsage(req *api.ListVMUsageRequest, stream api.Re
 	for id, state := range m.usageState {
 		if err := stream.Send(&api.ListVMUsageResponse{
 			Usage: &api.VMUsage{
-				ID:           id,
-				Name:         state.name,
-				CpuSeconds:   state.cpuSeconds,
-				CpuPercent:   state.cpuPercent,
-				MemoryBytes:  state.memoryBytes,
-				DiskBytes:    state.diskBytes,
-				NetRxBytes:   state.netRxBytes,
-				NetTxBytes:   state.netTxBytes,
-				LastActivity: state.lastActivity.UnixNano(),
-				Priority:     state.priority,
+				ID:          id,
+				Name:        state.name,
+				CpuSeconds:  state.cpuSeconds,
+				CpuPercent:  state.cpuPercent,
+				MemoryBytes: state.memoryBytes,
+				DiskBytes:   state.diskBytes,
+				NetRxBytes:  state.netRxBytes,
+				NetTxBytes:  state.netTxBytes,
+				Priority:    state.priority,
 			},
 		}); err != nil {
 			return err
@@ -106,19 +104,38 @@ func (m *ResourceManager) ListVMUsage(req *api.ListVMUsageRequest, stream api.Re
 }
 
 // SetVMPriority manually sets the priority for a VM.
-// Use PRIORITY_AUTO to clear the override and return to automatic detection.
+// Use PRIORITY_AUTO to clear the override and return to normal priority.
 func (m *ResourceManager) SetVMPriority(ctx context.Context, req *api.SetVMPriorityRequest) (*api.SetVMPriorityResponse, error) {
 	if req.VmID == "" {
 		return nil, status.Error(codes.InvalidArgument, "vm_id is required")
 	}
 
-	// Handle auto mode - clear override and let automatic detection take over
+	// Handle auto mode - clear override and apply normal priority
 	if req.Priority == api.VMPriority_PRIORITY_AUTO {
 		m.priorityMu.Lock()
 		delete(m.priorityOverride, req.VmID)
 		m.priorityMu.Unlock()
 
-		m.log.InfoContext(ctx, "priority set to auto", "vm_id", req.VmID)
+		// Apply NORMAL priority immediately if the VM is tracked
+		var allocatedMemoryBytes uint64
+		var groupID string
+		var hasState bool
+		m.usageMu.Lock()
+		if state, ok := m.usageState[req.VmID]; ok {
+			hasState = true
+			allocatedMemoryBytes = state.allocatedMemoryBytes
+			groupID = state.groupID
+			state.priority = api.VMPriority_PRIORITY_NORMAL
+		}
+		m.usageMu.Unlock()
+
+		if hasState {
+			if err := m.applyPriority(ctx, req.VmID, groupID, api.VMPriority_PRIORITY_NORMAL, allocatedMemoryBytes); err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to apply priority: %v", err)
+			}
+		}
+
+		m.log.InfoContext(ctx, "priority set to auto (normal)", "vm_id", req.VmID)
 		return &api.SetVMPriorityResponse{}, nil
 	}
 

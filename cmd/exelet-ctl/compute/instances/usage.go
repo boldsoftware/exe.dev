@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"text/tabwriter"
-	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/urfave/cli/v2"
@@ -33,7 +32,7 @@ var usageInstanceCommand = &cli.Command{
 		ids := clix.Args().Slice()
 
 		w := tabwriter.NewWriter(os.Stdout, 12, 1, 3, ' ', 0)
-		fmt.Fprintf(w, "ID\tNAME\tCPU %%\tCPU TIME\tMEMORY\tDISK\tNET RX\tNET TX\tLAST ACTIVITY\tPRIORITY\n")
+		fmt.Fprintf(w, "ID\tNAME\tCPU %%\tCPU TIME\tMEMORY\tDISK\tNET RX\tNET TX\tPRIORITY\n")
 
 		for _, id := range ids {
 			resp, err := c.GetVMUsage(ctx, &resourceapi.GetVMUsageRequest{VmID: id})
@@ -43,12 +42,7 @@ var usageInstanceCommand = &cli.Command{
 			}
 
 			u := resp.Usage
-			lastActivity := "-"
-			if u.LastActivity > 0 {
-				lastActivity = humanize.Time(time.Unix(0, u.LastActivity))
-			}
-
-			fmt.Fprintf(w, "%s\t%s\t%.1f%%\t%.2fs\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			fmt.Fprintf(w, "%s\t%s\t%.1f%%\t%.2fs\t%s\t%s\t%s\t%s\t%s\n",
 				u.ID,
 				u.Name,
 				u.CpuPercent,
@@ -57,7 +51,6 @@ var usageInstanceCommand = &cli.Command{
 				humanize.Bytes(u.DiskBytes),
 				humanize.Bytes(u.NetRxBytes),
 				humanize.Bytes(u.NetTxBytes),
-				lastActivity,
 				formatPriority(u.Priority),
 			)
 		}

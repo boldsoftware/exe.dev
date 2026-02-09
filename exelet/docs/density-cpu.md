@@ -190,39 +190,22 @@ numastat -p $(pgrep cloud-hyper | head -1)
 
 ---
 
-### 4. Idle VM Detection Tuning
+### 4. VM Priority Tuning
 
 **Background:**
-The resource manager detects idle VMs based on CPU and network activity thresholds.
-
-**Current Thresholds:**
-```go
-DefaultCPUIdleThresholdPercent = 3.0  // CPU < 3% = idle
-DefaultNetActivityThreshold = 10240   // < 10KB network = idle
-DefaultIdleThreshold = 1 * time.Minute // Must be idle for 1 min
-```
-
-**Questions to Answer:**
-- Are these thresholds appropriate for mostly-idle workloads?
-- Are VMs being incorrectly marked as active?
-- Should we use more aggressive thresholds?
+VM priority is controlled explicitly via the `SetVMPriority` RPC. VMs default to PRIORITY_NORMAL; low-priority VMs get reduced cpu.weight, io.weight, and memory.high.
 
 **Measurement Commands:**
 ```bash
-# Check current idle/active status
+# Check priority changes
 journalctl -u exelet | grep "priority changed"
-
-# Count idle vs active VMs
-journalctl -u exelet | grep "priority changed" | tail -100 | grep -c "PRIORITY_LOW"
 
 # View per-VM activity metrics (Prometheus)
 curl -s localhost:9090/metrics | grep exelet_vm_cpu_percent
 ```
 
 **Potential Solutions:**
-- Lower CPU threshold (e.g., 1% instead of 3%)
-- Shorter idle timeout (e.g., 30 seconds instead of 1 minute)
-- More aggressive weight reduction (10 instead of 50 for idle)
+- More aggressive weight reduction (10 instead of 50 for low priority)
 
 ---
 
@@ -339,20 +322,7 @@ With mostly-idle VMs, 4:1 oversubscription is safe. Current setup: 96 cores / 2 
 watch -n 5 'cat /proc/pressure/cpu'
 ```
 
-### 2. More Aggressive Idle Detection
-**Impact:** 20-50% better resource sharing
-**Risk:** Low
-**Effort:** Config flag change
-
-Lower the idle threshold from 3% to 1% CPU and reduce idle timeout:
-
-```go
-// In resourcemanager.go, change:
-DefaultCPUIdleThresholdPercent = 1.0  // was 3.0
-DefaultIdleThreshold = 30 * time.Second  // was 1 minute
-```
-
-### 3. Lower Idle VM CPU Weight
+### 2. Lower Low-Priority VM CPU Weight
 **Impact:** Better responsiveness for active VMs
 **Risk:** Low
 **Effort:** One-line change

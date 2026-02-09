@@ -80,54 +80,6 @@ Buffers:          123456 kB
 	}
 }
 
-func TestVMUsageStateActivityDetection(t *testing.T) {
-	now := time.Now()
-	pollInterval := 30 * time.Second
-	prevPollTime := now.Add(-pollInterval)
-
-	state := &vmUsageState{
-		name:           "test-vm",
-		lastActivity:   now,
-		prevCPUSeconds: 10.0,
-		prevNetRxBytes: 1000,
-		prevNetTxBytes: 2000,
-		prevPollTime:   prevPollTime,
-	}
-
-	elapsed := now.Sub(state.prevPollTime).Seconds() // 30 seconds
-
-	// Test that low CPU percentage is not considered active
-	// 0.6 CPU seconds over 30 seconds = 2% CPU (below 3% threshold)
-	cpuDelta := 0.6
-	cpuPercent := (cpuDelta / elapsed) * 100.0
-	netDelta := uint64(5000) // Below DefaultNetActivityThreshold (10KB)
-
-	isActive := cpuPercent > DefaultCPUIdleThresholdPercent || netDelta > DefaultNetActivityThreshold
-	if isActive {
-		t.Errorf("2%% CPU should not be considered active (threshold is 3%%), got cpuPercent=%v", cpuPercent)
-	}
-
-	// Test that high CPU percentage is considered active
-	// 1.2 CPU seconds over 30 seconds = 4% CPU (above 3% threshold)
-	cpuDelta = 1.2
-	cpuPercent = (cpuDelta / elapsed) * 100.0
-	isActive = cpuPercent > DefaultCPUIdleThresholdPercent || netDelta > DefaultNetActivityThreshold
-	if !isActive {
-		t.Errorf("4%% CPU should be considered active, got cpuPercent=%v", cpuPercent)
-	}
-
-	// Test that large network delta is considered active
-	cpuDelta = 0.1
-	cpuPercent = (cpuDelta / elapsed) * 100.0 // ~0.3% CPU
-	netDelta = 20000                          // 20KB, above 10KB threshold
-	isActive = cpuPercent > DefaultCPUIdleThresholdPercent || netDelta > DefaultNetActivityThreshold
-	if !isActive {
-		t.Error("large network delta should be considered active")
-	}
-
-	_ = state // Just to use the variable
-}
-
 func TestSanitizeCgroupName(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -201,47 +153,6 @@ func TestRequiredControllers(t *testing.T) {
 	}
 }
 
-func TestIdleDetection(t *testing.T) {
-	now := time.Now()
-	idleThreshold := 5 * time.Minute
-
-	tests := []struct {
-		name         string
-		lastActivity time.Time
-		expectedIdle bool
-	}{
-		{
-			name:         "recently active",
-			lastActivity: now.Add(-1 * time.Minute),
-			expectedIdle: false,
-		},
-		{
-			name:         "at threshold",
-			lastActivity: now.Add(-5 * time.Minute),
-			expectedIdle: false, // exactly at threshold is not idle
-		},
-		{
-			name:         "past threshold",
-			lastActivity: now.Add(-6 * time.Minute),
-			expectedIdle: true,
-		},
-		{
-			name:         "long idle",
-			lastActivity: now.Add(-1 * time.Hour),
-			expectedIdle: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			isIdle := now.Sub(tt.lastActivity) > idleThreshold
-			if isIdle != tt.expectedIdle {
-				t.Errorf("idle detection for %s: got %v, want %v", tt.name, isIdle, tt.expectedIdle)
-			}
-		})
-	}
-}
-
 func TestVMPriorityValues(t *testing.T) {
 	// Ensure the priority enum values are as expected
 	if api.VMPriority_PRIORITY_NORMAL != 0 {
@@ -253,17 +164,8 @@ func TestVMPriorityValues(t *testing.T) {
 }
 
 func TestDefaultConfig(t *testing.T) {
-	if DefaultIdleThreshold != 1*time.Minute {
-		t.Errorf("DefaultIdleThreshold = %v, want 1m", DefaultIdleThreshold)
-	}
 	if DefaultPollInterval != 30*time.Second {
 		t.Errorf("DefaultPollInterval = %v, want 30s", DefaultPollInterval)
-	}
-	if DefaultCPUIdleThresholdPercent != 3.0 {
-		t.Errorf("DefaultCPUIdleThresholdPercent = %v, want 3.0", DefaultCPUIdleThresholdPercent)
-	}
-	if DefaultNetActivityThreshold != 10240 {
-		t.Errorf("DefaultNetActivityThreshold = %v, want 10240", DefaultNetActivityThreshold)
 	}
 }
 

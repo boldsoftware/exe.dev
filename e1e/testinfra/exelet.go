@@ -344,7 +344,6 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 		"--proxy-port-min", strconv.Itoa(res.proxyPortMin),
 		"--proxy-port-max", strconv.Itoa(res.proxyPortMax),
 		"--resource-manager-interval", "5s",
-		"--idle-threshold", "10m",
 		"--exed-url", exedProxyURL,
 		"--enable-hugepages",
 	}
@@ -473,7 +472,7 @@ func startExeletLocal(ctx context.Context, exeletBinary string, exedPort int, te
 
 	encodedNetwork := url.QueryEscape(res.networkCIDR)
 
-	localCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --stage test --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s&disable_bandwidth=true" --proxy-port-min %d --proxy-port-max %d --resource-manager-interval 5s --idle-threshold 10m --exed-url %s --enable-hugepages`,
+	localCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --stage test --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s&disable_bandwidth=true" --proxy-port-min %d --proxy-port-max %d --resource-manager-interval 5s --exed-url %s --enable-hugepages`,
 		res.coverDir, exeletBinary, res.dataDir, res.dataDir, res.dataDir, res.zfsDataset, res.dataDir, res.bridgeName, encodedNetwork, res.proxyPortMin, res.proxyPortMax, exedProxyURL)
 
 	// Add replication flags if configured

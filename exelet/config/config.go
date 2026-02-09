@@ -10,8 +10,6 @@ const (
 	DefaultHTTPAddress = ":9081"
 	// DefaultResourceManagerInterval is the default polling interval for the resource manager
 	DefaultResourceManagerInterval = 30 * time.Second
-	// DefaultIdleThreshold is the default duration after which a VM is considered idle
-	DefaultIdleThreshold = 1 * time.Minute
 
 	// DefaultBootLogRotationInterval is the default interval for checking boot log sizes
 	DefaultBootLogRotationInterval = 1 * time.Minute
@@ -123,8 +121,6 @@ type ExeletConfig struct {
 	InstanceDomain string
 	// ResourceManagerInterval controls how frequently the resource manager polls VMs
 	ResourceManagerInterval time.Duration
-	// IdleThreshold is the duration after which a VM is considered idle
-	IdleThreshold time.Duration
 	// EnableHugepages enables hugepage memory for VMs (requires hugepages to be configured on the host)
 	EnableHugepages bool
 	// ProxyBindIP is the IP address to bind SSH proxies to (empty means all interfaces)

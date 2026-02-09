@@ -137,7 +137,6 @@ The resource manager is configured via `ExeletConfig`:
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `ResourceManagerInterval` | 30s | Polling interval for usage collection |
-| `IdleThreshold` | 1m | Duration after which inactive VMs become low priority |
 
 ## Future Enhancements
 

@@ -17,17 +17,8 @@ import (
 )
 
 const (
-	// DefaultIdleThreshold is the default duration after which a VM is considered idle
-	DefaultIdleThreshold = 1 * time.Minute
 	// DefaultPollInterval is the default polling interval for the resource manager
 	DefaultPollInterval = 30 * time.Second
-	// DefaultCPUIdleThresholdPercent is the CPU usage percentage below which a VM is considered idle
-	// The VMM process will use some CPU even when the guest is idle (typically ~2% for virtio,
-	// timers, etc.), so we use a percentage of wall-clock time rather than absolute CPU seconds.
-	DefaultCPUIdleThresholdPercent = 3.0
-	// DefaultNetActivityThreshold is the minimum network bytes delta to consider a VM active
-	// Set high enough to ignore background traffic like ARP, DHCP renewals, etc.
-	DefaultNetActivityThreshold = 10240 // 10KB
 )
 
 // ResourceManager provides resource tracking and priority management for VMs.
@@ -63,8 +54,7 @@ type ResourceManager struct {
 	cgroupRoot       string
 
 	// Polling
-	pollInterval  time.Duration
-	idleThreshold time.Duration
+	pollInterval time.Duration
 
 	// Metrics daemon reporter
 	metricsReporter *MetricsDaemonReporter
@@ -86,15 +76,12 @@ type vmUsageState struct {
 	diskVolsizeBytes     uint64 // ZFS volsize (provisioned size)
 	diskBytes            uint64 // ZFS used (actual compressed bytes on disk)
 	diskLogicalBytes     uint64 // ZFS logicalused (uncompressed)
-	netRxBytes           uint64
-	netTxBytes           uint64
-	lastActivity         time.Time
-	priority             api.VMPriority
+	netRxBytes uint64
+	netTxBytes uint64
+	priority   api.VMPriority
 
 	// Previous poll values for delta calculation
 	prevCPUSeconds float64
-	prevNetRxBytes uint64
-	prevNetTxBytes uint64
 	prevPollTime   time.Time
 }
 
@@ -131,11 +118,6 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 		pollInterval = cfg.ResourceManagerInterval
 	}
 
-	idleThreshold := DefaultIdleThreshold
-	if cfg.IdleThreshold > 0 {
-		idleThreshold = cfg.IdleThreshold
-	}
-
 	return &ResourceManager{
 		config:           cfg,
 		log:              log,
@@ -145,7 +127,6 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 		priorityOverride: make(map[string]api.VMPriority),
 		cgroupRoot:       "/sys/fs/cgroup",
 		pollInterval:     pollInterval,
-		idleThreshold:    idleThreshold,
 	}, nil
 }
 
@@ -217,7 +198,6 @@ func (m *ResourceManager) Start(ctx context.Context) error {
 
 	m.log.InfoContext(ctx, "resource manager started",
 		"poll_interval", m.pollInterval,
-		"idle_threshold", m.idleThreshold,
 		"zfs_pool", m.zfsPool)
 
 	// Start metrics daemon reporter if configured
@@ -310,7 +290,6 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 		state = &vmUsageState{
 			name:                 name,
 			groupID:              groupID,
-			lastActivity:         now,
 			priority:             api.VMPriority_PRIORITY_NORMAL,
 			prevPollTime:         now,
 			allocatedMemoryBytes: allocatedMemory,
@@ -333,36 +312,14 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 		groupChanged = true
 	}
 
-	// Check for activity based on CPU percentage and network delta
-	isActive := false
+	// Compute CPU percentage for Prometheus metrics
 	var cpuPercent float64
 	if exists && !state.prevPollTime.IsZero() {
 		elapsed := now.Sub(state.prevPollTime).Seconds()
 		if elapsed > 0 {
 			cpuDelta := usage.cpuSeconds - state.prevCPUSeconds
 			cpuPercent = (cpuDelta / elapsed) * 100.0
-
-			netDelta := (usage.netRxBytes - state.prevNetRxBytes) + (usage.netTxBytes - state.prevNetTxBytes)
-
-			// m.log.DebugContext(ctx, "resource manager: activity check",
-			// 	"id", id,
-			// 	"cpu_seconds", usage.cpuSeconds,
-			// 	"prev_cpu_seconds", state.prevCPUSeconds,
-			// 	"cpu_delta", cpuDelta,
-			// 	"elapsed", elapsed,
-			// 	"cpu_percent", cpuPercent,
-			// 	"net_delta", netDelta)
-
-			// VM is active if CPU usage > threshold% OR significant network activity
-			if cpuPercent > DefaultCPUIdleThresholdPercent || netDelta > DefaultNetActivityThreshold {
-				isActive = true
-				state.lastActivity = now
-			}
 		}
-	} else {
-		// First observation - consider active
-		isActive = true
-		state.lastActivity = now
 	}
 
 	// Update state
@@ -377,11 +334,9 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 	state.netRxBytes = usage.netRxBytes
 	state.netTxBytes = usage.netTxBytes
 	state.prevCPUSeconds = usage.cpuSeconds
-	state.prevNetRxBytes = usage.netRxBytes
-	state.prevNetTxBytes = usage.netTxBytes
 	state.prevPollTime = now
 
-	// Determine priority - use manual override if set, otherwise auto-detect based on activity
+	// Determine priority — use manual override if set, otherwise default to normal
 	m.priorityMu.Lock()
 	override, hasOverride := m.priorityOverride[id]
 	m.priorityMu.Unlock()
@@ -389,8 +344,6 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 	var newPriority api.VMPriority
 	if hasOverride {
 		newPriority = override
-	} else if now.Sub(state.lastActivity) > m.idleThreshold {
-		newPriority = api.VMPriority_PRIORITY_LOW
 	} else {
 		newPriority = api.VMPriority_PRIORITY_NORMAL
 	}
@@ -418,8 +371,7 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 				"id", id,
 				"name", name,
 				"old_priority", oldPriority,
-				"new_priority", newPriority,
-				"is_active", isActive)
+				"new_priority", newPriority)
 		} else {
 			m.log.InfoContext(ctx, "resource manager: initializing cgroup for existing VM",
 				"id", id,

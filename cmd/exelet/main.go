@@ -147,12 +147,6 @@ func main() {
 			Value:   config.DefaultResourceManagerInterval,
 			EnvVars: []string{"EXELET_RESOURCE_MANAGER_INTERVAL"},
 		},
-		&cli.DurationFlag{
-			Name:    "idle-threshold",
-			Usage:   "duration after which a VM is considered idle (e.g., 5m, 10m)",
-			Value:   config.DefaultIdleThreshold,
-			EnvVars: []string{"EXELET_IDLE_THRESHOLD"},
-		},
 		&cli.BoolFlag{
 			Name:    "enable-hugepages",
 			Usage:   "enable hugepage memory for VMs (requires hugepages to be configured on the host)",
@@ -277,7 +271,6 @@ func serveAction(clix *cli.Context) error {
 	exedURL := clix.String("exed-url")
 	instanceDomain := clix.String("instance-domain")
 	resourceManagerInterval := clix.Duration("resource-manager-interval")
-	idleThreshold := clix.Duration("idle-threshold")
 	enableHugepages := clix.Bool("enable-hugepages")
 	proxyBindIP := clix.String("proxy-bind-ip")
 	replicationEnabled := clix.Bool("storage-replication-enabled")
@@ -312,7 +305,6 @@ func serveAction(clix *cli.Context) error {
 		ExedURL:                     exedURL,
 		InstanceDomain:              instanceDomain,
 		ResourceManagerInterval:     resourceManagerInterval,
-		IdleThreshold:               idleThreshold,
 		EnableHugepages:             enableHugepages,
 		ProxyBindIP:                 proxyBindIP,
 		ReplicationEnabled:          replicationEnabled,

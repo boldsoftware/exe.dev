@@ -204,8 +204,6 @@ message SetVMPriorityResponse {}
 Add to `ExeletConfig`:
 
 ```go
-// IdleThreshold is duration after which a VM is considered idle
-IdleThreshold time.Duration
 // ResourceManagerInterval controls polling frequency
 ResourceManagerInterval time.Duration
 // ResourceManagerEnabled enables the resource manager service
@@ -213,7 +211,6 @@ ResourceManagerEnabled bool
 ```
 
 Defaults:
-- `IdleThreshold`: 1 minute
 - `ResourceManagerInterval`: 30 seconds
 - `ResourceManagerEnabled`: false (opt-in)
 
