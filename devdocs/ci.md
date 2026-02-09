@@ -80,13 +80,13 @@ If you add a new non-e1e runner service, include `PrivateTmp=true` in the `[Serv
 
 ## Disk Layout
 
-VM disk images are on a 4-drive NVMe RAID0 for I/O throughput:
+VM disk images are on a RAM-backed tmpfs for maximum I/O throughput:
 ```
-/var/lib/libvirt/images → /data/libvirt/images  (symlink)
-/data is a 12.6TB ext4 on md0 (RAID0 across 4 NVMe drives)
+/var/lib/libvirt/images   100G tmpfs (in fstab)
+/data                     12.6TB ext4 on md0 (RAID0 across 4 NVMe drives)
 ```
 
-This is important: with 8 concurrent VMs all doing ZFS operations, a single NVMe drive bottlenecks on zvol cloning. The RAID0 provides ~4x throughput.
+The tmpfs matters because qemu uses `cache=none` (O_DIRECT), bypassing the kernel page cache entirely — without tmpfs, every VM disk read/write hits NVMe directly. The snapshot cache (`$HOME/.cache/exedev/`) and other persistent data stay on `/data`.
 
 Image types in `/var/lib/libvirt/images/`:
 - `ubuntu-24.04-base.qcow2` — base cloud image (downloaded once)
@@ -180,7 +180,7 @@ ssh root@edric sudo systemctl restart actions.runner.boldsoftware.edric-0
 Tested with 8 concurrent e1e test suites (8 VMs, each 4 vCPUs / 16GB RAM):
 - CPU: ~35% utilization (32/64 cores)
 - Memory: ~15% utilization (78GB/503GB)
-- Disk I/O: comfortable on RAID0
+- Disk I/O: all on tmpfs (RAM-backed)
 - All 8 suites pass in ~2m30s each (vs 3m15s single-runner baseline)
 
 The machine can comfortably handle 8 concurrent e1e runners + 8 concurrent non-e1e runners simultaneously.
@@ -191,6 +191,6 @@ Everything comes back automatically:
 - All 16 systemd runner services are enabled
 - libvirtd is enabled
 - `/data` RAID0 is in fstab
-- Symlink `/var/lib/libvirt/images → /data/libvirt/images` persists
+- `/var/lib/libvirt/images` tmpfs is in fstab (mounts empty on boot)
 
-The first CI run after reboot will be slightly slower (VM snapshot needs to be recreated, Go build cache is cold). The cron warmup will start re-populating caches within 5 minutes.
+The first CI run after reboot will be slower: the tmpfs starts empty, so backing images get re-copied from the snapshot cache on `/data` on first use. The VM snapshot itself may also need to be recreated, and the Go build cache will be cold. The cron warmup will start re-populating caches within 5 minutes.

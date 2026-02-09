@@ -53,8 +53,10 @@ Runs every 15 minutes. Destroys VMs running >30 min (timestamp parsed from VM na
 
 ```
 /dev/md0 (4x NVMe RAID0) → /data (ext4, 12.6TB)
-/var/lib/libvirt/images → /data/libvirt/images (symlink)
+/var/lib/libvirt/images   → 100G tmpfs (RAM-backed, in fstab)
 ```
+
+VM snapshot caches live on `/data` (via `$HOME/.cache/exedev/`). Only the active backing images and per-test overlays live on tmpfs. This matters because qemu uses `cache=none` (O_DIRECT), bypassing the kernel page cache — so RAM-backing the WORKDIR gives a large speedup under concurrent load.
 
 ## Deploy key
 
