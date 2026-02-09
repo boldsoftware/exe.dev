@@ -1,0 +1,222 @@
+// This describes a grpc service for information needed by exeprox.
+// The server is implemented by exed, the client by exeprox.
+
+syntax = "proto3";
+
+package exe.proxy.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "exe.dev/api/proxy/v1";
+
+service ProxyInfoService {
+  // BoxInfo takes a box name and returns some information about it.
+  rpc BoxInfo(BoxInfoRequest) returns (BoxInfoResponse);
+
+  // CookieInfo takes a cookie value and returns information about
+  // the authentication cookie with that value.
+  rpc CookieInfo(CookieInfoRequest) returns (CookieInfoResponse);
+
+  // GetPublicIPs returns a mapping from IP addresses to
+  // public IP / domain / shard.
+  rpc GetPublicIPs(GetPublicIPsRequest) returns (stream GetPublicIPsResponse);
+
+  // GetLobbyIP returns the IP address of the lobby, aka ssh exe.dev.
+  rpc GetLobbyIP(GetLobbyIPRequest) returns (GetLobbyIPResponse);
+
+  // CheckAndRefreshLLMCredit takes a user ID and checks if the user
+  // has any LLM credit available (after refresh).
+  // See llmgateway.CreditManager.CheckAndRefreshCredit.
+  rpc CheckAndRefreshLLMCredit(CheckAndRefreshLLMCreditRequest) returns (CheckAndRefreshLLMCreditResponse);
+
+  // TopUpOnLLMBillingUpgrade tops up a user's LLM credit to their
+  // new plan maximum. See llmgateway.CreditManager.TopUpOnBillingUpgrade.
+  rpc TopUpOnLLMBillingUpgrade(TopUpOnLLMBillingUpgradeRequest) returns (TopUpOnLLMBillingUpgradeResponse);
+
+  // LLMDebitCredit subtracts the given cost (in USD)
+  // from the user's LLM credit.
+  // See llmgateway.CreditManager.LLMDebitCredit.
+  rpc LLMDebitCredit(LLMDebitCreditRequest) returns (LLMDebitCreditResponse);
+
+  // UsedCookie is used to report that an authentication cookie was used.
+  rpc UsedCookie(UsedCookieRequest) returns (UsedCookieResponse);
+
+  // UsedBoxShareLink is used to report that a box share link was used.
+  rpc UsedBoxShareLink(UsedBoxShareLinkRequest) returns (UsedBoxShareLinkResponse);
+
+  // Changes returns a stream of changes that exeprox cares about.
+  //
+  // The guideline here is that the first time exeprox need to know
+  // about/ some sort of authentication or permission it will query exed
+  // and cache the result. The Changes stream will report cases
+  // where the cache should be cleared. These are things like
+  // deleting a cookie, deleting a box, deleting a box share.
+  rpc Changes(ChangesRequest) returns (stream ChangesResponse);
+}
+
+message BoxInfoRequest {
+  string box_name = 1;
+}
+
+message BoxInfoResponse {
+  bool box_exists = 1;            // false if no box by that name
+  int64 box_id = 2;               // box ID
+  string created_by_user_id = 3;  // user ID that created the box
+  string image = 4;               // image used to create box
+  BoxRoute route = 5;             // box routing configuration
+}
+
+// BoxRoute is the protobuf version of exedb.Route.
+message BoxRoute {
+  int32 port = 1;
+  string share = 2;
+}
+
+message CookieInfoRequest {
+  string cookie_value = 1;
+  string domain = 2;
+}
+
+message CookieInfoResponse {
+  bool cookie_exists = 1;                   // false if no such cookie
+  string cookie_value = 2;                  // cookie value
+  string user_id = 3;                       // user authenticated by cookie
+  string domain = 4;                        // cookie domain
+  google.protobuf.Timestamp expires_at = 5; // expiration time
+}
+
+// GetPublicIPsRequest is information sent to GetPublicIPs.
+message GetPublicIPsRequest {}
+
+// GetPublicIPsResponse is one element of the stream returned
+// by GetPublicIPs.
+message GetPublicIPsResponse {
+  string addr = 1;        // private local IP address
+  PublicIP public_ip = 2; // public IP / domain / shard
+}
+
+// PublicIP is the protobuf version of publicips.PublicIP.
+message PublicIP {
+  string ip = 1;     // public IP address
+  string domain = 2; // full domain, such "s007.exe.xyz"
+  int32 shard = 3;   // shard number
+}
+
+// GetLobbyIPRequest is information sent to GetLobbyIP.
+message GetLobbyIPRequest {}
+
+// GetLobbyIPResponse is the type returned by GetLobbyIP.
+message GetLobbyIPResponse {
+  string ip = 1;
+}
+
+message CheckAndRefreshLLMCreditRequest {
+  string user_id = 1;
+}
+
+message CheckAndRefreshLLMCreditResponse {
+  CreditInfo credit_info = 1;
+}
+
+// CreditInfo is the protobuf version of llmgateway.CreditInfo.
+message CreditInfo {
+  double available = 1;
+  double max = 2;
+  double refresh_per_hour = 3;
+  google.protobuf.Timestamp last_refresh = 4;
+  Plan plan = 5;
+}
+
+// Plan is the protobuf version of llmgateway.Plan.
+message Plan {
+  string name = 1;
+  double max_credit = 2;
+  double refresh_per_hour = 3;
+  string credit_exhausted_error = 4;
+}
+
+message TopUpOnLLMBillingUpgradeRequest {
+  string user_id = 1;
+}
+
+message TopUpOnLLMBillingUpgradeResponse {}
+
+message LLMDebitCreditRequest {
+  string user_id = 1;
+  double cost_usd = 2;
+}
+
+message LLMDebitCreditResponse {
+  CreditInfo credit_info = 1;
+}
+
+message UsedCookieRequest {
+  string cookie_value = 1;
+}
+
+message UsedCookieResponse {}
+
+message UsedBoxShareLinkRequest {
+  string share_token = 1;
+}
+
+message UsedBoxShareLinkResponse {}
+
+message ChangesRequest {}
+
+// ChangesResponse is one entry in a stream of responses.
+// This is a long-running grpc. exed will send one message each
+// time something changes that exeprox cares about.
+message ChangesResponse {
+  oneof action {
+    DeletedBox deleted_box = 1;
+    RenamedBox renamed_box = 2;
+    UpdatedBoxRoute updated_box_route = 3;
+    DeletedCookie deleted_cookie = 4;
+    DeletedBoxShare deleted_box_share = 5;
+    DeletedBoxShareLink deleted_box_share_link = 6;
+  }
+}
+
+// DeletedBox is sent when a box is deleted.
+message DeletedBox {
+  string box_name = 1;
+}
+
+// RenamedBox is sent when a box is renamed.
+message RenamedBox {
+  string old_box_name = 1;
+  string new_box_name = 2;
+}
+
+// UpdatedBoxRoute is sent when a box route is updated.
+message UpdatedBoxRoute {
+  string box_name = 1;
+  string created_by_user_id = 2; // this is used by exedb.UpdateBoxRoutes; not sure why
+  BoxRoute route = 3;
+}
+
+// DeletedCookie is sent when a cookie is deleted.
+// The deleted cookie can be selected by value or by user ID.
+// exed will also delete cookies by box name when deleting a box
+// and by domain when renaming a box. It doesn't need to send
+// reports for those, because it will already report the box
+// deletion or rename.
+message DeletedCookie {
+  oneof key {
+    string cookie_value = 1;
+    string user_id = 2;
+  }
+}
+
+// DeletedBoxShare is sent when a box share is deleted.
+message DeletedBoxShare {
+  string box_name = 1;
+  string shared_with_user_id = 2;
+}
+
+// DeletedBoxShareLink is sent when a box share link is deleted.
+message DeletedBoxShareLink {
+  string box_name = 1;
+  string share_token = 2;
+}
