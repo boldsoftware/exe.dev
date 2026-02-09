@@ -2,7 +2,6 @@ package billing
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -194,7 +193,8 @@ func TestBuyCreditsValidation(t *testing.T) {
 // stripeCompleteCreditPurchase simulates a completed credit purchase by creating
 // and confirming a PaymentIntent with credit_purchase metadata. This generates the
 // payment_intent.succeeded event that SyncCredits processes.
-func stripeCompleteCreditPurchase(ctx context.Context, m *Manager, customerID, paymentMethodID string, microcents int64) error {
+// cents is the amount in cents (1/100 USD), matching what BuyCredits sends to Stripe.
+func stripeCompleteCreditPurchase(ctx context.Context, m *Manager, customerID, paymentMethodID string, cents int64) error {
 	c := m.client()
 
 	pm, err := c.V1PaymentMethods.Attach(ctx, paymentMethodID, &stripe.PaymentMethodAttachParams{
@@ -204,7 +204,6 @@ func stripeCompleteCreditPurchase(ctx context.Context, m *Manager, customerID, p
 		return err
 	}
 
-	cents := microcents / 10000
 	piParams := &stripe.PaymentIntentCreateParams{
 		Amount:             &cents,
 		Currency:           stripe.String("usd"),
@@ -214,7 +213,6 @@ func stripeCompleteCreditPurchase(ctx context.Context, m *Manager, customerID, p
 		Confirm:            stripe.Bool(true),
 	}
 	piParams.AddMetadata("type", "credit_purchase")
-	piParams.AddMetadata("microcents", fmt.Sprintf("%d", microcents))
 
 	_, err = c.V1PaymentIntents.Create(ctx, piParams)
 	return err
@@ -235,9 +233,10 @@ func TestSyncCredits(t *testing.T) {
 		t.Fatalf("upsertCustomer: %v", err)
 	}
 
-	// Simulate a completed credit purchase.
-	microcents := int64(100_000_000) // 100M microcents = $10
-	if err := stripeCompleteCreditPurchase(ctx, m, customerID, "pm_card_visa", microcents); err != nil {
+	// Simulate a completed credit purchase of $10 (1000 cents).
+	cents := int64(1000)
+	wantMicrocents := cents * 10000 // SyncCredits converts cents to microcents
+	if err := stripeCompleteCreditPurchase(ctx, m, customerID, "pm_card_visa", cents); err != nil {
 		t.Fatalf("stripeCompleteCreditPurchase: %v", err)
 	}
 
@@ -247,13 +246,13 @@ func TestSyncCredits(t *testing.T) {
 		t.Fatalf("SyncCredits: %v", err)
 	}
 
-	// Verify the balance.
+	// Verify the balance is stored as microcents.
 	balance, err := exedb.WithRxRes1(db, ctx, (*exedb.Queries).GetCreditBalance, customerID)
 	if err != nil {
 		t.Fatalf("GetCreditBalance: %v", err)
 	}
-	if balance != microcents {
-		t.Fatalf("balance = %d, want %d", balance, microcents)
+	if balance != wantMicrocents {
+		t.Fatalf("balance = %d, want %d", balance, wantMicrocents)
 	}
 
 	// Sync again — should be idempotent, balance unchanged.
@@ -264,7 +263,7 @@ func TestSyncCredits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetCreditBalance (idempotent): %v", err)
 	}
-	if balance != microcents {
-		t.Fatalf("balance after idempotent sync = %d, want %d", balance, microcents)
+	if balance != wantMicrocents {
+		t.Fatalf("balance after idempotent sync = %d, want %d", balance, wantMicrocents)
 	}
 }

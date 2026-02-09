@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"os"
 	"slices"
-	"strconv"
 	"sync"
 	"time"
 
@@ -591,7 +590,6 @@ func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCredit
 
 	c := m.client()
 
-	microcents := p.Amount * 10000 // cents to microcents for ledger storage
 	params := &stripe.CheckoutSessionCreateParams{
 		Customer:           &billingID,
 		Mode:               stripe.String("payment"),
@@ -612,11 +610,9 @@ func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCredit
 		CancelURL:  &p.CancelURL,
 	}
 	params.AddMetadata("type", "credit_purchase")
-	params.AddMetadata("microcents", fmt.Sprintf("%d", microcents))
 	params.PaymentIntentData = &stripe.CheckoutSessionCreatePaymentIntentDataParams{
 		Metadata: map[string]string{
-			"type":       "credit_purchase",
-			"microcents": fmt.Sprintf("%d", microcents),
+			"type": "credit_purchase",
 		},
 	}
 
@@ -664,15 +660,7 @@ func (m *Manager) SyncCredits(ctx context.Context, billingID string, since time.
 			continue
 		}
 
-		microcents, err := strconv.ParseInt(pi.Metadata["microcents"], 10, 64)
-		if err != nil {
-			m.slog().ErrorContext(ctx, "invalid microcents in credit purchase",
-				"pi_id", pi.ID,
-				"microcents", pi.Metadata["microcents"],
-				"error", err,
-			)
-			continue
-		}
+		microcents := pi.Amount * 10000 // cents to microcents
 
 		if err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
 			return q.SyncCreditLedger(ctx, exedb.SyncCreditLedgerParams{
