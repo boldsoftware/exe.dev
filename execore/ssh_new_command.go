@@ -66,6 +66,8 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	// Handle --exelet override (support only)
+	var exeletClient *exeletClient
+	var exeletAddr string
 	if exeletOverride != "" {
 		if !ss.server.UserHasExeSudo(ctx, user.ID) {
 			slog.WarnContext(ctx, "unauthorized exelet override attempt",
@@ -74,9 +76,10 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 				"exelet", exeletOverride)
 			return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", user.Email)
 		}
-		// Validate that the exelet is in the available list
-		if ss.server.getExeletClient(exeletOverride) == nil {
-			return cc.Errorf("exelet %q not found. Available exelets: %v", exeletOverride, ss.server.exeletAddrs())
+		// Resolve short hostname to full address and get client
+		exeletAddr, exeletClient = ss.server.resolveExelet(exeletOverride)
+		if exeletClient == nil {
+			return cc.Errorf("exelet %q not found. Available exelets: %v", exeletOverride, ss.server.exeletHostnames())
 		}
 	}
 
@@ -186,13 +189,8 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	progressChan := make(chan progressUpdate, 10)
 	completionChan := make(chan instanceCompletion, 1)
 
-	// Select exelet client
-	var exeletClient *exeletClient
-	var exeletAddr string
-	if exeletOverride != "" {
-		exeletAddr = exeletOverride
-		exeletClient = ss.server.exeletClients[exeletOverride]
-	} else {
+	// Select exelet client (if not already set by --exelet override)
+	if exeletClient == nil {
 		var err error
 		exeletClient, exeletAddr, err = ss.server.selectExeletClient(ctx, cc.User.ID)
 		if err != nil {

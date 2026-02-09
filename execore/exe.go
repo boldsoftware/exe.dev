@@ -26,6 +26,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -2207,13 +2208,38 @@ func (s *Server) getBoxesByHost(ctx context.Context, ctrhost string) ([]*exedb.B
 	return boxes, nil
 }
 
-// getExeletClient looks up an exelet client by host address, trying all normalized variants.
-// This handles cases where the configured address changed (e.g., ssh://host to tcp://ip).
+// getExeletClient looks up an exelet client by its full address.
 func (s *Server) getExeletClient(host string) *exeletClient {
+	return s.exeletClients[host]
+}
+
+// resolveExelet resolves a short exelet hostname to its full address and client.
+// Accepts either a full address (tcp://host:9080) or short hostname (host).
+// Returns empty string and nil if no match or if ambiguous (multiple matches).
+func (s *Server) resolveExelet(host string) (string, *exeletClient) {
+	// Try direct lookup first
 	if client := s.exeletClients[host]; client != nil {
-		return client
+		return host, client
 	}
-	return nil
+
+	// Try to match by hostname
+	var matchAddr string
+	var matchClient *exeletClient
+	for addr, client := range s.exeletClients {
+		u, err := url.Parse(addr)
+		if err != nil {
+			continue
+		}
+		if u.Hostname() == host {
+			if matchAddr != "" {
+				// Ambiguous - multiple matches
+				return "", nil
+			}
+			matchAddr = addr
+			matchClient = client
+		}
+	}
+	return matchAddr, matchClient
 }
 
 // Return a list of addresses of working exelet clients.
@@ -2222,6 +2248,22 @@ func (s *Server) exeletAddrs() []string {
 	for addr, client := range s.exeletClients {
 		if client.up.Load() {
 			ret = append(ret, addr)
+		}
+	}
+	return ret
+}
+
+// exeletHostnames returns a list of short hostnames for working exelet clients.
+func (s *Server) exeletHostnames() []string {
+	ret := make([]string, 0, len(s.exeletClients))
+	for addr, client := range s.exeletClients {
+		if client.up.Load() {
+			u, err := url.Parse(addr)
+			if err != nil {
+				ret = append(ret, addr)
+				continue
+			}
+			ret = append(ret, u.Hostname())
 		}
 	}
 	return ret
