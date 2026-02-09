@@ -144,8 +144,29 @@ function makeExeDevVMsDashboard() {
 
   addStageVariable(dash);
 
+  dash.withVariable(
+    new QueryVariableBuilder("host")
+      .label("Host")
+      .includeAll(true)
+      .query('label_values(exelet_vm_cpu_seconds_total{stage=~"$stage"}, instance)')
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+      .sort(1)
+  );
+
+  dash.withVariable(
+    new QueryVariableBuilder("vm_name")
+      .label("VM Name")
+      .includeAll(true)
+      .query('label_values(exelet_vm_cpu_seconds_total{stage=~"$stage",instance=~"$host"}, vm_name)')
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+      .sort(1)
+  );
+
   const addTimeseriesChart = makeAddTimeseriesChart(dash, "exe-dev-vms-dashboard");
-  const STAGE_FILTER = 'stage=~"$stage"';
+  const STAGE_FILTER = 'stage=~"$stage",instance=~"$host",vm_name=~"$vm_name"';
+  const HOST_FILTER = 'stage=~"$stage",instance=~"$host"';
 
   addReadmePanel(dash);
 
@@ -300,7 +321,7 @@ function makeExeDevVMsDashboard() {
     .gridPos(gp({ w: 12, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} * 100)`)
+        .expr(`100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${HOST_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${HOST_FILTER}} * 100)`)
         .legendFormat("{{instance}}")
     );
   dash.withPanel(zfsUsagePanel);
@@ -314,22 +335,22 @@ function makeExeDevVMsDashboard() {
     .gridPos(gp({ w: 12, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`max(100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} * 100))`)
+        .expr(`max(100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${HOST_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${HOST_FILTER}} * 100))`)
         .legendFormat("max")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`quantile(0.75, 100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} * 100))`)
+        .expr(`quantile(0.75, 100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${HOST_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${HOST_FILTER}} * 100))`)
         .legendFormat("p75")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`quantile(0.5, 100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} * 100))`)
+        .expr(`quantile(0.5, 100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${HOST_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${HOST_FILTER}} * 100))`)
         .legendFormat("median")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr(`min(100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} * 100))`)
+        .expr(`min(100 - (node_filesystem_avail_bytes{role="exelet",fstype="zfs",${HOST_FILTER}} / node_filesystem_size_bytes{role="exelet",fstype="zfs",${HOST_FILTER}} * 100))`)
         .legendFormat("min")
     );
   dash.withPanel(zfsStatsPanel);
@@ -342,7 +363,7 @@ function makeExeDevVMsDashboard() {
     .gridPos(gp({ w: 12, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_filesystem_size_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}} - node_filesystem_avail_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}}`)
+        .expr(`node_filesystem_size_bytes{role="exelet",fstype="zfs",${HOST_FILTER}} - node_filesystem_avail_bytes{role="exelet",fstype="zfs",${HOST_FILTER}}`)
         .legendFormat("{{instance}}")
     );
   dash.withPanel(zfsUsedBytesPanel);
@@ -355,7 +376,7 @@ function makeExeDevVMsDashboard() {
     .gridPos(gp({ w: 12, h: 8 }))
     .withTarget(
       new DataqueryBuilder()
-        .expr(`node_filesystem_avail_bytes{role="exelet",fstype="zfs",${STAGE_FILTER}}`)
+        .expr(`node_filesystem_avail_bytes{role="exelet",fstype="zfs",${HOST_FILTER}}`)
         .legendFormat("{{instance}}")
     );
   dash.withPanel(zfsAvailBytesPanel);
