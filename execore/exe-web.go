@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/billing"
 	"exe.dev/boxname"
 	"exe.dev/cobble"
 	"exe.dev/domz"
@@ -634,6 +635,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleBillingUpdate(w, r)
 	case "/billing/success":
 		s.handleBillingSuccess(w, r)
+	case "/credits/buy":
+		s.handleCreditsBuy(w, r)
+	case "/credits/success":
+		s.handleCreditsSuccess(w, r)
 	case "/take-my-money":
 		http.Redirect(w, r, "/billing/update", http.StatusMovedPermanently)
 	case "/auth":
@@ -1457,6 +1462,18 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		}
 	}
 
+	// Fetch credit balance if credit purchases are enabled and user has a billing account
+	var creditBalance int64
+	if s.env.EnableCreditPurchases {
+		account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountByUserID, userID)
+		if err == nil {
+			creditBalance, err = s.billing.UseCredits(r.Context(), account.ID, 0, 1)
+			if err != nil {
+				s.slog().ErrorContext(r.Context(), "failed to fetch credit balance", "error", err, "user_id", userID)
+			}
+		}
+	}
+
 	// Prepare template data
 	data := UserPageData{
 		Env:           s.env,
@@ -1470,10 +1487,94 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		BasicUser:     basicUser,
 		HasBilling:    hasBilling,
 		BillingStatus: billingStatus,
+
+		EnableCreditPurchases: s.env.EnableCreditPurchases,
+		CreditBalance:         creditBalance,
 	}
 
 	// Render template
 	s.renderTemplate(r.Context(), w, "user-profile.html", data)
+}
+
+// handleCreditsBuy handles POST /credits/buy to start a credit purchase checkout.
+func (s *Server) handleCreditsBuy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.env.EnableCreditPurchases {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
+	userID, err := s.validateAuthCookie(r)
+	if err != nil {
+		http.Redirect(w, r, "/auth?redirect=/user", http.StatusTemporaryRedirect)
+		return
+	}
+
+	amountStr := r.FormValue("amount")
+	amount, err := strconv.ParseInt(amountStr, 10, 64)
+	if err != nil || amount <= 0 {
+		http.Error(w, "Invalid amount", http.StatusBadRequest)
+		return
+	}
+
+	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to get user for credit purchase", "error", err)
+		http.Error(w, "Failed to load user", http.StatusInternalServerError)
+		return
+	}
+
+	account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountByUserID, userID)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "no billing account for credit purchase", "error", err, "user_id", userID)
+		http.Error(w, "No billing account", http.StatusBadRequest)
+		return
+	}
+
+	baseURL := getScheme(r) + "://" + r.Host
+	checkoutURL, err := s.billing.BuyCredits(r.Context(), account.ID, &billing.BuyCreditsParams{
+		Email:      user.Email,
+		Amount:     amount,
+		SuccessURL: baseURL + "/credits/success",
+		CancelURL:  baseURL + "/user",
+	})
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to create credit checkout", "error", err, "user_id", userID)
+		http.Error(w, "Failed to start checkout", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, checkoutURL, http.StatusSeeOther)
+}
+
+// handleCreditsSuccess handles GET /credits/success after a completed credit purchase.
+func (s *Server) handleCreditsSuccess(w http.ResponseWriter, r *http.Request) {
+	if !s.env.EnableCreditPurchases {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
+	userID, err := s.validateAuthCookie(r)
+	if err != nil {
+		http.Redirect(w, r, "/auth?redirect=/user", http.StatusTemporaryRedirect)
+		return
+	}
+
+	account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountByUserID, userID)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "no billing account for credit sync", "error", err, "user_id", userID)
+		http.Redirect(w, r, "/user", http.StatusSeeOther)
+		return
+	}
+
+	if err := s.billing.SyncCredits(r.Context(), account.ID, account.CreatedAt); err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to sync credits", "error", err, "user_id", userID)
+	}
+
+	http.Redirect(w, r, "/user", http.StatusSeeOther)
 }
 
 // getScheme returns the request scheme

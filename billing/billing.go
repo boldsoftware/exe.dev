@@ -550,10 +550,15 @@ func (m *Manager) SubscriptionEvents(ctx context.Context, since time.Time) iter.
 // UseCredits deducts credits from the account's credit balance.
 // total is the number of units consumed and perUnit is the price
 // per unit in microcents. The deduction is total * perUnit.
+// UseCredits does not verify whether the account has active billing.
+// Callers that require that check should validate billing status first.
 // Negative balances are allowed — deductions always succeed.
 // Returns the remaining balance in microcents after deduction.
 func (m *Manager) UseCredits(ctx context.Context, billingID string, total, perUnit int64) (remaining int64, _ error) {
 	return exedb.WithTxRes0(m.DB, ctx, func(q *exedb.Queries, ctx context.Context) (int64, error) {
+		if total == 0 || perUnit == 0 {
+			return q.GetCreditBalance(ctx, billingID)
+		}
 		return q.UseCredits(ctx, exedb.UseCreditsParams{
 			AccountID: billingID,
 			Amount:    -(total * perUnit),

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"exe.dev/exedb"
+	exesqlite "exe.dev/sqlite"
 	"github.com/stripe/stripe-go/v82"
 )
 
@@ -136,6 +137,38 @@ func TestUseCredits(t *testing.T) {
 	}
 	if remaining != -200 {
 		t.Fatalf("UseCredits(4, 200): remaining = %d, want -200", remaining)
+	}
+}
+
+func TestUseCreditsZeroAmountNoLedgerEntry(t *testing.T) {
+	db := newTestDB(t)
+	accountID := "exe_test_credits_zero"
+	userID := "usr_test_credits_zero"
+	createTestAccount(t, db, accountID, userID)
+
+	m := &Manager{DB: db}
+	ctx := t.Context()
+
+	remaining, err := m.UseCredits(ctx, accountID, 0, 1)
+	if err != nil {
+		t.Fatalf("UseCredits(0): %v", err)
+	}
+	if remaining != 0 {
+		t.Fatalf("UseCredits(0): remaining = %d, want 0", remaining)
+	}
+
+	var ledgerRows int64
+	err = db.Rx(ctx, func(ctx context.Context, rx *exesqlite.Rx) error {
+		return rx.QueryRow(
+			`SELECT COUNT(*) FROM account_credit_ledger WHERE account_id = ?`,
+			accountID,
+		).Scan(&ledgerRows)
+	})
+	if err != nil {
+		t.Fatalf("count account ledger rows: %v", err)
+	}
+	if ledgerRows != 0 {
+		t.Fatalf("account ledger rows = %d, want 0", ledgerRows)
 	}
 }
 

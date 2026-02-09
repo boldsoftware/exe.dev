@@ -76,6 +76,8 @@ type Env struct {
 
 	ListenOnTailscaleOnly bool // whether auxiliary daemons (metricsd) should bind only to the tailscale interface
 
+	EnableCreditPurchases bool // whether to show credit purchase UI (staging only)
+
 	StripeAPIKey string // Stripe API key for billing operations
 	StripeURL    string // Stripe API URL (for testing); empty means use real Stripe
 }
@@ -127,6 +129,8 @@ func Invalid() Env {
 
 		ListenOnTailscaleOnly: false,
 
+		EnableCreditPurchases: true,
+
 		StripeAPIKey: "", // invalid: no API key
 		StripeURL:    "", // invalid: no Stripe URL
 	}
@@ -176,6 +180,8 @@ func Local() Env {
 		ProxyPorts: []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 9999},
 
 		ListenOnTailscaleOnly: false,
+
+		EnableCreditPurchases: true,
 
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
@@ -230,6 +236,8 @@ func Test() Env {
 
 		ListenOnTailscaleOnly: false,
 
+		EnableCreditPurchases: true,
+
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   11 * 1000 * 1000 * 1000, // 11GB
 		DefaultCPUs:   2,
@@ -277,6 +285,8 @@ func Staging() Env {
 		HoneycombEnv:         "staging",
 
 		ListenOnTailscaleOnly: true,
+
+		EnableCreditPurchases: true,
 
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),
@@ -327,6 +337,8 @@ func Prod() Env {
 		HoneycombEnv:         "production",
 
 		ListenOnTailscaleOnly: true,
+
+		EnableCreditPurchases: false,
 
 		NumShards:  25,
 		ProxyPorts: portRange(3000, 9999),

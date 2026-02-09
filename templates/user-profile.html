@@ -663,6 +663,28 @@
                 </div>
             </div>
         </div>
+
+        {{if .EnableCreditPurchases}}
+        <div class="section">
+            <div class="section-title">Credits</div>
+            <div class="info-card">
+                <div class="info-row">
+                    <div class="info-label">Balance</div>
+                    <div class="info-value" id="credit-balance-usd" data-credit-balance-microcents="{{.CreditBalance}}">{{.CreditBalance}} microcents</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Buy Credits</div>
+                    <div class="info-value">
+                        <form method="POST" action="/credits/buy" id="buy-credits-form" style="display: flex; gap: 8px; align-items: center;">
+                            <input type="number" id="credit-buy-dollars" min="5" step="1" inputmode="numeric" placeholder="Amount (USD, min 5)" required style="padding: 6px 10px; border: 1px solid #e0e0e0; border-radius: 4px; font-family: inherit; font-size: 13px; width: 200px;">
+                            <input type="hidden" name="amount" id="credit-buy-microcents" value="">
+                            <button type="submit" class="btn">Buy</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{end}}
         {{end}}
 
         {{if .SiteSessions}}
@@ -843,6 +865,34 @@
                 document.getElementById('passkeys-content').style.display = 'none';
             } else {
                 document.getElementById('passkey-name').placeholder = passkey.getDefaultName();
+            }
+
+            const balanceEl = document.getElementById('credit-balance-usd');
+            if (balanceEl) {
+                const microcents = Number.parseInt(balanceEl.dataset.creditBalanceMicrocents || '0', 10);
+                const dollars = Number.isFinite(microcents) ? Math.floor(microcents / 1000000) : 0;
+                balanceEl.textContent = '$' + dollars.toLocaleString('en-US') + ' USD';
+            }
+
+            const buyCreditsForm = document.getElementById('buy-credits-form');
+            const dollarsInput = document.getElementById('credit-buy-dollars');
+            const microcentsInput = document.getElementById('credit-buy-microcents');
+            if (buyCreditsForm && dollarsInput && microcentsInput) {
+                buyCreditsForm.addEventListener('submit', function(e) {
+                    const dollars = Number(dollarsInput.value);
+                    if (!Number.isInteger(dollars) || dollars < 5) {
+                        e.preventDefault();
+                        dollarsInput.setCustomValidity('Enter a whole dollar amount of at least 5.');
+                        dollarsInput.reportValidity();
+                        return;
+                    }
+                    dollarsInput.setCustomValidity('');
+                    microcentsInput.value = String(dollars * 1000000);
+                });
+
+                dollarsInput.addEventListener('input', function() {
+                    dollarsInput.setCustomValidity('');
+                });
             }
         });
 

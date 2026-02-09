@@ -150,6 +150,10 @@ type UserPageData struct {
 	// Billing information
 	HasBilling    bool   // User has active billing (completed checkout)
 	BillingStatus string // Billing status: "active", "canceled", "pending", or "" if no account
+
+	// Credits (staging only)
+	EnableCreditPurchases bool  // Whether to show credit purchase UI
+	CreditBalance         int64 // Current credit balance in microcents
 }
 
 // TeamBoxDisplayInfo represents a team member's box for the dashboard
@@ -929,6 +933,10 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		},
 		signupPOW: newSignupPOW(),
 	}
+
+	// Wire the billing manager's DB and Logger for credit operations.
+	s.billing.DB = s.db
+	s.billing.Logger = slog
 
 	// Initialize the limiter's internal cache by calling Allow once.
 	// This avoids an unimportant but distracting /debug panic after each deployment.

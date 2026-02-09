@@ -113,6 +113,12 @@ func newUnstartedServer(t testing.TB) *Server {
 				"payment_status": "paid",
 				"customer":       map[string]any{"id": "cus_test123"},
 			})
+		case r.Method == "GET" && r.URL.Path == "/v1/payment_intents":
+			// List payment intents (used by SyncCredits)
+			json.NewEncoder(w).Encode(map[string]any{
+				"data":     []map[string]any{},
+				"has_more": false,
+			})
 		default:
 			t.Errorf("unhandled fake Stripe request: %s %s", r.Method, r.URL)
 			w.WriteHeader(http.StatusNotFound)
