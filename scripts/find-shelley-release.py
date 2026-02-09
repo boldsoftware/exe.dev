@@ -89,18 +89,31 @@ def find_matching_release(expected_tree: str, timeout: int, interval: int) -> st
             capture_output=True,
         )
 
-        # Find which tag has the matching tree hash
-        tag = find_tag_for_tree(repo_dir, expected_tree)
-        if not tag:
-            print(f"No tag found with tree hash {expected_tree}", file=sys.stderr)
-            return ""
-
-        print(f"Found tag {tag} with matching tree hash", file=sys.stderr)
-
-        # Poll for the release to exist
+        tag = ""
         attempt = 0
         while time.time() < deadline:
             attempt += 1
+
+            # If we haven't found the tag yet, re-fetch tags and search
+            if not tag:
+                if attempt > 1:
+                    print(f"Attempt {attempt}: fetching tags...", file=sys.stderr)
+                    subprocess.run(
+                        ["git", "fetch", "--tags", "origin"],
+                        cwd=repo_dir,
+                        check=True,
+                        capture_output=True,
+                    )
+                tag = find_tag_for_tree(repo_dir, expected_tree)
+                if not tag:
+                    print(f"No tag found with tree hash {expected_tree}", file=sys.stderr)
+                    if time.time() + interval < deadline:
+                        print(f"Waiting {interval}s before retrying...", file=sys.stderr)
+                        time.sleep(interval)
+                    continue
+                print(f"Found tag {tag} with matching tree hash", file=sys.stderr)
+
+            # We have a tag, poll for the release to exist
             print(f"Attempt {attempt}: checking if {tag} is released...", file=sys.stderr)
 
             if is_tag_released(tag):
