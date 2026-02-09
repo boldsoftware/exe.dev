@@ -98,15 +98,17 @@ var ErrInsufficientCredit = errors.New("insufficient LLM credit")
 
 // CreditManager handles token bucket credit for LLM gateway access
 type CreditManager struct {
-	db  *sqlite.DB
-	now func() time.Time
+	data GatewayData
+	now  func() time.Time
 }
 
-// NewCreditManager creates a new CreditManager
-func NewCreditManager(db *sqlite.DB) *CreditManager {
+// NewCreditManager creates a new CreditManager.
+// To create one using the sqlite database,
+// use NewCreditManager(&DBGatewayData{db}).
+func NewCreditManager(data GatewayData) *CreditManager {
 	return &CreditManager{
-		db:  db,
-		now: time.Now,
+		data: data,
+		now:  time.Now,
 	}
 }
 
@@ -146,11 +148,26 @@ func CalculateRefreshedCredit(available, max, refreshPerHour float64, lastRefres
 // Returns the refreshed credit info if available, or ErrInsufficientCredit if not.
 // This also updates the database with the refreshed credit amount.
 func (m *CreditManager) CheckAndRefreshCredit(ctx context.Context, userID string) (*CreditInfo, error) {
-	if m == nil || m.db == nil {
+	if m == nil || m.data == nil {
 		return nil, nil // No credit management configured
 	}
+	info, err := m.data.CheckAndRefreshCredit(ctx, userID, m.now())
+	if err != nil {
+		return nil, err
+	}
+
+	if info.Available <= 0 {
+		return info, ErrInsufficientCredit
+	}
+
+	return info, nil
+}
+
+// CheckAndRefreshCreditDB is the implementation of
+// [CreditManager.CheckAndRefreshCredit] when using a database.
+func CheckAndRefreshCreditDB(ctx context.Context, db *sqlite.DB, userID string, now time.Time) (*CreditInfo, error) {
 	var info *CreditInfo
-	err := exedb.WithTx(m.db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		credit, err := q.GetUserLLMCredit(ctx, userID)
 		if errors.Is(err, sql.ErrNoRows) {
 			// New user: get their plan and initialize with plan.MaxCredit
@@ -158,7 +175,7 @@ func (m *CreditManager) CheckAndRefreshCredit(ctx context.Context, userID string
 			if err != nil {
 				return err
 			}
-			now := m.now()
+			now := now
 			if err := q.CreateUserLLMCreditWithInitial(ctx, exedb.CreateUserLLMCreditWithInitialParams{
 				UserID:          userID,
 				AvailableCredit: plan.MaxCredit,
@@ -183,7 +200,6 @@ func (m *CreditManager) CheckAndRefreshCredit(ctx context.Context, userID string
 			return err
 		}
 
-		now := m.now()
 		newAvailable, newLastRefresh := CalculateRefreshedCredit(
 			credit.AvailableCredit,
 			plan.MaxCredit,
@@ -212,15 +228,7 @@ func (m *CreditManager) CheckAndRefreshCredit(ctx context.Context, userID string
 		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	if info.Available <= 0 {
-		return info, ErrInsufficientCredit
-	}
-
-	return info, nil
+	return info, err
 }
 
 // TopUpOnBillingUpgrade tops up a user's credit to their new plan maximum
@@ -228,10 +236,16 @@ func (m *CreditManager) CheckAndRefreshCredit(ctx context.Context, userID string
 // If the user has no existing credit record, this is a no-op
 // (their credit will be initialized at max when they first use the gateway).
 func (m *CreditManager) TopUpOnBillingUpgrade(ctx context.Context, userID string) error {
-	if m == nil || m.db == nil {
+	if m == nil || m.data == nil {
 		return nil
 	}
-	return exedb.WithTx(m.db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+	return m.data.TopUpOnBillingUpgrade(ctx, userID, m.now())
+}
+
+// TopUpOnBillingUpgradeDB is the implementation of
+// [CreditManager.TopUpOnBillingUpgrade] when using a database.
+func TopUpOnBillingUpgradeDB(ctx context.Context, db *sqlite.DB, userID string, now time.Time) error {
+	return exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		credit, err := q.GetUserLLMCredit(ctx, userID)
 		if errors.Is(err, sql.ErrNoRows) {
 			// No credit record exists; nothing to top up
@@ -249,7 +263,7 @@ func (m *CreditManager) TopUpOnBillingUpgrade(ctx context.Context, userID string
 		// Top up to the new plan's max
 		return q.UpdateUserLLMAvailableCredit(ctx, exedb.UpdateUserLLMAvailableCreditParams{
 			AvailableCredit: plan.MaxCredit,
-			LastRefreshAt:   m.now(),
+			LastRefreshAt:   now,
 			UserID:          userID,
 		})
 	})
@@ -258,11 +272,17 @@ func (m *CreditManager) TopUpOnBillingUpgrade(ctx context.Context, userID string
 // DebitCredit subtracts the given cost (in USD) from the user's credit.
 // Returns the new credit info after the debit.
 func (m *CreditManager) DebitCredit(ctx context.Context, userID string, costUSD float64) (*CreditInfo, error) {
-	if m == nil || m.db == nil {
+	if m == nil || m.data == nil {
 		return nil, nil // No credit management configured
 	}
+	return m.data.DebitCredit(ctx, userID, costUSD, m.now())
+}
+
+// DebitCreditDB is the implementation of [CreditManager.DebitCredit]
+// when using a database.
+func DebitCreditDB(ctx context.Context, db *sqlite.DB, userID string, costUSD float64, now time.Time) (*CreditInfo, error) {
 	var info *CreditInfo
-	err := exedb.WithTx(m.db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		credit, err := q.GetUserLLMCredit(ctx, userID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("no credit record for user %s", userID)
@@ -275,7 +295,6 @@ func (m *CreditManager) DebitCredit(ctx context.Context, userID string, costUSD 
 			return err
 		}
 
-		now := m.now()
 		// First apply any refresh
 		newAvailable, newLastRefresh := CalculateRefreshedCredit(
 			credit.AvailableCredit,

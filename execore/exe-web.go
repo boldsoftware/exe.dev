@@ -84,7 +84,7 @@ func (s *Server) prepareLlmGateway() http.Handler {
 	fireworksAPIKey := os.Getenv("FIREWORKS_API_KEY")
 	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
 
-	lg := llmgateway.NewGateway(s.slog(), s.db, llmgateway.APIKeys{
+	lg := llmgateway.NewGateway(s.slog(), &llmgateway.DBGatewayData{DB: s.db}, llmgateway.APIKeys{
 		Anthropic: anthropicAPIKey,
 		Fireworks: fireworksAPIKey,
 		OpenAI:    openaiAPIKey,

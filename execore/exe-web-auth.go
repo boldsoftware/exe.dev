@@ -459,7 +459,7 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Top up LLM credits to the new (higher) max for paying users
-		if err := llmgateway.NewCreditManager(s.db).TopUpOnBillingUpgrade(r.Context(), userID); err != nil {
+		if err := llmgateway.NewCreditManager(&llmgateway.DBGatewayData{DB: s.db}).TopUpOnBillingUpgrade(r.Context(), userID); err != nil {
 			s.slog().ErrorContext(r.Context(), "failed to top up LLM credit after billing upgrade", "error", err)
 			// Don't fail the request - the account is activated, this is just a bonus
 		}

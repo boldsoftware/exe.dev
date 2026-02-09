@@ -57,7 +57,7 @@ func TestCreditManager_CheckAndRefreshCredit(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	mgr := NewCreditManager(db)
+	mgr := NewCreditManager(&DBGatewayData{db})
 	ctx := context.Background()
 	userID := "test-user-123"
 	createTestUser(t, db, userID, "test123@example.com")
@@ -89,7 +89,7 @@ func TestCreditManager_DebitCredit(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	mgr := NewCreditManager(db)
+	mgr := NewCreditManager(&DBGatewayData{db})
 	ctx := context.Background()
 	userID := "test-user-456"
 	createTestUser(t, db, userID, "test456@example.com")
@@ -142,7 +142,7 @@ func TestCreditManager_InsufficientCredit(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	mgr := NewCreditManager(db)
+	mgr := NewCreditManager(&DBGatewayData{db})
 	ctx := context.Background()
 	userID := "test-user-789"
 	createTestUser(t, db, userID, "test789@example.com")
@@ -247,8 +247,8 @@ func TestCreditManager_TimestampRoundTrip(t *testing.T) {
 	// Create a fixed reference time for testing
 	refTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 	mgr := &CreditManager{
-		db:  db,
-		now: func() time.Time { return refTime },
+		data: &DBGatewayData{db},
+		now:  func() time.Time { return refTime },
 	}
 
 	// Create initial credit record at refTime (no_billing plan: max=50, refresh=1/hr)
@@ -296,7 +296,7 @@ func TestPlanCategories(t *testing.T) {
 	defer db.Close()
 
 	ctx := context.Background()
-	mgr := NewCreditManager(db)
+	mgr := NewCreditManager(&DBGatewayData{db})
 
 	// Test no_billing user (no billing, no exemptions)
 	t.Run("no_billing", func(t *testing.T) {
@@ -447,7 +447,7 @@ func TestCreditManager_TopUpOnBillingUpgrade(t *testing.T) {
 	defer db.Close()
 
 	ctx := context.Background()
-	mgr := NewCreditManager(db)
+	mgr := NewCreditManager(&DBGatewayData{db})
 
 	// Create a no_billing user who has used some credit
 	userID := "upgrade-user"
@@ -518,7 +518,7 @@ func TestCreditManager_TopUpOnBillingUpgrade_NoCreditRecord(t *testing.T) {
 	defer db.Close()
 
 	ctx := context.Background()
-	mgr := NewCreditManager(db)
+	mgr := NewCreditManager(&DBGatewayData{db})
 
 	// Create a user who has never used the LLM gateway
 	userID := "fresh-upgrade-user"

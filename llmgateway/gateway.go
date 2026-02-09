@@ -3,7 +3,6 @@ package llmgateway
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,9 +15,7 @@ import (
 	"time"
 
 	"exe.dev/domz"
-	"exe.dev/exedb"
 	"exe.dev/llmpricing"
-	"exe.dev/sqlite"
 	"exe.dev/stage"
 	"github.com/prometheus/client_golang/prometheus"
 	sloghttp "github.com/samber/slog-http"
@@ -91,7 +88,7 @@ func RegisterMetrics(registry *prometheus.Registry) {
 // - Designed to work with client applications that have configurable API endpoints and auth headers.
 type llmGateway struct {
 	now           func() time.Time
-	db            *sqlite.DB
+	data          GatewayData
 	apiKeys       APIKeys
 	env           stage.Env
 	testDebitDone chan bool // for testing -- if non-nil, best effort send every time a debit occurs
@@ -105,14 +102,15 @@ type APIKeys struct {
 	OpenAI    string
 }
 
-func NewGateway(log *slog.Logger, db *sqlite.DB, apiKeys APIKeys, env stage.Env) *llmGateway {
+// NewGateway creates a new LLM gateway.
+func NewGateway(log *slog.Logger, data GatewayData, apiKeys APIKeys, env stage.Env) http.Handler {
 	ret := &llmGateway{
 		now:       time.Now,
-		db:        db,
+		data:      data,
 		apiKeys:   apiKeys,
 		env:       env,
 		log:       log,
-		creditMgr: NewCreditManager(db),
+		creditMgr: NewCreditManager(data),
 	}
 	if apiKeys.Anthropic == "" || apiKeys.Fireworks == "" || apiKeys.OpenAI == "" {
 		log.Warn("NewGateway: not all apiKeys are set", "apiKeys", apiKeys)
@@ -174,19 +172,18 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Look up the box to get the user ID for logging and metrics
-	box, err := exedb.WithRxRes1(m.db, r.Context(), (*exedb.Queries).BoxNamed, boxName)
-	if errors.Is(err, sql.ErrNoRows) {
-		m.httpError(w, r, "VM not found", http.StatusUnauthorized, boxName, nil)
-		return
-	}
-	if errors.Is(err, context.Canceled) {
-		return // Client disconnected
-	}
+	userID, exists, err := m.data.BoxCreator(r.Context(), boxName)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return // Client disconnected
+		}
 		m.httpError(w, r, "internal server error", http.StatusInternalServerError, boxName, fmt.Errorf("failed to look up box: %w", err))
 		return
 	}
-	userID := box.CreatedByUserID
+	if !exists {
+		m.httpError(w, r, "VM not found", http.StatusUnauthorized, boxName, nil)
+		return
+	}
 	if userID == "" {
 		m.httpError(w, r, "user not found", http.StatusInternalServerError, boxName, fmt.Errorf("could not determine user ID for box %s", boxName))
 		return
@@ -320,7 +317,6 @@ func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, us
 	}
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
-		db:           m.db,
 		provider:     llmpricing.ProviderAnthropic,
 		log:          m.log,
 		creditMgr:    m.creditMgr,
@@ -356,7 +352,6 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userI
 	}
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
-		db:           m.db,
 		provider:     llmpricing.ProviderOpenAI,
 		log:          m.log,
 		creditMgr:    m.creditMgr,
@@ -394,7 +389,6 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, us
 	}
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
-		db:           m.db,
 		provider:     llmpricing.ProviderFireworks,
 		log:          m.log,
 		creditMgr:    m.creditMgr,

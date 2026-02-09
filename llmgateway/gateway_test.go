@@ -97,7 +97,7 @@ func setupTestGateway(t *testing.T) (*llmGateway, *sqlite.DB) {
 
 	gateway := &llmGateway{
 		now:           time.Now,
-		db:            db,
+		data:          &DBGatewayData{db},
 		apiKeys:       APIKeys{Anthropic: "test-api-key"},
 		env:           stage.Test(),
 		testDebitDone: make(chan bool, 10), // Buffered for tests
@@ -323,7 +323,7 @@ func TestGateway_GzipResponse(t *testing.T) {
 
 	gateway, _ := setupTestGateway(t)
 	gateway.apiKeys.OpenAI = "test-openai-key"
-	gateway.creditMgr = NewCreditManager(gateway.db)
+	gateway.creditMgr = NewCreditManager(gateway.data)
 
 	// Create a gzip-compressed response body
 	jsonResponse := `{"id": "chatcmpl-123", "model": "gpt-4", "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}}`
@@ -347,7 +347,6 @@ func TestGateway_GzipResponse(t *testing.T) {
 		incomingReq := httptest.NewRequest("GET", "/_/gateway/openai/v1/models", nil)
 		transport := &accountingTransport{
 			RoundTripper: http.DefaultTransport,
-			db:           gateway.db,
 			provider:     llmpricing.ProviderOpenAI,
 			log:          gateway.log,
 			creditMgr:    gateway.creditMgr,
@@ -377,7 +376,6 @@ func TestGateway_GzipResponse(t *testing.T) {
 		incomingReq := httptest.NewRequest("GET", "/_/gateway/openai/v1/models", nil)
 		transport := &accountingTransport{
 			RoundTripper: http.DefaultTransport,
-			db:           gateway.db,
 			provider:     llmpricing.ProviderOpenAI,
 			log:          gateway.log,
 			creditMgr:    gateway.creditMgr,
@@ -416,7 +414,6 @@ func TestGateway_GzipResponse(t *testing.T) {
 				incomingReq := httptest.NewRequest("GET", "/_/gateway/openai/v1/models", nil)
 				transport := &accountingTransport{
 					RoundTripper: http.DefaultTransport,
-					db:           gateway.db,
 					provider:     llmpricing.ProviderOpenAI,
 					log:          gateway.log,
 					creditMgr:    gateway.creditMgr,
@@ -442,7 +439,7 @@ func TestGateway_GzipResponse(t *testing.T) {
 func TestGateway_GzipWithClientAcceptEncoding(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
 	gateway.apiKeys.OpenAI = "test-openai-key"
-	gateway.creditMgr = NewCreditManager(gateway.db)
+	gateway.creditMgr = NewCreditManager(gateway.data)
 
 	// Create a mock "OpenAI" server that returns gzip when client requests it
 	jsonResponse := `{"id": "chatcmpl-123", "model": "gpt-4", "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}}`
@@ -478,7 +475,6 @@ func TestGateway_GzipWithClientAcceptEncoding(t *testing.T) {
 	// Create a custom transport that points to our mock server
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
-		db:           gateway.db,
 		provider:     llmpricing.ProviderOpenAI,
 		log:          gateway.log,
 		creditMgr:    gateway.creditMgr,
@@ -520,7 +516,7 @@ func TestGateway_GzipWithClientAcceptEncoding(t *testing.T) {
 func TestGateway_OpenAIModelsEndpoint(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
 	gateway.apiKeys.OpenAI = "test-openai-key"
-	gateway.creditMgr = NewCreditManager(gateway.db)
+	gateway.creditMgr = NewCreditManager(gateway.data)
 
 	// This is what OpenAI's /v1/models endpoint actually returns (no usage field)
 	modelsResponse := `{"object": "list", "data": [{"id": "gpt-4", "object": "model", "owned_by": "openai"}]}`
@@ -541,7 +537,6 @@ func TestGateway_OpenAIModelsEndpoint(t *testing.T) {
 
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
-		db:           gateway.db,
 		provider:     llmpricing.ProviderOpenAI,
 		log:          gateway.log,
 		creditMgr:    gateway.creditMgr,
@@ -580,7 +575,7 @@ func TestGateway_OpenAIModelsEndpoint(t *testing.T) {
 func TestGateway_FireworksModelsEndpoint(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
 	gateway.apiKeys.Fireworks = "test-fireworks-key"
-	gateway.creditMgr = NewCreditManager(gateway.db)
+	gateway.creditMgr = NewCreditManager(gateway.data)
 
 	// This is what Fireworks' /inference/v1/models endpoint returns (no usage field)
 	modelsResponse := `{"data":[{"id":"accounts/fireworks/models/qwen3-vl-30b-a3b-instruct","object":"model","owned_by":"fireworks","created":1759959171}]}`
@@ -601,7 +596,6 @@ func TestGateway_FireworksModelsEndpoint(t *testing.T) {
 
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
-		db:           gateway.db,
 		provider:     llmpricing.ProviderFireworks,
 		log:          gateway.log,
 		creditMgr:    gateway.creditMgr,
@@ -639,7 +633,7 @@ func TestGateway_FireworksModelsEndpoint(t *testing.T) {
 func TestGateway_OpenAIMissingUsageOnOtherEndpoints(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
 	gateway.apiKeys.OpenAI = "test-openai-key"
-	gateway.creditMgr = NewCreditManager(gateway.db)
+	gateway.creditMgr = NewCreditManager(gateway.data)
 
 	// Response without usage data (which would be unexpected for chat completions)
 	badResponse := `{"id": "chatcmpl-123", "object": "chat.completion", "choices": []}`
@@ -660,7 +654,6 @@ func TestGateway_OpenAIMissingUsageOnOtherEndpoints(t *testing.T) {
 
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
-		db:           gateway.db,
 		provider:     llmpricing.ProviderOpenAI,
 		log:          gateway.log,
 		creditMgr:    gateway.creditMgr,
@@ -866,7 +859,7 @@ func TestGateway_UnknownModelRejected(t *testing.T) {
 
 	gateway := &llmGateway{
 		now:     time.Now,
-		db:      db,
+		data:    &DBGatewayData{db},
 		apiKeys: APIKeys{Anthropic: "test-key", OpenAI: "test-key", Fireworks: "test-key"},
 		env:     stage.Test(),
 		log:     tslog.Slogger(t),
@@ -921,7 +914,7 @@ func TestGateway_UnknownModelRejected(t *testing.T) {
 func TestGateway_CostHeaders(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
 	gateway.apiKeys.Anthropic = "test-anthropic-key"
-	gateway.creditMgr = NewCreditManager(gateway.db)
+	gateway.creditMgr = NewCreditManager(gateway.data)
 
 	// Create a mock Anthropic server that returns usage info
 	jsonResponse := `{
@@ -953,7 +946,6 @@ func TestGateway_CostHeaders(t *testing.T) {
 	// Create the accounting transport
 	transport := &accountingTransport{
 		RoundTripper: http.DefaultTransport,
-		db:           gateway.db,
 		provider:     llmpricing.ProviderAnthropic,
 		log:          gateway.log,
 		creditMgr:    gateway.creditMgr,

@@ -25,7 +25,6 @@ import (
 
 	"exe.dev/errorz"
 	"exe.dev/llmpricing"
-	"exe.dev/sqlite"
 	sloghttp "github.com/samber/slog-http"
 	"golang.org/x/net/http2"
 )
@@ -44,7 +43,6 @@ var errBodyNotReplayable = errors.New("request body not replayable; caller shoul
 // accountingTransport wraps http transactions to check and track the client's credit usage
 type accountingTransport struct {
 	http.RoundTripper
-	db            *sqlite.DB
 	provider      llmpricing.Provider
 	testDebitDone chan bool // for testing -- if non-nil, best effort send every time a debit occurs
 	log           *slog.Logger
