@@ -61,9 +61,20 @@ for ISO in /var/lib/libvirt/images/e1e-runner*-seed.iso /var/lib/libvirt/images/
     fi
 done
 
-# Clean up old snapshot caches (keep only today's and yesterday's)
+# Clean up old snapshot caches: keep only the 2 most recent per runner.
+# Using count-based cleanup instead of mtime-based, because on busy days
+# multiple ops/ tree hash and exeuntu digest changes create many snapshot
+# dirs (~5.5GB each) all with today's mtime, so mtime-based cleanup
+# doesn't kick in fast enough.
 for USER_HOME in /home/runner*; do
-    find "${USER_HOME}/.cache/exedev/" -maxdepth 1 -name "ci-vm-*" -mtime +2 -exec rm -rf {} \; 2>/dev/null || true
+    CACHE="${USER_HOME}/.cache/exedev"
+    [[ -d "$CACHE" ]] || continue
+    # List ci-vm-* dirs newest first, skip the 2 newest, remove the rest.
+    find "$CACHE" -maxdepth 1 -type d -name 'ci-vm-*' -printf '%T@ %p\n' 2>/dev/null |
+        sort -rn | tail -n +3 | cut -d' ' -f2- | while read -r dir; do
+        echo "Removing old snapshot cache: $dir"
+        rm -rf "$dir"
+    done
 done
 
 echo "=== $(date) === cleanup complete ==="

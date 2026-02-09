@@ -29,17 +29,17 @@ fi
 
 # --- Generate and deploy systemd service files ---
 echo "--- Deploying systemd services ---"
-TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
+DEPLOY_TMPDIR=$(mktemp -d)
+trap 'rm -rf "$DEPLOY_TMPDIR"' EXIT
 
 for i in $(seq 0 $((NUM_RUNNERS - 1))); do
     # e1e runner service
-    sed "s/%i/${i}/g" "$SCRIPT_DIR/edric-e1e.service" >"$TMPDIR/actions.runner.boldsoftware.edric-${i}.service"
+    sed "s/%i/${i}/g" "$SCRIPT_DIR/edric-e1e.service" >"$DEPLOY_TMPDIR/actions.runner.boldsoftware.edric-${i}.service"
     # CI runner service
-    sed "s/%i/${i}/g" "$SCRIPT_DIR/edric-ci.service" >"$TMPDIR/actions.runner.boldsoftware.edric-ci-${i}.service"
+    sed "s/%i/${i}/g" "$SCRIPT_DIR/edric-ci.service" >"$DEPLOY_TMPDIR/actions.runner.boldsoftware.edric-ci-${i}.service"
 done
 
-scp "$TMPDIR"/actions.runner.boldsoftware.edric*.service "$HOST:/etc/systemd/system/"
+scp "$DEPLOY_TMPDIR"/actions.runner.boldsoftware.edric*.service "$HOST:/etc/systemd/system/"
 
 # --- Deploy scripts ---
 echo "--- Deploying scripts ---"
@@ -100,15 +100,17 @@ ssh "$HOST" '
     fi
 '
 
-# --- Reload and restart ---
+# --- Reload, enable, and restart ---
 echo "--- Reloading systemd ---"
 ssh "$HOST" "systemctl daemon-reload"
 
-# Restart all runner services to pick up changes.
+# Enable all services so they survive reboot, then restart to pick up changes.
 # The runners reconnect to GitHub automatically after restart.
-echo "--- Restarting runner services ---"
+echo "--- Enabling and restarting runner services ---"
 ssh "$HOST" 'set -euo pipefail
     for i in $(seq 0 7); do
+        systemctl enable "actions.runner.boldsoftware.edric-${i}" 2>/dev/null
+        systemctl enable "actions.runner.boldsoftware.edric-ci-${i}" 2>/dev/null
         systemctl restart "actions.runner.boldsoftware.edric-${i}" || echo "WARNING: failed to restart edric-${i}"
         systemctl restart "actions.runner.boldsoftware.edric-ci-${i}" || echo "WARNING: failed to restart edric-ci-${i}"
     done

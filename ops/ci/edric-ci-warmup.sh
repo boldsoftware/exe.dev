@@ -16,14 +16,14 @@ PREFETCH_REFSPEC="+refs/heads/*:refs/prefetch/remotes/origin/*"
 
 for i in $(seq 0 7); do
     USER="runner${i}"
-    HOME="/home/${USER}"
+    USER_HOME="/home/${USER}"
 
     echo "--- warming ${USER} ---"
 
     # 1. Git prefetch in both workdirs (e1e and ci).
     # Fetches to refs/prefetch/ so it never conflicts with actions/checkout.
     # Objects are shared, so subsequent checkouts are fast.
-    for WORKDIR in "${HOME}/_work/exe/exe" "${HOME}/_work-ci/exe/exe"; do
+    for WORKDIR in "${USER_HOME}/_work/exe/exe" "${USER_HOME}/_work-ci/exe/exe"; do
         if [[ -d "${WORKDIR}/.git" ]]; then
             su - "$USER" -c "GIT_SSH_COMMAND='$GIT_SSH_CMD' git -C ${WORKDIR} fetch --quiet $PREFETCH_URL $PREFETCH_REFSPEC" || true
         fi
@@ -31,10 +31,10 @@ for i in $(seq 0 7); do
 
     # 2. Go module download + build cache (use e1e workdir if it exists, else ci)
     WORKDIR=""
-    if [[ -f "${HOME}/_work/exe/exe/go.mod" ]]; then
-        WORKDIR="${HOME}/_work/exe/exe"
-    elif [[ -f "${HOME}/_work-ci/exe/exe/go.mod" ]]; then
-        WORKDIR="${HOME}/_work-ci/exe/exe"
+    if [[ -f "${USER_HOME}/_work/exe/exe/go.mod" ]]; then
+        WORKDIR="${USER_HOME}/_work/exe/exe"
+    elif [[ -f "${USER_HOME}/_work-ci/exe/exe/go.mod" ]]; then
+        WORKDIR="${USER_HOME}/_work-ci/exe/exe"
     fi
 
     if [[ -n "$WORKDIR" ]]; then
@@ -65,7 +65,7 @@ for i in $(seq 0 7); do
     #    actually create it since the backing images are shared).
     #    Use flock to prevent concurrent cron invocations from starting multiple
     #    VMs when the snapshot doesn't exist yet (e.g., after midnight date rollover).
-    if [[ $i -eq 0 && -d "${HOME}/_work/exe/exe/ops" ]]; then
+    if [[ $i -eq 0 && -d "${USER_HOME}/_work/exe/exe/ops" ]]; then
         # Clean up any VMs left from previous failed snapshot attempts.
         for VM in $(virsh list --name 2>/dev/null | grep "^ci-ubuntu-${USER}" || true); do
             echo "Destroying leftover snapshot VM: $VM"
@@ -73,7 +73,7 @@ for i in $(seq 0 7); do
         done
 
         if flock -n /tmp/edric-ci-snapshot.lock \
-            su - "$USER" -c "cd ${HOME}/_work/exe/exe && ./ops/ci-vm-snapshot.sh"; then
+            su - "$USER" -c "cd ${USER_HOME}/_work/exe/exe && ./ops/ci-vm-snapshot.sh"; then
             echo "Snapshot creation succeeded"
         else
             echo "Snapshot creation failed or skipped (lock held)"
@@ -90,11 +90,11 @@ for i in $(seq 0 7); do
         SNAPSHOT_CACHE=$(ls -td /home/runner0/.cache/exedev/ci-vm-* 2>/dev/null | head -1)
         if [[ -n "$SNAPSHOT_CACHE" ]]; then
             CACHE_NAME=$(basename "$SNAPSHOT_CACHE")
-            DEST="${HOME}/.cache/exedev/${CACHE_NAME}"
+            DEST="${USER_HOME}/.cache/exedev/${CACHE_NAME}"
             if [[ ! -d "$DEST" ]]; then
                 mkdir -p "$DEST"
                 cp /home/runner0/.cache/exedev/${CACHE_NAME}/*.qcow2 "$DEST/" 2>/dev/null || true
-                chown -R "${USER}:${USER}" "${HOME}/.cache"
+                chown -R "${USER}:${USER}" "${USER_HOME}/.cache"
             fi
         fi
     fi
