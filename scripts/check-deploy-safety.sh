@@ -32,25 +32,18 @@ if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
     fi
 fi
 
-# Check if origin/main is an ancestor of HEAD (HEAD contains all of origin/main)
-if ! git merge-base --is-ancestor origin/main HEAD 2>/dev/null; then
-    if [ "$FORCE" = "1" ]; then
-        echo -e "${RED}WARNING: Deploying commit not on origin/main (forced)${NC}" >&2
-    else
-        echo -e "${RED}ERROR: HEAD is not descended from origin/main.${NC}" >&2
-        echo "Push your changes to main or use -f to force deploy anyway." >&2
-        errors=1
-    fi
-fi
+# Fetch origin/main so we check against the actual remote state.
+git fetch origin main --quiet 2>/dev/null || true
 
-# Check if HEAD is equal to or an ancestor of origin/main (no unpushed commits)
-# This prevents deploying local commits that haven't been pushed.
+# Check that origin/main includes HEAD (no deploying commits that aren't on main).
+# This is stable even if origin/main advances during a multi-machine deploy loop,
+# because HEAD remains an ancestor of origin/main as main moves forward.
 # Requires DEPLOY_UNPUSHED=1 to bypass (not -f, to make it harder).
 if ! git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
     if [ "$DEPLOY_UNPUSHED" = "1" ]; then
-        echo -e "${RED}WARNING: Deploying unpushed commit (DEPLOY_UNPUSHED=1)${NC}" >&2
+        echo -e "${RED}WARNING: Deploying commit not on origin/main (DEPLOY_UNPUSHED=1)${NC}" >&2
     else
-        echo -e "${RED}ERROR: HEAD contains commits not in origin/main.${NC}" >&2
+        echo -e "${RED}ERROR: HEAD is not on origin/main.${NC}" >&2
         echo "Push your changes to main, or set DEPLOY_UNPUSHED=1 to deploy anyway." >&2
         errors=1
     fi

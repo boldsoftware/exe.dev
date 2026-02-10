@@ -48,3 +48,17 @@ if ! git cat-file -e "${REMOTE_SHA}^{commit}" 2>/dev/null; then
     echo "To override this error, retry with env var IGNORE_NONLOCAL_COMMIT=1." >&2
     exit 1
 fi
+
+# Check that the deployed SHA is an ancestor of HEAD (no going backwards).
+# This prevents deploying an older commit on top of a newer one.
+if ! git merge-base --is-ancestor "$REMOTE_SHA" HEAD 2>/dev/null; then
+    if [ "$ALLOW_ROLLBACK" = "1" ]; then
+        echo -e "${RED}WARNING: Deploying older commit than what's running (ALLOW_ROLLBACK=1)${NC}" >&2
+    else
+        echo -e "${RED}ERROR: Currently deployed $REMOTE_SHA is not an ancestor of HEAD.${NC}" >&2
+        echo "" >&2
+        echo "This would roll back the deployment. If that's intentional," >&2
+        echo "retry with env var ALLOW_ROLLBACK=1." >&2
+        exit 1
+    fi
+fi
