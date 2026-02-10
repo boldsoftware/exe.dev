@@ -46,7 +46,7 @@ var sshOpts = [...]string{
 	"-o", "KbdInteractiveAuthentication=no",
 	"-o", "ChallengeResponseAuthentication=no",
 	"-o", "IdentitiesOnly=yes",
-	"-o", "ConnectTimeout=5", // 5 second connection timeout
+	"-o", "ConnectTimeout=3", // 3 second connection timeout
 	"-o", "ServerAliveInterval=5", // send keepalive every 5 seconds
 	"-o", "ServerAliveCountMax=2", // disconnect after 2 failed keepalives (10s total)
 }
@@ -170,7 +170,7 @@ func (se *ServerEnv) WaitForBoxSSHServer(ctx context.Context, boxName, keyFile s
 	defer cancel()
 	var err error
 	for {
-		attemptCtx, attemptCancel := context.WithTimeout(ctx, 10*time.Second)
+		attemptCtx, attemptCancel := context.WithTimeout(ctx, 5*time.Second)
 		err = se.BoxSSHCommand(attemptCtx, boxName, keyFile, "true").Run()
 		attemptCancel()
 		if err == nil {
