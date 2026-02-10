@@ -58,9 +58,9 @@ func TestTeams(t *testing.T) {
 		repl := sshToExeDev(t, ownerKeyFile)
 		repl.sendLine("team members")
 		repl.want("Team members:")
-		repl.want(memberEmail)                    // member appears first in output
-		repl.want(ownerEmail)                     // owner appears second
-		repl.want("(owner)")                      // (owner) indicator after owner email
+		repl.want(memberEmail) // member appears first in output
+		repl.want(ownerEmail)  // owner appears second
+		repl.want("(owner)")   // (owner) indicator after owner email
 		repl.wantPrompt()
 		repl.disconnect()
 	})
@@ -71,9 +71,9 @@ func TestTeams(t *testing.T) {
 		repl := sshToExeDev(t, memberKeyFile)
 		repl.sendLine("team members")
 		repl.want("Team members:")
-		repl.want(memberEmail)                    // member appears first in output
-		repl.want(ownerEmail)                     // owner appears second
-		repl.want("(owner)")                      // (owner) indicator after owner email
+		repl.want(memberEmail) // member appears first in output
+		repl.want(ownerEmail)  // owner appears second
+		repl.want("(owner)")   // (owner) indicator after owner email
 		repl.wantPrompt()
 		repl.disconnect()
 	})
