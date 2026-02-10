@@ -28,6 +28,7 @@ func (t *SystemSSHTarget) Type() string {
 // sshArgs returns the base ssh command arguments for connecting to the target.
 func (t *SystemSSHTarget) sshArgs() []string {
 	args := []string{
+		"-T",
 		"-o", "BatchMode=yes",
 	}
 	if t.config.Port != "" {
@@ -150,10 +151,20 @@ func (t *SystemSSHTarget) Send(ctx context.Context, opts SendOptions) error {
 	var stderrBuf strings.Builder
 	sshCmd.Stderr = &stderrBuf
 
+	var sendStderrBuf strings.Builder
+	sendCmd.Stderr = &sendStderrBuf
+
 	sendStdout, err := sendCmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create send stdout pipe: %w", err)
 	}
+
+	// copyDone signals when the background copy goroutine has finished
+	// draining the pipe. We must wait for this before calling cmd.Wait()
+	// because Wait closes the stdout pipe — if the goroutine hasn't
+	// finished reading, data is lost and zfs recv gets a truncated stream.
+	copyDone := make(chan struct{})
+	copyUsed := false
 
 	if bandwidthLimit != "" {
 		// Pipeline: zfs send | pv -L rate | ssh zfs recv
@@ -166,12 +177,14 @@ func (t *SystemSSHTarget) Send(ctx context.Context, opts SendOptions) error {
 		}
 
 		if opts.OnProgress != nil && estimatedSize > 0 {
+			copyUsed = true
 			sshStdin, err := sshCmd.StdinPipe()
 			if err != nil {
 				return fmt.Errorf("failed to create ssh stdin pipe: %w", err)
 			}
 			counter := newCountingWriter(sshStdin, estimatedSize, opts.OnProgress)
 			go func() {
+				defer close(copyDone)
 				buf := make([]byte, 256*1024)
 				for {
 					n, readErr := pvStdout.Read(buf)
@@ -203,28 +216,34 @@ func (t *SystemSSHTarget) Send(ctx context.Context, opts SendOptions) error {
 			return fmt.Errorf("failed to start ssh recv: %w", err)
 		}
 
+		// Wait for copy goroutine to drain the pipe before Wait() closes it
+		if copyUsed {
+			<-copyDone
+		}
 		sendErr := sendCmd.Wait()
 		pvErr := pvCmd.Wait()
 		sshErr := sshCmd.Wait()
 
 		if sshErr != nil {
-			return fmt.Errorf("remote zfs recv failed: %w (stderr: %s)", sshErr, stderrBuf.String())
+			return fmt.Errorf("remote zfs recv failed: %w (recv stderr: %s) (send stderr: %s)", sshErr, stderrBuf.String(), sendStderrBuf.String())
 		}
 		if pvErr != nil {
 			return fmt.Errorf("pv failed: %w", pvErr)
 		}
 		if sendErr != nil {
-			return fmt.Errorf("zfs send failed: %w", sendErr)
+			return fmt.Errorf("zfs send failed: %w (stderr: %s)", sendErr, sendStderrBuf.String())
 		}
 	} else {
 		// Simple pipeline: zfs send | ssh zfs recv
 		if opts.OnProgress != nil && estimatedSize > 0 {
+			copyUsed = true
 			sshStdin, err := sshCmd.StdinPipe()
 			if err != nil {
 				return fmt.Errorf("failed to create ssh stdin pipe: %w", err)
 			}
 			counter := newCountingWriter(sshStdin, estimatedSize, opts.OnProgress)
 			go func() {
+				defer close(copyDone)
 				buf := make([]byte, 256*1024)
 				for {
 					n, readErr := sendStdout.Read(buf)
@@ -251,14 +270,18 @@ func (t *SystemSSHTarget) Send(ctx context.Context, opts SendOptions) error {
 			return fmt.Errorf("failed to start ssh recv: %w", err)
 		}
 
+		// Wait for copy goroutine to drain the pipe before Wait() closes it
+		if copyUsed {
+			<-copyDone
+		}
 		sendErr := sendCmd.Wait()
 		sshErr := sshCmd.Wait()
 
 		if sshErr != nil {
-			return fmt.Errorf("remote zfs recv failed: %w (stderr: %s)", sshErr, stderrBuf.String())
+			return fmt.Errorf("remote zfs recv failed: %w (recv stderr: %s) (send stderr: %s)", sshErr, stderrBuf.String(), sendStderrBuf.String())
 		}
 		if sendErr != nil {
-			return fmt.Errorf("zfs send failed: %w", sendErr)
+			return fmt.Errorf("zfs send failed: %w (stderr: %s)", sendErr, sendStderrBuf.String())
 		}
 	}
 

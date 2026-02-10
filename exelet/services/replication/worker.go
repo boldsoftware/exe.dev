@@ -211,46 +211,73 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 
 	// Send with retries
 	var sendErr error
-	for attempt := 1; attempt <= MaxRetries; attempt++ {
-		// Reset progress for each attempt
-		job.mu.Lock()
-		job.BytesTransferred = 0
-		job.mu.Unlock()
+	sendWithRetries := func(base string) error {
+		for attempt := 1; attempt <= MaxRetries; attempt++ {
+			// Reset progress for each attempt
+			job.mu.Lock()
+			job.BytesTransferred = 0
+			job.mu.Unlock()
 
-		sendErr = wp.target.Send(wp.ctx, SendOptions{
-			VolumeID:     volume.ID,
-			Dataset:      volume.Dataset,
-			SnapshotName: snapshotName,
-			BaseSnapshot: baseSnapshot,
-			OnProgress: func(bytesTransferred, bytesTotal int64) {
-				job.mu.Lock()
-				job.BytesTransferred = bytesTransferred
-				job.BytesTotal = bytesTotal
-				if bytesTotal > 0 {
-					job.ProgressPercent = float64(bytesTransferred) / float64(bytesTotal) * 100
-				}
-				job.mu.Unlock()
-			},
-		})
-		if sendErr == nil {
-			break
-		}
-		wp.log.Warn("send attempt failed", "volume_id", volume.LocalID, "attempt", attempt, "error", sendErr)
-		if attempt < MaxRetries {
-			backoff := []time.Duration{0, 5 * time.Second, 30 * time.Second}[attempt]
-			select {
-			case <-wp.ctx.Done():
-				wp.recordFailure(job, volume, startTime, wp.ctx.Err())
-				return
-			case <-time.After(backoff):
+			err := wp.target.Send(wp.ctx, SendOptions{
+				VolumeID:     volume.ID,
+				Dataset:      volume.Dataset,
+				SnapshotName: snapshotName,
+				BaseSnapshot: base,
+				OnProgress: func(bytesTransferred, bytesTotal int64) {
+					job.mu.Lock()
+					job.BytesTransferred = bytesTransferred
+					job.BytesTotal = bytesTotal
+					if bytesTotal > 0 {
+						job.ProgressPercent = float64(bytesTransferred) / float64(bytesTotal) * 100
+					}
+					job.mu.Unlock()
+				},
+			})
+			if err == nil {
+				return nil
 			}
+			wp.log.Warn("send attempt failed", "volume_id", volume.LocalID, "attempt", attempt, "incremental", base != "", "error", err)
+			if attempt < MaxRetries {
+				backoff := []time.Duration{0, 5 * time.Second, 30 * time.Second}[attempt]
+				select {
+				case <-wp.ctx.Done():
+					return wp.ctx.Err()
+				case <-time.After(backoff):
+				}
+			}
+			sendErr = err
 		}
+		return sendErr
 	}
 
-	if sendErr != nil {
-		wp.recordFailure(job, volume, startTime, fmt.Errorf("failed to send after %d attempts: %w", MaxRetries, sendErr))
-		wp.destroySnapshot(volume.Dataset, snapshotName)
-		return
+	if err := sendWithRetries(baseSnapshot); err != nil {
+		if wp.ctx.Err() != nil {
+			wp.recordFailure(job, volume, startTime, wp.ctx.Err())
+			return
+		}
+		if !incremental {
+			wp.recordFailure(job, volume, startTime, fmt.Errorf("failed to send after %d attempts: %w", MaxRetries, err))
+			wp.destroySnapshot(volume.Dataset, snapshotName)
+			return
+		}
+		// Incremental failed. Destroy remote dataset and retry as full send.
+		wp.log.Warn("incremental send failed, destroying remote and retrying full send", "volume_id", volume.LocalID, "error", err)
+		if deleter, ok := wp.target.(VolumeDeleter); ok {
+			if err := deleter.DeleteVolume(wp.ctx, volume.ID); err != nil {
+				wp.log.Warn("failed to delete remote volume before full send", "volume_id", volume.LocalID, "error", err)
+			}
+		}
+		baseSnapshot = ""
+		incremental = false
+		if err := sendWithRetries(""); err != nil {
+			if wp.ctx.Err() != nil {
+				wp.recordFailure(job, volume, startTime, wp.ctx.Err())
+				return
+			}
+			wp.recordFailure(job, volume, startTime, fmt.Errorf("failed to send (full fallback) after %d attempts: %w", MaxRetries, err))
+			wp.destroySnapshot(volume.Dataset, snapshotName)
+			return
+		}
 	}
 
 	// Cleanup old replication snapshots on target (retention)
