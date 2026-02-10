@@ -16,6 +16,11 @@ table.sparklines th { font-size: 0.75em; color: #666; text-align: left; padding:
   border-bottom: 1px solid #ddd; position: sticky; top: 0; background: #fff; z-index: 1;
   cursor: pointer; user-select: none; white-space: nowrap; }
 table.sparklines th:hover { color: #333; }
+table.sparklines th .sort-arrows { display: inline-flex; flex-direction: column; vertical-align: middle;
+  margin-left: 3px; line-height: 0; gap: 1px; }
+table.sparklines th .sort-arrows .arrow { font-size: 0.7em; color: #ccc; line-height: 1; }
+table.sparklines th .sort-arrows .arrow.active { color: #333; }
+table.sparklines th .col-sub { display: block; font-weight: normal; font-size: 0.85em; color: #999; }
 table.sparklines td { padding: 1px 4px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
 table.sparklines td.vm-name { font-size: 0.8em; white-space: nowrap; max-width: 180px;
   overflow: hidden; text-overflow: ellipsis; }
@@ -23,3 +28,7 @@ table.sparklines td.vm-host { font-size: 0.7em; color: #888; white-space: nowrap
 table.sparklines canvas { display: block; }
 table.sparklines .spark-label { font-size: 0.65em; color: #666; text-align: right;
   white-space: nowrap; line-height: 1.1; }
+table.sparklines .color-dot { display: inline-block; width: 6px; height: 6px;
+  border-radius: 50%; vertical-align: middle; margin-right: 1px; }
+table.sparklines .color-line { display: inline-block; width: 8px; height: 0;
+  border-top: 1.5px dashed; vertical-align: middle; margin-right: 1px; }

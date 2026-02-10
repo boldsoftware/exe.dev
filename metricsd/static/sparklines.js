@@ -28,7 +28,7 @@ const CHART_DEFS = [
     {key: 'memory_nominal_bytes', color: COLORS.ref, dash: [4,3], label: 'Nom'},
     {key: 'memory_swap_bytes', color: COLORS.primary, label: 'Swap'},
   ]},
-  { title: 'CPU %', sortKey: '_cpu_pct', derived: true, lines: [
+  { title: 'CPU', sortKey: '_cpu_pct', derived: true, lines: [
     {key: '_cpu_100', color: COLORS.ref, dash: [4,3], label: 'Nom'},
     {key: '_cpu_pct', color: COLORS.primary, label: 'Used'},
   ]},
@@ -64,8 +64,13 @@ function fmtRate(mbps) {
   return '0';
 }
 
+function fmtCPU(cpuPct, nominalCpus) {
+  const used = (cpuPct / 100) * nominalCpus;
+  return used.toFixed(2) + '/' + nominalCpus;
+}
+
 function fmtVal(v, chartTitle) {
-  if (chartTitle === 'CPU %') return v.toFixed(1) + '%';
+  if (chartTitle === 'CPU') return ''; // handled specially
   if (chartTitle === 'Network') return fmtRate(v);
   return fmtBytes(v);
 }
@@ -133,6 +138,8 @@ function drawSparkline(canvas, rows, chartDef) {
     else ctx.setLineDash([]);
 
     let started = false;
+    let pointCount = 0;
+    let lastX, lastY;
     for (const r of rows) {
       const v = r[line.key];
       if (v == null) { started = false; continue; }
@@ -140,8 +147,18 @@ function drawSparkline(canvas, rows, chartDef) {
       const y = pad + plotH - (v / yMax) * plotH;
       if (!started) { ctx.moveTo(x, y); started = true; }
       else ctx.lineTo(x, y);
+      lastX = x; lastY = y;
+      pointCount++;
     }
     ctx.stroke();
+
+    // Draw a dot for single-point data so it's visible
+    if (pointCount === 1 && !line.dash) {
+      ctx.beginPath();
+      ctx.fillStyle = line.color;
+      ctx.arc(lastX, lastY, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   ctx.setLineDash([]);
 }
@@ -243,18 +260,54 @@ function lastNonNull(rows, key) {
       const hr = document.createElement('tr');
       for (const col of COLUMNS) {
         const th = document.createElement('th');
-        th.textContent = col.title;
-        th.style.cursor = 'pointer';
-        th.style.userSelect = 'none';
-        if (sortKey === col.key) {
-          th.textContent += sortDesc ? ' ▼' : ' ▲';
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = col.title;
+        th.appendChild(titleSpan);
+
+        // Sort arrows
+        const arrows = document.createElement('span');
+        arrows.className = 'sort-arrows';
+        const upArrow = document.createElement('span');
+        upArrow.className = 'arrow' + (sortKey === col.key && !sortDesc ? ' active' : '');
+        upArrow.textContent = '▲';
+        const downArrow = document.createElement('span');
+        downArrow.className = 'arrow' + (sortKey === col.key && sortDesc ? ' active' : '');
+        downArrow.textContent = '▼';
+        arrows.appendChild(upArrow);
+        arrows.appendChild(downArrow);
+        th.appendChild(arrows);
+
+        // Legend from chart def
+        const chartDef = CHART_DEFS.find(c => c.sortKey === col.key);
+        if (chartDef) {
+          const legend = document.createElement('span');
+          legend.className = 'col-sub';
+          for (let i = 0; i < chartDef.lines.length; i++) {
+            const line = chartDef.lines[i];
+            if (i > 0) {
+              legend.appendChild(document.createTextNode(' / '));
+            }
+            if (line.dash) {
+              const dashEl = document.createElement('span');
+              dashEl.className = 'color-line';
+              dashEl.style.borderColor = line.color;
+              legend.appendChild(dashEl);
+            } else {
+              const dot = document.createElement('span');
+              dot.className = 'color-dot';
+              dot.style.backgroundColor = line.color;
+              legend.appendChild(dot);
+            }
+            legend.appendChild(document.createTextNode(line.label));
+          }
+          th.appendChild(legend);
         }
+
         th.addEventListener('click', () => {
           if (sortKey === col.key) {
             sortDesc = !sortDesc;
           } else {
             sortKey = col.key;
-            // Default descending for metrics, ascending for name/host
             sortDesc = col.key !== 'name' && col.key !== 'host';
           }
           render();
@@ -299,13 +352,20 @@ function lastNonNull(rows, key) {
 
           const labelDiv = document.createElement('div');
           labelDiv.className = 'spark-label';
-          const parts = [];
-          for (const line of chartDef.lines) {
-            if (line.dash) continue;
-            const v = lastNonNull(rows, line.key);
-            parts.push(fmtVal(v, chartDef.title));
+
+          if (chartDef.title === 'CPU') {
+            const cpuPct = lastNonNull(rows, '_cpu_pct');
+            const cpuNom = lastNonNull(rows, '_cpu_100') > 0 ? rows[rows.length - 1].cpu_nominal : 0;
+            labelDiv.textContent = fmtCPU(cpuPct, cpuNom);
+          } else {
+            const parts = [];
+            for (const line of chartDef.lines) {
+              if (line.dash) continue;
+              const v = lastNonNull(rows, line.key);
+              parts.push(fmtVal(v, chartDef.title));
+            }
+            labelDiv.innerHTML = parts.join('<br>');
           }
-          labelDiv.innerHTML = parts.join('<br>');
           wrap.appendChild(labelDiv);
 
           td.appendChild(wrap);
