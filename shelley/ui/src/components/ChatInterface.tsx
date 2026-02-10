@@ -1711,7 +1711,7 @@ function ChatInterface({
             </>
           ) : agentWorking && conversationId ? (
             // Agent working - show status with stop button and context bar
-            <div className="status-bar-active">
+            <div className="status-bar-active" data-testid="agent-thinking">
               <div className="status-working-group">
                 <AnimatedWorkingStatus />
                 <button

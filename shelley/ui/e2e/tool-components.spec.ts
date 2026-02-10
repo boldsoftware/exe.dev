@@ -32,10 +32,10 @@ test.describe('Tool Component Verification', () => {
     await expect(bashTool.locator('.bash-tool-emoji')).toBeVisible();
     await expect(bashTool.locator('.bash-tool-command')).toBeVisible();
 
-    // Verify think tool uses ThinkTool component (has tool class with think emoji)
-    const thinkTool = page.locator('.tool').filter({ hasText: 'I\'m thinking about the best approach' });
-    await expect(thinkTool.first()).toBeVisible();
-    await expect(thinkTool.locator('.tool-emoji').filter({ hasText: '💭' }).first()).toBeVisible();
+    // Verify thinking content appears (has thinking-content class with 💭 emoji)
+    const thinkingContent = page.locator('.thinking-content').filter({ hasText: 'I\'m thinking about the best approach' });
+    await expect(thinkingContent.first()).toBeVisible();
+    await expect(thinkingContent.locator('text=💭').first()).toBeVisible();
 
     // Verify patch tool uses PatchTool component (has patch-tool class)
     const patchTool = page.locator('.patch-tool').first();
@@ -114,14 +114,19 @@ test.describe('Tool Component Verification', () => {
     await messageInput.fill('think: This is a long thought that should be truncated in the header display');
     await sendButton.click();
 
-    await expect(page.locator('[data-testid="tool-call-completed"]').first()).toBeVisible({ timeout: 30000 });
+    // Wait for the thinking content to appear
+    await page.waitForFunction(
+      () => document.body.textContent?.includes("I've considered my approach.") ?? false,
+      undefined,
+      { timeout: 30000 }
+    );
 
-    // Verify think tool shows truncated thoughts in the header
-    const thinkTool = page.locator('.tool').filter({ hasText: 'This is a long thought' }).first();
-    await expect(thinkTool.locator('.tool-command')).toBeVisible();
-    // The text should be truncated (50 chars max)
-    const headerText = await thinkTool.locator('.tool-command').textContent();
-    expect(headerText?.startsWith('This is a long thought')).toBe(true);
+    // Verify thinking content shows the thought text with 💭 emoji
+    const thinkingContent = page.locator('.thinking-content').filter({ hasText: 'This is a long thought' }).first();
+    await expect(thinkingContent).toBeVisible();
+    // The thinking text should be visible
+    const thinkingText = await thinkingContent.textContent();
+    expect(thinkingText).toContain('This is a long thought');
   });
 
   test('browser navigate tool shows URL in header', async ({ page }) => {
@@ -160,8 +165,8 @@ test.describe('Tool Component Verification', () => {
     // Use specific locator to find the successful patch (not the failed ones from other tests)
     const patchTool = page.locator('.patch-tool[data-testid="tool-call-completed"]').filter({ hasText: 'test-patch-success.txt' }).first();
     await expect(patchTool).toBeVisible({ timeout: 30000 });
-    // Wait for Monaco editor to be fully rendered (only visible for successful patches)
-    await expect(patchTool.locator('.patch-tool-monaco-editor')).toBeVisible({ timeout: 10000 });
+    // Wait for details section to be fully rendered (starts expanded for successful patches)
+    await expect(patchTool.locator('.patch-tool-details')).toBeVisible({ timeout: 10000 });
 
     // Get console errors before toggling
     const errors: string[] = [];
@@ -173,19 +178,17 @@ test.describe('Tool Component Verification', () => {
     await header.click();
     await expect(patchTool.locator('.patch-tool-details')).toBeHidden();
 
-    // Expand - Monaco should reinitialize
+    // Expand - diff should reinitialize
     await header.click();
-    await expect(patchTool.locator('.patch-tool-details')).toBeVisible();
-    await expect(patchTool.locator('.patch-tool-monaco-editor')).toBeVisible({ timeout: 10000 });
+    await expect(patchTool.locator('.patch-tool-details')).toBeVisible({ timeout: 10000 });
 
     // Collapse again
     await header.click();
     await expect(patchTool.locator('.patch-tool-details')).toBeHidden();
 
-    // Expand again - this was triggering "Cannot add model because it already exists!" in Firefox
+    // Expand again
     await header.click();
-    await expect(patchTool.locator('.patch-tool-details')).toBeVisible();
-    await expect(patchTool.locator('.patch-tool-monaco-editor')).toBeVisible({ timeout: 10000 });
+    await expect(patchTool.locator('.patch-tool-details')).toBeVisible({ timeout: 10000 });
 
     // Check no Monaco model errors occurred
     const modelErrors = errors.filter(e => e.includes('model') && e.includes('already exists'));

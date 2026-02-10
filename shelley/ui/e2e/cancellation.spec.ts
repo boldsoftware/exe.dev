@@ -24,7 +24,7 @@ test.describe('Conversation Cancellation', () => {
     await page.waitForTimeout(500);
 
     // Verify the cancel button appears when agent is working
-    const cancelButton = page.locator('button:has-text("Cancel")');
+    const cancelButton = page.locator('button:has-text("Stop")');
     await expect(cancelButton).toBeVisible();
 
     // Click the cancel button
@@ -38,7 +38,7 @@ test.describe('Conversation Cancellation', () => {
     await expect(page.locator('[data-testid="agent-thinking"]')).not.toBeVisible({ timeout: 5000 });
 
     // Verify we see the cancelled tool result
-    await expect(page.locator('text=/cancelled/i')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=/cancelled/i').first()).toBeVisible({ timeout: 5000 });
 
     // Verify we see the [Operation cancelled] message
     await expect(page.locator('text=/\\[Operation cancelled\\]/i')).toBeVisible({ timeout: 5000 });
@@ -51,23 +51,20 @@ test.describe('Conversation Cancellation', () => {
     await expect(page.locator('[data-testid="agent-thinking"]')).not.toBeVisible({ timeout: 2000 });
 
     // Cancel button should not be visible
-    await expect(page.locator('button:has-text("Cancel")')).not.toBeVisible();
+    await expect(page.locator('button:has-text("Stop")')).not.toBeVisible();
 
     // The cancelled messages should still be visible
-    await expect(page.locator('text=/cancelled/i')).toBeVisible();
+    await expect(page.locator('text=/cancelled/i').first()).toBeVisible();
     await expect(page.locator('text=/\\[Operation cancelled\\]/i')).toBeVisible();
 
     // Verify we can continue the conversation after cancellation
     await input.fill('echo: test after cancel');
     await input.press('Enter');
 
-    // Agent should start working again
-    await expect(page.locator('[data-testid="agent-thinking"]')).toBeVisible({ timeout: 5000 });
+    // Should get a response (the echo response may come so fast the thinking indicator is never visible)
+    await expect(page.locator('text=test after cancel').first()).toBeVisible({ timeout: 10000 });
 
-    // Should get a response
-    await expect(page.locator('text=test after cancel')).toBeVisible({ timeout: 10000 });
-
-    // Agent should stop working
+    // Agent should not be working after response
     await expect(page.locator('[data-testid="agent-thinking"]')).not.toBeVisible({ timeout: 5000 });
   });
 
@@ -90,7 +87,7 @@ test.describe('Conversation Cancellation', () => {
     // Wait a moment then cancel
     await page.waitForTimeout(500);
 
-    const cancelButton = page.locator('button:has-text("Cancel")');
+    const cancelButton = page.locator('button:has-text("Stop")');
     await expect(cancelButton).toBeVisible();
     await cancelButton.click();
 
@@ -122,7 +119,7 @@ test.describe('Conversation Cancellation', () => {
     await page.waitForTimeout(500);
 
     // Cancel
-    const cancelButton = page.locator('button:has-text("Cancel")');
+    const cancelButton = page.locator('button:has-text("Stop")');
     await cancelButton.click();
 
     // Agent should stop working immediately (without reload)

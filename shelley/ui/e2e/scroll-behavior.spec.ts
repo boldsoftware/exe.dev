@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Scroll behavior', () => {
   test('shows scroll-to-bottom button when scrolled up, auto-scrolls when at bottom', async ({ page }) => {
     // Navigate to app
-    await page.goto('http://localhost:9000');
+    await page.goto('/');
     
     // Wait for the app to load
     await page.waitForSelector('[data-testid="message-input"]');

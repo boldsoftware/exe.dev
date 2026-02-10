@@ -96,6 +96,7 @@ test.describe('File Upload via Paste and Drag', () => {
 
     const response = await request.post('/api/upload', {
       headers: {
+        'X-Shelley-Request': '1',
         'Content-Type': `multipart/form-data; boundary=${boundary}`
       },
       data: Buffer.from(body)
@@ -125,6 +126,7 @@ test.describe('File Upload via Paste and Drag', () => {
 
     const uploadResponse = await request.post('/api/upload', {
       headers: {
+        'X-Shelley-Request': '1',
         'Content-Type': `multipart/form-data; boundary=${boundary}`
       },
       data: Buffer.from(body)
@@ -134,7 +136,11 @@ test.describe('File Upload via Paste and Drag', () => {
     const { path: filePath } = await uploadResponse.json();
 
     // Now read the file via the read endpoint
-    const readResponse = await request.get(`/api/read?path=${encodeURIComponent(filePath)}`);
+    const readResponse = await request.get(`/api/read?path=${encodeURIComponent(filePath)}`, {
+      headers: {
+        'X-Shelley-Request': '1'
+      }
+    });
     expect(readResponse.status()).toBe(200);
 
     const content = await readResponse.text();

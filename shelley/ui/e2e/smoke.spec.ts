@@ -7,7 +7,7 @@ test.describe('Shelley Smoke Tests', () => {
     
     // Just verify the page loads with a title
     const title = await page.title();
-    expect(title).toBe('Shelley');
+    expect(title).toBe('Shelley Agent');
   });
 
   test('can find message input with proper aria label', async ({ page }) => {
@@ -45,7 +45,7 @@ test.describe('Shelley Smoke Tests', () => {
     await expect(messageInput).toHaveValue('');
     
     // Verify placeholder text is present
-    await expect(messageInput).toHaveAttribute('placeholder', /Type your message/);
+    await expect(messageInput).toHaveAttribute('placeholder', 'Message...');
   });
   
   test('send button is disabled when input is empty', async ({ page }) => {

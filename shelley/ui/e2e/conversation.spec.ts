@@ -115,14 +115,15 @@ test.describe('Shelley Conversation Tests', () => {
       { timeout: 30000 }
     );
 
-    await messageInput.fill('echo: follow up');
+    // Use delay command so the thinking indicator is visible long enough to test
+    await messageInput.fill('delay: 2');
     await sendButton.click();
 
     const thinkingIndicator = page.getByTestId('agent-thinking');
-    await expect(thinkingIndicator).toBeVisible({ timeout: 2000 });
+    await expect(thinkingIndicator).toBeVisible({ timeout: 5000 });
 
     await page.waitForFunction(
-      () => document.body.textContent?.includes('follow up') ?? false,
+      () => document.body.textContent?.includes('Delayed for 2 seconds') ?? false,
       undefined,
       { timeout: 30000 }
     );
@@ -255,16 +256,16 @@ test.describe('Shelley Conversation Tests', () => {
     await messageInput.fill('think: I need to analyze this problem');
     await sendButton.click();
     
-    // The predictable model should use the think tool
+    // The predictable model should return thinking content and text response
     await page.waitForFunction(
-      () => document.body.textContent?.includes('Let me think about this.') ?? false,
+      () => document.body.textContent?.includes('I\'ve considered my approach.') ?? false,
       undefined,
       { timeout: 30000 }
     );
     
-    // Verify think tool usage appears in the UI
-    await expect(page.locator('[data-testid="tool-call-completed"]').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('text=think').first()).toBeVisible();
+    // Verify thinking content appears in the UI (rendered as .thinking-content with 💭 emoji, not a tool call)
+    await expect(page.locator('[data-testid="thinking-content"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=💭').first()).toBeVisible();
   });
   
   test('handles patch tool correctly', async ({ page }) => {
