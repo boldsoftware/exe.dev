@@ -1,3 +1,15 @@
+-- account_credit_ledger should have been created in 081, but some staging
+-- databases recorded 081 without the table. Ensure the base table exists
+-- before adding hourly upsert columns.
+CREATE TABLE IF NOT EXISTS account_credit_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id TEXT NOT NULL REFERENCES accounts(id),
+    amount INTEGER NOT NULL,
+    stripe_event_id TEXT UNIQUE,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_account_credit_ledger_account ON account_credit_ledger(account_id);
+
 ALTER TABLE account_credit_ledger ADD COLUMN hour_bucket DATETIME;
 ALTER TABLE account_credit_ledger ADD COLUMN credit_type TEXT;
 

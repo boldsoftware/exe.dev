@@ -74,6 +74,93 @@ func TestRunMigrationsUpdateTable(t *testing.T) {
 	}
 }
 
+func TestRunMigrationsRepairsMissingAccountCreditLedger(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "missing-account-credit-ledger.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open sqlite database: %v", err)
+	}
+	t.Cleanup(func() {
+		if cerr := db.Close(); cerr != nil {
+			t.Fatalf("failed to close database: %v", cerr)
+		}
+	})
+
+	if err := sqlite.InitDB(db, 1); err != nil {
+		t.Fatalf("failed to initialize sqlite database: %v", err)
+	}
+
+	log := tslog.Slogger(t)
+
+	if err := RunMigrations(log, db); err != nil {
+		t.Fatalf("failed to run migrations: %v", err)
+	}
+
+	if _, err := db.Exec("DROP TABLE account_credit_ledger"); err != nil {
+		t.Fatalf("failed to drop account_credit_ledger: %v", err)
+	}
+	if _, err := db.Exec("DELETE FROM migrations WHERE migration_number = 85"); err != nil {
+		t.Fatalf("failed to delete migration 085 record: %v", err)
+	}
+
+	if err := RunMigrations(log, db); err != nil {
+		t.Fatalf("failed to rerun migrations with missing account_credit_ledger: %v", err)
+	}
+
+	var tableName string
+	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='account_credit_ledger'").Scan(&tableName)
+	if err != nil {
+		t.Fatalf("expected account_credit_ledger table to exist after migration rerun: %v", err)
+	}
+
+	rows, err := db.Query("PRAGMA table_info(account_credit_ledger)")
+	if err != nil {
+		t.Fatalf("failed to read account_credit_ledger columns: %v", err)
+	}
+	defer rows.Close()
+
+	columns := make(map[string]bool)
+	for rows.Next() {
+		var (
+			cid        int
+			columnName string
+			columnType string
+			notNull    int
+			defaultVal sql.NullString
+			primaryKey int
+		)
+		if err := rows.Scan(&cid, &columnName, &columnType, &notNull, &defaultVal, &primaryKey); err != nil {
+			t.Fatalf("failed to scan account_credit_ledger column info: %v", err)
+		}
+		columns[columnName] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("failed iterating account_credit_ledger columns: %v", err)
+	}
+
+	for _, column := range []string{"id", "account_id", "amount", "stripe_event_id", "created_at", "hour_bucket", "credit_type"} {
+		if !columns[column] {
+			t.Fatalf("missing expected account_credit_ledger column %q after migration rerun", column)
+		}
+	}
+
+	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_account_credit_ledger_account_hour_type'").Scan(&tableName)
+	if err != nil {
+		t.Fatalf("expected idx_account_credit_ledger_account_hour_type index to exist: %v", err)
+	}
+
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM migrations WHERE migration_number = 85").Scan(&count)
+	if err != nil {
+		t.Fatalf("failed to query migration 085 record: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected migration 085 to be recorded once, got %d", count)
+	}
+}
+
 func migrationNumbersFromFS(t *testing.T) []int {
 	t.Helper()
 
