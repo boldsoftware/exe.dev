@@ -421,6 +421,9 @@ func TestConversationService_ArchiveUnarchive(t *testing.T) {
 		t.Fatalf("Failed to create test conversation: %v", err)
 	}
 
+	// Store original updated_at timestamp
+	originalUpdatedAt := conv.UpdatedAt
+
 	// Test ArchiveConversation
 	archivedConv, err := db.ArchiveConversation(ctx, conv.ConversationID)
 	if err != nil {
@@ -431,6 +434,11 @@ func TestConversationService_ArchiveUnarchive(t *testing.T) {
 		t.Error("Expected conversation to be archived")
 	}
 
+	// Verify that updated_at was NOT modified by archiving
+	if archivedConv.UpdatedAt != originalUpdatedAt {
+		t.Errorf("ArchiveConversation should not modify updated_at: got %v, want %v", archivedConv.UpdatedAt, originalUpdatedAt)
+	}
+
 	// Test UnarchiveConversation
 	unarchivedConv, err := db.UnarchiveConversation(ctx, conv.ConversationID)
 	if err != nil {
@@ -439,6 +447,11 @@ func TestConversationService_ArchiveUnarchive(t *testing.T) {
 
 	if unarchivedConv.Archived {
 		t.Error("Expected conversation to be unarchived")
+	}
+
+	// Verify that updated_at was NOT modified by unarchiving
+	if unarchivedConv.UpdatedAt != originalUpdatedAt {
+		t.Errorf("UnarchiveConversation should not modify updated_at: got %v, want %v", unarchivedConv.UpdatedAt, originalUpdatedAt)
 	}
 }
 

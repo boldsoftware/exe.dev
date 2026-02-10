@@ -310,6 +310,15 @@ function App() {
         setSubagentUpdate(update.conversation);
         return;
       }
+
+      // If the conversation is archived, remove it from the active list
+      if (update.conversation.archived) {
+        setConversations((prev) =>
+          prev.filter((c) => c.conversation_id !== update.conversation!.conversation_id),
+        );
+        return;
+      }
+
       setConversations((prev) => {
         // Check if this conversation already exists
         const existingIndex = prev.findIndex(
@@ -473,13 +482,15 @@ function App() {
   };
 
   const handleConversationUnarchived = (conversation: Conversation) => {
-    // Add the unarchived conversation back to the list if not already present
-    setConversations((prev) => {
-      if (prev.some((c) => c.conversation_id === conversation.conversation_id)) {
-        return prev;
-      }
-      return [{ ...conversation, working: false }, ...prev];
-    });
+    // Add back to active list if not already present (SSE may also deliver this).
+    // We need this handler in case no SSE connection is active (e.g., when all
+    // conversations are archived). If SSE also delivers the update,
+    // handleConversationListUpdate will find it already present and update in-place.
+    setConversations((prev) =>
+      prev.some((c) => c.conversation_id === conversation.conversation_id)
+        ? prev
+        : [{ ...conversation, working: false }, ...prev],
+    );
     // Update viewedConversation so archived state reflects immediately
     if (conversation.conversation_id === currentConversationId) {
       setViewedConversation(conversation);
