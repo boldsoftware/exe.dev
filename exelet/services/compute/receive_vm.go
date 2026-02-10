@@ -19,6 +19,17 @@ import (
 
 // ReceiveVM receives a VM from another exelet.
 func (s *Service) ReceiveVM(stream api.ComputeService_ReceiveVMServer) error {
+	err := s.receiveVM(stream)
+	// Context cancellation during migration is expected:
+	// the caller disconnects or the migration completes.
+	// Return the context error directly.
+	if err != nil && stream.Context().Err() != nil {
+		return status.FromContextError(stream.Context().Err()).Err()
+	}
+	return err
+}
+
+func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 	ctx := stream.Context()
 
 	// Receive start request
