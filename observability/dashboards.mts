@@ -5459,6 +5459,107 @@ function makeMetricsdDashboard() {
   return dash;
 }
 
+// Deploy Dashboard - Top Metrics: high-level overview for deploy monitoring
+function makeDeployTopMetricsDashboard() {
+  resetLayout();
+  const dash = new DashboardBuilder("Deploy Dashboard - Top Metrics");
+  dash
+    .uid("deploy-top-metrics-dashboard")
+    .tags(["generated", "exe.dev", "deploy"])
+    .refresh("30s")
+    .time({ from: "now-6h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  addStageVariable(dash);
+
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "deploy-top-metrics-dashboard");
+  const STAGE_FILTER = 'stage=~"$stage"';
+  const WEB_FILTER = `proxy="false",${STAGE_FILTER}`;
+
+  addReadmePanel(dash);
+
+  // Deployed Versions table
+  const deployedVersionsTable = new TableBuilder()
+    .title("Deployed Versions")
+    .gridPos(gp({ w: 24, h: 4 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`count by (job, commit) (git_build_info{${STAGE_FILTER}})`)
+        .instant()
+        .format(PromQueryFormat.Table)
+    );
+  dash.withPanel(deployedVersionsTable);
+
+  // Web Requests by Status Code
+  dash.withRow(
+    new RowBuilder("Web Requests").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  const webStatusCodePanel = new TimeseriesBuilder()
+    .title("Web Requests by Status Code")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(rate(http_requests_total{${WEB_FILTER}}[$__rate_interval])) by (code)`)
+        .legendFormat("{{code}}")
+    );
+  dash.withPanel(webStatusCodePanel);
+
+  addTimeseriesChart(
+    "Web 5xx Error Rate",
+    `sum(rate(http_requests_total{${WEB_FILTER},code=~"5.."}[$__rate_interval])) by (code)`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{code}}"),
+    }
+  );
+
+  // Error Logs
+  dash.withRow(
+    new RowBuilder("Error Logs").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "Exelet Error Logs",
+    `sum(increase(logs_total{job="exelet",level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (instance)`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Exed Error Logs",
+    `sum(increase(logs_total{job="exed",level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (instance)`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  // LLM Gateway
+  dash.withRow(
+    new RowBuilder("LLM Gateway").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "LLM Gateway Request Rate",
+    `sum(rate(llm_requests_total{${STAGE_FILTER}}[$__rate_interval])) by (api_type)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 24, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{api_type}}"),
+    }
+  );
+
+  return dash;
+}
+
 async function main() {
   if (TOKEN === undefined) {
     console.error(
@@ -5485,6 +5586,7 @@ async function main() {
   await createDashboard(makeZFSDashboard());
   await createDashboard(makeAbuseSignalsDashboard());
   await createDashboard(makeMetricsdDashboard());
+  await createDashboard(makeDeployTopMetricsDashboard());
 
   // Create alerts after dashboards are created
   await createAlerts();
