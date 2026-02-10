@@ -325,6 +325,7 @@ func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, us
 		userID:       userID,
 	}
 	proxy := &httputil.ReverseProxy{
+		FlushInterval: -1, // Flush immediately for SSE streaming
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.Out.Header.Del("Authorization") // Remove our bearer token so we don't leak them to the origin server.
 			r.Out.Header.Set("X-API-Key", m.apiKeys.Anthropic)
@@ -360,6 +361,7 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userI
 		userID:       userID,
 	}
 	proxy := &httputil.ReverseProxy{
+		FlushInterval: -1, // Flush immediately for SSE streaming
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.Out.Header.Del("Authorization") // Remove our bearer token so we don't leak them to the origin server.
 			m.log.InfoContext(r.In.Context(), "ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
@@ -397,6 +399,7 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, us
 		userID:       userID,
 	}
 	proxy := &httputil.ReverseProxy{
+		FlushInterval: -1, // Flush immediately for SSE streaming
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.Out.Header.Del("Authorization") // Remove our bearer token so we don't leak them to the origin server.
 			m.log.InfoContext(r.In.Context(), "ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)

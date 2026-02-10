@@ -1,6 +1,7 @@
 package llmgateway
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -979,5 +980,94 @@ func TestGateway_CostHeaders(t *testing.T) {
 		t.Error("missing Exedev-Gateway-Cost header")
 	} else {
 		t.Logf("Exedev-Gateway-Cost: %s", costHeader)
+	}
+}
+
+func TestSSEStreamingNotBuffered(t *testing.T) {
+	// Create a backend that sends SSE events with delays
+	eventDelayMs := 50
+	eventCount := 5
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+
+		for i := 0; i < eventCount; i++ {
+			fmt.Fprintf(w, "data: event %d\n\n", i)
+			flusher.Flush()
+			time.Sleep(time.Duration(eventDelayMs) * time.Millisecond)
+		}
+	}))
+	defer backend.Close()
+
+	// Simulate the gateway's proxy setup with pipe wrapping (like in modifyResponse)
+	backendURL, _ := url.Parse(backend.URL)
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		revProxy := &httputil.ReverseProxy{
+			FlushInterval: -1, // This is the key setting we're testing
+			Rewrite: func(pr *httputil.ProxyRequest) {
+				pr.SetURL(backendURL)
+			},
+			ModifyResponse: func(resp *http.Response) error {
+				if resp.Header.Get("Content-Type") != "text/event-stream" {
+					return nil
+				}
+
+				// Wrap the body with an io.Pipe like the gateway does for accounting
+				body := resp.Body
+				bodyReader, bodyWriter := io.Pipe()
+				resp.Body = bodyReader
+
+				go func() {
+					scanner := bufio.NewScanner(body)
+					for scanner.Scan() {
+						line := scanner.Text()
+						fmt.Fprintln(bodyWriter, line)
+					}
+					bodyWriter.Close()
+				}()
+
+				return nil
+			},
+		}
+		revProxy.ServeHTTP(w, r)
+	}))
+	defer proxy.Close()
+
+	// Measure the timing of events received from the proxy
+	resp, err := http.Get(proxy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var timestamps []time.Time
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data:") {
+			timestamps = append(timestamps, time.Now())
+		}
+	}
+
+	if len(timestamps) != eventCount {
+		t.Fatalf("expected %d events, got %d", eventCount, len(timestamps))
+	}
+
+	// Check that events arrived with at least some delay between them
+	// (not all at once due to buffering)
+	minExpectedDelayMs := eventDelayMs / 2 // Allow some slack
+	for i := 1; i < len(timestamps); i++ {
+		delay := timestamps[i].Sub(timestamps[i-1])
+		if delay < time.Duration(minExpectedDelayMs)*time.Millisecond {
+			t.Errorf("event %d arrived too quickly after event %d: %v (expected at least %dms)",
+				i, i-1, delay, minExpectedDelayMs)
+		}
 	}
 }
