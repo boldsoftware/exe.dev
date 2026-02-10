@@ -1534,6 +1534,17 @@ func (s *Server) handleCreditsBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to load billing status for credit purchase", "error", err, "user_id", userID)
+		http.Error(w, "Failed to load billing status", http.StatusInternalServerError)
+		return
+	}
+	if !userIsPaying(&billingStatus) {
+		http.Redirect(w, r, "/billing/update?source=credits", http.StatusSeeOther)
+		return
+	}
+
 	baseURL := getScheme(r) + "://" + r.Host
 	checkoutURL, err := s.billing.BuyCredits(r.Context(), account.ID, &billing.BuyCreditsParams{
 		Email:      user.Email,

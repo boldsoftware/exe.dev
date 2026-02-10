@@ -2274,6 +2274,41 @@ func TestCreditPurchase_BuyRedirectsToStripe(t *testing.T) {
 	}
 }
 
+func TestCreditPurchase_BuyRequiresActiveBilling(t *testing.T) {
+	server := newTestServer(t)
+	user, cookieValue := createUserWithAccount(t, server, "credits-renew@example.com", "exe_renew_credits")
+
+	_, err := withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		AccountID: "exe_renew_credits",
+		EventType: "canceled",
+		EventAt:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("InsertBillingEvent(canceled): %v", err)
+	}
+
+	form := url.Values{}
+	form.Add("amount", "100000")
+	req := httptest.NewRequest("POST", "/credits/buy", strings.NewReader(form.Encode()))
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 redirect, got %d: %s", w.Code, w.Body.String())
+	}
+	location := w.Header().Get("Location")
+	if !strings.HasPrefix(location, "/billing/update") {
+		t.Errorf("Expected redirect to billing update, got %q", location)
+	}
+	if strings.Contains(location, "checkout.stripe.com") {
+		t.Errorf("Expected no Stripe checkout redirect for canceled billing, got %q", location)
+	}
+	_ = user
+}
+
 func TestCreditPurchase_BuyInvalidAmount(t *testing.T) {
 	server := newTestServer(t)
 	_, cookieValue := createUserWithAccount(t, server, "credits-invalid@example.com", "exe_invalid_credits")
