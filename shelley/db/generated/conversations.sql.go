@@ -11,7 +11,7 @@ import (
 
 const archiveConversation = `-- name: ArchiveConversation :one
 UPDATE conversations
-SET archived = TRUE, updated_at = CURRENT_TIMESTAMP
+SET archived = TRUE
 WHERE conversation_id = ?
 RETURNING conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived, parent_conversation_id, model
 `
@@ -493,7 +493,7 @@ func (q *Queries) SearchConversationsWithMessages(ctx context.Context, arg Searc
 
 const unarchiveConversation = `-- name: UnarchiveConversation :one
 UPDATE conversations
-SET archived = FALSE, updated_at = CURRENT_TIMESTAMP
+SET archived = FALSE
 WHERE conversation_id = ?
 RETURNING conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived, parent_conversation_id, model
 `

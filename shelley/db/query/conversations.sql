@@ -72,13 +72,13 @@ SELECT COUNT(*) FROM conversations WHERE archived = TRUE;
 
 -- name: ArchiveConversation :one
 UPDATE conversations
-SET archived = TRUE, updated_at = CURRENT_TIMESTAMP
+SET archived = TRUE
 WHERE conversation_id = ?
 RETURNING *;
 
 -- name: UnarchiveConversation :one
 UPDATE conversations
-SET archived = FALSE, updated_at = CURRENT_TIMESTAMP
+SET archived = FALSE
 WHERE conversation_id = ?
 RETURNING *;
 

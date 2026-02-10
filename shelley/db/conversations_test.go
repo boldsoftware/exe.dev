@@ -604,3 +604,213 @@ func TestConversationService_UpdateConversationCwd(t *testing.T) {
 		t.Errorf("Expected cwd %s, got %s", newCwd, *updatedConv.Cwd)
 	}
 }
+
+func TestArchivedConversations_SortedByUpdatedAt_NotArchiveTime(t *testing.T) {
+	// This test verifies the fix for a bug where archiving a conversation
+	// would update its updated_at timestamp, causing archived conversations
+	// to be sorted by archive time rather than by their last activity time.
+	//
+	// The correct behavior is: archived conversations should be sorted by
+	// updated_at (which reflects the last message/activity time), NOT by
+	// when they were archived.
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Create three conversations
+	convA, err := db.CreateConversation(ctx, stringPtr("conv-oldest-activity"), true, nil, nil)
+	if err != nil {
+		t.Fatalf("Failed to create conversation A: %v", err)
+	}
+	convB, err := db.CreateConversation(ctx, stringPtr("conv-newest-activity"), true, nil, nil)
+	if err != nil {
+		t.Fatalf("Failed to create conversation B: %v", err)
+	}
+	convC, err := db.CreateConversation(ctx, stringPtr("conv-middle-activity"), true, nil, nil)
+	if err != nil {
+		t.Fatalf("Failed to create conversation C: %v", err)
+	}
+
+	// Simulate different activity times by directly setting updated_at.
+	// SQLite CURRENT_TIMESTAMP has second precision, so we use explicit
+	// timestamps to avoid timing issues.
+	//
+	// Activity order (oldest to newest): A < C < B
+	err = db.Pool().Exec(ctx, "UPDATE conversations SET updated_at = '2024-01-01 10:00:00' WHERE conversation_id = ?", convA.ConversationID)
+	if err != nil {
+		t.Fatalf("Failed to set updated_at for conv A: %v", err)
+	}
+	err = db.Pool().Exec(ctx, "UPDATE conversations SET updated_at = '2024-01-01 12:00:00' WHERE conversation_id = ?", convC.ConversationID)
+	if err != nil {
+		t.Fatalf("Failed to set updated_at for conv C: %v", err)
+	}
+	err = db.Pool().Exec(ctx, "UPDATE conversations SET updated_at = '2024-01-01 14:00:00' WHERE conversation_id = ?", convB.ConversationID)
+	if err != nil {
+		t.Fatalf("Failed to set updated_at for conv B: %v", err)
+	}
+
+	// Archive in a DIFFERENT order than activity order: C first, then B, then A.
+	// If archive incorrectly bumps updated_at, the sort order would follow
+	// archive order instead of activity order.
+	_, err = db.ArchiveConversation(ctx, convC.ConversationID)
+	if err != nil {
+		t.Fatalf("Failed to archive conv C: %v", err)
+	}
+	_, err = db.ArchiveConversation(ctx, convB.ConversationID)
+	if err != nil {
+		t.Fatalf("Failed to archive conv B: %v", err)
+	}
+	_, err = db.ArchiveConversation(ctx, convA.ConversationID)
+	if err != nil {
+		t.Fatalf("Failed to archive conv A: %v", err)
+	}
+
+	// List archived conversations - should be ordered by updated_at DESC
+	// Expected order: B (14:00), C (12:00), A (10:00)
+	archived, err := db.ListArchivedConversations(ctx, 10, 0)
+	if err != nil {
+		t.Fatalf("ListArchivedConversations() error = %v", err)
+	}
+
+	if len(archived) != 3 {
+		t.Fatalf("Expected 3 archived conversations, got %d", len(archived))
+	}
+
+	// Verify sort order is by activity time (updated_at), not archive time
+	expectedOrder := []string{convB.ConversationID, convC.ConversationID, convA.ConversationID}
+	for i, expected := range expectedOrder {
+		if archived[i].ConversationID != expected {
+			t.Errorf("Position %d: expected conversation %s, got %s", i, expected, archived[i].ConversationID)
+		}
+	}
+
+	// Also verify that updated_at values were NOT changed by archiving
+	for _, conv := range archived {
+		switch conv.ConversationID {
+		case convA.ConversationID:
+			if !strings.Contains(conv.UpdatedAt.Format(time.DateTime), "2024-01-01 10:00:00") {
+				t.Errorf("Conv A updated_at should be 2024-01-01 10:00:00, got %v", conv.UpdatedAt)
+			}
+		case convB.ConversationID:
+			if !strings.Contains(conv.UpdatedAt.Format(time.DateTime), "2024-01-01 14:00:00") {
+				t.Errorf("Conv B updated_at should be 2024-01-01 14:00:00, got %v", conv.UpdatedAt)
+			}
+		case convC.ConversationID:
+			if !strings.Contains(conv.UpdatedAt.Format(time.DateTime), "2024-01-01 12:00:00") {
+				t.Errorf("Conv C updated_at should be 2024-01-01 12:00:00, got %v", conv.UpdatedAt)
+			}
+		}
+	}
+}
+
+func TestArchiveDoesNotChangeUpdatedAt(t *testing.T) {
+	// Directly verify that archiving/unarchiving does not modify updated_at
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Create a conversation
+	conv, err := db.CreateConversation(ctx, stringPtr("test-archive-timestamp"), true, nil, nil)
+	if err != nil {
+		t.Fatalf("Failed to create conversation: %v", err)
+	}
+
+	// Set a known timestamp
+	err = db.Pool().Exec(ctx, "UPDATE conversations SET updated_at = '2024-06-15 09:30:00' WHERE conversation_id = ?", conv.ConversationID)
+	if err != nil {
+		t.Fatalf("Failed to set updated_at: %v", err)
+	}
+
+	// Archive the conversation
+	archived, err := db.ArchiveConversation(ctx, conv.ConversationID)
+	if err != nil {
+		t.Fatalf("ArchiveConversation() error = %v", err)
+	}
+
+	// Verify updated_at was NOT changed
+	if !strings.Contains(archived.UpdatedAt.Format(time.DateTime), "2024-06-15 09:30:00") {
+		t.Errorf("ArchiveConversation should not change updated_at: expected 2024-06-15 09:30:00, got %v", archived.UpdatedAt)
+	}
+
+	// Unarchive the conversation
+	unarchived, err := db.UnarchiveConversation(ctx, conv.ConversationID)
+	if err != nil {
+		t.Fatalf("UnarchiveConversation() error = %v", err)
+	}
+
+	// Verify updated_at was NOT changed by unarchive either
+	if !strings.Contains(unarchived.UpdatedAt.Format(time.DateTime), "2024-06-15 09:30:00") {
+		t.Errorf("UnarchiveConversation should not change updated_at: expected 2024-06-15 09:30:00, got %v", unarchived.UpdatedAt)
+	}
+}
+
+func TestUnarchivePreservesSortOrder(t *testing.T) {
+	// When a conversation is unarchived, it should return to the active list
+	// at its original position based on updated_at, not jump to the top
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Create three conversations with known activity times
+	convOld, err := db.CreateConversation(ctx, stringPtr("conv-old"), true, nil, nil)
+	if err != nil {
+		t.Fatalf("Failed to create conv-old: %v", err)
+	}
+	convMid, err := db.CreateConversation(ctx, stringPtr("conv-mid"), true, nil, nil)
+	if err != nil {
+		t.Fatalf("Failed to create conv-mid: %v", err)
+	}
+	convNew, err := db.CreateConversation(ctx, stringPtr("conv-new"), true, nil, nil)
+	if err != nil {
+		t.Fatalf("Failed to create conv-new: %v", err)
+	}
+
+	// Set activity times: old < mid < new
+	err = db.Pool().Exec(ctx, "UPDATE conversations SET updated_at = '2024-01-01 08:00:00' WHERE conversation_id = ?", convOld.ConversationID)
+	if err != nil {
+		t.Fatalf("Failed to set updated_at for conv-old: %v", err)
+	}
+	err = db.Pool().Exec(ctx, "UPDATE conversations SET updated_at = '2024-01-01 12:00:00' WHERE conversation_id = ?", convMid.ConversationID)
+	if err != nil {
+		t.Fatalf("Failed to set updated_at for conv-mid: %v", err)
+	}
+	err = db.Pool().Exec(ctx, "UPDATE conversations SET updated_at = '2024-01-01 16:00:00' WHERE conversation_id = ?", convNew.ConversationID)
+	if err != nil {
+		t.Fatalf("Failed to set updated_at for conv-new: %v", err)
+	}
+
+	// Archive the middle conversation, then unarchive it
+	_, err = db.ArchiveConversation(ctx, convMid.ConversationID)
+	if err != nil {
+		t.Fatalf("Failed to archive conv-mid: %v", err)
+	}
+	_, err = db.UnarchiveConversation(ctx, convMid.ConversationID)
+	if err != nil {
+		t.Fatalf("Failed to unarchive conv-mid: %v", err)
+	}
+
+	// List active conversations - mid should still be in its original position
+	// Expected order: new (16:00), mid (12:00), old (08:00)
+	conversations, err := db.ListConversations(ctx, 10, 0)
+	if err != nil {
+		t.Fatalf("ListConversations() error = %v", err)
+	}
+
+	if len(conversations) != 3 {
+		t.Fatalf("Expected 3 conversations, got %d", len(conversations))
+	}
+
+	expectedOrder := []string{convNew.ConversationID, convMid.ConversationID, convOld.ConversationID}
+	for i, expected := range expectedOrder {
+		if conversations[i].ConversationID != expected {
+			t.Errorf("Position %d: expected conversation %s, got %s",
+				i, expected, conversations[i].ConversationID)
+		}
+	}
+}
