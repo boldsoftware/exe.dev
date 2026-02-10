@@ -33,6 +33,7 @@ import (
 	"reflect"
 	"runtime/debug"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -69,9 +70,11 @@ import (
 	emailverifier "github.com/AfterShip/email-verifier"
 	sloghttp "github.com/samber/slog-http"
 
+	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/ssh"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	_ "modernc.org/sqlite"
@@ -263,13 +266,14 @@ func mustLoadLocation(name string) *time.Location {
 
 // Server implements both HTTP and SSH server functionality for exe.dev
 type Server struct {
-	env        stage.Env // prod, staging, local, test, etc.
-	httpLn     *listener
-	proxyLns   []*listener // Additional listeners for proxy ports
-	httpsLn    *listener
-	sshLn      *listener
-	pluginLn   *listener
-	piperdPort int // what port sshpiperd is listening on, typically 2222
+	env              stage.Env // prod, staging, local, test, etc.
+	httpLn           *listener
+	proxyLns         []*listener // Additional listeners for proxy ports
+	httpsLn          *listener
+	sshLn            *listener
+	pluginLn         *listener
+	exeproxServiceLn *listener
+	piperdPort       int // what port sshpiperd is listening on, typically 2222
 	// PublicIPs maps private (local address) IPs to public IP / domain / shard.
 	PublicIPs map[netip.Addr]publicips.PublicIP
 	// LobbyIP is the public IP for the lobby/REPL (ssh exe.dev), not associated with any shard.
@@ -287,6 +291,9 @@ type Server struct {
 	sshConfig   *ssh.ServerConfig
 	sshHostKey  ssh.Signer
 	sshServer   *SSHServer
+
+	exeproxServiceServer  *grpc.Server
+	exeproxServiceMetrics *grpcprom.ServerMetrics
 
 	certManager         *autocert.Manager
 	wildcardCertManager *wildcardcert.Manager
@@ -697,19 +704,20 @@ func cleanupOnBoot(slog *slog.Logger, db *sqlite.DB) {
 //
 //exe:completeinit
 type ServerConfig struct {
-	Logger          *slog.Logger
-	HTTPAddr        string
-	HTTPSAddr       string
-	SSHAddr         string
-	PluginAddr      string
-	DBPath          string
-	FakeEmailServer string
-	PiperdPort      int
-	GHWhoAmIPath    string
-	ExeletAddresses []string
-	Env             stage.Env
-	MetricsRegistry *prometheus.Registry
-	LMTPSocketPath  string // path to LMTP Unix socket; empty disables LMTP
+	Logger             *slog.Logger
+	HTTPAddr           string
+	HTTPSAddr          string
+	SSHAddr            string
+	PluginAddr         string
+	ExeproxServicePort int // port on tailscale IP address
+	DBPath             string
+	FakeEmailServer    string
+	PiperdPort         int
+	GHWhoAmIPath       string
+	ExeletAddresses    []string
+	Env                stage.Env
+	MetricsRegistry    *prometheus.Registry
+	LMTPSocketPath     string // path to LMTP Unix socket; empty disables LMTP
 }
 
 // NewServer creates a new Server instance with database and container management.
@@ -803,6 +811,17 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to listen on piper plugin address %q: %w", cfg.PluginAddr, err)
 	}
 
+	exeproxAddr, err := cfg.Env.TailscaleListenAddr(strconv.Itoa(cfg.ExeproxServicePort))
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to determine exeprox service address: %v", err)
+	}
+	exeproxServiceLn, err := startListener(slog, "exeprox-service", exeproxAddr)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to listen on exeprox service address %q: %w", exeproxAddr, err)
+	}
+
 	// Initialize metrics
 	sshMetrics := NewSSHMetrics(cfg.MetricsRegistry)
 	httpMetrics := NewHTTPMetrics(cfg.MetricsRegistry)
@@ -811,6 +830,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	llmgateway.RegisterMetrics(cfg.MetricsRegistry)
 	RegisterEntityMetrics(cfg.MetricsRegistry, db, slog)
 	email.RegisterMetrics(cfg.MetricsRegistry, postmarkStatsCollector)
+	exeproxServiceMetrics := registerExeproxMetrics(cfg.MetricsRegistry)
 
 	// Initialize HLL unique user tracking
 	hllStorage := newHLLStorage(db)
@@ -896,6 +916,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		httpsLn:                httpsLn,
 		sshLn:                  sshLn,
 		pluginLn:               pluginLn,
+		exeproxServiceLn:       exeproxServiceLn,
 		piperdPort:             cfg.PiperdPort,
 		db:                     db,
 		tagResolver:            tagResolverInstance,
@@ -913,12 +934,13 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		discordLinkSecret:      discordLinkSecret,
 		PublicIPs:              map[netip.Addr]publicips.PublicIP{},
 
-		metricsRegistry: cfg.MetricsRegistry,
-		sshMetrics:      sshMetrics,
-		httpMetrics:     httpMetrics,
-		signupMetrics:   signupMetrics,
-		hllTracker:      hllTracker,
-		hllCollector:    hllCollector,
+		metricsRegistry:       cfg.MetricsRegistry,
+		sshMetrics:            sshMetrics,
+		httpMetrics:           httpMetrics,
+		signupMetrics:         signupMetrics,
+		exeproxServiceMetrics: exeproxServiceMetrics,
+		hllTracker:            hllTracker,
+		hllCollector:          hllCollector,
 
 		docs:      docsHandler,
 		templates: tmpl,
@@ -965,6 +987,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s.setupHTTPSServer()
 	s.setupProxyServers()
 	s.setupSSHServer()
+	s.setupExeproxServer()
 
 	// Initialize billing subscription poller to sync subscription events from Stripe.
 	if s.billing != nil {
@@ -2624,6 +2647,16 @@ func (s *Server) start() error {
 		s.slog().InfoContext(ctx, fmt.Sprintf("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %v localhost", s.sshLn.tcp.Port))
 	}
 
+	// Start exeprox grpc server. This lets exeprox clients contact
+	// exed for the information they need.
+	s.slog().InfoContext(ctx, "exeprox server listening", "addr", s.exeproxServiceLn.addr, "port", s.exeproxServiceLn.tcp.Port)
+	go func() {
+		if err := s.exeproxServiceServer.Serve(s.exeproxServiceLn.ln); err != nil {
+			s.slog().ErrorContext(ctx, "Failed to start exeprox grpc server", "error", err)
+			cancel()
+		}
+	}()
+
 	// Sync instances with exelet hosts before accepting connections
 	if len(s.exeletClients) > 0 {
 		if err := s.syncInstancesWithHosts(ctx); err != nil {
@@ -3163,6 +3196,10 @@ func (s *Server) Stop() error {
 		if err := s.httpsServer.Close(); err != nil {
 			s.slog().ErrorContext(ctx, "HTTPS server close error", "error", err)
 		}
+	}
+
+	if s.exeproxServiceServer != nil {
+		s.exeproxServiceServer.Stop()
 	}
 
 	if s.tagResolver != nil {

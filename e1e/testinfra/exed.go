@@ -30,6 +30,7 @@ type ExedInstance struct {
 	SSHPort         int             // exed ssh local host port
 	HTTPPort        int             // exed HTTP local hostport
 	PiperPluginPort int             // piper plugin gPRC server port
+	ExeproxPort     int             // exeprox gPRC server port
 	ExtraPorts      []int           // additional proxy ports
 	CoverDir        string          // where coverage data is written
 	Errors          chan string     // exed errors are sent on this channel
@@ -141,6 +142,7 @@ func StartExed(ctx context.Context, emailServerPort, piperPort int, extraProxyPo
 		"-ssh=localhost:0",
 		"-piper-plugin=localhost:0",
 		"-piperd-port="+strconv.Itoa(piperPort),
+		"-exeprox-service-port=0",
 		"-fake-email-server="+emailServerURL,
 		"-gh-whoami="+whoamiPath,
 		"-exelet-addresses="+strings.Join(exeletAddrs, ","),
@@ -293,7 +295,7 @@ func StartExed(ctx context.Context, emailServerPort, piperPort int, extraProxyPo
 		timeout = 2 * time.Minute
 	}
 
-	var sshPort, httpPort, piperPluginPort int
+	var sshPort, httpPort, piperPluginPort, exeproxPort int
 	var proxyPorts []int
 	expectedProxyPorts := len(extraProxyPorts)
 ProcessLogs:
@@ -307,6 +309,8 @@ ProcessLogs:
 				httpPort = ln.port
 			case "plugin":
 				piperPluginPort = ln.port
+			case "exeprox-service":
+				exeproxPort = ln.port
 			}
 		case proxyPorts = <-proxyPortsC:
 			// Received proxy ports from "proxy listeners set up"
@@ -320,8 +324,8 @@ ProcessLogs:
 			return nil, fmt.Errorf("timeout waiting for exed to start. Output:\n%s", out)
 		}
 	}
-	if sshPort == 0 || httpPort == 0 || piperPluginPort == 0 {
-		return nil, fmt.Errorf("failed to start all required ports (ssh %d http %d piper %d)", sshPort, httpPort, piperPluginPort)
+	if sshPort == 0 || httpPort == 0 || piperPluginPort == 0 || exeproxPort == 0 {
+		return nil, fmt.Errorf("failed to start all required ports (ssh %d http %d piper %d exeprox %d)", sshPort, httpPort, piperPluginPort, exeproxPort)
 	}
 	if len(proxyPorts) != expectedProxyPorts {
 		return nil, fmt.Errorf("got %d proxy ports, expected %d", len(proxyPorts), expectedProxyPorts)
@@ -345,6 +349,7 @@ ProcessLogs:
 		SSHPort:         sshPort,
 		HTTPPort:        httpPort,
 		PiperPluginPort: piperPluginPort,
+		ExeproxPort:     exeproxPort,
 		ExtraPorts:      proxyPorts,
 		CoverDir:        coverDir,
 		Errors:          exedSlogErrC,
@@ -361,6 +366,7 @@ ProcessLogs:
 	AddCanonicalization(instance.SSHPort, "EXED_SSH_PORT")
 	AddCanonicalization(instance.HTTPPort, "EXED_HTTP_PORT")
 	AddCanonicalization(instance.PiperPluginPort, "EXED_PIPER_PLUGIN_PORT")
+	AddCanonicalization(instance.ExeproxPort, "EXED_EXEPROX_SERVICE_PORT")
 
 	slog.InfoContext(ctx, "started exed", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
 	return instance, nil

@@ -13,11 +13,62 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	proxyapi "exe.dev/pkg/api/exe/proxy/v1"
+	"exe.dev/tracing"
 
+	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
+	grpclogging "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
+	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// registerExeproxMetrics arranges to record grpc metrics for the
+// exeprox grpc service.
+func registerExeproxMetrics(metricsRegistry *prometheus.Registry) *grpcprom.ServerMetrics {
+	grpcMetrics := grpcprom.NewServerMetrics(
+		grpcprom.WithServerHandlingTimeHistogram(
+			grpcprom.WithHistogramBuckets([]float64{0.01, 0.1, 0.3, 0.6, 1, 1.4, 2, 3, 6, 9, 20, 30, 60, 90}),
+		),
+	)
+	metricsRegistry.MustRegister(grpcMetrics)
+	return grpcMetrics
+}
+
+// setupExeproxServer sets up the exeprox grpc service.
+func (s *Server) setupExeproxServer() {
+	// Adapter to convert slog.Logger to logging.Logger.
+	loggerFunc := func(ctx context.Context, lvl grpclogging.Level, msg string, fields ...any) {
+		s.slog().Log(ctx, slog.Level(lvl), msg, fields...)
+	}
+
+	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
+		tracing.UnaryServerInterceptor(),
+		s.exeproxServiceMetrics.UnaryServerInterceptor(),
+		grpclogging.UnaryServerInterceptor(grpclogging.LoggerFunc(loggerFunc)),
+	}
+	streamServerInterceptors := []grpc.StreamServerInterceptor{
+		tracing.StreamServerInterceptor(),
+		s.exeproxServiceMetrics.StreamServerInterceptor(),
+		grpclogging.StreamServerInterceptor(grpclogging.LoggerFunc(loggerFunc)),
+	}
+
+	grpcOpts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(unaryServerInterceptors...),
+		grpc.ChainStreamInterceptor(streamServerInterceptors...),
+	}
+
+	grpcServer := grpc.NewServer(grpcOpts...)
+
+	es := &exeproxServer{
+		s: s,
+	}
+
+	proxyapi.RegisterProxyInfoServiceServer(grpcServer, es)
+
+	s.exeproxServiceServer = grpcServer
+}
 
 // exeproxServer implements the exeprox.proto service.
 type exeproxServer struct {

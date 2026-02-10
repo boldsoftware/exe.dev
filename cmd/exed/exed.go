@@ -38,6 +38,7 @@ func run() error {
 	sshAddr := flag.String("ssh", "localhost:2223", "SSH server address")
 	pluginAddr := flag.String("piper-plugin", "localhost:2224", "Piper plugin gRPC server address")
 	piperdPort := flag.Int("piperd-port", 2222, "sshpiper listening port")
+	exeproxServicePort := flag.Int("exeprox-service-port", 2225, "port for gRPC server for exeprox clients")
 	httpsAddr := flag.String("https", "", "HTTPS server address (enables TLS with Let's Encrypt), empty to disable")
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
 	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test"`)
@@ -212,19 +213,20 @@ func run() error {
 	}
 
 	server, err := execore.NewServer(execore.ServerConfig{
-		Logger:          slog.Default(),
-		HTTPAddr:        *httpAddr,
-		HTTPSAddr:       *httpsAddr,
-		SSHAddr:         *sshAddr,
-		PluginAddr:      *pluginAddr,
-		DBPath:          *dbPath,
-		FakeEmailServer: *fakeHTTPEmail,
-		PiperdPort:      *piperdPort,
-		GHWhoAmIPath:    *ghWhoAmIPath,
-		ExeletAddresses: exeletAddrs,
-		Env:             env,
-		MetricsRegistry: metricsRegistry,
-		LMTPSocketPath:  *lmtpSocket,
+		Logger:             slog.Default(),
+		HTTPAddr:           *httpAddr,
+		HTTPSAddr:          *httpsAddr,
+		SSHAddr:            *sshAddr,
+		PluginAddr:         *pluginAddr,
+		ExeproxServicePort: *exeproxServicePort,
+		DBPath:             *dbPath,
+		FakeEmailServer:    *fakeHTTPEmail,
+		PiperdPort:         *piperdPort,
+		GHWhoAmIPath:       *ghWhoAmIPath,
+		ExeletAddresses:    exeletAddrs,
+		Env:                env,
+		MetricsRegistry:    metricsRegistry,
+		LMTPSocketPath:     *lmtpSocket,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)

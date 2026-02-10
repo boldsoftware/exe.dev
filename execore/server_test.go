@@ -132,19 +132,20 @@ func newUnstartedServer(t testing.TB) *Server {
 	env.StripeURL = fakeStripe.URL
 	registry := prometheus.NewRegistry()
 	s, err := NewServer(ServerConfig{
-		Logger:          tslog.Slogger(t),
-		HTTPAddr:        ":0",
-		HTTPSAddr:       ":0",
-		SSHAddr:         ":0",
-		PluginAddr:      ":0",
-		DBPath:          dbPath,
-		FakeEmailServer: "",
-		PiperdPort:      2222,
-		GHWhoAmIPath:    "",
-		ExeletAddresses: nil,
-		Env:             env,
-		MetricsRegistry: registry,
-		LMTPSocketPath:  "",
+		Logger:             tslog.Slogger(t),
+		HTTPAddr:           ":0",
+		HTTPSAddr:          ":0",
+		SSHAddr:            ":0",
+		PluginAddr:         ":0",
+		ExeproxServicePort: 0,
+		DBPath:             dbPath,
+		FakeEmailServer:    "",
+		PiperdPort:         2222,
+		GHWhoAmIPath:       "",
+		ExeletAddresses:    nil,
+		Env:                env,
+		MetricsRegistry:    registry,
+		LMTPSocketPath:     "",
 	})
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
