@@ -246,6 +246,7 @@ func NewServer(database *db.DB, llmManager LLMProvider, toolSetConfig claudetool
 	// Set up subagent support
 	s.toolSetConfig.SubagentRunner = NewSubagentRunner(s)
 	s.toolSetConfig.SubagentDB = &db.SubagentDBAdapter{DB: database}
+	s.toolSetConfig.MaxSubagentDepth = 1 // Only top-level conversations can spawn subagents
 
 	return s
 }
@@ -643,6 +644,44 @@ func (s *Server) getOrCreateConversationManager(ctx context.Context, conversatio
 		}
 
 		manager := NewConversationManager(conversationID, s.db, s.logger, s.toolSetConfig, recordMessage, onStateChange)
+		if err := manager.Hydrate(ctx); err != nil {
+			return nil, err
+		}
+
+		s.activeConversations[conversationID] = manager
+		return manager, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return manager, nil
+}
+
+// getOrCreateSubagentConversationManager is like getOrCreateConversationManager but
+// uses a toolSetConfig with SubagentDepth incremented by 1, preventing subagents
+// from spawning their own subagents (when MaxSubagentDepth is 1).
+func (s *Server) getOrCreateSubagentConversationManager(ctx context.Context, conversationID string) (*ConversationManager, error) {
+	manager, err, _ := s.conversationGroup.Do(conversationID, func() (*ConversationManager, error) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if manager, exists := s.activeConversations[conversationID]; exists {
+			manager.Touch()
+			return manager, nil
+		}
+
+		recordMessage := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
+			return s.recordMessage(ctx, conversationID, message, usage)
+		}
+
+		onStateChange := func(state ConversationState) {
+			s.publishConversationState(state)
+		}
+
+		// Use a modified toolSetConfig with incremented depth for subagents
+		subagentConfig := s.toolSetConfig
+		subagentConfig.SubagentDepth = s.toolSetConfig.SubagentDepth + 1
+
+		manager := NewConversationManager(conversationID, s.db, s.logger, subagentConfig, recordMessage, onStateChange)
 		if err := manager.Hydrate(ctx); err != nil {
 			return nil, err
 		}

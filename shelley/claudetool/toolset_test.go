@@ -157,3 +157,142 @@ func TestNewToolSet_WithBrowser(t *testing.T) {
 		t.Error("Tools not initialized")
 	}
 }
+
+func TestNewToolSet_SubagentDepthLimit(t *testing.T) {
+	provider := &mockLLMProvider{}
+	db := newMockSubagentDB()
+	runner := &mockSubagentRunner{response: "ok"}
+
+	hasSubagentTool := func(ts *ToolSet) bool {
+		for _, tool := range ts.Tools() {
+			if tool.Name == "subagent" {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Depth 0, MaxDepth 1 -> should have subagent tool
+	t.Run("depth 0 max 1 has subagent", func(t *testing.T) {
+		cfg := ToolSetConfig{
+			LLMProvider:          provider,
+			ModelID:              "test-model",
+			WorkingDir:           "/test",
+			SubagentRunner:       runner,
+			SubagentDB:           db,
+			ParentConversationID: "parent-123",
+			SubagentDepth:        0,
+			MaxSubagentDepth:     1,
+		}
+		ts := NewToolSet(context.Background(), cfg)
+		if !hasSubagentTool(ts) {
+			t.Error("expected subagent tool at depth 0 with max 1")
+		}
+	})
+
+	// Depth 1, MaxDepth 1 -> should NOT have subagent tool
+	t.Run("depth 1 max 1 no subagent", func(t *testing.T) {
+		cfg := ToolSetConfig{
+			LLMProvider:          provider,
+			ModelID:              "test-model",
+			WorkingDir:           "/test",
+			SubagentRunner:       runner,
+			SubagentDB:           db,
+			ParentConversationID: "parent-123",
+			SubagentDepth:        1,
+			MaxSubagentDepth:     1,
+		}
+		ts := NewToolSet(context.Background(), cfg)
+		if hasSubagentTool(ts) {
+			t.Error("expected no subagent tool at depth 1 with max 1")
+		}
+	})
+
+	// Depth 0, MaxDepth 0 (unlimited) -> should have subagent tool
+	t.Run("depth 0 max 0 unlimited has subagent", func(t *testing.T) {
+		cfg := ToolSetConfig{
+			LLMProvider:          provider,
+			ModelID:              "test-model",
+			WorkingDir:           "/test",
+			SubagentRunner:       runner,
+			SubagentDB:           db,
+			ParentConversationID: "parent-123",
+			SubagentDepth:        0,
+			MaxSubagentDepth:     0,
+		}
+		ts := NewToolSet(context.Background(), cfg)
+		if !hasSubagentTool(ts) {
+			t.Error("expected subagent tool at depth 0 with unlimited max")
+		}
+	})
+
+	// Depth 5, MaxDepth 0 (unlimited) -> should have subagent tool
+	t.Run("depth 5 max 0 unlimited has subagent", func(t *testing.T) {
+		cfg := ToolSetConfig{
+			LLMProvider:          provider,
+			ModelID:              "test-model",
+			WorkingDir:           "/test",
+			SubagentRunner:       runner,
+			SubagentDB:           db,
+			ParentConversationID: "parent-123",
+			SubagentDepth:        5,
+			MaxSubagentDepth:     0,
+		}
+		ts := NewToolSet(context.Background(), cfg)
+		if !hasSubagentTool(ts) {
+			t.Error("expected subagent tool at depth 5 with unlimited max")
+		}
+	})
+
+	// No SubagentRunner -> should NOT have subagent tool regardless of depth
+	t.Run("no runner no subagent", func(t *testing.T) {
+		cfg := ToolSetConfig{
+			LLMProvider:          provider,
+			ModelID:              "test-model",
+			WorkingDir:           "/test",
+			ParentConversationID: "parent-123",
+			SubagentDepth:        0,
+			MaxSubagentDepth:     1,
+		}
+		ts := NewToolSet(context.Background(), cfg)
+		if hasSubagentTool(ts) {
+			t.Error("expected no subagent tool without runner")
+		}
+	})
+
+	// Depth 2, MaxDepth 3 -> should have subagent tool
+	t.Run("depth 2 max 3 has subagent", func(t *testing.T) {
+		cfg := ToolSetConfig{
+			LLMProvider:          provider,
+			ModelID:              "test-model",
+			WorkingDir:           "/test",
+			SubagentRunner:       runner,
+			SubagentDB:           db,
+			ParentConversationID: "parent-123",
+			SubagentDepth:        2,
+			MaxSubagentDepth:     3,
+		}
+		ts := NewToolSet(context.Background(), cfg)
+		if !hasSubagentTool(ts) {
+			t.Error("expected subagent tool at depth 2 with max 3")
+		}
+	})
+
+	// Depth 3, MaxDepth 3 -> should NOT have subagent tool
+	t.Run("depth 3 max 3 no subagent", func(t *testing.T) {
+		cfg := ToolSetConfig{
+			LLMProvider:          provider,
+			ModelID:              "test-model",
+			WorkingDir:           "/test",
+			SubagentRunner:       runner,
+			SubagentDB:           db,
+			ParentConversationID: "parent-123",
+			SubagentDepth:        3,
+			MaxSubagentDepth:     3,
+		}
+		ts := NewToolSet(context.Background(), cfg)
+		if hasSubagentTool(ts) {
+			t.Error("expected no subagent tool at depth 3 with max 3")
+		}
+	})
+}

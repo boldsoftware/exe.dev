@@ -31,8 +31,8 @@ func (r *SubagentRunner) RunSubagent(ctx context.Context, conversationID, prompt
 	// This ensures the sidebar shows the subagent even if it's a newly created conversation.
 	go r.notifySubagentConversation(ctx, conversationID)
 
-	// Get or create conversation manager for the subagent
-	manager, err := s.getOrCreateConversationManager(ctx, conversationID)
+	// Get or create conversation manager for the subagent, with incremented depth
+	manager, err := s.getOrCreateSubagentConversationManager(ctx, conversationID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get conversation manager: %w", err)
 	}
@@ -353,17 +353,6 @@ func (r *SubagentRunner) notifySubagentConversation(ctx context.Context, convers
 		"conversationID", conversationID,
 		"parentID", *conv.ParentConversationID,
 		"slug", conv.Slug)
-}
-
-// createSubagentToolSetConfig creates a ToolSetConfig for subagent conversations.
-// Subagent conversations don't have nested subagents to avoid complexity.
-func (s *Server) createSubagentToolSetConfig(conversationID string) claudetool.ToolSetConfig {
-	return claudetool.ToolSetConfig{
-		LLMProvider:      s.llmManager,
-		EnableJITInstall: true,
-		EnableBrowser:    true, // Subagents can use browser tools
-		// No SubagentRunner/DB - subagents can't spawn nested subagents
-	}
 }
 
 // Ensure SubagentRunner implements claudetool.SubagentRunner.

@@ -60,6 +60,14 @@ type ToolSetConfig struct {
 	// ConversationID is the ID of the conversation these tools belong to.
 	// This is exposed to bash commands via the SHELLEY_CONVERSATION_ID environment variable.
 	ConversationID string
+	// SubagentDepth is the nesting depth of this conversation.
+	// 0 = top-level conversation, 1 = subagent, 2 = sub-subagent, etc.
+	SubagentDepth int
+	// MaxSubagentDepth is the maximum nesting depth for subagents.
+	// Subagent tool is only available when SubagentDepth < MaxSubagentDepth.
+	// A value of 0 means no limit (but SubagentRunner/SubagentDB must still be set).
+	// Set to 1 to allow only top-level conversations (depth 0) to spawn subagents.
+	MaxSubagentDepth int
 }
 
 // ToolSet holds a set of tools for a single conversation.
@@ -133,8 +141,10 @@ func NewToolSet(ctx context.Context, cfg ToolSetConfig) *ToolSet {
 		outputIframeTool.Tool(),
 	}
 
-	// Add subagent tool if configured
-	if cfg.SubagentRunner != nil && cfg.SubagentDB != nil && cfg.ParentConversationID != "" {
+	// Add subagent tool if configured and depth limit not reached.
+	// MaxSubagentDepth of 0 means no limit; otherwise, only add if depth < max.
+	canSpawnSubagents := cfg.SubagentRunner != nil && cfg.SubagentDB != nil && cfg.ParentConversationID != ""
+	if canSpawnSubagents && (cfg.MaxSubagentDepth == 0 || cfg.SubagentDepth < cfg.MaxSubagentDepth) {
 		subagentTool := &SubagentTool{
 			DB:                   cfg.SubagentDB,
 			ParentConversationID: cfg.ParentConversationID,
