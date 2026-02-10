@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{{.Entry.Title}}{{if and .ShowHidden (not .Entry.Published)}} [draft]{{end}} - exe.dev docs</title>
+    <title>{{.Entry.Title}}{{call .StatusTag .Entry}} - exe.dev docs</title>
     <meta name="description" content="{{.Entry.Description}}">
     <link rel="canonical" href="https://exe.dev{{.Entry.Path}}">
     <meta property="og:title" content="{{.Entry.Title}} - exe.dev docs">
@@ -453,11 +453,11 @@
           {{range .Docs}}
           {{if $isAllDocs}}
           <a href="#{{.Slug}}" class="sidebar-link">
-            {{.Title}}{{if and $.ShowHidden (not .Published)}} [draft]{{end}}
+            {{.Title}}{{call $.StatusTag .}}
           </a>
           {{else}}
           <a href="{{.Path}}" class="sidebar-link{{if eq .Path $.Entry.Path}} active{{end}}">
-            {{.Title}}{{if and $.ShowHidden (not .Published)}} [draft]{{end}}
+            {{.Title}}{{call $.StatusTag .}}
           </a>
           {{end}}
           {{end}} {{end}}
@@ -469,7 +469,7 @@
         {{with .Entry}}
         <a class="back-to-list" href="/docs/list">&larr; All docs</a>
         <div class="doc-header">
-          <h1 class="doc-title">{{.Title}}{{if and $.ShowHidden (not .Published)}} [draft]{{end}}</h1>
+          <h1 class="doc-title">{{.Title}}{{call $.StatusTag .}}</h1>
           {{if .Markdown}}
           <button class="copy-md-btn" onclick="copyMarkdown()" title="Copy as Markdown">
             <span class="copy-btn-sizer" aria-hidden="true"><span class="copy-icon">&#x2398;</span> Copy as Markdown</span>

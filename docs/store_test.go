@@ -3,7 +3,11 @@ package docs
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"testing/fstest"
+
+	"exe.dev/stage"
 )
 
 func TestParseMarkdownDocStripsFrontMatter(t *testing.T) {
@@ -25,7 +29,7 @@ Hello **world**!
 }
 
 func TestHandlerDocsRedirect(t *testing.T) {
-	store, err := Load(false)
+	store, err := Load(stage.Prod())
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -90,7 +94,7 @@ func TestHandlerDocsRedirect(t *testing.T) {
 }
 
 func TestHandlerDocsAllMd(t *testing.T) {
-	store, err := Load(true)
+	store, err := Load(stage.Local())
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -139,6 +143,190 @@ func TestHandlerDocsAllMd(t *testing.T) {
 	}
 }
 
+func TestParsePreviewFrontMatter(t *testing.T) {
+	entry, err := parseMarkdownDoc("test.md", []byte(`---
+title: Preview Doc
+preview: true
+---
+Body.
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !entry.Preview {
+		t.Fatal("expected Preview to be true")
+	}
+	if entry.Published {
+		t.Fatal("expected Published to be false when preview is set")
+	}
+	if !entry.Visible() {
+		t.Fatal("expected preview entry to be Visible")
+	}
+}
+
+func TestParsePreviewDoesNotOverrideExplicitPublished(t *testing.T) {
+	// Even if published: true appears before preview: true, preview wins.
+	entry, err := parseMarkdownDoc("test.md", []byte(`---
+title: Test
+published: true
+preview: true
+---
+Body.
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.Published {
+		t.Fatal("expected preview: true to force Published=false")
+	}
+	if !entry.Preview {
+		t.Fatal("expected Preview to be true")
+	}
+}
+
+func TestEntryVisibility(t *testing.T) {
+	tests := []struct {
+		name    string
+		entry   Entry
+		visible bool
+	}{
+		{"published", Entry{Published: true}, true},
+		{"preview", Entry{Preview: true}, true},
+		{"draft", Entry{}, false},
+		{"preview not published", Entry{Preview: true, Published: false}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.entry.Visible(); got != tt.visible {
+				t.Errorf("Visible() = %v, want %v", got, tt.visible)
+			}
+		})
+	}
+}
+
+var previewTestFS = fstest.MapFS{
+	"content/published.md": &fstest.MapFile{Data: []byte(`---
+title: Published Doc
+subheading: Docs
+published: true
+---
+Published body.
+`)},
+	"content/preview.md": &fstest.MapFile{Data: []byte(`---
+title: Preview Doc
+subheading: Docs
+preview: true
+---
+Preview body.
+`)},
+	"content/draft.md": &fstest.MapFile{Data: []byte(`---
+title: Draft Doc
+subheading: Docs
+published: false
+---
+Draft body.
+`)},
+}
+
+func TestPreviewDocLoadedWhenEnabled(t *testing.T) {
+	env := stage.Prod()
+	env.ShowDocsPreview = true
+	store, err := loadFromFS(previewTestFS, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := store.EntryBySlug("preview"); !ok {
+		t.Fatal("preview doc should be loaded when ShowDocsPreview is true")
+	}
+}
+
+func TestPreviewDocNotLoadedInProd(t *testing.T) {
+	store, err := loadFromFS(previewTestFS, stage.Prod())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := store.EntryBySlug("preview"); ok {
+		t.Fatal("preview doc should not be loaded in Prod")
+	}
+	// Published doc should still be there.
+	if _, ok := store.EntryBySlug("published"); !ok {
+		t.Fatal("published doc should be loaded in Prod")
+	}
+}
+
+func TestPreviewDocNotInSitemapEntries(t *testing.T) {
+	env := stage.Prod()
+	env.ShowDocsPreview = true
+	store, err := loadFromFS(previewTestFS, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range store.Entries() {
+		if entry.Slug == "preview" {
+			t.Fatal("preview doc should not appear in sitemap Entries()")
+		}
+	}
+}
+
+func TestPreviewDocVisibleInRenderedOutput(t *testing.T) {
+	env := stage.Prod()
+	env.ShowDocsPreview = true
+	store, err := loadFromFS(previewTestFS, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(store, false)
+
+	req := httptest.NewRequest("GET", "/docs/all.md", nil)
+	w := httptest.NewRecorder()
+	if !handler.Handle(w, req) {
+		t.Fatal("handler did not handle /docs/all.md")
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "Preview body") {
+		t.Error("preview doc content should appear in rendered output")
+	}
+	if strings.Contains(body, "Draft body") {
+		t.Error("draft doc content should not appear when showHidden is false")
+	}
+}
+
+func TestDraftDocNotLoadedWithoutShowHidden(t *testing.T) {
+	env := stage.Prod()
+	env.ShowDocsPreview = true
+	store, err := loadFromFS(previewTestFS, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := store.EntryBySlug("draft"); ok {
+		t.Fatal("draft doc should not be loaded without ShowHiddenDocs")
+	}
+}
+
+func TestStatusTag(t *testing.T) {
+	showHidden := NewHandler(&Store{}, true)
+	noShowHidden := NewHandler(&Store{}, false)
+
+	tests := []struct {
+		name    string
+		handler *Handler
+		entry   *Entry
+		want    string
+	}{
+		{"published", noShowHidden, &Entry{Published: true}, ""},
+		{"preview", noShowHidden, &Entry{Preview: true}, " [preview]"},
+		{"draft with showHidden", showHidden, &Entry{}, " [draft]"},
+		{"draft without showHidden", noShowHidden, &Entry{}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.handler.statusTag(tt.entry); got != tt.want {
+				t.Errorf("statusTag() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > 0 && (s[:len(substr)] == substr || contains(s[1:], substr))))
@@ -152,7 +340,7 @@ func min(a, b int) int {
 }
 
 func TestHandlerDocsMdIndex(t *testing.T) {
-	store, err := Load(true)
+	store, err := Load(stage.Local())
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -203,7 +391,7 @@ func TestHandlerDocsMdIndex(t *testing.T) {
 }
 
 func TestHandlerLLMsTxt(t *testing.T) {
-	store, err := Load(true)
+	store, err := Load(stage.Local())
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}

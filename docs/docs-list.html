@@ -213,7 +213,7 @@
           {{range .Docs}}
           <div class="doc-item">
             <h3 class="doc-title">
-              <a href="{{.Path}}">{{.Title}}{{if and $.ShowHidden (not .Published)}} [draft]{{end}}</a>
+              <a href="{{.Path}}">{{.Title}}{{call $.StatusTag .}}</a>
             </h3>
             <p class="doc-description">{{.Description}}</p>
           </div>

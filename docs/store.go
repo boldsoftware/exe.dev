@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/stage"
 	templatespkg "exe.dev/templates"
 	"github.com/yuin/goldmark"
 	gmmeta "github.com/yuin/goldmark-meta"
@@ -60,8 +61,15 @@ type Entry struct {
 	Suborder    int
 	Tags        []string
 	Published   bool
+	Preview     bool
 	Unlinked    bool
 	Content     template.HTML
+}
+
+// Visible reports whether the entry should be shown to users.
+// An entry is visible if it is published or in preview.
+func (e *Entry) Visible() bool {
+	return e.Published || e.Preview
 }
 
 type Group struct {
@@ -78,21 +86,25 @@ type Store struct {
 	defaultPath string
 }
 
-func Load(includeUnpublished bool) (*Store, error) {
+func Load(env stage.Env) (*Store, error) {
+	return loadFromFS(contentFS, env)
+}
+
+func loadFromFS(fsys fs.FS, env stage.Env) (*Store, error) {
 	store := &Store{
 		byPath: make(map[string]*Entry),
 		bySlug: make(map[string]*Entry),
 		assets: make(map[string]Asset),
 	}
 
-	if _, err := fs.ReadDir(contentFS, "content"); err != nil {
+	if _, err := fs.ReadDir(fsys, "content"); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return store, nil
 		}
 		return nil, fmt.Errorf("reading docs content directory: %w", err)
 	}
 
-	err := fs.WalkDir(contentFS, "content", func(path string, d fs.DirEntry, walkErr error) error {
+	err := fs.WalkDir(fsys, "content", func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -101,7 +113,7 @@ func Load(includeUnpublished bool) (*Store, error) {
 			return nil
 		}
 
-		data, err := contentFS.ReadFile(path)
+		data, err := fs.ReadFile(fsys, path)
 		if err != nil {
 			return fmt.Errorf("reading %s: %w", path, err)
 		}
@@ -117,7 +129,7 @@ func Load(includeUnpublished bool) (*Store, error) {
 			if err != nil {
 				return fmt.Errorf("parsing %s: %w", path, err)
 			}
-			if entry.Published || includeUnpublished {
+			if entry.Published || (entry.Preview && env.ShowDocsPreview) || env.ShowHiddenDocs {
 				copyEntry := entry
 				store.entries = append(store.entries, &copyEntry)
 			}
@@ -134,8 +146,8 @@ func Load(includeUnpublished bool) (*Store, error) {
 
 	sort.Slice(store.entries, func(i, j int) bool {
 		a, b := store.entries[i], store.entries[j]
-		if a.Published != b.Published {
-			return a.Published
+		if a.Visible() != b.Visible() {
+			return a.Visible()
 		}
 		if a.Subheading != b.Subheading {
 			return a.Subheading < b.Subheading
@@ -235,6 +247,18 @@ func NewHandler(store *Store, showHidden bool) *Handler {
 	return &Handler{store: store, showHidden: showHidden}
 }
 
+// statusTag returns a label for the entry's visibility state, for use in templates.
+// Preview entries get " [preview]", hidden drafts get " [draft]", everything else "".
+func (h *Handler) statusTag(e *Entry) string {
+	if e.Preview {
+		return " [preview]"
+	}
+	if h.showHidden && !e.Visible() {
+		return " [draft]"
+	}
+	return ""
+}
+
 func (h *Handler) Store() *Store {
 	if h == nil {
 		return nil
@@ -316,9 +340,9 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 func (h *Handler) renderDocEntry(w http.ResponseWriter, r *http.Request, entry *Entry) {
 	buf := new(bytes.Buffer)
 	data := map[string]any{
-		"Entry":      entry,
-		"Groups":     h.store.Groups(),
-		"ShowHidden": h.showHidden,
+		"Entry":     entry,
+		"Groups":    h.store.Groups(),
+		"StatusTag": h.statusTag,
 	}
 
 	if err := docTemplates.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
@@ -333,8 +357,8 @@ func (h *Handler) renderDocEntry(w http.ResponseWriter, r *http.Request, entry *
 func (h *Handler) renderDocsList(w http.ResponseWriter, r *http.Request) {
 	buf := new(bytes.Buffer)
 	data := map[string]any{
-		"Groups":     h.store.Groups(),
-		"ShowHidden": h.showHidden,
+		"Groups":    h.store.Groups(),
+		"StatusTag": h.statusTag,
 	}
 
 	if err := docTemplates.ExecuteTemplate(buf, "docs-list.html", data); err != nil {
@@ -360,7 +384,7 @@ func (h *Handler) renderDocsIndex(w http.ResponseWriter, _ *http.Request) {
 			fmt.Fprintf(w, "## %s\n\n", group.Heading)
 		}
 		for _, entry := range group.Docs {
-			if !entry.Published && !h.showHidden {
+			if !entry.Visible() && !h.showHidden {
 				continue
 			}
 			fmt.Fprintf(w, "- [%s](/docs/%s.md)", entry.Title, entry.Slug)
@@ -499,6 +523,17 @@ func entryFromMetadata(docPath string, metadata map[string]any) (Entry, error) {
 		entry.Published = published
 	}
 
+	if raw, ok := metadata["preview"]; ok {
+		preview, err := metadataBool(raw, "preview")
+		if err != nil {
+			return Entry{}, err
+		}
+		entry.Preview = preview
+		if preview {
+			entry.Published = false
+		}
+	}
+
 	if raw, ok := metadata["unlinked"]; ok {
 		unlinked, err := metadataBool(raw, "unlinked")
 		if err != nil {
@@ -618,7 +653,7 @@ func (h *Handler) renderAllDocsMD(w http.ResponseWriter, _ *http.Request) {
 	firstDoc := true
 	for _, group := range h.store.Groups() {
 		for _, entry := range group.Docs {
-			if !entry.Published && !h.showHidden {
+			if !entry.Visible() && !h.showHidden {
 				continue
 			}
 
@@ -656,7 +691,7 @@ func (h *Handler) renderAllDocsHTML(w http.ResponseWriter, r *http.Request) {
 		contentBuf.WriteString("</h2>\n")
 
 		for _, entry := range group.Docs {
-			if !entry.Published && !h.showHidden {
+			if !entry.Visible() && !h.showHidden {
 				continue
 			}
 			contentBuf.WriteString("<h3 id=\"")
@@ -682,9 +717,9 @@ func (h *Handler) renderAllDocsHTML(w http.ResponseWriter, r *http.Request) {
 
 	buf := new(bytes.Buffer)
 	data := map[string]any{
-		"Entry":      allEntry,
-		"Groups":     h.store.Groups(),
-		"ShowHidden": h.showHidden,
+		"Entry":     allEntry,
+		"Groups":    h.store.Groups(),
+		"StatusTag": h.statusTag,
 	}
 
 	if err := docTemplates.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {

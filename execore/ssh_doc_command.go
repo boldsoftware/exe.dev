@@ -66,7 +66,9 @@ func (ss *SSHServer) handleDocCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	title := entry.Title
-	if ss.server != nil && ss.server.env.ShowHiddenDocs && !entry.Published {
+	if entry.Preview {
+		title += " [preview]"
+	} else if ss.server != nil && ss.server.env.ShowHiddenDocs && !entry.Visible() {
 		title += " [hidden]"
 	}
 	model := newDocViewerModel(title, slug, entry.Markdown, width, height)
@@ -104,7 +106,9 @@ func (ss *SSHServer) writeDocList(cc *exemenu.CommandContext, store *docspkg.Sto
 		}
 		for _, entry := range group.Docs {
 			title := entry.Title
-			if showHidden && !entry.Published {
+			if entry.Preview {
+				title += " [preview]"
+			} else if showHidden && !entry.Visible() {
 				title += " [hidden]"
 			}
 			cc.Writeln("    %-20s %s", entry.Slug, title)

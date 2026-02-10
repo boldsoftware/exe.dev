@@ -54,6 +54,7 @@ type Env struct {
 	SkipBanner  bool // whether to skip showing the EXE banner on repl login
 
 	ShowHiddenDocs    bool // whether to load and display unpublished docs
+	ShowDocsPreview   bool // whether to load and display preview docs; true for all stages except prod
 	AutoStartSSHPiper bool // whether to auto-start sshpiper for local workflows
 	SSHCommandUsesAt  bool // whether ssh command logins use "box@host" format instead of "box.host" format
 	PostSlackFeed     bool // whether to post feed events to Slack; when false, logs them instead
@@ -107,6 +108,7 @@ func Invalid() Env {
 		SkipBanner:  false,
 
 		ShowHiddenDocs:    false,
+		ShowDocsPreview:   false,
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  false,
 		PostSlackFeed:     false,
@@ -163,6 +165,7 @@ func Local() Env {
 		SkipBanner:  false,
 
 		ShowHiddenDocs:    true,
+		ShowDocsPreview:   true,
 		AutoStartSSHPiper: true,
 		SSHCommandUsesAt:  true,
 		PostSlackFeed:     false,
@@ -218,6 +221,7 @@ func Test() Env {
 		SkipBanner:  true,
 
 		ShowHiddenDocs:    true,
+		ShowDocsPreview:   true,
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  true,
 		PostSlackFeed:     false,
@@ -271,6 +275,7 @@ func Staging() Env {
 		SkipBanner:  false,
 
 		ShowHiddenDocs:    false,
+		ShowDocsPreview:   true,
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  false,
 		PostSlackFeed:     false,
@@ -323,6 +328,7 @@ func Prod() Env {
 		SkipBanner:  false,
 
 		ShowHiddenDocs:    false,
+		ShowDocsPreview:   false,
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  false,
 		PostSlackFeed:     true,

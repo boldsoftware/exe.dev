@@ -876,13 +876,12 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 	slog.Info("exelet clients initialized", "count", len(exeletClients))
 
-	includeUnpublishedDocs := cfg.Env.ShowHiddenDocs
-	docsStore, err := docspkg.Load(includeUnpublishedDocs)
+	docsStore, err := docspkg.Load(cfg.Env)
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("loading docs: %w", err)
 	}
-	docsHandler := docspkg.NewHandler(docsStore, includeUnpublishedDocs)
+	docsHandler := docspkg.NewHandler(docsStore, cfg.Env.ShowHiddenDocs)
 
 	// Parse all HTML templates at startup
 	tmpl, err := templatespkg.Parse()
