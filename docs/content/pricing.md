@@ -6,8 +6,6 @@ suborder: 3
 published: true
 ---
 
-While we are in alpha, every new account automatically runs on a free trial with full Individual plan access. When billing begins you'll be able to pick the plan that fits you:
-
 <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
   <thead>
     <tr>
