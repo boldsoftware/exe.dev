@@ -292,7 +292,7 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(boxes); err != nil {
-		s.slog().ErrorContext(ctx, "Failed to encode boxes", "error", err)
+		s.slog().InfoContext(ctx, "Failed to encode boxes", "error", err)
 	}
 }
 
@@ -1496,7 +1496,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(usersJSON); err != nil {
-			s.slog().ErrorContext(ctx, "Failed to encode users", "error", err)
+			s.slog().InfoContext(ctx, "Failed to encode users", "error", err)
 		}
 		return
 	}
@@ -1859,7 +1859,7 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(exelets); err != nil {
-			s.slog().ErrorContext(ctx, "Failed to encode exelets", "error", err)
+			s.slog().InfoContext(ctx, "Failed to encode exelets", "error", err)
 		}
 		return
 	}
@@ -2183,7 +2183,7 @@ func (s *Server) handleDebugNewThrottle(w http.ResponseWriter, r *http.Request) 
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(config); err != nil {
-			s.slog().ErrorContext(ctx, "Failed to encode throttle config", "error", err)
+			s.slog().InfoContext(ctx, "Failed to encode throttle config", "error", err)
 		}
 		return
 	}
@@ -2342,7 +2342,7 @@ func (s *Server) handleDebugIPShards(w http.ResponseWriter, r *http.Request) {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(entries); err != nil {
-			s.slog().ErrorContext(ctx, "Failed to encode IP shards", "error", err)
+			s.slog().InfoContext(ctx, "Failed to encode IP shards", "error", err)
 		}
 		return
 	}
@@ -3204,7 +3204,7 @@ func (s *Server) handleDebugAllInviteCodes(w http.ResponseWriter, r *http.Reques
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(result); err != nil {
-			s.slog().ErrorContext(ctx, "Failed to encode invite codes", "error", err)
+			s.slog().InfoContext(ctx, "Failed to encode invite codes", "error", err)
 		}
 		return
 	}
@@ -3740,6 +3740,6 @@ func (s *Server) handleDebugTeamMembers(w http.ResponseWriter, r *http.Request) 
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(members); err != nil {
-		s.slog().ErrorContext(ctx, "Failed to encode team members", "error", err)
+		s.slog().InfoContext(ctx, "Failed to encode team members", "error", err)
 	}
 }
