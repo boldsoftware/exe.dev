@@ -527,13 +527,13 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
 
     # 6b) Create snapshot cache of the prepared disks (clone, leveraging XFS reflink when available)
     echo "Creating snapshot cache at ${SNAPSHOT_DIR}..."
-    mkdir -p "${SNAPSHOT_DIR}"
-    chmod 777 "${SNAPSHOT_DIR}"
+    sudo mkdir -p "${SNAPSHOT_DIR}"
+    sudo chmod 777 "${SNAPSHOT_DIR}"
     # Copy/clone the prepared disks into the snapshot location
     # Note: This clones the qcow2 backing with current state; safe for reuse with overlays.
     cp_clone_file "${DISK}" "${SNAPSHOT_BASE}"
     cp_clone_file "${DATA_DISK}" "${SNAPSHOT_DATA}"
-    chmod a+r "${SNAPSHOT_BASE}" "${SNAPSHOT_DATA}"
+    sudo chmod a+r "${SNAPSHOT_BASE}" "${SNAPSHOT_DATA}"
 
     # Also maintain local copies in WORKDIR for fast reuse within libvirt
     cp_clone_file "${SNAPSHOT_BASE}" "${LOCAL_BASE_COPY}"
