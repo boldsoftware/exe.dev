@@ -74,7 +74,7 @@ func (p *SSHProxy) Start() error {
 	} else {
 		listenAddr = fmt.Sprintf("TCP-LISTEN:%d,fork,reuseaddr", p.Port)
 	}
-	targetAddr := fmt.Sprintf("TCP:%s:%d", p.TargetIP, p.TargetPort)
+	targetAddr := fmt.Sprintf("TCP:%s:%d,connect-timeout=3", p.TargetIP, p.TargetPort)
 
 	cmd := exec.Command("socat", listenAddr, targetAddr)
 

@@ -31,7 +31,7 @@ func TestStartAdoptsExistingProcess(t *testing.T) {
 	// Start socat manually (simulating a socat that survived exelet restart)
 	cmd := exec.Command("socat",
 		fmt.Sprintf("TCP-LISTEN:%d,fork,reuseaddr", port),
-		fmt.Sprintf("TCP:%s:22", targetIP))
+		fmt.Sprintf("TCP:%s:22,connect-timeout=3", targetIP))
 	cmd.SysProcAttr = nil // Run in same process group for easier cleanup
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("failed to start manual socat: %v", err)
