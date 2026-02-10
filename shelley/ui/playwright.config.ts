@@ -19,12 +19,12 @@ export default defineConfig({
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: process.env.TEST_SERVER_URL || 'http://localhost:9001',
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: 'on-first-retry',
-    /* Take screenshots on failure */
-    screenshot: 'only-on-failure',
-    /* Record video only on failure */
-    video: 'on-first-retry',
+    /* Collect trace on all tests, keep only on failure */
+    trace: 'retain-on-failure',
+    /* Take a screenshot after every test */
+    screenshot: 'on',
+    /* Record video on all tests, keep only on failure */
+    video: 'retain-on-failure',
   },
 
   /* Just test mobile Chrome for simplicity */
