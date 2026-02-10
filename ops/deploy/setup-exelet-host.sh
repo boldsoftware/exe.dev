@@ -663,7 +663,7 @@ if [ -z "$TAILSCALE_IP" ]; then
     echo "ERROR: Failed to get Tailscale IP" >&2
     exit 1
 fi
-exec /usr/bin/prometheus-node-exporter --web.listen-address=${TAILSCALE_IP}:9100 --collector.cgroups --collector.systemd "$@"
+exec /usr/bin/prometheus-node-exporter --web.listen-address=${TAILSCALE_IP}:9100 --collector.cgroups --collector.systemd --collector.netdev.device-exclude='^(tap|ifb)' --collector.diskstats.device-exclude='^zd' "$@"
 WRAPPER
 sudo chmod +x /usr/local/bin/node-exporter-wrapper
 

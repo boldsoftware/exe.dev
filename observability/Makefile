@@ -76,7 +76,7 @@ deploy-node-exporter:
 		sudo mkdir -p /etc/systemd/system/prometheus-node-exporter.service.d && \
 		echo '[Service]' | sudo tee /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null && \
 		echo 'ExecStart=' | sudo tee -a /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null && \
-		echo 'ExecStart=/usr/bin/prometheus-node-exporter --web.listen-address=:$$port --collector.cgroups --collector.systemd --collector.textfile --collector.textfile.directory=/var/lib/prometheus/node-exporter' | sudo tee -a /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null && \
+		echo 'ExecStart=/usr/bin/prometheus-node-exporter --web.listen-address=:$$port --collector.cgroups --collector.systemd --collector.textfile --collector.textfile.directory=/var/lib/prometheus/node-exporter --collector.netdev.device-exclude='"'"'^(tap|ifb)'"'"' --collector.diskstats.device-exclude='"'"'^zd'"'"'' | sudo tee -a /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null && \
 		sudo systemctl daemon-reload && \
 		sudo systemctl enable prometheus-node-exporter && \
 		sudo systemctl restart prometheus-node-exporter && \
