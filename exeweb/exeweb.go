@@ -21,26 +21,26 @@ import (
 // SSHKnownHostsPath is for https://c2sp.org/well-known-ssh-hosts.
 const SSHKnownHostsPath = "/.well-known/ssh-known-hosts"
 
-// moltbotPrompt is a prefilled prompt for exe.new/openclaw.
-var moltbotPrompt = `ANTHROPIC_API_KEY=<fill-this-in>
+// openclawPrompt is a prefilled prompt for exe.new/openclaw.
+var openclawPrompt = `ANTHROPIC_API_KEY=<fill-this-in>
 
-Set up Moltbot (https://docs.molt.bot/install) on this VM. Moltbot used to be 
-called Clawdbot until recently, so be aware if the executable or other docs 
-still refer to Clawdbot. Use the non-interactive and accept-risk flags for 
-moltbot onboarding. Add the supplied auth or token as needed. Configure nginx 
-to forward from the default port 18789 to the root location on the default 
-enabled site config, making sure to enable Websocket support. Pairing is done 
-by "clawdbot devices list" and "clawdbot device approve <request id>". Make 
-sure the dashboard shows that Moltbot's health is OK. exe.dev handles forwarding 
-from port 8000 to port 80/443 and HTTPS for us, so the final "reachable" 
+Set up Openclaw (https://openclaw.ai/) on this VM. Openclaw used to be called
+Moltbot and before that Clawdbot, so be aware if the executable or other docs
+still refer to those names. Use the non-interactive and accept-risk flags for
+openclaw onboarding. Add the supplied auth or token as needed. Configure nginx
+to forward from the default port 18789 to the root location on the default
+enabled site config, making sure to enable Websocket support. Pairing is done
+by "openclaw devices list" and "openclaw device approve <request id>". Make
+sure the dashboard shows that Openclaw's health is OK. exe.dev handles forwarding
+from port 8000 to port 80/443 and HTTPS for us, so the final "reachable"
 should be https://<vm-name>.exe.xyz without port specification.`
 
 // ExeNewPathPrompts maps paths on exe.new to pre-filled prompts
 // for the /new page.
 var ExeNewPathPrompts = map[string]string{
-	"/moltbot":  moltbotPrompt,
-	"/clawdbot": moltbotPrompt,
-	"/openclaw": moltbotPrompt,
+	"/moltbot":  openclawPrompt,
+	"/clawdbot": openclawPrompt,
+	"/openclaw": openclawPrompt,
 }
 
 // NonProxyRedirect is called from an HTTP handler.
@@ -65,7 +65,7 @@ func NonProxyRedirect(env *stage.Env, r *http.Request) string {
 
 	// Redirect requests to exe.new to WebHost/new (exe.dev/new).
 	// This is a vanity domain that lets users start a new box from a memorable URL.
-	// Special paths like /moltbot, /clawdbot, and /openclaw redirect with a pre-filled prompt.
+	// Special paths like /openclaw, /moltbot, and /clawdbot redirect with a pre-filled prompt.
 	if hostname == "exe.new" {
 		var target strings.Builder
 		target.WriteString(getScheme(r))
