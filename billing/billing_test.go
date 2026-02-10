@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"exe.dev/exedb"
@@ -138,6 +139,58 @@ func TestUseCredits(t *testing.T) {
 	if remaining != -200 {
 		t.Fatalf("UseCredits(4, 200): remaining = %d, want -200", remaining)
 	}
+}
+
+func TestUseCreditsSameHourSameTypeAggregatesRow(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		db := newTestDBGoTime(t)
+		accountID := "exe_test_credits_hourly"
+		userID := "usr_test_credits_hourly"
+		createTestAccount(t, db, accountID, userID)
+
+		m := &Manager{DB: db}
+		ctx := t.Context()
+
+		expectedHourBucket := time.Now().UTC().Truncate(time.Hour).Format("2006-01-02 15:00:00")
+
+		remaining, err := m.UseCredits(ctx, accountID, 1, 200)
+		if err != nil {
+			t.Fatalf("UseCredits(1, 200): %v", err)
+		}
+		if remaining != -200 {
+			t.Fatalf("UseCredits(1, 200): remaining = %d, want -200", remaining)
+		}
+
+		remaining, err = m.UseCredits(ctx, accountID, 2, 200)
+		if err != nil {
+			t.Fatalf("UseCredits(2, 200): %v", err)
+		}
+		if remaining != -600 {
+			t.Fatalf("UseCredits(2, 200): remaining = %d, want -600", remaining)
+		}
+
+		var rowCount, total int64
+		err = db.Rx(ctx, func(ctx context.Context, rx *exesqlite.Rx) error {
+			return rx.QueryRow(
+				`SELECT COUNT(*), CAST(COALESCE(SUM(amount), 0) AS INTEGER)
+				 FROM account_credit_ledger
+				 WHERE account_id = ?
+				   AND amount < 0
+				   AND strftime('%Y-%m-%d %H:00:00', created_at) = ?`,
+				accountID,
+				expectedHourBucket,
+			).Scan(&rowCount, &total)
+		})
+		if err != nil {
+			t.Fatalf("inspect credit ledger rows: %v", err)
+		}
+		if rowCount != 1 {
+			t.Fatalf("same-hour deduction rows = %d, want 1", rowCount)
+		}
+		if total != -600 {
+			t.Fatalf("deduction total = %d, want -600", total)
+		}
+	})
 }
 
 func TestUseCreditsZeroAmountNoLedgerEntry(t *testing.T) {

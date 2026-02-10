@@ -19,6 +19,7 @@ import (
 	"exe.dev/errorz"
 	"exe.dev/exedb"
 	exesqlite "exe.dev/sqlite"
+	_ "exe.dev/sqlite/sqltest"
 	"exe.dev/tslog"
 	"github.com/stripe/stripe-go/v82"
 )
@@ -181,6 +182,30 @@ func newTestDB(t *testing.T) *exesqlite.DB {
 	rawDB.Close()
 
 	db, err := exesqlite.New(dbPath, 1)
+	if err != nil {
+		t.Fatalf("failed to create sqlite wrapper: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+// newTestDBGoTime is like newTestDB, but uses SQLite's _go_time mode so
+// CURRENT_TIMESTAMP follows Go's time.Now, including synctest bubbles.
+func newTestDBGoTime(t *testing.T) *exesqlite.DB {
+	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "billing_test.db")
+	dsn := "file:" + dbPath + "?_go_time=true"
+	rawDB, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatalf("failed to open database: %v", err)
+	}
+	if err := exedb.RunMigrations(tslog.Slogger(t), rawDB); err != nil {
+		rawDB.Close()
+		t.Fatalf("failed to run migrations: %v", err)
+	}
+	rawDB.Close()
+
+	db, err := exesqlite.New(dsn, 1)
 	if err != nil {
 		t.Fatalf("failed to create sqlite wrapper: %v", err)
 	}

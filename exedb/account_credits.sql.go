@@ -39,20 +39,23 @@ func (q *Queries) SyncCreditLedger(ctx context.Context, arg SyncCreditLedgerPara
 }
 
 const useCredits = `-- name: UseCredits :one
-INSERT INTO account_credit_ledger (account_id, amount)
-VALUES (?1, ?2)
+INSERT INTO account_credit_ledger (account_id, amount, hour_bucket, credit_type)
+VALUES (?1, ?2, strftime('%Y-%m-%d %H:00:00', CURRENT_TIMESTAMP), ?3)
+ON CONFLICT(account_id, hour_bucket, credit_type)
+DO UPDATE SET amount = account_credit_ledger.amount + excluded.amount
 RETURNING CAST((SELECT COALESCE(SUM(amount), 0) FROM account_credit_ledger WHERE account_id = ?1) AS INTEGER)
 `
 
 type UseCreditsParams struct {
-	AccountID string `db:"account_id" json:"account_id"`
-	Amount    int64  `db:"amount" json:"amount"`
+	AccountID  string  `db:"account_id" json:"account_id"`
+	Amount     int64   `db:"amount" json:"amount"`
+	CreditType *string `db:"credit_type" json:"credit_type"`
 }
 
 // UseCredits inserts a deduction into the credit ledger and returns the new balance.
 // amount should be negative for deductions. Negative balances are allowed.
 func (q *Queries) UseCredits(ctx context.Context, arg UseCreditsParams) (int64, error) {
-	row := q.queryRow(ctx, q.useCreditsStmt, useCredits, arg.AccountID, arg.Amount)
+	row := q.queryRow(ctx, q.useCreditsStmt, useCredits, arg.AccountID, arg.Amount, arg.CreditType)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err

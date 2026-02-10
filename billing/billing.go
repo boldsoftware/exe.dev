@@ -559,9 +559,11 @@ func (m *Manager) UseCredits(ctx context.Context, billingID string, total, perUn
 		if total == 0 || perUnit == 0 {
 			return q.GetCreditBalance(ctx, billingID)
 		}
+		creditType := "usage"
 		return q.UseCredits(ctx, exedb.UseCreditsParams{
-			AccountID: billingID,
-			Amount:    -(total * perUnit),
+			AccountID:  billingID,
+			Amount:     -(total * perUnit),
+			CreditType: &creditType,
 		})
 	})
 }
