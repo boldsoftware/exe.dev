@@ -271,7 +271,7 @@ func (m *ResourceManager) poll(ctx context.Context) {
 
 func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID string, vmCfg interface{}, now time.Time) {
 	// Collect usage metrics
-	usage, err := m.collectUsage(ctx, id, name)
+	usage, err := m.collectUsage(ctx, id, name, groupID)
 	if err != nil {
 		m.log.DebugContext(ctx, "resource manager: failed to collect usage", "id", id, "error", err)
 		return

@@ -80,7 +80,7 @@ func newPrometheusMetrics(registry *prometheus.Registry) *prometheusMetrics {
 			Namespace: "exelet",
 			Subsystem: "vm",
 			Name:      "memory_bytes",
-			Help:      "Current memory usage (VmRSS) of the VM in bytes.",
+			Help:      "Current memory usage (cgroup memory.current) of the VM in bytes.",
 		},
 		[]string{"vm_id", "vm_name"},
 	)
@@ -91,7 +91,7 @@ func newPrometheusMetrics(registry *prometheus.Registry) *prometheusMetrics {
 			Namespace: "exelet",
 			Subsystem: "vm",
 			Name:      "swap_bytes",
-			Help:      "Current swap usage (VmSwap) of the VM in bytes.",
+			Help:      "Current swap usage (cgroup memory.swap.current) of the VM in bytes.",
 		},
 		[]string{"vm_id", "vm_name"},
 	)

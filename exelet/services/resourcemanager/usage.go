@@ -16,6 +16,16 @@ import (
 	"exe.dev/exelet/vmm/cloudhypervisor/client"
 )
 
+// vmCgroupPath returns the cgroup path for a VM without creating it.
+func (m *ResourceManager) vmCgroupPath(id, groupID string) string {
+	if groupID == "" {
+		groupID = defaultGroupID
+	}
+	sliceName := fmt.Sprintf("%s.slice", sanitizeCgroupName(groupID))
+	scopeName := fmt.Sprintf("vm-%s.scope", sanitizeCgroupName(id))
+	return filepath.Join(m.cgroupRoot, cgroupSlice, sliceName, scopeName)
+}
+
 // usageData holds collected usage metrics for a VM
 type usageData struct {
 	cpuSeconds       float64
@@ -29,13 +39,13 @@ type usageData struct {
 }
 
 // collectUsage collects resource usage for a VM.
-func (m *ResourceManager) collectUsage(ctx context.Context, id, name string) (*usageData, error) {
+func (m *ResourceManager) collectUsage(ctx context.Context, id, name, groupID string) (*usageData, error) {
 	usage := &usageData{}
 
-	// Get VM info from cloud-hypervisor (includes PID and memory)
-	pid, memoryBytes, err := m.getVMInfo(ctx, id)
+	// Get VM PID from cloud-hypervisor
+	pid, err := m.getVMPID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("get VM info: %w", err)
+		return nil, fmt.Errorf("get VM PID: %w", err)
 	}
 
 	// CPU usage from /proc/<pid>/stat
@@ -44,13 +54,15 @@ func (m *ResourceManager) collectUsage(ctx context.Context, id, name string) (*u
 		return nil, fmt.Errorf("read CPU usage: %w", err)
 	}
 
-	// Memory from cloud-hypervisor API (actual guest memory)
-	usage.memoryBytes = memoryBytes
-
-	// Swap usage from /proc/<pid>/status (VmSwap line)
-	usage.swapBytes, err = m.readSwapUsage(pid)
+	// Memory and swap from cgroup
+	cgroupPath := m.vmCgroupPath(id, groupID)
+	usage.memoryBytes, err = m.readCgroupMemory(cgroupPath)
 	if err != nil {
-		m.log.DebugContext(ctx, "failed to read swap usage", "id", id, "error", err)
+		m.log.DebugContext(ctx, "failed to read cgroup memory", "id", id, "error", err)
+	}
+	usage.swapBytes, err = m.readCgroupSwap(cgroupPath)
+	if err != nil {
+		m.log.DebugContext(ctx, "failed to read cgroup swap", "id", id, "error", err)
 	}
 
 	// Disk info from ZFS (volsize, used, and logicalused)
@@ -72,15 +84,15 @@ func (m *ResourceManager) collectUsage(ctx context.Context, id, name string) (*u
 	return usage, nil
 }
 
-// getVMInfo retrieves VM info from cloud-hypervisor including PID and actual memory usage.
-func (m *ResourceManager) getVMInfo(ctx context.Context, id string) (pid int, memoryBytes uint64, err error) {
+// getVMPID retrieves the PID for a VM from cloud-hypervisor.
+func (m *ResourceManager) getVMPID(ctx context.Context, id string) (int, error) {
 	runtimeURL, err := url.Parse(m.config.RuntimeAddress)
 	if err != nil {
-		return 0, 0, fmt.Errorf("parse runtime address: %w", err)
+		return 0, fmt.Errorf("parse runtime address: %w", err)
 	}
 
 	if runtimeURL.Scheme != "cloudhypervisor" {
-		return 0, 0, fmt.Errorf("unsupported runtime scheme: %s", runtimeURL.Scheme)
+		return 0, fmt.Errorf("unsupported runtime scheme: %s", runtimeURL.Scheme)
 	}
 
 	socketPath := filepath.Join(runtimeURL.Path, id, "chh.sock")
@@ -91,63 +103,36 @@ func (m *ResourceManager) getVMInfo(ctx context.Context, id string) (pid int, me
 	// Use retry=false - fail fast for monitoring queries
 	cl, err := client.NewCloudHypervisorClient(reqCtx, socketPath, false, m.log)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 	defer cl.Close()
 
-	// Get PID from vmm.ping
 	pingResp, err := cl.GetVmmPingWithResponse(reqCtx)
-	if err != nil {
-		return 0, 0, err
-	}
-	if pingResp.JSON200 == nil || pingResp.JSON200.Pid == nil {
-		return 0, 0, fmt.Errorf("cloud-hypervisor did not report PID")
-	}
-	pid = int(*pingResp.JSON200.Pid)
-
-	// Get actual memory from vm.info
-	infoResp, err := cl.GetVmInfoWithResponse(reqCtx)
-	if err != nil {
-		return 0, 0, fmt.Errorf("get vm info: %w", err)
-	}
-	if infoResp.JSON200 != nil && infoResp.JSON200.MemoryActualSize != nil {
-		memoryBytes = uint64(*infoResp.JSON200.MemoryActualSize)
-	}
-
-	return pid, memoryBytes, nil
-}
-
-// getVMPID retrieves just the PID for a VM (used by priority management).
-func (m *ResourceManager) getVMPID(ctx context.Context, id string) (int, error) {
-	pid, _, err := m.getVMInfo(ctx, id)
-	return pid, err
-}
-
-// readSwapUsage reads swap usage from /proc/<pid>/status (VmSwap line).
-func (m *ResourceManager) readSwapUsage(pid int) (uint64, error) {
-	statusPath := fmt.Sprintf("/proc/%d/status", pid)
-	data, err := os.ReadFile(statusPath)
 	if err != nil {
 		return 0, err
 	}
-
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, "VmSwap:") {
-			fields := strings.Fields(line)
-			if len(fields) < 2 {
-				return 0, fmt.Errorf("malformed VmSwap line: %q", line)
-			}
-			// Value is in kB
-			kb, err := strconv.ParseUint(fields[1], 10, 64)
-			if err != nil {
-				return 0, fmt.Errorf("parse VmSwap: %w", err)
-			}
-			return kb * 1024, nil // Convert to bytes
-		}
+	if pingResp.JSON200 == nil || pingResp.JSON200.Pid == nil {
+		return 0, fmt.Errorf("cloud-hypervisor did not report PID")
 	}
+	return int(*pingResp.JSON200.Pid), nil
+}
 
-	// VmSwap line not found - could be a kernel thread or similar
-	return 0, nil
+// readCgroupMemory reads memory.current from the VM's cgroup.
+func (m *ResourceManager) readCgroupMemory(cgroupPath string) (uint64, error) {
+	data, err := os.ReadFile(filepath.Join(cgroupPath, "memory.current"))
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
+}
+
+// readCgroupSwap reads memory.swap.current from the VM's cgroup.
+func (m *ResourceManager) readCgroupSwap(cgroupPath string) (uint64, error) {
+	data, err := os.ReadFile(filepath.Join(cgroupPath, "memory.swap.current"))
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
 }
 
 // readCPUUsage reads total CPU seconds from /proc/<pid>/stat.

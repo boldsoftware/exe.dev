@@ -447,6 +447,95 @@ func TestCgroupPathWithGroup(t *testing.T) {
 	}
 }
 
+func TestReadCgroupMemory(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &ResourceManager{cgroupRoot: tmpDir}
+
+	// Set up a fake cgroup directory
+	cgroupPath := m.vmCgroupPath("vm-test", "acct_123")
+	if err := os.MkdirAll(cgroupPath, 0o755); err != nil {
+		t.Fatalf("failed to create cgroup dir: %v", err)
+	}
+
+	// Write memory.current
+	if err := os.WriteFile(filepath.Join(cgroupPath, "memory.current"), []byte("428326912\n"), 0o644); err != nil {
+		t.Fatalf("failed to write memory.current: %v", err)
+	}
+
+	got, err := m.readCgroupMemory(cgroupPath)
+	if err != nil {
+		t.Fatalf("readCgroupMemory failed: %v", err)
+	}
+	if got != 428326912 {
+		t.Errorf("readCgroupMemory() = %d, want 428326912", got)
+	}
+}
+
+func TestReadCgroupSwap(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &ResourceManager{cgroupRoot: tmpDir}
+
+	// Set up a fake cgroup directory
+	cgroupPath := m.vmCgroupPath("vm-test", "acct_123")
+	if err := os.MkdirAll(cgroupPath, 0o755); err != nil {
+		t.Fatalf("failed to create cgroup dir: %v", err)
+	}
+
+	// Write memory.swap.current
+	if err := os.WriteFile(filepath.Join(cgroupPath, "memory.swap.current"), []byte("6195773440\n"), 0o644); err != nil {
+		t.Fatalf("failed to write memory.swap.current: %v", err)
+	}
+
+	got, err := m.readCgroupSwap(cgroupPath)
+	if err != nil {
+		t.Fatalf("readCgroupSwap failed: %v", err)
+	}
+	if got != 6195773440 {
+		t.Errorf("readCgroupSwap() = %d, want 6195773440", got)
+	}
+}
+
+func TestReadCgroupMemoryMissing(t *testing.T) {
+	m := &ResourceManager{cgroupRoot: "/nonexistent"}
+	_, err := m.readCgroupMemory("/nonexistent/path")
+	if err == nil {
+		t.Error("expected error for missing cgroup file")
+	}
+}
+
+func TestVmCgroupPath(t *testing.T) {
+	m := &ResourceManager{cgroupRoot: "/sys/fs/cgroup"}
+
+	tests := []struct {
+		name     string
+		vmID     string
+		groupID  string
+		expected string
+	}{
+		{
+			name:     "with group",
+			vmID:     "vm000001-testbox",
+			groupID:  "acct_123",
+			expected: "/sys/fs/cgroup/exelet.slice/acct_123.slice/vm-vm000001-testbox.scope",
+		},
+		{
+			name:     "empty group uses default",
+			vmID:     "vm000002-anotherbox",
+			groupID:  "",
+			expected: "/sys/fs/cgroup/exelet.slice/default.slice/vm-vm000002-anotherbox.scope",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := m.vmCgroupPath(tt.vmID, tt.groupID)
+			if got != tt.expected {
+				t.Errorf("vmCgroupPath(%q, %q) = %q, want %q", tt.vmID, tt.groupID, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestVmUsageStateGroupID(t *testing.T) {
 	state := &vmUsageState{
 		name:    "test-vm",
