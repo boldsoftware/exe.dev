@@ -142,6 +142,8 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 		}
 	}
 
+	proxyChangeRenamedBox(oldName, newName)
+
 	// Update hostname inside the running VM
 	// Re-fetch the box with the new name for SSH connection
 	slog.InfoContext(ctx, "rename: updating hostname inside VM",

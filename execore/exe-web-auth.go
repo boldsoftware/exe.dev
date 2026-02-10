@@ -821,8 +821,8 @@ func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (st
 
 	// Check if cookie has expired
 	if time.Now().After(row.ExpiresAt) {
-		// Clean up expired cookie - use context.WithoutCancel to ensure cleanup completes even if client disconnects
-		withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).DeleteAuthCookie, cookieValue)
+		// Clean up expired cookie.
+		s.deleteAuthCookie(ctx, cookieValue)
 		return "", fmt.Errorf("cookie expired")
 	}
 
@@ -944,6 +944,34 @@ func (s *Server) cleanupExpiredMagicSecrets() {
 	}
 }
 
+// deleteAuthCookie deletes a cookie from the database.
+// This logs any errors but doesn't return them,
+// as there is nothing useful for the caller to do.
+func (s *Server) deleteAuthCookie(ctx context.Context, cookieValue string) {
+	// Use context.WithoutCancel to ensure that cleanup completes
+	// even if the client disconnected.
+	ctx = context.WithoutCancel(ctx)
+	if err := withTx1(s, ctx, (*exedb.Queries).DeleteAuthCookie, cookieValue); err != nil {
+		s.slog().ErrorContext(ctx, "deleting auth cookie failed", "cookievalue", cookieValue, "error", err)
+		return
+	}
+	proxyChangeDeletedCookie(cookieValue)
+}
+
+// deleteAuthCookiesForUser deletes all cookies for a user.
+// This logs any error but doesn't return them,
+// as there is nothing useful for the caller to do.
+func (s *Server) deleteAuthCookiesForUser(ctx context.Context, userID string) {
+	// Use context.WithoutCancel to ensure that the cleanup completes
+	// even if the client disconnected.
+	ctx = context.WithoutCancel(ctx)
+	if err := withTx1(s, ctx, (*exedb.Queries).DeleteAuthCookiesByUserID, userID); err != nil {
+		s.slog().ErrorContext(ctx, "deleting user's auth cookies failed", "userID", userID, "error", err)
+		return
+	}
+	proxyChangeDeletedCookiesForUser(userID)
+}
+
 // redirectAfterAuth handles redirecting user after successful authentication.
 // It extracts redirect params from the request query/form values.
 func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userID string) {
@@ -1047,10 +1075,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 	// Clear ALL auth cookies for this user across all domains
 	if userID != "" {
-		err := withTx1(s, r.Context(), (*exedb.Queries).DeleteAuthCookiesByUserID, userID)
-		if err != nil {
-			s.slog().ErrorContext(r.Context(), "Failed to delete user's auth cookies from database", "error", err)
-		}
+		s.deleteAuthCookiesForUser(r.Context(), userID)
 	}
 
 	// Clear both cookies in the browser

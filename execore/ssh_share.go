@@ -457,12 +457,7 @@ func (ss *SSHServer) updateBoxRoute(ctx context.Context, cc *exemenu.CommandCont
 
 	box.SetRoute(route)
 
-	err = withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxRoutes, exedb.UpdateBoxRoutesParams{
-		Routes:          box.Routes,
-		Name:            boxName,
-		CreatedByUserID: cc.User.ID,
-	})
-	if err != nil {
+	if err := ss.updateBoxRouteInDB(ctx, boxName, cc.User.ID, box.Routes, route.Port, route.Share); err != nil {
 		return err
 	}
 
@@ -481,6 +476,20 @@ func (ss *SSHServer) updateBoxRoute(ctx context.Context, cc *exemenu.CommandCont
 	cc.Writeln("  Port: %d", route.Port)
 	cc.Writeln("  Share: %s", route.Share)
 	cc.Writeln("")
+	return nil
+}
+
+// updateBoxRouteInDB updates the box route in the database.
+func (ss *SSHServer) updateBoxRouteInDB(ctx context.Context, boxName, userID string, routes *string, port int, share string) error {
+	err := withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxRoutes, exedb.UpdateBoxRoutesParams{
+		Name:            boxName,
+		CreatedByUserID: userID,
+		Routes:          routes,
+	})
+	if err != nil {
+		return err
+	}
+	proxyChangeUpdatedBoxRoute(boxName, userID, port, share)
 	return nil
 }
 
@@ -759,13 +768,7 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 	targetUserID, err := ss.server.GetUserIDByEmail(ctx, email)
 	if err == nil {
 		// User exists, try to delete their active share
-		err = withTx1(ss.server, ctx, (*exedb.Queries).DeleteBoxShareByBoxAndUser, exedb.DeleteBoxShareByBoxAndUserParams{
-			BoxID:            int64(box.ID),
-			SharedWithUserID: targetUserID,
-		})
-		if err == nil {
-			deletedActive = true
-		}
+		deletedActive = ss.deleteBoxShare(ctx, box.ID, boxName, targetUserID)
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		// Real error (not just user not found)
 		return err
@@ -797,6 +800,25 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 	}
 	cc.Writeln("")
 	return nil
+}
+
+// deleteBoxShare deletes a box share.
+// This reports whether the box share was successfully deleted.
+func (ss *SSHServer) deleteBoxShare(ctx context.Context, boxID int, boxName, targetUserID string) bool {
+	ctx = context.WithoutCancel(ctx)
+	err := withTx1(ss.server, ctx, (*exedb.Queries).DeleteBoxShareByBoxAndUser, exedb.DeleteBoxShareByBoxAndUserParams{
+		BoxID:            int64(boxID),
+		SharedWithUserID: targetUserID,
+	})
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			ss.server.slog().ErrorContext(ctx, "error deleting box share from database", "boxID", boxID, "boxName", boxName, "targetUserID", targetUserID, "error", err)
+		}
+		return false
+	}
+
+	proxyChangeDeletedBoxShare(boxName, targetUserID)
+	return true
 }
 
 // handleShareRemoveTeam removes the team share from a VM
@@ -916,13 +938,38 @@ func (ss *SSHServer) handleShareRemoveLinkCmd(ctx context.Context, cc *exemenu.C
 	boxName := ss.normalizeBoxName(cc.Args[0])
 	token := strings.TrimSpace(cc.Args[1])
 
-	// Get the box, verify ownership, and delete share link in a single transaction
-	var box exedb.Box
+	found, err := ss.deleteBoxShareLink(ctx, boxName, cc.User.ID, token)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return cc.Errorf("VM %q not found or share link '%s' not found", boxName, token)
+	}
+
+	if cc.WantJSON() {
+		cc.WriteJSON(map[string]any{
+			"status":  "success",
+			"vm_name": boxName,
+			"message": "Share link removed",
+		})
+		return nil
+	}
+
+	cc.Writeln("")
+	cc.Writeln("\033[1;32m✓\033[0m Removed share link %s", token)
+	cc.Writeln("")
+	return nil
+}
+
+// deleteBoxShareLink deletes a box share link.
+// The bool result reports whether the link was found.
+func (ss *SSHServer) deleteBoxShareLink(ctx context.Context, boxName, boxOwner, token string) (bool, error) {
+	// Get the box, verify ownership, and delete share link
+	// in a single transaction.
 	err := ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		box, err = queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
+		box, err := queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
 			Name:            boxName,
-			CreatedByUserID: cc.User.ID,
+			CreatedByUserID: boxOwner,
 		})
 		if err != nil {
 			return err
@@ -934,25 +981,13 @@ func (ss *SSHServer) handleShareRemoveLinkCmd(ctx context.Context, cc *exemenu.C
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("VM %q not found or share link '%s' not found", boxName, token)
+		return false, nil
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
-
-	if cc.WantJSON() {
-		cc.WriteJSON(map[string]any{
-			"status":  "success",
-			"vm_name": box.Name,
-			"message": "Share link removed",
-		})
-		return nil
-	}
-
-	cc.Writeln("")
-	cc.Writeln("\033[1;32m✓\033[0m Removed share link %s", token)
-	cc.Writeln("")
-	return nil
+	proxyChangeDeletedBoxShareLink(boxName, token)
+	return true, nil
 }
 
 func (ss *SSHServer) handleShareReceiveEmailCmd(ctx context.Context, cc *exemenu.CommandContext) error {

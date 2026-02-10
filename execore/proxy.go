@@ -591,10 +591,7 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 
 	// Delete only this specific cookie from the database
 	if cookieValue != "" {
-		err := withTx1(s, r.Context(), (*exedb.Queries).DeleteAuthCookieByValue, cookieValue)
-		if err != nil {
-			s.slog().ErrorContext(r.Context(), "Failed to delete specific proxy auth cookie from database", "error", err)
-		}
+		s.deleteAuthCookie(r.Context(), cookieValue)
 	}
 
 	// Clear the proxy auth cookie in the browser

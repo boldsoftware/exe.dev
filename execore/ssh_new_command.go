@@ -558,11 +558,7 @@ done:
 			Share: "private",
 		}
 		box.SetRoute(route)
-		if err := withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxRoutes, exedb.UpdateBoxRoutesParams{
-			Name:            box.Name,
-			CreatedByUserID: box.CreatedByUserID,
-			Routes:          box.Routes,
-		}); err != nil {
+		if err := ss.updateBoxRouteInDB(ctx, box.Name, box.CreatedByUserID, box.Routes, route.Port, route.Share); err != nil {
 			slog.WarnContext(ctx, "failed to save auto-routing setup", "box", boxName, "port", bestPort, "error", err)
 		}
 		proxyPort = bestPort
