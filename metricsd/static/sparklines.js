@@ -43,6 +43,7 @@ const CHART_DEFS = [
 const COLUMNS = [
   {title: 'VM', key: 'name'},
   {title: 'Host', key: 'host'},
+  {title: 'Group', key: 'resource_group'},
   ...CHART_DEFS.map(c => ({title: c.title, key: c.sortKey})),
 ];
 
@@ -196,8 +197,9 @@ function lastNonNull(rows, key) {
     // Group by vm_name
     const byVM = {};
     const vmHost = {};
+    const vmGroup = {};
     for (const m of data.metrics) {
-      if (!byVM[m.vm_name]) { byVM[m.vm_name] = []; vmHost[m.vm_name] = m.host; }
+      if (!byVM[m.vm_name]) { byVM[m.vm_name] = []; vmHost[m.vm_name] = m.host; vmGroup[m.vm_name] = m.resource_group || ''; }
       byVM[m.vm_name].push(m);
     }
 
@@ -215,6 +217,15 @@ function lastNonNull(rows, key) {
       hostSel.appendChild(o);
     }
 
+    // Populate group filter
+    const groups = [...new Set(Object.values(vmGroup))].filter(g => g).sort();
+    const groupSel = document.getElementById('groupFilter');
+    for (const g of groups) {
+      const o = document.createElement('option');
+      o.value = g; o.textContent = g;
+      groupSel.appendChild(o);
+    }
+
     const statsEl = document.getElementById('stats');
 
     // Sort state
@@ -223,10 +234,12 @@ function lastNonNull(rows, key) {
 
     function render() {
       const hostF = hostSel.value;
+      const groupF = groupSel.value;
       const nameF = document.getElementById('nameFilter').value.toLowerCase();
 
       let vms = Object.keys(byVM);
       if (hostF) vms = vms.filter(v => vmHost[v] === hostF);
+      if (groupF) vms = vms.filter(v => vmGroup[v] === groupF);
       if (nameF) vms = vms.filter(v => v.toLowerCase().includes(nameF));
 
       if (sortKey === 'name') {
@@ -235,6 +248,11 @@ function lastNonNull(rows, key) {
       } else if (sortKey === 'host') {
         vms.sort((a, b) => {
           const cmp = vmHost[a].localeCompare(vmHost[b]);
+          return sortDesc ? -cmp : cmp;
+        });
+      } else if (sortKey === 'resource_group') {
+        vms.sort((a, b) => {
+          const cmp = vmGroup[a].localeCompare(vmGroup[b]);
           return sortDesc ? -cmp : cmp;
         });
       } else {
@@ -308,7 +326,7 @@ function lastNonNull(rows, key) {
             sortDesc = !sortDesc;
           } else {
             sortKey = col.key;
-            sortDesc = col.key !== 'name' && col.key !== 'host';
+            sortDesc = col.key !== 'name' && col.key !== 'host' && col.key !== 'resource_group';
           }
           render();
         });
@@ -335,6 +353,12 @@ function lastNonNull(rows, key) {
         tdHost.className = 'vm-host';
         tdHost.textContent = vmHost[vm];
         tr.appendChild(tdHost);
+
+        const tdGroup = document.createElement('td');
+        tdGroup.className = 'vm-group';
+        tdGroup.textContent = vmGroup[vm];
+        tdGroup.title = vmGroup[vm];
+        tr.appendChild(tdGroup);
 
         for (const chartDef of CHART_DEFS) {
           const td = document.createElement('td');
@@ -402,6 +426,7 @@ function lastNonNull(rows, key) {
 
     loadingEl.hidden = true;
     hostSel.addEventListener('change', render);
+    groupSel.addEventListener('change', render);
     document.getElementById('nameFilter').addEventListener('input', render);
     render();
   } catch (e) {

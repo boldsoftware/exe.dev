@@ -106,7 +106,7 @@ func NewServer(connector *duckdb.Connector, db *sql.DB, requireTailscale bool) *
 	return s
 }
 
-// OpenDB opens a DuckDB database and initializes the schema.
+// OpenDB opens a DuckDB database and runs migrations.
 // Returns the connector and sql.DB handle.
 func OpenDB(ctx context.Context, path string) (*duckdb.Connector, *sql.DB, error) {
 	connector, err := duckdb.NewConnector(path, nil)
@@ -115,10 +115,10 @@ func OpenDB(ctx context.Context, path string) (*duckdb.Connector, *sql.DB, error
 	}
 
 	db := sql.OpenDB(connector)
-	if _, err := db.ExecContext(ctx, Schema); err != nil {
+	if err := RunMigrations(ctx, db); err != nil {
 		db.Close()
 		connector.Close()
-		return nil, nil, fmt.Errorf("initialize schema: %w", err)
+		return nil, nil, fmt.Errorf("run migrations: %w", err)
 	}
 	return connector, db, nil
 }
@@ -336,12 +336,15 @@ func (s *Server) InsertMetrics(ctx context.Context, metrics []Metric) error {
 		}
 		// Store as UTC
 		ts = ts.UTC()
+		// Column order must match the physical table layout.
+		// resource_group is added by migration 002 and appears last.
 		err := appender.AppendRow(
 			ts, m.Host, m.VMName,
 			m.DiskSizeBytes, m.DiskUsedBytes, m.DiskLogicalUsedBytes,
 			m.MemoryNominalBytes, m.MemoryRSSBytes, m.MemorySwapBytes,
 			m.CPUUsedCumulativeSecs, m.CPUNominal,
 			m.NetworkTXBytes, m.NetworkRXBytes,
+			m.ResourceGroup,
 		)
 		s.insertRowSeconds.Observe(time.Since(rowStart).Seconds())
 		if err != nil {
@@ -375,14 +378,8 @@ func (s *Server) QueryMetrics(ctx context.Context, vmName, limit string) ([]Metr
 	var metrics []Metric
 	for rows.Next() {
 		var m Metric
-		if err := rows.Scan(
-			&m.Timestamp, &m.Host, &m.VMName,
-			&m.DiskSizeBytes, &m.DiskUsedBytes, &m.DiskLogicalUsedBytes,
-			&m.MemoryNominalBytes, &m.MemoryRSSBytes, &m.MemorySwapBytes,
-			&m.CPUUsedCumulativeSecs, &m.CPUNominal,
-			&m.NetworkTXBytes, &m.NetworkRXBytes,
-		); err != nil {
-			return nil, fmt.Errorf("scan row: %w", err)
+		if err := scanMetric(rows, &m); err != nil {
+			return nil, err
 		}
 		metrics = append(metrics, m)
 	}
@@ -403,14 +400,8 @@ func (s *Server) QuerySparklineMetrics(ctx context.Context, hours int) ([]Metric
 	var metrics []Metric
 	for rows.Next() {
 		var m Metric
-		if err := rows.Scan(
-			&m.Timestamp, &m.Host, &m.VMName,
-			&m.DiskSizeBytes, &m.DiskUsedBytes, &m.DiskLogicalUsedBytes,
-			&m.MemoryNominalBytes, &m.MemoryRSSBytes, &m.MemorySwapBytes,
-			&m.CPUUsedCumulativeSecs, &m.CPUNominal,
-			&m.NetworkTXBytes, &m.NetworkRXBytes,
-		); err != nil {
-			return nil, fmt.Errorf("scan row: %w", err)
+		if err := scanMetric(rows, &m); err != nil {
+			return nil, err
 		}
 		metrics = append(metrics, m)
 	}
@@ -418,6 +409,21 @@ func (s *Server) QuerySparklineMetrics(ctx context.Context, hours int) ([]Metric
 		return nil, fmt.Errorf("rows iteration: %w", err)
 	}
 	return metrics, nil
+}
+
+// scanMetric scans a single metric row. Column order must match SelectSQL/SparklineSQL.
+func scanMetric(rows *sql.Rows, m *Metric) error {
+	if err := rows.Scan(
+		&m.Timestamp, &m.Host, &m.VMName,
+		&m.DiskSizeBytes, &m.DiskUsedBytes, &m.DiskLogicalUsedBytes,
+		&m.MemoryNominalBytes, &m.MemoryRSSBytes, &m.MemorySwapBytes,
+		&m.CPUUsedCumulativeSecs, &m.CPUNominal,
+		&m.NetworkTXBytes, &m.NetworkRXBytes,
+		&m.ResourceGroup,
+	); err != nil {
+		return fmt.Errorf("scan row: %w", err)
+	}
+	return nil
 }
 
 // counterMetrics lists metric fields that are cumulative counters and need rate calculation.

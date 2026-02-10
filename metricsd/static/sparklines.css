@@ -25,6 +25,8 @@ table.sparklines td { padding: 1px 4px; border-bottom: 1px solid #f0f0f0; vertic
 table.sparklines td.vm-name { font-size: 0.8em; white-space: nowrap; max-width: 180px;
   overflow: hidden; text-overflow: ellipsis; }
 table.sparklines td.vm-host { font-size: 0.7em; color: #888; white-space: nowrap; }
+table.sparklines td.vm-group { font-size: 0.7em; color: #888; white-space: nowrap; max-width: 120px;
+  overflow: hidden; text-overflow: ellipsis; }
 table.sparklines canvas { display: block; }
 table.sparklines .spark-label { font-size: 0.65em; color: #666; text-align: right;
   white-space: nowrap; line-height: 1.1; }

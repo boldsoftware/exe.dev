@@ -84,6 +84,7 @@ func TestServer(t *testing.T) {
 					Timestamp:             now,
 					Host:                  "ctr-host-1",
 					VMName:                "test-vm-1",
+					ResourceGroup:         "acct-alice",
 					DiskSizeBytes:         100_000_000_000,
 					DiskUsedBytes:         50_000_000_000,
 					DiskLogicalUsedBytes:  75_000_000_000,
@@ -99,6 +100,7 @@ func TestServer(t *testing.T) {
 					Timestamp:             now.Add(-time.Minute),
 					Host:                  "ctr-host-2",
 					VMName:                "test-vm-2",
+					ResourceGroup:         "acct-bob",
 					DiskSizeBytes:         200_000_000_000,
 					DiskUsedBytes:         75_000_000_000,
 					DiskLogicalUsedBytes:  150_000_000_000,
@@ -150,6 +152,9 @@ func TestServer(t *testing.T) {
 		}
 		if result.Metrics[0].CPUNominal != 4.0 {
 			t.Errorf("cpu_nominal = %f, want %f", result.Metrics[0].CPUNominal, 4.0)
+		}
+		if result.Metrics[0].ResourceGroup != "acct-alice" {
+			t.Errorf("resource_group = %q, want %q", result.Metrics[0].ResourceGroup, "acct-alice")
 		}
 	})
 
@@ -212,6 +217,7 @@ func TestSparklines(t *testing.T) {
 				Timestamp:             now.Add(-10 * time.Minute),
 				Host:                  "host-1",
 				VMName:                "vm-alpha",
+				ResourceGroup:         "acct-alice",
 				DiskSizeBytes:         100_000_000_000,
 				DiskUsedBytes:         50_000_000_000,
 				DiskLogicalUsedBytes:  75_000_000_000,
@@ -227,6 +233,7 @@ func TestSparklines(t *testing.T) {
 				Timestamp:             now,
 				Host:                  "host-1",
 				VMName:                "vm-alpha",
+				ResourceGroup:         "acct-alice",
 				DiskSizeBytes:         100_000_000_000,
 				DiskUsedBytes:         55_000_000_000,
 				DiskLogicalUsedBytes:  80_000_000_000,
@@ -242,6 +249,7 @@ func TestSparklines(t *testing.T) {
 				Timestamp:             now,
 				Host:                  "host-2",
 				VMName:                "vm-beta",
+				ResourceGroup:         "acct-bob",
 				DiskSizeBytes:         200_000_000_000,
 				DiskUsedBytes:         100_000_000_000,
 				DiskLogicalUsedBytes:  150_000_000_000,

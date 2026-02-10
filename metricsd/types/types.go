@@ -9,6 +9,7 @@ type Metric struct {
 	Timestamp             time.Time `json:"timestamp"`
 	Host                  string    `json:"host"` // Exelet host name (container host where VM runs)
 	VMName                string    `json:"vm_name"`
+	ResourceGroup         string    `json:"resource_group"`          // Resource group for per-account cgroup grouping
 	DiskSizeBytes         int64     `json:"disk_size_bytes"`         // ZFS volsize (nominal/provisioned size)
 	DiskUsedBytes         int64     `json:"disk_used_bytes"`         // ZFS used (actual compressed bytes on disk)
 	DiskLogicalUsedBytes  int64     `json:"disk_logical_used_bytes"` // ZFS logicalused (uncompressed logical usage)
