@@ -209,7 +209,7 @@ func TestTeamOwnerCanManageMemberVMs(t *testing.T) {
 
 	// Test: Owner can rename member's VM
 	t.Run("OwnerCanRenameMemberVM", func(t *testing.T) {
-		newName := "renamed-" + memberBox[:8]
+		newName := "renamed-" + memberBox[:8] + "-vm"
 		testinfra.AddCanonicalization(newName, "RENAMED_BOX")
 		repl := sshToExeDev(t, ownerKeyFile)
 		repl.sendLine("rename " + memberBox + " " + newName)

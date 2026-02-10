@@ -1,6 +1,9 @@
 package boxname
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestBoxWordsHaveNoDuplicates(t *testing.T) {
 	t.Parallel()
@@ -104,6 +107,21 @@ func TestShelleyReserved(t *testing.T) {
 	t.Parallel()
 	if IsValid("shelley") {
 		t.Error("'shelley' should be reserved")
+	}
+}
+
+func TestTeamRenameNameAlwaysValid(t *testing.T) {
+	t.Parallel()
+	// The teams_test.go rename subtest constructs names like:
+	//   "renamed-" + memberBox[:8] + "-vm"
+	// where memberBox[:8] is "e1e-XXXX" and XXXX is a 4-digit hex testRunID.
+	// Verify this pattern produces valid names for all possible testRunIDs.
+	for i := range 65536 {
+		id := fmt.Sprintf("%04x", i)
+		name := "renamed-e1e-" + id + "-vm"
+		if err := Valid(name); err != nil {
+			t.Errorf("rename target %q is invalid for testRunID=%s: %v", name, id, err)
+		}
 	}
 }
 
