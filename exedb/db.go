@@ -120,9 +120,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteAuthCookieStmt, err = db.PrepareContext(ctx, deleteAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAuthCookie: %w", err)
 	}
-	if q.deleteAuthCookieByValueStmt, err = db.PrepareContext(ctx, deleteAuthCookieByValue); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteAuthCookieByValue: %w", err)
-	}
 	if q.deleteAuthCookiesByDomainStmt, err = db.PrepareContext(ctx, deleteAuthCookiesByDomain); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAuthCookiesByDomain: %w", err)
 	}
@@ -922,11 +919,6 @@ func (q *Queries) Close() error {
 	if q.deleteAuthCookieStmt != nil {
 		if cerr := q.deleteAuthCookieStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteAuthCookieStmt: %w", cerr)
-		}
-	}
-	if q.deleteAuthCookieByValueStmt != nil {
-		if cerr := q.deleteAuthCookieByValueStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteAuthCookieByValueStmt: %w", cerr)
 		}
 	}
 	if q.deleteAuthCookiesByDomainStmt != nil {
@@ -2060,7 +2052,6 @@ type Queries struct {
 	createUserLLMCreditWithInitialStmt         *sql.Stmt
 	debitUserLLMCreditStmt                     *sql.Stmt
 	deleteAuthCookieStmt                       *sql.Stmt
-	deleteAuthCookieByValueStmt                *sql.Stmt
 	deleteAuthCookiesByDomainStmt              *sql.Stmt
 	deleteAuthCookiesByUserIDStmt              *sql.Stmt
 	deleteBoxStmt                              *sql.Stmt
@@ -2311,7 +2302,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createUserLLMCreditWithInitialStmt:         q.createUserLLMCreditWithInitialStmt,
 		debitUserLLMCreditStmt:                     q.debitUserLLMCreditStmt,
 		deleteAuthCookieStmt:                       q.deleteAuthCookieStmt,
-		deleteAuthCookieByValueStmt:                q.deleteAuthCookieByValueStmt,
 		deleteAuthCookiesByDomainStmt:              q.deleteAuthCookiesByDomainStmt,
 		deleteAuthCookiesByUserIDStmt:              q.deleteAuthCookiesByUserIDStmt,
 		deleteBoxStmt:                              q.deleteBoxStmt,

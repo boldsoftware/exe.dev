@@ -19,15 +19,6 @@ func (q *Queries) DeleteAuthCookie(ctx context.Context, cookieValue string) erro
 	return err
 }
 
-const deleteAuthCookieByValue = `-- name: DeleteAuthCookieByValue :exec
-DELETE FROM auth_cookies WHERE cookie_value = ?
-`
-
-func (q *Queries) DeleteAuthCookieByValue(ctx context.Context, cookieValue string) error {
-	_, err := q.exec(ctx, q.deleteAuthCookieByValueStmt, deleteAuthCookieByValue, cookieValue)
-	return err
-}
-
 const deleteAuthCookiesByDomain = `-- name: DeleteAuthCookiesByDomain :exec
 DELETE FROM auth_cookies WHERE domain = ?
 `
