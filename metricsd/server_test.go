@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -299,39 +303,63 @@ func TestSparklines(t *testing.T) {
 			t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 		}
 
-		var result SparklineResponse
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			t.Fatalf("decode response: %v", err)
-		}
-		if len(result.Metrics) != 3 {
-			t.Errorf("got %d metrics, want 3", len(result.Metrics))
-		}
-		if len(result.Counters) != 3 {
-			t.Errorf("got %d counters, want 3", len(result.Counters))
-		}
-		// Verify counter field names
-		wantCounters := map[string]bool{
-			"cpu_used_cumulative_seconds": true,
-			"network_tx_bytes":            true,
-			"network_rx_bytes":            true,
-		}
-		for _, c := range result.Counters {
-			if !wantCounters[c] {
-				t.Errorf("unexpected counter %q", c)
-			}
+		// Verify Content-Type is octet-stream
+		ct := resp.Header.Get("Content-Type")
+		if !strings.Contains(ct, "octet-stream") {
+			t.Errorf("Content-Type = %q, want containing %q", ct, "octet-stream")
 		}
 
-		// Verify ordering: vm-alpha rows before vm-beta (ORDER BY vm_name, timestamp ASC)
-		if len(result.Metrics) == 3 {
-			if result.Metrics[0].VMName != "vm-alpha" {
-				t.Errorf("first metric vm_name = %q, want %q", result.Metrics[0].VMName, "vm-alpha")
-			}
-			if result.Metrics[2].VMName != "vm-beta" {
-				t.Errorf("last metric vm_name = %q, want %q", result.Metrics[2].VMName, "vm-beta")
-			}
-			// Within vm-alpha, should be timestamp ascending
-			if !result.Metrics[0].Timestamp.Before(result.Metrics[1].Timestamp) {
-				t.Error("vm-alpha metrics not in ascending timestamp order")
+		// Read body and verify it's a non-empty parquet file
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if len(body) == 0 {
+			t.Fatal("response body is empty")
+		}
+		// Parquet files start with magic bytes "PAR1"
+		if len(body) < 4 || string(body[:4]) != "PAR1" {
+			t.Errorf("body does not start with PAR1 magic bytes, got %q", body[:min(4, len(body))])
+		}
+
+		// Write parquet to temp file and read back with DuckDB to validate contents
+		tmpFile, err := os.CreateTemp("", "test-sparkline-*.parquet")
+		if err != nil {
+			t.Fatalf("create temp file: %v", err)
+		}
+		defer os.Remove(tmpFile.Name())
+		if _, err := tmpFile.Write(body); err != nil {
+			t.Fatalf("write temp file: %v", err)
+		}
+		tmpFile.Close()
+
+		// Query the parquet file for row count and columns
+		var rowCount int
+		if err := db.QueryRowContext(ctx, fmt.Sprintf(`SELECT count(*) FROM read_parquet('%s')`, tmpFile.Name())).Scan(&rowCount); err != nil {
+			t.Fatalf("count parquet rows: %v", err)
+		}
+		if rowCount != 3 {
+			t.Errorf("parquet row count = %d, want 3", rowCount)
+		}
+
+		// Verify column names
+		rows, err := db.QueryContext(ctx, fmt.Sprintf(`SELECT * FROM read_parquet('%s') LIMIT 0`, tmpFile.Name()))
+		if err != nil {
+			t.Fatalf("query parquet columns: %v", err)
+		}
+		cols, _ := rows.Columns()
+		rows.Close()
+		wantCols := []string{
+			"timestamp", "host", "vm_name", "disk_size_bytes", "disk_used_bytes",
+			"disk_logical_used_bytes", "memory_nominal_bytes", "memory_rss_bytes", "memory_swap_bytes",
+			"cpu_used_cumulative_seconds", "cpu_nominal", "network_tx_bytes", "network_rx_bytes", "resource_group",
+		}
+		if len(cols) != len(wantCols) {
+			t.Errorf("got %d columns, want %d", len(cols), len(wantCols))
+		}
+		for i, c := range cols {
+			if i < len(wantCols) && c != wantCols[i] {
+				t.Errorf("column %d = %q, want %q", i, c, wantCols[i])
 			}
 		}
 	})
@@ -342,14 +370,17 @@ func TestSparklines(t *testing.T) {
 			t.Fatalf("GET /query/sparkline?hours=1: %v", err)
 		}
 		defer resp.Body.Close()
-
-		var result SparklineResponse
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			t.Fatalf("decode response: %v", err)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 		}
-		// All 3 metrics were inserted within last hour, so should all be returned
-		if len(result.Metrics) != 3 {
-			t.Errorf("got %d metrics with hours=1, want 3", len(result.Metrics))
+
+		// Verify it's a valid parquet response
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if len(body) < 4 || string(body[:4]) != "PAR1" {
+			t.Errorf("body does not start with PAR1 magic bytes")
 		}
 	})
 

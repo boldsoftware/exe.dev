@@ -1,5 +1,5 @@
-// sparklines.js — canvas-based sparkline dashboard for metricsd
-// Renders thousands of VMs efficiently using <canvas> elements.
+// sparklines.js — parquet-powered sparkline dashboard using DuckDB-WASM
+import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm';
 
 const SPARK_W = 120;
 const SPARK_H = 28;
@@ -12,8 +12,6 @@ const COLORS = {
   ref: '#999',
 };
 
-// Chart definitions: each produces one canvas per VM.
-// sortKey is the field used when sorting by this column.
 const CHART_DEFS = [
   { title: 'Disk', sortKey: 'disk_used_bytes', lines: [
     {key: 'disk_size_bytes', color: COLORS.ref, dash: [4,3], label: 'Prov'},
@@ -38,8 +36,6 @@ const CHART_DEFS = [
   ]},
 ];
 
-// Column header definitions for the sortable table.
-// 'key' is the sort field; null means sort by name.
 const COLUMNS = [
   {title: 'VM', key: 'name'},
   {title: 'Host', key: 'host'},
@@ -71,9 +67,15 @@ function fmtCPU(cpuPct, nominalCpus) {
 }
 
 function fmtVal(v, chartTitle) {
-  if (chartTitle === 'CPU') return ''; // handled specially
+  if (chartTitle === 'CPU') return '';
   if (chartTitle === 'Network') return fmtRate(v);
   return fmtBytes(v);
+}
+
+function fmtFileSize(bytes) {
+  if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + ' MB';
+  if (bytes >= 1e3) return (bytes / 1e3).toFixed(1) + ' KB';
+  return bytes + ' B';
 }
 
 function computeDerived(rows) {
@@ -86,7 +88,7 @@ function computeDerived(rows) {
       continue;
     }
     const prev = rows[i - 1];
-    const dt = (new Date(rows[i].timestamp) - new Date(prev.timestamp)) / 1000;
+    const dt = (rows[i].timestamp - prev.timestamp) / 1000;
     if (dt <= 0) {
       rows[i]._cpu_pct = null;
       rows[i]._net_tx_mbps = null;
@@ -123,8 +125,8 @@ function drawSparkline(canvas, rows, chartDef) {
   }
   if (yMax === 0) yMax = 1;
 
-  const tMin = new Date(rows[0].timestamp).getTime();
-  const tMax = new Date(rows[rows.length - 1].timestamp).getTime();
+  const tMin = rows[0].timestamp;
+  const tMax = rows[rows.length - 1].timestamp;
   const tRange = tMax - tMin || 1;
 
   const pad = 2;
@@ -144,7 +146,7 @@ function drawSparkline(canvas, rows, chartDef) {
     for (const r of rows) {
       const v = r[line.key];
       if (v == null) { started = false; continue; }
-      const x = pad + ((new Date(r.timestamp).getTime() - tMin) / tRange) * plotW;
+      const x = pad + ((r.timestamp - tMin) / tRange) * plotW;
       const y = pad + plotH - (v / yMax) * plotH;
       if (!started) { ctx.moveTo(x, y); started = true; }
       else ctx.lineTo(x, y);
@@ -153,7 +155,6 @@ function drawSparkline(canvas, rows, chartDef) {
     }
     ctx.stroke();
 
-    // Draw a dot for single-point data so it's visible
     if (pointCount === 1 && !line.dash) {
       ctx.beginPath();
       ctx.fillStyle = line.color;
@@ -171,70 +172,190 @@ function lastNonNull(rows, key) {
   return 0;
 }
 
+// Convert DuckDB arrow result to array of plain objects
+function arrowToObjects(result) {
+  const rows = [];
+  for (let i = 0; i < result.numRows; i++) {
+    const row = {};
+    for (const field of result.schema.fields) {
+      const col = result.getChild(field.name);
+      let val = col.get(i);
+      // Convert BigInt to Number for numeric fields
+      if (typeof val === 'bigint') val = Number(val);
+      // Convert Date objects to timestamps
+      if (val instanceof Date) val = val.getTime();
+      row[field.name] = val;
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+async function initDuckDB() {
+  const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
+  const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
+  const worker_url = URL.createObjectURL(
+    new Blob([`importScripts("${bundle.mainWorker}");`], {type: 'text/javascript'})
+  );
+  const worker = new Worker(worker_url);
+  const logger = new duckdb.ConsoleLogger();
+  const db = new duckdb.AsyncDuckDB(logger, worker);
+  await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+  URL.revokeObjectURL(worker_url);
+  return db;
+}
+
+let db = null;
+let conn = null;
+
+async function ensureDuckDB() {
+  if (db) return;
+  db = await initDuckDB();
+  conn = await db.connect();
+}
+
+async function loadData(hours) {
+  const errorEl = document.getElementById('error');
+  const loadingEl = document.getElementById('loading');
+  const vis = document.getElementById('vis');
+  errorEl.textContent = '';
+  loadingEl.hidden = false;
+  vis.innerHTML = '';
+
+  // Step 1: Fetch parquet file
+  loadingEl.textContent = 'Downloading parquet snapshot...';
+  const resp = await fetch('/query/sparkline?hours=' + hours);
+  if (!resp.ok) throw new Error('fetch failed: ' + resp.status);
+  const parquetBuffer = await resp.arrayBuffer();
+  const parquetBytes = parquetBuffer.byteLength;
+
+  loadingEl.textContent = `Loading DuckDB-WASM (${fmtFileSize(parquetBytes)} snapshot)...`;
+
+  // Step 2: Initialize DuckDB-WASM (reuse across reloads)
+  await ensureDuckDB();
+
+  // Step 3: Register parquet file (drop old one first)
+  try { await db.dropFile('metrics.parquet'); } catch (_) {}
+  await db.registerFileBuffer('metrics.parquet', new Uint8Array(parquetBuffer));
+
+  // Step 4: Get row count
+  const countResult = await conn.query(`SELECT count(*) as cnt FROM 'metrics.parquet'`);
+  const totalRows = Number(countResult.get(0).cnt);
+
+  if (totalRows === 0) {
+    const infoEl = document.getElementById('parquet-info');
+    infoEl.textContent = `Parquet: ${fmtFileSize(parquetBytes)}, 0 rows`;
+    loadingEl.hidden = true;
+    document.getElementById('error').textContent = 'No metrics data available.';
+    return { byVM: {}, vmHost: {}, vmGroup: {} };
+  }
+
+  // Step 5: Get time range
+  const rangeResult = await conn.query(`SELECT min(timestamp) as min_t, max(timestamp) as max_t FROM 'metrics.parquet'`);
+  const rangeRow = rangeResult.get(0);
+  const minT = new Date(rangeRow.min_t);
+  const maxT = new Date(rangeRow.max_t);
+  const tfmt = d => d.toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  document.getElementById('range').textContent = tfmt(minT) + ' \u2013 ' + tfmt(maxT);
+
+  // Step 6: Get all VM names, hosts, groups
+  const vmListResult = await conn.query(`
+    SELECT DISTINCT vm_name,
+      first(host) as host,
+      first(resource_group) as resource_group
+    FROM 'metrics.parquet'
+    GROUP BY vm_name
+    ORDER BY vm_name
+  `);
+  const vmList = arrowToObjects(vmListResult);
+
+  const vmHost = {};
+  const vmGroup = {};
+  for (const vm of vmList) {
+    vmHost[vm.vm_name] = vm.host;
+    vmGroup[vm.vm_name] = vm.resource_group || '';
+  }
+
+  // Populate host filter
+  const hosts = [...new Set(Object.values(vmHost))].sort();
+  const hostSel = document.getElementById('hostFilter');
+  const prevHost = hostSel.value;
+  hostSel.innerHTML = '<option value="">All</option>';
+  for (const h of hosts) {
+    const o = document.createElement('option');
+    o.value = h; o.textContent = h;
+    hostSel.appendChild(o);
+  }
+  hostSel.value = prevHost;
+
+  // Populate group filter
+  const groups = [...new Set(Object.values(vmGroup))].filter(g => g).sort();
+  const groupSel = document.getElementById('groupFilter');
+  const prevGroup = groupSel.value;
+  groupSel.innerHTML = '<option value="">All</option>';
+  for (const g of groups) {
+    const o = document.createElement('option');
+    o.value = g; o.textContent = g;
+    groupSel.appendChild(o);
+  }
+  groupSel.value = prevGroup;
+
+  // Update info bar
+  const infoEl = document.getElementById('parquet-info');
+  infoEl.textContent = `Parquet: ${fmtFileSize(parquetBytes)}, ${totalRows.toLocaleString()} rows, ${vmList.length} VMs`;
+
+  // Load all VM data into memory
+  loadingEl.textContent = 'Processing metrics data...';
+  const allDataResult = await conn.query(`
+    SELECT * FROM 'metrics.parquet' ORDER BY vm_name, timestamp ASC
+  `);
+  const allRows = arrowToObjects(allDataResult);
+
+  const byVM = {};
+  for (const row of allRows) {
+    if (!byVM[row.vm_name]) byVM[row.vm_name] = [];
+    byVM[row.vm_name].push(row);
+  }
+
+  for (const rows of Object.values(byVM)) {
+    computeDerived(rows);
+  }
+
+  loadingEl.hidden = true;
+  return { byVM, vmHost, vmGroup };
+}
+
 (async function() {
   const errorEl = document.getElementById('error');
   const loadingEl = document.getElementById('loading');
+
   try {
-    const resp = await fetch('/query/sparkline?hours=24');
-    if (!resp.ok) throw new Error('fetch failed: ' + resp.status);
-    const data = await resp.json();
-    if (!data.metrics || data.metrics.length === 0) {
-      loadingEl.hidden = true;
-      errorEl.textContent = 'No metrics data available.';
-      return;
-    }
-
-    // Show time range
-    let minT = Infinity, maxT = -Infinity;
-    for (const m of data.metrics) {
-      const t = new Date(m.timestamp).getTime();
-      if (t < minT) minT = t;
-      if (t > maxT) maxT = t;
-    }
-    const tfmt = d => new Date(d).toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-    document.getElementById('range').textContent = tfmt(minT) + ' \u2013 ' + tfmt(maxT);
-
-    // Group by vm_name
-    const byVM = {};
-    const vmHost = {};
-    const vmGroup = {};
-    for (const m of data.metrics) {
-      if (!byVM[m.vm_name]) { byVM[m.vm_name] = []; vmHost[m.vm_name] = m.host; vmGroup[m.vm_name] = m.resource_group || ''; }
-      byVM[m.vm_name].push(m);
-    }
-
-    // Compute derived fields
-    for (const rows of Object.values(byVM)) {
-      computeDerived(rows);
-    }
-
-    // Populate host filter
-    const hosts = [...new Set(Object.values(vmHost))].sort();
-    const hostSel = document.getElementById('hostFilter');
-    for (const h of hosts) {
-      const o = document.createElement('option');
-      o.value = h; o.textContent = h;
-      hostSel.appendChild(o);
-    }
-
-    // Populate group filter
-    const groups = [...new Set(Object.values(vmGroup))].filter(g => g).sort();
-    const groupSel = document.getElementById('groupFilter');
-    for (const g of groups) {
-      const o = document.createElement('option');
-      o.value = g; o.textContent = g;
-      groupSel.appendChild(o);
-    }
+    let currentHours = 3;
+    let { byVM, vmHost, vmGroup } = await loadData(currentHours);
 
     const statsEl = document.getElementById('stats');
-
-    // Sort state
     let sortKey = 'name';
     let sortDesc = true;
 
+    // Batch rendering: 100 VMs at a time
+    const BATCH_SIZE = 100;
+    let currentRenderAbort = null;
+    let currentObserver = null;
+
     function render() {
-      const hostF = hostSel.value;
-      const groupF = groupSel.value;
+      // Cancel any in-progress progressive render
+      if (currentRenderAbort) {
+        currentRenderAbort.abort = true;
+      }
+      if (currentObserver) {
+        currentObserver.disconnect();
+        currentObserver = null;
+      }
+      const abortToken = { abort: false };
+      currentRenderAbort = abortToken;
+
+      const hostF = document.getElementById('hostFilter').value;
+      const groupF = document.getElementById('groupFilter').value;
       const nameF = document.getElementById('nameFilter').value.toLowerCase();
 
       let vms = Object.keys(byVM);
@@ -282,7 +403,6 @@ function lastNonNull(rows, key) {
         titleSpan.textContent = col.title;
         th.appendChild(titleSpan);
 
-        // Sort arrows
         const arrows = document.createElement('span');
         arrows.className = 'sort-arrows';
         const upArrow = document.createElement('span');
@@ -295,16 +415,13 @@ function lastNonNull(rows, key) {
         arrows.appendChild(downArrow);
         th.appendChild(arrows);
 
-        // Legend from chart def
         const chartDef = CHART_DEFS.find(c => c.sortKey === col.key);
         if (chartDef) {
           const legend = document.createElement('span');
           legend.className = 'col-sub';
           for (let i = 0; i < chartDef.lines.length; i++) {
             const line = chartDef.lines[i];
-            if (i > 0) {
-              legend.appendChild(document.createTextNode(' / '));
-            }
+            if (i > 0) legend.appendChild(document.createTextNode(' / '));
             if (line.dash) {
               const dashEl = document.createElement('span');
               dashEl.className = 'color-line';
@@ -336,75 +453,11 @@ function lastNonNull(rows, key) {
       table.appendChild(thead);
 
       const tbody = document.createElement('tbody');
-      const fragment = document.createDocumentFragment();
-      const pendingDraw = [];
-
-      for (const vm of vms) {
-        const rows = byVM[vm];
-        const tr = document.createElement('tr');
-
-        const tdName = document.createElement('td');
-        tdName.className = 'vm-name';
-        tdName.textContent = vm;
-        tdName.title = vm;
-        tr.appendChild(tdName);
-
-        const tdHost = document.createElement('td');
-        tdHost.className = 'vm-host';
-        tdHost.textContent = vmHost[vm];
-        tr.appendChild(tdHost);
-
-        const tdGroup = document.createElement('td');
-        tdGroup.className = 'vm-group';
-        tdGroup.textContent = vmGroup[vm];
-        tdGroup.title = vmGroup[vm];
-        tr.appendChild(tdGroup);
-
-        for (const chartDef of CHART_DEFS) {
-          const td = document.createElement('td');
-          const wrap = document.createElement('div');
-          wrap.style.display = 'flex';
-          wrap.style.alignItems = 'center';
-          wrap.style.gap = '4px';
-
-          const canvas = document.createElement('canvas');
-          canvas.width = SPARK_W * DPR;
-          canvas.height = SPARK_H * DPR;
-          canvas.style.width = SPARK_W + 'px';
-          canvas.style.height = SPARK_H + 'px';
-          wrap.appendChild(canvas);
-
-          const labelDiv = document.createElement('div');
-          labelDiv.className = 'spark-label';
-
-          if (chartDef.title === 'CPU') {
-            const cpuPct = lastNonNull(rows, '_cpu_pct');
-            const cpuNom = lastNonNull(rows, '_cpu_100') > 0 ? rows[rows.length - 1].cpu_nominal : 0;
-            labelDiv.textContent = fmtCPU(cpuPct, cpuNom);
-          } else {
-            const parts = [];
-            for (const line of chartDef.lines) {
-              if (line.dash) continue;
-              const v = lastNonNull(rows, line.key);
-              parts.push(fmtVal(v, chartDef.title));
-            }
-            labelDiv.innerHTML = parts.join('<br>');
-          }
-          wrap.appendChild(labelDiv);
-
-          td.appendChild(wrap);
-          tr.appendChild(td);
-          pendingDraw.push({canvas, rows, chartDef});
-        }
-
-        fragment.appendChild(tr);
-      }
-
-      tbody.appendChild(fragment);
       table.appendChild(tbody);
       vis.appendChild(table);
 
-      const observer = new IntersectionObserver((entries) => {
+      // Progressive rendering
+      currentObserver = new IntersectionObserver((entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
             const canvas = entry.target;
@@ -413,24 +466,136 @@ function lastNonNull(rows, key) {
               drawSparkline(canvas, data.rows, data.chartDef);
               canvas._drawn = true;
             }
-            observer.unobserve(canvas);
+            currentObserver.unobserve(canvas);
           }
         }
       }, {rootMargin: '200px'});
+      const observer = currentObserver;
 
-      for (const item of pendingDraw) {
-        item.canvas._sparkData = item;
-        observer.observe(item.canvas);
+      let batchIndex = 0;
+
+      function renderBatch() {
+        if (abortToken.abort) return;
+
+        const start = batchIndex * BATCH_SIZE;
+        const end = Math.min(start + BATCH_SIZE, vms.length);
+        const fragment = document.createDocumentFragment();
+
+        for (let i = start; i < end; i++) {
+          const vm = vms[i];
+          const rows = byVM[vm];
+          const tr = document.createElement('tr');
+
+          const tdName = document.createElement('td');
+          tdName.className = 'vm-name';
+          tdName.textContent = vm;
+          tdName.title = vm;
+          tr.appendChild(tdName);
+
+          const tdHost = document.createElement('td');
+          tdHost.className = 'vm-host';
+          tdHost.textContent = vmHost[vm];
+          tr.appendChild(tdHost);
+
+          const tdGroup = document.createElement('td');
+          tdGroup.className = 'vm-group';
+          tdGroup.textContent = vmGroup[vm];
+          tdGroup.title = vmGroup[vm];
+          tr.appendChild(tdGroup);
+
+          for (const chartDef of CHART_DEFS) {
+            const td = document.createElement('td');
+            const wrap = document.createElement('div');
+            wrap.style.display = 'flex';
+            wrap.style.alignItems = 'center';
+            wrap.style.gap = '4px';
+
+            const canvas = document.createElement('canvas');
+            canvas.width = SPARK_W * DPR;
+            canvas.height = SPARK_H * DPR;
+            canvas.style.width = SPARK_W + 'px';
+            canvas.style.height = SPARK_H + 'px';
+            wrap.appendChild(canvas);
+
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'spark-label';
+
+            if (chartDef.title === 'CPU') {
+              const cpuPct = lastNonNull(rows, '_cpu_pct');
+              const cpuNom = lastNonNull(rows, '_cpu_100') > 0 ? rows[rows.length - 1].cpu_nominal : 0;
+              labelDiv.textContent = fmtCPU(cpuPct, cpuNom);
+            } else {
+              const parts = [];
+              for (const line of chartDef.lines) {
+                if (line.dash) continue;
+                const v = lastNonNull(rows, line.key);
+                parts.push(fmtVal(v, chartDef.title));
+              }
+              labelDiv.innerHTML = parts.join('<br>');
+            }
+            wrap.appendChild(labelDiv);
+
+            td.appendChild(wrap);
+            tr.appendChild(td);
+
+            canvas._sparkData = {rows, chartDef};
+            observer.observe(canvas);
+          }
+
+          fragment.appendChild(tr);
+        }
+
+        tbody.appendChild(fragment);
+        batchIndex++;
+
+        // Update progress
+        const rendered = Math.min(end, vms.length);
+        if (rendered < vms.length) {
+          statsEl.textContent = `${rendered}/${vms.length} VMs`;
+          requestAnimationFrame(renderBatch);
+        } else {
+          statsEl.textContent = vms.length + ' VMs';
+        }
       }
+
+      renderBatch();
     }
 
-    loadingEl.hidden = true;
+    // Range buttons
+    const rangeButtons = document.querySelectorAll('#rangeButtons button');
+    function updateActiveButton() {
+      for (const btn of rangeButtons) {
+        btn.classList.toggle('active', Number(btn.dataset.hours) === currentHours);
+      }
+    }
+    updateActiveButton();
+    for (const btn of rangeButtons) {
+      btn.addEventListener('click', async () => {
+        const h = Number(btn.dataset.hours);
+        if (h === currentHours) return;
+        currentHours = h;
+        updateActiveButton();
+        try {
+          ({ byVM, vmHost, vmGroup } = await loadData(h));
+          render();
+        } catch (e) {
+          loadingEl.hidden = true;
+          errorEl.textContent = 'Error: ' + e.message;
+          console.error(e);
+        }
+      });
+    }
+
+    const hostSel = document.getElementById('hostFilter');
+    const groupSel = document.getElementById('groupFilter');
     hostSel.addEventListener('change', render);
     groupSel.addEventListener('change', render);
     document.getElementById('nameFilter').addEventListener('input', render);
     render();
+
   } catch (e) {
     loadingEl.hidden = true;
     errorEl.textContent = 'Error: ' + e.message;
+    console.error(e);
   }
 })();

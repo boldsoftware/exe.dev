@@ -34,3 +34,8 @@ table.sparklines .color-dot { display: inline-block; width: 6px; height: 6px;
   border-radius: 50%; vertical-align: middle; margin-right: 1px; }
 table.sparklines .color-line { display: inline-block; width: 8px; height: 0;
   border-top: 1.5px dashed; vertical-align: middle; margin-right: 1px; }
+#parquet-info { font-size: 0.75em; color: #888; margin: 2px 0 4px; font-family: monospace; }
+
+#rangeButtons button { font-size: 0.85em; padding: 1px 7px; margin: 0 1px; cursor: pointer;
+  border: 1px solid #ccc; background: #f5f5f5; border-radius: 3px; }
+#rangeButtons button.active { background: #333; color: #fff; border-color: #333; }

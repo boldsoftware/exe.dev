@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"net/netip"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -389,28 +390,6 @@ func (s *Server) QueryMetrics(ctx context.Context, vmName, limit string) ([]Metr
 	return metrics, nil
 }
 
-// QuerySparklineMetrics retrieves metrics for the sparkline dashboard within a time window.
-func (s *Server) QuerySparklineMetrics(ctx context.Context, hours int) ([]Metric, error) {
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(SparklineSQL, hours))
-	if err != nil {
-		return nil, fmt.Errorf("query: %w", err)
-	}
-	defer rows.Close()
-
-	var metrics []Metric
-	for rows.Next() {
-		var m Metric
-		if err := scanMetric(rows, &m); err != nil {
-			return nil, err
-		}
-		metrics = append(metrics, m)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows iteration: %w", err)
-	}
-	return metrics, nil
-}
-
 // scanMetric scans a single metric row. Column order must match SelectSQL/SparklineSQL.
 func scanMetric(rows *sql.Rows, m *Metric) error {
 	if err := rows.Scan(
@@ -426,19 +405,6 @@ func scanMetric(rows *sql.Rows, m *Metric) error {
 	return nil
 }
 
-// counterMetrics lists metric fields that are cumulative counters and need rate calculation.
-var counterMetrics = []string{
-	"cpu_used_cumulative_seconds",
-	"network_tx_bytes",
-	"network_rx_bytes",
-}
-
-// SparklineResponse is the JSON response for the sparkline data endpoint.
-type SparklineResponse struct {
-	Metrics  []Metric `json:"metrics"`
-	Counters []string `json:"counters"`
-}
-
 func (s *Server) handleSparklineData(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	hoursStr := r.URL.Query().Get("hours")
@@ -446,23 +412,46 @@ func (s *Server) handleSparklineData(w http.ResponseWriter, r *http.Request) {
 		hoursStr = "24"
 	}
 	hours, err := strconv.Atoi(hoursStr)
-	if err != nil {
-		http.Error(w, "invalid hours parameter", http.StatusBadRequest)
+	if err != nil || hours < 1 || hours > 168 {
+		http.Error(w, "hours must be an integer between 1 and 168", http.StatusBadRequest)
 		return
 	}
 
-	metrics, err := s.QuerySparklineMetrics(ctx, hours)
+	// Create temp file for parquet output
+	tmpFile, err := os.CreateTemp("/tmp", "sparkline-*.parquet")
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to query sparkline metrics", "error", err)
+		slog.ErrorContext(ctx, "failed to create temp file", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpPath)
+
+	// Use DuckDB COPY to write parquet directly
+	query := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET)`, fmt.Sprintf(SparklineSQL, hours), tmpPath)
+	if _, err := s.db.ExecContext(ctx, query); err != nil {
+		slog.ErrorContext(ctx, "failed to write parquet", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(SparklineResponse{
-		Metrics:  metrics,
-		Counters: counterMetrics,
-	})
+	f, err := os.Open(tmpPath)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to open parquet file", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to stat parquet file", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", "attachment; filename=sparklines.parquet")
+	http.ServeContent(w, r, "", fi.ModTime(), f)
 }
 
 func (s *Server) handleSparklines(w http.ResponseWriter, r *http.Request) {

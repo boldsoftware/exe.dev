@@ -7,7 +7,9 @@
 </head>
 <body>
 <h1><a href="/">metricsd</a> / sparklines <span id="range" style="font-weight:normal;font-size:0.8em;color:#666"></span> <span id="stats"></span></h1>
+<div id="parquet-info"></div>
 <div id="controls">
+  <label>Range: <span id="rangeButtons"><button data-hours="1">1h</button><button data-hours="3">3h</button><button data-hours="6">6h</button><button data-hours="12">12h</button><button data-hours="24">24h</button></span></label>
   <label>Host: <select id="hostFilter"><option value="">All</option></select></label>
   <label>Group: <select id="groupFilter"><option value="">All</option></select></label>
   <label>Name: <input type="text" id="nameFilter" placeholder="filter VMs..."></label>
@@ -15,6 +17,6 @@
 <div id="error"></div>
 <div id="loading">Loading metrics...</div>
 <div id="vis"></div>
-<script src="/static/sparklines.js"></script>
+<script type="module" src="/static/sparklines.js"></script>
 </body>
 </html>
