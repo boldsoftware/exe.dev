@@ -2142,7 +2142,8 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 		}
 		return queries.DeleteBox(ctx, box.ID)
 	})
-	if err != nil {
+
+	if err == nil {
 		proxyChangeDeletedBox(box.Name)
 	}
 
