@@ -417,6 +417,60 @@ func TestBrowserIdleShutdownAndRestart(t *testing.T) {
 	}
 }
 
+// TestBrowserCrashRecovery verifies the browser auto-recovers from a crash
+func TestBrowserCrashRecovery(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	tools := NewBrowseTools(ctx, 30*time.Minute, 0)
+	t.Cleanup(func() {
+		tools.Close()
+	})
+
+	// First use - should start the browser
+	browserCtx1, err := tools.GetBrowserContext()
+	if err != nil {
+		if strings.Contains(err.Error(), "failed to start browser") {
+			t.Skip("Browser automation not available in this environment")
+		}
+		t.Fatalf("Failed to get browser context: %v", err)
+	}
+	if browserCtx1 == nil {
+		t.Fatal("Expected non-nil browser context")
+	}
+
+	// Simulate a crash by canceling the browser context
+	// This mimics what chromedp does when Chrome segfaults
+	tools.mux.Lock()
+	if tools.browserCtxCancel != nil {
+		tools.browserCtxCancel()
+	}
+	tools.mux.Unlock()
+
+	// Second use - should detect the dead context and start a new browser
+	// (context cancellation is synchronous, no need to wait)
+	browserCtx2, err := tools.GetBrowserContext()
+	if err != nil {
+		t.Fatalf("Failed to get browser context after crash: %v", err)
+	}
+	if browserCtx2 == nil {
+		t.Fatal("Expected non-nil browser context after crash recovery")
+	}
+
+	// The contexts should be different (new browser instance)
+	if browserCtx1 == browserCtx2 {
+		t.Error("Expected different browser context after crash recovery")
+	}
+
+	// Verify the new browser actually works
+	navTool := tools.NewNavigateTool()
+	input := []byte(`{"url": "about:blank"}`)
+	toolOut := navTool.Run(ctx, input)
+	if toolOut.Error != nil {
+		t.Fatalf("Navigate failed after crash recovery: %v", toolOut.Error)
+	}
+}
+
 func TestReadImageToolResizesLargeImage(t *testing.T) {
 	// Create a test BrowseTools instance with max dimension of 2000
 	ctx := context.Background()

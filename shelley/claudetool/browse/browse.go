@@ -105,10 +105,17 @@ func (b *BrowseTools) GetBrowserContext() (context.Context, error) {
 	b.mux.Lock()
 	defer b.mux.Unlock()
 
-	// If browser exists, reset idle timer and return
+	// If browser exists, check if it's still alive
 	if b.browserCtx != nil {
-		b.resetIdleTimerLocked()
-		return b.browserCtx, nil
+		// Check if the browser context has been cancelled (e.g., due to crash)
+		if b.browserCtx.Err() != nil {
+			log.Printf("Browser context is dead (err: %v), restarting browser", b.browserCtx.Err())
+			b.closeBrowserLocked()
+			// Fall through to create a new browser
+		} else {
+			b.resetIdleTimerLocked()
+			return b.browserCtx, nil
+		}
 	}
 
 	// Initialize a new browser
@@ -116,6 +123,11 @@ func (b *BrowseTools) GetBrowserContext() (context.Context, error) {
 	opts = append(opts, chromedp.NoSandbox)
 	opts = append(opts, chromedp.Flag("--disable-dbus", true))
 	opts = append(opts, chromedp.WSURLReadTimeout(60*time.Second))
+	// Disable WebAuthn to prevent segfaults on FIDO/WebAuthn sites (issue #78)
+	// Must include all default disabled features plus WebAuthentication
+	// (chromedp v0.14.1 defaults: site-per-process,Translate,BlinkGenPropertyTrees)
+	opts = append(opts, chromedp.Flag("disable-features",
+		"site-per-process,Translate,BlinkGenPropertyTrees,WebAuthentication"))
 
 	allocCtx, allocCancel := chromedp.NewExecAllocator(b.ctx, opts...)
 	browserCtx, browserCancel := chromedp.NewContext(
