@@ -419,6 +419,9 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 		initData["links"] = s.links
 	}
 
+	// Inject notification channel type metadata for the settings modal
+	initData["notification_channel_types"] = s.getNotificationChannelTypes()
+
 	initJSON, err := json.Marshal(initData)
 	if err != nil {
 		http.Error(w, "Failed to marshal init data", http.StatusInternalServerError)

@@ -970,3 +970,74 @@ func (db *DB) DeleteModel(ctx context.Context, modelID string) error {
 		return q.DeleteModel(ctx, modelID)
 	})
 }
+
+func (db *DB) GetNotificationChannels(ctx context.Context) ([]generated.NotificationChannel, error) {
+	var channels []generated.NotificationChannel
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		var err error
+		channels, err = q.GetNotificationChannels(ctx)
+		return err
+	})
+	return channels, err
+}
+
+func (db *DB) GetEnabledNotificationChannels(ctx context.Context) ([]generated.NotificationChannel, error) {
+	var channels []generated.NotificationChannel
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		var err error
+		channels, err = q.GetEnabledNotificationChannels(ctx)
+		return err
+	})
+	return channels, err
+}
+
+func (db *DB) GetNotificationChannel(ctx context.Context, channelID string) (*generated.NotificationChannel, error) {
+	var ch generated.NotificationChannel
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		var err error
+		ch, err = q.GetNotificationChannel(ctx, channelID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &ch, nil
+}
+
+func (db *DB) CreateNotificationChannel(ctx context.Context, params generated.CreateNotificationChannelParams) (*generated.NotificationChannel, error) {
+	var ch generated.NotificationChannel
+	err := db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		q := generated.New(tx.Conn())
+		var err error
+		ch, err = q.CreateNotificationChannel(ctx, params)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &ch, nil
+}
+
+func (db *DB) UpdateNotificationChannel(ctx context.Context, params generated.UpdateNotificationChannelParams) (*generated.NotificationChannel, error) {
+	var ch generated.NotificationChannel
+	err := db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		q := generated.New(tx.Conn())
+		var err error
+		ch, err = q.UpdateNotificationChannel(ctx, params)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &ch, nil
+}
+
+func (db *DB) DeleteNotificationChannel(ctx context.Context, channelID string) error {
+	return db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		q := generated.New(tx.Conn())
+		return q.DeleteNotificationChannel(ctx, channelID)
+	})
+}

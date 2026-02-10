@@ -33,6 +33,10 @@ type LLMConfig struct {
 	// Links are custom links to be displayed in the UI (optional)
 	Links []Link
 
+	// NotificationChannels is a list of notification channel configs from shelley.json.
+	// Each entry is a map with at least a "type" key, plus channel-specific fields.
+	NotificationChannels []map[string]any
+
 	// DB is the database for recording LLM requests (optional)
 	DB *db.DB
 

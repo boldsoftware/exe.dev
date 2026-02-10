@@ -67,3 +67,13 @@ type Model struct {
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
+
+type NotificationChannel struct {
+	ChannelID   string    `json:"channel_id"`
+	ChannelType string    `json:"channel_type"`
+	DisplayName string    `json:"display_name"`
+	Enabled     int64     `json:"enabled"`
+	Config      string    `json:"config"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}

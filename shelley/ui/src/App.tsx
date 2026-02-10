@@ -5,6 +5,7 @@ import ChatInterface from "./components/ChatInterface";
 import ConversationDrawer from "./components/ConversationDrawer";
 import CommandPalette from "./components/CommandPalette";
 import ModelsModal from "./components/ModelsModal";
+import NotificationsModal from "./components/NotificationsModal";
 import { Conversation, ConversationWithState, ConversationListUpdate } from "./types";
 import { api } from "./services/api";
 
@@ -109,6 +110,7 @@ function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [diffViewerTrigger, setDiffViewerTrigger] = useState(0);
   const [modelsModalOpen, setModelsModalOpen] = useState(false);
+  const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
   const [modelsRefreshTrigger, setModelsRefreshTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -502,6 +504,10 @@ function App() {
             setModelsModalOpen(true);
             setCommandPaletteOpen(false);
           }}
+          onOpenNotificationsModal={() => {
+            setNotificationsModalOpen(true);
+            setCommandPaletteOpen(false);
+          }}
           hasCwd={!!(currentConversation?.cwd || mostRecentCwd)}
         />
 
@@ -509,6 +515,11 @@ function App() {
           isOpen={modelsModalOpen}
           onClose={() => setModelsModalOpen(false)}
           onModelsChanged={() => setModelsRefreshTrigger((prev) => prev + 1)}
+        />
+
+        <NotificationsModal
+          isOpen={notificationsModalOpen}
+          onClose={() => setNotificationsModalOpen(false)}
         />
 
         {/* Backdrop for mobile drawer */}

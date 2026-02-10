@@ -15,6 +15,7 @@ import (
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/models"
 	"shelley.exe.dev/server"
+	_ "shelley.exe.dev/server/notifications/channels" // register channel types
 	"shelley.exe.dev/templates"
 	"shelley.exe.dev/version"
 )
@@ -105,6 +106,11 @@ func runServe(global GlobalConfig, args []string) {
 
 	// Create server
 	svr := server.NewServer(database, llmManager, toolSetConfig, logger, global.PredictableOnly, llmConfig.TerminalURL, llmConfig.DefaultModel, *requireHeader, llmConfig.Links)
+
+	// Seed notification channels from config file if DB is empty (one-time migration)
+	svr.SeedNotificationChannelsFromConfig(llmConfig.NotificationChannels)
+	// Load notification channels from DB
+	svr.ReloadNotificationChannels()
 
 	var err error
 	if *systemdActivation {
@@ -263,10 +269,11 @@ func buildLLMConfig(logger *slog.Logger, configPath, terminalURL, defaultModel s
 		}
 
 		var cfg struct {
-			LLMGateway   string        `json:"llm_gateway"`
-			TerminalURL  string        `json:"terminal_url"`
-			DefaultModel string        `json:"default_model"`
-			Links        []server.Link `json:"links"`
+			LLMGateway           string           `json:"llm_gateway"`
+			TerminalURL          string           `json:"terminal_url"`
+			DefaultModel         string           `json:"default_model"`
+			Links                []server.Link    `json:"links"`
+			NotificationChannels []map[string]any `json:"notification_channels"`
 		}
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			logger.Warn("Failed to parse config file", "path", configPath, "error", err)
@@ -309,6 +316,11 @@ func buildLLMConfig(logger *slog.Logger, configPath, terminalURL, defaultModel s
 		if len(cfg.Links) > 0 {
 			llmCfg.Links = cfg.Links
 			logger.Info("Loaded links from config", "count", len(cfg.Links))
+		}
+
+		if len(cfg.NotificationChannels) > 0 {
+			llmCfg.NotificationChannels = cfg.NotificationChannels
+			logger.Info("Notification channels configured", "count", len(cfg.NotificationChannels))
 		}
 	}
 

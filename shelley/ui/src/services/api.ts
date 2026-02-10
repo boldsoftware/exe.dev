@@ -421,3 +421,104 @@ class CustomModelsApi {
 }
 
 export const customModelsApi = new CustomModelsApi();
+
+// Notification channels API
+export interface NotificationChannelAPI {
+  channel_id: string;
+  channel_type: string;
+  display_name: string;
+  enabled: boolean;
+  config: Record<string, string>;
+}
+
+export interface CreateNotificationChannelRequest {
+  channel_type: string;
+  display_name: string;
+  enabled: boolean;
+  config: Record<string, string>;
+}
+
+export interface UpdateNotificationChannelRequest {
+  display_name: string;
+  enabled: boolean;
+  config: Record<string, string>;
+}
+
+export interface ChannelTypeInfo {
+  type: string;
+  label: string;
+  config_fields: {
+    name: string;
+    label: string;
+    type: string;
+    required: boolean;
+    placeholder?: string;
+  }[];
+}
+
+class NotificationChannelsApi {
+  private baseUrl = "/api";
+
+  private postHeaders = {
+    "Content-Type": "application/json",
+    "X-Shelley-Request": "1",
+  };
+
+  async getChannels(): Promise<NotificationChannelAPI[]> {
+    const response = await fetch(`${this.baseUrl}/notification-channels`);
+    if (!response.ok) {
+      throw new Error(`Failed to get notification channels: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async createChannel(request: CreateNotificationChannelRequest): Promise<NotificationChannelAPI> {
+    const response = await fetch(`${this.baseUrl}/notification-channels`, {
+      method: "POST",
+      headers: this.postHeaders,
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to create notification channel: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async updateChannel(
+    channelId: string,
+    request: UpdateNotificationChannelRequest,
+  ): Promise<NotificationChannelAPI> {
+    const response = await fetch(`${this.baseUrl}/notification-channels/${channelId}`, {
+      method: "PUT",
+      headers: this.postHeaders,
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to update notification channel: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async deleteChannel(channelId: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/notification-channels/${channelId}`, {
+      method: "DELETE",
+      headers: { "X-Shelley-Request": "1" },
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to delete notification channel: ${response.statusText}`);
+    }
+  }
+
+  async testChannel(channelId: string): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${this.baseUrl}/notification-channels/${channelId}/test`, {
+      method: "POST",
+      headers: this.postHeaders,
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to test notification channel: ${response.statusText}`);
+    }
+    return response.json();
+  }
+}
+
+export const notificationChannelsApi = new NotificationChannelsApi();

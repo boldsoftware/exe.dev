@@ -4,6 +4,7 @@ import {
   ConversationWithStateForTS,
   ApiMessageForTS,
   StreamResponseForTS,
+  NotificationEventForTS,
   Usage as GeneratedUsage,
   MessageType as GeneratedMessageType,
 } from "./generated-types";
@@ -60,12 +61,20 @@ export interface ChatRequest {
   model?: string;
   cwd?: string;
 }
+// Notification event types
+export type NotificationEventType = "agent_done" | "agent_error";
+
+export interface NotificationEvent extends Omit<NotificationEventForTS, "type"> {
+  type: NotificationEventType;
+}
+
 // StreamResponse represents the streaming response format
 export interface StreamResponse extends Omit<StreamResponseForTS, "messages"> {
   messages: Message[];
   context_window_size?: number;
   conversation_list_update?: ConversationListUpdate;
   heartbeat?: boolean;
+  notification_event?: NotificationEvent;
 }
 
 // Link represents a custom link that can be added to the UI
@@ -84,6 +93,7 @@ export interface InitData {
   hostname?: string;
   terminal_url?: string;
   links?: Link[];
+  notification_channel_types?: import("./services/api").ChannelTypeInfo[];
 }
 
 // Extend Window interface to include our init data

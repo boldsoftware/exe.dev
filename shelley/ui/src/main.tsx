@@ -2,13 +2,13 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { initializeTheme } from "./services/theme";
-import { initializeFavicon } from "./services/favicon";
+import { initializeNotifications } from "./services/notifications";
 
 // Apply theme before render to avoid flash
 initializeTheme();
 
-// Initialize dynamic favicon
-initializeFavicon();
+// Initialize notification system (includes favicon)
+initializeNotifications();
 
 // Render main app
 const rootContainer = document.getElementById("root");

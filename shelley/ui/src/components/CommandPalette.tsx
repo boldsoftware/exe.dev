@@ -20,6 +20,7 @@ interface CommandPaletteProps {
   onSelectConversation: (conversation: Conversation) => void;
   onOpenDiffViewer: () => void;
   onOpenModelsModal: () => void;
+  onOpenNotificationsModal: () => void;
   hasCwd: boolean;
 }
 
@@ -66,6 +67,7 @@ function CommandPalette({
   onSelectConversation,
   onOpenDiffViewer,
   onOpenModelsModal,
+  onOpenNotificationsModal,
   hasCwd,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
@@ -201,8 +203,30 @@ function CommandPalette({
       ],
     });
 
+    items.push({
+      id: "notification-settings",
+      type: "action",
+      title: "Notification Settings",
+      subtitle: "Configure notification channels",
+      icon: (
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+          />
+        </svg>
+      ),
+      action: () => {
+        onOpenNotificationsModal();
+        onClose();
+      },
+      keywords: ["notification", "notify", "alert", "discord", "webhook", "browser", "favicon"],
+    });
+
     return items;
-  }, [onNewConversation, onOpenDiffViewer, onOpenModelsModal, onClose, hasCwd]);
+  }, [onNewConversation, onOpenDiffViewer, onOpenModelsModal, onOpenNotificationsModal, onClose, hasCwd]);
 
   // Convert conversations to command items
   const conversationToItem = useCallback(

@@ -24,6 +24,7 @@ import (
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/models"
+	"shelley.exe.dev/server/notifications"
 	"shelley.exe.dev/ui"
 )
 
@@ -66,6 +67,8 @@ type StreamResponse struct {
 	ConversationListUpdate *ConversationListUpdate `json:"conversation_list_update,omitempty"`
 	// Heartbeat indicates this is a heartbeat message (no new data, just keeping connection alive)
 	Heartbeat bool `json:"heartbeat,omitempty"`
+	// NotificationEvent is set when a notification-worthy event occurs (e.g. agent finished).
+	NotificationEvent *notifications.Event `json:"notification_event,omitempty"`
 }
 
 // LLMProvider is an interface for getting LLM services
@@ -225,6 +228,7 @@ type Server struct {
 	requireHeader       string
 	conversationGroup   singleflight.Group[string, *ConversationManager]
 	versionChecker      *VersionChecker
+	notifDispatcher     *notifications.Dispatcher
 }
 
 // NewServer creates a new server instance
@@ -241,6 +245,7 @@ func NewServer(database *db.DB, llmManager LLMProvider, toolSetConfig claudetool
 		requireHeader:       requireHeader,
 		links:               links,
 		versionChecker:      NewVersionChecker(),
+		notifDispatcher:     notifications.NewDispatcher(logger),
 	}
 
 	// Set up subagent support
@@ -249,6 +254,12 @@ func NewServer(database *db.DB, llmManager LLMProvider, toolSetConfig claudetool
 	s.toolSetConfig.MaxSubagentDepth = 1 // Only top-level conversations can spawn subagents
 
 	return s
+}
+
+// RegisterNotificationChannel adds a backend notification channel to the dispatcher.
+func (s *Server) RegisterNotificationChannel(ch notifications.Channel) {
+	s.notifDispatcher.Register(ch)
+	s.logger.Info("registered notification channel", "channel", ch.Name())
 }
 
 // RegisterRoutes registers HTTP routes on the given mux
@@ -275,6 +286,11 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/custom-models", http.HandlerFunc(s.handleCustomModels))
 	mux.Handle("/api/custom-models/", http.HandlerFunc(s.handleCustomModel))
 	mux.Handle("/api/custom-models-test", http.HandlerFunc(s.handleTestModel))
+
+	// Notification channels API
+	mux.Handle("/api/notification-channels", http.HandlerFunc(s.handleNotificationChannels))
+	mux.Handle("/api/notification-channels/", http.HandlerFunc(s.handleNotificationChannel))
+	mux.Handle("/api/notification-channel-types", http.HandlerFunc(s.handleNotificationChannelTypes))
 
 	// Models API (dynamic list refresh)
 	mux.Handle("/api/models", http.HandlerFunc(s.handleModels))
@@ -925,6 +941,40 @@ func (s *Server) publishConversationListUpdate(update ConversationListUpdate) {
 // publishConversationState broadcasts a conversation state update to ALL active
 // conversation streams. This allows clients to see the working state of other conversations.
 func (s *Server) publishConversationState(state ConversationState) {
+	// When the agent finishes working, emit a notification event.
+	var notifEvent *notifications.Event
+	if !state.Working {
+		payload := notifications.AgentDonePayload{
+			Model: state.Model,
+		}
+		if conv, err := s.db.GetConversationByID(context.Background(), state.ConversationID); err == nil && conv.Slug != nil {
+			payload.ConversationTitle = *conv.Slug
+		}
+		if msg, err := s.db.GetLatestMessage(context.Background(), state.ConversationID); err == nil && msg.Type == string(db.MessageTypeAgent) && msg.LlmData != nil {
+			var llmMsg llm.Message
+			if json.Unmarshal([]byte(*msg.LlmData), &llmMsg) == nil {
+				var text string
+				for _, c := range llmMsg.Content {
+					if c.Type == llm.ContentTypeText && c.Text != "" {
+						text = c.Text
+					}
+				}
+				if len(text) > 255 {
+					text = text[:255] + "..."
+				}
+				payload.FinalResponse = text
+			}
+		}
+		event := notifications.Event{
+			Type:           notifications.EventAgentDone,
+			ConversationID: state.ConversationID,
+			Timestamp:      time.Now(),
+			Payload:        payload,
+		}
+		s.notifDispatcher.Dispatch(context.Background(), event)
+		notifEvent = &event
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -932,6 +982,7 @@ func (s *Server) publishConversationState(state ConversationState) {
 	for _, manager := range s.activeConversations {
 		streamData := StreamResponse{
 			ConversationState: &state,
+			NotificationEvent: notifEvent,
 		}
 		manager.subpub.Broadcast(streamData)
 	}

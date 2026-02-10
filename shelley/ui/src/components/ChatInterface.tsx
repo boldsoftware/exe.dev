@@ -9,6 +9,13 @@ import {
 import { api } from "../services/api";
 import { ThemeMode, getStoredTheme, setStoredTheme, applyTheme } from "../services/theme";
 import { setFaviconStatus } from "../services/favicon";
+import {
+  handleNotificationEvent,
+  isChannelEnabled,
+  setChannelEnabled,
+  getBrowserNotificationState,
+  requestBrowserNotificationPermission,
+} from "../services/notifications";
 import MessageComponent from "./Message";
 import MessageInput from "./MessageInput";
 import DiffViewer from "./DiffViewer";
@@ -581,6 +588,7 @@ function ChatInterface({
   // Settings modal removed - configuration moved to status bar for empty conversations
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredTheme);
+  const [browserNotifsEnabled, setBrowserNotifsEnabled] = useState(() => isChannelEnabled("browser"));
   const [showDiffViewer, setShowDiffViewer] = useState(false);
   const [diffViewerInitialCommit, setDiffViewerInitialCommit] = useState<string | undefined>(
     undefined,
@@ -647,9 +655,11 @@ function ChatInterface({
     };
   }, [conversationId]);
 
-  // Update favicon when agent working state changes
+  // Show working indicator on favicon (UI concern, not a notification)
   useEffect(() => {
-    setFaviconStatus(agentWorking ? "working" : "ready");
+    if (agentWorking) {
+      setFaviconStatus("working");
+    }
   }, [agentWorking]);
 
   // Check scroll position and handle scroll-to-bottom button
@@ -868,6 +878,11 @@ function ChatInterface({
               setSelectedModel(streamResponse.conversation_state.model);
             }
           }
+        }
+
+        // Dispatch notification events to registered handlers
+        if (streamResponse.notification_event) {
+          handleNotificationEvent(streamResponse.notification_event);
         }
 
         if (typeof streamResponse.context_window_size === "number") {
@@ -1618,6 +1633,54 @@ function ChatInterface({
                     </svg>
                   </button>
                 </div>
+
+                {/* Browser notifications toggle */}
+                {typeof Notification !== "undefined" && (
+                  <>
+                    <div className="overflow-menu-divider" />
+                    <div className="theme-toggle-row">
+                      <button
+                        onClick={async () => {
+                          if (browserNotifsEnabled) return;
+                          const granted = await requestBrowserNotificationPermission();
+                          if (granted) {
+                            setBrowserNotifsEnabled(true);
+                          }
+                        }}
+                        className={`theme-toggle-btn${browserNotifsEnabled ? " theme-toggle-btn-selected" : ""}`}
+                        title={getBrowserNotificationState() === "denied" ? "Blocked by browser" : "Enable notifications"}
+                        disabled={getBrowserNotificationState() === "denied"}
+                      >
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                          />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!browserNotifsEnabled) return;
+                          setChannelEnabled("browser", false);
+                          setBrowserNotifsEnabled(false);
+                        }}
+                        className={`theme-toggle-btn${!browserNotifsEnabled ? " theme-toggle-btn-selected" : ""}`}
+                        title="Disable notifications"
+                      >
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5.586 15H4l1.405-1.405A2.032 2.032 0 006 12.158V9a6.002 6.002 0 014-5.659V3a2 2 0 114 0v.341c.588.17 1.14.432 1.636.772M15 17h-6v1a3 3 0 006 0v-1zM18 9a3 3 0 00-3-3M3 3l18 18"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>

@@ -16,6 +16,7 @@ import (
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
+	"shelley.exe.dev/server/notifications"
 )
 
 func main() {
@@ -67,6 +68,7 @@ func TS() *go2ts.Go2TS {
 		apiMessageForTS{},
 		streamResponseForTS{},
 		conversationWithStateForTS{},
+		notificationEventForTS{},
 	)
 
 	// Generate clean nominal types
@@ -108,8 +110,16 @@ type conversationWithStateForTS struct {
 }
 
 type streamResponseForTS struct {
-	Messages          []apiMessageForTS       `json:"messages"`
-	Conversation      generated.Conversation  `json:"conversation"`
-	ConversationState *conversationStateForTS `json:"conversation_state,omitempty"`
-	Heartbeat         bool                    `json:"heartbeat,omitempty"`
+	Messages          []apiMessageForTS          `json:"messages"`
+	Conversation      generated.Conversation     `json:"conversation"`
+	ConversationState *conversationStateForTS    `json:"conversation_state,omitempty"`
+	Heartbeat         bool                       `json:"heartbeat,omitempty"`
+	NotificationEvent *notificationEventForTS    `json:"notification_event,omitempty"`
+}
+
+type notificationEventForTS struct {
+	Type           notifications.EventType `json:"type"`
+	ConversationID string                  `json:"conversation_id"`
+	Timestamp      string                  `json:"timestamp"`
+	Payload        any                     `json:"payload,omitempty"`
 }
