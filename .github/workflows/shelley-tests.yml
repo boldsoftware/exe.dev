@@ -8,26 +8,16 @@ on:
       - "shelley/**"
       - ".github/workflows/shelley-tests.yml"
   workflow_dispatch:
-    inputs:
-      run_playwright:
-        description: "Run Playwright E2E tests"
-        required: false
-        type: boolean
-        default: true
   workflow_call:
     inputs:
-      run_playwright:
-        description: "Run Playwright E2E tests"
-        required: false
-        type: boolean
-        default: true
       ref:
         description: "Git ref to checkout"
         required: false
         type: string
 
 jobs:
-  test:
+  test-go:
+    name: Go Tests
     runs-on: [self-hosted, exe-ci, edric]
     defaults:
       run:
@@ -128,20 +118,59 @@ jobs:
       - name: Run Go tests
         run: go tool gotestsum --format testname -- -race ./...
 
+  test-ui:
+    name: Playwright E2E Tests
+    runs-on: [self-hosted, exe-ci, edric]
+    defaults:
+      run:
+        working-directory: shelley
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: shelley/go.mod
+          cache: false
+
+      - name: Set up Node.js and pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install UI dependencies
+        run: |
+          cd ui
+          pnpm install --frozen-lockfile
+
+      - name: Build UI
+        run: |
+          cd ui
+          pnpm run build
+
+      - name: Build template tarballs
+        run: make templates
+
       - name: Install Playwright browsers
-        if: inputs.run_playwright != false
         run: |
           cd ui
           npx playwright install --with-deps chromium
 
       - name: Run Playwright E2E tests
-        if: inputs.run_playwright != false
         run: |
           cd ui
           npx playwright test
 
       - name: Upload Playwright artifacts
-        if: always() && inputs.run_playwright != false
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-artifacts-${{ github.sha }}
