@@ -79,6 +79,8 @@ type Box struct {
 	Region               string     `db:"region" json:"region"`
 	EmailReceiveEnabled  int64      `db:"email_receive_enabled" json:"email_receive_enabled"`
 	EmailMaildirPath     string     `db:"email_maildir_path" json:"email_maildir_path"`
+	AllocatedCpus        *int64     `db:"allocated_cpus" json:"allocated_cpus"`
+	CgroupOverrides      *string    `db:"cgroup_overrides" json:"cgroup_overrides"`
 }
 
 type BoxEmailCredit struct {
@@ -370,6 +372,7 @@ type User struct {
 	CanonicalEmail         *string    `db:"canonical_email" json:"canonical_email"`
 	IsLockedOut            bool       `db:"is_locked_out" json:"is_locked_out"`
 	Limits                 *string    `db:"limits" json:"limits"`
+	CgroupOverrides        *string    `db:"cgroup_overrides" json:"cgroup_overrides"`
 }
 
 type UserDailyEmailCount struct {

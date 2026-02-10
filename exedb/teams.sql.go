@@ -53,7 +53,7 @@ func (q *Queries) DeleteTeamMember(ctx context.Context, arg DeleteTeamMemberPara
 }
 
 const getBoxAccessibleByTeamOwner = `-- name: GetBoxAccessibleByTeamOwner :one
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides
 FROM boxes b
 JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
 JOIN team_members tm_owner ON tm_creator.team_id = tm_owner.team_id
@@ -92,12 +92,14 @@ func (q *Queries) GetBoxAccessibleByTeamOwner(ctx context.Context, arg GetBoxAcc
 		&i.Region,
 		&i.EmailReceiveEnabled,
 		&i.EmailMaildirPath,
+		&i.AllocatedCpus,
+		&i.CgroupOverrides,
 	)
 	return i, err
 }
 
 const getBoxByTeamOwnerAndShard = `-- name: GetBoxByTeamOwnerAndShard :one
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides
 FROM boxes b
 JOIN box_ip_shard bis ON b.id = bis.box_id
 JOIN team_members tm_creator ON bis.user_id = tm_creator.user_id
@@ -137,6 +139,8 @@ func (q *Queries) GetBoxByTeamOwnerAndShard(ctx context.Context, arg GetBoxByTea
 		&i.Region,
 		&i.EmailReceiveEnabled,
 		&i.EmailMaildirPath,
+		&i.AllocatedCpus,
+		&i.CgroupOverrides,
 	)
 	return i, err
 }

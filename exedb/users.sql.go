@@ -56,7 +56,7 @@ func (q *Queries) GetEmailByUserID(ctx context.Context, userID string) (string, 
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides
 FROM users
 WHERE canonical_email = ?
 `
@@ -81,6 +81,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, canonicalEmail *string) (U
 		&i.CanonicalEmail,
 		&i.IsLockedOut,
 		&i.Limits,
+		&i.CgroupOverrides,
 	)
 	return i, err
 }
@@ -141,7 +142,7 @@ func (q *Queries) GetUserRootSupport(ctx context.Context, userID string) (int64,
 }
 
 const getUserWithDetails = `-- name: GetUserWithDetails :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides
 FROM users
 WHERE user_id = ?
 `
@@ -166,6 +167,7 @@ func (q *Queries) GetUserWithDetails(ctx context.Context, userID string) (User, 
 		&i.CanonicalEmail,
 		&i.IsLockedOut,
 		&i.Limits,
+		&i.CgroupOverrides,
 	)
 	return i, err
 }
@@ -194,7 +196,7 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 }
 
 const listAllUsers = `-- name: ListAllUsers :many
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits FROM users ORDER BY created_at DESC
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides FROM users ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
@@ -223,6 +225,7 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 			&i.CanonicalEmail,
 			&i.IsLockedOut,
 			&i.Limits,
+			&i.CgroupOverrides,
 		); err != nil {
 			return nil, err
 		}
