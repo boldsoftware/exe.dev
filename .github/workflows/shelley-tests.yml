@@ -169,13 +169,47 @@ jobs:
           cd ui
           npx playwright test
 
-      - name: Upload Playwright artifacts
+      - name: Publish report to ~/public_html
+        if: always()
+        run: |
+          if ! test "$(hostname)" = edric; then
+            exit 0
+          fi
+          REPORT_DIR="$HOME/public_html/playwright/${{ github.run_number }}"
+          mkdir -p "$REPORT_DIR"
+          cp -r ui/playwright-report/* "$REPORT_DIR/" 2>/dev/null || true
+          if [ -d ui/test-results ] && [ "$(ls ui/test-results 2>/dev/null)" ]; then
+            cp -r ui/test-results "$REPORT_DIR/test-results"
+          fi
+          ln -sfn "$REPORT_DIR" "$HOME/public_html/playwright/latest"
+          # Keep last 5 reports
+          cd "$HOME/public_html/playwright"
+          ls -1d [0-9]* 2>/dev/null | sort -n | head -n -5 | xargs rm -rf 2>/dev/null || true
+
+      - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-artifacts-${{ github.sha }}
-          path: |
-            shelley/ui/playwright-report/
-            shelley/ui/test-results/
+          name: playwright-report
+          path: shelley/ui/playwright-report/
           retention-days: 7
           if-no-files-found: ignore
+
+      - name: Upload test results (screenshots, videos, traces)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: shelley/ui/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo '### Playwright E2E Results' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          if test "$(hostname)" = edric; then
+            echo "[**View Report**](http://edric/~$(whoami)/playwright/${{ github.run_number }}/)" >> "$GITHUB_STEP_SUMMARY"
+            echo '' >> "$GITHUB_STEP_SUMMARY"
+          fi
