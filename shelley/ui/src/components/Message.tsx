@@ -170,12 +170,15 @@ function GitInfoMessage({
         )}
         {branch ? " now at " : "now at "}
         <code
+          onClick={handleCopyHash}
+          title="Click to copy commit hash"
           style={{
             fontFamily: "monospace",
             fontSize: "0.75rem",
             background: "var(--bg-tertiary)",
             padding: "0.1em 0.3em",
             borderRadius: "3px",
+            cursor: "pointer",
           }}
         >
           {commitHash}
