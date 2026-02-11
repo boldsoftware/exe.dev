@@ -947,7 +947,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		stopChan:  make(chan struct{}),
 		log:       slog,
 		slackFeed: logging.NewSlackFeed(slog, cfg.Env),
-		billing:   cfg.Env.BillingClient(),
+		billing:   &billing.Manager{APIKey: cfg.Env.StripeAPIKey, StripeURL: cfg.Env.StripeURL},
 		signupLimiter: &limiter.Limiter[netip.Addr]{
 			Size:           10000,           // Track up to 10k IPs
 			Max:            20,              // 20 requests max

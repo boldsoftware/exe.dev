@@ -75,6 +75,9 @@ jobs:
             fi
           fi
 
+      - name: Ensure package stage has no non-stdlib deps
+        run: if go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' ./stage/ | grep -v '^exe.dev/stage$' | grep .; then exit 1; fi
+
       - name: Ensure b2 CLI available
         run: |
           if ! command -v b2 >/dev/null 2>&1; then

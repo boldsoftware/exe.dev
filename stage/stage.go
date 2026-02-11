@@ -7,8 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-
-	"exe.dev/billing"
 )
 
 // Resource limits for VM creation
@@ -138,6 +136,10 @@ func Invalid() Env {
 	}
 }
 
+// stripeTestAPIKey is the Stripe test API key used in Local/Test envs.
+// It is safe to check into source code.
+var stripeTestAPIKey = "sk_test_51SzRtTKBUWL0n1QN0OSXVllXJLOeM2JfcFDRLNJHeMpKVTgjaif5cDBhZ1jIcCv8cZFRoMb1YBnbYeXedaD1oQ3w00tOHZd9cF"
+
 var envStripeKey = os.Getenv("STRIPE_SECRET_KEY")
 
 // Local returns an Env configured for convenient local human development.
@@ -190,7 +192,7 @@ func Local() Env {
 		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
 		DefaultCPUs:   2,
 
-		StripeAPIKey: cmp.Or(envStripeKey, billing.TestAPIKey),
+		StripeAPIKey: cmp.Or(envStripeKey, stripeTestAPIKey),
 		StripeURL:    "",
 	}
 }
@@ -246,7 +248,7 @@ func Test() Env {
 		DefaultDisk:   11 * 1000 * 1000 * 1000, // 11GB
 		DefaultCPUs:   2,
 
-		StripeAPIKey: billing.TestAPIKey,
+		StripeAPIKey: stripeTestAPIKey,
 		StripeURL:    "",
 	}
 }
@@ -405,11 +407,6 @@ func (e Env) BoxDest(boxName string) string {
 		return fmt.Sprintf("%s@%s", boxName, e.BoxHost)
 	}
 	return fmt.Sprintf("%s.%s", boxName, e.BoxHost)
-}
-
-// BillingClient returns a configured billing manager for this environment.
-func (e Env) BillingClient() *billing.Manager {
-	return &billing.Manager{APIKey: e.StripeAPIKey, StripeURL: e.StripeURL}
 }
 
 // TailscaleListenAddr returns a listen address bound to the tailscale interface
