@@ -223,6 +223,9 @@ echo "  ssh ubuntu@$INSTANCE_NAME"
 echo ""
 echo "View logs:"
 echo "  ssh ubuntu@$INSTANCE_NAME journalctl -fu exed"
+echo ""
+echo "Dashboard:"
+echo "  https://grafana.crocodile-vector.ts.net/d/deploy-top-metrics-dashboard/deploy-dashboard-top-metrics?orgId=1&from=now-30m&to=now&timezone=browser&var-stage=production&refresh=30s"
 
 # Mark deployment as successful
 "$REPO_ROOT/scripts/deploy-notify.sh" complete "$DEPLOY_TS"
