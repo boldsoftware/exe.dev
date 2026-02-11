@@ -229,6 +229,25 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 			// could fill the gRPC send buffer and cause deadlocks. If flow control is
 			// needed in the future, clients must be updated to drain Acks concurrently.
 
+		case *api.ReceiveVMRequest_PhaseComplete:
+			// Two-phase migration: phase 1 full stream is complete.
+			// Complete the current zfs recv, then start a new one for the phase 2 incremental stream.
+			if instanceRecv == nil {
+				receiveErr = status.Error(codes.FailedPrecondition,
+					"received PhaseComplete before any instance data")
+				return receiveErr
+			}
+			s.log.InfoContext(ctx, "two-phase: completing phase 1 receive", "instance", instanceID)
+			if err := waitRecvComplete(instanceRecv); err != nil {
+				rb.zfsDatasetCreated = true
+				receiveErr = status.Errorf(codes.Internal, "phase 1 zfs recv failed: %v", err)
+				return receiveErr
+			}
+			rb.zfsDatasetCreated = true
+			s.log.InfoContext(ctx, "two-phase: starting phase 2 receive", "instance", instanceID)
+			instanceRecv = startZfsRecv(instanceID)
+			currentRecv = instanceRecv
+
 		case *api.ReceiveVMRequest_Complete:
 			expectedChecksum = v.Complete.Checksum
 		}

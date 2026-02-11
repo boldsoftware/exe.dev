@@ -56,6 +56,8 @@ type StorageManager interface {
 	SnapshotExists(snapName string) bool
 	// CreateSnapshot creates a ZFS snapshot with the given full name (e.g., "tank/sha256:...@instance-id")
 	CreateSnapshot(ctx context.Context, snapName string) error
+	// DestroySnapshot destroys a ZFS snapshot
+	DestroySnapshot(ctx context.Context, snapName string) error
 	// PruneOrphanedBaseImages removes base image datasets (sha256:xxx) that have no dependent clones.
 	// Returns the number of datasets pruned.
 	PruneOrphanedBaseImages(ctx context.Context) (int, error)

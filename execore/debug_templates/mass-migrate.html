@@ -29,7 +29,7 @@ a:hover { text-decoration: underline; }
 <h1>Migrate</h1>
 <p><a href="/debug/boxes">&larr; Back to boxes</a></p>
 
-<div class="warning"><strong>Warning:</strong> VMs will be stopped during migration and restarted on the target host. This may take a long time for many boxes.</div>
+<div class="warning"><strong>Note:</strong> Running VMs use two-phase migration (minimal downtime). Stopped VMs are transferred directly.</div>
 
 <div id="formSection">
 
@@ -210,7 +210,6 @@ document.querySelectorAll('.source-cb').forEach(function(cb) {
 
 document.getElementById('target').addEventListener('change', updateState);
 document.getElementById('confirm').addEventListener('input', updateState);
-
 document.getElementById('selectAll').addEventListener('click', function() {
     document.querySelectorAll('.box-cb').forEach(function(cb) { cb.checked = true; });
     updateState();

@@ -235,3 +235,15 @@ func (s *ZFS) CreateSnapshot(ctx context.Context, snapName string) error {
 
 	return nil
 }
+
+// DestroySnapshot destroys a ZFS snapshot
+func (s *ZFS) DestroySnapshot(ctx context.Context, snapName string) error {
+	s.log.DebugContext(ctx, "destroying snapshot", "snapshot", snapName)
+
+	cmd := exec.CommandContext(ctx, "zfs", "destroy", snapName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to destroy snapshot %s: %w (%s)", snapName, err, string(out))
+	}
+
+	return nil
+}

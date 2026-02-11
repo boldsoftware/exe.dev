@@ -21,7 +21,7 @@ a:hover { text-decoration: underline; }
 <h1>Migrate Box</h1>
 <p><a href="/debug/boxes">&larr; Back to boxes</a></p>
 
-<div class="warning"><strong>Warning:</strong> The VM will be stopped during migration and restarted on the target host.</div>
+<div class="warning"><strong>Note:</strong> Running VMs use two-phase migration (minimal downtime). Stopped VMs are transferred directly.</div>
 
 <form id="migrateForm" method="post" action="/debug/boxes/migrate">
 <p>Box: <strong>{{.BoxName}}</strong></p>
@@ -56,7 +56,6 @@ document.getElementById('target').addEventListener('change', function() {
     var confirmed = document.getElementById('confirm_name').value;
     document.getElementById('submitBtn').disabled = (confirmed !== expectedName || !this.value);
 });
-
 document.getElementById('migrateForm').addEventListener('submit', function(e) {
     e.preventDefault();
     var form = this;

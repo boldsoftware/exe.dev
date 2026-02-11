@@ -16,12 +16,16 @@ import (
 
 var migrateInstanceCommand = &cli.Command{
 	Name:      "migrate",
-	Usage:     "migrate a stopped instance to another exelet",
+	Usage:     "migrate an instance to another exelet",
 	ArgsUsage: "<instance-id> <target-address>",
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
 			Name:  "delete",
 			Usage: "delete instance from source after successful migration",
+		},
+		&cli.BoolFlag{
+			Name:  "two-phase",
+			Usage: "use two-phase migration (snapshot while running, then send diff)",
 		},
 	},
 	Action: func(clix *cli.Context) error {
@@ -32,6 +36,7 @@ var migrateInstanceCommand = &cli.Command{
 		instanceID := clix.Args().Get(0)
 		targetAddr := clix.Args().Get(1)
 		deleteAfter := clix.Bool("delete")
+		twoPhase := clix.Bool("two-phase")
 
 		// Connect to source exelet (from --addr flag)
 		sourceClient, err := helpers.GetClient(clix)
@@ -66,16 +71,13 @@ var migrateInstanceCommand = &cli.Command{
 		}
 
 		// Send start request to source
-		// We tell sender TargetHasBaseImage=true to get a full stream. This is because
-		// ZFS incremental streams require the exact origin snapshot (with matching GUID)
-		// to exist on target. Even if target has the base image, it won't have the same
-		// origin snapshot GUID. Sending a full stream works reliably.
 		sp.Update("requesting VM data...")
 		if err := sendStream.Send(&api.SendVMRequest{
 			Type: &api.SendVMRequest_Start{
 				Start: &api.SendVMStartRequest{
 					InstanceID:         instanceID,
 					TargetHasBaseImage: true,
+					TwoPhase:           twoPhase,
 				},
 			},
 		}); err != nil {
@@ -92,7 +94,11 @@ var migrateInstanceCommand = &cli.Command{
 			return fmt.Errorf("expected metadata, got %T", resp.Type)
 		}
 
-		sp.Update(fmt.Sprintf("migrating %s (%s)...", metadata.Instance.Name, humanize.Bytes(metadata.TotalSizeEstimate)))
+		if twoPhase {
+			sp.Update(fmt.Sprintf("migrating %s (%s, two-phase)...", metadata.Instance.Name, humanize.Bytes(metadata.TotalSizeEstimate)))
+		} else {
+			sp.Update(fmt.Sprintf("migrating %s (%s)...", metadata.Instance.Name, humanize.Bytes(metadata.TotalSizeEstimate)))
+		}
 
 		// Start ReceiveVM stream on target
 		recvStream, err := targetClient.ReceiveVM(ctx)
@@ -156,6 +162,21 @@ var migrateInstanceCommand = &cli.Command{
 						return fmt.Errorf("target error: %w", recvErr)
 					}
 					return fmt.Errorf("failed to send to target: %w", err)
+				}
+
+			case *api.SendVMResponse_PhaseComplete:
+				sp.Update(fmt.Sprintf("phase 1 complete (%s), stopping VM for phase 2...",
+					humanize.Bytes(v.PhaseComplete.PhaseBytes)))
+				// Forward phase complete to target
+				if err := recvStream.Send(&api.ReceiveVMRequest{
+					Type: &api.ReceiveVMRequest_PhaseComplete{
+						PhaseComplete: &api.ReceiveVMPhaseComplete{},
+					},
+				}); err != nil {
+					if recvErr := recvTargetErr(recvStream); recvErr != nil {
+						return fmt.Errorf("target error: %w", recvErr)
+					}
+					return fmt.Errorf("failed to send phase complete to target: %w", err)
 				}
 
 			case *api.SendVMResponse_Complete:

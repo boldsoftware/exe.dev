@@ -539,6 +539,7 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	boxName := r.FormValue("box_name")
 	targetAddr := r.FormValue("target")
 	confirmName := r.FormValue("confirm_name")
+	twoPhase := true
 
 	// Set up streaming response
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -614,18 +615,41 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	// This ensures migration completes and the VM isn't left stopped on source.
 	ctx = context.WithoutCancel(ctx)
 
-	// Step 1: Stop VM on source
-	writeProgress("Stopping VM on source exelet...")
-	s.slog().InfoContext(ctx, "stopping VM for migration", "box", boxName, "container_id", containerID, "source", box.Ctrhost)
-	if _, err := sourceClient.client.StopInstance(ctx, &computeapi.StopInstanceRequest{ID: containerID}); err != nil {
-		writeError("failed to stop VM on source: %v", err)
+	// Check source VM state before migration
+	sourceInstance, err := sourceClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+	if err != nil {
+		writeError("failed to get instance state: %v", err)
 		return
 	}
-	writeProgress("VM stopped.")
+	wasRunning := sourceInstance.Instance.State == computeapi.VMState_RUNNING
+
+	// Step 1: Stop VM on source (skip for two-phase - SendVM handles it)
+	if !twoPhase && wasRunning {
+		writeProgress("Stopping VM on source exelet...")
+		s.slog().InfoContext(ctx, "stopping VM for migration", "box", boxName, "container_id", containerID, "source", box.Ctrhost)
+		if _, err := sourceClient.client.StopInstance(ctx, &computeapi.StopInstanceRequest{ID: containerID}); err != nil {
+			writeError("failed to stop VM on source: %v", err)
+			return
+		}
+		writeProgress("VM stopped.")
+	}
 
 	// restartSource restarts the VM on source if migration fails after stopping it.
+	// For two-phase, the VM may or may not have been stopped depending on which phase failed.
 	// Uses exponential backoff retry in case the exelet is temporarily unavailable.
 	restartSource := func(reason string) {
+		if !wasRunning {
+			writeProgress("Source VM was already stopped, nothing to restart.")
+			return
+		}
+		// Check if VM is already running (e.g. two-phase failed during phase 1)
+		if twoPhase {
+			inst, err := sourceClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+			if err == nil && inst.Instance.State == computeapi.VMState_RUNNING {
+				writeProgress("VM is still running on source (failed before stop).")
+				return
+			}
+		}
 		writeProgress("Restarting VM on source exelet to restore service...")
 		s.slog().ErrorContext(ctx, "migration failed, restarting VM on source",
 			"box", boxName, "container_id", containerID, "source", box.Ctrhost, "reason", reason)
@@ -650,41 +674,49 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 
 	// Step 2: Perform migration
 	writeProgress("Starting disk transfer from %s to %s...", box.Ctrhost, targetAddr)
-	s.slog().InfoContext(ctx, "starting migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
-	if err := s.migrateVM(ctx, sourceClient.client, targetClient.client, containerID, writeProgress); err != nil {
+	s.slog().InfoContext(ctx, "starting migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr, "two_phase", twoPhase)
+	if err := s.migrateVM(ctx, sourceClient.client, targetClient.client, containerID, twoPhase, writeProgress); err != nil {
 		writeError("migration failed: %v", err)
 		restartSource(err.Error())
 		return
 	}
 	writeProgress("Disk transfer complete.")
 
-	// Step 3: Start VM on target
-	writeProgress("Starting VM on target exelet...")
-	s.slog().InfoContext(ctx, "starting VM on target", "box", boxName, "target", targetAddr)
-	if _, err := targetClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err != nil {
-		writeError("failed to start VM on target: %v", err)
-		restartSource(err.Error())
-		return
-	}
-	writeProgress("VM started on target.")
+	// Step 3: Start VM on target (skip if source was stopped)
+	var sshPort *int64
+	dbStatus := "running"
+	if wasRunning {
+		writeProgress("Starting VM on target exelet...")
+		s.slog().InfoContext(ctx, "starting VM on target", "box", boxName, "target", targetAddr)
+		if _, err := targetClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err != nil {
+			writeError("failed to start VM on target: %v", err)
+			restartSource(err.Error())
+			return
+		}
+		writeProgress("VM started on target.")
 
-	// Step 4: Get new SSH port from target
-	writeProgress("Getting new SSH port...")
-	instance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
-	if err != nil {
-		writeError("failed to get instance info from target: %v", err)
-		restartSource(err.Error())
-		return
+		// Step 4: Get new SSH port from target
+		writeProgress("Getting new SSH port...")
+		instance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+		if err != nil {
+			writeError("failed to get instance info from target: %v", err)
+			restartSource(err.Error())
+			return
+		}
+		newSSHPort := int64(instance.Instance.SSHPort)
+		sshPort = &newSSHPort
+		writeProgress("New SSH port: %d", newSSHPort)
+	} else {
+		writeProgress("Source VM was stopped, leaving stopped on target.")
+		dbStatus = "stopped"
 	}
-	newSSHPort := int64(instance.Instance.SSHPort)
-	writeProgress("New SSH port: %d", newSSHPort)
 
 	// Step 5: Update database with new ctrhost, ssh_port, and status
 	writeProgress("Updating database...")
 	if err := withTx1(s, ctx, (*exedb.Queries).UpdateBoxMigration, exedb.UpdateBoxMigrationParams{
 		Ctrhost: targetAddr,
-		SSHPort: &newSSHPort,
-		Status:  "running",
+		SSHPort: sshPort,
+		Status:  dbStatus,
 		ID:      box.ID,
 	}); err != nil {
 		writeError("failed to update database: %v", err)
@@ -739,7 +771,9 @@ func recvTargetError(stream computeapi.ComputeService_ReceiveVMClient) error {
 
 // migrateVM performs the SendVM/ReceiveVM streaming between source and target exelets.
 // The progress callback is called periodically with status updates.
-func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Client, instanceID string, progress func(string, ...any)) error {
+// When twoPhase is true, the source exelet will snapshot the running VM, send the full
+// snapshot, then stop the VM and send only the incremental diff.
+func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Client, instanceID string, twoPhase bool, progress func(string, ...any)) error {
 	// Wrap context with cancel so gRPC streams are cleaned up when this
 	// function returns. Without this, a failed migration leaves the source
 	// exelet's SendVM stream open, which holds the migration lock forever.
@@ -754,13 +788,12 @@ func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Cli
 
 	progress("Requesting VM metadata from source...")
 
-	// First, get metadata from source to learn the base image ID.
-	// We tell sender target doesn't have base image initially - we'll handle this below.
 	if err := sendStream.Send(&computeapi.SendVMRequest{
 		Type: &computeapi.SendVMRequest_Start{
 			Start: &computeapi.SendVMStartRequest{
 				InstanceID:         instanceID,
-				TargetHasBaseImage: true, // Tell sender to send full stream (see comment below)
+				TargetHasBaseImage: true,
+				TwoPhase:           twoPhase,
 			},
 		},
 	}); err != nil {
@@ -816,16 +849,6 @@ func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Cli
 
 	progress("Target ready (has_base_image=%v)", ready.HasBaseImage)
 
-	// NOTE: We always tell sender TargetHasBaseImage=true above, which makes it send
-	// a full stream of the instance. This is because ZFS incremental streams require
-	// the exact origin snapshot (with matching GUID) to exist on target. Even if target
-	// has the base image, it won't have the same origin snapshot GUID. Sending a full
-	// stream is less space-efficient but works reliably.
-	//
-	// If target doesn't have base image at all, the full stream will still work - it
-	// creates an independent dataset. The base image can be transferred separately
-	// if needed for future clones.
-
 	progress("Transferring disk data...")
 
 	// Pipe data chunks from source to target
@@ -863,6 +886,20 @@ func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Cli
 					return fmt.Errorf("target error: %w", recvErr)
 				}
 				return fmt.Errorf("failed to send to target: %w", err)
+			}
+
+		case *computeapi.SendVMResponse_PhaseComplete:
+			progress("Phase 1 complete (%d MB), VM stopping for phase 2...",
+				v.PhaseComplete.PhaseBytes/(1024*1024))
+			if err := recvStream.Send(&computeapi.ReceiveVMRequest{
+				Type: &computeapi.ReceiveVMRequest_PhaseComplete{
+					PhaseComplete: &computeapi.ReceiveVMPhaseComplete{},
+				},
+			}); err != nil {
+				if recvErr := recvTargetError(recvStream); recvErr != nil {
+					return fmt.Errorf("target error: %w", recvErr)
+				}
+				return fmt.Errorf("failed to send phase complete to target: %w", err)
 			}
 
 		case *computeapi.SendVMResponse_Complete:
@@ -985,6 +1022,7 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 	boxNames := r.PostForm["box_names"]
 	targetAddr := r.FormValue("target")
 	confirm := r.FormValue("confirm")
+	twoPhase := true
 
 	// Set up streaming response
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -1027,7 +1065,11 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 	// Use a background context so migrations complete even if the browser disconnects.
 	ctx := context.Background()
 
-	writeProgress("Starting migration of %d boxes to %s", len(boxNames), targetAddr)
+	if twoPhase {
+		writeProgress("Starting two-phase migration of %d boxes to %s", len(boxNames), targetAddr)
+	} else {
+		writeProgress("Starting migration of %d boxes to %s", len(boxNames), targetAddr)
+	}
 	writeProgress("")
 
 	var succeeded, failed int
@@ -1066,19 +1108,44 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 			continue
 		}
 
-		writeProgress("Stopping VM on %s...", box.Ctrhost)
-		s.slog().InfoContext(ctx, "migration: stopping VM", "box", boxName, "container_id", containerID, "source", box.Ctrhost)
-		if _, err := sourceClient.client.StopInstance(ctx, &computeapi.StopInstanceRequest{ID: containerID}); err != nil {
-			writeError("failed to stop VM: %v", err)
+		// Check source VM state
+		sourceInstance, err := sourceClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+		if err != nil {
+			writeError("failed to get instance state for %q: %v", boxName, err)
 			failed++
 			writeProgress("")
 			continue
 		}
-		writeProgress("VM stopped.")
+		wasRunning := sourceInstance.Instance.State == computeapi.VMState_RUNNING
+
+		// Stop VM on source (skip for two-phase - SendVM handles it)
+		if !twoPhase && wasRunning {
+			writeProgress("Stopping VM on %s...", box.Ctrhost)
+			s.slog().InfoContext(ctx, "migration: stopping VM", "box", boxName, "container_id", containerID, "source", box.Ctrhost)
+			if _, err := sourceClient.client.StopInstance(ctx, &computeapi.StopInstanceRequest{ID: containerID}); err != nil {
+				writeError("failed to stop VM: %v", err)
+				failed++
+				writeProgress("")
+				continue
+			}
+			writeProgress("VM stopped.")
+		}
 
 		// restartSource restarts the VM on source if migration fails.
+		// For two-phase, the VM may or may not have been stopped depending on which phase failed.
 		// Uses exponential backoff retry in case the exelet is temporarily unavailable.
 		restartSource := func(reason string) {
+			if !wasRunning {
+				writeProgress("Source VM was already stopped, nothing to restart.")
+				return
+			}
+			if twoPhase {
+				inst, err := sourceClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+				if err == nil && inst.Instance.State == computeapi.VMState_RUNNING {
+					writeProgress("VM is still running on source (failed before stop).")
+					return
+				}
+			}
 			writeProgress("Restarting VM on source exelet to restore service...")
 			s.slog().ErrorContext(ctx, "migration failed, restarting VM on source",
 				"box", boxName, "container_id", containerID, "source", box.Ctrhost, "reason", reason)
@@ -1102,8 +1169,8 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 		}
 
 		writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
-		s.slog().InfoContext(ctx, "migration: starting disk transfer", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
-		if err := s.migrateVM(ctx, sourceClient.client, targetClient.client, containerID, writeProgress); err != nil {
+		s.slog().InfoContext(ctx, "migration: starting disk transfer", "box", boxName, "source", box.Ctrhost, "target", targetAddr, "two_phase", twoPhase)
+		if err := s.migrateVM(ctx, sourceClient.client, targetClient.client, containerID, twoPhase, writeProgress); err != nil {
 			writeError("disk transfer failed: %v", err)
 			restartSource(err.Error())
 			failed++
@@ -1112,34 +1179,42 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 		}
 		writeProgress("Disk transfer complete.")
 
-		writeProgress("Starting VM on target...")
-		s.slog().InfoContext(ctx, "migration: starting VM on target", "box", boxName, "target", targetAddr)
-		if _, err := targetClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err != nil {
-			writeError("failed to start VM on target: %v", err)
-			restartSource(err.Error())
-			failed++
-			writeProgress("")
-			continue
-		}
-		writeProgress("VM started on target.")
+		var sshPort *int64
+		dbStatus := "running"
+		if wasRunning {
+			writeProgress("Starting VM on target...")
+			s.slog().InfoContext(ctx, "migration: starting VM on target", "box", boxName, "target", targetAddr)
+			if _, err := targetClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err != nil {
+				writeError("failed to start VM on target: %v", err)
+				restartSource(err.Error())
+				failed++
+				writeProgress("")
+				continue
+			}
+			writeProgress("VM started on target.")
 
-		writeProgress("Getting new SSH port...")
-		instance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
-		if err != nil {
-			writeError("failed to get instance info from target: %v", err)
-			restartSource(err.Error())
-			failed++
-			writeProgress("")
-			continue
+			writeProgress("Getting new SSH port...")
+			instance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+			if err != nil {
+				writeError("failed to get instance info from target: %v", err)
+				restartSource(err.Error())
+				failed++
+				writeProgress("")
+				continue
+			}
+			newSSHPort := int64(instance.Instance.SSHPort)
+			sshPort = &newSSHPort
+			writeProgress("New SSH port: %d", newSSHPort)
+		} else {
+			writeProgress("Source VM was stopped, leaving stopped on target.")
+			dbStatus = "stopped"
 		}
-		newSSHPort := int64(instance.Instance.SSHPort)
-		writeProgress("New SSH port: %d", newSSHPort)
 
 		writeProgress("Updating database...")
 		if err := withTx1(s, ctx, (*exedb.Queries).UpdateBoxMigration, exedb.UpdateBoxMigrationParams{
 			Ctrhost: targetAddr,
-			SSHPort: &newSSHPort,
-			Status:  "running",
+			SSHPort: sshPort,
+			Status:  dbStatus,
 			ID:      box.ID,
 		}); err != nil {
 			writeError("failed to update database: %v", err)

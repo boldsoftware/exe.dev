@@ -1,9 +1,11 @@
 package compute
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"strings"
 
@@ -15,7 +17,7 @@ import (
 
 const sendVMChunkSize = 4 * 1024 * 1024 // 4MB chunks - optimized for multi-GB transfers
 
-// SendVM streams a stopped VM's disk and config to the caller for migration.
+// SendVM streams a VM's disk and config to the caller for migration.
 func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 	ctx := stream.Context()
 
@@ -30,7 +32,7 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 	}
 
 	instanceID := startReq.InstanceID
-	s.log.InfoContext(ctx, "SendVM started", "instance", instanceID)
+	s.log.InfoContext(ctx, "SendVM started", "instance", instanceID, "two_phase", startReq.TwoPhase)
 
 	// Lock instance for migration
 	if err := s.lockForMigration(instanceID); err != nil {
@@ -46,6 +48,16 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to get instance: %v", err)
 	}
+
+	if startReq.TwoPhase {
+		return s.sendVMTwoPhase(ctx, stream, startReq, instance)
+	}
+	return s.sendVMCold(ctx, stream, startReq, instance)
+}
+
+// sendVMCold performs a single-phase (cold) migration: VM must be stopped.
+func (s *Service) sendVMCold(ctx context.Context, stream api.ComputeService_SendVMServer, startReq *api.SendVMStartRequest, instance *api.Instance) error {
+	instanceID := startReq.InstanceID
 
 	// Verify VM is stopped
 	if instance.State != api.VMState_STOPPED {
@@ -65,21 +77,9 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 	encrypted := encryptionKey != nil
 
 	// Send metadata
-	metadata := &api.SendVMMetadata{
-		Instance:          instance,
-		BaseImageID:       baseImageID,
-		TotalSizeEstimate: instance.VMConfig.Disk, // Estimate based on configured disk size
-		Encrypted:         encrypted,
-		EncryptionKey:     encryptionKey,
+	if err := s.sendVMMetadata(stream, instance, baseImageID, encrypted, encryptionKey); err != nil {
+		return err
 	}
-
-	if err := stream.Send(&api.SendVMResponse{
-		Type: &api.SendVMResponse_Metadata{Metadata: metadata},
-	}); err != nil {
-		return status.Errorf(codes.Internal, "failed to send metadata: %v", err)
-	}
-
-	s.log.DebugContext(ctx, "sent metadata", "instance", instanceID, "base_image", baseImageID, "encrypted", encrypted)
 
 	// Create migration snapshot
 	snapName, cleanup, err := s.context.StorageManager.CreateMigrationSnapshot(ctx, instanceID)
@@ -93,8 +93,185 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 	buf := make([]byte, sendVMChunkSize)
 	var totalBytes uint64
 
-	// Helper to stream ZFS send data
-	streamSnapshot := func(snapshot string, incremental bool, baseSnap string, isBaseImage bool) error {
+	streamSnapshot := s.makeStreamFunc(ctx, stream, instanceID, hasher, buf, &totalBytes)
+
+	// If target doesn't have base image and this is a clone, send base image first
+	if !startReq.TargetHasBaseImage && origin != "" {
+		s.log.InfoContext(ctx, "sending base image first", "origin", origin)
+		if err := streamSnapshot(origin, false, "", true); err != nil {
+			return status.Errorf(codes.Internal, "failed to send base image: %v", err)
+		}
+		// Now send instance as incremental from origin
+		if err := streamSnapshot(snapName, true, origin, false); err != nil {
+			return status.Errorf(codes.Internal, "failed to send instance: %v", err)
+		}
+	} else {
+		// Target has base image OR no origin - send full stream of instance.
+		s.log.InfoContext(ctx, "sending full instance stream", "has_base_image", startReq.TargetHasBaseImage)
+		if err := streamSnapshot(snapName, false, "", false); err != nil {
+			return status.Errorf(codes.Internal, "failed to send instance: %v", err)
+		}
+	}
+
+	return s.sendVMComplete(stream, instanceID, hasher, totalBytes)
+}
+
+// sendVMTwoPhase performs a two-phase migration: snapshot while running (phase 1),
+// stop VM and send incremental diff (phase 2).
+func (s *Service) sendVMTwoPhase(ctx context.Context, stream api.ComputeService_SendVMServer, startReq *api.SendVMStartRequest, instance *api.Instance) error {
+	instanceID := startReq.InstanceID
+
+	// If VM is already stopped, fall back to cold migration
+	if instance.State == api.VMState_STOPPED {
+		s.log.InfoContext(ctx, "two-phase: VM already stopped, falling back to cold migration", "instance", instanceID)
+		return s.sendVMCold(ctx, stream, startReq, instance)
+	}
+	if instance.State != api.VMState_RUNNING {
+		return status.Errorf(codes.FailedPrecondition,
+			"VM in invalid state for migration, current state: %s", instance.State)
+	}
+
+	// Get encryption key if exists
+	encryptionKey, err := s.context.StorageManager.GetEncryptionKey(instanceID)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to get encryption key: %v", err)
+	}
+	encrypted := encryptionKey != nil
+
+	// Send metadata (no base image for two-phase - always sends full stream in phase 1)
+	if err := s.sendVMMetadata(stream, instance, "", encrypted, encryptionKey); err != nil {
+		return err
+	}
+
+	// Phase 1: Snapshot while VM is running, send full stream
+	dsName := s.context.StorageManager.GetDatasetName(instanceID)
+	preSnapName := dsName + "@migration-pre"
+
+	// Clean up any leftover pre-snapshot from a previous failed attempt
+	s.context.StorageManager.DestroySnapshot(ctx, preSnapName) //nolint:errcheck
+
+	s.log.InfoContext(ctx, "two-phase: creating pre-copy snapshot", "snapshot", preSnapName)
+	if err := s.context.StorageManager.CreateSnapshot(ctx, preSnapName); err != nil {
+		return status.Errorf(codes.Internal, "failed to create pre-copy snapshot: %v", err)
+	}
+
+	// Ensure pre-snapshot is cleaned up
+	preSnapCleaned := false
+	defer func() {
+		if !preSnapCleaned {
+			if err := s.context.StorageManager.DestroySnapshot(ctx, preSnapName); err != nil {
+				s.log.WarnContext(ctx, "failed to destroy pre-copy snapshot", "snapshot", preSnapName, "error", err)
+			}
+		}
+	}()
+
+	hasher := sha256.New()
+	buf := make([]byte, sendVMChunkSize)
+	var totalBytes uint64
+	streamSnapshot := s.makeStreamFunc(ctx, stream, instanceID, hasher, buf, &totalBytes)
+
+	s.log.InfoContext(ctx, "two-phase: streaming phase 1 (full pre-copy)")
+	if err := streamSnapshot(preSnapName, false, "", false); err != nil {
+		return status.Errorf(codes.Internal, "failed to send phase 1 data: %v", err)
+	}
+
+	phase1Bytes := totalBytes
+	s.log.InfoContext(ctx, "two-phase: phase 1 complete", "bytes", phase1Bytes)
+
+	// Send phase complete marker
+	if err := stream.Send(&api.SendVMResponse{
+		Type: &api.SendVMResponse_PhaseComplete{
+			PhaseComplete: &api.SendVMPhaseComplete{
+				PhaseBytes: phase1Bytes,
+			},
+		},
+	}); err != nil {
+		return status.Errorf(codes.Internal, "failed to send phase complete: %v", err)
+	}
+
+	// Phase 2: Stop VM and send incremental diff
+	s.log.InfoContext(ctx, "two-phase: stopping VM for phase 2", "instance", instanceID)
+
+	// Reload instance state in case the VM stopped on its own
+	instance, err = s.getInstance(ctx, instanceID)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to reload instance state: %v", err)
+	}
+	if instance.State == api.VMState_RUNNING {
+		if err := s.stopInstance(ctx, instanceID); err != nil {
+			return status.Errorf(codes.Internal, "failed to stop VM for phase 2: %v", err)
+		}
+	}
+	s.log.InfoContext(ctx, "two-phase: VM stopped, creating final snapshot")
+
+	// Create final migration snapshot
+	migrationSnap, cleanup, err := s.context.StorageManager.CreateMigrationSnapshot(ctx, instanceID)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to create migration snapshot: %v", err)
+	}
+	defer cleanup()
+
+	// Send incremental diff from pre-copy to final
+	s.log.InfoContext(ctx, "two-phase: streaming phase 2 (incremental diff)",
+		"base", preSnapName, "target", migrationSnap)
+	if err := streamSnapshot(migrationSnap, true, preSnapName, false); err != nil {
+		return status.Errorf(codes.Internal, "failed to send phase 2 data: %v", err)
+	}
+
+	phase2Bytes := totalBytes - phase1Bytes
+	s.log.InfoContext(ctx, "two-phase: phase 2 complete",
+		"phase1_bytes", phase1Bytes, "phase2_bytes", phase2Bytes)
+
+	// Clean up pre-snapshot now (before final snapshot cleanup)
+	if err := s.context.StorageManager.DestroySnapshot(ctx, preSnapName); err != nil {
+		s.log.WarnContext(ctx, "failed to destroy pre-copy snapshot", "snapshot", preSnapName, "error", err)
+	}
+	preSnapCleaned = true
+
+	return s.sendVMComplete(stream, instanceID, hasher, totalBytes)
+}
+
+// sendVMMetadata sends the metadata message on the stream.
+func (s *Service) sendVMMetadata(stream api.ComputeService_SendVMServer, instance *api.Instance, baseImageID string, encrypted bool, encryptionKey []byte) error {
+	metadata := &api.SendVMMetadata{
+		Instance:          instance,
+		BaseImageID:       baseImageID,
+		TotalSizeEstimate: instance.VMConfig.Disk,
+		Encrypted:         encrypted,
+		EncryptionKey:     encryptionKey,
+	}
+	if err := stream.Send(&api.SendVMResponse{
+		Type: &api.SendVMResponse_Metadata{Metadata: metadata},
+	}); err != nil {
+		return status.Errorf(codes.Internal, "failed to send metadata: %v", err)
+	}
+	s.log.DebugContext(stream.Context(), "sent metadata", "instance", instance.ID, "base_image", baseImageID, "encrypted", encrypted)
+	return nil
+}
+
+// sendVMComplete sends the completion message with checksum.
+func (s *Service) sendVMComplete(stream api.ComputeService_SendVMServer, instanceID string, hasher hash.Hash, totalBytes uint64) error {
+	checksum := fmt.Sprintf("%x", hasher.Sum(nil))
+	if err := stream.Send(&api.SendVMResponse{
+		Type: &api.SendVMResponse_Complete{
+			Complete: &api.SendVMComplete{
+				Checksum:   checksum,
+				TotalBytes: totalBytes,
+			},
+		},
+	}); err != nil {
+		return status.Errorf(codes.Internal, "failed to send completion: %v", err)
+	}
+	s.log.InfoContext(stream.Context(), "SendVM completed",
+		"instance", instanceID,
+		"total_bytes", totalBytes,
+		"checksum", checksum)
+	return nil
+}
+
+// makeStreamFunc returns a helper that streams ZFS send data through the gRPC stream.
+func (s *Service) makeStreamFunc(ctx context.Context, stream api.ComputeService_SendVMServer, instanceID string, hasher hash.Hash, buf []byte, totalBytes *uint64) func(snapshot string, incremental bool, baseSnap string, isBaseImage bool) error {
+	return func(snapshot string, incremental bool, baseSnap string, isBaseImage bool) error {
 		s.log.DebugContext(ctx, "starting zfs send",
 			"instance", instanceID,
 			"snapshot", snapshot,
@@ -111,7 +288,7 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 			n, err := reader.Read(buf)
 			if n > 0 {
 				hasher.Write(buf[:n])
-				totalBytes += uint64(n)
+				*totalBytes += uint64(n)
 
 				if sendErr := stream.Send(&api.SendVMResponse{
 					Type: &api.SendVMResponse_Data{
@@ -140,50 +317,6 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 		}
 		return nil
 	}
-
-	// If target doesn't have base image and this is a clone, send base image first
-	if !startReq.TargetHasBaseImage && origin != "" {
-		s.log.InfoContext(ctx, "sending base image first", "origin", origin)
-		if err := streamSnapshot(origin, false, "", true); err != nil {
-			return status.Errorf(codes.Internal, "failed to send base image: %v", err)
-		}
-		// Now send instance as incremental from origin
-		if err := streamSnapshot(snapName, true, origin, false); err != nil {
-			return status.Errorf(codes.Internal, "failed to send instance: %v", err)
-		}
-	} else {
-		// Target has base image OR no origin - send full stream of instance.
-		// We can't send incremental when target has the base image because ZFS
-		// incremental streams contain the GUID of the origin snapshot. Even if we
-		// create a snapshot with the same name on the target, it will have a different
-		// GUID, causing zfs recv to fail with "local origin does not exist".
-		// Sending a full stream creates an independent dataset (not a clone), which
-		// uses more disk space but works reliably for migration.
-		s.log.InfoContext(ctx, "sending full instance stream", "has_base_image", startReq.TargetHasBaseImage)
-		if err := streamSnapshot(snapName, false, "", false); err != nil {
-			return status.Errorf(codes.Internal, "failed to send instance: %v", err)
-		}
-	}
-
-	// Send completion
-	checksum := fmt.Sprintf("%x", hasher.Sum(nil))
-	if err := stream.Send(&api.SendVMResponse{
-		Type: &api.SendVMResponse_Complete{
-			Complete: &api.SendVMComplete{
-				Checksum:   checksum,
-				TotalBytes: totalBytes,
-			},
-		},
-	}); err != nil {
-		return status.Errorf(codes.Internal, "failed to send completion: %v", err)
-	}
-
-	s.log.InfoContext(ctx, "SendVM completed",
-		"instance", instanceID,
-		"total_bytes", totalBytes,
-		"checksum", checksum)
-
-	return nil
 }
 
 // extractBaseImageID extracts the base image ID from a ZFS origin name.

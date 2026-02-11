@@ -286,6 +286,9 @@ message SendVMStartRequest {
   // target's snapshot state. "false" is more efficient but requires the target
   // to not have the base image (zfs recv will fail if it exists with snapshots).
   bool target_has_base_image = 2;
+  // Enable two-phase migration: snapshot while VM is running (phase 1),
+  // then stop VM and send only the incremental diff (phase 2).
+  bool two_phase = 3;
 }
 
 message SendVMResponse {
@@ -293,7 +296,12 @@ message SendVMResponse {
     SendVMMetadata metadata = 1;
     SendVMDataChunk data = 2;
     SendVMComplete complete = 3;
+    SendVMPhaseComplete phase_complete = 4;
   }
+}
+
+message SendVMPhaseComplete {
+  uint64 phase_bytes = 1;  // Bytes transferred in phase 1
 }
 
 message SendVMMetadata {
@@ -320,8 +328,11 @@ message ReceiveVMRequest {
     ReceiveVMStartRequest start = 1;
     ReceiveVMDataChunk data = 2;
     ReceiveVMComplete complete = 3;
+    ReceiveVMPhaseComplete phase_complete = 4;
   }
 }
+
+message ReceiveVMPhaseComplete {}
 
 message ReceiveVMStartRequest {
   string instance_id = 1;           // Instance ID to use on target

@@ -36,7 +36,7 @@ type VMM interface {
 	Logs(ctx context.Context, id string) (io.ReadCloser, error)
 	// Console returns a pty for the specified id
 	Console(ctx context.Context, id string) (string, error)
-	// Stop implements VM stop
+	// Stop implements VM stop (hard kill)
 	Stop(ctx context.Context, id string) error
 	// Delete implements VM delete
 	Delete(ctx context.Context, id, ip string) error
