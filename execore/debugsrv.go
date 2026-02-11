@@ -725,6 +725,8 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	}
 	writeProgress("Database updated.")
 
+	go s.sendBoxMaintenanceEmail(context.Background(), boxName)
+
 	// Log warning about source cleanup
 	s.slog().WarnContext(ctx, "VM migrated - source instance needs manual cleanup",
 		"box_name", boxName,
@@ -1231,6 +1233,8 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 			"source_host", box.Ctrhost,
 			"target_host", targetAddr,
 		)
+
+		go s.sendBoxMaintenanceEmail(context.Background(), boxName)
 
 		writeProgress("Box %s migrated successfully.", boxName)
 		succeeded++

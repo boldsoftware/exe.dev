@@ -1604,6 +1604,25 @@ func (s *Server) sendBoxCreatedEmail(ctx context.Context, to string, details new
 	}
 }
 
+// sendBoxMaintenanceEmail sends a notification email when a box is rebooted for system maintenance.
+func (s *Server) sendBoxMaintenanceEmail(ctx context.Context, boxName string) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	boxInfo, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxWithOwnerEmail, boxName)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to look up box owner for maintenance email", "box", boxName, "error", err)
+		return
+	}
+
+	subject := fmt.Sprintf("exe.dev: system maintenance on %s", boxName)
+	body := fmt.Sprintf("Your VM %s was rebooted as part of routine system maintenance. No action is required.\n\nIf you run into any issues please contact support@exe.dev.\n\nThanks!\n\nexe.dev support", boxName)
+
+	if err := s.sendEmail(ctx, email.TypeBoxMaintenance, boxInfo.OwnerEmail, subject, body); err != nil {
+		s.slog().WarnContext(ctx, "failed to send box maintenance email", "to", boxInfo.OwnerEmail, "box", boxName, "error", err)
+	}
+}
+
 // logAuthAttempt logs all SSH authentication attempts for debugging
 func (s *Server) logAuthAttempt(conn ssh.ConnMetadata, method string, err error) {
 	var user, remoteAddr, clientVersion string
