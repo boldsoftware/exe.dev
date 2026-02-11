@@ -30,7 +30,7 @@ import (
 // This is typically needed in synctest bubbles to ensure the channels created
 // in the Go resolver are cleaned up to prevent use outside syntest bubble.
 func newTestManager(t *testing.T) *Manager {
-	t.Helper()
+	// t.Helper()
 
 	fname := "testdata/stripe/" + t.Name()
 
@@ -262,9 +262,40 @@ func installTestPrices(m *Manager) error {
 	ctx := context.Background()
 	c := m.client()
 
+	createdProducts := make(map[string]bool)
+	ensureProduct := func(id string) error {
+		if createdProducts[id] {
+			return nil
+		}
+		createdProducts[id] = true
+
+		_, err := c.V1Products.Retrieve(ctx, id, nil)
+		if err == nil {
+			return nil
+		}
+		if e, ok := errorz.AsType[*stripe.Error](err); ok && e.Code == stripe.ErrorCodeResourceMissing {
+			_, err := c.V1Products.Create(ctx, &stripe.ProductCreateParams{
+				ID:   new_(id),
+				Name: new_("Invididual"),
+			})
+			if err != nil {
+				return fmt.Errorf("create product %q: %w", id, err)
+			}
+			return nil
+		}
+		return fmt.Errorf("retrieve product %q: %w", id, err)
+	}
+
 	for _, want := range priceList.Data {
 		if want.LookupKey == "" {
 			continue
+		}
+
+		if want.Product == nil || want.Product.ID == "" {
+			return fmt.Errorf("price %q: missing product ID in prices.json", want.LookupKey)
+		}
+		if err := ensureProduct(want.Product.ID); err != nil {
+			return err
 		}
 
 		// Check if price with this lookup key already exists
@@ -289,6 +320,7 @@ func installTestPrices(m *Manager) error {
 			LookupKey:  &want.LookupKey,
 			Currency:   new_(string(want.Currency)),
 			UnitAmount: &want.UnitAmount,
+			Product:    &want.Product.ID,
 		}
 
 		if want.Recurring != nil {
@@ -299,10 +331,6 @@ func installTestPrices(m *Manager) error {
 			if want.Recurring.IntervalCount > 0 {
 				params.Recurring.IntervalCount = &want.Recurring.IntervalCount
 			}
-		}
-
-		if want.Product != nil && want.Product.ID != "" {
-			params.Product = &want.Product.ID
 		}
 
 		_, err := c.V1Prices.Create(ctx, params)
