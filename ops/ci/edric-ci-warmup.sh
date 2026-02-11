@@ -14,6 +14,56 @@ GIT_SSH_CMD="ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=accept-new"
 PREFETCH_URL="git@github.com:boldsoftware/exe.git"
 PREFETCH_REFSPEC="+refs/heads/*:refs/prefetch/remotes/origin/*"
 
+# 0. Pre-cache GitHub Actions tarballs.
+# The runners read from ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE before downloading.
+# The runner expects: {cache_dir}/{owner}_{repo}/{sha}.tar.gz
+ACTIONS_CACHE="/data/actions-archive-cache"
+if [[ -d "$ACTIONS_CACHE" ]]; then
+    # Find a checked-out repo to read workflow files from.
+    REPO_DIR=""
+    for d in /home/runner0/_work/exe/exe /home/runner0/_work-ci/exe/exe; do
+        if [[ -d "$d/.github/workflows" ]]; then
+            REPO_DIR="$d"
+            break
+        fi
+    done
+
+    if [[ -n "$REPO_DIR" ]]; then
+        # Extract unique action references (owner/repo@ref) from workflow files.
+        ACTIONS=$(grep -rh 'uses:' "$REPO_DIR/.github/workflows/" |
+            sed -n 's/.*uses: *\([^/]*\/[^@]*@[^ ]*\).*/\1/p' |
+            grep -v '\./' |
+            sort -u)
+
+        for ACTION in $ACTIONS; do
+            OWNER_REPO="${ACTION%%@*}"
+            REF="${ACTION##*@}"
+            # The runner replaces / with _ in the directory name.
+            DIR_NAME="${OWNER_REPO//\//_}"
+            # Resolve the ref to a SHA.
+            SHA=$(git ls-remote "https://github.com/${OWNER_REPO}.git" "$REF" 2>/dev/null | head -1 | cut -f1)
+            if [[ -z "$SHA" ]]; then
+                continue
+            fi
+            mkdir -p "$ACTIONS_CACHE/$DIR_NAME"
+            TARBALL="$ACTIONS_CACHE/$DIR_NAME/${SHA}.tar.gz"
+            if [[ -f "$TARBALL" ]]; then
+                continue
+            fi
+            echo "Caching action ${OWNER_REPO}@${REF} (${SHA})"
+            curl -fsSL -o "$TARBALL.tmp" \
+                "https://api.github.com/repos/${OWNER_REPO}/tarball/${SHA}" &&
+                mv "$TARBALL.tmp" "$TARBALL" ||
+                rm -f "$TARBALL.tmp"
+        done
+
+        # Prune tarballs older than 30 days.
+        find "$ACTIONS_CACHE" -name '*.tar.gz' -mtime +30 -delete 2>/dev/null || true
+        # Clean up empty subdirectories.
+        find "$ACTIONS_CACHE" -mindepth 1 -type d -empty -delete 2>/dev/null || true
+    fi
+fi
+
 for i in $(seq 0 7); do
     USER="runner${i}"
     USER_HOME="/home/${USER}"
