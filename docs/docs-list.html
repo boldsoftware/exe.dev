@@ -82,6 +82,15 @@
         line-height: 1.2;
       }
 
+      .section-title a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .section-title a:hover {
+        text-decoration: underline;
+      }
+
       .doc-item {
         margin-bottom: 32px;
         padding-bottom: 32px;
@@ -209,7 +218,7 @@
       <div class="docs-container">
         {{range .Groups}}
         <section class="docs-section">
-          <h2 class="section-title">{{.Heading}}</h2>
+          <h2 class="section-title"><a href="/docs/section/{{.Slug}}">{{.Heading}}</a></h2>
           {{range .Docs}}
           <div class="doc-item">
             <h3 class="doc-title">

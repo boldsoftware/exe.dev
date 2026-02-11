@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"html/template"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -411,6 +412,121 @@ func TestHandlerDocsMdIndex(t *testing.T) {
 		if !contains(body, entry.Title) {
 			t.Errorf("expected to find title %q in docs.md output", entry.Title)
 		}
+	}
+}
+
+func TestGroupSlug(t *testing.T) {
+	tests := []struct {
+		heading string
+		want    string
+	}{
+		{"1. Introduction", "1-introduction"},
+		{"2. Features", "2-features"},
+		{"8. CLI Reference", "8-cli-reference"},
+		{"4. FAQ", "4-faq"},
+		{"5. Use Cases", "5-use-cases"},
+		{"99. Drafts", "99-drafts"},
+		{"Other", "other"},
+		{"7. Blog Posts", "7-blog-posts"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.heading, func(t *testing.T) {
+			if got := groupSlug(tt.heading); got != tt.want {
+				t.Errorf("groupSlug(%q) = %q, want %q", tt.heading, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGroupsHaveSlugs(t *testing.T) {
+	store, err := Load(stage.Prod())
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	for _, group := range store.Groups() {
+		if group.Slug == "" {
+			t.Errorf("group %q has empty slug", group.Heading)
+		}
+	}
+}
+
+func TestGroupBySlug(t *testing.T) {
+	store, err := Load(stage.Prod())
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	for _, group := range store.Groups() {
+		got, ok := store.GroupBySlug(group.Slug)
+		if !ok {
+			t.Errorf("GroupBySlug(%q) not found", group.Slug)
+			continue
+		}
+		if got.Heading != group.Heading {
+			t.Errorf("GroupBySlug(%q).Heading = %q, want %q", group.Slug, got.Heading, group.Heading)
+		}
+	}
+}
+
+func TestHandlerDocSection(t *testing.T) {
+	store, err := Load(stage.Prod())
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	handler := NewHandler(store, false)
+	if handler == nil {
+		t.Fatal("NewHandler returned nil")
+	}
+
+	for _, group := range store.Groups() {
+		t.Run(group.Slug, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/docs/section/"+group.Slug, nil)
+			w := httptest.NewRecorder()
+
+			handled := handler.Handle(w, req)
+			if !handled {
+				t.Fatalf("Handler did not handle /docs/section/%s", group.Slug)
+			}
+
+			resp := w.Result()
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("got status code %d, want %d", resp.StatusCode, http.StatusOK)
+			}
+
+			body := w.Body.String()
+
+			// The section page should contain links to all docs in this group.
+			for _, entry := range group.Docs {
+				if !entry.Visible() {
+					continue
+				}
+				if !strings.Contains(body, entry.Path) {
+					t.Errorf("section page missing link to %s", entry.Path)
+				}
+				if !strings.Contains(body, template.HTMLEscapeString(entry.Title)) {
+					t.Errorf("section page missing title %q", entry.Title)
+				}
+			}
+		})
+	}
+}
+
+func TestHandlerDocSectionNotFound(t *testing.T) {
+	store, err := Load(stage.Prod())
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	handler := NewHandler(store, false)
+
+	req := httptest.NewRequest("GET", "/docs/section/nonexistent", nil)
+	w := httptest.NewRecorder()
+
+	handled := handler.Handle(w, req)
+	if handled {
+		t.Fatal("Handler should not have handled /docs/section/nonexistent")
 	}
 }
 

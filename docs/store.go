@@ -75,6 +75,7 @@ func (e *Entry) Visible() bool {
 
 type Group struct {
 	Heading string
+	Slug    string
 	Docs    []*Entry
 }
 
@@ -83,6 +84,7 @@ type Store struct {
 	groups      []Group
 	byPath      map[string]*Entry
 	bySlug      map[string]*Entry
+	byGroupSlug map[string]*Group
 	assets      map[string]Asset
 	defaultPath string
 }
@@ -93,9 +95,10 @@ func Load(env stage.Env) (*Store, error) {
 
 func loadFromFS(fsys fs.FS, env stage.Env) (*Store, error) {
 	store := &Store{
-		byPath: make(map[string]*Entry),
-		bySlug: make(map[string]*Entry),
-		assets: make(map[string]Asset),
+		byPath:      make(map[string]*Entry),
+		bySlug:      make(map[string]*Entry),
+		byGroupSlug: make(map[string]*Group),
+		assets:      make(map[string]Asset),
 	}
 
 	if _, err := fs.ReadDir(fsys, "content"); err != nil {
@@ -166,6 +169,9 @@ func loadFromFS(fsys fs.FS, env stage.Env) (*Store, error) {
 	})
 
 	store.groups = groupDocsByHeading(store.entries)
+	for i := range store.groups {
+		store.byGroupSlug[store.groups[i].Slug] = &store.groups[i]
+	}
 
 	for _, entry := range store.entries {
 		store.byPath[entry.Path] = entry
@@ -214,6 +220,14 @@ func (s *Store) Entry(path string) (*Entry, bool) {
 func (s *Store) Asset(path string) (Asset, bool) {
 	asset, ok := s.assets[path]
 	return asset, ok
+}
+
+func (s *Store) GroupBySlug(slug string) (*Group, bool) {
+	if s == nil {
+		return nil, false
+	}
+	group, ok := s.byGroupSlug[slug]
+	return group, ok
 }
 
 func (s *Store) EntryBySlug(slug string) (*Entry, bool) {
@@ -310,6 +324,15 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 
+	if sectionSlug, ok := strings.CutPrefix(path, "/docs/section/"); ok && sectionSlug != "" {
+		group, found := h.store.GroupBySlug(sectionSlug)
+		if !found {
+			return false
+		}
+		h.renderDocSection(w, r, group)
+		return true
+	}
+
 	// Handle /docs/{slug}.md -> serve raw markdown
 	if strings.HasSuffix(path, ".md") {
 		basePath := strings.TrimSuffix(path, ".md")
@@ -348,6 +371,60 @@ func (h *Handler) renderDocEntry(w http.ResponseWriter, r *http.Request, entry *
 
 	if err := docTemplates.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
 		http.Error(w, "error rendering doc", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+}
+
+var sectionContentTmpl = template.Must(template.New("section-content").Parse(
+	`{{range .}}` +
+		`<div class="doc-item">` +
+		`<h3 class="doc-title"><a href="{{.Path}}">{{.Title}}</a></h3>` +
+		`{{if .Description}}<p class="doc-description">{{.Description}}</p>{{end}}` +
+		`</div>` + "\n" +
+		`{{end}}`,
+))
+
+func (h *Handler) renderDocSection(w http.ResponseWriter, _ *http.Request, group *Group) {
+	type visibleEntry struct {
+		Path, Title, Description string
+	}
+	var docs []visibleEntry
+	for _, entry := range group.Docs {
+		if !entry.Visible() && !h.showHidden {
+			continue
+		}
+		docs = append(docs, visibleEntry{
+			Path:        entry.Path,
+			Title:       entry.Title + h.statusTag(entry),
+			Description: entry.Description,
+		})
+	}
+	var contentBuf bytes.Buffer
+	if err := sectionContentTmpl.Execute(&contentBuf, docs); err != nil {
+		http.Error(w, "error rendering doc section", http.StatusInternalServerError)
+		return
+	}
+
+	sectionEntry := &Entry{
+		Path:        "/docs/section/" + group.Slug,
+		Slug:        "section/" + group.Slug,
+		Title:       group.Heading,
+		Description: "exe.dev documentation: " + group.Heading,
+		Content:     template.HTML(contentBuf.String()),
+	}
+
+	buf := new(bytes.Buffer)
+	data := map[string]any{
+		"Entry":     sectionEntry,
+		"Groups":    h.store.Groups(),
+		"StatusTag": h.statusTag,
+	}
+
+	if err := docTemplates.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
+		http.Error(w, "error rendering doc section", http.StatusInternalServerError)
 		return
 	}
 
@@ -419,6 +496,7 @@ func groupDocsByHeading(entries []*Entry) []Group {
 	for _, heading := range headingOrder {
 		groups = append(groups, Group{
 			Heading: heading,
+			Slug:    groupSlug(heading),
 			Docs:    groupMap[heading],
 		})
 	}
@@ -430,6 +508,21 @@ func extractMainHeading(subheading string) string {
 		return "Other"
 	}
 	return subheading
+}
+
+func groupSlug(heading string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			return r + ('a' - 'A')
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			return r
+		case r == ' ':
+			return '-'
+		default:
+			return -1
+		}
+	}, heading)
 }
 
 func parseMarkdownDoc(relPath string, data []byte) (Entry, error) {
