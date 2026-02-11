@@ -162,6 +162,19 @@ jobs:
                   echo "We use a rebase workflow."
                   has_errors=1
               fi
+
+              # Check for binary files
+              binary_files=$(git diff-tree --no-commit-id --numstat -r "$commit" | awk '$1 == "-" && $2 == "-" { print $3 }')
+              if [ -n "$binary_files" ]; then
+                  if ! echo "$full_message" | grep -q "intentionally committing binary files"; then
+                      echo "❌ ERROR: Commit $commit contains binary files: $subject"
+                      echo "Binary files:"
+                      echo "$binary_files"
+                      echo ""
+                      echo "If this is intentional, include \"intentionally committing binary files\" in the commit message."
+                      has_errors=1
+                  fi
+              fi
           done
 
           if [ $has_errors -eq 1 ]; then
