@@ -1556,10 +1556,19 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 
 	cc.Writeln("")
 	cc.Writeln("Configuration updated. Restart the VM to apply changes:")
-	cc.Writeln("  %s restart %s", ss.server.replSSHConnectionCommand(), boxName)
+	cc.Writeln("  ssh %s sudo shutdown -r now", ss.server.env.BoxDest(boxName))
 	if diskGrowResult != nil {
-		cc.Writeln("After restart, run resize2fs inside the VM:")
-		cc.Writeln("  ssh %s sudo resize2fs /dev/vda", ss.server.env.BoxDest(boxName))
+		// Newer exeuntu images automatically run resize2fs on boot.
+		// Only show the manual resize2fs hint for non-exeuntu images or
+		// VMs created before the automatic resize2fs was deployed.
+		needsManualResize2fs := !strings.Contains(box.Image, "exeuntu")
+		if !needsManualResize2fs && box.CreatedAt != nil {
+			needsManualResize2fs = box.CreatedAt.Before(time.Date(2026, time.February, 10, 0, 0, 0, 0, time.UTC))
+		}
+		if needsManualResize2fs {
+			cc.Writeln("After restart, run resize2fs inside the VM:")
+			cc.Writeln("  ssh %s sudo resize2fs /dev/vda", ss.server.env.BoxDest(boxName))
+		}
 	}
 
 	return nil
