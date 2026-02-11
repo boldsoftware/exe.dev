@@ -267,10 +267,10 @@ func installTestPrices(m *Manager) error {
 		if createdProducts[id] {
 			return nil
 		}
-		createdProducts[id] = true
 
 		_, err := c.V1Products.Retrieve(ctx, id, nil)
 		if err == nil {
+			createdProducts[id] = true
 			return nil
 		}
 		if e, ok := errorz.AsType[*stripe.Error](err); ok && e.Code == stripe.ErrorCodeResourceMissing {
@@ -281,6 +281,7 @@ func installTestPrices(m *Manager) error {
 			if err != nil {
 				return fmt.Errorf("create product %q: %w", id, err)
 			}
+			createdProducts[id] = true
 			return nil
 		}
 		return fmt.Errorf("retrieve product %q: %w", id, err)
