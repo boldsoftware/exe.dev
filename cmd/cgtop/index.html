@@ -104,8 +104,8 @@ td:first-child {
 }
 td.group-start { border-left: 2px solid #eaeef2; }
 
-tr:hover td { background: #f6f8fa; }
-tr:hover td:first-child { background: #f6f8fa; }
+tr:hover td { background: #eaeef2 !important; }
+tr:hover td:first-child { background: #eaeef2 !important; }
 
 .name-cell { display: flex; align-items: center; }
 .toggle {
@@ -121,6 +121,14 @@ tr:hover td:first-child { background: #f6f8fa; }
 .spark polyline { fill: none; stroke: #0969da; stroke-width: 1.5; }
 
 .zero { color: #8c959f; }
+
+.col-histo {
+  display: flex; align-items: flex-end; justify-content: center;
+  height: 16px; gap: 0; margin-top: 2px;
+}
+.col-histo .hbar {
+  background: #c8d1da; min-width: 2px; border-radius: 1px 1px 0 0;
+}
 </style>
 </head>
 <body>
@@ -380,6 +388,83 @@ function esc(s) {
   return d.innerHTML;
 }
 
+// Color scale: maps a value's position within a column to a background color.
+// Uses a blue-to-orange diverging scale via oklch for perceptual uniformity.
+function valueColor(ratio) {
+  if (ratio <= 0) return '';
+  // Interpolate hue from 250 (blue) to 70 (orange), lightness from 97% to 88%
+  const t = Math.min(ratio, 1);
+  const l = 0.97 - t * 0.09;
+  const c = 0.01 + t * 0.09;
+  const h = 250 - t * 180;
+  return `oklch(${l} ${c} ${h})`;
+}
+
+// Collect all numeric values for a column across the visible rows.
+function collectColumnValues(rows, key, src) {
+  const vals = [];
+  for (const row of rows) {
+    const obj = src === 'config' ? row.node.config : (src === 'rates' ? row.node.rates : row.node.stats);
+    if (!obj) continue;
+    const v = obj[key];
+    if (v == null || v === 'max') continue;
+    const n = Number(v);
+    if (n > 0) vals.push(n);
+  }
+  return vals;
+}
+
+// Build a histogram from values: returns array of bin heights (0..1) for nBins buckets.
+function buildHistogram(vals, nBins) {
+  if (!vals.length) return [];
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  if (max <= min) return [1];
+  // Use log scale for better distribution across orders of magnitude.
+  const logMin = Math.log1p(min);
+  const logMax = Math.log1p(max);
+  const bins = new Array(nBins).fill(0);
+  for (const v of vals) {
+    const logV = Math.log1p(v);
+    let idx = Math.floor((logV - logMin) / (logMax - logMin) * nBins);
+    if (idx >= nBins) idx = nBins - 1;
+    bins[idx]++;
+  }
+  const binMax = Math.max(...bins);
+  if (binMax === 0) return bins;
+  return bins.map(b => b / binMax);
+}
+
+// Render a tiny inline histogram SVG.
+function makeHistogram(vals) {
+  const nBins = 12;
+  const bins = buildHistogram(vals, nBins);
+  if (!bins.length) return '';
+  const w = 36, h = 14, gap = 1;
+  const barW = (w - (nBins - 1) * gap) / nBins;
+  let rects = '';
+  for (let i = 0; i < bins.length; i++) {
+    const bh = Math.max(bins[i] * (h - 1), bins[i] > 0 ? 1 : 0);
+    const x = i * (barW + gap);
+    const y = h - bh;
+    rects += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="#9ca3af" rx="0.5"/>`;
+  }
+  return `<svg class="col-histo-svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${rects}</svg>`;
+}
+
+// Compute the color ratio for a value within a column.
+// Uses log scale so 10MB and 10GB both get meaningful colors.
+function colorRatio(val, colMin, colMax) {
+  if (val == null || val === 'max' || colMax <= 0) return 0;
+  const n = Number(val);
+  if (n <= 0) return 0;
+  if (colMin >= colMax) return 1;
+  const logMin = Math.log1p(colMin);
+  const logMax = Math.log1p(colMax);
+  const logV = Math.log1p(n);
+  return Math.max(0, Math.min(1, (logV - logMin) / (logMax - logMin)));
+}
+
 function visibleColumns() {
   const cols = [];
   for (const g of columnGroups) {
@@ -577,7 +662,32 @@ function renderTable() {
   }
   groupRow += '</tr>';
 
-  // -- Header row 2: column labels (sortable) --
+  // -- Build rows first (needed for column stats) --
+  const rows = [];
+  if (treeMode) {
+    flattenTree(data.tree, 0, rows);
+  } else {
+    flattenFlat(data.tree, rows);
+    if (sortKey) {
+      rows.sort((a, b) => cmpNodes(a.node, b.node));
+    }
+  }
+
+  // -- Compute column value ranges for histograms and color scales --
+  const colStats = {};
+  for (const col of cols) {
+    if (col.src === 'config') continue;
+    const vals = collectColumnValues(rows, col.key, col.src);
+    if (vals.length > 0) {
+      colStats[col.key] = {
+        min: Math.min(...vals),
+        max: Math.max(...vals),
+        vals,
+      };
+    }
+  }
+
+  // -- Header row 2: column labels (sortable) with histograms --
   const r2Top = 'position:sticky;top:21px;z-index:2;background:#f6f8fa';
   let colRow = '<tr>';
   for (const col of cols) {
@@ -589,7 +699,9 @@ function renderTable() {
     if (sortKey === col.key) {
       arrow = `<span class="sort-arrow">${sortDir === 'asc' ? '\u25b2' : '\u25bc'}</span>`;
     }
-    colRow += `<th class="${cls.join(' ')}" style="${r2Top}" title="${esc(col.help || '')}" onclick="doSort('${col.key}','${col.src}')">${col.label}${arrow}</th>`;
+    const cs = colStats[col.key];
+    const histo = cs ? `<div class="col-histo">${makeHistogram(cs.vals)}</div>` : '';
+    colRow += `<th class="${cls.join(' ')}" style="${r2Top}" title="${esc(col.help || '')}" onclick="doSort('${col.key}','${col.src}')">${col.label}${arrow}${histo}</th>`;
   }
   colRow += '</tr>';
 
@@ -609,16 +721,6 @@ function renderTable() {
   document.getElementById('thead').innerHTML = groupRow + colRow + helpRow;
 
   // -- Body --
-  const rows = [];
-  if (treeMode) {
-    flattenTree(data.tree, 0, rows);
-  } else {
-    flattenFlat(data.tree, rows);
-    if (sortKey) {
-      rows.sort((a, b) => cmpNodes(a.node, b.node));
-    }
-  }
-
   const scaleCache = new Map();
   for (const row of rows) {
     scaleCache.set(row.node.path, computeRowScales(row.node.path));
@@ -626,7 +728,7 @@ function renderTable() {
 
   let html = '';
   for (const row of rows) {
-    html += renderRow(row, cols, scaleCache.get(row.node.path));
+    html += renderRow(row, cols, scaleCache.get(row.node.path), colStats);
   }
   document.getElementById('tbody').innerHTML = html;
 }
@@ -650,7 +752,7 @@ function flattenFlat(node, rows) {
   }
 }
 
-function renderRow(row, cols, scales) {
+function renderRow(row, cols, scales, colStats) {
   const { node, depth } = row;
   const hasChildren = node.children && node.children.length > 0;
   const isCollapsed = collapsed[node.path];
@@ -682,13 +784,25 @@ function renderRow(row, cols, scales) {
     if (isEmpty) cls.push('zero');
     const clsStr = cls.length ? ` class="${cls.join(' ')}"` : '';
 
+    // Color scale based on column range.
+    let style = '';
+    if (!isEmpty && colStats && col.src !== 'config') {
+      const cs = colStats[col.key];
+      if (cs) {
+        const r = colorRatio(val, cs.min, cs.max);
+        if (r > 0) {
+          style = ` style="background:${valueColor(r)}"`;
+        }
+      }
+    }
+
     let spark = '';
     if (col.showSpark && data.sparklines && data.sparklines[node.path] && data.sparklines[node.path][col.key]) {
       const scaleMax = scales && scales[col.groupId] != null ? scales[col.groupId] : null;
       spark = makeSpark(data.sparklines[node.path][col.key], scaleMax);
     }
 
-    html += `<td${clsStr}>${spark}${display}</td>`;
+    html += `<td${clsStr}${style}>${spark}${display}</td>`;
   }
   html += '</tr>';
   return html;

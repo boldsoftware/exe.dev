@@ -1,0 +1,4997 @@
+{
+  "system": {
+    "loadavg": {
+      "load1": 5.46,
+      "load5": 5.2,
+      "load15": 5.35
+    },
+    "cpu": {
+      "user_pct": 4.316418909030086,
+      "sys_pct": 0.49656066403228166,
+      "idle_pct": 95.08143594890129,
+      "iowait_pct": 0.10558447803633779
+    },
+    "psi_cpu": {
+      "some": {
+        "avg10": 0,
+        "avg60": 0,
+        "avg300": 0
+      },
+      "full": {
+        "avg10": 0,
+        "avg60": 0,
+        "avg300": 0
+      }
+    },
+    "psi_memory": {
+      "some": {
+        "avg10": 0,
+        "avg60": 0,
+        "avg300": 0
+      },
+      "full": {
+        "avg10": 0,
+        "avg60": 0,
+        "avg300": 0
+      }
+    },
+    "psi_io": {
+      "some": {
+        "avg10": 0,
+        "avg60": 0.08,
+        "avg300": 0.08
+      },
+      "full": {
+        "avg10": 0,
+        "avg60": 0.08,
+        "avg300": 0.08
+      }
+    }
+  },
+  "tree": {
+    "name": "/",
+    "path": "",
+    "stats": {
+      "cpu.burst_usec": 0,
+      "cpu.core_sched.force_idle_usec": 0,
+      "cpu.local.throttled_usec": 0,
+      "cpu.nice_usec": 629693000,
+      "cpu.nr_bursts": 0,
+      "memory.stat.anon": 49045028864,
+      "memory.stat.file": 101433384960,
+      "memory.stat.kernel": 6179454976,
+      "memory.stat.shmem": 90303569920,
+      "memory.stat.slab": 2432208072,
+      "memory.stat.sock": 8192,
+      "psi.cpu.full.avg10": 0,
+      "psi.cpu.full.avg300": 0,
+      "psi.cpu.full.avg60": 0,
+      "psi.cpu.some.avg10": 0,
+      "psi.cpu.some.avg300": 0,
+      "psi.cpu.some.avg60": 0,
+      "psi.io.full.avg10": 0,
+      "psi.io.full.avg300": 0.08,
+      "psi.io.full.avg60": 0.08,
+      "psi.io.some.avg10": 0,
+      "psi.io.some.avg300": 0.08,
+      "psi.io.some.avg60": 0.08,
+      "psi.memory.full.avg10": 0,
+      "psi.memory.full.avg300": 0,
+      "psi.memory.full.avg60": 0,
+      "psi.memory.some.avg10": 0,
+      "psi.memory.some.avg300": 0,
+      "psi.memory.some.avg60": 0
+    },
+    "rates": {
+      "cpu.nr_periods": 0,
+      "cpu.nr_throttled": 0,
+      "cpu.system_usec": 473508.8387038693,
+      "cpu.throttled_usec": 0,
+      "cpu.usage_usec": 4594822.749598479,
+      "cpu.user_usec": 4121313.9108946095,
+      "io.dbytes": 0,
+      "io.dios": 0,
+      "io.rbytes": 352077.3322934921,
+      "io.rios": 70.68190128659909,
+      "io.wbytes": 4631697.936765751,
+      "io.wios": 206.95421097050834,
+      "memory.stat.pgfault": 13485.966999011634,
+      "memory.stat.pgmajfault": 72.97806474647449
+    },
+    "config": {
+      "io.prio.class": "no-change",
+      "memory.zswap.writeback": 1
+    },
+    "children": [
+      {
+        "name": "dev-hugepages.mount",
+        "path": "dev-hugepages.mount",
+        "stats": {
+          "cpu.burst_usec": 0,
+          "cpu.core_sched.force_idle_usec": 0,
+          "cpu.local.throttled_usec": 0,
+          "cpu.nice_usec": 0,
+          "cpu.nr_bursts": 0,
+          "memory.current": 16384,
+          "memory.events.local.oom_group_kill": 0,
+          "memory.peak": 401408,
+          "memory.stat.anon": 0,
+          "memory.stat.file": 4096,
+          "memory.stat.kernel": 12288,
+          "memory.stat.shmem": 0,
+          "memory.stat.slab": 6240,
+          "memory.stat.sock": 0,
+          "memory.swap.current": 0,
+          "memory.swap.peak": 0,
+          "memory.zswap.current": 0,
+          "pids.current": 0,
+          "psi.cpu.full.avg10": 0,
+          "psi.cpu.full.avg300": 0,
+          "psi.cpu.full.avg60": 0,
+          "psi.cpu.some.avg10": 0,
+          "psi.cpu.some.avg300": 0,
+          "psi.cpu.some.avg60": 0,
+          "psi.io.full.avg10": 0,
+          "psi.io.full.avg300": 0,
+          "psi.io.full.avg60": 0,
+          "psi.io.some.avg10": 0,
+          "psi.io.some.avg300": 0,
+          "psi.io.some.avg60": 0,
+          "psi.memory.full.avg10": 0,
+          "psi.memory.full.avg300": 0,
+          "psi.memory.full.avg60": 0,
+          "psi.memory.some.avg10": 0,
+          "psi.memory.some.avg300": 0,
+          "psi.memory.some.avg60": 0
+        },
+        "rates": {
+          "cpu.nr_periods": 0,
+          "cpu.nr_throttled": 0,
+          "cpu.system_usec": 0,
+          "cpu.throttled_usec": 0,
+          "cpu.usage_usec": 0,
+          "cpu.user_usec": 0,
+          "io.dbytes": 0,
+          "io.dios": 0,
+          "io.rbytes": 0,
+          "io.rios": 0,
+          "io.wbytes": 0,
+          "io.wios": 0,
+          "memory.events.high": 0,
+          "memory.events.local.high": 0,
+          "memory.events.local.low": 0,
+          "memory.events.local.max": 0,
+          "memory.events.local.oom": 0,
+          "memory.events.local.oom_kill": 0,
+          "memory.events.low": 0,
+          "memory.events.max": 0,
+          "memory.events.oom": 0,
+          "memory.events.oom_group_kill": 0,
+          "memory.events.oom_kill": 0,
+          "memory.stat.pgfault": 0,
+          "memory.stat.pgmajfault": 0,
+          "memory.swap.events.fail": 0,
+          "memory.swap.events.high": 0,
+          "memory.swap.events.max": 0
+        },
+        "config": {
+          "cpu.idle": 0,
+          "cpu.max": "max 100000",
+          "cpu.max.burst": 0,
+          "cpu.uclamp.max": "max",
+          "cpu.uclamp.min": "0.00",
+          "cpu.weight": 100,
+          "cpu.weight.nice": 0,
+          "io.prio.class": "no-change",
+          "io.weight": "default 100",
+          "memory.high": "max",
+          "memory.low": 0,
+          "memory.max": "max",
+          "memory.min": 0,
+          "memory.oom.group": 0,
+          "memory.swap.high": "max",
+          "memory.swap.max": "max",
+          "memory.zswap.max": "max",
+          "memory.zswap.writeback": 1,
+          "pids.max": 463842
+        },
+        "children": null
+      },
+      {
+        "name": "dev-mqueue.mount",
+        "path": "dev-mqueue.mount",
+        "stats": {
+          "cpu.burst_usec": 0,
+          "cpu.core_sched.force_idle_usec": 0,
+          "cpu.local.throttled_usec": 0,
+          "cpu.nice_usec": 0,
+          "cpu.nr_bursts": 0,
+          "memory.current": 4096,
+          "memory.events.local.oom_group_kill": 0,
+          "memory.peak": 1626112,
+          "memory.stat.anon": 0,
+          "memory.stat.file": 0,
+          "memory.stat.kernel": 4096,
+          "memory.stat.shmem": 0,
+          "memory.stat.slab": 1248,
+          "memory.stat.sock": 0,
+          "memory.swap.current": 0,
+          "memory.swap.peak": 0,
+          "memory.zswap.current": 0,
+          "pids.current": 0,
+          "psi.cpu.full.avg10": 0,
+          "psi.cpu.full.avg300": 0,
+          "psi.cpu.full.avg60": 0,
+          "psi.cpu.some.avg10": 0,
+          "psi.cpu.some.avg300": 0,
+          "psi.cpu.some.avg60": 0,
+          "psi.io.full.avg10": 0,
+          "psi.io.full.avg300": 0,
+          "psi.io.full.avg60": 0,
+          "psi.io.some.avg10": 0,
+          "psi.io.some.avg300": 0,
+          "psi.io.some.avg60": 0,
+          "psi.memory.full.avg10": 0,
+          "psi.memory.full.avg300": 0,
+          "psi.memory.full.avg60": 0,
+          "psi.memory.some.avg10": 0,
+          "psi.memory.some.avg300": 0,
+          "psi.memory.some.avg60": 0
+        },
+        "rates": {
+          "cpu.nr_periods": 0,
+          "cpu.nr_throttled": 0,
+          "cpu.system_usec": 0,
+          "cpu.throttled_usec": 0,
+          "cpu.usage_usec": 0,
+          "cpu.user_usec": 0,
+          "io.dbytes": 0,
+          "io.dios": 0,
+          "io.rbytes": 0,
+          "io.rios": 0,
+          "io.wbytes": 0,
+          "io.wios": 0,
+          "memory.events.high": 0,
+          "memory.events.local.high": 0,
+          "memory.events.local.low": 0,
+          "memory.events.local.max": 0,
+          "memory.events.local.oom": 0,
+          "memory.events.local.oom_kill": 0,
+          "memory.events.low": 0,
+          "memory.events.max": 0,
+          "memory.events.oom": 0,
+          "memory.events.oom_group_kill": 0,
+          "memory.events.oom_kill": 0,
+          "memory.stat.pgfault": 0,
+          "memory.stat.pgmajfault": 0,
+          "memory.swap.events.fail": 0,
+          "memory.swap.events.high": 0,
+          "memory.swap.events.max": 0
+        },
+        "config": {
+          "cpu.idle": 0,
+          "cpu.max": "max 100000",
+          "cpu.max.burst": 0,
+          "cpu.uclamp.max": "max",
+          "cpu.uclamp.min": "0.00",
+          "cpu.weight": 100,
+          "cpu.weight.nice": 0,
+          "io.prio.class": "no-change",
+          "io.weight": "default 100",
+          "memory.high": "max",
+          "memory.low": 0,
+          "memory.max": "max",
+          "memory.min": 0,
+          "memory.oom.group": 0,
+          "memory.swap.high": "max",
+          "memory.swap.max": "max",
+          "memory.zswap.max": "max",
+          "memory.zswap.writeback": 1,
+          "pids.max": 463842
+        },
+        "children": null
+      },
+      {
+        "name": "exelet.slice",
+        "path": "exelet.slice",
+        "stats": {
+          "cpu.burst_usec": 0,
+          "cpu.core_sched.force_idle_usec": 0,
+          "cpu.local.throttled_usec": 0,
+          "cpu.nice_usec": 0,
+          "cpu.nr_bursts": 0,
+          "memory.current": 132651159552,
+          "memory.events.local.oom_group_kill": 0,
+          "memory.peak": 144044548096,
+          "memory.stat.anon": 38919921664,
+          "memory.stat.file": 85822205952,
+          "memory.stat.kernel": 4162883584,
+          "memory.stat.shmem": 75084185600,
+          "memory.stat.slab": 1521370256,
+          "memory.stat.sock": 0,
+          "memory.swap.current": 517790359552,
+          "memory.swap.peak": 543639814144,
+          "memory.zswap.current": 0,
+          "pids.current": 5032,
+          "psi.cpu.full.avg10": 0,
+          "psi.cpu.full.avg300": 0,
+          "psi.cpu.full.avg60": 0,
+          "psi.cpu.some.avg10": 0,
+          "psi.cpu.some.avg300": 0,
+          "psi.cpu.some.avg60": 0,
+          "psi.io.full.avg10": 0,
+          "psi.io.full.avg300": 0,
+          "psi.io.full.avg60": 0,
+          "psi.io.some.avg10": 0,
+          "psi.io.some.avg300": 0,
+          "psi.io.some.avg60": 0,
+          "psi.memory.full.avg10": 0,
+          "psi.memory.full.avg300": 0,
+          "psi.memory.full.avg60": 0,
+          "psi.memory.some.avg10": 0,
+          "psi.memory.some.avg300": 0,
+          "psi.memory.some.avg60": 0
+        },
+        "rates": {
+          "cpu.nr_periods": 9.983319390762583,
+          "cpu.nr_throttled": 0,
+          "cpu.system_usec": 220318.98047211612,
+          "cpu.throttled_usec": 0,
+          "cpu.usage_usec": 4223528.2263101265,
+          "cpu.user_usec": 4003209.345671204,
+          "io.dbytes": 0,
+          "io.dios": 0,
+          "io.rbytes": 352077.3322934921,
+          "io.rios": 85.95637995446585,
+          "io.wbytes": 295646.8191035944,
+          "io.wios": 90.64854006812425,
+          "memory.events.high": 0,
+          "memory.events.local.high": 0,
+          "memory.events.local.low": 0,
+          "memory.events.local.max": 0,
+          "memory.events.local.oom": 0,
+          "memory.events.local.oom_kill": 0,
+          "memory.events.low": 0,
+          "memory.events.max": 0,
+          "memory.events.oom": 0,
+          "memory.events.oom_group_kill": 0,
+          "memory.events.oom_kill": 0,
+          "memory.stat.pgfault": 1884.25170181253,
+          "memory.stat.pgmajfault": 72.97806474647449,
+          "memory.swap.events.fail": 0,
+          "memory.swap.events.high": 0,
+          "memory.swap.events.max": 0
+        },
+        "config": {
+          "cpu.idle": 0,
+          "cpu.max": "8640000 100000",
+          "cpu.max.burst": 0,
+          "cpu.uclamp.max": "max",
+          "cpu.uclamp.min": "0.00",
+          "cpu.weight": 100,
+          "cpu.weight.nice": 0,
+          "io.prio.class": "no-change",
+          "io.weight": "default 100",
+          "memory.high": "max",
+          "memory.low": 0,
+          "memory.max": "max",
+          "memory.min": 0,
+          "memory.oom.group": 0,
+          "memory.swap.high": "max",
+          "memory.swap.max": "max",
+          "memory.zswap.max": "max",
+          "memory.zswap.writeback": 1,
+          "pids.max": "max"
+        },
+        "children": [
+          {
+            "name": "default.slice",
+            "path": "exelet.slice/default.slice",
+            "stats": {
+              "cpu.burst_usec": 0,
+              "cpu.core_sched.force_idle_usec": 0,
+              "cpu.local.throttled_usec": 0,
+              "cpu.nice_usec": 0,
+              "cpu.nr_bursts": 0,
+              "memory.current": 78189375488,
+              "memory.events.local.oom_group_kill": 0,
+              "memory.peak": 133050306560,
+              "memory.stat.anon": 405069824,
+              "memory.stat.file": 74499293184,
+              "memory.stat.kernel": 1121124352,
+              "memory.stat.shmem": 69742751744,
+              "memory.stat.slab": 544951792,
+              "memory.stat.sock": 0,
+              "memory.swap.current": 196832628736,
+              "memory.swap.peak": 226607419392,
+              "memory.zswap.current": 0,
+              "psi.cpu.full.avg10": 0,
+              "psi.cpu.full.avg300": 0.02,
+              "psi.cpu.full.avg60": 0,
+              "psi.cpu.some.avg10": 0,
+              "psi.cpu.some.avg300": 0.02,
+              "psi.cpu.some.avg60": 0,
+              "psi.io.full.avg10": 0,
+              "psi.io.full.avg300": 0,
+              "psi.io.full.avg60": 0,
+              "psi.io.some.avg10": 0,
+              "psi.io.some.avg300": 0,
+              "psi.io.some.avg60": 0,
+              "psi.memory.full.avg10": 0,
+              "psi.memory.full.avg300": 0,
+              "psi.memory.full.avg60": 0,
+              "psi.memory.some.avg10": 0,
+              "psi.memory.some.avg300": 0,
+              "psi.memory.some.avg60": 0
+            },
+            "rates": {
+              "cpu.nr_periods": 0,
+              "cpu.nr_throttled": 0,
+              "cpu.system_usec": 127951.11313851473,
+              "cpu.throttled_usec": 0,
+              "cpu.usage_usec": 3399521.915606353,
+              "cpu.user_usec": 3271570.902301032,
+              "io.dbytes": 0,
+              "io.dios": 0,
+              "io.rbytes": 301780.57053727895,
+              "io.rios": 73.67689710382787,
+              "io.wbytes": 217134.8007524324,
+              "io.wios": 66.38907394857118,
+              "memory.events.high": 0,
+              "memory.events.local.high": 0,
+              "memory.events.local.low": 0,
+              "memory.events.local.max": 0,
+              "memory.events.local.oom": 0,
+              "memory.events.local.oom_kill": 0,
+              "memory.events.low": 0,
+              "memory.events.max": 0,
+              "memory.events.oom": 0,
+              "memory.events.oom_group_kill": 0,
+              "memory.events.oom_kill": 0,
+              "memory.stat.pgfault": 107.62018303242064,
+              "memory.stat.pgmajfault": 61.89658022272801,
+              "memory.swap.events.fail": 0,
+              "memory.swap.events.high": 0,
+              "memory.swap.events.max": 0
+            },
+            "config": {
+              "cpu.idle": 0,
+              "cpu.max": "max 100000",
+              "cpu.max.burst": 0,
+              "cpu.uclamp.max": "max",
+              "cpu.uclamp.min": "0.00",
+              "cpu.weight": 100,
+              "cpu.weight.nice": 0,
+              "io.prio.class": "no-change",
+              "io.weight": "default 100",
+              "memory.high": "max",
+              "memory.low": 0,
+              "memory.max": "max",
+              "memory.min": 0,
+              "memory.oom.group": 0,
+              "memory.swap.high": "max",
+              "memory.swap.max": "max",
+              "memory.zswap.max": "max",
+              "memory.zswap.writeback": 1
+            },
+            "children": [
+              {
+                "name": "vm-vm000010.scope",
+                "path": "exelet.slice/default.slice/vm-vm000010.scope",
+                "stats": {
+                  "cpu.burst_usec": 0,
+                  "cpu.core_sched.force_idle_usec": 0,
+                  "cpu.local.throttled_usec": 0,
+                  "cpu.nice_usec": 0,
+                  "cpu.nr_bursts": 0,
+                  "memory.current": 181166080,
+                  "memory.events.local.oom_group_kill": 0,
+                  "memory.peak": 2092699648,
+                  "memory.stat.anon": 28672,
+                  "memory.stat.file": 165249024,
+                  "memory.stat.kernel": 6508544,
+                  "memory.stat.shmem": 164274176,
+                  "memory.stat.slab": 3762096,
+                  "memory.stat.sock": 0,
+                  "memory.swap.current": 1062907904,
+                  "memory.swap.peak": 1071775744,
+                  "memory.zswap.current": 0,
+                  "psi.cpu.full.avg10": 0,
+                  "psi.cpu.full.avg300": 0,
+                  "psi.cpu.full.avg60": 0,
+                  "psi.cpu.some.avg10": 0,
+                  "psi.cpu.some.avg300": 0,
+                  "psi.cpu.some.avg60": 0,
+                  "psi.io.full.avg10": 0,
+                  "psi.io.full.avg300": 0,
+                  "psi.io.full.avg60": 0,
+                  "psi.io.some.avg10": 0,
+                  "psi.io.some.avg300": 0,
+                  "psi.io.some.avg60": 0,
+                  "psi.memory.full.avg10": 0,
+                  "psi.memory.full.avg300": 0,
+                  "psi.memory.full.avg60": 0,
+                  "psi.memory.some.avg10": 0,
+                  "psi.memory.some.avg300": 0,
+                  "psi.memory.some.avg60": 0
+                },
+                "rates": {
+                  "cpu.nr_periods": 0,
+                  "cpu.nr_throttled": 0,
+                  "cpu.system_usec": 330.14837225251864,
+                  "cpu.throttled_usec": 0,
+                  "cpu.usage_usec": 2797.1264269038606,
+                  "cpu.user_usec": 2467.0778878452497,
+                  "io.dbytes": 0,
+                  "io.dios": 0,
+                  "io.rbytes": 817.8335244912709,
+                  "io.rios": 0.19966638781525167,
+                  "io.wbytes": 0,
+                  "io.wios": 0,
+                  "memory.events.high": 0,
+                  "memory.events.local.high": 0,
+                  "memory.events.local.low": 0,
+                  "memory.events.local.max": 0,
+                  "memory.events.local.oom": 0,
+                  "memory.events.local.oom_kill": 0,
+                  "memory.events.low": 0,
+                  "memory.events.max": 0,
+                  "memory.events.oom": 0,
+                  "memory.events.oom_group_kill": 0,
+                  "memory.events.oom_kill": 0,
+                  "memory.stat.pgfault": 0.19966638781525167,
+                  "memory.stat.pgmajfault": 0.19966638781525167,
+                  "memory.swap.events.fail": 0,
+                  "memory.swap.events.high": 0,
+                  "memory.swap.events.max": 0
+                },
+                "config": {
+                  "cpu.idle": 0,
+                  "cpu.max": "max 100000",
+                  "cpu.max.burst": 0,
+                  "cpu.uclamp.max": "max",
+                  "cpu.uclamp.min": "0.00",
+                  "cpu.weight": 100,
+                  "cpu.weight.nice": 0,
+                  "io.prio.class": "no-change",
+                  "io.weight": "default 100",
+                  "memory.high": "max",
+                  "memory.low": 0,
+                  "memory.max": "max",
+                  "memory.min": 0,
+                  "memory.oom.group": 0,
+                  "memory.swap.high": "max",
+                  "memory.swap.max": "max",
+                  "memory.zswap.max": "max",
+                  "memory.zswap.writeback": 1
+                },
+                "children": null
+              },
+              {
+                "name": "vm-vm000011.scope",
+                "path": "exelet.slice/default.slice/vm-vm000011.scope",
+                "stats": {
+                  "cpu.burst_usec": 0,
+                  "cpu.core_sched.force_idle_usec": 0,
+                  "cpu.local.throttled_usec": 0,
+                  "cpu.nice_usec": 0,
+                  "cpu.nr_bursts": 0,
+                  "memory.current": 210755584,
+                  "memory.events.local.oom_group_kill": 0,
+                  "memory.peak": 527806464,
+                  "memory.stat.anon": 24576,
+                  "memory.stat.file": 203980800,
+                  "memory.stat.kernel": 2744320,
+                  "memory.stat.shmem": 202993664,
+                  "memory.stat.slab": 1440152,
+                  "memory.stat.sock": 0,
+                  "memory.swap.current": 401592320,
+                  "memory.swap.peak": 553664512,
+                  "memory.zswap.current": 0,
+                  "psi.cpu.full.avg10": 0,
+                  "psi.cpu.full.avg300": 0,
+                  "psi.cpu.full.avg60": 0,
+                  "psi.cpu.some.avg10": 0,
+                  "psi.cpu.some.avg300": 0,
+                  "psi.cpu.some.avg60": 0,
+                  "psi.io.full.avg10": 0,
+                  "psi.io.full.avg300": 0,
+                  "psi.io.full.avg60": 0,
+                  "psi.io.some.avg10": 0,
+                  "psi.io.some.avg300": 0,
+                  "psi.io.some.avg60": 0,
+                  "psi.memory.full.avg10": 0,
+                  "psi.memory.full.avg300": 0,
+                  "psi.memory.full.avg60": 0,
+                  "psi.memory.some.avg10": 0,
+                  "psi.memory.some.avg300": 0,
+                  "psi.memory.some.avg60": 0
+                },
+                "rates": {
+                  "cpu.nr_periods": 0,
+                  "cpu.nr_throttled": 0,
+                  "cpu.system_usec": 147.85296017719386,
+                  "cpu.throttled_usec": 0,
+                  "cpu.usage_usec": 627.2519573216131,
+                  "cpu.user_usec": 479.2991639505116,
+                  "io.dbytes": 0,
+                  "io.dios": 0,
+                  "io.rbytes": 0,
+                  "io.rios": 0,
+                  "io.wbytes": 0,
+                  "io.wios": 0,
+                  "memory.events.high": 0,
+                  "memory.events.local.high": 0,
+                  "memory.events.local.low": 0,
+                  "memory.events.local.max": 0,
+                  "memory.events.local.oom": 0,
+                  "memory.events.local.oom_kill": 0,
+                  "memory.events.low": 0,
+                  "memory.events.max": 0,
+                  "memory.events.oom": 0,
+                  "memory.events.oom_group_kill": 0,
+                  "memory.events.oom_kill": 0,
+                  "memory.stat.pgfault": 0,
+                  "memory.stat.pgmajfault": 0,
+                  "memory.swap.events.fail": 0,
+                  "memory.swap.events.high": 0,
+                  "memory.swap.events.max": 0
+                },
+                "config": {
+                  "cpu.idle": 0,
+                  "cpu.max": "max 100000",
+                  "cpu.max.burst": 0,
+                  "cpu.uclamp.max": "max",
+                  "cpu.uclamp.min": "0.00",
+                  "cpu.weight": 100,
+                  "cpu.weight.nice": 0,
+                  "io.prio.class": "no-change",
+                  "io.weight": "default 100",
+                  "memory.high": "max",
+                  "memory.low": 0,
+                  "memory.max": "max",
+                  "memory.min": 0,
+                  "memory.oom.group": 0,
+                  "memory.swap.high": "max",
+                  "memory.swap.max": "max",
+                  "memory.zswap.max": "max",
+                  "memory.zswap.writeback": 1
+                },
+                "children": null
+              },
+              {
+                "name": "vm-vm000012.scope",
+                "path": "exelet.slice/default.slice/vm-vm000012.scope",
+                "stats": {
+                  "cpu.burst_usec": 0,
+                  "cpu.core_sched.force_idle_usec": 0,
+                  "cpu.local.throttled_usec": 0,
+                  "cpu.nice_usec": 0,
+                  "cpu.nr_bursts": 0,
+                  "memory.current": 141438976,
+                  "memory.events.local.oom_group_kill": 0,
+                  "memory.peak": 422948864,
+                  "memory.stat.anon": 12288,
+                  "memory.stat.file": 137199616,
+                  "memory.stat.kernel": 278528,
+                  "memory.stat.shmem": 136622080,
+                  "memory.stat.slab": 261472,
+                  "memory.stat.sock": 0,
+                  "memory.swap.current": 303140864,
+                  "memory.swap.peak": 367603712,
+                  "memory.zswap.current": 0,
+                  "psi.cpu.full.avg10": 0,
+                  "psi.cpu.full.avg300": 0,
+                  "psi.cpu.full.avg60": 0,
+                  "psi.cpu.some.avg10": 0,
+                  "psi.cpu.some.avg300": 0,
+                  "psi.cpu.some.avg60": 0,
+                  "psi.io.full.avg10": 0,
+                  "psi.io.full.avg300": 0,
+                  "psi.io.full.avg60": 0,
+                  "psi.io.some.avg10": 0,
+                  "psi.io.some.avg300": 0,
+                  "psi.io.some.avg60": 0,
+                  "psi.memory.full.avg10": 0,
+                  "psi.memory.full.avg300": 0,
+                  "psi.memory.full.avg60": 0,
+                  "psi.memory.some.avg10": 0,
+                  "psi.memory.some.avg300": 0,
+                  "psi.memory.some.avg60": 0
+                },
+                "rates": {
+                  "cpu.nr_periods": 0,
+                  "cpu.nr_throttled": 0,
+                  "cpu.system_usec": 257.8691398633975,
+                  "cpu.throttled_usec": 0,
+                  "cpu.usage_usec": 2938.7897290587816,
+                  "cpu.user_usec": 2680.920589195384,
+                  "io.dbytes": 0,
+                  "io.dios": 0,
+                  "io.rbytes": 408.9167622456354,
+                  "io.rios": 0.09983319390762584,
+                  "io.wbytes": 0,
+                  "io.wios": 0,
+                  "memory.events.high": 0,
+                  "memory.events.local.high": 0,
+                  "memory.events.local.low": 0,
+                  "memory.events.local.max": 0,
+                  "memory.events.local.oom": 0,
+                  "memory.events.local.oom_kill": 0,
+                  "memory.events.low": 0,
+                  "memory.events.max": 0,
+                  "memory.events.oom": 0,
+                  "memory.events.oom_group_kill": 0,
+                  "memory.events.oom_kill": 0,
+                  "memory.stat.pgfault": 0.09983319390762584,
+                  "memory.stat.pgmajfault": 0.09983319390762584,
+                  "memory.swap.events.fail": 0,
+                  "memory.swap.events.high": 0,
+                  "memory.swap.events.max": 0
+                },
+                "config": {
+                  "cpu.idle": 0,
+                  "cpu.max": "max 100000",
+                  "cpu.max.burst": 0,
+                  "cpu.uclamp.max": "max",
+                  "cpu.uclamp.min": "0.00",
+                  "cpu.weight": 100,
+                  "cpu.weight.nice": 0,
+                  "io.prio.class": "no-change",
+                  "io.weight": "default 100",
+                  "memory.high": "max",
+                  "memory.low": 0,
+                  "memory.max": "max",
+                  "memory.min": 0,
+                  "memory.oom.group": 0,
+                  "memory.swap.high": "max",
+                  "memory.swap.max": "max",
+                  "memory.zswap.max": "max",
+                  "memory.zswap.writeback": 1
+                },
+                "children": null
+              },
+              {
+                "name": "vm-vm000046.scope",
+                "path": "exelet.slice/default.slice/vm-vm000046.scope",
+                "stats": {
+                  "cpu.burst_usec": 0,
+                  "cpu.core_sched.force_idle_usec": 0,
+                  "cpu.local.throttled_usec": 0,
+                  "cpu.nice_usec": 0,
+                  "cpu.nr_bursts": 0,
+                  "memory.current": 455036928,
+                  "memory.events.local.oom_group_kill": 0,
+                  "memory.peak": 4257345536,
+                  "memory.stat.anon": 253952,
+                  "memory.stat.file": 418951168,
+                  "memory.stat.kernel": 29454336,
+                  "memory.stat.shmem": 416747520,
+                  "memory.stat.slab": 12796192,
+                  "memory.stat.sock": 0,
+                  "memory.swap.current": 4221214720,
+                  "memory.swap.peak": 4534493184,
+                  "memory.zswap.current": 0,
+                  "psi.cpu.full.avg10": 0,
+                  "psi.cpu.full.avg300": 0,
+                  "psi.cpu.full.avg60": 0,
+                  "psi.cpu.some.avg10": 0,
+                  "psi.cpu.some.avg300": 0,
+                  "psi.cpu.some.avg60": 0,
+                  "psi.io.full.avg10": 0,
+                  "psi.io.full.avg300": 0,
+                  "psi.io.full.avg60": 0,
+                  "psi.io.some.avg10": 0,
+                  "psi.io.some.avg300": 0,
+                  "psi.io.some.avg60": 0,
+                  "psi.memory.full.avg10": 0,
+                  "psi.memory.full.avg300": 0,
+                  "psi.memory.full.avg60": 0,
+                  "psi.memory.some.avg10": 0,
+                  "psi.memory.some.avg300": 0,
+                  "psi.memory.some.avg60": 0
+                },
+                "rates": {
+                  "cpu.nr_periods": 0,
+                  "cpu.nr_throttled": 0,
+                  "cpu.system_usec": 1278.3640479871488,
+                  "cpu.throttled_usec": 0,
+                  "cpu.usage_usec": 3176.7920633345616,
+                  "cpu.user_usec": 1898.4280153474128,
+                  "io.dbytes": 0,
+                  "io.dios": 0,
+                  "io.rbytes": 0,
+                  "io.rios": 0,
+                  "io.wbytes": 408.9167622456354,
+                  "io.wios": 0.09983319390762584,
+                  "memory.events.high": 0,
+                  "memory.events.local.high": 0,
+                  "memory.events.local.low": 0,
+                  "memory.events.local.max": 0,
+                  "memory.events.local.oom": 0,
+                  "memory.events.local.oom_kill": 0,
+                  "memory.events.low": 0,
+                  "memory.events.max": 0,
+                  "memory.events.oom": 0,
+                  "memory.events.oom_group_kill": 0,
+                  "memory.events.oom_kill": 0,
+                  "memory.stat.pgfault": 0,
+                  "memory.stat.pgmajfault": 0,
+                  "memory.swap.events.fail": 0,
+                  "memory.swap.events.high": 0,
+                  "memory.swap.events.max": 0
+                },
+                "config": {
+                  "cpu.idle": 0,
+                  "cpu.max": "max 100000",
+                  "cpu.max.burst": 0,
+                  "cpu.uclamp.max": "max",
+                  "cpu.uclamp.min": "0.00",
+                  "cpu.weight": 100,
+                  "cpu.weight.nice": 0,
+                  "io.prio.class": "no-change",
+                  "io.weight": "default 100",
+                  "memory.high": "max",
+                  "memory.low": 0,
+                  "memory.max": "max",
+                  "memory.min": 0,
+                  "memory.oom.group": 0,
+                  "memory.swap.high": "max",
+                  "memory.swap.max": "max",
+                  "memory.zswap.max": "max",
+                  "memory.zswap.writeback": 1
+                },
+                "children": null
+              },
+              {
+                "name": "vm-vm000067.scope",
+                "path": "exelet.slice/default.slice/vm-vm000067.scope",
+                "stats": {
+                  "cpu.burst_usec": 0,
+                  "cpu.core_sched.force_idle_usec": 0,
+                  "cpu.local.throttled_usec": 0,
+                  "cpu.nice_usec": 0,
+                  "cpu.nr_bursts": 0,
+                  "memory.current": 223932416,
+                  "memory.events.local.oom_group_kill": 0,
+                  "memory.peak": 2438115328,
+                  "memory.stat.anon": 376832,
+                  "memory.stat.file": 210993152,
+                  "memory.stat.kernel": 6660096,
+                  "memory.stat.shmem": 208322560,
+                  "memory.stat.slab": 3262800,
+                  "memory.stat.sock": 0,
+                  "memory.swap.current": 889839616,
+                  "memory.swap.peak": 1033560064,
+                  "memory.zswap.current": 0,
+                  "psi.cpu.full.avg10": 0,
+                  "psi.cpu.full.avg300": 0,
+                  "psi.cpu.full.avg60": 0,
+                  "psi.cpu.some.avg10": 0,
+                  "psi.cpu.some.avg300": 0,
+                  "psi.cpu.some.avg60": 0,
+                  "psi.io.full.avg10": 0,
+                  "psi.io.full.avg300": 0,
+                  "psi.io.full.avg60": 0,
+                  "psi.io.some.avg10": 0,
+                  "psi.io.some.avg300": 0,
+                  "psi.io.some.avg60": 0,
+                  "psi.memory.full.avg10": 0,
+                  "psi.memory.full.avg300": 0,
+                  "psi.memory.full.avg60": 0,
+                  "psi.memory.some.avg10": 0,
+                  "psi.memory.some.avg300": 0,
+                  "psi.memory.some.avg60": 0
+                },
+                "rates": {
+                  "cpu.nr_periods": 0,
+                  "cpu.nr_throttled": 0,
+                  "cpu.system_usec": 451.94486881982215,
+                  "cpu.throttled_usec": 0,
+                  "cpu.usage_usec": 909.7798960801941,
+                  "cpu.user_usec": 457.83502726037204,
+                  "io.dbytes": 0,
+                  "io.dios": 0,
+                  "io.rbytes": 0,
+                  "io.rios": 0,
+                  "io.wbytes": 408.9167622456354,
+                  "io.wios": 0.09983319390762584,
+                  "memory.events.high": 0,
+                  "memory.events.local.high": 0,
+                  "memory.events.local.low": 0,
+                  "memory.events.local.max": 0,
+                  "memory.events.local.oom": 0,
+                  "memory.events.local.oom_kill": 0,
+                  "memory.events.low": 0,
+                  "memory.events.max": 0,
+                  "memory.events.oom": 0,
+                  "memory.events.oom_group_kill": 0,
+                  "memory.events.oom_kill": 0,
+                  "memory.stat.pgfault": 0,
+                  "memory.stat.pgmajfault": 0,
+                  "memory.swap.events.fail": 0,
+                  "memory.swap.events.high": 0,
+                  "memory.swap.events.max": 0
+                },
+                "config": {
+                  "cpu.idle": 0,
+                  "cpu.max": "max 100000",
+                  "cpu.max.burst": 0,
+                  "cpu.uclamp.max": "max",
+                  "cpu.uclamp.min": "0.00",
+                  "cpu.weight": 100,
+                  "cpu.weight.nice": 0,
+                  "io.prio.class": "no-change",
+                  "io.weight": "default 100",
+                  "memory.high": "max",
+                  "memory.low": 0,
+                  "memory.max": "max",
+                  "memory.min": 0,
+                  "memory.oom.group": 0,
+                  "memory.swap.high": "max",
+                  "memory.swap.max": "max",
+                  "memory.zswap.max": "max",
+                  "memory.zswap.writeback": 1
+                },
+                "children": null
+              }
+            ]
+          },
+          {
+            "name": "usr24KGPOPF3GLX5.slice",
+            "path": "exelet.slice/usr24KGPOPF3GLX5.slice",
+            "stats": {
+              "cpu.burst_usec": 0,
+              "cpu.core_sched.force_idle_usec": 0,
+              "cpu.local.throttled_usec": 0,
+              "cpu.nice_usec": 0,
+              "cpu.nr_bursts": 0,
+              "memory.current": 715735040,
+              "memory.events.local.oom_group_kill": 0,
+              "memory.peak": 8328962048,
+              "memory.stat.anon": 591654912,
+              "memory.stat.file": 356352,
+              "memory.stat.kernel": 31956992,
+              "memory.stat.shmem": 0,
+              "memory.stat.slab": 2760480,
+              "memory.stat.sock": 0,
+              "memory.swap.current": 6912696320,
+              "memory.swap.peak": 7117258752,
+              "memory.zswap.current": 0,
+              "psi.cpu.full.avg10": 0,
+              "psi.cpu.full.avg300": 0,
+              "psi.cpu.full.avg60": 0,
+              "psi.cpu.some.avg10": 0,
+              "psi.cpu.some.avg300": 0,
+              "psi.cpu.some.avg60": 0,
+              "psi.io.full.avg10": 0,
+              "psi.io.full.avg300": 0,
+              "psi.io.full.avg60": 0,
+              "psi.io.some.avg10": 0,
+              "psi.io.some.avg300": 0,
+              "psi.io.some.avg60": 0,
+              "psi.memory.full.avg10": 0,
+              "psi.memory.full.avg300": 0,
+              "psi.memory.full.avg60": 0,
+              "psi.memory.some.avg10": 0,
+              "psi.memory.some.avg300": 0,
+              "psi.memory.some.avg60": 0
+            },
+            "rates": {
+              "cpu.nr_periods": 0,
+              "cpu.nr_throttled": 0,
+              "cpu.system_usec": 395.93844703764404,
+              "cpu.throttled_usec": 0,
+              "cpu.usage_usec": 2694.6975699546365,
+              "cpu.user_usec": 2298.7591229169925,
+              "io.dbytes": 0,
+              "io.dios": 0,
+              "io.rbytes": 0,
+              "io.rios": 0,
+              "io.wbytes": 0,
+              "io.wios": 0,
+              "memory.events.high": 0,
+              "memory.events.local.high": 0,
+              "memory.events.local.low": 0,
+              "memory.events.local.max": 0,
+              "memory.events.local.oom": 0,
+              "memory.events.local.oom_kill": 0,
+              "memory.events.low": 0,
+              "memory.events.max": 0,
+              "memory.events.oom": 0,
+              "memory.events.oom_group_kill": 0,
+              "memory.events.oom_kill": 0,
+              "memory.stat.pgfault": 0.19966638781525167,
+              "memory.stat.pgmajfault": 0,
+              "memory.swap.events.fail": 0,
+              "memory.swap.events.high": 0,
+              "memory.swap.events.max": 0
+            },
+            "config": {
+              "cpu.idle": 0,
+              "cpu.max": "max 100000",
+              "cpu.max.burst": 0,
+              "cpu.uclamp.max": "max",
+              "cpu.uclamp.min": "0.00",
+              "cpu.weight": 100,
+              "cpu.weight.nice": 0,
+              "io.prio.class": "no-change",
+              "io.weight": "default 100",
+              "memory.high": "max",
+              "memory.low": 0,
+              "memory.max": "max",
+              "memory.min": 0,
+              "memory.oom.group": 0,
+              "memory.swap.high": "max",
+              "memory.swap.max": "max",
+              "memory.zswap.max": "max",
+              "memory.zswap.writeback": 1
+            },
+            "children": [
+              {
+                "name": "vm-vm012051.scope",
+                "path": "exelet.slice/usr24KGPOPF3GLX5.slice/vm-vm012051.scope",
+                "stats": {
+                  "cpu.burst_usec": 0,
+                  "cpu.core_sched.force_idle_usec": 0,
+                  "cpu.local.throttled_usec": 0,
+                  "cpu.nice_usec": 0,
+                  "cpu.nr_bursts": 0,
+                  "memory.current": 715522048,
+                  "memory.events.local.oom_group_kill": 0,
+                  "memory.peak": 8328749056,
+                  "memory.stat.anon": 591654912,
+                  "memory.stat.file": 356352,
+                  "memory.stat.kernel": 31744000,
+                  "memory.stat.shmem": 0,
+                  "memory.stat.slab": 2756360,
+                  "memory.stat.sock": 0,
+                  "memory.swap.current": 6912696320,
+                  "memory.swap.peak": 7117258752,
+                  "memory.zswap.current": 0,
+                  "psi.cpu.full.avg10": 0,
+                  "psi.cpu.full.avg300": 0,
+                  "psi.cpu.full.avg60": 0,
+                  "psi.cpu.some.avg10": 0,
+                  "psi.cpu.some.avg300": 0,
+                  "psi.cpu.some.avg60": 0,
+                  "psi.io.full.avg10": 0,
+                  "psi.io.full.avg300": 0,
+                  "psi.io.full.avg60": 0,
+                  "psi.io.some.avg10": 0,
+                  "psi.io.some.avg300": 0,
+                  "psi.io.some.avg60": 0,
+                  "psi.memory.full.avg10": 0,
+                  "psi.memory.full.avg300": 0,
+                  "psi.memory.full.avg60": 0,
+                  "psi.memory.some.avg10": 0,
+                  "psi.memory.some.avg300": 0,
+                  "psi.memory.some.avg60": 0
+                },
+                "rates": {
+                  "cpu.nr_periods": 0,
+                  "cpu.nr_throttled": 0,
+                  "cpu.system_usec": 395.93844703764404,
+                  "cpu.throttled_usec": 0,
+                  "cpu.usage_usec": 2694.6975699546365,
+                  "cpu.user_usec": 2298.7591229169925,
+                  "io.dbytes": 0,
+                  "io.dios": 0,
+                  "io.rbytes": 0,
+                  "io.rios": 0,
+                  "io.wbytes": 0,
+                  "io.wios": 0,
+                  "memory.events.high": 0,
+                  "memory.events.local.high": 0,
+                  "memory.events.local.low": 0,
+                  "memory.events.local.max": 0,
+                  "memory.events.local.oom": 0,
+                  "memory.events.local.oom_kill": 0,
+                  "memory.events.low": 0,
+                  "memory.events.max": 0,
+                  "memory.events.oom": 0,
+                  "memory.events.oom_group_kill": 0,
+                  "memory.events.oom_kill": 0,
+                  "memory.stat.pgfault": 0.19966638781525167,
+                  "memory.stat.pgmajfault": 0,
+                  "memory.swap.events.fail": 0,
+                  "memory.swap.events.high": 0,
+                  "memory.swap.events.max": 0
+                },
+                "config": {
+                  "cpu.idle": 0,
+                  "cpu.max": "max 100000",
+                  "cpu.max.burst": 0,
+                  "cpu.uclamp.max": "max",
+                  "cpu.uclamp.min": "0.00",
+                  "cpu.weight": 100,
+                  "cpu.weight.nice": 0,
+                  "io.prio.class": "no-change",
+                  "io.weight": "default 100",
+                  "memory.high": "max",
+                  "memory.low": 0,
+                  "memory.max": "max",
+                  "memory.min": 0,
+                  "memory.oom.group": 0,
+                  "memory.swap.high": "max",
+                  "memory.swap.max": "max",
+                  "memory.zswap.max": "max",
+                  "memory.zswap.writeback": 1
+                },
+                "children": null
+              }
+            ]
+          },
+          {
+            "name": "usr2DO5KYM6KS4UB.slice",
+            "path": "exelet.slice/usr2DO5KYM6KS4UB.slice",
+            "stats": {
+              "cpu.burst_usec": 0,
+              "cpu.core_sched.force_idle_usec": 0,
+              "cpu.local.throttled_usec": 0,
+              "cpu.nice_usec": 0,
+              "cpu.nr_bursts": 0,
+              "memory.current": 76472320,
+              "memory.events.local.oom_group_kill": 0,
+              "memory.peak": 2139688960,
+              "memory.stat.anon": 57761792,
+              "memory.stat.file": 1101824,
+              "memory.stat.kernel": 9179136,
+              "memory.stat.shmem": 0,
+              "memory.stat.slab": 1493200,
+              "memory.stat.sock": 0,
+              "memory.swap.current": 1891393536,
+              "memory.swap.peak": 1894432768,
+              "memory.zswap.current": 0,
+              "psi.cpu.full.avg10": 0,
+              "psi.cpu.full.avg300": 0,
+              "psi.cpu.full.avg60": 0,
+              "psi.cpu.some.avg10": 0,
+              "psi.cpu.some.avg300": 0,
+              "psi.cpu.some.avg60": 0,
+              "psi.io.full.avg10": 0,
+              "psi.io.full.avg300": 0,
+              "psi.io.full.avg60": 0,
+              "psi.io.some.avg10": 0,
+              "psi.io.some.avg300": 0,
+              "psi.io.some.avg60": 0,
+              "psi.memory.full.avg10": 0,
+              "psi.memory.full.avg300": 0,
+              "psi.memory.full.avg60": 0,
+              "psi.memory.some.avg10": 0,
+              "psi.memory.some.avg300": 0,
+              "psi.memory.some.avg60": 0
+            },
+            "rates": {
+              "cpu.nr_periods": 0,
+              "cpu.nr_throttled": 0,
+              "cpu.system_usec": 416.3044185947997,
+              "cpu.throttled_usec": 0,
+              "cpu.usage_usec": 923.0577108699084,
+              "cpu.user_usec": 506.7532922751087,
+              "io.dbytes": 0,
+              "io.dios": 0,
+              "io.rbytes": 0,
+              "io.rios": 0,
+              "io.wbytes": 0,
+              "io.wios": 0,
+              "memory.events.high": 0,
+              "memory.events.local.high": 0,
+              "memory.events.local.low": 0,
+              "memory.events.local.max": 0,
+              "memory.events.local.oom": 0,
+              "memory.events.local.oom_kill": 0,
+              "memory.events.low": 0,
+              "memory.events.max": 0,
+              "memory.events.oom": 0,
+              "memory.events.oom_group_kill": 0,
+              "memory.events.oom_kill": 0,
+              "memory.stat.pgfault": 0,
+              "memory.stat.pgmajfault": 0,
+              "memory.swap.events.fail": 0,
+              "memory.swap.events.high": 0,
+              "memory.swap.events.max": 0
+            },
+            "config": {
+              "cpu.idle": 0,
+              "cpu.max": "max 100000",
+              "cpu.max.burst": 0,
+              "cpu.uclamp.max": "max",
+              "cpu.uclamp.min": "0.00",
+              "cpu.weight": 100,
+              "cpu.weight.nice": 0,
+              "io.prio.class": "no-change",
+              "io.weight": "default 100",
+              "memory.high": "max",
+              "memory.low": 0,
+              "memory.max": "max",
+              "memory.min": 0,
+              "memory.oom.group": 0,
+              "memory.swap.high": "max",
+              "memory.swap.max": "max",
+              "memory.zswap.max": "max",
+              "memory.zswap.writeback": 1
+            },
+            "children": [
+              {
+                "name": "vm-vm012531.scope",
+                "path": "exelet.slice/usr2DO5KYM6KS4UB.slice/vm-vm012531.scope",
+                "stats": {
+                  "cpu.burst_usec": 0,
+                  "cpu.core_sched.force_idle_usec": 0,
+                  "cpu.local.throttled_usec": 0,
+                  "cpu.nice_usec": 0,
+                  "cpu.nr_bursts": 0,
+                  "memory.current": 76259328,
+                  "memory.events.local.oom_group_kill": 0,
+                  "memory.peak": 2139475968,
+                  "memory.stat.anon": 57761792,
+                  "memory.stat.file": 1101824,
+                  "memory.stat.kernel": 8966144,
+                  "memory.stat.shmem": 0,
+                  "memory.stat.slab": 1489080,
+                  "memory.stat.sock": 0,
+                  "memory.swap.current": 1891393536,
+                  "memory.swap.peak": 1894432768,
+                  "memory.zswap.current": 0,
+                  "psi.cpu.full.avg10": 0,
+                  "psi.cpu.full.avg300": 0,
+                  "psi.cpu.full.avg60": 0,
+                  "psi.cpu.some.avg10": 0,
+                  "psi.cpu.some.avg300": 0,
+                  "psi.cpu.some.avg60": 0,
+                  "psi.io.full.avg10": 0,
+                  "psi.io.full.avg300": 0,
+                  "psi.io.full.avg60": 0,
+                  "psi.io.some.avg10": 0,
+                  "psi.io.some.avg300": 0,
+                  "psi.io.some.avg60": 0,
+                  "psi.memory.full.avg10": 0,
+                  "psi.memory.full.avg300": 0,
+                  "psi.memory.full.avg60": 0,
+                  "psi.memory.some.avg10": 0,
+                  "psi.memory.some.avg300": 0,
+                  "psi.memory.some.avg60": 0
+                },
+                "rates": {
+                  "cpu.nr_periods": 0,
+                  "cpu.nr_throttled": 0,
+                  "cpu.system_usec": 416.3044185947997,
+                  "cpu.throttled_usec": 0,
+                  "cpu.usage_usec": 923.0577108699084,
+                  "cpu.user_usec": 506.7532922751087,
+                  "io.dbytes": 0,
+                  "io.dios": 0,
+                  "io.rbytes": 0,
+                  "io.rios": 0,
+                  "io.wbytes": 0,
+                  "io.wios": 0,
+                  "memory.events.high": 0,
+                  "memory.events.local.high": 0,
+                  "memory.events.local.low": 0,
+                  "memory.events.local.max": 0,
+                  "memory.events.local.oom": 0,
+                  "memory.events.local.oom_kill": 0,
+                  "memory.events.low": 0,
+                  "memory.events.max": 0,
+                  "memory.events.oom": 0,
+                  "memory.events.oom_group_kill": 0,
+                  "memory.events.oom_kill": 0,
+                  "memory.stat.pgfault": 0,
+                  "memory.stat.pgmajfault": 0,
+                  "memory.swap.events.fail": 0,
+                  "memory.swap.events.high": 0,
+                  "memory.swap.events.max": 0
+                },
+                "config": {
+                  "cpu.idle": 0,
+                  "cpu.max": "max 100000",
+                  "cpu.max.burst": 0,
+                  "cpu.uclamp.max": "max",
+                  "cpu.uclamp.min": "0.00",
+                  "cpu.weight": 100,
+                  "cpu.weight.nice": 0,
+                  "io.prio.class": "no-change",
+                  "io.weight": "default 100",
+                  "memory.high": "max",
+                  "memory.low": 0,
+                  "memory.max": "max",
+                  "memory.min": 0,
+                  "memory.oom.group": 0,
+                  "memory.swap.high": "max",
+                  "memory.swap.max": "max",
+                  "memory.zswap.max": "max",
+                  "memory.zswap.writeback": 1
+                },
+                "children": null
+              }
+            ]
+          },
+          {
+            "name": "usr2LTKUBTSGBFOC.slice",
+            "path": "exelet.slice/usr2LTKUBTSGBFOC.slice",
+            "stats": {
+              "cpu.burst_usec": 0,
+              "cpu.core_sched.force_idle_usec": 0,
+              "cpu.local.throttled_usec": 0,
+              "cpu.nice_usec": 0,
+              "cpu.nr_bursts": 0,
+              "memory.current": 759861248,
+              "memory.events.local.oom_group_kill": 0,
+              "memory.peak": 6998859776,
+              "memory.stat.anon": 698093568,
+              "memory.stat.file": 303104,
+              "memory.stat.kernel": 38359040,
+              "memory.stat.shmem": 0,
+              "memory.stat.slab": 8608016,
+              "memory.stat.sock": 0,
+              "memory.swap.current": 6886236160,
+              "memory.swap.peak": 6886297600,
+              "memory.zswap.current": 0,
+              "psi.cpu.full.avg10": 0,
+              "psi.cpu.full.avg300": 0,
+              "psi.cpu.full.avg60": 0,
+              "psi.cpu.some.avg10": 0,
+              "psi.cpu.some.avg300": 0,
+              "psi.cpu.some.avg60": 0,
+              "psi.io.full.avg10": 0,
+              "psi.io.full.avg300": 0,
+              "psi.io.full.avg60": 0,
+              "psi.io.some.avg10": 0,
+              "psi.io.some.avg300": 0,
+              "psi.io.some.avg60": 0,
+              "psi.memory.full.avg10": 0,
+              "psi.memory.full.avg300": 0,
+              "psi.memory.full.avg60": 0,
+              "psi.memory.some.avg10": 0,
+              "psi.memory.some.avg300": 0,
+              "psi.memory.some.avg60": 0
+            },
+            "rates": {
+              "cpu.nr_periods": 0,
+              "cpu.nr_throttled": 0,
+              "cpu.system_usec": 122.79482850637977,
+              "cpu.throttled_usec": 0,
+              "cpu.usage_usec": 1390.6763911332278,
+              "cpu.user_usec": 1267.9813958207556,
+              "io.dbytes": 0,
+              "io.dios": 0,
+              "io.rbytes": 408.9167622456354,
+              "io.rios": 0.09983319390762584,
+              "io.wbytes": 0,
+              "io.wios": 0,
+              "memory.events.high": 0,
+              "memory.events.local.high": 0,
+              "memory.events.local.low": 0,
+              "memory.events.local.max": 0,
+              "memory.events.local.oom": 0,
+              "memory.events.local.oom_kill": 0,
+              "memory.events.low": 0,
+              "memory.events.max": 0,
+              "memory.events.oom": 0,
+              "memory.events.oom_group_kill": 0,
+              "memory.events.oom_kill": 0,
+              "memory.stat.pgfault": 0.09983319390762584,
+              "memory.stat.pgmajfault": 0.09983319390762584,
+              "memory.swap.events.fail": 0,
+              "memory.swap.events.high": 0,
+              "memory.swap.events.max": 0
+            },
+            "config": {
+              "cpu.idle": 0,
+              "cpu.max": "max 100000",
+              "cpu.max.burst": 0,
+              "cpu.uclamp.max": "max",
+              "cpu.uclamp.min": "0.00",
+              "cpu.weight": 100,
+              "cpu.weight.nice": 0,
+              "io.prio.class": "no-change",
+              "io.weight": "default 100",
+              "memory.high": "max",
+              "memory.low": 0,
+              "memory.max": "max",
+              "memory.min": 0,
+              "memory.oom.group": 0,
+              "memory.swap.high": "max",
+              "memory.swap.max": "max",
+              "memory.zswap.max": "max",
+              "memory.zswap.writeback": 1
+            },
+            "children": [
+              {
+                "name": "vm-vm011173.scope",
+                "path": "exelet.slice/usr2LTKUBTSGBFOC.slice/vm-vm011173.scope",
+                "stats": {
+                  "cpu.burst_usec": 0,
+                  "cpu.core_sched.force_idle_usec": 0,
+                  "cpu.local.throttled_usec": 0,
+                  "cpu.nice_usec": 0,
+                  "cpu.nr_bursts": 0,
+                  "memory.current": 759648256,
+                  "memory.events.local.oom_group_kill": 0,
+                  "memory.peak": 6998646784,
+                  "memory.stat.anon": 698093568,
+                  "memory.stat.file": 303104,
+                  "memory.stat.kernel": 38146048,
+                  "memory.stat.shmem": 0,
+                  "memory.stat.slab": 8603896,
+                  "memory.stat.sock": 0,
+                  "memory.swap.current": 6886236160,
+                  "memory.swap.peak": 6886297600,
+                  "memory.zswap.current": 0,
+                  "psi.cpu.full.avg10": 0,
+                  "psi.cpu.full.avg300": 0,
+                  "psi.cpu.full.avg60": 0,
+                  "psi.cpu.some.avg10": 0,
+                  "psi.cpu.some.avg300": 0,
+                  "psi.cpu.some.avg60": 0,
+                  "psi.io.full.avg10": 0,
+                  "psi.io.full.avg300": 0,
+                  "psi.io.full.avg60": 0,
+                  "psi.io.some.avg10": 0,
+                  "psi.io.some.avg300": 0,
+                  "psi.io.some.avg60": 0,
+                  "psi.memory.full.avg10": 0,
+                  "psi.memory.full.avg300": 0,
+                  "psi.memory.full.avg60": 0,
+                  "psi.memory.some.avg10": 0,
+                  "psi.memory.some.avg300": 0,
+                  "psi.memory.some.avg60": 0
+                },
+                "rates": {
+                  "cpu.nr_periods": 0,
+                  "cpu.nr_throttled": 0,
+                  "cpu.system_usec": 122.79482850637977,
+                  "cpu.throttled_usec": 0,
+                  "cpu.usage_usec": 1390.6763911332278,
+                  "cpu.user_usec": 1267.9813958207556,
+                  "io.dbytes": 0,
+                  "io.dios": 0,
+                  "io.rbytes": 408.9167622456354,
+                  "io.rios": 0.09983319390762584,
+                  "io.wbytes": 0,
+                  "io.wios": 0,
+                  "memory.events.high": 0,
+                  "memory.events.local.high": 0,
+                  "memory.events.local.low": 0,
+                  "memory.events.local.max": 0,
+                  "memory.events.local.oom": 0,
+                  "memory.events.local.oom_kill": 0,
+                  "memory.events.low": 0,
+                  "memory.events.max": 0,
+                  "memory.events.oom": 0,
+                  "memory.events.oom_group_kill": 0,
+                  "memory.events.oom_kill": 0,
+                  "memory.stat.pgfault": 0.09983319390762584,
+                  "memory.stat.pgmajfault": 0.09983319390762584,
+                  "memory.swap.events.fail": 0,
+                  "memory.swap.events.high": 0,
+                  "memory.swap.events.max": 0
+                },
+                "config": {
+                  "cpu.idle": 0,
+                  "cpu.max": "max 100000",
+                  "cpu.max.burst": 0,
+                  "cpu.uclamp.max": "max",
+                  "cpu.uclamp.min": "0.00",
+                  "cpu.weight": 100,
+                  "cpu.weight.nice": 0,
+                  "io.prio.class": "no-change",
+                  "io.weight": "default 100",
+                  "memory.high": "max",
+                  "memory.low": 0,
+                  "memory.max": "max",
+                  "memory.min": 0,
+                  "memory.oom.group": 0,
+                  "memory.swap.high": "max",
+                  "memory.swap.max": "max",
+                  "memory.zswap.max": "max",
+                  "memory.zswap.writeback": 1
+                },
+                "children": null
+              }
+            ]
+          },
+          {
+            "name": "usr2MSZTH3OWDSLE.slice",
+            "path": "exelet.slice/usr2MSZTH3OWDSLE.slice",
+            "stats": {
+              "cpu.burst_usec": 0,
+              "cpu.core_sched.force_idle_usec": 0,
+              "cpu.local.throttled_usec": 0,
+              "cpu.nice_usec": 0,
+              "cpu.nr_bursts": 0,
+              "memory.current": 374439936,
+              "memory.events.local.oom_group_kill": 0,
+              "memory.peak": 8851881984,
+              "memory.stat.anon": 341405696,
+              "memory.stat.file": 2150400,
+              "memory.stat.kernel": 25444352,
+              "memory.stat.shmem": 0,
+              "memory.stat.slab": 6307840,
+              "memory.stat.sock": 0,
+              "memory.swap.current": 4486340608,
+              "memory.swap.peak": 4538585088,
+              "memory.zswap.current": 0,
+              "psi.cpu.full.avg10": 0,
+              "psi.cpu.full.avg300": 0,
+              "psi.cpu.full.avg60": 0,
+              "psi.cpu.some.avg10": 0,
+              "psi.cpu.some.avg300": 0,
+              "psi.cpu.some.avg60": 0,
+              "psi.io.full.avg10": 0,
+              "psi.io.full.avg300": 0,
+              "psi.io.full.avg60": 0,
+              "psi.io.some.avg10": 0,
+              "psi.io.some.avg300": 0,
+              "psi.io.some.avg60": 0,
+              "psi.memory.full.avg10": 0,
+              "psi.memory.full.avg300": 0,
+              "psi.memory.full.avg60": 0,
+              "psi.memory.some.avg10": 0,
+              "psi.memory.some.avg300": 0,
+              "psi.memory.some.avg60": 0
+            },
+            "rates": {
+              "cpu.nr_periods": 0,
+              "cpu.nr_throttled": 0,
+              "cpu.system_usec": 541.5950769488701,
+              "cpu.throttled_usec": 0,
+              "cpu.usage_usec": 2065.149449173148,
+              "cpu.user_usec": 1523.5543722242778,
+              "io.dbytes": 0,
+              "io.dios": 0,
+              "io.rbytes": 408.9167622456354,
+              "io.rios": 0.09983319390762584,
+              "io.wbytes": 0,
+              "io.wios": 0,
+              "memory.events.high": 0,
+              "memory.events.local.high": 0,
+              "memory.events.local.low": 0,
+              "memory.events.local.max": 0,
+              "memory.events.local.oom": 0,
+              "memory.events.local.oom_kill": 0,
+              "memory.events.low": 0,
+              "memory.events.max": 0,
+              "memory.events.oom": 0,
+              "memory.events.oom_group_kill": 0,
+              "memory.events.oom_kill": 0,
+              "memory.stat.pgfault": 0.09983319390762584,
+              "memory.stat.pgmajfault": 0.09983319390762584,
+              "memory.swap.events.fail": 0,
+              "memory.swap.events.high": 0,
+              "memory.swap.events.max": 0
+            },
+            "config": {
+              "cpu.idle": 0,
+              "cpu.max": "max 100000",
+              "cpu.max.burst": 0,
+              "cpu.uclamp.max": "max",
+              "cpu.uclamp.min": "0.00",
+              "cpu.weight": 100,
+              "cpu.weight.nice": 0,
+              "io.prio.class": "no-change",
+              "io.weight": "default 100",
+              "memory.high": "max",
+              "memory.low": 0,
+              "memory.max": "max",
+              "memory.min": 0,
+              "memory.oom.group": 0,
+              "memory.swap.high": "max",
+              "memory.swap.max": "max",
+              "memory.zswap.max": "max",
+              "memory.zswap.writeback": 1
+            },
+            "children": [
+              {
+                "name": "vm-vm013396.scope",
+                "path": "exelet.slice/usr2MSZTH3OWDSLE.slice/vm-vm013396.scope",
+                "stats": {
+                  "cpu.burst_usec": 0,
+                  "cpu.core_sched.force_idle_usec": 0,
+                  "cpu.local.throttled_usec": 0,
+                  "cpu.nice_usec": 0,
+                  "cpu.nr_bursts": 0,
+                  "memory.current": 374226944,
+                  "memory.events.local.oom_group_kill": 0,
+                  "memory.peak": 8851668992,
+                  "memory.stat.anon": 341405696,
+                  "memory.stat.file": 2150400,
+                  "memory.stat.kernel": 25231360,
+                  "memory.stat.shmem": 0,
+                  "memory.stat.slab": 6303720,
+                  "memory.stat.sock": 0,
+                  "memory.swap.current": 4486340608,
+                  "memory.swap.peak": 4538585088,
+                  "memory.zswap.current": 0,
+                  "psi.cpu.full.avg10": 0,
+                  "psi.cpu.full.avg300": 0,
+                  "psi.cpu.full.avg60": 0,
+                  "psi.cpu.some.avg10": 0,
+                  "psi.cpu.some.avg300": 0,
+                  "psi.cpu.some.avg60": 0,
+                  "psi.io.full.avg10": 0,
+                  "psi.io.full.avg300": 0,
+                  "psi.io.full.avg60": 0,
+                  "psi.io.some.avg10": 0,
+                  "psi.io.some.avg300": 0,
+                  "psi.io.some.avg60": 0,
+                  "psi.memory.full.avg10": 0,
+                  "psi.memory.full.avg300": 0,
+                  "psi.memory.full.avg60": 0,
+                  "psi.memory.some.avg10": 0,
+                  "psi.memory.some.avg300": 0,
+                  "psi.memory.some.avg60": 0
+                },
+                "rates": {
+                  "cpu.nr_periods": 0,
+                  "cpu.nr_throttled": 0,
+                  "cpu.system_usec": 541.5950769488701,
+                  "cpu.throttled_usec": 0,
+                  "cpu.usage_usec": 2065.149449173148,
+                  "cpu.user_usec": 1523.5543722242778,
+                  "io.dbytes": 0,
+                  "io.dios": 0,
+                  "io.rbytes": 408.9167622456354,
+                  "io.rios": 0.09983319390762584,
+                  "io.wbytes": 0,
+                  "io.wios": 0,
+                  "memory.events.high": 0,
+                  "memory.events.local.high": 0,
+                  "memory.events.local.low": 0,
+                  "memory.events.local.max": 0,
+                  "memory.events.local.oom": 0,
+                  "memory.events.local.oom_kill": 0,
+                  "memory.events.low": 0,
+                  "memory.events.max": 0,
+                  "memory.events.oom": 0,
+                  "memory.events.oom_group_kill": 0,
+                  "memory.events.oom_kill": 0,
+                  "memory.stat.pgfault": 0.09983319390762584,
+                  "memory.stat.pgmajfault": 0.09983319390762584,
+                  "memory.swap.events.fail": 0,
+                  "memory.swap.events.high": 0,
+                  "memory.swap.events.max": 0
+                },
+                "config": {
+                  "cpu.idle": 0,
+                  "cpu.max": "max 100000",
+                  "cpu.max.burst": 0,
+                  "cpu.uclamp.max": "max",
+                  "cpu.uclamp.min": "0.00",
+                  "cpu.weight": 100,
+                  "cpu.weight.nice": 0,
+                  "io.prio.class": "no-change",
+                  "io.weight": "default 100",
+                  "memory.high": "max",
+                  "memory.low": 0,
+                  "memory.max": "max",
+                  "memory.min": 0,
+                  "memory.oom.group": 0,
+                  "memory.swap.high": "max",
+                  "memory.swap.max": "max",
+                  "memory.zswap.max": "max",
+                  "memory.zswap.writeback": 1
+                },
+                "children": null
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "init.scope",
+        "path": "init.scope",
+        "stats": {
+          "cpu.burst_usec": 0,
+          "cpu.core_sched.force_idle_usec": 0,
+          "cpu.local.throttled_usec": 0,
+          "cpu.nice_usec": 0,
+          "cpu.nr_bursts": 0,
+          "memory.current": 33902592,
+          "memory.events.local.oom_group_kill": 0,
+          "memory.peak": 56659968,
+          "memory.stat.anon": 18890752,
+          "memory.stat.file": 8908800,
+          "memory.stat.kernel": 6074368,
+          "memory.stat.shmem": 1581056,
+          "memory.stat.slab": 5355024,
+          "memory.stat.sock": 0,
+          "memory.swap.current": 1085440,
+          "memory.swap.peak": 7839744,
+          "memory.zswap.current": 0,
+          "pids.current": 1,
+          "psi.cpu.full.avg10": 0,
+          "psi.cpu.full.avg300": 0,
+          "psi.cpu.full.avg60": 0,
+          "psi.cpu.some.avg10": 0,
+          "psi.cpu.some.avg300": 0,
+          "psi.cpu.some.avg60": 0,
+          "psi.io.full.avg10": 0,
+          "psi.io.full.avg300": 0,
+          "psi.io.full.avg60": 0,
+          "psi.io.some.avg10": 0,
+          "psi.io.some.avg300": 0,
+          "psi.io.some.avg60": 0,
+          "psi.memory.full.avg10": 0,
+          "psi.memory.full.avg300": 0,
+          "psi.memory.full.avg60": 0,
+          "psi.memory.some.avg10": 0,
+          "psi.memory.some.avg300": 0,
+          "psi.memory.some.avg60": 0
+        },
+        "rates": {
+          "cpu.nr_periods": 0,
+          "cpu.nr_throttled": 0,
+          "cpu.system_usec": 182.7945780448629,
+          "cpu.throttled_usec": 0,
+          "cpu.usage_usec": 1907.1135032173763,
+          "cpu.user_usec": 1724.3189251725134,
+          "io.dbytes": 0,
+          "io.dios": 0,
+          "io.rbytes": 0,
+          "io.rios": 0,
+          "io.wbytes": 0,
+          "io.wios": 0,
+          "memory.events.high": 0,
+          "memory.events.local.high": 0,
+          "memory.events.local.low": 0,
+          "memory.events.local.max": 0,
+          "memory.events.local.oom": 0,
+          "memory.events.local.oom_kill": 0,
+          "memory.events.low": 0,
+          "memory.events.max": 0,
+          "memory.events.oom": 0,
+          "memory.events.oom_group_kill": 0,
+          "memory.events.oom_kill": 0,
+          "memory.stat.pgfault": 0,
+          "memory.stat.pgmajfault": 0,
+          "memory.swap.events.fail": 0,
+          "memory.swap.events.high": 0,
+          "memory.swap.events.max": 0
+        },
+        "config": {
+          "cpu.idle": 0,
+          "cpu.max": "max 100000",
+          "cpu.max.burst": 0,
+          "cpu.uclamp.max": "max",
+          "cpu.uclamp.min": "0.00",
+          "cpu.weight": 100,
+          "cpu.weight.nice": 0,
+          "io.prio.class": "no-change",
+          "io.weight": "default 100",
+          "memory.high": "max",
+          "memory.low": 0,
+          "memory.max": "max",
+          "memory.min": 0,
+          "memory.oom.group": 0,
+          "memory.swap.high": "max",
+          "memory.swap.max": "max",
+          "memory.zswap.max": "max",
+          "memory.zswap.writeback": 1,
+          "pids.max": 463842
+        },
+        "children": null
+      },
+      {
+        "name": "proc-sys-fs-binfmt_misc.mount",
+        "path": "proc-sys-fs-binfmt_misc.mount",
+        "stats": {
+          "cpu.burst_usec": 0,
+          "cpu.core_sched.force_idle_usec": 0,
+          "cpu.local.throttled_usec": 0,
+          "cpu.nice_usec": 0,
+          "cpu.nr_bursts": 0,
+          "memory.current": 4096,
+          "memory.events.local.oom_group_kill": 0,
+          "memory.peak": 1839104,
+          "memory.stat.anon": 0,
+          "memory.stat.file": 0,
+          "memory.stat.kernel": 4096,
+          "memory.stat.shmem": 0,
+          "memory.stat.slab": 3976,
+          "memory.stat.sock": 0,
+          "memory.swap.current": 0,
+          "memory.swap.peak": 0,
+          "memory.zswap.current": 0,
+          "pids.current": 0,
+          "psi.cpu.full.avg10": 0,
+          "psi.cpu.full.avg300": 0,
+          "psi.cpu.full.avg60": 0,
+          "psi.cpu.some.avg10": 0,
+          "psi.cpu.some.avg300": 0,
+          "psi.cpu.some.avg60": 0,
+          "psi.io.full.avg10": 0,
+          "psi.io.full.avg300": 0,
+          "psi.io.full.avg60": 0,
+          "psi.io.some.avg10": 0,
+          "psi.io.some.avg300": 0,
+          "psi.io.some.avg60": 0,
+          "psi.memory.full.avg10": 0,
+          "psi.memory.full.avg300": 0,
+          "psi.memory.full.avg60": 0,
+          "psi.memory.some.avg10": 0,
+          "psi.memory.some.avg300": 0,
+          "psi.memory.some.avg60": 0
+        },
+        "rates": {
+          "cpu.nr_periods": 0,
+          "cpu.nr_throttled": 0,
+          "cpu.system_usec": 0,
+          "cpu.throttled_usec": 0,
+          "cpu.usage_usec": 0,
+          "cpu.user_usec": 0,
+          "io.dbytes": 0,
+          "io.dios": 0,
+          "io.rbytes": 0,
+          "io.rios": 0,
+          "io.wbytes": 0,
+          "io.wios": 0,
+          "memory.events.high": 0,
+          "memory.events.local.high": 0,
+          "memory.events.local.low": 0,
+          "memory.events.local.max": 0,
+          "memory.events.local.oom": 0,
+          "memory.events.local.oom_kill": 0,
+          "memory.events.low": 0,
+          "memory.events.max": 0,
+          "memory.events.oom": 0,
+          "memory.events.oom_group_kill": 0,
+          "memory.events.oom_kill": 0,
+          "memory.stat.pgfault": 0,
+          "memory.stat.pgmajfault": 0,
+          "memory.swap.events.fail": 0,
+          "memory.swap.events.high": 0,
+          "memory.swap.events.max": 0
+        },
+        "config": {
+          "cpu.idle": 0,
+          "cpu.max": "max 100000",
+          "cpu.max.burst": 0,
+          "cpu.uclamp.max": "max",
+          "cpu.uclamp.min": "0.00",
+          "cpu.weight": 100,
+          "cpu.weight.nice": 0,
+          "io.prio.class": "no-change",
+          "io.weight": "default 100",
+          "memory.high": "max",
+          "memory.low": 0,
+          "memory.max": "max",
+          "memory.min": 0,
+          "memory.oom.group": 0,
+          "memory.swap.high": "max",
+          "memory.swap.max": "max",
+          "memory.zswap.max": "max",
+          "memory.zswap.writeback": 1,
+          "pids.max": 463842
+        },
+        "children": null
+      }
+    ]
+  },
+  "sparklines": {
+    "": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        352360.10048767534,
+        443720.86140693736,
+        473508.8387038693
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        4399095.009066799,
+        4592510.915561802,
+        4594822.749598479
+      ],
+      "cpu.user_usec": [
+        4046734.908579123,
+        4148790.054154864,
+        4121313.9108946095
+      ],
+      "io.rbytes": [
+        330205.9361913094,
+        214232.44746067576,
+        352077.3322934921
+      ],
+      "io.rios": [
+        59.627724586136395,
+        41.5611847562154,
+        70.68190128659909
+      ],
+      "io.wbytes": [
+        3411720.948710356,
+        4475905.891872146,
+        4631697.936765751
+      ],
+      "io.wios": [
+        164.7315271232995,
+        197.56621159476305,
+        206.95421097050834
+      ],
+      "memory.stat.anon": [
+        49018863616,
+        49027928064,
+        49034944512,
+        49045028864
+      ],
+      "memory.stat.file": [
+        101421993984,
+        101425045504,
+        101428477952,
+        101433384960
+      ],
+      "memory.stat.kernel": [
+        6178803712,
+        6179225600,
+        6180454400,
+        6179454976
+      ],
+      "memory.stat.pgfault": [
+        3297.9696950428133,
+        6774.57350459827,
+        13485.966999011634
+      ],
+      "memory.stat.pgmajfault": [
+        64.8749643497164,
+        42.46468877265487,
+        72.97806474647449
+      ],
+      "memory.stat.shmem": [
+        90296807424,
+        90298662912,
+        90300452864,
+        90303569920
+      ],
+      "memory.stat.slab": [
+        2431881368,
+        2432032880,
+        2432673744,
+        2432208072
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0.09,
+        0.05,
+        0.01,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0.09,
+        0.05,
+        0.01,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "dev-hugepages.mount": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.user_usec": [
+        0,
+        0,
+        0
+      ],
+      "io.rbytes": [
+        0,
+        0,
+        0
+      ],
+      "io.rios": [
+        0,
+        0,
+        0
+      ],
+      "io.wbytes": [
+        0,
+        0,
+        0
+      ],
+      "io.wios": [
+        0,
+        0,
+        0
+      ],
+      "memory.current": [
+        16384,
+        16384,
+        16384,
+        16384
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.file": [
+        4096,
+        4096,
+        4096,
+        4096
+      ],
+      "memory.stat.kernel": [
+        12288,
+        12288,
+        12288,
+        12288
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.shmem": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.slab": [
+        6240,
+        6240,
+        6240,
+        6240
+      ],
+      "memory.swap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "pids.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "dev-mqueue.mount": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.user_usec": [
+        0,
+        0,
+        0
+      ],
+      "io.rbytes": [
+        0,
+        0,
+        0
+      ],
+      "io.rios": [
+        0,
+        0,
+        0
+      ],
+      "io.wbytes": [
+        0,
+        0,
+        0
+      ],
+      "io.wios": [
+        0,
+        0,
+        0
+      ],
+      "memory.current": [
+        4096,
+        4096,
+        4096,
+        4096
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.file": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.kernel": [
+        4096,
+        4096,
+        4096,
+        4096
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.shmem": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.slab": [
+        1248,
+        1248,
+        1248,
+        1248
+      ],
+      "memory.swap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "pids.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice": {
+      "cpu.nr_periods": [
+        9.858450464907884,
+        10.038933515994058,
+        9.983319390762583
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        209098.52939702402,
+        212839.44504599643,
+        220318.98047211612
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        4262062.070582782,
+        4191139.9979174314,
+        4223528.2263101265
+      ],
+      "cpu.user_usec": [
+        4052963.541185758,
+        3978300.4524820996,
+        4003209.345671204
+      ],
+      "io.rbytes": [
+        330205.9361913094,
+        214232.44746067576,
+        352077.3322934921
+      ],
+      "io.rios": [
+        80.6166836404564,
+        52.30284361832904,
+        85.95637995446585
+      ],
+      "io.wbytes": [
+        261168.79765821516,
+        268921.34479708626,
+        295646.8191035944
+      ],
+      "io.wios": [
+        79.34462551595216,
+        83.52392685307056,
+        90.64854006812425
+      ],
+      "memory.current": [
+        132640333824,
+        132640538624,
+        132644442112,
+        132651159552
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        38919573504,
+        38919643136,
+        38919778304,
+        38919921664
+      ],
+      "memory.stat.file": [
+        85813977088,
+        85816078336,
+        85818703872,
+        85822205952
+      ],
+      "memory.stat.kernel": [
+        4162842624,
+        4162818048,
+        4163018752,
+        4162883584
+      ],
+      "memory.stat.pgfault": [
+        2527.579493389931,
+        889.6502881873934,
+        1884.25170181253
+      ],
+      "memory.stat.pgmajfault": [
+        59.309710055010335,
+        42.46468877265487,
+        72.97806474647449
+      ],
+      "memory.stat.shmem": [
+        75080368128,
+        75081490432,
+        75082473472,
+        75084185600
+      ],
+      "memory.stat.slab": [
+        1521256976,
+        1521278912,
+        1521430848,
+        1521370256
+      ],
+      "memory.swap.current": [
+        517794508800,
+        517793320960,
+        517792210944,
+        517790359552
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "pids.current": [
+        5033,
+        5032,
+        5032,
+        5032
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice/default.slice": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        120123.46983498137,
+        127587.91812415843,
+        127951.11313851473
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        3493783.962438374,
+        3469793.534408365,
+        3399521.915606353
+      ],
+      "cpu.user_usec": [
+        3373660.651610658,
+        3342205.515894871,
+        3271570.902301032
+      ],
+      "io.rbytes": [
+        313272.29843790893,
+        195728.6852039955,
+        301780.57053727895
+      ],
+      "io.rios": [
+        76.48249473581761,
+        47.78532353613171,
+        73.67689710382787
+      ],
+      "io.wbytes": [
+        160218.26489755843,
+        191616.73803584435,
+        217134.8007524324
+      ],
+      "io.wios": [
+        50.56431044904366,
+        59.832043755324584,
+        66.38907394857118
+      ],
+      "memory.current": [
+        78181994496,
+        78182813696,
+        78187266048,
+        78189375488
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        405069824,
+        405069824,
+        405069824,
+        405069824
+      ],
+      "memory.stat.file": [
+        74492002304,
+        74493878272,
+        74496233472,
+        74499293184
+      ],
+      "memory.stat.kernel": [
+        1121067008,
+        1121054720,
+        1121234944,
+        1121124352
+      ],
+      "memory.stat.pgfault": [
+        72.03029130005277,
+        107.91853529693611,
+        107.62018303242064
+      ],
+      "memory.stat.pgmajfault": [
+        55.65254294706063,
+        38.3487260310973,
+        61.89658022272801
+      ],
+      "memory.stat.shmem": [
+        69739073536,
+        69740171264,
+        69741137920,
+        69742751744
+      ],
+      "memory.stat.slab": [
+        544854960,
+        544874904,
+        545009536,
+        544951792
+      ],
+      "memory.swap.current": [
+        196836306944,
+        196835209216,
+        196834242560,
+        196832628736
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice/default.slice/vm-vm000010.scope": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        4050.23306842151,
+        85.23054555078954,
+        330.14837225251864
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        42564.17789677091,
+        4838.5651760388155,
+        2797.1264269038606
+      ],
+      "cpu.user_usec": [
+        38513.78582108384,
+        4753.334630488026,
+        2467.0778878452497
+      ],
+      "io.rbytes": [
+        131561.33946872683,
+        2055.973584075583,
+        817.8335244912709
+      ],
+      "io.rios": [
+        32.119467643732136,
+        0.5019466757997029,
+        0.19966638781525167
+      ],
+      "io.wbytes": [
+        0,
+        9868.6732035628,
+        0
+      ],
+      "io.wios": [
+        0,
+        2.810901384478336,
+        0
+      ],
+      "memory.current": [
+        180310016,
+        182243328,
+        181403648,
+        181166080
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        28672,
+        28672,
+        28672,
+        28672
+      ],
+      "memory.stat.file": [
+        164438016,
+        165150720,
+        165240832,
+        165249024
+      ],
+      "memory.stat.kernel": [
+        6508544,
+        6508544,
+        6512640,
+        6508544
+      ],
+      "memory.stat.pgfault": [
+        29.73435866028668,
+        0.5019466757997029,
+        0.19966638781525167
+      ],
+      "memory.stat.pgmajfault": [
+        25.28215522452183,
+        0.5019466757997029,
+        0.19966638781525167
+      ],
+      "memory.stat.shmem": [
+        163532800,
+        164245504,
+        164265984,
+        164274176
+      ],
+      "memory.stat.slab": [
+        3760192,
+        3760192,
+        3761808,
+        3762096
+      ],
+      "memory.swap.current": [
+        1063649280,
+        1062936576,
+        1062916096,
+        1062907904
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice/default.slice/vm-vm000011.scope": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        277.14966387636196,
+        266.03173817384254,
+        147.85296017719386
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        597.3902967203052,
+        762.7581685452285,
+        627.2519573216131
+      ],
+      "cpu.user_usec": [
+        320.08162557838017,
+        496.8268197065459,
+        479.2991639505116
+      ],
+      "io.rbytes": [
+        0,
+        0,
+        0
+      ],
+      "io.rios": [
+        0,
+        0,
+        0
+      ],
+      "io.wbytes": [
+        0,
+        411.1947168151166,
+        0
+      ],
+      "io.wios": [
+        0,
+        0.10038933515994057,
+        0
+      ],
+      "memory.current": [
+        210755584,
+        210755584,
+        210755584,
+        210755584
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        24576,
+        24576,
+        24576,
+        24576
+      ],
+      "memory.stat.file": [
+        203980800,
+        203980800,
+        203980800,
+        203980800
+      ],
+      "memory.stat.kernel": [
+        2744320,
+        2744320,
+        2744320,
+        2744320
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.shmem": [
+        202993664,
+        202993664,
+        202993664,
+        202993664
+      ],
+      "memory.stat.slab": [
+        1440288,
+        1440152,
+        1440424,
+        1440152
+      ],
+      "memory.swap.current": [
+        401592320,
+        401592320,
+        401592320,
+        401592320
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice/default.slice/vm-vm000012.scope": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        316.42445847043047,
+        336.10349411548106,
+        257.8691398633975
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        2729.0416988582906,
+        3244.0813656934797,
+        2938.7897290587816
+      ],
+      "cpu.user_usec": [
+        2412.458233122297,
+        2908.078260913159,
+        2680.920589195384
+      ],
+      "io.rbytes": [
+        651.2937597461724,
+        411.1947168151166,
+        408.9167622456354
+      ],
+      "io.rios": [
+        0.15900726556303038,
+        0.10038933515994057,
+        0.09983319390762584
+      ],
+      "io.wbytes": [
+        0,
+        411.1947168151166,
+        0
+      ],
+      "io.wios": [
+        0,
+        0.10038933515994057,
+        0
+      ],
+      "memory.current": [
+        141680640,
+        141430784,
+        141434880,
+        141438976
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        12288,
+        12288,
+        12288,
+        12288
+      ],
+      "memory.stat.file": [
+        137187328,
+        137191424,
+        137195520,
+        137199616
+      ],
+      "memory.stat.kernel": [
+        278528,
+        278528,
+        278528,
+        278528
+      ],
+      "memory.stat.pgfault": [
+        0.15900726556303038,
+        0.10038933515994057,
+        0.09983319390762584
+      ],
+      "memory.stat.pgmajfault": [
+        0.15900726556303038,
+        0.10038933515994057,
+        0.09983319390762584
+      ],
+      "memory.stat.shmem": [
+        136609792,
+        136613888,
+        136617984,
+        136622080
+      ],
+      "memory.stat.slab": [
+        261472,
+        261472,
+        261744,
+        261472
+      ],
+      "memory.swap.current": [
+        303153152,
+        303149056,
+        303144960,
+        303140864
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice/default.slice/vm-vm000046.scope": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        592.4610714878512,
+        875.8969492704815,
+        1278.3640479871488
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        2141.6688598684564,
+        5644.390369367659,
+        3176.7920633345616
+      ],
+      "cpu.user_usec": [
+        1549.048781115042,
+        4768.593809432337,
+        1898.4280153474128
+      ],
+      "io.rbytes": [
+        0,
+        411.1947168151166,
+        0
+      ],
+      "io.rios": [
+        0,
+        0.10038933515994057,
+        0
+      ],
+      "io.wbytes": [
+        0,
+        0,
+        408.9167622456354
+      ],
+      "io.wios": [
+        0,
+        0,
+        0.09983319390762584
+      ],
+      "memory.current": [
+        455028736,
+        455028736,
+        455032832,
+        455036928
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        253952,
+        253952,
+        253952,
+        253952
+      ],
+      "memory.stat.file": [
+        418942976,
+        418942976,
+        418951168,
+        418951168
+      ],
+      "memory.stat.kernel": [
+        29454336,
+        29454336,
+        29454336,
+        29454336
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0.20077867031988114,
+        0
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0.10038933515994057,
+        0
+      ],
+      "memory.stat.shmem": [
+        416739328,
+        416739328,
+        416747520,
+        416747520
+      ],
+      "memory.stat.slab": [
+        12796192,
+        12796192,
+        12796464,
+        12796192
+      ],
+      "memory.swap.current": [
+        4221222912,
+        4221222912,
+        4221214720,
+        4221214720
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice/default.slice/vm-vm000067.scope": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        0,
+        1153.5738503228772,
+        451.94486881982215
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        1249.797107325419,
+        1153.5738503228772,
+        909.7798960801941
+      ],
+      "cpu.user_usec": [
+        1249.9561145909818,
+        0,
+        457.83502726037204
+      ],
+      "io.rbytes": [
+        0,
+        0,
+        0
+      ],
+      "io.rios": [
+        0,
+        0,
+        0
+      ],
+      "io.wbytes": [
+        0,
+        0,
+        408.9167622456354
+      ],
+      "io.wios": [
+        0,
+        0,
+        0.09983319390762584
+      ],
+      "memory.current": [
+        223932416,
+        223932416,
+        223932416,
+        223932416
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        376832,
+        376832,
+        376832,
+        376832
+      ],
+      "memory.stat.file": [
+        210993152,
+        210993152,
+        210993152,
+        210993152
+      ],
+      "memory.stat.kernel": [
+        6660096,
+        6660096,
+        6660096,
+        6660096
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.shmem": [
+        208322560,
+        208322560,
+        208322560,
+        208322560
+      ],
+      "memory.stat.slab": [
+        3262800,
+        3262800,
+        3263072,
+        3262800
+      ],
+      "memory.swap.current": [
+        889839616,
+        889839616,
+        889839616,
+        889839616
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice/usr24KGPOPF3GLX5.slice": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        546.1899572090093,
+        525.9397269029287,
+        395.93844703764404
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        2089.673484029345,
+        2807.488147082898,
+        2694.6975699546365
+      ],
+      "cpu.user_usec": [
+        1543.483526820336,
+        2281.6488095151294,
+        2298.7591229169925
+      ],
+      "io.rbytes": [
+        0,
+        0,
+        0
+      ],
+      "io.rios": [
+        0,
+        0,
+        0
+      ],
+      "io.wbytes": [
+        0,
+        411.1947168151166,
+        0
+      ],
+      "io.wios": [
+        0,
+        0.10038933515994057,
+        0
+      ],
+      "memory.current": [
+        715714560,
+        715714560,
+        715730944,
+        715735040
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        591654912,
+        591654912,
+        591654912,
+        591654912
+      ],
+      "memory.stat.file": [
+        356352,
+        356352,
+        356352,
+        356352
+      ],
+      "memory.stat.kernel": [
+        31956992,
+        31956992,
+        31956992,
+        31956992
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0.20077867031988114,
+        0.19966638781525167
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.shmem": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.slab": [
+        2760480,
+        2760480,
+        2760616,
+        2760480
+      ],
+      "memory.swap.current": [
+        6912696320,
+        6912696320,
+        6912696320,
+        6912696320
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice/usr24KGPOPF3GLX5.slice/vm-vm012051.scope": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        546.1899572090093,
+        525.9397269029287,
+        395.93844703764404
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        2089.673484029345,
+        2807.488147082898,
+        2694.6975699546365
+      ],
+      "cpu.user_usec": [
+        1543.483526820336,
+        2281.6488095151294,
+        2298.7591229169925
+      ],
+      "io.rbytes": [
+        0,
+        0,
+        0
+      ],
+      "io.rios": [
+        0,
+        0,
+        0
+      ],
+      "io.wbytes": [
+        0,
+        411.1947168151166,
+        0
+      ],
+      "io.wios": [
+        0,
+        0.10038933515994057,
+        0
+      ],
+      "memory.current": [
+        715501568,
+        715501568,
+        715517952,
+        715522048
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        591654912,
+        591654912,
+        591654912,
+        591654912
+      ],
+      "memory.stat.file": [
+        356352,
+        356352,
+        356352,
+        356352
+      ],
+      "memory.stat.kernel": [
+        31744000,
+        31744000,
+        31744000,
+        31744000
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0.20077867031988114,
+        0.19966638781525167
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.shmem": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.slab": [
+        2756360,
+        2756360,
+        2756496,
+        2756360
+      ],
+      "memory.swap.current": [
+        6912696320,
+        6912696320,
+        6912696320,
+        6912696320
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice/usr2DO5KYM6KS4UB.slice": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        117.02934745439036,
+        404.7697993648804,
+        416.3044185947997
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        1021.1446594457811,
+        869.0704744796055,
+        923.0577108699084
+      ],
+      "cpu.user_usec": [
+        904.2743192569537,
+        464.30067511472515,
+        506.7532922751087
+      ],
+      "io.rbytes": [
+        0,
+        411.1947168151166,
+        0
+      ],
+      "io.rios": [
+        0,
+        0.10038933515994057,
+        0
+      ],
+      "io.wbytes": [
+        0,
+        1233.58415044535,
+        0
+      ],
+      "io.wios": [
+        0,
+        0.5019466757997029,
+        0
+      ],
+      "memory.current": [
+        76455936,
+        76455936,
+        76476416,
+        76472320
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        57757696,
+        57757696,
+        57761792,
+        57761792
+      ],
+      "memory.stat.file": [
+        1089536,
+        1089536,
+        1101824,
+        1101824
+      ],
+      "memory.stat.kernel": [
+        9179136,
+        9179136,
+        9183232,
+        9179136
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0.10038933515994057,
+        0
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0.10038933515994057,
+        0
+      ],
+      "memory.stat.shmem": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.slab": [
+        1492864,
+        1492864,
+        1493336,
+        1493200
+      ],
+      "memory.swap.current": [
+        1891397632,
+        1891397632,
+        1891393536,
+        1891393536
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice/usr2DO5KYM6KS4UB.slice/vm-vm012531.scope": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        117.02934745439036,
+        404.7697993648804,
+        416.3044185947997
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        1021.1446594457811,
+        869.0704744796055,
+        923.0577108699084
+      ],
+      "cpu.user_usec": [
+        904.2743192569537,
+        464.30067511472515,
+        506.7532922751087
+      ],
+      "io.rbytes": [
+        0,
+        411.1947168151166,
+        0
+      ],
+      "io.rios": [
+        0,
+        0.10038933515994057,
+        0
+      ],
+      "io.wbytes": [
+        0,
+        1233.58415044535,
+        0
+      ],
+      "io.wios": [
+        0,
+        0.5019466757997029,
+        0
+      ],
+      "memory.current": [
+        76242944,
+        76242944,
+        76263424,
+        76259328
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        57757696,
+        57757696,
+        57761792,
+        57761792
+      ],
+      "memory.stat.file": [
+        1089536,
+        1089536,
+        1101824,
+        1101824
+      ],
+      "memory.stat.kernel": [
+        8966144,
+        8966144,
+        8970240,
+        8966144
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0.10038933515994057,
+        0
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0.10038933515994057,
+        0
+      ],
+      "memory.stat.shmem": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.slab": [
+        1488744,
+        1488744,
+        1489216,
+        1489080
+      ],
+      "memory.swap.current": [
+        1891397632,
+        1891397632,
+        1891393536,
+        1891393536
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice/usr2LTKUBTSGBFOC.slice": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        337.89043932143954,
+        24.19382977354568,
+        122.79482850637977
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        1411.0304746063316,
+        1351.44122992312,
+        1390.6763911332278
+      ],
+      "cpu.user_usec": [
+        1073.140035284892,
+        1327.2474001495743,
+        1267.9813958207556
+      ],
+      "io.rbytes": [
+        0,
+        0,
+        408.9167622456354
+      ],
+      "io.rios": [
+        0,
+        0,
+        0.09983319390762584
+      ],
+      "io.wbytes": [
+        0,
+        411.1947168151166,
+        0
+      ],
+      "io.wios": [
+        0,
+        0.10038933515994057,
+        0
+      ],
+      "memory.current": [
+        759857152,
+        759857152,
+        759857152,
+        759861248
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        698089472,
+        698089472,
+        698089472,
+        698093568
+      ],
+      "memory.stat.file": [
+        303104,
+        303104,
+        303104,
+        303104
+      ],
+      "memory.stat.kernel": [
+        38359040,
+        38359040,
+        38359040,
+        38359040
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0,
+        0.09983319390762584
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0,
+        0.09983319390762584
+      ],
+      "memory.stat.shmem": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.slab": [
+        8608016,
+        8608016,
+        8608152,
+        8608016
+      ],
+      "memory.swap.current": [
+        6886240256,
+        6886240256,
+        6886240256,
+        6886236160
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice/usr2LTKUBTSGBFOC.slice/vm-vm011173.scope": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        337.89043932143954,
+        24.19382977354568,
+        122.79482850637977
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        1411.0304746063316,
+        1351.44122992312,
+        1390.6763911332278
+      ],
+      "cpu.user_usec": [
+        1073.140035284892,
+        1327.2474001495743,
+        1267.9813958207556
+      ],
+      "io.rbytes": [
+        0,
+        0,
+        408.9167622456354
+      ],
+      "io.rios": [
+        0,
+        0,
+        0.09983319390762584
+      ],
+      "io.wbytes": [
+        0,
+        411.1947168151166,
+        0
+      ],
+      "io.wios": [
+        0,
+        0.10038933515994057,
+        0
+      ],
+      "memory.current": [
+        759644160,
+        759644160,
+        759644160,
+        759648256
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        698089472,
+        698089472,
+        698089472,
+        698093568
+      ],
+      "memory.stat.file": [
+        303104,
+        303104,
+        303104,
+        303104
+      ],
+      "memory.stat.kernel": [
+        38146048,
+        38146048,
+        38146048,
+        38146048
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0,
+        0.09983319390762584
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0,
+        0.09983319390762584
+      ],
+      "memory.stat.shmem": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.slab": [
+        8603896,
+        8603896,
+        8604032,
+        8603896
+      ],
+      "memory.swap.current": [
+        6886240256,
+        6886240256,
+        6886240256,
+        6886236160
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice/usr2MSZTH3OWDSLE.slice": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        0,
+        467.0111871640436,
+        541.5950769488701
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        2004.127575156435,
+        962.3321668431904,
+        2065.149449173148
+      ],
+      "cpu.user_usec": [
+        2003.968567890872,
+        495.4213690143067,
+        1523.5543722242778
+      ],
+      "io.rbytes": [
+        0,
+        0,
+        408.9167622456354
+      ],
+      "io.rios": [
+        0,
+        0,
+        0.09983319390762584
+      ],
+      "io.wbytes": [
+        0,
+        0,
+        0
+      ],
+      "io.wios": [
+        0,
+        0,
+        0
+      ],
+      "memory.current": [
+        374177792,
+        374177792,
+        374181888,
+        374439936
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        341401600,
+        341401600,
+        341401600,
+        341405696
+      ],
+      "memory.stat.file": [
+        2150400,
+        2150400,
+        2150400,
+        2150400
+      ],
+      "memory.stat.kernel": [
+        25444352,
+        25444352,
+        25448448,
+        25444352
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0,
+        0.09983319390762584
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0,
+        0.09983319390762584
+      ],
+      "memory.stat.shmem": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.slab": [
+        6307840,
+        6307840,
+        6307976,
+        6307840
+      ],
+      "memory.swap.current": [
+        4486344704,
+        4486344704,
+        4486344704,
+        4486340608
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "exelet.slice/usr2MSZTH3OWDSLE.slice/vm-vm013396.scope": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        0,
+        467.0111871640436,
+        541.5950769488701
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        2004.127575156435,
+        962.3321668431904,
+        2065.149449173148
+      ],
+      "cpu.user_usec": [
+        2003.968567890872,
+        495.4213690143067,
+        1523.5543722242778
+      ],
+      "io.rbytes": [
+        0,
+        0,
+        408.9167622456354
+      ],
+      "io.rios": [
+        0,
+        0,
+        0.09983319390762584
+      ],
+      "io.wbytes": [
+        0,
+        0,
+        0
+      ],
+      "io.wios": [
+        0,
+        0,
+        0
+      ],
+      "memory.current": [
+        373964800,
+        373964800,
+        373968896,
+        374226944
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        341401600,
+        341401600,
+        341401600,
+        341405696
+      ],
+      "memory.stat.file": [
+        2150400,
+        2150400,
+        2150400,
+        2150400
+      ],
+      "memory.stat.kernel": [
+        25231360,
+        25231360,
+        25235456,
+        25231360
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0,
+        0.09983319390762584
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0,
+        0.09983319390762584
+      ],
+      "memory.stat.shmem": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.slab": [
+        6303720,
+        6303720,
+        6303856,
+        6303720
+      ],
+      "memory.swap.current": [
+        4486344704,
+        4486344704,
+        4486344704,
+        4486340608
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "init.scope": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        3.9751816390757595,
+        587.3780000208124,
+        182.7945780448629
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        24.48711889670668,
+        3621.7460445651764,
+        1907.1135032173763
+      ],
+      "cpu.user_usec": [
+        20.51193725763092,
+        3034.4684338795237,
+        1724.3189251725134
+      ],
+      "io.rbytes": [
+        0,
+        0,
+        0
+      ],
+      "io.rios": [
+        0,
+        0,
+        0
+      ],
+      "io.wbytes": [
+        0,
+        0,
+        0
+      ],
+      "io.wios": [
+        0,
+        0,
+        0
+      ],
+      "memory.current": [
+        33902592,
+        33898496,
+        33906688,
+        33902592
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        18890752,
+        18890752,
+        18890752,
+        18890752
+      ],
+      "memory.stat.file": [
+        8908800,
+        8908800,
+        8908800,
+        8908800
+      ],
+      "memory.stat.kernel": [
+        6074368,
+        6070272,
+        6078464,
+        6074368
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.shmem": [
+        1581056,
+        1581056,
+        1581056,
+        1581056
+      ],
+      "memory.stat.slab": [
+        5355024,
+        5355024,
+        5355024,
+        5355024
+      ],
+      "memory.swap.current": [
+        1085440,
+        1085440,
+        1085440,
+        1085440
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "pids.current": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "proc-sys-fs-binfmt_misc.mount": {
+      "cpu.nr_periods": [
+        0,
+        0,
+        0
+      ],
+      "cpu.nr_throttled": [
+        0,
+        0,
+        0
+      ],
+      "cpu.system_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.throttled_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.usage_usec": [
+        0,
+        0,
+        0
+      ],
+      "cpu.user_usec": [
+        0,
+        0,
+        0
+      ],
+      "io.rbytes": [
+        0,
+        0,
+        0
+      ],
+      "io.rios": [
+        0,
+        0,
+        0
+      ],
+      "io.wbytes": [
+        0,
+        0,
+        0
+      ],
+      "io.wios": [
+        0,
+        0,
+        0
+      ],
+      "memory.current": [
+        4096,
+        4096,
+        4096,
+        4096
+      ],
+      "memory.events.oom": [
+        0,
+        0,
+        0
+      ],
+      "memory.events.oom_kill": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.anon": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.file": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.kernel": [
+        4096,
+        4096,
+        4096,
+        4096
+      ],
+      "memory.stat.pgfault": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.pgmajfault": [
+        0,
+        0,
+        0
+      ],
+      "memory.stat.shmem": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.stat.slab": [
+        3976,
+        3976,
+        3976,
+        3976
+      ],
+      "memory.swap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "memory.zswap.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "pids.current": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.cpu.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.io.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.full.avg10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "psi.memory.some.avg10": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "timestamp": 1770829204
+}
