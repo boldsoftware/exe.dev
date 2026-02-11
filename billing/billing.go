@@ -36,7 +36,7 @@ const (
 
 	// TestAPIKey is the Stripe test API key. It is safe to check into source code
 	// and easy to revoke should someone want to spam our test account.
-	TestAPIKey = "sk_test_51SjuBkGpGU0hqBfTJ2Bkl1cKcayvyCEpugA9WfvYFQLIV6qkfmM2lcgicYfG6yJUsDXdmlYx217xYE349efIFwAx00OiQwF5jA"
+	TestAPIKey = "sk_test_51SzRtTKBUWL0n1QN0OSXVllXJLOeM2JfcFDRLNJHeMpKVTgjaif5cDBhZ1jIcCv8cZFRoMb1YBnbYeXedaD1oQ3w00tOHZd9cF"
 )
 
 // Manager handles billing operations.
