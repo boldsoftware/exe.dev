@@ -42,6 +42,7 @@ var docTemplates = template.Must(func() (*template.Template, error) {
 
 var markdown = goldmark.New(
 	goldmark.WithExtensions(gmmeta.Meta),
+	goldmark.WithParserOptions(parser.WithAutoHeadingID()),
 	goldmark.WithRendererOptions(htmlrenderer.WithUnsafe()),
 )
 

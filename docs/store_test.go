@@ -339,6 +339,30 @@ func min(a, b int) int {
 	return b
 }
 
+func TestHeadingIDs(t *testing.T) {
+	entry, err := parseMarkdownDoc("test.md", []byte(`---
+title: Test
+---
+## Getting Started
+
+Some text.
+
+### Installation Guide
+
+More text.
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(entry.Content)
+	if !strings.Contains(content, `id="getting-started"`) {
+		t.Errorf("expected h2 to have id=\"getting-started\", got: %s", content)
+	}
+	if !strings.Contains(content, `id="installation-guide"`) {
+		t.Errorf("expected h3 to have id=\"installation-guide\", got: %s", content)
+	}
+}
+
 func TestHandlerDocsMdIndex(t *testing.T) {
 	store, err := Load(stage.Local())
 	if err != nil {

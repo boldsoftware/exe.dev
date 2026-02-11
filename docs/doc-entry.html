@@ -189,15 +189,20 @@
         line-height: 1.3;
       }
 
-      .doc-content h3.anchor-heading {
-        position: relative;
-      }
-
       .doc-content .anchor-link {
         margin-left: 8px;
         color: #cccccc;
         text-decoration: none;
         font-weight: 400;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+      }
+
+      .doc-content h1:hover .anchor-link,
+      .doc-content h2:hover .anchor-link,
+      .doc-content h3:hover .anchor-link,
+      .doc-content h4:hover .anchor-link {
+        opacity: 1;
       }
 
       .doc-content .anchor-link:hover {
@@ -506,6 +511,16 @@
           }, 2000);
         });
       }
+
+      document.querySelectorAll('.doc-content h1[id], .doc-content h2[id], .doc-content h3[id], .doc-content h4[id]').forEach(function(heading) {
+        if (heading.querySelector('.anchor-link')) return;
+        var a = document.createElement('a');
+        a.href = '#' + heading.id;
+        a.className = 'anchor-link';
+        a.setAttribute('aria-label', 'Link to this section');
+        a.textContent = '#';
+        heading.appendChild(a);
+      });
     </script>
   </body>
 </html>
