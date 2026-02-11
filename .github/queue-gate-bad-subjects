@@ -11,3 +11,4 @@
 #   1. Add the reverted commit's subject below.
 #   2. Push to main.
 execore: extract cp command from ssh command handlers
+statuspage: add status page service for exe.dev
