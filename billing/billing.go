@@ -37,12 +37,34 @@ func MakeCustomerDashboardURL(billingID string) string {
 var stripeKey = os.Getenv("STRIPE_SECRET_KEY")
 
 const (
-	DefaultPlan = "individual"
+	DefaultPlan         = "individual"
+	productIndividualID = "prod_individual"
+	productIndividual   = "Individual"
 
 	// TestAPIKey is the Stripe test API key. It is safe to check into source code
 	// and easy to revoke should someone want to spam our test account.
 	TestAPIKey = "sk_test_51SzRtTKBUWL0n1QN0OSXVllXJLOeM2JfcFDRLNJHeMpKVTgjaif5cDBhZ1jIcCv8cZFRoMb1YBnbYeXedaD1oQ3w00tOHZd9cF"
 )
+
+type managedPrice struct {
+	lookupKey   string
+	currency    stripe.Currency
+	unitAmount  int64
+	interval    stripe.PriceRecurringInterval
+	productID   string
+	productName string
+}
+
+var managedPrices = []managedPrice{
+	{
+		lookupKey:   DefaultPlan,
+		currency:    stripe.CurrencyUSD,
+		unitAmount:  2000,
+		interval:    stripe.PriceRecurringIntervalMonth,
+		productID:   productIndividualID,
+		productName: productIndividual,
+	},
+}
 
 // Manager handles billing operations.
 type Manager struct {
@@ -141,6 +163,106 @@ func (m *Manager) client() *stripe.Client {
 	}
 	apiKey := cmp.Or(m.APIKey, stripeKey)
 	return stripe.NewClient(apiKey, opts...)
+}
+
+// InstallPrices creates the Stripe products and prices used by billing if they
+// do not already exist.
+func (m *Manager) InstallPrices(ctx context.Context) error {
+	c := m.client()
+	for _, p := range managedPrices {
+		if err := m.ensureProduct(ctx, c, p.productID, p.productName); err != nil {
+			return err
+		}
+
+		found := false
+		for got, err := range c.V1Prices.List(ctx, &stripe.PriceListParams{
+			LookupKeys: []*string{new_(p.lookupKey)},
+			Active:     stripe.Bool(true),
+		}) {
+			if err != nil {
+				return fmt.Errorf("list active price %q: %w", p.lookupKey, err)
+			}
+			found = true
+			m.slog().InfoContext(ctx, "billing price already installed",
+				"lookup_key", p.lookupKey,
+				"price_id", got.ID,
+				"product_id", p.productID,
+			)
+			break
+		}
+		if found {
+			continue
+		}
+
+		recurringInterval := string(p.interval)
+		created, err := c.V1Prices.Create(ctx, &stripe.PriceCreateParams{
+			LookupKey:  new_(p.lookupKey),
+			Currency:   new_(string(p.currency)),
+			UnitAmount: new_(p.unitAmount),
+			Product:    new_(p.productID),
+			Recurring: &stripe.PriceCreateRecurringParams{
+				Interval: &recurringInterval,
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("create price %q: %w", p.lookupKey, err)
+		}
+		m.priceIDCache.Delete(p.lookupKey)
+
+		var requestID string
+		if created.LastResponse != nil {
+			requestID = created.LastResponse.RequestID
+		}
+		m.slog().InfoContext(ctx, "billing price installed",
+			"stripe_request_id", requestID,
+			"lookup_key", p.lookupKey,
+			"price_id", created.ID,
+			"product_id", p.productID,
+		)
+	}
+	return nil
+}
+
+func (m *Manager) ensureProduct(ctx context.Context, c *stripe.Client, id, name string) error {
+	product, err := c.V1Products.Retrieve(ctx, id, nil)
+	if err == nil {
+		var requestID string
+		if product.LastResponse != nil {
+			requestID = product.LastResponse.RequestID
+		}
+		m.slog().InfoContext(ctx, "billing product already installed",
+			"stripe_request_id", requestID,
+			"product_id", id,
+		)
+		return nil
+	}
+	if !isNotExists(err) {
+		return fmt.Errorf("retrieve product %q: %w", id, err)
+	}
+
+	created, err := c.V1Products.Create(ctx, &stripe.ProductCreateParams{
+		ID:   new_(id),
+		Name: new_(name),
+	})
+	if isExists(err) {
+		m.slog().InfoContext(ctx, "billing product already installed",
+			"product_id", id,
+		)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("create product %q: %w", id, err)
+	}
+
+	var requestID string
+	if created.LastResponse != nil {
+		requestID = created.LastResponse.RequestID
+	}
+	m.slog().InfoContext(ctx, "billing product installed",
+		"stripe_request_id", requestID,
+		"product_id", id,
+	)
+	return nil
 }
 
 func (m *Manager) upsertCustomer(ctx context.Context, billingID, email string) error {

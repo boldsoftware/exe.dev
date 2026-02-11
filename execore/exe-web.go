@@ -1465,8 +1465,8 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		}
 	}
 
-	// Fetch credit balance if credit purchases are enabled and user has a billing account
-	var creditBalance int64
+	// Fetch credit balance if credit purchases are enabled and user has a billing account.
+	creditBalance := tender.Zero()
 	if s.env.EnableCreditPurchases {
 		account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountByUserID, userID)
 		if err == nil {
@@ -1474,7 +1474,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 			if err != nil {
 				s.slog().ErrorContext(r.Context(), "failed to fetch credit balance", "error", err, "user_id", userID)
 			} else {
-				creditBalance = balance.Microcents()
+				creditBalance = balance
 			}
 		}
 	}

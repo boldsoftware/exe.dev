@@ -670,13 +670,13 @@
             <div class="info-card">
                 <div class="info-row">
                     <div class="info-label">Balance</div>
-                    <div class="info-value" id="credit-balance-usd" data-credit-balance-microcents="{{.CreditBalance}}">{{.CreditBalance}} microcents</div>
+                    <div class="info-value" id="credit-balance-usd" data-credit-balance-microcents="{{.CreditBalance.Microcents}}">{{.CreditBalance.String}}</div>
                 </div>
                 <div class="info-row">
                     <div class="info-label">Buy Credits</div>
                     <div class="info-value">
                         <form method="POST" action="/credits/buy" style="display: flex; gap: 8px; align-items: center;">
-                            $<input type="dollars" min="5" step="1" inputmode="numeric" placeholder="Purchase Amount in US Dollars" required style="padding: 6px 10px; border: 1px solid #e0e0e0; border-radius: 4px; font-family: inherit; font-size: 13px; width: 200px;">
+                            <input type="number" name="dollars" min="5" step="1" inputmode="numeric" placeholder="$5" required style="padding: 6px 10px; border: 1px solid #e0e0e0; border-radius: 4px; font-family: inherit; font-size: 13px; width: 200px;">
                             <button type="submit" class="btn">Buy</button>
                         </form>
                     </div>

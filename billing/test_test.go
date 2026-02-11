@@ -3,13 +3,10 @@ package billing
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -81,8 +78,8 @@ func newTestManager(t *testing.T) *Manager {
 		),
 	}
 
-	if err := installTestPrices(m); err != nil {
-		t.Fatalf("installTestPrices: %v", err)
+	if err := m.InstallPrices(t.Context()); err != nil {
+		t.Fatalf("InstallPrices: %v", err)
 	}
 
 	return m
@@ -229,123 +226,4 @@ func createTestAccount(t *testing.T, db *exesqlite.DB, accountID, userID string)
 	if err != nil {
 		t.Fatalf("createTestAccount: %v", err)
 	}
-}
-
-// installTestPrices reads prices.json and creates any prices that do not
-// already exist in Stripe.
-//
-// Using without a test API key is an error.
-//
-// It does not update existing prices.
-// If there is a conflict with an existing price in your Sandbox,
-// manually archive it and clear the lookup key to allow this to recreate it.
-func installTestPrices(m *Manager) error {
-	if !strings.Contains(m.APIKey, "_test_") {
-		return fmt.Errorf("client API key does not contain '_test_'")
-	}
-
-	data, err := os.ReadFile("prices.json")
-	if err != nil {
-		return fmt.Errorf("read prices.json: %w", err)
-	}
-
-	var priceList struct {
-		Data []*stripe.Price `json:"data"`
-	}
-	if err := json.Unmarshal(data, &priceList); err != nil {
-		return fmt.Errorf("unmarshal prices.json: %w", err)
-	}
-
-	ctx := context.Background()
-	c := m.client()
-
-	createdProducts := make(map[string]bool)
-	ensureProduct := func(id string) error {
-		if createdProducts[id] {
-			return nil
-		}
-
-		_, err := c.V1Products.Retrieve(ctx, id, nil)
-		if err == nil {
-			createdProducts[id] = true
-			return nil
-		}
-		if e, ok := errorz.AsType[*stripe.Error](err); ok && e.Code == stripe.ErrorCodeResourceMissing {
-			_, err := c.V1Products.Create(ctx, &stripe.ProductCreateParams{
-				ID:   new_(id),
-				Name: new_("Invididual"),
-			})
-			if err != nil {
-				return fmt.Errorf("create product %q: %w", id, err)
-			}
-			createdProducts[id] = true
-			return nil
-		}
-		return fmt.Errorf("retrieve product %q: %w", id, err)
-	}
-
-	for _, want := range priceList.Data {
-		if want.LookupKey == "" {
-			continue
-		}
-
-		if want.Product == nil || want.Product.ID == "" {
-			return fmt.Errorf("price %q: missing product ID in prices.json", want.LookupKey)
-		}
-		if err := ensureProduct(want.Product.ID); err != nil {
-			return err
-		}
-
-		// Check if price with this lookup key already exists
-		got := func() *stripe.Price {
-			for p, err := range c.V1Prices.List(ctx, &stripe.PriceListParams{
-				LookupKeys: []*string{&want.LookupKey},
-			}) {
-				if err == nil {
-					return p
-				}
-			}
-			return nil
-		}()
-		if got != nil {
-			// We'll write this one out in the .json and git-diff
-			// will tell us if anything changed.
-			continue
-		}
-
-		// Create the price
-		params := &stripe.PriceCreateParams{
-			LookupKey:  &want.LookupKey,
-			Currency:   new_(string(want.Currency)),
-			UnitAmount: &want.UnitAmount,
-			Product:    &want.Product.ID,
-		}
-
-		if want.Recurring != nil {
-			interval := string(want.Recurring.Interval)
-			params.Recurring = &stripe.PriceCreateRecurringParams{
-				Interval: &interval,
-			}
-			if want.Recurring.IntervalCount > 0 {
-				params.Recurring.IntervalCount = &want.Recurring.IntervalCount
-			}
-		}
-
-		_, err := c.V1Prices.Create(ctx, params)
-		if err != nil {
-			if !isStripeParamError(err, "lookup_key") {
-				return fmt.Errorf("create price %q: %w", want.LookupKey, err)
-			}
-		}
-	}
-
-	updatedJOSN, err := json.MarshalIndent(priceList, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal updated prices.json: %w", err)
-	}
-	if err := os.WriteFile("prices.json", updatedJOSN, 0o644); err != nil {
-		return fmt.Errorf("write updated prices.json: %w", err)
-	}
-
-	return nil
 }

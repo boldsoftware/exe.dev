@@ -42,6 +42,7 @@ import (
 	"time"
 
 	"exe.dev/billing"
+	"exe.dev/billing/tender"
 	"exe.dev/boxname"
 	"exe.dev/container"
 	docspkg "exe.dev/docs"
@@ -156,8 +157,8 @@ type UserPageData struct {
 	BillingStatus string // Billing status: "active", "canceled", "pending", or "" if no account
 
 	// Credits (staging only)
-	EnableCreditPurchases bool  // Whether to show credit purchase UI
-	CreditBalance         int64 // Current credit balance in microcents
+	EnableCreditPurchases bool // Whether to show credit purchase UI
+	CreditBalance         tender.Microcents
 }
 
 // TeamBoxDisplayInfo represents a team member's box for the dashboard
@@ -959,6 +960,15 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// Wire the billing manager's DB and Logger for credit operations.
 	s.billing.DB = s.db
 	s.billing.Logger = slog
+
+	if !cfg.Env.SkipBilling {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.billing.InstallPrices(ctx); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("install billing prices: %w", err)
+		}
+	}
 
 	// Initialize the limiter's internal cache by calling Allow once.
 	// This avoids an unimportant but distracting /debug panic after each deployment.

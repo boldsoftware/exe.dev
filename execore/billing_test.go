@@ -2251,6 +2251,9 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 	if !strings.Contains(body, "/credits/buy") {
 		t.Error("Expected credits buy form on profile page")
 	}
+	if !strings.Contains(body, "$0.00 USD") {
+		t.Error("Expected credit balance rendered in dollars and cents")
+	}
 }
 
 func TestCreditPurchase_BuyRedirectsToStripe(t *testing.T) {
@@ -2258,7 +2261,7 @@ func TestCreditPurchase_BuyRedirectsToStripe(t *testing.T) {
 	_, cookieValue := createUserWithAccount(t, server, "credits-buy@example.com", "exe_buy_credits")
 
 	form := url.Values{}
-	form.Add("amount", "100000") // 100000 microcents = $0.10
+	form.Add("dollars", "123")
 	req := httptest.NewRequest("POST", "/credits/buy", strings.NewReader(form.Encode()))
 	req.Host = server.env.WebHost
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -2289,7 +2292,7 @@ func TestCreditPurchase_BuyRequiresActiveBilling(t *testing.T) {
 	}
 
 	form := url.Values{}
-	form.Add("amount", "100000")
+	form.Add("dollars", "123")
 	req := httptest.NewRequest("POST", "/credits/buy", strings.NewReader(form.Encode()))
 	req.Host = server.env.WebHost
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -2328,7 +2331,7 @@ func TestCreditPurchase_BuyInvalidAmount(t *testing.T) {
 
 	// Test with zero amount
 	form := url.Values{}
-	form.Add("amount", "0")
+	form.Add("dollars", "0")
 	req = httptest.NewRequest("POST", "/credits/buy", strings.NewReader(form.Encode()))
 	req.Host = server.env.WebHost
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -2345,7 +2348,7 @@ func TestCreditPurchase_BuyRequiresAuth(t *testing.T) {
 	server := newTestServer(t)
 
 	form := url.Values{}
-	form.Add("amount", "100000")
+	form.Add("dollars", "123")
 	req := httptest.NewRequest("POST", "/credits/buy", strings.NewReader(form.Encode()))
 	req.Host = server.env.WebHost
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
