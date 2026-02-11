@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/billing/tender"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
 )
@@ -2426,7 +2427,7 @@ func TestCreditPurchase_BalanceUpdatesAfterSync(t *testing.T) {
 	}
 
 	// Check balance via UseCredits(0)
-	balance, err := server.billing.UseCredits(t.Context(), "exe_balance_credits", 0, 1)
+	balance, err := server.billing.UseCredits(t.Context(), "exe_balance_credits", 0, tender.Zero())
 	if err != nil && !strings.Contains(err.Error(), "no such table") {
 		t.Fatalf("UseCredits failed: %v", err)
 	}
@@ -2446,7 +2447,7 @@ func TestCreditPurchase_BalanceUpdatesAfterSync(t *testing.T) {
 		t.Error("Expected Credits section on profile page")
 	}
 	// If credit ledger table exists and balance was inserted, it should show
-	if err == nil && balance > 0 {
+	if err == nil && balance.Compare(tender.Zero()) > 0 {
 		if !strings.Contains(body, "500000") {
 			t.Errorf("Expected balance 500000 on profile page, body contains: %s", body[:min(500, len(body))])
 		}

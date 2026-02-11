@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"exe.dev/billing"
+	"exe.dev/billing/tender"
 	"exe.dev/boxname"
 	"exe.dev/cobble"
 	"exe.dev/domz"
@@ -1469,9 +1470,11 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	if s.env.EnableCreditPurchases {
 		account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountByUserID, userID)
 		if err == nil {
-			creditBalance, err = s.billing.UseCredits(r.Context(), account.ID, 0, 1)
+			balance, err := s.billing.UseCredits(r.Context(), account.ID, 0, tender.Zero())
 			if err != nil {
 				s.slog().ErrorContext(r.Context(), "failed to fetch credit balance", "error", err, "user_id", userID)
+			} else {
+				creditBalance = balance.Microcents()
 			}
 		}
 	}
@@ -1515,9 +1518,8 @@ func (s *Server) handleCreditsBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	amountStr := r.FormValue("amount")
-	amount, err := strconv.ParseInt(amountStr, 10, 64)
-	if err != nil || amount <= 0 {
+	dollars, err := strconv.ParseInt(r.FormValue("dollars"), 10, 64)
+	if err != nil || dollars <= 0 {
 		http.Error(w, "Invalid amount", http.StatusBadRequest)
 		return
 	}
@@ -1550,7 +1552,7 @@ func (s *Server) handleCreditsBuy(w http.ResponseWriter, r *http.Request) {
 	baseURL := getScheme(r) + "://" + r.Host
 	checkoutURL, err := s.billing.BuyCredits(r.Context(), account.ID, &billing.BuyCreditsParams{
 		Email:      user.Email,
-		Amount:     amount,
+		Amount:     tender.Mint(dollars*100, 0),
 		SuccessURL: baseURL + "/credits/success",
 		CancelURL:  baseURL + "/user",
 	})
@@ -1583,7 +1585,7 @@ func (s *Server) handleCreditsSuccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.billing.SyncCredits(r.Context(), account.ID, account.CreatedAt); err != nil {
+	if err := s.billing.SyncCredits(r.Context(), account.CreatedAt); err != nil {
 		s.slog().ErrorContext(r.Context(), "failed to sync credits", "error", err, "user_id", userID)
 	}
 

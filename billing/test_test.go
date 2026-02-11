@@ -74,6 +74,7 @@ func newTestManager(t *testing.T) *Manager {
 		LeveledLogger: &stripeErrorLogger{t: t},
 	})
 	m := &Manager{
+		DB:     newTestDB(t),
 		APIKey: TestAPIKey,
 		Client: stripe.NewClient(TestAPIKey,
 			stripe.WithBackends(backends),
@@ -153,10 +154,6 @@ func (tc *testClock) Sleep(d time.Duration) {
 	if err != nil {
 		tc.t.Fatalf("clock.Sleep(%v): %v", d, err)
 	}
-}
-
-func new_[T any](v T) *T {
-	return &v
 }
 
 func isStripeParamError(err error, param string) bool {

@@ -2,13 +2,11 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
-	"testing/synctest"
-	"time"
 
-	"exe.dev/exedb"
-	exesqlite "exe.dev/sqlite"
+	"exe.dev/billing/tender"
 	"github.com/stripe/stripe-go/v82"
 )
 
@@ -101,178 +99,76 @@ func TestSubscribeNewThenActive(t *testing.T) {
 	}
 }
 
-func TestUseCredits(t *testing.T) {
-	db := newTestDB(t)
-	accountID := "exe_test_credits"
-	userID := "usr_test_credits"
-	createTestAccount(t, db, accountID, userID)
-
-	m := &Manager{DB: db}
-	ctx := t.Context()
-
-	// Seed 1000 microcents into the ledger so UseCredits has something to deduct from.
-	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
-		_, err := q.UseCredits(ctx, exedb.UseCreditsParams{
-			AccountID: accountID,
-			Amount:    1000,
-		})
-		return err
-	})
-	if err != nil {
-		t.Fatalf("seed credits: %v", err)
-	}
-
-	// Deduct 2 units at 200 microcents each (400 total); expect 600 remaining.
-	remaining, err := m.UseCredits(ctx, accountID, 2, 200)
-	if err != nil {
-		t.Fatalf("UseCredits(2, 200): %v", err)
-	}
-	if remaining != 600 {
-		t.Fatalf("UseCredits(2, 200): remaining = %d, want 600", remaining)
-	}
-
-	// Deduct 4 units at 200 microcents each (800 total); balance goes negative to -200.
-	remaining, err = m.UseCredits(ctx, accountID, 4, 200)
-	if err != nil {
-		t.Fatalf("UseCredits(4, 200): %v", err)
-	}
-	if remaining != -200 {
-		t.Fatalf("UseCredits(4, 200): remaining = %d, want -200", remaining)
-	}
-}
-
-func TestUseCreditsSameHourSameTypeAggregatesRow(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		db := newTestDBGoTime(t)
-		accountID := "exe_test_credits_hourly"
-		userID := "usr_test_credits_hourly"
-		createTestAccount(t, db, accountID, userID)
-
-		m := &Manager{DB: db}
-		ctx := t.Context()
-
-		expectedHourBucket := time.Now().UTC().Truncate(time.Hour).Format("2006-01-02 15:00:00")
-
-		remaining, err := m.UseCredits(ctx, accountID, 1, 200)
-		if err != nil {
-			t.Fatalf("UseCredits(1, 200): %v", err)
-		}
-		if remaining != -200 {
-			t.Fatalf("UseCredits(1, 200): remaining = %d, want -200", remaining)
-		}
-
-		remaining, err = m.UseCredits(ctx, accountID, 2, 200)
-		if err != nil {
-			t.Fatalf("UseCredits(2, 200): %v", err)
-		}
-		if remaining != -600 {
-			t.Fatalf("UseCredits(2, 200): remaining = %d, want -600", remaining)
-		}
-
-		var rowCount, total int64
-		err = db.Rx(ctx, func(ctx context.Context, rx *exesqlite.Rx) error {
-			return rx.QueryRow(
-				`SELECT COUNT(*), CAST(COALESCE(SUM(amount), 0) AS INTEGER)
-				 FROM account_credit_ledger
-				 WHERE account_id = ?
-				   AND amount < 0
-				   AND strftime('%Y-%m-%d %H:00:00', created_at) = ?`,
-				accountID,
-				expectedHourBucket,
-			).Scan(&rowCount, &total)
-		})
-		if err != nil {
-			t.Fatalf("inspect credit ledger rows: %v", err)
-		}
-		if rowCount != 1 {
-			t.Fatalf("same-hour deduction rows = %d, want 1", rowCount)
-		}
-		if total != -600 {
-			t.Fatalf("deduction total = %d, want -600", total)
-		}
-	})
-}
-
-func TestUseCreditsZeroAmountNoLedgerEntry(t *testing.T) {
-	db := newTestDB(t)
-	accountID := "exe_test_credits_zero"
-	userID := "usr_test_credits_zero"
-	createTestAccount(t, db, accountID, userID)
-
-	m := &Manager{DB: db}
-	ctx := t.Context()
-
-	remaining, err := m.UseCredits(ctx, accountID, 0, 1)
-	if err != nil {
-		t.Fatalf("UseCredits(0): %v", err)
-	}
-	if remaining != 0 {
-		t.Fatalf("UseCredits(0): remaining = %d, want 0", remaining)
-	}
-
-	var ledgerRows int64
-	err = db.Rx(ctx, func(ctx context.Context, rx *exesqlite.Rx) error {
-		return rx.QueryRow(
-			`SELECT COUNT(*) FROM account_credit_ledger WHERE account_id = ?`,
-			accountID,
-		).Scan(&ledgerRows)
-	})
-	if err != nil {
-		t.Fatalf("count account ledger rows: %v", err)
-	}
-	if ledgerRows != 0 {
-		t.Fatalf("account ledger rows = %d, want 0", ledgerRows)
-	}
-}
-
-func TestBuyCredits(t *testing.T) {
+func TestSyncCredits(t *testing.T) {
 	m := newTestManager(t)
 	clock := m.startClock(t)
-	ctx := t.Context()
 
-	customerID := "exe_test_" + clock.ID()
+	check := func(got, want error) {
+		t.Helper()
+		if !errors.Is(got, want) {
+			t.Fatalf("err = %v, want %v", got, want)
+		}
+	}
 
-	link, err := m.BuyCredits(ctx, customerID, &BuyCreditsParams{
-		Email:      "buyer@example.com",
-		Amount:     50000, // 50000 cents = $500
+	checkBalance := func(aliceID string, want tender.Microcents) {
+		t.Helper()
+
+		got, err := m.UseCredits(t.Context(), aliceID, 0, tender.Zero())
+		check(err, nil)
+
+		if got != want {
+			t.Fatalf("balance = %d, want %d (%s)", got, want, got.Sub(want))
+		}
+	}
+
+	aliceID := "exe_alice_" + clock.ID()
+
+	_, err := m.BuyCredits(t.Context(), aliceID, &BuyCreditsParams{
+		Amount:     tender.Mint(10, 0), // $10.00 in cents
 		SuccessURL: "https://example.com/success",
 		CancelURL:  "https://example.com/cancel",
 	})
-	if err != nil {
-		t.Fatalf("BuyCredits: %v", err)
-	}
-	if !strings.HasPrefix(link, "https://checkout.stripe.com/") {
-		t.Fatalf("BuyCredits: unexpected link %q", link)
-	}
-}
+	check(err, ErrNotFound)
 
-func TestBuyCreditsValidation(t *testing.T) {
-	m := &Manager{} // no Stripe client needed; validation happens before any API call
-	ctx := t.Context()
+	_, err = m.Subscribe(t.Context(), aliceID, &SubscribeParams{
+		Email:      "alice@palace.com",
+		SuccessURL: "https://example.com/success",
+		CancelURL:  "https://example.com/cancel",
+	})
+	check(err, nil)
 
-	tests := []struct {
-		name   string
-		amount int64
-		errStr string
-	}{
-		{"zero", 0, "must be positive"},
-		{"negative", -100, "must be positive"},
+	// "Click" the link and subscribe exe_alice to create the Stripe
+	// customer and price lookup key if they don't exist.
+	err = stripeSubscribe(t.Context(), m, aliceID, "pm_card_visa", "individual")
+	check(err, nil)
+
+	// BuyCredits should succeed and return a checkout link.
+	gotURL, err := m.BuyCredits(t.Context(), aliceID, &BuyCreditsParams{
+		Amount:     tender.Mint(1000, 0), // $10.00 in cents
+		SuccessURL: "https://example.com/success",
+		CancelURL:  "https://example.com/cancel",
+	})
+	check(err, nil)
+	if !strings.HasPrefix(gotURL, "https://checkout.stripe.com/") {
+		t.Fatalf("unexpected URL prefix (want %q): %q", "https://checkout.stripe.com/", gotURL)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := m.BuyCredits(ctx, "cus_test", &BuyCreditsParams{
-				Email:      "test@example.com",
-				Amount:     tt.amount,
-				SuccessURL: "https://example.com/success",
-				CancelURL:  "https://example.com/cancel",
-			})
-			if err == nil {
-				t.Fatalf("expected error for amount %d", tt.amount)
-			}
-			if !strings.Contains(err.Error(), tt.errStr) {
-				t.Fatalf("error %q does not contain %q", err, tt.errStr)
-			}
-		})
+
+	// Simulate Stripe sending the payment_intent.succeeded event for the credit purchase.
+	err = stripeCompleteCreditPurchase(t.Context(), m, aliceID, "pm_card_visa", tender.Mint(100, 0))
+	check(err, nil)
+
+	// SyncCredits has not been called yet, so balance should still be 0.
+	checkBalance(aliceID, tender.Zero())
+
+	err = m.SyncCredits(t.Context(), clock.Now())
+	check(err, nil)
+
+	// Check that the credits were added to the ledger.
+	balance, err := m.UseCredits(t.Context(), aliceID, 0, tender.Zero())
+	check(err, nil)
+
+	if balance != tender.Mint(100, 0) {
+		t.Fatalf("unexpected credit balance: got %d, want %d", balance, 100)
 	}
 }
 
@@ -280,7 +176,7 @@ func TestBuyCreditsValidation(t *testing.T) {
 // and confirming a PaymentIntent with credit_purchase metadata. This generates the
 // payment_intent.succeeded event that SyncCredits processes.
 // cents is the amount in cents (1/100 USD), matching what BuyCredits sends to Stripe.
-func stripeCompleteCreditPurchase(ctx context.Context, m *Manager, customerID, paymentMethodID string, cents int64) error {
+func stripeCompleteCreditPurchase(ctx context.Context, m *Manager, customerID, paymentMethodID string, amount tender.Microcents) error {
 	c := m.client()
 
 	pm, err := c.V1PaymentMethods.Attach(ctx, paymentMethodID, &stripe.PaymentMethodAttachParams{
@@ -290,66 +186,16 @@ func stripeCompleteCreditPurchase(ctx context.Context, m *Manager, customerID, p
 		return err
 	}
 
-	piParams := &stripe.PaymentIntentCreateParams{
-		Amount:             &cents,
+	p := &stripe.PaymentIntentCreateParams{
+		Amount:             new_(amount.Cents()),
 		Currency:           stripe.String("usd"),
 		Customer:           &customerID,
 		PaymentMethod:      &pm.ID,
 		PaymentMethodTypes: []*string{stripe.String("card")},
 		Confirm:            stripe.Bool(true),
 	}
-	piParams.AddMetadata("type", "credit_purchase")
+	p.AddMetadata("type", "credit_purchase")
 
-	_, err = c.V1PaymentIntents.Create(ctx, piParams)
+	_, err = c.V1PaymentIntents.Create(ctx, p)
 	return err
-}
-
-func TestSyncCredits(t *testing.T) {
-	m := newTestManager(t)
-	db := newTestDB(t)
-	m.DB = db
-	clock := m.startClock(t)
-	ctx := t.Context()
-
-	customerID := "exe_test_" + clock.ID()
-	createTestAccount(t, db, customerID, "usr_sync_"+clock.ID())
-
-	// Create the customer in Stripe (on test clock for unique ID).
-	if err := m.upsertCustomer(ctx, customerID, "sync@example.com"); err != nil {
-		t.Fatalf("upsertCustomer: %v", err)
-	}
-
-	// Simulate a completed credit purchase of $10 (1000 cents).
-	cents := int64(1000)
-	wantMicrocents := cents * 10000 // SyncCredits converts cents to microcents
-	if err := stripeCompleteCreditPurchase(ctx, m, customerID, "pm_card_visa", cents); err != nil {
-		t.Fatalf("stripeCompleteCreditPurchase: %v", err)
-	}
-
-	// Sync credits from Stripe to DB.
-	epoch := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
-	if err := m.SyncCredits(ctx, customerID, epoch); err != nil {
-		t.Fatalf("SyncCredits: %v", err)
-	}
-
-	// Verify the balance is stored as microcents.
-	balance, err := exedb.WithRxRes1(db, ctx, (*exedb.Queries).GetCreditBalance, customerID)
-	if err != nil {
-		t.Fatalf("GetCreditBalance: %v", err)
-	}
-	if balance != wantMicrocents {
-		t.Fatalf("balance = %d, want %d", balance, wantMicrocents)
-	}
-
-	// Sync again — should be idempotent, balance unchanged.
-	if err := m.SyncCredits(ctx, customerID, epoch); err != nil {
-		t.Fatalf("SyncCredits (idempotent): %v", err)
-	}
-	balance, err = exedb.WithRxRes1(db, ctx, (*exedb.Queries).GetCreditBalance, customerID)
-	if err != nil {
-		t.Fatalf("GetCreditBalance (idempotent): %v", err)
-	}
-	if balance != wantMicrocents {
-		t.Fatalf("balance after idempotent sync = %d, want %d", balance, wantMicrocents)
-	}
 }

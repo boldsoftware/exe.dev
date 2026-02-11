@@ -281,6 +281,7 @@ require (
 	mvdan.cc/editorconfig v0.3.0 // indirect
 	mvdan.cc/gofumpt v0.9.2 // indirect
 	rsc.io/qr v0.2.0 // indirect
+	rsc.io/uncover v0.0.2 // indirect
 )
 
 tool (
@@ -291,4 +292,5 @@ tool (
 	honnef.co/go/tools/cmd/staticcheck
 	mvdan.cc/gofumpt
 	mvdan.cc/sh/v3/cmd/shfmt
+	rsc.io/uncover
 )

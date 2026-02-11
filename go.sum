@@ -862,5 +862,7 @@ mvdan.cc/sh/v3 v3.12.0 h1:ejKUR7ONP5bb+UGHGEG/k9V5+pRVIyD+LsZz7o8KHrI=
 mvdan.cc/sh/v3 v3.12.0/go.mod h1:Se6Cj17eYSn+sNooLZiEUnNNmNxg0imoYlTu4CyaGyg=
 rsc.io/qr v0.2.0 h1:6vBLea5/NRMVTz8V66gipeLycZMl/+UlFmk8DvqQ6WY=
 rsc.io/qr v0.2.0/go.mod h1:IF+uZjkb9fqyeF/4tlBoynqmQxUoPfWEKh921coOuXs=
+rsc.io/uncover v0.0.2 h1:7anlALtBEFwvUWBBRozrEc5Yr+M929gRLsEbRT1S86o=
+rsc.io/uncover v0.0.2/go.mod h1:k7n+WMJNnpUNlhNSIwNfi8O5WK4kF9oqZpFuyOP1IFQ=
 tailscale.com v1.86.5 h1:yBtWFjuLYDmxVnfnvPbZNZcKADCYgNfMd0rUAOA9XCs=
 tailscale.com v1.86.5/go.mod h1:Lm8dnzU2i/Emw15r6sl3FRNp/liSQ/nYw6ZSQvIdZ1M=

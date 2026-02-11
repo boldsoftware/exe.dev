@@ -4,6 +4,7 @@ package billing
 import (
 	"cmp"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,20 +15,24 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/billing/tender"
 	"exe.dev/errorz"
-	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"github.com/stripe/stripe-go/v82"
 	"tailscale.com/syncs"
 	"tailscale.com/types/result"
 )
 
+// Errors
+var (
+	ErrNotFound   = errors.New("not found")
+	ErrIncomplete = errors.New("incomplete")
+)
+
 // MakeCustomerDashboardURL returns the Stripe dashboard URL for a customer.
 func MakeCustomerDashboardURL(billingID string) string {
 	return "https://dashboard.stripe.com/customers/" + billingID
 }
-
-var ErrIncomplete = errors.New("incomplete")
 
 var stripeKey = os.Getenv("STRIPE_SECRET_KEY")
 
@@ -145,6 +150,10 @@ func (m *Manager) upsertCustomer(ctx context.Context, billingID, email string) e
 	}
 	params.AddExtra("id", billingID)
 	if m.testClockID != "" {
+		m.slog().DebugContext(ctx, "using test clock for customer creation",
+			"billing_id", billingID,
+			"test_clock_id", m.testClockID,
+		)
 		params.TestClock = &m.testClockID
 	}
 
@@ -186,6 +195,11 @@ func (m *Manager) upsertCustomer(ctx context.Context, billingID, email string) e
 func isExists(err error) bool {
 	stripeErr, ok := errorz.AsType[*stripe.Error](err)
 	return ok && stripeErr.Code == stripe.ErrorCodeResourceAlreadyExists
+}
+
+func isNotExists(err error) bool {
+	stripeErr, ok := errorz.AsType[*stripe.Error](err)
+	return ok && stripeErr.Code == stripe.ErrorCodeResourceMissing
 }
 
 // Subscribe generates a payment link for subscribing an account to a plan.
@@ -533,9 +547,12 @@ func (m *Manager) SubscriptionEvents(ctx context.Context, since time.Time) iter.
 
 		// Continue polling on interval
 		for {
-			_, err := poll()
+			stop, err := poll()
 			if err != nil && !errors.Is(err, context.Canceled) {
 				logErr(err)
+				return
+			}
+			if stop {
 				return
 			}
 			select {
@@ -547,25 +564,40 @@ func (m *Manager) SubscriptionEvents(ctx context.Context, since time.Time) iter.
 	}
 }
 
-// UseCredits deducts credits from the account's credit balance.
-// total is the number of units consumed and perUnit is the price
-// per unit in microcents. The deduction is total * perUnit.
-// UseCredits does not verify whether the account has active billing.
-// Callers that require that check should validate billing status first.
-// Negative balances are allowed — deductions always succeed.
-// Returns the remaining balance in microcents after deduction.
-func (m *Manager) UseCredits(ctx context.Context, billingID string, total, perUnit int64) (remaining int64, _ error) {
-	return exedb.WithTxRes0(m.DB, ctx, func(q *exedb.Queries, ctx context.Context) (int64, error) {
-		if total == 0 || perUnit == 0 {
-			return q.GetCreditBalance(ctx, billingID)
+func (m *Manager) UseCredits(ctx context.Context, billingID string, quantity int, unitPrice tender.Microcents) (remaining tender.Microcents, _ error) {
+	const q = `
+		-- Insert a new credit deduction for the current hour and credit type,
+		-- or update the existing one if it already exists,
+		-- and return the new total balance for the account after the deduction for all types.
+		INSERT INTO account_credit_ledger (account_id, amount, hour_bucket, credit_type)
+		VALUES (@accountID, @amount, @hourBucket, @creditType)
+		ON CONFLICT(account_id, hour_bucket, credit_type) DO
+			UPDATE SET amount = account_credit_ledger.amount + excluded.amount
+		RETURNING (
+			-- Return the new balance after deduction
+			SELECT CAST(COALESCE(SUM(amount), 0) AS INTEGER)
+			FROM account_credit_ledger
+			WHERE account_id = @accountID
+		)
+	`
+
+	for rows, err := range m.query(ctx, q,
+		sql.Named("accountID", billingID),
+		sql.Named("amount", tender.Mint(int64(quantity)*unitPrice.Cents(), 0)),
+		sql.Named("hourBucket", time.Now().UTC().Truncate(time.Hour).Format("2006-01-02 15:00:00")),
+		sql.Named("creditType", "usage"),
+	) {
+		if err != nil {
+			return tender.Zero(), err
 		}
-		creditType := "usage"
-		return q.UseCredits(ctx, exedb.UseCreditsParams{
-			AccountID:  billingID,
-			Amount:     -(total * perUnit),
-			CreditType: &creditType,
-		})
-	})
+		var rem tender.Microcents
+		if err := rows.Scan(&rem); err != nil {
+			return tender.Zero(), err
+		}
+		return rem, nil
+	}
+
+	return tender.Zero(), errors.New("UseCredits: query returned no rows (but should have)")
 }
 
 // BuyCreditsParams contains the parameters for purchasing credits.
@@ -573,8 +605,8 @@ type BuyCreditsParams struct {
 	// Email is the customer's email address.
 	Email string
 
-	// Amount is the number of cents to purchase (1 cent = 1/100 USD).
-	Amount int64
+	// The amount of credits to purchase, in microcents. Must be positive.
+	Amount tender.Microcents
 
 	// SuccessURL is the URL to redirect to after successful checkout.
 	SuccessURL string
@@ -587,12 +619,8 @@ type BuyCreditsParams struct {
 // It returns the checkout URL for the customer to complete payment.
 // The amount is specified in cents and stored as microcents in the database.
 func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCreditsParams) (checkoutURL string, _ error) {
-	if p.Amount <= 0 {
+	if p.Amount.IsWorthless() {
 		return "", fmt.Errorf("amount must be positive, got %d", p.Amount)
-	}
-	err := m.upsertCustomer(ctx, billingID, p.Email)
-	if err != nil {
-		return "", fmt.Errorf("upsert customer: %w", err)
 	}
 
 	c := m.client()
@@ -608,7 +636,7 @@ func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCredit
 					ProductData: &stripe.CheckoutSessionCreateLineItemPriceDataProductDataParams{
 						Name: stripe.String("Account Credits"),
 					},
-					UnitAmount: &p.Amount,
+					UnitAmount: new_(p.Amount.Cents()),
 				},
 				Quantity: stripe.Int64(1),
 			},
@@ -624,6 +652,9 @@ func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCredit
 	}
 
 	sess, err := c.V1CheckoutSessions.Create(ctx, params)
+	if isNotExists(err) {
+		return "", fmt.Errorf("%w: stripe customer with billing ID %q", ErrNotFound, billingID)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -645,45 +676,84 @@ func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCredit
 // and records them in the database. Each event is processed idempotently.
 // It looks for payment_intent.succeeded events with credit_purchase metadata,
 // which are generated when a BuyCredits checkout session is completed.
-func (m *Manager) SyncCredits(ctx context.Context, billingID string, since time.Time) error {
+func (m *Manager) SyncCredits(ctx context.Context, since time.Time) error {
 	c := m.client()
 
 	params := &stripe.PaymentIntentListParams{
-		Customer: stripe.String(billingID),
 		CreatedRange: &stripe.RangeQueryParams{
 			GreaterThan: since.Unix(),
 		},
 	}
 
-	for pi, err := range c.V1PaymentIntents.List(ctx, params) {
+	for intent, err := range c.V1PaymentIntents.List(ctx, params) {
 		if err != nil {
 			return fmt.Errorf("list payment intents: %w", err)
 		}
 
-		if pi.Status != stripe.PaymentIntentStatusSucceeded {
+		if intent.Status != stripe.PaymentIntentStatusSucceeded {
 			continue
 		}
-		if pi.Metadata["type"] != "credit_purchase" {
+		if intent.Metadata["type"] != "credit_purchase" {
 			continue
 		}
 
-		microcents := pi.Amount * 10000 // cents to microcents
+		// TODO(bmizrany): bulk insert?
+		const q = `
+			INSERT OR IGNORE INTO account_credit_ledger (account_id, amount, stripe_event_id)
+			VALUES (@accountID, @amount, @stripeEventID)
+		`
 
-		if err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
-			return q.SyncCreditLedger(ctx, exedb.SyncCreditLedgerParams{
-				AccountID:     billingID,
-				Amount:        microcents,
-				StripeEventID: &pi.ID,
-			})
-		}); err != nil {
-			return fmt.Errorf("sync credit purchase %s: %w", pi.ID, err)
+		amount := tender.Mint(intent.Amount, 0)
+		err := m.exec(ctx, q,
+			sql.Named("accountID", intent.Customer.ID),
+			sql.Named("amount", amount),
+			sql.Named("stripeEventID", intent.ID),
+		)
+		if err != nil {
+			return fmt.Errorf("insert credit ledger entry: %w", err)
 		}
 
 		m.slog().InfoContext(ctx, "credit purchase synced",
-			"pi_id", pi.ID,
-			"billing_id", billingID,
-			"microcents", microcents,
+			"pi_id", intent.ID,
+			"billing_id", intent.Customer.ID,
+			"amount", amount,
 		)
 	}
 	return nil
+}
+
+func new_[T any](v T) *T {
+	return &v
+}
+
+func (m *Manager) exec(ctx context.Context, q string, args ...any) error {
+	for _, err := range m.query(ctx, q, args...) {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func (m *Manager) query(ctx context.Context, q string, args ...any) iter.Seq2[*sql.Rows, error] {
+	return func(yield func(*sql.Rows, error) bool) {
+		err := m.DB.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+			rows, err := tx.Query(q, args...)
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+
+			for rows.Next() {
+				if !yield(rows, nil) {
+					break
+				}
+			}
+			return rows.Err()
+		})
+		if err != nil {
+			yield(nil, err)
+		}
+	}
 }
