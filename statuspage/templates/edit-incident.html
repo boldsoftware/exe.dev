@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>exe.dev status - edit incident</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<div class="container">
+<div class="header">
+<h1><a href="/">exe.dev status</a></h1>
+<span class="header-links">{{.Username}} &middot; <a href="/private">Back</a></span>
+</div>
+
+{{if .Msg}}<div class="msg">{{.Msg}}</div>{{end}}
+
+<div class="section">
+<h2>Edit incident</h2>
+<form method="POST" action="/private/incident/edit">
+<input type="hidden" name="id" value="{{.Incident.ID}}">
+<label>Title</label>
+<input type="text" name="title" value="{{.Incident.Title}}" required>
+<label>Description</label>
+<textarea name="description">{{.Incident.Description}}</textarea>
+<label>Started at (UTC)</label>
+<input type="text" name="started_at" value="{{.Incident.StartedAt}}">
+<label>Resolved at (UTC, leave empty if ongoing)</label>
+<input type="text" name="resolved_at" value="{{.Incident.ResolvedAt}}">
+<button type="submit">Save</button>
+</form>
+</div>
+</div>
+</body>
+</html>

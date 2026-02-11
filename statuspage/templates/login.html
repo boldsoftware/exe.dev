@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>exe.dev status - login</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<div class="login-wrapper">
+<div class="login">
+<h1>Status admin</h1>
+{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+<form method="POST" action="/private/login">
+<label>Username</label>
+<input type="text" name="username" autocomplete="username" required>
+<label>Password</label>
+<input type="password" name="password" autocomplete="current-password" required>
+<button type="submit">Log in</button>
+</form>
+</div>
+</div>
+</body>
+</html>

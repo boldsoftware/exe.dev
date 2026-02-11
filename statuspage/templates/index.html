@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>exe.dev status</title>
+<link rel="alternate" type="application/rss+xml" title="exe.dev status" href="/feed.xml">
+<style>{{.CSS}}</style>
+</head>
+<body>
+<div class="container">
+<div class="header">
+<h1><a href="/">exe.dev status</a></h1>
+<div class="header-links">
+{{if .LoggedIn}}<a href="/private">Admin</a> &middot; {{end}}<a href="/feed.xml">RSS</a>
+</div>
+</div>
+
+{{if .AllClear}}
+<div class="status-banner status-ok">All systems operational</div>
+{{else}}
+<div class="status-banner status-incident">Ongoing incident</div>
+{{end}}
+
+<div class="bar-chart">
+{{range .Days}}<div class="bar {{if .HasEvent}}bar-incident{{else}}bar-ok{{end}}" data-date="{{.Date}}"></div>{{end}}
+</div>
+<div class="bar-label"><span>90 days ago</span><span>Today</span></div>
+
+{{if .Active}}
+<h2>Active incidents</h2>
+{{range .Active}}
+<div class="incident">
+<div class="incident-title">{{.Title}}</div>
+<div class="incident-meta">Started {{.StartedAt}} UTC</div>
+{{if .Description}}<div class="incident-desc">{{.Description}}</div>{{end}}
+</div>
+{{end}}
+{{end}}
+
+{{if .Past}}
+<h2>Past incidents</h2>
+{{range .Past}}
+<div class="incident">
+<div class="incident-title">{{.Title}}</div>
+<div class="incident-meta">{{.StartedAt}} &mdash; {{.ResolvedAt}} UTC</div>
+{{if .Description}}<div class="incident-desc">{{.Description}}</div>{{end}}
+</div>
+{{end}}
+{{else}}
+{{if .AllClear}}<p class="empty">No past incidents.</p>{{end}}
+{{end}}
+</div>
+</body>
+</html>

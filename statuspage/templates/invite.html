@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>exe.dev status - create account</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<div class="login-wrapper">
+<div class="login">
+<h1>Create account</h1>
+{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+{{if .Token}}
+<form method="POST" action="/invite/{{.Token}}">
+<label>Username</label>
+<input type="text" name="username" autocomplete="username" required>
+<label>Password</label>
+<input type="password" name="password" autocomplete="new-password" required>
+<button type="submit">Create account</button>
+</form>
+{{end}}
+</div>
+</div>
+</body>
+</html>

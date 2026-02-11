@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>exe.dev status - admin</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<div class="container">
+<div class="header">
+<h1><a href="/">exe.dev status</a></h1>
+<span class="header-links">{{.Username}} &middot; <a href="/private/logout">Log out</a></span>
+</div>
+
+{{if .Msg}}<div class="msg">{{.Msg}}</div>{{end}}
+
+<div class="section">
+<h2>Declare incident</h2>
+<form method="POST" action="/private/incident/create">
+<label>Title</label>
+<input type="text" name="title" placeholder="Brief description" required>
+<label>Description (optional)</label>
+<textarea name="description" placeholder="Details..."></textarea>
+<button type="submit">Declare incident</button>
+</form>
+</div>
+
+{{if .Active}}
+<div class="section">
+<h2>Active incidents</h2>
+{{range .Active}}
+<div class="incident-row">
+<div class="incident-info">
+<div class="incident-title">{{.Title}}</div>
+<div class="incident-meta">Started {{.StartedAt}} UTC</div>
+</div>
+<div class="incident-actions">
+<a href="/private/incident/edit?id={{.ID}}"><button type="button">Edit</button></a>
+<form method="POST" action="/private/incident/resolve" class="inline-form">
+<input type="hidden" name="id" value="{{.ID}}">
+<button type="submit">Resolve</button>
+</form>
+</div>
+</div>
+{{end}}
+</div>
+{{end}}
+
+{{if .Past}}
+<div class="section">
+<h2>Past incidents</h2>
+{{range .Past}}
+<div class="incident-row">
+<div class="incident-info">
+<div class="incident-title">{{.Title}}</div>
+<div class="incident-meta">{{.StartedAt}} &mdash; {{.ResolvedAt}} UTC</div>
+</div>
+<div class="incident-actions">
+<a href="/private/incident/edit?id={{.ID}}"><button type="button">Edit</button></a>
+<form method="POST" action="/private/incident/delete" class="inline-form">
+<input type="hidden" name="id" value="{{.ID}}">
+<button type="submit" class="btn-danger">Delete</button>
+</form>
+</div>
+</div>
+{{end}}
+</div>
+{{end}}
+
+<div class="section">
+<h2>Change password</h2>
+<form method="POST" action="/private/password">
+<label>Current password</label>
+<input type="password" name="old_password" required>
+<div class="field-row">
+<div>
+<label>New password</label>
+<input type="password" name="new_password_self" required>
+</div>
+<button type="submit">Change</button>
+</div>
+</form>
+</div>
+
+<div class="section">
+<h2>Users</h2>
+{{range .Users}}
+<div class="user-row">
+<span>{{.Username}}</span>
+{{if ne .ID $.UserID}}
+<form method="POST" action="/private/user/delete" class="inline-form">
+<input type="hidden" name="user_id" value="{{.ID}}">
+<button type="submit" class="btn-danger">Delete</button>
+</form>
+{{end}}
+</div>
+{{end}}
+<h2 style="margin-top: 20px;">Add user</h2>
+<form method="POST" action="/private/user/create">
+<div class="field-row">
+<div>
+<label>Username</label>
+<input type="text" name="new_username" required>
+</div>
+<div>
+<label>Password</label>
+<input type="password" name="new_password" required>
+</div>
+<button type="submit">Add</button>
+</div>
+</form>
+</div>
+
+<div class="section">
+<h2>Invite links</h2>
+<form method="POST" action="/private/invite/create" style="margin-bottom: 16px;">
+<button type="submit">Create invite link</button>
+</form>
+{{range .Invites}}
+<div class="invite-row">
+{{if .UsedBy}}
+<span class="invite-used">Used by {{.UsedBy}}</span>
+<span class="incident-meta">Created by {{.CreatedBy}} on {{.CreatedAt}}</span>
+{{else}}
+<div class="invite-link"><code>https://status.exe.dev/invite/{{.Token}}</code></div>
+<div class="invite-meta">
+<span class="incident-meta">Created by {{.CreatedBy}} on {{.CreatedAt}}</span>
+<form method="POST" action="/private/invite/revoke" class="inline-form">
+<input type="hidden" name="token" value="{{.Token}}">
+<button type="submit" class="btn-danger">Revoke</button>
+</form>
+</div>
+{{end}}
+</div>
+{{end}}
+</div>
+</div>
+</body>
+</html>
