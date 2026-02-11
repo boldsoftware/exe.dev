@@ -1,0 +1,14 @@
+[Unit]
+Description=cgtop cgroup viewer
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cgtop -http :9090
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cgtop</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 12px; background: #fff; color: #24292f; }
+
+#topbar {
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  padding: 8px 12px; background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+}
+#topbar .label { color: #57606a; }
+#topbar .value { color: #24292f; font-weight: bold; }
+
+.cpu-bar {
+  display: inline-flex; width: 120px; height: 14px; background: #eaeef2;
+  border-radius: 2px; overflow: hidden; vertical-align: middle;
+}
+.cpu-bar .user { background: #2da44e; }
+.cpu-bar .sys { background: #bf8700; }
+.cpu-bar .iowait { background: #cf222e; }
+
+.psi-badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 11px; font-weight: bold; }
+.psi-green { background: #dafbe1; color: #1a7f37; }
+.psi-yellow { background: #fff8c5; color: #9a6700; }
+.psi-red { background: #ffebe9; color: #cf222e; }
+
+#nav {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 6px 12px; background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+}
+#breadcrumbs { display: flex; align-items: center; gap: 4px; }
+#breadcrumbs a { color: #0969da; text-decoration: none; cursor: pointer; }
+#breadcrumbs a:hover { text-decoration: underline; }
+#breadcrumbs .sep { color: #8c959f; }
+
+#col-controls {
+  display: flex; gap: 4px; flex-wrap: wrap; align-items: center;
+  padding: 4px 12px; background: #fff; border-bottom: 1px solid #d0d7de;
+}
+.col-btn {
+  padding: 2px 8px; border: 1px solid #d0d7de; border-radius: 12px;
+  background: #fff; cursor: pointer; font-size: 11px; font-family: inherit;
+  color: #57606a; transition: all 0.15s;
+}
+.col-btn:hover { background: #f6f8fa; }
+.col-btn.spark { background: #0969da; color: #fff; border-color: #0969da; }
+.col-btn.spark:hover { background: #0860ca; }
+.col-btn.cfg.spark { background: #8250df; color: #fff; border-color: #8250df; }
+.col-btn.cfg.spark:hover { background: #7240cf; }
+.col-btn.vals { background: #ddf4ff; color: #0969da; border-color: #54aeff; }
+.col-btn.vals:hover { background: #c8ebff; }
+.col-btn.cfg.vals { background: #fbefff; color: #8250df; border-color: #d8b9ff; }
+.col-btn.cfg.vals:hover { background: #f0dfff; }
+.col-btn.mode { border-style: dashed; }
+.col-btn.mode.active { border-style: solid; background: #24292f; color: #fff; border-color: #24292f; }
+
+#table-wrap { overflow-x: auto; }
+
+table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+th {
+  background: #f6f8fa; color: #57606a;
+  text-align: right; padding: 3px 8px; border-bottom: 1px solid #d0d7de;
+  font-weight: normal; font-size: 11px;
+}
+th.name-col {
+  text-align: left; position: sticky; left: 0; z-index: 4; background: #f6f8fa;
+  min-width: 200px;
+}
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: #24292f; background: #eaeef2; }
+th.sorted { color: #24292f; font-weight: bold; }
+th.cfg-col { color: #8250df; }
+th.group-start { border-left: 2px solid #d0d7de; }
+
+th.group-header {
+  text-align: center; font-weight: bold; color: #24292f; font-size: 11px; padding: 2px 4px;
+}
+th.group-header.cfg-group { color: #8250df; }
+
+th.help-cell { padding: 1px 8px; font-size: 10px; border-bottom: 2px solid #d0d7de; }
+
+.info-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 13px; height: 13px; border-radius: 50%;
+  border: 1px solid #c9d1d9; color: #8c959f;
+  font-size: 9px; font-family: Georgia, serif; font-style: italic;
+  text-decoration: none; line-height: 1; vertical-align: middle;
+}
+.info-icon:hover { border-color: #0969da; color: #0969da; }
+
+.sort-arrow { font-size: 9px; margin-left: 2px; }
+
+td {
+  padding: 2px 8px; border-bottom: 1px solid #eaeef2; text-align: right;
+  vertical-align: middle;
+}
+td:first-child {
+  text-align: left; position: sticky; left: 0; z-index: 1;
+  background: #fff;
+}
+td.group-start { border-left: 2px solid #eaeef2; }
+
+tr:hover td { background: #f6f8fa; }
+tr:hover td:first-child { background: #f6f8fa; }
+
+.name-cell { display: flex; align-items: center; }
+.toggle {
+  display: inline-block; width: 16px; text-align: center; cursor: pointer;
+  color: #8c959f; user-select: none; flex-shrink: 0;
+}
+.toggle:hover { color: #24292f; }
+.cg-name { cursor: default; }
+.cg-name.clickable { cursor: pointer; color: #0969da; }
+.cg-name.clickable:hover { text-decoration: underline; }
+
+.spark { vertical-align: middle; margin-right: 3px; }
+.spark polyline { fill: none; stroke: #0969da; stroke-width: 1.5; }
+
+.zero { color: #8c959f; }
+</style>
+</head>
+<body>
+<div id="topbar"></div>
+<div id="nav"><div id="breadcrumbs"></div></div>
+<div id="col-controls"></div>
+<div id="table-wrap">
+<table>
+<thead id="thead"></thead>
+<tbody id="tbody"></tbody>
+</table>
+</div>
+
+<script>
+'use strict';
+
+const DOCS = 'https://docs.kernel.org/admin-guide/cgroup-v2.html';
+const DOC_CPU = DOCS + '#cpu-interface-files';
+const DOC_MEM = DOCS + '#memory-interface-files';
+const DOC_IO = DOCS + '#io-interface-files';
+const DOC_PID = DOCS + '#pid-interface-files';
+const DOC_PSI = 'https://docs.kernel.org/accounting/psi.html';
+
+let currentRoot = '';
+let collapsed = {};
+let data = null;
+let sortKey = null;
+let sortSrc = 'stats';
+let sortDir = 'desc';
+let treeMode = true;
+
+const columnGroups = [
+  { id: 'cpu', label: 'CPU', on: true, columns: [
+    { key: 'cpu.usage_usec', label: 'CPU%', src: 'rates', fmt: fmtCpuPct, spark: true, doc: DOC_CPU,
+      help: 'Total CPU as % of one core (cpu.stat usage_usec rate)' },
+    { key: 'cpu.user_usec', label: 'Usr%', src: 'rates', fmt: fmtCpuPct, spark: true, doc: DOC_CPU,
+      help: 'User CPU as % of one core' },
+    { key: 'cpu.system_usec', label: 'Sys%', src: 'rates', fmt: fmtCpuPct, spark: true, doc: DOC_CPU,
+      help: 'System CPU as % of one core' },
+  ]},
+  { id: 'cpu_throttle', label: 'Throttle', on: false, columns: [
+    { key: 'cpu.throttled_usec', label: 'Throt', src: 'rates', fmt: fmtUsecRate, spark: true, doc: DOC_CPU,
+      help: 'Time throttled per second (cpu.stat throttled_usec rate)' },
+    { key: 'cpu.nr_throttled', label: 'NrThr/s', src: 'rates', fmt: fmtRate, spark: true, doc: DOC_CPU,
+      help: 'Throttle events per second' },
+    { key: 'cpu.nr_periods', label: 'Per/s', src: 'rates', fmt: fmtRate, spark: true, doc: DOC_CPU,
+      help: 'Enforcement periods per second' },
+  ]},
+  { id: 'cpu_cfg', label: 'CPU Limits', on: false, cfg: true, columns: [
+    { key: 'cpu.weight', label: 'Wt', src: 'config', doc: DOC_CPU,
+      help: 'cpu.weight [1..10000], default 100' },
+    { key: 'cpu.max', label: 'Max', src: 'config', doc: DOC_CPU,
+      help: 'cpu.max: "quota period" in usec, or "max period"' },
+    { key: 'cpu.max.burst', label: 'Burst', src: 'config', doc: DOC_CPU,
+      help: 'cpu.max.burst: burst budget in usec' },
+    { key: 'cpu.idle', label: 'Idle', src: 'config', doc: DOC_CPU,
+      help: 'cpu.idle: 1 = low-priority, only runs on idle CPUs' },
+  ]},
+  { id: 'mem', label: 'Memory', on: true, columns: [
+    { key: 'memory.current', label: 'Mem', src: 'stats', fmt: fmtBytes, spark: true, doc: DOC_MEM,
+      help: 'memory.current: total memory usage' },
+    { key: 'memory.peak', label: 'Peak', src: 'stats', fmt: fmtBytes, doc: DOC_MEM,
+      help: 'memory.peak: historical maximum' },
+  ]},
+  { id: 'mem_detail', label: 'Mem Detail', on: false, columns: [
+    { key: 'memory.stat.anon', label: 'Anon', src: 'stats', fmt: fmtBytes, spark: true, doc: DOC_MEM,
+      help: 'Anonymous memory (heap, stack, mmap)' },
+    { key: 'memory.stat.file', label: 'File', src: 'stats', fmt: fmtBytes, spark: true, doc: DOC_MEM,
+      help: 'Page cache (file-backed)' },
+    { key: 'memory.stat.kernel', label: 'Kern', src: 'stats', fmt: fmtBytes, spark: true, doc: DOC_MEM,
+      help: 'Kernel memory (stacks, pagetables, etc.)' },
+    { key: 'memory.stat.shmem', label: 'Shm', src: 'stats', fmt: fmtBytes, spark: true, doc: DOC_MEM,
+      help: 'Shared memory (tmpfs, shmem)' },
+    { key: 'memory.stat.slab', label: 'Slab', src: 'stats', fmt: fmtBytes, spark: true, doc: DOC_MEM,
+      help: 'Kernel slab allocator' },
+  ]},
+  { id: 'mem_cfg', label: 'Mem Limits', on: false, cfg: true, columns: [
+    { key: 'memory.min', label: 'Min', src: 'config', fmt: fmtBytesOrMax, doc: DOC_MEM,
+      help: 'memory.min: hard memory protection, never reclaimed' },
+    { key: 'memory.low', label: 'Low', src: 'config', fmt: fmtBytesOrMax, doc: DOC_MEM,
+      help: 'memory.low: best-effort memory protection' },
+    { key: 'memory.high', label: 'High', src: 'config', fmt: fmtBytesOrMax, doc: DOC_MEM,
+      help: 'memory.high: throttle + reclaim above this' },
+    { key: 'memory.max', label: 'Max', src: 'config', fmt: fmtBytesOrMax, doc: DOC_MEM,
+      help: 'memory.max: hard limit, OOM kills above this' },
+    { key: 'memory.oom.group', label: 'OOMGrp', src: 'config', doc: DOC_MEM,
+      help: 'memory.oom.group: 1 = kill entire cgroup on OOM' },
+  ]},
+  { id: 'mem_events', label: 'Mem Events', on: false, columns: [
+    { key: 'memory.events.oom_kill', label: 'OOMKill/s', src: 'rates', fmt: fmtRate, spark: true, doc: DOC_MEM,
+      help: 'OOM kills per second' },
+    { key: 'memory.events.oom', label: 'OOM/s', src: 'rates', fmt: fmtRate, spark: true, doc: DOC_MEM,
+      help: 'OOM events per second (may be throttled, not killed)' },
+    { key: 'memory.stat.pgfault', label: 'PgFlt/s', src: 'rates', fmt: fmtRate, spark: true, doc: DOC_MEM,
+      help: 'Page faults per second (minor + major)' },
+    { key: 'memory.stat.pgmajfault', label: 'MjFlt/s', src: 'rates', fmt: fmtRate, spark: true, doc: DOC_MEM,
+      help: 'Major page faults per second (disk IO required)' },
+  ]},
+  { id: 'swap', label: 'Swap', on: false, columns: [
+    { key: 'memory.swap.current', label: 'Swap', src: 'stats', fmt: fmtBytes, spark: true, doc: DOC_MEM,
+      help: 'memory.swap.current' },
+    { key: 'memory.swap.peak', label: 'SwPk', src: 'stats', fmt: fmtBytes, doc: DOC_MEM,
+      help: 'memory.swap.peak' },
+    { key: 'memory.zswap.current', label: 'Zswap', src: 'stats', fmt: fmtBytes, spark: true, doc: DOC_MEM,
+      help: 'memory.zswap.current: compressed swap in memory' },
+  ]},
+  { id: 'swap_cfg', label: 'Swap Limits', on: false, cfg: true, columns: [
+    { key: 'memory.swap.high', label: 'SwHi', src: 'config', fmt: fmtBytesOrMax, doc: DOC_MEM,
+      help: 'memory.swap.high: throttle swap above this' },
+    { key: 'memory.swap.max', label: 'SwMax', src: 'config', fmt: fmtBytesOrMax, doc: DOC_MEM,
+      help: 'memory.swap.max: hard swap limit' },
+    { key: 'memory.zswap.max', label: 'ZsMax', src: 'config', fmt: fmtBytesOrMax, doc: DOC_MEM,
+      help: 'memory.zswap.max' },
+    { key: 'memory.zswap.writeback', label: 'ZsWB', src: 'config', doc: DOC_MEM,
+      help: 'memory.zswap.writeback: allow writeback to swap (0/1)' },
+  ]},
+  { id: 'io', label: 'IO', on: true, columns: [
+    { key: 'io.rbytes', label: 'Rd/s', src: 'rates', fmt: fmtBytesRate, spark: true, doc: DOC_IO,
+      help: 'io.stat read bytes per second (all devices)' },
+    { key: 'io.wbytes', label: 'Wr/s', src: 'rates', fmt: fmtBytesRate, spark: true, doc: DOC_IO,
+      help: 'io.stat write bytes per second (all devices)' },
+  ]},
+  { id: 'io_detail', label: 'IO Ops', on: false, columns: [
+    { key: 'io.rios', label: 'RdOp/s', src: 'rates', fmt: fmtRate, spark: true, doc: DOC_IO,
+      help: 'Read operations per second' },
+    { key: 'io.wios', label: 'WrOp/s', src: 'rates', fmt: fmtRate, spark: true, doc: DOC_IO,
+      help: 'Write operations per second' },
+  ]},
+  { id: 'io_cfg', label: 'IO Limits', on: false, cfg: true, columns: [
+    { key: 'io.weight', label: 'Wt', src: 'config', doc: DOC_IO,
+      help: 'io.weight: proportional weight [1..10000], default 100' },
+    { key: 'io.max', label: 'Max', src: 'config', doc: DOC_IO,
+      help: 'io.max: per-device bandwidth/iops limits' },
+    { key: 'io.prio.class', label: 'Prio', src: 'config', doc: DOC_IO,
+      help: 'io.prio.class: none, best-effort, idle' },
+  ]},
+  { id: 'psi', label: 'PSI', on: false, columns: [
+    { key: 'psi.cpu.some.avg10', label: 'CPU S10', src: 'stats', fmt: fmtPsiVal, spark: true, doc: DOC_PSI,
+      help: 'PSI CPU some avg10: % of time at least one task stalled on CPU' },
+    { key: 'psi.cpu.full.avg10', label: 'CPU F10', src: 'stats', fmt: fmtPsiVal, spark: true, doc: DOC_PSI,
+      help: 'PSI CPU full avg10: % of time all tasks stalled on CPU' },
+    { key: 'psi.memory.some.avg10', label: 'Mem S10', src: 'stats', fmt: fmtPsiVal, spark: true, doc: DOC_PSI,
+      help: 'PSI memory some avg10: % of time at least one task stalled on memory' },
+    { key: 'psi.memory.full.avg10', label: 'Mem F10', src: 'stats', fmt: fmtPsiVal, spark: true, doc: DOC_PSI,
+      help: 'PSI memory full avg10: % of time all tasks stalled on memory' },
+    { key: 'psi.io.some.avg10', label: 'IO S10', src: 'stats', fmt: fmtPsiVal, spark: true, doc: DOC_PSI,
+      help: 'PSI IO some avg10: % of time at least one task stalled on IO' },
+    { key: 'psi.io.full.avg10', label: 'IO F10', src: 'stats', fmt: fmtPsiVal, spark: true, doc: DOC_PSI,
+      help: 'PSI IO full avg10: % of time all tasks stalled on IO' },
+  ]},
+  { id: 'pids', label: 'PIDs', on: true, columns: [
+    { key: 'pids.current', label: 'PIDs', src: 'stats', spark: true, doc: DOC_PID,
+      help: 'pids.current: number of processes + threads' },
+    { key: 'pids.max', label: 'Max', src: 'config', fmt: fmtMaxVal, doc: DOC_PID,
+      help: 'pids.max: hard limit on number of processes' },
+  ]},
+];
+
+// Persist state in localStorage. groupState values: 0=hidden, 1=spark+vals, 2=vals only
+let groupState = {};
+(function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem('cgtop_state'));
+    if (s && s.groups) {
+      groupState = s.groups;
+      for (const [k, v] of Object.entries(groupState)) {
+        if (v === true) groupState[k] = 1;
+        else if (v === false) groupState[k] = 0;
+      }
+    }
+    if (s && s.treeMode !== undefined) treeMode = s.treeMode;
+    if (!Object.keys(groupState).length) throw 0;
+  } catch(e) {
+    for (const g of columnGroups) groupState[g.id] = g.on ? 1 : 0;
+  }
+})();
+function saveState() {
+  try { localStorage.setItem('cgtop_state', JSON.stringify({ groups: groupState, treeMode })); } catch(e) {}
+}
+
+// Formatters.
+function fmtBytes(v) {
+  if (v == null) return '';
+  const n = Number(v);
+  if (n === 0) return '0';
+  if (n < 1024) return Math.round(n) + 'B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + 'K';
+  if (n < 1024*1024*1024) return (n/(1024*1024)).toFixed(1) + 'M';
+  return (n/(1024*1024*1024)).toFixed(1) + 'G';
+}
+function fmtBytesOrMax(v) {
+  if (v === 'max') return 'max';
+  return fmtBytes(v);
+}
+function fmtBytesRate(v) {
+  if (v == null) return '';
+  return fmtBytes(v) + '/s';
+}
+function fmtCpuPct(v) {
+  if (v == null) return '';
+  const pct = v / 10000;
+  if (pct < 0.05) return '0%';
+  if (pct >= 100) return pct.toFixed(0) + '%';
+  if (pct >= 10) return pct.toFixed(1) + '%';
+  return pct.toFixed(2) + '%';
+}
+function fmtUsecRate(v) {
+  if (v == null) return '';
+  if (v < 1) return '0';
+  if (v < 1000) return v.toFixed(0) + 'us/s';
+  if (v < 1000000) return (v/1000).toFixed(1) + 'ms/s';
+  return (v/1000000).toFixed(2) + 's/s';
+}
+function fmtRate(v) {
+  if (v == null) return '';
+  if (v < 0.01) return '0';
+  if (v < 1) return v.toFixed(2);
+  if (v < 100) return v.toFixed(1);
+  return v.toFixed(0);
+}
+function fmtPsiVal(v) {
+  if (v == null) return '';
+  return Number(v).toFixed(1) + '%';
+}
+function fmtMaxVal(v) {
+  if (v === 'max') return 'max';
+  if (v == null) return '';
+  return String(v);
+}
+function fmtDefault(v) {
+  if (v == null) return '';
+  return String(v);
+}
+
+function psiClass(v) {
+  const n = Number(v);
+  if (n < 5) return 'psi-green';
+  if (n < 20) return 'psi-yellow';
+  return 'psi-red';
+}
+
+function makeSpark(values, scaleMax) {
+  if (!values || values.length < 2) return '';
+  const w = 50, h = 14;
+  const max = (scaleMax != null && scaleMax > 0) ? scaleMax : Math.max(...values, 1e-9);
+  const points = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * w;
+    const y = h - (Math.max(v, 0) / max) * (h - 2) - 1;
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  }).join(' ');
+  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${points}"/></svg>`;
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function visibleColumns() {
+  const cols = [];
+  for (const g of columnGroups) {
+    const state = groupState[g.id] || 0;
+    if (state === 0) continue;
+    for (let i = 0; i < g.columns.length; i++) {
+      cols.push({
+        ...g.columns[i],
+        groupFirst: i === 0,
+        isCfg: !!g.cfg,
+        groupId: g.id,
+        groupLabel: g.label,
+        groupLen: g.columns.length,
+        showSpark: state === 1 && !!g.columns[i].spark,
+      });
+    }
+  }
+  return cols;
+}
+
+// Compute shared sparkline max per column group for a node.
+function computeRowScales(nodePath) {
+  const scales = {};
+  if (!data.sparklines || !data.sparklines[nodePath]) return scales;
+  const ns = data.sparklines[nodePath];
+  for (const g of columnGroups) {
+    if ((groupState[g.id] || 0) !== 1) continue;
+    let max = 0;
+    for (const col of g.columns) {
+      if (!col.spark) continue;
+      const vals = ns[col.key];
+      if (!vals) continue;
+      for (const v of vals) {
+        if (v > max) max = v;
+      }
+    }
+    if (max > 0) {
+      scales[g.id] = max;
+    }
+  }
+  return scales;
+}
+
+// Sorting.
+function getNodeVal(node, key, src) {
+  const obj = src === 'config' ? node.config : (src === 'rates' ? node.rates : node.stats);
+  if (!obj) return null;
+  const v = obj[key];
+  if (v === 'max') return Infinity;
+  if (v == null) return null;
+  return Number(v);
+}
+
+function cmpNodes(a, b) {
+  const va = getNodeVal(a, sortKey, sortSrc);
+  const vb = getNodeVal(b, sortKey, sortSrc);
+  if (va == null && vb == null) return 0;
+  if (va == null) return 1;
+  if (vb == null) return -1;
+  return sortDir === 'asc' ? va - vb : vb - va;
+}
+
+function sortTree(node) {
+  if (!node.children || !node.children.length || !sortKey) return;
+  node.children.sort(cmpNodes);
+  for (const child of node.children) {
+    sortTree(child);
+  }
+}
+
+function doSort(key, src) {
+  if (sortKey === key) {
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortKey = key;
+    sortSrc = src;
+    sortDir = 'desc';
+  }
+  renderTable();
+}
+
+function toggleTreeMode() {
+  treeMode = !treeMode;
+  saveState();
+  renderColControls();
+  renderTable();
+}
+
+// Rendering.
+function renderTopbar() {
+  if (!data) return;
+  const s = data.system;
+  const bar = document.getElementById('topbar');
+  const userW = s.cpu.user_pct.toFixed(1);
+  const sysW = s.cpu.sys_pct.toFixed(1);
+  const ioW = s.cpu.iowait_pct.toFixed(1);
+  let h = '';
+  h += `<span><span class="label">Load</span> <span class="value">${s.loadavg.load1.toFixed(2)} ${s.loadavg.load5.toFixed(2)} ${s.loadavg.load15.toFixed(2)}</span></span>`;
+  h += `<span><span class="label">CPU</span> <span class="cpu-bar"><span class="user" style="width:${userW}%"></span><span class="sys" style="width:${sysW}%"></span><span class="iowait" style="width:${ioW}%"></span></span> <span class="value">${(100 - s.cpu.idle_pct).toFixed(0)}%</span></span>`;
+  for (const [label, psi] of [['PSI CPU', s.psi_cpu], ['PSI Mem', s.psi_memory], ['PSI IO', s.psi_io]]) {
+    if (!psi) continue;
+    const v = psi.some.avg10;
+    h += `<span><span class="label">${label}</span> <span class="psi-badge ${psiClass(v)}">${v.toFixed(1)}%</span></span>`;
+  }
+  bar.innerHTML = h;
+}
+
+function renderBreadcrumbs() {
+  const bc = document.getElementById('breadcrumbs');
+  let h = `<a onclick="zoom('')">/</a>`;
+  if (currentRoot) {
+    const parts = currentRoot.split('/');
+    let path = '';
+    for (const part of parts) {
+      path += (path ? '/' : '') + part;
+      const p = path;
+      h += `<span class="sep">/</span><a onclick="zoom('${p}')">${esc(part)}</a>`;
+    }
+  }
+  bc.innerHTML = h;
+}
+
+function renderColControls() {
+  const div = document.getElementById('col-controls');
+  let h = '';
+  const tmActive = treeMode ? 'active' : '';
+  h += `<button class="col-btn mode ${tmActive}" onclick="toggleTreeMode()">${treeMode ? 'Tree' : 'Flat'}</button>`;
+  h += `<span style="color:#d0d7de;margin:0 4px">|</span>`;
+  h += `<button class="col-btn" onclick="toggleAll()" style="font-weight:bold">All</button>`;
+  for (const g of columnGroups) {
+    const state = groupState[g.id] || 0;
+    const cfg = g.cfg ? 'cfg' : '';
+    let stateCls = '';
+    let title = 'Hidden \u2013 click to show with sparklines';
+    if (state === 1) { stateCls = 'spark'; title = 'Sparklines \u2013 click for values only'; }
+    else if (state === 2) { stateCls = 'vals'; title = 'Values only \u2013 click to hide'; }
+    if (g.cfg && state === 0) title = 'Hidden \u2013 click to show';
+    if (g.cfg && state === 2) title = 'Shown \u2013 click to hide';
+    h += `<button class="col-btn ${cfg} ${stateCls}" title="${title}" onclick="toggleGroup('${g.id}')">${g.label}</button>`;
+  }
+  div.innerHTML = h;
+}
+
+function toggleGroup(id) {
+  const cur = groupState[id] || 0;
+  const g = columnGroups.find(g => g.id === id);
+  if (g && g.cfg) {
+    groupState[id] = cur === 0 ? 2 : 0;
+  } else {
+    groupState[id] = (cur + 1) % 3;
+  }
+  saveState();
+  renderColControls();
+  renderTable();
+}
+
+function toggleAll() {
+  const anyOff = columnGroups.some(g => (groupState[g.id] || 0) === 0);
+  for (const g of columnGroups) {
+    if (anyOff) {
+      groupState[g.id] = g.cfg ? 2 : 1;
+    } else {
+      groupState[g.id] = 0;
+    }
+  }
+  saveState();
+  renderColControls();
+  renderTable();
+}
+
+function zoom(path) {
+  currentRoot = path;
+  refresh();
+}
+
+function renderTable() {
+  if (!data || !data.tree) return;
+  const cols = visibleColumns();
+
+  if (sortKey) {
+    if (treeMode) {
+      sortTree(data.tree);
+    }
+  }
+
+  // -- Header row 1: group names --
+  const r1Top = 'position:sticky;top:0;z-index:2;background:#f6f8fa';
+  let groupRow = `<tr><th rowspan="3" class="name-col" style="position:sticky;top:0;left:0;z-index:4;background:#f6f8fa;min-width:200px">${treeMode ? 'Name' : 'Path'}</th>`;
+  const seen = new Set();
+  for (const col of cols) {
+    if (seen.has(col.groupId)) continue;
+    seen.add(col.groupId);
+    const cfgCls = col.isCfg ? ' cfg-group' : '';
+    groupRow += `<th colspan="${col.groupLen}" class="group-header${cfgCls} group-start" style="${r1Top}">${col.groupLabel}</th>`;
+  }
+  groupRow += '</tr>';
+
+  // -- Header row 2: column labels (sortable) --
+  const r2Top = 'position:sticky;top:21px;z-index:2;background:#f6f8fa';
+  let colRow = '<tr>';
+  for (const col of cols) {
+    const cls = ['sortable'];
+    if (col.groupFirst) cls.push('group-start');
+    if (col.isCfg) cls.push('cfg-col');
+    if (sortKey === col.key) cls.push('sorted');
+    let arrow = '';
+    if (sortKey === col.key) {
+      arrow = `<span class="sort-arrow">${sortDir === 'asc' ? '\u25b2' : '\u25bc'}</span>`;
+    }
+    colRow += `<th class="${cls.join(' ')}" style="${r2Top}" title="${esc(col.help || '')}" onclick="doSort('${col.key}','${col.src}')">${col.label}${arrow}</th>`;
+  }
+  colRow += '</tr>';
+
+  // -- Header row 3: info icons --
+  const r3Top = 'position:sticky;top:42px;z-index:2;background:#f6f8fa';
+  let helpRow = '<tr>';
+  for (const col of cols) {
+    const cls = ['help-cell'];
+    if (col.groupFirst) cls.push('group-start');
+    const link = col.doc
+      ? `<a class="info-icon" href="${col.doc}" target="_blank" rel="noopener" title="${esc(col.help || '')}">i</a>`
+      : '';
+    helpRow += `<th class="${cls.join(' ')}" style="${r3Top}">${link}</th>`;
+  }
+  helpRow += '</tr>';
+
+  document.getElementById('thead').innerHTML = groupRow + colRow + helpRow;
+
+  // -- Body --
+  const rows = [];
+  if (treeMode) {
+    flattenTree(data.tree, 0, rows);
+  } else {
+    flattenFlat(data.tree, rows);
+    if (sortKey) {
+      rows.sort((a, b) => cmpNodes(a.node, b.node));
+    }
+  }
+
+  const scaleCache = new Map();
+  for (const row of rows) {
+    scaleCache.set(row.node.path, computeRowScales(row.node.path));
+  }
+
+  let html = '';
+  for (const row of rows) {
+    html += renderRow(row, cols, scaleCache.get(row.node.path));
+  }
+  document.getElementById('tbody').innerHTML = html;
+}
+
+function flattenTree(node, depth, rows) {
+  rows.push({ node, depth });
+  if (collapsed[node.path]) return;
+  if (node.children) {
+    for (const child of node.children) {
+      flattenTree(child, depth + 1, rows);
+    }
+  }
+}
+
+function flattenFlat(node, rows) {
+  rows.push({ node, depth: 0 });
+  if (node.children) {
+    for (const child of node.children) {
+      flattenFlat(child, rows);
+    }
+  }
+}
+
+function renderRow(row, cols, scales) {
+  const { node, depth } = row;
+  const hasChildren = node.children && node.children.length > 0;
+  const isCollapsed = collapsed[node.path];
+
+  let html = '<tr>';
+
+  if (treeMode) {
+    const indent = depth * 16;
+    const toggle = hasChildren
+      ? `<span class="toggle" onclick="toggleCollapse('${esc(node.path)}')">${isCollapsed ? '\u25b6' : '\u25bc'}</span>`
+      : '<span class="toggle"></span>';
+    const clickable = hasChildren ? 'clickable' : '';
+    const nameClick = hasChildren ? ` onclick="zoom('${esc(node.path)}')"` : '';
+    html += `<td><div class="name-cell" style="padding-left:${indent}px">${toggle}<span class="cg-name ${clickable}"${nameClick}>${esc(node.name)}</span></div></td>`;
+  } else {
+    const label = node.path || '/';
+    html += `<td>${esc(label)}</td>`;
+  }
+
+  for (const col of cols) {
+    const src = col.src === 'config' ? node.config : (col.src === 'rates' ? node.rates : node.stats);
+    const val = src ? src[col.key] : undefined;
+    const fmt = col.fmt || fmtDefault;
+    const display = fmt(val);
+    const isEmpty = display === '' || display === '0' || display === '0%';
+
+    const cls = [];
+    if (col.groupFirst) cls.push('group-start');
+    if (isEmpty) cls.push('zero');
+    const clsStr = cls.length ? ` class="${cls.join(' ')}"` : '';
+
+    let spark = '';
+    if (col.showSpark && data.sparklines && data.sparklines[node.path] && data.sparklines[node.path][col.key]) {
+      const scaleMax = scales && scales[col.groupId] != null ? scales[col.groupId] : null;
+      spark = makeSpark(data.sparklines[node.path][col.key], scaleMax);
+    }
+
+    html += `<td${clsStr}>${spark}${display}</td>`;
+  }
+  html += '</tr>';
+  return html;
+}
+
+function toggleCollapse(path) {
+  collapsed[path] = !collapsed[path];
+  renderTable();
+}
+
+async function refresh() {
+  try {
+    const url = currentRoot ? `/api/data?root=${encodeURIComponent(currentRoot)}` : '/api/data';
+    const resp = await fetch(url);
+    data = await resp.json();
+    renderTopbar();
+    renderBreadcrumbs();
+    renderColControls();
+    renderTable();
+  } catch (e) {
+    console.error('fetch error:', e);
+  }
+}
+
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>
