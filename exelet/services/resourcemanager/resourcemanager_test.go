@@ -2,12 +2,16 @@ package resourcemanager
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
+	"exe.dev/exelet/config"
 	api "exe.dev/pkg/api/exe/resource/v1"
 )
 
@@ -553,4 +557,65 @@ func TestVmUsageStateGroupID(t *testing.T) {
 	if emptyState.groupID != "" {
 		t.Errorf("empty groupID = %q, want empty string", emptyState.groupID)
 	}
+}
+
+func TestInitControllersCpuset(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create fake cgroup.subtree_control files so enableController can work
+	rootSubtreeControl := filepath.Join(tmpDir, "cgroup.subtree_control")
+	if err := os.WriteFile(rootSubtreeControl, []byte(""), 0o644); err != nil {
+		t.Fatalf("write root subtree_control: %v", err)
+	}
+
+	t.Run("reserves CPUs when configured", func(t *testing.T) {
+		sliceDir := filepath.Join(tmpDir, cgroupSlice)
+		os.RemoveAll(sliceDir)
+
+		m := &ResourceManager{
+			config:     &config.ExeletConfig{ReservedCPUs: 2},
+			cgroupRoot: tmpDir,
+			log:        slog.Default(),
+		}
+		m.initControllers(t.Context())
+
+		// Verify cpuset.cpus was written on the slice
+		data, err := os.ReadFile(filepath.Join(sliceDir, "cpuset.cpus"))
+		if err != nil {
+			t.Fatalf("read cpuset.cpus: %v", err)
+		}
+		got := strings.TrimSpace(string(data))
+		want := fmt.Sprintf("2-%d", runtime.NumCPU()-1)
+		if got != want {
+			t.Errorf("cpuset.cpus = %q, want %q", got, want)
+		}
+
+		// Verify cpuset was enabled in root subtree_control
+		rootData, err := os.ReadFile(rootSubtreeControl)
+		if err != nil {
+			t.Fatalf("read root subtree_control: %v", err)
+		}
+		if !strings.Contains(string(rootData), "cpuset") {
+			t.Error("cpuset not enabled in root cgroup.subtree_control")
+		}
+	})
+
+	t.Run("skips cpuset when not configured", func(t *testing.T) {
+		sliceDir := filepath.Join(tmpDir, cgroupSlice)
+		os.RemoveAll(sliceDir)
+		// Reset subtree_control
+		os.WriteFile(rootSubtreeControl, []byte(""), 0o644)
+
+		m := &ResourceManager{
+			config:     &config.ExeletConfig{},
+			cgroupRoot: tmpDir,
+			log:        slog.Default(),
+		}
+		m.initControllers(t.Context())
+
+		// cpuset.cpus should NOT exist
+		if _, err := os.Stat(filepath.Join(sliceDir, "cpuset.cpus")); err == nil {
+			t.Error("cpuset.cpus should not exist when ReservedCPUs=0")
+		}
+	})
 }

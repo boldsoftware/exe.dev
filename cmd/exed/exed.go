@@ -693,7 +693,7 @@ func generateReplicationKnownHosts(ctx context.Context, exeletHost, replicationT
 // If replicationTarget is non-empty, adds storage replication flags.
 // If metricsdURL is non-empty, adds metrics daemon flags.
 func startExeletProcess(ctx context.Context, host, logFormat, logLevel, exedURL, replicationTarget, replicationKnownHosts, metricsdURL string) error {
-	baseCmd := fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --stage local --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://:9080 --http-addr :9081 --exed-url %s --instance-domain exe.cloud --enable-hugepages`,
+	baseCmd := fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --stage local --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://:9080 --http-addr :9081 --exed-url %s --instance-domain exe.cloud --enable-hugepages --reserved-cpus 0`,
 		logFormat, logLevel, exedURL)
 
 	if replicationTarget != "" {

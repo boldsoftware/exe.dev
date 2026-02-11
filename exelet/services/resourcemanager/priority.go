@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -63,6 +64,39 @@ func (m *ResourceManager) initControllers(ctx context.Context) {
 				"error", err)
 		} else {
 			m.log.DebugContext(ctx, "enabled cgroup controller on slice", "controller", ctrl, "slice", cgroupSlice)
+		}
+	}
+
+	// Set cpuset.cpus on the slice to reserve CPUs for the host system.
+	// For example, with ReservedCPUs=2 on a 64-core machine, cpuset.cpus="2-63".
+	if reserved := m.config.ReservedCPUs; reserved > 0 {
+		totalCPUs := runtime.NumCPU()
+		if totalCPUs <= reserved {
+			m.log.WarnContext(ctx, "not enough CPUs to reserve — skipping cpuset",
+				"total_cpus", totalCPUs,
+				"reserved_cpus", reserved)
+		} else {
+			// Enable cpuset controller at root so the slice can use it
+			if err := m.enableController(m.cgroupRoot, "cpuset"); err != nil {
+				m.log.WarnContext(ctx, "failed to enable cpuset controller at root", "error", err)
+			} else {
+				cpusetValue := fmt.Sprintf("%d-%d", reserved, totalCPUs-1)
+				cpusetFile := filepath.Join(slicePath, "cpuset.cpus")
+				if err := os.WriteFile(cpusetFile, []byte(cpusetValue), 0o644); err != nil {
+					m.log.WarnContext(ctx, "failed to set cpuset.cpus on slice",
+						"error", err,
+						"value", cpusetValue)
+				} else {
+					m.log.InfoContext(ctx, "set cpuset.cpus on slice",
+						"value", cpusetValue,
+						"total_cpus", totalCPUs,
+						"reserved_cpus", reserved)
+				}
+			}
+			// Enable cpuset on the slice subtree so child cgroups inherit it
+			if err := m.enableController(slicePath, "cpuset"); err != nil {
+				m.log.WarnContext(ctx, "failed to enable cpuset controller on slice", "error", err)
+			}
 		}
 	}
 }

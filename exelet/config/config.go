@@ -157,4 +157,9 @@ type ExeletConfig struct {
 	MetricsDaemonURL string
 	// MetricsDaemonInterval is the interval for sending metrics to the daemon
 	MetricsDaemonInterval time.Duration
+
+	// ReservedCPUs is the number of CPUs to reserve for the host system.
+	// When > 0, cpuset.cpus on the exelet.slice will be set to exclude the
+	// first N cores (e.g., ReservedCPUs=2 on a 64-core machine → cpuset.cpus="2-63").
+	ReservedCPUs int
 }

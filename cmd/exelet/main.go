@@ -230,6 +230,12 @@ func main() {
 			Value:   config.DefaultMetricsDaemonInterval,
 			EnvVars: []string{"EXELET_METRICS_DAEMON_INTERVAL"},
 		},
+		&cli.IntFlag{
+			Name:    "reserved-cpus",
+			Usage:   "number of CPUs to reserve for the host system via cpuset (0 to disable)",
+			Value:   2,
+			EnvVars: []string{"EXELET_RESERVED_CPUS"},
+		},
 	}
 	app.Action = serveAction
 
@@ -292,6 +298,8 @@ func serveAction(clix *cli.Context) error {
 	metricsDaemonURL := clix.String("metrics-daemon-url")
 	metricsDaemonInterval := clix.Duration("metrics-daemon-interval")
 
+	reservedCPUs := clix.Int("reserved-cpus")
+
 	// Validate replication config
 	if replicationEnabled && replicationTarget == "" {
 		return fmt.Errorf("--storage-replication-target is required when replication is enabled")
@@ -325,6 +333,7 @@ func serveAction(clix *cli.Context) error {
 		ReplicationPrune:            replicationPrune,
 		MetricsDaemonURL:            metricsDaemonURL,
 		MetricsDaemonInterval:       metricsDaemonInterval,
+		ReservedCPUs:                reservedCPUs,
 	}
 
 	opts := []exelet.ServerOpt{
