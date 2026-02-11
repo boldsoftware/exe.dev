@@ -4,6 +4,7 @@ import (
 	"io"
 	"sync"
 	"testing"
+	"time"
 
 	proxyapi "exe.dev/pkg/api/exe/proxy/v1"
 
@@ -70,6 +71,20 @@ func TestProxyChanges(t *testing.T) {
 			}
 		}
 	}()
+
+	// Wait for the gRPC stream to be registered server-side before
+	// proceeding. Otherwise, cookie changes can race ahead of stream
+	// registration, and the proxy change notification is sent to zero
+	// streams and silently dropped.
+	for {
+		proxyChangesMu.Lock()
+		n := len(proxyChangesStreams)
+		proxyChangesMu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	const fakeUserID = "fake-user-id"
 	const fakeDomain = "fake-domain"

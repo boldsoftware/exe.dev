@@ -307,6 +307,11 @@ func stopProxyChangesStream() error {
 		return fmt.Errorf("stopProxyChangesStream: invalid call: %d streams", len(proxyChangesStreams))
 	}
 
+	// Unregister the stream before signaling it to stop,
+	// so that no concurrent streamProxyChanges iteration
+	// can send on the dead stream.
+	unregisterProxyChangesStream(ch)
+
 	// Send a nil error on the channel to make the call to
 	// exeproxServer.Changes return.
 	select {
