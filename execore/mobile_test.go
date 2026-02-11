@@ -257,12 +257,13 @@ func TestDashboardWaitsForCreatingBox(t *testing.T) {
 	go func() {
 		time.Sleep(200 * time.Millisecond)
 		_, err := server.preCreateBox(t.Context(), preCreateBoxOptions{
-			userID:  user.UserID,
-			ctrhost: "test-exelet",
-			name:    hostname,
-			image:   "exeuntu",
-			noShard: true,
-			region:  "pdx",
+			userID:        user.UserID,
+			ctrhost:       "test-exelet",
+			name:          hostname,
+			image:         "exeuntu",
+			noShard:       true,
+			region:        "pdx",
+			allocatedCPUs: 2,
 		})
 		if err != nil {
 			t.Errorf("preCreateBox failed: %v", err)

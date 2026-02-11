@@ -1977,12 +1977,13 @@ func (s *Server) vscodeURL(boxName string) string {
 //
 //exe:completeinit
 type preCreateBoxOptions struct {
-	userID  string
-	ctrhost string
-	name    string
-	image   string
-	noShard bool
-	region  string // region code (e.g., "pdx", "lax")
+	userID        string
+	ctrhost       string
+	name          string
+	image         string
+	noShard       bool
+	region        string // region code (e.g., "pdx", "lax")
+	allocatedCPUs uint64 // number of CPUs allocated to the VM
 }
 
 func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (int, error) {
@@ -1998,6 +1999,11 @@ func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (in
 	routes := exedb.DefaultRouteJSON()
 	var boxID int
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		var allocCPUs *int64
+		if opts.allocatedCPUs > 0 {
+			v := int64(opts.allocatedCPUs)
+			allocCPUs = &v
+		}
 		id, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
 			Ctrhost:         opts.ctrhost,
 			Name:            opts.name,
@@ -2006,6 +2012,7 @@ func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (in
 			CreatedByUserID: opts.userID,
 			Routes:          &routes,
 			Region:          opts.region,
+			AllocatedCpus:   allocCPUs,
 		})
 		if err != nil {
 			return err

@@ -607,6 +607,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "ok")
 	case "/metrics":
 		requireLocalAccess(s.handleMetrics)(w, r)
+	case "/exelet-desired":
+		requireLocalAccess(s.handleExeletDesired)(w, r)
 	case exeweb.SSHKnownHostsPath:
 		s.handleKnownHosts(w, r)
 		return

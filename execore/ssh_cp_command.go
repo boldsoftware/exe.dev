@@ -142,13 +142,22 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 	exeletAddr := sourceBox.Ctrhost
 
 	// Pre-create box in database
+	// Determine allocated CPUs for the clone
+	cloneCPUs := ss.server.env.DefaultCPUs
+	if sourceBox.AllocatedCpus != nil {
+		cloneCPUs = uint64(*sourceBox.AllocatedCpus)
+	}
+	if cpuOverride > 0 {
+		cloneCPUs = cpuOverride
+	}
 	boxID, err := ss.server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:  user.ID,
-		ctrhost: exeletAddr,
-		name:    newName,
-		image:   sourceBox.Image,
-		noShard: false,
-		region:  sourceBox.Region,
+		userID:        user.ID,
+		ctrhost:       exeletAddr,
+		name:          newName,
+		image:         sourceBox.Image,
+		noShard:       false,
+		region:        sourceBox.Region,
+		allocatedCPUs: cloneCPUs,
 	})
 	switch {
 	case errors.Is(err, errNoIPShardsAvailable):

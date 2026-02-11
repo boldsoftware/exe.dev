@@ -465,10 +465,64 @@ func (q *Queries) GetBoxesForUserDashboard(ctx context.Context, createdByUserID 
 	return items, nil
 }
 
+const getBoxesWithNullAllocatedCPUs = `-- name: GetBoxesWithNullAllocatedCPUs :many
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides FROM boxes
+WHERE allocated_cpus IS NULL AND container_id IS NOT NULL AND status != 'failed'
+ORDER BY id
+LIMIT ?
+`
+
+func (q *Queries) GetBoxesWithNullAllocatedCPUs(ctx context.Context, limit int64) ([]Box, error) {
+	rows, err := q.query(ctx, q.getBoxesWithNullAllocatedCPUsStmt, getBoxesWithNullAllocatedCPUs, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Box{}
+	for rows.Next() {
+		var i Box
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Status,
+			&i.Image,
+			&i.Ctrhost,
+			&i.ContainerID,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastStartedAt,
+			&i.Routes,
+			&i.SSHServerIdentityKey,
+			&i.SSHAuthorizedKeys,
+			&i.SSHClientPrivateKey,
+			&i.SSHPort,
+			&i.SSHUser,
+			&i.CreationLog,
+			&i.SupportAccessAllowed,
+			&i.Region,
+			&i.EmailReceiveEnabled,
+			&i.EmailMaildirPath,
+			&i.AllocatedCpus,
+			&i.CgroupOverrides,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertBox = `-- name: InsertBox :execlastid
 INSERT INTO boxes (
-    ctrhost, name, status, image, container_id, created_by_user_id, routes, region
-) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
+    ctrhost, name, status, image, container_id, created_by_user_id, routes, region, allocated_cpus
+) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)
 `
 
 type InsertBoxParams struct {
@@ -479,6 +533,7 @@ type InsertBoxParams struct {
 	CreatedByUserID string  `db:"created_by_user_id" json:"created_by_user_id"`
 	Routes          *string `db:"routes" json:"routes"`
 	Region          string  `db:"region" json:"region"`
+	AllocatedCpus   *int64  `db:"allocated_cpus" json:"allocated_cpus"`
 }
 
 func (q *Queries) InsertBox(ctx context.Context, arg InsertBoxParams) (int64, error) {
@@ -490,6 +545,7 @@ func (q *Queries) InsertBox(ctx context.Context, arg InsertBoxParams) (int64, er
 		arg.CreatedByUserID,
 		arg.Routes,
 		arg.Region,
+		arg.AllocatedCpus,
 	)
 	if err != nil {
 		return 0, err
@@ -558,6 +614,20 @@ type SetBoxSupportAccessAllowedParams struct {
 
 func (q *Queries) SetBoxSupportAccessAllowed(ctx context.Context, arg SetBoxSupportAccessAllowedParams) error {
 	_, err := q.exec(ctx, q.setBoxSupportAccessAllowedStmt, setBoxSupportAccessAllowed, arg.SupportAccessAllowed, arg.ID)
+	return err
+}
+
+const updateBoxAllocatedCPUs = `-- name: UpdateBoxAllocatedCPUs :exec
+UPDATE boxes SET allocated_cpus = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+`
+
+type UpdateBoxAllocatedCPUsParams struct {
+	AllocatedCpus *int64 `db:"allocated_cpus" json:"allocated_cpus"`
+	ID            int    `db:"id" json:"id"`
+}
+
+func (q *Queries) UpdateBoxAllocatedCPUs(ctx context.Context, arg UpdateBoxAllocatedCPUsParams) error {
+	_, err := q.exec(ctx, q.updateBoxAllocatedCPUsStmt, updateBoxAllocatedCPUs, arg.AllocatedCpus, arg.ID)
 	return err
 }
 

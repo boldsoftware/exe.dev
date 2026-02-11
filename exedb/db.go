@@ -279,6 +279,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxesSharedWithUserStmt, err = db.PrepareContext(ctx, getBoxesSharedWithUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesSharedWithUser: %w", err)
 	}
+	if q.getBoxesWithNullAllocatedCPUsStmt, err = db.PrepareContext(ctx, getBoxesWithNullAllocatedCPUs); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxesWithNullAllocatedCPUs: %w", err)
+	}
 	if q.getCheckoutParamsStmt, err = db.PrepareContext(ctx, getCheckoutParams); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCheckoutParams: %w", err)
 	}
@@ -674,6 +677,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateAuthTokenUsedAtStmt, err = db.PrepareContext(ctx, updateAuthTokenUsedAt); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateAuthTokenUsedAt: %w", err)
+	}
+	if q.updateBoxAllocatedCPUsStmt, err = db.PrepareContext(ctx, updateBoxAllocatedCPUs); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxAllocatedCPUs: %w", err)
 	}
 	if q.updateBoxContainerAndStatusStmt, err = db.PrepareContext(ctx, updateBoxContainerAndStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxContainerAndStatus: %w", err)
@@ -1184,6 +1190,11 @@ func (q *Queries) Close() error {
 	if q.getBoxesSharedWithUserStmt != nil {
 		if cerr := q.getBoxesSharedWithUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxesSharedWithUserStmt: %w", cerr)
+		}
+	}
+	if q.getBoxesWithNullAllocatedCPUsStmt != nil {
+		if cerr := q.getBoxesWithNullAllocatedCPUsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxesWithNullAllocatedCPUsStmt: %w", cerr)
 		}
 	}
 	if q.getCheckoutParamsStmt != nil {
@@ -1846,6 +1857,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateAuthTokenUsedAtStmt: %w", cerr)
 		}
 	}
+	if q.updateBoxAllocatedCPUsStmt != nil {
+		if cerr := q.updateBoxAllocatedCPUsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxAllocatedCPUsStmt: %w", cerr)
+		}
+	}
 	if q.updateBoxContainerAndStatusStmt != nil {
 		if cerr := q.updateBoxContainerAndStatusStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxContainerAndStatusStmt: %w", cerr)
@@ -2105,6 +2121,7 @@ type Queries struct {
 	getBoxesByHostStmt                         *sql.Stmt
 	getBoxesForUserDashboardStmt               *sql.Stmt
 	getBoxesSharedWithUserStmt                 *sql.Stmt
+	getBoxesWithNullAllocatedCPUsStmt          *sql.Stmt
 	getCheckoutParamsStmt                      *sql.Stmt
 	getCreditBalanceStmt                       *sql.Stmt
 	getEmailBounceStmt                         *sql.Stmt
@@ -2237,6 +2254,7 @@ type Queries struct {
 	syncCreditLedgerStmt                       *sql.Stmt
 	updateAuthCookieLastUsedStmt               *sql.Stmt
 	updateAuthTokenUsedAtStmt                  *sql.Stmt
+	updateBoxAllocatedCPUsStmt                 *sql.Stmt
 	updateBoxContainerAndStatusStmt            *sql.Stmt
 	updateBoxCreationLogStmt                   *sql.Stmt
 	updateBoxEmailCreditStmt                   *sql.Stmt
@@ -2355,6 +2373,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxesByHostStmt:                         q.getBoxesByHostStmt,
 		getBoxesForUserDashboardStmt:               q.getBoxesForUserDashboardStmt,
 		getBoxesSharedWithUserStmt:                 q.getBoxesSharedWithUserStmt,
+		getBoxesWithNullAllocatedCPUsStmt:          q.getBoxesWithNullAllocatedCPUsStmt,
 		getCheckoutParamsStmt:                      q.getCheckoutParamsStmt,
 		getCreditBalanceStmt:                       q.getCreditBalanceStmt,
 		getEmailBounceStmt:                         q.getEmailBounceStmt,
@@ -2487,6 +2506,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		syncCreditLedgerStmt:                       q.syncCreditLedgerStmt,
 		updateAuthCookieLastUsedStmt:               q.updateAuthCookieLastUsedStmt,
 		updateAuthTokenUsedAtStmt:                  q.updateAuthTokenUsedAtStmt,
+		updateBoxAllocatedCPUsStmt:                 q.updateBoxAllocatedCPUsStmt,
 		updateBoxContainerAndStatusStmt:            q.updateBoxContainerAndStatusStmt,
 		updateBoxCreationLogStmt:                   q.updateBoxCreationLogStmt,
 		updateBoxEmailCreditStmt:                   q.updateBoxEmailCreditStmt,

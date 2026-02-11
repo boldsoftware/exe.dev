@@ -11,8 +11,8 @@ SELECT * FROM boxes WHERE name = ?;
 
 -- name: InsertBox :execlastid
 INSERT INTO boxes (
-    ctrhost, name, status, image, container_id, created_by_user_id, routes, region
-) VALUES (?, ?, ?, ?, NULL, ?, ?, ?);
+    ctrhost, name, status, image, container_id, created_by_user_id, routes, region, allocated_cpus
+) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?);
 
 -- name: BoxesForUser :many
 SELECT *
@@ -107,3 +107,12 @@ UPDATE boxes SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
 
 -- name: GetBoxByID :one
 SELECT * FROM boxes WHERE id = ?;
+
+-- name: UpdateBoxAllocatedCPUs :exec
+UPDATE boxes SET allocated_cpus = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
+
+-- name: GetBoxesWithNullAllocatedCPUs :many
+SELECT * FROM boxes
+WHERE allocated_cpus IS NULL AND container_id IS NOT NULL AND status != 'failed'
+ORDER BY id
+LIMIT ?;

@@ -381,6 +381,14 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:           ss.handleResizeCommand,
 		},
 		{
+			Name:              "backfill-allocated-cpus",
+			Hidden:            true,
+			Description:       "Backfill allocated_cpus from exelet for VMs missing it (support only)",
+			Usage:             "backfill-allocated-cpus <count>",
+			HasPositionalArgs: true,
+			Handler:           ss.handleBackfillAllocatedCPUs,
+		},
+		{
 			Name:        "exit",
 			Description: "Exit",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
@@ -1500,6 +1508,17 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 			}
 			return cc.Errorf("failed to resize VM: %v", err)
 		}
+
+		// Update allocated_cpus in DB if CPUs changed
+		if req.CPUs != nil && resizeResult.NewCPUs != resizeResult.OldCPUs {
+			newCPUs := int64(resizeResult.NewCPUs)
+			if err := withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxAllocatedCPUs, exedb.UpdateBoxAllocatedCPUsParams{
+				AllocatedCpus: &newCPUs,
+				ID:            box.ID,
+			}); err != nil {
+				slog.ErrorContext(ctx, "failed to update allocated_cpus after resize", "box", boxName, "err", err)
+			}
+		}
 	}
 
 	// Build result
@@ -1543,5 +1562,84 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 		cc.Writeln("  ssh %s sudo resize2fs /dev/vda", ss.server.env.BoxDest(boxName))
 	}
 
+	return nil
+}
+
+func (ss *SSHServer) handleBackfillAllocatedCPUs(ctx context.Context, cc *exemenu.CommandContext) error {
+	if !ss.server.UserHasExeSudo(ctx, cc.User.ID) {
+		return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", cc.User.Email)
+	}
+
+	if len(cc.Args) != 1 {
+		return cc.Errorf("usage: backfill-allocated-cpus <count>")
+	}
+
+	limit, err := strconv.ParseInt(cc.Args[0], 10, 64)
+	if err != nil || limit <= 0 {
+		return cc.Errorf("count must be a positive integer")
+	}
+
+	boxes, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetBoxesWithNullAllocatedCPUs, limit)
+	if err != nil {
+		return cc.Errorf("failed to query boxes: %v", err)
+	}
+
+	if len(boxes) == 0 {
+		cc.Writeln("No boxes with NULL allocated_cpus found.")
+		return nil
+	}
+
+	cc.Writeln("Found %d boxes to backfill.", len(boxes))
+
+	var updated, skipped, failed int
+	for _, box := range boxes {
+		if box.ContainerID == nil || *box.ContainerID == "" {
+			skipped++
+			continue
+		}
+
+		exeletClient := ss.server.getExeletClient(box.Ctrhost)
+		if exeletClient == nil {
+			cc.Writeln("  %s: no exelet client for %s, skipping", box.Name, box.Ctrhost)
+			skipped++
+			continue
+		}
+
+		instanceResp, err := exeletClient.client.GetInstance(ctx, &api.GetInstanceRequest{
+			ID: *box.ContainerID,
+		})
+		if err != nil {
+			cc.Writeln("  %s: GetInstance failed: %v", box.Name, err)
+			failed++
+			continue
+		}
+
+		if instanceResp.Instance == nil || instanceResp.Instance.VMConfig == nil {
+			cc.Writeln("  %s: no VMConfig in response, skipping", box.Name)
+			skipped++
+			continue
+		}
+
+		cpus := int64(instanceResp.Instance.VMConfig.CPUs)
+		if cpus == 0 {
+			cc.Writeln("  %s: CPUs=0 in VMConfig, skipping", box.Name)
+			skipped++
+			continue
+		}
+
+		if err := withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxAllocatedCPUs, exedb.UpdateBoxAllocatedCPUsParams{
+			AllocatedCpus: &cpus,
+			ID:            box.ID,
+		}); err != nil {
+			cc.Writeln("  %s: DB update failed: %v", box.Name, err)
+			failed++
+			continue
+		}
+
+		cc.Writeln("  %s: set allocated_cpus=%d", box.Name, cpus)
+		updated++
+	}
+
+	cc.Writeln("Done. updated=%d skipped=%d failed=%d", updated, skipped, failed)
 	return nil
 }

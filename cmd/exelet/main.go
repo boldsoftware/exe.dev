@@ -21,6 +21,7 @@ import (
 	"exe.dev/deps/image"
 	"exe.dev/exelet"
 	"exe.dev/exelet/config"
+	"exe.dev/exelet/desiredsync"
 	"exe.dev/exelet/metadata"
 	"exe.dev/exelet/network"
 	"exe.dev/exelet/network/nat"
@@ -134,6 +135,12 @@ func main() {
 			Usage:   "URL of the exed HTTP(S) server (e.g., http://localhost:8080)",
 			Value:   "",
 			EnvVars: []string{"EXELET_EXED_URL"},
+		},
+		&cli.BoolFlag{
+			Name:    "desired-state-sync",
+			Usage:   "enable periodic desired-state sync from exed (requires --exed-url)",
+			Value:   false,
+			EnvVars: []string{"EXELET_DESIRED_STATE_SYNC"},
 		},
 		&cli.StringFlag{
 			Name:    "instance-domain",
@@ -421,6 +428,24 @@ func serveAction(clix *cli.Context) error {
 		return err
 	}
 
+	// Start desired-state syncer if enabled
+	var dsSync *desiredsync.Syncer
+	if clix.Bool("desired-state-sync") {
+		if cfg.ExedURL == "" {
+			return fmt.Errorf("--desired-state-sync requires --exed-url to be set")
+		}
+		dsSync, err = desiredsync.New(desiredsync.Config{
+			ExedURL:    cfg.ExedURL,
+			ExeletAddr: cfg.ListenAddress,
+		}, log)
+		if err != nil {
+			return fmt.Errorf("failed to create desired-state syncer: %w", err)
+		}
+		if err := dsSync.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start desired-state syncer: %w", err)
+		}
+	}
+
 	if err := srv.Run(ctx); err != nil {
 		return err
 	}
@@ -442,6 +467,9 @@ func serveAction(clix *cli.Context) error {
 				log.InfoContext(ctx, "generated memory profile", "path", profilePath)
 			case syscall.SIGTERM, syscall.SIGINT:
 				log.InfoContext(ctx, "shutting down")
+				if dsSync != nil {
+					dsSync.Stop()
+				}
 				stopCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 				if err := srv.Stop(stopCtx); err != nil {
 					log.ErrorContext(ctx, err.Error())
