@@ -649,6 +649,21 @@ func TestDNSServerIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("QueryTXTRecordNodataNotNxdomain", func(t *testing.T) {
+		msg := dns.NewMsg("_test.exe.xyz.", dns.TypeAAAA)
+
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.Rcode != dns.RcodeSuccess {
+			t.Fatalf("expected NOERROR, got %s", dns.RcodeToString[resp.Rcode])
+		}
+		if len(resp.Answer) != 0 {
+			t.Fatalf("expected 0 answers, got %d", len(resp.Answer))
+		}
+	})
+
 	t.Run("QueryNSRecord", func(t *testing.T) {
 		msg := dns.NewMsg("exe.xyz.", dns.TypeNS)
 
@@ -793,6 +808,63 @@ func TestDNSServerIntegration(t *testing.T) {
 		// Should return NXDOMAIN or empty answer for nonexistent box
 		if len(resp.Answer) != 0 {
 			t.Errorf("expected 0 MX answers for nonexistent box, got %d", len(resp.Answer))
+		}
+	})
+
+	// Test that names which exist but don't have a specific record type
+	// return NOERROR (not NXDOMAIN). NXDOMAIN means "name doesn't exist"
+	// which is wrong for names the server knows about.
+	t.Run("ShelleySubdomainNodataNotNxdomain", func(t *testing.T) {
+		// Shelley subdomains exist (A record works), so MX/AAAA should be NOERROR with empty answer.
+		for _, qtype := range []uint16{dns.TypeMX, dns.TypeAAAA} {
+			msg := dns.NewMsg("something.shelley.exe.xyz.", qtype)
+			resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resp.Rcode != dns.RcodeSuccess {
+				t.Errorf("query type %s for shelley subdomain: expected NOERROR, got %s",
+					dns.TypeToString[qtype], dns.RcodeToString[resp.Rcode])
+			}
+			if len(resp.Answer) != 0 {
+				t.Errorf("query type %s for shelley subdomain: expected 0 answers, got %d",
+					dns.TypeToString[qtype], len(resp.Answer))
+			}
+		}
+	})
+
+	t.Run("ApexNodataNotNxdomain", func(t *testing.T) {
+		// exe.xyz exists (A record works), so AAAA should be NOERROR.
+		msg := dns.NewMsg("exe.xyz.", dns.TypeAAAA)
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.Rcode != dns.RcodeSuccess {
+			t.Errorf("AAAA for apex: expected NOERROR, got %s", dns.RcodeToString[resp.Rcode])
+		}
+	})
+
+	t.Run("XtermSubdomainNodataNotNxdomain", func(t *testing.T) {
+		msg := dns.NewMsg("something.xterm.exe.xyz.", dns.TypeAAAA)
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.Rcode != dns.RcodeSuccess {
+			t.Errorf("AAAA for xterm subdomain: expected NOERROR, got %s", dns.RcodeToString[resp.Rcode])
+		}
+	})
+
+	t.Run("TrueNxdomainStillWorks", func(t *testing.T) {
+		// A name that truly doesn't exist should still get NXDOMAIN.
+		msg := dns.NewMsg("doesnotexist.exe.xyz.", dns.TypeA)
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.Rcode != dns.RcodeNameError {
+			t.Errorf("A for nonexistent name: expected NXDOMAIN, got %s", dns.RcodeToString[resp.Rcode])
 		}
 	})
 }

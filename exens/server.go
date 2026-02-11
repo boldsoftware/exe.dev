@@ -213,7 +213,45 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 	}
 
 	if !foundAny {
-		resp.Rcode = dns.RcodeNameError
+		// Distinguish NXDOMAIN (name doesn't exist) from NODATA (name exists
+		// but no records of the requested type). Rather than maintaining a
+		// separate name-existence check (which could drift out of sync with
+		// the lookup functions), we call every lookup function: if any would
+		// return records, the name exists.
+		//
+		// This is mildly inefficient, but saves implementing the lookup logic
+		// twice to compute a "does this exist" bit. If you want to optimize
+		// this, do in-memory result caching from the DB in the lookup functions.
+		lookups := []func(context.Context, string, string, uint16) ([]dns.RR, error){
+			s.lookupA, s.lookupCNAME, s.lookupTXT, s.lookupMX, s.lookupNS, s.lookupSOA,
+		}
+		nameExists := false
+		for _, question := range r.Question {
+			qname := strings.ToLower(strings.TrimSuffix(question.Header().Name, "."))
+			fqdn := question.Header().Name
+			class := question.Header().Class
+			for _, lookup := range lookups {
+				rrs, err := lookup(ctx, qname, fqdn, class)
+				if err != nil {
+					s.log.WarnContext(ctx, "DNS lookup error", "name", qname, "type", dns.TypeToString[dns.RRToType(question)], "error", err)
+					resp.Rcode = dns.RcodeServerFailure
+					if _, err := resp.WriteTo(w); err != nil {
+						s.log.WarnContext(ctx, "DNS response write error", "error", err)
+					}
+					return
+				}
+				if len(rrs) > 0 {
+					nameExists = true
+					break
+				}
+			}
+			if nameExists {
+				break
+			}
+		}
+		if !nameExists {
+			resp.Rcode = dns.RcodeNameError
+		}
 	}
 
 	if _, err := resp.WriteTo(w); err != nil {
