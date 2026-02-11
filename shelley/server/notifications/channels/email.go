@@ -104,14 +104,14 @@ func formatEmailMessage(event notifications.Event) (subject, body string) {
 				body += "\n\n" + p.FinalResponse
 			}
 		}
-		return
+		return subject, body
 
 	case notifications.EventAgentError:
 		subject = "Agent error"
 		if p, ok := event.Payload.(notifications.AgentErrorPayload); ok && p.ErrorMessage != "" {
 			body = p.ErrorMessage
 		}
-		return
+		return subject, body
 
 	default:
 		return "", ""

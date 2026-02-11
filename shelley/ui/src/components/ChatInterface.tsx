@@ -588,7 +588,9 @@ function ChatInterface({
   // Settings modal removed - configuration moved to status bar for empty conversations
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredTheme);
-  const [browserNotifsEnabled, setBrowserNotifsEnabled] = useState(() => isChannelEnabled("browser"));
+  const [browserNotifsEnabled, setBrowserNotifsEnabled] = useState(() =>
+    isChannelEnabled("browser"),
+  );
   const [showDiffViewer, setShowDiffViewer] = useState(false);
   const [diffViewerInitialCommit, setDiffViewerInitialCommit] = useState<string | undefined>(
     undefined,
@@ -1648,7 +1650,11 @@ function ChatInterface({
                           }
                         }}
                         className={`theme-toggle-btn${browserNotifsEnabled ? " theme-toggle-btn-selected" : ""}`}
-                        title={getBrowserNotificationState() === "denied" ? "Blocked by browser" : "Enable notifications"}
+                        title={
+                          getBrowserNotificationState() === "denied"
+                            ? "Blocked by browser"
+                            : "Enable notifications"
+                        }
                         disabled={getBrowserNotificationState() === "denied"}
                       >
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">

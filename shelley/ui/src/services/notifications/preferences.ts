@@ -30,9 +30,7 @@ export function getNotificationPreferences(): NotificationPreferences {
   return DEFAULT_PREFS;
 }
 
-export function setNotificationPreferences(
-  prefs: NotificationPreferences,
-): void {
+export function setNotificationPreferences(prefs: NotificationPreferences): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
 }
 
@@ -46,10 +44,7 @@ export function setChannelEnabled(channelName: string, enabled: boolean): void {
   setNotificationPreferences(prefs);
 }
 
-export function isChannelEnabled(
-  channelName: string,
-  eventType?: string,
-): boolean {
+export function isChannelEnabled(channelName: string, eventType?: string): boolean {
   const prefs = getNotificationPreferences();
   const channelPrefs = prefs.channels[channelName];
   if (!channelPrefs || !channelPrefs.enabled) return false;

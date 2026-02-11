@@ -5,10 +5,7 @@ type NotificationHandler = (event: NotificationEvent) => void;
 
 const handlers: Map<string, NotificationHandler> = new Map();
 
-export function registerHandler(
-  name: string,
-  handler: NotificationHandler,
-): void {
+export function registerHandler(name: string, handler: NotificationHandler): void {
   handlers.set(name, handler);
 }
 

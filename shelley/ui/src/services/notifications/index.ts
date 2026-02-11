@@ -13,11 +13,7 @@ export function initializeNotifications(): void {
   registerHandler("browser", browserNotificationHandler);
 }
 
-export type BrowserNotificationState =
-  | "unsupported"
-  | "granted"
-  | "denied"
-  | "default";
+export type BrowserNotificationState = "unsupported" | "granted" | "denied" | "default";
 
 export function getBrowserNotificationState(): BrowserNotificationState {
   if (typeof Notification === "undefined") return "unsupported";

@@ -226,7 +226,14 @@ function CommandPalette({
     });
 
     return items;
-  }, [onNewConversation, onOpenDiffViewer, onOpenModelsModal, onOpenNotificationsModal, onClose, hasCwd]);
+  }, [
+    onNewConversation,
+    onOpenDiffViewer,
+    onOpenModelsModal,
+    onOpenNotificationsModal,
+    onClose,
+    hasCwd,
+  ]);
 
   // Convert conversations to command items
   const conversationToItem = useCallback(

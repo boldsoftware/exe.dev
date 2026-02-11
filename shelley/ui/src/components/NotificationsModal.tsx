@@ -1,10 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Modal from "./Modal";
-import {
-  notificationChannelsApi,
-  NotificationChannelAPI,
-  ChannelTypeInfo,
-} from "../services/api";
+import { notificationChannelsApi, NotificationChannelAPI, ChannelTypeInfo } from "../services/api";
 import {
   getBrowserNotificationState,
   requestBrowserNotificationPermission,
@@ -149,7 +145,8 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
   const handleToggleEnabled = async (ch: NotificationChannelAPI) => {
     try {
       setError(null);
-      const configObj: Record<string, string> = ch.config && typeof ch.config === "object" ? ch.config as Record<string, string> : {};
+      const configObj: Record<string, string> =
+        ch.config && typeof ch.config === "object" ? (ch.config as Record<string, string>) : {};
       await notificationChannelsApi.updateChannel(ch.channel_id, {
         display_name: ch.display_name,
         enabled: !ch.enabled,
@@ -192,7 +189,12 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
     const canSave = form.display_name.trim() !== "" && form.channel_type !== "";
 
     return (
-      <Modal isOpen={isOpen} onClose={onClose} title={editingChannelId ? "Edit Channel" : "Add Channel"} className="modal-wide">
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={editingChannelId ? "Edit Channel" : "Add Channel"}
+        className="modal-wide"
+      >
         {error && (
           <div className="test-result error" style={{ marginBottom: "1rem" }}>
             {error}
@@ -228,7 +230,10 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
 
         {configFields.map((field) => (
           <div className="form-group" key={field.name}>
-            <label>{field.label}{field.required && " *"}</label>
+            <label>
+              {field.label}
+              {field.required && " *"}
+            </label>
             <input
               className="form-input"
               value={form.config[field.name] || ""}
@@ -293,13 +298,31 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
 
       {/* Local channels section */}
       <div style={{ marginBottom: "1rem" }}>
-        <div className="overflow-menu-label" style={{ marginBottom: "0.5rem", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)" }}>
+        <div
+          className="overflow-menu-label"
+          style={{
+            marginBottom: "0.5rem",
+            fontSize: "0.75rem",
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            color: "var(--text-secondary)",
+          }}
+        >
           Local
         </div>
 
         {/* Browser notifications */}
         {typeof Notification !== "undefined" && (
-          <div className="model-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", marginBottom: "0.5rem" }}>
+          <div
+            className="model-card"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "0.75rem 1rem",
+              marginBottom: "0.5rem",
+            }}
+          >
             <div>
               <div style={{ fontWeight: 500 }}>Browser Notifications</div>
               <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
@@ -343,7 +366,16 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
         )}
 
         {/* Favicon */}
-        <div className="model-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", marginBottom: "0.5rem" }}>
+        <div
+          className="model-card"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0.75rem 1rem",
+            marginBottom: "0.5rem",
+          }}
+        >
           <div>
             <div style={{ fontWeight: 500 }}>Favicon</div>
             <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
@@ -365,11 +397,22 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
 
       {/* Backend channels section */}
       <div>
-        <div className="overflow-menu-label" style={{ marginBottom: "0.5rem", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)" }}>
+        <div
+          className="overflow-menu-label"
+          style={{
+            marginBottom: "0.5rem",
+            fontSize: "0.75rem",
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            color: "var(--text-secondary)",
+          }}
+        >
           Server
         </div>
 
-        {loading && <div style={{ padding: "1rem", color: "var(--text-secondary)" }}>Loading...</div>}
+        {loading && (
+          <div style={{ padding: "1rem", color: "var(--text-secondary)" }}>Loading...</div>
+        )}
 
         {!loading && channels.length === 0 && (
           <div style={{ padding: "1rem", color: "var(--text-secondary)", textAlign: "center" }}>
@@ -380,7 +423,14 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
                 <button
                   className="btn-link"
                   onClick={handleAdd}
-                  style={{ color: "var(--primary)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", font: "inherit" }}
+                  style={{
+                    color: "var(--primary)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                    font: "inherit",
+                  }}
                 >
                   Add one
                 </button>
@@ -393,7 +443,13 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
           <div
             key={ch.channel_id}
             className="model-card"
-            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", marginBottom: "0.5rem" }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "0.75rem 1rem",
+              marginBottom: "0.5rem",
+            }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -423,9 +479,17 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
               <button className="btn btn-secondary btn-sm" onClick={() => handleEdit(ch)}>
                 Edit
               </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => handleDelete(ch.channel_id)}>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => handleDelete(ch.channel_id)}
+              >
                 <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
                 </svg>
               </button>
             </div>
