@@ -8,6 +8,8 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -91,6 +93,29 @@ type Store struct {
 
 func Load(env stage.Env) (*Store, error) {
 	return loadFromFS(contentFS, env)
+}
+
+// LoadFromDir loads docs content from a directory on disk.
+// The directory should contain a "content" subdirectory with markdown files.
+func LoadFromDir(dir string, env stage.Env) (*Store, error) {
+	return loadFromFS(os.DirFS(dir), env)
+}
+
+// ParseTemplatesFromDir parses doc templates from disk.
+// docsDir should contain doc-entry.html and docs-list.html.
+// topbarPath is the path to the topbar.html template file.
+func ParseTemplatesFromDir(docsDir, topbarPath string) (*template.Template, error) {
+	tmpl, err := template.New("docs").ParseFiles(
+		filepath.Join(docsDir, "doc-entry.html"),
+		filepath.Join(docsDir, "docs-list.html"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tmpl.ParseFiles(topbarPath); err != nil {
+		return nil, err
+	}
+	return tmpl, nil
 }
 
 func loadFromFS(fsys fs.FS, env stage.Env) (*Store, error) {
@@ -253,13 +278,23 @@ func (s *Store) Slugs() []string {
 type Handler struct {
 	store      *Store
 	showHidden bool
+	tmpl       *template.Template
 }
 
 func NewHandler(store *Store, showHidden bool) *Handler {
 	if store == nil {
 		return nil
 	}
-	return &Handler{store: store, showHidden: showHidden}
+	return &Handler{store: store, showHidden: showHidden, tmpl: docTemplates}
+}
+
+// NewHandlerWithTemplates creates a Handler that uses the given templates
+// instead of the package-level embedded templates.
+func NewHandlerWithTemplates(store *Store, showHidden bool, tmpl *template.Template) *Handler {
+	if store == nil {
+		return nil
+	}
+	return &Handler{store: store, showHidden: showHidden, tmpl: tmpl}
 }
 
 // statusTag returns a label for the entry's visibility state, for use in templates.
@@ -369,7 +404,7 @@ func (h *Handler) renderDocEntry(w http.ResponseWriter, r *http.Request, entry *
 		"StatusTag": h.statusTag,
 	}
 
-	if err := docTemplates.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
+	if err := h.tmpl.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
 		http.Error(w, "error rendering doc", http.StatusInternalServerError)
 		return
 	}
@@ -439,7 +474,7 @@ func (h *Handler) renderDocsList(w http.ResponseWriter, r *http.Request) {
 		"StatusTag": h.statusTag,
 	}
 
-	if err := docTemplates.ExecuteTemplate(buf, "docs-list.html", data); err != nil {
+	if err := h.tmpl.ExecuteTemplate(buf, "docs-list.html", data); err != nil {
 		http.Error(w, "error rendering docs", http.StatusInternalServerError)
 		return
 	}
@@ -816,7 +851,7 @@ func (h *Handler) renderAllDocsHTML(w http.ResponseWriter, r *http.Request) {
 		"StatusTag": h.statusTag,
 	}
 
-	if err := docTemplates.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
+	if err := h.tmpl.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
 		http.Error(w, "error rendering doc", http.StatusInternalServerError)
 		return
 	}
