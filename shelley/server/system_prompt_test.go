@@ -82,7 +82,7 @@ func TestSystemPromptDetectsGitInWorkingDir(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init failed: %v\n%s", err, out)
 	}
-	cmd = exec.Command("git", "commit", "--allow-empty", "-m", "initial")
+	cmd = exec.Command("git", "commit", "--allow-empty", "--no-verify", "-m", "initial")
 	cmd.Dir = tmpDir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git commit failed: %v\n%s", err, out)

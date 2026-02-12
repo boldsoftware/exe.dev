@@ -321,13 +321,15 @@ function App() {
           git_worktree_root: update.git_worktree_root,
         };
         if (existingIndex >= 0) {
-          // Update existing conversation in place, preserving working state
+          // Update existing conversation in place, preserving working state and git info
           // (working state is updated separately via conversation_state)
           const updated = [...prev];
           updated[existingIndex] = {
             ...update.conversation!,
             ...gitFields,
             working: prev[existingIndex].working,
+            git_commit: prev[existingIndex].git_commit,
+            git_subject: prev[existingIndex].git_subject,
           };
           return updated;
         } else {
@@ -450,7 +452,12 @@ function App() {
     setConversations((prev) =>
       prev.map((conv) =>
         conv.conversation_id === updatedConversation.conversation_id
-          ? { ...updatedConversation, working: conv.working }
+          ? {
+              ...updatedConversation,
+              working: conv.working,
+              git_commit: conv.git_commit,
+              git_subject: conv.git_subject,
+            }
           : conv,
       ),
     );
@@ -482,11 +489,16 @@ function App() {
   };
 
   const handleConversationRenamed = (conversation: Conversation) => {
-    // Update the conversation in the list with the new slug, preserving working state
+    // Update the conversation in the list with the new slug, preserving working/git state
     setConversations((prev) =>
       prev.map((c) =>
         c.conversation_id === conversation.conversation_id
-          ? { ...conversation, working: c.working }
+          ? {
+              ...conversation,
+              working: c.working,
+              git_commit: c.git_commit,
+              git_subject: c.git_subject,
+            }
           : c,
       ),
     );

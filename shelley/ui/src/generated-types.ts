@@ -49,7 +49,8 @@ export interface NotificationEventForTS {
   type: EventType;
   conversation_id: string;
   timestamp: string;
-  payload?: Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payload?: any;
 }
 
 export interface StreamResponseForTS {
@@ -73,6 +74,8 @@ export interface ConversationWithStateForTS {
   working: boolean;
   git_repo_root?: string;
   git_worktree_root?: string;
+  git_commit?: string;
+  git_subject?: string;
 }
 
 export type MessageType = "user" | "agent" | "tool" | "error" | "system" | "gitinfo";

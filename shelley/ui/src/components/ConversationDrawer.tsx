@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Conversation, ConversationWithState } from "../types";
 import { api } from "../services/api";
 
@@ -52,8 +52,10 @@ function ConversationDrawer({
   });
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [groupMenuOpen, setGroupMenuOpen] = useState(false);
+  const [copiedHash, setCopiedHash] = useState<string | null>(null);
   const groupMenuRef = React.useRef<HTMLDivElement>(null);
   const renameInputRef = React.useRef<HTMLInputElement>(null);
+  const copyTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Close group menu on outside click
   useEffect(() => {
@@ -318,6 +320,24 @@ function ConversationDrawer({
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
+
+  const handleCopyGitHash = useCallback((e: React.MouseEvent, hash: string) => {
+    e.stopPropagation();
+    navigator.clipboard
+      .writeText(hash)
+      .then(() => {
+        setCopiedHash(hash);
+        if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+        copyTimeoutRef.current = setTimeout(() => setCopiedHash(null), 1500);
+      })
+      .catch(() => {});
+  }, []);
+
   const handleGroupByChange = (value: GroupBy) => {
     setGroupBy(value);
     localStorage.setItem("shelley-group-by", value);
@@ -384,6 +404,7 @@ function ConversationDrawer({
   }, [conversations, groupBy, showArchived]);
 
   const renderConversationItem = (conversation: Conversation | ConversationWithState) => {
+    const convState = conversation as ConversationWithState;
     const isActive = conversation.conversation_id === currentConversationId;
     const hasSubagents = subagents[conversation.conversation_id]?.length > 0;
     const isExpanded = expandedSubagents.has(conversation.conversation_id);
@@ -534,6 +555,49 @@ function ConversationDrawer({
                 </div>
               )}
             </div>
+            {convState.git_commit && (
+              <div
+                className="conversation-git"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.3em",
+                  fontSize: "0.75em",
+                  color: isActive ? "rgba(255,255,255,0.7)" : "var(--text-secondary)",
+                }}
+              >
+                <span
+                  onClick={(e) => handleCopyGitHash(e, convState.git_commit!)}
+                  title={`Click to copy ${convState.git_commit}`}
+                  style={{
+                    fontFamily: "var(--font-mono, monospace)",
+                    cursor: "pointer",
+                    color:
+                      copiedHash === convState.git_commit
+                        ? "var(--success-color, #22c55e)"
+                        : "inherit",
+                  }}
+                >
+                  {copiedHash === convState.git_commit
+                    ? "copied!".padEnd(convState.git_commit!.length, "\u00a0")
+                    : convState.git_commit}
+                </span>
+                {convState.git_subject && (
+                  <span
+                    title={convState.git_subject}
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      minWidth: 0,
+                      color: "inherit",
+                    }}
+                  >
+                    {convState.git_subject}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           {showArchived && (
             <div

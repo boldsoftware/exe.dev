@@ -22,6 +22,7 @@ import (
 	"shelley.exe.dev/claudetool/browse"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
+	"shelley.exe.dev/gitstate"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/models"
 	"shelley.exe.dev/slug"
@@ -494,8 +495,7 @@ func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
 
 	// Build response with working state included
 	// Cache git info by cwd to avoid redundant git subprocess calls
-	type gitInfo struct{ repoRoot, worktreeRoot string }
-	gitCache := make(map[string]gitInfo)
+	gitStates := make(map[string]*gitstate.GitState)
 	result := make([]ConversationWithState, len(conversations))
 	for i, conv := range conversations {
 		cws := ConversationWithState{
@@ -503,13 +503,17 @@ func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
 			Working:      workingStates[conv.ConversationID],
 		}
 		if conv.Cwd != nil {
-			gi, ok := gitCache[*conv.Cwd]
+			gs, ok := gitStates[*conv.Cwd]
 			if !ok {
-				gi.repoRoot, gi.worktreeRoot = gitInfoForCwd(*conv.Cwd)
-				gitCache[*conv.Cwd] = gi
+				gs = gitstate.GetGitState(*conv.Cwd)
+				gitStates[*conv.Cwd] = gs
 			}
-			cws.GitRepoRoot = gi.repoRoot
-			cws.GitWorktreeRoot = gi.worktreeRoot
+			if gs.IsRepo {
+				cws.GitRepoRoot = gs.Worktree
+				cws.GitWorktreeRoot = getGitWorktreeRoot(gs.Worktree)
+				cws.GitCommit = gs.Commit
+				cws.GitSubject = gs.Subject
+			}
 		}
 		result[i] = cws
 	}
