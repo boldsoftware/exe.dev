@@ -498,6 +498,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// /exelet-desired must be routed before isRequestOnMainPort because
+	// exelets reach exed through a TCP proxy whose port differs from
+	// exed's main listener port, causing isRequestOnMainPort to reject
+	// the request. Access is already restricted by requireLocalAccess.
+	if r.URL.Path == "/exelet-desired" {
+		requireLocalAccess(s.handleExeletDesired)(w, r)
+		return
+	}
+
 	// Non-proxy content (main site, terminal) should only be served on the main port.
 	if !s.isRequestOnMainPort(w, r) {
 		return
@@ -608,8 +617,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "ok")
 	case "/metrics":
 		requireLocalAccess(s.handleMetrics)(w, r)
-	case "/exelet-desired":
-		requireLocalAccess(s.handleExeletDesired)(w, r)
 	case exeweb.SSHKnownHostsPath:
 		s.handleKnownHosts(w, r)
 		return

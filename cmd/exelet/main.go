@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -141,6 +143,12 @@ func main() {
 			Usage:   "enable periodic desired-state sync from exed (requires --exed-url)",
 			Value:   false,
 			EnvVars: []string{"EXELET_DESIRED_STATE_SYNC"},
+		},
+		&cli.DurationFlag{
+			Name:    "desired-state-sync-interval",
+			Usage:   "polling interval for desired-state sync (e.g., 5s, 1m)",
+			Value:   desiredsync.DefaultPollInterval,
+			EnvVars: []string{"EXELET_DESIRED_STATE_SYNC_INTERVAL"},
 		},
 		&cli.StringFlag{
 			Name:    "instance-domain",
@@ -437,15 +445,32 @@ func serveAction(clix *cli.Context) error {
 		return err
 	}
 
-	// Start desired-state syncer if enabled
+	if err := srv.Run(ctx); err != nil {
+		return err
+	}
+
+	// Start desired-state syncer if enabled.
+	// Must be after srv.Run() so we can read the actual bound address.
 	var dsSync *desiredsync.Syncer
 	if clix.Bool("desired-state-sync") {
 		if cfg.ExedURL == "" {
 			return fmt.Errorf("--desired-state-sync requires --exed-url to be set")
 		}
+		// Parse the port from the actual bound address (handles port 0 in tests).
+		actualURL, err := url.Parse(srv.ActualAddr())
+		if err != nil {
+			return fmt.Errorf("failed to parse actual address: %w", err)
+		}
+		_, port, _ := net.SplitHostPort(actualURL.Host)
+		// Use --name (EXELET_NODE_NAME) so the address matches what exed
+		// registers. --name must match the hostname in exed's
+		// -exelet-addresses flag.
+		exeletAddr := fmt.Sprintf("tcp://%s:%s", name, port)
+
 		dsSync, err = desiredsync.New(desiredsync.Config{
-			ExedURL:    cfg.ExedURL,
-			ExeletAddr: cfg.ListenAddress,
+			ExedURL:      cfg.ExedURL,
+			ExeletAddr:   exeletAddr,
+			PollInterval: clix.Duration("desired-state-sync-interval"),
 		}, log)
 		if err != nil {
 			return fmt.Errorf("failed to create desired-state syncer: %w", err)
@@ -453,10 +478,6 @@ func serveAction(clix *cli.Context) error {
 		if err := dsSync.Start(ctx); err != nil {
 			return fmt.Errorf("failed to start desired-state syncer: %w", err)
 		}
-	}
-
-	if err := srv.Run(ctx); err != nil {
-		return err
 	}
 
 	signals := make(chan os.Signal, 1)

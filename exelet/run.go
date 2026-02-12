@@ -29,6 +29,7 @@ func (s *Exelet) Run(ctx context.Context) error {
 
 	// Log actual listen address (important for tests using port :0)
 	actualAddr := u.Scheme + "://" + l.Addr().String()
+	s.actualAddr = actualAddr
 	s.log.InfoContext(ctx, "listening", "addr", actualAddr)
 
 	doneCh := make(chan bool)

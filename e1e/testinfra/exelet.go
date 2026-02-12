@@ -335,6 +335,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 		remoteBinaryPath,
 		"--debug",
 		"--stage", "test",
+		"--name", host,
 		"--listen-address", "tcp://0.0.0.0:0",
 		"--http-addr", ":0",
 		"--data-dir", res.dataDir,
@@ -346,6 +347,8 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 		"--resource-manager-interval", "5s",
 		"--exed-url", exedProxyURL,
 		"--enable-hugepages",
+		"--desired-state-sync",
+		"--desired-state-sync-interval", "1s",
 	}
 
 	// Add replication flags if configured
@@ -472,7 +475,7 @@ func startExeletLocal(ctx context.Context, exeletBinary string, exedPort int, te
 
 	encodedNetwork := url.QueryEscape(res.networkCIDR)
 
-	localCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --stage test --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s&disable_bandwidth=true" --proxy-port-min %d --proxy-port-max %d --resource-manager-interval 5s --exed-url %s --enable-hugepages`,
+	localCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --stage test --name localhost --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s&disable_bandwidth=true" --proxy-port-min %d --proxy-port-max %d --resource-manager-interval 5s --exed-url %s --enable-hugepages --desired-state-sync --desired-state-sync-interval 1s`,
 		res.coverDir, exeletBinary, res.dataDir, res.dataDir, res.dataDir, res.zfsDataset, res.dataDir, res.bridgeName, encodedNetwork, res.proxyPortMin, res.proxyPortMax, exedProxyURL)
 
 	// Add replication flags if configured
@@ -755,6 +758,15 @@ func (ei *ExeletInstance) Stop(ctx context.Context) string {
 	os.Remove(filepath.Join(os.TempDir(), "exelet-test"))
 
 	return localExeletCoverDir
+}
+
+// Exec runs a command on the exelet host (with sudo).
+// For remote exelets, it uses SSH. For local exelets, it runs directly.
+func (ei *ExeletInstance) Exec(ctx context.Context, command string) ([]byte, error) {
+	if ei.RemoteHost == "" {
+		return exec.CommandContext(ctx, "bash", "-c", "sudo "+command).CombinedOutput()
+	}
+	return sshExec(ctx, ei.RemoteHost, "sudo "+command)
 }
 
 // stopLocal stops exelet running locally (for CTR_HOST=localhost).

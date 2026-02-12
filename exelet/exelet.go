@@ -49,6 +49,13 @@ type Exelet struct {
 	metrics         *ExeletMetrics
 	grpcMetrics     *grpcprom.ServerMetrics
 	slackFeed       *exelogging.SlackFeed
+	actualAddr      string
+}
+
+// ActualAddr returns the actual bound address after Run() completes.
+// This is important when the listen address uses port 0 (e.g., in tests).
+func (s *Exelet) ActualAddr() string {
+	return s.actualAddr
 }
 
 // NewExelet returns a new exelet server.
