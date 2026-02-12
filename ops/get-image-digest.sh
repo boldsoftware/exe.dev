@@ -25,16 +25,18 @@ else
     exit 1
 fi
 
+CURL_OPTS=(--connect-timeout 10 --max-time 30 --retry 3 --retry-delay 2 --retry-all-errors -sfL)
+
 # Get authentication token
-TOKEN=$(curl -sL "https://${REGISTRY}/token?scope=repository:${REPO}:pull" | jq -r '.token')
+TOKEN=$(curl "${CURL_OPTS[@]}" "https://${REGISTRY}/token?scope=repository:${REPO}:pull" | jq -r '.token')
 
 if [[ -z "$TOKEN" || "$TOKEN" == "null" ]]; then
-    echo "Failed to get authentication token" >&2
+    echo "Failed to get authentication token from ${REGISTRY}" >&2
     exit 1
 fi
 
 # Fetch the manifest index
-MANIFEST=$(curl -sL \
+MANIFEST=$(curl "${CURL_OPTS[@]}" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Accept: application/vnd.oci.image.index.v1+json" \
     "https://${REGISTRY}/v2/${REPO}/manifests/${TAG}")
