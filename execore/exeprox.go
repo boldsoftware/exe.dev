@@ -304,7 +304,7 @@ func stopProxyChangesStream() error {
 	proxyChangesMu.Unlock()
 
 	if c != 1 {
-		return fmt.Errorf("stopProxyChangesStream: invalid call: %d streams", len(proxyChangesStreams))
+		return fmt.Errorf("stopProxyChangesStream: invalid call: %d streams", c)
 	}
 
 	// Unregister the stream before signaling it to stop,
