@@ -341,11 +341,11 @@ func (m *Manager) Subscribe(ctx context.Context, billingID string, p *SubscribeP
 
 	params := &stripe.CheckoutSessionCreateParams{
 		Customer: &billingID,
-		Mode:     stripe.String("subscription"),
+		Mode:     new("subscription"),
 		LineItems: []*stripe.CheckoutSessionCreateLineItemParams{
 			{
 				Price:    &priceID,
-				Quantity: stripe.Int64(1),
+				Quantity: new(int64(1)),
 			},
 		},
 		SuccessURL: &p.SuccessURL,
@@ -379,7 +379,7 @@ func (m *Manager) Subscribe(ctx context.Context, billingID string, p *SubscribeP
 func (m *Manager) hasActiveSubscription(ctx context.Context, c *stripe.Client, customerID string) (bool, error) {
 	params := &stripe.SubscriptionListParams{
 		Customer: &customerID,
-		Status:   stripe.String("all"),
+		Status:   new("all"),
 	}
 	for sub, err := range c.V1Subscriptions.List(ctx, params) {
 		if err != nil {
@@ -528,9 +528,9 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 
 	params := &stripe.EventListParams{
 		Types: []*string{
-			stripe.String("customer.subscription.created"),
-			stripe.String("customer.subscription.updated"),
-			stripe.String("customer.subscription.deleted"),
+			new("customer.subscription.created"),
+			new("customer.subscription.updated"),
+			new("customer.subscription.deleted"),
 		},
 		CreatedRange: &stripe.RangeQueryParams{
 			GreaterThan: sinceUnix,
@@ -685,18 +685,18 @@ func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCredit
 
 	params := &stripe.CheckoutSessionCreateParams{
 		Customer:           &billingID,
-		Mode:               stripe.String("payment"),
-		PaymentMethodTypes: []*string{stripe.String("card")},
+		Mode:               new("payment"),
+		PaymentMethodTypes: []*string{new("card")},
 		LineItems: []*stripe.CheckoutSessionCreateLineItemParams{
 			{
 				PriceData: &stripe.CheckoutSessionCreateLineItemPriceDataParams{
-					Currency: stripe.String("usd"),
+					Currency: new("usd"),
 					ProductData: &stripe.CheckoutSessionCreateLineItemPriceDataProductDataParams{
-						Name: stripe.String("Account Credits"),
+						Name: new("Account Credits"),
 					},
 					UnitAmount: new(p.Amount.Cents()),
 				},
-				Quantity: stripe.Int64(1),
+				Quantity: new(int64(1)),
 			},
 		},
 		SuccessURL: &p.SuccessURL,
