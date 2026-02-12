@@ -85,10 +85,12 @@ function ConversationDrawer({
           return { ...prev, [parentId]: [...existing, { ...subagentUpdate, working: false }] };
         }
       });
-      // Auto-expand parent to show the new subagent
-      setExpandedSubagents((prev) => new Set([...prev, parentId]));
+      // Auto-expand parent only if it's the currently selected conversation
+      if (parentId === currentConversationId) {
+        setExpandedSubagents((prev) => new Set([...prev, parentId]));
+      }
     }
-  }, [subagentUpdate]);
+  }, [subagentUpdate, currentConversationId]);
 
   // Handle subagent working state updates
   useEffect(() => {
