@@ -204,7 +204,7 @@ func TestPooledConnDisconnectedResetsActive(t *testing.T) {
 		}
 		pc.mu.Unlock()
 
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
 			if err != nil {
 				t.Fatalf("iteration %d dial failed: %v", i, err)
@@ -240,7 +240,7 @@ func TestPooledConnTimersReleaseOnce(t *testing.T) {
 
 	mustCloseConn(t, conn)
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
 		if err != nil {
 			t.Fatalf("iteration %d dial failed: %v", i, err)
@@ -476,7 +476,7 @@ func TestPoolConcurrentAccess(t *testing.T) {
 		errs := make([]error, numGoroutines)
 		done := make(chan struct{})
 
-		for i := 0; i < numGoroutines; i++ {
+		for i := range numGoroutines {
 			go func(idx int) {
 				conns[idx], errs[idx] = pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
 				done <- struct{}{}
@@ -484,7 +484,7 @@ func TestPoolConcurrentAccess(t *testing.T) {
 		}
 
 		// Wait for all goroutines to complete
-		for i := 0; i < numGoroutines; i++ {
+		for range numGoroutines {
 			<-done
 		}
 
@@ -716,13 +716,13 @@ func TestPoolSoak(t *testing.T) {
 	)
 
 	wg.Add(workers)
-	for w := 0; w < workers; w++ {
+	for w := range workers {
 		seed := int64(w + 1)
 		go func(seed int64) {
 			defer wg.Done()
 
 			r := mathrand.New(mathrand.NewSource(seed))
-			for i := 0; i < iterations; i++ {
+			for range iterations {
 				if ctx.Err() != nil {
 					return
 				}

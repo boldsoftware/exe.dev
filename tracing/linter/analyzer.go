@@ -39,7 +39,7 @@ type contextSource struct {
 	name string // The variable name for reporting (e.g., "ctx" or "r")
 }
 
-func run(pass *analysis.Pass) (interface{}, error) {
+func run(pass *analysis.Pass) (any, error) {
 	inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
 	nodeFilter := []ast.Node{

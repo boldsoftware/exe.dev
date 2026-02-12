@@ -778,7 +778,7 @@ func (tr *TagResolver) extractPlatformDigest(manifestBody []byte, platform strin
 			Platform struct {
 				Architecture string `json:"architecture"`
 				OS           string `json:"os"`
-			} `json:"platform,omitempty"`
+			} `json:"platform"`
 		} `json:"manifests"`
 	}
 

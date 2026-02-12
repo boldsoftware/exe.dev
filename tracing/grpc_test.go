@@ -37,7 +37,7 @@ func TestUnaryClientInterceptor(t *testing.T) {
 
 			// Mock invoker that captures the context
 			var capturedCtx context.Context
-			mockInvoker := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+			mockInvoker := func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
 				capturedCtx = ctx
 				return nil
 			}
@@ -106,7 +106,7 @@ func TestUnaryServerInterceptor(t *testing.T) {
 
 			// Mock handler that captures the context
 			var capturedCtx context.Context
-			mockHandler := func(ctx context.Context, req interface{}) (interface{}, error) {
+			mockHandler := func(ctx context.Context, req any) (any, error) {
 				capturedCtx = ctx
 				return nil, nil
 			}
@@ -154,7 +154,7 @@ func TestStreamServerInterceptor_ContextPropagation(t *testing.T) {
 
 	// Mock handler that captures the stream
 	var capturedStream grpc.ServerStream
-	mockHandler := func(srv interface{}, ss grpc.ServerStream) error {
+	mockHandler := func(srv any, ss grpc.ServerStream) error {
 		capturedStream = ss
 		return nil
 	}

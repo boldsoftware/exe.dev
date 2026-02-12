@@ -53,7 +53,6 @@ func TestIsSingleLevelSubdomain(t *testing.T) {
 	}
 
 	for _, tc := range tcs {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := isSingleLevelSubdomain(tc.domain, tc.serverName)
@@ -112,7 +111,6 @@ func TestManager_domainForServerName(t *testing.T) {
 	}
 
 	for _, tc := range tcs {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := &Manager{
@@ -167,7 +165,6 @@ func TestManager_isCertValid(t *testing.T) {
 	}
 
 	for _, tc := range tcs {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := w.isCertValid(testDomain, tc.cert)

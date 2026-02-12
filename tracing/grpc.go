@@ -13,7 +13,7 @@ const traceIDMetadataKey = "trace_id"
 // UnaryClientInterceptor returns a gRPC unary client interceptor that propagates trace_id
 // from the context to gRPC metadata.
 func UnaryClientInterceptor() grpc.UnaryClientInterceptor {
-	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		// Extract trace_id from context
 		if traceID := ctx.Value("trace_id"); traceID != nil {
 			if tid, ok := traceID.(string); ok && tid != "" {
@@ -47,7 +47,7 @@ func StreamClientInterceptor() grpc.StreamClientInterceptor {
 // UnaryServerInterceptor returns a gRPC unary server interceptor that extracts trace_id
 // from incoming gRPC metadata and adds it to the context.
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		// Extract trace_id from incoming metadata
 		if md, ok := metadata.FromIncomingContext(ctx); ok {
 			if values := md.Get(traceIDMetadataKey); len(values) > 0 && values[0] != "" {
@@ -65,7 +65,7 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 // StreamServerInterceptor returns a gRPC stream server interceptor that extracts trace_id
 // from incoming gRPC metadata and adds it to the context.
 func StreamServerInterceptor() grpc.StreamServerInterceptor {
-	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		// Extract trace_id from incoming metadata
 		ctx := ss.Context()
 		if md, ok := metadata.FromIncomingContext(ctx); ok {

@@ -394,11 +394,9 @@ func TestBackgroundRefreshLoop(t *testing.T) {
 	defer cleanup()
 
 	tr := New(db)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// Start the resolver
-	tr.Start(ctx)
+	tr.Start(t.Context())
 
 	// Give it a moment to start
 	time.Sleep(100 * time.Millisecond)

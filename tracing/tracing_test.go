@@ -27,7 +27,7 @@ func TestGenerateTraceID(t *testing.T) {
 
 	// Generate multiple trace IDs and ensure they're unique
 	seen := make(map[string]bool)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		id := GenerateTraceID()
 		if seen[id] {
 			t.Errorf("GenerateTraceID() generated duplicate ID: %s", id)
@@ -216,7 +216,7 @@ func TestHTTPMiddleware_GeneratesUniqueTraceIDs(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		req := httptest.NewRequest("GET", "/test", nil)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
