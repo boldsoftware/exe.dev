@@ -345,6 +345,8 @@ jobs:
     if: ${{ !cancelled() && !failure() && needs.commit-validation-and-formatting.outputs.ci_only != 'true' }}
     outputs:
       main_sha: ${{ steps.push.outputs.main_sha }}
+      main_sha_before: ${{ steps.push.outputs.main_sha_before }}
+      commit_log: ${{ steps.push.outputs.commit_log }}
     permissions:
       contents: write
       issues: write
@@ -434,6 +436,13 @@ jobs:
           git push origin HEAD:main
 
           echo "main_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "main_sha_before=$ORIGIN_MAIN_BEFORE" >> $GITHUB_OUTPUT
+
+          {
+            echo 'commit_log<<GHEOF'
+            git log --format='%h %s' --reverse "$ORIGIN_MAIN_BEFORE"..HEAD | head -15
+            echo 'GHEOF'
+          } >> "$GITHUB_OUTPUT"
 
           # Check if exeuntu/, shelley/, or the build workflow were modified
           if git diff --name-only "$ORIGIN_MAIN_BEFORE" HEAD | grep -qE '^(exeuntu|shelley)/|^\.github/workflows/build-exeuntu\.yml$'; then
@@ -506,9 +515,11 @@ jobs:
           else
             STATUS=success
           fi
-          python3 bin/slack-notify-queue.py "$NTFY_SLACK_WEBHOOK_URL" "$STATUS" "$COMMIT_SUBJECT" "${{ github.actor }}" "$RUN_URL" "$COMMIT_URL"
+          python3 bin/slack-notify-queue.py "$NTFY_SLACK_WEBHOOK_URL" "$STATUS" "$COMMIT_SUBJECT" "${{ github.actor }}" "$RUN_URL" "$COMMIT_URL" "${{ github.ref_name }}"
         env:
           NTFY_SLACK_WEBHOOK_URL: ${{ secrets.NTFY_SLACK_WEBHOOK_URL }}
           COMMIT_SUBJECT: ${{ github.event.head_commit.message }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ needs.push-to-main.outputs.main_sha }}
+          COMPARE_URL: ${{ github.server_url }}/${{ github.repository }}/compare/${{ needs.push-to-main.outputs.main_sha_before }}...${{ needs.push-to-main.outputs.main_sha }}
+          COMMIT_LOG: ${{ needs.push-to-main.outputs.commit_log }}
