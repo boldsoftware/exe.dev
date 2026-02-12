@@ -117,6 +117,9 @@ tr:hover td:first-child { background: #eaeef2 !important; }
 .cg-name.clickable { cursor: pointer; color: #0969da; }
 .cg-name.clickable:hover { text-decoration: underline; }
 
+.spark-cell { display: inline-flex; align-items: center; width: 100%; white-space: nowrap; }
+.spark-cell .spark { flex-shrink: 0; }
+.spark-cell .spark-val { flex: 1; text-align: right; }
 .spark { vertical-align: middle; margin-right: 3px; }
 .spark polyline { fill: none; stroke: #0969da; stroke-width: 1.5; }
 
@@ -834,7 +837,11 @@ function renderRow(row, cols, scales, colStats) {
       spark = makeSpark(data.sparklines[node.path][col.key], scaleMax);
     }
 
-    html += `<td${clsStr}${style}>${spark}${display}</td>`;
+    if (spark) {
+      html += `<td${clsStr}${style}><span class="spark-cell">${spark}<span class="spark-val">${display}</span></span></td>`;
+    } else {
+      html += `<td${clsStr}${style}>${display}</td>`;
+    }
   }
   html += '</tr>';
   return html;
