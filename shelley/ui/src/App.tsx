@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import type { SupportedLanguages } from "@pierre/diffs";
 import ChatInterface from "./components/ChatInterface";
+import type { EphemeralTerminal } from "./components/TerminalPanel";
 import ConversationDrawer from "./components/ConversationDrawer";
 import CommandPalette from "./components/CommandPalette";
 import ModelsModal from "./components/ModelsModal";
@@ -114,6 +115,8 @@ function App() {
   const [modelsRefreshTrigger, setModelsRefreshTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Global ephemeral terminals - persist across conversation switches
+  const [ephemeralTerminals, setEphemeralTerminals] = useState<EphemeralTerminal[]>([]);
   const [subagentUpdate, setSubagentUpdate] = useState<Conversation | null>(null);
   const [subagentStateUpdate, setSubagentStateUpdate] = useState<{
     conversation_id: string;
@@ -501,6 +504,8 @@ function App() {
             modelsRefreshTrigger={modelsRefreshTrigger}
             onOpenModelsModal={() => setModelsModalOpen(true)}
             onReconnect={refreshConversations}
+            ephemeralTerminals={ephemeralTerminals}
+            setEphemeralTerminals={setEphemeralTerminals}
           />
         </div>
 

@@ -26,6 +26,9 @@ interface TerminalPanelProps {
   terminals: EphemeralTerminal[];
   onClose: (id: string) => void;
   onInsertIntoInput?: (text: string) => void;
+  autoFocusId?: string | null;
+  onAutoFocusConsumed?: () => void;
+  onActiveTerminalExited?: () => void;
 }
 
 // Theme colors for xterm.js
@@ -210,6 +213,9 @@ export default function TerminalPanel({
   terminals,
   onClose,
   onInsertIntoInput,
+  autoFocusId,
+  onAutoFocusConsumed,
+  onActiveTerminalExited,
 }: TerminalPanelProps) {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [height, setHeight] = useState(300);
@@ -358,6 +364,55 @@ export default function TerminalPanel({
   const unregisterXterm = useCallback((id: string) => {
     xtermRegistryRef.current.delete(id);
   }, []);
+
+  // Auto-focus terminal when autoFocusId is set (e.g., for interactive shells)
+  useEffect(() => {
+    if (!autoFocusId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let attempt = 0;
+    const tryFocus = () => {
+      if (cancelled) return;
+      const xterm = xtermRegistryRef.current.get(autoFocusId);
+      if (xterm) {
+        setActiveTabId(autoFocusId);
+        // Double-rAF to ensure we're past any keyup/form events that might steal focus
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            xterm.focus();
+          });
+        });
+        onAutoFocusConsumed?.();
+        return;
+      }
+      if (++attempt < 10) {
+        timer = setTimeout(tryFocus, 50);
+      }
+    };
+    // Small initial delay to let the form submit / keyup events settle
+    timer = setTimeout(tryFocus, 50);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [autoFocusId, onAutoFocusConsumed]);
+
+  // Restore focus to message input when the active terminal exits
+  const prevActiveStatusRef = useRef<{ tabId: string | null; status: TermStatus | undefined }>({
+    tabId: null,
+    status: undefined,
+  });
+  useEffect(() => {
+    if (!activeTabId || !onActiveTerminalExited) return;
+    const info = statusMap.get(activeTabId);
+    const prev = prevActiveStatusRef.current;
+    // Only trigger on status transition within the same tab
+    const wasRunning = prev.tabId === activeTabId && prev.status === "running";
+    prevActiveStatusRef.current = { tabId: activeTabId, status: info?.status };
+    if (wasRunning && (info?.status === "exited" || info?.status === "error")) {
+      onActiveTerminalExited();
+    }
+  }, [activeTabId, statusMap, onActiveTerminalExited]);
 
   const getBufferText = useCallback(
     (mode: "screen" | "all"): string => {

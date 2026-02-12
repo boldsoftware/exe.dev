@@ -503,6 +503,8 @@ interface ChatInterfaceProps {
   modelsRefreshTrigger?: number; // increment to trigger models list refresh
   onOpenModelsModal?: () => void;
   onReconnect?: () => void;
+  ephemeralTerminals: EphemeralTerminal[];
+  setEphemeralTerminals: React.Dispatch<React.SetStateAction<EphemeralTerminal[]>>;
 }
 
 function ChatInterface({
@@ -523,6 +525,8 @@ function ChatInterface({
   modelsRefreshTrigger,
   onOpenModelsModal,
   onReconnect,
+  ephemeralTerminals,
+  setEphemeralTerminals,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -647,9 +651,8 @@ function ChatInterface({
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  // Ephemeral terminals are local-only and not persisted to the database
-  const [ephemeralTerminals, setEphemeralTerminals] = useState<EphemeralTerminal[]>([]);
   const [terminalInjectedText, setTerminalInjectedText] = useState<string | null>(null);
+  const [terminalAutoFocusId, setTerminalAutoFocusId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -663,9 +666,6 @@ function ChatInterface({
 
   // Load messages and set up streaming
   useEffect(() => {
-    // Clear ephemeral terminals when conversation changes
-    setEphemeralTerminals([]);
-
     if (conversationId) {
       setAgentWorking(false);
       loadMessages();
@@ -1016,10 +1016,18 @@ function ChatInterface({
         const terminal: EphemeralTerminal = {
           id: `term-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
           command: shellCommand,
-          cwd: selectedCwd || window.__SHELLEY_INIT__?.default_cwd || "/",
+          cwd:
+            currentConversation?.cwd || selectedCwd || window.__SHELLEY_INIT__?.default_cwd || "/",
           createdAt: new Date(),
         };
         setEphemeralTerminals((prev) => [...prev, terminal]);
+        // Auto-focus interactive shells
+        const firstWord = shellCommand.split(/\s+/)[0];
+        const baseName = firstWord.split("/").pop() || firstWord;
+        const interactiveShells = ["bash", "sh", "zsh", "fish", "nu", "nushell"];
+        if (interactiveShells.includes(baseName)) {
+          setTerminalAutoFocusId(terminal.id);
+        }
         // Scroll to bottom to show the new terminal
         setTimeout(() => scrollToBottom(), 100);
       }
@@ -1792,6 +1800,14 @@ function ChatInterface({
         terminals={ephemeralTerminals}
         onClose={(id) => setEphemeralTerminals((prev) => prev.filter((t) => t.id !== id))}
         onInsertIntoInput={handleInsertFromTerminal}
+        autoFocusId={terminalAutoFocusId}
+        onAutoFocusConsumed={() => setTerminalAutoFocusId(null)}
+        onActiveTerminalExited={() => {
+          const input = document.querySelector<HTMLTextAreaElement>(
+            '[data-testid="message-input"]',
+          );
+          input?.focus();
+        }}
       />
 
       {/* Unified Status Bar */}
