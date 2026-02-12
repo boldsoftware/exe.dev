@@ -162,9 +162,12 @@ func (vc *VersionChecker) fetchVersionInfo(ctx context.Context) (*VersionInfo, e
 	info.LatestVersion = latestRelease.TagName
 	info.ReleaseInfo = latestRelease
 
-	// Parse the published_at time
+	// Parse the published_at time, falling back to commit_time if published_at
+	// can't be parsed (e.g. older releases where it contained the tag message).
 	if publishedAt, err := time.Parse(time.RFC3339, latestRelease.PublishedAt); err == nil {
 		info.PublishedAt = publishedAt
+	} else if commitTime, err := time.Parse(time.RFC3339, latestRelease.CommitTime); err == nil {
+		info.PublishedAt = commitTime
 	}
 
 	// Find the download URL for the current platform
@@ -227,12 +230,14 @@ func (vc *VersionChecker) FetchChangelog(ctx context.Context, currentTag, latest
 		return nil, fmt.Errorf("could not extract SHAs from tags")
 	}
 
-	// Find the range of commits between current and latest
+	// Find the range of commits between current and latest.
+	// Use prefix matching since the tag encodes 6-char hex SHAs but
+	// commits.json may use the default git short SHA length (7+ chars).
 	var commits []CommitInfo
 	var foundLatest, foundCurrent bool
 
 	for _, c := range staticCommits {
-		if c.SHA == latestSHA {
+		if strings.HasPrefix(c.SHA, latestSHA) || strings.HasPrefix(latestSHA, c.SHA) {
 			foundLatest = true
 		}
 		if foundLatest && !foundCurrent {
@@ -241,7 +246,7 @@ func (vc *VersionChecker) FetchChangelog(ctx context.Context, currentTag, latest
 				Message: c.Subject,
 			})
 		}
-		if c.SHA == currentSHA {
+		if strings.HasPrefix(c.SHA, currentSHA) || strings.HasPrefix(currentSHA, c.SHA) {
 			foundCurrent = true
 			break
 		}
@@ -249,12 +254,15 @@ func (vc *VersionChecker) FetchChangelog(ctx context.Context, currentTag, latest
 
 	// If we didn't find both SHAs, the commits might be too old (outside 500 range)
 	if !foundLatest || !foundCurrent {
-		return nil, fmt.Errorf("commits not found in static list")
+		return nil, fmt.Errorf("commits not found in static list (current=%s, latest=%s)", currentSHA, latestSHA)
 	}
 
 	// Remove the current commit itself from the list (we want commits after current)
-	if len(commits) > 0 && commits[len(commits)-1].SHA == currentSHA {
-		commits = commits[:len(commits)-1]
+	if len(commits) > 0 {
+		lastSHA := commits[len(commits)-1].SHA
+		if strings.HasPrefix(lastSHA, currentSHA) || strings.HasPrefix(currentSHA, lastSHA) {
+			commits = commits[:len(commits)-1]
+		}
 	}
 
 	return commits, nil

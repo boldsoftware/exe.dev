@@ -30,8 +30,12 @@ def generate_release_json(output_dir: Path) -> None:
     latest_commit_time = subprocess.check_output(
         ["git", "show", "-s", "--format=%cI", latest_commit], text=True
     ).strip()
+    # Use for-each-ref to reliably get the tag creation time.
+    # 'git show -s --format=%cI <tag>' on annotated tags returns the full
+    # tag message instead of just the date.
     published_at = subprocess.check_output(
-        ["git", "show", "-s", "--format=%cI", latest_tag], text=True
+        ["git", "for-each-ref", "--format=%(creatordate:iso-strict)",
+         f"refs/tags/{latest_tag}"], text=True
     ).strip()
 
     version = latest_tag[1:] if latest_tag.startswith("v") else latest_tag

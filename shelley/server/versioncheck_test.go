@@ -201,6 +201,130 @@ func TestFindDownloadURL(t *testing.T) {
 	}
 }
 
+func TestFetchChangelogPrefixMatching(t *testing.T) {
+	// v0.212.925024401 -> extractSHAFromTag returns "542901" (6 chars)
+	// v0.213.950002063 -> extractSHAFromTag returns "a00433" (6 chars)
+	// commits.json has "542901e" and "a004332" (7 chars)
+	// This test verifies the prefix matching logic handles the length mismatch.
+	commits := []StaticCommitInfo{
+		{SHA: "a004332", Subject: "fix: latest commit"},
+		{SHA: "542901e", Subject: "shelley/ui: middle commit"},
+		{SHA: "e3ed88a", Subject: "shelley: another commit"},
+		{SHA: "60ee3ab", Subject: "shelley/ui: old commit"},
+	}
+
+	currentSHA := extractSHAFromTag("v0.212.925024401")
+	latestSHA := extractSHAFromTag("v0.213.950002063")
+
+	if currentSHA != "542901" {
+		t.Fatalf("expected currentSHA=542901, got %s", currentSHA)
+	}
+	if latestSHA != "a00433" {
+		t.Fatalf("expected latestSHA=a00433, got %s", latestSHA)
+	}
+
+	// Verify prefix matching works: "a004332" starts with "a00433"
+	if len("a004332") <= len(latestSHA) {
+		t.Fatal("test setup wrong: commit SHA should be longer than tag SHA")
+	}
+
+	// Simulate the matching logic from FetchChangelog
+	var result []CommitInfo
+	var foundLatest, foundCurrent bool
+	for _, c := range commits {
+		if hasPrefix(c.SHA, latestSHA) {
+			foundLatest = true
+		}
+		if foundLatest && !foundCurrent {
+			result = append(result, CommitInfo{SHA: c.SHA, Message: c.Subject})
+		}
+		if hasPrefix(c.SHA, currentSHA) {
+			foundCurrent = true
+			break
+		}
+	}
+
+	if !foundLatest {
+		t.Error("did not find latest SHA via prefix matching")
+	}
+	if !foundCurrent {
+		t.Error("did not find current SHA via prefix matching")
+	}
+
+	// Remove current commit from list
+	if len(result) > 0 {
+		last := result[len(result)-1].SHA
+		if hasPrefix(last, currentSHA) {
+			result = result[:len(result)-1]
+		}
+	}
+
+	// Should have 1 commit: a004332 (the latest). 542901e is the current and
+	// was removed. They are adjacent in the list so there's nothing in between.
+	if len(result) != 1 {
+		t.Errorf("expected 1 commit, got %d: %+v", len(result), result)
+	}
+	if len(result) > 0 && result[0].SHA != "a004332" {
+		t.Errorf("expected first commit SHA=a004332, got %s", result[0].SHA)
+	}
+}
+
+func TestFetchChangelogPrefixMatchingMultipleCommits(t *testing.T) {
+	// Same as above but with commits between current and latest
+	commits := []StaticCommitInfo{
+		{SHA: "a004332", Subject: "fix: latest commit"},
+		{SHA: "1111111", Subject: "middle commit 1"},
+		{SHA: "2222222", Subject: "middle commit 2"},
+		{SHA: "542901e", Subject: "current commit"},
+		{SHA: "60ee3ab", Subject: "old commit"},
+	}
+
+	currentSHA := "542901" // 6-char from tag extraction
+	latestSHA := "a00433"  // 6-char from tag extraction
+
+	var result []CommitInfo
+	var foundLatest, foundCurrent bool
+	for _, c := range commits {
+		if hasPrefix(c.SHA, latestSHA) {
+			foundLatest = true
+		}
+		if foundLatest && !foundCurrent {
+			result = append(result, CommitInfo{SHA: c.SHA, Message: c.Subject})
+		}
+		if hasPrefix(c.SHA, currentSHA) {
+			foundCurrent = true
+			break
+		}
+	}
+
+	if !foundLatest || !foundCurrent {
+		t.Fatal("did not find both SHAs")
+	}
+
+	// Remove current
+	if len(result) > 0 {
+		last := result[len(result)-1].SHA
+		if hasPrefix(last, currentSHA) {
+			result = result[:len(result)-1]
+		}
+	}
+
+	// Should have 3 commits: a004332, 1111111, 2222222
+	if len(result) != 3 {
+		t.Fatalf("expected 3 commits, got %d: %+v", len(result), result)
+	}
+	expected := []string{"a004332", "1111111", "2222222"}
+	for i, exp := range expected {
+		if result[i].SHA != exp {
+			t.Errorf("commit[%d]: expected SHA=%s, got %s", i, exp, result[i].SHA)
+		}
+	}
+}
+
+func hasPrefix(a, b string) bool {
+	return len(a) >= len(b) && a[:len(b)] == b || len(b) >= len(a) && b[:len(a)] == a
+}
+
 func TestIsPermissionError(t *testing.T) {
 	tests := []struct {
 		name     string
