@@ -312,3 +312,254 @@ func TestTruncateUTF8(t *testing.T) {
 		t.Fatalf("expected 'a...', got %q", result)
 	}
 }
+
+// TestDistillContentSentToLLM verifies that after distillation completes,
+// the distilled user message is actually included in the LLM request
+// when the user sends a follow-up message in the distilled conversation.
+func TestDistillContentSentToLLM(t *testing.T) {
+	h := NewTestHarness(t)
+	defer h.Close()
+
+	// Create a source conversation with some messages
+	h.NewConversation("echo hello world", "")
+	h.WaitResponse()
+	sourceConvID := h.convID
+
+	// Distill the source conversation
+	reqBody := ContinueConversationRequest{
+		SourceConversationID: sourceConvID,
+		Model:                "predictable",
+	}
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest("POST", "/api/conversations/distill", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.server.handleDistillConversation(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var distillResp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &distillResp); err != nil {
+		t.Fatalf("failed to parse distill response: %v", err)
+	}
+	newConvID := distillResp["conversation_id"].(string)
+
+	// Wait for the distillation to produce a user message
+	var distilledText string
+	for i := 0; i < 100; i++ {
+		msgs, err := h.db.ListMessages(context.Background(), newConvID)
+		if err != nil {
+			t.Fatalf("failed to list messages: %v", err)
+		}
+		for _, msg := range msgs {
+			if msg.Type == string(db.MessageTypeUser) && msg.LlmData != nil {
+				var llmMsg llm.Message
+				if err := json.Unmarshal([]byte(*msg.LlmData), &llmMsg); err == nil {
+					for _, content := range llmMsg.Content {
+						if content.Type == llm.ContentTypeText && content.Text != "" {
+							distilledText = content.Text
+						}
+					}
+				}
+			}
+		}
+		if distilledText != "" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if distilledText == "" {
+		t.Fatal("timed out waiting for distilled user message")
+	}
+	t.Logf("Distilled text: %q", distilledText)
+
+	// Clear LLM request history so we can see only the next request
+	h.llm.ClearRequests()
+
+	// Now send a follow-up message to the distilled conversation
+	h.convID = newConvID
+	h.responsesCount = 0
+	h.Chat("echo followup message")
+	h.WaitResponse()
+
+	// Inspect the LLM request that was sent
+	reqs := h.llm.GetRecentRequests()
+	if len(reqs) == 0 {
+		t.Fatal("no LLM requests recorded after sending follow-up message")
+	}
+
+	// The first request after the chat should contain the distilled message
+	// as one of the earlier user messages in the conversation history
+	firstReq := reqs[0]
+
+	t.Logf("LLM request has %d messages", len(firstReq.Messages))
+	for i, msg := range firstReq.Messages {
+		for _, content := range msg.Content {
+			if content.Type == llm.ContentTypeText {
+				t.Logf("  Message[%d] role=%s text=%q", i, msg.Role, truncateForLog(content.Text, 100))
+			}
+		}
+	}
+
+	// Verify the distilled text appears in the messages sent to the LLM
+	found := false
+	for _, msg := range firstReq.Messages {
+		for _, content := range msg.Content {
+			if content.Type == llm.ContentTypeText && content.Text == distilledText {
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+
+	if !found {
+		t.Fatalf("distilled text was NOT found in the LLM request messages!\n"+
+			"Distilled text: %q\n"+
+			"This means the distillation content is not being sent to the LLM.",
+			distilledText)
+	}
+
+	t.Log("SUCCESS: distilled content IS being sent to the LLM")
+}
+
+func truncateForLog(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+// TestDistillContentSentToLLM_WithEarlySSE verifies that if the SSE stream
+// is opened BEFORE distillation completes (causing Hydrate to run early),
+// the distilled user message is still included in the LLM request.
+func TestDistillContentSentToLLM_WithEarlySSE(t *testing.T) {
+	h := NewTestHarness(t)
+	defer h.Close()
+
+	// Create a source conversation with some messages
+	h.NewConversation("echo hello world", "")
+	h.WaitResponse()
+	sourceConvID := h.convID
+
+	// Distill the source conversation
+	reqBody := ContinueConversationRequest{
+		SourceConversationID: sourceConvID,
+		Model:                "predictable",
+	}
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest("POST", "/api/conversations/distill", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.server.handleDistillConversation(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var distillResp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &distillResp); err != nil {
+		t.Fatalf("failed to parse distill response: %v", err)
+	}
+	newConvID := distillResp["conversation_id"].(string)
+
+	// Simulate what the UI does: open the SSE stream immediately,
+	// which triggers getOrCreateConversationManager -> Hydrate BEFORE
+	// the distilled message is written.
+	// This forces hydration with an empty history.
+	manager, err := h.server.getOrCreateConversationManager(context.Background(), newConvID)
+	if err != nil {
+		t.Fatalf("failed to get/create conversation manager: %v", err)
+	}
+	_ = manager // just force it to exist and be hydrated
+
+	// Now wait for the distillation to produce a user message
+	var distilledText string
+	for i := 0; i < 100; i++ {
+		msgs, err := h.db.ListMessages(context.Background(), newConvID)
+		if err != nil {
+			t.Fatalf("failed to list messages: %v", err)
+		}
+		for _, msg := range msgs {
+			if msg.Type == string(db.MessageTypeUser) && msg.LlmData != nil {
+				var llmMsg llm.Message
+				if err := json.Unmarshal([]byte(*msg.LlmData), &llmMsg); err == nil {
+					for _, content := range llmMsg.Content {
+						if content.Type == llm.ContentTypeText && content.Text != "" {
+							distilledText = content.Text
+						}
+					}
+				}
+			}
+		}
+		if distilledText != "" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if distilledText == "" {
+		t.Fatal("timed out waiting for distilled user message")
+	}
+	t.Logf("Distilled text: %q", distilledText)
+
+	// Clear LLM request history
+	h.llm.ClearRequests()
+
+	// Now send a follow-up message to the distilled conversation
+	h.convID = newConvID
+	h.responsesCount = 0
+	h.Chat("echo followup message")
+	h.WaitResponse()
+
+	// Wait a moment for any async slug generation to also complete
+	time.Sleep(200 * time.Millisecond)
+
+	// Inspect ALL LLM requests that were sent
+	reqs := h.llm.GetRecentRequests()
+	if len(reqs) == 0 {
+		t.Fatal("no LLM requests recorded after sending follow-up message")
+	}
+
+	t.Logf("Total LLM requests: %d", len(reqs))
+	for ri, r := range reqs {
+		t.Logf("Request[%d] has %d messages:", ri, len(r.Messages))
+		for i, msg := range r.Messages {
+			for _, content := range msg.Content {
+				if content.Type == llm.ContentTypeText {
+					t.Logf("  Message[%d] role=%s text=%q", i, msg.Role, truncateForLog(content.Text, 120))
+				}
+			}
+		}
+	}
+
+	// Verify the distilled text appears in at least one of the LLM requests
+	found := false
+	for _, r := range reqs {
+		for _, msg := range r.Messages {
+			for _, content := range msg.Content {
+				if content.Type == llm.ContentTypeText && content.Text == distilledText {
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+
+	if !found {
+		t.Fatalf("BUG CONFIRMED: distilled text was NOT found in ANY LLM request messages!\n"+
+			"Distilled text: %q\n"+
+			"When the SSE stream is opened before distillation completes, "+
+			"the ConversationManager hydrates with empty history and never reloads.",
+			distilledText)
+	}
+
+	t.Log("SUCCESS: distilled content IS being sent to the LLM even with early SSE")
+}

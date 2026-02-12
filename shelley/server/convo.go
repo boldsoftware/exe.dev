@@ -30,8 +30,6 @@ type ConversationManager struct {
 	mu             sync.Mutex
 	lastActivity   time.Time
 	modelID        string
-	history        []llm.Message
-	system         []llm.SystemContent
 	recordMessage  loop.MessageRecordFunc
 	logger         *slog.Logger
 	toolSetConfig  claudetool.ToolSetConfig
@@ -109,7 +107,10 @@ func (cm *ConversationManager) GetModel() string {
 	return cm.modelID
 }
 
-// Hydrate loads conversation state from the database, generating a system prompt if missing.
+// Hydrate loads conversation metadata from the database and generates a system
+// prompt if one doesn't exist yet. It does NOT cache the message history;
+// ensureLoop reads messages fresh from the DB when creating a loop so that
+// any messages added asynchronously (e.g. distillation) are always included.
 func (cm *ConversationManager) Hydrate(ctx context.Context) error {
 	cm.mu.Lock()
 	if cm.hydrated {
@@ -122,17 +123,6 @@ func (cm *ConversationManager) Hydrate(ctx context.Context) error {
 	conversation, err := cm.db.GetConversationByID(ctx, cm.conversationID)
 	if err != nil {
 		return fmt.Errorf("conversation not found: %w", err)
-	}
-
-	var messages []generated.Message
-	err = cm.db.Queries(ctx, func(q *generated.Queries) error {
-		var err error
-		// Use ListMessagesForContext to exclude messages marked as excluded_from_context
-		messages, err = q.ListMessagesForContext(ctx, cm.conversationID)
-		return err
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get conversation history: %w", err)
 	}
 
 	// Load cwd from conversation if available - must happen before generating system prompt
@@ -152,30 +142,32 @@ func (cm *ConversationManager) Hydrate(ctx context.Context) error {
 	// Generate system prompt if missing:
 	// - For user-initiated conversations: full system prompt
 	// - For subagent conversations (has parent): minimal subagent prompt
+	var messages []generated.Message
+	err = cm.db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		messages, err = q.ListMessagesForContext(ctx, cm.conversationID)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get conversation history: %w", err)
+	}
+
 	if !hasSystemMessage(messages) {
 		var systemMsg *generated.Message
 		var err error
 		if conversation.ParentConversationID != nil {
-			// Subagent conversation - use minimal prompt
 			systemMsg, err = cm.createSubagentSystemPrompt(ctx)
 		} else if conversation.UserInitiated {
-			// User-initiated conversation - use full prompt
 			systemMsg, err = cm.createSystemPrompt(ctx)
 		}
 		if err != nil {
 			return err
 		}
-		if systemMsg != nil {
-			messages = append(messages, *systemMsg)
-		}
+		_ = systemMsg // persisted to DB; ensureLoop will read it
 	}
 
-	history, system := cm.partitionMessages(messages)
-
 	cm.mu.Lock()
-	cm.history = history
-	cm.system = system
-	cm.hasConversationEvents = len(history) > 0
+	cm.hasConversationEvents = hasNonSystemMessages(messages)
 	cm.lastActivity = time.Now()
 	cm.hydrated = true
 	cm.modelID = modelID
@@ -184,7 +176,6 @@ func (cm *ConversationManager) Hydrate(ctx context.Context) error {
 	if modelID != "" {
 		cm.logger.Info("Loaded model from conversation", "model", modelID)
 	}
-	cm.logSystemPromptState(system, len(messages))
 
 	return nil
 }
@@ -244,6 +235,15 @@ func (cm *ConversationManager) Touch() {
 func hasSystemMessage(messages []generated.Message) bool {
 	for _, msg := range messages {
 		if msg.Type == string(db.MessageTypeSystem) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasNonSystemMessages(messages []generated.Message) bool {
+	for _, msg := range messages {
+		if msg.Type == string(db.MessageTypeUser) || msg.Type == string(db.MessageTypeAgent) {
 			return true
 		}
 	}
@@ -377,8 +377,6 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 		return nil
 	}
 
-	history := append([]llm.Message(nil), cm.history...)
-	system := append([]llm.SystemContent(nil), cm.system...)
 	recordMessage := cm.recordMessage
 	logger := cm.logger
 	cwd := cm.cwd
@@ -386,6 +384,22 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 	conversationID := cm.conversationID
 	db := cm.db
 	cm.mu.Unlock()
+
+	// Load conversation history fresh from the database. This is the canonical
+	// read — Hydrate only handles metadata and system prompt generation.
+	// Reading here ensures we always see messages added asynchronously
+	// (e.g. distillation results, subagent completions).
+	var dbMessages []generated.Message
+	err := db.Queries(context.Background(), func(q *generated.Queries) error {
+		var err error
+		dbMessages, err = q.ListMessagesForContext(context.Background(), conversationID)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("failed to load conversation history: %w", err)
+	}
+	history, system := cm.partitionMessages(dbMessages)
+	cm.logSystemPromptState(system, len(dbMessages))
 
 	// Create tools for this conversation with the conversation's working directory
 	toolSetConfig.WorkingDir = cwd
@@ -457,8 +471,6 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 	cm.loopCtx = processCtx
 	cm.modelID = modelID
 	cm.toolSet = toolSet
-	cm.history = nil
-	cm.system = nil
 	cm.mu.Unlock()
 
 	// Persist model for legacy conversations
