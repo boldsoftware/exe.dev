@@ -5,6 +5,7 @@ import {
   StreamResponse,
   LLMContent,
   ConversationListUpdate,
+  isDistillStatusMessage,
 } from "../types";
 import { api } from "../services/api";
 import { ThemeMode, getStoredTheme, setStoredTheme, applyTheme } from "../services/theme";
@@ -43,6 +44,7 @@ interface ContextUsageBarProps {
   maxContextTokens: number;
   conversationId?: string | null;
   onContinueConversation?: () => void;
+  onDistillConversation?: () => void;
 }
 
 function ContextUsageBar({
@@ -50,9 +52,11 @@ function ContextUsageBar({
   maxContextTokens,
   conversationId,
   onContinueConversation,
+  onDistillConversation,
 }: ContextUsageBarProps) {
   const [showPopup, setShowPopup] = useState(false);
   const [continuing, setContinuing] = useState(false);
+  const [distilling, setDistilling] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
   const hasAutoOpenedRef = useRef<string | null>(null);
 
@@ -128,6 +132,17 @@ function ContextUsageBar({
     }
   };
 
+  const handleDistill = async () => {
+    if (distilling || !onDistillConversation) return;
+    setDistilling(true);
+    try {
+      await onDistillConversation();
+      setShowPopup(false);
+    } finally {
+      setDistilling(false);
+    }
+  };
+
   return (
     <div ref={barRef}>
       {showPopup && popupPosition && (
@@ -157,24 +172,42 @@ function ContextUsageBar({
             </div>
           )}
           {onContinueConversation && conversationId && (
-            <button
-              onClick={handleContinue}
-              disabled={continuing}
-              style={{
-                display: "block",
-                marginTop: "8px",
-                padding: "4px 8px",
-                backgroundColor: "var(--blue-text)",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                cursor: continuing ? "not-allowed" : "pointer",
-                fontSize: "12px",
-                opacity: continuing ? 0.7 : 1,
-              }}
-            >
-              {continuing ? "Continuing..." : "Continue in new conversation"}
-            </button>
+            <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
+              <button
+                onClick={handleContinue}
+                disabled={continuing || distilling}
+                style={{
+                  padding: "4px 8px",
+                  backgroundColor: "var(--blue-text)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: continuing || distilling ? "not-allowed" : "pointer",
+                  fontSize: "12px",
+                  opacity: continuing || distilling ? 0.7 : 1,
+                }}
+              >
+                {continuing ? "Continuing..." : "Continue"}
+              </button>
+              {onDistillConversation && (
+                <button
+                  onClick={handleDistill}
+                  disabled={continuing || distilling}
+                  style={{
+                    padding: "4px 8px",
+                    backgroundColor: "var(--success-text, #22c55e)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: continuing || distilling ? "not-allowed" : "pointer",
+                    fontSize: "12px",
+                    opacity: continuing || distilling ? 0.7 : 1,
+                  }}
+                >
+                  {distilling ? "Distilling..." : "Distill & continue"}
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -458,6 +491,11 @@ interface ChatInterfaceProps {
     model: string,
     cwd?: string,
   ) => Promise<void>;
+  onDistillConversation?: (
+    sourceConversationId: string,
+    model: string,
+    cwd?: string,
+  ) => Promise<void>;
   mostRecentCwd?: string | null;
   isDrawerCollapsed?: boolean;
   onToggleDrawerCollapse?: () => void;
@@ -477,6 +515,7 @@ function ChatInterface({
   onConversationStateUpdate,
   onFirstMessage,
   onContinueConversation,
+  onDistillConversation,
   mostRecentCwd,
   isDrawerCollapsed,
   onToggleDrawerCollapse,
@@ -1103,6 +1142,16 @@ function ChatInterface({
     );
   };
 
+  // Handler to distill and continue conversation
+  const handleDistillConversation = async () => {
+    if (!conversationId || !onDistillConversation) return;
+    await onDistillConversation(
+      conversationId,
+      selectedModel,
+      currentConversation?.cwd || selectedCwd || undefined,
+    );
+  };
+
   const getDisplayTitle = () => {
     return currentConversation?.slug || "Shelley";
   };
@@ -1197,8 +1246,12 @@ function ChatInterface({
 
     // Second pass: process messages and extract tool uses
     messages.forEach((message) => {
-      // Skip system messages
+      // Allow system messages with distill_status through, skip others
       if (message.type === "system") {
+        if (!isDistillStatusMessage(message)) {
+          return;
+        }
+        coalescedItems.push({ type: "message", message });
         return;
       }
 
@@ -1380,8 +1433,8 @@ function ChatInterface({
       return null;
     });
 
-    // Find system message to render at the top
-    const systemMessage = messages.find((m) => m.type === "system");
+    // Find system prompt message to render at the top (exclude distill status messages)
+    const systemMessage = messages.find((m) => m.type === "system" && !isDistillStatusMessage(m));
 
     return [
       systemMessage && <SystemPromptView key="system-prompt" message={systemMessage} />,
@@ -1804,6 +1857,9 @@ function ChatInterface({
                 onContinueConversation={
                   onContinueConversation ? handleContinueConversation : undefined
                 }
+                onDistillConversation={
+                  onDistillConversation ? handleDistillConversation : undefined
+                }
               />
             </div>
           ) : // Idle state - show ready message, or configuration for empty conversation
@@ -1852,6 +1908,9 @@ function ChatInterface({
                 conversationId={conversationId}
                 onContinueConversation={
                   onContinueConversation ? handleContinueConversation : undefined
+                }
+                onDistillConversation={
+                  onDistillConversation ? handleDistillConversation : undefined
                 }
               />
             </div>

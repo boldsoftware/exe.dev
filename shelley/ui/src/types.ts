@@ -173,3 +173,15 @@ export interface CommitInfo {
   author: string;
   date: string;
 }
+
+// Helper to check if a message is a distill status message
+export function isDistillStatusMessage(message: Message): boolean {
+  if (message.type !== "system" || !message.user_data) return false;
+  try {
+    const userData =
+      typeof message.user_data === "string" ? JSON.parse(message.user_data) : message.user_data;
+    return !!userData.distill_status;
+  } catch {
+    return false;
+  }
+}

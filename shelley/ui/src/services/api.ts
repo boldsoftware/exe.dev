@@ -87,6 +87,26 @@ class ApiService {
     return response.json();
   }
 
+  async distillConversation(
+    sourceConversationId: string,
+    model?: string,
+    cwd?: string,
+  ): Promise<{ conversation_id: string }> {
+    const response = await fetch(`${this.baseUrl}/conversations/distill`, {
+      method: "POST",
+      headers: this.postHeaders,
+      body: JSON.stringify({
+        source_conversation_id: sourceConversationId,
+        model: model || "",
+        cwd: cwd || "",
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to distill conversation: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
   async getConversation(conversationId: string): Promise<StreamResponse> {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}`);
     if (!response.ok) {

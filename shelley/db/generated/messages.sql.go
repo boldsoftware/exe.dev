@@ -381,3 +381,17 @@ func (q *Queries) ListMessagesSince(ctx context.Context, arg ListMessagesSincePa
 	}
 	return items, nil
 }
+
+const updateMessageUserData = `-- name: UpdateMessageUserData :exec
+UPDATE messages SET user_data = ? WHERE message_id = ?
+`
+
+type UpdateMessageUserDataParams struct {
+	UserData  *string `json:"user_data"`
+	MessageID string  `json:"message_id"`
+}
+
+func (q *Queries) UpdateMessageUserData(ctx context.Context, arg UpdateMessageUserDataParams) error {
+	_, err := q.db.ExecContext(ctx, updateMessageUserData, arg.UserData, arg.MessageID)
+	return err
+}

@@ -1,6 +1,12 @@
 import React, { useState, useRef, useEffect } from "react";
 import { linkifyText } from "../utils/linkify";
-import { Message as MessageType, LLMMessage, LLMContent, Usage } from "../types";
+import {
+  Message as MessageType,
+  LLMMessage,
+  LLMContent,
+  Usage,
+  isDistillStatusMessage,
+} from "../types";
 import BashTool from "./BashTool";
 import PatchTool from "./PatchTool";
 import ScreenshotTool from "./ScreenshotTool";
@@ -217,9 +223,63 @@ function GitInfoMessage({
   );
 }
 
+// DistillStatusMessage renders a compact status message for conversation distillation
+function DistillStatusMessage({ message }: { message: MessageType }) {
+  let status = "in_progress";
+  let sourceSlug = "";
+
+  if (message.user_data) {
+    try {
+      const userData =
+        typeof message.user_data === "string" ? JSON.parse(message.user_data) : message.user_data;
+      status = userData.distill_status || "in_progress";
+      sourceSlug = userData.source_slug || "";
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  const isInProgress = status === "in_progress";
+  const isError = status === "error";
+
+  return (
+    <div
+      className="message message-gitinfo"
+      style={{
+        padding: "0.5rem 1rem",
+        fontSize: "0.8rem",
+        color: isError ? "var(--error-text)" : "var(--text-secondary)",
+        textAlign: "center",
+        fontStyle: "italic",
+      }}
+    >
+      {isInProgress && (
+        <span>
+          <span
+            className="spinner spinner-small"
+            style={{
+              display: "inline-block",
+              marginRight: "6px",
+              verticalAlign: "middle",
+            }}
+          />
+          Distilling conversation{sourceSlug ? ` "${sourceSlug}"` : ""}…
+        </span>
+      )}
+      {status === "complete" && (
+        <span>Distilled from{sourceSlug ? ` "${sourceSlug}"` : " prior conversation"}</span>
+      )}
+      {isError && <span>Distillation failed{sourceSlug ? ` for "${sourceSlug}"` : ""}</span>}
+    </div>
+  );
+}
+
 function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProps) {
-  // Hide system messages from the UI
+  // Render system messages with distill_status as status indicators
   if (message.type === "system") {
+    if (isDistillStatusMessage(message)) {
+      return <DistillStatusMessage message={message} />;
+    }
     return null;
   }
 

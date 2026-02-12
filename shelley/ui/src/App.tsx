@@ -437,6 +437,26 @@ function App() {
     }
   };
 
+  const handleDistillConversation = async (
+    sourceConversationId: string,
+    model: string,
+    cwd?: string,
+  ) => {
+    try {
+      const response = await api.distillConversation(sourceConversationId, model, cwd);
+      const newConversationId = response.conversation_id;
+
+      // Fetch the new conversation details and switch to the new conversation
+      const updatedConvs = await api.getConversations();
+      setConversations(updatedConvs);
+      setCurrentConversationId(newConversationId);
+    } catch (err) {
+      console.error("Failed to distill conversation:", err);
+      setError("Failed to distill conversation");
+      throw err;
+    }
+  };
+
   return (
     <WorkerPoolContextProvider
       poolOptions={diffsPoolOptions}
@@ -473,6 +493,7 @@ function App() {
             onConversationStateUpdate={handleConversationStateUpdate}
             onFirstMessage={handleFirstMessage}
             onContinueConversation={handleContinueConversation}
+            onDistillConversation={handleDistillConversation}
             mostRecentCwd={mostRecentCwd}
             isDrawerCollapsed={drawerCollapsed}
             onToggleDrawerCollapse={toggleDrawerCollapsed}

@@ -569,6 +569,17 @@ func (db *DB) CountMessagesByType(ctx context.Context, conversationID string, me
 	return count, err
 }
 
+// UpdateMessageUserData updates the user_data JSON field of a message
+func (db *DB) UpdateMessageUserData(ctx context.Context, messageID string, userData *string) error {
+	return db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		q := generated.New(tx.Conn())
+		return q.UpdateMessageUserData(ctx, generated.UpdateMessageUserDataParams{
+			MessageID: messageID,
+			UserData:  userData,
+		})
+	})
+}
+
 // Queries provides read-only access to generated queries within a read transaction
 func (db *DB) Queries(ctx context.Context, fn func(*generated.Queries) error) error {
 	return db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {

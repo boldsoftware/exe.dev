@@ -59,3 +59,6 @@ WHERE conversation_id = ? AND type = ?;
 SELECT * FROM messages
 WHERE conversation_id = ? AND sequence_id > ?
 ORDER BY sequence_id ASC;
+
+-- name: UpdateMessageUserData :exec
+UPDATE messages SET user_data = ? WHERE message_id = ?;
