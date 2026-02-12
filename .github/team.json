@@ -1,9 +1,9 @@
 [
-    {"name": "Philip Zeyliger",   "slack_member_id": "U09RYSZS685", "aliases": ["philip", "philz"]},
-    {"name": "Blake Mizerany",    "slack_member_id": "U09SWKSHY80", "aliases": ["bmizerany"]},
-    {"name": "Josh Snyder",       "slack_member_id": "U09SF83994H", "aliases": ["josh"]},
-    {"name": "David Crawshaw",    "slack_member_id": "U09RLSMG2LX", "aliases": ["crawshaw"]},
-    {"name": "Shaun Loo",         "slack_member_id": "U0A8G92NNG1", "aliases": ["sean"]},
-    {"name": "Ian Lance Taylor",  "slack_member_id": "U0A0PF9T3D3", "aliases": ["ian"]},
-    {"name": "Evan Hazlett",       "slack_member_id": "U09RVUL6UN7", "aliases": ["evan"]}
+    {"name": "Philip Zeyliger",   "github": "philz",           "slack_member_id": "U09RYSZS685", "aliases": ["philip", "philz"]},
+    {"name": "Blake Mizerany",    "github": "bmizerany",       "slack_member_id": "U09SWKSHY80", "aliases": ["bmizerany"]},
+    {"name": "Josh Snyder",       "github": "josharian",       "slack_member_id": "U09SF83994H", "aliases": ["josh"]},
+    {"name": "David Crawshaw",    "github": "crawshaw",        "slack_member_id": "U09RLSMG2LX", "aliases": ["crawshaw"]},
+    {"name": "Shaun Loo",         "github": "zackerthescar",   "slack_member_id": "U0A8G92NNG1", "aliases": ["sean"]},
+    {"name": "Ian Lance Taylor",  "github": "ianlancetaylor",  "slack_member_id": "U0A0PF9T3D3", "aliases": ["ian"]},
+    {"name": "Evan Hazlett",       "github": "ehazlett",        "slack_member_id": "U09RVUL6UN7", "aliases": ["evan"]}
 ]

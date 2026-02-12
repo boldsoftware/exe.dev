@@ -1,0 +1,157 @@
+name: Queue Ralph
+run-name: "ralph: ${{ inputs.commit_subject }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        required: true
+        type: string
+      branch:
+        required: true
+        type: string
+      commit_subject:
+        required: true
+        type: string
+      actor:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  investigate-and-fix:
+    runs-on: [self-hosted, exe-ci, edric]
+    timeout-minutes: 35
+    steps:
+      - name: Create GitHub App Token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: 2710433
+          private-key: ${{ secrets.EXE_COMMIT_QUEUE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Download exelet-fs
+        run: make exelet-fs
+
+      - name: Install uv
+        run: |
+          if ! command -v uv >/dev/null 2>&1; then
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+          fi
+
+      - name: Extract Slack user ID
+        id: slack
+        run: |
+          set -euo pipefail
+          ACTOR="${{ inputs.actor }}"
+          SLACK_ID=$(python3 -c "
+          import json, sys
+          team = json.load(open('.github/team.json'))
+          for m in team:
+              if m.get('github') == '$ACTOR' or '$ACTOR' in m.get('aliases', []):
+                  print(m['slack_member_id'])
+                  sys.exit(0)
+          print('')
+          ")
+          echo "slack_id=$SLACK_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Run Claude
+        timeout-minutes: 30
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          RUN_ID="${{ inputs.run_id }}"
+          BRANCH="${{ inputs.branch }}"
+          COMMIT_SUBJECT="${{ inputs.commit_subject }}"
+          SLACK_ID="${{ steps.slack.outputs.slack_id }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${RUN_ID}"
+
+          PROMPT="$(cat <<PROMPT_EOF
+          A CI run has failed. Your job is to investigate the failure, fix it, and notify the developer.
+
+          Failed CI run: $RUN_URL
+          Run ID: $RUN_ID
+          Branch: $BRANCH
+          Commit subject: $COMMIT_SUBJECT
+
+          ## Step 1: Download and read the CI logs
+
+          Run these commands to get the CI logs:
+            gh run view $RUN_ID --log 2>&1 | tail -1000
+            gh run download $RUN_ID
+
+          Read the logs carefully to understand what failed.
+
+          ## Step 2: Investigate the failure
+
+          Read the relevant source files and tests to understand what went wrong.
+
+          ## Step 3: Fix the issue
+
+          Make the minimal change needed to fix the problem. Do not refactor or clean up unrelated code.
+
+          ## Step 4: Run the relevant tests locally
+
+          Run the specific tests that failed to verify your fix works. Do NOT run e1e tests (they require VMs).
+          Use: go tool gotestsum --format testname -- -race -run TestName ./package/...
+
+          ## Step 5: Commit and push
+
+          Create a NEW commit (do not amend) with this message format:
+            area: fix <description>
+
+            Queue Ralph auto-fix for failed CI run $RUN_URL.
+
+            <What failed>
+            <What was fixed>
+
+            Prompt: queue-ralph auto-fix
+
+          Then push:
+            git push origin HEAD:refs/queue-ralph/$BRANCH
+
+          ## Step 6: Notify via Slack
+
+          Post a message to Slack #ntfy:
+            uv run scripts/slack/post_message.py --channel ntfy --message "\$MESSAGE"
+
+          Where \$MESSAGE is:
+            🤖 <@$SLACK_ID> ralph has a proposed fix for "$COMMIT_SUBJECT"
+
+            <the full commit message you wrote>
+
+            To review: git fetch origin refs/queue-ralph/$BRANCH && git log -1 -p FETCH_HEAD
+            To land: git push origin FETCH_HEAD:refs/heads/$BRANCH
+
+          ## If you CANNOT fix the issue
+
+          Still notify via Slack #ntfy with a message like:
+            🤖 <@$SLACK_ID> ralph investigated "$COMMIT_SUBJECT" but could not auto-fix it.
+
+            <explanation of what you found>
+
+            CI run: $RUN_URL
+          PROMPT_EOF
+          )"
+
+          claude --dangerously-skip-permissions -p "$PROMPT"

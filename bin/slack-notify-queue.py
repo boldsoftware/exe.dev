@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Post commit queue results to Slack.
 
-Usage: slack-notify-queue.py WEBHOOK_URL STATUS COMMIT_SUBJECT BRANCH RUN_URL COMMIT_URL
+Usage: slack-notify-queue.py WEBHOOK_URL STATUS COMMIT_SUBJECT ACTOR RUN_URL COMMIT_URL
 
 STATUS is "success" or "failure".
-BRANCH is the queue branch name, e.g. "queue-main-philip" or
-"queue-main-philip-fix_something". The third hyphen-delimited segment
-is treated as the username and looked up in .github/team.json for @mentions.
+ACTOR is the GitHub username of the person who pushed the commit.
 """
 
 import json
@@ -16,29 +14,25 @@ import urllib.request
 
 
 def main():
-    webhook_url, status, commit_msg, branch, run_url, commit_url = sys.argv[1:7]
+    webhook_url, status, commit_msg, actor, run_url, commit_url = sys.argv[1:7]
 
     # First line of commit message is the subject.
     commit_subject = commit_msg.split("\n")[0]
-
-    # Extract username: queue-main-philip-description → philip
-    parts = branch.split("-")
-    username = parts[2] if len(parts) >= 3 else branch
 
     # Load team metadata for Slack member ID lookup.
     team_file = os.path.join(os.path.dirname(__file__), "..", ".github", "team.json")
     with open(team_file) as f:
         people = json.load(f)
-    alias_to_slack = {}
-    for person in people:
-        for alias in person.get("aliases", []):
-            alias_to_slack[alias] = person["slack_member_id"]
 
-    slack_id = alias_to_slack.get(username)
+    slack_id = None
+    for person in people:
+        if person.get("github") == actor or actor in person.get("aliases", []):
+            slack_id = person["slack_member_id"]
+            break
     if slack_id:
         mention = f"<@{slack_id}>"
     else:
-        mention = username
+        mention = actor
 
     if status == "success":
         text = f"\u2705 {mention} landed: <{commit_url}|{commit_subject}>"

@@ -475,9 +475,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-  notify:
+  trigger-ralph:
     runs-on: [self-hosted, exe-ci, edric]
     needs: [commit-validation-and-formatting, test, shelley-test, push-to-main]
+    # Only trigger when tests/push failed, NOT when validation itself failed
+    if: ${{ failure() && needs.commit-validation-and-formatting.result == 'success' }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Trigger queue-ralph
+        run: |
+          gh workflow run queue-ralph.yml \
+            -f run_id="${{ github.run_id }}" \
+            -f branch="${{ github.ref_name }}" \
+            -f commit_subject="$(printf '%s' "$COMMIT_SUBJECT" | head -1)" \
+            -f actor="${{ github.actor }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_SUBJECT: ${{ github.event.head_commit.message }}
+
+  notify:
+    runs-on: [self-hosted, exe-ci, edric]
+    needs: [commit-validation-and-formatting, test, shelley-test, push-to-main, trigger-ralph]
     if: always()
     steps:
       - uses: actions/checkout@v6
@@ -488,7 +506,7 @@ jobs:
           else
             STATUS=success
           fi
-          python3 bin/slack-notify-queue.py "$NTFY_SLACK_WEBHOOK_URL" "$STATUS" "$COMMIT_SUBJECT" "${{ github.ref_name }}" "$RUN_URL" "$COMMIT_URL"
+          python3 bin/slack-notify-queue.py "$NTFY_SLACK_WEBHOOK_URL" "$STATUS" "$COMMIT_SUBJECT" "${{ github.actor }}" "$RUN_URL" "$COMMIT_URL"
         env:
           NTFY_SLACK_WEBHOOK_URL: ${{ secrets.NTFY_SLACK_WEBHOOK_URL }}
           COMMIT_SUBJECT: ${{ github.event.head_commit.message }}
