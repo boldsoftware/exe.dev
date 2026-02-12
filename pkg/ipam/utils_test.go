@@ -79,7 +79,7 @@ func TestManagerReserveConcurrent(t *testing.T) {
 	}
 	results := make(chan result, numGoroutines)
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		mac := fmt.Sprintf("00:11:22:33:44:%02x", i)
 		wg.Add(1)
 		go func(mac string) {

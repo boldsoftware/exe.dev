@@ -289,7 +289,7 @@ func InitDB(db *sql.DB, numConns int) error {
 	}
 
 	var conns []*sql.Conn
-	for i := 0; i < numConns; i++ {
+	for i := range numConns {
 		conn, err := db.Conn(context.Background())
 		if err != nil {
 			db.Close()
@@ -383,7 +383,7 @@ func checkNoTx(ctx context.Context, typ string) {
 // Exec executes a single statement outside of a transaction.
 // Useful in the rare case of PRAGMAs that cannot execute inside a tx,
 // such as PRAGMA wal_checkpoint.
-func (p *DB) Exec(ctx context.Context, query string, args ...interface{}) error {
+func (p *DB) Exec(ctx context.Context, query string, args ...any) error {
 	checkNoTx(ctx, "Tx")
 	var conn *sql.Conn
 	select {
@@ -526,7 +526,7 @@ type Tx struct {
 	Now time.Time
 }
 
-func (tx *Tx) Exec(query string, args ...interface{}) (sql.Result, error) {
+func (tx *Tx) Exec(query string, args ...any) (sql.Result, error) {
 	res, err := tx.conn.ExecContext(sqlCtx(tx.ctx), query, args...)
 	return res, wrapErr("exec", err)
 }
@@ -542,12 +542,12 @@ func (rx *Rx) Context() context.Context {
 	return rx.ctx
 }
 
-func (rx *Rx) Query(query string, args ...interface{}) (*sql.Rows, error) {
+func (rx *Rx) Query(query string, args ...any) (*sql.Rows, error) {
 	rows, err := rx.conn.QueryContext(sqlCtx(rx.ctx), query, args...)
 	return rows, wrapErr("query", err)
 }
 
-func (rx *Rx) QueryRow(query string, args ...interface{}) *Row {
+func (rx *Rx) QueryRow(query string, args ...any) *Row {
 	rows, err := rx.conn.QueryContext(sqlCtx(rx.ctx), query, args...)
 	return &Row{err: err, rows: rows}
 }
@@ -562,7 +562,7 @@ type dbtxWrapper struct {
 	conn *sql.Conn
 }
 
-func (c *dbtxWrapper) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+func (c *dbtxWrapper) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return c.conn.ExecContext(sqlCtx(ctx), query, args...)
 }
 
@@ -570,11 +570,11 @@ func (c *dbtxWrapper) PrepareContext(ctx context.Context, query string) (*sql.St
 	return c.conn.PrepareContext(sqlCtx(ctx), query)
 }
 
-func (c *dbtxWrapper) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+func (c *dbtxWrapper) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return c.conn.QueryContext(sqlCtx(ctx), query, args...)
 }
 
-func (c *dbtxWrapper) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+func (c *dbtxWrapper) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	return c.conn.QueryRowContext(sqlCtx(ctx), query, args...)
 }
 

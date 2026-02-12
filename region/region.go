@@ -90,8 +90,7 @@ func ParseExeletRegion(host string) (Region, error) {
 	// A segment matches if it equals the region code exactly or if
 	// it starts with the region code and the rest is all digits
 	// (e.g., "lax2", "pdx1").
-	segments := strings.Split(host, "-")
-	for _, seg := range segments {
+	for seg := range strings.SplitSeq(host, "-") {
 		for _, r := range allRegions {
 			if seg == r.Code {
 				return r, nil

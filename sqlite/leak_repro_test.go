@@ -29,11 +29,11 @@ func TestCancelDuringTransaction(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Spawn workers that cancel at various times
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(delay time.Duration) {
 			defer wg.Done()
-			for j := 0; j < 500; j++ {
+			for j := range 500 {
 				if testCtx.Err() != nil {
 					return // test timed out
 				}
@@ -148,7 +148,7 @@ func TestCommitFailurePoolHealth(t *testing.T) {
 	}
 
 	// Run many transactions with user errors to stress the rollback path.
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		err = p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
 			_, err := tx.Exec("INSERT INTO t (c) VALUES (?);", i)
 			if err != nil {
@@ -196,7 +196,7 @@ func TestCancelDuringCommit(t *testing.T) {
 
 	// Run many transactions where we cancel context at the end of the user func.
 	// This tests cancellation around the time COMMIT is called.
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		ctx, cancel := context.WithCancel(bg)
 		err = p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
 			_, err := tx.Exec("INSERT INTO t (c) VALUES (?);", i)

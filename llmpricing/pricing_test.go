@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -415,17 +416,6 @@ func TestPricingMatchesModelsDev(t *testing.T) {
 		checked, checkedByProvider[ProviderAnthropic], checkedByProvider[ProviderOpenAI], checkedByProvider[ProviderFireworks])
 
 	if len(mismatches) > 0 {
-		t.Errorf("Price mismatches found:\n%s", joinStrings(mismatches, "\n"))
+		t.Errorf("Price mismatches found:\n%s", strings.Join(mismatches, "\n"))
 	}
-}
-
-func joinStrings(ss []string, sep string) string {
-	if len(ss) == 0 {
-		return ""
-	}
-	result := ss[0]
-	for _, s := range ss[1:] {
-		result += sep + s
-	}
-	return result
 }

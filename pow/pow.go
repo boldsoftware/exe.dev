@@ -148,7 +148,7 @@ func hasLeadingZeros(hash []byte, n int) bool {
 	remainingBits := n % 8
 
 	// Check full zero bytes
-	for i := 0; i < fullBytes; i++ {
+	for i := range fullBytes {
 		if hash[i] != 0 {
 			return false
 		}

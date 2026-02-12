@@ -300,7 +300,7 @@ func TestTxLeak(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 5000; i++ {
+	for range 5000 {
 		ctx, cancel := context.WithCancel(context.Background())
 		go cancel()
 		err := p.Tx(ctx, func(ctx context.Context, tx *Tx) error { return nil })
@@ -318,7 +318,7 @@ func TestRxLeak(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 5000; i++ {
+	for range 5000 {
 		ctx, cancel := context.WithCancel(context.Background())
 		go cancel()
 		err := p.Rx(ctx, func(ctx context.Context, rx *Rx) error { return nil })
