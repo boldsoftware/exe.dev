@@ -691,14 +691,14 @@ func (m *Manager) UseCredits(ctx context.Context, billingID string, quantity int
 		-- Insert a new credit deduction for the current hour and credit type,
 		-- or update the existing one if it already exists,
 		-- and return the new total balance for the account after the deduction for all types.
-		INSERT INTO account_credit_ledger (account_id, amount, hour_bucket, credit_type)
+		INSERT INTO billing_credits (account_id, amount, hour_bucket, credit_type)
 		VALUES (@accountID, @amount, @hourBucket, @creditType)
 		ON CONFLICT(account_id, hour_bucket, credit_type) DO
-			UPDATE SET amount = account_credit_ledger.amount + excluded.amount
+			UPDATE SET amount = billing_credits.amount + excluded.amount
 		RETURNING (
 			-- Return the new balance after deduction
 			SELECT CAST(COALESCE(SUM(amount), 0) AS INTEGER)
-			FROM account_credit_ledger
+			FROM billing_credits
 			WHERE account_id = @accountID
 		)
 	`
@@ -821,7 +821,7 @@ func (m *Manager) SyncCredits(ctx context.Context, since time.Time) error {
 
 		// TODO(bmizrany): bulk insert?
 		const q = `
-			INSERT OR IGNORE INTO account_credit_ledger (account_id, amount, stripe_event_id)
+			INSERT OR IGNORE INTO billing_credits (account_id, amount, stripe_event_id)
 			VALUES (@accountID, @amount, @stripeEventID)
 		`
 

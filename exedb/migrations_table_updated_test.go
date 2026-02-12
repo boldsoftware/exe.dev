@@ -74,10 +74,10 @@ func TestRunMigrationsUpdateTable(t *testing.T) {
 	}
 }
 
-func TestRunMigrationsRepairsMissingAccountCreditLedger(t *testing.T) {
+func TestRunMigrationsRepairsMissingBillingCredits(t *testing.T) {
 	t.Parallel()
 
-	dbPath := filepath.Join(t.TempDir(), "missing-account-credit-ledger.db")
+	dbPath := filepath.Join(t.TempDir(), "missing-billing-credits.db")
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatalf("failed to open sqlite database: %v", err)
@@ -98,26 +98,26 @@ func TestRunMigrationsRepairsMissingAccountCreditLedger(t *testing.T) {
 		t.Fatalf("failed to run migrations: %v", err)
 	}
 
-	if _, err := db.Exec("DROP TABLE account_credit_ledger"); err != nil {
-		t.Fatalf("failed to drop account_credit_ledger: %v", err)
+	if _, err := db.Exec("DROP TABLE billing_credits"); err != nil {
+		t.Fatalf("failed to drop billing_credits: %v", err)
 	}
-	if _, err := db.Exec("DELETE FROM migrations WHERE migration_number = 85"); err != nil {
-		t.Fatalf("failed to delete migration 085 record: %v", err)
+	if _, err := db.Exec("DELETE FROM migrations WHERE migration_number IN (85, 87)"); err != nil {
+		t.Fatalf("failed to delete migration 085/087 records: %v", err)
 	}
 
 	if err := RunMigrations(log, db); err != nil {
-		t.Fatalf("failed to rerun migrations with missing account_credit_ledger: %v", err)
+		t.Fatalf("failed to rerun migrations with missing billing_credits: %v", err)
 	}
 
 	var tableName string
-	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='account_credit_ledger'").Scan(&tableName)
+	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='billing_credits'").Scan(&tableName)
 	if err != nil {
-		t.Fatalf("expected account_credit_ledger table to exist after migration rerun: %v", err)
+		t.Fatalf("expected billing_credits table to exist after migration rerun: %v", err)
 	}
 
-	rows, err := db.Query("PRAGMA table_info(account_credit_ledger)")
+	rows, err := db.Query("PRAGMA table_info(billing_credits)")
 	if err != nil {
-		t.Fatalf("failed to read account_credit_ledger columns: %v", err)
+		t.Fatalf("failed to read billing_credits columns: %v", err)
 	}
 	defer rows.Close()
 
@@ -132,23 +132,23 @@ func TestRunMigrationsRepairsMissingAccountCreditLedger(t *testing.T) {
 			primaryKey int
 		)
 		if err := rows.Scan(&cid, &columnName, &columnType, &notNull, &defaultVal, &primaryKey); err != nil {
-			t.Fatalf("failed to scan account_credit_ledger column info: %v", err)
+			t.Fatalf("failed to scan billing_credits column info: %v", err)
 		}
 		columns[columnName] = true
 	}
 	if err := rows.Err(); err != nil {
-		t.Fatalf("failed iterating account_credit_ledger columns: %v", err)
+		t.Fatalf("failed iterating billing_credits columns: %v", err)
 	}
 
 	for _, column := range []string{"id", "account_id", "amount", "stripe_event_id", "created_at", "hour_bucket", "credit_type"} {
 		if !columns[column] {
-			t.Fatalf("missing expected account_credit_ledger column %q after migration rerun", column)
+			t.Fatalf("missing expected billing_credits column %q after migration rerun", column)
 		}
 	}
 
-	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_account_credit_ledger_account_hour_type'").Scan(&tableName)
+	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_billing_credits_account_hour_type'").Scan(&tableName)
 	if err != nil {
-		t.Fatalf("expected idx_account_credit_ledger_account_hour_type index to exist: %v", err)
+		t.Fatalf("expected idx_billing_credits_account_hour_type index to exist: %v", err)
 	}
 
 	var count int
@@ -158,6 +158,14 @@ func TestRunMigrationsRepairsMissingAccountCreditLedger(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected migration 085 to be recorded once, got %d", count)
+	}
+
+	err = db.QueryRow("SELECT COUNT(*) FROM migrations WHERE migration_number = 87").Scan(&count)
+	if err != nil {
+		t.Fatalf("failed to query migration 087 record: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected migration 087 to be recorded once, got %d", count)
 	}
 }
 
