@@ -20,6 +20,10 @@ type Microcents struct {
 	n int64
 }
 
+func (m Microcents) Times(n int) Microcents {
+	return Microcents{n: m.n * int64(n)}
+}
+
 // Mint creates a Microcents amount from the given cents and microcents.
 func Mint(cents, microcents int64) Microcents {
 	return Microcents{n: cents*10000 + microcents}
