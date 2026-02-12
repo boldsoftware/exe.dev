@@ -9,6 +9,13 @@ import (
 	"strconv"
 )
 
+func init() {
+	// Ensure comparability.
+	if Mint(1, 0) != Mint(0, 10000) {
+		panic("Mint(1, 0) should equal Mint(0, 10000)")
+	}
+}
+
 // Zero returns a Microcents amount representing zero dollars and zero cents.
 func Zero() Microcents {
 	return Mint(0, 0)
