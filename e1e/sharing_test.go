@@ -592,7 +592,8 @@ func TestProxyCookieIsolation(t *testing.T) {
 	user2PTY, _, user2KeyFile, _ := registerForExeDevWithEmail(t, "user2@test-cookie-isolation.example")
 	box2 := newBox(t, user2PTY, testinfra.BoxOpts{Command: "/bin/bash"})
 	user2PTY.disconnect()
-	waitForSSH(t, box2, user2KeyFile)
+	// No waitForSSH for box2: the test only checks that box1's proxy cookie
+	// is rejected for box2 at the proxy layer, so box2's SSH doesn't need to be up.
 
 	const boxInternalPort = 8080
 	httpPort := Env.servers.Exed.HTTPPort
