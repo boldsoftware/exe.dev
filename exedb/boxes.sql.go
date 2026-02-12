@@ -603,6 +603,20 @@ func (q *Queries) ListAllBoxesWithOwner(ctx context.Context) ([]ListAllBoxesWith
 	return items, nil
 }
 
+const setBoxCgroupOverrides = `-- name: SetBoxCgroupOverrides :exec
+UPDATE boxes SET cgroup_overrides = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+`
+
+type SetBoxCgroupOverridesParams struct {
+	CgroupOverrides *string `db:"cgroup_overrides" json:"cgroup_overrides"`
+	ID              int     `db:"id" json:"id"`
+}
+
+func (q *Queries) SetBoxCgroupOverrides(ctx context.Context, arg SetBoxCgroupOverridesParams) error {
+	_, err := q.exec(ctx, q.setBoxCgroupOverridesStmt, setBoxCgroupOverrides, arg.CgroupOverrides, arg.ID)
+	return err
+}
+
 const setBoxSupportAccessAllowed = `-- name: SetBoxSupportAccessAllowed :exec
 UPDATE boxes SET support_access_allowed = ? WHERE id = ?
 `

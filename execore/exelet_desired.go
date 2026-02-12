@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"exe.dev/desiredstate"
+	"exe.dev/exedb"
 )
 
 // handleExeletDesired serves the desired state for an exelet host.
@@ -13,10 +14,7 @@ import (
 // Access is restricted to localhost/Tailscale via requireLocalAccess.
 //
 // TODO: enable exelet reading this (flip --desired-state-sync default)
-// TODO: add CLI commands to set cgroup overrides in DB and publish them here
 // TODO: handle desired VM state (running/stopped)
-// TODO: more cgroups besides cpu.max (cpu.weight, io.weight, memory.swap.max)
-// TODO: create per-user limits as well
 // TODO: connect with abuse buttons
 func (s *Server) handleExeletDesired(w http.ResponseWriter, r *http.Request) {
 	host := r.URL.Query().Get("host")
@@ -41,9 +39,30 @@ func (s *Server) handleExeletDesired(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Collect unique user IDs so we can fetch user-level overrides.
+	userIDs := make(map[string]bool)
+	for _, box := range boxes {
+		userIDs[box.CreatedByUserID] = true
+	}
+
+	// Fetch user records for cgroup overrides.
+	userOverrides := make(map[string][]desiredstate.CgroupSetting)
+	for userID := range userIDs {
+		user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+		if err != nil {
+			s.slog().ErrorContext(ctx, "failed to get user for exelet desired state", "user_id", userID, "error", err)
+			continue
+		}
+		if user.CgroupOverrides != nil {
+			userOverrides[userID] = desiredstate.ParseOverrides(*user.CgroupOverrides)
+		}
+	}
+
 	// Build the desired state response.
 	// Group VMs by their owner (user_id), which is used as the cgroup group ID.
+	// Also track max allocated CPUs per user on this host for default group limits.
 	groupSet := make(map[string]bool)
+	userMaxCPUs := make(map[string]int64) // user_id -> max allocated_cpus across their VMs
 	var vms []desiredstate.VM
 	for _, box := range boxes {
 		var containerID string
@@ -57,6 +76,11 @@ func (s *Server) handleExeletDesired(w http.ResponseWriter, r *http.Request) {
 
 		groupID := box.CreatedByUserID
 		groupSet[groupID] = true
+
+		// Track max allocated CPUs per user for default group limits.
+		if box.AllocatedCpus != nil && *box.AllocatedCpus > userMaxCPUs[groupID] {
+			userMaxCPUs[groupID] = *box.AllocatedCpus
+		}
 
 		state := "running"
 		if box.Status == "stopped" {
@@ -78,6 +102,12 @@ func (s *Server) handleExeletDesired(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 
+		// Apply per-VM cgroup overrides from the database.
+		if box.CgroupOverrides != nil {
+			overrides := desiredstate.ParseOverrides(*box.CgroupOverrides)
+			cgroups = desiredstate.ApplyOverrides(cgroups, overrides)
+		}
+
 		vms = append(vms, desiredstate.VM{
 			ID:     containerID,
 			Group:  groupID,
@@ -87,12 +117,26 @@ func (s *Server) handleExeletDesired(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build groups (one per unique user_id on this host).
-	// For now, no group-level cgroup overrides.
+	// Default group cpu.max = 2x the max allocated CPUs across the user's VMs,
+	// giving headroom for bursts while still capping total usage.
+	// User-level cgroup overrides are applied on top of this default.
 	var groups []desiredstate.Group
 	for groupID := range groupSet {
+		var cgroups []desiredstate.CgroupSetting
+		if maxCPUs := userMaxCPUs[groupID]; maxCPUs > 0 {
+			const period = 100000
+			quota := maxCPUs * 2 * period
+			cgroups = append(cgroups, desiredstate.CgroupSetting{
+				Path:  "cpu.max",
+				Value: fmt.Sprintf("%d %d", quota, period),
+			})
+		}
+		if overrides, ok := userOverrides[groupID]; ok {
+			cgroups = desiredstate.ApplyOverrides(cgroups, overrides)
+		}
 		groups = append(groups, desiredstate.Group{
 			Name:   groupID,
-			Cgroup: []desiredstate.CgroupSetting{},
+			Cgroup: cgroups,
 		})
 	}
 

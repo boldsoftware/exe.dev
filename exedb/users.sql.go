@@ -240,6 +240,20 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 	return items, nil
 }
 
+const setUserCgroupOverrides = `-- name: SetUserCgroupOverrides :exec
+UPDATE users SET cgroup_overrides = ? WHERE user_id = ?
+`
+
+type SetUserCgroupOverridesParams struct {
+	CgroupOverrides *string `db:"cgroup_overrides" json:"cgroup_overrides"`
+	UserID          string  `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) SetUserCgroupOverrides(ctx context.Context, arg SetUserCgroupOverridesParams) error {
+	_, err := q.exec(ctx, q.setUserCgroupOverridesStmt, setUserCgroupOverrides, arg.CgroupOverrides, arg.UserID)
+	return err
+}
+
 const setUserDiscord = `-- name: SetUserDiscord :exec
 UPDATE users SET discord_id = ?, discord_username = ? WHERE user_id = ?
 `

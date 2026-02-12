@@ -621,6 +621,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.recordUserEventStmt, err = db.PrepareContext(ctx, recordUserEvent); err != nil {
 		return nil, fmt.Errorf("error preparing query RecordUserEvent: %w", err)
 	}
+	if q.setBoxCgroupOverridesStmt, err = db.PrepareContext(ctx, setBoxCgroupOverrides); err != nil {
+		return nil, fmt.Errorf("error preparing query SetBoxCgroupOverrides: %w", err)
+	}
 	if q.setBoxEmailReceiveStmt, err = db.PrepareContext(ctx, setBoxEmailReceive); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxEmailReceive: %w", err)
 	}
@@ -653,6 +656,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setUserBillingExemptionStmt, err = db.PrepareContext(ctx, setUserBillingExemption); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserBillingExemption: %w", err)
+	}
+	if q.setUserCgroupOverridesStmt, err = db.PrepareContext(ctx, setUserCgroupOverrides); err != nil {
+		return nil, fmt.Errorf("error preparing query SetUserCgroupOverrides: %w", err)
 	}
 	if q.setUserDiscordStmt, err = db.PrepareContext(ctx, setUserDiscord); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserDiscord: %w", err)
@@ -1762,6 +1768,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing recordUserEventStmt: %w", cerr)
 		}
 	}
+	if q.setBoxCgroupOverridesStmt != nil {
+		if cerr := q.setBoxCgroupOverridesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setBoxCgroupOverridesStmt: %w", cerr)
+		}
+	}
 	if q.setBoxEmailReceiveStmt != nil {
 		if cerr := q.setBoxEmailReceiveStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setBoxEmailReceiveStmt: %w", cerr)
@@ -1815,6 +1826,11 @@ func (q *Queries) Close() error {
 	if q.setUserBillingExemptionStmt != nil {
 		if cerr := q.setUserBillingExemptionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setUserBillingExemptionStmt: %w", cerr)
+		}
+	}
+	if q.setUserCgroupOverridesStmt != nil {
+		if cerr := q.setUserCgroupOverridesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setUserCgroupOverridesStmt: %w", cerr)
 		}
 	}
 	if q.setUserDiscordStmt != nil {
@@ -2235,6 +2251,7 @@ type Queries struct {
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
 	listUnusedSystemInviteCodesStmt            *sql.Stmt
 	recordUserEventStmt                        *sql.Stmt
+	setBoxCgroupOverridesStmt                  *sql.Stmt
 	setBoxEmailReceiveStmt                     *sql.Stmt
 	setBoxSupportAccessAllowedStmt             *sql.Stmt
 	setIPAbuseFilterDisabledStmt               *sql.Stmt
@@ -2246,6 +2263,7 @@ type Queries struct {
 	setPreferredExeletStmt                     *sql.Stmt
 	setSignupPOWEnabledStmt                    *sql.Stmt
 	setUserBillingExemptionStmt                *sql.Stmt
+	setUserCgroupOverridesStmt                 *sql.Stmt
 	setUserDiscordStmt                         *sql.Stmt
 	setUserIsLockedOutStmt                     *sql.Stmt
 	setUserLimitsStmt                          *sql.Stmt
@@ -2487,6 +2505,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
 		listUnusedSystemInviteCodesStmt:            q.listUnusedSystemInviteCodesStmt,
 		recordUserEventStmt:                        q.recordUserEventStmt,
+		setBoxCgroupOverridesStmt:                  q.setBoxCgroupOverridesStmt,
 		setBoxEmailReceiveStmt:                     q.setBoxEmailReceiveStmt,
 		setBoxSupportAccessAllowedStmt:             q.setBoxSupportAccessAllowedStmt,
 		setIPAbuseFilterDisabledStmt:               q.setIPAbuseFilterDisabledStmt,
@@ -2498,6 +2517,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setPreferredExeletStmt:                     q.setPreferredExeletStmt,
 		setSignupPOWEnabledStmt:                    q.setSignupPOWEnabledStmt,
 		setUserBillingExemptionStmt:                q.setUserBillingExemptionStmt,
+		setUserCgroupOverridesStmt:                 q.setUserCgroupOverridesStmt,
 		setUserDiscordStmt:                         q.setUserDiscordStmt,
 		setUserIsLockedOutStmt:                     q.setUserIsLockedOutStmt,
 		setUserLimitsStmt:                          q.setUserLimitsStmt,

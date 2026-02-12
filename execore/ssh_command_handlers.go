@@ -390,6 +390,25 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:           ss.handleBackfillAllocatedCPUs,
 		},
 		{
+			Name:              "throttle-vm",
+			Hidden:            true,
+			Description:       "Manage cgroup overrides for a VM (support only)",
+			Usage:             "throttle-vm <vmname> [--cpu=<fraction>] [--raw=<path:value>] [--show] [--clear]",
+			HasPositionalArgs: true,
+			FlagSetFunc:       throttleVMFlags,
+			CompleterFunc:     ss.completeBoxNames,
+			Handler:           ss.handleThrottleVMCommand,
+		},
+		{
+			Name:              "throttle-user",
+			Hidden:            true,
+			Description:       "Manage cgroup overrides for a user (support only)",
+			Usage:             "throttle-user <email-or-userid> [--cpu=<fraction>] [--raw=<path:value>] [--show] [--clear]",
+			HasPositionalArgs: true,
+			FlagSetFunc:       throttleUserFlags,
+			Handler:           ss.handleThrottleUserCommand,
+		},
+		{
 			Name:        "exit",
 			Description: "Exit",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {

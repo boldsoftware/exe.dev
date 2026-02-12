@@ -57,3 +57,6 @@ UPDATE users SET limits = ? WHERE user_id = ?;
 
 -- name: GetUserLimits :one
 SELECT limits FROM users WHERE user_id = ?;
+
+-- name: SetUserCgroupOverrides :exec
+UPDATE users SET cgroup_overrides = ? WHERE user_id = ?;

@@ -116,3 +116,6 @@ SELECT * FROM boxes
 WHERE allocated_cpus IS NULL AND container_id IS NOT NULL AND status != 'failed'
 ORDER BY id
 LIMIT ?;
+
+-- name: SetBoxCgroupOverrides :exec
+UPDATE boxes SET cgroup_overrides = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
