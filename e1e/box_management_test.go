@@ -434,6 +434,15 @@ func TestVanillaBox(t *testing.T) {
 	// aren't provided, so the gateway will forward requests to the external APIs.
 	//
 	// These tests DO require the external APIs (Anthropic, OpenAI, Fireworks) to be up and reachable.
+	// The gateway curl tests use boxSSHShell instead of boxSSHCommand because
+	// SSH concatenates args with spaces before sending to the remote shell.
+	// Header values like "content-type: application/json" get split, causing
+	// the remote shell to interpret "application/json" as a second URL for curl.
+	// boxSSHShell base64-encodes the command to avoid this.
+	//
+	// These tests also retry on transient DNS failures: the gateway proxies to
+	// external APIs, and DNS resolution can occasionally fail in CI.
+	//
 	// Test each LLM gateway by sending a curl request via SSH and checking
 	// that the response contains expected substrings, proving we reached the API.
 	for _, tc := range []struct {
@@ -445,7 +454,7 @@ func TestVanillaBox(t *testing.T) {
 		{
 			Provider:     "anthropic",
 			Path:         "anthropic/v1/messages",
-			ExtraHeaders: []string{"anthropic-version: 2023-06-01"},
+			ExtraHeaders: []string{`-H "anthropic-version: 2023-06-01"`},
 			WantStrings:  []string{`"request_id"`},
 		},
 		{
@@ -461,23 +470,33 @@ func TestVanillaBox(t *testing.T) {
 	} {
 		t.Run("gateway_"+tc.Provider, func(t *testing.T) {
 			noGolden(t)
-			args := []string{"curl", "--max-time", "30", "-s",
-				"http://169.254.169.254/gateway/llm/" + tc.Path,
-				"-H", "content-type: application/json",
-			}
+			extra := ""
 			for _, h := range tc.ExtraHeaders {
-				args = append(args, "-H", h)
+				extra += " " + h
 			}
-			args = append(args, "-d", `{}`)
-			out, err := boxSSHCommand(t, boxName, keyFile, args...).CombinedOutput()
-			response := string(out)
-			for _, want := range tc.WantStrings {
-				if !strings.Contains(response, want) {
-					if err != nil {
-						t.Fatalf("curl to %s gateway failed: %v\n%s", tc.Provider, err, out)
+			cmd := fmt.Sprintf(`curl --max-time 10 -s http://169.254.169.254/gateway/llm/%s -H "content-type: application/json"%s -d '{}'`, tc.Path, extra)
+			var response string
+			deadline := time.Now().Add(30 * time.Second)
+			for {
+				out, err := boxSSHShell(t, boxName, keyFile, cmd).CombinedOutput()
+				response = string(out)
+				ok := true
+				for _, want := range tc.WantStrings {
+					if !strings.Contains(response, want) {
+						ok = false
+						break
 					}
-					t.Errorf("expected %s error response containing %s, got: %s", tc.Provider, want, response)
 				}
+				if ok {
+					break
+				}
+				if time.Now().After(deadline) {
+					if err != nil {
+						t.Fatalf("curl to %s gateway failed: %v\n%s", tc.Provider, err, response)
+					}
+					t.Fatalf("expected %s error response containing %v, got: %s", tc.Provider, tc.WantStrings, response)
+				}
+				time.Sleep(100 * time.Millisecond)
 			}
 		})
 	}
