@@ -48,7 +48,7 @@ func (m Microcents) Sub(o Microcents) Microcents {
 func (m Microcents) Dollars() (dollar, cents int64) {
 	dollar = int64(m.n) / 1000000
 	cents = (int64(m.n) % 1000000) / 10000
-	return
+	return dollar, cents
 }
 
 // Compare is cmp.Compare for Microcents.
