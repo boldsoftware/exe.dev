@@ -106,7 +106,7 @@ func TestTrackerLargeScale(t *testing.T) {
 	defer tracker.Close()
 
 	// Add 10000 unique users
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		tracker.NoteEvent("scale-test", string(rune(i)))
 	}
 

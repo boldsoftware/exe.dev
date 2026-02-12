@@ -986,7 +986,7 @@ func TestSSEStreamingNotBuffered(t *testing.T) {
 			return
 		}
 
-		for i := 0; i < eventCount; i++ {
+		for i := range eventCount {
 			fmt.Fprintf(w, "data: event %d\n\n", i)
 			flusher.Flush()
 			time.Sleep(time.Duration(eventDelayMs) * time.Millisecond)

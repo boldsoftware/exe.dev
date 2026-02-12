@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"text/tabwriter"
 
@@ -377,10 +378,8 @@ func (ct *CommandTree) FindCommand(path []string) *Command {
 		if cmd.Name == path[0] {
 			return findCommandRecursive(cmd, path, 1)
 		}
-		for _, alias := range cmd.Aliases {
-			if alias == path[0] {
-				return findCommandRecursive(cmd, path, 1)
-			}
+		if slices.Contains(cmd.Aliases, path[0]) {
+			return findCommandRecursive(cmd, path, 1)
 		}
 	}
 	return nil
@@ -398,10 +397,8 @@ func findCommandRecursive(cmd *Command, path []string, depth int) *Command {
 		if sub.Name == target {
 			return findCommandRecursive(sub, path, depth+1)
 		}
-		for _, alias := range sub.Aliases {
-			if alias == target {
-				return findCommandRecursive(sub, path, depth+1)
-			}
+		if slices.Contains(sub.Aliases, target) {
+			return findCommandRecursive(sub, path, depth+1)
 		}
 	}
 
@@ -775,34 +772,20 @@ func (ct *CommandTree) findDeepestSubcommand(commandPath []string) (*Command, []
 	current := cmd
 	consumed := 1
 
+walkTree:
 	for consumed < len(commandPath) && len(current.Subcommands) > 0 {
 		nextSegment := commandPath[consumed]
-		found := false
 
 		for _, subCmd := range current.Subcommands {
-			if subCmd.Name == nextSegment {
+			if subCmd.Name == nextSegment || slices.Contains(subCmd.Aliases, nextSegment) {
 				current = subCmd
 				consumed++
-				found = true
-				break
-			}
-			// Check aliases
-			for _, alias := range subCmd.Aliases {
-				if alias == nextSegment {
-					current = subCmd
-					consumed++
-					found = true
-					break
-				}
-			}
-			if found {
-				break
+				continue walkTree
 			}
 		}
 
-		if !found {
-			break
-		}
+		// Not found.
+		break
 	}
 
 	return current, commandPath[consumed:]

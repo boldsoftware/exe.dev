@@ -1,6 +1,7 @@
 package hll
 
 import (
+	"slices"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -42,10 +43,8 @@ func (c *Collector) SetEvents(events []string) {
 func (c *Collector) AddEvent(event string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for _, e := range c.events {
-		if e == event {
-			return
-		}
+	if slices.Contains(c.events, event) {
+		return
 	}
 	c.events = append(c.events, event)
 }

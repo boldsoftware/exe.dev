@@ -106,7 +106,7 @@ func (p *PostmarkBouncePoller) pollOnce() {
 	// Postmark uses Eastern Time for date filtering.
 	// We subtract 1 hour as a buffer for clock skew.
 	fromDateWithBuffer := fromDate.Add(-1 * time.Hour)
-	options := map[string]interface{}{
+	options := map[string]any{
 		"fromdate": fromDateWithBuffer.Format("2006-01-02T15:04:05"),
 	}
 

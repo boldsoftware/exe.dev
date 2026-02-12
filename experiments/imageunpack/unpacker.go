@@ -446,9 +446,7 @@ func (u *Unpacker) downloadAllLayers(ctx context.Context, registryURL, repoPath,
 	// Start workers
 	var wg sync.WaitGroup
 	for i := 0; i < u.config.Concurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for job := range jobCh {
 				// Check for prior error
 				if firstErr.Load() != nil {
@@ -468,7 +466,7 @@ func (u *Unpacker) downloadAllLayers(ctx context.Context, registryURL, repoPath,
 					return
 				}
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -586,15 +584,14 @@ func parseAuthHeader(header string) (realm, service, scope string) {
 	// Parse: Bearer realm="...",service="...",scope="..."
 	header = strings.TrimPrefix(header, "Bearer ")
 
-	parts := strings.Split(header, ",")
-	for _, part := range parts {
+	for part := range strings.SplitSeq(header, ",") {
 		part = strings.TrimSpace(part)
-		if strings.HasPrefix(part, "realm=") {
-			realm = strings.Trim(strings.TrimPrefix(part, "realm="), "\"")
-		} else if strings.HasPrefix(part, "service=") {
-			service = strings.Trim(strings.TrimPrefix(part, "service="), "\"")
-		} else if strings.HasPrefix(part, "scope=") {
-			scope = strings.Trim(strings.TrimPrefix(part, "scope="), "\"")
+		if after, ok := strings.CutPrefix(part, "realm="); ok {
+			realm = strings.Trim(after, `"`)
+		} else if after, ok := strings.CutPrefix(part, "service="); ok {
+			service = strings.Trim(after, `"`)
+		} else if after, ok := strings.CutPrefix(part, "scope="); ok {
+			scope = strings.Trim(after, `"`)
 		}
 	}
 	return realm, service, scope

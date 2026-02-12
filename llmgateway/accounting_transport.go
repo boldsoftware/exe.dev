@@ -181,8 +181,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 			defer close(a.sseDone)
 			for scanner.Scan() {
 				line := scanner.Text()
-				if strings.HasPrefix(line, "data:") {
-					data := strings.TrimPrefix(line, "data:")
+				if data, ok := strings.CutPrefix(line, "data:"); ok {
 					// Process the event data, which may include details for accounting.
 					// For SSE, we use processResponseDataSSE which stores usage for later
 					if err := a.processResponseDataSSE([]byte(data)); err != nil {

@@ -48,7 +48,7 @@ func (m *mockBounceStore) getBounces() []BounceRecord {
 func TestBouncePoller_PollsAndStoresBounces(t *testing.T) {
 	// Set up a mock Postmark server
 	bounceTime := time.Now().Add(-1 * time.Hour)
-	mockBounces := []map[string]interface{}{
+	mockBounces := []map[string]any{
 		{
 			"ID":            1,
 			"Type":          "HardBounce",
@@ -93,7 +93,7 @@ func TestBouncePoller_PollsAndStoresBounces(t *testing.T) {
 			return
 		}
 
-		resp := map[string]interface{}{
+		resp := map[string]any{
 			"TotalCount": len(mockBounces),
 			"Bounces":    mockBounces,
 		}
@@ -142,7 +142,7 @@ func TestBouncePoller_SkipsAlreadyProcessedBounces(t *testing.T) {
 	oldBounceTime := lastPoll.Add(-1 * time.Hour)   // Before last poll
 	newBounceTime := lastPoll.Add(10 * time.Minute) // After last poll
 
-	mockBounces := []map[string]interface{}{
+	mockBounces := []map[string]any{
 		{
 			"ID":          1,
 			"Type":        "HardBounce",
@@ -162,7 +162,7 @@ func TestBouncePoller_SkipsAlreadyProcessedBounces(t *testing.T) {
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
+		resp := map[string]any{
 			"TotalCount": len(mockBounces),
 			"Bounces":    mockBounces,
 		}

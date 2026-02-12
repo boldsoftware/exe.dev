@@ -321,7 +321,7 @@ func TestPlanCategories(t *testing.T) {
 		// Set billing exemption to 'free'
 		err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 			return q.SetUserBillingExemption(ctx, exedb.SetUserBillingExemptionParams{
-				BillingExemption: strPtr("free"),
+				BillingExemption: new("free"),
 				UserID:           userID,
 			})
 		})
@@ -428,10 +428,6 @@ func TestPlanCategories(t *testing.T) {
 			t.Errorf("unexpected error message: %s", info.Plan.CreditExhaustedError)
 		}
 	})
-}
-
-func strPtr(s string) *string {
-	return &s
 }
 
 func TestCreditManager_TopUpOnBillingUpgrade(t *testing.T) {

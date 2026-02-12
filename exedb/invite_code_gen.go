@@ -158,7 +158,7 @@ func generateInviteCode() string {
 // already exist in the invite_codes table. It retries up to maxRetries times.
 func (q *Queries) GenerateUniqueInviteCode(ctx context.Context) (string, error) {
 	const maxRetries = 100
-	for i := 0; i < maxRetries; i++ {
+	for range maxRetries {
 		code := generateInviteCode()
 
 		// Check if code already exists
