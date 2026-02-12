@@ -27,9 +27,27 @@ jobs:
       - name: Ensure b2 CLI available
         run: |
           if ! command -v b2 >/dev/null 2>&1; then
-            curl -LsSf https://astral.sh/uv/install.sh | sh
+            for attempt in 1 2 3; do
+              if curl -LsSf https://astral.sh/uv/install.sh | sh; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "failed to install uv after $attempt attempts" >&2
+                exit 1
+              fi
+              sleep 2
+            done
             export PATH="$HOME/.local/bin:$PATH"
-            uv tool install b2
+            for attempt in 1 2 3; do
+              if uv tool install b2; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "failed to install b2 after $attempt attempts" >&2
+                exit 1
+              fi
+              sleep 2
+            done
             echo "$HOME/.local/bin" >> $GITHUB_PATH
           fi
 
