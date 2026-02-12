@@ -518,6 +518,7 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 		"-ssh=:"+strconv.Itoa(ei.SSHPort),
 		"-piper-plugin=:"+strconv.Itoa(ei.PiperPluginPort),
 		"-piperd-port="+strconv.Itoa(ei.piperPort),
+		"-exeprox-service-port="+strconv.Itoa(ei.ExeproxPort),
 		"-fake-email-server="+ei.emailServerURL,
 		"-gh-whoami="+ei.whoamiPath,
 		"-exelet-addresses="+strings.Join(exeletAddrs, ","),
