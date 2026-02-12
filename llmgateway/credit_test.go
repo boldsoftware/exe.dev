@@ -2,7 +2,6 @@ package llmgateway
 
 import (
 	"context"
-	"database/sql"
 	"math"
 	"path/filepath"
 	"testing"
@@ -11,21 +10,14 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"exe.dev/tslog"
-	_ "modernc.org/sqlite"
 )
 
 func setupTestDB(t *testing.T) *sqlite.DB {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "credit_test.db")
-	rawDB, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatalf("Failed to open database: %v", err)
+	if err := exedb.CopyTemplateDB(tslog.Slogger(t), dbPath); err != nil {
+		t.Fatalf("Failed to copy template database: %v", err)
 	}
-	if err := exedb.RunMigrations(tslog.Slogger(t), rawDB); err != nil {
-		rawDB.Close()
-		t.Fatalf("Failed to run migrations: %v", err)
-	}
-	rawDB.Close()
 
 	db, err := sqlite.New(dbPath, 1)
 	if err != nil {

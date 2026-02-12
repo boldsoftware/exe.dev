@@ -2,10 +2,8 @@ package tagresolver
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -13,45 +11,21 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"exe.dev/tslog"
-	_ "modernc.org/sqlite"
 )
 
 // setupTestDB creates a test database with migrations applied
 func setupTestDB(t *testing.T) (*sqlite.DB, func()) {
-	// Create temp database file
-	tmpFile, err := os.CreateTemp("", "tagresolver-test-*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
-	}
-	tmpFile.Close()
-	dbPath := tmpFile.Name()
-
-	// Run migrations
-	rawDB, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatalf("Failed to open database: %v", err)
+	dbPath := t.TempDir() + "/tagresolver-test.db"
+	if err := exedb.CopyTemplateDB(tslog.Slogger(t), dbPath); err != nil {
+		t.Fatalf("Failed to copy template database: %v", err)
 	}
 
-	if err := exedb.RunMigrations(tslog.Slogger(t), rawDB); err != nil {
-		rawDB.Close()
-		os.Remove(dbPath)
-		t.Fatalf("Failed to run migrations: %v", err)
-	}
-	rawDB.Close()
-
-	// Open with sqlite package
 	db, err := sqlite.New(dbPath, 4)
 	if err != nil {
-		os.Remove(dbPath)
 		t.Fatalf("Failed to create sqlite.DB: %v", err)
 	}
 
-	cleanup := func() {
-		db.Close()
-		os.Remove(dbPath)
-	}
-
-	return db, cleanup
+	return db, func() { db.Close() }
 }
 
 func TestParseImageReference(t *testing.T) {

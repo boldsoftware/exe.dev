@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"exe.dev/exedb"
 	"exe.dev/stage"
 	"exe.dev/tslog"
 	"github.com/prometheus/client_golang/prometheus"
@@ -128,6 +129,9 @@ func newUnstartedServer(t testing.TB) *Server {
 	t.Cleanup(fakeStripe.Close)
 
 	dbPath := filepath.Join(t.TempDir(), "test.sqlite3")
+	if err := exedb.CopyTemplateDB(tslog.Slogger(t), dbPath); err != nil {
+		t.Fatalf("failed to copy template database: %v", err)
+	}
 	env := stage.Test()
 	env.StripeURL = fakeStripe.URL
 	registry := prometheus.NewRegistry()

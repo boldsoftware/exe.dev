@@ -5,14 +5,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"database/sql"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -65,24 +63,14 @@ func setupTestBox(t *testing.T, db *sqlite.DB, boxName string) {
 
 // newDB creates a simple test accountant with balance
 func newDB(t *testing.T) *sqlite.DB {
-	// Run migrations
 	dbPath := filepath.Join(t.TempDir(), "gateway_test.db")
-	rawDB, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		os.Remove(dbPath)
-		t.Fatalf("Failed to open database: %v", err)
+	if err := exedb.CopyTemplateDB(tslog.Slogger(t), dbPath); err != nil {
+		t.Fatalf("Failed to copy template database: %v", err)
 	}
-	if err := exedb.RunMigrations(tslog.Slogger(t), rawDB); err != nil {
-		rawDB.Close()
-		os.Remove(dbPath)
-		t.Fatalf("Failed to run migrations: %v", err)
-	}
-	rawDB.Close()
 
 	// Open with sqlite wrapper
 	db, err := sqlite.New(dbPath, 1)
 	if err != nil {
-		os.Remove(dbPath)
 		t.Fatalf("Failed to open sqlite database: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })

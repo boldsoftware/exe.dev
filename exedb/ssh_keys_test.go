@@ -3,7 +3,6 @@ package exedb_test
 import (
 	"context"
 	"database/sql"
-	"os"
 	"strings"
 	"testing"
 
@@ -17,29 +16,16 @@ import (
 func setupTestDB(t *testing.T) (*sql.DB, *exedb.Queries) {
 	t.Helper()
 
-	// Create temp db file
-	tmpDB, err := os.CreateTemp("", t.Name()+"_*.db")
-	if err != nil {
-		t.Fatalf("failed to create temp db: %v", err)
+	dbPath := t.TempDir() + "/ssh_keys_test.db"
+	if err := exedb.CopyTemplateDB(tslog.Slogger(t), dbPath); err != nil {
+		t.Fatalf("failed to copy template database: %v", err)
 	}
-	t.Cleanup(func() {
-		tmpDB.Close()
-		os.Remove(tmpDB.Name())
-	})
 
-	// Open SQLite database
-	db, err := sql.Open("sqlite", tmpDB.Name())
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
-	t.Cleanup(func() {
-		db.Close()
-	})
-
-	// Apply migrations
-	if err := exedb.RunMigrations(tslog.Slogger(t), db); err != nil {
-		t.Fatalf("failed to run migrations: %v", err)
-	}
+	t.Cleanup(func() { db.Close() })
 
 	queries := exedb.New(db)
 	return db, queries

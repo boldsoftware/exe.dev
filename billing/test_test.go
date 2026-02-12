@@ -2,7 +2,6 @@ package billing
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -165,15 +164,9 @@ func isStripeParamError(err error, param string) bool {
 func newTestDB(t *testing.T) *exesqlite.DB {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "billing_test.db")
-	rawDB, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
+	if err := exedb.CopyTemplateDB(tslog.Slogger(t), dbPath); err != nil {
+		t.Fatalf("failed to copy template database: %v", err)
 	}
-	if err := exedb.RunMigrations(tslog.Slogger(t), rawDB); err != nil {
-		rawDB.Close()
-		t.Fatalf("failed to run migrations: %v", err)
-	}
-	rawDB.Close()
 
 	db, err := exesqlite.New(dbPath, 1)
 	if err != nil {
@@ -188,16 +181,10 @@ func newTestDB(t *testing.T) *exesqlite.DB {
 func newTestDBGoTime(t *testing.T) *exesqlite.DB {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "billing_test.db")
+	if err := exedb.CopyTemplateDB(tslog.Slogger(t), dbPath); err != nil {
+		t.Fatalf("failed to copy template database: %v", err)
+	}
 	dsn := "file:" + dbPath + "?_go_time=true"
-	rawDB, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
-	}
-	if err := exedb.RunMigrations(tslog.Slogger(t), rawDB); err != nil {
-		rawDB.Close()
-		t.Fatalf("failed to run migrations: %v", err)
-	}
-	rawDB.Close()
 
 	db, err := exesqlite.New(dsn, 1)
 	if err != nil {

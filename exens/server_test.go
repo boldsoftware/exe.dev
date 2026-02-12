@@ -2,7 +2,6 @@ package exens
 
 import (
 	"context"
-	"database/sql"
 	"net"
 	"net/netip"
 	"path/filepath"
@@ -12,25 +11,15 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"exe.dev/tslog"
-	_ "modernc.org/sqlite"
 )
 
 // newTestDB creates a test database with migrations applied.
 func newTestDB(t *testing.T) *sqlite.DB {
 	dbPath := filepath.Join(t.TempDir(), "exens_test.db")
-
-	// Run migrations with raw DB
-	rawDB, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatalf("Failed to open database: %v", err)
+	if err := exedb.CopyTemplateDB(tslog.Slogger(t), dbPath); err != nil {
+		t.Fatalf("Failed to copy template database: %v", err)
 	}
-	if err := exedb.RunMigrations(tslog.Slogger(t), rawDB); err != nil {
-		rawDB.Close()
-		t.Fatalf("Failed to run migrations: %v", err)
-	}
-	rawDB.Close()
 
-	// Open with sqlite wrapper
 	db, err := sqlite.New(dbPath, 1)
 	if err != nil {
 		t.Fatalf("Failed to open sqlite database: %v", err)
