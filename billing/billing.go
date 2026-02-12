@@ -590,6 +590,28 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 	return time.Unix(maxEventAt, 0).UTC(), nil
 }
 
+// SubscriptionEvents returns subscription events for an account, ordered by time.
+func (m *Manager) SubscriptionEvents(ctx context.Context, billingID string) ([]SubscriptionEvent, error) {
+	const q = `
+		SELECT account_id, event_type, event_at
+		FROM billing_events
+		WHERE account_id = @accountID
+		ORDER BY event_at ASC
+	`
+	var events []SubscriptionEvent
+	for rows, err := range m.query(ctx, q, sql.Named("accountID", billingID)) {
+		if err != nil {
+			return nil, fmt.Errorf("query billing events: %w", err)
+		}
+		var event SubscriptionEvent
+		if err := rows.Scan(&event.AccountID, &event.EventType, &event.EventAt); err != nil {
+			return nil, fmt.Errorf("scan billing event: %w", err)
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
 func subscriptionEventType(eventType string, status stripe.SubscriptionStatus) (string, bool) {
 	switch eventType {
 	case "customer.subscription.deleted":

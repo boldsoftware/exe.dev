@@ -1,7 +1,6 @@
 package billing
 
 import (
-	"database/sql"
 	"errors"
 	"net/url"
 	"path"
@@ -415,27 +414,14 @@ func TestSyncSubscriptionsLive(t *testing.T) {
 		t.Fatalf("SyncSubscriptions nextSince = %v, want > %v", nextSince, since)
 	}
 
-	const q = `
-		SELECT event_type
-		FROM billing_events
-		WHERE account_id = @accountID
-		ORDER BY event_at ASC
-	`
-	var got []string
-	for rows, err := range m.query(ctx, q, sql.Named("accountID", billingID)) {
-		if err != nil {
-			t.Fatalf("query billing events: %v", err)
-		}
-		var eventType string
-		if err := rows.Scan(&eventType); err != nil {
-			t.Fatalf("scan event type: %v", err)
-		}
-		got = append(got, eventType)
+	events, err := m.SubscriptionEvents(ctx, billingID)
+	if err != nil {
+		t.Fatalf("SubscriptionEvents: %v", err)
 	}
-	if len(got) < 2 {
-		t.Fatalf("billing events for %q = %v, want at least active and canceled", billingID, got)
+	if len(events) < 2 {
+		t.Fatalf("billing events for %q = %v, want at least active and canceled", billingID, events)
 	}
-	if got[0] != "active" || got[len(got)-1] != "canceled" {
-		t.Fatalf("billing events order = %v, want active then canceled", got)
+	if events[0].EventType != "active" || events[len(events)-1].EventType != "canceled" {
+		t.Fatalf("billing events order = %v, want active then canceled", events)
 	}
 }

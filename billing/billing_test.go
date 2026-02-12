@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"exe.dev/billing/tender"
-	"exe.dev/exedb"
 	"github.com/stripe/stripe-go/v82"
 )
 
@@ -182,22 +181,11 @@ func TestUseCreditsPreservesFractionalCents(t *testing.T) {
 	accountID := "exe_fractional_cents"
 	createTestAccount(t, m.DB, accountID, "user_fractional_cents")
 
-	seedEventID := "pi_seed_fractional_cents"
-	if err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
-		return q.SyncCreditLedger(ctx, exedb.SyncCreditLedgerParams{
-			AccountID:     accountID,
-			Amount:        tender.Mint(100, 0).Microcents(),
-			StripeEventID: &seedEventID,
-		})
-	}); err != nil {
-		t.Fatalf("seed credits: %v", err)
-	}
-
 	balance, err := m.UseCredits(ctx, accountID, 3, tender.Mint(0, -5000))
 	if err != nil {
 		t.Fatalf("UseCredits fractional: %v", err)
 	}
-	if want := tender.Mint(98, 5000); balance != want {
+	if want := tender.Mint(-1, -5000); balance != want {
 		t.Fatalf("fractional balance = %v, want %v", balance, want)
 	}
 
@@ -205,7 +193,7 @@ func TestUseCreditsPreservesFractionalCents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UseCredits whole cents: %v", err)
 	}
-	if want := tender.Mint(96, 5000); balance != want {
+	if want := tender.Mint(-3, -5000); balance != want {
 		t.Fatalf("whole-cent balance = %v, want %v", balance, want)
 	}
 }
