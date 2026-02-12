@@ -47,7 +47,7 @@ func (p *PortAllocator) Allocate() (int, error) {
 	startOffset := rand.IntN(rangeSize)
 
 	// Try to find a free port starting from the random position
-	for i := 0; i < rangeSize; i++ {
+	for i := range rangeSize {
 		port := p.minPort + ((startOffset + i) % rangeSize)
 
 		if !p.allocated[port] {

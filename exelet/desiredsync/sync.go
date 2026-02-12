@@ -91,11 +91,9 @@ func (s *Syncer) Start(ctx context.Context) error {
 	pollCtx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
 
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	s.wg.Go(func() {
 		s.run(pollCtx)
-	}()
+	})
 
 	s.log.InfoContext(ctx, "desired-state syncer started",
 		"exed_url", s.exedURL,

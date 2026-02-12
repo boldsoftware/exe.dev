@@ -448,7 +448,7 @@ func TestCreatingInstanceReadAfterWrite(t *testing.T) {
 	}
 
 	// Step 7: Multiple reads should return consistent results
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		reread, err := computeSvc.loadInstanceConfig(instanceID)
 		if err != nil {
 			t.Fatalf("repeated read %d failed: %v", i, err)

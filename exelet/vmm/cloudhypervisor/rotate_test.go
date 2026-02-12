@@ -200,7 +200,7 @@ func TestRotationWithConcurrentAppendWrites(t *testing.T) {
 	defer appendFile.Close()
 
 	// Write some content, rotate, write more
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		appendFile.WriteString("W")
 	}
 
@@ -210,7 +210,7 @@ func TestRotationWithConcurrentAppendWrites(t *testing.T) {
 	}
 
 	// Write more after rotation
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		appendFile.WriteString("X")
 	}
 
@@ -220,7 +220,7 @@ func TestRotationWithConcurrentAppendWrites(t *testing.T) {
 	}
 
 	// Write more
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		appendFile.WriteString("Y")
 	}
 

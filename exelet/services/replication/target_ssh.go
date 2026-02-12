@@ -346,8 +346,7 @@ func estimateSendSize(ctx context.Context, dataset, snapshotName, baseSnapshot s
 	outputStr := string(output)
 
 	// Look for "estimated size is X" pattern
-	if idx := strings.Index(outputStr, "estimated size is "); idx >= 0 {
-		sizeStr := outputStr[idx+len("estimated size is "):]
+	if _, sizeStr, ok := strings.Cut(outputStr, "estimated size is "); ok {
 		// Take until end of line or whitespace
 		if newline := strings.IndexAny(sizeStr, "\n\r"); newline >= 0 {
 			sizeStr = sizeStr[:newline]
@@ -588,7 +587,7 @@ func (t *SSHTarget) Receive(ctx context.Context, opts ReceiveOptions) error {
 
 	// Collect both results
 	var sendErr, recvErr error
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		r := <-results
 		if r.source == "remote" {
 			sendErr = r.err

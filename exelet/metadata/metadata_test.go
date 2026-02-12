@@ -140,7 +140,7 @@ func TestMetadataServiceLoggingMiddleware(t *testing.T) {
 	}
 
 	// Parse log output (should be a single JSON line)
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
 		t.Fatalf("failed to parse log output: %v\nLog output: %s", err, buf.String())
 	}
@@ -285,7 +285,7 @@ func TestMetadataServiceTraceIDIsUnique(t *testing.T) {
 	})
 	testHandler := svc.loggerMiddleware(captureHandler)
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		req := httptest.NewRequest("GET", "/", nil)
 		w := httptest.NewRecorder()
 		testHandler.ServeHTTP(w, req)

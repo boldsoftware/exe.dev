@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -400,11 +401,9 @@ func (s *Service) TriggerReplication(ctx context.Context, req *api.TriggerReplic
 	// Trigger full cycle asynchronously using service context (not request context)
 	// Request context is canceled when RPC returns, which would abort the cycle.
 	// Track in s.wg so Stop() waits for it to finish before tearing down the worker pool.
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	s.wg.Go(func() {
 		s.runReplicationCycle(serviceCtx)
-	}()
+	})
 
 	return &api.TriggerReplicationResponse{
 		QueuedCount: -1, // Indicates full cycle started
@@ -540,14 +539,7 @@ func (s *Service) RestoreVolume(ctx context.Context, req *api.RestoreVolumeReque
 	if err != nil {
 		return nil, fmt.Errorf("failed to list remote snapshots: %w", err)
 	}
-	snapshotExistsOnRemote := false
-	for _, snap := range remoteSnapshots {
-		if snap == targetRef {
-			snapshotExistsOnRemote = true
-			break
-		}
-	}
-	if !snapshotExistsOnRemote {
+	if !slices.Contains(remoteSnapshots, targetRef) {
 		return nil, fmt.Errorf("snapshot %s not found on remote for volume %s", targetRef, req.VolumeID)
 	}
 
@@ -746,7 +738,7 @@ func (s *Service) listLocalSnapshots(ctx context.Context, dataset string) ([]*ap
 	}
 
 	var snapshots []*api.SnapshotInfo
-	for _, line := range strings.Split(string(output), "\n") {
+	for line := range strings.SplitSeq(string(output), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

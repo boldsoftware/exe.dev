@@ -317,7 +317,7 @@ func (s *ZFS) getDependentClones(dsName string) ([]string, error) {
 	}
 
 	var clones []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		if line == "" {
 			continue
 		}
@@ -330,7 +330,7 @@ func (s *ZFS) getDependentClones(dsName string) ([]string, error) {
 			continue
 		}
 		// Clones are comma-separated
-		for _, clone := range strings.Split(clonesStr, ",") {
+		for clone := range strings.SplitSeq(clonesStr, ",") {
 			clone = strings.TrimSpace(clone)
 			if clone != "" {
 				clones = append(clones, clone)
@@ -476,7 +476,7 @@ func (s *ZFS) PruneOrphanedBaseImages(ctx context.Context) (int, error) {
 	}
 
 	var pruned int
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		dsName := strings.TrimSpace(line)
 		if dsName == "" || dsName == s.dsName {
 			continue
@@ -548,7 +548,7 @@ func (s *ZFS) ListDatasets(ctx context.Context) ([]string, error) {
 	}
 
 	var ids []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		dsName := strings.TrimSpace(line)
 		if dsName == "" || dsName == s.dsName {
 			continue

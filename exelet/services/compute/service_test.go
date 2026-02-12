@@ -89,7 +89,7 @@ func TestCreateSSHProxy(t *testing.T) {
 	proxyAddr := fmt.Sprintf("127.0.0.1:%d", sshPort)
 	var conn net.Conn
 	var connErr error
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		conn, connErr = net.DialTimeout("tcp", proxyAddr, 100*time.Millisecond)
 		if connErr == nil {
 			conn.Close()

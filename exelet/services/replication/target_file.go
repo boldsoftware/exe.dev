@@ -418,17 +418,12 @@ func (r *rateLimitedWriter) Write(p []byte) (n int, err error) {
 
 	// Simple rate limiting: write in chunks with sleeps
 	// This is a basic implementation; production might use token bucket
-	chunkSize := int(r.rateBytes / 10) // 100ms chunks
-	if chunkSize < 1024 {
-		chunkSize = 1024
-	}
+	// Divide by 10 to get 100ms chunks
+	chunkSize := max(int(r.rateBytes/10), 1024)
 
 	written := 0
 	for written < len(p) {
-		end := written + chunkSize
-		if end > len(p) {
-			end = len(p)
-		}
+		end := min(len(p), written+chunkSize)
 
 		n, err := r.w.Write(p[written:end])
 		written += n

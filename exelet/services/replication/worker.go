@@ -86,10 +86,7 @@ func (j *Job) snapshot() Job {
 // NewWorkerPool creates a new worker pool
 func NewWorkerPool(target Target, state *State, metrics *Metrics, retention int, log *slog.Logger, isRestoring func(string) bool) *WorkerPool {
 	// Calculate worker count: max(1, numCPU / 4)
-	workerCount := runtime.NumCPU() / 4
-	if workerCount < 1 {
-		workerCount = 1
-	}
+	workerCount := max(runtime.NumCPU()/4, 1)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -294,7 +291,7 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 		if len(replSnapshots) >= wp.retention {
 			// Delete oldest replication snapshots to maintain retention
 			toDelete := len(replSnapshots) - wp.retention + 1 // +1 for the new one we just sent
-			for i := 0; i < toDelete; i++ {
+			for i := range toDelete {
 				if err := wp.target.Delete(wp.ctx, volume.ID, replSnapshots[i]); err != nil {
 					wp.log.Warn("failed to delete old snapshot", "volume_id", volume.LocalID, "snapshot", replSnapshots[i], "error", err)
 				} else {
@@ -551,7 +548,7 @@ func (wp *WorkerPool) cleanupLocalSnapshots(dataset string, keep int) {
 	}
 
 	var replSnapshots []string
-	for _, line := range strings.Split(string(output), "\n") {
+	for line := range strings.SplitSeq(string(output), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

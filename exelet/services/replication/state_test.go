@@ -29,7 +29,7 @@ func TestState(t *testing.T) {
 		}
 
 		// Add entries
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			entry := HistoryEntry{
 				VolumeID:    "vol-" + string(rune('a'+i)),
 				StartedAt:   time.Now().Add(-time.Duration(5-i) * time.Hour),
@@ -139,7 +139,7 @@ func TestState(t *testing.T) {
 		}
 
 		// Add more than MaxHistoryEntries
-		for i := 0; i < MaxHistoryEntries+10; i++ {
+		for i := range MaxHistoryEntries + 10 {
 			entry := HistoryEntry{
 				VolumeID:  "vol-" + string(rune('0'+i%10)),
 				Success:   true,
