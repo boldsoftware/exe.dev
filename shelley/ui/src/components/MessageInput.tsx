@@ -202,7 +202,6 @@ function MessageInput({
 
       const response = await fetch("/api/upload", {
         method: "POST",
-        headers: { "X-Shelley-Request": "1" },
         body: formData,
       });
 

@@ -1053,7 +1053,8 @@ func (s *Server) StartWithListener(listener net.Listener) error {
 
 	// Add middleware (applied in reverse order: last added = first executed)
 	handler := LoggerMiddleware(s.logger)(mux)
-	handler = CSRFMiddleware()(handler)
+	cop := http.NewCrossOriginProtection()
+	handler = cop.Handler(handler)
 	if s.requireHeader != "" {
 		handler = RequireHeaderMiddleware(s.requireHeader)(handler)
 	}

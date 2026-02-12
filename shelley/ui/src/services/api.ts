@@ -13,10 +13,8 @@ import {
 class ApiService {
   private baseUrl = "/api";
 
-  // Common headers for state-changing requests (CSRF protection)
   private postHeaders = {
     "Content-Type": "application/json",
-    "X-Shelley-Request": "1",
   };
 
   async getConversations(): Promise<ConversationWithState[]> {
@@ -137,7 +135,6 @@ class ApiService {
   async cancelConversation(conversationId: string): Promise<void> {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/cancel`, {
       method: "POST",
-      headers: { "X-Shelley-Request": "1" },
     });
     if (!response.ok) {
       throw new Error(`Failed to cancel conversation: ${response.statusText}`);
@@ -193,7 +190,6 @@ class ApiService {
   async archiveConversation(conversationId: string): Promise<Conversation> {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/archive`, {
       method: "POST",
-      headers: { "X-Shelley-Request": "1" },
     });
     if (!response.ok) {
       throw new Error(`Failed to archive conversation: ${response.statusText}`);
@@ -204,7 +200,6 @@ class ApiService {
   async unarchiveConversation(conversationId: string): Promise<Conversation> {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/unarchive`, {
       method: "POST",
-      headers: { "X-Shelley-Request": "1" },
     });
     if (!response.ok) {
       throw new Error(`Failed to unarchive conversation: ${response.statusText}`);
@@ -215,7 +210,6 @@ class ApiService {
   async deleteConversation(conversationId: string): Promise<void> {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/delete`, {
       method: "POST",
-      headers: { "X-Shelley-Request": "1" },
     });
     if (!response.ok) {
       throw new Error(`Failed to delete conversation: ${response.statusText}`);
@@ -307,7 +301,6 @@ class ApiService {
   async upgrade(): Promise<{ status: string; message: string }> {
     const response = await fetch("/upgrade", {
       method: "POST",
-      headers: { "X-Shelley-Request": "1" },
     });
     if (!response.ok) {
       const text = await response.text();
@@ -319,7 +312,6 @@ class ApiService {
   async exit(): Promise<{ status: string; message: string }> {
     const response = await fetch("/exit", {
       method: "POST",
-      headers: { "X-Shelley-Request": "1" },
     });
     if (!response.ok) {
       throw new Error(`Failed to exit: ${response.statusText}`);
@@ -365,7 +357,6 @@ class CustomModelsApi {
 
   private postHeaders = {
     "Content-Type": "application/json",
-    "X-Shelley-Request": "1",
   };
 
   async getCustomModels(): Promise<CustomModel[]> {
@@ -406,7 +397,6 @@ class CustomModelsApi {
   async deleteCustomModel(modelId: string): Promise<void> {
     const response = await fetch(`${this.baseUrl}/custom-models/${modelId}`, {
       method: "DELETE",
-      headers: { "X-Shelley-Request": "1" },
     });
     if (!response.ok) {
       throw new Error(`Failed to delete custom model: ${response.statusText}`);
@@ -481,7 +471,6 @@ class NotificationChannelsApi {
 
   private postHeaders = {
     "Content-Type": "application/json",
-    "X-Shelley-Request": "1",
   };
 
   async getChannels(): Promise<NotificationChannelAPI[]> {
@@ -522,7 +511,6 @@ class NotificationChannelsApi {
   async deleteChannel(channelId: string): Promise<void> {
     const response = await fetch(`${this.baseUrl}/notification-channels/${channelId}`, {
       method: "DELETE",
-      headers: { "X-Shelley-Request": "1" },
     });
     if (!response.ok) {
       throw new Error(`Failed to delete notification channel: ${response.statusText}`);
