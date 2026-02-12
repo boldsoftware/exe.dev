@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -112,8 +113,8 @@ func parseInputs(inputFiles []string) ([]*InputCoverage, error) {
 
 		for scanner.Scan() {
 			line := scanner.Text()
-			if strings.HasPrefix(line, "mode: ") {
-				mode = strings.TrimPrefix(line, "mode: ")
+			if after, ok := strings.CutPrefix(line, "mode: "); ok {
+				mode = after
 				continue
 			}
 
@@ -126,13 +127,13 @@ func parseInputs(inputFiles []string) ([]*InputCoverage, error) {
 			numStmt, _ := strconv.Atoi(parts[1])
 			count, _ := strconv.Atoi(parts[2])
 
-			colonIdx := strings.Index(fileAndRange, ":")
-			if colonIdx == -1 {
+			before, after, ok := strings.Cut(fileAndRange, ":")
+			if !ok {
 				continue
 			}
 
-			fileName := fileAndRange[:colonIdx]
-			rangeStr := fileAndRange[colonIdx+1:]
+			fileName := before
+			rangeStr := after
 
 			rangeParts := strings.Split(rangeStr, ",")
 			if len(rangeParts) != 2 {
@@ -222,14 +223,7 @@ func aggregateFileCoverage(inputs []*InputCoverage) (map[string]*FileCoverage, e
 				files[fileName] = fc
 			}
 
-			found := false
-			for _, existingInput := range fc.Inputs {
-				if existingInput == input.Name {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !slices.Contains(fc.Inputs, input.Name) {
 				fc.Inputs = append(fc.Inputs, input.Name)
 			}
 
@@ -284,10 +278,9 @@ func resolveFilePath(fileName string) (string, error) {
 		return fileName, nil
 	}
 
-	dirs := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, dir := range dirs {
+	for dir := range strings.SplitSeq(strings.TrimSpace(string(output)), "\n") {
 		parts := strings.Split(fileName, string(filepath.Separator))
-		for i := 0; i < len(parts); i++ {
+		for i := range parts {
 			potentialPath := filepath.Join(dir, filepath.Join(parts[i:]...))
 			if _, err := os.Stat(potentialPath); err == nil {
 				return potentialPath, nil

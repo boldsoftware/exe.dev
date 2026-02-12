@@ -370,8 +370,7 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 	}
 
 	// Handle /docs/{slug}.md -> serve raw markdown
-	if strings.HasSuffix(path, ".md") {
-		basePath := strings.TrimSuffix(path, ".md")
+	if basePath, ok := strings.CutSuffix(path, ".md"); ok {
 		if entry, ok := h.store.Entry(basePath); ok {
 			h.renderDocMarkdown(w, r, entry)
 			return true
@@ -587,12 +586,12 @@ func stripFrontMatter(data []byte) []byte {
 		return data
 	}
 	const end = "\n---\n"
-	idx := bytes.Index(rest, []byte(end))
-	if idx == -1 {
+	_, after, ok := bytes.Cut(rest, []byte(end))
+	if !ok {
 		return data
 	}
 	// Skip past the closing delimiter and return the remainder.
-	return rest[idx+len(end):]
+	return after
 }
 
 func entryFromMetadata(docPath string, metadata map[string]any) (Entry, error) {
@@ -759,7 +758,7 @@ func metadataTags(raw any) ([]string, error) {
 }
 
 func parseTags(content string) (tags []string) {
-	for _, tag := range strings.Split(content, ",") {
+	for tag := range strings.SplitSeq(content, ",") {
 		tag = strings.TrimSpace(tag)
 		if tag != "" {
 			tags = append(tags, tag)

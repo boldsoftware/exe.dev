@@ -114,9 +114,7 @@ func handleTerminalWebSocket(w http.ResponseWriter, r *http.Request) {
 	var wg sync.WaitGroup
 
 	// Read from PTY and send to WebSocket
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		buf := make([]byte, 4096)
 		for {
 			n, err := ptmx.Read(buf)
@@ -138,7 +136,7 @@ func handleTerminalWebSocket(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-	}()
+	})
 
 	// Read from WebSocket and write to PTY
 	for {

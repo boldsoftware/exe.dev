@@ -85,8 +85,7 @@ func expandImageNameInternal(image string, forContainerd bool) string {
 // GetDisplayImageName returns a user-friendly display name for an image
 func GetDisplayImageName(image string) string {
 	// Handle local development images
-	if strings.HasPrefix(image, "sha256:") {
-		hash := strings.TrimPrefix(image, "sha256:")
+	if hash, ok := strings.CutPrefix(image, "sha256:"); ok {
 		if len(hash) > 8 {
 			hash = hash[:8]
 		}
@@ -137,8 +136,8 @@ func GetDisplayImageName(image string) string {
 	}
 
 	// Remove :latest suffix for cleaner display
-	if strings.HasSuffix(image, ":latest") {
-		return strings.TrimSuffix(image, ":latest")
+	if before, ok := strings.CutSuffix(image, ":latest"); ok {
+		return before
 	}
 
 	return image + suffix

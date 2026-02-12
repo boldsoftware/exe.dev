@@ -176,8 +176,8 @@ func (m *Manager) InstallPrices(ctx context.Context) error {
 
 		found := false
 		for got, err := range c.V1Prices.List(ctx, &stripe.PriceListParams{
-			LookupKeys: []*string{new_(p.lookupKey)},
-			Active:     stripe.Bool(true),
+			LookupKeys: []*string{new(p.lookupKey)},
+			Active:     new(true),
 		}) {
 			if err != nil {
 				return fmt.Errorf("list active price %q: %w", p.lookupKey, err)
@@ -196,10 +196,10 @@ func (m *Manager) InstallPrices(ctx context.Context) error {
 
 		recurringInterval := string(p.interval)
 		created, err := c.V1Prices.Create(ctx, &stripe.PriceCreateParams{
-			LookupKey:  new_(p.lookupKey),
-			Currency:   new_(string(p.currency)),
-			UnitAmount: new_(p.unitAmount),
-			Product:    new_(p.productID),
+			LookupKey:  new(p.lookupKey),
+			Currency:   new(string(p.currency)),
+			UnitAmount: new(p.unitAmount),
+			Product:    new(p.productID),
 			Recurring: &stripe.PriceCreateRecurringParams{
 				Interval: &recurringInterval,
 			},
@@ -241,8 +241,8 @@ func (m *Manager) ensureProduct(ctx context.Context, c *stripe.Client, id, name 
 	}
 
 	created, err := c.V1Products.Create(ctx, &stripe.ProductCreateParams{
-		ID:   new_(id),
-		Name: new_(name),
+		ID:   new(id),
+		Name: new(name),
 	})
 	if isExists(err) {
 		m.slog().InfoContext(ctx, "billing product already installed",
@@ -373,7 +373,7 @@ func (m *Manager) Subscribe(ctx context.Context, billingID string, p *SubscribeP
 
 	if !p.TrialEnd.IsZero() {
 		params.SubscriptionData = &stripe.CheckoutSessionCreateSubscriptionDataParams{
-			TrialEnd: stripe.Int64(p.TrialEnd.Unix()),
+			TrialEnd: new(p.TrialEnd.Unix()),
 		}
 	}
 
@@ -435,7 +435,7 @@ func withRequestID(err error) slog.Attr {
 func (m *Manager) lookupPriceID(ctx context.Context, lookupKey string) (string, error) {
 	for price, err := range m.client().V1Prices.List(ctx, &stripe.PriceListParams{
 		LookupKeys: []*string{&lookupKey},
-		Active:     stripe.Bool(true),
+		Active:     new(true),
 	}) {
 		if err != nil {
 			return "", err
@@ -758,7 +758,7 @@ func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCredit
 					ProductData: &stripe.CheckoutSessionCreateLineItemPriceDataProductDataParams{
 						Name: stripe.String("Account Credits"),
 					},
-					UnitAmount: new_(p.Amount.Cents()),
+					UnitAmount: new(p.Amount.Cents()),
 				},
 				Quantity: stripe.Int64(1),
 			},
@@ -842,10 +842,6 @@ func (m *Manager) SyncCredits(ctx context.Context, since time.Time) error {
 		)
 	}
 	return nil
-}
-
-func new_[T any](v T) *T {
-	return &v
 }
 
 func (m *Manager) exec(ctx context.Context, q string, args ...any) error {

@@ -48,8 +48,8 @@ type Clock struct {
 func Start(ctx context.Context, sc *stripe.Client, name string) (*Clock, error) {
 	now := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	clock, err := sc.V1TestHelpersTestClocks.Create(ctx, &stripe.TestHelpersTestClockCreateParams{
-		Name:       new_(name),
-		FrozenTime: new_(now.Unix()),
+		Name:       new(name),
+		FrozenTime: new(now.Unix()),
 	})
 	if err != nil {
 		return nil, err
@@ -82,7 +82,7 @@ func (c *Clock) Sleep(ctx context.Context, d time.Duration, onRetry func(status 
 	c.now = c.now.Add(d)
 
 	_, err := c.sc.V1TestHelpersTestClocks.Advance(ctx, c.id, &stripe.TestHelpersTestClockAdvanceParams{
-		FrozenTime: new_(c.now.Unix()),
+		FrozenTime: new(c.now.Unix()),
 	})
 	if err != nil {
 		return err
@@ -105,8 +105,4 @@ func (c *Clock) Sleep(ctx context.Context, d time.Duration, onRetry func(status 
 // ID returns the clock_id as returned by Stripe.
 func (c *Clock) ID() string {
 	return c.id
-}
-
-func new_[T any](v T) *T {
-	return &v
 }

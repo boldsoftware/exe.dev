@@ -333,13 +333,6 @@ func contains(s, substr string) bool {
 		(len(s) > 0 && (s[:len(substr)] == substr || contains(s[1:], substr))))
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func TestHeadingIDs(t *testing.T) {
 	entry, err := parseMarkdownDoc("test.md", []byte(`---
 title: Test

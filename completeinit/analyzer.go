@@ -31,7 +31,7 @@ var Analyzer = &analysis.Analyzer{
 // markerComment is the comment that marks a struct as requiring complete initialization.
 const markerComment = "exe:completeinit"
 
-func run(pass *analysis.Pass) (interface{}, error) {
+func run(pass *analysis.Pass) (any, error) {
 	inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
 	// First pass: find all structs annotated with //completeinit in this package
@@ -102,8 +102,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 		// For unexported types, check all fields (they can only be used within the same package)
 		typeIsExported := named.Obj().Exported()
 		var missingFields []string
-		for i := 0; i < structType.NumFields(); i++ {
-			field := structType.Field(i)
+		for field := range structType.Fields() {
 			// Skip unexported fields for exported types
 			if typeIsExported && !field.Exported() {
 				continue

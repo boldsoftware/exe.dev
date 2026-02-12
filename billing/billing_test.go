@@ -187,12 +187,12 @@ func stripeCompleteCreditPurchase(ctx context.Context, m *Manager, customerID, p
 	}
 
 	p := &stripe.PaymentIntentCreateParams{
-		Amount:             new_(amount.Cents()),
+		Amount:             new(amount.Cents()),
 		Currency:           stripe.String("usd"),
 		Customer:           &customerID,
 		PaymentMethod:      &pm.ID,
 		PaymentMethodTypes: []*string{stripe.String("card")},
-		Confirm:            stripe.Bool(true),
+		Confirm:            new(true),
 	}
 	p.AddMetadata("type", "credit_purchase")
 

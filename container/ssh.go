@@ -61,7 +61,7 @@ func GenerateContainerSSHKeys() (*ContainerSSHKeys, error) {
 }
 
 // ParsePrivateKey parses a PEM-encoded private key string
-func ParsePrivateKey(pemData string) (interface{}, error) {
+func ParsePrivateKey(pemData string) (any, error) {
 	block, _ := pem.Decode([]byte(pemData))
 	if block == nil {
 		return nil, fmt.Errorf("failed to decode PEM block")
