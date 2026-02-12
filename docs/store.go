@@ -28,11 +28,11 @@ var loadTime = time.Now()
 //go:embed content
 var contentFS embed.FS
 
-//go:embed doc-entry.html docs-list.html
+//go:embed doc-entry.html doc-section-content.html docs-list.html
 var templateFS embed.FS
 
 var docTemplates = template.Must(func() (*template.Template, error) {
-	tmpl, err := template.New("docs").ParseFS(templateFS, "doc-entry.html", "docs-list.html")
+	tmpl, err := template.New("docs").ParseFS(templateFS, "doc-entry.html", "doc-section-content.html", "docs-list.html")
 	if err != nil {
 		return nil, err
 	}
@@ -107,6 +107,7 @@ func LoadFromDir(dir string, env stage.Env) (*Store, error) {
 func ParseTemplatesFromDir(docsDir, topbarPath string) (*template.Template, error) {
 	tmpl, err := template.New("docs").ParseFiles(
 		filepath.Join(docsDir, "doc-entry.html"),
+		filepath.Join(docsDir, "doc-section-content.html"),
 		filepath.Join(docsDir, "docs-list.html"),
 	)
 	if err != nil {
@@ -413,15 +414,6 @@ func (h *Handler) renderDocEntry(w http.ResponseWriter, r *http.Request, entry *
 	_, _ = w.Write(buf.Bytes())
 }
 
-var sectionContentTmpl = template.Must(template.New("section-content").Parse(
-	`{{range .}}` +
-		`<div class="doc-item">` +
-		`<h3 class="doc-title"><a href="{{.Path}}">{{.Title}}</a></h3>` +
-		`{{if .Description}}<p class="doc-description">{{.Description}}</p>{{end}}` +
-		`</div>` + "\n" +
-		`{{end}}`,
-))
-
 func (h *Handler) renderDocSection(w http.ResponseWriter, _ *http.Request, group *Group) {
 	type visibleEntry struct {
 		Path, Title, Description string
@@ -438,7 +430,7 @@ func (h *Handler) renderDocSection(w http.ResponseWriter, _ *http.Request, group
 		})
 	}
 	var contentBuf bytes.Buffer
-	if err := sectionContentTmpl.Execute(&contentBuf, docs); err != nil {
+	if err := h.tmpl.ExecuteTemplate(&contentBuf, "doc-section-content.html", docs); err != nil {
 		http.Error(w, "error rendering doc section", http.StatusInternalServerError)
 		return
 	}
@@ -458,7 +450,7 @@ func (h *Handler) renderDocSection(w http.ResponseWriter, _ *http.Request, group
 		"StatusTag": h.statusTag,
 	}
 
-	if err := docTemplates.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
+	if err := h.tmpl.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
 		http.Error(w, "error rendering doc section", http.StatusInternalServerError)
 		return
 	}
