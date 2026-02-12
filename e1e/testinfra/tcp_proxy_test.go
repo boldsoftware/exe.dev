@@ -15,11 +15,9 @@ func TestTCPProxy(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		p.Serve(t.Context())
-	}()
+	})
 
 	c, err := net.DialTCP("tcp", nil, p.Address())
 	if err != nil {
@@ -36,10 +34,7 @@ func TestTCPProxy(t *testing.T) {
 	}
 
 	var readWG sync.WaitGroup
-	readWG.Add(1)
-	go func() {
-		defer readWG.Done()
-
+	readWG.Go(func() {
 		rc, err := ln.AcceptTCP()
 		if err != nil {
 			t.Error(err)
@@ -56,7 +51,7 @@ func TestTCPProxy(t *testing.T) {
 		if s != msg {
 			t.Errorf("read %q want %q", s, msg)
 		}
-	}()
+	})
 
 	p.SetDestPort(ln.Addr().(*net.TCPAddr).Port)
 
@@ -98,11 +93,9 @@ func TestTCPProxyHalfClose(t *testing.T) {
 	p.SetDestPort(dstLn.Addr().(*net.TCPAddr).Port)
 
 	var serveWG sync.WaitGroup
-	serveWG.Add(1)
-	go func() {
-		defer serveWG.Done()
+	serveWG.Go(func() {
 		p.Serve(t.Context())
-	}()
+	})
 
 	// Make multiple connections through the proxy and close the client side.
 	// Before the fix, proxy goroutines would leak on each connection because

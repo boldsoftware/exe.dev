@@ -502,11 +502,11 @@ func stripFrontMatter(data []byte) []byte {
 		return data
 	}
 	const end = "\n---\n"
-	idx := bytes.Index(rest, []byte(end))
-	if idx == -1 {
+	_, after, ok := bytes.Cut(rest, []byte(end))
+	if !ok {
 		return data
 	}
-	return rest[idx+len(end):]
+	return after
 }
 
 func entryFromMetadata(path string, metadata map[string]any, fileDate time.Time) (Entry, error) {

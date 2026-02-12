@@ -143,7 +143,7 @@ func TestReceiveEmail(t *testing.T) {
 		// Connect to LMTP socket
 		sockPath := Env.servers.Exed.LMTPSocketPath
 		var conn net.Conn
-		for i := 0; i < 50; i++ {
+		for range 50 {
 			conn, err = net.Dial("unix", sockPath)
 			if err == nil {
 				break
@@ -188,7 +188,7 @@ func TestReceiveEmail(t *testing.T) {
 
 		// Poll for email arrival
 		var count string
-		for i := 0; i < 50; i++ {
+		for range 50 {
 			checkCmd := boxSSHShell(t, box, keyFile, "ls ~/Maildir/new/ 2>/dev/null | wc -l")
 			checkOut, err := checkCmd.CombinedOutput()
 			if err != nil {

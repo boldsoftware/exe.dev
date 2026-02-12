@@ -118,7 +118,7 @@ func startLinuxVM(testRunID string) (string, error) {
 	}
 
 	var vmUser, vmIP string
-	for _, line := range strings.Split(string(envVars), "\n") {
+	for line := range strings.SplitSeq(string(envVars), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

@@ -39,11 +39,9 @@ func TestGenSSHKey(t *testing.T) {
 	}
 	defer sshListener.Close()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		sshdServer(t, sshListener, path, publicKey)
-	}()
+	})
 
 	cmd := exec.CommandContext(t.Context(),
 		"ssh",
@@ -70,15 +68,13 @@ func TestGenSSHKey(t *testing.T) {
 
 	outputDone := make(chan bool)
 	var output strings.Builder
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		defer close(outputDone)
 		_, err := io.Copy(&output, stdout)
 		if err != nil && !errors.Is(err, os.ErrClosed) {
 			t.Errorf("error reading from ssh stdout: %v", err)
 		}
-	}()
+	})
 
 	if err := cmd.Wait(); err != nil {
 		t.Errorf("ssh failed with exit status %v", err)
@@ -108,11 +104,9 @@ func sshdServer(t *testing.T, ln net.Listener, keyFileServer, publicKeyServer st
 			return
 		}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sshdServerConn(t, c, keyFileServer, publicKeyServer)
-		}()
+		})
 	}
 }
 

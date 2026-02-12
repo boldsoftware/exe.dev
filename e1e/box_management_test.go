@@ -78,7 +78,7 @@ func TestVanillaBox(t *testing.T) {
 			t.Fatalf("failed to run dumpe2fs: %v\n%s", err, out)
 		}
 		var blockCount, blockSize uint64
-		for _, line := range strings.Split(string(out), "\n") {
+		for line := range strings.SplitSeq(string(out), "\n") {
 			if strings.HasPrefix(line, "Block count:") {
 				fmt.Sscanf(line, "Block count: %d", &blockCount)
 			} else if strings.HasPrefix(line, "Block size:") {
@@ -470,11 +470,12 @@ func TestVanillaBox(t *testing.T) {
 	} {
 		t.Run("gateway_"+tc.Provider, func(t *testing.T) {
 			noGolden(t)
-			extra := ""
+			var extra strings.Builder
 			for _, h := range tc.ExtraHeaders {
-				extra += " " + h
+				extra.WriteByte(' ')
+				extra.WriteString(h)
 			}
-			cmd := fmt.Sprintf(`curl --max-time 10 -s http://169.254.169.254/gateway/llm/%s -H "content-type: application/json"%s -d '{}'`, tc.Path, extra)
+			cmd := fmt.Sprintf(`curl --max-time 10 -s http://169.254.169.254/gateway/llm/%s -H "content-type: application/json"%s -d '{}'`, tc.Path, extra.String())
 			var response string
 			deadline := time.Now().Add(30 * time.Second)
 			for {
@@ -788,7 +789,7 @@ func TestVanillaBox(t *testing.T) {
 		errChan := make(chan error, 1)
 		go func() {
 			for {
-				var msg map[string]interface{}
+				var msg map[string]any
 				err := wsjson.Read(ctx, conn, &msg)
 				if err != nil {
 					if websocket.CloseStatus(err) != websocket.StatusNormalClosure {
@@ -806,7 +807,7 @@ func TestVanillaBox(t *testing.T) {
 		}()
 
 		// Send initial resize
-		if err := wsjson.Write(ctx, conn, map[string]interface{}{
+		if err := wsjson.Write(ctx, conn, map[string]any{
 			"type": "resize",
 			"cols": 80,
 			"rows": 24,
@@ -815,7 +816,7 @@ func TestVanillaBox(t *testing.T) {
 		}
 
 		// Send a command
-		if err := wsjson.Write(ctx, conn, map[string]interface{}{
+		if err := wsjson.Write(ctx, conn, map[string]any{
 			"type": "input",
 			"data": "echo xterm-test-ok\n",
 		}); err != nil {
@@ -860,7 +861,7 @@ func TestVanillaBox(t *testing.T) {
 		errChan := make(chan error, 1)
 		go func() {
 			for {
-				var msg map[string]interface{}
+				var msg map[string]any
 				err := wsjson.Read(ctx, conn, &msg)
 				if err != nil {
 					if websocket.CloseStatus(err) != websocket.StatusNormalClosure {
@@ -877,7 +878,7 @@ func TestVanillaBox(t *testing.T) {
 		}()
 
 		// Send initial resize (required to start the shell)
-		if err := wsjson.Write(ctx, conn, map[string]interface{}{
+		if err := wsjson.Write(ctx, conn, map[string]any{
 			"type": "init",
 			"cols": 80,
 			"rows": 24,

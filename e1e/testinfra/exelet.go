@@ -865,7 +865,7 @@ func cloneImageVolumesWithExecutor(ctx context.Context, execute cmdExecutor, zfs
 
 	// Filter for tank/sha256:* volumes (the cached base images).
 	var volumes []string
-	for _, line := range bytes.Split(bytes.TrimSpace(out), []byte{'\n'}) {
+	for line := range bytes.SplitSeq(bytes.TrimSpace(out), []byte{'\n'}) {
 		line = bytes.TrimSpace(line)
 		if bytes.HasPrefix(line, []byte("tank/sha256:")) {
 			volumes = append(volumes, string(line))
@@ -918,7 +918,7 @@ func promoteImageVolumesWithExecutor(ctx context.Context, execute cmdExecutor, z
 	}
 
 	// Find sha256:* volumes (completed images, not tmp-sha256:*)
-	for _, line := range bytes.Split(bytes.TrimSpace(out), []byte{'\n'}) {
+	for line := range bytes.SplitSeq(bytes.TrimSpace(out), []byte{'\n'}) {
 		line = bytes.TrimSpace(line)
 		dsName := string(line)
 

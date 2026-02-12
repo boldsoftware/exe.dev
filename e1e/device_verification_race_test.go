@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -126,14 +127,7 @@ func TestDeviceVerificationDoubleClick(t *testing.T) {
 	}
 
 	// At least one should succeed with 200
-	hasSuccess := false
-	for _, status := range statuses {
-		if status == http.StatusOK {
-			hasSuccess = true
-			break
-		}
-	}
-	if !hasSuccess {
+	if !slices.Contains(statuses, http.StatusOK) {
 		t.Errorf("Expected at least one 200 OK, got: %v", statuses)
 	}
 

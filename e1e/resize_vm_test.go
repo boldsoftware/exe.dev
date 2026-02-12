@@ -278,10 +278,7 @@ func TestResizeVM(t *testing.T) {
 	if canTestCPUIncrease {
 		t.Run("resize_cpu", func(t *testing.T) {
 			// Only increase by 1 to stay within host limits
-			newCPUs := int(initialCPUs) + 1
-			if newCPUs > hostCPUs {
-				newCPUs = hostCPUs
-			}
+			newCPUs := min(int(initialCPUs)+1, hostCPUs)
 			out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), supportKeyFile, "resize", box, fmt.Sprintf("--cpu=%d", newCPUs), "--json")
 			if err != nil {
 				t.Fatalf("resize command failed: %v\n%s", err, out)

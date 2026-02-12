@@ -122,7 +122,7 @@ func ensureZFSPool() error {
 		// List and destroy only e1e-* datasets
 		out, err := exec.Command("sudo", "zfs", "list", "-H", "-o", "name", "-r", "tank").Output()
 		if err == nil {
-			for _, line := range strings.Split(string(out), "\n") {
+			for line := range strings.SplitSeq(string(out), "\n") {
 				ds := strings.TrimSpace(line)
 				if strings.Contains(ds, "/e1e-") {
 					exec.Command("sudo", "zfs", "destroy", "-r", ds).Run()
@@ -131,7 +131,7 @@ func ensureZFSPool() error {
 		}
 		// Clean up e1e snapshots on base images
 		out, _ = exec.Command("sudo", "zfs", "list", "-H", "-t", "snapshot", "-o", "name").Output()
-		for _, line := range strings.Split(string(out), "\n") {
+		for line := range strings.SplitSeq(string(out), "\n") {
 			snap := strings.TrimSpace(line)
 			if strings.Contains(snap, "@e1e-") {
 				exec.Command("sudo", "zfs", "destroy", snap).Run()
@@ -190,7 +190,7 @@ func ensureHugepages() error {
 	}
 
 	var memTotalKB int64
-	for _, line := range strings.Split(string(meminfo), "\n") {
+	for line := range strings.SplitSeq(string(meminfo), "\n") {
 		if strings.HasPrefix(line, "MemTotal:") {
 			fields := strings.Fields(line)
 			if len(fields) >= 2 {
@@ -205,10 +205,8 @@ func ensureHugepages() error {
 	}
 
 	// Target: 50% of RAM in 2MB hugepages
-	target := memTotalKB / 4096
-	if target < 64 {
-		target = 64 // Minimum 128MB
-	}
+	// Minimum 128MB
+	target := max(memTotalKB/4096, 64)
 
 	fmt.Printf("  Setting hugepages to %d...\n", target)
 	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("echo %d > /proc/sys/vm/nr_hugepages", target))

@@ -44,17 +44,13 @@ func TestSSHPiperd(t *testing.T) {
 	}
 	defer sshListener.Close()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		sshPiperdPluginServer(t, grpcListener, sshListener.Addr(), publicKeyClient, keyFileServer)
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		sshdServer(t, sshListener, keyFileServer, publicKeyServer)
-	}()
+	})
 
 	pi, err := StartSSHPiperd(t.Context(), grpcListener.Addr().(*net.TCPAddr).Port, t.Output())
 	if err != nil {

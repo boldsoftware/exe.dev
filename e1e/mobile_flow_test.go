@@ -142,12 +142,12 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 			break
 		}
 		line := scanner.Text()
-		if strings.HasPrefix(line, "event: ") {
-			curEvent = strings.TrimSpace(strings.TrimPrefix(line, "event: "))
+		if after, ok := strings.CutPrefix(line, "event: "); ok {
+			curEvent = strings.TrimSpace(after)
 			continue
 		}
-		if strings.HasPrefix(line, "data: ") {
-			data := strings.TrimSpace(strings.TrimPrefix(line, "data: "))
+		if after, ok := strings.CutPrefix(line, "data: "); ok {
+			data := strings.TrimSpace(after)
 			if curEvent == "done" {
 				doneData = data
 				done = true
