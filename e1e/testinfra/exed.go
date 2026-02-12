@@ -423,13 +423,11 @@ func (ei *ExedInstance) Stop(ctx context.Context, testRunID string, midTest bool
 	// Gracefully stop exed with SIGTERM so it writes coverage data.
 	slog.InfoContext(ctx, "sending SIGTERM to exed")
 	ei.Cmd.Process.Signal(syscall.SIGTERM)
-	// Wait for graceful exit (up to 5 seconds).
+	// Wait briefly for graceful exit so coverage data gets written,
+	// then SIGKILL. Deploy does not do graceful shutdown either.
 	select {
 	case <-ei.Exited:
-		// Graceful exit.
-	case <-time.After(5 * time.Second):
-		// Forcefully kill if still running.
-		slog.WarnContext(ctx, "exed did not exit gracefully, killing")
+	case <-time.After(1 * time.Second):
 		ei.Cmd.Process.Kill()
 		<-ei.Exited
 	}
