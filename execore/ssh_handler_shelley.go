@@ -111,7 +111,7 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 	cc.Writeln("Installing Shelley on \033[1m%s\033[0m...", boxName)
 
 	// Get the shelley binary for the target architecture
-	shelleyPath, err := xshelley.GetShelley(ctx, arch)
+	shelleyPath, _, err := xshelley.GetShelley(ctx, arch)
 	if err != nil {
 		return fmt.Errorf("failed to get shelley binary for %s: %w", arch, err)
 	}

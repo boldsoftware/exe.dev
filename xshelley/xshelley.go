@@ -1,28 +1,21 @@
 // Package xshelley provides a simple interface to download the shelley binary
-// from the published ghcr.io/boldsoftware/exeuntu multi-arch Docker image.
+// from GitHub releases at github.com/boldsoftware/shelley.
 package xshelley
 
 import (
-	"archive/tar"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
-
-	"github.com/google/go-containerregistry/pkg/authn"
-	"github.com/google/go-containerregistry/pkg/name"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
 
 const (
-	defaultImage     = "ghcr.io/boldsoftware/exeuntu:latest"
-	shelleyPath      = "usr/local/bin/shelley"
+	latestReleaseURL = "https://api.github.com/repos/boldsoftware/shelley/releases/latest"
 	refreshInterval  = 1 * time.Hour
 	metadataFileName = "metadata.json"
 	shelleyFileName  = "shelley"
@@ -34,16 +27,25 @@ var (
 )
 
 type cacheMetadata struct {
-	ImageDigest string    `json:"image_digest"`
+	ReleaseTag  string    `json:"release_tag"`
 	LastChecked time.Time `json:"last_checked"`
 	Platform    string    `json:"platform"`
+}
+
+type ghRelease struct {
+	TagName string    `json:"tag_name"`
+	Assets  []ghAsset `json:"assets"`
+}
+
+type ghAsset struct {
+	Name               string `json:"name"`
+	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
 // getCacheDir returns the cache directory, initializing it once with a secure random path
 func getCacheDir() (string, error) {
 	var initErr error
 	cacheDirOnce.Do(func() {
-		// Create a secure temporary cache directory with random name
 		var err error
 		cacheDir, err = os.MkdirTemp("", "xshelley-cache-")
 		if err != nil {
@@ -59,101 +61,145 @@ func getCacheDir() (string, error) {
 	return cacheDir, nil
 }
 
-// GetShelley returns the path to the shelley binary for the specified architecture.
-// It downloads the binary from the Docker image if not cached, or if the cache
-// is stale (older than refreshInterval).
-//
-// The binary is extracted from the ghcr.io/boldsoftware/exeuntu image by:
-// 1. Fetching the image manifest for the specified architecture
-// 2. Identifying which layer contains /usr/local/bin/shelley
-// 3. Downloading only that layer
-// 4. Extracting the shelley binary
+// GetShelley returns the path to the shelley binary for the specified architecture
+// and whether the result was served from cache.
+// It downloads the binary from the latest GitHub release if not cached, or if the
+// cache is stale (older than refreshInterval).
 //
 // Parameters:
 //   - ctx: context for cancellation and timeout
 //   - goarch: target architecture (e.g., "amd64", "arm64")
 //
-// Only Linux binaries are available. Results are cached in /tmp/xshelley-cache
-// with hourly refresh checks.
-func GetShelley(ctx context.Context, goarch string) (string, error) {
+// Only Linux binaries are available. Results are cached with hourly refresh checks.
+func GetShelley(ctx context.Context, goarch string) (path string, cached bool, err error) {
 	platform := fmt.Sprintf("linux/%s", goarch)
 
-	// Get cache directory (created once with secure random name)
 	cacheDirPath, err := getCacheDir()
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	platformDir := filepath.Join(cacheDirPath, fmt.Sprintf("linux-%s", goarch))
 	if err := os.MkdirAll(platformDir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to create platform cache directory: %w", err)
+		return "", false, fmt.Errorf("failed to create platform cache directory: %w", err)
 	}
 
 	metadataPath := filepath.Join(platformDir, metadataFileName)
 	shelleyBinaryPath := filepath.Join(platformDir, shelleyFileName)
 
 	// Check if we have a valid cached version
-	needsRefresh, currentDigest, err := shouldRefresh(ctx, metadataPath, platform)
+	needsRefresh, currentTag, err := shouldRefresh(metadataPath, platform)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	if !needsRefresh {
-		// Verify the binary still exists
 		if _, err := os.Stat(shelleyBinaryPath); err == nil {
-			return shelleyBinaryPath, nil
+			return shelleyBinaryPath, true, nil
 		}
 	}
 
-	// Need to download
-	ref, err := name.ParseReference(defaultImage)
+	// Fetch the latest release info from GitHub
+	release, err := fetchLatestRelease(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse image reference: %w", err)
+		return "", false, err
 	}
 
-	// Get the image for the specified platform (Linux only)
-	img, err := remote.Image(ref,
-		remote.WithContext(ctx),
-		remote.WithAuthFromKeychain(authn.DefaultKeychain),
-		remote.WithPlatform(v1.Platform{
-			OS:           "linux",
-			Architecture: goarch,
-		}),
-	)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch image: %w", err)
-	}
-
-	// Get the image digest
-	digest, err := img.Digest()
-	if err != nil {
-		return "", fmt.Errorf("failed to get image digest: %w", err)
-	}
-
-	// If digest hasn't changed and binary exists, just update metadata
-	if digest.String() == currentDigest {
+	// If tag hasn't changed and binary exists, just update metadata
+	if release.TagName == currentTag {
 		if _, err := os.Stat(shelleyBinaryPath); err == nil {
-			if err := updateMetadata(metadataPath, digest.String(), platform); err != nil {
-				return "", err
+			if err := updateMetadata(metadataPath, release.TagName, platform); err != nil {
+				return "", false, err
 			}
-			return shelleyBinaryPath, nil
+			return shelleyBinaryPath, true, nil
 		}
 	}
 
-	// Find and extract the shelley binary
-	if err := extractShelley(img, shelleyBinaryPath); err != nil {
-		return "", err
+	// Find the asset for this architecture
+	assetName := fmt.Sprintf("shelley_linux_%s", goarch)
+	var downloadURL string
+	for _, asset := range release.Assets {
+		if asset.Name == assetName {
+			downloadURL = asset.BrowserDownloadURL
+			break
+		}
+	}
+	if downloadURL == "" {
+		return "", false, fmt.Errorf("no asset %q found in release %s", assetName, release.TagName)
 	}
 
-	// Update metadata
-	if err := updateMetadata(metadataPath, digest.String(), platform); err != nil {
-		return "", err
+	// Download the binary
+	if err := downloadFile(ctx, downloadURL, shelleyBinaryPath); err != nil {
+		return "", false, fmt.Errorf("failed to download shelley: %w", err)
 	}
 
-	return shelleyBinaryPath, nil
+	if err := updateMetadata(metadataPath, release.TagName, platform); err != nil {
+		return "", false, err
+	}
+
+	return shelleyBinaryPath, false, nil
 }
 
-func shouldRefresh(ctx context.Context, metadataPath, platform string) (bool, string, error) {
+func fetchLatestRelease(ctx context.Context) (*ghRelease, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latestReleaseURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch latest release: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+	}
+
+	var release ghRelease
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return nil, fmt.Errorf("failed to decode release response: %w", err)
+	}
+	return &release, nil
+}
+
+func downloadFile(ctx context.Context, url, dest string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download returned status %d", resp.StatusCode)
+	}
+
+	tmp := dest + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+
+	return os.Rename(tmp, dest)
+}
+
+func shouldRefresh(metadataPath, platform string) (bool, string, error) {
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -167,17 +213,16 @@ func shouldRefresh(ctx context.Context, metadataPath, platform string) (bool, st
 		return true, "", nil // Invalid metadata, refresh
 	}
 
-	// Check if it's time to refresh
 	if time.Since(meta.LastChecked) < refreshInterval {
-		return false, meta.ImageDigest, nil
+		return false, meta.ReleaseTag, nil
 	}
 
-	return true, meta.ImageDigest, nil
+	return true, meta.ReleaseTag, nil
 }
 
-func updateMetadata(metadataPath, digest, platform string) error {
+func updateMetadata(metadataPath, tag, platform string) error {
 	meta := cacheMetadata{
-		ImageDigest: digest,
+		ReleaseTag:  tag,
 		LastChecked: time.Now(),
 		Platform:    platform,
 	}
@@ -192,85 +237,4 @@ func updateMetadata(metadataPath, digest, platform string) error {
 	}
 
 	return nil
-}
-
-func extractShelley(img v1.Image, outputPath string) error {
-	// Get the config to find which layer has the shelley binary
-	configFile, err := img.ConfigFile()
-	if err != nil {
-		return fmt.Errorf("failed to get config file: %w", err)
-	}
-
-	layers, err := img.Layers()
-	if err != nil {
-		return fmt.Errorf("failed to get image layers: %w", err)
-	}
-
-	// Find the layer that contains the shelley binary
-	// Look through the history to find the COPY command that adds shelley
-	targetLayerIdx := -1
-	for i, history := range configFile.History {
-		if history.EmptyLayer {
-			continue
-		}
-
-		// Look for the COPY command that adds shelley to /usr/local/bin
-		if strings.Contains(history.CreatedBy, "shelley") &&
-			strings.Contains(history.CreatedBy, "/usr/local/bin/shelley") {
-			targetLayerIdx = i
-			break
-		}
-	}
-
-	if targetLayerIdx == -1 {
-		return fmt.Errorf("could not find layer containing shelley binary")
-	}
-
-	// Adjust for non-empty layers only
-	actualLayerIdx := 0
-	for i := 0; i <= targetLayerIdx; i++ {
-		if i == targetLayerIdx {
-			break
-		}
-		if !configFile.History[i].EmptyLayer {
-			actualLayerIdx++
-		}
-	}
-
-	// Extract shelley from the target layer
-	layer := layers[actualLayerIdx]
-	rc, err := layer.Uncompressed()
-	if err != nil {
-		return fmt.Errorf("failed to get layer contents: %w", err)
-	}
-	defer rc.Close()
-
-	tr := tar.NewReader(rc)
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("failed to read tar: %w", err)
-		}
-
-		// Look for the shelley binary
-		if strings.HasSuffix(header.Name, shelleyPath) || header.Name == shelleyPath {
-			// Extract to output path
-			out, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
-			if err != nil {
-				return fmt.Errorf("failed to create output file: %w", err)
-			}
-			defer out.Close()
-
-			if _, err := io.Copy(out, tr); err != nil {
-				return fmt.Errorf("failed to write binary: %w", err)
-			}
-
-			return nil
-		}
-	}
-
-	return fmt.Errorf("shelley binary not found in layer")
 }
