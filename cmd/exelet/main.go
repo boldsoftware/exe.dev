@@ -141,7 +141,7 @@ func main() {
 		&cli.BoolFlag{
 			Name:    "desired-state-sync",
 			Usage:   "enable periodic desired-state sync from exed (requires --exed-url)",
-			Value:   false,
+			Value:   true,
 			EnvVars: []string{"EXELET_DESIRED_STATE_SYNC"},
 		},
 		&cli.DurationFlag{
