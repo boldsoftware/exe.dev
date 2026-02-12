@@ -129,12 +129,30 @@ tr:hover td:first-child { background: #eaeef2 !important; }
 .col-histo .hbar {
   background: #c8d1da; min-width: 2px; border-radius: 1px 1px 0 0;
 }
+
+#histo-tooltip {
+  display: none; position: fixed; z-index: 100;
+  background: #fff; border: 1px solid #d0d7de; border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15); padding: 8px 10px;
+  pointer-events: none; font-size: 11px;
+}
+#histo-tooltip .ht-title { font-weight: bold; margin-bottom: 4px; color: #24292f; }
+#histo-tooltip .ht-chart { display: flex; align-items: flex-end; gap: 1px; height: 48px; }
+#histo-tooltip .ht-bar-wrap { display: flex; flex-direction: column; align-items: center; }
+#histo-tooltip .ht-bar {
+  background: #9ca3af; border-radius: 1px 1px 0 0; min-width: 1px;
+}
+#histo-tooltip .ht-bar.ht-bar-zero { background: #e5e7eb; }
+#histo-tooltip .ht-count { font-size: 9px; color: #57606a; margin-bottom: 1px; }
+#histo-tooltip .ht-axis { display: flex; justify-content: space-between; margin-top: 2px; color: #57606a; font-size: 10px; }
+#histo-tooltip .ht-n { color: #8c959f; margin-top: 2px; font-size: 10px; }
 </style>
 </head>
 <body>
 <div id="topbar"></div>
 <div id="nav"><div id="breadcrumbs"></div></div>
 <div id="col-controls"></div>
+<div id="histo-tooltip"></div>
 <div id="table-wrap">
 <table>
 <thead id="thead"></thead>
@@ -414,13 +432,12 @@ function collectColumnValues(rows, key, src) {
   return vals;
 }
 
-// Build a histogram from values: returns array of bin heights (0..1) for nBins buckets.
+// Build a histogram from values: returns { bins: [count,...], normed: [0..1,...], min, max, edges: [formatted bucket boundaries] }.
 function buildHistogram(vals, nBins) {
-  if (!vals.length) return [];
+  if (!vals.length) return null;
   const min = Math.min(...vals);
   const max = Math.max(...vals);
-  if (max <= min) return [1];
-  // Use log scale for better distribution across orders of magnitude.
+  if (max <= min) return { bins: [vals.length], normed: [1], min, max, logMin: 0, logMax: 0 };
   const logMin = Math.log1p(min);
   const logMax = Math.log1p(max);
   const bins = new Array(nBins).fill(0);
@@ -431,25 +448,30 @@ function buildHistogram(vals, nBins) {
     bins[idx]++;
   }
   const binMax = Math.max(...bins);
-  if (binMax === 0) return bins;
-  return bins.map(b => b / binMax);
+  const normed = binMax === 0 ? bins : bins.map(b => b / binMax);
+  return { bins, normed, min, max, logMin, logMax, nBins };
 }
 
+// Stored histogram data per column key for tooltip.
+let histoDataMap = {};
+
 // Render a tiny inline histogram SVG.
-function makeHistogram(vals) {
+function makeHistogram(vals, colKey) {
   const nBins = 12;
-  const bins = buildHistogram(vals, nBins);
-  if (!bins.length) return '';
+  const hd = buildHistogram(vals, nBins);
+  if (!hd) return '';
+  histoDataMap[colKey] = { ...hd, vals, nBins };
+  const { normed } = hd;
   const w = 36, h = 14, gap = 1;
-  const barW = (w - (nBins - 1) * gap) / nBins;
+  const barW = (w - (normed.length - 1) * gap) / normed.length;
   let rects = '';
-  for (let i = 0; i < bins.length; i++) {
-    const bh = Math.max(bins[i] * (h - 1), bins[i] > 0 ? 1 : 0);
+  for (let i = 0; i < normed.length; i++) {
+    const bh = Math.max(normed[i] * (h - 1), normed[i] > 0 ? 1 : 0);
     const x = i * (barW + gap);
     const y = h - bh;
     rects += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="#9ca3af" rx="0.5"/>`;
   }
-  return `<svg class="col-histo-svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${rects}</svg>`;
+  return `<svg class="col-histo-svg" data-col="${esc(colKey)}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${rects}</svg>`;
 }
 
 // Compute the color ratio for a value within a column.
@@ -513,9 +535,18 @@ function getNodeVal(node, key, src) {
   const obj = src === 'config' ? node.config : (src === 'rates' ? node.rates : node.stats);
   if (!obj) return null;
   const v = obj[key];
-  if (v === 'max') return Infinity;
   if (v == null) return null;
-  return Number(v);
+  if (v === 'max') return Infinity;
+  const n = Number(v);
+  if (!isNaN(n)) return n;
+  // String config values like "200000 100000" (cpu.max) or "max 100000":
+  // extract the first token and parse it.
+  const s = String(v);
+  const first = s.split(/\s+/)[0];
+  if (first === 'max') return Infinity;
+  const fn = Number(first);
+  if (!isNaN(fn)) return fn;
+  return null;
 }
 
 function cmpNodes(a, b) {
@@ -643,6 +674,7 @@ function zoom(path) {
 function renderTable() {
   if (!data || !data.tree) return;
   const cols = visibleColumns();
+  histoDataMap = {};
 
   if (sortKey) {
     if (treeMode) {
@@ -700,7 +732,7 @@ function renderTable() {
       arrow = `<span class="sort-arrow">${sortDir === 'asc' ? '\u25b2' : '\u25bc'}</span>`;
     }
     const cs = colStats[col.key];
-    const histo = cs ? `<div class="col-histo">${makeHistogram(cs.vals)}</div>` : '';
+    const histo = cs ? `<div class="col-histo">${makeHistogram(cs.vals, col.key)}</div>` : '';
     colRow += `<th class="${cls.join(' ')}" style="${r2Top}" title="${esc(col.help || '')}" onclick="doSort('${col.key}','${col.src}')">${col.label}${arrow}${histo}</th>`;
   }
   colRow += '</tr>';
@@ -826,6 +858,101 @@ async function refresh() {
     console.error('fetch error:', e);
   }
 }
+
+// Histogram tooltip on hover.
+const htip = document.getElementById('histo-tooltip');
+let htipCol = null;
+
+function fmtForCol(colKey) {
+  for (const g of columnGroups) {
+    for (const c of g.columns) {
+      if (c.key === colKey) return c.fmt || fmtDefault;
+    }
+  }
+  return fmtDefault;
+}
+
+function labelForCol(colKey) {
+  for (const g of columnGroups) {
+    for (const c of g.columns) {
+      if (c.key === colKey) return c.label;
+    }
+  }
+  return colKey;
+}
+
+function showHistoTooltip(evt) {
+  const svg = evt.target.closest('.col-histo-svg');
+  if (!svg) return;
+  const colKey = svg.getAttribute('data-col');
+  if (!colKey || !histoDataMap[colKey]) return;
+  htipCol = colKey;
+  const hd = histoDataMap[colKey];
+  const fmt = fmtForCol(colKey);
+  const { bins, normed, min, max, logMin, logMax, nBins, vals } = hd;
+
+  const barW = 14, barH = 48, gap = 2;
+  const chartW = bins.length * (barW + gap) - gap;
+
+  // Build bucket edge labels (formatted values at bucket boundaries).
+  const edges = [];
+  for (let i = 0; i <= bins.length; i++) {
+    const t = bins.length <= 1 ? 0 : i / bins.length;
+    const logV = logMin + t * (logMax - logMin);
+    edges.push(Math.expm1(logV));
+  }
+
+  let h = `<div class="ht-title">${esc(labelForCol(colKey))} — ${vals.length} values</div>`;
+  h += `<div class="ht-chart">`;
+  for (let i = 0; i < bins.length; i++) {
+    const bh = Math.max(normed[i] * barH, normed[i] > 0 ? 2 : 0);
+    const zeroCls = bins[i] === 0 ? ' ht-bar-zero' : '';
+    const count = bins[i] > 0 ? bins[i] : '';
+    h += `<div class="ht-bar-wrap">`;
+    h += `<div class="ht-count">${count}</div>`;
+    h += `<div class="ht-bar${zeroCls}" style="width:${barW}px;height:${bh.toFixed(0)}px"></div>`;
+    h += `</div>`;
+  }
+  h += `</div>`;
+
+  // Show ~5 axis labels spread across the range.
+  const nLabels = Math.min(5, bins.length + 1);
+  h += `<div class="ht-axis" style="width:${chartW}px">`;
+  for (let i = 0; i < nLabels; i++) {
+    const ei = Math.round(i * bins.length / (nLabels - 1));
+    h += `<span>${fmt(edges[ei])}</span>`;
+  }
+  h += `</div>`;
+
+  htip.innerHTML = h;
+  htip.style.display = 'block';
+
+  // Position near the histogram. Use requestAnimationFrame to get accurate size.
+  const rect = svg.getBoundingClientRect();
+  requestAnimationFrame(() => {
+    const tw = htip.offsetWidth;
+    const th = htip.offsetHeight;
+    let left = rect.left + rect.width / 2 - tw / 2;
+    let top = rect.bottom + 6;
+    if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+    if (left < 4) left = 4;
+    if (top + th > window.innerHeight - 8) top = rect.top - th - 6;
+    htip.style.left = left + 'px';
+    htip.style.top = top + 'px';
+  });
+}
+
+function hideHistoTooltip() {
+  htip.style.display = 'none';
+  htipCol = null;
+}
+
+document.getElementById('thead').addEventListener('mouseenter', (e) => {
+  if (e.target.closest('.col-histo-svg')) showHistoTooltip(e);
+}, true);
+document.getElementById('thead').addEventListener('mouseleave', (e) => {
+  if (e.target.closest('.col-histo-svg') || e.target.closest('.col-histo')) hideHistoTooltip();
+}, true);
 
 refresh();
 setInterval(refresh, 10000);
