@@ -119,6 +119,13 @@ func StartServers(ctx context.Context, exelets []*ExeletInstance, exedHTTPProxy 
 // This returns a list of local directory containing remote coverage files,
 // if any.
 func (env *ServerEnv) Stop(ctx context.Context, testRunID string) []string {
+	if env.SSHProxy != nil {
+		env.SSHProxy.Close()
+	}
+	if env.ExedHTTPProxy != nil {
+		env.ExedHTTPProxy.Close()
+	}
+
 	if env.Exed != nil {
 		env.Exed.Stop(ctx, testRunID, false)
 	}
@@ -133,13 +140,6 @@ func (env *ServerEnv) Stop(ctx context.Context, testRunID string) []string {
 		if coverDir != "" {
 			coverDirs = append(coverDirs, coverDir)
 		}
-	}
-
-	if env.SSHProxy != nil {
-		env.SSHProxy.Close()
-	}
-	if env.ExedHTTPProxy != nil {
-		env.ExedHTTPProxy.Close()
 	}
 
 	if env.Metricsd != nil {
