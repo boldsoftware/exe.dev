@@ -601,6 +601,7 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
 	})
 
 	// Redirect to logged out page on main domain

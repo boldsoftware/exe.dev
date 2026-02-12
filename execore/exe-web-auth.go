@@ -1085,6 +1085,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
 	})
 
 	http.SetCookie(w, &http.Cookie{
@@ -1093,6 +1094,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
 	})
 
 	// Redirect to home page
@@ -1123,6 +1125,7 @@ func setAuthCookie(w http.ResponseWriter, r *http.Request, domain, cookieValue s
 		HttpOnly: true,
 		MaxAge:   30 * 24 * 60 * 60, // 30 days
 		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, cookie)
 }
