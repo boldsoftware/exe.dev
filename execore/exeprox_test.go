@@ -44,7 +44,6 @@ func TestProxyChanges(t *testing.T) {
 	}()
 
 	wg.Go(func() {
-
 		stream, err := client.Changes(t.Context(), &proxyapi.ChangesRequest{})
 		if err != nil {
 			t.Error(err)
