@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"shelley.exe.dev/claudetool"
+	"shelley.exe.dev/client"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/models"
 	"shelley.exe.dev/server"
@@ -48,6 +49,7 @@ func main() {
 		flag.PrintDefaults()
 		fmt.Fprintf(flag.CommandLine.Output(), "\nCommands:\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  serve [flags]                 Start the web server\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  client [flags] <subcommand>   CLI client (chat, read, list, archive) (experimental)\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  unpack-template <name> <dir>  Unpack a project template to a directory\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  version                       Print version information as JSON\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "\nUse '%s <command> -h' for command-specific help\n", os.Args[0])
@@ -66,6 +68,8 @@ func main() {
 	switch command {
 	case "serve":
 		runServe(global, args[1:])
+	case "client":
+		client.Run(args[1:])
 	case "unpack-template":
 		runUnpackTemplate(args[1:])
 	case "version":
@@ -82,6 +86,7 @@ func runServe(global GlobalConfig, args []string) {
 	port := fs.String("port", "9000", "Port to listen on")
 	systemdActivation := fs.Bool("systemd-activation", false, "Use systemd socket activation (listen on fd from systemd)")
 	requireHeader := fs.String("require-header", "", "Require this header on all API requests (e.g., X-Exedev-Userid)")
+	socketPath := fs.String("socket", client.DefaultSocketPath(), "Path to Unix socket for local CLI client access (set to 'none' to disable)")
 	fs.Parse(args)
 
 	logger := setupLogging(global.Debug)
@@ -112,6 +117,12 @@ func runServe(global GlobalConfig, args []string) {
 	// Load notification channels from DB
 	svr.ReloadNotificationChannels()
 
+	// Resolve socket path: "none" disables the Unix socket listener
+	effectiveSocket := *socketPath
+	if effectiveSocket == "none" {
+		effectiveSocket = ""
+	}
+
 	var err error
 	if *systemdActivation {
 		listener, listenerErr := systemdListener()
@@ -120,9 +131,14 @@ func runServe(global GlobalConfig, args []string) {
 			os.Exit(1)
 		}
 		logger.Info("Using systemd socket activation")
-		err = svr.StartWithListener(listener)
+		err = svr.StartWithListeners(listener, effectiveSocket)
 	} else {
-		err = svr.Start(*port)
+		listener, listenerErr := net.Listen("tcp", ":"+*port)
+		if listenerErr != nil {
+			logger.Error("Failed to create listener", "error", listenerErr)
+			os.Exit(1)
+		}
+		err = svr.StartWithListeners(listener, effectiveSocket)
 	}
 
 	if err != nil {

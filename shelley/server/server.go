@@ -1045,26 +1045,34 @@ func (s *Server) Start(port string) error {
 		s.logger.Error("Failed to create listener", "error", err, "port_info", getPortOwnerInfo(port))
 		return err
 	}
-	return s.StartWithListener(listener)
+	return s.StartWithListeners(listener, "")
 }
 
 // StartWithListener starts the HTTP server using the provided listener.
 // This is useful for systemd socket activation where the listener is created externally.
 func (s *Server) StartWithListener(listener net.Listener) error {
-	// Set up HTTP server with routes and middleware
+	return s.StartWithListeners(listener, "")
+}
+
+// StartWithListeners starts the HTTP server on the given TCP listener and optionally
+// also on a Unix socket. The TCP listener gets full middleware (CSRF, requireHeader, logger).
+// The Unix socket listener gets only the logger middleware (no CSRF, no requireHeader)
+// since it is local and trusted.
+func (s *Server) StartWithListeners(tcpListener net.Listener, socketPath string) error {
+	// Set up shared mux with routes
 	mux := http.NewServeMux()
 	s.RegisterRoutes(mux)
 
-	// Add middleware (applied in reverse order: last added = first executed)
-	handler := LoggerMiddleware(s.logger)(mux)
+	// TCP handler: full middleware (applied in reverse order: last added = first executed)
+	tcpHandler := LoggerMiddleware(s.logger)(mux)
 	cop := http.NewCrossOriginProtection()
-	handler = cop.Handler(handler)
+	tcpHandler = cop.Handler(tcpHandler)
 	if s.requireHeader != "" {
-		handler = RequireHeaderMiddleware(s.requireHeader)(handler)
+		tcpHandler = RequireHeaderMiddleware(s.requireHeader)(tcpHandler)
 	}
 
-	httpServer := &http.Server{
-		Handler: handler,
+	tcpServer := &http.Server{
+		Handler: tcpHandler,
 	}
 
 	// Start cleanup routine
@@ -1080,16 +1088,60 @@ func (s *Server) StartWithListener(listener net.Listener) error {
 	go s.autoUpgradeRoutine()
 
 	// Get actual port from listener
-	actualPort := listener.Addr().(*net.TCPAddr).Port
+	actualPort := tcpListener.Addr().(*net.TCPAddr).Port
 
-	// Start server in goroutine
-	serverErrCh := make(chan error, 1)
+	// Start TCP server in goroutine
+	serverErrCh := make(chan error, 2)
 	go func() {
 		s.logger.Info("Server starting", "port", actualPort, "url", fmt.Sprintf("http://localhost:%d", actualPort))
-		if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
+		if err := tcpServer.Serve(tcpListener); err != nil && err != http.ErrServerClosed {
 			serverErrCh <- err
 		}
 	}()
+
+	// Optionally start Unix socket server
+	var socketServer *http.Server
+	var actualSocketPath string
+	if socketPath != "" {
+		actualSocketPath = resolveSocketPath(socketPath, s.logger)
+
+		// Ensure the directory exists
+		if err := os.MkdirAll(filepath.Dir(actualSocketPath), 0o700); err != nil {
+			s.logger.Error("Failed to create socket directory", "error", err)
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			tcpServer.Shutdown(shutdownCtx)
+			return err
+		}
+
+		unixListener, err := net.Listen("unix", actualSocketPath)
+		if err != nil {
+			s.logger.Error("Failed to create Unix socket listener", "error", err, "path", actualSocketPath)
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			tcpServer.Shutdown(shutdownCtx)
+			return err
+		}
+
+		// Make socket accessible to the current user only
+		if err := os.Chmod(actualSocketPath, 0o600); err != nil {
+			s.logger.Warn("Failed to chmod socket", "path", actualSocketPath, "error", err)
+		}
+
+		// Unix socket handler: relaxed middleware (only logger, no CSRF or requireHeader)
+		socketHandler := LoggerMiddleware(s.logger)(mux)
+
+		socketServer = &http.Server{
+			Handler: socketHandler,
+		}
+
+		go func() {
+			s.logger.Info("Unix socket server starting", "path", actualSocketPath)
+			if err := socketServer.Serve(unixListener); err != nil && err != http.ErrServerClosed {
+				serverErrCh <- err
+			}
+		}()
+	}
 
 	// Wait for shutdown signal or server error
 	quit := make(chan os.Signal, 1)
@@ -1111,9 +1163,15 @@ func (s *Server) StartWithListener(listener net.Listener) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := httpServer.Shutdown(ctx); err != nil {
-		s.logger.Error("Server forced to shutdown", "error", err)
-		return err
+	if err := tcpServer.Shutdown(ctx); err != nil {
+		s.logger.Error("TCP server forced to shutdown", "error", err)
+	}
+
+	if socketServer != nil {
+		if err := socketServer.Shutdown(ctx); err != nil {
+			s.logger.Error("Unix socket server forced to shutdown", "error", err)
+		}
+		os.Remove(actualSocketPath)
 	}
 
 	s.logger.Info("Server exited")
@@ -1231,6 +1289,49 @@ func (s *Server) performUpgradeAndRestart(ctx context.Context, versionInfo *Vers
 	// Exit to trigger restart (systemd will restart us)
 	time.Sleep(100 * time.Millisecond)
 	os.Exit(0)
+}
+
+// resolveSocketPath finds an available socket path. If the requested path has a
+// stale socket file (no one listening), it removes the file and returns the path.
+// If the socket is actively in use, it appends -2, -3, etc. to the base name.
+func resolveSocketPath(requested string, logger *slog.Logger) string {
+	path := requested
+	for i := 0; i < 10; i++ {
+		if i > 0 {
+			// e.g. shelley.sock → shelley-2.sock
+			ext := filepath.Ext(requested)
+			base := strings.TrimSuffix(requested, ext)
+			path = fmt.Sprintf("%s-%d%s", base, i+1, ext)
+		}
+
+		_, err := os.Stat(path)
+		if os.IsNotExist(err) {
+			// Path is free
+			return path
+		}
+		if err != nil {
+			// Can't stat — try it anyway
+			return path
+		}
+
+		// File exists — check if it's a live socket
+		conn, err := net.DialTimeout("unix", path, 500*time.Millisecond)
+		if err != nil {
+			// Stale socket — remove and use this path
+			os.Remove(path)
+			if path != requested {
+				logger.Info("Removed stale socket", "path", path)
+			}
+			return path
+		}
+		conn.Close()
+
+		// Socket is live — another instance is using it, try next
+		logger.Info("Socket in use, trying next", "path", path)
+	}
+
+	// All slots taken, return the last one and let Listen fail with a clear error
+	return path
 }
 
 // getPortOwnerInfo tries to identify what process is using a port.
