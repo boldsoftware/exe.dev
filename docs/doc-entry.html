@@ -256,6 +256,83 @@
           ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
       }
 
+      .copy-code-wrap {
+        position: relative;
+        margin: 24px 0;
+      }
+
+      .copy-code-wrap pre {
+        margin: 0;
+      }
+
+      .copy-code-button {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        color: #666;
+        background: #fff;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 120ms ease, background-color 120ms ease;
+      }
+
+      .copy-code-wrap:hover .copy-code-button {
+        opacity: 1;
+      }
+
+      .copy-code-button:hover {
+        background: #f0f0f0;
+        color: #333;
+      }
+
+      .copy-code-button:focus-visible {
+        opacity: 1;
+        outline: 2px solid #0066cc;
+        outline-offset: 2px;
+      }
+
+      .copy-code-button svg {
+        width: 16px;
+        height: 16px;
+        pointer-events: none;
+      }
+
+      .copy-code-button.is-copied {
+        opacity: 1;
+        color: #2e7d32;
+        background: #e8f5e9;
+        border-color: #a5d6a7;
+      }
+
+      .copy-code-button::after {
+        content: attr(data-status);
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 0;
+        padding: 2px 6px;
+        font-size: 11px;
+        font-family: inherit;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.75);
+        border-radius: 3px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms ease;
+      }
+
+      .copy-code-button.is-copied::after {
+        background: #2e7d32;
+        opacity: 1;
+      }
+
       .doc-content pre code {
         background: none;
         padding: 0;
@@ -462,6 +539,31 @@
           border-color: #333;
         }
 
+        .copy-code-button {
+          color: #9ca3af;
+          background: #2a2a2a;
+          border-color: #444;
+        }
+
+        .copy-code-button:hover {
+          color: #f3f4f6;
+          background: #333;
+        }
+
+        .copy-code-button.is-copied {
+          color: #86efac;
+          background: #052e16;
+          border-color: #166534;
+        }
+
+        .copy-code-button::after {
+          background: rgba(0, 0, 0, 0.85);
+        }
+
+        .copy-code-button.is-copied::after {
+          background: #166534;
+        }
+
         .doc-content blockquote {
           border-left-color: #444;
           background: #1a1a1a;
@@ -571,6 +673,39 @@
           }, 2000);
         });
       }
+
+      // Copy-to-clipboard for code blocks
+      (function() {
+        var COPY_ICON = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        var CHECK_ICON = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        document.querySelectorAll('.doc-content pre code').forEach(function(codeEl) {
+          var text = codeEl.textContent || '';
+          var pre = codeEl.parentNode;
+          var wrap = document.createElement('div');
+          wrap.className = 'copy-code-wrap';
+          pre.parentNode.insertBefore(wrap, pre);
+          wrap.appendChild(pre);
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'copy-code-button';
+          btn.setAttribute('aria-label', 'Copy code');
+          btn.dataset.status = '';
+          btn.innerHTML = COPY_ICON;
+          btn.addEventListener('click', function() {
+            navigator.clipboard.writeText(text).then(function() {
+              btn.innerHTML = CHECK_ICON;
+              btn.classList.add('is-copied');
+              btn.dataset.status = 'Copied!';
+              setTimeout(function() {
+                btn.innerHTML = COPY_ICON;
+                btn.classList.remove('is-copied');
+                btn.dataset.status = '';
+              }, 2000);
+            });
+          });
+          wrap.appendChild(btn);
+        });
+      })();
 
       document.querySelectorAll('.doc-content h1[id], .doc-content h2[id], .doc-content h3[id], .doc-content h4[id]').forEach(function(heading) {
         if (heading.querySelector('.anchor-link')) return;
