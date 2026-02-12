@@ -244,7 +244,7 @@ func (ss *SSHServer) handleTeamAddCommand(ctx context.Context, cc *exemenu.Comma
 	}
 
 	// Find the user by email
-	userID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, ptrTo(canonicalizeEmail(email)))
+	userID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, new(canonicalizeEmail(email)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("User %q not found. They need to create an account first.", email)
 	}
@@ -312,7 +312,7 @@ func (ss *SSHServer) handleTeamRemoveCommand(ctx context.Context, cc *exemenu.Co
 	// Find the team member by email
 	member, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMemberByEmail, exedb.GetTeamMemberByEmailParams{
 		TeamID:         team.TeamID,
-		CanonicalEmail: ptrTo(canonicalizeEmail(email)),
+		CanonicalEmail: new(canonicalizeEmail(email)),
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("User %q is not in this team", email)
@@ -393,11 +393,6 @@ func canonicalizeEmail(email string) string {
 	return email
 }
 
-// ptrTo returns a pointer to the given value
-func ptrTo[T any](v T) *T {
-	return &v
-}
-
 // --- Root-only team management commands ---
 
 func (ss *SSHServer) handleTeamCreateCommand(ctx context.Context, cc *exemenu.CommandContext) error {
@@ -409,7 +404,7 @@ func (ss *SSHServer) handleTeamCreateCommand(ctx context.Context, cc *exemenu.Co
 	displayName := cc.Args[1]
 	ownerEmail := cc.Args[2]
 
-	ownerUserID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, ptrTo(canonicalizeEmail(ownerEmail)))
+	ownerUserID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, new(canonicalizeEmail(ownerEmail)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("User %q not found", ownerEmail)
 	}
@@ -456,7 +451,7 @@ func (ss *SSHServer) handleTeamEnrollCommand(ctx context.Context, cc *exemenu.Co
 		return err
 	}
 
-	userID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, ptrTo(canonicalizeEmail(email)))
+	userID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, new(canonicalizeEmail(email)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("User %q not found", email)
 	}
@@ -501,7 +496,7 @@ func (ss *SSHServer) handleTeamUnenrollCommand(ctx context.Context, cc *exemenu.
 
 	member, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMemberByEmail, exedb.GetTeamMemberByEmailParams{
 		TeamID:         teamID,
-		CanonicalEmail: ptrTo(canonicalizeEmail(email)),
+		CanonicalEmail: new(canonicalizeEmail(email)),
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("User %q is not in team %s", email, teamID)
@@ -565,7 +560,7 @@ func (ss *SSHServer) handleTeamPromoteCommand(ctx context.Context, cc *exemenu.C
 
 	member, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMemberByEmail, exedb.GetTeamMemberByEmailParams{
 		TeamID:         teamID,
-		CanonicalEmail: ptrTo(canonicalizeEmail(email)),
+		CanonicalEmail: new(canonicalizeEmail(email)),
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("User %q is not in team %s", email, teamID)
@@ -601,7 +596,7 @@ func (ss *SSHServer) handleTeamDemoteCommand(ctx context.Context, cc *exemenu.Co
 
 	member, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMemberByEmail, exedb.GetTeamMemberByEmailParams{
 		TeamID:         teamID,
-		CanonicalEmail: ptrTo(canonicalizeEmail(email)),
+		CanonicalEmail: new(canonicalizeEmail(email)),
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("User %q is not in team %s", email, teamID)

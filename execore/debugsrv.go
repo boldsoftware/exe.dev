@@ -2300,7 +2300,7 @@ func (s *Server) handleDebugNewThrottlePost(w http.ResponseWriter, r *http.Reque
 
 	// Parse email patterns (one per line)
 	var emailPatterns []string
-	for _, line := range strings.Split(emailPatternsStr, "\n") {
+	for line := range strings.SplitSeq(emailPatternsStr, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -3149,7 +3149,7 @@ func (s *Server) handleDebugInviteGiveToUser(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Create invite codes for the user
-	for i := 0; i < count; i++ {
+	for range count {
 		// Generate a unique code
 		code, err := withTxRes0(s, ctx, (*exedb.Queries).GenerateUniqueInviteCode)
 		if err != nil {

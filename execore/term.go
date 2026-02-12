@@ -313,7 +313,7 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 					seenFirstEventClosed = true
 					close(seenFirstEvent)
 				}
-				msg := map[string]interface{}{
+				msg := map[string]any{
 					"type": "output",
 					"data": base64.StdEncoding.EncodeToString(data),
 				}

@@ -671,7 +671,7 @@ func (ss *SSHServer) showAnimatedWelcome(s *shellSession) {
 	// After animation, cursor is at the last line of the art
 	// Move back to first line and clear the art lines
 	fmt.Fprintf(s, "\033[%dA", len(asciiArt)-1)
-	for i := 0; i < len(asciiArt); i++ {
+	for i := range asciiArt {
 		fmt.Fprint(s, "\033[2K") // Clear entire line
 		if i < len(asciiArt)-1 {
 			fmt.Fprint(s, "\r\n")

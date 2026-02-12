@@ -186,7 +186,7 @@ func TestSignupRateLimiting(t *testing.T) {
 	server := newTestServer(t)
 
 	// Send 20 requests (the limit) - all should succeed
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		req := httptest.NewRequest("POST", "/auth", strings.NewReader("email=test@example.com"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.RemoteAddr = "192.0.2.1:12345" // Use a test IP

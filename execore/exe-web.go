@@ -248,8 +248,8 @@ func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, e
 	sub, ok := domz.CutBase(hostname, s.env.BoxHost)
 	if ok && sub != "" {
 		// Handle shelley subdomain: box.shelley.exe.xyz -> box
-		if strings.HasSuffix(sub, ".shelley") {
-			return strings.TrimSuffix(sub, ".shelley"), nil
+		if boxName, isShelley := strings.CutSuffix(sub, ".shelley"); isShelley {
+			return boxName, nil
 		}
 		// For regular subdomains, only accept single-level (no dots)
 		if !strings.Contains(sub, ".") {
@@ -408,7 +408,7 @@ func (s *Server) setupProxyServers() {
 }
 
 // renderTemplate is a helper method that handles template parsing and execution
-func (s *Server) renderTemplate(ctx context.Context, w http.ResponseWriter, templateName string, data interface{}) error {
+func (s *Server) renderTemplate(ctx context.Context, w http.ResponseWriter, templateName string, data any) error {
 	w.Header().Set("Content-Type", "text/html")
 	var buf bytes.Buffer
 	if err := s.templates.ExecuteTemplate(&buf, templateName, data); err != nil {
@@ -704,8 +704,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Serve embedded static assets under /static/
-		if strings.HasPrefix(path, "/static/") {
-			filename := strings.TrimPrefix(path, "/static/")
+		if filename, ok := strings.CutPrefix(path, "/static/"); ok {
 			// simple security check; our embed only exposes files inside static/
 			if filename != "" && !strings.Contains(filename, "..") {
 				s.serveStaticFile(w, r, filename)
@@ -1709,7 +1708,7 @@ func (s *Server) handlePullExeuntuEverywhere(w http.ResponseWriter, r *http.Requ
 
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	enc.Encode(map[string]interface{}{
+	enc.Encode(map[string]any{
 		"image":   image,
 		"success": allSucceeded,
 		"results": results,
@@ -1740,7 +1739,7 @@ func (s *Server) handleClearExeuntuLatestCache(w http.ResponseWriter, r *http.Re
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"cleared": fmt.Sprintf("%s/%s:%s", registry, repository, tag),
 		"success": true,
 	})

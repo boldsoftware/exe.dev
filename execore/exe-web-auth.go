@@ -1702,7 +1702,7 @@ func (s *Server) handleLinkDiscord(w http.ResponseWriter, r *http.Request) {
 	invitesAdded := 0
 	if !alreadyLinked {
 		err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				code, err := queries.GenerateUniqueInviteCode(ctx)
 				if err != nil {
 					return fmt.Errorf("generate invite code: %w", err)

@@ -43,9 +43,7 @@ func TestProxyChanges(t *testing.T) {
 		}
 	}()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 
 		stream, err := client.Changes(t.Context(), &proxyapi.ChangesRequest{})
 		if err != nil {
@@ -70,7 +68,7 @@ func TestProxyChanges(t *testing.T) {
 				return
 			}
 		}
-	}()
+	})
 
 	// Wait for the gRPC stream to be registered server-side before
 	// proceeding. Otherwise, cookie changes can race ahead of stream

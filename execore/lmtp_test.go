@@ -58,7 +58,7 @@ func TestLMTP_PerRecipientStatus(t *testing.T) {
 	defer lmtpServer.Stop(ctx)
 
 	// Wait for socket to be ready
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		if _, err := os.Stat(sockPath); err == nil {
 			break
 		}

@@ -70,13 +70,13 @@ func TestLoggerMiddlewareStatusCode(t *testing.T) {
 			handler.ServeHTTP(w, req)
 
 			// Parse log output
-			var logEntry map[string]interface{}
+			var logEntry map[string]any
 			if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
 				t.Fatalf("failed to parse log output: %v\nLog output: %s", err, buf.String())
 			}
 
 			// Check status in log (slog-http nests it under response.status)
-			response, ok := logEntry["response"].(map[string]interface{})
+			response, ok := logEntry["response"].(map[string]any)
 			if !ok {
 				t.Fatalf("response not found in log or wrong type. Log: %v", logEntry)
 			}
@@ -176,7 +176,7 @@ func TestLoggerMiddleware_TraceIDIsUnique(t *testing.T) {
 	})
 	handler := LoggerMiddleware(logger)(innerHandler)
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		req := httptest.NewRequest("GET", "/test", nil)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)

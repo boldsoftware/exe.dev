@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -67,9 +68,9 @@ func TestShelleyStreamParsing(t *testing.T) {
 		// Look for: level=INFO msg="Server starting" port=12345
 		if strings.Contains(line, "Server starting") && strings.Contains(line, "port=") {
 			// Parse port from structured log
-			for _, part := range strings.Fields(line) {
-				if strings.HasPrefix(part, "port=") {
-					port = strings.TrimPrefix(part, "port=")
+			for part := range strings.FieldsSeq(line) {
+				if after, ok := strings.CutPrefix(part, "port="); ok {
+					port = after
 					break
 				}
 			}
@@ -115,15 +116,7 @@ func TestShelleyStreamParsing(t *testing.T) {
 			t.Fatal("Expected at least one message")
 		}
 
-		found := false
-		for _, msg := range messages {
-			if msg == "Well, hi there!" {
-				found = true
-				break
-			}
-		}
-
-		if !found {
+		if !slices.Contains(messages, "Well, hi there!") {
 			t.Errorf("Expected to find 'Well, hi there!' in messages, got: %v", messages)
 		}
 	})
@@ -141,15 +134,7 @@ func TestShelleyStreamParsing(t *testing.T) {
 
 		messages := parseSSEStream(t, streamResp.Body)
 
-		found := false
-		for _, msg := range messages {
-			if msg == "test message" {
-				found = true
-				break
-			}
-		}
-
-		if !found {
+		if !slices.Contains(messages, "test message") {
 			t.Errorf("Expected to find 'test message' in messages, got: %v", messages)
 		}
 	})

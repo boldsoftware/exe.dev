@@ -360,7 +360,7 @@ func (s *Server) webBaseURLNoRequest() string {
 func (s *Server) getProxyPorts() []int {
 	if testPorts := os.Getenv("TEST_PROXY_PORTS"); testPorts != "" {
 		var ports []int
-		for _, portStr := range strings.Split(testPorts, ",") {
+		for portStr := range strings.SplitSeq(testPorts, ",") {
 			if port, err := strconv.Atoi(portStr); err == nil {
 				ports = append(ports, port)
 			}

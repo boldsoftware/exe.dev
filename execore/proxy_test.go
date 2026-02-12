@@ -183,7 +183,7 @@ func TestProxyStreaming(t *testing.T) {
 		flusher.Flush()
 
 		// Send data in chunks with delays
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			fmt.Fprintf(w, "data: chunk %d\n\n", i)
 			flusher.Flush()
 			time.Sleep(10 * time.Millisecond)
@@ -233,7 +233,7 @@ func TestProxyStreaming(t *testing.T) {
 	bodyStr := string(body)
 
 	// Verify we got all chunks
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		expected := fmt.Sprintf("data: chunk %d\n\n", i)
 		if !strings.Contains(bodyStr, expected) {
 			t.Errorf("Expected to find %q in response, got: %q", expected, bodyStr)

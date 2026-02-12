@@ -88,8 +88,7 @@ func (ss *SSHServer) resolveSSHKeyByNameOrFingerprint(ctx context.Context, userI
 	}
 
 	// Check for SHA256:-prefixed fingerprint (undocumented escape hatch)
-	if strings.HasPrefix(identifier, "SHA256:") {
-		fingerprint := strings.TrimPrefix(identifier, "SHA256:")
+	if fingerprint, ok := strings.CutPrefix(identifier, "SHA256:"); ok {
 		keys, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetSSHKeysForUserByFingerprint, exedb.GetSSHKeysForUserByFingerprintParams{
 			UserID:      userID,
 			Fingerprint: fingerprint,

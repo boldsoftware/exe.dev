@@ -57,12 +57,12 @@ func TestPasskeyRegisterStartReturnsOptions(t *testing.T) {
 	}
 
 	// Verify response contains expected WebAuthn options
-	var options map[string]interface{}
+	var options map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &options); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
 
-	publicKey, ok := options["publicKey"].(map[string]interface{})
+	publicKey, ok := options["publicKey"].(map[string]any)
 	if !ok {
 		t.Fatal("response missing publicKey")
 	}
@@ -95,12 +95,12 @@ func TestPasskeyLoginStartReturnsOptions(t *testing.T) {
 	}
 
 	// Verify response contains expected WebAuthn options
-	var options map[string]interface{}
+	var options map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &options); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
 
-	publicKey, ok := options["publicKey"].(map[string]interface{})
+	publicKey, ok := options["publicKey"].(map[string]any)
 	if !ok {
 		t.Fatal("response missing publicKey")
 	}
@@ -294,7 +294,7 @@ func TestPasskeyLoginFinishWithInvalidCredential(t *testing.T) {
 	s := newUnstartedServer(t)
 
 	// Send an invalid credential response
-	invalidResponse := map[string]interface{}{
+	invalidResponse := map[string]any{
 		"id":    "invalid-id",
 		"rawId": "aW52YWxpZC1pZA", // base64url of "invalid-id"
 		"type":  "public-key",
