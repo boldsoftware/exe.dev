@@ -3,11 +3,8 @@ package claudetool
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -27,45 +24,6 @@ func TestBashSlowOk(t *testing.T) {
 		expected := "slow test\n"
 		if len(result) == 0 || result[0].Text != expected {
 			t.Errorf("Expected %q, got %q", expected, result[0].Text)
-		}
-	})
-
-	// Test that slow_ok with background works
-	t.Run("SlowOk with Background", func(t *testing.T) {
-		input := json.RawMessage(`{"command":"echo 'slow background test'","slow_ok":true,"background":true}`)
-
-		bashTool := (&BashTool{WorkingDir: NewMutableWorkingDir("/")}).Tool()
-		toolOut := bashTool.Run(context.Background(), input)
-		if toolOut.Error != nil {
-			t.Fatalf("Unexpected error: %v", toolOut.Error)
-		}
-		result := toolOut.LLMContent
-
-		// Should return background result XML-ish format
-		resultStr := result[0].Text
-		if !strings.Contains(resultStr, "<pid>") || !strings.Contains(resultStr, "<output_file>") {
-			t.Errorf("Expected XML-ish background result format, got: %s", resultStr)
-		}
-
-		// Extract PID and output file from XML-ish format for cleanup
-		// This is a simple extraction for test cleanup - in real usage the agent would parse this
-		lines := strings.Split(resultStr, "\n")
-		var outFile string
-		for _, line := range lines {
-			if strings.Contains(line, "<output_file>") {
-				start := strings.Index(line, "<output_file>") + len("<output_file>")
-				end := strings.Index(line, "</output_file>")
-				if end > start {
-					outFile = line[start:end]
-				}
-				break
-			}
-		}
-
-		if outFile != "" {
-			// Clean up
-			os.Remove(outFile)
-			os.Remove(filepath.Dir(outFile))
 		}
 	})
 }
@@ -145,9 +103,8 @@ func TestBashTool(t *testing.T) {
 	t.Run("Command Timeout", func(t *testing.T) {
 		// Use a custom BashTool with very short timeout
 		customTimeouts := &Timeouts{
-			Fast:       100 * time.Millisecond,
-			Slow:       100 * time.Millisecond,
-			Background: 100 * time.Millisecond,
+			Fast: 100 * time.Millisecond,
+			Slow: 100 * time.Millisecond,
 		}
 		customBash := &BashTool{
 			WorkingDir: NewMutableWorkingDir("/"),
@@ -317,217 +274,12 @@ func TestExecuteBash(t *testing.T) {
 	})
 }
 
-func TestBackgroundBash(t *testing.T) {
-	bashTool := &BashTool{WorkingDir: NewMutableWorkingDir("/")}
-	tool := bashTool.Tool()
-
-	// Test basic background execution
-	t.Run("Basic Background Command", func(t *testing.T) {
-		inputObj := struct {
-			Command    string `json:"command"`
-			Background bool   `json:"background"`
-		}{
-			Command:    "echo 'Hello from background'",
-			Background: true,
-		}
-		inputJSON, err := json.Marshal(inputObj)
-		if err != nil {
-			t.Fatalf("Failed to marshal input: %v", err)
-		}
-
-		toolOut := tool.Run(context.Background(), inputJSON)
-		if toolOut.Error != nil {
-			t.Fatalf("Unexpected error: %v", toolOut.Error)
-		}
-		result := toolOut.LLMContent
-
-		// Parse the returned XML-ish format
-		resultStr := result[0].Text
-		if !strings.Contains(resultStr, "<pid>") || !strings.Contains(resultStr, "<output_file>") {
-			t.Fatalf("Expected XML-ish background result format, got: %s", resultStr)
-		}
-
-		// Extract PID and output file from XML-ish format
-		lines := strings.Split(resultStr, "\n")
-		var pidStr, outFile string
-		for _, line := range lines {
-			if strings.Contains(line, "<pid>") {
-				start := strings.Index(line, "<pid>") + len("<pid>")
-				end := strings.Index(line, "</pid>")
-				if end > start {
-					pidStr = line[start:end]
-				}
-			} else if strings.Contains(line, "<output_file>") {
-				start := strings.Index(line, "<output_file>") + len("<output_file>")
-				end := strings.Index(line, "</output_file>")
-				if end > start {
-					outFile = line[start:end]
-				}
-			}
-		}
-
-		// Verify we got valid values
-		if pidStr == "" || outFile == "" {
-			t.Errorf("Failed to extract PID or output file from result: %s", resultStr)
-			return
-		}
-
-		// Verify output file exists
-		if _, err := os.Stat(outFile); os.IsNotExist(err) {
-			t.Errorf("Output file doesn't exist: %s", outFile)
-		}
-
-		// Wait for the command output to be written to file
-		waitForFile(t, outFile)
-
-		// Check file contents
-		outputContent, err := os.ReadFile(outFile)
-		if err != nil {
-			t.Fatalf("Failed to read output file: %v", err)
-		}
-		// The implementation appends a completion message to the output
-		outputStr := string(outputContent)
-		if !strings.Contains(outputStr, "Hello from background") {
-			t.Errorf("Expected output to contain 'Hello from background', got %q", outputStr)
-		}
-		if !strings.Contains(outputStr, "[background process completed]") {
-			t.Errorf("Expected output to contain completion message, got %q", outputStr)
-		}
-
-		// Clean up
-		os.Remove(outFile)
-		os.Remove(filepath.Dir(outFile))
-	})
-
-	// Test background command with stderr output
-	t.Run("Background Command with stderr", func(t *testing.T) {
-		inputObj := struct {
-			Command    string `json:"command"`
-			Background bool   `json:"background"`
-		}{
-			Command:    "echo 'Output to stdout' && echo 'Output to stderr' >&2",
-			Background: true,
-		}
-		inputJSON, err := json.Marshal(inputObj)
-		if err != nil {
-			t.Fatalf("Failed to marshal input: %v", err)
-		}
-
-		toolOut := tool.Run(context.Background(), inputJSON)
-		if toolOut.Error != nil {
-			t.Fatalf("Unexpected error: %v", toolOut.Error)
-		}
-		result := toolOut.LLMContent
-
-		// Parse the returned XML-ish format
-		resultStr := result[0].Text
-		lines := strings.Split(resultStr, "\n")
-		var outFile string
-		for _, line := range lines {
-			if strings.Contains(line, "<output_file>") {
-				start := strings.Index(line, "<output_file>") + len("<output_file>")
-				end := strings.Index(line, "</output_file>")
-				if end > start {
-					outFile = line[start:end]
-				}
-				break
-			}
-		}
-
-		// Wait for the command output to be written to file
-		waitForFile(t, outFile)
-
-		// Check output content (stdout and stderr are combined in implementation)
-		outputContent, err := os.ReadFile(outFile)
-		if err != nil {
-			t.Fatalf("Failed to read output file: %v", err)
-		}
-		// Implementation combines stdout and stderr into one file
-		outputStr := string(outputContent)
-		if !strings.Contains(outputStr, "Output to stdout") || !strings.Contains(outputStr, "Output to stderr") {
-			t.Errorf("Expected both stdout and stderr content, got %q", outputStr)
-		}
-
-		// Clean up
-		os.Remove(outFile)
-		os.Remove(filepath.Dir(outFile))
-	})
-
-	// Test background command running without waiting
-	t.Run("Background Command Running", func(t *testing.T) {
-		// Create a script that will continue running after we check
-		inputObj := struct {
-			Command    string `json:"command"`
-			Background bool   `json:"background"`
-		}{
-			Command:    "echo 'Running in background' && sleep 5",
-			Background: true,
-		}
-		inputJSON, err := json.Marshal(inputObj)
-		if err != nil {
-			t.Fatalf("Failed to marshal input: %v", err)
-		}
-
-		// Start the command in the background
-		toolOut := tool.Run(context.Background(), inputJSON)
-		if toolOut.Error != nil {
-			t.Fatalf("Unexpected error: %v", toolOut.Error)
-		}
-		result := toolOut.LLMContent
-
-		// Parse the returned XML-ish format
-		resultStr := result[0].Text
-		lines := strings.Split(resultStr, "\n")
-		var pidStr, outFile string
-		for _, line := range lines {
-			if strings.Contains(line, "<pid>") {
-				start := strings.Index(line, "<pid>") + len("<pid>")
-				end := strings.Index(line, "</pid>")
-				if end > start {
-					pidStr = line[start:end]
-				}
-			} else if strings.Contains(line, "<output_file>") {
-				start := strings.Index(line, "<output_file>") + len("<output_file>")
-				end := strings.Index(line, "</output_file>")
-				if end > start {
-					outFile = line[start:end]
-				}
-			}
-		}
-
-		// Wait for the command output to be written to file
-		waitForFile(t, outFile)
-
-		// Check output content
-		outputContent, err := os.ReadFile(outFile)
-		if err != nil {
-			t.Fatalf("Failed to read output file: %v", err)
-		}
-		expectedOutput := "Running in background\n"
-		if string(outputContent) != expectedOutput {
-			t.Errorf("Expected output content %q, got %q", expectedOutput, string(outputContent))
-		}
-
-		// Verify the process is still running by parsing PID
-		if pidStr != "" {
-			// We can't easily test if the process is still running without importing strconv
-			// and the process might have finished by now anyway due to timing
-			t.Log("Process started in background with PID:", pidStr)
-		}
-
-		// Clean up
-		os.Remove(outFile)
-		os.Remove(filepath.Dir(outFile))
-	})
-}
-
 func TestBashTimeout(t *testing.T) {
 	// Test default timeout values
 	t.Run("Default Timeout Values", func(t *testing.T) {
 		// Test foreground default timeout
 		foreground := bashInput{
-			Command:    "echo 'test'",
-			Background: false,
+			Command: "echo 'test'",
 		}
 		fgTimeout := foreground.timeout(nil)
 		expectedFg := 30 * time.Second
@@ -535,22 +287,10 @@ func TestBashTimeout(t *testing.T) {
 			t.Errorf("Expected foreground default timeout to be %v, got %v", expectedFg, fgTimeout)
 		}
 
-		// Test background default timeout
-		background := bashInput{
-			Command:    "echo 'test'",
-			Background: true,
-		}
-		bgTimeout := background.timeout(nil)
-		expectedBg := 24 * time.Hour
-		if bgTimeout != expectedBg {
-			t.Errorf("Expected background default timeout to be %v, got %v", expectedBg, bgTimeout)
-		}
-
 		// Test slow_ok timeout
 		slowOk := bashInput{
-			Command:    "echo 'test'",
-			Background: false,
-			SlowOK:     true,
+			Command: "echo 'test'",
+			SlowOK:  true,
 		}
 		slowTimeout := slowOk.timeout(nil)
 		expectedSlow := 15 * time.Minute
@@ -560,13 +300,11 @@ func TestBashTimeout(t *testing.T) {
 
 		// Test custom timeout config
 		customTimeouts := &Timeouts{
-			Fast:       5 * time.Second,
-			Slow:       2 * time.Minute,
-			Background: 1 * time.Hour,
+			Fast: 5 * time.Second,
+			Slow: 2 * time.Minute,
 		}
 		customFast := bashInput{
-			Command:    "echo 'test'",
-			Background: false,
+			Command: "echo 'test'",
 		}
 		customTimeout := customFast.timeout(customTimeouts)
 		expectedCustom := 5 * time.Second
@@ -679,48 +417,6 @@ func TestFormatForegroundBashOutput(t *testing.T) {
 
 		t.Logf("Large output with long lines result:\n%s", result)
 	})
-}
-
-// waitForFile waits for a file to exist and be non-empty or times out
-func waitForFile(t *testing.T, filepath string) {
-	timeout := time.After(5 * time.Second)
-	tick := time.NewTicker(10 * time.Millisecond)
-	defer tick.Stop()
-
-	for {
-		select {
-		case <-timeout:
-			t.Fatalf("Timed out waiting for file to exist and have contents: %s", filepath)
-			return
-		case <-tick.C:
-			info, err := os.Stat(filepath)
-			if err == nil && info.Size() > 0 {
-				return // File exists and has content
-			}
-		}
-	}
-}
-
-// waitForProcessDeath waits for a process to no longer exist or times out
-func waitForProcessDeath(t *testing.T, pid int) {
-	timeout := time.After(5 * time.Second)
-	tick := time.NewTicker(50 * time.Millisecond)
-	defer tick.Stop()
-
-	for {
-		select {
-		case <-timeout:
-			t.Fatalf("Timed out waiting for process %d to exit", pid)
-			return
-		case <-tick.C:
-			process, _ := os.FindProcess(pid)
-			err := process.Signal(syscall.Signal(0))
-			if err != nil {
-				// Process doesn't exist
-				return
-			}
-		}
-	}
 }
 
 func TestIsNoTrailerSet(t *testing.T) {

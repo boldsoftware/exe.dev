@@ -45,16 +45,14 @@ const (
 	EnableBashToolJITInstall = true
 	NoBashToolJITInstall     = false
 
-	DefaultFastTimeout       = 30 * time.Second
-	DefaultSlowTimeout       = 15 * time.Minute
-	DefaultBackgroundTimeout = 24 * time.Hour
+	DefaultFastTimeout = 30 * time.Second
+	DefaultSlowTimeout = 15 * time.Minute
 )
 
 // Timeouts holds the configurable timeout values for bash commands.
 type Timeouts struct {
-	Fast       time.Duration // regular commands (e.g., ls, echo, simple scripts)
-	Slow       time.Duration // commands that may reasonably take longer (e.g., downloads, builds, tests)
-	Background time.Duration // background commands (e.g., servers, long-running processes)
+	Fast time.Duration // regular commands (e.g., ls, echo, simple scripts)
+	Slow time.Duration // commands that may reasonably take longer (e.g., downloads, builds, tests)
 }
 
 // Fast returns t's fast timeout, or DefaultFastTimeout if t is nil.
@@ -71,14 +69,6 @@ func (t *Timeouts) slow() time.Duration {
 		return DefaultSlowTimeout
 	}
 	return t.Slow
-}
-
-// Background returns t's background timeout, or DefaultBackgroundTimeout if t is nil.
-func (t *Timeouts) background() time.Duration {
-	if t == nil {
-		return DefaultBackgroundTimeout
-	}
-	return t.Background
 }
 
 // Tool returns an llm.Tool based on b.
@@ -110,8 +100,8 @@ const (
 	bashDescription = `Executes shell commands via bash --login -c, returning combined stdout/stderr.
 Bash state changes (working dir, variables, aliases) don't persist between calls.
 
-With background=true, returns immediately, with output redirected to a file.
-Use background for servers/demos that need to stay running.
+For long-running processes (servers, watch modes), use tmux instead.
+Do NOT use &, nohup, or disown — the bash tool kills its process group on exit.
 
 MUST set slow_ok=true for potentially slow commands: builds, downloads,
 installs, tests, or any other substantive operation.
@@ -138,10 +128,6 @@ For complex scripts, write them to a file first and then execute the file.
     "slow_ok": {
       "type": "boolean",
       "description": "Use extended timeout"
-    },
-    "background": {
-      "type": "boolean",
-      "description": "Execute in background"
     }
   }
 }
@@ -149,9 +135,8 @@ For complex scripts, write them to a file first and then execute the file.
 )
 
 type bashInput struct {
-	Command    string `json:"command"`
-	SlowOK     bool   `json:"slow_ok,omitempty"`
-	Background bool   `json:"background,omitempty"`
+	Command string `json:"command"`
+	SlowOK  bool   `json:"slow_ok,omitempty"`
 }
 
 // BashDisplayData is the display data sent to the UI for bash tool results.
@@ -159,25 +144,11 @@ type BashDisplayData struct {
 	WorkingDir string `json:"workingDir"`
 }
 
-type BackgroundResult struct {
-	PID     int
-	OutFile string
-}
-
-func (r *BackgroundResult) XMLish() string {
-	return fmt.Sprintf("<pid>%d</pid>\n<output_file>%s</output_file>\n<reminder>To stop the process: `kill -9 -%d`</reminder>\n",
-		r.PID, r.OutFile, r.PID)
-}
-
 func (i *bashInput) timeout(t *Timeouts) time.Duration {
-	switch {
-	case i.Background:
-		return t.background()
-	case i.SlowOK:
+	if i.SlowOK {
 		return t.slow()
-	default:
-		return t.fast()
 	}
+	return t.fast()
 }
 
 func (b *BashTool) Run(ctx context.Context, m json.RawMessage) llm.ToolOut {
@@ -225,16 +196,6 @@ func (b *BashTool) Run(ctx context.Context, m json.RawMessage) llm.ToolOut {
 
 	display := BashDisplayData{WorkingDir: wd}
 
-	// If Background is set to true, use executeBackgroundBash
-	if req.Background {
-		result, err := b.executeBackgroundBash(ctx, req, timeout)
-		if err != nil {
-			return llm.ErrorToolOut(err)
-		}
-		return llm.ToolOut{LLMContent: llm.TextContent(result.XMLish()), Display: display}
-	}
-
-	// For foreground commands, use executeBash
 	out, execErr := b.executeBash(ctx, req, timeout)
 	if execErr != nil {
 		return llm.ErrorToolOut(execErr)
@@ -295,10 +256,7 @@ func (b *BashTool) executeBash(ctx context.Context, req bashInput, timeout time.
 
 	output := new(bytes.Buffer)
 	cmd := b.makeBashCommand(execCtx, req.Command, output)
-	// TODO: maybe detect simple interactive git rebase commands and auto-background them?
-	// Would need to hint to the agent what is happening.
-	// We might also be able to do this for other simple interactive commands that use EDITOR.
-	cmd.Env = append(cmd.Env, `GIT_SEQUENCE_EDITOR=echo "To do an interactive rebase, run it as a background task and check the output file." && exit 1`)
+	cmd.Env = append(cmd.Env, `GIT_SEQUENCE_EDITOR=echo "To do an interactive rebase, run it in a tmux session." && exit 1`)
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("command failed: %w", err)
 	}
@@ -389,52 +347,6 @@ func humanizeBytes(bytes int) string {
 		return fmt.Sprintf("%dMB", mb)
 	}
 	return "more than 1GB"
-}
-
-// executeBackgroundBash executes a command in the background and returns the pid and output file locations
-func (b *BashTool) executeBackgroundBash(ctx context.Context, req bashInput, timeout time.Duration) (*BackgroundResult, error) {
-	// Create temp output files
-	tmpDir, err := os.MkdirTemp("", "sketch-bg-")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp directory: %w", err)
-	}
-	// We can't really clean up tempDir, because we have no idea
-	// how far into the future the agent might want to read the output.
-
-	outFile := filepath.Join(tmpDir, "output")
-	out, err := os.Create(outFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create output file: %w", err)
-	}
-
-	execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout) // detach from tool use context
-	cmd := b.makeBashCommand(execCtx, req.Command, out)
-	cmd.Env = append(cmd.Env, `GIT_SEQUENCE_EDITOR=python3 -c "import os, sys, signal, threading; print(f\"Send USR1 to pid {os.getpid()} after editing {sys.argv[1]}\", flush=True); signal.signal(signal.SIGUSR1, lambda *_: sys.exit(0)); threading.Event().wait()"`)
-
-	if err := cmd.Start(); err != nil {
-		cancel()
-		out.Close()
-		os.RemoveAll(tmpDir) // clean up temp dir -- didn't start means we don't need the output
-		return nil, fmt.Errorf("failed to start background command: %w", err)
-	}
-
-	// Wait for completion in the background, then do cleanup.
-	go func() {
-		err := cmdWait(cmd)
-		// Leave a note to the agent so that it knows that the process has finished.
-		if err != nil {
-			fmt.Fprintf(out, "\n\n[background process failed: %v]\n", err)
-		} else {
-			fmt.Fprintf(out, "\n\n[background process completed]\n")
-		}
-		out.Close()
-		cancel()
-	}()
-
-	return &BackgroundResult{
-		PID:     cmd.Process.Pid,
-		OutFile: outFile,
-	}, nil
 }
 
 // checkAndInstallMissingTools analyzes a bash command and attempts to automatically install any missing tools.
