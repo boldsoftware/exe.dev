@@ -2,7 +2,6 @@
 package stage
 
 import (
-	"cmp"
 	"fmt"
 	"os"
 	"os/exec"
@@ -76,9 +75,6 @@ type Env struct {
 	ListenOnTailscaleOnly bool // whether auxiliary daemons (metricsd) should bind only to the tailscale interface
 
 	EnableCreditPurchases bool // whether to show credit purchase UI (staging only)
-
-	StripeAPIKey string // Stripe API key for billing operations
-	StripeURL    string // Stripe API URL (for testing); empty means use real Stripe
 }
 
 // Invalid returns an Env with obviously invalid values.
@@ -130,15 +126,8 @@ func Invalid() Env {
 		ListenOnTailscaleOnly: false,
 
 		EnableCreditPurchases: true,
-
-		StripeAPIKey: "", // invalid: no API key
-		StripeURL:    "", // invalid: no Stripe URL
 	}
 }
-
-// stripeTestAPIKey is the Stripe test API key used in Local/Test envs.
-// It is safe to check into source code.
-var stripeTestAPIKey = "sk_test_51SzRtTKBUWL0n1QN0OSXVllXJLOeM2JfcFDRLNJHeMpKVTgjaif5cDBhZ1jIcCv8cZFRoMb1YBnbYeXedaD1oQ3w00tOHZd9cF"
 
 var envStripeKey = os.Getenv("STRIPE_SECRET_KEY")
 
@@ -191,9 +180,6 @@ func Local() Env {
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
 		DefaultCPUs:   2,
-
-		StripeAPIKey: cmp.Or(envStripeKey, stripeTestAPIKey),
-		StripeURL:    "",
 	}
 }
 
@@ -247,9 +233,6 @@ func Test() Env {
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   11 * 1000 * 1000 * 1000, // 11GB
 		DefaultCPUs:   2,
-
-		StripeAPIKey: stripeTestAPIKey,
-		StripeURL:    "",
 	}
 }
 
@@ -301,9 +284,6 @@ func Staging() Env {
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
 		DefaultCPUs:   2,
-
-		StripeAPIKey: envStripeKey,
-		StripeURL:    "",
 	}
 }
 
@@ -354,9 +334,6 @@ func Prod() Env {
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
 		DefaultCPUs:   2,
-
-		StripeAPIKey: envStripeKey,
-		StripeURL:    "",
 	}
 }
 

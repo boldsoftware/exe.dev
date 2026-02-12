@@ -20,7 +20,10 @@ Checked at VM creation (`execore/exe-web-auth.go:193`), not at signup.
 
 ## Event Polling
 
-`execore/subscription_poller.go` polls Stripe every 3 seconds for:
+`execore/subscription_poller.go` runs a small 3-second loop that calls
+`billing.Manager.SyncSubscriptions(...)`, which performs one blocking sync pass.
+
+`billing.Manager.SyncSubscriptions(...)` queries Stripe Events API for:
 - `customer.subscription.created`
 - `customer.subscription.updated`
 - `customer.subscription.deleted`
@@ -32,7 +35,7 @@ Maps Stripe events to billing_events.event_type:
 
 **Lookback window:**
 - At process startup: always 60 days (never consults billing_events table)
-- During runtime: tracks max event timestamp from last poll, fetches events `created > max_timestamp`
+- During runtime: loop tracks max event timestamp from last sync and fetches events `created > max_timestamp`
 
 **Duplicate handling:**
 - Unique index on `(account_id, event_type, event_at)` prevents duplicate storage
@@ -98,8 +101,8 @@ Latest event's `event_type` per `account_id` determines billing status. Unique i
 
 ## Implementation Files
 
-- `billing/billing.go` - Stripe API integration, subscription events iterator
-- `execore/subscription_poller.go` - Polls Stripe, writes to billing_events
+- `billing/billing.go` - Stripe API integration, `SyncSubscriptions`, credit sync
+- `execore/subscription_poller.go` - Poll loop that calls `SyncSubscriptions`
 - `execore/billing_status.go` - Access control logic
 - `execore/exe-web-auth.go` - Billing enforcement (lines 190-202)
 - `exedb/schema/066-billing-events.sql` - Table schema

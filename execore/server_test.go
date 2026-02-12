@@ -10,10 +10,13 @@ import (
 	"strings"
 	"testing"
 
+	"exe.dev/billing"
+	"exe.dev/billing/stripetest"
 	"exe.dev/exedb"
 	"exe.dev/stage"
 	"exe.dev/tslog"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stripe/stripe-go/v82"
 )
 
 // testSSHPubKey is a valid SSH public key for use in tests.
@@ -23,6 +26,54 @@ func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	s := newUnstartedServer(t)
 	s.startAndAwaitReady()
+	return s
+}
+
+func newBillingTestServer(t *testing.T) *Server {
+	t.Helper()
+	s := newUnstartedBillingServer(t)
+	s.startAndAwaitReady()
+	return s
+}
+
+func newStripeClient(baseURL string) *stripe.Client {
+	backends := stripe.NewBackendsWithConfig(&stripe.BackendConfig{
+		URL: &baseURL,
+	})
+	return stripe.NewClient(billing.TestAPIKey, stripe.WithBackends(backends))
+}
+
+func newUnstartedBillingServer(t testing.TB) *Server {
+	t.Helper()
+
+	dbPath := filepath.Join(t.TempDir(), "test.sqlite3")
+	env := stage.Test()
+	registry := prometheus.NewRegistry()
+	cassette := filepath.Join("testdata", "stripe", strings.ReplaceAll(t.Name(), "/", "_")+".httprr")
+	s, err := NewServer(ServerConfig{
+		Logger:             tslog.Slogger(t),
+		HTTPAddr:           ":0",
+		HTTPSAddr:          ":0",
+		SSHAddr:            ":0",
+		PluginAddr:         ":0",
+		ExeproxServicePort: 0,
+		DBPath:             dbPath,
+		FakeEmailServer:    "",
+		PiperdPort:         2222,
+		GHWhoAmIPath:       "",
+		ExeletAddresses:    nil,
+		Env:                env,
+		Billing: &billing.Manager{
+			Client: stripetest.Record(t, cassette),
+		},
+		DisableBillingPoll: true,
+		MetricsRegistry:    registry,
+		LMTPSocketPath:     "",
+	})
+	if err != nil {
+		t.Fatalf("failed to create billing test server: %v", err)
+	}
+	t.Cleanup(func() { s.Stop() })
 	return s
 }
 
@@ -133,7 +184,6 @@ func newUnstartedServer(t testing.TB) *Server {
 		t.Fatalf("failed to copy template database: %v", err)
 	}
 	env := stage.Test()
-	env.StripeURL = fakeStripe.URL
 	registry := prometheus.NewRegistry()
 	s, err := NewServer(ServerConfig{
 		Logger:             tslog.Slogger(t),
@@ -148,6 +198,10 @@ func newUnstartedServer(t testing.TB) *Server {
 		GHWhoAmIPath:       "",
 		ExeletAddresses:    nil,
 		Env:                env,
+		Billing: &billing.Manager{
+			Client: newStripeClient(fakeStripe.URL),
+		},
+		DisableBillingPoll: false,
 		MetricsRegistry:    registry,
 		LMTPSocketPath:     "",
 	})

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"exe.dev/billing/stripetest"
+	"exe.dev/tslog"
 )
 
 type fakeStripeCatalog struct {
@@ -106,7 +107,10 @@ func (c *fakeStripeCatalog) handle(w http.ResponseWriter, r *http.Request) {
 
 func TestInstallPricesCreatesManagedCatalog(t *testing.T) {
 	catalog := newFakeStripeCatalog()
-	m := &Manager{Client: stripetest.Client(catalog.handle)}
+	m := &Manager{
+		Client: stripetest.Client(t, catalog.handle),
+		Logger: tslog.Slogger(t),
+	}
 
 	if err := m.InstallPrices(t.Context()); err != nil {
 		t.Fatalf("InstallPrices: %v", err)
@@ -146,7 +150,10 @@ func TestInstallPricesCreatesManagedCatalog(t *testing.T) {
 
 func TestInstallPricesIsIdempotent(t *testing.T) {
 	catalog := newFakeStripeCatalog()
-	m := &Manager{Client: stripetest.Client(catalog.handle)}
+	m := &Manager{
+		Client: stripetest.Client(t, catalog.handle),
+		Logger: tslog.Slogger(t),
+	}
 
 	if err := m.InstallPrices(t.Context()); err != nil {
 		t.Fatalf("InstallPrices first call: %v", err)

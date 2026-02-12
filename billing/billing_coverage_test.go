@@ -1,7 +1,7 @@
 package billing
 
 import (
-	"context"
+	"database/sql"
 	"errors"
 	"net/url"
 	"path"
@@ -62,11 +62,8 @@ func TestManagerClient(t *testing.T) {
 		}
 	})
 
-	t.Run("stripe url branch", func(t *testing.T) {
-		m := &Manager{
-			APIKey:    TestAPIKey,
-			StripeURL: "https://example.invalid",
-		}
+	t.Run("default client", func(t *testing.T) {
+		m := &Manager{}
 		if got := m.client(); got == nil {
 			t.Fatal("m.client() = nil, want non-nil client")
 		}
@@ -377,7 +374,7 @@ func TestUseCreditsAndExecQueryErrorPaths(t *testing.T) {
 	}
 }
 
-func TestSubscriptionEventsLive(t *testing.T) {
+func TestSyncSubscriptionsLive(t *testing.T) {
 	m := newTestManager(t)
 	clock := m.startClock(t)
 	ctx := t.Context()
@@ -409,27 +406,36 @@ func TestSubscriptionEventsLive(t *testing.T) {
 		t.Fatalf("cancel subscription: %v", err)
 	}
 
-	eventsCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-
 	since := clock.Now().Add(-1 * time.Minute)
-	var sawActive bool
-	var sawCanceled bool
-	for e := range m.SubscriptionEvents(eventsCtx, since) {
-		if e.AccountID != billingID {
-			continue
-		}
-		if e.EventType == "active" {
-			sawActive = true
-		}
-		if e.EventType == "canceled" {
-			sawCanceled = true
-		}
-		if sawActive && sawCanceled {
-			break
-		}
+	nextSince, err := m.SyncSubscriptions(ctx, since)
+	if err != nil {
+		t.Fatalf("SyncSubscriptions: %v", err)
 	}
-	if !sawActive || !sawCanceled {
-		t.Fatalf("SubscriptionEvents missing expected transitions for %q: active=%v canceled=%v", billingID, sawActive, sawCanceled)
+	if !nextSince.After(since) {
+		t.Fatalf("SyncSubscriptions nextSince = %v, want > %v", nextSince, since)
+	}
+
+	const q = `
+		SELECT event_type
+		FROM billing_events
+		WHERE account_id = @accountID
+		ORDER BY event_at ASC
+	`
+	var got []string
+	for rows, err := range m.query(ctx, q, sql.Named("accountID", billingID)) {
+		if err != nil {
+			t.Fatalf("query billing events: %v", err)
+		}
+		var eventType string
+		if err := rows.Scan(&eventType); err != nil {
+			t.Fatalf("scan event type: %v", err)
+		}
+		got = append(got, eventType)
+	}
+	if len(got) < 2 {
+		t.Fatalf("billing events for %q = %v, want at least active and canceled", billingID, got)
+	}
+	if got[0] != "active" || got[len(got)-1] != "canceled" {
+		t.Fatalf("billing events order = %v, want active then canceled", got)
 	}
 }

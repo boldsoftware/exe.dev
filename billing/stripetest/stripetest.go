@@ -3,13 +3,24 @@ package stripetest
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"testing"
 	"time"
 
 	"exe.dev/backoff"
+	"exe.dev/billing/httprr"
 	"github.com/stripe/stripe-go/v82"
 )
+
+// TestAPIKey is the Stripe test API key used for record/replay clients.
+const TestAPIKey = "sk_test_51SzRtTKBUWL0n1QN0OSXVllXJLOeM2JfcFDRLNJHeMpKVTgjaif5cDBhZ1jIcCv8cZFRoMb1YBnbYeXedaD1oQ3w00tOHZd9cF"
 
 type roundTripperFunc func(req *http.Request) *http.Response
 
@@ -17,10 +28,44 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req), nil
 }
 
+type testingLogger struct {
+	t testing.TB
+}
+
+func (l *testingLogger) logf(format string, args ...any) {
+	l.t.Helper()
+	fmt.Fprintf(l.t.Output(), format+"\n", args...)
+}
+
+func (l *testingLogger) Debugf(format string, args ...any) {
+	l.logf("[DEBUG] "+format, args...)
+}
+
+func (l *testingLogger) Errorf(format string, args ...any) {
+	l.logf("[ERROR] "+format, args...)
+}
+
+func (l *testingLogger) Infof(format string, args ...any) {
+	l.logf("[INFO] "+format, args...)
+}
+
+func (l *testingLogger) Warnf(format string, args ...any) {
+	l.logf("[WARN] "+format, args...)
+}
+
+// LeveledLogger returns a Stripe LeveledLoggerInterface that writes through
+// the test's output stream.
+func LeveledLogger(t testing.TB) stripe.LeveledLoggerInterface {
+	t.Helper()
+	return &testingLogger{t: t}
+}
+
 // Client arranges a Stripe client that routes requests to the provided HTTP
 // handler called through a custom transport.
 // The ResponseWriter will be an [httptest.ResponseRecorder].
-func Client(h func(w http.ResponseWriter, r *http.Request)) *stripe.Client {
+func Client(t testing.TB, h func(w http.ResponseWriter, r *http.Request)) *stripe.Client {
+	t.Helper()
+
 	backends := stripe.NewBackendsWithConfig(&stripe.BackendConfig{
 		HTTPClient: &http.Client{
 			Transport: roundTripperFunc(func(req *http.Request) *http.Response {
@@ -30,8 +75,88 @@ func Client(h func(w http.ResponseWriter, r *http.Request)) *stripe.Client {
 				return w.Result()
 			}),
 		},
+		LeveledLogger: LeveledLogger(t),
 	})
 	return stripe.NewClient("sk_test_xxx", stripe.WithBackends(backends))
+}
+
+// Record creates a Stripe client backed by httprr at file.
+// Use -httprecord to refresh traces.
+func Record(t testing.TB, file string) *stripe.Client {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatalf("mkdir %q: %v", filepath.Dir(file), err)
+	}
+
+	rr, err := httprr.Open(file, http.DefaultTransport)
+	if err != nil {
+		t.Fatalf("httprr.Open(%q): %v", file, err)
+	}
+	t.Cleanup(func() {
+		if err := rr.Close(); err != nil {
+			t.Errorf("failed to close httprr: %v", err)
+		}
+	})
+
+	var counter atomic.Int64
+	rr.ScrubReq(func(r *http.Request) error {
+		pathParts := strings.Split(r.URL.Path, "/")
+		for i, part := range pathParts {
+			if strings.HasPrefix(part, "exe_") {
+				pathParts[i] = "exe_TEST"
+			}
+		}
+		r.URL.Path = strings.Join(pathParts, "/")
+
+		q := r.URL.Query()
+		for _, key := range []string{"created[gt]", "created[gte]"} {
+			if q.Has(key) {
+				q.Set(key, "1")
+			}
+		}
+		if customer := q.Get("customer"); strings.HasPrefix(customer, "exe_") {
+			q.Set("customer", "exe_TEST")
+		}
+		r.URL.RawQuery = q.Encode()
+
+		r.Header.Del("Authorization")
+		r.Header.Del("Idempotency-Key")
+		r.Header.Del("Stripe-Version")
+		r.Header.Del("User-Agent")
+		r.Header.Del("X-Stripe-Client-User-Agent")
+		r.Header.Del("X-Stripe-Client-Telemetry")
+		r.Header.Set("Replay-Id", fmt.Sprintf("req_%d", counter.Add(1)))
+
+		if body, ok := r.Body.(*httprr.Body); ok {
+			contentType := r.Header.Get("Content-Type")
+			if strings.HasPrefix(contentType, "application/x-www-form-urlencoded") {
+				form, err := url.ParseQuery(string(body.Data))
+				if err == nil {
+					if id := form.Get("id"); strings.HasPrefix(id, "exe_") {
+						form.Set("id", "exe_TEST")
+					}
+					if customer := form.Get("customer"); strings.HasPrefix(customer, "exe_") {
+						form.Set("customer", "exe_TEST")
+					}
+					for _, key := range []string{"success_url", "cancel_url", "return_url"} {
+						if form.Has(key) {
+							form.Set(key, "https://example.com/callback")
+						}
+					}
+					body.Data = []byte(form.Encode())
+					body.ReadOffset = 0
+				}
+			}
+		}
+		return nil
+	})
+
+	backends := stripe.NewBackendsWithConfig(&stripe.BackendConfig{
+		HTTPClient:    rr.Client(),
+		LeveledLogger: LeveledLogger(t),
+	})
+	return stripe.NewClient(TestAPIKey, stripe.WithBackends(backends))
 }
 
 type Clock struct {

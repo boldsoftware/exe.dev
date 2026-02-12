@@ -717,6 +717,8 @@ type ServerConfig struct {
 	GHWhoAmIPath       string
 	ExeletAddresses    []string
 	Env                stage.Env
+	Billing            *billing.Manager // optional billing manager override
+	DisableBillingPoll bool             // disable Stripe subscription poller startup (tests only)
 	MetricsRegistry    *prometheus.Registry
 	LMTPSocketPath     string // path to LMTP Unix socket; empty disables LMTP
 }
@@ -948,13 +950,17 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		stopChan:  make(chan struct{}),
 		log:       slog,
 		slackFeed: logging.NewSlackFeed(slog, cfg.Env),
-		billing:   &billing.Manager{APIKey: cfg.Env.StripeAPIKey, StripeURL: cfg.Env.StripeURL},
+		billing:   cfg.Billing,
 		signupLimiter: &limiter.Limiter[netip.Addr]{
 			Size:           10000,           // Track up to 10k IPs
 			Max:            20,              // 20 requests max
 			RefillInterval: time.Minute / 5, // Refill 1 token per 12 seconds
 		},
 		signupPOW: newSignupPOW(),
+	}
+
+	if s.billing == nil {
+		s.billing = &billing.Manager{}
 	}
 
 	// Wire the billing manager's DB and Logger for credit operations.
@@ -1000,8 +1006,8 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s.setupExeproxServer()
 
 	// Initialize billing subscription poller to sync subscription events from Stripe.
-	if s.billing != nil {
-		s.subscriptionPoller = StartSubscriptionPoller(s.billing, s.db, slog)
+	if s.billing != nil && !cfg.DisableBillingPoll {
+		s.subscriptionPoller = StartSubscriptionPoller(s.billing, slog)
 	}
 
 	s.ready.Add(1) // matched with final done at bottom of Start

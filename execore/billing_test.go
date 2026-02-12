@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/billing"
 	"exe.dev/billing/tender"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
@@ -17,7 +18,7 @@ import (
 func TestBillingRequiredForNewVM_WebUI(t *testing.T) {
 	// Test that /new always shows the form, even for users who need billing.
 	// Billing is only checked when the user tries to create a VM via /create-vm.
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	// Enable billing checks for this test (disabled by default in test env)
 	server.env.SkipBilling = false
 
@@ -61,7 +62,7 @@ func TestBillingRequiredForNewVM_WebUI(t *testing.T) {
 }
 
 func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	// Enable billing checks for this test (disabled by default in test env)
 	server.env.SkipBilling = false
 
@@ -116,7 +117,7 @@ func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
 }
 
 func TestUserWithBillingCanAccessNewVM_WebUI(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 
 	// Create a user with billing info
 	email := "has-billing@example.com"
@@ -168,7 +169,7 @@ func TestUserWithBillingCanAccessNewVM_WebUI(t *testing.T) {
 }
 
 func TestUnauthenticatedUserCanAccessNewPage(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 
 	// Request /new without authentication - should show the new VM form
 	// (they'll be prompted to log in when they try to create)
@@ -191,7 +192,7 @@ func TestUnauthenticatedUserCanAccessNewPage(t *testing.T) {
 }
 
 func TestUserIsPayingQuery(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 
 	// Create a user without billing info
 	email := "ispaying-test@example.com"
@@ -246,7 +247,7 @@ func TestUserIsPayingQuery(t *testing.T) {
 }
 
 func TestUserNeedsBillingQuery(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 
 	// Create a user
 	email := "needsbilling-test@example.com"
@@ -310,7 +311,7 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 }
 
 func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 
 	// Create a user
 	email := "legacy-user@example.com"
@@ -350,7 +351,7 @@ func TestBillingBypassBug(t *testing.T) {
 	// The fix: accounts should have a billing_status that starts as 'pending'
 	// and only becomes 'active' after Stripe checkout completes.
 
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	// Create a new user
@@ -440,7 +441,7 @@ func TestBillingSuccessBypassWithFakeSessionID(t *testing.T) {
 	// with any fake session_id parameter. The endpoint should verify with Stripe
 	// that the session was actually completed before activating the account.
 
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	// Create a new user
@@ -510,7 +511,7 @@ func TestBillingEventRaceCondition(t *testing.T) {
 	// after a newer activation event (at T2, where T2 > T1).
 	// The user should remain active because T2 > T1.
 
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 
 	// Create a user
 	email := "race-condition@example.com"
@@ -584,7 +585,7 @@ func TestBillingEventRaceCondition(t *testing.T) {
 func TestNewPageAlwaysShowsForm_EvenWhenBillingRequired(t *testing.T) {
 	// Test that /new always shows the form, even for users who need billing.
 	// Billing is only requested when they click "Create VM".
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	// Create a user without billing info
@@ -629,7 +630,7 @@ func TestNewPageAlwaysShowsForm_EvenWhenBillingRequired(t *testing.T) {
 func TestNewPagePrefillsFromQueryParams(t *testing.T) {
 	// Test that /new prefills name and prompt from query params.
 	// This is used when user cancels Stripe checkout and is redirected back.
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 
 	// Request /new with name and prompt params
 	req := httptest.NewRequest("GET", "/new?name=my-vm&prompt=Build+a+blog", nil)
@@ -652,7 +653,7 @@ func TestNewPagePrefillsFromQueryParams(t *testing.T) {
 
 func TestCreateVMRedirectsToBillingWithParams(t *testing.T) {
 	// Test that /create-vm redirects to /billing/update with name and prompt params.
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	// Create a user without billing info
@@ -707,7 +708,7 @@ func TestCreateVMRedirectsToBillingWithParams(t *testing.T) {
 
 func TestBillingSubscribePreservesVMParams(t *testing.T) {
 	// Test that /billing/update includes name and prompt in Stripe callback URLs.
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	// Create a user without billing info
@@ -754,7 +755,7 @@ func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
 	// pending account instead of creating duplicates. This prevents the bug
 	// where users who abandon checkout and return later get multiple Stripe customers.
 
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	// Create a user without billing
@@ -878,7 +879,7 @@ func TestBillingCancelCreatesNoVMState(t *testing.T) {
 	//
 	// This test verifies no boxes are created during this flow.
 
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	// Create a user without billing
@@ -1008,7 +1009,7 @@ func TestBillingCancelCreatesNoVMState(t *testing.T) {
 func TestNewUserBillingFirstFlow(t *testing.T) {
 	// Test the new billing-first flow for new users:
 	// /auth with new email -> redirect to /billing/update with token -> Stripe
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	// Enable billing checks for this test (disabled by default in test env)
 	server.env.SkipBilling = false
 
@@ -1084,7 +1085,7 @@ func TestNewUserBillingFirstFlow(t *testing.T) {
 
 func TestNewUserBillingCancelReturnsToAuth(t *testing.T) {
 	// Test that canceling Stripe checkout redirects back to /auth with email preserved
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	email := "cancel-billing@example.com"
@@ -1124,7 +1125,7 @@ func TestNewUserBillingCancelReturnsToAuth(t *testing.T) {
 
 func TestExistingUserAuthUnchanged(t *testing.T) {
 	// Test that existing users still go through the normal email verification flow
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	// Create an existing user first
@@ -1167,7 +1168,7 @@ func TestExistingUserAuthUnchanged(t *testing.T) {
 func TestNewUserWithInviteCodeSkipsBilling(t *testing.T) {
 	// Test that new users with a valid invite code skip the Stripe billing flow.
 	// The invite code grants a billing exemption, so no payment is required.
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	inviteCode := "SKIPBILLING123"
@@ -1231,7 +1232,7 @@ func TestLoginWithExeSkipsBilling(t *testing.T) {
 	// are NOT redirected to the Stripe billing flow.
 	// These users are just authenticating to access someone else's app, not
 	// signing up to use exe.dev resources directly.
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	email := "login-with-exe-user@example.com"
@@ -1267,7 +1268,7 @@ func TestLoginWithExeSkipsBilling(t *testing.T) {
 
 func TestBillingPortal_Unauthenticated_RedirectsToAuth(t *testing.T) {
 	// Test that unauthenticated users are redirected to /auth
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 
 	// Visit /billing/update without auth cookie
 	req := httptest.NewRequest("GET", "/billing/update", nil)
@@ -1290,7 +1291,7 @@ func TestBillingPortal_Unauthenticated_RedirectsToAuth(t *testing.T) {
 
 func TestBillingPortal_NoBillingAccount_Returns404(t *testing.T) {
 	// Test that users without a billing account get redirected (to /new in test mode due to SkipBilling)
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 
 	// Create a user without any billing account
 	email := "no-billing-account@example.com"
@@ -1324,7 +1325,7 @@ func TestBillingPortal_NoBillingAccount_Returns404(t *testing.T) {
 
 func TestBillingPortal_PendingAccount_RedirectsToSubscribe(t *testing.T) {
 	// Test that users with a pending (incomplete checkout) account get redirected (to /new in test mode)
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 
 	// Create a user with a pending billing account
 	email := "pending-account@example.com"
@@ -1371,7 +1372,7 @@ func TestBillingPortal_ActiveAccount_RedirectsToStripe(t *testing.T) {
 	// Test that users with an active billing account are redirected to Stripe portal
 	// Note: This test requires a Stripe API key with billing portal permissions.
 	// With the test API key, this may return 500 due to missing permissions.
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 
 	// Create a user with an active billing account
 	email := "active-account@example.com"
@@ -1427,7 +1428,7 @@ func TestBillingPortal_ActiveAccount_RedirectsToStripe(t *testing.T) {
 
 func TestUserProfile_ShowsBillingSection_ActiveAccount(t *testing.T) {
 	// Test that the user profile page shows billing info for users with active billing
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 
 	// Create a user with an active billing account
 	email := "profile-billing@example.com"
@@ -1484,7 +1485,7 @@ func TestUserWithMultipleAccounts_OnlyOneActive(t *testing.T) {
 	// (created from multiple checkout attempts) has active billing on one
 	// account but the query non-deterministically returns a different account.
 	// The fix: GetUserBillingStatus should check if ANY account has active billing.
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	// Create a user
@@ -1581,7 +1582,7 @@ func TestUserWithMultipleAccounts_OnlyOneActive(t *testing.T) {
 func TestUserWithMultipleAccounts_OneActiveOneCanceled(t *testing.T) {
 	// Test that if ANY account is active, the user is considered active,
 	// even if another account is canceled.
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	// Create a user
@@ -1672,7 +1673,7 @@ func TestUserWithMultipleAccounts_OneActiveOneCanceled(t *testing.T) {
 func TestCanceledUserCannotCreateVM(t *testing.T) {
 	// Test that users with canceled subscriptions cannot create VMs,
 	// even if they have exemptions (legacy, free tier, trial).
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	t.Run("CanceledLegacyUser", func(t *testing.T) {
@@ -1999,7 +2000,7 @@ func TestBillingUpdateLongPromptSucceeds(t *testing.T) {
 	// Reproduce the billing-session-failed / checkout-url-too-long error:
 	// Stripe rejects success_url over 5000 characters. Long VM prompts
 	// were encoded directly into the success_url, causing the limit to be exceeded.
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	email := "long-prompt@example.com"
@@ -2044,7 +2045,7 @@ func TestBillingUpdateLongPromptSucceeds(t *testing.T) {
 func TestBillingSuccessWithLongPromptCreatesVM(t *testing.T) {
 	// End-to-end test: a long prompt stored via checkout_params is retrieved
 	// on billing success and used to create a VM.
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	email := "long-prompt-e2e@example.com"
@@ -2124,7 +2125,7 @@ func TestBillingCancelRestoresLongPrompt(t *testing.T) {
 	// When a user cancels Stripe checkout, they are redirected to /new?cp=<token>.
 	// The cancel handler should restore VM params from checkout_params so the form
 	// is pre-filled, and the token should survive (not be deleted) so the user can retry.
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
 	email := "cancel-prompt@example.com"
@@ -2224,6 +2225,18 @@ func createUserWithAccount(t *testing.T, server *Server, email, billingID string
 	if err != nil {
 		t.Fatalf("Failed to activate account: %v", err)
 	}
+
+	// Credits checkout uses the Stripe customer ID from accounts.id.
+	// Ensure that customer exists in Stripe for tests using recorded Stripe APIs.
+	_, err = server.billing.Subscribe(t.Context(), billingID, &billing.SubscribeParams{
+		Email:      email,
+		SuccessURL: "https://example.com/success",
+		CancelURL:  "https://example.com/cancel",
+	})
+	if err != nil {
+		t.Fatalf("Failed to upsert Stripe customer: %v", err)
+	}
+
 	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
 	if err != nil {
 		t.Fatalf("Failed to create auth cookie: %v", err)
@@ -2232,7 +2245,7 @@ func createUserWithAccount(t *testing.T, server *Server, email, billingID string
 }
 
 func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	_, cookieValue := createUserWithAccount(t, server, "credits-profile@example.com", "exe_profile_credits")
 
 	req := httptest.NewRequest("GET", "/user", nil)
@@ -2257,7 +2270,7 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 }
 
 func TestCreditPurchase_BuyRedirectsToStripe(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	_, cookieValue := createUserWithAccount(t, server, "credits-buy@example.com", "exe_buy_credits")
 
 	form := url.Values{}
@@ -2279,7 +2292,7 @@ func TestCreditPurchase_BuyRedirectsToStripe(t *testing.T) {
 }
 
 func TestCreditPurchase_BuyRequiresActiveBilling(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	user, cookieValue := createUserWithAccount(t, server, "credits-renew@example.com", "exe_renew_credits")
 
 	_, err := withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
@@ -2314,7 +2327,7 @@ func TestCreditPurchase_BuyRequiresActiveBilling(t *testing.T) {
 }
 
 func TestCreditPurchase_BuyInvalidAmount(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	_, cookieValue := createUserWithAccount(t, server, "credits-invalid@example.com", "exe_invalid_credits")
 
 	// Test with missing amount
@@ -2345,7 +2358,7 @@ func TestCreditPurchase_BuyInvalidAmount(t *testing.T) {
 }
 
 func TestCreditPurchase_BuyRequiresAuth(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 
 	form := url.Values{}
 	form.Add("dollars", "123")
@@ -2365,7 +2378,7 @@ func TestCreditPurchase_BuyRequiresAuth(t *testing.T) {
 }
 
 func TestCreditPurchase_BuyRequiresPost(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	_, cookieValue := createUserWithAccount(t, server, "credits-get@example.com", "exe_get_credits")
 
 	req := httptest.NewRequest("GET", "/credits/buy", nil)
@@ -2380,7 +2393,7 @@ func TestCreditPurchase_BuyRequiresPost(t *testing.T) {
 }
 
 func TestCreditPurchase_SuccessSyncsAndRedirects(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	_, cookieValue := createUserWithAccount(t, server, "credits-success@example.com", "exe_success_credits")
 
 	req := httptest.NewRequest("GET", "/credits/success", nil)
@@ -2399,7 +2412,7 @@ func TestCreditPurchase_SuccessSyncsAndRedirects(t *testing.T) {
 }
 
 func TestCreditPurchase_SuccessRequiresAuth(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 
 	req := httptest.NewRequest("GET", "/credits/success", nil)
 	req.Host = server.env.WebHost
@@ -2412,7 +2425,7 @@ func TestCreditPurchase_SuccessRequiresAuth(t *testing.T) {
 }
 
 func TestCreditPurchase_BalanceUpdatesAfterSync(t *testing.T) {
-	server := newTestServer(t)
+	server := newBillingTestServer(t)
 	user, cookieValue := createUserWithAccount(t, server, "credits-balance@example.com", "exe_balance_credits")
 
 	// Manually insert a credit ledger entry to simulate a completed purchase

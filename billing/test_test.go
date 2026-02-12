@@ -67,11 +67,11 @@ func newTestManager(t *testing.T) *Manager {
 	})
 	backends := stripe.NewBackendsWithConfig(&stripe.BackendConfig{
 		HTTPClient:    rr.Client(),
-		LeveledLogger: &stripeErrorLogger{t: t},
+		LeveledLogger: stripetest.LeveledLogger(t),
 	})
 	m := &Manager{
 		DB:     newTestDB(t),
-		APIKey: TestAPIKey,
+		Logger: tslog.Slogger(t),
 		Client: stripe.NewClient(TestAPIKey,
 			stripe.WithBackends(backends),
 		),
@@ -82,35 +82,6 @@ func newTestManager(t *testing.T) *Manager {
 	}
 
 	return m
-}
-
-type stripeErrorLogger struct {
-	t *testing.T
-}
-
-func (l *stripeErrorLogger) logf(format string, args ...any) {
-	l.t.Helper()
-	fmt.Fprintf(l.t.Output(), format+"\n", args...)
-}
-
-func (l *stripeErrorLogger) Debugf(format string, args ...any) {
-	l.t.Helper()
-	l.logf("[DEBUG] "+format, args...)
-}
-
-func (l *stripeErrorLogger) Errorf(format string, args ...any) {
-	l.t.Helper()
-	l.logf("[ERROR] "+format, args...)
-}
-
-func (l *stripeErrorLogger) Infof(format string, args ...any) {
-	l.t.Helper()
-	l.logf("[INFO] "+format, args...)
-}
-
-func (l *stripeErrorLogger) Warnf(format string, args ...any) {
-	l.t.Helper()
-	l.logf("[WARN] "+format, args...)
 }
 
 type testClock struct {

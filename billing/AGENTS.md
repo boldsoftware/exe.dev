@@ -1,0 +1,9 @@
+- `billing/` MUST use hand-written SQL in `const q = ...` blocks colocated with the method that uses them.
+- SQL execution in `billing.Manager` MUST go through `m.exec(ctx, q, args...)` or `m.query(ctx, q, args...)`; do not introduce parallel DB helper stacks.
+- SQL arguments MUST use named parameters (`@accountID`, `@amount`, etc.) and `sql.Named(...)` at callsites for readability and auditability.
+- DB writes MUST be idempotent when syncing external Stripe state (`INSERT OR IGNORE`, unique keys, deterministic identifiers).
+- Errors from DB and Stripe calls MUST be wrapped with operation context (`fmt.Errorf("insert credit ledger entry: %w", err)` style).
+- Stripe request IDs MUST be logged when available for failed or significant external calls.
+- Keep business logic in Go and SQL focused on persistence; do not move orchestration logic into SQL.
+- Tests for billing DB behavior MUST exercise real query paths (no stubs for core query behavior) and validate idempotency/replay behavior.
+- Any proposed `sqlc` usage in `billing/` is out of scope by default and requires explicit human approval.

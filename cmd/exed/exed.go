@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/billing"
 	"exe.dev/execore"
 	"exe.dev/logging"
 	"exe.dev/stage"
@@ -208,10 +209,6 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
-	if env.StripeAPIKey == "" {
-		return fmt.Errorf("STRIPE_SECRET_KEY environment variable is required")
-	}
-
 	server, err := execore.NewServer(execore.ServerConfig{
 		Logger:             slog.Default(),
 		HTTPAddr:           *httpAddr,
@@ -225,6 +222,8 @@ func run() error {
 		GHWhoAmIPath:       *ghWhoAmIPath,
 		ExeletAddresses:    exeletAddrs,
 		Env:                env,
+		Billing:            &billing.Manager{},
+		DisableBillingPoll: false,
 		MetricsRegistry:    metricsRegistry,
 		LMTPSocketPath:     *lmtpSocket,
 	})

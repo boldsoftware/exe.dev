@@ -11,7 +11,6 @@ import (
 	"iter"
 	"log/slog"
 	"os"
-	"slices"
 	"sync"
 	"time"
 
@@ -68,19 +67,9 @@ var managedPrices = []managedPrice{
 
 // Manager handles billing operations.
 type Manager struct {
-	// APIKey specifies the Stripe API key to use for requests.
-	// If empty, it will use any of the following in order of precedence:
-	//
-	//   1. The STRIPE_SECRET_KEY environment variable
-	//   2. The sandboxAPIKey
-	APIKey string
-
-	// StripeURL is the base URL for Stripe API requests.
-	// If empty, the default Stripe API URL is used.
-	StripeURL string
-
 	// Client is the Stripe client to use for requests.
-	// If nil, a new client is created using APIKey and StripeURL.
+	// If nil, a new client is created using the STRIPE_SECRET_KEY
+	// environment variable and Stripe's default API URL.
 	// This field is primarily for testing.
 	Client *stripe.Client
 
@@ -154,15 +143,7 @@ func (m *Manager) client() *stripe.Client {
 	if m.Client != nil {
 		return m.Client
 	}
-	var opts []stripe.ClientOption
-	if m.StripeURL != "" {
-		backends := stripe.NewBackendsWithConfig(&stripe.BackendConfig{
-			URL: &m.StripeURL,
-		})
-		opts = append(opts, stripe.WithBackends(backends))
-	}
-	apiKey := cmp.Or(m.APIKey, stripeKey)
-	return stripe.NewClient(apiKey, opts...)
+	return stripe.NewClient(stripeKey)
 }
 
 // InstallPrices creates the Stripe products and prices used by billing if they
@@ -281,31 +262,26 @@ func (m *Manager) upsertCustomer(ctx context.Context, billingID, email string) e
 
 	customer, err := c.V1Customers.Create(ctx, params)
 
-	var requestID string
-	if err != nil {
-		if stripeErr, ok := errorz.AsType[*stripe.Error](err); ok && stripeErr.LastResponse != nil {
-			requestID = stripeErr.LastResponse.RequestID
-		}
-	} else if customer.LastResponse != nil {
-		requestID = customer.LastResponse.RequestID
-	}
-
 	if isExists(err) {
 		m.slog().InfoContext(ctx, "customer already exists",
-			"stripe_request_id", requestID,
+			withRequestID(err),
 			"billing_id", billingID,
 		)
 		return nil
 	}
 	if err != nil {
 		m.slog().ErrorContext(ctx, "failed to create customer",
-			"stripe_request_id", requestID,
+			withRequestID(err),
 			"billing_id", billingID,
 			"error", err,
 		)
 		return err
 	}
 
+	var requestID string
+	if customer.LastResponse != nil {
+		requestID = customer.LastResponse.RequestID
+	}
 	m.slog().InfoContext(ctx, "customer created",
 		"stripe_request_id", requestID,
 		"billing_id", billingID,
@@ -322,6 +298,11 @@ func isExists(err error) bool {
 func isNotExists(err error) bool {
 	stripeErr, ok := errorz.AsType[*stripe.Error](err)
 	return ok && stripeErr.Code == stripe.ErrorCodeResourceMissing
+}
+
+func isRateLimited(err error) bool {
+	stripeErr, ok := errorz.AsType[*stripe.Error](err)
+	return ok && stripeErr.HTTPStatusCode == 429
 }
 
 // Subscribe generates a payment link for subscribing an account to a plan.
@@ -402,12 +383,8 @@ func (m *Manager) hasActiveSubscription(ctx context.Context, c *stripe.Client, c
 	}
 	for sub, err := range c.V1Subscriptions.List(ctx, params) {
 		if err != nil {
-			var requestID string
-			if stripeErr, ok := errorz.AsType[*stripe.Error](err); ok && stripeErr.LastResponse != nil {
-				requestID = stripeErr.LastResponse.RequestID
-			}
 			m.slog().ErrorContext(ctx, "failed to list subscriptions",
-				"stripe_request_id", requestID,
+				withRequestID(err),
 				"customer_id", customerID,
 				"error", err,
 			)
@@ -543,146 +520,105 @@ func (m *Manager) openPortal(ctx context.Context, billingID, returnURL string) (
 	return sess.URL, nil
 }
 
-// SubscriptionEvents polls the Stripe Events API for subscription changes.
-// Events are yielded in chronological order (sorted by Stripe event created time).
-// The iterator stops when the context is canceled.
-func (m *Manager) SubscriptionEvents(ctx context.Context, since time.Time) iter.Seq[SubscriptionEvent] {
-	return func(yield func(SubscriptionEvent) bool) {
-		c := m.client()
-		t := time.NewTicker(3 * time.Second)
-		defer t.Stop()
-		sinceUnix := since.Unix()
+// SyncSubscriptions runs a single blocking sync of subscription state changes
+// from Stripe into billing_events and returns the next cursor time.
+func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.Time, error) {
+	c := m.client()
+	sinceUnix := since.Unix()
 
-		logErr := func(err error) {
-			stripeErr, _ := errorz.AsType[*stripe.Error](err)
-			var requestID string
-			if stripeErr != nil && stripeErr.LastResponse != nil {
-				requestID = stripeErr.LastResponse.RequestID
-			}
+	params := &stripe.EventListParams{
+		Types: []*string{
+			stripe.String("customer.subscription.created"),
+			stripe.String("customer.subscription.updated"),
+			stripe.String("customer.subscription.deleted"),
+		},
+		CreatedRange: &stripe.RangeQueryParams{
+			GreaterThan: sinceUnix,
+		},
+	}
 
-			if stripeErr != nil && stripeErr.HTTPStatusCode == 429 {
+	const q = `
+		INSERT OR IGNORE INTO billing_events (account_id, event_type, event_at)
+		VALUES (@accountID, @eventType, @eventAt)
+	`
+
+	maxEventAt := sinceUnix
+	for event, err := range c.V1Events.List(ctx, params) {
+		if err != nil {
+			if isRateLimited(err) {
 				m.slog().WarnContext(ctx, "rate limited listing subscription events",
-					"stripe_request_id", requestID,
+					withRequestID(err),
 					"error", err,
 				)
 			} else {
 				m.slog().ErrorContext(ctx, "error listing subscription events",
-					"stripe_request_id", requestID,
+					withRequestID(err),
 					"error", err,
 				)
 			}
+			return since, fmt.Errorf("list subscription events: %w", err)
 		}
 
-		poll := func() (stop bool, err error) {
-			params := &stripe.EventListParams{
-				Types: []*string{
-					stripe.String("customer.subscription.created"),
-					stripe.String("customer.subscription.updated"),
-					stripe.String("customer.subscription.deleted"),
-				},
-				CreatedRange: &stripe.RangeQueryParams{
-					GreaterThan: sinceUnix,
-				},
-			}
-
-			var events []SubscriptionEvent
-			for event, err := range c.V1Events.List(ctx, params) {
-				if err != nil {
-					return false, err
-				}
-
-				// Parse subscription from event data
-				var sub stripe.Subscription
-				if err := json.Unmarshal(event.Data.Raw, &sub); err != nil {
-					continue
-				}
-				if sub.Customer == nil || sub.Customer.ID == "" {
-					continue
-				}
-
-				// Determine event type based on subscription status
-				var eventType string
-				switch event.Type {
-				case "customer.subscription.deleted":
-					eventType = "canceled"
-				case "customer.subscription.created":
-					// Only record created events for active subscriptions
-					// Trialing subscriptions count as active
-					switch sub.Status {
-					case stripe.SubscriptionStatusActive,
-						stripe.SubscriptionStatusTrialing:
-						eventType = "active"
-					default:
-						// Skip non-active created events
-						continue
-					}
-				case "customer.subscription.updated":
-					// Record status changes for updated events
-					switch sub.Status {
-					case stripe.SubscriptionStatusActive,
-						stripe.SubscriptionStatusTrialing:
-						eventType = "active"
-					case stripe.SubscriptionStatusCanceled,
-						stripe.SubscriptionStatusIncomplete,
-						stripe.SubscriptionStatusIncompleteExpired,
-						stripe.SubscriptionStatusUnpaid:
-						eventType = "canceled"
-					case stripe.SubscriptionStatusPastDue:
-						// Past due still has access until it becomes unpaid
-						eventType = "active"
-					default:
-						// Skip unknown statuses
-						continue
-					}
-				default:
-					// Skip unknown event types
-					continue
-				}
-
-				events = append(events, SubscriptionEvent{
-					AccountID: sub.Customer.ID,
-					EventType: eventType,
-					EventAt:   time.Unix(event.Created, 0),
-				})
-			}
-
-			// Sort by EventAt (chronological order)
-			slices.SortFunc(events, func(a, b SubscriptionEvent) int {
-				return a.EventAt.Compare(b.EventAt)
-			})
-
-			var maxEventAt int64
-			for _, e := range events {
-				maxEventAt = max(maxEventAt, e.EventAt.Unix())
-				if !yield(e) {
-					if maxEventAt > sinceUnix {
-						sinceUnix = maxEventAt
-					}
-					return true, nil
-				}
-			}
-			if maxEventAt > sinceUnix {
-				sinceUnix = maxEventAt
-			}
-			return false, nil
+		var sub stripe.Subscription
+		if err := json.Unmarshal(event.Data.Raw, &sub); err != nil {
+			continue
+		}
+		if sub.Customer == nil || sub.Customer.ID == "" {
+			continue
 		}
 
-		// Continue polling on interval
-		for {
-			stop, err := poll()
-			if err != nil && !errors.Is(err, context.Canceled) {
-				logErr(err)
-				return
-			}
-			if stop {
-				return
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-			}
+		eventType, ok := subscriptionEventType(string(event.Type), sub.Status)
+		if !ok {
+			continue
 		}
+
+		eventAt := time.Unix(event.Created, 0)
+		maxEventAt = max(maxEventAt, eventAt.Unix())
+		err := m.exec(ctx, q,
+			sql.Named("accountID", sub.Customer.ID),
+			sql.Named("eventType", eventType),
+			sql.Named("eventAt", sqlite.NormalizeTime(eventAt)),
+		)
+		if err != nil {
+			return since, fmt.Errorf("insert billing event: %w", err)
+		}
+	}
+
+	if maxEventAt == sinceUnix {
+		return since, nil
+	}
+	return time.Unix(maxEventAt, 0).UTC(), nil
+}
+
+func subscriptionEventType(eventType string, status stripe.SubscriptionStatus) (string, bool) {
+	switch eventType {
+	case "customer.subscription.deleted":
+		return "canceled", true
+	case "customer.subscription.created":
+		// Only record created events for active subscriptions.
+		switch status {
+		case stripe.SubscriptionStatusActive, stripe.SubscriptionStatusTrialing:
+			return "active", true
+		default:
+			return "", false
+		}
+	case "customer.subscription.updated":
+		switch status {
+		case stripe.SubscriptionStatusActive, stripe.SubscriptionStatusTrialing:
+			return "active", true
+		case stripe.SubscriptionStatusCanceled,
+			stripe.SubscriptionStatusIncomplete,
+			stripe.SubscriptionStatusIncompleteExpired,
+			stripe.SubscriptionStatusUnpaid:
+			return "canceled", true
+		case stripe.SubscriptionStatusPastDue:
+			// Past due still has access until it becomes unpaid.
+			return "active", true
+		default:
+			return "", false
+		}
+	default:
+		return "", false
 	}
 }
 
