@@ -79,7 +79,7 @@ func (s *Server) handleExecWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create command
-	shellCmd := exec.CommandContext(ctx, "bash", "-c", cmd)
+	shellCmd := exec.CommandContext(ctx, "bash", "--login", "-c", cmd)
 	shellCmd.Dir = cwd
 	shellCmd.Env = append(os.Environ(), "TERM=xterm-256color")
 

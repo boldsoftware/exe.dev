@@ -265,3 +265,67 @@ func TestExecTerminal_Input(t *testing.T) {
 		t.Errorf("Expected output to contain 'test input', got: %q", output.String())
 	}
 }
+
+func TestExecTerminal_LoginShell(t *testing.T) {
+	h := NewTestHarness(t)
+	defer h.cleanup()
+
+	mux := http.NewServeMux()
+	h.server.RegisterRoutes(mux)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	// Test that bash runs as a login shell by checking the login_shell option
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/exec-ws?cmd=shopt+login_shell+%7C+grep+-q+on+%26%26+echo+login"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to dial websocket: %v", err)
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "test done")
+
+	// Send init message
+	initMsg := ExecMessage{Type: "init", Cols: 80, Rows: 24}
+	if err := wsjson.Write(ctx, conn, initMsg); err != nil {
+		t.Fatalf("Failed to write init message: %v", err)
+	}
+
+	// Read messages until connection closes
+	var output strings.Builder
+	var exitCode int = -1
+
+	for {
+		var msg ExecMessage
+		err := wsjson.Read(ctx, conn, &msg)
+		if err != nil {
+			break
+		}
+
+		switch msg.Type {
+		case "output":
+			data, err := base64.StdEncoding.DecodeString(msg.Data)
+			if err == nil {
+				output.Write(data)
+			}
+		case "exit":
+			if msg.Data == "0" {
+				exitCode = 0
+			} else {
+				exitCode = 1
+			}
+		case "error":
+			t.Fatalf("Received error: %s", msg.Data)
+		}
+	}
+
+	if exitCode != 0 {
+		t.Errorf("Expected exit code 0, got %d", exitCode)
+	}
+
+	if !strings.Contains(output.String(), "login") {
+		t.Errorf("Expected bash to run as login shell, got: %q", output.String())
+	}
+}
