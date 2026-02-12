@@ -55,6 +55,9 @@ jobs:
             echo "$HOME/.local/bin" >> $GITHUB_PATH
           fi
 
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
       - name: Extract Slack user ID
         id: slack
         run: |
@@ -71,23 +74,25 @@ jobs:
           ")
           echo "slack_id=$SLACK_ID" >> "$GITHUB_OUTPUT"
 
+      - name: Record pre-Claude state
+        id: before
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Run Claude
         timeout-minutes: 30
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_TOKEN: ${{ github.token }}
-          EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
         run: |
           set -euo pipefail
 
           RUN_ID="${{ inputs.run_id }}"
           BRANCH="${{ inputs.branch }}"
           COMMIT_SUBJECT="${{ inputs.commit_subject }}"
-          SLACK_ID="${{ steps.slack.outputs.slack_id }}"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${RUN_ID}"
 
           PROMPT="$(cat <<PROMPT_EOF
-          A CI run has failed. Your job is to investigate the failure, fix it, and notify the developer.
+          A CI run has failed. Your job is to investigate the failure and fix it.
 
           Failed CI run: $RUN_URL
           Run ID: $RUN_ID
@@ -115,7 +120,7 @@ jobs:
           Run the specific tests that failed to verify your fix works. Do NOT run e1e tests (they require VMs).
           Use: go tool gotestsum --format testname -- -race -run TestName ./package/...
 
-          ## Step 5: Commit and push
+          ## Step 5: Commit
 
           Create a NEW commit (do not amend) with this message format:
             area: fix <description>
@@ -127,31 +132,20 @@ jobs:
 
             Prompt: queue-ralph auto-fix
 
-          Then push:
-            git push origin HEAD:refs/queue-ralph/$BRANCH
-
-          ## Step 6: Notify via Slack
-
-          Post a message to Slack #ntfy:
-            uv run scripts/slack/post_message.py --channel ntfy --message "\$MESSAGE"
-
-          Where \$MESSAGE is:
-            🤖 <@$SLACK_ID> ralph has a proposed fix for "$COMMIT_SUBJECT"
-
-            <the full commit message you wrote>
-
-            To review: git fetch origin refs/queue-ralph/$BRANCH && git log -1 -p FETCH_HEAD
-            To land: git push origin FETCH_HEAD:refs/heads/$BRANCH
-
-          ## If you CANNOT fix the issue
-
-          Still notify via Slack #ntfy with a message like:
-            🤖 <@$SLACK_ID> ralph investigated "$COMMIT_SUBJECT" but could not auto-fix it.
-
-            <explanation of what you found>
-
-            CI run: $RUN_URL
+          Do NOT push or send any notifications; that is handled separately.
           PROMPT_EOF
           )"
 
           claude --dangerously-skip-permissions -p "$PROMPT"
+
+      - name: Push and notify Slack
+        if: always()
+        env:
+          EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
+        run: |
+          python3 bin/ralph-notify.py \
+            "${{ inputs.branch }}" \
+            "${{ inputs.commit_subject }}" \
+            "${{ steps.slack.outputs.slack_id }}" \
+            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.run_id }}" \
+            "${{ steps.before.outputs.sha }}"
