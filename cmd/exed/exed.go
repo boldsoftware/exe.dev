@@ -223,7 +223,6 @@ func run() error {
 		ExeletAddresses:    exeletAddrs,
 		Env:                env,
 		Billing:            &billing.Manager{},
-		DisableBillingPoll: false,
 		MetricsRegistry:    metricsRegistry,
 		LMTPSocketPath:     *lmtpSocket,
 	})

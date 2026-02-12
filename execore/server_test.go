@@ -66,9 +66,8 @@ func newUnstartedBillingServer(t testing.TB) *Server {
 		Billing: &billing.Manager{
 			Client: stripetest.Record(t, cassette),
 		},
-		DisableBillingPoll: true,
-		MetricsRegistry:    registry,
-		LMTPSocketPath:     "",
+		MetricsRegistry: registry,
+		LMTPSocketPath:  "",
 	})
 	if err != nil {
 		t.Fatalf("failed to create billing test server: %v", err)
@@ -201,9 +200,8 @@ func newUnstartedServer(t testing.TB) *Server {
 		Billing: &billing.Manager{
 			Client: newStripeClient(fakeStripe.URL),
 		},
-		DisableBillingPoll: false,
-		MetricsRegistry:    registry,
-		LMTPSocketPath:     "",
+		MetricsRegistry: registry,
+		LMTPSocketPath:  "",
 	})
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)

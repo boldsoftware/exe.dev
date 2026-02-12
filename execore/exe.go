@@ -718,7 +718,6 @@ type ServerConfig struct {
 	ExeletAddresses    []string
 	Env                stage.Env
 	Billing            *billing.Manager // optional billing manager override
-	DisableBillingPoll bool             // disable Stripe subscription poller startup (tests only)
 	MetricsRegistry    *prometheus.Registry
 	LMTPSocketPath     string // path to LMTP Unix socket; empty disables LMTP
 }
@@ -1006,7 +1005,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s.setupExeproxServer()
 
 	// Initialize billing subscription poller to sync subscription events from Stripe.
-	if s.billing != nil && !cfg.DisableBillingPoll {
+	if s.billing != nil && !cfg.Env.SkipBilling {
 		s.subscriptionPoller = StartSubscriptionPoller(s.billing, slog)
 	}
 
