@@ -54,7 +54,9 @@ type ConversationState struct {
 // ConversationWithState combines a conversation with its working state.
 type ConversationWithState struct {
 	generated.Conversation
-	Working bool `json:"working"`
+	Working         bool   `json:"working"`
+	GitRepoRoot     string `json:"git_repo_root,omitempty"`
+	GitWorktreeRoot string `json:"git_worktree_root,omitempty"`
 }
 
 // StreamResponse represents the response format for conversation streaming
@@ -208,9 +210,11 @@ func calculateContextWindowSizeFromMsg(msg *generated.Message) uint64 {
 
 // ConversationListUpdate represents an update to the conversation list
 type ConversationListUpdate struct {
-	Type           string                  `json:"type"` // "update", "delete"
-	Conversation   *generated.Conversation `json:"conversation,omitempty"`
-	ConversationID string                  `json:"conversation_id,omitempty"` // For deletes
+	Type            string                  `json:"type"` // "update", "delete"
+	Conversation    *generated.Conversation `json:"conversation,omitempty"`
+	ConversationID  string                  `json:"conversation_id,omitempty"` // For deletes
+	GitRepoRoot     string                  `json:"git_repo_root,omitempty"`
+	GitWorktreeRoot string                  `json:"git_worktree_root,omitempty"`
 }
 
 // Server manages the HTTP API and active conversations
@@ -280,10 +284,11 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/git/diffs", gzipHandler(http.HandlerFunc(s.handleGitDiffs)))
 	mux.Handle("/api/git/diffs/", gzipHandler(http.HandlerFunc(s.handleGitDiffFiles)))
 	mux.Handle("/api/git/file-diff/", gzipHandler(http.HandlerFunc(s.handleGitFileDiff)))
-	mux.HandleFunc("/api/upload", s.handleUpload)                      // Binary uploads
-	mux.HandleFunc("/api/read", s.handleRead)                          // Serves images
-	mux.Handle("/api/write-file", http.HandlerFunc(s.handleWriteFile)) // Small response
-	mux.HandleFunc("/api/exec-ws", s.handleExecWS)                     // Websocket for shell commands
+	mux.Handle("/api/git/create-worktree", http.HandlerFunc(s.handleGitCreateWorktree)) // Small response
+	mux.HandleFunc("/api/upload", s.handleUpload)                                       // Binary uploads
+	mux.HandleFunc("/api/read", s.handleRead)                                           // Serves images
+	mux.Handle("/api/write-file", http.HandlerFunc(s.handleWriteFile))                  // Small response
+	mux.HandleFunc("/api/exec-ws", s.handleExecWS)                                      // Websocket for shell commands
 
 	// Custom models API
 	mux.Handle("/api/custom-models", http.HandlerFunc(s.handleCustomModels))
@@ -527,6 +532,16 @@ func isGitRepo(dirPath string) bool {
 		}
 	}
 	return false
+}
+
+// gitInfoForCwd returns the git repo root and worktree root for a given cwd.
+// Returns empty strings if not in a git repo.
+func gitInfoForCwd(cwd string) (repoRoot, worktreeRoot string) {
+	root, err := getGitRoot(cwd)
+	if err != nil {
+		return "", ""
+	}
+	return root, getGitWorktreeRoot(root)
 }
 
 // getGitHeadSubject returns the subject line of HEAD commit for a git repository.
@@ -931,6 +946,11 @@ func (s *Server) notifySubscribersNewMessage(ctx context.Context, conversationID
 // conversation streams. This allows clients to receive updates about other conversations
 // while they're subscribed to their current conversation's stream.
 func (s *Server) publishConversationListUpdate(update ConversationListUpdate) {
+	// Populate git info from conversation cwd
+	if update.Conversation != nil && update.Conversation.Cwd != nil {
+		update.GitRepoRoot, update.GitWorktreeRoot = gitInfoForCwd(*update.Conversation.Cwd)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

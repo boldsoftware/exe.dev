@@ -349,3 +349,102 @@ func (s *Server) handleGitFileDiff(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(fileDiff)
 }
+
+// handleGitCreateWorktree creates a new git worktree.
+// The worktree is created as a sibling of the repo directory with name repo-YYYY-MM-DD-N.
+func (s *Server) handleGitCreateWorktree(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Cwd string `json:"cwd"` // current working directory (must be in a git repo)
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.Cwd == "" {
+		http.Error(w, "cwd is required", http.StatusBadRequest)
+		return
+	}
+
+	// Find the repo root (main repo, not worktree)
+	gitRoot, err := getGitRoot(req.Cwd)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "not a git repository"})
+		return
+	}
+
+	// If this is a worktree, use the main repo root
+	mainRoot := gitRoot
+	if root := getGitWorktreeRoot(gitRoot); root != "" {
+		mainRoot = root
+	}
+
+	// Worktrees are siblings of the repo dir: ../reponame-YYYY-MM-DD-N
+	repoName := filepath.Base(mainRoot)
+	parentDir := filepath.Dir(mainRoot)
+	dateStr := time.Now().Format("2006-01-02")
+
+	// Find next available suffix
+	var worktreePath string
+	for i := 1; i <= 100; i++ {
+		var name string
+		if i == 1 {
+			name = repoName + "-" + dateStr
+		} else {
+			name = repoName + "-" + dateStr + "-" + strconv.Itoa(i)
+		}
+		candidate := filepath.Join(parentDir, name)
+		_, err := os.Stat(candidate)
+		if os.IsNotExist(err) {
+			worktreePath = candidate
+			break
+		}
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "failed to check path: " + err.Error()})
+			return
+		}
+	}
+	if worktreePath == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "too many worktrees for today"})
+		return
+	}
+
+	// Fetch origin first (best-effort)
+	fetchCmd := exec.Command("git", "fetch", "origin")
+	fetchCmd.Dir = mainRoot
+	fetchCmd.Run() // ignore errors
+
+	// Determine the branch name from the worktree path
+	branchName := filepath.Base(worktreePath)
+
+	// Create the worktree with a new branch based on origin/main (or HEAD)
+	base := "HEAD"
+	checkCmd := exec.Command("git", "rev-parse", "--verify", "origin/main")
+	checkCmd.Dir = mainRoot
+	if err := checkCmd.Run(); err == nil {
+		base = "origin/main"
+	}
+
+	cmd := exec.Command("git", "worktree", "add", "-b", branchName, worktreePath, base)
+	cmd.Dir = mainRoot
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to create worktree: " + string(output)})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"path": worktreePath})
+}

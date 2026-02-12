@@ -71,6 +71,8 @@ export interface ConversationWithStateForTS {
   parent_conversation_id: string | null;
   model: string | null;
   working: boolean;
+  git_repo_root?: string;
+  git_worktree_root?: string;
 }
 
 export type MessageType = "user" | "agent" | "tool" | "error" | "system" | "gitinfo";

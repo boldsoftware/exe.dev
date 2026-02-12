@@ -653,3 +653,147 @@ func TestSystemPromptUsesCwdFromConversation(t *testing.T) {
 		t.Errorf("system prompt should reference the cwd directory: %s", tmpDir)
 	}
 }
+
+func TestGitInfoForCwd(t *testing.T) {
+	// Create a git repo
+	tmpDir := t.TempDir()
+	runGit := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=Test", "GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test", "GIT_COMMITTER_EMAIL=test@test.com")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v failed: %v\n%s", args, err, out)
+		}
+	}
+	runGit(tmpDir, "init")
+	runGit(tmpDir, "commit", "--allow-empty", "-m", "initial\n\nPrompt: test")
+
+	resolved, _ := filepath.EvalSymlinks(tmpDir)
+
+	t.Run("regular_repo", func(t *testing.T) {
+		repoRoot, worktreeRoot := gitInfoForCwd(tmpDir)
+		if repoRoot != resolved {
+			t.Errorf("expected repo_root=%q, got %q", resolved, repoRoot)
+		}
+		if worktreeRoot != "" {
+			t.Errorf("expected empty worktree_root, got %q", worktreeRoot)
+		}
+	})
+
+	t.Run("not_a_repo", func(t *testing.T) {
+		notRepo := t.TempDir()
+		repoRoot, worktreeRoot := gitInfoForCwd(notRepo)
+		if repoRoot != "" {
+			t.Errorf("expected empty repo_root, got %q", repoRoot)
+		}
+		if worktreeRoot != "" {
+			t.Errorf("expected empty worktree_root, got %q", worktreeRoot)
+		}
+	})
+
+	t.Run("worktree", func(t *testing.T) {
+		worktreePath := filepath.Join(t.TempDir(), "wt")
+		runGit(tmpDir, "worktree", "add", "-b", "test-wt", worktreePath)
+
+		repoRoot, worktreeRoot := gitInfoForCwd(worktreePath)
+		resolvedWt, _ := filepath.EvalSymlinks(worktreePath)
+		if repoRoot != resolvedWt {
+			t.Errorf("expected repo_root=%q, got %q", resolvedWt, repoRoot)
+		}
+		if worktreeRoot != resolved {
+			t.Errorf("expected worktree_root=%q, got %q", resolved, worktreeRoot)
+		}
+	})
+}
+
+func TestGitCreateWorktree(t *testing.T) {
+	h := NewTestHarness(t)
+
+	// Create a git repo
+	tmpDir := t.TempDir()
+	mainRepo := filepath.Join(tmpDir, "myrepo")
+	if err := os.Mkdir(mainRepo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGit := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=Test", "GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test", "GIT_COMMITTER_EMAIL=test@test.com")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v failed: %v\n%s", args, err, out)
+		}
+	}
+	runGit(mainRepo, "init")
+	runGit(mainRepo, "commit", "--allow-empty", "-m", "initial\n\nPrompt: test")
+
+	// Create worktree via API
+	body := strings.NewReader(`{"cwd":"` + mainRepo + `"}`)
+	req := httptest.NewRequest("POST", "/api/git/create-worktree", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.server.handleGitCreateWorktree(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Path == "" {
+		t.Fatal("expected non-empty path")
+	}
+
+	// Verify the worktree was created
+	if _, err := os.Stat(resp.Path); err != nil {
+		t.Fatalf("worktree dir does not exist: %v", err)
+	}
+
+	// Verify it's a sibling of the repo
+	if filepath.Dir(resp.Path) != tmpDir {
+		t.Errorf("worktree should be sibling of repo, got parent %q, expected %q", filepath.Dir(resp.Path), tmpDir)
+	}
+
+	// Verify name format: myrepo-YYYY-MM-DD
+	baseName := filepath.Base(resp.Path)
+	if !strings.HasPrefix(baseName, "myrepo-") {
+		t.Errorf("expected worktree name to start with myrepo-, got %q", baseName)
+	}
+
+	// Verify it's actually a git worktree
+	cmd := exec.Command("git", "rev-parse", "--is-inside-work-tree")
+	cmd.Dir = resp.Path
+	if out, err := cmd.Output(); err != nil || strings.TrimSpace(string(out)) != "true" {
+		t.Errorf("expected worktree to be a git repo")
+	}
+
+	// Create a second worktree - should get -2 suffix
+	body = strings.NewReader(`{"cwd":"` + mainRepo + `"}`)
+	req = httptest.NewRequest("POST", "/api/git/create-worktree", body)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	h.server.handleGitCreateWorktree(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for second worktree, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp2 struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp2); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if !strings.HasSuffix(filepath.Base(resp2.Path), "-2") {
+		t.Errorf("expected second worktree to have -2 suffix, got %q", filepath.Base(resp2.Path))
+	}
+}

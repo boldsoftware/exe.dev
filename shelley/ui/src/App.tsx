@@ -258,18 +258,23 @@ function App() {
           (c) => c.conversation_id === update.conversation!.conversation_id,
         );
 
+        const gitFields = {
+          git_repo_root: update.git_repo_root,
+          git_worktree_root: update.git_worktree_root,
+        };
         if (existingIndex >= 0) {
           // Update existing conversation in place, preserving working state
           // (working state is updated separately via conversation_state)
           const updated = [...prev];
           updated[existingIndex] = {
             ...update.conversation!,
+            ...gitFields,
             working: prev[existingIndex].working,
           };
           return updated;
         } else {
           // Add new conversation at the top (not working by default)
-          return [{ ...update.conversation!, working: false }, ...prev];
+          return [{ ...update.conversation!, ...gitFields, working: false }, ...prev];
         }
       });
     } else if (update.type === "delete" && update.conversation_id) {
@@ -357,6 +362,14 @@ function App() {
     setCurrentConversationId(null);
     setViewedConversation(null);
     // Clear URL when starting new conversation
+    window.history.replaceState({}, "", "/");
+    setDrawerOpen(false);
+  };
+
+  const startNewConversationWithCwd = (cwd: string) => {
+    localStorage.setItem("shelley_selected_cwd", cwd);
+    setCurrentConversationId(null);
+    setViewedConversation(null);
     window.history.replaceState({}, "", "/");
     setDrawerOpen(false);
   };
@@ -554,13 +567,26 @@ function App() {
           isOpen={commandPaletteOpen}
           onClose={() => setCommandPaletteOpen(false)}
           conversations={conversations}
+          currentConversation={currentConversation || null}
           onNewConversation={() => {
             startNewConversation();
+            setCommandPaletteOpen(false);
+          }}
+          onNewConversationWithCwd={(cwd: string) => {
+            startNewConversationWithCwd(cwd);
             setCommandPaletteOpen(false);
           }}
           onSelectConversation={(conversation) => {
             selectConversation(conversation);
             setCommandPaletteOpen(false);
+          }}
+          onArchiveConversation={async (conversationId: string) => {
+            try {
+              await api.archiveConversation(conversationId);
+              handleConversationArchived(conversationId);
+            } catch (err) {
+              console.error("Failed to archive conversation:", err);
+            }
           }}
           onOpenDiffViewer={() => {
             setDiffViewerTrigger((prev) => prev + 1);

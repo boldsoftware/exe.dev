@@ -259,6 +259,19 @@ class ApiService {
     return response.json();
   }
 
+  async createGitWorktree(cwd: string): Promise<{ path?: string; error?: string }> {
+    const response = await fetch(`${this.baseUrl}/git/create-worktree`, {
+      method: "POST",
+      headers: this.postHeaders,
+      body: JSON.stringify({ cwd }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to create worktree: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
   async renameConversation(conversationId: string, slug: string): Promise<Conversation> {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/rename`, {
       method: "POST",

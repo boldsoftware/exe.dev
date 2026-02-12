@@ -146,6 +146,8 @@ export interface ConversationListUpdate {
   type: "update" | "delete";
   conversation?: Conversation;
   conversation_id?: string; // For deletes
+  git_repo_root?: string;
+  git_worktree_root?: string;
 }
 
 // Version check types

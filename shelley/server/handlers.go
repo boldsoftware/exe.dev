@@ -493,12 +493,25 @@ func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
 	workingStates := s.getWorkingConversations()
 
 	// Build response with working state included
+	// Cache git info by cwd to avoid redundant git subprocess calls
+	type gitInfo struct{ repoRoot, worktreeRoot string }
+	gitCache := make(map[string]gitInfo)
 	result := make([]ConversationWithState, len(conversations))
 	for i, conv := range conversations {
-		result[i] = ConversationWithState{
+		cws := ConversationWithState{
 			Conversation: conv,
 			Working:      workingStates[conv.ConversationID],
 		}
+		if conv.Cwd != nil {
+			gi, ok := gitCache[*conv.Cwd]
+			if !ok {
+				gi.repoRoot, gi.worktreeRoot = gitInfoForCwd(*conv.Cwd)
+				gitCache[*conv.Cwd] = gi
+			}
+			cws.GitRepoRoot = gi.repoRoot
+			cws.GitWorktreeRoot = gi.worktreeRoot
+		}
+		result[i] = cws
 	}
 
 	w.Header().Set("Content-Type", "application/json")

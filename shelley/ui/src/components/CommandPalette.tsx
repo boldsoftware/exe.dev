@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { Conversation } from "../types";
+import { ConversationWithState } from "../types";
 import { api } from "../services/api";
 
 interface CommandItem {
@@ -16,9 +16,12 @@ interface CommandItem {
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
-  conversations: Conversation[];
+  conversations: ConversationWithState[];
+  currentConversation: ConversationWithState | null;
   onNewConversation: () => void;
-  onSelectConversation: (conversation: Conversation) => void;
+  onNewConversationWithCwd: (cwd: string) => void;
+  onSelectConversation: (conversation: ConversationWithState) => void;
+  onArchiveConversation: (conversationId: string) => void;
   onOpenDiffViewer: () => void;
   onOpenModelsModal: () => void;
   onOpenNotificationsModal: () => void;
@@ -66,8 +69,11 @@ function CommandPalette({
   isOpen,
   onClose,
   conversations,
+  currentConversation,
   onNewConversation,
+  onNewConversationWithCwd,
   onSelectConversation,
+  onArchiveConversation,
   onOpenDiffViewer,
   onOpenModelsModal,
   onOpenNotificationsModal,
@@ -77,8 +83,9 @@ function CommandPalette({
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [searchResults, setSearchResults] = useState<Conversation[]>([]);
+  const [searchResults, setSearchResults] = useState<ConversationWithState[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isCreatingWorktree, setIsCreatingWorktree] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const searchTimeoutRef = useRef<number | null>(null);
@@ -276,6 +283,92 @@ function CommandPalette({
       keywords: ["notification", "notify", "alert", "discord", "webhook", "browser", "favicon"],
     });
 
+    // Archive current conversation
+    if (currentConversation) {
+      items.push({
+        id: "archive-conversation",
+        type: "action",
+        title: "Archive Conversation",
+        subtitle: "Archive the current conversation",
+        icon: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
+            />
+          </svg>
+        ),
+        action: () => {
+          onArchiveConversation(currentConversation.conversation_id);
+          onClose();
+        },
+        keywords: ["archive", "hide", "remove", "close"],
+      });
+    }
+
+    // New conversation in repo root (only when current cwd is a worktree)
+    if (currentConversation?.git_worktree_root) {
+      items.push({
+        id: "new-in-repo-root",
+        type: "action",
+        title: "New Conversation in Main Repo",
+        subtitle: currentConversation.git_worktree_root,
+        icon: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+            />
+          </svg>
+        ),
+        action: () => {
+          onNewConversationWithCwd(currentConversation.git_worktree_root!);
+          onClose();
+        },
+        keywords: ["new", "repo", "root", "main", "repository", "worktree"],
+      });
+    }
+
+    // New conversation in new worktree
+    if (currentConversation?.git_repo_root && currentConversation?.cwd) {
+      items.push({
+        id: "new-in-worktree",
+        type: "action",
+        title: "New Conversation in New Worktree",
+        subtitle: "Create a new git worktree and start a conversation there",
+        icon: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"
+            />
+          </svg>
+        ),
+        action: async () => {
+          if (isCreatingWorktree) return;
+          setIsCreatingWorktree(true);
+          try {
+            const result = await api.createGitWorktree(currentConversation.cwd!);
+            if (result.path) {
+              onNewConversationWithCwd(result.path);
+              onClose();
+            }
+          } catch (err) {
+            console.error("Failed to create worktree:", err);
+          } finally {
+            setIsCreatingWorktree(false);
+          }
+        },
+        keywords: ["new", "worktree", "branch", "git", "create"],
+      });
+    }
+
     return items;
   }, [
     onNewConversation,
@@ -284,13 +377,17 @@ function CommandPalette({
     onOpenDiffViewer,
     onOpenModelsModal,
     onOpenNotificationsModal,
+    onArchiveConversation,
+    onNewConversationWithCwd,
     onClose,
     hasCwd,
+    currentConversation,
+    isCreatingWorktree,
   ]);
 
   // Convert conversations to command items
   const conversationToItem = useCallback(
-    (conv: Conversation): CommandItem => ({
+    (conv: ConversationWithState): CommandItem => ({
       id: `conv-${conv.conversation_id}`,
       type: "conversation",
       title: conv.slug || conv.conversation_id,
