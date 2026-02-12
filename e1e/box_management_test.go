@@ -434,63 +434,53 @@ func TestVanillaBox(t *testing.T) {
 	// aren't provided, so the gateway will forward requests to the external APIs.
 	//
 	// These tests DO require the external APIs (Anthropic, OpenAI, Fireworks) to be up and reachable.
-	t.Run("gateway_anthropic", func(t *testing.T) {
-		noGolden(t) // Response contains variable request_id
-		// Send a minimal request to Anthropic. Without valid messages, Anthropic will return
-		// an error, but the error response will contain a request_id field proving we reached them.
-		out, err := boxSSHCommand(t, boxName, keyFile, "curl", "--max-time", "30", "-s",
-			"http://169.254.169.254/gateway/llm/anthropic/v1/messages",
-			"-H", "content-type: application/json",
-			"-H", "anthropic-version: 2023-06-01",
-			"-d", `{}`).CombinedOutput()
-		response := string(out)
-		// Anthropic error responses include a request_id field like "request_id": "req_..."
-		// We check for request_id first - if present, we reached Anthropic regardless of curl exit code.
-		if !strings.Contains(response, `"request_id"`) {
-			if err != nil {
-				t.Fatalf("curl to anthropic gateway failed: %v\n%s", err, out)
+	// Test each LLM gateway by sending a curl request via SSH and checking
+	// that the response contains expected substrings, proving we reached the API.
+	for _, tc := range []struct {
+		Provider     string
+		Path         string
+		ExtraHeaders []string
+		WantStrings  []string
+	}{
+		{
+			Provider:     "anthropic",
+			Path:         "anthropic/v1/messages",
+			ExtraHeaders: []string{"anthropic-version: 2023-06-01"},
+			WantStrings:  []string{`"request_id"`},
+		},
+		{
+			Provider:    "openai",
+			Path:        "openai/v1/chat/completions",
+			WantStrings: []string{`"error"`, `"type"`},
+		},
+		{
+			Provider:    "fireworks",
+			Path:        "fireworks/inference/v1/chat/completions",
+			WantStrings: []string{`"error"`},
+		},
+	} {
+		t.Run("gateway_"+tc.Provider, func(t *testing.T) {
+			noGolden(t)
+			args := []string{"curl", "--max-time", "30", "-s",
+				"http://169.254.169.254/gateway/llm/" + tc.Path,
+				"-H", "content-type: application/json",
 			}
-			t.Errorf("expected Anthropic error response with request_id, got: %s", response)
-		}
-	})
-
-	t.Run("gateway_openai", func(t *testing.T) {
-		noGolden(t) // Response may vary
-		// Send a minimal request to OpenAI. The error response proves we reached them.
-		// OpenAI returns errors with "error" object containing "type" and "message".
-		out, err := boxSSHCommand(t, boxName, keyFile, "curl", "--max-time", "30", "-s",
-			"http://169.254.169.254/gateway/llm/openai/v1/chat/completions",
-			"-H", "content-type: application/json",
-			"-d", `{}`).CombinedOutput()
-		response := string(out)
-		// OpenAI error responses include an "error" object with "type" field
-		// We check for the error response first - if present, we reached OpenAI regardless of curl exit code.
-		if !strings.Contains(response, `"error"`) || !strings.Contains(response, `"type"`) {
-			if err != nil {
-				t.Fatalf("curl to openai gateway failed: %v\n%s", err, out)
+			for _, h := range tc.ExtraHeaders {
+				args = append(args, "-H", h)
 			}
-			t.Errorf("expected OpenAI error response with error object, got: %s", response)
-		}
-	})
-
-	t.Run("gateway_fireworks", func(t *testing.T) {
-		noGolden(t) // Response may vary
-		// Send a minimal request to Fireworks. The error response proves we reached them.
-		// Fireworks uses OpenAI-compatible API format.
-		out, err := boxSSHCommand(t, boxName, keyFile, "curl", "--max-time", "30", "-s",
-			"http://169.254.169.254/gateway/llm/fireworks/inference/v1/chat/completions",
-			"-H", "content-type: application/json",
-			"-d", `{}`).CombinedOutput()
-		response := string(out)
-		// Fireworks error responses include an "error" object (OpenAI-compatible)
-		// We check for the error response first - if present, we reached Fireworks regardless of curl exit code.
-		if !strings.Contains(response, `"error"`) {
-			if err != nil {
-				t.Fatalf("curl to fireworks gateway failed: %v\n%s", err, out)
+			args = append(args, "-d", `{}`)
+			out, err := boxSSHCommand(t, boxName, keyFile, args...).CombinedOutput()
+			response := string(out)
+			for _, want := range tc.WantStrings {
+				if !strings.Contains(response, want) {
+					if err != nil {
+						t.Fatalf("curl to %s gateway failed: %v\n%s", tc.Provider, err, out)
+					}
+					t.Errorf("expected %s error response containing %s, got: %s", tc.Provider, want, response)
+				}
 			}
-			t.Errorf("expected Fireworks error response with error object, got: %s", response)
-		}
-	})
+		})
+	}
 
 	t.Run("gateway_ssh_blocked", func(t *testing.T) {
 		// Verify that VMs cannot access their gateway's SSH port or port 80 directly.
