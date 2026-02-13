@@ -5,7 +5,7 @@ author: Philip Zeyliger
 date: 2026-02-13
 tags:
   - shelley
-published: false
+published: true
 ---
 
 <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin: 2em 0; flex-wrap: wrap;">
@@ -38,12 +38,11 @@ agent, on the same VM. I said, and I quote:
 
 > Some slinky URLs have "template" parameters. For example, I want
 > http://slinky.exe.xyz/trace/foo to become
-> https://ui.honeycomb.io/%22%22oh-so-much-quoting-trace:foo%22%22
+> https://ui.honeycomb.io/[%20 %20 so much quoting %20]foo[...]
 > Note how "foo" has to be replaced in that mess of escaping. Create a way to put
-> a placeholder in the link, and reference it like I mention. While you're add
+> a placeholder in the link, and reference it like I mention. While you're add [sic]
 > it, add a link for this one.
 
 And then a few minutes later, Shelley had one-shotted this small feature to Slinky.
 
-You can treat some software like a wiki. You don't like it? Click the edit
-button and change it.
+You can treat some software like a wiki. You don't like it? Click "edit" and change it.
