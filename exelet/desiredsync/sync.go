@@ -26,14 +26,21 @@ const (
 	cgroupSlice = "exelet.slice"
 )
 
+// DeviceResolver resolves a VM ID to its block device's MAJ:MIN string.
+type DeviceResolver interface {
+	// ResolveDevice returns the "MAJ:MIN" string for a VM's block device.
+	ResolveDevice(ctx context.Context, vmID string) (string, error)
+}
+
 // Syncer periodically fetches desired state from exed and reconciles cgroup settings.
 type Syncer struct {
-	log          *slog.Logger
-	exedURL      string // base URL of exed (e.g., "http://exed-02:8080")
-	exeletAddr   string // this exelet's address (e.g., "tcp://host:9080")
-	cgroupRoot   string
-	pollInterval time.Duration
-	httpClient   *http.Client
+	log            *slog.Logger
+	exedURL        string // base URL of exed (e.g., "http://exed-02:8080")
+	exeletAddr     string // this exelet's address (e.g., "tcp://host:9080")
+	cgroupRoot     string
+	pollInterval   time.Duration
+	httpClient     *http.Client
+	deviceResolver DeviceResolver
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
@@ -42,10 +49,11 @@ type Syncer struct {
 
 // Config holds configuration for the desired-state syncer.
 type Config struct {
-	ExedURL      string
-	ExeletAddr   string
-	CgroupRoot   string
-	PollInterval time.Duration
+	ExedURL        string
+	ExeletAddr     string
+	CgroupRoot     string
+	PollInterval   time.Duration
+	DeviceResolver DeviceResolver
 }
 
 // New creates a new desired-state syncer.
@@ -68,11 +76,12 @@ func New(cfg Config, log *slog.Logger) (*Syncer, error) {
 	}
 
 	return &Syncer{
-		log:          log,
-		exedURL:      strings.TrimRight(cfg.ExedURL, "/"),
-		exeletAddr:   cfg.ExeletAddr,
-		cgroupRoot:   cgroupRoot,
-		pollInterval: pollInterval,
+		log:            log,
+		exedURL:        strings.TrimRight(cfg.ExedURL, "/"),
+		exeletAddr:     cfg.ExeletAddr,
+		cgroupRoot:     cgroupRoot,
+		pollInterval:   pollInterval,
+		deviceResolver: cfg.DeviceResolver,
 		httpClient: &http.Client{
 			Timeout: DefaultHTTPTimeout,
 		},
@@ -200,7 +209,11 @@ func (s *Syncer) reconcile(ctx context.Context, desired *desiredstate.DesiredSta
 		}
 
 		for _, cg := range vm.Cgroup {
-			s.reconcileCgroupFile(ctx, vmScopePath, cg.Path, cg.Value, "vm", vm.ID)
+			if desiredstate.HasIOMaxPlaceholder(cg.Path, cg.Value) {
+				s.reconcileIOMax(ctx, vmScopePath, vm.ID, cg.Value)
+			} else {
+				s.reconcileCgroupFile(ctx, vmScopePath, cg.Path, cg.Value, "vm", vm.ID)
+			}
 		}
 	}
 
@@ -303,6 +316,142 @@ func (s *Syncer) reportUnknownVMs(ctx context.Context, groups []desiredstate.Gro
 			}
 		}
 	}
+}
+
+// reconcileIOMax handles io.max.rbps and io.max.wbps virtual settings for a VM.
+// It resolves the VM's block device, builds an io.max line, and writes the io.max file.
+// reconcileIOMax handles an io.max setting with the ~ device placeholder.
+// It resolves ~ to the actual MAJ:MIN, parses the key=value pairs from the
+// placeholder value, and writes the io.max cgroup file.
+func (s *Syncer) reconcileIOMax(ctx context.Context, vmScopePath, vmID, placeholderValue string) {
+	if s.deviceResolver == nil {
+		s.log.WarnContext(ctx, "desired-state sync: skipping io.max (no device resolver)",
+			"vm", vmID)
+		return
+	}
+
+	// Parse "~ rbps=X wbps=Y" into key=value updates.
+	updates := parseIOMaxPlaceholder(placeholderValue)
+	if len(updates) == 0 {
+		return
+	}
+
+	majMin, err := s.deviceResolver.ResolveDevice(ctx, vmID)
+	if err != nil {
+		s.log.WarnContext(ctx, "desired-state sync: failed to resolve device for io.max",
+			"vm", vmID, "error", err)
+		return
+	}
+
+	ioMaxFile := filepath.Join(vmScopePath, "io.max")
+	if err := updateIOMaxLine(ioMaxFile, majMin, updates); err != nil {
+		s.log.WarnContext(ctx, "desired-state sync: failed to update io.max",
+			"path", ioMaxFile, "vm", vmID, "error", err)
+		return
+	}
+
+	s.log.InfoContext(ctx, "desired-state sync: updated io.max",
+		"path", ioMaxFile, "vm", vmID, "device", majMin, "updates", updates)
+}
+
+// parseIOMaxPlaceholder parses "~ rbps=X wbps=Y" into a map of key→value.
+func parseIOMaxPlaceholder(value string) map[string]string {
+	updates := make(map[string]string)
+	for _, field := range strings.Fields(value) {
+		if field == desiredstate.IOMaxDevicePlaceholder {
+			continue
+		}
+		if k, v, ok := strings.Cut(field, "="); ok {
+			updates[k] = v
+		}
+	}
+	return updates
+}
+
+// updateIOMaxLine updates specific keys for a device in io.max,
+// preserving lines for other devices and other keys for this device.
+func updateIOMaxLine(ioMaxFile, deviceMajMin string, updates map[string]string) error {
+	existing, err := os.ReadFile(ioMaxFile)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read io.max: %w", err)
+	}
+
+	var lines []string
+	found := false
+	prefix := deviceMajMin + " "
+
+	for _, line := range strings.Split(string(existing), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, prefix) {
+			merged := mergeIOMaxKeys(line, deviceMajMin, updates)
+			lines = append(lines, merged)
+			found = true
+		} else {
+			lines = append(lines, line)
+		}
+	}
+
+	if !found {
+		lines = append(lines, buildIOMaxLine(deviceMajMin, updates))
+	}
+
+	desired := strings.Join(lines, "\n")
+
+	// Compare with current content to avoid unnecessary writes.
+	currentTrimmed := strings.TrimRight(string(existing), " \t\n\r")
+	if currentTrimmed == desired {
+		return nil
+	}
+
+	return os.WriteFile(ioMaxFile, []byte(desired), 0o644)
+}
+
+// mergeIOMaxKeys parses an existing io.max line and merges in the updates,
+// preserving any keys not being updated.
+func mergeIOMaxKeys(existingLine, deviceMajMin string, updates map[string]string) string {
+	parts := strings.Fields(existingLine)
+	if len(parts) < 1 {
+		return buildIOMaxLine(deviceMajMin, updates)
+	}
+
+	existing := make(map[string]string)
+	for _, part := range parts[1:] {
+		if kv := strings.SplitN(part, "=", 2); len(kv) == 2 {
+			existing[kv[0]] = kv[1]
+		}
+	}
+
+	for k, v := range updates {
+		existing[k] = v
+	}
+
+	return buildIOMaxLine(deviceMajMin, existing)
+}
+
+// buildIOMaxLine constructs an io.max line from device and key=value pairs.
+func buildIOMaxLine(deviceMajMin string, kvs map[string]string) string {
+	var parts []string
+	parts = append(parts, deviceMajMin)
+
+	// Standard key order for consistent output.
+	for _, key := range []string{"rbps", "wbps", "riops", "wiops"} {
+		if val, ok := kvs[key]; ok {
+			parts = append(parts, key+"="+val)
+		}
+	}
+	for key, val := range kvs {
+		switch key {
+		case "rbps", "wbps", "riops", "wiops":
+			continue
+		default:
+			parts = append(parts, key+"="+val)
+		}
+	}
+
+	return strings.Join(parts, " ")
 }
 
 // sanitizeCgroupName matches the resource manager's sanitization.

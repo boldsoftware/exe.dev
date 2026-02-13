@@ -150,3 +150,69 @@ func TestRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestHasIOMaxPlaceholder(t *testing.T) {
+	tests := []struct {
+		path, value string
+		want        bool
+	}{
+		{"io.max", "~ rbps=10485760 wbps=52428800", true},
+		{"io.max", "~ rbps=max wbps=max", true},
+		{"io.max", "~ rbps=1024", true},
+		{"io.max", "8:0 rbps=1024", false}, // real device, not placeholder
+		{"io.max", "", false},              // empty value
+		{"cpu.max", "~ rbps=1024", false},  // wrong path
+		{"io.max", "~", false},             // just tilde, no space+keys
+		{"memory.high", "1073741824", false},
+	}
+	for _, tt := range tests {
+		got := HasIOMaxPlaceholder(tt.path, tt.value)
+		if got != tt.want {
+			t.Errorf("HasIOMaxPlaceholder(%q, %q) = %v, want %v", tt.path, tt.value, got, tt.want)
+		}
+	}
+}
+
+func TestIOMaxPlaceholderRoundTrip(t *testing.T) {
+	// Verify that io.max with ~ placeholder works with Parse/Format/Merge.
+	original := []CgroupSetting{
+		{"cpu.max", "10000 100000"},
+		{"io.max", "~ rbps=10485760 wbps=52428800"},
+	}
+	formatted := FormatOverrides(original)
+	parsed := ParseOverrides(formatted)
+	if len(parsed) != len(original) {
+		t.Fatalf("round-trip failed: len %d != %d", len(parsed), len(original))
+	}
+	for i := range parsed {
+		if parsed[i] != original[i] {
+			t.Errorf("round-trip [%d]: %v != %v", i, parsed[i], original[i])
+		}
+	}
+
+	// Merge: replace io.max, keep cpu.max.
+	updates := []CgroupSetting{
+		{"io.max", "~ rbps=1048576"},
+	}
+	merged := MergeOverrides(original, updates)
+	want := []CgroupSetting{
+		{"cpu.max", "10000 100000"},
+		{"io.max", "~ rbps=1048576"},
+	}
+	if len(merged) != len(want) {
+		t.Fatalf("merge: len %d != %d; got %v", len(merged), len(want), merged)
+	}
+	for i := range merged {
+		if merged[i] != want[i] {
+			t.Errorf("merge [%d]: %v != %v", i, merged[i], want[i])
+		}
+	}
+
+	// Merge: remove io.max.
+	updates = []CgroupSetting{{"io.max", ""}}
+	merged = MergeOverrides(original, updates)
+	want = []CgroupSetting{{"cpu.max", "10000 100000"}}
+	if len(merged) != len(want) {
+		t.Fatalf("remove merge: len %d != %d; got %v", len(merged), len(want), merged)
+	}
+}

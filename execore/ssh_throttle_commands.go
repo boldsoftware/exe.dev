@@ -17,6 +17,9 @@ import (
 func throttleVMFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("throttle-vm", flag.ContinueOnError)
 	fs.String("cpu", "", "CPU limit as fraction of 1 core (e.g. 0.1 = 10% of 1 CPU, 2.5 = 2.5 cores)")
+	fs.String("io", "", "symmetric IO bandwidth limit (e.g. '10M', '1G', '500K', or bytes; 0 or 'clear' to remove)")
+	fs.String("io-read", "", "IO read bandwidth limit (e.g. '10M', '1G', '500K', or bytes)")
+	fs.String("io-write", "", "IO write bandwidth limit (e.g. '10M', '1G', '500K', or bytes)")
 	fs.String("raw", "", "raw cgroup setting as path:value (e.g. 'cpu.max:10000 100000')")
 	fs.Bool("show", false, "show current cgroup overrides")
 	fs.Bool("clear", false, "clear all cgroup overrides")
@@ -26,24 +29,32 @@ func throttleVMFlags() *flag.FlagSet {
 func throttleUserFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("throttle-user", flag.ContinueOnError)
 	fs.String("cpu", "", "CPU limit as fraction of 1 core (e.g. 0.1 = 10% of 1 CPU, 2.5 = 2.5 cores)")
+	fs.String("io", "", "symmetric IO bandwidth limit (e.g. '10M', '1G', '500K', or bytes; 0 or 'clear' to remove)")
+	fs.String("io-read", "", "IO read bandwidth limit (e.g. '10M', '1G', '500K', or bytes)")
+	fs.String("io-write", "", "IO write bandwidth limit (e.g. '10M', '1G', '500K', or bytes)")
 	fs.String("raw", "", "raw cgroup setting as path:value (e.g. 'cpu.max:10000 100000')")
 	fs.Bool("show", false, "show current cgroup overrides")
 	fs.Bool("clear", false, "clear all cgroup overrides")
 	return fs
 }
 
-// parseThrottleFlags extracts cgroup settings from the common --cpu / --raw flags.
+// parseThrottleFlags extracts cgroup settings from the common --cpu / --io / --raw flags.
 // Returns the settings to apply and whether "show" or "clear" was requested.
 func parseThrottleFlags(fs *flag.FlagSet) (settings []desiredstate.CgroupSetting, show, clear bool, err error) {
 	show, _ = strconv.ParseBool(fs.Lookup("show").Value.String())
 	clear, _ = strconv.ParseBool(fs.Lookup("clear").Value.String())
 
 	cpuStr := fs.Lookup("cpu").Value.String()
+	ioStr := fs.Lookup("io").Value.String()
+	ioReadStr := fs.Lookup("io-read").Value.String()
+	ioWriteStr := fs.Lookup("io-write").Value.String()
 	rawStr := fs.Lookup("raw").Value.String()
 
+	hasValues := cpuStr != "" || ioStr != "" || ioReadStr != "" || ioWriteStr != "" || rawStr != ""
+
 	if show || clear {
-		if cpuStr != "" || rawStr != "" {
-			return nil, false, false, fmt.Errorf("--show and --clear cannot be combined with --cpu or --raw")
+		if hasValues {
+			return nil, false, false, fmt.Errorf("--show and --clear cannot be combined with --cpu, --io, --io-read, --io-write, or --raw")
 		}
 		return nil, show, clear, nil
 	}
@@ -69,6 +80,24 @@ func parseThrottleFlags(fs *flag.FlagSet) (settings []desiredstate.CgroupSetting
 		}
 	}
 
+	// Handle --io (symmetric read+write) or --io-read / --io-write (asymmetric)
+	if ioStr != "" {
+		if ioReadStr != "" || ioWriteStr != "" {
+			return nil, false, false, fmt.Errorf("--io cannot be combined with --io-read or --io-write")
+		}
+		ioSetting, parseErr := buildIOMaxSetting(ioStr, ioStr)
+		if parseErr != nil {
+			return nil, false, false, parseErr
+		}
+		settings = append(settings, ioSetting)
+	} else if ioReadStr != "" || ioWriteStr != "" {
+		ioSetting, parseErr := buildIOMaxSetting(ioReadStr, ioWriteStr)
+		if parseErr != nil {
+			return nil, false, false, parseErr
+		}
+		settings = append(settings, ioSetting)
+	}
+
 	if rawStr != "" {
 		path, value, ok := strings.Cut(rawStr, ":")
 		if !ok {
@@ -78,10 +107,93 @@ func parseThrottleFlags(fs *flag.FlagSet) (settings []desiredstate.CgroupSetting
 	}
 
 	if len(settings) == 0 {
-		return nil, false, false, fmt.Errorf("at least one of --cpu, --raw, --show, or --clear is required")
+		return nil, false, false, fmt.Errorf("at least one of --cpu, --io, --io-read, --io-write, --raw, --show, or --clear is required")
 	}
 
 	return settings, false, false, nil
+}
+
+// buildIOMaxSetting builds a single io.max CgroupSetting with the ~ device
+// placeholder. readBW and writeBW are bandwidth strings ("10M", "1G", etc.);
+// empty string means "don't set that direction"; "clear" or "0" means "max".
+//
+// Examples:
+//
+//	buildIOMaxSetting("10M", "10M")   → io.max: ~ rbps=10485760 wbps=10485760
+//	buildIOMaxSetting("50M", "")      → io.max: ~ rbps=52428800
+//	buildIOMaxSetting("clear", "clear") → io.max: ~ rbps=max wbps=max
+func buildIOMaxSetting(readBW, writeBW string) (desiredstate.CgroupSetting, error) {
+	var parts []string
+	parts = append(parts, desiredstate.IOMaxDevicePlaceholder)
+
+	if readBW != "" {
+		val, err := bwToIOMaxVal(readBW)
+		if err != nil {
+			return desiredstate.CgroupSetting{}, fmt.Errorf("invalid --io-read value: %w", err)
+		}
+		parts = append(parts, "rbps="+val)
+	}
+	if writeBW != "" {
+		val, err := bwToIOMaxVal(writeBW)
+		if err != nil {
+			return desiredstate.CgroupSetting{}, fmt.Errorf("invalid --io-write value: %w", err)
+		}
+		parts = append(parts, "wbps="+val)
+	}
+
+	return desiredstate.CgroupSetting{
+		Path:  "io.max",
+		Value: strings.Join(parts, " "),
+	}, nil
+}
+
+// bwToIOMaxVal converts a bandwidth flag value to the io.max value string.
+// "clear" and "0" become "max"; otherwise parses as a bandwidth with K/M/G suffix.
+func bwToIOMaxVal(s string) (string, error) {
+	if s == "clear" || s == "0" {
+		return "max", nil
+	}
+	bytes, err := parseBandwidth(s)
+	if err != nil {
+		return "", err
+	}
+	return strconv.FormatUint(bytes, 10), nil
+}
+
+// parseBandwidth parses a bandwidth string like "10M", "1G", "500K", or plain bytes.
+// Supported suffixes: K/k (1024), M/m (1024^2), G/g (1024^3).
+func parseBandwidth(s string) (uint64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("empty bandwidth value")
+	}
+
+	var multiplier uint64 = 1
+	lastChar := s[len(s)-1]
+
+	switch lastChar {
+	case 'k', 'K':
+		multiplier = 1024
+		s = s[:len(s)-1]
+	case 'm', 'M':
+		multiplier = 1024 * 1024
+		s = s[:len(s)-1]
+	case 'g', 'G':
+		multiplier = 1024 * 1024 * 1024
+		s = s[:len(s)-1]
+	}
+
+	val, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid bandwidth value: %s", s)
+	}
+
+	const maxUint64 = ^uint64(0)
+	if val > maxUint64/multiplier {
+		return 0, fmt.Errorf("bandwidth value too large: %s (would overflow)", s)
+	}
+
+	return val * multiplier, nil
 }
 
 func (ss *SSHServer) handleThrottleVMCommand(ctx context.Context, cc *exemenu.CommandContext) error {
@@ -90,7 +202,7 @@ func (ss *SSHServer) handleThrottleVMCommand(ctx context.Context, cc *exemenu.Co
 	}
 
 	if len(cc.Args) != 1 {
-		return cc.Errorf("usage: throttle-vm <vmname> [--cpu=<fraction>] [--raw=<path:value>] [--show] [--clear]\n\n" +
+		return cc.Errorf("usage: throttle-vm <vmname> [--cpu=<fraction>] [--io=<bw>] [--io-read=<bw>] [--io-write=<bw>] [--raw=<path:value>] [--show] [--clear]\n\n" +
 			"Manage cgroup overrides for a VM. These overrides are published via\n" +
 			"/exelet-desired and applied by the exelet's desired-state sync loop.\n\n" +
 			"--cpu sets cpu.max as a fraction of 1 CPU core:\n" +
@@ -99,6 +211,15 @@ func (ss *SSHServer) handleThrottleVMCommand(ctx context.Context, cc *exemenu.Co
 			"  --cpu=2.5    2.5 cores\n" +
 			"  --cpu=0      clear the cpu.max override\n" +
 			"  --cpu=clear  clear the cpu.max override\n\n" +
+			"--io sets symmetric read+write IO bandwidth limit:\n" +
+			"  --io=10M     10 MB/s read and write\n" +
+			"  --io=1G      1 GB/s read and write\n" +
+			"  --io=500K    500 KB/s read and write\n" +
+			"  --io=0       clear IO overrides\n" +
+			"  --io=clear   clear IO overrides\n\n" +
+			"--io-read / --io-write set asymmetric IO bandwidth limits:\n" +
+			"  --io-read=50M   50 MB/s read\n" +
+			"  --io-write=1G   1 GB/s write\n\n" +
 			"--raw sets an arbitrary cgroup file (empty value clears it):\n" +
 			"  --raw='cpu.max:10000 100000'\n" +
 			"  --raw='memory.high:1073741824'\n" +
@@ -179,7 +300,7 @@ func (ss *SSHServer) handleThrottleUserCommand(ctx context.Context, cc *exemenu.
 	}
 
 	if len(cc.Args) != 1 {
-		return cc.Errorf("usage: throttle-user <email-or-userid> [--cpu=<fraction>] [--raw=<path:value>] [--show] [--clear]\n\n" +
+		return cc.Errorf("usage: throttle-user <email-or-userid> [--cpu=<fraction>] [--io=<bw>] [--io-read=<bw>] [--io-write=<bw>] [--raw=<path:value>] [--show] [--clear]\n\n" +
 			"Manage cgroup overrides for a user (applies to all their VMs at the group level).\n" +
 			"These overrides are published via /exelet-desired and applied by exelet.\n\n" +
 			"--cpu sets cpu.max as a fraction of 1 CPU core:\n" +
@@ -187,6 +308,14 @@ func (ss *SSHServer) handleThrottleUserCommand(ctx context.Context, cc *exemenu.
 			"  --cpu=1.0    1 full core\n" +
 			"  --cpu=0      clear the cpu.max override\n" +
 			"  --cpu=clear  clear the cpu.max override\n\n" +
+			"--io sets symmetric read+write IO bandwidth limit:\n" +
+			"  --io=10M     10 MB/s read and write\n" +
+			"  --io=1G      1 GB/s read and write\n" +
+			"  --io=0       clear IO overrides\n" +
+			"  --io=clear   clear IO overrides\n\n" +
+			"--io-read / --io-write set asymmetric IO bandwidth limits:\n" +
+			"  --io-read=50M   50 MB/s read\n" +
+			"  --io-write=1G   1 GB/s write\n\n" +
 			"--raw sets an arbitrary cgroup file (empty value clears it):\n" +
 			"  --raw='cpu.max:10000 100000'\n" +
 			"  --raw='cpu.max:'              (clears the override)\n\n" +

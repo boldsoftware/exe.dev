@@ -591,3 +591,87 @@ func TestExeletDesiredGroupDefaultUsesMaxCPUs(t *testing.T) {
 		t.Fatalf("expected 2 VMs, got %d", len(ds.VMs))
 	}
 }
+
+func TestExeletDesiredWithIOMaxOverrides(t *testing.T) {
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	addr := "tcp://fake-host:9080"
+	server.exeletClients[addr] = &exeletClient{addr: addr}
+
+	userID := createTestUser(t, server, "iooverride@example.com")
+
+	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
+		userID:        userID,
+		ctrhost:       addr,
+		name:          "iobox",
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	containerID := "container-io-123"
+	err = server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+			ID:          boxID,
+			ContainerID: &containerID,
+			Status:      "running",
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set IO bandwidth override with ~ device placeholder.
+	overrides := "io.max:~ rbps=10485760 wbps=52428800"
+	err = server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.SetBoxCgroupOverrides(ctx, exedb.SetBoxCgroupOverridesParams{
+			CgroupOverrides: &overrides,
+			ID:              boxID,
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest("GET", "/exelet-desired?host="+addr, nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	w := httptest.NewRecorder()
+
+	server.handleExeletDesired(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var ds desiredstate.DesiredState
+	if err := json.NewDecoder(w.Body).Decode(&ds); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(ds.VMs) != 1 {
+		t.Fatalf("expected 1 VM, got %d", len(ds.VMs))
+	}
+
+	vm := ds.VMs[0]
+	// Should have cpu.max (from allocated_cpus) + io.max (with ~ placeholder) = 2 settings.
+	if len(vm.Cgroup) != 2 {
+		t.Fatalf("expected 2 cgroup settings, got %d: %v", len(vm.Cgroup), vm.Cgroup)
+	}
+
+	cgMap := make(map[string]string)
+	for _, cg := range vm.Cgroup {
+		cgMap[cg.Path] = cg.Value
+	}
+
+	if cgMap["cpu.max"] != "200000 100000" {
+		t.Errorf("cpu.max = %q, want %q", cgMap["cpu.max"], "200000 100000")
+	}
+	if cgMap["io.max"] != "~ rbps=10485760 wbps=52428800" {
+		t.Errorf("io.max = %q, want %q", cgMap["io.max"], "~ rbps=10485760 wbps=52428800")
+	}
+}

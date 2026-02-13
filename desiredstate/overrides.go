@@ -103,3 +103,17 @@ func CPUFractionToMax(fraction float64) string {
 	}
 	return fmt.Sprintf("%d %d", quota, period)
 }
+
+// IOMaxDevicePlaceholder is used in io.max values to represent the device
+// MAJ:MIN, which is only known on the exelet host. The desired-state syncer
+// replaces "~" with the actual device numbers when writing to the cgroup.
+//
+// Example DB value: "~ rbps=10485760 wbps=52428800"
+// Written to cgroup: "8:0 rbps=10485760 wbps=52428800"
+const IOMaxDevicePlaceholder = "~"
+
+// HasIOMaxPlaceholder returns true if a cgroup setting for io.max uses the
+// device placeholder and needs resolution by the syncer.
+func HasIOMaxPlaceholder(path, value string) bool {
+	return path == "io.max" && strings.HasPrefix(value, IOMaxDevicePlaceholder+" ")
+}

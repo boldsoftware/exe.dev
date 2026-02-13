@@ -3,6 +3,7 @@ package desiredsync
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -379,5 +380,289 @@ func TestRefresh(t *testing.T) {
 	syncer.Refresh(context.Background())
 	if calls != 2 {
 		t.Errorf("expected 2 calls, got %d", calls)
+	}
+}
+
+// mockDeviceResolver is a test implementation of DeviceResolver.
+type mockDeviceResolver struct {
+	devices map[string]string // vmID -> "MAJ:MIN"
+	err     error
+}
+
+func (m *mockDeviceResolver) ResolveDevice(_ context.Context, vmID string) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
+	if majMin, ok := m.devices[vmID]; ok {
+		return majMin, nil
+	}
+	return "", fmt.Errorf("device not found for VM %s", vmID)
+}
+
+func TestReconcileIOMaxPlaceholder(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cgRoot := tmpDir
+	slicePath := filepath.Join(cgRoot, cgroupSlice, "user1.slice", "vm-vm001.scope")
+	if err := os.MkdirAll(slicePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-create io.max file (cgroup fs always has it)
+	os.WriteFile(filepath.Join(slicePath, "io.max"), []byte(""), 0o644)
+	// Pre-create cpu.max
+	os.WriteFile(filepath.Join(slicePath, "cpu.max"), []byte("max 100000\n"), 0o644)
+
+	resolver := &mockDeviceResolver{
+		devices: map[string]string{"vm001": "8:0"},
+	}
+
+	syncer := &Syncer{
+		log:            slog.Default(),
+		cgroupRoot:     cgRoot,
+		deviceResolver: resolver,
+	}
+
+	ds := &desiredstate.DesiredState{
+		Groups: []desiredstate.Group{
+			{Name: "user1", Cgroup: []desiredstate.CgroupSetting{}},
+		},
+		VMs: []desiredstate.VM{
+			{
+				ID:    "vm001",
+				Group: "user1",
+				State: "running",
+				Cgroup: []desiredstate.CgroupSetting{
+					{Path: "cpu.max", Value: "50000 100000"},
+					{Path: "io.max", Value: "~ rbps=10485760 wbps=52428800"},
+				},
+			},
+		},
+	}
+
+	syncer.reconcile(context.Background(), ds)
+
+	// cpu.max should have been updated
+	data, _ := os.ReadFile(filepath.Join(slicePath, "cpu.max"))
+	if string(data) != "50000 100000" {
+		t.Errorf("cpu.max = %q, want %q", string(data), "50000 100000")
+	}
+
+	// io.max should have the resolved device line
+	data, _ = os.ReadFile(filepath.Join(slicePath, "io.max"))
+	ioMaxContent := string(data)
+	if !strings.Contains(ioMaxContent, "8:0") {
+		t.Errorf("io.max should contain device 8:0, got %q", ioMaxContent)
+	}
+	if !strings.Contains(ioMaxContent, "rbps=10485760") {
+		t.Errorf("io.max should contain rbps=10485760, got %q", ioMaxContent)
+	}
+	if !strings.Contains(ioMaxContent, "wbps=52428800") {
+		t.Errorf("io.max should contain wbps=52428800, got %q", ioMaxContent)
+	}
+}
+
+func TestReconcileIOMaxNoDeviceResolver(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cgRoot := tmpDir
+	slicePath := filepath.Join(cgRoot, cgroupSlice, "user1.slice", "vm-vm001.scope")
+	if err := os.MkdirAll(slicePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	os.WriteFile(filepath.Join(slicePath, "io.max"), []byte(""), 0o644)
+
+	// Capture log output to verify warning.
+	var logBuf strings.Builder
+	logHandler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelWarn})
+	logger := slog.New(logHandler)
+
+	syncer := &Syncer{
+		log:            logger,
+		cgroupRoot:     cgRoot,
+		deviceResolver: nil, // no resolver
+	}
+
+	ds := &desiredstate.DesiredState{
+		Groups: []desiredstate.Group{
+			{Name: "user1", Cgroup: []desiredstate.CgroupSetting{}},
+		},
+		VMs: []desiredstate.VM{
+			{
+				ID:    "vm001",
+				Group: "user1",
+				State: "running",
+				Cgroup: []desiredstate.CgroupSetting{
+					{Path: "io.max", Value: "~ rbps=10485760"},
+				},
+			},
+		},
+	}
+
+	syncer.reconcile(context.Background(), ds)
+
+	// io.max should NOT have been modified.
+	data, _ := os.ReadFile(filepath.Join(slicePath, "io.max"))
+	if string(data) != "" {
+		t.Errorf("io.max should be empty (resolver is nil), got %q", string(data))
+	}
+
+	// Should have logged a warning.
+	if !strings.Contains(logBuf.String(), "no device resolver") {
+		t.Errorf("expected warning about no device resolver, got: %s", logBuf.String())
+	}
+}
+
+func TestReconcileIOMaxPreservesOtherDevices(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cgRoot := tmpDir
+	slicePath := filepath.Join(cgRoot, cgroupSlice, "user1.slice", "vm-vm001.scope")
+	if err := os.MkdirAll(slicePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-populate io.max with a line for a different device.
+	os.WriteFile(filepath.Join(slicePath, "io.max"), []byte("252:0 rbps=max wbps=max\n"), 0o644)
+
+	resolver := &mockDeviceResolver{
+		devices: map[string]string{"vm001": "8:0"},
+	}
+
+	syncer := &Syncer{
+		log:            slog.Default(),
+		cgroupRoot:     cgRoot,
+		deviceResolver: resolver,
+	}
+
+	ds := &desiredstate.DesiredState{
+		Groups: []desiredstate.Group{
+			{Name: "user1", Cgroup: []desiredstate.CgroupSetting{}},
+		},
+		VMs: []desiredstate.VM{
+			{
+				ID:    "vm001",
+				Group: "user1",
+				State: "running",
+				Cgroup: []desiredstate.CgroupSetting{
+					{Path: "io.max", Value: "~ rbps=5242880"},
+				},
+			},
+		},
+	}
+
+	syncer.reconcile(context.Background(), ds)
+
+	data, _ := os.ReadFile(filepath.Join(slicePath, "io.max"))
+	ioMaxContent := string(data)
+
+	// Should preserve the existing device line.
+	if !strings.Contains(ioMaxContent, "252:0") {
+		t.Errorf("io.max should preserve device 252:0, got %q", ioMaxContent)
+	}
+	// Should have the new device line.
+	if !strings.Contains(ioMaxContent, "8:0 rbps=5242880") {
+		t.Errorf("io.max should contain 8:0 rbps=5242880, got %q", ioMaxContent)
+	}
+}
+
+func TestReconcileIOMaxClearOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cgRoot := tmpDir
+	slicePath := filepath.Join(cgRoot, cgroupSlice, "user1.slice", "vm-vm001.scope")
+	if err := os.MkdirAll(slicePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-populate with existing throttle.
+	os.WriteFile(filepath.Join(slicePath, "io.max"), []byte("8:0 rbps=10485760 wbps=10485760"), 0o644)
+
+	resolver := &mockDeviceResolver{
+		devices: map[string]string{"vm001": "8:0"},
+	}
+
+	syncer := &Syncer{
+		log:            slog.Default(),
+		cgroupRoot:     cgRoot,
+		deviceResolver: resolver,
+	}
+
+	// --io=clear produces "~ rbps=max wbps=max".
+	ds := &desiredstate.DesiredState{
+		Groups: []desiredstate.Group{
+			{Name: "user1", Cgroup: []desiredstate.CgroupSetting{}},
+		},
+		VMs: []desiredstate.VM{
+			{
+				ID:    "vm001",
+				Group: "user1",
+				State: "running",
+				Cgroup: []desiredstate.CgroupSetting{
+					{Path: "io.max", Value: "~ rbps=max wbps=max"},
+				},
+			},
+		},
+	}
+
+	syncer.reconcile(context.Background(), ds)
+
+	data, _ := os.ReadFile(filepath.Join(slicePath, "io.max"))
+	ioMaxContent := string(data)
+	if !strings.Contains(ioMaxContent, "rbps=max") {
+		t.Errorf("io.max should contain rbps=max after clear, got %q", ioMaxContent)
+	}
+	if !strings.Contains(ioMaxContent, "wbps=max") {
+		t.Errorf("io.max should contain wbps=max after clear, got %q", ioMaxContent)
+	}
+}
+
+func TestUpdateIOMaxLine(t *testing.T) {
+	tmpDir := t.TempDir()
+	ioMaxFile := filepath.Join(tmpDir, "io.max")
+
+	// Test: create new file with updates.
+	err := updateIOMaxLine(ioMaxFile, "8:0", map[string]string{"rbps": "1048576", "wbps": "2097152"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(ioMaxFile)
+	if string(data) != "8:0 rbps=1048576 wbps=2097152" {
+		t.Errorf("unexpected content: %q", string(data))
+	}
+
+	// Test: merge with existing (preserve riops key).
+	os.WriteFile(ioMaxFile, []byte("8:0 rbps=500 wbps=500 riops=100"), 0o644)
+	err = updateIOMaxLine(ioMaxFile, "8:0", map[string]string{"rbps": "1000"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(ioMaxFile)
+	content := string(data)
+	if !strings.Contains(content, "rbps=1000") {
+		t.Errorf("expected rbps=1000, got %q", content)
+	}
+	if !strings.Contains(content, "wbps=500") {
+		t.Errorf("expected wbps=500 preserved, got %q", content)
+	}
+	if !strings.Contains(content, "riops=100") {
+		t.Errorf("expected riops=100 preserved, got %q", content)
+	}
+
+	// Test: no-op when already matching.
+	os.WriteFile(ioMaxFile, []byte("8:0 rbps=1000 wbps=2000"), 0o644)
+	info1, _ := os.Stat(ioMaxFile)
+	err = updateIOMaxLine(ioMaxFile, "8:0", map[string]string{"rbps": "1000", "wbps": "2000"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info2, _ := os.Stat(ioMaxFile)
+	// ModTime comparison isn't reliable in fast tests; just check content is unchanged.
+	_ = info1
+	_ = info2
+	data, _ = os.ReadFile(ioMaxFile)
+	if string(data) != "8:0 rbps=1000 wbps=2000" {
+		t.Errorf("content should be unchanged, got %q", string(data))
 	}
 }

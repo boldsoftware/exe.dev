@@ -467,10 +467,17 @@ func serveAction(clix *cli.Context) error {
 		// -exelet-addresses flag.
 		exeletAddr := fmt.Sprintf("tcp://%s:%s", name, port)
 
+		// Wire up the device resolver for IO throttling if storage is available.
+		var deviceResolver desiredsync.DeviceResolver
+		if storageManager != nil {
+			deviceResolver = &desiredsync.StorageDeviceResolver{StorageManager: storageManager}
+		}
+
 		dsSync, err = desiredsync.New(desiredsync.Config{
-			ExedURL:      cfg.ExedURL,
-			ExeletAddr:   exeletAddr,
-			PollInterval: clix.Duration("desired-state-sync-interval"),
+			ExedURL:        cfg.ExedURL,
+			ExeletAddr:     exeletAddr,
+			PollInterval:   clix.Duration("desired-state-sync-interval"),
+			DeviceResolver: deviceResolver,
 		}, log)
 		if err != nil {
 			return fmt.Errorf("failed to create desired-state syncer: %w", err)
