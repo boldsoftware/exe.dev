@@ -7,6 +7,7 @@ interface CommandItem {
   type: "action" | "conversation";
   title: string;
   subtitle?: string;
+  shortcut?: string;
   icon?: React.ReactNode;
   action: () => void;
   keywords?: string[]; // Additional keywords for search
@@ -21,6 +22,8 @@ interface CommandPaletteProps {
   onOpenDiffViewer: () => void;
   onOpenModelsModal: () => void;
   onOpenNotificationsModal: () => void;
+  onNextConversation: () => void;
+  onPreviousConversation: () => void;
   hasCwd: boolean;
 }
 
@@ -68,6 +71,8 @@ function CommandPalette({
   onOpenDiffViewer,
   onOpenModelsModal,
   onOpenNotificationsModal,
+  onNextConversation,
+  onPreviousConversation,
   hasCwd,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
@@ -139,6 +144,52 @@ function CommandPalette({
         onClose();
       },
       keywords: ["new", "create", "start", "conversation", "chat"],
+    });
+
+    items.push({
+      id: "next-conversation",
+      type: "action",
+      title: "Next Conversation",
+      subtitle: "Switch to the next conversation",
+      shortcut: "Alt+↓",
+      icon: (
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 14l-7 7m0 0l-7-7m7 7V3"
+          />
+        </svg>
+      ),
+      action: () => {
+        onNextConversation();
+        onClose();
+      },
+      keywords: ["next", "down", "forward", "conversation", "switch"],
+    });
+
+    items.push({
+      id: "previous-conversation",
+      type: "action",
+      title: "Previous Conversation",
+      subtitle: "Switch to the previous conversation",
+      shortcut: "Alt+↑",
+      icon: (
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M5 10l7-7m0 0l7 7m-7-7v18"
+          />
+        </svg>
+      ),
+      action: () => {
+        onPreviousConversation();
+        onClose();
+      },
+      keywords: ["previous", "up", "back", "conversation", "switch"],
     });
 
     if (hasCwd) {
@@ -228,6 +279,8 @@ function CommandPalette({
     return items;
   }, [
     onNewConversation,
+    onNextConversation,
+    onPreviousConversation,
     onOpenDiffViewer,
     onOpenModelsModal,
     onOpenNotificationsModal,
@@ -393,7 +446,14 @@ function CommandPalette({
                     <div className="command-palette-item-subtitle">{item.subtitle}</div>
                   )}
                 </div>
-                {item.type === "action" && <div className="command-palette-item-badge">Action</div>}
+                {item.shortcut && (
+                  <div className="command-palette-item-shortcut">
+                    <kbd>{item.shortcut}</kbd>
+                  </div>
+                )}
+                {item.type === "action" && !item.shortcut && (
+                  <div className="command-palette-item-badge">Action</div>
+                )}
               </div>
             ))
           )}

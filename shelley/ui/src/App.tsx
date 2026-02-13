@@ -158,7 +158,31 @@ function App() {
     loadConversations();
   }, []);
 
-  // Global keyboard shortcut for command palette (Cmd+K on macOS, Ctrl+K elsewhere)
+  const navigateToNextConversation = useCallback(() => {
+    if (conversations.length === 0) return;
+    const currentIndex = conversations.findIndex(
+      (c) => c.conversation_id === currentConversationId,
+    );
+    // Next = further down the list (older)
+    const nextIndex = currentIndex < 0 ? 0 : Math.min(currentIndex + 1, conversations.length - 1);
+    const next = conversations[nextIndex];
+    setCurrentConversationId(next.conversation_id);
+    setViewedConversation(next);
+  }, [conversations, currentConversationId]);
+
+  const navigateToPreviousConversation = useCallback(() => {
+    if (conversations.length === 0) return;
+    const currentIndex = conversations.findIndex(
+      (c) => c.conversation_id === currentConversationId,
+    );
+    // Previous = further up the list (newer)
+    const prevIndex = currentIndex < 0 ? 0 : Math.max(currentIndex - 1, 0);
+    const prev = conversations[prevIndex];
+    setCurrentConversationId(prev.conversation_id);
+    setViewedConversation(prev);
+  }, [conversations, currentConversationId]);
+
+  // Global keyboard shortcuts
   useEffect(() => {
     const isMac = navigator.platform.toUpperCase().includes("MAC");
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -169,11 +193,26 @@ function App() {
       if (modifierPressed && e.key === "k") {
         e.preventDefault();
         setCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
+      // Alt+ArrowDown: next conversation
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === "ArrowDown") {
+        e.preventDefault();
+        navigateToNextConversation();
+        return;
+      }
+
+      // Alt+ArrowUp: previous conversation
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === "ArrowUp") {
+        e.preventDefault();
+        navigateToPreviousConversation();
+        return;
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [navigateToNextConversation, navigateToPreviousConversation]);
 
   // Handle popstate events (browser back/forward and SubagentTool navigation)
   useEffect(() => {
@@ -535,6 +574,8 @@ function App() {
             setNotificationsModalOpen(true);
             setCommandPaletteOpen(false);
           }}
+          onNextConversation={navigateToNextConversation}
+          onPreviousConversation={navigateToPreviousConversation}
           hasCwd={!!(currentConversation?.cwd || mostRecentCwd)}
         />
 
