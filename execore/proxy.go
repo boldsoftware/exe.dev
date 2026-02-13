@@ -28,7 +28,7 @@ import (
 // countingConn wraps a net.Conn to count bytes read and written.
 type countingConn struct {
 	net.Conn
-	metrics *HTTPMetrics
+	metrics *exeweb.HTTPMetrics
 }
 
 func (c *countingConn) Read(b []byte) (int, error) {

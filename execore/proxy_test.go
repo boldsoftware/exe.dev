@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	"exe.dev/sqlite"
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
@@ -341,7 +342,7 @@ func TestCountingConn(t *testing.T) {
 	t.Parallel()
 
 	registry := prometheus.NewRegistry()
-	metrics := NewHTTPMetrics(registry)
+	metrics := exeweb.NewHTTPMetrics(registry)
 
 	// Create a pipe to simulate a connection
 	client, server := net.Pipe()
@@ -390,8 +391,8 @@ func TestCountingConn(t *testing.T) {
 	// Verify metrics were recorded
 	// "out" is bytes written through the wrapped connection (to the backend)
 	// "in" is bytes read through the wrapped connection (from the backend)
-	outMetric := getCounterValue(t, metrics.proxyBytesTotal.WithLabelValues("out"))
-	inMetric := getCounterValue(t, metrics.proxyBytesTotal.WithLabelValues("in"))
+	outMetric := getCounterValue(t, metrics.ProxyBytesTotal.WithLabelValues("out"))
+	inMetric := getCounterValue(t, metrics.ProxyBytesTotal.WithLabelValues("in"))
 
 	if outMetric != float64(len(testData)) {
 		t.Errorf("out bytes: got %v, want %v", outMetric, len(testData))

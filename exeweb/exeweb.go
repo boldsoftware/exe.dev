@@ -206,10 +206,3 @@ func terminalBoxForBase(env *stage.Env, host string) (string, bool) {
 	}
 	return boxName, true
 }
-
-// Label names for HTTP metrics
-const (
-	LabelProxy = "proxy"
-	LabelPath  = "path"
-	LabelBox   = "box"
-)

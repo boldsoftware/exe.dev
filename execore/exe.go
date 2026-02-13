@@ -361,7 +361,7 @@ type Server struct {
 	// Metrics
 	metricsRegistry *prometheus.Registry
 	sshMetrics      *SSHMetrics
-	httpMetrics     *HTTPMetrics
+	httpMetrics     *exeweb.HTTPMetrics
 	signupMetrics   *SignupMetrics
 	hllTracker      *hll.Tracker
 	hllCollector    *hll.Collector
@@ -827,7 +827,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 	// Initialize metrics
 	sshMetrics := NewSSHMetrics(cfg.MetricsRegistry)
-	httpMetrics := NewHTTPMetrics(cfg.MetricsRegistry)
+	httpMetrics := exeweb.NewHTTPMetrics(cfg.MetricsRegistry)
 	signupMetrics := NewSignupMetrics(cfg.MetricsRegistry)
 	sqlite.RegisterSQLiteMetrics(cfg.MetricsRegistry)
 	llmgateway.RegisterMetrics(cfg.MetricsRegistry)

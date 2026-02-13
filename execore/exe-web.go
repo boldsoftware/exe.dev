@@ -521,7 +521,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Set labels for non-proxy HTTP metrics
 	metricsbag.SetLabel(r.Context(), exeweb.LabelProxy, "false")
-	metricsbag.SetLabel(r.Context(), exeweb.LabelPath, sanitizePath(r.URL.Path))
+	metricsbag.SetLabel(r.Context(), exeweb.LabelPath, exeweb.SanitizePath(r.URL.Path))
 
 	// Track unique web visitors (main site only, not proxy or terminal)
 	if s.hllTracker != nil && loggedUserID != "" {
