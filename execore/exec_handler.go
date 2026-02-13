@@ -23,10 +23,11 @@ var DefaultTokenCmds = []string{"help", "ls", "new", "whoami", "ssh-key list", "
 
 // TokenResult contains the result of a successful token validation.
 type TokenResult struct {
-	UserID  string         // The user ID associated with the signing key.
-	Payload map[string]any // The validated JSON payload from the token (parsed).
-	CtxRaw  []byte         // The raw bytes of the "ctx" field (for verbatim passthrough to VMs).
-	Cmds    []string       // Allowed commands (nil means use DefaultTokenCmds).
+	UserID      string         // The user ID associated with the signing key.
+	Fingerprint string         // The SSH key fingerprint used to sign the token.
+	Payload     map[string]any // The validated JSON payload from the token (parsed).
+	CtxRaw      []byte         // The raw bytes of the "ctx" field (for verbatim passthrough to VMs).
+	Cmds        []string       // Allowed commands (nil means use DefaultTokenCmds).
 }
 
 // validateToken validates an SSH-signed token and returns the user ID and payload.
@@ -77,10 +78,11 @@ func (s *Server) validateToken(ctx context.Context, token, namespace string) (*T
 	}
 
 	return &TokenResult{
-		UserID:  keyRow.UserID,
-		Payload: parsed.PayloadJSON,
-		CtxRaw:  parsed.CtxRaw,
-		Cmds:    parsed.Cmds,
+		UserID:      keyRow.UserID,
+		Fingerprint: parsed.Fingerprint,
+		Payload:     parsed.PayloadJSON,
+		CtxRaw:      parsed.CtxRaw,
+		Cmds:        parsed.Cmds,
 	}, nil
 }
 
@@ -117,6 +119,12 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("WWW-Authenticate", "Bearer")
 		execJSONError(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	// Rate limit by SSH key fingerprint.
+	if !s.execLimiter.Allow(result.Fingerprint) {
+		execJSONError(w, "rate limit exceeded", http.StatusTooManyRequests)
 		return
 	}
 

@@ -214,6 +214,10 @@ The command ran but returned a non-zero exit code (e.g., missing arguments, inva
 
 The command took longer than 30 seconds to execute.
 
+### Rate limited (429)
+
+Too many requests from this SSH key. The limit is per-key: use separate SSH keys for independent workloads.
+
 ### Internal error (500)
 
 Something unexpected went wrong server-side. If this persists, contact [support@exe.dev](mailto:support@exe.dev).

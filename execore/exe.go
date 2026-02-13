@@ -383,6 +383,9 @@ type Server struct {
 	// Rate limiter for signup requests (5 per minute per IP)
 	signupLimiter *limiter.Limiter[netip.Addr]
 
+	// Rate limiter for /exec API requests, keyed by SSH key fingerprint
+	execLimiter *limiter.Limiter[string]
+
 	// Proof-of-work challenger for signup (when enabled)
 	// The idea is that instead of an external captcha, we ask
 	// the client to do some math. This will be annoying to implement
@@ -946,6 +949,12 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 			Max:            20,              // 20 requests max
 			RefillInterval: time.Minute / 5, // Refill 1 token per 12 seconds
 		},
+		execLimiter: &limiter.Limiter[string]{
+			Size:           10000,       // Track up to 10k SSH keys
+			Max:            60,          // 60 requests burst
+			RefillInterval: time.Second, // 1 request per second sustained
+			Overdraft:      120,         // Cooldown if abused
+		},
 		signupPOW: newSignupPOW(),
 	}
 
@@ -966,9 +975,10 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		}
 	}
 
-	// Initialize the limiter's internal cache by calling Allow once.
+	// Initialize the limiters' internal caches by calling Allow once.
 	// This avoids an unimportant but distracting /debug panic after each deployment.
 	s.signupLimiter.Allow(netip.Addr{})
+	s.execLimiter.Allow("")
 
 	// Set up HTTP metrics host functions for in-flight label tracking
 	s.httpMetrics.SetHostFuncs(s.isProxyRequest, func(host string) string {

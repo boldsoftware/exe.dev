@@ -1322,3 +1322,72 @@ func TestExecHandlerBodyTooLarge(t *testing.T) {
 		t.Fatalf("expected 413 for oversized body, got %d: %s", resp.StatusCode, body)
 	}
 }
+
+func TestExecHandlerRateLimit(t *testing.T) {
+	t.Parallel()
+
+	s := newTestServer(t)
+
+	// Generate a test key and register it.
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+	sshPubKey, err := ssh.NewPublicKey(pubKey)
+	if err != nil {
+		t.Fatalf("failed to create SSH public key: %v", err)
+	}
+	sshPrivKey, err := ssh.NewSignerFromKey(privKey)
+	if err != nil {
+		t.Fatalf("failed to create SSH signer: %v", err)
+	}
+	ctx := t.Context()
+	userID := "usr" + generateRegistrationToken()
+	pubKeyStr := string(ssh.MarshalAuthorizedKey(sshPubKey))
+	fingerprint := strings.TrimPrefix(ssh.FingerprintSHA256(sshPubKey), "SHA256:")
+	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, "ratelimit@example.com"); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key, fingerprint) VALUES (?, ?, ?)`, userID, pubKeyStr, fingerprint); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("failed to create user and SSH key: %v", err)
+	}
+
+	execNS := "v0@" + s.env.WebHost
+	payload := []byte(`{}`)
+	payloadB64 := base64.RawURLEncoding.EncodeToString(payload)
+	sigBlob := createSigBlob(t, sshPrivKey, payload, execNS)
+	token := "exe0." + payloadB64 + "." + sigBlob
+
+	exec := func() int {
+		req, err := http.NewRequest("POST", s.httpURL()+"/exec", strings.NewReader("whoami"))
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Host = s.env.WebHost
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	// Exhaust the rate limit (burst of 60).
+	for i := range 60 {
+		if status := exec(); status != 200 {
+			t.Fatalf("request %d: expected 200, got %d", i, status)
+		}
+	}
+
+	// Next request should be rate limited.
+	if status := exec(); status != 429 {
+		t.Fatalf("expected 429 after exhausting rate limit, got %d", status)
+	}
+}
