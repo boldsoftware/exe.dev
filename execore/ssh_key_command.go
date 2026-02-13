@@ -195,7 +195,7 @@ func (ss *SSHServer) handleSSHKeyListCmd(ctx context.Context, cc *exemenu.Comman
 	}
 
 	ccPubKey := strings.TrimSpace(cc.PublicKey)
-	var sshKeys []sshKeyRow
+	sshKeys := []sshKeyRow{}
 	for _, dbKey := range dbKeys {
 		pubKey := strings.TrimSpace(dbKey.PublicKey)
 		if pubKey == "" {

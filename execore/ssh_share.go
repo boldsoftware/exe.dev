@@ -219,7 +219,7 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 			TeamName string `json:"team_name"`
 		}
 
-		var users []userShare
+		users := []userShare{}
 		for _, ps := range pendingShares {
 			us := userShare{
 				Email:     ps.SharedWithEmail,
@@ -237,7 +237,7 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 			users = append(users, us)
 		}
 
-		var links []linkShare
+		links := []linkShare{}
 		for _, sl := range shareLinks {
 			ls := linkShare{
 				Token:     sl.ShareToken,
@@ -251,7 +251,7 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 			links = append(links, ls)
 		}
 
-		var teams []teamShare
+		teams := []teamShare{}
 		for _, ts := range teamShares {
 			teams = append(teams, teamShare{TeamID: ts.TeamID, TeamName: ts.TeamName})
 		}

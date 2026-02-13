@@ -1,6 +1,7 @@
 package e1e
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,26 @@ func TestExeDevAPI(t *testing.T) {
 
 	pty, _, keyFile, _ := registerForExeDev(t)
 	defer pty.disconnect()
+
+	t.Run("ls_empty", func(t *testing.T) {
+		raw, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "ls", "--json")
+		if err != nil {
+			t.Fatalf("failed to run ls --json: %v\n%s", err, raw)
+		}
+		if strings.Contains(string(raw), "null") {
+			t.Errorf("expected no null values in ls --json output: %s", raw)
+		}
+		if !strings.Contains(string(raw), "[]") {
+			t.Errorf("expected empty array [] in ls --json output: %s", raw)
+		}
+	})
+
+	t.Run("ssh_key_list_no_null", func(t *testing.T) {
+		raw := runExeDevSSHNoNull(t, keyFile, "ssh-key", "list", "--json")
+		if !strings.Contains(string(raw), "[]") && !strings.Contains(string(raw), "[{") {
+			t.Errorf("expected array (empty or populated) in ssh-key list --json output: %s", raw)
+		}
+	})
 
 	who := runParseExeDevJSON[whoamiOutput](t, keyFile, "whoami", "--json")
 	if who.Email == "" {
@@ -133,7 +154,15 @@ func TestExeDevAPI(t *testing.T) {
 	}
 	// TODO: check image name
 
-	delResult := runParseExeDevJSON[deleteVMOutput](t, keyFile, "rm", nbo.VMName, "--json")
+	t.Run("share_show_no_null", func(t *testing.T) {
+		runExeDevSSHNoNull(t, keyFile, "share", "show", nbo.VMName, "--json")
+	})
+
+	rmRaw := runExeDevSSHNoNull(t, keyFile, "rm", nbo.VMName, "--json")
+	var delResult deleteVMOutput
+	if err := json.Unmarshal(rmRaw, &delResult); err != nil {
+		t.Fatalf("failed to parse rm --json output: %v\n%s", err, rmRaw)
+	}
 	if len(delResult.Deleted) != 1 || delResult.Deleted[0] != nbo.VMName {
 		t.Errorf("expected deleted=[%q] in rm output, got %v", nbo.VMName, delResult.Deleted)
 	}
@@ -141,11 +170,14 @@ func TestExeDevAPI(t *testing.T) {
 		t.Errorf("expected no failed VMs in rm output, got %v", delResult.Failed)
 	}
 
-	// Verify the VM is gone from the list
-	vlo2 := runParseExeDevJSON[vmListOutput](t, keyFile, "ls", "--json")
-	vms2 := vlo2.VMs
-	if len(vms2) != 0 {
-		t.Errorf("expected zero VMs in ls output after deletion, got %d", len(vms2))
+	// Verify the VM is gone from the list and no null values
+	lsRaw := runExeDevSSHNoNull(t, keyFile, "ls", "--json")
+	var vlo2 vmListOutput
+	if err := json.Unmarshal(lsRaw, &vlo2); err != nil {
+		t.Fatalf("failed to parse ls --json output: %v\n%s", err, lsRaw)
+	}
+	if len(vlo2.VMs) != 0 {
+		t.Errorf("expected zero VMs in ls output after deletion, got %d", len(vlo2.VMs))
 	}
 
 	browser := runParseExeDevJSON[browserCommandOutput](t, keyFile, "browser", "--json")
@@ -262,4 +294,17 @@ type whoamiOutput struct {
 type deleteSSHKeyOutput struct {
 	PublicKey string `json:"public_key"`
 	Status    string `json:"status"`
+}
+
+// runExeDevSSHNoNull runs an SSH command and checks that the JSON output contains no null values.
+func runExeDevSSHNoNull(t *testing.T, keyFile string, args ...string) []byte {
+	t.Helper()
+	raw, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, args...)
+	if err != nil {
+		t.Fatalf("failed to run %v: %v\n%s", args, err, raw)
+	}
+	if strings.Contains(string(raw), "null") {
+		t.Errorf("unexpected null in %v --json output: %s", args, raw)
+	}
+	return raw
 }

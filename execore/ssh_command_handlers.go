@@ -478,7 +478,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 	}
 
 	if cc.WantJSON() {
-		var vmList []map[string]any
+		vmList := []map[string]any{}
 		for _, vm := range boxes {
 			status := container.ContainerStatus(vm.Status).String()
 			box := map[string]any{
@@ -746,8 +746,8 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 		return cc.Errorf("please specify at least one VM name to delete")
 	}
 
-	var deleted []string
-	var failed []string
+	deleted := []string{}
+	failed := []string{}
 	seen := make(map[string]bool)
 
 	for _, arg := range cc.Args {
@@ -833,7 +833,7 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 	if err != nil {
 		return err
 	}
-	var sshKeys []sshKeyRow
+	sshKeys := []sshKeyRow{}
 	for _, dbKey := range dbKeys {
 		pubKey := strings.TrimSpace(dbKey.PublicKey)
 		if pubKey == "" {
@@ -982,7 +982,7 @@ func (ss *SSHServer) handleExeletsCommand(ctx context.Context, cc *exemenu.Comma
 	// Get the preferred exelet setting
 	preferredAddr, _ := withRxRes0(ss.server, ctx, (*exedb.Queries).GetPreferredExelet)
 
-	var exelets []exeletInfo
+	exelets := []exeletInfo{}
 
 	// Gather info from all exelet clients
 	for addr, ec := range ss.server.exeletClients {
