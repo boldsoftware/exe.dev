@@ -157,6 +157,16 @@ func IsProxyRequest(env *stage.Env, tsDomain, host string) bool {
 	return strings.Contains(host, ".")
 }
 
+// IsShelleyRequest determines if a request is for a Shelley subdomain
+// (vm.shelley.exe.xyz).
+func IsShelleyRequest(env *stage.Env, host string) bool {
+	host = domz.Canonicalize(domz.StripPort(host))
+	// Check if host ends with .shelley.{BoxHost}
+	// (e.g., vm.shelley.exe.xyz).
+	shelleyBase := env.BoxSub("shelley") // shelley.exe.xyz
+	return strings.HasSuffix(host, "."+shelleyBase)
+}
+
 // getScheme returns the request scheme
 func getScheme(r *http.Request) string {
 	if r.TLS != nil {

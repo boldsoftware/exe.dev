@@ -19,7 +19,6 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"exe.dev/container"
-	"exe.dev/domz"
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
 	"exe.dev/metricsbag"
@@ -362,10 +361,7 @@ func (s *Server) isProxyRequest(host string) bool {
 
 // isShelleyRequest determines if a request is for a Shelley subdomain (vm.shelley.exe.xyz)
 func (s *Server) isShelleyRequest(host string) bool {
-	host = domz.Canonicalize(domz.StripPort(host))
-	// Check if host ends with .shelley.{BoxHost} (e.g., vm.shelley.exe.xyz)
-	shelleyBase := s.env.BoxSub("shelley") // shelley.exe.xyz
-	return strings.HasSuffix(host, "."+shelleyBase)
+	return exeweb.IsShelleyRequest(&s.env, host)
 }
 
 // proxyAuthResult contains the result of proxy authentication.
