@@ -150,7 +150,7 @@ Available fields:
 
 - `nbf`: specifies a UTC unix timestamp before which the token is not yet valid. For example, `{"nbf": 1922918400}` means this token cannot be used until Dec 5, 2030. The default `nbf` is the distant past.
 
-- `cmds`: specifies which exe.dev commands this token can execute. Subcommands are specified as a single string, such as `"ssh-key list"`. Including a parent command like `"ssh-key"` does _not_ grant access to its subcommands. Flags, arguments, and options (like `--json`) are always allowed when the base command is permitted; `cmds` controls command names only. The default `cmds` is `["ls","new","whoami","ssh-key list","share show"]`.
+- `cmds`: specifies which exe.dev commands this token can execute. Subcommands are specified as a single string, such as `"ssh-key list"`. Including a parent command like `"ssh-key"` does _not_ grant access to its subcommands. Flags, arguments, and options (like `--json`) are always allowed when the base command is permitted; `cmds` controls command names only. The default `cmds` is `["help","ls","new","whoami","ssh-key list","share show"]`.
 
 - `ctx`: uninterpreted by exe.dev. Can be used to differentiate otherwise-identical tokens, or to pass data to your VM server (see [Authentication to VMs](#authentication-to-vms)). Must contain valid JSON that complies with the restrictions in the next section.
 

@@ -19,7 +19,7 @@ import (
 )
 
 // DefaultTokenCmds is the list of commands allowed when a token does not specify cmds.
-var DefaultTokenCmds = []string{"ls", "new", "whoami", "ssh-key list", "share show"}
+var DefaultTokenCmds = []string{"help", "ls", "new", "whoami", "ssh-key list", "share show"}
 
 // TokenResult contains the result of a successful token validation.
 type TokenResult struct {
