@@ -552,12 +552,8 @@ func TestMetricsEndpointProtection(t *testing.T) {
 
 		requireLocalAccess(testHandler)(w, req)
 
-		if w.Code != http.StatusUnauthorized {
-			t.Errorf("Expected status 401 for external IP, got %d", w.Code)
-		}
-		body := w.Body.String()
-		if !strings.Contains(body, "Access denied") {
-			t.Errorf("Expected 'Access denied' in response body, got: %s", body)
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected status 404 for external IP, got %d", w.Code)
 		}
 	})
 

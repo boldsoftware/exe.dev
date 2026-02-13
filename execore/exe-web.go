@@ -828,7 +828,7 @@ func requireLocalAccess(handler http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if !remoteIP.IsLoopback() && !tsaddr.IsTailscaleIP(remoteIP) {
-			http.Error(w, "Access denied", http.StatusUnauthorized)
+			http.NotFound(w, r)
 			return
 		}
 		handler(w, r)
