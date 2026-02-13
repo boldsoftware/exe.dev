@@ -158,7 +158,7 @@ type UserPageData struct {
 
 	// Credits (staging only)
 	EnableCreditPurchases bool // Whether to show credit purchase UI
-	CreditBalance         tender.Microcents
+	CreditBalance         tender.Value
 }
 
 // TeamBoxDisplayInfo represents a team member's box for the dashboard

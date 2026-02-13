@@ -110,7 +110,7 @@ func TestSyncCredits(t *testing.T) {
 		}
 	}
 
-	checkBalance := func(aliceID string, want tender.Microcents) {
+	checkBalance := func(aliceID string, want tender.Value) {
 		t.Helper()
 
 		got, err := m.UseCredits(t.Context(), aliceID, 0, tender.Zero())
@@ -202,7 +202,7 @@ func TestUseCreditsPreservesFractionalCents(t *testing.T) {
 // and confirming a PaymentIntent with credit_purchase metadata. This generates the
 // payment_intent.succeeded event that SyncCredits processes.
 // cents is the amount in cents (1/100 USD), matching what BuyCredits sends to Stripe.
-func stripeCompleteCreditPurchase(ctx context.Context, m *Manager, customerID, paymentMethodID string, amount tender.Microcents) error {
+func stripeCompleteCreditPurchase(ctx context.Context, m *Manager, customerID, paymentMethodID string, amount tender.Value) error {
 	c := m.client()
 
 	pm, err := c.V1PaymentMethods.Attach(ctx, paymentMethodID, &stripe.PaymentMethodAttachParams{

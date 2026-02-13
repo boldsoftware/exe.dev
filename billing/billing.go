@@ -644,7 +644,7 @@ func subscriptionEventType(eventType string, status stripe.SubscriptionStatus) (
 	}
 }
 
-func (m *Manager) UseCredits(ctx context.Context, billingID string, quantity int, unitPrice tender.Microcents) (remaining tender.Microcents, _ error) {
+func (m *Manager) UseCredits(ctx context.Context, billingID string, quantity int, unitPrice tender.Value) (remaining tender.Value, _ error) {
 	const q = `
 		-- Insert a new credit deduction for the current hour and credit type,
 		-- or update the existing one if it already exists,
@@ -670,7 +670,7 @@ func (m *Manager) UseCredits(ctx context.Context, billingID string, quantity int
 		if err != nil {
 			return tender.Zero(), err
 		}
-		var rem tender.Microcents
+		var rem tender.Value
 		if err := rows.Scan(&rem); err != nil {
 			return tender.Zero(), err
 		}
@@ -686,7 +686,7 @@ type BuyCreditsParams struct {
 	Email string
 
 	// The amount of credits to purchase, in microcents. Must be positive.
-	Amount tender.Microcents
+	Amount tender.Value
 
 	// SuccessURL is the URL to redirect to after successful checkout.
 	SuccessURL string
