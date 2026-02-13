@@ -24,6 +24,7 @@ import (
 	"exe.dev/email"
 	"exe.dev/execore/debug_templates"
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	exeletclient "exe.dev/exelet/client"
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
