@@ -18,9 +18,9 @@
   <main class="w-full max-w-2xl">
     <p class="text-zinc-500 text-lg mb-3">{{.Email}}</p>
     <h1 class="text-3xl font-semibold mb-6">Authorize SSH key</h1>
-    <div class="bg-zinc-100 rounded mb-6 inline-block">
+    <div class="bg-zinc-100 rounded mb-6">
       <p class="text-xs text-zinc-400 pt-3 px-4">SSH KEY</p>
-      <pre class="p-4 pt-2 text-sm whitespace-pre-wrap break-words"><code>{{.PublicKey}}</code></pre>
+      <pre class="p-4 pt-2 text-sm whitespace-pre-wrap break-all"><code>{{.PublicKey}}</code></pre>
     </div>
     {{/* {{if .PairingCode}}
     <div class="bg-zinc-100 rounded mb-6 inline-block">
