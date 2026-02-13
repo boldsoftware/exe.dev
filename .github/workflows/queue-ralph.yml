@@ -56,7 +56,10 @@ jobs:
           fi
 
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+        run: |
+          CLAUDE_DIR="$HOME/.claude-code"
+          npm install --prefix "$CLAUDE_DIR" @anthropic-ai/claude-code
+          echo "$CLAUDE_DIR/node_modules/.bin" >> $GITHUB_PATH
 
       - name: Extract Slack user ID
         id: slack
@@ -141,7 +144,7 @@ jobs:
       - name: Push and notify Slack
         if: always()
         env:
-          EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
+          NTFY_SLACK_WEBHOOK_URL: ${{ secrets.NTFY_SLACK_WEBHOOK_URL }}
         run: |
           python3 bin/ralph-notify.py \
             "${{ inputs.branch }}" \

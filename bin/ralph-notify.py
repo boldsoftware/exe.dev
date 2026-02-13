@@ -7,33 +7,43 @@ Checks if HEAD moved since <before_sha>. If it did, pushes to
 refs/queue-ralph/<branch> and posts a success message. Otherwise
 posts a "could not fix" message.
 
-Environment: EXE_SLACK_BOT_TOKEN must be set.
+Environment: NTFY_SLACK_WEBHOOK_URL must be set.
 """
 
+import json
 import os
 import subprocess
 import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts", "slack"))
-from client import SlackClient, ensure_token
+import urllib.request
 
 
 def git(*args: str) -> str:
     return subprocess.check_output(["git", *args], text=True).strip()
 
 
+def post_slack(webhook_url: str, text: str) -> None:
+    payload = json.dumps({"text": text})
+    req = urllib.request.Request(
+        webhook_url,
+        data=payload.encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    urllib.request.urlopen(req)
+
+
 def main() -> None:
     branch, commit_subject, slack_id, run_url, before_sha = sys.argv[1:6]
+
+    webhook_url = os.environ.get("NTFY_SLACK_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        print("NTFY_SLACK_WEBHOOK_URL must be set", file=sys.stderr)
+        sys.exit(1)
 
     after_sha = git("rev-parse", "HEAD")
 
     mention = f"<@{slack_id}> " if slack_id else ""
 
-    token = ensure_token()
-    slack = SlackClient(token)
-    channel_id = slack.find_channel_id("ntfy")
-
-    if before_sha != after_sha:
+    if before_sha and before_sha != after_sha:
         # Claude made a fix commit — push it.
         subprocess.check_call(["git", "push", "origin", f"HEAD:refs/queue-ralph/{branch}"])
 
@@ -54,7 +64,7 @@ def main() -> None:
             f"CI run: {run_url}"
         )
 
-    slack.post_message(channel_id, message)
+    post_slack(webhook_url, message)
 
 
 if __name__ == "__main__":
