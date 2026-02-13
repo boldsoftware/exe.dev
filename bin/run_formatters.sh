@@ -25,6 +25,10 @@ echo "✓ Go code formatted"
 
 echo "Checking shelley/ui formatting..."
 cd shelley/ui
+if ! pnpm exec prettier --version >/dev/null 2>&1; then
+    echo "prettier not found, running pnpm install..."
+    pnpm install
+fi
 echo "Formatting TypeScript/JavaScript code with prettier..."
 pnpm exec prettier --log-level warn --write 'src/**/*.{ts,tsx,js,jsx,json,css,html}'
 echo "✓ shelley/ui code formatted"
