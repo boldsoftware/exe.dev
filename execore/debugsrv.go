@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"net/netip"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -1867,6 +1868,8 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 		RxRate        string `json:"rx_rate"`
 		TxRate        string `json:"tx_rate"`
 		Error         string `json:"error,omitempty"`
+		DebugURL      string `json:"debug_url"`
+		CgtopURL      string `json:"cgtop_url"`
 	}
 
 	// Get the preferred exelet setting
@@ -1886,6 +1889,11 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 				Address:     addr,
 				Version:     ec.client.Version(),
 				IsPreferred: addr == preferredAddr,
+			}
+			if u, err := url.Parse(addr); err == nil {
+				host := u.Hostname()
+				info.DebugURL = "http://" + host + ":9081"
+				info.CgtopURL = "http://" + host + ":9090"
 			}
 
 			// Try to get system info to verify connectivity
