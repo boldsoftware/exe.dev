@@ -176,7 +176,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			return
 		}
 
-		// Check for pending mobile VM creation tied to this token
+		// Check for pending VM creation tied to this token
 		pendingVM, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetMobilePendingVMByToken, token)
 		if err == nil && pendingVM.Hostname != "" {
 			hostname := pendingVM.Hostname
@@ -1382,6 +1382,8 @@ func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, ema
 		ReturnHost    string
 		LoginWithExe  bool
 		InviteCode    string
+		Hostname      string
+		Prompt        string
 	}{
 		Env:           s.env,
 		Email:         email,
@@ -1391,6 +1393,8 @@ func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, ema
 		ReturnHost:    r.FormValue("return_host"),
 		LoginWithExe:  r.FormValue("login_with_exe") == "1",
 		InviteCode:    r.FormValue("invite"),
+		Hostname:      r.FormValue("hostname"),
+		Prompt:        r.FormValue("prompt"),
 	}
 	s.renderTemplate(r.Context(), w, "auth-pow.html", data)
 }
@@ -1408,6 +1412,10 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		s.showAuthError(w, r, "Please enter a valid email address", "")
 		return
 	}
+
+	// VM creation fields (carried from /create-vm when user is not logged in)
+	hostname := strings.ToLower(strings.TrimSpace(r.FormValue("hostname")))
+	prompt := strings.TrimSpace(r.FormValue("prompt"))
 
 	// TODO: This applies to existing users, which seems wrong.
 	ip, allowed := s.checkSignupRateLimit(r)
@@ -1457,12 +1465,13 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		invite = s.lookupUnusedInviteCode(r.Context(), inviteCodeStr)
 	}
 
-	// NEW FLOW: Redirect new users to billing first (unless SkipBilling for tests or valid invite code).
+	// Redirect new users to billing first (unless SkipBilling for tests or valid invite code).
 	// POW is skipped for billing-first flow - Stripe serves as sufficient friction.
 	// Users with valid invite codes get a billing exemption, so they skip Stripe.
 	// Users signing in via "Login with Exe" (proxy auth flow) skip billing - they're just
 	// authenticating to access someone else's app, not signing up to use exe.dev resources.
-	if isNewUser && !s.env.SkipBilling && invite == nil && !isLoginWithExe {
+	// When creating a VM (hostname present), billing is checked post-verification instead.
+	if isNewUser && !s.env.SkipBilling && invite == nil && !isLoginWithExe && hostname == "" {
 		// Create pending registration to track email through Stripe
 		token := generateRegistrationToken()
 		err = withTx1(s, r.Context(), (*exedb.Queries).InsertPendingRegistration, exedb.InsertPendingRegistrationParams{
@@ -1560,6 +1569,20 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		s.slog().ErrorContext(r.Context(), "Failed to store email verification", "error", err)
 		s.showAuthError(w, r, "Failed to create verification. Please try again.", "")
 		return
+	}
+
+	// Stash pending VM creation details so post-verification can start the box
+	if hostname != "" {
+		if err := withTx1(s, r.Context(), (*exedb.Queries).UpsertMobilePendingVM, exedb.UpsertMobilePendingVMParams{
+			Token:    token,
+			UserID:   userID,
+			Hostname: hostname,
+			Prompt:   &prompt,
+		}); err != nil {
+			s.slog().ErrorContext(r.Context(), "Failed to store pending VM", "error", err)
+			s.showAuthError(w, r, "Failed to process request. Please try again.", "")
+			return
+		}
 	}
 
 	// Send email with clean verification URL (no redirect params - they're stored in DB)

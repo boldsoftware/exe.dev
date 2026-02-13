@@ -25,7 +25,7 @@ import (
 //
 // The CI timeout of 10 minutes is insufficient for this full flow. The test runs
 // successfully in local development environments with longer timeouts.
-func TestMobileFlow_EndToEnd(t *testing.T) {
+func TestWebCreateFlow_EndToEnd(t *testing.T) {
 	if os.Getenv("CI") != "" {
 		t.Skip("skipping on CI: VM creation exceeds CI timeout (see function comment for details)")
 	}
@@ -46,36 +46,36 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 
 	base := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
 
-	// 1) GET /m (logged-out) shows create page
-	resp, err := client.Get(base + "/m")
+	// 1) GET /new (logged-out) shows create page
+	resp, err := client.Get(base + "/new")
 	if err != nil {
-		t.Fatalf("GET /m: %v", err)
+		t.Fatalf("GET /new: %v", err)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "Create") {
-		t.Fatalf("/m unexpected: status=%d contains-Create? %v", resp.StatusCode, strings.Contains(string(body), "Create VM"))
+		t.Fatalf("/new unexpected: status=%d contains-Create? %v", resp.StatusCode, strings.Contains(string(body), "Create VM"))
 	}
 
-	// 2) POST /m/create-vm (logged-out) → email auth page
+	// 2) POST /create-vm (logged-out) → email auth page
 	form := url.Values{}
 	form.Set("hostname", host)
 	form.Set("prompt", "e2e mobile flow")
-	resp, err = client.PostForm(base+"/m/create-vm", form)
+	resp, err = client.PostForm(base+"/create-vm", form)
 	if err != nil {
-		t.Fatalf("POST /m/create-vm: %v", err)
+		t.Fatalf("POST /create-vm: %v", err)
 	}
 	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "/m/email-auth") && !strings.Contains(string(body), "Enter your email") {
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "/auth") && !strings.Contains(string(body), "Enter your email") {
 		t.Fatalf("unexpected email auth page: status=%d body=%q", resp.StatusCode, string(body))
 	}
 
-	// 3) POST /m/email-auth
+	// 3) POST /auth with hostname (VM creation email auth)
 	email := t.Name() + testinfra.FakeEmailSuffix
-	resp, err = client.PostForm(base+"/m/email-auth", url.Values{"email": {email}, "hostname": {host}})
+	resp, err = client.PostForm(base+"/auth", url.Values{"email": {email}, "hostname": {host}})
 	if err != nil {
-		t.Fatalf("POST /m/email-auth: %v", err)
+		t.Fatalf("POST /auth: %v", err)
 	}
 	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -107,7 +107,7 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 
 	// 5) Connect to SSE stream (creation already started in background after re-triggering)
 	// Retry until stream is available
-	streamURL := base + "/m/creating/stream?hostname=" + url.QueryEscape(host)
+	streamURL := base + "/creating/stream?hostname=" + url.QueryEscape(host)
 	var sseResp *http.Response
 	haveStream := false
 	for range 50 {

@@ -11,14 +11,14 @@ import (
 	"time"
 )
 
-func TestMobileHome(t *testing.T) {
+func TestNewPage(t *testing.T) {
 	server := newTestServer(t)
-	req := httptest.NewRequest("GET", "/m", nil)
+	req := httptest.NewRequest("GET", "/new", nil)
 	req.Host = server.env.WebHost
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
-		t.Errorf("GET /m returned status %d, want %d", w.Code, http.StatusOK)
+		t.Errorf("GET /new returned status %d, want %d", w.Code, http.StatusOK)
 	}
 	reject := "Internal server error"
 	if bytes.Contains(w.Body.Bytes(), []byte(reject)) {
@@ -26,12 +26,12 @@ func TestMobileHome(t *testing.T) {
 	}
 }
 
-func TestMobileHostnameCheck(t *testing.T) {
+func TestHostnameCheck(t *testing.T) {
 	server := newTestServer(t)
 
 	// Test hostname availability check
 	reqBody := `{"hostname": "test-hostname"}`
-	req := httptest.NewRequest("POST", "/m/check-hostname", strings.NewReader(reqBody))
+	req := httptest.NewRequest("POST", "/check-hostname", strings.NewReader(reqBody))
 	req.Host = server.env.WebHost
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -63,32 +63,12 @@ func TestMobileHostnameCheck(t *testing.T) {
 	}
 }
 
-func TestMobileVMListUnauthorized(t *testing.T) {
-	server := newTestServer(t)
-
-	// Test VM list without authentication
-	req := httptest.NewRequest("GET", "/m/home", nil)
-	req.Host = server.env.WebHost
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	// Should redirect to /m
-	if w.Code != http.StatusSeeOther {
-		t.Errorf("Expected status 303, got %d", w.Code)
-	}
-
-	location := w.Header().Get("Location")
-	if location != "/m" {
-		t.Errorf("Expected redirect to /m, got %s", location)
-	}
-}
-
-func TestMobileInvalidHostname(t *testing.T) {
+func TestInvalidHostname(t *testing.T) {
 	server := newTestServer(t)
 
 	// Test invalid hostname check
 	reqBody := `{"hostname": "a"}`
-	req := httptest.NewRequest("POST", "/m/check-hostname", strings.NewReader(reqBody))
+	req := httptest.NewRequest("POST", "/check-hostname", strings.NewReader(reqBody))
 	req.Host = server.env.WebHost
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -117,14 +97,14 @@ func TestMobileInvalidHostname(t *testing.T) {
 	}
 }
 
-func TestMobileInvalidEmail(t *testing.T) {
+func TestInvalidEmail(t *testing.T) {
 	server := newTestServer(t)
 
 	// Test invalid email
 	form := url.Values{}
 	form.Add("email", "invalid-email")
 
-	req := httptest.NewRequest("POST", "/m/email-auth", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest("POST", "/auth", strings.NewReader(form.Encode()))
 	req.Host = server.env.WebHost
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
@@ -140,7 +120,7 @@ func TestRunCommandUnauthorized(t *testing.T) {
 
 	// Test command without authentication
 	reqBody := `{"command": "share show test-box"}`
-	req := httptest.NewRequest("POST", "/m/cmd", strings.NewReader(reqBody))
+	req := httptest.NewRequest("POST", "/cmd", strings.NewReader(reqBody))
 	req.Host = server.env.WebHost
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -169,7 +149,7 @@ func TestRunCommandNotAllowed(t *testing.T) {
 
 	// Test command not in allowlist
 	reqBody := `{"command": "new --name=test"}`
-	req := httptest.NewRequest("POST", "/m/cmd", strings.NewReader(reqBody))
+	req := httptest.NewRequest("POST", "/cmd", strings.NewReader(reqBody))
 	req.Host = server.env.WebHost
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})

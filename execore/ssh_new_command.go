@@ -546,7 +546,7 @@ done:
 		if cc.PublicKey != "" {
 			box, err = ss.server.getBoxForUser(ctx, cc.PublicKey, boxName)
 		} else {
-			// Fallback for non-SSH contexts (e.g., mobile flow) where PublicKey is empty
+			// Fallback for non-SSH contexts (e.g., web flow) where PublicKey is empty
 			box, err = ss.server.getBoxForUserByUserID(ctx, cc.User.ID, boxName)
 		}
 		if err != nil {

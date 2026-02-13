@@ -24,7 +24,6 @@ const (
 	TypeNewUserVerification      Type = "new_user_verification"
 	TypeDeviceVerification       Type = "device_verification"
 	TypeWebAuthVerification      Type = "web_auth_verification"
-	TypeMobileAuthVerification   Type = "mobile_auth_verification"
 	TypeLoginWithExeVerification Type = "login_with_exe_verification"
 	TypeShareInvitation          Type = "share_invitation"
 	TypeBoxCreated               Type = "box_created"
@@ -42,7 +41,6 @@ var postmarkMessageStreams = map[Type]string{
 	TypeNewUserVerification:      "primary-verification",
 	TypeDeviceVerification:       "primary-verification",
 	TypeWebAuthVerification:      "primary-verification",
-	TypeMobileAuthVerification:   "primary-verification",
 	TypeLoginWithExeVerification: "login-with-exe",
 	TypeShareInvitation:          "share-invitation",
 	TypeBoxCreated:               "general-notification",

@@ -667,14 +667,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/shell/ws":
 		s.handleWebShellWS(w, r)
 	case "/new":
-		// New box creation page
-		s.handleMobileNew(w, r)
+		s.handleNewBox(w, r)
 		return
 	case "/check-hostname":
-		s.handleMobileHostnameCheck(w, r)
+		s.handleHostnameCheck(w, r)
 		return
 	case "/create-vm":
-		s.handleMobileCreateVM(w, r)
+		s.handleCreateVM(w, r)
+		return
+	case "/creating/stream":
+		s.handleCreatingStream(w, r)
+		return
+	case "/box/creation-log":
+		s.handleBoxCreationLog(w, r)
+		return
+	case "/cmd":
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		s.handleRunCommand(w, r)
 		return
 	case "/shelley/download":
 		s.handleShelleyDownload(w, r)
@@ -683,12 +695,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleExec(w, r)
 		return
 	default:
-		// Handle mobile UI routes
-		if strings.HasPrefix(path, "/m") {
-			s.handleMobile(w, r)
-			return
-		}
-
 		if strings.HasPrefix(path, "/auth/") {
 			s.handleAuthCallback(w, r)
 			return

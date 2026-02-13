@@ -34,6 +34,12 @@
       {{if .InviteCode}}
       <input type="hidden" name="invite" value="{{.InviteCode}}">
       {{end}}
+      {{if .Hostname}}
+      <input type="hidden" name="hostname" value="{{.Hostname}}">
+      {{end}}
+      {{if .Prompt}}
+      <input type="hidden" name="prompt" value="{{.Prompt}}">
+      {{end}}
     </form>
     <p id="status" class="text-zinc-400 text-sm">Please wait...</p>
   </main>

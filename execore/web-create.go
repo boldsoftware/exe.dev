@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,7 +15,6 @@ import (
 	"time"
 
 	"exe.dev/boxname"
-	emailpkg "exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"exe.dev/stage"
@@ -255,7 +252,7 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 			UserID:   userID,
 			Hostname: hostname,
 		}); err != nil {
-			s.slog().ErrorContext(ctx, "Failed to delete pending mobile VM", "error", err, "user_id", userID, "hostname", hostname)
+			s.slog().ErrorContext(ctx, "Failed to delete pending VM", "error", err, "user_id", userID, "hostname", hostname)
 		}
 
 		cs.MarkDone(nil)
@@ -263,75 +260,11 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 	}()
 }
 
-// handleMobile handles the mobile UI flow at /m using a mux for cleaner routing
-func (s *Server) handleMobile(w http.ResponseWriter, r *http.Request) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.handleMobileHome)
-	mux.HandleFunc("/check-hostname", s.handleMobileHostnameCheck)
-	mux.HandleFunc("/create-vm", s.handleMobileCreateVM)
-	mux.HandleFunc("/email-auth", s.handleMobileEmailAuth)
-	mux.HandleFunc("POST /verify-token", s.handleMobileVerifyTokenManualEntry)
-	mux.HandleFunc("/home", s.handleMobileVMList)
-	mux.HandleFunc("/creating/stream", s.handleMobileCreatingStream)
-	mux.HandleFunc("/box/creation-log", s.handleBoxCreationLog)
-	mux.HandleFunc("POST /cmd", s.handleRunCommand)
-
-	// Strip /m prefix before passing to mux
-	originalURL := r.URL.Path
-	r.URL.Path = strings.TrimPrefix(originalURL, "/m")
-	if r.URL.Path == "" {
-		r.URL.Path = "/"
-	}
-
-	mux.ServeHTTP(w, r)
-
-	// Restore original URL path
-	r.URL.Path = originalURL
-}
-
-// handleMobileHome renders the initial mobile page
-func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
-	// Only handle exact "/" path (which is /m after prefix stripping)
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-
-	// Check if user is already authenticated
-	if _, err := s.validateAuthCookie(r); err == nil {
-		// User is authenticated, redirect to unified dashboard
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	prompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
-	inviteCode := strings.TrimSpace(r.URL.Query().Get("invite"))
-
-	// Generate a random hostname suggestion
-	hostnameSuggestion := boxname.Random()
-
-	data := struct {
-		stage.Env
-		HostnameSuggestion string
-		Prompt             string
-		InviteCode         string
-		IsLoggedIn         bool
-	}{
-		Env:                s.env,
-		HostnameSuggestion: hostnameSuggestion,
-		Prompt:             prompt,
-		InviteCode:         inviteCode,
-		IsLoggedIn:         false, // Already checked auth above, if we're here user is not logged in
-	}
-
-	s.renderTemplate(r.Context(), w, "new.html", data)
-}
-
-// handleMobileNew renders the new box form.
+// handleNewBox renders the new box form.
 // Always shows the form - billing is requested when the user clicks "Create VM".
 // Accepts name, prompt, and invite query params to prefill the form (used after billing cancel or from exe.new).
 // Also accepts a cp query param referencing checkout_params for restoring long prompts.
-func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 	// Read name, prompt, and invite from query params
 	name := strings.TrimSpace(r.URL.Query().Get("name"))
 	prompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
@@ -389,8 +322,8 @@ func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(r.Context(), w, "new.html", data)
 }
 
-// handleMobileHostnameCheck checks if a hostname is available
-func (s *Server) handleMobileHostnameCheck(w http.ResponseWriter, r *http.Request) {
+// handleHostnameCheck checks if a hostname is available
+func (s *Server) handleHostnameCheck(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -439,8 +372,8 @@ func (s *Server) handleMobileHostnameCheck(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(response)
 }
 
-// handleMobileCreateVM handles VM creation request
-func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
+// handleCreateVM handles VM creation request
+func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -450,7 +383,7 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
 	inviteCodeStr := strings.TrimSpace(r.FormValue("invite"))
 
-	s.slog().InfoContext(r.Context(), "Mobile VM creation request", "hostname", hostname, "prompt", prompt)
+	s.slog().InfoContext(r.Context(), "Web VM creation request", "hostname", hostname, "prompt", prompt)
 
 	// If user is logged in, check billing status before proceeding
 	if userID, err := s.validateAuthCookie(r); err == nil {
@@ -517,215 +450,6 @@ type authFormData struct {
 	InvitePlanType    string // "free" or "trial" if valid
 }
 
-// handleMobileEmailAuth handles email authentication
-func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	ip, allowed := s.checkSignupRateLimit(r)
-	if !allowed {
-		s.slog().WarnContext(r.Context(), "signup rate limit exceeded", "ip", ip)
-		s.signupMetrics.IncBlocked("rate_limit", "mobile")
-		http.Error(w, "Too many requests. Please try again later.", http.StatusTooManyRequests)
-		return
-	}
-
-	email := strings.TrimSpace(r.FormValue("email"))
-	hostname := strings.ToLower(strings.TrimSpace(r.FormValue("hostname")))
-	prompt := strings.TrimSpace(r.FormValue("prompt"))
-	inviteCodeStr := strings.TrimSpace(r.FormValue("invite"))
-	if email == "" {
-		http.Error(w, "Email is required", http.StatusBadRequest)
-		return
-	}
-
-	// Basic email validation
-	if !isValidEmail(email) {
-		http.Error(w, "Invalid email format", http.StatusBadRequest)
-		return
-	}
-
-	// Check for valid invite code early so we can bypass abuse checks if valid
-	var invite *exedb.InviteCode
-	if inviteCodeStr != "" {
-		invite = s.lookupUnusedInviteCode(r.Context(), inviteCodeStr)
-	}
-
-	// Validate signup eligibility
-	if err := s.validateNewSignup(r.Context(), signupValidationParams{
-		ip:               ip.String(),
-		email:            email,
-		source:           "mobile",
-		trustedGitHubKey: false,
-		hasInviteCode:    invite != nil,
-	}); err != nil {
-		s.slog().InfoContext(r.Context(), "signup validation failed", "error", err, "ip", ip, "email", email)
-		http.Error(w, err.Error(), http.StatusForbidden)
-		return
-	}
-
-	// Generate verification token
-	token := generateRegistrationToken()
-
-	// Store email verification token in database (creates user if needed)
-	var inviteCodeID *int64
-	if invite != nil {
-		inviteCodeID = &invite.ID
-	}
-	err := s.storeEmailVerification(r.Context(), email, token, inviteCodeID)
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to store email verification", "error", err)
-		http.Error(w, "Failed to process request", http.StatusInternalServerError)
-		return
-	}
-
-	// Record pending VM creation details for this user+token so we can create after verification
-	// Lookup user_id by email (storeEmailVerification ensures user+alloc exists)
-	userID, err := s.GetUserIDByEmail(r.Context(), email)
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to lookup user after email auth", "email", email, "error", err)
-		http.Error(w, "Failed to process request", http.StatusInternalServerError)
-		return
-	}
-	if hostname != "" {
-		if err := withTx1(s, r.Context(), (*exedb.Queries).UpsertMobilePendingVM, exedb.UpsertMobilePendingVMParams{
-			Token:    token,
-			UserID:   userID,
-			Hostname: hostname,
-			Prompt:   &prompt,
-		}); err != nil {
-			s.slog().ErrorContext(r.Context(), "Failed to store pending mobile VM", "error", err)
-			http.Error(w, "Failed to process request", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	// Send verification email - use the standard /verify-email endpoint (requires POST confirmation)
-	verifyURL := fmt.Sprintf("%s/verify-email?token=%s", s.webBaseURLNoRequest(), token)
-	subject := fmt.Sprintf("Verify your email - %s", s.env.WebHost)
-	body := fmt.Sprintf(`Hello,
-
-Please click the link below to verify your email and complete your setup:
-
-%s
-
-This link will expire in 24 hours.
-
-Best regards,
-The %s team`, verifyURL, s.env.WebHost)
-
-	err = s.sendEmail(r.Context(), emailpkg.TypeMobileAuthVerification, email, subject, body)
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to send verification email", "error", err)
-		http.Error(w, "Failed to send email", http.StatusInternalServerError)
-		return
-	}
-
-	data := struct {
-		stage.Env
-		Email       string
-		QueryString string
-		DevURL      string
-	}{
-		Env:         s.env,
-		Email:       email,
-		QueryString: r.URL.RawQuery,
-	}
-
-	if s.env.WebDev {
-		data.DevURL = verifyURL
-	}
-
-	s.renderTemplate(r.Context(), w, "email-sent.html", data)
-}
-
-// handleMobileVerifyTokenManualEntry handles token verification via manual entry form
-func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *http.Request) {
-	token := strings.TrimSpace(r.FormValue("token"))
-	if token == "" {
-		http.Error(w, "Token is required", http.StatusBadRequest)
-		return
-	}
-
-	// Find full token by code prefix
-	userID, err := s.validateEmailVerificationByToken(r.Context(), token)
-	if err != nil {
-		http.Error(w, "Invalid or expired token", http.StatusBadRequest)
-		return
-	}
-	s.slackFeed.EmailVerified(r.Context(), userID)
-
-	// Create auth cookie
-	cookieValue, err := s.createAuthCookie(r.Context(), userID, r.Host)
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to create auth cookie", "error", err)
-		http.Error(w, "Authentication failed", http.StatusInternalServerError)
-		return
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "exe-auth",
-		Value:    cookieValue,
-		Path:     "/",
-		Expires:  time.Now().Add(30 * 24 * time.Hour),
-		Secure:   s.servingHTTPS(),
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-
-	// Look up the most recent pending VM for this user
-	pendingVM, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetLatestMobilePendingVMByUser, userID)
-	if errors.Is(err, sql.ErrNoRows) {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to query pending mobile VM by user_id", "error", err)
-		http.Error(w, "Failed to process request", http.StatusInternalServerError)
-		return
-	}
-	hostname := pendingVM.Hostname
-	prompt := ""
-	if pendingVM.Prompt != nil {
-		prompt = *pendingVM.Prompt
-	}
-	if hostname != "" {
-		// Check if user needs billing before starting creation (only new users need billing)
-		// Skip this check if SkipBilling is set (for tests)
-		if !s.env.SkipBilling {
-			billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
-			if err == nil && userNeedsBilling(&billingStatus) {
-				// User needs to add billing before creating a VM
-				http.Redirect(w, r, "/billing/update", http.StatusSeeOther)
-				return
-			}
-		}
-
-		// Start box creation in background
-		s.startBoxCreation(r.Context(), hostname, prompt, userID)
-		http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
-		return
-	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-// handleMobileVMList redirects to the unified dashboard
-func (s *Server) handleMobileVMList(w http.ResponseWriter, r *http.Request) {
-	// Check authentication
-	_, err := s.validateAuthCookie(r)
-	if err != nil {
-		http.Redirect(w, r, "/m", http.StatusSeeOther)
-		return
-	}
-
-	// Redirect to unified dashboard
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-// Helper functions for mobile
-
 // sseEvent writes a named SSE event with data
 func sseEvent(w http.ResponseWriter, event, data string) {
 	fmt.Fprintf(w, "event: %s\n", event)
@@ -735,8 +459,8 @@ func sseEvent(w http.ResponseWriter, event, data string) {
 	}
 }
 
-// handleMobileCreatingStream streams progress from an in-memory creation stream
-func (s *Server) handleMobileCreatingStream(w http.ResponseWriter, r *http.Request) {
+// handleCreatingStream streams progress from an in-memory creation stream
+func (s *Server) handleCreatingStream(w http.ResponseWriter, r *http.Request) {
 	// Require auth
 	userID, err := s.validateAuthCookie(r)
 	if err != nil {

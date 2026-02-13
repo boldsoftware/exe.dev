@@ -22,7 +22,7 @@
     {{else if .InviteCodeInvalid}}
     <p class="text-red-600 mb-4">Invalid or already used invite code.</p>
     {{end}}
-    <form method="POST" action="{{if .BoxName}}/m/email-auth{{else}}/auth{{end}}">
+    <form method="POST" action="/auth">
       {{if .RedirectURL}}
       <input type="hidden" name="redirect" value="{{.RedirectURL}}">
       {{end}}

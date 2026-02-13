@@ -970,7 +970,7 @@
                 this.output.classList.remove('success', 'error');
 
                 try {
-                    const response = await fetch('/m/cmd', {
+                    const response = await fetch('/cmd', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ command: this.currentCommand }),
@@ -1060,7 +1060,7 @@
             addBtn.textContent = 'Adding...';
 
             try {
-                const response = await fetch('/m/cmd', {
+                const response = await fetch('/cmd', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ command: 'ssh-key add ' + publicKey }),
@@ -1157,7 +1157,7 @@
             renameBtn.textContent = 'Renaming...';
 
             try {
-                const response = await fetch('/m/cmd', {
+                const response = await fetch('/cmd', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ command: 'ssh-key rename ' + oldName + ' ' + newName }),

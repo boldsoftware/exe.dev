@@ -254,7 +254,7 @@ function showStoredCreationLog(hostname, boxRow) {
     // Fetch and display the stored log
     (async () => {
         try {
-            const resp = await fetch('/m/box/creation-log?hostname=' + encodeURIComponent(hostname));
+            const resp = await fetch('/box/creation-log?hostname=' + encodeURIComponent(hostname));
             if (resp.ok) {
                 // Read the response as binary data and convert to Uint8Array for xterm.js
                 const arrayBuffer = await resp.arrayBuffer();
@@ -328,7 +328,7 @@ function showCreationStream(hostname, boxRow) {
     // Start creation stream
     (async () => {
         try {
-            const resp = await fetch('/m/creating/stream?hostname=' + encodeURIComponent(hostname));
+            const resp = await fetch('/creating/stream?hostname=' + encodeURIComponent(hostname));
             if (!resp.ok) {
                 const msg = (await resp.text()) || ('HTTP ' + resp.status);
                 term.write('Error: ' + msg + '\r\n');
@@ -541,7 +541,7 @@ class CommandModal {
         this.#output.classList.remove('success', 'error');
 
         try {
-            const response = await fetch('/m/cmd', {
+            const response = await fetch('/cmd', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ command }),

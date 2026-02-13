@@ -123,14 +123,14 @@ func TestRegisterWebThenKey(t *testing.T) {
 	email := t.Name() + testinfra.FakeEmailSuffix
 	baseURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
 
-	resp, err := http.PostForm(baseURL+"/m/email-auth", url.Values{"email": {email}})
+	resp, err := http.PostForm(baseURL+"/auth", url.Values{"email": {email}})
 	if err != nil {
-		t.Fatalf("POST /m/email-auth: %v", err)
+		t.Fatalf("POST /auth: %v", err)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected status %d from /m/email-auth: %s", resp.StatusCode, string(body))
+		t.Fatalf("unexpected status %d from /auth: %s", resp.StatusCode, string(body))
 	}
 
 	// Verify the email using the standard flow
