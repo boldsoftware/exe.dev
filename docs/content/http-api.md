@@ -222,4 +222,6 @@ Something unexpected went wrong server-side. If this persists, contact [support@
 
 **Is there replay protection?** There is no built-in nonce or `jti` mechanism. Use short-lived tokens (small `exp`) to limit the replay window. Use separate ssh keys for sets of API keys for revocability.
 
+**Can I introspect a command without side effects?** Yes. Pass `--help` to any command (e.g., `new --help`) to get its flags and examples as JSON.
+
 **What are the /exec limitations?** The API has no stdin, no pty, and a 30-second timeout (HTTP 504 on timeout). Commands that require interactive input won't work. If it hurts, don't do it. The request body limit is 64KB.
