@@ -436,7 +436,7 @@ func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb
 	if err != nil {
 		return fmt.Errorf("failed to parse SSH private key: %w", err)
 	}
-	sshHost := box.SSHHost()
+	sshHost := exeweb.BoxSSHHost(s.slog(), box.Ctrhost)
 	sshConfig := &ssh.ClientConfig{
 		User: *box.SSHUser, Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(sshKey),

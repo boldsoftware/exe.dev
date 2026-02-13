@@ -17,6 +17,7 @@ import (
 
 	"exe.dev/domz"
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	api "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/tracing"
 	"github.com/tg123/sshpiper/libplugin"
@@ -459,7 +460,7 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 		slog.DebugContext(ctx, "Box has no stored host key", "component", "piper-plugin", "box_name", box.Name)
 		return nil, fmt.Errorf("VM %s has no stored host key", box.Name)
 	}
-	host := box.SSHHost()
+	host := exeweb.BoxSSHHost(slog.Default(), box.Ctrhost)
 	port := sshDetails.Port
 	// This is a CANONICAL LOG LINE, in the sense that this is a wide event to tell us about SSH connections.
 	slog.InfoContext(ctx, "SSH Connection to VM",

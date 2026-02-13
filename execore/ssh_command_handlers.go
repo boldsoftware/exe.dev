@@ -34,6 +34,7 @@ import (
 	"exe.dev/errorz"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
+	"exe.dev/exeweb"
 	api "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/region"
 	"exe.dev/sshpool2"
@@ -710,14 +711,14 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 		// Drop any pooled SSH connections after stopping so proxy requests fail fast
 		// and retry with fresh connections after restart.
 		if box.SSHPort != nil {
-			ss.server.sshPool.DropConnectionsTo(box.SSHHost(), int(*box.SSHPort))
+			ss.server.sshPool.DropConnectionsTo(exeweb.BoxSSHHost(ss.server.slog(), box.Ctrhost), int(*box.SSHPort))
 		}
 	case api.VMState_STOPPED, api.VMState_ERROR, api.VMState_CREATED:
 		// Instance is already stopped or in a restartable state, skip stop.
 		// But still drop any pooled SSH connections - they may be stale from
 		// before the VM was stopped (e.g., poweroff from inside the VM).
 		if box.SSHPort != nil {
-			ss.server.sshPool.DropConnectionsTo(box.SSHHost(), int(*box.SSHPort))
+			ss.server.sshPool.DropConnectionsTo(exeweb.BoxSSHHost(ss.server.slog(), box.Ctrhost), int(*box.SSHPort))
 		}
 	default:
 		// Unknown or transient state (STOPPING, CREATING, UPDATING, DELETED)
@@ -1107,7 +1108,7 @@ func runCommandOnBoxWithStdin(ctx context.Context, pool *sshpool2.Pool, box *exe
 		return nil, fmt.Errorf("failed to parse SSH key: %w", err)
 	}
 
-	sshHost := box.SSHHost()
+	sshHost := exeweb.BoxSSHHost(slog.Default(), box.Ctrhost)
 	sshConfig := &ssh.ClientConfig{
 		User:            *box.SSHUser,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(sshSigner)},
@@ -1316,7 +1317,7 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 		return fmt.Errorf("failed to parse SSH key: %w", err)
 	}
 
-	sshHost := box.SSHHost()
+	sshHost := exeweb.BoxSSHHost(ss.server.slog(), box.Ctrhost)
 	sshAddr := fmt.Sprintf("%s:%d", sshHost, *box.SSHPort)
 	slog.InfoContext(ctx, "ssh command connecting to box", "addr", sshAddr, "user", *box.SSHUser, "ctrhost", box.Ctrhost)
 

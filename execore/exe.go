@@ -49,6 +49,7 @@ import (
 	"exe.dev/domz"
 	"exe.dev/email"
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	exeletclient "exe.dev/exelet/client"
 	"exe.dev/exens"
 	"exe.dev/ghuser"
@@ -2101,7 +2102,7 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 
 		// Drop any pooled SSH connections after deleting so proxy requests fail fast
 		if box.SSHPort != nil {
-			s.sshPool.DropConnectionsTo(box.SSHHost(), int(*box.SSHPort))
+			s.sshPool.DropConnectionsTo(exeweb.BoxSSHHost(s.slog(), box.Ctrhost), int(*box.SSHPort))
 		}
 	}
 
@@ -2484,7 +2485,7 @@ func (s *Server) stopBox(ctx context.Context, box exedb.Box) error {
 	}
 
 	if box.SSHPort != nil {
-		s.sshPool.DropConnectionsTo(box.SSHHost(), int(*box.SSHPort))
+		s.sshPool.DropConnectionsTo(exeweb.BoxSSHHost(s.slog(), box.Ctrhost), int(*box.SSHPort))
 	}
 
 	return s.updateBoxStatus(ctx, box.ID, "stopped")

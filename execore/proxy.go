@@ -731,7 +731,7 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *e
 	}
 
 	// Determine SSH host address from the box's ctrhost
-	sshHost := box.SSHHost()
+	sshHost := exeweb.BoxSSHHost(s.slog(), box.Ctrhost)
 
 	// Try to proxy to the configured port
 	err = s.proxyViaSSHPortForward(w, r, sshHost, box, sshKey, route.Port, authResult)

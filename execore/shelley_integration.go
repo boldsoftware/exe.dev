@@ -14,6 +14,7 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
+	"exe.dev/exeweb"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -71,7 +72,7 @@ func (ss *SSHServer) runShelleyPrompt(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	// Create HTTP client that tunnels through SSH to the container
-	sshHost := box.SSHHost()
+	sshHost := exeweb.BoxSSHHost(ss.server.slog(), box.Ctrhost)
 	httpClient := &http.Client{
 		Transport: ss.server.createSSHTunnelTransport(sshHost, box, sshKey),
 	}

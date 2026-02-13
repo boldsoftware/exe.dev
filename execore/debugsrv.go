@@ -24,6 +24,7 @@ import (
 	"exe.dev/email"
 	"exe.dev/execore/debug_templates"
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	exeletclient "exe.dev/exelet/client"
 	"exe.dev/llmgateway"
 	"exe.dev/logging"
@@ -1385,7 +1386,7 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 		ShareMode:            route.Share,
 		SSHPort:              formatInt64Ptr(box.SSHPort),
 		SSHUser:              ptrStr(box.SSHUser),
-		SSHHost:              box.SSHHost(),
+		SSHHost:              exeweb.BoxSSHHost(s.slog(), box.Ctrhost),
 		HasServerIdentityKey: len(box.SSHServerIdentityKey) > 0,
 		HasClientPrivateKey:  len(box.SSHClientPrivateKey) > 0,
 		HasAuthorizedKeys:    box.SSHAuthorizedKeys != nil && *box.SSHAuthorizedKeys != "",

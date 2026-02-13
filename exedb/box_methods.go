@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"log/slog"
 	"net"
-	"net/url"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -83,22 +81,4 @@ func (b *Box) CreateHostKeyCallback() ssh.HostKeyCallback {
 
 		return nil
 	}
-}
-
-func (b *Box) SSHHost() string {
-	// TODO: maybe this is a url and needs to be stripped
-	// Ctrhost is usually tcp://host:port/ of the exelet
-	// The VMs SSH server is mapped to a port (box.sshPort) on the same
-	// host as the exelet, so we parse out the host part only
-	if u, err := url.Parse(b.Ctrhost); err == nil && u.Host != "" {
-		if host, _, err := net.SplitHostPort(u.Host); err == nil {
-			return host
-		} else {
-			return u.Host
-		}
-	}
-	// This should never happen, but since we're dealing with data from the database,
-	// let's avoid crashing for now.
-	slog.Error("Box Ctrhost is not a valid URL", "ctrhost", b.Ctrhost)
-	return b.Ctrhost
 }
