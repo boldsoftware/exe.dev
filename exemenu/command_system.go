@@ -200,22 +200,24 @@ func (ctx *CommandContext) Errorf(msg string, args ...any) error {
 
 // WriteJSON is a convenience method for json output.
 func (ctx *CommandContext) WriteJSON(x any) {
-	var data []byte
-	var err error
-	var nl string
 	ctx.slog().Info("writing JSON output", "data", x, "interactive", ctx.IsInteractive())
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
 	if ctx.IsInteractive() {
-		data, err = json.MarshalIndent(x, "", "  ")
-		nl = "\r\n"
-	} else {
-		data, err = json.Marshal(x)
-		nl = "\n"
+		enc.SetIndent("", "  ")
 	}
-	if err != nil {
+	if err := enc.Encode(x); err != nil {
 		fmt.Fprintf(ctx.Output, "failed to marshal JSON: %v\r\n", err)
 		return
 	}
-	fmt.Fprintf(ctx.Output, "%s%s", data, nl)
+	data := buf.Bytes()
+	if ctx.IsInteractive() {
+		// Encoder.Encode adds a trailing \n; replace with \r\n for terminals.
+		data = bytes.TrimSuffix(data, []byte("\n"))
+		data = append(data, '\r', '\n')
+	}
+	ctx.Output.Write(data)
 }
 
 func (cc *CommandContext) WriteInternalError(ctx context.Context, cmd string, err error, slogDetails ...any) {
