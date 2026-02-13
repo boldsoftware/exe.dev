@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Push Ralph's fix (if any) and notify Slack.
 
-Usage: ralph-notify.py <branch> <commit_subject> <slack_id> <run_url> <before_sha>
+Usage: ralph-notify.py <branch> <commit_subject> <slack_id> <run_url> <before_sha> <ralph_run_url>
 
 Checks if HEAD moved since <before_sha>. If it did, pushes to
 refs/queue-ralph/<branch> and posts a success message. Otherwise
@@ -32,7 +32,7 @@ def post_slack(webhook_url: str, text: str) -> None:
 
 
 def main() -> None:
-    branch, commit_subject, slack_id, run_url, before_sha = sys.argv[1:6]
+    branch, commit_subject, slack_id, run_url, before_sha, ralph_run_url = sys.argv[1:7]
 
     webhook_url = os.environ.get("NTFY_SLACK_WEBHOOK_URL", "").strip()
     if not webhook_url:
@@ -43,16 +43,22 @@ def main() -> None:
 
     mention = f"<@{slack_id}> " if slack_id else ""
 
+    repo_url = run_url.rsplit("/actions/runs/", 1)[0]
+
     if before_sha and before_sha != after_sha:
         # Claude made a fix commit — push it.
         subprocess.check_call(["git", "push", "origin", f"HEAD:refs/queue-ralph/{branch}"])
 
         commit_msg = git("log", "-1", "--format=%B")
+        commit_url = f"{repo_url}/commit/{after_sha}"
 
         message = (
             f'🤖 {mention}ralph has a proposed fix for "{commit_subject}"\n'
             f"\n"
             f"{commit_msg}\n"
+            f"Failed CI run: {run_url}\n"
+            f"Ralph run: {ralph_run_url}\n"
+            f"Commit: {commit_url}\n"
             f"To review: `git fetch origin refs/queue-ralph/{branch} && git log -1 -p FETCH_HEAD`\n"
             f"To land: `git push origin FETCH_HEAD:refs/heads/{branch}`"
         )
@@ -61,7 +67,8 @@ def main() -> None:
         message = (
             f'🤖 {mention}ralph investigated "{commit_subject}" but could not auto-fix it.\n'
             f"\n"
-            f"CI run: {run_url}"
+            f"Failed CI run: {run_url}\n"
+            f"Ralph run: {ralph_run_url}"
         )
 
     post_slack(webhook_url, message)
