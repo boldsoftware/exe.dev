@@ -410,14 +410,16 @@ func TestCommandFlagParsing(t *testing.T) {
 			},
 		},
 		{
-			name:         "help command has no flags",
+			name:         "help command has json flag",
 			commandPath:  []string{"help"},
 			expectedArgs: []string{},
 			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
-				// Help command should not have a FlagSet, so it uses the defaultFlagSet
-				// which means cc.FlagSet should be nil after execution
-				if cc.FlagSet != nil {
-					t.Errorf("Expected FlagSet to be nil for help command, got %v", cc.FlagSet)
+				if cc.FlagSet == nil {
+					t.Fatal("Expected FlagSet to be set for help command")
+				}
+				jsonFlag := cc.FlagSet.Lookup("json")
+				if jsonFlag == nil {
+					t.Error("Expected --json flag on help command")
 				}
 			},
 		},

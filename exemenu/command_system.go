@@ -63,6 +63,9 @@ func (ct *CommandTree) SubcommandNames(c *Command) []string {
 }
 
 func (c *Command) Help(cc *CommandContext) error {
+	if cc.WantJSON() {
+		return c.helpJSON(cc)
+	}
 	cc.Writeln("\r\n\033[1;33mCommand: %s\033[0m", c.Name)
 	if len(c.Aliases) > 0 {
 		cc.Writeln("Aliases: %s", strings.Join(c.Aliases, ", "))
@@ -109,6 +112,55 @@ func (c *Command) Help(cc *CommandContext) error {
 		}
 		tabw.Flush()
 	}
+	return nil
+}
+
+func (c *Command) helpJSON(cc *CommandContext) error {
+	help := map[string]any{
+		"command":     c.Name,
+		"description": c.Description,
+	}
+	if len(c.Aliases) > 0 {
+		help["aliases"] = c.Aliases
+	}
+	if c.Usage != "" {
+		help["usage"] = c.Usage
+	}
+	if c.FlagSetFunc != nil {
+		fs := c.FlagSetFunc()
+		var flags []map[string]string
+		fs.VisitAll(func(f *flag.Flag) {
+			if f.Usage == "" || strings.HasPrefix(f.Usage, "[hidden] ") {
+				return
+			}
+			flags = append(flags, map[string]string{
+				"name":        f.Name,
+				"description": f.Usage,
+			})
+		})
+		if len(flags) > 0 {
+			help["flags"] = flags
+		}
+	}
+	if len(c.Examples) > 0 {
+		help["examples"] = c.Examples
+	}
+	if len(c.Subcommands) > 0 {
+		var subs []map[string]string
+		for _, sub := range c.Subcommands {
+			if sub.Hidden {
+				continue
+			}
+			subs = append(subs, map[string]string{
+				"name":        sub.Name,
+				"description": sub.Description,
+			})
+		}
+		if len(subs) > 0 {
+			help["subcommands"] = subs
+		}
+	}
+	cc.WriteJSON(help)
 	return nil
 }
 
@@ -376,6 +428,37 @@ func (ct *CommandTree) Help(cc *CommandContext) {
 		}
 	}
 	tabw.Flush()
+}
+
+func (ct *CommandTree) HelpJSON(cc *CommandContext) {
+	var cmds []map[string]any
+	for _, cmd := range ct.GetAvailableCommands(cc) {
+		if cmd.Hidden && !ct.DevMode {
+			continue
+		}
+		entry := map[string]any{
+			"name":        cmd.Name,
+			"description": cmd.Description,
+		}
+		if len(cmd.Aliases) > 0 {
+			entry["aliases"] = cmd.Aliases
+		}
+		var subs []map[string]string
+		for _, sub := range cmd.Subcommands {
+			if sub.Hidden && !ct.DevMode {
+				continue
+			}
+			subs = append(subs, map[string]string{
+				"name":        sub.Name,
+				"description": sub.Description,
+			})
+		}
+		if len(subs) > 0 {
+			entry["subcommands"] = subs
+		}
+		cmds = append(cmds, entry)
+	}
+	cc.WriteJSON(map[string]any{"commands": cmds})
 }
 
 // ResolveCommandName resolves commandPath to the canonical command name as it

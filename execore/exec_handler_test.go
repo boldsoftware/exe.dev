@@ -1225,6 +1225,44 @@ func TestExecHandlerValidJSON(t *testing.T) {
 		}
 		assertValidJSON(t, body)
 	})
+
+	// help is not in DefaultTokenCmds, so test it with an explicit cmds token.
+	t.Run("help", func(t *testing.T) {
+		helpPayload, _ := json.Marshal(map[string]any{"cmds": []string{"help"}})
+		helpPayloadB64 := base64.RawURLEncoding.EncodeToString(helpPayload)
+		helpSigBlob := createSigBlob(t, sshPrivKey, helpPayload, execNS)
+		helpToken := "exe0." + helpPayloadB64 + "." + helpSigBlob
+
+		execHelp := func(t *testing.T, cmd string) (int, string) {
+			t.Helper()
+			req, err := http.NewRequest("POST", s.httpURL()+"/exec", strings.NewReader(cmd))
+			if err != nil {
+				t.Fatalf("failed to create request: %v", err)
+			}
+			req.Header.Set("Authorization", "Bearer "+helpToken)
+			req.Host = s.env.WebHost
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("request failed: %v", err)
+			}
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			ct := resp.Header.Get("Content-Type")
+			if ct != "application/json; charset=utf-8" {
+				t.Errorf("Content-Type = %q, want application/json; charset=utf-8", ct)
+			}
+			return resp.StatusCode, string(body)
+		}
+
+		status, body := execHelp(t, "help")
+		if status != 200 {
+			t.Fatalf("status = %d, want 200: %s", status, body)
+		}
+		assertValidJSON(t, body)
+		if !strings.Contains(body, `"commands"`) {
+			t.Errorf("help output should contain commands key, got: %s", body)
+		}
+	})
 }
 
 func TestExecHandlerBodyTooLarge(t *testing.T) {

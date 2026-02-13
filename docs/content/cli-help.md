@@ -10,3 +10,7 @@ suborder: 1
 
 Show help information
 
+## Options
+
+- `--json`: output in JSON format
+

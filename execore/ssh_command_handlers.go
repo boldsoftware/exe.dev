@@ -213,6 +213,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Name:              "help",
 			Description:       "Show help information",
 			Handler:           ss.handleHelpCommand,
+			FlagSetFunc:       jsonOnlyFlags("help"),
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeCommandNames,
 		},
@@ -421,19 +422,24 @@ func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *exemenu.CommandC
 		cmdPath := cc.Args
 		cmd := ss.commands.FindCommand(cmdPath)
 		if cmd == nil {
+			if cc.WantJSON() {
+				return cc.Errorf("no help available for unrecognized command: %s", strings.Join(cmdPath, " "))
+			}
 			cc.Writeln("No help available for unrecognized command: %s", strings.Join(cmdPath, " "))
 			return nil
 		}
 
-		cmd.Help(cc)
+		return cmd.Help(cc)
+	}
+
+	if cc.WantJSON() {
+		ss.commands.HelpJSON(cc)
 		return nil
 	}
 
 	// General help
 	cc.Writeln("\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n")
-
 	ss.commands.Help(cc)
-
 	cc.Writeln("\r\nRun \033[1mhelp <command>\033[0m for more details\r\n")
 	return nil
 }
