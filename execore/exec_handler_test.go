@@ -132,6 +132,27 @@ func TestExecHandler(t *testing.T) {
 		}
 	})
 
+	// Test: null byte in body returns 400.
+	t.Run("null_byte_in_body", func(t *testing.T) {
+		req, err := http.NewRequest("POST", s.httpURL()+"/exec", strings.NewReader("whoami\x00rm myvm"))
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Host = s.env.WebHost
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusBadRequest {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 400, got %d: %s", resp.StatusCode, body)
+		}
+	})
+
 	// Test: lowercase "bearer" is accepted (RFC 7235).
 	t.Run("bearer_case_insensitive", func(t *testing.T) {
 		req, err := http.NewRequest("POST", s.httpURL()+"/exec", strings.NewReader("whoami"))

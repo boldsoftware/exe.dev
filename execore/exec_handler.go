@@ -140,6 +140,10 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		execJSONError(w, "request body exceeds 64KB limit", http.StatusRequestEntityTooLarge)
 		return
 	}
+	if bytes.ContainsRune(body, 0) {
+		execJSONError(w, "request body must not contain null bytes", http.StatusBadRequest)
+		return
+	}
 	cmd := strings.TrimSpace(string(body))
 	if cmd == "" {
 		execJSONError(w, "missing command in request body", http.StatusBadRequest)
