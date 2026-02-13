@@ -27,10 +27,11 @@ type sparklineKey struct {
 
 // APIResponse is the JSON response for GET /api/data.
 type APIResponse struct {
-	System     SystemStats                     `json:"system"`
-	Tree       *CgroupNode                     `json:"tree"`
-	Sparklines map[string]map[string][]float64 `json:"sparklines"`
-	Timestamp  int64                           `json:"timestamp"`
+	System           SystemStats                     `json:"system"`
+	Tree             *CgroupNode                     `json:"tree"`
+	Sparklines       map[string]map[string][]float64 `json:"sparklines"`
+	SystemSparklines map[string][]float64            `json:"system_sparklines"`
+	Timestamp        int64                           `json:"timestamp"`
 }
 
 type collector struct {
@@ -44,8 +45,9 @@ type collector struct {
 	prevRawStats map[string]map[string]float64
 	prevTime     time.Time
 
-	sparkRings  map[sparklineKey]*ringBuf
-	prevJiffies cpuJiffies
+	sparkRings       map[sparklineKey]*ringBuf
+	systemSparkRings map[string]*ringBuf
+	prevJiffies      cpuJiffies
 
 	// Idle tracking: only collect when clients are connected.
 	lastActive time.Time
@@ -98,9 +100,10 @@ var sparklineGaugeMetrics = []string{
 
 func newCollector(cgroupRoot string) *collector {
 	return &collector{
-		cgroupRoot:   cgroupRoot,
-		prevRawStats: make(map[string]map[string]float64),
-		sparkRings:   make(map[sparklineKey]*ringBuf),
+		cgroupRoot:       cgroupRoot,
+		prevRawStats:     make(map[string]map[string]float64),
+		sparkRings:       make(map[sparklineKey]*ringBuf),
+		systemSparkRings: make(map[string]*ringBuf),
 	}
 }
 
@@ -117,6 +120,7 @@ func (c *collector) collectLocked() {
 	if !c.prevTime.IsZero() && time.Since(c.prevTime) > 30*time.Second {
 		c.prevRawStats = make(map[string]map[string]float64)
 		c.sparkRings = make(map[sparklineKey]*ringBuf)
+		c.systemSparkRings = make(map[string]*ringBuf)
 	}
 
 	sys, jiffies, err := readSystemStats(c.prevJiffies)
@@ -125,6 +129,25 @@ func (c *collector) collectLocked() {
 	} else {
 		c.system = sys
 		c.prevJiffies = jiffies
+
+		// Record system-level sparklines.
+		sysMetrics := map[string]float64{
+			"cpu_pct":           100 - sys.CPU.IdlePct,
+			"psi_cpu_some10":    sys.PSICPU.Some.Avg10,
+			"psi_cpu_full10":    sys.PSICPU.Full.Avg10,
+			"psi_memory_some10": sys.PSIMem.Some.Avg10,
+			"psi_memory_full10": sys.PSIMem.Full.Avg10,
+			"psi_io_some10":     sys.PSIIO.Some.Avg10,
+			"psi_io_full10":     sys.PSIIO.Full.Avg10,
+		}
+		for k, v := range sysMetrics {
+			ring, ok := c.systemSparkRings[k]
+			if !ok {
+				ring = &ringBuf{}
+				c.systemSparkRings[k] = ring
+			}
+			ring.push(v)
+		}
 	}
 
 	tree, err := walkCgroupTree(c.cgroupRoot, "")
@@ -220,11 +243,19 @@ func (c *collector) snapshot(rootFilter string) APIResponse {
 		collectSparklines(tree, c.sparkRings, sparklines)
 	}
 
+	systemSparklines := make(map[string][]float64)
+	for k, ring := range c.systemSparkRings {
+		if ring.len > 0 {
+			systemSparklines[k] = ring.values()
+		}
+	}
+
 	return APIResponse{
-		System:     c.system,
-		Tree:       tree,
-		Sparklines: sparklines,
-		Timestamp:  time.Now().Unix(),
+		System:           c.system,
+		Tree:             tree,
+		Sparklines:       sparklines,
+		SystemSparklines: systemSparklines,
+		Timestamp:        time.Now().Unix(),
 	}
 }
 

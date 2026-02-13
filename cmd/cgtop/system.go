@@ -35,11 +35,12 @@ type PSI struct {
 }
 
 type SystemStats struct {
-	LoadAvg LoadAvg  `json:"loadavg"`
-	CPU     CPUUsage `json:"cpu"`
-	PSICPU  PSI      `json:"psi_cpu"`
-	PSIMem  PSI      `json:"psi_memory"`
-	PSIIO   PSI      `json:"psi_io"`
+	Hostname string   `json:"hostname"`
+	LoadAvg  LoadAvg  `json:"loadavg"`
+	CPU      CPUUsage `json:"cpu"`
+	PSICPU   PSI      `json:"psi_cpu"`
+	PSIMem   PSI      `json:"psi_memory"`
+	PSIIO    PSI      `json:"psi_io"`
 }
 
 func readLoadAvg() (LoadAvg, error) {
@@ -155,6 +156,8 @@ func readPSI(path string) (PSI, error) {
 func readSystemStats(prevJiffies cpuJiffies) (SystemStats, cpuJiffies, error) {
 	var stats SystemStats
 	var err error
+
+	stats.Hostname, _ = os.Hostname()
 
 	stats.LoadAvg, err = readLoadAvg()
 	if err != nil {

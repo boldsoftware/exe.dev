@@ -9,11 +9,32 @@
 body { font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 12px; background: #fff; color: #24292f; }
 
 #topbar {
-  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
-  padding: 8px 12px; background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  padding: 6px 12px; background: #f6f8fa; border-bottom: 1px solid #d0d7de;
 }
+#topbar .left { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+#topbar .center { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; flex: 1; justify-content: center; }
+#topbar .right { display: flex; align-items: center; flex-shrink: 0; }
 #topbar .label { color: #57606a; }
 #topbar .value { color: #24292f; font-weight: bold; }
+#topbar .hostname { font-weight: bold; color: #24292f; }
+
+#breadcrumbs { display: flex; align-items: center; gap: 4px; }
+#breadcrumbs a { color: #0969da; text-decoration: none; cursor: pointer; }
+#breadcrumbs a:hover { text-decoration: underline; }
+#breadcrumbs .sep { color: #8c959f; }
+
+#filter-input {
+  font-family: inherit; font-size: 12px;
+  padding: 2px 8px; border: 1px solid #d0d7de; border-radius: 4px;
+  background: #fff; color: #24292f; width: 160px;
+  outline: none;
+}
+#filter-input:focus { border-color: #0969da; box-shadow: 0 0 0 2px rgba(9,105,218,0.15); }
+#filter-input::placeholder { color: #8c959f; }
+
+.sys-spark { vertical-align: middle; margin-left: 2px; }
+.sys-spark polyline { fill: none; stroke-width: 1.5; }
 
 .cpu-bar {
   display: inline-flex; width: 120px; height: 14px; background: #eaeef2;
@@ -27,15 +48,6 @@ body { font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 12px; 
 .psi-green { background: #dafbe1; color: #1a7f37; }
 .psi-yellow { background: #fff8c5; color: #9a6700; }
 .psi-red { background: #ffebe9; color: #cf222e; }
-
-#nav {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 6px 12px; background: #f6f8fa; border-bottom: 1px solid #d0d7de;
-}
-#breadcrumbs { display: flex; align-items: center; gap: 4px; }
-#breadcrumbs a { color: #0969da; text-decoration: none; cursor: pointer; }
-#breadcrumbs a:hover { text-decoration: underline; }
-#breadcrumbs .sep { color: #8c959f; }
 
 #col-controls {
   display: flex; gap: 4px; flex-wrap: wrap; align-items: center;
@@ -152,8 +164,11 @@ tr:hover td:first-child { background: #eaeef2 !important; }
 </style>
 </head>
 <body>
-<div id="topbar"></div>
-<div id="nav"><div id="breadcrumbs"></div></div>
+<div id="topbar">
+  <div class="left"><div id="breadcrumbs"></div></div>
+  <div class="center" id="topbar-center"></div>
+  <div class="right"><input id="filter-input" type="text" placeholder="Filter..." autocomplete="off" spellcheck="false"></div>
+</div>
 <div id="col-controls"></div>
 <div id="histo-tooltip"></div>
 <div id="table-wrap">
@@ -180,6 +195,7 @@ let sortKey = null;
 let sortSrc = 'stats';
 let sortDir = 'desc';
 let treeMode = true;
+let filterText = '';
 
 const columnGroups = [
   { id: 'cpu', label: 'CPU', on: true, columns: [
@@ -308,26 +324,60 @@ const columnGroups = [
   ]},
 ];
 
-// Persist state in localStorage. groupState values: 0=hidden, 1=spark+vals, 2=vals only
+// Persist state in URL (primary) and localStorage (fallback).
+// groupState values: 0=hidden, 1=spark+vals, 2=vals only
 let groupState = {};
+
+function stateToURL() {
+  const params = new URLSearchParams();
+  if (currentRoot) params.set('root', currentRoot);
+  if (!treeMode) params.set('flat', '1');
+  const parts = columnGroups.map(g => g.id + '.' + (groupState[g.id] || 0));
+  params.set('cols', parts.join('-'));
+  const qs = params.toString();
+  history.replaceState(null, '', qs ? '?' + qs : location.pathname);
+}
+
+function stateFromURL() {
+  const params = new URLSearchParams(location.search);
+  let found = false;
+  if (params.has('root')) { currentRoot = params.get('root'); found = true; }
+  if (params.has('flat')) { treeMode = false; found = true; }
+  if (params.has('cols')) {
+    found = true;
+    for (const part of params.get('cols').split('-')) {
+      const dot = part.lastIndexOf('.');
+      if (dot < 0) continue;
+      const id = part.slice(0, dot);
+      const val = parseInt(part.slice(dot + 1));
+      if (!isNaN(val)) groupState[id] = val;
+    }
+  }
+  return found;
+}
+
 (function loadState() {
+  // Defaults first.
+  for (const g of columnGroups) groupState[g.id] = g.on ? 1 : 0;
+  // URL takes priority if it has state params.
+  if (stateFromURL()) return;
+  // Otherwise fall back to localStorage.
   try {
     const s = JSON.parse(localStorage.getItem('cgtop_state'));
     if (s && s.groups) {
-      groupState = s.groups;
-      for (const [k, v] of Object.entries(groupState)) {
+      for (const [k, v] of Object.entries(s.groups)) {
         if (v === true) groupState[k] = 1;
         else if (v === false) groupState[k] = 0;
+        else groupState[k] = v;
       }
     }
     if (s && s.treeMode !== undefined) treeMode = s.treeMode;
-    if (!Object.keys(groupState).length) throw 0;
-  } catch(e) {
-    for (const g of columnGroups) groupState[g.id] = g.on ? 1 : 0;
-  }
+  } catch(e) {}
 })();
+
 function saveState() {
   try { localStorage.setItem('cgtop_state', JSON.stringify({ groups: groupState, treeMode })); } catch(e) {}
+  stateToURL();
 }
 
 // Formatters.
@@ -588,22 +638,48 @@ function toggleTreeMode() {
 }
 
 // Rendering.
+function makeSysSpark(values, color, maxOverride) {
+  if (!values || values.length < 2) return '';
+  const w = 40, h = 12;
+  const max = maxOverride != null ? maxOverride : Math.max(...values, 1e-9);
+  const points = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * w;
+    const y = h - (Math.max(v, 0) / max) * (h - 2) - 1;
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  }).join(' ');
+  return `<svg class="sys-spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${points}" style="stroke:${color}"/></svg>`;
+}
+
 function renderTopbar() {
   if (!data) return;
   const s = data.system;
-  const bar = document.getElementById('topbar');
+  const ss = data.system_sparklines || {};
+  const center = document.getElementById('topbar-center');
   const userW = s.cpu.user_pct.toFixed(1);
   const sysW = s.cpu.sys_pct.toFixed(1);
   const ioW = s.cpu.iowait_pct.toFixed(1);
   let h = '';
+  if (s.hostname) h += `<span class="hostname">${esc(s.hostname)}</span>`;
   h += `<span><span class="label">Load</span> <span class="value">${s.loadavg.load1.toFixed(2)} ${s.loadavg.load5.toFixed(2)} ${s.loadavg.load15.toFixed(2)}</span></span>`;
-  h += `<span><span class="label">CPU</span> <span class="cpu-bar"><span class="user" style="width:${userW}%"></span><span class="sys" style="width:${sysW}%"></span><span class="iowait" style="width:${ioW}%"></span></span> <span class="value">${(100 - s.cpu.idle_pct).toFixed(0)}%</span></span>`;
-  for (const [label, psi] of [['PSI CPU', s.psi_cpu], ['PSI Mem', s.psi_memory], ['PSI IO', s.psi_io]]) {
+  const cpuSpark = makeSysSpark(ss.cpu_pct, '#2da44e', 100);
+  h += `<span><span class="label">CPU</span> <span class="cpu-bar"><span class="user" style="width:${userW}%"></span><span class="sys" style="width:${sysW}%"></span><span class="iowait" style="width:${ioW}%"></span></span> <span class="value">${(100 - s.cpu.idle_pct).toFixed(0)}%</span>${cpuSpark}</span>`;
+  const psiItems = [
+    ['PSI CPU', s.psi_cpu, 'psi_cpu_some10'],
+    ['PSI Mem', s.psi_memory, 'psi_memory_some10'],
+    ['PSI IO', s.psi_io, 'psi_io_some10'],
+  ];
+  for (const [label, psi, sparkKey] of psiItems) {
     if (!psi) continue;
     const v = psi.some.avg10;
-    h += `<span><span class="label">${label}</span> <span class="psi-badge ${psiClass(v)}">${v.toFixed(1)}%</span></span>`;
+    const psiSpark = makeSysSpark(ss[sparkKey], psiClass(v) === 'psi-green' ? '#1a7f37' : psiClass(v) === 'psi-yellow' ? '#9a6700' : '#cf222e', 100);
+    h += `<span><span class="label">${label}</span> <span class="psi-badge ${psiClass(v)}">${v.toFixed(1)}%</span>${psiSpark}</span>`;
   }
-  bar.innerHTML = h;
+  center.innerHTML = h;
+
+  // Update page title with hostname.
+  if (s.hostname) {
+    document.title = s.hostname + ' — cgtop';
+  }
 }
 
 function renderBreadcrumbs() {
@@ -671,6 +747,7 @@ function toggleAll() {
 
 function zoom(path) {
   currentRoot = path;
+  stateToURL();
   refresh();
 }
 
@@ -698,7 +775,7 @@ function renderTable() {
   groupRow += '</tr>';
 
   // -- Build rows first (needed for column stats) --
-  const rows = [];
+  let rows = [];
   if (treeMode) {
     flattenTree(data.tree, 0, rows);
   } else {
@@ -706,6 +783,16 @@ function renderTable() {
     if (sortKey) {
       rows.sort((a, b) => cmpNodes(a.node, b.node));
     }
+  }
+
+  // Apply filter.
+  if (filterText) {
+    const ft = filterText.toLowerCase();
+    rows = rows.filter(r => {
+      const name = (r.node.name || '').toLowerCase();
+      const path = (r.node.path || '').toLowerCase();
+      return name.includes(ft) || path.includes(ft);
+    });
   }
 
   // -- Compute column value ranges for histograms and color scales --
@@ -960,6 +1047,13 @@ document.getElementById('thead').addEventListener('mouseenter', (e) => {
 document.getElementById('thead').addEventListener('mouseleave', (e) => {
   if (e.target.closest('.col-histo-svg') || e.target.closest('.col-histo')) hideHistoTooltip();
 }, true);
+
+// Filter input handling.
+const filterInput = document.getElementById('filter-input');
+filterInput.addEventListener('input', () => {
+  filterText = filterInput.value;
+  renderTable();
+});
 
 refresh();
 setInterval(refresh, 10000);
