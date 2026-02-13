@@ -330,7 +330,7 @@ func TestSyncCreditsLive(t *testing.T) {
 		t.Fatalf("SyncCredits idempotent pass: %v", err)
 	}
 
-	got, err := m.UseCredits(ctx, billingID, 0, tender.Zero())
+	got, err := m.SpendCredits(ctx, billingID, 0, tender.Zero())
 	if err != nil {
 		t.Fatalf("UseCredits read balance: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestUseCreditsAndExecQueryErrorPaths(t *testing.T) {
 	db := newEmptyTestDB(t)
 	m := &Manager{DB: db}
 
-	_, err := m.UseCredits(t.Context(), "acct_1", 1, tender.Mint(100, 0))
+	_, err := m.SpendCredits(t.Context(), "acct_1", 1, tender.Mint(100, 0))
 	if err == nil {
 		t.Fatal("UseCredits error = nil, want non-nil")
 	}

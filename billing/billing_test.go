@@ -113,7 +113,7 @@ func TestSyncCredits(t *testing.T) {
 	checkBalance := func(aliceID string, want tender.Value) {
 		t.Helper()
 
-		got, err := m.UseCredits(t.Context(), aliceID, 0, tender.Zero())
+		got, err := m.SpendCredits(t.Context(), aliceID, 0, tender.Zero())
 		check(err, nil)
 
 		if got != want {
@@ -164,7 +164,7 @@ func TestSyncCredits(t *testing.T) {
 	check(err, nil)
 
 	// Check that the credits were added to the ledger.
-	balance, err := m.UseCredits(t.Context(), aliceID, 0, tender.Zero())
+	balance, err := m.SpendCredits(t.Context(), aliceID, 0, tender.Zero())
 	check(err, nil)
 
 	if balance != tender.Mint(100, 0) {
@@ -181,7 +181,7 @@ func TestUseCreditsPreservesFractionalCents(t *testing.T) {
 	accountID := "exe_fractional_cents"
 	createTestAccount(t, m.DB, accountID, "user_fractional_cents")
 
-	balance, err := m.UseCredits(ctx, accountID, 3, tender.Mint(0, -5000))
+	balance, err := m.SpendCredits(ctx, accountID, 3, tender.Mint(0, -5000))
 	if err != nil {
 		t.Fatalf("UseCredits fractional: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestUseCreditsPreservesFractionalCents(t *testing.T) {
 		t.Fatalf("fractional balance = %v, want %v", balance, want)
 	}
 
-	balance, err = m.UseCredits(ctx, accountID, 2, tender.Mint(-1, 0))
+	balance, err = m.SpendCredits(ctx, accountID, 2, tender.Mint(-1, 0))
 	if err != nil {
 		t.Fatalf("UseCredits whole cents: %v", err)
 	}

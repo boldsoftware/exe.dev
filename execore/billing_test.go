@@ -2443,7 +2443,7 @@ func TestCreditPurchase_BalanceUpdatesAfterSync(t *testing.T) {
 	}
 
 	// Check balance via UseCredits(0)
-	balance, err := server.billing.UseCredits(t.Context(), "exe_balance_credits", 0, tender.Zero())
+	balance, err := server.billing.SpendCredits(t.Context(), "exe_balance_credits", 0, tender.Zero())
 	if err != nil && !strings.Contains(err.Error(), "no such table") {
 		t.Fatalf("UseCredits failed: %v", err)
 	}

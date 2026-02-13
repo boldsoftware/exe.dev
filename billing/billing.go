@@ -644,7 +644,7 @@ func subscriptionEventType(eventType string, status stripe.SubscriptionStatus) (
 	}
 }
 
-func (m *Manager) UseCredits(ctx context.Context, billingID string, quantity int, unitPrice tender.Value) (remaining tender.Value, _ error) {
+func (m *Manager) SpendCredits(ctx context.Context, billingID string, quantity int, unitPrice tender.Value) (remaining tender.Value, _ error) {
 	const q = `
 		-- Insert a new credit deduction for the current hour and credit type,
 		-- or update the existing one if it already exists,

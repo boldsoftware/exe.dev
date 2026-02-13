@@ -1479,7 +1479,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	if s.env.EnableCreditPurchases {
 		account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountByUserID, userID)
 		if err == nil {
-			balance, err := s.billing.UseCredits(r.Context(), account.ID, 0, tender.Zero())
+			balance, err := s.billing.SpendCredits(r.Context(), account.ID, 0, tender.Zero())
 			if err != nil {
 				s.slog().ErrorContext(r.Context(), "failed to fetch credit balance", "error", err, "user_id", userID)
 			} else {
