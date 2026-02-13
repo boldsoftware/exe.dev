@@ -24,6 +24,7 @@ permissions:
 jobs:
   investigate-and-fix:
     runs-on: [self-hosted, exe-ci, edric]
+    environment: ai-testing
     timeout-minutes: 35
     steps:
       - name: Create GitHub App Token
@@ -60,6 +61,10 @@ jobs:
           CLAUDE_DIR="$HOME/.claude-code"
           npm install --prefix "$CLAUDE_DIR" @anthropic-ai/claude-code
           echo "$CLAUDE_DIR/node_modules/.bin" >> $GITHUB_PATH
+
+      - name: Configure Claude Code for CI
+        run: |
+          echo '{"hasCompletedOnboarding": true}' > ~/.claude.json
 
       - name: Extract Slack user ID
         id: slack
