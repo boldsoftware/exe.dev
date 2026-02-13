@@ -49,7 +49,6 @@ import (
 	"exe.dev/domz"
 	"exe.dev/email"
 	"exe.dev/exedb"
-	"exe.dev/exeweb"
 	exeletclient "exe.dev/exelet/client"
 	"exe.dev/exens"
 	"exe.dev/exeweb"
