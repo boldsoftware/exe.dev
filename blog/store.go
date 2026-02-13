@@ -155,6 +155,10 @@ func loadStoreFromFS(postsFS, assetsFS fs.FS, includeUnpublished bool, assetModT
 		if !strings.HasSuffix(strings.ToLower(path), ".md") {
 			return nil
 		}
+		base := filepath.Base(path)
+		if len(base) < len("2006-01-02-a.md") || base[4] != '-' || base[7] != '-' || base[10] != '-' {
+			return nil // skip non-post files like AGENTS.md, README.md
+		}
 
 		data, err := fs.ReadFile(postsFS, path)
 		if err != nil {
