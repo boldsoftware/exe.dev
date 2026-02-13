@@ -366,15 +366,17 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:           ss.handleGrantSupportRootCommand,
 		},
 		{
-			Name:        "exelets",
-			Hidden:      true,
-			Description: "List all exelets (support only)",
-			FlagSetFunc: jsonOnlyFlags("exelets"),
-			Handler:     ss.handleExeletsCommand,
+			Name:         "exelets",
+			Hidden:       true,
+			RequiresSudo: true,
+			Description:  "List all exelets (support only)",
+			FlagSetFunc:  jsonOnlyFlags("exelets"),
+			Handler:      ss.handleExeletsCommand,
 		},
 		{
 			Name:              "resize",
 			Hidden:            true,
+			RequiresSudo:      true,
 			Description:       "Resize a VM's memory, CPU, or disk (support only)",
 			Usage:             "resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]",
 			HasPositionalArgs: true,
@@ -384,6 +386,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		{
 			Name:              "backfill-allocated-cpus",
 			Hidden:            true,
+			RequiresSudo:      true,
 			Description:       "Backfill allocated_cpus from exelet for VMs missing it (support only)",
 			Usage:             "backfill-allocated-cpus <count>",
 			HasPositionalArgs: true,
@@ -427,6 +430,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 	ct := &exemenu.CommandTree{Commands: commands}
 	if ss.server != nil {
 		ct.DevMode = ss.server.env.ReplDev
+		ct.SudoChecker = ss.server.UserHasExeSudo
 	}
 	return ct
 }

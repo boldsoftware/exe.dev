@@ -54,6 +54,7 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 				Handler:           ss.handleTeamCreateCommand,
 				HasPositionalArgs: true,
 				Hidden:            true,
+				RequiresSudo:      true,
 				Available:         ss.isSudoUser,
 			},
 			{
@@ -64,6 +65,7 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 				FlagSetFunc:       addOwnerFlag(jsonOnlyFlags("team-enroll")),
 				HasPositionalArgs: true,
 				Hidden:            true,
+				RequiresSudo:      true,
 				Available:         ss.isSudoUser,
 			},
 			{
@@ -73,6 +75,7 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 				Handler:           ss.handleTeamUnenrollCommand,
 				HasPositionalArgs: true,
 				Hidden:            true,
+				RequiresSudo:      true,
 				Available:         ss.isSudoUser,
 			},
 			{
@@ -82,6 +85,7 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 				Handler:           ss.handleTeamPromoteCommand,
 				HasPositionalArgs: true,
 				Hidden:            true,
+				RequiresSudo:      true,
 				Available:         ss.isSudoUser,
 			},
 			{
@@ -91,15 +95,17 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 				Handler:           ss.handleTeamDemoteCommand,
 				HasPositionalArgs: true,
 				Hidden:            true,
+				RequiresSudo:      true,
 				Available:         ss.isSudoUser,
 			},
 			{
-				Name:        "list",
-				Description: "List all teams",
-				Usage:       "team list",
-				Handler:     ss.handleTeamListCommand,
-				Hidden:      true,
-				Available:   ss.isSudoUser,
+				Name:         "list",
+				Description:  "List all teams",
+				Usage:        "team list",
+				Handler:      ss.handleTeamListCommand,
+				Hidden:       true,
+				RequiresSudo: true,
+				Available:    ss.isSudoUser,
 			},
 			{
 				Name:              "show",
@@ -108,6 +114,7 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 				Handler:           ss.handleTeamShowCommand,
 				HasPositionalArgs: true,
 				Hidden:            true,
+				RequiresSudo:      true,
 				Available:         ss.isSudoUser,
 			},
 		},

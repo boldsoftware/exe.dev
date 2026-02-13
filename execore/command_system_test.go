@@ -889,3 +889,189 @@ func TestResolveCommandNameCanonical(t *testing.T) {
 		}
 	}
 }
+
+// collectCommands walks a command tree and returns all command paths with their commands.
+func collectCommands(commands []*exemenu.Command, prefix string) []struct {
+	path string
+	cmd  *exemenu.Command
+} {
+	var result []struct {
+		path string
+		cmd  *exemenu.Command
+	}
+	for _, cmd := range commands {
+		p := cmd.Name
+		if prefix != "" {
+			p = prefix + " " + cmd.Name
+		}
+		result = append(result, struct {
+			path string
+			cmd  *exemenu.Command
+		}{path: p, cmd: cmd})
+		if len(cmd.Subcommands) > 0 {
+			result = append(result, collectCommands(cmd.Subcommands, p)...)
+		}
+	}
+	return result
+}
+
+func TestRequiresSudoCommandsMustBeHidden(t *testing.T) {
+	ss := &SSHServer{}
+	ct := NewCommandTree(ss)
+
+	for _, entry := range collectCommands(ct.Commands, "") {
+		if entry.cmd.RequiresSudo && !entry.cmd.Hidden {
+			t.Errorf("command %q has RequiresSudo=true but Hidden=false; sudo commands must be hidden", entry.path)
+		}
+	}
+}
+
+// TestRequiresSudoExplicitlySet ensures every command in the real command tree
+// has been explicitly considered for RequiresSudo. If you add a new command,
+// add it to the appropriate set below.
+func TestRequiresSudoExplicitlySet(t *testing.T) {
+	ss := &SSHServer{}
+	ct := NewCommandTree(ss)
+
+	// Commands that require sudo. Update this when adding new sudo commands.
+	wantSudo := map[string]bool{
+		"exelets":                 true,
+		"resize":                  true,
+		"backfill-allocated-cpus": true,
+		"team create":             true,
+		"team enroll":             true,
+		"team unenroll":           true,
+		"team promote":            true,
+		"team demote":             true,
+		"team list":               true,
+		"team show":               true,
+	}
+
+	allCommands := collectCommands(ct.Commands, "")
+
+	// Check that every command marked RequiresSudo is in our expected set
+	for _, entry := range allCommands {
+		if entry.cmd.RequiresSudo && !wantSudo[entry.path] {
+			t.Errorf("command %q has RequiresSudo=true but is not in the expected sudo set; add it to wantSudo in this test", entry.path)
+		}
+	}
+
+	// Check that every command in our expected set actually has RequiresSudo
+	for _, entry := range allCommands {
+		if wantSudo[entry.path] && !entry.cmd.RequiresSudo {
+			t.Errorf("command %q is in the expected sudo set but has RequiresSudo=false; set RequiresSudo: true on the command", entry.path)
+		}
+	}
+
+	// Check that every entry in wantSudo corresponds to a real command
+	commandPaths := make(map[string]bool)
+	for _, entry := range allCommands {
+		commandPaths[entry.path] = true
+	}
+	for path := range wantSudo {
+		if !commandPaths[path] {
+			t.Errorf("wantSudo contains %q but no such command exists; remove it from the test", path)
+		}
+	}
+}
+
+func TestValidateCommand_RequiresSudoMustBeHidden(t *testing.T) {
+	err := exemenu.ValidateCommand(&exemenu.Command{
+		Name:         "bad",
+		RequiresSudo: true,
+		Hidden:       false,
+		Handler:      func(context.Context, *exemenu.CommandContext) error { return nil },
+	})
+	if err == nil {
+		t.Fatal("expected error for RequiresSudo command that is not Hidden")
+	}
+	if !strings.Contains(err.Error(), "RequiresSudo") {
+		t.Errorf("error should mention RequiresSudo, got: %v", err)
+	}
+
+	// Valid: RequiresSudo + Hidden
+	err = exemenu.ValidateCommand(&exemenu.Command{
+		Name:         "good",
+		RequiresSudo: true,
+		Hidden:       true,
+		Handler:      func(context.Context, *exemenu.CommandContext) error { return nil },
+	})
+	if err != nil {
+		t.Errorf("unexpected error for valid RequiresSudo+Hidden command: %v", err)
+	}
+}
+
+func TestSudoCheckerEnforcement(t *testing.T) {
+	sudoCalled := false
+	tree := &exemenu.CommandTree{
+		Commands: []*exemenu.Command{
+			{
+				Name:         "admin-cmd",
+				Hidden:       true,
+				RequiresSudo: true,
+				Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
+					cc.Write("executed")
+					return nil
+				},
+			},
+			{
+				Name: "normal-cmd",
+				Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
+					cc.Write("executed")
+					return nil
+				},
+			},
+		},
+		SudoChecker: func(ctx context.Context, userID string) bool {
+			sudoCalled = true
+			return userID == "admin"
+		},
+	}
+
+	// Non-admin user tries sudo command
+	output := &MockOutput{}
+	cc := &exemenu.CommandContext{
+		User:   &exemenu.UserInfo{ID: "regular", Email: "regular@test.com"},
+		Output: output,
+	}
+	rc := tree.ExecuteCommand(context.Background(), cc, []string{"admin-cmd"})
+	if rc == 0 {
+		t.Error("non-sudo user should be rejected")
+	}
+	if !sudoCalled {
+		t.Error("SudoChecker should have been called")
+	}
+	if !strings.Contains(output.String(), "sudoers") {
+		t.Errorf("expected sudoers message, got: %s", output.String())
+	}
+
+	// Admin user tries sudo command
+	sudoCalled = false
+	output = &MockOutput{}
+	cc = &exemenu.CommandContext{
+		User:   &exemenu.UserInfo{ID: "admin", Email: "admin@test.com"},
+		Output: output,
+	}
+	rc = tree.ExecuteCommand(context.Background(), cc, []string{"admin-cmd"})
+	if rc != 0 {
+		t.Errorf("admin user should succeed, got rc=%d, output=%s", rc, output.String())
+	}
+	if !strings.Contains(output.String(), "executed") {
+		t.Error("admin command should have executed")
+	}
+
+	// Normal command doesn't require sudo check
+	sudoCalled = false
+	output = &MockOutput{}
+	cc = &exemenu.CommandContext{
+		User:   &exemenu.UserInfo{ID: "regular", Email: "regular@test.com"},
+		Output: output,
+	}
+	rc = tree.ExecuteCommand(context.Background(), cc, []string{"normal-cmd"})
+	if rc != 0 {
+		t.Errorf("normal command should succeed, got rc=%d", rc)
+	}
+	if sudoCalled {
+		t.Error("SudoChecker should not be called for non-sudo commands")
+	}
+}

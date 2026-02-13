@@ -33,8 +33,9 @@ type CompletionContext struct {
 
 // Command represents a single command in the command tree
 type Command struct {
-	Name   string
-	Hidden bool // if true, command is hidden from help and completions
+	Name         string
+	Hidden       bool // if true, command is hidden from help and completions
+	RequiresSudo bool // if true, command requires exe sudo privileges; must also be Hidden
 
 	// Deprecated: Pick one meaningful name instead.
 	Aliases []string
@@ -377,6 +378,9 @@ func ValidateCommand(cmd *Command) error {
 	if cmd.HasPositionalArgs && len(cmd.Subcommands) > 0 {
 		return fmt.Errorf("command %q cannot have both positional arguments and subcommands", cmd.Name)
 	}
+	if cmd.RequiresSudo && !cmd.Hidden {
+		return fmt.Errorf("command %q has RequiresSudo but is not Hidden", cmd.Name)
+	}
 
 	// Recursively validate subcommands
 	for _, subCmd := range cmd.Subcommands {
@@ -390,8 +394,9 @@ func ValidateCommand(cmd *Command) error {
 
 // CommandTree holds the root command and provides execution methods
 type CommandTree struct {
-	Commands []*Command
-	DevMode  bool // if true, show hidden commands in help and completions
+	Commands    []*Command
+	DevMode     bool                                          // if true, show hidden commands in help and completions
+	SudoChecker func(ctx context.Context, userID string) bool // if set, used to enforce RequiresSudo on commands
 }
 
 func (ct *CommandTree) Help(cc *CommandContext) {
@@ -596,6 +601,17 @@ func (ct *CommandTree) executeCommand(ctx context.Context, cc *CommandContext, c
 	// Check if command is available
 	if cmd.Available != nil && !cmd.Available(cc) {
 		return cc.Errorf("exe.dev repl: command not available: %q", strings.Join(commandPath, " "))
+	}
+
+	// Enforce RequiresSudo at the command dispatch level
+	if cmd.RequiresSudo && ct.SudoChecker != nil {
+		if cc.User == nil || !ct.SudoChecker(ctx, cc.User.ID) {
+			userDesc := "unknown"
+			if cc.User != nil {
+				userDesc = cc.User.Email
+			}
+			return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", userDesc)
+		}
 	}
 
 	// The remaining command path parts after finding the command are the actual arguments
