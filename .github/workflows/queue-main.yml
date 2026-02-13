@@ -521,5 +521,4 @@ jobs:
           COMMIT_SUBJECT: ${{ github.event.head_commit.message }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ needs.push-to-main.outputs.main_sha }}
-          COMPARE_URL: ${{ github.server_url }}/${{ github.repository }}/compare/${{ needs.push-to-main.outputs.main_sha_before }}...${{ needs.push-to-main.outputs.main_sha }}
           COMMIT_LOG: ${{ needs.push-to-main.outputs.commit_log }}
