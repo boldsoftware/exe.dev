@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/billing/tender"
 	"exe.dev/domz"
 	"exe.dev/llmpricing"
 	"exe.dev/stage"
@@ -216,15 +217,49 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Check credit before allowing LLM request
 	creditInfo, err := m.creditMgr.CheckAndRefreshCredit(r.Context(), userID)
-	if errors.Is(err, ErrInsufficientCredit) {
-		m.log.WarnContext(r.Context(), "insufficient LLM credit", "user_id", userID, "box", boxName, "available_usd", creditInfo.Available, "plan", creditInfo.Plan.Name)
-		m.httpError(w, r, creditInfo.Plan.CreditExhaustedError, http.StatusPaymentRequired, boxName, nil)
-		return
-	}
-	if errors.Is(err, context.Canceled) {
+	billingBacked := false
+	billingAccountID := ""
+	switch {
+	case errors.Is(err, ErrInsufficientCredit):
+		if creditInfo == nil {
+			m.httpError(w, r, "failed to check gateway credit", http.StatusInternalServerError, boxName, fmt.Errorf("insufficient credit without credit info for user %q", userID))
+			return
+		}
+
+		accountID, ok, err := m.data.AccountIDForUser(r.Context(), userID)
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		if err != nil {
+			m.httpError(w, r, "failed to check billing account", http.StatusInternalServerError, boxName, err)
+			return
+		}
+		if !ok {
+			m.log.WarnContext(r.Context(), "insufficient LLM credit", "user_id", userID, "box", boxName, "available_usd", creditInfo.Available, "plan", creditInfo.Plan.Name, "has_billing_account", false)
+			m.httpError(w, r, creditInfo.Plan.CreditExhaustedError, http.StatusPaymentRequired, boxName, nil)
+			return
+		}
+
+		billingBalance, err := m.data.UseCredits(r.Context(), accountID, 0, tender.Zero())
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		if err != nil {
+			m.httpError(w, r, "failed to check billing credits", http.StatusInternalServerError, boxName, err)
+			return
+		}
+		if billingBalance.IsWorthless() {
+			m.log.WarnContext(r.Context(), "insufficient LLM credit", "user_id", userID, "box", boxName, "available_usd", creditInfo.Available, "plan", creditInfo.Plan.Name, "billing_account_id", accountID, "billing_balance", billingBalance)
+			m.httpError(w, r, creditInfo.Plan.CreditExhaustedError, http.StatusPaymentRequired, boxName, nil)
+			return
+		}
+
+		billingBacked = true
+		billingAccountID = accountID
+		m.log.InfoContext(r.Context(), "allowing LLM request with billing credits", "user_id", userID, "box", boxName, "billing_account_id", accountID, "billing_balance", billingBalance)
+	case errors.Is(err, context.Canceled):
 		return // Client disconnected
-	}
-	if err != nil {
+	case err != nil:
 		m.httpError(w, r, "failed to check gateway credit", http.StatusInternalServerError, boxName, err)
 		return
 	}
@@ -296,11 +331,11 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var proxyErr error
 	switch alias {
 	case "anthropic":
-		proxy, transport, proxyErr = m.createAnthropicProxy(r, boxName, userID)
+		proxy, transport, proxyErr = m.createAnthropicProxy(r, boxName, userID, billingBacked, billingAccountID)
 	case "openai":
-		proxy, transport, proxyErr = m.createOpenAIProxy(r, boxName, userID)
+		proxy, transport, proxyErr = m.createOpenAIProxy(r, boxName, userID, billingBacked, billingAccountID)
 	case "fireworks":
-		proxy, transport, proxyErr = m.createFireworksProxy(r, boxName, userID)
+		proxy, transport, proxyErr = m.createFireworksProxy(r, boxName, userID, billingBacked, billingAccountID)
 	}
 	if proxyErr != nil {
 		m.httpError(w, r, "proxy configuration error", http.StatusInternalServerError, boxName, proxyErr)
@@ -311,18 +346,20 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	transport.WaitAndAddSSEAttributes()
 }
 
-func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, userID string) (*httputil.ReverseProxy, *accountingTransport, error) {
+func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, userID string, billingBacked bool, billingAccountID string) (*httputil.ReverseProxy, *accountingTransport, error) {
 	if m.apiKeys.Anthropic == "" {
 		return nil, nil, fmt.Errorf("anthropic api key not configured")
 	}
 	transport := &accountingTransport{
-		RoundTripper: http.DefaultTransport,
-		provider:     llmpricing.ProviderAnthropic,
-		log:          m.log,
-		creditMgr:    m.creditMgr,
-		incomingReq:  incomingReq,
-		boxName:      boxName,
-		userID:       userID,
+		RoundTripper:     http.DefaultTransport,
+		provider:         llmpricing.ProviderAnthropic,
+		log:              m.log,
+		creditMgr:        m.creditMgr,
+		incomingReq:      incomingReq,
+		boxName:          boxName,
+		userID:           userID,
+		billingBacked:    billingBacked,
+		billingAccountID: billingAccountID,
 	}
 	proxy := &httputil.ReverseProxy{
 		FlushInterval: -1, // Flush immediately for SSE streaming
@@ -347,18 +384,20 @@ func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, us
 	return proxy, transport, nil
 }
 
-func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userID string) (*httputil.ReverseProxy, *accountingTransport, error) {
+func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userID string, billingBacked bool, billingAccountID string) (*httputil.ReverseProxy, *accountingTransport, error) {
 	if m.apiKeys.OpenAI == "" {
 		return nil, nil, fmt.Errorf("openai api key not configured")
 	}
 	transport := &accountingTransport{
-		RoundTripper: http.DefaultTransport,
-		provider:     llmpricing.ProviderOpenAI,
-		log:          m.log,
-		creditMgr:    m.creditMgr,
-		incomingReq:  incomingReq,
-		boxName:      boxName,
-		userID:       userID,
+		RoundTripper:     http.DefaultTransport,
+		provider:         llmpricing.ProviderOpenAI,
+		log:              m.log,
+		creditMgr:        m.creditMgr,
+		incomingReq:      incomingReq,
+		boxName:          boxName,
+		userID:           userID,
+		billingBacked:    billingBacked,
+		billingAccountID: billingAccountID,
 	}
 	proxy := &httputil.ReverseProxy{
 		FlushInterval: -1, // Flush immediately for SSE streaming
@@ -385,18 +424,20 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userI
 	return proxy, transport, nil
 }
 
-func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, userID string) (*httputil.ReverseProxy, *accountingTransport, error) {
+func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, userID string, billingBacked bool, billingAccountID string) (*httputil.ReverseProxy, *accountingTransport, error) {
 	if m.apiKeys.Fireworks == "" {
 		return nil, nil, fmt.Errorf("fireworks api key not configured")
 	}
 	transport := &accountingTransport{
-		RoundTripper: http.DefaultTransport,
-		provider:     llmpricing.ProviderFireworks,
-		log:          m.log,
-		creditMgr:    m.creditMgr,
-		incomingReq:  incomingReq,
-		boxName:      boxName,
-		userID:       userID,
+		RoundTripper:     http.DefaultTransport,
+		provider:         llmpricing.ProviderFireworks,
+		log:              m.log,
+		creditMgr:        m.creditMgr,
+		incomingReq:      incomingReq,
+		boxName:          boxName,
+		userID:           userID,
+		billingBacked:    billingBacked,
+		billingAccountID: billingAccountID,
 	}
 	proxy := &httputil.ReverseProxy{
 		FlushInterval: -1, // Flush immediately for SSE streaming

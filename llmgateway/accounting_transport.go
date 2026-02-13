@@ -17,12 +17,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"exe.dev/billing/tender"
 	"exe.dev/errorz"
 	"exe.dev/llmpricing"
 	sloghttp "github.com/samber/slog-http"
@@ -49,9 +51,11 @@ type accountingTransport struct {
 	creditMgr     *CreditManager
 
 	// Request context for adding slog attributes
-	incomingReq *http.Request
-	boxName     string
-	userID      string
+	incomingReq      *http.Request
+	boxName          string
+	userID           string
+	billingBacked    bool
+	billingAccountID string
 
 	// For SSE responses, we store the usage data and add attributes after the stream completes
 	sseDone  chan struct{}
@@ -348,15 +352,7 @@ func (m *accountingTransport) processResponseData(data []byte) (*CostInfo, error
 	tokensCounter.WithLabelValues("output", model, providerStr, m.boxName, m.userID).Add(float64(usage.OutputTokens))
 	costUSDCounter.WithLabelValues(model, providerStr, m.boxName, m.userID).Add(costUSD)
 
-	// Debit credit from user's balance
-	var remainingCredit float64 = -1
-	if m.creditMgr != nil && m.userID != "" {
-		if creditInfo, err := m.creditMgr.DebitCredit(m.incomingReq.Context(), m.userID, costUSD); err != nil {
-			m.log.ErrorContext(m.incomingReq.Context(), "failed to debit LLM credit", "user_id", m.userID, "cost_usd", costUSD, "error", err)
-		} else if creditInfo != nil {
-			remainingCredit = creditInfo.Available
-		}
-	}
+	remainingCredit := m.debitResponseCredits(costUSD, false)
 
 	// Add slog attributes to the incoming request for HTTP logging
 	if m.incomingReq != nil {
@@ -496,15 +492,7 @@ func (m *accountingTransport) WaitAndAddSSEAttributes() {
 		usage := m.sseUsage.Usage
 		model := m.sseUsage.Model
 
-		// Debit credit from user's balance
-		var remainingCredit float64 = -1
-		if m.creditMgr != nil && m.userID != "" {
-			if creditInfo, err := m.creditMgr.DebitCredit(m.incomingReq.Context(), m.userID, usage.CostUSD); err != nil {
-				m.log.ErrorContext(m.incomingReq.Context(), "failed to debit LLM credit (SSE)", "user_id", m.userID, "cost_usd", usage.CostUSD, "error", err)
-			} else if creditInfo != nil {
-				remainingCredit = creditInfo.Available
-			}
-		}
+		remainingCredit := m.debitResponseCredits(usage.CostUSD, true)
 
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.String("llm_model", model))
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.String("vm_name", m.boxName))
@@ -518,6 +506,50 @@ func (m *accountingTransport) WaitAndAddSSEAttributes() {
 			sloghttp.AddCustomAttributes(m.incomingReq, slog.Float64("remaining_credit_usd", remainingCredit))
 		}
 	}
+}
+
+func (m *accountingTransport) debitResponseCredits(costUSD float64, isSSE bool) float64 {
+	ctx := context.Background()
+	if m.incomingReq != nil {
+		ctx = m.incomingReq.Context()
+	}
+
+	if m.billingBacked {
+		switch {
+		case m.creditMgr == nil || m.creditMgr.data == nil:
+			m.log.ErrorContext(ctx, "failed to debit billing credits", "account_id", m.billingAccountID, "cost_usd", costUSD, "error", "credit manager not configured")
+			return -1
+		case m.billingAccountID == "":
+			m.log.ErrorContext(ctx, "failed to debit billing credits", "cost_usd", costUSD, "error", "missing billing account ID")
+			return -1
+		}
+
+		unitPrice := costUSDToNegativeMicrocents(costUSD)
+		remaining, err := m.creditMgr.data.UseCredits(ctx, m.billingAccountID, 1, unitPrice)
+		if err != nil {
+			m.log.ErrorContext(ctx, "failed to debit billing credits", "account_id", m.billingAccountID, "cost_usd", costUSD, "unit_price_microcents", unitPrice.Microcents(), "error", err)
+			return -1
+		}
+		m.log.DebugContext(ctx, "debited billing credits", "account_id", m.billingAccountID, "cost_usd", costUSD, "unit_price_microcents", unitPrice.Microcents(), "remaining_microcents", remaining.Microcents())
+		return -1
+	}
+
+	if m.creditMgr != nil && m.userID != "" {
+		if creditInfo, err := m.creditMgr.DebitCredit(ctx, m.userID, costUSD); err != nil {
+			msg := "failed to debit LLM credit"
+			if isSSE {
+				msg = "failed to debit LLM credit (SSE)"
+			}
+			m.log.ErrorContext(ctx, msg, "user_id", m.userID, "cost_usd", costUSD, "error", err)
+		} else if creditInfo != nil {
+			return creditInfo.Available
+		}
+	}
+	return -1
+}
+
+func costUSDToNegativeMicrocents(costUSD float64) tender.Value {
+	return tender.Mint(0, int64(math.Round(-costUSD*1_000_000)))
 }
 
 // anthropicResponseUsageInfo extracts usage-relevant information from an Anthropic response.
