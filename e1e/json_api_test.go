@@ -94,6 +94,12 @@ func TestExeDevAPI(t *testing.T) {
 	pty.wantRe("VM name .*" + regexp.QuoteMeta(nbo.VMName) + ".* is not available")
 	pty.wantPrompt()
 
+	// ls --json -l should work (not error); -l is a quiet no-op with --json.
+	vloL := runParseExeDevJSON[vmListOutput](t, keyFile, "ls", "--json", "-l")
+	if len(vloL.VMs) != 1 {
+		t.Errorf("expected 1 VM from ls --json -l, got %d", len(vloL.VMs))
+	}
+
 	vlo := runParseExeDevJSON[vmListOutput](t, keyFile, "ls", "--json")
 	t.Logf("ls output: %+v", vlo)
 	vms := vlo.VMs
@@ -109,6 +115,21 @@ func TestExeDevAPI(t *testing.T) {
 	}
 	if vm0.SSHDest == "" {
 		t.Errorf("expected ssh_dest in ls output, got empty string")
+	}
+	if vm0.Region == "" {
+		t.Errorf("expected region in ls output, got empty string")
+	}
+	if vm0.HTTPS == "" {
+		t.Errorf("expected https_url in ls output, got empty string")
+	}
+	if !strings.HasPrefix(vm0.HTTPS, "http") {
+		t.Errorf("expected https_url to start with 'http', got %q", vm0.HTTPS)
+	}
+	if vm0.ShelleyURL == "" {
+		t.Errorf("expected shelley_url in ls output for default image, got empty string")
+	}
+	if !strings.HasPrefix(vm0.ShelleyURL, "http") {
+		t.Errorf("expected shelley_url to start with 'http', got %q", vm0.ShelleyURL)
 	}
 	// TODO: check image name
 
@@ -208,9 +229,12 @@ type newBoxOutput struct {
 }
 
 type vmListEntry struct {
-	VMName  string `json:"vm_name"`
-	SSHDest string `json:"ssh_dest"`
-	Status  string `json:"status"`
+	VMName     string `json:"vm_name"`
+	SSHDest    string `json:"ssh_dest"`
+	Status     string `json:"status"`
+	Region     string `json:"region"`
+	HTTPS      string `json:"https_url"`
+	ShelleyURL string `json:"shelley_url"`
 }
 
 type vmListOutput struct {

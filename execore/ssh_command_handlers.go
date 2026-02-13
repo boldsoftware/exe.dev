@@ -441,11 +441,6 @@ func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *exemenu.CommandC
 func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	wantLong := cc.FlagSet.Lookup("l").Value.String() == "true"
 
-	// Disallow --json and -l together
-	if cc.WantJSON() && wantLong {
-		return cc.Errorf("cannot use --json and -l together")
-	}
-
 	boxes, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxesForUser, cc.User.ID)
 	if err != nil {
 		return err
@@ -487,10 +482,11 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 		for _, vm := range boxes {
 			status := container.ContainerStatus(vm.Status).String()
 			box := map[string]any{
-				"vm_name":  vm.Name,
-				"ssh_dest": ss.server.env.BoxDest(vm.Name),
-				"status":   status,
-				"region":   vm.Region,
+				"vm_name":   vm.Name,
+				"ssh_dest":  ss.server.env.BoxDest(vm.Name),
+				"status":    status,
+				"region":    vm.Region,
+				"https_url": ss.server.boxProxyAddress(vm.Name),
 			}
 			if r, err := region.ByCode(vm.Region); err == nil {
 				box["region_display"] = r.Display
@@ -500,6 +496,9 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			case "exeuntu", "":
 			default:
 				box["image"] = imageName
+			}
+			if strings.Contains(vm.Image, "exeuntu") {
+				box["shelley_url"] = ss.server.shelleyURL(vm.Name)
 			}
 			vmList = append(vmList, box)
 		}
@@ -514,6 +513,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 				"ssh_dest":      ss.server.env.BoxDest(vm.Name),
 				"status":        status,
 				"region":        vm.Region,
+				"https_url":     ss.server.boxProxyAddress(vm.Name),
 				"creator_email": vm.CreatorEmail,
 			}
 			if r, err := region.ByCode(vm.Region); err == nil {
@@ -524,6 +524,9 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			case "exeuntu", "":
 			default:
 				box["image"] = imageName
+			}
+			if strings.Contains(vm.Image, "exeuntu") {
+				box["shelley_url"] = ss.server.shelleyURL(vm.Name)
 			}
 			teamVMList = append(teamVMList, box)
 		}
