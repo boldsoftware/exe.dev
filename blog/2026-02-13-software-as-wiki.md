@@ -8,21 +8,105 @@ tags:
 published: true
 ---
 
-<div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin: 2em 0; flex-wrap: wrap;">
-  <div style="text-align: center; flex: 1; min-width: 200px;">
-    <img src="https://boldsoftware.github.io/public_html/slinky/slinky.png" alt="Slinky link shortener" style="max-width: 100%; border-radius: 8px;" />
-    <div style="width: 180px; height: 70px; margin: 8px auto 0; border: 2px solid #e8a735; border-radius: 6px; overflow: hidden;">
-      <img src="https://boldsoftware.github.io/public_html/slinky/slinky.png" style="display: block; width: 600px; max-width: none; margin-left: -453px; margin-top: -70px;" />
+<style>
+.wiki-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 2em 0;
+}
+.wiki-hero-panel {
+  text-align: center;
+  flex: 1;
+  min-width: 200px;
+}
+.wiki-hero-panel img.screenshot {
+  max-width: 100%;
+  border-radius: 8px;
+}
+.wiki-hero-arrow {
+  font-size: 32px;
+  flex-shrink: 0;
+}
+.wiki-hero-inset {
+  width: 180px;
+  height: 70px;
+  margin: 8px auto 0;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+.wiki-hero-inset img {
+  display: block;
+  width: 600px;
+  max-width: none;
+  position: absolute;
+}
+.wiki-hero-inset-slinky {
+  border: 2px solid #e8a735;
+}
+.wiki-hero-inset-slinky img {
+  left: -453px;
+  top: -70px;
+}
+.wiki-hero-inset-shelley {
+  border: 2px solid #4a7dff;
+}
+.wiki-hero-inset-shelley img {
+  left: -420px;
+  top: -184px;
+}
+.wiki-hero-caption {
+  font-size: 12px;
+  color: rgba(0,0,0,0.5);
+  margin-top: 4px;
+}
+@media (max-width: 600px) {
+  .wiki-hero {
+    flex-direction: column;
+    gap: 24px;
+  }
+  .wiki-hero-panel {
+    min-width: 0;
+    width: 100%;
+  }
+  .wiki-hero-arrow {
+    transform: rotate(90deg);
+  }
+  .wiki-hero-inset {
+    width: 240px;
+    height: 94px;
+  }
+  .wiki-hero-inset img {
+    width: 800px;
+  }
+  .wiki-hero-inset-slinky img {
+    left: -604px;
+    top: -93px;
+  }
+  .wiki-hero-inset-shelley img {
+    left: -560px;
+    top: -245px;
+  }
+}
+</style>
+
+<div class="wiki-hero">
+  <div class="wiki-hero-panel">
+    <img class="screenshot" src="https://boldsoftware.github.io/public_html/slinky/slinky.png" alt="Slinky link shortener" />
+    <div class="wiki-hero-inset wiki-hero-inset-slinky">
+      <img src="https://boldsoftware.github.io/public_html/slinky/slinky.png" alt="" />
     </div>
-    <div style="font-size: 12px; color: rgba(0,0,0,0.5); margin-top: 4px;">"Edit with Shelley"</div>
+    <div class="wiki-hero-caption">"Edit with Shelley"</div>
   </div>
-  <div style="font-size: 32px; flex-shrink: 0;">&#8644;</div>
-  <div style="text-align: center; flex: 1; min-width: 200px;">
-    <img src="https://boldsoftware.github.io/public_html/slinky/shelley.png" alt="Shelley editing Slinky" style="max-width: 100%; border-radius: 8px;" />
-    <div style="width: 180px; height: 70px; margin: 8px auto 0; border: 2px solid #4a7dff; border-radius: 6px; overflow: hidden;">
-      <img src="https://boldsoftware.github.io/public_html/slinky/shelley.png" style="display: block; width: 600px; max-width: none; margin-left: -420px; margin-top: -184px;" />
+  <div class="wiki-hero-arrow">&#8644;</div>
+  <div class="wiki-hero-panel">
+    <img class="screenshot" src="https://boldsoftware.github.io/public_html/slinky/shelley.png" alt="Shelley editing Slinky" />
+    <div class="wiki-hero-inset wiki-hero-inset-shelley">
+      <img src="https://boldsoftware.github.io/public_html/slinky/shelley.png" alt="" />
     </div>
-    <div style="font-size: 12px; color: rgba(0,0,0,0.5); margin-top: 4px;">"slinky.exe.xyz"</div>
+    <div class="wiki-hero-caption">"slinky.exe.xyz"</div>
   </div>
 </div>
 
