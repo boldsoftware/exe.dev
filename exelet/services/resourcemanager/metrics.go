@@ -10,20 +10,24 @@ import (
 // This is needed because Prometheus counters only accept Add() operations,
 // so we must calculate deltas from the cumulative values in vmUsageState.
 type metricsState struct {
-	name               string  // VM name for label cleanup on name change
-	reportedCPUSeconds float64 // last value added to CPU counter
-	reportedNetRxBytes uint64  // last value added to network RX counter
-	reportedNetTxBytes uint64  // last value added to network TX counter
+	name                 string  // VM name for label cleanup on name change
+	reportedCPUSeconds   float64 // last value added to CPU counter
+	reportedNetRxBytes   uint64  // last value added to network RX counter
+	reportedNetTxBytes   uint64  // last value added to network TX counter
+	reportedIOReadBytes  uint64  // last value added to IO read counter
+	reportedIOWriteBytes uint64  // last value added to IO write counter
 }
 
 // prometheusMetrics holds all Prometheus metrics for the resource manager.
 type prometheusMetrics struct {
-	cpuCounter   *prometheus.CounterVec
-	netRxCounter *prometheus.CounterVec
-	netTxCounter *prometheus.CounterVec
-	diskGauge    *prometheus.GaugeVec
-	memoryGauge  *prometheus.GaugeVec
-	swapGauge    *prometheus.GaugeVec
+	cpuCounter     *prometheus.CounterVec
+	netRxCounter   *prometheus.CounterVec
+	netTxCounter   *prometheus.CounterVec
+	ioReadCounter  *prometheus.CounterVec
+	ioWriteCounter *prometheus.CounterVec
+	diskGauge      *prometheus.GaugeVec
+	memoryGauge    *prometheus.GaugeVec
+	swapGauge      *prometheus.GaugeVec
 
 	mu    sync.Mutex
 	state map[string]*metricsState // vm_id -> state
@@ -64,6 +68,28 @@ func newPrometheusMetrics(registry *prometheus.Registry) *prometheusMetrics {
 	)
 	registry.MustRegister(netTxCounter)
 
+	ioReadCounter := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "exelet",
+			Subsystem: "vm",
+			Name:      "io_read_bytes_total",
+			Help:      "Total IO bytes read by the VM.",
+		},
+		[]string{"vm_id", "vm_name"},
+	)
+	registry.MustRegister(ioReadCounter)
+
+	ioWriteCounter := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "exelet",
+			Subsystem: "vm",
+			Name:      "io_write_bytes_total",
+			Help:      "Total IO bytes written by the VM.",
+		},
+		[]string{"vm_id", "vm_name"},
+	)
+	registry.MustRegister(ioWriteCounter)
+
 	diskGauge := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "exelet",
@@ -98,13 +124,15 @@ func newPrometheusMetrics(registry *prometheus.Registry) *prometheusMetrics {
 	registry.MustRegister(swapGauge)
 
 	return &prometheusMetrics{
-		cpuCounter:   cpuCounter,
-		netRxCounter: netRxCounter,
-		netTxCounter: netTxCounter,
-		diskGauge:    diskGauge,
-		memoryGauge:  memoryGauge,
-		swapGauge:    swapGauge,
-		state:        make(map[string]*metricsState),
+		cpuCounter:     cpuCounter,
+		netRxCounter:   netRxCounter,
+		netTxCounter:   netTxCounter,
+		ioReadCounter:  ioReadCounter,
+		ioWriteCounter: ioWriteCounter,
+		diskGauge:      diskGauge,
+		memoryGauge:    memoryGauge,
+		swapGauge:      swapGauge,
+		state:          make(map[string]*metricsState),
 	}
 }
 
@@ -120,16 +148,20 @@ func (p *prometheusMetrics) update(id, name string, usage *vmUsageState) {
 			p.cpuCounter.DeleteLabelValues(id, state.name)
 			p.netRxCounter.DeleteLabelValues(id, state.name)
 			p.netTxCounter.DeleteLabelValues(id, state.name)
+			p.ioReadCounter.DeleteLabelValues(id, state.name)
+			p.ioWriteCounter.DeleteLabelValues(id, state.name)
 			p.diskGauge.DeleteLabelValues(id, state.name)
 			p.memoryGauge.DeleteLabelValues(id, state.name)
 			p.swapGauge.DeleteLabelValues(id, state.name)
 		}
 		// Initialize with current values - add full amount on first observation
 		p.state[id] = &metricsState{
-			name:               name,
-			reportedCPUSeconds: usage.cpuSeconds,
-			reportedNetRxBytes: usage.netRxBytes,
-			reportedNetTxBytes: usage.netTxBytes,
+			name:                 name,
+			reportedCPUSeconds:   usage.cpuSeconds,
+			reportedNetRxBytes:   usage.netRxBytes,
+			reportedNetTxBytes:   usage.netTxBytes,
+			reportedIOReadBytes:  usage.ioReadBytes,
+			reportedIOWriteBytes: usage.ioWriteBytes,
 		}
 		// Add the initial values to counters
 		if usage.cpuSeconds > 0 {
@@ -140,6 +172,12 @@ func (p *prometheusMetrics) update(id, name string, usage *vmUsageState) {
 		}
 		if usage.netTxBytes > 0 {
 			p.netTxCounter.WithLabelValues(id, name).Add(float64(usage.netTxBytes))
+		}
+		if usage.ioReadBytes > 0 {
+			p.ioReadCounter.WithLabelValues(id, name).Add(float64(usage.ioReadBytes))
+		}
+		if usage.ioWriteBytes > 0 {
+			p.ioWriteCounter.WithLabelValues(id, name).Add(float64(usage.ioWriteBytes))
 		}
 		// Set gauges directly
 		p.diskGauge.WithLabelValues(id, name).Set(float64(usage.diskBytes))
@@ -177,12 +215,35 @@ func (p *prometheusMetrics) update(id, name string, usage *vmUsageState) {
 	if usage.netTxBytes >= state.reportedNetTxBytes {
 		txDelta = usage.netTxBytes - state.reportedNetTxBytes
 	} else {
-		// Counter wrapped or reset
 		txDelta = usage.netTxBytes
 	}
 	if txDelta > 0 {
 		p.netTxCounter.WithLabelValues(id, name).Add(float64(txDelta))
 		state.reportedNetTxBytes = usage.netTxBytes
+	}
+
+	// IO read delta
+	var ioReadDelta uint64
+	if usage.ioReadBytes >= state.reportedIOReadBytes {
+		ioReadDelta = usage.ioReadBytes - state.reportedIOReadBytes
+	} else {
+		ioReadDelta = usage.ioReadBytes
+	}
+	if ioReadDelta > 0 {
+		p.ioReadCounter.WithLabelValues(id, name).Add(float64(ioReadDelta))
+		state.reportedIOReadBytes = usage.ioReadBytes
+	}
+
+	// IO write delta
+	var ioWriteDelta uint64
+	if usage.ioWriteBytes >= state.reportedIOWriteBytes {
+		ioWriteDelta = usage.ioWriteBytes - state.reportedIOWriteBytes
+	} else {
+		ioWriteDelta = usage.ioWriteBytes
+	}
+	if ioWriteDelta > 0 {
+		p.ioWriteCounter.WithLabelValues(id, name).Add(float64(ioWriteDelta))
+		state.reportedIOWriteBytes = usage.ioWriteBytes
 	}
 
 	// Set gauges directly (they represent current state, not cumulative)
@@ -204,6 +265,8 @@ func (p *prometheusMetrics) delete(id string) {
 	p.cpuCounter.DeleteLabelValues(id, state.name)
 	p.netRxCounter.DeleteLabelValues(id, state.name)
 	p.netTxCounter.DeleteLabelValues(id, state.name)
+	p.ioReadCounter.DeleteLabelValues(id, state.name)
+	p.ioWriteCounter.DeleteLabelValues(id, state.name)
 	p.diskGauge.DeleteLabelValues(id, state.name)
 	p.memoryGauge.DeleteLabelValues(id, state.name)
 	p.swapGauge.DeleteLabelValues(id, state.name)

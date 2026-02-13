@@ -34,6 +34,10 @@ const CHART_DEFS = [
     {key: '_net_tx_mbps', color: COLORS.primary, label: 'TX'},
     {key: '_net_rx_mbps', color: COLORS.secondary, label: 'RX'},
   ]},
+  { title: 'IO', sortKey: '_io_write_bps', derived: true, lines: [
+    {key: '_io_read_bps', color: COLORS.primary, label: 'Read'},
+    {key: '_io_write_bps', color: COLORS.secondary, label: 'Write'},
+  ]},
 ];
 
 const COLUMNS = [
@@ -66,9 +70,18 @@ function fmtCPU(cpuPct, nominalCpus) {
   return used.toFixed(2) + '/' + nominalCpus;
 }
 
+function fmtBytesPerSec(bps) {
+  if (bps >= 1e9) return (bps/1e9).toFixed(1) + ' GB/s';
+  if (bps >= 1e6) return (bps/1e6).toFixed(1) + ' MB/s';
+  if (bps >= 1e3) return (bps/1e3).toFixed(1) + ' KB/s';
+  if (bps >= 1) return bps.toFixed(0) + ' B/s';
+  return '0';
+}
+
 function fmtVal(v, chartTitle) {
   if (chartTitle === 'CPU') return '';
   if (chartTitle === 'Network') return fmtRate(v);
+  if (chartTitle === 'IO') return fmtBytesPerSec(v);
   return fmtBytes(v);
 }
 
@@ -85,6 +98,8 @@ function computeDerived(rows) {
       rows[i]._cpu_pct = null;
       rows[i]._net_tx_mbps = null;
       rows[i]._net_rx_mbps = null;
+      rows[i]._io_read_bps = null;
+      rows[i]._io_write_bps = null;
       continue;
     }
     const prev = rows[i - 1];
@@ -93,6 +108,8 @@ function computeDerived(rows) {
       rows[i]._cpu_pct = null;
       rows[i]._net_tx_mbps = null;
       rows[i]._net_rx_mbps = null;
+      rows[i]._io_read_bps = null;
+      rows[i]._io_write_bps = null;
       continue;
     }
     const cpuD = rows[i].cpu_used_cumulative_seconds - prev.cpu_used_cumulative_seconds;
@@ -101,6 +118,10 @@ function computeDerived(rows) {
     rows[i]._net_tx_mbps = txD >= 0 ? (txD * 8 / 1e6) / dt : null;
     const rxD = rows[i].network_rx_bytes - prev.network_rx_bytes;
     rows[i]._net_rx_mbps = rxD >= 0 ? (rxD * 8 / 1e6) / dt : null;
+    const ioRD = rows[i].io_read_bytes - prev.io_read_bytes;
+    rows[i]._io_read_bps = ioRD >= 0 ? ioRD / dt : null;
+    const ioWD = rows[i].io_write_bytes - prev.io_write_bytes;
+    rows[i]._io_write_bps = ioWD >= 0 ? ioWD / dt : null;
   }
 }
 

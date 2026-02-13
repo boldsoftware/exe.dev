@@ -346,6 +346,7 @@ func (s *Server) InsertMetrics(ctx context.Context, metrics []Metric) error {
 			m.CPUUsedCumulativeSecs, m.CPUNominal,
 			m.NetworkTXBytes, m.NetworkRXBytes,
 			m.ResourceGroup,
+			m.IOReadBytes, m.IOWriteBytes,
 		)
 		s.insertRowSeconds.Observe(time.Since(rowStart).Seconds())
 		if err != nil {
@@ -399,6 +400,7 @@ func scanMetric(rows *sql.Rows, m *Metric) error {
 		&m.CPUUsedCumulativeSecs, &m.CPUNominal,
 		&m.NetworkTXBytes, &m.NetworkRXBytes,
 		&m.ResourceGroup,
+		&m.IOReadBytes, &m.IOWriteBytes,
 	); err != nil {
 		return fmt.Errorf("scan row: %w", err)
 	}

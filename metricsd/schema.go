@@ -16,8 +16,9 @@ INSERT INTO vm_metrics (
 	memory_nominal_bytes, memory_rss_bytes, memory_swap_bytes,
 	cpu_used_cumulative_seconds, cpu_nominal,
 	network_tx_bytes, network_rx_bytes,
-	resource_group
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	resource_group,
+	io_read_bytes, io_write_bytes
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 // SelectSQL is the query for retrieving metrics.
@@ -28,7 +29,8 @@ SELECT
 	memory_nominal_bytes, memory_rss_bytes, memory_swap_bytes,
 	cpu_used_cumulative_seconds, cpu_nominal,
 	network_tx_bytes, network_rx_bytes,
-	resource_group
+	resource_group,
+	io_read_bytes, io_write_bytes
 FROM vm_metrics
 `
 
@@ -41,7 +43,8 @@ SELECT
 	memory_nominal_bytes, memory_rss_bytes, memory_swap_bytes,
 	cpu_used_cumulative_seconds, cpu_nominal,
 	network_tx_bytes, network_rx_bytes,
-	resource_group
+	resource_group,
+	io_read_bytes, io_write_bytes
 FROM vm_metrics
 WHERE timestamp > now() - INTERVAL '%d' HOUR
 ORDER BY vm_name, timestamp ASC

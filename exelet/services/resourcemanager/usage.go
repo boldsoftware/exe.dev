@@ -36,6 +36,8 @@ type usageData struct {
 	diskLogicalBytes uint64 // ZFS logicalused (uncompressed)
 	netRxBytes       uint64
 	netTxBytes       uint64
+	ioReadBytes      uint64 // cumulative IO read bytes from cgroup io.stat
+	ioWriteBytes     uint64 // cumulative IO write bytes from cgroup io.stat
 }
 
 // collectUsage collects resource usage for a VM.
@@ -79,6 +81,12 @@ func (m *ResourceManager) collectUsage(ctx context.Context, id, name, groupID st
 	usage.netRxBytes, usage.netTxBytes, err = m.readNetworkUsage(ctx, id)
 	if err != nil {
 		m.log.DebugContext(ctx, "failed to read network usage", "id", id, "error", err)
+	}
+
+	// IO usage from cgroup io.stat
+	usage.ioReadBytes, usage.ioWriteBytes, err = m.readIOUsage(id)
+	if err != nil {
+		m.log.DebugContext(ctx, "failed to read IO usage", "id", id, "error", err)
 	}
 
 	return usage, nil
@@ -274,4 +282,64 @@ func (m *ResourceManager) readNetStat(ifaceName, stat string) (uint64, error) {
 		return 0, err
 	}
 	return strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
+}
+
+// readIOUsage reads cumulative IO bytes from the VM's cgroup io.stat.
+// It sums rbytes and wbytes across all devices.
+func (m *ResourceManager) readIOUsage(id string) (readBytes, writeBytes uint64, err error) {
+	// Find the cgroup path by scanning exelet.slice for the VM's scope
+	scopeName := fmt.Sprintf("vm-%s.scope", sanitizeCgroupName(id))
+	slicePath := filepath.Join(m.cgroupRoot, cgroupSlice)
+
+	// Look in each group slice under exelet.slice
+	entries, err := os.ReadDir(slicePath)
+	if err != nil {
+		return 0, 0, fmt.Errorf("read exelet slice: %w", err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasSuffix(entry.Name(), ".slice") {
+			continue
+		}
+		ioStatPath := filepath.Join(slicePath, entry.Name(), scopeName, "io.stat")
+		data, err := os.ReadFile(ioStatPath)
+		if err != nil {
+			continue // not in this group slice
+		}
+		return parseIOStat(data)
+	}
+
+	return 0, 0, fmt.Errorf("cgroup scope %s not found", scopeName)
+}
+
+// parseIOStat parses cgroup v2 io.stat content, summing rbytes and wbytes across all devices.
+// Format: "major:minor rbytes=N wbytes=N rios=N wios=N dbytes=N dios=N"
+func parseIOStat(data []byte) (readBytes, writeBytes uint64, err error) {
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		// Skip the "major:minor" prefix, parse key=value pairs
+		for _, kv := range fields[1:] {
+			parts := strings.SplitN(kv, "=", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			val, parseErr := strconv.ParseUint(parts[1], 10, 64)
+			if parseErr != nil {
+				continue
+			}
+			switch parts[0] {
+			case "rbytes":
+				readBytes += val
+			case "wbytes":
+				writeBytes += val
+			}
+		}
+	}
+	return readBytes, writeBytes, nil
 }

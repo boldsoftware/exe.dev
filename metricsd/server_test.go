@@ -99,6 +99,8 @@ func TestServer(t *testing.T) {
 					CPUNominal:            4.0,
 					NetworkTXBytes:        1_000_000_000,
 					NetworkRXBytes:        2_000_000_000,
+					IOReadBytes:           500_000_000,
+					IOWriteBytes:          250_000_000,
 				},
 				{
 					Timestamp:             now.Add(-time.Minute),
@@ -115,6 +117,8 @@ func TestServer(t *testing.T) {
 					CPUNominal:            8.0,
 					NetworkTXBytes:        5_000_000_000,
 					NetworkRXBytes:        10_000_000_000,
+					IOReadBytes:           1_000_000_000,
+					IOWriteBytes:          750_000_000,
 				},
 			},
 		}
@@ -159,6 +163,12 @@ func TestServer(t *testing.T) {
 		}
 		if result.Metrics[0].ResourceGroup != "acct-alice" {
 			t.Errorf("resource_group = %q, want %q", result.Metrics[0].ResourceGroup, "acct-alice")
+		}
+		if result.Metrics[0].IOReadBytes != 500_000_000 {
+			t.Errorf("io_read_bytes = %d, want %d", result.Metrics[0].IOReadBytes, 500_000_000)
+		}
+		if result.Metrics[0].IOWriteBytes != 250_000_000 {
+			t.Errorf("io_write_bytes = %d, want %d", result.Metrics[0].IOWriteBytes, 250_000_000)
 		}
 	})
 
@@ -353,6 +363,7 @@ func TestSparklines(t *testing.T) {
 			"timestamp", "host", "vm_name", "disk_size_bytes", "disk_used_bytes",
 			"disk_logical_used_bytes", "memory_nominal_bytes", "memory_rss_bytes", "memory_swap_bytes",
 			"cpu_used_cumulative_seconds", "cpu_nominal", "network_tx_bytes", "network_rx_bytes", "resource_group",
+			"io_read_bytes", "io_write_bytes",
 		}
 		if len(cols) != len(wantCols) {
 			t.Errorf("got %d columns, want %d", len(cols), len(wantCols))

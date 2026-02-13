@@ -21,8 +21,8 @@ func TestRunMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query migrations: %v", err)
 	}
-	if count < 2 {
-		t.Errorf("expected at least 2 migrations, got %d", count)
+	if count < 3 {
+		t.Errorf("expected at least 3 migrations, got %d", count)
 	}
 
 	// Verify resource_group column exists
@@ -32,6 +32,17 @@ func TestRunMigrations(t *testing.T) {
 	).Scan(&rg)
 	if err != nil {
 		t.Fatalf("resource_group column not found: %v", err)
+	}
+
+	// Verify io columns exist
+	for _, col := range []string{"io_read_bytes", "io_write_bytes"} {
+		var name string
+		err = db.QueryRowContext(ctx,
+			"SELECT column_name FROM information_schema.columns WHERE table_name = 'vm_metrics' AND column_name = ?", col,
+		).Scan(&name)
+		if err != nil {
+			t.Fatalf("%s column not found: %v", col, err)
+		}
 	}
 }
 
@@ -55,7 +66,7 @@ func TestRunMigrations_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query migrations: %v", err)
 	}
-	if count != 2 {
-		t.Errorf("expected exactly 2 migrations after idempotent run, got %d", count)
+	if count != 3 {
+		t.Errorf("expected exactly 3 migrations after idempotent run, got %d", count)
 	}
 }

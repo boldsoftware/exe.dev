@@ -221,6 +221,8 @@ func (m *ResourceManager) collectMetricsFromRM(host string) []types.Metric {
 			CPUNominal:            nominalCPUs,
 			NetworkTXBytes:        int64(state.netTxBytes),
 			NetworkRXBytes:        int64(state.netRxBytes),
+			IOReadBytes:           int64(state.ioReadBytes),
+			IOWriteBytes:          int64(state.ioWriteBytes),
 		}
 
 		metrics = append(metrics, metric)

@@ -20,6 +20,8 @@ type Metric struct {
 	CPUNominal            float64   `json:"cpu_nominal"`
 	NetworkTXBytes        int64     `json:"network_tx_bytes"`
 	NetworkRXBytes        int64     `json:"network_rx_bytes"`
+	IOReadBytes           int64     `json:"io_read_bytes"`
+	IOWriteBytes          int64     `json:"io_write_bytes"`
 }
 
 // MetricsBatch allows submitting multiple metrics at once.

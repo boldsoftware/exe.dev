@@ -78,6 +78,8 @@ type vmUsageState struct {
 	diskLogicalBytes     uint64 // ZFS logicalused (uncompressed)
 	netRxBytes           uint64
 	netTxBytes           uint64
+	ioReadBytes          uint64
+	ioWriteBytes         uint64
 	priority             api.VMPriority
 
 	// Previous poll values for delta calculation
@@ -333,6 +335,8 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 	state.diskLogicalBytes = usage.diskLogicalBytes
 	state.netRxBytes = usage.netRxBytes
 	state.netTxBytes = usage.netTxBytes
+	state.ioReadBytes = usage.ioReadBytes
+	state.ioWriteBytes = usage.ioWriteBytes
 	state.prevCPUSeconds = usage.cpuSeconds
 	state.prevPollTime = now
 
