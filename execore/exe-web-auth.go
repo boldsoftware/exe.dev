@@ -1623,16 +1623,19 @@ The %s team`, verifyEmailURL, webHost)
 
 // showAuthError displays an authentication error page
 func (s *Server) showAuthError(w http.ResponseWriter, r *http.Request, message, command string) {
+	traceID := tracing.TraceIDFromContext(r.Context())
 	data := struct {
 		stage.Env
 		Message     string
 		Command     string
 		QueryString string
+		TraceID     string
 	}{
 		Env:         s.env,
 		Message:     message,
 		Command:     command,
 		QueryString: r.URL.RawQuery,
+		TraceID:     traceID,
 	}
 
 	w.WriteHeader(http.StatusBadRequest)

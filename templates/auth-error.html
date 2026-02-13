@@ -24,6 +24,9 @@
     <a href="/auth{{if .QueryString}}?{{.QueryString}}{{end}}" class="text-zinc-500 hover:text-zinc-900 underline underline-offset-2 transition-colors">
       Try again
     </a>
+    {{if .TraceID}}
+    <p class="text-zinc-400 text-sm mt-8">trace: {{.TraceID}}</p>
+    {{end}}
   </main>
 </body>
 </html>
