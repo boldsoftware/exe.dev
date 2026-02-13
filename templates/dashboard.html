@@ -470,31 +470,87 @@
         
         @media (max-width: 768px) {
             .main-container {
-                padding: 20px 12px;
+                padding: 16px 0;
             }
-            
+
+            .section-header {
+                padding: 0 12px;
+            }
+
+            .boxes-list {
+                border-radius: 0;
+                border-left: none;
+                border-right: none;
+            }
+
+            .box-row {
+                padding: 12px;
+            }
+
             .box-main {
-                flex-wrap: wrap;
+                flex-wrap: nowrap;
+                gap: 10px;
             }
-            
+
             .box-name {
-                min-width: auto;
+                min-width: 0;
                 flex: 1;
             }
-            
+
             .box-actions {
-                width: 100%;
-                margin-left: 24px;
-                gap: 6px;
+                gap: 4px;
+                margin-left: 0;
             }
-            
+
             .box-details {
                 margin-left: 0;
             }
-            
+
             .action-btn {
+                padding: 5px 6px;
+            }
+
+            .action-btn svg {
+                width: 14px;
+                height: 14px;
+            }
+
+            .expand-btn {
+                padding: 5px 6px;
+            }
+
+            .expand-btn svg {
+                width: 14px;
+                height: 14px;
+            }
+
+            .box-actions-expanded {
+                gap: 6px;
+            }
+
+            .action-btn-expanded {
+                padding: 6px 10px;
+                font-size: 12px;
+                gap: 5px;
+            }
+
+            .action-btn-expanded svg {
+                width: 14px;
+                height: 14px;
+            }
+
+            .ssh-command-display {
                 font-size: 11px;
-                padding: 5px 10px;
+                padding: 6px 8px;
+            }
+
+            .box-info-grid {
+                font-size: 11px;
+                gap: 4px 10px;
+            }
+
+            .invite-info {
+                padding: 0 12px;
             }
         }
 
@@ -1267,7 +1323,7 @@
                 <button class="search-clear" onclick="clearSearch()" title="Clear search">×</button>
             </div>
         </div>
-        <div style="font-size: 13px; color: #d97706; margin-bottom: 16px;">
+        <div class="invite-info" style="font-size: 13px; color: #d97706; margin-bottom: 16px;">
             You have {{.InviteCount}} invite{{if ne .InviteCount 1}}s{{end}}.
             {{if gt .InviteCount 0}}
             <form method="POST" action="/invite" style="display: inline;">
@@ -1481,7 +1537,7 @@
                     <a href="/new" class="new-box-btn">+ New</a>
                 </div>
             </div>
-            <div style="font-size: 13px; color: #d97706; margin-bottom: 16px;">
+            <div class="invite-info" style="font-size: 13px; color: #d97706; margin-bottom: 16px;">
                 You have {{.InviteCount}} invite{{if ne .InviteCount 1}}s{{end}}.
                 {{if gt .InviteCount 0}}
                 <form method="POST" action="/invite" style="display: inline;">

@@ -108,30 +108,47 @@ header .btn .btn-text {
 }
 
 @media (max-width: 768px) {
-  /* Keep nav-links visible but adjust styling */
+  header {
+    padding: 0 12px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
   header .nav-links {
     gap: 16px;
   }
-  
+
   header .nav-links a {
     font-size: 13px;
   }
-  
+
   header .btn .btn-text {
     display: none;
   }
-  
+
   header .btn {
-    padding: 8px 12px;
+    padding: 8px 10px;
   }
 
-  /* Reduce gap between left and right sections on mobile */
   header .nav-left {
-    gap: 16px;
+    gap: 12px;
   }
-  
+
   header .nav-right {
-    gap: 8px;
+    gap: 6px;
+  }
+
+  header .nav-logo {
+    font-size: 16px;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  header .nav-logo-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 80px;
   }
 }
 
