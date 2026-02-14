@@ -95,12 +95,23 @@ func TestGateway_PreRequestCreditPreflight(t *testing.T) {
 		wantUseCreditsCalls int
 	}{
 		{
-			name: "free credit available no preflight UseCredits call",
+			name: "hourly free credit available no preflight UseCredits call",
 			data: &preflightGatewayData{
-				creditInfo: &CreditInfo{Available: 1, Plan: planNoBilling},
+				creditInfo: &CreditInfo{Available: 0.0001, Plan: planNoBilling},
 			},
 			wantStatus:          http.StatusNotFound,
 			wantAccountLookups:  0,
+			wantUseCreditsCalls: 0,
+		},
+		{
+			name: "free exhausted with no billing account returns 402",
+			data: &preflightGatewayData{
+				creditInfo:    &CreditInfo{Available: 0, Plan: creditExhausted},
+				accountExists: false,
+			},
+			wantStatus:          http.StatusPaymentRequired,
+			wantBodyContains:    "LLM credits exhausted",
+			wantAccountLookups:  1,
 			wantUseCreditsCalls: 0,
 		},
 		{

@@ -11,6 +11,8 @@ import (
 	"exe.dev/sqlite"
 )
 
+const freeCreditPerUTCMonthUSD = 20.0
+
 // A Plan defines the base credit limits and error messages for a group of users.
 type Plan struct {
 	// Mnemonic name of the plan
@@ -49,7 +51,7 @@ var (
 // If the user has explicit overrides for max_credit or refresh_per_hour, those are applied
 // on top of the base plan.
 // This version takes a *exedb.Queries to be used within an existing transaction.
-func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *exedb.UserLlmCredit) (Plan, error) {
+func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *exedb.UserLlmCredit, now time.Time) (Plan, error) {
 	// Determine base plan from billing status
 	catResult, err := q.GetUserPlanCategory(ctx, userID)
 	if err != nil {
@@ -68,26 +70,32 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 		return Plan{}, fmt.Errorf("unknown plan category %q for user %s", catResult, userID)
 	}
 
-	// Apply any explicit overrides
-	if credit != nil {
+	// Apply explicit per-user overrides when configured.
+	if credit != nil && (credit.MaxCredit != nil || credit.RefreshPerHour != nil) {
 		if credit.MaxCredit != nil {
 			plan.MaxCredit = *credit.MaxCredit
 		}
 		if credit.RefreshPerHour != nil {
 			plan.RefreshPerHour = *credit.RefreshPerHour
 		}
+		return plan, nil
 	}
+
+	// Default free credit is fixed to $20/month and allocated as a strict hourly bucket.
+	hourlyFreeCredit := freeCreditPerUTCHour(now)
+	plan.MaxCredit = hourlyFreeCredit
+	plan.RefreshPerHour = hourlyFreeCredit
 
 	return plan, nil
 }
 
-// PlanForUser looks up and returns the plan for a user, including any overrides.
+// PlanForUser looks up and returns the plan for a user.
 // This is useful for debug pages that need to display plan details.
 func PlanForUser(ctx context.Context, db *sqlite.DB, userID string, credit *exedb.UserLlmCredit) (Plan, error) {
 	var plan Plan
 	err := exedb.WithRx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		var err error
-		plan, err = planForUser(ctx, q, userID, credit)
+		plan, err = planForUser(ctx, q, userID, credit, time.Now())
 		return err
 	})
 	return plan, err
@@ -144,6 +152,39 @@ func CalculateRefreshedCredit(available, max, refreshPerHour float64, lastRefres
 	return newAvailable, now
 }
 
+func freeCreditPerUTCHour(_ time.Time) float64 {
+	return freeCreditPerUTCMonthUSD / (30.0 * 24.0)
+}
+
+func hasCreditOverride(credit *exedb.UserLlmCredit) bool {
+	if credit == nil {
+		return false
+	}
+	return credit.MaxCredit != nil || credit.RefreshPerHour != nil
+}
+
+func sameUTCHour(a, b time.Time) bool {
+	return a.UTC().Truncate(time.Hour).Equal(b.UTC().Truncate(time.Hour))
+}
+
+func calculateHourlyFreeCredit(available float64, lastRefresh, now time.Time) (newAvailable float64, newLastRefresh time.Time, hourlyBucket float64) {
+	now = now.UTC()
+	hourlyBucket = freeCreditPerUTCHour(now)
+
+	// Strict hourly bucket: free credit does not carry between hours.
+	if !sameUTCHour(lastRefresh, now) {
+		available = hourlyBucket
+	}
+	if available < 0 {
+		available = 0
+	}
+	if available > hourlyBucket {
+		available = hourlyBucket
+	}
+
+	return available, now, hourlyBucket
+}
+
 // CheckAndRefreshCredit checks if the user has any credit available (after refresh)
 // Returns the refreshed credit info if available, or ErrInsufficientCredit if not.
 // This also updates the database with the refreshed credit amount.
@@ -170,24 +211,25 @@ func CheckAndRefreshCreditDB(ctx context.Context, db *sqlite.DB, userID string, 
 	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		credit, err := q.GetUserLLMCredit(ctx, userID)
 		if errors.Is(err, sql.ErrNoRows) {
-			// New user: get their plan and initialize with plan.MaxCredit
-			plan, err := planForUser(ctx, q, userID, nil)
+			plan, err := planForUser(ctx, q, userID, nil, now)
 			if err != nil {
 				return err
 			}
-			now := now
+			initialAvailable := plan.MaxCredit
+			initialLastRefresh := now.UTC()
+
 			if err := q.CreateUserLLMCreditWithInitial(ctx, exedb.CreateUserLLMCreditWithInitialParams{
 				UserID:          userID,
-				AvailableCredit: plan.MaxCredit,
-				LastRefreshAt:   now,
+				AvailableCredit: initialAvailable,
+				LastRefreshAt:   initialLastRefresh,
 			}); err != nil {
 				return err
 			}
 			info = &CreditInfo{
-				Available:      plan.MaxCredit,
+				Available:      initialAvailable,
 				Max:            plan.MaxCredit,
 				RefreshPerHour: plan.RefreshPerHour,
-				LastRefresh:    now,
+				LastRefresh:    initialLastRefresh,
 				Plan:           plan,
 			}
 			return nil
@@ -195,18 +237,31 @@ func CheckAndRefreshCreditDB(ctx context.Context, db *sqlite.DB, userID string, 
 		if err != nil {
 			return err
 		}
-		plan, err := planForUser(ctx, q, userID, &credit)
+		plan, err := planForUser(ctx, q, userID, &credit, now)
 		if err != nil {
 			return err
 		}
 
-		newAvailable, newLastRefresh := CalculateRefreshedCredit(
-			credit.AvailableCredit,
-			plan.MaxCredit,
-			plan.RefreshPerHour,
-			credit.LastRefreshAt,
-			now,
-		)
+		newAvailable := credit.AvailableCredit
+		newLastRefresh := credit.LastRefreshAt
+		maxCredit := plan.MaxCredit
+		refreshPerHour := plan.RefreshPerHour
+		if hasCreditOverride(&credit) {
+			newAvailable, newLastRefresh = CalculateRefreshedCredit(
+				credit.AvailableCredit,
+				plan.MaxCredit,
+				plan.RefreshPerHour,
+				credit.LastRefreshAt,
+				now,
+			)
+		} else {
+			newAvailable, newLastRefresh, maxCredit = calculateHourlyFreeCredit(
+				credit.AvailableCredit,
+				credit.LastRefreshAt,
+				now,
+			)
+			refreshPerHour = maxCredit
+		}
 
 		// Update the credit if it changed
 		if newAvailable != credit.AvailableCredit || !newLastRefresh.Equal(credit.LastRefreshAt) {
@@ -221,8 +276,8 @@ func CheckAndRefreshCreditDB(ctx context.Context, db *sqlite.DB, userID string, 
 
 		info = &CreditInfo{
 			Available:      newAvailable,
-			Max:            plan.MaxCredit,
-			RefreshPerHour: plan.RefreshPerHour,
+			Max:            maxCredit,
+			RefreshPerHour: refreshPerHour,
 			LastRefresh:    newLastRefresh,
 			Plan:           plan,
 		}
@@ -231,10 +286,8 @@ func CheckAndRefreshCreditDB(ctx context.Context, db *sqlite.DB, userID string, 
 	return info, err
 }
 
-// TopUpOnBillingUpgrade tops up a user's credit to their new plan maximum
-// when they transition from no_billing to has_billing.
-// If the user has no existing credit record, this is a no-op
-// (their credit will be initialized at max when they first use the gateway).
+// TopUpOnBillingUpgrade is a no-op for the hourly free-credit model.
+// Free credit now comes from the current UTC hour bucket, independent of billing plan.
 func (m *CreditManager) TopUpOnBillingUpgrade(ctx context.Context, userID string) error {
 	if m == nil || m.data == nil {
 		return nil
@@ -245,28 +298,7 @@ func (m *CreditManager) TopUpOnBillingUpgrade(ctx context.Context, userID string
 // TopUpOnBillingUpgradeDB is the implementation of
 // [CreditManager.TopUpOnBillingUpgrade] when using a database.
 func TopUpOnBillingUpgradeDB(ctx context.Context, db *sqlite.DB, userID string, now time.Time) error {
-	return exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
-		credit, err := q.GetUserLLMCredit(ctx, userID)
-		if errors.Is(err, sql.ErrNoRows) {
-			// No credit record exists; nothing to top up
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-
-		plan, err := planForUser(ctx, q, userID, &credit)
-		if err != nil {
-			return err
-		}
-
-		// Top up to the new plan's max
-		return q.UpdateUserLLMAvailableCredit(ctx, exedb.UpdateUserLLMAvailableCreditParams{
-			AvailableCredit: plan.MaxCredit,
-			LastRefreshAt:   now,
-			UserID:          userID,
-		})
-	})
+	return nil
 }
 
 // DebitCredit subtracts the given cost (in USD) from the user's credit.
@@ -290,22 +322,40 @@ func DebitCreditDB(ctx context.Context, db *sqlite.DB, userID string, costUSD fl
 		if err != nil {
 			return err
 		}
-		plan, err := planForUser(ctx, q, userID, &credit)
+		plan, err := planForUser(ctx, q, userID, &credit, now)
 		if err != nil {
 			return err
 		}
 
-		// First apply any refresh
-		newAvailable, newLastRefresh := CalculateRefreshedCredit(
-			credit.AvailableCredit,
-			plan.MaxCredit,
-			plan.RefreshPerHour,
-			credit.LastRefreshAt,
-			now,
-		)
-
-		// Then subtract the cost (allow going negative)
-		newAvailable -= costUSD
+		newAvailable := credit.AvailableCredit
+		newLastRefresh := credit.LastRefreshAt
+		maxCredit := plan.MaxCredit
+		refreshPerHour := plan.RefreshPerHour
+		if hasCreditOverride(&credit) {
+			// Override mode uses continuous token-bucket refill semantics.
+			newAvailable, newLastRefresh = CalculateRefreshedCredit(
+				credit.AvailableCredit,
+				plan.MaxCredit,
+				plan.RefreshPerHour,
+				credit.LastRefreshAt,
+				now,
+			)
+			newAvailable -= costUSD // allow negative, matching legacy behavior
+		} else {
+			// Default mode uses strict hourly free allocation.
+			newAvailable, newLastRefresh, maxCredit = calculateHourlyFreeCredit(
+				credit.AvailableCredit,
+				credit.LastRefreshAt,
+				now,
+			)
+			refreshPerHour = maxCredit
+			// Free bucket is depleted first and cannot go below zero.
+			if costUSD >= newAvailable {
+				newAvailable = 0
+			} else {
+				newAvailable -= costUSD
+			}
+		}
 
 		if err := q.DebitUserLLMCredit(ctx, exedb.DebitUserLLMCreditParams{
 			AvailableCredit: newAvailable,
@@ -318,8 +368,8 @@ func DebitCreditDB(ctx context.Context, db *sqlite.DB, userID string, costUSD fl
 
 		info = &CreditInfo{
 			Available:      newAvailable,
-			Max:            plan.MaxCredit,
-			RefreshPerHour: plan.RefreshPerHour,
+			Max:            maxCredit,
+			RefreshPerHour: refreshPerHour,
 			LastRefresh:    newLastRefresh,
 			Plan:           plan,
 		}
