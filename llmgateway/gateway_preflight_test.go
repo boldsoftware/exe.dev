@@ -169,6 +169,14 @@ func TestGateway_PreRequestCreditPreflight(t *testing.T) {
 			if tc.wantBodyContains != "" && !strings.Contains(rec.Body.String(), tc.wantBodyContains) {
 				t.Fatalf("body %q does not contain %q", rec.Body.String(), tc.wantBodyContains)
 			}
+			if tc.wantBodyContains != "" {
+				if got := rec.Header().Get("Content-Type"); got != "text/plain; charset=utf-8" {
+					t.Fatalf("content-type = %q, want %q", got, "text/plain; charset=utf-8")
+				}
+				if !strings.HasSuffix(rec.Body.String(), "\n") {
+					t.Fatalf("body %q missing trailing newline from http.Error encoding", rec.Body.String())
+				}
+			}
 			if tc.data.accountLookups != tc.wantAccountLookups {
 				t.Fatalf("AccountIDForUser calls = %d, want %d", tc.data.accountLookups, tc.wantAccountLookups)
 			}

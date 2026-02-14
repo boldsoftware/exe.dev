@@ -383,8 +383,8 @@ func TestPlanCategories(t *testing.T) {
 		if !floatClose(info.RefreshPerHour, wantHourly, 0.000001) {
 			t.Errorf("expected refresh %f, got %f", wantHourly, info.RefreshPerHour)
 		}
-		// no_billing error message should include billing link
-		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time; for faster refresh, set up a subscription at https://exe.dev/billing/update" {
+		// no_billing error message should include purchase hint.
+		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time; purchase more at https://exe.dev/user" {
 			t.Errorf("unexpected error message: %s", info.Plan.CreditExhaustedError)
 		}
 	})
@@ -420,8 +420,8 @@ func TestPlanCategories(t *testing.T) {
 		if !floatClose(info.RefreshPerHour, wantHourly, 0.000001) {
 			t.Errorf("expected refresh %f, got %f", wantHourly, info.RefreshPerHour)
 		}
-		// Friend user error message should NOT include billing link
-		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time" {
+		// Friend user error message should include purchase hint.
+		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time; purchase more at https://exe.dev/user" {
 			t.Errorf("unexpected error message: %s", info.Plan.CreditExhaustedError)
 		}
 	})
@@ -463,8 +463,8 @@ func TestPlanCategories(t *testing.T) {
 		if !floatClose(info.RefreshPerHour, wantHourly, 0.000001) {
 			t.Errorf("expected refresh %f, got %f", wantHourly, info.RefreshPerHour)
 		}
-		// has_billing user error message should NOT include billing link
-		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time" {
+		// has_billing user error message should include purchase hint.
+		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time; purchase more at https://exe.dev/user" {
 			t.Errorf("unexpected error message: %s", info.Plan.CreditExhaustedError)
 		}
 	})
@@ -506,8 +506,8 @@ func TestPlanCategories(t *testing.T) {
 		if !floatClose(info.RefreshPerHour, 25.0, 0.01) {
 			t.Errorf("expected refresh 25.0, got %f", info.RefreshPerHour)
 		}
-		// Error message should still be the no_billing message (with billing link)
-		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time; for faster refresh, set up a subscription at https://exe.dev/billing/update" {
+		// Error message should still be the no_billing message (with purchase hint).
+		if info.Plan.CreditExhaustedError != "LLM credits exhausted; credits refresh over time; purchase more at https://exe.dev/user" {
 			t.Errorf("unexpected error message: %s", info.Plan.CreditExhaustedError)
 		}
 	})
