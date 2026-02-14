@@ -308,14 +308,20 @@ local-hostname: ${NAME}
 EOF
 
 # Create cloud-init ISO (requires permission to write into ${WORKDIR})
+# Detect ISO tool first, then run it once below with visible stderr.
+ISO_TOOL=""
 if command -v genisoimage >/dev/null 2>&1; then
-    sudo genisoimage -output "${SEED}" -volid cidata -joliet -rock \
-        "${TMPDIR}/user-data" "${TMPDIR}/meta-data" >/dev/null 2>&1
+    ISO_TOOL="genisoimage"
 elif command -v mkisofs >/dev/null 2>&1; then
-    sudo mkisofs -output "${SEED}" -volid cidata -joliet -rock \
-        "${TMPDIR}/user-data" "${TMPDIR}/meta-data" >/dev/null 2>&1
+    ISO_TOOL="mkisofs"
 else
     echo "Neither genisoimage nor mkisofs found on host" >&2
+    exit 1
+fi
+sudo "${ISO_TOOL}" -output "${SEED}" -volid cidata -joliet -rock \
+    "${TMPDIR}/user-data" "${TMPDIR}/meta-data" >/dev/null
+if [[ ! -s "${SEED}" ]]; then
+    echo "Failed to create cloud-init seed ISO with ${ISO_TOOL}: ${SEED}" >&2
     exit 1
 fi
 
