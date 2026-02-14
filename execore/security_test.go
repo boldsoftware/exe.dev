@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	"exe.dev/pow"
 )
 
@@ -82,39 +83,6 @@ func TestXSSInReturnHost(t *testing.T) {
 	}
 }
 
-// TestOpenRedirectInAuthFlow tests that redirect URLs are validated
-// to prevent open redirect attacks.
-func TestOpenRedirectInAuthFlow(t *testing.T) {
-	tests := []struct {
-		name        string
-		redirectURL string
-		shouldBlock bool
-	}{
-		{"relative path", "/dashboard", false},
-		{"relative path with query", "/box?id=123", false},
-		{"absolute external URL", "https://evil.com/phish", true},
-		{"protocol-relative URL", "//evil.com/phish", true},
-		{"javascript URL", "javascript:alert(1)", true},
-		{"data URL", "data:text/html,<script>alert(1)</script>", true},
-		{"external with subdomain trick", "https://exe.dev.evil.com", true},
-		{"empty string", "", true},
-		{"relative path without leading slash", "dashboard", true},
-		{"path traversal attempt", "/../evil.com", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			valid := isValidRedirectURL(tt.redirectURL)
-			if tt.shouldBlock && valid {
-				t.Errorf("isValidRedirectURL(%q) = true, want false (should block)", tt.redirectURL)
-			}
-			if !tt.shouldBlock && !valid {
-				t.Errorf("isValidRedirectURL(%q) = false, want true (should allow)", tt.redirectURL)
-			}
-		})
-	}
-}
-
 // TestOpenRedirectAfterAuth tests that the redirect after authentication
 // is validated and doesn't allow external redirects.
 func TestOpenRedirectAfterAuth(t *testing.T) {
@@ -169,9 +137,9 @@ func TestPasskeyOpenRedirect(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// We can't easily test the full passkey flow, but we can verify
-			// the validation logic is applied by checking isValidRedirectURL
+			// the validation logic is applied by checking IsValidRedirectURL
 			redirectTo := tt.redirectTo
-			if redirectTo == "" || !isValidRedirectURL(redirectTo) {
+			if redirectTo == "" || !exeweb.IsValidRedirectURL(redirectTo) {
 				redirectTo = "/"
 			}
 			if redirectTo != tt.expectedRedirect {
@@ -214,7 +182,7 @@ func TestMagicAuthOpenRedirect(t *testing.T) {
 			req := httptest.NewRequest("GET", "/__exe.dev/magic-auth?secret="+secret+"&redirect="+url.QueryEscape(tt.redirect), nil)
 			req.Host = "box." + server.env.BoxHost
 			w := httptest.NewRecorder()
-			server.handleMagicAuth(w, req)
+			server.proxyServer().HandleMagicAuth(w, req)
 
 			location := w.Header().Get("Location")
 			if tt.expectExternal {

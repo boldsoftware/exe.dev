@@ -560,7 +560,7 @@ func (s *Server) isTerminalRequest(host string) bool {
 func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
 	// Handle magic auth URL first (before authentication check)
 	if r.URL.Path == "/__exe.dev/auth" {
-		s.handleMagicAuth(w, r)
+		s.proxyServer().HandleMagicAuth(w, r)
 		return
 	}
 

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"strings"
 
 	"exe.dev/boxname"
@@ -175,6 +176,26 @@ func getScheme(r *http.Request) string {
 	return "http"
 }
 
+// IsValidRedirectURL validates that a redirect URL is safe
+// (relative path only).
+// This prevents open redirect attacks where an attacker could redirect users
+// to a malicious external site after authentication.
+func IsValidRedirectURL(redirectURL string) bool {
+	if redirectURL == "" {
+		return false
+	}
+	u, err := url.Parse(redirectURL)
+	if err != nil {
+		return false
+	}
+	// Block absolute URLs (has scheme like https:, javascript:, data:)
+	// and protocol-relative URLs (//evil.com which have a Host but no Scheme)
+	if u.Scheme != "" || u.Host != "" {
+		return false
+	}
+	return path.IsAbs(u.Path)
+}
+
 // IsTerminalRequest reports whether a request is for a terminal subdomain.
 func IsTerminalRequest(env *stage.Env, host string) bool {
 	_, err := ParseTerminalHostname(env, host)
@@ -205,4 +226,18 @@ func terminalBoxForBase(env *stage.Env, host string) (string, bool) {
 		return "", false
 	}
 	return boxName, true
+}
+
+// SetAuthCookie adds an HTTP auth cookie to an HTTP response.
+func SetAuthCookie(w http.ResponseWriter, r *http.Request, domain, cookieValue string) {
+	cookie := &http.Cookie{
+		Name:     domain,
+		Value:    cookieValue,
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   30 * 24 * 60 * 60, // 30 days
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+	}
+	http.SetCookie(w, cookie)
 }

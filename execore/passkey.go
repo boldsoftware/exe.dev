@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
+
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 )
@@ -497,7 +499,7 @@ func (s *Server) handlePasskeyLoginFinish(w http.ResponseWriter, r *http.Request
 	// Check for redirect_to parameter (used by login with exe flow)
 	// Validate to prevent open redirect attacks
 	redirectTo := r.URL.Query().Get("redirect_to")
-	if redirectTo == "" || !isValidRedirectURL(redirectTo) {
+	if redirectTo == "" || !exeweb.IsValidRedirectURL(redirectTo) {
 		redirectTo = "/"
 	}
 

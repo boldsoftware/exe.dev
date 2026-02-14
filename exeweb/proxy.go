@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,11 +24,12 @@ import (
 // Data is handled via the ProxyData interface,
 // which for exed talks to the database and for exeprox talks to exed.
 type ProxyServer struct {
-	Data        ProxyData
-	Lg          *slog.Logger
-	Env         *stage.Env
-	SSHPool     *sshpool2.Pool
-	HTTPMetrics *HTTPMetrics
+	Data         ProxyData
+	Lg           *slog.Logger
+	Env          *stage.Env
+	SSHPool      *sshpool2.Pool
+	HTTPMetrics  *HTTPMetrics
+	MagicSecrets *MagicSecrets
 }
 
 // ProxyAuthResult contains the result of proxy authentication.
@@ -37,6 +39,63 @@ type ProxyAuthResult struct {
 	// CtxRaw is non-nil if we authenticated using a token.
 	// The raw bytes are passed to the VM's HTTP server.
 	CtxRaw []byte
+}
+
+// HandleMagicAuth handles the magic authentication URL /__exe.dev/auth.
+func (ps *ProxyServer) HandleMagicAuth(w http.ResponseWriter, r *http.Request) {
+	secret := r.URL.Query().Get("secret")
+	redirectURL := r.URL.Query().Get("redirect")
+
+	ps.Lg.DebugContext(r.Context(), "[REDIRECT] handleMagicAuth called", "host", r.Host, "secret", secret[:min(10, len(secret))]+"...", "redirect", redirectURL)
+
+	if secret == "" {
+		http.Error(w, "Missing secret parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Validate and consume the magic secret
+	magicSecret, err := ps.MagicSecrets.Validate(secret)
+	if err != nil {
+		ps.Lg.DebugContext(r.Context(), "[REDIRECT] Magic secret validation failed", "error", err)
+		http.Error(w, "Invalid or expired secret", http.StatusUnauthorized)
+		return
+	}
+
+	// Create authentication cookie for this subdomain
+	cookieValue, err := ps.Data.CreateAuthCookie(r.Context(), magicSecret.UserID, r.Host)
+	if err != nil {
+		http.Error(w, "Failed to create authentication cookie", http.StatusInternalServerError)
+		return
+	}
+
+	// Determine cookie name based on request type (terminal vs proxy)
+	var cookieName string
+	if IsTerminalRequest(ps.Env, r.Host) {
+		cookieName = "exe-auth"
+	} else {
+		port, err := GetRequestPort(r)
+		if err != nil {
+			ps.Lg.ErrorContext(r.Context(), "Failed to get port from request", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		cookieName = ProxyAuthCookieName(port)
+	}
+
+	SetAuthCookie(w, r, cookieName, cookieValue)
+
+	// Redirect to the original URL or the redirect from the magic secret.
+	// Validate to prevent open redirect attacks.
+	finalRedirect := redirectURL
+	if finalRedirect == "" {
+		finalRedirect = magicSecret.RedirectURL
+	}
+	if !IsValidRedirectURL(finalRedirect) {
+		finalRedirect = "/"
+	}
+
+	ps.Lg.DebugContext(r.Context(), "[REDIRECT] handleMagicAuth redirecting", "to", finalRedirect)
+	http.Redirect(w, r, finalRedirect, http.StatusSeeOther)
 }
 
 // ProxyToContainer proxies an HTTP request to a container
@@ -278,6 +337,34 @@ func CreateHostKeyCallback(boxName string, sshServerIdentityKey []byte) ssh.Host
 
 		return nil
 	}
+}
+
+// ProxyAuthCookieName returns the cookie name for
+// proxy authentication on a specific port.
+// Each port gets its own cookie to prevent cross-port authentication.
+func ProxyAuthCookieName(port int) string {
+	return fmt.Sprintf("login-with-exe-%d", port)
+}
+
+// GetRequestPort extracts the port number from
+// an HTTP request's Host header.
+// For requests without an explicit port,
+// it returns the default port for the scheme
+// (443 for HTTPS, 80 for HTTP).
+func GetRequestPort(r *http.Request) (int, error) {
+	_, portStr, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		// No port in Host header - use default port for the scheme
+		if r.TLS != nil {
+			return 443, nil
+		}
+		return 80, nil
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid port: %w", err)
+	}
+	return port, nil
 }
 
 // countingConn wraps a net.Conn to count bytes read and written.

@@ -21,7 +21,6 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
-	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -1618,25 +1617,6 @@ func schemeForTLS(useTLS bool) string {
 		return "https"
 	}
 	return "http"
-}
-
-// isValidRedirectURL validates that a redirect URL is safe (relative path only).
-// This prevents open redirect attacks where an attacker could redirect users
-// to a malicious external site after authentication.
-func isValidRedirectURL(redirectURL string) bool {
-	if redirectURL == "" {
-		return false
-	}
-	u, err := url.Parse(redirectURL)
-	if err != nil {
-		return false
-	}
-	// Block absolute URLs (has scheme like https:, javascript:, data:)
-	// and protocol-relative URLs (//evil.com which have a Host but no Scheme)
-	if u.Scheme != "" || u.Host != "" {
-		return false
-	}
-	return path.IsAbs(u.Path)
 }
 
 // handlePullExeuntuEverywhere pulls the exeuntu image to all exelet hosts in parallel.

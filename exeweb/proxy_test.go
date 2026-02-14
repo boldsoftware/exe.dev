@@ -16,6 +16,39 @@ import (
 	prometheusclient "github.com/prometheus/client_model/go"
 )
 
+// TestOpenRedirectInAuthFlow tests that redirect URLs are validated
+// to prevent open redirect attacks.
+func TestOpenRedirectInAuthFlow(t *testing.T) {
+	tests := []struct {
+		name        string
+		redirectURL string
+		shouldBlock bool
+	}{
+		{"relative path", "/dashboard", false},
+		{"relative path with query", "/box?id=123", false},
+		{"absolute external URL", "https://evil.com/phish", true},
+		{"protocol-relative URL", "//evil.com/phish", true},
+		{"javascript URL", "javascript:alert(1)", true},
+		{"data URL", "data:text/html,<script>alert(1)</script>", true},
+		{"external with subdomain trick", "https://exe.dev.evil.com", true},
+		{"empty string", "", true},
+		{"relative path without leading slash", "dashboard", true},
+		{"path traversal attempt", "/../evil.com", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			valid := IsValidRedirectURL(tt.redirectURL)
+			if tt.shouldBlock && valid {
+				t.Errorf("isValidRedirectURL(%q) = true, want false (should block)", tt.redirectURL)
+			}
+			if !tt.shouldBlock && !valid {
+				t.Errorf("isValidRedirectURL(%q) = false, want true (should allow)", tt.redirectURL)
+			}
+		})
+	}
+}
+
 func TestNonProxyRedirect(t *testing.T) {
 	t.Parallel()
 

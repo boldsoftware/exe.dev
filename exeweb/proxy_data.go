@@ -15,6 +15,9 @@ type ProxyData interface {
 	// UserInfo returns information about a user.
 	// The bool result reports whether the user exists.
 	UserInfo(ctx context.Context, userID string) (UserData, bool, error)
+
+	// CreateAuthCookie creates a new authentication cookie.
+	CreateAuthCookie(ctx context.Context, userID, domain string) (string, error)
 }
 
 // BoxData is the information we need for a box.

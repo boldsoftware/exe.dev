@@ -87,7 +87,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	// Handle magic URL for authentication
 	if r.URL.Path == "/__exe.dev/auth" {
 		s.slog().InfoContext(r.Context(), "[REDIRECT] Magic auth URL accessed", "host", r.Host, "path", r.URL.Path)
-		s.handleMagicAuth(w, r)
+		s.proxyServer().HandleMagicAuth(w, r)
 		return
 	}
 
@@ -446,31 +446,6 @@ func makeAuthURL(typ string, r *http.Request, q url.Values) string {
 	)
 }
 
-// proxyAuthCookieName returns the cookie name for proxy authentication on a specific port.
-// Each port gets its own cookie to prevent cross-port authentication.
-func proxyAuthCookieName(port int) string {
-	return fmt.Sprintf("login-with-exe-%d", port)
-}
-
-// getRequestPort extracts the port number from an HTTP request's Host header.
-// For requests without an explicit port, it returns the default port for the scheme
-// (443 for HTTPS, 80 for HTTP).
-func getRequestPort(r *http.Request) (int, error) {
-	_, portStr, err := net.SplitHostPort(r.Host)
-	if err != nil {
-		// No port in Host header - use default port for the scheme
-		if r.TLS != nil {
-			return 443, nil
-		}
-		return 80, nil
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		return 0, fmt.Errorf("invalid port: %w", err)
-	}
-	return port, nil
-}
-
 // renderAccessRequired renders the 401.html page for unauthorized access.
 // This is shown when a box doesn't exist OR when user doesn't have access
 // to avoid leaking box existence information.
@@ -505,7 +480,8 @@ func (s *Server) redirectToAuth(w http.ResponseWriter, r *http.Request) {
 	// Pass only path+query as the redirect target. The scheme and host
 	// are already conveyed via the Host header and return_host parameter,
 	// and downstream handlers (handleProxyLogin, handleMagicAuth) validate
-	// the redirect with isValidRedirectURL which only allows relative paths.
+	// the redirect with exeweb.IsValidRedirectURL which only allows
+	// relative paths.
 	redirect := r.URL.Path
 	if r.URL.RawQuery != "" {
 		redirect += "?" + r.URL.RawQuery
@@ -519,71 +495,13 @@ func (s *Server) redirectToAuth(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 }
 
-// handleMagicAuth handles the magic authentication URL /__exe.dev/auth
-
-func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
-	secret := r.URL.Query().Get("secret")
-	redirectURL := r.URL.Query().Get("redirect")
-
-	s.slog().DebugContext(r.Context(), "[REDIRECT] handleMagicAuth called", "host", r.Host, "secret", secret[:min(10, len(secret))]+"...", "redirect", redirectURL)
-
-	if secret == "" {
-		http.Error(w, "Missing secret parameter", http.StatusBadRequest)
-		return
-	}
-
-	// Validate and consume the magic secret
-	magicSecret, err := s.magicSecrets.Validate(secret)
-	if err != nil {
-		s.slog().DebugContext(r.Context(), "[REDIRECT] Magic secret validation failed", "error", err)
-		http.Error(w, "Invalid or expired secret", http.StatusUnauthorized)
-		return
-	}
-
-	// Create authentication cookie for this subdomain
-	cookieValue, err := s.createAuthCookie(r.Context(), magicSecret.UserID, r.Host)
-	if err != nil {
-		http.Error(w, "Failed to create authentication cookie", http.StatusInternalServerError)
-		return
-	}
-
-	// Determine cookie name based on request type (terminal vs proxy)
-	var cookieName string
-	if s.isTerminalRequest(r.Host) {
-		cookieName = "exe-auth"
-	} else {
-		port, err := getRequestPort(r)
-		if err != nil {
-			s.slog().ErrorContext(r.Context(), "Failed to get port from request", "error", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
-		cookieName = proxyAuthCookieName(port)
-	}
-
-	setAuthCookie(w, r, cookieName, cookieValue)
-
-	// Redirect to the original URL or the redirect from the magic secret.
-	// Validate to prevent open redirect attacks.
-	finalRedirect := redirectURL
-	if finalRedirect == "" {
-		finalRedirect = magicSecret.RedirectURL
-	}
-	if !isValidRedirectURL(finalRedirect) {
-		finalRedirect = "/"
-	}
-
-	s.slog().DebugContext(r.Context(), "[REDIRECT] handleMagicAuth redirecting", "to", finalRedirect)
-	http.Redirect(w, r, finalRedirect, http.StatusSeeOther)
-}
-
 // handleProxyLogin handles the login URL /__exe.dev/login
 // It redirects to the main domain auth flow with redirect and return_host parameters
 func (s *Server) handleProxyLogin(w http.ResponseWriter, r *http.Request) {
 	s.slog().DebugContext(r.Context(), "[REDIRECT] handleProxyLogin called", "host", r.Host)
 
 	redirect := r.URL.Query().Get("redirect")
-	if !isValidRedirectURL(redirect) {
+	if !exeweb.IsValidRedirectURL(redirect) {
 		redirect = "/"
 	}
 
@@ -625,13 +543,13 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// POST: perform the logout
-	port, err := getRequestPort(r)
+	port, err := exeweb.GetRequestPort(r)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to get port from request for logout", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	cookieName := proxyAuthCookieName(port)
+	cookieName := exeweb.ProxyAuthCookieName(port)
 
 	// Get the specific cookie value to delete
 	var cookieValue string
@@ -694,15 +612,7 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *e
 		Share: route.Share,
 	}
 
-	ps := exeweb.ProxyServer{
-		Data:        &proxyData{s: s},
-		Lg:          s.slog(),
-		Env:         &s.env,
-		SSHPool:     s.sshPool,
-		HTTPMetrics: s.httpMetrics,
-	}
-
-	return ps.ProxyToContainer(w, r, &exewebBox, exewebRoute, authResult)
+	return s.proxyServer().ProxyToContainer(w, r, &exewebBox, exewebRoute, authResult)
 }
 
 // createSSHTunnelTransport creates an HTTP transport that
@@ -712,15 +622,7 @@ func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey
 	// This code is temporary until we move more to exeweb.
 	exewebBox := dbBoxToExewebBox(box)
 
-	ps := exeweb.ProxyServer{
-		Data:        &proxyData{s: s},
-		Lg:          s.slog(),
-		Env:         &s.env,
-		SSHPool:     s.sshPool,
-		HTTPMetrics: s.httpMetrics,
-	}
-
-	return ps.CreateSSHTunnelTransport(sshHost, &exewebBox, sshKey)
+	return s.proxyServer().CreateSSHTunnelTransport(sshHost, &exewebBox, sshKey)
 }
 
 // checkShareLinkAccess checks if the request has a valid share link token
@@ -770,6 +672,18 @@ func (s *Server) autoCreateShareFromLink(ctx context.Context, userID string, box
 		}
 		return err
 	})
+}
+
+// proxyServer returns an exeweb.ProxyServer that refers to s.
+func (s *Server) proxyServer() *exeweb.ProxyServer {
+	return &exeweb.ProxyServer{
+		Data:         &proxyData{s: s},
+		Lg:           s.slog(),
+		Env:          &s.env,
+		SSHPool:      s.sshPool,
+		HTTPMetrics:  s.httpMetrics,
+		MagicSecrets: s.magicSecrets,
+	}
 }
 
 // proxyData implements exeweb.ProxyData using a Server.
@@ -827,4 +741,9 @@ func (pd *proxyData) UserInfo(ctx context.Context, userID string) (exeweb.UserDa
 		Email:  email,
 	}
 	return userData, true, nil
+}
+
+// CreateAuthCookie implements [exeweb.ProxyData.CreateAuthCookie].
+func (pd *proxyData) CreateAuthCookie(ctx context.Context, userID, domain string) (string, error) {
+	return pd.s.createAuthCookie(ctx, userID, domain)
 }

@@ -785,11 +785,11 @@ func (s *Server) validateAuthCookie(r *http.Request) (string, error) {
 // validateProxyAuthCookie validates the proxy authentication cookie and returns the user_id.
 // The cookie name is port-specific: "login-with-exe-<port>".
 func (s *Server) validateProxyAuthCookie(r *http.Request) (string, error) {
-	port, err := getRequestPort(r)
+	port, err := exeweb.GetRequestPort(r)
 	if err != nil {
 		return "", fmt.Errorf("failed to get port from request: %w", err)
 	}
-	return s.validateNamedAuthCookie(r, proxyAuthCookieName(port))
+	return s.validateNamedAuthCookie(r, exeweb.ProxyAuthCookieName(port))
 }
 
 func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (string, error) {
@@ -998,7 +998,7 @@ func (s *Server) redirectAfterAuthWithParams(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Default redirect - validate to prevent open redirect attacks
-	if isValidRedirectURL(redirectURL) {
+	if exeweb.IsValidRedirectURL(redirectURL) {
 		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 	} else {
 		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
@@ -1055,20 +1055,7 @@ func (s *Server) handleLoggedOut(w http.ResponseWriter, r *http.Request) {
 }
 
 func setExeAuthCookie(w http.ResponseWriter, r *http.Request, cookieValue string) {
-	setAuthCookie(w, r, "exe-auth", cookieValue)
-}
-
-func setAuthCookie(w http.ResponseWriter, r *http.Request, domain, cookieValue string) {
-	cookie := &http.Cookie{
-		Name:     domain,
-		Value:    cookieValue,
-		Path:     "/",
-		HttpOnly: true,
-		MaxAge:   30 * 24 * 60 * 60, // 30 days
-		Secure:   r.TLS != nil,
-		SameSite: http.SameSiteLaxMode,
-	}
-	http.SetCookie(w, cookie)
+	exeweb.SetAuthCookie(w, r, "exe-auth", cookieValue)
 }
 
 // handleAuthConfirm handles the interstitial confirmation page for magic auth
