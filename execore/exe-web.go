@@ -215,49 +215,6 @@ func (s *Server) setupHTTPSServer() {
 	}
 }
 
-var (
-	errBoxNotFound    = errors.New("box not found")
-	errInvalidBoxName = errors.New("invalid box name")
-)
-
-// resolveBoxName converts a hostname to a box name.
-// If hostname is a subdomain of the main domain (e.g., box.exe.dev),
-// it returns the box name with the main domain suffix stripped (e.g., "box").
-// Shelley subdomains (box.shelley.exe.xyz) are handled by stripping the ".shelley" part.
-// For all other hostname values, a CNAME lookup is performed, and the above
-// rules are applied to the result; otherwise an error is returned.
-func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, error) {
-	hostname = domz.Canonicalize(hostname)
-	// Reject empty hostnames (cheap check).
-	if hostname == "" {
-		return "", errInvalidBoxName
-	}
-	// Reject exact box domain (apex).
-	if hostname == s.env.BoxHost {
-		return "", errInvalidBoxName
-	}
-	// If a subdomain of our box domain, return the box name.
-	// Use CutBase (not Label) to handle multi-level subdomains like box.shelley.exe.xyz
-	sub, ok := domz.CutBase(hostname, s.env.BoxHost)
-	if ok && sub != "" {
-		// Handle shelley subdomain: box.shelley.exe.xyz -> box
-		if boxName, isShelley := strings.CutSuffix(sub, ".shelley"); isShelley {
-			return boxName, nil
-		}
-		// For regular subdomains, only accept single-level (no dots)
-		if !strings.Contains(sub, ".") {
-			return sub, nil
-		}
-	}
-
-	// Reject non-domain hostnames.
-	if !strings.Contains(hostname, ".") {
-		return "", errInvalidBoxName
-	}
-
-	return s.resolveCustomDomainBoxName(ctx, hostname)
-}
-
 // validateHostForTLSCert checks if the given host is valid for TLS certificate issuance.
 // The trace_id is added by ConnContext in httpsServer, so it's available in the context
 // during TLS handshakes.
@@ -283,7 +240,7 @@ func (s *Server) validateHostForTLSCert(ctx context.Context, host string) error 
 	}
 	if !s.boxExists(ctx, boxName) {
 		s.slog().WarnContext(ctx, "hostPolicy: no box found for subdomain", "subdomain", host)
-		return fmt.Errorf("%w: %s", errBoxNotFound, boxName)
+		return fmt.Errorf("box not found: %s", boxName)
 	}
 	return nil
 }

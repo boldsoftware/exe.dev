@@ -33,6 +33,49 @@ type DomainResolver struct {
 	LookupAFunc     func(context.Context, string, string) ([]netip.Addr, error)
 }
 
+// ErrInvalidBoxName is returned by [DomainResolver.ResolveBoxName]
+// if the box name is invalid.
+var ErrInvalidBoxName = errors.New("invalid box name")
+
+// ResolveBoxName converts a hostname to a box name.
+// If hostname is a subdomain of the main domain (e.g., box.exe.dev),
+// it returns the box name with the main domain suffix stripped (e.g., "box").
+// Shelley subdomains (box.shelley.exe.xyz) are handled by
+// stripping the ".shelley" part.
+// For all other hostname values, a CNAME lookup is performed, and the above
+// rules are applied to the result; otherwise an error is returned.
+func (dr *DomainResolver) ResolveBoxName(ctx context.Context, hostname string) (string, error) {
+	hostname = domz.Canonicalize(hostname)
+	// Reject empty hostnames (cheap check).
+	if hostname == "" {
+		return "", ErrInvalidBoxName
+	}
+	// Reject exact box domain (apex).
+	if hostname == dr.Env.BoxHost {
+		return "", ErrInvalidBoxName
+	}
+	// If a subdomain of our box domain, return the box name.
+	// Use CutBase (not Label) to handle multi-level subdomains like box.shelley.exe.xyz
+	sub, ok := domz.CutBase(hostname, dr.Env.BoxHost)
+	if ok && sub != "" {
+		// Handle shelley subdomain: box.shelley.exe.xyz -> box
+		if boxName, isShelley := strings.CutSuffix(sub, ".shelley"); isShelley {
+			return boxName, nil
+		}
+		// For regular subdomains, only accept single-level (no dots)
+		if !strings.Contains(sub, ".") {
+			return sub, nil
+		}
+	}
+
+	// Reject non-domain hostnames.
+	if !strings.Contains(hostname, ".") {
+		return "", ErrInvalidBoxName
+	}
+
+	return dr.ResolveCustomDomainBoxName(ctx, hostname)
+}
+
 // ResolveCustomDomainBoxName determines the box name
 // associated with a custom domain.
 // It handles both traditional CNAME-based custom domains

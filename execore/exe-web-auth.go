@@ -1085,7 +1085,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	// Extract hostname without port for display
 	hostname := domz.StripPort(returnHost)
 	boxName, err := s.resolveBoxName(r.Context(), hostname)
-	if errors.Is(err, errInvalidBoxName) {
+	if errors.Is(err, exeweb.ErrInvalidBoxName) {
 		http.Error(w, "Invalid hostname", http.StatusBadRequest)
 		return
 	}
