@@ -1278,6 +1278,9 @@ func mapExeletStatusToContainerProgress(status *api.CreateInstanceStatus) contai
 
 // handleSSHCommand implements the ssh command - SSH into a box from the REPL
 func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	if cc.SSHSession == nil {
+		return cc.Errorf("ssh command requires an SSH session")
+	}
 	if len(cc.Args) < 1 {
 		return cc.Errorf("usage: ssh <vmname> [command...]")
 	}
