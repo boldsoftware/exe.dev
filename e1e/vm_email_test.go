@@ -16,14 +16,9 @@ func TestVMEmail(t *testing.T) {
 	noGolden(t) // Email content varies
 
 	pty, _, keyFile, userEmail := registerForExeDev(t)
-	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
+	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash", NoEmail: true})
 	pty.disconnect()
 	waitForSSH(t, box, keyFile)
-
-	// Drain the box creation email before running tests.
-	if _, err := Env.servers.Email.WaitForEmail(userEmail); err != nil {
-		t.Fatalf("failed to drain box creation email: %v", err)
-	}
 
 	t.Run("send_to_owner_success", func(t *testing.T) {
 		// Send email to self (the VM owner)
