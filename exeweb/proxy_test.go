@@ -3,6 +3,7 @@ package exeweb
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"io"
 	"net"
 	"net/http"
@@ -49,6 +50,115 @@ func TestOpenRedirectInAuthFlow(t *testing.T) {
 	}
 }
 
+func TestStripExeDevAuth(t *testing.T) {
+	t.Parallel()
+
+	makeBasicAuth := func(user, pass string) string {
+		return "Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))
+	}
+
+	tests := []struct {
+		name    string
+		auth    string
+		strip   bool
+		comment string
+	}{
+		{
+			name:    "bearer_exe0",
+			auth:    "Bearer exe0.payload.sig",
+			strip:   true,
+			comment: "exe token bearer auth should be stripped",
+		},
+		{
+			name:    "bearer_exe0_prefix_only",
+			auth:    "Bearer exe0.",
+			strip:   true,
+			comment: "exe token prefix with empty body should be stripped",
+		},
+		{
+			name:    "bearer_non_exe0",
+			auth:    "Bearer abc.def.ghi",
+			strip:   false,
+			comment: "non-exe bearer auth should be forwarded",
+		},
+		{
+			name:    "bearer_jwt",
+			auth:    "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig",
+			strip:   false,
+			comment: "JWT bearer auth should be forwarded",
+		},
+		{
+			name:    "bearer_mixed_case_scheme",
+			auth:    "bEaReR exe0.payload.sig",
+			strip:   true,
+			comment: "bearer scheme is case-insensitive",
+		},
+		{
+			name:    "basic_exe0_password",
+			auth:    makeBasicAuth("anyuser", "exe0.payload.sig"),
+			strip:   true,
+			comment: "exe token basic password should be stripped",
+		},
+		{
+			name:    "basic_non_exe0_password",
+			auth:    makeBasicAuth("anyuser", "hunter2"),
+			strip:   false,
+			comment: "non-exe basic auth should be forwarded",
+		},
+		{
+			name:    "basic_mixed_case_scheme",
+			auth:    "bAsIc " + base64.StdEncoding.EncodeToString([]byte("user:exe0.payload.sig")),
+			strip:   true,
+			comment: "basic scheme is case-insensitive",
+		},
+		{
+			name:    "basic_invalid_base64",
+			auth:    "Basic !!!notbase64!!!",
+			strip:   false,
+			comment: "invalid basic header should not be stripped",
+		},
+		{
+			name:    "digest_scheme",
+			auth:    `Digest username="admin", realm="test"`,
+			strip:   false,
+			comment: "non-bearer/basic schemes should be forwarded",
+		},
+		{
+			name:    "no_auth",
+			auth:    "",
+			strip:   false,
+			comment: "no Authorization header should remain absent",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := make(http.Header)
+			if tt.auth != "" {
+				h.Set("Authorization", tt.auth)
+			}
+			req := &http.Request{Header: h}
+			stripExeDevAuth(req)
+
+			got := req.Header.Get("Authorization")
+			if tt.strip {
+				if got != "" {
+					t.Fatalf("expected Authorization to be stripped; got %q (%s)", got, tt.comment)
+				}
+				return
+			}
+			if tt.auth == "" {
+				if got != "" {
+					t.Fatalf("expected Authorization to be absent; got %q (%s)", got, tt.comment)
+				}
+				return
+			}
+			if got != tt.auth {
+				t.Fatalf("expected Authorization preserved as %q; got %q (%s)", tt.auth, got, tt.comment)
+			}
+		})
+	}
+}
 func TestNonProxyRedirect(t *testing.T) {
 	t.Parallel()
 

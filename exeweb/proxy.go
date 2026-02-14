@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"exe.dev/container"
+	"exe.dev/sshkey"
 	"exe.dev/sshpool2"
 	"exe.dev/stage"
 
@@ -228,7 +229,7 @@ func (ps *ProxyServer) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Req
 	rp.Director = func(req *http.Request) {
 		defaultDirector(req)
 		clearExeDevHeaders(req)
-		req.Header.Del("Authorization")
+		stripExeDevAuth(req)
 		setForwardedHeaders(req, r)
 
 		// Add user info headers if authenticated
@@ -356,6 +357,23 @@ func clearExeDevHeaders(req *http.Request) {
 		if strings.HasPrefix(strings.ToLower(key), "x-exedev-") {
 			req.Header.Del(key)
 		}
+	}
+}
+
+func stripExeDevAuth(req *http.Request) {
+	auth := req.Header.Get("Authorization")
+	if auth == "" {
+		return
+	}
+	const bearer = "Bearer "
+	if len(auth) >= len(bearer) && strings.EqualFold(auth[:len(bearer)], bearer) {
+		if strings.HasPrefix(strings.TrimSpace(auth[len(bearer):]), sshkey.TokenPrefix) {
+			req.Header.Del("Authorization")
+		}
+		return
+	}
+	if _, password, ok := req.BasicAuth(); ok && strings.HasPrefix(password, sshkey.TokenPrefix) {
+		req.Header.Del("Authorization")
 	}
 }
 
