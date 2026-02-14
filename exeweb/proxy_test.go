@@ -159,6 +159,7 @@ func TestStripExeDevAuth(t *testing.T) {
 		})
 	}
 }
+
 func TestNonProxyRedirect(t *testing.T) {
 	t.Parallel()
 
