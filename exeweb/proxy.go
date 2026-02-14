@@ -27,6 +27,8 @@ type ProxyServer struct {
 	Data         ProxyData
 	Lg           *slog.Logger
 	Env          *stage.Env
+	HTTPPort     int // zero if not serving HTTP
+	HTTPSPort    int // zero if not serving HTTPS
 	SSHPool      *sshpool2.Pool
 	HTTPMetrics  *HTTPMetrics
 	MagicSecrets *MagicSecrets
@@ -96,6 +98,94 @@ func (ps *ProxyServer) HandleMagicAuth(w http.ResponseWriter, r *http.Request) {
 
 	ps.Lg.DebugContext(r.Context(), "[REDIRECT] handleMagicAuth redirecting", "to", finalRedirect)
 	http.Redirect(w, r, finalRedirect, http.StatusSeeOther)
+}
+
+// HandleProxyLogin handles the login URL /__exe.dev/login.
+// It redirects to the main domain auth flow with redirect and
+// return_host parameters.
+func (ps *ProxyServer) HandleProxyLogin(w http.ResponseWriter, r *http.Request) {
+	ps.Lg.DebugContext(r.Context(), "[REDIRECT] handleProxyLogin called", "host", r.Host)
+
+	redirect := r.URL.Query().Get("redirect")
+	if !IsValidRedirectURL(redirect) {
+		redirect = "/"
+	}
+
+	// Use webBaseURLNoRequest to get the main domain URL
+	// without copying the request's port.
+	// The main domain (exe.dev) always runs on the
+	// default HTTPS port (443),
+	// even when the proxy request came in on a non-standard port like 9999.
+	authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", ps.webBaseURLNoRequest(), url.QueryEscape(redirect), url.QueryEscape(r.Host))
+
+	ps.Lg.DebugContext(r.Context(), "[REDIRECT] handleProxyLogin redirecting to main domain", "to", authURL)
+	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+}
+
+// HandleProxyLogout handles the logout URL /__exe.dev/logout.
+// GET: renders a simple confirmation form.
+// POST: performs the logout and redirects to logged-out page.
+func (ps *ProxyServer) HandleProxyLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		// Render a simple logout confirmation form
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `<!DOCTYPE html>
+<html>
+<head><title>Logout</title></head>
+<body>
+<h1>Logout</h1>
+<p>Are you sure you want to log out?</p>
+<form method="POST" action="/__exe.dev/logout">
+<button type="submit">Yes, log out</button>
+</form>
+<a href="/">Cancel</a>
+</body>
+</html>`)
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// POST: perform the logout
+	port, err := GetRequestPort(r)
+	if err != nil {
+		ps.Lg.ErrorContext(r.Context(), "Failed to get port from request for logout", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	cookieName := ProxyAuthCookieName(port)
+
+	// Get the specific cookie value to delete.
+	var cookieValue string
+	cookie, err := r.Cookie(cookieName)
+	if err == nil && cookie.Value != "" {
+		cookieValue = cookie.Value
+	}
+
+	// Delete only this specific cookie from the database.
+	if cookieValue != "" {
+		if err := ps.Data.DeleteAuthCookie(r.Context(), cookieValue); err != nil {
+			ps.Lg.ErrorContext(r.Context(), "deleting auth cookie failed", "cookieValue", cookieValue, "error", err)
+		}
+	}
+
+	// Clear the proxy auth cookie in the browser.
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	// Redirect to logged out page on main domain.
+	logoutURL := fmt.Sprintf("%s/logged-out", ps.webBaseURLNoRequest())
+	http.Redirect(w, r, logoutURL, http.StatusTemporaryRedirect)
 }
 
 // ProxyToContainer proxies an HTTP request to a container
@@ -235,6 +325,23 @@ func (ps *ProxyServer) CreateSSHTunnelTransport(sshHost string, box *BoxData, ss
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
+}
+
+// webBaseURLNoRequest returns a URL for the main web host (exe.dev).
+func (ps *ProxyServer) webBaseURLNoRequest() string {
+	var scheme, port string
+	if ps.HTTPSPort == 0 {
+		scheme = "http"
+		if ps.HTTPPort != 80 {
+			port = fmt.Sprintf(":%d", ps.HTTPPort)
+		}
+	} else {
+		scheme = "https"
+		if ps.HTTPSPort != 443 {
+			port = fmt.Sprintf(":%d", ps.HTTPSPort)
+		}
+	}
+	return fmt.Sprintf("%s://%s%s", scheme, ps.Env.WebHost, port)
 }
 
 // clearExeDevHeaders removes any X-ExeDev-* headers from

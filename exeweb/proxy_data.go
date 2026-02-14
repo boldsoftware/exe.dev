@@ -18,6 +18,9 @@ type ProxyData interface {
 
 	// CreateAuthCookie creates a new authentication cookie.
 	CreateAuthCookie(ctx context.Context, userID, domain string) (string, error)
+
+	// DeleteAuthCookie deletes an authentication cookie.
+	DeleteAuthCookie(ctx context.Context, cookievalue string) error
 }
 
 // BoxData is the information we need for a box.

@@ -228,7 +228,7 @@ func TestProxyLoginOpenRedirect(t *testing.T) {
 			req := httptest.NewRequest("GET", target, nil)
 			req.Host = "box." + server.env.BoxHost
 			w := httptest.NewRecorder()
-			server.handleProxyLogin(w, req)
+			server.proxyServer().HandleProxyLogin(w, req)
 
 			location := w.Header().Get("Location")
 			if tt.expectSanitized {

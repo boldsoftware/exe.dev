@@ -93,14 +93,14 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Handle login URL
 	if r.URL.Path == "/__exe.dev/login" {
-		s.handleProxyLogin(w, r)
+		s.proxyServer().HandleProxyLogin(w, r)
 		return
 	}
 
 	// Handle logout URL
 	if r.URL.Path == "/__exe.dev/logout" {
 		s.slog().InfoContext(r.Context(), "[REDIRECT] Logout URL accessed", "host", r.Host, "path", r.URL.Path)
-		s.handleProxyLogout(w, r)
+		s.proxyServer().HandleProxyLogout(w, r)
 		return
 	}
 
@@ -495,89 +495,6 @@ func (s *Server) redirectToAuth(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 }
 
-// handleProxyLogin handles the login URL /__exe.dev/login
-// It redirects to the main domain auth flow with redirect and return_host parameters
-func (s *Server) handleProxyLogin(w http.ResponseWriter, r *http.Request) {
-	s.slog().DebugContext(r.Context(), "[REDIRECT] handleProxyLogin called", "host", r.Host)
-
-	redirect := r.URL.Query().Get("redirect")
-	if !exeweb.IsValidRedirectURL(redirect) {
-		redirect = "/"
-	}
-
-	// Use webBaseURLNoRequest to get the main domain URL without copying the request's port.
-	// The main domain (exe.dev) always runs on the default HTTPS port (443),
-	// even when the proxy request came in on a non-standard port like 9999.
-	authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", s.webBaseURLNoRequest(), url.QueryEscape(redirect), url.QueryEscape(r.Host))
-
-	s.slog().DebugContext(r.Context(), "[REDIRECT] handleProxyLogin redirecting to main domain", "to", authURL)
-	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
-}
-
-// handleProxyLogout handles the logout URL /__exe.dev/logout
-// GET: renders a simple confirmation form
-// POST: performs the logout and redirects to logged-out page
-func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" {
-		// Render a simple logout confirmation form
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `<!DOCTYPE html>
-<html>
-<head><title>Logout</title></head>
-<body>
-<h1>Logout</h1>
-<p>Are you sure you want to log out?</p>
-<form method="POST" action="/__exe.dev/logout">
-<button type="submit">Yes, log out</button>
-</form>
-<a href="/">Cancel</a>
-</body>
-</html>`)
-		return
-	}
-
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// POST: perform the logout
-	port, err := exeweb.GetRequestPort(r)
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to get port from request for logout", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	cookieName := exeweb.ProxyAuthCookieName(port)
-
-	// Get the specific cookie value to delete
-	var cookieValue string
-	cookie, err := r.Cookie(cookieName)
-	if err == nil && cookie.Value != "" {
-		cookieValue = cookie.Value
-	}
-
-	// Delete only this specific cookie from the database
-	if cookieValue != "" {
-		s.deleteAuthCookie(r.Context(), cookieValue)
-	}
-
-	// Clear the proxy auth cookie in the browser
-	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-
-	// Redirect to logged out page on main domain
-	logoutURL := fmt.Sprintf("%s/logged-out", s.webBaseURLNoRequest())
-	http.Redirect(w, r, logoutURL, http.StatusTemporaryRedirect)
-}
-
 // getBoxForUser retrieves a box for the given user/team/name
 func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (*exedb.Box, error) {
 	user, err := s.getUserByPublicKey(ctx, publicKey)
@@ -676,7 +593,7 @@ func (s *Server) autoCreateShareFromLink(ctx context.Context, userID string, box
 
 // proxyServer returns an exeweb.ProxyServer that refers to s.
 func (s *Server) proxyServer() *exeweb.ProxyServer {
-	return &exeweb.ProxyServer{
+	ps := &exeweb.ProxyServer{
 		Data:         &proxyData{s: s},
 		Lg:           s.slog(),
 		Env:          &s.env,
@@ -684,6 +601,13 @@ func (s *Server) proxyServer() *exeweb.ProxyServer {
 		HTTPMetrics:  s.httpMetrics,
 		MagicSecrets: s.magicSecrets,
 	}
+	if s.servingHTTP() {
+		ps.HTTPPort = s.httpLn.tcp.Port
+	}
+	if s.servingHTTPS() {
+		ps.HTTPSPort = s.httpsLn.tcp.Port
+	}
+	return ps
 }
 
 // proxyData implements exeweb.ProxyData using a Server.
@@ -746,4 +670,12 @@ func (pd *proxyData) UserInfo(ctx context.Context, userID string) (exeweb.UserDa
 // CreateAuthCookie implements [exeweb.ProxyData.CreateAuthCookie].
 func (pd *proxyData) CreateAuthCookie(ctx context.Context, userID, domain string) (string, error) {
 	return pd.s.createAuthCookie(ctx, userID, domain)
+}
+
+// DeleteAuthCookie implements [exeweb.ProxyData.DeleteAuthCookie].
+func (pd *proxyData) DeleteAuthCookie(ctx context.Context, cookieValue string) error {
+	pd.s.deleteAuthCookie(ctx, cookieValue)
+	// Any error was already logged by deleteAuthCookie.
+	// There is no useful error to return here.
+	return nil
 }
