@@ -533,7 +533,7 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate and consume the magic secret
-	magicSecret, err := s.validateMagicSecret(secret)
+	magicSecret, err := s.magicSecrets.Validate(secret)
 	if err != nil {
 		s.slog().DebugContext(r.Context(), "[REDIRECT] Magic secret validation failed", "error", err)
 		http.Error(w, "Invalid or expired secret", http.StatusUnauthorized)

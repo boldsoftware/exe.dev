@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/exeweb"
 	"exe.dev/sqlite"
 )
 
@@ -19,7 +20,7 @@ import (
 func TestCustomDomainAuthFlow(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	server.magicSecrets = make(map[string]*MagicSecret)
+	server.magicSecrets = exeweb.NewMagicSecrets()
 
 	// Create test user and box
 	publicKey := testSSHPubKey
@@ -150,7 +151,7 @@ func TestCustomDomainAuthFlow(t *testing.T) {
 func TestCustomDomainReturnHostValidation(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	server.magicSecrets = make(map[string]*MagicSecret)
+	server.magicSecrets = exeweb.NewMagicSecrets()
 
 	// Create test user
 	publicKey := testSSHPubKey

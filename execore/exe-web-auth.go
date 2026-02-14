@@ -885,66 +885,6 @@ func (s *Server) renderLockedOutPage(w http.ResponseWriter, r *http.Request, use
 	return true
 }
 
-// createMagicSecret creates a temporary magic secret for proxy authentication
-func (s *Server) createMagicSecret(userID, boxName, redirectURL string) (string, error) {
-	// Generate a random secret
-	secret := crand.Text()
-
-	// Clean up expired secrets while we're here
-	s.cleanupExpiredMagicSecrets()
-
-	// Store in memory with 2-minute expiration
-	s.magicSecretsMu.Lock()
-	defer s.magicSecretsMu.Unlock()
-
-	s.magicSecrets[secret] = &MagicSecret{
-		UserID:      userID,
-		BoxName:     boxName,
-		RedirectURL: redirectURL,
-		ExpiresAt:   time.Now().Add(2 * time.Minute),
-		CreatedAt:   time.Now(),
-	}
-
-	return secret, nil
-}
-
-// validateMagicSecret validates and consumes a magic secret
-func (s *Server) validateMagicSecret(secret string) (*MagicSecret, error) {
-	s.magicSecretsMu.Lock()
-	defer s.magicSecretsMu.Unlock()
-
-	magicSecret, exists := s.magicSecrets[secret]
-	if !exists {
-		return nil, fmt.Errorf("invalid secret")
-	}
-
-	// Check expiration
-	if time.Now().After(magicSecret.ExpiresAt) {
-		// Clean up expired secret
-		delete(s.magicSecrets, secret)
-		return nil, fmt.Errorf("secret expired")
-	}
-
-	// Secret is valid, consume it (single use)
-	result := *magicSecret // Copy the struct
-	delete(s.magicSecrets, secret)
-
-	return &result, nil
-}
-
-// cleanupExpiredMagicSecrets removes expired magic secrets from memory
-func (s *Server) cleanupExpiredMagicSecrets() {
-	s.magicSecretsMu.Lock()
-	defer s.magicSecretsMu.Unlock()
-
-	now := time.Now()
-	for secret, magicSecret := range s.magicSecrets {
-		if now.After(magicSecret.ExpiresAt) {
-			delete(s.magicSecrets, secret)
-		}
-	}
-}
-
 // deleteAuthCookie deletes a cookie from the database.
 // This logs any errors but doesn't return them,
 // as there is nothing useful for the caller to do.
@@ -1011,7 +951,7 @@ func (s *Server) redirectAfterAuthWithParams(w http.ResponseWriter, r *http.Requ
 			}
 
 			// Create magic secret for the terminal subdomain
-			secret, err := s.createMagicSecret(userID, boxName, redirectURL)
+			secret, err := s.magicSecrets.Create(userID, boxName, redirectURL)
 			if err != nil {
 				s.slog().ErrorContext(r.Context(), "Failed to create magic secret", "error", err)
 				http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -1042,7 +982,7 @@ func (s *Server) redirectAfterAuthWithParams(w http.ResponseWriter, r *http.Requ
 			// of on the box subdomain.
 
 			// Create magic secret for the proxy subdomain
-			secret, err := s.createMagicSecret(userID, boxName, redirectURL)
+			secret, err := s.magicSecrets.Create(userID, boxName, redirectURL)
 			if err != nil {
 				s.slog().ErrorContext(r.Context(), "Failed to create magic secret", "error", err)
 				http.Error(w, "Failed to create authentication secret", http.StatusInternalServerError)
@@ -1141,9 +1081,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate the magic secret WITHOUT consuming it (peek only)
-	s.magicSecretsMu.RLock()
-	magicSecret, exists := s.magicSecrets[secret]
-	s.magicSecretsMu.RUnlock()
+	magicSecret, exists := s.magicSecrets.Peek(secret)
 
 	if !exists || time.Now().After(magicSecret.ExpiresAt) {
 		// Invalid or expired secret - show 401 page with email form
@@ -1179,9 +1117,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Box doesn't exist or error - show 401 page (don't reveal box existence)
 		// Clean up the magic secret since we're not going to use it
-		s.magicSecretsMu.Lock()
-		delete(s.magicSecrets, secret)
-		s.magicSecretsMu.Unlock()
+		s.magicSecrets.Delete(secret)
 
 		userEmail, _ := withRxRes1(s, r.Context(), (*exedb.Queries).GetEmailByUserID, magicSecret.UserID)
 

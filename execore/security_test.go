@@ -206,7 +206,7 @@ func TestMagicAuthOpenRedirect(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a magic secret for authentication
-			secret, err := server.createMagicSecret(user.UserID, "box."+server.env.BoxHost, "/")
+			secret, err := server.magicSecrets.Create(user.UserID, "box."+server.env.BoxHost, "/")
 			if err != nil {
 				t.Fatalf("Failed to create magic secret: %v", err)
 			}

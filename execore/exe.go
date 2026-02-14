@@ -224,15 +224,6 @@ func (v *EmailVerification) Close() {
 	})
 }
 
-// MagicSecret represents a temporary authentication secret for proxy magic URLs
-type MagicSecret struct {
-	UserID      string
-	BoxName     string // Direct box name instead of team
-	RedirectURL string
-	ExpiresAt   time.Time
-	CreatedAt   time.Time
-}
-
 // ipqsIPResult holds the relevant fields from an IPQS IP lookup.
 type ipqsIPResult struct {
 	RecentAbuse bool   `json:"recent_abuse"`
@@ -334,8 +325,7 @@ type Server struct {
 	// In-memory state for active sessions (these don't need persistence)
 	emailVerificationsMu sync.RWMutex
 	emailVerifications   map[string]*EmailVerification // token -> email verification
-	magicSecretsMu       sync.RWMutex
-	magicSecrets         map[string]*MagicSecret // secret -> magic secret with expiration
+	magicSecrets         *exeweb.MagicSecrets          // secret -> magic secret with expiration
 	creationStreamsMu    sync.Mutex
 	creationStreams      map[creationStreamKey]*CreationStream // (userID, hostname) -> creation stream
 
@@ -926,7 +916,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		exeletClients:          exeletClients,
 		sshPool:                &sshpool2.Pool{TTL: 10 * time.Minute, Metrics: sshpool2.NewMetrics(cfg.MetricsRegistry)},
 		emailVerifications:     make(map[string]*EmailVerification),
-		magicSecrets:           make(map[string]*MagicSecret),
+		magicSecrets:           exeweb.NewMagicSecrets(),
 		creationStreams:        make(map[creationStreamKey]*CreationStream),
 		githubUser:             ghu,
 		emailSenders:           emailSenders,
