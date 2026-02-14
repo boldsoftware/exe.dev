@@ -597,6 +597,14 @@ class CommandModal {
         });
     }
 
+    static renameBox(boxName) {
+        cmdModal.open({
+            title: 'Rename VM',
+            commandPrefix: `rename ${boxName}`,
+            inputPlaceholder: 'new-name'
+        });
+    }
+
     static deleteBox(boxName) {
         cmdModal.open({
             title: 'Delete VM',
@@ -674,6 +682,7 @@ const openShareModal = (boxName) => CommandModal.shareByEmail(boxName);
 const openShareLinkModal = (boxName) => CommandModal.createShareLink(boxName);
 const openRemoveShareModal = (boxName, email) => CommandModal.removeShare(boxName, email);
 const openRemoveShareLinkModal = (boxName, token) => CommandModal.removeShareLink(boxName, token);
+const openRenameBoxModal = (boxName) => CommandModal.renameBox(boxName);
 const openDeleteBoxModal = (boxName) => CommandModal.deleteBox(boxName);
 const openRestartBoxModal = (boxName) => CommandModal.restartBox(boxName);
 const openSetPublicModal = (boxName) => CommandModal.setPublic(boxName);
