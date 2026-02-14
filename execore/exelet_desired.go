@@ -1,7 +1,9 @@
 package execore
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -33,7 +35,10 @@ func (s *Server) handleExeletDesired(w http.ResponseWriter, r *http.Request) {
 
 	// Get all boxes on this host
 	boxes, err := s.getBoxesByHost(ctx, host)
-	if err != nil {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return
+	case err != nil:
 		s.slog().ErrorContext(ctx, "failed to get boxes for exelet desired state", "host", host, "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -49,7 +54,10 @@ func (s *Server) handleExeletDesired(w http.ResponseWriter, r *http.Request) {
 	userOverrides := make(map[string][]desiredstate.CgroupSetting)
 	for userID := range userIDs {
 		user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
-		if err != nil {
+		switch {
+		case errors.Is(err, context.Canceled):
+			return
+		case err != nil:
 			s.slog().ErrorContext(ctx, "failed to get user for exelet desired state", "user_id", userID, "error", err)
 			continue
 		}
