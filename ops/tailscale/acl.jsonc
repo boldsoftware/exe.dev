@@ -1,0 +1,37 @@
+{
+    "tagOwners": {
+        "tag:server": ["autogroup:admin"],
+        "tag:vast":   ["autogroup:admin"],
+    },
+
+    "acls": [
+        {"action": "accept", "src": ["*"], "dst": ["*:*"]},
+    ],
+
+    "ssh": [
+        {
+            "action": "accept",
+            "src":    ["autogroup:member"],
+            "dst":    ["autogroup:self"],
+            "users":  ["autogroup:nonroot", "root"],
+        },
+        {
+            "action": "accept",
+            "src":    ["autogroup:admin", "tag:server"],
+            "dst":    ["tag:server", "tag:vast"],
+            "users":  ["autogroup:nonroot", "root"],
+        },
+    ],
+
+    "nodeAttrs": [
+        {
+            // Funnel policy, which lets tailnet members control Funnel
+            // for their own devices.
+            // Learn more at https://tailscale.com/kb/1223/tailscale-funnel/
+            "target": ["autogroup:member", "tag:server"],
+            "attr":   ["funnel"],
+        },
+        {"target": ["100.87.187.75"], "attr": ["mullvad"]},
+        {"target": ["100.71.235.113"], "attr": ["mullvad"]},
+    ],
+}
