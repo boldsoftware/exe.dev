@@ -441,7 +441,7 @@ func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb
 		User: *box.SSHUser, Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(sshKey),
 		},
-		HostKeyCallback: box.CreateHostKeyCallback(),
+		HostKeyCallback: exeweb.CreateHostKeyCallback(box.Name, box.SSHServerIdentityKey),
 		Timeout:         10 * time.Second,
 	}
 	addr := fmt.Sprintf("%s:%d", sshHost, *box.SSHPort)

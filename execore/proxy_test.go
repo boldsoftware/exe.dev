@@ -1,11 +1,9 @@
 package execore
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -20,10 +18,7 @@ import (
 	"time"
 
 	"exe.dev/exedb"
-	"exe.dev/exeweb"
 	"exe.dev/sqlite"
-	"github.com/prometheus/client_golang/prometheus"
-	io_prometheus_client "github.com/prometheus/client_model/go"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -252,167 +247,6 @@ func TestProxyStreaming(t *testing.T) {
 		t.Errorf("Expected Content-Type 'text/event-stream', got %q", ct)
 	}
 }
-
-func TestSetForwardedHeaders(t *testing.T) {
-	t.Parallel()
-
-	t.Run("https request populates headers", func(t *testing.T) {
-		incoming := httptest.NewRequest(http.MethodGet, "https://box.exe.dev/", nil)
-		incoming.Host = "box.exe.dev"
-		incoming.RemoteAddr = "203.0.113.5:45678"
-		incoming.TLS = &tls.ConnectionState{}
-
-		outgoing := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/", nil)
-
-		setForwardedHeaders(outgoing, incoming)
-
-		if got := outgoing.Header.Get("X-Forwarded-Proto"); got != "https" {
-			t.Fatalf("expected proto https, got %q", got)
-		}
-		if got := outgoing.Header.Get("X-Forwarded-Host"); got != "box.exe.dev" {
-			t.Fatalf("expected forwarded host box.exe.dev, got %q", got)
-		}
-		if got := outgoing.Header.Get("X-Forwarded-For"); got != "203.0.113.5" {
-			t.Fatalf("expected forwarded for 203.0.113.5, got %q", got)
-		}
-	})
-
-	t.Run("appends existing xff and preserves host port", func(t *testing.T) {
-		incoming := httptest.NewRequest(http.MethodGet, "http://app.exe.dev/resource", nil)
-		incoming.Host = "app.exe.dev:8443"
-		incoming.RemoteAddr = "198.51.100.7:4444"
-		incoming.Header.Set("X-Forwarded-For", "10.0.0.1")
-
-		outgoing := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:5000/", nil)
-
-		setForwardedHeaders(outgoing, incoming)
-
-		if got := outgoing.Header.Get("X-Forwarded-Proto"); got != "http" {
-			t.Fatalf("expected proto http, got %q", got)
-		}
-		if got := outgoing.Header.Get("X-Forwarded-Host"); got != "app.exe.dev:8443" {
-			t.Fatalf("expected forwarded host app.exe.dev:8443, got %q", got)
-		}
-		if got := outgoing.Header.Get("X-Forwarded-For"); got != "10.0.0.1, 198.51.100.7" {
-			t.Fatalf("expected forwarded for '10.0.0.1, 198.51.100.7', got %q", got)
-		}
-	})
-}
-
-func TestClearExeDevHeaders(t *testing.T) {
-	t.Parallel()
-
-	req := httptest.NewRequest(http.MethodGet, "https://box.exe.dev/", nil)
-	req.Header.Set("X-ExeDev-UserID", "spoofed-user")
-	req.Header.Set("X-ExeDev-Email", "spoofed@example.com")
-	req.Header.Add("X-ExeDev-Email", "second@example.com")
-	req.Header.Set("X-ExeDev-Arbitrary", "arbitrary-value")
-	req.Header.Set("X-ExeDev-Future-Header", "future-value")
-	req.Header.Set("x-exedev-lowercase", "lowercase-value") // test case insensitivity
-	req.Header.Set("X-Forwarded-Proto", "https")
-	req.Header.Set("X-Custom-Header", "custom-value")
-
-	clearExeDevHeaders(req)
-
-	if got := req.Header.Get("X-ExeDev-UserID"); got != "" {
-		t.Fatalf("expected user header cleared, got %q", got)
-	}
-	if got := req.Header.Get("X-ExeDev-Email"); got != "" {
-		t.Fatalf("expected email header cleared, got %q", got)
-	}
-	if got := req.Header.Get("X-ExeDev-Arbitrary"); got != "" {
-		t.Fatalf("expected arbitrary X-ExeDev header cleared, got %q", got)
-	}
-	if got := req.Header.Get("X-ExeDev-Future-Header"); got != "" {
-		t.Fatalf("expected future X-ExeDev header cleared, got %q", got)
-	}
-	if got := req.Header.Get("x-exedev-lowercase"); got != "" {
-		t.Fatalf("expected lowercase X-ExeDev header cleared, got %q", got)
-	}
-	if got := req.Header.Get("X-Forwarded-Proto"); got != "https" {
-		t.Fatalf("expected unrelated headers untouched, got %q", got)
-	}
-	if got := req.Header.Get("X-Custom-Header"); got != "custom-value" {
-		t.Fatalf("expected other X- headers untouched, got %q", got)
-	}
-}
-
-// TestCountingConn tests that the countingConn wrapper correctly tracks bytes read and written
-func TestCountingConn(t *testing.T) {
-	t.Parallel()
-
-	registry := prometheus.NewRegistry()
-	metrics := exeweb.NewHTTPMetrics(registry)
-
-	// Create a pipe to simulate a connection
-	client, server := net.Pipe()
-	defer client.Close()
-	defer server.Close()
-
-	// Wrap the client side with countingConn
-	wrapped := &countingConn{Conn: client, metrics: metrics}
-
-	// Write some data through the wrapped connection
-	testData := []byte("hello, world!")
-	writeDone := make(chan struct{})
-	go func() {
-		wrapped.Write(testData)
-		close(writeDone)
-	}()
-
-	// Read from the server side
-	buf := make([]byte, len(testData))
-	_, err := io.ReadFull(server, buf)
-	if err != nil {
-		t.Fatalf("failed to read from server: %v", err)
-	}
-	if !bytes.Equal(buf, testData) {
-		t.Fatalf("data mismatch: got %q, want %q", buf, testData)
-	}
-
-	// Wait for the write goroutine to complete
-	<-writeDone
-
-	// Now write from server and read through wrapped connection
-	responseData := []byte("response data")
-	go func() {
-		server.Write(responseData)
-	}()
-
-	buf = make([]byte, len(responseData))
-	_, err = io.ReadFull(wrapped, buf)
-	if err != nil {
-		t.Fatalf("failed to read from wrapped: %v", err)
-	}
-	if !bytes.Equal(buf, responseData) {
-		t.Fatalf("data mismatch: got %q, want %q", buf, responseData)
-	}
-
-	// Verify metrics were recorded
-	// "out" is bytes written through the wrapped connection (to the backend)
-	// "in" is bytes read through the wrapped connection (from the backend)
-	outMetric := getCounterValue(t, metrics.ProxyBytesTotal.WithLabelValues("out"))
-	inMetric := getCounterValue(t, metrics.ProxyBytesTotal.WithLabelValues("in"))
-
-	if outMetric != float64(len(testData)) {
-		t.Errorf("out bytes: got %v, want %v", outMetric, len(testData))
-	}
-	if inMetric != float64(len(responseData)) {
-		t.Errorf("in bytes: got %v, want %v", inMetric, len(responseData))
-	}
-}
-
-func getCounterValue(t *testing.T, counter prometheus.Counter) float64 {
-	t.Helper()
-	ch := make(chan prometheus.Metric, 1)
-	counter.Collect(ch)
-	m := <-ch
-	metric := &prometheusMetric{}
-	m.Write(metric)
-	return metric.Counter.GetValue()
-}
-
-type prometheusMetric = io_prometheus_client.Metric
 
 // TestPublicRouteStripsTokenCtx verifies that on public routes, token auth
 // still works for identity (UserID is set), but CtxRaw is stripped so that

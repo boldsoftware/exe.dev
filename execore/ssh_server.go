@@ -18,6 +18,7 @@ import (
 	emailpkg "exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
+	"exe.dev/exeweb"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/termfun"
 	"exe.dev/tracing"
@@ -853,7 +854,7 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 	}
 
 	// Validate signup eligibility (use the real client IP from piper, not 127.0.0.1)
-	ipStr := clientIPFromRemoteAddr(s.clientAddr)
+	ipStr := exeweb.ClientIPFromRemoteAddr(s.clientAddr)
 	if err := ss.server.validateNewSignup(s.Context(), signupValidationParams{
 		ip:               ipStr,
 		email:            email,

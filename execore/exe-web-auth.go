@@ -30,6 +30,7 @@ import (
 	"exe.dev/domz"
 	"exe.dev/email"
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
 	"exe.dev/pow"
 	"exe.dev/sqlite"
@@ -1662,7 +1663,7 @@ func (s *Server) showAuthEmailSent(w http.ResponseWriter, r *http.Request, email
 // checkSignupRateLimit checks if the request should be rate limited.
 // Returns the client IP and whether the request is allowed.
 func (s *Server) checkSignupRateLimit(r *http.Request) (netip.Addr, bool) {
-	ipStr := clientIPFromRemoteAddr(r.RemoteAddr)
+	ipStr := exeweb.ClientIPFromRemoteAddr(r.RemoteAddr)
 	ip, err := netip.ParseAddr(ipStr)
 	if err != nil {
 		// Can't parse IP, allow the request (don't break on edge cases)

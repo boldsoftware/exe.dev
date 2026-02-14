@@ -1112,7 +1112,7 @@ func runCommandOnBoxWithStdin(ctx context.Context, pool *sshpool2.Pool, box *exe
 	sshConfig := &ssh.ClientConfig{
 		User:            *box.SSHUser,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(sshSigner)},
-		HostKeyCallback: box.CreateHostKeyCallback(),
+		HostKeyCallback: exeweb.CreateHostKeyCallback(box.Name, box.SSHServerIdentityKey),
 		Timeout:         10 * time.Second,
 	}
 
@@ -1326,7 +1326,7 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(sshSigner),
 		},
-		HostKeyCallback: box.CreateHostKeyCallback(),
+		HostKeyCallback: exeweb.CreateHostKeyCallback(box.Name, box.SSHServerIdentityKey),
 		Timeout:         10 * time.Second,
 	}
 
