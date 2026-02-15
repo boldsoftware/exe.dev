@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"exe.dev/container"
+	"exe.dev/domz"
 	"exe.dev/sshkey"
 	"exe.dev/sshpool2"
 	"exe.dev/stage"
@@ -187,6 +188,96 @@ func (ps *ProxyServer) HandleProxyLogout(w http.ResponseWriter, r *http.Request)
 	// Redirect to logged out page on main domain.
 	logoutURL := fmt.Sprintf("%s/logged-out", ps.webBaseURLNoRequest())
 	http.Redirect(w, r, logoutURL, http.StatusTemporaryRedirect)
+}
+
+// GetProxyAuth checks if the user is authenticated for the proxy
+// and returns the auth result.
+// Supports three authentication methods, tried in this order:
+//  1. Bearer token auth (Authorization: Bearer <token>)
+//  2. Basic auth with token as password (for git HTTPS, etc.)
+//  3. Cookie-based auth (login-with-exe-* cookies)
+//
+// For token-based auth, the namespace must be "v0@VMNAME.BOXHOST".
+// Returns nil if not authenticated.
+func (ps *ProxyServer) GetProxyAuth(r *http.Request, boxName string) *ProxyAuthResult {
+	// 1. Try Bearer token auth.
+	// RFC 7235: auth scheme is case-insensitive.
+	if auth := r.Header.Get("Authorization"); len(auth) >= len("Bearer ") && strings.EqualFold(auth[:len("Bearer ")], "Bearer ") {
+		token := auth[len("Bearer "):]
+		if result := ps.Data.ValidateVMToken(r.Context(), token, boxName); result != nil {
+			return result
+		}
+	}
+
+	// 2. Try Basic auth (password is the token, username is ignored).
+	// This supports git HTTPS and other tools that use basic auth.
+	if _, password, ok := r.BasicAuth(); ok {
+		if result := ps.Data.ValidateVMToken(r.Context(), password, boxName); result != nil {
+			return result
+		}
+	}
+
+	// 3. Fall back to cookie-based auth.
+	if userID, err := ps.ValidateProxyAuthCookie(r); err == nil {
+		return &ProxyAuthResult{UserID: userID}
+	}
+
+	return nil
+}
+
+// ValidateAuthCookie validates the primary authentication cookie
+// and returns the user ID.
+func (ps *ProxyServer) ValidateAuthCookie(r *http.Request) (string, error) {
+	return ps.validateNamedAuthCookie(r, "exe-auth")
+}
+
+// ValidateProxyAuthCookie validates the proxy authentication cookie
+// and returns the user_id.
+// The cookie name is port-specific: "login-with-exe-<port>".
+func (ps *ProxyServer) ValidateProxyAuthCookie(r *http.Request) (string, error) {
+	port, err := GetRequestPort(r)
+	if err != nil {
+		return "", fmt.Errorf("failed to get port from request: %w", err)
+	}
+	return ps.validateNamedAuthCookie(r, ProxyAuthCookieName(port))
+}
+
+func (ps *ProxyServer) validateNamedAuthCookie(r *http.Request, cookieName string) (string, error) {
+	cookie, err := r.Cookie(cookieName)
+	if err != nil {
+		// NB: many callers check for errors.Is(err, http.ErrNoCookie),
+		// so be sure to wrap the error returned from r.Cookie.
+		return "", fmt.Errorf("failed to read %s cookie: %w", cookieName, err)
+	}
+	if cookie.Value == "" {
+		return "", fmt.Errorf("empty %s: %w", cookieName, http.ErrNoCookie)
+	}
+
+	ctx := r.Context()
+	cookieValue := cookie.Value
+	// Strip port from domain since cookies are per-host, not per-host:port
+	domain := domz.StripPort(r.Host)
+
+	// Get auth cookie info
+	cookieData, exists, err := ps.Data.CookieInfo(ctx, cookieValue, domain)
+	if err != nil {
+		return "", fmt.Errorf("database error: %w", err)
+	}
+	if !exists {
+		return "", fmt.Errorf("invalid cookie")
+	}
+
+	// Check if cookie has expired.
+	if time.Now().After(cookieData.ExpiresAt) {
+		// We don't call DeleteAuthCookie here;
+		// we expect the CookieInfo method to handle that.
+		return "", fmt.Errorf("cookie expired")
+	}
+
+	// Update last used time.
+	ps.Data.UsedCookie(ctx, cookieValue)
+
+	return cookieData.UserID, nil
 }
 
 // ProxyToContainer proxies an HTTP request to a container

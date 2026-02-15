@@ -361,29 +361,7 @@ func (s *Server) getAuthenticatedUserID(r *http.Request) (string, bool) {
 // For token-based auth, the namespace must be "v0@VMNAME.BOXHOST".
 // Returns nil if not authenticated.
 func (s *Server) getProxyAuth(r *http.Request, box exedb.Box) *exeweb.ProxyAuthResult {
-	// 1. Try Bearer token auth.
-	// RFC 7235: auth scheme is case-insensitive.
-	if auth := r.Header.Get("Authorization"); len(auth) >= len("Bearer ") && strings.EqualFold(auth[:len("Bearer ")], "Bearer ") {
-		token := auth[len("Bearer "):]
-		if result := s.validateVMToken(r.Context(), token, box.Name); result != nil {
-			return result
-		}
-	}
-
-	// 2. Try Basic auth (password is the token, username is ignored).
-	// This supports git HTTPS and other tools that use basic auth.
-	if _, password, ok := r.BasicAuth(); ok {
-		if result := s.validateVMToken(r.Context(), password, box.Name); result != nil {
-			return result
-		}
-	}
-
-	// 3. Fall back to cookie-based auth.
-	if userID, err := s.validateProxyAuthCookie(r); err == nil {
-		return &exeweb.ProxyAuthResult{UserID: userID}
-	}
-
-	return nil
+	return s.proxyServer().GetProxyAuth(r, box.Name)
 }
 
 // validateVMToken validates a token for VM access.
@@ -651,6 +629,27 @@ func dbBoxToExewebBox(box *exedb.Box) exeweb.BoxData {
 	return exewebBox
 }
 
+// CookieInfo implements [exeweb.ProxyData.CookieInfo].
+func (pd *proxyData) CookieInfo(ctx context.Context, cookieValue, domain string) (exeweb.CookieData, bool, error) {
+	cookie, err := withRxRes1(pd.s, ctx, (*exedb.Queries).GetAuthCookieInfo, exedb.GetAuthCookieInfoParams{
+		CookieValue: cookieValue,
+		Domain:      domain,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return exeweb.CookieData{}, false, nil
+		}
+		return exeweb.CookieData{}, false, err
+	}
+	cd := exeweb.CookieData{
+		CookieValue: cookieValue,
+		Domain:      domain,
+		UserID:      cookie.UserID,
+		ExpiresAt:   cookie.ExpiresAt,
+	}
+	return cd, true, nil
+}
+
 // UserInfo implements [exeweb.ProxyData.UserInfo].
 func (pd *proxyData) UserInfo(ctx context.Context, userID string) (exeweb.UserData, bool, error) {
 	email, err := withRxRes1(pd.s, ctx, (*exedb.Queries).GetEmailByUserID, userID)
@@ -678,4 +677,14 @@ func (pd *proxyData) DeleteAuthCookie(ctx context.Context, cookieValue string) e
 	// Any error was already logged by deleteAuthCookie.
 	// There is no useful error to return here.
 	return nil
+}
+
+// UsedCookie implements [exeweb.ProxyData.UsedCookie].
+func (pd *proxyData) UsedCookie(ctx context.Context, cookieValue string) {
+	withTx1(pd.s, ctx, (*exedb.Queries).UpdateAuthCookieLastUsed, cookieValue)
+}
+
+// ValidateVMToken implements [exeweb.ProxyData.ValidateVMToken].
+func (pd *proxyData) ValidateVMToken(ctx context.Context, token, boxName string) *exeweb.ProxyAuthResult {
+	return pd.s.validateVMToken(ctx, token, boxName)
 }

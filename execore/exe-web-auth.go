@@ -779,58 +779,13 @@ func (s *Server) createAuthCookie(ctx context.Context, userID, domain string) (s
 
 // validateAuthCookie validates the primary authentication cookie and returns the user_id
 func (s *Server) validateAuthCookie(r *http.Request) (string, error) {
-	return s.validateNamedAuthCookie(r, "exe-auth")
+	return s.proxyServer().ValidateAuthCookie(r)
 }
 
 // validateProxyAuthCookie validates the proxy authentication cookie and returns the user_id.
 // The cookie name is port-specific: "login-with-exe-<port>".
 func (s *Server) validateProxyAuthCookie(r *http.Request) (string, error) {
-	port, err := exeweb.GetRequestPort(r)
-	if err != nil {
-		return "", fmt.Errorf("failed to get port from request: %w", err)
-	}
-	return s.validateNamedAuthCookie(r, exeweb.ProxyAuthCookieName(port))
-}
-
-func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (string, error) {
-	cookie, err := r.Cookie(cookieName)
-	if err != nil {
-		// NB: many callers check for errors.Is(err, http.ErrNoCookie),
-		// so be sure to wrap the error returned from r.Cookie.
-		return "", fmt.Errorf("failed to read %s cookie: %w", cookieName, err)
-	}
-	if cookie.Value == "" {
-		return "", fmt.Errorf("empty %s: %w", cookieName, http.ErrNoCookie)
-	}
-
-	ctx := r.Context()
-	cookieValue := cookie.Value
-	// Strip port from domain since cookies are per-host, not per-host:port
-	domain := domz.StripPort(r.Host)
-
-	// Get auth cookie info
-	row, err := withRxRes1(s, ctx, (*exedb.Queries).GetAuthCookieInfo, exedb.GetAuthCookieInfoParams{
-		CookieValue: cookieValue,
-		Domain:      domain,
-	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", fmt.Errorf("invalid cookie")
-	}
-	if err != nil {
-		return "", fmt.Errorf("database error: %w", err)
-	}
-
-	// Check if cookie has expired
-	if time.Now().After(row.ExpiresAt) {
-		// Clean up expired cookie.
-		s.deleteAuthCookie(ctx, cookieValue)
-		return "", fmt.Errorf("cookie expired")
-	}
-
-	// Update last used time
-	withTx1(s, ctx, (*exedb.Queries).UpdateAuthCookieLastUsed, cookieValue)
-
-	return row.UserID, nil
+	return s.proxyServer().ValidateProxyAuthCookie(r)
 }
 
 // userHasActiveAuthCookie returns true when the user has at least one non-expired auth cookie record.

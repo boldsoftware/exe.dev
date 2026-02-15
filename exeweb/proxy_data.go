@@ -2,6 +2,7 @@ package exeweb
 
 import (
 	"context"
+	"time"
 )
 
 // ProxyData is an interface for proxy authentication operations.
@@ -12,6 +13,10 @@ type ProxyData interface {
 	// The bool result reports whether the box exists.
 	BoxInfo(ctx context.Context, boxName string) (BoxData, bool, error)
 
+	// CookieInfo returns information about a cookie.
+	// The bool result reports whether the cookie exists.
+	CookieInfo(ctx context.Context, cookieValue, domain string) (CookieData, bool, error)
+
 	// UserInfo returns information about a user.
 	// The bool result reports whether the user exists.
 	UserInfo(ctx context.Context, userID string) (UserData, bool, error)
@@ -21,6 +26,13 @@ type ProxyData interface {
 
 	// DeleteAuthCookie deletes an authentication cookie.
 	DeleteAuthCookie(ctx context.Context, cookievalue string) error
+
+	// UsedCookie is used to report that an authentication cookie was used.
+	UsedCookie(ctx context.Context, cookieValue string)
+
+	// ValidateVMToken validates a token for VM access.
+	// It returns the auth result if valid, nil otherwise.
+	ValidateVMToken(ctx context.Context, token, boxName string) *ProxyAuthResult
 }
 
 // BoxData is the information we need for a box.
@@ -42,6 +54,14 @@ type BoxData struct {
 type BoxRoute struct {
 	Port  int
 	Share string
+}
+
+// CookieData is the information we keep for an authentication cookie.
+type CookieData struct {
+	CookieValue string    // cookie value
+	Domain      string    // cookie host domain
+	UserID      string    // user authenticated by cookie
+	ExpiresAt   time.Time // expiration time
 }
 
 // UserData is the information we need for a user.
