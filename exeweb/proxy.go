@@ -290,7 +290,6 @@ func (ps *ProxyServer) CheckShareLinkAccess(r *http.Request, boxID int, boxName,
 	}
 
 	valid, err := ps.Data.CheckShareLink(r.Context(), boxID, boxName, userID, shareToken)
-
 	// Report but don't return an error.
 	if err != nil {
 		ps.Lg.ErrorContext(r.Context(), "check share link failed", "boxID", boxID, "boxName", boxName, "userID", userID, "shareToken", shareToken, "error", err)
