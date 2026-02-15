@@ -280,8 +280,8 @@ exelet-fs: ## Download exelet-fs from Backblaze if hash changed or doesn't exist
 		export B2_APPLICATION_KEY="K004hvv/i5raZbvKXARk+H7sZLZ5XtQ"; \
 		export COLUMNS="$${COLUMNS:-80}"; \
 		export LINES="$${LINES:-24}"; \
-		$(B2) account authorize >/dev/null 2>&1 && \
-		$(B2) file download b2://bold-exe/exelet-fs-$(GOARCH)-$$CURRENT_HASH.tar.gz .exelet-fs.tar.gz \
+		./bin/retry.sh $(B2) account authorize >/dev/null && \
+		./bin/retry.sh $(B2) file download b2://bold-exe/exelet-fs-$(GOARCH)-$$CURRENT_HASH.tar.gz .exelet-fs.tar.gz \
 			|| { echo "${RED}Failed to download exelet-fs-$(GOARCH)-$$CURRENT_HASH.tar.gz${NC}" && exit 1; }; \
 		echo "Decompressing exelet-fs..."; \
 		tar zxf .exelet-fs.tar.gz -C exelet/fs/$(GOARCH) --exclude='._*' && \
