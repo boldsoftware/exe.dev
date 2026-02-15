@@ -473,6 +473,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Delete queue branch if merged
+        continue-on-error: true
         run: |
           set -euo pipefail
           QUEUE_BRANCH="${{ github.ref_name }}"
