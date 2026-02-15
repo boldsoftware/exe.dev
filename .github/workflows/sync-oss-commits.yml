@@ -39,7 +39,7 @@ jobs:
           if ./bin/sync-commits-from-oss.sh oss/main; then
             if git tag -l | grep -q "^new-exe-commit-oss$"; then
               git remote set-url origin "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exe.git"
-              git push origin new-exe-commit-oss:main
+              ./bin/retry.sh --retry-on 128 git push origin new-exe-commit-oss:main
               git tag -d new-exe-commit-oss || true
             fi
           else

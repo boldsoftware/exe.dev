@@ -49,9 +49,9 @@ for attempt in $(seq 1 "$max_attempts"); do
     exit "$rc"
   fi
   if [ "$attempt" -eq "$max_attempts" ]; then
-    echo "retry.sh[$1]: $* failed after $max_attempts attempts (exit code $rc)" >&2
+    echo "retry.sh: $* failed after $max_attempts attempts (exit code $rc)" >&2
     exit "$rc"
   fi
-  echo "retry.sh[$1]: $* failed (attempt $attempt/$max_attempts, exit code $rc), retrying in ${attempt}s..." >&2
+  echo "retry.sh: $* failed (attempt $attempt/$max_attempts, exit code $rc), retrying in ${attempt}s..." >&2
   sleep "$attempt"
 done

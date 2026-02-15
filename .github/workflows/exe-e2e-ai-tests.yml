@@ -147,7 +147,7 @@ jobs:
             REPORT_COMMIT=$(git commit-tree "$TREE_SHA" -m "$COMMIT_MSG")
 
             # Push to refs/e2e-reports/
-            git push origin "$REPORT_COMMIT:refs/e2e-reports/$REF_NAME"
+            $GITHUB_WORKSPACE/bin/retry.sh --retry-on 128 git push origin "$REPORT_COMMIT:refs/e2e-reports/$REF_NAME"
 
             REPORT_URL="$REPO_URL/tree/$REPORT_COMMIT/report/report.md"
             echo "📋 Report pushed to refs/e2e-reports/$REF_NAME"

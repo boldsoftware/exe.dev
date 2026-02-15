@@ -95,5 +95,5 @@ for c in $(git rev-list --reverse "origin/${TARGET}"..HEAD); do
     echo "created commit $PREV_SUBREPO_COMMIT for commit $c"
 done
 
-git push --dry-run $SUBREPO $PREV_SUBREPO_COMMIT:$TARGET
-git push $SUBREPO $(cat /tmp/${SUBREPO}-commit):$TARGET
+"$(dirname "$0")/retry.sh" --retry-on 128 git push --dry-run $SUBREPO $PREV_SUBREPO_COMMIT:$TARGET
+"$(dirname "$0")/retry.sh" --retry-on 128 git push $SUBREPO $(cat /tmp/${SUBREPO}-commit):$TARGET

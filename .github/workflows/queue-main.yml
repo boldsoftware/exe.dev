@@ -287,7 +287,7 @@ jobs:
             git config --global user.email "bot@exe.dev"
             git add .
             git commit -m "all: fix formatting"
-            git push
+            ./bin/retry.sh --retry-on 128 git push
           else
             echo "No formatting changes needed"
           fi
@@ -425,7 +425,7 @@ jobs:
           fi
 
           # Dry-run origin push first to fail fast
-          git push --dry-run origin HEAD:main
+          ./bin/retry.sh --retry-on 128 git push --dry-run origin HEAD:main
 
           # Push to subrepos
           bin/push-to-subrepo.sh main shelley shelley
@@ -433,7 +433,7 @@ jobs:
           bin/push-to-subrepo.sh main oss oss
 
           # Push to origin
-          git push origin HEAD:main
+          ./bin/retry.sh --retry-on 128 git push origin HEAD:main
 
           echo "main_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
           echo "main_sha_before=$ORIGIN_MAIN_BEFORE" >> $GITHUB_OUTPUT
@@ -477,10 +477,10 @@ jobs:
         run: |
           set -euo pipefail
           QUEUE_BRANCH="${{ github.ref_name }}"
-          QUEUE_SHA=$(git ls-remote origin "$QUEUE_BRANCH" | awk '{print $1}')
+          QUEUE_SHA=$(./bin/retry.sh git ls-remote origin "$QUEUE_BRANCH" | awk '{print $1}')
           ./bin/retry.sh git fetch origin main
           if git merge-base --is-ancestor "$QUEUE_SHA" origin/main; then
-            git push --force-with-lease="$QUEUE_BRANCH:$QUEUE_SHA" origin ":refs/heads/$QUEUE_BRANCH"
+            ./bin/retry.sh --retry-on 128 git push --force-with-lease="$QUEUE_BRANCH:$QUEUE_SHA" origin ":refs/heads/$QUEUE_BRANCH"
           fi
         env:
           GITHUB_TOKEN: ${{ github.token }}

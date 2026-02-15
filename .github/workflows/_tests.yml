@@ -179,7 +179,7 @@ jobs:
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add e1e/golden/
             git commit -m "Golden file updates from CI run ${{ github.run_id }}"
-            git push origin "HEAD:refs/heads/$BRANCH"
+            ./bin/retry.sh --retry-on 128 git push origin "HEAD:refs/heads/$BRANCH"
 
             echo
             echo "📦 Golden file changes pushed to branch: $BRANCH"

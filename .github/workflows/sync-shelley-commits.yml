@@ -39,7 +39,7 @@ jobs:
           if ./bin/sync-commits-from-shelley.sh shelley/main; then
             if git tag -l | grep -q "^new-exe-commit$"; then
               git remote set-url origin "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exe.git"
-              git push origin new-exe-commit:main
+              ./bin/retry.sh --retry-on 128 git push origin new-exe-commit:main
               git tag -d new-exe-commit || true
             fi
           else
