@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -14,10 +15,12 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	"exe.dev/sqlite"
 	"golang.org/x/crypto/ssh"
 )
@@ -348,4 +351,240 @@ func TestPublicRouteStripsTokenCtx(t *testing.T) {
 	if authResult.CtxRaw != nil {
 		t.Error("after strip, CtxRaw should be nil")
 	}
+}
+
+// TestRequestAccess tests the request-access flow:
+// 1. Authenticated user without access sees "You need access" page
+// 2. POST to /__exe.dev/request-access sends email and shows "Request sent"
+// 3. Unauthenticated user sees the 401 login page (not the request-access page)
+func TestRequestAccess(t *testing.T) {
+	t.Parallel()
+
+	// Set up a fake email server to capture sent emails.
+	var mu sync.Mutex
+	var sentEmails []map[string]string
+	fakeEmailServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var emailData map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&emailData); err != nil {
+			t.Errorf("failed to decode email: %v", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		sentEmails = append(sentEmails, emailData)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer fakeEmailServer.Close()
+
+	s := newTestServer(t)
+	s.fakeHTTPEmail = fakeEmailServer.URL
+
+	ctx := t.Context()
+
+	// Create owner (user A).
+	ownerID := "usr_owner_" + generateRegistrationToken()
+	ownerEmail := "owner@reqaccess-test.dev"
+
+	// Create requester (user B).
+	requesterID := "usr_requester_" + generateRegistrationToken()
+	requesterEmail := "requester@reqaccess-test.dev"
+
+	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, ownerID, ownerEmail); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, requesterID, requesterEmail); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("failed to create users: %v", err)
+	}
+
+	// Create a box owned by user A with a private route.
+	boxName := "reqaccessbox"
+	privateRoute := `{"port":80,"share":"private"}`
+	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO boxes (ctrhost, name, status, image, container_id, created_by_user_id, routes,
+			                     ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			"fake_ctrhost", boxName, "running", "test-image", "test-container-id", ownerID, privateRoute,
+			"test-identity-key", "test-authorized-keys", "test-client-key", 2222)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed to create box: %v", err)
+	}
+
+	// Create an auth cookie for requester on the box's proxy domain.
+	boxDomain := s.env.BoxSub(boxName) // e.g. "reqaccessbox.exe.cloud"
+	cookieValue, err := s.createAuthCookie(ctx, requesterID, boxDomain)
+	if err != nil {
+		t.Fatalf("failed to create auth cookie: %v", err)
+	}
+
+	port := s.httpPort()
+	cookieName := exeweb.ProxyAuthCookieName(port)
+
+	// --- Test 1: GET to the box URL → should see "You need access" page ---
+	t.Run("authenticated_user_sees_request_access", func(t *testing.T) {
+		req := createTestRequestForServer("GET", "/", boxDomain, s)
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: cookieValue})
+
+		w := httptest.NewRecorder()
+		s.handleProxyRequest(w, req)
+
+		resp := w.Result()
+		body, _ := io.ReadAll(resp.Body)
+		bodyStr := string(body)
+
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("expected 401, got %d", resp.StatusCode)
+		}
+		if !strings.Contains(bodyStr, "You need access") {
+			t.Errorf("expected 'You need access' in body, got: %s", bodyStr)
+		}
+		if !strings.Contains(bodyStr, requesterEmail) {
+			t.Errorf("expected requester email %q in body, got: %s", requesterEmail, bodyStr)
+		}
+		if !strings.Contains(bodyStr, "Request access") {
+			t.Errorf("expected 'Request access' button in body, got: %s", bodyStr)
+		}
+	})
+
+	// --- Test 2: POST to /__exe.dev/request-access → sends email and shows "Request sent" ---
+	t.Run("post_request_access_sends_email", func(t *testing.T) {
+		mu.Lock()
+		sentEmails = nil
+		mu.Unlock()
+
+		form := url.Values{"message": {"Please let me in!"}}
+		req := createTestRequestForServer("POST", "/__exe.dev/request-access", boxDomain, s)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: cookieValue})
+
+		w := httptest.NewRecorder()
+		s.handleProxyRequest(w, req)
+
+		resp := w.Result()
+		body, _ := io.ReadAll(resp.Body)
+		bodyStr := string(body)
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("expected 200, got %d", resp.StatusCode)
+		}
+		if !strings.Contains(bodyStr, "Request sent") {
+			t.Errorf("expected 'Request sent' in body, got: %s", bodyStr)
+		}
+
+		// Verify the email was sent.
+		mu.Lock()
+		emailCount := len(sentEmails)
+		mu.Unlock()
+
+		if emailCount != 1 {
+			t.Fatalf("expected 1 email sent, got %d", emailCount)
+		}
+
+		mu.Lock()
+		sentEmail := sentEmails[0]
+		mu.Unlock()
+
+		if sentEmail["to"] != ownerEmail {
+			t.Errorf("email sent to %q, expected %q", sentEmail["to"], ownerEmail)
+		}
+		if !strings.Contains(sentEmail["subject"], requesterEmail) {
+			t.Errorf("expected requester email in subject, got: %q", sentEmail["subject"])
+		}
+		if !strings.Contains(sentEmail["subject"], boxName) {
+			t.Errorf("expected box name in subject, got: %q", sentEmail["subject"])
+		}
+		if !strings.Contains(sentEmail["body"], "Please let me in!") {
+			t.Errorf("expected message in email body, got: %q", sentEmail["body"])
+		}
+		if !strings.Contains(sentEmail["body"], "share_vm="+boxName) {
+			t.Errorf("expected share_vm param in email body, got: %q", sentEmail["body"])
+		}
+		if !strings.Contains(sentEmail["body"], "share_email="+url.QueryEscape(requesterEmail)) {
+			t.Errorf("expected share_email param in email body, got: %q", sentEmail["body"])
+		}
+	})
+
+	// --- Test 3: Unauthenticated user sees 401 login page (not request-access) ---
+	t.Run("unauthenticated_user_sees_login", func(t *testing.T) {
+		req := createTestRequestForServer("GET", "/", boxDomain, s)
+		// No cookie set.
+
+		w := httptest.NewRecorder()
+		s.handleProxyRequest(w, req)
+
+		resp := w.Result()
+
+		// Unauthenticated user should be redirected to login.
+		if resp.StatusCode != http.StatusTemporaryRedirect {
+			t.Errorf("expected 307 redirect, got %d", resp.StatusCode)
+		}
+		loc := resp.Header.Get("Location")
+		if !strings.Contains(loc, "/__exe.dev/login") {
+			t.Errorf("expected redirect to /__exe.dev/login, got: %s", loc)
+		}
+	})
+
+	// --- Test 4: Nonexistent box shows generic 401 (not request-access) ---
+	t.Run("nonexistent_box_shows_401", func(t *testing.T) {
+		nonexistentDomain := s.env.BoxSub("nonexistentbox")
+		cookieValueNonexistent, err := s.createAuthCookie(ctx, requesterID, nonexistentDomain)
+		if err != nil {
+			t.Fatalf("failed to create auth cookie: %v", err)
+		}
+		cookieNameNonexistent := exeweb.ProxyAuthCookieName(port)
+
+		req := createTestRequestForServer("GET", "/", nonexistentDomain, s)
+		req.AddCookie(&http.Cookie{Name: cookieNameNonexistent, Value: cookieValueNonexistent})
+
+		w := httptest.NewRecorder()
+		s.handleProxyRequest(w, req)
+
+		resp := w.Result()
+		body, _ := io.ReadAll(resp.Body)
+		bodyStr := string(body)
+
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("expected 401, got %d", resp.StatusCode)
+		}
+		// Should show the generic 401 page, NOT the request-access page.
+		if strings.Contains(bodyStr, "You need access") {
+			t.Error("nonexistent box should NOT show 'You need access' page")
+		}
+		if !strings.Contains(bodyStr, "Access") {
+			t.Errorf("expected generic 401 page, got: %s", bodyStr)
+		}
+	})
+
+	// --- Test 5: GET /__exe.dev/request-access renders the form ---
+	t.Run("get_request_access_renders_form", func(t *testing.T) {
+		req := createTestRequestForServer("GET", "/__exe.dev/request-access", boxDomain, s)
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: cookieValue})
+
+		w := httptest.NewRecorder()
+		s.handleProxyRequest(w, req)
+
+		resp := w.Result()
+		body, _ := io.ReadAll(resp.Body)
+		bodyStr := string(body)
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("expected 200, got %d", resp.StatusCode)
+		}
+		if !strings.Contains(bodyStr, "You need access") {
+			t.Errorf("expected 'You need access' in body, got: %s", bodyStr)
+		}
+		if !strings.Contains(bodyStr, "request-access") {
+			t.Errorf("expected form action in body, got: %s", bodyStr)
+		}
+	})
 }

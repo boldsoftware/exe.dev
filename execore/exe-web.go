@@ -1318,6 +1318,8 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		ActivePage:  "boxes",
 		IsLoggedIn:  true,
 		InviteCount: inviteCount,
+		ShareVM:     r.URL.Query().Get("share_vm"),
+		ShareEmail:  r.URL.Query().Get("share_email"),
 	}
 
 	// Render template

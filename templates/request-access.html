@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Access required</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style type="text/tailwindcss">
+    @theme {
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    }
+  </style>
+  <meta name="robots" content="noindex">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+</head>
+<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
+  <main class="w-full max-w-2xl">
+    <p class="text-zinc-500 text-lg mb-3">{{.Email}}</p>
+    <h1 class="text-4xl font-semibold mb-8">You need access</h1>
+    <form method="POST" action="/__exe.dev/request-access">
+      <textarea name="message" placeholder="Message (optional)" rows="3"
+        class="w-full text-lg border-2 border-zinc-300 p-3 bg-transparent focus:outline-none focus:border-zinc-900 placeholder:text-zinc-400 resize-none"></textarea>
+      <button type="submit" class="mt-6 px-6 py-3 bg-zinc-900 text-white text-lg hover:bg-zinc-700 transition-colors">Request access</button>
+    </form>
+  </main>
+</body>
+</html>

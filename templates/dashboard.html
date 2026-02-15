@@ -1680,5 +1680,22 @@
     <script src="/static/xterm-addon-web-links.js"></script>
     <script src="/static/terminal-common.js"></script>
     <script src="/static/dashboard.js"></script>
+    {{if and .ShareVM .ShareEmail}}
+    <div id="share-request" data-vm="{{.ShareVM}}" data-email="{{.ShareEmail}}" hidden></div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var r = document.getElementById('share-request');
+        if (r) {
+            cmdModal.open({
+                title: 'Share VM',
+                commandPrefix: 'share add ' + r.dataset.vm,
+                inputPlaceholder: 'user@example.com',
+                description: "Sharing allows the given user to access this VM's web server.",
+                defaultValue: r.dataset.email
+            });
+        }
+    });
+    </script>
+    {{end}}
 </body>
 </html>

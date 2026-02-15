@@ -17,6 +17,7 @@ import (
 	sloghttp "github.com/samber/slog-http"
 	"golang.org/x/crypto/ssh"
 
+	"exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
 	"exe.dev/metricsbag"
@@ -104,6 +105,12 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle request-access URL
+	if r.URL.Path == "/__exe.dev/request-access" {
+		s.handleRequestAccess(w, r)
+		return
+	}
+
 	// Reserve the /__exe.dev/ prefix — don't forward unknown paths to VMs.
 	if strings.HasPrefix(r.URL.Path, "/__exe.dev/") || r.URL.Path == "/__exe.dev" {
 		http.NotFound(w, r)
@@ -131,7 +138,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	box, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxNamed, boxName)
 	if errors.Is(err, sql.ErrNoRows) {
 		// Box doesn't exist - show 401 to avoid leaking existence
-		s.renderAccessRequired(w, r)
+		s.renderAccessRequired(w, r, nil)
 		return
 	}
 	if err != nil {
@@ -150,7 +157,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	if isLockedOut {
 		sloghttp.AddCustomAttributes(r, slog.Bool("owner_locked_out", true))
 		sloghttp.AddCustomAttributes(r, slog.String("owner_user_id", box.CreatedByUserID))
-		s.renderAccessRequired(w, r)
+		s.renderAccessRequired(w, r, nil)
 		return
 	}
 
@@ -225,8 +232,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 		if !hasAccess {
 			// User is authenticated but doesn't have access
-			// Show 401 to avoid leaking box existence
-			s.renderAccessRequired(w, r)
+			s.renderAccessRequired(w, r, &box)
 			return
 		}
 
@@ -420,13 +426,25 @@ func makeAuthURL(typ string, r *http.Request, q url.Values) string {
 	)
 }
 
-// renderAccessRequired renders the 401.html page for unauthorized access.
-// This is shown when a box doesn't exist OR when user doesn't have access
+// renderAccessRequired renders the access required page for unauthorized access.
+// If the user is authenticated and the box exists, it shows the request-access page
+// so they can request access from the owner. Otherwise it shows the 401 login page
 // to avoid leaking box existence information.
-func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request) {
-	var email string
+func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request, box *exedb.Box) {
+	var userEmail string
 	if uid, err := s.validateProxyAuthCookie(r); err == nil {
-		email, _ = withRxRes1(s, r.Context(), (*exedb.Queries).GetEmailByUserID, uid)
+		userEmail, _ = withRxRes1(s, r.Context(), (*exedb.Queries).GetEmailByUserID, uid)
+	}
+
+	// If the user is authenticated and the box exists, show the request-access page.
+	if userEmail != "" && box != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		s.renderTemplate(r.Context(), w, "request-access.html", struct {
+			Email string
+		}{
+			Email: userEmail,
+		})
+		return
 	}
 
 	u := &url.URL{
@@ -436,7 +454,7 @@ func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := unauthorizedData{
-		Email:        email,
+		Email:        userEmail,
 		AuthURL:      s.webBaseURLNoRequest() + "/auth",
 		RedirectURL:  u.String(),
 		ReturnHost:   r.Host,
@@ -446,6 +464,104 @@ func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusUnauthorized)
 	s.renderTemplate(r.Context(), w, "401.html", data)
+}
+
+// handleRequestAccess handles GET and POST for /__exe.dev/request-access.
+// GET renders the request-access form. POST sends an access request email to the box owner.
+func (s *Server) handleRequestAccess(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Authenticate the user.
+	userID, err := s.validateProxyAuthCookie(r)
+	if err != nil {
+		s.redirectToAuth(w, r)
+		return
+	}
+
+	requesterEmail, err := withRxRes1(s, ctx, (*exedb.Queries).GetEmailByUserID, userID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "request-access: failed to get requester email", "error", err, "user_id", userID)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Resolve the box from the hostname.
+	hostHeaderHost, _, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		hostHeaderHost = r.Host
+	}
+	boxName, err := s.resolveBoxName(ctx, hostHeaderHost)
+	if err != nil || boxName == "" {
+		http.Error(w, "Invalid hostname", http.StatusBadRequest)
+		return
+	}
+
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		s.slog().ErrorContext(ctx, "request-access: failed to look up box", "error", err, "box_name", boxName)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		s.renderTemplate(ctx, w, "request-access.html", struct {
+			Email string
+		}{
+			Email: requesterEmail,
+		})
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Rate limit.
+	if err := s.checkAndIncrementEmailQuota(ctx, userID); err != nil {
+		s.slog().WarnContext(ctx, "request-access: email quota exceeded", "user_id", userID, "error", err)
+		http.Error(w, "Too many requests. Try again later.", http.StatusTooManyRequests)
+		return
+	}
+
+	// Look up the owner's email.
+	ownerEmail, err := withRxRes1(s, ctx, (*exedb.Queries).GetEmailByUserID, box.CreatedByUserID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "request-access: failed to get owner email", "error", err, "owner_user_id", box.CreatedByUserID)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	message := strings.TrimSpace(r.FormValue("message"))
+
+	// Build the share URL for the dashboard.
+	shareURL := fmt.Sprintf("%s/?share_vm=%s&share_email=%s",
+		s.webBaseURLNoRequest(),
+		url.QueryEscape(boxName),
+		url.QueryEscape(requesterEmail),
+	)
+
+	subject := fmt.Sprintf("%s is requesting access to %s", requesterEmail, boxName)
+
+	var body strings.Builder
+	fmt.Fprintf(&body, "%s is requesting access to your VM %q.\n\n", requesterEmail, boxName)
+	if message != "" {
+		fmt.Fprintf(&body, "Message: %s\n\n", message)
+	}
+	fmt.Fprintf(&body, "To grant access, visit:\n%s\n", shareURL)
+
+	if err := s.sendEmail(ctx, email.TypeAccessRequest, ownerEmail, subject, body.String()); err != nil {
+		s.slog().ErrorContext(ctx, "request-access: failed to send email", "error", err, "to", ownerEmail)
+		http.Error(w, "Failed to send request. Try again later.", http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "access request sent", "requester", requesterEmail, "owner", ownerEmail, "box", boxName)
+	s.renderTemplate(ctx, w, "request-sent.html", nil)
 }
 
 // redirectToAuth redirects the user to the /__exe.dev/login URL

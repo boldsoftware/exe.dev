@@ -995,6 +995,75 @@ func TestNormalUserDashboardShowsAllTabs(t *testing.T) {
 	}
 }
 
+// TestDashboardShareModalFromURLParams verifies that the dashboard renders
+// an inline script to auto-open the share modal when share_vm and share_email
+// query params are present.
+func TestDashboardShareModalFromURLParams(t *testing.T) {
+	server := newTestServer(t)
+
+	// Create a user with SSH key (normal user).
+	user, err := server.createUser(t.Context(), testSSHPubKey, "sharemodal@test.dev", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+
+	cookieValue := generateRegistrationToken()
+	err = withTx1(server, context.Background(), (*exedb.Queries).InsertAuthCookie, exedb.InsertAuthCookieParams{
+		CookieValue: cookieValue,
+		UserID:      user.UserID,
+		Domain:      "127.0.0.1",
+		ExpiresAt:   time.Now().Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	baseURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", server.httpPort()))
+	jar.SetCookies(baseURL, []*http.Cookie{
+		{Name: "exe-auth", Value: cookieValue},
+	})
+
+	// Request the dashboard with share_vm and share_email params.
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/?share_vm=mybox&share_email=someone@test.dev", server.httpPort()))
+	if err != nil {
+		t.Fatalf("Failed to GET /: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
+	}
+
+	bodyStr := string(body)
+
+	// The template should render a hidden div with data attributes and an inline script.
+	if !strings.Contains(bodyStr, `data-vm="mybox"`) {
+		t.Error("Dashboard should contain data-vm attribute when share_vm param is set")
+	}
+	if !strings.Contains(bodyStr, `data-email="someone@test.dev"`) {
+		t.Error("Dashboard should contain data-email attribute when share_email param is set")
+	}
+	if !strings.Contains(bodyStr, "cmdModal.open") {
+		t.Error("Dashboard should contain inline script to open share modal")
+	}
+
+	// Without share params, the hidden div should not be present.
+	resp2, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/", server.httpPort()))
+	if err != nil {
+		t.Fatalf("Failed to GET /: %v", err)
+	}
+	body2, _ := io.ReadAll(resp2.Body)
+	resp2.Body.Close()
+
+	if strings.Contains(string(body2), "share-request") {
+		t.Error("Dashboard should NOT contain share-request div without share params")
+	}
+}
+
 // TestIsExeletNotFoundError tests detection of "not found" errors from exelet
 func TestIsExeletNotFoundError(t *testing.T) {
 	tests := []struct {

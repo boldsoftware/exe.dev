@@ -160,6 +160,10 @@ type UserPageData struct {
 	// Credits (staging only)
 	EnableCreditPurchases bool // Whether to show credit purchase UI
 	CreditBalance         tender.Value
+
+	// Auto-open share modal (from access request email link)
+	ShareVM    string
+	ShareEmail string
 }
 
 // TeamBoxDisplayInfo represents a team member's box for the dashboard

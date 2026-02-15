@@ -465,6 +465,7 @@ class CommandModal {
      * @param {string} [options.command] - Full command to run (no input needed)
      * @param {string} [options.commandPrefix] - Command prefix (input appended)
      * @param {string} [options.inputPlaceholder] - Placeholder for input field
+     * @param {string} [options.defaultValue] - Default value for input field
      * @param {boolean} [options.danger] - Use red "Run" button
      */
     open(options) {
@@ -510,6 +511,9 @@ class CommandModal {
                 if (e.key === 'Enter') this.run();
             });
             this.#inputEl.addEventListener('input', () => this.#resetInputState());
+            if (options.defaultValue) {
+                this.#inputEl.value = options.defaultValue;
+            }
             setTimeout(() => this.#inputEl.focus(), 50);
         }
 
