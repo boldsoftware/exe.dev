@@ -64,7 +64,7 @@ if [ $NEED_SUBREPO = 0 ]; then
     exit 0
 fi
 
-git fetch $SUBREPO
+"$(dirname "$0")/retry.sh" git fetch $SUBREPO
 
 # Assert that the subrepo git tree hasn't moved!
 if [ $PREV_SUBREPO_TREE_OBJ != $(git rev-parse "${SUBREPO}/${TARGET}"^{tree}) ]; then

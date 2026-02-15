@@ -35,7 +35,7 @@ jobs:
         run: |
           git remote set-url shelley "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/shelley.git" 2>/dev/null || \
             git remote add shelley "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/shelley.git"
-          git fetch shelley
+          ./bin/retry.sh git fetch shelley
           if ./bin/sync-commits-from-shelley.sh shelley/main; then
             if git tag -l | grep -q "^new-exe-commit$"; then
               git remote set-url origin "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exe.git"

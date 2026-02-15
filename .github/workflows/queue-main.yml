@@ -61,7 +61,7 @@ jobs:
           # The gate files (.github/queue-gate-*) live on origin/main so that
           # updates take effect immediately for all queue pushes, even if the
           # pusher hasn't fetched. We need a fresh fetch to read the latest.
-          git fetch origin main
+          ./bin/retry.sh git fetch origin main
 
       - name: Verify branch includes required ancestor
         run: |
@@ -406,7 +406,7 @@ jobs:
             git remote add oss "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exe.dev.git"
 
           # Try to rebase onto main and push
-          git fetch origin main
+          ./bin/retry.sh git fetch origin main
           # For debugging, print the current commit and main's commit
           echo "Current HEAD: $(git rev-parse HEAD)"
           echo "Origin main: $(git rev-parse origin/main)"
@@ -478,7 +478,7 @@ jobs:
           set -euo pipefail
           QUEUE_BRANCH="${{ github.ref_name }}"
           QUEUE_SHA=$(git ls-remote origin "$QUEUE_BRANCH" | awk '{print $1}')
-          git fetch origin main
+          ./bin/retry.sh git fetch origin main
           if git merge-base --is-ancestor "$QUEUE_SHA" origin/main; then
             git push --force-with-lease="$QUEUE_BRANCH:$QUEUE_SHA" origin ":refs/heads/$QUEUE_BRANCH"
           fi

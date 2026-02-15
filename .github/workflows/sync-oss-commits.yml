@@ -35,7 +35,7 @@ jobs:
         run: |
           git remote set-url oss "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exe.dev.git" 2>/dev/null || \
             git remote add oss "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exe.dev.git"
-          git fetch oss
+          ./bin/retry.sh git fetch oss
           if ./bin/sync-commits-from-oss.sh oss/main; then
             if git tag -l | grep -q "^new-exe-commit-oss$"; then
               git remote set-url origin "https://x-access-token:${APP_TOKEN}@github.com/boldsoftware/exe.git"
