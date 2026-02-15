@@ -162,8 +162,9 @@ function App() {
   useEffect(() => {
     const isMac = navigator.platform.toUpperCase().includes("MAC");
     const handleKeyDown = (e: KeyboardEvent) => {
+      // On macOS: Ctrl+K is readline (kill to end of line), let it pass through
+      if (isMac && e.ctrlKey && !e.metaKey) return;
       // On macOS use Cmd+K, on other platforms use Ctrl+K
-      // This preserves native Ctrl+K (kill to end of line) on macOS
       const modifierPressed = isMac ? e.metaKey : e.ctrlKey;
       if (modifierPressed && e.key === "k") {
         e.preventDefault();
