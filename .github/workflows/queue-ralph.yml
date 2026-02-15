@@ -59,7 +59,7 @@ jobs:
       - name: Install Claude Code
         run: |
           CLAUDE_DIR="$HOME/.claude-code"
-          npm install --prefix "$CLAUDE_DIR" @anthropic-ai/claude-code
+          ./bin/retry.sh npm install --prefix "$CLAUDE_DIR" @anthropic-ai/claude-code
           echo "$CLAUDE_DIR/node_modules/.bin" >> $GITHUB_PATH
 
       - name: Configure Claude Code for CI

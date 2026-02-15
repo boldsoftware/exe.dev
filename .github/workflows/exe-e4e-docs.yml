@@ -29,8 +29,9 @@ jobs:
         run: |
           set -euo pipefail
           CODEX_ARCH="x86_64-unknown-linux-musl"
-          RELEASE_JSON=$(curl -fsSL https://api.github.com/repos/openai/codex/releases/latest)
-          CODEX_TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+          TMP_DIR=$(mktemp -d)
+          curl -fsSL --retry 5 --retry-all-errors https://api.github.com/repos/openai/codex/releases/latest -o "${TMP_DIR}/release.json"
+          CODEX_TAG=$(jq -r '.tag_name' "${TMP_DIR}/release.json")
           CODEX_VERSION="${CODEX_TAG#rust-v}"
           if command -v codex >/dev/null 2>&1; then
             INSTALLED_VERSION=$(codex --version | awk '{print $2}')
@@ -39,8 +40,7 @@ jobs:
               exit 0
             fi
           fi
-          TMP_DIR=$(mktemp -d)
-          curl -fsSL "https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-${CODEX_ARCH}.tar.gz" -o "${TMP_DIR}/codex.tar.gz"
+          curl -fsSL --retry 5 --retry-all-errors "https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-${CODEX_ARCH}.tar.gz" -o "${TMP_DIR}/codex.tar.gz"
           tar -xzf "${TMP_DIR}/codex.tar.gz" -C "${TMP_DIR}"
           sudo mv "${TMP_DIR}/codex-${CODEX_ARCH}" /usr/local/bin/codex
           sudo chmod +x /usr/local/bin/codex
