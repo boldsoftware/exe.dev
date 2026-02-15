@@ -16,11 +16,11 @@ OUTPUT="$3"
 BASE_URL="https://github.com/boldsoftware/shelley/releases/download/${VERSION}"
 
 echo "Downloading Shelley $VERSION ($ASSET)"
-curl -fsSL "${BASE_URL}/${ASSET}" -o "$OUTPUT"
+curl -fsSL --retry 5 --retry-all-errors "${BASE_URL}/${ASSET}" -o "$OUTPUT"
 chmod +x "$OUTPUT"
 
 # Download and verify checksum
-CHECKSUMS=$(curl -fsSL "${BASE_URL}/checksums.txt")
+CHECKSUMS=$(curl -fsSL --retry 5 --retry-all-errors "${BASE_URL}/checksums.txt")
 EXPECTED=$(echo "$CHECKSUMS" | grep "$ASSET" | awk '{print $1}')
 ACTUAL=$(sha256sum "$OUTPUT" | awk '{print $1}')
 

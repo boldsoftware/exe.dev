@@ -48,22 +48,23 @@ jobs:
         env:
           platform: ${{ matrix.platform }}
 
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
       - name: Install Docker and build tools (ARM64 runner)
         if: matrix.platform == 'linux/arm64'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ca-certificates curl make
+          ./bin/retry.sh sudo apt-get update
+          ./bin/retry.sh sudo apt-get install -y ca-certificates curl make
           sudo install -m 0755 -d /etc/apt/keyrings
-          sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          # curl --retry instead of retry.sh: single download, curl handles retries natively
+          sudo curl -fsSL --retry 5 --retry-all-errors https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
           sudo chmod a+r /etc/apt/keyrings/docker.asc
           echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-          sudo apt-get update
-          sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+          ./bin/retry.sh sudo apt-get update
+          ./bin/retry.sh sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
           sudo systemctl start docker
           sudo chmod 666 /var/run/docker.sock
-
-      - name: Checkout repository
-        uses: actions/checkout@v6
 
       - name: Find matching Shelley release
         id: find-release
@@ -137,6 +138,9 @@ jobs:
       packages: write
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
@@ -166,7 +170,7 @@ jobs:
       - name: Create manifest list and push versioned tag
         working-directory: ${{ runner.temp }}/digests
         run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+          $GITHUB_WORKSPACE/bin/retry.sh docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}@sha256:%s ' *)
 
       - name: Pull image on exe.dev and exe-staging.dev
@@ -175,10 +179,10 @@ jobs:
           echo "Pulling tag: $TAG"
 
           # Start both pulls in parallel
-          curl -fsS --max-time 300 "https://exe.dev/pull-exeuntu-everywhere-517c8a904?tag=$TAG" &
+          curl -fsS --max-time 300 --retry 5 --retry-all-errors --retry-max-time 600 "https://exe.dev/pull-exeuntu-everywhere-517c8a904?tag=$TAG" &
           PROD_PID=$!
 
-          curl -fsS --max-time 300 "https://exe-staging.dev/pull-exeuntu-everywhere-517c8a904?tag=$TAG" &
+          curl -fsS --max-time 300 --retry 5 --retry-all-errors --retry-max-time 600 "https://exe-staging.dev/pull-exeuntu-everywhere-517c8a904?tag=$TAG" &
           STAGING_PID=$!
 
           # Wait for staging (don't fail if it errors)
@@ -199,14 +203,14 @@ jobs:
       - name: Push latest tag
         working-directory: ${{ runner.temp }}/digests
         run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+          $GITHUB_WORKSPACE/bin/retry.sh docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}@sha256:%s ' *)
 
       - name: Clear exeuntu:latest tag cache
         run: |
-          curl -f --max-time 30 "https://exe.dev/clear-exeuntu-latest-cache-517c8a904"
-          curl -f --max-time 30 "https://exe-staging.dev/clear-exeuntu-latest-cache-517c8a904" || true
+          curl -f --max-time 30 --retry 5 --retry-all-errors "https://exe.dev/clear-exeuntu-latest-cache-517c8a904"
+          curl -f --max-time 30 --retry 5 --retry-all-errors "https://exe-staging.dev/clear-exeuntu-latest-cache-517c8a904" || true
 
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:latest
+          $GITHUB_WORKSPACE/bin/retry.sh docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:latest
