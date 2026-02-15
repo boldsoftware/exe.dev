@@ -298,6 +298,16 @@ func (ps *ProxyServer) CheckShareLinkAccess(r *http.Request, boxID int, boxName,
 	return valid
 }
 
+// UserHasExeSudo reports whether a user has root support privileges.
+func (ps *ProxyServer) UserHasExeSudo(ctx context.Context, userID string) bool {
+	valid, err := ps.Data.UserHasExeSudo(ctx, userID)
+	if err != nil {
+		// Report but don't return an error.
+		ps.Lg.ErrorContext(ctx, "UserHasExeSudo error", "userID", userID, "error", err)
+	}
+	return valid
+}
+
 // ProxyToContainer proxies an HTTP request to a container
 // via SSH port forwarding.
 func (ps *ProxyServer) ProxyToContainer(w http.ResponseWriter, r *http.Request, box *BoxData, route BoxRoute, authResult *ProxyAuthResult) error {

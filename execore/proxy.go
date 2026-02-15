@@ -218,7 +218,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Check support access: user is root support and box has support_access_allowed
-		if !hasAccess && s.FindBoxForExeSudoer(r.Context(), userID, boxName) != nil {
+		if !hasAccess && box.SupportAccessAllowed == 1 && s.proxyServer().UserHasExeSudo(r.Context(), userID) {
 			s.slog().InfoContext(r.Context(), "proxy support access granted", "box", boxName, "user_id", userID)
 			hasAccess = true
 		}
@@ -595,6 +595,7 @@ func dbBoxToExewebBox(box *exedb.Box) exeweb.BoxData {
 		Image:                box.Image,
 		SSHServerIdentityKey: box.SSHServerIdentityKey,
 		SSHClientPrivateKey:  box.SSHClientPrivateKey,
+		SupportAccessAllowed: int(box.SupportAccessAllowed),
 	}
 	if box.SSHPort != nil {
 		exewebBox.SSHPort = int(*box.SSHPort)
@@ -645,6 +646,12 @@ func (pd *proxyData) UserInfo(ctx context.Context, userID string) (exeweb.UserDa
 		Email:  email,
 	}
 	return userData, true, nil
+}
+
+// UserHasExeSudo implements [exeweb.ProxyData.UserHasExeSudo].
+func (pd *proxyData) UserHasExeSudo(ctx context.Context, userID string) (bool, error) {
+	valid := pd.s.UserHasExeSudo(ctx, userID)
+	return valid, nil
 }
 
 // CreateAuthCookie implements [exeweb.ProxyData.CreateAuthCookie].

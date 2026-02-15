@@ -21,6 +21,9 @@ type ProxyData interface {
 	// The bool result reports whether the user exists.
 	UserInfo(ctx context.Context, userID string) (UserData, bool, error)
 
+	// UserHasExeSudo reports whether a user has root support privileges.
+	UserHasExeSudo(ctx context.Context, userID string) (bool, error)
+
 	// CreateAuthCookie creates a new authentication cookie.
 	CreateAuthCookie(ctx context.Context, userID, domain string) (string, error)
 
@@ -62,6 +65,7 @@ type BoxData struct {
 	SSHClientPrivateKey  []byte   // box SSH private key
 	SSHPort              int      // box SSH port, 0 if not set
 	SSHUser              string   // box SSH user
+	SupportAccessAllowed int      // root support can access box
 }
 
 // BoxRoute is a box routing configuration.
