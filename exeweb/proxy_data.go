@@ -33,6 +33,15 @@ type ProxyData interface {
 	// ValidateVMToken validates a token for VM access.
 	// It returns the auth result if valid, nil otherwise.
 	ValidateVMToken(ctx context.Context, token, boxName string) *ProxyAuthResult
+
+	// HasUserAccessToBox reports whether a user has access
+	// to a box based on box shares with the user's email.
+	HasUserAccessToBox(ctx context.Context, boxID int, boxName, userID string) (bool, error)
+
+	// IsBoxSharedWithUserTeam erports whether a box is shared
+	// with a user's team.
+	// TODO: Combine this with HasUserAccessToBox?
+	IsBoxSharedWithUserTeam(ctx context.Context, boxID int, boxName, userID string) (bool, error)
 }
 
 // BoxData is the information we need for a box.

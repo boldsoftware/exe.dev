@@ -56,18 +56,6 @@ type SharedBoxDisplayInfo struct {
 	ProxyURL   string
 }
 
-// BoxAccessType represents the type of access a user has to a box
-type BoxAccessType int
-
-const (
-	BoxAccessNone BoxAccessType = iota
-	BoxAccessOwner
-	BoxAccessEmailShare
-	BoxAccessShareLink
-	BoxAccessTeamShare
-	BoxAccessPublic
-)
-
 // generateShareToken generates a cryptographically secure random token for share links
 func generateShareToken() string {
 	return crand.Text()
@@ -99,54 +87,6 @@ func (s *Server) checkAndIncrementEmailQuota(ctx context.Context, userID string)
 		UserID: userID,
 		Date:   today,
 	})
-}
-
-// hasUserAccessToBox checks what type of access a user has to a box
-func (s *Server) hasUserAccessToBox(ctx context.Context, userID string, box *exedb.Box) (BoxAccessType, error) {
-	// Check if user is owner
-	if box.CreatedByUserID == userID {
-		return BoxAccessOwner, nil
-	}
-
-	// Try to resolve any pending shares for this user before checking access.
-	// This is a defensive measure to catch any edge cases where pending shares
-	// weren't resolved during login (e.g., if we miss a login path in the future).
-	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
-	if err == nil && user.Email != "" {
-		if err := s.resolvePendingShares(ctx, user.Email, userID); err != nil {
-			return BoxAccessNone, fmt.Errorf("resolve pending shares: %w", err)
-		}
-	}
-
-	// Check if user has share access
-	hasAccess, err := withRxRes1(s, ctx, (*exedb.Queries).HasUserAccessToBox, exedb.HasUserAccessToBoxParams{
-		BoxID:            int64(box.ID),
-		SharedWithUserID: userID,
-	})
-	if err != nil {
-		return BoxAccessNone, err
-	}
-
-	if hasAccess {
-		return BoxAccessEmailShare, nil
-	}
-
-	// Check if box is shared with user's team
-	isTeamShared, err := withRxRes1(s, ctx, (*exedb.Queries).IsBoxSharedWithUserTeam, exedb.IsBoxSharedWithUserTeamParams{
-		BoxID:  int64(box.ID),
-		UserID: userID,
-	})
-	if err == nil && isTeamShared {
-		return BoxAccessTeamShare, nil
-	}
-
-	// Check if box is public - any authenticated user can access public boxes
-	route := box.GetRoute()
-	if route.Share == "public" {
-		return BoxAccessPublic, nil
-	}
-
-	return BoxAccessNone, nil
 }
 
 // validateShareLinkForBox checks if a share token is valid for a given box

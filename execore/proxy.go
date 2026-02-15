@@ -203,9 +203,13 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		hasAccess := false
 
 		// Check access
-		accessType, err := s.hasUserAccessToBox(r.Context(), userID, &box)
-		if err == nil && (accessType == BoxAccessOwner || accessType == BoxAccessEmailShare || accessType == BoxAccessTeamShare) {
-			hasAccess = true
+		exewebBox := dbBoxToExewebBox(&box)
+		accessType, err := s.proxyServer().HasUserAccessToBox(r.Context(), userID, &exewebBox)
+		if err == nil {
+			switch accessType {
+			case exeweb.BoxAccessOwner, exeweb.BoxAccessEmailShare, exeweb.BoxAccessTeamShare:
+				hasAccess = true
+			}
 		}
 
 		// Check share link access
@@ -241,7 +245,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 				s.hllTracker.NoteEvent("shelley-proxy", userID)
 			}
 			// Track login-with-exe: user accessing someone else's box (not owner)
-			if accessType != BoxAccessOwner {
+			if accessType != exeweb.BoxAccessOwner {
 				s.hllTracker.NoteEvent("login-with-exe", userID)
 			}
 		}
@@ -611,6 +615,7 @@ func dbBoxToExewebBox(box *exedb.Box) exeweb.BoxData {
 		ID:                   box.ID,
 		Name:                 box.Name,
 		Ctrhost:              box.Ctrhost,
+		CreatedByUserID:      box.CreatedByUserID,
 		Image:                box.Image,
 		SSHServerIdentityKey: box.SSHServerIdentityKey,
 		SSHClientPrivateKey:  box.SSHClientPrivateKey,
@@ -687,4 +692,34 @@ func (pd *proxyData) UsedCookie(ctx context.Context, cookieValue string) {
 // ValidateVMToken implements [exeweb.ProxyData.ValidateVMToken].
 func (pd *proxyData) ValidateVMToken(ctx context.Context, token, boxName string) *exeweb.ProxyAuthResult {
 	return pd.s.validateVMToken(ctx, token, boxName)
+}
+
+// HasUserAccessToBox implements [exeweb.ProxyData.HasUserAccessToBox].
+func (pd *proxyData) HasUserAccessToBox(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
+	// Try to resolve any pending shares for this user
+	// before checking access.
+	// This is a defensive measure to catch any edge cases
+	// where pending shares weren't resolved during login
+	// (e.g., if we miss a login path in the future).
+	user, err := withRxRes1(pd.s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err == nil && user.Email != "" {
+		if err := pd.s.resolvePendingShares(ctx, user.Email, userID); err != nil {
+			return false, fmt.Errorf("resolve pending shares: %w", err)
+		}
+	}
+
+	hasAccess, err := withRxRes1(pd.s, ctx, (*exedb.Queries).HasUserAccessToBox, exedb.HasUserAccessToBoxParams{
+		BoxID:            int64(boxID),
+		SharedWithUserID: userID,
+	})
+	return hasAccess, err
+}
+
+// IsBoxSharedWithUserTeam mplements [exeweb.ProxyData.IsBoxSharedWithUserTeam].
+func (pd *proxyData) IsBoxSharedWithUserTeam(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
+	isTeamShared, err := withRxRes1(pd.s, ctx, (*exedb.Queries).IsBoxSharedWithUserTeam, exedb.IsBoxSharedWithUserTeamParams{
+		BoxID:  int64(boxID),
+		UserID: userID,
+	})
+	return isTeamShared, err
 }
