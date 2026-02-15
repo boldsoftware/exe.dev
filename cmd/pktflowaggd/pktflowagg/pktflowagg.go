@@ -62,10 +62,10 @@ func (h *vmHistory) add(v vmInterval) {
 }
 
 type storeMetrics struct {
-	ingestTotal            prometheus.Counter
-	alertsTotal            *prometheus.CounterVec
-	activeAttacks          prometheus.Gauge
-	flaggedVMs             prometheus.Gauge
+	ingestTotal             prometheus.Counter
+	alertsTotal             *prometheus.CounterVec
+	activeAttacks           prometheus.Gauge
+	flaggedVMs              prometheus.Gauge
 	exeletLastReportSeconds *prometheus.GaugeVec
 }
 
@@ -113,7 +113,7 @@ type ExeletStatus struct {
 type Store struct {
 	mu       sync.Mutex
 	max      int
-	data     map[string]map[string]*vmHistory   // host -> vmID -> history
+	data     map[string]map[string]*vmHistory // host -> vmID -> history
 	alertMax int
 	alerts   map[string]map[string]*alertHistory // host -> vmID -> per-VM alerts
 	metrics  *storeMetrics

@@ -221,7 +221,7 @@ func udpFlow(dstIP string, dstPort uint32, packets, bytes uint64) *api.FlowRecor
 	}
 }
 
-func tcpFlow(dstIP string, dstPort uint32, flags uint32, packets, bytes uint64) *api.FlowRecord {
+func tcpFlow(dstIP string, dstPort, flags uint32, packets, bytes uint64) *api.FlowRecord {
 	return &api.FlowRecord{
 		DstIP:     dstIP,
 		IpVersion: 4,
