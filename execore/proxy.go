@@ -213,15 +213,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Check share link access
-		if !hasAccess && s.checkShareLinkAccess(r, box.ID) {
-			if shareToken := r.URL.Query().Get("share"); shareToken != "" {
-				// Valid share link - increment usage
-				_ = s.incrementShareLinkUsage(r.Context(), shareToken)
-
-				// Auto-create email-based share for this user
-				// This allows the user to access the box even if the share link is later revoked
-				_ = s.autoCreateShareFromLink(r.Context(), userID, box.ID, shareToken)
-			}
+		if !hasAccess && s.proxyServer().CheckShareLinkAccess(r, box.ID, box.Name, userID) {
 			hasAccess = true
 		}
 
@@ -524,22 +516,6 @@ func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey
 	return s.proxyServer().CreateSSHTunnelTransport(sshHost, &exewebBox, sshKey)
 }
 
-// checkShareLinkAccess checks if the request has a valid share link token
-func (s *Server) checkShareLinkAccess(r *http.Request, boxID int) bool {
-	shareToken := r.URL.Query().Get("share")
-	if shareToken == "" {
-		return false
-	}
-
-	valid, err := s.validateShareLinkForBox(r.Context(), shareToken, boxID)
-	if err != nil {
-		s.slog().DebugContext(r.Context(), "share link validation error", "error", err)
-		return false
-	}
-
-	return valid
-}
-
 // incrementShareLinkUsage increments the usage counter for a share link
 func (s *Server) incrementShareLinkUsage(ctx context.Context, shareToken string) error {
 	return withTx1(s, ctx, (*exedb.Queries).IncrementShareLinkUsage, shareToken)
@@ -715,11 +691,42 @@ func (pd *proxyData) HasUserAccessToBox(ctx context.Context, boxID int, boxName,
 	return hasAccess, err
 }
 
-// IsBoxSharedWithUserTeam mplements [exeweb.ProxyData.IsBoxSharedWithUserTeam].
+// IsBoxSharedWithUserTeam implements [exeweb.ProxyData.IsBoxSharedWithUserTeam].
 func (pd *proxyData) IsBoxSharedWithUserTeam(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
 	isTeamShared, err := withRxRes1(pd.s, ctx, (*exedb.Queries).IsBoxSharedWithUserTeam, exedb.IsBoxSharedWithUserTeamParams{
 		BoxID:  int64(boxID),
 		UserID: userID,
 	})
 	return isTeamShared, err
+}
+
+// CheckShareLink implements [exeweb.ProxyData.CheckShareLink].
+func (pd *proxyData) CheckShareLink(ctx context.Context, boxID int, boxName, userID, shareToken string) (bool, error) {
+	if shareToken == "" {
+		return false, nil
+	}
+	valid, err := pd.s.validateShareLinkForBox(ctx, shareToken, boxID)
+	if err != nil {
+		return false, err
+	}
+	if !valid {
+		return false, nil
+	}
+
+	// The share link is valid. Record that we used it,
+	// and auto-create an email-based share for the user.
+	// The email-based share allows the user to access the
+	// box even if the share link is later revoked.
+	if err := pd.s.incrementShareLinkUsage(ctx, shareToken); err != nil {
+		// Report the error but don't return it:
+		// the share link is still valid.
+		pd.s.slog().ErrorContext(ctx, "error incrementing share link usage counter", "shareToken", shareToken, "error", err)
+	}
+	if err := pd.s.autoCreateShareFromLink(ctx, userID, boxID, shareToken); err != nil {
+		// Report the error but don't return it:
+		// the share link is still valid.
+		pd.s.slog().ErrorContext(ctx, "error auto-creating email share from share link", "userID", userID, "boxID", boxID, "boxName", boxName, "shareToken", shareToken, "error", err)
+	}
+
+	return true, nil
 }

@@ -280,6 +280,25 @@ func (ps *ProxyServer) validateNamedAuthCookie(r *http.Request, cookieName strin
 	return cookieData.UserID, nil
 }
 
+// CheckShareLinkAccess reports whether the request has a share token
+// that permits access to the box. If it does, we record that the
+// share token was used, and we create an email-based share.
+func (ps *ProxyServer) CheckShareLinkAccess(r *http.Request, boxID int, boxName, userID string) bool {
+	shareToken := r.URL.Query().Get("share")
+	if shareToken == "" {
+		return false
+	}
+
+	valid, err := ps.Data.CheckShareLink(r.Context(), boxID, boxName, userID, shareToken)
+
+	// Report but don't return an error.
+	if err != nil {
+		ps.Lg.ErrorContext(r.Context(), "check share link failed", "boxID", boxID, "boxName", boxName, "userID", userID, "shareToken", shareToken, "error", err)
+	}
+
+	return valid
+}
+
 // ProxyToContainer proxies an HTTP request to a container
 // via SSH port forwarding.
 func (ps *ProxyServer) ProxyToContainer(w http.ResponseWriter, r *http.Request, box *BoxData, route BoxRoute, authResult *ProxyAuthResult) error {

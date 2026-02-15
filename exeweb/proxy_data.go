@@ -42,6 +42,12 @@ type ProxyData interface {
 	// with a user's team.
 	// TODO: Combine this with HasUserAccessToBox?
 	IsBoxSharedWithUserTeam(ctx context.Context, boxID int, boxName, userID string) (bool, error)
+
+	// CheckShareLink reports whether a share link is valid.
+	// If the share link is valid, it will be used,
+	// so this method is also responsible for recording the use,
+	// and for creating an email-based share for the user.
+	CheckShareLink(ctx context.Context, boxID int, boxName, userID, shareToken string) (bool, error)
 }
 
 // BoxData is the information we need for a box.
