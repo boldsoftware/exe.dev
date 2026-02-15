@@ -240,7 +240,7 @@ jobs:
             subject=$(git log --format="%s" -n 1 "$commit")
             if echo "$subject" | grep -qi "CI ONLY"; then
               echo "🔬 CI ONLY marker found in: $subject"
-              echo "   Tests will run but push to main will be skipped."
+              echo "   Tests will run but push to main, ralph, and slack notifications will be skipped."
               echo "ci_only=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -487,8 +487,10 @@ jobs:
   trigger-ralph:
     runs-on: [self-hosted, exe-ci, edric]
     needs: [commit-validation-and-formatting, test, shelley-test, push-to-main]
-    # Only trigger when tests/push failed, NOT when validation itself failed
-    if: ${{ failure() && needs.commit-validation-and-formatting.result == 'success' }}
+    # Only trigger when tests/push failed, NOT when validation failed and NOT for CI ONLY runs.
+    # The ci_only guard matters when tests fail during a CI ONLY run (failure() is already
+    # false when push-to-main is merely skipped).
+    if: ${{ failure() && needs.commit-validation-and-formatting.result == 'success' && needs.commit-validation-and-formatting.outputs.ci_only != 'true' }}
     steps:
       - uses: actions/checkout@v6
       - name: Trigger queue-ralph
@@ -505,7 +507,7 @@ jobs:
   notify:
     runs-on: [self-hosted, exe-ci, edric]
     needs: [commit-validation-and-formatting, test, shelley-test, push-to-main, trigger-ralph]
-    if: always()
+    if: ${{ always() && needs.commit-validation-and-formatting.outputs.ci_only != 'true' }}
     steps:
       - uses: actions/checkout@v6
       - name: Notify Slack
