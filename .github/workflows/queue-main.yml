@@ -274,7 +274,7 @@ jobs:
       - name: Install UI dependencies
         run: |
           cd shelley/ui
-          pnpm install --frozen-lockfile
+          pnpm install --frozen-lockfile # pnpm has built-in retry with exponential backoff
 
       - name: Check and fix formatting
         run: |
@@ -469,6 +469,9 @@ jobs:
         if: steps.push.outputs.exeuntu_or_shelley_changed == 'true'
         run: |
           COMMIT_SUBJECT=$(git log -1 --pretty=%s)
+          # Not wrapped in retry.sh: gh workflow run is not idempotent.
+          # A lost response would cause a duplicate dispatch on retry,
+          # and duplicate exeuntu builds push tags and clear caches concurrently.
           gh workflow run build-exeuntu.yml --ref main -f commit_subject="$COMMIT_SUBJECT"
         env:
           GH_TOKEN: ${{ github.token }}
@@ -495,6 +498,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Trigger queue-ralph
+        # Not wrapped in retry.sh: a lost response would cause a duplicate
+        # dispatch, wasting user time with a redundant ralph run.
         run: |
           gh workflow run queue-ralph.yml \
             -f run_id="${{ github.run_id }}" \

@@ -71,7 +71,7 @@ jobs:
       - name: Install UI dependencies
         run: |
           cd ui
-          pnpm install --frozen-lockfile
+          pnpm install --frozen-lockfile # pnpm has built-in retry with exponential backoff
 
       - name: Run TypeScript type check
         run: |
@@ -149,7 +149,7 @@ jobs:
       - name: Install UI dependencies
         run: |
           cd ui
-          pnpm install --frozen-lockfile
+          pnpm install --frozen-lockfile # pnpm has built-in retry with exponential backoff
 
       - name: Build UI
         run: |
