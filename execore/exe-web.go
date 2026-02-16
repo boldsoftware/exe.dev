@@ -269,7 +269,7 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 	// 2) BoxHost (exe.xyz) uses wildcard certs via DNS-01
 	if domz.FirstMatch(serverName, s.env.BoxHost) != "" {
 		if s.wildcardCertManager != nil {
-			cert, err := s.wildcardCertManager.GetCertificate(hello)
+			cert, err := s.wildcardCertManager.GetCertificate(serverName)
 			if errors.Is(err, wildcardcert.ErrUnrecognizedDomain) {
 				s.slog().Debug("wildcard GetCertificate rejected unrecognized domain", "error", err)
 			} else if err != nil {

@@ -164,24 +164,24 @@ func NewManager(domains []string, diskCache autocert.Cache, certRequests prometh
 	return manager
 }
 
-// GetCertificate implements the tls.Config.GetCertificate interface
-func (w *Manager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	if hello.ServerName == "" {
+// GetCertificate returns a [tls.Certificate] for a server.
+func (w *Manager) GetCertificate(serverName string) (*tls.Certificate, error) {
+	if serverName == "" {
 		return nil, fmt.Errorf("no server name provided")
 	}
 
-	serverName := domz.Canonicalize(hello.ServerName)
+	serverName = domz.Canonicalize(serverName)
 
 	// Determine which certificate to use
 	rootDomain := w.domainForServerName(serverName)
 	if rootDomain == "" {
 		// Not a domain we manage.
-		return nil, fmt.Errorf("%w: %q", ErrUnrecognizedDomain, hello.ServerName)
+		return nil, fmt.Errorf("%w: %q", ErrUnrecognizedDomain, serverName)
 	}
 
 	cert, err := w.ensureCertificateForDomain(rootDomain)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get certificate for %s: %w", hello.ServerName, err)
+		return nil, fmt.Errorf("failed to get certificate for %s: %w", serverName, err)
 	}
 
 	return cert, nil
@@ -529,7 +529,7 @@ func (w *Manager) writeCertificateToDisk(domain string, cert *tls.Certificate) e
 		return autocert.ErrCacheMiss
 	}
 
-	data, err := encodeCertificate(cert)
+	data, err := EncodeCertificate(cert)
 	if err != nil {
 		return err
 	}
@@ -552,10 +552,11 @@ func (w *Manager) loadCertificateFromDisk(domain string) (*tls.Certificate, erro
 		return nil, err
 	}
 
-	return decodeCertificate(data)
+	return DecodeCertificate(data)
 }
 
-func encodeCertificate(cert *tls.Certificate) ([]byte, error) {
+// EncodeCertificate encodes a wildcard certificate as a []byte.
+func EncodeCertificate(cert *tls.Certificate) ([]byte, error) {
 	if cert == nil {
 		return nil, fmt.Errorf("certificate is nil")
 	}
@@ -581,7 +582,8 @@ func encodeCertificate(cert *tls.Certificate) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func decodeCertificate(data []byte) (*tls.Certificate, error) {
+// DecodeCertificate undoes [EncodeCertificate].
+func DecodeCertificate(data []byte) (*tls.Certificate, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("certificate cache data is empty")
 	}

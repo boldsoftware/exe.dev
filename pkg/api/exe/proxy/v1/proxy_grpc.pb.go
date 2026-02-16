@@ -26,6 +26,7 @@ const (
 	ProxyInfoService_CookieInfo_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/CookieInfo"
 	ProxyInfoService_GetPublicIPs_FullMethodName             = "/exe.proxy.v1.ProxyInfoService/GetPublicIPs"
 	ProxyInfoService_GetLobbyIP_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/GetLobbyIP"
+	ProxyInfoService_CertForDomain_FullMethodName            = "/exe.proxy.v1.ProxyInfoService/CertForDomain"
 	ProxyInfoService_CheckAndRefreshLLMCredit_FullMethodName = "/exe.proxy.v1.ProxyInfoService/CheckAndRefreshLLMCredit"
 	ProxyInfoService_TopUpOnLLMBillingUpgrade_FullMethodName = "/exe.proxy.v1.ProxyInfoService/TopUpOnLLMBillingUpgrade"
 	ProxyInfoService_LLMDebitCredit_FullMethodName           = "/exe.proxy.v1.ProxyInfoService/LLMDebitCredit"
@@ -48,6 +49,8 @@ type ProxyInfoServiceClient interface {
 	GetPublicIPs(ctx context.Context, in *GetPublicIPsRequest, opts ...grpc.CallOption) (ProxyInfoService_GetPublicIPsClient, error)
 	// GetLobbyIP returns the IP address of the lobby, aka ssh exe.dev.
 	GetLobbyIP(ctx context.Context, in *GetLobbyIPRequest, opts ...grpc.CallOption) (*GetLobbyIPResponse, error)
+	// CertForDomain returns a certificate for a wildcard domain.
+	CertForDomain(ctx context.Context, in *CertForDomainRequest, opts ...grpc.CallOption) (*CertForDomainResponse, error)
 	// CheckAndRefreshLLMCredit takes a user ID and checks if the user
 	// has any LLM credit available (after refresh).
 	// See llmgateway.CreditManager.CheckAndRefreshCredit.
@@ -138,6 +141,16 @@ func (c *proxyInfoServiceClient) GetLobbyIP(ctx context.Context, in *GetLobbyIPR
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetLobbyIPResponse)
 	err := c.cc.Invoke(ctx, ProxyInfoService_GetLobbyIP_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *proxyInfoServiceClient) CertForDomain(ctx context.Context, in *CertForDomainRequest, opts ...grpc.CallOption) (*CertForDomainResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CertForDomainResponse)
+	err := c.cc.Invoke(ctx, ProxyInfoService_CertForDomain_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -241,6 +254,8 @@ type ProxyInfoServiceServer interface {
 	GetPublicIPs(*GetPublicIPsRequest, ProxyInfoService_GetPublicIPsServer) error
 	// GetLobbyIP returns the IP address of the lobby, aka ssh exe.dev.
 	GetLobbyIP(context.Context, *GetLobbyIPRequest) (*GetLobbyIPResponse, error)
+	// CertForDomain returns a certificate for a wildcard domain.
+	CertForDomain(context.Context, *CertForDomainRequest) (*CertForDomainResponse, error)
 	// CheckAndRefreshLLMCredit takes a user ID and checks if the user
 	// has any LLM credit available (after refresh).
 	// See llmgateway.CreditManager.CheckAndRefreshCredit.
@@ -282,6 +297,9 @@ func (UnimplementedProxyInfoServiceServer) GetPublicIPs(*GetPublicIPsRequest, Pr
 }
 func (UnimplementedProxyInfoServiceServer) GetLobbyIP(context.Context, *GetLobbyIPRequest) (*GetLobbyIPResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLobbyIP not implemented")
+}
+func (UnimplementedProxyInfoServiceServer) CertForDomain(context.Context, *CertForDomainRequest) (*CertForDomainResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CertForDomain not implemented")
 }
 func (UnimplementedProxyInfoServiceServer) CheckAndRefreshLLMCredit(context.Context, *CheckAndRefreshLLMCreditRequest) (*CheckAndRefreshLLMCreditResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CheckAndRefreshLLMCredit not implemented")
@@ -385,6 +403,24 @@ func _ProxyInfoService_GetLobbyIP_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ProxyInfoServiceServer).GetLobbyIP(ctx, req.(*GetLobbyIPRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProxyInfoService_CertForDomain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CertForDomainRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyInfoServiceServer).CertForDomain(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyInfoService_CertForDomain_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyInfoServiceServer).CertForDomain(ctx, req.(*CertForDomainRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -518,6 +554,10 @@ var ProxyInfoService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetLobbyIP",
 			Handler:    _ProxyInfoService_GetLobbyIP_Handler,
+		},
+		{
+			MethodName: "CertForDomain",
+			Handler:    _ProxyInfoService_CertForDomain_Handler,
 		},
 		{
 			MethodName: "CheckAndRefreshLLMCredit",

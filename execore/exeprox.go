@@ -14,6 +14,7 @@ import (
 	"exe.dev/llmgateway"
 	proxyapi "exe.dev/pkg/api/exe/proxy/v1"
 	"exe.dev/tracing"
+	"exe.dev/wildcardcert"
 
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	grpclogging "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
@@ -112,7 +113,7 @@ func (es *exeproxServer) BoxInfo(ctx context.Context, req *proxyapi.BoxInfoReque
 			}
 			return ret, nil
 		}
-		return nil, err
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	ret := &proxyapi.BoxInfoResponse{
 		BoxExists:       true,
@@ -141,7 +142,7 @@ func (es *exeproxServer) CookieInfo(ctx context.Context, req *proxyapi.CookieInf
 			}
 			return ret, nil
 		}
-		return nil, err
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	ret := &proxyapi.CookieInfoResponse{
 		CookieExists: true,
@@ -153,13 +154,32 @@ func (es *exeproxServer) CookieInfo(ctx context.Context, req *proxyapi.CookieInf
 	return ret, nil
 }
 
+// CertForDomain returns a certificate for a wildcard domain.
+func (es *exeproxServer) CertForDomain(ctx context.Context, req *proxyapi.CertForDomainRequest) (*proxyapi.CertForDomainResponse, error) {
+	if es.s.wildcardCertManager == nil {
+		return nil, status.Error(codes.InvalidArgument, "no wildcard certificate manager")
+	}
+	cert, err := es.s.wildcardCertManager.GetCertificate(req.ServerName)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	bytes, err := wildcardcert.EncodeCertificate(cert)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	ret := &proxyapi.CertForDomainResponse{
+		Cert: string(bytes),
+	}
+	return ret, nil
+}
+
 // CheckAndRefreshLLMCredit takes a user ID and checks if the user
 // has any LLM credit available (after refresh).
 // See [llmgateway.CreditManager.CheckAndRefreshCredit].
 func (es *exeproxServer) CheckAndRefreshLLMCredit(ctx context.Context, req *proxyapi.CheckAndRefreshLLMCreditRequest) (*proxyapi.CheckAndRefreshLLMCreditResponse, error) {
 	ci, err := llmgateway.CheckAndRefreshCreditDB(ctx, es.s.db, req.UserID, time.Now())
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	ret := &proxyapi.CheckAndRefreshLLMCreditResponse{
 		CreditInfo: gatewayCreditInfoToProto(ci),
@@ -172,7 +192,7 @@ func (es *exeproxServer) CheckAndRefreshLLMCredit(ctx context.Context, req *prox
 func (es *exeproxServer) TopUpOnLLMBillingUpgrade(ctx context.Context, req *proxyapi.TopUpOnLLMBillingUpgradeRequest) (*proxyapi.TopUpOnLLMBillingUpgradeResponse, error) {
 	err := llmgateway.TopUpOnBillingUpgradeDB(ctx, es.s.db, req.UserID, time.Now())
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &proxyapi.TopUpOnLLMBillingUpgradeResponse{}, nil
 }
@@ -183,7 +203,7 @@ func (es *exeproxServer) TopUpOnLLMBillingUpgrade(ctx context.Context, req *prox
 func (es *exeproxServer) LLMDebitCredit(ctx context.Context, req *proxyapi.LLMDebitCreditRequest) (*proxyapi.LLMDebitCreditResponse, error) {
 	ci, err := llmgateway.DebitCreditDB(ctx, es.s.db, req.UserID, req.CostUsd, time.Now())
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	ret := &proxyapi.LLMDebitCreditResponse{
 		CreditInfo: gatewayCreditInfoToProto(ci),
