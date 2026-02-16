@@ -40,3 +40,22 @@ func TestGeneratedDocsUpToDate(t *testing.T) {
 			"%s is out of date - run 'go run ./cmd/gencmddocs' to update it", filename)
 	}
 }
+
+func TestHiddenCommandsAreNotGenerated(t *testing.T) {
+	ss := &execore.SSHServer{}
+	ct := execore.NewCommandTree(ss)
+
+	team := ct.FindCommand([]string{"team"})
+	require.NotNil(t, team, "team command must remain in the command tree")
+	require.True(t, team.Hidden, "team command must be hidden")
+
+	generated := make(map[string]bool, len(ct.Commands))
+	for _, cmd := range ct.Commands {
+		if cmd.Hidden {
+			continue
+		}
+		generated[fmt.Sprintf("cli-%s.md", cmd.Name)] = true
+	}
+
+	require.NotContains(t, generated, "cli-team.md", "hidden commands must not be generated")
+}

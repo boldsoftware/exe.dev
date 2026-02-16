@@ -4,6 +4,7 @@ title: "team"
 description: "View and manage your team"
 subheading: "8. CLI Reference"
 suborder: 12
+published: false
 ---
 
 # team
@@ -51,4 +52,3 @@ team remove <email>
 
 **Options:**
 - `--json`: output in JSON format
-

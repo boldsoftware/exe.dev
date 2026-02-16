@@ -16,6 +16,7 @@ var addOwnerFlag = addBoolFlag("owner", "add as team owner instead of regular me
 func (ss *SSHServer) teamCommand() *exemenu.Command {
 	return &exemenu.Command{
 		Name:        "team",
+		Hidden:      true,
 		Description: "View and manage your team",
 		Handler:     ss.handleTeamCommand,
 		FlagSetFunc: jsonOnlyFlags("team"),
