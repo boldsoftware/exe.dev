@@ -48,6 +48,12 @@ service ProxyInfoService {
   // See llmgateway.GatewayData.UseCredits.
   rpc LLMUseCredits(LLMUseCreditsRequest) returns (LLMUseCreditsResponse);
 
+  // CreateAuthCookie creates an authentication cookie.
+  rpc CreateAuthCookie(CreateAuthCookieRequest) returns (CreateAuthCookieResponse);
+
+  // DeleteAuthCookie deletes an authentication cookie.
+  rpc DeleteAuthCookie(DeleteAuthCookieRequest) returns (DeleteAuthCookieResponse);
+
   // UsedCookie is used to report that an authentication cookie was used.
   rpc UsedCookie(UsedCookieRequest) returns (UsedCookieResponse);
 
@@ -100,10 +106,18 @@ message UserInfoRequest {
 }
 
 message UserInfoResponse {
-  bool user_exists = 1;  // false if no such user ID
-  string user_id = 2;    // user ID
-  string email = 3;      // user email
-  string account_id = 4; // user accounting ID
+  bool user_exists = 1;               // false if no such user ID
+  google.protobuf.Timestamp when = 2; // when information retrieved
+  UserInfo user_info = 3;
+}
+
+// UserInfo is information we send about a user.
+message UserInfo {
+  string user_id = 1;     // user ID
+  string email = 2;       // user email
+  int64 root_support = 3; // root support setting
+  bool is_locked_out = 4; // whether user is locked out
+  string account_id = 5;  // user accounting ID
 }
 
 // GetPublicIPsRequest is information sent to GetPublicIPs.
@@ -189,6 +203,21 @@ message LLMUseCreditsResponse {
   int64 microcents = 1;
 }
 
+message CreateAuthCookieRequest {
+  string user_id = 1;
+  string domain = 2;
+}
+
+message CreateAuthCookieResponse {
+  string cookie_value = 1;
+}
+
+message DeleteAuthCookieRequest {
+  string cookie_value = 1;
+}
+
+message DeleteAuthCookieResponse {}
+
 message UsedCookieRequest {
   string cookie_value = 1;
 }
@@ -214,6 +243,7 @@ message ChangesResponse {
     DeletedCookie deleted_cookie = 4;
     DeletedBoxShare deleted_box_share = 5;
     DeletedBoxShareLink deleted_box_share_link = 6;
+    UserChanged user_changed = 7;
   }
 }
 
@@ -258,4 +288,13 @@ message DeletedBoxShare {
 message DeletedBoxShareLink {
   string box_name = 1;
   string share_token = 2;
+}
+
+// UserChanged is sent when something change about user information.
+// Currently this is the level of root support and whether the
+// user is locked out.
+message UserChanged {
+  bool user_exists = 1;               // false if user has been deleted
+  google.protobuf.Timestamp when = 2; // when information retrieved
+  UserInfo user_info = 3;
 }

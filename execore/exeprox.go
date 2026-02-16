@@ -158,34 +158,57 @@ func (es *exeproxServer) CookieInfo(ctx context.Context, req *proxyapi.CookieInf
 
 // UserInfo takes a user ID and returns information about that user.
 func (es *exeproxServer) UserInfo(ctx context.Context, req *proxyapi.UserInfoRequest) (*proxyapi.UserInfoResponse, error) {
-	email, err := withRxRes1(es.s, ctx, (*exedb.Queries).GetEmailByUserID, req.UserID)
+	user, exists, when, err := es.s.userInfoForExeprox(ctx, req.UserID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			ret := &proxyapi.UserInfoResponse{
-				UserExists: false,
-			}
-			return ret, nil
-		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	account, err := withRxRes1(es.s, ctx, (*exedb.Queries).GetAccountByUserID, req.UserID)
+	if !exists {
+		ret := &proxyapi.UserInfoResponse{
+			UserExists: false,
+			When:       timestamppb.New(when),
+		}
+		return ret, nil
+	}
+	ret := &proxyapi.UserInfoResponse{
+		UserExists: true,
+		When:       timestamppb.New(when),
+		UserInfo:   user,
+	}
+	return ret, nil
+}
+
+// userInfoForExeprox builds a [proxyapi.UserInfo] from the database.
+// This reports whether the user exists.
+// This returns the time the information was retrieved,
+// so that exeprox can avoid races.
+func (s *Server) userInfoForExeprox(ctx context.Context, userID string) (*proxyapi.UserInfo, bool, time.Time, error) {
+	now := time.Now()
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, false, now, nil
+		}
+		return nil, false, now, err
+	}
+	account, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
 	accountID := ""
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			// user does not have accounting ID. OK for now.
 		} else {
-			return nil, status.Error(codes.Internal, err.Error())
+			return nil, false, now, err
 		}
 	} else {
 		accountID = account.ID
 	}
-	ret := &proxyapi.UserInfoResponse{
-		UserExists: true,
-		UserID:     req.UserID,
-		Email:      email,
-		AccountID:  accountID,
+	ret := &proxyapi.UserInfo{
+		UserID:      userID,
+		Email:       user.Email,
+		RootSupport: user.RootSupport,
+		IsLockedOut: user.IsLockedOut,
+		AccountID:   accountID,
 	}
-	return ret, nil
+	return ret, true, now, nil
 }
 
 // CertForDomain returns a certificate for a wildcard domain.
@@ -271,6 +294,24 @@ func gatewayCreditInfoToProto(ciIn *llmgateway.CreditInfo) *proxyapi.CreditInfo 
 	ciOut.Plan.RefreshPerHour = ciIn.Plan.RefreshPerHour
 	ciOut.Plan.CreditExhaustedError = ciIn.Plan.CreditExhaustedError
 	return &ciOut
+}
+
+// CreateAuthCookie creates a new authentication cookie.
+func (es *exeproxServer) CreateAuthCookie(ctx context.Context, req *proxyapi.CreateAuthCookieRequest) (*proxyapi.CreateAuthCookieResponse, error) {
+	cookieValue, err := es.s.createAuthCookie(ctx, req.UserID, req.Domain)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	ret := &proxyapi.CreateAuthCookieResponse{
+		CookieValue: cookieValue,
+	}
+	return ret, nil
+}
+
+// DeleteAuthCookie deletes an authentication cookie.
+func (es *exeproxServer) DeleteAuthCookie(ctx context.Context, req *proxyapi.DeleteAuthCookieRequest) (*proxyapi.DeleteAuthCookieResponse, error) {
+	es.s.deleteAuthCookie(ctx, req.CookieValue)
+	return &proxyapi.DeleteAuthCookieResponse{}, nil
 }
 
 // UsedCookie is used to report that an authentication cookie was used.
@@ -517,4 +558,37 @@ func proxyChangeDeletedBoxShareLink(boxName, sharedToken string) {
 			},
 		},
 	})
+}
+
+// sendProxyUserChange sends a notification about a changed user.
+func (s *Server) sendProxyUserChange(ctx context.Context, userID string) {
+	ctx = context.WithoutCancel(ctx)
+	user, exists, when, err := s.userInfoForExeprox(ctx, userID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "error retrieving user information", "userID", userID, "error", err)
+		return
+	}
+	if !exists {
+		sendProxyChange(&proxyapi.ChangesResponse{
+			Action: &proxyapi.ChangesResponse_UserChanged{
+				UserChanged: &proxyapi.UserChanged{
+					UserExists: false,
+					When:       timestamppb.New(when),
+					UserInfo: &proxyapi.UserInfo{
+						UserID: userID,
+					},
+				},
+			},
+		})
+	} else {
+		sendProxyChange(&proxyapi.ChangesResponse{
+			Action: &proxyapi.ChangesResponse_UserChanged{
+				UserChanged: &proxyapi.UserChanged{
+					UserExists: true,
+					When:       timestamppb.New(when),
+					UserInfo:   user,
+				},
+			},
+		})
+	}
 }

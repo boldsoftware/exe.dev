@@ -1649,6 +1649,7 @@ func (s *Server) handleDebugToggleRootSupport(w http.ResponseWriter, r *http.Req
 		http.Error(w, fmt.Sprintf("failed to update root support: %v", err), http.StatusInternalServerError)
 		return
 	}
+	s.sendProxyUserChange(ctx, userID)
 
 	action := "disabled"
 	if enabling {
@@ -1708,6 +1709,7 @@ func (s *Server) handleDebugToggleLockout(w http.ResponseWriter, r *http.Request
 		http.Error(w, fmt.Sprintf("failed to update lockout status: %v", err), http.StatusInternalServerError)
 		return
 	}
+	s.sendProxyUserChange(ctx, userID)
 
 	action := "unlocked"
 	if lockout {
