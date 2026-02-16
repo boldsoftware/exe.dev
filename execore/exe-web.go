@@ -1440,15 +1440,13 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 
 	// Fetch credit balance if credit purchases are enabled and user has a billing account.
 	creditBalance := tender.Zero()
-	if s.env.EnableCreditPurchases {
-		account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountByUserID, userID)
-		if err == nil {
-			balance, err := s.billing.SpendCredits(r.Context(), account.ID, 0, tender.Zero())
-			if err != nil {
-				s.slog().ErrorContext(r.Context(), "failed to fetch credit balance", "error", err, "user_id", userID)
-			} else {
-				creditBalance = balance
-			}
+	account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountByUserID, userID)
+	if err == nil {
+		balance, err := s.billing.SpendCredits(r.Context(), account.ID, 0, tender.Zero())
+		if err != nil {
+			s.slog().ErrorContext(r.Context(), "failed to fetch credit balance", "error", err, "user_id", userID)
+		} else {
+			creditBalance = balance
 		}
 	}
 
@@ -1466,8 +1464,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		HasBilling:    hasBilling,
 		BillingStatus: billingStatus,
 
-		EnableCreditPurchases: s.env.EnableCreditPurchases,
-		CreditBalance:         creditBalance,
+		CreditBalance: creditBalance,
 	}
 
 	// Render template
@@ -1478,10 +1475,6 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 func (s *Server) handleCreditsBuy(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if !s.env.EnableCreditPurchases {
-		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
 
@@ -1540,11 +1533,6 @@ func (s *Server) handleCreditsBuy(w http.ResponseWriter, r *http.Request) {
 
 // handleCreditsSuccess handles GET /credits/success after a completed credit purchase.
 func (s *Server) handleCreditsSuccess(w http.ResponseWriter, r *http.Request) {
-	if !s.env.EnableCreditPurchases {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
-
 	userID, err := s.validateAuthCookie(r)
 	if err != nil {
 		http.Redirect(w, r, "/auth?redirect=/user", http.StatusTemporaryRedirect)

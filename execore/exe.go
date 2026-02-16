@@ -158,8 +158,7 @@ type UserPageData struct {
 	BillingStatus string // Billing status: "active", "canceled", "pending", or "" if no account
 
 	// Credits (staging only)
-	EnableCreditPurchases bool // Whether to show credit purchase UI
-	CreditBalance         tender.Value
+	CreditBalance tender.Value
 
 	// Auto-open share modal (from access request email link)
 	ShareVM    string
