@@ -8,6 +8,8 @@ replace github.com/Netflix/go-expect => ./deps/go-expect
 
 replace github.com/samber/slog-slack/v2 => ./deps/slog-slack
 
+replace github.com/boldsoftware/exe.dev/completeinit => ./oss/completeinit
+
 replace github.com/creack/pty => ./deps/pty
 
 require (
@@ -16,6 +18,7 @@ require (
 	github.com/Netflix/go-expect v0.0.0-20220104043353-73e0943537d2
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/axiomhq/hyperloglog v0.2.6
+	github.com/boldsoftware/exe.dev/completeinit v0.0.0-00010101000000-000000000000
 	github.com/briandowns/spinner v1.23.2
 	github.com/c-robinson/iplib/v2 v2.0.5
 	github.com/charmbracelet/bubbles v0.21.0

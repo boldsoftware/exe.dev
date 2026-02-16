@@ -98,6 +98,15 @@ jobs:
             go build -o /dev/null "./$dir"
           done
 
+      - name: Test oss modules
+        run: |
+          for dir in oss/*/; do
+            if [ -f "$dir/go.mod" ]; then
+              echo "=== testing $dir ==="
+              (cd "$dir" && go test ./...)
+            fi
+          done
+
       - name: Verify linters pass
         run: |
           go vet ./...

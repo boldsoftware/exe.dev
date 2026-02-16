@@ -3,8 +3,8 @@
 package main
 
 import (
-	"exe.dev/completeinit"
 	"exe.dev/tracing/linter"
+	"github.com/boldsoftware/exe.dev/completeinit"
 	"golang.org/x/tools/go/analysis/multichecker"
 )
 
