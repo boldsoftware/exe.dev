@@ -123,7 +123,7 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	log.Info("starting blogd", "addr", *httpAddr)
+	log.Info("starting blogd", "url", "http://localhost"+*httpAddr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Error("server error", "error", err)
 		panic(err)
