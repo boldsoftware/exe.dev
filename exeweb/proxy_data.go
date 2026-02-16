@@ -23,6 +23,9 @@ type ProxyData interface {
 	// The bool result reports whether the user exists.
 	UserInfo(ctx context.Context, userID string) (UserData, bool, error)
 
+	// IsUserLockedOut reports whether the user is locked out.
+	IsUserLockedOut(ctx context.Context, userID string) (bool, error)
+
 	// UserHasExeSudo reports whether a user has root support privileges.
 	UserHasExeSudo(ctx context.Context, userID string) (bool, error)
 
@@ -53,6 +56,9 @@ type ProxyData interface {
 	// so this method is also responsible for recording the use,
 	// and for creating an email-based share for the user.
 	CheckShareLink(ctx context.Context, boxID int, boxName, userID, shareToken string) (bool, error)
+
+	// HLLNoteEvents notes events for the HyperLogLog tracker.
+	HLLNoteEvents(ctx context.Context, userID string, events []string)
 
 	// CheckAndIncrementEmailQuota checks if the user is under
 	// their daily limit, and increments if so. It returns a nil

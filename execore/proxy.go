@@ -5,22 +5,16 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
-	sloghttp "github.com/samber/slog-http"
 	"golang.org/x/crypto/ssh"
 
 	"exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
-	"exe.dev/metricsbag"
-	"exe.dev/stage"
 )
 
 // exe.dev provides a "magic" proxy for user's boxes. When a user requests https://vmname.exe.dev/,
@@ -36,299 +30,7 @@ import (
 // handleProxyRequest handles requests that should be proxied to containers
 // This handler is called when the Host header matches box.exe.dev or box.exe.local
 func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-
-	// Ensure the port in the Host header matches the listener's local port
-	conn, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
-	if !ok {
-		s.slog().ErrorContext(r.Context(), "Failed to get local address from request context")
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	_, localPortStr, err := net.SplitHostPort(conn.String())
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to parse local address", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	localPort, err := strconv.Atoi(localPortStr)
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to convert local port to integer", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	hostHeaderPort := 0
-	hostHeaderHost, hostPortStr, err := net.SplitHostPort(r.Host)
-	if err != nil {
-		// No port in Host header, that's fine if it's the default port which only
-		// happens in HTTPS land...
-		hostHeaderHost = r.Host
-		if s.servingHTTPS() {
-			hostHeaderPort = s.httpsPort()
-		} else {
-			s.slog().WarnContext(r.Context(), "Host header didn't have port but we're not using default ports", "host", r.Host, "error", err)
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-	} else {
-		hostHeaderPort, err = strconv.Atoi(hostPortStr)
-		if err != nil {
-			s.slog().WarnContext(r.Context(), "Failed to convert host port to integer", "host", r.Host, "error", err)
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-	}
-	if hostHeaderPort != localPort {
-		s.slog().WarnContext(r.Context(), "Host header port mismatch", "host_port", hostHeaderPort, "local_port", localPort)
-		http.Error(w, "internal server error", http.StatusBadRequest)
-		return
-	}
-
-	// Handle magic URL for authentication
-	if r.URL.Path == "/__exe.dev/auth" {
-		s.slog().InfoContext(r.Context(), "[REDIRECT] Magic auth URL accessed", "host", r.Host, "path", r.URL.Path)
-		s.proxyServer().HandleMagicAuth(w, r)
-		return
-	}
-
-	// Handle login URL
-	if r.URL.Path == "/__exe.dev/login" {
-		s.proxyServer().HandleProxyLogin(w, r)
-		return
-	}
-
-	// Handle logout URL
-	if r.URL.Path == "/__exe.dev/logout" {
-		s.slog().InfoContext(r.Context(), "[REDIRECT] Logout URL accessed", "host", r.Host, "path", r.URL.Path)
-		s.proxyServer().HandleProxyLogout(w, r)
-		return
-	}
-
-	// Handle request-access URL
-	if r.URL.Path == "/__exe.dev/request-access" {
-		s.proxyServer().HandleRequestAccess(w, r)
-		return
-	}
-
-	// Reserve the /__exe.dev/ prefix — don't forward unknown paths to VMs.
-	if strings.HasPrefix(r.URL.Path, "/__exe.dev/") || r.URL.Path == "/__exe.dev" {
-		http.NotFound(w, r)
-		return
-	}
-
-	// Parse hostname to extract box name and optional explicit target port
-	boxName, err := s.resolveBoxName(r.Context(), hostHeaderHost)
-	if err != nil {
-		s.slog().WarnContext(r.Context(), "Failed to resolve box name", "host", r.Host, "error", err)
-		http.Error(w, "Invalid Hostname", http.StatusBadRequest)
-		return
-	}
-	if boxName == "" {
-		// Don't log a warning here, too noisy.
-		http.Error(w, "Invalid hostname", http.StatusBadRequest)
-		return
-	}
-
-	// Set box name label for metrics
-	metricsbag.SetLabel(r.Context(), exeweb.LabelBox, boxName)
-
-	// Find the box.
-	// Careful: we aren't checking the team or owner in this look-up, so we must do it below.
-	box, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxNamed, boxName)
-	if errors.Is(err, sql.ErrNoRows) {
-		// Box doesn't exist - show 401 to avoid leaking existence
-		s.proxyServer().RenderAccessRequired(w, r, nil)
-		return
-	}
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to look up box", "error", err, "box_name", boxName, "elapsed", time.Since(start).Round(time.Millisecond))
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	// Check if box owner is locked out - their VMs should not accept proxy requests (fail closed on DB error).
-	isLockedOut, lockoutErr := s.isUserLockedOut(r.Context(), box.CreatedByUserID)
-	if lockoutErr != nil {
-		s.slog().ErrorContext(r.Context(), "failed to check owner lockout status", "error", lockoutErr, "user_id", box.CreatedByUserID)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	if isLockedOut {
-		sloghttp.AddCustomAttributes(r, slog.Bool("owner_locked_out", true))
-		sloghttp.AddCustomAttributes(r, slog.String("owner_user_id", box.CreatedByUserID))
-		s.proxyServer().RenderAccessRequired(w, r, nil)
-		return
-	}
-
-	// Determine final route:
-	// - Shelley subdomain (box.shelley.exe.xyz) always routes to port 9999 as private
-	// - If no explicit targetPort (0), or it matches server default ports, or equals box's default, use box route
-	// - Otherwise create an ad-hoc private route for the requested port
-	var route exedb.Route
-	boxRoute := box.GetRoute()
-	targetPort := hostHeaderPort
-	if s.isShelleyRequest(r.Host) {
-		route = exedb.Route{Port: 9999, Share: "private"}
-	} else if targetPort == 0 || targetPort == boxRoute.Port || s.isDefaultServerPort(targetPort) {
-		route = boxRoute
-	} else {
-		route = exedb.Route{Port: targetPort, Share: "private"}
-	}
-
-	if route.Port == 9999 {
-		// We're going to call all proxy requests to port 9999
-		// shelley requests. We could look for /api/conversation/* or
-		// something, this seems fine for purposes of tracking/logging.
-		sloghttp.AddCustomAttributes(r, slog.Bool("proxy_shelley", true))
-	}
-
-	// Apply authentication based on route share setting
-	var authResult *exeweb.ProxyAuthResult
-	if route.Share == "private" {
-		// Check if user is authenticated (cookie, Bearer token, or Basic auth).
-		authResult = s.getProxyAuth(r, box)
-		if authResult == nil {
-			// Not authenticated by any method.
-			// If the request has an Authorization header, it's an API client;
-			// return 401 instead of redirecting to the login page.
-			if r.Header.Get("Authorization") != "" {
-				w.Header().Set("WWW-Authenticate", "Bearer, Basic")
-				http.Error(w, "invalid or missing authentication", http.StatusUnauthorized)
-				return
-			}
-			// Browser client - redirect to auth flow.
-			s.proxyServer().RedirectToAuth(w, r)
-			return
-		}
-		userID := authResult.UserID
-
-		// Set user ID for HTTP logging
-		sloghttp.AddCustomAttributes(r, slog.String("user_id", userID))
-
-		// User is authenticated - check if they have access
-		hasAccess := false
-
-		// Check access
-		exewebBox := dbBoxToExewebBox(&box)
-		accessType, err := s.proxyServer().HasUserAccessToBox(r.Context(), userID, &exewebBox)
-		if err == nil {
-			switch accessType {
-			case exeweb.BoxAccessOwner, exeweb.BoxAccessEmailShare, exeweb.BoxAccessTeamShare:
-				hasAccess = true
-			}
-		}
-
-		// Check share link access
-		if !hasAccess && s.proxyServer().CheckShareLinkAccess(r, box.ID, box.Name, userID) {
-			hasAccess = true
-		}
-
-		// Check support access: user is root support and box has support_access_allowed
-		if !hasAccess && box.SupportAccessAllowed == 1 && s.proxyServer().UserHasExeSudo(r.Context(), userID) {
-			s.slog().InfoContext(r.Context(), "proxy support access granted", "box", boxName, "user_id", userID)
-			hasAccess = true
-		}
-
-		if !hasAccess {
-			// User is authenticated but doesn't have access
-			// Show 401 to avoid leaking box existence
-			exewebBox := dbBoxToExewebBox(&box)
-			s.proxyServer().RenderAccessRequired(w, r, &exewebBox)
-			return
-		}
-
-		// Track unique users for private proxy access
-		if s.hllTracker != nil {
-			s.hllTracker.NoteEvent("proxy", userID)
-			if route.Port == 9999 {
-				s.hllTracker.NoteEvent("shelley-proxy", userID)
-			}
-			// Track login-with-exe: user accessing someone else's box (not owner)
-			if accessType != exeweb.BoxAccessOwner {
-				s.hllTracker.NoteEvent("login-with-exe", userID)
-			}
-		}
-	}
-
-	// Handle debug path in dev/test environments
-	if r.URL.Path == "/__exe.dev/debug" && s.env.WebDev {
-		// Show debug info for /__exe.dev/debug in dev mode
-		w.Header().Set("Content-Type", "text/plain")
-		fmt.Fprintf(w, "Proxy handler - Route matched!\n")
-		fmt.Fprintf(w, "Box: %s\n", boxName)
-		fmt.Fprintf(w, "Route port: %d\n", route.Port)
-		fmt.Fprintf(w, "Route share: %s\n", route.Share)
-		fmt.Fprintf(w, "Request method: %s\n", r.Method)
-		fmt.Fprintf(w, "Request path: %s\n", r.URL.Path)
-
-		// Show current user info
-		if userID, err := s.validateProxyAuthCookie(r); err == nil {
-			// Ignore error
-			userEmail, _ := withRxRes1(s, r.Context(), (*exedb.Queries).GetEmailByUserID, userID)
-			fmt.Fprintf(w, "Logged in user: %q (%q)\n", userEmail, userID)
-		} else if errors.Is(err, http.ErrNoCookie) {
-			fmt.Fprintf(w, "Not logged in\n")
-		} else {
-			fmt.Fprintf(w, "Invalid auth cookie: %v\n", err)
-		}
-		return
-	}
-
-	// Resolve proxy auth once, reusing the result from the private-route check if available.
-	// On public routes this is best-effort: a valid token scoped to this VM
-	// will carry its ctx through, but a token for a different VM simply fails
-	// namespace validation and produces no auth result (no cross-container leak).
-	if authResult == nil {
-		authResult = s.getProxyAuth(r, box)
-	}
-
-	// Proxy the request to the container
-	err = s.proxyToContainer(w, r, &box, route, authResult)
-	if err != nil {
-		s.slog().DebugContext(r.Context(), "Failed to proxy request", "error", err, "box", boxName)
-
-		// Determine if the requester is the owner of the box
-		isOwner := false
-		if userID, ok := s.getAuthenticatedUserID(r); ok {
-			if box.CreatedByUserID == userID {
-				isOwner = true
-			}
-		}
-
-		if isOwner {
-			// Render owner-facing help page
-			data := struct {
-				stage.Env
-				BoxName         string
-				BoxDest         func(string) string
-				SSHCommand      string
-				Port            int
-				TerminalURL     string
-				ShowWelcomeStep bool
-				IsShelleyPort   bool
-				ShelleyURL      string
-			}{
-				Env:             s.env,
-				BoxName:         boxName,
-				BoxDest:         s.env.BoxDest,
-				SSHCommand:      s.boxSSHConnectionCommand(boxName),
-				Port:            route.Port,
-				TerminalURL:     s.xtermURL(boxName, r.TLS != nil),
-				ShowWelcomeStep: strings.Contains(box.Image, "exeuntu") && route.Port == 8000,
-				IsShelleyPort:   route.Port == 9999,
-				ShelleyURL:      s.shelleyURL(boxName),
-			}
-
-			w.WriteHeader(http.StatusBadGateway)
-			_ = s.renderTemplate(r.Context(), w, "proxy-unreachable.html", data)
-			return
-		}
-
-		// Non-owner: render 503 page
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = s.renderTemplate(r.Context(), w, "503.html", nil)
-		return
-	}
+	s.proxyServer().HandleProxyRequest(w, r)
 }
 
 // isProxyRequest reports whether a request to host should be handled by the proxy.
@@ -400,22 +102,6 @@ func (s *Server) getProxyPorts() []int {
 		return ports
 	}
 	return s.env.ProxyPorts
-}
-
-// isDefaultServerPort reports whether port should use the box's default route.
-// This includes port 443 (HTTPS) and the server's main HTTP port.
-func (s *Server) isDefaultServerPort(port int) bool {
-	// Port 443 always uses default route
-	if port == 443 {
-		return true
-	}
-
-	// Check if it matches the server's main HTTP port
-	if s.servingHTTP() && s.httpPort() == port {
-		return true
-	}
-
-	return false
 }
 
 // getBoxForUser retrieves a box for the given user/team/name
@@ -501,15 +187,18 @@ func (s *Server) autoCreateShareFromLink(ctx context.Context, userID string, box
 // proxyServer returns an exeweb.ProxyServer that refers to s.
 func (s *Server) proxyServer() *exeweb.ProxyServer {
 	ps := &exeweb.ProxyServer{
-		Data:         &proxyData{s: s},
-		Lg:           s.slog(),
-		Env:          &s.env,
-		SSHPool:      s.sshPool,
-		HTTPMetrics:  s.httpMetrics,
-		Templates:    s.templates,
-		LobbyIP:      s.LobbyIP,
-		PublicIPs:    s.PublicIPs,
-		MagicSecrets: s.magicSecrets,
+		Data:            &proxyData{s: s},
+		Lg:              s.slog(),
+		Env:             &s.env,
+		PiperdPort:      s.piperdPort,
+		SSHPool:         s.sshPool,
+		HTTPMetrics:     s.httpMetrics,
+		Templates:       s.templates,
+		LobbyIP:         s.LobbyIP,
+		PublicIPs:       s.PublicIPs,
+		MagicSecrets:    s.magicSecrets,
+		LookupCNAMEFunc: s.lookupCNAMEFunc,
+		LookupAFunc:     s.lookupAFunc,
 	}
 	if s.servingHTTP() {
 		ps.HTTPPort = s.httpLn.tcp.Port
@@ -600,6 +289,11 @@ func (pd *proxyData) UserInfo(ctx context.Context, userID string) (exeweb.UserDa
 	return userData, true, nil
 }
 
+// IsUserLockedOut implements [exeweb.ProxyData.IsUserLockedOut].
+func (pd *proxyData) IsUserLockedOut(ctx context.Context, userID string) (bool, error) {
+	return pd.s.isUserLockedOut(ctx, userID)
+}
+
 // UserHasExeSudo implements [exeweb.ProxyData.UserHasExeSudo].
 func (pd *proxyData) UserHasExeSudo(ctx context.Context, userID string) (bool, error) {
 	valid := pd.s.UserHasExeSudo(ctx, userID)
@@ -688,6 +382,16 @@ func (pd *proxyData) CheckShareLink(ctx context.Context, boxID int, boxName, use
 	}
 
 	return true, nil
+}
+
+// HLLNoteEvents implements [exeweb.ProxyData.HLLNoteEvents].
+func (pd *proxyData) HLLNoteEvents(ctx context.Context, userID string, events []string) {
+	if pd.s.hllTracker == nil {
+		return
+	}
+	for _, event := range events {
+		pd.s.hllTracker.NoteEvent(event, userID)
+	}
 }
 
 // CheckAndIncrementEmailQuota implements [exeweb.ProxyData.CheckAndIncrementEmailQuota].

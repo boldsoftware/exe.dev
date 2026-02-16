@@ -19,11 +19,13 @@ import (
 	"exe.dev/container"
 	"exe.dev/domz"
 	"exe.dev/email"
+	"exe.dev/metricsbag"
 	"exe.dev/publicips"
 	"exe.dev/sshkey"
 	"exe.dev/sshpool2"
 	"exe.dev/stage"
 
+	sloghttp "github.com/samber/slog-http"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -36,21 +38,341 @@ type ProxyServer struct {
 	Env          *stage.Env
 	HTTPPort     int // zero if not serving HTTP
 	HTTPSPort    int // zero if not serving HTTPS
+	PiperdPort   int
 	SSHPool      *sshpool2.Pool
 	HTTPMetrics  *HTTPMetrics
 	Templates    *template.Template
 	LobbyIP      netip.Addr
 	PublicIPs    map[netip.Addr]publicips.PublicIP
 	MagicSecrets *MagicSecrets
+
+	// For testing:
+	LookupCNAMEFunc func(context.Context, string) (string, error)
+	LookupAFunc     func(context.Context, string, string) ([]netip.Addr, error)
+}
+
+// HandleProxyRequest handles requests that should be proxied to containers
+// This handler is called when the Host header matches box.exe.dev or box.exe.local
+func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
+	// Ensure the port in the Host header matches the listener's local port
+	conn, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+	if !ok {
+		ps.Lg.ErrorContext(r.Context(), "Failed to get local address from request context")
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	_, localPortStr, err := net.SplitHostPort(conn.String())
+	if err != nil {
+		ps.Lg.ErrorContext(r.Context(), "Failed to parse local address", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	localPort, err := strconv.Atoi(localPortStr)
+	if err != nil {
+		ps.Lg.ErrorContext(r.Context(), "Failed to convert local port to integer", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	hostHeaderPort := 0
+	hostHeaderHost, hostPortStr, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		// No port in Host header, that's fine if it's the default port which only
+		// happens in HTTPS land...
+		hostHeaderHost = r.Host
+		if ps.HTTPSPort != 0 {
+			hostHeaderPort = ps.HTTPSPort
+		} else {
+			ps.Lg.WarnContext(r.Context(), "Host header didn't have port but we're not using default ports", "host", r.Host, "error", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+	} else {
+		hostHeaderPort, err = strconv.Atoi(hostPortStr)
+		if err != nil {
+			ps.Lg.WarnContext(r.Context(), "Failed to convert host port to integer", "host", r.Host, "error", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+	}
+	if hostHeaderPort != localPort {
+		ps.Lg.WarnContext(r.Context(), "Host header port mismatch", "host_port", hostHeaderPort, "local_port", localPort)
+		http.Error(w, "internal server error", http.StatusBadRequest)
+		return
+	}
+
+	// Handle magic URL for authentication
+	if r.URL.Path == "/__exe.dev/auth" {
+		ps.Lg.InfoContext(r.Context(), "[REDIRECT] Magic auth URL accessed", "host", r.Host, "path", r.URL.Path)
+		ps.HandleMagicAuth(w, r)
+		return
+	}
+
+	// Handle login URL
+	if r.URL.Path == "/__exe.dev/login" {
+		ps.HandleProxyLogin(w, r)
+		return
+	}
+
+	// Handle logout URL
+	if r.URL.Path == "/__exe.dev/logout" {
+		ps.Lg.InfoContext(r.Context(), "[REDIRECT] Logout URL accessed", "host", r.Host, "path", r.URL.Path)
+		ps.HandleProxyLogout(w, r)
+		return
+	}
+
+	// Handle request-access URL
+	if r.URL.Path == "/__exe.dev/request-access" {
+		ps.HandleRequestAccess(w, r)
+		return
+	}
+
+	// Reserve the /__exe.dev/ prefix — don't forward unknown paths to VMs.
+	if strings.HasPrefix(r.URL.Path, "/__exe.dev/") || r.URL.Path == "/__exe.dev" {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Parse hostname to extract box name and optional explicit target port
+	boxName, err := ps.domainResolver().ResolveBoxName(r.Context(), hostHeaderHost)
+	if err != nil {
+		ps.Lg.WarnContext(r.Context(), "Failed to resolve box name", "host", r.Host, "error", err)
+		http.Error(w, "Invalid Hostname", http.StatusBadRequest)
+		return
+	}
+	if boxName == "" {
+		// Don't log a warning here, too noisy.
+		http.Error(w, "Invalid hostname", http.StatusBadRequest)
+		return
+	}
+
+	// Set box name label for metrics
+	metricsbag.SetLabel(r.Context(), LabelBox, boxName)
+
+	// Find the box.
+	// Careful: we aren't checking the team or owner in this look-up,
+	// so we must do it below.
+	box, exists, err := ps.Data.BoxInfo(r.Context(), boxName)
+	if err != nil {
+		ps.Lg.ErrorContext(r.Context(), "Failed to look up box", "error", err, "box_name", boxName, "elapsed", time.Since(start).Round(time.Millisecond))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !exists {
+		// Box doesn't exist - show 401 to avoid leaking existence
+		ps.RenderAccessRequired(w, r, nil)
+		return
+	}
+
+	// Check if box owner is locked out -
+	// their VMs should not accept proxy requests (fail closed on DB error).
+	isLockedOut, lockoutErr := ps.Data.IsUserLockedOut(r.Context(), box.CreatedByUserID)
+	if lockoutErr != nil {
+		ps.Lg.ErrorContext(r.Context(), "failed to check owner lockout status", "error", lockoutErr, "user_id", box.CreatedByUserID)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if isLockedOut {
+		sloghttp.AddCustomAttributes(r, slog.Bool("owner_locked_out", true))
+		sloghttp.AddCustomAttributes(r, slog.String("owner_user_id", box.CreatedByUserID))
+		ps.RenderAccessRequired(w, r, nil)
+		return
+	}
+
+	// Determine final route:
+	// - Shelley subdomain (box.shelley.exe.xyz)
+	//   always routes to port 9999 as private;
+	// - If no explicit targetPort (0),
+	//   or it matches server default ports,
+	//   or equals box's default, use box route;
+	// - Otherwise create an ad-hoc private route for the requested port.
+	var route BoxRoute
+	boxRoute := box.BoxRoute
+	targetPort := hostHeaderPort
+	if IsShelleyRequest(ps.Env, r.Host) {
+		route = BoxRoute{Port: 9999, Share: "private"}
+	} else if targetPort == 0 || targetPort == boxRoute.Port || ps.isDefaultServerPort(targetPort) {
+		route = boxRoute
+	} else {
+		route = BoxRoute{Port: targetPort, Share: "private"}
+	}
+
+	if route.Port == 9999 {
+		// We're going to call all proxy requests to port 9999
+		// shelley requests. We could look for /api/conversation/* or
+		// something, this seems fine for purposes of tracking/logging.
+		sloghttp.AddCustomAttributes(r, slog.Bool("proxy_shelley", true))
+	}
+
+	// Apply authentication based on route share setting
+	var authResult *ProxyAuthResult
+	if route.Share == "private" {
+		// Check if user is authenticated
+		// (cookie, Bearer token, or Basic auth).
+		authResult = ps.GetProxyAuth(r, box.Name)
+		if authResult == nil {
+			// Not authenticated by any method.
+			// If the request has an Authorization header,
+			// it's an API client;
+			// return 401 instead of redirecting to the login page.
+			if r.Header.Get("Authorization") != "" {
+				w.Header().Set("WWW-Authenticate", "Bearer, Basic")
+				http.Error(w, "invalid or missing authentication", http.StatusUnauthorized)
+				return
+			}
+			// Browser client - redirect to auth flow.
+			ps.RedirectToAuth(w, r)
+			return
+		}
+		userID := authResult.UserID
+
+		// Set user ID for HTTP logging
+		sloghttp.AddCustomAttributes(r, slog.String("user_id", userID))
+
+		// User is authenticated - check if they have access
+		hasAccess := false
+
+		// Check access
+		accessType, err := ps.HasUserAccessToBox(r.Context(), userID, &box)
+		if err == nil {
+			switch accessType {
+			case BoxAccessOwner, BoxAccessEmailShare, BoxAccessTeamShare:
+				hasAccess = true
+			}
+		}
+
+		// Check share link access
+		if !hasAccess && ps.CheckShareLinkAccess(r, box.ID, box.Name, userID) {
+			hasAccess = true
+		}
+
+		// Check support access: user is root support
+		// and box has support_access_allowed
+		if !hasAccess && box.SupportAccessAllowed == 1 && ps.UserHasExeSudo(r.Context(), userID) {
+			ps.Lg.InfoContext(r.Context(), "proxy support access granted", "box", boxName, "user_id", userID)
+			hasAccess = true
+		}
+
+		if !hasAccess {
+			// User is authenticated but doesn't have access
+			// Show 401 to avoid leaking box existence
+			ps.RenderAccessRequired(w, r, &box)
+			return
+		}
+
+		// Track unique users for private proxy access
+		events := []string{"proxy"}
+		if route.Port == 9999 {
+			events = append(events, "shelley-proxy")
+		}
+		// Track login-with-exe:
+		// user accessing someone else's box (not owner).
+		if accessType != BoxAccessOwner {
+			events = append(events, "login-with-exe")
+		}
+		ps.Data.HLLNoteEvents(r.Context(), userID, events)
+	}
+
+	// Handle debug path in dev/test environments
+	if r.URL.Path == "/__exe.dev/debug" && ps.Env.WebDev {
+		// Show debug info for /__exe.dev/debug in dev mode
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintf(w, "Proxy handler - Route matched!\n")
+		fmt.Fprintf(w, "Box: %s\n", boxName)
+		fmt.Fprintf(w, "Route port: %d\n", route.Port)
+		fmt.Fprintf(w, "Route share: %s\n", route.Share)
+		fmt.Fprintf(w, "Request method: %s\n", r.Method)
+		fmt.Fprintf(w, "Request path: %s\n", r.URL.Path)
+
+		// Show current user info
+		if userID, err := ps.ValidateProxyAuthCookie(r); err == nil {
+			// Ignore error.
+			userData, exists, _ := ps.Data.UserInfo(r.Context(), userID)
+			userEmail := ""
+			if exists {
+				userEmail = userData.Email
+			}
+			fmt.Fprintf(w, "Logged in user: %q (%q)\n", userEmail, userID)
+		} else if errors.Is(err, http.ErrNoCookie) {
+			fmt.Fprintf(w, "Not logged in\n")
+		} else {
+			fmt.Fprintf(w, "Invalid auth cookie: %v\n", err)
+		}
+		return
+	}
+
+	// Resolve proxy auth once,
+	// reusing the result from the
+	// private-route check if available.
+	// On public routes this is best-effort:
+	// a valid token scoped to this VM
+	// will carry its ctx through,
+	// but a token for a different VM simply fails
+	// namespace validation and produces no auth result
+	// (no cross-container leak).
+	if authResult == nil {
+		authResult = ps.GetProxyAuth(r, box.Name)
+	}
+
+	// Proxy the request to the container
+	err = ps.ProxyToContainer(w, r, &box, route, authResult)
+	if err != nil {
+		ps.Lg.DebugContext(r.Context(), "Failed to proxy request", "error", err, "box", boxName)
+
+		// Determine if the requester is the owner of the box.
+		isOwner := false
+		if userID, err := ps.ValidateProxyAuthCookie(r); err == nil {
+			if box.CreatedByUserID == userID {
+				isOwner = true
+			}
+		}
+
+		if isOwner {
+			// Render owner-facing help page
+			data := struct {
+				*stage.Env
+				BoxName         string
+				BoxDest         func(string) string
+				SSHCommand      string
+				Port            int
+				TerminalURL     string
+				ShowWelcomeStep bool
+				IsShelleyPort   bool
+				ShelleyURL      string
+			}{
+				Env:             ps.Env,
+				BoxName:         boxName,
+				BoxDest:         ps.Env.BoxDest,
+				SSHCommand:      ps.boxSSHConnectionCommand(boxName),
+				Port:            route.Port,
+				TerminalURL:     ps.xtermURL(boxName, r.TLS != nil),
+				ShowWelcomeStep: strings.Contains(box.Image, "exeuntu") && route.Port == 8000,
+				IsShelleyPort:   route.Port == 9999,
+				ShelleyURL:      ps.shelleyURL(boxName),
+			}
+
+			w.WriteHeader(http.StatusBadGateway)
+			_ = ps.renderTemplate(r.Context(), w, "proxy-unreachable.html", data)
+			return
+		}
+
+		// Non-owner: render 503 page
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = ps.renderTemplate(r.Context(), w, "503.html", nil)
+		return
+	}
 }
 
 // domainResolver returns a [DomainResolver] for ps.
 func (ps *ProxyServer) domainResolver() *DomainResolver {
 	return &DomainResolver{
-		Lg:        ps.Lg,
-		Env:       ps.Env,
-		LobbyIP:   ps.LobbyIP,
-		PublicIPs: ps.PublicIPs,
+		Lg:              ps.Lg,
+		Env:             ps.Env,
+		LobbyIP:         ps.LobbyIP,
+		PublicIPs:       ps.PublicIPs,
+		LookupCNAMEFunc: ps.LookupCNAMEFunc,
+		LookupAFunc:     ps.LookupAFunc,
 	}
 }
 
@@ -465,6 +787,22 @@ func (ps *ProxyServer) CreateSSHTunnelTransport(sshHost string, box *BoxData, ss
 	}
 }
 
+// isDefaultServerPort reports whether port should use the box's default route.
+// This includes port 443 (HTTPS) and the server's main HTTP port.
+func (ps *ProxyServer) isDefaultServerPort(port int) bool {
+	// Port 443 always uses default route
+	if port == 443 {
+		return true
+	}
+
+	// Check if it matches the server's main HTTP port
+	if ps.HTTPPort != 0 && ps.HTTPPort == port {
+		return true
+	}
+
+	return false
+}
+
 // webBaseURLNoRequest returns a URL for the main web host (exe.dev).
 func (ps *ProxyServer) webBaseURLNoRequest() string {
 	var scheme, port string
@@ -480,6 +818,63 @@ func (ps *ProxyServer) webBaseURLNoRequest() string {
 		}
 	}
 	return fmt.Sprintf("%s://%s%s", scheme, ps.Env.WebHost, port)
+}
+
+// boxsSSHPort returns the port to use on the local host for ssh.
+func (ps *ProxyServer) boxSSHPort() int {
+	if ps.PiperdPort != 22 {
+		return ps.PiperdPort
+	}
+	return 22
+}
+
+// urlPort returns :PORT for use in URLs, according to useTLS.
+func (ps *ProxyServer) urlPort(useTLS bool) string {
+	if useTLS {
+		if ps.HTTPSPort == 0 || ps.HTTPSPort == 443 {
+			return ""
+		}
+		return fmt.Sprintf(":%d", ps.HTTPSPort)
+	}
+	if ps.HTTPPort == 0 || ps.HTTPPort == 80 {
+		return ""
+	}
+	return fmt.Sprintf(":%d", ps.HTTPPort)
+}
+
+// xtermURL returns the terminal URL for a box.
+func (ps *ProxyServer) xtermURL(boxName string, useTLS bool) string {
+	var scheme, port string
+	if useTLS {
+		scheme = "https"
+		port = ps.urlPort(true)
+	} else {
+		scheme = "http"
+		port = ps.urlPort(false)
+	}
+	return fmt.Sprintf("%s://%s%s", scheme, ps.Env.BoxXtermSub(boxName), port)
+}
+
+// shelleyURL returns the Shelley agent URL for a box (vm.shelley.exe.xyz).
+func (ps *ProxyServer) shelleyURL(boxName string) string {
+	var scheme, port string
+	if ps.HTTPSPort != 0 {
+		scheme = "https"
+		port = ps.urlPort(true)
+	} else {
+		scheme = "http"
+		port = ps.urlPort(false)
+	}
+	return fmt.Sprintf("%s://%s%s", scheme, ps.Env.BoxShelleySub(boxName), port)
+}
+
+// boxSSHConnectionCommand returns the SSH command to connect to box boxName.
+func (ps *ProxyServer) boxSSHConnectionCommand(boxName string) string {
+	dashP := ""
+	if port := ps.boxSSHPort(); port != 22 {
+		dashP = fmt.Sprintf("-p %d ", port)
+	}
+	return "ssh " + dashP + ps.Env.BoxDest(boxName)
 }
 
 // UnauthorizedData holds the template data for the 401.html page.

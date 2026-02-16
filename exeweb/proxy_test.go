@@ -17,6 +17,81 @@ import (
 	prometheusclient "github.com/prometheus/client_model/go"
 )
 
+// TestIsDefaultServerPort tests the isDefaultServerPort function
+func TestIsDefaultServerPort(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		serverPort int // simulated server HTTP port
+		testPort   int // port to test
+		expected   bool
+		comment    string
+	}{
+		{
+			name:       "port 443 is always default",
+			serverPort: 8080,
+			testPort:   443,
+			expected:   true,
+			comment:    "Port 443 (HTTPS) should always use default route",
+		},
+		{
+			name:       "server HTTP port is default",
+			serverPort: 8080,
+			testPort:   8080,
+			expected:   true,
+			comment:    "Request to server's own HTTP port should use default route",
+		},
+		{
+			name:       "different port is not default",
+			serverPort: 8080,
+			testPort:   9000,
+			expected:   false,
+			comment:    "Different port should use multi-port routing",
+		},
+		{
+			name:       "port 80 not default when server on 8080",
+			serverPort: 8080,
+			testPort:   80,
+			expected:   false,
+			comment:    "Port 80 should not be default when server runs on different port",
+		},
+		{
+			name:       "port 80 is default when server on 80",
+			serverPort: 80,
+			testPort:   80,
+			expected:   true,
+			comment:    "Port 80 should be default when server runs on port 80",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ps := &ProxyServer{HTTPPort: tc.serverPort}
+
+			result := ps.isDefaultServerPort(tc.testPort)
+			if result != tc.expected {
+				t.Errorf("Expected %v for port %d (server on %d), got %v\nComment: %s",
+					tc.expected, tc.testPort, tc.serverPort, result, tc.comment)
+			} else {
+				t.Logf("✓ %s: port=%d serverPort=%d -> %v", tc.comment, tc.testPort, tc.serverPort, result)
+			}
+		})
+	}
+
+	// Test case where httpPort is 0
+	t.Run("nil httpLn", func(t *testing.T) {
+		ps := &ProxyServer{HTTPPort: 0}
+		// Should only return true for 443
+		if !ps.isDefaultServerPort(443) {
+			t.Error("Expected true for port 443 even with nil httpLn")
+		}
+		if ps.isDefaultServerPort(8080) {
+			t.Error("Expected false for port 8080 with nil httpLn")
+		}
+	})
+}
+
 // TestOpenRedirectInAuthFlow tests that redirect URLs are validated
 // to prevent open redirect attacks.
 func TestOpenRedirectInAuthFlow(t *testing.T) {
