@@ -3,12 +3,14 @@ package exeweb
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -16,6 +18,8 @@ import (
 
 	"exe.dev/container"
 	"exe.dev/domz"
+	"exe.dev/email"
+	"exe.dev/publicips"
 	"exe.dev/sshkey"
 	"exe.dev/sshpool2"
 	"exe.dev/stage"
@@ -35,7 +39,19 @@ type ProxyServer struct {
 	SSHPool      *sshpool2.Pool
 	HTTPMetrics  *HTTPMetrics
 	Templates    *template.Template
+	LobbyIP      netip.Addr
+	PublicIPs    map[netip.Addr]publicips.PublicIP
 	MagicSecrets *MagicSecrets
+}
+
+// domainResolver returns a [DomainResolver] for ps.
+func (ps *ProxyServer) domainResolver() *DomainResolver {
+	return &DomainResolver{
+		Lg:        ps.Lg,
+		Env:       ps.Env,
+		LobbyIP:   ps.LobbyIP,
+		PublicIPs: ps.PublicIPs,
+	}
 }
 
 // ProxyAuthResult contains the result of proxy authentication.
@@ -529,6 +545,133 @@ func (ps *ProxyServer) RenderAccessRequired(w http.ResponseWriter, r *http.Reque
 	ps.renderTemplate(r.Context(), w, "401.html", data)
 }
 
+// HandleRequestAccess handles GET and POST for /__exe.dev/request-access.
+// GET renders the request-access form. POST sends an access request email to the box owner.
+func (ps *ProxyServer) HandleRequestAccess(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Authenticate the user.
+	userID, err := ps.ValidateProxyAuthCookie(r)
+	if err != nil {
+		ps.RedirectToAuth(w, r)
+		return
+	}
+
+	userData, exists, err := ps.Data.UserInfo(ctx, userID)
+	if err == nil && !exists {
+		err = errors.New("no such user")
+	}
+	if err != nil {
+		ps.Lg.ErrorContext(ctx, "request-access: failed to get requester email", "error", err, "user_id", userID)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	requesterEmail := userData.Email
+
+	// Resolve the box from the hostname.
+	hostHeaderHost, _, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		hostHeaderHost = r.Host
+	}
+	boxName, err := ps.domainResolver().ResolveBoxName(ctx, hostHeaderHost)
+	if err != nil || boxName == "" {
+		http.Error(w, "Invalid hostname", http.StatusBadRequest)
+		return
+	}
+
+	box, exists, err := ps.Data.BoxInfo(ctx, boxName)
+	if err != nil {
+		ps.Lg.ErrorContext(ctx, "request-access: failed to look up box", "error", err, "box_name", boxName)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !exists {
+		http.NotFound(w, r)
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		ps.renderTemplate(ctx, w, "request-access.html", struct {
+			Email string
+		}{
+			Email: requesterEmail,
+		})
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Rate limit.
+	if err := ps.Data.CheckAndIncrementEmailQuota(ctx, userID); err != nil {
+		ps.Lg.WarnContext(ctx, "request-access: email quota exceeded", "user_id", userID, "error", err)
+		http.Error(w, "Too many requests. Try again later.", http.StatusTooManyRequests)
+		return
+	}
+
+	// Look up the owner's email.
+	ownerUserData, exists, err := ps.Data.UserInfo(ctx, box.CreatedByUserID)
+	if err == nil && !exists {
+		err = errors.New("no such user")
+	}
+	if err != nil {
+		ps.Lg.ErrorContext(ctx, "request-access: failed to get owner email", "error", err, "owner_user_id", box.CreatedByUserID)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	ownerEmail := ownerUserData.Email
+
+	message := strings.TrimSpace(r.FormValue("message"))
+
+	// Build the share URL for the dashboard.
+	shareURL := fmt.Sprintf("%s/?share_vm=%s&share_email=%s",
+		ps.webBaseURLNoRequest(),
+		url.QueryEscape(boxName),
+		url.QueryEscape(requesterEmail),
+	)
+
+	subject := fmt.Sprintf("%s is requesting access to %s", requesterEmail, boxName)
+
+	var body strings.Builder
+	fmt.Fprintf(&body, "%s is requesting access to your VM %q.\n\n", requesterEmail, boxName)
+	if message != "" {
+		fmt.Fprintf(&body, "Message: %s\n\n", message)
+	}
+	fmt.Fprintf(&body, "To grant access, visit:\n%s\n", shareURL)
+
+	if err := ps.Data.SendEmail(ctx, email.TypeAccessRequest, ownerEmail, subject, body.String()); err != nil {
+		ps.Lg.ErrorContext(ctx, "request-access: failed to send email", "error", err, "to", ownerEmail)
+		http.Error(w, "Failed to send request. Try again later.", http.StatusInternalServerError)
+		return
+	}
+
+	ps.Lg.InfoContext(ctx, "access request sent", "requester", requesterEmail, "owner", ownerEmail, "box", boxName)
+	ps.renderTemplate(ctx, w, "request-sent.html", nil)
+}
+
+// RedirectToAuth redirects the user to the /__exe.dev/login URL
+// which will then redirect to the main domain auth flow.
+func (ps *ProxyServer) RedirectToAuth(w http.ResponseWriter, r *http.Request) {
+	// Pass only path+query as the redirect target. The scheme and host
+	// are already conveyed via the Host header and return_host parameter,
+	// and downstream handlers (handleProxyLogin, handleMagicAuth) validate
+	// the redirect with exeweb.IsValidRedirectURL which only allows
+	// relative paths.
+	redirect := r.URL.Path
+	if r.URL.RawQuery != "" {
+		redirect += "?" + r.URL.RawQuery
+	}
+
+	authURL := makeAuthURL("login", r, url.Values{
+		"redirect": {redirect},
+	})
+
+	ps.Lg.DebugContext(r.Context(), "[REDIRECT] redirectToAuth", "from", r.URL, "to", authURL)
+	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+}
+
 // renderTemplate generates an HTTP response from a template.
 func (ps *ProxyServer) renderTemplate(ctx context.Context, w http.ResponseWriter, templateName string, data any) error {
 	w.Header().Set("Content-Type", "text/html")
@@ -540,6 +683,16 @@ func (ps *ProxyServer) renderTemplate(ctx context.Context, w http.ResponseWriter
 	}
 	_, err := w.Write(buf.Bytes())
 	return err
+}
+
+// makeAuthURL returns a specially recognized authentication URL.
+func makeAuthURL(typ string, r *http.Request, q url.Values) string {
+	return fmt.Sprintf("%s://%s/__exe.dev/%s?%s",
+		getScheme(r),
+		r.Host,
+		typ,
+		q.Encode(),
+	)
 }
 
 // clearExeDevHeaders removes any X-ExeDev-* headers from

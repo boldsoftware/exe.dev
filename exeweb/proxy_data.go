@@ -3,6 +3,8 @@ package exeweb
 import (
 	"context"
 	"time"
+
+	"exe.dev/email"
 )
 
 // ProxyData is an interface for proxy authentication operations.
@@ -51,6 +53,14 @@ type ProxyData interface {
 	// so this method is also responsible for recording the use,
 	// and for creating an email-based share for the user.
 	CheckShareLink(ctx context.Context, boxID int, boxName, userID, shareToken string) (bool, error)
+
+	// CheckAndIncrementEmailQuota checks if the user is under
+	// their daily limit, and increments if so. It returns a nil
+	// error if they are under the limit.
+	CheckAndIncrementEmailQuota(ctx context.Context, userID string) error
+
+	// SendEmail sends an email message.
+	SendEmail(ctx context.Context, emailType email.Type, to, subject, body string) error
 }
 
 // BoxData is the information we need for a box.

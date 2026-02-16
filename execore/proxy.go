@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -107,7 +106,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Handle request-access URL
 	if r.URL.Path == "/__exe.dev/request-access" {
-		s.handleRequestAccess(w, r)
+		s.proxyServer().HandleRequestAccess(w, r)
 		return
 	}
 
@@ -198,7 +197,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			// Browser client - redirect to auth flow.
-			s.redirectToAuth(w, r)
+			s.proxyServer().RedirectToAuth(w, r)
 			return
 		}
 		userID := authResult.UserID
@@ -419,134 +418,6 @@ func (s *Server) isDefaultServerPort(port int) bool {
 	return false
 }
 
-func makeAuthURL(typ string, r *http.Request, q url.Values) string {
-	return fmt.Sprintf("%s://%s/__exe.dev/%s?%s",
-		getScheme(r),
-		r.Host,
-		typ,
-		q.Encode(),
-	)
-}
-
-// handleRequestAccess handles GET and POST for /__exe.dev/request-access.
-// GET renders the request-access form. POST sends an access request email to the box owner.
-func (s *Server) handleRequestAccess(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// Authenticate the user.
-	userID, err := s.validateProxyAuthCookie(r)
-	if err != nil {
-		s.redirectToAuth(w, r)
-		return
-	}
-
-	requesterEmail, err := withRxRes1(s, ctx, (*exedb.Queries).GetEmailByUserID, userID)
-	if err != nil {
-		s.slog().ErrorContext(ctx, "request-access: failed to get requester email", "error", err, "user_id", userID)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	// Resolve the box from the hostname.
-	hostHeaderHost, _, err := net.SplitHostPort(r.Host)
-	if err != nil {
-		hostHeaderHost = r.Host
-	}
-	boxName, err := s.resolveBoxName(ctx, hostHeaderHost)
-	if err != nil || boxName == "" {
-		http.Error(w, "Invalid hostname", http.StatusBadRequest)
-		return
-	}
-
-	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
-	if errors.Is(err, sql.ErrNoRows) {
-		http.NotFound(w, r)
-		return
-	}
-	if err != nil {
-		s.slog().ErrorContext(ctx, "request-access: failed to look up box", "error", err, "box_name", boxName)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	if r.Method == http.MethodGet {
-		s.renderTemplate(ctx, w, "request-access.html", struct {
-			Email string
-		}{
-			Email: requesterEmail,
-		})
-		return
-	}
-
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Rate limit.
-	if err := s.checkAndIncrementEmailQuota(ctx, userID); err != nil {
-		s.slog().WarnContext(ctx, "request-access: email quota exceeded", "user_id", userID, "error", err)
-		http.Error(w, "Too many requests. Try again later.", http.StatusTooManyRequests)
-		return
-	}
-
-	// Look up the owner's email.
-	ownerEmail, err := withRxRes1(s, ctx, (*exedb.Queries).GetEmailByUserID, box.CreatedByUserID)
-	if err != nil {
-		s.slog().ErrorContext(ctx, "request-access: failed to get owner email", "error", err, "owner_user_id", box.CreatedByUserID)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	message := strings.TrimSpace(r.FormValue("message"))
-
-	// Build the share URL for the dashboard.
-	shareURL := fmt.Sprintf("%s/?share_vm=%s&share_email=%s",
-		s.webBaseURLNoRequest(),
-		url.QueryEscape(boxName),
-		url.QueryEscape(requesterEmail),
-	)
-
-	subject := fmt.Sprintf("%s is requesting access to %s", requesterEmail, boxName)
-
-	var body strings.Builder
-	fmt.Fprintf(&body, "%s is requesting access to your VM %q.\n\n", requesterEmail, boxName)
-	if message != "" {
-		fmt.Fprintf(&body, "Message: %s\n\n", message)
-	}
-	fmt.Fprintf(&body, "To grant access, visit:\n%s\n", shareURL)
-
-	if err := s.sendEmail(ctx, email.TypeAccessRequest, ownerEmail, subject, body.String()); err != nil {
-		s.slog().ErrorContext(ctx, "request-access: failed to send email", "error", err, "to", ownerEmail)
-		http.Error(w, "Failed to send request. Try again later.", http.StatusInternalServerError)
-		return
-	}
-
-	s.slog().InfoContext(ctx, "access request sent", "requester", requesterEmail, "owner", ownerEmail, "box", boxName)
-	s.renderTemplate(ctx, w, "request-sent.html", nil)
-}
-
-// redirectToAuth redirects the user to the /__exe.dev/login URL
-// which will then redirect to the main domain auth flow
-func (s *Server) redirectToAuth(w http.ResponseWriter, r *http.Request) {
-	// Pass only path+query as the redirect target. The scheme and host
-	// are already conveyed via the Host header and return_host parameter,
-	// and downstream handlers (handleProxyLogin, handleMagicAuth) validate
-	// the redirect with exeweb.IsValidRedirectURL which only allows
-	// relative paths.
-	redirect := r.URL.Path
-	if r.URL.RawQuery != "" {
-		redirect += "?" + r.URL.RawQuery
-	}
-
-	authURL := makeAuthURL("login", r, url.Values{
-		"redirect": {redirect},
-	})
-
-	s.slog().DebugContext(r.Context(), "[REDIRECT] redirectToAuth", "from", r.URL, "to", authURL)
-	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
-}
-
 // getBoxForUser retrieves a box for the given user/team/name
 func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (*exedb.Box, error) {
 	user, err := s.getUserByPublicKey(ctx, publicKey)
@@ -636,6 +507,8 @@ func (s *Server) proxyServer() *exeweb.ProxyServer {
 		SSHPool:      s.sshPool,
 		HTTPMetrics:  s.httpMetrics,
 		Templates:    s.templates,
+		LobbyIP:      s.LobbyIP,
+		PublicIPs:    s.PublicIPs,
 		MagicSecrets: s.magicSecrets,
 	}
 	if s.servingHTTP() {
@@ -815,4 +688,14 @@ func (pd *proxyData) CheckShareLink(ctx context.Context, boxID int, boxName, use
 	}
 
 	return true, nil
+}
+
+// CheckAndIncrementEmailQuota implements [exeweb.ProxyData.CheckAndIncrementEmailQuota].
+func (pd *proxyData) CheckAndIncrementEmailQuota(ctx context.Context, userID string) error {
+	return pd.s.checkAndIncrementEmailQuota(ctx, userID)
+}
+
+// SendEmail implements [exeweb.ProxyData.SendEmail].
+func (pd *proxyData) SendEmail(ctx context.Context, emailType email.Type, to, subject, body string) error {
+	return pd.s.sendEmail(ctx, emailType, to, subject, body)
 }
