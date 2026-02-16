@@ -162,7 +162,7 @@ jobs:
       - name: Install Playwright browsers
         run: |
           cd ui
-          npx playwright install --with-deps chromium
+          $GITHUB_WORKSPACE/bin/retry.sh npx playwright install --with-deps chromium
 
       - name: Run Playwright E2E tests
         run: |
