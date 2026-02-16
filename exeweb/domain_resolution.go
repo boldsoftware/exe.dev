@@ -199,7 +199,7 @@ func (dr *DomainResolver) lookupCNAME(ctx context.Context, host string) (string,
 
 // lookupA does an A DNS lookup for a host.
 func (dr *DomainResolver) lookupA(ctx context.Context, host string) ([]netip.Addr, error) {
-	fn := net.DefaultResolver.LookupNetIP
+	fn := dnsresolver.Resolver().LookupNetIP
 	if dr.LookupAFunc != nil {
 		fn = dr.LookupAFunc
 	}

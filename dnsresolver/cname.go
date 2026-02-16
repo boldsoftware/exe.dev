@@ -12,7 +12,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"runtime"
 	"strings"
 	"time"
 
@@ -111,6 +110,17 @@ func exchangeCNAME(ctx context.Context, server string, payload []byte, host stri
 	}
 }
 
+// Resolver returns a *net.Resolver that uses the same DNS server as
+// LookupCNAME (8.8.8.8), bypassing the system resolver.
+func Resolver() *net.Resolver {
+	return &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, dnsServer())
+		},
+	}
+}
+
 func normalizeHostname(host string) string {
 	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
 }
@@ -136,9 +146,6 @@ func dnsMessageID() uint16 {
 func dnsServer() string {
 	if overrideDNSForTest != "" {
 		return overrideDNSForTest
-	}
-	if runtime.GOOS == "linux" {
-		return "127.0.0.53:53"
 	}
 	return "8.8.8.8:53"
 }
