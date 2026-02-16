@@ -24,6 +24,7 @@ const _ = grpc.SupportPackageIsVersion8
 const (
 	ProxyInfoService_BoxInfo_FullMethodName                  = "/exe.proxy.v1.ProxyInfoService/BoxInfo"
 	ProxyInfoService_CookieInfo_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/CookieInfo"
+	ProxyInfoService_UserInfo_FullMethodName                 = "/exe.proxy.v1.ProxyInfoService/UserInfo"
 	ProxyInfoService_GetPublicIPs_FullMethodName             = "/exe.proxy.v1.ProxyInfoService/GetPublicIPs"
 	ProxyInfoService_GetLobbyIP_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/GetLobbyIP"
 	ProxyInfoService_CertForDomain_FullMethodName            = "/exe.proxy.v1.ProxyInfoService/CertForDomain"
@@ -44,6 +45,8 @@ type ProxyInfoServiceClient interface {
 	// CookieInfo takes a cookie value and returns information about
 	// the authentication cookie with that value.
 	CookieInfo(ctx context.Context, in *CookieInfoRequest, opts ...grpc.CallOption) (*CookieInfoResponse, error)
+	// UserInfo takes a user ID and returns information about that user.
+	UserInfo(ctx context.Context, in *UserInfoRequest, opts ...grpc.CallOption) (*UserInfoResponse, error)
 	// GetPublicIPs returns a mapping from IP addresses to
 	// public IP / domain / shard.
 	GetPublicIPs(ctx context.Context, in *GetPublicIPsRequest, opts ...grpc.CallOption) (ProxyInfoService_GetPublicIPsClient, error)
@@ -98,6 +101,16 @@ func (c *proxyInfoServiceClient) CookieInfo(ctx context.Context, in *CookieInfoR
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CookieInfoResponse)
 	err := c.cc.Invoke(ctx, ProxyInfoService_CookieInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *proxyInfoServiceClient) UserInfo(ctx context.Context, in *UserInfoRequest, opts ...grpc.CallOption) (*UserInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserInfoResponse)
+	err := c.cc.Invoke(ctx, ProxyInfoService_UserInfo_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -249,6 +262,8 @@ type ProxyInfoServiceServer interface {
 	// CookieInfo takes a cookie value and returns information about
 	// the authentication cookie with that value.
 	CookieInfo(context.Context, *CookieInfoRequest) (*CookieInfoResponse, error)
+	// UserInfo takes a user ID and returns information about that user.
+	UserInfo(context.Context, *UserInfoRequest) (*UserInfoResponse, error)
 	// GetPublicIPs returns a mapping from IP addresses to
 	// public IP / domain / shard.
 	GetPublicIPs(*GetPublicIPsRequest, ProxyInfoService_GetPublicIPsServer) error
@@ -291,6 +306,9 @@ func (UnimplementedProxyInfoServiceServer) BoxInfo(context.Context, *BoxInfoRequ
 }
 func (UnimplementedProxyInfoServiceServer) CookieInfo(context.Context, *CookieInfoRequest) (*CookieInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CookieInfo not implemented")
+}
+func (UnimplementedProxyInfoServiceServer) UserInfo(context.Context, *UserInfoRequest) (*UserInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UserInfo not implemented")
 }
 func (UnimplementedProxyInfoServiceServer) GetPublicIPs(*GetPublicIPsRequest, ProxyInfoService_GetPublicIPsServer) error {
 	return status.Errorf(codes.Unimplemented, "method GetPublicIPs not implemented")
@@ -364,6 +382,24 @@ func _ProxyInfoService_CookieInfo_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ProxyInfoServiceServer).CookieInfo(ctx, req.(*CookieInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProxyInfoService_UserInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UserInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyInfoServiceServer).UserInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyInfoService_UserInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyInfoServiceServer).UserInfo(ctx, req.(*UserInfoRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -550,6 +586,10 @@ var ProxyInfoService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CookieInfo",
 			Handler:    _ProxyInfoService_CookieInfo_Handler,
+		},
+		{
+			MethodName: "UserInfo",
+			Handler:    _ProxyInfoService_UserInfo_Handler,
 		},
 		{
 			MethodName: "GetLobbyIP",

@@ -326,6 +326,118 @@ func (x *CookieInfoResponse) GetExpiresAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type UserInfoRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserID        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UserInfoRequest) Reset() {
+	*x = UserInfoRequest{}
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UserInfoRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UserInfoRequest) ProtoMessage() {}
+
+func (x *UserInfoRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UserInfoRequest.ProtoReflect.Descriptor instead.
+func (*UserInfoRequest) Descriptor() ([]byte, []int) {
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *UserInfoRequest) GetUserID() string {
+	if x != nil {
+		return x.UserID
+	}
+	return ""
+}
+
+type UserInfoResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserExists    bool                   `protobuf:"varint,1,opt,name=user_exists,json=userExists,proto3" json:"user_exists,omitempty"` // false if no such user ID
+	UserID        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`              // user ID
+	Email         string                 `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`                              // user email
+	AccountID     string                 `protobuf:"bytes,4,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`     // user accounting ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UserInfoResponse) Reset() {
+	*x = UserInfoResponse{}
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UserInfoResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UserInfoResponse) ProtoMessage() {}
+
+func (x *UserInfoResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UserInfoResponse.ProtoReflect.Descriptor instead.
+func (*UserInfoResponse) Descriptor() ([]byte, []int) {
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *UserInfoResponse) GetUserExists() bool {
+	if x != nil {
+		return x.UserExists
+	}
+	return false
+}
+
+func (x *UserInfoResponse) GetUserID() string {
+	if x != nil {
+		return x.UserID
+	}
+	return ""
+}
+
+func (x *UserInfoResponse) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *UserInfoResponse) GetAccountID() string {
+	if x != nil {
+		return x.AccountID
+	}
+	return ""
+}
+
 // GetPublicIPsRequest is information sent to GetPublicIPs.
 type GetPublicIPsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -335,7 +447,7 @@ type GetPublicIPsRequest struct {
 
 func (x *GetPublicIPsRequest) Reset() {
 	*x = GetPublicIPsRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[5]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -347,7 +459,7 @@ func (x *GetPublicIPsRequest) String() string {
 func (*GetPublicIPsRequest) ProtoMessage() {}
 
 func (x *GetPublicIPsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[5]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -360,7 +472,7 @@ func (x *GetPublicIPsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPublicIPsRequest.ProtoReflect.Descriptor instead.
 func (*GetPublicIPsRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{5}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{7}
 }
 
 // GetPublicIPsResponse is one element of the stream returned
@@ -375,7 +487,7 @@ type GetPublicIPsResponse struct {
 
 func (x *GetPublicIPsResponse) Reset() {
 	*x = GetPublicIPsResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[6]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -387,7 +499,7 @@ func (x *GetPublicIPsResponse) String() string {
 func (*GetPublicIPsResponse) ProtoMessage() {}
 
 func (x *GetPublicIPsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[6]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -400,7 +512,7 @@ func (x *GetPublicIPsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPublicIPsResponse.ProtoReflect.Descriptor instead.
 func (*GetPublicIPsResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{6}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetPublicIPsResponse) GetAddr() string {
@@ -429,7 +541,7 @@ type PublicIP struct {
 
 func (x *PublicIP) Reset() {
 	*x = PublicIP{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[7]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -441,7 +553,7 @@ func (x *PublicIP) String() string {
 func (*PublicIP) ProtoMessage() {}
 
 func (x *PublicIP) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[7]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -454,7 +566,7 @@ func (x *PublicIP) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicIP.ProtoReflect.Descriptor instead.
 func (*PublicIP) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{7}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *PublicIP) GetIP() string {
@@ -487,7 +599,7 @@ type GetLobbyIPRequest struct {
 
 func (x *GetLobbyIPRequest) Reset() {
 	*x = GetLobbyIPRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[8]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -499,7 +611,7 @@ func (x *GetLobbyIPRequest) String() string {
 func (*GetLobbyIPRequest) ProtoMessage() {}
 
 func (x *GetLobbyIPRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[8]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -512,7 +624,7 @@ func (x *GetLobbyIPRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLobbyIPRequest.ProtoReflect.Descriptor instead.
 func (*GetLobbyIPRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{8}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{10}
 }
 
 // GetLobbyIPResponse is the type returned by GetLobbyIP.
@@ -525,7 +637,7 @@ type GetLobbyIPResponse struct {
 
 func (x *GetLobbyIPResponse) Reset() {
 	*x = GetLobbyIPResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[9]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -537,7 +649,7 @@ func (x *GetLobbyIPResponse) String() string {
 func (*GetLobbyIPResponse) ProtoMessage() {}
 
 func (x *GetLobbyIPResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[9]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -550,7 +662,7 @@ func (x *GetLobbyIPResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLobbyIPResponse.ProtoReflect.Descriptor instead.
 func (*GetLobbyIPResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{9}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetLobbyIPResponse) GetIP() string {
@@ -569,7 +681,7 @@ type CertForDomainRequest struct {
 
 func (x *CertForDomainRequest) Reset() {
 	*x = CertForDomainRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[10]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -581,7 +693,7 @@ func (x *CertForDomainRequest) String() string {
 func (*CertForDomainRequest) ProtoMessage() {}
 
 func (x *CertForDomainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[10]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -594,7 +706,7 @@ func (x *CertForDomainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CertForDomainRequest.ProtoReflect.Descriptor instead.
 func (*CertForDomainRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{10}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CertForDomainRequest) GetServerName() string {
@@ -613,7 +725,7 @@ type CertForDomainResponse struct {
 
 func (x *CertForDomainResponse) Reset() {
 	*x = CertForDomainResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[11]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -625,7 +737,7 @@ func (x *CertForDomainResponse) String() string {
 func (*CertForDomainResponse) ProtoMessage() {}
 
 func (x *CertForDomainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[11]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -638,7 +750,7 @@ func (x *CertForDomainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CertForDomainResponse.ProtoReflect.Descriptor instead.
 func (*CertForDomainResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{11}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CertForDomainResponse) GetCert() string {
@@ -657,7 +769,7 @@ type CheckAndRefreshLLMCreditRequest struct {
 
 func (x *CheckAndRefreshLLMCreditRequest) Reset() {
 	*x = CheckAndRefreshLLMCreditRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[12]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -669,7 +781,7 @@ func (x *CheckAndRefreshLLMCreditRequest) String() string {
 func (*CheckAndRefreshLLMCreditRequest) ProtoMessage() {}
 
 func (x *CheckAndRefreshLLMCreditRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[12]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -682,7 +794,7 @@ func (x *CheckAndRefreshLLMCreditRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckAndRefreshLLMCreditRequest.ProtoReflect.Descriptor instead.
 func (*CheckAndRefreshLLMCreditRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{12}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CheckAndRefreshLLMCreditRequest) GetUserID() string {
@@ -701,7 +813,7 @@ type CheckAndRefreshLLMCreditResponse struct {
 
 func (x *CheckAndRefreshLLMCreditResponse) Reset() {
 	*x = CheckAndRefreshLLMCreditResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[13]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -713,7 +825,7 @@ func (x *CheckAndRefreshLLMCreditResponse) String() string {
 func (*CheckAndRefreshLLMCreditResponse) ProtoMessage() {}
 
 func (x *CheckAndRefreshLLMCreditResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[13]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -726,7 +838,7 @@ func (x *CheckAndRefreshLLMCreditResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckAndRefreshLLMCreditResponse.ProtoReflect.Descriptor instead.
 func (*CheckAndRefreshLLMCreditResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{13}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *CheckAndRefreshLLMCreditResponse) GetCreditInfo() *CreditInfo {
@@ -750,7 +862,7 @@ type CreditInfo struct {
 
 func (x *CreditInfo) Reset() {
 	*x = CreditInfo{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[14]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -762,7 +874,7 @@ func (x *CreditInfo) String() string {
 func (*CreditInfo) ProtoMessage() {}
 
 func (x *CreditInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[14]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -775,7 +887,7 @@ func (x *CreditInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreditInfo.ProtoReflect.Descriptor instead.
 func (*CreditInfo) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{14}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CreditInfo) GetAvailable() float64 {
@@ -826,7 +938,7 @@ type Plan struct {
 
 func (x *Plan) Reset() {
 	*x = Plan{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[15]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -838,7 +950,7 @@ func (x *Plan) String() string {
 func (*Plan) ProtoMessage() {}
 
 func (x *Plan) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[15]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -851,7 +963,7 @@ func (x *Plan) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Plan.ProtoReflect.Descriptor instead.
 func (*Plan) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{15}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Plan) GetName() string {
@@ -891,7 +1003,7 @@ type TopUpOnLLMBillingUpgradeRequest struct {
 
 func (x *TopUpOnLLMBillingUpgradeRequest) Reset() {
 	*x = TopUpOnLLMBillingUpgradeRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[16]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -903,7 +1015,7 @@ func (x *TopUpOnLLMBillingUpgradeRequest) String() string {
 func (*TopUpOnLLMBillingUpgradeRequest) ProtoMessage() {}
 
 func (x *TopUpOnLLMBillingUpgradeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[16]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -916,7 +1028,7 @@ func (x *TopUpOnLLMBillingUpgradeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TopUpOnLLMBillingUpgradeRequest.ProtoReflect.Descriptor instead.
 func (*TopUpOnLLMBillingUpgradeRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{16}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *TopUpOnLLMBillingUpgradeRequest) GetUserID() string {
@@ -934,7 +1046,7 @@ type TopUpOnLLMBillingUpgradeResponse struct {
 
 func (x *TopUpOnLLMBillingUpgradeResponse) Reset() {
 	*x = TopUpOnLLMBillingUpgradeResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[17]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -946,7 +1058,7 @@ func (x *TopUpOnLLMBillingUpgradeResponse) String() string {
 func (*TopUpOnLLMBillingUpgradeResponse) ProtoMessage() {}
 
 func (x *TopUpOnLLMBillingUpgradeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[17]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -959,7 +1071,7 @@ func (x *TopUpOnLLMBillingUpgradeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TopUpOnLLMBillingUpgradeResponse.ProtoReflect.Descriptor instead.
 func (*TopUpOnLLMBillingUpgradeResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{17}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{19}
 }
 
 type LLMDebitCreditRequest struct {
@@ -972,7 +1084,7 @@ type LLMDebitCreditRequest struct {
 
 func (x *LLMDebitCreditRequest) Reset() {
 	*x = LLMDebitCreditRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[18]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -984,7 +1096,7 @@ func (x *LLMDebitCreditRequest) String() string {
 func (*LLMDebitCreditRequest) ProtoMessage() {}
 
 func (x *LLMDebitCreditRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[18]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -997,7 +1109,7 @@ func (x *LLMDebitCreditRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LLMDebitCreditRequest.ProtoReflect.Descriptor instead.
 func (*LLMDebitCreditRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{18}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *LLMDebitCreditRequest) GetUserID() string {
@@ -1023,7 +1135,7 @@ type LLMDebitCreditResponse struct {
 
 func (x *LLMDebitCreditResponse) Reset() {
 	*x = LLMDebitCreditResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[19]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1035,7 +1147,7 @@ func (x *LLMDebitCreditResponse) String() string {
 func (*LLMDebitCreditResponse) ProtoMessage() {}
 
 func (x *LLMDebitCreditResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[19]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1048,7 +1160,7 @@ func (x *LLMDebitCreditResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LLMDebitCreditResponse.ProtoReflect.Descriptor instead.
 func (*LLMDebitCreditResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{19}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *LLMDebitCreditResponse) GetCreditInfo() *CreditInfo {
@@ -1067,7 +1179,7 @@ type UsedCookieRequest struct {
 
 func (x *UsedCookieRequest) Reset() {
 	*x = UsedCookieRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[20]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1079,7 +1191,7 @@ func (x *UsedCookieRequest) String() string {
 func (*UsedCookieRequest) ProtoMessage() {}
 
 func (x *UsedCookieRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[20]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1092,7 +1204,7 @@ func (x *UsedCookieRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsedCookieRequest.ProtoReflect.Descriptor instead.
 func (*UsedCookieRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{20}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *UsedCookieRequest) GetCookieValue() string {
@@ -1110,7 +1222,7 @@ type UsedCookieResponse struct {
 
 func (x *UsedCookieResponse) Reset() {
 	*x = UsedCookieResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[21]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1122,7 +1234,7 @@ func (x *UsedCookieResponse) String() string {
 func (*UsedCookieResponse) ProtoMessage() {}
 
 func (x *UsedCookieResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[21]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1135,7 +1247,7 @@ func (x *UsedCookieResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsedCookieResponse.ProtoReflect.Descriptor instead.
 func (*UsedCookieResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{21}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{23}
 }
 
 type UsedBoxShareLinkRequest struct {
@@ -1147,7 +1259,7 @@ type UsedBoxShareLinkRequest struct {
 
 func (x *UsedBoxShareLinkRequest) Reset() {
 	*x = UsedBoxShareLinkRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[22]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1159,7 +1271,7 @@ func (x *UsedBoxShareLinkRequest) String() string {
 func (*UsedBoxShareLinkRequest) ProtoMessage() {}
 
 func (x *UsedBoxShareLinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[22]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1172,7 +1284,7 @@ func (x *UsedBoxShareLinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsedBoxShareLinkRequest.ProtoReflect.Descriptor instead.
 func (*UsedBoxShareLinkRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{22}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *UsedBoxShareLinkRequest) GetShareToken() string {
@@ -1190,7 +1302,7 @@ type UsedBoxShareLinkResponse struct {
 
 func (x *UsedBoxShareLinkResponse) Reset() {
 	*x = UsedBoxShareLinkResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[23]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1202,7 +1314,7 @@ func (x *UsedBoxShareLinkResponse) String() string {
 func (*UsedBoxShareLinkResponse) ProtoMessage() {}
 
 func (x *UsedBoxShareLinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[23]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1215,7 +1327,7 @@ func (x *UsedBoxShareLinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsedBoxShareLinkResponse.ProtoReflect.Descriptor instead.
 func (*UsedBoxShareLinkResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{23}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{25}
 }
 
 type ChangesRequest struct {
@@ -1226,7 +1338,7 @@ type ChangesRequest struct {
 
 func (x *ChangesRequest) Reset() {
 	*x = ChangesRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[24]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1238,7 +1350,7 @@ func (x *ChangesRequest) String() string {
 func (*ChangesRequest) ProtoMessage() {}
 
 func (x *ChangesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[24]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1251,7 +1363,7 @@ func (x *ChangesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChangesRequest.ProtoReflect.Descriptor instead.
 func (*ChangesRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{24}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{26}
 }
 
 // ChangesResponse is one entry in a stream of responses.
@@ -1274,7 +1386,7 @@ type ChangesResponse struct {
 
 func (x *ChangesResponse) Reset() {
 	*x = ChangesResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[25]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1286,7 +1398,7 @@ func (x *ChangesResponse) String() string {
 func (*ChangesResponse) ProtoMessage() {}
 
 func (x *ChangesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[25]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1299,7 +1411,7 @@ func (x *ChangesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChangesResponse.ProtoReflect.Descriptor instead.
 func (*ChangesResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{25}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ChangesResponse) GetAction() isChangesResponse_Action {
@@ -1413,7 +1525,7 @@ type DeletedBox struct {
 
 func (x *DeletedBox) Reset() {
 	*x = DeletedBox{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[26]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1425,7 +1537,7 @@ func (x *DeletedBox) String() string {
 func (*DeletedBox) ProtoMessage() {}
 
 func (x *DeletedBox) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[26]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1438,7 +1550,7 @@ func (x *DeletedBox) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedBox.ProtoReflect.Descriptor instead.
 func (*DeletedBox) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{26}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *DeletedBox) GetBoxName() string {
@@ -1459,7 +1571,7 @@ type RenamedBox struct {
 
 func (x *RenamedBox) Reset() {
 	*x = RenamedBox{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[27]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1471,7 +1583,7 @@ func (x *RenamedBox) String() string {
 func (*RenamedBox) ProtoMessage() {}
 
 func (x *RenamedBox) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[27]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1484,7 +1596,7 @@ func (x *RenamedBox) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenamedBox.ProtoReflect.Descriptor instead.
 func (*RenamedBox) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{27}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *RenamedBox) GetOldBoxName() string {
@@ -1513,7 +1625,7 @@ type UpdatedBoxRoute struct {
 
 func (x *UpdatedBoxRoute) Reset() {
 	*x = UpdatedBoxRoute{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[28]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1525,7 +1637,7 @@ func (x *UpdatedBoxRoute) String() string {
 func (*UpdatedBoxRoute) ProtoMessage() {}
 
 func (x *UpdatedBoxRoute) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[28]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1538,7 +1650,7 @@ func (x *UpdatedBoxRoute) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatedBoxRoute.ProtoReflect.Descriptor instead.
 func (*UpdatedBoxRoute) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{28}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *UpdatedBoxRoute) GetBoxName() string {
@@ -1581,7 +1693,7 @@ type DeletedCookie struct {
 
 func (x *DeletedCookie) Reset() {
 	*x = DeletedCookie{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[29]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1593,7 +1705,7 @@ func (x *DeletedCookie) String() string {
 func (*DeletedCookie) ProtoMessage() {}
 
 func (x *DeletedCookie) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[29]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1606,7 +1718,7 @@ func (x *DeletedCookie) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedCookie.ProtoReflect.Descriptor instead.
 func (*DeletedCookie) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{29}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *DeletedCookie) GetKey() isDeletedCookie_Key {
@@ -1661,7 +1773,7 @@ type DeletedBoxShare struct {
 
 func (x *DeletedBoxShare) Reset() {
 	*x = DeletedBoxShare{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[30]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1673,7 +1785,7 @@ func (x *DeletedBoxShare) String() string {
 func (*DeletedBoxShare) ProtoMessage() {}
 
 func (x *DeletedBoxShare) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[30]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1686,7 +1798,7 @@ func (x *DeletedBoxShare) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedBoxShare.ProtoReflect.Descriptor instead.
 func (*DeletedBoxShare) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{30}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *DeletedBoxShare) GetBoxName() string {
@@ -1714,7 +1826,7 @@ type DeletedBoxShareLink struct {
 
 func (x *DeletedBoxShareLink) Reset() {
 	*x = DeletedBoxShareLink{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[31]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1726,7 +1838,7 @@ func (x *DeletedBoxShareLink) String() string {
 func (*DeletedBoxShareLink) ProtoMessage() {}
 
 func (x *DeletedBoxShareLink) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[31]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1739,7 +1851,7 @@ func (x *DeletedBoxShareLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedBoxShareLink.ProtoReflect.Descriptor instead.
 func (*DeletedBoxShareLink) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{31}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *DeletedBoxShareLink) GetBoxName() string {
@@ -1799,7 +1911,18 @@ var file_exe_proxy_v1_proxy_proto_rawDesc = string([]byte{
 	0x65, 0x73, 0x5f, 0x61, 0x74, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f,
 	0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69,
 	0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x52, 0x09, 0x65, 0x78, 0x70, 0x69, 0x72, 0x65, 0x73,
-	0x41, 0x74, 0x22, 0x15, 0x0a, 0x13, 0x47, 0x65, 0x74, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x63, 0x49,
+	0x41, 0x74, 0x22, 0x2a, 0x0a, 0x0f, 0x55, 0x73, 0x65, 0x72, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x17, 0x0a, 0x07, 0x75, 0x73, 0x65, 0x72, 0x5f, 0x69, 0x64,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x75, 0x73, 0x65, 0x72, 0x49, 0x64, 0x22, 0x81,
+	0x01, 0x0a, 0x10, 0x55, 0x73, 0x65, 0x72, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x12, 0x1f, 0x0a, 0x0b, 0x75, 0x73, 0x65, 0x72, 0x5f, 0x65, 0x78, 0x69, 0x73,
+	0x74, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x0a, 0x75, 0x73, 0x65, 0x72, 0x45, 0x78,
+	0x69, 0x73, 0x74, 0x73, 0x12, 0x17, 0x0a, 0x07, 0x75, 0x73, 0x65, 0x72, 0x5f, 0x69, 0x64, 0x18,
+	0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x75, 0x73, 0x65, 0x72, 0x49, 0x64, 0x12, 0x14, 0x0a,
+	0x05, 0x65, 0x6d, 0x61, 0x69, 0x6c, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x65, 0x6d,
+	0x61, 0x69, 0x6c, 0x12, 0x1d, 0x0a, 0x0a, 0x61, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x5f, 0x69,
+	0x64, 0x18, 0x04, 0x20, 0x01, 0x28, 0x09, 0x52, 0x09, 0x61, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74,
+	0x49, 0x64, 0x22, 0x15, 0x0a, 0x13, 0x47, 0x65, 0x74, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x63, 0x49,
 	0x50, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x5f, 0x0a, 0x14, 0x47, 0x65, 0x74,
 	0x50, 0x75, 0x62, 0x6c, 0x69, 0x63, 0x49, 0x50, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
 	0x65, 0x12, 0x12, 0x0a, 0x04, 0x61, 0x64, 0x64, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52,
@@ -1943,7 +2066,7 @@ var file_exe_proxy_v1_proxy_proto_rawDesc = string([]byte{
 	0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x62, 0x6f, 0x78,
 	0x4e, 0x61, 0x6d, 0x65, 0x12, 0x1f, 0x0a, 0x0b, 0x73, 0x68, 0x61, 0x72, 0x65, 0x5f, 0x74, 0x6f,
 	0x6b, 0x65, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0a, 0x73, 0x68, 0x61, 0x72, 0x65,
-	0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x32, 0x80, 0x08, 0x0a, 0x10, 0x50, 0x72, 0x6f, 0x78, 0x79, 0x49,
+	0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x32, 0xcb, 0x08, 0x0a, 0x10, 0x50, 0x72, 0x6f, 0x78, 0x79, 0x49,
 	0x6e, 0x66, 0x6f, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x46, 0x0a, 0x07, 0x42, 0x6f,
 	0x78, 0x49, 0x6e, 0x66, 0x6f, 0x12, 0x1c, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78,
 	0x79, 0x2e, 0x76, 0x31, 0x2e, 0x42, 0x6f, 0x78, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x71, 0x75,
@@ -1954,62 +2077,67 @@ var file_exe_proxy_v1_proxy_proto_rawDesc = string([]byte{
 	0x43, 0x6f, 0x6f, 0x6b, 0x69, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
 	0x74, 0x1a, 0x20, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31,
 	0x2e, 0x43, 0x6f, 0x6f, 0x6b, 0x69, 0x65, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x73, 0x70, 0x6f,
-	0x6e, 0x73, 0x65, 0x12, 0x57, 0x0a, 0x0c, 0x47, 0x65, 0x74, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x63,
-	0x49, 0x50, 0x73, 0x12, 0x21, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e,
-	0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x63, 0x49, 0x50, 0x73, 0x52,
-	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x22, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f,
-	0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x63, 0x49,
-	0x50, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x30, 0x01, 0x12, 0x4f, 0x0a, 0x0a,
-	0x47, 0x65, 0x74, 0x4c, 0x6f, 0x62, 0x62, 0x79, 0x49, 0x50, 0x12, 0x1f, 0x2e, 0x65, 0x78, 0x65,
-	0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4c, 0x6f, 0x62,
-	0x62, 0x79, 0x49, 0x50, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x20, 0x2e, 0x65, 0x78,
-	0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4c, 0x6f,
-	0x62, 0x62, 0x79, 0x49, 0x50, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x58, 0x0a,
-	0x0d, 0x43, 0x65, 0x72, 0x74, 0x46, 0x6f, 0x72, 0x44, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x12, 0x22,
-	0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x65,
-	0x72, 0x74, 0x46, 0x6f, 0x72, 0x44, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65,
-	0x73, 0x74, 0x1a, 0x23, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76,
-	0x31, 0x2e, 0x43, 0x65, 0x72, 0x74, 0x46, 0x6f, 0x72, 0x44, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x52,
-	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x79, 0x0a, 0x18, 0x43, 0x68, 0x65, 0x63, 0x6b,
-	0x41, 0x6e, 0x64, 0x52, 0x65, 0x66, 0x72, 0x65, 0x73, 0x68, 0x4c, 0x4c, 0x4d, 0x43, 0x72, 0x65,
-	0x64, 0x69, 0x74, 0x12, 0x2d, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e,
-	0x76, 0x31, 0x2e, 0x43, 0x68, 0x65, 0x63, 0x6b, 0x41, 0x6e, 0x64, 0x52, 0x65, 0x66, 0x72, 0x65,
-	0x73, 0x68, 0x4c, 0x4c, 0x4d, 0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65,
-	0x73, 0x74, 0x1a, 0x2e, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76,
-	0x31, 0x2e, 0x43, 0x68, 0x65, 0x63, 0x6b, 0x41, 0x6e, 0x64, 0x52, 0x65, 0x66, 0x72, 0x65, 0x73,
-	0x68, 0x4c, 0x4c, 0x4d, 0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
-	0x73, 0x65, 0x12, 0x79, 0x0a, 0x18, 0x54, 0x6f, 0x70, 0x55, 0x70, 0x4f, 0x6e, 0x4c, 0x4c, 0x4d,
-	0x42, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x55, 0x70, 0x67, 0x72, 0x61, 0x64, 0x65, 0x12, 0x2d,
-	0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x54, 0x6f,
-	0x70, 0x55, 0x70, 0x4f, 0x6e, 0x4c, 0x4c, 0x4d, 0x42, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x55,
-	0x70, 0x67, 0x72, 0x61, 0x64, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2e, 0x2e,
-	0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x54, 0x6f, 0x70,
-	0x55, 0x70, 0x4f, 0x6e, 0x4c, 0x4c, 0x4d, 0x42, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x55, 0x70,
-	0x67, 0x72, 0x61, 0x64, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x5b, 0x0a,
-	0x0e, 0x4c, 0x4c, 0x4d, 0x44, 0x65, 0x62, 0x69, 0x74, 0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x12,
-	0x23, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x4c,
-	0x4c, 0x4d, 0x44, 0x65, 0x62, 0x69, 0x74, 0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x52, 0x65, 0x71,
-	0x75, 0x65, 0x73, 0x74, 0x1a, 0x24, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79,
-	0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x4c, 0x4d, 0x44, 0x65, 0x62, 0x69, 0x74, 0x43, 0x72, 0x65, 0x64,
-	0x69, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x4f, 0x0a, 0x0a, 0x55, 0x73,
-	0x65, 0x64, 0x43, 0x6f, 0x6f, 0x6b, 0x69, 0x65, 0x12, 0x1f, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70,
-	0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x73, 0x65, 0x64, 0x43, 0x6f, 0x6f, 0x6b,
-	0x69, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x20, 0x2e, 0x65, 0x78, 0x65, 0x2e,
-	0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x73, 0x65, 0x64, 0x43, 0x6f, 0x6f,
-	0x6b, 0x69, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x61, 0x0a, 0x10, 0x55,
-	0x73, 0x65, 0x64, 0x42, 0x6f, 0x78, 0x53, 0x68, 0x61, 0x72, 0x65, 0x4c, 0x69, 0x6e, 0x6b, 0x12,
-	0x25, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x55,
-	0x73, 0x65, 0x64, 0x42, 0x6f, 0x78, 0x53, 0x68, 0x61, 0x72, 0x65, 0x4c, 0x69, 0x6e, 0x6b, 0x52,
-	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x26, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f,
-	0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x73, 0x65, 0x64, 0x42, 0x6f, 0x78, 0x53, 0x68, 0x61,
-	0x72, 0x65, 0x4c, 0x69, 0x6e, 0x6b, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x48,
-	0x0a, 0x07, 0x43, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x73, 0x12, 0x1c, 0x2e, 0x65, 0x78, 0x65, 0x2e,
-	0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x73,
-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1d, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72,
-	0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x73, 0x52, 0x65,
-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x30, 0x01, 0x42, 0x16, 0x5a, 0x14, 0x65, 0x78, 0x65, 0x2e,
-	0x64, 0x65, 0x76, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2f, 0x76, 0x31,
-	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x6e, 0x73, 0x65, 0x12, 0x49, 0x0a, 0x08, 0x55, 0x73, 0x65, 0x72, 0x49, 0x6e, 0x66, 0x6f, 0x12,
+	0x1d, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x55,
+	0x73, 0x65, 0x72, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1e,
+	0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x73,
+	0x65, 0x72, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x57,
+	0x0a, 0x0c, 0x47, 0x65, 0x74, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x63, 0x49, 0x50, 0x73, 0x12, 0x21,
+	0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65,
+	0x74, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x63, 0x49, 0x50, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
+	0x74, 0x1a, 0x22, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31,
+	0x2e, 0x47, 0x65, 0x74, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x63, 0x49, 0x50, 0x73, 0x52, 0x65, 0x73,
+	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x30, 0x01, 0x12, 0x4f, 0x0a, 0x0a, 0x47, 0x65, 0x74, 0x4c, 0x6f,
+	0x62, 0x62, 0x79, 0x49, 0x50, 0x12, 0x1f, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78,
+	0x79, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4c, 0x6f, 0x62, 0x62, 0x79, 0x49, 0x50, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x20, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f,
+	0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4c, 0x6f, 0x62, 0x62, 0x79, 0x49, 0x50,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x58, 0x0a, 0x0d, 0x43, 0x65, 0x72, 0x74,
+	0x46, 0x6f, 0x72, 0x44, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x12, 0x22, 0x2e, 0x65, 0x78, 0x65, 0x2e,
+	0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x65, 0x72, 0x74, 0x46, 0x6f, 0x72,
+	0x44, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x23, 0x2e,
+	0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x65, 0x72,
+	0x74, 0x46, 0x6f, 0x72, 0x44, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+	0x73, 0x65, 0x12, 0x79, 0x0a, 0x18, 0x43, 0x68, 0x65, 0x63, 0x6b, 0x41, 0x6e, 0x64, 0x52, 0x65,
+	0x66, 0x72, 0x65, 0x73, 0x68, 0x4c, 0x4c, 0x4d, 0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x12, 0x2d,
+	0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x68,
+	0x65, 0x63, 0x6b, 0x41, 0x6e, 0x64, 0x52, 0x65, 0x66, 0x72, 0x65, 0x73, 0x68, 0x4c, 0x4c, 0x4d,
+	0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2e, 0x2e,
+	0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x68, 0x65,
+	0x63, 0x6b, 0x41, 0x6e, 0x64, 0x52, 0x65, 0x66, 0x72, 0x65, 0x73, 0x68, 0x4c, 0x4c, 0x4d, 0x43,
+	0x72, 0x65, 0x64, 0x69, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x79, 0x0a,
+	0x18, 0x54, 0x6f, 0x70, 0x55, 0x70, 0x4f, 0x6e, 0x4c, 0x4c, 0x4d, 0x42, 0x69, 0x6c, 0x6c, 0x69,
+	0x6e, 0x67, 0x55, 0x70, 0x67, 0x72, 0x61, 0x64, 0x65, 0x12, 0x2d, 0x2e, 0x65, 0x78, 0x65, 0x2e,
+	0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x54, 0x6f, 0x70, 0x55, 0x70, 0x4f, 0x6e,
+	0x4c, 0x4c, 0x4d, 0x42, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x55, 0x70, 0x67, 0x72, 0x61, 0x64,
+	0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2e, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70,
+	0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x54, 0x6f, 0x70, 0x55, 0x70, 0x4f, 0x6e, 0x4c,
+	0x4c, 0x4d, 0x42, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x55, 0x70, 0x67, 0x72, 0x61, 0x64, 0x65,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x5b, 0x0a, 0x0e, 0x4c, 0x4c, 0x4d, 0x44,
+	0x65, 0x62, 0x69, 0x74, 0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x12, 0x23, 0x2e, 0x65, 0x78, 0x65,
+	0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x4c, 0x4d, 0x44, 0x65, 0x62,
+	0x69, 0x74, 0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a,
+	0x24, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x4c,
+	0x4c, 0x4d, 0x44, 0x65, 0x62, 0x69, 0x74, 0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x52, 0x65, 0x73,
+	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x4f, 0x0a, 0x0a, 0x55, 0x73, 0x65, 0x64, 0x43, 0x6f, 0x6f,
+	0x6b, 0x69, 0x65, 0x12, 0x1f, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e,
+	0x76, 0x31, 0x2e, 0x55, 0x73, 0x65, 0x64, 0x43, 0x6f, 0x6f, 0x6b, 0x69, 0x65, 0x52, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x1a, 0x20, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79,
+	0x2e, 0x76, 0x31, 0x2e, 0x55, 0x73, 0x65, 0x64, 0x43, 0x6f, 0x6f, 0x6b, 0x69, 0x65, 0x52, 0x65,
+	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x61, 0x0a, 0x10, 0x55, 0x73, 0x65, 0x64, 0x42, 0x6f,
+	0x78, 0x53, 0x68, 0x61, 0x72, 0x65, 0x4c, 0x69, 0x6e, 0x6b, 0x12, 0x25, 0x2e, 0x65, 0x78, 0x65,
+	0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x73, 0x65, 0x64, 0x42, 0x6f,
+	0x78, 0x53, 0x68, 0x61, 0x72, 0x65, 0x4c, 0x69, 0x6e, 0x6b, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
+	0x74, 0x1a, 0x26, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76, 0x31,
+	0x2e, 0x55, 0x73, 0x65, 0x64, 0x42, 0x6f, 0x78, 0x53, 0x68, 0x61, 0x72, 0x65, 0x4c, 0x69, 0x6e,
+	0x6b, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x48, 0x0a, 0x07, 0x43, 0x68, 0x61,
+	0x6e, 0x67, 0x65, 0x73, 0x12, 0x1c, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79,
+	0x2e, 0x76, 0x31, 0x2e, 0x43, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65,
+	0x73, 0x74, 0x1a, 0x1d, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2e, 0x76,
+	0x31, 0x2e, 0x43, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x30, 0x01, 0x42, 0x16, 0x5a, 0x14, 0x65, 0x78, 0x65, 0x2e, 0x64, 0x65, 0x76, 0x2f, 0x61,
+	0x70, 0x69, 0x2f, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x2f, 0x76, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f,
+	0x74, 0x6f, 0x33,
 })
 
 var (
@@ -2024,81 +2152,85 @@ func file_exe_proxy_v1_proxy_proto_rawDescGZIP() []byte {
 	return file_exe_proxy_v1_proxy_proto_rawDescData
 }
 
-var file_exe_proxy_v1_proxy_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
+var file_exe_proxy_v1_proxy_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_exe_proxy_v1_proxy_proto_goTypes = []any{
 	(*BoxInfoRequest)(nil),                   // 0: exe.proxy.v1.BoxInfoRequest
 	(*BoxInfoResponse)(nil),                  // 1: exe.proxy.v1.BoxInfoResponse
 	(*BoxRoute)(nil),                         // 2: exe.proxy.v1.BoxRoute
 	(*CookieInfoRequest)(nil),                // 3: exe.proxy.v1.CookieInfoRequest
 	(*CookieInfoResponse)(nil),               // 4: exe.proxy.v1.CookieInfoResponse
-	(*GetPublicIPsRequest)(nil),              // 5: exe.proxy.v1.GetPublicIPsRequest
-	(*GetPublicIPsResponse)(nil),             // 6: exe.proxy.v1.GetPublicIPsResponse
-	(*PublicIP)(nil),                         // 7: exe.proxy.v1.PublicIP
-	(*GetLobbyIPRequest)(nil),                // 8: exe.proxy.v1.GetLobbyIPRequest
-	(*GetLobbyIPResponse)(nil),               // 9: exe.proxy.v1.GetLobbyIPResponse
-	(*CertForDomainRequest)(nil),             // 10: exe.proxy.v1.CertForDomainRequest
-	(*CertForDomainResponse)(nil),            // 11: exe.proxy.v1.CertForDomainResponse
-	(*CheckAndRefreshLLMCreditRequest)(nil),  // 12: exe.proxy.v1.CheckAndRefreshLLMCreditRequest
-	(*CheckAndRefreshLLMCreditResponse)(nil), // 13: exe.proxy.v1.CheckAndRefreshLLMCreditResponse
-	(*CreditInfo)(nil),                       // 14: exe.proxy.v1.CreditInfo
-	(*Plan)(nil),                             // 15: exe.proxy.v1.Plan
-	(*TopUpOnLLMBillingUpgradeRequest)(nil),  // 16: exe.proxy.v1.TopUpOnLLMBillingUpgradeRequest
-	(*TopUpOnLLMBillingUpgradeResponse)(nil), // 17: exe.proxy.v1.TopUpOnLLMBillingUpgradeResponse
-	(*LLMDebitCreditRequest)(nil),            // 18: exe.proxy.v1.LLMDebitCreditRequest
-	(*LLMDebitCreditResponse)(nil),           // 19: exe.proxy.v1.LLMDebitCreditResponse
-	(*UsedCookieRequest)(nil),                // 20: exe.proxy.v1.UsedCookieRequest
-	(*UsedCookieResponse)(nil),               // 21: exe.proxy.v1.UsedCookieResponse
-	(*UsedBoxShareLinkRequest)(nil),          // 22: exe.proxy.v1.UsedBoxShareLinkRequest
-	(*UsedBoxShareLinkResponse)(nil),         // 23: exe.proxy.v1.UsedBoxShareLinkResponse
-	(*ChangesRequest)(nil),                   // 24: exe.proxy.v1.ChangesRequest
-	(*ChangesResponse)(nil),                  // 25: exe.proxy.v1.ChangesResponse
-	(*DeletedBox)(nil),                       // 26: exe.proxy.v1.DeletedBox
-	(*RenamedBox)(nil),                       // 27: exe.proxy.v1.RenamedBox
-	(*UpdatedBoxRoute)(nil),                  // 28: exe.proxy.v1.UpdatedBoxRoute
-	(*DeletedCookie)(nil),                    // 29: exe.proxy.v1.DeletedCookie
-	(*DeletedBoxShare)(nil),                  // 30: exe.proxy.v1.DeletedBoxShare
-	(*DeletedBoxShareLink)(nil),              // 31: exe.proxy.v1.DeletedBoxShareLink
-	(*timestamppb.Timestamp)(nil),            // 32: google.protobuf.Timestamp
+	(*UserInfoRequest)(nil),                  // 5: exe.proxy.v1.UserInfoRequest
+	(*UserInfoResponse)(nil),                 // 6: exe.proxy.v1.UserInfoResponse
+	(*GetPublicIPsRequest)(nil),              // 7: exe.proxy.v1.GetPublicIPsRequest
+	(*GetPublicIPsResponse)(nil),             // 8: exe.proxy.v1.GetPublicIPsResponse
+	(*PublicIP)(nil),                         // 9: exe.proxy.v1.PublicIP
+	(*GetLobbyIPRequest)(nil),                // 10: exe.proxy.v1.GetLobbyIPRequest
+	(*GetLobbyIPResponse)(nil),               // 11: exe.proxy.v1.GetLobbyIPResponse
+	(*CertForDomainRequest)(nil),             // 12: exe.proxy.v1.CertForDomainRequest
+	(*CertForDomainResponse)(nil),            // 13: exe.proxy.v1.CertForDomainResponse
+	(*CheckAndRefreshLLMCreditRequest)(nil),  // 14: exe.proxy.v1.CheckAndRefreshLLMCreditRequest
+	(*CheckAndRefreshLLMCreditResponse)(nil), // 15: exe.proxy.v1.CheckAndRefreshLLMCreditResponse
+	(*CreditInfo)(nil),                       // 16: exe.proxy.v1.CreditInfo
+	(*Plan)(nil),                             // 17: exe.proxy.v1.Plan
+	(*TopUpOnLLMBillingUpgradeRequest)(nil),  // 18: exe.proxy.v1.TopUpOnLLMBillingUpgradeRequest
+	(*TopUpOnLLMBillingUpgradeResponse)(nil), // 19: exe.proxy.v1.TopUpOnLLMBillingUpgradeResponse
+	(*LLMDebitCreditRequest)(nil),            // 20: exe.proxy.v1.LLMDebitCreditRequest
+	(*LLMDebitCreditResponse)(nil),           // 21: exe.proxy.v1.LLMDebitCreditResponse
+	(*UsedCookieRequest)(nil),                // 22: exe.proxy.v1.UsedCookieRequest
+	(*UsedCookieResponse)(nil),               // 23: exe.proxy.v1.UsedCookieResponse
+	(*UsedBoxShareLinkRequest)(nil),          // 24: exe.proxy.v1.UsedBoxShareLinkRequest
+	(*UsedBoxShareLinkResponse)(nil),         // 25: exe.proxy.v1.UsedBoxShareLinkResponse
+	(*ChangesRequest)(nil),                   // 26: exe.proxy.v1.ChangesRequest
+	(*ChangesResponse)(nil),                  // 27: exe.proxy.v1.ChangesResponse
+	(*DeletedBox)(nil),                       // 28: exe.proxy.v1.DeletedBox
+	(*RenamedBox)(nil),                       // 29: exe.proxy.v1.RenamedBox
+	(*UpdatedBoxRoute)(nil),                  // 30: exe.proxy.v1.UpdatedBoxRoute
+	(*DeletedCookie)(nil),                    // 31: exe.proxy.v1.DeletedCookie
+	(*DeletedBoxShare)(nil),                  // 32: exe.proxy.v1.DeletedBoxShare
+	(*DeletedBoxShareLink)(nil),              // 33: exe.proxy.v1.DeletedBoxShareLink
+	(*timestamppb.Timestamp)(nil),            // 34: google.protobuf.Timestamp
 }
 var file_exe_proxy_v1_proxy_proto_depIdxs = []int32{
 	2,  // 0: exe.proxy.v1.BoxInfoResponse.route:type_name -> exe.proxy.v1.BoxRoute
-	32, // 1: exe.proxy.v1.CookieInfoResponse.expires_at:type_name -> google.protobuf.Timestamp
-	7,  // 2: exe.proxy.v1.GetPublicIPsResponse.public_ip:type_name -> exe.proxy.v1.PublicIP
-	14, // 3: exe.proxy.v1.CheckAndRefreshLLMCreditResponse.credit_info:type_name -> exe.proxy.v1.CreditInfo
-	32, // 4: exe.proxy.v1.CreditInfo.last_refresh:type_name -> google.protobuf.Timestamp
-	15, // 5: exe.proxy.v1.CreditInfo.plan:type_name -> exe.proxy.v1.Plan
-	14, // 6: exe.proxy.v1.LLMDebitCreditResponse.credit_info:type_name -> exe.proxy.v1.CreditInfo
-	26, // 7: exe.proxy.v1.ChangesResponse.deleted_box:type_name -> exe.proxy.v1.DeletedBox
-	27, // 8: exe.proxy.v1.ChangesResponse.renamed_box:type_name -> exe.proxy.v1.RenamedBox
-	28, // 9: exe.proxy.v1.ChangesResponse.updated_box_route:type_name -> exe.proxy.v1.UpdatedBoxRoute
-	29, // 10: exe.proxy.v1.ChangesResponse.deleted_cookie:type_name -> exe.proxy.v1.DeletedCookie
-	30, // 11: exe.proxy.v1.ChangesResponse.deleted_box_share:type_name -> exe.proxy.v1.DeletedBoxShare
-	31, // 12: exe.proxy.v1.ChangesResponse.deleted_box_share_link:type_name -> exe.proxy.v1.DeletedBoxShareLink
+	34, // 1: exe.proxy.v1.CookieInfoResponse.expires_at:type_name -> google.protobuf.Timestamp
+	9,  // 2: exe.proxy.v1.GetPublicIPsResponse.public_ip:type_name -> exe.proxy.v1.PublicIP
+	16, // 3: exe.proxy.v1.CheckAndRefreshLLMCreditResponse.credit_info:type_name -> exe.proxy.v1.CreditInfo
+	34, // 4: exe.proxy.v1.CreditInfo.last_refresh:type_name -> google.protobuf.Timestamp
+	17, // 5: exe.proxy.v1.CreditInfo.plan:type_name -> exe.proxy.v1.Plan
+	16, // 6: exe.proxy.v1.LLMDebitCreditResponse.credit_info:type_name -> exe.proxy.v1.CreditInfo
+	28, // 7: exe.proxy.v1.ChangesResponse.deleted_box:type_name -> exe.proxy.v1.DeletedBox
+	29, // 8: exe.proxy.v1.ChangesResponse.renamed_box:type_name -> exe.proxy.v1.RenamedBox
+	30, // 9: exe.proxy.v1.ChangesResponse.updated_box_route:type_name -> exe.proxy.v1.UpdatedBoxRoute
+	31, // 10: exe.proxy.v1.ChangesResponse.deleted_cookie:type_name -> exe.proxy.v1.DeletedCookie
+	32, // 11: exe.proxy.v1.ChangesResponse.deleted_box_share:type_name -> exe.proxy.v1.DeletedBoxShare
+	33, // 12: exe.proxy.v1.ChangesResponse.deleted_box_share_link:type_name -> exe.proxy.v1.DeletedBoxShareLink
 	2,  // 13: exe.proxy.v1.UpdatedBoxRoute.route:type_name -> exe.proxy.v1.BoxRoute
 	0,  // 14: exe.proxy.v1.ProxyInfoService.BoxInfo:input_type -> exe.proxy.v1.BoxInfoRequest
 	3,  // 15: exe.proxy.v1.ProxyInfoService.CookieInfo:input_type -> exe.proxy.v1.CookieInfoRequest
-	5,  // 16: exe.proxy.v1.ProxyInfoService.GetPublicIPs:input_type -> exe.proxy.v1.GetPublicIPsRequest
-	8,  // 17: exe.proxy.v1.ProxyInfoService.GetLobbyIP:input_type -> exe.proxy.v1.GetLobbyIPRequest
-	10, // 18: exe.proxy.v1.ProxyInfoService.CertForDomain:input_type -> exe.proxy.v1.CertForDomainRequest
-	12, // 19: exe.proxy.v1.ProxyInfoService.CheckAndRefreshLLMCredit:input_type -> exe.proxy.v1.CheckAndRefreshLLMCreditRequest
-	16, // 20: exe.proxy.v1.ProxyInfoService.TopUpOnLLMBillingUpgrade:input_type -> exe.proxy.v1.TopUpOnLLMBillingUpgradeRequest
-	18, // 21: exe.proxy.v1.ProxyInfoService.LLMDebitCredit:input_type -> exe.proxy.v1.LLMDebitCreditRequest
-	20, // 22: exe.proxy.v1.ProxyInfoService.UsedCookie:input_type -> exe.proxy.v1.UsedCookieRequest
-	22, // 23: exe.proxy.v1.ProxyInfoService.UsedBoxShareLink:input_type -> exe.proxy.v1.UsedBoxShareLinkRequest
-	24, // 24: exe.proxy.v1.ProxyInfoService.Changes:input_type -> exe.proxy.v1.ChangesRequest
-	1,  // 25: exe.proxy.v1.ProxyInfoService.BoxInfo:output_type -> exe.proxy.v1.BoxInfoResponse
-	4,  // 26: exe.proxy.v1.ProxyInfoService.CookieInfo:output_type -> exe.proxy.v1.CookieInfoResponse
-	6,  // 27: exe.proxy.v1.ProxyInfoService.GetPublicIPs:output_type -> exe.proxy.v1.GetPublicIPsResponse
-	9,  // 28: exe.proxy.v1.ProxyInfoService.GetLobbyIP:output_type -> exe.proxy.v1.GetLobbyIPResponse
-	11, // 29: exe.proxy.v1.ProxyInfoService.CertForDomain:output_type -> exe.proxy.v1.CertForDomainResponse
-	13, // 30: exe.proxy.v1.ProxyInfoService.CheckAndRefreshLLMCredit:output_type -> exe.proxy.v1.CheckAndRefreshLLMCreditResponse
-	17, // 31: exe.proxy.v1.ProxyInfoService.TopUpOnLLMBillingUpgrade:output_type -> exe.proxy.v1.TopUpOnLLMBillingUpgradeResponse
-	19, // 32: exe.proxy.v1.ProxyInfoService.LLMDebitCredit:output_type -> exe.proxy.v1.LLMDebitCreditResponse
-	21, // 33: exe.proxy.v1.ProxyInfoService.UsedCookie:output_type -> exe.proxy.v1.UsedCookieResponse
-	23, // 34: exe.proxy.v1.ProxyInfoService.UsedBoxShareLink:output_type -> exe.proxy.v1.UsedBoxShareLinkResponse
-	25, // 35: exe.proxy.v1.ProxyInfoService.Changes:output_type -> exe.proxy.v1.ChangesResponse
-	25, // [25:36] is the sub-list for method output_type
-	14, // [14:25] is the sub-list for method input_type
+	5,  // 16: exe.proxy.v1.ProxyInfoService.UserInfo:input_type -> exe.proxy.v1.UserInfoRequest
+	7,  // 17: exe.proxy.v1.ProxyInfoService.GetPublicIPs:input_type -> exe.proxy.v1.GetPublicIPsRequest
+	10, // 18: exe.proxy.v1.ProxyInfoService.GetLobbyIP:input_type -> exe.proxy.v1.GetLobbyIPRequest
+	12, // 19: exe.proxy.v1.ProxyInfoService.CertForDomain:input_type -> exe.proxy.v1.CertForDomainRequest
+	14, // 20: exe.proxy.v1.ProxyInfoService.CheckAndRefreshLLMCredit:input_type -> exe.proxy.v1.CheckAndRefreshLLMCreditRequest
+	18, // 21: exe.proxy.v1.ProxyInfoService.TopUpOnLLMBillingUpgrade:input_type -> exe.proxy.v1.TopUpOnLLMBillingUpgradeRequest
+	20, // 22: exe.proxy.v1.ProxyInfoService.LLMDebitCredit:input_type -> exe.proxy.v1.LLMDebitCreditRequest
+	22, // 23: exe.proxy.v1.ProxyInfoService.UsedCookie:input_type -> exe.proxy.v1.UsedCookieRequest
+	24, // 24: exe.proxy.v1.ProxyInfoService.UsedBoxShareLink:input_type -> exe.proxy.v1.UsedBoxShareLinkRequest
+	26, // 25: exe.proxy.v1.ProxyInfoService.Changes:input_type -> exe.proxy.v1.ChangesRequest
+	1,  // 26: exe.proxy.v1.ProxyInfoService.BoxInfo:output_type -> exe.proxy.v1.BoxInfoResponse
+	4,  // 27: exe.proxy.v1.ProxyInfoService.CookieInfo:output_type -> exe.proxy.v1.CookieInfoResponse
+	6,  // 28: exe.proxy.v1.ProxyInfoService.UserInfo:output_type -> exe.proxy.v1.UserInfoResponse
+	8,  // 29: exe.proxy.v1.ProxyInfoService.GetPublicIPs:output_type -> exe.proxy.v1.GetPublicIPsResponse
+	11, // 30: exe.proxy.v1.ProxyInfoService.GetLobbyIP:output_type -> exe.proxy.v1.GetLobbyIPResponse
+	13, // 31: exe.proxy.v1.ProxyInfoService.CertForDomain:output_type -> exe.proxy.v1.CertForDomainResponse
+	15, // 32: exe.proxy.v1.ProxyInfoService.CheckAndRefreshLLMCredit:output_type -> exe.proxy.v1.CheckAndRefreshLLMCreditResponse
+	19, // 33: exe.proxy.v1.ProxyInfoService.TopUpOnLLMBillingUpgrade:output_type -> exe.proxy.v1.TopUpOnLLMBillingUpgradeResponse
+	21, // 34: exe.proxy.v1.ProxyInfoService.LLMDebitCredit:output_type -> exe.proxy.v1.LLMDebitCreditResponse
+	23, // 35: exe.proxy.v1.ProxyInfoService.UsedCookie:output_type -> exe.proxy.v1.UsedCookieResponse
+	25, // 36: exe.proxy.v1.ProxyInfoService.UsedBoxShareLink:output_type -> exe.proxy.v1.UsedBoxShareLinkResponse
+	27, // 37: exe.proxy.v1.ProxyInfoService.Changes:output_type -> exe.proxy.v1.ChangesResponse
+	26, // [26:38] is the sub-list for method output_type
+	14, // [14:26] is the sub-list for method input_type
 	14, // [14:14] is the sub-list for extension type_name
 	14, // [14:14] is the sub-list for extension extendee
 	0,  // [0:14] is the sub-list for field type_name
@@ -2109,7 +2241,7 @@ func file_exe_proxy_v1_proxy_proto_init() {
 	if File_exe_proxy_v1_proxy_proto != nil {
 		return
 	}
-	file_exe_proxy_v1_proxy_proto_msgTypes[25].OneofWrappers = []any{
+	file_exe_proxy_v1_proxy_proto_msgTypes[27].OneofWrappers = []any{
 		(*ChangesResponse_DeletedBox)(nil),
 		(*ChangesResponse_RenamedBox)(nil),
 		(*ChangesResponse_UpdatedBoxRoute)(nil),
@@ -2117,7 +2249,7 @@ func file_exe_proxy_v1_proxy_proto_init() {
 		(*ChangesResponse_DeletedBoxShare)(nil),
 		(*ChangesResponse_DeletedBoxShareLink)(nil),
 	}
-	file_exe_proxy_v1_proxy_proto_msgTypes[29].OneofWrappers = []any{
+	file_exe_proxy_v1_proxy_proto_msgTypes[31].OneofWrappers = []any{
 		(*DeletedCookie_CookieValue)(nil),
 		(*DeletedCookie_UserID)(nil),
 	}
@@ -2127,7 +2259,7 @@ func file_exe_proxy_v1_proxy_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_exe_proxy_v1_proxy_proto_rawDesc), len(file_exe_proxy_v1_proxy_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   32,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

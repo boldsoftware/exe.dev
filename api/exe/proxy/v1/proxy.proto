@@ -17,6 +17,9 @@ service ProxyInfoService {
   // the authentication cookie with that value.
   rpc CookieInfo(CookieInfoRequest) returns (CookieInfoResponse);
 
+  // UserInfo takes a user ID and returns information about that user.
+  rpc UserInfo(UserInfoRequest) returns (UserInfoResponse);
+
   // GetPublicIPs returns a mapping from IP addresses to
   // public IP / domain / shard.
   rpc GetPublicIPs(GetPublicIPsRequest) returns (stream GetPublicIPsResponse);
@@ -86,6 +89,17 @@ message CookieInfoResponse {
   string user_id = 3;                       // user authenticated by cookie
   string domain = 4;                        // cookie domain
   google.protobuf.Timestamp expires_at = 5; // expiration time
+}
+
+message UserInfoRequest {
+  string user_id = 1;
+}
+
+message UserInfoResponse {
+  bool user_exists = 1;  // false if no such user ID
+  string user_id = 2;    // user ID
+  string email = 3;      // user email
+  string account_id = 4; // user accounting ID
 }
 
 // GetPublicIPsRequest is information sent to GetPublicIPs.

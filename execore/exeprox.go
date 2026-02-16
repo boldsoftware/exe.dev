@@ -154,6 +154,38 @@ func (es *exeproxServer) CookieInfo(ctx context.Context, req *proxyapi.CookieInf
 	return ret, nil
 }
 
+// UserInfo takes a user ID and returns information about that user.
+func (es *exeproxServer) UserInfo(ctx context.Context, req *proxyapi.UserInfoRequest) (*proxyapi.UserInfoResponse, error) {
+	email, err := withRxRes1(es.s, ctx, (*exedb.Queries).GetEmailByUserID, req.UserID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			ret := &proxyapi.UserInfoResponse{
+				UserExists: false,
+			}
+			return ret, nil
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	account, err := withRxRes1(es.s, ctx, (*exedb.Queries).GetAccountByUserID, req.UserID)
+	accountID := ""
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// user does not have accounting ID. OK for now.
+		} else {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	} else {
+		accountID = account.ID
+	}
+	ret := &proxyapi.UserInfoResponse{
+		UserExists: true,
+		UserID:     req.UserID,
+		Email:      email,
+		AccountID:  accountID,
+	}
+	return ret, nil
+}
+
 // CertForDomain returns a certificate for a wildcard domain.
 func (es *exeproxServer) CertForDomain(ctx context.Context, req *proxyapi.CertForDomainRequest) (*proxyapi.CertForDomainResponse, error) {
 	if es.s.wildcardCertManager == nil {
