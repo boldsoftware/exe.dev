@@ -95,7 +95,7 @@ func TestGateway_PreRequestCreditPreflight(t *testing.T) {
 		wantUseCreditsCalls int
 	}{
 		{
-			name: "hourly free credit available no preflight UseCredits call",
+			name: "monthly free credit available no preflight UseCredits call",
 			data: &preflightGatewayData{
 				creditInfo: &CreditInfo{Available: 0.0001, Plan: planNoBilling},
 			},

@@ -514,38 +514,68 @@ func (m *accountingTransport) debitResponseCredits(costUSD float64, isSSE bool) 
 		ctx = m.incomingReq.Context()
 	}
 
-	if m.billingBacked {
-		switch {
-		case m.creditMgr == nil || m.creditMgr.data == nil:
+	switch {
+	case m.creditMgr == nil || m.creditMgr.data == nil:
+		if m.billingBacked {
 			m.log.ErrorContext(ctx, "failed to debit billing credits", "account_id", m.billingAccountID, "cost_usd", costUSD, "error", "credit manager not configured")
-			return -1
-		case m.billingAccountID == "":
-			m.log.ErrorContext(ctx, "failed to debit billing credits", "cost_usd", costUSD, "error", "missing billing account ID")
-			return -1
 		}
-
-		unitPrice := costUSDToNegativeMicrocents(costUSD)
-		remaining, err := m.creditMgr.data.UseCredits(ctx, m.billingAccountID, 1, unitPrice)
-		if err != nil {
-			m.log.ErrorContext(ctx, "failed to debit billing credits", "account_id", m.billingAccountID, "cost_usd", costUSD, "unit_price_microcents", unitPrice.Microcents(), "error", err)
-			return -1
+		return -1
+	case m.userID == "":
+		if m.billingBacked {
+			m.log.ErrorContext(ctx, "failed to debit billing credits", "account_id", m.billingAccountID, "cost_usd", costUSD, "error", "missing user ID")
 		}
-		m.log.DebugContext(ctx, "debited billing credits", "account_id", m.billingAccountID, "cost_usd", costUSD, "unit_price_microcents", unitPrice.Microcents(), "remaining_microcents", remaining.Microcents())
 		return -1
 	}
 
-	if m.creditMgr != nil && m.userID != "" {
-		if creditInfo, err := m.creditMgr.DebitCredit(ctx, m.userID, costUSD); err != nil {
-			msg := "failed to debit LLM credit"
-			if isSSE {
-				msg = "failed to debit LLM credit (SSE)"
-			}
-			m.log.ErrorContext(ctx, msg, "user_id", m.userID, "cost_usd", costUSD, "error", err)
-		} else if creditInfo != nil {
-			return creditInfo.Available
+	creditInfo, err := m.creditMgr.DebitCredit(ctx, m.userID, costUSD)
+	if err != nil {
+		msg := "failed to debit LLM credit"
+		if isSSE {
+			msg = "failed to debit LLM credit (SSE)"
 		}
+		m.log.ErrorContext(ctx, msg, "user_id", m.userID, "cost_usd", costUSD, "error", err)
+		return -1
 	}
-	return -1
+	if creditInfo == nil {
+		return -1
+	}
+	remainingCredit := creditInfo.Available
+	if !m.billingBacked {
+		return remainingCredit
+	}
+
+	if m.billingAccountID == "" {
+		m.log.ErrorContext(ctx, "failed to debit billing credits", "cost_usd", costUSD, "error", "missing billing account ID")
+		return remainingCredit
+	}
+
+	overageUSD := billableOverageFromDebit(costUSD, remainingCredit)
+	if overageUSD <= 0 {
+		return remainingCredit
+	}
+
+	unitPrice := costUSDToNegativeMicrocents(overageUSD)
+	remaining, err := m.creditMgr.data.UseCredits(ctx, m.billingAccountID, 1, unitPrice)
+	if err != nil {
+		m.log.ErrorContext(ctx, "failed to debit billing credits", "account_id", m.billingAccountID, "cost_usd", costUSD, "overage_usd", overageUSD, "unit_price_microcents", unitPrice.Microcents(), "error", err)
+		return remainingCredit
+	}
+	m.log.DebugContext(ctx, "debited billing credits", "account_id", m.billingAccountID, "cost_usd", costUSD, "overage_usd", overageUSD, "unit_price_microcents", unitPrice.Microcents(), "remaining_microcents", remaining.Microcents())
+	return remainingCredit
+}
+
+func billableOverageFromDebit(costUSD, postDebitAvailable float64) float64 {
+	if costUSD <= 0 {
+		return 0
+	}
+	postDebitOverage := max(-postDebitAvailable, 0.0)
+	preDebitAvailable := postDebitAvailable + costUSD
+	preDebitOverage := max(-preDebitAvailable, 0.0)
+	overageUSD := postDebitOverage - preDebitOverage
+	if overageUSD <= 0 {
+		return 0
+	}
+	return overageUSD
 }
 
 func costUSDToNegativeMicrocents(costUSD float64) tender.Value {

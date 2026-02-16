@@ -2,17 +2,15 @@ package llmgateway
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
+	"io"
 	"log/slog"
 	"net/http/httptest"
-	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"exe.dev/billing/tender"
 	"exe.dev/llmpricing"
-	"github.com/stretchr/testify/require"
 )
 
 type useCreditsCall struct {
@@ -21,186 +19,266 @@ type useCreditsCall struct {
 	unitPrice tender.Value
 }
 
-type gatewayDataUseCreditsSpy struct {
-	remaining      tender.Value
+type billingGatewayDataSpy struct {
+	*DBGatewayData
+
+	mu             sync.Mutex
 	useCreditsErr  error
+	remaining      tender.Value
 	useCreditsCall []useCreditsCall
 }
 
-func (s *gatewayDataUseCreditsSpy) BoxCreator(context.Context, string) (string, bool, error) {
-	panic("unexpected call: BoxCreator")
-}
-
-func (s *gatewayDataUseCreditsSpy) CheckAndRefreshCredit(context.Context, string, time.Time) (*CreditInfo, error) {
-	panic("unexpected call: CheckAndRefreshCredit")
-}
-
-func (s *gatewayDataUseCreditsSpy) TopUpOnBillingUpgrade(context.Context, string, time.Time) error {
-	panic("unexpected call: TopUpOnBillingUpgrade")
-}
-
-func (s *gatewayDataUseCreditsSpy) DebitCredit(context.Context, string, float64, time.Time) (*CreditInfo, error) {
-	panic("unexpected call: DebitCredit")
-}
-
-func (s *gatewayDataUseCreditsSpy) AccountIDForUser(context.Context, string) (string, bool, error) {
-	panic("unexpected call: AccountIDForUser")
-}
-
-func (s *gatewayDataUseCreditsSpy) UseCredits(ctx context.Context, accountID string, quantity int, unitPrice tender.Value) (tender.Value, error) {
+func (s *billingGatewayDataSpy) UseCredits(ctx context.Context, accountID string, quantity int, unitPrice tender.Value) (tender.Value, error) {
+	s.mu.Lock()
 	s.useCreditsCall = append(s.useCreditsCall, useCreditsCall{
 		accountID: accountID,
 		quantity:  quantity,
 		unitPrice: unitPrice,
 	})
+	s.mu.Unlock()
+
 	if s.useCreditsErr != nil {
 		return tender.Zero(), s.useCreditsErr
 	}
 	return s.remaining, nil
 }
 
-func parseLogLines(t *testing.T, raw string) []map[string]any {
-	t.Helper()
-	lines := strings.Split(strings.TrimSpace(raw), "\n")
-	entries := make([]map[string]any, 0, len(lines))
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		var entry map[string]any
-		require.NoError(t, json.Unmarshal([]byte(line), &entry))
-		entries = append(entries, entry)
-	}
-	return entries
+func (s *billingGatewayDataSpy) useCreditsCalls() []useCreditsCall {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	calls := make([]useCreditsCall, len(s.useCreditsCall))
+	copy(calls, s.useCreditsCall)
+	return calls
 }
 
-func findLogByMessage(t *testing.T, entries []map[string]any, message string) map[string]any {
+func newBillingBackedTransport(t *testing.T, data *billingGatewayDataSpy, userID string, now time.Time) (*CreditManager, *accountingTransport) {
 	t.Helper()
-	for _, entry := range entries {
-		if entry["msg"] == message {
-			return entry
-		}
-	}
-	t.Fatalf("log message %q not found", message)
-	return nil
-}
+	creditMgr := NewCreditManager(data)
+	creditMgr.now = func() time.Time { return now }
 
-func TestAccountingTransport_BillingBackedPostResponseDeduction_UseCreditsArgsAndDebugLog(t *testing.T) {
-	t.Parallel()
-
-	var logs strings.Builder
-	logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
-
-	creditData := &gatewayDataUseCreditsSpy{
-		remaining: tender.Mint(0, 4321),
-	}
 	transport := &accountingTransport{
 		provider:         llmpricing.ProviderOpenAI,
-		log:              logger,
-		creditMgr:        &CreditManager{data: creditData, now: time.Now},
+		log:              slog.New(slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		creditMgr:        creditMgr,
 		incomingReq:      httptest.NewRequest("POST", "/v1/chat/completions", nil),
 		boxName:          "box-a",
-		userID:           "user-a",
+		userID:           userID,
 		billingBacked:    true,
 		billingAccountID: "acct_123",
 	}
-
-	// 1 prompt + 1 completion token for gpt-4o-mini costs 75 cents per 1M tokens.
-	// This is $0.00000075, which rounds to -1 microcent when debited.
-	response := []byte(`{
-		"id": "chatcmpl_123",
-		"model": "gpt-4o-mini",
-		"usage": {
-			"prompt_tokens": 1,
-			"completion_tokens": 1,
-			"total_tokens": 2
-		}
-	}`)
-
-	costInfo, err := transport.processResponseData(response)
-	require.NoError(t, err)
-	require.NotNil(t, costInfo)
-
-	expectedCostUSD := llmpricing.CalculateCost(
-		llmpricing.ProviderOpenAI,
-		"gpt-4o-mini",
-		llmpricing.Usage{
-			InputTokens:  1,
-			OutputTokens: 1,
-		},
-	)
-	require.InDelta(t, expectedCostUSD, costInfo.CostUSD, 1e-12)
-
-	require.Len(t, creditData.useCreditsCall, 1)
-	call := creditData.useCreditsCall[0]
-	require.Equal(t, "acct_123", call.accountID)
-	require.Equal(t, 1, call.quantity)
-
-	expectedUnitPrice := costUSDToNegativeMicrocents(expectedCostUSD)
-	require.Equal(t, expectedUnitPrice, call.unitPrice)
-	require.EqualValues(t, -1, call.unitPrice.Microcents())
-
-	logEntries := parseLogLines(t, logs.String())
-	debitLog := findLogByMessage(t, logEntries, "debited billing credits")
-	require.Equal(t, "DEBUG", debitLog["level"])
-	require.Equal(t, "acct_123", debitLog["account_id"])
-	require.EqualValues(t, expectedUnitPrice.Microcents(), debitLog["unit_price_microcents"])
-	require.EqualValues(t, creditData.remaining.Microcents(), debitLog["remaining_microcents"])
+	return creditMgr, transport
 }
 
-func TestAccountingTransport_BillingBackedPostResponseDeduction_UseCreditsErrorStillSucceeds(t *testing.T) {
+func TestAccountingTransport_BillingBacked_FreeOnlySkipsBillingCharge(t *testing.T) {
 	t.Parallel()
 
-	var logs strings.Builder
-	logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	db := setupTestDB(t)
+	defer db.Close()
 
-	creditData := &gatewayDataUseCreditsSpy{
-		useCreditsErr: errors.New("billing outage"),
+	userID := "billing-free-only-user"
+	createTestUser(t, db, userID, "billing-free-only@example.com")
+
+	now := time.Date(2025, 1, 10, 9, 0, 0, 0, time.UTC)
+	data := &billingGatewayDataSpy{
+		DBGatewayData: &DBGatewayData{DB: db},
+		remaining:     tender.Mint(2, 0),
 	}
-	transport := &accountingTransport{
-		provider:         llmpricing.ProviderOpenAI,
-		log:              logger,
-		creditMgr:        &CreditManager{data: creditData, now: time.Now},
-		incomingReq:      httptest.NewRequest("POST", "/v1/chat/completions", nil),
-		boxName:          "box-a",
-		userID:           "user-a",
-		billingBacked:    true,
-		billingAccountID: "acct_123",
+	creditMgr, transport := newBillingBackedTransport(t, data, userID, now)
+
+	if _, err := creditMgr.CheckAndRefreshCredit(context.Background(), userID); err != nil {
+		t.Fatalf("failed to initialize credit: %v", err)
 	}
 
-	response := []byte(`{
-		"id": "chatcmpl_456",
-		"model": "gpt-4o-mini",
-		"usage": {
-			"prompt_tokens": 1,
-			"completion_tokens": 1,
-			"total_tokens": 2
-		}
-	}`)
+	remaining := transport.debitResponseCredits(5, false)
+	if !floatClose(remaining, 15, 0.000001) {
+		t.Fatalf("remaining = %f, want 15", remaining)
+	}
 
-	costInfo, err := transport.processResponseData(response)
-	require.NoError(t, err, "post-response processing should not fail when UseCredits fails")
-	require.NotNil(t, costInfo)
+	calls := data.useCreditsCalls()
+	if len(calls) != 0 {
+		t.Fatalf("UseCredits calls = %d, want 0", len(calls))
+	}
+}
 
-	expectedCostUSD := llmpricing.CalculateCost(
-		llmpricing.ProviderOpenAI,
-		"gpt-4o-mini",
-		llmpricing.Usage{
-			InputTokens:  1,
-			OutputTokens: 1,
-		},
+func TestAccountingTransport_BillingBacked_PartialOverageChargesOnlyOverage(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestDB(t)
+	defer db.Close()
+
+	userID := "billing-partial-overage-user"
+	createTestUser(t, db, userID, "billing-partial-overage@example.com")
+
+	now := time.Date(2025, 1, 10, 9, 0, 0, 0, time.UTC)
+	data := &billingGatewayDataSpy{
+		DBGatewayData: &DBGatewayData{DB: db},
+		remaining:     tender.Mint(2, 0),
+	}
+	creditMgr, transport := newBillingBackedTransport(t, data, userID, now)
+
+	ctx := context.Background()
+	if _, err := creditMgr.CheckAndRefreshCredit(ctx, userID); err != nil {
+		t.Fatalf("failed to initialize credit: %v", err)
+	}
+	if _, err := creditMgr.DebitCredit(ctx, userID, 17); err != nil {
+		t.Fatalf("failed to prepare partial free balance: %v", err)
+	}
+
+	remaining := transport.debitResponseCredits(5, false)
+	if !floatClose(remaining, -2, 0.000001) {
+		t.Fatalf("remaining = %f, want -2", remaining)
+	}
+
+	calls := data.useCreditsCalls()
+	if len(calls) != 1 {
+		t.Fatalf("UseCredits calls = %d, want 1", len(calls))
+	}
+	call := calls[0]
+	if call.accountID != "acct_123" {
+		t.Fatalf("accountID = %q, want %q", call.accountID, "acct_123")
+	}
+	if call.quantity != 1 {
+		t.Fatalf("quantity = %d, want 1", call.quantity)
+	}
+	expectedUnitPrice := costUSDToNegativeMicrocents(2)
+	if call.unitPrice != expectedUnitPrice {
+		t.Fatalf("unitPrice = %d, want %d", call.unitPrice.Microcents(), expectedUnitPrice.Microcents())
+	}
+}
+
+func TestAccountingTransport_BillingBacked_FullOverageChargesFullCost(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestDB(t)
+	defer db.Close()
+
+	userID := "billing-full-overage-user"
+	createTestUser(t, db, userID, "billing-full-overage@example.com")
+
+	now := time.Date(2025, 1, 10, 9, 0, 0, 0, time.UTC)
+	data := &billingGatewayDataSpy{
+		DBGatewayData: &DBGatewayData{DB: db},
+		remaining:     tender.Mint(2, 0),
+	}
+	creditMgr, transport := newBillingBackedTransport(t, data, userID, now)
+
+	ctx := context.Background()
+	if _, err := creditMgr.CheckAndRefreshCredit(ctx, userID); err != nil {
+		t.Fatalf("failed to initialize credit: %v", err)
+	}
+	if _, err := creditMgr.DebitCredit(ctx, userID, freeCreditPerUTCMonthUSD); err != nil {
+		t.Fatalf("failed to deplete free credit: %v", err)
+	}
+
+	remaining := transport.debitResponseCredits(1.25, false)
+	if !floatClose(remaining, -1.25, 0.000001) {
+		t.Fatalf("remaining = %f, want -1.25", remaining)
+	}
+
+	calls := data.useCreditsCalls()
+	if len(calls) != 1 {
+		t.Fatalf("UseCredits calls = %d, want 1", len(calls))
+	}
+	expectedUnitPrice := costUSDToNegativeMicrocents(1.25)
+	if calls[0].unitPrice != expectedUnitPrice {
+		t.Fatalf("unitPrice = %d, want %d", calls[0].unitPrice.Microcents(), expectedUnitPrice.Microcents())
+	}
+}
+
+func TestAccountingTransport_BillingBacked_UseCreditsErrorKeepsGatewayDebit(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestDB(t)
+	defer db.Close()
+
+	userID := "billing-usecredits-error-user"
+	createTestUser(t, db, userID, "billing-usecredits-error@example.com")
+
+	now := time.Date(2025, 1, 10, 9, 0, 0, 0, time.UTC)
+	data := &billingGatewayDataSpy{
+		DBGatewayData: &DBGatewayData{DB: db},
+		useCreditsErr: context.DeadlineExceeded,
+	}
+	creditMgr, transport := newBillingBackedTransport(t, data, userID, now)
+
+	ctx := context.Background()
+	if _, err := creditMgr.CheckAndRefreshCredit(ctx, userID); err != nil {
+		t.Fatalf("failed to initialize credit: %v", err)
+	}
+	if _, err := creditMgr.DebitCredit(ctx, userID, freeCreditPerUTCMonthUSD); err != nil {
+		t.Fatalf("failed to deplete free credit: %v", err)
+	}
+
+	remaining := transport.debitResponseCredits(1, false)
+	if !floatClose(remaining, -1, 0.000001) {
+		t.Fatalf("remaining = %f, want -1", remaining)
+	}
+
+	calls := data.useCreditsCalls()
+	if len(calls) != 1 {
+		t.Fatalf("UseCredits calls = %d, want 1", len(calls))
+	}
+}
+
+func TestAccountingTransport_BillingBacked_ConcurrentOverageCharging(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestDB(t)
+	defer db.Close()
+
+	userID := "billing-concurrent-overage-user"
+	createTestUser(t, db, userID, "billing-concurrent-overage@example.com")
+
+	now := time.Date(2025, 1, 10, 9, 0, 0, 0, time.UTC)
+	data := &billingGatewayDataSpy{
+		DBGatewayData: &DBGatewayData{DB: db},
+		remaining:     tender.Mint(3, 0),
+	}
+	creditMgr, transport := newBillingBackedTransport(t, data, userID, now)
+
+	ctx := context.Background()
+	if _, err := creditMgr.CheckAndRefreshCredit(ctx, userID); err != nil {
+		t.Fatalf("failed to initialize credit: %v", err)
+	}
+
+	const (
+		requests = 10
+		costUSD  = 3.0
 	)
-	require.InDelta(t, expectedCostUSD, costInfo.CostUSD, 1e-12)
+	var wg sync.WaitGroup
+	wg.Add(requests)
+	for range requests {
+		go func() {
+			defer wg.Done()
+			_ = transport.debitResponseCredits(costUSD, false)
+		}()
+	}
+	wg.Wait()
 
-	require.Len(t, creditData.useCreditsCall, 1)
-	call := creditData.useCreditsCall[0]
-	require.Equal(t, "acct_123", call.accountID)
-	require.Equal(t, 1, call.quantity)
-	require.Equal(t, costUSDToNegativeMicrocents(expectedCostUSD), call.unitPrice)
+	info, err := creditMgr.CheckAndRefreshCredit(ctx, userID)
+	if err != ErrInsufficientCredit {
+		t.Fatalf("CheckAndRefreshCredit error = %v, want %v", err, ErrInsufficientCredit)
+	}
+	if !floatClose(info.Available, -10, 0.000001) {
+		t.Fatalf("final available = %f, want -10", info.Available)
+	}
 
-	logEntries := parseLogLines(t, logs.String())
-	errorLog := findLogByMessage(t, logEntries, "failed to debit billing credits")
-	require.Equal(t, "ERROR", errorLog["level"])
-	require.Equal(t, "acct_123", errorLog["account_id"])
-	require.Equal(t, "billing outage", errorLog["error"])
+	calls := data.useCreditsCalls()
+	if len(calls) != 4 {
+		t.Fatalf("UseCredits calls = %d, want 4", len(calls))
+	}
+
+	var billedMicrocents int64
+	for _, call := range calls {
+		if call.accountID != "acct_123" {
+			t.Fatalf("accountID = %q, want %q", call.accountID, "acct_123")
+		}
+		if call.quantity != 1 {
+			t.Fatalf("quantity = %d, want 1", call.quantity)
+		}
+		billedMicrocents += call.unitPrice.Microcents()
+	}
+	if billedMicrocents != -10_000_000 {
+		t.Fatalf("billed microcents = %d, want %d", billedMicrocents, -10_000_000)
+	}
 }
