@@ -1035,7 +1035,7 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 		// Check database for HTTP auth token (without consuming it)
 		row, err := s.checkEmailVerificationToken(r.Context(), token)
 		if err != nil {
-			s.render401(w, r, unauthorizedData{InvalidToken: true})
+			s.render401(w, r, exeweb.UnauthorizedData{InvalidToken: true})
 			return
 		}
 		email = row.Email

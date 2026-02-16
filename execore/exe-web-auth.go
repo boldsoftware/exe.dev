@@ -132,7 +132,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		emailVerif, err := s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
 			s.slog().InfoContext(r.Context(), "invalid email verification token during verification", "error", err, "token", token, "remote_addr", r.RemoteAddr)
-			s.render401(w, r, unauthorizedData{InvalidToken: true})
+			s.render401(w, r, exeweb.UnauthorizedData{InvalidToken: true})
 			return
 		}
 		verifiedUserID = emailVerif.UserID
@@ -708,22 +708,10 @@ The %s team`, verifyURL, s.env.WebHost)
 	s.showAuthEmailSent(w, r, pending.Email, devURL)
 }
 
-// unauthorizedData holds the template data for the 401.html page
-type unauthorizedData struct {
-	Email          string
-	AuthURL        string
-	RedirectURL    string
-	ReturnHost     string
-	LoginWithExe   bool
-	InvalidSecret  bool
-	InvalidToken   bool
-	PasskeyEnabled bool
-}
-
 // render401 renders the 401.html unauthorized page.
 // It extracts redirect and return_host from the request query or form values,
 // using any non-empty values from data as overrides.
-func (s *Server) render401(w http.ResponseWriter, r *http.Request, data unauthorizedData) {
+func (s *Server) render401(w http.ResponseWriter, r *http.Request, data exeweb.UnauthorizedData) {
 	q := r.URL.Query()
 	if data.RedirectURL == "" {
 		data.RedirectURL = q.Get("redirect")
@@ -1027,7 +1015,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 
 	if !exists || time.Now().After(magicSecret.ExpiresAt) {
 		// Invalid or expired secret - show 401 page with email form
-		s.render401(w, r, unauthorizedData{InvalidSecret: true})
+		s.render401(w, r, exeweb.UnauthorizedData{InvalidSecret: true})
 		return
 	}
 
@@ -1063,7 +1051,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 
 		userEmail, _ := withRxRes1(s, r.Context(), (*exedb.Queries).GetEmailByUserID, magicSecret.UserID)
 
-		s.render401(w, r, unauthorizedData{
+		s.render401(w, r, exeweb.UnauthorizedData{
 			Email:       userEmail,
 			RedirectURL: magicSecret.RedirectURL,
 			ReturnHost:  returnHost,
@@ -1117,7 +1105,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		emailVerif, err := s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
 			s.slog().InfoContext(r.Context(), "invalid email verification token during auth callback", "error", err, "token", token, "remote_addr", r.RemoteAddr)
-			s.render401(w, r, unauthorizedData{InvalidToken: true})
+			s.render401(w, r, exeweb.UnauthorizedData{InvalidToken: true})
 			return
 		}
 		userID = emailVerif.UserID
@@ -1187,7 +1175,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	// instead of the generic "Request a link" form
 	returnHost := q.Get("return_host")
 	if returnHost != "" {
-		s.render401(w, r, unauthorizedData{})
+		s.render401(w, r, exeweb.UnauthorizedData{})
 		return
 	}
 

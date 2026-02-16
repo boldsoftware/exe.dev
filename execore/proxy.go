@@ -138,7 +138,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	box, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxNamed, boxName)
 	if errors.Is(err, sql.ErrNoRows) {
 		// Box doesn't exist - show 401 to avoid leaking existence
-		s.renderAccessRequired(w, r, nil)
+		s.proxyServer().RenderAccessRequired(w, r, nil)
 		return
 	}
 	if err != nil {
@@ -157,7 +157,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	if isLockedOut {
 		sloghttp.AddCustomAttributes(r, slog.Bool("owner_locked_out", true))
 		sloghttp.AddCustomAttributes(r, slog.String("owner_user_id", box.CreatedByUserID))
-		s.renderAccessRequired(w, r, nil)
+		s.proxyServer().RenderAccessRequired(w, r, nil)
 		return
 	}
 
@@ -232,7 +232,9 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 		if !hasAccess {
 			// User is authenticated but doesn't have access
-			s.renderAccessRequired(w, r, &box)
+			// Show 401 to avoid leaking box existence
+			exewebBox := dbBoxToExewebBox(&box)
+			s.proxyServer().RenderAccessRequired(w, r, &exewebBox)
 			return
 		}
 
@@ -424,46 +426,6 @@ func makeAuthURL(typ string, r *http.Request, q url.Values) string {
 		typ,
 		q.Encode(),
 	)
-}
-
-// renderAccessRequired renders the access required page for unauthorized access.
-// If the user is authenticated and the box exists, it shows the request-access page
-// so they can request access from the owner. Otherwise it shows the 401 login page
-// to avoid leaking box existence information.
-func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request, box *exedb.Box) {
-	var userEmail string
-	if uid, err := s.validateProxyAuthCookie(r); err == nil {
-		userEmail, _ = withRxRes1(s, r.Context(), (*exedb.Queries).GetEmailByUserID, uid)
-	}
-
-	// If the user is authenticated and the box exists, show the request-access page.
-	if userEmail != "" && box != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		s.renderTemplate(r.Context(), w, "request-access.html", struct {
-			Email string
-		}{
-			Email: userEmail,
-		})
-		return
-	}
-
-	u := &url.URL{
-		Scheme: getScheme(r),
-		Host:   r.Host,
-		Path:   r.URL.Path,
-	}
-
-	data := unauthorizedData{
-		Email:        userEmail,
-		AuthURL:      s.webBaseURLNoRequest() + "/auth",
-		RedirectURL:  u.String(),
-		ReturnHost:   r.Host,
-		LoginWithExe: true,
-		// PasskeyEnabled is false: box subdomains can't use passkeys (RPID mismatch)
-	}
-
-	w.WriteHeader(http.StatusUnauthorized)
-	s.renderTemplate(r.Context(), w, "401.html", data)
 }
 
 // handleRequestAccess handles GET and POST for /__exe.dev/request-access.
@@ -673,6 +635,7 @@ func (s *Server) proxyServer() *exeweb.ProxyServer {
 		Env:          &s.env,
 		SSHPool:      s.sshPool,
 		HTTPMetrics:  s.httpMetrics,
+		Templates:    s.templates,
 		MagicSecrets: s.magicSecrets,
 	}
 	if s.servingHTTP() {

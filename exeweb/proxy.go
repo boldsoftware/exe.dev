@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html/template"
 	"log/slog"
 	"net"
 	"net/http"
@@ -33,6 +34,7 @@ type ProxyServer struct {
 	HTTPSPort    int // zero if not serving HTTPS
 	SSHPool      *sshpool2.Pool
 	HTTPMetrics  *HTTPMetrics
+	Templates    *template.Template
 	MagicSecrets *MagicSecrets
 }
 
@@ -462,6 +464,82 @@ func (ps *ProxyServer) webBaseURLNoRequest() string {
 		}
 	}
 	return fmt.Sprintf("%s://%s%s", scheme, ps.Env.WebHost, port)
+}
+
+// UnauthorizedData holds the template data for the 401.html page.
+type UnauthorizedData struct {
+	Email          string
+	AuthURL        string
+	RedirectURL    string
+	ReturnHost     string
+	LoginWithExe   bool
+	InvalidSecret  bool
+	InvalidToken   bool
+	PasskeyEnabled bool
+}
+
+// RenderAccessRequired renders the access required page
+// for unauthorized access.
+// If the user is authenticated and the box exists,
+// it shows the request-access page so they can
+// request access from the owner.
+// Otherwise it shows the 401 login page
+// to avoid leaking box existence information.
+func (ps *ProxyServer) RenderAccessRequired(w http.ResponseWriter, r *http.Request, box *BoxData) {
+	var userEmail string
+	if userID, err := ps.ValidateProxyAuthCookie(r); err == nil {
+		userData, exists, err := ps.Data.UserInfo(r.Context(), userID)
+		if err != nil {
+			ps.Lg.ErrorContext(r.Context(), "fetching user info failed", "userID", userID, "error", err)
+		}
+		if exists {
+			userEmail = userData.Email
+		}
+	}
+
+	// If the user is authenticated and the box exists,
+	// show the request-access page.
+	if userEmail != "" && box != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		ps.renderTemplate(r.Context(), w, "request-access.html", struct {
+			Email string
+		}{
+			Email: userEmail,
+		})
+		return
+	}
+
+	u := &url.URL{
+		Scheme: getScheme(r),
+		Host:   r.Host,
+		Path:   r.URL.Path,
+	}
+
+	data := UnauthorizedData{
+		Email:        userEmail,
+		AuthURL:      ps.webBaseURLNoRequest() + "/auth",
+		RedirectURL:  u.String(),
+		ReturnHost:   r.Host,
+		LoginWithExe: true,
+		// PasskeyEnabled is false:
+		// box subdomains can't use passkeys (RPID mismatch).
+	}
+
+	w.WriteHeader(http.StatusUnauthorized)
+	ps.renderTemplate(r.Context(), w, "401.html", data)
+}
+
+// renderTemplate generates an HTTP response from a template.
+func (ps *ProxyServer) renderTemplate(ctx context.Context, w http.ResponseWriter, templateName string, data any) error {
+	w.Header().Set("Content-Type", "text/html")
+	var buf bytes.Buffer
+	if err := ps.Templates.ExecuteTemplate(&buf, templateName, data); err != nil {
+		ps.Lg.ErrorContext(ctx, "Failed to execute template", "error", err, "template", templateName)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return err
+	}
+	_, err := w.Write(buf.Bytes())
+	return err
 }
 
 // clearExeDevHeaders removes any X-ExeDev-* headers from
