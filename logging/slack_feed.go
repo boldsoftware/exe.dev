@@ -212,8 +212,8 @@ func (sf *SlackFeed) InviteRequest(ctx context.Context, email string, hasBilling
 
 // ExeletCapacityWarning posts an urgent page that all exelets
 // are approaching capacity.
-func (sf *SlackFeed) ExeletCapacityWarning(ctx context.Context, limit int) {
-	message := fmt.Sprintf("all exelets at or close to %d VMs", limit)
+func (sf *SlackFeed) ExeletCapacityWarning(ctx context.Context) {
+	message := "all exelets approaching VM capacity"
 	if sf.client == nil {
 		sf.log.InfoContext(ctx, "slack page channel", "message", message)
 		return

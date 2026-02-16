@@ -864,6 +864,10 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 			slog.Error("failed to parse region from exelet address, skipping host", "addr", addr, "error", err)
 			continue
 		}
+		if exeletRegion.VMHardLimit <= 0 || exeletRegion.VMSoftLimit <= 0 || exeletRegion.VMSoftLimit >= exeletRegion.VMHardLimit {
+			slog.Error("region has invalid VM limits configured, skipping host", "addr", addr, "region", exeletRegion.Code, "hard", exeletRegion.VMHardLimit, "soft", exeletRegion.VMSoftLimit)
+			continue
+		}
 
 		client, err := exeletclient.NewClient(addr,
 			exeletclient.WithInsecure(),
@@ -3510,7 +3514,7 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 			if err != nil {
 				return nil, "", err
 			}
-			if count >= autoThrottleVMLimit {
+			if count >= int(client.region.VMHardLimit) {
 				s.slog().DebugContext(ctx, "not selecting exelet because it is over threshold", "user", userID, "exelet", maxHost, "userVMCount", maxCnt, "exeletVMCount", count)
 				client = nil
 			}
@@ -3709,8 +3713,8 @@ func exeletUsageCmp(a, b *exeletClient) int {
 	}
 
 	// First we check for extreme cases.
-	extremeA := isExtreme(usageA) || countA+10 >= autoThrottleVMLimit
-	extremeB := isExtreme(usageB) || countB+10 >= autoThrottleVMLimit
+	extremeA := isExtreme(usageA) || countA+10 >= a.region.VMHardLimit
+	extremeB := isExtreme(usageB) || countB+10 >= b.region.VMHardLimit
 	switch {
 	case extremeA && extremeB:
 		return 0
@@ -3772,12 +3776,6 @@ func exeletUsageCmp(a, b *exeletClient) int {
 	return 0
 }
 
-// autoThrottleVMLimit is the VM count threshold that triggers automatic throttling.
-const autoThrottleVMLimit = 400
-
-// autoThrottleVMWarning is the VM count at which we send a page warning.
-const autoThrottleVMWarning = 350
-
 // autoThrottleVMCreation enables throttling if all exelets have hit the VM limit.
 func (s *Server) autoThrottleVMCreation(ctx context.Context) {
 	if len(s.exeletClients) == 0 {
@@ -3787,11 +3785,11 @@ func (s *Server) autoThrottleVMCreation(ctx context.Context) {
 	someBelowLimit := false
 	for _, ec := range s.exeletClients {
 		count := ec.count.Load()
-		if count < autoThrottleVMWarning {
+		if count < ec.region.VMSoftLimit {
 			// We still have capacity, nothing to do.
 			return
 		}
-		if count < autoThrottleVMLimit {
+		if count < ec.region.VMHardLimit {
 			someBelowLimit = true
 		}
 	}
@@ -3812,8 +3810,8 @@ func (s *Server) autoThrottleVMCreation(ctx context.Context) {
 		// There is still a bit of room. Warn.
 		// Right now this will warn every updateUsageHeartbeat,
 		// which is 10 minutes.
-		slog.WarnContext(ctx, "all exelets near VM limit", "limit", autoThrottleVMLimit)
-		s.slackFeed.ExeletCapacityWarning(ctx, autoThrottleVMLimit)
+		slog.WarnContext(ctx, "all exelets near VM limit")
+		s.slackFeed.ExeletCapacityWarning(ctx)
 		return
 	}
 
@@ -3823,5 +3821,5 @@ func (s *Server) autoThrottleVMCreation(ctx context.Context) {
 		return
 	}
 
-	s.slog().ErrorContext(ctx, "auto-throttle: VM limit reached on all exelets, throttle enabled", "limit", autoThrottleVMLimit)
+	s.slog().ErrorContext(ctx, "auto-throttle: VM limit reached on all exelets, throttle enabled")
 }

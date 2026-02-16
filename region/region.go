@@ -22,17 +22,26 @@ type Region struct {
 
 	// Active indicates whether this region is currently accepting new VMs.
 	Active bool
+
+	// VMHardLimit is the maximum number of VMs per exelet in this region.
+	// At or above this count, new VMs are rejected and auto-throttle is triggered.
+	VMHardLimit int32
+
+	// VMSoftLimit is the soft cap for VMs per exelet in this region.
+	// At or above this count, the exelet is deprioritized in selection
+	// and capacity warnings are sent.
+	VMSoftLimit int32
 }
 
 var allRegions = []Region{
-	{Code: "pdx", Display: "Oregon, USA", Active: true},
-	{Code: "lax", Display: "Los Angeles, USA", Active: false},
-	{Code: "nyc", Display: "New York, USA", Active: false},
-	{Code: "fra", Display: "Frankfurt, Germany", Active: false},
-	{Code: "tyo", Display: "Tokyo, Japan", Active: false},
-	{Code: "syd", Display: "Sydney, Australia", Active: false},
-	{Code: "dev", Display: "$HOME", Active: false},
-	{Code: "ci", Display: "CI", Active: false},
+	{Code: "pdx", Display: "Oregon, USA", Active: true, VMHardLimit: 400, VMSoftLimit: 350},
+	{Code: "lax", Display: "Los Angeles, USA", Active: false, VMHardLimit: 800, VMSoftLimit: 700},
+	{Code: "nyc", Display: "New York, USA", Active: false, VMHardLimit: 0, VMSoftLimit: 0},
+	{Code: "fra", Display: "Frankfurt, Germany", Active: false, VMHardLimit: 0, VMSoftLimit: 0},
+	{Code: "tyo", Display: "Tokyo, Japan", Active: false, VMHardLimit: 0, VMSoftLimit: 0},
+	{Code: "syd", Display: "Sydney, Australia", Active: false, VMHardLimit: 0, VMSoftLimit: 0},
+	{Code: "dev", Display: "$HOME", Active: false, VMHardLimit: 400, VMSoftLimit: 350},
+	{Code: "ci", Display: "CI", Active: false, VMHardLimit: 400, VMSoftLimit: 350},
 }
 
 // All returns all known regions.
@@ -49,7 +58,7 @@ func ByCode(code string) (Region, error) {
 			return r, nil
 		}
 	}
-	return Region{Code: "", Display: "", Active: false}, fmt.Errorf("unknown region code %q", code)
+	return Region{Code: "", Display: "", Active: false, VMHardLimit: 0, VMSoftLimit: 0}, fmt.Errorf("unknown region code %q", code)
 }
 
 // Default returns the default region for new users and VMs.
@@ -104,7 +113,7 @@ func ParseExeletRegion(host string) (Region, error) {
 		}
 	}
 
-	return Region{Code: "", Display: "", Active: false}, fmt.Errorf("cannot parse region from exelet host %q", host)
+	return Region{Code: "", Display: "", Active: false, VMHardLimit: 0, VMSoftLimit: 0}, fmt.Errorf("cannot parse region from exelet host %q", host)
 }
 
 func isAllDigits(s string) bool {
