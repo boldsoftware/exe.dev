@@ -31,7 +31,7 @@ a:hover { text-decoration: underline; }
 <td class="{{if eq .Status "error"}}status-error{{else}}status-healthy{{end}}">{{if eq .Status "error"}}error: {{.Error}}{{else}}{{.Status}}{{end}}</td>
 <td>{{.Available}}</td>
 <td>{{.Version}}</td>
-<td>{{.InstanceCount}}</td>
+<td>{{.InstanceCount}} / {{.InstanceLimit}}</td>
 <td>{{.LoadAverage}}</td>
 <td>{{.MemFree}}</td>
 <td>{{.SwapFree}}</td>

@@ -1861,6 +1861,7 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 		Status        string `json:"status"`
 		IsPreferred   bool   `json:"is_preferred"`
 		InstanceCount int    `json:"instance_count"`
+		InstanceLimit int    `json:"instance_limit"`
 		LoadAverage   string `json:"load_average"`
 		MemFree       string `json:"mem_free"`
 		SwapFree      string `json:"swap_free"`
@@ -1914,6 +1915,8 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 				info.InstanceCount = count
 			}
 			cancel()
+
+			info.InstanceLimit = int(ec.region.VMHardLimit)
 
 			// Get load information.
 			kibToGB := func(kib int64) string { return fmt.Sprintf("%.1f", float64(kib)/1048576.0) }
