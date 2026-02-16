@@ -269,6 +269,7 @@ func openBrowserURL(url string) error {
 // startSSHTunnelForExed establishes an SSH reverse tunnel and returns the dynamically allocated remote port.
 // Uses -v flag to capture SSH debug output showing the allocated port.
 func startSSHTunnelForExed(host string, localPort int) (int, error) {
+	host = normalizeLimaSSHHost(host)
 	// Start SSH tunnel with -v to capture allocated port
 	tunnelCmd := exec.Command("ssh",
 		"-v",  // verbose to see allocated port
@@ -440,7 +441,7 @@ func startExeletsRemote(env stage.Env, httpAddr string, multiExelet, enableRepli
 // address (127.0.0.1 or localhost) for the socat forwarder to work correctly.
 func getSSHHostPort(host string) (string, int, error) {
 	// Use ssh -G to get the effective SSH config for the host
-	// Host is like "lima-exe-ctr-tests.local", but SSH config uses "lima-exe-ctr-tests"
+	// Host is like "lima-exe-ctr-tests.local", but SSH config uses "lima-exe-ctr-tests".
 	sshHost := strings.TrimSuffix(host, ".local")
 
 	out, err := exec.Command("ssh", "-G", sshHost).Output()
@@ -691,6 +692,7 @@ func generateReplicationKnownHosts(ctx context.Context, exeletHost, replicationT
 // If replicationTarget is non-empty, adds storage replication flags.
 // If metricsdURL is non-empty, adds metrics daemon flags.
 func startExeletProcess(ctx context.Context, host, logFormat, logLevel, exedURL, replicationTarget, replicationKnownHosts, metricsdURL string) error {
+	host = normalizeLimaSSHHost(host)
 	baseCmd := fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --stage local --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://:9080 --http-addr :9081 --exed-url %s --instance-domain exe.cloud --enable-hugepages --reserved-cpus 0`,
 		logFormat, logLevel, exedURL)
 
@@ -867,8 +869,18 @@ func buildExeletBinary() (string, error) {
 	return binPath, nil
 }
 
+// normalizeLimaSSHHost converts legacy ".local" Lima host aliases to the
+// canonical Lima SSH alias so we always use Lima-managed ssh.config entries.
+func normalizeLimaSSHHost(host string) string {
+	if strings.HasPrefix(host, "lima-") && strings.HasSuffix(host, ".local") {
+		return strings.TrimSuffix(host, ".local")
+	}
+	return host
+}
+
 // sshExec executes a command on remote host via SSH
 func sshExec(ctx context.Context, host, command string) (string, error) {
+	host = normalizeLimaSSHHost(host)
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
@@ -883,6 +895,7 @@ func sshExec(ctx context.Context, host, command string) (string, error) {
 
 // scpUpload uploads a file to remote host via SCP
 func scpUpload(localPath, host, remotePath string) error {
+	host = normalizeLimaSSHHost(host)
 	cmd := exec.Command("scp",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
