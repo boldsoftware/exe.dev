@@ -1,0 +1,59 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
+      - name: Test all modules
+        run: |
+          for dir in */; do
+            if [ -f "$dir/go.mod" ]; then
+              echo "=== testing $dir ==="
+              (cd "$dir" && go test ./...)
+            fi
+          done
+
+  auto-tag:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    permissions:
+      contents: write
+    needs: test
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Auto-tag changed modules
+        run: |
+          for dir in */; do
+            [ -f "$dir/go.mod" ] || continue
+            module="${dir%/}"
+            latest_tag=$(git tag -l "$module/v*" --sort=-v:refname | head -1)
+            if [ -n "$latest_tag" ] && [ -z "$(git diff "$latest_tag" -- "$module/")" ]; then
+              echo "=== $module: no changes since $latest_tag, skipping ==="
+              continue
+            fi
+            COUNT=$(git rev-list --count HEAD -- "$module/")
+            SHORT_SHA=$(git rev-parse --short=6 HEAD)
+            SHA_OCTAL=$(printf '%o' "0x${SHORT_SHA}")
+            TAG="${module}/v0.${COUNT}.9${SHA_OCTAL}"
+            if git tag -l "$TAG" | grep -q .; then
+              echo "=== $module: $TAG already exists, skipping ==="
+              continue
+            fi
+            echo "=== tagging $module as $TAG ==="
+            git tag -a "$TAG" -m "Auto-tag $module at ${SHORT_SHA}"
+            git push origin "$TAG"
+          done
