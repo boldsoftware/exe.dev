@@ -9,17 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/llm"
-	"shelley.exe.dev/loop"
 )
 
 // TestStreamResumeWithLastSequenceID verifies that using last_sequence_id
 // parameter skips sending messages and sends a heartbeat instead.
 func TestStreamResumeWithLastSequenceID(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
+	server, database, _ := newTestServer(t)
 
 	ctx := context.Background()
 
@@ -57,12 +54,6 @@ func TestStreamResumeWithLastSequenceID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create agent message: %v", err)
 	}
-
-	// Create server
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	toolSetConfig := claudetool.ToolSetConfig{EnableBrowser: false}
-	server := NewServer(database, llmManager, toolSetConfig, nil, true, "", "predictable", "", nil)
 
 	mux := http.NewServeMux()
 	server.RegisterRoutes(mux)

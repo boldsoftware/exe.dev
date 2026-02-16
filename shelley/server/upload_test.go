@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -13,19 +12,11 @@ import (
 	"strings"
 	"testing"
 
-	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/claudetool/browse"
-	"shelley.exe.dev/loop"
 )
 
 func TestUploadEndpoint(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.Default()
-	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	server, _, _ := newTestServer(t)
 
 	// Create a multipart form with a file
 	body := &bytes.Buffer{}
@@ -89,13 +80,7 @@ func TestUploadEndpoint(t *testing.T) {
 }
 
 func TestUploadEndpointMethodNotAllowed(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.Default()
-	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	server, _, _ := newTestServer(t)
 
 	req := httptest.NewRequest("GET", "/api/upload", nil)
 	w := httptest.NewRecorder()
@@ -108,13 +93,7 @@ func TestUploadEndpointMethodNotAllowed(t *testing.T) {
 }
 
 func TestUploadEndpointNoFile(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.Default()
-	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	server, _, _ := newTestServer(t)
 
 	// Create an empty multipart form
 	body := &bytes.Buffer{}
@@ -133,13 +112,7 @@ func TestUploadEndpointNoFile(t *testing.T) {
 }
 
 func TestUploadedFileCanBeReadViaReadEndpoint(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.Default()
-	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	server, _, _ := newTestServer(t)
 
 	// First, upload a file
 	body := &bytes.Buffer{}
@@ -205,13 +178,7 @@ func TestUploadedFileCanBeReadViaReadEndpoint(t *testing.T) {
 }
 
 func TestUploadPreservesFileExtension(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.Default()
-	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	server, _, _ := newTestServer(t)
 
 	testCases := []struct {
 		filename string

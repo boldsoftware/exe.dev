@@ -11,7 +11,6 @@ import (
 
 func TestGetConversationBySlug(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	// Create a conversation with a slug
 	slug := "my-test-slug"

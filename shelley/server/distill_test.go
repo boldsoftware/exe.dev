@@ -16,7 +16,6 @@ import (
 
 func TestDistillConversation(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	// Create a conversation with some messages
 	h.NewConversation("echo hello world", "")
@@ -135,7 +134,6 @@ func TestDistillConversation(t *testing.T) {
 
 func TestDistillConversationMissingSource(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	reqBody := ContinueConversationRequest{
 		SourceConversationID: "nonexistent-id",
@@ -155,7 +153,6 @@ func TestDistillConversationMissingSource(t *testing.T) {
 
 func TestDistillConversationEmptySource(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	reqBody := ContinueConversationRequest{
 		SourceConversationID: "",
@@ -318,7 +315,6 @@ func TestTruncateUTF8(t *testing.T) {
 // when the user sends a follow-up message in the distilled conversation.
 func TestDistillContentSentToLLM(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	// Create a source conversation with some messages
 	h.NewConversation("echo hello world", "")
@@ -438,7 +434,6 @@ func truncateForLog(s string, maxLen int) string {
 // the distilled user message is still included in the LLM request.
 func TestDistillContentSentToLLM_WithEarlySSE(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	// Create a source conversation with some messages
 	h.NewConversation("echo hello world", "")

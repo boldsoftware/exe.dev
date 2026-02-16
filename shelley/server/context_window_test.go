@@ -162,7 +162,6 @@ func TestContextWindowSizeCalculation(t *testing.T) {
 // as the conversation progresses, using the test harness and predictable service.
 func TestContextWindowGrowsWithConversation(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	// Start a new conversation
 	h.NewConversation("echo: first message", "/tmp")

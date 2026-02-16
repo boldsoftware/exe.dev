@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -52,19 +53,22 @@ func waitFor(t *testing.T, timeout time.Duration, condition func() bool) {
 	t.Fatal("timed out waiting for condition")
 }
 
+// newTestServer creates a Server with a PredictableService for testing.
+func newTestServer(t *testing.T) (*Server, *db.DB, *loop.PredictableService) {
+	t.Helper()
+	database, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+	ps := loop.NewPredictableService()
+	svr := NewServer(database, &testLLMManager{service: ps},
+		claudetool.ToolSetConfig{EnableBrowser: false},
+		slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn})),
+		true, "", "predictable", "", nil)
+	return svr, database, ps
+}
+
 // TestCancelWithPredictableModel tests cancellation with the predictable model
 func TestCancelWithPredictableModel(t *testing.T) {
-	// Create test database
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.Default()
-
-	// Register the bash tool so the sleep command actually runs and can be cancelled
-	toolSetConfig := claudetool.ToolSetConfig{EnableBrowser: false}
-	server := NewServer(database, llmManager, toolSetConfig, logger, true, "", "predictable", "", nil)
+	server, database, _ := newTestServer(t)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
@@ -269,14 +273,7 @@ func TestCancelWithPredictableModel(t *testing.T) {
 
 // TestCancelWithNoActiveConversation tests cancelling when there's no active conversation
 func TestCancelWithNoActiveConversation(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.Default()
-
-	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	server, database, _ := newTestServer(t)
 
 	// Create a conversation but don't start it
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
@@ -307,15 +304,7 @@ func TestCancelWithNoActiveConversation(t *testing.T) {
 
 // TestCancelDuringTextGeneration tests cancelling during text generation (no tool call)
 func TestCancelDuringTextGeneration(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	// Use delay: prefix to trigger slow response
-	predictableService := loop.NewPredictableService()
-
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.Default()
-	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	server, database, _ := newTestServer(t)
 
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
 	if err != nil {

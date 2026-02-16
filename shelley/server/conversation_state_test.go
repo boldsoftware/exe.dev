@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -44,7 +46,7 @@ func (r *responseRecorderWithClose) Close() {
 // reported as not working since the loop isn't running.
 func TestConversationStateAfterServerRestart(t *testing.T) {
 	database, cleanup := setupTestDB(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	ctx := context.Background()
 
@@ -84,10 +86,11 @@ func TestConversationStateAfterServerRestart(t *testing.T) {
 	}
 
 	// Create a NEW server (simulating server restart - no active managers)
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	toolSetConfig := claudetool.ToolSetConfig{EnableBrowser: false}
-	server := NewServer(database, llmManager, toolSetConfig, nil, true, "", "predictable", "", nil)
+	ps := loop.NewPredictableService()
+	server := NewServer(database, &testLLMManager{service: ps},
+		claudetool.ToolSetConfig{EnableBrowser: false},
+		slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn})),
+		true, "", "predictable", "", nil)
 
 	mux := http.NewServeMux()
 	server.RegisterRoutes(mux)
@@ -151,7 +154,7 @@ func TestConversationStateAfterServerRestart(t *testing.T) {
 // and reported in the ConversationState.
 func TestModelRestorationAfterServerRestart(t *testing.T) {
 	database, cleanup := setupTestDB(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	ctx := context.Background()
 
@@ -191,11 +194,12 @@ func TestModelRestorationAfterServerRestart(t *testing.T) {
 		t.Fatalf("Failed to create agent message: %v", err)
 	}
 
-	// Create a NEW server (simulating server restart or different browser session)
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	toolSetConfig := claudetool.ToolSetConfig{EnableBrowser: false}
-	server := NewServer(database, llmManager, toolSetConfig, nil, true, "", "predictable", "", nil)
+	// Create a NEW server (simulating server restart - no active managers)
+	ps := loop.NewPredictableService()
+	server := NewServer(database, &testLLMManager{service: ps},
+		claudetool.ToolSetConfig{EnableBrowser: false},
+		slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn})),
+		true, "", "predictable", "", nil)
 
 	mux := http.NewServeMux()
 	server.RegisterRoutes(mux)

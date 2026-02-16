@@ -15,7 +15,6 @@ import (
 
 func TestExecTerminal_SimpleCommand(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.cleanup()
 
 	mux := http.NewServeMux()
 	h.server.RegisterRoutes(mux)
@@ -82,7 +81,6 @@ func TestExecTerminal_SimpleCommand(t *testing.T) {
 
 func TestExecTerminal_FailingCommand(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.cleanup()
 
 	mux := http.NewServeMux()
 	h.server.RegisterRoutes(mux)
@@ -128,7 +126,6 @@ func TestExecTerminal_FailingCommand(t *testing.T) {
 
 func TestExecTerminal_MissingCmd(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.cleanup()
 
 	mux := http.NewServeMux()
 	h.server.RegisterRoutes(mux)
@@ -153,7 +150,6 @@ func TestExecTerminal_MissingCmd(t *testing.T) {
 
 func TestExecTerminal_WorkingDirectory(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.cleanup()
 
 	mux := http.NewServeMux()
 	h.server.RegisterRoutes(mux)
@@ -200,7 +196,6 @@ func TestExecTerminal_WorkingDirectory(t *testing.T) {
 
 func TestExecTerminal_Input(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.cleanup()
 
 	mux := http.NewServeMux()
 	h.server.RegisterRoutes(mux)
@@ -268,7 +263,6 @@ func TestExecTerminal_Input(t *testing.T) {
 
 func TestExecTerminal_LoginShell(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.cleanup()
 
 	mux := http.NewServeMux()
 	h.server.RegisterRoutes(mux)

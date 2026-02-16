@@ -3,19 +3,15 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
-	"shelley.exe.dev/loop"
 )
 
 // TestCancelAfterToolCompletesCreatesDuplicateToolResult reproduces the bug where
@@ -30,15 +26,7 @@ import (
 // This leads to the Anthropic API error:
 // "each tool_use must have a single result. Found multiple `tool_result` blocks with id: ..."
 func TestCancelAfterToolCompletesCreatesDuplicateToolResult(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-
-	toolSetConfig := claudetool.ToolSetConfig{EnableBrowser: false}
-	server := NewServer(database, llmManager, toolSetConfig, logger, true, "", "predictable", "", nil)
+	server, database, predictableService := newTestServer(t)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)

@@ -208,7 +208,6 @@ func setupTestGitRepo(t *testing.T) string {
 // TestHandleGitDiffs tests the handleGitDiffs function
 func TestHandleGitDiffs(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	// Test with non-git directory
 	req := httptest.NewRequest("GET", "/api/git/diffs?cwd=/tmp", nil)
@@ -286,7 +285,6 @@ func TestHandleGitDiffs(t *testing.T) {
 // TestHandleGitDiffFiles tests the handleGitDiffFiles function
 func TestHandleGitDiffFiles(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	// Setup a test git repository
 	gitDir := setupTestGitRepo(t)
@@ -359,7 +357,6 @@ func TestHandleGitDiffFiles(t *testing.T) {
 // TestHandleGitFileDiff tests the handleGitFileDiff function
 func TestHandleGitFileDiff(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	// Setup a test git repository
 	gitDir := setupTestGitRepo(t)

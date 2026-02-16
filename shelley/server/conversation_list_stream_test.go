@@ -3,28 +3,17 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
-
-	"shelley.exe.dev/claudetool"
-	"shelley.exe.dev/loop"
 )
 
 // TestConversationStreamReceivesListUpdateForNewConversation tests that when subscribed
 // to one conversation's stream, we receive updates about new conversations.
 func TestConversationStreamReceivesListUpdateForNewConversation(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	server, database, _ := newTestServer(t)
 
 	// Create a conversation to subscribe to
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
@@ -116,13 +105,7 @@ func TestConversationStreamReceivesListUpdateForNewConversation(t *testing.T) {
 // TestConversationStreamReceivesListUpdateForRename tests that when subscribed
 // to one conversation's stream, we receive updates when another conversation is renamed.
 func TestConversationStreamReceivesListUpdateForRename(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	server, database, _ := newTestServer(t)
 
 	// Create two conversations
 	conv1, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
@@ -207,13 +190,7 @@ func TestConversationStreamReceivesListUpdateForRename(t *testing.T) {
 // TestConversationStreamReceivesListUpdateForDelete tests that when subscribed
 // to one conversation's stream, we receive updates when another conversation is deleted.
 func TestConversationStreamReceivesListUpdateForDelete(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	server, database, _ := newTestServer(t)
 
 	// Create two conversations
 	conv1, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
@@ -297,13 +274,7 @@ func TestConversationStreamReceivesListUpdateForDelete(t *testing.T) {
 // TestConversationStreamReceivesListUpdateForArchive tests that when subscribed
 // to one conversation's stream, we receive updates when another conversation is archived.
 func TestConversationStreamReceivesListUpdateForArchive(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	server, database, _ := newTestServer(t)
 
 	// Create two conversations
 	conv1, err := database.CreateConversation(context.Background(), nil, true, nil, nil)

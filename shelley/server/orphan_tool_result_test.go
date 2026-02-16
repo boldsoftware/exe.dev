@@ -3,18 +3,14 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/llm"
-	"shelley.exe.dev/loop"
 )
 
 // TestOrphanToolResultAfterCancellation reproduces the bug where a tool_result
@@ -39,15 +35,7 @@ import (
 //   - assistant end-turn
 //   - user with tool_result X (actual) <- ORPHAN - references X but previous msg has no tool_use!
 func TestOrphanToolResultAfterCancellation(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-
-	toolSetConfig := claudetool.ToolSetConfig{EnableBrowser: false}
-	server := NewServer(database, llmManager, toolSetConfig, logger, true, "", "predictable", "", nil)
+	server, database, predictableService := newTestServer(t)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
@@ -224,14 +212,7 @@ func TestOrphanToolResultAfterCancellation(t *testing.T) {
 // TestOrphanToolResultFiltering tests that orphan tool_results are filtered out
 // even when they appear in the middle of the conversation
 func TestOrphanToolResultFiltering(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-
-	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	server, database, predictableService := newTestServer(t)
 
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
 	if err != nil {

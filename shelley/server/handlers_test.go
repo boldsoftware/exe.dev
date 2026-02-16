@@ -14,7 +14,6 @@ import (
 
 func TestHandleVersion(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.cleanup()
 
 	// Test successful GET request
 	req := httptest.NewRequest(http.MethodGet, "/api/version", nil)
@@ -41,7 +40,6 @@ func TestHandleVersion(t *testing.T) {
 
 func TestHandleArchivedConversations(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.cleanup()
 
 	// Create a test conversation and archive it
 	ctx := context.Background()
@@ -99,7 +97,6 @@ func TestHandleArchivedConversations(t *testing.T) {
 
 func TestHandleArchiveConversation(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.cleanup()
 
 	// Create a test conversation
 	ctx := context.Background()
@@ -152,7 +149,6 @@ func TestHandleArchiveConversation(t *testing.T) {
 
 func TestHandleUnarchiveConversation(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.cleanup()
 
 	// Create a test conversation and archive it
 	ctx := context.Background()
@@ -210,7 +206,6 @@ func TestHandleUnarchiveConversation(t *testing.T) {
 
 func TestHandleDeleteConversation(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.cleanup()
 
 	// Create a test conversation
 	ctx := context.Background()
@@ -269,7 +264,6 @@ func TestHandleDeleteConversation(t *testing.T) {
 
 func TestHandleRenameConversation(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.cleanup()
 
 	// Create a test conversation
 	ctx := context.Background()
@@ -356,7 +350,6 @@ func TestHandleRenameConversation(t *testing.T) {
 
 func TestHandleWriteFile(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.cleanup()
 
 	// Test successful POST request
 	filePath := "/tmp/test-file.txt"

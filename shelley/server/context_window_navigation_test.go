@@ -11,7 +11,6 @@ import (
 // is correctly returned when loading different conversations
 func TestContextWindowSizePreservedOnNavigation(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	// Create first conversation and get a response
 	h.NewConversation("echo: first message", "/tmp")

@@ -3,15 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
@@ -23,7 +20,6 @@ type TestHarness struct {
 	t              *testing.T
 	db             *db.DB
 	server         *Server
-	cleanup        func()
 	llm            *loop.PredictableService
 	convID         string
 	timeout        time.Duration
@@ -34,28 +30,15 @@ type TestHarness struct {
 func NewTestHarness(t *testing.T) *TestHarness {
 	t.Helper()
 
-	database, cleanup := setupTestDB(t)
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-
-	toolSetConfig := claudetool.ToolSetConfig{EnableBrowser: false}
-	server := NewServer(database, llmManager, toolSetConfig, logger, true, "", "predictable", "", nil)
+	server, database, predictableService := newTestServer(t)
 
 	return &TestHarness{
 		t:       t,
 		db:      database,
 		server:  server,
-		cleanup: cleanup,
 		llm:     predictableService,
 		timeout: 5 * time.Second,
 	}
-}
-
-// Close cleans up the test harness resources.
-func (h *TestHarness) Close() {
-	h.cleanup()
 }
 
 // NewConversation starts a new conversation with the given message and options.

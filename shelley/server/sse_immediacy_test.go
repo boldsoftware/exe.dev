@@ -4,19 +4,15 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/llm"
-	"shelley.exe.dev/loop"
 )
 
 // flusherRecorder wraps httptest.ResponseRecorder to implement http.Flusher
@@ -72,13 +68,7 @@ func (f *flusherRecorder) getString() string {
 // TestSSEUserMessageAppearsImmediately tests that when a user sends a message,
 // the message appears in the SSE stream immediately, before the LLM responds.
 func TestSSEUserMessageAppearsImmediately(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	server, database, _ := newTestServer(t)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
@@ -213,13 +203,7 @@ func containsUserMessage(sseBody, messageText string) bool {
 // TestSSEUserMessageWithRealHTTPServer tests with a real HTTP server to properly
 // test HTTP context cancellation behavior
 func TestSSEUserMessageWithRealHTTPServer(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	srv := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	srv, database, _ := newTestServer(t)
 
 	// Create conversation
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
@@ -323,13 +307,7 @@ func TestSSEUserMessageWithRealHTTPServer(t *testing.T) {
 // TestSSEUserMessageWithExistingConnection is a simpler version that tests
 // message recording and notification without the SSE complexity
 func TestSSEUserMessageWithExistingConnection(t *testing.T) {
-	database, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	predictableService := loop.NewPredictableService()
-	llmManager := &testLLMManager{service: predictableService}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	server := NewServer(database, llmManager, claudetool.ToolSetConfig{}, logger, true, "", "predictable", "", nil)
+	server, database, _ := newTestServer(t)
 
 	// Create conversation and get a manager (simulating an established SSE connection)
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)

@@ -19,7 +19,6 @@ import (
 // is properly passed through from HTTP requests to tool execution.
 func TestWorkingDirectoryConfiguration(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	t.Run("cwd_tmp", func(t *testing.T) {
 		h.NewConversation("bash: pwd", "/tmp")
@@ -43,7 +42,6 @@ func TestWorkingDirectoryConfiguration(t *testing.T) {
 // TestListDirectory tests the list-directory API endpoint used by the directory picker.
 func TestListDirectory(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	t.Run("list_tmp", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/list-directory?path=/tmp", nil)
@@ -538,7 +536,6 @@ func TestListDirectory(t *testing.T) {
 // TestConversationCwdReturnedInList tests that CWD is returned in the conversations list.
 func TestConversationCwdReturnedInList(t *testing.T) {
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	// Create a conversation with a specific CWD
 	h.NewConversation("bash: pwd", "/tmp")
@@ -603,7 +600,6 @@ func TestSystemPromptUsesCwdFromConversation(t *testing.T) {
 	}
 
 	h := NewTestHarness(t)
-	defer h.Close()
 
 	// Create a conversation with the temp directory as cwd
 	h.NewConversation("bash: echo hello", tmpDir)
