@@ -34,7 +34,7 @@ var templateFS embed.FS
 
 var markdown = goldmark.New(
 	goldmark.WithExtensions(gmmeta.Meta),
-	goldmark.WithRendererOptions(htmlrenderer.WithUnsafe()),
+	goldmark.WithRendererOptions(htmlrenderer.WithUnsafe(), htmlrenderer.WithXHTML()),
 	goldmark.WithRenderer(Renderer()),
 )
 

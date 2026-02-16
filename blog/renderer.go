@@ -66,7 +66,7 @@ func Renderer() renderer.Renderer {
 		renderer.WithNodeRenderers(
 			// Lower priority value ensures the custom renderer registers after html.
 			util.Prioritized(&codeRenderer{}, 500),
-			util.Prioritized(html.NewRenderer(html.WithUnsafe()), 1000),
+			util.Prioritized(html.NewRenderer(html.WithUnsafe(), html.WithXHTML()), 1000),
 		),
 	)
 }
