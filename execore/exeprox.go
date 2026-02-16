@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/billing"
+	"exe.dev/billing/tender"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	proxyapi "exe.dev/pkg/api/exe/proxy/v1"
@@ -239,6 +241,19 @@ func (es *exeproxServer) LLMDebitCredit(ctx context.Context, req *proxyapi.LLMDe
 	}
 	ret := &proxyapi.LLMDebitCreditResponse{
 		CreditInfo: gatewayCreditInfoToProto(ci),
+	}
+	return ret, nil
+}
+
+// LLMUseCredits applies a credit usage entry and returns remaining credir.
+// See [llmgateway.GatewayData.UseCredits].
+func (es *exeproxServer) LLMUseCredits(ctx context.Context, req *proxyapi.LLMUseCreditsRequest) (*proxyapi.LLMUseCreditsResponse, error) {
+	val, err := (&billing.Manager{DB: es.s.db}).SpendCredits(ctx, req.AccountID, int(req.Quantity), tender.Mint(0, req.Microcents))
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	ret := &proxyapi.LLMUseCreditsResponse{
+		Microcents: val.Microcents(),
 	}
 	return ret, nil
 }

@@ -31,6 +31,7 @@ const (
 	ProxyInfoService_CheckAndRefreshLLMCredit_FullMethodName = "/exe.proxy.v1.ProxyInfoService/CheckAndRefreshLLMCredit"
 	ProxyInfoService_TopUpOnLLMBillingUpgrade_FullMethodName = "/exe.proxy.v1.ProxyInfoService/TopUpOnLLMBillingUpgrade"
 	ProxyInfoService_LLMDebitCredit_FullMethodName           = "/exe.proxy.v1.ProxyInfoService/LLMDebitCredit"
+	ProxyInfoService_LLMUseCredits_FullMethodName            = "/exe.proxy.v1.ProxyInfoService/LLMUseCredits"
 	ProxyInfoService_UsedCookie_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/UsedCookie"
 	ProxyInfoService_UsedBoxShareLink_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/UsedBoxShareLink"
 	ProxyInfoService_Changes_FullMethodName                  = "/exe.proxy.v1.ProxyInfoService/Changes"
@@ -65,6 +66,9 @@ type ProxyInfoServiceClient interface {
 	// from the user's LLM credit.
 	// See llmgateway.CreditManager.LLMDebitCredit.
 	LLMDebitCredit(ctx context.Context, in *LLMDebitCreditRequest, opts ...grpc.CallOption) (*LLMDebitCreditResponse, error)
+	// LLMUseCredits applies a credit usage entry and returns remaining credit.
+	// See llmgateway.GatewayData.UseCredits.
+	LLMUseCredits(ctx context.Context, in *LLMUseCreditsRequest, opts ...grpc.CallOption) (*LLMUseCreditsResponse, error)
 	// UsedCookie is used to report that an authentication cookie was used.
 	UsedCookie(ctx context.Context, in *UsedCookieRequest, opts ...grpc.CallOption) (*UsedCookieResponse, error)
 	// UsedBoxShareLink is used to report that a box share link was used.
@@ -200,6 +204,16 @@ func (c *proxyInfoServiceClient) LLMDebitCredit(ctx context.Context, in *LLMDebi
 	return out, nil
 }
 
+func (c *proxyInfoServiceClient) LLMUseCredits(ctx context.Context, in *LLMUseCreditsRequest, opts ...grpc.CallOption) (*LLMUseCreditsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LLMUseCreditsResponse)
+	err := c.cc.Invoke(ctx, ProxyInfoService_LLMUseCredits_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *proxyInfoServiceClient) UsedCookie(ctx context.Context, in *UsedCookieRequest, opts ...grpc.CallOption) (*UsedCookieResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(UsedCookieResponse)
@@ -282,6 +296,9 @@ type ProxyInfoServiceServer interface {
 	// from the user's LLM credit.
 	// See llmgateway.CreditManager.LLMDebitCredit.
 	LLMDebitCredit(context.Context, *LLMDebitCreditRequest) (*LLMDebitCreditResponse, error)
+	// LLMUseCredits applies a credit usage entry and returns remaining credit.
+	// See llmgateway.GatewayData.UseCredits.
+	LLMUseCredits(context.Context, *LLMUseCreditsRequest) (*LLMUseCreditsResponse, error)
 	// UsedCookie is used to report that an authentication cookie was used.
 	UsedCookie(context.Context, *UsedCookieRequest) (*UsedCookieResponse, error)
 	// UsedBoxShareLink is used to report that a box share link was used.
@@ -327,6 +344,9 @@ func (UnimplementedProxyInfoServiceServer) TopUpOnLLMBillingUpgrade(context.Cont
 }
 func (UnimplementedProxyInfoServiceServer) LLMDebitCredit(context.Context, *LLMDebitCreditRequest) (*LLMDebitCreditResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LLMDebitCredit not implemented")
+}
+func (UnimplementedProxyInfoServiceServer) LLMUseCredits(context.Context, *LLMUseCreditsRequest) (*LLMUseCreditsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LLMUseCredits not implemented")
 }
 func (UnimplementedProxyInfoServiceServer) UsedCookie(context.Context, *UsedCookieRequest) (*UsedCookieResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UsedCookie not implemented")
@@ -515,6 +535,24 @@ func _ProxyInfoService_LLMDebitCredit_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProxyInfoService_LLMUseCredits_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LLMUseCreditsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyInfoServiceServer).LLMUseCredits(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyInfoService_LLMUseCredits_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyInfoServiceServer).LLMUseCredits(ctx, req.(*LLMUseCreditsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProxyInfoService_UsedCookie_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UsedCookieRequest)
 	if err := dec(in); err != nil {
@@ -610,6 +648,10 @@ var ProxyInfoService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "LLMDebitCredit",
 			Handler:    _ProxyInfoService_LLMDebitCredit_Handler,
+		},
+		{
+			MethodName: "LLMUseCredits",
+			Handler:    _ProxyInfoService_LLMUseCredits_Handler,
 		},
 		{
 			MethodName: "UsedCookie",

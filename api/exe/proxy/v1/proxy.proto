@@ -44,6 +44,10 @@ service ProxyInfoService {
   // See llmgateway.CreditManager.LLMDebitCredit.
   rpc LLMDebitCredit(LLMDebitCreditRequest) returns (LLMDebitCreditResponse);
 
+  // LLMUseCredits applies a credit usage entry and returns remaining credit.
+  // See llmgateway.GatewayData.UseCredits.
+  rpc LLMUseCredits(LLMUseCreditsRequest) returns (LLMUseCreditsResponse);
+
   // UsedCookie is used to report that an authentication cookie was used.
   rpc UsedCookie(UsedCookieRequest) returns (UsedCookieResponse);
 
@@ -173,6 +177,16 @@ message LLMDebitCreditRequest {
 
 message LLMDebitCreditResponse {
   CreditInfo credit_info = 1;
+}
+
+message LLMUseCreditsRequest {
+  string account_id = 1;
+  int64 quantity = 2;
+  int64 microcents = 3;
+}
+
+message LLMUseCreditsResponse {
+  int64 microcents = 1;
 }
 
 message UsedCookieRequest {
