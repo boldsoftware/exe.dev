@@ -14,14 +14,8 @@ set -euo pipefail
 # to route logs to the appropriate file.
 #
 # Usage:
-#   HONEYCOMB_API_KEY_STAGING=xxx HONEYCOMB_API_KEY_PRODUCTION=yyy ./deploy-otel-collector.sh
-
-# Require both Honeycomb API keys
-if [ -z "${HONEYCOMB_API_KEY_STAGING:-}" ] || [ -z "${HONEYCOMB_API_KEY_PRODUCTION:-}" ]; then
-    echo "ERROR: Both HONEYCOMB_API_KEY_STAGING and HONEYCOMB_API_KEY_PRODUCTION are required" >&2
-    echo "Usage: HONEYCOMB_API_KEY_STAGING=xxx HONEYCOMB_API_KEY_PRODUCTION=yyy ./deploy-otel-collector.sh" >&2
-    exit 1
-fi
+#   ./deploy-otel-collector.sh
+#   (reads API keys from mon:/etc/default/otel-collector, or pass them as env vars)
 
 OTEL_PORT_GRPC=4317
 OTEL_PORT_HTTP=4318
@@ -29,6 +23,20 @@ OTEL_HEALTH_PORT=13133
 OTEL_CONFIG_PATH=/etc/otel-collector/config.yml
 OTEL_ENV_FILE=/etc/default/otel-collector
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Use provided API keys, or read them from the existing env file on mon
+if [ -z "${HONEYCOMB_API_KEY_STAGING:-}" ] || [ -z "${HONEYCOMB_API_KEY_PRODUCTION:-}" ]; then
+    echo "API keys not provided locally, reading from mon:${OTEL_ENV_FILE}..."
+    REMOTE_ENV=$(ssh ubuntu@mon "sudo cat ${OTEL_ENV_FILE} 2>/dev/null" || true)
+    if [ -n "$REMOTE_ENV" ]; then
+        eval "$REMOTE_ENV"
+    fi
+    if [ -z "${HONEYCOMB_API_KEY_STAGING:-}" ] || [ -z "${HONEYCOMB_API_KEY_PRODUCTION:-}" ]; then
+        echo "ERROR: Both HONEYCOMB_API_KEY_STAGING and HONEYCOMB_API_KEY_PRODUCTION are required" >&2
+        echo "Provide them as env vars or ensure ${OTEL_ENV_FILE} exists on mon" >&2
+        exit 1
+    fi
+fi
 
 # We use otel-collector-contrib which includes all exporters/connectors
 OTEL_BINARY_NAME="otelcol-contrib"

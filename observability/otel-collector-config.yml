@@ -203,6 +203,15 @@ processors:
         bodies:
           - "getting instance from config"
           - "resource manager: activity check"
+          - "desired-state sync: cannot read cgroup file, skipping"
+
+  # Filter out noisy log lines before sending to S3
+  filter/storage:
+    logs:
+      exclude:
+        match_type: strict
+        bodies:
+          - "desired-state sync: cannot read cgroup file, skipping"
 
 connectors:
   # Route logs based on deployment.environment
@@ -348,9 +357,10 @@ service:
       processors: [filter/honeycomb]
       exporters: [otlphttp/honeycomb-staging]
 
-    # Staging storage: unfiltered file + S3
+    # Staging storage: file + S3
     logs/staging-storage:
       receivers: [routing]
+      processors: [filter/storage]
       exporters: [file/staging, awss3/staging]
 
     # Production Honeycomb: filtered to reduce noise
@@ -359,9 +369,10 @@ service:
       processors: [filter/honeycomb]
       exporters: [otlphttp/honeycomb-production]
 
-    # Production storage: unfiltered file + S3
+    # Production storage: file + S3
     logs/production-storage:
       receivers: [routing]
+      processors: [filter/storage]
       exporters: [file/production, awss3/production]
 
     # Unknown environment: file + S3 (no Honeycomb)
