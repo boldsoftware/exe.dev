@@ -21,4 +21,21 @@ func useImportedType() {
 	_ = a.NotMarked{
 		Field1: "hello",
 	}
+
+	// MixedConfig from another package — only exported fields required.
+	// port is unexported, so it can't be set here and shouldn't be required.
+	_ = a.MixedConfig{
+		Host: "localhost",
+	}
+
+	// MixedConfig pointer from another package — only exported fields required
+	_ = &a.MixedConfig{
+		Host: "localhost",
+	}
+
+	// MixedConfig pointer missing exported field from another package
+	_ = &a.MixedConfig{} // want "struct literal of MixedConfig is missing fields: Host"
+
+	// MixedConfig missing exported field from another package
+	_ = a.MixedConfig{} // want "struct literal of MixedConfig is missing fields: Host"
 }

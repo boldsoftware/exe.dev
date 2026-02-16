@@ -97,14 +97,13 @@ func run(pass *analysis.Pass) (any, error) {
 			initializedFields[key.Name] = true
 		}
 
-		// Check for missing fields
-		// For exported types, only check exported fields (unexported fields can't be set from other packages)
-		// For unexported types, check all fields (they can only be used within the same package)
-		typeIsExported := named.Obj().Exported()
+		// Check for missing fields.
+		// Skip unexported fields when used from another package,
+		// since unexported fields can't be set outside the defining package.
+		samePackage := named.Obj().Pkg() == pass.Pkg
 		var missingFields []string
 		for field := range structType.Fields() {
-			// Skip unexported fields for exported types
-			if typeIsExported && !field.Exported() {
+			if !samePackage && !field.Exported() {
 				continue
 			}
 			if !initializedFields[field.Name()] {
