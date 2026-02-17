@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"io/fs"
 	"log/slog"
 	"math/rand/v2"
 	"net"
@@ -40,7 +39,9 @@ import (
 	"exe.dev/sshkey"
 	"exe.dev/stage"
 	"exe.dev/tracing"
+	"exe.dev/webstatic"
 	"exe.dev/wildcardcert"
+
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	sloghttp "github.com/samber/slog-http"
 	"golang.org/x/crypto/acme"
@@ -687,27 +688,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // serveStaticFile serves a file from the embedded static directory.
 // Uses the binary's VCS build time as the modification time to enable HTTP caching.
 func (s *Server) serveStaticFile(w http.ResponseWriter, r *http.Request, filename string) {
-	// Create a sub-filesystem from the static directory
-	staticSubFS, err := fs.Sub(staticFS, "static")
-	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	f, err := staticSubFS.Open(filename)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	defer f.Close()
-
-	data, err := io.ReadAll(f)
-	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	http.ServeContent(w, r, filename, buildTime(), bytes.NewReader(data))
+	webstatic.Serve(w, r, s.slog(), filename)
 }
 
 // handleHealth handles health check requests

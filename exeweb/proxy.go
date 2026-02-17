@@ -24,6 +24,7 @@ import (
 	"exe.dev/sshkey"
 	"exe.dev/sshpool2"
 	"exe.dev/stage"
+	"exe.dev/webstatic"
 
 	sloghttp "github.com/samber/slog-http"
 	"golang.org/x/crypto/ssh"
@@ -1115,6 +1116,11 @@ func (ps *ProxyServer) renderTemplate(ctx context.Context, w http.ResponseWriter
 	}
 	_, err := w.Write(buf.Bytes())
 	return err
+}
+
+// serveStaticFile serves a file from the embedded static directory.
+func (ps *ProxyServer) serveStaticFile(w http.ResponseWriter, r *http.Request, filename string) {
+	webstatic.Serve(w, r, ps.Lg, filename)
 }
 
 // makeAuthURL returns a specially recognized authentication URL.
