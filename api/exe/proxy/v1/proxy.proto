@@ -73,6 +73,9 @@ service ProxyInfoService {
   // SSHKeyByFingerprint returns the user ID and SSH key for a fingerprint.
   rpc SSHKeyByFingerprint(SSHKeyByFingerprintRequest) returns (SSHKeyByFingerprintResponse);
 
+  // HLLNoteEvents notes events for the HyperLogLog tracker.
+  rpc HLLNoteEvents(HLLNoteEventsRequest) returns (HLLNoteEventsResponse);
+
   // Changes returns a stream of changes that exeprox cares about.
   //
   // The guideline here is that the first time exeprox need to know
@@ -277,6 +280,13 @@ message SSHKeyByFingerprintResponse {
   string user_id = 2;
   string public_key = 3;
 }
+
+message HLLNoteEventsRequest {
+  string user_id = 1;
+  repeated string events = 2;
+}
+
+message HLLNoteEventsResponse {}
 
 message ChangesRequest {}
 

@@ -385,6 +385,16 @@ func (es *exeproxServer) SSHKeyByFingerprint(ctx context.Context, req *proxyapi.
 	return ret, nil
 }
 
+// HLLNoteEvents notes events for the HyperLogLog tracker.
+func (es *exeproxServer) HLLNoteEvents(ctx context.Context, req *proxyapi.HLLNoteEventsRequest) (*proxyapi.HLLNoteEventsResponse, error) {
+	if es.s.hllTracker != nil {
+		for _, event := range req.Events {
+			es.s.hllTracker.NoteEvent(event, req.UserID)
+		}
+	}
+	return &proxyapi.HLLNoteEventsResponse{}, nil
+}
+
 // Changes returns a stream of changes that exeprox cares about:
 // changes to boxes, cookies, box shares, and box share links.
 func (es *exeproxServer) Changes(req *proxyapi.ChangesRequest, stream proxyapi.ProxyInfoService_ChangesServer) error {

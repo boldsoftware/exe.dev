@@ -39,6 +39,7 @@ const (
 	ProxyInfoService_IsBoxSharedWithUserTeam_FullMethodName  = "/exe.proxy.v1.ProxyInfoService/IsBoxSharedWithUserTeam"
 	ProxyInfoService_CheckShareLink_FullMethodName           = "/exe.proxy.v1.ProxyInfoService/CheckShareLink"
 	ProxyInfoService_SSHKeyByFingerprint_FullMethodName      = "/exe.proxy.v1.ProxyInfoService/SSHKeyByFingerprint"
+	ProxyInfoService_HLLNoteEvents_FullMethodName            = "/exe.proxy.v1.ProxyInfoService/HLLNoteEvents"
 	ProxyInfoService_Changes_FullMethodName                  = "/exe.proxy.v1.ProxyInfoService/Changes"
 )
 
@@ -92,6 +93,8 @@ type ProxyInfoServiceClient interface {
 	CheckShareLink(ctx context.Context, in *CheckShareLinkRequest, opts ...grpc.CallOption) (*CheckShareLinkResponse, error)
 	// SSHKeyByFingerprint returns the user ID and SSH key for a fingerprint.
 	SSHKeyByFingerprint(ctx context.Context, in *SSHKeyByFingerprintRequest, opts ...grpc.CallOption) (*SSHKeyByFingerprintResponse, error)
+	// HLLNoteEvents notes events for the HyperLogLog tracker.
+	HLLNoteEvents(ctx context.Context, in *HLLNoteEventsRequest, opts ...grpc.CallOption) (*HLLNoteEventsResponse, error)
 	// Changes returns a stream of changes that exeprox cares about.
 	//
 	// The guideline here is that the first time exeprox need to know
@@ -303,6 +306,16 @@ func (c *proxyInfoServiceClient) SSHKeyByFingerprint(ctx context.Context, in *SS
 	return out, nil
 }
 
+func (c *proxyInfoServiceClient) HLLNoteEvents(ctx context.Context, in *HLLNoteEventsRequest, opts ...grpc.CallOption) (*HLLNoteEventsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HLLNoteEventsResponse)
+	err := c.cc.Invoke(ctx, ProxyInfoService_HLLNoteEvents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *proxyInfoServiceClient) Changes(ctx context.Context, in *ChangesRequest, opts ...grpc.CallOption) (ProxyInfoService_ChangesClient, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ProxyInfoService_ServiceDesc.Streams[1], ProxyInfoService_Changes_FullMethodName, cOpts...)
@@ -386,6 +399,8 @@ type ProxyInfoServiceServer interface {
 	CheckShareLink(context.Context, *CheckShareLinkRequest) (*CheckShareLinkResponse, error)
 	// SSHKeyByFingerprint returns the user ID and SSH key for a fingerprint.
 	SSHKeyByFingerprint(context.Context, *SSHKeyByFingerprintRequest) (*SSHKeyByFingerprintResponse, error)
+	// HLLNoteEvents notes events for the HyperLogLog tracker.
+	HLLNoteEvents(context.Context, *HLLNoteEventsRequest) (*HLLNoteEventsResponse, error)
 	// Changes returns a stream of changes that exeprox cares about.
 	//
 	// The guideline here is that the first time exeprox need to know
@@ -451,6 +466,9 @@ func (UnimplementedProxyInfoServiceServer) CheckShareLink(context.Context, *Chec
 }
 func (UnimplementedProxyInfoServiceServer) SSHKeyByFingerprint(context.Context, *SSHKeyByFingerprintRequest) (*SSHKeyByFingerprintResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SSHKeyByFingerprint not implemented")
+}
+func (UnimplementedProxyInfoServiceServer) HLLNoteEvents(context.Context, *HLLNoteEventsRequest) (*HLLNoteEventsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HLLNoteEvents not implemented")
 }
 func (UnimplementedProxyInfoServiceServer) Changes(*ChangesRequest, ProxyInfoService_ChangesServer) error {
 	return status.Errorf(codes.Unimplemented, "method Changes not implemented")
@@ -777,6 +795,24 @@ func _ProxyInfoService_SSHKeyByFingerprint_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProxyInfoService_HLLNoteEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HLLNoteEventsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyInfoServiceServer).HLLNoteEvents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyInfoService_HLLNoteEvents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyInfoServiceServer).HLLNoteEvents(ctx, req.(*HLLNoteEventsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProxyInfoService_Changes_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ChangesRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -868,6 +904,10 @@ var ProxyInfoService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SSHKeyByFingerprint",
 			Handler:    _ProxyInfoService_SSHKeyByFingerprint_Handler,
+		},
+		{
+			MethodName: "HLLNoteEvents",
+			Handler:    _ProxyInfoService_HLLNoteEvents_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
