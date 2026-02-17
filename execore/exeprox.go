@@ -12,6 +12,7 @@ import (
 
 	"exe.dev/billing"
 	"exe.dev/billing/tender"
+	"exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	proxyapi "exe.dev/pkg/api/exe/proxy/v1"
@@ -393,6 +394,26 @@ func (es *exeproxServer) HLLNoteEvents(ctx context.Context, req *proxyapi.HLLNot
 		}
 	}
 	return &proxyapi.HLLNoteEventsResponse{}, nil
+}
+
+// CheckAndIncrementEmailQuota checks if the user is under
+// their daily limit, and increments if so. It returns a nil
+// error if they are under the limit.
+func (es *exeproxServer) CheckAndIncrementEmailQuota(ctx context.Context, req *proxyapi.CheckAndIncrementEmailQuotaRequest) (*proxyapi.CheckAndIncrementEmailQuotaResponse, error) {
+	err := es.s.checkAndIncrementEmailQuota(ctx, req.UserID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &proxyapi.CheckAndIncrementEmailQuotaResponse{}, nil
+}
+
+// SendEmail sends an email message.
+func (es *exeproxServer) SendEmail(ctx context.Context, req *proxyapi.SendEmailRequest) (*proxyapi.SendEmailResponse, error) {
+	err := es.s.sendEmail(ctx, email.Type(req.EmailType), req.To, req.Subject, req.Body)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &proxyapi.SendEmailResponse{}, nil
 }
 
 // Changes returns a stream of changes that exeprox cares about:

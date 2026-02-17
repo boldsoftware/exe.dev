@@ -76,6 +76,14 @@ service ProxyInfoService {
   // HLLNoteEvents notes events for the HyperLogLog tracker.
   rpc HLLNoteEvents(HLLNoteEventsRequest) returns (HLLNoteEventsResponse);
 
+  // CheckAndIncrementEmailQuota checks if the user is under
+  // their daily limit, and increments if so. It returns a nil
+  // error if they are under the limit.
+  rpc CheckAndIncrementEmailQuota(CheckAndIncrementEmailQuotaRequest) returns (CheckAndIncrementEmailQuotaResponse);
+
+  // SendEmail sends an email message.
+  rpc SendEmail(SendEmailRequest) returns (SendEmailResponse);
+
   // Changes returns a stream of changes that exeprox cares about.
   //
   // The guideline here is that the first time exeprox need to know
@@ -287,6 +295,21 @@ message HLLNoteEventsRequest {
 }
 
 message HLLNoteEventsResponse {}
+
+message CheckAndIncrementEmailQuotaRequest {
+  string user_id = 1;
+}
+
+message CheckAndIncrementEmailQuotaResponse {}
+
+message SendEmailRequest {
+  string email_type = 1;
+  string to = 2;
+  string subject = 3;
+  string body = 4;
+}
+
+message SendEmailResponse {}
 
 message ChangesRequest {}
 

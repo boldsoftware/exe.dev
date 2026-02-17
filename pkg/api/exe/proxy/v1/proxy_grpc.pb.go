@@ -22,25 +22,27 @@ import (
 const _ = grpc.SupportPackageIsVersion8
 
 const (
-	ProxyInfoService_BoxInfo_FullMethodName                  = "/exe.proxy.v1.ProxyInfoService/BoxInfo"
-	ProxyInfoService_CookieInfo_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/CookieInfo"
-	ProxyInfoService_UserInfo_FullMethodName                 = "/exe.proxy.v1.ProxyInfoService/UserInfo"
-	ProxyInfoService_GetPublicIPs_FullMethodName             = "/exe.proxy.v1.ProxyInfoService/GetPublicIPs"
-	ProxyInfoService_GetLobbyIP_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/GetLobbyIP"
-	ProxyInfoService_CertForDomain_FullMethodName            = "/exe.proxy.v1.ProxyInfoService/CertForDomain"
-	ProxyInfoService_CheckAndRefreshLLMCredit_FullMethodName = "/exe.proxy.v1.ProxyInfoService/CheckAndRefreshLLMCredit"
-	ProxyInfoService_TopUpOnLLMBillingUpgrade_FullMethodName = "/exe.proxy.v1.ProxyInfoService/TopUpOnLLMBillingUpgrade"
-	ProxyInfoService_LLMDebitCredit_FullMethodName           = "/exe.proxy.v1.ProxyInfoService/LLMDebitCredit"
-	ProxyInfoService_LLMUseCredits_FullMethodName            = "/exe.proxy.v1.ProxyInfoService/LLMUseCredits"
-	ProxyInfoService_CreateAuthCookie_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/CreateAuthCookie"
-	ProxyInfoService_DeleteAuthCookie_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/DeleteAuthCookie"
-	ProxyInfoService_UsedCookie_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/UsedCookie"
-	ProxyInfoService_HasUserAccessToBox_FullMethodName       = "/exe.proxy.v1.ProxyInfoService/HasUserAccessToBox"
-	ProxyInfoService_IsBoxSharedWithUserTeam_FullMethodName  = "/exe.proxy.v1.ProxyInfoService/IsBoxSharedWithUserTeam"
-	ProxyInfoService_CheckShareLink_FullMethodName           = "/exe.proxy.v1.ProxyInfoService/CheckShareLink"
-	ProxyInfoService_SSHKeyByFingerprint_FullMethodName      = "/exe.proxy.v1.ProxyInfoService/SSHKeyByFingerprint"
-	ProxyInfoService_HLLNoteEvents_FullMethodName            = "/exe.proxy.v1.ProxyInfoService/HLLNoteEvents"
-	ProxyInfoService_Changes_FullMethodName                  = "/exe.proxy.v1.ProxyInfoService/Changes"
+	ProxyInfoService_BoxInfo_FullMethodName                     = "/exe.proxy.v1.ProxyInfoService/BoxInfo"
+	ProxyInfoService_CookieInfo_FullMethodName                  = "/exe.proxy.v1.ProxyInfoService/CookieInfo"
+	ProxyInfoService_UserInfo_FullMethodName                    = "/exe.proxy.v1.ProxyInfoService/UserInfo"
+	ProxyInfoService_GetPublicIPs_FullMethodName                = "/exe.proxy.v1.ProxyInfoService/GetPublicIPs"
+	ProxyInfoService_GetLobbyIP_FullMethodName                  = "/exe.proxy.v1.ProxyInfoService/GetLobbyIP"
+	ProxyInfoService_CertForDomain_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/CertForDomain"
+	ProxyInfoService_CheckAndRefreshLLMCredit_FullMethodName    = "/exe.proxy.v1.ProxyInfoService/CheckAndRefreshLLMCredit"
+	ProxyInfoService_TopUpOnLLMBillingUpgrade_FullMethodName    = "/exe.proxy.v1.ProxyInfoService/TopUpOnLLMBillingUpgrade"
+	ProxyInfoService_LLMDebitCredit_FullMethodName              = "/exe.proxy.v1.ProxyInfoService/LLMDebitCredit"
+	ProxyInfoService_LLMUseCredits_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/LLMUseCredits"
+	ProxyInfoService_CreateAuthCookie_FullMethodName            = "/exe.proxy.v1.ProxyInfoService/CreateAuthCookie"
+	ProxyInfoService_DeleteAuthCookie_FullMethodName            = "/exe.proxy.v1.ProxyInfoService/DeleteAuthCookie"
+	ProxyInfoService_UsedCookie_FullMethodName                  = "/exe.proxy.v1.ProxyInfoService/UsedCookie"
+	ProxyInfoService_HasUserAccessToBox_FullMethodName          = "/exe.proxy.v1.ProxyInfoService/HasUserAccessToBox"
+	ProxyInfoService_IsBoxSharedWithUserTeam_FullMethodName     = "/exe.proxy.v1.ProxyInfoService/IsBoxSharedWithUserTeam"
+	ProxyInfoService_CheckShareLink_FullMethodName              = "/exe.proxy.v1.ProxyInfoService/CheckShareLink"
+	ProxyInfoService_SSHKeyByFingerprint_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/SSHKeyByFingerprint"
+	ProxyInfoService_HLLNoteEvents_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/HLLNoteEvents"
+	ProxyInfoService_CheckAndIncrementEmailQuota_FullMethodName = "/exe.proxy.v1.ProxyInfoService/CheckAndIncrementEmailQuota"
+	ProxyInfoService_SendEmail_FullMethodName                   = "/exe.proxy.v1.ProxyInfoService/SendEmail"
+	ProxyInfoService_Changes_FullMethodName                     = "/exe.proxy.v1.ProxyInfoService/Changes"
 )
 
 // ProxyInfoServiceClient is the client API for ProxyInfoService service.
@@ -95,6 +97,12 @@ type ProxyInfoServiceClient interface {
 	SSHKeyByFingerprint(ctx context.Context, in *SSHKeyByFingerprintRequest, opts ...grpc.CallOption) (*SSHKeyByFingerprintResponse, error)
 	// HLLNoteEvents notes events for the HyperLogLog tracker.
 	HLLNoteEvents(ctx context.Context, in *HLLNoteEventsRequest, opts ...grpc.CallOption) (*HLLNoteEventsResponse, error)
+	// CheckAndIncrementEmailQuota checks if the user is under
+	// their daily limit, and increments if so. It returns a nil
+	// error if they are under the limit.
+	CheckAndIncrementEmailQuota(ctx context.Context, in *CheckAndIncrementEmailQuotaRequest, opts ...grpc.CallOption) (*CheckAndIncrementEmailQuotaResponse, error)
+	// SendEmail sends an email message.
+	SendEmail(ctx context.Context, in *SendEmailRequest, opts ...grpc.CallOption) (*SendEmailResponse, error)
 	// Changes returns a stream of changes that exeprox cares about.
 	//
 	// The guideline here is that the first time exeprox need to know
@@ -316,6 +324,26 @@ func (c *proxyInfoServiceClient) HLLNoteEvents(ctx context.Context, in *HLLNoteE
 	return out, nil
 }
 
+func (c *proxyInfoServiceClient) CheckAndIncrementEmailQuota(ctx context.Context, in *CheckAndIncrementEmailQuotaRequest, opts ...grpc.CallOption) (*CheckAndIncrementEmailQuotaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CheckAndIncrementEmailQuotaResponse)
+	err := c.cc.Invoke(ctx, ProxyInfoService_CheckAndIncrementEmailQuota_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *proxyInfoServiceClient) SendEmail(ctx context.Context, in *SendEmailRequest, opts ...grpc.CallOption) (*SendEmailResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SendEmailResponse)
+	err := c.cc.Invoke(ctx, ProxyInfoService_SendEmail_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *proxyInfoServiceClient) Changes(ctx context.Context, in *ChangesRequest, opts ...grpc.CallOption) (ProxyInfoService_ChangesClient, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ProxyInfoService_ServiceDesc.Streams[1], ProxyInfoService_Changes_FullMethodName, cOpts...)
@@ -401,6 +429,12 @@ type ProxyInfoServiceServer interface {
 	SSHKeyByFingerprint(context.Context, *SSHKeyByFingerprintRequest) (*SSHKeyByFingerprintResponse, error)
 	// HLLNoteEvents notes events for the HyperLogLog tracker.
 	HLLNoteEvents(context.Context, *HLLNoteEventsRequest) (*HLLNoteEventsResponse, error)
+	// CheckAndIncrementEmailQuota checks if the user is under
+	// their daily limit, and increments if so. It returns a nil
+	// error if they are under the limit.
+	CheckAndIncrementEmailQuota(context.Context, *CheckAndIncrementEmailQuotaRequest) (*CheckAndIncrementEmailQuotaResponse, error)
+	// SendEmail sends an email message.
+	SendEmail(context.Context, *SendEmailRequest) (*SendEmailResponse, error)
 	// Changes returns a stream of changes that exeprox cares about.
 	//
 	// The guideline here is that the first time exeprox need to know
@@ -469,6 +503,12 @@ func (UnimplementedProxyInfoServiceServer) SSHKeyByFingerprint(context.Context, 
 }
 func (UnimplementedProxyInfoServiceServer) HLLNoteEvents(context.Context, *HLLNoteEventsRequest) (*HLLNoteEventsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HLLNoteEvents not implemented")
+}
+func (UnimplementedProxyInfoServiceServer) CheckAndIncrementEmailQuota(context.Context, *CheckAndIncrementEmailQuotaRequest) (*CheckAndIncrementEmailQuotaResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CheckAndIncrementEmailQuota not implemented")
+}
+func (UnimplementedProxyInfoServiceServer) SendEmail(context.Context, *SendEmailRequest) (*SendEmailResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendEmail not implemented")
 }
 func (UnimplementedProxyInfoServiceServer) Changes(*ChangesRequest, ProxyInfoService_ChangesServer) error {
 	return status.Errorf(codes.Unimplemented, "method Changes not implemented")
@@ -813,6 +853,42 @@ func _ProxyInfoService_HLLNoteEvents_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProxyInfoService_CheckAndIncrementEmailQuota_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CheckAndIncrementEmailQuotaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyInfoServiceServer).CheckAndIncrementEmailQuota(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyInfoService_CheckAndIncrementEmailQuota_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyInfoServiceServer).CheckAndIncrementEmailQuota(ctx, req.(*CheckAndIncrementEmailQuotaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProxyInfoService_SendEmail_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SendEmailRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyInfoServiceServer).SendEmail(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyInfoService_SendEmail_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyInfoServiceServer).SendEmail(ctx, req.(*SendEmailRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProxyInfoService_Changes_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ChangesRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -908,6 +984,14 @@ var ProxyInfoService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "HLLNoteEvents",
 			Handler:    _ProxyInfoService_HLLNoteEvents_Handler,
+		},
+		{
+			MethodName: "CheckAndIncrementEmailQuota",
+			Handler:    _ProxyInfoService_CheckAndIncrementEmailQuota_Handler,
+		},
+		{
+			MethodName: "SendEmail",
+			Handler:    _ProxyInfoService_SendEmail_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
