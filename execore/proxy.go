@@ -166,6 +166,40 @@ func (s *Server) isBoxSharedWithUserTeam(ctx context.Context, boxID int, boxName
 	return isTeamShared, err
 }
 
+// checkShareLink reports whether a share link is valid.
+// If the share link is valid, it will be used,
+// so this method is also responsible for recording the use,
+// and for creating an email-based share for the user.
+func (s *Server) checkShareLink(ctx context.Context, boxID int, boxName, userID, shareToken string) (bool, error) {
+	if shareToken == "" {
+		return false, nil
+	}
+	valid, err := s.validateShareLinkForBox(ctx, shareToken, boxID)
+	if err != nil {
+		return false, err
+	}
+	if !valid {
+		return false, nil
+	}
+
+	// The share link is valid. Record that we used it,
+	// and auto-create an email-based share for the user.
+	// The email-based share allows the user to access the
+	// box even if the share link is later revoked.
+	if err := s.incrementShareLinkUsage(ctx, shareToken); err != nil {
+		// Report the error but don't return it:
+		// the share link is still valid.
+		s.slog().ErrorContext(ctx, "error incrementing share link usage counter", "shareToken", shareToken, "error", err)
+	}
+	if err := s.autoCreateShareFromLink(ctx, userID, boxID, shareToken); err != nil {
+		// Report the error but don't return it:
+		// the share link is still valid.
+		s.slog().ErrorContext(ctx, "error auto-creating email share from share link", "userID", userID, "boxID", boxID, "boxName", boxName, "shareToken", shareToken, "error", err)
+	}
+
+	return true, nil
+}
+
 // incrementShareLinkUsage increments the usage counter for a share link
 func (s *Server) incrementShareLinkUsage(ctx context.Context, shareToken string) error {
 	return withTx1(s, ctx, (*exedb.Queries).IncrementShareLinkUsage, shareToken)
@@ -345,33 +379,7 @@ func (pd *proxyData) IsBoxSharedWithUserTeam(ctx context.Context, boxID int, box
 
 // CheckShareLink implements [exeweb.ProxyData.CheckShareLink].
 func (pd *proxyData) CheckShareLink(ctx context.Context, boxID int, boxName, userID, shareToken string) (bool, error) {
-	if shareToken == "" {
-		return false, nil
-	}
-	valid, err := pd.s.validateShareLinkForBox(ctx, shareToken, boxID)
-	if err != nil {
-		return false, err
-	}
-	if !valid {
-		return false, nil
-	}
-
-	// The share link is valid. Record that we used it,
-	// and auto-create an email-based share for the user.
-	// The email-based share allows the user to access the
-	// box even if the share link is later revoked.
-	if err := pd.s.incrementShareLinkUsage(ctx, shareToken); err != nil {
-		// Report the error but don't return it:
-		// the share link is still valid.
-		pd.s.slog().ErrorContext(ctx, "error incrementing share link usage counter", "shareToken", shareToken, "error", err)
-	}
-	if err := pd.s.autoCreateShareFromLink(ctx, userID, boxID, shareToken); err != nil {
-		// Report the error but don't return it:
-		// the share link is still valid.
-		pd.s.slog().ErrorContext(ctx, "error auto-creating email share from share link", "userID", userID, "boxID", boxID, "boxName", boxName, "shareToken", shareToken, "error", err)
-	}
-
-	return true, nil
+	return pd.s.checkShareLink(ctx, boxID, boxName, userID, shareToken)
 }
 
 // GetSSHKeyByFingerprint implements [exeweb.ProxyData.GetSSHKeyByFingerprint].
