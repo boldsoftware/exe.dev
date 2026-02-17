@@ -57,6 +57,9 @@ service ProxyInfoService {
   // UsedCookie is used to report that an authentication cookie was used.
   rpc UsedCookie(UsedCookieRequest) returns (UsedCookieResponse);
 
+  // HasUserAccessToBox reports whether a user access to a box.
+  rpc HasUserAccessToBox(HasUserAccessToBoxRequest) returns (HasUserAccessToBoxResponse);
+
   // UsedBoxShareLink is used to report that a box share link was used.
   rpc UsedBoxShareLink(UsedBoxShareLinkRequest) returns (UsedBoxShareLinkResponse);
 
@@ -226,6 +229,16 @@ message UsedCookieRequest {
 }
 
 message UsedCookieResponse {}
+
+message HasUserAccessToBoxRequest {
+  int64 box_id = 1;
+  string box_name = 2;
+  string shared_with_user_id = 3;
+}
+
+message HasUserAccessToBoxResponse {
+  bool ok = 1;
+}
 
 message UsedBoxShareLinkRequest {
   string share_token = 1;

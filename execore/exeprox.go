@@ -325,6 +325,18 @@ func (es *exeproxServer) UsedCookie(ctx context.Context, req *proxyapi.UsedCooki
 	return &proxyapi.UsedCookieResponse{}, nil
 }
 
+// HasUserAccessToBox reports whether a box is shared with a user.
+func (es *exeproxServer) HasUserAccessToBox(ctx context.Context, req *proxyapi.HasUserAccessToBoxRequest) (*proxyapi.HasUserAccessToBoxResponse, error) {
+	ok, err := es.s.hasUserAccessToBox(ctx, int(req.BoxID), req.BoxName, req.SharedWithUserID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	ret := &proxyapi.HasUserAccessToBoxResponse{
+		Ok: ok,
+	}
+	return ret, nil
+}
+
 // UsedBoxShareLink is used to report that a box share link was used.
 func (es *exeproxServer) UsedBoxShareLink(ctx context.Context, req *proxyapi.UsedBoxShareLinkRequest) (*proxyapi.UsedBoxShareLinkResponse, error) {
 	err := es.s.incrementShareLinkUsage(ctx, req.ShareToken)

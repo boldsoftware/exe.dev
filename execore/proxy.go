@@ -135,6 +135,27 @@ func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey
 	return s.proxyServer().CreateSSHTunnelTransport(sshHost, &exewebBox, sshKey)
 }
 
+// hasUserAccessToBox reports whether a box is shared with a user.
+func (s *Server) hasUserAccessToBox(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
+	// Try to resolve any pending shares for this user
+	// before checking access.
+	// This is a defensive measure to catch any edge cases
+	// where pending shares weren't resolved during login
+	// (e.g., if we miss a login path in the future).
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err == nil && user.Email != "" {
+		if err := s.resolvePendingShares(ctx, user.Email, userID); err != nil {
+			return false, fmt.Errorf("resolve pending shares: %w", err)
+		}
+	}
+
+	hasAccess, err := withRxRes1(s, ctx, (*exedb.Queries).HasUserAccessToBox, exedb.HasUserAccessToBoxParams{
+		BoxID:            int64(boxID),
+		SharedWithUserID: userID,
+	})
+	return hasAccess, err
+}
+
 // incrementShareLinkUsage increments the usage counter for a share link
 func (s *Server) incrementShareLinkUsage(ctx context.Context, shareToken string) error {
 	return withTx1(s, ctx, (*exedb.Queries).IncrementShareLinkUsage, shareToken)
@@ -304,23 +325,7 @@ func (pd *proxyData) UsedCookie(ctx context.Context, cookieValue string) {
 
 // HasUserAccessToBox implements [exeweb.ProxyData.HasUserAccessToBox].
 func (pd *proxyData) HasUserAccessToBox(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
-	// Try to resolve any pending shares for this user
-	// before checking access.
-	// This is a defensive measure to catch any edge cases
-	// where pending shares weren't resolved during login
-	// (e.g., if we miss a login path in the future).
-	user, err := withRxRes1(pd.s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
-	if err == nil && user.Email != "" {
-		if err := pd.s.resolvePendingShares(ctx, user.Email, userID); err != nil {
-			return false, fmt.Errorf("resolve pending shares: %w", err)
-		}
-	}
-
-	hasAccess, err := withRxRes1(pd.s, ctx, (*exedb.Queries).HasUserAccessToBox, exedb.HasUserAccessToBoxParams{
-		BoxID:            int64(boxID),
-		SharedWithUserID: userID,
-	})
-	return hasAccess, err
+	return pd.s.hasUserAccessToBox(ctx, boxID, boxName, userID)
 }
 
 // IsBoxSharedWithUserTeam implements [exeweb.ProxyData.IsBoxSharedWithUserTeam].
