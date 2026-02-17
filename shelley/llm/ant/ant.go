@@ -34,6 +34,7 @@ const (
 	Claude45Sonnet = "claude-sonnet-4-5-20250929"
 	Claude45Opus   = "claude-opus-4-5-20251101"
 	Claude46Opus   = "claude-opus-4-6"
+	Claude46Sonnet = "claude-sonnet-4-6"
 )
 
 // IsClaudeModel reports whether userName is a user-friendly Claude model.
@@ -63,7 +64,7 @@ func (s *Service) TokenContextWindow() int {
 	}
 
 	switch model {
-	case Claude37Sonnet, Claude4Sonnet, Claude45Sonnet:
+	case Claude37Sonnet, Claude4Sonnet, Claude45Sonnet, Claude46Sonnet:
 		return 200000
 	case Claude45Haiku:
 		return 200000

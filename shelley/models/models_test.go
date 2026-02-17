@@ -498,7 +498,7 @@ func TestGetAvailableModelsUnion(t *testing.T) {
 	models := manager.GetAvailableModels()
 
 	// Should have anthropic models and fireworks models, plus predictable
-	expectedModels := []string{"claude-opus-4.6", "claude-opus-4.5", "gpt-oss-20b-fireworks", "glm-4p6-fireworks", "claude-sonnet-4.5", "claude-haiku-4.5", "predictable"}
+	expectedModels := []string{"claude-opus-4.6", "claude-opus-4.5", "claude-sonnet-4.6", "gpt-oss-20b-fireworks", "glm-4p6-fireworks", "claude-sonnet-4.5", "claude-haiku-4.5", "predictable"}
 	for _, expected := range expectedModels {
 		found := false
 		for _, m := range models {
