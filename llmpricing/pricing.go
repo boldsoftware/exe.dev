@@ -94,6 +94,7 @@ var allowedModels = map[Provider]map[string]ModelCost{
 		// Claude 4.6 models
 		"claude-opus-4-6":          {Input: 500, Output: 2500, CacheRead: 50, CacheCreation: 625},
 		"claude-opus-4-6-20260115": {Input: 500, Output: 2500, CacheRead: 50, CacheCreation: 625},
+		"claude-sonnet-4-6":        {Input: 300, Output: 1500, CacheRead: 30, CacheCreation: 375},
 
 		// Claude 4.5 models
 		"claude-opus-4-5-20251101":   {Input: 500, Output: 2500, CacheRead: 50, CacheCreation: 625},
