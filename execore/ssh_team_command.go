@@ -363,11 +363,7 @@ func (ss *SSHServer) handleTeamRemoveCommand(ctx context.Context, cc *exemenu.Co
 	}
 
 	// Remove the member from the team
-	err = withTx1(ss.server, ctx, (*exedb.Queries).DeleteTeamMember, exedb.DeleteTeamMemberParams{
-		TeamID: team.TeamID,
-		UserID: member.UserID,
-	})
-	if err != nil {
+	if err := ss.server.deleteTeamMember(ctx, team.TeamID, member.UserID); err != nil {
 		return cc.Errorf("Failed to remove user: %v", err)
 	}
 
@@ -541,11 +537,7 @@ func (ss *SSHServer) handleTeamUnenrollCommand(ctx context.Context, cc *exemenu.
 		}
 	}
 
-	err = withTx1(ss.server, ctx, (*exedb.Queries).DeleteTeamMember, exedb.DeleteTeamMemberParams{
-		TeamID: teamID,
-		UserID: member.UserID,
-	})
-	if err != nil {
+	if err := ss.server.deleteTeamMember(ctx, teamID, member.UserID); err != nil {
 		return cc.Errorf("Failed to remove member: %v", err)
 	}
 

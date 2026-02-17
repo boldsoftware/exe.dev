@@ -144,3 +144,16 @@ func (s *Server) FindTeamBoxByIPShard(ctx context.Context, userID, localIP strin
 	s.slog().InfoContext(ctx, "FindTeamBoxByIPShard found team box", "owner_id", userID, "localIP", localIP, "shard", info.Shard, "box_name", box.Name)
 	return &box
 }
+
+// deleteTeamMember deletes a member from a team.
+func (s *Server) deleteTeamMember(ctx context.Context, teamID, userID string) error {
+	err := withTx1(s, ctx, (*exedb.Queries).DeleteTeamMember, exedb.DeleteTeamMemberParams{
+		TeamID: teamID,
+		UserID: userID,
+	})
+	if err != nil {
+		return err
+	}
+	proxyChangeDeletedTeamMember(teamID, userID)
+	return nil
+}

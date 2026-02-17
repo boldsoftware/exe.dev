@@ -60,6 +60,10 @@ service ProxyInfoService {
   // HasUserAccessToBox reports whether a user access to a box.
   rpc HasUserAccessToBox(HasUserAccessToBoxRequest) returns (HasUserAccessToBoxResponse);
 
+  // IsBoxSharedWithUserTeam reports whethre a user is in
+  // a team that has access to a box.
+  rpc IsBoxSharedWithUserTeam(IsBoxSharedWithUserTeamRequest) returns (IsBoxSharedWithUserTeamResponse);
+
   // UsedBoxShareLink is used to report that a box share link was used.
   rpc UsedBoxShareLink(UsedBoxShareLinkRequest) returns (UsedBoxShareLinkResponse);
 
@@ -240,6 +244,16 @@ message HasUserAccessToBoxResponse {
   bool ok = 1;
 }
 
+message IsBoxSharedWithUserTeamRequest {
+  int64 box_id = 1;
+  string box_name = 2;
+  string shared_with_user_id = 3;
+}
+
+message IsBoxSharedWithUserTeamResponse {
+  bool ok = 1;
+}
+
 message UsedBoxShareLinkRequest {
   string share_token = 1;
 }
@@ -271,6 +285,8 @@ message ChangesResponse {
     DeletedBoxShareLink deleted_box_share_link = 6;
     DeletedSSHKey deleted_ssh_key = 7;
     UserChanged user_changed = 8;
+    DeletedTeamMember deleted_team_member = 9;
+    DeletedBoxShareTeam deleted_box_share_team = 10;
   }
 }
 
@@ -332,4 +348,17 @@ message UserChanged {
   bool user_exists = 1;               // false if user has been deleted
   google.protobuf.Timestamp when = 2; // when information retrieved
   UserInfo user_info = 3;
+}
+
+// DeletedTeamMember is sent when we delete a member from a team.
+message DeletedTeamMember {
+  string team_id = 1;
+  string user_id = 2;
+}
+
+// DeletedBoxShareTeam is sent when we stop sharing a box with a team.
+message DeletedBoxShareTeam {
+  string team_id = 1;
+  int64 box_id = 2;
+  string box_name = 3;
 }

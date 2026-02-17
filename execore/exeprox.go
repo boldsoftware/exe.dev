@@ -337,6 +337,19 @@ func (es *exeproxServer) HasUserAccessToBox(ctx context.Context, req *proxyapi.H
 	return ret, nil
 }
 
+// IsBoxSharedWithUserTeam reports whether a user is a member
+// of a team that has access to a box.
+func (es *exeproxServer) IsBoxSharedWithUserTeam(ctx context.Context, req *proxyapi.IsBoxSharedWithUserTeamRequest) (*proxyapi.IsBoxSharedWithUserTeamResponse, error) {
+	isTeamShared, err := es.s.isBoxSharedWithUserTeam(ctx, int(req.BoxID), req.BoxName, req.SharedWithUserID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	ret := &proxyapi.IsBoxSharedWithUserTeamResponse{
+		Ok: isTeamShared,
+	}
+	return ret, nil
+}
+
 // UsedBoxShareLink is used to report that a box share link was used.
 func (es *exeproxServer) UsedBoxShareLink(ctx context.Context, req *proxyapi.UsedBoxShareLinkRequest) (*proxyapi.UsedBoxShareLinkResponse, error) {
 	err := es.s.incrementShareLinkUsage(ctx, req.ShareToken)
@@ -637,4 +650,31 @@ func (s *Server) sendProxyUserChange(ctx context.Context, userID string) {
 			},
 		})
 	}
+}
+
+// proxyChangeDeletedTeamMember sends a notification about deleting
+// a user from a team.
+func proxyChangeDeletedTeamMember(teamID, userID string) {
+	sendProxyChange(&proxyapi.ChangesResponse{
+		Action: &proxyapi.ChangesResponse_DeletedTeamMember{
+			DeletedTeamMember: &proxyapi.DeletedTeamMember{
+				TeamID: teamID,
+				UserID: userID,
+			},
+		},
+	})
+}
+
+// proxyChangeDeletedBoxShareTeam sends a notification about
+// deleting a box share from a team.
+func proxyChangeDeletedBoxShareTeam(teamID string, boxID int, boxName string) {
+	sendProxyChange(&proxyapi.ChangesResponse{
+		Action: &proxyapi.ChangesResponse_DeletedBoxShareTeam{
+			DeletedBoxShareTeam: &proxyapi.DeletedBoxShareTeam{
+				TeamID:  teamID,
+				BoxID:   int64(boxID),
+				BoxName: boxName,
+			},
+		},
+	})
 }

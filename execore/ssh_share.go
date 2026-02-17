@@ -839,6 +839,8 @@ func (ss *SSHServer) handleShareRemoveTeam(ctx context.Context, cc *exemenu.Comm
 		return err
 	}
 
+	proxyChangeDeletedBoxShareTeam(team.TeamID, box.ID, box.Name)
+
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
 			"status":    "success",

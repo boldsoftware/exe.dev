@@ -36,6 +36,7 @@ const (
 	ProxyInfoService_DeleteAuthCookie_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/DeleteAuthCookie"
 	ProxyInfoService_UsedCookie_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/UsedCookie"
 	ProxyInfoService_HasUserAccessToBox_FullMethodName       = "/exe.proxy.v1.ProxyInfoService/HasUserAccessToBox"
+	ProxyInfoService_IsBoxSharedWithUserTeam_FullMethodName  = "/exe.proxy.v1.ProxyInfoService/IsBoxSharedWithUserTeam"
 	ProxyInfoService_UsedBoxShareLink_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/UsedBoxShareLink"
 	ProxyInfoService_SSHKeyByFingerprint_FullMethodName      = "/exe.proxy.v1.ProxyInfoService/SSHKeyByFingerprint"
 	ProxyInfoService_Changes_FullMethodName                  = "/exe.proxy.v1.ProxyInfoService/Changes"
@@ -81,6 +82,9 @@ type ProxyInfoServiceClient interface {
 	UsedCookie(ctx context.Context, in *UsedCookieRequest, opts ...grpc.CallOption) (*UsedCookieResponse, error)
 	// HasUserAccessToBox reports whether a user access to a box.
 	HasUserAccessToBox(ctx context.Context, in *HasUserAccessToBoxRequest, opts ...grpc.CallOption) (*HasUserAccessToBoxResponse, error)
+	// IsBoxSharedWithUserTeam reports whethre a user is in
+	// a team that has access to a box.
+	IsBoxSharedWithUserTeam(ctx context.Context, in *IsBoxSharedWithUserTeamRequest, opts ...grpc.CallOption) (*IsBoxSharedWithUserTeamResponse, error)
 	// UsedBoxShareLink is used to report that a box share link was used.
 	UsedBoxShareLink(ctx context.Context, in *UsedBoxShareLinkRequest, opts ...grpc.CallOption) (*UsedBoxShareLinkResponse, error)
 	// SSHKeyByFingerprint returns the user ID and SSH key for a fingerprint.
@@ -266,6 +270,16 @@ func (c *proxyInfoServiceClient) HasUserAccessToBox(ctx context.Context, in *Has
 	return out, nil
 }
 
+func (c *proxyInfoServiceClient) IsBoxSharedWithUserTeam(ctx context.Context, in *IsBoxSharedWithUserTeamRequest, opts ...grpc.CallOption) (*IsBoxSharedWithUserTeamResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(IsBoxSharedWithUserTeamResponse)
+	err := c.cc.Invoke(ctx, ProxyInfoService_IsBoxSharedWithUserTeam_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *proxyInfoServiceClient) UsedBoxShareLink(ctx context.Context, in *UsedBoxShareLinkRequest, opts ...grpc.CallOption) (*UsedBoxShareLinkResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(UsedBoxShareLinkResponse)
@@ -359,6 +373,9 @@ type ProxyInfoServiceServer interface {
 	UsedCookie(context.Context, *UsedCookieRequest) (*UsedCookieResponse, error)
 	// HasUserAccessToBox reports whether a user access to a box.
 	HasUserAccessToBox(context.Context, *HasUserAccessToBoxRequest) (*HasUserAccessToBoxResponse, error)
+	// IsBoxSharedWithUserTeam reports whethre a user is in
+	// a team that has access to a box.
+	IsBoxSharedWithUserTeam(context.Context, *IsBoxSharedWithUserTeamRequest) (*IsBoxSharedWithUserTeamResponse, error)
 	// UsedBoxShareLink is used to report that a box share link was used.
 	UsedBoxShareLink(context.Context, *UsedBoxShareLinkRequest) (*UsedBoxShareLinkResponse, error)
 	// SSHKeyByFingerprint returns the user ID and SSH key for a fingerprint.
@@ -419,6 +436,9 @@ func (UnimplementedProxyInfoServiceServer) UsedCookie(context.Context, *UsedCook
 }
 func (UnimplementedProxyInfoServiceServer) HasUserAccessToBox(context.Context, *HasUserAccessToBoxRequest) (*HasUserAccessToBoxResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HasUserAccessToBox not implemented")
+}
+func (UnimplementedProxyInfoServiceServer) IsBoxSharedWithUserTeam(context.Context, *IsBoxSharedWithUserTeamRequest) (*IsBoxSharedWithUserTeamResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IsBoxSharedWithUserTeam not implemented")
 }
 func (UnimplementedProxyInfoServiceServer) UsedBoxShareLink(context.Context, *UsedBoxShareLinkRequest) (*UsedBoxShareLinkResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UsedBoxShareLink not implemented")
@@ -697,6 +717,24 @@ func _ProxyInfoService_HasUserAccessToBox_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProxyInfoService_IsBoxSharedWithUserTeam_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IsBoxSharedWithUserTeamRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyInfoServiceServer).IsBoxSharedWithUserTeam(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyInfoService_IsBoxSharedWithUserTeam_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyInfoServiceServer).IsBoxSharedWithUserTeam(ctx, req.(*IsBoxSharedWithUserTeamRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProxyInfoService_UsedBoxShareLink_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UsedBoxShareLinkRequest)
 	if err := dec(in); err != nil {
@@ -812,6 +850,10 @@ var ProxyInfoService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "HasUserAccessToBox",
 			Handler:    _ProxyInfoService_HasUserAccessToBox_Handler,
+		},
+		{
+			MethodName: "IsBoxSharedWithUserTeam",
+			Handler:    _ProxyInfoService_IsBoxSharedWithUserTeam_Handler,
 		},
 		{
 			MethodName: "UsedBoxShareLink",
