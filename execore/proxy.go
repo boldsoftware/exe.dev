@@ -280,6 +280,7 @@ func dbBoxToExewebBox(box *exedb.Box) exeweb.BoxData {
 	exewebBox := exeweb.BoxData{
 		ID:                   box.ID,
 		Name:                 box.Name,
+		Status:               box.Status,
 		Ctrhost:              box.Ctrhost,
 		CreatedByUserID:      box.CreatedByUserID,
 		Image:                box.Image,

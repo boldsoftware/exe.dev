@@ -74,6 +74,7 @@ type ProxyData interface {
 type BoxData struct {
 	ID                   int      // box ID
 	Name                 string   // box name
+	Status               string   // box status (running, stopped, ...)
 	Ctrhost              string   // exelet name
 	CreatedByUserID      string   // user ID that created the box
 	Image                string   // image used to create box

@@ -99,11 +99,18 @@ message BoxInfoRequest {
 }
 
 message BoxInfoResponse {
-  bool box_exists = 1;            // false if no box by that name
-  int64 box_id = 2;               // box ID
-  string created_by_user_id = 3;  // user ID that created the box
-  string image = 4;               // image used to create box
-  BoxRoute route = 5;             // box routing configuration
+  bool box_exists = 1;                // false if no box by that name
+  int64 box_id = 2;                   // box ID
+  string status = 3;                  // box status
+  string ctrhost = 4;                 // exelet name
+  string created_by_user_id = 5;      // user ID that created the box
+  string image = 6;                   // image used to create box
+  BoxRoute route = 7;                 // box routing configuration
+  string ssh_server_identity_key = 8; // SSH server identity private key
+  string ssh_client_private_key = 9;  // box SSH private key
+  int32 ssh_port = 10;                // box SSH port
+  string ssh_user = 11;               // box SSH user
+  int64 support_access_allowed = 12;  // root support can access box
 }
 
 // BoxRoute is the protobuf version of exedb.Route.

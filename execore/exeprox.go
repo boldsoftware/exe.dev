@@ -119,15 +119,26 @@ func (es *exeproxServer) BoxInfo(ctx context.Context, req *proxyapi.BoxInfoReque
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	ret := &proxyapi.BoxInfoResponse{
-		BoxExists:       true,
-		BoxID:           int64(box.ID),
-		CreatedByUserID: box.CreatedByUserID,
-		Image:           box.Image,
+		BoxExists:            true,
+		BoxID:                int64(box.ID),
+		Status:               box.Status,
+		Ctrhost:              box.Ctrhost,
+		CreatedByUserID:      box.CreatedByUserID,
+		Image:                box.Image,
+		SSHServerIdentityKey: string(box.SSHServerIdentityKey),
+		SSHClientPrivateKey:  string(box.SSHClientPrivateKey),
+		SupportAccessAllowed: int64(box.SupportAccessAllowed),
 	}
 	route := box.GetRoute()
 	ret.Route = &proxyapi.BoxRoute{
 		Port:  int32(route.Port),
 		Share: route.Share,
+	}
+	if box.SSHPort != nil {
+		ret.SSHPort = int32(*box.SSHPort)
+	}
+	if box.SSHUser != nil {
+		ret.SSHUser = *box.SSHUser
 	}
 	return ret, nil
 }
