@@ -803,29 +803,7 @@ func (s *Server) isUserLockedOut(ctx context.Context, userID string) (bool, erro
 // renderLockedOutPage renders the account-locked page and reports whether userID is locked out.
 // If there's an error checking lockout status, it logs the error and returns false (allows access).
 func (s *Server) renderLockedOutPage(w http.ResponseWriter, r *http.Request, userID string) bool {
-	ctx := r.Context()
-	isLockedOut, err := s.isUserLockedOut(ctx, userID)
-	if err != nil {
-		s.slog().WarnContext(ctx, "failed to check user lockout status", "userID", userID, "error", err)
-		return false
-	}
-	if !isLockedOut {
-		return false
-	}
-
-	traceID := tracing.TraceIDFromContext(ctx)
-	s.slog().WarnContext(ctx, "locked out user attempted access", "userID", userID, "trace_id", traceID)
-
-	w.WriteHeader(http.StatusForbidden)
-	data := struct {
-		TraceID string
-	}{
-		TraceID: traceID,
-	}
-	if err := s.renderTemplate(ctx, w, "account-locked.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to render account-locked template", "error", err)
-	}
-	return true
+	return s.proxyServer().RenderLockedOutPage(w, r, userID)
 }
 
 // deleteAuthCookie deletes a cookie from the database.

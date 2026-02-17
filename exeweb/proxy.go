@@ -24,6 +24,7 @@ import (
 	"exe.dev/sshkey"
 	"exe.dev/sshpool2"
 	"exe.dev/stage"
+	"exe.dev/tracing"
 	"exe.dev/webstatic"
 
 	sloghttp "github.com/samber/slog-http"
@@ -976,6 +977,36 @@ func (ps *ProxyServer) RenderAccessRequired(w http.ResponseWriter, r *http.Reque
 
 	w.WriteHeader(http.StatusUnauthorized)
 	ps.renderTemplate(r.Context(), w, "401.html", data)
+}
+
+// RenderLockedOutPage renders the account-locked page and
+// reports whether userID is locked out.
+// If there's an error checking lockout status,
+// it logs the error and returns false (allows access).
+func (ps *ProxyServer) RenderLockedOutPage(w http.ResponseWriter, r *http.Request, userID string) bool {
+	ctx := r.Context()
+	isLockedOut, err := ps.Data.IsUserLockedOut(ctx, userID)
+	if err != nil {
+		ps.Lg.WarnContext(ctx, "failed to check user lockout status", "userID", userID, "error", err)
+		return false
+	}
+	if !isLockedOut {
+		return false
+	}
+
+	traceID := tracing.TraceIDFromContext(ctx)
+	ps.Lg.WarnContext(ctx, "locked out user attempted access", "userID", userID, "trace_id", traceID)
+
+	w.WriteHeader(http.StatusForbidden)
+	data := struct {
+		TraceID string
+	}{
+		TraceID: traceID,
+	}
+	if err := ps.renderTemplate(ctx, w, "account-locked.html", data); err != nil {
+		ps.Lg.ErrorContext(ctx, "failed to render account-locked template", "error", err)
+	}
+	return true
 }
 
 // HandleRequestAccess handles GET and POST for /__exe.dev/request-access.
