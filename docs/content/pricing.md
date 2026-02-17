@@ -71,7 +71,7 @@ We may adjust the included allocation over time, but we’ll keep it generous fo
 the typical usage expected at each tier.
 
 If you exceed your included amount, you can buy more Shelley Tokens in the
-billing section under https://exe.dev/user.
+billing section under [https://exe.dev/user](https://exe.dev/user).
 
 Token pricing tracks the underlying model providers’ published rates (no token
 markup), and because providers can change pricing independently at any time,
