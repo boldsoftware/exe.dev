@@ -62,3 +62,20 @@ VMs share the resources allocated to the user.
 In teams, users can use some of their team-mate's resources as burstable capacity.
 
 Need something custom? [Contact us](mailto:support@exe.dev) and we'll help scope it.
+
+## Shelley Tokens
+
+Every plan includes a monthly allocation of Shelley Tokens.
+
+We may adjust the included allocation over time, but we’ll keep it generous for
+the typical usage expected at each tier.
+
+If you exceed your included amount, you can buy more Shelley Tokens in the
+billing section under https://exe.dev/user.
+
+Token pricing tracks the underlying model providers’ published rates (no token
+markup), and because providers can change pricing independently at any time,
+our rates update accordingly.
+
+We bill tokens at the price in effect when they’re consumed (calculated
+hourly), so you pay the current rate for the model you actually used.
