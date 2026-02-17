@@ -11,7 +11,7 @@ import (
 	"exe.dev/sqlite"
 )
 
-const freeCreditPerUTCMonthUSD = 20.0
+const freeCreditPerUTCMonthUSD = 100.0
 
 // A Plan defines the base credit limits and error messages for a group of users.
 type Plan struct {

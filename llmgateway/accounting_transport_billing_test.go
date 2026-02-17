@@ -90,8 +90,9 @@ func TestAccountingTransport_BillingBacked_FreeOnlySkipsBillingCharge(t *testing
 	}
 
 	remaining := transport.debitResponseCredits(5, false)
-	if !floatClose(remaining, 15, 0.000001) {
-		t.Fatalf("remaining = %f, want 15", remaining)
+	wantRemaining := freeCreditPerUTCMonthUSD - 5
+	if !floatClose(remaining, wantRemaining, 0.000001) {
+		t.Fatalf("remaining = %f, want %f", remaining, wantRemaining)
 	}
 
 	calls := data.useCreditsCalls()
@@ -120,7 +121,8 @@ func TestAccountingTransport_BillingBacked_PartialOverageChargesOnlyOverage(t *t
 	if _, err := creditMgr.CheckAndRefreshCredit(ctx, userID); err != nil {
 		t.Fatalf("failed to initialize credit: %v", err)
 	}
-	if _, err := creditMgr.DebitCredit(ctx, userID, 17); err != nil {
+	preDebit := freeCreditPerUTCMonthUSD - 3
+	if _, err := creditMgr.DebitCredit(ctx, userID, preDebit); err != nil {
 		t.Fatalf("failed to prepare partial free balance: %v", err)
 	}
 
@@ -239,6 +241,9 @@ func TestAccountingTransport_BillingBacked_ConcurrentOverageCharging(t *testing.
 	ctx := context.Background()
 	if _, err := creditMgr.CheckAndRefreshCredit(ctx, userID); err != nil {
 		t.Fatalf("failed to initialize credit: %v", err)
+	}
+	if _, err := creditMgr.DebitCredit(ctx, userID, freeCreditPerUTCMonthUSD-20); err != nil {
+		t.Fatalf("failed to prepare concurrent overage balance: %v", err)
 	}
 
 	const (
