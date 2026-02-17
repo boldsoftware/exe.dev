@@ -402,6 +402,8 @@ func (ss *SSHServer) handleSSHKeyRemoveCmd(ctx context.Context, cc *exemenu.Comm
 		return err
 	}
 
+	proxyChangeDeletedSSHKey(int(keyToDelete.ID), keyToDelete.UserID, keyToDelete.PublicKey, keyToDelete.Fingerprint)
+
 	if cc.WantJSON() {
 		result := map[string]any{
 			"public_key":  strings.TrimSpace(keyToDelete.PublicKey),

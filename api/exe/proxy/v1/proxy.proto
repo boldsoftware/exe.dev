@@ -60,6 +60,9 @@ service ProxyInfoService {
   // UsedBoxShareLink is used to report that a box share link was used.
   rpc UsedBoxShareLink(UsedBoxShareLinkRequest) returns (UsedBoxShareLinkResponse);
 
+  // SSHKeyByFingerprint returns the user ID and SSH key for a fingerprint.
+  rpc SSHKeyByFingerprint(SSHKeyByFingerprintRequest) returns (SSHKeyByFingerprintResponse);
+
   // Changes returns a stream of changes that exeprox cares about.
   //
   // The guideline here is that the first time exeprox need to know
@@ -230,6 +233,16 @@ message UsedBoxShareLinkRequest {
 
 message UsedBoxShareLinkResponse {}
 
+message SSHKeyByFingerprintRequest {
+  string fingerprint = 1;
+}
+
+message SSHKeyByFingerprintResponse {
+  bool key_exists = 1;
+  string user_id = 2;
+  string public_key = 3;
+}
+
 message ChangesRequest {}
 
 // ChangesResponse is one entry in a stream of responses.
@@ -243,7 +256,8 @@ message ChangesResponse {
     DeletedCookie deleted_cookie = 4;
     DeletedBoxShare deleted_box_share = 5;
     DeletedBoxShareLink deleted_box_share_link = 6;
-    UserChanged user_changed = 7;
+    DeletedSSHKey deleted_ssh_key = 7;
+    UserChanged user_changed = 8;
   }
 }
 
@@ -288,6 +302,14 @@ message DeletedBoxShare {
 message DeletedBoxShareLink {
   string box_name = 1;
   string share_token = 2;
+}
+
+// DeletedSSHKey is sent when an SSH key is deleted.
+message DeletedSSHKey {
+  int64 id = 1;
+  string user_id = 2;
+  string public_key = 3;
+  string fingerprint = 4;
 }
 
 // UserChanged is sent when something change about user information.

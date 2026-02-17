@@ -38,10 +38,6 @@ type ProxyData interface {
 	// UsedCookie is used to report that an authentication cookie was used.
 	UsedCookie(ctx context.Context, cookieValue string)
 
-	// ValidateVMToken validates a token for VM access.
-	// It returns the auth result if valid, nil otherwise.
-	ValidateVMToken(ctx context.Context, token, boxName string) *ProxyAuthResult
-
 	// HasUserAccessToBox reports whether a user has access
 	// to a box based on box shares with the user's email.
 	HasUserAccessToBox(ctx context.Context, boxID int, boxName, userID string) (bool, error)
@@ -56,6 +52,11 @@ type ProxyData interface {
 	// so this method is also responsible for recording the use,
 	// and for creating an email-based share for the user.
 	CheckShareLink(ctx context.Context, boxID int, boxName, userID, shareToken string) (bool, error)
+
+	// GetSSHKeyByFingerprint uses the key fingerprint to fetch
+	// the corresponding SSH key from the database.
+	// It returns the user ID and SSH key.
+	GetSSHKeyByFingerprint(ctx context.Context, fingerprint string) (userID, key string, err error)
 
 	// HLLNoteEvents notes events for the HyperLogLog tracker.
 	HLLNoteEvents(ctx context.Context, userID string, events []string)

@@ -544,7 +544,7 @@ func (ps *ProxyServer) GetProxyAuth(r *http.Request, boxName string) *ProxyAuthR
 	// RFC 7235: auth scheme is case-insensitive.
 	if auth := r.Header.Get("Authorization"); len(auth) >= len("Bearer ") && strings.EqualFold(auth[:len("Bearer ")], "Bearer ") {
 		token := auth[len("Bearer "):]
-		if result := ps.Data.ValidateVMToken(r.Context(), token, boxName); result != nil {
+		if result := ps.ValidateVMToken(r.Context(), token, boxName); result != nil {
 			return result
 		}
 	}
@@ -552,7 +552,7 @@ func (ps *ProxyServer) GetProxyAuth(r *http.Request, boxName string) *ProxyAuthR
 	// 2. Try Basic auth (password is the token, username is ignored).
 	// This supports git HTTPS and other tools that use basic auth.
 	if _, password, ok := r.BasicAuth(); ok {
-		if result := ps.Data.ValidateVMToken(r.Context(), password, boxName); result != nil {
+		if result := ps.ValidateVMToken(r.Context(), password, boxName); result != nil {
 			return result
 		}
 	}
@@ -563,6 +563,43 @@ func (ps *ProxyServer) GetProxyAuth(r *http.Request, boxName string) *ProxyAuthR
 	}
 
 	return nil
+}
+
+// ValidateVMToken validates a token for VM access.
+// The namespace is "v0@VMNAME.BOXHOST" where VMNAME is the box name.
+// Returns the auth result if valid, nil otherwise.
+func (ps *ProxyServer) ValidateVMToken(ctx context.Context, token, boxName string) *ProxyAuthResult {
+	namespace := "v0@" + boxName + "." + ps.Env.BoxHost
+	result, err := ps.validateToken(ctx, token, namespace)
+	if err != nil {
+		ps.Lg.DebugContext(ctx, "VM token validation failed", "error", err, "box", boxName)
+		return nil
+	}
+	return &ProxyAuthResult{
+		UserID: result.UserID,
+		CtxRaw: result.CtxRaw,
+	}
+}
+
+// validateToken validates an SSH-signed token and
+// returns the user ID and payload.
+func (ps *ProxyServer) validateToken(ctx context.Context, token, namespace string) (*sshkey.TokenResult, error) {
+	tr, err := sshkey.ValidateToken(ctx, ps.Lg, token, namespace, ps.Data.GetSSHKeyByFingerprint)
+	if err != nil {
+		return nil, err
+	}
+
+	isLockedOut, err := ps.Data.IsUserLockedOut(ctx, tr.UserID)
+	if err != nil {
+		ps.Lg.ErrorContext(ctx, "failed to check lockout status", "error", err, "user_id", tr.UserID)
+		return nil, errors.New("invalid token")
+	}
+	if isLockedOut {
+		ps.Lg.WarnContext(ctx, "locked out user attempted token auth", "user_id", tr.UserID, "fingerprint", tr.Fingerprint)
+		return nil, errors.New("invalid token")
+	}
+
+	return tr, nil
 }
 
 // ValidateAuthCookie validates the primary authentication cookie

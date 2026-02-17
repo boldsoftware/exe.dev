@@ -69,22 +69,6 @@ func (s *Server) getProxyAuth(r *http.Request, box exedb.Box) *exeweb.ProxyAuthR
 	return s.proxyServer().GetProxyAuth(r, box.Name)
 }
 
-// validateVMToken validates a token for VM access.
-// The namespace is "v0@VMNAME.BOXHOST" where VMNAME is the box name.
-// Returns the auth result if valid, nil otherwise.
-func (s *Server) validateVMToken(ctx context.Context, token, boxName string) *exeweb.ProxyAuthResult {
-	namespace := "v0@" + boxName + "." + s.env.BoxHost
-	result, err := s.validateToken(ctx, token, namespace)
-	if err != nil {
-		s.slog().DebugContext(ctx, "VM token validation failed", "error", err, "box", boxName)
-		return nil
-	}
-	return &exeweb.ProxyAuthResult{
-		UserID: result.UserID,
-		CtxRaw: result.CtxRaw,
-	}
-}
-
 func (s *Server) webBaseURLNoRequest() string {
 	return fmt.Sprintf("%s://%s%s", s.bestScheme(), s.env.WebHost, s.bestURLPort())
 }
@@ -318,11 +302,6 @@ func (pd *proxyData) UsedCookie(ctx context.Context, cookieValue string) {
 	withTx1(pd.s, ctx, (*exedb.Queries).UpdateAuthCookieLastUsed, cookieValue)
 }
 
-// ValidateVMToken implements [exeweb.ProxyData.ValidateVMToken].
-func (pd *proxyData) ValidateVMToken(ctx context.Context, token, boxName string) *exeweb.ProxyAuthResult {
-	return pd.s.validateVMToken(ctx, token, boxName)
-}
-
 // HasUserAccessToBox implements [exeweb.ProxyData.HasUserAccessToBox].
 func (pd *proxyData) HasUserAccessToBox(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
 	// Try to resolve any pending shares for this user
@@ -382,6 +361,11 @@ func (pd *proxyData) CheckShareLink(ctx context.Context, boxID int, boxName, use
 	}
 
 	return true, nil
+}
+
+// GetSSHKeyByFingerprint implements [exeweb.ProxyData.GetSSHKeyByFingerprint].
+func (pd *proxyData) GetSSHKeyByFingerprint(ctx context.Context, fingerprint string) (userID, key string, err error) {
+	return pd.s.getSSHKeyByFingerprint(ctx, fingerprint)
 }
 
 // HLLNoteEvents implements [exeweb.ProxyData.HLLNoteEvents].

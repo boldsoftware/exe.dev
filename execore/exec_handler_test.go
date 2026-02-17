@@ -1013,7 +1013,7 @@ func TestValidateVMTokenLockedOutUser(t *testing.T) {
 
 	// Token should work before lockout.
 	t.Run("before_lockout", func(t *testing.T) {
-		result := s.validateVMToken(ctx, token, boxName)
+		result := s.proxyServer().ValidateVMToken(ctx, token, boxName)
 		if result == nil {
 			t.Fatal("expected valid result before lockout, got nil")
 		}
@@ -1033,7 +1033,7 @@ func TestValidateVMTokenLockedOutUser(t *testing.T) {
 
 	// Token should be rejected after lockout.
 	t.Run("after_lockout", func(t *testing.T) {
-		result := s.validateVMToken(ctx, token, boxName)
+		result := s.proxyServer().ValidateVMToken(ctx, token, boxName)
 		if result != nil {
 			t.Fatalf("expected nil result after lockout, got userID=%q", result.UserID)
 		}

@@ -336,6 +336,26 @@ func (es *exeproxServer) UsedBoxShareLink(ctx context.Context, req *proxyapi.Use
 	return &proxyapi.UsedBoxShareLinkResponse{}, nil
 }
 
+// SSHKeyByFingerprint fetches an SSH key by its fingerprint.
+func (es *exeproxServer) SSHKeyByFingerprint(ctx context.Context, req *proxyapi.SSHKeyByFingerprintRequest) (*proxyapi.SSHKeyByFingerprintResponse, error) {
+	userID, publicKey, err := es.s.getSSHKeyByFingerprint(ctx, req.Fingerprint)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			ret := &proxyapi.SSHKeyByFingerprintResponse{
+				KeyExists: false,
+			}
+			return ret, nil
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	ret := &proxyapi.SSHKeyByFingerprintResponse{
+		KeyExists: true,
+		UserID:    userID,
+		PublicKey: publicKey,
+	}
+	return ret, nil
+}
+
 // Changes returns a stream of changes that exeprox cares about:
 // changes to boxes, cookies, box shares, and box share links.
 func (es *exeproxServer) Changes(req *proxyapi.ChangesRequest, stream proxyapi.ProxyInfoService_ChangesServer) error {
@@ -555,6 +575,20 @@ func proxyChangeDeletedBoxShareLink(boxName, sharedToken string) {
 			DeletedBoxShareLink: &proxyapi.DeletedBoxShareLink{
 				BoxName:    boxName,
 				ShareToken: sharedToken,
+			},
+		},
+	})
+}
+
+// proxyChangeDeletedSSHKey sends a notification about a deleted SSH key.
+func proxyChangeDeletedSSHKey(id int, userID, publicKey, fingerprint string) {
+	sendProxyChange(&proxyapi.ChangesResponse{
+		Action: &proxyapi.ChangesResponse_DeletedSSHKey{
+			DeletedSSHKey: &proxyapi.DeletedSSHKey{
+				ID:          int64(id),
+				UserID:      userID,
+				PublicKey:   publicKey,
+				Fingerprint: fingerprint,
 			},
 		},
 	})

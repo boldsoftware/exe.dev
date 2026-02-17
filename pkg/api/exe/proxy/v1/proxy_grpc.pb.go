@@ -36,6 +36,7 @@ const (
 	ProxyInfoService_DeleteAuthCookie_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/DeleteAuthCookie"
 	ProxyInfoService_UsedCookie_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/UsedCookie"
 	ProxyInfoService_UsedBoxShareLink_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/UsedBoxShareLink"
+	ProxyInfoService_SSHKeyByFingerprint_FullMethodName      = "/exe.proxy.v1.ProxyInfoService/SSHKeyByFingerprint"
 	ProxyInfoService_Changes_FullMethodName                  = "/exe.proxy.v1.ProxyInfoService/Changes"
 )
 
@@ -79,6 +80,8 @@ type ProxyInfoServiceClient interface {
 	UsedCookie(ctx context.Context, in *UsedCookieRequest, opts ...grpc.CallOption) (*UsedCookieResponse, error)
 	// UsedBoxShareLink is used to report that a box share link was used.
 	UsedBoxShareLink(ctx context.Context, in *UsedBoxShareLinkRequest, opts ...grpc.CallOption) (*UsedBoxShareLinkResponse, error)
+	// SSHKeyByFingerprint returns the user ID and SSH key for a fingerprint.
+	SSHKeyByFingerprint(ctx context.Context, in *SSHKeyByFingerprintRequest, opts ...grpc.CallOption) (*SSHKeyByFingerprintResponse, error)
 	// Changes returns a stream of changes that exeprox cares about.
 	//
 	// The guideline here is that the first time exeprox need to know
@@ -260,6 +263,16 @@ func (c *proxyInfoServiceClient) UsedBoxShareLink(ctx context.Context, in *UsedB
 	return out, nil
 }
 
+func (c *proxyInfoServiceClient) SSHKeyByFingerprint(ctx context.Context, in *SSHKeyByFingerprintRequest, opts ...grpc.CallOption) (*SSHKeyByFingerprintResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SSHKeyByFingerprintResponse)
+	err := c.cc.Invoke(ctx, ProxyInfoService_SSHKeyByFingerprint_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *proxyInfoServiceClient) Changes(ctx context.Context, in *ChangesRequest, opts ...grpc.CallOption) (ProxyInfoService_ChangesClient, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ProxyInfoService_ServiceDesc.Streams[1], ProxyInfoService_Changes_FullMethodName, cOpts...)
@@ -333,6 +346,8 @@ type ProxyInfoServiceServer interface {
 	UsedCookie(context.Context, *UsedCookieRequest) (*UsedCookieResponse, error)
 	// UsedBoxShareLink is used to report that a box share link was used.
 	UsedBoxShareLink(context.Context, *UsedBoxShareLinkRequest) (*UsedBoxShareLinkResponse, error)
+	// SSHKeyByFingerprint returns the user ID and SSH key for a fingerprint.
+	SSHKeyByFingerprint(context.Context, *SSHKeyByFingerprintRequest) (*SSHKeyByFingerprintResponse, error)
 	// Changes returns a stream of changes that exeprox cares about.
 	//
 	// The guideline here is that the first time exeprox need to know
@@ -389,6 +404,9 @@ func (UnimplementedProxyInfoServiceServer) UsedCookie(context.Context, *UsedCook
 }
 func (UnimplementedProxyInfoServiceServer) UsedBoxShareLink(context.Context, *UsedBoxShareLinkRequest) (*UsedBoxShareLinkResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UsedBoxShareLink not implemented")
+}
+func (UnimplementedProxyInfoServiceServer) SSHKeyByFingerprint(context.Context, *SSHKeyByFingerprintRequest) (*SSHKeyByFingerprintResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SSHKeyByFingerprint not implemented")
 }
 func (UnimplementedProxyInfoServiceServer) Changes(*ChangesRequest, ProxyInfoService_ChangesServer) error {
 	return status.Errorf(codes.Unimplemented, "method Changes not implemented")
@@ -661,6 +679,24 @@ func _ProxyInfoService_UsedBoxShareLink_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProxyInfoService_SSHKeyByFingerprint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SSHKeyByFingerprintRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyInfoServiceServer).SSHKeyByFingerprint(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyInfoService_SSHKeyByFingerprint_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyInfoServiceServer).SSHKeyByFingerprint(ctx, req.(*SSHKeyByFingerprintRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProxyInfoService_Changes_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ChangesRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -740,6 +776,10 @@ var ProxyInfoService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UsedBoxShareLink",
 			Handler:    _ProxyInfoService_UsedBoxShareLink_Handler,
+		},
+		{
+			MethodName: "SSHKeyByFingerprint",
+			Handler:    _ProxyInfoService_SSHKeyByFingerprint_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -2,9 +2,11 @@ package sshkey
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -244,6 +246,64 @@ func ParseToken(token string) (*ParsedToken, error) {
 		CtxRaw:      tp.Ctx,
 		Cmds:        tp.Cmds,
 		sig:         sig,
+	}, nil
+}
+
+// TokenResult contains the result of a successful token validation.
+type TokenResult struct {
+	UserID      string         // The user ID associated with the signing key.
+	Fingerprint string         // The SSH key fingerprint used to sign the token.
+	Payload     map[string]any // The validated JSON payload from the token (parsed).
+	CtxRaw      []byte         // The raw bytes of the "ctx" field (for verbatim passthrough to VMs).
+	Cmds        []string       // Allowed commands (nil means use DefaultTokenCmds).
+}
+
+// ValidateToken validates an SSH-signed token and
+// returns the user ID and payload.
+// The namespace parameter specifies the
+// expected signing namespace (e.g., "v0@" + env.WebHost).
+// Returns an error if the token is invalid, expired,
+// or the signature doesn't verify.
+// The keyForFingerprint function is used to fetch the user ID and SSH key.
+func ValidateToken(ctx context.Context, lg *slog.Logger, token, namespace string, keyForFingerprint func(context.Context, string) (userID, key string, err error)) (*TokenResult, error) {
+	// Parse and validate token format
+	parsed, err := ParseToken(token)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate exp and nbf claims
+	if err := parsed.ValidateClaims(); err != nil {
+		return nil, err
+	}
+
+	// Look up the SSH key by fingerprint (database access stays here).
+	// Auth-sensitive errors use a generic message to avoid leaking
+	// whether a fingerprint exists or whether the signature is wrong.
+	userID, publicKey, err := keyForFingerprint(ctx, parsed.Fingerprint)
+	if err != nil {
+		return nil, errors.New("invalid token")
+	}
+
+	// Parse the public key
+	matchedKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey))
+	if err != nil {
+		lg.ErrorContext(ctx, "failed to parse stored SSH key", "error", err, "fingerprint", parsed.Fingerprint)
+		return nil, errors.New("invalid token")
+	}
+
+	// Verify the SSH signature
+	if err := parsed.Verify(matchedKey, namespace); err != nil {
+		lg.WarnContext(ctx, "SSH signature verification failed", "error", err, "fingerprint", parsed.Fingerprint, "namespace", namespace)
+		return nil, errors.New("invalid token")
+	}
+
+	return &TokenResult{
+		UserID:      userID,
+		Fingerprint: parsed.Fingerprint,
+		Payload:     parsed.PayloadJSON,
+		CtxRaw:      parsed.CtxRaw,
+		Cmds:        parsed.Cmds,
 	}, nil
 }
 

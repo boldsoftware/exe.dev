@@ -15,75 +15,32 @@ import (
 	"exe.dev/exemenu"
 	"exe.dev/sshkey"
 	"github.com/anmitsu/go-shlex"
-	"golang.org/x/crypto/ssh"
 )
 
 // DefaultTokenCmds is the list of commands allowed when a token does not specify cmds.
 var DefaultTokenCmds = []string{"help", "ls", "new", "whoami", "ssh-key list", "share show"}
 
-// TokenResult contains the result of a successful token validation.
-type TokenResult struct {
-	UserID      string         // The user ID associated with the signing key.
-	Fingerprint string         // The SSH key fingerprint used to sign the token.
-	Payload     map[string]any // The validated JSON payload from the token (parsed).
-	CtxRaw      []byte         // The raw bytes of the "ctx" field (for verbatim passthrough to VMs).
-	Cmds        []string       // Allowed commands (nil means use DefaultTokenCmds).
-}
-
 // validateToken validates an SSH-signed token and returns the user ID and payload.
 // The namespace parameter specifies the expected signing namespace (e.g., "v0@" + env.WebHost).
 // Returns an error if the token is invalid, expired, or the signature doesn't verify.
-func (s *Server) validateToken(ctx context.Context, token, namespace string) (*TokenResult, error) {
-	// Parse and validate token format
-	parsed, err := sshkey.ParseToken(token)
+func (s *Server) validateToken(ctx context.Context, token, namespace string) (*sshkey.TokenResult, error) {
+	tr, err := sshkey.ValidateToken(ctx, s.slog(), token, namespace, s.getSSHKeyByFingerprint)
 	if err != nil {
 		return nil, err
-	}
-
-	// Validate exp and nbf claims
-	if err := parsed.ValidateClaims(); err != nil {
-		return nil, err
-	}
-
-	// Look up the SSH key by fingerprint (database access stays here).
-	// Auth-sensitive errors use a generic message to avoid leaking
-	// whether a fingerprint exists or whether the signature is wrong.
-	keyRow, err := s.getSSHKeyByFingerprint(ctx, parsed.Fingerprint)
-	if err != nil {
-		return nil, errors.New("invalid token")
-	}
-
-	// Parse the public key
-	matchedKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(keyRow.PublicKey))
-	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to parse stored SSH key", "error", err, "fingerprint", parsed.Fingerprint)
-		return nil, errors.New("invalid token")
-	}
-
-	// Verify the SSH signature
-	if err := parsed.Verify(matchedKey, namespace); err != nil {
-		s.slog().WarnContext(ctx, "SSH signature verification failed", "error", err, "fingerprint", parsed.Fingerprint, "namespace", namespace)
-		return nil, errors.New("invalid token")
 	}
 
 	// Check if the key owner is locked out (fail closed on DB error).
-	isLockedOut, err := s.isUserLockedOut(ctx, keyRow.UserID)
+	isLockedOut, err := s.isUserLockedOut(ctx, tr.UserID)
 	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to check lockout status", "error", err, "user_id", keyRow.UserID)
+		s.slog().ErrorContext(ctx, "failed to check lockout status", "error", err, "user_id", tr.UserID)
 		return nil, errors.New("invalid token")
 	}
 	if isLockedOut {
-		s.slog().WarnContext(ctx, "locked out user attempted token auth", "user_id", keyRow.UserID, "fingerprint", parsed.Fingerprint)
+		s.slog().WarnContext(ctx, "locked out user attempted token auth", "user_id", tr.UserID, "fingerprint", tr.Fingerprint)
 		return nil, errors.New("invalid token")
 	}
 
-	return &TokenResult{
-		UserID:      keyRow.UserID,
-		Fingerprint: parsed.Fingerprint,
-		Payload:     parsed.PayloadJSON,
-		CtxRaw:      parsed.CtxRaw,
-		Cmds:        parsed.Cmds,
-	}, nil
+	return tr, nil
 }
 
 // execJSONError writes a JSON error response with the given status code and message.
@@ -233,6 +190,10 @@ func tokenCmdsAllow(cmds []string, resolvedCmd string) bool {
 }
 
 // getSSHKeyByFingerprint looks up an SSH key by its fingerprint.
-func (s *Server) getSSHKeyByFingerprint(ctx context.Context, fingerprint string) (exedb.GetSSHKeyByFingerprintRow, error) {
-	return withRxRes1(s, ctx, (*exedb.Queries).GetSSHKeyByFingerprint, fingerprint)
+func (s *Server) getSSHKeyByFingerprint(ctx context.Context, fingerprint string) (userID, key string, err error) {
+	row, err := withRxRes1(s, ctx, (*exedb.Queries).GetSSHKeyByFingerprint, fingerprint)
+	if err != nil {
+		return "", "", err
+	}
+	return row.UserID, row.PublicKey, nil
 }
