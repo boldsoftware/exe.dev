@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -319,6 +320,13 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /debug/llm_requests/{id}/request", http.HandlerFunc(s.handleDebugLLMRequestBody))
 	mux.Handle("GET /debug/llm_requests/{id}/request_full", http.HandlerFunc(s.handleDebugLLMRequestBodyFull))
 	mux.Handle("GET /debug/llm_requests/{id}/response", http.HandlerFunc(s.handleDebugLLMResponseBody))
+
+	// pprof endpoints
+	mux.Handle("GET /debug/pprof/", http.HandlerFunc(pprof.Index))
+	mux.Handle("GET /debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+	mux.Handle("GET /debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+	mux.Handle("GET /debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+	mux.Handle("GET /debug/pprof/trace", http.HandlerFunc(pprof.Trace))
 
 	// Serve embedded UI assets
 	mux.Handle("/", s.staticHandler(ui.Assets()))
