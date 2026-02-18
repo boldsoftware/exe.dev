@@ -179,6 +179,29 @@ func (q *Queries) GetInviteCodeByID(ctx context.Context, id int64) (InviteCode, 
 	return i, err
 }
 
+const getInviteCodeStatsForUser = `-- name: GetInviteCodeStatsForUser :one
+SELECT
+    COUNT(*) AS total_all_time_given,
+    COUNT(CASE WHEN allocated_at IS NOT NULL THEN 1 END) AS allocated_count,
+    COUNT(CASE WHEN used_by_user_id IS NOT NULL THEN 1 END) AS accepted_count
+FROM invite_codes
+WHERE assigned_to_user_id = ?
+`
+
+type GetInviteCodeStatsForUserRow struct {
+	TotalAllTimeGiven int64 `db:"total_all_time_given" json:"total_all_time_given"`
+	AllocatedCount    int64 `db:"allocated_count" json:"allocated_count"`
+	AcceptedCount     int64 `db:"accepted_count" json:"accepted_count"`
+}
+
+// Counts invite status totals for a specific inviter (all-time codes assigned to user)
+func (q *Queries) GetInviteCodeStatsForUser(ctx context.Context, assignedToUserID *string) (GetInviteCodeStatsForUserRow, error) {
+	row := q.queryRow(ctx, q.getInviteCodeStatsForUserStmt, getInviteCodeStatsForUser, assignedToUserID)
+	var i GetInviteCodeStatsForUserRow
+	err := row.Scan(&i.TotalAllTimeGiven, &i.AllocatedCount, &i.AcceptedCount)
+	return i, err
+}
+
 const getNextUnallocatedInviteForUser = `-- name: GetNextUnallocatedInviteForUser :one
 SELECT id, code, plan_type, assigned_to_user_id, assigned_at, assigned_by, assigned_for, used_by_user_id, used_at, allocated_at FROM invite_codes
 WHERE assigned_to_user_id = ? AND used_by_user_id IS NULL AND allocated_at IS NULL

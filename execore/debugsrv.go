@@ -59,6 +59,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/migrate", s.handleDebugMassMigrate)
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
 	mux.HandleFunc("/debug/user", s.handleDebugUser)
+	mux.HandleFunc("POST /debug/user/give-invites", s.handleDebugUserGiveInvites)
 	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
 	mux.HandleFunc("POST /debug/users/toggle-vm-creation", s.handleDebugToggleVMCreation)
 	mux.HandleFunc("POST /debug/users/toggle-lockout", s.handleDebugToggleLockout)
@@ -3162,16 +3163,31 @@ func (s *Server) handleDebugInviteGiveToUser(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Create invite codes for the user
+	if err := s.giveInvitesToUser(ctx, user, count, planType, assignedBy); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/debug/invite", http.StatusSeeOther)
+}
+
+func (s *Server) giveInvitesToUser(ctx context.Context, user *exedb.User, count int, planType, assignedBy string) error {
+	var planDesc string
+	switch planType {
+	case "trial":
+		planDesc = "1 month free trial"
+	case "free":
+		planDesc = "free"
+	default:
+		return fmt.Errorf("invalid plan_type: %s", planType)
+	}
+
 	for range count {
-		// Generate a unique code
 		code, err := withTxRes0(s, ctx, (*exedb.Queries).GenerateUniqueInviteCode)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("failed to generate invite code: %v", err), http.StatusInternalServerError)
-			return
+			return fmt.Errorf("failed to generate invite code: %w", err)
 		}
 
-		// Create the invite code assigned to the user
 		_, err = withTxRes1(s, ctx, (*exedb.Queries).CreateInviteCode, exedb.CreateInviteCodeParams{
 			Code:             code,
 			PlanType:         planType,
@@ -3180,48 +3196,40 @@ func (s *Server) handleDebugInviteGiveToUser(w http.ResponseWriter, r *http.Requ
 			AssignedFor:      nil,
 		})
 		if err != nil {
-			http.Error(w, fmt.Sprintf("failed to create invite code: %v", err), http.StatusInternalServerError)
-			return
+			return fmt.Errorf("failed to create invite code: %w", err)
 		}
 
 		s.slog().InfoContext(ctx, "invite code given to user via debug page",
 			"code", code,
 			"plan_type", planType,
 			"assigned_by", assignedBy,
-			"user_email", userEmail,
+			"user_email", user.Email,
 			"user_id", user.UserID)
 	}
 
-	// Send email notification
-	var planDesc string
-	if planType == "trial" {
-		planDesc = "1 month free trial"
-	} else {
-		planDesc = "free"
-	}
-	codeWord := "codes"
+	inviteWord := "invites"
 	if count == 1 {
-		codeWord = "code"
+		inviteWord = "invite"
 	}
-	subject := fmt.Sprintf("%s: you have invite %s to share", s.env.WebHost, codeWord)
+	subject := fmt.Sprintf("%s: you have %d new %s to share", s.env.WebHost, count, inviteWord)
 	body := fmt.Sprintf(`Hi,
 
-You have been given %d invite %s to share with friends.
+You have been given %d new %s.
 
 Each invite code grants the recipient a %s plan.
 
-To view and share your invite %s, visit:
-https://%s/invite
+To allocate and share your invites in your dashboard, log in and visit:
+https://exe.dev/
 
 ---
-%s
-`, count, codeWord, planDesc, codeWord, s.env.WebHost, s.env.WebHost)
+exe.dev
+`, count, inviteWord, planDesc)
 
-	if err := s.sendEmail(ctx, email.TypeInvitesAllocated, userEmail, subject, body); err != nil {
-		s.slog().WarnContext(ctx, "failed to send invites allocated email", "to", userEmail, "error", err)
+	if err := s.sendEmail(ctx, email.TypeInvitesAllocated, user.Email, subject, body); err != nil {
+		s.slog().WarnContext(ctx, "failed to send invites allocated email", "to", user.Email, "error", err)
 	}
 
-	http.Redirect(w, r, "/debug/invite", http.StatusSeeOther)
+	return nil
 }
 
 // handleDebugAllInviteCodes displays all invite codes with giver and recipient emails.
@@ -3489,6 +3497,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "userId parameter is required", http.StatusBadRequest)
 		return
 	}
+	invitePostSuccessful := r.URL.Query().Get("invite_posted") == "1"
 
 	// Look up the user
 	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
@@ -3539,6 +3548,11 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		boxes = nil
 	}
 
+	inviteStats, err := withRxRes1(s, ctx, (*exedb.Queries).GetInviteCodeStatsForUser, &userID)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to load invite stats for user", "error", err, "user_id", userID)
+	}
+
 	// Build template data
 	type boxInfo struct {
 		Name          string
@@ -3585,23 +3599,31 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		CreditRefreshPerHrOverride *float64
 		CreditTotalUsedUSD         float64
 		CreditLastRefreshAt        string
+		InvitesTotalAllTimeGiven   int64
+		InvitesAllocatedCount      int64
+		InvitesAcceptedCount       int64
+		InvitePostSuccessful       bool
 		Boxes                      []boxInfo
 	}{
-		Email:                  user.Email,
-		UserID:                 user.UserID,
-		CreatedAt:              formatTime(user.CreatedAt),
-		CreatedForLoginWithExe: user.CreatedForLoginWithExe,
-		RootSupport:            user.RootSupport == 1,
-		VMCreationDisabled:     user.NewVmCreationDisabled,
-		DiscordID:              ptrStr(user.DiscordID),
-		DiscordUsername:        ptrStr(user.DiscordUsername),
-		BillingExemption:       ptrStr(user.BillingExemption),
-		BillingTrialEndsAt:     formatTime(user.BillingTrialEndsAt),
-		SignedUpWithInviteID:   formatInt64Ptr(user.SignedUpWithInviteID),
-		AccountID:              accountID,
-		BillingURL:             billingURL,
-		HasCredit:              hasCredit,
-		Boxes:                  boxList,
+		Email:                    user.Email,
+		UserID:                   user.UserID,
+		CreatedAt:                formatTime(user.CreatedAt),
+		CreatedForLoginWithExe:   user.CreatedForLoginWithExe,
+		RootSupport:              user.RootSupport == 1,
+		VMCreationDisabled:       user.NewVmCreationDisabled,
+		DiscordID:                ptrStr(user.DiscordID),
+		DiscordUsername:          ptrStr(user.DiscordUsername),
+		BillingExemption:         ptrStr(user.BillingExemption),
+		BillingTrialEndsAt:       formatTime(user.BillingTrialEndsAt),
+		SignedUpWithInviteID:     formatInt64Ptr(user.SignedUpWithInviteID),
+		AccountID:                accountID,
+		BillingURL:               billingURL,
+		HasCredit:                hasCredit,
+		InvitesTotalAllTimeGiven: inviteStats.TotalAllTimeGiven,
+		InvitesAllocatedCount:    inviteStats.AllocatedCount,
+		InvitesAcceptedCount:     inviteStats.AcceptedCount,
+		InvitePostSuccessful:     invitePostSuccessful,
+		Boxes:                    boxList,
 	}
 
 	if hasCredit {
@@ -3626,6 +3648,50 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 	if err := tmpl.ExecuteTemplate(w, "user.html", data); err != nil {
 		s.slog().ErrorContext(ctx, "failed to execute user template", "error", err)
 	}
+}
+
+func (s *Server) handleDebugUserGiveInvites(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	count, err := strconv.Atoi(r.FormValue("count"))
+	if err != nil || count < 1 || count > 10 {
+		http.Error(w, "count must be between 1 and 10", http.StatusBadRequest)
+		return
+	}
+
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("user %q not found", userID), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to look up user: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	assignedBy := r.Header.Get("X-Webauth-User")
+	if assignedBy == "" {
+		assignedBy = r.Header.Get("Tailscale-User-Login")
+	}
+	if assignedBy == "" {
+		assignedBy = "debug-ui"
+	}
+
+	if err := s.giveInvitesToUser(ctx, &user, count, "trial", assignedBy); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	params := url.Values{}
+	params.Set("userId", userID)
+	params.Set("invite_posted", "1")
+	http.Redirect(w, r, "/debug/user?"+params.Encode(), http.StatusSeeOther)
 }
 
 // handleDebugBounces displays the email bounces list.

@@ -318,6 +318,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getInviteCodeByIDStmt, err = db.PrepareContext(ctx, getInviteCodeByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetInviteCodeByID: %w", err)
 	}
+	if q.getInviteCodeStatsForUserStmt, err = db.PrepareContext(ctx, getInviteCodeStatsForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query GetInviteCodeStatsForUser: %w", err)
+	}
 	if q.getLastBouncesPollStmt, err = db.PrepareContext(ctx, getLastBouncesPoll); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLastBouncesPoll: %w", err)
 	}
@@ -1266,6 +1269,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getInviteCodeByIDStmt: %w", cerr)
 		}
 	}
+	if q.getInviteCodeStatsForUserStmt != nil {
+		if cerr := q.getInviteCodeStatsForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getInviteCodeStatsForUserStmt: %w", cerr)
+		}
+	}
 	if q.getLastBouncesPollStmt != nil {
 		if cerr := q.getLastBouncesPollStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getLastBouncesPollStmt: %w", cerr)
@@ -2158,6 +2166,7 @@ type Queries struct {
 	getIPShardByBoxNameStmt                    *sql.Stmt
 	getInviteCodeByCodeStmt                    *sql.Stmt
 	getInviteCodeByIDStmt                      *sql.Stmt
+	getInviteCodeStatsForUserStmt              *sql.Stmt
 	getLastBouncesPollStmt                     *sql.Stmt
 	getLatestBillingStatusStmt                 *sql.Stmt
 	getLatestMobilePendingVMByUserStmt         *sql.Stmt
@@ -2413,6 +2422,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getIPShardByBoxNameStmt:                    q.getIPShardByBoxNameStmt,
 		getInviteCodeByCodeStmt:                    q.getInviteCodeByCodeStmt,
 		getInviteCodeByIDStmt:                      q.getInviteCodeByIDStmt,
+		getInviteCodeStatsForUserStmt:              q.getInviteCodeStatsForUserStmt,
 		getLastBouncesPollStmt:                     q.getLastBouncesPollStmt,
 		getLatestBillingStatusStmt:                 q.getLatestBillingStatusStmt,
 		getLatestMobilePendingVMByUserStmt:         q.getLatestMobilePendingVMByUserStmt,

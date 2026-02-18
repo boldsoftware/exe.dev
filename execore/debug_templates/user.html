@@ -37,6 +37,24 @@ a:hover { text-decoration: underline; }
 </table>
 </div>
 
+<div class="section">
+<h2>Invite stats</h2>
+<table class="info">
+<tr><th>Given</th><td>{{.InvitesTotalAllTimeGiven}}</td></tr>
+<tr><th>Allocated</th><td>{{.InvitesAllocatedCount}}</td></tr>
+<tr><th>Accepted</th><td>{{.InvitesAcceptedCount}}</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>Give invites</h2>
+<form method="post" action="/debug/user/give-invites">
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<label><input type="number" name="count" value="3" min="1" max="10" required style="width: 80px; padding: 8px;"></label>
+<button type="submit" style="padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Send</button>
+</form>
+</div>
+
 {{if .AccountID}}
 <div class="section">
 <h2>Billing</h2>
@@ -107,6 +125,10 @@ a:hover { text-decoration: underline; }
 
 <script>
 $(document).ready(function() {
+    {{if .InvitePostSuccessful}}
+    alert('Invites sent!');
+    {{end}}
+
     $('#boxesTable').DataTable({
         pageLength: 25,
         order: [[4, 'desc']]

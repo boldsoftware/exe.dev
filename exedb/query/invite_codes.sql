@@ -63,6 +63,15 @@ SELECT assigned_to_user_id, COUNT(*) as count FROM invite_codes
 WHERE assigned_to_user_id IS NOT NULL AND used_by_user_id IS NULL AND allocated_at IS NULL
 GROUP BY assigned_to_user_id;
 
+-- name: GetInviteCodeStatsForUser :one
+-- Counts invite status totals for a specific inviter (all-time codes assigned to user)
+SELECT
+    COUNT(*) AS total_all_time_given,
+    COUNT(CASE WHEN allocated_at IS NOT NULL THEN 1 END) AS allocated_count,
+    COUNT(CASE WHEN used_by_user_id IS NOT NULL THEN 1 END) AS accepted_count
+FROM invite_codes
+WHERE assigned_to_user_id = ?;
+
 -- User billing exemption
 
 -- name: SetUserBillingExemption :exec
