@@ -53,7 +53,7 @@ func (m *mockConnection) LocalAddress() string {
 
 func TestKeyboardInteractiveAuthentication(t *testing.T) {
 	t.Parallel()
-	piper := NewPiperPlugin(nil, 0)
+	piper := NewPiperPlugin(nil, "127.0.0.1", 0)
 
 	// Create mock connection metadata
 	mockConn := &mockConnection{
@@ -88,7 +88,7 @@ func TestKeyboardInteractiveAuthentication(t *testing.T) {
 
 func TestKeyboardInteractiveNoRetries(t *testing.T) {
 	t.Parallel()
-	piper := NewPiperPlugin(nil, 0)
+	piper := NewPiperPlugin(nil, "127.0.0.1", 0)
 
 	// Create mock connection metadata with same unique ID
 	mockConn := &mockConnection{

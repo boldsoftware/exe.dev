@@ -46,7 +46,8 @@ type HostKeyMapping struct {
 // PiperPlugin implements the sshpiper plugin interface
 type PiperPlugin struct {
 	server      *Server
-	exedSSHPort int // exed's SSH port, usually 2223
+	exedSSHHost string // host for upstream connections to exed's SSH, e.g. "100.x.y.z"
+	exedSSHPort int    // exed's SSH port, usually 2223
 
 	grpcMu   sync.Mutex
 	grpcSrv  *grpc.Server
@@ -72,9 +73,10 @@ type PiperPlugin struct {
 }
 
 // NewPiperPlugin creates a new piper plugin instance
-func NewPiperPlugin(server *Server, port int) *PiperPlugin {
+func NewPiperPlugin(server *Server, host string, port int) *PiperPlugin {
 	p := &PiperPlugin{
 		server:                   server,
+		exedSSHHost:              host,
 		exedSSHPort:              port,
 		proxyKeyMappings:         make(map[string]*ProxyKeyMapping),
 		keyboardInteractiveShown: make(map[string]bool),
@@ -371,7 +373,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	slog.DebugContext(ctx, "Generated ephemeral proxy key with fingerprint", "component", "piper-plugin", "proxy_fingerprint", proxyFingerprint)
 
 	upstream := &libplugin.Upstream{
-		Host:     "127.0.0.1", // Use explicit IPv4 instead of localhost
+		Host:     p.exedSSHHost,
 		Port:     int32(p.exedSSHPort),
 		UserName: username, // Use original username, not encoded
 		// Host key validation is handled by VerifyHostKeyCallback
@@ -440,7 +442,7 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 				specialUsername := fmt.Sprintf("container-logs:%s:%s:%s", box.CreatedByUserID, *box.ContainerID, box.Name)
 
 				return &libplugin.Upstream{
-					Host:          "127.0.0.1",
+					Host:          p.exedSSHHost,
 					Port:          int32(p.exedSSHPort),
 					UserName:      specialUsername,
 					IgnoreHostKey: false,

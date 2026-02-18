@@ -12,7 +12,7 @@ func TestProxyKeyMappingStoresClientAddr(t *testing.T) {
 	t.Parallel()
 
 	server := newTestServer(t)
-	piper := NewPiperPlugin(server, 0)
+	piper := NewPiperPlugin(server, "127.0.0.1", 0)
 
 	ctx := context.Background()
 	testUserKey := generateTestHostKey(t) // reuse helper from verifyhostkey_fix_test.go
@@ -51,7 +51,7 @@ func TestProxyKeyMappingWithDifferentClientAddrs(t *testing.T) {
 	t.Parallel()
 
 	server := newTestServer(t)
-	piper := NewPiperPlugin(server, 0)
+	piper := NewPiperPlugin(server, "127.0.0.1", 0)
 
 	ctx := context.Background()
 
@@ -100,7 +100,7 @@ func TestProxyKeyMappingExpirationWithClientAddr(t *testing.T) {
 	t.Parallel()
 
 	server := newTestServer(t)
-	piper := NewPiperPlugin(server, 0)
+	piper := NewPiperPlugin(server, "127.0.0.1", 0)
 
 	ctx := context.Background()
 	testUserKey := generateTestHostKey(t)
@@ -144,7 +144,7 @@ func TestProxyKeyMappingNilUserKey(t *testing.T) {
 	t.Parallel()
 
 	server := newTestServer(t)
-	piper := NewPiperPlugin(server, 0)
+	piper := NewPiperPlugin(server, "127.0.0.1", 0)
 
 	ctx := context.Background()
 	localAddress := "127.0.0.1"

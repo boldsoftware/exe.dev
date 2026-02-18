@@ -783,16 +783,40 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		}
 	}
 
-	sshLn, err := startListener(slog, "ssh", cfg.SSHAddr)
+	sshAddr := cfg.SSHAddr
+	if cfg.Env.ListenOnTailscaleOnly {
+		_, port, _ := net.SplitHostPort(cfg.SSHAddr)
+		if port == "" {
+			port = cfg.SSHAddr // handle bare port
+		}
+		sshAddr, err = cfg.Env.TailscaleListenAddr(port)
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to determine SSH tailscale address: %v", err)
+		}
+	}
+	sshLn, err := startListener(slog, "ssh", sshAddr)
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to listen on SSH address %q: %w", cfg.SSHAddr, err)
+		return nil, fmt.Errorf("failed to listen on SSH address %q: %w", sshAddr, err)
 	}
 
-	pluginLn, err := startListener(slog, "plugin", cfg.PluginAddr)
+	pluginAddr := cfg.PluginAddr
+	if cfg.Env.ListenOnTailscaleOnly {
+		_, port, _ := net.SplitHostPort(cfg.PluginAddr)
+		if port == "" {
+			port = cfg.PluginAddr
+		}
+		pluginAddr, err = cfg.Env.TailscaleListenAddr(port)
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to determine piper plugin tailscale address: %v", err)
+		}
+	}
+	pluginLn, err := startListener(slog, "plugin", pluginAddr)
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to listen on piper plugin address %q: %w", cfg.PluginAddr, err)
+		return nil, fmt.Errorf("failed to listen on piper plugin address %q: %w", pluginAddr, err)
 	}
 
 	exeproxAddr, err := cfg.Env.TailscaleListenAddr(strconv.Itoa(cfg.ExeproxServicePort))
@@ -2590,7 +2614,11 @@ func (s *Server) start() error {
 	// Initialize SSH server and piper plugin before launching goroutines
 	// so that Stop() can always reach them.
 	s.sshServer = NewSSHServer(s)
-	s.piperPlugin = NewPiperPlugin(s, s.sshLn.tcp.Port)
+	sshHost := s.sshLn.tcp.IP.String()
+	if s.sshLn.tcp.IP.IsUnspecified() {
+		sshHost = "127.0.0.1"
+	}
+	s.piperPlugin = NewPiperPlugin(s, sshHost, s.sshLn.tcp.Port)
 
 	// Start SSH server in a goroutine
 	s.serveWg.Go(func() {

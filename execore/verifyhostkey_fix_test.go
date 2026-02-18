@@ -41,7 +41,7 @@ func TestVerifyHostKeyRejectsUnknownKeys(t *testing.T) {
 
 	server := newTestServer(t)
 
-	piper := NewPiperPlugin(server, 0)
+	piper := NewPiperPlugin(server, "127.0.0.1", 0)
 	mockConn := mockConnMetadata{
 		user: "testuser",
 		addr: "127.0.0.1:54321",
@@ -96,7 +96,7 @@ func TestVerifyHostKeyAcceptsKnownKeys(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 
-	piper := NewPiperPlugin(server, 0)
+	piper := NewPiperPlugin(server, "127.0.0.1", 0)
 	testMachineName := "test-machine"
 	mockConn := mockConnMetadata{
 		user: testMachineName,
@@ -129,7 +129,7 @@ func TestVerifyHostKeyExpiration(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 
-	piper := NewPiperPlugin(server, 0)
+	piper := NewPiperPlugin(server, "127.0.0.1", 0)
 	testMachineName := "expire-test-machine"
 	mockConn := mockConnMetadata{
 		user: testMachineName,
