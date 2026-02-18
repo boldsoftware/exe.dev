@@ -140,6 +140,10 @@ type UserPageData struct {
 	// Credits (staging only)
 	CreditBalance tender.Value
 
+	// Shelley free credits (from llmgateway credit state)
+	ShelleyFreeCreditRemainingPct float64
+	HasShelleyFreeCreditPct       bool
+
 	// Auto-open share modal (from access request email link)
 	ShareVM    string
 	ShareEmail string

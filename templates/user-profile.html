@@ -665,11 +665,15 @@
         </div>
 
         <div class="section">
-            <div class="section-title">Credits</div>
+            <div class="section-title">Shelley Credits</div>
             <div class="info-card">
                 <div class="info-row">
                     <div class="info-label">Balance</div>
                     <div class="info-value" id="credit-balance-usd" data-credit-balance-microcents="{{.CreditBalance.Microcents}}">{{.CreditBalance.String}}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Free Credits Remaining</div>
+                    <div class="info-value">{{if .HasShelleyFreeCreditPct}}{{printf "%.0f%%" .ShelleyFreeCreditRemainingPct}}{{else}}-{{end}}</div>
                 </div>
                 <div class="info-row">
                     <div class="info-label"><a href="/docs/pricing#shelley-tokens">Buy Credits</a></div>

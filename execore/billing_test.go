@@ -2246,7 +2246,21 @@ func createUserWithAccount(t *testing.T, server *Server, email, billingID string
 
 func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 	server := newBillingTestServer(t)
-	_, cookieValue := createUserWithAccount(t, server, "credits-profile@example.com", "exe_profile_credits")
+	user, cookieValue := createUserWithAccount(t, server, "credits-profile@example.com", "exe_profile_credits")
+
+	maxCredit := 20.0
+	now := time.Now().UTC()
+	lastRefresh := time.Date(now.Year(), now.Month(), 15, 12, 0, 0, 0, time.UTC)
+	err := withTx1(server, t.Context(), (*exedb.Queries).UpsertUserLLMCredit, exedb.UpsertUserLLMCreditParams{
+		UserID:          user.UserID,
+		AvailableCredit: 15.0,
+		MaxCredit:       &maxCredit,
+		RefreshPerHour:  nil,
+		LastRefreshAt:   lastRefresh,
+	})
+	if err != nil {
+		t.Fatalf("UpsertUserLLMCredit: %v", err)
+	}
 
 	req := httptest.NewRequest("GET", "/user", nil)
 	req.Host = server.env.WebHost
@@ -2258,14 +2272,54 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 		t.Fatalf("Expected 200, got %d", w.Code)
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, "Credits") {
-		t.Error("Expected Credits section on profile page when flag enabled")
+	if !strings.Contains(body, "Shelley Credits") {
+		t.Error("Expected Shelley Credits section on profile page when flag enabled")
+	}
+	if !strings.Contains(body, "Free Credits Remaining") {
+		t.Error("Expected free credits remaining row on profile page")
 	}
 	if !strings.Contains(body, "/credits/buy") {
 		t.Error("Expected credits buy form on profile page")
 	}
 	if !strings.Contains(body, "$0.00 USD") {
 		t.Error("Expected credit balance rendered in dollars and cents")
+	}
+
+	ratioPublicKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZh3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZx credits-free-pct"
+	ratioUser, err := server.createUser(t.Context(), ratioPublicKey, "credits-free-pct@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create ratio test user: %v", err)
+	}
+	ratioCookieValue, err := server.createAuthCookie(t.Context(), ratioUser.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create ratio test auth cookie: %v", err)
+	}
+	err = withTx1(server, t.Context(), (*exedb.Queries).UpsertUserLLMCredit, exedb.UpsertUserLLMCreditParams{
+		UserID:          ratioUser.UserID,
+		AvailableCredit: 15.0,
+		MaxCredit:       &maxCredit,
+		RefreshPerHour:  nil,
+		LastRefreshAt:   lastRefresh,
+	})
+	if err != nil {
+		t.Fatalf("UpsertUserLLMCredit(ratio user): %v", err)
+	}
+
+	req = httptest.NewRequest("GET", "/user", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: ratioCookieValue})
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 for ratio test user, got %d", w.Code)
+	}
+	body = w.Body.String()
+	if !strings.Contains(body, "Free Credits Remaining") {
+		t.Fatal("Expected free credits remaining row on profile page for ratio test user")
+	}
+	if !strings.Contains(body, "75%") {
+		t.Fatalf("Expected free credits remaining percentage 75%%, got body: %s", body[:min(1200, len(body))])
 	}
 }
 
@@ -2459,8 +2513,8 @@ func TestCreditPurchase_BalanceUpdatesAfterSync(t *testing.T) {
 		t.Fatalf("Expected 200, got %d", w.Code)
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, "Credits") {
-		t.Error("Expected Credits section on profile page")
+	if !strings.Contains(body, "Shelley Credits") {
+		t.Error("Expected Shelley Credits section on profile page")
 	}
 	// If credit ledger table exists and balance was inserted, it should show
 	if err == nil && balance.Compare(tender.Zero()) > 0 {

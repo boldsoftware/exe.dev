@@ -1431,6 +1431,21 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		}
 	}
 
+	var shelleyFreeCreditRemainingPct float64
+	var hasShelleyFreeCreditPct bool
+	if info, err := llmgateway.CheckAndRefreshCreditDB(r.Context(), s.db, userID, time.Now()); err != nil {
+		s.slog().WarnContext(r.Context(), "failed to fetch shelley free credit state", "error", err, "user_id", userID)
+	} else if info != nil && info.Max > 0 {
+		shelleyFreeCreditRemainingPct = (info.Available / info.Max) * 100
+		if shelleyFreeCreditRemainingPct < 0 {
+			shelleyFreeCreditRemainingPct = 0
+		}
+		if shelleyFreeCreditRemainingPct > 100 {
+			shelleyFreeCreditRemainingPct = 100
+		}
+		hasShelleyFreeCreditPct = true
+	}
+
 	// Prepare template data
 	data := UserPageData{
 		Env:           s.env,
@@ -1445,7 +1460,9 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		HasBilling:    hasBilling,
 		BillingStatus: billingStatus,
 
-		CreditBalance: creditBalance,
+		CreditBalance:                 creditBalance,
+		ShelleyFreeCreditRemainingPct: shelleyFreeCreditRemainingPct,
+		HasShelleyFreeCreditPct:       hasShelleyFreeCreditPct,
 	}
 
 	// Render template
