@@ -50,7 +50,7 @@ func (q *Queries) DebitUserLLMCredit(ctx context.Context, arg DebitUserLLMCredit
 }
 
 const getUserLLMCredit = `-- name: GetUserLLMCredit :one
-SELECT user_id, available_credit, max_credit, refresh_per_hour, total_used, last_refresh_at, created_at, updated_at FROM user_llm_credit WHERE user_id = ?
+SELECT user_id, available_credit, max_credit, refresh_per_hour, total_used, last_refresh_at, created_at, updated_at, billing_upgrade_bonus_granted FROM user_llm_credit WHERE user_id = ?
 `
 
 func (q *Queries) GetUserLLMCredit(ctx context.Context, userID string) (UserLlmCredit, error) {
@@ -65,12 +65,34 @@ func (q *Queries) GetUserLLMCredit(ctx context.Context, userID string) (UserLlmC
 		&i.LastRefreshAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BillingUpgradeBonusGranted,
 	)
 	return i, err
 }
 
+const grantBillingUpgradeBonusOnce = `-- name: GrantBillingUpgradeBonusOnce :exec
+INSERT INTO user_llm_credit (user_id, available_credit, last_refresh_at, billing_upgrade_bonus_granted)
+VALUES (?, ?, ?, 1)
+ON CONFLICT(user_id) DO UPDATE SET
+    available_credit = user_llm_credit.available_credit + 100.0,
+    billing_upgrade_bonus_granted = 1,
+    updated_at = CURRENT_TIMESTAMP
+WHERE user_llm_credit.billing_upgrade_bonus_granted = 0
+`
+
+type GrantBillingUpgradeBonusOnceParams struct {
+	UserID          string    `db:"user_id" json:"user_id"`
+	AvailableCredit float64   `db:"available_credit" json:"available_credit"`
+	LastRefreshAt   time.Time `db:"last_refresh_at" json:"last_refresh_at"`
+}
+
+func (q *Queries) GrantBillingUpgradeBonusOnce(ctx context.Context, arg GrantBillingUpgradeBonusOnceParams) error {
+	_, err := q.exec(ctx, q.grantBillingUpgradeBonusOnceStmt, grantBillingUpgradeBonusOnce, arg.UserID, arg.AvailableCredit, arg.LastRefreshAt)
+	return err
+}
+
 const listAllUserLLMCredits = `-- name: ListAllUserLLMCredits :many
-SELECT user_id, available_credit, max_credit, refresh_per_hour, total_used, last_refresh_at, created_at, updated_at FROM user_llm_credit ORDER BY user_id
+SELECT user_id, available_credit, max_credit, refresh_per_hour, total_used, last_refresh_at, created_at, updated_at, billing_upgrade_bonus_granted FROM user_llm_credit ORDER BY user_id
 `
 
 func (q *Queries) ListAllUserLLMCredits(ctx context.Context) ([]UserLlmCredit, error) {
@@ -91,6 +113,7 @@ func (q *Queries) ListAllUserLLMCredits(ctx context.Context) ([]UserLlmCredit, e
 			&i.LastRefreshAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.BillingUpgradeBonusGranted,
 		); err != nil {
 			return nil, err
 		}

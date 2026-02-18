@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -63,7 +64,7 @@ func floatClose(a, b, epsilon float64) bool {
 	return math.Abs(a-b) < epsilon
 }
 
-func TestCreditManager_CheckAndRefreshCredit_DefaultMonthlyBucket(t *testing.T) {
+func TestCreditManager_CheckAndRefreshCredit_DefaultOneTimeCredit(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
@@ -82,11 +83,11 @@ func TestCreditManager_CheckAndRefreshCredit_DefaultMonthlyBucket(t *testing.T) 
 	if info == nil {
 		t.Fatal("expected credit info, got nil")
 	}
-	if !floatClose(info.Available, freeCreditPerUTCMonthUSD, 0.000001) {
-		t.Fatalf("available = %f, want %f", info.Available, freeCreditPerUTCMonthUSD)
+	if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD, 0.000001) {
+		t.Fatalf("available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD)
 	}
-	if !floatClose(info.Max, freeCreditPerUTCMonthUSD, 0.000001) {
-		t.Fatalf("max = %f, want %f", info.Max, freeCreditPerUTCMonthUSD)
+	if !floatClose(info.Max, initialFreeCreditNoSubscriptionUSD, 0.000001) {
+		t.Fatalf("max = %f, want %f", info.Max, initialFreeCreditNoSubscriptionUSD)
 	}
 	if !floatClose(info.RefreshPerHour, 0, 0.000001) {
 		t.Fatalf("refresh_per_hour = %f, want 0", info.RefreshPerHour)
@@ -112,8 +113,8 @@ func TestCreditManager_DebitCredit_FreeOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
-	if !floatClose(info.Available, freeCreditPerUTCMonthUSD, 0.000001) {
-		t.Fatalf("initial available = %f, want %f", info.Available, freeCreditPerUTCMonthUSD)
+	if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD, 0.000001) {
+		t.Fatalf("initial available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD)
 	}
 
 	firstDebit := 4.5
@@ -121,8 +122,8 @@ func TestCreditManager_DebitCredit_FreeOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first debit failed: %v", err)
 	}
-	if !floatClose(info.Available, freeCreditPerUTCMonthUSD-firstDebit, 0.000001) {
-		t.Fatalf("available after first debit = %f, want %f", info.Available, freeCreditPerUTCMonthUSD-firstDebit)
+	if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD-firstDebit, 0.000001) {
+		t.Fatalf("available after first debit = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD-firstDebit)
 	}
 
 	secondDebit := 2.25
@@ -130,7 +131,7 @@ func TestCreditManager_DebitCredit_FreeOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second debit failed: %v", err)
 	}
-	wantAfterSecond := freeCreditPerUTCMonthUSD - firstDebit - secondDebit
+	wantAfterSecond := initialFreeCreditNoSubscriptionUSD - firstDebit - secondDebit
 	if !floatClose(info.Available, wantAfterSecond, 0.000001) {
 		t.Fatalf("available after second debit = %f, want %f", info.Available, wantAfterSecond)
 	}
@@ -172,7 +173,7 @@ func TestCreditManager_NoIntraMonthRefill(t *testing.T) {
 		t.Fatalf("initial check failed: %v", err)
 	}
 
-	overageDebit := freeCreditPerUTCMonthUSD + 1
+	overageDebit := initialFreeCreditNoSubscriptionUSD + 1
 	info, err := mgr.DebitCredit(ctx, userID, overageDebit)
 	if err != nil {
 		t.Fatalf("debit failed: %v", err)
@@ -191,7 +192,7 @@ func TestCreditManager_NoIntraMonthRefill(t *testing.T) {
 	}
 }
 
-func TestCreditManager_MonthRolloverResetsDefaultBucket(t *testing.T) {
+func TestCreditManager_NoNextMonthRefillForNoSubscription(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
@@ -210,8 +211,49 @@ func TestCreditManager_MonthRolloverResetsDefaultBucket(t *testing.T) {
 		t.Fatalf("initial check failed: %v", err)
 	}
 
-	_, err = mgr.DebitCredit(ctx, userID, freeCreditPerUTCMonthUSD+3)
+	_, err = mgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD+3)
 	if err != nil {
+		t.Fatalf("debit failed: %v", err)
+	}
+
+	now = time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != ErrInsufficientCredit {
+		t.Fatalf("month rollover check error = %v, want %v", err, ErrInsufficientCredit)
+	}
+	if !floatClose(info.Available, -3, 0.000001) {
+		t.Fatalf("available after month rollover = %f, want -3", info.Available)
+	}
+	if !floatClose(info.Max, initialFreeCreditNoSubscriptionUSD, 0.000001) {
+		t.Fatalf("max after month rollover = %f, want %f", info.Max, initialFreeCreditNoSubscriptionUSD)
+	}
+	if !floatClose(info.RefreshPerHour, 0, 0.000001) {
+		t.Fatalf("refresh_per_hour after month rollover = %f, want 0", info.RefreshPerHour)
+	}
+}
+
+func TestCreditManager_SubscribedMonthRolloverTopUpToFloor(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	userID := "test-user-month-rollover-topup-floor"
+	createTestUser(t, db, userID, "month-rollover-topup-floor@example.com")
+
+	now := time.Date(2025, 1, 31, 23, 30, 0, 0, time.UTC)
+	mgr := &CreditManager{
+		data: &DBGatewayData{db},
+		now:  func() time.Time { return now },
+	}
+
+	if _, err := mgr.CheckAndRefreshCredit(ctx, userID); err != nil {
+		t.Fatalf("initial check failed: %v", err)
+	}
+	createBillingAccount(t, db, userID, "acct-month-rollover-topup-floor", now)
+	if err := mgr.TopUpOnBillingUpgrade(ctx, userID); err != nil {
+		t.Fatalf("top up on upgrade failed: %v", err)
+	}
+	if _, err := mgr.DebitCredit(ctx, userID, 115); err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
 
@@ -220,14 +262,55 @@ func TestCreditManager_MonthRolloverResetsDefaultBucket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("month rollover check failed: %v", err)
 	}
-	if !floatClose(info.Available, freeCreditPerUTCMonthUSD, 0.000001) {
-		t.Fatalf("available after month rollover = %f, want %f", info.Available, freeCreditPerUTCMonthUSD)
+	if !floatClose(info.Available, monthlyTopUpSubscribedUSD, 0.000001) {
+		t.Fatalf("available after month rollover = %f, want %f", info.Available, monthlyTopUpSubscribedUSD)
 	}
-	if !floatClose(info.Max, freeCreditPerUTCMonthUSD, 0.000001) {
-		t.Fatalf("max after month rollover = %f, want %f", info.Max, freeCreditPerUTCMonthUSD)
+	if !floatClose(info.Max, monthlyTopUpSubscribedUSD, 0.000001) {
+		t.Fatalf("max after month rollover = %f, want %f", info.Max, monthlyTopUpSubscribedUSD)
 	}
-	if !floatClose(info.RefreshPerHour, 0, 0.000001) {
-		t.Fatalf("refresh_per_hour after month rollover = %f, want 0", info.RefreshPerHour)
+	if info.Plan.Name != "has_billing" {
+		t.Fatalf("plan = %q, want %q", info.Plan.Name, "has_billing")
+	}
+}
+
+func TestCreditManager_SubscribedMonthRolloverPreservesBalanceAboveFloor(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	userID := "test-user-month-rollover-preserve"
+	createTestUser(t, db, userID, "month-rollover-preserve@example.com")
+
+	now := time.Date(2025, 1, 31, 23, 30, 0, 0, time.UTC)
+	mgr := &CreditManager{
+		data: &DBGatewayData{db},
+		now:  func() time.Time { return now },
+	}
+
+	if _, err := mgr.CheckAndRefreshCredit(ctx, userID); err != nil {
+		t.Fatalf("initial check failed: %v", err)
+	}
+	createBillingAccount(t, db, userID, "acct-month-rollover-preserve", now)
+	if err := mgr.TopUpOnBillingUpgrade(ctx, userID); err != nil {
+		t.Fatalf("top up on upgrade failed: %v", err)
+	}
+	if _, err := mgr.DebitCredit(ctx, userID, 30); err != nil {
+		t.Fatalf("debit failed: %v", err)
+	}
+
+	now = time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("month rollover check failed: %v", err)
+	}
+	if !floatClose(info.Available, 90, 0.000001) {
+		t.Fatalf("available after month rollover = %f, want 90", info.Available)
+	}
+	if !floatClose(info.Max, monthlyTopUpSubscribedUSD, 0.000001) {
+		t.Fatalf("max after month rollover = %f, want %f", info.Max, monthlyTopUpSubscribedUSD)
+	}
+	if info.Plan.Name != "has_billing" {
+		t.Fatalf("plan = %q, want %q", info.Plan.Name, "has_billing")
 	}
 }
 
@@ -324,11 +407,11 @@ func TestPlanCategories(t *testing.T) {
 		if info.Plan.Name != "no_billing" {
 			t.Fatalf("plan = %q, want %q", info.Plan.Name, "no_billing")
 		}
-		if !floatClose(info.Available, freeCreditPerUTCMonthUSD, 0.000001) {
-			t.Fatalf("available = %f, want %f", info.Available, freeCreditPerUTCMonthUSD)
+		if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD, 0.000001) {
+			t.Fatalf("available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD)
 		}
-		if !floatClose(info.Max, freeCreditPerUTCMonthUSD, 0.000001) {
-			t.Fatalf("max = %f, want %f", info.Max, freeCreditPerUTCMonthUSD)
+		if !floatClose(info.Max, initialFreeCreditNoSubscriptionUSD, 0.000001) {
+			t.Fatalf("max = %f, want %f", info.Max, initialFreeCreditNoSubscriptionUSD)
 		}
 		if !floatClose(info.RefreshPerHour, 0, 0.000001) {
 			t.Fatalf("refresh_per_hour = %f, want 0", info.RefreshPerHour)
@@ -343,8 +426,11 @@ func TestPlanCategories(t *testing.T) {
 		createTestUser(t, db, userID, "friend@example.com")
 		err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 			return q.SetUserBillingExemption(ctx, exedb.SetUserBillingExemptionParams{
-				BillingExemption: new("free"),
-				UserID:           userID,
+				BillingExemption: func() *string {
+					s := "free"
+					return &s
+				}(),
+				UserID: userID,
 			})
 		})
 		if err != nil {
@@ -358,11 +444,11 @@ func TestPlanCategories(t *testing.T) {
 		if info.Plan.Name != "friend" {
 			t.Fatalf("plan = %q, want %q", info.Plan.Name, "friend")
 		}
-		if !floatClose(info.Available, freeCreditPerUTCMonthUSD, 0.000001) {
-			t.Fatalf("available = %f, want %f", info.Available, freeCreditPerUTCMonthUSD)
+		if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD, 0.000001) {
+			t.Fatalf("available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD)
 		}
-		if !floatClose(info.Max, freeCreditPerUTCMonthUSD, 0.000001) {
-			t.Fatalf("max = %f, want %f", info.Max, freeCreditPerUTCMonthUSD)
+		if !floatClose(info.Max, initialFreeCreditNoSubscriptionUSD, 0.000001) {
+			t.Fatalf("max = %f, want %f", info.Max, initialFreeCreditNoSubscriptionUSD)
 		}
 		if !floatClose(info.RefreshPerHour, 0, 0.000001) {
 			t.Fatalf("refresh_per_hour = %f, want 0", info.RefreshPerHour)
@@ -381,11 +467,11 @@ func TestPlanCategories(t *testing.T) {
 		if info.Plan.Name != "has_billing" {
 			t.Fatalf("plan = %q, want %q", info.Plan.Name, "has_billing")
 		}
-		if !floatClose(info.Available, freeCreditPerUTCMonthUSD, 0.000001) {
-			t.Fatalf("available = %f, want %f", info.Available, freeCreditPerUTCMonthUSD)
+		if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD+upgradeBonusCreditUSD, 0.000001) {
+			t.Fatalf("available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD+upgradeBonusCreditUSD)
 		}
-		if !floatClose(info.Max, freeCreditPerUTCMonthUSD, 0.000001) {
-			t.Fatalf("max = %f, want %f", info.Max, freeCreditPerUTCMonthUSD)
+		if !floatClose(info.Max, monthlyTopUpSubscribedUSD, 0.000001) {
+			t.Fatalf("max = %f, want %f", info.Max, monthlyTopUpSubscribedUSD)
 		}
 		if !floatClose(info.RefreshPerHour, 0, 0.000001) {
 			t.Fatalf("refresh_per_hour = %f, want 0", info.RefreshPerHour)
@@ -446,11 +532,14 @@ func TestCreditManager_TopUpOnBillingUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initial check failed: %v", err)
 	}
-	_, err = mgr.DebitCredit(ctx, userID, 10)
-	if err != nil {
+	if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD, 0.000001) {
+		t.Fatalf("initial available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD)
+	}
+
+	if _, err := mgr.DebitCredit(ctx, userID, 10); err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
-	wantAvailable := info.Available - 10
+	wantAvailable := info.Available - 10 + upgradeBonusCreditUSD
 
 	createBillingAccount(t, db, userID, "acct-upgrade", now)
 	if err := mgr.TopUpOnBillingUpgrade(ctx, userID); err != nil {
@@ -466,6 +555,31 @@ func TestCreditManager_TopUpOnBillingUpgrade(t *testing.T) {
 	}
 	if info.Plan.Name != "has_billing" {
 		t.Fatalf("plan = %q, want %q", info.Plan.Name, "has_billing")
+	}
+
+	if err := mgr.TopUpOnBillingUpgrade(ctx, userID); err != nil {
+		t.Fatalf("second top up failed: %v", err)
+	}
+	info, err = mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("check after second top up failed: %v", err)
+	}
+	if !floatClose(info.Available, wantAvailable, 0.000001) {
+		t.Fatalf("available after second top up = %f, want %f", info.Available, wantAvailable)
+	}
+
+	var credit exedb.UserLlmCredit
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		q := exedb.New(tx.Conn())
+		var err error
+		credit, err = q.GetUserLLMCredit(ctx, userID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed to load user credit: %v", err)
+	}
+	if credit.BillingUpgradeBonusGranted != 1 {
+		t.Fatalf("billing_upgrade_bonus_granted = %d, want 1", credit.BillingUpgradeBonusGranted)
 	}
 }
 
@@ -490,10 +604,81 @@ func TestCreditManager_TopUpOnBillingUpgrade_NoCreditRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check failed: %v", err)
 	}
-	if !floatClose(info.Available, freeCreditPerUTCMonthUSD, 0.000001) {
-		t.Fatalf("available = %f, want %f", info.Available, freeCreditPerUTCMonthUSD)
+	if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD+upgradeBonusCreditUSD, 0.000001) {
+		t.Fatalf("available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD+upgradeBonusCreditUSD)
 	}
 	if info.Plan.Name != "has_billing" {
 		t.Fatalf("plan = %q, want %q", info.Plan.Name, "has_billing")
+	}
+
+	var credit exedb.UserLlmCredit
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		q := exedb.New(tx.Conn())
+		var err error
+		credit, err = q.GetUserLLMCredit(ctx, userID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed to load user credit: %v", err)
+	}
+	if credit.BillingUpgradeBonusGranted != 1 {
+		t.Fatalf("billing_upgrade_bonus_granted = %d, want 1", credit.BillingUpgradeBonusGranted)
+	}
+}
+
+func TestCreditManager_TopUpOnBillingUpgrade_ConcurrentIdempotent(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	now := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	mgr := NewCreditManager(&DBGatewayData{db})
+	mgr.now = func() time.Time { return now }
+
+	userID := "upgrade-concurrent-user"
+	createTestUser(t, db, userID, "upgrade-concurrent@example.com")
+	if _, err := mgr.CheckAndRefreshCredit(ctx, userID); err != nil {
+		t.Fatalf("initial check failed: %v", err)
+	}
+	createBillingAccount(t, db, userID, "acct-upgrade-concurrent", now)
+
+	const workers = 24
+	var wg sync.WaitGroup
+	errs := make(chan error, workers)
+	wg.Add(workers)
+	for range workers {
+		go func() {
+			defer wg.Done()
+			errs <- mgr.TopUpOnBillingUpgrade(ctx, userID)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent top up failed: %v", err)
+		}
+	}
+
+	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("check failed: %v", err)
+	}
+	if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD+upgradeBonusCreditUSD, 0.000001) {
+		t.Fatalf("available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD+upgradeBonusCreditUSD)
+	}
+
+	var credit exedb.UserLlmCredit
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		q := exedb.New(tx.Conn())
+		var err error
+		credit, err = q.GetUserLLMCredit(ctx, userID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed to load user credit: %v", err)
+	}
+	if credit.BillingUpgradeBonusGranted != 1 {
+		t.Fatalf("billing_upgrade_bonus_granted = %d, want 1", credit.BillingUpgradeBonusGranted)
 	}
 }

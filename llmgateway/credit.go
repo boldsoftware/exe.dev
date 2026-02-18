@@ -11,22 +11,30 @@ import (
 	"exe.dev/sqlite"
 )
 
-const freeCreditPerUTCMonthUSD = 100.0
+const (
+	initialFreeCreditNoSubscriptionUSD = 20.0
+	upgradeBonusCreditUSD              = 100.0
+	monthlyTopUpSubscribedUSD          = 20.0
+)
 
-// A Plan defines the base credit limits and error messages for a group of users.
+// A Plan defines credit behavior and error messages for a group of users.
 type Plan struct {
 	// Mnemonic name of the plan
 	Name string
-	// Maximum LLM credit bucket in USD.
+	// Default ceiling or target used by policy logic, in USD.
 	MaxCredit float64
 	// Configured refresh rate for explicit overrides, in USD per hour.
 	// Default monthly free credit does not refill during the month and sets this to 0.
 	RefreshPerHour float64
+	// Refresh computes the updated available credit and refresh timestamp.
+	Refresh func(available float64, lastRefresh, now time.Time) (float64, time.Time)
 	// User-facing error message when credit is exhausted.
 	CreditExhaustedError string
 }
 
-// Base plans for each group
+// Base plans for each group.
+// These values are used for explicit override behavior and then overridden by
+// default policy constants when no explicit overrides are present.
 var (
 	planHasBilling = Plan{
 		Name:                 "has_billing",
@@ -79,10 +87,33 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 		if credit.RefreshPerHour != nil {
 			plan.RefreshPerHour = *credit.RefreshPerHour
 		}
+		plan.Refresh = func(available float64, lastRefresh, now time.Time) (float64, time.Time) {
+			return calculateMonthlyCredit(available, lastRefresh, now, plan.MaxCredit)
+		}
 		return plan, nil
 	}
 
-	plan.MaxCredit = freeCreditPerUTCMonthUSD
+	switch catResult {
+	case "has_billing":
+		plan.MaxCredit = monthlyTopUpSubscribedUSD
+		plan.Refresh = func(available float64, lastRefresh, now time.Time) (float64, time.Time) {
+			now = now.UTC()
+			if !sameUTCMonth(lastRefresh, now) {
+				if available < monthlyTopUpSubscribedUSD {
+					return monthlyTopUpSubscribedUSD, now
+				}
+				return available, now
+			}
+			return available, lastRefresh
+		}
+	case "friend", "no_billing":
+		plan.MaxCredit = initialFreeCreditNoSubscriptionUSD
+		plan.Refresh = func(available float64, lastRefresh, now time.Time) (float64, time.Time) {
+			return available, lastRefresh
+		}
+	default:
+		return Plan{}, fmt.Errorf("unknown plan category %q for user %s", catResult, userID)
+	}
 	plan.RefreshPerHour = 0
 
 	return plan, nil
@@ -170,6 +201,14 @@ func calculateMonthlyCredit(available float64, lastRefresh, now time.Time, maxCr
 	return available, lastRefresh
 }
 
+func userHasBillingCategory(ctx context.Context, q *exedb.Queries, userID string) (bool, error) {
+	catResult, err := q.GetUserPlanCategory(ctx, userID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get user plan category: %w", err)
+	}
+	return catResult == "has_billing", nil
+}
+
 // CheckAndRefreshCredit checks if the user has any credit available (after refresh)
 // Returns the refreshed credit info if available, or ErrInsufficientCredit if not.
 // This also updates the database with the refreshed credit amount.
@@ -200,8 +239,33 @@ func CheckAndRefreshCreditDB(ctx context.Context, db *sqlite.DB, userID string, 
 			if err != nil {
 				return err
 			}
-			initialAvailable := plan.MaxCredit
+			hasBilling, err := userHasBillingCategory(ctx, q, userID)
+			if err != nil {
+				return err
+			}
 			initialLastRefresh := now.UTC()
+			if hasBilling {
+				if err := q.GrantBillingUpgradeBonusOnce(ctx, exedb.GrantBillingUpgradeBonusOnceParams{
+					UserID:          userID,
+					AvailableCredit: initialFreeCreditNoSubscriptionUSD + upgradeBonusCreditUSD,
+					LastRefreshAt:   initialLastRefresh,
+				}); err != nil {
+					return err
+				}
+				credit, err = q.GetUserLLMCredit(ctx, userID)
+				if err != nil {
+					return err
+				}
+				info = &CreditInfo{
+					Available:      credit.AvailableCredit,
+					Max:            plan.MaxCredit,
+					RefreshPerHour: plan.RefreshPerHour,
+					LastRefresh:    credit.LastRefreshAt,
+					Plan:           plan,
+				}
+				return nil
+			}
+			initialAvailable := plan.MaxCredit
 
 			if err := q.CreateUserLLMCreditWithInitial(ctx, exedb.CreateUserLLMCreditWithInitialParams{
 				UserID:          userID,
@@ -226,12 +290,28 @@ func CheckAndRefreshCreditDB(ctx context.Context, db *sqlite.DB, userID string, 
 		if err != nil {
 			return err
 		}
+		hasBilling, err := userHasBillingCategory(ctx, q, userID)
+		if err != nil {
+			return err
+		}
+		if hasBilling && credit.BillingUpgradeBonusGranted == 0 {
+			if err := q.GrantBillingUpgradeBonusOnce(ctx, exedb.GrantBillingUpgradeBonusOnceParams{
+				UserID:          userID,
+				AvailableCredit: initialFreeCreditNoSubscriptionUSD + upgradeBonusCreditUSD,
+				LastRefreshAt:   now.UTC(),
+			}); err != nil {
+				return err
+			}
+			credit, err = q.GetUserLLMCredit(ctx, userID)
+			if err != nil {
+				return err
+			}
+		}
 
-		newAvailable, newLastRefresh := calculateMonthlyCredit(
+		newAvailable, newLastRefresh := plan.Refresh(
 			credit.AvailableCredit,
 			credit.LastRefreshAt,
 			now,
-			plan.MaxCredit,
 		)
 
 		// Update the credit if it changed
@@ -257,8 +337,7 @@ func CheckAndRefreshCreditDB(ctx context.Context, db *sqlite.DB, userID string, 
 	return info, err
 }
 
-// TopUpOnBillingUpgrade is a no-op for monthly free-credit.
-// Free credit now comes from the current UTC month bucket, independent of billing plan.
+// TopUpOnBillingUpgrade applies the one-time subscription upgrade bonus.
 func (m *CreditManager) TopUpOnBillingUpgrade(ctx context.Context, userID string) error {
 	if m == nil || m.data == nil {
 		return nil
@@ -269,7 +348,13 @@ func (m *CreditManager) TopUpOnBillingUpgrade(ctx context.Context, userID string
 // TopUpOnBillingUpgradeDB is the implementation of
 // [CreditManager.TopUpOnBillingUpgrade] when using a database.
 func TopUpOnBillingUpgradeDB(ctx context.Context, db *sqlite.DB, userID string, now time.Time) error {
-	return nil
+	return exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.GrantBillingUpgradeBonusOnce(ctx, exedb.GrantBillingUpgradeBonusOnceParams{
+			UserID:          userID,
+			AvailableCredit: initialFreeCreditNoSubscriptionUSD + upgradeBonusCreditUSD,
+			LastRefreshAt:   now.UTC(),
+		})
+	})
 }
 
 // DebitCredit subtracts the given cost (in USD) from the user's credit.
@@ -298,11 +383,10 @@ func DebitCreditDB(ctx context.Context, db *sqlite.DB, userID string, costUSD fl
 			return err
 		}
 
-		newAvailable, newLastRefresh := calculateMonthlyCredit(
+		newAvailable, newLastRefresh := plan.Refresh(
 			credit.AvailableCredit,
 			credit.LastRefreshAt,
 			now,
-			plan.MaxCredit,
 		)
 		newAvailable -= costUSD
 

@@ -29,11 +29,8 @@ type GatewayData interface {
 	// for testing purposes.
 	CheckAndRefreshCredit(ctx context.Context, userID string, now time.Time) (*CreditInfo, error)
 
-	// TopUpOnBillingUpgrade tops up a user's credit to their new plan
-	// maximum when they transition from no billing to had billing.
-	// If the user has no existing credit record, this is a no-op
-	// (their credit will be initialized at max when they first
-	// use the gateway).
+	// TopUpOnBillingUpgrade applies a one-time billing-upgrade bonus.
+	// The implementation must be idempotent across retries/concurrency.
 	TopUpOnBillingUpgrade(ctx context.Context, userID string, now time.Time) error
 
 	// DebitCredit subtracts the given cost (in USD) from the user's credit.

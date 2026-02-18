@@ -90,7 +90,7 @@ func TestAccountingTransport_BillingBacked_FreeOnlySkipsBillingCharge(t *testing
 	}
 
 	remaining := transport.debitResponseCredits(5, false)
-	wantRemaining := freeCreditPerUTCMonthUSD - 5
+	wantRemaining := initialFreeCreditNoSubscriptionUSD - 5
 	if !floatClose(remaining, wantRemaining, 0.000001) {
 		t.Fatalf("remaining = %f, want %f", remaining, wantRemaining)
 	}
@@ -121,7 +121,7 @@ func TestAccountingTransport_BillingBacked_PartialOverageChargesOnlyOverage(t *t
 	if _, err := creditMgr.CheckAndRefreshCredit(ctx, userID); err != nil {
 		t.Fatalf("failed to initialize credit: %v", err)
 	}
-	preDebit := freeCreditPerUTCMonthUSD - 3
+	preDebit := initialFreeCreditNoSubscriptionUSD - 3
 	if _, err := creditMgr.DebitCredit(ctx, userID, preDebit); err != nil {
 		t.Fatalf("failed to prepare partial free balance: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestAccountingTransport_BillingBacked_FullOverageChargesFullCost(t *testing
 	if _, err := creditMgr.CheckAndRefreshCredit(ctx, userID); err != nil {
 		t.Fatalf("failed to initialize credit: %v", err)
 	}
-	if _, err := creditMgr.DebitCredit(ctx, userID, freeCreditPerUTCMonthUSD); err != nil {
+	if _, err := creditMgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD); err != nil {
 		t.Fatalf("failed to deplete free credit: %v", err)
 	}
 
@@ -207,7 +207,7 @@ func TestAccountingTransport_BillingBacked_UseCreditsErrorKeepsGatewayDebit(t *t
 	if _, err := creditMgr.CheckAndRefreshCredit(ctx, userID); err != nil {
 		t.Fatalf("failed to initialize credit: %v", err)
 	}
-	if _, err := creditMgr.DebitCredit(ctx, userID, freeCreditPerUTCMonthUSD); err != nil {
+	if _, err := creditMgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD); err != nil {
 		t.Fatalf("failed to deplete free credit: %v", err)
 	}
 
@@ -242,7 +242,7 @@ func TestAccountingTransport_BillingBacked_ConcurrentOverageCharging(t *testing.
 	if _, err := creditMgr.CheckAndRefreshCredit(ctx, userID); err != nil {
 		t.Fatalf("failed to initialize credit: %v", err)
 	}
-	if _, err := creditMgr.DebitCredit(ctx, userID, freeCreditPerUTCMonthUSD-20); err != nil {
+	if _, err := creditMgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD-20); err != nil {
 		t.Fatalf("failed to prepare concurrent overage balance: %v", err)
 	}
 

@@ -28,3 +28,12 @@ SELECT * FROM user_llm_credit ORDER BY user_id;
 -- name: CreateUserLLMCreditWithInitial :exec
 INSERT OR IGNORE INTO user_llm_credit (user_id, available_credit, last_refresh_at)
 VALUES (?, ?, ?);
+
+-- name: GrantBillingUpgradeBonusOnce :exec
+INSERT INTO user_llm_credit (user_id, available_credit, last_refresh_at, billing_upgrade_bonus_granted)
+VALUES (?, ?, ?, 1)
+ON CONFLICT(user_id) DO UPDATE SET
+    available_credit = user_llm_credit.available_credit + 100.0,
+    billing_upgrade_bonus_granted = 1,
+    updated_at = CURRENT_TIMESTAMP
+WHERE user_llm_credit.billing_upgrade_bonus_granted = 0;
