@@ -554,7 +554,7 @@ func (m *accountingTransport) debitResponseCredits(costUSD float64, isSSE bool) 
 		return remainingCredit
 	}
 
-	unitPrice := costUSDToNegativeMicrocents(overageUSD)
+	unitPrice := costUSDToMicrocents(overageUSD)
 	remaining, err := m.creditMgr.data.UseCredits(ctx, m.billingAccountID, 1, unitPrice)
 	if err != nil {
 		m.log.ErrorContext(ctx, "failed to debit billing credits", "account_id", m.billingAccountID, "cost_usd", costUSD, "overage_usd", overageUSD, "unit_price_microcents", unitPrice.Microcents(), "error", err)
@@ -578,8 +578,8 @@ func billableOverageFromDebit(costUSD, postDebitAvailable float64) float64 {
 	return overageUSD
 }
 
-func costUSDToNegativeMicrocents(costUSD float64) tender.Value {
-	return tender.Mint(0, int64(math.Round(-costUSD*1_000_000)))
+func costUSDToMicrocents(costUSD float64) tender.Value {
+	return tender.Mint(0, int64(math.Round(costUSD*1_000_000)))
 }
 
 // anthropicResponseUsageInfo extracts usage-relevant information from an Anthropic response.

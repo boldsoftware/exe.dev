@@ -663,7 +663,7 @@ func (m *Manager) SpendCredits(ctx context.Context, billingID string, quantity i
 
 	for rows, err := range m.query(ctx, q,
 		sql.Named("accountID", billingID),
-		sql.Named("amount", unitPrice.Times(quantity)),
+		sql.Named("amount", unitPrice.Times(-quantity)),
 		sql.Named("hourBucket", time.Now().UTC().Truncate(time.Hour).Format("2006-01-02 15:00:00")),
 		sql.Named("creditType", "usage"),
 	) {

@@ -142,7 +142,7 @@ func TestAccountingTransport_BillingBacked_PartialOverageChargesOnlyOverage(t *t
 	if call.quantity != 1 {
 		t.Fatalf("quantity = %d, want 1", call.quantity)
 	}
-	expectedUnitPrice := costUSDToNegativeMicrocents(2)
+	expectedUnitPrice := costUSDToMicrocents(2)
 	if call.unitPrice != expectedUnitPrice {
 		t.Fatalf("unitPrice = %d, want %d", call.unitPrice.Microcents(), expectedUnitPrice.Microcents())
 	}
@@ -181,7 +181,7 @@ func TestAccountingTransport_BillingBacked_FullOverageChargesFullCost(t *testing
 	if len(calls) != 1 {
 		t.Fatalf("UseCredits calls = %d, want 1", len(calls))
 	}
-	expectedUnitPrice := costUSDToNegativeMicrocents(1.25)
+	expectedUnitPrice := costUSDToMicrocents(1.25)
 	if calls[0].unitPrice != expectedUnitPrice {
 		t.Fatalf("unitPrice = %d, want %d", calls[0].unitPrice.Microcents(), expectedUnitPrice.Microcents())
 	}
@@ -283,7 +283,7 @@ func TestAccountingTransport_BillingBacked_ConcurrentOverageCharging(t *testing.
 		}
 		billedMicrocents += call.unitPrice.Microcents()
 	}
-	if billedMicrocents != -10_000_000 {
-		t.Fatalf("billed microcents = %d, want %d", billedMicrocents, -10_000_000)
+	if billedMicrocents != 10_000_000 {
+		t.Fatalf("billed microcents = %d, want %d", billedMicrocents, 10_000_000)
 	}
 }
