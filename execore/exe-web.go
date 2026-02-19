@@ -1434,17 +1434,23 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	var shelleyFreeCreditRemainingPct float64
 	var hasShelleyFreeCreditPct bool
 	creditState, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserLLMCredit, userID)
+	var creditPtr *exedb.UserLlmCredit
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			s.slog().WarnContext(r.Context(), "failed to fetch shelley free credit state", "error", err, "user_id", userID)
 		}
 	} else {
-		plan, err := llmgateway.PlanForUser(r.Context(), s.db, userID, &creditState)
+		creditPtr = &creditState
+	}
+	if err == nil || errors.Is(err, sql.ErrNoRows) {
+		plan, err := llmgateway.PlanForUser(r.Context(), s.db, userID, creditPtr)
 		if err != nil {
 			s.slog().WarnContext(r.Context(), "failed to resolve shelley free credit plan", "error", err, "user_id", userID)
 		} else if plan.MaxCredit > 0 {
 			effectiveAvailable := creditState.AvailableCredit
-			if plan.Refresh != nil {
+			if creditPtr == nil {
+				effectiveAvailable = plan.MaxCredit
+			} else if plan.Refresh != nil {
 				effectiveAvailable, _ = plan.Refresh(creditState.AvailableCredit, creditState.LastRefreshAt, time.Now())
 			}
 			shelleyFreeCreditRemainingPct = (effectiveAvailable / plan.MaxCredit) * 100
