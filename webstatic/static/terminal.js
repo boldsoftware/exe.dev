@@ -106,13 +106,29 @@ class TerminalClient {
     }
 
     setupThemeToggle() {
-        const toggleBtn = document.getElementById('theme-toggle');
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', () => {
-                this.themeManager.toggle();
-                this.terminal.options.theme = this.themeManager.getTerminalTheme();
+        const toggleRow = document.getElementById('theme-toggle');
+        if (toggleRow) {
+            const buttons = toggleRow.querySelectorAll('.theme-toggle-btn');
+            const updateSelection = () => {
+                const currentMode = this.themeManager.getMode();
+                buttons.forEach(btn => {
+                    btn.classList.toggle('selected', btn.dataset.mode === currentMode);
+                });
+            };
+            buttons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    this.themeManager.setMode(btn.dataset.mode);
+                    this.terminal.options.theme = this.themeManager.getTerminalTheme();
+                    updateSelection();
+                });
             });
+            updateSelection();
         }
+
+        // Update terminal when system theme changes (only affects 'system' mode)
+        this.themeManager.onSystemThemeChange(() => {
+            this.terminal.options.theme = this.themeManager.getTerminalTheme();
+        });
     }
 
     setupControlBar() {
