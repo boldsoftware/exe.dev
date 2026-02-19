@@ -2248,12 +2248,12 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 	server := newBillingTestServer(t)
 	user, cookieValue := createUserWithAccount(t, server, "credits-profile@example.com", "exe_profile_credits")
 
-	maxCredit := 20.0
+	maxCredit := 10.0
 	now := time.Now().UTC()
 	lastRefresh := time.Date(now.Year(), now.Month(), 15, 12, 0, 0, 0, time.UTC)
 	err := withTx1(server, t.Context(), (*exedb.Queries).UpsertUserLLMCredit, exedb.UpsertUserLLMCreditParams{
 		UserID:          user.UserID,
-		AvailableCredit: 15.0,
+		AvailableCredit: 9.0,
 		MaxCredit:       &maxCredit,
 		RefreshPerHour:  nil,
 		LastRefreshAt:   lastRefresh,
@@ -2284,42 +2284,34 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 	if !strings.Contains(body, "$0.00 USD") {
 		t.Error("Expected credit balance rendered in dollars and cents")
 	}
+	if !strings.Contains(body, "90%") {
+		t.Fatalf("Expected free credits remaining percentage 90%%, got body: %s", body[:min(1200, len(body))])
+	}
 
-	ratioPublicKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZh3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZx credits-free-pct"
-	ratioUser, err := server.createUser(t.Context(), ratioPublicKey, "credits-free-pct@example.com", AllQualityChecks)
-	if err != nil {
-		t.Fatalf("Failed to create ratio test user: %v", err)
-	}
-	ratioCookieValue, err := server.createAuthCookie(t.Context(), ratioUser.UserID, server.env.WebHost)
-	if err != nil {
-		t.Fatalf("Failed to create ratio test auth cookie: %v", err)
-	}
+	previousMonth := now.AddDate(0, -1, 0)
+	lastRefresh = time.Date(previousMonth.Year(), previousMonth.Month(), 15, 12, 0, 0, 0, time.UTC)
 	err = withTx1(server, t.Context(), (*exedb.Queries).UpsertUserLLMCredit, exedb.UpsertUserLLMCreditParams{
-		UserID:          ratioUser.UserID,
-		AvailableCredit: 15.0,
+		UserID:          user.UserID,
+		AvailableCredit: 9.0,
 		MaxCredit:       &maxCredit,
 		RefreshPerHour:  nil,
 		LastRefreshAt:   lastRefresh,
 	})
 	if err != nil {
-		t.Fatalf("UpsertUserLLMCredit(ratio user): %v", err)
+		t.Fatalf("UpsertUserLLMCredit(previous month): %v", err)
 	}
 
 	req = httptest.NewRequest("GET", "/user", nil)
 	req.Host = server.env.WebHost
-	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: ratioCookieValue})
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
 	w = httptest.NewRecorder()
 	server.ServeHTTP(w, req)
-
 	if w.Code != http.StatusOK {
-		t.Fatalf("Expected 200 for ratio test user, got %d", w.Code)
+		t.Fatalf("Expected 200 after previous-month refresh scenario, got %d", w.Code)
 	}
 	body = w.Body.String()
-	if !strings.Contains(body, "Free Credits Remaining") {
-		t.Fatal("Expected free credits remaining row on profile page for ratio test user")
-	}
-	if !strings.Contains(body, "75%") {
-		t.Fatalf("Expected free credits remaining percentage 75%%, got body: %s", body[:min(1200, len(body))])
+	if !strings.Contains(body, "100%") {
+		t.Fatalf("Expected free credits remaining percentage 100%% after month rollover, got body: %s", body[:min(1200, len(body))])
 	}
 }
 
