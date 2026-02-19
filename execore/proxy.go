@@ -70,7 +70,13 @@ func (s *Server) getProxyAuth(r *http.Request, box exedb.Box) *exeweb.ProxyAuthR
 }
 
 func (s *Server) webBaseURLNoRequest() string {
-	return fmt.Sprintf("%s://%s%s", s.bestScheme(), s.env.WebHost, s.bestURLPort())
+	scheme := s.bestScheme()
+	port := s.bestURLPort()
+	if s.env.BehindTLSProxy {
+		scheme = "https"
+		port = s.httpURLPort()
+	}
+	return fmt.Sprintf("%s://%s%s", scheme, s.env.WebHost, port)
 }
 
 // getProxyPorts returns the list of ports that should be used for proxying.

@@ -45,13 +45,14 @@ type Env struct {
 
 	MaxMaildirEmails int // max emails allowed in ~/Maildir/new before auto-disabling receive
 
-	FakeEmail   bool // whether to log emails instead of sending them
-	SkipBilling bool // whether to skip billing/Stripe checkout for new signups (for tests)
-	ReplDev     bool // whether to expose dev-only repl features (printing internal errors, showing hidden commands, skipping real email, etc.)
-	WebDev      bool // whether to expose dev-only web features (auto-show email links, skipping real email, etc.)
-	ProxyDev    bool // whether to expose dev-only proxy features (addressing a box directly via host:port, etc.)
-	GatewayDev  bool // allow X-Exedev-Box auth even when request source IP isn't tailscale
-	SkipBanner  bool // whether to skip showing the EXE banner on repl login
+	FakeEmail      bool // whether to log emails instead of sending them
+	SkipBilling    bool // whether to skip billing/Stripe checkout for new signups (for tests)
+	ReplDev        bool // whether to expose dev-only repl features (printing internal errors, showing hidden commands, skipping real email, etc.)
+	WebDev         bool // whether to expose dev-only web features (auto-show email links, skipping real email, etc.)
+	ProxyDev       bool // whether to expose dev-only proxy features (addressing a box directly via host:port, etc.)
+	GatewayDev     bool // allow X-Exedev-Box auth even when request source IP isn't tailscale
+	SkipBanner     bool // whether to skip showing the EXE banner on repl login
+	BehindTLSProxy bool // whether running behind an external TLS-terminating proxy (e.g., exe.dev proxy)
 
 	ShowHiddenDocs    bool // whether to load and display unpublished docs
 	ShowDocsPreview   bool // whether to load and display preview docs; true for all stages except prod
@@ -94,13 +95,14 @@ func Invalid() Env {
 
 		MaxMaildirEmails: 0,
 
-		FakeEmail:   true, // something is wrong, so don't send real email
-		SkipBilling: true, // something is wrong, so skip billing
-		ReplDev:     false,
-		WebDev:      false,
-		ProxyDev:    false,
-		GatewayDev:  false,
-		SkipBanner:  false,
+		FakeEmail:      true, // something is wrong, so don't send real email
+		SkipBilling:    true, // something is wrong, so skip billing
+		ReplDev:        false,
+		WebDev:         false,
+		ProxyDev:       false,
+		GatewayDev:     false,
+		SkipBanner:     false,
+		BehindTLSProxy: false,
 
 		ShowHiddenDocs:    false,
 		ShowDocsPreview:   false,
@@ -134,29 +136,36 @@ var envStripeKey = os.Getenv("STRIPE_SECRET_KEY")
 // It enables more expensive features (cobble, auto-starting sshpiper),
 // and provides convenience shortcuts like email links in the console/web.
 func Local() Env {
+	webHost := "localhost"
+	onExeBox := false
+	if fqdn := exeBoxFQDN(); fqdn != "" {
+		webHost = fqdn
+		onExeBox = true
+	}
 	return Env{
-		WebHost:  "localhost",
-		ReplHost: "localhost",
+		WebHost:  webHost,
+		ReplHost: webHost,
 		BoxHost:  "exe.cloud",
 
-		UseCobble:            true, // auto-start cobble/pebble for ACME testing
+		UseCobble:            !onExeBox, // auto-start cobble/pebble for ACME testing (not needed behind proxy)
 		DiscoverPublicIPs:    false,
 		PreloadTailscaleCert: false,
 		EnableLMTP:           true,
 
 		MaxMaildirEmails: 5, // low limit for local dev/testing
 
-		FakeEmail:   true,
-		SkipBilling: envStripeKey == "",
-		ReplDev:     true,
-		WebDev:      true,
-		ProxyDev:    true,
-		GatewayDev:  true,
-		SkipBanner:  false,
+		FakeEmail:      true,
+		SkipBilling:    envStripeKey == "",
+		ReplDev:        true,
+		WebDev:         true,
+		ProxyDev:       true,
+		GatewayDev:     true,
+		SkipBanner:     false,
+		BehindTLSProxy: onExeBox,
 
 		ShowHiddenDocs:    true,
 		ShowDocsPreview:   true,
-		AutoStartSSHPiper: true,
+		AutoStartSSHPiper: !onExeBox,
 		SSHCommandUsesAt:  true,
 		PostSlackFeed:     false,
 
@@ -197,13 +206,14 @@ func Test() Env {
 
 		MaxMaildirEmails: 5, // low limit for testing
 
-		FakeEmail:   true,
-		SkipBilling: true,
-		ReplDev:     false,
-		WebDev:      false,
-		ProxyDev:    true,
-		GatewayDev:  true,
-		SkipBanner:  true,
+		FakeEmail:      true,
+		SkipBilling:    true,
+		ReplDev:        false,
+		WebDev:         false,
+		ProxyDev:       true,
+		GatewayDev:     true,
+		SkipBanner:     true,
+		BehindTLSProxy: false,
 
 		ShowHiddenDocs:    true,
 		ShowDocsPreview:   true,
@@ -246,13 +256,14 @@ func Staging() Env {
 
 		MaxMaildirEmails: 1000, // 1000 emails before auto-disable
 
-		FakeEmail:   false,
-		SkipBilling: false,
-		ReplDev:     false,
-		WebDev:      false,
-		ProxyDev:    false,
-		GatewayDev:  false,
-		SkipBanner:  false,
+		FakeEmail:      false,
+		SkipBilling:    false,
+		ReplDev:        false,
+		WebDev:         false,
+		ProxyDev:       false,
+		GatewayDev:     false,
+		SkipBanner:     false,
+		BehindTLSProxy: false,
 
 		ShowHiddenDocs:    false,
 		ShowDocsPreview:   true,
@@ -294,13 +305,14 @@ func Prod() Env {
 
 		MaxMaildirEmails: 1000, // 1000 emails before auto-disable
 
-		FakeEmail:   false,
-		SkipBilling: false,
-		ReplDev:     false,
-		WebDev:      false,
-		ProxyDev:    false,
-		GatewayDev:  false,
-		SkipBanner:  false,
+		FakeEmail:      false,
+		SkipBilling:    false,
+		ReplDev:        false,
+		WebDev:         false,
+		ProxyDev:       false,
+		GatewayDev:     false,
+		SkipBanner:     false,
+		BehindTLSProxy: false,
 
 		ShowHiddenDocs:    false,
 		ShowDocsPreview:   false,
@@ -398,4 +410,19 @@ func (e Env) TailscaleListenAddr(port string) (string, error) {
 // This is the same as WebHost.
 func (e Env) MailgunDomain() string {
 	return e.WebHost
+}
+
+// exeBoxFQDN returns the FQDN if running on an exe.dev VM (*.exe.xyz),
+// or empty string otherwise. This allows stage.Local() to auto-detect
+// the correct WebHost when running behind the exe.dev TLS proxy.
+func exeBoxFQDN() string {
+	out, err := exec.Command("hostname", "-f").Output()
+	if err != nil {
+		return ""
+	}
+	fqdn := strings.TrimSpace(string(out))
+	if strings.HasSuffix(fqdn, ".exe.xyz") {
+		return fqdn
+	}
+	return ""
 }

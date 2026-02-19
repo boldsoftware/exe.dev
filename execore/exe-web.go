@@ -1578,8 +1578,12 @@ func (s *Server) handleCreditsSuccess(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/user", http.StatusSeeOther)
 }
 
-// getScheme returns the request scheme
+// getScheme returns the request scheme, respecting X-Forwarded-Proto
+// for requests arriving through a reverse proxy (e.g., exe.dev TLS proxy).
 func getScheme(r *http.Request) string {
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto == "https" || proto == "http" {
+		return proto
+	}
 	return schemeForTLS(r.TLS != nil)
 }
 

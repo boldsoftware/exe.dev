@@ -766,7 +766,11 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 			db.Close()
 			return nil, fmt.Errorf("failed to listen on HTTP address %q: %w", cfg.HTTPAddr, err)
 		}
-		baseURL = fmt.Sprintf("http://%s:%d", cfg.Env.WebHost, httpLn.tcp.Port)
+		if cfg.Env.BehindTLSProxy {
+			baseURL = fmt.Sprintf("https://%s:%d", cfg.Env.WebHost, httpLn.tcp.Port)
+		} else {
+			baseURL = fmt.Sprintf("http://%s:%d", cfg.Env.WebHost, httpLn.tcp.Port)
+		}
 		slog.Info("http server listening", "addr", httpLn.tcp.String(), "port", httpLn.tcp.Port)
 	}
 

@@ -168,8 +168,12 @@ func IsShelleyRequest(env *stage.Env, host string) bool {
 	return strings.HasSuffix(host, "."+shelleyBase)
 }
 
-// getScheme returns the request scheme
+// getScheme returns the request scheme, respecting X-Forwarded-Proto
+// for requests arriving through a reverse proxy (e.g., exe.dev TLS proxy).
 func getScheme(r *http.Request) string {
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto == "https" || proto == "http" {
+		return proto
+	}
 	if r.TLS != nil {
 		return "https"
 	}
@@ -236,7 +240,7 @@ func SetAuthCookie(w http.ResponseWriter, r *http.Request, domain, cookieValue s
 		Path:     "/",
 		HttpOnly: true,
 		MaxAge:   30 * 24 * 60 * 60, // 30 days
-		Secure:   r.TLS != nil,
+		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
 		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, cookie)
