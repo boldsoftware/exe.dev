@@ -3219,11 +3219,11 @@ You have been given %d new %s.
 Each invite code grants the recipient a %s plan.
 
 To allocate and share your invites in your dashboard, log in and visit:
-https://exe.dev/
+https://%s/
 
 ---
-exe.dev
-`, count, inviteWord, planDesc)
+%s
+`, count, inviteWord, planDesc, s.env.WebHost, s.env.WebHost)
 
 	if err := s.sendEmail(ctx, email.TypeInvitesAllocated, user.Email, subject, body); err != nil {
 		s.slog().WarnContext(ctx, "failed to send invites allocated email", "to", user.Email, "error", err)
