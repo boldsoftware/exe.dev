@@ -2275,8 +2275,11 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 	if !strings.Contains(body, "Shelley Credits") {
 		t.Error("Expected Shelley Credits section on profile page when flag enabled")
 	}
-	if !strings.Contains(body, "Free Credits Remaining") {
-		t.Error("Expected free credits remaining row on profile page")
+	if !strings.Contains(body, "Monthly Credits") {
+		t.Error("Expected monthly credits row on profile page")
+	}
+	if !strings.Contains(body, "resets on") {
+		t.Error("Expected monthly credits reset date on profile page")
 	}
 	if !strings.Contains(body, "/credits/buy") {
 		t.Error("Expected credits buy form on profile page")

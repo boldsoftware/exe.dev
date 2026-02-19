@@ -1475,10 +1475,16 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		CreditBalance:                 creditBalance,
 		ShelleyFreeCreditRemainingPct: shelleyFreeCreditRemainingPct,
 		HasShelleyFreeCreditPct:       hasShelleyFreeCreditPct,
+		MonthlyCreditsResetDate:       nextUTCMonthStart().Format("2 January"),
 	}
 
 	// Render template
 	s.renderTemplate(r.Context(), w, "user-profile.html", data)
+}
+
+func nextUTCMonthStart() time.Time {
+	now := time.Now().UTC()
+	return time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
 }
 
 // handleCreditsBuy handles POST /credits/buy to start a credit purchase checkout.

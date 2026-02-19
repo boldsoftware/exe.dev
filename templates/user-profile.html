@@ -668,15 +668,15 @@
             <div class="section-title">Shelley Credits</div>
             <div class="info-card">
                 <div class="info-row">
-                    <div class="info-label">Balance</div>
+                    <div class="info-label">Monthly Credits</div>
+                    <div class="info-value">{{if .HasShelleyFreeCreditPct}}{{printf "%.0f%%" .ShelleyFreeCreditRemainingPct}} left (resets on {{.MonthlyCreditsResetDate}}){{else}}-{{end}}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Extra Credits</div>
                     <div class="info-value" id="credit-balance-usd" data-credit-balance-microcents="{{.CreditBalance.Microcents}}">{{.CreditBalance.String}}</div>
                 </div>
                 <div class="info-row">
-                    <div class="info-label">Free Credits Remaining</div>
-                    <div class="info-value">{{if .HasShelleyFreeCreditPct}}{{printf "%.0f%%" .ShelleyFreeCreditRemainingPct}}{{else}}-{{end}}</div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label"><a href="/docs/pricing#shelley-tokens">Buy Credits</a></div>
+                    <div class="info-label"><a href="/docs/pricing#shelley-tokens">Buy Extra Credits</a></div>
                     <div class="info-value">
                         <form method="POST" action="/credits/buy" style="display: flex; gap: 8px; align-items: center;">
                             <input type="number" name="dollars" min="5" step="1" inputmode="numeric" placeholder="$5" required style="padding: 6px 10px; border: 1px solid #e0e0e0; border-radius: 4px; font-family: inherit; font-size: 13px; width: 200px;">
