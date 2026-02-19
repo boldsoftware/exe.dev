@@ -3515,13 +3515,50 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.slog().WarnContext(ctx, "failed to list accounts", "error", err)
 	}
-	var accountID, billingURL string
+
+	type billingAccountInfo struct {
+		AccountID    string
+		LatestStatus string
+		BillingURL   string
+	}
+
+	var userAccounts []exedb.Account
 	for _, a := range accounts {
 		if a.CreatedBy == userID {
-			accountID = a.ID
-			billingURL = billing.MakeCustomerDashboardURL(accountID)
-			break
+			userAccounts = append(userAccounts, a)
 		}
+	}
+	sort.Slice(userAccounts, func(i, j int) bool {
+		return userAccounts[i].ID < userAccounts[j].ID
+	})
+
+	var billingAccounts []billingAccountInfo
+	for _, a := range userAccounts {
+		status, err := withRxRes1(s, ctx, (*exedb.Queries).GetLatestBillingStatus, a.ID)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			status = "pending"
+		case err != nil:
+			s.slog().WarnContext(
+				ctx,
+				"failed to get latest billing status for account",
+				"error",
+				err,
+				"account_id",
+				a.ID,
+				"user_id",
+				userID,
+			)
+			status = "pending"
+		}
+		if status != "active" && status != "canceled" {
+			status = "pending"
+		}
+		billingAccounts = append(billingAccounts, billingAccountInfo{
+			AccountID:    a.ID,
+			LatestStatus: status,
+			BillingURL:   billing.MakeCustomerDashboardURL(a.ID),
+		})
 	}
 
 	// Fetch LLM credit info and plan
@@ -3587,8 +3624,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		BillingExemption           string
 		BillingTrialEndsAt         string
 		SignedUpWithInviteID       string
-		AccountID                  string
-		BillingURL                 string
+		BillingAccounts            []billingAccountInfo
 		HasCredit                  bool
 		CreditPlanName             string
 		CreditAvailableUSD         float64
@@ -3616,8 +3652,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		BillingExemption:         ptrStr(user.BillingExemption),
 		BillingTrialEndsAt:       formatTime(user.BillingTrialEndsAt),
 		SignedUpWithInviteID:     formatInt64Ptr(user.SignedUpWithInviteID),
-		AccountID:                accountID,
-		BillingURL:               billingURL,
+		BillingAccounts:          billingAccounts,
 		HasCredit:                hasCredit,
 		InvitesTotalAllTimeGiven: inviteStats.TotalAllTimeGiven,
 		InvitesAllocatedCount:    inviteStats.AllocatedCount,

@@ -55,15 +55,27 @@ a:hover { text-decoration: underline; }
 </form>
 </div>
 
-{{if .AccountID}}
 <div class="section">
-<h2>Billing</h2>
+<h2>Billing Accounts</h2>
+{{if .BillingAccounts}}
 <table class="info">
-<tr><th>Account ID</th><td>{{.AccountID}}</td></tr>
-{{if .BillingURL}}<tr><th>Billing Dashboard</th><td><a href="{{.BillingURL}}" target="_blank">{{.BillingURL}}</a></td></tr>{{end}}
-</table>
-</div>
+<thead>
+<tr><th>Account ID</th><th>Latest Status</th><th>Billing Dashboard</th></tr>
+</thead>
+<tbody>
+{{range .BillingAccounts}}
+<tr>
+<td>{{.AccountID}}</td>
+<td>{{.LatestStatus}}</td>
+<td><a href="{{.BillingURL}}" target="_blank">{{.BillingURL}}</a></td>
+</tr>
 {{end}}
+</tbody>
+</table>
+{{else}}
+<p>No billing accounts.</p>
+{{end}}
+</div>
 
 {{if .HasCredit}}
 <div class="section">
