@@ -10,7 +10,7 @@ team
 - help to see a list of commands
 
 PROMPT ▶ team
-Team: Test Team
+Team: TestTeam
 Your role: user
 Members: 2
 VMs: 0

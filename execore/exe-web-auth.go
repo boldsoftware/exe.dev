@@ -151,6 +151,11 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 				http.Error(w, "Failed to resolve pending shares", http.StatusInternalServerError)
 				return
 			}
+
+			// Resolve any pending team invites for this email
+			if err := s.resolvePendingTeamInvites(r.Context(), user.Email, verifiedUserID); err != nil {
+				s.slog().ErrorContext(r.Context(), "Failed to resolve pending team invites during web login", "error", err, "email", user.Email)
+			}
 		}
 
 		// Create HTTP auth cookie for this user
@@ -1170,6 +1175,22 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Check team invite token if provided
+	var teamInviteToken, teamInviteName, teamInviteEmail string
+	if ti := q.Get("team_invite"); ti != "" {
+		invite, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetPendingTeamInviteByToken, ti)
+		if err == nil {
+			teamInviteToken = ti
+			teamInviteName = invite.Email // use email as fallback; we get team name below
+			teamInviteEmail = invite.Email
+			// Look up team display name
+			team, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetTeam, invite.TeamID)
+			if err == nil {
+				teamInviteName = team.DisplayName
+			}
+		}
+	}
+
 	// Show authentication form with query parameters
 	data := authFormData{
 		Env:               s.env,
@@ -1180,6 +1201,9 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		InviteCodeValid:   inviteCodeValid,
 		InviteCodeInvalid: inviteCodeInvalid,
 		InvitePlanType:    invitePlanType,
+		TeamInvite:        teamInviteToken,
+		TeamInviteName:    teamInviteName,
+		TeamInviteEmail:   teamInviteEmail,
 	}
 	s.renderTemplate(r.Context(), w, "auth-form.html", data)
 }
@@ -1229,6 +1253,7 @@ func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, ema
 		InviteCode    string
 		Hostname      string
 		Prompt        string
+		TeamInvite    string
 	}{
 		Env:           s.env,
 		Email:         email,
@@ -1240,6 +1265,7 @@ func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, ema
 		InviteCode:    r.FormValue("invite"),
 		Hostname:      r.FormValue("hostname"),
 		Prompt:        r.FormValue("prompt"),
+		TeamInvite:    r.FormValue("team_invite"),
 	}
 	s.renderTemplate(r.Context(), w, "auth-pow.html", data)
 }
@@ -1282,6 +1308,14 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	// Check for valid team invite token (bypasses billing like invite codes)
+	var hasValidTeamInvite bool
+	if ti := r.FormValue("team_invite"); ti != "" {
+		if _, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetPendingTeamInviteByToken, ti); err == nil {
+			hasValidTeamInvite = true
+		}
+	}
+
 	// Validate signup eligibility (checks if new user and runs IPQS/disabled checks)
 	if err := s.validateNewSignup(r.Context(), signupValidationParams{
 		ip:               ip.String(),
@@ -1316,7 +1350,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// Users signing in via "Login with Exe" (proxy auth flow) skip billing - they're just
 	// authenticating to access someone else's app, not signing up to use exe.dev resources.
 	// When creating a VM (hostname present), billing is checked post-verification instead.
-	if isNewUser && !s.env.SkipBilling && invite == nil && !isLoginWithExe && hostname == "" {
+	if isNewUser && !s.env.SkipBilling && invite == nil && !hasValidTeamInvite && !isLoginWithExe && hostname == "" {
 		// Create pending registration to track email through Stripe
 		token := generateRegistrationToken()
 		err = withTx1(s, r.Context(), (*exedb.Queries).InsertPendingRegistration, exedb.InsertPendingRegistrationParams{

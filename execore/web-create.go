@@ -448,6 +448,9 @@ type authFormData struct {
 	InviteCodeValid   bool   // true if invite code is valid and unused
 	InviteCodeInvalid bool   // true if invite code was provided but is invalid or already used
 	InvitePlanType    string // "free" or "trial" if valid
+	TeamInvite        string // team invite token (passed as hidden field)
+	TeamInviteName    string // team display name (shown in UI)
+	TeamInviteEmail   string // email from the invite (pre-fills input)
 }
 
 // sseEvent writes a named SSE event with data

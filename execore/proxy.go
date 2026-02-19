@@ -147,6 +147,9 @@ func (s *Server) hasUserAccessToBox(ctx context.Context, boxID int, boxName, use
 		if err := s.resolvePendingShares(ctx, user.Email, userID); err != nil {
 			return false, fmt.Errorf("resolve pending shares: %w", err)
 		}
+		if err := s.resolvePendingTeamInvites(ctx, user.Email, userID); err != nil {
+			return false, fmt.Errorf("resolve pending team invites: %w", err)
+		}
 	}
 
 	hasAccess, err := withRxRes1(s, ctx, (*exedb.Queries).HasUserAccessToBox, exedb.HasUserAccessToBoxParams{

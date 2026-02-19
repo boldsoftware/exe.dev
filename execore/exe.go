@@ -3143,6 +3143,11 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string, qc Qua
 		return nil, fmt.Errorf("failed to resolve pending shares: %w", err)
 	}
 
+	// Resolve any pending team invites for this email
+	if err := s.resolvePendingTeamInvites(ctx, email, user.UserID); err != nil {
+		return nil, fmt.Errorf("failed to resolve pending team invites: %w", err)
+	}
+
 	return &user, nil
 }
 

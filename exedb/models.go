@@ -270,6 +270,19 @@ type PendingSSHKey struct {
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
 }
 
+type PendingTeamInvite struct {
+	ID               int64      `db:"id" json:"id"`
+	TeamID           string     `db:"team_id" json:"team_id"`
+	Email            string     `db:"email" json:"email"`
+	CanonicalEmail   string     `db:"canonical_email" json:"canonical_email"`
+	InvitedByUserID  string     `db:"invited_by_user_id" json:"invited_by_user_id"`
+	Token            string     `db:"token" json:"token"`
+	ExpiresAt        time.Time  `db:"expires_at" json:"expires_at"`
+	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
+	AcceptedAt       *time.Time `db:"accepted_at" json:"accepted_at"`
+	AcceptedByUserID *string    `db:"accepted_by_user_id" json:"accepted_by_user_id"`
+}
+
 type SSHKey struct {
 	ID          int64      `db:"id" json:"id"`
 	UserID      string     `db:"user_id" json:"user_id"`

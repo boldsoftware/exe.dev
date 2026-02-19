@@ -1074,6 +1074,9 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 		if err := s.resolvePendingShares(ctx, email, user.UserID); err != nil {
 			return nil, fmt.Errorf("resolve pending shares: %w", err)
 		}
+		if err := s.resolvePendingTeamInvites(ctx, email, user.UserID); err != nil {
+			return nil, fmt.Errorf("resolve pending team invites: %w", err)
+		}
 	}
 
 	// Store the SSH key as verified

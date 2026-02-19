@@ -16,7 +16,7 @@ Port: 8000
 Mode: Private
 
 Shared with teams:
-  Share Team
+  ShareTeam
 
 No individual user shares or share links.
 

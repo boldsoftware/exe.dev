@@ -8,6 +8,26 @@ import (
 	"exe.dev/e1e/testinfra"
 )
 
+// createTeam creates a team via the SSH `team create` command.
+// The owner must have root_support enabled before calling this.
+func createTeam(t *testing.T, ownerKeyFile, teamID, displayName, ownerEmail string) {
+	t.Helper()
+	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "team", "create", teamID, displayName, ownerEmail)
+	if err != nil {
+		t.Fatalf("team create failed: %v\noutput: %s", err, out)
+	}
+}
+
+// addTeamMember adds a member to the team via the SSH `team add` command.
+// Must be called as a team owner.
+func addTeamMember(t *testing.T, ownerKeyFile, memberEmail string) {
+	t.Helper()
+	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "team", "add", memberEmail)
+	if err != nil {
+		t.Fatalf("team add %s failed: %v\noutput: %s", memberEmail, err, out)
+	}
+}
+
 // TestTeams tests the teams feature end-to-end.
 // It creates a team with an owner and a member, then tests various operations.
 func TestTeams(t *testing.T) {
@@ -21,22 +41,18 @@ func TestTeams(t *testing.T) {
 	ownerPTY.disconnect()
 	memberPTY.disconnect()
 
-	// Create a team with the owner
-	teamID := "team_test_e2e"
-	if err := Env.servers.CreateTeamWithOwner(teamID, "Test Team", ownerEmail); err != nil {
-		t.Fatalf("failed to create team: %v", err)
-	}
+	// Create a team via SSH (requires root_support for `team create`)
+	enableRootSupport(t, ownerEmail)
+	createTeam(t, ownerKeyFile, "team_test_e2e", "TestTeam", ownerEmail)
 
-	// Add the member to the team
-	if err := Env.servers.AddTeamMember(teamID, memberEmail, "user"); err != nil {
-		t.Fatalf("failed to add member: %v", err)
-	}
+	// Add the member via SSH `team add`
+	addTeamMember(t, ownerKeyFile, memberEmail)
 
 	// Test: Owner can see team command and get team info
 	t.Run("OwnerTeamInfo", func(t *testing.T) {
 		repl := sshToExeDev(t, ownerKeyFile)
 		repl.sendLine("team")
-		repl.want("Test Team")
+		repl.want("TestTeam")
 		repl.want("owner")
 		repl.wantPrompt()
 		repl.disconnect()
@@ -46,7 +62,7 @@ func TestTeams(t *testing.T) {
 	t.Run("MemberTeamInfo", func(t *testing.T) {
 		repl := sshToExeDev(t, memberKeyFile)
 		repl.sendLine("team")
-		repl.want("Test Team")
+		repl.want("TestTeam")
 		repl.want("user")
 		repl.wantPrompt()
 		repl.disconnect()
@@ -191,14 +207,10 @@ func TestTeamOwnerCanManageMemberVMs(t *testing.T) {
 	ownerPTY.disconnect()
 	memberPTY.disconnect()
 
-	// Create team and add member
-	teamID := "team_manage_e2e"
-	if err := Env.servers.CreateTeamWithOwner(teamID, "Manage Team", ownerEmail); err != nil {
-		t.Fatalf("failed to create team: %v", err)
-	}
-	if err := Env.servers.AddTeamMember(teamID, memberEmail, "user"); err != nil {
-		t.Fatalf("failed to add member: %v", err)
-	}
+	// Create team and add member via SSH commands
+	enableRootSupport(t, ownerEmail)
+	createTeam(t, ownerKeyFile, "team_manage_e2e", "ManageTeam", ownerEmail)
+	addTeamMember(t, ownerKeyFile, memberEmail)
 
 	// Member creates a VM
 	memberPTY = sshToExeDev(t, memberKeyFile)
@@ -261,17 +273,11 @@ func TestTeamSharing(t *testing.T) {
 	member1PTY.disconnect()
 	member2PTY.disconnect()
 
-	// Create team and add members
-	teamID := "team_share_e2e"
-	if err := Env.servers.CreateTeamWithOwner(teamID, "Share Team", ownerEmail); err != nil {
-		t.Fatalf("failed to create team: %v", err)
-	}
-	if err := Env.servers.AddTeamMember(teamID, member1Email, "user"); err != nil {
-		t.Fatalf("failed to add member1: %v", err)
-	}
-	if err := Env.servers.AddTeamMember(teamID, member2Email, "user"); err != nil {
-		t.Fatalf("failed to add member2: %v", err)
-	}
+	// Create team and add members via SSH commands
+	enableRootSupport(t, ownerEmail)
+	createTeam(t, ownerKeyFile, "team_share_e2e", "ShareTeam", ownerEmail)
+	addTeamMember(t, ownerKeyFile, member1Email)
+	addTeamMember(t, ownerKeyFile, member2Email)
 
 	// Owner creates a VM
 	ownerPTY = sshToExeDev(t, ownerKeyFile)
@@ -285,7 +291,7 @@ func TestTeamSharing(t *testing.T) {
 		repl := sshToExeDev(t, ownerKeyFile)
 		repl.sendLine("share add " + ownerBox + " team")
 		repl.want("Shared")
-		repl.want("Share Team") // team display name
+		repl.want("ShareTeam") // team display name
 		repl.wantPrompt()
 		repl.disconnect()
 	})
@@ -295,7 +301,7 @@ func TestTeamSharing(t *testing.T) {
 		repl := sshToExeDev(t, ownerKeyFile)
 		repl.sendLine("share show " + ownerBox)
 		repl.want("Shared with teams:")
-		repl.want("Share Team")
+		repl.want("ShareTeam")
 		repl.wantPrompt()
 		repl.disconnect()
 	})
@@ -322,7 +328,7 @@ func TestTeamSharing(t *testing.T) {
 	t.Run("ShareShowNoTeam", func(t *testing.T) {
 		repl := sshToExeDev(t, ownerKeyFile)
 		repl.sendLine("share show " + ownerBox)
-		repl.reject("Share Team")
+		repl.reject("ShareTeam")
 		repl.wantPrompt()
 		repl.disconnect()
 	})

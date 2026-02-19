@@ -33,6 +33,7 @@ const (
 	TypeEmailLimitExceeded       Type = "email_limit_exceeded"
 	TypeBoxMaintenance           Type = "box_maintenance"
 	TypeAccessRequest            Type = "access_request"
+	TypeTeamInvitation           Type = "team_invitation"
 )
 
 // postmarkMessageStreams maps email types to Postmark message stream IDs.
@@ -51,6 +52,7 @@ var postmarkMessageStreams = map[Type]string{
 	TypeEmailLimitExceeded:       "general-notification",
 	TypeBoxMaintenance:           "general-notification",
 	TypeAccessRequest:            "general-notification",
+	TypeTeamInvitation:           "general-notification",
 }
 
 var emailsSentTotal = prometheus.NewCounterVec(

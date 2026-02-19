@@ -4,9 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/netip"
+	"time"
 
 	"exe.dev/domz"
+	"exe.dev/email"
 	"exe.dev/exedb"
 )
 
@@ -155,5 +159,91 @@ func (s *Server) deleteTeamMember(ctx context.Context, teamID, userID string) er
 		return err
 	}
 	proxyChangeDeletedTeamMember(teamID, userID)
+	return nil
+}
+
+// createPendingTeamInvite creates a pending invite for a non-existent user and sends them an email.
+// Returns nil if the invite was created and email sent successfully.
+func (s *Server) createPendingTeamInvite(ctx context.Context, teamID, teamName, invitedEmail, invitedByUserID string) error {
+	ce := canonicalizeEmail(invitedEmail)
+	token := generateRegistrationToken()
+
+	err := withTx1(s, ctx, (*exedb.Queries).InsertPendingTeamInvite, exedb.InsertPendingTeamInviteParams{
+		TeamID:          teamID,
+		Email:           invitedEmail,
+		CanonicalEmail:  ce,
+		InvitedByUserID: invitedByUserID,
+		Token:           token,
+		ExpiresAt:       time.Now().Add(30 * 24 * time.Hour),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create pending team invite: %w", err)
+	}
+
+	// Send invite email
+	link := fmt.Sprintf("https://%s/auth?team_invite=%s", s.env.WebHost, token)
+	subject := fmt.Sprintf("You've been invited to %s on %s", teamName, s.env.WebHost)
+	body := fmt.Sprintf(`Hello,
+
+You've been invited to join the team "%s" on %s.
+
+Click below to create your account and join the team:
+
+%s
+
+This invite expires in 30 days.
+
+---
+%s`, teamName, s.env.WebHost, link, s.env.WebHost)
+
+	if err := s.sendEmail(ctx, email.TypeTeamInvitation, invitedEmail, subject, body); err != nil {
+		slog.ErrorContext(ctx, "failed to send team invite email", "error", err, "email", invitedEmail, "team_id", teamID)
+		// Don't fail the invite creation if email sending fails
+	}
+
+	return nil
+}
+
+// resolvePendingTeamInvites adds users to teams when they have pending invites.
+// Called after user creation or login, following the same pattern as resolvePendingShares.
+func (s *Server) resolvePendingTeamInvites(ctx context.Context, userEmail, userID string) error {
+	ce := canonicalizeEmail(userEmail)
+	invites, err := withRxRes1(s, ctx, (*exedb.Queries).GetPendingTeamInvitesByEmail, ce)
+	if err != nil {
+		return err
+	}
+
+	if len(invites) == 0 {
+		return nil
+	}
+
+	for _, invite := range invites {
+		// Try to add user to the team
+		err := withTx1(s, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
+			TeamID: invite.TeamID,
+			UserID: userID,
+			Role:   "user",
+		})
+		if err != nil {
+			// User might already be in a team (UNIQUE constraint on user_id)
+			slog.WarnContext(ctx, "failed to add user to team from pending invite",
+				"error", err, "team_id", invite.TeamID, "user_id", userID)
+			continue
+		}
+
+		// Mark invite as accepted
+		if err := withTx1(s, ctx, (*exedb.Queries).MarkPendingTeamInviteAccepted, exedb.MarkPendingTeamInviteAcceptedParams{
+			AcceptedByUserID: &userID,
+			ID:               invite.ID,
+		}); err != nil {
+			slog.ErrorContext(ctx, "failed to mark pending team invite accepted",
+				"error", err, "invite_id", invite.ID)
+		}
+
+		slog.InfoContext(ctx, "resolved pending team invite",
+			"team_id", invite.TeamID, "team_name", invite.TeamName,
+			"user_id", userID, "email", userEmail)
+	}
+
 	return nil
 }

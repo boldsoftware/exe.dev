@@ -1,0 +1,402 @@
+<!doctype html>
+<html><head><title>Teams</title>
+<link rel="stylesheet" href="/static/datatables.min.css">
+<script src="/static/jquery.min.js"></script>
+<script src="/static/datatables.min.js"></script>
+<style>
+.toggle-btn { padding: 4px 8px; cursor: pointer; border-radius: 3px; border: 1px solid #ccc; font-size: 11px; }
+.toggle-btn.enabled { background: #28a745; color: white; border-color: #28a745; }
+.toggle-btn.disabled { background: #6c757d; color: white; border-color: #6c757d; }
+.toggle-btn.danger { background: #dc3545; color: white; border-color: #dc3545; }
+.toggle-btn.primary { background: #007bff; color: white; border-color: #007bff; }
+dialog { padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
+dialog::backdrop { background: rgba(0,0,0,0.5); }
+dialog input[type="text"], dialog select { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; }
+dialog input[type="number"] { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; }
+dialog button { margin-right: 10px; padding: 8px 16px; }
+dialog .confirm-btn { background: #28a745; color: white; border: none; cursor: pointer; }
+dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: pointer; }
+dialog .danger-btn { background: #dc3545; color: white; border: none; cursor: pointer; }
+#teamsTable { width: 100%; }
+#teamsTable td, #teamsTable th { font-size: 13px; }
+td.details-control { cursor: pointer; text-align: center; }
+td.details-control::before { content: '+'; font-weight: bold; font-size: 16px; }
+tr.shown td.details-control::before { content: '-'; }
+.member-table { width: 100%; margin: 5px 0; border-collapse: collapse; }
+.member-table th, .member-table td { padding: 4px 8px; font-size: 12px; border-bottom: 1px solid #eee; text-align: left; }
+.member-table th { background: #f5f5f5; }
+</style>
+</head><body>
+<h1>Teams</h1>
+<p><a href="/debug">/debug</a> | <a href="/debug/teams?format=json">json</a></p>
+<p>Total teams: {{.TeamCount}} <button class="toggle-btn primary" id="createTeamBtn">Create Team</button></p>
+
+<table id="teamsTable" class="display stripe hover">
+<thead>
+<tr>
+<th></th>
+<th>Team ID</th>
+<th>Display Name</th>
+<th>Created At</th>
+<th>Members</th>
+<th>Limits</th>
+<th>Actions</th>
+</tr>
+</thead>
+</table>
+
+<dialog id="createDialog">
+<form id="createForm">
+<h3>Create Team</h3>
+<p>Team ID: <input type="text" name="team_id" id="createTeamId" placeholder="e.g., acme-corp"></p>
+<p>Display Name: <input type="text" name="display_name" id="createDisplayName" placeholder="e.g., Acme Corp"></p>
+<p>Owner Email: <input type="text" name="owner_email" id="createOwnerEmail" placeholder="owner@example.com"></p>
+<p>
+<button type="submit" class="confirm-btn">Create</button>
+<button type="button" class="cancel-btn" id="createCancelBtn">Cancel</button>
+</p>
+</form>
+</dialog>
+
+<dialog id="addMemberDialog">
+<form id="addMemberForm">
+<h3>Add Member</h3>
+<p>Team: <strong id="addMemberTeamDisplay"></strong></p>
+<input type="hidden" name="team_id" id="addMemberTeamId">
+<p>Email: <input type="text" name="email" id="addMemberEmail" placeholder="user@example.com"></p>
+<p>Role: <select name="role" id="addMemberRole">
+<option value="user">user</option>
+<option value="owner">owner</option>
+</select></p>
+<p>
+<button type="submit" class="confirm-btn">Add</button>
+<button type="button" class="cancel-btn" id="addMemberCancelBtn">Cancel</button>
+</p>
+</form>
+</dialog>
+
+<dialog id="limitsDialog">
+<form id="limitsForm">
+<h3>Team Limits</h3>
+<p>Team: <strong id="limitsTeamDisplay"></strong></p>
+<input type="hidden" name="team_id" id="limitsTeamId">
+<p>Max Boxes: <input type="number" name="max_boxes" id="maxBoxesInput" min="0" step="1" placeholder="e.g., 10"></p>
+<p>Memory (GB): <input type="number" name="max_memory_gb" id="maxMemoryInput" min="0" step="1" placeholder="e.g., 8"></p>
+<p>Disk (GB): <input type="number" name="max_disk_gb" id="maxDiskInput" min="0" step="1" placeholder="e.g., 30"></p>
+<p>CPUs: <input type="number" name="max_cpus" id="maxCpusInput" min="0" step="1" placeholder="e.g., 4"></p>
+<p style="font-size: 11px; color: #666;">Leave blank or 0 to use defaults. Clear all to remove limits.</p>
+<p>
+<button type="submit" class="confirm-btn">Save</button>
+<button type="button" class="cancel-btn" id="limitsCancelBtn">Cancel</button>
+<button type="button" class="danger-btn" id="limitsClearBtn">Clear All</button>
+</p>
+</form>
+</dialog>
+
+<dialog id="removeDialog">
+<form id="removeForm">
+<h3>Remove Team Member</h3>
+<p>Remove <strong id="removeMemberEmail"></strong> from <strong id="removeTeamDisplay"></strong>?</p>
+<p style="color: #dc3545; font-weight: bold;">This will delete all of their boxes.</p>
+<input type="hidden" name="team_id" id="removeTeamId">
+<input type="hidden" name="user_id" id="removeUserId">
+<p>
+<button type="submit" class="danger-btn">Remove &amp; Delete Boxes</button>
+<button type="button" class="cancel-btn" id="removeCancelBtn">Cancel</button>
+</p>
+</form>
+</dialog>
+
+<script>
+var teamsTable;
+
+function formatMembers(d) {
+    if (!d.members || d.members.length === 0) {
+        return '<em>No members</em>';
+    }
+    var html = '<table class="member-table"><thead><tr>' +
+        '<th>Email</th><th>User ID</th><th>Role</th><th>Joined</th><th>Actions</th>' +
+        '</tr></thead><tbody>';
+    for (var i = 0; i < d.members.length; i++) {
+        var m = d.members[i];
+        var roleBtn = m.role === 'owner'
+            ? '<button class="toggle-btn enabled role-btn" data-teamid="' + d.team_id + '" data-userid="' + m.user_id + '" data-role="user">Demote</button>'
+            : '<button class="toggle-btn disabled role-btn" data-teamid="' + d.team_id + '" data-userid="' + m.user_id + '" data-role="owner">Promote</button>';
+        var removeBtn = '<button class="toggle-btn danger remove-btn" data-teamid="' + d.team_id + '" data-userid="' + m.user_id + '" data-email="' + m.email + '" data-teamname="' + d.display_name + '">Remove</button>';
+        html += '<tr>' +
+            '<td><a href="/debug/users?search=' + encodeURIComponent(m.email) + '">' + m.email + '</a></td>' +
+            '<td>' + m.user_id + '</td>' +
+            '<td>' + m.role + '</td>' +
+            '<td>' + m.joined_at + '</td>' +
+            '<td>' + roleBtn + ' ' + removeBtn + '</td>' +
+            '</tr>';
+    }
+    html += '</tbody></table>';
+    return html;
+}
+
+function parseLimits(limitsStr) {
+    if (!limitsStr) return '-';
+    try {
+        var p = JSON.parse(limitsStr);
+        var parts = [];
+        if (p.max_boxes) parts.push(p.max_boxes + ' boxes');
+        if (p.max_memory) parts.push((p.max_memory / 1e9).toFixed(0) + 'GB mem');
+        if (p.max_disk) parts.push((p.max_disk / 1e9).toFixed(0) + 'GB disk');
+        if (p.max_cpus) parts.push(p.max_cpus + ' cpu');
+        return parts.length ? parts.join(', ') : '-';
+    } catch(e) { return 'invalid'; }
+}
+
+$(document).ready(function() {
+    teamsTable = $('#teamsTable').DataTable({
+        ajax: {
+            url: '/debug/teams?format=json',
+            dataSrc: ''
+        },
+        pageLength: 50,
+        order: [[3, 'desc']],
+        columns: [
+            { className: 'details-control', orderable: false, data: null, defaultContent: '' },
+            { data: 'team_id' },
+            { data: 'display_name' },
+            { data: 'created_at' },
+            { data: 'member_count' },
+            { data: null, render: function(d) {
+                var summary = parseLimits(d.limits);
+                return summary + ' <button class="toggle-btn limits-btn" ' +
+                    'data-teamid="' + d.team_id + '" data-teamname="' + d.display_name + '" ' +
+                    'data-limits="' + (d.limits ? encodeURIComponent(d.limits) : '') + '">Edit</button>';
+            }},
+            { data: null, render: function(d) {
+                return '<button class="toggle-btn primary add-member-btn" ' +
+                    'data-teamid="' + d.team_id + '" data-teamname="' + d.display_name + '">Add Member</button>';
+            }}
+        ]
+    });
+
+    // Expand/collapse child rows
+    $('#teamsTable tbody').on('click', 'td.details-control', function() {
+        var tr = $(this).closest('tr');
+        var row = teamsTable.row(tr);
+        if (row.child.isShown()) {
+            row.child.hide();
+            tr.removeClass('shown');
+        } else {
+            row.child(formatMembers(row.data())).show();
+            tr.addClass('shown');
+        }
+    });
+});
+
+// Create Team
+document.getElementById('createTeamBtn').addEventListener('click', function() {
+    document.getElementById('createTeamId').value = '';
+    document.getElementById('createDisplayName').value = '';
+    document.getElementById('createOwnerEmail').value = '';
+    document.getElementById('createDialog').showModal();
+});
+document.getElementById('createCancelBtn').addEventListener('click', function() {
+    document.getElementById('createDialog').close();
+});
+document.getElementById('createForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var teamId = document.getElementById('createTeamId').value;
+    var displayName = document.getElementById('createDisplayName').value;
+    var ownerEmail = document.getElementById('createOwnerEmail').value;
+    if (!teamId || !displayName || !ownerEmail) {
+        alert('All fields are required');
+        return;
+    }
+
+    var body = new URLSearchParams();
+    body.append('team_id', teamId);
+    body.append('display_name', displayName);
+    body.append('owner_email', ownerEmail);
+
+    fetch('/debug/teams/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    }).then(function(resp) {
+        if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
+        document.getElementById('createDialog').close();
+        teamsTable.ajax.reload(null, false);
+    }).catch(function(err) {
+        alert('Failed to create team: ' + err.message);
+    });
+});
+
+// Add Member
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('add-member-btn')) {
+        document.getElementById('addMemberTeamId').value = e.target.dataset.teamid;
+        document.getElementById('addMemberTeamDisplay').textContent = e.target.dataset.teamname;
+        document.getElementById('addMemberEmail').value = '';
+        document.getElementById('addMemberRole').value = 'user';
+        document.getElementById('addMemberDialog').showModal();
+    }
+});
+document.getElementById('addMemberCancelBtn').addEventListener('click', function() {
+    document.getElementById('addMemberDialog').close();
+});
+document.getElementById('addMemberForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var teamId = document.getElementById('addMemberTeamId').value;
+    var email = document.getElementById('addMemberEmail').value;
+    var role = document.getElementById('addMemberRole').value;
+    if (!email) {
+        alert('Email is required');
+        return;
+    }
+
+    var body = new URLSearchParams();
+    body.append('team_id', teamId);
+    body.append('email', email);
+    body.append('role', role);
+
+    fetch('/debug/teams/add-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    }).then(function(resp) {
+        if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
+        document.getElementById('addMemberDialog').close();
+        teamsTable.ajax.reload(null, false);
+    }).catch(function(err) {
+        alert('Failed to add member: ' + err.message);
+    });
+});
+
+// Edit Limits
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('limits-btn')) {
+        var teamId = e.target.dataset.teamid;
+        var teamName = e.target.dataset.teamname;
+        var limits = e.target.dataset.limits ? decodeURIComponent(e.target.dataset.limits) : '';
+
+        document.getElementById('limitsTeamId').value = teamId;
+        document.getElementById('limitsTeamDisplay').textContent = teamName;
+
+        var boxes = '', memGB = '', diskGB = '', cpus = '';
+        if (limits) {
+            try {
+                var p = JSON.parse(limits);
+                if (p.max_boxes) boxes = p.max_boxes;
+                if (p.max_memory) memGB = (p.max_memory / 1e9).toFixed(0);
+                if (p.max_disk) diskGB = (p.max_disk / 1e9).toFixed(0);
+                if (p.max_cpus) cpus = p.max_cpus;
+            } catch(e) {}
+        }
+        document.getElementById('maxBoxesInput').value = boxes;
+        document.getElementById('maxMemoryInput').value = memGB;
+        document.getElementById('maxDiskInput').value = diskGB;
+        document.getElementById('maxCpusInput').value = cpus;
+        document.getElementById('limitsDialog').showModal();
+    }
+});
+document.getElementById('limitsCancelBtn').addEventListener('click', function() {
+    document.getElementById('limitsDialog').close();
+});
+document.getElementById('limitsClearBtn').addEventListener('click', function() {
+    document.getElementById('maxBoxesInput').value = '';
+    document.getElementById('maxMemoryInput').value = '';
+    document.getElementById('maxDiskInput').value = '';
+    document.getElementById('maxCpusInput').value = '';
+});
+document.getElementById('limitsForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var teamId = document.getElementById('limitsTeamId').value;
+    var boxes = parseInt(document.getElementById('maxBoxesInput').value) || 0;
+    var memGB = parseInt(document.getElementById('maxMemoryInput').value) || 0;
+    var diskGB = parseInt(document.getElementById('maxDiskInput').value) || 0;
+    var cpus = parseInt(document.getElementById('maxCpusInput').value) || 0;
+
+    var limits = '';
+    if (boxes || memGB || diskGB || cpus) {
+        var obj = {};
+        if (boxes) obj.max_boxes = boxes;
+        if (memGB) obj.max_memory = memGB * 1e9;
+        if (diskGB) obj.max_disk = diskGB * 1e9;
+        if (cpus) obj.max_cpus = cpus;
+        limits = JSON.stringify(obj);
+    }
+
+    var body = new URLSearchParams();
+    body.append('team_id', teamId);
+    body.append('limits', limits);
+
+    fetch('/debug/teams/set-limits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    }).then(function(resp) {
+        if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
+        document.getElementById('limitsDialog').close();
+        teamsTable.ajax.reload(null, false);
+    }).catch(function(err) {
+        alert('Failed to update limits: ' + err.message);
+    });
+});
+
+// Role toggle
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('role-btn')) {
+        var teamId = e.target.dataset.teamid;
+        var userId = e.target.dataset.userid;
+        var newRole = e.target.dataset.role;
+
+        var body = new URLSearchParams();
+        body.append('team_id', teamId);
+        body.append('user_id', userId);
+        body.append('role', newRole);
+
+        fetch('/debug/teams/update-role', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString()
+        }).then(function(resp) {
+            if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
+            teamsTable.ajax.reload(null, false);
+        }).catch(function(err) {
+            alert('Failed to update role: ' + err.message);
+        });
+    }
+});
+
+// Remove member
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('remove-btn')) {
+        document.getElementById('removeTeamId').value = e.target.dataset.teamid;
+        document.getElementById('removeUserId').value = e.target.dataset.userid;
+        document.getElementById('removeMemberEmail').textContent = e.target.dataset.email;
+        document.getElementById('removeTeamDisplay').textContent = e.target.dataset.teamname;
+        document.getElementById('removeDialog').showModal();
+    }
+});
+document.getElementById('removeCancelBtn').addEventListener('click', function() {
+    document.getElementById('removeDialog').close();
+});
+document.getElementById('removeForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var teamId = document.getElementById('removeTeamId').value;
+    var userId = document.getElementById('removeUserId').value;
+
+    var body = new URLSearchParams();
+    body.append('team_id', teamId);
+    body.append('user_id', userId);
+
+    fetch('/debug/teams/remove-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    }).then(function(resp) {
+        if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
+        document.getElementById('removeDialog').close();
+        teamsTable.ajax.reload(null, false);
+    }).catch(function(err) {
+        alert('Failed to remove member: ' + err.message);
+    });
+});
+</script>
+</body></html>

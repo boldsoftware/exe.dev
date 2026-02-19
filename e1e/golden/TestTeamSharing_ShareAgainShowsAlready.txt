@@ -9,6 +9,6 @@ share add BOX_NAME team
 - help to see a list of commands
 
 PROMPT ▶ share add BOX_NAME team
-Already shared BOX_NAME with team Share Team
+Already shared BOX_NAME with team ShareTeam
 PROMPT ▶ exit
 Goodbye!

@@ -10,7 +10,7 @@ share add BOX_NAME team
 
 PROMPT ▶ share add BOX_NAME team
 
-✓ Shared BOX_NAME with team Share Team
+✓ Shared BOX_NAME with team ShareTeam
 
 PROMPT ▶ exit
 Goodbye!

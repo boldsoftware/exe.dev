@@ -17,7 +17,9 @@
 <body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
   <main class="w-full max-w-2xl">
     <h1 class="text-4xl font-semibold mb-6">Login (or create an account)</h1>
-    {{if .InviteCodeValid}}
+    {{if .TeamInvite}}
+    <p class="text-green-600 mb-4">&#10003; You've been invited to join {{.TeamInviteName}}</p>
+    {{else if .InviteCodeValid}}
     <p class="text-green-600 mb-4">{{if eq .InvitePlanType "free"}}&#10003; Invite code accepted: free account{{else if eq .InvitePlanType "trial"}}&#10003; Invite code accepted: 1 month free trial{{else}}&#10003; Invite code accepted{{end}}</p>
     {{else if .InviteCodeInvalid}}
     <p class="text-red-600 mb-4">Invalid or already used invite code.</p>
@@ -41,7 +43,11 @@
       {{if .InviteCodeValid}}
       <input type="hidden" name="invite" value="{{.InviteCode}}">
       {{end}}
+      {{if .TeamInvite}}
+      <input type="hidden" name="team_invite" value="{{.TeamInvite}}">
+      {{end}}
       <input type="email" name="email" placeholder="you@example.com" required autofocus
+        {{if .TeamInviteEmail}}value="{{.TeamInviteEmail}}"{{end}}
         autocomplete="username webauthn" autocorrect="on" autocapitalize="none" spellcheck="true"
         class="w-full text-xl border-b-2 border-zinc-300 py-3 bg-transparent focus:outline-none focus:border-zinc-900 placeholder:text-zinc-400">
       <button type="submit" class="mt-6 px-6 py-3 bg-zinc-900 text-white text-lg hover:bg-zinc-700 transition-colors">Continue</button>

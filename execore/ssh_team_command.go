@@ -230,13 +230,15 @@ func (ss *SSHServer) handleTeamMembersCommand(ctx context.Context, cc *exemenu.C
 	return nil
 }
 
-// handleTeamAddCommand adds a user to the team
+// handleTeamAddCommand adds a user to the team.
+// If the user doesn't have an account yet, a pending invite is created and an email is sent.
+// The response is uniform regardless of whether the user exists (avoids leaking account existence).
 func (ss *SSHServer) handleTeamAddCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) < 1 {
 		return cc.Errorf("usage: team add <email>")
 	}
 
-	email := cc.Args[0]
+	addr := cc.Args[0]
 
 	team, err := ss.server.GetTeamForUser(ctx, cc.User.ID)
 	if err != nil {
@@ -251,22 +253,41 @@ func (ss *SSHServer) handleTeamAddCommand(ctx context.Context, cc *exemenu.Comma
 		return cc.Errorf("Only team owners can add members")
 	}
 
-	// Find the user by email
-	userID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, new(canonicalizeEmail(email)))
+	// Try to find the user by email
+	ce := canonicalizeEmail(addr)
+	userID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, &ce)
 	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("User %q not found. They need to create an account first.", email)
+		// User doesn't exist — create a pending invite and send email
+		if err := ss.server.createPendingTeamInvite(ctx, team.TeamID, team.DisplayName, addr, cc.User.ID); err != nil {
+			return cc.Errorf("Failed to invite user: %v", err)
+		}
+
+		slog.InfoContext(ctx, "pending team invite created",
+			"team_id", team.TeamID,
+			"email", addr,
+			"invited_by", cc.User.ID)
+
+		if cc.WantJSON() {
+			cc.WriteJSON(map[string]any{
+				"invited": addr,
+				"status":  "ok",
+			})
+			return nil
+		}
+		cc.Writeln("Invited %s to the team", addr)
+		return nil
 	}
 	if err != nil {
 		return err
 	}
 
-	// Check if user is already in a team
+	// User exists — check if already in a team
 	existingTeam, _ := ss.server.GetTeamForUser(ctx, userID)
 	if existingTeam != nil {
 		if existingTeam.TeamID == team.TeamID {
-			return cc.Errorf("User %q is already in this team", email)
+			return cc.Errorf("User %q is already in this team", addr)
 		}
-		return cc.Errorf("User %q is already in another team", email)
+		return cc.Errorf("User %q is already in another team", addr)
 	}
 
 	// Add the user to the team as a regular member
@@ -276,7 +297,7 @@ func (ss *SSHServer) handleTeamAddCommand(ctx context.Context, cc *exemenu.Comma
 		Role:   "user",
 	})
 	if err != nil {
-		return cc.Errorf("Failed to add user: %v", err)
+		return cc.Errorf("Failed to invite user: %v", err)
 	}
 
 	slog.InfoContext(ctx, "team member added",
@@ -286,13 +307,13 @@ func (ss *SSHServer) handleTeamAddCommand(ctx context.Context, cc *exemenu.Comma
 
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
-			"added":  email,
-			"status": "ok",
+			"invited": addr,
+			"status":  "ok",
 		})
 		return nil
 	}
 
-	cc.Writeln("Added %s to the team", email)
+	cc.Writeln("Invited %s to the team", addr)
 	return nil
 }
 

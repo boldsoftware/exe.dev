@@ -92,9 +92,13 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/invite-tree", s.handleDebugInviteTree)
 	mux.HandleFunc("/debug/bounces", s.handleDebugBounces)
 	mux.HandleFunc("POST /debug/bounces", s.handleDebugBouncesPost)
+	mux.HandleFunc("GET /debug/teams", s.handleDebugTeams)
 	mux.HandleFunc("POST /debug/teams/create", s.handleDebugTeamCreate)
 	mux.HandleFunc("POST /debug/teams/add-member", s.handleDebugTeamAddMember)
 	mux.HandleFunc("GET /debug/teams/members", s.handleDebugTeamMembers)
+	mux.HandleFunc("POST /debug/teams/remove-member", s.handleDebugTeamRemoveMember)
+	mux.HandleFunc("POST /debug/teams/update-role", s.handleDebugTeamUpdateRole)
+	mux.HandleFunc("POST /debug/teams/set-limits", s.handleDebugTeamSetLimits)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -3838,7 +3842,7 @@ func (s *Server) handleDebugBouncesPost(w http.ResponseWriter, r *http.Request) 
 }
 
 // handleDebugTeamCreate creates a team and adds a user as owner.
-// POST /debug/teams/create with team_id, display_name, owner_user_id
+// POST /debug/teams/create with team_id, display_name, owner_user_id (or owner_email)
 func (s *Server) handleDebugTeamCreate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -3846,8 +3850,21 @@ func (s *Server) handleDebugTeamCreate(w http.ResponseWriter, r *http.Request) {
 	displayName := r.FormValue("display_name")
 	ownerUserID := r.FormValue("owner_user_id")
 
+	// Resolve owner_email to user_id if provided instead
+	if ownerUserID == "" {
+		if ownerEmail := r.FormValue("owner_email"); ownerEmail != "" {
+			ce := canonicalizeEmail(ownerEmail)
+			uid, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDByEmail, &ce)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("user not found for email %q: %v", ownerEmail, err), http.StatusBadRequest)
+				return
+			}
+			ownerUserID = uid
+		}
+	}
+
 	if teamID == "" || displayName == "" || ownerUserID == "" {
-		http.Error(w, "team_id, display_name, and owner_user_id are required", http.StatusBadRequest)
+		http.Error(w, "team_id, display_name, and owner_user_id (or owner_email) are required", http.StatusBadRequest)
 		return
 	}
 
@@ -3878,16 +3895,57 @@ func (s *Server) handleDebugTeamCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleDebugTeamAddMember adds a user to an existing team.
-// POST /debug/teams/add-member with team_id, user_id, role (owner or user)
+// POST /debug/teams/add-member with team_id, user_id (or email), role (owner or user)
+// If email is provided and user doesn't exist, creates a pending invite and sends email.
 func (s *Server) handleDebugTeamAddMember(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	teamID := r.FormValue("team_id")
 	userID := r.FormValue("user_id")
+	addr := r.FormValue("email")
 	role := r.FormValue("role")
 
+	// Resolve email to user_id if provided instead
+	if userID == "" && addr != "" {
+		ce := canonicalizeEmail(addr)
+		uid, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDByEmail, &ce)
+		if err != nil {
+			// User doesn't exist — create pending invite
+			team, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeam, teamID)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("team not found: %v", err), http.StatusBadRequest)
+				return
+			}
+			// Use first team owner as the inviter
+			members, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamMembers, teamID)
+			if err != nil || len(members) == 0 {
+				http.Error(w, "could not find team owner for invite", http.StatusInternalServerError)
+				return
+			}
+			var inviterID string
+			for _, m := range members {
+				if m.Role == "owner" {
+					inviterID = m.UserID
+					break
+				}
+			}
+			if inviterID == "" {
+				inviterID = members[0].UserID
+			}
+			if err := s.createPendingTeamInvite(ctx, teamID, team.DisplayName, addr, inviterID); err != nil {
+				http.Error(w, fmt.Sprintf("failed to create pending invite: %v", err), http.StatusInternalServerError)
+				return
+			}
+			s.slog().InfoContext(ctx, "created pending team invite via debug", "team_id", teamID, "email", addr)
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintf(w, "invited %s to team %s (pending signup)", addr, teamID)
+			return
+		}
+		userID = uid
+	}
+
 	if teamID == "" || userID == "" {
-		http.Error(w, "team_id and user_id are required", http.StatusBadRequest)
+		http.Error(w, "team_id and user_id (or email) are required", http.StatusBadRequest)
 		return
 	}
 	if role == "" {
@@ -3936,4 +3994,187 @@ func (s *Server) handleDebugTeamMembers(w http.ResponseWriter, r *http.Request) 
 	if err := enc.Encode(members); err != nil {
 		s.slog().InfoContext(ctx, "Failed to encode team members", "error", err)
 	}
+}
+
+// handleDebugTeams displays a list of all teams with members.
+func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	teams, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllTeams)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list teams: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if r.URL.Query().Get("format") == "json" {
+		type memberInfo struct {
+			UserID   string `json:"user_id"`
+			Email    string `json:"email"`
+			Role     string `json:"role"`
+			JoinedAt string `json:"joined_at"`
+		}
+		type teamInfo struct {
+			TeamID      string       `json:"team_id"`
+			DisplayName string       `json:"display_name"`
+			CreatedAt   string       `json:"created_at"`
+			MemberCount int64        `json:"member_count"`
+			Limits      string       `json:"limits,omitempty"`
+			Members     []memberInfo `json:"members"`
+		}
+		var teamsJSON []teamInfo
+		for _, t := range teams {
+			ti := teamInfo{
+				TeamID:      t.TeamID,
+				DisplayName: t.DisplayName,
+				CreatedAt:   t.CreatedAt,
+				MemberCount: t.MemberCount,
+				Members:     []memberInfo{},
+			}
+			// Fetch limits from full team record
+			if team, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeam, t.TeamID); err == nil {
+				ti.Limits = ptrStr(team.Limits)
+			}
+			// Fetch members
+			if members, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamMembers, t.TeamID); err == nil {
+				for _, m := range members {
+					ti.Members = append(ti.Members, memberInfo{
+						UserID:   m.UserID,
+						Email:    m.Email,
+						Role:     m.Role,
+						JoinedAt: m.JoinedAt,
+					})
+				}
+			}
+			teamsJSON = append(teamsJSON, ti)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(teamsJSON); err != nil {
+			s.slog().InfoContext(ctx, "Failed to encode teams", "error", err)
+		}
+		return
+	}
+
+	// HTML output
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		TeamCount int
+	}{
+		TeamCount: len(teams),
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, "teams.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute teams template", "error", err)
+	}
+}
+
+// handleDebugTeamRemoveMember removes a member from a team, deleting their boxes.
+// POST /debug/teams/remove-member with team_id, user_id
+func (s *Server) handleDebugTeamRemoveMember(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	teamID := r.FormValue("team_id")
+	userID := r.FormValue("user_id")
+
+	if teamID == "" || userID == "" {
+		http.Error(w, "team_id and user_id are required", http.StatusBadRequest)
+		return
+	}
+
+	// Delete the member's boxes (full cascade like SSH command)
+	boxIDs, err := withRxRes1(s, ctx, (*exedb.Queries).ListBoxIDsForUser, userID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to list boxes for removed member", "error", err)
+	}
+	for _, boxID := range boxIDs {
+		box, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxByID, boxID)
+		if err != nil {
+			continue
+		}
+		if err := s.deleteBox(ctx, box); err != nil {
+			s.slog().ErrorContext(ctx, "failed to delete box for removed member",
+				"box_id", boxID, "user_id", userID, "error", err)
+		}
+	}
+
+	if err := s.deleteTeamMember(ctx, teamID, userID); err != nil {
+		http.Error(w, fmt.Sprintf("failed to remove member: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "removed team member via debug", "team_id", teamID, "user_id", userID, "boxes_deleted", len(boxIDs))
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "removed %s from team %s (%d boxes deleted)", userID, teamID, len(boxIDs))
+}
+
+// handleDebugTeamUpdateRole changes a team member's role.
+// POST /debug/teams/update-role with team_id, user_id, role
+func (s *Server) handleDebugTeamUpdateRole(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	teamID := r.FormValue("team_id")
+	userID := r.FormValue("user_id")
+	role := r.FormValue("role")
+
+	if teamID == "" || userID == "" || role == "" {
+		http.Error(w, "team_id, user_id, and role are required", http.StatusBadRequest)
+		return
+	}
+	if role != "owner" && role != "user" {
+		http.Error(w, "role must be 'owner' or 'user'", http.StatusBadRequest)
+		return
+	}
+
+	err := withTx1(s, ctx, (*exedb.Queries).UpdateTeamMemberRole, exedb.UpdateTeamMemberRoleParams{
+		TeamID: teamID,
+		UserID: userID,
+		Role:   role,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to update role: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "updated team member role via debug", "team_id", teamID, "user_id", userID, "role", role)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "updated %s role to %s in team %s", userID, role, teamID)
+}
+
+// handleDebugTeamSetLimits updates a team's resource limits.
+// POST /debug/teams/set-limits with team_id, limits (JSON string, empty to clear)
+func (s *Server) handleDebugTeamSetLimits(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	teamID := r.FormValue("team_id")
+	limits := r.FormValue("limits")
+
+	if teamID == "" {
+		http.Error(w, "team_id is required", http.StatusBadRequest)
+		return
+	}
+
+	var limitsPtr *string
+	if limits != "" {
+		limitsPtr = &limits
+	}
+
+	err := withTx1(s, ctx, (*exedb.Queries).UpdateTeamLimits, exedb.UpdateTeamLimitsParams{
+		TeamID: teamID,
+		Limits: limitsPtr,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to update limits: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "updated team limits via debug", "team_id", teamID, "limits", limits)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "updated limits for team %s", teamID)
 }

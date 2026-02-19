@@ -150,6 +150,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, deleteEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEmailVerificationByToken: %w", err)
 	}
+	if q.deleteExpiredPendingTeamInvitesStmt, err = db.PrepareContext(ctx, deleteExpiredPendingTeamInvites); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteExpiredPendingTeamInvites: %w", err)
+	}
 	if q.deleteLatitudeIPShardStmt, err = db.PrepareContext(ctx, deleteLatitudeIPShard); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteLatitudeIPShard: %w", err)
 	}
@@ -372,6 +375,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getPendingSSHKeyEmailByPublicKeyStmt, err = db.PrepareContext(ctx, getPendingSSHKeyEmailByPublicKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingSSHKeyEmailByPublicKey: %w", err)
 	}
+	if q.getPendingTeamInviteByTokenStmt, err = db.PrepareContext(ctx, getPendingTeamInviteByToken); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPendingTeamInviteByToken: %w", err)
+	}
+	if q.getPendingTeamInvitesByEmailStmt, err = db.PrepareContext(ctx, getPendingTeamInvitesByEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPendingTeamInvitesByEmail: %w", err)
+	}
+	if q.getPendingTeamInvitesByTeamStmt, err = db.PrepareContext(ctx, getPendingTeamInvitesByTeam); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPendingTeamInvitesByTeam: %w", err)
+	}
 	if q.getPreferredExeletStmt, err = db.PrepareContext(ctx, getPreferredExelet); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPreferredExelet: %w", err)
 	}
@@ -534,6 +546,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertPendingSSHKeyStmt, err = db.PrepareContext(ctx, insertPendingSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPendingSSHKey: %w", err)
 	}
+	if q.insertPendingTeamInviteStmt, err = db.PrepareContext(ctx, insertPendingTeamInvite); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertPendingTeamInvite: %w", err)
+	}
 	if q.insertSSHKeyStmt, err = db.PrepareContext(ctx, insertSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSSHKey: %w", err)
 	}
@@ -623,6 +638,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listUnusedSystemInviteCodesStmt, err = db.PrepareContext(ctx, listUnusedSystemInviteCodes); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUnusedSystemInviteCodes: %w", err)
+	}
+	if q.markPendingTeamInviteAcceptedStmt, err = db.PrepareContext(ctx, markPendingTeamInviteAccepted); err != nil {
+		return nil, fmt.Errorf("error preparing query MarkPendingTeamInviteAccepted: %w", err)
 	}
 	if q.recordUserEventStmt, err = db.PrepareContext(ctx, recordUserEvent); err != nil {
 		return nil, fmt.Errorf("error preparing query RecordUserEvent: %w", err)
@@ -987,6 +1005,11 @@ func (q *Queries) Close() error {
 	if q.deleteEmailVerificationByTokenStmt != nil {
 		if cerr := q.deleteEmailVerificationByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteEmailVerificationByTokenStmt: %w", cerr)
+		}
+	}
+	if q.deleteExpiredPendingTeamInvitesStmt != nil {
+		if cerr := q.deleteExpiredPendingTeamInvitesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteExpiredPendingTeamInvitesStmt: %w", cerr)
 		}
 	}
 	if q.deleteLatitudeIPShardStmt != nil {
@@ -1359,6 +1382,21 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getPendingSSHKeyEmailByPublicKeyStmt: %w", cerr)
 		}
 	}
+	if q.getPendingTeamInviteByTokenStmt != nil {
+		if cerr := q.getPendingTeamInviteByTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPendingTeamInviteByTokenStmt: %w", cerr)
+		}
+	}
+	if q.getPendingTeamInvitesByEmailStmt != nil {
+		if cerr := q.getPendingTeamInvitesByEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPendingTeamInvitesByEmailStmt: %w", cerr)
+		}
+	}
+	if q.getPendingTeamInvitesByTeamStmt != nil {
+		if cerr := q.getPendingTeamInvitesByTeamStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPendingTeamInvitesByTeamStmt: %w", cerr)
+		}
+	}
 	if q.getPreferredExeletStmt != nil {
 		if cerr := q.getPreferredExeletStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getPreferredExeletStmt: %w", cerr)
@@ -1629,6 +1667,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertPendingSSHKeyStmt: %w", cerr)
 		}
 	}
+	if q.insertPendingTeamInviteStmt != nil {
+		if cerr := q.insertPendingTeamInviteStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertPendingTeamInviteStmt: %w", cerr)
+		}
+	}
 	if q.insertSSHKeyStmt != nil {
 		if cerr := q.insertSSHKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertSSHKeyStmt: %w", cerr)
@@ -1777,6 +1820,11 @@ func (q *Queries) Close() error {
 	if q.listUnusedSystemInviteCodesStmt != nil {
 		if cerr := q.listUnusedSystemInviteCodesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listUnusedSystemInviteCodesStmt: %w", cerr)
+		}
+	}
+	if q.markPendingTeamInviteAcceptedStmt != nil {
+		if cerr := q.markPendingTeamInviteAcceptedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing markPendingTeamInviteAcceptedStmt: %w", cerr)
 		}
 	}
 	if q.recordUserEventStmt != nil {
@@ -2110,6 +2158,7 @@ type Queries struct {
 	deleteEmailBounceStmt                      *sql.Stmt
 	deleteEmailQualityBypassStmt               *sql.Stmt
 	deleteEmailVerificationByTokenStmt         *sql.Stmt
+	deleteExpiredPendingTeamInvitesStmt        *sql.Stmt
 	deleteLatitudeIPShardStmt                  *sql.Stmt
 	deleteMobilePendingVMByTokenStmt           *sql.Stmt
 	deleteMobilePendingVMByUserAndHostnameStmt *sql.Stmt
@@ -2184,6 +2233,9 @@ type Queries struct {
 	getPendingRegistrationByTokenStmt          *sql.Stmt
 	getPendingSSHKeyByTokenStmt                *sql.Stmt
 	getPendingSSHKeyEmailByPublicKeyStmt       *sql.Stmt
+	getPendingTeamInviteByTokenStmt            *sql.Stmt
+	getPendingTeamInvitesByEmailStmt           *sql.Stmt
+	getPendingTeamInvitesByTeamStmt            *sql.Stmt
 	getPreferredExeletStmt                     *sql.Stmt
 	getRecentSignupRejectionsStmt              *sql.Stmt
 	getSSHHostKeyStmt                          *sql.Stmt
@@ -2238,6 +2290,7 @@ type Queries struct {
 	insertPasskeyChallengeStmt                 *sql.Stmt
 	insertPendingRegistrationStmt              *sql.Stmt
 	insertPendingSSHKeyStmt                    *sql.Stmt
+	insertPendingTeamInviteStmt                *sql.Stmt
 	insertSSHKeyStmt                           *sql.Stmt
 	insertSSHKeyForEmailUserStmt               *sql.Stmt
 	insertSSHKeyForEmailUserIfNotExistsStmt    *sql.Stmt
@@ -2268,6 +2321,7 @@ type Queries struct {
 	listTeamBoxesForOwnerStmt                  *sql.Stmt
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
 	listUnusedSystemInviteCodesStmt            *sql.Stmt
+	markPendingTeamInviteAcceptedStmt          *sql.Stmt
 	recordUserEventStmt                        *sql.Stmt
 	setBoxCgroupOverridesStmt                  *sql.Stmt
 	setBoxEmailReceiveStmt                     *sql.Stmt
@@ -2366,6 +2420,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteEmailBounceStmt:                      q.deleteEmailBounceStmt,
 		deleteEmailQualityBypassStmt:               q.deleteEmailQualityBypassStmt,
 		deleteEmailVerificationByTokenStmt:         q.deleteEmailVerificationByTokenStmt,
+		deleteExpiredPendingTeamInvitesStmt:        q.deleteExpiredPendingTeamInvitesStmt,
 		deleteLatitudeIPShardStmt:                  q.deleteLatitudeIPShardStmt,
 		deleteMobilePendingVMByTokenStmt:           q.deleteMobilePendingVMByTokenStmt,
 		deleteMobilePendingVMByUserAndHostnameStmt: q.deleteMobilePendingVMByUserAndHostnameStmt,
@@ -2440,6 +2495,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPendingRegistrationByTokenStmt:          q.getPendingRegistrationByTokenStmt,
 		getPendingSSHKeyByTokenStmt:                q.getPendingSSHKeyByTokenStmt,
 		getPendingSSHKeyEmailByPublicKeyStmt:       q.getPendingSSHKeyEmailByPublicKeyStmt,
+		getPendingTeamInviteByTokenStmt:            q.getPendingTeamInviteByTokenStmt,
+		getPendingTeamInvitesByEmailStmt:           q.getPendingTeamInvitesByEmailStmt,
+		getPendingTeamInvitesByTeamStmt:            q.getPendingTeamInvitesByTeamStmt,
 		getPreferredExeletStmt:                     q.getPreferredExeletStmt,
 		getRecentSignupRejectionsStmt:              q.getRecentSignupRejectionsStmt,
 		getSSHHostKeyStmt:                          q.getSSHHostKeyStmt,
@@ -2494,6 +2552,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertPasskeyChallengeStmt:                 q.insertPasskeyChallengeStmt,
 		insertPendingRegistrationStmt:              q.insertPendingRegistrationStmt,
 		insertPendingSSHKeyStmt:                    q.insertPendingSSHKeyStmt,
+		insertPendingTeamInviteStmt:                q.insertPendingTeamInviteStmt,
 		insertSSHKeyStmt:                           q.insertSSHKeyStmt,
 		insertSSHKeyForEmailUserStmt:               q.insertSSHKeyForEmailUserStmt,
 		insertSSHKeyForEmailUserIfNotExistsStmt:    q.insertSSHKeyForEmailUserIfNotExistsStmt,
@@ -2524,6 +2583,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listTeamBoxesForOwnerStmt:                  q.listTeamBoxesForOwnerStmt,
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
 		listUnusedSystemInviteCodesStmt:            q.listUnusedSystemInviteCodesStmt,
+		markPendingTeamInviteAcceptedStmt:          q.markPendingTeamInviteAcceptedStmt,
 		recordUserEventStmt:                        q.recordUserEventStmt,
 		setBoxCgroupOverridesStmt:                  q.setBoxCgroupOverridesStmt,
 		setBoxEmailReceiveStmt:                     q.setBoxEmailReceiveStmt,
