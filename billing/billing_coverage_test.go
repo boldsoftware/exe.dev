@@ -1,9 +1,7 @@
 package billing
 
 import (
-	"bytes"
 	"errors"
-	"fmt"
 	"net/url"
 	"path"
 	"path/filepath"
@@ -11,64 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/billing/stripetest"
 	"exe.dev/billing/tender"
 	exesqlite "exe.dev/sqlite"
 	"exe.dev/tslog"
 	"github.com/stripe/stripe-go/v82"
 )
-
-type captureCheckoutSessionBackend struct {
-	called     bool
-	unitAmount int64
-}
-
-func (b *captureCheckoutSessionBackend) Call(method, path, _ string, params stripe.ParamsContainer, v stripe.LastResponseSetter) error {
-	if method != "POST" {
-		return fmt.Errorf("method = %q, want POST", method)
-	}
-	if path != "/v1/checkout/sessions" {
-		return fmt.Errorf("path = %q, want /v1/checkout/sessions", path)
-	}
-
-	create, ok := params.(*stripe.CheckoutSessionCreateParams)
-	if !ok {
-		return fmt.Errorf("params type = %T, want *stripe.CheckoutSessionCreateParams", params)
-	}
-	if len(create.LineItems) != 1 {
-		return fmt.Errorf("line items = %d, want 1", len(create.LineItems))
-	}
-	if create.LineItems[0].PriceData == nil {
-		return errors.New("line item price data is nil")
-	}
-	if create.LineItems[0].PriceData.UnitAmount == nil {
-		return errors.New("line item unit amount is nil")
-	}
-
-	b.called = true
-	b.unitAmount = *create.LineItems[0].PriceData.UnitAmount
-
-	session, ok := v.(*stripe.CheckoutSession)
-	if !ok {
-		return fmt.Errorf("response type = %T, want *stripe.CheckoutSession", v)
-	}
-	session.ID = "cs_test_123"
-	session.URL = "https://checkout.stripe.com/c/pay/cs_test_123"
-	return nil
-}
-
-func (*captureCheckoutSessionBackend) CallStreaming(string, string, string, stripe.ParamsContainer, stripe.StreamingLastResponseSetter) error {
-	return errors.New("CallStreaming should not be invoked")
-}
-
-func (*captureCheckoutSessionBackend) CallRaw(string, string, string, []byte, *stripe.Params, stripe.LastResponseSetter) error {
-	return errors.New("CallRaw should not be invoked")
-}
-
-func (*captureCheckoutSessionBackend) CallMultipart(string, string, string, string, *bytes.Buffer, *stripe.Params, stripe.LastResponseSetter) error {
-	return errors.New("CallMultipart should not be invoked")
-}
-
-func (*captureCheckoutSessionBackend) SetMaxNetworkRetries(int64) {}
 
 func newEmptyTestDB(t *testing.T) *exesqlite.DB {
 	t.Helper()
@@ -243,18 +189,17 @@ func TestBuyCreditsAmountValidation(t *testing.T) {
 }
 
 func TestBuyCreditsRoundsFractionalAmountForStripe(t *testing.T) {
-	backend := &captureCheckoutSessionBackend{}
-	backends := &stripe.Backends{
-		API:         backend,
-		Connect:     backend,
-		Uploads:     backend,
-		MeterEvents: backend,
-	}
+	traceFile := filepath.Join("testdata", "stripe", t.Name())
 	m := &Manager{
-		Client: stripe.NewClient(TestAPIKey, stripe.WithBackends(backends)),
+		Client: stripetest.Record(t, traceFile),
+		Logger: tslog.Slogger(t),
+	}
+	billingID := "exe_rounding_test"
+	if err := m.upsertCustomer(t.Context(), billingID, "rounding@example.com"); err != nil {
+		t.Fatalf("upsertCustomer: %v", err)
 	}
 
-	gotURL, err := m.BuyCredits(t.Context(), "cus_123", &BuyCreditsParams{
+	gotURL, err := m.BuyCredits(t.Context(), billingID, &BuyCreditsParams{
 		Amount:     tender.Mint(100, 1),
 		SuccessURL: "https://example.com/success",
 		CancelURL:  "https://example.com/cancel",
@@ -265,11 +210,20 @@ func TestBuyCreditsRoundsFractionalAmountForStripe(t *testing.T) {
 	if !strings.HasPrefix(gotURL, "https://checkout.stripe.com/") {
 		t.Fatalf("BuyCredits returned unexpected link: %q", gotURL)
 	}
-	if !backend.called {
-		t.Fatal("stripe checkout backend was not called")
+	u, err := url.Parse(gotURL)
+	if err != nil {
+		t.Fatalf("url.Parse(%q): %v", gotURL, err)
 	}
-	if got, want := backend.unitAmount, int64(101); got != want {
-		t.Fatalf("checkout unit amount = %d, want %d", got, want)
+	sessID := path.Base(u.Path)
+	sess, err := m.client().V1CheckoutSessions.Retrieve(t.Context(), sessID, nil)
+	if err != nil {
+		t.Fatalf("Retrieve checkout session %q: %v", sessID, err)
+	}
+	if got, want := sess.AmountSubtotal, int64(101); got != want {
+		t.Fatalf("checkout amount_subtotal = %d, want %d", got, want)
+	}
+	if got, want := sess.AmountTotal, int64(101); got != want {
+		t.Fatalf("checkout amount_total = %d, want %d", got, want)
 	}
 }
 
