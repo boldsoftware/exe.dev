@@ -709,6 +709,8 @@ func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCredit
 
 	c := m.client()
 
+	// Auto-recharge enablement is checked by callers before charging.
+	// A concurrent disable can still allow one in-flight recharge attempt.
 	params := &stripe.CheckoutSessionCreateParams{
 		Customer:           &billingID,
 		Mode:               new("payment"),

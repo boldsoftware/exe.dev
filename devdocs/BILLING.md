@@ -52,6 +52,17 @@ When creating checkout sessions, `billing.Subscribe()` calls `lookupPriceID(look
 
 **Why lookup keys:** Allows changing price amounts or creating new prices in Stripe dashboard without code changes. Just reassign the lookup key `individual` to the new price ID in Stripe.
 
+## Credit Charge Rounding and Auto-Recharge Race
+
+Credit charge amounts are converted from microcents to Stripe cents via
+`tender.Value.Cents()`. Positive fractional microcents always round up to the
+next cent so we never undercharge due to truncation.
+
+Auto-recharge enablement checks are best-effort. A concurrent disable can still
+allow one in-flight recharge attempt to proceed. Operationally, expect at most
+one post-disable attempt and handle any resulting charge through normal Stripe
+refund/remediation flow if needed.
+
 ## Account IDs
 
 Account IDs are generated with `exe_` prefix (e.g., `exe_a1b2c3d4e5f6g7h8`).

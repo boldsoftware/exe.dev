@@ -35,8 +35,14 @@ func Mint(cents, microcents int64) Value {
 	return Value{n: cents*10000 + microcents}
 }
 
+// Cents returns the value in cents.
+// Positive values with fractional microcents round up to the next cent.
 func (m Value) Cents() int64 {
-	return int64(m.n) / 10000
+	cents := m.n / 10000
+	if m.n > 0 && m.n%10000 != 0 {
+		cents++
+	}
+	return cents
 }
 
 // Microcents returns the raw microcents value.
