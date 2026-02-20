@@ -2278,8 +2278,9 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 	if !strings.Contains(body, "Monthly Credits") {
 		t.Error("Expected monthly credits row on profile page")
 	}
-	if !strings.Contains(body, "resets on") {
-		t.Error("Expected monthly credits reset date on profile page")
+	expectedReset := nextUTCMonthStart().Format("15:04 on 02 Jan")
+	if !strings.Contains(body, "resets "+expectedReset) {
+		t.Errorf("Expected monthly credits reset time format %q on profile page", expectedReset)
 	}
 	if !strings.Contains(body, "/credits/buy") {
 		t.Error("Expected credits buy form on profile page")
@@ -2315,6 +2316,10 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 	body = w.Body.String()
 	if !strings.Contains(body, "100%") {
 		t.Fatalf("Expected free credits remaining percentage 100%% after month rollover, got body: %s", body[:min(1200, len(body))])
+	}
+	expectedReset = nextUTCMonthStart().Format("15:04 on 02 Jan")
+	if !strings.Contains(body, "resets "+expectedReset) {
+		t.Errorf("Expected monthly credits reset time format %q after month rollover scenario", expectedReset)
 	}
 }
 

@@ -143,7 +143,7 @@ type UserPageData struct {
 	// Shelley free credits (from llmgateway credit state)
 	ShelleyFreeCreditRemainingPct float64
 	HasShelleyFreeCreditPct       bool
-	MonthlyCreditsResetDate       string // e.g. "1 March"
+	MonthlyCreditsResetAt         string // e.g. "00:00 on 01 Mar"
 
 	// Auto-open share modal (from access request email link)
 	ShareVM    string

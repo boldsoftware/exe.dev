@@ -59,6 +59,7 @@
             color: #666;
             width: 120px;
             flex-shrink: 0;
+            margin-right: 12px;
         }
         
         .info-value {
@@ -669,7 +670,7 @@
             <div class="info-card">
                 <div class="info-row">
                     <div class="info-label">Monthly Credits</div>
-                    <div class="info-value">{{if .HasShelleyFreeCreditPct}}{{printf "%.0f%%" .ShelleyFreeCreditRemainingPct}} left (resets on {{.MonthlyCreditsResetDate}}){{else}}-{{end}}</div>
+                    <div class="info-value">{{if .HasShelleyFreeCreditPct}}{{printf "%.0f%%" .ShelleyFreeCreditRemainingPct}} left (resets {{.MonthlyCreditsResetAt}}){{else}}-{{end}}</div>
                 </div>
                 <div class="info-row">
                     <div class="info-label">Extra Credits</div>

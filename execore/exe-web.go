@@ -1481,7 +1481,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		CreditBalance:                 creditBalance,
 		ShelleyFreeCreditRemainingPct: shelleyFreeCreditRemainingPct,
 		HasShelleyFreeCreditPct:       hasShelleyFreeCreditPct,
-		MonthlyCreditsResetDate:       nextUTCMonthStart().Format("2 January"),
+		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 on 02 Jan"),
 	}
 
 	// Render template
