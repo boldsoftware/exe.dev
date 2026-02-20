@@ -15,6 +15,7 @@ import (
 	"net/netip"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2398,28 +2399,45 @@ func (s *Server) handleDebugIPShards(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build lookup slices (indexed by shard number)
-	servingByS := make([]string, publicips.MaxDomainShards+1)
+	// Build lookup maps (indexed by shard number)
+	servingByS := make(map[int64]string, len(servingShards))
 	for _, row := range servingShards {
 		servingByS[row.Shard] = row.PublicIP
 	}
-	awsByS := make([]string, publicips.MaxDomainShards+1)
+	awsByS := make(map[int64]string, len(awsShards))
 	for _, row := range awsShards {
 		awsByS[row.Shard] = row.PublicIP
 	}
-	latByS := make([]string, publicips.MaxDomainShards+1)
+	latByS := make(map[int64]string, len(latitudeShards))
 	for _, row := range latitudeShards {
 		latByS[row.Shard] = row.PublicIP
 	}
 
+	// Collect all known shard numbers
+	shardSet := make(map[int]bool)
+	for _, row := range servingShards {
+		shardSet[int(row.Shard)] = true
+	}
+	for _, row := range awsShards {
+		shardSet[int(row.Shard)] = true
+	}
+	for _, row := range latitudeShards {
+		shardSet[int(row.Shard)] = true
+	}
+	shardNums := make([]int, 0, len(shardSet))
+	for s := range shardSet {
+		shardNums = append(shardNums, s)
+	}
+	slices.Sort(shardNums)
+
 	// Build unified shard list
 	var entries []ipShardEntry
-	for shard := 1; shard <= publicips.MaxDomainShards; shard++ {
+	for _, shard := range shardNums {
 		entry := ipShardEntry{
 			Shard:       shard,
-			ServingIP:   servingByS[shard],
-			AWSIP:       awsByS[shard],
-			LatitudeIP:  latByS[shard],
+			ServingIP:   servingByS[int64(shard)],
+			AWSIP:       awsByS[int64(shard)],
+			LatitudeIP:  latByS[int64(shard)],
 			ServingFrom: "unknown",
 		}
 		// Determine serving source

@@ -10,6 +10,7 @@ import (
 // UserLimits represents per-user resource limit overrides.
 // All fields are optional; when nil/zero, the default limits apply.
 type UserLimits struct {
+	MaxBoxes  int    `json:"max_boxes,omitempty"`  // Max number of VMs
 	MaxMemory uint64 `json:"max_memory,omitempty"` // Max memory in bytes
 	MaxDisk   uint64 `json:"max_disk,omitempty"`   // Max disk in bytes
 	MaxCPUs   uint64 `json:"max_cpus,omitempty"`   // Max number of CPUs
@@ -35,6 +36,15 @@ func ParseUserLimitsFromJSON(limitsJSON string) *UserLimits {
 		return nil // Invalid JSON treated as no limits
 	}
 	return &limits
+}
+
+// GetMaxBoxes returns the effective max number of VMs for a user.
+// Uses user-specific limit if set, otherwise falls back to DefaultMaxBoxes.
+func GetMaxBoxes(userLimits *UserLimits) int {
+	if userLimits != nil && userLimits.MaxBoxes > 0 {
+		return userLimits.MaxBoxes
+	}
+	return stage.DefaultMaxBoxes
 }
 
 // GetMaxMemory returns the effective max memory for a user.

@@ -187,7 +187,7 @@ CREATE TABLE box_ip_shard (
     ip_shard INTEGER NOT NULL,
     PRIMARY KEY (box_id, user_id),
     UNIQUE(ip_shard, box_id, user_id),
-    CHECK (ip_shard BETWEEN 1 AND 25),
+    CHECK (ip_shard BETWEEN 1 AND 253),
     FOREIGN KEY (box_id) REFERENCES boxes(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
@@ -252,7 +252,7 @@ CREATE TABLE email_address_quality (
 );
 CREATE INDEX idx_email_address_quality_email ON email_address_quality(email);
 CREATE TABLE ip_shards (
-    shard INTEGER PRIMARY KEY CHECK (shard BETWEEN 1 AND 25),
+    shard INTEGER PRIMARY KEY CHECK (shard BETWEEN 1 AND 253),
     public_ip TEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -374,13 +374,13 @@ CREATE TABLE user_defaults (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE aws_ip_shards (
-    shard INTEGER PRIMARY KEY CHECK (shard BETWEEN 1 AND 25),
+    shard INTEGER PRIMARY KEY CHECK (shard BETWEEN 1 AND 253),
     public_ip TEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE latitude_ip_shards (
-    shard INTEGER PRIMARY KEY CHECK (shard BETWEEN 1 AND 25),
+    shard INTEGER PRIMARY KEY CHECK (shard BETWEEN 1 AND 253),
     public_ip TEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

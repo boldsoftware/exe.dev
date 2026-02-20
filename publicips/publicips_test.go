@@ -14,8 +14,6 @@ func stubDomainLookup(t *testing.T, responses map[string][]netip.Addr) {
 	t.Helper()
 
 	orig := lookupDomainIPs
-	origSkip := skipShardDistinctCheck
-	skipShardDistinctCheck = true
 	lookupDomainIPs = func(ctx context.Context, network, host string) ([]netip.Addr, error) {
 		if network != "ip4" {
 			t.Fatalf("unexpected network: %s", network)
@@ -27,7 +25,6 @@ func stubDomainLookup(t *testing.T, responses map[string][]netip.Addr) {
 	}
 	t.Cleanup(func() {
 		lookupDomainIPs = orig
-		skipShardDistinctCheck = origSkip
 	})
 }
 
@@ -309,14 +306,14 @@ func expectHeader(t *testing.T, r *http.Request, key, want string) {
 }
 
 func TestLocalhostIPs(t *testing.T) {
-	ips, err := LocalhostIPs(context.Background(), "exe.cloud")
+	const numShards = 25
+	ips, err := LocalhostIPs(context.Background(), "exe.cloud", numShards)
 	if err != nil {
 		t.Fatalf("LocalhostIPs failed: %v", err)
 	}
 
-	// Should have exactly MaxDomainShards entries
-	if len(ips) != MaxDomainShards {
-		t.Errorf("DevIPs returned %d entries, want %d", len(ips), MaxDomainShards)
+	if len(ips) != numShards {
+		t.Errorf("DevIPs returned %d entries, want %d", len(ips), numShards)
 	}
 
 	// Check specific entries
@@ -361,5 +358,50 @@ func TestLocalhostIPs(t *testing.T) {
 		if _, ok := ips[addr]; ok {
 			t.Errorf("DevIPs should not contain %s", ip)
 		}
+	}
+}
+
+func TestLocalhostIPsLargeShardCount(t *testing.T) {
+	const numShards = 300
+	ips, err := LocalhostIPs(context.Background(), "exe.cloud", numShards)
+	if err != nil {
+		t.Fatalf("LocalhostIPs failed: %v", err)
+	}
+
+	if len(ips) != numShards {
+		t.Fatalf("got %d entries, want %d", len(ips), numShards)
+	}
+
+	// Shard 1 should still be 127.21.0.1
+	addr1 := netip.MustParseAddr("127.21.0.1")
+	if info, ok := ips[addr1]; !ok || info.Shard != 1 {
+		t.Errorf("shard 1: got %+v, ok=%v", info, ok)
+	}
+
+	// Shard 254 should be 127.21.0.254
+	addr254 := netip.MustParseAddr("127.21.0.254")
+	if info, ok := ips[addr254]; !ok || info.Shard != 254 {
+		t.Errorf("shard 254: got %+v, ok=%v", info, ok)
+	}
+
+	// Shard 255 should wrap to 127.21.1.1
+	addr255 := netip.MustParseAddr("127.21.1.1")
+	if info, ok := ips[addr255]; !ok || info.Shard != 255 {
+		t.Errorf("shard 255: got %+v, ok=%v", info, ok)
+	}
+
+	// Shard 300 should be 127.21.1.46 ((300-1)/254=1, (300-1)%254+1=46)
+	addr300 := netip.MustParseAddr("127.21.1.46")
+	if info, ok := ips[addr300]; !ok || info.Shard != 300 {
+		t.Errorf("shard 300: got %+v, ok=%v", info, ok)
+	}
+
+	// All IPs should be distinct
+	seen := make(map[netip.Addr]int)
+	for addr, info := range ips {
+		if prev, dup := seen[addr]; dup {
+			t.Fatalf("duplicate IP %s for shards %d and %d", addr, prev, info.Shard)
+		}
+		seen[addr] = info.Shard
 	}
 }

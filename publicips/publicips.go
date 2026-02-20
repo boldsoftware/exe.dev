@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"net"
 	"net/http"
 	"net/netip"
@@ -28,11 +27,11 @@ const (
 )
 
 const (
-	// MaxDomainShards is the largest available shard ID.
-	// Shards map to IP public IP addresses: sNNN.exe.dev, so ranging from s001.exe.dev to s025.exe.dev.
+	// MaxDomainShards is the largest valid shard ID.
+	// Shards map to public IP addresses: sNNN.exe.dev.
 	// MaxDomainShards must match the DB CHECK constraint.
 	// IP shards are 1-based. (The zero value is intentionally invalid.)
-	MaxDomainShards = 25
+	MaxDomainShards = 253
 )
 
 // ShardIsValid reports whether shard is within the valid range (0, MaxDomainShards].
@@ -45,10 +44,6 @@ var (
 	newHTTPClient    = defaultHTTPClient
 
 	lookupDomainIPs = defaultLookupDomainIPs
-
-	// skipShardDistinctCheck allows tests to bypass the check that all shards resolve
-	// to distinct IPs. In production, this validation ensures DNS is configured correctly.
-	skipShardDistinctCheck = false
 
 	errMetadataUnavailable = errors.New("metadata service unavailable")
 	errIMDSv1Only          = errors.New("metadata service requires IMDSv1")
@@ -181,7 +176,7 @@ func EC2IPs(ctx context.Context, boxDomain string) (map[netip.Addr]PublicIP, err
 		return result, nil
 	}
 
-	byPublicIP, err := resolveDomains(ctx, mappings, boxDomain)
+	byPublicIP, err := resolveDomains(ctx, mappings, boxDomain, MaxDomainShards)
 	if err != nil {
 		return nil, fmt.Errorf("publicips: resolve domains: %w", err)
 	}
@@ -316,7 +311,7 @@ func (c *metadataClient) get(ctx context.Context, path, token string, useToken b
 	return body, resp.StatusCode, nil
 }
 
-func resolveDomains(ctx context.Context, mappings []IPMapping, boxDomain string) (map[netip.Addr]PublicIP, error) {
+func resolveDomains(ctx context.Context, mappings []IPMapping, boxDomain string, numShards int) (map[netip.Addr]PublicIP, error) {
 	if boxDomain == "" {
 		return nil, fmt.Errorf("box domain must not be empty")
 	}
@@ -331,15 +326,14 @@ func resolveDomains(ctx context.Context, mappings []IPMapping, boxDomain string)
 		needed[mapping.Public] = struct{}{}
 	}
 
-	// Try shards s001-s025, then fall back to the base domain itself (shard 0).
-	seenIPs := make(map[netip.Addr]bool) // ensure each shard (and the base domain) are distinct
-	for shard := 1; shard <= MaxDomainShards+1; shard++ {
+	// Try shards s001-sNNN, then fall back to the base domain itself (shard 0).
+	for shard := 1; shard <= numShards+1; shard++ {
 		if len(resolved) == len(needed) {
 			break
 		}
 
 		domain := ShardSub(shard) + "." + boxDomain
-		if shard > MaxDomainShards {
+		if shard > numShards {
 			// fall back to base domain (shard 0)
 			shard = 0
 			domain = boxDomain
@@ -357,15 +351,10 @@ func resolveDomains(ctx context.Context, mappings []IPMapping, boxDomain string)
 			if !addr.IsValid() || !addr.Is4() {
 				continue
 			}
-			seenIPs[addr] = true
 			if _, ok := needed[addr]; ok {
 				resolved[addr] = PublicIP{IP: addr, Domain: domain, Shard: shard}
 			}
 		}
-	}
-
-	if !skipShardDistinctCheck && len(seenIPs) != MaxDomainShards+1 {
-		return nil, fmt.Errorf("domain %q does not resolve to %d distinct IPv4 addresses for shards s001 through s%03d and the base domain, got %v (%d) ips, want %d", boxDomain, MaxDomainShards+1, MaxDomainShards, slices.Collect(maps.Keys(seenIPs)), len(seenIPs), MaxDomainShards+1)
 	}
 
 	if len(resolved) != len(needed) {
@@ -428,12 +417,17 @@ func defaultLookupDomainIPs(ctx context.Context, network, host string) ([]netip.
 	return net.DefaultResolver.LookupNetIP(ctx, network, host)
 }
 
-// LocalhostIPs returns a map of localhost IPs (127.21.0.1 through 127.21.0.25) to
-// PublicIP info for local development. In dev, public == private (no NAT).
-func LocalhostIPs(ctx context.Context, boxHost string) (map[netip.Addr]PublicIP, error) {
-	m := make(map[netip.Addr]PublicIP, MaxDomainShards)
-	for shard := 1; shard <= MaxDomainShards; shard++ {
-		ip := netip.AddrFrom4([4]byte{127, 21, 0, byte(shard)})
+// LocalhostIPs returns a map of localhost IPs to PublicIP info for local development.
+// In dev, public == private (no NAT). Shards are mapped to the 127.21.0.0/16 range:
+// shard 1 → 127.21.0.1, shard 254 → 127.21.0.254, shard 255 → 127.21.1.1, etc.
+func LocalhostIPs(ctx context.Context, boxHost string, numShards int) (map[netip.Addr]PublicIP, error) {
+	m := make(map[netip.Addr]PublicIP, numShards)
+	for shard := 1; shard <= numShards; shard++ {
+		// Map shard to 127.21.X.Y, avoiding .0 addresses.
+		// Each /24 holds 254 shards (1-254), giving 254*256 = 65024 capacity.
+		x := byte((shard - 1) / 254)
+		y := byte((shard-1)%254 + 1)
+		ip := netip.AddrFrom4([4]byte{127, 21, x, y})
 		m[ip] = PublicIP{
 			IP:     ip,
 			Domain: ShardSub(shard) + "." + boxHost,

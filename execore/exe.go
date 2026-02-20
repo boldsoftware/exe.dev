@@ -1052,7 +1052,7 @@ func (s *Server) initShardIPs(ctx context.Context) {
 
 	if !s.env.DiscoverPublicIPs {
 		s.slog().InfoContext(ctx, "using dev IP resolver", "box_host", s.env.BoxHost)
-		ips, err := publicips.LocalhostIPs(ctx, s.env.BoxHost)
+		ips, err := publicips.LocalhostIPs(ctx, s.env.BoxHost, s.env.NumShards)
 		if err != nil {
 			s.slog().ErrorContext(ctx, "localhost IP setup failed", "error", err)
 			return
@@ -1118,7 +1118,7 @@ func (s *Server) loadPublicIPsFromDB(ctx context.Context) (map[netip.Addr]public
 
 	// Combine AWS: for each EC2 mapping, look up the shard info by "public" IP...
 	// but the public IP from our perspective is the private IP from EC2 metadata.
-	result := make(map[netip.Addr]publicips.PublicIP, len(ec2Mappings)+publicips.MaxDomainShards)
+	result := make(map[netip.Addr]publicips.PublicIP, len(ec2Mappings)+s.env.NumShards)
 	for _, mapping := range ec2Mappings {
 		info, ok := awsPublicToShard[mapping.Public]
 		if !ok {
@@ -1210,17 +1210,17 @@ func (s *Server) validateIPShards(ctx context.Context) {
 		return
 	}
 
-	awsByS := make([]string, publicips.MaxDomainShards+1)
+	awsByS := make(map[int64]string, len(awsShards))
 	for _, row := range awsShards {
 		awsByS[row.Shard] = row.PublicIP
 	}
-	latByS := make([]string, publicips.MaxDomainShards+1)
+	latByS := make(map[int64]string, len(latitudeShards))
 	for _, row := range latitudeShards {
 		latByS[row.Shard] = row.PublicIP
 	}
 
 	for _, serving := range servingShards {
-		shard := int(serving.Shard)
+		shard := serving.Shard
 		ip := serving.PublicIP
 		if ip != awsByS[shard] && ip != latByS[shard] {
 			s.slog().ErrorContext(ctx, "ip_shard serving IP doesn't match AWS or Latitude",
@@ -2042,6 +2042,18 @@ func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, us
 	team, teamErr := queries.GetTeamForUser(ctx, userID)
 	inTeam := teamErr == nil && team.TeamID != ""
 
+	// Determine the effective max boxes limit.
+	var limits *UserLimits
+	if inTeam && team.Limits != nil {
+		limits = ParseUserLimitsFromJSON(*team.Limits)
+	} else {
+		user, err := queries.GetUserWithDetails(ctx, userID)
+		if err == nil {
+			limits = ParseUserLimits(&user)
+		}
+	}
+	maxBoxes := GetMaxBoxes(limits)
+
 	var shards []int64
 	var err error
 	if inTeam {
@@ -2056,6 +2068,11 @@ func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, us
 		if err != nil {
 			return 0, fmt.Errorf("failed to list IP shards for user %s: %w", userID, err)
 		}
+	}
+
+	// Enforce per-user/team box count limit (separate from shard capacity).
+	if len(shards) >= maxBoxes {
+		return 0, errNoIPShardsAvailable
 	}
 
 	used := make([]bool, s.env.NumShards+1)

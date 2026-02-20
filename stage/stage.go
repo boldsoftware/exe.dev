@@ -19,6 +19,9 @@ const (
 	SupportMaxMemory = 32 * 1000 * 1000 * 1000  // 32GB max RAM for support
 	SupportMaxDisk   = 128 * 1000 * 1000 * 1000 // 128GB max disk for support
 	SupportMaxCPUs   = 8                        // 8 CPUs max for support
+
+	// DefaultMaxBoxes is the default maximum number of VMs per user or team.
+	DefaultMaxBoxes = 25
 )
 
 // An Env represents a deployment stage/environment.
@@ -65,7 +68,7 @@ type Env struct {
 	SlackPageChannel     string // Slack channel for urgent pages (capacity warnings, etc.); empty means no posting
 	HoneycombEnv         string // Honeycomb environment name for trace links in Slack ("production", "staging"); empty means no links
 
-	NumShards  int   // number of IP shards available for box allocation, max 253
+	NumShards  int   // number of IP shards available for box allocation
 	ProxyPorts []int // ports to listen on for proxying; empty means none
 
 	DefaultMemory uint64 // default memory for new boxes in bytes
@@ -268,7 +271,7 @@ func Staging() Env {
 
 		ListenOnTailscaleOnly: true,
 
-		NumShards:  25,
+		NumShards:  253,
 		ProxyPorts: portRange(3000, 9999),
 
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
@@ -316,7 +319,7 @@ func Prod() Env {
 
 		ListenOnTailscaleOnly: true,
 
-		NumShards:  25,
+		NumShards:  253,
 		ProxyPorts: portRange(3000, 9999),
 
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
