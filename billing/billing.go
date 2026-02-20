@@ -645,6 +645,10 @@ func subscriptionEventType(eventType string, status stripe.SubscriptionStatus) (
 }
 
 func (m *Manager) SpendCredits(ctx context.Context, billingID string, quantity int, unitPrice tender.Value) (remaining tender.Value, _ error) {
+	if unitPrice.IsNegative() {
+		return tender.Zero(), fmt.Errorf("unit price must be non-negative, got %d microcents", unitPrice.Microcents())
+	}
+
 	const q = `
 		-- Insert a new credit deduction for the current hour and credit type,
 		-- or update the existing one if it already exists,

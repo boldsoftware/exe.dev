@@ -66,6 +66,11 @@ func (m Value) Compare(o Value) int {
 	return cmp.Compare(m.n, o.n)
 }
 
+// IsNegative returns true if the Value is less than zero.
+func (m Value) IsNegative() bool {
+	return m.n < 0
+}
+
 // IsWorthless returns true if the Value is zero or less.
 func (m Value) IsWorthless() bool {
 	return m.n <= 0

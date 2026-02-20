@@ -198,6 +198,32 @@ func TestUseCreditsPreservesFractionalCents(t *testing.T) {
 	}
 }
 
+func TestSpendCreditsRejectsNegativeUnitPrice(t *testing.T) {
+	m := &Manager{
+		DB: newTestDB(t),
+	}
+
+	ctx := t.Context()
+	accountID := "exe_negative_price"
+	createTestAccount(t, m.DB, accountID, "user_negative_price")
+
+	_, err := m.SpendCredits(ctx, accountID, 1, tender.Mint(0, -1))
+	if err == nil {
+		t.Fatal("SpendCredits with negative unitPrice error = nil, want non-nil")
+	}
+	if got := err.Error(); !strings.Contains(got, "unit price must be non-negative") {
+		t.Fatalf("SpendCredits with negative unitPrice error = %q, want non-negative unit price error", got)
+	}
+
+	balance, err := m.SpendCredits(ctx, accountID, 0, tender.Zero())
+	if err != nil {
+		t.Fatalf("read balance after rejected spend: %v", err)
+	}
+	if balance != tender.Zero() {
+		t.Fatalf("balance after rejected spend = %v, want %v", balance, tender.Zero())
+	}
+}
+
 // stripeCompleteCreditPurchase simulates a completed credit purchase by creating
 // and confirming a PaymentIntent with credit_purchase metadata. This generates the
 // payment_intent.succeeded event that SyncCredits processes.
