@@ -287,24 +287,30 @@ func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) 
 
 	// Parse shard from name (e.g., "s001.exe.xyz" -> shard 1)
 	shard, err := parseShardFromName(qname)
-	if err != nil {
-		// Not a shard name, check if there's a CNAME (box name)
-		cnameRRs, err := s.lookupCNAME(ctx, qname, fqdn, class)
-		if err != nil || len(cnameRRs) == 0 {
-			return nil, err
-		}
-		// Got a CNAME, now chase it to get the A record
-		cname := cnameRRs[0].(*dns.CNAME)
-		targetName := strings.TrimSuffix(cname.Target, ".")
-		aRRs, err := s.lookupA(ctx, targetName, cname.Target, class)
-		if err != nil {
-			return cnameRRs, nil // Return just the CNAME if we can't resolve it
-		}
-		// Return CNAME followed by the A record
-		return append(cnameRRs, aRRs...), nil
+	if err == nil {
+		return s.lookupShardA(ctx, shard, fqdn, class)
 	}
 
-	return s.lookupShardA(ctx, shard, fqdn, class)
+	// Parse latitude shard from name (e.g., "n043.exe.xyz" -> shard 43)
+	latShard, err := parseLatitudeShardFromName(qname)
+	if err == nil {
+		return s.lookupLatitudeShardA(ctx, latShard, fqdn, class)
+	}
+
+	// Not a shard name, check if there's a CNAME (box name)
+	cnameRRs, err := s.lookupCNAME(ctx, qname, fqdn, class)
+	if err != nil || len(cnameRRs) == 0 {
+		return nil, err
+	}
+	// Got a CNAME, now chase it to get the A record
+	cname := cnameRRs[0].(*dns.CNAME)
+	targetName := strings.TrimSuffix(cname.Target, ".")
+	aRRs, err := s.lookupA(ctx, targetName, cname.Target, class)
+	if err != nil {
+		return cnameRRs, nil // Return just the CNAME if we can't resolve it
+	}
+	// Return CNAME followed by the A record
+	return append(cnameRRs, aRRs...), nil
 }
 
 // lookupShardA returns an A record for the given shard number.
@@ -318,6 +324,27 @@ func (s *Server) lookupShardA(ctx context.Context, shard int, fqdn string, class
 	ip := net.ParseIP(publicIP)
 	if ip == nil {
 		s.log.WarnContext(ctx, "invalid IP in ip_shards table", "shard", shard, "ip", publicIP)
+		return nil, nil
+	}
+
+	return []dns.RR{
+		&dns.A{
+			Hdr: dns.Header{Name: fqdn, Class: class, TTL: 300},
+			A:   ip.To4(),
+		},
+	}, nil
+}
+
+// lookupLatitudeShardA returns an A record for the given latitude shard number.
+func (s *Server) lookupLatitudeShardA(ctx context.Context, shard int, fqdn string, class uint16) ([]dns.RR, error) {
+	publicIP, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetLatitudeShardPublicIP, int64(shard))
+	if err != nil {
+		return nil, nil
+	}
+
+	ip := net.ParseIP(publicIP)
+	if ip == nil {
+		s.log.WarnContext(ctx, "invalid IP in latitude_ip_shards table", "shard", shard, "ip", publicIP)
 		return nil, nil
 	}
 
@@ -353,8 +380,11 @@ func (s *Server) lookupCNAME(ctx context.Context, qname, fqdn string, class uint
 	boxName := parts[0]
 	domain := parts[1]
 
-	// Skip shard names (s001, s002, etc.)
+	// Skip shard names (s001, s002, n001, etc.)
 	if _, err := parseShardFromName(qname); err == nil {
+		return nil, nil
+	}
+	if _, err := parseLatitudeShardFromName(qname); err == nil {
 		return nil, nil
 	}
 
@@ -480,6 +510,24 @@ func parseShardFromName(name string) (int, error) {
 	sub := parts[0]
 	if len(sub) != 4 || sub[0] != 's' {
 		return 0, fmt.Errorf("not a shard name")
+	}
+	shard, err := strconv.Atoi(sub[1:])
+	if err != nil || shard < 1 || shard > publicips.MaxDomainShards {
+		return 0, fmt.Errorf("invalid shard number")
+	}
+	return shard, nil
+}
+
+// parseLatitudeShardFromName extracts the latitude shard number from a DNS name.
+// Returns error if the name is not a latitude shard name (e.g., "n043.exe.xyz" -> 43).
+func parseLatitudeShardFromName(name string) (int, error) {
+	parts := strings.SplitN(name, ".", 2)
+	if len(parts) < 1 {
+		return 0, fmt.Errorf("invalid name")
+	}
+	sub := parts[0]
+	if len(sub) != 4 || sub[0] != 'n' {
+		return 0, fmt.Errorf("not a latitude shard name")
 	}
 	shard, err := strconv.Atoi(sub[1:])
 	if err != nil || shard < 1 || shard > publicips.MaxDomainShards {

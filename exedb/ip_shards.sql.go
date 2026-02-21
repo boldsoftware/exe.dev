@@ -18,6 +18,19 @@ func (q *Queries) DeleteLatitudeIPShard(ctx context.Context, shard int64) error 
 	return err
 }
 
+const getLatitudeShardPublicIP = `-- name: GetLatitudeShardPublicIP :one
+SELECT public_ip
+FROM latitude_ip_shards
+WHERE shard = ?
+`
+
+func (q *Queries) GetLatitudeShardPublicIP(ctx context.Context, shard int64) (string, error) {
+	row := q.queryRow(ctx, q.getLatitudeShardPublicIPStmt, getLatitudeShardPublicIP, shard)
+	var public_ip string
+	err := row.Scan(&public_ip)
+	return public_ip, err
+}
+
 const getShardPublicIP = `-- name: GetShardPublicIP :one
 SELECT public_ip
 FROM ip_shards

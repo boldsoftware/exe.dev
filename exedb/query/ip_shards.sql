@@ -29,5 +29,10 @@ ON CONFLICT (shard) DO UPDATE SET
     public_ip = excluded.public_ip,
     updated_at = CURRENT_TIMESTAMP;
 
+-- name: GetLatitudeShardPublicIP :one
+SELECT public_ip
+FROM latitude_ip_shards
+WHERE shard = ?;
+
 -- name: DeleteLatitudeIPShard :exec
 DELETE FROM latitude_ip_shards WHERE shard = ?;

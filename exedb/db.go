@@ -333,6 +333,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getLatestMobilePendingVMByUserStmt, err = db.PrepareContext(ctx, getLatestMobilePendingVMByUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLatestMobilePendingVMByUser: %w", err)
 	}
+	if q.getLatitudeShardPublicIPStmt, err = db.PrepareContext(ctx, getLatitudeShardPublicIP); err != nil {
+		return nil, fmt.Errorf("error preparing query GetLatitudeShardPublicIP: %w", err)
+	}
 	if q.getLoginCreationDisabledStmt, err = db.PrepareContext(ctx, getLoginCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLoginCreationDisabled: %w", err)
 	}
@@ -1312,6 +1315,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getLatestMobilePendingVMByUserStmt: %w", cerr)
 		}
 	}
+	if q.getLatitudeShardPublicIPStmt != nil {
+		if cerr := q.getLatitudeShardPublicIPStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getLatitudeShardPublicIPStmt: %w", cerr)
+		}
+	}
 	if q.getLoginCreationDisabledStmt != nil {
 		if cerr := q.getLoginCreationDisabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getLoginCreationDisabledStmt: %w", cerr)
@@ -2219,6 +2227,7 @@ type Queries struct {
 	getLastBouncesPollStmt                     *sql.Stmt
 	getLatestBillingStatusStmt                 *sql.Stmt
 	getLatestMobilePendingVMByUserStmt         *sql.Stmt
+	getLatitudeShardPublicIPStmt               *sql.Stmt
 	getLoginCreationDisabledStmt               *sql.Stmt
 	getMobilePendingVMByTokenStmt              *sql.Stmt
 	getNewThrottleEmailPatternsStmt            *sql.Stmt
@@ -2481,6 +2490,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getLastBouncesPollStmt:                     q.getLastBouncesPollStmt,
 		getLatestBillingStatusStmt:                 q.getLatestBillingStatusStmt,
 		getLatestMobilePendingVMByUserStmt:         q.getLatestMobilePendingVMByUserStmt,
+		getLatitudeShardPublicIPStmt:               q.getLatitudeShardPublicIPStmt,
 		getLoginCreationDisabledStmt:               q.getLoginCreationDisabledStmt,
 		getMobilePendingVMByTokenStmt:              q.getMobilePendingVMByTokenStmt,
 		getNewThrottleEmailPatternsStmt:            q.getNewThrottleEmailPatternsStmt,

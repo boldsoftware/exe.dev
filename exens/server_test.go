@@ -487,6 +487,38 @@ func TestParseShardFromName(t *testing.T) {
 	}
 }
 
+func TestParseLatitudeShardFromName(t *testing.T) {
+	tests := []struct {
+		name    string
+		want    int
+		wantErr bool
+	}{
+		{"n001.exe.xyz", 1, false},
+		{"n025.exe.xyz", 25, false},
+		{"n043.exe.xyz", 43, false},
+		{"n253.exe.xyz", 253, false},
+		{"n000.exe.xyz", 0, true},  // invalid shard (zero)
+		{"n254.exe.xyz", 0, true},  // out of range
+		{"n1.exe.xyz", 0, true},    // wrong format
+		{"s001.exe.xyz", 0, true},  // wrong prefix
+		{"testbox.exe.xyz", 0, true},
+		{"", 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseLatitudeShardFromName(tt.name)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseLatitudeShardFromName(%q) error = %v, wantErr %v", tt.name, err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("parseLatitudeShardFromName(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestServerStartStop(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
@@ -542,10 +574,18 @@ func TestDNSServerIntegration(t *testing.T) {
 			return err
 		}
 
-		return queries.SetBoxEmailReceive(ctx, exedb.SetBoxEmailReceiveParams{
+		if err := queries.SetBoxEmailReceive(ctx, exedb.SetBoxEmailReceiveParams{
 			EmailReceiveEnabled: 1,
 			EmailMaildirPath:    "/home/testuser/Maildir",
 			ID:                  int(boxID),
+		}); err != nil {
+			return err
+		}
+
+		// Add latitude ip shard for nNNN testing
+		return queries.UpsertLatitudeIPShard(ctx, exedb.UpsertLatitudeIPShardParams{
+			Shard:    43,
+			PublicIP: "10.99.0.43",
 		})
 	})
 	if err != nil {
@@ -843,6 +883,41 @@ func TestDNSServerIntegration(t *testing.T) {
 		}
 		if resp.Rcode != dns.RcodeSuccess {
 			t.Errorf("AAAA for xterm subdomain: expected NOERROR, got %s", dns.RcodeToString[resp.Rcode])
+		}
+	})
+
+	t.Run("QueryLatitudeShardA", func(t *testing.T) {
+		msg := dns.NewMsg("n043.exe.xyz.", dns.TypeA)
+
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(resp.Answer) != 1 {
+			t.Fatalf("expected 1 answer, got %d", len(resp.Answer))
+		}
+
+		a, ok := resp.Answer[0].(*dns.A)
+		if !ok {
+			t.Fatalf("expected A record, got %T", resp.Answer[0])
+		}
+
+		if a.A.String() != "10.99.0.43" {
+			t.Errorf("expected 10.99.0.43, got %s", a.A.String())
+		}
+	})
+
+	t.Run("QueryLatitudeShardNonexistent", func(t *testing.T) {
+		msg := dns.NewMsg("n099.exe.xyz.", dns.TypeA)
+
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if resp.Rcode != dns.RcodeNameError {
+			t.Errorf("expected NXDOMAIN for nonexistent latitude shard, got %s", dns.RcodeToString[resp.Rcode])
 		}
 	})
 
