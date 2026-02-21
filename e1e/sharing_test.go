@@ -1212,3 +1212,62 @@ func (f *loginWithExeFlow) verifyCookiesOnBothDomains() {
 		f.t.Logf("Step 10: Verified cookies on both domains: exe-auth and login-with-exe-<port> present")
 	}
 }
+
+// TestShareOnlyGrantsStandardPortAccess tests that sharing a VM only grants
+// access to the box's standard proxy route. Shelley (vm.shelley.exe.xyz) and
+// non-standard ports (vm.exe.xyz:altport) must remain owner-only.
+func TestShareOnlyGrantsStandardPortAccess(t *testing.T) {
+	t.Parallel()
+	noGolden(t)
+
+	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, "owner@test-share-access.example")
+	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
+	ownerPTY.disconnect()
+	waitForSSH(t, box, ownerKeyFile)
+
+	const boxInternalPort = 8080
+	serveIndex(t, box, ownerKeyFile, "alive")
+
+	httpPort := Env.servers.Exed.HTTPPort
+	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "private")
+
+	// Start an HTTP server on a non-standard port inside the box.
+	altPort := Env.servers.Exed.ExtraPorts[0]
+	startHTTPServer(t, box, ownerKeyFile, altPort)
+
+	// Register guest and share the box with them.
+	_, guestCookies, _, guestEmail := registerForExeDevWithEmail(t, "guest@test-share-access.example")
+
+	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "add", box, guestEmail)
+	if err != nil {
+		t.Fatalf("failed to share box: %v\n%s", err, out)
+	}
+
+	// Guest can access the standard proxy route.
+	proxyAssert(t, box, proxyExpectation{
+		name:     "guest can access shared box",
+		httpPort: httpPort,
+		cookies:  guestCookies,
+		httpCode: http.StatusOK,
+	})
+
+	// Guest must NOT be able to access Shelley.
+	shelleyHost := fmt.Sprintf("%s.shelley.exe.cloud:%d", box, httpPort)
+	proxyAssert(t, box, proxyExpectation{
+		name:     "guest cannot access shelley on shared box",
+		httpPort: httpPort,
+		cookies:  guestCookies,
+		host:     shelleyHost,
+		httpCode: http.StatusUnauthorized,
+	})
+
+	// Guest must NOT be able to access a non-standard port.
+	proxyAssert(t, box, proxyExpectation{
+		name:     "guest cannot access non-standard port on shared box",
+		httpPort: altPort,
+		cookies:  guestCookies,
+		httpCode: http.StatusUnauthorized,
+	})
+
+	cleanupBox(t, ownerKeyFile, box)
+}

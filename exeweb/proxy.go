@@ -190,14 +190,17 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 	//   or equals box's default, use box route;
 	// - Otherwise create an ad-hoc private route for the requested port.
 	var route BoxRoute
+	var ownerOnly bool // shares don't apply to non-standard routes
 	boxRoute := box.BoxRoute
 	targetPort := hostHeaderPort
 	if IsShelleyRequest(ps.Env, r.Host) {
 		route = BoxRoute{Port: 9999, Share: "private"}
+		ownerOnly = true
 	} else if targetPort == 0 || targetPort == boxRoute.Port || ps.isDefaultServerPort(targetPort) {
 		route = boxRoute
 	} else {
 		route = BoxRoute{Port: targetPort, Share: "private"}
+		ownerOnly = true
 	}
 
 	if route.Port == 9999 {
@@ -239,13 +242,17 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 		accessType, err := ps.HasUserAccessToBox(r.Context(), userID, &box)
 		if err == nil {
 			switch accessType {
-			case BoxAccessOwner, BoxAccessEmailShare, BoxAccessTeamShare:
+			case BoxAccessOwner:
 				hasAccess = true
+			case BoxAccessEmailShare, BoxAccessTeamShare:
+				// Shares only grant access to the box's standard route,
+				// not to Shelley or ad-hoc ports.
+				hasAccess = !ownerOnly
 			}
 		}
 
-		// Check share link access
-		if !hasAccess && ps.CheckShareLinkAccess(r, box.ID, box.Name, userID) {
+		// Check share link access (only for standard route)
+		if !hasAccess && !ownerOnly && ps.CheckShareLinkAccess(r, box.ID, box.Name, userID) {
 			hasAccess = true
 		}
 

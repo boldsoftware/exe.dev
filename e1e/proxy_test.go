@@ -482,6 +482,7 @@ type proxyExpectation struct {
 	cookies          []*http.Cookie
 	httpCode         int
 	redirectLocation string // Expected Location header for redirects (optional)
+	host             string // Custom host header (default: "<box>.exe.cloud:<port>")
 }
 
 func mustParseURL(raw string) *url.URL {
@@ -886,13 +887,17 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation, query ...st
 	if len(query) > 0 {
 		q = query[0]
 	}
-	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/?%s", boxName, exp.httpPort, q)
+	host := exp.host
+	if host == "" {
+		host = fmt.Sprintf("%s.exe.cloud:%d", boxName, exp.httpPort)
+	}
+	proxyURL := fmt.Sprintf("http://%s/?%s", host, q)
 	req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
 	if err != nil {
 		t.Errorf("failed to make http request: %v", err)
 		return
 	}
-	req.Host = fmt.Sprintf("%s.exe.cloud:%d", boxName, exp.httpPort)
+	req.Host = host
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Errorf("failed to do http request: %v", err)
