@@ -24,6 +24,7 @@ deps/sshpiper/metrics
 tmpkey*
 # so i can 'go test -c ./...', and 'go test -race -c && stress foo.test'
 *.test
+blog/assets/opus_conversations.json
 
 # exelet embedded fs (arch-specific)
 exelet/fs/amd64/*
