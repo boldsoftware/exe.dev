@@ -497,10 +497,10 @@ func TestParseLatitudeShardFromName(t *testing.T) {
 		{"n025.exe.xyz", 25, false},
 		{"n043.exe.xyz", 43, false},
 		{"n253.exe.xyz", 253, false},
-		{"n000.exe.xyz", 0, true},  // invalid shard (zero)
-		{"n254.exe.xyz", 0, true},  // out of range
-		{"n1.exe.xyz", 0, true},    // wrong format
-		{"s001.exe.xyz", 0, true},  // wrong prefix
+		{"n000.exe.xyz", 0, true}, // invalid shard (zero)
+		{"n254.exe.xyz", 0, true}, // out of range
+		{"n1.exe.xyz", 0, true},   // wrong format
+		{"s001.exe.xyz", 0, true}, // wrong prefix
 		{"testbox.exe.xyz", 0, true},
 		{"", 0, true},
 	}
