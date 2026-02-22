@@ -56,7 +56,7 @@ func (q *Queries) GetEmailByUserID(ctx context.Context, userID string) (string, 
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed
 FROM users
 WHERE canonical_email = ?
 `
@@ -82,6 +82,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, canonicalEmail *string) (U
 		&i.IsLockedOut,
 		&i.Limits,
 		&i.CgroupOverrides,
+		&i.NewsletterSubscribed,
 	)
 	return i, err
 }
@@ -142,7 +143,7 @@ func (q *Queries) GetUserRootSupport(ctx context.Context, userID string) (int64,
 }
 
 const getUserWithDetails = `-- name: GetUserWithDetails :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed
 FROM users
 WHERE user_id = ?
 `
@@ -168,6 +169,7 @@ func (q *Queries) GetUserWithDetails(ctx context.Context, userID string) (User, 
 		&i.IsLockedOut,
 		&i.Limits,
 		&i.CgroupOverrides,
+		&i.NewsletterSubscribed,
 	)
 	return i, err
 }
@@ -196,7 +198,7 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 }
 
 const listAllUsers = `-- name: ListAllUsers :many
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides FROM users ORDER BY created_at DESC
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed FROM users ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
@@ -226,6 +228,7 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 			&i.IsLockedOut,
 			&i.Limits,
 			&i.CgroupOverrides,
+			&i.NewsletterSubscribed,
 		); err != nil {
 			return nil, err
 		}
@@ -308,6 +311,20 @@ type SetUserNewVMCreationDisabledParams struct {
 
 func (q *Queries) SetUserNewVMCreationDisabled(ctx context.Context, arg SetUserNewVMCreationDisabledParams) error {
 	_, err := q.exec(ctx, q.setUserNewVMCreationDisabledStmt, setUserNewVMCreationDisabled, arg.NewVmCreationDisabled, arg.UserID)
+	return err
+}
+
+const setUserNewsletterSubscribed = `-- name: SetUserNewsletterSubscribed :exec
+UPDATE users SET newsletter_subscribed = ? WHERE user_id = ?
+`
+
+type SetUserNewsletterSubscribedParams struct {
+	NewsletterSubscribed bool   `db:"newsletter_subscribed" json:"newsletter_subscribed"`
+	UserID               string `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) SetUserNewsletterSubscribed(ctx context.Context, arg SetUserNewsletterSubscribedParams) error {
+	_, err := q.exec(ctx, q.setUserNewsletterSubscribedStmt, setUserNewsletterSubscribed, arg.NewsletterSubscribed, arg.UserID)
 	return err
 }
 

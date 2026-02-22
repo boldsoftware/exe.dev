@@ -1550,6 +1550,31 @@ func (s *Server) checkSignupRateLimit(r *http.Request) (netip.Addr, bool) {
 	return ip, s.signupLimiter.Allow(ip)
 }
 
+// handleNewsletterSubscribe handles POST /newsletter-subscribe for authenticated users.
+// It sets the newsletter_subscribed flag on the user record.
+func (s *Server) handleNewsletterSubscribe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID, err := s.validateAuthCookie(r)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	subscribed := r.FormValue("subscribed") != "0"
+	err = withTx1(s, r.Context(), (*exedb.Queries).SetUserNewsletterSubscribed, exedb.SetUserNewsletterSubscribedParams{
+		NewsletterSubscribed: subscribed,
+		UserID:               userID,
+	})
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to set newsletter subscribed", "error", err, "user_id", userID)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleLinkDiscord handles Discord account linking via HMAC'd links from the Discord bot.
 // The link format is: /link-discord?discord_id=X&discord_username=Y&ts=Z&hmac=H
 func (s *Server) handleLinkDiscord(w http.ResponseWriter, r *http.Request) {

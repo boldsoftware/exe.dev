@@ -22,6 +22,7 @@
             max-width: 800px;
             margin: 0 auto;
             padding: 40px 20px;
+            padding-bottom: 50vh;
         }
         
         .section {
@@ -601,7 +602,7 @@
 
     <div class="main-container">
         {{if .BasicUser}}
-        <div class="section">
+        <div class="section" id="about">
             <div class="section-title">What is exe?</div>
             <div class="section-help">
                 exe.dev is a hosting service. You've logged into a site
@@ -612,7 +613,7 @@
         </div>
         {{end}}
 
-        <div class="section">
+        <div class="section" id="account">
             <div class="section-title">Account</div>
             <div class="info-card">
                 <div class="info-row">
@@ -627,7 +628,7 @@
         </div>
 
         {{if not .BasicUser}}
-        <div class="section">
+        <div class="section" id="billing">
             <div class="section-title">Billing</div>
             <div class="info-card">
                 {{if eq .BillingStatus "active"}}
@@ -690,7 +691,7 @@
         {{end}}
 
         {{if .SiteSessions}}
-        <div class="section">
+        <div class="section" id="sessions">
             <div class="section-title">Sessions</div>
             <div class="section-help">These are sites you've used exe.dev to log into and where you might still have a valid cookie. Logging out will clear all your authentication cookies.</div>
             <div class="info-card">
@@ -715,7 +716,7 @@
         {{end}}
 
         {{if .SharedBoxes}}
-        <div class="section">
+        <div class="section" id="shared">
             <div class="section-title">Sites Shared With You</div>
             <div class="info-card">
                 <table class="sites-table">
@@ -739,7 +740,7 @@
         {{end}}
 
         {{if not .BasicUser}}
-        <div class="section">
+        <div class="section" id="ssh-keys">
             <div class="section-title">SSH Keys</div>
             <div class="section-help">SSH keys allow you to connect to exe.dev via <code>ssh exe.dev</code></div>
             {{if .SSHKeys}}
@@ -775,7 +776,7 @@
         </div>
         {{end}}
 
-        <div class="section" id="passkeys-section">
+        <div class="section" id="passkeys">
             <div class="section-title">Passkeys</div>
             <div class="section-help">Passkeys allow you to log into exe.dev on the web without going through e-mail.</div>
             <div id="passkeys-unsupported" class="info-card" style="display: none;">
@@ -804,6 +805,21 @@
                     <button class="btn" onclick="addPasskey()">Add Passkey</button>
                 </div>
                 <div class="passkey-error" id="passkey-error"></div>
+            </div>
+        </div>
+
+        <div class="section" id="email">
+            <div class="section-title">Email</div>
+            <div class="info-card">
+                <div class="info-row">
+                    <div class="info-label">Newsletter</div>
+                    <div class="info-value">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" id="newsletter-checkbox" {{if .User.NewsletterSubscribed}}checked{{end}} style="accent-color: #000; width: 16px; height: 16px;">
+                            <span id="newsletter-label">Subscribe to updates</span>
+                        </label>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1194,6 +1210,30 @@
                 e.preventDefault();
                 renameSSHKey();
             }
+        });
+
+        // Newsletter checkbox auto-save
+        document.getElementById('newsletter-checkbox')?.addEventListener('change', async function() {
+            const label = document.getElementById('newsletter-label');
+            const checked = this.checked;
+            label.textContent = 'Saving...';
+            try {
+                const resp = await fetch('/newsletter-subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'subscribed=' + (checked ? '1' : '0'),
+                });
+                if (resp.ok) {
+                    label.textContent = checked ? 'Subscribed!' : 'Unsubscribed';
+                } else {
+                    this.checked = !checked;
+                    label.textContent = 'Failed to save';
+                }
+            } catch {
+                this.checked = !checked;
+                label.textContent = 'Failed to save';
+            }
+            setTimeout(() => { label.textContent = 'Subscribe to updates'; }, 2000);
         });
     </script>
 </body>

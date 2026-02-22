@@ -699,6 +699,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.setUserNewVMCreationDisabledStmt, err = db.PrepareContext(ctx, setUserNewVMCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserNewVMCreationDisabled: %w", err)
 	}
+	if q.setUserNewsletterSubscribedStmt, err = db.PrepareContext(ctx, setUserNewsletterSubscribed); err != nil {
+		return nil, fmt.Errorf("error preparing query SetUserNewsletterSubscribed: %w", err)
+	}
 	if q.setUserRootSupportStmt, err = db.PrepareContext(ctx, setUserRootSupport); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserRootSupport: %w", err)
 	}
@@ -1925,6 +1928,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setUserNewVMCreationDisabledStmt: %w", cerr)
 		}
 	}
+	if q.setUserNewsletterSubscribedStmt != nil {
+		if cerr := q.setUserNewsletterSubscribedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setUserNewsletterSubscribedStmt: %w", cerr)
+		}
+	}
 	if q.setUserRootSupportStmt != nil {
 		if cerr := q.setUserRootSupportStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setUserRootSupportStmt: %w", cerr)
@@ -2349,6 +2357,7 @@ type Queries struct {
 	setUserIsLockedOutStmt                     *sql.Stmt
 	setUserLimitsStmt                          *sql.Stmt
 	setUserNewVMCreationDisabledStmt           *sql.Stmt
+	setUserNewsletterSubscribedStmt            *sql.Stmt
 	setUserRootSupportStmt                     *sql.Stmt
 	syncCreditLedgerStmt                       *sql.Stmt
 	updateAuthCookieLastUsedStmt               *sql.Stmt
@@ -2612,6 +2621,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setUserIsLockedOutStmt:                     q.setUserIsLockedOutStmt,
 		setUserLimitsStmt:                          q.setUserLimitsStmt,
 		setUserNewVMCreationDisabledStmt:           q.setUserNewVMCreationDisabledStmt,
+		setUserNewsletterSubscribedStmt:            q.setUserNewsletterSubscribedStmt,
 		setUserRootSupportStmt:                     q.setUserRootSupportStmt,
 		syncCreditLedgerStmt:                       q.syncCreditLedgerStmt,
 		updateAuthCookieLastUsedStmt:               q.updateAuthCookieLastUsedStmt,

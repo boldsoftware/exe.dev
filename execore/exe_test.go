@@ -753,6 +753,109 @@ func TestNormalUserCreatedWithoutFlag(t *testing.T) {
 	}
 }
 
+// TestNewsletterSubscription tests that POST /newsletter-subscribe sets the flag on the user.
+func TestNewsletterSubscription(t *testing.T) {
+	server := newTestServer(t)
+
+	// Create a user
+	var userID string
+	err := server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		userID, err = server.createUserRecord(ctx, queries, "newsletter@example.com", false)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Verify default is false
+	user, err := server.GetUserByEmail(context.Background(), "newsletter@example.com")
+	if err != nil {
+		t.Fatalf("Failed to get user: %v", err)
+	}
+	if user.NewsletterSubscribed {
+		t.Fatal("New user should not be subscribed to newsletter by default")
+	}
+
+	// Create authenticated client
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	cookieValue := generateRegistrationToken()
+	err = withTx1(server, context.Background(), (*exedb.Queries).InsertAuthCookie, exedb.InsertAuthCookieParams{
+		CookieValue: cookieValue,
+		UserID:      userID,
+		Domain:      "127.0.0.1",
+		ExpiresAt:   time.Now().Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+	baseURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", server.httpPort()))
+	jar.SetCookies(baseURL, []*http.Cookie{
+		{Name: "exe-auth", Value: cookieValue},
+	})
+
+	// POST /newsletter-subscribe without auth should fail
+	resp, err := http.Post(
+		fmt.Sprintf("http://127.0.0.1:%d/newsletter-subscribe", server.httpPort()),
+		"application/x-www-form-urlencoded",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Failed to POST: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("Expected 401 without auth, got %d", resp.StatusCode)
+	}
+
+	// POST /newsletter-subscribe with auth should succeed
+	resp, err = client.Post(
+		fmt.Sprintf("http://127.0.0.1:%d/newsletter-subscribe", server.httpPort()),
+		"application/x-www-form-urlencoded",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Failed to POST: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("Expected 204, got %d", resp.StatusCode)
+	}
+
+	// Verify user is now subscribed
+	user, err = server.GetUserByEmail(context.Background(), "newsletter@example.com")
+	if err != nil {
+		t.Fatalf("Failed to get user: %v", err)
+	}
+	if !user.NewsletterSubscribed {
+		t.Fatal("User should be subscribed after POST /newsletter-subscribe")
+	}
+
+	// POST /newsletter-subscribe with subscribed=0 should unsubscribe
+	resp, err = client.Post(
+		fmt.Sprintf("http://127.0.0.1:%d/newsletter-subscribe", server.httpPort()),
+		"application/x-www-form-urlencoded",
+		strings.NewReader("subscribed=0"),
+	)
+	if err != nil {
+		t.Fatalf("Failed to POST: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("Expected 204, got %d", resp.StatusCode)
+	}
+
+	// Verify user is now unsubscribed
+	user, err = server.GetUserByEmail(context.Background(), "newsletter@example.com")
+	if err != nil {
+		t.Fatalf("Failed to get user: %v", err)
+	}
+	if user.NewsletterSubscribed {
+		t.Fatal("User should be unsubscribed after POST with subscribed=0")
+	}
+}
+
 // TestBasicUserDashboardRedirectsToProfile tests that a basic user (no SSH keys,
 // no boxes, created_for_login_with_exe=1) is redirected from / to /user.
 func TestBasicUserDashboardRedirectsToProfile(t *testing.T) {

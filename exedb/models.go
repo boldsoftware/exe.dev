@@ -386,6 +386,7 @@ type User struct {
 	IsLockedOut            bool       `db:"is_locked_out" json:"is_locked_out"`
 	Limits                 *string    `db:"limits" json:"limits"`
 	CgroupOverrides        *string    `db:"cgroup_overrides" json:"cgroup_overrides"`
+	NewsletterSubscribed   bool       `db:"newsletter_subscribed" json:"newsletter_subscribed"`
 }
 
 type UserDailyEmailCount struct {
