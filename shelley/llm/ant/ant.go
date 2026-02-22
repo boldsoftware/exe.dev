@@ -1,6 +1,7 @@
 package ant
 
 import (
+	"bufio"
 	"bytes"
 	"cmp"
 	"context"
@@ -477,10 +478,165 @@ func toLLMResponse(r *response) *llm.Response {
 	}
 }
 
-// Do sends a request to Anthropic.
+// streamEvent represents a single SSE event from the Anthropic streaming API.
+type streamEvent struct {
+	Type string `json:"type"`
+
+	// message_start
+	Message *response `json:"message,omitempty"`
+
+	// content_block_start
+	Index        int      `json:"index,omitempty"`
+	ContentBlock *content `json:"content_block,omitempty"`
+
+	// content_block_delta
+	Delta json.RawMessage `json:"delta,omitempty"`
+
+	// message_delta
+	Usage *usage `json:"usage,omitempty"`
+}
+
+// streamDelta represents the delta field in content_block_delta and message_delta events.
+type streamDelta struct {
+	Type string `json:"type"`
+
+	// text_delta
+	Text string `json:"text,omitempty"`
+
+	// thinking_delta
+	Thinking string `json:"thinking,omitempty"`
+
+	// input_json_delta
+	PartialJSON string `json:"partial_json,omitempty"`
+
+	// signature_delta
+	Signature string `json:"signature,omitempty"`
+
+	// message_delta
+	StopReason   string  `json:"stop_reason,omitempty"`
+	StopSequence *string `json:"stop_sequence,omitempty"`
+}
+
+// parseSSEStream reads an SSE stream and assembles the complete response.
+func parseSSEStream(r io.Reader) (*response, error) {
+	var (
+		resp     *response
+		contents []content // indexed by content block index
+	)
+
+	scanner := bufio.NewScanner(r)
+	// SSE lines can be large (e.g. tool input JSON)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := line[len("data: "):]
+		if data == "[DONE]" {
+			break
+		}
+
+		var event streamEvent
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			return nil, fmt.Errorf("parsing SSE event: %w", err)
+		}
+
+		switch event.Type {
+		case "message_start":
+			if event.Message == nil {
+				return nil, fmt.Errorf("message_start event has no message")
+			}
+			resp = event.Message
+			resp.Content = nil // will be rebuilt from content blocks
+
+		case "content_block_start":
+			if event.ContentBlock == nil {
+				return nil, fmt.Errorf("content_block_start event has no content_block")
+			}
+			// Grow slice to accommodate index
+			for len(contents) <= event.Index {
+				contents = append(contents, content{})
+			}
+			block := *event.ContentBlock
+			// For tool_use blocks, the initial input is always empty {};
+			// clear it so delta accumulation starts fresh.
+			if block.Type == "tool_use" {
+				block.ToolInput = nil
+			}
+			contents[event.Index] = block
+
+		case "content_block_delta":
+			if event.Index >= len(contents) {
+				return nil, fmt.Errorf("content_block_delta index %d out of range", event.Index)
+			}
+			var delta streamDelta
+			if err := json.Unmarshal(event.Delta, &delta); err != nil {
+				return nil, fmt.Errorf("parsing content_block_delta: %w", err)
+			}
+			c := &contents[event.Index]
+			switch delta.Type {
+			case "text_delta":
+				if c.Text == nil {
+					c.Text = new(string)
+				}
+				*c.Text += delta.Text
+			case "thinking_delta":
+				c.Thinking += delta.Thinking
+			case "input_json_delta":
+				// Accumulate raw JSON for tool_use input
+				c.ToolInput = append(c.ToolInput, []byte(delta.PartialJSON)...)
+			case "signature_delta":
+				c.Signature += delta.Signature
+			}
+
+		case "content_block_stop":
+			// nothing to do; the block is already assembled
+
+		case "message_delta":
+			var delta streamDelta
+			if err := json.Unmarshal(event.Delta, &delta); err != nil {
+				return nil, fmt.Errorf("parsing message_delta: %w", err)
+			}
+			if resp != nil {
+				resp.StopReason = delta.StopReason
+				resp.StopSequence = delta.StopSequence
+			}
+			if event.Usage != nil && resp != nil {
+				// message_delta usage contains output_tokens
+				resp.Usage.OutputTokens = event.Usage.OutputTokens
+			}
+
+		case "message_stop":
+			// stream complete
+
+		case "ping":
+			// keepalive, ignore
+
+		case "error":
+			return nil, fmt.Errorf("stream error event: %s", data)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("reading SSE stream: %w", err)
+	}
+
+	if resp == nil {
+		return nil, fmt.Errorf("no message_start event in stream")
+	}
+
+	resp.Content = contents
+	return resp, nil
+}
+
+// Do sends a streaming request to Anthropic and collects the full response.
 func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error) {
 	startTime := time.Now()
 	request := s.fromLLMRequest(ir)
+	request.Stream = true
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return nil, err
@@ -521,47 +677,49 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			errs = errors.Join(errs, err)
 			continue
 		}
-		buf, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			errs = errors.Join(errs, err)
-			continue
-		}
 
 		switch {
 		case resp.StatusCode == http.StatusOK:
-			var response response
-			err = json.NewDecoder(bytes.NewReader(buf)).Decode(&response)
+			response, err := parseSSEStream(resp.Body)
+			resp.Body.Close()
 			if err != nil {
-				return nil, errors.Join(errs, err)
+				// Stream parse errors might be transient (connection reset, etc.)
+				errs = errors.Join(errs, err)
+				continue
 			}
 			// Calculate and set the cost_usd field
 			response.Usage.CostUSD = llm.CostUSDFromResponse(resp.Header)
 
 			endTime := time.Now()
-			result := toLLMResponse(&response)
+			result := toLLMResponse(response)
 			result.StartTime = &startTime
 			result.EndTime = &endTime
 			return result, nil
-		case resp.StatusCode >= 500 && resp.StatusCode < 600:
-			// server error, retry
-			slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)
-			errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
-			continue
-		case resp.StatusCode == 429:
-			// rate limited, retry
-			slog.WarnContext(ctx, "anthropic_request_rate_limited", "response", string(buf), "url", url, "model", s.Model)
-			errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
-			continue
-		case resp.StatusCode >= 400 && resp.StatusCode < 500:
-			// some other 400, probably unrecoverable
-			slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)
-			return nil, errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
 		default:
-			// ...retry, I guess?
-			slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)
-			errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
-			continue
+			buf, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+
+			switch {
+			case resp.StatusCode >= 500 && resp.StatusCode < 600:
+				// server error, retry
+				slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)
+				errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
+				continue
+			case resp.StatusCode == 429:
+				// rate limited, retry
+				slog.WarnContext(ctx, "anthropic_request_rate_limited", "response", string(buf), "url", url, "model", s.Model)
+				errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
+				continue
+			case resp.StatusCode >= 400 && resp.StatusCode < 500:
+				// some other 400, probably unrecoverable
+				slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)
+				return nil, errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
+			default:
+				// ...retry, I guess?
+				slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)
+				errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
+				continue
+			}
 		}
 	}
 }

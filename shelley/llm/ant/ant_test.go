@@ -3,6 +3,7 @@ package ant
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -653,30 +654,27 @@ func TestConfigDetails(t *testing.T) {
 	}
 }
 
+// mockSSEResponse builds an SSE stream body for a simple text response.
+func mockSSEResponse(id, model, text string, inputTokens, outputTokens uint64) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"%s\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"%s\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":%d,\"output_tokens\":0}}}\n\n", id, model, inputTokens)
+	fmt.Fprintf(&b, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+	// Send text in one delta
+	textJSON, _ := json.Marshal(text)
+	fmt.Fprintf(&b, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":%s}}\n\n", textJSON)
+	fmt.Fprintf(&b, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+	fmt.Fprintf(&b, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":%d}}\n\n", outputTokens)
+	fmt.Fprintf(&b, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+	return b.String()
+}
+
 func TestDo(t *testing.T) {
-	// Create a mock HTTP client that returns a predefined response
-	mockResponse := `{
-		"id": "msg_123",
-		"type": "message",
-		"role": "assistant",
-		"model": "claude-sonnet-4-5-20250929",
-		"content": [
-			{
-				"type": "text",
-				"text": "Hello, world!"
-			}
-		],
-		"stop_reason": "end_turn",
-		"usage": {
-			"input_tokens": 100,
-			"output_tokens": 50,
-			"cost_usd": 0.01
-		}
-	}`
+	// Create a mock SSE streaming response
+	mockBody := mockSSEResponse("msg_123", Claude45Sonnet, "Hello, world!", 100, 50)
 
 	// Create a service with a mock HTTP client
 	client := &http.Client{
-		Transport: &mockHTTPTransport{responseBody: mockResponse, statusCode: 200},
+		Transport: &mockHTTPTransport{responseBody: mockBody, statusCode: 200},
 	}
 
 	s := &Service{
@@ -740,7 +738,11 @@ func (m *mockHTTPTransport) RoundTrip(req *http.Request) (*http.Response, error)
 		Body:       io.NopCloser(strings.NewReader(m.responseBody)),
 		Header:     make(http.Header),
 	}
-	resp.Header.Set("content-type", "application/json")
+	if m.statusCode == 200 {
+		resp.Header.Set("content-type", "text/event-stream")
+	} else {
+		resp.Header.Set("content-type", "application/json")
+	}
 	return resp, nil
 }
 
@@ -1045,6 +1047,197 @@ func TestToLLMContentWithNestedToolResults(t *testing.T) {
 	}
 }
 
+func TestParseSSEStreamText(t *testing.T) {
+	stream := mockSSEResponse("msg_abc", Claude45Sonnet, "Hello!", 10, 5)
+	resp, err := parseSSEStream(strings.NewReader(stream))
+	if err != nil {
+		t.Fatalf("parseSSEStream() error = %v", err)
+	}
+	if resp.ID != "msg_abc" {
+		t.Errorf("ID = %q, want %q", resp.ID, "msg_abc")
+	}
+	if resp.Role != "assistant" {
+		t.Errorf("Role = %q, want %q", resp.Role, "assistant")
+	}
+	if resp.StopReason != "end_turn" {
+		t.Errorf("StopReason = %q, want %q", resp.StopReason, "end_turn")
+	}
+	if resp.Usage.InputTokens != 10 {
+		t.Errorf("InputTokens = %d, want 10", resp.Usage.InputTokens)
+	}
+	if resp.Usage.OutputTokens != 5 {
+		t.Errorf("OutputTokens = %d, want 5", resp.Usage.OutputTokens)
+	}
+	if len(resp.Content) != 1 {
+		t.Fatalf("Content length = %d, want 1", len(resp.Content))
+	}
+	if resp.Content[0].Type != "text" {
+		t.Errorf("Content[0].Type = %q, want %q", resp.Content[0].Type, "text")
+	}
+	if resp.Content[0].Text == nil || *resp.Content[0].Text != "Hello!" {
+		t.Errorf("Content[0].Text = %v, want %q", resp.Content[0].Text, "Hello!")
+	}
+}
+
+func TestParseSSEStreamMultipleDeltas(t *testing.T) {
+	// Build a stream with text split across multiple deltas
+	var b strings.Builder
+	b.WriteString("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_multi\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n")
+	b.WriteString("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+	b.WriteString("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello, \"}}\n\n")
+	b.WriteString("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"world!\"}}\n\n")
+	b.WriteString("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+	b.WriteString("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":3}}\n\n")
+	b.WriteString("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+
+	resp, err := parseSSEStream(strings.NewReader(b.String()))
+	if err != nil {
+		t.Fatalf("parseSSEStream() error = %v", err)
+	}
+	if len(resp.Content) != 1 {
+		t.Fatalf("Content length = %d, want 1", len(resp.Content))
+	}
+	if *resp.Content[0].Text != "Hello, world!" {
+		t.Errorf("Content[0].Text = %q, want %q", *resp.Content[0].Text, "Hello, world!")
+	}
+}
+
+func TestParseSSEStreamToolUse(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_tool\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":50,\"output_tokens\":0}}}\n\n")
+	// Text block first
+	b.WriteString("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+	b.WriteString("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Let me run that.\"}}\n\n")
+	b.WriteString("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+	// Tool use block
+	b.WriteString(`event: content_block_start` + "\n" + `data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_123","name":"bash","input":{}}}` + "\n\n")
+	b.WriteString(`event: content_block_delta` + "\n" + `data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"comma"}}` + "\n\n")
+	b.WriteString(`event: content_block_delta` + "\n" + `data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"nd\":\"ls\"}"}}` + "\n\n")
+	b.WriteString("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n")
+	b.WriteString("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":25}}\n\n")
+	b.WriteString("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+
+	resp, err := parseSSEStream(strings.NewReader(b.String()))
+	if err != nil {
+		t.Fatalf("parseSSEStream() error = %v", err)
+	}
+	if resp.StopReason != "tool_use" {
+		t.Errorf("StopReason = %q, want %q", resp.StopReason, "tool_use")
+	}
+	if len(resp.Content) != 2 {
+		t.Fatalf("Content length = %d, want 2", len(resp.Content))
+	}
+	// Text block
+	if resp.Content[0].Type != "text" {
+		t.Errorf("Content[0].Type = %q, want %q", resp.Content[0].Type, "text")
+	}
+	if *resp.Content[0].Text != "Let me run that." {
+		t.Errorf("Content[0].Text = %q, want %q", *resp.Content[0].Text, "Let me run that.")
+	}
+	// Tool use block
+	if resp.Content[1].Type != "tool_use" {
+		t.Errorf("Content[1].Type = %q, want %q", resp.Content[1].Type, "tool_use")
+	}
+	if resp.Content[1].ID != "toolu_123" {
+		t.Errorf("Content[1].ID = %q, want %q", resp.Content[1].ID, "toolu_123")
+	}
+	if resp.Content[1].ToolName != "bash" {
+		t.Errorf("Content[1].ToolName = %q, want %q", resp.Content[1].ToolName, "bash")
+	}
+	// The accumulated JSON should be the concatenation of partials
+	var input map[string]string
+	if err := json.Unmarshal(resp.Content[1].ToolInput, &input); err != nil {
+		t.Fatalf("failed to parse tool input JSON: %v (raw: %q)", err, string(resp.Content[1].ToolInput))
+	}
+	if input["command"] != "ls" {
+		t.Errorf("tool input command = %q, want %q", input["command"], "ls")
+	}
+}
+
+func TestParseSSEStreamThinking(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_think\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":20,\"output_tokens\":0}}}\n\n")
+	// Thinking block
+	b.WriteString("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\n")
+	b.WriteString("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"Let me think...\"}}\n\n")
+	b.WriteString("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"sig123\"}}\n\n")
+	b.WriteString("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+	// Text block
+	b.WriteString("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+	b.WriteString("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"The answer is 42.\"}}\n\n")
+	b.WriteString("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n")
+	b.WriteString("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":15}}\n\n")
+	b.WriteString("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+
+	resp, err := parseSSEStream(strings.NewReader(b.String()))
+	if err != nil {
+		t.Fatalf("parseSSEStream() error = %v", err)
+	}
+	if len(resp.Content) != 2 {
+		t.Fatalf("Content length = %d, want 2", len(resp.Content))
+	}
+	// Thinking block
+	if resp.Content[0].Type != "thinking" {
+		t.Errorf("Content[0].Type = %q, want %q", resp.Content[0].Type, "thinking")
+	}
+	if resp.Content[0].Thinking != "Let me think..." {
+		t.Errorf("Content[0].Thinking = %q, want %q", resp.Content[0].Thinking, "Let me think...")
+	}
+	if resp.Content[0].Signature != "sig123" {
+		t.Errorf("Content[0].Signature = %q, want %q", resp.Content[0].Signature, "sig123")
+	}
+	// Text block
+	if *resp.Content[1].Text != "The answer is 42." {
+		t.Errorf("Content[1].Text = %q, want %q", *resp.Content[1].Text, "The answer is 42.")
+	}
+}
+
+func TestParseSSEStreamPing(t *testing.T) {
+	// Stream with ping events interspersed
+	var b strings.Builder
+	b.WriteString("event: ping\ndata: {\"type\":\"ping\"}\n\n")
+	b.WriteString("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_p\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n")
+	b.WriteString("event: ping\ndata: {\"type\":\"ping\"}\n\n")
+	b.WriteString("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+	b.WriteString("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n")
+	b.WriteString("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+	b.WriteString("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n\n")
+	b.WriteString("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+
+	resp, err := parseSSEStream(strings.NewReader(b.String()))
+	if err != nil {
+		t.Fatalf("parseSSEStream() error = %v", err)
+	}
+	if *resp.Content[0].Text != "ok" {
+		t.Errorf("Text = %q, want %q", *resp.Content[0].Text, "ok")
+	}
+}
+
+func TestParseSSEStreamNoMessageStart(t *testing.T) {
+	stream := "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"
+	_, err := parseSSEStream(strings.NewReader(stream))
+	if err == nil {
+		t.Fatal("expected error for missing message_start")
+	}
+	if !strings.Contains(err.Error(), "no message_start") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "no message_start")
+	}
+}
+
+func TestParseSSEStreamError(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_err\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n")
+	b.WriteString(`event: error` + "\n" + `data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}` + "\n\n")
+
+	_, err := parseSSEStream(strings.NewReader(b.String()))
+	if err == nil {
+		t.Fatal("expected error for stream error event")
+	}
+	if !strings.Contains(err.Error(), "stream error event") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "stream error event")
+	}
+}
+
 func TestDoClientError(t *testing.T) {
 	// Create a mock HTTP client that returns a client error
 	mockResponse := `{"error": "bad request"}`
@@ -1144,29 +1337,12 @@ func TestServiceConfigDetails(t *testing.T) {
 }
 
 func TestDoStartTimeEndTime(t *testing.T) {
-	// Create a mock HTTP client that returns a predefined response
-	mockResponse := `{
-		"id": "msg_123",
-		"type": "message",
-		"role": "assistant",
-		"model": "claude-sonnet-4-5-20250929",
-		"content": [
-			{
-				"type": "text",
-				"text": "Hello, world!"
-			}
-		],
-		"stop_reason": "end_turn",
-		"usage": {
-			"input_tokens": 100,
-			"output_tokens": 50,
-			"cost_usd": 0.01
-		}
-	}`
+	// Create a mock SSE streaming response
+	mockBody := mockSSEResponse("msg_123", Claude45Sonnet, "Hello, world!", 100, 50)
 
 	// Create a service with a mock HTTP client
 	client := &http.Client{
-		Transport: &mockHTTPTransport{responseBody: mockResponse, statusCode: 200},
+		Transport: &mockHTTPTransport{responseBody: mockBody, statusCode: 200},
 	}
 
 	s := &Service{
