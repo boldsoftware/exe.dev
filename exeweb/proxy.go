@@ -167,6 +167,11 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Add VM attributes to the canonical log line.
+	sloghttp.AddCustomAttributes(r, slog.Int("vm_id", box.ID))
+	sloghttp.AddCustomAttributes(r, slog.String("vm_name", box.Name))
+	sloghttp.AddCustomAttributes(r, slog.String("vm_owner_user_id", box.CreatedByUserID))
+
 	// Check if box owner is locked out -
 	// their VMs should not accept proxy requests (fail closed on DB error).
 	isLockedOut, lockoutErr := ps.Data.IsUserLockedOut(r.Context(), box.CreatedByUserID)
@@ -177,7 +182,6 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 	}
 	if isLockedOut {
 		sloghttp.AddCustomAttributes(r, slog.Bool("owner_locked_out", true))
-		sloghttp.AddCustomAttributes(r, slog.String("owner_user_id", box.CreatedByUserID))
 		ps.RenderAccessRequired(w, r, nil)
 		return
 	}
