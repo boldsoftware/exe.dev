@@ -582,7 +582,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/robots.txt":
 		s.handleRobots(w, r)
 	case "/about":
-		s.serveStaticFile(w, r, "about.html")
+		http.Redirect(w, r, "/docs/what-is-exe", http.StatusTemporaryRedirect)
+		return
 	case "/pricing":
 		http.Redirect(w, r, "/docs/pricing", http.StatusTemporaryRedirect)
 		return
