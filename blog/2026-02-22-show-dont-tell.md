@@ -10,19 +10,19 @@ I have been tasked, by process of elimination, with developing
 exe.dev’s marketing strategy.
 
 In one very important sense, marketing exe.dev is easy. I am proud of
-what we have built, so I am happy to talk about it all day, every day,
-to anyone who will do me the kindness of listening. Being happy enough
-with my work to talk about it is rare for me, and usually the biggest hurdle.
+what we have built, so I am happy to talk about it to anyone who will
+do me the kindness of listening.
+Being happy enough with my work to talk about it is rare for me, and
+usually the biggest hurdle.
 
 In another sense, it is the worst time to talk about anything.
 The over-the-top marketing around AI is tiring.
 Yes, the technical possibilities created by LLMs are wondrous.
 I have not been this excited about computers since I got a modem!
-Yet for every real advance, for every useful product or service, the
-noise is deafening.
+Yet the noise is deafening.
 
-When SNR is so low, there is only one effective marketing strategy: 
-Show, don’t tell.
+With general SNR so low, the only marketing strategy that makes sense
+to me is: Show, don’t tell.
 
 It turns out we are already doing this, to an extent.
 We built a landing page back in December that was described by the top
