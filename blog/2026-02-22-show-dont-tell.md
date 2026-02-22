@@ -1,9 +1,9 @@
 ---
-title: Show, don't tell
+title: Show, don’t tell
 description: On the perils of marketing, and writing private apps from your phone.
 author: David Crawshaw
 date: 2026-02-22
-published: false
+published: true
 ---
 
 I have been tasked, by process of elimination, with developing
@@ -254,6 +254,11 @@ Every hour when the namespace starts changing its location,
 I can still access the web server.
 In fact I wrote a few more prompts to add nice status updates
 about the background work to the UI.
+
+The result of all of this is we are still investigating and trialing
+vendor products for our global network frontend, and studying how
+these products handle changing network routes.
+We hope to launch something soon.
 
 # A note on the future of engineering
 
