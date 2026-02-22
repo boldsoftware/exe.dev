@@ -7,7 +7,6 @@
 - never inject a long sleep into production or into tests. spin on completion instead, testing the condition at the longest, every 100 milliseconds.
 - before fixing a bug, write a complete test that fails, then fix the bug (and thus the test).
 - if you have a failing test sometimes, try something like `-count=1000 -failfast -run=ThatSpecificTest`.
-- when instructed to do an item from the TODO list, on completion remove the item from the TODO list and make a git commit of everything
 - this is a production service; do not leave comments about "for production, do this..."; finish the job
 - do not overly worry about compatibility; do not create shims to handle compatibility
 - NEVER create defaults for things that are required. If data is missing, either fix the missing data or fail with a clear error explaining what's wrong
