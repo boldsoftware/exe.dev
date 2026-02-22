@@ -592,6 +592,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveStaticFile(w, r, "jobs.html")
 	case "/presskit":
 		s.serveStaticFile(w, r, "presskit.html")
+	case "/security":
+		s.serveStaticFile(w, r, "security.html")
 	case "/shelley":
 		s.serveStaticFile(w, r, "shelley.html")
 	case "/verify-email":
