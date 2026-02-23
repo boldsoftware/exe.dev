@@ -34,6 +34,7 @@ func Serve(w http.ResponseWriter, r *http.Request, lg *slog.Logger, filename str
 	}
 	defer f.Close()
 
+	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeContent(w, r, filename, buildTime(), f.(io.ReadSeeker))
 }
 
