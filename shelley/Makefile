@@ -1,6 +1,6 @@
 # Shelley Makefile
 
-.PHONY: build build-linux-aarch64 build-linux-x86 test test-go test-e2e ui serve clean help templates
+.PHONY: build build-linux-aarch64 build-linux-x86 test test-go test-e2e ui serve clean help templates demo
 
 # Default target
 all: build
@@ -86,6 +86,10 @@ clean:
 	rm -f *.db
 	rm -f templates/*.tar.gz
 
+# Build and (re)start the demo server
+demo:
+	@./demo.py
+
 # Show help
 help:
 	@echo "Shelley Build Commands:"
@@ -103,5 +107,6 @@ help:
 	@echo "  serve         Start Shelley server"
 	@echo "  serve-test    Start Shelley with predictable model"
 	@echo "  clean         Clean build artifacts"
+	@echo "  demo          Build and (re)start the demo server"
 	@echo "  help          Show this help"
 
