@@ -678,6 +678,7 @@ function ChatInterface({
   const lastSequenceIdRef = useRef<number>(-1);
   const hasConnectedRef = useRef(false);
   const userScrolledRef = useRef(false);
+  const highlightTimeoutRef = useRef<number | null>(null);
 
   // Navigate to next/previous user message when trigger changes
   useEffect(() => {
@@ -715,7 +716,39 @@ function ChatInterface({
     }
 
     targetIdx = Math.max(0, Math.min(targetIdx, userMessageEls.length - 1));
-    userMessageEls[targetIdx].scrollIntoView({ behavior: "smooth", block: "start" });
+    const targetEl = userMessageEls[targetIdx] as HTMLElement;
+    targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    // Clear any existing highlight timeout
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+      highlightTimeoutRef.current = null;
+    }
+
+    // Add highlight to the navigated message
+    // Remove and re-add the class to restart animation if already highlighted
+    targetEl.classList.remove("message-highlight");
+    void targetEl.offsetWidth; // Force reflow to restart animation
+    targetEl.classList.add("message-highlight");
+
+    const removeHighlight = () => {
+      targetEl.classList.remove("message-highlight");
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = null;
+      }
+    };
+    targetEl.addEventListener("animationend", removeHighlight, { once: true });
+    // Fallback cleanup in case animationend doesn't fire
+    highlightTimeoutRef.current = setTimeout(removeHighlight, 2000) as unknown as number;
+
+    // Cleanup on unmount or next navigation
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = null;
+      }
+    };
   }, [navigateUserMessageTrigger]);
 
   // Load messages and set up streaming
