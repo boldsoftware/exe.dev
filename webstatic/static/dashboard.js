@@ -680,31 +680,50 @@ const openSetPublicModal = (boxName) => CommandModal.setPublic(boxName);
 const openSetPrivateModal = (boxName) => CommandModal.setPrivate(boxName);
 const openSetPortModal = (boxName) => CommandModal.setPort(boxName);
 
-// VSCode modal functionality
-let vscodeBaseURL = '';
+// Editor modal functionality
+let editorConnStr = '';
 
-function openVSCodeModal(url) {
-    // Extract the base URL (everything before the path after ssh-remote+connection/)
+const editors = {
+    vscode: {
+        name: 'VS Code',
+        buildURL: (connStr, path) => `vscode://vscode-remote/ssh-remote+${connStr}${path}?windowId=_blank`,
+    },
+    cursor: {
+        name: 'Cursor',
+        buildURL: (connStr, path) => `cursor://vscode-remote/ssh-remote+${connStr}${path}?windowId=_blank`,
+    },
+    zed: {
+        name: 'Zed',
+        buildURL: (connStr, path) => `zed://ssh/${connStr}${path}`,
+    },
+};
+
+function getPreferredEditor() {
+    return localStorage.getItem('preferred-editor') || 'vscode';
+}
+
+function setPreferredEditor(editor) {
+    localStorage.setItem('preferred-editor', editor);
+}
+
+function openEditorModal(url) {
+    // Extract the connection string from the VSCode URL
     // URL format: vscode://vscode-remote/ssh-remote+boxname@host:port/path?windowId=_blank
-    const match = url.match(/^(vscode:\/\/vscode-remote\/ssh-remote\+[^/]+)/);
+    const match = url.match(/^vscode:\/\/vscode-remote\/ssh-remote\+([^/]+)/);
     if (match) {
-        vscodeBaseURL = match[1];
-    } else {
-        vscodeBaseURL = url.replace(/\/[^?]+/, '');
+        editorConnStr = match[1];
     }
 
-    // Reset working directory to default
     const workdirInput = document.getElementById('vscode-workdir');
     workdirInput.value = '/home/exedev';
 
-    updateVSCodeURL();
+    selectEditor(getPreferredEditor());
 
     const modal = document.getElementById('vscode-modal');
     modal.classList.add('show');
 }
 
-function closeVSCodeModal(event) {
-    // If called with event, only close if clicking overlay (not content)
+function closeEditorModal(event) {
     if (event && event.target !== event.currentTarget) {
         return;
     }
@@ -712,15 +731,26 @@ function closeVSCodeModal(event) {
     modal.classList.remove('show');
 }
 
-function updateVSCodeURL() {
+let selectedEditor = 'vscode';
+
+function selectEditor(key) {
+    selectedEditor = key;
+    setPreferredEditor(key);
+    document.querySelectorAll('.editor-picker-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.editor === key);
+    });
+    updateEditorURL();
+}
+
+function updateEditorURL() {
     const workdir = document.getElementById('vscode-workdir').value || '/home/exedev';
-    const fullURL = vscodeBaseURL + workdir + '?windowId=_blank';
+    const fullURL = editors[selectedEditor].buildURL(editorConnStr, workdir);
 
     document.getElementById('vscode-url-box').textContent = fullURL;
     document.getElementById('vscode-open-btn').href = fullURL;
 }
 
-function copyVSCodeURL() {
+function copyEditorURL() {
     const url = document.getElementById('vscode-url-box').textContent;
     const btn = document.getElementById('vscode-copy-btn');
 
@@ -738,7 +768,7 @@ function copyVSCodeURL() {
 // Close modal on Escape key
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-        closeVSCodeModal();
+        closeEditorModal();
     }
 });
 

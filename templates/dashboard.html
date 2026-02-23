@@ -903,6 +903,46 @@
             color: #333;
         }
 
+        .editor-picker {
+            display: flex;
+            gap: 0;
+            margin-bottom: 12px;
+        }
+
+        .editor-picker-btn {
+            flex: 1;
+            padding: 8px 12px;
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            background: #fff;
+            color: #666;
+            border: 1px solid #e0e0e0;
+            transition: all 0.15s ease;
+        }
+
+        .editor-picker-btn:first-child {
+            border-radius: 4px 0 0 4px;
+        }
+
+        .editor-picker-btn:last-child {
+            border-radius: 0 4px 4px 0;
+        }
+
+        .editor-picker-btn:not(:first-child) {
+            border-left: none;
+        }
+
+        .editor-picker-btn.active {
+            background: #000;
+            color: #fff;
+            border-color: #000;
+        }
+
+        .editor-picker-btn:not(.active):hover {
+            background: #f5f5f5;
+        }
+
         .vscode-modal-actions {
             display: flex;
             gap: 8px;
@@ -1261,6 +1301,22 @@
                 color: #f3f4f6;
             }
 
+            .editor-picker-btn {
+                background: #2a2a2a;
+                color: #9ca3af;
+                border-color: #333;
+            }
+
+            .editor-picker-btn.active {
+                background: #f3f4f6;
+                color: #111;
+                border-color: #f3f4f6;
+            }
+
+            .editor-picker-btn:not(.active):hover {
+                background: #333;
+            }
+
             .vscode-modal-btn-primary {
                 background: #f3f4f6;
                 color: #111;
@@ -1473,12 +1529,12 @@
                             </svg>
                             Open Terminal
                         </a>
-                        <button class="action-btn-expanded" onclick="openVSCodeModal('{{.VSCodeURL}}')">
+                        <button class="action-btn-expanded" onclick="openEditorModal('{{.VSCodeURL}}')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M16 2l6 4v12l-6 4-10-7.5V9.5z"></path>
                                 <path d="M6 9.5L16 2v20L6 14.5"></path>
                             </svg>
-                            Open in VSCode
+                            Open in Editor
                         </button>
                         {{if .ShelleyURL}}
                         <a href="{{.ShelleyURL}}" class="action-btn-expanded" target="_blank">
@@ -1645,15 +1701,21 @@
 
     <div id="toast" class="toast"></div>
 
-    <div id="vscode-modal" class="vscode-modal-overlay" onclick="closeVSCodeModal(event)">
+    <div id="vscode-modal" class="vscode-modal-overlay" onclick="closeEditorModal(event)">
         <div class="vscode-modal-content" onclick="event.stopPropagation()">
             <div class="vscode-modal-header">
-                <span class="vscode-modal-title">Open in VSCode</span>
-                <button class="vscode-modal-close" onclick="closeVSCodeModal()">&times;</button>
+                <span class="vscode-modal-title">Open in Editor</span>
+                <button class="vscode-modal-close" onclick="closeEditorModal()">&times;</button>
             </div>
             <div class="vscode-modal-body">
+                <label class="vscode-modal-label">Editor</label>
+                <div class="editor-picker">
+                    <button class="editor-picker-btn active" data-editor="vscode" onclick="selectEditor('vscode')">VS Code</button>
+                    <button class="editor-picker-btn" data-editor="cursor" onclick="selectEditor('cursor')">Cursor</button>
+                    <button class="editor-picker-btn" data-editor="zed" onclick="selectEditor('zed')">Zed</button>
+                </div>
                 <label for="vscode-workdir" class="vscode-modal-label">Working Directory</label>
-                <input type="text" id="vscode-workdir" class="vscode-modal-input" value="/home/exedev" oninput="updateVSCodeURL()">
+                <input type="text" id="vscode-workdir" class="vscode-modal-input" value="/home/exedev" oninput="updateEditorURL()">
                 <div id="vscode-url-box" class="vscode-modal-url-box"></div>
                 <div class="vscode-modal-actions">
                     <a id="vscode-open-btn" href="#" class="vscode-modal-btn vscode-modal-btn-primary">
@@ -1662,9 +1724,9 @@
                             <polyline points="15 3 21 3 21 9"></polyline>
                             <line x1="10" y1="14" x2="21" y2="3"></line>
                         </svg>
-                        Open VSCode
+                        Open Editor
                     </a>
-                    <button id="vscode-copy-btn" class="vscode-modal-btn vscode-modal-btn-secondary" onclick="copyVSCodeURL()">
+                    <button id="vscode-copy-btn" class="vscode-modal-btn vscode-modal-btn-secondary" onclick="copyEditorURL()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
