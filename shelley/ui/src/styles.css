@@ -2836,7 +2836,7 @@ svg {
 /* Directory Picker Modal */
 .directory-picker-modal {
   max-width: 32rem;
-  max-height: 70vh;
+  height: 70vh;
   display: flex;
   flex-direction: column;
 }
@@ -2950,8 +2950,9 @@ svg {
 .directory-picker-loading {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
-  padding: 1rem;
+  flex: 1;
   color: var(--text-secondary);
   font-size: 0.875rem;
 }
@@ -2961,8 +2962,7 @@ svg {
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 0.25rem;
-  min-height: 200px;
-  max-height: 300px;
+  min-height: 0;
 }
 
 .directory-picker-entry {
