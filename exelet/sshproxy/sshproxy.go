@@ -94,6 +94,29 @@ func (p *SSHProxy) Start() error {
 	}
 
 	p.PID = cmd.Process.Pid
+
+	// Verify socat actually bound to the port. Without this check, socat
+	// can fail to bind (e.g. EADDRINUSE from ephemeral port collision) and
+	// exit immediately, while we incorrectly report success.
+	const (
+		pollInterval = 20 * time.Millisecond
+		pollTimeout  = 500 * time.Millisecond
+	)
+	deadline := time.Now().Add(pollTimeout)
+	listening := false
+	for time.Now().Before(deadline) {
+		if pid, err := findListeningPID(p.Port); err == nil && pid > 0 {
+			listening = true
+			break
+		}
+		time.Sleep(pollInterval)
+	}
+	if !listening {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		return fmt.Errorf("socat failed to listen on port %d within %v", p.Port, pollTimeout)
+	}
+
 	p.log.Info("ssh proxy started", "instance", p.InstanceID, "port", p.Port, "target", targetAddr, "pid", p.PID)
 
 	// Release the process so it runs independently

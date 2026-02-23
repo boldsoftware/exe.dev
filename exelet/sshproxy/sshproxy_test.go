@@ -25,7 +25,7 @@ func TestStartAdoptsExistingProcess(t *testing.T) {
 	}))
 
 	instanceDir := t.TempDir()
-	port := 23456 // Use a high port unlikely to be in use
+	port := 29876 // Below Linux ephemeral range (32768-60999)
 	targetIP := "127.0.0.1"
 
 	// Start socat manually (simulating a socat that survived exelet restart)
@@ -40,7 +40,13 @@ func TestStartAdoptsExistingProcess(t *testing.T) {
 	defer cmd.Process.Kill()
 
 	// Wait for socat to start listening
-	time.Sleep(100 * time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if pid, err := findListeningPID(port); err == nil && pid > 0 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 
 	// Now create SSHProxy and call Start() - it should adopt, not create duplicate
 	proxy := NewSSHProxy("test-instance", port, targetIP, instanceDir, "", log)

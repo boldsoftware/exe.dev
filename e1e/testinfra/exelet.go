@@ -604,8 +604,8 @@ func computeExeletResources(testRunID string) (*exeletResources, error) {
 		bridgeName:   "br-exe-" + testRunID,
 		networkCIDR:  fmt.Sprintf("100.%d.%d.0/24", thirdOctet, fourthOctet),
 		zfsDataset:   "tank/e1e-" + testRunID,
-		proxyPortMin: 30000 + (int(testRunIDNum%10) * 1000),
-		proxyPortMax: 30000 + (int(testRunIDNum%10) * 1000) + 1000,
+		proxyPortMin: 20000 + (int(testRunIDNum%10) * 1000),
+		proxyPortMax: 20000 + (int(testRunIDNum%10) * 1000) + 1000,
 		dataDir:      "/d/e-" + testRunID,
 		coverDir:     "/tmp/e1e-exelet-cov-" + testRunID,
 	}, nil
