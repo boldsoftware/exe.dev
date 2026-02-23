@@ -75,8 +75,9 @@ button:hover { background: #333; }
 
 /* Invite rows */
 .invite-row { padding: 10px 12px; background: #0a0a0a; border: 1px solid #222; border-radius: 4px; margin-bottom: 8px; }
-.invite-link { margin-bottom: 6px; }
+.invite-link { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .invite-link code { font-size: 0.8rem; color: #a5b4fc; word-break: break-all; }
+.btn-copy { flex-shrink: 0; padding: 4px 10px; font-size: 0.75rem; }
 .invite-meta { display: flex; justify-content: space-between; align-items: center; }
 .invite-used { color: #555; font-size: 0.85rem; }
 
