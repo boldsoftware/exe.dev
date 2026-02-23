@@ -629,6 +629,17 @@ func parseSSEStream(r io.Reader) (*response, error) {
 		return nil, fmt.Errorf("no message_start event in stream")
 	}
 
+	// Ensure tool_use blocks always have a non-nil ToolInput.
+	// When a tool has empty input {}, the stream sends input_json_delta
+	// with partial_json:"", and append(nil, []byte("")...) stays nil.
+	// Anthropic requires the "input" field on tool_use blocks, and
+	// json:"input,omitempty" omits nil, causing a 400 error.
+	for i := range contents {
+		if contents[i].Type == "tool_use" && contents[i].ToolInput == nil {
+			contents[i].ToolInput = json.RawMessage("{}")
+		}
+	}
+
 	resp.Content = contents
 	return resp, nil
 }

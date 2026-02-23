@@ -1154,6 +1154,43 @@ func TestParseSSEStreamToolUse(t *testing.T) {
 	}
 }
 
+func TestParseSSEStreamToolUseEmptyInput(t *testing.T) {
+	// Reproduces a bug where tool_use with empty input {} gets ToolInput=nil
+	// after SSE parsing. Anthropic sends input_json_delta with partial_json:""
+	// for tools with no parameters, and append(nil, []byte("")...) stays nil.
+	// This causes the "input" field to be omitted via omitempty, leading to
+	// a 400 "tool_use.input: Field required" error on the next API call.
+	var b strings.Builder
+	b.WriteString("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_empty\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":50,\"output_tokens\":0}}}\n\n")
+	b.WriteString(`event: content_block_start` + "\n" + `data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_empty","name":"browser_take_screenshot","input":{}}}` + "\n\n")
+	b.WriteString(`event: content_block_delta` + "\n" + `data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":""}}` + "\n\n")
+	b.WriteString("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+	b.WriteString("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":10}}\n\n")
+	b.WriteString("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+
+	resp, err := parseSSEStream(strings.NewReader(b.String()))
+	if err != nil {
+		t.Fatalf("parseSSEStream() error = %v", err)
+	}
+	if len(resp.Content) != 1 {
+		t.Fatalf("Content length = %d, want 1", len(resp.Content))
+	}
+	if resp.Content[0].Type != "tool_use" {
+		t.Errorf("Content[0].Type = %q, want %q", resp.Content[0].Type, "tool_use")
+	}
+	if resp.Content[0].ToolInput == nil {
+		t.Fatal("Content[0].ToolInput is nil, want non-nil (at least {})")
+	}
+	// Verify it serializes correctly with the "input" field present
+	out, err := json.Marshal(resp.Content[0])
+	if err != nil {
+		t.Fatalf("json.Marshal error: %v", err)
+	}
+	if !strings.Contains(string(out), `"input"`) {
+		t.Errorf("serialized tool_use missing 'input' field: %s", out)
+	}
+}
+
 func TestParseSSEStreamThinking(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_think\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":20,\"output_tokens\":0}}}\n\n")
