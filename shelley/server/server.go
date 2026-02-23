@@ -950,6 +950,43 @@ func (s *Server) notifySubscribersNewMessage(ctx context.Context, conversationID
 	})
 }
 
+// broadcastMessageUpdate sends an updated existing message to all subscribers via Broadcast.
+// Unlike notifySubscribersNewMessage (which uses Publish with a sequence ID), this uses
+// Broadcast so subscribers receive the update even if they already have the original message.
+// Use this for in-place updates to existing messages (e.g., distill status changes).
+func (s *Server) broadcastMessageUpdate(ctx context.Context, conversationID string, updatedMsg *generated.Message) {
+	s.mu.Lock()
+	manager, exists := s.activeConversations[conversationID]
+	s.mu.Unlock()
+
+	if !exists {
+		return
+	}
+
+	var conversation generated.Conversation
+	err := s.db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		conversation, err = q.GetConversation(ctx, conversationID)
+		return err
+	})
+	if err != nil {
+		s.logger.Error("Failed to get conversation data for broadcast", "conversationID", conversationID, "error", err)
+		return
+	}
+
+	apiMessages := toAPIMessages([]generated.Message{*updatedMsg})
+	streamData := StreamResponse{
+		Messages:     apiMessages,
+		Conversation: conversation,
+	}
+	manager.subpub.Broadcast(streamData)
+
+	s.publishConversationListUpdate(ConversationListUpdate{
+		Type:         "update",
+		Conversation: &conversation,
+	})
+}
+
 // publishConversationListUpdate broadcasts a conversation list update to ALL active
 // conversation streams. This allows clients to receive updates about other conversations
 // while they're subscribed to their current conversation's stream.

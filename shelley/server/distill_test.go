@@ -558,3 +558,76 @@ func TestDistillContentSentToLLM_WithEarlySSE(t *testing.T) {
 
 	t.Log("SUCCESS: distilled content IS being sent to the LLM even with early SSE")
 }
+
+// TestDistillStatusUpdateReachesSSESubscriber verifies that when an SSE subscriber
+// has already received the "in_progress" system message, the subsequent "complete"
+// status update is delivered via broadcast (not publish), so the subscriber sees it.
+// This is a regression test for https://github.com/boldsoftware/shelley/issues/117
+// where the spinner would spin forever because Publish skipped subscribers that
+// already had the message's sequence ID.
+func TestDistillStatusUpdateReachesSSESubscriber(t *testing.T) {
+	h := NewTestHarness(t)
+
+	// Create a source conversation with some messages
+	h.NewConversation("echo hello world", "")
+	h.WaitResponse()
+	sourceConvID := h.convID
+
+	// Distill the source conversation
+	reqBody := ContinueConversationRequest{
+		SourceConversationID: sourceConvID,
+		Model:                "predictable",
+	}
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest("POST", "/api/conversations/distill", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.server.handleDistillConversation(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var distillResp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &distillResp); err != nil {
+		t.Fatalf("failed to parse distill response: %v", err)
+	}
+	newConvID := distillResp["conversation_id"].(string)
+
+	// Open an SSE stream to the new conversation (like the UI does).
+	// This will receive the initial "in_progress" system message.
+	sseRecorder := newFlusherRecorder()
+	sseCtx, sseCancel := context.WithCancel(context.Background())
+	defer sseCancel()
+	sseReq := httptest.NewRequest("GET", "/api/conversations/"+newConvID+"/stream", nil)
+	sseReq = sseReq.WithContext(sseCtx)
+	go func() {
+		h.server.handleStreamConversation(sseRecorder, sseReq, newConvID)
+	}()
+
+	// Wait for the initial SSE message (should contain "in_progress")
+	select {
+	case <-sseRecorder.flushed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for initial SSE message")
+	}
+
+	// Now wait for the distillation to complete by watching the SSE stream
+	// for a message containing "complete" status
+	var sawComplete bool
+	for i := 0; i < 200; i++ {
+		body := sseRecorder.getString()
+		if strings.Contains(body, `distill_status\":\"complete`) {
+			sawComplete = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if !sawComplete {
+		// Check what was actually in the SSE stream
+		t.Fatalf("SSE subscriber never received the 'complete' status update.\n"+
+			"This is the distill spinner bug: the subscriber already had the message's sequence_id,\n"+
+			"so Publish skipped it. The fix is to use Broadcast for in-place message updates.\n"+
+			"SSE body: %s", sseRecorder.getString())
+	}
+}
