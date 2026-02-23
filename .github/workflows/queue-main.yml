@@ -199,10 +199,11 @@ jobs:
 
               while IFS= read -r file; do
                   case "$file" in
-                      exeuntu/*) has_exeuntu=true ;;
-                      shelley/*) has_shelley=true ;;
-                      oss/*)     has_oss=true ;;
-                      *)         has_other=true ;;
+                      exeuntu/*)                          has_exeuntu=true ;;
+                      shelley/*)                          has_shelley=true ;;
+                      .github/workflows/shelley-tests.yml) has_shelley=true ;;
+                      oss/*)                              has_oss=true ;;
+                      *)                                  has_other=true ;;
                   esac
               done <<< "$files"
 
@@ -312,7 +313,7 @@ jobs:
           EXE_CHANGED=false
 
           while IFS= read -r file; do
-            if [[ "$file" == shelley/* ]]; then
+            if [[ "$file" == shelley/* || "$file" == .github/workflows/shelley-tests.yml ]]; then
               SHELLEY_CHANGED=true
             else
               EXE_CHANGED=true
