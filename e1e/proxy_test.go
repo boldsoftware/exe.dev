@@ -1782,3 +1782,157 @@ chmod +x /home/exedev/cgi-bin/headers
 
 	cleanupBox(t, keyFile, box)
 }
+
+// TestProxyConcurrentRequests verifies that the HTTP proxy can handle
+// a burst of concurrent requests without returning errors.
+// This reproduces the issue where tools like Vite's HMR that make many
+// simultaneous requests would see failures (502s, connection resets)
+// because each proxy request created a fresh SSH transport.
+func TestProxyConcurrentRequests(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
+	pty.disconnect()
+	waitForSSH(t, box, keyFile)
+
+	// Create static files to serve: a small index and a larger JS bundle.
+	setupCmd := boxSSHShell(t, box, keyFile, `
+set -e
+cd /home/exedev
+echo hello-concurrent > index.html
+# Create ~100KB file to simulate a JS bundle
+dd if=/dev/urandom bs=1024 count=100 2>/dev/null | base64 > bundle.js
+# Create a bunch of small files to simulate module requests
+for i in $(seq 1 20); do
+  echo "module $i content" > "mod${i}.js"
+done
+`)
+	setupCmd.Stdout = t.Output()
+	setupCmd.Stderr = t.Output()
+	if err := setupCmd.Run(); err != nil {
+		t.Fatalf("failed to create test files: %v", err)
+	}
+
+	// Start a concurrent-capable HTTP server.
+	// Use python3's http.server which handles concurrent requests via threading.
+	httpdCmd := boxSSHCommand(t, box, keyFile, "python3", "-m", "http.server", "8080", "--directory", "/home/exedev")
+	if err := httpdCmd.Start(); err != nil {
+		t.Fatalf("failed to start python http.server: %v", err)
+	}
+	t.Cleanup(func() {
+		if httpdCmd.Process != nil {
+			httpdCmd.Process.Kill()
+			httpdCmd.Process.Wait()
+		}
+	})
+	waitCmd := boxSSHCommand(t, box, keyFile, "timeout", "20", "sh", "-c",
+		"'while ! curl -s http://localhost:8080/; do sleep 0.1; done'")
+	if err := waitCmd.Run(); err != nil {
+		t.Fatalf("python http.server on port 8080 not ready: %v", err)
+	}
+
+	// Configure the proxy route as public so we don't need auth cookies.
+	configureProxyRoute(t, keyFile, box, 8080, "public")
+
+	httpPort := Env.servers.Exed.HTTPPort
+
+	// First, verify a single request works.
+	resp, err := doProxyGet(t, box, httpPort, "/")
+	if err != nil {
+		t.Fatalf("single request failed: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("single request returned status %d, body: %s", resp.StatusCode, body)
+	}
+
+	// Simulate a Vite-like page load: many concurrent requests for
+	// different resources (JS bundles, modules, etc.).
+	paths := []string{"/", "/bundle.js"}
+	for i := 1; i <= 20; i++ {
+		paths = append(paths, fmt.Sprintf("/mod%d.js", i))
+	}
+
+	// Run multiple rounds to stress the proxy.
+	// Each round fires all paths concurrently (simulating a page load).
+	const rounds = 20
+	totalRequests := rounds * len(paths)
+
+	type result struct {
+		status int
+		err    error
+	}
+
+	results := make(chan result, totalRequests)
+
+	for round := range rounds {
+		// Fire all paths for this round concurrently.
+		for _, path := range paths {
+			go func(round int, path string) {
+				resp, err := doProxyGet(t, box, httpPort, path)
+				if err != nil {
+					results <- result{err: err}
+					return
+				}
+				io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+				results <- result{status: resp.StatusCode}
+			}(round, path)
+		}
+	}
+
+	var (
+		successes  int
+		failures   int
+		errCounts  = make(map[string]int)
+		statCounts = make(map[int]int)
+	)
+	for range totalRequests {
+		r := <-results
+		if r.err != nil {
+			failures++
+			errCounts[r.err.Error()]++
+		} else if r.status == 200 {
+			successes++
+			statCounts[r.status]++
+		} else {
+			failures++
+			statCounts[r.status]++
+		}
+	}
+
+	t.Logf("Results: %d/%d succeeded, %d failed", successes, totalRequests, failures)
+	for status, count := range statCounts {
+		if status != 200 {
+			t.Logf("  HTTP %d: %d requests", status, count)
+		}
+	}
+	for errMsg, count := range errCounts {
+		t.Logf("  Error: %s (%d requests)", errMsg, count)
+	}
+
+	// We expect ALL requests to succeed. Any failure indicates
+	// the proxy can't handle concurrent load.
+	if failures > 0 {
+		t.Errorf("%d/%d requests failed under concurrent load", failures, totalRequests)
+	}
+
+	cleanupBox(t, keyFile, box)
+}
+
+// doProxyGet makes a GET request through the proxy to the given box.
+func doProxyGet(t *testing.T, boxName string, httpPort int, path string) (*http.Response, error) {
+	t.Helper()
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	req := makeProxyRequestWithPath(t, boxName, httpPort, path)
+	return client.Do(req)
+}
