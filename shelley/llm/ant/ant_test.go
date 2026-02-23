@@ -808,6 +808,21 @@ func TestFromLLMContent(t *testing.T) {
 			},
 		},
 		{
+			name: "tool use with nil input gets empty object",
+			c: llm.Content{
+				Type:      llm.ContentTypeToolUse,
+				ID:        "tool-id",
+				ToolName:  "browser_take_screenshot",
+				ToolInput: nil,
+			},
+			want: content{
+				Type:      "tool_use",
+				ID:        "tool-id",
+				ToolName:  "browser_take_screenshot",
+				ToolInput: json.RawMessage("{}"),
+			},
+		},
+		{
 			name: "tool result content",
 			c: llm.Content{
 				Type:      llm.ContentTypeToolResult,

@@ -348,6 +348,9 @@ func fromLLMContent(c llm.Content) content {
 		d.ID = c.ID
 		d.ToolName = c.ToolName
 		d.ToolInput = c.ToolInput
+		if d.ToolInput == nil {
+			d.ToolInput = json.RawMessage("{}")
+		}
 	case llm.ContentTypeToolResult:
 		d.ToolUseID = c.ToolUseID
 		d.ToolError = c.ToolError
