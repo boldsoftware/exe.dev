@@ -48,6 +48,7 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ExedHTTPSPort: wp.exedHTTPSPort,
 		PiperdPort:    0,
 		SSHPool:       wp.proxy.sshPool,
+		Transports:    wp.transportCache,
 		HTTPMetrics:   wp.httpMetrics,
 		Templates:     wp.templates,
 		LobbyIP:       wp.lobbyIP,

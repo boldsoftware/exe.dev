@@ -43,6 +43,8 @@ type WebProxy struct {
 	exedHTTPPort  int
 	exedHTTPSPort int
 
+	transportCache *exeweb.TransportCache
+
 	httpLn     *listener
 	httpServer *http.Server
 
@@ -454,6 +456,10 @@ func (wp *WebProxy) stop(ctx context.Context) {
 		if err := wp.httpsServer.Close(); err != nil {
 			wp.lg().ErrorContext(ctx, "HTTPS server close error", "error", err)
 		}
+	}
+
+	if wp.transportCache != nil {
+		wp.transportCache.Close()
 	}
 
 	// TODO: close down the proxy ports?

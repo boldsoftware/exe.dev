@@ -112,14 +112,15 @@ func NewProxy(cfg *ProxyConfig) (*Proxy, error) {
 		lg:         lg,
 		sshPool:    sshPool,
 		web: WebProxy{
-			env:           cfg.Env,
-			exedHTTPPort:  cfg.ExedHTTPPort,
-			exedHTTPSPort: cfg.ExedHTTPSPort,
-			httpLn:        httpLn,
-			httpsLn:       httpsLn,
-			httpMetrics:   httpMetrics,
-			netHTTPLogger: log.New(httpLogger{cfg.Logger}, "", 0),
-			templates:     tmpls,
+			env:            cfg.Env,
+			exedHTTPPort:   cfg.ExedHTTPPort,
+			exedHTTPSPort:  cfg.ExedHTTPSPort,
+			httpLn:         httpLn,
+			httpsLn:        httpsLn,
+			httpMetrics:    httpMetrics,
+			netHTTPLogger:  log.New(httpLogger{cfg.Logger}, "", 0),
+			templates:      tmpls,
+			transportCache: exeweb.NewTransportCache(5 * time.Minute),
 		},
 	}
 	p.exeproxData = newGRPCExeproxData(grpcClient, lg, &p.boxes, &p.users)

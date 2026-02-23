@@ -250,6 +250,7 @@ func (s *Server) proxyServer() *exeweb.ProxyServer {
 		Env:             &s.env,
 		PiperdPort:      s.piperdPort,
 		SSHPool:         s.sshPool,
+		Transports:      s.transportCache,
 		HTTPMetrics:     s.httpMetrics,
 		Templates:       s.templates,
 		LobbyIP:         s.LobbyIP,

@@ -56,6 +56,7 @@ type ProxyServer struct {
 	Templates      *template.Template
 	LobbyIP        netip.Addr
 	PublicIPs      map[netip.Addr]publicips.PublicIP
+	Transports     *TransportCache
 
 	// For testing:
 	LookupCNAMEFunc func(context.Context, string) (string, error)
@@ -735,7 +736,7 @@ func (ps *ProxyServer) ProxyToContainer(w http.ResponseWriter, r *http.Request, 
 
 // proxyViaSSHPortForward establishes an SSH connection and proxies the HTTP request directly
 func (ps *ProxyServer) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, sshHost string, box *BoxData, sshKey ssh.Signer, targetPort int, authResult *ProxyAuthResult) error {
-	transport := ps.CreateSSHTunnelTransport(sshHost, box, sshKey)
+	transport := ps.getOrCreateTransport(sshHost, box, sshKey)
 
 	// Configure the reverse proxy using NewSingleHostReverseProxy
 	targetURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", targetPort))
@@ -801,6 +802,21 @@ func (ps *ProxyServer) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Req
 	return proxyErr
 }
 
+// getOrCreateTransport returns a cached transport for the given box,
+// creating one if none exists yet.
+func (ps *ProxyServer) getOrCreateTransport(sshHost string, box *BoxData, sshKey ssh.Signer) *http.Transport {
+	key := transportKey{
+		sshHost:   sshHost,
+		sshUser:   box.SSHUser,
+		sshPort:   box.SSHPort,
+		boxName:   box.Name,
+		publicKey: string(sshKey.PublicKey().Marshal()),
+	}
+	return ps.Transports.GetOrCreate(key, func() *http.Transport {
+		return ps.CreateSSHTunnelTransport(sshHost, box, sshKey)
+	})
+}
+
 // CreateSSHTunnelTransport creates an HTTP transport that
 // tunnels through SSH to a container.
 func (ps *ProxyServer) CreateSSHTunnelTransport(sshHost string, box *BoxData, sshKey ssh.Signer) *http.Transport {
@@ -840,6 +856,7 @@ func (ps *ProxyServer) CreateSSHTunnelTransport(sshHost string, box *BoxData, ss
 		},
 		ForceAttemptHTTP2:     false,
 		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100, // all traffic goes to one host (127.0.0.1 inside VM)
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,

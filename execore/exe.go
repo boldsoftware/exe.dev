@@ -308,7 +308,8 @@ type Server struct {
 	exeletClients map[string]*exeletClient // addr -> client
 
 	// SSH connection pooling for HTTP proxying
-	sshPool *sshpool2.Pool
+	sshPool        *sshpool2.Pool
+	transportCache *exeweb.TransportCache
 
 	// In-memory state for active sessions (these don't need persistence)
 	emailVerificationsMu sync.RWMutex
@@ -938,6 +939,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		tagResolver:            tagResolverInstance,
 		exeletClients:          exeletClients,
 		sshPool:                &sshpool2.Pool{TTL: 10 * time.Minute, Metrics: sshpool2.NewMetrics(cfg.MetricsRegistry)},
+		transportCache:         exeweb.NewTransportCache(5 * time.Minute),
 		emailVerifications:     make(map[string]*EmailVerification),
 		magicSecrets:           exeweb.NewMagicSecrets(),
 		creationStreams:        make(map[creationStreamKey]*CreationStream),
@@ -2138,7 +2140,8 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 
 		// Drop any pooled SSH connections after deleting so proxy requests fail fast
 		if box.SSHPort != nil {
-			s.sshPool.DropConnectionsTo(exeweb.BoxSSHHost(s.slog(), box.Ctrhost), int(*box.SSHPort))
+			sshHost := exeweb.BoxSSHHost(s.slog(), box.Ctrhost)
+			s.sshPool.DropConnectionsTo(sshHost, int(*box.SSHPort))
 		}
 	}
 
@@ -2521,7 +2524,8 @@ func (s *Server) stopBox(ctx context.Context, box exedb.Box) error {
 	}
 
 	if box.SSHPort != nil {
-		s.sshPool.DropConnectionsTo(exeweb.BoxSSHHost(s.slog(), box.Ctrhost), int(*box.SSHPort))
+		sshHost := exeweb.BoxSSHHost(s.slog(), box.Ctrhost)
+		s.sshPool.DropConnectionsTo(sshHost, int(*box.SSHPort))
 	}
 
 	return s.updateBoxStatus(ctx, box.ID, "stopped")
@@ -3254,6 +3258,7 @@ func (s *Server) Stop() error {
 
 	s.serveWg.Wait()
 
+	s.transportCache.Close()
 	if err := s.sshPool.Close(); err != nil {
 		s.slog().ErrorContext(ctx, "SSH pool close error", "error", err)
 	}
