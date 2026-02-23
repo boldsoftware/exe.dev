@@ -257,7 +257,7 @@ function DistillStatusMessage({ message }: { message: MessageType }) {
       }}
     >
       {isInProgress && (
-        <span>
+        <span data-testid="distill-in-progress">
           <span
             className="spinner spinner-small"
             style={{
@@ -270,9 +270,15 @@ function DistillStatusMessage({ message }: { message: MessageType }) {
         </span>
       )}
       {status === "complete" && (
-        <span>Distilled from{sourceSlug ? ` "${sourceSlug}"` : " prior conversation"}</span>
+        <span data-testid="distill-complete">
+          Distilled from{sourceSlug ? ` "${sourceSlug}"` : " prior conversation"}
+        </span>
       )}
-      {isError && <span>Distillation failed{sourceSlug ? ` for "${sourceSlug}"` : ""}</span>}
+      {isError && (
+        <span data-testid="distill-error">
+          Distillation failed{sourceSlug ? ` for "${sourceSlug}"` : ""}
+        </span>
+      )}
     </div>
   );
 }
