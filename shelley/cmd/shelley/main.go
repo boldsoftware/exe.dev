@@ -84,6 +84,7 @@ func main() {
 func runServe(global GlobalConfig, args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	port := fs.String("port", "9000", "Port to listen on")
+	portFile := fs.String("port-file", "", "Write the actual listening port to this file (useful with --port 0)")
 	systemdActivation := fs.Bool("systemd-activation", false, "Use systemd socket activation (listen on fd from systemd)")
 	requireHeader := fs.String("require-header", "", "Require this header on all API requests (e.g., X-Exedev-Userid)")
 	socketPath := fs.String("socket", client.DefaultSocketPath(), "Path to Unix socket for local CLI client access (set to 'none' to disable)")
@@ -137,6 +138,13 @@ func runServe(global GlobalConfig, args []string) {
 		if listenerErr != nil {
 			logger.Error("Failed to create listener", "error", listenerErr)
 			os.Exit(1)
+		}
+		if *portFile != "" {
+			actualPort := listener.Addr().(*net.TCPAddr).Port
+			if writeErr := os.WriteFile(*portFile, []byte(fmt.Sprintf("%d\n", actualPort)), 0o644); writeErr != nil {
+				logger.Error("Failed to write port file", "path", *portFile, "error", writeErr)
+				os.Exit(1)
+			}
 		}
 		err = svr.StartWithListeners(listener, effectiveSocket)
 	}

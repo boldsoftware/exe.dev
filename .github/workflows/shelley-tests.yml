@@ -159,6 +159,9 @@ jobs:
       - name: Build template tarballs
         run: make templates
 
+      - name: Build shelley binary
+        run: go build -o bin/shelley ./cmd/shelley
+
       - name: Install Playwright browsers
         run: |
           cd ui

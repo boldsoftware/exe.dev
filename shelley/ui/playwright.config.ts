@@ -1,10 +1,18 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
+ * The test server is managed by globalSetup (scripts/global-setup.ts).
+ * It starts shelley with --port 0 and exports the actual URL via
+ * PLAYWRIGHT_TEST_BASE_URL, which Playwright's baseURL fixture reads
+ * automatically. This eliminates hardcoded ports and port conflicts.
+ *
+ * To point at an already-running server, set TEST_SERVER_URL.
+ *
  * @see https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: './scripts/global-setup.ts',
   /* Run tests in files in parallel */
   fullyParallel: false, // Keep simple for now
   /* Fail the build on CI if you accidentally left test.only in the source code. */
@@ -17,8 +25,7 @@ export default defineConfig({
   reporter: process.env.CI ? [['html', { open: 'never' }], ['list']] : 'list',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: process.env.TEST_SERVER_URL || 'http://localhost:9001',
+    /* baseURL is set automatically via PLAYWRIGHT_TEST_BASE_URL from global-setup */
     /* Collect trace on all tests, keep only on failure */
     trace: 'retain-on-failure',
     /* Take a screenshot after every test */
@@ -34,12 +41,4 @@ export default defineConfig({
       use: { ...devices['Pixel 5'] },
     },
   ],
-
-  /* Run our test server with isolated database */
-  webServer: {
-    command: 'node scripts/test-server.cjs',
-    url: process.env.TEST_SERVER_URL || 'http://localhost:9001',
-    reuseExistingServer: !process.env.CI, // Allow reuse in dev, always fresh in CI
-    timeout: 60000,
-  },
 });
