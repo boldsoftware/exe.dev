@@ -623,6 +623,22 @@ function TerminalInstanceWithRegistry({
     });
     xtermRef.current = xterm;
 
+    // Ensure control key combinations (like Ctrl-B for tmux) are passed
+    // through to the terminal and not intercepted by the browser.
+    xterm.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+      // Allow Ctrl+Shift+C / Ctrl+Shift+V for copy/paste
+      if (e.ctrlKey && e.shiftKey && (e.key === "C" || e.key === "V")) {
+        return false; // Let browser handle it
+      }
+      // For all Ctrl+<key> combos (e.g. Ctrl-B for tmux prefix),
+      // prevent the browser default and let xterm handle it.
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.type === "keydown") {
+        e.preventDefault();
+        return true; // Let xterm process it
+      }
+      return true;
+    });
+
     const fitAddon = new FitAddon();
     fitAddonRef.current = fitAddon;
     xterm.loadAddon(fitAddon);
