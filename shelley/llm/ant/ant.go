@@ -348,7 +348,8 @@ func fromLLMContent(c llm.Content) content {
 		d.ID = c.ID
 		d.ToolName = c.ToolName
 		d.ToolInput = c.ToolInput
-		if d.ToolInput == nil {
+		// Handle both nil and JSON "null" (which unmarshals as []byte("null"))
+		if d.ToolInput == nil || string(d.ToolInput) == "null" {
 			d.ToolInput = json.RawMessage("{}")
 		}
 	case llm.ContentTypeToolResult:

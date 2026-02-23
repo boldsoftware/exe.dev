@@ -823,6 +823,21 @@ func TestFromLLMContent(t *testing.T) {
 			},
 		},
 		{
+			name: "tool use with JSON null input gets empty object",
+			c: llm.Content{
+				Type:      llm.ContentTypeToolUse,
+				ID:        "tool-id",
+				ToolName:  "browser_take_screenshot",
+				ToolInput: json.RawMessage("null"), // DB stores "null" which unmarshals as []byte("null")
+			},
+			want: content{
+				Type:      "tool_use",
+				ID:        "tool-id",
+				ToolName:  "browser_take_screenshot",
+				ToolInput: json.RawMessage("{}"),
+			},
+		},
+		{
 			name: "tool result content",
 			c: llm.Content{
 				Type:      llm.ContentTypeToolResult,
