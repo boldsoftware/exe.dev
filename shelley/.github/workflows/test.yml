@@ -33,6 +33,14 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: ui/pnpm-lock.yaml
 
+      - name: Install tmux
+        run: sudo apt-get install -y tmux
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "test@example.com"
+          git config --global user.name "Test User"
+
       - name: Build UI
         run: |
           cd ui
