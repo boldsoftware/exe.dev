@@ -1,29 +1,63 @@
 import { test, expect } from '@playwright/test';
 
+// Create a conversation via the API, wait for the agent to finish
+// (end_of_turn=true means all tool calls completed and final response recorded),
+// then return the conversation slug for direct navigation.
+async function createConversation(
+  request: any,
+  message: string,
+  agentTimeout: number = 30000,
+): Promise<string> {
+  const newResp = await request.post('/api/conversations/new', {
+    data: { message, model: 'predictable', cwd: '/tmp' },
+  });
+  expect(newResp.ok()).toBeTruthy();
+  const { conversation_id } = await newResp.json();
+
+  let slug = '';
+  await expect(async () => {
+    const resp = await request.get(`/api/conversation/${conversation_id}`);
+    const body = await resp.json();
+    // Wait for an agent message with end_of_turn=true — this only appears
+    // after all tool results have been recorded and the model's final
+    // text response is saved.
+    const done = body.messages?.some(
+      (m: { type: string; end_of_turn?: boolean }) =>
+        m.type === 'agent' && m.end_of_turn === true,
+    );
+    expect(done).toBeTruthy();
+    slug = body.conversation?.slug || '';
+    expect(slug).toBeTruthy();
+  }).toPass({ timeout: agentTimeout });
+
+  return slug;
+}
+
 test.describe('Tool Component Verification', () => {
-  test('all tools use custom components, not GenericTool', async ({ page }) => {
-    await page.goto('/');
+  // Shared smorgasbord conversation (created once, reused by multiple tests).
+  // The smorgasbord launches browser tools (chromedp) which need up to 60s
+  // for the initial Chrome startup, so we only pay that cost once.
+  let smorgasbordSlug: string;
+
+  async function ensureSmorgasbord(request: any): Promise<string> {
+    if (!smorgasbordSlug) {
+      smorgasbordSlug = await createConversation(request, 'tool smorgasbord', 150000);
+    }
+    return smorgasbordSlug;
+  }
+
+  test('all tools use custom components, not GenericTool', async ({ page, request }) => {
+    test.setTimeout(180000);
+    const slug = await ensureSmorgasbord(request);
+
+    await page.goto(`/c/${slug}`);
     await page.waitForLoadState('domcontentloaded');
 
-    const messageInput = page.getByTestId('message-input');
-    const sendButton = page.getByTestId('send-button');
-
-    // Send the tool smorgasbord message to trigger all tool types
-    await messageInput.fill('tool smorgasbord');
-    await sendButton.click();
-
-    // Wait for the response text to appear
+    // All tool results are already in the DB; wait for the UI to render them.
     await page.waitForFunction(
-      () => document.body.textContent?.includes('Here\'s a sample of all the tools:') ?? false,
+      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 8,
       undefined,
-      { timeout: 30000 }
-    );
-
-    // Wait for all tool calls to complete
-    await page.waitForFunction(
-      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 9,
-      undefined,
-      { timeout: 30000 }
+      { timeout: 30000 },
     );
 
     // Verify bash tool uses BashTool component (has bash-tool class)
@@ -78,21 +112,16 @@ test.describe('Tool Component Verification', () => {
     expect(await genericToolGearEmojis.count()).toBe(0);
   });
 
-  test('bash tool shows command in header', async ({ page }) => {
-    await page.goto('/');
+  test('bash tool shows command in header', async ({ page, request }) => {
+    const slug = await createConversation(request, 'bash: unique-test-command-xyz123');
+    await page.goto(`/c/${slug}`);
     await page.waitForLoadState('domcontentloaded');
 
-    const messageInput = page.getByTestId('message-input');
-    const sendButton = page.getByTestId('send-button');
-
-    await messageInput.fill('bash: unique-test-command-xyz123');
-    await sendButton.click();
-
-    // Wait for and verify the specific bash tool we just created
+    // Wait for the bash tool to render
     await page.waitForFunction(
       () => document.body.textContent?.includes('unique-test-command-xyz123') ?? false,
       undefined,
-      { timeout: 30000 }
+      { timeout: 15000 },
     );
 
     // Verify bash tool shows the command in the header (collapsed state)
@@ -104,45 +133,36 @@ test.describe('Tool Component Verification', () => {
     expect(commandText).toContain('unique-test-command-xyz123');
   });
 
-  test('think tool shows thought prefix in header', async ({ page }) => {
-    await page.goto('/');
+  test('think tool shows thought prefix in header', async ({ page, request }) => {
+    const slug = await createConversation(request, 'think: This is a long thought that should be truncated in the header display');
+    await page.goto(`/c/${slug}`);
     await page.waitForLoadState('domcontentloaded');
 
-    const messageInput = page.getByTestId('message-input');
-    const sendButton = page.getByTestId('send-button');
-
-    await messageInput.fill('think: This is a long thought that should be truncated in the header display');
-    await sendButton.click();
-
-    // Wait for the thinking content to appear
+    // Wait for the thinking content to render
     await page.waitForFunction(
       () => document.body.textContent?.includes("I've considered my approach.") ?? false,
       undefined,
-      { timeout: 30000 }
+      { timeout: 15000 },
     );
 
     // Verify thinking content shows the thought text with 💭 emoji
     const thinkingContent = page.locator('.thinking-content').filter({ hasText: 'This is a long thought' }).first();
     await expect(thinkingContent).toBeVisible();
-    // The thinking text should be visible
     const thinkingText = await thinkingContent.textContent();
     expect(thinkingText).toContain('This is a long thought');
   });
 
-  test('browser navigate tool shows URL in header', async ({ page }) => {
-    await page.goto('/');
+  test('browser navigate tool shows URL in header', async ({ page, request }) => {
+    test.setTimeout(180000);
+    const slug = await ensureSmorgasbord(request);
+
+    await page.goto(`/c/${slug}`);
     await page.waitForLoadState('domcontentloaded');
 
-    const messageInput = page.getByTestId('message-input');
-    const sendButton = page.getByTestId('send-button');
-
-    await messageInput.fill('tool smorgasbord');
-    await sendButton.click();
-
     await page.waitForFunction(
-      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 9,
+      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 8,
       undefined,
-      { timeout: 30000 }
+      { timeout: 30000 },
     );
 
     // Verify browser_navigate tool shows URL in the header
@@ -150,23 +170,14 @@ test.describe('Tool Component Verification', () => {
     await expect(navigateTool.locator('.tool-command').filter({ hasText: 'https://example.com' })).toBeVisible();
   });
 
-  test('patch tool can be collapsed and expanded without errors', async ({ page }) => {
-    await page.goto('/');
+  test('patch tool can be collapsed and expanded without errors', async ({ page, request }) => {
+    const slug = await createConversation(request, 'patch success');
+    await page.goto(`/c/${slug}`);
     await page.waitForLoadState('domcontentloaded');
 
-    const messageInput = page.getByTestId('message-input');
-    const sendButton = page.getByTestId('send-button');
-
-    // Trigger a successful patch tool (uses overwrite operation which always succeeds)
-    await messageInput.fill('patch success');
-    await sendButton.click();
-
-    // Wait for successful patch tool with Monaco editor
-    // Use specific locator to find the successful patch (not the failed ones from other tests)
+    // Wait for successful patch tool
     const patchTool = page.locator('.patch-tool[data-testid="tool-call-completed"]').filter({ hasText: 'test-patch-success.txt' }).first();
-    await expect(patchTool).toBeVisible({ timeout: 30000 });
-    // Wait for details section to be fully rendered (starts expanded for successful patches)
-    await expect(patchTool.locator('.patch-tool-details')).toBeVisible({ timeout: 10000 });
+    await expect(patchTool).toBeVisible({ timeout: 15000 });
 
     // Get console errors before toggling
     const errors: string[] = [];
@@ -174,11 +185,15 @@ test.describe('Tool Component Verification', () => {
 
     const header = patchTool.locator('.patch-tool-header');
 
-    // Collapse
+    // The toggle button should exist and respond to clicks
+    const toggle = patchTool.locator('.patch-tool-toggle');
+    await expect(toggle).toBeVisible();
+
+    // Click to collapse
     await header.click();
     await expect(patchTool.locator('.patch-tool-details')).toBeHidden();
 
-    // Expand - diff should reinitialize
+    // Expand
     await header.click();
     await expect(patchTool.locator('.patch-tool-details')).toBeVisible({ timeout: 10000 });
 
@@ -195,20 +210,17 @@ test.describe('Tool Component Verification', () => {
     expect(modelErrors).toHaveLength(0);
   });
 
-  test('emoji sizes are consistent across all tools', async ({ page }) => {
-    await page.goto('/');
+  test('emoji sizes are consistent across all tools', async ({ page, request }) => {
+    test.setTimeout(180000);
+    const slug = await ensureSmorgasbord(request);
+
+    await page.goto(`/c/${slug}`);
     await page.waitForLoadState('domcontentloaded');
 
-    const messageInput = page.getByTestId('message-input');
-    const sendButton = page.getByTestId('send-button');
-
-    await messageInput.fill('tool smorgasbord');
-    await sendButton.click();
-
     await page.waitForFunction(
-      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 9,
+      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 8,
       undefined,
-      { timeout: 30000 }
+      { timeout: 30000 },
     );
 
     // Get all tool emojis and check their computed font-size

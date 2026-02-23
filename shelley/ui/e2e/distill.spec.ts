@@ -28,9 +28,17 @@ test.describe('Distill conversation', () => {
     const { conversation_id: distilledId } = await distillResp.json();
     expect(distilledId).toBeTruthy();
 
-    // 3. Navigate to the root page. The app auto-selects the most recent
-    //    conversation, which is the freshly-created distilled one.
-    await page.goto('/');
+    // 3. Wait for the distilled conversation to get a slug, then navigate
+    //    directly to it (auto-selection may pick the source conversation).
+    let slug = '';
+    await expect(async () => {
+      const conv = await request.get(`/api/conversation/${distilledId}`);
+      const body = await conv.json();
+      slug = body.conversation?.slug || '';
+      expect(slug).toBeTruthy();
+    }).toPass({ timeout: 15000 });
+
+    await page.goto(`/c/${slug}`);
     await page.waitForLoadState('domcontentloaded');
 
     // 4. Wait for the distill-complete indicator to appear.
