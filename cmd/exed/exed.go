@@ -373,11 +373,17 @@ func startExeletsRemote(env stage.Env, httpAddr string, multiExelet, enableRepli
 	needsTunnel := !testRemoteToLocalConnectivity(ctx, limaDevHost, gateway, tmpPort)
 	tmpLn.Close()
 
-	// If replication is enabled, set up a socat forwarder on the macOS host to make
-	// exe-ctr-tests reachable from exe-ctr via the gateway IP. Lima VMs are network-isolated
-	// and can't directly reach each other, but they can reach the host at the gateway IP.
+	// Determine replication target.
+	// EXELET_STORAGE_REPLICATION_TARGET overrides for non-SSH local targets
+	// (e.g., "zpool:///backup"). SSH targets still need the socat tunnel
+	// managed by -enable-exelet-storage-replication, so the env var is
+	// ignored when it contains an ssh:// URL.
 	var replicationTarget string
-	if enableReplication {
+	if envTarget := os.Getenv("EXELET_STORAGE_REPLICATION_TARGET"); envTarget != "" && !strings.HasPrefix(envTarget, "ssh://") {
+		replicationTarget = envTarget
+		slog.InfoContext(ctx, "using replication target from environment", "target", replicationTarget)
+	}
+	if replicationTarget == "" && enableReplication {
 		sshHost, sshPort, err := getSSHHostPort(limaDevHostTests)
 		if err != nil {
 			return "", "", nil, fmt.Errorf("failed to get SSH config for %s: %w", limaDevHostTests, err)
@@ -419,9 +425,9 @@ func startExeletsRemote(env stage.Env, httpAddr string, multiExelet, enableRepli
 
 	var exeletAddrs []string
 	for i, host := range hosts {
-		// Only enable replication on the primary host (first one), replicating to the secondary
+		// Only enable replication on the primary host (first one)
 		hostReplicationTarget := ""
-		if enableReplication && i == 0 {
+		if replicationTarget != "" && i == 0 {
 			hostReplicationTarget = replicationTarget
 		}
 		addr, err := startExeletOnHost(ctx, host, binPath, env.LogFormat, env.LogLevel, httpAddr, gateway, needsTunnel, hostReplicationTarget, metricsdURL)
@@ -549,9 +555,9 @@ func startExeletOnHost(ctx context.Context, host, binPath, logFormat, logLevel, 
 		return "", fmt.Errorf("failed to chmod exelet: %w", err)
 	}
 
-	// Provision replication SSH key and known_hosts if needed
+	// Provision replication SSH key and known_hosts if needed (SSH targets only)
 	var replicationKnownHosts string
-	if replicationTarget != "" {
+	if replicationTarget != "" && strings.HasPrefix(replicationTarget, "ssh://") {
 		if err := ensureReplicationSSHKey(ctx, host); err != nil {
 			return "", fmt.Errorf("failed to provision replication SSH key: %w", err)
 		}
@@ -697,9 +703,12 @@ func startExeletProcess(ctx context.Context, host, logFormat, logLevel, exedURL,
 		logFormat, logLevel, exedURL)
 
 	if replicationTarget != "" {
-		baseCmd += fmt.Sprintf(` --storage-replication-enabled --storage-replication-target=%s --storage-replication-ssh-key=%s --storage-replication-interval=5m --storage-replication-retention=24`, replicationTarget, replicationSSHKeyPath)
-		if replicationKnownHosts != "" {
-			baseCmd += fmt.Sprintf(` --storage-replication-known-hosts=%s`, replicationKnownHosts)
+		baseCmd += fmt.Sprintf(` --storage-replication-enabled --storage-replication-target=%s --storage-replication-interval=5m --storage-replication-retention=24`, replicationTarget)
+		if strings.HasPrefix(replicationTarget, "ssh://") {
+			baseCmd += fmt.Sprintf(` --storage-replication-ssh-key=%s`, replicationSSHKeyPath)
+			if replicationKnownHosts != "" {
+				baseCmd += fmt.Sprintf(` --storage-replication-known-hosts=%s`, replicationKnownHosts)
+			}
 		}
 	}
 

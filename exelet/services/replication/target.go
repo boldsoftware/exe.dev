@@ -22,7 +22,7 @@ type VolumeSnapshot struct {
 
 // Target represents a replication destination
 type Target interface {
-	// Type returns the target type ("ssh" or "file")
+	// Type returns the target type ("ssh", "file", or "zpool")
 	Type() string
 
 	// ListSnapshots returns existing snapshots for a volume on the target
@@ -79,7 +79,7 @@ type ReceiveOptions struct {
 
 // TargetConfig holds parsed configuration for a target
 type TargetConfig struct {
-	Type           string // "ssh" or "file"
+	Type           string // "ssh", "file", or "zpool"
 	User           string // SSH user (ssh only)
 	Host           string // SSH host (ssh only)
 	Port           string // SSH port (ssh only, empty for default)
@@ -110,6 +110,8 @@ func ParseTarget(targetURL, sshKeyPath, sshCommand, knownHostsPath, bandwidthLim
 		return NewSSHTarget(cfg)
 	case "file":
 		return NewFileTarget(cfg)
+	case "zpool":
+		return NewZpoolTarget(cfg), nil
 	default:
 		return nil, fmt.Errorf("unsupported target type: %s", cfg.Type)
 	}
@@ -127,8 +129,10 @@ func ParseTargetConfig(targetURL string) (*TargetConfig, error) {
 		return parseSSHTarget(u)
 	case "file":
 		return parseFileTarget(u)
+	case "zpool":
+		return parseZpoolTarget(u)
 	default:
-		return nil, fmt.Errorf("unsupported target scheme: %s (expected ssh:// or file://)", u.Scheme)
+		return nil, fmt.Errorf("unsupported target scheme: %s (expected ssh://, file://, or zpool://)", u.Scheme)
 	}
 }
 
@@ -169,5 +173,17 @@ func parseFileTarget(u *url.URL) (*TargetConfig, error) {
 	return &TargetConfig{
 		Type: "file",
 		Path: path,
+	}, nil
+}
+
+func parseZpoolTarget(u *url.URL) (*TargetConfig, error) {
+	pool := strings.TrimPrefix(u.Path, "/")
+	if pool == "" {
+		return nil, fmt.Errorf("zpool target requires pool name: zpool:///poolname")
+	}
+
+	return &TargetConfig{
+		Type: "zpool",
+		Pool: pool,
 	}, nil
 }

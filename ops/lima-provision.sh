@@ -8,24 +8,26 @@ CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME="setup-cloud-hypervisor.sh"
 EXELET_SETUP_SCRIPT_NAME="setup-exelet.sh"
 
 wait_for_device() {
+    local dev_base="$1"
     local attempt=0
     while [ "${attempt}" -lt 60 ]; do
-        if [ -b /dev/vdb ] || [ -b /dev/vdb1 ]; then
+        if [ -b "${dev_base}" ] || [ -b "${dev_base}1" ]; then
             return 0
         fi
         sleep 0.5
         attempt=$((attempt + 1))
     done
-    echo "timed out waiting for /dev/vdb" >&2
+    echo "timed out waiting for ${dev_base}" >&2
     return 1
 }
 
-pick_data_device() {
-    if [ -b /dev/vdb1 ]; then
-        echo "/dev/vdb1"
+pick_device() {
+    local dev_base="$1"
+    if [ -b "${dev_base}1" ]; then
+        echo "${dev_base}1"
         return 0
     fi
-    echo "/dev/vdb"
+    echo "${dev_base}"
 }
 
 current_mount_point() {
@@ -42,13 +44,13 @@ unmount_device() {
     systemctl disable "${unit_name}" || true
 }
 
-ensure_zfs() {
-    local device="$1"
+ensure_zpool() {
+    local pool="$1"
+    local device="$2"
     local fs_type
     fs_type="$(blkid -o value -s TYPE "${device}" || true)"
     if [ "${fs_type}" != "zfs_member" ]; then
-        zpool create -f -m none tank "${device}"
-        zfs create -o mountpoint=/data tank/data
+        zpool create -f -m none "${pool}" "${device}"
     fi
 }
 
@@ -56,9 +58,10 @@ setup_data_disk() {
     apt-get update
     apt-get install -y zfsutils-linux
 
-    wait_for_device
+    # Set up primary data disk (tank)
+    wait_for_device /dev/vdb
     local data_device
-    data_device="$(pick_data_device)"
+    data_device="$(pick_device /dev/vdb)"
 
     local current_mount
     current_mount="$(current_mount_point "${data_device}")"
@@ -66,7 +69,22 @@ setup_data_disk() {
         unmount_device "${current_mount}"
     fi
 
-    ensure_zfs "${data_device}"
+    ensure_zpool tank "${data_device}"
+    if ! zfs list tank/data >/dev/null 2>&1; then
+        zfs create -o mountpoint=/data tank/data
+    fi
+
+    # Set up backup disk (backup)
+    wait_for_device /dev/vdc
+    local backup_device
+    backup_device="$(pick_device /dev/vdc)"
+
+    current_mount="$(current_mount_point "${backup_device}")"
+    if [ -n "${current_mount}" ]; then
+        unmount_device "${current_mount}"
+    fi
+
+    ensure_zpool backup "${backup_device}"
 }
 
 ensure_root() {
@@ -81,6 +99,7 @@ ensure_packages() {
     DEBIAN_FRONTEND=noninteractive apt-get install -y -q \
         avahi-daemon \
         libnss-mdns \
+        pv \
         socat \
         zfsutils-linux
     # Ensure avahi-daemon is running for mDNS resolution

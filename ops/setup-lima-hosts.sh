@@ -8,6 +8,7 @@ LIMA_BASE="exe-ctr-base"
 LIMA_HOST_A="exe-ctr"
 LIMA_HOST_B="exe-ctr-tests"
 DATA_DISK_SIZE="100GiB"
+BACKUP_DISK_SIZE="50GiB"
 CLOUD_HYPERVISOR_VERSION="48.0"
 VIRTIOFSD_VERSION="1.13.2"
 
@@ -108,15 +109,26 @@ data_disk_name() {
     echo "data-$1"
 }
 
+backup_disk_name() {
+    echo "backup-$1"
+}
+
 data_disk_path() {
     local disk
     disk="$(data_disk_name "$1")"
     echo "${LIMA_DIR}/_disks/${disk}/datadisk"
 }
 
+backup_disk_path() {
+    local disk
+    disk="$(backup_disk_name "$1")"
+    echo "${LIMA_DIR}/_disks/${disk}/datadisk"
+}
+
 set_disk_expr() {
-    local disk="$1"
-    printf '.additionalDisks[0].name = "%s"' "${disk}"
+    local data_disk="$1"
+    local backup_disk="$2"
+    printf '.additionalDisks[0].name = "%s" | .additionalDisks[1].name = "%s"' "${data_disk}" "${backup_disk}"
 }
 
 delete_data_disk() {
@@ -128,6 +140,14 @@ delete_data_disk() {
     rm -rf "${LIMA_DIR}/_disks/${disk}" >/dev/null 2>&1 || true
 }
 
+delete_backup_disk() {
+    local instance="$1"
+    local disk
+    disk="$(backup_disk_name "$instance")"
+    limactl --tty=false disk delete "${disk}" >/dev/null 2>&1 || true
+    rm -rf "${LIMA_DIR}/_disks/${disk}" >/dev/null 2>&1 || true
+}
+
 create_fresh_data_disk() {
     local instance="$1"
     local disk
@@ -135,6 +155,15 @@ create_fresh_data_disk() {
     echo "Creating Lima disk ${disk} (${DATA_DISK_SIZE})..."
     delete_data_disk "${instance}"
     limactl --tty=false --log-level=warn disk create "${disk}" --size "${DATA_DISK_SIZE}"
+}
+
+create_fresh_backup_disk() {
+    local instance="$1"
+    local disk
+    disk="$(backup_disk_name "$instance")"
+    echo "Creating Lima disk ${disk} (${BACKUP_DISK_SIZE})..."
+    delete_backup_disk "${instance}"
+    limactl --tty=false --log-level=warn disk create "${disk}" --size "${BACKUP_DISK_SIZE}"
 }
 
 clone_data_disk() {
@@ -152,6 +181,24 @@ clone_data_disk() {
     fi
     echo "Cloning Lima disk ${src_disk} -> ${dst_disk}..."
     delete_data_disk "${dst_instance}"
+    limactl --tty=false --log-level=warn disk import "${dst_disk}" "${src_path}"
+}
+
+clone_backup_disk() {
+    local src_instance="$1"
+    local dst_instance="$2"
+    local src_disk
+    src_disk="$(backup_disk_name "$src_instance")"
+    local dst_disk
+    dst_disk="$(backup_disk_name "$dst_instance")"
+    local src_path
+    src_path="$(backup_disk_path "$src_instance")"
+    if [[ ! -f "${src_path}" ]]; then
+        echo "Error: source backup disk not found at ${src_path}" >&2
+        exit 1
+    fi
+    echo "Cloning Lima disk ${src_disk} -> ${dst_disk}..."
+    delete_backup_disk "${dst_instance}"
     limactl --tty=false --log-level=warn disk import "${dst_disk}" "${src_path}"
 }
 
@@ -209,14 +256,17 @@ setup_base() {
     limactl delete exe-ctr-base --tty=false -f 2>/dev/null || true
 
     delete_data_disk "${LIMA_BASE}"
+    delete_backup_disk "${LIMA_BASE}"
     create_fresh_data_disk "${LIMA_BASE}"
+    create_fresh_backup_disk "${LIMA_BASE}"
 
     echo "Creating base Lima instance: ${LIMA_BASE}"
-    base_disk_name="$(data_disk_name "${LIMA_BASE}")"
+    base_data_disk="$(data_disk_name "${LIMA_BASE}")"
+    base_backup_disk="$(backup_disk_name "${LIMA_BASE}")"
     # Ensure mount location referenced by template exists
     mkdir -p /tmp/lima
     limactl create --plain --tty=false --log-level=warn --name=${LIMA_BASE} \
-        --set "$(set_disk_expr "${base_disk_name}")" \
+        --set "$(set_disk_expr "${base_data_disk}" "${base_backup_disk}")" \
         "${LIMA_CONFIG_PATH}"
     limactl start --tty=false --log-level=warn ${LIMA_BASE}
 
@@ -264,13 +314,15 @@ reset_instance() {
     echo "Removing cloned instance ${instance}..."
     limactl delete ${instance} --tty=false -f 2>/dev/null || true
 
-    # Clean up cloned data disk
+    # Clean up cloned disks
     delete_data_disk "${instance}"
+    delete_backup_disk "${instance}"
 
     echo "Cloning ${LIMA_BASE} to ${instance}..."
-    limactl clone --tty=false --log-level=warn --set "$(set_disk_expr "$(data_disk_name "${instance}")")" ${LIMA_BASE} ${instance}
+    limactl clone --tty=false --log-level=warn --set "$(set_disk_expr "$(data_disk_name "${instance}")" "$(backup_disk_name "${instance}")")" ${LIMA_BASE} ${instance}
 
     clone_data_disk "${LIMA_BASE}" "${instance}"
+    clone_backup_disk "${LIMA_BASE}" "${instance}"
 
     echo "Starting ${instance}..."
     limactl start --log-level=warn --tty=false ${instance}
