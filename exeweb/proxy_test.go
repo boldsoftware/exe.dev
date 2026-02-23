@@ -67,7 +67,7 @@ func TestIsDefaultServerPort(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ps := &ProxyServer{HTTPPort: tc.serverPort}
+			ps := &ProxyServer{ProxyHTTPPort: tc.serverPort}
 
 			result := ps.isDefaultServerPort(tc.testPort)
 			if result != tc.expected {
@@ -81,7 +81,7 @@ func TestIsDefaultServerPort(t *testing.T) {
 
 	// Test case where httpPort is 0
 	t.Run("nil httpLn", func(t *testing.T) {
-		ps := &ProxyServer{HTTPPort: 0}
+		ps := &ProxyServer{ProxyHTTPPort: 0}
 		// Should only return true for 443
 		if !ps.isDefaultServerPort(443) {
 			t.Error("Expected true for port 443 even with nil httpLn")

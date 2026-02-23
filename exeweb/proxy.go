@@ -34,18 +34,28 @@ import (
 // ProxyServer handles proxy requests for both exed and exeprox.
 // Data is handled via the ProxyData interface,
 // which for exed talks to the database and for exeprox talks to exed.
+//
+// The ProxyHTTP[S}Port values are the ports being used for
+// the program running as a proxy, either exed or exeprox.
+// The ExedHTTP[S]Port values are the ports being used exed.
+// When this code is run as part of exed,
+// ProxyHTTPPort == ExedHTTPPort and
+// ProxyHTTPSPort == ExedHTTPSPort.
+// In general this is for testing.
 type ProxyServer struct {
-	Data        ProxyData
-	Lg          *slog.Logger
-	Env         *stage.Env
-	HTTPPort    int // zero if not serving HTTP
-	HTTPSPort   int // zero if not serving HTTPS
-	PiperdPort  int
-	SSHPool     *sshpool2.Pool
-	HTTPMetrics *HTTPMetrics
-	Templates   *template.Template
-	LobbyIP     netip.Addr
-	PublicIPs   map[netip.Addr]publicips.PublicIP
+	Data           ProxyData
+	Lg             *slog.Logger
+	Env            *stage.Env
+	ProxyHTTPPort  int // proxy HTTP port; zero if not serving HTTP
+	ProxyHTTPSPort int // proxy HTTPS port; zero if not serving HTTPS
+	ExedHTTPPort   int // exed HTTP port; zero if not serving HTTP
+	ExedHTTPSPort  int // exed HTTPS port; zero if not serving HTTPS
+	PiperdPort     int
+	SSHPool        *sshpool2.Pool
+	HTTPMetrics    *HTTPMetrics
+	Templates      *template.Template
+	LobbyIP        netip.Addr
+	PublicIPs      map[netip.Addr]publicips.PublicIP
 
 	// For testing:
 	LookupCNAMEFunc func(context.Context, string) (string, error)
@@ -82,8 +92,8 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 		// No port in Host header, that's fine if it's the default port which only
 		// happens in HTTPS land...
 		hostHeaderHost = r.Host
-		if ps.HTTPSPort != 0 {
-			hostHeaderPort = ps.HTTPSPort
+		if ps.ProxyHTTPSPort != 0 {
+			hostHeaderPort = ps.ProxyHTTPSPort
 		} else {
 			ps.Lg.WarnContext(r.Context(), "Host header didn't have port but we're not using default ports", "host", r.Host, "error", err)
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -845,7 +855,7 @@ func (ps *ProxyServer) isDefaultServerPort(port int) bool {
 	}
 
 	// Check if it matches the server's main HTTP port
-	if ps.HTTPPort != 0 && ps.HTTPPort == port {
+	if ps.ProxyHTTPPort != 0 && ps.ProxyHTTPPort == port {
 		return true
 	}
 
@@ -855,15 +865,15 @@ func (ps *ProxyServer) isDefaultServerPort(port int) bool {
 // webBaseURLNoRequest returns a URL for the main web host (exe.dev).
 func (ps *ProxyServer) webBaseURLNoRequest() string {
 	var scheme, port string
-	if ps.HTTPSPort == 0 {
+	if ps.ExedHTTPSPort == 0 {
 		scheme = "http"
-		if ps.HTTPPort != 80 {
-			port = fmt.Sprintf(":%d", ps.HTTPPort)
+		if ps.ExedHTTPPort != 80 {
+			port = fmt.Sprintf(":%d", ps.ExedHTTPPort)
 		}
 	} else {
 		scheme = "https"
-		if ps.HTTPSPort != 443 {
-			port = fmt.Sprintf(":%d", ps.HTTPSPort)
+		if ps.ExedHTTPSPort != 443 {
+			port = fmt.Sprintf(":%d", ps.ExedHTTPSPort)
 		}
 	}
 	return fmt.Sprintf("%s://%s%s", scheme, ps.Env.WebHost, port)
@@ -880,15 +890,15 @@ func (ps *ProxyServer) boxSSHPort() int {
 // urlPort returns :PORT for use in URLs, according to useTLS.
 func (ps *ProxyServer) urlPort(useTLS bool) string {
 	if useTLS {
-		if ps.HTTPSPort == 0 || ps.HTTPSPort == 443 {
+		if ps.ProxyHTTPSPort == 0 || ps.ProxyHTTPSPort == 443 {
 			return ""
 		}
-		return fmt.Sprintf(":%d", ps.HTTPSPort)
+		return fmt.Sprintf(":%d", ps.ProxyHTTPSPort)
 	}
-	if ps.HTTPPort == 0 || ps.HTTPPort == 80 {
+	if ps.ProxyHTTPPort == 0 || ps.ProxyHTTPPort == 80 {
 		return ""
 	}
-	return fmt.Sprintf(":%d", ps.HTTPPort)
+	return fmt.Sprintf(":%d", ps.ProxyHTTPPort)
 }
 
 // xtermURL returns the terminal URL for a box.
@@ -907,7 +917,7 @@ func (ps *ProxyServer) xtermURL(boxName string, useTLS bool) string {
 // shelleyURL returns the Shelley agent URL for a box (vm.shelley.exe.xyz).
 func (ps *ProxyServer) shelleyURL(boxName string) string {
 	var scheme, port string
-	if ps.HTTPSPort != 0 {
+	if ps.ProxyHTTPSPort != 0 {
 		scheme = "https"
 		port = ps.urlPort(true)
 	} else {

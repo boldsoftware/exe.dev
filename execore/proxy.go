@@ -258,10 +258,12 @@ func (s *Server) proxyServer() *exeweb.ProxyServer {
 		LookupAFunc:     s.lookupAFunc,
 	}
 	if s.servingHTTP() {
-		ps.HTTPPort = s.httpLn.tcp.Port
+		ps.ProxyHTTPPort = s.httpLn.tcp.Port
+		ps.ExedHTTPPort = s.httpLn.tcp.Port
 	}
 	if s.servingHTTPS() {
-		ps.HTTPSPort = s.httpsLn.tcp.Port
+		ps.ProxyHTTPSPort = s.httpsLn.tcp.Port
+		ps.ExedHTTPSPort = s.httpsLn.tcp.Port
 	}
 	return ps
 }
