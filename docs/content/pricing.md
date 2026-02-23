@@ -73,9 +73,6 @@ the typical usage expected at each tier.
 If you exceed your included amount, you can buy more Shelley Tokens in the
 billing section under [https://exe.dev/user](https://exe.dev/user).
 
-Token pricing tracks the underlying model providers’ published rates (no token
+Token pricing tracks the underlying model providers' published rates (no token
 markup), and because providers can change pricing independently at any time,
 our rates update accordingly.
-
-We bill tokens at the price in effect when they’re consumed (calculated
-hourly), so you pay the current rate for the model you actually used.
