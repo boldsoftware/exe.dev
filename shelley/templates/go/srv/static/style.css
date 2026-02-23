@@ -478,6 +478,41 @@ hr::after {
   }
 }
 
+/* Corner ribbon */
+.ribbon-wrapper {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 120px;
+  height: 120px;
+  overflow: hidden;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.corner-ribbon {
+  position: absolute;
+  top: 26px;
+  right: -30px;
+  background: #fbbf24;
+  color: #78350f;
+  text-decoration: none;
+  padding: 6px 40px;
+  font-size: 11px;
+  font-weight: 600;
+  transform: rotate(45deg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  text-align: center;
+  letter-spacing: 0.2px;
+  pointer-events: auto;
+  white-space: nowrap;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.corner-ribbon:hover {
+  background: #f59e0b;
+}
+
 /* Copy feedback */
 .copied-feedback {
   position: fixed;
