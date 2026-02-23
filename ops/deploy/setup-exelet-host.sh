@@ -37,9 +37,9 @@ VIRTIOFSD_VERSION="1.13.2"
 
 REGION="us-west-2"
 AZ="us-west-2b"
-INSTANCE_TYPE="m5d.metal"
+INSTANCE_TYPE="${INSTANCE_TYPE:-m5d.metal}"
 ROOT_VOLUME_SIZE="50"
-DATA_VOLUME_SIZE="450"
+BACKUP_VOLUME_SIZE="500"
 SECURITY_GROUP_NAME="exe-ctr-sg"
 INSTANCE_ROLE_NAME="exe-ctr-instance-role"
 INSTANCE_PROFILE_NAME="exe-ctr-instance-profile"
@@ -278,7 +278,8 @@ INSTANCE_ID=$(aws ec2 run-instances \
     --user-data "${USER_DATA}" \
     --block-device-mappings \
     "DeviceName=/dev/sda1,Ebs={VolumeSize=${ROOT_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
-    "DeviceName=/dev/xvdf,Ebs={VolumeSize=${DATA_VOLUME_SIZE},VolumeType=gp3,Iops=12000,Throughput=250,DeleteOnTermination=true}" \
+    "DeviceName=/dev/xvdf,Ebs={VolumeSize=${BACKUP_VOLUME_SIZE},VolumeType=io2,Iops=12000,DeleteOnTermination=true}" \
+    "DeviceName=/dev/xvdg,Ebs={VolumeSize=${BACKUP_VOLUME_SIZE},VolumeType=io2,Iops=12000,DeleteOnTermination=true}" \
     --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${MACHINE_NAME}},{Key=role,Value=${ROLE}},{Key=stage,Value=${STAGE}}]" \
     --query 'Instances[0].InstanceId' \
     --output text \
@@ -293,9 +294,14 @@ ROOT_VOLUME_ID=$(aws ec2 describe-instances \
     --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/sda1`].Ebs.VolumeId' \
     --output text \
     --region ${REGION})
-DATA_VOLUME_ID=$(aws ec2 describe-instances \
+BACKUP_VOLUME_1_ID=$(aws ec2 describe-instances \
     --instance-ids ${INSTANCE_ID} \
     --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/xvdf`].Ebs.VolumeId' \
+    --output text \
+    --region ${REGION})
+BACKUP_VOLUME_2_ID=$(aws ec2 describe-instances \
+    --instance-ids ${INSTANCE_ID} \
+    --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/xvdg`].Ebs.VolumeId' \
     --output text \
     --region ${REGION})
 
@@ -303,15 +309,12 @@ if [ -n "$ROOT_VOLUME_ID" ] && [ "$ROOT_VOLUME_ID" != "None" ]; then
     aws ec2 create-tags --resources ${ROOT_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-root Key=role,Value=${ROLE} Key=stage,Value=${STAGE} --region ${REGION}
     echo "Tagged root volume ${ROOT_VOLUME_ID} as ${MACHINE_NAME}-root (role=${ROLE}, stage=${STAGE})"
 fi
-if [ -n "$DATA_VOLUME_ID" ] && [ "$DATA_VOLUME_ID" != "None" ]; then
-    if [ "$STAGE" = "production" ]; then
-        aws ec2 create-tags --resources ${DATA_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-data Key=role,Value=${ROLE} Key=stage,Value=${STAGE} Key=exe-volume-type,Value=exe-ctr-data --region ${REGION}
-        echo "Tagged data volume ${DATA_VOLUME_ID} as ${MACHINE_NAME}-data (role=${ROLE}, stage=${STAGE}, exe-volume-type=exe-ctr-data)"
-    else
-        aws ec2 create-tags --resources ${DATA_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-data Key=role,Value=${ROLE} Key=stage,Value=${STAGE} --region ${REGION}
-        echo "Tagged data volume ${DATA_VOLUME_ID} as ${MACHINE_NAME}-data (role=${ROLE}, stage=${STAGE})"
+for BVOL_ID in "$BACKUP_VOLUME_1_ID" "$BACKUP_VOLUME_2_ID"; do
+    if [ -n "$BVOL_ID" ] && [ "$BVOL_ID" != "None" ]; then
+        aws ec2 create-tags --resources ${BVOL_ID} --tags Key=Name,Value=${MACHINE_NAME}-backup Key=role,Value=${ROLE} Key=stage,Value=${STAGE} Key=exe-volume-type,Value=exe-ctr-backup --region ${REGION}
+        echo "Tagged backup volume ${BVOL_ID} as ${MACHINE_NAME}-backup (role=${ROLE}, stage=${STAGE})"
     fi
-fi
+done
 
 # Wait for instance to be running
 echo "Waiting for instance to start..."
@@ -369,8 +372,7 @@ echo "=== Setting up volumes on metal instance ==="
 
 # First check if this is a metal instance (has NVMe drives)
 if [ ! -e /dev/nvme0n1 ]; then
-	echo "Non-metal instance detected, data volume already mounted via xvdf"
-	# Just create /data as a directory for non-metal instances
+	echo "Non-metal instance detected"
 	sudo mkdir -p /data
 	exit 0
 fi
@@ -380,103 +382,163 @@ echo "Installing required packages..."
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y parted socat zfsutils-linux >/dev/null 2>&1
 
-echo "=== Detecting instance-store NVMe devices (~900GB) ==="
-# Select the 4x ~900GB instance-store NVMe disks; exclude EBS root (50GB) and data (250GB)
-mapfile -t NVME_DEVICES < <(lsblk -b -n -d -o NAME,SIZE,TYPE 2>/dev/null | awk '$3=="disk" && $1 ~ /^nvme/ { if ($2 >= 800*1024*1024*1024) print "/dev/"$1 }' | sort -V)
-if [ ${#NVME_DEVICES[@]} -lt 4 ]; then
-  echo "ERROR: Expected 4 NVMe instance-store disks (~900GB), found ${#NVME_DEVICES[@]}"
+# Detect NVMe devices by model string
+echo "=== Detecting NVMe devices ==="
+INSTANCE_STORE_DEVICES=()
+EBS_DATA_DEVICES=()
+
+for dev in /dev/nvme*n1; do
+  [ -b "$dev" ] || continue
+  devname=$(basename "$dev")
+  model=$(cat "/sys/block/${devname}/device/model" 2>/dev/null | xargs)
+  size_gb=$(lsblk -b -n -d -o SIZE "$dev" 2>/dev/null | awk '{printf "%.0f", $1/1073741824}')
+
+  # Safety: never touch a device that has mounted filesystems
+  if lsblk -n -o MOUNTPOINT "$dev" 2>/dev/null | grep -q '/'; then
+    echo "Mounted: $dev (${size_gb}GB) - skipping"
+    continue
+  fi
+
+  if [ "$model" = "Amazon EC2 NVMe Instance Storage" ]; then
+    echo "Instance-store: $dev (${size_gb}GB)"
+    INSTANCE_STORE_DEVICES+=("$dev")
+  elif [ "$model" = "Amazon Elastic Block Store" ]; then
+    echo "EBS data: $dev (${size_gb}GB)"
+    EBS_DATA_DEVICES+=("$dev")
+  else
+    echo "Unknown NVMe: $dev (model: $model, ${size_gb}GB) - skipping"
+  fi
+done
+
+if [ ${#INSTANCE_STORE_DEVICES[@]} -eq 0 ]; then
+  echo "ERROR: No instance-store NVMe devices found"
   lsblk
   exit 1
 fi
-# Use the first 4 detected devices
-NVME_DEVICES=("${NVME_DEVICES[@]:0:4}")
-printf "Using instance-store devices:\n%s\n" "${NVME_DEVICES[@]}"
 
-echo "=== Setting up swap on instance-store NVMe devices ==="
-for dev in "${NVME_DEVICES[@]}"; do
-  echo "Setting up 225GB swap on ${dev}..."
-  # Ensure the device has no lingering signatures/partitions
+echo ""
+echo "Found ${#INSTANCE_STORE_DEVICES[@]} instance-store device(s)"
+echo "Found ${#EBS_DATA_DEVICES[@]} EBS data device(s)"
+
+# Partition each instance-store drive: 25% swap, 75% data
+echo ""
+echo "=== Partitioning instance-store NVMe devices (25% swap, 75% data) ==="
+SWAP_PARTS=()
+DATA_PARTS=()
+
+for dev in "${INSTANCE_STORE_DEVICES[@]}"; do
+  size_bytes=$(lsblk -b -n -d -o SIZE "$dev")
+  swap_gib=$((size_bytes / 4 / 1024 / 1024 / 1024))
+
+  echo "Partitioning ${dev}: ${swap_gib}GiB swap, remainder for ZFS..."
   sudo wipefs -a "$dev" >/dev/null 2>&1 || true
   sudo parted -s "$dev" mklabel gpt
-  sudo parted -s "$dev" mkpart primary linux-swap 1MiB 226GiB
-  # Wait for kernel to create the partition node
+  sudo parted -s "$dev" mkpart primary linux-swap 1MiB "${swap_gib}GiB"
+  sudo parted -s "$dev" mkpart primary "${swap_gib}GiB" 100%
   sudo udevadm settle || sleep 1
+
   sudo mkswap "${dev}p1"
+  SWAP_PARTS+=("${dev}p1")
+  DATA_PARTS+=("${dev}p2")
 done
 
-# Enable all swaps with equal priority for I/O interleaving
-for dev in "${NVME_DEVICES[@]}"; do
-  sudo swapon -p 1 "${dev}p1"
+# Enable swap with equal priority for I/O interleaving
+echo ""
+echo "=== Enabling swap ==="
+for part in "${SWAP_PARTS[@]}"; do
+  sudo swapon -p 1 "$part"
+  echo "$part none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab >/dev/null
 done
+echo "Swap enabled on ${#SWAP_PARTS[@]} partition(s)"
 
-# Add to fstab with priority
-for dev in "${NVME_DEVICES[@]}"; do
-  echo "${dev}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab >/dev/null
-done
+# Create ZFS pool 'tank' from instance-store data partitions
+echo ""
+echo "=== Setting up ZFS pool 'tank' ==="
+NDISKS=${#DATA_PARTS[@]}
 
-echo "Swap setup complete (4x 225GB with equal priority, 900GB total)"
+if [ "$NDISKS" -eq 1 ]; then
+  echo "Single drive, creating tank with no redundancy"
+  sudo zpool create -o ashift=12 -m none tank "${DATA_PARTS[0]}"
+elif [ "$NDISKS" -eq 2 ]; then
+  echo "Two drives, creating tank as mirror"
+  sudo zpool create -o ashift=12 -m none tank mirror "${DATA_PARTS[@]}"
+else
+  # Build raidz1 vdevs of 3-5 drives each, preferring wider vdevs for capacity
+  VDEV_WIDTH=3
+  for w in 5 4 3; do
+    if [ $((NDISKS % w)) -eq 0 ]; then
+      VDEV_WIDTH=$w
+      break
+    fi
+  done
 
-# Setup ZFS raid pool
-echo "=== Setting up RAID 0 ZFS pool ==="
+  ZPOOL_ARGS=()
+  IDX=0
+  REMAINING=$NDISKS
+  while [ $REMAINING -gt 0 ]; do
+    WIDTH=$VDEV_WIDTH
+    # If leftover after this vdev would be < 3 (too small for raidz1), absorb it
+    LEFTOVER=$((REMAINING - WIDTH))
+    if [ $LEFTOVER -gt 0 ] && [ $LEFTOVER -lt 3 ]; then
+      WIDTH=$((WIDTH + LEFTOVER))
+    fi
+    ZPOOL_ARGS+=("raidz1")
+    for ((d = 0; d < WIDTH; d++)); do
+      ZPOOL_ARGS+=("${DATA_PARTS[$IDX]}")
+      IDX=$((IDX + 1))
+    done
+    REMAINING=$((REMAINING - WIDTH))
+  done
 
-# Create remaining space partitions on each NVMe drive for zpool
-for dev in "${NVME_DEVICES[@]}"; do
-  echo "Creating partition on ${dev}..."
-  sudo parted -s "$dev" mkpart primary 226GiB 100%
-done
+  echo "Creating tank: ${ZPOOL_ARGS[*]}"
+  sudo zpool create -o ashift=12 -m none tank "${ZPOOL_ARGS[@]}"
+fi
 
-# Build device list for zpool creation
-PARTS=()
-for dev in "${NVME_DEVICES[@]}"; do
-  PARTS+=("${dev}p2")
-done
+# Configure ZFS properties on tank
+sudo zfs set compression=lz4 tank
+sudo zfs set atime=off tank
+sudo zfs set xattr=sa tank
 
-echo "Creating ZFS zpool: ${PARTS[*]}"
-sudo zpool create -m none dozer ${PARTS[*]}
+# Create /data dataset
+sudo zfs create -o mountpoint=/data tank/data
+sudo mkdir -p /data/exelet
+
+echo "ZFS pool 'tank' ready:"
+zpool status tank
+
+# Create backup pool from EBS volumes (striped for throughput)
+echo ""
+echo "=== Setting up ZFS backup pool ==="
+if [ ${#EBS_DATA_DEVICES[@]} -ge 2 ]; then
+  echo "Creating backup pool (striped) from ${#EBS_DATA_DEVICES[@]} EBS volumes: ${EBS_DATA_DEVICES[*]}"
+  sudo zpool create -o ashift=12 -m none backup "${EBS_DATA_DEVICES[@]}"
+  sudo zfs set compression=lz4 backup
+  sudo zfs set atime=off backup
+  echo "Backup pool ready:"
+  zpool status backup
+elif [ ${#EBS_DATA_DEVICES[@]} -eq 1 ]; then
+  echo "Creating backup pool from single EBS volume: ${EBS_DATA_DEVICES[0]}"
+  sudo zpool create -o ashift=12 -m none backup "${EBS_DATA_DEVICES[0]}"
+  sudo zfs set compression=lz4 backup
+  sudo zfs set atime=off backup
+  echo "Backup pool ready:"
+  zpool status backup
+else
+  echo "No EBS data volumes found, skipping backup pool"
+fi
 
 # Configure ZFS ARC (min 16GB, max 64GB)
+echo ""
 echo "Configuring ZFS ARC limits..."
 cat <<EOF | sudo tee /etc/modprobe.d/zfs.conf >/dev/null
 options zfs zfs_arc_min=17179869184
 options zfs zfs_arc_max=68719476736
 EOF
 sudo update-initramfs -u
-echo "NOTE: Reboot required for ZFS ARC max setting to take effect"
 
-# TODO: Setup backup zpool
-
-# Find the 450GB device for data volume
-DATA_DEVICE=""
-for nvme in /dev/nvme*n1; do
-	if [ -b "$nvme" ]; then
-		SIZE_HR=$(lsblk -n -d -o SIZE "$nvme" 2>/dev/null | tr -d ' ')
-		echo "Checking NVMe device $nvme with size ${SIZE_HR}"
-
-		SIZE_GB=$(lsblk -b -n -d -o SIZE "$nvme" 2>/dev/null | awk '{printf "%.0f", $1/1073741824}')
-
-		if [ -n "$SIZE_GB" ] && [ "$SIZE_GB" -ge 445 ] && [ "$SIZE_GB" -le 455 ]; then
-			DATA_DEVICE="$nvme"
-			echo "Found data volume at $DATA_DEVICE (${SIZE_GB}GB)"
-			break
-		fi
-	fi
-done
-if [ -z "$DATA_DEVICE" ]; then
-	echo "ERROR: Could not find data volume (450GB data device)"
-	echo "Available block devices:"
-	lsblk
-	exit 1
-fi
-
-echo "Using data device: $DATA_DEVICE"
-sudo zpool create -m none tank $DATA_DEVICE
-# Create /data/exelet directory
-sudo zfs create tank/data
-sudo zfs set mountpoint=/data tank/data
-# create exelet directory
-sudo mkdir -p /data/exelet
-
-echo "Data volume setup complete"
+echo ""
+echo "=== Volume setup complete ==="
+swapon --show
 VOLUME_SETUP_SCRIPT
 
 # Copy and execute the volume setup script
@@ -685,7 +747,8 @@ TAILSCALE_IP=$(tailscale ip -4)
 echo "node_exporter should be listening on Tailscale IP: $TAILSCALE_IP"
 echo "Verifying node-exporter is running..."
 for i in $(seq 1 300); do
-    if curl -s http://${TAILSCALE_IP}:9100/metrics | head -n 3; then
+    if curl -sf -o /dev/null --max-time 2 http://${TAILSCALE_IP}:9100/metrics; then
+        echo "node-exporter is responding on ${TAILSCALE_IP}:9100"
         break
     fi
     if [ $i -eq 300 ]; then
@@ -705,8 +768,9 @@ echo "The machine is ready to deploy the exelet."
 echo ""
 echo "${MACHINE_NAME} is now fully configured with:"
 echo "  - Cloud Hypervisor"
-echo "  - 900GB swap (4x 225GB with equal priority for I/O interleaving)"
-echo "  - ~2.7TB ZFS zpool (RAID 0 across 4 disks) for exelet"
+echo "  - Swap on 25% of each instance-store NVMe drive"
+echo "  - ZFS pool 'tank' (raidz1) on 75% of instance-store NVMe drives"
+echo "  - ZFS pool 'backup' (striped) on 2x EBS io2 volumes"
 echo "  - ZFS ARC limits set to 16GB min / 64GB max (requires reboot)"
 echo ""
 echo "Instance details:"
