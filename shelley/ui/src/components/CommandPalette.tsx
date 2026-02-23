@@ -27,6 +27,8 @@ interface CommandPaletteProps {
   onOpenNotificationsModal: () => void;
   onNextConversation: () => void;
   onPreviousConversation: () => void;
+  onNextUserMessage: () => void;
+  onPreviousUserMessage: () => void;
   hasCwd: boolean;
 }
 
@@ -79,6 +81,8 @@ function CommandPalette({
   onOpenNotificationsModal,
   onNextConversation,
   onPreviousConversation,
+  onNextUserMessage,
+  onPreviousUserMessage,
   hasCwd,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
@@ -197,6 +201,52 @@ function CommandPalette({
         onClose();
       },
       keywords: ["previous", "up", "back", "conversation", "switch"],
+    });
+
+    items.push({
+      id: "next-user-message",
+      type: "action",
+      title: "Next User Message",
+      subtitle: "Jump to the next message you sent",
+      shortcut: "Ctrl+M, N",
+      icon: (
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 14l-7 7m0 0l-7-7m7 7V3"
+          />
+        </svg>
+      ),
+      action: () => {
+        onNextUserMessage();
+        onClose();
+      },
+      keywords: ["next", "down", "forward", "user", "message", "navigate", "jump"],
+    });
+
+    items.push({
+      id: "previous-user-message",
+      type: "action",
+      title: "Previous User Message",
+      subtitle: "Jump to the previous message you sent",
+      shortcut: "Ctrl+M, P",
+      icon: (
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M5 10l7-7m0 0l7 7m-7-7v18"
+          />
+        </svg>
+      ),
+      action: () => {
+        onPreviousUserMessage();
+        onClose();
+      },
+      keywords: ["previous", "up", "back", "user", "message", "navigate", "jump"],
     });
 
     if (hasCwd) {
@@ -374,6 +424,8 @@ function CommandPalette({
     onNewConversation,
     onNextConversation,
     onPreviousConversation,
+    onNextUserMessage,
+    onPreviousUserMessage,
     onOpenDiffViewer,
     onOpenModelsModal,
     onOpenNotificationsModal,

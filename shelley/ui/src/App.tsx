@@ -113,6 +113,7 @@ function App() {
   const [modelsModalOpen, setModelsModalOpen] = useState(false);
   const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
   const [modelsRefreshTrigger, setModelsRefreshTrigger] = useState(0);
+  const [navigateUserMessageTrigger, setNavigateUserMessageTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Global ephemeral terminals - persist across conversation switches
@@ -182,14 +183,62 @@ function App() {
     setViewedConversation(prev);
   }, [conversations, currentConversationId]);
 
-  // Global keyboard shortcuts
+  const navigateToNextUserMessage = useCallback(() => {
+    setNavigateUserMessageTrigger((prev) => Math.abs(prev) + 1);
+  }, []);
+
+  const navigateToPreviousUserMessage = useCallback(() => {
+    setNavigateUserMessageTrigger((prev) => -(Math.abs(prev) + 1));
+  }, []);
+
+  // Global keyboard shortcuts (including Ctrl+M chord sequences)
   useEffect(() => {
     const isMac = navigator.platform.toUpperCase().includes("MAC");
+    let chordPending = false;
+    let chordTimer: number | null = null;
+
+    const clearChord = () => {
+      chordPending = false;
+      if (chordTimer !== null) {
+        clearTimeout(chordTimer);
+        chordTimer = null;
+      }
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Handle second key of Ctrl+M chord (before the Mac Ctrl passthrough)
+      if (chordPending) {
+        clearChord();
+        if (e.key === "n" || e.key === "N") {
+          e.preventDefault();
+          navigateToNextUserMessage();
+          return;
+        }
+        if (e.key === "p" || e.key === "P") {
+          e.preventDefault();
+          navigateToPreviousUserMessage();
+          return;
+        }
+        // Any other key cancels the chord
+        return;
+      }
+
+      // Ctrl+M on all platforms: start chord sequence
+      // (intentionally before the Mac Ctrl passthrough — we use Ctrl, not Cmd,
+      // to avoid overriding Cmd+M which is system minimize on macOS)
+      if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "m" || e.key === "M")) {
+        e.preventDefault();
+        chordPending = true;
+        // Auto-cancel chord after 1.5 seconds
+        chordTimer = window.setTimeout(clearChord, 1500);
+        return;
+      }
+
       // On macOS: Ctrl+K is readline (kill to end of line), let it pass through
       if (isMac && e.ctrlKey && !e.metaKey) return;
       // On macOS use Cmd+K, on other platforms use Ctrl+K
       const modifierPressed = isMac ? e.metaKey : e.ctrlKey;
+
       if (modifierPressed && e.key === "k") {
         e.preventDefault();
         setCommandPaletteOpen((prev) => !prev);
@@ -211,8 +260,16 @@ function App() {
       }
     };
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [navigateToNextConversation, navigateToPreviousConversation]);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      clearChord();
+    };
+  }, [
+    navigateToNextConversation,
+    navigateToPreviousConversation,
+    navigateToNextUserMessage,
+    navigateToPreviousUserMessage,
+  ]);
 
   // Handle popstate events (browser back/forward and SubagentTool navigation)
   useEffect(() => {
@@ -559,6 +616,7 @@ function App() {
             onReconnect={refreshConversations}
             ephemeralTerminals={ephemeralTerminals}
             setEphemeralTerminals={setEphemeralTerminals}
+            navigateUserMessageTrigger={navigateUserMessageTrigger}
           />
         </div>
 
@@ -602,6 +660,8 @@ function App() {
           }}
           onNextConversation={navigateToNextConversation}
           onPreviousConversation={navigateToPreviousConversation}
+          onNextUserMessage={navigateToNextUserMessage}
+          onPreviousUserMessage={navigateToPreviousUserMessage}
           hasCwd={!!(currentConversation?.cwd || mostRecentCwd)}
         />
 

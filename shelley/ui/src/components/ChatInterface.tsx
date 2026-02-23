@@ -512,6 +512,7 @@ interface ChatInterfaceProps {
   onReconnect?: () => void;
   ephemeralTerminals: EphemeralTerminal[];
   setEphemeralTerminals: React.Dispatch<React.SetStateAction<EphemeralTerminal[]>>;
+  navigateUserMessageTrigger?: number; // positive = next, negative = previous
 }
 
 function ChatInterface({
@@ -534,6 +535,7 @@ function ChatInterface({
   onReconnect,
   ephemeralTerminals,
   setEphemeralTerminals,
+  navigateUserMessageTrigger,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -678,6 +680,45 @@ function ChatInterface({
   const lastSequenceIdRef = useRef<number>(-1);
   const hasConnectedRef = useRef(false);
   const userScrolledRef = useRef(false);
+
+  // Navigate to next/previous user message when trigger changes
+  useEffect(() => {
+    if (!navigateUserMessageTrigger || !messagesContainerRef.current) return;
+
+    const container = messagesContainerRef.current;
+    const userMessageEls = container.querySelectorAll(".message-user");
+    if (userMessageEls.length === 0) return;
+
+    const direction = navigateUserMessageTrigger > 0 ? 1 : -1;
+
+    // Find which user message is currently closest to the top of the viewport
+    const containerRect = container.getBoundingClientRect();
+    const viewportTop = containerRect.top;
+    let closestIdx = -1;
+    let closestDist = Infinity;
+    userMessageEls.forEach((el, i) => {
+      const rect = el.getBoundingClientRect();
+      const dist = Math.abs(rect.top - viewportTop);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestIdx = i;
+      }
+    });
+
+    // Move in the requested direction
+    let targetIdx = closestIdx + direction;
+    // If the closest message is not near the top (user hasn't navigated to it),
+    // and we're going forward, stay on closestIdx if it's below viewport
+    if (direction === 1 && closestIdx >= 0) {
+      const rect = userMessageEls[closestIdx].getBoundingClientRect();
+      if (rect.top > viewportTop + 50) {
+        targetIdx = closestIdx; // navigate to this one first
+      }
+    }
+
+    targetIdx = Math.max(0, Math.min(targetIdx, userMessageEls.length - 1));
+    userMessageEls[targetIdx].scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [navigateUserMessageTrigger]);
 
   // Load messages and set up streaming
   useEffect(() => {
