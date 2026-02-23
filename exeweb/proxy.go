@@ -35,17 +35,17 @@ import (
 // Data is handled via the ProxyData interface,
 // which for exed talks to the database and for exeprox talks to exed.
 type ProxyServer struct {
-	Data         ProxyData
-	Lg           *slog.Logger
-	Env          *stage.Env
-	HTTPPort     int // zero if not serving HTTP
-	HTTPSPort    int // zero if not serving HTTPS
-	PiperdPort   int
-	SSHPool      *sshpool2.Pool
-	HTTPMetrics  *HTTPMetrics
-	Templates    *template.Template
-	LobbyIP      netip.Addr
-	PublicIPs    map[netip.Addr]publicips.PublicIP
+	Data        ProxyData
+	Lg          *slog.Logger
+	Env         *stage.Env
+	HTTPPort    int // zero if not serving HTTP
+	HTTPSPort   int // zero if not serving HTTPS
+	PiperdPort  int
+	SSHPool     *sshpool2.Pool
+	HTTPMetrics *HTTPMetrics
+	Templates   *template.Template
+	LobbyIP     netip.Addr
+	PublicIPs   map[netip.Addr]publicips.PublicIP
 
 	// For testing:
 	LookupCNAMEFunc func(context.Context, string) (string, error)
