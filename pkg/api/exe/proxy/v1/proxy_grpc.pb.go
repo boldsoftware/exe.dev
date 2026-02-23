@@ -38,6 +38,7 @@ const (
 	ProxyInfoService_HasUserAccessToBox_FullMethodName          = "/exe.proxy.v1.ProxyInfoService/HasUserAccessToBox"
 	ProxyInfoService_IsBoxSharedWithUserTeam_FullMethodName     = "/exe.proxy.v1.ProxyInfoService/IsBoxSharedWithUserTeam"
 	ProxyInfoService_CheckShareLink_FullMethodName              = "/exe.proxy.v1.ProxyInfoService/CheckShareLink"
+	ProxyInfoService_ValidateMagicSecret_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/ValidateMagicSecret"
 	ProxyInfoService_SSHKeyByFingerprint_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/SSHKeyByFingerprint"
 	ProxyInfoService_HLLNoteEvents_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/HLLNoteEvents"
 	ProxyInfoService_CheckAndIncrementEmailQuota_FullMethodName = "/exe.proxy.v1.ProxyInfoService/CheckAndIncrementEmailQuota"
@@ -93,6 +94,11 @@ type ProxyInfoServiceClient interface {
 	// so this call is also responsible for recording the user,
 	// and for creating an email-based share for the user.
 	CheckShareLink(ctx context.Context, in *CheckShareLinkRequest, opts ...grpc.CallOption) (*CheckShareLinkResponse, error)
+	// ValidateMagicSecret consumes and validates a magic secret
+	// created by exed.
+	// TODO(ian): There should be a better approach, one that does
+	// not require exeprox to reach back to exed.
+	ValidateMagicSecret(ctx context.Context, in *ValidateMagicSecretRequest, opts ...grpc.CallOption) (*ValidateMagicSecretResponse, error)
 	// SSHKeyByFingerprint returns the user ID and SSH key for a fingerprint.
 	SSHKeyByFingerprint(ctx context.Context, in *SSHKeyByFingerprintRequest, opts ...grpc.CallOption) (*SSHKeyByFingerprintResponse, error)
 	// HLLNoteEvents notes events for the HyperLogLog tracker.
@@ -304,6 +310,16 @@ func (c *proxyInfoServiceClient) CheckShareLink(ctx context.Context, in *CheckSh
 	return out, nil
 }
 
+func (c *proxyInfoServiceClient) ValidateMagicSecret(ctx context.Context, in *ValidateMagicSecretRequest, opts ...grpc.CallOption) (*ValidateMagicSecretResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ValidateMagicSecretResponse)
+	err := c.cc.Invoke(ctx, ProxyInfoService_ValidateMagicSecret_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *proxyInfoServiceClient) SSHKeyByFingerprint(ctx context.Context, in *SSHKeyByFingerprintRequest, opts ...grpc.CallOption) (*SSHKeyByFingerprintResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SSHKeyByFingerprintResponse)
@@ -425,6 +441,11 @@ type ProxyInfoServiceServer interface {
 	// so this call is also responsible for recording the user,
 	// and for creating an email-based share for the user.
 	CheckShareLink(context.Context, *CheckShareLinkRequest) (*CheckShareLinkResponse, error)
+	// ValidateMagicSecret consumes and validates a magic secret
+	// created by exed.
+	// TODO(ian): There should be a better approach, one that does
+	// not require exeprox to reach back to exed.
+	ValidateMagicSecret(context.Context, *ValidateMagicSecretRequest) (*ValidateMagicSecretResponse, error)
 	// SSHKeyByFingerprint returns the user ID and SSH key for a fingerprint.
 	SSHKeyByFingerprint(context.Context, *SSHKeyByFingerprintRequest) (*SSHKeyByFingerprintResponse, error)
 	// HLLNoteEvents notes events for the HyperLogLog tracker.
@@ -497,6 +518,9 @@ func (UnimplementedProxyInfoServiceServer) IsBoxSharedWithUserTeam(context.Conte
 }
 func (UnimplementedProxyInfoServiceServer) CheckShareLink(context.Context, *CheckShareLinkRequest) (*CheckShareLinkResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CheckShareLink not implemented")
+}
+func (UnimplementedProxyInfoServiceServer) ValidateMagicSecret(context.Context, *ValidateMagicSecretRequest) (*ValidateMagicSecretResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ValidateMagicSecret not implemented")
 }
 func (UnimplementedProxyInfoServiceServer) SSHKeyByFingerprint(context.Context, *SSHKeyByFingerprintRequest) (*SSHKeyByFingerprintResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SSHKeyByFingerprint not implemented")
@@ -817,6 +841,24 @@ func _ProxyInfoService_CheckShareLink_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProxyInfoService_ValidateMagicSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ValidateMagicSecretRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyInfoServiceServer).ValidateMagicSecret(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyInfoService_ValidateMagicSecret_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyInfoServiceServer).ValidateMagicSecret(ctx, req.(*ValidateMagicSecretRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProxyInfoService_SSHKeyByFingerprint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SSHKeyByFingerprintRequest)
 	if err := dec(in); err != nil {
@@ -976,6 +1018,10 @@ var ProxyInfoService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CheckShareLink",
 			Handler:    _ProxyInfoService_CheckShareLink_Handler,
+		},
+		{
+			MethodName: "ValidateMagicSecret",
+			Handler:    _ProxyInfoService_ValidateMagicSecret_Handler,
 		},
 		{
 			MethodName: "SSHKeyByFingerprint",

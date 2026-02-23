@@ -46,7 +46,6 @@ type ProxyServer struct {
 	Templates    *template.Template
 	LobbyIP      netip.Addr
 	PublicIPs    map[netip.Addr]publicips.PublicIP
-	MagicSecrets *MagicSecrets
 
 	// For testing:
 	LookupCNAMEFunc func(context.Context, string) (string, error)
@@ -411,7 +410,7 @@ func (ps *ProxyServer) HandleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate and consume the magic secret
-	magicSecret, err := ps.MagicSecrets.Validate(secret)
+	userID, _, magicRedirectURL, err := ps.Data.ValidateMagicSecret(r.Context(), secret)
 	if err != nil {
 		ps.Lg.DebugContext(r.Context(), "[REDIRECT] Magic secret validation failed", "error", err)
 		http.Error(w, "Invalid or expired secret", http.StatusUnauthorized)
@@ -419,7 +418,7 @@ func (ps *ProxyServer) HandleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create authentication cookie for this subdomain
-	cookieValue, err := ps.Data.CreateAuthCookie(r.Context(), magicSecret.UserID, r.Host)
+	cookieValue, err := ps.Data.CreateAuthCookie(r.Context(), userID, r.Host)
 	if err != nil {
 		http.Error(w, "Failed to create authentication cookie", http.StatusInternalServerError)
 		return
@@ -445,7 +444,7 @@ func (ps *ProxyServer) HandleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	// Validate to prevent open redirect attacks.
 	finalRedirect := redirectURL
 	if finalRedirect == "" {
-		finalRedirect = magicSecret.RedirectURL
+		finalRedirect = magicRedirectURL
 	}
 	if !IsValidRedirectURL(finalRedirect) {
 		finalRedirect = "/"

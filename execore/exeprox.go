@@ -397,6 +397,26 @@ func (es *exeproxServer) SSHKeyByFingerprint(ctx context.Context, req *proxyapi.
 	return ret, nil
 }
 
+// ValidateMagicSecret consumes and validates a magic secret.
+func (es *exeproxServer) ValidateMagicSecret(ctx context.Context, req *proxyapi.ValidateMagicSecretRequest) (*proxyapi.ValidateMagicSecretResponse, error) {
+	ms, err := es.s.magicSecrets.Validate(req.Secret)
+	if err != nil {
+		// This is an error like "invalid secret".
+		// We return it as an error message,
+		// not as a gRPC error.
+		ret := &proxyapi.ValidateMagicSecretResponse{
+			ErrorMessage: err.Error(),
+		}
+		return ret, nil
+	}
+	ret := &proxyapi.ValidateMagicSecretResponse{
+		UserID:      ms.UserID,
+		BoxName:     ms.BoxName,
+		RedirectUrl: ms.RedirectURL,
+	}
+	return ret, nil
+}
+
 // HLLNoteEvents notes events for the HyperLogLog tracker.
 func (es *exeproxServer) HLLNoteEvents(ctx context.Context, req *proxyapi.HLLNoteEventsRequest) (*proxyapi.HLLNoteEventsResponse, error) {
 	if es.s.hllTracker != nil {

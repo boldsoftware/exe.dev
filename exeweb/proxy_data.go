@@ -53,6 +53,12 @@ type ProxyData interface {
 	// and for creating an email-based share for the user.
 	CheckShareLink(ctx context.Context, boxID int, boxName, userID, shareToken string) (bool, error)
 
+	// ValidateMagicSecret consumes and validates a magic secret
+	// created by exed during the authentication flow.
+	// TODO(ian): There should be a better approach,
+	// one that does not require exeprox to reach back to exed.
+	ValidateMagicSecret(ctx context.Context, secret string) (userID, boxName, redirectURL string, err error)
+
 	// GetSSHKeyByFingerprint uses the key fingerprint to fetch
 	// the corresponding SSH key from the database.
 	// It returns the user ID and SSH key.

@@ -254,7 +254,6 @@ func (s *Server) proxyServer() *exeweb.ProxyServer {
 		Templates:       s.templates,
 		LobbyIP:         s.LobbyIP,
 		PublicIPs:       s.PublicIPs,
-		MagicSecrets:    s.magicSecrets,
 		LookupCNAMEFunc: s.lookupCNAMEFunc,
 		LookupAFunc:     s.lookupAFunc,
 	}
@@ -390,6 +389,15 @@ func (pd *proxyData) IsBoxSharedWithUserTeam(ctx context.Context, boxID int, box
 // CheckShareLink implements [exeweb.ProxyData.CheckShareLink].
 func (pd *proxyData) CheckShareLink(ctx context.Context, boxID int, boxName, userID, shareToken string) (bool, error) {
 	return pd.s.checkShareLink(ctx, boxID, boxName, userID, shareToken)
+}
+
+// ValidateMagicSecret consumes and validates a magic secret.
+func (pd *proxyData) ValidateMagicSecret(ctx context.Context, secret string) (userID, boxName, redirectURL string, err error) {
+	ms, err := pd.s.magicSecrets.Validate(secret)
+	if err != nil {
+		return "", "", "", err
+	}
+	return ms.UserID, ms.BoxName, ms.RedirectURL, nil
 }
 
 // GetSSHKeyByFingerprint implements [exeweb.ProxyData.GetSSHKeyByFingerprint].

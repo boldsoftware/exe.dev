@@ -70,6 +70,12 @@ service ProxyInfoService {
   // and for creating an email-based share for the user.
   rpc CheckShareLink(CheckShareLinkRequest) returns (CheckShareLinkResponse);
 
+  // ValidateMagicSecret consumes and validates a magic secret
+  // created by exed.
+  // TODO(ian): There should be a better approach, one that does
+  // not require exeprox to reach back to exed.
+  rpc ValidateMagicSecret(ValidateMagicSecretRequest) returns (ValidateMagicSecretResponse);
+
   // SSHKeyByFingerprint returns the user ID and SSH key for a fingerprint.
   rpc SSHKeyByFingerprint(SSHKeyByFingerprintRequest) returns (SSHKeyByFingerprintResponse);
 
@@ -284,6 +290,17 @@ message CheckShareLinkRequest {
 
 message CheckShareLinkResponse {
   bool ok = 1;
+}
+
+message ValidateMagicSecretRequest {
+  string secret = 1;
+}
+
+message ValidateMagicSecretResponse {
+  string error_message = 1; // if not empty, other fields are empty
+  string user_id = 2;
+  string box_name = 3;
+  string redirect_url = 4;
 }
 
 message SSHKeyByFingerprintRequest {
