@@ -43,6 +43,7 @@ interface ContextUsageBarProps {
   contextWindowSize: number;
   maxContextTokens: number;
   conversationId?: string | null;
+  modelName?: string;
   onContinueConversation?: () => void;
   onDistillConversation?: () => void;
 }
@@ -51,6 +52,7 @@ function ContextUsageBar({
   contextWindowSize,
   maxContextTokens,
   conversationId,
+  modelName,
   onContinueConversation,
   onDistillConversation,
 }: ContextUsageBarProps) {
@@ -162,6 +164,11 @@ function ContextUsageBar({
             zIndex: 100,
           }}
         >
+          {modelName && (
+            <div style={{ fontWeight: 500, color: "var(--text-primary)", marginBottom: "4px" }}>
+              {modelName}
+            </div>
+          )}
           {formatTokens(contextWindowSize)} / {formatTokens(maxContextTokens)} (
           {percentage.toFixed(1)}%) tokens used
           {showLongConversationWarning && (
@@ -572,6 +579,14 @@ function ChatInterface({
     setSelectedCwdState(cwd);
     localStorage.setItem("shelley_selected_cwd", cwd);
   };
+
+  // Sync selected model from conversation when switching to an existing conversation.
+  // The conversation's model is authoritative once set.
+  useEffect(() => {
+    if (currentConversation?.model) {
+      setSelectedModel(currentConversation.model);
+    }
+  }, [currentConversation?.conversation_id]);
 
   // Reset cwdInitialized when switching to a new conversation so we re-read from localStorage
   useEffect(() => {
@@ -1159,6 +1174,12 @@ function ChatInterface({
       currentConversation?.cwd || selectedCwd || undefined,
     );
   };
+
+  // Get the display name for the selected model
+  const selectedModelDisplayName = (() => {
+    const modelObj = models.find((m) => m.id === selectedModel);
+    return modelObj?.display_name || selectedModel;
+  })();
 
   const getDisplayTitle = () => {
     return currentConversation?.slug || "Shelley";
@@ -1870,6 +1891,7 @@ function ChatInterface({
                   models.find((m) => m.id === selectedModel)?.max_context_tokens || 200000
                 }
                 conversationId={conversationId}
+                modelName={selectedModelDisplayName}
                 onContinueConversation={
                   onContinueConversation ? handleContinueConversation : undefined
                 }
@@ -1922,6 +1944,7 @@ function ChatInterface({
                   models.find((m) => m.id === selectedModel)?.max_context_tokens || 200000
                 }
                 conversationId={conversationId}
+                modelName={selectedModelDisplayName}
                 onContinueConversation={
                   onContinueConversation ? handleContinueConversation : undefined
                 }
