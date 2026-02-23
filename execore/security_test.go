@@ -381,3 +381,132 @@ func TestSignupPOWDisabled(t *testing.T) {
 		t.Errorf("With POW disabled: got verification challenge error")
 	}
 }
+
+// TestRenderAccessRequiredRedirect tests that unauthenticated users on box
+// subdomains are redirected to the main domain auth page (so the login form
+// is same-origin and passkeys work), while authenticated users without access
+// see the "Access Denied" page directly.
+func TestRenderAccessRequiredRedirect(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	ps := server.proxyServer()
+
+	t.Run("unauthenticated user is redirected", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://mybox."+server.env.BoxHost+"/some/path?key=val", nil)
+		req.Host = "mybox." + server.env.BoxHost
+		w := httptest.NewRecorder()
+		ps.RenderAccessRequired(w, req, nil)
+
+		if w.Code != http.StatusTemporaryRedirect {
+			t.Fatalf("got status %d, want %d", w.Code, http.StatusTemporaryRedirect)
+		}
+		loc := w.Header().Get("Location")
+		// Verify the redirect points to /auth on the web host.
+		// The URL may include a non-standard port (e.g. https://localhost:PORT/auth?...).
+		if !strings.Contains(loc, "/auth?redirect=") {
+			t.Fatalf("unexpected redirect location: %s", loc)
+		}
+		if !strings.Contains(loc, "return_host=") {
+			t.Errorf("redirect missing return_host: %s", loc)
+		}
+		if !strings.Contains(loc, "redirect=") {
+			t.Errorf("redirect missing redirect param: %s", loc)
+		}
+		if !strings.Contains(loc, url.QueryEscape("/some/path?key=val")) {
+			t.Errorf("redirect should encode original path+query, got: %s", loc)
+		}
+	})
+
+	t.Run("authenticated user without access sees 401", func(t *testing.T) {
+		user, err := server.createUser(t.Context(), testSSHPubKey, "denied@example.com", AllQualityChecks)
+		if err != nil {
+			t.Fatalf("Failed to create user: %v", err)
+		}
+		boxHost := "mybox." + server.env.BoxHost
+		cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, boxHost)
+		if err != nil {
+			t.Fatalf("Failed to create auth cookie: %v", err)
+		}
+
+		req := httptest.NewRequest("GET", "http://"+boxHost+"/", nil)
+		req.Host = boxHost
+		req.AddCookie(&http.Cookie{Name: exeweb.ProxyAuthCookieName(80), Value: cookieValue})
+		w := httptest.NewRecorder()
+		ps.RenderAccessRequired(w, req, nil)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("got status %d, want %d", w.Code, http.StatusUnauthorized)
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, "Access Denied") {
+			t.Errorf("expected 'Access Denied' in body, got: %s", body[:min(200, len(body))])
+		}
+		if strings.Contains(body, "<form") {
+			t.Errorf("authenticated user should not see login form")
+		}
+	})
+}
+
+func TestCSRFProtection(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	handler := server.prepareHandler()
+
+	t.Run("same-origin POST to /auth is allowed", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "http://"+server.env.WebHost+"/auth", strings.NewReader("email=test@example.com"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Origin", "http://"+server.env.WebHost)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code == http.StatusForbidden {
+			t.Errorf("same-origin POST to /auth was blocked: %d %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("cross-origin POST to /auth is blocked", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "http://"+server.env.WebHost+"/auth", strings.NewReader("email=test@example.com"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Origin", "https://mybox."+server.env.BoxHost+":8001")
+		req.Header.Set("Sec-Fetch-Site", "cross-site")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != http.StatusForbidden {
+			t.Errorf("cross-origin POST to /auth should be blocked, got %d", w.Code)
+		}
+	})
+
+	t.Run("cross-origin POST to /verify-email is allowed", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "http://"+server.env.WebHost+"/verify-email", strings.NewReader("token=bogus"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Origin", "https://mail.google.com")
+		req.Header.Set("Sec-Fetch-Site", "cross-site")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code == http.StatusForbidden {
+			t.Errorf("cross-origin POST to /verify-email was blocked: %d %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("cross-origin POST to /create-vm is blocked", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "http://"+server.env.WebHost+"/create-vm", strings.NewReader("hostname=evil"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Origin", "https://evil.com")
+		req.Header.Set("Sec-Fetch-Site", "cross-site")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != http.StatusForbidden {
+			t.Errorf("cross-origin POST to /create-vm should be blocked, got %d", w.Code)
+		}
+	})
+
+	t.Run("cross-origin GET is allowed", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://"+server.env.WebHost+"/auth", nil)
+		req.Header.Set("Origin", "https://evil.com")
+		req.Header.Set("Sec-Fetch-Site", "cross-site")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code == http.StatusForbidden {
+			t.Errorf("cross-origin GET should not be blocked, got %d", w.Code)
+		}
+	})
+}

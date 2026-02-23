@@ -54,10 +54,21 @@ import (
 
 func (s *Server) prepareHandler() http.Handler {
 	lg := s.prepareLlmGateway()
+
+	cop := http.NewCrossOriginProtection()
+	cop.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "cross-origin request denied", http.StatusForbidden)
+	}))
+	// The /verify-email link is clicked from email (cross-origin navigation)
+	// and the page auto-submits a confirmation form via JS. Browsers propagate
+	// the cross-site Sec-Fetch-Site context to this POST. Safe to allow:
+	// it only confirms an already-issued, single-use token.
+	cop.AddInsecureBypassPattern("POST /verify-email")
+
 	servMux := http.NewServeMux()
 	servMux.Handle("/_/gateway/", lg)
 	servMux.HandleFunc("POST /_/gateway/email/send", s.handleVMEmailSend)
-	servMux.Handle("/", s)
+	servMux.Handle("/", cop.Handler(s))
 
 	h := s.httpMetrics.Wrap(servMux)
 	h = metricsbag.Wrap(h)

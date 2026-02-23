@@ -969,13 +969,14 @@ type UnauthorizedData struct {
 	PasskeyEnabled bool
 }
 
-// RenderAccessRequired renders the access required page
-// for unauthorized access.
+// RenderAccessRequired handles unauthorized proxy access.
 // If the user is authenticated and the box exists,
 // it shows the request-access page so they can
 // request access from the owner.
-// Otherwise it shows the 401 login page
-// to avoid leaking box existence information.
+// If the user is authenticated but the box is nil (doesn't exist or owner locked out),
+// it shows "Access Denied" to avoid leaking box existence.
+// If the user is not authenticated, it redirects to the main domain auth page
+// so the login form is same-origin and passkeys work (RPID matches).
 func (ps *ProxyServer) RenderAccessRequired(w http.ResponseWriter, r *http.Request, box *BoxData) {
 	var userEmail string
 	if userID, err := ps.ValidateProxyAuthCookie(r); err == nil {
@@ -1000,22 +1001,27 @@ func (ps *ProxyServer) RenderAccessRequired(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	u := &url.URL{
-		Scheme: getScheme(r),
-		Host:   r.Host,
-		Path:   r.URL.Path,
+	if userEmail == "" {
+		// Not authenticated: redirect to main domain auth page.
+		// This ensures the login form POST is same-origin on the main domain,
+		// passkeys work, and CSRF protection doesn't block it.
+		redirect := r.URL.Path
+		if r.URL.RawQuery != "" {
+			redirect += "?" + r.URL.RawQuery
+		}
+		authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s",
+			ps.webBaseURLNoRequest(),
+			url.QueryEscape(redirect),
+			url.QueryEscape(r.Host),
+		)
+		http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+		return
 	}
 
+	// Authenticated but no access (and box is nil): show "Access Denied".
 	data := UnauthorizedData{
-		Email:        userEmail,
-		AuthURL:      ps.webBaseURLNoRequest() + "/auth",
-		RedirectURL:  u.String(),
-		ReturnHost:   r.Host,
-		LoginWithExe: true,
-		// PasskeyEnabled is false:
-		// box subdomains can't use passkeys (RPID mismatch).
+		Email: userEmail,
 	}
-
 	w.WriteHeader(http.StatusUnauthorized)
 	ps.renderTemplate(r.Context(), w, "401.html", data)
 }
