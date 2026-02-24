@@ -3,6 +3,7 @@ package claudetool
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -175,5 +176,104 @@ func TestSubagentTool_InheritsModel(t *testing.T) {
 
 	if runner.lastModelID != "claude-sonnet-4-20250514" {
 		t.Errorf("expected model 'claude-sonnet-4-20250514', got %q", runner.lastModelID)
+	}
+}
+
+func TestSubagentTool_ModelOverride(t *testing.T) {
+	wd := NewMutableWorkingDir("/tmp")
+	db := newMockSubagentDB()
+	runner := &mockSubagentRunner{response: "OK"}
+
+	tool := &SubagentTool{
+		DB:                   db,
+		ParentConversationID: "parent-123",
+		WorkingDir:           wd,
+		Runner:               runner,
+		ModelID:              "claude-sonnet-4-20250514",
+		AvailableModels: []AvailableModel{
+			{ID: "claude-sonnet-4-20250514"},
+			{ID: "claude-haiku-4.5", DisplayName: "Claude Haiku 4.5"},
+		},
+	}
+
+	// Verify the tool schema includes model enum
+	llmTool := tool.Tool()
+	schemaJSON, _ := json.Marshal(llmTool.InputSchema)
+	schemaStr := string(schemaJSON)
+	if !strings.Contains(schemaStr, "claude-haiku-4.5") {
+		t.Errorf("expected schema to contain model enum, got %s", schemaStr)
+	}
+
+	// Verify the description includes available models
+	if !strings.Contains(llmTool.Description, "claude-haiku-4.5 (Claude Haiku 4.5)") {
+		t.Errorf("expected description to list model with display name, got %s", llmTool.Description)
+	}
+	if !strings.Contains(llmTool.Description, "claude-sonnet-4-20250514") {
+		t.Errorf("expected description to list model without display name suffix, got %s", llmTool.Description)
+	}
+	// sonnet has no display name, so it should NOT have parentheses
+	if strings.Contains(llmTool.Description, "claude-sonnet-4-20250514 (") {
+		t.Errorf("expected no display name suffix for sonnet, got %s", llmTool.Description)
+	}
+
+	// Override model
+	input := subagentInput{Slug: "test", Prompt: "do something", Model: "claude-haiku-4.5"}
+	inputJSON, _ := json.Marshal(input)
+	tool.Run(context.Background(), inputJSON)
+
+	if runner.lastModelID != "claude-haiku-4.5" {
+		t.Errorf("expected model 'claude-haiku-4.5', got %q", runner.lastModelID)
+	}
+}
+
+func TestSubagentTool_ModelOverride_InvalidModel(t *testing.T) {
+	wd := NewMutableWorkingDir("/tmp")
+	db := newMockSubagentDB()
+	runner := &mockSubagentRunner{response: "OK"}
+
+	tool := &SubagentTool{
+		DB:                   db,
+		ParentConversationID: "parent-123",
+		WorkingDir:           wd,
+		Runner:               runner,
+		ModelID:              "claude-sonnet-4-20250514",
+		AvailableModels: []AvailableModel{
+			{ID: "claude-sonnet-4-20250514"},
+			{ID: "claude-haiku-4.5"},
+		},
+	}
+
+	input := subagentInput{Slug: "test", Prompt: "do something", Model: "nonexistent-model"}
+	inputJSON, _ := json.Marshal(input)
+	result := tool.Run(context.Background(), inputJSON)
+	if result.Error == nil {
+		t.Fatal("expected error for invalid model")
+	}
+	if !strings.Contains(result.Error.Error(), "nonexistent-model") {
+		t.Errorf("expected error to mention invalid model, got %v", result.Error)
+	}
+	if !strings.Contains(result.Error.Error(), "claude-sonnet-4-20250514") {
+		t.Errorf("expected error to list available models, got %v", result.Error)
+	}
+}
+
+func TestSubagentTool_NoModels(t *testing.T) {
+	// When no available models, schema should not have model enum
+	tool := &SubagentTool{
+		DB:                   newMockSubagentDB(),
+		ParentConversationID: "parent-123",
+		WorkingDir:           NewMutableWorkingDir("/tmp"),
+		Runner:               &mockSubagentRunner{response: "OK"},
+		ModelID:              "some-model",
+	}
+
+	llmTool := tool.Tool()
+	schemaJSON, _ := json.Marshal(llmTool.InputSchema)
+	schemaStr := string(schemaJSON)
+	if strings.Contains(schemaStr, "enum") {
+		t.Errorf("expected no enum in schema when no available models, got %s", schemaStr)
+	}
+	if strings.Contains(llmTool.Description, "Available models") {
+		t.Errorf("expected no model list in description when no available models")
 	}
 }

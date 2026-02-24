@@ -69,6 +69,9 @@ type ToolSetConfig struct {
 	// A value of 0 means no limit (but SubagentRunner/SubagentDB must still be set).
 	// Set to 1 to allow only top-level conversations (depth 0) to spawn subagents.
 	MaxSubagentDepth int
+	// AvailableModels is the list of models the subagent can choose from.
+	// If nil, the list is built from LLMProvider.GetAvailableModels().
+	AvailableModels []AvailableModel
 }
 
 // ToolSet holds a set of tools for a single conversation.
@@ -150,12 +153,20 @@ func NewToolSet(ctx context.Context, cfg ToolSetConfig) *ToolSet {
 	// MaxSubagentDepth of 0 means no limit; otherwise, only add if depth < max.
 	canSpawnSubagents := cfg.SubagentRunner != nil && cfg.SubagentDB != nil && cfg.ParentConversationID != ""
 	if canSpawnSubagents && (cfg.MaxSubagentDepth == 0 || cfg.SubagentDepth < cfg.MaxSubagentDepth) {
+		availableModels := cfg.AvailableModels
+		if availableModels == nil && cfg.LLMProvider != nil {
+			for _, id := range cfg.LLMProvider.GetAvailableModels() {
+				availableModels = append(availableModels, AvailableModel{ID: id})
+			}
+		}
+
 		subagentTool := &SubagentTool{
 			DB:                   cfg.SubagentDB,
 			ParentConversationID: cfg.ParentConversationID,
 			WorkingDir:           wd,
 			Runner:               cfg.SubagentRunner,
 			ModelID:              cfg.ModelID, // Inherit parent's model
+			AvailableModels:      availableModels,
 		}
 		tools = append(tools, subagentTool.Tool())
 	}

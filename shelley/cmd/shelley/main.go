@@ -108,7 +108,7 @@ func runServe(global GlobalConfig, args []string) {
 	availableModels := llmManager.GetAvailableModels()
 	logger.Info("Available models", "models", strings.Join(availableModels, ", "))
 
-	toolSetConfig := setupToolSetConfig(llmManager)
+	toolSetConfig := setupToolSetConfig(llmManager, llmManager)
 
 	// Create server
 	svr := server.NewServer(database, llmManager, toolSetConfig, logger, global.PredictableOnly, llmConfig.TerminalURL, llmConfig.DefaultModel, *requireHeader, llmConfig.Links)
@@ -256,17 +256,29 @@ func runVersion() {
 	}
 }
 
-func setupToolSetConfig(llmProvider claudetool.LLMServiceProvider) claudetool.ToolSetConfig {
+func setupToolSetConfig(llmProvider claudetool.LLMServiceProvider, llmManager server.LLMProvider) claudetool.ToolSetConfig {
 	wd, err := os.Getwd()
 	if err != nil {
 		// Fallback to "/" if we can't get working directory
 		wd = "/"
 	}
+
+	// Build available models with display names for the subagent tool
+	var availableModels []claudetool.AvailableModel
+	for _, id := range llmManager.GetAvailableModels() {
+		am := claudetool.AvailableModel{ID: id}
+		if info := llmManager.GetModelInfo(id); info != nil && info.DisplayName != "" && info.DisplayName != id {
+			am.DisplayName = info.DisplayName
+		}
+		availableModels = append(availableModels, am)
+	}
+
 	return claudetool.ToolSetConfig{
 		WorkingDir:       wd,
 		LLMProvider:      llmProvider,
 		EnableJITInstall: claudetool.EnableBashToolJITInstall,
 		EnableBrowser:    true,
+		AvailableModels:  availableModels,
 	}
 }
 

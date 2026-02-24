@@ -16,8 +16,14 @@ type SubagentRunner interface {
 	// RunSubagent runs a subagent conversation and returns the last response.
 	// If wait is false, it starts processing in background and returns immediately.
 	// timeout is the maximum time to wait for a response.
-	// modelID is the model to use for the subagent (inherited from parent if provided).
+	// modelID is the model to use for the subagent.
 	RunSubagent(ctx context.Context, conversationID, prompt string, wait bool, timeout time.Duration, modelID string) (string, error)
+}
+
+// AvailableModel describes a model available for subagent use.
+type AvailableModel struct {
+	ID          string // The model identifier to pass as the "model" parameter
+	DisplayName string // Human-readable name (may equal ID)
 }
 
 // SubagentDB is the database interface for subagent operations.
@@ -35,12 +41,15 @@ type SubagentTool struct {
 	ParentConversationID string
 	WorkingDir           *MutableWorkingDir
 	Runner               SubagentRunner
-	ModelID              string // Parent conversation's model ID
+	ModelID              string           // Parent conversation's model ID (default for subagents)
+	AvailableModels      []AvailableModel // Models the agent can choose from
 }
 
-const (
-	subagentName        = "subagent"
-	subagentDescription = `Spawn or interact with a subagent conversation.
+const subagentName = "subagent"
+
+// subagentDescription builds the tool description, including model info when models are available.
+func (s *SubagentTool) subagentDescription() string {
+	base := `Spawn or interact with a subagent conversation.
 
 Subagents are independent conversations that can work on subtasks in parallel.
 Use subagents for:
@@ -51,10 +60,40 @@ Use subagents for:
 
 Each subagent has its own slug identifier within this conversation.
 You can send messages to existing subagents by using the same slug.
-The tool returns the subagent's last response, or a status if the timeout is reached.
-`
-	subagentInputSchema = `
-{
+The tool returns the subagent's last response, or a status if the timeout is reached.`
+
+	if len(s.AvailableModels) > 0 {
+		base += "\n\nAvailable models (use the \"model\" parameter to override the default):"
+		for _, m := range s.AvailableModels {
+			if m.DisplayName != "" && m.DisplayName != m.ID {
+				base += fmt.Sprintf("\n- %s (%s)", m.ID, m.DisplayName)
+			} else {
+				base += fmt.Sprintf("\n- %s", m.ID)
+			}
+		}
+	}
+
+	return base
+}
+
+// subagentInputSchema builds the JSON schema, including model enum when models are available.
+func (s *SubagentTool) subagentInputSchema() string {
+	modelProp := ""
+	if len(s.AvailableModels) > 0 {
+		// Build the enum array
+		var enumItems []string
+		for _, m := range s.AvailableModels {
+			enumItems = append(enumItems, fmt.Sprintf("%q", m.ID))
+		}
+		modelProp = fmt.Sprintf(`,
+    "model": {
+      "type": "string",
+      "description": "LLM model for the subagent. Defaults to the parent conversation's model.",
+      "enum": [%s]
+    }`, strings.Join(enumItems, ", "))
+	}
+
+	return fmt.Sprintf(`{
   "type": "object",
   "required": ["slug", "prompt"],
   "properties": {
@@ -73,25 +112,25 @@ The tool returns the subagent's last response, or a status if the timeout is rea
     "wait": {
       "type": "boolean",
       "description": "Whether to wait for completion (default: true). If false, returns immediately."
-    }
+    }%s
   }
+}`, modelProp)
 }
-`
-)
 
 type subagentInput struct {
 	Slug           string `json:"slug"`
 	Prompt         string `json:"prompt"`
 	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
 	Wait           *bool  `json:"wait,omitempty"`
+	Model          string `json:"model,omitempty"`
 }
 
 // Tool returns an llm.Tool for the subagent functionality.
 func (s *SubagentTool) Tool() *llm.Tool {
 	return &llm.Tool{
 		Name:        subagentName,
-		Description: strings.TrimSpace(subagentDescription),
-		InputSchema: llm.MustSchema(subagentInputSchema),
+		Description: s.subagentDescription(),
+		InputSchema: llm.MustSchema(s.subagentInputSchema()),
 		Run:         s.Run,
 	}
 }
@@ -129,6 +168,28 @@ func (s *SubagentTool) Run(ctx context.Context, m json.RawMessage) llm.ToolOut {
 		wait = *req.Wait
 	}
 
+	// Determine which model to use: explicit choice > parent's model
+	modelID := s.ModelID
+	if req.Model != "" {
+		if len(s.AvailableModels) > 0 {
+			found := false
+			for _, m := range s.AvailableModels {
+				if m.ID == req.Model {
+					found = true
+					break
+				}
+			}
+			if !found {
+				var ids []string
+				for _, m := range s.AvailableModels {
+					ids = append(ids, m.ID)
+				}
+				return llm.ErrorfToolOut("unknown model %q; available: %s", req.Model, strings.Join(ids, ", "))
+			}
+		}
+		modelID = req.Model
+	}
+
 	// Get or create the subagent conversation
 	conversationID, actualSlug, err := s.DB.GetOrCreateSubagentConversation(ctx, req.Slug, s.ParentConversationID, s.WorkingDir.Get())
 	if err != nil {
@@ -136,7 +197,7 @@ func (s *SubagentTool) Run(ctx context.Context, m json.RawMessage) llm.ToolOut {
 	}
 
 	// Use the runner to execute the subagent
-	response, err := s.Runner.RunSubagent(ctx, conversationID, req.Prompt, wait, timeout, s.ModelID)
+	response, err := s.Runner.RunSubagent(ctx, conversationID, req.Prompt, wait, timeout, modelID)
 	if err != nil {
 		return llm.ErrorfToolOut("subagent error: %w", err)
 	}
