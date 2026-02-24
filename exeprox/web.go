@@ -28,10 +28,12 @@ import (
 	"exe.dev/tracing"
 	"exe.dev/wildcardcert"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale"
+	"tailscale.com/net/tsaddr"
 )
 
 // WebProxy implements HTTP/HTTPS proxying.
@@ -492,4 +494,20 @@ func (hl httpLogger) Write(p []byte) (int, error) {
 
 	hl.lg.Debug("net/http server error", "msg", msg)
 	return len(p), nil
+}
+
+// handleMetrics serves the /metrics HTTP request.
+func (wp *WebProxy) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	remoteIP, err := netip.ParseAddr(host)
+	if err != nil {
+		http.Error(w, "remoteaddr check: "+r.RemoteAddr+": "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !remoteIP.IsLoopback() && !tsaddr.IsTailscaleIP(remoteIP) {
+		http.NotFound(w, r)
+	}
+
+	handler := promhttp.HandlerFor(wp.proxy.metricsRegistry, promhttp.HandlerOpts{})
+	handler.ServeHTTP(w, r)
 }

@@ -84,8 +84,15 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// This is a web request that we aren't going to proxy
-	// to an exelet. Forward to the single exed.
+	// Handle some paths locally.
+	switch r.URL.Path {
+	case "/metrics":
+		wp.handleMetrics(w, r)
+		return
+	}
+
+	// This is a web request that we aren't going to handle
+	// or proxy to an exelet. Forward to the single exed.
 	var scheme, port string
 	if r.TLS != nil {
 		scheme = "https"

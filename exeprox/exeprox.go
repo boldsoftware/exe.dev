@@ -56,6 +56,8 @@ type Proxy struct {
 
 	sshPool *sshpool2.Pool
 
+	metricsRegistry *prometheus.Registry
+
 	stopping atomic.Bool // reports whether stop was called
 
 	lg *slog.Logger
@@ -108,9 +110,10 @@ func NewProxy(cfg *ProxyConfig) (*Proxy, error) {
 	}
 
 	p := &Proxy{
-		grpcClient: grpcClient,
-		lg:         lg,
-		sshPool:    sshPool,
+		grpcClient:      grpcClient,
+		lg:              lg,
+		sshPool:         sshPool,
+		metricsRegistry: cfg.MetricsRegistry,
 		web: WebProxy{
 			env:            cfg.Env,
 			exedHTTPPort:   cfg.ExedHTTPPort,
