@@ -95,8 +95,8 @@ func (tc *TransportCache) Close() {
 	close(tc.done)
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
-	for key, ct := range tc.transports {
+	for _, ct := range tc.transports {
 		ct.t.CloseIdleConnections()
-		delete(tc.transports, key)
 	}
+	clear(tc.transports)
 }
