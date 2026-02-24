@@ -86,6 +86,8 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Handle some paths locally.
 	switch r.URL.Path {
+	case "/health":
+		wp.handleHealth(w, r)
 	case "/metrics":
 		wp.handleMetrics(w, r)
 		return

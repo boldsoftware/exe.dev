@@ -496,6 +496,12 @@ func (hl httpLogger) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// handleHealth servers the /health HTTP request.
+func (wp *WebProxy) handleHealth(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"status":"ok","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
+}
+
 // handleMetrics serves the /metrics HTTP request.
 func (wp *WebProxy) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	host, _, _ := net.SplitHostPort(r.RemoteAddr)
