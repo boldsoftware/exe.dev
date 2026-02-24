@@ -1,0 +1,28 @@
+
+
+●
+● ssh localhost
+●
+
+share port BOX_NAME 8080
+
+- help to see a list of commands
+
+PROMPT ▶ share port BOX_NAME 8080
+✓ Route updated successfully
+  Port: 8080
+  Share: private
+
+PROMPT ▶ share set-public BOX_NAME
+✓ Route updated successfully
+  Port: 8080
+  Share: public
+
+PROMPT ▶ share port BOX_NAME
+
+Route configuration for VM 'BOX_NAME':
+  Port: 8080
+  Share: public
+
+PROMPT ▶ exit
+Goodbye!
