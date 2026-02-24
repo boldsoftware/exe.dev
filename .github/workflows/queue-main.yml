@@ -446,7 +446,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
           # Check if exeuntu/, shelley/, or the build workflow were modified
-          if git diff --name-only "$ORIGIN_MAIN_BEFORE" HEAD | grep -qE '^(exeuntu|shelley)/|^\.github/workflows/build-exeuntu\.yml$'; then
+          if git diff --name-only "$ORIGIN_MAIN_BEFORE" HEAD | grep -qE '^(exeuntu|shelley)/|^scripts/(find-shelley-release\.py|download-shelley\.sh)$|^\.github/workflows/build-exeuntu\.yml$'; then
             echo "exeuntu_or_shelley_changed=true" >> $GITHUB_OUTPUT
           else
             echo "exeuntu_or_shelley_changed=false" >> $GITHUB_OUTPUT

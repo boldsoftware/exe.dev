@@ -1,15 +1,7 @@
 name: Build Exeuntu
-run-name: ${{ inputs.commit_subject || github.event.head_commit.message || format('Build exeuntu ({0})', github.sha) }}
+run-name: ${{ inputs.commit_subject || format('Build exeuntu ({0})', github.sha) }}
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "exeuntu/**"
-      - "shelley/**"
-      - "scripts/find-shelley-release.py"
-      - "scripts/download-shelley.sh"
-      - ".github/workflows/build-exeuntu.yml"
   workflow_dispatch:
     inputs:
       commit_subject:
