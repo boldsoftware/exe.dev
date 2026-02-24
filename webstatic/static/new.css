@@ -1,8 +1,7 @@
 .new-view {
     display: block;
-    min-height: 100vh;
+    flex: 1;
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-    background: #fff;
 }
 
 .form-input-large {
@@ -16,35 +15,30 @@
 
 /* Mobile adjustments */
 @media (max-width: 768px) {
-    body {
-        padding: 0;
-        background: #fff;
-        background-image: none;
-    }
-    
     .form-container {
-        padding: 16px 0;
+        padding: 24px 16px;
         max-width: 100%;
     }
-    
+
     .form-card {
+        background: transparent;
         border: none;
         border-radius: 0;
-        padding: 20px 16px;
         box-shadow: none;
+        padding: 0;
     }
-    
+
     .form-title {
         font-size: 20px;
         margin-bottom: 20px;
     }
-    
+
     .form-input-group {
         flex-direction: row;
         align-items: center;
         gap: 6px;
     }
-    
+
     .form-input-large {
         font-size: 16px;
         padding: 12px 10px;
@@ -52,27 +46,27 @@
         flex: 1;
         min-width: 0;
     }
-    
+
     .form-input-suffix-large {
         font-size: 14px;
         color: #666;
         flex-shrink: 0;
     }
-    
+
     .form-button {
         font-size: 16px;
         padding: 14px 16px;
     }
-    
+
     .form-group {
         margin-bottom: 16px;
     }
-    
+
     .form-label {
         font-size: 13px;
         margin-bottom: 6px;
     }
-    
+
     .form-hint {
         font-size: 12px;
         margin-top: 4px;
@@ -81,7 +75,7 @@
 
 @media (max-width: 480px) {
     .form-card {
-        padding: 16px 12px;
+        padding: 20px 12px;
     }
 
     .form-title {
@@ -101,14 +95,6 @@
 
 /* Dark mode */
 @media (prefers-color-scheme: dark) {
-    body {
-        background: #111;
-    }
-
-    .new-view {
-        background: #111;
-    }
-
     .form-input-suffix-large {
         color: #9ca3af;
     }

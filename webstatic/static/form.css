@@ -6,10 +6,10 @@
 }
 
 .form-card {
-    background: rgba(255, 255, 248, 0.95);
+    background: #fff;
     border: 1px solid rgba(0, 0, 0, 0.06);
     border-radius: 16px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     padding: 32px;
 }
 
@@ -45,7 +45,7 @@
     border-radius: 8px;
     font-size: 14px;
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-    background: #fffdf5;
+    background: #fff;
     transition: border-color 0.15s ease;
 }
 
@@ -67,6 +67,13 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    max-width: 100%;
+}
+
+.form-input-group .form-input {
+    flex: 1;
+    min-width: 0;
+    width: auto;
 }
 
 .form-input-suffix {
