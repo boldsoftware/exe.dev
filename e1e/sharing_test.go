@@ -605,7 +605,7 @@ func TestProxyCookieIsolation(t *testing.T) {
 	configureProxyRoute(t, user2KeyFile, box2, boxInternalPort, "private")
 
 	// User 1 logs in to box1 through the proxy and gets a proxy auth cookie
-	fixture1 := newProxyAuthFixture(t, box1, httpPort, user1Cookies)
+	fixture1 := newProxyAuthFixture(t, box1, httpPort, Env.servers.Exed.HTTPPort, user1Cookies)
 	jar1 := fixture1.newJar()
 	fixture1.loginThroughProxy(jar1)
 

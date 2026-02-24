@@ -244,6 +244,7 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 var logFiles = map[string]*os.File{
 	"sshpiperd": nil,
 	"exed":      nil,
+	"exeprox":   nil,
 	"exelet":    nil,
 	"e1e":       nil,
 }

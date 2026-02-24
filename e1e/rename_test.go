@@ -228,7 +228,7 @@ func TestRename(t *testing.T) {
 		port := Env.servers.Exed.HTTPPort
 
 		// Login through proxy to get an auth cookie for this box
-		fixture := newProxyAuthFixture(t, box2, port, cookies)
+		fixture := newProxyAuthFixture(t, box2, port, Env.servers.Exed.HTTPPort, cookies)
 		jar := fixture.newJar()
 		fixture.loginThroughProxy(jar)
 		authCookie := fixture.authCookie(jar)

@@ -22,6 +22,10 @@ import (
 
 func TestHTTPProxy(t *testing.T) {
 	t.Parallel()
+	testHTTPProxy(t, Env.servers.Exed.HTTPPort, Env.servers.Exed.ExtraPorts)
+}
+
+func testHTTPProxy(t *testing.T, httpPort int, extraPorts []int) {
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -65,7 +69,6 @@ chmod +x /home/exedev/cgi-bin/headers
 
 	t.Run("default_port", func(t *testing.T) {
 		serveHTTP(t, 8080)
-		httpPort := Env.servers.Exed.HTTPPort
 
 		// TODO: do the auth dance to test private routes too.
 
@@ -155,7 +158,6 @@ chmod +x /home/exedev/cgi-bin/headers
 		})
 
 		t.Run("error_responses", func(t *testing.T) {
-			httpPort := Env.servers.Exed.HTTPPort
 			const (
 				unreachablePort = 9091
 				defaultPort     = 8080
@@ -205,18 +207,18 @@ chmod +x /home/exedev/cgi-bin/headers
 	})
 
 	t.Run("auth_confirm_owner_skip", func(t *testing.T) {
-		altPort := Env.servers.Exed.ExtraPorts[0]
+		altPort := extraPorts[0]
 		serveHTTP(t, altPort)
-		fixture := newProxyAuthFixture(t, box, altPort, cookies)
+		fixture := newProxyAuthFixture(t, box, altPort, httpPort, cookies)
 		jar := fixture.newJar()
 		fixture.loginThroughProxy(jar)
 		fixture.authCookie(jar) // will fail if no auth cookie issued
 	})
 
 	t.Run("logout_flow", func(t *testing.T) {
-		altPort := Env.servers.Exed.ExtraPorts[0]
+		altPort := extraPorts[0]
 		serveHTTP(t, altPort)
-		fixture := newProxyAuthFixture(t, box, altPort, cookies)
+		fixture := newProxyAuthFixture(t, box, altPort, httpPort, cookies)
 		requireLogoutUI(t, fixture.logoutURL, fixture.expectedLogout, fixture.port)
 
 		ownerJar := fixture.newJar()
@@ -234,7 +236,6 @@ chmod +x /home/exedev/cgi-bin/headers
 
 	t.Run("forwarded_headers", func(t *testing.T) {
 		const internalPort = 8080
-		httpPort := Env.servers.Exed.HTTPPort
 
 		serveHTTP(t, internalPort)
 		configureProxyRoute(t, keyFile, box, internalPort, "public")
@@ -316,7 +317,6 @@ chmod +x /home/exedev/cgi-bin/headers
 
 	t.Run("reject_synthetic_exedev_headers", func(t *testing.T) {
 		const internalPort = 8080
-		httpPort := Env.servers.Exed.HTTPPort
 
 		serveHTTP(t, internalPort)
 		configureProxyRoute(t, keyFile, box, internalPort, "public")
@@ -352,26 +352,26 @@ chmod +x /home/exedev/cgi-bin/headers
 	})
 
 	t.Run("alternate_ports", func(t *testing.T) {
-		serveHTTP(t, Env.servers.Exed.ExtraPorts[0])
+		serveHTTP(t, extraPorts[0])
 
-		expectedRedirect := fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/login?redirect=%%2F%%3Ffoo%%3D1", box, Env.servers.Exed.ExtraPorts[0])
+		expectedRedirect := fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/login?redirect=%%2F%%3Ffoo%%3D1", box, extraPorts[0])
 		proxyAssert(t, box, proxyExpectation{
 			name:             "altport without auth redirects",
-			httpPort:         Env.servers.Exed.ExtraPorts[0],
+			httpPort:         extraPorts[0],
 			cookies:          nil,
 			httpCode:         http.StatusTemporaryRedirect,
 			redirectLocation: expectedRedirect,
 		})
 		proxyAssert(t, box, proxyExpectation{
 			name:     "altport with auth succeeds",
-			httpPort: Env.servers.Exed.ExtraPorts[0],
+			httpPort: extraPorts[0],
 			cookies:  cookies,
 			httpCode: http.StatusOK,
 		})
 
 		proxyAssert(t, box, proxyExpectation{
 			name:     "other altport with auth fails",
-			httpPort: Env.servers.Exed.ExtraPorts[1],
+			httpPort: extraPorts[1],
 			cookies:  cookies,
 			httpCode: http.StatusBadGateway,
 		})
@@ -381,13 +381,13 @@ chmod +x /home/exedev/cgi-bin/headers
 		// Verify that a proxy auth cookie for one port doesn't work for another port.
 		// This tests that cookies are named "login-with-exe-<port>" rather than
 		// a shared name like "exe-proxy-auth".
-		portA := Env.servers.Exed.ExtraPorts[0]
-		portB := Env.servers.Exed.ExtraPorts[1]
+		portA := extraPorts[0]
+		portB := extraPorts[1]
 		serveHTTP(t, portA)
 		serveHTTP(t, portB)
 
 		// Login through proxy on port A
-		fixtureA := newProxyAuthFixture(t, box, portA, cookies)
+		fixtureA := newProxyAuthFixture(t, box, portA, httpPort, cookies)
 		jarA := fixtureA.newJar()
 		fixtureA.loginThroughProxy(jarA)
 		proxyAuthCookieA := fixtureA.authCookie(jarA)
@@ -409,7 +409,7 @@ chmod +x /home/exedev/cgi-bin/headers
 		}
 
 		// Try using the port A cookie on port B - should fail with redirect to login
-		fixtureB := newProxyAuthFixture(t, box, portB, nil) // no main domain cookies
+		fixtureB := newProxyAuthFixture(t, box, portB, httpPort, nil) // no main domain cookies
 		jarB, _ := cookiejar.New(nil)
 		// Manually add port A's cookie to port B's jar
 		portBURL := mustParseURL(fmt.Sprintf("http://localhost:%d", portB))
@@ -446,7 +446,8 @@ chmod +x /home/exedev/cgi-bin/headers
 		// The auth_confirm_owner_skip and logout_flow subtests above already created
 		// auth cookies for this box. Verify they appear on the profile page.
 		client := newClientWithCookies(t, cookies)
-		profileURL := fmt.Sprintf("http://localhost:%d/user", Env.servers.Exed.HTTPPort)
+		profileURL := fmt.Sprintf("http://localhost:%d/user", httpPort)
+		t.Logf("profileURL %q", profileURL)
 		resp, err := client.Get(profileURL)
 		if err != nil {
 			t.Fatalf("failed to get profile page: %v", err)
@@ -506,7 +507,7 @@ type proxyAuthFixture struct {
 	cookies            []*http.Cookie
 }
 
-func newProxyAuthFixture(t *testing.T, box string, port int, cookies []*http.Cookie) proxyAuthFixture {
+func newProxyAuthFixture(t *testing.T, box string, port, serverHTTPPort int, cookies []*http.Cookie) proxyAuthFixture {
 	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/", box, port)
 	cookieURL := mustParseURL(proxyURL)
 	localCookieAddr := fmt.Sprintf("http://localhost:%d", port)
