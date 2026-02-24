@@ -24,7 +24,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 SHELLEY_DIR = SCRIPT_DIR
 CONFIG = "/exe.dev/shelley.json"
 DB = Path.home() / ".config/shelley/shelley.db"
-HOSTNAME = "phil-dev.exe.xyz"
+HOSTNAME = os.environ.get("EXE_HOSTNAME", f"{os.uname().nodename}.exe.xyz")
 
 
 def port_for_dir() -> int:
