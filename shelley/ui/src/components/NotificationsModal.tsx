@@ -219,7 +219,9 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
                 <button
                   key={ct.type}
                   className={`provider-btn${form.channel_type === ct.type ? " selected" : ""}`}
-                  onClick={() => setForm({ ...form, channel_type: ct.type, config: defaultConfigFor(ct.type) })}
+                  onClick={() =>
+                    setForm({ ...form, channel_type: ct.type, config: defaultConfigFor(ct.type) })
+                  }
                 >
                   {ct.label}
                 </button>
@@ -243,9 +245,7 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
             key={field.name}
             field={field}
             value={form.config[field.name] || ""}
-            onChange={(val) =>
-              setForm({ ...form, config: { ...form.config, [field.name]: val } })
-            }
+            onChange={(val) => setForm({ ...form, config: { ...form.config, [field.name]: val } })}
           />
         ))}
 
