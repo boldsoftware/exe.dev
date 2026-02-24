@@ -1886,7 +1886,6 @@ func (s *Server) FindBoxByIPShard(ctx context.Context, userID, localIP string) *
 		s.slog().InfoContext(ctx, "GetBoxByUserAndShard failed", "user_id", userID, "localIP", localIP, "shard", info.Shard, "error", err)
 		return nil
 	}
-	s.slog().InfoContext(ctx, "FindBoxByIPShard found", "user_id", userID, "localIP", localIP, "shard", info.Shard, "box_name", box.Name)
 	return &box
 }
 

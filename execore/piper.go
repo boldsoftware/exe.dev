@@ -43,6 +43,32 @@ type HostKeyMapping struct {
 	CreatedAt time.Time // When this mapping was created (for expiration)
 }
 
+// piperConnLog accumulates slog attributes during SSH connection handling,
+// similar to CommandLog for SSH commands and sloghttp for HTTP requests.
+// It is stored in the context via withPiperConnLog/getPiperConnLog.
+type piperConnLog struct {
+	attrs []slog.Attr
+	start time.Time
+}
+
+type piperConnLogKey struct{}
+
+func withPiperConnLog(ctx context.Context) (context.Context, *piperConnLog) {
+	cl := &piperConnLog{start: time.Now()}
+	return context.WithValue(ctx, piperConnLogKey{}, cl), cl
+}
+
+func getPiperConnLog(ctx context.Context) *piperConnLog {
+	if v, ok := ctx.Value(piperConnLogKey{}).(*piperConnLog); ok {
+		return v
+	}
+	return nil
+}
+
+func (cl *piperConnLog) add(attrs ...slog.Attr) {
+	cl.attrs = append(cl.attrs, attrs...)
+}
+
 // PiperPlugin implements the sshpiper plugin interface
 type PiperPlugin struct {
 	server      *Server
@@ -59,17 +85,16 @@ type PiperPlugin struct {
 	// 2. Look up the original user when exed receives the proxy key
 	// 3. Expire old mappings to prevent memory leaks
 	proxyKeyMappings map[string]*ProxyKeyMapping
-	// RWMutex allows concurrent reads while protecting writes
-	proxyKeyMutex sync.RWMutex
+	proxyKeyMutex    sync.Mutex
 
 	// keyboardInteractiveShown tracks which connections have already seen the keyboard interactive message
 	// This prevents showing the message multiple times when SSH clients retry authentication
 	keyboardInteractiveShown map[string]bool
-	keyboardInteractiveMutex sync.RWMutex
+	keyboardInteractiveMutex sync.Mutex
 
 	// expectedHostKeys maps connection IDs to their expected host keys for validation
 	expectedHostKeys      map[string]*HostKeyMapping
-	expectedHostKeysMutex sync.RWMutex
+	expectedHostKeysMutex sync.Mutex
 }
 
 // NewPiperPlugin creates a new piper plugin instance
@@ -89,6 +114,24 @@ func NewPiperPlugin(server *Server, host string, port int) *PiperPlugin {
 	return p
 }
 
+// emitPiperConnLog emits the canonical log line for an SSH connection.
+func emitPiperConnLog(ctx context.Context, connID, msg string, extra ...slog.Attr) {
+	attrs := []any{
+		"component", "piper-plugin",
+		"conn_id", connID,
+	}
+	if cl := getPiperConnLog(ctx); cl != nil {
+		attrs = append(attrs, "duration", time.Since(cl.start))
+		for _, a := range cl.attrs {
+			attrs = append(attrs, a.Key, a.Value.Any())
+		}
+	}
+	for _, a := range extra {
+		attrs = append(attrs, a.Key, a.Value.Any())
+	}
+	slog.InfoContext(ctx, msg, attrs...)
+}
+
 // storeExpectedHostKeyForConnection stores the expected host key for a connection with timestamp
 func (p *PiperPlugin) storeExpectedHostKeyForConnection(connID, hostKey string) {
 	p.expectedHostKeysMutex.Lock()
@@ -101,8 +144,8 @@ func (p *PiperPlugin) storeExpectedHostKeyForConnection(connID, hostKey string) 
 
 // getExpectedHostKeyForConnection retrieves the expected host key for a connection
 func (p *PiperPlugin) getExpectedHostKeyForConnection(connID string) (string, bool) {
-	p.expectedHostKeysMutex.RLock()
-	defer p.expectedHostKeysMutex.RUnlock()
+	p.expectedHostKeysMutex.Lock()
+	defer p.expectedHostKeysMutex.Unlock()
 	mapping, exists := p.expectedHostKeys[connID]
 	if !exists {
 		return "", false
@@ -244,9 +287,6 @@ func (p *PiperPlugin) handleBanner(conn libplugin.ConnMetadata) string {
 //
 // Anyway, that's why we're at keyboard interactive.
 func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, client libplugin.KeyboardInteractiveChallenge) (*libplugin.Upstream, error) {
-	ctx := tracing.ContextWithTraceID(context.Background(), tracing.GenerateTraceID())
-	slog.DebugContext(ctx, "Keyboard interactive auth request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
-
 	// Use connection's unique ID to track if we've already shown the message
 	connID := conn.UniqueID()
 
@@ -268,12 +308,8 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 
 		_, err := client("", message, "", false)
 		if err != nil {
-			slog.DebugContext(ctx, "Keyboard interactive challenge failed", "component", "piper-plugin", "error", err)
 			return nil, err
 		}
-	} else {
-		// Already shown message - just fail silently to avoid repeating
-		slog.DebugContext(ctx, "Keyboard interactive auth retry - skipping message display", "component", "piper-plugin", "conn_id", connID)
 	}
 
 	// Always return nil to deny access
@@ -286,42 +322,49 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	slog.DebugContext(ctx, "piper plugin public key auth request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
+	connID := conn.UniqueID()
+	ctx, cl := withPiperConnLog(ctx)
+
+	username := conn.User()
+	localAddress := cmp.Or(domz.StripPort(conn.LocalAddress()), "127.0.0.1")
+	remoteAddr := conn.RemoteAddr()
+	cl.add(
+		slog.String("username", username),
+		slog.String("remote_addr", remoteAddr),
+		slog.String("local_address", localAddress),
+	)
 
 	// Check if key is empty or nil - this happens when client has no keys configured
 	if len(key) == 0 {
-		slog.DebugContext(ctx, "No public key provided", "component", "piper-plugin", "user", conn.User())
 		return nil, fmt.Errorf("no public key provided")
 	}
 
 	// Parse the provided key
 	pubKey, err := ssh.ParsePublicKey(key)
 	if err != nil {
-		slog.DebugContext(ctx, "Failed to parse public key", "component", "piper-plugin", "error", err)
 		return nil, fmt.Errorf("failed to parse public key: %v", err)
 	}
+
+	keyFingerprint := p.server.GetPublicKeyFingerprint(pubKey)
+	cl.add(slog.String("key_fingerprint", keyFingerprint))
 
 	// Get user info by public key directly
 	userID, err := p.server.getUserIDByPublicKey(ctx, pubKey)
 	if err != nil {
-		slog.DebugContext(ctx, "Database error checking SSH key", "component", "piper-plugin", "public_key", pubKey, "error", err)
+		slog.WarnContext(ctx, "Database error checking SSH key", "component", "piper-plugin", "key_fingerprint", keyFingerprint, "error", err)
 	}
-	slog.DebugContext(ctx, "looked up user for ssh key", "component", "piper-plugin", "public_key", pubKey, "user_id", userID)
-
-	username := conn.User()
-	localAddress := cmp.Or(domz.StripPort(conn.LocalAddress()), "127.0.0.1")
-	slog.DebugContext(ctx, "piper public key auth user status", "component", "piper-plugin", "username", username, "user_id", userID, "local_address", localAddress)
+	cl.add(slog.String("user_id", userID))
 
 	// Check for support access: ssh support+vmname@exe.cloud
 	if supportBoxName, isSupport := strings.CutPrefix(username, supportAccessPrefix); isSupport {
-		slog.InfoContext(ctx, "piper public key auth: support access attempt", "component", "piper-plugin", "box_name", supportBoxName, "user_id", userID)
 		box := p.server.FindBoxForExeSudoer(ctx, userID, supportBoxName)
 		if box == nil {
-			slog.WarnContext(ctx, "piper public key auth: support access denied", "component", "piper-plugin", "box_name", supportBoxName, "user_id", userID)
+			slog.WarnContext(ctx, "support access denied", "component", "piper-plugin", "vm_name", supportBoxName, "user_id", userID)
 			return nil, fmt.Errorf("support access denied: either you don't have support privileges, or VM %q doesn't have support access enabled", supportBoxName)
 		}
-		slog.InfoContext(ctx, "piper public key auth: support access granted", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "support_user_id", userID)
-		return p.handleBoxAccess(ctx, box, userID, conn.UniqueID())
+		slog.InfoContext(ctx, "support access granted", "component", "piper-plugin", "vm_name", box.Name, "vm_id", box.ID, "support_user_id", userID)
+		cl.add(slog.Bool("support_access", true))
+		return p.handleBoxAccess(ctx, box, userID, connID)
 	}
 
 	// In test/local environments, it's useful to be able to access VMs by username,
@@ -329,62 +372,53 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	// We used to enable this everywhere, but it was an evergreen source of user confusion.
 	if p.server.env.SSHCommandUsesAt && username != "" {
 		if box := p.server.FindBoxByNameForUser(ctx, userID, username); box != nil {
-			slog.InfoContext(ctx, "piper public key auth found box by name, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "ctrhost", box.Ctrhost, "port", box.SSHPort)
-			return p.handleBoxAccess(ctx, box, userID, conn.UniqueID())
+			cl.add(slog.String("route", "by_name"))
+			return p.handleBoxAccess(ctx, box, userID, connID)
 		}
-		slog.InfoContext(ctx, "No box found with name", "component", "piper-plugin", "username", username, "user_id", userID)
 	}
 
 	// IP-based box routing (like SNI but for SSH):
 	// If `ssh vmname.exe.cloud` resolves to a shard IP (127.21.0.X), then look up the box by that shard/user combo.
 	// This makes `ssh vmname.exe.cloud` work like `ssh vmname@exe.cloud`.
 	// If this fails, try team owner fallback, then continue on with normal routing.
-	slog.InfoContext(ctx, "piper public key auth checking for box by shard", "component", "piper-plugin", "user_id", userID, "local_address", localAddress)
 	if box := p.server.FindBoxByIPShard(ctx, userID, localAddress); box != nil {
-		slog.InfoContext(ctx, "piper pk auth found box by IP shard, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "local_address", localAddress)
-		return p.handleBoxAccess(ctx, box, userID, conn.UniqueID())
+		cl.add(slog.String("route", "by_ip_shard"))
+		return p.handleBoxAccess(ctx, box, userID, connID)
 	}
 
 	// Team owner fallback: if user is a team owner, try to find a team member's box on this shard
 	if box := p.server.FindTeamBoxByIPShard(ctx, userID, localAddress); box != nil {
-		slog.InfoContext(ctx, "piper pk auth found team box by IP shard, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "local_address", localAddress, "owner_id", userID)
-		return p.handleBoxAccess(ctx, box, userID, conn.UniqueID())
+		cl.add(slog.String("route", "by_team_ip_shard"))
+		return p.handleBoxAccess(ctx, box, userID, connID)
 	}
 
 	// For all other cases (interactive shell, registration, etc.),
 	// route to exed directly using ephemeral proxy authentication
-	slog.DebugContext(ctx, "Routing to exed shell", "port", p.exedSSHPort, "component", "piper-plugin")
-	slog.DebugContext(ctx, "User's public key length", "component", "piper-plugin", "key_length_bytes", len(key))
-
+	//
 	// EPHEMERAL PROXY KEY APPROACH:
 	// 1. Generate a unique, temporary private key for this connection
 	// 2. Store a mapping: proxy_key_fingerprint -> original_user_public_key
 	// 3. Send proxy private key to exed for authentication
 	// 4. When exed sees the proxy key, it can look up the original user's key
 	// 5. Mappings expire after a few minutes to prevent memory leaks
-
 	clientAddr := conn.RemoteAddr()
-	proxyPrivateKeyPEM, proxyFingerprint, err := p.generateEphemeralProxyKey(ctx, key, localAddress, clientAddr)
+	proxyPrivateKeyPEM, _, err := p.generateEphemeralProxyKey(ctx, key, localAddress, clientAddr)
 	if err != nil {
-		slog.DebugContext(ctx, "Failed to generate ephemeral proxy key", "component", "piper-plugin", "error", err)
 		return nil, fmt.Errorf("failed to generate ephemeral proxy key: %v", err)
 	}
 
-	slog.DebugContext(ctx, "Generated ephemeral proxy key with fingerprint", "component", "piper-plugin", "proxy_fingerprint", proxyFingerprint)
+	// This is a CANONICAL LOG LINE for SSH connections routed to the exed shell.
+	emitPiperConnLog(ctx, connID, "SSH routing to exed shell",
+		slog.String("log_type", "ssh_proxy_auth"),
+	)
 
-	upstream := &libplugin.Upstream{
-		Host:     p.exedSSHHost,
-		Port:     int32(p.exedSSHPort),
-		UserName: username, // Use original username, not encoded
-		// Host key validation is handled by VerifyHostKeyCallback
-		IgnoreHostKey: false, // Enable host key validation
+	return &libplugin.Upstream{
+		Host:          p.exedSSHHost,
+		Port:          int32(p.exedSSHPort),
+		UserName:      username, // Use original username, not encoded
+		IgnoreHostKey: false,    // Host key validation is handled by VerifyHostKeyCallback
 		Auth:          libplugin.CreatePrivateKeyAuth([]byte(proxyPrivateKeyPEM)),
-	}
-
-	// slog.Debug("Returning upstream config", "component", "piper-plugin", "host", upstream.Host, "port", upstream.Port, "username", upstream.UserName, "auth_type", "PrivateKey")
-	// slog.Debug("Private key length", "component", "piper-plugin", "key_length_bytes", len(proxyPrivateKeyPEM), "key_preview", proxyPrivateKeyPEM[:50])
-
-	return upstream, nil
+	}, nil
 }
 
 // handleBoxAccess sets up routing to a specific box container
@@ -392,7 +426,12 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	slog.DebugContext(ctx, "handleBoxAccess for box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "user_id", userID, "conn_id", connID)
+	cl := getPiperConnLog(ctx)
+	cl.add(
+		slog.String("vm_name", box.Name),
+		slog.Int("vm_id", box.ID),
+		slog.String("owner_user_id", box.CreatedByUserID),
+	)
 
 	// Track unique VM logins
 	if p.server.hllTracker != nil && userID != "" {
@@ -400,9 +439,9 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 	}
 
 	if box.ContainerID == nil {
-		slog.DebugContext(ctx, "Box has no container ID", "component", "piper-plugin", "box_name", box.Name)
 		return nil, fmt.Errorf("VM %s is not running", box.Name)
 	}
+	cl.add(slog.String("container_id", *box.ContainerID))
 
 	// Check if instance is actually running via exelet
 	exeletClient := p.server.getExeletClient(box.Ctrhost)
@@ -413,7 +452,7 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 		if err != nil {
 			traceID := tracing.TraceIDFromContext(ctx)
 			slog.ErrorContext(ctx, "piper-plugin GetInstance failed (exelet unreachable?)",
-				"box_name", box.Name,
+				"vm_name", box.Name,
 				"vm_id", box.ID,
 				"container_id", *box.ContainerID,
 				"ctrhost", box.Ctrhost,
@@ -424,22 +463,21 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 			return nil, fmt.Errorf("internal error (trace: %s)", traceID)
 		}
 		if instanceResp.Instance != nil {
-			slog.InfoContext(ctx, "piper-plugin instance status check",
-				"box_name", box.Name,
-				"container_id", *box.ContainerID,
-				"state", instanceResp.Instance.State.String(),
-			)
+			cl.add(slog.String("instance_state", instanceResp.Instance.State.String()))
 			// If instance is not running, route to exed for error display
 			if instanceResp.Instance.State != api.VMState_RUNNING && instanceResp.Instance.State != api.VMState_STARTING {
-				slog.InfoContext(ctx, "Instance not running, routing to exed for error display",
-					"component", "piper-plugin", "box_name", box.Name, "state", instanceResp.Instance.State.String())
-
 				proxyPrivateKeyPEM, _, err := p.generateEphemeralProxyKey(ctx, nil, "127.0.0.1", "127.0.0.1")
 				if err != nil {
 					return nil, fmt.Errorf("failed to generate proxy key: %v", err)
 				}
 
 				specialUsername := fmt.Sprintf("container-logs:%s:%s:%s", box.CreatedByUserID, *box.ContainerID, box.Name)
+
+				// Emit canonical line even for non-running instance route
+				emitPiperConnLog(ctx, connID, "SSH Connection to VM",
+					slog.String("log_type", "vm-ssh-connection"),
+					slog.String("ctrhost", box.Ctrhost),
+				)
 
 				return &libplugin.Upstream{
 					Host:          p.exedSSHHost,
@@ -455,45 +493,40 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 	// Get SSH connection details from the database
 	sshDetails, err := p.server.GetBoxSSHDetails(ctx, box.ID)
 	if err != nil {
-		slog.DebugContext(ctx, "Failed to get SSH details for box", "component", "piper-plugin", "box_name", box.Name, "error", err)
 		return nil, fmt.Errorf("failed to get SSH details for VM %s: %v", box.Name, err)
 	}
 	if sshDetails.HostKey == "" {
-		slog.DebugContext(ctx, "Box has no stored host key", "component", "piper-plugin", "box_name", box.Name)
 		return nil, fmt.Errorf("VM %s has no stored host key", box.Name)
 	}
 	host := exeweb.BoxSSHHost(slog.Default(), box.Ctrhost)
 	port := sshDetails.Port
-	// This is a CANONICAL LOG LINE, in the sense that this is a wide event to tell us about SSH connections.
-	slog.InfoContext(ctx, "SSH Connection to VM",
-		"user_id", userID,
-		"conn_id", connID,
-		"component", "piper-plugin",
-		"box_name", box.Name,
-		"log_type", "vm-ssh-connection",
-		"port", port,
-		"ctrhost", sshDetails.Ctrhost,
-		"ssh_user", sshDetails.User,
-		"box_host", host,
+
+	// This is a CANONICAL LOG LINE: wide event for SSH connections to VMs.
+	emitPiperConnLog(ctx, connID, "SSH Connection to VM",
+		slog.String("log_type", "vm-ssh-connection"),
+		slog.Int("port", int(port)),
+		slog.String("ctrhost", box.Ctrhost),
+		slog.String("ssh_user", sshDetails.User),
+		slog.String("box_host", host),
 	)
+
 	p.storeExpectedHostKeyForConnection(connID, sshDetails.HostKey)
 	return &libplugin.Upstream{
-		Host:     host, // Container host from ctrhost (direct via vzNAT in dev)
-		Port:     int32(port),
-		UserName: sshDetails.User, // Use the user from the Docker image USER directive
-		// Host key validation is handled by VerifyHostKeyCallback
-		IgnoreHostKey: false, // Enable host key validation
+		Host:          host, // Container host from ctrhost (direct via vzNAT in dev)
+		Port:          int32(port),
+		UserName:      sshDetails.User, // Use the user from the Docker image USER directive
+		IgnoreHostKey: false,           // Host key validation is handled by VerifyHostKeyCallback
 		Auth:          libplugin.CreatePrivateKeyAuth([]byte(sshDetails.PrivateKey)),
 	}, nil
 }
 
-// generateEphemeralProxyKey creates a temporary RSA key pair for this specific connection.
+// generateEphemeralProxyKey creates a temporary ED25519 key pair for this specific connection.
 // It stores a mapping from the proxy key's fingerprint to the user's original public key,
 // allowing exed to later identify the original user when it sees the proxy key.
 //
 // Returns: (privateKeyPEM, proxyKeyFingerprint, error)
 func (p *PiperPlugin) generateEphemeralProxyKey(ctx context.Context, originalUserPublicKey []byte, localAddress, clientAddr string) (string, string, error) {
-	// Generate a new ED25519 private key for this connection (simpler and more reliable than RSA)
+	// Generate a new ED25519 private key for this connection
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate ED25519 key: %v", err)
@@ -512,16 +545,7 @@ func (p *PiperPlugin) generateEphemeralProxyKey(ctx context.Context, originalUse
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create signer: %v", err)
 	}
-
 	proxyFingerprint := p.server.GetPublicKeyFingerprint(signer.PublicKey())
-	slog.DebugContext(ctx, "Generated proxy key", "component", "piper-plugin", "key_type", signer.PublicKey().Type(), "fingerprint_preview", proxyFingerprint[:16])
-
-	// Validate the generated key by trying to parse it again
-	if _, err := ssh.ParsePrivateKey(privateKeyPEMBytes); err != nil {
-		slog.ErrorContext(ctx, "Generated private key is invalid", "component", "piper-plugin", "error", err)
-		return "", "", fmt.Errorf("generated invalid private key: %v", err)
-	}
-	slog.DebugContext(ctx, "Private key validation successful", "component", "piper-plugin")
 
 	// Store the mapping: proxy key fingerprint -> original user public key + addresses
 	p.proxyKeyMutex.Lock()
@@ -533,17 +557,15 @@ func (p *PiperPlugin) generateEphemeralProxyKey(ctx context.Context, originalUse
 	}
 	p.proxyKeyMutex.Unlock()
 
-	slog.DebugContext(ctx, "Stored ephemeral proxy mapping", "component", "piper-plugin", "proxy_fingerprint", proxyFingerprint, "user_key_length_bytes", len(originalUserPublicKey))
-
 	return privateKeyPEM, proxyFingerprint, nil
 }
 
 // lookupOriginalUserKey retrieves the original user's public key, local address, and client address from an ephemeral proxy key.
 // This is called by exed when it sees a proxy key and needs to identify the original user.
 func (p *PiperPlugin) lookupOriginalUserKey(proxyKeyFingerprint string) (originalKey []byte, localAddr, clientAddr string, exists bool) {
-	p.proxyKeyMutex.RLock()
+	p.proxyKeyMutex.Lock()
 	mapping, ok := p.proxyKeyMappings[proxyKeyFingerprint]
-	p.proxyKeyMutex.RUnlock()
+	p.proxyKeyMutex.Unlock()
 
 	if !ok {
 		return nil, "", "", false
@@ -565,33 +587,25 @@ func (p *PiperPlugin) lookupOriginalUserKey(proxyKeyFingerprint string) (origina
 // It uses the connection-scoped expected host key stored during connection setup
 func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname, netaddr string, key []byte) error {
 	ctx := tracing.ContextWithTraceID(context.Background(), tracing.GenerateTraceID())
-	slog.DebugContext(ctx, "VerifyHostKey called", "component", "piper-plugin", "hostname", hostname, "netaddr", netaddr, "key_length", len(key))
 
 	// Convert the received key to SSH authorized_keys format for comparison
 	pubKey, err := ssh.ParsePublicKey(key)
 	if err != nil {
-		slog.DebugContext(ctx, "Failed to parse received host key", "component", "piper-plugin", "hostname", hostname, "error", err)
 		return fmt.Errorf("invalid host key format: %w", err)
 	}
 	receivedKey := string(ssh.MarshalAuthorizedKey(pubKey))
-	slog.DebugContext(ctx, "Received host key", "component", "piper-plugin", "hostname", hostname, "received_key", receivedKey[:50]+"...")
 
 	// Check if this is a box connection by looking up stored expected keys
 	connID := conn.UniqueID()
 	expectedKey, found := p.getExpectedHostKeyForConnection(connID)
-	slog.DebugContext(ctx, "Expected key lookup", "component", "piper-plugin", "conn_id", connID, "found", found)
 
 	if found {
 		// This is a box connection with a stored expected key
 		if strings.TrimSpace(expectedKey) == strings.TrimSpace(receivedKey) {
-			slog.DebugContext(ctx, "Host key validation successful for box",
-				"component", "piper-plugin",
-				"conn_id", connID, "hostname", hostname,
-			)
 			return nil
 		}
 		// Key mismatch for box connection
-		slog.DebugContext(ctx, "Host key validation failed - box key mismatch",
+		slog.WarnContext(ctx, "Host key validation failed - box key mismatch",
 			"component", "piper-plugin",
 			"conn_id", connID, "hostname", hostname,
 			"expected_key", expectedKey, "received_key", receivedKey,
@@ -599,14 +613,13 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 		return fmt.Errorf("host key validation failed for %s", hostname)
 	}
 
-	// No stored expected key - this is a connection to the main exed server
-	// Validate against the server's host key from the database
+	// No stored expected key - this is a connection to the main exed server.
+	// Validate against the server's host key from the database.
 	serverHostKey, serverCert, err := p.getServerHostKey()
 	if err != nil {
-		slog.DebugContext(ctx, "Failed to get server host key", "component", "piper-plugin", "error", err)
+		slog.WarnContext(ctx, "Failed to get server host key for verification", "component", "piper-plugin", "error", err)
 		return fmt.Errorf("host key validation failed for %s", hostname)
 	}
-	slog.DebugContext(ctx, "Got server host key", "component", "piper-plugin", "hostname", hostname, "server_key", serverHostKey[:50]+"...")
 
 	trimmedReceived := strings.TrimSpace(receivedKey)
 	trimmedExpectedKey := strings.TrimSpace(serverHostKey)
@@ -615,8 +628,6 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 		trimmedExpectedCert := strings.TrimSpace(*serverCert)
 		if trimmedExpectedCert != "" {
 			if trimmedExpectedCert == trimmedReceived {
-				slog.DebugContext(ctx, "Host cert validation successful for exed server (cert match)",
-					"component", "piper-plugin", "hostname", hostname)
 				return nil
 			}
 
@@ -626,8 +637,6 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 					expectedKeyPub, _, _, _, err = ssh.ParseAuthorizedKey([]byte(trimmedExpectedKey + "\n"))
 				}
 				if err == nil && bytes.Equal(cert.Key.Marshal(), expectedKeyPub.Marshal()) {
-					slog.DebugContext(ctx, "Host cert validation successful for exed server (underlying key match)",
-						"component", "piper-plugin", "hostname", hostname, "cert_key_id", cert.KeyId)
 					return nil
 				}
 			}
@@ -635,14 +644,12 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 	}
 
 	if trimmedExpectedKey == trimmedReceived {
-		slog.DebugContext(ctx, "Host key validation successful for exed server",
-			"component", "piper-plugin", "hostname", hostname)
 		return nil
 	}
 
 	// Neither box key nor server key matched
-	slog.DebugContext(ctx, "Host key validation failed - no matching key found",
-		"component", "piper-plugin", "hostname", hostname)
+	slog.WarnContext(ctx, "Host key validation failed - no matching key found",
+		"component", "piper-plugin", "conn_id", connID, "hostname", hostname)
 	return fmt.Errorf("host key validation failed for %s", hostname)
 } // cleanupExpiredMappings runs periodically to remove expired proxy key mappings and keyboard interactive tracking
 func (p *PiperPlugin) cleanupExpiredMappings() {
