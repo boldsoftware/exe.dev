@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"strings"
+	"time"
 
 	"shelley.exe.dev/llm"
 )
@@ -196,6 +197,8 @@ func (k *KeywordTool) keywordRun(ctx context.Context, m json.RawMessage) llm.Too
 }
 
 func ripgrep(ctx context.Context, wd string, terms []string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	args := []string{"-C", "10", "-i", "--line-number", "--with-filename"}
 	for _, term := range terms {
 		args = append(args, "-e", term)
@@ -204,6 +207,9 @@ func ripgrep(ctx context.Context, wd string, terms []string) (string, error) {
 	cmd.Dir = wd
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("search timed out (directory too large to search)")
+		}
 		// ripgrep returns exit code 1 when no matches are found, which is not an error for us
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
 			return "no matches found", nil

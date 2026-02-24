@@ -2,6 +2,7 @@ package claudetool
 
 import (
 	"context"
+	"os"
 	"strings"
 	"sync"
 
@@ -105,7 +106,11 @@ func isStrongModel(modelID string) bool {
 func NewToolSet(ctx context.Context, cfg ToolSetConfig) *ToolSet {
 	workingDir := cfg.WorkingDir
 	if workingDir == "" {
-		workingDir = "/"
+		if home, err := os.UserHomeDir(); err == nil {
+			workingDir = home
+		} else {
+			workingDir = "/"
+		}
 	}
 	wd := NewMutableWorkingDir(workingDir)
 

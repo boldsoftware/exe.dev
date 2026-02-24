@@ -2,6 +2,7 @@ package claudetool
 
 import (
 	"context"
+	"os"
 	"testing"
 )
 
@@ -116,7 +117,7 @@ func TestToolSet_Cleanup(t *testing.T) {
 func TestNewToolSet_DefaultWorkingDir(t *testing.T) {
 	provider := &mockLLMProvider{}
 
-	// Test with empty working dir (should default to "/")
+	// Test with empty working dir (should default to $HOME)
 	cfg := ToolSetConfig{
 		LLMProvider: provider,
 		ModelID:     "test-model",
@@ -126,9 +127,13 @@ func TestNewToolSet_DefaultWorkingDir(t *testing.T) {
 	ctx := context.Background()
 	ts := NewToolSet(ctx, cfg)
 
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	wd := ts.WorkingDir()
-	if wd.Get() != "/" {
-		t.Errorf("expected default working dir '/', got %q", wd.Get())
+	if wd.Get() != home {
+		t.Errorf("expected default working dir %q, got %q", home, wd.Get())
 	}
 }
 
