@@ -46,7 +46,7 @@ type ExeproxInstance struct {
 // logFile, if not nil, is a file to write logs to.
 //
 // logPorts is whether to log port numbers using slog.InfoContext.
-func StartExeprox(ctx context.Context, exedHTTPPort, exedGRPCPort int, extraProxyPorts []int, testRunID string, logFile io.Writer, logPorts bool) (*ExeproxInstance, error) {
+func StartExeprox(ctx context.Context, exedHTTPPort, exedGRPCPort int, extraProxyPorts []int, logFile io.Writer, logPorts bool) (*ExeproxInstance, error) {
 	start := time.Now()
 	slog.InfoContext(ctx, "starting exeprox")
 
@@ -283,7 +283,7 @@ ProcessLogs:
 
 // Stop stops the exeprox process.
 // This does not return an error; errors rae just logged.
-func (ei *ExeproxInstance) Stop(ctx context.Context, testRunID string) {
+func (ei *ExeproxInstance) Stop(ctx context.Context) {
 	// Gracefully stop exeprox with SIGTERM so it writes coverage dta.
 	if ei.Cmd != nil {
 		slog.InfoContext(ctx, "sending SIGTERM to exeprox")

@@ -67,6 +67,7 @@ func TestMain(m *testing.M) {
 
 	var (
 		exedLogFile     *os.File
+		exeproxLogFile  *os.File
 		sshPiperLogFile *os.File
 	)
 	logDir := os.Getenv("E1E_LOG_DIR")
@@ -80,6 +81,10 @@ func TestMain(m *testing.M) {
 				fmt.Fprintln(os.Stderr, err)
 			}
 			exedLogFile, err = os.OpenFile(filepath.Join(logDir, "exed"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+			}
+			exeproxLogFile, err = os.OpenFile(filepath.Join(logDir, "exeprox"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 			}
@@ -133,6 +138,7 @@ func TestMain(m *testing.M) {
 		[]*testinfra.ExeletInstance{exelet},
 		exedHTTPProxy,
 		exedLogFile,
+		exeproxLogFile,
 		sshPiperLogFile,
 		false,
 		false,

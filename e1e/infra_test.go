@@ -30,6 +30,7 @@ var (
 	flagVerbosePiperd   = flag.Bool("vpiperd", false, "enable verbose logging from sshpiperd")
 	flagVerboseExed     = flag.Bool("vexed", false, "enable verbose logging from exed")
 	flagVerboseExelet   = flag.Bool("vexelet", false, "enable verbose logging from exelet")
+	flagVerboseExeprox  = flag.Bool("vexeprox", false, "enable verbose logging from exeprox")
 	flagVerbosePorts    = flag.Bool("vports", false, "enable verbose logging about ports")
 	flagVerboseEmail    = flag.Bool("vemail", false, "enable verbose logging from email server")
 	flagVerbosePty      = flag.Bool("vpty", false, "enable verbose logging from pty connections")
@@ -54,6 +55,7 @@ func TestMain(m *testing.M) {
 		*flagVerbosePiperd = true
 		*flagVerboseExed = true
 		*flagVerboseExelet = true
+		*flagVerboseExeprox = true
 		*flagVerbosePorts = true
 		*flagVerboseEmail = true
 		*flagVerbosePty = true
@@ -106,7 +108,7 @@ func TestMain(m *testing.M) {
 		runFilter = f.Value.String()
 	}
 	hasSpecificRun := runFilter != "" && runFilter != "." && runFilter != ".*"
-	if testing.Verbose() && !hasSpecificRun && !*flagVerboseAll && !*flagVerbosePiperd && !*flagVerboseExed && !*flagVerboseExelet && !*flagVerbosePorts && !*flagVerboseEmail && !*flagVerbosePty && !*flagVerboseSlog {
+	if testing.Verbose() && !hasSpecificRun && !*flagVerboseAll && !*flagVerbosePiperd && !*flagVerboseExed && !*flagVerboseExelet && !*flagVerboseExeprox && !*flagVerbosePorts && !*flagVerboseEmail && !*flagVerbosePty && !*flagVerboseSlog {
 		fmt.Print(`
 ════════
 -v requested, but the e1e tests generate lots of output, and they run in parallel.
@@ -206,6 +208,13 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 	})
 
 	testinfra.AddCleanup(func() {
+		for line := range env.servers.Exeprox.Errors {
+			exitCode = 1
+			fmt.Fprintf(os.Stderr, "\n\nexeprox emitted ERROR log during e1e run:\n%s\n\n", line)
+		}
+	})
+
+	testinfra.AddCleanup(func() {
 		if err := env.Close(); err != nil {
 			slog.Error("test cleanup failed", "error", err)
 			fmt.Fprintf(os.Stderr, "\n\nERROR: %v\n\n", err)
@@ -291,6 +300,7 @@ func initLogging() error {
 	*flagVerbosePiperd = true
 	*flagVerboseExed = true
 	*flagVerboseExelet = true
+	*flagVerboseExeprox = true
 	*flagVerbosePorts = true
 	*flagVerboseEmail = true
 	return nil
@@ -315,6 +325,8 @@ func (e *testEnv) context(t *testing.T) context.Context {
 			cancel(e.servers.Exed.Cause())
 		case <-e.servers.Exelets[0].Exited:
 			cancel(e.servers.Exelets[0].Cause())
+		case <-e.servers.Exeprox.Exited:
+			cancel(e.servers.Exeprox.Cause())
 		case <-e.servers.SSHPiperd.Exited:
 			cancel(e.servers.SSHPiperd.Cause())
 		case <-c.Done():
@@ -334,10 +346,13 @@ func (e *testEnv) Close() error {
 	}
 
 	// Collect and merge coverage data from exed and exelet
-	if e.servers != nil && e.servers.Exed != nil {
-		slog.Info("COVERAGE", "exed_dir", e.servers.Exed.CoverDir, "exelet_dir", coverDirs)
+	if e.servers != nil && e.servers.Exed != nil && e.servers.Exeprox != nil {
+		slog.Info("COVERAGE", "exed_dir", e.servers.Exed.CoverDir, "exelet_dir", coverDirs, "exeprox_dir", e.servers.Exeprox.CoverDir)
 
 		if cd := e.servers.Exed.CoverDir; cd != "" {
+			coverDirs = append(coverDirs, cd)
+		}
+		if cd := e.servers.Exeprox.CoverDir; cd != "" {
 			coverDirs = append(coverDirs, cd)
 		}
 	}
@@ -415,6 +430,11 @@ func setup(ctrHost string) (*testEnv, error) {
 		exedLog = logFileFor("exed")
 	}
 
+	var exeproxLog io.Writer
+	if *flagVerboseExeprox {
+		exeproxLog = logFileFor("exeprox")
+	}
+
 	var piperLog io.Writer
 	if *flagVerbosePiperd {
 		piperLog = logFileFor("sshpiperd")
@@ -424,6 +444,7 @@ func setup(ctrHost string) (*testEnv, error) {
 		[]*testinfra.ExeletInstance{exelet},
 		exedHTTPProxy,
 		exedLog,
+		exeproxLog,
 		piperLog,
 		*flagVerbosePorts,
 		*flagVerboseEmail,

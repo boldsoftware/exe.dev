@@ -2,12 +2,16 @@ package exeprox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
 
 	"exe.dev/exeweb"
 	proxyapi "exe.dev/pkg/api/exe/proxy/v1"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // watchChanges runs in its own goroutine.
@@ -51,8 +55,18 @@ func (p *Proxy) processChanges(ctx context.Context, stream proxyapi.ProxyInfoSer
 	for {
 		resp, err := stream.Recv()
 		if err != nil {
-			if err == io.EOF {
-				p.lg.InfoContext(ctx, "EOF reading proxy change")
+			isEOF := false
+			if errors.Is(err, io.EOF) {
+				isEOF = true
+			} else {
+				switch status.Code(err) {
+				case codes.Canceled, codes.Unavailable:
+					isEOF = true
+				}
+			}
+
+			if isEOF {
+				p.lg.InfoContext(ctx, "EOF reading proxy change", "error", err)
 			} else {
 				p.lg.ErrorContext(ctx, "failure reading proxy change", "error", err)
 			}

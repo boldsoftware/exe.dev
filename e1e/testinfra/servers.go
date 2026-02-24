@@ -11,6 +11,7 @@ import (
 type ServerEnv struct {
 	Exed          *ExedInstance
 	Exelets       []*ExeletInstance
+	Exeprox       *ExeproxInstance
 	SSHProxy      *TCPProxy
 	ExedHTTPProxy *TCPProxy
 	SSHPiperd     *SSHPiperdInstance
@@ -24,14 +25,15 @@ type ServerEnv struct {
 // exedHTTPProxy is the proxy for the exed server,
 // which must be passed to the exelets.
 //
-// exedLog and piperLog, if not nil, are log files for exed and sshpiper.
+// exedLog, exeproxLog, and piperLog, if not nil,
+// are log files for exed, exeprox, and sshpiper.
 //
 // logPorts is whether to log port numbers using slog.InfoContext.
 //
 // verboseEmailServer is whether email server should be verbose.
 //
 // metricsd, if not nil, is a metricsd instance to include in the environment.
-func StartServers(ctx context.Context, exelets []*ExeletInstance, exedHTTPProxy *TCPProxy, exedLog, piperLog io.Writer, logPorts, verboseEmailServer bool, metricsd *MetricsdInstance) (*ServerEnv, error) {
+func StartServers(ctx context.Context, exelets []*ExeletInstance, exedHTTPProxy *TCPProxy, exedLog, exeproxLog, piperLog io.Writer, logPorts, verboseEmailServer bool, metricsd *MetricsdInstance) (*ServerEnv, error) {
 	env := &ServerEnv{
 		Exelets:       exelets,
 		ExedHTTPProxy: exedHTTPProxy,
@@ -92,6 +94,12 @@ func StartServers(ctx context.Context, exelets []*ExeletInstance, exedHTTPProxy 
 	}
 	env.Exed = ei
 
+	epi, err := StartExeprox(ctx, ei.HTTPPort, ei.ExeproxPort, []int{0, 0}, exeproxLog, logPorts)
+	if err != nil {
+		return env, err
+	}
+	env.Exeprox = epi
+
 	pi, err := StartSSHPiperd(ctx, ei.PiperPluginPort, piperLog)
 	if err != nil {
 		return env, err
@@ -128,6 +136,10 @@ func (env *ServerEnv) Stop(ctx context.Context, testRunID string) []string {
 
 	if env.Exed != nil {
 		env.Exed.Stop(ctx, testRunID, false)
+	}
+
+	if env.Exeprox != nil {
+		env.Exeprox.Stop(ctx)
 	}
 
 	if env.SSHPiperd != nil {
