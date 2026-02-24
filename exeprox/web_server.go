@@ -67,6 +67,7 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isProxy {
+		metricsbag.SetLabel(r.Context(), exeweb.LabelProxy, "true")
 		ps.HandleProxyRequest(w, r)
 		return
 	}
@@ -84,10 +85,15 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set labels for non-proxy HTTP metrics
+	metricsbag.SetLabel(r.Context(), exeweb.LabelProxy, "false")
+	metricsbag.SetLabel(r.Context(), exeweb.LabelPath, exeweb.SanitizePath(r.URL.Path))
+
 	// Handle some paths locally.
 	switch r.URL.Path {
 	case "/health":
 		wp.handleHealth(w, r)
+		return
 	case "/metrics":
 		wp.handleMetrics(w, r)
 		return
