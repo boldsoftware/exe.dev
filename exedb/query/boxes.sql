@@ -60,6 +60,11 @@ UPDATE boxes
 SET ctrhost = ?, ssh_port = ?, status = ?, updated_at = CURRENT_TIMESTAMP
 WHERE id = ?;
 
+-- name: UpdateBoxSSHPort :exec
+UPDATE boxes
+SET ssh_port = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ?;
+
 -- name: GetBoxByNameAndAlloc :one
 SELECT * FROM boxes WHERE name = ? AND created_by_user_id = ?;
 

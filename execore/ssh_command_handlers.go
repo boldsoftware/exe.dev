@@ -758,6 +758,18 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 		return cc.Errorf("VM failed to start, current state: %s", finalState.String())
 	}
 
+	// Sync SSH port from exelet if the DB doesn't have one
+	// (e.g. after migrating a stopped instance, the exelet allocates a new port on start).
+	if box.SSHPort == nil && verifyResp.Instance != nil && verifyResp.Instance.SSHPort != 0 {
+		newSSHPort := int64(verifyResp.Instance.SSHPort)
+		if err := withTx1(ss.server, restartCtx, (*exedb.Queries).UpdateBoxSSHPort, exedb.UpdateBoxSSHPortParams{
+			SSHPort: &newSSHPort,
+			ID:      box.ID,
+		}); err != nil {
+			ss.server.slog().ErrorContext(restartCtx, "failed to update SSH port after restart", "box", boxName, "error", err)
+		}
+	}
+
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]string{
 			"vm_name": boxName,

@@ -738,6 +738,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateBoxRoutesStmt, err = db.PrepareContext(ctx, updateBoxRoutes); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxRoutes: %w", err)
 	}
+	if q.updateBoxSSHPortStmt, err = db.PrepareContext(ctx, updateBoxSSHPort); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxSSHPort: %w", err)
+	}
 	if q.updateBoxStatusStmt, err = db.PrepareContext(ctx, updateBoxStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxStatus: %w", err)
 	}
@@ -1993,6 +1996,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxRoutesStmt: %w", cerr)
 		}
 	}
+	if q.updateBoxSSHPortStmt != nil {
+		if cerr := q.updateBoxSSHPortStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxSSHPortStmt: %w", cerr)
+		}
+	}
 	if q.updateBoxStatusStmt != nil {
 		if cerr := q.updateBoxStatusStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxStatusStmt: %w", cerr)
@@ -2370,6 +2378,7 @@ type Queries struct {
 	updateBoxNameStmt                          *sql.Stmt
 	updateBoxNameByIDStmt                      *sql.Stmt
 	updateBoxRoutesStmt                        *sql.Stmt
+	updateBoxSSHPortStmt                       *sql.Stmt
 	updateBoxStatusStmt                        *sql.Stmt
 	updatePasskeySignCountStmt                 *sql.Stmt
 	updateSSHKeyCommentStmt                    *sql.Stmt
@@ -2634,6 +2643,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxNameStmt:                          q.updateBoxNameStmt,
 		updateBoxNameByIDStmt:                      q.updateBoxNameByIDStmt,
 		updateBoxRoutesStmt:                        q.updateBoxRoutesStmt,
+		updateBoxSSHPortStmt:                       q.updateBoxSSHPortStmt,
 		updateBoxStatusStmt:                        q.updateBoxStatusStmt,
 		updatePasskeySignCountStmt:                 q.updatePasskeySignCountStmt,
 		updateSSHKeyCommentStmt:                    q.updateSSHKeyCommentStmt,

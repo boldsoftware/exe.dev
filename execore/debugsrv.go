@@ -479,6 +479,26 @@ func (s *Server) handleDebugBoxStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// After starting, sync SSH port from exelet if the DB doesn't have one
+	// (e.g. after migrating a stopped instance, the exelet allocates a new port on start).
+	if box.SSHPort == nil {
+		instance, err := ec.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: *box.ContainerID})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to get instance info: %v", err), http.StatusInternalServerError)
+			return
+		}
+		if instance.Instance != nil && instance.Instance.SSHPort != 0 {
+			newSSHPort := int64(instance.Instance.SSHPort)
+			if err := withTx1(s, ctx, (*exedb.Queries).UpdateBoxSSHPort, exedb.UpdateBoxSSHPortParams{
+				SSHPort: &newSSHPort,
+				ID:      box.ID,
+			}); err != nil {
+				http.Error(w, fmt.Sprintf("failed to update SSH port: %v", err), http.StatusInternalServerError)
+				return
+			}
+		}
+	}
+
 	if err := s.updateBoxStatus(ctx, box.ID, "running"); err != nil {
 		http.Error(w, fmt.Sprintf("failed to update box status: %v", err), http.StatusInternalServerError)
 		return

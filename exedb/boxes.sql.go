@@ -763,6 +763,22 @@ func (q *Queries) UpdateBoxRoutes(ctx context.Context, arg UpdateBoxRoutesParams
 	return err
 }
 
+const updateBoxSSHPort = `-- name: UpdateBoxSSHPort :exec
+UPDATE boxes
+SET ssh_port = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ?
+`
+
+type UpdateBoxSSHPortParams struct {
+	SSHPort *int64 `db:"ssh_port" json:"ssh_port"`
+	ID      int    `db:"id" json:"id"`
+}
+
+func (q *Queries) UpdateBoxSSHPort(ctx context.Context, arg UpdateBoxSSHPortParams) error {
+	_, err := q.exec(ctx, q.updateBoxSSHPortStmt, updateBoxSSHPort, arg.SSHPort, arg.ID)
+	return err
+}
+
 const updateBoxStatus = `-- name: UpdateBoxStatus :exec
 UPDATE boxes
 SET status = ?, updated_at = CURRENT_TIMESTAMP
