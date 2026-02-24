@@ -1,13 +1,13 @@
 httprr trace v1
-393 3650
+394 3650
 POST https://api.anthropic.com/v1/messages HTTP/1.1
 Host: api.anthropic.com
 User-Agent: Go-http-client/1.1
-Content-Length: 197
+Content-Length: 198
 Anthropic-Version: 2023-06-01
 Content-Type: application/json
 
-{"model":"claude-sonnet-4-20250514","max_tokens":8192,"stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"Hi, my name is Cornelius","cache_control":{"type":"ephemeral"}}]}]}
+{"model":"claude-sonnet-4-20250514","max_tokens":64000,"stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"Hi, my name is Cornelius","cache_control":{"type":"ephemeral"}}]}]}
 HTTP/2.0 200 OK
 Connection: close
 Anthropic-Organization-Id: 3c473a21-7208-450a-a9f8-80aebda45c1b
@@ -86,15 +86,15 @@ data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":
 event: message_stop
 data: {"type":"message_stop" }
 
-692 3223
+693 3223
 POST https://api.anthropic.com/v1/messages HTTP/1.1
 Host: api.anthropic.com
 User-Agent: Go-http-client/1.1
-Content-Length: 496
+Content-Length: 497
 Anthropic-Version: 2023-06-01
 Content-Type: application/json
 
-{"model":"claude-sonnet-4-20250514","max_tokens":8192,"stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"Hi, my name is Cornelius"}]},{"role":"assistant","content":[{"type":"text","text":"Hello Cornelius! It's nice to meet you. That's a distinguished name with quite a bit of history behind it. How are you doing today? Is there anything I can help you with?"}]},{"role":"user","content":[{"type":"text","text":"What is my name?","cache_control":{"type":"ephemeral"}}]}]}
+{"model":"claude-sonnet-4-20250514","max_tokens":64000,"stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"Hi, my name is Cornelius"}]},{"role":"assistant","content":[{"type":"text","text":"Hello Cornelius! It's nice to meet you. That's a distinguished name with quite a bit of history behind it. How are you doing today? Is there anything I can help you with?"}]},{"role":"user","content":[{"type":"text","text":"What is my name?","cache_control":{"type":"ephemeral"}}]}]}
 HTTP/2.0 200 OK
 Connection: close
 Anthropic-Organization-Id: 3c473a21-7208-450a-a9f8-80aebda45c1b

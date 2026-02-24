@@ -20,11 +20,8 @@ import (
 
 const (
 	DefaultModel = Claude45Sonnet
-	// See https://docs.anthropic.com/en/docs/about-claude/models/all-models for
-	// current maximums. There's currently a flag to enable 128k output (output-128k-2025-02-19)
-	DefaultMaxTokens = 8192
-	APIKeyEnv        = "ANTHROPIC_API_KEY"
-	DefaultURL       = "https://api.anthropic.com/v1/messages"
+	APIKeyEnv    = "ANTHROPIC_API_KEY"
+	DefaultURL   = "https://api.anthropic.com/v1/messages"
 )
 
 const (
@@ -36,6 +33,29 @@ const (
 	Claude46Opus   = "claude-opus-4-6"
 	Claude46Sonnet = "claude-sonnet-4-6"
 )
+
+// modelMaxOutputTokens maps model names to their maximum output token limits.
+// See https://docs.anthropic.com/en/docs/about-claude/models/all-models
+var modelMaxOutputTokens = map[string]int{
+	Claude46Opus:   128000,
+	Claude45Opus:   128000,
+	Claude46Sonnet: 64000,
+	Claude45Sonnet: 64000,
+	Claude4Sonnet:  64000,
+	Claude37Sonnet: 64000,
+	Claude45Haiku:  64000,
+}
+
+// defaultMaxOutputTokens is used for unrecognized models.
+const defaultMaxOutputTokens = 64000
+
+// maxOutputTokens returns the max output token limit for a model.
+func maxOutputTokens(model string) int {
+	if n, ok := modelMaxOutputTokens[model]; ok {
+		return n
+	}
+	return defaultMaxOutputTokens
+}
 
 // IsClaudeModel reports whether userName is a user-friendly Claude model.
 // It uses ClaudeModelName under the hood.
@@ -89,7 +109,7 @@ type Service struct {
 	URL           string            // defaults to DefaultURL if empty
 	APIKey        string            // must be non-empty
 	Model         string            // defaults to DefaultModel if empty
-	MaxTokens     int               // defaults to DefaultMaxTokens if zero
+	MaxTokens     int               // 0 means use model-specific limit from modelMaxOutputTokens
 	ThinkingLevel llm.ThinkingLevel // thinking level (ThinkingLevelOff disables, default is ThinkingLevelMedium)
 }
 
@@ -408,10 +428,11 @@ func fromLLMSystem(s llm.SystemContent) systemContent {
 }
 
 func (s *Service) fromLLMRequest(r *llm.Request) *request {
-	maxTokens := cmp.Or(s.MaxTokens, DefaultMaxTokens)
+	model := cmp.Or(s.Model, DefaultModel)
+	maxTokens := cmp.Or(s.MaxTokens, maxOutputTokens(model))
 
 	req := &request{
-		Model:      cmp.Or(s.Model, DefaultModel),
+		Model:      model,
 		Messages:   mapped(r.Messages, fromLLMMessage),
 		MaxTokens:  maxTokens,
 		ToolChoice: fromLLMToolChoice(r.ToolChoice),
