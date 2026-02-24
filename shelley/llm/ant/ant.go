@@ -26,7 +26,6 @@ const (
 
 const (
 	Claude45Haiku  = "claude-haiku-4-5-20251001"
-	Claude37Sonnet = "claude-3-7-sonnet-20250219"
 	Claude4Sonnet  = "claude-sonnet-4-20250514"
 	Claude45Sonnet = "claude-sonnet-4-5-20250929"
 	Claude45Opus   = "claude-opus-4-5-20251101"
@@ -42,7 +41,6 @@ var modelMaxOutputTokens = map[string]int{
 	Claude46Sonnet: 64000,
 	Claude45Sonnet: 64000,
 	Claude4Sonnet:  64000,
-	Claude37Sonnet: 64000,
 	Claude45Haiku:  64000,
 }
 
@@ -78,21 +76,24 @@ func ClaudeModelName(userName string) string {
 
 // TokenContextWindow returns the maximum token context window size for this service
 func (s *Service) TokenContextWindow() int {
+	return 200000
+}
+
+// maxOutputTokens returns the maximum allowed output tokens for the configured model.
+// Source: https://models.dev/api.json (Anthropic provider, limit.output)
+func (s *Service) maxOutputTokens() int {
 	model := s.Model
 	if model == "" {
 		model = DefaultModel
 	}
-
 	switch model {
-	case Claude37Sonnet, Claude4Sonnet, Claude45Sonnet, Claude46Sonnet:
-		return 200000
-	case Claude45Haiku:
-		return 200000
-	case Claude45Opus, Claude46Opus:
-		return 200000
+	case Claude46Opus:
+		return 128000
+	case Claude4Sonnet, Claude45Sonnet, Claude46Sonnet,
+		Claude45Haiku, Claude45Opus:
+		return 64000
 	default:
-		// Default for unknown models
-		return 200000
+		return 64000
 	}
 }
 
@@ -448,6 +449,15 @@ func (s *Service) fromLLMRequest(r *llm.Request) *request {
 			req.MaxTokens = budget + 1024
 		}
 		req.Thinking = &thinking{Type: "enabled", BudgetTokens: budget}
+	}
+
+	// Cap max_tokens at the model's maximum allowed output tokens
+	if limit := s.maxOutputTokens(); req.MaxTokens > limit {
+		req.MaxTokens = limit
+		// Also cap the thinking budget if it exceeds the new max_tokens
+		if req.Thinking != nil && req.Thinking.BudgetTokens >= req.MaxTokens {
+			req.Thinking.BudgetTokens = req.MaxTokens - 1024
+		}
 	}
 	return req
 }

@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"shelley.exe.dev/llm"
 )
@@ -65,7 +67,6 @@ func TestTokenContextWindow(t *testing.T) {
 		want  int
 	}{
 		{"default model", "", 200000},
-		{"Claude37Sonnet", Claude37Sonnet, 200000},
 		{"Claude4Sonnet", Claude4Sonnet, 200000},
 		{"Claude45Sonnet", Claude45Sonnet, 200000},
 		{"Claude45Haiku", Claude45Haiku, 200000},
@@ -594,6 +595,98 @@ func TestFromLLMRequest(t *testing.T) {
 		t.Errorf("fromLLMRequest().System length = %v, want %v", len(got.System), 1)
 	} else if got.System[0].Text != "You are a helpful assistant" {
 		t.Errorf("fromLLMRequest().System[0].Text = %v, want %v", got.System[0].Text, "You are a helpful assistant")
+	}
+}
+
+func TestMaxOutputTokensCapping(t *testing.T) {
+	simpleReq := &llm.Request{
+		Messages: []llm.Message{{
+			Role:    llm.MessageRoleUser,
+			Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Hello"}},
+		}},
+	}
+
+	// Opus 4.5 has a 64k limit — setting MaxTokens above must be capped
+	s := &Service{Model: Claude45Opus, MaxTokens: 100000, ThinkingLevel: llm.ThinkingLevelMedium}
+	got := s.fromLLMRequest(simpleReq)
+	if got.MaxTokens != 64000 {
+		t.Errorf("Opus 4.5: MaxTokens = %d, want 64000", got.MaxTokens)
+	}
+	if got.Thinking != nil && got.Thinking.BudgetTokens >= got.MaxTokens {
+		t.Errorf("Opus 4.5: BudgetTokens (%d) >= MaxTokens (%d)", got.Thinking.BudgetTokens, got.MaxTokens)
+	}
+
+	// Opus 4.6 has a 128k limit — 100000 should pass through
+	s2 := &Service{Model: Claude46Opus, MaxTokens: 100000}
+	got2 := s2.fromLLMRequest(simpleReq)
+	if got2.MaxTokens != 100000 {
+		t.Errorf("Opus 4.6: MaxTokens = %d, want 100000", got2.MaxTokens)
+	}
+
+	// Sonnet 4.5 has a 64k limit — 50000 should pass through
+	s3 := &Service{Model: Claude45Sonnet, MaxTokens: 50000}
+	got3 := s3.fromLLMRequest(simpleReq)
+	if got3.MaxTokens != 50000 {
+		t.Errorf("Sonnet 4.5: MaxTokens = %d, want 50000", got3.MaxTokens)
+	}
+
+	// Sonnet 4.5 with MaxTokens above 64k must be capped
+	s4 := &Service{Model: Claude45Sonnet, MaxTokens: 200000}
+	got4 := s4.fromLLMRequest(simpleReq)
+	if got4.MaxTokens != 64000 {
+		t.Errorf("Sonnet 4.5 capped: MaxTokens = %d, want 64000", got4.MaxTokens)
+	}
+}
+
+// TestMaxOutputTokensMatchModelsDevAPI validates our maxOutputTokens() values against
+// the live models.dev API (same pattern as llmpricing.TestPricingMatchesModelsDev).
+func TestMaxOutputTokensMatchModelsDevAPI(t *testing.T) {
+	resp, err := http.Get("https://models.dev/api.json")
+	if err != nil {
+		t.Skipf("Failed to fetch models.dev API: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Skipf("models.dev API returned status %d", resp.StatusCode)
+	}
+
+	type ModelInfo struct {
+		Limit struct {
+			Output int `json:"output"`
+		} `json:"limit"`
+	}
+	type ProviderInfo struct {
+		Models map[string]ModelInfo `json:"models"`
+	}
+	var apiData map[string]ProviderInfo
+	if err := json.NewDecoder(resp.Body).Decode(&apiData); err != nil {
+		t.Fatalf("Failed to decode models.dev API: %v", err)
+	}
+
+	anthropic, ok := apiData["anthropic"]
+	if !ok {
+		t.Fatal("anthropic provider not found in models.dev API")
+	}
+
+	// Every model constant we define must match models.dev
+	for _, model := range []string{
+		Claude45Haiku,
+		Claude4Sonnet,
+		Claude45Sonnet,
+		Claude45Opus,
+		Claude46Opus,
+		Claude46Sonnet,
+	} {
+		apiModel, ok := anthropic.Models[model]
+		if !ok {
+			t.Errorf("%s: not found in models.dev data", model)
+			continue
+		}
+		svc := &Service{Model: model}
+		got := svc.maxOutputTokens()
+		if got != apiModel.Limit.Output {
+			t.Errorf("%s: maxOutputTokens() = %d, models.dev says %d", model, got, apiModel.Limit.Output)
+		}
 	}
 }
 
@@ -1457,5 +1550,65 @@ func TestDoStartTimeEndTime(t *testing.T) {
 		if resp.EndTime.Before(*resp.StartTime) {
 			t.Error("Do() response EndTime should be after StartTime")
 		}
+	}
+}
+
+// TestLiveAnthropicModels sends a real request to every Anthropic model we support
+// and verifies we get a valid response. Skipped if ANTHROPIC_API_KEY is not set.
+func TestLiveAnthropicModels(t *testing.T) {
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		t.Skip("ANTHROPIC_API_KEY not set")
+	}
+
+	models := []struct {
+		name  string
+		model string
+	}{
+		{"Haiku 4.5", Claude45Haiku},
+		{"Sonnet 4", Claude4Sonnet},
+		{"Sonnet 4.5", Claude45Sonnet},
+		{"Sonnet 4.6", Claude46Sonnet},
+		{"Opus 4.5", Claude45Opus},
+		{"Opus 4.6", Claude46Opus},
+	}
+
+	req := &llm.Request{
+		Messages: []llm.Message{{
+			Role:    llm.MessageRoleUser,
+			Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Say hello in exactly 3 words."}},
+		}},
+		System: []llm.SystemContent{{Text: "Be brief.", Type: "text"}},
+	}
+
+	for _, m := range models {
+		t.Run(m.name, func(t *testing.T) {
+			t.Parallel()
+			svc := &Service{
+				APIKey:        apiKey,
+				Model:         m.model,
+				ThinkingLevel: llm.ThinkingLevelMedium,
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+
+			resp, err := svc.Do(ctx, req)
+			if err != nil {
+				t.Fatalf("%s: %v", m.model, err)
+			}
+
+			var text string
+			for _, c := range resp.Content {
+				if c.Type == llm.ContentTypeText {
+					text = c.Text
+					break
+				}
+			}
+			if text == "" {
+				t.Fatalf("%s: got empty text response", m.model)
+			}
+			t.Logf("%s: %q", m.model, text)
+		})
 	}
 }
