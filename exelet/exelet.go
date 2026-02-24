@@ -115,11 +115,13 @@ func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, env stage.Env, opts .
 		tracing.UnaryServerInterceptor(),
 		grpcMetrics.UnaryServerInterceptor(),
 		logging.UnaryServerInterceptor(logging.LoggerFunc(loggerFunc), logging.WithLogOnEvents(logging.FinishCall)),
+		grpcLogTypeInterceptor(),
 	}
 	streamServerInterceptors := []grpc.StreamServerInterceptor{
 		tracing.StreamServerInterceptor(),
 		grpcMetrics.StreamServerInterceptor(),
 		logging.StreamServerInterceptor(logging.LoggerFunc(loggerFunc), logging.WithLogOnEvents(logging.FinishCall)),
+		grpcStreamLogTypeInterceptor(),
 	}
 
 	// TODO: auth middleware
@@ -221,4 +223,22 @@ func getGRPCOptions(cfg *config.ExeletConfig) ([]grpc.ServerOption, error) {
 		grpcOpts = append(grpcOpts, grpc.Creds(creds))
 	}
 	return grpcOpts, nil
+}
+
+// grpcLogTypeInterceptor returns a unary server interceptor that adds log_type=grpc_request
+// to the logging context fields, so it appears in the canonical "finished call" log line.
+func grpcLogTypeInterceptor() grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		logging.AddFields(ctx, logging.Fields{"log_type", "grpc_request"})
+		return handler(ctx, req)
+	}
+}
+
+// grpcStreamLogTypeInterceptor returns a stream server interceptor that adds log_type=grpc_request
+// to the logging context fields, so it appears in the canonical "finished call" log line.
+func grpcStreamLogTypeInterceptor() grpc.StreamServerInterceptor {
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		logging.AddFields(ss.Context(), logging.Fields{"log_type", "grpc_request"})
+		return handler(srv, ss)
+	}
 }

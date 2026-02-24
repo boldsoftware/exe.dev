@@ -21,6 +21,10 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 	oldName := cc.Args[0]
 	newName := cc.Args[1]
 
+	CommandLogAddAttr(ctx, slog.String("vm_name", oldName))
+	CommandLogAddAttr(ctx, slog.String("old_vm_name", oldName))
+	CommandLogAddAttr(ctx, slog.String("new_vm_name", newName))
+
 	// Check if renaming to the same name
 	if oldName == newName {
 		cc.Write("%s is already named %s\r\n", oldName, newName)
@@ -37,6 +41,9 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 	if err != nil {
 		return cc.Errorf("vm %q not found", oldName)
 	}
+
+	CommandLogAddAttr(ctx, slog.String("vm_owner_user_id", box.CreatedByUserID))
+	CommandLogAddAttr(ctx, slog.Int("vm_id", box.ID))
 
 	// Check if new name already exists (globally)
 	exists, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithNameExists, newName)

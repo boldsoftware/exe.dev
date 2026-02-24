@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -95,6 +96,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 
 	ctx := stream.Context()
+	logging.AddFields(ctx, logging.Fields{"container_id", req.ID, "vm_name", req.Name})
 	s.log.DebugContext(ctx, "creating instance", "request", req)
 	if req.ID == "" {
 		id, err := uuid.NewV7()

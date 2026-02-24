@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -129,7 +130,12 @@ func (s *Server) handleRunCommand(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	exitCode := ss.commands.ExecuteCommand(ctx, cc, cmdParts)
+	// Pre-create the command log so we can tag the source.
+	cl := NewCommandLog(time.Now())
+	cl.AddAttr(slog.String("source", "web"))
+	ctx = WithCommandLog(ctx, cl)
+
+	exitCode := ss.executeCommandWithLogging(ctx, cc, cmdParts)
 
 	// Prepare response
 	w.Header().Set("Content-Type", "application/json")

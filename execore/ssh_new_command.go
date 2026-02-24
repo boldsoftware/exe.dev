@@ -221,6 +221,11 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		return fmt.Errorf("failed to create box entry: %w", err)
 	}
 
+	CommandLogAddAttr(ctx, slog.String("vm_name", boxName))
+	CommandLogAddAttr(ctx, slog.Int("vm_id", boxID))
+	CommandLogAddAttr(ctx, slog.String("exelet_host", exeletAddr))
+	CommandLogAddAttr(ctx, slog.String("image", imageToStore))
+
 	// Start timing BEFORE creating instance
 	startTime := time.Now()
 

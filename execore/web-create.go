@@ -216,8 +216,29 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 			ForceSpinner: true,
 		}
 
-		// Run the creation
+		// Run the creation through executeCommandWithLogging so
+		// the canonical "ssh command completed" line is emitted.
+		cl := NewCommandLog(time.Now())
+		createCtx = WithCommandLog(createCtx, cl)
 		err := ss.handleNewCommand(createCtx, cc)
+
+		// Emit the canonical log line for the web-initiated creation.
+		logAttrs := []any{
+			"log_type", "ssh_command",
+			"command", "new --name " + hostname,
+			"source", "web",
+			"duration", cl.Duration(),
+			"user_id", userID,
+		}
+		for _, attr := range cl.Attrs() {
+			logAttrs = append(logAttrs, attr.Key, attr.Value.Any())
+		}
+		if err != nil {
+			logAttrs = append(logAttrs, "rc", 1, "error", err.Error())
+		} else {
+			logAttrs = append(logAttrs, "rc", 0)
+		}
+		s.slog().InfoContext(createCtx, "ssh command completed", logAttrs...)
 
 		// Shelley can run for a long time.
 		// When this happens, createCtx may be exhausted.

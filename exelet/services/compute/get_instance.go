@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -14,12 +15,18 @@ import (
 )
 
 func (s *Service) GetInstance(ctx context.Context, req *api.GetInstanceRequest) (*api.GetInstanceResponse, error) {
+	logging.AddFields(ctx, logging.Fields{"container_id", req.ID})
+
 	i, err := s.getInstance(ctx, req.ID)
 	if errors.Is(err, api.ErrNotFound) {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if i != nil && i.Name != "" {
+		logging.AddFields(ctx, logging.Fields{"vm_name", i.Name})
 	}
 
 	return &api.GetInstanceResponse{

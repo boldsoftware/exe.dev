@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -12,6 +13,8 @@ import (
 )
 
 func (s *Service) StopInstance(ctx context.Context, req *api.StopInstanceRequest) (*api.StopInstanceResponse, error) {
+	logging.AddFields(ctx, logging.Fields{"container_id", req.ID})
+
 	// Check if instance is being migrated
 	if err := s.checkNotMigrating(req.ID); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())

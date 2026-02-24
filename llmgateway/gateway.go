@@ -193,6 +193,9 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Strip the header before forwarding
 	r.Header.Del("X-Exedev-Box")
 
+	// Override request_type for gateway requests
+	sloghttp.AddCustomAttributes(r, slog.String("request_type", "gateway"))
+
 	// Extract Shelley conversation ID and version for logging
 	conversationID := r.Header.Get("Shelley-Conversation-Id")
 	userAgent := r.Header.Get("User-Agent")

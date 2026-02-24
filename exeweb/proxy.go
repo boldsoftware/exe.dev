@@ -181,6 +181,7 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 	sloghttp.AddCustomAttributes(r, slog.Int("vm_id", box.ID))
 	sloghttp.AddCustomAttributes(r, slog.String("vm_name", box.Name))
 	sloghttp.AddCustomAttributes(r, slog.String("vm_owner_user_id", box.CreatedByUserID))
+	sloghttp.AddCustomAttributes(r, slog.String("exelet_host", box.Ctrhost))
 
 	// Check if box owner is locked out -
 	// their VMs should not accept proxy requests (fail closed on DB error).
@@ -216,6 +217,9 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 		route = BoxRoute{Port: targetPort, Share: "private"}
 		ownerOnly = true
 	}
+
+	sloghttp.AddCustomAttributes(r, slog.Int("route_port", route.Port))
+	sloghttp.AddCustomAttributes(r, slog.String("route_share", route.Share))
 
 	if route.Port == 9999 {
 		// We're going to call all proxy requests to port 9999

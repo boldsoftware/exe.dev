@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -26,6 +27,7 @@ import (
 // (hostname, hosts, machine-id, SSH host keys) to ensure the clone is distinct.
 func (s *Service) CloneInstance(req *api.CloneInstanceRequest, stream api.ComputeService_CloneInstanceServer) error {
 	ctx := stream.Context()
+	logging.AddFields(ctx, logging.Fields{"container_id", req.NewInstanceID, "vm_name", req.NewName})
 	s.log.DebugContext(ctx, "cloning instance", "source_id", req.SourceInstanceID, "new_id", req.NewInstanceID, "new_name", req.NewName)
 
 	// Validate request

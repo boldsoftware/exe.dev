@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/dustin/go-humanize"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -20,6 +21,8 @@ const (
 )
 
 func (s *Service) GrowDisk(ctx context.Context, req *api.GrowDiskRequest) (*api.GrowDiskResponse, error) {
+	logging.AddFields(ctx, logging.Fields{"container_id", req.ID})
+
 	if req.ID == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance ID is required")
 	}

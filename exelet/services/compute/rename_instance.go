@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -13,6 +14,8 @@ import (
 
 // RenameInstance updates the name of an instance.
 func (s *Service) RenameInstance(ctx context.Context, req *api.RenameInstanceRequest) (*api.RenameInstanceResponse, error) {
+	logging.AddFields(ctx, logging.Fields{"container_id", req.ID, "vm_name", req.Name})
+
 	if req.ID == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance id is required")
 	}

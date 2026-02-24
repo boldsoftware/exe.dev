@@ -436,9 +436,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Add request classification to logs
 	if isProxy {
 		sloghttp.AddCustomAttributes(r, slog.Bool("proxy", true))
-	}
-	if isTerminal {
+		sloghttp.AddCustomAttributes(r, slog.String("request_type", "proxy"))
+	} else if isTerminal {
 		sloghttp.AddCustomAttributes(r, slog.Bool("terminal", true))
+		sloghttp.AddCustomAttributes(r, slog.String("request_type", "terminal"))
+	} else {
+		sloghttp.AddCustomAttributes(r, slog.String("request_type", "web"))
 	}
 
 	// Try to get userID from auth cookie for logging and tracking

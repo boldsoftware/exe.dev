@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -13,6 +14,8 @@ import (
 )
 
 func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceRequest) (*api.DeleteInstanceResponse, error) {
+	logging.AddFields(ctx, logging.Fields{"container_id", req.ID})
+
 	// use singleflight to ensure only one delete per instance
 	resp, err, _ := s.instanceDeleteGroup.Do(req.ID, func() (*api.DeleteInstanceResponse, error) {
 		// Check if instance is being migrated

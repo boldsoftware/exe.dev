@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -15,6 +16,8 @@ import (
 
 func (s *Service) GetInstanceLogs(req *api.GetInstanceLogsRequest, stream api.ComputeService_GetInstanceLogsServer) error {
 	ctx := stream.Context()
+	logging.AddFields(ctx, logging.Fields{"container_id", req.ID})
+
 	// ensure instance exists
 	resp, err := s.GetInstance(ctx, &api.GetInstanceRequest{ID: req.ID})
 	if err != nil {

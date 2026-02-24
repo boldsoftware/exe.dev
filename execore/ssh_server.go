@@ -598,17 +598,28 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 // with timing information and accumulated attributes (similar to sloghttp).
 func (ss *SSHServer) executeCommandWithLogging(ctx context.Context, cc *exemenu.CommandContext, parts []string) int {
 	start := time.Now()
-	cl := NewCommandLog(start)
-	ctx = WithCommandLog(ctx, cl)
+	cl := GetCommandLog(ctx)
+	if cl == nil {
+		cl = NewCommandLog(start)
+		ctx = WithCommandLog(ctx, cl)
+	}
 
 	rc := ss.commands.ExecuteCommand(ctx, cc, parts)
 
 	// Build log attributes
+	cmdStr := strings.Join(parts, " ")
 	attrs := []any{
 		"log_type", "ssh_command",
-		"command", strings.Join(parts, " "),
+		"command", cmdStr,
 		"rc", rc,
 		"duration", time.Since(start),
+	}
+	// Add command_name (first word) and subcommand (first two words) for easy GROUP BY.
+	if len(parts) > 0 {
+		attrs = append(attrs, "command_name", parts[0])
+	}
+	if len(parts) > 1 {
+		attrs = append(attrs, "subcommand", parts[0]+" "+parts[1])
 	}
 	if cc.User != nil {
 		attrs = append(attrs, "user_id", cc.User.ID)

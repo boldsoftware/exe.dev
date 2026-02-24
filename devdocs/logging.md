@@ -9,13 +9,21 @@ Following https://stripe.com/blog/canonical-log-lines or https://jeremymorrell.d
 it is useful to have a "canonical log line" at the end of an operation. Currently I am aware of the following
 instances of that:
 
-* HTTP Requests.
+* HTTP Requests (exed)
 
-  These can be identified with "log_type: http_request" and the body looks like "200: OK".
-  (sloghttp can't modify this; I would have put the body as "http request", but whatever)
+  "log_type: http_request", body looks like "200: OK".
 
-  These can be proxy: true/false, can be on the exelets, etc.
-  (As of writing, exelet doesn't have http_request, but hopefully it will as of reading.)
+  Base attributes (all HTTP requests): method, host, uri, local_addr, request_type
+  (proxy|terminal|web|gateway), user_id (when authenticated).
+
+  Proxy requests additionally have: proxy=true, vm_id, vm_name, vm_owner_user_id,
+  exelet_host, route_port, route_share (public|private), proxy_shelley (port 9999).
+
+  Gateway requests (LLM proxy) additionally have: request_type=gateway,
+  llm_model, vm_name, user_id, input_tokens, output_tokens, cache_creation_tokens,
+  cache_read_tokens, cost_usd, remaining_credit_usd, conversation_id, shelley_version.
+
+  Use `sloghttp.AddCustomAttributes(r, slog.String("key", val))` to add attributes.
 
 * SSH Connections to VMs
 
@@ -41,13 +49,40 @@ instances of that:
 
 * SSH Handler Commands
 
-  "body: ssh command completed"
-  (or)
-  "log_type: ssh_command"
+  "body: ssh command completed", "log_type: ssh_command"
 
-* gRPC "finished call"
+  These are emitted at the end of every SSH command execution.
+  Base attributes: command (full command string), command_name (first word),
+  subcommand (first two words), rc (exit code), duration, user_id.
 
-  These aren't particularly well instrumented.
+  Command handlers add structured attributes via `CommandLogAddAttr(ctx, slog.Attr)`:
+  - new: vm_name, vm_id, exelet_host, image
+  - rm: vm_name (comma-separated if multiple)
+  - rename: vm_name, old_vm_name, new_vm_name, vm_owner_user_id, vm_id
+  - restart: vm_name, vm_id, vm_owner_user_id
+  - resize: vm_name, vm_id, vm_owner_user_id
+
+  Commands from the web UI include source=web.
+
+* gRPC "finished call" (exelet)
+
+  "body: finished call", "log_type: grpc_request"
+
+  These are emitted by the gRPC logging interceptor on the exelet.
+  Base attributes: grpc.service, grpc.method, grpc.code, grpc.time_ms,
+  grpc.component, grpc.method_type, peer.address.
+
+  Service handlers add: container_id, vm_name (where available via request
+  or response data).
+
+  Use `logging.AddFields(ctx, logging.Fields{"key", val})` (from
+  go-grpc-middleware/v2/interceptors/logging) inside gRPC handlers.
+
+* HTTP Requests (exelet)
+
+  "log_type: http_request" on the exelet dataset.
+
+  Attributes: method, uri, vm_name, remote_ip, original_path, new_path.
 
 
 If you want to add some stat to a request, instead of logging it separately,
@@ -56,8 +91,5 @@ use `sloghttp.AddCustomAttributes(r, slog.String("pow_time_ms", timeMs))` or sim
 For SSH piper connections, use `getPiperConnLog(ctx).add(slog.String("key", "val"))`
 to accumulate attributes that will be included in the canonical log line.
 
-
-
-
-
-
+For SSH commands, use `CommandLogAddAttr(ctx, slog.String("key", "val"))` to add
+attributes to the canonical "ssh command completed" line.

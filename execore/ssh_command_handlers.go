@@ -659,6 +659,10 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 		return cc.Errorf("VM %q not found", boxName)
 	}
 
+	CommandLogAddAttr(ctx, slog.String("vm_name", boxName))
+	CommandLogAddAttr(ctx, slog.Int("vm_id", box.ID))
+	CommandLogAddAttr(ctx, slog.String("vm_owner_user_id", box.CreatedByUserID))
+
 	if box.ContainerID == nil {
 		return cc.Errorf("VM %q has no container", boxName)
 	}
@@ -817,6 +821,10 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 			continue
 		}
 		deleted = append(deleted, boxName)
+	}
+
+	if len(deleted) > 0 {
+		CommandLogAddAttr(ctx, slog.String("vm_name", strings.Join(deleted, ",")))
 	}
 
 	if cc.WantJSON() {
@@ -1448,6 +1456,10 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	if err != nil {
 		return cc.Errorf("failed to look up VM: %v", err)
 	}
+
+	CommandLogAddAttr(ctx, slog.String("vm_name", boxName))
+	CommandLogAddAttr(ctx, slog.Int("vm_id", box.ID))
+	CommandLogAddAttr(ctx, slog.String("vm_owner_user_id", box.CreatedByUserID))
 
 	if box.ContainerID == nil || *box.ContainerID == "" {
 		return cc.Errorf("VM %q has no container ID", boxName)
