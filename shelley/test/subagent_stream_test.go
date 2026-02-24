@@ -205,7 +205,7 @@ func TestSubagentNotificationViaStream(t *testing.T) {
 	subagentRunner := server.NewSubagentRunner(svr)
 	go func() {
 		// Call RunSubagent with wait=false so it returns quickly
-		subagentRunner.RunSubagent(ctx, subConv.ConversationID, "Test prompt", false, 10*time.Second)
+		subagentRunner.RunSubagent(ctx, subConv.ConversationID, "Test prompt", false, 10*time.Second, "predictable")
 	}()
 
 	// Wait for notification

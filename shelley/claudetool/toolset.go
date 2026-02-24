@@ -150,6 +150,7 @@ func NewToolSet(ctx context.Context, cfg ToolSetConfig) *ToolSet {
 			ParentConversationID: cfg.ParentConversationID,
 			WorkingDir:           wd,
 			Runner:               cfg.SubagentRunner,
+			ModelID:              cfg.ModelID, // Inherit parent's model
 		}
 		tools = append(tools, subagentTool.Tool())
 	}

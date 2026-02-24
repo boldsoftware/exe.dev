@@ -30,11 +30,13 @@ func (m *mockSubagentDB) GetOrCreateSubagentConversation(ctx context.Context, sl
 
 // mockSubagentRunner implements SubagentRunner for testing.
 type mockSubagentRunner struct {
-	response string
-	err      error
+	response    string
+	err         error
+	lastModelID string // Capture for assertions
 }
 
-func (m *mockSubagentRunner) RunSubagent(ctx context.Context, conversationID, prompt string, wait bool, timeout time.Duration) (string, error) {
+func (m *mockSubagentRunner) RunSubagent(ctx context.Context, conversationID, prompt string, wait bool, timeout time.Duration, modelID string) (string, error) {
+	m.lastModelID = modelID
 	if m.err != nil {
 		return "", m.err
 	}
@@ -76,6 +78,7 @@ func TestSubagentTool_Run(t *testing.T) {
 		ParentConversationID: "parent-123",
 		WorkingDir:           wd,
 		Runner:               runner,
+		ModelID:              "claude-opus-4-20250514",
 	}
 
 	input := subagentInput{
@@ -151,4 +154,26 @@ func TestSubagentTool_Validation(t *testing.T) {
 			t.Error("expected error for invalid slug")
 		}
 	})
+}
+
+func TestSubagentTool_InheritsModel(t *testing.T) {
+	wd := NewMutableWorkingDir("/tmp")
+	db := newMockSubagentDB()
+	runner := &mockSubagentRunner{response: "OK"}
+
+	tool := &SubagentTool{
+		DB:                   db,
+		ParentConversationID: "parent-123",
+		WorkingDir:           wd,
+		Runner:               runner,
+		ModelID:              "claude-sonnet-4-20250514",
+	}
+
+	input := subagentInput{Slug: "test", Prompt: "do something"}
+	inputJSON, _ := json.Marshal(input)
+	tool.Run(context.Background(), inputJSON)
+
+	if runner.lastModelID != "claude-sonnet-4-20250514" {
+		t.Errorf("expected model 'claude-sonnet-4-20250514', got %q", runner.lastModelID)
+	}
 }
