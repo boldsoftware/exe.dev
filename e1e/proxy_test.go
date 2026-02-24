@@ -21,11 +21,15 @@ import (
 )
 
 func TestHTTPProxy(t *testing.T) {
-	t.Parallel()
 	testHTTPProxy(t, Env.servers.Exed.HTTPPort, Env.servers.Exed.ExtraPorts)
 }
 
+func TestHTTPProxyExeprox(t *testing.T) {
+	testHTTPProxy(t, Env.servers.Exeprox.HTTPPort, Env.servers.Exeprox.ExtraPorts)
+}
+
 func testHTTPProxy(t *testing.T, httpPort int, extraPorts []int) {
+	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -1161,6 +1165,17 @@ func parseForwardedFor(header string) []string {
 // - A token for VM1 must NOT work for VM2
 // - Only a token with the exact namespace (v0@vmname.BOXHOST) should work
 func TestProxyTokenNamespaceIsolation(t *testing.T) {
+	testProxyTokenNamespaceIsolation(t, Env.servers.Exed.HTTPPort)
+}
+
+// TestProxyTokenIsolationExeprox should be called
+// TestProxyTokenNamespaceIsolationExeprox but that causes the
+// test infrastructure to pick a box name that is too long.
+func TestProxyTokenIsolationExeprox(t *testing.T) {
+	testProxyTokenNamespaceIsolation(t, Env.servers.Exeprox.HTTPPort)
+}
+
+func testProxyTokenNamespaceIsolation(t *testing.T, httpPort int) {
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
@@ -1186,7 +1201,6 @@ func TestProxyTokenNamespaceIsolation(t *testing.T) {
 	// Load signer for generating signed tokens
 	ts := loadTestSigner(t, keyFile)
 
-	httpPort := Env.servers.Exed.HTTPPort
 	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/", box, httpPort)
 
 	// Helper to make a proxy request with a bearer token
@@ -1494,6 +1508,14 @@ chmod +x /home/exedev/cgi-bin/headers
 // - Return 401 for invalid tokens when Authorization header is present
 // - Redirect (307) to login when no auth is provided
 func TestProxyPrivateRouteTokenAuth(t *testing.T) {
+	testProxyPrivateRouteTokenAuth(t, Env.servers.Exed.HTTPPort)
+}
+
+func TestProxyPrivateRouteTokenAuthExeprox(t *testing.T) {
+	testProxyPrivateRouteTokenAuth(t, Env.servers.Exeprox.HTTPPort)
+}
+
+func testProxyPrivateRouteTokenAuth(t *testing.T, httpPort int) {
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
@@ -1525,7 +1547,6 @@ chmod +x /home/exedev/cgi-bin/headers
 	configureProxyRoute(t, keyFile, box, 8080, "private")
 
 	ts := loadTestSigner(t, keyFile)
-	httpPort := Env.servers.Exed.HTTPPort
 	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/cgi-bin/headers", box, httpPort)
 
 	t.Run("bearer_token_200_with_headers", func(t *testing.T) {
@@ -1664,6 +1685,14 @@ chmod +x /home/exedev/cgi-bin/headers
 //   - A token for a DIFFERENT VM fails namespace validation, so no ctx (or any
 //     auth headers) should reach the container
 func TestProxyPublicRouteTokenCtx(t *testing.T) {
+	testProxyPublicRouteTokenCtx(t, Env.servers.Exed.HTTPPort)
+}
+
+func TestProxyPublicRouteTokenCtxExeprox(t *testing.T) {
+	testProxyPublicRouteTokenCtx(t, Env.servers.Exeprox.HTTPPort)
+}
+
+func testProxyPublicRouteTokenCtx(t *testing.T, httpPort int) {
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
@@ -1695,7 +1724,6 @@ chmod +x /home/exedev/cgi-bin/headers
 	}
 
 	ts := loadTestSigner(t, keyFile)
-	httpPort := Env.servers.Exed.HTTPPort
 	cgiURL := fmt.Sprintf("http://%s.exe.cloud:%d/cgi-bin/headers", box, httpPort)
 
 	t.Run("same_vm_token_ctx_forwarded_on_public_route", func(t *testing.T) {
@@ -1789,6 +1817,14 @@ chmod +x /home/exedev/cgi-bin/headers
 // simultaneous requests would see failures (502s, connection resets)
 // because each proxy request created a fresh SSH transport.
 func TestProxyConcurrentRequests(t *testing.T) {
+	testProxyConcurrentRequests(t, Env.servers.Exed.HTTPPort)
+}
+
+func TestProxyConcurrentRequestsExeprox(t *testing.T) {
+	testProxyConcurrentRequests(t, Env.servers.Exeprox.HTTPPort)
+}
+
+func testProxyConcurrentRequests(t *testing.T, httpPort int) {
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
@@ -1818,8 +1854,6 @@ for i in 1 2 3 4; do echo "module $i" > "mod${i}.js"; done
 
 	// Configure the proxy route as public so we don't need auth cookies.
 	configureProxyRoute(t, keyFile, box, 8080, "public")
-
-	httpPort := Env.servers.Exed.HTTPPort
 
 	// First, verify a single request works.
 	resp, err := doProxyGet(t, box, httpPort, "/")
