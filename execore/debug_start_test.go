@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	exeletclient "exe.dev/exelet/client"
 	"exe.dev/exedb"
+	exeletclient "exe.dev/exelet/client"
 	"exe.dev/exemenu"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	"google.golang.org/grpc"
