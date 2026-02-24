@@ -16,7 +16,7 @@ import (
 
 var historyCommand = &cli.Command{
 	Name:  "history",
-	Usage: "Show replication snapshots on remote target",
+	Usage: "Show replication snapshots on target",
 	Flags: []cli.Flag{
 		&cli.IntFlag{
 			Name:    "limit",
@@ -39,7 +39,7 @@ var historyCommand = &cli.Command{
 			Limit: int32(limit),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to list remote snapshots: %w", err)
+			return fmt.Errorf("failed to list snapshots: %w", err)
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 2, 1, 3, ' ', 0)

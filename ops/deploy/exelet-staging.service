@@ -12,8 +12,16 @@ WorkingDirectory=/data/exelet
 EnvironmentFile=-/etc/default/exelet
 KillMode=process
 
+# Replication defaults (override via /etc/default/exelet)
+Environment=EXELET_STORAGE_REPLICATION_ENABLED=true
+Environment=EXELET_STORAGE_REPLICATION_SSH_COMMAND=ssh
+Environment=EXELET_STORAGE_REPLICATION_BANDWIDTH_LIMIT=1g
+Environment=EXELET_STORAGE_REPLICATION_INTERVAL=1h
+Environment=EXELET_STORAGE_REPLICATION_RETENTION=24
+
 # Use the latest exeletd
-ExecStart=/bin/bash -c 'exec "/home/ubuntu/exeletd.latest" "-D" "--stage=staging" "--name=$(hostname -s)" "--listen-address=tcp://$(tailscale ip -4):9080" "--http-addr=$(tailscale ip -4):9081" "--storage-replication-ssh-command=ssh" "--storage-replication-bandwidth-limit=1g" "--storage-replication-target=ssh://root@$(hostname -s)-replica:22/tank" "--storage-replication-interval=1h" "--storage-replication-retention=24" "--metrics-daemon-url=http://exed-staging-01:21090" "--metrics-daemon-interval=10m"'
+# Replication target is set as env var default so /etc/default/exelet can override it
+ExecStart=/bin/bash -c 'export EXELET_STORAGE_REPLICATION_TARGET="${EXELET_STORAGE_REPLICATION_TARGET:-ssh://root@$(hostname -s)-replica:22/tank}"; exec "/home/ubuntu/exeletd.latest" "-D" "--stage=staging" "--name=$(hostname -s)" "--listen-address=tcp://$(tailscale ip -4):9080" "--http-addr=$(tailscale ip -4):9081" "--metrics-daemon-url=http://exed-staging-01:21090" "--metrics-daemon-interval=10m"'
 
 Restart=always
 RestartSec=5

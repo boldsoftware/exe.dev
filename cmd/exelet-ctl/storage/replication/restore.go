@@ -14,10 +14,10 @@ var restoreCommand = &cli.Command{
 	Name:      "restore",
 	Usage:     "Restore a volume from backup",
 	ArgsUsage: "<volume-id> <snapshot-name>",
-	Description: `Restore a volume from a backup.
+	Description: `Restore a volume from the replication target.
 
-For SSH targets, snapshot-name is the replication snapshot (e.g., repl-20240115T143022Z).
-For file targets, snapshot-name is the backup filename.
+The snapshot-name is the replication snapshot (e.g., repl-20240115T143022Z).
+For file targets, it can also be the backup filename.
 
 Examples:
   exelet-ctl storage replication restore vm000123-box-myvm repl-20240115T143022Z

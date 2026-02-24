@@ -17,7 +17,7 @@ var listCommand = &cli.Command{
 	Name:      "list",
 	Usage:     "List snapshots for a volume",
 	ArgsUsage: "<volume-id>",
-	Description: `List available snapshots for a volume on the remote target.
+	Description: `List available snapshots for a volume on the replication target.
 
 This is useful to see what snapshots are available for restore.
 
@@ -52,7 +52,7 @@ Examples:
 			return fmt.Errorf("failed to list snapshots: %w", err)
 		}
 
-		printSnapshots("Remote Snapshots", resp.RemoteSnapshots)
+		printSnapshots("Target Snapshots", resp.RemoteSnapshots)
 
 		if showLocal {
 			fmt.Println()
