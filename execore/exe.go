@@ -103,6 +103,7 @@ type BoxDisplayInfo struct {
 	VSCodeURL       template.URL
 	ProxyPort       int
 	ProxyShare      string
+	RouteKnown      bool
 	SharedUserCount int64              // Number of users box is shared with (pending + active)
 	ShareLinkCount  int64              // Number of active share links
 	TotalShareCount int64              // Total shares (users + links)

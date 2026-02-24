@@ -1245,6 +1245,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			VSCodeURL:       template.URL(s.vscodeURL(result.Name)),
 			ProxyPort:       route.Port,
 			ProxyShare:      route.Share,
+			RouteKnown:      box.Routes != nil && *box.Routes != "",
 			SharedUserCount: sharedUserCount,
 			ShareLinkCount:  shareLinkCount,
 			TotalShareCount: sharedUserCount + shareLinkCount,
