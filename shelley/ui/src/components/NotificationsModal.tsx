@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Modal from "./Modal";
+import ConfigFieldInput from "./ConfigFieldInput";
 import { notificationChannelsApi, NotificationChannelAPI, ChannelTypeInfo } from "../services/api";
 import {
   getBrowserNotificationState,
@@ -89,9 +90,18 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
     setShowForm(true);
   };
 
+  const defaultConfigFor = (typeName: string): Record<string, string> => {
+    const info = getTypeInfo(typeName);
+    const config: Record<string, string> = {};
+    for (const field of info?.config_fields || []) {
+      if (field.default) config[field.name] = field.default;
+    }
+    return config;
+  };
+
   const handleAdd = () => {
     const defaultType = channelTypes.length > 0 ? channelTypes[0].type : "";
-    setForm({ ...emptyForm, channel_type: defaultType, config: {} });
+    setForm({ ...emptyForm, channel_type: defaultType, config: defaultConfigFor(defaultType) });
     setEditingChannelId(null);
     setTestResult(null);
     setShowForm(true);
@@ -209,7 +219,7 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
                 <button
                   key={ct.type}
                   className={`provider-btn${form.channel_type === ct.type ? " selected" : ""}`}
-                  onClick={() => setForm({ ...form, channel_type: ct.type, config: {} })}
+                  onClick={() => setForm({ ...form, channel_type: ct.type, config: defaultConfigFor(ct.type) })}
                 >
                   {ct.label}
                 </button>
@@ -229,23 +239,14 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
         </div>
 
         {configFields.map((field) => (
-          <div className="form-group" key={field.name}>
-            <label>
-              {field.label}
-              {field.required && " *"}
-            </label>
-            <input
-              className="form-input"
-              value={form.config[field.name] || ""}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  config: { ...form.config, [field.name]: e.target.value },
-                })
-              }
-              placeholder={field.placeholder}
-            />
-          </div>
+          <ConfigFieldInput
+            key={field.name}
+            field={field}
+            value={form.config[field.name] || ""}
+            onChange={(val) =>
+              setForm({ ...form, config: { ...form.config, [field.name]: val } })
+            }
+          />
         ))}
 
         {testResult && (
