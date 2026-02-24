@@ -53,7 +53,7 @@ const shelleyPreamble = `
 The user has just created this VM, and wants to do the following with it.
 `
 
-const shelleyDefaultModel = "claude-opus-4.5"
+const shelleyDefaultModel = "claude-opus-4.6"
 
 // makeShelleyConfig generates the shelley.json config for a box.
 func (ss *SSHServer) makeShelleyConfig(boxName string) ([]byte, error) {
