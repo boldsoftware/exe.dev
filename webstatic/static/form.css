@@ -131,7 +131,13 @@
     background: #222;
 }
 
-.form-button:disabled {
+.form-button:focus-visible {
+    outline: 2px solid #000;
+    outline-offset: 2px;
+}
+
+.form-button:disabled,
+.form-button[aria-disabled="true"] {
     background: #ccc;
     color: #999;
     cursor: not-allowed;
@@ -214,7 +220,12 @@
         background: #d1d5db;
     }
 
-    .form-button:disabled {
+    .form-button:focus-visible {
+        outline-color: #f3f4f6;
+    }
+
+    .form-button:disabled,
+    .form-button[aria-disabled="true"] {
         background: #4b5563;
         color: #9ca3af;
     }

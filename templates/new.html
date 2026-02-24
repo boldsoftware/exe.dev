@@ -7,6 +7,7 @@
             <form id="create-vm-form" method="POST" action="/create-vm">
                 {{if .InviteCode}}<input type="hidden" name="invite" value="{{.InviteCode}}">{{end}}
                 <div class="form-group">
+                    <label for="hostname" class="form-label">Name</label>
                     <div class="form-input-group">
                         <input
                             type="text"
@@ -35,7 +36,7 @@
                     >{{.Prompt}}</textarea>
                 </div>
                 
-                <button type="submit" class="form-button" id="create-button" disabled>
+                <button type="submit" class="form-button" id="create-button" aria-disabled="true">
                     Create VM
                 </button>
             </form>
@@ -76,8 +77,13 @@
     const hostnameInput = document.getElementById('hostname');
     const hostnameHint = document.getElementById('hostname-hint');
     const createButton = document.getElementById('create-button');
+    const createForm = document.getElementById('create-vm-form');
     
     let checkTimeout;
+
+    function setButtonEnabled(enabled) {
+        createButton.setAttribute('aria-disabled', String(!enabled));
+    }
     
     function setHint(html) {
         // Display toggle forces Safari to repaint after removing animated spinner
@@ -88,13 +94,19 @@
         hostnameHint.style.display = '';
     }
 
+    createForm.addEventListener('submit', function(e) {
+        if (createButton.getAttribute('aria-disabled') === 'true') {
+            e.preventDefault();
+        }
+    });
+
     function checkHostnameAvailability() {
         const hostname = hostnameInput.value.trim();
         
         if (!hostname) {
             hostnameHint.innerHTML = '';
             hostnameHint.className = 'form-hint';
-            createButton.disabled = true;
+            setButtonEnabled(false);
             return;
         }
         
@@ -113,15 +125,15 @@
         .then(data => {
             if (data.valid && data.available) {
                 setHint('');
-                createButton.disabled = false;
+                setButtonEnabled(true);
             } else {
                 setHint('✗ ' + data.message);
-                createButton.disabled = true;
+                setButtonEnabled(false);
             }
         })
         .catch(error => {
             setHint('✗ Error checking availability');
-            createButton.disabled = true;
+            setButtonEnabled(false);
         });
     }
     
