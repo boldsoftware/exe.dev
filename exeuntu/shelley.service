@@ -16,6 +16,7 @@ Environment=USER=exedev
 Environment=PATH=/headless-shell:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 KillMode=process
 TimeoutStopSec=10
+OOMScoreAdjust=-1
 
 StandardOutput=journal
 StandardError=journal
