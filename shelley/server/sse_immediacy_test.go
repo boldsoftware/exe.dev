@@ -317,7 +317,7 @@ func TestSSEUserMessageWithExistingConnection(t *testing.T) {
 	conversationID := conversation.ConversationID
 
 	// Get the conversation manager to set up subscription
-	manager, err := server.getOrCreateConversationManager(context.Background(), conversationID)
+	manager, err := server.getOrCreateConversationManager(context.Background(), conversationID, "")
 	if err != nil {
 		t.Fatalf("failed to get conversation manager: %v", err)
 	}

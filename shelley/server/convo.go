@@ -40,6 +40,7 @@ type ConversationManager struct {
 	hydrated              bool
 	hasConversationEvents bool
 	cwd                   string // working directory for tools
+	userEmail             string // exe.dev auth email, from X-ExeDev-Email header
 
 	// agentWorking tracks whether the agent is currently working.
 	// This is explicitly managed and broadcast to subscribers when it changes.
@@ -251,7 +252,11 @@ func hasNonSystemMessages(messages []generated.Message) bool {
 }
 
 func (cm *ConversationManager) createSystemPrompt(ctx context.Context) (*generated.Message, error) {
-	systemPrompt, err := GenerateSystemPrompt(cm.cwd)
+	var opts []SystemPromptOption
+	if cm.userEmail != "" {
+		opts = append(opts, WithUserEmail(cm.userEmail))
+	}
+	systemPrompt, err := GenerateSystemPrompt(cm.cwd, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate system prompt: %w", err)
 	}

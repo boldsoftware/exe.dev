@@ -30,6 +30,7 @@ type SystemPromptData struct {
 	Hostname         string // For exe.dev, the public hostname (e.g., "vmname.exe.xyz")
 	ShelleyDBPath    string // Path to the shelley database
 	SkillsXML        string // XML block for available skills
+	UserEmail        string // The exe.dev auth email of the user, if known
 }
 
 // DBPath is the path to the shelley database, set at startup
@@ -45,12 +46,26 @@ type CodebaseInfo struct {
 	GuidanceFiles      []string
 }
 
+// SystemPromptOption configures optional fields on the system prompt.
+type SystemPromptOption func(*SystemPromptData)
+
+// WithUserEmail sets the user's email in the system prompt.
+func WithUserEmail(email string) SystemPromptOption {
+	return func(d *SystemPromptData) {
+		d.UserEmail = email
+	}
+}
+
 // GenerateSystemPrompt generates the system prompt using the embedded template.
 // If workingDir is empty, it uses the current working directory.
-func GenerateSystemPrompt(workingDir string) (string, error) {
+func GenerateSystemPrompt(workingDir string, opts ...SystemPromptOption) (string, error) {
 	data, err := collectSystemData(workingDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to collect system data: %w", err)
+	}
+
+	for _, opt := range opts {
+		opt(data)
 	}
 
 	tmpl, err := template.New("system_prompt").Parse(systemPromptTemplate)

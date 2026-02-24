@@ -464,7 +464,7 @@ func TestDistillContentSentToLLM_WithEarlySSE(t *testing.T) {
 	// which triggers getOrCreateConversationManager -> Hydrate BEFORE
 	// the distilled message is written.
 	// This forces hydration with an empty history.
-	manager, err := h.server.getOrCreateConversationManager(context.Background(), newConvID)
+	manager, err := h.server.getOrCreateConversationManager(context.Background(), newConvID, "")
 	if err != nil {
 		t.Fatalf("failed to get/create conversation manager: %v", err)
 	}

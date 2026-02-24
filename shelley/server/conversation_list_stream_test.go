@@ -22,7 +22,7 @@ func TestConversationStreamReceivesListUpdateForNewConversation(t *testing.T) {
 	}
 
 	// Get or create conversation manager to ensure the conversation is active
-	_, err = server.getOrCreateConversationManager(context.Background(), conversation.ConversationID)
+	_, err = server.getOrCreateConversationManager(context.Background(), conversation.ConversationID, "")
 	if err != nil {
 		t.Fatalf("failed to get conversation manager: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestConversationStreamReceivesListUpdateForRename(t *testing.T) {
 	}
 
 	// Get or create conversation manager for conv1 (the one we'll subscribe to)
-	_, err = server.getOrCreateConversationManager(context.Background(), conv1.ConversationID)
+	_, err = server.getOrCreateConversationManager(context.Background(), conv1.ConversationID, "")
 	if err != nil {
 		t.Fatalf("failed to get conversation manager: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestConversationStreamReceivesListUpdateForDelete(t *testing.T) {
 	}
 
 	// Get or create conversation manager for conv1
-	_, err = server.getOrCreateConversationManager(context.Background(), conv1.ConversationID)
+	_, err = server.getOrCreateConversationManager(context.Background(), conv1.ConversationID, "")
 	if err != nil {
 		t.Fatalf("failed to get conversation manager: %v", err)
 	}
@@ -287,7 +287,7 @@ func TestConversationStreamReceivesListUpdateForArchive(t *testing.T) {
 	}
 
 	// Get or create conversation manager for conv1
-	_, err = server.getOrCreateConversationManager(context.Background(), conv1.ConversationID)
+	_, err = server.getOrCreateConversationManager(context.Background(), conv1.ConversationID, "")
 	if err != nil {
 		t.Fatalf("failed to get conversation manager: %v", err)
 	}

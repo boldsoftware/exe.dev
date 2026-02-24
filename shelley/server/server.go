@@ -672,7 +672,7 @@ func (s *Server) handleCreateDirectory(w http.ResponseWriter, r *http.Request) {
 }
 
 // getOrCreateConversationManager gets an existing conversation manager or creates a new one.
-func (s *Server) getOrCreateConversationManager(ctx context.Context, conversationID string) (*ConversationManager, error) {
+func (s *Server) getOrCreateConversationManager(ctx context.Context, conversationID string, userEmail string) (*ConversationManager, error) {
 	manager, err, _ := s.conversationGroup.Do(conversationID, func() (*ConversationManager, error) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -690,6 +690,7 @@ func (s *Server) getOrCreateConversationManager(ctx context.Context, conversatio
 		}
 
 		manager := NewConversationManager(conversationID, s.db, s.logger, s.toolSetConfig, recordMessage, onStateChange)
+		manager.userEmail = userEmail
 		if err := manager.Hydrate(ctx); err != nil {
 			return nil, err
 		}
