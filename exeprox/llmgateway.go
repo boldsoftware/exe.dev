@@ -2,6 +2,7 @@ package exeprox
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"exe.dev/billing/tender"
@@ -34,7 +35,7 @@ func (gd *ProxyLLMGatewayData) BoxCreator(ctx context.Context, boxName string) (
 // [llmgateway.GatewayData.CheckAndRefreshCredit].
 func (gd *ProxyLLMGatewayData) CheckAndRefreshCredit(ctx context.Context, userID string, now time.Time) (*llmgateway.CreditInfo, error) {
 	if !now.IsZero() {
-		panic("non-zero time")
+		return nil, errors.New("non-zero time")
 	}
 	resp, err := gd.client.CheckAndRefreshLLMCredit(ctx, &proxyapi.CheckAndRefreshLLMCreditRequest{
 		UserID: userID,
@@ -49,7 +50,7 @@ func (gd *ProxyLLMGatewayData) CheckAndRefreshCredit(ctx context.Context, userID
 // [llmgateway.GatewayData.TopUpOnBillingUpgrade].
 func (gd *ProxyLLMGatewayData) TopUpOnBillingUpgrade(ctx context.Context, userID string, now time.Time) error {
 	if !now.IsZero() {
-		panic("non-zero time")
+		return errors.New("non-zero time")
 	}
 	_, err := gd.client.TopUpOnLLMBillingUpgrade(ctx, &proxyapi.TopUpOnLLMBillingUpgradeRequest{
 		UserID: userID,
@@ -60,7 +61,7 @@ func (gd *ProxyLLMGatewayData) TopUpOnBillingUpgrade(ctx context.Context, userID
 // DebitCredit implements [llmgateway.GatewayData.DebitCredit].
 func (gd *ProxyLLMGatewayData) DebitCredit(ctx context.Context, userID string, costUSD float64, now time.Time) (*llmgateway.CreditInfo, error) {
 	if !now.IsZero() {
-		panic("non-zero time")
+		return nil, errors.New("non-zero time")
 	}
 	resp, err := gd.client.LLMDebitCredit(ctx, &proxyapi.LLMDebitCreditRequest{
 		UserID:  userID,

@@ -337,7 +337,7 @@ func (ged *grpcExeproxData) CheckShareLink(ctx context.Context, boxID int, boxNa
 	if err != nil {
 		return false, err
 	}
-	return resp.Ok, err
+	return resp.Ok, nil
 }
 
 // SSHKeyByFingerprint fetches an SSH key from its fingerprint.

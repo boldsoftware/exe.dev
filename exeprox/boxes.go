@@ -159,7 +159,7 @@ func (bd *boxesData) deleteBox(ctx context.Context, boxName string) {
 
 	for share := range bd.boxTeamShares.All() {
 		if share.boxName == boxName {
-			bd.boxShares.Delete(share)
+			bd.boxTeamShares.Delete(share)
 		}
 	}
 }
@@ -200,7 +200,7 @@ func (bd *boxesData) deleteBoxShareLink(ctx context.Context, boxName, shareToken
 func (bd *boxesData) deleteTeamUser(ctx context.Context, userID string) {
 	for share := range bd.boxTeamShares.All() {
 		if share.userID == userID {
-			bd.boxShares.Delete(share)
+			bd.boxTeamShares.Delete(share)
 		}
 	}
 }
@@ -212,7 +212,7 @@ func (bd *boxesData) deleteTeamUser(ctx context.Context, userID string) {
 func (bd *boxesData) deleteBoxShareTeam(ctx context.Context, boxName string) {
 	for share := range bd.boxTeamShares.All() {
 		if share.boxName == boxName {
-			bd.boxShares.Delete(share)
+			bd.boxTeamShares.Delete(share)
 		}
 	}
 }
