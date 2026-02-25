@@ -533,19 +533,34 @@
   }
 
   .template-card {
-    flex-direction: row;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
     align-items: center;
-    gap: 10px;
+    column-gap: 10px;
+    row-gap: 0;
     padding: 10px;
   }
 
   .card-header {
+    grid-column: 1;
     margin-bottom: 0;
     flex-shrink: 0;
   }
 
-  .card-desc {
-    display: none;
+  .card-title {
+    grid-column: 2;
+    white-space: nowrap;
+  }
+
+  .template-card .card-desc {
+    grid-column: 3;
+    display: block;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    -webkit-line-clamp: unset;
+    -webkit-box-orient: initial;
   }
 
   .card-footer {
