@@ -34,7 +34,7 @@ func main() {
 func run() error {
 	exedHTTPPort := flag.Int("exed-http-port", 80, "exed HTTP port")
 	exedHTTPSPort := flag.Int("exed-https-port", 443, "exed HTTPS port")
-	exedGRPCAddr := flag.String("exed-grpc-addr", "", "exeprox GRPC server address")
+	exedGRPCAddr := flag.String("exed-grpc-addr", "", "exed GRPC server address for proxies")
 	httpAddr := flag.String("http", ":8081", "HTTP server address, empty to disable")
 	httpsAddr := flag.String("https", "", "HTTPS server address, empty to disable")
 	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test"`)
