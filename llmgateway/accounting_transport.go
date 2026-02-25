@@ -279,7 +279,11 @@ func (m *accountingTransport) processResponseData(data []byte) (*CostInfo, error
 		if err := json.Unmarshal(data, &oi); err != nil {
 			return nil, fmt.Errorf("openai json decode error: %v", err)
 		}
-		if oi.Usage.TotalTokens == 0 {
+
+		// Check for usage data using both formats:
+		// Chat Completions uses total_tokens, Responses API uses input_tokens+output_tokens
+		hasUsage := oi.Usage.TotalTokens > 0 || oi.Usage.InputTokens > 0 || oi.Usage.OutputTokens > 0
+		if !hasUsage {
 			// Check if this is a free endpoint that doesn't return usage data
 			path := m.incomingReq.URL.Path
 			if isFreeEndpoint(path) {
@@ -294,21 +298,14 @@ func (m *accountingTransport) processResponseData(data []byte) (*CostInfo, error
 			return nil, fmt.Errorf("openai response missing usage data for path %s", path)
 		}
 
-		// Convert OpenAI usage to Usage format for accounting
-		promptTokens := oi.Usage.PromptTokens
-		completionTokens := oi.Usage.CompletionTokens
+		// Use effectiveTokens() to handle both Chat Completions and Responses API
+		promptTokens, completionTokens, cachedTokens := oi.effectiveTokens()
 
 		// If token counts are zero, set a minimal token count to avoid accounting errors
 		if promptTokens == 0 && completionTokens == 0 {
 			m.log.DebugContext(ctx, "openai response has zero token counts, using defaults")
 			promptTokens = 1
 			completionTokens = 1
-		}
-
-		// Extract cached tokens if available
-		var cachedTokens uint64
-		if oi.Usage.PromptTokensDetails != nil {
-			cachedTokens = uint64(oi.Usage.PromptTokensDetails.CachedTokens)
 		}
 
 		usage := Usage{
@@ -416,21 +413,15 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 		if err := json.Unmarshal(data, &oi); err != nil {
 			return nil
 		}
-		if oi.Usage.TotalTokens == 0 {
+		hasUsage := oi.Usage.TotalTokens > 0 || oi.Usage.InputTokens > 0 || oi.Usage.OutputTokens > 0
+		if !hasUsage {
 			return nil
 		}
 
-		promptTokens := oi.Usage.PromptTokens
-		completionTokens := oi.Usage.CompletionTokens
+		promptTokens, completionTokens, cachedTokens := oi.effectiveTokens()
 		if promptTokens == 0 && completionTokens == 0 {
 			promptTokens = 1
 			completionTokens = 1
-		}
-
-		// Extract cached tokens if available
-		var cachedTokens uint64
-		if oi.Usage.PromptTokensDetails != nil {
-			cachedTokens = uint64(oi.Usage.PromptTokensDetails.CachedTokens)
 		}
 
 		usage := Usage{
@@ -590,17 +581,50 @@ type anthropicResponseUsageInfo struct {
 }
 
 // openaiResponseUsageInfo extracts usage-relevant information from an openai-compatible response.
+// Handles both Chat Completions API (prompt_tokens/completion_tokens) and
+// Responses API (input_tokens/output_tokens) formats.
 type openaiResponseUsageInfo struct {
 	ID    string `json:"id"`
 	Model string `json:"model"`
 	Usage struct {
-		PromptTokens        int `json:"prompt_tokens"`
-		CompletionTokens    int `json:"completion_tokens"`
-		TotalTokens         int `json:"total_tokens"`
+		// Chat Completions API fields
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+
+		// Responses API fields
+		InputTokens        int `json:"input_tokens"`
+		OutputTokens       int `json:"output_tokens"`
+		InputTokensDetails *struct {
+			CachedTokens int `json:"cached_tokens"`
+		} `json:"input_tokens_details,omitempty"`
+
+		// Chat Completions API cache details
 		PromptTokensDetails *struct {
 			CachedTokens int `json:"cached_tokens"`
 		} `json:"prompt_tokens_details,omitempty"`
 	} `json:"usage"`
+}
+
+// effectiveTokens returns the input/output/cached token counts, handling both
+// Chat Completions and Responses API formats.
+func (oi *openaiResponseUsageInfo) effectiveTokens() (promptTokens, completionTokens int, cachedTokens uint64) {
+	// Responses API uses input_tokens/output_tokens
+	if oi.Usage.InputTokens > 0 || oi.Usage.OutputTokens > 0 {
+		promptTokens = oi.Usage.InputTokens
+		completionTokens = oi.Usage.OutputTokens
+		if oi.Usage.InputTokensDetails != nil {
+			cachedTokens = uint64(oi.Usage.InputTokensDetails.CachedTokens)
+		}
+		return
+	}
+	// Chat Completions API uses prompt_tokens/completion_tokens
+	promptTokens = oi.Usage.PromptTokens
+	completionTokens = oi.Usage.CompletionTokens
+	if oi.Usage.PromptTokensDetails != nil {
+		cachedTokens = uint64(oi.Usage.PromptTokensDetails.CachedTokens)
+	}
+	return
 }
 
 // Helper function to extract rate limit values from headers and set gauge metrics
