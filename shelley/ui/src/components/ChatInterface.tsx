@@ -9,6 +9,7 @@ import {
 } from "../types";
 import { api } from "../services/api";
 import { ThemeMode, getStoredTheme, setStoredTheme, applyTheme } from "../services/theme";
+import { useMarkdown } from "../contexts/MarkdownContext";
 import { setFaviconStatus } from "../services/favicon";
 import {
   handleNotificationEvent,
@@ -608,6 +609,7 @@ function ChatInterface({
   // Settings modal removed - configuration moved to status bar for empty conversations
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredTheme);
+  const { markdownEnabled, toggleMarkdown } = useMarkdown();
   const [browserNotifsEnabled, setBrowserNotifsEnabled] = useState(() =>
     isChannelEnabled("browser"),
   );
@@ -1915,6 +1917,29 @@ function ChatInterface({
                     </div>
                   </>
                 )}
+
+                {/* Markdown rendering toggle */}
+                <div className="overflow-menu-divider" />
+                <div className="theme-toggle-row">
+                  <button
+                    onClick={() => {
+                      if (!markdownEnabled) toggleMarkdown();
+                    }}
+                    className={`theme-toggle-btn${markdownEnabled ? " theme-toggle-btn-selected" : ""}`}
+                    title="Render markdown formatting"
+                  >
+                    <span style={{ fontWeight: 700, fontSize: "15px" }}>M</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (markdownEnabled) toggleMarkdown();
+                    }}
+                    className={`theme-toggle-btn${!markdownEnabled ? " theme-toggle-btn-selected" : ""}`}
+                    title="Show plain text"
+                  >
+                    <span style={{ fontStyle: "italic", fontSize: "15px" }}>T</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

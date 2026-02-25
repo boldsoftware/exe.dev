@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { ConversationWithState } from "../types";
 import { api } from "../services/api";
+import { useMarkdown } from "../contexts/MarkdownContext";
 
 interface CommandItem {
   id: string;
@@ -90,6 +91,7 @@ function CommandPalette({
   const [searchResults, setSearchResults] = useState<ConversationWithState[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isCreatingWorktree, setIsCreatingWorktree] = useState(false);
+  const { markdownEnabled, toggleMarkdown } = useMarkdown();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const searchTimeoutRef = useRef<number | null>(null);
@@ -333,6 +335,30 @@ function CommandPalette({
       keywords: ["notification", "notify", "alert", "discord", "webhook", "browser", "favicon"],
     });
 
+    items.push({
+      id: "toggle-markdown",
+      type: "action",
+      title: markdownEnabled ? "Disable Markdown Rendering" : "Enable Markdown Rendering",
+      subtitle: markdownEnabled
+        ? "Switch to plain text for agent messages"
+        : "Render agent messages as formatted markdown",
+      icon: (
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M4 6h16M4 12h8m-8 6h16"
+          />
+        </svg>
+      ),
+      action: () => {
+        toggleMarkdown();
+        onClose();
+      },
+      keywords: ["markdown", "render", "format", "rich", "text", "plain"],
+    });
+
     // Archive current conversation
     if (currentConversation) {
       items.push({
@@ -435,6 +461,8 @@ function CommandPalette({
     hasCwd,
     currentConversation,
     isCreatingWorktree,
+    markdownEnabled,
+    toggleMarkdown,
   ]);
 
   // Convert conversations to command items

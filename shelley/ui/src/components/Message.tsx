@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { linkifyText } from "../utils/linkify";
+import { useMarkdown } from "../contexts/MarkdownContext";
+import MarkdownContent from "./MarkdownContent";
 import {
   Message as MessageType,
   LLMMessage,
@@ -284,6 +286,8 @@ function DistillStatusMessage({ message }: { message: MessageType }) {
 }
 
 function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProps) {
+  const { markdownEnabled } = useMarkdown();
+
   // Render system messages with distill_status as status indicators
   if (message.type === "system") {
     if (isDistillStatusMessage(message)) {
@@ -508,6 +512,9 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
           </div>
         );
       case "text":
+        if (markdownEnabled && !isUser) {
+          return <MarkdownContent text={content.Text || ""} />;
+        }
         return (
           <div className="whitespace-pre-wrap break-words">{linkifyText(content.Text || "")}</div>
         );

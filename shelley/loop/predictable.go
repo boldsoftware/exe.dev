@@ -184,6 +184,11 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 			return s.makeSubagentToolResponse(slug, prompt, inputTokens), nil
 		}
 
+		if strings.HasPrefix(inputText, "markdown: ") {
+			text := strings.TrimPrefix(inputText, "markdown: ")
+			return s.makeResponse(text, inputTokens), nil
+		}
+
 		if strings.HasPrefix(inputText, "change_dir: ") {
 			path := strings.TrimPrefix(inputText, "change_dir: ")
 			return s.makeChangeDirToolResponse(path, inputTokens), nil
