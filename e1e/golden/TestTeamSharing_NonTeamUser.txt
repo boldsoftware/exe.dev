@@ -15,7 +15,7 @@ Please enter your email address: lonely@test-team-share.example
 
 
 Verification email sent to: lonely@test-team-share.example
-Waiting for email verification...
+Waiting for verification...
 ✓ Email verified successfully!
 
 

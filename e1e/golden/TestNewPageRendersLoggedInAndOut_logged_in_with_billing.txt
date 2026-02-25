@@ -15,7 +15,7 @@ Please enter your email address: TestNewPageRendersLoggedInAndOut.logged_in_with
 
 
 Verification email sent to: TestNewPageRendersLoggedInAndOut.logged_in_with_billing@example.com
-Waiting for email verification...
+Waiting for verification...
 ✓ Email verified successfully!
 
 

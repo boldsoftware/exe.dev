@@ -167,6 +167,12 @@ func (s *Server) createPendingTeamInvite(ctx context.Context, teamID, teamName, 
 	ce := canonicalizeEmail(invitedEmail)
 	token := generateRegistrationToken()
 
+	// Inherit auth_provider from the inviting user (team owner).
+	var authProvider *string
+	if ap, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserAuthProvider, invitedByUserID); err == nil {
+		authProvider = ap.AuthProvider
+	}
+
 	err := withTx1(s, ctx, (*exedb.Queries).InsertPendingTeamInvite, exedb.InsertPendingTeamInviteParams{
 		TeamID:          teamID,
 		Email:           invitedEmail,
@@ -174,6 +180,7 @@ func (s *Server) createPendingTeamInvite(ctx context.Context, teamID, teamName, 
 		InvitedByUserID: invitedByUserID,
 		Token:           token,
 		ExpiresAt:       time.Now().Add(30 * 24 * time.Hour),
+		AuthProvider:    authProvider,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create pending team invite: %w", err)

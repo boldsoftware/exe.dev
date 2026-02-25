@@ -625,6 +625,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleAuth(w, r)
 	case "/auth/confirm":
 		s.handleAuthConfirm(w, r)
+	case "/oauth/google/callback":
+		s.handleOAuthGoogleCallback(w, r)
 	case "/newsletter-subscribe":
 		s.handleNewsletterSubscribe(w, r)
 	case "/link-discord":

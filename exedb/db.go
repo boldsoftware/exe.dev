@@ -48,6 +48,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.boxesForUserStmt, err = db.PrepareContext(ctx, boxesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query BoxesForUser: %w", err)
 	}
+	if q.cleanupExpiredOAuthStatesStmt, err = db.PrepareContext(ctx, cleanupExpiredOAuthStates); err != nil {
+		return nil, fmt.Errorf("error preparing query CleanupExpiredOAuthStates: %w", err)
+	}
 	if q.cleanupExpiredPasskeyChallengesStmt, err = db.PrepareContext(ctx, cleanupExpiredPasskeyChallenges); err != nil {
 		return nil, fmt.Errorf("error preparing query CleanupExpiredPasskeyChallenges: %w", err)
 	}
@@ -56,6 +59,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.consumeCheckoutParamsStmt, err = db.PrepareContext(ctx, consumeCheckoutParams); err != nil {
 		return nil, fmt.Errorf("error preparing query ConsumeCheckoutParams: %w", err)
+	}
+	if q.consumeOAuthStateStmt, err = db.PrepareContext(ctx, consumeOAuthState); err != nil {
+		return nil, fmt.Errorf("error preparing query ConsumeOAuthState: %w", err)
 	}
 	if q.countAccountsByBillingStatusStmt, err = db.PrepareContext(ctx, countAccountsByBillingStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query CountAccountsByBillingStatus: %w", err)
@@ -468,6 +474,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTemplateBySlugAnyStmt, err = db.PrepareContext(ctx, getTemplateBySlugAny); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTemplateBySlugAny: %w", err)
 	}
+	if q.getUserAuthProviderStmt, err = db.PrepareContext(ctx, getUserAuthProvider); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserAuthProvider: %w", err)
+	}
 	if q.getUserBillingExemptionStmt, err = db.PrepareContext(ctx, getUserBillingExemption); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserBillingExemption: %w", err)
 	}
@@ -566,6 +575,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertEmailVerificationStmt, err = db.PrepareContext(ctx, insertEmailVerification); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertEmailVerification: %w", err)
+	}
+	if q.insertOAuthStateStmt, err = db.PrepareContext(ctx, insertOAuthState); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertOAuthState: %w", err)
 	}
 	if q.insertOrReplaceEmailVerificationStmt, err = db.PrepareContext(ctx, insertOrReplaceEmailVerification); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertOrReplaceEmailVerification: %w", err)
@@ -725,6 +737,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setSignupPOWEnabledStmt, err = db.PrepareContext(ctx, setSignupPOWEnabled); err != nil {
 		return nil, fmt.Errorf("error preparing query SetSignupPOWEnabled: %w", err)
+	}
+	if q.setUserAuthProviderStmt, err = db.PrepareContext(ctx, setUserAuthProvider); err != nil {
+		return nil, fmt.Errorf("error preparing query SetUserAuthProvider: %w", err)
 	}
 	if q.setUserBillingExemptionStmt, err = db.PrepareContext(ctx, setUserBillingExemption); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserBillingExemption: %w", err)
@@ -903,6 +918,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing boxesForUserStmt: %w", cerr)
 		}
 	}
+	if q.cleanupExpiredOAuthStatesStmt != nil {
+		if cerr := q.cleanupExpiredOAuthStatesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing cleanupExpiredOAuthStatesStmt: %w", cerr)
+		}
+	}
 	if q.cleanupExpiredPasskeyChallengesStmt != nil {
 		if cerr := q.cleanupExpiredPasskeyChallengesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing cleanupExpiredPasskeyChallengesStmt: %w", cerr)
@@ -916,6 +936,11 @@ func (q *Queries) Close() error {
 	if q.consumeCheckoutParamsStmt != nil {
 		if cerr := q.consumeCheckoutParamsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing consumeCheckoutParamsStmt: %w", cerr)
+		}
+	}
+	if q.consumeOAuthStateStmt != nil {
+		if cerr := q.consumeOAuthStateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing consumeOAuthStateStmt: %w", cerr)
 		}
 	}
 	if q.countAccountsByBillingStatusStmt != nil {
@@ -1603,6 +1628,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTemplateBySlugAnyStmt: %w", cerr)
 		}
 	}
+	if q.getUserAuthProviderStmt != nil {
+		if cerr := q.getUserAuthProviderStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserAuthProviderStmt: %w", cerr)
+		}
+	}
 	if q.getUserBillingExemptionStmt != nil {
 		if cerr := q.getUserBillingExemptionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserBillingExemptionStmt: %w", cerr)
@@ -1766,6 +1796,11 @@ func (q *Queries) Close() error {
 	if q.insertEmailVerificationStmt != nil {
 		if cerr := q.insertEmailVerificationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertEmailVerificationStmt: %w", cerr)
+		}
+	}
+	if q.insertOAuthStateStmt != nil {
+		if cerr := q.insertOAuthStateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertOAuthStateStmt: %w", cerr)
 		}
 	}
 	if q.insertOrReplaceEmailVerificationStmt != nil {
@@ -2031,6 +2066,11 @@ func (q *Queries) Close() error {
 	if q.setSignupPOWEnabledStmt != nil {
 		if cerr := q.setSignupPOWEnabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setSignupPOWEnabledStmt: %w", cerr)
+		}
+	}
+	if q.setUserAuthProviderStmt != nil {
+		if cerr := q.setUserAuthProviderStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setUserAuthProviderStmt: %w", cerr)
 		}
 	}
 	if q.setUserBillingExemptionStmt != nil {
@@ -2300,9 +2340,11 @@ type Queries struct {
 	boxWithNameExistsStmt                      *sql.Stmt
 	boxWithOwnerNamedStmt                      *sql.Stmt
 	boxesForUserStmt                           *sql.Stmt
+	cleanupExpiredOAuthStatesStmt              *sql.Stmt
 	cleanupExpiredPasskeyChallengesStmt        *sql.Stmt
 	clearPreferredExeletStmt                   *sql.Stmt
 	consumeCheckoutParamsStmt                  *sql.Stmt
+	consumeOAuthStateStmt                      *sql.Stmt
 	countAccountsByBillingStatusStmt           *sql.Stmt
 	countBoxShareLinksStmt                     *sql.Stmt
 	countBoxSharesStmt                         *sql.Stmt
@@ -2440,6 +2482,7 @@ type Queries struct {
 	getTemplateByIDStmt                        *sql.Stmt
 	getTemplateBySlugStmt                      *sql.Stmt
 	getTemplateBySlugAnyStmt                   *sql.Stmt
+	getUserAuthProviderStmt                    *sql.Stmt
 	getUserBillingExemptionStmt                *sql.Stmt
 	getUserBillingStatusStmt                   *sql.Stmt
 	getUserByEmailStmt                         *sql.Stmt
@@ -2473,6 +2516,7 @@ type Queries struct {
 	insertEmailBounceStmt                      *sql.Stmt
 	insertEmailQualityBypassStmt               *sql.Stmt
 	insertEmailVerificationStmt                *sql.Stmt
+	insertOAuthStateStmt                       *sql.Stmt
 	insertOrReplaceEmailVerificationStmt       *sql.Stmt
 	insertPasskeyStmt                          *sql.Stmt
 	insertPasskeyChallengeStmt                 *sql.Stmt
@@ -2526,6 +2570,7 @@ type Queries struct {
 	setNewThrottleMessageStmt                  *sql.Stmt
 	setPreferredExeletStmt                     *sql.Stmt
 	setSignupPOWEnabledStmt                    *sql.Stmt
+	setUserAuthProviderStmt                    *sql.Stmt
 	setUserBillingExemptionStmt                *sql.Stmt
 	setUserCgroupOverridesStmt                 *sql.Stmt
 	setUserDiscordStmt                         *sql.Stmt
@@ -2584,9 +2629,11 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		boxWithNameExistsStmt:                      q.boxWithNameExistsStmt,
 		boxWithOwnerNamedStmt:                      q.boxWithOwnerNamedStmt,
 		boxesForUserStmt:                           q.boxesForUserStmt,
+		cleanupExpiredOAuthStatesStmt:              q.cleanupExpiredOAuthStatesStmt,
 		cleanupExpiredPasskeyChallengesStmt:        q.cleanupExpiredPasskeyChallengesStmt,
 		clearPreferredExeletStmt:                   q.clearPreferredExeletStmt,
 		consumeCheckoutParamsStmt:                  q.consumeCheckoutParamsStmt,
+		consumeOAuthStateStmt:                      q.consumeOAuthStateStmt,
 		countAccountsByBillingStatusStmt:           q.countAccountsByBillingStatusStmt,
 		countBoxShareLinksStmt:                     q.countBoxShareLinksStmt,
 		countBoxSharesStmt:                         q.countBoxSharesStmt,
@@ -2724,6 +2771,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTemplateByIDStmt:                        q.getTemplateByIDStmt,
 		getTemplateBySlugStmt:                      q.getTemplateBySlugStmt,
 		getTemplateBySlugAnyStmt:                   q.getTemplateBySlugAnyStmt,
+		getUserAuthProviderStmt:                    q.getUserAuthProviderStmt,
 		getUserBillingExemptionStmt:                q.getUserBillingExemptionStmt,
 		getUserBillingStatusStmt:                   q.getUserBillingStatusStmt,
 		getUserByEmailStmt:                         q.getUserByEmailStmt,
@@ -2757,6 +2805,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertEmailBounceStmt:                      q.insertEmailBounceStmt,
 		insertEmailQualityBypassStmt:               q.insertEmailQualityBypassStmt,
 		insertEmailVerificationStmt:                q.insertEmailVerificationStmt,
+		insertOAuthStateStmt:                       q.insertOAuthStateStmt,
 		insertOrReplaceEmailVerificationStmt:       q.insertOrReplaceEmailVerificationStmt,
 		insertPasskeyStmt:                          q.insertPasskeyStmt,
 		insertPasskeyChallengeStmt:                 q.insertPasskeyChallengeStmt,
@@ -2810,6 +2859,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setNewThrottleMessageStmt:                  q.setNewThrottleMessageStmt,
 		setPreferredExeletStmt:                     q.setPreferredExeletStmt,
 		setSignupPOWEnabledStmt:                    q.setSignupPOWEnabledStmt,
+		setUserAuthProviderStmt:                    q.setUserAuthProviderStmt,
 		setUserBillingExemptionStmt:                q.setUserBillingExemptionStmt,
 		setUserCgroupOverridesStmt:                 q.setUserCgroupOverridesStmt,
 		setUserDiscordStmt:                         q.setUserDiscordStmt,

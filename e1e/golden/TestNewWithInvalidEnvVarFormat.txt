@@ -15,7 +15,7 @@ Please enter your email address: TestNewWithInvalidEnvVarFormat@example.com
 
 
 Verification email sent to: TestNewWithInvalidEnvVarFormat@example.com
-Waiting for email verification...
+Waiting for verification...
 ✓ Email verified successfully!
 
 

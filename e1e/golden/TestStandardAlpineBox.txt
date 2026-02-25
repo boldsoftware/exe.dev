@@ -15,7 +15,7 @@ Please enter your email address: TestStandardAlpineBox@example.com
 
 
 Verification email sent to: TestStandardAlpineBox@example.com
-Waiting for email verification...
+Waiting for verification...
 ✓ Email verified successfully!
 
 

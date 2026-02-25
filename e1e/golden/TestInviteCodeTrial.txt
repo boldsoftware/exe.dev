@@ -17,7 +17,7 @@ Please enter your email address: TestInviteCodeTrial@example.com
 
 
 Verification email sent to: TestInviteCodeTrial@example.com
-Waiting for email verification...
+Waiting for verification...
 ✓ Email verified successfully!
 
 

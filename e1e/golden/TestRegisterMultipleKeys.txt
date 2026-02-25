@@ -15,7 +15,7 @@ Please enter your email address: TestRegisterMultipleKeys@example.com
 
 
 Verification email sent to: TestRegisterMultipleKeys@example.com
-Waiting for email verification...
+Waiting for verification...
 ✓ Email verified successfully!
 
 
@@ -54,7 +54,7 @@ Please enter your email address: TestRegisterMultipleKeys@example.com
 
 
 Verification email sent to: TestRegisterMultipleKeys@example.com
-Waiting for email verification...
+Waiting for verification...
 ✓ Email verified successfully!
 
 
@@ -92,7 +92,7 @@ Please enter your email address: TestRegisterMultipleKeys@example.com
 
 
 Verification email sent to: TestRegisterMultipleKeys@example.com
-Waiting for email verification...
+Waiting for verification...
 ✓ Email verified successfully!
 
 

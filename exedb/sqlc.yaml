@@ -31,6 +31,10 @@ sql:
             go_type: "bool"
           - column: "vm_templates.featured"
             go_type: "bool"
+          - column: "oauth_states.is_new_user"
+            go_type: "bool"
+          - column: "oauth_states.login_with_exe"
+            go_type: "bool"
         rename:
           box_ip_shard: "BoxIPShard"
           ip_shard: "IPShard"

@@ -51,6 +51,7 @@ import (
 	"exe.dev/exens"
 	"exe.dev/exeweb"
 	"exe.dev/ghuser"
+	"exe.dev/googleoauth"
 	"exe.dev/hll"
 	"exe.dev/llmgateway"
 	"exe.dev/logging"
@@ -204,6 +205,10 @@ type EmailVerification struct {
 	// InviteCode is the invite code used during signup (from ssh username).
 	// If set, it will be applied after user creation.
 	InviteCode *exedb.InviteCode
+
+	// GoogleOAuthURL is set when the verification uses Google OAuth instead of email.
+	// The SSH session should print this URL for the user to visit.
+	GoogleOAuthURL string
 }
 
 // Close signals completion to the waiting SSH session.
@@ -394,6 +399,9 @@ type Server struct {
 
 	// Discord link secret for HMAC verification of Discord account linking
 	discordLinkSecret string
+
+	// Google OAuth credentials
+	googleOAuth *googleoauth.Client
 }
 
 // newSignupPOW creates a proof-of-work challenger with a random secret.
@@ -755,6 +763,13 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// Initialize Discord link secret for account linking
 	discordLinkSecret := os.Getenv("EXE_LINK_SECRET")
 
+	// Initialize Google OAuth credentials
+	googleClientID := os.Getenv("EXE_GOOGLE_CLIENT_ID")
+	googleClientSecret := os.Getenv("EXE_GOOGLE_CLIENT_SECRET")
+	if googleClientID == "" || googleClientSecret == "" {
+		slog.Info("EXE_GOOGLE_CLIENT_ID or EXE_GOOGLE_CLIENT_SECRET not set, Google OAuth disabled")
+	}
+
 	// Initialize GitHub User lookup client
 	ghu, err := ghuser.New(os.Getenv("GITHUB_TOKEN"), cfg.GHWhoAmIPath)
 	if err != nil {
@@ -960,7 +975,11 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		bouncePoller:           bouncePoller,
 		ipqsAPIKey:             ipqsAPIKey,
 		discordLinkSecret:      discordLinkSecret,
-		PublicIPs:              map[netip.Addr]publicips.PublicIP{},
+		googleOAuth: &googleoauth.Client{
+			ClientID:     googleClientID,
+			ClientSecret: googleClientSecret,
+		},
+		PublicIPs: map[netip.Addr]publicips.PublicIP{},
 
 		metricsRegistry:       cfg.MetricsRegistry,
 		sshMetrics:            sshMetrics,
@@ -1039,6 +1058,8 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	if cfg.LMTPSocketPath != "" {
 		s.lmtpServer = NewLMTPServer(s, cfg.LMTPSocketPath)
 	}
+
+	s.googleOAuth.WebBaseURL = s.webBaseURLNoRequest()
 
 	s.setupHTTPServer()
 	s.setupHTTPSServer()

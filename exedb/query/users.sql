@@ -66,3 +66,9 @@ UPDATE users SET newsletter_subscribed = ? WHERE user_id = ?;
 
 -- name: DeleteUser :exec
 DELETE FROM users WHERE user_id = ?;
+
+-- name: SetUserAuthProvider :exec
+UPDATE users SET auth_provider = ?, auth_provider_id = ? WHERE user_id = ?;
+
+-- name: GetUserAuthProvider :one
+SELECT auth_provider, auth_provider_id FROM users WHERE user_id = ?;

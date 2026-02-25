@@ -226,6 +226,25 @@ type MobilePendingVm struct {
 	VMImage   *string    `db:"vm_image" json:"vm_image"`
 }
 
+type OauthState struct {
+	State                string     `db:"state" json:"state"`
+	Provider             string     `db:"provider" json:"provider"`
+	Email                string     `db:"email" json:"email"`
+	UserID               *string    `db:"user_id" json:"user_id"`
+	IsNewUser            bool       `db:"is_new_user" json:"is_new_user"`
+	InviteCodeID         *int64     `db:"invite_code_id" json:"invite_code_id"`
+	TeamInviteToken      *string    `db:"team_invite_token" json:"team_invite_token"`
+	RedirectUrl          *string    `db:"redirect_url" json:"redirect_url"`
+	ReturnHost           *string    `db:"return_host" json:"return_host"`
+	LoginWithExe         bool       `db:"login_with_exe" json:"login_with_exe"`
+	SshVerificationToken *string    `db:"ssh_verification_token" json:"ssh_verification_token"`
+	Hostname             *string    `db:"hostname" json:"hostname"`
+	Prompt               *string    `db:"prompt" json:"prompt"`
+	Image                *string    `db:"image" json:"image"`
+	CreatedAt            *time.Time `db:"created_at" json:"created_at"`
+	ExpiresAt            time.Time  `db:"expires_at" json:"expires_at"`
+}
+
 type Passkey struct {
 	ID           int64      `db:"id" json:"id"`
 	UserID       string     `db:"user_id" json:"user_id"`
@@ -283,6 +302,7 @@ type PendingTeamInvite struct {
 	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
 	AcceptedAt       *time.Time `db:"accepted_at" json:"accepted_at"`
 	AcceptedByUserID *string    `db:"accepted_by_user_id" json:"accepted_by_user_id"`
+	AuthProvider     *string    `db:"auth_provider" json:"auth_provider"`
 }
 
 type SSHKey struct {
@@ -398,6 +418,8 @@ type User struct {
 	Limits                 *string    `db:"limits" json:"limits"`
 	CgroupOverrides        *string    `db:"cgroup_overrides" json:"cgroup_overrides"`
 	NewsletterSubscribed   bool       `db:"newsletter_subscribed" json:"newsletter_subscribed"`
+	AuthProvider           *string    `db:"auth_provider" json:"auth_provider"`
+	AuthProviderID         *string    `db:"auth_provider_id" json:"auth_provider_id"`
 }
 
 type UserDailyEmailCount struct {

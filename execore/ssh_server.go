@@ -19,6 +19,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"exe.dev/exeweb"
+	"exe.dev/googleoauth"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/termfun"
 	"exe.dev/tracing"
@@ -947,9 +948,12 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 		return nil, err
 	}
 
-	fmt.Fprintf(s, "\r\nVerification email sent to: \033[1;32m%s\033[0m\r\n", email)
-	// fmt.Fprintf(s, "Pairing code: \033[1;32m%s\033[0m\r\n", verification.PairingCode)
-	fmt.Fprintf(s, "\033[2mWaiting for email verification...\033[0m\r\n")
+	if verification.GoogleOAuthURL != "" {
+		fmt.Fprintf(s, "\r\nVerify with Google: \033[1;36m%s\033[0m\r\n", verification.GoogleOAuthURL)
+	} else {
+		fmt.Fprintf(s, "\r\nVerification email sent to: \033[1;32m%s\033[0m\r\n", email)
+	}
+	fmt.Fprintf(s, "\033[2mWaiting for verification...\033[0m\r\n")
 
 	var r io.Reader
 	var stop func()
@@ -1169,6 +1173,15 @@ func (ss *SSHServer) startEmailVerification(s *shellSession, publicKey, email st
 		return nil, fmt.Errorf("failed to check existing email: %v", err)
 	}
 
+	// Check if we should use Google OAuth instead of email
+	userID := ""
+	if !isNewAccount {
+		userID, _ = ss.server.GetUserIDByEmail(s.Context(), email)
+	}
+	if ss.server.shouldUseGoogleOAuth(s.Context(), email, userID, isNewAccount, "") {
+		return ss.startGoogleOAuthVerification(s, publicKey, email, isNewAccount, inviteCode, userID)
+	}
+
 	if !isNewAccount {
 		// Email already exists - this is a new ssh key for an existing user.
 		// Note: invite codes are only for new accounts, not existing users adding a device.
@@ -1241,6 +1254,38 @@ The EXE.DEV team`, verifyURL)
 	if ss.server.env.FakeEmail {
 		fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed link: \033[1;36m%s\033[0m\r\n\r\n", verifyURL)
 	}
+
+	return verif, nil
+}
+
+// startGoogleOAuthVerification creates an in-memory verification and an OAuth state,
+// then returns a verification whose Token is set to a sentinel so waitForEmailVerification
+// knows to print a URL instead of "email sent".
+func (ss *SSHServer) startGoogleOAuthVerification(s *shellSession, publicKey, email string, isNewAccount bool, inviteCode *exedb.InviteCode, userID string) (*EmailVerification, error) {
+	verif := ss.server.addEmailVerification(publicKey, email, isNewAccount, inviteCode)
+
+	params := oauthStartParams{
+		email:                email,
+		userID:               userID,
+		isNewUser:            isNewAccount,
+		sshVerificationToken: verif.Token,
+	}
+	if inviteCode != nil {
+		params.inviteCodeID = &inviteCode.ID
+	}
+
+	state, err := googleoauth.GenerateState()
+	if err != nil {
+		ss.server.deleteEmailVerification(verif)
+		return nil, err
+	}
+
+	if err := ss.server.insertOAuthState(s.Context(), state, params); err != nil {
+		ss.server.deleteEmailVerification(verif)
+		return nil, fmt.Errorf("failed to store oauth state: %w", err)
+	}
+
+	verif.GoogleOAuthURL = ss.server.googleOAuth.AuthURL(state, email)
 
 	return verif, nil
 }

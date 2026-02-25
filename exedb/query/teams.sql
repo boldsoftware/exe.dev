@@ -119,15 +119,16 @@ ORDER BY t.created_at DESC;
 DELETE FROM pending_team_invites WHERE invited_by_user_id = ?;
 
 -- name: InsertPendingTeamInvite :exec
-INSERT INTO pending_team_invites (team_id, email, canonical_email, invited_by_user_id, token, expires_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO pending_team_invites (team_id, email, canonical_email, invited_by_user_id, token, expires_at, auth_provider)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(team_id, canonical_email) DO UPDATE SET
     token = excluded.token,
     expires_at = excluded.expires_at,
-    invited_by_user_id = excluded.invited_by_user_id;
+    invited_by_user_id = excluded.invited_by_user_id,
+    auth_provider = excluded.auth_provider;
 
 -- name: GetPendingTeamInviteByToken :one
-SELECT id, team_id, email, canonical_email, invited_by_user_id, token, expires_at, created_at, accepted_at, accepted_by_user_id
+SELECT id, team_id, email, canonical_email, invited_by_user_id, token, expires_at, created_at, accepted_at, accepted_by_user_id, auth_provider
 FROM pending_team_invites
 WHERE token = ? AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP;
 

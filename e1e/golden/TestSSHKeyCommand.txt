@@ -15,7 +15,7 @@ Please enter your email address: TestSSHKeyCommand@example.com
 
 
 Verification email sent to: TestSSHKeyCommand@example.com
-Waiting for email verification...
+Waiting for verification...
 ✓ Email verified successfully!
 
 

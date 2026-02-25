@@ -230,7 +230,7 @@ func (q *Queries) GetBoxTeamSharesByBoxID(ctx context.Context, boxID int64) ([]G
 }
 
 const getPendingTeamInviteByToken = `-- name: GetPendingTeamInviteByToken :one
-SELECT id, team_id, email, canonical_email, invited_by_user_id, token, expires_at, created_at, accepted_at, accepted_by_user_id
+SELECT id, team_id, email, canonical_email, invited_by_user_id, token, expires_at, created_at, accepted_at, accepted_by_user_id, auth_provider
 FROM pending_team_invites
 WHERE token = ? AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP
 `
@@ -249,6 +249,7 @@ func (q *Queries) GetPendingTeamInviteByToken(ctx context.Context, token string)
 		&i.CreatedAt,
 		&i.AcceptedAt,
 		&i.AcceptedByUserID,
+		&i.AuthProvider,
 	)
 	return i, err
 }
@@ -312,15 +313,28 @@ WHERE team_id = ? AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP
 ORDER BY created_at DESC
 `
 
-func (q *Queries) GetPendingTeamInvitesByTeam(ctx context.Context, teamID string) ([]PendingTeamInvite, error) {
+type GetPendingTeamInvitesByTeamRow struct {
+	ID               int64      `db:"id" json:"id"`
+	TeamID           string     `db:"team_id" json:"team_id"`
+	Email            string     `db:"email" json:"email"`
+	CanonicalEmail   string     `db:"canonical_email" json:"canonical_email"`
+	InvitedByUserID  string     `db:"invited_by_user_id" json:"invited_by_user_id"`
+	Token            string     `db:"token" json:"token"`
+	ExpiresAt        time.Time  `db:"expires_at" json:"expires_at"`
+	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
+	AcceptedAt       *time.Time `db:"accepted_at" json:"accepted_at"`
+	AcceptedByUserID *string    `db:"accepted_by_user_id" json:"accepted_by_user_id"`
+}
+
+func (q *Queries) GetPendingTeamInvitesByTeam(ctx context.Context, teamID string) ([]GetPendingTeamInvitesByTeamRow, error) {
 	rows, err := q.query(ctx, q.getPendingTeamInvitesByTeamStmt, getPendingTeamInvitesByTeam, teamID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []PendingTeamInvite{}
+	items := []GetPendingTeamInvitesByTeamRow{}
 	for rows.Next() {
-		var i PendingTeamInvite
+		var i GetPendingTeamInvitesByTeamRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TeamID,
@@ -482,12 +496,13 @@ func (q *Queries) InsertBoxTeamShare(ctx context.Context, arg InsertBoxTeamShare
 }
 
 const insertPendingTeamInvite = `-- name: InsertPendingTeamInvite :exec
-INSERT INTO pending_team_invites (team_id, email, canonical_email, invited_by_user_id, token, expires_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO pending_team_invites (team_id, email, canonical_email, invited_by_user_id, token, expires_at, auth_provider)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(team_id, canonical_email) DO UPDATE SET
     token = excluded.token,
     expires_at = excluded.expires_at,
-    invited_by_user_id = excluded.invited_by_user_id
+    invited_by_user_id = excluded.invited_by_user_id,
+    auth_provider = excluded.auth_provider
 `
 
 type InsertPendingTeamInviteParams struct {
@@ -497,6 +512,7 @@ type InsertPendingTeamInviteParams struct {
 	InvitedByUserID string    `db:"invited_by_user_id" json:"invited_by_user_id"`
 	Token           string    `db:"token" json:"token"`
 	ExpiresAt       time.Time `db:"expires_at" json:"expires_at"`
+	AuthProvider    *string   `db:"auth_provider" json:"auth_provider"`
 }
 
 func (q *Queries) InsertPendingTeamInvite(ctx context.Context, arg InsertPendingTeamInviteParams) error {
@@ -507,6 +523,7 @@ func (q *Queries) InsertPendingTeamInvite(ctx context.Context, arg InsertPending
 		arg.InvitedByUserID,
 		arg.Token,
 		arg.ExpiresAt,
+		arg.AuthProvider,
 	)
 	return err
 }

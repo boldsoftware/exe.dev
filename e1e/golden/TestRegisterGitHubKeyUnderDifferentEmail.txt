@@ -19,7 +19,7 @@ Email: also-fake-for-tests@example.combinatorics
 
 
 Verification email sent to: also-fake-for-tests@example.combinatorics
-Waiting for email verification...
+Waiting for verification...
 ✓ Email verified successfully!
 
 

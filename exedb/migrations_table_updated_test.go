@@ -169,6 +169,34 @@ func TestRunMigrationsRepairsMissingBillingCredits(t *testing.T) {
 	}
 }
 
+func TestNoDuplicateMigrationNumbers(t *testing.T) {
+	t.Parallel()
+
+	entries, err := migrationFS.ReadDir("schema")
+	if err != nil {
+		t.Fatalf("failed to read embedded migrations: %v", err)
+	}
+
+	seen := make(map[int]string)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".sql") || len(name) < 8 {
+			continue
+		}
+		number, err := strconv.Atoi(name[:3])
+		if err != nil {
+			continue
+		}
+		if prev, ok := seen[number]; ok {
+			t.Fatalf("duplicate migration number %03d: %q and %q", number, prev, name)
+		}
+		seen[number] = name
+	}
+}
+
 func migrationNumbersFromFS(t *testing.T) []int {
 	t.Helper()
 

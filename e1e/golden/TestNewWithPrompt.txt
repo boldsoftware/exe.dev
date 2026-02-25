@@ -15,7 +15,7 @@ Please enter your email address: TestNewWithPrompt@example.com
 
 
 Verification email sent to: TestNewWithPrompt@example.com
-Waiting for email verification...
+Waiting for verification...
 ✓ Email verified successfully!
 
 

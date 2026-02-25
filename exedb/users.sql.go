@@ -64,8 +64,24 @@ func (q *Queries) GetEmailByUserID(ctx context.Context, userID string) (string, 
 	return email, err
 }
 
+const getUserAuthProvider = `-- name: GetUserAuthProvider :one
+SELECT auth_provider, auth_provider_id FROM users WHERE user_id = ?
+`
+
+type GetUserAuthProviderRow struct {
+	AuthProvider   *string `db:"auth_provider" json:"auth_provider"`
+	AuthProviderID *string `db:"auth_provider_id" json:"auth_provider_id"`
+}
+
+func (q *Queries) GetUserAuthProvider(ctx context.Context, userID string) (GetUserAuthProviderRow, error) {
+	row := q.queryRow(ctx, q.getUserAuthProviderStmt, getUserAuthProvider, userID)
+	var i GetUserAuthProviderRow
+	err := row.Scan(&i.AuthProvider, &i.AuthProviderID)
+	return i, err
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id
 FROM users
 WHERE canonical_email = ?
 `
@@ -92,6 +108,8 @@ func (q *Queries) GetUserByEmail(ctx context.Context, canonicalEmail *string) (U
 		&i.Limits,
 		&i.CgroupOverrides,
 		&i.NewsletterSubscribed,
+		&i.AuthProvider,
+		&i.AuthProviderID,
 	)
 	return i, err
 }
@@ -152,7 +170,7 @@ func (q *Queries) GetUserRootSupport(ctx context.Context, userID string) (int64,
 }
 
 const getUserWithDetails = `-- name: GetUserWithDetails :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id
 FROM users
 WHERE user_id = ?
 `
@@ -179,6 +197,8 @@ func (q *Queries) GetUserWithDetails(ctx context.Context, userID string) (User, 
 		&i.Limits,
 		&i.CgroupOverrides,
 		&i.NewsletterSubscribed,
+		&i.AuthProvider,
+		&i.AuthProviderID,
 	)
 	return i, err
 }
@@ -207,7 +227,7 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 }
 
 const listAllUsers = `-- name: ListAllUsers :many
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed FROM users ORDER BY created_at DESC
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id FROM users ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
@@ -238,6 +258,8 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 			&i.Limits,
 			&i.CgroupOverrides,
 			&i.NewsletterSubscribed,
+			&i.AuthProvider,
+			&i.AuthProviderID,
 		); err != nil {
 			return nil, err
 		}
@@ -250,6 +272,21 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const setUserAuthProvider = `-- name: SetUserAuthProvider :exec
+UPDATE users SET auth_provider = ?, auth_provider_id = ? WHERE user_id = ?
+`
+
+type SetUserAuthProviderParams struct {
+	AuthProvider   *string `db:"auth_provider" json:"auth_provider"`
+	AuthProviderID *string `db:"auth_provider_id" json:"auth_provider_id"`
+	UserID         string  `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) SetUserAuthProvider(ctx context.Context, arg SetUserAuthProviderParams) error {
+	_, err := q.exec(ctx, q.setUserAuthProviderStmt, setUserAuthProvider, arg.AuthProvider, arg.AuthProviderID, arg.UserID)
+	return err
 }
 
 const setUserCgroupOverrides = `-- name: SetUserCgroupOverrides :exec

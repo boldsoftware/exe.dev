@@ -1412,6 +1412,26 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		s.slog().InfoContext(r.Context(), "valid invite code provided via web auth", "code", invite.Code)
 	}
 
+	// Check if we should use Google OAuth instead of email verification.
+	// This handles: gmail signups, existing users with auth_provider=google, team invites with auth_provider=google.
+	if s.shouldUseGoogleOAuth(r.Context(), addr, userID, isNewUser, r.FormValue("team_invite")) {
+		params := oauthStartParams{
+			email:           addr,
+			userID:          userID,
+			isNewUser:       isNewUser,
+			inviteCodeID:    inviteCodeID,
+			teamInviteToken: r.FormValue("team_invite"),
+			redirectURL:     r.FormValue("redirect"),
+			returnHost:      r.FormValue("return_host"),
+			loginWithExe:    isLoginWithExe,
+			hostname:        hostname,
+			prompt:          prompt,
+			image:           image,
+		}
+		s.startGoogleOAuth(w, r, params)
+		return
+	}
+
 	if isNewUser {
 		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
 			userID, err = s.createUserRecord(ctx, queries, addr, isLoginWithExe)

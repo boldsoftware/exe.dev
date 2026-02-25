@@ -15,7 +15,7 @@ Please enter your email address: TestNewWithPrivateImage@example.com
 
 
 Verification email sent to: TestNewWithPrivateImage@example.com
-Waiting for email verification...
+Waiting for verification...
 ✓ Email verified successfully!
 
 
