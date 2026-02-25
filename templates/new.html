@@ -38,6 +38,7 @@
                 placeholder="Build a blog..."
                 rows="4"
             >{{.Prompt}}</textarea>
+            <div id="prompt-hint" class="form-hint error" style="display:none"></div>
             <div id="template-pill" class="template-pill" style="visibility:hidden">
                 <span class="template-pill-icon"></span>
                 <span class="template-pill-label">Idea:</span>
@@ -141,6 +142,25 @@
     
     // Check initial hostname
     checkHostnameAvailability();
+
+    // Block submission if prompt still contains unfilled template variables
+    document.getElementById('create-vm-form').addEventListener('submit', function(e) {
+        const prompt = promptInput.value;
+        if (prompt.includes('<fill-this-in>')) {
+            e.preventDefault();
+            const hint = document.getElementById('prompt-hint');
+            hint.textContent = 'Please replace all <fill-this-in> placeholders in the prompt before creating the VM.';
+            hint.style.display = '';
+            promptInput.focus();
+        }
+    });
+
+    promptInput.addEventListener('input', function() {
+        const hint = document.getElementById('prompt-hint');
+        if (hint.style.display !== 'none' && !promptInput.value.includes('<fill-this-in>')) {
+            hint.style.display = 'none';
+        }
+    });
 </script>
 <script src="/static/new.js?v=2"></script>
 {{end}}
