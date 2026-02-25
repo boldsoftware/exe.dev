@@ -20,7 +20,7 @@ var SeedTemplates = []exedb.InsertTemplateParams{
 		Title:            "Marimo Notebook",
 		ShortDescription: "Reactive Python notebook with built-in SQL support",
 		Category:         "ai-ml",
-		Prompt:           "Create this VM using the Marimo Docker image: ssh exe.dev new --image=ghcr.io/marimo-team/marimo:latest-sql\n\nMarimo (https://marimo.io/) is a reactive Python notebook. The image serves the Marimo UI on port 8080, which exe.dev proxies to https://<vm-name>.exe.xyz automatically.",
+		Image:            "marimo-team/marimo:latest-sql",
 		IconURL:          "📓",
 		Status:           "approved",
 		Featured:         true,

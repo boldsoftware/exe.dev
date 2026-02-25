@@ -213,6 +213,7 @@ func (s *Server) handleDebugTemplateReview(w http.ResponseWriter, r *http.Reques
 		AvgRating        float64
 		RatingCount      int64
 		VMShortname      string
+		Image            string
 	}
 
 	data := struct {
@@ -243,6 +244,7 @@ func (s *Server) handleDebugTemplateReview(w http.ResponseWriter, r *http.Reques
 			AvgRating:        j.AvgRating,
 			RatingCount:      j.RatingCount,
 			VMShortname:      j.VMShortname,
+			Image:            j.Image,
 		})
 	}
 
@@ -306,6 +308,7 @@ func (s *Server) handleDebugTemplateReviewPost(w http.ResponseWriter, r *http.Re
 			ScreenshotURL:    r.FormValue("screenshot_url"),
 			Featured:         featured,
 			VMShortname:      r.FormValue("vm_shortname"),
+			Image:            r.FormValue("image"),
 		})
 	default:
 		http.Error(w, "Unknown action", http.StatusBadRequest)

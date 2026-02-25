@@ -21,7 +21,7 @@ func (q *Queries) DeleteTemplate(ctx context.Context, id int64) error {
 
 const getApprovedTemplateByShortname = `-- name: GetApprovedTemplateByShortname :one
 SELECT
-    t.id, t.slug, t.title, t.short_description, t.category, t.prompt, t.icon_url, t.screenshot_url, t.author_user_id, t.status, t.featured, t.created_at, t.updated_at, t.vm_shortname,
+    t.id, t.slug, t.title, t.short_description, t.category, t.prompt, t.icon_url, t.screenshot_url, t.author_user_id, t.status, t.featured, t.created_at, t.updated_at, t.vm_shortname, t.image,
     CAST(COALESCE(AVG(r.rating), 0) AS REAL) AS avg_rating,
     CAST(COUNT(r.id) AS INTEGER) AS rating_count
 FROM vm_templates t
@@ -45,6 +45,7 @@ type GetApprovedTemplateByShortnameRow struct {
 	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt        *time.Time `db:"updated_at" json:"updated_at"`
 	VMShortname      string     `db:"vm_shortname" json:"vm_shortname"`
+	Image            string     `db:"image" json:"image"`
 	AvgRating        float64    `db:"avg_rating" json:"avg_rating"`
 	RatingCount      int64      `db:"rating_count" json:"rating_count"`
 }
@@ -67,6 +68,7 @@ func (q *Queries) GetApprovedTemplateByShortname(ctx context.Context, vmShortnam
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.VMShortname,
+		&i.Image,
 		&i.AvgRating,
 		&i.RatingCount,
 	)
@@ -74,7 +76,7 @@ func (q *Queries) GetApprovedTemplateByShortname(ctx context.Context, vmShortnam
 }
 
 const getTemplateByID = `-- name: GetTemplateByID :one
-SELECT id, slug, title, short_description, category, prompt, icon_url, screenshot_url, author_user_id, status, featured, created_at, updated_at, vm_shortname FROM vm_templates WHERE id = ?
+SELECT id, slug, title, short_description, category, prompt, icon_url, screenshot_url, author_user_id, status, featured, created_at, updated_at, vm_shortname, image FROM vm_templates WHERE id = ?
 `
 
 func (q *Queries) GetTemplateByID(ctx context.Context, id int64) (VmTemplate, error) {
@@ -95,13 +97,14 @@ func (q *Queries) GetTemplateByID(ctx context.Context, id int64) (VmTemplate, er
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.VMShortname,
+		&i.Image,
 	)
 	return i, err
 }
 
 const getTemplateBySlug = `-- name: GetTemplateBySlug :one
 SELECT
-    t.id, t.slug, t.title, t.short_description, t.category, t.prompt, t.icon_url, t.screenshot_url, t.author_user_id, t.status, t.featured, t.created_at, t.updated_at, t.vm_shortname,
+    t.id, t.slug, t.title, t.short_description, t.category, t.prompt, t.icon_url, t.screenshot_url, t.author_user_id, t.status, t.featured, t.created_at, t.updated_at, t.vm_shortname, t.image,
     CAST(COALESCE(AVG(r.rating), 0) AS REAL) AS avg_rating,
     CAST(COUNT(r.id) AS INTEGER) AS rating_count
 FROM vm_templates t
@@ -125,6 +128,7 @@ type GetTemplateBySlugRow struct {
 	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt        *time.Time `db:"updated_at" json:"updated_at"`
 	VMShortname      string     `db:"vm_shortname" json:"vm_shortname"`
+	Image            string     `db:"image" json:"image"`
 	AvgRating        float64    `db:"avg_rating" json:"avg_rating"`
 	RatingCount      int64      `db:"rating_count" json:"rating_count"`
 }
@@ -147,6 +151,7 @@ func (q *Queries) GetTemplateBySlug(ctx context.Context, slug string) (GetTempla
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.VMShortname,
+		&i.Image,
 		&i.AvgRating,
 		&i.RatingCount,
 	)
@@ -170,8 +175,8 @@ func (q *Queries) GetUserTemplateRating(ctx context.Context, arg GetUserTemplate
 }
 
 const insertTemplate = `-- name: InsertTemplate :exec
-INSERT INTO vm_templates (slug, title, short_description, category, prompt, icon_url, screenshot_url, author_user_id, status, featured, vm_shortname)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO vm_templates (slug, title, short_description, category, prompt, icon_url, screenshot_url, author_user_id, status, featured, vm_shortname, image)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTemplateParams struct {
@@ -186,6 +191,7 @@ type InsertTemplateParams struct {
 	Status           string  `db:"status" json:"status"`
 	Featured         bool    `db:"featured" json:"featured"`
 	VMShortname      string  `db:"vm_shortname" json:"vm_shortname"`
+	Image            string  `db:"image" json:"image"`
 }
 
 func (q *Queries) InsertTemplate(ctx context.Context, arg InsertTemplateParams) error {
@@ -201,13 +207,14 @@ func (q *Queries) InsertTemplate(ctx context.Context, arg InsertTemplateParams) 
 		arg.Status,
 		arg.Featured,
 		arg.VMShortname,
+		arg.Image,
 	)
 	return err
 }
 
 const listAllTemplates = `-- name: ListAllTemplates :many
 SELECT
-    t.id, t.slug, t.title, t.short_description, t.category, t.prompt, t.icon_url, t.screenshot_url, t.author_user_id, t.status, t.featured, t.created_at, t.updated_at, t.vm_shortname,
+    t.id, t.slug, t.title, t.short_description, t.category, t.prompt, t.icon_url, t.screenshot_url, t.author_user_id, t.status, t.featured, t.created_at, t.updated_at, t.vm_shortname, t.image,
     CAST(COALESCE(AVG(r.rating), 0) AS REAL) AS avg_rating,
     CAST(COUNT(r.id) AS INTEGER) AS rating_count
 FROM vm_templates t
@@ -233,6 +240,7 @@ type ListAllTemplatesRow struct {
 	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt        *time.Time `db:"updated_at" json:"updated_at"`
 	VMShortname      string     `db:"vm_shortname" json:"vm_shortname"`
+	Image            string     `db:"image" json:"image"`
 	AvgRating        float64    `db:"avg_rating" json:"avg_rating"`
 	RatingCount      int64      `db:"rating_count" json:"rating_count"`
 }
@@ -261,6 +269,7 @@ func (q *Queries) ListAllTemplates(ctx context.Context) ([]ListAllTemplatesRow, 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.VMShortname,
+			&i.Image,
 			&i.AvgRating,
 			&i.RatingCount,
 		); err != nil {
@@ -279,7 +288,7 @@ func (q *Queries) ListAllTemplates(ctx context.Context) ([]ListAllTemplatesRow, 
 
 const listApprovedTemplates = `-- name: ListApprovedTemplates :many
 SELECT
-    t.id, t.slug, t.title, t.short_description, t.category, t.prompt, t.icon_url, t.screenshot_url, t.author_user_id, t.status, t.featured, t.created_at, t.updated_at, t.vm_shortname,
+    t.id, t.slug, t.title, t.short_description, t.category, t.prompt, t.icon_url, t.screenshot_url, t.author_user_id, t.status, t.featured, t.created_at, t.updated_at, t.vm_shortname, t.image,
     CAST(COALESCE(AVG(r.rating), 0) AS REAL) AS avg_rating,
     CAST(COUNT(r.id) AS INTEGER) AS rating_count
 FROM vm_templates t
@@ -304,6 +313,7 @@ type ListApprovedTemplatesRow struct {
 	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt        *time.Time `db:"updated_at" json:"updated_at"`
 	VMShortname      string     `db:"vm_shortname" json:"vm_shortname"`
+	Image            string     `db:"image" json:"image"`
 	AvgRating        float64    `db:"avg_rating" json:"avg_rating"`
 	RatingCount      int64      `db:"rating_count" json:"rating_count"`
 }
@@ -332,6 +342,7 @@ func (q *Queries) ListApprovedTemplates(ctx context.Context) ([]ListApprovedTemp
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.VMShortname,
+			&i.Image,
 			&i.AvgRating,
 			&i.RatingCount,
 		); err != nil {
@@ -349,7 +360,7 @@ func (q *Queries) ListApprovedTemplates(ctx context.Context) ([]ListApprovedTemp
 }
 
 const listTemplatesByAuthor = `-- name: ListTemplatesByAuthor :many
-SELECT id, slug, title, short_description, category, prompt, icon_url, screenshot_url, author_user_id, status, featured, created_at, updated_at, vm_shortname FROM vm_templates WHERE author_user_id = ? ORDER BY created_at DESC
+SELECT id, slug, title, short_description, category, prompt, icon_url, screenshot_url, author_user_id, status, featured, created_at, updated_at, vm_shortname, image FROM vm_templates WHERE author_user_id = ? ORDER BY created_at DESC
 `
 
 func (q *Queries) ListTemplatesByAuthor(ctx context.Context, authorUserID *string) ([]VmTemplate, error) {
@@ -376,6 +387,7 @@ func (q *Queries) ListTemplatesByAuthor(ctx context.Context, authorUserID *strin
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.VMShortname,
+			&i.Image,
 		); err != nil {
 			return nil, err
 		}
@@ -392,7 +404,7 @@ func (q *Queries) ListTemplatesByAuthor(ctx context.Context, authorUserID *strin
 
 const updateTemplate = `-- name: UpdateTemplate :exec
 UPDATE vm_templates
-SET title = ?, short_description = ?, category = ?, prompt = ?, icon_url = ?, screenshot_url = ?, featured = ?, vm_shortname = ?, updated_at = CURRENT_TIMESTAMP
+SET title = ?, short_description = ?, category = ?, prompt = ?, icon_url = ?, screenshot_url = ?, featured = ?, vm_shortname = ?, image = ?, updated_at = CURRENT_TIMESTAMP
 WHERE id = ?
 `
 
@@ -405,6 +417,7 @@ type UpdateTemplateParams struct {
 	ScreenshotURL    string `db:"screenshot_url" json:"screenshot_url"`
 	Featured         bool   `db:"featured" json:"featured"`
 	VMShortname      string `db:"vm_shortname" json:"vm_shortname"`
+	Image            string `db:"image" json:"image"`
 	ID               int64  `db:"id" json:"id"`
 }
 
@@ -418,6 +431,7 @@ func (q *Queries) UpdateTemplate(ctx context.Context, arg UpdateTemplateParams) 
 		arg.ScreenshotURL,
 		arg.Featured,
 		arg.VMShortname,
+		arg.Image,
 		arg.ID,
 	)
 	return err

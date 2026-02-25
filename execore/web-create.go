@@ -305,6 +305,7 @@ func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 		tmpl, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetApprovedTemplateByShortname, ideaShortname)
 		if err == nil {
 			prompt = cmp.Or(prompt, tmpl.Prompt)
+			image = cmp.Or(image, tmpl.Image)
 			if name == "" && tmpl.VMShortname != "" {
 				name = idea.RandomName(tmpl.VMShortname)
 			}

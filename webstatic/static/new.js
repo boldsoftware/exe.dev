@@ -142,9 +142,19 @@
   }
 
   // --- Template selection ---
+  function isImageTemplate(t) {
+    return t.image && !t.prompt;
+  }
+
   function requestSelectTemplate(slug) {
     const t = state.templates.find(x => x.slug === slug);
     if (!t) return;
+
+    // Image-only templates don't touch the prompt, so no conflict possible.
+    if (isImageTemplate(t)) {
+      applyTemplate(t, 'replace');
+      return;
+    }
 
     const promptInput = $('#prompt');
     const currentText = promptInput ? promptInput.value.trim() : '';
@@ -171,10 +181,22 @@
     const promptInput = $('#prompt');
     if (!promptInput) return;
 
-    if (mode === 'replace') {
-      promptInput.value = t.prompt;
-    } else if (mode === 'append') {
-      promptInput.value = promptInput.value.trimEnd() + '\n\n' + t.prompt;
+    if (isImageTemplate(t)) {
+      // Image-only template: set the image field instead of the prompt.
+      const imgInput = $('#image-input');
+      if (imgInput) {
+        imgInput.value = t.image;
+        imgInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      // Open the options section so the user sees the image.
+      const opts = $('#options-section');
+      if (opts) opts.open = true;
+    } else {
+      if (mode === 'replace') {
+        promptInput.value = t.prompt;
+      } else if (mode === 'append') {
+        promptInput.value = promptInput.value.trimEnd() + '\n\n' + t.prompt;
+      }
     }
     state.selectedTemplate = t;
 
@@ -196,10 +218,19 @@
   }
 
   function clearSelection() {
-    const promptInput = $('#prompt');
-    if (promptInput && state.selectedTemplate) {
-      if (promptInput.value.trim() === state.selectedTemplate.prompt.trim()) {
-        promptInput.value = '';
+    if (state.selectedTemplate) {
+      if (isImageTemplate(state.selectedTemplate)) {
+        // Clear the image field and re-enable the prompt.
+        const imgInput = $('#image-input');
+        if (imgInput) {
+          imgInput.value = '';
+          imgInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      } else {
+        const promptInput = $('#prompt');
+        if (promptInput && promptInput.value.trim() === state.selectedTemplate.prompt.trim()) {
+          promptInput.value = '';
+        }
       }
     }
     // If hostname still matches the last generated name, allow future templates to update it
@@ -326,11 +357,11 @@
       });
     }
 
-    // If user clears prompt text, clear template selection
+    // If user clears prompt text, clear template selection (only for prompt-based templates)
     const promptInput = $('#prompt');
     if (promptInput) {
       promptInput.addEventListener('input', () => {
-        if (state.selectedTemplate && promptInput.value.trim() === '') {
+        if (state.selectedTemplate && !isImageTemplate(state.selectedTemplate) && promptInput.value.trim() === '') {
           state.selectedTemplate = null;
           hideTemplatePill();
           renderTemplateSections();

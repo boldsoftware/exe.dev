@@ -35,15 +35,15 @@ ORDER BY
     t.created_at DESC;
 
 -- name: InsertTemplate :exec
-INSERT INTO vm_templates (slug, title, short_description, category, prompt, icon_url, screenshot_url, author_user_id, status, featured, vm_shortname)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO vm_templates (slug, title, short_description, category, prompt, icon_url, screenshot_url, author_user_id, status, featured, vm_shortname, image)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdateTemplateStatus :exec
 UPDATE vm_templates SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
 
 -- name: UpdateTemplate :exec
 UPDATE vm_templates
-SET title = ?, short_description = ?, category = ?, prompt = ?, icon_url = ?, screenshot_url = ?, featured = ?, vm_shortname = ?, updated_at = CURRENT_TIMESTAMP
+SET title = ?, short_description = ?, category = ?, prompt = ?, icon_url = ?, screenshot_url = ?, featured = ?, vm_shortname = ?, image = ?, updated_at = CURRENT_TIMESTAMP
 WHERE id = ?;
 
 -- name: UpsertTemplateRating :exec

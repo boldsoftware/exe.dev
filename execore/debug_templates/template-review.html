@@ -136,6 +136,10 @@ a:hover { text-decoration: underline; }
 <input type="text" name="vm_shortname" value="{{.VMShortname}}" placeholder="e.g. jupyter, ghost">
 </label>
 
+<label>Image
+<input type="text" name="image" value="{{.Image}}" placeholder="e.g. marimo-team/marimo:latest-sql">
+</label>
+
 <div class="checkbox-row">
 <label><input type="checkbox" name="featured" value="true"{{if .Featured}} checked{{end}}> Featured</label>
 </div>

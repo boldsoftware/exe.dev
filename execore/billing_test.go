@@ -678,6 +678,36 @@ func TestNewPagePrefillsFromIdeaShortname(t *testing.T) {
 	}
 }
 
+func TestNewPagePrefillsImageFromIdeaTemplate(t *testing.T) {
+	// Test that an image-only idea template prefills the image field, not the prompt.
+	server := newBillingTestServer(t)
+	server.seedDefaultTemplates(t.Context())
+
+	for _, path := range []string{"/new/marimo", "/new?idea=marimo"} {
+		req := httptest.NewRequest("GET", path, nil)
+		req.Host = server.env.WebHost
+		w := httptest.NewRecorder()
+		server.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("%s: expected status 200, got %d", path, w.Code)
+		}
+
+		body := w.Body.String()
+		if !strings.Contains(body, `value="marimo-`) {
+			t.Errorf("%s: expected hostname prefilled with 'marimo-<suffix>'", path)
+		}
+		// Image field should be prefilled.
+		if !strings.Contains(body, `value="marimo-team/marimo:latest-sql"`) {
+			t.Errorf("%s: expected image field prefilled with marimo image", path)
+		}
+		// Prompt textarea should be empty (image-only template has no prompt).
+		if strings.Contains(body, "ghcr.io/marimo") {
+			t.Errorf("%s: expected no ghcr.io reference in body (old prompt text)", path)
+		}
+	}
+}
+
 func TestCreateVMRedirectsToBillingWithParams(t *testing.T) {
 	// Test that /create-vm redirects to /billing/update with name and prompt params.
 	server := newBillingTestServer(t)
