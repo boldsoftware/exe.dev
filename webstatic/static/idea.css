@@ -1,0 +1,501 @@
+/* /idea page — browse ideas */
+
+body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    overflow-x: hidden;
+    align-items: stretch;
+    background: #fff;
+}
+
+.idea-page {
+    width: 100%;
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+    box-sizing: border-box;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* ===== Hero ===== */
+
+.idea-hero {
+    text-align: center;
+    margin-bottom: 48px;
+}
+
+.idea-hero-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: #111;
+    margin: 0 0 8px;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+}
+
+.idea-hero-subtitle {
+    font-size: 16px;
+    color: #666;
+    margin: 0 0 32px;
+    font-weight: 400;
+}
+
+/* ===== Search ===== */
+
+.idea-search-wrap {
+    position: relative;
+    max-width: 480px;
+    margin: 0 auto;
+}
+
+.idea-search-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    color: #999;
+    pointer-events: none;
+}
+
+.idea-search {
+    width: 100%;
+    padding: 12px 16px 12px 40px;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #fafafa;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.idea-search:focus {
+    outline: none;
+    border-color: #bbb;
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.04);
+}
+
+.idea-search::placeholder {
+    color: #aaa;
+}
+
+/* ===== Grid ===== */
+
+.idea-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+/* ===== Card ===== */
+
+.idea-card {
+    background: #fafafa;
+    border: 1px solid #e5e5e5;
+    border-radius: 14px;
+    padding: 20px;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.idea-card:hover {
+    border-color: #ccc;
+    background: #f5f5f5;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+    transform: translateY(-1px);
+}
+
+.idea-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.idea-card-icon {
+    font-size: 28px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.idea-card-icon img {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+}
+
+.idea-card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #111;
+    line-height: 1.3;
+}
+
+.idea-card-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.idea-card-badge {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.idea-card-badge-category {
+    background: #f0f0f0;
+    color: #555;
+}
+
+.idea-card-desc {
+    font-size: 13px;
+    color: #555;
+    line-height: 1.5;
+    flex: 1;
+}
+
+.idea-card-rating {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.idea-card-star {
+    color: #ddd;
+    font-size: 12px;
+}
+
+.idea-card-star.filled {
+    color: #f59e0b;
+}
+
+.idea-card-rating-count {
+    color: #999;
+    margin-left: 4px;
+    font-size: 11px;
+}
+
+/* ===== Empty state ===== */
+
+.idea-empty {
+    text-align: center;
+    padding: 48px 16px;
+    color: #999;
+    font-size: 14px;
+}
+
+/* ===== Modal ===== */
+
+.idea-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 10vh;
+}
+
+.idea-modal.open {
+    display: flex;
+}
+
+.idea-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    animation: ideaFadeIn 0.15s ease;
+}
+
+@keyframes ideaFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes ideaSlideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.idea-modal-panel {
+    position: relative;
+    background: #fff;
+    width: 560px;
+    max-width: calc(100% - 32px);
+    max-height: 80vh;
+    overflow-y: auto;
+    border-radius: 16px;
+    padding: 32px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12);
+    animation: ideaSlideUp 0.2s ease;
+}
+
+.idea-modal-close {
+    background: none;
+    border: none;
+    font-size: 14px;
+    cursor: pointer;
+    color: #666;
+    font-family: inherit;
+    padding: 0;
+    margin-bottom: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: color 0.15s;
+}
+
+.idea-modal-close:hover {
+    color: #111;
+}
+
+.idea-modal-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+}
+
+.idea-modal-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #111;
+    margin: 0 0 8px;
+}
+
+.idea-modal-desc {
+    font-size: 14px;
+    color: #555;
+    line-height: 1.6;
+    margin: 0 0 12px;
+}
+
+.idea-modal-category {
+    display: inline-block;
+    font-size: 11px;
+    padding: 3px 10px;
+    background: #f0f0f0;
+    color: #555;
+    border-radius: 999px;
+    font-weight: 600;
+    margin-bottom: 20px;
+}
+
+.idea-modal-prompt-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.idea-modal-prompt {
+    width: 100%;
+    padding: 14px;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 13px;
+    font-family: inherit;
+    background: #fafafa;
+    color: #333;
+    resize: none;
+    line-height: 1.6;
+    margin-bottom: 20px;
+    min-height: 200px;
+    field-sizing: content;
+}
+
+.idea-modal-prompt:focus {
+    outline: none;
+    border-color: #bbb;
+}
+
+.idea-modal-use-btn {
+    display: block;
+    width: 100%;
+    padding: 14px 16px;
+    background: #111;
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+    transition: background 0.15s;
+}
+
+.idea-modal-use-btn:hover {
+    background: #333;
+}
+
+/* ===== Mobile ===== */
+
+@media (max-width: 600px) {
+    .idea-page {
+        padding: 24px 16px 60px;
+    }
+
+    .idea-hero-title {
+        font-size: 22px;
+    }
+
+    .idea-hero-subtitle {
+        font-size: 14px;
+    }
+
+    .idea-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .idea-modal-panel {
+        padding: 24px;
+        border-radius: 14px 14px 0 0;
+        max-height: 90vh;
+        align-self: flex-end;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .idea-modal {
+        padding-top: 0;
+        align-items: flex-end;
+    }
+}
+
+/* ===== Dark mode ===== */
+
+@media (prefers-color-scheme: dark) {
+    body {
+        background: #111;
+    }
+
+    .idea-hero-title {
+        color: #f3f4f6;
+    }
+
+    .idea-hero-subtitle {
+        color: #888;
+    }
+
+    .idea-search {
+        background: #1a1a1a;
+        border-color: #333;
+        color: #f3f4f6;
+    }
+
+    .idea-search:focus {
+        border-color: #555;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+    }
+
+    .idea-search::placeholder {
+        color: #666;
+    }
+
+    .idea-search-icon {
+        color: #666;
+    }
+
+    .idea-card {
+        background: #1a1a1a;
+        border-color: #2a2a2a;
+    }
+
+    .idea-card:hover {
+        border-color: #444;
+        background: #222;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    .idea-card-title {
+        color: #f0f0f0;
+    }
+
+    .idea-card-desc {
+        color: #999;
+    }
+
+    .idea-card-badge-category {
+        background: #2a2a2a;
+        color: #888;
+    }
+
+    .idea-card-star {
+        color: #444;
+    }
+
+    .idea-card-rating-count {
+        color: #666;
+    }
+
+    .idea-empty {
+        color: #666;
+    }
+
+    .idea-modal-backdrop {
+        background: rgba(0, 0, 0, 0.5);
+    }
+
+    .idea-modal-panel {
+        background: #1a1a1a;
+    }
+
+    .idea-modal-close {
+        color: #888;
+    }
+
+    .idea-modal-close:hover {
+        color: #ddd;
+    }
+
+    .idea-modal-title {
+        color: #f0f0f0;
+    }
+
+    .idea-modal-desc {
+        color: #999;
+    }
+
+    .idea-modal-category {
+        background: #2a2a2a;
+        color: #888;
+    }
+
+    .idea-modal-prompt-label {
+        color: #666;
+    }
+
+    .idea-modal-prompt {
+        background: #222;
+        border-color: #333;
+        color: #ddd;
+    }
+
+    .idea-modal-prompt:focus {
+        border-color: #555;
+    }
+
+    .idea-modal-use-btn {
+        background: #f3f4f6;
+        color: #111;
+    }
+
+    .idea-modal-use-btn:hover {
+        background: #d1d5db;
+    }
+}

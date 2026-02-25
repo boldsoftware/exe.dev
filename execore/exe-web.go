@@ -666,7 +666,30 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/exec":
 		s.handleExec(w, r)
 		return
+	case "/api/ideas":
+		s.handleTemplatesAPI(w, r)
+		return
+	case "/api/ideas/rate":
+		s.handleTemplateRateAPI(w, r)
+		return
+	case "/api/ideas/submit":
+		s.handleTemplateSubmitAPI(w, r)
+		return
+	case "/idea":
+		s.handleIdeaPage(w, r)
+		return
 	default:
+		// /new/<shortname> is equivalent to /new?idea=<shortname>
+		if shortname, ok := strings.CutPrefix(path, "/new/"); ok && shortname != "" {
+			q := r.URL.Query()
+			if q.Get("idea") == "" {
+				q.Set("idea", shortname)
+				r.URL.RawQuery = q.Encode()
+			}
+			s.handleNewBox(w, r)
+			return
+		}
+
 		if strings.HasPrefix(path, "/auth/") {
 			s.handleAuthCallback(w, r)
 			return

@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/idea"
+
 	"exe.dev/boxname"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
@@ -284,12 +286,26 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 // handleNewBox renders the new box form.
 // Always shows the form - billing is requested when the user clicks "Create VM".
 // Accepts name, prompt, and invite query params to prefill the form (used after billing cancel or from exe.new).
+// Also accepts idea=<shortname> to load an idea template from the DB.
 // Also accepts a cp query param referencing checkout_params for restoring long prompts.
 func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 	// Read name, prompt, and invite from query params
 	name := strings.TrimSpace(r.URL.Query().Get("name"))
 	prompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
 	inviteCode := strings.TrimSpace(r.URL.Query().Get("invite"))
+
+	// If an idea shortname is provided, look up the template and prefill.
+	ideaSlug := ""
+	if ideaShortname := strings.TrimSpace(r.URL.Query().Get("idea")); ideaShortname != "" {
+		tmpl, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetApprovedTemplateByShortname, ideaShortname)
+		if err == nil {
+			prompt = cmp.Or(prompt, tmpl.Prompt)
+			if name == "" && tmpl.VMShortname != "" {
+				name = idea.RandomName(tmpl.VMShortname)
+			}
+			ideaSlug = tmpl.Slug
+		}
+	}
 
 	// Check if user is logged in (also needed for cp token handling below).
 	userID, err := s.validateAuthCookie(r)
@@ -331,6 +347,7 @@ func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 		IsLoggedIn         bool
 		ActivePage         string
 		BasicUser          bool
+		IdeaSlug           string
 	}{
 		Env:                s.env,
 		HostnameSuggestion: hostnameSuggestion,
@@ -338,7 +355,8 @@ func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 		InviteCode:         inviteCode,
 		IsLoggedIn:         isLoggedIn,
 		ActivePage:         "",
-		BasicUser:          false, // Users creating boxes are never basic users
+		BasicUser:          false,
+		IdeaSlug:           ideaSlug,
 	}
 	s.renderTemplate(r.Context(), w, "new.html", data)
 }

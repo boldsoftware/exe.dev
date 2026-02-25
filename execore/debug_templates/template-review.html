@@ -1,0 +1,163 @@
+<!doctype html>
+<html><head><title>Template Review</title>
+<style>
+table { border-collapse: collapse; margin: 10px 0; width: 100%; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+th { background: #f5f5f5; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.seed-btn { background: #6f42c1; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-size: 14px; }
+.seed-btn:hover { background: #5a32a3; }
+.btn { border: none; padding: 5px 12px; cursor: pointer; border-radius: 3px; font-size: 13px; color: white; }
+.btn-approve { background: #28a745; }
+.btn-approve:hover { background: #218838; }
+.btn-reject { background: #dc3545; }
+.btn-reject:hover { background: #c82333; }
+.btn-delete { background: #6c757d; }
+.btn-delete:hover { background: #565e64; }
+.btn-save { background: #007bff; }
+.btn-save:hover { background: #0056b3; }
+.status-pending { background: #fff3cd; color: #856404; padding: 2px 8px; border-radius: 3px; font-weight: bold; }
+.status-approved { background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 3px; font-weight: bold; }
+.status-rejected { background: #f8d7da; color: #721c24; padding: 2px 8px; border-radius: 3px; font-weight: bold; }
+.row-pending { background: #fffde7; }
+.details { display: none; background: #f9f9f9; border: 1px solid #ddd; padding: 12px; margin: 4px 0; }
+.details.open { display: block; }
+.details label { display: block; margin-top: 8px; font-weight: bold; font-size: 13px; }
+.details input[type="text"], .details textarea, .details select { width: 100%; padding: 6px; box-sizing: border-box; font-family: inherit; font-size: 13px; margin-top: 2px; }
+.details textarea { height: 120px; font-family: monospace; }
+.details .checkbox-row { margin-top: 8px; }
+.details .checkbox-row label { display: inline; font-weight: normal; }
+.prompt-preview { background: #fff; border: 1px solid #ddd; padding: 8px; font-family: monospace; font-size: 12px; white-space: pre-wrap; max-height: 150px; overflow-y: auto; margin-top: 4px; }
+.inline-form { display: inline; }
+.title-toggle { cursor: pointer; color: #007bff; }
+.title-toggle:hover { text-decoration: underline; }
+.actions { white-space: nowrap; }
+</style>
+</head><body>
+<h1>Template Review</h1>
+<p><a href="/debug">&larr; /debug</a></p>
+
+<form method="post" action="/debug/ideas" style="margin-bottom: 15px;">
+<input type="hidden" name="action" value="seed">
+<button type="submit" class="seed-btn" onclick="return confirm('Seed default templates? This will add built-in templates.')">Seed Default Templates</button>
+</form>
+
+{{if not .Templates}}
+<p><em>No templates found.</em></p>
+{{else}}
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Title</th>
+<th>Slug</th>
+<th>Category</th>
+<th>Rating</th>
+<th>Featured</th>
+<th>Author</th>
+<th>Actions</th>
+</tr>
+</thead>
+<tbody>
+{{range .Templates}}
+<tr class="{{if eq .Status "pending"}}row-pending{{end}}">
+<td><span class="status-{{.Status}}">{{.Status}}</span></td>
+<td><span class="title-toggle" onclick="toggleDetails('details-{{.ID}}')" title="Click to expand">{{.Title}}</span></td>
+<td><code>{{.Slug}}</code></td>
+<td>{{.Category}}</td>
+<td>{{printf "%.1f" .AvgRating}} ({{.RatingCount}})</td>
+<td>{{if .Featured}}&#9733;{{else}}&mdash;{{end}}</td>
+<td>{{if .AuthorUserID}}<code>{{.AuthorUserID}}</code>{{else}}<em>system</em>{{end}}</td>
+<td class="actions">
+{{if ne .Status "approved"}}
+<form class="inline-form" method="post" action="/debug/ideas">
+<input type="hidden" name="action" value="approve">
+<input type="hidden" name="id" value="{{.ID}}">
+<button type="submit" class="btn btn-approve">Approve</button>
+</form>
+{{end}}
+{{if ne .Status "rejected"}}
+<form class="inline-form" method="post" action="/debug/ideas">
+<input type="hidden" name="action" value="reject">
+<input type="hidden" name="id" value="{{.ID}}">
+<button type="submit" class="btn btn-reject">Reject</button>
+</form>
+{{end}}
+<form class="inline-form" method="post" action="/debug/ideas">
+<input type="hidden" name="action" value="delete">
+<input type="hidden" name="id" value="{{.ID}}">
+<button type="submit" class="btn btn-delete" onclick="return confirm('Delete template {{.Slug}}?')">Delete</button>
+</form>
+</td>
+</tr>
+<tr>
+<td colspan="8" style="padding: 0; border: none;">
+<div id="details-{{.ID}}" class="details">
+<strong>Prompt:</strong>
+<div class="prompt-preview">{{.Prompt}}</div>
+<hr style="margin: 12px 0;">
+<strong>Edit Template</strong>
+<form method="post" action="/debug/ideas">
+<input type="hidden" name="action" value="update">
+<input type="hidden" name="id" value="{{.ID}}">
+
+<label>Title
+<input type="text" name="title" value="{{.Title}}">
+</label>
+
+<label>Short Description
+<input type="text" name="short_description" value="{{.ShortDescription}}">
+</label>
+
+<label>Category
+{{$cat := .Category}}
+<select name="category">
+<option value="">-- none --</option>
+{{range $.Categories}}
+<option value="{{.Slug}}"{{if eq .Slug $cat}} selected{{end}}>{{.Label}}</option>
+{{end}}
+</select>
+</label>
+
+<label>Prompt
+<textarea name="prompt">{{.Prompt}}</textarea>
+</label>
+
+<label>Icon URL
+<input type="text" name="icon_url" value="{{.IconURL}}">
+</label>
+
+<label>Screenshot URL
+<input type="text" name="screenshot_url" value="{{.ScreenshotURL}}">
+</label>
+
+<label>VM Shortname
+<input type="text" name="vm_shortname" value="{{.VMShortname}}" placeholder="e.g. jupyter, ghost">
+</label>
+
+<div class="checkbox-row">
+<label><input type="checkbox" name="featured" value="true"{{if .Featured}} checked{{end}}> Featured</label>
+</div>
+
+<div style="margin-top: 10px;">
+<button type="submit" class="btn btn-save">Save Changes</button>
+</div>
+</form>
+</div>
+</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{end}}
+
+<script>
+function toggleDetails(id) {
+    var el = document.getElementById(id);
+    if (el) {
+        el.classList.toggle('open');
+    }
+}
+</script>
+</body></html>

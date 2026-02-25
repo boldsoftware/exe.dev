@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 
 	"exe.dev/stage"
@@ -251,9 +250,9 @@ func TestNonProxyRedirect(t *testing.T) {
 			expect: "http://" + testEnv.WebHost + "/new",
 		},
 		{
-			name:   "exe.new with path still redirects to /new",
+			name:   "exe.new with path redirects with idea shortname",
 			url:    "http://exe.new/foo",
-			expect: "http://" + testEnv.WebHost + "/new",
+			expect: "http://" + testEnv.WebHost + "/new?idea=foo",
 		},
 		{
 			name:   "exe.new with port redirects",
@@ -261,34 +260,34 @@ func TestNonProxyRedirect(t *testing.T) {
 			expect: "http://" + testEnv.WebHost + "/new",
 		},
 		{
-			name:   "exe.new/moltbot redirects with prompt",
+			name:   "exe.new/moltbot redirects with idea (alias)",
 			url:    "http://exe.new/moltbot",
-			expect: "http://" + testEnv.WebHost + "/new?prompt=" + url.QueryEscape(ExeNewPathPrompts["/moltbot"]),
+			expect: "http://" + testEnv.WebHost + "/new?idea=openclaw",
 		},
 		{
-			name:   "exe.new/clawdbot redirects with prompt",
+			name:   "exe.new/clawdbot redirects with idea (alias)",
 			url:    "http://exe.new/clawdbot",
-			expect: "http://" + testEnv.WebHost + "/new?prompt=" + url.QueryEscape(ExeNewPathPrompts["/clawdbot"]),
+			expect: "http://" + testEnv.WebHost + "/new?idea=openclaw",
 		},
 		{
 			name:   "exe.new/moltbot with invite passes through invite",
 			url:    "http://exe.new/moltbot?invite=TESTCODE",
-			expect: "http://" + testEnv.WebHost + "/new?prompt=" + url.QueryEscape(ExeNewPathPrompts["/moltbot"]) + "&invite=TESTCODE",
+			expect: "http://" + testEnv.WebHost + "/new?idea=openclaw&invite=TESTCODE",
 		},
 		{
 			name:   "exe.new/clawdbot with invite passes through invite",
 			url:    "http://exe.new/clawdbot?invite=TESTCODE",
-			expect: "http://" + testEnv.WebHost + "/new?prompt=" + url.QueryEscape(ExeNewPathPrompts["/clawdbot"]) + "&invite=TESTCODE",
+			expect: "http://" + testEnv.WebHost + "/new?idea=openclaw&invite=TESTCODE",
 		},
 		{
-			name:   "exe.new/openclaw redirects with prompt",
+			name:   "exe.new/openclaw redirects with idea",
 			url:    "http://exe.new/openclaw",
-			expect: "http://" + testEnv.WebHost + "/new?prompt=" + url.QueryEscape(ExeNewPathPrompts["/openclaw"]),
+			expect: "http://" + testEnv.WebHost + "/new?idea=openclaw",
 		},
 		{
 			name:   "exe.new/openclaw with invite passes through invite",
 			url:    "http://exe.new/openclaw?invite=TESTCODE",
-			expect: "http://" + testEnv.WebHost + "/new?prompt=" + url.QueryEscape(ExeNewPathPrompts["/openclaw"]) + "&invite=TESTCODE",
+			expect: "http://" + testEnv.WebHost + "/new?idea=openclaw&invite=TESTCODE",
 		},
 		{
 			name:   "exe.new with invite but no prompt",

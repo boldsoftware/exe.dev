@@ -192,6 +192,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteTeamMemberStmt, err = db.PrepareContext(ctx, deleteTeamMember); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTeamMember: %w", err)
 	}
+	if q.deleteTemplateStmt, err = db.PrepareContext(ctx, deleteTemplate); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTemplate: %w", err)
+	}
 	if q.deleteUserDefaultNewVMEmailStmt, err = db.PrepareContext(ctx, deleteUserDefaultNewVMEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteUserDefaultNewVMEmail: %w", err)
 	}
@@ -215,6 +218,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getAndIncrementNextSSHKeyNumberStmt, err = db.PrepareContext(ctx, getAndIncrementNextSSHKeyNumber); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAndIncrementNextSSHKeyNumber: %w", err)
+	}
+	if q.getApprovedTemplateByShortnameStmt, err = db.PrepareContext(ctx, getApprovedTemplateByShortname); err != nil {
+		return nil, fmt.Errorf("error preparing query GetApprovedTemplateByShortname: %w", err)
 	}
 	if q.getAuthCookieInfoStmt, err = db.PrepareContext(ctx, getAuthCookieInfo); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAuthCookieInfo: %w", err)
@@ -438,6 +444,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTeamMembersStmt, err = db.PrepareContext(ctx, getTeamMembers); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTeamMembers: %w", err)
 	}
+	if q.getTemplateByIDStmt, err = db.PrepareContext(ctx, getTemplateByID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTemplateByID: %w", err)
+	}
+	if q.getTemplateBySlugStmt, err = db.PrepareContext(ctx, getTemplateBySlug); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTemplateBySlug: %w", err)
+	}
 	if q.getUserBillingExemptionStmt, err = db.PrepareContext(ctx, getUserBillingExemption); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserBillingExemption: %w", err)
 	}
@@ -476,6 +488,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getUserRootSupportStmt, err = db.PrepareContext(ctx, getUserRootSupport); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserRootSupport: %w", err)
+	}
+	if q.getUserTemplateRatingStmt, err = db.PrepareContext(ctx, getUserTemplateRating); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserTemplateRating: %w", err)
 	}
 	if q.getUserWithDetailsStmt, err = db.PrepareContext(ctx, getUserWithDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserWithDetails: %w", err)
@@ -576,6 +591,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertTeamMemberStmt, err = db.PrepareContext(ctx, insertTeamMember); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTeamMember: %w", err)
 	}
+	if q.insertTemplateStmt, err = db.PrepareContext(ctx, insertTemplate); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertTemplate: %w", err)
+	}
 	if q.insertUserStmt, err = db.PrepareContext(ctx, insertUser); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertUser: %w", err)
 	}
@@ -606,11 +624,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAllTeamsStmt, err = db.PrepareContext(ctx, listAllTeams); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllTeams: %w", err)
 	}
+	if q.listAllTemplatesStmt, err = db.PrepareContext(ctx, listAllTemplates); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllTemplates: %w", err)
+	}
 	if q.listAllUserLLMCreditsStmt, err = db.PrepareContext(ctx, listAllUserLLMCredits); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllUserLLMCredits: %w", err)
 	}
 	if q.listAllUsersStmt, err = db.PrepareContext(ctx, listAllUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllUsers: %w", err)
+	}
+	if q.listApprovedTemplatesStmt, err = db.PrepareContext(ctx, listApprovedTemplates); err != nil {
+		return nil, fmt.Errorf("error preparing query ListApprovedTemplates: %w", err)
 	}
 	if q.listBoxIDsForUserStmt, err = db.PrepareContext(ctx, listBoxIDsForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListBoxIDsForUser: %w", err)
@@ -635,6 +659,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listTeamBoxesForOwnerStmt, err = db.PrepareContext(ctx, listTeamBoxesForOwner); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTeamBoxesForOwner: %w", err)
+	}
+	if q.listTemplatesByAuthorStmt, err = db.PrepareContext(ctx, listTemplatesByAuthor); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTemplatesByAuthor: %w", err)
 	}
 	if q.listUnusedInviteCodesForUserStmt, err = db.PrepareContext(ctx, listUnusedInviteCodesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUnusedInviteCodesForUser: %w", err)
@@ -765,6 +792,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateTeamMemberRoleStmt, err = db.PrepareContext(ctx, updateTeamMemberRole); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTeamMemberRole: %w", err)
 	}
+	if q.updateTemplateStmt, err = db.PrepareContext(ctx, updateTemplate); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateTemplate: %w", err)
+	}
+	if q.updateTemplateStatusStmt, err = db.PrepareContext(ctx, updateTemplateStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateTemplateStatus: %w", err)
+	}
 	if q.updateUserLLMAvailableCreditStmt, err = db.PrepareContext(ctx, updateUserLLMAvailableCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateUserLLMAvailableCredit: %w", err)
 	}
@@ -785,6 +818,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertTagResolutionStmt, err = db.PrepareContext(ctx, upsertTagResolution); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertTagResolution: %w", err)
+	}
+	if q.upsertTemplateRatingStmt, err = db.PrepareContext(ctx, upsertTemplateRating); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertTemplateRating: %w", err)
 	}
 	if q.upsertUserDefaultNewVMEmailStmt, err = db.PrepareContext(ctx, upsertUserDefaultNewVMEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertUserDefaultNewVMEmail: %w", err)
@@ -1086,6 +1122,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteTeamMemberStmt: %w", cerr)
 		}
 	}
+	if q.deleteTemplateStmt != nil {
+		if cerr := q.deleteTemplateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTemplateStmt: %w", cerr)
+		}
+	}
 	if q.deleteUserDefaultNewVMEmailStmt != nil {
 		if cerr := q.deleteUserDefaultNewVMEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteUserDefaultNewVMEmailStmt: %w", cerr)
@@ -1124,6 +1165,11 @@ func (q *Queries) Close() error {
 	if q.getAndIncrementNextSSHKeyNumberStmt != nil {
 		if cerr := q.getAndIncrementNextSSHKeyNumberStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAndIncrementNextSSHKeyNumberStmt: %w", cerr)
+		}
+	}
+	if q.getApprovedTemplateByShortnameStmt != nil {
+		if cerr := q.getApprovedTemplateByShortnameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getApprovedTemplateByShortnameStmt: %w", cerr)
 		}
 	}
 	if q.getAuthCookieInfoStmt != nil {
@@ -1496,6 +1542,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTeamMembersStmt: %w", cerr)
 		}
 	}
+	if q.getTemplateByIDStmt != nil {
+		if cerr := q.getTemplateByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTemplateByIDStmt: %w", cerr)
+		}
+	}
+	if q.getTemplateBySlugStmt != nil {
+		if cerr := q.getTemplateBySlugStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTemplateBySlugStmt: %w", cerr)
+		}
+	}
 	if q.getUserBillingExemptionStmt != nil {
 		if cerr := q.getUserBillingExemptionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserBillingExemptionStmt: %w", cerr)
@@ -1559,6 +1615,11 @@ func (q *Queries) Close() error {
 	if q.getUserRootSupportStmt != nil {
 		if cerr := q.getUserRootSupportStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserRootSupportStmt: %w", cerr)
+		}
+	}
+	if q.getUserTemplateRatingStmt != nil {
+		if cerr := q.getUserTemplateRatingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserTemplateRatingStmt: %w", cerr)
 		}
 	}
 	if q.getUserWithDetailsStmt != nil {
@@ -1726,6 +1787,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertTeamMemberStmt: %w", cerr)
 		}
 	}
+	if q.insertTemplateStmt != nil {
+		if cerr := q.insertTemplateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertTemplateStmt: %w", cerr)
+		}
+	}
 	if q.insertUserStmt != nil {
 		if cerr := q.insertUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertUserStmt: %w", cerr)
@@ -1776,6 +1842,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAllTeamsStmt: %w", cerr)
 		}
 	}
+	if q.listAllTemplatesStmt != nil {
+		if cerr := q.listAllTemplatesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllTemplatesStmt: %w", cerr)
+		}
+	}
 	if q.listAllUserLLMCreditsStmt != nil {
 		if cerr := q.listAllUserLLMCreditsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllUserLLMCreditsStmt: %w", cerr)
@@ -1784,6 +1855,11 @@ func (q *Queries) Close() error {
 	if q.listAllUsersStmt != nil {
 		if cerr := q.listAllUsersStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllUsersStmt: %w", cerr)
+		}
+	}
+	if q.listApprovedTemplatesStmt != nil {
+		if cerr := q.listApprovedTemplatesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listApprovedTemplatesStmt: %w", cerr)
 		}
 	}
 	if q.listBoxIDsForUserStmt != nil {
@@ -1824,6 +1900,11 @@ func (q *Queries) Close() error {
 	if q.listTeamBoxesForOwnerStmt != nil {
 		if cerr := q.listTeamBoxesForOwnerStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTeamBoxesForOwnerStmt: %w", cerr)
+		}
+	}
+	if q.listTemplatesByAuthorStmt != nil {
+		if cerr := q.listTemplatesByAuthorStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTemplatesByAuthorStmt: %w", cerr)
 		}
 	}
 	if q.listUnusedInviteCodesForUserStmt != nil {
@@ -2041,6 +2122,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateTeamMemberRoleStmt: %w", cerr)
 		}
 	}
+	if q.updateTemplateStmt != nil {
+		if cerr := q.updateTemplateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateTemplateStmt: %w", cerr)
+		}
+	}
+	if q.updateTemplateStatusStmt != nil {
+		if cerr := q.updateTemplateStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateTemplateStatusStmt: %w", cerr)
+		}
+	}
 	if q.updateUserLLMAvailableCreditStmt != nil {
 		if cerr := q.updateUserLLMAvailableCreditStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateUserLLMAvailableCreditStmt: %w", cerr)
@@ -2074,6 +2165,11 @@ func (q *Queries) Close() error {
 	if q.upsertTagResolutionStmt != nil {
 		if cerr := q.upsertTagResolutionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertTagResolutionStmt: %w", cerr)
+		}
+	}
+	if q.upsertTemplateRatingStmt != nil {
+		if cerr := q.upsertTemplateRatingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertTemplateRatingStmt: %w", cerr)
 		}
 	}
 	if q.upsertUserDefaultNewVMEmailStmt != nil {
@@ -2196,6 +2292,7 @@ type Queries struct {
 	deleteSSHKeyForUserStmt                    *sql.Stmt
 	deleteTagResolutionStmt                    *sql.Stmt
 	deleteTeamMemberStmt                       *sql.Stmt
+	deleteTemplateStmt                         *sql.Stmt
 	deleteUserDefaultNewVMEmailStmt            *sql.Stmt
 	drawInviteCodeFromPoolStmt                 *sql.Stmt
 	getAccountStmt                             *sql.Stmt
@@ -2204,6 +2301,7 @@ type Queries struct {
 	getAllBoxShareLinksByBoxIDStmt             *sql.Stmt
 	getAllUserEventsStmt                       *sql.Stmt
 	getAndIncrementNextSSHKeyNumberStmt        *sql.Stmt
+	getApprovedTemplateByShortnameStmt         *sql.Stmt
 	getAuthCookieInfoStmt                      *sql.Stmt
 	getAuthTokenInfoStmt                       *sql.Stmt
 	getBoxAccessibleByTeamOwnerStmt            *sql.Stmt
@@ -2278,6 +2376,8 @@ type Queries struct {
 	getTeamForUserStmt                         *sql.Stmt
 	getTeamMemberByEmailStmt                   *sql.Stmt
 	getTeamMembersStmt                         *sql.Stmt
+	getTemplateByIDStmt                        *sql.Stmt
+	getTemplateBySlugStmt                      *sql.Stmt
 	getUserBillingExemptionStmt                *sql.Stmt
 	getUserBillingStatusStmt                   *sql.Stmt
 	getUserByEmailStmt                         *sql.Stmt
@@ -2291,6 +2391,7 @@ type Queries struct {
 	getUserNewVMCreationDisabledStmt           *sql.Stmt
 	getUserPlanCategoryStmt                    *sql.Stmt
 	getUserRootSupportStmt                     *sql.Stmt
+	getUserTemplateRatingStmt                  *sql.Stmt
 	getUserWithDetailsStmt                     *sql.Stmt
 	getUserWithSSHKeyStmt                      *sql.Stmt
 	grantBillingUpgradeBonusOnceStmt           *sql.Stmt
@@ -2324,6 +2425,7 @@ type Queries struct {
 	insertTagResolutionHistoryStmt             *sql.Stmt
 	insertTeamStmt                             *sql.Stmt
 	insertTeamMemberStmt                       *sql.Stmt
+	insertTemplateStmt                         *sql.Stmt
 	insertUserStmt                             *sql.Stmt
 	isBoxSharedWithUserTeamStmt                *sql.Stmt
 	isEmailBouncedStmt                         *sql.Stmt
@@ -2334,8 +2436,10 @@ type Queries struct {
 	listAllBoxesWithOwnerStmt                  *sql.Stmt
 	listAllInviteCodesWithEmailsStmt           *sql.Stmt
 	listAllTeamsStmt                           *sql.Stmt
+	listAllTemplatesStmt                       *sql.Stmt
 	listAllUserLLMCreditsStmt                  *sql.Stmt
 	listAllUsersStmt                           *sql.Stmt
+	listApprovedTemplatesStmt                  *sql.Stmt
 	listBoxIDsForUserStmt                      *sql.Stmt
 	listEmailBouncesStmt                       *sql.Stmt
 	listEmailQualityBypassStmt                 *sql.Stmt
@@ -2344,6 +2448,7 @@ type Queries struct {
 	listIPShardsForUserStmt                    *sql.Stmt
 	listLatitudeIPShardsStmt                   *sql.Stmt
 	listTeamBoxesForOwnerStmt                  *sql.Stmt
+	listTemplatesByAuthorStmt                  *sql.Stmt
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
 	listUnusedSystemInviteCodesStmt            *sql.Stmt
 	markPendingTeamInviteAcceptedStmt          *sql.Stmt
@@ -2387,6 +2492,8 @@ type Queries struct {
 	updateTagResolutionDigestStmt              *sql.Stmt
 	updateTeamLimitsStmt                       *sql.Stmt
 	updateTeamMemberRoleStmt                   *sql.Stmt
+	updateTemplateStmt                         *sql.Stmt
+	updateTemplateStatusStmt                   *sql.Stmt
 	updateUserLLMAvailableCreditStmt           *sql.Stmt
 	upsertHLLSketchStmt                        *sql.Stmt
 	upsertIPShardStmt                          *sql.Stmt
@@ -2394,6 +2501,7 @@ type Queries struct {
 	upsertMobilePendingVMStmt                  *sql.Stmt
 	upsertSSHHostKeyStmt                       *sql.Stmt
 	upsertTagResolutionStmt                    *sql.Stmt
+	upsertTemplateRatingStmt                   *sql.Stmt
 	upsertUserDefaultNewVMEmailStmt            *sql.Stmt
 	upsertUserLLMCreditStmt                    *sql.Stmt
 	useCreditsStmt                             *sql.Stmt
@@ -2461,6 +2569,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteSSHKeyForUserStmt:                    q.deleteSSHKeyForUserStmt,
 		deleteTagResolutionStmt:                    q.deleteTagResolutionStmt,
 		deleteTeamMemberStmt:                       q.deleteTeamMemberStmt,
+		deleteTemplateStmt:                         q.deleteTemplateStmt,
 		deleteUserDefaultNewVMEmailStmt:            q.deleteUserDefaultNewVMEmailStmt,
 		drawInviteCodeFromPoolStmt:                 q.drawInviteCodeFromPoolStmt,
 		getAccountStmt:                             q.getAccountStmt,
@@ -2469,6 +2578,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAllBoxShareLinksByBoxIDStmt:             q.getAllBoxShareLinksByBoxIDStmt,
 		getAllUserEventsStmt:                       q.getAllUserEventsStmt,
 		getAndIncrementNextSSHKeyNumberStmt:        q.getAndIncrementNextSSHKeyNumberStmt,
+		getApprovedTemplateByShortnameStmt:         q.getApprovedTemplateByShortnameStmt,
 		getAuthCookieInfoStmt:                      q.getAuthCookieInfoStmt,
 		getAuthTokenInfoStmt:                       q.getAuthTokenInfoStmt,
 		getBoxAccessibleByTeamOwnerStmt:            q.getBoxAccessibleByTeamOwnerStmt,
@@ -2543,6 +2653,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTeamForUserStmt:                         q.getTeamForUserStmt,
 		getTeamMemberByEmailStmt:                   q.getTeamMemberByEmailStmt,
 		getTeamMembersStmt:                         q.getTeamMembersStmt,
+		getTemplateByIDStmt:                        q.getTemplateByIDStmt,
+		getTemplateBySlugStmt:                      q.getTemplateBySlugStmt,
 		getUserBillingExemptionStmt:                q.getUserBillingExemptionStmt,
 		getUserBillingStatusStmt:                   q.getUserBillingStatusStmt,
 		getUserByEmailStmt:                         q.getUserByEmailStmt,
@@ -2556,6 +2668,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserNewVMCreationDisabledStmt:           q.getUserNewVMCreationDisabledStmt,
 		getUserPlanCategoryStmt:                    q.getUserPlanCategoryStmt,
 		getUserRootSupportStmt:                     q.getUserRootSupportStmt,
+		getUserTemplateRatingStmt:                  q.getUserTemplateRatingStmt,
 		getUserWithDetailsStmt:                     q.getUserWithDetailsStmt,
 		getUserWithSSHKeyStmt:                      q.getUserWithSSHKeyStmt,
 		grantBillingUpgradeBonusOnceStmt:           q.grantBillingUpgradeBonusOnceStmt,
@@ -2589,6 +2702,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertTagResolutionHistoryStmt:             q.insertTagResolutionHistoryStmt,
 		insertTeamStmt:                             q.insertTeamStmt,
 		insertTeamMemberStmt:                       q.insertTeamMemberStmt,
+		insertTemplateStmt:                         q.insertTemplateStmt,
 		insertUserStmt:                             q.insertUserStmt,
 		isBoxSharedWithUserTeamStmt:                q.isBoxSharedWithUserTeamStmt,
 		isEmailBouncedStmt:                         q.isEmailBouncedStmt,
@@ -2599,8 +2713,10 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAllBoxesWithOwnerStmt:                  q.listAllBoxesWithOwnerStmt,
 		listAllInviteCodesWithEmailsStmt:           q.listAllInviteCodesWithEmailsStmt,
 		listAllTeamsStmt:                           q.listAllTeamsStmt,
+		listAllTemplatesStmt:                       q.listAllTemplatesStmt,
 		listAllUserLLMCreditsStmt:                  q.listAllUserLLMCreditsStmt,
 		listAllUsersStmt:                           q.listAllUsersStmt,
+		listApprovedTemplatesStmt:                  q.listApprovedTemplatesStmt,
 		listBoxIDsForUserStmt:                      q.listBoxIDsForUserStmt,
 		listEmailBouncesStmt:                       q.listEmailBouncesStmt,
 		listEmailQualityBypassStmt:                 q.listEmailQualityBypassStmt,
@@ -2609,6 +2725,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listIPShardsForUserStmt:                    q.listIPShardsForUserStmt,
 		listLatitudeIPShardsStmt:                   q.listLatitudeIPShardsStmt,
 		listTeamBoxesForOwnerStmt:                  q.listTeamBoxesForOwnerStmt,
+		listTemplatesByAuthorStmt:                  q.listTemplatesByAuthorStmt,
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
 		listUnusedSystemInviteCodesStmt:            q.listUnusedSystemInviteCodesStmt,
 		markPendingTeamInviteAcceptedStmt:          q.markPendingTeamInviteAcceptedStmt,
@@ -2652,6 +2769,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateTagResolutionDigestStmt:              q.updateTagResolutionDigestStmt,
 		updateTeamLimitsStmt:                       q.updateTeamLimitsStmt,
 		updateTeamMemberRoleStmt:                   q.updateTeamMemberRoleStmt,
+		updateTemplateStmt:                         q.updateTemplateStmt,
+		updateTemplateStatusStmt:                   q.updateTemplateStatusStmt,
 		updateUserLLMAvailableCreditStmt:           q.updateUserLLMAvailableCreditStmt,
 		upsertHLLSketchStmt:                        q.upsertHLLSketchStmt,
 		upsertIPShardStmt:                          q.upsertIPShardStmt,
@@ -2659,6 +2778,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertMobilePendingVMStmt:                  q.upsertMobilePendingVMStmt,
 		upsertSSHHostKeyStmt:                       q.upsertSSHHostKeyStmt,
 		upsertTagResolutionStmt:                    q.upsertTagResolutionStmt,
+		upsertTemplateRatingStmt:                   q.upsertTemplateRatingStmt,
 		upsertUserDefaultNewVMEmailStmt:            q.upsertUserDefaultNewVMEmailStmt,
 		upsertUserLLMCreditStmt:                    q.upsertUserLLMCreditStmt,
 		useCreditsStmt:                             q.useCreditsStmt,

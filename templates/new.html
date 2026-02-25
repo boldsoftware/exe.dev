@@ -1,46 +1,76 @@
 {{define "new_content"}}
-<div class="new-view">
-    <div class="form-container">
-        <div class="form-card">
-            <h1 class="form-title">Create a New VM</h1>
-            
-            <form id="create-vm-form" method="POST" action="/create-vm">
-                {{if .InviteCode}}<input type="hidden" name="invite" value="{{.InviteCode}}">{{end}}
-                <div class="form-group">
-                    <label for="hostname" class="form-label">Name</label>
-                    <div class="form-input-group">
-                        <input
-                            type="text"
-                            id="hostname"
-                            name="hostname"
-                            class="form-input form-input-large"
-                            placeholder="{{.HostnameSuggestion}}"
-                            value="{{.HostnameSuggestion}}"
-                            required
-                            autocomplete="off"
-                            autocapitalize="none"
-                        />
-                        <span class="form-input-suffix form-input-suffix-large">.{{.BoxHost}}</span>
-                    </div>
-                    <div id="hostname-hint" class="form-hint"></div>
-                </div>
-                
-                <div class="form-group">
-                    <label for="prompt" class="form-label">What do you want to build? <span style="color: #999; font-weight: 400;">(optional)</span></label>
-                    <textarea
-                        id="prompt"
-                        name="prompt"
-                        class="form-input form-textarea"
-                        placeholder="Build a blog..."
-                        rows="4"
-                    >{{.Prompt}}</textarea>
-                </div>
-                
-                <button type="submit" class="form-button" id="create-button" aria-disabled="true">
-                    Create VM
-                </button>
-            </form>
+<div class="new-page">
+    <form id="create-vm-form" method="POST" action="/create-vm"{{if .IdeaSlug}} data-idea="{{.IdeaSlug}}"{{end}}>
+        {{if .InviteCode}}<input type="hidden" name="invite" value="{{.InviteCode}}">{{end}}
+
+        <h1 class="new-title">Create a New VM</h1>
+
+        <div class="form-group">
+            <div class="form-input-group">
+                <input
+                    type="text"
+                    id="hostname"
+                    name="hostname"
+                    class="form-input new-hostname"
+                    placeholder="{{.HostnameSuggestion}}"
+                    value="{{.HostnameSuggestion}}"
+                    required
+                    autocomplete="off"
+                    autocapitalize="none"
+                />
+                <span class="form-input-suffix new-hostname-suffix">.{{.BoxHost}}</span>
+            </div>
+            <div id="hostname-hint" class="form-hint"></div>
         </div>
+
+        <div class="form-group">
+            <div class="prompt-header">
+                <div class="seg-control" id="seg-control">
+                    <button type="button" class="seg-btn active" data-mode="describe">Describe</button>
+                    <button type="button" class="seg-btn" data-mode="templates">Ideas</button>
+                    <div class="seg-indicator"></div>
+                </div>
+            </div>
+            <textarea
+                id="prompt"
+                name="prompt"
+                class="form-input form-textarea new-prompt"
+                placeholder="Build a blog..."
+                rows="4"
+            >{{.Prompt}}</textarea>
+            <div id="template-pill" class="template-pill" style="visibility:hidden">
+                <span class="template-pill-icon"></span>
+                <span class="template-pill-label">Idea:</span>
+                <span class="template-pill-title"></span>
+                <button type="button" class="template-pill-clear" title="Clear template">✕</button>
+            </div>
+        </div>
+
+        <button type="submit" class="form-button" id="create-button" disabled>
+            Create VM
+        </button>
+    </form>
+</div>
+
+<!-- Template Browser Drawer -->
+<div id="template-drawer" class="template-drawer">
+    <div class="drawer-backdrop"></div>
+    <div class="drawer-panel">
+        <div class="drawer-header">
+            <h2>Ideas</h2>
+            <button type="button" class="drawer-close" aria-label="Close">✕</button>
+        </div>
+        <div id="template-sections"></div>
+    </div>
+</div>
+
+<!-- Template Insert Confirmation -->
+<div id="insert-confirm" class="insert-confirm" style="display:none">
+    <span class="insert-confirm-text">Replace prompt with idea?</span>
+    <div class="insert-confirm-actions">
+        <button type="button" class="insert-confirm-btn" data-action="replace">Replace</button>
+        <button type="button" class="insert-confirm-btn" data-action="append">Insert below</button>
+        <button type="button" class="insert-confirm-btn insert-confirm-cancel" data-action="cancel">Cancel</button>
     </div>
 </div>
 {{end}}
@@ -49,41 +79,14 @@
 
 {{define "new_script"}}
 <script>
-    // Placeholder text rotation
-    const placeholders = [
-        'Run a Jupyter notebook...',
-        'Deploy a web app...',
-        'Create an API...',
-        'Launch a game server...',
-        'Build a chatbot...',
-        'Set up CI/CD...',
-        'Set up a database...',
-        'Build a blog...'
-    ];
-    
-    let currentPlaceholderIndex = 0;
     const promptInput = document.getElementById('prompt');
-    
-    function rotatePlaceholder() {
-        if (promptInput.value === '' && document.activeElement !== promptInput) {
-            currentPlaceholderIndex = (currentPlaceholderIndex + 1) % placeholders.length;
-            promptInput.placeholder = placeholders[currentPlaceholderIndex];
-        }
-    }
-    
-    setInterval(rotatePlaceholder, 5000);
-    
+
     // Hostname availability checking
     const hostnameInput = document.getElementById('hostname');
     const hostnameHint = document.getElementById('hostname-hint');
     const createButton = document.getElementById('create-button');
-    const createForm = document.getElementById('create-vm-form');
     
     let checkTimeout;
-
-    function setButtonEnabled(enabled) {
-        createButton.setAttribute('aria-disabled', String(!enabled));
-    }
     
     function setHint(html) {
         // Display toggle forces Safari to repaint after removing animated spinner
@@ -94,19 +97,13 @@
         hostnameHint.style.display = '';
     }
 
-    createForm.addEventListener('submit', function(e) {
-        if (createButton.getAttribute('aria-disabled') === 'true') {
-            e.preventDefault();
-        }
-    });
-
     function checkHostnameAvailability() {
         const hostname = hostnameInput.value.trim();
         
         if (!hostname) {
             hostnameHint.innerHTML = '';
             hostnameHint.className = 'form-hint';
-            setButtonEnabled(false);
+            createButton.disabled = true;
             return;
         }
         
@@ -125,15 +122,15 @@
         .then(data => {
             if (data.valid && data.available) {
                 setHint('');
-                setButtonEnabled(true);
+                createButton.disabled = false;
             } else {
                 setHint('✗ ' + data.message);
-                setButtonEnabled(false);
+                createButton.disabled = true;
             }
         })
         .catch(error => {
             setHint('✗ Error checking availability');
-            setButtonEnabled(false);
+            createButton.disabled = true;
         });
     }
     
@@ -145,6 +142,7 @@
     // Check initial hostname
     checkHostnameAvailability();
 </script>
+<script src="/static/new.js?v=2"></script>
 {{end}}
 
 <!DOCTYPE html>
@@ -153,28 +151,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create a New VM - {{.WebHost}}</title>
-    <link rel="stylesheet" href="/static/topbar.css">
+    <link rel="stylesheet" href="/static/exe.css">
+    {{template "topbar_style" .}}
     <link rel="stylesheet" href="/static/form.css">
     <link rel="stylesheet" href="/static/new.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
         body {
-            background-color: #fafafa;
-            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-            min-height: 100vh;
             display: flex;
             flex-direction: column;
-            overflow-x: hidden;
+            height: 100vh;
+            overflow: hidden;
             align-items: stretch;
-        }
-        @media (prefers-color-scheme: dark) {
-            body {
-                background-color: #111;
-            }
+            background: #fff;
         }
     </style>
 </head>

@@ -22,26 +22,10 @@ import (
 // SSHKnownHostsPath is for https://c2sp.org/well-known-ssh-hosts.
 const SSHKnownHostsPath = "/.well-known/ssh-known-hosts"
 
-// openclawPrompt is a prefilled prompt for exe.new/openclaw.
-var openclawPrompt = `ANTHROPIC_API_KEY=<fill-this-in>
-
-Set up Openclaw (https://openclaw.ai/) on this VM. Openclaw used to be called
-Moltbot and before that Clawdbot, so be aware if the executable or other docs
-still refer to those names. Use the non-interactive and accept-risk flags for
-openclaw onboarding. Add the supplied auth or token as needed. Configure nginx
-to forward from the default port 18789 to the root location on the default
-enabled site config, making sure to enable Websocket support. Pairing is done
-by "openclaw devices list" and "openclaw device approve <request id>". Make
-sure the dashboard shows that Openclaw's health is OK. exe.dev handles forwarding
-from port 8000 to port 80/443 and HTTPS for us, so the final "reachable"
-should be https://<vm-name>.exe.xyz without port specification.`
-
-// ExeNewPathPrompts maps paths on exe.new to pre-filled prompts
-// for the /new page.
-var ExeNewPathPrompts = map[string]string{
-	"/moltbot":  openclawPrompt,
-	"/clawdbot": openclawPrompt,
-	"/openclaw": openclawPrompt,
+// ExeNewAliases maps legacy exe.new paths to idea shortnames.
+var ExeNewAliases = map[string]string{
+	"/moltbot":  "openclaw",
+	"/clawdbot": "openclaw",
 }
 
 // NonProxyRedirect is called from an HTTP handler.
@@ -65,8 +49,9 @@ func NonProxyRedirect(env *stage.Env, r *http.Request) string {
 	}
 
 	// Redirect requests to exe.new to WebHost/new (exe.dev/new).
-	// This is a vanity domain that lets users start a new box from a memorable URL.
-	// Special paths like /openclaw, /moltbot, and /clawdbot redirect with a pre-filled prompt.
+	// exe.new/<shortname> redirects with ?idea=<shortname> so /new can
+	// look up the idea template from the database.
+	// Legacy paths like /moltbot and /clawdbot are aliased to their shortname.
 	if hostname == "exe.new" {
 		var target strings.Builder
 		target.WriteString(getScheme(r))
@@ -74,10 +59,20 @@ func NonProxyRedirect(env *stage.Env, r *http.Request) string {
 		target.WriteString(env.WebHost)
 		target.WriteString("/new")
 
+		// Resolve the idea shortname from the path.
+		shortname := ""
+		if p := r.URL.Path; p != "/" && p != "" {
+			if alias, ok := ExeNewAliases[p]; ok {
+				shortname = alias
+			} else {
+				shortname = strings.TrimPrefix(p, "/")
+			}
+		}
+
 		addedQuery := false
-		if prompt := ExeNewPathPrompts[r.URL.Path]; prompt != "" {
-			target.WriteString("?prompt=")
-			target.WriteString(url.QueryEscape(prompt))
+		if shortname != "" {
+			target.WriteString("?idea=")
+			target.WriteString(url.QueryEscape(shortname))
 			addedQuery = true
 		}
 

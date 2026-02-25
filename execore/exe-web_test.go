@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -542,11 +541,11 @@ func TestExeNewRedirectsToWebHostNew(t *testing.T) {
 			wantLocation: "http://" + s.env.WebHost + "/new",
 		},
 		{
-			name:         "exe.new with path still redirects to /new",
+			name:         "exe.new with path redirects with idea shortname",
 			host:         "exe.new",
 			path:         "/foo",
 			wantRedirect: true,
-			wantLocation: "http://" + s.env.WebHost + "/new",
+			wantLocation: "http://" + s.env.WebHost + "/new?idea=foo",
 		},
 		{
 			name:         "exe.new with port redirects",
@@ -556,46 +555,46 @@ func TestExeNewRedirectsToWebHostNew(t *testing.T) {
 			wantLocation: "http://" + s.env.WebHost + "/new",
 		},
 		{
-			name:         "exe.new/moltbot redirects with prompt",
+			name:         "exe.new/moltbot redirects with idea (alias)",
 			host:         "exe.new",
 			path:         "/moltbot",
 			wantRedirect: true,
-			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeweb.ExeNewPathPrompts["/moltbot"]),
+			wantLocation: "http://" + s.env.WebHost + "/new?idea=openclaw",
 		},
 		{
-			name:         "exe.new/clawdbot redirects with prompt",
+			name:         "exe.new/clawdbot redirects with idea (alias)",
 			host:         "exe.new",
 			path:         "/clawdbot",
 			wantRedirect: true,
-			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeweb.ExeNewPathPrompts["/clawdbot"]),
+			wantLocation: "http://" + s.env.WebHost + "/new?idea=openclaw",
 		},
 		{
 			name:         "exe.new/moltbot with invite passes through invite",
 			host:         "exe.new",
 			path:         "/moltbot?invite=TESTCODE",
 			wantRedirect: true,
-			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeweb.ExeNewPathPrompts["/moltbot"]) + "&invite=TESTCODE",
+			wantLocation: "http://" + s.env.WebHost + "/new?idea=openclaw&invite=TESTCODE",
 		},
 		{
 			name:         "exe.new/clawdbot with invite passes through invite",
 			host:         "exe.new",
 			path:         "/clawdbot?invite=TESTCODE",
 			wantRedirect: true,
-			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeweb.ExeNewPathPrompts["/clawdbot"]) + "&invite=TESTCODE",
+			wantLocation: "http://" + s.env.WebHost + "/new?idea=openclaw&invite=TESTCODE",
 		},
 		{
-			name:         "exe.new/openclaw redirects with prompt",
+			name:         "exe.new/openclaw redirects with idea",
 			host:         "exe.new",
 			path:         "/openclaw",
 			wantRedirect: true,
-			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeweb.ExeNewPathPrompts["/openclaw"]),
+			wantLocation: "http://" + s.env.WebHost + "/new?idea=openclaw",
 		},
 		{
 			name:         "exe.new/openclaw with invite passes through invite",
 			host:         "exe.new",
 			path:         "/openclaw?invite=TESTCODE",
 			wantRedirect: true,
-			wantLocation: "http://" + s.env.WebHost + "/new?prompt=" + url.QueryEscape(exeweb.ExeNewPathPrompts["/openclaw"]) + "&invite=TESTCODE",
+			wantLocation: "http://" + s.env.WebHost + "/new?idea=openclaw&invite=TESTCODE",
 		},
 		{
 			name:         "exe.new with invite but no prompt",

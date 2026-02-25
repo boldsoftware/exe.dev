@@ -100,6 +100,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/teams/remove-member", s.handleDebugTeamRemoveMember)
 	mux.HandleFunc("POST /debug/teams/update-role", s.handleDebugTeamUpdateRole)
 	mux.HandleFunc("POST /debug/teams/set-limits", s.handleDebugTeamSetLimits)
+	mux.HandleFunc("GET /debug/ideas", s.handleDebugTemplateReview)
+	mux.HandleFunc("POST /debug/ideas", s.handleDebugTemplateReviewPost)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)

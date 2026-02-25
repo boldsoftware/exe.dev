@@ -368,6 +368,15 @@ type TeamMember struct {
 	CreatedAt string `db:"created_at" json:"created_at"`
 }
 
+type TemplateRating struct {
+	ID         int64      `db:"id" json:"id"`
+	TemplateID int64      `db:"template_id" json:"template_id"`
+	UserID     string     `db:"user_id" json:"user_id"`
+	Rating     int64      `db:"rating" json:"rating"`
+	CreatedAt  *time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt  *time.Time `db:"updated_at" json:"updated_at"`
+}
+
 type User struct {
 	UserID                 string     `db:"user_id" json:"user_id"`
 	Email                  string     `db:"email" json:"email"`
@@ -420,6 +429,23 @@ type UserLlmCredit struct {
 	CreatedAt                  *time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt                  *time.Time `db:"updated_at" json:"updated_at"`
 	BillingUpgradeBonusGranted int64      `db:"billing_upgrade_bonus_granted" json:"billing_upgrade_bonus_granted"`
+}
+
+type VmTemplate struct {
+	ID               int64      `db:"id" json:"id"`
+	Slug             string     `db:"slug" json:"slug"`
+	Title            string     `db:"title" json:"title"`
+	ShortDescription string     `db:"short_description" json:"short_description"`
+	Category         string     `db:"category" json:"category"`
+	Prompt           string     `db:"prompt" json:"prompt"`
+	IconURL          string     `db:"icon_url" json:"icon_url"`
+	ScreenshotURL    string     `db:"screenshot_url" json:"screenshot_url"`
+	AuthorUserID     *string    `db:"author_user_id" json:"author_user_id"`
+	Status           string     `db:"status" json:"status"`
+	Featured         bool       `db:"featured" json:"featured"`
+	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt        *time.Time `db:"updated_at" json:"updated_at"`
+	VMShortname      string     `db:"vm_shortname" json:"vm_shortname"`
 }
 
 type Waitlist struct {

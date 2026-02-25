@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ideas - {{.WebHost}}</title>
+    <link rel="stylesheet" href="/static/exe.css">
+    {{template "topbar_style" .}}
+    <link rel="stylesheet" href="/static/form.css">
+    <link rel="stylesheet" href="/static/idea.css?v=2">
+</head>
+<body>
+    {{template "topbar" .}}
+    <div class="idea-page">
+        <div class="idea-hero">
+            <h1 class="idea-hero-title">You can build a thousand things on exe.dev.</h1>
+            <p class="idea-hero-subtitle">Here are some ideas to get you started:</p>
+            <div class="idea-search-wrap">
+                <svg class="idea-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="idea-search" class="idea-search" placeholder="Search ideas..." autocomplete="off" />
+            </div>
+        </div>
+        <div id="idea-grid" class="idea-grid"></div>
+        <div id="idea-empty" class="idea-empty" style="display:none">
+            No ideas match your search.
+        </div>
+    </div>
+
+    <!-- Idea detail modal -->
+    <div id="idea-modal" class="idea-modal">
+        <div class="idea-modal-backdrop"></div>
+        <div class="idea-modal-panel">
+            <button type="button" class="idea-modal-close" aria-label="Close">← Back</button>
+            <div class="idea-modal-icon" id="modal-icon"></div>
+            <h2 class="idea-modal-title" id="modal-title"></h2>
+            <p class="idea-modal-desc" id="modal-desc"></p>
+            <div class="idea-modal-category" id="modal-category"></div>
+            <label class="idea-modal-prompt-label">Prompt</label>
+            <textarea class="idea-modal-prompt" id="modal-prompt" readonly></textarea>
+            <a id="modal-use-btn" href="/new" class="idea-modal-use-btn">Use this idea</a>
+        </div>
+    </div>
+
+    <script src="/static/idea.js?v=3"></script>
+</body>
+</html>
