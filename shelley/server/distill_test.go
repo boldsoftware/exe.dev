@@ -23,7 +23,7 @@ func TestDistillConversation(t *testing.T) {
 	sourceConvID := h.convID
 
 	// Now call the distill endpoint
-	reqBody := ContinueConversationRequest{
+	reqBody := DistillConversationRequest{
 		SourceConversationID: sourceConvID,
 		Model:                "predictable",
 	}
@@ -135,7 +135,7 @@ func TestDistillConversation(t *testing.T) {
 func TestDistillConversationMissingSource(t *testing.T) {
 	h := NewTestHarness(t)
 
-	reqBody := ContinueConversationRequest{
+	reqBody := DistillConversationRequest{
 		SourceConversationID: "nonexistent-id",
 		Model:                "predictable",
 	}
@@ -154,7 +154,7 @@ func TestDistillConversationMissingSource(t *testing.T) {
 func TestDistillConversationEmptySource(t *testing.T) {
 	h := NewTestHarness(t)
 
-	reqBody := ContinueConversationRequest{
+	reqBody := DistillConversationRequest{
 		SourceConversationID: "",
 	}
 	body, _ := json.Marshal(reqBody)
@@ -322,7 +322,7 @@ func TestDistillContentSentToLLM(t *testing.T) {
 	sourceConvID := h.convID
 
 	// Distill the source conversation
-	reqBody := ContinueConversationRequest{
+	reqBody := DistillConversationRequest{
 		SourceConversationID: sourceConvID,
 		Model:                "predictable",
 	}
@@ -441,7 +441,7 @@ func TestDistillContentSentToLLM_WithEarlySSE(t *testing.T) {
 	sourceConvID := h.convID
 
 	// Distill the source conversation
-	reqBody := ContinueConversationRequest{
+	reqBody := DistillConversationRequest{
 		SourceConversationID: sourceConvID,
 		Model:                "predictable",
 	}
@@ -574,7 +574,7 @@ func TestDistillStatusUpdateReachesSSESubscriber(t *testing.T) {
 	sourceConvID := h.convID
 
 	// Distill the source conversation
-	reqBody := ContinueConversationRequest{
+	reqBody := DistillConversationRequest{
 		SourceConversationID: sourceConvID,
 		Model:                "predictable",
 	}

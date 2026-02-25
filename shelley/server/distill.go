@@ -56,6 +56,13 @@ EXCISE: dead-end debugging (keep only final fix), verbose tool output (keep only
 
 Compression: recent activity (~last 20%) gets more detail; older activity compresses to conclusions. Short conversations (< 20 messages) preserve more. Long conversations (> 100 messages) aggressively compress old activity. Total output: 500-2000 words. When in doubt, keep it.`
 
+// DistillConversationRequest represents the request to distill a conversation
+type DistillConversationRequest struct {
+	SourceConversationID string `json:"source_conversation_id"`
+	Model                string `json:"model,omitempty"`
+	Cwd                  string `json:"cwd,omitempty"`
+}
+
 // handleDistillConversation handles POST /api/conversations/distill
 // Creates a new conversation and uses an LLM to distill the source conversation
 // into an operational summary as the initial user message.
@@ -67,7 +74,7 @@ func (s *Server) handleDistillConversation(w http.ResponseWriter, r *http.Reques
 
 	ctx := r.Context()
 
-	var req ContinueConversationRequest
+	var req DistillConversationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return

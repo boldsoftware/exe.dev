@@ -44,7 +44,6 @@ interface ContextUsageBarProps {
   maxContextTokens: number;
   conversationId?: string | null;
   modelName?: string;
-  onContinueConversation?: () => void;
   onDistillConversation?: () => void;
 }
 
@@ -53,11 +52,9 @@ function ContextUsageBar({
   maxContextTokens,
   conversationId,
   modelName,
-  onContinueConversation,
   onDistillConversation,
 }: ContextUsageBarProps) {
   const [showPopup, setShowPopup] = useState(false);
-  const [continuing, setContinuing] = useState(false);
   const [distilling, setDistilling] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
   const hasAutoOpenedRef = useRef<string | null>(null);
@@ -123,17 +120,6 @@ function ContextUsageBar({
     }
   }, [showPopup]);
 
-  const handleContinue = async () => {
-    if (continuing || !onContinueConversation) return;
-    setContinuing(true);
-    try {
-      await onContinueConversation();
-      setShowPopup(false);
-    } finally {
-      setContinuing(false);
-    }
-  };
-
   const handleDistill = async () => {
     if (distilling || !onDistillConversation) return;
     setDistilling(true);
@@ -178,42 +164,24 @@ function ContextUsageBar({
               For best results, start a new conversation.
             </div>
           )}
-          {onContinueConversation && conversationId && (
+          {onDistillConversation && conversationId && (
             <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
               <button
-                onClick={handleContinue}
-                disabled={continuing || distilling}
+                onClick={handleDistill}
+                disabled={distilling}
                 style={{
                   padding: "4px 8px",
                   backgroundColor: "var(--blue-text)",
                   color: "white",
                   border: "none",
                   borderRadius: "4px",
-                  cursor: continuing || distilling ? "not-allowed" : "pointer",
+                  cursor: distilling ? "not-allowed" : "pointer",
                   fontSize: "12px",
-                  opacity: continuing || distilling ? 0.7 : 1,
+                  opacity: distilling ? 0.7 : 1,
                 }}
               >
-                {continuing ? "Continuing..." : "Continue"}
+                {distilling ? "Distilling..." : "Continue"}
               </button>
-              {onDistillConversation && (
-                <button
-                  onClick={handleDistill}
-                  disabled={continuing || distilling}
-                  style={{
-                    padding: "4px 8px",
-                    backgroundColor: "var(--success-text, #22c55e)",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    cursor: continuing || distilling ? "not-allowed" : "pointer",
-                    fontSize: "12px",
-                    opacity: continuing || distilling ? 0.7 : 1,
-                  }}
-                >
-                  {distilling ? "Distilling..." : "Distill & continue"}
-                </button>
-              )}
             </div>
           )}
         </div>
@@ -489,11 +457,6 @@ interface ChatInterfaceProps {
   onConversationListUpdate?: (update: ConversationListUpdate) => void;
   onConversationStateUpdate?: (state: ConversationStateUpdate) => void;
   onFirstMessage?: (message: string, model: string, cwd?: string) => Promise<void>;
-  onContinueConversation?: (
-    sourceConversationId: string,
-    model: string,
-    cwd?: string,
-  ) => Promise<void>;
   onDistillConversation?: (
     sourceConversationId: string,
     model: string,
@@ -521,7 +484,6 @@ function ChatInterface({
   onConversationListUpdate,
   onConversationStateUpdate,
   onFirstMessage,
-  onContinueConversation,
   onDistillConversation,
   mostRecentCwd,
   isDrawerCollapsed,
@@ -1335,16 +1297,6 @@ function ChatInterface({
     }
   };
 
-  // Handler to continue conversation in a new one
-  const handleContinueConversation = async () => {
-    if (!conversationId || !onContinueConversation) return;
-    await onContinueConversation(
-      conversationId,
-      selectedModel,
-      currentConversation?.cwd || selectedCwd || undefined,
-    );
-  };
-
   // Handler to distill and continue conversation
   const handleDistillConversation = async () => {
     if (!conversationId || !onDistillConversation) return;
@@ -2087,9 +2039,6 @@ function ChatInterface({
                 }
                 conversationId={conversationId}
                 modelName={selectedModelDisplayName}
-                onContinueConversation={
-                  onContinueConversation ? handleContinueConversation : undefined
-                }
                 onDistillConversation={
                   onDistillConversation ? handleDistillConversation : undefined
                 }
@@ -2140,9 +2089,6 @@ function ChatInterface({
                 }
                 conversationId={conversationId}
                 modelName={selectedModelDisplayName}
-                onContinueConversation={
-                  onContinueConversation ? handleContinueConversation : undefined
-                }
                 onDistillConversation={
                   onDistillConversation ? handleDistillConversation : undefined
                 }
