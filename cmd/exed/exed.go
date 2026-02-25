@@ -51,7 +51,7 @@ func run() error {
 	flag.String("gateway", "", "unused")
 	openBrowser := flag.Bool("open", false, "Open web browser to HTTP server (local/test only)")
 	profilePath := flag.String("profile", "", "Enable CPU profiling for 30 seconds, saving to /tmp/exed-profile-<timestamp>.prof or specified path")
-	startExelet := flag.Bool("start-exelet", false, "Build and start exelet on lima-exe-ctr (local/test only)")
+	startExelet := flag.Bool("start-exelet", false, "Build and start exelet locally or on lima-exe-ctr (local/test only)")
 	multiExelet := flag.Bool("multi-exelet", false, "with -start-exelet, also start exelet on lima-exe-ctr-tests; may interact badly with concurrent automated tests")
 	enableExeletStorageReplication := flag.Bool("enable-exelet-storage-replication", false, "with -multi-exelet, enable storage replication from exe-ctr to exe-ctr-tests")
 	startMetricsd := flag.Bool("start-metricsd", false, "with -start-exelet, also start metricsd locally and configure exelet to send metrics")
@@ -86,6 +86,11 @@ func run() error {
 	// -multi-exelet requires -start-exelet
 	if *multiExelet && !*startExelet {
 		return fmt.Errorf("-multi-exelet requires -start-exelet")
+	}
+
+	// -multi-exelet is only supported on Darwin (Lima VMs)
+	if *multiExelet && runtime.GOOS != "darwin" {
+		return fmt.Errorf("-multi-exelet is only supported on macOS (requires Lima VMs)")
 	}
 
 	// -enable-exelet-storage-replication requires -multi-exelet (needs two hosts)
@@ -132,17 +137,27 @@ func run() error {
 			slog.Info("metricsd started", "url", metricsdURL)
 		}
 
-		addr, gw, cleanupForwarder, err := startExeletsRemote(env, *httpAddr, *multiExelet, *enableExeletStorageReplication, metricsdURL)
-		if err != nil {
-			return fmt.Errorf("failed to start exelets: %w", err)
+		if runtime.GOOS == "linux" {
+			addr, cleanup, err := startExeletsLocal(env, *httpAddr, metricsdURL)
+			if err != nil {
+				return fmt.Errorf("failed to start local exelet: %w", err)
+			}
+			if cleanup != nil {
+				defer cleanup()
+			}
+			slog.Info("exelet started successfully", "address", addr)
+			*exeletAddresses = addr
+		} else {
+			addr, gw, cleanupForwarder, err := startExeletsRemote(env, *httpAddr, *multiExelet, *enableExeletStorageReplication, metricsdURL)
+			if err != nil {
+				return fmt.Errorf("failed to start exelets: %w", err)
+			}
+			if cleanupForwarder != nil {
+				defer cleanupForwarder()
+			}
+			slog.Info("exelets started successfully", "addresses", addr, "gateway", gw)
+			*exeletAddresses = addr
 		}
-		if cleanupForwarder != nil {
-			defer cleanupForwarder()
-		}
-		slog.Info("exelets started successfully", "addresses", addr, "gateway", gw)
-
-		// Set the exelet-addresses
-		*exeletAddresses = addr
 	}
 
 	// Start CPU profiling if requested
