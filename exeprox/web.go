@@ -406,7 +406,6 @@ func (wp *WebProxy) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate
 	}
 
 	cert, err := wp.certManager.GetCertificate(hello)
-
 	if err != nil {
 		wp.lg().WarnContext(hello.Context(), "getting certificate failed", "serverName", hello.ServerName, "error", err)
 	}

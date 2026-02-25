@@ -288,7 +288,6 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 	}
 
 	cert, err := s.certManager.GetCertificate(hello)
-
 	if err != nil {
 		s.slog().WarnContext(hello.Context(), "getting certificate failed", "serverName", hello.ServerName, "error", err)
 	}
