@@ -337,9 +337,10 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		{
 			Name:              "ssh",
 			Description:       "SSH into a VM",
-			Usage:             "ssh <vmname> [command...]",
+			Usage:             "ssh [-l user] [user@]vmname [command...]",
 			Handler:           ss.handleSSHCommand,
 			HasPositionalArgs: true,
+			RawArgs:           true,
 			CompleterFunc:     ss.completeBoxNames,
 		},
 		{
@@ -1302,23 +1303,71 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 	if cc.SSHSession == nil {
 		return cc.Errorf("ssh command requires an SSH session")
 	}
-	if len(cc.Args) < 1 {
-		return cc.Errorf("usage: ssh <vmname> [command...]")
+
+	args := cc.Args
+	if len(args) == 0 {
+		return cc.Errorf("usage: ssh [-l user] [user@]vmname [command...]")
 	}
 
-	name := cc.Args[0]
-	cmdArgs := cc.Args[1:]
+	sshUser := ""
+	for len(args) > 0 {
+		arg := args[0]
+		switch {
+		case arg == "-l":
+			if len(args) < 2 {
+				return cc.Errorf("usage: ssh [-l user] [user@]vmname [command...]")
+			}
+			sshUser = args[1]
+			args = args[2:]
+		case strings.HasPrefix(arg, "-l"):
+			// Support -lroot as shorthand for -l root.
+			if len(arg) == 2 {
+				return cc.Errorf("usage: ssh [-l user] [user@]vmname [command...]")
+			}
+			sshUser = arg[2:]
+			args = args[1:]
+		default:
+			goto doneParsingSSHFlags
+		}
+	}
 
-	// Trim the @host if present and validate it
+doneParsingSSHFlags:
+	if len(args) < 1 {
+		return cc.Errorf("usage: ssh [-l user] [user@]vmname [command...]")
+	}
+
+	name := args[0]
+	cmdArgs := args[1:]
+
+	// Trim the @host if present and validate it. Also support user@vmname.
 	if _, found := strings.CutPrefix(name, "@"); found {
 		// If they typed just @host with no boxname
-		return cc.Errorf("usage: ssh <vmname> [command...]")
-	} else if boxName, host, found := strings.Cut(name, "@"); found {
-		// Format: boxname@host
-		if host != ss.server.env.BoxHost {
-			return cc.Errorf("unknown host %q; expected %s", host, ss.server.env.BoxHost)
+		return cc.Errorf("usage: ssh [-l user] [user@]vmname [command...]")
+	} else if lhs, rhs, found := strings.Cut(name, "@"); found {
+		// Format: user@boxname, boxname@host, or user@boxname.host.
+		normalized := ss.normalizeBoxName(rhs)
+		if normalized != rhs {
+			// user@boxname.host
+			if lhs == "" {
+				return cc.Errorf("usage: ssh [-l user] [user@]vmname [command...]")
+			}
+			if sshUser == "" {
+				sshUser = lhs
+			}
+			name = normalized
+		} else if rhs == ss.server.env.BoxHost {
+			// boxname@host
+			name = lhs
+		} else {
+			// user@boxname
+			if lhs == "" {
+				return cc.Errorf("usage: ssh [-l user] [user@]vmname [command...]")
+			}
+			if sshUser == "" {
+				sshUser = lhs
+			}
+			name = rhs
 		}
-		name = boxName
 	}
 
 	// Also handle boxname.host format (e.g., "connx.exe.xyz")
@@ -1341,12 +1390,17 @@ func (ss *SSHServer) handleSSHCommand(ctx context.Context, cc *exemenu.CommandCo
 		return fmt.Errorf("failed to parse SSH key: %w", err)
 	}
 
+	boxSSHUser := *box.SSHUser
+	if sshUser != "" {
+		boxSSHUser = sshUser
+	}
+
 	sshHost := exeweb.BoxSSHHost(ss.server.slog(), box.Ctrhost)
 	sshAddr := fmt.Sprintf("%s:%d", sshHost, *box.SSHPort)
-	slog.InfoContext(ctx, "ssh command connecting to box", "addr", sshAddr, "user", *box.SSHUser, "ctrhost", box.Ctrhost)
+	slog.InfoContext(ctx, "ssh command connecting to box", "addr", sshAddr, "user", boxSSHUser, "ctrhost", box.Ctrhost)
 
 	sshConfig := &ssh.ClientConfig{
-		User: *box.SSHUser,
+		User: boxSSHUser,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(sshSigner),
 		},

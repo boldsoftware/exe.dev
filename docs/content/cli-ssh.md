@@ -13,6 +13,6 @@ SSH into a VM
 ## Usage
 
 ```
-ssh <vmname> [command...]
+ssh [-l user] [user@]vmname [command...]
 ```
 

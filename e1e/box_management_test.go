@@ -166,6 +166,16 @@ func TestVanillaBox(t *testing.T) {
 		pty.SendLine("ssh " + boxName + " echo hello world")
 		pty.Want("hello world")
 		pty.WantPrompt()
+
+		// Support overriding user via user@vmname.
+		pty.SendLine("ssh root@" + boxName + " whoami")
+		pty.Want("root")
+		pty.WantPrompt()
+
+		// Support overriding user via -luser (including -lroot shorthand).
+		pty.SendLine("ssh -lroot " + boxName + " whoami")
+		pty.Want("root")
+		pty.WantPrompt()
 	})
 
 	t.Run("docker", func(t *testing.T) {
