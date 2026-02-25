@@ -181,7 +181,7 @@ function ContextUsageBar({
                   opacity: distilling ? 0.7 : 1,
                 }}
               >
-                {distilling ? "Distilling..." : "Continue"}
+                {distilling ? "Distilling..." : "Distill & Continue in New Conversation"}
               </button>
             </div>
           )}
