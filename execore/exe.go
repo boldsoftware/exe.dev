@@ -59,6 +59,7 @@ import (
 	"exe.dev/pow"
 	"exe.dev/publicips"
 	"exe.dev/region"
+	securitypkg "exe.dev/security"
 	"exe.dev/sqlite"
 	"exe.dev/sshkey"
 	"exe.dev/sshpool2"
@@ -346,7 +347,8 @@ type Server struct {
 	hllTracker      *hll.Tracker
 	hllCollector    *hll.Collector
 
-	docs *docspkg.Handler
+	docs     *docspkg.Handler
+	security *securitypkg.Handler
 
 	// HTML templates (parsed at startup)
 	templates *template.Template
@@ -921,6 +923,13 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 	docsHandler := docspkg.NewHandler(docsStore, cfg.Env.ShowHiddenDocs)
 
+	securityStore, err := securitypkg.Load(true)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("loading security bulletins: %w", err)
+	}
+	securityHandler := securitypkg.NewHandler(securityStore, false)
+
 	// Parse all HTML templates at startup
 	tmpl, err := templatespkg.Parse()
 	if err != nil {
@@ -962,6 +971,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		hllCollector:          hllCollector,
 
 		docs:      docsHandler,
+		security:  securityHandler,
 		templates: tmpl,
 		stopChan:  make(chan struct{}),
 		log:       slog,

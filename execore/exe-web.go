@@ -498,6 +498,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if s.docs != nil && s.docs.Handle(w, r) {
 			return
 		}
+	} else if path == "/security" || strings.HasPrefix(path, "/security/") {
+		if s.security != nil && s.security.Handle(w, r) {
+			return
+		}
 	}
 
 	switch path {
@@ -596,8 +600,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveStaticFile(w, r, "jobs.html")
 	case "/presskit":
 		s.serveStaticFile(w, r, "presskit.html")
-	case "/security":
-		s.serveStaticFile(w, r, "security.html")
 	case "/shelley":
 		s.serveStaticFile(w, r, "shelley.html")
 	case "/verify-email":

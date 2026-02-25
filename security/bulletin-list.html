@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Security - exe.dev</title>
+    <meta name="description" content="Security bulletins from exe.dev.">
+    <link rel="canonical" href="https://exe.dev/security">
+    <meta property="og:title" content="Security - exe.dev">
+    <meta property="og:description" content="Security bulletins from exe.dev.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://exe.dev/security">
+    <meta property="og:site_name" content="exe.dev">
+    <link rel="stylesheet" href="/static/exe.css" />
+    <link rel="alternate" type="application/atom+xml" title="exe.dev security bulletins" href="https://exe.dev/security/atom.xml" />
+    {{template "topbar_style" .}}
+    <style>
+      body {
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 16px;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+        background: #fafafa;
+        color: #333;
+        margin: 0;
+      }
+
+      main {
+        max-width: 720px;
+        margin: 48px auto 96px;
+        padding: 0 24px;
+      }
+
+      .security-intro {
+        padding: 32px 40px;
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        margin-bottom: 40px;
+      }
+
+      .security-intro h1 {
+        font-size: 36px;
+        font-weight: 400;
+        color: #000;
+        margin: 0 0 16px;
+        line-height: 1.2;
+        letter-spacing: -0.01em;
+      }
+
+      .security-intro p {
+        margin: 0 0 12px;
+        line-height: 1.7;
+        color: #333;
+      }
+
+      .security-intro p:last-child {
+        margin-bottom: 0;
+      }
+
+      .security-intro a {
+        color: #0066cc;
+        text-decoration: underline;
+      }
+
+      .bulletins-header {
+        font-size: 24px;
+        font-weight: 600;
+        color: #000;
+        margin: 0 0 24px;
+      }
+
+      .feed-link {
+        font-size: 13px;
+        color: rgba(0, 0, 0, 0.55);
+        margin-left: 12px;
+        font-weight: 400;
+      }
+
+      .feed-link a {
+        color: inherit;
+        text-decoration: underline;
+      }
+
+      .bulletin-list {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+
+      .bulletin-card {
+        padding: 24px 28px;
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+      }
+
+      .bulletin-card h2 {
+        font-size: 20px;
+        font-weight: 600;
+        margin: 0 0 8px;
+        color: #000;
+      }
+
+      .bulletin-card a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .bulletin-meta {
+        font-size: 13px;
+        color: rgba(0, 0, 0, 0.55);
+        margin-bottom: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: center;
+      }
+
+      .severity {
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-weight: 600;
+      }
+
+      .severity-low { background: #e8f5e9; color: #2e7d32; }
+      .severity-medium { background: #fff3e0; color: #e65100; }
+      .severity-high { background: #fbe9e7; color: #c62828; }
+      .severity-critical { background: #c62828; color: #fff; }
+      .severity-informational { background: #e3f2fd; color: #1565c0; }
+
+      .unpublished-note {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(0, 0, 0, 0.55);
+      }
+
+      .bulletin-description {
+        font-size: 15px;
+        color: rgba(0, 0, 0, 0.75);
+        line-height: 1.6;
+        margin: 0;
+      }
+
+      .no-bulletins {
+        color: rgba(0, 0, 0, 0.55);
+        font-size: 15px;
+      }
+
+      @media (max-width: 768px) {
+        main {
+          margin: 24px auto 72px;
+          padding: 0 16px;
+        }
+        .security-intro { padding: 24px 20px; }
+        .bulletin-card { padding: 20px 16px; }
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body { background: #111; color: #d1d5db; }
+        .security-intro { background: #1f1f1f; border-color: #333; }
+        .security-intro h1 { color: #f3f4f6; }
+        .security-intro p { color: #d1d5db; }
+        .security-intro a { color: #60a5fa; }
+        .bulletins-header { color: #f3f4f6; }
+        .feed-link { color: rgba(255, 255, 255, 0.55); }
+        .bulletin-card { background: #1f1f1f; border-color: #333; }
+        .bulletin-card h2 { color: #f3f4f6; }
+        .bulletin-meta { color: rgba(255, 255, 255, 0.55); }
+        .unpublished-note { color: rgba(255, 255, 255, 0.55); }
+        .bulletin-description { color: rgba(255, 255, 255, 0.75); }
+        .no-bulletins { color: rgba(255, 255, 255, 0.55); }
+        .severity-low { background: #1b5e20; color: #a5d6a7; }
+        .severity-medium { background: #bf360c; color: #ffcc80; }
+        .severity-high { background: #b71c1c; color: #ef9a9a; }
+        .severity-critical { background: #b71c1c; color: #fff; }
+        .severity-informational { background: #0d47a1; color: #90caf9; }
+      }
+    </style>
+  </head>
+  <body>
+    {{template "topbar" .}}
+    <main>
+      <div class="security-intro">
+        <h1>Security</h1>
+        <p>E-mail <a href="mailto:security@exe.dev">security@exe.dev</a> to disclose security vulnerabilities.</p>
+        <p>exe.dev does not have a bounty program.</p>
+      </div>
+
+      <h2 class="bulletins-header">
+        Security Bulletins
+        <span class="feed-link"><a href="/security/atom.xml">Atom feed</a></span>
+      </h2>
+
+      {{if .Entries}}
+      <section class="bulletin-list">
+        {{range .Entries}}
+        <article class="bulletin-card">
+          <a href="/security{{.Path}}">
+            <h2>{{.Title}}</h2>
+            <div class="bulletin-meta">
+              <span>{{.DateString}}</span>
+              {{if .Severity}}<span class="severity severity-{{.Severity}}">{{.Severity}}</span>{{end}}
+              {{if and $.ShowHidden (not .Published)}}
+              <span class="unpublished-note">[unpublished]</span>
+              {{end}}
+            </div>
+            <p class="bulletin-description">{{.Description}}</p>
+          </a>
+        </article>
+        {{end}}
+      </section>
+      {{else}}
+      <p class="no-bulletins">No security bulletins have been published.</p>
+      {{end}}
+    </main>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+{{define "topbar_style"}}
+<link rel="stylesheet" href="/static/topbar.css" />
+{{end}}
+{{define "topbar"}}
+<header>
+  <div class="nav-container">
+    <div class="nav-left">
+      <a href="https://exe.dev" class="nav-logo">
+        <img src="/static/exy.png" alt="exe.dev logo" />
+        exe.dev
+      </a>
+      <div class="nav-links">
+        <a href="https://exe.dev/docs">docs</a>
+        <a href="/security" {{if eq .ActivePage "security"}}class="active"{{end}}>security</a>
+      </div>
+    </div>
+    <div class="nav-right">
+    </div>
+  </div>
+</header>
+{{end}}

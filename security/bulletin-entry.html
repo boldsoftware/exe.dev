@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{.Bulletin.Title}}{{if and .ShowHidden (not .Bulletin.Published)}} [draft]{{end}} - Security - exe.dev</title>
+    <meta name="description" content="{{.Bulletin.Description}}">
+    <link rel="canonical" href="https://exe.dev/security{{.Bulletin.Path}}">
+    <meta property="og:title" content="{{.Bulletin.Title}} - Security - exe.dev">
+    <meta property="og:description" content="{{.Bulletin.Description}}">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://exe.dev/security{{.Bulletin.Path}}">
+    <meta property="og:site_name" content="exe.dev">
+    <meta property="article:published_time" content="{{.Bulletin.DateString}}">
+    <link rel="stylesheet" href="/static/exe.css" />
+    <link rel="alternate" type="application/atom+xml" title="exe.dev security bulletins" href="https://exe.dev/security/atom.xml" />
+    {{template "topbar_style" .}}
+    <style>
+      body {
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 16px;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+        background: #fafafa;
+        color: #333;
+        margin: 0;
+      }
+
+      main {
+        max-width: 720px;
+        margin: 48px auto 96px;
+        padding: 0 24px;
+      }
+
+      .bulletin {
+        padding: 32px 40px;
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+      }
+
+      .bulletin-header {
+        margin-bottom: 32px;
+      }
+
+      .bulletin-title {
+        font-size: 28px;
+        font-weight: 600;
+        color: #000;
+        margin: 0 0 12px;
+        line-height: 1.3;
+      }
+
+      .bulletin-meta {
+        font-size: 13px;
+        color: rgba(0, 0, 0, 0.55);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: center;
+      }
+
+      .severity {
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-weight: 600;
+      }
+
+      .severity-low { background: #e8f5e9; color: #2e7d32; }
+      .severity-medium { background: #fff3e0; color: #e65100; }
+      .severity-high { background: #fbe9e7; color: #c62828; }
+      .severity-critical { background: #c62828; color: #fff; }
+      .severity-informational { background: #e3f2fd; color: #1565c0; }
+
+      .unpublished-note {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(0, 0, 0, 0.55);
+      }
+
+      .bulletin-content {
+        font-size: 15px;
+        line-height: 1.75;
+        color: #333;
+      }
+
+      .bulletin-content h1,
+      .bulletin-content h2,
+      .bulletin-content h3 {
+        margin: 32px 0 12px;
+        font-weight: 600;
+        line-height: 1.3;
+        color: #000;
+      }
+
+      .bulletin-content h1 { font-size: 24px; }
+      .bulletin-content h2 { font-size: 20px; }
+      .bulletin-content h3 { font-size: 17px; }
+
+      .bulletin-content p {
+        margin-bottom: 16px;
+      }
+
+      .bulletin-content ul,
+      .bulletin-content ol {
+        padding-left: 24px;
+        margin-bottom: 16px;
+      }
+
+      .bulletin-content a {
+        color: #0066cc;
+        text-decoration: underline;
+      }
+
+      .bulletin-content pre.code {
+        background: #f6f6f0;
+        padding: 16px;
+        border-radius: 6px;
+        overflow-x: auto;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      .bulletin-content pre.indented {
+        background: transparent;
+        padding: 8px 0;
+        overflow-x: visible;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 15px;
+        line-height: 1.75;
+      }
+      .bulletin-content pre.indented code { font-family: inherit; }
+
+      .bulletin-footer {
+        margin-top: 32px;
+        padding-top: 20px;
+        border-top: 1px solid #e0e0e0;
+      }
+
+      .bulletin-footer a {
+        color: #0066cc;
+        text-decoration: none;
+        font-size: 14px;
+      }
+
+      @media (max-width: 768px) {
+        main {
+          margin: 24px auto 72px;
+          padding: 0 16px;
+        }
+        .bulletin { padding: 24px 20px; }
+        .bulletin-title { font-size: 24px; }
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body { background: #111; color: #d1d5db; }
+        .bulletin { background: #1f1f1f; border-color: #333; }
+        .bulletin-title { color: #f3f4f6; }
+        .bulletin-meta { color: rgba(255, 255, 255, 0.55); }
+        .unpublished-note { color: rgba(255, 255, 255, 0.55); }
+        .bulletin-content { color: #d1d5db; }
+        .bulletin-content h1,
+        .bulletin-content h2,
+        .bulletin-content h3 { color: #f3f4f6; }
+        .bulletin-content a { color: #60a5fa; }
+        .bulletin-content pre.code { background: #1a1a1a; }
+        .bulletin-footer { border-top-color: #333; }
+        .bulletin-footer a { color: #60a5fa; }
+        .severity-low { background: #1b5e20; color: #a5d6a7; }
+        .severity-medium { background: #bf360c; color: #ffcc80; }
+        .severity-high { background: #b71c1c; color: #ef9a9a; }
+        .severity-critical { background: #b71c1c; color: #fff; }
+        .severity-informational { background: #0d47a1; color: #90caf9; }
+      }
+    </style>
+  </head>
+  <body>
+    {{template "topbar" .}}
+    <main>
+      <div class="bulletin">
+        <header class="bulletin-header">
+          <h1 class="bulletin-title">{{.Bulletin.Title}}</h1>
+          <div class="bulletin-meta">
+            <span>{{.Bulletin.DateString}}</span>
+            <span>{{.Bulletin.Author}}</span>
+            {{if .Bulletin.Severity}}<span class="severity severity-{{.Bulletin.Severity}}">{{.Bulletin.Severity}}</span>{{end}}
+            {{if and .ShowHidden (not .Bulletin.Published)}}
+            <span class="unpublished-note">[unpublished]</span>
+            {{end}}
+          </div>
+        </header>
+        <article class="bulletin-content">{{.Bulletin.Content}}</article>
+        <footer class="bulletin-footer">
+          <a href="/security">&larr; All bulletins</a>
+        </footer>
+      </div>
+    </main>
+  </body>
+</html>
