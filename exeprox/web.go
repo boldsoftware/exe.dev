@@ -392,20 +392,26 @@ func (wp *WebProxy) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate
 	if domz.FirstMatch(serverName, wp.env.BoxHost) != "" {
 		cert, err := wp.exeproxData().CertForDomain(hello.Context(), serverName)
 		if strings.Contains(err.Error(), wildcardcert.ErrUnrecognizedDomain.Error()) {
-			wp.lg().Debug("wildcard CertForDomain rejected unrecognized domain", "serverName", serverName, "error", err)
+			wp.lg().DebugContext(hello.Context(), "wildcard CertForDomain rejected unrecognized domain", "serverName", serverName, "error", err)
 		} else if err != nil {
-			wp.lg().Error("wildcard CertForDomain failed; giving up", "serverName", serverName, "error", err)
+			wp.lg().ErrorContext(hello.Context(), "wildcard CertForDomain failed; giving up", "serverName", serverName, "error", err)
 		}
 		return cert, err
 	}
 
 	// 3) WebHost (exe.dev) and custom domains use standard autocert (TLS-ALPN-01)
 	if wp.certManager == nil {
-		wp.lg().Error("no certificate manager configured; was https enabled at startup?", "serverName", serverName)
+		wp.lg().ErrorContext(hello.Context(), "no certificate manager configured; was https enabled at startup?", "serverName", serverName)
 		return nil, fmt.Errorf("no certificate manager configured for %s", serverName)
 	}
 
-	return wp.certManager.GetCertificate(hello)
+	cert, err := wp.certManager.GetCertificate(hello)
+
+	if err != nil {
+		wp.lg().WarnContext(hello.Context(), "getting certificate failed", "serverName", hello.ServerName, "error", err)
+	}
+
+	return cert, err
 }
 
 func (wp *WebProxy) tailscaleCertificate() (*tls.Certificate, error) {

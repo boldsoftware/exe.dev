@@ -272,9 +272,9 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 		if s.wildcardCertManager != nil {
 			cert, err := s.wildcardCertManager.GetCertificate(serverName)
 			if errors.Is(err, wildcardcert.ErrUnrecognizedDomain) {
-				s.slog().Debug("wildcard GetCertificate rejected unrecognized domain", "error", err)
+				s.slog().DebugContext(hello.Context(), "wildcard GetCertificate rejected unrecognized domain", "error", err)
 			} else if err != nil {
-				s.slog().Error("wildcard GetCertificate failed; giving up", "error", err)
+				s.slog().ErrorContext(hello.Context(), "wildcard GetCertificate failed; giving up", "error", err)
 			}
 			return cert, err
 		}
@@ -283,11 +283,17 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 
 	// 3) WebHost (exe.dev) and custom domains use standard autocert (TLS-ALPN-01)
 	if s.certManager == nil {
-		s.slog().Error("no certificate manager configured; was https enabled at startup?", "serverName", serverName)
+		s.slog().ErrorContext(hello.Context(), "no certificate manager configured; was https enabled at startup?", "serverName", serverName)
 		return nil, fmt.Errorf("no certificate manager configured for %s", serverName)
 	}
 
-	return s.certManager.GetCertificate(hello)
+	cert, err := s.certManager.GetCertificate(hello)
+
+	if err != nil {
+		s.slog().WarnContext(hello.Context(), "getting certificate failed", "serverName", hello.ServerName, "error", err)
+	}
+
+	return cert, err
 }
 
 func (s *Server) tailscaleCertificate() (*tls.Certificate, error) {
