@@ -40,6 +40,9 @@
       {{if .Prompt}}
       <input type="hidden" name="prompt" value="{{.Prompt}}">
       {{end}}
+      {{if .Image}}
+      <input type="hidden" name="image" value="{{.Image}}">
+      {{end}}
       {{if .TeamInvite}}
       <input type="hidden" name="team_invite" value="{{.TeamInvite}}">
       {{end}}

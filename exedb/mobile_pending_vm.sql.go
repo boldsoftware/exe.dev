@@ -33,39 +33,41 @@ func (q *Queries) DeleteMobilePendingVMByUserAndHostname(ctx context.Context, ar
 }
 
 const getLatestMobilePendingVMByUser = `-- name: GetLatestMobilePendingVMByUser :one
-SELECT hostname, prompt FROM mobile_pending_vm WHERE user_id = ? ORDER BY created_at DESC LIMIT 1
+SELECT hostname, prompt, vm_image FROM mobile_pending_vm WHERE user_id = ? ORDER BY created_at DESC LIMIT 1
 `
 
 type GetLatestMobilePendingVMByUserRow struct {
 	Hostname string  `db:"hostname" json:"hostname"`
 	Prompt   *string `db:"prompt" json:"prompt"`
+	VMImage  *string `db:"vm_image" json:"vm_image"`
 }
 
 func (q *Queries) GetLatestMobilePendingVMByUser(ctx context.Context, userID string) (GetLatestMobilePendingVMByUserRow, error) {
 	row := q.queryRow(ctx, q.getLatestMobilePendingVMByUserStmt, getLatestMobilePendingVMByUser, userID)
 	var i GetLatestMobilePendingVMByUserRow
-	err := row.Scan(&i.Hostname, &i.Prompt)
+	err := row.Scan(&i.Hostname, &i.Prompt, &i.VMImage)
 	return i, err
 }
 
 const getMobilePendingVMByToken = `-- name: GetMobilePendingVMByToken :one
-SELECT hostname, prompt FROM mobile_pending_vm WHERE token = ?
+SELECT hostname, prompt, vm_image FROM mobile_pending_vm WHERE token = ?
 `
 
 type GetMobilePendingVMByTokenRow struct {
 	Hostname string  `db:"hostname" json:"hostname"`
 	Prompt   *string `db:"prompt" json:"prompt"`
+	VMImage  *string `db:"vm_image" json:"vm_image"`
 }
 
 func (q *Queries) GetMobilePendingVMByToken(ctx context.Context, token string) (GetMobilePendingVMByTokenRow, error) {
 	row := q.queryRow(ctx, q.getMobilePendingVMByTokenStmt, getMobilePendingVMByToken, token)
 	var i GetMobilePendingVMByTokenRow
-	err := row.Scan(&i.Hostname, &i.Prompt)
+	err := row.Scan(&i.Hostname, &i.Prompt, &i.VMImage)
 	return i, err
 }
 
 const upsertMobilePendingVM = `-- name: UpsertMobilePendingVM :exec
-INSERT OR REPLACE INTO mobile_pending_vm (token, user_id, hostname, prompt) VALUES (?, ?, ?, ?)
+INSERT OR REPLACE INTO mobile_pending_vm (token, user_id, hostname, prompt, vm_image) VALUES (?, ?, ?, ?, ?)
 `
 
 type UpsertMobilePendingVMParams struct {
@@ -73,6 +75,7 @@ type UpsertMobilePendingVMParams struct {
 	UserID   string  `db:"user_id" json:"user_id"`
 	Hostname string  `db:"hostname" json:"hostname"`
 	Prompt   *string `db:"prompt" json:"prompt"`
+	VMImage  *string `db:"vm_image" json:"vm_image"`
 }
 
 func (q *Queries) UpsertMobilePendingVM(ctx context.Context, arg UpsertMobilePendingVMParams) error {
@@ -81,6 +84,7 @@ func (q *Queries) UpsertMobilePendingVM(ctx context.Context, arg UpsertMobilePen
 		arg.UserID,
 		arg.Hostname,
 		arg.Prompt,
+		arg.VMImage,
 	)
 	return err
 }

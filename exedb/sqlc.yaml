@@ -50,6 +50,7 @@ sql:
           public_ip: "PublicIP"
           vm_name: "VMName"
           vm_prompt: "VMPrompt"
+          vm_image: "VMImage"
           avg_rating: "AvgRating"
           rating_count: "RatingCount"
           vm_shortname: "VMShortname"

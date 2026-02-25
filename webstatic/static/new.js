@@ -222,12 +222,12 @@
       ? icon
       : `<img src="${escHtml(icon)}" style="width:14px;height:14px;border-radius:3px;">`;
     pill.querySelector('.template-pill-title').textContent = t.title;
-    pill.style.visibility = 'visible';
+    pill.style.display = 'inline-flex';
   }
 
   function hideTemplatePill() {
     const pill = $('#template-pill');
-    if (pill) pill.style.visibility = 'hidden';
+    if (pill) pill.style.display = 'none';
   }
 
   // --- Insert confirmation ---

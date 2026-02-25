@@ -93,8 +93,8 @@
 .new-prompt {
   font-size: 14px;
   /* Grow up to 12 lines, but shrink on small viewports to keep button visible.
-     380px accounts for topbar, padding, title, hostname, seg control, pill, button. */
-  height: min(calc(12 * 1.5em), calc(100vh - 380px));
+     440px accounts for topbar, padding, title, hostname, seg control, hint, pill, options toggle, button. */
+  height: min(calc(12 * 1.5em), calc(100vh - 440px));
   min-height: 80px;
   resize: none;
 }
@@ -102,7 +102,7 @@
 /* ===== Template Pill ===== */
 
 .template-pill {
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: 6px;
   margin-top: 8px;
@@ -344,6 +344,93 @@
   font-size: 13px;
 }
 
+/* ===== Options Section ===== */
+
+.options-section {
+  margin-bottom: 8px;
+}
+
+.options-toggle {
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.options-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.options-toggle::before {
+  content: '\25B8';
+  font-size: 10px;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+
+.options-section[open] > .options-toggle::before {
+  transform: rotate(90deg);
+}
+
+.options-toggle:hover {
+  color: #555;
+}
+
+.options-body {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+}
+
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.option-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #555;
+  white-space: nowrap;
+  min-width: 40px;
+}
+
+.image-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.image-input {
+  font-size: 13px;
+  padding: 7px 10px;
+  border-radius: 6px;
+}
+
+/* Prompt disabled state (custom image selected) */
+.new-prompt.prompt-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+  background: #f5f5f5;
+}
+
+.prompt-disabled-hint {
+  font-size: 11px;
+  color: #999;
+  margin-top: 4px;
+  min-height: 1lh;
+  visibility: hidden;
+}
+
+.prompt-disabled-hint.visible {
+  visibility: visible;
+}
+
 /* ===== Insert Confirmation Bar ===== */
 
 .insert-confirm {
@@ -416,7 +503,7 @@
   }
 
   .new-prompt {
-    height: min(calc(12 * 1.5em), calc(100vh - 340px));
+    height: min(calc(12 * 1.5em), calc(100vh - 400px));
   }
 
   .new-hostname {
@@ -463,6 +550,16 @@
 
   .card-footer {
     display: none;
+  }
+
+  .option-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .option-label {
+    min-width: unset;
   }
 
   /* Insert confirm stacks on mobile */
@@ -583,6 +680,31 @@
   }
 
   .no-results {
+    color: #666;
+  }
+
+  /* Options section dark */
+  .options-toggle {
+    color: #666;
+  }
+
+  .options-toggle:hover {
+    color: #aaa;
+  }
+
+  .options-body {
+    border-color: #2a2a2a;
+  }
+
+  .option-label {
+    color: #888;
+  }
+
+  .new-prompt.prompt-disabled {
+    background: #1a1a1a;
+  }
+
+  .prompt-disabled-hint {
     color: #666;
   }
 

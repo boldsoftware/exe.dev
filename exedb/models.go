@@ -130,6 +130,7 @@ type CheckoutParam struct {
 	VMName    string    `db:"vm_name" json:"vm_name"`
 	VMPrompt  string    `db:"vm_prompt" json:"vm_prompt"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	VMImage   string    `db:"vm_image" json:"vm_image"`
 }
 
 type DeletedBox struct {
@@ -222,6 +223,7 @@ type MobilePendingVm struct {
 	Hostname  string     `db:"hostname" json:"hostname"`
 	Prompt    *string    `db:"prompt" json:"prompt"`
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
+	VMImage   *string    `db:"vm_image" json:"vm_image"`
 }
 
 type Passkey struct {

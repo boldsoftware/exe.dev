@@ -190,6 +190,10 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			if pendingVM.Prompt != nil {
 				prompt = *pendingVM.Prompt
 			}
+			image := ""
+			if pendingVM.VMImage != nil {
+				image = *pendingVM.VMImage
+			}
 			// Clean up the pending record
 			_ = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).DeleteMobilePendingVMByToken, token)
 
@@ -197,10 +201,13 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			if !s.env.SkipBilling {
 				billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, verifiedUserID)
 				if err == nil && userNeedsBilling(&billingStatus) {
-					// Preserve hostname/prompt through billing flow
+					// Preserve hostname/prompt/image through billing flow
 					billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
 					if prompt != "" {
 						billingURL += "&prompt=" + url.QueryEscape(prompt)
+					}
+					if image != "" {
+						billingURL += "&image=" + url.QueryEscape(image)
 					}
 					http.Redirect(w, r, billingURL, http.StatusSeeOther)
 					return
@@ -208,7 +215,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			}
 
 			// Start box creation in background and redirect to dashboard
-			s.startBoxCreation(r.Context(), hostname, prompt, verifiedUserID)
+			s.startBoxCreation(r.Context(), hostname, prompt, image, verifiedUserID)
 			http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
 			return
 		}
@@ -272,6 +279,7 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 	// Read VM creation params to preserve through checkout
 	vmName := strings.TrimSpace(r.URL.Query().Get("name"))
 	vmPrompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
+	vmImage := strings.TrimSpace(r.URL.Query().Get("image"))
 	source := r.URL.Query().Get("source")
 
 	// Get user email
@@ -320,7 +328,7 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 	// token to keep URLs within Stripe's 5000-character limit.
 	baseURL := s.webBaseURLNoRequest()
 	var cpToken string
-	if source != "" || vmName != "" || vmPrompt != "" {
+	if source != "" || vmName != "" || vmPrompt != "" || vmImage != "" {
 		cpToken = crand.Text()
 		if err := withTx1(s, r.Context(), (*exedb.Queries).InsertCheckoutParams, exedb.InsertCheckoutParamsParams{
 			Token:    cpToken,
@@ -328,6 +336,7 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 			Source:   source,
 			VMName:   vmName,
 			VMPrompt: vmPrompt,
+			VMImage:  vmImage,
 		}); err != nil {
 			s.slog().ErrorContext(r.Context(), "failed to save checkout params", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -404,7 +413,7 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 	// Read params first (don't delete yet) so that if Stripe verification fails
 	// below, the token is preserved and the user can retry.
 	// TODO: remove the query parameter fallback once all in-flight sessions have completed.
-	var source, vmName, vmPrompt string
+	var source, vmName, vmPrompt, vmImage string
 	cpToken := r.URL.Query().Get("cp")
 	if cpToken != "" {
 		cp, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetCheckoutParams, exedb.GetCheckoutParamsParams{
@@ -418,11 +427,13 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 			source = cp.Source
 			vmName = cp.VMName
 			vmPrompt = cp.VMPrompt
+			vmImage = cp.VMImage
 		}
 	}
 	source = cmp.Or(source, r.URL.Query().Get("source"))
 	vmName = cmp.Or(vmName, strings.TrimSpace(r.URL.Query().Get("name")))
 	vmPrompt = cmp.Or(vmPrompt, strings.TrimSpace(r.URL.Query().Get("prompt")))
+	vmImage = cmp.Or(vmImage, strings.TrimSpace(r.URL.Query().Get("image")))
 
 	// Activate the account if we have a valid session_id (or dev bypass).
 	// Verify the session with Stripe to prevent bypass attacks where users
@@ -486,7 +497,7 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 
 	// If VM name was provided, start VM creation and redirect to dashboard
 	if vmName != "" {
-		s.startBoxCreation(r.Context(), vmName, vmPrompt, userID)
+		s.startBoxCreation(r.Context(), vmName, vmPrompt, vmImage, userID)
 		http.Redirect(w, r, "/?filter="+url.QueryEscape(vmName), http.StatusSeeOther)
 		return
 	}
@@ -1253,6 +1264,7 @@ func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, ema
 		InviteCode    string
 		Hostname      string
 		Prompt        string
+		Image         string
 		TeamInvite    string
 	}{
 		Env:           s.env,
@@ -1265,6 +1277,7 @@ func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, ema
 		InviteCode:    r.FormValue("invite"),
 		Hostname:      r.FormValue("hostname"),
 		Prompt:        r.FormValue("prompt"),
+		Image:         r.FormValue("image"),
 		TeamInvite:    r.FormValue("team_invite"),
 	}
 	s.renderTemplate(r.Context(), w, "auth-pow.html", data)
@@ -1287,6 +1300,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// VM creation fields (carried from /create-vm when user is not logged in)
 	hostname := strings.ToLower(strings.TrimSpace(r.FormValue("hostname")))
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
+	image := strings.TrimSpace(r.FormValue("image"))
 
 	// TODO: This applies to existing users, which seems wrong.
 	ip, allowed := s.checkSignupRateLimit(r)
@@ -1457,6 +1471,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 			UserID:   userID,
 			Hostname: hostname,
 			Prompt:   &prompt,
+			VMImage:  &image,
 		}); err != nil {
 			s.slog().ErrorContext(r.Context(), "Failed to store pending VM", "error", err)
 			s.showAuthError(w, r, "Failed to process request. Please try again.", "")

@@ -39,13 +39,39 @@
                 rows="4"
             >{{.Prompt}}</textarea>
             <div id="prompt-hint" class="form-hint error" style="display:none"></div>
-            <div id="template-pill" class="template-pill" style="visibility:hidden">
+            <div id="prompt-disabled-hint" class="prompt-disabled-hint">Prompt is only available with the default exeuntu image.</div>
+            <div id="template-pill" class="template-pill">
                 <span class="template-pill-icon"></span>
                 <span class="template-pill-label">Idea:</span>
                 <span class="template-pill-title"></span>
                 <button type="button" class="template-pill-clear" title="Clear template">✕</button>
             </div>
         </div>
+
+        <details class="options-section" id="options-section">
+            <summary class="options-toggle">Options</summary>
+            <div class="options-body">
+                <div class="option-row">
+                    <label class="option-label" for="image-input">Image</label>
+                    <div class="image-field">
+                        <input
+                            type="text"
+                            id="image-input"
+                            name="image"
+                            class="form-input image-input"
+                            placeholder="exeuntu (default)"
+                            value="{{.Image}}"
+                            autocomplete="off"
+                            autocapitalize="none"
+                            list="image-suggestions"
+                        />
+                        <datalist id="image-suggestions">
+                            <option value="marimo-team/marimo:latest-sql">
+                        </datalist>
+                    </div>
+                </div>
+            </div>
+        </details>
 
         <button type="submit" class="form-button" id="create-button" disabled>
             Create VM
@@ -152,6 +178,12 @@
             hint.textContent = 'Please replace all <fill-this-in> placeholders in the prompt before creating the VM.';
             hint.style.display = '';
             promptInput.focus();
+            return;
+        }
+        // Clear prompt when using a custom image (backend rejects prompt with non-exeuntu images)
+        const img = document.getElementById('image-input').value.trim();
+        if (img !== '' && img !== 'exeuntu') {
+            promptInput.value = '';
         }
     });
 
@@ -160,6 +192,37 @@
         if (hint.style.display !== 'none' && !promptInput.value.includes('<fill-this-in>')) {
             hint.style.display = 'none';
         }
+    });
+    // Image field: disable prompt when custom image is set
+    const imageInput = document.getElementById('image-input');
+    const promptDisabledHint = document.getElementById('prompt-disabled-hint');
+
+    function updatePromptState() {
+        const img = imageInput.value.trim();
+        const isCustomImage = img !== '' && img !== 'exeuntu';
+        if (isCustomImage) {
+            promptInput.classList.add('prompt-disabled');
+            promptDisabledHint.classList.add('visible');
+            promptInput.setAttribute('tabindex', '-1');
+        } else {
+            promptInput.classList.remove('prompt-disabled');
+            promptDisabledHint.classList.remove('visible');
+            promptInput.removeAttribute('tabindex');
+        }
+    }
+
+    imageInput.addEventListener('input', updatePromptState);
+    imageInput.addEventListener('change', updatePromptState);
+
+    // If image was pre-filled (e.g. returning from auth/billing), open options and update state
+    if (imageInput.value.trim() !== '') {
+        document.getElementById('options-section').open = true;
+        updatePromptState();
+    }
+
+    // Allow scrolling when options section is open
+    document.getElementById('options-section').addEventListener('toggle', function() {
+        document.body.style.overflow = this.open ? 'auto' : 'hidden';
     });
 </script>
 <script src="/static/new.js?v=2"></script>

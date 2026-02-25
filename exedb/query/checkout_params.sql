@@ -1,5 +1,5 @@
 -- name: InsertCheckoutParams :exec
-INSERT INTO checkout_params (token, user_id, source, vm_name, vm_prompt) VALUES (?, ?, ?, ?, ?);
+INSERT INTO checkout_params (token, user_id, source, vm_name, vm_prompt, vm_image) VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: GetCheckoutParams :one
 SELECT * FROM checkout_params WHERE token = ? AND user_id = ?;

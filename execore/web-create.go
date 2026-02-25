@@ -178,7 +178,7 @@ func (s *Server) getActiveCreationHostnames(userID string) []string {
 }
 
 // startBoxCreation starts creating a box in the background
-func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID string) {
+func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, image, userID string) {
 	// Check if already creating
 	if cs := s.getCreationStream(userID, hostname); cs != nil {
 		s.slog().InfoContext(ctx, "Box creation already in progress", "hostname", hostname, "user_id", userID)
@@ -208,6 +208,9 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 		if prompt != "" {
 			_ = fs.Set("prompt", prompt)
 		}
+		if image != "" {
+			_ = fs.Set("image", image)
+		}
 		userEmail, _ := withRxRes1(s, createCtx, (*exedb.Queries).GetEmailByUserID, userID)
 
 		cc := &exemenu.CommandContext{
@@ -228,6 +231,7 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 		logAttrs := []any{
 			"log_type", "ssh_command",
 			"command", "new --name " + hostname,
+			"image", image,
 			"source", "web",
 			"duration", cl.Duration(),
 			"user_id", userID,
@@ -292,6 +296,7 @@ func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 	// Read name, prompt, and invite from query params
 	name := strings.TrimSpace(r.URL.Query().Get("name"))
 	prompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
+	image := strings.TrimSpace(r.URL.Query().Get("image"))
 	inviteCode := strings.TrimSpace(r.URL.Query().Get("invite"))
 
 	// If an idea shortname is provided, look up the template and prefill.
@@ -323,6 +328,7 @@ func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			name = cmp.Or(name, cp.VMName)
 			prompt = cmp.Or(prompt, cp.VMPrompt)
+			image = cmp.Or(image, cp.VMImage)
 		}
 	}
 
@@ -343,6 +349,7 @@ func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 		stage.Env
 		HostnameSuggestion string
 		Prompt             string
+		Image              string
 		InviteCode         string
 		IsLoggedIn         bool
 		ActivePage         string
@@ -352,6 +359,7 @@ func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 		Env:                s.env,
 		HostnameSuggestion: hostnameSuggestion,
 		Prompt:             prompt,
+		Image:              image,
 		InviteCode:         inviteCode,
 		IsLoggedIn:         isLoggedIn,
 		ActivePage:         "",
@@ -420,9 +428,10 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 
 	hostname := strings.ToLower(strings.TrimSpace(r.FormValue("hostname")))
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
+	image := strings.TrimSpace(r.FormValue("image"))
 	inviteCodeStr := strings.TrimSpace(r.FormValue("invite"))
 
-	s.slog().InfoContext(r.Context(), "Web VM creation request", "hostname", hostname, "prompt", prompt)
+	s.slog().InfoContext(r.Context(), "Web VM creation request", "hostname", hostname, "prompt", prompt, "image", image)
 
 	// If user is logged in, check billing status before proceeding
 	if userID, err := s.validateAuthCookie(r); err == nil {
@@ -437,13 +446,16 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 				if prompt != "" {
 					billingURL += "&prompt=" + url.QueryEscape(prompt)
 				}
+				if image != "" {
+					billingURL += "&image=" + url.QueryEscape(image)
+				}
 				http.Redirect(w, r, billingURL, http.StatusSeeOther)
 				return
 			}
 		}
 
 		// Start box creation in background
-		s.startBoxCreation(r.Context(), hostname, prompt, userID)
+		s.startBoxCreation(r.Context(), hostname, prompt, image, userID)
 		http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
 		return
 	}
@@ -466,6 +478,7 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		SSHCommand:        s.replSSHConnectionCommand(),
 		BoxName:           hostname,
 		Prompt:            prompt,
+		Image:             image,
 		InviteCode:        inviteCodeStr,
 		InviteCodeValid:   inviteCodeValid,
 		InviteCodeInvalid: inviteCodeInvalid,
@@ -483,6 +496,7 @@ type authFormData struct {
 	SSHCommand        string
 	BoxName           string
 	Prompt            string
+	Image             string
 	InviteCode        string
 	InviteCodeValid   bool   // true if invite code is valid and unused
 	InviteCodeInvalid bool   // true if invite code was provided but is invalid or already used

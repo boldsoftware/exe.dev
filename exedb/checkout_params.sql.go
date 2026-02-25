@@ -11,7 +11,7 @@ import (
 )
 
 const consumeCheckoutParams = `-- name: ConsumeCheckoutParams :one
-DELETE FROM checkout_params WHERE token = ? AND user_id = ? RETURNING token, user_id, source, vm_name, vm_prompt, created_at
+DELETE FROM checkout_params WHERE token = ? AND user_id = ? RETURNING token, user_id, source, vm_name, vm_prompt, created_at, vm_image
 `
 
 type ConsumeCheckoutParamsParams struct {
@@ -29,6 +29,7 @@ func (q *Queries) ConsumeCheckoutParams(ctx context.Context, arg ConsumeCheckout
 		&i.VMName,
 		&i.VMPrompt,
 		&i.CreatedAt,
+		&i.VMImage,
 	)
 	return i, err
 }
@@ -43,7 +44,7 @@ func (q *Queries) DeleteOldCheckoutParams(ctx context.Context, createdAt time.Ti
 }
 
 const getCheckoutParams = `-- name: GetCheckoutParams :one
-SELECT token, user_id, source, vm_name, vm_prompt, created_at FROM checkout_params WHERE token = ? AND user_id = ?
+SELECT token, user_id, source, vm_name, vm_prompt, created_at, vm_image FROM checkout_params WHERE token = ? AND user_id = ?
 `
 
 type GetCheckoutParamsParams struct {
@@ -61,12 +62,13 @@ func (q *Queries) GetCheckoutParams(ctx context.Context, arg GetCheckoutParamsPa
 		&i.VMName,
 		&i.VMPrompt,
 		&i.CreatedAt,
+		&i.VMImage,
 	)
 	return i, err
 }
 
 const insertCheckoutParams = `-- name: InsertCheckoutParams :exec
-INSERT INTO checkout_params (token, user_id, source, vm_name, vm_prompt) VALUES (?, ?, ?, ?, ?)
+INSERT INTO checkout_params (token, user_id, source, vm_name, vm_prompt, vm_image) VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type InsertCheckoutParamsParams struct {
@@ -75,6 +77,7 @@ type InsertCheckoutParamsParams struct {
 	Source   string `db:"source" json:"source"`
 	VMName   string `db:"vm_name" json:"vm_name"`
 	VMPrompt string `db:"vm_prompt" json:"vm_prompt"`
+	VMImage  string `db:"vm_image" json:"vm_image"`
 }
 
 func (q *Queries) InsertCheckoutParams(ctx context.Context, arg InsertCheckoutParamsParams) error {
@@ -84,6 +87,7 @@ func (q *Queries) InsertCheckoutParams(ctx context.Context, arg InsertCheckoutPa
 		arg.Source,
 		arg.VMName,
 		arg.VMPrompt,
+		arg.VMImage,
 	)
 	return err
 }
