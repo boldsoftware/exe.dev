@@ -304,16 +304,16 @@ func (m *Response) ToMessage() Message {
 }
 
 func CostUSDFromResponse(headers http.Header) float64 {
-	h := headers.Get("Skaband-Cost-Microcents")
+	h := headers.Get("Exedev-Gateway-Cost")
 	if h == "" {
 		return 0
 	}
-	uc, err := strconv.ParseUint(h, 10, 64)
+	cost, err := strconv.ParseFloat(h, 64)
 	if err != nil {
-		slog.Warn("failed to parse cost header", "header", h)
+		slog.Warn("failed to parse Exedev-Gateway-Cost header", "header", h)
 		return 0
 	}
-	return float64(uc) / 100_000_000
+	return cost
 }
 
 // Usage represents the billing and rate-limit usage.

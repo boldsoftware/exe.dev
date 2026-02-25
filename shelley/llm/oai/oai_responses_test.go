@@ -517,4 +517,89 @@ func TestResponsesServiceDo(t *testing.T) {
 	if resp.Usage.OutputTokens != 20 {
 		t.Errorf("resp.Usage.OutputTokens = %d, expected 20", resp.Usage.OutputTokens)
 	}
+	// No cache details, so CacheCreation and CacheRead should be 0
+	if resp.Usage.CacheCreationInputTokens != 0 {
+		t.Errorf("resp.Usage.CacheCreationInputTokens = %d, expected 0", resp.Usage.CacheCreationInputTokens)
+	}
+	if resp.Usage.CacheReadInputTokens != 0 {
+		t.Errorf("resp.Usage.CacheReadInputTokens = %d, expected 0", resp.Usage.CacheReadInputTokens)
+	}
+	// TotalInputTokens should equal InputTokens when no caching
+	if resp.Usage.TotalInputTokens() != 10 {
+		t.Errorf("resp.Usage.TotalInputTokens() = %d, expected 10", resp.Usage.TotalInputTokens())
+	}
+	// ContextWindowUsed = TotalInput + Output = 10 + 20 = 30
+	if resp.Usage.ContextWindowUsed() != 30 {
+		t.Errorf("resp.Usage.ContextWindowUsed() = %d, expected 30", resp.Usage.ContextWindowUsed())
+	}
+}
+
+func TestResponsesServiceDoWithCaching(t *testing.T) {
+	// Test that cached tokens are correctly mapped to Usage fields
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := responsesResponse{
+			ID:    "responses-cache-test",
+			Model: "test-model",
+			Output: []responsesOutputItem{
+				{
+					Type: "message",
+					Role: "assistant",
+					Content: []responsesContent{
+						{Type: "text", Text: "cached response"},
+					},
+				},
+			},
+			Usage: responsesUsage{
+				InputTokens: 100,
+				InputTokensDetails: &responsesInputTokensDetails{
+					CachedTokens: 80,
+				},
+				OutputTokens: 50,
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	svc := &ResponsesService{
+		APIKey:   "test-api-key",
+		Model:    GPT41,
+		ModelURL: server.URL,
+	}
+
+	resp, err := svc.Do(ctx, &llm.Request{
+		Messages: []llm.Message{{
+			Role:    llm.MessageRoleUser,
+			Content: []llm.Content{{Type: llm.ContentTypeText, Text: "test"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+
+	// InputTokens should be total - cached = 100 - 80 = 20
+	if resp.Usage.InputTokens != 20 {
+		t.Errorf("resp.Usage.InputTokens = %d, expected 20 (non-cached portion)", resp.Usage.InputTokens)
+	}
+	// CacheReadInputTokens should be the cached amount
+	if resp.Usage.CacheReadInputTokens != 80 {
+		t.Errorf("resp.Usage.CacheReadInputTokens = %d, expected 80", resp.Usage.CacheReadInputTokens)
+	}
+	// CacheCreationInputTokens should be 0 (OpenAI doesn't report this)
+	if resp.Usage.CacheCreationInputTokens != 0 {
+		t.Errorf("resp.Usage.CacheCreationInputTokens = %d, expected 0", resp.Usage.CacheCreationInputTokens)
+	}
+	if resp.Usage.OutputTokens != 50 {
+		t.Errorf("resp.Usage.OutputTokens = %d, expected 50", resp.Usage.OutputTokens)
+	}
+	// TotalInputTokens = 20 + 0 + 80 = 100 (matches OpenAI's input_tokens)
+	if resp.Usage.TotalInputTokens() != 100 {
+		t.Errorf("resp.Usage.TotalInputTokens() = %d, expected 100", resp.Usage.TotalInputTokens())
+	}
+	// ContextWindowUsed = 100 + 50 = 150
+	if resp.Usage.ContextWindowUsed() != 150 {
+		t.Errorf("resp.Usage.ContextWindowUsed() = %d, expected 150", resp.Usage.ContextWindowUsed())
+	}
 }

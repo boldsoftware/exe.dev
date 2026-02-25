@@ -650,19 +650,21 @@ func toLLMContents(msg openai.ChatCompletionMessage) []llm.Content {
 }
 
 // toLLMUsage converts usage information from OpenAI to llm.Usage.
+// OpenAI reports prompt_tokens as the total input (including cached),
+// with prompt_tokens_details.cached_tokens as the cached subset.
+// Our Usage struct follows Anthropic's convention where InputTokens is the non-cached
+// portion and TotalInputTokens() = InputTokens + CacheCreationInputTokens + CacheReadInputTokens.
 func (s *Service) toLLMUsage(au openai.Usage, headers http.Header) llm.Usage {
-	// fmt.Printf("raw usage: %+v / %v / %v\n", au, au.PromptTokensDetails, au.CompletionTokensDetails)
-	in := uint64(au.PromptTokens)
-	var inc uint64
+	totalIn := uint64(au.PromptTokens)
+	var cached uint64
 	if au.PromptTokensDetails != nil {
-		inc = uint64(au.PromptTokensDetails.CachedTokens)
+		cached = uint64(au.PromptTokensDetails.CachedTokens)
 	}
 	out := uint64(au.CompletionTokens)
 	u := llm.Usage{
-		InputTokens:              in,
-		CacheReadInputTokens:     inc,
-		CacheCreationInputTokens: in,
-		OutputTokens:             out,
+		InputTokens:          totalIn - cached,
+		CacheReadInputTokens: cached,
+		OutputTokens:         out,
 	}
 	u.CostUSD = llm.CostUSDFromResponse(headers)
 	return u

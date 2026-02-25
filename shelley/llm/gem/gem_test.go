@@ -228,8 +228,8 @@ func TestGeminiHeaderCapture(t *testing.T) {
 			response: &http.Response{
 				StatusCode: http.StatusOK,
 				Header: http.Header{
-					"Content-Type":            []string{"application/json"},
-					"Skaband-Cost-Microcents": []string{"123456"},
+					"Content-Type":        []string{"application/json"},
+					"Exedev-Gateway-Cost": []string{"0.00123456"},
 				},
 				Body: io.NopCloser(bytes.NewBufferString(`{
 					"candidates": [{
@@ -275,14 +275,14 @@ func TestGeminiHeaderCapture(t *testing.T) {
 	}
 
 	// Check for the cost header
-	costHeader := headers.Get("Skaband-Cost-Microcents")
-	if costHeader != "123456" {
-		t.Fatalf("Expected cost header '123456', got '%s'", costHeader)
+	costHeader := headers.Get("Exedev-Gateway-Cost")
+	if costHeader != "0.00123456" {
+		t.Fatalf("Expected cost header '0.00123456', got '%s'", costHeader)
 	}
 
 	// Verify that llm.CostUSDFromResponse works with these headers
 	costUSD := llm.CostUSDFromResponse(headers)
-	expectedCost := 0.00123456 // 123456 microcents / 100,000,000
+	expectedCost := 0.00123456
 	if costUSD != expectedCost {
 		t.Fatalf("Expected cost USD %.8f, got %.8f", expectedCost, costUSD)
 	}
@@ -304,8 +304,8 @@ func TestHeaderCostIntegration(t *testing.T) {
 			response: &http.Response{
 				StatusCode: http.StatusOK,
 				Header: http.Header{
-					"Content-Type":            []string{"application/json"},
-					"Skaband-Cost-Microcents": []string{"50000"}, // 0.5 USD
+					"Content-Type":        []string{"application/json"},
+					"Exedev-Gateway-Cost": []string{"0.000500"},
 				},
 				Body: io.NopCloser(bytes.NewBufferString(`{
 					"candidates": [{
@@ -351,7 +351,7 @@ func TestHeaderCostIntegration(t *testing.T) {
 	}
 
 	// Verify that the cost was captured from headers
-	expectedCost := 0.0005 // 50000 microcents / 100,000,000
+	expectedCost := 0.0005
 	if res.Usage.CostUSD != expectedCost {
 		t.Fatalf("Expected cost USD %.8f, got %.8f", expectedCost, res.Usage.CostUSD)
 	}

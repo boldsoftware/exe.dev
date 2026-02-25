@@ -483,14 +483,14 @@ func TestCostUSDFromResponse(t *testing.T) {
 		{
 			name: "valid cost header",
 			headers: map[string]string{
-				"Skaband-Cost-Microcents": "10000000", // 0.1 USD
+				"Exedev-Gateway-Cost": "0.050000",
 			},
-			wantCost: 0.1,
+			wantCost: 0.05,
 		},
 		{
 			name: "invalid cost header",
 			headers: map[string]string{
-				"Skaband-Cost-Microcents": "invalid",
+				"Exedev-Gateway-Cost": "invalid",
 			},
 			wantCost: 0,
 		},
@@ -502,7 +502,7 @@ func TestCostUSDFromResponse(t *testing.T) {
 		{
 			name: "empty cost header",
 			headers: map[string]string{
-				"Skaband-Cost-Microcents": "",
+				"Exedev-Gateway-Cost": "",
 			},
 			wantCost: 0,
 		},

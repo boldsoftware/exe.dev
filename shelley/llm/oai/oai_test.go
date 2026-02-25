@@ -828,11 +828,20 @@ func TestToLLMUsage(t *testing.T) {
 		},
 	}
 	usage = service.toLLMUsage(openaiUsageWithDetails, nil)
-	if usage.InputTokens != 100 {
-		t.Errorf("toLLMUsage().InputTokens = %d, expected 100", usage.InputTokens)
+	// InputTokens should be non-cached portion: 100 - 25 = 75
+	if usage.InputTokens != 75 {
+		t.Errorf("toLLMUsage().InputTokens = %d, expected 75", usage.InputTokens)
 	}
 	if usage.CacheReadInputTokens != 25 {
 		t.Errorf("toLLMUsage().CacheReadInputTokens = %d, expected 25", usage.CacheReadInputTokens)
+	}
+	// CacheCreationInputTokens should be 0 (OpenAI doesn't report this)
+	if usage.CacheCreationInputTokens != 0 {
+		t.Errorf("toLLMUsage().CacheCreationInputTokens = %d, expected 0", usage.CacheCreationInputTokens)
+	}
+	// TotalInputTokens should equal the original PromptTokens (100)
+	if usage.TotalInputTokens() != 100 {
+		t.Errorf("toLLMUsage().TotalInputTokens() = %d, expected 100", usage.TotalInputTokens())
 	}
 }
 
