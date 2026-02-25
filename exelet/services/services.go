@@ -44,13 +44,22 @@ type ImageLoader interface {
 	LoadImage(ctx context.Context, imageRef, platform string) (string, error)
 }
 
+// ReplicationSuspender allows services to temporarily exclude volumes from replication.
+// This is used during migration to prevent the replication worker from snapshotting
+// a dataset that is being received via zfs recv.
+type ReplicationSuspender interface {
+	SuspendVolume(volumeID string)
+	ResumeVolume(volumeID string)
+}
+
 type ServiceContext struct {
-	StorageManager  storage.StorageManager
-	NetworkManager  network.NetworkManager
-	ImageManager    *image.ImageManager
-	ComputeService  InstanceLookup
-	ImageLoader     ImageLoader
-	MetricsRegistry *prometheus.Registry
+	StorageManager       storage.StorageManager
+	NetworkManager       network.NetworkManager
+	ImageManager         *image.ImageManager
+	ComputeService       InstanceLookup
+	ImageLoader          ImageLoader
+	MetricsRegistry      *prometheus.Registry
+	ReplicationSuspender ReplicationSuspender
 }
 
 // Service is the interface that all services must implement

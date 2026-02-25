@@ -7,15 +7,17 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"os"
 	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
-const sendVMChunkSize = 4 * 1024 * 1024 // 4MB chunks - optimized for multi-GB transfers
+const sendVMChunkSize = 4*1024*1024 - 1024 // Just under 4MB to leave room for protobuf framing within gRPC's 4MB message limit
 
 // SendVM streams a VM's disk and config to the caller for migration.
 func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
@@ -32,13 +34,20 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 	}
 
 	instanceID := startReq.InstanceID
-	s.log.InfoContext(ctx, "SendVM started", "instance", instanceID, "two_phase", startReq.TwoPhase)
+	s.log.InfoContext(ctx, "SendVM started", "instance", instanceID, "two_phase", startReq.TwoPhase, "live", startReq.Live)
 
 	// Lock instance for migration
 	if err := s.lockForMigration(instanceID); err != nil {
 		return status.Errorf(codes.FailedPrecondition, "instance %s: %v", instanceID, err)
 	}
 	defer s.unlockMigration(instanceID)
+
+	// Suspend replication for this volume to prevent the replication worker
+	// from creating snapshots that conflict with migration snapshots.
+	if rs := s.context.ReplicationSuspender; rs != nil {
+		rs.SuspendVolume(instanceID)
+		defer rs.ResumeVolume(instanceID)
+	}
 
 	// Load instance
 	instance, err := s.getInstance(ctx, instanceID)
@@ -49,6 +58,9 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 		return status.Errorf(codes.Internal, "failed to get instance: %v", err)
 	}
 
+	if startReq.Live {
+		return s.sendVMLive(ctx, stream, startReq, instance)
+	}
 	if startReq.TwoPhase {
 		return s.sendVMTwoPhase(ctx, stream, startReq, instance)
 	}
@@ -317,6 +329,234 @@ func (s *Service) makeStreamFunc(ctx context.Context, stream api.ComputeService_
 		}
 		return nil
 	}
+}
+
+// sendVMLive performs a live migration: two-phase ZFS transfer, then CH snapshot/restore.
+// The VM's process state is preserved across the migration.
+func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_SendVMServer, startReq *api.SendVMStartRequest, instance *api.Instance) error {
+	instanceID := startReq.InstanceID
+
+	// Verify VM is running
+	if instance.State != api.VMState_RUNNING {
+		return status.Errorf(codes.FailedPrecondition,
+			"VM must be running for live migration, current state: %s", instance.State)
+	}
+
+	// Verify VM has network configuration (required for IP reconfiguration during live migration)
+	if instance.VMConfig == nil || instance.VMConfig.NetworkInterface == nil || instance.VMConfig.NetworkInterface.IP == nil {
+		return status.Errorf(codes.FailedPrecondition,
+			"VM %s has no network configuration, cannot live migrate", instanceID)
+	}
+
+	// Get encryption key if exists
+	encryptionKey, err := s.context.StorageManager.GetEncryptionKey(instanceID)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to get encryption key: %v", err)
+	}
+	encrypted := encryptionKey != nil
+
+	// Send metadata (no base image for live — always sends full stream in phase 1)
+	if err := s.sendVMMetadata(stream, instance, "", encrypted, encryptionKey); err != nil {
+		return err
+	}
+
+	// Phase 1: Snapshot while VM is running, send full ZFS stream
+	dsName := s.context.StorageManager.GetDatasetName(instanceID)
+	preSnapName := dsName + "@migration-pre"
+
+	// Clean up any leftover pre-snapshot from a previous failed attempt
+	s.context.StorageManager.DestroySnapshot(ctx, preSnapName) //nolint:errcheck
+
+	s.log.InfoContext(ctx, "live: creating pre-copy snapshot", "snapshot", preSnapName)
+	if err := s.context.StorageManager.CreateSnapshot(ctx, preSnapName); err != nil {
+		return status.Errorf(codes.Internal, "failed to create pre-copy snapshot: %v", err)
+	}
+
+	preSnapCleaned := false
+	defer func() {
+		if !preSnapCleaned {
+			if err := s.context.StorageManager.DestroySnapshot(ctx, preSnapName); err != nil {
+				s.log.WarnContext(ctx, "failed to destroy pre-copy snapshot", "snapshot", preSnapName, "error", err)
+			}
+		}
+	}()
+
+	hasher := sha256.New()
+	buf := make([]byte, sendVMChunkSize)
+	var totalBytes uint64
+	streamSnapshot := s.makeStreamFunc(ctx, stream, instanceID, hasher, buf, &totalBytes)
+
+	s.log.InfoContext(ctx, "live: streaming phase 1 (full pre-copy)")
+	if err := streamSnapshot(preSnapName, false, "", false); err != nil {
+		return status.Errorf(codes.Internal, "failed to send phase 1 data: %v", err)
+	}
+
+	phase1Bytes := totalBytes
+	s.log.InfoContext(ctx, "live: phase 1 complete", "bytes", phase1Bytes)
+
+	// Send phase complete marker
+	if err := stream.Send(&api.SendVMResponse{
+		Type: &api.SendVMResponse_PhaseComplete{
+			PhaseComplete: &api.SendVMPhaseComplete{
+				PhaseBytes: phase1Bytes,
+			},
+		},
+	}); err != nil {
+		return status.Errorf(codes.Internal, "failed to send phase complete: %v", err)
+	}
+
+	// Tell orchestrator we need the IP reconfigured before we pause
+	s.log.InfoContext(ctx, "live: requesting IP reconfiguration")
+	if err := stream.Send(&api.SendVMResponse{
+		Type: &api.SendVMResponse_AwaitControl{
+			AwaitControl: &api.SendVMAwaitControl{
+				Reason:        api.SendVMAwaitControl_NEED_IP_RECONFIG,
+				SourceNetwork: instance.VMConfig.NetworkInterface,
+			},
+		},
+	}); err != nil {
+		return status.Errorf(codes.Internal, "failed to send await control: %v", err)
+	}
+
+	// Wait for orchestrator to confirm IP reconfig is done
+	s.log.InfoContext(ctx, "live: waiting for control message")
+	controlReq, err := stream.Recv()
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to receive control: %v", err)
+	}
+	control := controlReq.GetControl()
+	if control == nil {
+		return status.Errorf(codes.InvalidArgument, "expected control message, got %T", controlReq.Type)
+	}
+	if control.Action != api.SendVMControl_PROCEED_WITH_PAUSE {
+		return status.Errorf(codes.InvalidArgument, "unexpected control action: %v", control.Action)
+	}
+
+	// Create VMM for pause/snapshot operations
+	vmmgr, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to create VMM: %v", err)
+	}
+
+	// Deflate balloon to force all memory back into the guest before snapshot.
+	// With free_page_reporting, the host may have reclaimed pages that would
+	// cause "Bad address" errors during snapshot restore.
+	s.log.InfoContext(ctx, "live: deflating balloon", "instance", instanceID)
+	if err := vmmgr.DeflateBalloon(ctx, instanceID); err != nil {
+		s.log.WarnContext(ctx, "live: failed to deflate balloon (continuing)", "instance", instanceID, "error", err)
+	}
+
+	// Pause VM — this is the start of downtime
+	s.log.InfoContext(ctx, "live: pausing VM", "instance", instanceID)
+	vmPaused := true
+	defer func() {
+		if vmPaused {
+			// Use WithoutCancel since the stream context may already be cancelled
+			// when this runs (e.g., orchestrator cancelled the context on error).
+			resumeCtx := context.WithoutCancel(ctx)
+			s.log.WarnContext(resumeCtx, "live: resuming VM due to error", "instance", instanceID)
+			if err := vmmgr.Resume(resumeCtx, instanceID); err != nil {
+				s.log.ErrorContext(resumeCtx, "live: failed to resume VM", "instance", instanceID, "error", err)
+			}
+		}
+	}()
+	if err := vmmgr.Pause(ctx, instanceID); err != nil {
+		return status.Errorf(codes.Internal, "failed to pause VM: %v", err)
+	}
+
+	// Phase 2: Incremental ZFS diff from pre-copy to final
+	migrationSnap, cleanup, err := s.context.StorageManager.CreateMigrationSnapshot(ctx, instanceID)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to create migration snapshot: %v", err)
+	}
+	defer cleanup()
+
+	s.log.InfoContext(ctx, "live: streaming phase 2 (incremental diff)")
+	if err := streamSnapshot(migrationSnap, true, preSnapName, false); err != nil {
+		return status.Errorf(codes.Internal, "failed to send phase 2 data: %v", err)
+	}
+
+	phase2Bytes := totalBytes - phase1Bytes
+	s.log.InfoContext(ctx, "live: phase 2 complete", "phase1_bytes", phase1Bytes, "phase2_bytes", phase2Bytes)
+
+	// Send phase complete marker for phase 2
+	if err := stream.Send(&api.SendVMResponse{
+		Type: &api.SendVMResponse_PhaseComplete{
+			PhaseComplete: &api.SendVMPhaseComplete{
+				PhaseBytes: phase2Bytes,
+			},
+		},
+	}); err != nil {
+		return status.Errorf(codes.Internal, "failed to send phase 2 complete: %v", err)
+	}
+
+	// Phase 3: CH snapshot — stream snapshot files to orchestrator
+	snapshotDir := s.getInstanceDir(instanceID) + "/ch-snapshot"
+	defer os.RemoveAll(snapshotDir)
+
+	s.log.InfoContext(ctx, "live: creating CH snapshot", "dir", snapshotDir)
+	if err := vmmgr.Snapshot(ctx, instanceID, snapshotDir); err != nil {
+		return status.Errorf(codes.Internal, "failed to create CH snapshot: %v", err)
+	}
+
+	// Stream snapshot files
+	entries, err := os.ReadDir(snapshotDir)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to read snapshot dir: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if err := s.streamSnapshotFile(stream, snapshotDir, entry.Name()); err != nil {
+			return status.Errorf(codes.Internal, "failed to stream snapshot file %s: %v", entry.Name(), err)
+		}
+	}
+
+	// Clean up pre-snapshot
+	if err := s.context.StorageManager.DestroySnapshot(ctx, preSnapName); err != nil {
+		s.log.WarnContext(ctx, "failed to destroy pre-copy snapshot", "snapshot", preSnapName, "error", err)
+	}
+	preSnapCleaned = true
+
+	// Mark VM as no longer needing resume — migration succeeded
+	vmPaused = false
+
+	return s.sendVMComplete(stream, instanceID, hasher, totalBytes)
+}
+
+// streamSnapshotFile streams a single snapshot file as SendVMSnapshotChunk messages.
+func (s *Service) streamSnapshotFile(stream api.ComputeService_SendVMServer, dir, filename string) error {
+	f, err := os.Open(dir + "/" + filename)
+	if err != nil {
+		return fmt.Errorf("failed to open %s: %w", filename, err)
+	}
+	defer f.Close()
+
+	buf := make([]byte, sendVMChunkSize)
+	for {
+		n, err := f.Read(buf)
+		if n > 0 {
+			if sendErr := stream.Send(&api.SendVMResponse{
+				Type: &api.SendVMResponse_SnapshotData{
+					SnapshotData: &api.SendVMSnapshotChunk{
+						Filename:    filename,
+						Data:        buf[:n],
+						IsLastChunk: err == io.EOF,
+					},
+				},
+			}); sendErr != nil {
+				return fmt.Errorf("failed to send chunk: %w", sendErr)
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", filename, err)
+		}
+	}
+	return nil
 }
 
 // extractBaseImageID extracts the base image ID from a ZFS origin name.

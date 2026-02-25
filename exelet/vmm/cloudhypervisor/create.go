@@ -33,14 +33,13 @@ func (v *VMM) Create(ctx context.Context, req *api.VMConfig) error {
 	return nil
 }
 
-func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
+// startCHProcess starts the cloud-hypervisor daemon and waits for the API socket to be ready.
+// It does NOT create or boot a VM — callers must do that separately (e.g., CreateVM+BootVM for
+// fresh VMs, or PutVmRestore for snapshot restore).
+// Returns alreadyRunning=true if the process was already running (and the VM may already be created).
+func (v *VMM) startCHProcess(ctx context.Context, id string) (alreadyRunning bool, err error) {
 	vmDataPath := v.getDataPath(id)
 	apiSocketPath := v.apiSocketPath(id)
-
-	vmCfg, err := v.loadVMConfig(id)
-	if err != nil {
-		return err
-	}
 
 	// check if already running
 	if _, err := os.Stat(apiSocketPath); err == nil {
@@ -50,7 +49,7 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 			defer c.Close()
 			if _, err := c.GetVmmPingWithResponse(ctx); err == nil {
 				v.log.DebugContext(ctx, "cloudhypervisor api socket connected; skipping start")
-				return nil
+				return true, nil
 			}
 		}
 		// not connected; continue
@@ -58,11 +57,11 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 
 	binPath, err := exec.LookPath(cloudHypervisorExecutableName)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if err := os.MkdirAll(vmDataPath, 0o700); err != nil {
-		return err
+		return false, err
 	}
 
 	args := []string{
@@ -76,12 +75,12 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 	bootLogPath := v.bootLogPath(id)
 	if _, err := os.Stat(bootLogPath); err == nil {
 		if err := os.Remove(bootLogPath); err != nil {
-			return err
+			return false, err
 		}
 	}
 	bootLog, err := os.OpenFile(bootLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer bootLog.Close()
 
@@ -96,7 +95,7 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 	}
 	v.log.DebugContext(ctx, "running cloudhypervisor api instance")
 	if err := cmd.Start(); err != nil {
-		return err
+		return false, err
 	}
 
 	// capture PID immediately after start
@@ -128,11 +127,11 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 			v.log.ErrorContext(ctx, "cloud-hypervisor boot log", "id", id, "contents", string(bootLogData))
 		}
 
-		return err
+		return false, err
 	}
 
 	if err := cmd.Process.Release(); err != nil {
-		return err
+		return false, err
 	}
 
 	// persist process metadata to disk
@@ -142,10 +141,29 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 		if killErr := killProcess(pid); killErr != nil {
 			v.log.WarnContext(ctx, "failed to kill cloud-hypervisor process during cleanup", "id", id, "pid", pid, "error", killErr)
 		}
-		return fmt.Errorf("failed to save process metadata: %w", err)
+		return false, fmt.Errorf("failed to save process metadata: %w", err)
 	}
 
-	// create - use retry=false since waitForReady already confirmed socket is available
+	return false, nil
+}
+
+func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
+	vmCfg, err := v.loadVMConfig(id)
+	if err != nil {
+		return err
+	}
+
+	alreadyRunning, err := v.startCHProcess(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// If CH was already running, the VM is already created — skip CreateVM
+	if alreadyRunning {
+		return nil
+	}
+
+	// create - use retry=false since startCHProcess already confirmed socket is available
 	c, err := client.NewCloudHypervisorClient(ctx, v.apiSocketPath(id), false, v.log)
 	if err != nil {
 		return err

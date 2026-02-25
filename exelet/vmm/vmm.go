@@ -40,6 +40,18 @@ type VMM interface {
 	Stop(ctx context.Context, id string) error
 	// Delete implements VM delete
 	Delete(ctx context.Context, id, ip string) error
+	// DeflateBalloon resets the balloon to size 0, forcing all memory back into the guest.
+	// This should be called before snapshotting to ensure all memory regions are mapped.
+	DeflateBalloon(ctx context.Context, id string) error
+	// Pause pauses a running VM
+	Pause(ctx context.Context, id string) error
+	// Resume resumes a paused VM
+	Resume(ctx context.Context, id string) error
+	// Snapshot creates a CH snapshot of a paused VM to the given directory
+	Snapshot(ctx context.Context, id, destDir string) error
+	// RestoreFromSnapshot starts a new CH process and restores a VM from a snapshot directory.
+	// The restored VM is resumed automatically.
+	RestoreFromSnapshot(ctx context.Context, id, snapshotDir string) error
 	// ResizeDisk notifies the VMM that a disk has been resized
 	ResizeDisk(ctx context.Context, id, diskID string, newSize uint64) error
 	// RecoverProcesses adopts running processes and cleans up stale metadata on startup

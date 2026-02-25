@@ -21,7 +21,7 @@ a:hover { text-decoration: underline; }
 <h1>Migrate Box</h1>
 <p><a href="/debug/boxes">&larr; Back to boxes</a></p>
 
-<div class="warning"><strong>Note:</strong> Running VMs use two-phase migration (minimal downtime). Stopped VMs are transferred directly.</div>
+<div class="warning"><strong>Note:</strong> Running VMs use two-phase migration (minimal downtime). Stopped VMs are transferred directly. Live migration preserves process state.</div>
 
 <form id="migrateForm" method="post" action="/debug/boxes/migrate">
 <p>Box: <strong>{{.BoxName}}</strong></p>
@@ -35,11 +35,14 @@ a:hover { text-decoration: underline; }
 {{end}}
 </select>
 
+<label style="display:inline;margin-top:15px;"><input type="checkbox" id="liveCheckbox" checked> Live migration (preserve process state)</label>
+<input type="hidden" name="live" id="liveHidden" value="true">
+
 <label for="confirm_name">Type box name to confirm:</label>
 <input type="text" name="confirm_name" id="confirm_name" autocomplete="off" placeholder="{{.BoxName}}">
 
 <p>
-<button type="submit" id="submitBtn" disabled>Migrate</button>
+<button type="submit" id="submitBtn" disabled>Migrate (live)</button>
 <a href="/debug/boxes">Cancel</a>
 </p>
 </form>
@@ -56,16 +59,21 @@ document.getElementById('target').addEventListener('change', function() {
     var confirmed = document.getElementById('confirm_name').value;
     document.getElementById('submitBtn').disabled = (confirmed !== expectedName || !this.value);
 });
+document.getElementById('liveCheckbox').addEventListener('change', function() {
+    document.getElementById('liveHidden').value = this.checked ? 'true' : 'false';
+    document.getElementById('submitBtn').textContent = this.checked ? 'Migrate (live)' : 'Migrate';
+});
 document.getElementById('migrateForm').addEventListener('submit', function(e) {
     e.preventDefault();
     var form = this;
     var progress = document.getElementById('progress');
     var submitBtn = document.getElementById('submitBtn');
+    var isLive = document.getElementById('liveCheckbox').checked;
 
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Migrating...';
+    submitBtn.textContent = isLive ? 'Live migrating...' : 'Migrating...';
     progress.className = 'active';
-    progress.textContent = 'Starting migration...\n';
+    progress.textContent = (isLive ? 'Starting live migration...\n' : 'Starting migration...\n');
 
     fetch(form.action, {
         method: 'POST',

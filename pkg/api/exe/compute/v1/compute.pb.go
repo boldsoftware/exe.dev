@@ -314,6 +314,92 @@ func (Server_ServerState) EnumDescriptor() ([]byte, []int) {
 	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{34, 0}
 }
 
+type SendVMControl_Action int32
+
+const (
+	SendVMControl_PROCEED_WITH_PAUSE SendVMControl_Action = 0
+)
+
+// Enum value maps for SendVMControl_Action.
+var (
+	SendVMControl_Action_name = map[int32]string{
+		0: "PROCEED_WITH_PAUSE",
+	}
+	SendVMControl_Action_value = map[string]int32{
+		"PROCEED_WITH_PAUSE": 0,
+	}
+)
+
+func (x SendVMControl_Action) Enum() *SendVMControl_Action {
+	p := new(SendVMControl_Action)
+	*p = x
+	return p
+}
+
+func (x SendVMControl_Action) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SendVMControl_Action) Descriptor() protoreflect.EnumDescriptor {
+	return file_exe_compute_v1_compute_proto_enumTypes[5].Descriptor()
+}
+
+func (SendVMControl_Action) Type() protoreflect.EnumType {
+	return &file_exe_compute_v1_compute_proto_enumTypes[5]
+}
+
+func (x SendVMControl_Action) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SendVMControl_Action.Descriptor instead.
+func (SendVMControl_Action) EnumDescriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{38, 0}
+}
+
+type SendVMAwaitControl_Reason int32
+
+const (
+	SendVMAwaitControl_NEED_IP_RECONFIG SendVMAwaitControl_Reason = 0
+)
+
+// Enum value maps for SendVMAwaitControl_Reason.
+var (
+	SendVMAwaitControl_Reason_name = map[int32]string{
+		0: "NEED_IP_RECONFIG",
+	}
+	SendVMAwaitControl_Reason_value = map[string]int32{
+		"NEED_IP_RECONFIG": 0,
+	}
+)
+
+func (x SendVMAwaitControl_Reason) Enum() *SendVMAwaitControl_Reason {
+	p := new(SendVMAwaitControl_Reason)
+	*p = x
+	return p
+}
+
+func (x SendVMAwaitControl_Reason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SendVMAwaitControl_Reason) Descriptor() protoreflect.EnumDescriptor {
+	return file_exe_compute_v1_compute_proto_enumTypes[6].Descriptor()
+}
+
+func (SendVMAwaitControl_Reason) Type() protoreflect.EnumType {
+	return &file_exe_compute_v1_compute_proto_enumTypes[6]
+}
+
+func (x SendVMAwaitControl_Reason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SendVMAwaitControl_Reason.Descriptor instead.
+func (SendVMAwaitControl_Reason) EnumDescriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{41, 0}
+}
+
 type CloneInstanceStatus_State int32
 
 const (
@@ -362,11 +448,11 @@ func (x CloneInstanceStatus_State) String() string {
 }
 
 func (CloneInstanceStatus_State) Descriptor() protoreflect.EnumDescriptor {
-	return file_exe_compute_v1_compute_proto_enumTypes[5].Descriptor()
+	return file_exe_compute_v1_compute_proto_enumTypes[7].Descriptor()
 }
 
 func (CloneInstanceStatus_State) Type() protoreflect.EnumType {
-	return &file_exe_compute_v1_compute_proto_enumTypes[5]
+	return &file_exe_compute_v1_compute_proto_enumTypes[7]
 }
 
 func (x CloneInstanceStatus_State) Number() protoreflect.EnumNumber {
@@ -375,7 +461,7 @@ func (x CloneInstanceStatus_State) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CloneInstanceStatus_State.Descriptor instead.
 func (CloneInstanceStatus_State) EnumDescriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{54, 0}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{58, 0}
 }
 
 type CreateInstanceRequest struct {
@@ -2501,6 +2587,7 @@ type SendVMRequest struct {
 	// Types that are valid to be assigned to Type:
 	//
 	//	*SendVMRequest_Start
+	//	*SendVMRequest_Control
 	Type          isSendVMRequest_Type `protobuf_oneof:"type"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2552,6 +2639,15 @@ func (x *SendVMRequest) GetStart() *SendVMStartRequest {
 	return nil
 }
 
+func (x *SendVMRequest) GetControl() *SendVMControl {
+	if x != nil {
+		if x, ok := x.Type.(*SendVMRequest_Control); ok {
+			return x.Control
+		}
+	}
+	return nil
+}
+
 type isSendVMRequest_Type interface {
 	isSendVMRequest_Type()
 }
@@ -2560,7 +2656,13 @@ type SendVMRequest_Start struct {
 	Start *SendVMStartRequest `protobuf:"bytes,1,opt,name=start,proto3,oneof"`
 }
 
+type SendVMRequest_Control struct {
+	Control *SendVMControl `protobuf:"bytes,2,opt,name=control,proto3,oneof"`
+}
+
 func (*SendVMRequest_Start) isSendVMRequest_Type() {}
+
+func (*SendVMRequest_Control) isSendVMRequest_Type() {}
 
 type SendVMStartRequest struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
@@ -2573,7 +2675,10 @@ type SendVMStartRequest struct {
 	TargetHasBaseImage bool `protobuf:"varint,2,opt,name=target_has_base_image,json=targetHasBaseImage,proto3" json:"target_has_base_image,omitempty"`
 	// Enable two-phase migration: snapshot while VM is running (phase 1),
 	// then stop VM and send only the incremental diff (phase 2).
-	TwoPhase      bool `protobuf:"varint,3,opt,name=two_phase,json=twoPhase,proto3" json:"two_phase,omitempty"`
+	TwoPhase bool `protobuf:"varint,3,opt,name=two_phase,json=twoPhase,proto3" json:"two_phase,omitempty"`
+	// Enable live migration: pause + CH snapshot/restore instead of stop + cold boot.
+	// The VM's process state is preserved across the migration.
+	Live          bool `protobuf:"varint,4,opt,name=live,proto3" json:"live,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2629,6 +2734,57 @@ func (x *SendVMStartRequest) GetTwoPhase() bool {
 	return false
 }
 
+func (x *SendVMStartRequest) GetLive() bool {
+	if x != nil {
+		return x.Live
+	}
+	return false
+}
+
+type SendVMControl struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Action        SendVMControl_Action   `protobuf:"varint,1,opt,name=action,proto3,enum=exe.compute.v1.SendVMControl_Action" json:"action,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendVMControl) Reset() {
+	*x = SendVMControl{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendVMControl) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendVMControl) ProtoMessage() {}
+
+func (x *SendVMControl) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendVMControl.ProtoReflect.Descriptor instead.
+func (*SendVMControl) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *SendVMControl) GetAction() SendVMControl_Action {
+	if x != nil {
+		return x.Action
+	}
+	return SendVMControl_PROCEED_WITH_PAUSE
+}
+
 type SendVMResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Type:
@@ -2637,6 +2793,8 @@ type SendVMResponse struct {
 	//	*SendVMResponse_Data
 	//	*SendVMResponse_Complete
 	//	*SendVMResponse_PhaseComplete
+	//	*SendVMResponse_SnapshotData
+	//	*SendVMResponse_AwaitControl
 	Type          isSendVMResponse_Type `protobuf_oneof:"type"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2644,7 +2802,7 @@ type SendVMResponse struct {
 
 func (x *SendVMResponse) Reset() {
 	*x = SendVMResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[38]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2656,7 +2814,7 @@ func (x *SendVMResponse) String() string {
 func (*SendVMResponse) ProtoMessage() {}
 
 func (x *SendVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[38]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2669,7 +2827,7 @@ func (x *SendVMResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendVMResponse.ProtoReflect.Descriptor instead.
 func (*SendVMResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{38}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *SendVMResponse) GetType() isSendVMResponse_Type {
@@ -2715,6 +2873,24 @@ func (x *SendVMResponse) GetPhaseComplete() *SendVMPhaseComplete {
 	return nil
 }
 
+func (x *SendVMResponse) GetSnapshotData() *SendVMSnapshotChunk {
+	if x != nil {
+		if x, ok := x.Type.(*SendVMResponse_SnapshotData); ok {
+			return x.SnapshotData
+		}
+	}
+	return nil
+}
+
+func (x *SendVMResponse) GetAwaitControl() *SendVMAwaitControl {
+	if x != nil {
+		if x, ok := x.Type.(*SendVMResponse_AwaitControl); ok {
+			return x.AwaitControl
+		}
+	}
+	return nil
+}
+
 type isSendVMResponse_Type interface {
 	isSendVMResponse_Type()
 }
@@ -2735,6 +2911,14 @@ type SendVMResponse_PhaseComplete struct {
 	PhaseComplete *SendVMPhaseComplete `protobuf:"bytes,4,opt,name=phase_complete,json=phaseComplete,proto3,oneof"`
 }
 
+type SendVMResponse_SnapshotData struct {
+	SnapshotData *SendVMSnapshotChunk `protobuf:"bytes,5,opt,name=snapshot_data,json=snapshotData,proto3,oneof"`
+}
+
+type SendVMResponse_AwaitControl struct {
+	AwaitControl *SendVMAwaitControl `protobuf:"bytes,6,opt,name=await_control,json=awaitControl,proto3,oneof"`
+}
+
 func (*SendVMResponse_Metadata) isSendVMResponse_Type() {}
 
 func (*SendVMResponse_Data) isSendVMResponse_Type() {}
@@ -2742,6 +2926,122 @@ func (*SendVMResponse_Data) isSendVMResponse_Type() {}
 func (*SendVMResponse_Complete) isSendVMResponse_Type() {}
 
 func (*SendVMResponse_PhaseComplete) isSendVMResponse_Type() {}
+
+func (*SendVMResponse_SnapshotData) isSendVMResponse_Type() {}
+
+func (*SendVMResponse_AwaitControl) isSendVMResponse_Type() {}
+
+type SendVMSnapshotChunk struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Filename      string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
+	Data          []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	IsLastChunk   bool                   `protobuf:"varint,3,opt,name=is_last_chunk,json=isLastChunk,proto3" json:"is_last_chunk,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendVMSnapshotChunk) Reset() {
+	*x = SendVMSnapshotChunk{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendVMSnapshotChunk) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendVMSnapshotChunk) ProtoMessage() {}
+
+func (x *SendVMSnapshotChunk) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendVMSnapshotChunk.ProtoReflect.Descriptor instead.
+func (*SendVMSnapshotChunk) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *SendVMSnapshotChunk) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *SendVMSnapshotChunk) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *SendVMSnapshotChunk) GetIsLastChunk() bool {
+	if x != nil {
+		return x.IsLastChunk
+	}
+	return false
+}
+
+type SendVMAwaitControl struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Reason        SendVMAwaitControl_Reason `protobuf:"varint,1,opt,name=reason,proto3,enum=exe.compute.v1.SendVMAwaitControl_Reason" json:"reason,omitempty"`
+	SourceNetwork *NetworkInterface         `protobuf:"bytes,2,opt,name=source_network,json=sourceNetwork,proto3" json:"source_network,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendVMAwaitControl) Reset() {
+	*x = SendVMAwaitControl{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendVMAwaitControl) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendVMAwaitControl) ProtoMessage() {}
+
+func (x *SendVMAwaitControl) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendVMAwaitControl.ProtoReflect.Descriptor instead.
+func (*SendVMAwaitControl) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *SendVMAwaitControl) GetReason() SendVMAwaitControl_Reason {
+	if x != nil {
+		return x.Reason
+	}
+	return SendVMAwaitControl_NEED_IP_RECONFIG
+}
+
+func (x *SendVMAwaitControl) GetSourceNetwork() *NetworkInterface {
+	if x != nil {
+		return x.SourceNetwork
+	}
+	return nil
+}
 
 type SendVMPhaseComplete struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -2752,7 +3052,7 @@ type SendVMPhaseComplete struct {
 
 func (x *SendVMPhaseComplete) Reset() {
 	*x = SendVMPhaseComplete{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[39]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2764,7 +3064,7 @@ func (x *SendVMPhaseComplete) String() string {
 func (*SendVMPhaseComplete) ProtoMessage() {}
 
 func (x *SendVMPhaseComplete) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[39]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2777,7 +3077,7 @@ func (x *SendVMPhaseComplete) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendVMPhaseComplete.ProtoReflect.Descriptor instead.
 func (*SendVMPhaseComplete) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{39}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *SendVMPhaseComplete) GetPhaseBytes() uint64 {
@@ -2800,7 +3100,7 @@ type SendVMMetadata struct {
 
 func (x *SendVMMetadata) Reset() {
 	*x = SendVMMetadata{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[40]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2812,7 +3112,7 @@ func (x *SendVMMetadata) String() string {
 func (*SendVMMetadata) ProtoMessage() {}
 
 func (x *SendVMMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[40]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2825,7 +3125,7 @@ func (x *SendVMMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendVMMetadata.ProtoReflect.Descriptor instead.
 func (*SendVMMetadata) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{40}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *SendVMMetadata) GetInstance() *Instance {
@@ -2873,7 +3173,7 @@ type SendVMDataChunk struct {
 
 func (x *SendVMDataChunk) Reset() {
 	*x = SendVMDataChunk{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[41]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2885,7 +3185,7 @@ func (x *SendVMDataChunk) String() string {
 func (*SendVMDataChunk) ProtoMessage() {}
 
 func (x *SendVMDataChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[41]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2898,7 +3198,7 @@ func (x *SendVMDataChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendVMDataChunk.ProtoReflect.Descriptor instead.
 func (*SendVMDataChunk) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{41}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *SendVMDataChunk) GetData() []byte {
@@ -2925,7 +3225,7 @@ type SendVMComplete struct {
 
 func (x *SendVMComplete) Reset() {
 	*x = SendVMComplete{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[42]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2937,7 +3237,7 @@ func (x *SendVMComplete) String() string {
 func (*SendVMComplete) ProtoMessage() {}
 
 func (x *SendVMComplete) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[42]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2950,7 +3250,7 @@ func (x *SendVMComplete) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendVMComplete.ProtoReflect.Descriptor instead.
 func (*SendVMComplete) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{42}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *SendVMComplete) GetChecksum() string {
@@ -2976,6 +3276,7 @@ type ReceiveVMRequest struct {
 	//	*ReceiveVMRequest_Data
 	//	*ReceiveVMRequest_Complete
 	//	*ReceiveVMRequest_PhaseComplete
+	//	*ReceiveVMRequest_SnapshotData
 	Type          isReceiveVMRequest_Type `protobuf_oneof:"type"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2983,7 +3284,7 @@ type ReceiveVMRequest struct {
 
 func (x *ReceiveVMRequest) Reset() {
 	*x = ReceiveVMRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[43]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2995,7 +3296,7 @@ func (x *ReceiveVMRequest) String() string {
 func (*ReceiveVMRequest) ProtoMessage() {}
 
 func (x *ReceiveVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[43]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3008,7 +3309,7 @@ func (x *ReceiveVMRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReceiveVMRequest.ProtoReflect.Descriptor instead.
 func (*ReceiveVMRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{43}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *ReceiveVMRequest) GetType() isReceiveVMRequest_Type {
@@ -3054,6 +3355,15 @@ func (x *ReceiveVMRequest) GetPhaseComplete() *ReceiveVMPhaseComplete {
 	return nil
 }
 
+func (x *ReceiveVMRequest) GetSnapshotData() *ReceiveVMSnapshotChunk {
+	if x != nil {
+		if x, ok := x.Type.(*ReceiveVMRequest_SnapshotData); ok {
+			return x.SnapshotData
+		}
+	}
+	return nil
+}
+
 type isReceiveVMRequest_Type interface {
 	isReceiveVMRequest_Type()
 }
@@ -3074,6 +3384,10 @@ type ReceiveVMRequest_PhaseComplete struct {
 	PhaseComplete *ReceiveVMPhaseComplete `protobuf:"bytes,4,opt,name=phase_complete,json=phaseComplete,proto3,oneof"`
 }
 
+type ReceiveVMRequest_SnapshotData struct {
+	SnapshotData *ReceiveVMSnapshotChunk `protobuf:"bytes,5,opt,name=snapshot_data,json=snapshotData,proto3,oneof"`
+}
+
 func (*ReceiveVMRequest_Start) isReceiveVMRequest_Type() {}
 
 func (*ReceiveVMRequest_Data) isReceiveVMRequest_Type() {}
@@ -3081,6 +3395,8 @@ func (*ReceiveVMRequest_Data) isReceiveVMRequest_Type() {}
 func (*ReceiveVMRequest_Complete) isReceiveVMRequest_Type() {}
 
 func (*ReceiveVMRequest_PhaseComplete) isReceiveVMRequest_Type() {}
+
+func (*ReceiveVMRequest_SnapshotData) isReceiveVMRequest_Type() {}
 
 type ReceiveVMPhaseComplete struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3090,7 +3406,7 @@ type ReceiveVMPhaseComplete struct {
 
 func (x *ReceiveVMPhaseComplete) Reset() {
 	*x = ReceiveVMPhaseComplete{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[44]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3102,7 +3418,7 @@ func (x *ReceiveVMPhaseComplete) String() string {
 func (*ReceiveVMPhaseComplete) ProtoMessage() {}
 
 func (x *ReceiveVMPhaseComplete) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[44]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3115,7 +3431,7 @@ func (x *ReceiveVMPhaseComplete) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReceiveVMPhaseComplete.ProtoReflect.Descriptor instead.
 func (*ReceiveVMPhaseComplete) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{44}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{47}
 }
 
 type ReceiveVMStartRequest struct {
@@ -3126,13 +3442,14 @@ type ReceiveVMStartRequest struct {
 	Encrypted      bool                   `protobuf:"varint,4,opt,name=encrypted,proto3" json:"encrypted,omitempty"`                                // Whether disk is encrypted
 	EncryptionKey  []byte                 `protobuf:"bytes,5,opt,name=encryption_key,json=encryptionKey,proto3" json:"encryption_key,omitempty"`    // Encryption key (if encrypted)
 	GroupID        string                 `protobuf:"bytes,6,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`                      // Target group ID
+	Live           bool                   `protobuf:"varint,7,opt,name=live,proto3" json:"live,omitempty"`                                          // Live migration: restore from CH snapshot
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ReceiveVMStartRequest) Reset() {
 	*x = ReceiveVMStartRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[45]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3144,7 +3461,7 @@ func (x *ReceiveVMStartRequest) String() string {
 func (*ReceiveVMStartRequest) ProtoMessage() {}
 
 func (x *ReceiveVMStartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[45]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3157,7 +3474,7 @@ func (x *ReceiveVMStartRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReceiveVMStartRequest.ProtoReflect.Descriptor instead.
 func (*ReceiveVMStartRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{45}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ReceiveVMStartRequest) GetInstanceID() string {
@@ -3202,6 +3519,73 @@ func (x *ReceiveVMStartRequest) GetGroupID() string {
 	return ""
 }
 
+func (x *ReceiveVMStartRequest) GetLive() bool {
+	if x != nil {
+		return x.Live
+	}
+	return false
+}
+
+type ReceiveVMSnapshotChunk struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Filename      string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
+	Data          []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	IsLastChunk   bool                   `protobuf:"varint,3,opt,name=is_last_chunk,json=isLastChunk,proto3" json:"is_last_chunk,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReceiveVMSnapshotChunk) Reset() {
+	*x = ReceiveVMSnapshotChunk{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReceiveVMSnapshotChunk) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReceiveVMSnapshotChunk) ProtoMessage() {}
+
+func (x *ReceiveVMSnapshotChunk) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReceiveVMSnapshotChunk.ProtoReflect.Descriptor instead.
+func (*ReceiveVMSnapshotChunk) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *ReceiveVMSnapshotChunk) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *ReceiveVMSnapshotChunk) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *ReceiveVMSnapshotChunk) GetIsLastChunk() bool {
+	if x != nil {
+		return x.IsLastChunk
+	}
+	return false
+}
+
 type ReceiveVMDataChunk struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`                                     // Raw zfs recv data
@@ -3212,7 +3596,7 @@ type ReceiveVMDataChunk struct {
 
 func (x *ReceiveVMDataChunk) Reset() {
 	*x = ReceiveVMDataChunk{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[46]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3224,7 +3608,7 @@ func (x *ReceiveVMDataChunk) String() string {
 func (*ReceiveVMDataChunk) ProtoMessage() {}
 
 func (x *ReceiveVMDataChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[46]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3237,7 +3621,7 @@ func (x *ReceiveVMDataChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReceiveVMDataChunk.ProtoReflect.Descriptor instead.
 func (*ReceiveVMDataChunk) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{46}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ReceiveVMDataChunk) GetData() []byte {
@@ -3263,7 +3647,7 @@ type ReceiveVMComplete struct {
 
 func (x *ReceiveVMComplete) Reset() {
 	*x = ReceiveVMComplete{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[47]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3275,7 +3659,7 @@ func (x *ReceiveVMComplete) String() string {
 func (*ReceiveVMComplete) ProtoMessage() {}
 
 func (x *ReceiveVMComplete) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[47]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3288,7 +3672,7 @@ func (x *ReceiveVMComplete) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReceiveVMComplete.ProtoReflect.Descriptor instead.
 func (*ReceiveVMComplete) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{47}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *ReceiveVMComplete) GetChecksum() string {
@@ -3311,7 +3695,7 @@ type ReceiveVMResponse struct {
 
 func (x *ReceiveVMResponse) Reset() {
 	*x = ReceiveVMResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[48]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3323,7 +3707,7 @@ func (x *ReceiveVMResponse) String() string {
 func (*ReceiveVMResponse) ProtoMessage() {}
 
 func (x *ReceiveVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[48]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3336,7 +3720,7 @@ func (x *ReceiveVMResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReceiveVMResponse.ProtoReflect.Descriptor instead.
 func (*ReceiveVMResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{48}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ReceiveVMResponse) GetType() isReceiveVMResponse_Type {
@@ -3383,13 +3767,14 @@ func (*ReceiveVMResponse_Result) isReceiveVMResponse_Type() {}
 type ReceiveVMReady struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	HasBaseImage  bool                   `protobuf:"varint,1,opt,name=has_base_image,json=hasBaseImage,proto3" json:"has_base_image,omitempty"` // Target already has the base image
+	TargetNetwork *NetworkInterface      `protobuf:"bytes,2,opt,name=target_network,json=targetNetwork,proto3" json:"target_network,omitempty"` // Allocated network for live migration
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ReceiveVMReady) Reset() {
 	*x = ReceiveVMReady{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[49]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3401,7 +3786,7 @@ func (x *ReceiveVMReady) String() string {
 func (*ReceiveVMReady) ProtoMessage() {}
 
 func (x *ReceiveVMReady) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[49]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3414,7 +3799,7 @@ func (x *ReceiveVMReady) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReceiveVMReady.ProtoReflect.Descriptor instead.
 func (*ReceiveVMReady) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{49}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ReceiveVMReady) GetHasBaseImage() bool {
@@ -3422,6 +3807,13 @@ func (x *ReceiveVMReady) GetHasBaseImage() bool {
 		return x.HasBaseImage
 	}
 	return false
+}
+
+func (x *ReceiveVMReady) GetTargetNetwork() *NetworkInterface {
+	if x != nil {
+		return x.TargetNetwork
+	}
+	return nil
 }
 
 type ReceiveVMResult struct {
@@ -3434,7 +3826,7 @@ type ReceiveVMResult struct {
 
 func (x *ReceiveVMResult) Reset() {
 	*x = ReceiveVMResult{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[50]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3446,7 +3838,7 @@ func (x *ReceiveVMResult) String() string {
 func (*ReceiveVMResult) ProtoMessage() {}
 
 func (x *ReceiveVMResult) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[50]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3459,7 +3851,7 @@ func (x *ReceiveVMResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReceiveVMResult.ProtoReflect.Descriptor instead.
 func (*ReceiveVMResult) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{50}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ReceiveVMResult) GetInstance() *Instance {
@@ -3486,7 +3878,7 @@ type GrowDiskRequest struct {
 
 func (x *GrowDiskRequest) Reset() {
 	*x = GrowDiskRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[51]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3498,7 +3890,7 @@ func (x *GrowDiskRequest) String() string {
 func (*GrowDiskRequest) ProtoMessage() {}
 
 func (x *GrowDiskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[51]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3511,7 +3903,7 @@ func (x *GrowDiskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GrowDiskRequest.ProtoReflect.Descriptor instead.
 func (*GrowDiskRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{51}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *GrowDiskRequest) GetID() string {
@@ -3538,7 +3930,7 @@ type GrowDiskResponse struct {
 
 func (x *GrowDiskResponse) Reset() {
 	*x = GrowDiskResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[52]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3550,7 +3942,7 @@ func (x *GrowDiskResponse) String() string {
 func (*GrowDiskResponse) ProtoMessage() {}
 
 func (x *GrowDiskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[52]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3563,7 +3955,7 @@ func (x *GrowDiskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GrowDiskResponse.ProtoReflect.Descriptor instead.
 func (*GrowDiskResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{52}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *GrowDiskResponse) GetOldSize() uint64 {
@@ -3599,7 +3991,7 @@ type CloneInstanceRequest struct {
 
 func (x *CloneInstanceRequest) Reset() {
 	*x = CloneInstanceRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[53]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3611,7 +4003,7 @@ func (x *CloneInstanceRequest) String() string {
 func (*CloneInstanceRequest) ProtoMessage() {}
 
 func (x *CloneInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[53]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3624,7 +4016,7 @@ func (x *CloneInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloneInstanceRequest.ProtoReflect.Descriptor instead.
 func (*CloneInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{53}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *CloneInstanceRequest) GetSourceInstanceID() string {
@@ -3701,7 +4093,7 @@ type CloneInstanceStatus struct {
 
 func (x *CloneInstanceStatus) Reset() {
 	*x = CloneInstanceStatus{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[54]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3713,7 +4105,7 @@ func (x *CloneInstanceStatus) String() string {
 func (*CloneInstanceStatus) ProtoMessage() {}
 
 func (x *CloneInstanceStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[54]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3726,7 +4118,7 @@ func (x *CloneInstanceStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloneInstanceStatus.ProtoReflect.Descriptor instead.
 func (*CloneInstanceStatus) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{54}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *CloneInstanceStatus) GetID() string {
@@ -3763,7 +4155,7 @@ type CloneInstanceResponse struct {
 
 func (x *CloneInstanceResponse) Reset() {
 	*x = CloneInstanceResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[55]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3775,7 +4167,7 @@ func (x *CloneInstanceResponse) String() string {
 func (*CloneInstanceResponse) ProtoMessage() {}
 
 func (x *CloneInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[55]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3788,7 +4180,7 @@ func (x *CloneInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloneInstanceResponse.ProtoReflect.Descriptor instead.
 func (*CloneInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{55}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *CloneInstanceResponse) GetType() isCloneInstanceResponse_Type {
@@ -3843,7 +4235,7 @@ type ResizeVMRequest struct {
 
 func (x *ResizeVMRequest) Reset() {
 	*x = ResizeVMRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[56]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3855,7 +4247,7 @@ func (x *ResizeVMRequest) String() string {
 func (*ResizeVMRequest) ProtoMessage() {}
 
 func (x *ResizeVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[56]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3868,7 +4260,7 @@ func (x *ResizeVMRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResizeVMRequest.ProtoReflect.Descriptor instead.
 func (*ResizeVMRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{56}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *ResizeVMRequest) GetID() string {
@@ -3904,7 +4296,7 @@ type ResizeVMResponse struct {
 
 func (x *ResizeVMResponse) Reset() {
 	*x = ResizeVMResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[57]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3916,7 +4308,7 @@ func (x *ResizeVMResponse) String() string {
 func (*ResizeVMResponse) ProtoMessage() {}
 
 func (x *ResizeVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[57]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3929,7 +4321,7 @@ func (x *ResizeVMResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResizeVMResponse.ProtoReflect.Descriptor instead.
 func (*ResizeVMResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{57}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *ResizeVMResponse) GetOldMemory() uint64 {
@@ -4220,122 +4612,180 @@ var file_exe_compute_v1_compute_proto_rawDesc = string([]byte{
 	0x72, 0x4c, 0x6f, 0x63, 0x61, 0x6c, 0x69, 0x74, 0x79, 0x12, 0x16, 0x0a, 0x06, 0x72, 0x65, 0x67,
 	0x69, 0x6f, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x72, 0x65, 0x67, 0x69, 0x6f,
 	0x6e, 0x12, 0x12, 0x0a, 0x04, 0x7a, 0x6f, 0x6e, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52,
-	0x04, 0x7a, 0x6f, 0x6e, 0x65, 0x22, 0x53, 0x0a, 0x0d, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x52,
-	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x3a, 0x0a, 0x05, 0x73, 0x74, 0x61, 0x72, 0x74, 0x18,
-	0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x22, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70,
-	0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x53, 0x74, 0x61,
-	0x72, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x48, 0x00, 0x52, 0x05, 0x73, 0x74, 0x61,
-	0x72, 0x74, 0x42, 0x06, 0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x22, 0x85, 0x01, 0x0a, 0x12, 0x53,
-	0x65, 0x6e, 0x64, 0x56, 0x4d, 0x53, 0x74, 0x61, 0x72, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
-	0x74, 0x12, 0x1f, 0x0a, 0x0b, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x5f, 0x69, 0x64,
-	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0a, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65,
-	0x49, 0x64, 0x12, 0x31, 0x0a, 0x15, 0x74, 0x61, 0x72, 0x67, 0x65, 0x74, 0x5f, 0x68, 0x61, 0x73,
-	0x5f, 0x62, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x6d, 0x61, 0x67, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28,
-	0x08, 0x52, 0x12, 0x74, 0x61, 0x72, 0x67, 0x65, 0x74, 0x48, 0x61, 0x73, 0x42, 0x61, 0x73, 0x65,
-	0x49, 0x6d, 0x61, 0x67, 0x65, 0x12, 0x1b, 0x0a, 0x09, 0x74, 0x77, 0x6f, 0x5f, 0x70, 0x68, 0x61,
-	0x73, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x08, 0x52, 0x08, 0x74, 0x77, 0x6f, 0x50, 0x68, 0x61,
-	0x73, 0x65, 0x22, 0x99, 0x02, 0x0a, 0x0e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x52, 0x65, 0x73,
-	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x3c, 0x0a, 0x08, 0x6d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74,
-	0x61, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1e, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f,
-	0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x4d,
-	0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x48, 0x00, 0x52, 0x08, 0x6d, 0x65, 0x74, 0x61, 0x64,
-	0x61, 0x74, 0x61, 0x12, 0x35, 0x0a, 0x04, 0x64, 0x61, 0x74, 0x61, 0x18, 0x02, 0x20, 0x01, 0x28,
-	0x0b, 0x32, 0x1f, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e,
-	0x76, 0x31, 0x2e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x44, 0x61, 0x74, 0x61, 0x43, 0x68, 0x75,
-	0x6e, 0x6b, 0x48, 0x00, 0x52, 0x04, 0x64, 0x61, 0x74, 0x61, 0x12, 0x3c, 0x0a, 0x08, 0x63, 0x6f,
-	0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1e, 0x2e, 0x65,
-	0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65,
-	0x6e, 0x64, 0x56, 0x4d, 0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x48, 0x00, 0x52, 0x08,
-	0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x12, 0x4c, 0x0a, 0x0e, 0x70, 0x68, 0x61, 0x73,
-	0x65, 0x5f, 0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0b,
-	0x32, 0x23, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76,
-	0x31, 0x2e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x50, 0x68, 0x61, 0x73, 0x65, 0x43, 0x6f, 0x6d,
-	0x70, 0x6c, 0x65, 0x74, 0x65, 0x48, 0x00, 0x52, 0x0d, 0x70, 0x68, 0x61, 0x73, 0x65, 0x43, 0x6f,
-	0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x42, 0x06, 0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x22, 0x36,
-	0x0a, 0x13, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x50, 0x68, 0x61, 0x73, 0x65, 0x43, 0x6f, 0x6d,
-	0x70, 0x6c, 0x65, 0x74, 0x65, 0x12, 0x1f, 0x0a, 0x0b, 0x70, 0x68, 0x61, 0x73, 0x65, 0x5f, 0x62,
-	0x79, 0x74, 0x65, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x0a, 0x70, 0x68, 0x61, 0x73,
-	0x65, 0x42, 0x79, 0x74, 0x65, 0x73, 0x22, 0xdf, 0x01, 0x0a, 0x0e, 0x53, 0x65, 0x6e, 0x64, 0x56,
-	0x4d, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x12, 0x34, 0x0a, 0x08, 0x69, 0x6e, 0x73,
-	0x74, 0x61, 0x6e, 0x63, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x65, 0x78,
-	0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x49, 0x6e, 0x73,
-	0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x08, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x12,
-	0x22, 0x0a, 0x0d, 0x62, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x6d, 0x61, 0x67, 0x65, 0x5f, 0x69, 0x64,
-	0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x62, 0x61, 0x73, 0x65, 0x49, 0x6d, 0x61, 0x67,
-	0x65, 0x49, 0x64, 0x12, 0x2e, 0x0a, 0x13, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x5f, 0x73, 0x69, 0x7a,
-	0x65, 0x5f, 0x65, 0x73, 0x74, 0x69, 0x6d, 0x61, 0x74, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x04,
-	0x52, 0x11, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x53, 0x69, 0x7a, 0x65, 0x45, 0x73, 0x74, 0x69, 0x6d,
-	0x61, 0x74, 0x65, 0x12, 0x1c, 0x0a, 0x09, 0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x65, 0x64,
-	0x18, 0x04, 0x20, 0x01, 0x28, 0x08, 0x52, 0x09, 0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x65,
-	0x64, 0x12, 0x25, 0x0a, 0x0e, 0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x5f,
-	0x6b, 0x65, 0x79, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x0d, 0x65, 0x6e, 0x63, 0x72, 0x79,
-	0x70, 0x74, 0x69, 0x6f, 0x6e, 0x4b, 0x65, 0x79, 0x22, 0x49, 0x0a, 0x0f, 0x53, 0x65, 0x6e, 0x64,
-	0x56, 0x4d, 0x44, 0x61, 0x74, 0x61, 0x43, 0x68, 0x75, 0x6e, 0x6b, 0x12, 0x12, 0x0a, 0x04, 0x64,
-	0x61, 0x74, 0x61, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x04, 0x64, 0x61, 0x74, 0x61, 0x12,
-	0x22, 0x0a, 0x0d, 0x69, 0x73, 0x5f, 0x62, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x6d, 0x61, 0x67, 0x65,
-	0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x52, 0x0b, 0x69, 0x73, 0x42, 0x61, 0x73, 0x65, 0x49, 0x6d,
-	0x61, 0x67, 0x65, 0x22, 0x4d, 0x0a, 0x0e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x43, 0x6f, 0x6d,
-	0x70, 0x6c, 0x65, 0x74, 0x65, 0x12, 0x1a, 0x0a, 0x08, 0x63, 0x68, 0x65, 0x63, 0x6b, 0x73, 0x75,
-	0x6d, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x63, 0x68, 0x65, 0x63, 0x6b, 0x73, 0x75,
-	0x6d, 0x12, 0x1f, 0x0a, 0x0b, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73,
-	0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x52, 0x0a, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x42, 0x79, 0x74,
-	0x65, 0x73, 0x22, 0xa5, 0x02, 0x0a, 0x10, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d,
-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x3d, 0x0a, 0x05, 0x73, 0x74, 0x61, 0x72, 0x74,
-	0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x25, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d,
-	0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56,
-	0x4d, 0x53, 0x74, 0x61, 0x72, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x48, 0x00, 0x52,
-	0x05, 0x73, 0x74, 0x61, 0x72, 0x74, 0x12, 0x38, 0x0a, 0x04, 0x64, 0x61, 0x74, 0x61, 0x18, 0x02,
-	0x20, 0x01, 0x28, 0x0b, 0x32, 0x22, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75,
-	0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x44,
-	0x61, 0x74, 0x61, 0x43, 0x68, 0x75, 0x6e, 0x6b, 0x48, 0x00, 0x52, 0x04, 0x64, 0x61, 0x74, 0x61,
-	0x12, 0x3f, 0x0a, 0x08, 0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x18, 0x03, 0x20, 0x01,
-	0x28, 0x0b, 0x32, 0x21, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65,
-	0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x43, 0x6f, 0x6d,
-	0x70, 0x6c, 0x65, 0x74, 0x65, 0x48, 0x00, 0x52, 0x08, 0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74,
-	0x65, 0x12, 0x4f, 0x0a, 0x0e, 0x70, 0x68, 0x61, 0x73, 0x65, 0x5f, 0x63, 0x6f, 0x6d, 0x70, 0x6c,
-	0x65, 0x74, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x26, 0x2e, 0x65, 0x78, 0x65, 0x2e,
-	0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x63, 0x65, 0x69,
-	0x76, 0x65, 0x56, 0x4d, 0x50, 0x68, 0x61, 0x73, 0x65, 0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74,
-	0x65, 0x48, 0x00, 0x52, 0x0d, 0x70, 0x68, 0x61, 0x73, 0x65, 0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65,
-	0x74, 0x65, 0x42, 0x06, 0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x22, 0x18, 0x0a, 0x16, 0x52, 0x65,
-	0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x50, 0x68, 0x61, 0x73, 0x65, 0x43, 0x6f, 0x6d, 0x70,
-	0x6c, 0x65, 0x74, 0x65, 0x22, 0xff, 0x01, 0x0a, 0x15, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65,
-	0x56, 0x4d, 0x53, 0x74, 0x61, 0x72, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x1f,
-	0x0a, 0x0b, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20,
-	0x01, 0x28, 0x09, 0x52, 0x0a, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x49, 0x64, 0x12,
-	0x41, 0x0a, 0x0f, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x5f, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e,
-	0x63, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63,
-	0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e,
-	0x63, 0x65, 0x52, 0x0e, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e,
-	0x63, 0x65, 0x12, 0x22, 0x0a, 0x0d, 0x62, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x6d, 0x61, 0x67, 0x65,
-	0x5f, 0x69, 0x64, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x62, 0x61, 0x73, 0x65, 0x49,
-	0x6d, 0x61, 0x67, 0x65, 0x49, 0x64, 0x12, 0x1c, 0x0a, 0x09, 0x65, 0x6e, 0x63, 0x72, 0x79, 0x70,
-	0x74, 0x65, 0x64, 0x18, 0x04, 0x20, 0x01, 0x28, 0x08, 0x52, 0x09, 0x65, 0x6e, 0x63, 0x72, 0x79,
-	0x70, 0x74, 0x65, 0x64, 0x12, 0x25, 0x0a, 0x0e, 0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x69,
-	0x6f, 0x6e, 0x5f, 0x6b, 0x65, 0x79, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x0d, 0x65, 0x6e,
-	0x63, 0x72, 0x79, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x4b, 0x65, 0x79, 0x12, 0x19, 0x0a, 0x08, 0x67,
-	0x72, 0x6f, 0x75, 0x70, 0x5f, 0x69, 0x64, 0x18, 0x06, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x67,
-	0x72, 0x6f, 0x75, 0x70, 0x49, 0x64, 0x22, 0x4c, 0x0a, 0x12, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76,
-	0x65, 0x56, 0x4d, 0x44, 0x61, 0x74, 0x61, 0x43, 0x68, 0x75, 0x6e, 0x6b, 0x12, 0x12, 0x0a, 0x04,
-	0x64, 0x61, 0x74, 0x61, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x04, 0x64, 0x61, 0x74, 0x61,
-	0x12, 0x22, 0x0a, 0x0d, 0x69, 0x73, 0x5f, 0x62, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x6d, 0x61, 0x67,
-	0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x52, 0x0b, 0x69, 0x73, 0x42, 0x61, 0x73, 0x65, 0x49,
-	0x6d, 0x61, 0x67, 0x65, 0x22, 0x2f, 0x0a, 0x11, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56,
-	0x4d, 0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x12, 0x1a, 0x0a, 0x08, 0x63, 0x68, 0x65,
-	0x63, 0x6b, 0x73, 0x75, 0x6d, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x63, 0x68, 0x65,
-	0x63, 0x6b, 0x73, 0x75, 0x6d, 0x22, 0x8e, 0x01, 0x0a, 0x11, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76,
-	0x65, 0x56, 0x4d, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x36, 0x0a, 0x05, 0x72,
-	0x65, 0x61, 0x64, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1e, 0x2e, 0x65, 0x78, 0x65,
+	0x04, 0x7a, 0x6f, 0x6e, 0x65, 0x22, 0x8e, 0x01, 0x0a, 0x0d, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x3a, 0x0a, 0x05, 0x73, 0x74, 0x61, 0x72, 0x74,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x22, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d,
+	0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x53, 0x74,
+	0x61, 0x72, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x48, 0x00, 0x52, 0x05, 0x73, 0x74,
+	0x61, 0x72, 0x74, 0x12, 0x39, 0x0a, 0x07, 0x63, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c, 0x18, 0x02,
+	0x20, 0x01, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75,
+	0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x43, 0x6f, 0x6e, 0x74,
+	0x72, 0x6f, 0x6c, 0x48, 0x00, 0x52, 0x07, 0x63, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c, 0x42, 0x06,
+	0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x22, 0x99, 0x01, 0x0a, 0x12, 0x53, 0x65, 0x6e, 0x64, 0x56,
+	0x4d, 0x53, 0x74, 0x61, 0x72, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x1f, 0x0a,
+	0x0b, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x09, 0x52, 0x0a, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x49, 0x64, 0x12, 0x31,
+	0x0a, 0x15, 0x74, 0x61, 0x72, 0x67, 0x65, 0x74, 0x5f, 0x68, 0x61, 0x73, 0x5f, 0x62, 0x61, 0x73,
+	0x65, 0x5f, 0x69, 0x6d, 0x61, 0x67, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x52, 0x12, 0x74,
+	0x61, 0x72, 0x67, 0x65, 0x74, 0x48, 0x61, 0x73, 0x42, 0x61, 0x73, 0x65, 0x49, 0x6d, 0x61, 0x67,
+	0x65, 0x12, 0x1b, 0x0a, 0x09, 0x74, 0x77, 0x6f, 0x5f, 0x70, 0x68, 0x61, 0x73, 0x65, 0x18, 0x03,
+	0x20, 0x01, 0x28, 0x08, 0x52, 0x08, 0x74, 0x77, 0x6f, 0x50, 0x68, 0x61, 0x73, 0x65, 0x12, 0x12,
+	0x0a, 0x04, 0x6c, 0x69, 0x76, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28, 0x08, 0x52, 0x04, 0x6c, 0x69,
+	0x76, 0x65, 0x22, 0x6f, 0x0a, 0x0d, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x43, 0x6f, 0x6e, 0x74,
+	0x72, 0x6f, 0x6c, 0x12, 0x3c, 0x0a, 0x06, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x0e, 0x32, 0x24, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74,
+	0x65, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x43, 0x6f, 0x6e, 0x74, 0x72,
+	0x6f, 0x6c, 0x2e, 0x41, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x06, 0x61, 0x63, 0x74, 0x69, 0x6f,
+	0x6e, 0x22, 0x20, 0x0a, 0x06, 0x41, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x16, 0x0a, 0x12, 0x50,
+	0x52, 0x4f, 0x43, 0x45, 0x45, 0x44, 0x5f, 0x57, 0x49, 0x54, 0x48, 0x5f, 0x50, 0x41, 0x55, 0x53,
+	0x45, 0x10, 0x00, 0x22, 0xb0, 0x03, 0x0a, 0x0e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x52, 0x65,
+	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x3c, 0x0a, 0x08, 0x6d, 0x65, 0x74, 0x61, 0x64, 0x61,
+	0x74, 0x61, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1e, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63,
+	0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d,
+	0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x48, 0x00, 0x52, 0x08, 0x6d, 0x65, 0x74, 0x61,
+	0x64, 0x61, 0x74, 0x61, 0x12, 0x35, 0x0a, 0x04, 0x64, 0x61, 0x74, 0x61, 0x18, 0x02, 0x20, 0x01,
+	0x28, 0x0b, 0x32, 0x1f, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65,
+	0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x44, 0x61, 0x74, 0x61, 0x43, 0x68,
+	0x75, 0x6e, 0x6b, 0x48, 0x00, 0x52, 0x04, 0x64, 0x61, 0x74, 0x61, 0x12, 0x3c, 0x0a, 0x08, 0x63,
+	0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1e, 0x2e,
+	0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x53,
+	0x65, 0x6e, 0x64, 0x56, 0x4d, 0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x48, 0x00, 0x52,
+	0x08, 0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x12, 0x4c, 0x0a, 0x0e, 0x70, 0x68, 0x61,
+	0x73, 0x65, 0x5f, 0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28,
+	0x0b, 0x32, 0x23, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e,
+	0x76, 0x31, 0x2e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x50, 0x68, 0x61, 0x73, 0x65, 0x43, 0x6f,
+	0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x48, 0x00, 0x52, 0x0d, 0x70, 0x68, 0x61, 0x73, 0x65, 0x43,
+	0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x12, 0x4a, 0x0a, 0x0d, 0x73, 0x6e, 0x61, 0x70, 0x73,
+	0x68, 0x6f, 0x74, 0x5f, 0x64, 0x61, 0x74, 0x61, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x23,
+	0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e,
+	0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x53, 0x6e, 0x61, 0x70, 0x73, 0x68, 0x6f, 0x74, 0x43, 0x68,
+	0x75, 0x6e, 0x6b, 0x48, 0x00, 0x52, 0x0c, 0x73, 0x6e, 0x61, 0x70, 0x73, 0x68, 0x6f, 0x74, 0x44,
+	0x61, 0x74, 0x61, 0x12, 0x49, 0x0a, 0x0d, 0x61, 0x77, 0x61, 0x69, 0x74, 0x5f, 0x63, 0x6f, 0x6e,
+	0x74, 0x72, 0x6f, 0x6c, 0x18, 0x06, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x22, 0x2e, 0x65, 0x78, 0x65,
+	0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x6e, 0x64,
+	0x56, 0x4d, 0x41, 0x77, 0x61, 0x69, 0x74, 0x43, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c, 0x48, 0x00,
+	0x52, 0x0c, 0x61, 0x77, 0x61, 0x69, 0x74, 0x43, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c, 0x42, 0x06,
+	0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x22, 0x69, 0x0a, 0x13, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d,
+	0x53, 0x6e, 0x61, 0x70, 0x73, 0x68, 0x6f, 0x74, 0x43, 0x68, 0x75, 0x6e, 0x6b, 0x12, 0x1a, 0x0a,
+	0x08, 0x66, 0x69, 0x6c, 0x65, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52,
+	0x08, 0x66, 0x69, 0x6c, 0x65, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x12, 0x0a, 0x04, 0x64, 0x61, 0x74,
+	0x61, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x04, 0x64, 0x61, 0x74, 0x61, 0x12, 0x22, 0x0a,
+	0x0d, 0x69, 0x73, 0x5f, 0x6c, 0x61, 0x73, 0x74, 0x5f, 0x63, 0x68, 0x75, 0x6e, 0x6b, 0x18, 0x03,
+	0x20, 0x01, 0x28, 0x08, 0x52, 0x0b, 0x69, 0x73, 0x4c, 0x61, 0x73, 0x74, 0x43, 0x68, 0x75, 0x6e,
+	0x6b, 0x22, 0xc0, 0x01, 0x0a, 0x12, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x41, 0x77, 0x61, 0x69,
+	0x74, 0x43, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c, 0x12, 0x41, 0x0a, 0x06, 0x72, 0x65, 0x61, 0x73,
+	0x6f, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x29, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63,
+	0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d,
+	0x41, 0x77, 0x61, 0x69, 0x74, 0x43, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c, 0x2e, 0x52, 0x65, 0x61,
+	0x73, 0x6f, 0x6e, 0x52, 0x06, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x12, 0x47, 0x0a, 0x0e, 0x73,
+	0x6f, 0x75, 0x72, 0x63, 0x65, 0x5f, 0x6e, 0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x18, 0x02, 0x20,
+	0x01, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74,
+	0x65, 0x2e, 0x76, 0x31, 0x2e, 0x4e, 0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x49, 0x6e, 0x74, 0x65,
+	0x72, 0x66, 0x61, 0x63, 0x65, 0x52, 0x0d, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x4e, 0x65, 0x74,
+	0x77, 0x6f, 0x72, 0x6b, 0x22, 0x1e, 0x0a, 0x06, 0x52, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x12, 0x14,
+	0x0a, 0x10, 0x4e, 0x45, 0x45, 0x44, 0x5f, 0x49, 0x50, 0x5f, 0x52, 0x45, 0x43, 0x4f, 0x4e, 0x46,
+	0x49, 0x47, 0x10, 0x00, 0x22, 0x36, 0x0a, 0x13, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x50, 0x68,
+	0x61, 0x73, 0x65, 0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x12, 0x1f, 0x0a, 0x0b, 0x70,
+	0x68, 0x61, 0x73, 0x65, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04,
+	0x52, 0x0a, 0x70, 0x68, 0x61, 0x73, 0x65, 0x42, 0x79, 0x74, 0x65, 0x73, 0x22, 0xdf, 0x01, 0x0a,
+	0x0e, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x12,
+	0x34, 0x0a, 0x08, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x0b, 0x32, 0x18, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e,
+	0x76, 0x31, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x08, 0x69, 0x6e, 0x73,
+	0x74, 0x61, 0x6e, 0x63, 0x65, 0x12, 0x22, 0x0a, 0x0d, 0x62, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x6d,
+	0x61, 0x67, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x62, 0x61,
+	0x73, 0x65, 0x49, 0x6d, 0x61, 0x67, 0x65, 0x49, 0x64, 0x12, 0x2e, 0x0a, 0x13, 0x74, 0x6f, 0x74,
+	0x61, 0x6c, 0x5f, 0x73, 0x69, 0x7a, 0x65, 0x5f, 0x65, 0x73, 0x74, 0x69, 0x6d, 0x61, 0x74, 0x65,
+	0x18, 0x03, 0x20, 0x01, 0x28, 0x04, 0x52, 0x11, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x53, 0x69, 0x7a,
+	0x65, 0x45, 0x73, 0x74, 0x69, 0x6d, 0x61, 0x74, 0x65, 0x12, 0x1c, 0x0a, 0x09, 0x65, 0x6e, 0x63,
+	0x72, 0x79, 0x70, 0x74, 0x65, 0x64, 0x18, 0x04, 0x20, 0x01, 0x28, 0x08, 0x52, 0x09, 0x65, 0x6e,
+	0x63, 0x72, 0x79, 0x70, 0x74, 0x65, 0x64, 0x12, 0x25, 0x0a, 0x0e, 0x65, 0x6e, 0x63, 0x72, 0x79,
+	0x70, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x6b, 0x65, 0x79, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0c, 0x52,
+	0x0d, 0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x4b, 0x65, 0x79, 0x22, 0x49,
+	0x0a, 0x0f, 0x53, 0x65, 0x6e, 0x64, 0x56, 0x4d, 0x44, 0x61, 0x74, 0x61, 0x43, 0x68, 0x75, 0x6e,
+	0x6b, 0x12, 0x12, 0x0a, 0x04, 0x64, 0x61, 0x74, 0x61, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0c, 0x52,
+	0x04, 0x64, 0x61, 0x74, 0x61, 0x12, 0x22, 0x0a, 0x0d, 0x69, 0x73, 0x5f, 0x62, 0x61, 0x73, 0x65,
+	0x5f, 0x69, 0x6d, 0x61, 0x67, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x52, 0x0b, 0x69, 0x73,
+	0x42, 0x61, 0x73, 0x65, 0x49, 0x6d, 0x61, 0x67, 0x65, 0x22, 0x4d, 0x0a, 0x0e, 0x53, 0x65, 0x6e,
+	0x64, 0x56, 0x4d, 0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x12, 0x1a, 0x0a, 0x08, 0x63,
+	0x68, 0x65, 0x63, 0x6b, 0x73, 0x75, 0x6d, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x63,
+	0x68, 0x65, 0x63, 0x6b, 0x73, 0x75, 0x6d, 0x12, 0x1f, 0x0a, 0x0b, 0x74, 0x6f, 0x74, 0x61, 0x6c,
+	0x5f, 0x62, 0x79, 0x74, 0x65, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x52, 0x0a, 0x74, 0x6f,
+	0x74, 0x61, 0x6c, 0x42, 0x79, 0x74, 0x65, 0x73, 0x22, 0xf4, 0x02, 0x0a, 0x10, 0x52, 0x65, 0x63,
+	0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x3d, 0x0a,
+	0x05, 0x73, 0x74, 0x61, 0x72, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x25, 0x2e, 0x65,
+	0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65,
+	0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x53, 0x74, 0x61, 0x72, 0x74, 0x52, 0x65, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x48, 0x00, 0x52, 0x05, 0x73, 0x74, 0x61, 0x72, 0x74, 0x12, 0x38, 0x0a, 0x04,
+	0x64, 0x61, 0x74, 0x61, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x22, 0x2e, 0x65, 0x78, 0x65,
 	0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x63, 0x65,
-	0x69, 0x76, 0x65, 0x56, 0x4d, 0x52, 0x65, 0x61, 0x64, 0x79, 0x48, 0x00, 0x52, 0x05, 0x72, 0x65,
-	0x61, 0x64, 0x79, 0x12, 0x39, 0x0a, 0x06, 0x72, 0x65, 0x73, 0x75, 0x6c, 0x74, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x0b, 0x32, 0x1f, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74,
-	0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x52, 0x65,
-	0x73, 0x75, 0x6c, 0x74, 0x48, 0x00, 0x52, 0x06, 0x72, 0x65, 0x73, 0x75, 0x6c, 0x74, 0x42, 0x06,
-	0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x22, 0x36, 0x0a, 0x0e, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76,
-	0x65, 0x56, 0x4d, 0x52, 0x65, 0x61, 0x64, 0x79, 0x12, 0x24, 0x0a, 0x0e, 0x68, 0x61, 0x73, 0x5f,
-	0x62, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x6d, 0x61, 0x67, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08,
-	0x52, 0x0c, 0x68, 0x61, 0x73, 0x42, 0x61, 0x73, 0x65, 0x49, 0x6d, 0x61, 0x67, 0x65, 0x22, 0x5d,
+	0x69, 0x76, 0x65, 0x56, 0x4d, 0x44, 0x61, 0x74, 0x61, 0x43, 0x68, 0x75, 0x6e, 0x6b, 0x48, 0x00,
+	0x52, 0x04, 0x64, 0x61, 0x74, 0x61, 0x12, 0x3f, 0x0a, 0x08, 0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65,
+	0x74, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x21, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63,
+	0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76,
+	0x65, 0x56, 0x4d, 0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x48, 0x00, 0x52, 0x08, 0x63,
+	0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x12, 0x4f, 0x0a, 0x0e, 0x70, 0x68, 0x61, 0x73, 0x65,
+	0x5f, 0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0b, 0x32,
+	0x26, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31,
+	0x2e, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x50, 0x68, 0x61, 0x73, 0x65, 0x43,
+	0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x48, 0x00, 0x52, 0x0d, 0x70, 0x68, 0x61, 0x73, 0x65,
+	0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x12, 0x4d, 0x0a, 0x0d, 0x73, 0x6e, 0x61, 0x70,
+	0x73, 0x68, 0x6f, 0x74, 0x5f, 0x64, 0x61, 0x74, 0x61, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0b, 0x32,
+	0x26, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31,
+	0x2e, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x53, 0x6e, 0x61, 0x70, 0x73, 0x68,
+	0x6f, 0x74, 0x43, 0x68, 0x75, 0x6e, 0x6b, 0x48, 0x00, 0x52, 0x0c, 0x73, 0x6e, 0x61, 0x70, 0x73,
+	0x68, 0x6f, 0x74, 0x44, 0x61, 0x74, 0x61, 0x42, 0x06, 0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x22,
+	0x18, 0x0a, 0x16, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x50, 0x68, 0x61, 0x73,
+	0x65, 0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x22, 0x93, 0x02, 0x0a, 0x15, 0x52, 0x65,
+	0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x53, 0x74, 0x61, 0x72, 0x74, 0x52, 0x65, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x12, 0x1f, 0x0a, 0x0b, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x5f,
+	0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0a, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e,
+	0x63, 0x65, 0x49, 0x64, 0x12, 0x41, 0x0a, 0x0f, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x5f, 0x69,
+	0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e,
+	0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x49,
+	0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x0e, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x49,
+	0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x12, 0x22, 0x0a, 0x0d, 0x62, 0x61, 0x73, 0x65, 0x5f,
+	0x69, 0x6d, 0x61, 0x67, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b,
+	0x62, 0x61, 0x73, 0x65, 0x49, 0x6d, 0x61, 0x67, 0x65, 0x49, 0x64, 0x12, 0x1c, 0x0a, 0x09, 0x65,
+	0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x65, 0x64, 0x18, 0x04, 0x20, 0x01, 0x28, 0x08, 0x52, 0x09,
+	0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x65, 0x64, 0x12, 0x25, 0x0a, 0x0e, 0x65, 0x6e, 0x63,
+	0x72, 0x79, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x6b, 0x65, 0x79, 0x18, 0x05, 0x20, 0x01, 0x28,
+	0x0c, 0x52, 0x0d, 0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x4b, 0x65, 0x79,
+	0x12, 0x19, 0x0a, 0x08, 0x67, 0x72, 0x6f, 0x75, 0x70, 0x5f, 0x69, 0x64, 0x18, 0x06, 0x20, 0x01,
+	0x28, 0x09, 0x52, 0x07, 0x67, 0x72, 0x6f, 0x75, 0x70, 0x49, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x6c,
+	0x69, 0x76, 0x65, 0x18, 0x07, 0x20, 0x01, 0x28, 0x08, 0x52, 0x04, 0x6c, 0x69, 0x76, 0x65, 0x22,
+	0x6c, 0x0a, 0x16, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x53, 0x6e, 0x61, 0x70,
+	0x73, 0x68, 0x6f, 0x74, 0x43, 0x68, 0x75, 0x6e, 0x6b, 0x12, 0x1a, 0x0a, 0x08, 0x66, 0x69, 0x6c,
+	0x65, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x66, 0x69, 0x6c,
+	0x65, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x12, 0x0a, 0x04, 0x64, 0x61, 0x74, 0x61, 0x18, 0x02, 0x20,
+	0x01, 0x28, 0x0c, 0x52, 0x04, 0x64, 0x61, 0x74, 0x61, 0x12, 0x22, 0x0a, 0x0d, 0x69, 0x73, 0x5f,
+	0x6c, 0x61, 0x73, 0x74, 0x5f, 0x63, 0x68, 0x75, 0x6e, 0x6b, 0x18, 0x03, 0x20, 0x01, 0x28, 0x08,
+	0x52, 0x0b, 0x69, 0x73, 0x4c, 0x61, 0x73, 0x74, 0x43, 0x68, 0x75, 0x6e, 0x6b, 0x22, 0x4c, 0x0a,
+	0x12, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x44, 0x61, 0x74, 0x61, 0x43, 0x68,
+	0x75, 0x6e, 0x6b, 0x12, 0x12, 0x0a, 0x04, 0x64, 0x61, 0x74, 0x61, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x0c, 0x52, 0x04, 0x64, 0x61, 0x74, 0x61, 0x12, 0x22, 0x0a, 0x0d, 0x69, 0x73, 0x5f, 0x62, 0x61,
+	0x73, 0x65, 0x5f, 0x69, 0x6d, 0x61, 0x67, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x52, 0x0b,
+	0x69, 0x73, 0x42, 0x61, 0x73, 0x65, 0x49, 0x6d, 0x61, 0x67, 0x65, 0x22, 0x2f, 0x0a, 0x11, 0x52,
+	0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65,
+	0x12, 0x1a, 0x0a, 0x08, 0x63, 0x68, 0x65, 0x63, 0x6b, 0x73, 0x75, 0x6d, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x09, 0x52, 0x08, 0x63, 0x68, 0x65, 0x63, 0x6b, 0x73, 0x75, 0x6d, 0x22, 0x8e, 0x01, 0x0a,
+	0x11, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+	0x73, 0x65, 0x12, 0x36, 0x0a, 0x05, 0x72, 0x65, 0x61, 0x64, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x0b, 0x32, 0x1e, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e,
+	0x76, 0x31, 0x2e, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x52, 0x65, 0x61, 0x64,
+	0x79, 0x48, 0x00, 0x52, 0x05, 0x72, 0x65, 0x61, 0x64, 0x79, 0x12, 0x39, 0x0a, 0x06, 0x72, 0x65,
+	0x73, 0x75, 0x6c, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1f, 0x2e, 0x65, 0x78, 0x65,
+	0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x63, 0x65,
+	0x69, 0x76, 0x65, 0x56, 0x4d, 0x52, 0x65, 0x73, 0x75, 0x6c, 0x74, 0x48, 0x00, 0x52, 0x06, 0x72,
+	0x65, 0x73, 0x75, 0x6c, 0x74, 0x42, 0x06, 0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x22, 0x7f, 0x0a,
+	0x0e, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x52, 0x65, 0x61, 0x64, 0x79, 0x12,
+	0x24, 0x0a, 0x0e, 0x68, 0x61, 0x73, 0x5f, 0x62, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x6d, 0x61, 0x67,
+	0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x0c, 0x68, 0x61, 0x73, 0x42, 0x61, 0x73, 0x65,
+	0x49, 0x6d, 0x61, 0x67, 0x65, 0x12, 0x47, 0x0a, 0x0e, 0x74, 0x61, 0x72, 0x67, 0x65, 0x74, 0x5f,
+	0x6e, 0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x20, 0x2e,
+	0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x4e,
+	0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x49, 0x6e, 0x74, 0x65, 0x72, 0x66, 0x61, 0x63, 0x65, 0x52,
+	0x0d, 0x74, 0x61, 0x72, 0x67, 0x65, 0x74, 0x4e, 0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x22, 0x5d,
 	0x0a, 0x0f, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x56, 0x4d, 0x52, 0x65, 0x73, 0x75, 0x6c,
 	0x74, 0x12, 0x34, 0x0a, 0x08, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x18, 0x01, 0x20,
 	0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x65, 0x78, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x75, 0x74,
@@ -4533,151 +4983,165 @@ func file_exe_compute_v1_compute_proto_rawDescGZIP() []byte {
 	return file_exe_compute_v1_compute_proto_rawDescData
 }
 
-var file_exe_compute_v1_compute_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_exe_compute_v1_compute_proto_msgTypes = make([]protoimpl.MessageInfo, 58)
+var file_exe_compute_v1_compute_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
+var file_exe_compute_v1_compute_proto_msgTypes = make([]protoimpl.MessageInfo, 62)
 var file_exe_compute_v1_compute_proto_goTypes = []any{
 	(VMState)(0),                     // 0: exe.compute.v1.VMState
 	(Log_Type)(0),                    // 1: exe.compute.v1.Log.Type
 	(CreateInstanceStatus_State)(0),  // 2: exe.compute.v1.CreateInstanceStatus.State
 	(NetworkInterface_Type)(0),       // 3: exe.compute.v1.NetworkInterface.Type
 	(Server_ServerState)(0),          // 4: exe.compute.v1.Server.ServerState
-	(CloneInstanceStatus_State)(0),   // 5: exe.compute.v1.CloneInstanceStatus.State
-	(*CreateInstanceRequest)(nil),    // 6: exe.compute.v1.CreateInstanceRequest
-	(*Config)(nil),                   // 7: exe.compute.v1.Config
-	(*FileConfig)(nil),               // 8: exe.compute.v1.FileConfig
-	(*Volume)(nil),                   // 9: exe.compute.v1.Volume
-	(*ExposedPort)(nil),              // 10: exe.compute.v1.ExposedPort
-	(*Placement)(nil),                // 11: exe.compute.v1.Placement
-	(*Log)(nil),                      // 12: exe.compute.v1.Log
-	(*CreateInstanceStatus)(nil),     // 13: exe.compute.v1.CreateInstanceStatus
-	(*CreateInstanceResponse)(nil),   // 14: exe.compute.v1.CreateInstanceResponse
-	(*ListInstancesRequest)(nil),     // 15: exe.compute.v1.ListInstancesRequest
-	(*ListInstancesResponse)(nil),    // 16: exe.compute.v1.ListInstancesResponse
-	(*GetInstanceRequest)(nil),       // 17: exe.compute.v1.GetInstanceRequest
-	(*GetInstanceResponse)(nil),      // 18: exe.compute.v1.GetInstanceResponse
-	(*GetInstanceLogsRequest)(nil),   // 19: exe.compute.v1.GetInstanceLogsRequest
-	(*GetInstanceLogsResponse)(nil),  // 20: exe.compute.v1.GetInstanceLogsResponse
-	(*StartInstanceRequest)(nil),     // 21: exe.compute.v1.StartInstanceRequest
-	(*StartInstanceResponse)(nil),    // 22: exe.compute.v1.StartInstanceResponse
-	(*StopInstanceRequest)(nil),      // 23: exe.compute.v1.StopInstanceRequest
-	(*StopInstanceResponse)(nil),     // 24: exe.compute.v1.StopInstanceResponse
-	(*DeleteInstanceRequest)(nil),    // 25: exe.compute.v1.DeleteInstanceRequest
-	(*DeleteInstanceResponse)(nil),   // 26: exe.compute.v1.DeleteInstanceResponse
-	(*SetInstanceGroupRequest)(nil),  // 27: exe.compute.v1.SetInstanceGroupRequest
-	(*SetInstanceGroupResponse)(nil), // 28: exe.compute.v1.SetInstanceGroupResponse
-	(*RenameInstanceRequest)(nil),    // 29: exe.compute.v1.RenameInstanceRequest
-	(*RenameInstanceResponse)(nil),   // 30: exe.compute.v1.RenameInstanceResponse
-	(*UpdateInstanceRequest)(nil),    // 31: exe.compute.v1.UpdateInstanceRequest
-	(*UpdateInstanceResponse)(nil),   // 32: exe.compute.v1.UpdateInstanceResponse
-	(*GetSystemInfoRequest)(nil),     // 33: exe.compute.v1.GetSystemInfoRequest
-	(*GetSystemInfoResponse)(nil),    // 34: exe.compute.v1.GetSystemInfoResponse
-	(*Instance)(nil),                 // 35: exe.compute.v1.Instance
-	(*VMConfig)(nil),                 // 36: exe.compute.v1.VMConfig
-	(*DirectoryShare)(nil),           // 37: exe.compute.v1.DirectoryShare
-	(*IPAddress)(nil),                // 38: exe.compute.v1.IPAddress
-	(*NetworkInterface)(nil),         // 39: exe.compute.v1.NetworkInterface
-	(*Server)(nil),                   // 40: exe.compute.v1.Server
-	(*ServerLocality)(nil),           // 41: exe.compute.v1.ServerLocality
-	(*SendVMRequest)(nil),            // 42: exe.compute.v1.SendVMRequest
-	(*SendVMStartRequest)(nil),       // 43: exe.compute.v1.SendVMStartRequest
-	(*SendVMResponse)(nil),           // 44: exe.compute.v1.SendVMResponse
-	(*SendVMPhaseComplete)(nil),      // 45: exe.compute.v1.SendVMPhaseComplete
-	(*SendVMMetadata)(nil),           // 46: exe.compute.v1.SendVMMetadata
-	(*SendVMDataChunk)(nil),          // 47: exe.compute.v1.SendVMDataChunk
-	(*SendVMComplete)(nil),           // 48: exe.compute.v1.SendVMComplete
-	(*ReceiveVMRequest)(nil),         // 49: exe.compute.v1.ReceiveVMRequest
-	(*ReceiveVMPhaseComplete)(nil),   // 50: exe.compute.v1.ReceiveVMPhaseComplete
-	(*ReceiveVMStartRequest)(nil),    // 51: exe.compute.v1.ReceiveVMStartRequest
-	(*ReceiveVMDataChunk)(nil),       // 52: exe.compute.v1.ReceiveVMDataChunk
-	(*ReceiveVMComplete)(nil),        // 53: exe.compute.v1.ReceiveVMComplete
-	(*ReceiveVMResponse)(nil),        // 54: exe.compute.v1.ReceiveVMResponse
-	(*ReceiveVMReady)(nil),           // 55: exe.compute.v1.ReceiveVMReady
-	(*ReceiveVMResult)(nil),          // 56: exe.compute.v1.ReceiveVMResult
-	(*GrowDiskRequest)(nil),          // 57: exe.compute.v1.GrowDiskRequest
-	(*GrowDiskResponse)(nil),         // 58: exe.compute.v1.GrowDiskResponse
-	(*CloneInstanceRequest)(nil),     // 59: exe.compute.v1.CloneInstanceRequest
-	(*CloneInstanceStatus)(nil),      // 60: exe.compute.v1.CloneInstanceStatus
-	(*CloneInstanceResponse)(nil),    // 61: exe.compute.v1.CloneInstanceResponse
-	(*ResizeVMRequest)(nil),          // 62: exe.compute.v1.ResizeVMRequest
-	(*ResizeVMResponse)(nil),         // 63: exe.compute.v1.ResizeVMResponse
+	(SendVMControl_Action)(0),        // 5: exe.compute.v1.SendVMControl.Action
+	(SendVMAwaitControl_Reason)(0),   // 6: exe.compute.v1.SendVMAwaitControl.Reason
+	(CloneInstanceStatus_State)(0),   // 7: exe.compute.v1.CloneInstanceStatus.State
+	(*CreateInstanceRequest)(nil),    // 8: exe.compute.v1.CreateInstanceRequest
+	(*Config)(nil),                   // 9: exe.compute.v1.Config
+	(*FileConfig)(nil),               // 10: exe.compute.v1.FileConfig
+	(*Volume)(nil),                   // 11: exe.compute.v1.Volume
+	(*ExposedPort)(nil),              // 12: exe.compute.v1.ExposedPort
+	(*Placement)(nil),                // 13: exe.compute.v1.Placement
+	(*Log)(nil),                      // 14: exe.compute.v1.Log
+	(*CreateInstanceStatus)(nil),     // 15: exe.compute.v1.CreateInstanceStatus
+	(*CreateInstanceResponse)(nil),   // 16: exe.compute.v1.CreateInstanceResponse
+	(*ListInstancesRequest)(nil),     // 17: exe.compute.v1.ListInstancesRequest
+	(*ListInstancesResponse)(nil),    // 18: exe.compute.v1.ListInstancesResponse
+	(*GetInstanceRequest)(nil),       // 19: exe.compute.v1.GetInstanceRequest
+	(*GetInstanceResponse)(nil),      // 20: exe.compute.v1.GetInstanceResponse
+	(*GetInstanceLogsRequest)(nil),   // 21: exe.compute.v1.GetInstanceLogsRequest
+	(*GetInstanceLogsResponse)(nil),  // 22: exe.compute.v1.GetInstanceLogsResponse
+	(*StartInstanceRequest)(nil),     // 23: exe.compute.v1.StartInstanceRequest
+	(*StartInstanceResponse)(nil),    // 24: exe.compute.v1.StartInstanceResponse
+	(*StopInstanceRequest)(nil),      // 25: exe.compute.v1.StopInstanceRequest
+	(*StopInstanceResponse)(nil),     // 26: exe.compute.v1.StopInstanceResponse
+	(*DeleteInstanceRequest)(nil),    // 27: exe.compute.v1.DeleteInstanceRequest
+	(*DeleteInstanceResponse)(nil),   // 28: exe.compute.v1.DeleteInstanceResponse
+	(*SetInstanceGroupRequest)(nil),  // 29: exe.compute.v1.SetInstanceGroupRequest
+	(*SetInstanceGroupResponse)(nil), // 30: exe.compute.v1.SetInstanceGroupResponse
+	(*RenameInstanceRequest)(nil),    // 31: exe.compute.v1.RenameInstanceRequest
+	(*RenameInstanceResponse)(nil),   // 32: exe.compute.v1.RenameInstanceResponse
+	(*UpdateInstanceRequest)(nil),    // 33: exe.compute.v1.UpdateInstanceRequest
+	(*UpdateInstanceResponse)(nil),   // 34: exe.compute.v1.UpdateInstanceResponse
+	(*GetSystemInfoRequest)(nil),     // 35: exe.compute.v1.GetSystemInfoRequest
+	(*GetSystemInfoResponse)(nil),    // 36: exe.compute.v1.GetSystemInfoResponse
+	(*Instance)(nil),                 // 37: exe.compute.v1.Instance
+	(*VMConfig)(nil),                 // 38: exe.compute.v1.VMConfig
+	(*DirectoryShare)(nil),           // 39: exe.compute.v1.DirectoryShare
+	(*IPAddress)(nil),                // 40: exe.compute.v1.IPAddress
+	(*NetworkInterface)(nil),         // 41: exe.compute.v1.NetworkInterface
+	(*Server)(nil),                   // 42: exe.compute.v1.Server
+	(*ServerLocality)(nil),           // 43: exe.compute.v1.ServerLocality
+	(*SendVMRequest)(nil),            // 44: exe.compute.v1.SendVMRequest
+	(*SendVMStartRequest)(nil),       // 45: exe.compute.v1.SendVMStartRequest
+	(*SendVMControl)(nil),            // 46: exe.compute.v1.SendVMControl
+	(*SendVMResponse)(nil),           // 47: exe.compute.v1.SendVMResponse
+	(*SendVMSnapshotChunk)(nil),      // 48: exe.compute.v1.SendVMSnapshotChunk
+	(*SendVMAwaitControl)(nil),       // 49: exe.compute.v1.SendVMAwaitControl
+	(*SendVMPhaseComplete)(nil),      // 50: exe.compute.v1.SendVMPhaseComplete
+	(*SendVMMetadata)(nil),           // 51: exe.compute.v1.SendVMMetadata
+	(*SendVMDataChunk)(nil),          // 52: exe.compute.v1.SendVMDataChunk
+	(*SendVMComplete)(nil),           // 53: exe.compute.v1.SendVMComplete
+	(*ReceiveVMRequest)(nil),         // 54: exe.compute.v1.ReceiveVMRequest
+	(*ReceiveVMPhaseComplete)(nil),   // 55: exe.compute.v1.ReceiveVMPhaseComplete
+	(*ReceiveVMStartRequest)(nil),    // 56: exe.compute.v1.ReceiveVMStartRequest
+	(*ReceiveVMSnapshotChunk)(nil),   // 57: exe.compute.v1.ReceiveVMSnapshotChunk
+	(*ReceiveVMDataChunk)(nil),       // 58: exe.compute.v1.ReceiveVMDataChunk
+	(*ReceiveVMComplete)(nil),        // 59: exe.compute.v1.ReceiveVMComplete
+	(*ReceiveVMResponse)(nil),        // 60: exe.compute.v1.ReceiveVMResponse
+	(*ReceiveVMReady)(nil),           // 61: exe.compute.v1.ReceiveVMReady
+	(*ReceiveVMResult)(nil),          // 62: exe.compute.v1.ReceiveVMResult
+	(*GrowDiskRequest)(nil),          // 63: exe.compute.v1.GrowDiskRequest
+	(*GrowDiskResponse)(nil),         // 64: exe.compute.v1.GrowDiskResponse
+	(*CloneInstanceRequest)(nil),     // 65: exe.compute.v1.CloneInstanceRequest
+	(*CloneInstanceStatus)(nil),      // 66: exe.compute.v1.CloneInstanceStatus
+	(*CloneInstanceResponse)(nil),    // 67: exe.compute.v1.CloneInstanceResponse
+	(*ResizeVMRequest)(nil),          // 68: exe.compute.v1.ResizeVMRequest
+	(*ResizeVMResponse)(nil),         // 69: exe.compute.v1.ResizeVMResponse
 }
 var file_exe_compute_v1_compute_proto_depIdxs = []int32{
-	11, // 0: exe.compute.v1.CreateInstanceRequest.placement:type_name -> exe.compute.v1.Placement
-	9,  // 1: exe.compute.v1.CreateInstanceRequest.volumes:type_name -> exe.compute.v1.Volume
-	7,  // 2: exe.compute.v1.CreateInstanceRequest.configs:type_name -> exe.compute.v1.Config
-	8,  // 3: exe.compute.v1.Config.file:type_name -> exe.compute.v1.FileConfig
+	13, // 0: exe.compute.v1.CreateInstanceRequest.placement:type_name -> exe.compute.v1.Placement
+	11, // 1: exe.compute.v1.CreateInstanceRequest.volumes:type_name -> exe.compute.v1.Volume
+	9,  // 2: exe.compute.v1.CreateInstanceRequest.configs:type_name -> exe.compute.v1.Config
+	10, // 3: exe.compute.v1.Config.file:type_name -> exe.compute.v1.FileConfig
 	1,  // 4: exe.compute.v1.Log.type:type_name -> exe.compute.v1.Log.Type
 	2,  // 5: exe.compute.v1.CreateInstanceStatus.state:type_name -> exe.compute.v1.CreateInstanceStatus.State
-	13, // 6: exe.compute.v1.CreateInstanceResponse.status:type_name -> exe.compute.v1.CreateInstanceStatus
-	35, // 7: exe.compute.v1.CreateInstanceResponse.instance:type_name -> exe.compute.v1.Instance
-	35, // 8: exe.compute.v1.ListInstancesResponse.instance:type_name -> exe.compute.v1.Instance
-	35, // 9: exe.compute.v1.GetInstanceResponse.instance:type_name -> exe.compute.v1.Instance
-	12, // 10: exe.compute.v1.GetInstanceLogsResponse.log:type_name -> exe.compute.v1.Log
-	36, // 11: exe.compute.v1.Instance.vm_config:type_name -> exe.compute.v1.VMConfig
+	15, // 6: exe.compute.v1.CreateInstanceResponse.status:type_name -> exe.compute.v1.CreateInstanceStatus
+	37, // 7: exe.compute.v1.CreateInstanceResponse.instance:type_name -> exe.compute.v1.Instance
+	37, // 8: exe.compute.v1.ListInstancesResponse.instance:type_name -> exe.compute.v1.Instance
+	37, // 9: exe.compute.v1.GetInstanceResponse.instance:type_name -> exe.compute.v1.Instance
+	14, // 10: exe.compute.v1.GetInstanceLogsResponse.log:type_name -> exe.compute.v1.Log
+	38, // 11: exe.compute.v1.Instance.vm_config:type_name -> exe.compute.v1.VMConfig
 	0,  // 12: exe.compute.v1.Instance.state:type_name -> exe.compute.v1.VMState
-	11, // 13: exe.compute.v1.Instance.placement:type_name -> exe.compute.v1.Placement
-	10, // 14: exe.compute.v1.Instance.exposed_ports:type_name -> exe.compute.v1.ExposedPort
-	37, // 15: exe.compute.v1.VMConfig.shares:type_name -> exe.compute.v1.DirectoryShare
-	39, // 16: exe.compute.v1.VMConfig.network_interface:type_name -> exe.compute.v1.NetworkInterface
+	13, // 13: exe.compute.v1.Instance.placement:type_name -> exe.compute.v1.Placement
+	12, // 14: exe.compute.v1.Instance.exposed_ports:type_name -> exe.compute.v1.ExposedPort
+	39, // 15: exe.compute.v1.VMConfig.shares:type_name -> exe.compute.v1.DirectoryShare
+	41, // 16: exe.compute.v1.VMConfig.network_interface:type_name -> exe.compute.v1.NetworkInterface
 	3,  // 17: exe.compute.v1.NetworkInterface.type:type_name -> exe.compute.v1.NetworkInterface.Type
-	38, // 18: exe.compute.v1.NetworkInterface.ip:type_name -> exe.compute.v1.IPAddress
-	41, // 19: exe.compute.v1.Server.locality:type_name -> exe.compute.v1.ServerLocality
+	40, // 18: exe.compute.v1.NetworkInterface.ip:type_name -> exe.compute.v1.IPAddress
+	43, // 19: exe.compute.v1.Server.locality:type_name -> exe.compute.v1.ServerLocality
 	4,  // 20: exe.compute.v1.Server.state:type_name -> exe.compute.v1.Server.ServerState
-	43, // 21: exe.compute.v1.SendVMRequest.start:type_name -> exe.compute.v1.SendVMStartRequest
-	46, // 22: exe.compute.v1.SendVMResponse.metadata:type_name -> exe.compute.v1.SendVMMetadata
-	47, // 23: exe.compute.v1.SendVMResponse.data:type_name -> exe.compute.v1.SendVMDataChunk
-	48, // 24: exe.compute.v1.SendVMResponse.complete:type_name -> exe.compute.v1.SendVMComplete
-	45, // 25: exe.compute.v1.SendVMResponse.phase_complete:type_name -> exe.compute.v1.SendVMPhaseComplete
-	35, // 26: exe.compute.v1.SendVMMetadata.instance:type_name -> exe.compute.v1.Instance
-	51, // 27: exe.compute.v1.ReceiveVMRequest.start:type_name -> exe.compute.v1.ReceiveVMStartRequest
-	52, // 28: exe.compute.v1.ReceiveVMRequest.data:type_name -> exe.compute.v1.ReceiveVMDataChunk
-	53, // 29: exe.compute.v1.ReceiveVMRequest.complete:type_name -> exe.compute.v1.ReceiveVMComplete
-	50, // 30: exe.compute.v1.ReceiveVMRequest.phase_complete:type_name -> exe.compute.v1.ReceiveVMPhaseComplete
-	35, // 31: exe.compute.v1.ReceiveVMStartRequest.source_instance:type_name -> exe.compute.v1.Instance
-	55, // 32: exe.compute.v1.ReceiveVMResponse.ready:type_name -> exe.compute.v1.ReceiveVMReady
-	56, // 33: exe.compute.v1.ReceiveVMResponse.result:type_name -> exe.compute.v1.ReceiveVMResult
-	35, // 34: exe.compute.v1.ReceiveVMResult.instance:type_name -> exe.compute.v1.Instance
-	7,  // 35: exe.compute.v1.CloneInstanceRequest.configs:type_name -> exe.compute.v1.Config
-	5,  // 36: exe.compute.v1.CloneInstanceStatus.state:type_name -> exe.compute.v1.CloneInstanceStatus.State
-	60, // 37: exe.compute.v1.CloneInstanceResponse.status:type_name -> exe.compute.v1.CloneInstanceStatus
-	35, // 38: exe.compute.v1.CloneInstanceResponse.instance:type_name -> exe.compute.v1.Instance
-	6,  // 39: exe.compute.v1.ComputeService.CreateInstance:input_type -> exe.compute.v1.CreateInstanceRequest
-	15, // 40: exe.compute.v1.ComputeService.ListInstances:input_type -> exe.compute.v1.ListInstancesRequest
-	17, // 41: exe.compute.v1.ComputeService.GetInstance:input_type -> exe.compute.v1.GetInstanceRequest
-	19, // 42: exe.compute.v1.ComputeService.GetInstanceLogs:input_type -> exe.compute.v1.GetInstanceLogsRequest
-	21, // 43: exe.compute.v1.ComputeService.StartInstance:input_type -> exe.compute.v1.StartInstanceRequest
-	23, // 44: exe.compute.v1.ComputeService.StopInstance:input_type -> exe.compute.v1.StopInstanceRequest
-	31, // 45: exe.compute.v1.ComputeService.UpdateInstance:input_type -> exe.compute.v1.UpdateInstanceRequest
-	25, // 46: exe.compute.v1.ComputeService.DeleteInstance:input_type -> exe.compute.v1.DeleteInstanceRequest
-	27, // 47: exe.compute.v1.ComputeService.SetInstanceGroup:input_type -> exe.compute.v1.SetInstanceGroupRequest
-	29, // 48: exe.compute.v1.ComputeService.RenameInstance:input_type -> exe.compute.v1.RenameInstanceRequest
-	33, // 49: exe.compute.v1.ComputeService.GetSystemInfo:input_type -> exe.compute.v1.GetSystemInfoRequest
-	42, // 50: exe.compute.v1.ComputeService.SendVM:input_type -> exe.compute.v1.SendVMRequest
-	49, // 51: exe.compute.v1.ComputeService.ReceiveVM:input_type -> exe.compute.v1.ReceiveVMRequest
-	57, // 52: exe.compute.v1.ComputeService.GrowDisk:input_type -> exe.compute.v1.GrowDiskRequest
-	62, // 53: exe.compute.v1.ComputeService.ResizeVM:input_type -> exe.compute.v1.ResizeVMRequest
-	59, // 54: exe.compute.v1.ComputeService.CloneInstance:input_type -> exe.compute.v1.CloneInstanceRequest
-	14, // 55: exe.compute.v1.ComputeService.CreateInstance:output_type -> exe.compute.v1.CreateInstanceResponse
-	16, // 56: exe.compute.v1.ComputeService.ListInstances:output_type -> exe.compute.v1.ListInstancesResponse
-	18, // 57: exe.compute.v1.ComputeService.GetInstance:output_type -> exe.compute.v1.GetInstanceResponse
-	20, // 58: exe.compute.v1.ComputeService.GetInstanceLogs:output_type -> exe.compute.v1.GetInstanceLogsResponse
-	22, // 59: exe.compute.v1.ComputeService.StartInstance:output_type -> exe.compute.v1.StartInstanceResponse
-	24, // 60: exe.compute.v1.ComputeService.StopInstance:output_type -> exe.compute.v1.StopInstanceResponse
-	32, // 61: exe.compute.v1.ComputeService.UpdateInstance:output_type -> exe.compute.v1.UpdateInstanceResponse
-	26, // 62: exe.compute.v1.ComputeService.DeleteInstance:output_type -> exe.compute.v1.DeleteInstanceResponse
-	28, // 63: exe.compute.v1.ComputeService.SetInstanceGroup:output_type -> exe.compute.v1.SetInstanceGroupResponse
-	30, // 64: exe.compute.v1.ComputeService.RenameInstance:output_type -> exe.compute.v1.RenameInstanceResponse
-	34, // 65: exe.compute.v1.ComputeService.GetSystemInfo:output_type -> exe.compute.v1.GetSystemInfoResponse
-	44, // 66: exe.compute.v1.ComputeService.SendVM:output_type -> exe.compute.v1.SendVMResponse
-	54, // 67: exe.compute.v1.ComputeService.ReceiveVM:output_type -> exe.compute.v1.ReceiveVMResponse
-	58, // 68: exe.compute.v1.ComputeService.GrowDisk:output_type -> exe.compute.v1.GrowDiskResponse
-	63, // 69: exe.compute.v1.ComputeService.ResizeVM:output_type -> exe.compute.v1.ResizeVMResponse
-	61, // 70: exe.compute.v1.ComputeService.CloneInstance:output_type -> exe.compute.v1.CloneInstanceResponse
-	55, // [55:71] is the sub-list for method output_type
-	39, // [39:55] is the sub-list for method input_type
-	39, // [39:39] is the sub-list for extension type_name
-	39, // [39:39] is the sub-list for extension extendee
-	0,  // [0:39] is the sub-list for field type_name
+	45, // 21: exe.compute.v1.SendVMRequest.start:type_name -> exe.compute.v1.SendVMStartRequest
+	46, // 22: exe.compute.v1.SendVMRequest.control:type_name -> exe.compute.v1.SendVMControl
+	5,  // 23: exe.compute.v1.SendVMControl.action:type_name -> exe.compute.v1.SendVMControl.Action
+	51, // 24: exe.compute.v1.SendVMResponse.metadata:type_name -> exe.compute.v1.SendVMMetadata
+	52, // 25: exe.compute.v1.SendVMResponse.data:type_name -> exe.compute.v1.SendVMDataChunk
+	53, // 26: exe.compute.v1.SendVMResponse.complete:type_name -> exe.compute.v1.SendVMComplete
+	50, // 27: exe.compute.v1.SendVMResponse.phase_complete:type_name -> exe.compute.v1.SendVMPhaseComplete
+	48, // 28: exe.compute.v1.SendVMResponse.snapshot_data:type_name -> exe.compute.v1.SendVMSnapshotChunk
+	49, // 29: exe.compute.v1.SendVMResponse.await_control:type_name -> exe.compute.v1.SendVMAwaitControl
+	6,  // 30: exe.compute.v1.SendVMAwaitControl.reason:type_name -> exe.compute.v1.SendVMAwaitControl.Reason
+	41, // 31: exe.compute.v1.SendVMAwaitControl.source_network:type_name -> exe.compute.v1.NetworkInterface
+	37, // 32: exe.compute.v1.SendVMMetadata.instance:type_name -> exe.compute.v1.Instance
+	56, // 33: exe.compute.v1.ReceiveVMRequest.start:type_name -> exe.compute.v1.ReceiveVMStartRequest
+	58, // 34: exe.compute.v1.ReceiveVMRequest.data:type_name -> exe.compute.v1.ReceiveVMDataChunk
+	59, // 35: exe.compute.v1.ReceiveVMRequest.complete:type_name -> exe.compute.v1.ReceiveVMComplete
+	55, // 36: exe.compute.v1.ReceiveVMRequest.phase_complete:type_name -> exe.compute.v1.ReceiveVMPhaseComplete
+	57, // 37: exe.compute.v1.ReceiveVMRequest.snapshot_data:type_name -> exe.compute.v1.ReceiveVMSnapshotChunk
+	37, // 38: exe.compute.v1.ReceiveVMStartRequest.source_instance:type_name -> exe.compute.v1.Instance
+	61, // 39: exe.compute.v1.ReceiveVMResponse.ready:type_name -> exe.compute.v1.ReceiveVMReady
+	62, // 40: exe.compute.v1.ReceiveVMResponse.result:type_name -> exe.compute.v1.ReceiveVMResult
+	41, // 41: exe.compute.v1.ReceiveVMReady.target_network:type_name -> exe.compute.v1.NetworkInterface
+	37, // 42: exe.compute.v1.ReceiveVMResult.instance:type_name -> exe.compute.v1.Instance
+	9,  // 43: exe.compute.v1.CloneInstanceRequest.configs:type_name -> exe.compute.v1.Config
+	7,  // 44: exe.compute.v1.CloneInstanceStatus.state:type_name -> exe.compute.v1.CloneInstanceStatus.State
+	66, // 45: exe.compute.v1.CloneInstanceResponse.status:type_name -> exe.compute.v1.CloneInstanceStatus
+	37, // 46: exe.compute.v1.CloneInstanceResponse.instance:type_name -> exe.compute.v1.Instance
+	8,  // 47: exe.compute.v1.ComputeService.CreateInstance:input_type -> exe.compute.v1.CreateInstanceRequest
+	17, // 48: exe.compute.v1.ComputeService.ListInstances:input_type -> exe.compute.v1.ListInstancesRequest
+	19, // 49: exe.compute.v1.ComputeService.GetInstance:input_type -> exe.compute.v1.GetInstanceRequest
+	21, // 50: exe.compute.v1.ComputeService.GetInstanceLogs:input_type -> exe.compute.v1.GetInstanceLogsRequest
+	23, // 51: exe.compute.v1.ComputeService.StartInstance:input_type -> exe.compute.v1.StartInstanceRequest
+	25, // 52: exe.compute.v1.ComputeService.StopInstance:input_type -> exe.compute.v1.StopInstanceRequest
+	33, // 53: exe.compute.v1.ComputeService.UpdateInstance:input_type -> exe.compute.v1.UpdateInstanceRequest
+	27, // 54: exe.compute.v1.ComputeService.DeleteInstance:input_type -> exe.compute.v1.DeleteInstanceRequest
+	29, // 55: exe.compute.v1.ComputeService.SetInstanceGroup:input_type -> exe.compute.v1.SetInstanceGroupRequest
+	31, // 56: exe.compute.v1.ComputeService.RenameInstance:input_type -> exe.compute.v1.RenameInstanceRequest
+	35, // 57: exe.compute.v1.ComputeService.GetSystemInfo:input_type -> exe.compute.v1.GetSystemInfoRequest
+	44, // 58: exe.compute.v1.ComputeService.SendVM:input_type -> exe.compute.v1.SendVMRequest
+	54, // 59: exe.compute.v1.ComputeService.ReceiveVM:input_type -> exe.compute.v1.ReceiveVMRequest
+	63, // 60: exe.compute.v1.ComputeService.GrowDisk:input_type -> exe.compute.v1.GrowDiskRequest
+	68, // 61: exe.compute.v1.ComputeService.ResizeVM:input_type -> exe.compute.v1.ResizeVMRequest
+	65, // 62: exe.compute.v1.ComputeService.CloneInstance:input_type -> exe.compute.v1.CloneInstanceRequest
+	16, // 63: exe.compute.v1.ComputeService.CreateInstance:output_type -> exe.compute.v1.CreateInstanceResponse
+	18, // 64: exe.compute.v1.ComputeService.ListInstances:output_type -> exe.compute.v1.ListInstancesResponse
+	20, // 65: exe.compute.v1.ComputeService.GetInstance:output_type -> exe.compute.v1.GetInstanceResponse
+	22, // 66: exe.compute.v1.ComputeService.GetInstanceLogs:output_type -> exe.compute.v1.GetInstanceLogsResponse
+	24, // 67: exe.compute.v1.ComputeService.StartInstance:output_type -> exe.compute.v1.StartInstanceResponse
+	26, // 68: exe.compute.v1.ComputeService.StopInstance:output_type -> exe.compute.v1.StopInstanceResponse
+	34, // 69: exe.compute.v1.ComputeService.UpdateInstance:output_type -> exe.compute.v1.UpdateInstanceResponse
+	28, // 70: exe.compute.v1.ComputeService.DeleteInstance:output_type -> exe.compute.v1.DeleteInstanceResponse
+	30, // 71: exe.compute.v1.ComputeService.SetInstanceGroup:output_type -> exe.compute.v1.SetInstanceGroupResponse
+	32, // 72: exe.compute.v1.ComputeService.RenameInstance:output_type -> exe.compute.v1.RenameInstanceResponse
+	36, // 73: exe.compute.v1.ComputeService.GetSystemInfo:output_type -> exe.compute.v1.GetSystemInfoResponse
+	47, // 74: exe.compute.v1.ComputeService.SendVM:output_type -> exe.compute.v1.SendVMResponse
+	60, // 75: exe.compute.v1.ComputeService.ReceiveVM:output_type -> exe.compute.v1.ReceiveVMResponse
+	64, // 76: exe.compute.v1.ComputeService.GrowDisk:output_type -> exe.compute.v1.GrowDiskResponse
+	69, // 77: exe.compute.v1.ComputeService.ResizeVM:output_type -> exe.compute.v1.ResizeVMResponse
+	67, // 78: exe.compute.v1.ComputeService.CloneInstance:output_type -> exe.compute.v1.CloneInstanceResponse
+	63, // [63:79] is the sub-list for method output_type
+	47, // [47:63] is the sub-list for method input_type
+	47, // [47:47] is the sub-list for extension type_name
+	47, // [47:47] is the sub-list for extension extendee
+	0,  // [0:47] is the sub-list for field type_name
 }
 
 func init() { file_exe_compute_v1_compute_proto_init() }
@@ -4694,36 +5158,40 @@ func file_exe_compute_v1_compute_proto_init() {
 	}
 	file_exe_compute_v1_compute_proto_msgTypes[36].OneofWrappers = []any{
 		(*SendVMRequest_Start)(nil),
+		(*SendVMRequest_Control)(nil),
 	}
-	file_exe_compute_v1_compute_proto_msgTypes[38].OneofWrappers = []any{
+	file_exe_compute_v1_compute_proto_msgTypes[39].OneofWrappers = []any{
 		(*SendVMResponse_Metadata)(nil),
 		(*SendVMResponse_Data)(nil),
 		(*SendVMResponse_Complete)(nil),
 		(*SendVMResponse_PhaseComplete)(nil),
+		(*SendVMResponse_SnapshotData)(nil),
+		(*SendVMResponse_AwaitControl)(nil),
 	}
-	file_exe_compute_v1_compute_proto_msgTypes[43].OneofWrappers = []any{
+	file_exe_compute_v1_compute_proto_msgTypes[46].OneofWrappers = []any{
 		(*ReceiveVMRequest_Start)(nil),
 		(*ReceiveVMRequest_Data)(nil),
 		(*ReceiveVMRequest_Complete)(nil),
 		(*ReceiveVMRequest_PhaseComplete)(nil),
+		(*ReceiveVMRequest_SnapshotData)(nil),
 	}
-	file_exe_compute_v1_compute_proto_msgTypes[48].OneofWrappers = []any{
+	file_exe_compute_v1_compute_proto_msgTypes[52].OneofWrappers = []any{
 		(*ReceiveVMResponse_Ready)(nil),
 		(*ReceiveVMResponse_Result)(nil),
 	}
-	file_exe_compute_v1_compute_proto_msgTypes[53].OneofWrappers = []any{}
-	file_exe_compute_v1_compute_proto_msgTypes[55].OneofWrappers = []any{
+	file_exe_compute_v1_compute_proto_msgTypes[57].OneofWrappers = []any{}
+	file_exe_compute_v1_compute_proto_msgTypes[59].OneofWrappers = []any{
 		(*CloneInstanceResponse_Status)(nil),
 		(*CloneInstanceResponse_Instance)(nil),
 	}
-	file_exe_compute_v1_compute_proto_msgTypes[56].OneofWrappers = []any{}
+	file_exe_compute_v1_compute_proto_msgTypes[60].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_exe_compute_v1_compute_proto_rawDesc), len(file_exe_compute_v1_compute_proto_rawDesc)),
-			NumEnums:      6,
-			NumMessages:   58,
+			NumEnums:      8,
+			NumMessages:   62,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

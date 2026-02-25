@@ -275,6 +275,7 @@ message ServerLocality {
 message SendVMRequest {
   oneof type {
     SendVMStartRequest start = 1;
+    SendVMControl control = 2;
   }
 }
 
@@ -289,6 +290,16 @@ message SendVMStartRequest {
   // Enable two-phase migration: snapshot while VM is running (phase 1),
   // then stop VM and send only the incremental diff (phase 2).
   bool two_phase = 3;
+  // Enable live migration: pause + CH snapshot/restore instead of stop + cold boot.
+  // The VM's process state is preserved across the migration.
+  bool live = 4;
+}
+
+message SendVMControl {
+  enum Action {
+    PROCEED_WITH_PAUSE = 0;
+  }
+  Action action = 1;
 }
 
 message SendVMResponse {
@@ -297,7 +308,23 @@ message SendVMResponse {
     SendVMDataChunk data = 2;
     SendVMComplete complete = 3;
     SendVMPhaseComplete phase_complete = 4;
+    SendVMSnapshotChunk snapshot_data = 5;
+    SendVMAwaitControl await_control = 6;
   }
+}
+
+message SendVMSnapshotChunk {
+  string filename = 1;
+  bytes data = 2;
+  bool is_last_chunk = 3;
+}
+
+message SendVMAwaitControl {
+  enum Reason {
+    NEED_IP_RECONFIG = 0;
+  }
+  Reason reason = 1;
+  NetworkInterface source_network = 2;
 }
 
 message SendVMPhaseComplete {
@@ -329,6 +356,7 @@ message ReceiveVMRequest {
     ReceiveVMDataChunk data = 2;
     ReceiveVMComplete complete = 3;
     ReceiveVMPhaseComplete phase_complete = 4;
+    ReceiveVMSnapshotChunk snapshot_data = 5;
   }
 }
 
@@ -341,6 +369,13 @@ message ReceiveVMStartRequest {
   bool encrypted = 4;               // Whether disk is encrypted
   bytes encryption_key = 5;         // Encryption key (if encrypted)
   string group_id = 6;              // Target group ID
+  bool live = 7;                    // Live migration: restore from CH snapshot
+}
+
+message ReceiveVMSnapshotChunk {
+  string filename = 1;
+  bytes data = 2;
+  bool is_last_chunk = 3;
 }
 
 message ReceiveVMDataChunk {
@@ -360,7 +395,8 @@ message ReceiveVMResponse {
 }
 
 message ReceiveVMReady {
-  bool has_base_image = 1;  // Target already has the base image
+  bool has_base_image = 1;              // Target already has the base image
+  NetworkInterface target_network = 2;  // Allocated network for live migration
 }
 
 message ReceiveVMResult {

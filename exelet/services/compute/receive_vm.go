@@ -2,18 +2,24 @@ package compute
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	exeletfs "exe.dev/exelet/fs"
+	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -45,6 +51,24 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 	instanceID := startReq.InstanceID
 	s.log.InfoContext(ctx, "ReceiveVM started", "instance", instanceID)
 
+	// Suspend replication for this volume to prevent "dataset is busy" errors
+	// during zfs recv. The replication worker must not snapshot the dataset
+	// while we are receiving data into it.
+	if rs := s.context.ReplicationSuspender; rs != nil {
+		rs.SuspendVolume(instanceID)
+		defer rs.ResumeVolume(instanceID)
+	}
+
+	// Pre-flight: for live migration, verify the target host has enough memory
+	// before we begin. Failing early avoids the messy rollback path (IP reconfig
+	// has already happened, source VM is paused, needs cold restart).
+	if startReq.Live && startReq.SourceInstance != nil && startReq.SourceInstance.VMConfig != nil {
+		if err := checkAvailableMemory(startReq.SourceInstance.VMConfig.Memory); err != nil {
+			return status.Errorf(codes.ResourceExhausted,
+				"target host does not have enough memory for live restore: %v", err)
+		}
+	}
+
 	// Check if instance already exists
 	if _, err := s.loadInstanceConfig(instanceID); err == nil {
 		return status.Errorf(codes.AlreadyExists, "instance %s already exists", instanceID)
@@ -60,24 +84,12 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 		}
 	}
 
-	// Send ready response
-	if err := stream.Send(&api.ReceiveVMResponse{
-		Type: &api.ReceiveVMResponse_Ready{
-			Ready: &api.ReceiveVMReady{
-				HasBaseImage: hasBaseImage,
-			},
-		},
-	}); err != nil {
-		return status.Errorf(codes.Internal, "failed to send ready: %v", err)
-	}
-
-	s.log.DebugContext(ctx, "sent ready response", "instance", instanceID, "has_base_image", hasBaseImage)
-
-	// Setup rollback
+	// Setup rollback early so all resource allocations below are covered.
 	rb := &receiveVMRollback{
 		ctx:            ctx,
 		log:            s.log,
 		storageManager: s.context.StorageManager,
+		networkManager: s.context.NetworkManager,
 		instanceID:     instanceID,
 		instanceDir:    s.getInstanceDir(instanceID),
 		baseImageID:    startReq.BaseImageID,
@@ -88,6 +100,35 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 			rb.Rollback()
 		}
 	}()
+
+	// For live migration, allocate network interface early so the orchestrator
+	// can reconfigure the VM's IP before we pause the source.
+	var targetNetwork *api.NetworkInterface
+	if startReq.Live {
+		var err error
+		targetNetwork, err = s.context.NetworkManager.CreateInterface(ctx, instanceID)
+		if err != nil {
+			receiveErr = status.Errorf(codes.Internal, "failed to allocate network interface: %v", err)
+			return receiveErr
+		}
+		rb.targetNetwork = targetNetwork
+		s.log.InfoContext(ctx, "live: allocated target network", "instance", instanceID, "ip", targetNetwork.IP.IPV4)
+	}
+
+	// Send ready response
+	if err := stream.Send(&api.ReceiveVMResponse{
+		Type: &api.ReceiveVMResponse_Ready{
+			Ready: &api.ReceiveVMReady{
+				HasBaseImage:  hasBaseImage,
+				TargetNetwork: targetNetwork,
+			},
+		},
+	}); err != nil {
+		receiveErr = status.Errorf(codes.Internal, "failed to send ready: %v", err)
+		return receiveErr
+	}
+
+	s.log.DebugContext(ctx, "sent ready response", "instance", instanceID, "has_base_image", hasBaseImage, "live", startReq.Live)
 
 	// Store encryption key if provided
 	if startReq.Encrypted && len(startReq.EncryptionKey) > 0 {
@@ -151,6 +192,24 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 	var instanceRecv *zfsReceiver
 	var currentRecv *zfsReceiver
 	receivingBaseImage := false
+
+	// Pre-create instance directory with correct permissions so that snapshot chunk
+	// handling (which creates a subdirectory) doesn't implicitly create it with 0700.
+	instanceDir := s.getInstanceDir(instanceID)
+	if err := os.MkdirAll(instanceDir, 0o770); err != nil {
+		receiveErr = status.Errorf(codes.Internal, "failed to create instance dir: %v", err)
+		return receiveErr
+	}
+	rb.instanceDirCreated = true
+
+	// Use a unique snapshot directory per migration attempt to avoid conflicts
+	// if two sources migrate the same instance concurrently or a retry overlaps.
+	var snapshotSuffix [4]byte
+	if _, err := rand.Read(snapshotSuffix[:]); err != nil {
+		receiveErr = status.Errorf(codes.Internal, "failed to generate snapshot dir suffix: %v", err)
+		return receiveErr
+	}
+	snapshotDir := filepath.Join(instanceDir, "snapshot-"+hex.EncodeToString(snapshotSuffix[:]))
 
 	for {
 		req, err := stream.Recv()
@@ -230,23 +289,45 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 			// needed in the future, clients must be updated to drain Acks concurrently.
 
 		case *api.ReceiveVMRequest_PhaseComplete:
-			// Two-phase migration: phase 1 full stream is complete.
-			// Complete the current zfs recv, then start a new one for the phase 2 incremental stream.
+			// Phase complete: close the current zfs recv.
+			// The next Data chunk will lazily start a new receiver if needed
+			// (e.g., phase 2 incremental). For live migration, the final phase is
+			// followed by snapshot chunks, not ZFS data, so no new receiver is needed.
 			if instanceRecv == nil {
 				receiveErr = status.Error(codes.FailedPrecondition,
 					"received PhaseComplete before any instance data")
 				return receiveErr
 			}
-			s.log.InfoContext(ctx, "two-phase: completing phase 1 receive", "instance", instanceID)
+			s.log.InfoContext(ctx, "completing phase zfs receive", "instance", instanceID)
 			if err := waitRecvComplete(instanceRecv); err != nil {
 				rb.zfsDatasetCreated = true
-				receiveErr = status.Errorf(codes.Internal, "phase 1 zfs recv failed: %v", err)
+				receiveErr = status.Errorf(codes.Internal, "zfs recv failed: %v", err)
 				return receiveErr
 			}
 			rb.zfsDatasetCreated = true
-			s.log.InfoContext(ctx, "two-phase: starting phase 2 receive", "instance", instanceID)
-			instanceRecv = startZfsRecv(instanceID)
-			currentRecv = instanceRecv
+			instanceRecv = nil
+			currentRecv = nil
+
+		case *api.ReceiveVMRequest_SnapshotData:
+			// Live migration: receive CH snapshot file chunks
+			if err := os.MkdirAll(snapshotDir, 0o700); err != nil {
+				receiveErr = status.Errorf(codes.Internal, "failed to create snapshot dir: %v", err)
+				return receiveErr
+			}
+			rb.snapshotDirCreated = true
+
+			filePath := filepath.Join(snapshotDir, v.SnapshotData.Filename)
+			f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+			if err != nil {
+				receiveErr = status.Errorf(codes.Internal, "failed to open snapshot file %s: %v", v.SnapshotData.Filename, err)
+				return receiveErr
+			}
+			if _, err := f.Write(v.SnapshotData.Data); err != nil {
+				f.Close()
+				receiveErr = status.Errorf(codes.Internal, "failed to write snapshot file %s: %v", v.SnapshotData.Filename, err)
+				return receiveErr
+			}
+			f.Close()
 
 		case *api.ReceiveVMRequest_Complete:
 			expectedChecksum = v.Complete.Checksum
@@ -254,7 +335,7 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 	}
 
 	// Validate that we received disk data - without this we'd create a broken instance
-	if instanceRecv == nil {
+	if !rb.zfsDatasetCreated && instanceRecv == nil {
 		receiveErr = status.Error(codes.InvalidArgument,
 			"no instance disk data received")
 		return receiveErr
@@ -267,13 +348,15 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 		return receiveErr
 	}
 
-	// Wait for instance zfs recv to complete
-	if err := waitRecvComplete(instanceRecv); err != nil {
-		rb.zfsDatasetCreated = true // Attempt cleanup even on partial failure
-		receiveErr = status.Errorf(codes.Internal, "zfs recv failed: %v", err)
-		return receiveErr
+	// Wait for instance zfs recv to complete (may already be done if PhaseComplete closed it)
+	if instanceRecv != nil {
+		if err := waitRecvComplete(instanceRecv); err != nil {
+			rb.zfsDatasetCreated = true // Attempt cleanup even on partial failure
+			receiveErr = status.Errorf(codes.Internal, "zfs recv failed: %v", err)
+			return receiveErr
+		}
+		rb.zfsDatasetCreated = true
 	}
-	rb.zfsDatasetCreated = true
 
 	// Verify checksum
 	actualChecksum := fmt.Sprintf("%x", hasher.Sum(nil))
@@ -283,25 +366,42 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 		return receiveErr
 	}
 
-	// Create instance directory
-	instanceDir := s.getInstanceDir(instanceID)
-	if err := os.MkdirAll(instanceDir, 0o770); err != nil {
-		receiveErr = status.Errorf(codes.Internal, "failed to create instance dir: %v", err)
-		return receiveErr
-	}
-	rb.instanceDirCreated = true
-
 	// Copy kernel to new instance dir
 	if err := s.setupKernelForMigration(ctx, startReq.SourceInstance.VMConfig, instanceDir); err != nil {
 		receiveErr = status.Errorf(codes.Internal, "failed to setup kernel: %v", err)
 		return receiveErr
 	}
 
-	// Create new instance config
+	sourceInstance := startReq.SourceInstance
+
+	// Live migration: edit snapshot config, restore from snapshot, resume VM
+	if startReq.Live {
+		newInstance, err := s.finalizeLiveReceive(ctx, instanceID, instanceDir, snapshotDir, sourceInstance, startReq.GroupID, targetNetwork, rb)
+		if err != nil {
+			receiveErr = err
+			return receiveErr
+		}
+
+		if err := stream.Send(&api.ReceiveVMResponse{
+			Type: &api.ReceiveVMResponse_Result{
+				Result: &api.ReceiveVMResult{Instance: newInstance},
+			},
+		}); err != nil {
+			receiveErr = status.Errorf(codes.Internal, "failed to send result: %v", err)
+			return receiveErr
+		}
+
+		s.log.InfoContext(ctx, "ReceiveVM (live) completed",
+			"instance", instanceID,
+			"total_bytes", totalBytes,
+			"checksum", actualChecksum)
+		return nil
+	}
+
+	// Cold/two-phase: save instance as STOPPED
 	// Note: SSHPort is NOT preserved - the target exelet will allocate a new port
 	// when the VM is started, since the source port may conflict on the target.
 	// exed must be updated with the new ctrhost and ssh_port after migration.
-	sourceInstance := startReq.SourceInstance
 	newInstance := &api.Instance{
 		ID:        instanceID,
 		Name:      sourceInstance.Name,
@@ -335,6 +435,262 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 		"checksum", actualChecksum)
 
 	return nil
+}
+
+// finalizeLiveReceive edits the CH snapshot config, restores the VM, and saves instance config as RUNNING.
+func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceDir, snapshotDir string, sourceInstance *api.Instance, groupID string, targetNetwork *api.NetworkInterface, rb *receiveVMRollback) (*api.Instance, error) {
+	// Load disk to get the target zvol path
+	instanceFS, err := s.context.StorageManager.Load(ctx, instanceID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to load storage: %v", err)
+	}
+
+	kernelPath := filepath.Join(instanceDir, kernelName)
+
+	// Edit CH snapshot config to fix disk path, kernel path, and boot args
+	if err := editSnapshotConfig(snapshotDir, instanceFS.Path, kernelPath, sourceInstance.VMConfig, targetNetwork); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to edit snapshot config: %v", err)
+	}
+
+	// Restore from snapshot (starts CH daemon, restores, resumes)
+	vmmgr, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create VMM: %v", err)
+	}
+
+	s.log.InfoContext(ctx, "live: restoring VM from snapshot", "instance", instanceID)
+	restoreErr := vmmgr.RestoreFromSnapshot(ctx, instanceID, snapshotDir)
+
+	// Build the instance config (needed for both restore and fallback paths)
+	vmConfig := s.adaptVMConfigForTarget(sourceInstance.VMConfig, instanceID, instanceDir)
+	vmConfig.NetworkInterface = targetNetwork
+	vmConfig.RootDiskPath = instanceFS.Path
+
+	// Register a stop function so rollback can stop the CH process if a later step fails.
+	// Must be set before the restoreErr check so the cold-boot fallback path doesn't trigger it.
+	if restoreErr == nil {
+		rb.stopVM = func() {
+			s.log.WarnContext(ctx, "live: stopping restored VM due to rollback", "instance", instanceID)
+			if err := vmmgr.Stop(ctx, instanceID); err != nil {
+				s.log.WarnContext(ctx, "live: failed to stop restored VM during rollback", "instance", instanceID, "error", err)
+			}
+		}
+	}
+
+	if restoreErr != nil {
+		// CH snapshot restore failed (e.g., memory region issues on Apple Virtualization).
+		// Fall back to cold boot: save as STOPPED, then start normally.
+		// Process state is lost but disk data is intact from the ZFS transfer.
+		s.log.WarnContext(ctx, "live: snapshot restore failed, falling back to cold boot",
+			"instance", instanceID, "error", restoreErr)
+
+		// Clean up the failed CH process and live migration network interface
+		if stopErr := vmmgr.Stop(ctx, instanceID); stopErr != nil {
+			s.log.WarnContext(ctx, "live: failed to stop failed CH process", "instance", instanceID, "error", stopErr)
+		}
+		os.RemoveAll(snapshotDir)
+
+		// Delete the network interface allocated for live migration so
+		// startInstance can create a fresh one.
+		if targetNetwork != nil && targetNetwork.IP != nil {
+			delIP := targetNetwork.IP.IPV4
+			if idx := strings.Index(delIP, "/"); idx > 0 {
+				delIP = delIP[:idx]
+			}
+			if err := s.context.NetworkManager.DeleteInterface(ctx, instanceID, delIP); err != nil {
+				s.log.WarnContext(ctx, "live: failed to delete live migration network interface", "instance", instanceID, "error", err)
+			}
+		}
+
+		newInstance := &api.Instance{
+			ID:        instanceID,
+			Name:      sourceInstance.Name,
+			Image:     sourceInstance.Image,
+			VMConfig:  vmConfig,
+			CreatedAt: sourceInstance.CreatedAt,
+			UpdatedAt: time.Now().UnixNano(),
+			State:     api.VMState_STOPPED,
+			GroupID:   groupID,
+		}
+		if err := s.saveInstanceConfig(newInstance); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to save instance config after restore failure: %v", err)
+		}
+
+		// Cold boot the VM — startInstance handles migrated VMs (creates VMM config, allocates network)
+		s.log.InfoContext(ctx, "live: cold-booting VM after restore failure", "instance", instanceID)
+		if err := s.startInstance(ctx, instanceID); err != nil {
+			return nil, status.Errorf(codes.Internal,
+				"snapshot restore failed (%v) and cold boot also failed: %v", restoreErr, err)
+		}
+
+		// Reload the instance config (startInstance updated state, network, ssh port)
+		coldInstance, err := s.loadInstanceConfig(instanceID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to reload instance after cold boot: %v", err)
+		}
+
+		return coldInstance, nil
+	}
+
+	// Snapshot files are no longer needed after a successful restore.
+	// Also clean up any stale snapshot dirs from previous migrations.
+	entries, _ := filepath.Glob(filepath.Join(instanceDir, "snapshot-*"))
+	for _, e := range entries {
+		os.RemoveAll(e)
+	}
+	// Remove legacy "snapshot" dir from before unique naming was added.
+	os.RemoveAll(filepath.Join(instanceDir, "snapshot"))
+
+	// Set up SSH proxy
+	sshPort, err := s.portAllocator.Allocate()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to allocate SSH port: %v", err)
+	}
+
+	vmIP := ""
+	if targetNetwork.IP != nil && targetNetwork.IP.IPV4 != "" {
+		ipAddr, _, err := net.ParseCIDR(targetNetwork.IP.IPV4)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to parse VM IP: %v", err)
+		}
+		vmIP = ipAddr.String()
+	} else {
+		return nil, status.Errorf(codes.Internal, "no IP address in target network")
+	}
+
+	if err := s.proxyManager.CreateProxy(instanceID, vmIP, sshPort, instanceDir); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to start SSH proxy: %v", err)
+	}
+
+	newInstance := &api.Instance{
+		ID:        instanceID,
+		Name:      sourceInstance.Name,
+		Image:     sourceInstance.Image,
+		VMConfig:  vmConfig,
+		CreatedAt: sourceInstance.CreatedAt,
+		UpdatedAt: time.Now().UnixNano(),
+		State:     api.VMState_RUNNING,
+		SSHPort:   int32(sshPort),
+		GroupID:   groupID,
+	}
+
+	// Save instance and VMM configs
+	if err := s.saveInstanceConfig(newInstance); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to save instance config: %v", err)
+	}
+
+	// Save VMM config (so cold boot on target works correctly later)
+	if err := vmmgr.Update(ctx, vmConfig); err != nil {
+		s.log.WarnContext(ctx, "live: failed to save VMM config", "instance", instanceID, "error", err)
+	}
+
+	return newInstance, nil
+}
+
+// editSnapshotConfig modifies the CH snapshot's config.json to point to the target's
+// disk path, kernel path, and updated boot args (with new IP).
+func editSnapshotConfig(snapshotDir, diskPath, kernelPath string, srcVMConfig *api.VMConfig, targetNetwork *api.NetworkInterface) error {
+	configPath := filepath.Join(snapshotDir, "config.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read snapshot config: %w", err)
+	}
+
+	var config map[string]any
+	if err := json.Unmarshal(data, &config); err != nil {
+		return fmt.Errorf("failed to parse snapshot config: %w", err)
+	}
+
+	// Update disk path: disks[0].path
+	disks, ok := config["disks"].([]any)
+	if !ok || len(disks) == 0 {
+		return fmt.Errorf("snapshot config missing disks array")
+	}
+	disk, ok := disks[0].(map[string]any)
+	if !ok {
+		return fmt.Errorf("snapshot config disks[0] is not an object")
+	}
+	disk["path"] = diskPath
+
+	// Update kernel path and cmdline
+	payload, ok := config["payload"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("snapshot config missing payload object")
+	}
+	payload["kernel"] = kernelPath
+
+	// Update cmdline: replace ip= boot arg with target IP
+	if cmdline, ok := payload["cmdline"].(string); ok {
+		payload["cmdline"] = replaceIPBootArg(cmdline, srcVMConfig.Name, targetNetwork)
+	}
+
+	updated, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal snapshot config: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, updated, 0o600); err != nil {
+		return fmt.Errorf("failed to write snapshot config: %w", err)
+	}
+
+	return nil
+}
+
+// replaceIPBootArg replaces the ip= kernel boot argument with one derived from the target network.
+func replaceIPBootArg(cmdline, hostname string, targetNetwork *api.NetworkInterface) string {
+	// Build new ip= arg from target network
+	newIPArg := buildIPBootArg(hostname, targetNetwork)
+
+	// Replace existing ip= arg
+	var parts []string
+	replaced := false
+	for _, part := range strings.Fields(cmdline) {
+		if strings.HasPrefix(part, "ip=") {
+			if newIPArg != "" {
+				parts = append(parts, newIPArg)
+				replaced = true
+			}
+		} else {
+			parts = append(parts, part)
+		}
+	}
+	if !replaced && newIPArg != "" {
+		parts = append(parts, newIPArg)
+	}
+	return strings.Join(parts, " ")
+}
+
+// buildIPBootArg generates the ip= kernel boot argument from a network interface.
+// Format: ip=<client-ip>:<srv-ip>:<gw-ip>:<netmask>:<host>:<device>:<autoconf>:<dns0-ip>:<dns1-ip>:<ntp0-ip>
+func buildIPBootArg(hostname string, iface *api.NetworkInterface) string {
+	if iface == nil || iface.IP == nil || iface.IP.IPV4 == "" {
+		return ""
+	}
+
+	ipSubnet := iface.IP.IPV4
+	gw := iface.IP.GatewayV4
+	iIP, ipnet, err := net.ParseCIDR(ipSubnet)
+	if err != nil {
+		return ""
+	}
+	netmask := net.IP(ipnet.Mask).String()
+	ip := iIP.String()
+
+	device := iface.DeviceName
+	primaryNS := "1.1.1.1"
+	backupNS := "8.8.8.8"
+	switch len(iface.Nameservers) {
+	case 0:
+	case 1:
+		primaryNS = iface.Nameservers[0]
+	default:
+		primaryNS = iface.Nameservers[0]
+		backupNS = iface.Nameservers[1]
+	}
+	ntpServer := iface.NTPServer
+
+	return fmt.Sprintf("ip=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s",
+		ip, gw, gw, netmask, hostname, device, "none", primaryNS, backupNS, ntpServer)
 }
 
 // adaptVMConfigForTarget adapts a VMConfig for the target exelet.
@@ -397,13 +753,19 @@ type receiveVMRollback struct {
 	storageManager interface {
 		Delete(ctx context.Context, id string) error
 	}
+	networkManager interface {
+		DeleteInterface(ctx context.Context, id, ip string) error
+	}
 	instanceID           string
 	instanceDir          string
 	baseImageID          string
+	targetNetwork        *api.NetworkInterface
+	stopVM               func() // set after successful live restore to stop CH process on rollback
 	encryptionKeyCreated bool
 	baseImageCreated     bool
 	zfsDatasetCreated    bool
 	instanceDirCreated   bool
+	snapshotDirCreated   bool
 }
 
 func (r *receiveVMRollback) Rollback() {
@@ -411,6 +773,11 @@ func (r *receiveVMRollback) Rollback() {
 
 	// Use a background context to ensure cleanup completes
 	ctx := context.WithoutCancel(r.ctx)
+
+	// Stop the VM if live restore succeeded but a later step failed
+	if r.stopVM != nil {
+		r.stopVM()
+	}
 
 	// Delete any partially created ZFS dataset for the instance
 	if r.zfsDatasetCreated {
@@ -423,12 +790,54 @@ func (r *receiveVMRollback) Rollback() {
 	// Base images are shared resources that may be used by other VMs and are
 	// expensive to re-transfer. Leaving them around doesn't cause problems.
 
-	// Remove instance directory
-	if r.instanceDirCreated {
+	// Remove instance directory (includes snapshot dir)
+	if r.instanceDirCreated || r.snapshotDirCreated {
 		if err := os.RemoveAll(r.instanceDir); err != nil {
 			r.log.WarnContext(ctx, "failed to remove instance dir during rollback", "instance", r.instanceID, "error", err)
 		}
 	}
 
+	// Clean up network interface allocated for live migration
+	if r.targetNetwork != nil {
+		ip := ""
+		if r.targetNetwork.IP != nil {
+			ip = r.targetNetwork.IP.IPV4
+			if idx := strings.Index(ip, "/"); idx > 0 {
+				ip = ip[:idx]
+			}
+		}
+		if err := r.networkManager.DeleteInterface(ctx, r.instanceID, ip); err != nil {
+			r.log.WarnContext(ctx, "failed to delete network interface during rollback", "instance", r.instanceID, "error", err)
+		}
+	}
+
 	// Note: encryption key is stored in storage volumes dir, which is cleaned up with the dataset
+}
+
+// checkAvailableMemory reads /proc/meminfo and returns an error if the host
+// does not have enough available memory for a VM of the given size (bytes).
+func checkAvailableMemory(requiredBytes uint64) error {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return nil // best-effort; skip check if we can't read meminfo
+	}
+
+	var availableKB uint64
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "MemAvailable:") {
+			fmt.Sscanf(line, "MemAvailable: %d kB", &availableKB)
+			break
+		}
+	}
+
+	if availableKB == 0 {
+		return nil // field not found, skip check
+	}
+
+	availableBytes := availableKB * 1024
+	if availableBytes < requiredBytes {
+		return fmt.Errorf("need %d MB but only %d MB available",
+			requiredBytes/(1024*1024), availableBytes/(1024*1024))
+	}
+	return nil
 }

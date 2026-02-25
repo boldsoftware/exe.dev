@@ -126,6 +126,10 @@ func (s *Service) Register(ctx *services.ServiceContext, server *grpc.Server) er
 		s.IsRestoring,
 	)
 
+	// Register as the replication suspender so other services (compute)
+	// can exclude volumes during migration.
+	ctx.ReplicationSuspender = s
+
 	api.RegisterReplicationServiceServer(server, s)
 	s.log.Info("replication service registered",
 		"target", s.config.ReplicationTarget,
@@ -605,12 +609,31 @@ func (s *Service) destroyDataset(ctx context.Context, dataset string) error {
 	return nil
 }
 
-// IsRestoring reports whether volumeID is currently being restored.
+// IsRestoring reports whether volumeID is currently being restored or
+// otherwise excluded from replication (e.g. during migration).
 func (s *Service) IsRestoring(volumeID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	_, ok := s.restoringVolumes[volumeID]
 	return ok
+}
+
+// SuspendVolume temporarily excludes a volume from replication.
+// Call ResumeVolume when done. Used during migration to prevent the replication
+// worker from snapshotting a dataset that is being transferred via zfs recv.
+func (s *Service) SuspendVolume(volumeID string) {
+	s.mu.Lock()
+	s.restoringVolumes[volumeID] = struct{}{}
+	s.mu.Unlock()
+	s.log.Info("suspended replication for volume", "volume_id", volumeID)
+}
+
+// ResumeVolume re-enables replication for a previously suspended volume.
+func (s *Service) ResumeVolume(volumeID string) {
+	s.mu.Lock()
+	delete(s.restoringVolumes, volumeID)
+	s.mu.Unlock()
+	s.log.Info("resumed replication for volume", "volume_id", volumeID)
 }
 
 // ListSnapshots implements ReplicationService.ListSnapshots
