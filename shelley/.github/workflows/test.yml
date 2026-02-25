@@ -41,10 +41,19 @@ jobs:
           git config --global user.email "test@example.com"
           git config --global user.name "Test User"
 
-      - name: Build UI
+      - name: Install UI dependencies
         run: |
           cd ui
           pnpm install --frozen-lockfile
+
+      - name: Run unit tests
+        run: |
+          cd ui
+          pnpm test
+
+      - name: Build UI
+        run: |
+          cd ui
           pnpm run build
 
       - name: Build templates
@@ -57,3 +66,34 @@ jobs:
 
       - name: Run Go tests
         run: go test -v ./...
+
+      - name: Build shelley binary
+        run: go build -o bin/shelley ./cmd/shelley
+
+      - name: Install Playwright browsers
+        run: |
+          cd ui
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E tests
+        run: |
+          cd ui
+          npx playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: ui/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ui/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
