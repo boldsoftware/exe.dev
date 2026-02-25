@@ -450,6 +450,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTemplateBySlugStmt, err = db.PrepareContext(ctx, getTemplateBySlug); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTemplateBySlug: %w", err)
 	}
+	if q.getTemplateBySlugAnyStmt, err = db.PrepareContext(ctx, getTemplateBySlugAny); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTemplateBySlugAny: %w", err)
+	}
 	if q.getUserBillingExemptionStmt, err = db.PrepareContext(ctx, getUserBillingExemption); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserBillingExemption: %w", err)
 	}
@@ -1552,6 +1555,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTemplateBySlugStmt: %w", cerr)
 		}
 	}
+	if q.getTemplateBySlugAnyStmt != nil {
+		if cerr := q.getTemplateBySlugAnyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTemplateBySlugAnyStmt: %w", cerr)
+		}
+	}
 	if q.getUserBillingExemptionStmt != nil {
 		if cerr := q.getUserBillingExemptionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserBillingExemptionStmt: %w", cerr)
@@ -2378,6 +2386,7 @@ type Queries struct {
 	getTeamMembersStmt                         *sql.Stmt
 	getTemplateByIDStmt                        *sql.Stmt
 	getTemplateBySlugStmt                      *sql.Stmt
+	getTemplateBySlugAnyStmt                   *sql.Stmt
 	getUserBillingExemptionStmt                *sql.Stmt
 	getUserBillingStatusStmt                   *sql.Stmt
 	getUserByEmailStmt                         *sql.Stmt
@@ -2655,6 +2664,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTeamMembersStmt:                         q.getTeamMembersStmt,
 		getTemplateByIDStmt:                        q.getTemplateByIDStmt,
 		getTemplateBySlugStmt:                      q.getTemplateBySlugStmt,
+		getTemplateBySlugAnyStmt:                   q.getTemplateBySlugAnyStmt,
 		getUserBillingExemptionStmt:                q.getUserBillingExemptionStmt,
 		getUserBillingStatusStmt:                   q.getUserBillingStatusStmt,
 		getUserByEmailStmt:                         q.getUserByEmailStmt,

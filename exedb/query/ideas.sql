@@ -22,6 +22,9 @@ GROUP BY t.id;
 -- name: GetTemplateByID :one
 SELECT * FROM vm_templates WHERE id = ?;
 
+-- name: GetTemplateBySlugAny :one
+SELECT * FROM vm_templates WHERE slug = ?;
+
 -- name: ListAllTemplates :many
 SELECT
     t.*,

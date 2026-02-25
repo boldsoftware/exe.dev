@@ -2,7 +2,9 @@ package execore
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -326,12 +328,36 @@ func (s *Server) handleDebugTemplateReviewPost(w http.ResponseWriter, r *http.Re
 // seedDefaultTemplates inserts the curated set of idea templates.
 func (s *Server) seedDefaultTemplates(ctx context.Context) error {
 	for _, t := range idea.SeedTemplates {
-		// Skip if slug already exists (idempotent)
-		if _, err := withRxRes1(s, ctx, (*exedb.Queries).GetTemplateBySlug, t.Slug); err == nil {
+		existing, err := withRxRes1(s, ctx, (*exedb.Queries).GetTemplateBySlugAny, t.Slug)
+		if err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("checking template %s: %w", t.Slug, err)
+			}
+			if err := withTx1(s, ctx, (*exedb.Queries).InsertTemplate, t); err != nil {
+				return fmt.Errorf("seeding template %s: %w", t.Slug, err)
+			}
 			continue
 		}
-		if err := withTx1(s, ctx, (*exedb.Queries).InsertTemplate, t); err != nil {
-			return fmt.Errorf("seeding template %s: %w", t.Slug, err)
+
+		if err := withTx1(s, ctx, (*exedb.Queries).UpdateTemplate, exedb.UpdateTemplateParams{
+			ID:               existing.ID,
+			Title:            t.Title,
+			ShortDescription: t.ShortDescription,
+			Category:         t.Category,
+			Prompt:           t.Prompt,
+			IconURL:          t.IconURL,
+			ScreenshotURL:    t.ScreenshotURL,
+			Featured:         t.Featured,
+			VMShortname:      t.VMShortname,
+			Image:            t.Image,
+		}); err != nil {
+			return fmt.Errorf("updating template %s: %w", t.Slug, err)
+		}
+		if err := withTx1(s, ctx, (*exedb.Queries).UpdateTemplateStatus, exedb.UpdateTemplateStatusParams{
+			ID:     existing.ID,
+			Status: t.Status,
+		}); err != nil {
+			return fmt.Errorf("updating template status %s: %w", t.Slug, err)
 		}
 	}
 	return nil

@@ -158,6 +158,33 @@ func (q *Queries) GetTemplateBySlug(ctx context.Context, slug string) (GetTempla
 	return i, err
 }
 
+const getTemplateBySlugAny = `-- name: GetTemplateBySlugAny :one
+SELECT id, slug, title, short_description, category, prompt, icon_url, screenshot_url, author_user_id, status, featured, created_at, updated_at, vm_shortname, image FROM vm_templates WHERE slug = ?
+`
+
+func (q *Queries) GetTemplateBySlugAny(ctx context.Context, slug string) (VmTemplate, error) {
+	row := q.queryRow(ctx, q.getTemplateBySlugAnyStmt, getTemplateBySlugAny, slug)
+	var i VmTemplate
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Title,
+		&i.ShortDescription,
+		&i.Category,
+		&i.Prompt,
+		&i.IconURL,
+		&i.ScreenshotURL,
+		&i.AuthorUserID,
+		&i.Status,
+		&i.Featured,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.VMShortname,
+		&i.Image,
+	)
+	return i, err
+}
+
 const getUserTemplateRating = `-- name: GetUserTemplateRating :one
 SELECT rating FROM template_ratings WHERE template_id = ? AND user_id = ?
 `
