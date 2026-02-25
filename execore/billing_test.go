@@ -651,7 +651,6 @@ func TestNewPagePrefillsFromQueryParams(t *testing.T) {
 	}
 }
 
-
 func TestCreateVMRedirectsToBillingWithParams(t *testing.T) {
 	// Test that /create-vm redirects to /billing/update with name and prompt params.
 	server := newBillingTestServer(t)
@@ -2525,4 +2524,3 @@ func TestCreditPurchase_BalanceUpdatesAfterSync(t *testing.T) {
 	}
 	_ = user
 }
-
