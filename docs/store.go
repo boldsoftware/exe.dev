@@ -276,10 +276,23 @@ func (s *Store) Slugs() []string {
 	return slugs
 }
 
+// TopbarData holds fields expected by the topbar template.
+type TopbarData struct {
+	WebHost    string
+	IsLoggedIn bool
+	BasicUser  bool
+	ActivePage string
+}
+
+// TopbarFunc returns topbar data for a given HTTP request.
+// If nil, the topbar renders in logged-out mode.
+type TopbarFunc func(r *http.Request) TopbarData
+
 type Handler struct {
 	store      *Store
 	showHidden bool
 	tmpl       *template.Template
+	topbarFunc TopbarFunc
 }
 
 func NewHandler(store *Store, showHidden bool) *Handler {
@@ -287,6 +300,13 @@ func NewHandler(store *Store, showHidden bool) *Handler {
 		return nil
 	}
 	return &Handler{store: store, showHidden: showHidden, tmpl: docTemplates}
+}
+
+// SetTopbarFunc sets the function used to populate topbar template data.
+func (h *Handler) SetTopbarFunc(fn TopbarFunc) {
+	if h != nil {
+		h.topbarFunc = fn
+	}
 }
 
 // NewHandlerWithTemplates creates a Handler that uses the given templates
@@ -396,13 +416,31 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
+// topbarData returns the topbar fields for a request.
+func (h *Handler) topbarData(r *http.Request) TopbarData {
+	if h.topbarFunc != nil {
+		return h.topbarFunc(r)
+	}
+	return TopbarData{}
+}
+
+// templateData builds the common template data map with topbar fields.
+func (h *Handler) templateData(r *http.Request) map[string]any {
+	tb := h.topbarData(r)
+	return map[string]any{
+		"Groups":     h.store.Groups(),
+		"StatusTag":  h.statusTag,
+		"WebHost":    tb.WebHost,
+		"IsLoggedIn": tb.IsLoggedIn,
+		"BasicUser":  tb.BasicUser,
+		"ActivePage": tb.ActivePage,
+	}
+}
+
 func (h *Handler) renderDocEntry(w http.ResponseWriter, r *http.Request, entry *Entry) {
 	buf := new(bytes.Buffer)
-	data := map[string]any{
-		"Entry":     entry,
-		"Groups":    h.store.Groups(),
-		"StatusTag": h.statusTag,
-	}
+	data := h.templateData(r)
+	data["Entry"] = entry
 
 	if err := h.tmpl.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
 		http.Error(w, "error rendering doc", http.StatusInternalServerError)
@@ -413,7 +451,7 @@ func (h *Handler) renderDocEntry(w http.ResponseWriter, r *http.Request, entry *
 	_, _ = w.Write(buf.Bytes())
 }
 
-func (h *Handler) renderDocSection(w http.ResponseWriter, _ *http.Request, group *Group) {
+func (h *Handler) renderDocSection(w http.ResponseWriter, r *http.Request, group *Group) {
 	type visibleEntry struct {
 		Path, Title, Description string
 	}
@@ -443,11 +481,8 @@ func (h *Handler) renderDocSection(w http.ResponseWriter, _ *http.Request, group
 	}
 
 	buf := new(bytes.Buffer)
-	data := map[string]any{
-		"Entry":     sectionEntry,
-		"Groups":    h.store.Groups(),
-		"StatusTag": h.statusTag,
-	}
+	data := h.templateData(r)
+	data["Entry"] = sectionEntry
 
 	if err := h.tmpl.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
 		http.Error(w, "error rendering doc section", http.StatusInternalServerError)
@@ -460,10 +495,7 @@ func (h *Handler) renderDocSection(w http.ResponseWriter, _ *http.Request, group
 
 func (h *Handler) renderDocsList(w http.ResponseWriter, r *http.Request) {
 	buf := new(bytes.Buffer)
-	data := map[string]any{
-		"Groups":    h.store.Groups(),
-		"StatusTag": h.statusTag,
-	}
+	data := h.templateData(r)
 
 	if err := h.tmpl.ExecuteTemplate(buf, "docs-list.html", data); err != nil {
 		http.Error(w, "error rendering docs", http.StatusInternalServerError)
@@ -836,11 +868,8 @@ func (h *Handler) renderAllDocsHTML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	buf := new(bytes.Buffer)
-	data := map[string]any{
-		"Entry":     allEntry,
-		"Groups":    h.store.Groups(),
-		"StatusTag": h.statusTag,
-	}
+	data := h.templateData(r)
+	data["Entry"] = allEntry
 
 	if err := h.tmpl.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
 		http.Error(w, "error rendering doc", http.StatusInternalServerError)

@@ -991,6 +991,14 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		signupPOW: newSignupPOW(),
 	}
 
+	docsHandler.SetTopbarFunc(func(r *http.Request) docspkg.TopbarData {
+		td := docspkg.TopbarData{WebHost: cfg.Env.WebHost}
+		if _, err := s.validateAuthCookie(r); err == nil {
+			td.IsLoggedIn = true
+		}
+		return td
+	})
+
 	if s.billing == nil {
 		s.billing = &billing.Manager{}
 	}
