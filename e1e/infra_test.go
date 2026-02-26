@@ -442,7 +442,7 @@ func setup(ctrHost string) (*testEnv, error) {
 
 	serverEnv, err := testinfra.StartServers(context.Background(),
 		[]*testinfra.ExeletInstance{exelet},
-		exedHTTPProxy,
+		[]*testinfra.TCPProxy{exedHTTPProxy},
 		exedLog,
 		exeproxLog,
 		piperLog,
@@ -454,6 +454,8 @@ func setup(ctrHost string) (*testEnv, error) {
 	if err != nil {
 		return env, err
 	}
+
+	exedHTTPProxy.SetDestPort(serverEnv.Exed.HTTPPort)
 
 	return env, nil
 }

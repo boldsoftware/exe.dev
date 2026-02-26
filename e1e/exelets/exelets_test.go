@@ -136,7 +136,7 @@ func TestMain(m *testing.M) {
 
 	serverEnv, err = testinfra.StartServers(context.Background(),
 		[]*testinfra.ExeletInstance{exelet},
-		exedHTTPProxy,
+		[]*testinfra.TCPProxy{exedHTTPProxy},
 		exedLogFile,
 		exeproxLogFile,
 		sshPiperLogFile,
@@ -148,6 +148,8 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "starting servers failed: %v\n", err)
 		exit(1)
 	}
+
+	exedHTTPProxy.SetDestPort(serverEnv.Exed.HTTPPort)
 
 	m.Run()
 }
@@ -173,7 +175,7 @@ func ensureExeletCount(ctx context.Context, count int) error {
 	}
 
 	for len(exelets) < count {
-		exelet, err := testinfra.StartExelet(ctx, exeletBinary, exeletHosts[len(exelets)], serverEnv.ExedHTTPProxy.Port(), exeletTestRunIDs[len(exelets)], exeletLogFile, false, nil, nil)
+		exelet, err := testinfra.StartExelet(ctx, exeletBinary, exeletHosts[len(exelets)], serverEnv.Exed.HTTPPort, exeletTestRunIDs[len(exelets)], exeletLogFile, false, nil, nil)
 		if err != nil {
 			return fmt.Errorf("error starting exelet %d: %v", len(exelets), err)
 		}

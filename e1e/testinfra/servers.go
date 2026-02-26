@@ -13,7 +13,7 @@ type ServerEnv struct {
 	Exelets       []*ExeletInstance
 	Exeprox       *ExeproxInstance
 	SSHProxy      *TCPProxy
-	ExedHTTPProxy *TCPProxy
+	TCPProxies    []*TCPProxy
 	SSHPiperd     *SSHPiperdInstance
 	Email         *EmailServer
 	Metricsd      *MetricsdInstance
@@ -22,8 +22,8 @@ type ServerEnv struct {
 // StartServers takes a list of exelets that have already been started,
 // and starts all the servers needed for an end-to-end test.
 //
-// exedHTTPProxy is the proxy for the exed server,
-// which must be passed to the exelets.
+// tcpProxies is TCP proxies set up beforehand.
+// This is just a convenience for closing them.
 //
 // exedLog, exeproxLog, and piperLog, if not nil,
 // are log files for exed, exeprox, and sshpiper.
@@ -33,11 +33,11 @@ type ServerEnv struct {
 // verboseEmailServer is whether email server should be verbose.
 //
 // metricsd, if not nil, is a metricsd instance to include in the environment.
-func StartServers(ctx context.Context, exelets []*ExeletInstance, exedHTTPProxy *TCPProxy, exedLog, exeproxLog, piperLog io.Writer, logPorts, verboseEmailServer bool, metricsd *MetricsdInstance) (*ServerEnv, error) {
+func StartServers(ctx context.Context, exelets []*ExeletInstance, tcpProxies []*TCPProxy, exedLog, exeproxLog, piperLog io.Writer, logPorts, verboseEmailServer bool, metricsd *MetricsdInstance) (*ServerEnv, error) {
 	env := &ServerEnv{
-		Exelets:       exelets,
-		ExedHTTPProxy: exedHTTPProxy,
-		Metricsd:      metricsd,
+		Exelets:    exelets,
+		TCPProxies: tcpProxies,
+		Metricsd:   metricsd,
 	}
 
 	// We have a circular dependency around ports.
@@ -112,10 +112,6 @@ func StartServers(ctx context.Context, exelets []*ExeletInstance, exedHTTPProxy 
 	// Proxy SSH requests to piperd.
 	env.SSHProxy.SetDestPort(pi.Port)
 
-	// Now that exed is running,
-	// point the HTTP proxy to the real exed HTTP port.
-	env.ExedHTTPProxy.SetDestPort(ei.HTTPPort)
-
 	AddCanonicalization(env.SSHProxy.Port(), "SSH_PORT")
 
 	return env, nil
@@ -130,8 +126,8 @@ func (env *ServerEnv) Stop(ctx context.Context, testRunID string) []string {
 	if env.SSHProxy != nil {
 		env.SSHProxy.Close()
 	}
-	if env.ExedHTTPProxy != nil {
-		env.ExedHTTPProxy.Close()
+	for _, tcpProxy := range env.TCPProxies {
+		tcpProxy.Close()
 	}
 
 	if env.Exed != nil {
