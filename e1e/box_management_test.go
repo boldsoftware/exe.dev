@@ -1048,6 +1048,36 @@ func TestNewWithPrompt(t *testing.T) {
 	pty.Disconnect()
 }
 
+func TestNewWithPromptStdin(t *testing.T) {
+	t.Parallel()
+	noGolden(t)
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+
+	boxName := boxName(t)
+	prompt := "hello"
+	shelleyCmd := "/usr/local/bin/shelley -debug -db /home/exedev/.shelley/shelley.db -config /exe.dev/shelley.json serve -port 9999"
+
+	// Create a box with --prompt=/dev/stdin, passing the prompt via stdin.
+	out, err := Env.servers.RunExeDevSSHCommandWithStdin(
+		Env.context(t), keyFile, []byte(prompt),
+		"new", "--name="+boxName, "--prompt=/dev/stdin", "--prompt-model=predictable",
+		"--command='"+shelleyCmd+"'",
+	)
+	if err != nil {
+		t.Fatalf("new --prompt=/dev/stdin failed: %v\n%s", err, out)
+	}
+	output := string(out)
+	if !strings.Contains(output, "Well, hi there!") {
+		t.Errorf("expected Shelley response in output, got:\n%s", output)
+	}
+
+	// Cleanup
+	pty.deleteBox(boxName)
+	pty.Disconnect()
+}
+
 func TestNewWithPromptDefaultModel(t *testing.T) {
 	// TODO(philip): figure this out.
 	t.Skip("This is flaky right now for me, and I just added it.")

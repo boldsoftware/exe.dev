@@ -18,7 +18,7 @@ Create a new VM
 - `--json`: output in JSON format
 - `--name`: VM name (auto-generated if not specified)
 - `--no-email`: do not send email notification
-- `--prompt`: initial prompt to send to Shelley after VM creation (requires exeuntu image)
+- `--prompt`: initial prompt to send to Shelley after VM creation (requires exeuntu image); use /dev/stdin to read from stdin
 
 ## Examples
 
@@ -26,5 +26,6 @@ Create a new VM
 new                                     # just give me a computer
 new --name=b --image=ubuntu:22.04       # custom image and name
 new --env FOO=bar --env BAZ=qux         # with environment variables
+echo 'build me a web app' | ssh exe.dev new --prompt=/dev/stdin
 ```
 

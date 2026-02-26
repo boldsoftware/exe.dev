@@ -32,6 +32,23 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	image := cc.FlagSet.Lookup("image").Value.String()
 	command := cc.FlagSet.Lookup("command").Value.String()
 	prompt := cc.FlagSet.Lookup("prompt").Value.String()
+	if prompt == "/dev/stdin" {
+		if !cc.IsSSHExec() {
+			return cc.Errorf("--prompt=/dev/stdin requires a non-interactive SSH session (e.g., ssh exe.dev new --prompt=/dev/stdin)")
+		}
+		const maxPrompt = 16 << 10
+		data, err := io.ReadAll(io.LimitReader(cc.SSHSession, maxPrompt+1))
+		if err != nil {
+			return cc.Errorf("reading prompt from stdin: %v", err)
+		}
+		if len(data) > maxPrompt {
+			return cc.Errorf("--prompt=/dev/stdin: input exceeds 16 KiB limit")
+		}
+		prompt = strings.TrimSpace(string(data))
+		if prompt == "" {
+			return cc.Errorf("--prompt=/dev/stdin: stdin was empty")
+		}
+	}
 	model := cc.FlagSet.Lookup("prompt-model").Value.String()
 	noEmail := cc.IsSSHExec() || cc.FlagSet.Lookup("no-email").Value.String() == "true" || !ss.getUserDefaultNewVMEmail(ctx, cc.User.ID)
 	noShard := cc.FlagSet.Lookup("no-shard").Value.String() == "true"

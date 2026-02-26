@@ -169,7 +169,7 @@ func newCommandFlags() *flag.FlagSet {
 	fs.String("name", "", "VM name (auto-generated if not specified)")
 	fs.String("image", "exeuntu", "container image")
 	fs.String("command", "auto", "container command: auto, none, or a custom command")
-	fs.String("prompt", "", "initial prompt to send to Shelley after VM creation (requires exeuntu image)")
+	fs.String("prompt", "", "initial prompt to send to Shelley after VM creation (requires exeuntu image); use /dev/stdin to read from stdin")
 	fs.Bool("json", false, "output in JSON format")
 	fs.Bool("no-email", false, "do not send email notification")
 	fs.String("prompt-model", shelleyDefaultModel, "[hidden] override the prompt model") // for testing
@@ -244,6 +244,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 				"new                                     # just give me a computer",
 				"new --name=b --image=ubuntu:22.04       # custom image and name",
 				"new --env FOO=bar --env BAZ=qux         # with environment variables",
+				"echo 'build me a web app' | ssh exe.dev new --prompt=/dev/stdin",
 			},
 		},
 		{
