@@ -609,7 +609,7 @@ function ChatInterface({
   // Settings modal removed - configuration moved to status bar for empty conversations
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredTheme);
-  const { markdownEnabled, toggleMarkdown } = useMarkdown();
+  const { markdownMode, setMarkdownMode } = useMarkdown();
   const [browserNotifsEnabled, setBrowserNotifsEnabled] = useState(() =>
     isChannelEnabled("browser"),
   );
@@ -1920,25 +1920,31 @@ function ChatInterface({
 
                 {/* Markdown rendering toggle */}
                 <div className="overflow-menu-divider" />
-                <div className="theme-toggle-row">
-                  <button
-                    onClick={() => {
-                      if (!markdownEnabled) toggleMarkdown();
-                    }}
-                    className={`theme-toggle-btn${markdownEnabled ? " theme-toggle-btn-selected" : ""}`}
-                    title="Render markdown formatting"
-                  >
-                    <span style={{ fontWeight: 700, fontSize: "15px" }}>M</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (markdownEnabled) toggleMarkdown();
-                    }}
-                    className={`theme-toggle-btn${!markdownEnabled ? " theme-toggle-btn-selected" : ""}`}
-                    title="Show plain text"
-                  >
-                    <span style={{ fontStyle: "italic", fontSize: "15px" }}>T</span>
-                  </button>
+                <div className="md-toggle-row">
+                  <div className="md-toggle-label">Markdown</div>
+                  <div className="md-toggle-buttons">
+                    <button
+                      onClick={() => setMarkdownMode("off")}
+                      className={`md-toggle-btn${markdownMode === "off" ? " md-toggle-btn-selected" : ""}`}
+                      title="Plain text"
+                    >
+                      Off
+                    </button>
+                    <button
+                      onClick={() => setMarkdownMode("agent")}
+                      className={`md-toggle-btn${markdownMode === "agent" ? " md-toggle-btn-selected" : ""}`}
+                      title="Render markdown for agent messages"
+                    >
+                      Agent
+                    </button>
+                    <button
+                      onClick={() => setMarkdownMode("all")}
+                      className={`md-toggle-btn${markdownMode === "all" ? " md-toggle-btn-selected" : ""}`}
+                      title="Render markdown for all messages"
+                    >
+                      All
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

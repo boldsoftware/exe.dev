@@ -233,7 +233,7 @@ func (s *Server) runDistillation(ctx context.Context, conversationID, sourceSlug
 			{Type: llm.ContentTypeText, Text: distilledText},
 		},
 	}
-	if err := s.recordMessage(ctx, conversationID, userMessage, llm.Usage{}); err != nil {
+	if err := s.recordMessage(ctx, conversationID, userMessage, llm.Usage{}, map[string]string{"distilled": "true"}); err != nil {
 		logger.Error("Failed to record distilled message", "error", err)
 		return
 	}

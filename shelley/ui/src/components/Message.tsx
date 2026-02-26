@@ -26,6 +26,20 @@ import OutputIframeTool from "./OutputIframeTool";
 import ThinkingContent from "./ThinkingContent";
 import UsageDetailModal from "./UsageDetailModal";
 import MessageActionBar from "./MessageActionBar";
+import { type MarkdownMode } from "../services/settings";
+
+/** Should we render markdown for this content block? */
+function shouldRenderMarkdown(
+  mode: MarkdownMode,
+  isUser: boolean,
+  isDistilledUser: boolean,
+): boolean {
+  if (mode === "off") return false;
+  // Agent messages (and distilled user messages) render in "agent" and "all" modes
+  if (!isUser || isDistilledUser) return true;
+  // Regular user messages only in "all" mode
+  return mode === "all";
+}
 
 // Display data types from different tools
 interface ToolDisplay {
@@ -286,7 +300,7 @@ function DistillStatusMessage({ message }: { message: MessageType }) {
 }
 
 function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProps) {
-  const { markdownEnabled } = useMarkdown();
+  const { markdownMode } = useMarkdown();
 
   // Render system messages with distill_status as status indicators
   if (message.type === "system") {
@@ -469,6 +483,20 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
   const isTool = message.type === "tool" || hasToolContent(llmMessage);
   const isError = message.type === "error";
 
+  // Check if this is a distilled user message (LLM-generated, treat as agent for markdown)
+  const isDistilledUser =
+    isUser &&
+    (() => {
+      if (!message.user_data) return false;
+      try {
+        const ud =
+          typeof message.user_data === "string" ? JSON.parse(message.user_data) : message.user_data;
+        return ud?.distilled === "true";
+      } catch {
+        return false;
+      }
+    })();
+
   // Determine which actions to show in action bar
   const messageText = getMessageText();
   const hasCopyAction = !!messageText;
@@ -512,7 +540,7 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
           </div>
         );
       case "text":
-        if (markdownEnabled && !isUser) {
+        if (shouldRenderMarkdown(markdownMode, isUser, isDistilledUser)) {
           return <MarkdownContent text={content.Text || ""} />;
         }
         return (

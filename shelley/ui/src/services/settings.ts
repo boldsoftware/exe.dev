@@ -1,11 +1,16 @@
 const MARKDOWN_KEY = "shelley-markdown-rendering";
 
-export function getMarkdownEnabled(): boolean {
+export type MarkdownMode = "off" | "agent" | "all";
+
+export function getMarkdownMode(): MarkdownMode {
   const val = localStorage.getItem(MARKDOWN_KEY);
-  if (val === null) return true;
-  return val === "true";
+  // Migrate old boolean values
+  if (val === "true") return "agent";
+  if (val === "false") return "off";
+  if (val === "agent" || val === "all" || val === "off") return val;
+  return "agent"; // default
 }
 
-export function setMarkdownEnabled(enabled: boolean): void {
-  localStorage.setItem(MARKDOWN_KEY, enabled ? "true" : "false");
+export function setMarkdownMode(mode: MarkdownMode): void {
+  localStorage.setItem(MARKDOWN_KEY, mode);
 }

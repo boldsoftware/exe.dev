@@ -1,29 +1,30 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
-import { getMarkdownEnabled, setMarkdownEnabled } from "../services/settings";
+import {
+  type MarkdownMode,
+  getMarkdownMode,
+  setMarkdownMode as persistMode,
+} from "../services/settings";
 
 interface MarkdownContextType {
-  markdownEnabled: boolean;
-  toggleMarkdown: () => void;
+  markdownMode: MarkdownMode;
+  setMarkdownMode: (mode: MarkdownMode) => void;
 }
 
 const MarkdownContext = createContext<MarkdownContextType>({
-  markdownEnabled: true,
-  toggleMarkdown: () => {},
+  markdownMode: "agent",
+  setMarkdownMode: () => {},
 });
 
 export function MarkdownProvider({ children }: { children: React.ReactNode }) {
-  const [markdownEnabled, setEnabled] = useState(getMarkdownEnabled);
+  const [mode, setMode] = useState<MarkdownMode>(getMarkdownMode);
 
-  const toggleMarkdown = useCallback(() => {
-    setEnabled((prev) => {
-      const next = !prev;
-      setMarkdownEnabled(next);
-      return next;
-    });
+  const updateMode = useCallback((m: MarkdownMode) => {
+    persistMode(m);
+    setMode(m);
   }, []);
 
   return (
-    <MarkdownContext.Provider value={{ markdownEnabled, toggleMarkdown }}>
+    <MarkdownContext.Provider value={{ markdownMode: mode, setMarkdownMode: updateMode }}>
       {children}
     </MarkdownContext.Provider>
   );

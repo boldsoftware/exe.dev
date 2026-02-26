@@ -91,7 +91,7 @@ function CommandPalette({
   const [searchResults, setSearchResults] = useState<ConversationWithState[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isCreatingWorktree, setIsCreatingWorktree] = useState(false);
-  const { markdownEnabled, toggleMarkdown } = useMarkdown();
+  const { markdownMode, setMarkdownMode } = useMarkdown();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const searchTimeoutRef = useRef<number | null>(null);
@@ -335,13 +335,28 @@ function CommandPalette({
       keywords: ["notification", "notify", "alert", "discord", "webhook", "browser", "favicon"],
     });
 
+    const mdLabels: Record<
+      string,
+      { title: string; subtitle: string; next: "off" | "agent" | "all" }
+    > = {
+      off: {
+        title: "Enable Markdown (Agent)",
+        subtitle: "Render markdown for agent messages",
+        next: "agent",
+      },
+      agent: {
+        title: "Enable Markdown (All)",
+        subtitle: "Render markdown for all messages",
+        next: "all",
+      },
+      all: { title: "Disable Markdown", subtitle: "Show all messages as plain text", next: "off" },
+    };
+    const md = mdLabels[markdownMode];
     items.push({
       id: "toggle-markdown",
       type: "action",
-      title: markdownEnabled ? "Disable Markdown Rendering" : "Enable Markdown Rendering",
-      subtitle: markdownEnabled
-        ? "Switch to plain text for agent messages"
-        : "Render agent messages as formatted markdown",
+      title: md.title,
+      subtitle: md.subtitle,
       icon: (
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
           <path
@@ -353,7 +368,7 @@ function CommandPalette({
         </svg>
       ),
       action: () => {
-        toggleMarkdown();
+        setMarkdownMode(md.next);
         onClose();
       },
       keywords: ["markdown", "render", "format", "rich", "text", "plain"],
@@ -461,8 +476,8 @@ function CommandPalette({
     hasCwd,
     currentConversation,
     isCreatingWorktree,
-    markdownEnabled,
-    toggleMarkdown,
+    markdownMode,
+    setMarkdownMode,
   ]);
 
   // Convert conversations to command items

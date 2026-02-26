@@ -771,7 +771,7 @@ func ExtractDisplayData(message llm.Message) interface{} {
 }
 
 // recordMessage records a new message to the database and also notifies subscribers
-func (s *Server) recordMessage(ctx context.Context, conversationID string, message llm.Message, usage llm.Usage) error {
+func (s *Server) recordMessage(ctx context.Context, conversationID string, message llm.Message, usage llm.Usage, userData ...interface{}) error {
 	// Log message based on role
 	if message.Role == llm.MessageRoleUser {
 		s.logger.Info("User message", "conversation_id", conversationID, "content_items", len(message.Content))
@@ -789,11 +789,15 @@ func (s *Server) recordMessage(ctx context.Context, conversationID string, messa
 	displayDataToStore := ExtractDisplayData(message)
 
 	// Create message
+	var ud interface{}
+	if len(userData) > 0 {
+		ud = userData[0]
+	}
 	createdMsg, err := s.db.CreateMessage(ctx, db.CreateMessageParams{
 		ConversationID:      conversationID,
 		Type:                messageType,
 		LLMData:             message,
-		UserData:            nil,
+		UserData:            ud,
 		UsageData:           usage,
 		DisplayData:         displayDataToStore,
 		ExcludedFromContext: message.ExcludedFromContext,
