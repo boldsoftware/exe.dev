@@ -154,7 +154,7 @@ func TestToLLMContent(t *testing.T) {
 			name: "thinking content",
 			c: content{
 				Type:      "thinking",
-				Thinking:  "thinking content",
+				Thinking:  strp("thinking content"),
 				Signature: "signature",
 			},
 			want: llm.Content{
@@ -868,7 +868,7 @@ func TestFromLLMContent(t *testing.T) {
 			},
 			want: content{
 				Type:      "thinking",
-				Thinking:  "thinking content",
+				Thinking:  strp("thinking content"),
 				Signature: "signature",
 			},
 		},
@@ -1017,8 +1017,15 @@ func TestFromLLMContent(t *testing.T) {
 				t.Errorf("fromLLMContent().ID = %v, want %v", got.ID, tt.want.ID)
 			}
 
-			if got.Thinking != tt.want.Thinking {
-				t.Errorf("fromLLMContent().Thinking = %v, want %v", got.Thinking, tt.want.Thinking)
+			gotThinking, wantThinking := "", ""
+			if got.Thinking != nil {
+				gotThinking = *got.Thinking
+			}
+			if tt.want.Thinking != nil {
+				wantThinking = *tt.want.Thinking
+			}
+			if gotThinking != wantThinking {
+				t.Errorf("fromLLMContent().Thinking = %q, want %q", gotThinking, wantThinking)
 			}
 
 			if got.Signature != tt.want.Signature {
@@ -1340,8 +1347,8 @@ func TestParseSSEStreamThinking(t *testing.T) {
 	if resp.Content[0].Type != "thinking" {
 		t.Errorf("Content[0].Type = %q, want %q", resp.Content[0].Type, "thinking")
 	}
-	if resp.Content[0].Thinking != "Let me think..." {
-		t.Errorf("Content[0].Thinking = %q, want %q", resp.Content[0].Thinking, "Let me think...")
+	if resp.Content[0].Thinking == nil || *resp.Content[0].Thinking != "Let me think..." {
+		t.Errorf("Content[0].Thinking = %v, want %q", resp.Content[0].Thinking, "Let me think...")
 	}
 	if resp.Content[0].Signature != "sig123" {
 		t.Errorf("Content[0].Signature = %q, want %q", resp.Content[0].Signature, "sig123")
@@ -1612,3 +1619,5 @@ func TestLiveAnthropicModels(t *testing.T) {
 		})
 	}
 }
+
+func strp(s string) *string { return &s }

@@ -135,9 +135,9 @@ type content struct {
 	Source    json.RawMessage `json:"source,omitempty"`     // for image
 
 	// for thinking
-	Thinking  string `json:"thinking,omitempty"`
-	Data      string `json:"data,omitempty"`      // for redacted_thinking or image
-	Signature string `json:"signature,omitempty"` // for thinking
+	Thinking  *string `json:"thinking,omitempty"`
+	Data      string  `json:"data,omitempty"`      // for redacted_thinking or image
+	Signature string  `json:"signature,omitempty"` // for thinking
 
 	// for tool_use
 	ToolName  string          `json:"name,omitempty"`
@@ -360,7 +360,7 @@ func fromLLMContent(c llm.Content) content {
 			d.Text = &c.Text
 		}
 	case llm.ContentTypeThinking:
-		d.Thinking = c.Thinking
+		d.Thinking = &c.Thinking
 		d.Signature = c.Signature
 	case llm.ContentTypeRedactedThinking:
 		d.Data = c.Data
@@ -486,7 +486,6 @@ func toLLMContent(c content) llm.Content {
 		ID:         c.ID,
 		Type:       toLLMContentType[c.Type],
 		MediaType:  c.MediaType,
-		Thinking:   c.Thinking,
 		Data:       c.Data,
 		Signature:  c.Signature,
 		ToolName:   c.ToolName,
@@ -497,6 +496,9 @@ func toLLMContent(c content) llm.Content {
 	}
 	if c.Text != nil {
 		ret.Text = *c.Text
+	}
+	if c.Thinking != nil {
+		ret.Thinking = *c.Thinking
 	}
 	return ret
 }
@@ -620,7 +622,10 @@ func parseSSEStream(r io.Reader) (*response, error) {
 				}
 				*c.Text += delta.Text
 			case "thinking_delta":
-				c.Thinking += delta.Thinking
+				if c.Thinking == nil {
+					c.Thinking = new(string)
+				}
+				*c.Thinking += delta.Thinking
 			case "input_json_delta":
 				// Accumulate raw JSON for tool_use input
 				c.ToolInput = append(c.ToolInput, []byte(delta.PartialJSON)...)
