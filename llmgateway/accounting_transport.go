@@ -616,7 +616,7 @@ func (oi *openaiResponseUsageInfo) effectiveTokens() (promptTokens, completionTo
 		if oi.Usage.InputTokensDetails != nil {
 			cachedTokens = uint64(oi.Usage.InputTokensDetails.CachedTokens)
 		}
-		return
+		return promptTokens, completionTokens, cachedTokens
 	}
 	// Chat Completions API uses prompt_tokens/completion_tokens
 	promptTokens = oi.Usage.PromptTokens
@@ -624,7 +624,7 @@ func (oi *openaiResponseUsageInfo) effectiveTokens() (promptTokens, completionTo
 	if oi.Usage.PromptTokensDetails != nil {
 		cachedTokens = uint64(oi.Usage.PromptTokensDetails.CachedTokens)
 	}
-	return
+	return promptTokens, completionTokens, cachedTokens
 }
 
 // Helper function to extract rate limit values from headers and set gauge metrics
