@@ -829,38 +829,39 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 		// Check for TLS "bad record MAC" errors and retry once
 		if strings.Contains(err.Error(), "tls: bad record MAC") && attempts == 0 {
 			slog.WarnContext(ctx, "tls bad record MAC error, retrying once", "error", err.Error())
-			errs = errors.Join(errs, fmt.Errorf("TLS error (attempt %d): %w", attempts+1, err))
+			errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: TLS error: %w", attempts+1, time.Now().Format(time.DateTime), err))
 			continue
 		}
 
 		var apiErr *openai.APIError
 		if ok := errors.As(err, &apiErr); !ok {
 			// Not an OpenAI API error, return immediately with accumulated errors
-			return nil, errors.Join(errs, fmt.Errorf("url=%s model=%s: %w", fullURL, model.ModelName, err))
+			return nil, errors.Join(errs, fmt.Errorf("attempt %d at %s: url=%s model=%s: %w", attempts+1, time.Now().Format(time.DateTime), fullURL, model.ModelName, err))
 		}
 
+		now := time.Now().Format(time.DateTime)
 		switch {
 		case apiErr.HTTPStatusCode >= 500:
 			// Server error, try again with backoff
 			slog.WarnContext(ctx, "openai_request_failed", "error", apiErr.Error(), "status_code", apiErr.HTTPStatusCode, "url", fullURL, "model", model.ModelName)
-			errs = errors.Join(errs, fmt.Errorf("status %d (url=%s, model=%s): %s", apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
+			errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (url=%s, model=%s): %s", attempts+1, now, apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
 			continue
 
 		case apiErr.HTTPStatusCode == 429:
 			// Rate limited, accumulate error and retry
 			slog.WarnContext(ctx, "openai_request_rate_limited", "error", apiErr.Error(), "url", fullURL, "model", model.ModelName)
-			errs = errors.Join(errs, fmt.Errorf("status %d (rate limited, url=%s, model=%s): %s", apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
+			errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (rate limited, url=%s, model=%s): %s", attempts+1, now, apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
 			continue
 
 		case apiErr.HTTPStatusCode >= 400 && apiErr.HTTPStatusCode < 500:
 			// Client error, probably unrecoverable
 			slog.WarnContext(ctx, "openai_request_failed", "error", apiErr.Error(), "status_code", apiErr.HTTPStatusCode, "url", fullURL, "model", model.ModelName)
-			return nil, errors.Join(errs, fmt.Errorf("status %d (url=%s, model=%s): %s", apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
+			return nil, errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (url=%s, model=%s): %s", attempts+1, now, apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
 
 		default:
 			// Other error, accumulate and retry
 			slog.WarnContext(ctx, "openai_request_failed", "error", apiErr.Error(), "status_code", apiErr.HTTPStatusCode, "url", fullURL, "model", model.ModelName)
-			errs = errors.Join(errs, fmt.Errorf("status %d (url=%s, model=%s): %s", apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
+			errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (url=%s, model=%s): %s", attempts+1, now, apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
 			continue
 		}
 	}

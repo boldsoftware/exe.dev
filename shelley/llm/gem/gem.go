@@ -561,7 +561,7 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 
 		if attempts == len(backoff) {
 			// We've exhausted all retry attempts
-			return nil, fmt.Errorf("gemini: API error after %d attempts: %w", attempts, gemApiErr)
+			return nil, fmt.Errorf("gemini: API error after %d attempts (last at %s): %w", attempts, time.Now().Format(time.DateTime), gemApiErr)
 		}
 
 		// Check if the error is retryable (e.g., server error or rate limiting)

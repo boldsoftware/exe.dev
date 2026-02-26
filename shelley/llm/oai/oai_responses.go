@@ -461,7 +461,7 @@ func (s *ResponsesService) Do(ctx context.Context, ir *llm.Request) (*llm.Respon
 		// Send request
 		httpResp, err := httpc.Do(httpReq)
 		if err != nil {
-			errs = errors.Join(errs, fmt.Errorf("attempt %d: %w", attempts+1, err))
+			errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: %w", attempts+1, time.Now().Format(time.DateTime), err))
 			continue
 		}
 		defer httpResp.Body.Close()
@@ -479,23 +479,24 @@ func (s *ResponsesService) Do(ctx context.Context, ir *llm.Request) (*llm.Respon
 				Error *responsesError `json:"error"`
 			}{Error: &apiErr}); jsonErr == nil && apiErr.Message != "" {
 				// We have a structured error
+				now := time.Now().Format(time.DateTime)
 				switch {
 				case httpResp.StatusCode >= 500:
 					// Server error, retry
 					slog.WarnContext(ctx, "responses_request_failed", "error", apiErr.Message, "status_code", httpResp.StatusCode, "url", fullURL, "model", model.ModelName)
-					errs = errors.Join(errs, fmt.Errorf("status %d (url=%s, model=%s): %s", httpResp.StatusCode, fullURL, model.ModelName, apiErr.Message))
+					errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (url=%s, model=%s): %s", attempts+1, now, httpResp.StatusCode, fullURL, model.ModelName, apiErr.Message))
 					continue
 
 				case httpResp.StatusCode == 429:
 					// Rate limited, retry
 					slog.WarnContext(ctx, "responses_request_rate_limited", "error", apiErr.Message, "url", fullURL, "model", model.ModelName)
-					errs = errors.Join(errs, fmt.Errorf("status %d (rate limited, url=%s, model=%s): %s", httpResp.StatusCode, fullURL, model.ModelName, apiErr.Message))
+					errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (rate limited, url=%s, model=%s): %s", attempts+1, now, httpResp.StatusCode, fullURL, model.ModelName, apiErr.Message))
 					continue
 
 				case httpResp.StatusCode >= 400 && httpResp.StatusCode < 500:
 					// Client error, probably unrecoverable
 					slog.WarnContext(ctx, "responses_request_failed", "error", apiErr.Message, "status_code", httpResp.StatusCode, "url", fullURL, "model", model.ModelName)
-					return nil, errors.Join(errs, fmt.Errorf("status %d (url=%s, model=%s): %s", httpResp.StatusCode, fullURL, model.ModelName, apiErr.Message))
+					return nil, errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (url=%s, model=%s): %s", attempts+1, now, httpResp.StatusCode, fullURL, model.ModelName, apiErr.Message))
 				}
 			}
 
