@@ -928,7 +928,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		db.Close()
 		return nil, fmt.Errorf("loading security bulletins: %w", err)
 	}
-	securityHandler := securitypkg.NewHandler(securityStore, false)
+	securityHandler := securitypkg.NewHandler(securityStore, cfg.Env.ShowHiddenDocs)
 
 	// Parse all HTML templates at startup
 	tmpl, err := templatespkg.Parse()
