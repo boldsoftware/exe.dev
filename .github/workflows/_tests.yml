@@ -90,6 +90,14 @@ jobs:
       - name: Download exelet-fs
         run: make exelet-fs
 
+      - name: Build all cmd/ binaries
+        run: |
+          for dir in cmd/*/; do
+            cmd=$(basename "$dir")
+            echo "Building $cmd..."
+            go build -o /dev/null "./$dir"
+          done
+
       - name: Verify linters pass
         run: |
           go vet ./...
