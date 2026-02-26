@@ -763,6 +763,180 @@ func TestAccountingTransport_OpenAI_ChatCompletions_Live(t *testing.T) {
 	assertAttrUint(t, attrs, "cache_read_tokens", cachedTokens)
 }
 
+// TestAccountingTransport_Anthropic_WebSearch verifies that server_tool_use
+// (web_search_requests) adds per-search cost on top of token cost.
+func TestAccountingTransport_Anthropic_WebSearch(t *testing.T) {
+	logs := &logCapture{}
+	logger := slog.New(logs.handler())
+
+	backend := `{
+		"id": "msg_websearch1",
+		"model": "claude-sonnet-4-5",
+		"usage": {
+			"input_tokens": 10704,
+			"output_tokens": 138,
+			"cache_creation_input_tokens": 0,
+			"cache_read_input_tokens": 0,
+			"server_tool_use": {
+				"web_search_requests": 1,
+				"web_fetch_requests": 0
+			}
+		}
+	}`
+
+	rr, _ := proxyThroughAccounting(t,
+		llmpricing.ProviderAnthropic,
+		backend,
+		"/_/gateway/anthropic/v1/messages",
+		`{"model":"claude-sonnet-4-5","messages":[]}`,
+		logger,
+	)
+
+	costHeader := rr.Header().Get("Exedev-Gateway-Cost")
+	if costHeader == "" {
+		t.Fatal("missing Exedev-Gateway-Cost header")
+	}
+	costUSD, err := strconv.ParseFloat(costHeader, 64)
+	if err != nil {
+		t.Fatalf("bad Exedev-Gateway-Cost header %q: %v", costHeader, err)
+	}
+
+	// claude-sonnet-4-5: Input=300, Output=1500, CacheRead=30, CacheCreation=375
+	// Token cost: 10704*300 + 138*1500 = 3,211,200 + 207,000 = 3,418,200 microCents
+	tokenMicroCents := uint64(10704)*300 + uint64(138)*1500
+	tokenCostUSD := float64(tokenMicroCents) / 100_000_000
+
+	// Web search cost: 1 search * $0.01 = $0.01
+	webSearchCostUSD := 0.01
+	expectedUSD := tokenCostUSD + webSearchCostUSD
+
+	t.Logf("cost: got=%s expected=%.6f (tokens=%.6f + websearch=%.6f)", costHeader, expectedUSD, tokenCostUSD, webSearchCostUSD)
+	if fmt.Sprintf("%.6f", costUSD) != fmt.Sprintf("%.6f", expectedUSD) {
+		t.Errorf("cost mismatch: got %.6f, want %.6f", costUSD, expectedUSD)
+	}
+
+	// Verify cost is strictly greater than token-only cost
+	if costUSD <= tokenCostUSD {
+		t.Errorf("cost %.6f should be greater than token-only cost %.6f", costUSD, tokenCostUSD)
+	}
+
+	// Check log record includes web_search_requests
+	debit := logs.findRecord("debitResponse")
+	if debit == nil {
+		t.Fatal("no debitResponse log found")
+	}
+	attrs := attrMap(debit)
+	t.Logf("debitResponse attrs: %v", attrs)
+
+	assertAttr(t, attrs, "model", "claude-sonnet-4-5")
+	assertAttr(t, attrs, "message_id", "msg_websearch1")
+	assertAttrUint(t, attrs, "input_tokens", 10704)
+	assertAttrUint(t, attrs, "output_tokens", 138)
+	assertAttrUint(t, attrs, "web_search_requests", 1)
+}
+
+// TestAccountingTransport_Anthropic_WebSearch_SSE verifies that server_tool_use
+// in SSE streaming adds per-search cost.
+func TestAccountingTransport_Anthropic_WebSearch_SSE(t *testing.T) {
+	logs := &logCapture{}
+	logger := slog.New(logs.handler())
+
+	// Build an SSE stream: message_start has model/id, message_delta has usage with server_tool_use
+	var sseBuf bytes.Buffer
+	sseBuf.WriteString("data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n")
+	sseBuf.WriteString(`data: {"type":"message_delta","id":"msg_sse_ws","model":"claude-sonnet-4-5","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":10698,"output_tokens":131,"server_tool_use":{"web_search_requests":1,"web_fetch_requests":0}}}` + "\n\n")
+	sseData := sseBuf.String()
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(sseData))
+	}))
+	defer backend.Close()
+
+	mockURL, _ := url.Parse(backend.URL)
+
+	incomingReq := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[],"stream":true}`))
+	incomingReq.Header.Set("X-Exedev-Box", "test-box")
+	incomingReq.Header.Set("Content-Type", "application/json")
+	incomingReq.RemoteAddr = "127.0.0.1:12345"
+
+	transport := &accountingTransport{
+		RoundTripper: http.DefaultTransport,
+		provider:     llmpricing.ProviderAnthropic,
+		log:          logger,
+		incomingReq:  incomingReq,
+		boxName:      "test-box",
+		userID:       "test-user",
+	}
+
+	proxy := &httputil.ReverseProxy{
+		FlushInterval: -1,
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.Out.URL.Scheme = "http"
+			r.Out.URL.Host = mockURL.Host
+			r.Out.Host = mockURL.Host
+		},
+		Transport:      transport,
+		ModifyResponse: transport.modifyResponse,
+	}
+
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, incomingReq)
+	transport.WaitAndAddSSEAttributes()
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200; body: %s", rr.Code, rr.Body.String())
+	}
+
+	// Verify the SSE body was passed through
+	body := rr.Body.String()
+	if !strings.Contains(body, "hello") {
+		t.Errorf("SSE body missing expected content: %s", body)
+	}
+
+	// Check log record includes web_search_requests
+	debit := logs.findRecord("debitResponse")
+	if debit == nil {
+		t.Fatal("no debitResponse log found in SSE stream")
+	}
+	attrs := attrMap(debit)
+	t.Logf("SSE debitResponse attrs: %v", attrs)
+
+	assertAttrUint(t, attrs, "input_tokens", 10698)
+	assertAttrUint(t, attrs, "output_tokens", 131)
+	assertAttrUint(t, attrs, "web_search_requests", 1)
+
+	// Verify stored usage for WaitAndAddSSEAttributes
+	if transport.sseUsage == nil {
+		t.Fatal("sseUsage was not stored")
+	}
+
+	// Verify cost includes web search charge
+	// Token cost: 10698*300 + 131*1500 = 3,209,400 + 196,500 = 3,405,900 microCents
+	tokenMicroCents := uint64(10698)*300 + uint64(131)*1500
+	tokenCostUSD := float64(tokenMicroCents) / 100_000_000
+	webSearchCostUSD := 0.01
+	expectedCostUSD := tokenCostUSD + webSearchCostUSD
+
+	gotCost := transport.sseUsage.Usage.CostUSD
+	t.Logf("SSE cost: got=%.6f expected=%.6f (tokens=%.6f + websearch=%.6f)", gotCost, expectedCostUSD, tokenCostUSD, webSearchCostUSD)
+	if fmt.Sprintf("%.6f", gotCost) != fmt.Sprintf("%.6f", expectedCostUSD) {
+		t.Errorf("SSE cost mismatch: got %.6f, want %.6f", gotCost, expectedCostUSD)
+	}
+
+	// Verify ServerToolUse is tracked
+	if transport.sseUsage.Usage.ServerToolUse == nil {
+		t.Fatal("ServerToolUse should be non-nil")
+	}
+	if transport.sseUsage.Usage.ServerToolUse["web_search_requests"] != 1 {
+		t.Errorf("ServerToolUse[web_search_requests] = %d, want 1",
+			transport.sseUsage.Usage.ServerToolUse["web_search_requests"])
+	}
+}
+
 func getOpenAIKey(t *testing.T) string {
 	t.Helper()
 	key := os.Getenv("OPENAI_API_KEY")

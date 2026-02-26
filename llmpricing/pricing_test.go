@@ -419,3 +419,61 @@ func TestPricingMatchesModelsDev(t *testing.T) {
 		t.Errorf("Price mismatches found:\n%s", strings.Join(mismatches, "\n"))
 	}
 }
+
+func TestCalculateServerToolCost(t *testing.T) {
+	tests := []struct {
+		name    string
+		usage   map[string]uint64
+		wantUSD float64
+	}{
+		{
+			name:    "single web search",
+			usage:   map[string]uint64{"web_search_requests": 1},
+			wantUSD: 0.01,
+		},
+		{
+			name:    "multiple web searches",
+			usage:   map[string]uint64{"web_search_requests": 5},
+			wantUSD: 0.05,
+		},
+		{
+			name:    "zero searches",
+			usage:   map[string]uint64{"web_search_requests": 0},
+			wantUSD: 0,
+		},
+		{
+			name:    "nil map",
+			usage:   nil,
+			wantUSD: 0,
+		},
+		{
+			name:    "empty map",
+			usage:   map[string]uint64{},
+			wantUSD: 0,
+		},
+		{
+			name:    "unpriced tool is free",
+			usage:   map[string]uint64{"web_fetch_requests": 3},
+			wantUSD: 0,
+		},
+		{
+			name:    "mixed priced and unpriced",
+			usage:   map[string]uint64{"web_search_requests": 2, "web_fetch_requests": 1},
+			wantUSD: 0.02,
+		},
+		{
+			name:    "1000 searches at $10",
+			usage:   map[string]uint64{"web_search_requests": 1000},
+			wantUSD: 10.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateServerToolCost(tt.usage)
+			if !floatEqual(got, tt.wantUSD) {
+				t.Errorf("CalculateServerToolCost(%v) = $%.6f, want $%.6f", tt.usage, got, tt.wantUSD)
+			}
+		})
+	}
+}

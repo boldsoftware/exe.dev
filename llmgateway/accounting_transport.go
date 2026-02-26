@@ -219,11 +219,12 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 }
 
 type Usage struct {
-	InputTokens              uint64  `json:"input_tokens"`
-	CacheCreationInputTokens uint64  `json:"cache_creation_input_tokens"`
-	CacheReadInputTokens     uint64  `json:"cache_read_input_tokens"`
-	OutputTokens             uint64  `json:"output_tokens"`
-	CostUSD                  float64 `json:"cost_usd"`
+	InputTokens              uint64            `json:"input_tokens"`
+	CacheCreationInputTokens uint64            `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     uint64            `json:"cache_read_input_tokens"`
+	OutputTokens             uint64            `json:"output_tokens"`
+	CostUSD                  float64           `json:"cost_usd"`
+	ServerToolUse            map[string]uint64 `json:"server_tool_use,omitempty"`
 }
 
 // CostInfo holds cost information to be added to response headers.
@@ -258,17 +259,23 @@ func (m *accountingTransport) processResponseData(data []byte) (*CostInfo, error
 			// Nothing to bill for here.
 			return nil, nil
 		}
-		usageDebit.Usage = *ui.Usage
+		usageDebit.Usage = ui.Usage.toUsage()
 		usageDebit.Model = ui.Model
 		usageDebit.MessageID = ui.ID
-		m.log.InfoContext(ctx, "debitResponse",
+		logArgs := []any{
 			"message_id", ui.ID,
 			"model", ui.Model,
 			"input_tokens", ui.Usage.InputTokens,
 			"output_tokens", ui.Usage.OutputTokens,
 			"cache_creation_tokens", ui.Usage.CacheCreationInputTokens,
 			"cache_read_tokens", ui.Usage.CacheReadInputTokens,
-		)
+		}
+		if len(ui.Usage.ServerToolUse) > 0 {
+			for k, v := range ui.Usage.ServerToolUse {
+				logArgs = append(logArgs, k, v)
+			}
+		}
+		m.log.InfoContext(ctx, "debitResponse", logArgs...)
 	case llmpricing.ProviderOpenAI, llmpricing.ProviderFireworks:
 		if len(data) == 0 {
 			// Empty response, nothing to account for
@@ -342,6 +349,11 @@ func (m *accountingTransport) processResponseData(data []byte) (*CostInfo, error
 		CacheReadInputTokens:     usage.CacheReadInputTokens,
 	})
 
+	// Add server tool usage costs (e.g. web search)
+	if len(usage.ServerToolUse) > 0 {
+		costUSD += llmpricing.CalculateServerToolCost(usage.ServerToolUse)
+	}
+
 	// Update Prometheus metrics
 	tokensCounter.WithLabelValues("input", model, providerStr, m.boxName, m.userID).Add(float64(usage.InputTokens))
 	tokensCounter.WithLabelValues("cache_creation", model, providerStr, m.boxName, m.userID).Add(float64(usage.CacheCreationInputTokens))
@@ -393,17 +405,23 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 			// Nothing to bill for here.
 			return nil
 		}
-		usageDebit.Usage = *ui.Usage
+		usageDebit.Usage = ui.Usage.toUsage()
 		usageDebit.Model = ui.Model
 		usageDebit.MessageID = ui.ID
-		m.log.InfoContext(ctx, "debitResponse",
+		logArgs := []any{
 			"message_id", ui.ID,
 			"model", ui.Model,
 			"input_tokens", ui.Usage.InputTokens,
 			"output_tokens", ui.Usage.OutputTokens,
 			"cache_creation_tokens", ui.Usage.CacheCreationInputTokens,
 			"cache_read_tokens", ui.Usage.CacheReadInputTokens,
-		)
+		}
+		if len(ui.Usage.ServerToolUse) > 0 {
+			for k, v := range ui.Usage.ServerToolUse {
+				logArgs = append(logArgs, k, v)
+			}
+		}
+		m.log.InfoContext(ctx, "debitResponse", logArgs...)
 	case llmpricing.ProviderOpenAI, llmpricing.ProviderFireworks:
 		if len(data) == 0 {
 			return nil
@@ -456,6 +474,11 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 		CacheCreationInputTokens: usage.CacheCreationInputTokens,
 		CacheReadInputTokens:     usage.CacheReadInputTokens,
 	})
+
+	// Add server tool usage costs (e.g. web search)
+	if len(usage.ServerToolUse) > 0 {
+		costUSD += llmpricing.CalculateServerToolCost(usage.ServerToolUse)
+	}
 
 	// Update Prometheus metrics immediately
 	tokensCounter.WithLabelValues("input", model, providerStr, m.boxName, m.userID).Add(float64(usage.InputTokens))
@@ -575,9 +598,36 @@ func costUSDToMicrocents(costUSD float64) tender.Value {
 
 // anthropicResponseUsageInfo extracts usage-relevant information from an Anthropic response.
 type anthropicResponseUsageInfo struct {
-	ID    string `json:"id"`
-	Model string `json:"model"`
-	Usage *Usage `json:"usage"`
+	ID    string              `json:"id"`
+	Model string              `json:"model"`
+	Usage *anthropicUsageData `json:"usage"`
+}
+
+// anthropicUsageData represents the usage block in an Anthropic API response,
+// including server-side tool use (e.g. web_search_requests).
+type anthropicUsageData struct {
+	InputTokens              uint64            `json:"input_tokens"`
+	CacheCreationInputTokens uint64            `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     uint64            `json:"cache_read_input_tokens"`
+	OutputTokens             uint64            `json:"output_tokens"`
+	ServerToolUse            map[string]uint64 `json:"server_tool_use,omitempty"`
+}
+
+// toUsage converts anthropicUsageData to the gateway Usage type.
+func (a *anthropicUsageData) toUsage() Usage {
+	u := Usage{
+		InputTokens:              a.InputTokens,
+		CacheCreationInputTokens: a.CacheCreationInputTokens,
+		CacheReadInputTokens:     a.CacheReadInputTokens,
+		OutputTokens:             a.OutputTokens,
+	}
+	if len(a.ServerToolUse) > 0 {
+		u.ServerToolUse = make(map[string]uint64, len(a.ServerToolUse))
+		for k, v := range a.ServerToolUse {
+			u.ServerToolUse[k] = v
+		}
+	}
+	return u
 }
 
 // openaiResponseUsageInfo extracts usage-relevant information from an openai-compatible response.

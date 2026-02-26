@@ -80,6 +80,25 @@ type ModelCost struct {
 	CacheCreation uint64 // cents per 1M cache creation tokens
 }
 
+// ServerToolCosts maps server tool use names to their per-use cost in microCents.
+// These are flat per-request costs, not per-token.
+var ServerToolCosts = map[string]microCents{
+	"web_search_requests": 1_000_000, // $0.01 per search = 1 cent = 1,000,000 microCents
+	// "web_fetch_requests" is not yet priced but is tracked.
+}
+
+// CalculateServerToolCost returns the cost in USD for server-side tool usage.
+// The toolUsage map keys are tool names (e.g. "web_search_requests") and values are counts.
+func CalculateServerToolCost(toolUsage map[string]uint64) float64 {
+	var total microCents
+	for name, count := range toolUsage {
+		if costPerUse, ok := ServerToolCosts[name]; ok {
+			total += microCents(count) * costPerUse
+		}
+	}
+	return total.USD()
+}
+
 // allowedModels maps provider -> model name -> pricing.
 // Only models in this map are allowed through the gateway.
 //
