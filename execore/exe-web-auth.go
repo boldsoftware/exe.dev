@@ -1364,7 +1364,10 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// Users signing in via "Login with Exe" (proxy auth flow) skip billing - they're just
 	// authenticating to access someone else's app, not signing up to use exe.dev resources.
 	// When creating a VM (hostname present), billing is checked post-verification instead.
-	if isNewUser && !s.env.SkipBilling && invite == nil && !hasValidTeamInvite && !isLoginWithExe && hostname == "" {
+	// Google OAuth users skip billing at signup — Google login is sufficient anti-abuse friction.
+	// They hit billing when they try to create a VM.
+	willUseGoogleOAuth := s.shouldUseGoogleOAuth(r.Context(), addr, userID, isNewUser, r.FormValue("team_invite"))
+	if isNewUser && !s.env.SkipBilling && invite == nil && !hasValidTeamInvite && !isLoginWithExe && hostname == "" && !willUseGoogleOAuth {
 		// Create pending registration to track email through Stripe
 		token := generateRegistrationToken()
 		err = withTx1(s, r.Context(), (*exedb.Queries).InsertPendingRegistration, exedb.InsertPendingRegistrationParams{
@@ -1414,7 +1417,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 
 	// Check if we should use Google OAuth instead of email verification.
 	// This handles: gmail signups, existing users with auth_provider=google, team invites with auth_provider=google.
-	if s.shouldUseGoogleOAuth(r.Context(), addr, userID, isNewUser, r.FormValue("team_invite")) {
+	if willUseGoogleOAuth {
 		params := oauthStartParams{
 			email:           addr,
 			userID:          userID,

@@ -11,6 +11,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/googleoauth"
 	"exe.dev/sshkey"
+	"exe.dev/stage"
 )
 
 // shouldUseGoogleOAuth determines if the given auth context requires Google OAuth.
@@ -242,7 +243,32 @@ func (s *Server) handleGoogleOAuthNewUser(w http.ResponseWriter, r *http.Request
 		s.slog().ErrorContext(ctx, "failed to resolve pending team invites", "error", err)
 	}
 
-	s.finishOAuthWebLogin(w, r, userID, oauthState)
+	// Set auth cookie and show welcome page with passkey prompt.
+	cookieValue, err := s.createAuthCookie(context.WithoutCancel(ctx), userID, r.Host)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to create auth cookie during google oauth", "error", err)
+		s.showAuthError(w, r, "Failed to create session. Please try again.", "")
+		return
+	}
+	setExeAuthCookie(w, r, cookieValue)
+
+	data := struct {
+		stage.Env
+		SSHCommand   string
+		Source       string
+		Email        string
+		HasPasskeys  bool
+		NeedsBilling bool
+		BillingToken string
+		IsWelcome    bool
+	}{
+		Env:        s.env,
+		SSHCommand: s.replSSHConnectionCommand(),
+		Source:     "web",
+		Email:      oauthState.Email,
+		IsWelcome:  true,
+	}
+	s.renderTemplate(ctx, w, "email-verified.html", data)
 }
 
 // handleGoogleOAuthExistingUser handles Google OAuth callback for existing users.
