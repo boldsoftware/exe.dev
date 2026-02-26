@@ -40,7 +40,7 @@ a:hover { text-decoration: underline; }
 <th>Exelet</th>
 <th>Status</th>
 <th>Owner</th>
-<th>Root</th>
+<th>Support</th>
 <th>Actions</th>
 </tr>
 <tr class="filters">
@@ -48,7 +48,7 @@ a:hover { text-decoration: underline; }
 <th>Exelet</th>
 <th>Status</th>
 <th>Owner</th>
-<th>Root</th>
+<th>Support</th>
 <th></th>
 </tr>
 </thead>
@@ -99,7 +99,7 @@ $(document).ready(function() {
                 }
                 return d.owner_email;
             }},
-            { data: 'owner_root_support', render: function(d) {
+            { data: 'support_access_allowed', render: function(d) {
                 return d ? 'Yes' : 'No';
             }},
             { data: null, orderable: false, render: function(d) {

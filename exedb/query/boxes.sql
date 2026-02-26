@@ -69,7 +69,7 @@ WHERE id = ?;
 SELECT * FROM boxes WHERE name = ? AND created_by_user_id = ?;
 
 -- name: GetBoxOwnerByContainerID :one
-SELECT u.user_id, u.email, u.root_support
+SELECT u.user_id, u.email, b.support_access_allowed
 FROM boxes b
 JOIN users u ON u.user_id = b.created_by_user_id
 WHERE b.container_id = ?;
@@ -99,7 +99,7 @@ SELECT COUNT(DISTINCT created_by_user_id) FROM boxes;
 UPDATE boxes SET creation_log = ? WHERE name = ?;
 
 -- name: ListAllBoxesWithOwner :many
-SELECT b.name, b.status, b.ctrhost, b.container_id, b.created_by_user_id as owner_user_id, u.email as owner_email, b.region, u.root_support as owner_root_support
+SELECT b.name, b.status, b.ctrhost, b.container_id, b.created_by_user_id as owner_user_id, u.email as owner_email, b.region, b.support_access_allowed
 FROM boxes b
 JOIN users u ON u.user_id = b.created_by_user_id
 ORDER BY b.name;
