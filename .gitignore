@@ -48,6 +48,8 @@ blogd
 e3e
 docsd
 !cmd/docsd
+e1ed
+!cmd/e1ed
 
 # https://github.com/wedow/ticket tickets
 .tickets

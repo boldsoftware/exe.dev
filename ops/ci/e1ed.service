@@ -1,0 +1,19 @@
+[Unit]
+Description=e1e test daemon
+After=network.target libvirtd.service
+
+[Service]
+Type=simple
+Environment="HOME=/root"
+Environment="PATH=/root/.local/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/usr/local/bin/e1ed \
+    --pool-size=2 \
+    --repo-path=/data/e1ed/repo.git \
+    --listen=127.0.0.1:7723
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
