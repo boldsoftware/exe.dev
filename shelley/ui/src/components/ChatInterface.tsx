@@ -453,6 +453,7 @@ interface ChatInterfaceProps {
   conversationId: string | null;
   onOpenDrawer: () => void;
   onNewConversation: () => void;
+  onArchiveConversation?: (conversationId: string) => Promise<void>;
   currentConversation?: Conversation;
   onConversationUpdate?: (conversation: Conversation) => void;
   onConversationListUpdate?: (update: ConversationListUpdate) => void;
@@ -480,6 +481,7 @@ function ChatInterface({
   conversationId,
   onOpenDrawer,
   onNewConversation,
+  onArchiveConversation,
   currentConversation,
   onConversationUpdate,
   onConversationListUpdate,
@@ -1780,6 +1782,38 @@ function ChatInterface({
                     {link.title}
                   </button>
                 ))}
+
+                {conversationId && onArchiveConversation && !currentConversation?.archived && (
+                  <>
+                    <div className="overflow-menu-divider" />
+                    <button
+                      onClick={async () => {
+                        setShowOverflowMenu(false);
+                        try {
+                          await onArchiveConversation(conversationId);
+                        } catch (err) {
+                          console.error("Failed to archive conversation:", err);
+                        }
+                      }}
+                      className="overflow-menu-item"
+                    >
+                      <svg
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        style={{ width: "1.25rem", height: "1.25rem", marginRight: "0.75rem" }}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 8h14M8 8V6a4 4 0 118 0v2m-9 0v10a2 2 0 002 2h6a2 2 0 002-2V8"
+                        />
+                      </svg>
+                      Archive Conversation
+                    </button>
+                  </>
+                )}
 
                 {/* Version check */}
                 <div className="overflow-menu-divider" />

@@ -607,6 +607,10 @@ function App() {
             conversationId={currentConversationId}
             onOpenDrawer={() => setDrawerOpen(true)}
             onNewConversation={startNewConversation}
+            onArchiveConversation={async (conversationId: string) => {
+              await api.archiveConversation(conversationId);
+              handleConversationArchived(conversationId);
+            }}
             currentConversation={currentConversation}
             onConversationUpdate={updateConversation}
             onConversationListUpdate={handleConversationListUpdate}
