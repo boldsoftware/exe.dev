@@ -5,7 +5,6 @@
 awk -F'\t' '
 BEGIN {
     name["Auto-formatter"] = "Bot"
-    name["Blake Mizerany"] = "Blake"
     name["David Crawshaw"] = "David"
     name["Evan Hazlett"] = "Evan"
     name["Exe.dev System"] = "Bot"
