@@ -26,7 +26,7 @@ func TestTwoHosts(t *testing.T) {
 
 	pty, _, keyFile, email := register(t)
 	boxName := makeBox(t, pty, keyFile, email)
-	disconnect(t, pty)
+	pty.Disconnect()
 
 	cmd := serverEnv.BoxSSHCommand(t.Context(), boxName, keyFile, "true")
 	cmd.Stdout = t.Output()
@@ -52,7 +52,7 @@ func TestUserOnSingleHost(t *testing.T) {
 	// Create a box on that exelet.
 	pty, _, keyFile, email := register(t)
 	box1 := makeBox(t, pty, keyFile, email)
-	disconnect(t, pty)
+	pty.Disconnect()
 	defer deleteBox(t, box1, keyFile)
 
 	// Restart exed with two exelets.
@@ -65,18 +65,15 @@ func TestUserOnSingleHost(t *testing.T) {
 	}
 
 	// Create another box.
-	pty, _, err := testinfra.MakePTY("", "ssh localhost", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cmd, err := serverEnv.SSHToExeDev(t.Context(), pty, keyFile)
+	pty, _ = testinfra.MakeTestPTY(t, "", "ssh localhost", true)
+	cmd, err := serverEnv.SSHToExeDev(t.Context(), pty.PTY(), keyFile)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = cmd.Wait() })
 	pty.SetPrompt(testinfra.ExeDevPrompt)
 	box2 := makeBox(t, pty, keyFile, email)
-	disconnect(t, pty)
+	pty.Disconnect()
 	defer deleteBox(t, box2, keyFile)
 
 	// Check the list of boxes to see where they wound up.
@@ -113,11 +110,11 @@ func TestLoadedHost(t *testing.T) {
 
 	email1 := "testloadedhost1" + testinfra.FakeEmailSuffix
 	pty1, _, keyFile1 := registerEmail(t, email1)
-	defer disconnect(t, pty1)
+	defer pty1.Disconnect()
 
 	email2 := "testloadedhost2" + testinfra.FakeEmailSuffix
 	pty2, _, keyFile2 := registerEmail(t, email2)
-	defer disconnect(t, pty2)
+	defer pty2.Disconnect()
 
 	boxName1 := makeBox(t, pty1, keyFile1, email1)
 	defer deleteBox(t, boxName1, keyFile1)
@@ -168,14 +165,14 @@ func TestLoadedHost(t *testing.T) {
 
 	email3 := "testloadedhost3" + testinfra.FakeEmailSuffix
 	pty3, _, keyFile3 := registerEmail(t, email3)
-	defer disconnect(t, pty3)
+	defer pty3.Disconnect()
 
 	boxName3 := makeBox(t, pty3, keyFile3, email3)
 	defer deleteBox(t, boxName3, keyFile3)
 
 	email4 := "testloadedhost4" + testinfra.FakeEmailSuffix
 	pty4, _, keyFile4 := registerEmail(t, email4)
-	defer disconnect(t, pty4)
+	defer pty4.Disconnect()
 
 	boxName4 := makeBox(t, pty4, keyFile4, email4)
 	defer deleteBox(t, boxName4, keyFile4)

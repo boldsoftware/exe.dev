@@ -198,7 +198,7 @@ func ensureExeletCount(ctx context.Context, count int) error {
 // an ssh private key, and a test email address.
 // It also registers a PTY that is connected to exed via ssh,
 // and that may be used for further exed commands.
-func register(t *testing.T) (pty *testinfra.PTY, cookies []*http.Cookie, keyFile, email string) {
+func register(t *testing.T) (pty *testinfra.TestPTY, cookies []*http.Cookie, keyFile, email string) {
 	name := strings.ReplaceAll(t.Name(), "/", ".")
 	email = name + testinfra.FakeEmailSuffix
 	pty, cookies, keyFile = registerEmail(t, email)
@@ -206,12 +206,9 @@ func register(t *testing.T) (pty *testinfra.PTY, cookies []*http.Cookie, keyFile
 }
 
 // registerEmail is like register, but specifies the email address to use.
-func registerEmail(t *testing.T, email string) (pty *testinfra.PTY, cookies []*http.Cookie, keyFile string) {
-	pty, _, err := testinfra.MakePTY("", "ssh localhost", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cookies, keyFile, sshCmd, err := serverEnv.RegisterForExeDevWithEmail(t.Context(), pty, email, t.TempDir())
+func registerEmail(t *testing.T, email string) (pty *testinfra.TestPTY, cookies []*http.Cookie, keyFile string) {
+	pty, _ = testinfra.MakeTestPTY(t, "", "ssh localhost", true)
+	cookies, keyFile, sshCmd, err := serverEnv.RegisterForExeDevWithEmail(t.Context(), pty.PTY(), email, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,8 +218,8 @@ func registerEmail(t *testing.T, email string) (pty *testinfra.PTY, cookies []*h
 
 // makeBox makes a new box given a PTY that is connected to exed.
 // It returns the name of the new box.
-func makeBox(t *testing.T, pty *testinfra.PTY, keyFile, email string) string {
-	boxName, err := serverEnv.NewBox(t.Name(), exeletTestRunIDs[0], pty)
+func makeBox(t *testing.T, pty *testinfra.TestPTY, keyFile, email string) string {
+	boxName, err := serverEnv.NewBox(t.Name(), exeletTestRunIDs[0], pty.PTY())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,42 +239,21 @@ func makeBox(t *testing.T, pty *testinfra.PTY, keyFile, email string) string {
 	return boxName
 }
 
-// disconnect disconnects a PTY.
-func disconnect(t *testing.T, pty *testinfra.PTY) {
-	if err := pty.Disconnect(); err != nil {
-		t.Helper()
-		t.Error(err)
-	}
-}
-
 // deleteBox deletes the named box.
 func deleteBox(t *testing.T, boxName, keyFile string) {
-	pty, _, err := testinfra.MakePTY("", "ssh localhost", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sshCmd, err := serverEnv.SSHToExeDev(context.WithoutCancel(t.Context()), pty, keyFile)
+	pty, _ := testinfra.MakeTestPTY(t, "", "ssh localhost", true)
+	sshCmd, err := serverEnv.SSHToExeDev(context.WithoutCancel(t.Context()), pty.PTY(), keyFile)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sshCmd.Wait() })
 
-	if err := pty.SendLine("rm " + boxName); err != nil {
-		t.Fatal(err)
-	}
-	if err := pty.Want("Deleting"); err != nil {
-		t.Fatal(err)
-	}
+	pty.SendLine("rm " + boxName)
+	pty.Want("Deleting")
 	pty.Reject("internal error")
-	if err := pty.Want("success"); err != nil {
-		t.Fatal(err)
-	}
-	if err := pty.WantPrompt(); err != nil {
-		t.Fatal(err)
-	}
-	if err := pty.Disconnect(); err != nil {
-		t.Error(err)
-	}
+	pty.Want("success")
+	pty.WantPrompt()
+	pty.Disconnect()
 }
 
 // boxHosts returns a mapping from exelet hosts to box names on that host.

@@ -68,7 +68,7 @@ func TestReplication(t *testing.T) {
 	// Create a box
 	pty, _, keyFile, email := register(t)
 	_ = makeBox(t, pty, keyFile, email)
-	disconnect(t, pty)
+	pty.Disconnect()
 
 	client := exelet.Client()
 
