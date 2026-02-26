@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
-	"strconv"
 	"syscall"
 
 	"github.com/opencontainers/image-spec/specs-go/v1"
@@ -32,30 +31,9 @@ func startSSH(imageConfig *v1.ImageConfig) error {
 		}
 	}
 
-	// check to set ownership on ssh
-	if v, ok := imageConfig.Labels[config.InstanceExeLabelLoginUser]; ok {
-		slog.Info("setting ssh public key permissions for exe.dev", "user", v)
-		// lookup user to resolve uid and gid
-		u, err := user.Lookup(v)
-		// if there is an error, don't return but instead keep the ownership as root:root
-		// to ensure the user can still login via ssh as root to debug, etc.
-		if err != nil {
-			slog.Error("error looking up exe user", "username", v, "err", err)
-		}
-		if u != nil {
-			uid, err := strconv.Atoi(u.Uid)
-			if err != nil {
-				slog.Error("error parsing user id", "user", v, "err", err)
-			}
-			gid, err := strconv.Atoi(u.Gid)
-			if err != nil {
-				slog.Error("error parsing group id", "user", v, "err", err)
-			}
-			if err := os.Chown(config.InstanceSSHPublicKeysPath, uid, gid); err != nil {
-				slog.Error("error setting ssh permissions", "user", v, "err", err)
-			}
-		}
-	}
+	// Keep authorized_keys owned by root:root. OpenSSH StrictModes allows
+	// root-owned authorized_keys for any user, so this lets both the default
+	// login user and root (via "ssh root@vmname") authenticate.
 
 	// ensure ssh host key exists (generate if missing)
 	if err := ensureSSHHostKey(); err != nil {
