@@ -33,7 +33,7 @@ help: ## Show this help message
 
 build: ## Build the exed binary
 	@echo "Building exed binary..."
-	@go build -ldflags="-s -w" -o exed ./cmd/exed/exed.go
+	@go build -ldflags="-s -w" -o exed ./cmd/exed
 	@echo "✓ Build complete"
 
 test: ## Run all tests
@@ -112,15 +112,15 @@ deploy-qa: ## Ask claude for a QA/testing plan for pending changes
 
 run-dev: ## Run exed locally for development
 	@echo "Starting dev server with ghcr.io/boldsoftware/exeuntu:latest"
-	@go run ./cmd/exed/exed.go -stage=local -http=:8080 -ssh=:2223
+	@go run ./cmd/exed -stage=local -http=:8080 -ssh=:2223
 
 run-devlet: ## Run exed locally for development along with exelet on lima-exe-ctr
 	@echo "Starting dev server with exelet on lima-exe-ctr"
-	@LOG_LEVEL=debug go run ./cmd/exed/exed.go -stage=local -http=:8080 -ssh=:2223 -start-exelet
+	@LOG_LEVEL=debug go run ./cmd/exed -stage=local -http=:8080 -ssh=:2223 -start-exelet
 
 run-devlets: ## Run exed locally with exelets on both lima-exe-ctr and lima-exe-ctr-tests
 	@echo "Starting dev server with exelets on lima-exe-ctr and lima-exe-ctr-tests"
-	@LOG_LEVEL=debug go run ./cmd/exed/exed.go -stage=local -http=:8080 -ssh=:2223 -start-exelet -multi-exelet
+	@LOG_LEVEL=debug go run ./cmd/exed -stage=local -http=:8080 -ssh=:2223 -start-exelet -multi-exelet
 
 run-sshpiper: ## Run sshpiper proxy server
 	@echo "Starting sshpiper proxy..."
@@ -128,13 +128,13 @@ run-sshpiper: ## Run sshpiper proxy server
 
 run-dev-bg: ## Run exed in background for development
 	@echo "Starting development server in background..."
-	@nohup go run ./cmd/exed/exed.go -stage=local -http=:8080 -ssh=:2223 > exed.log 2>&1 &
+	@nohup go run ./cmd/exed -stage=local -http=:8080 -ssh=:2223 > exed.log 2>&1 &
 	@echo "✓ Server started in background. Check exed.log for output"
 	@echo "To stop: make stop-dev"
 
 stop-dev: ## Stop development server
 	@echo "Stopping development server..."
-	@pkill -f "go run ./cmd/exed/exed.go" || true
+	@pkill -f "go run ./cmd/exed" || true
 	@echo "✓ Server stopped"
 
 ssh-vm: ## SSH to production VM
