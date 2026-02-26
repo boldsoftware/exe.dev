@@ -17,7 +17,7 @@ import (
 // shouldUseGoogleOAuth determines if the given auth context requires Google OAuth.
 // It fetches the necessary auth_provider data from the DB, then delegates the
 // decision to googleoauth.Client.ShouldUse.
-func (s *Server) shouldUseGoogleOAuth(ctx context.Context, email string, userID string, isNewUser bool, teamInviteToken string) bool {
+func (s *Server) shouldUseGoogleOAuth(ctx context.Context, email, userID string, isNewUser bool, teamInviteToken string) bool {
 	var userAuthProvider, inviteAuthProvider string
 
 	if userID != "" && !isNewUser {
