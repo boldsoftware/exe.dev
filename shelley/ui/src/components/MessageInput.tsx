@@ -52,6 +52,7 @@ interface MessageInputProps {
   onClearInjectedText?: () => void;
   /** If set, persist draft message to localStorage under this key */
   persistKey?: string;
+  initialRows?: number;
 }
 
 const PERSIST_KEY_PREFIX = "shelley_draft_";
@@ -64,6 +65,7 @@ function MessageInput({
   injectedText,
   onClearInjectedText,
   persistKey,
+  initialRows = 1,
 }: MessageInputProps) {
   const [message, setMessage] = useState(() => {
     // Load persisted draft if persistKey is set
@@ -480,72 +482,74 @@ function MessageInput({
             placeholder={placeholderText}
             className="message-textarea"
             disabled={isDisabled}
-            rows={1}
+            rows={initialRows}
             aria-label="Message input"
             data-testid="message-input"
             autoFocus={autoFocus}
           />
         </div>
-        <button
-          type="button"
-          onClick={handleAttachClick}
-          disabled={isDisabled}
-          className="message-attach-btn"
-          aria-label="Attach file"
-          data-testid="attach-button"
-        >
-          <svg
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            viewBox="0 0 24 24"
-            width="20"
-            height="20"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-            />
-          </svg>
-        </button>
-        {speechRecognitionAvailable && (
+        <div className="message-controls-row">
           <button
             type="button"
-            onClick={toggleListening}
+            onClick={handleAttachClick}
             disabled={isDisabled}
-            className={`message-voice-btn ${isListening ? "listening" : ""}`}
-            aria-label={isListening ? "Stop voice input" : "Start voice input"}
-            data-testid="voice-button"
+            className="message-attach-btn"
+            aria-label="Attach file"
+            data-testid="attach-button"
           >
-            {isListening ? (
-              <svg fill="currentColor" viewBox="0 0 24 24" width="20" height="20">
-                <circle cx="12" cy="12" r="6" />
-              </svg>
+            <svg
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+              />
+            </svg>
+          </button>
+          {speechRecognitionAvailable && (
+            <button
+              type="button"
+              onClick={toggleListening}
+              disabled={isDisabled}
+              className={`message-voice-btn ${isListening ? "listening" : ""}`}
+              aria-label={isListening ? "Stop voice input" : "Start voice input"}
+              data-testid="voice-button"
+            >
+              {isListening ? (
+                <svg fill="currentColor" viewBox="0 0 24 24" width="20" height="20">
+                  <circle cx="12" cy="12" r="6" />
+                </svg>
+              ) : (
+                <svg fill="currentColor" viewBox="0 0 24 24" width="20" height="20">
+                  <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                </svg>
+              )}
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className="message-send-btn"
+            aria-label="Send message"
+            data-testid="send-button"
+          >
+            {isDisabled || submitting ? (
+              <div className="flex items-center justify-center">
+                <div className="spinner spinner-small" style={{ borderTopColor: "white" }}></div>
+              </div>
             ) : (
               <svg fill="currentColor" viewBox="0 0 24 24" width="20" height="20">
-                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
               </svg>
             )}
           </button>
-        )}
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          className="message-send-btn"
-          aria-label="Send message"
-          data-testid="send-button"
-        >
-          {isDisabled || submitting ? (
-            <div className="flex items-center justify-center">
-              <div className="spinner spinner-small" style={{ borderTopColor: "white" }}></div>
-            </div>
-          ) : (
-            <svg fill="currentColor" viewBox="0 0 24 24" width="20" height="20">
-              <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
-            </svg>
-          )}
-        </button>
+        </div>
       </form>
     </div>
   );

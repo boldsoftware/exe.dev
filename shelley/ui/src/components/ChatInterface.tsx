@@ -2176,6 +2176,7 @@ function ChatInterface({
             setTerminalInjectedText(null);
           }}
           persistKey={conversationId || "new-conversation"}
+          initialRows={conversationId ? 1 : 3}
         />
       )}
 
