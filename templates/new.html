@@ -234,7 +234,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create a New VM - {{.WebHost}}</title>
-    <link rel="stylesheet" href="/static/exe.css">
     {{template "topbar_style" .}}
     <link rel="stylesheet" href="/static/form.css">
     <link rel="stylesheet" href="/static/new.css">
@@ -246,6 +245,11 @@
             overflow: hidden;
             align-items: stretch;
             background: #fff;
+        }
+        @media (prefers-color-scheme: dark) {
+            body {
+                background-color: #111;
+            }
         }
     </style>
 </head>
