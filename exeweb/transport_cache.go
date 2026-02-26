@@ -25,6 +25,13 @@ type cachedTransport struct {
 // TransportCache pools http.Transport instances per SSH tunnel endpoint.
 // This avoids creating a new transport (and discarding its idle connection pool)
 // on every proxied request. A background goroutine evicts entries older than ttl.
+//
+// We need one transport per box rather than a single shared transport because
+// http.Transport pools connections by destination address, and all boxes appear
+// as 127.0.0.1 through SSH tunneling. A shared transport would reuse box A's
+// SSH-tunneled connection for requests to box B. Passing box info via
+// context.Context wouldn't help: the transport picks from the pool before
+// calling DialContext.
 type TransportCache struct {
 	mu         sync.Mutex
 	transports map[transportKey]cachedTransport
