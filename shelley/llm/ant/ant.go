@@ -393,9 +393,18 @@ func fromLLMToolUse(tu *llm.ToolUse) *toolUse {
 }
 
 func fromLLMMessage(msg llm.Message) message {
+	var contents []content
+	for _, c := range msg.Content {
+		// Skip thinking blocks with no signature — they're corrupt/incomplete
+		// and the API rejects them.
+		if c.Type == llm.ContentTypeThinking && c.Signature == "" {
+			continue
+		}
+		contents = append(contents, fromLLMContent(c))
+	}
 	return message{
 		Role:    fromLLMRole[msg.Role],
-		Content: mapped(msg.Content, fromLLMContent),
+		Content: contents,
 		ToolUse: fromLLMToolUse(msg.ToolUse),
 	}
 }
@@ -432,9 +441,16 @@ func (s *Service) fromLLMRequest(r *llm.Request) *request {
 	model := cmp.Or(s.Model, DefaultModel)
 	maxTokens := cmp.Or(s.MaxTokens, maxOutputTokens(model))
 
+	var messages []message
+	for _, m := range r.Messages {
+		msg := fromLLMMessage(m)
+		if len(msg.Content) > 0 {
+			messages = append(messages, msg)
+		}
+	}
 	req := &request{
 		Model:      model,
-		Messages:   mapped(r.Messages, fromLLMMessage),
+		Messages:   messages,
 		MaxTokens:  maxTokens,
 		ToolChoice: fromLLMToolChoice(r.ToolChoice),
 		Tools:      mapped(r.Tools, fromLLMTool),

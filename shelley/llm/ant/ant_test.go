@@ -376,6 +376,51 @@ func TestFromLLMMessage(t *testing.T) {
 	}
 }
 
+func TestFromLLMMessageSkipsCorruptThinking(t *testing.T) {
+	// A thinking block with no signature is corrupt and should be skipped.
+	msg := fromLLMMessage(llm.Message{
+		Role: llm.MessageRoleAssistant,
+		Content: []llm.Content{
+			{Type: llm.ContentTypeThinking, Thinking: "", Signature: ""},
+		},
+	})
+	if len(msg.Content) != 0 {
+		t.Errorf("expected corrupt thinking block to be skipped, got %d content blocks", len(msg.Content))
+	}
+
+	// A thinking block WITH a signature should be kept.
+	msg = fromLLMMessage(llm.Message{
+		Role: llm.MessageRoleAssistant,
+		Content: []llm.Content{
+			{Type: llm.ContentTypeThinking, Thinking: "", Signature: "sig"},
+			{Type: llm.ContentTypeText, Text: "hello"},
+		},
+	})
+	if len(msg.Content) != 2 {
+		t.Errorf("expected 2 content blocks, got %d", len(msg.Content))
+	}
+}
+
+func TestFromLLMRequestSkipsEmptyMessages(t *testing.T) {
+	s := &Service{Model: "claude-sonnet-4-20250514"}
+	req := s.fromLLMRequest(&llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.MessageRoleAssistant, Content: []llm.Content{
+				{Type: llm.ContentTypeThinking, Thinking: "", Signature: ""},
+			}},
+			{Role: llm.MessageRoleUser, Content: []llm.Content{
+				{Type: llm.ContentTypeText, Text: "hello"},
+			}},
+		},
+	})
+	if len(req.Messages) != 1 {
+		t.Errorf("expected 1 message after filtering, got %d", len(req.Messages))
+	}
+	if req.Messages[0].Role != "user" {
+		t.Errorf("expected remaining message to be user, got %s", req.Messages[0].Role)
+	}
+}
+
 func TestFromLLMToolChoice(t *testing.T) {
 	tests := []struct {
 		name string
