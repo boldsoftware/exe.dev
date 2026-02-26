@@ -432,3 +432,125 @@ func TestHandleGitFileDiff(t *testing.T) {
 		t.Errorf("expected status 400 for path traversal attempt, got %d", w.Code)
 	}
 }
+
+// setupRootCommitRepo creates a git repo with only a single (root) commit.
+func setupRootCommitRepo(t *testing.T) string {
+	t.Helper()
+	tempDir := t.TempDir()
+
+	for _, args := range [][]string{
+		{"init"},
+		{"config", "user.name", "Test User"},
+		{"config", "user.email", "test@example.com"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = tempDir
+		if err := cmd.Run(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Create files and commit
+	err := os.WriteFile(filepath.Join(tempDir, "hello.txt"), []byte("hello world\n"), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(filepath.Join(tempDir, "readme.md"), []byte("# Test\n"), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("git", "add", "hello.txt", "readme.md")
+	cmd.Dir = tempDir
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd = exec.Command("git", "commit", "-m", "Initial commit\n\nPrompt: test", "--author=Test <test@example.com>")
+	cmd.Dir = tempDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v\n%s", err, out)
+	}
+
+	return tempDir
+}
+
+func TestRootCommitDiffs(t *testing.T) {
+	h := NewTestHarness(t)
+	gitDir := setupRootCommitRepo(t)
+
+	// Get the commit hash
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = gitDir
+	hashBytes, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitHash := string(hashBytes[:len(hashBytes)-1]) // trim newline
+
+	// handleGitDiffs should list the root commit with correct stats
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/git/diffs?cwd=%s", gitDir), nil)
+	w := httptest.NewRecorder()
+	h.server.handleGitDiffs(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("handleGitDiffs: %d: %s", w.Code, w.Body.String())
+	}
+
+	var diffsResp struct {
+		Diffs []GitDiffInfo `json:"diffs"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &diffsResp); err != nil {
+		t.Fatal(err)
+	}
+	// Should have working + 1 commit
+	if len(diffsResp.Diffs) != 2 {
+		t.Fatalf("expected 2 diffs, got %d", len(diffsResp.Diffs))
+	}
+	commitDiff := diffsResp.Diffs[1]
+	if commitDiff.FilesCount != 2 {
+		t.Errorf("expected 2 files in root commit, got %d", commitDiff.FilesCount)
+	}
+	if commitDiff.Additions != 2 {
+		t.Errorf("expected 2 additions in root commit, got %d", commitDiff.Additions)
+	}
+
+	// handleGitDiffFiles should list files from root commit
+	req = httptest.NewRequest("GET", fmt.Sprintf("/api/git/diffs/%s/files?cwd=%s", commitHash, gitDir), nil)
+	w = httptest.NewRecorder()
+	h.server.handleGitDiffFiles(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("handleGitDiffFiles: %d: %s", w.Code, w.Body.String())
+	}
+
+	var files []GitFileInfo
+	if err := json.Unmarshal(w.Body.Bytes(), &files); err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("expected 2 files, got %d", len(files))
+	}
+	for _, f := range files {
+		if f.Status != "added" {
+			t.Errorf("expected status 'added' for %s in root commit, got %s", f.Path, f.Status)
+		}
+	}
+
+	// handleGitFileDiff should return empty old content and correct new content
+	req = httptest.NewRequest("GET", fmt.Sprintf("/api/git/file-diff/%s/hello.txt?cwd=%s", commitHash, gitDir), nil)
+	w = httptest.NewRecorder()
+	h.server.handleGitFileDiff(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("handleGitFileDiff: %d: %s", w.Code, w.Body.String())
+	}
+
+	var fileDiff GitFileDiff
+	if err := json.Unmarshal(w.Body.Bytes(), &fileDiff); err != nil {
+		t.Fatal(err)
+	}
+	if fileDiff.OldContent != "" {
+		t.Errorf("expected empty old content for root commit, got %q", fileDiff.OldContent)
+	}
+	if fileDiff.NewContent != "hello world\n" {
+		t.Errorf("expected 'hello world\n' as new content, got %q", fileDiff.NewContent)
+	}
+}

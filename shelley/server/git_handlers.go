@@ -40,6 +40,22 @@ type GitFileDiff struct {
 	NewContent string `json:"newContent"`
 }
 
+// emptyTreeHash is the well-known hash for git's empty tree object.
+// Used to diff root commits that have no parent.
+const emptyTreeHash = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+// parentRef returns the parent commit hash for a commit.
+// For root commits (no parent), it returns the empty tree hash.
+func parentRef(gitDir, commitHash string) string {
+	cmd := exec.Command("git", "rev-parse", "--verify", "--quiet", commitHash+"^")
+	cmd.Dir = gitDir
+	out, err := cmd.Output()
+	if err != nil {
+		return emptyTreeHash
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // getGitRoot returns the git repository root for the given directory
 func getGitRoot(dir string) (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
@@ -136,7 +152,8 @@ func (s *Server) handleGitDiffs(w http.ResponseWriter, r *http.Request) {
 			timestamp, _ := strconv.ParseInt(parts[3], 10, 64)
 
 			// Get diffstat
-			statCmd := exec.Command("git", "diff", parts[0]+"^", parts[0], "--numstat")
+			parent := parentRef(gitRoot, parts[0])
+			statCmd := exec.Command("git", "diff", parent, parts[0], "--numstat")
 			statCmd.Dir = gitRoot
 			statOutput, _ := statCmd.Output()
 			additions, deletions, filesCount := parseDiffStat(string(statOutput))
@@ -195,8 +212,9 @@ func (s *Server) handleGitDiffFiles(w http.ResponseWriter, r *http.Request) {
 		cmd = exec.Command("git", "diff", "--name-status", "HEAD")
 		statBaseArg = "HEAD"
 	} else {
-		cmd = exec.Command("git", "diff", "--name-status", diffID+"^")
-		statBaseArg = diffID + "^"
+		parent := parentRef(gitRoot, diffID)
+		cmd = exec.Command("git", "diff", "--name-status", parent, diffID)
+		statBaseArg = parent
 	}
 	cmd.Dir = gitRoot
 
@@ -229,7 +247,12 @@ func (s *Server) handleGitDiffFiles(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Get additions/deletions for this file
-		statCmd := exec.Command("git", "diff", statBaseArg, "--numstat", "--", parts[1])
+		var statCmd *exec.Cmd
+		if diffID == "working" {
+			statCmd = exec.Command("git", "diff", statBaseArg, "--numstat", "--", parts[1])
+		} else {
+			statCmd = exec.Command("git", "diff", statBaseArg, diffID, "--numstat", "--", parts[1])
+		}
 		statCmd.Dir = gitRoot
 		statOutput, _ := statCmd.Output()
 		additions, deletions := 0, 0
@@ -319,25 +342,40 @@ func (s *Server) handleGitFileDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var oldCmd *exec.Cmd
+	var oldContent string
 	if diffID == "working" {
-		oldCmd = exec.Command("git", "show", "HEAD:"+filePath)
+		oldCmd := exec.Command("git", "show", "HEAD:"+filePath)
+		oldCmd.Dir = gitRoot
+		oldOutput, _ := oldCmd.Output()
+		oldContent = string(oldOutput)
 	} else {
-		oldCmd = exec.Command("git", "show", diffID+"^:"+filePath)
-	}
-	oldCmd.Dir = gitRoot
-
-	oldOutput, _ := oldCmd.Output()
-	oldContent := string(oldOutput)
-
-	// Get new version from working tree
-	newContent := ""
-	fullPath := filepath.Join(gitRoot, cleanPath)
-	if file, err := os.Open(fullPath); err == nil {
-		if fileData, err := io.ReadAll(file); err == nil {
-			newContent = string(fileData)
+		parent := parentRef(gitRoot, diffID)
+		if parent == emptyTreeHash {
+			oldContent = ""
+		} else {
+			oldCmd := exec.Command("git", "show", parent+":"+filePath)
+			oldCmd.Dir = gitRoot
+			oldOutput, _ := oldCmd.Output()
+			oldContent = string(oldOutput)
 		}
-		file.Close()
+	}
+
+	var newContent string
+	if diffID == "working" {
+		// Working changes: read from disk
+		fullPath := filepath.Join(gitRoot, cleanPath)
+		if file, err := os.Open(fullPath); err == nil {
+			if fileData, err := io.ReadAll(file); err == nil {
+				newContent = string(fileData)
+			}
+			file.Close()
+		}
+	} else {
+		// Commit diff: read from the commit
+		newCmd := exec.Command("git", "show", diffID+":"+filePath)
+		newCmd.Dir = gitRoot
+		newOutput, _ := newCmd.Output()
+		newContent = string(newOutput)
 	}
 
 	fileDiff := GitFileDiff{
