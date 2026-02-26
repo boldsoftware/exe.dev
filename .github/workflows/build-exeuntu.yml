@@ -206,3 +206,22 @@ jobs:
       - name: Inspect image
         run: |
           $GITHUB_WORKSPACE/bin/retry.sh docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:latest
+
+  warm-edric-snapshot:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, exe-ci, edric]
+    needs: merge
+    continue-on-error: true
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Warm VM snapshot for new exeuntu image
+        run: ./ops/ci-vm-snapshot.sh
