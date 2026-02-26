@@ -336,6 +336,75 @@ func TestGetUserDefaultNewVMEmail(t *testing.T) {
 	})
 }
 
+func TestDefaultsGlobalLoadBalancer(t *testing.T) {
+	db := setupDefaultsTestDB(t)
+
+	server := &Server{log: tslog.Slogger(t), db: db}
+	sshServer := &SSHServer{server: server}
+	sshServer.commands = NewCommandTree(sshServer)
+
+	ctx := context.Background()
+	userID := "test-user-glb"
+	createDefaultsTestUser(t, db, userID, "glb@example.com")
+
+	user := &exedb.User{UserID: userID, Email: "glb@example.com"}
+
+	t.Run("write true", func(t *testing.T) {
+		output := &MockOutput{}
+		cc := createTestContext(user, output, []string{"dev.exe", "global-load-balancer", "true"})
+		if err := sshServer.handleDefaultsWrite(ctx, cc); err != nil {
+			t.Fatalf("error = %v", err)
+		}
+
+		defaults, err := exedb.WithRxRes1(db, ctx, (*exedb.Queries).GetUserDefaults, userID)
+		if err != nil {
+			t.Fatalf("GetUserDefaults() error = %v", err)
+		}
+		if defaults.GlobalLoadBalancer == nil || *defaults.GlobalLoadBalancer != 1 {
+			t.Errorf("GlobalLoadBalancer = %v, want 1", defaults.GlobalLoadBalancer)
+		}
+	})
+
+	t.Run("read specific", func(t *testing.T) {
+		output := &MockOutput{}
+		cc := createTestContext(user, output, []string{"dev.exe", "global-load-balancer"})
+		if err := sshServer.handleDefaultsRead(ctx, cc); err != nil {
+			t.Fatalf("error = %v", err)
+		}
+		if !strings.Contains(output.String(), "true") {
+			t.Errorf("expected 'true', got %q", output.String())
+		}
+	})
+
+	t.Run("read all includes glb", func(t *testing.T) {
+		output := &MockOutput{}
+		cc := createTestContext(user, output, []string{"dev.exe"})
+		if err := sshServer.handleDefaultsRead(ctx, cc); err != nil {
+			t.Fatalf("error = %v", err)
+		}
+		result := output.String()
+		if !strings.Contains(result, "global-load-balancer: true") {
+			t.Errorf("expected 'global-load-balancer: true' in output, got %q", result)
+		}
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		output := &MockOutput{}
+		cc := createTestContext(user, output, []string{"dev.exe", "global-load-balancer"})
+		if err := sshServer.handleDefaultsDelete(ctx, cc); err != nil {
+			t.Fatalf("error = %v", err)
+		}
+
+		defaults, err := exedb.WithRxRes1(db, ctx, (*exedb.Queries).GetUserDefaults, userID)
+		if err != nil {
+			t.Fatalf("GetUserDefaults() error = %v", err)
+		}
+		if defaults.GlobalLoadBalancer != nil {
+			t.Errorf("GlobalLoadBalancer should be nil after delete, got %v", *defaults.GlobalLoadBalancer)
+		}
+	})
+}
+
 func TestDefaultsReadNoDefaults(t *testing.T) {
 	db := setupDefaultsTestDB(t)
 

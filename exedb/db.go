@@ -195,6 +195,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteTemplateStmt, err = db.PrepareContext(ctx, deleteTemplate); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTemplate: %w", err)
 	}
+	if q.deleteUserDefaultGlobalLoadBalancerStmt, err = db.PrepareContext(ctx, deleteUserDefaultGlobalLoadBalancer); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteUserDefaultGlobalLoadBalancer: %w", err)
+	}
 	if q.deleteUserDefaultNewVMEmailStmt, err = db.PrepareContext(ctx, deleteUserDefaultNewVMEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteUserDefaultNewVMEmail: %w", err)
 	}
@@ -317,6 +320,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getIPAbuseFilterDisabledStmt, err = db.PrepareContext(ctx, getIPAbuseFilterDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetIPAbuseFilterDisabled: %w", err)
+	}
+	if q.getIPShardAndUserGLBByBoxNameStmt, err = db.PrepareContext(ctx, getIPShardAndUserGLBByBoxName); err != nil {
+		return nil, fmt.Errorf("error preparing query GetIPShardAndUserGLBByBoxName: %w", err)
 	}
 	if q.getIPShardByBoxNameStmt, err = db.PrepareContext(ctx, getIPShardByBoxName); err != nil {
 		return nil, fmt.Errorf("error preparing query GetIPShardByBoxName: %w", err)
@@ -825,6 +831,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.upsertTemplateRatingStmt, err = db.PrepareContext(ctx, upsertTemplateRating); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertTemplateRating: %w", err)
 	}
+	if q.upsertUserDefaultGlobalLoadBalancerStmt, err = db.PrepareContext(ctx, upsertUserDefaultGlobalLoadBalancer); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertUserDefaultGlobalLoadBalancer: %w", err)
+	}
 	if q.upsertUserDefaultNewVMEmailStmt, err = db.PrepareContext(ctx, upsertUserDefaultNewVMEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertUserDefaultNewVMEmail: %w", err)
 	}
@@ -1130,6 +1139,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteTemplateStmt: %w", cerr)
 		}
 	}
+	if q.deleteUserDefaultGlobalLoadBalancerStmt != nil {
+		if cerr := q.deleteUserDefaultGlobalLoadBalancerStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteUserDefaultGlobalLoadBalancerStmt: %w", cerr)
+		}
+	}
 	if q.deleteUserDefaultNewVMEmailStmt != nil {
 		if cerr := q.deleteUserDefaultNewVMEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteUserDefaultNewVMEmailStmt: %w", cerr)
@@ -1333,6 +1347,11 @@ func (q *Queries) Close() error {
 	if q.getIPAbuseFilterDisabledStmt != nil {
 		if cerr := q.getIPAbuseFilterDisabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getIPAbuseFilterDisabledStmt: %w", cerr)
+		}
+	}
+	if q.getIPShardAndUserGLBByBoxNameStmt != nil {
+		if cerr := q.getIPShardAndUserGLBByBoxNameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getIPShardAndUserGLBByBoxNameStmt: %w", cerr)
 		}
 	}
 	if q.getIPShardByBoxNameStmt != nil {
@@ -2180,6 +2199,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertTemplateRatingStmt: %w", cerr)
 		}
 	}
+	if q.upsertUserDefaultGlobalLoadBalancerStmt != nil {
+		if cerr := q.upsertUserDefaultGlobalLoadBalancerStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertUserDefaultGlobalLoadBalancerStmt: %w", cerr)
+		}
+	}
 	if q.upsertUserDefaultNewVMEmailStmt != nil {
 		if cerr := q.upsertUserDefaultNewVMEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertUserDefaultNewVMEmailStmt: %w", cerr)
@@ -2301,6 +2325,7 @@ type Queries struct {
 	deleteTagResolutionStmt                    *sql.Stmt
 	deleteTeamMemberStmt                       *sql.Stmt
 	deleteTemplateStmt                         *sql.Stmt
+	deleteUserDefaultGlobalLoadBalancerStmt    *sql.Stmt
 	deleteUserDefaultNewVMEmailStmt            *sql.Stmt
 	drawInviteCodeFromPoolStmt                 *sql.Stmt
 	getAccountStmt                             *sql.Stmt
@@ -2342,6 +2367,7 @@ type Queries struct {
 	getEmailVerificationByTokenStmt            *sql.Stmt
 	getHLLSketchStmt                           *sql.Stmt
 	getIPAbuseFilterDisabledStmt               *sql.Stmt
+	getIPShardAndUserGLBByBoxNameStmt          *sql.Stmt
 	getIPShardByBoxNameStmt                    *sql.Stmt
 	getInviteCodeByCodeStmt                    *sql.Stmt
 	getInviteCodeByIDStmt                      *sql.Stmt
@@ -2511,6 +2537,7 @@ type Queries struct {
 	upsertSSHHostKeyStmt                       *sql.Stmt
 	upsertTagResolutionStmt                    *sql.Stmt
 	upsertTemplateRatingStmt                   *sql.Stmt
+	upsertUserDefaultGlobalLoadBalancerStmt    *sql.Stmt
 	upsertUserDefaultNewVMEmailStmt            *sql.Stmt
 	upsertUserLLMCreditStmt                    *sql.Stmt
 	useCreditsStmt                             *sql.Stmt
@@ -2579,6 +2606,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteTagResolutionStmt:                    q.deleteTagResolutionStmt,
 		deleteTeamMemberStmt:                       q.deleteTeamMemberStmt,
 		deleteTemplateStmt:                         q.deleteTemplateStmt,
+		deleteUserDefaultGlobalLoadBalancerStmt:    q.deleteUserDefaultGlobalLoadBalancerStmt,
 		deleteUserDefaultNewVMEmailStmt:            q.deleteUserDefaultNewVMEmailStmt,
 		drawInviteCodeFromPoolStmt:                 q.drawInviteCodeFromPoolStmt,
 		getAccountStmt:                             q.getAccountStmt,
@@ -2620,6 +2648,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailVerificationByTokenStmt:            q.getEmailVerificationByTokenStmt,
 		getHLLSketchStmt:                           q.getHLLSketchStmt,
 		getIPAbuseFilterDisabledStmt:               q.getIPAbuseFilterDisabledStmt,
+		getIPShardAndUserGLBByBoxNameStmt:          q.getIPShardAndUserGLBByBoxNameStmt,
 		getIPShardByBoxNameStmt:                    q.getIPShardByBoxNameStmt,
 		getInviteCodeByCodeStmt:                    q.getInviteCodeByCodeStmt,
 		getInviteCodeByIDStmt:                      q.getInviteCodeByIDStmt,
@@ -2789,6 +2818,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertSSHHostKeyStmt:                       q.upsertSSHHostKeyStmt,
 		upsertTagResolutionStmt:                    q.upsertTagResolutionStmt,
 		upsertTemplateRatingStmt:                   q.upsertTemplateRatingStmt,
+		upsertUserDefaultGlobalLoadBalancerStmt:    q.upsertUserDefaultGlobalLoadBalancerStmt,
 		upsertUserDefaultNewVMEmailStmt:            q.upsertUserDefaultNewVMEmailStmt,
 		upsertUserLLMCreditStmt:                    q.upsertUserLLMCreditStmt,
 		useCreditsStmt:                             q.useCreditsStmt,

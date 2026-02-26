@@ -11,7 +11,8 @@ import (
 
 // knownDefaultsKeys maps key names to their expected type for validation
 var knownDefaultsKeys = map[string]string{
-	"new-vm-email": "bool",
+	"new-vm-email":         "bool",
+	"global-load-balancer": "bool",
 }
 
 // defaultsCommand returns the command definition for the hidden defaults command
@@ -86,16 +87,24 @@ func (ss *SSHServer) handleDefaultsWrite(ctx context.Context, cc *exemenu.Comman
 			return cc.Errorf("invalid value %q for %s (expected true or false)", value, key)
 		}
 
+		intVal := int64(0)
+		if boolVal {
+			intVal = 1
+		}
+
 		switch key {
 		case "new-vm-email":
-			intVal := int64(0)
-			if boolVal {
-				intVal = 1
-			}
 			return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 				return queries.UpsertUserDefaultNewVMEmail(ctx, exedb.UpsertUserDefaultNewVMEmailParams{
 					UserID:     cc.User.ID,
 					NewVMEmail: &intVal,
+				})
+			})
+		case "global-load-balancer":
+			return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+				return queries.UpsertUserDefaultGlobalLoadBalancer(ctx, exedb.UpsertUserDefaultGlobalLoadBalancerParams{
+					UserID:             cc.User.ID,
+					GlobalLoadBalancer: &intVal,
 				})
 			})
 		}
@@ -122,6 +131,7 @@ func (ss *SSHServer) handleDefaultsRead(ctx context.Context, cc *exemenu.Command
 	// If no key specified, show all
 	if len(cc.Args) == 1 {
 		cc.Writeln("new-vm-email: %s", formatBoolPtr(defaults.NewVMEmail))
+		cc.Writeln("global-load-balancer: %s", formatBoolPtr(defaults.GlobalLoadBalancer))
 		return nil
 	}
 
@@ -130,6 +140,8 @@ func (ss *SSHServer) handleDefaultsRead(ctx context.Context, cc *exemenu.Command
 	switch key {
 	case "new-vm-email":
 		cc.Writeln("%s", formatBoolPtr(defaults.NewVMEmail))
+	case "global-load-balancer":
+		cc.Writeln("%s", formatBoolPtr(defaults.GlobalLoadBalancer))
 	default:
 		return cc.Errorf("unknown key %q", key)
 	}
@@ -157,6 +169,10 @@ func (ss *SSHServer) handleDefaultsDelete(ctx context.Context, cc *exemenu.Comma
 	case "new-vm-email":
 		return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.DeleteUserDefaultNewVMEmail(ctx, cc.User.ID)
+		})
+	case "global-load-balancer":
+		return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.DeleteUserDefaultGlobalLoadBalancer(ctx, cc.User.ID)
 		})
 	}
 

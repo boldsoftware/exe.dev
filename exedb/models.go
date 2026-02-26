@@ -407,10 +407,11 @@ type UserDailyEmailCount struct {
 }
 
 type UserDefault struct {
-	UserID     string     `db:"user_id" json:"user_id"`
-	NewVMEmail *int64     `db:"new_vm_email" json:"new_vm_email"`
-	CreatedAt  *time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt  *time.Time `db:"updated_at" json:"updated_at"`
+	UserID             string     `db:"user_id" json:"user_id"`
+	NewVMEmail         *int64     `db:"new_vm_email" json:"new_vm_email"`
+	CreatedAt          *time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt          *time.Time `db:"updated_at" json:"updated_at"`
+	GlobalLoadBalancer *int64     `db:"global_load_balancer" json:"global_load_balancer"`
 }
 
 type UserEvent struct {

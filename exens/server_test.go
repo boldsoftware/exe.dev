@@ -934,6 +934,142 @@ func TestDNSServerIntegration(t *testing.T) {
 	})
 }
 
+func TestGlobalLoadBalancerCNAME(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	log := tslog.Slogger(t)
+
+	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+
+		if err := queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
+			Shard:    7,
+			PublicIP: "1.2.3.4",
+		}); err != nil {
+			return err
+		}
+		if err := queries.UpsertLatitudeIPShard(ctx, exedb.UpsertLatitudeIPShardParams{
+			Shard:    7,
+			PublicIP: "5.6.7.8",
+		}); err != nil {
+			return err
+		}
+
+		if err := queries.InsertUser(ctx, exedb.InsertUserParams{
+			UserID: "glb-user",
+			Email:  "glb@example.com",
+			Region: "pdx",
+		}); err != nil {
+			return err
+		}
+
+		boxID, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
+			Name:            "glbbox",
+			Status:          "running",
+			Image:           "ubuntu",
+			Ctrhost:         "localhost",
+			CreatedByUserID: "glb-user",
+			Region:          "pdx",
+		})
+		if err != nil {
+			return err
+		}
+
+		return queries.InsertBoxIPShard(ctx, exedb.InsertBoxIPShardParams{
+			BoxID:   int(boxID),
+			UserID:  "glb-user",
+			IPShard: 7,
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, log, "exe.xyz", "exe.dev")
+
+	t.Run("without GLB", func(t *testing.T) {
+		rrs, err := server.lookupCNAME(ctx, "glbbox.exe.xyz", "glbbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
+		}
+		cname := rrs[0].(*dns.CNAME)
+		if cname.Target != "s007.exe.xyz." {
+			t.Errorf("expected s007.exe.xyz., got %s", cname.Target)
+		}
+	})
+
+	// Enable GLB for the user
+	enabled := int64(1)
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		return queries.UpsertUserDefaultGlobalLoadBalancer(ctx, exedb.UpsertUserDefaultGlobalLoadBalancerParams{
+			UserID:             "glb-user",
+			GlobalLoadBalancer: &enabled,
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("with GLB", func(t *testing.T) {
+		rrs, err := server.lookupCNAME(ctx, "glbbox.exe.xyz", "glbbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
+		}
+		cname := rrs[0].(*dns.CNAME)
+		if cname.Target != "n007.exe.xyz." {
+			t.Errorf("expected n007.exe.xyz., got %s", cname.Target)
+		}
+	})
+
+	t.Run("A record resolves via latitude shard", func(t *testing.T) {
+		rrs, err := server.lookupA(ctx, "glbbox.exe.xyz", "glbbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 2 {
+			t.Fatalf("expected 2 records (CNAME + A), got %d", len(rrs))
+		}
+		cname := rrs[0].(*dns.CNAME)
+		if cname.Target != "n007.exe.xyz." {
+			t.Errorf("expected CNAME target n007.exe.xyz., got %s", cname.Target)
+		}
+		a := rrs[1].(*dns.A)
+		if a.A.String() != "5.6.7.8" {
+			t.Errorf("expected 5.6.7.8, got %s", a.A.String())
+		}
+	})
+
+	// Disable GLB
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		return queries.DeleteUserDefaultGlobalLoadBalancer(ctx, "glb-user")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("after disabling GLB", func(t *testing.T) {
+		rrs, err := server.lookupCNAME(ctx, "glbbox.exe.xyz", "glbbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
+		}
+		cname := rrs[0].(*dns.CNAME)
+		if cname.Target != "s007.exe.xyz." {
+			t.Errorf("expected s007.exe.xyz., got %s", cname.Target)
+		}
+	})
+}
+
 func TestMXRecords(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()

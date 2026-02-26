@@ -53,6 +53,11 @@ func ShardSub(shard int) string {
 	return fmt.Sprintf("s%03d", shard)
 }
 
+// LatitudeShardSub returns the latitude subdomain label for a shard (e.g. "n007").
+func LatitudeShardSub(shard int) string {
+	return fmt.Sprintf("n%03d", shard)
+}
+
 // PublicIP describes a public IPv4 address, associated domain name, and shard.
 type PublicIP struct {
 	IP     netip.Addr
