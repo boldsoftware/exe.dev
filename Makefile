@@ -346,9 +346,6 @@ package-exelet-fs:
 	@$(DOCKER) buildx build --builder exe --platform linux/amd64,linux/arm64 $(BUILD_ARGS) --output type=local,dest=/tmp/exelet-fs/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
 	@>&2 echo " -> building exelet rovol (amd64 + arm64)"
 	@$(DOCKER) buildx build --builder exe --platform linux/amd64,linux/arm64 $(BUILD_ARGS) --output type=local,dest=/tmp/exelet-fs/rovol/ -f ./exelet/rovol/Dockerfile .
-	@>&2 echo " -> building exe-init (amd64 + arm64)"
-	@cd ./cmd/exe-init && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o /tmp/exelet-fs/rovol/linux_amd64/bin/exe-init .
-	@cd ./cmd/exe-init && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w" -o /tmp/exelet-fs/rovol/linux_arm64/bin/exe-init .
 	@>&2 echo " -> packaging exelet-fs tarballs"
 	@for arch in amd64 arm64; do \
 		mkdir -p /tmp/exelet-fs/$$arch/kernel /tmp/exelet-fs/$$arch/rovol; \

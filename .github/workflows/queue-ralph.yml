@@ -49,6 +49,9 @@ jobs:
       - name: Download exelet-fs
         run: make exelet-fs
 
+      - name: Build exe-init
+        run: make exe-init
+
       - name: Install uv
         run: |
           if ! command -v uv >/dev/null 2>&1; then

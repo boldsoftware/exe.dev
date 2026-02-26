@@ -30,6 +30,9 @@ jobs:
       - name: Download exelet-fs
         run: make exelet-fs
 
+      - name: Build exe-init
+        run: make exe-init
+
       - name: Start container host
         id: vm
         run: |
