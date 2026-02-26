@@ -420,7 +420,7 @@ func setup(ctrHost string) (*testEnv, error) {
 		Interval:  20 * time.Second,
 	}
 
-	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, ctrHost, exedHTTPProxy.Port(), testRunID, exeletLog, *flagVerbosePorts, nil, metricsConfig)
+	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, ctrHost, exedHTTPProxy.Port(), exedHTTPProxy.Port(), testRunID, exeletLog, *flagVerbosePorts, nil, metricsConfig)
 	if err != nil {
 		return env, err
 	}

@@ -1,4 +1,6 @@
 // Package exelets contains tests using multiple exelets.
+// These exelets use exeprox as the metadata servers,
+// so this is also a test of exeprox.
 package exelets
 
 import (
@@ -118,6 +120,13 @@ func TestMain(m *testing.M) {
 	}
 	go exedHTTPProxy.Serve(context.Background())
 
+	exeproxHTTPProxy, err := testinfra.NewTCPProxy("exeproxHTTPProxy")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create exeprox HTTP proxy: %v\n", err)
+		exit(1)
+	}
+	go exeproxHTTPProxy.Serve(context.Background())
+
 	exeletBinary, err = testinfra.BuildExeletBinary(testRunID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "building exelet binary failed: %v\n", err)
@@ -127,7 +136,7 @@ func TestMain(m *testing.M) {
 		os.Remove(exeletBinary)
 	})
 
-	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, exeletHost, exedHTTPProxy.Port(), testRunID, exeletLogFile, false, nil, nil)
+	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, exeletHost, exedHTTPProxy.Port(), exeproxHTTPProxy.Port(), testRunID, exeletLogFile, false, nil, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "starting exelet failed: %v\n", err)
 		exit(1)
@@ -136,7 +145,7 @@ func TestMain(m *testing.M) {
 
 	serverEnv, err = testinfra.StartServers(context.Background(),
 		[]*testinfra.ExeletInstance{exelet},
-		[]*testinfra.TCPProxy{exedHTTPProxy},
+		[]*testinfra.TCPProxy{exedHTTPProxy, exeproxHTTPProxy},
 		exedLogFile,
 		exeproxLogFile,
 		sshPiperLogFile,
@@ -175,7 +184,7 @@ func ensureExeletCount(ctx context.Context, count int) error {
 	}
 
 	for len(exelets) < count {
-		exelet, err := testinfra.StartExelet(ctx, exeletBinary, exeletHosts[len(exelets)], serverEnv.Exed.HTTPPort, exeletTestRunIDs[len(exelets)], exeletLogFile, false, nil, nil)
+		exelet, err := testinfra.StartExelet(ctx, exeletBinary, exeletHosts[len(exelets)], serverEnv.Exed.HTTPPort, serverEnv.Exeprox.HTTPPort, exeletTestRunIDs[len(exelets)], exeletLogFile, false, nil, nil)
 		if err != nil {
 			return fmt.Errorf("error starting exelet %d: %v", len(exelets), err)
 		}

@@ -120,6 +120,9 @@ type ExeletConfig struct {
 	ProxyPortMax int
 	// ExedURL is the URL of the exed HTTP(S) server
 	ExedURL string
+	// MetadataURL is the URL of the metadata server,
+	// either exed or exeprox.
+	MetadataURL string
 	// InstanceDomain is the domain for instance hostnames (e.g., exe.xyz, exe-staging.xyz)
 	InstanceDomain string
 	// ResourceManagerInterval controls how frequently the resource manager polls VMs

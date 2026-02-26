@@ -97,7 +97,7 @@ func (p *TCPProxy) Serve(ctx context.Context) {
 	}
 }
 
-// proxy proxies a new connection to the destionation address.
+// proxy proxies a new connection to the destination address.
 func (p *TCPProxy) proxy(ctx context.Context, c *net.TCPConn) {
 	defer c.Close()
 

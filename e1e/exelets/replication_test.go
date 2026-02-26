@@ -53,7 +53,8 @@ func TestReplication(t *testing.T) {
 	}
 
 	exelet, err := testinfra.StartExelet(t.Context(), exeletBinary, exeletHost,
-		serverEnv.Exed.HTTPPort, testRunID, replExeletLogFile, false, replConfig, nil)
+		serverEnv.Exed.HTTPPort, serverEnv.Exeprox.HTTPPort,
+		testRunID, replExeletLogFile, false, replConfig, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

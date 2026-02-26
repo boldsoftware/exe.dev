@@ -139,6 +139,12 @@ func main() {
 			Value:   "",
 			EnvVars: []string{"EXELET_EXED_URL"},
 		},
+		&cli.StringFlag{
+			Name:    "metadata-url",
+			Usage:   "URL of the local metadata HTTP(S) server, either exed or exeprox",
+			Value:   "",
+			EnvVars: []string{"EXELET_METADATA_URL", "EXELET_EXED_URL"},
+		},
 		&cli.BoolFlag{
 			Name:    "desired-state-sync",
 			Usage:   "enable periodic desired-state sync from exed (requires --exed-url)",
@@ -325,6 +331,10 @@ func serveAction(clix *cli.Context) error {
 	proxyPortMin := clix.Int("proxy-port-min")
 	proxyPortMax := clix.Int("proxy-port-max")
 	exedURL := clix.String("exed-url")
+	metadataURL := clix.String("metadata-url")
+	if metadataURL == "" {
+		metadataURL = exedURL
+	}
 	instanceDomain := clix.String("instance-domain")
 	resourceManagerInterval := clix.Duration("resource-manager-interval")
 	enableHugepages := clix.Bool("enable-hugepages")
@@ -375,6 +385,7 @@ func serveAction(clix *cli.Context) error {
 		ProxyPortMin:                proxyPortMin,
 		ProxyPortMax:                proxyPortMax,
 		ExedURL:                     exedURL,
+		MetadataURL:                 metadataURL,
 		InstanceDomain:              instanceDomain,
 		ResourceManagerInterval:     resourceManagerInterval,
 		EnableHugepages:             enableHugepages,
@@ -493,7 +504,7 @@ func serveAction(clix *cli.Context) error {
 	metadataListenAddr := natConfig.Router + ":80"
 	log.InfoContext(ctx, "metadata service will bind to bridge IP", "addr", metadataListenAddr)
 
-	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.ExedURL, metadataListenAddr, serviceContext.MetricsRegistry)
+	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.MetadataURL, metadataListenAddr, serviceContext.MetricsRegistry)
 	if err != nil {
 		return err
 	}

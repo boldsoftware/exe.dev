@@ -42,21 +42,23 @@ type MetricsConfig struct {
 
 // ExeletInstance describes a single running exelet.
 type ExeletInstance struct {
-	Address      string                // e.g., "tcp://192.168.5.15:9080"
-	HTTPAddress  string                // e.g., "http://192.168.5.15:9081"
-	Exited       <-chan struct{}       // closed when Cmd exits
-	Cause        func() error          // why context was canceled
-	Cmd          *exec.Cmd             // SSH command running exelet
-	CmdCancel    context.CancelFunc    // cancel function for exelet context
-	DataDir      string                // temp directory for exelet data (local or remote path)
-	RemoteHost   string                // VM on which exelet is running
-	TunnelCmd    *exec.Cmd             // SSH tunnel process if using reverse tunnel
-	TunnelCancel context.CancelFunc    // cancel function for tunnel context
-	BridgeName   string                // bridge name for network isolation
-	ZFSDataset   string                // ZFS dataset for storage isolation
-	CoverDir     string                // remote directory for Go coverage artifacts (GOCOVERDIR)
-	Errors       chan string           // exelet errors are sent on this channel
-	Client       func() *client.Client // function returns exelet control client
+	Address       string                // e.g., "tcp://192.168.5.15:9080"
+	HTTPAddress   string                // e.g., "http://192.168.5.15:9081"
+	Exited        <-chan struct{}       // closed when Cmd exits
+	Cause         func() error          // why context was canceled
+	Cmd           *exec.Cmd             // SSH command running exelet
+	CmdCancel     context.CancelFunc    // cancel function for exelet context
+	DataDir       string                // temp directory for exelet data (local or remote path)
+	RemoteHost    string                // VM on which exelet is running
+	TunnelCmd1    *exec.Cmd             // SSH tunnel process if using reverse tunnel
+	TunnelCancel1 context.CancelFunc    // cancel function for tunnel context
+	TunnelCmd2    *exec.Cmd             // second SSH tunnel
+	TunnelCancel2 context.CancelFunc    // second cancel function
+	BridgeName    string                // bridge name for network isolation
+	ZFSDataset    string                // ZFS dataset for storage isolation
+	CoverDir      string                // remote directory for Go coverage artifacts (GOCOVERDIR)
+	Errors        chan string           // exelet errors are sent on this channel
+	Client        func() *client.Client // function returns exelet control client
 
 	testRunID        string    // argument to StartExelet
 	exeletLoggerDone chan bool // closed when logging goroutine done
@@ -208,7 +210,8 @@ func parseAndCreateClient(ctx context.Context, grpcAddr, httpAddr, host string) 
 // ctrHost is an SSH path in the form ssh://USER@ADDR.
 //
 // exedPort is the port number on the local host that the exed
-// HTTP server is listening on.
+// HTTP server is listening on. metadataPort is the same,
+// but can be either exed or exeprox.
 //
 // testRunID is a unique string for this invocation.
 //
@@ -219,7 +222,7 @@ func parseAndCreateClient(ctx context.Context, grpcAddr, httpAddr, host string) 
 // replication, if not nil, configures storage replication.
 //
 // metrics, if not nil, configures metrics collection.
-func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int, testRunID string, logFile io.Writer, logPorts bool, replication *ReplicationConfig, metrics *MetricsConfig) (ei *ExeletInstance, err error) {
+func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, metadataPort int, testRunID string, logFile io.Writer, logPorts bool, replication *ReplicationConfig, metrics *MetricsConfig) (ei *ExeletInstance, err error) {
 	start := time.Now()
 	slog.InfoContext(ctx, "starting exelet", "ID", testRunID)
 
@@ -234,7 +237,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 
 	// For localhost, run exelet directly without SSH
 	if host == "localhost" {
-		return startExeletLocal(ctx, exeletBinary, exedPort, testRunID, logFile, logPorts, replication, metrics, start)
+		return startExeletLocal(ctx, exeletBinary, exedPort, metadataPort, testRunID, logFile, logPorts, replication, metrics, start)
 	}
 
 	// Get the gateway address of the VM.
@@ -244,46 +247,38 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 	}
 	slog.InfoContext(ctx, "resolved default gateway", "addr", gateway)
 
-	// Test if the VM can reach the local proxy.
-	// Usually local->VM and VM->local connectivity works.
-	// However, in some environments, such as coding agents that
-	// operate in containers, this connectivity does NOT work,
-	// and we set up an SSH tunnel for exelet->exed communication
-	// as a band-aid.
-	hasConnectivity := testRemoteToLocalConnectivity(ctx, host, gateway, exedPort)
-	slog.InfoContext(ctx, "test remote->local connectivity", "host", host, "gateway", gateway, "port", exedPort, "reachable", hasConnectivity)
-
-	// Determine the URL the exelet will use to reach exed.
-	needsTunnel := !hasConnectivity
-	var exedProxyURL string
-	var tunnelCmd *exec.Cmd
-	var tunnelCancel context.CancelFunc
-	if !needsTunnel {
-		exedProxyURL = fmt.Sprintf("http://%s:%d", gateway, exedPort)
-	} else {
-		slog.InfoContext(ctx, "remote->local connectivity not available, using SSH reverse tunnel")
-		// Use SSH reverse tunnel:
-		// exelet -> SSH tunnel -> TCP proxy -> exed
-		remotePort, cmd, cancel, err := startSSHTunnel(ctx, host, exedPort)
-		if err != nil {
-			return nil, fmt.Errorf("failed to start SSH tunnel: %w", err)
-		}
-
+	exedProxyURL, tunnelCmd1, tunnelCancel1, err := localProxyURL(ctx, host, gateway, exedPort, logPorts)
+	if err != nil {
+		return nil, err
+	}
+	if tunnelCmd1 != nil {
 		defer func() {
 			if err != nil {
-				cancel()
-				cmd.Process.Kill()
-				cmd.Wait()
+				tunnelCancel1()
+				tunnelCmd1.Process.Kill()
+				tunnelCmd1.Wait()
 			}
 		}()
+	}
 
-		tunnelCmd = cmd
-		tunnelCancel = cancel
-
-		exedProxyURL = fmt.Sprintf("http://localhost:%d", remotePort)
-
-		if logPorts {
-			slog.InfoContext(ctx, "using SSH tuennl for exelet->exed", "remote_port", remotePort, "proxy_port", exedPort)
+	var metadataProxyURL string
+	var tunnelCmd2 *exec.Cmd
+	var tunnelCancel2 context.CancelFunc
+	if metadataPort == exedPort {
+		metadataProxyURL = exedProxyURL
+	} else {
+		metadataProxyURL, tunnelCmd2, tunnelCancel2, err = localProxyURL(ctx, host, gateway, metadataPort, logPorts)
+		if err != nil {
+			return nil, err
+		}
+		if tunnelCmd2 != nil {
+			defer func() {
+				if err != nil {
+					tunnelCancel2()
+					tunnelCmd2.Process.Kill()
+					tunnelCmd2.Wait()
+				}
+			}()
 		}
 	}
 
@@ -346,6 +341,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 		"--proxy-port-max", strconv.Itoa(res.proxyPortMax),
 		"--resource-manager-interval", "5s",
 		"--exed-url", exedProxyURL,
+		"--metadata-url", metadataProxyURL,
 		"--enable-hugepages",
 		"--desired-state-sync",
 		"--desired-state-sync-interval", "1s",
@@ -438,8 +434,10 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 		CmdCancel:        exeletCancel,
 		DataDir:          res.dataDir,
 		RemoteHost:       host,
-		TunnelCmd:        tunnelCmd,
-		TunnelCancel:     tunnelCancel,
+		TunnelCmd1:       tunnelCmd1,
+		TunnelCancel1:    tunnelCancel1,
+		TunnelCmd2:       tunnelCmd2,
+		TunnelCancel2:    tunnelCancel2,
 		BridgeName:       res.bridgeName,
 		ZFSDataset:       res.zfsDataset,
 		CoverDir:         res.coverDir,
@@ -457,10 +455,11 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort int
 }
 
 // startExeletLocal starts exelet locally (for CTR_HOST=localhost).
-func startExeletLocal(ctx context.Context, exeletBinary string, exedPort int, testRunID string, logFile io.Writer, logPorts bool, replication *ReplicationConfig, metrics *MetricsConfig, start time.Time) (*ExeletInstance, error) {
+func startExeletLocal(ctx context.Context, exeletBinary string, exedPort, metadataPort int, testRunID string, logFile io.Writer, logPorts bool, replication *ReplicationConfig, metrics *MetricsConfig, start time.Time) (*ExeletInstance, error) {
 	// For localhost, exelet can directly reach exed via localhost
 	exedProxyURL := fmt.Sprintf("http://localhost:%d", exedPort)
-	slog.InfoContext(ctx, "using localhost for exelet->exed", "port", exedPort)
+	metadataProxyURL := fmt.Sprintf("http://localhost:%d", metadataPort)
+	slog.InfoContext(ctx, "using localhost for exelet->exed", "port", exedPort, "metadataPort", metadataPort)
 
 	// Compute unique resource names for this test run
 	res, err := computeExeletResources(testRunID)
@@ -479,8 +478,8 @@ func startExeletLocal(ctx context.Context, exeletBinary string, exedPort int, te
 
 	encodedNetwork := url.QueryEscape(res.networkCIDR)
 
-	localCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --stage test --name localhost --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s&disable_bandwidth=true" --proxy-port-min %d --proxy-port-max %d --resource-manager-interval 5s --exed-url %s --enable-hugepages --desired-state-sync --desired-state-sync-interval 1s --pktflow-enabled --pktflow-interval 2s --pktflow-sample-rate 1 --pktflow-mapping-refresh 500ms`,
-		res.coverDir, exeletBinary, res.dataDir, res.dataDir, res.dataDir, res.zfsDataset, res.dataDir, res.bridgeName, encodedNetwork, res.proxyPortMin, res.proxyPortMax, exedProxyURL)
+	localCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --stage test --name localhost --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s&disable_bandwidth=true" --proxy-port-min %d --proxy-port-max %d --resource-manager-interval 5s --exed-url %s --metadata-url %s --enable-hugepages --desired-state-sync --desired-state-sync-interval 1s --pktflow-enabled --pktflow-interval 2s --pktflow-sample-rate 1 --pktflow-mapping-refresh 500ms`,
+		res.coverDir, exeletBinary, res.dataDir, res.dataDir, res.dataDir, res.zfsDataset, res.dataDir, res.bridgeName, encodedNetwork, res.proxyPortMin, res.proxyPortMax, exedProxyURL, metadataProxyURL)
 
 	// Add replication flags if configured
 	if replication != nil && replication.Enabled {
@@ -692,13 +691,20 @@ func (ei *ExeletInstance) Stop(ctx context.Context) string {
 	}
 	close(ei.Errors)
 
-	// Stop the ssh tunnel if there is one.
-	if ei.TunnelCancel != nil {
-		ei.TunnelCancel()
+	// Stop the ssh tunnels if there are any..
+	if ei.TunnelCancel1 != nil {
+		ei.TunnelCancel1()
 	}
-	if ei.TunnelCmd != nil && ei.TunnelCmd.Process != nil {
-		ei.TunnelCmd.Process.Kill()
-		ei.TunnelCmd.Wait()
+	if ei.TunnelCmd1 != nil && ei.TunnelCmd1.Process != nil {
+		ei.TunnelCmd1.Process.Kill()
+		ei.TunnelCmd1.Wait()
+	}
+	if ei.TunnelCancel2 != nil {
+		ei.TunnelCancel2()
+	}
+	if ei.TunnelCmd2 != nil && ei.TunnelCmd2.Process != nil {
+		ei.TunnelCmd2.Process.Kill()
+		ei.TunnelCmd2.Wait()
 	}
 
 	// Download the exelet coverage data.
@@ -999,6 +1005,43 @@ func resolveGateway(ctx context.Context, host string) (string, error) {
 	}
 	addr := string(bytes.Fields(out)[0])
 	return addr, nil
+}
+
+// localProxyURL returns a URL that the exelet can use to reach
+// the local proxy at the given port. It also returns the SSH tunnel
+// command and cancellation function, though they may be nil if not needed.
+func localProxyURL(ctx context.Context, host, gateway string, port int, logPorts bool) (string, *exec.Cmd, context.CancelFunc, error) {
+	// Test if the VM can reach the local proxy.
+	// Usually local->VM and VM->local connectivity works.
+	// However, in some environments, such as coding agents that
+	// operate in containers, this connectivity does NOT work,
+	// and we set up an SSH tunnel for exelet->exed communication
+	// as a band-aid.
+	hasConnectivity := testRemoteToLocalConnectivity(ctx, host, gateway, port)
+	slog.InfoContext(ctx, "test remote->local connectivity", "host", host, "gateway", gateway, "port", port, "reachable", hasConnectivity)
+
+	// Determine the URL the exelet will use to reach exed.
+	needsTunnel := !hasConnectivity
+	if !needsTunnel {
+		return fmt.Sprintf("http://%s:%d", gateway, port), nil, nil, nil
+	}
+
+	slog.InfoContext(ctx, "remote->local connectivity not available, using SSH reverse tunnel")
+
+	// Use SSH reverse tunnel:
+	// exelet -> SSH tunnel -> TCP proxy -> exed
+	remotePort, cmd, cancel, err := startSSHTunnel(ctx, host, port)
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("failed to start SSH tunnel: %w", err)
+	}
+
+	proxyURL := fmt.Sprintf("http://localhost:%d", remotePort)
+
+	if logPorts {
+		slog.InfoContext(ctx, "using SSH tuennl for exelet->exed/exeprox", "remote_port", remotePort, "proxy_port", port)
+	}
+
+	return proxyURL, cmd, cancel, nil
 }
 
 // testRemoteToLocalConnectivity reports whether the remote host can
