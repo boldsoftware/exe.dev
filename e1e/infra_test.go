@@ -623,6 +623,8 @@ func configureProxyRoute(t *testing.T, keyFile, box string, port int, visibility
 func sshToBox(t *testing.T, boxname, keyFile string) *expectPty {
 	pty := sshWithUsername(t, boxname, keyFile)
 	pty.SetPromptRE(regexp.QuoteMeta(boxname) + ".*" + regexp.QuoteMeta("$"))
+	pty.WantPrompt()
+	pty.DisableBracketedPaste()
 	return pty
 }
 

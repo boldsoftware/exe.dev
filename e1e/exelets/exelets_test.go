@@ -159,6 +159,7 @@ func TestMain(m *testing.M) {
 	}
 
 	exedHTTPProxy.SetDestPort(serverEnv.Exed.HTTPPort)
+	exeproxHTTPProxy.SetDestPort(serverEnv.Exeprox.HTTPPort)
 
 	m.Run()
 }

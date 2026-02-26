@@ -11,6 +11,7 @@ For support and documentation, "ssh exe.dev" or visit https://exe.dev/
 
 MOTD HINT
 
+exedev@BOX_NAME:~$ bind 'set enable-bracketed-paste off'
 exedev@BOX_NAME:~$ whoami
 exedev
 exedev@BOX_NAME:~$ exit

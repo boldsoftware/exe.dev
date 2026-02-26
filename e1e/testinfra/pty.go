@@ -203,6 +203,16 @@ func (p *PTY) AttachAndStart(cmd *exec.Cmd) error {
 	return nil
 }
 
+// DisableBracketedPaste disables bracketed paste mode
+// (https://en.wikipedia.org/wiki/Bracketed-paste),
+// which can emit characters that match strings we
+// want to search for. This only works if we are talking
+// over an ssh session to bash. In particular it doesn't
+// work when doing an ssh to exed.
+func (p *PTY) DisableBracketedPaste() error {
+	return p.SendLine("bind 'set enable-bracketed-paste off'")
+}
+
 var (
 	// asciinemaMu protects asciinemaWriters.
 	asciinemaMu sync.Mutex
@@ -549,6 +559,14 @@ func (tp *TestPTY) Reject(s string) {
 // AttachAndStart attaches the PTY to the given command and starts it.
 func (tp *TestPTY) AttachAndStart(cmd *exec.Cmd) {
 	if err := tp.pty.AttachAndStart(cmd); err != nil {
+		tp.t.Helper()
+		tp.t.Fatal(err)
+	}
+}
+
+// DisableBracketedPaste disables bracketed paste mode.
+func (tp *TestPTY) DisableBracketedPaste() {
+	if err := tp.pty.DisableBracketedPaste(); err != nil {
 		tp.t.Helper()
 		tp.t.Fatal(err)
 	}
