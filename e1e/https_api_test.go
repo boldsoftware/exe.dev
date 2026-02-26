@@ -67,7 +67,7 @@ func TestExecAPI(t *testing.T) {
 
 	// Register a user via SSH first.
 	pty, _, keyFile, email := registerForExeDev(t)
-	pty.disconnect()
+	pty.Disconnect()
 
 	client := newExecAPIClient(t, keyFile)
 
@@ -174,7 +174,7 @@ func TestExecAPIExpNbf(t *testing.T) {
 
 	// Register a user via SSH first.
 	pty, _, keyFile, _ := registerForExeDev(t)
-	pty.disconnect()
+	pty.Disconnect()
 
 	client := newExecAPIClient(t, keyFile)
 
@@ -232,7 +232,7 @@ func TestExecAPIInvalidTokens(t *testing.T) {
 
 	// Register a user via SSH first.
 	pty, _, keyFile, _ := registerForExeDev(t)
-	pty.disconnect()
+	pty.Disconnect()
 
 	client := newExecAPIClient(t, keyFile)
 	baseURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
@@ -441,10 +441,10 @@ func TestExecAPIWithSecondKey(t *testing.T) {
 	}
 
 	// Add the second key via SSH.
-	pty.sendLine("ssh-key add '" + secondPubKey + "'")
-	pty.want("Added SSH key")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.SendLine("ssh-key add '" + secondPubKey + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
+	pty.Disconnect()
 
 	// Both keys should work for /exec.
 	client1 := newExecAPIClient(t, keyFile)
@@ -482,10 +482,10 @@ func TestExecAPIWithSecondKey(t *testing.T) {
 
 	// Clean up: remove second key.
 	pty2 := sshToExeDev(t, keyFile)
-	pty2.sendLine("ssh-key remove '" + strings.TrimSpace(secondPubKey) + "'")
-	pty2.want("Deleted SSH key")
-	pty2.wantPrompt()
-	pty2.disconnect()
+	pty2.SendLine("ssh-key remove '" + strings.TrimSpace(secondPubKey) + "'")
+	pty2.Want("Deleted SSH key")
+	pty2.WantPrompt()
+	pty2.Disconnect()
 
 	// After removal, second key should no longer work.
 	resp3, err := client2.exec(token2, "whoami")
@@ -534,7 +534,7 @@ func TestExecAPISigBlobErrors(t *testing.T) {
 	noGolden(t)
 
 	pty, _, _, _ := registerForExeDev(t)
-	pty.disconnect()
+	pty.Disconnect()
 
 	baseURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
 
@@ -618,7 +618,7 @@ func TestExecAPINamespaceIsolation(t *testing.T) {
 
 	// Register a user via SSH first.
 	pty, _, keyFile, _ := registerForExeDev(t)
-	pty.disconnect()
+	pty.Disconnect()
 
 	client := newExecAPIClient(t, keyFile)
 
@@ -708,7 +708,7 @@ func TestExecAPISignatureBitFlip(t *testing.T) {
 
 	// Register a user via SSH first.
 	pty, _, keyFile, _ := registerForExeDev(t)
-	pty.disconnect()
+	pty.Disconnect()
 
 	client := newExecAPIClient(t, keyFile)
 
@@ -763,7 +763,7 @@ func TestExecAPIStrictJSONValidation(t *testing.T) {
 
 	// Register a user via SSH first.
 	pty, _, keyFile, _ := registerForExeDev(t)
-	pty.disconnect()
+	pty.Disconnect()
 
 	client := newExecAPIClient(t, keyFile)
 	baseURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
@@ -824,7 +824,7 @@ func TestExecAPICmds(t *testing.T) {
 	noGolden(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
-	pty.disconnect()
+	pty.Disconnect()
 
 	client := newExecAPIClient(t, keyFile)
 
@@ -939,7 +939,7 @@ func TestExecAPILargeTokenRejected(t *testing.T) {
 	noGolden(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
-	pty.disconnect()
+	pty.Disconnect()
 
 	client := newExecAPIClient(t, keyFile)
 

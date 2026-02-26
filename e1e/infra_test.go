@@ -474,88 +474,22 @@ func genSSHKey(t *testing.T) (path, publickey string) {
 }
 
 type expectPty struct {
-	t   *testing.T
-	pty *testinfra.PTY
-}
-
-func (p *expectPty) want(s string) {
-	if err := p.pty.Want(s); err != nil {
-		p.t.Helper()
-		p.t.Fatal(err)
-	}
-}
-
-func (p *expectPty) reject(s string) {
-	p.pty.Reject(s)
-}
-
-func (p *expectPty) wantRe(re string) {
-	if err := p.pty.WantRE(re); err != nil {
-		p.t.Helper()
-		p.t.Fatal(err)
-	}
-}
-
-func (p *expectPty) wantPrompt() {
-	if err := p.pty.WantPrompt(); err != nil {
-		p.t.Helper()
-		p.t.Fatal(err)
-	}
-}
-
-func (p *expectPty) send(s string) {
-	if err := p.pty.Send(s); err != nil {
-		p.t.Helper()
-		p.t.Fatal(err)
-	}
-}
-
-func (p *expectPty) sendLine(s string) {
-	if err := p.pty.SendLine(s); err != nil {
-		p.t.Helper()
-		p.t.Fatal(err)
-	}
-}
-
-func (p *expectPty) disconnect() {
-	if err := p.pty.Disconnect(); err != nil {
-		p.t.Helper()
-		p.t.Fatal(err)
-	}
+	*testinfra.TestPTY
 }
 
 func (p *expectPty) deleteBox(boxName string) {
-	p.t.Helper()
-	p.sendLine("rm " + boxName)
-	p.want("Deleting")
-	p.reject("internal error")
-	p.want("success")
-	p.wantPrompt()
-}
-
-func (p *expectPty) wantEOF() {
-	if err := p.pty.WantEOF(); err != nil {
-		p.t.Helper()
-		p.t.Fatal(err)
-	}
-}
-
-// close closes the PTY without waiting for EOF.
-// Use this when the server is in a blocking state.
-func (p *expectPty) close() {
-	if err := p.pty.Close(); err != nil {
-		p.t.Helper()
-		p.t.Fatal(err)
-	}
+	p.T().Helper()
+	p.SendLine("rm " + boxName)
+	p.Want("Deleting")
+	p.Reject("internal error")
+	p.Want("success")
+	p.WantPrompt()
 }
 
 // attachAndStart attaches the pty to the given command and starts it.
 func (p *expectPty) attachAndStart(cmd *exec.Cmd) {
-	if err := p.pty.AttachAndStart(cmd); err != nil {
-		p.t.Helper()
-		p.t.Fatal(err)
-	}
-	p.t.Cleanup(func() { _ = cmd.Wait() })
+	p.TestPTY.AttachAndStart(cmd)
+	p.T().Cleanup(func() { _ = cmd.Wait() })
 }
 
 func makePty(t *testing.T, name string) *expectPty {
@@ -564,12 +498,7 @@ func makePty(t *testing.T, name string) *expectPty {
 		cinemaName = t.Name()
 	}
 
-	pty, seen, err := testinfra.MakePTY(cinemaName, name, *flagVerbosePty)
-	if err != nil {
-		t.Helper()
-		t.Fatal(err)
-	}
-
+	pty, seen := testinfra.MakeTestPTY(t, cinemaName, name, *flagVerbosePty)
 	t.Cleanup(func() { pty.Close() })
 
 	if *flagCinema && !seen {
@@ -591,12 +520,12 @@ func makePty(t *testing.T, name string) *expectPty {
 		})
 	}
 
-	return &expectPty{t: t, pty: pty}
+	return &expectPty{pty}
 }
 
 func sshToExeDev(t *testing.T, keyFile string) *expectPty {
 	pty := makePty(t, "ssh localhost")
-	cmd, err := Env.servers.SSHToExeDev(Env.context(t), pty.pty, keyFile)
+	cmd, err := Env.servers.SSHToExeDev(Env.context(t), pty.PTY(), keyFile)
 	if err != nil {
 		t.Helper()
 		t.Fatal(err)
@@ -674,7 +603,7 @@ func cleanupBox(t *testing.T, keyFile, boxName string) {
 	t.Helper()
 	pty := sshToExeDev(t, keyFile)
 	pty.deleteBox(boxName)
-	pty.disconnect()
+	pty.Disconnect()
 }
 
 // configureProxyRoute sets the proxy port and visibility for a box.
@@ -693,13 +622,13 @@ func configureProxyRoute(t *testing.T, keyFile, box string, port int, visibility
 
 func sshToBox(t *testing.T, boxname, keyFile string) *expectPty {
 	pty := sshWithUsername(t, boxname, keyFile)
-	pty.pty.SetPromptRE(regexp.QuoteMeta(boxname) + ".*" + regexp.QuoteMeta("$"))
+	pty.SetPromptRE(regexp.QuoteMeta(boxname) + ".*" + regexp.QuoteMeta("$"))
 	return pty
 }
 
 func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
 	pty := makePty(t, "ssh "+username+"@localhost")
-	sshCmd, err := Env.servers.SSHWithUserName(Env.context(t), pty.pty, username, keyFile)
+	sshCmd, err := Env.servers.SSHWithUserName(Env.context(t), pty.PTY(), username, keyFile)
 	if err != nil {
 		t.Helper()
 		t.Fatal(err)
@@ -752,7 +681,7 @@ func boxName(t *testing.T) string {
 
 func registerForExeDevWithEmail(t *testing.T, email string) (pty *expectPty, cookies []*http.Cookie, keyFile, returnedEmail string) {
 	pty = makePty(t, "ssh localhost")
-	cookies, keyFile, sshCmd, err := Env.servers.RegisterForExeDevWithEmail(Env.context(t), pty.pty, email, t.TempDir())
+	cookies, keyFile, sshCmd, err := Env.servers.RegisterForExeDevWithEmail(Env.context(t), pty.PTY(), email, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -774,7 +703,7 @@ func registerForExeDevWithoutBilling(t *testing.T) (pty *expectPty, cookies []*h
 	email = name + testinfra.FakeEmailSuffix
 
 	pty = makePty(t, "ssh localhost")
-	cookies, keyFile, sshCmd, err := Env.servers.RegisterForExeDevWithEmail(Env.context(t), pty.pty, email, t.TempDir())
+	cookies, keyFile, sshCmd, err := Env.servers.RegisterForExeDevWithEmail(Env.context(t), pty.PTY(), email, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -830,7 +759,7 @@ func newClientWithCookies(t testing.TB, cookies []*http.Cookie) *http.Client {
 
 // newBox requests a new box from the open repl pty.
 func newBox(t *testing.T, pty *expectPty, opts ...testinfra.BoxOpts) string {
-	boxName, err := Env.servers.NewBox(t.Name(), testRunID, pty.pty, opts...)
+	boxName, err := Env.servers.NewBox(t.Name(), testRunID, pty.PTY(), opts...)
 	if err != nil {
 		t.Fatal(err)
 	}

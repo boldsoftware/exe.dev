@@ -35,7 +35,7 @@ func testHTTPProxy(t *testing.T, httpPort int, extraPorts []int) {
 
 	pty, cookies, keyFile, _ := registerForExeDev(t)
 	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
-	pty.disconnect()
+	pty.Disconnect()
 	waitForSSH(t, box, keyFile)
 
 	// Make an index.html file to serve.
@@ -89,40 +89,40 @@ chmod +x /home/exedev/cgi-bin/headers
 
 		t.Run("mark_public", func(t *testing.T) {
 			exeShell := sshToExeDev(t, keyFile)
-			exeShell.sendLine(fmt.Sprintf("share port %s 8080", box))
-			exeShell.want("Route updated successfully")
-			exeShell.wantPrompt()
+			exeShell.SendLine(fmt.Sprintf("share port %s 8080", box))
+			exeShell.Want("Route updated successfully")
+			exeShell.WantPrompt()
 
-			exeShell.sendLine(fmt.Sprintf("share set-public %s", box))
-			exeShell.want("Route updated successfully")
-			exeShell.wantPrompt()
+			exeShell.SendLine(fmt.Sprintf("share set-public %s", box))
+			exeShell.Want("Route updated successfully")
+			exeShell.WantPrompt()
 
-			exeShell.sendLine(fmt.Sprintf("share port %s", box))
-			exeShell.want("Port: 8080")
-			exeShell.want("Share: public")
-			exeShell.wantPrompt()
-			exeShell.disconnect()
+			exeShell.SendLine(fmt.Sprintf("share port %s", box))
+			exeShell.Want("Port: 8080")
+			exeShell.Want("Share: public")
+			exeShell.WantPrompt()
+			exeShell.Disconnect()
 		})
 
 		t.Run("port_validation", func(t *testing.T) {
 			exeShell := sshToExeDev(t, keyFile)
 
 			// Port below range
-			exeShell.sendLine(fmt.Sprintf("share port %s 2999", box))
-			exeShell.want("port must be between 3000 and 9999")
-			exeShell.wantPrompt()
+			exeShell.SendLine(fmt.Sprintf("share port %s 2999", box))
+			exeShell.Want("port must be between 3000 and 9999")
+			exeShell.WantPrompt()
 
 			// Port above range
-			exeShell.sendLine(fmt.Sprintf("share port %s 10000", box))
-			exeShell.want("port must be between 3000 and 9999")
-			exeShell.wantPrompt()
+			exeShell.SendLine(fmt.Sprintf("share port %s 10000", box))
+			exeShell.Want("port must be between 3000 and 9999")
+			exeShell.WantPrompt()
 
 			// Invalid port
-			exeShell.sendLine(fmt.Sprintf("share port %s abc", box))
-			exeShell.want("port must be between 3000 and 9999")
-			exeShell.wantPrompt()
+			exeShell.SendLine(fmt.Sprintf("share port %s abc", box))
+			exeShell.Want("port must be between 3000 and 9999")
+			exeShell.WantPrompt()
 
-			exeShell.disconnect()
+			exeShell.Disconnect()
 		})
 
 		t.Run("public_route", func(t *testing.T) {
@@ -1182,7 +1182,7 @@ func testProxyTokenNamespaceIsolation(t *testing.T, httpPort int) {
 
 	pty, _, keyFile, _ := registerForExeDev(t)
 	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
-	pty.disconnect()
+	pty.Disconnect()
 	waitForSSH(t, box, keyFile)
 
 	// Start HTTP server on the box
@@ -1190,13 +1190,13 @@ func testProxyTokenNamespaceIsolation(t *testing.T, httpPort int) {
 
 	// Make the route private (requires auth)
 	exeShell := sshToExeDev(t, keyFile)
-	exeShell.sendLine(fmt.Sprintf("share port %s 8080", box))
-	exeShell.want("Route updated successfully")
-	exeShell.wantPrompt()
-	exeShell.sendLine(fmt.Sprintf("share set-private %s", box))
-	exeShell.want("Route updated successfully")
-	exeShell.wantPrompt()
-	exeShell.disconnect()
+	exeShell.SendLine(fmt.Sprintf("share port %s 8080", box))
+	exeShell.Want("Route updated successfully")
+	exeShell.WantPrompt()
+	exeShell.SendLine(fmt.Sprintf("share set-private %s", box))
+	exeShell.Want("Route updated successfully")
+	exeShell.WantPrompt()
+	exeShell.Disconnect()
 
 	// Load signer for generating signed tokens
 	ts := loadTestSigner(t, keyFile)
@@ -1522,7 +1522,7 @@ func testProxyPrivateRouteTokenAuth(t *testing.T, httpPort int) {
 
 	pty, _, keyFile, _ := registerForExeDev(t)
 	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
-	pty.disconnect()
+	pty.Disconnect()
 	waitForSSH(t, box, keyFile)
 
 	// Start HTTP server on the box
@@ -1699,7 +1699,7 @@ func testProxyPublicRouteTokenCtx(t *testing.T, httpPort int) {
 
 	pty, _, keyFile, _ := registerForExeDev(t)
 	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
-	pty.disconnect()
+	pty.Disconnect()
 	waitForSSH(t, box, keyFile)
 
 	// Start HTTP server on the box
@@ -1831,7 +1831,7 @@ func testProxyConcurrentRequests(t *testing.T, httpPort int) {
 
 	pty, _, keyFile, _ := registerForExeDev(t)
 	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
-	pty.disconnect()
+	pty.Disconnect()
 	waitForSSH(t, box, keyFile)
 
 	// Create static files to serve: a small index and a larger JS bundle.

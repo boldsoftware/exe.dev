@@ -15,7 +15,7 @@ func TestDesiredStateSync(t *testing.T) {
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
-	defer pty.disconnect()
+	defer pty.Disconnect()
 
 	// Create a box. Default CPUs=2 in test env, which sets AllocatedCpus=2
 	// in the DB and produces cpu.max = "200000 100000".

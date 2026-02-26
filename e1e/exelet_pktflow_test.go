@@ -12,7 +12,7 @@ func TestPktFlowStream(t *testing.T) {
 	noGolden(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
-	defer pty.disconnect()
+	defer pty.Disconnect()
 
 	boxName := newBox(t, pty)
 	defer pty.deleteBox(boxName)

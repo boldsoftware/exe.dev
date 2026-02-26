@@ -22,56 +22,56 @@ func TestResVal(t *testing.T) {
 	// Test minimum validation for regular user
 	t.Run("mem-low", func(t *testing.T) {
 		bn := boxName(t)
-		regularPTY.sendLine(fmt.Sprintf("new --name=%s --memory=1GB", bn))
-		regularPTY.want("--memory must be at least")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine(fmt.Sprintf("new --name=%s --memory=1GB", bn))
+		regularPTY.Want("--memory must be at least")
+		regularPTY.WantPrompt()
 	})
 
 	t.Run("disk-low", func(t *testing.T) {
 		bn := boxName(t)
-		regularPTY.sendLine(fmt.Sprintf("new --name=%s --disk=2GB", bn))
-		regularPTY.want("--disk must be at least")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine(fmt.Sprintf("new --name=%s --disk=2GB", bn))
+		regularPTY.Want("--disk must be at least")
+		regularPTY.WantPrompt()
 	})
 
 	// Test that regular user cannot exceed defaults
 	t.Run("mem-hi", func(t *testing.T) {
 		bn := boxName(t)
 		// For test env: max is max(1GB, 2GB) = 2GB, so asking for 3GB should fail
-		regularPTY.sendLine(fmt.Sprintf("new --name=%s --memory=3GB", bn))
-		regularPTY.want("--memory cannot exceed")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine(fmt.Sprintf("new --name=%s --memory=3GB", bn))
+		regularPTY.Want("--memory cannot exceed")
+		regularPTY.WantPrompt()
 	})
 
 	t.Run("disk-hi", func(t *testing.T) {
 		bn := boxName(t)
 		// Test env default is 11GB, asking for 20GB should fail
-		regularPTY.sendLine(fmt.Sprintf("new --name=%s --disk=20GB", bn))
-		regularPTY.want("--disk cannot exceed")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine(fmt.Sprintf("new --name=%s --disk=20GB", bn))
+		regularPTY.Want("--disk cannot exceed")
+		regularPTY.WantPrompt()
 	})
 
 	t.Run("cpu-hi", func(t *testing.T) {
 		bn := boxName(t)
 		// Default CPUs is 2, so asking for 4 should fail
-		regularPTY.sendLine(fmt.Sprintf("new --name=%s --cpu=4", bn))
-		regularPTY.want("--cpu cannot exceed")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine(fmt.Sprintf("new --name=%s --cpu=4", bn))
+		regularPTY.Want("--cpu cannot exceed")
+		regularPTY.WantPrompt()
 	})
 
 	// Test invalid size formats
 	t.Run("mem-bad", func(t *testing.T) {
 		bn := boxName(t)
-		regularPTY.sendLine(fmt.Sprintf("new --name=%s --memory=abc", bn))
-		regularPTY.want("invalid --memory value")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine(fmt.Sprintf("new --name=%s --memory=abc", bn))
+		regularPTY.Want("invalid --memory value")
+		regularPTY.WantPrompt()
 	})
 
 	t.Run("disk-bad", func(t *testing.T) {
 		bn := boxName(t)
-		regularPTY.sendLine(fmt.Sprintf("new --name=%s --disk=xyz", bn))
-		regularPTY.want("invalid --disk value")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine(fmt.Sprintf("new --name=%s --disk=xyz", bn))
+		regularPTY.Want("invalid --disk value")
+		regularPTY.WantPrompt()
 	})
 
 	// Set elevated per-user limits
@@ -83,29 +83,29 @@ func TestResVal(t *testing.T) {
 	t.Run("s-mem-hi", func(t *testing.T) {
 		bn := boxName(t)
 		// 64GB exceeds the 32GB per-user limit
-		elevatedPTY.sendLine(fmt.Sprintf("new --name=%s --memory=64GB", bn))
-		elevatedPTY.want("--memory cannot exceed")
-		elevatedPTY.wantPrompt()
+		elevatedPTY.SendLine(fmt.Sprintf("new --name=%s --memory=64GB", bn))
+		elevatedPTY.Want("--memory cannot exceed")
+		elevatedPTY.WantPrompt()
 	})
 
 	t.Run("s-cpu-hi", func(t *testing.T) {
 		bn := boxName(t)
 		// 16 CPUs exceeds the 8 CPU per-user limit
-		elevatedPTY.sendLine(fmt.Sprintf("new --name=%s --cpu=16", bn))
-		elevatedPTY.want("--cpu cannot exceed")
-		elevatedPTY.wantPrompt()
+		elevatedPTY.SendLine(fmt.Sprintf("new --name=%s --cpu=16", bn))
+		elevatedPTY.Want("--cpu cannot exceed")
+		elevatedPTY.WantPrompt()
 	})
 
 	t.Run("s-disk-hi", func(t *testing.T) {
 		bn := boxName(t)
 		// 256GB exceeds the 128GB per-user limit
-		elevatedPTY.sendLine(fmt.Sprintf("new --name=%s --disk=256GB", bn))
-		elevatedPTY.want("--disk cannot exceed")
-		elevatedPTY.wantPrompt()
+		elevatedPTY.SendLine(fmt.Sprintf("new --name=%s --disk=256GB", bn))
+		elevatedPTY.Want("--disk cannot exceed")
+		elevatedPTY.WantPrompt()
 	})
 
-	regularPTY.disconnect()
-	elevatedPTY.disconnect()
+	regularPTY.Disconnect()
+	elevatedPTY.Disconnect()
 }
 
 // TestResCreate tests creating VMs with custom resource flags.
@@ -120,10 +120,10 @@ func TestResCreate(t *testing.T) {
 	// Test that regular user can create with defaults (cpu=0 means use default)
 	t.Run("def", func(t *testing.T) {
 		bn := boxName(t)
-		regularPTY.sendLine(fmt.Sprintf("new --name=%s --cpu=0", bn))
-		regularPTY.wantRe("Creating")
-		regularPTY.want("Ready")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine(fmt.Sprintf("new --name=%s --cpu=0", bn))
+		regularPTY.WantRE("Creating")
+		regularPTY.Want("Ready")
+		regularPTY.WantPrompt()
 		regularPTY.deleteBox(bn)
 	})
 
@@ -133,10 +133,10 @@ func TestResCreate(t *testing.T) {
 	t.Run("min", func(t *testing.T) {
 		bn := boxName(t)
 		// 2GB memory (min), 1 CPU - disk uses default since base image is larger than min
-		regularPTY.sendLine(fmt.Sprintf("new --name=%s --memory=2GB --cpu=1", bn))
-		regularPTY.wantRe("Creating")
-		regularPTY.want("Ready")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine(fmt.Sprintf("new --name=%s --memory=2GB --cpu=1", bn))
+		regularPTY.WantRE("Creating")
+		regularPTY.Want("Ready")
+		regularPTY.WantPrompt()
 		regularPTY.deleteBox(bn)
 	})
 
@@ -149,10 +149,10 @@ func TestResCreate(t *testing.T) {
 	t.Run("s-mem", func(t *testing.T) {
 		bn := boxName(t)
 		// 4GB exceeds test default but is within per-user limit of 8GB
-		elevatedPTY.sendLine(fmt.Sprintf("new --name=%s --memory=4GB", bn))
-		elevatedPTY.wantRe("Creating")
-		elevatedPTY.want("Ready")
-		elevatedPTY.wantPrompt()
+		elevatedPTY.SendLine(fmt.Sprintf("new --name=%s --memory=4GB", bn))
+		elevatedPTY.WantRE("Creating")
+		elevatedPTY.Want("Ready")
+		elevatedPTY.WantPrompt()
 		elevatedPTY.deleteBox(bn)
 	})
 
@@ -161,13 +161,13 @@ func TestResCreate(t *testing.T) {
 			t.Skip("skipping CPU test in short mode")
 		}
 		bn := boxName(t)
-		elevatedPTY.sendLine(fmt.Sprintf("new --name=%s --cpu=2", bn))
-		elevatedPTY.wantRe("Creating")
-		elevatedPTY.want("Ready")
-		elevatedPTY.wantPrompt()
+		elevatedPTY.SendLine(fmt.Sprintf("new --name=%s --cpu=2", bn))
+		elevatedPTY.WantRE("Creating")
+		elevatedPTY.Want("Ready")
+		elevatedPTY.WantPrompt()
 		elevatedPTY.deleteBox(bn)
 	})
 
-	regularPTY.disconnect()
-	elevatedPTY.disconnect()
+	regularPTY.Disconnect()
+	elevatedPTY.Disconnect()
 }

@@ -31,7 +31,7 @@ func TestVanillaBox(t *testing.T) {
 
 	pty, cookies, keyFile, email := registerForExeDev(t)
 	boxName := newBox(t, pty)
-	pty.disconnect()
+	pty.Disconnect()
 
 	t.Run("new_box_email_sent", func(t *testing.T) {
 		msg, err := Env.servers.Email.WaitForEmail(email)
@@ -47,9 +47,9 @@ func TestVanillaBox(t *testing.T) {
 		noGolden(t)
 		pty := sshToExeDev(t, keyFile)
 		// They've created a VM, so we should have stopped hinting at them about it.
-		pty.reject("create your first VM")
-		pty.wantPrompt()
-		pty.disconnect()
+		pty.Reject("create your first VM")
+		pty.WantPrompt()
+		pty.Disconnect()
 	})
 
 	waitForSSH(t, boxName, keyFile)
@@ -105,13 +105,13 @@ func TestVanillaBox(t *testing.T) {
 
 	t.Run("ssh", func(t *testing.T) {
 		pty := sshToBox(t, boxName, keyFile)
-		pty.reject("Permission denied") // fail fast on common known failure mode
-		pty.wantPrompt()
-		pty.sendLine("whoami")
-		pty.want("exedev")
-		pty.want("\n") // exedev is also in the prompt! require a newline after it.
-		pty.wantPrompt()
-		pty.disconnect()
+		pty.Reject("Permission denied") // fail fast on common known failure mode
+		pty.WantPrompt()
+		pty.SendLine("whoami")
+		pty.Want("exedev")
+		pty.Want("\n") // exedev is also in the prompt! require a newline after it.
+		pty.WantPrompt()
+		pty.Disconnect()
 	})
 
 	t.Run("scp", func(t *testing.T) {
@@ -154,17 +154,17 @@ func TestVanillaBox(t *testing.T) {
 		noGolden(t)
 		// Test the ssh command in the REPL
 		pty := sshToExeDev(t, keyFile)
-		defer pty.disconnect()
+		defer pty.Disconnect()
 
 		// Run whoami via the ssh command
-		pty.sendLine("ssh " + boxName + " whoami")
-		pty.want("exedev")
-		pty.wantPrompt()
+		pty.SendLine("ssh " + boxName + " whoami")
+		pty.Want("exedev")
+		pty.WantPrompt()
 
 		// Run echo via the ssh command
-		pty.sendLine("ssh " + boxName + " echo hello world")
-		pty.want("hello world")
-		pty.wantPrompt()
+		pty.SendLine("ssh " + boxName + " echo hello world")
+		pty.Want("hello world")
+		pty.WantPrompt()
 	})
 
 	t.Run("docker", func(t *testing.T) {
@@ -281,7 +281,7 @@ func TestVanillaBox(t *testing.T) {
 	t.Run("shelley_install", func(t *testing.T) {
 		// Test the shelley install command
 		pty := sshToExeDev(t, keyFile)
-		defer pty.disconnect()
+		defer pty.Disconnect()
 
 		// Get initial shelley version/timestamp
 		initialVersion := ""
@@ -291,12 +291,12 @@ func TestVanillaBox(t *testing.T) {
 		}
 
 		// Run shelley install command
-		pty.sendLine("shelley install " + boxName)
-		pty.want("Installing Shelley")
-		pty.wantRe("(Backed up|Copied shelley binary)")
-		pty.want("Installed shelley")
-		pty.wantRe("(Restarted|Warning)") // Either succeeded or warned about restart
-		pty.wantPrompt()
+		pty.SendLine("shelley install " + boxName)
+		pty.Want("Installing Shelley")
+		pty.WantRE("(Backed up|Copied shelley binary)")
+		pty.Want("Installed shelley")
+		pty.WantRE("(Restarted|Warning)") // Either succeeded or warned about restart
+		pty.WantPrompt()
 
 		// Verify shelley binary exists and is executable
 		out, err = boxSSHCommand(t, boxName, keyFile, "test", "-x", "/usr/local/bin/shelley", "&&", "echo", "exists").CombinedOutput()
@@ -385,41 +385,41 @@ func TestVanillaBox(t *testing.T) {
 		}
 
 		pty := sshToBox(t, boxName, keyFile)
-		defer pty.disconnect()
+		defer pty.Disconnect()
 
-		pty.wantPrompt()
+		pty.WantPrompt()
 
 		// Test metadata service returns source_ip
-		pty.sendLine("curl --max-time 10 -s http://169.254.169.254/ | jq -r .source_ip")
-		pty.wantPrompt()
+		pty.SendLine("curl --max-time 10 -s http://169.254.169.254/ | jq -r .source_ip")
+		pty.WantPrompt()
 
 		// Test metadata service returns JSON with instance information
-		pty.sendLine("curl --max-time 10 -s http://169.254.169.254/ | jq -M .")
-		pty.want(`"name":`)
-		pty.want(`"source_ip":`)
-		pty.wantPrompt()
+		pty.SendLine("curl --max-time 10 -s http://169.254.169.254/ | jq -M .")
+		pty.Want(`"name":`)
+		pty.Want(`"source_ip":`)
+		pty.WantPrompt()
 
 		// Verify the name matches our box
-		pty.sendLine("curl --max-time 10 -s http://169.254.169.254/ | jq -r .name")
-		pty.want(boxName)
-		pty.wantPrompt()
+		pty.SendLine("curl --max-time 10 -s http://169.254.169.254/ | jq -r .name")
+		pty.Want(boxName)
+		pty.WantPrompt()
 
 		// Test LLM gateway ready endpoint through metadata service
-		pty.sendLine("curl --max-time 10 -s -o /dev/null -w '%{http_code}\\n' http://169.254.169.254/gateway/llm/ready")
-		pty.want("200")
-		pty.wantPrompt()
+		pty.SendLine("curl --max-time 10 -s -o /dev/null -w '%{http_code}\\n' http://169.254.169.254/gateway/llm/ready")
+		pty.Want("200")
+		pty.WantPrompt()
 
 		// Test that unknown paths return 404
-		pty.sendLine("curl --max-time 10 -s -o /dev/null -w '%{http_code}\\n' http://169.254.169.254/does-not-exist")
-		pty.want("404")
-		pty.wantPrompt()
+		pty.SendLine("curl --max-time 10 -s -o /dev/null -w '%{http_code}\\n' http://169.254.169.254/does-not-exist")
+		pty.Want("404")
+		pty.WantPrompt()
 
 		// Test Anthropic API through metadata service (only if ANTHROPIC_API_KEY is set)
 		// We don't include this because it messes with golden files locally.
 		// if os.Getenv("ANTHROPIC_API_KEY") != "" {
-		// 	pty.sendLine(`curl --max-time 30 -s -o /dev/null -w '%{http_code}' http://169.254.169.254/gateway/llm/anthropic/v1/messages -H "content-type: application/json" -H "anthropic-version: 2023-06-01" -d '{"model":"claude-3-5-haiku-20241022","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}'`)
-		// 	pty.want("200")
-		// 	pty.wantPrompt()
+		// 	pty.SendLine(`curl --max-time 30 -s -o /dev/null -w '%{http_code}' http://169.254.169.254/gateway/llm/anthropic/v1/messages -H "content-type: application/json" -H "anthropic-version: 2023-06-01" -d '{"model":"claude-3-5-haiku-20241022","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}'`)
+		// 	pty.Want("200")
+		// 	pty.WantPrompt()
 		// }
 	})
 
@@ -569,16 +569,16 @@ func TestVanillaBox(t *testing.T) {
 		sshCmd := exec.CommandContext(Env.context(t), "ssh", args...)
 		sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
 		ptyHost.attachAndStart(sshCmd)
-		ptyHost.pty.SetPromptRE(regexp.QuoteMeta(boxName) + ".*" + regexp.QuoteMeta("$"))
+		ptyHost.SetPromptRE(regexp.QuoteMeta(boxName) + ".*" + regexp.QuoteMeta("$"))
 
 		// Verify we're in the right box
-		ptyHost.reject("Permission denied")
-		ptyHost.reject(testinfra.ExeDevPrompt) // we don't want to land in the repl!
-		ptyHost.wantPrompt()
-		ptyHost.sendLine("hostname")
-		ptyHost.want(boxName)
-		ptyHost.wantPrompt()
-		ptyHost.disconnect()
+		ptyHost.Reject("Permission denied")
+		ptyHost.Reject(testinfra.ExeDevPrompt) // we don't want to land in the repl!
+		ptyHost.WantPrompt()
+		ptyHost.SendLine("hostname")
+		ptyHost.Want(boxName)
+		ptyHost.WantPrompt()
+		ptyHost.Disconnect()
 	})
 
 	t.Run("proxy_port_dashboard", func(t *testing.T) {
@@ -934,7 +934,7 @@ func TestStandardAlpineBox(t *testing.T) {
 	}
 	// cleanup
 	pty.deleteBox(boxName)
-	pty.disconnect()
+	pty.Disconnect()
 }
 
 func TestBadBoxName(t *testing.T) {
@@ -945,10 +945,10 @@ func TestBadBoxName(t *testing.T) {
 
 	// Attempt to create a box with an invalid name.
 	boxName := "ThisIsNotAValidBoxName!"
-	pty.sendLine("new --name=" + boxName)
-	pty.wantRe("invalid VM name")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.SendLine("new --name=" + boxName)
+	pty.WantRE("invalid VM name")
+	pty.WantPrompt()
+	pty.Disconnect()
 }
 
 func TestNewWithNonexistentImage(t *testing.T) {
@@ -960,13 +960,13 @@ func TestNewWithNonexistentImage(t *testing.T) {
 	// Attempt to create a box with a valid-looking but non-existent image.
 	boxName := boxName(t)
 	image := "ghcr.io/nobody/nonexistent-image-abc123:latest"
-	pty.sendLine(fmt.Sprintf("new --name=%s --image=%s", boxName, image))
+	pty.SendLine(fmt.Sprintf("new --name=%s --image=%s", boxName, image))
 	// Wait for the Creating... message, then for error
-	pty.wantRe("Creating.*" + boxName)
+	pty.WantRE("Creating.*" + boxName)
 	// The user should see a helpful error message about the image not being found/pulled.
-	pty.want("not found or not accessible")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.Want("not found or not accessible")
+	pty.WantPrompt()
+	pty.Disconnect()
 }
 
 func TestNewWithNonexistentTag(t *testing.T) {
@@ -979,13 +979,13 @@ func TestNewWithNonexistentTag(t *testing.T) {
 	// This triggers "manifest unknown" type errors.
 	boxName := boxName(t)
 	image := "alpine:nonexistent-tag-xyz123"
-	pty.sendLine(fmt.Sprintf("new --name=%s --image=%s", boxName, image))
+	pty.SendLine(fmt.Sprintf("new --name=%s --image=%s", boxName, image))
 	// Wait for the Creating... message, then for error
-	pty.wantRe("Creating.*" + boxName)
+	pty.WantRE("Creating.*" + boxName)
 	// The user should see a helpful error message about the image not being found/pulled.
-	pty.want("not found or not accessible")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.Want("not found or not accessible")
+	pty.WantPrompt()
+	pty.Disconnect()
 }
 
 func TestNewWithPrivateImage(t *testing.T) {
@@ -999,13 +999,13 @@ func TestNewWithPrivateImage(t *testing.T) {
 	boxName := boxName(t)
 	// Use a private GitHub Container Registry image that we don't have access to.
 	image := "ghcr.io/boldsoftware/private-nonexistent:latest"
-	pty.sendLine(fmt.Sprintf("new --name=%s --image=%s", boxName, image))
+	pty.SendLine(fmt.Sprintf("new --name=%s --image=%s", boxName, image))
 	// Wait for the Creating... message, then for error
-	pty.wantRe("Creating.*" + boxName)
+	pty.WantRE("Creating.*" + boxName)
 	// The user should see a helpful error message about the image not being found/pulled.
-	pty.want("not found or not accessible")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.Want("not found or not accessible")
+	pty.WantPrompt()
+	pty.Disconnect()
 }
 
 func TestNewWithPrompt(t *testing.T) {
@@ -1026,26 +1026,26 @@ func TestNewWithPrompt(t *testing.T) {
 		` --command="/usr/local/bin/shelley -debug -db /home/exedev/.shelley/shelley.db -config /exe.dev/shelley.json serve -port 9999"`,
 		boxName, prompt,
 	)
-	pty.sendLine(command)
-	pty.reject("Sorry")
-	pty.wantRe("Creating .*" + boxName)
+	pty.SendLine(command)
+	pty.Reject("Sorry")
+	pty.WantRE("Creating .*" + boxName)
 	// Calls to action
-	pty.want("Coding agent")
-	pty.want("App")
-	pty.want("SSH")
+	pty.Want("Coding agent")
+	pty.Want("App")
+	pty.Want("SSH")
 
 	// Expect Shelley prompt execution to start
-	pty.want("Shelley...")
+	pty.Want("Shelley...")
 
 	// With predictable model, we should get a quick response
-	pty.want("Well, hi there!") // Expected response from predictable service for "hello"
+	pty.Want("Well, hi there!") // Expected response from predictable service for "hello"
 
 	// Should return to prompt after Shelley completes
-	pty.wantPrompt()
+	pty.WantPrompt()
 
 	// Cleanup
 	pty.deleteBox(boxName)
-	pty.disconnect()
+	pty.Disconnect()
 }
 
 func TestNewWithPromptDefaultModel(t *testing.T) {
@@ -1075,16 +1075,16 @@ func TestNewWithPromptDefaultModel(t *testing.T) {
 		` --command="/usr/local/bin/shelley -debug -db /home/exedev/.shelley/shelley.db -config /exe.dev/shelley.json serve -port 9999"`,
 		boxName, prompt,
 	)
-	pty.sendLine(command)
-	pty.reject("Sorry")
-	pty.wantRe("Creating .*" + boxName)
+	pty.SendLine(command)
+	pty.Reject("Sorry")
+	pty.WantRE("Creating .*" + boxName)
 
 	// Expect Shelley prompt execution to start
-	pty.want("Shelley...")
+	pty.Want("Shelley...")
 
 	// Wait for completion - we don't know exactly what the LLM will say,
 	// but we should get back to a prompt eventually (with timeout via expectPty)
-	pty.wantPrompt()
+	pty.WantPrompt()
 
 	// Verify the command was executed by checking if /tmp/foo exists
 	out, err := boxSSHCommand(t, boxName, keyFile, "test", "-f", "/tmp/foo", "&&", "echo", "exists").CombinedOutput()
@@ -1094,7 +1094,7 @@ func TestNewWithPromptDefaultModel(t *testing.T) {
 
 	// Cleanup
 	pty.deleteBox(boxName)
-	pty.disconnect()
+	pty.Disconnect()
 }
 
 func TestBoxRestartShutdown(t *testing.T) {
@@ -1104,33 +1104,33 @@ func TestBoxRestartShutdown(t *testing.T) {
 
 	pty, _, keyFile, _ := registerForExeDev(t)
 	boxName := newBox(t, pty)
-	pty.disconnect()
+	pty.Disconnect()
 	waitForSSH(t, boxName, keyFile)
 
 	t.Run("restart", func(t *testing.T) {
 		box := sshToBox(t, boxName, keyFile)
-		box.wantPrompt()
-		box.sendLine("echo restart-test > /home/exedev/restart.txt")
-		box.wantPrompt()
-		box.sendLine("sudo reboot")
-		box.wantEOF()
+		box.WantPrompt()
+		box.SendLine("echo restart-test > /home/exedev/restart.txt")
+		box.WantPrompt()
+		box.SendLine("sudo reboot")
+		box.WantEOF()
 
 		// Wait for box to come back up and verify marker file remains.
 		waitForSSH(t, boxName, keyFile)
 		box = sshToBox(t, boxName, keyFile)
 
-		box.wantPrompt()
-		box.sendLine("cat /home/exedev/restart.txt")
-		box.want("restart-test")
-		box.wantPrompt()
-		box.disconnect()
+		box.WantPrompt()
+		box.SendLine("cat /home/exedev/restart.txt")
+		box.Want("restart-test")
+		box.WantPrompt()
+		box.Disconnect()
 	})
 
 	t.Run("shutdown", func(t *testing.T) {
 		box := sshToBox(t, boxName, keyFile)
-		box.wantPrompt()
-		box.sendLine("sudo shutdown now")
-		box.wantEOF()
+		box.WantPrompt()
+		box.SendLine("sudo shutdown now")
+		box.WantEOF()
 
 		// After shutdown, SSH should not connect.
 		// Set a short timeout here to avoid long waits.
@@ -1167,42 +1167,42 @@ func TestNewWithEnvVars(t *testing.T) {
 
 	// Create a box with environment variables including simple values and special characters
 	boxName := boxName(t)
-	pty.sendLine(fmt.Sprintf("new --name=%s --env TEST_VAR1=value1 --env TEST_VAR2=value2 --env 'GREETING=hello world' --env 'COMMAND=echo $HOME' --env 'QUOTE=it'\"'\"'s great'", boxName))
-	pty.wantRe("Creating .*" + boxName)
-	pty.want("Ready")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.SendLine(fmt.Sprintf("new --name=%s --env TEST_VAR1=value1 --env TEST_VAR2=value2 --env 'GREETING=hello world' --env 'COMMAND=echo $HOME' --env 'QUOTE=it'\"'\"'s great'", boxName))
+	pty.WantRE("Creating .*" + boxName)
+	pty.Want("Ready")
+	pty.WantPrompt()
+	pty.Disconnect()
 
 	// SSH into the box and verify the environment variables are set
 	waitForSSH(t, boxName, keyFile)
 	box := sshToBox(t, boxName, keyFile)
-	box.wantPrompt()
+	box.WantPrompt()
 
 	// Check simple values
-	box.sendLine("echo $TEST_VAR1")
-	box.want("value1")
-	box.wantPrompt()
+	box.SendLine("echo $TEST_VAR1")
+	box.Want("value1")
+	box.WantPrompt()
 
-	box.sendLine("echo $TEST_VAR2")
-	box.want("value2")
-	box.wantPrompt()
+	box.SendLine("echo $TEST_VAR2")
+	box.Want("value2")
+	box.WantPrompt()
 
 	// Check GREETING (contains space)
-	box.sendLine("echo $GREETING")
-	box.want("hello world")
-	box.wantPrompt()
+	box.SendLine("echo $GREETING")
+	box.Want("hello world")
+	box.WantPrompt()
 
 	// Check COMMAND (contains special chars that should NOT be expanded)
-	box.sendLine("echo $COMMAND")
-	box.want("echo $HOME")
-	box.wantPrompt()
+	box.SendLine("echo $COMMAND")
+	box.Want("echo $HOME")
+	box.WantPrompt()
 
 	// Check QUOTE (contains single quote)
-	box.sendLine("echo $QUOTE")
-	box.want("it's great")
-	box.wantPrompt()
+	box.SendLine("echo $QUOTE")
+	box.Want("it's great")
+	box.WantPrompt()
 
-	box.disconnect()
+	box.Disconnect()
 
 	// Clean up
 	cleanupBox(t, keyFile, boxName)
@@ -1216,18 +1216,18 @@ func TestNewWithInvalidEnvVarFormat(t *testing.T) {
 
 	// Try to create a box with invalid environment variable format (missing =)
 	boxName := boxName(t)
-	pty.sendLine(fmt.Sprintf("new --name=%s --env INVALID_VAR", boxName))
-	pty.want("invalid environment variable format")
-	pty.want("must be KEY=VALUE")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.SendLine(fmt.Sprintf("new --name=%s --env INVALID_VAR", boxName))
+	pty.Want("invalid environment variable format")
+	pty.Want("must be KEY=VALUE")
+	pty.WantPrompt()
+	pty.Disconnect()
 
 	// Verify the box was not created
 	cleanup := sshToExeDev(t, keyFile)
-	cleanup.sendLine(fmt.Sprintf("rm %s", boxName))
-	cleanup.want("not found")
-	cleanup.wantPrompt()
-	cleanup.disconnect()
+	cleanup.SendLine(fmt.Sprintf("rm %s", boxName))
+	cleanup.Want("not found")
+	cleanup.WantPrompt()
+	cleanup.Disconnect()
 }
 
 // TestNewBoxVariants tests various box creation flags that don't require deep verification.
@@ -1247,10 +1247,10 @@ func TestNewBoxVariants(t *testing.T) {
 		boxName += strings.Repeat("a", 52-len(boxName))
 		testinfra.AddCanonicalization(boxName, "BOX_NAME")
 	}
-	pty.sendLine(fmt.Sprintf("new --name=%s -no-email", boxName))
-	pty.wantRe("Creating .*" + boxName)
-	pty.want("Ready")
-	pty.wantPrompt()
+	pty.SendLine(fmt.Sprintf("new --name=%s -no-email", boxName))
+	pty.WantRE("Creating .*" + boxName)
+	pty.Want("Ready")
+	pty.WantPrompt()
 
 	// Clean up
 	cleanupBox(t, keyFile, boxName)
@@ -1263,7 +1263,7 @@ func TestRestartCommand(t *testing.T) {
 
 	pty, _, keyFile, _ := registerForExeDev(t)
 	boxName := newBox(t, pty)
-	pty.disconnect()
+	pty.Disconnect()
 	waitForSSH(t, boxName, keyFile)
 
 	// Write marker file to verify disk persistence across restart
@@ -1311,11 +1311,11 @@ func TestRestartCommand(t *testing.T) {
 
 	// Run restart command from REPL
 	repl := sshToExeDev(t, keyFile)
-	repl.sendLine("restart " + boxName)
-	repl.want("Restarting")
-	repl.want("restarted successfully")
-	repl.wantPrompt()
-	repl.disconnect()
+	repl.SendLine("restart " + boxName)
+	repl.Want("Restarting")
+	repl.Want("restarted successfully")
+	repl.WantPrompt()
+	repl.Disconnect()
 
 	// Wait for SSH to come back up
 	waitForSSH(t, boxName, keyFile)
@@ -1377,7 +1377,7 @@ func TestRestartStoppedVM(t *testing.T) {
 
 	pty, _, keyFile, _ := registerForExeDev(t)
 	boxName := newBox(t, pty)
-	pty.disconnect()
+	pty.Disconnect()
 	waitForSSH(t, boxName, keyFile)
 
 	// Write marker file to verify disk persistence
@@ -1427,9 +1427,9 @@ func TestRestartStoppedVM(t *testing.T) {
 
 	// Stop the VM by running shutdown from within
 	box := sshToBox(t, boxName, keyFile)
-	box.wantPrompt()
-	box.sendLine("sudo shutdown now") // Broken pipe warning comes from here and is to be expected. TODO find a way to supress the warning.
-	box.wantEOF()
+	box.WantPrompt()
+	box.SendLine("sudo shutdown now") // Broken pipe warning comes from here and is to be expected. TODO find a way to supress the warning.
+	box.WantEOF()
 
 	// Wait for SSH to become unavailable (VM is stopped)
 	for range 50 {
@@ -1442,11 +1442,11 @@ func TestRestartStoppedVM(t *testing.T) {
 
 	// Now restart the stopped VM using the restart command
 	repl := sshToExeDev(t, keyFile)
-	repl.sendLine("restart " + boxName)
-	repl.want("Restarting")
-	repl.want("restarted successfully")
-	repl.wantPrompt()
-	repl.disconnect()
+	repl.SendLine("restart " + boxName)
+	repl.Want("Restarting")
+	repl.Want("restarted successfully")
+	repl.WantPrompt()
+	repl.Disconnect()
 
 	// Wait for SSH to come back up
 	waitForSSH(t, boxName, keyFile)

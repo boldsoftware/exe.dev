@@ -21,7 +21,7 @@ func TestExeDevAPI(t *testing.T) {
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
-	defer pty.disconnect()
+	defer pty.Disconnect()
 
 	t.Run("ls_empty", func(t *testing.T) {
 		raw, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "ls", "--json")
@@ -111,9 +111,9 @@ func TestExeDevAPI(t *testing.T) {
 
 	// Try to create a duplicate box using the repl.
 	testinfra.AddCanonicalization(nbo.VMName, "VM_NAME")
-	pty.sendLine("new --name=" + nbo.VMName)
-	pty.wantRe("VM name .*" + regexp.QuoteMeta(nbo.VMName) + ".* is not available")
-	pty.wantPrompt()
+	pty.SendLine("new --name=" + nbo.VMName)
+	pty.WantRE("VM name .*" + regexp.QuoteMeta(nbo.VMName) + ".* is not available")
+	pty.WantPrompt()
 
 	// ls --json -l should work (not error); -l is a quiet no-op with --json.
 	vloL := runParseExeDevJSON[vmListOutput](t, keyFile, "ls", "--json", "-l")
@@ -235,9 +235,9 @@ func TestExeDevAPI(t *testing.T) {
 
 	// Confirm pty session is still usable after key deletion,
 	// and that initialKey is not listed.
-	pty.sendLine("whoami")
-	pty.reject(initialKey)
-	pty.wantPrompt()
+	pty.SendLine("whoami")
+	pty.Reject(initialKey)
+	pty.WantPrompt()
 
 	// Verify that we can't log in using the deleted key.
 	sshArgs := append(Env.servers.BaseSSHArgs("", keyFile), "whoami")

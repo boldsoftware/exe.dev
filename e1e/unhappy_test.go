@@ -32,14 +32,14 @@ func TestRequiresSSHKey(t *testing.T) {
 	)
 	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
 
-	pty.attachAndStart(sshCmd)
+	pty.AttachAndStart(sshCmd)
 
-	pty.want("SSH keys are required to access exe.dev")
-	pty.want("Press Enter to close this connection.")
-	pty.sendLine("")
+	pty.Want("SSH keys are required to access exe.dev")
+	pty.Want("Press Enter to close this connection.")
+	pty.SendLine("")
 	// Confirm we have the correct auth methods advertised.
-	pty.want("Permission denied (publickey,keyboard-interactive).")
-	pty.wantEOF()
+	pty.Want("Permission denied (publickey,keyboard-interactive).")
+	pty.WantEOF()
 }
 
 func TestExeDevRejectsSCP(t *testing.T) {
@@ -49,7 +49,7 @@ func TestExeDevRejectsSCP(t *testing.T) {
 	noGolden(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
-	pty.disconnect()
+	pty.Disconnect()
 
 	pty = makePty(t, "scp localhost")
 
@@ -71,9 +71,9 @@ func TestExeDevRejectsSCP(t *testing.T) {
 	)
 	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
 
-	pty.attachAndStart(sshCmd)
+	pty.AttachAndStart(sshCmd)
 
-	pty.reject("subsystem request failed")
-	pty.wantRe(`scp/sftp is not supported on the exe.dev server.|command not found: "scp -t`)
-	pty.wantEOF()
+	pty.Reject("subsystem request failed")
+	pty.WantRE(`scp/sftp is not supported on the exe.dev server.|command not found: "scp -t`)
+	pty.WantEOF()
 }

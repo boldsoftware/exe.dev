@@ -24,9 +24,9 @@ func TestUserLimits(t *testing.T) {
 	t.Run("no-lim", func(t *testing.T) {
 		bn := boxName(t)
 		// Test env default memory is 1GB (stage.Test()), asking for 3GB should fail
-		regularPTY.sendLine(fmt.Sprintf("new --name=%s --memory=3GB", bn))
-		regularPTY.want("--memory cannot exceed")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine(fmt.Sprintf("new --name=%s --memory=3GB", bn))
+		regularPTY.Want("--memory cannot exceed")
+		regularPTY.WantPrompt()
 	})
 
 	// Now set custom limits for the user via debug endpoint
@@ -38,10 +38,10 @@ func TestUserLimits(t *testing.T) {
 	t.Run("with-lim", func(t *testing.T) {
 		bn := boxName(t)
 		// 3GB should now be allowed (within our 4GB limit)
-		regularPTY.sendLine(fmt.Sprintf("new --name=%s --memory=3GB", bn))
-		regularPTY.wantRe("Creating")
-		regularPTY.want("Ready")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine(fmt.Sprintf("new --name=%s --memory=3GB", bn))
+		regularPTY.WantRE("Creating")
+		regularPTY.Want("Ready")
+		regularPTY.WantPrompt()
 		regularPTY.deleteBox(bn)
 	})
 
@@ -49,9 +49,9 @@ func TestUserLimits(t *testing.T) {
 	t.Run("capped", func(t *testing.T) {
 		bn := boxName(t)
 		// 5GB exceeds the 4GB custom limit
-		regularPTY.sendLine(fmt.Sprintf("new --name=%s --memory=5GB", bn))
-		regularPTY.want("--memory cannot exceed")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine(fmt.Sprintf("new --name=%s --memory=5GB", bn))
+		regularPTY.Want("--memory cannot exceed")
+		regularPTY.WantPrompt()
 	})
 
 	// Clear the limits
@@ -62,12 +62,12 @@ func TestUserLimits(t *testing.T) {
 	// Now user should be back to defaults
 	t.Run("reset", func(t *testing.T) {
 		bn := boxName(t)
-		regularPTY.sendLine(fmt.Sprintf("new --name=%s --memory=3GB", bn))
-		regularPTY.want("--memory cannot exceed")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine(fmt.Sprintf("new --name=%s --memory=3GB", bn))
+		regularPTY.Want("--memory cannot exceed")
+		regularPTY.WantPrompt()
 	})
 
-	regularPTY.disconnect()
+	regularPTY.Disconnect()
 }
 
 // TestUserLimitsCp tests that cp command also respects user limits.
@@ -80,16 +80,16 @@ func TestUserLimitsCp(t *testing.T) {
 
 	// Create a source box with default resources
 	sourceBox := newBox(t, pty)
-	pty.disconnect()
+	pty.Disconnect()
 	waitForSSH(t, sourceBox, keyFile)
 
 	// Try to copy with higher memory - should fail without custom limits
 	t.Run("no-lim", func(t *testing.T) {
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine(fmt.Sprintf("cp %s copied-test --memory=3GB", sourceBox))
-		repl.want("--memory cannot exceed")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine(fmt.Sprintf("cp %s copied-test --memory=3GB", sourceBox))
+		repl.Want("--memory cannot exceed")
+		repl.WantPrompt()
+		repl.Disconnect()
 	})
 
 	// Set custom limits
@@ -101,10 +101,10 @@ func TestUserLimitsCp(t *testing.T) {
 	t.Run("with-lim", func(t *testing.T) {
 		copiedBox := "copied-with-mem"
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine(fmt.Sprintf("cp %s %s --memory=3GB", sourceBox, copiedBox))
-		repl.want("Copying")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine(fmt.Sprintf("cp %s %s --memory=3GB", sourceBox, copiedBox))
+		repl.Want("Copying")
+		repl.WantPrompt()
+		repl.Disconnect()
 
 		// Wait for copied box and cleanup
 		waitForSSH(t, copiedBox, keyFile)

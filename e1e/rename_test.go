@@ -24,32 +24,32 @@ func TestRename(t *testing.T) {
 	// Run error cases that don't need VMs first
 	t.Run("Usage", func(t *testing.T) {
 		// Test with no arguments
-		pty.sendLine("rename")
-		pty.want("usage")
-		pty.wantPrompt()
+		pty.SendLine("rename")
+		pty.Want("usage")
+		pty.WantPrompt()
 
 		// Test with one argument
-		pty.sendLine("rename onlyarg")
-		pty.want("usage")
-		pty.wantPrompt()
+		pty.SendLine("rename onlyarg")
+		pty.Want("usage")
+		pty.WantPrompt()
 
 		// Test with three arguments
-		pty.sendLine("rename arg1 arg2 arg3")
-		pty.want("usage")
-		pty.wantPrompt()
+		pty.SendLine("rename arg1 arg2 arg3")
+		pty.Want("usage")
+		pty.WantPrompt()
 	})
 
 	t.Run("NotFound", func(t *testing.T) {
 		// Try to rename a non-existent VM
-		pty.sendLine("rename nonexistent-vm-abc newname-xyz")
-		pty.want("not found")
-		pty.wantPrompt()
+		pty.SendLine("rename nonexistent-vm-abc newname-xyz")
+		pty.Want("not found")
+		pty.WantPrompt()
 	})
 
 	// Create two VMs upfront - they'll be shared by subtests
 	box1 := newBox(t, pty)
 	box2 := newBox(t, pty)
-	pty.disconnect()
+	pty.Disconnect()
 
 	waitForSSH(t, box1, keyFile)
 	waitForSSH(t, box2, keyFile)
@@ -58,28 +58,28 @@ func TestRename(t *testing.T) {
 	t.Run("InvalidNewName", func(t *testing.T) {
 		// Try to rename to an invalid name (too short)
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine("rename " + box1 + " abc")
-		repl.want("invalid")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine("rename " + box1 + " abc")
+		repl.Want("invalid")
+		repl.WantPrompt()
+		repl.Disconnect()
 	})
 
 	t.Run("NameConflict", func(t *testing.T) {
 		// Try to rename box1 to box2's name
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine("rename " + box1 + " " + box2)
-		repl.want("already exists")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine("rename " + box1 + " " + box2)
+		repl.Want("already exists")
+		repl.WantPrompt()
+		repl.Disconnect()
 	})
 
 	t.Run("SameName", func(t *testing.T) {
 		// Try to rename box1 to itself - should be a no-op
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine("rename " + box1 + " " + box1)
-		repl.want("already named")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine("rename " + box1 + " " + box1)
+		repl.Want("already named")
+		repl.WantPrompt()
+		repl.Disconnect()
 	})
 
 	// Test that the metadata service returns the correct box name after rename.
@@ -129,10 +129,10 @@ func TestRename(t *testing.T) {
 		// Rename the box
 		newName := "box-metadata-renamed"
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine("rename " + box1 + " " + newName)
-		repl.want(newName)
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine("rename " + box1 + " " + newName)
+		repl.Want(newName)
+		repl.WantPrompt()
+		repl.Disconnect()
 
 		// Wait for SSH with new name
 		waitForSSH(t, newName, keyFile)
@@ -168,20 +168,20 @@ func TestRename(t *testing.T) {
 		// Rename the VM using the rename command
 		newName := "box-reidentified"
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine("rename " + box1 + " " + newName)
-		repl.want("-reidentified")
-		repl.want(box1)
-		repl.want(newName)
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine("rename " + box1 + " " + newName)
+		repl.Want("-reidentified")
+		repl.Want(box1)
+		repl.Want(newName)
+		repl.WantPrompt()
+		repl.Disconnect()
 
 		// Verify the old name no longer works in ls output
 		repl = sshToExeDev(t, keyFile)
-		repl.sendLine("ls")
-		repl.reject(box1)
-		repl.want(newName)
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine("ls")
+		repl.Reject(box1)
+		repl.Want(newName)
+		repl.WantPrompt()
+		repl.Disconnect()
 
 		// Wait for SSH to be ready with the new name
 		waitForSSH(t, newName, keyFile)
@@ -254,10 +254,10 @@ func TestRename(t *testing.T) {
 		oldName := box2
 		newName := "box-cookietest-renamed"
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine("rename " + box2 + " " + newName)
-		repl.want(newName)
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine("rename " + box2 + " " + newName)
+		repl.Want(newName)
+		repl.WantPrompt()
+		repl.Disconnect()
 
 		// Update box2 for cleanup
 		box2 = newName

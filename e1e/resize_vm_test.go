@@ -21,18 +21,18 @@ func TestResizeDisk(t *testing.T) {
 	supportPTY, _, supportKeyFile, supportEmail := registerForExeDevWithEmail(t, "support@test-resize-disk.example")
 
 	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
-	ownerPTY.wantPrompt()
-	ownerPTY.disconnect()
+	ownerPTY.WantPrompt()
+	ownerPTY.Disconnect()
 
 	waitForSSH(t, box, ownerKeyFile)
 
 	// Test that non-support user cannot use resize --disk
 	t.Run("non_support_user_denied", func(t *testing.T) {
 		ownerPTY = sshToExeDev(t, ownerKeyFile)
-		ownerPTY.sendLine(fmt.Sprintf("resize %s --disk=20", box))
-		ownerPTY.want("not in the sudoers file")
-		ownerPTY.wantPrompt()
-		ownerPTY.disconnect()
+		ownerPTY.SendLine(fmt.Sprintf("resize %s --disk=20", box))
+		ownerPTY.Want("not in the sudoers file")
+		ownerPTY.WantPrompt()
+		ownerPTY.Disconnect()
 	})
 
 	enableRootSupport(t, supportEmail)
@@ -101,11 +101,11 @@ func TestResizeDisk(t *testing.T) {
 	// Restart VM
 	t.Run("restart_vm", func(t *testing.T) {
 		repl := sshToExeDev(t, ownerKeyFile)
-		repl.sendLine("restart " + box)
-		repl.want("Restarting")
-		repl.want("restarted successfully")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine("restart " + box)
+		repl.Want("Restarting")
+		repl.Want("restarted successfully")
+		repl.WantPrompt()
+		repl.Disconnect()
 		waitForSSH(t, box, ownerKeyFile)
 	})
 
@@ -162,20 +162,20 @@ func TestResizeDisk(t *testing.T) {
 	t.Run("disk_growth_limit_enforced", func(t *testing.T) {
 		supportPTY = sshToExeDev(t, supportKeyFile)
 		// Current disk is ~12GB, asking for 300GB would be ~288GB growth which exceeds 250GB limit
-		supportPTY.sendLine(fmt.Sprintf("resize %s --disk=300", box))
-		supportPTY.want("cannot exceed")
-		supportPTY.wantPrompt()
-		supportPTY.disconnect()
+		supportPTY.SendLine(fmt.Sprintf("resize %s --disk=300", box))
+		supportPTY.Want("cannot exceed")
+		supportPTY.WantPrompt()
+		supportPTY.Disconnect()
 	})
 
 	// Test that shrinking is not allowed
 	t.Run("shrink_not_allowed", func(t *testing.T) {
 		supportPTY = sshToExeDev(t, supportKeyFile)
 		// Try to shrink to 5GB when current is ~12GB
-		supportPTY.sendLine(fmt.Sprintf("resize %s --disk=5", box))
-		supportPTY.want("must be larger than current size")
-		supportPTY.wantPrompt()
-		supportPTY.disconnect()
+		supportPTY.SendLine(fmt.Sprintf("resize %s --disk=5", box))
+		supportPTY.Want("must be larger than current size")
+		supportPTY.WantPrompt()
+		supportPTY.Disconnect()
 	})
 
 	cleanupBox(t, ownerKeyFile, box)
@@ -193,8 +193,8 @@ func TestResizeVM(t *testing.T) {
 
 	// Owner creates a box
 	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
-	ownerPTY.wantPrompt()
-	ownerPTY.disconnect()
+	ownerPTY.WantPrompt()
+	ownerPTY.Disconnect()
 
 	// Wait for SSH to be ready
 	waitForSSH(t, box, ownerKeyFile)
@@ -202,10 +202,10 @@ func TestResizeVM(t *testing.T) {
 	// Test that non-support user cannot use resize command
 	t.Run("non_support_user_denied", func(t *testing.T) {
 		ownerPTY = sshToExeDev(t, ownerKeyFile)
-		ownerPTY.sendLine(fmt.Sprintf("resize %s --memory=2", box))
-		ownerPTY.want("not in the sudoers file")
-		ownerPTY.wantPrompt()
-		ownerPTY.disconnect()
+		ownerPTY.SendLine(fmt.Sprintf("resize %s --memory=2", box))
+		ownerPTY.Want("not in the sudoers file")
+		ownerPTY.WantPrompt()
+		ownerPTY.Disconnect()
 	})
 
 	// Enable root_support for the support user
@@ -345,11 +345,11 @@ func TestResizeVM(t *testing.T) {
 	// Restart the VM so changes take effect
 	t.Run("restart_vm", func(t *testing.T) {
 		repl := sshToExeDev(t, ownerKeyFile)
-		repl.sendLine("restart " + box)
-		repl.want("Restarting")
-		repl.want("restarted successfully")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine("restart " + box)
+		repl.Want("Restarting")
+		repl.Want("restarted successfully")
+		repl.WantPrompt()
+		repl.Disconnect()
 
 		// Wait for SSH to come back up
 		waitForSSH(t, box, ownerKeyFile)
@@ -383,42 +383,42 @@ func TestResizeVM(t *testing.T) {
 	// Test limits
 	t.Run("memory_max_limit_enforced", func(t *testing.T) {
 		supportPTY = sshToExeDev(t, supportKeyFile)
-		supportPTY.sendLine(fmt.Sprintf("resize %s --memory=64", box)) // 64GB > 32GB max
-		supportPTY.want("cannot exceed")
-		supportPTY.wantPrompt()
-		supportPTY.disconnect()
+		supportPTY.SendLine(fmt.Sprintf("resize %s --memory=64", box)) // 64GB > 32GB max
+		supportPTY.Want("cannot exceed")
+		supportPTY.WantPrompt()
+		supportPTY.Disconnect()
 	})
 
 	t.Run("memory_min_limit_enforced", func(t *testing.T) {
 		supportPTY = sshToExeDev(t, supportKeyFile)
-		supportPTY.sendLine(fmt.Sprintf("resize %s --memory=1", box)) // 1GB < 2GB min
-		supportPTY.want("at least")
-		supportPTY.wantPrompt()
-		supportPTY.disconnect()
+		supportPTY.SendLine(fmt.Sprintf("resize %s --memory=1", box)) // 1GB < 2GB min
+		supportPTY.Want("at least")
+		supportPTY.WantPrompt()
+		supportPTY.Disconnect()
 	})
 
 	t.Run("cpu_max_limit_enforced", func(t *testing.T) {
 		supportPTY = sshToExeDev(t, supportKeyFile)
-		supportPTY.sendLine(fmt.Sprintf("resize %s --cpu=16", box)) // 16 > 8 max for support
-		supportPTY.want("cannot exceed")
-		supportPTY.wantPrompt()
-		supportPTY.disconnect()
+		supportPTY.SendLine(fmt.Sprintf("resize %s --cpu=16", box)) // 16 > 8 max for support
+		supportPTY.Want("cannot exceed")
+		supportPTY.WantPrompt()
+		supportPTY.Disconnect()
 	})
 
 	t.Run("missing_args_rejected", func(t *testing.T) {
 		supportPTY = sshToExeDev(t, supportKeyFile)
-		supportPTY.sendLine("resize")
-		supportPTY.want("usage: resize")
-		supportPTY.wantPrompt()
-		supportPTY.disconnect()
+		supportPTY.SendLine("resize")
+		supportPTY.Want("usage: resize")
+		supportPTY.WantPrompt()
+		supportPTY.Disconnect()
 	})
 
 	t.Run("no_options_rejected", func(t *testing.T) {
 		supportPTY = sshToExeDev(t, supportKeyFile)
-		supportPTY.sendLine(fmt.Sprintf("resize %s", box))
-		supportPTY.want("At least one of")
-		supportPTY.wantPrompt()
-		supportPTY.disconnect()
+		supportPTY.SendLine(fmt.Sprintf("resize %s", box))
+		supportPTY.Want("At least one of")
+		supportPTY.WantPrompt()
+		supportPTY.Disconnect()
 	})
 
 	// Cleanup

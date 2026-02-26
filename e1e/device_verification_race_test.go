@@ -29,23 +29,23 @@ func TestDeviceVerificationDoubleClick(t *testing.T) {
 	email := t.Name() + testinfra.FakeEmailSuffix
 	keyFile1, _ := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile1)
-	pty.want(testinfra.Banner)
-	pty.want("Please enter your email")
-	pty.sendLine(email)
-	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty.Want(testinfra.Banner)
+	pty.Want("Please enter your email")
+	pty.SendLine(email)
+	pty.WantRE("Verification email sent to.*" + regexp.QuoteMeta(email))
 	waitForEmailAndVerify(t, email)
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.Want("Email verified successfully")
+	pty.Want("Registration complete")
+	pty.WantPrompt()
+	pty.Disconnect()
 
 	// Step 2: Generate a NEW SSH key and SSH in with it (triggers device verification)
 	keyFile2, _ := genSSHKey(t)
 	pty2 := sshToExeDev(t, keyFile2)
-	pty2.want(testinfra.Banner)
-	pty2.want("Please enter your email")
-	pty2.sendLine(email)
-	pty2.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty2.Want(testinfra.Banner)
+	pty2.Want("Please enter your email")
+	pty2.SendLine(email)
+	pty2.WantRE("Verification email sent to.*" + regexp.QuoteMeta(email))
 
 	// Step 3: Get the verification email and extract the link
 	msg, err := Env.servers.Email.WaitForEmail(email)
@@ -132,10 +132,10 @@ func TestDeviceVerificationDoubleClick(t *testing.T) {
 	}
 
 	// Step 7: The SSH session should have been notified of verification
-	pty2.want("Email verified successfully")
-	pty2.want("Registration complete")
-	pty2.wantPrompt()
-	pty2.disconnect()
+	pty2.Want("Email verified successfully")
+	pty2.Want("Registration complete")
+	pty2.WantPrompt()
+	pty2.Disconnect()
 }
 
 // TestDeviceVerificationKeyTheft tests that two different users cannot both
@@ -153,29 +153,29 @@ func TestDeviceVerificationKeyTheft(t *testing.T) {
 	aliceEmail := t.Name() + "-alice" + testinfra.FakeEmailSuffix
 	aliceKey, _ := genSSHKey(t)
 	pty := sshToExeDev(t, aliceKey)
-	pty.want(testinfra.Banner)
-	pty.want("Please enter your email")
-	pty.sendLine(aliceEmail)
-	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(aliceEmail))
+	pty.Want(testinfra.Banner)
+	pty.Want("Please enter your email")
+	pty.SendLine(aliceEmail)
+	pty.WantRE("Verification email sent to.*" + regexp.QuoteMeta(aliceEmail))
 	waitForEmailAndVerify(t, aliceEmail)
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.Want("Email verified successfully")
+	pty.Want("Registration complete")
+	pty.WantPrompt()
+	pty.Disconnect()
 
 	// Step 2: Register User B (bob) with his own key
 	bobEmail := t.Name() + "-bob" + testinfra.FakeEmailSuffix
 	bobKey, _ := genSSHKey(t)
 	pty = sshToExeDev(t, bobKey)
-	pty.want(testinfra.Banner)
-	pty.want("Please enter your email")
-	pty.sendLine(bobEmail)
-	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(bobEmail))
+	pty.Want(testinfra.Banner)
+	pty.Want("Please enter your email")
+	pty.SendLine(bobEmail)
+	pty.WantRE("Verification email sent to.*" + regexp.QuoteMeta(bobEmail))
 	waitForEmailAndVerify(t, bobEmail)
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.Want("Email verified successfully")
+	pty.Want("Registration complete")
+	pty.WantPrompt()
+	pty.Disconnect()
 
 	// Step 3: Generate a shared key that both users will try to register
 	sharedKeyFile, _ := genSSHKey(t)
@@ -183,17 +183,17 @@ func TestDeviceVerificationKeyTheft(t *testing.T) {
 	// Step 4: Both users SSH with the shared key and start verification
 	// Alice's session
 	alicePty := sshToExeDev(t, sharedKeyFile)
-	alicePty.want(testinfra.Banner)
-	alicePty.want("Please enter your email")
-	alicePty.sendLine(aliceEmail)
-	alicePty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(aliceEmail))
+	alicePty.Want(testinfra.Banner)
+	alicePty.Want("Please enter your email")
+	alicePty.SendLine(aliceEmail)
+	alicePty.WantRE("Verification email sent to.*" + regexp.QuoteMeta(aliceEmail))
 
 	// Bob's session
 	bobPty := sshToExeDev(t, sharedKeyFile)
-	bobPty.want(testinfra.Banner)
-	bobPty.want("Please enter your email")
-	bobPty.sendLine(bobEmail)
-	bobPty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(bobEmail))
+	bobPty.Want(testinfra.Banner)
+	bobPty.Want("Please enter your email")
+	bobPty.SendLine(bobEmail)
+	bobPty.WantRE("Verification email sent to.*" + regexp.QuoteMeta(bobEmail))
 
 	// Step 5: Get both verification emails and extract form data
 	getVerificationFormData := func(email string) (postURL string, formData url.Values) {
@@ -290,16 +290,16 @@ func TestDeviceVerificationKeyTheft(t *testing.T) {
 	// The winner's session completed verification; the loser is stuck waiting.
 	// Handle each based on their verification result.
 	if aliceCode == http.StatusOK {
-		alicePty.want("Email verified successfully")
-		alicePty.want("Registration complete")
-		alicePty.wantPrompt()
-		alicePty.disconnect()
-		bobPty.close() // Bob is stuck waiting; force close
+		alicePty.Want("Email verified successfully")
+		alicePty.Want("Registration complete")
+		alicePty.WantPrompt()
+		alicePty.Disconnect()
+		bobPty.Close() // Bob is stuck waiting; force close
 	} else {
-		bobPty.want("Email verified successfully")
-		bobPty.want("Registration complete")
-		bobPty.wantPrompt()
-		bobPty.disconnect()
-		alicePty.close() // Alice is stuck waiting; force close
+		bobPty.Want("Email verified successfully")
+		bobPty.Want("Registration complete")
+		bobPty.WantPrompt()
+		bobPty.Disconnect()
+		alicePty.Close() // Alice is stuck waiting; force close
 	}
 }

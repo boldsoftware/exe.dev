@@ -28,25 +28,25 @@ func TestInviteCodeSignup(t *testing.T) {
 
 	// Connect to exed with the invite code as the username
 	pty := makePty(t, "ssh localhost with invite code")
-	cmd, err := Env.servers.SSHWithUserName(Env.context(t), pty.pty, inviteCode, keyFile)
+	cmd, err := Env.servers.SSHWithUserName(Env.context(t), pty.PTY(), inviteCode, keyFile)
 	if err != nil {
 		t.Fatalf("failed to start SSH: %v", err)
 	}
 	t.Cleanup(func() { _ = cmd.Wait() })
-	pty.pty.SetPrompt(testinfra.ExeDevPrompt)
+	pty.SetPrompt(testinfra.ExeDevPrompt)
 
 	// Go through registration flow
-	pty.want(testinfra.Banner)
-	pty.want("Invite code accepted: free account")
-	pty.want("Please enter your email")
+	pty.Want(testinfra.Banner)
+	pty.Want("Invite code accepted: free account")
+	pty.Want("Please enter your email")
 	email := t.Name() + testinfra.FakeEmailSuffix
-	pty.sendLine(email)
-	pty.wantRe("Verification email sent to.*" + email)
+	pty.SendLine(email)
+	pty.WantRE("Verification email sent to.*" + email)
 	waitForEmailAndVerify(t, email)
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.Want("Email verified successfully")
+	pty.Want("Registration complete")
+	pty.WantPrompt()
+	pty.Disconnect()
 }
 
 // TestInviteCodeTrial tests that trial invite codes are accepted during signup.
@@ -63,24 +63,24 @@ func TestInviteCodeTrial(t *testing.T) {
 	keyFile, _ := genSSHKey(t)
 
 	pty := makePty(t, "ssh localhost with trial invite code")
-	cmd, err := Env.servers.SSHWithUserName(Env.context(t), pty.pty, inviteCode, keyFile)
+	cmd, err := Env.servers.SSHWithUserName(Env.context(t), pty.PTY(), inviteCode, keyFile)
 	if err != nil {
 		t.Fatalf("failed to start SSH: %v", err)
 	}
 	t.Cleanup(func() { _ = cmd.Wait() })
-	pty.pty.SetPrompt(testinfra.ExeDevPrompt)
+	pty.SetPrompt(testinfra.ExeDevPrompt)
 
-	pty.want(testinfra.Banner)
-	pty.want("Invite code accepted: 1 month free trial")
-	pty.want("Please enter your email")
+	pty.Want(testinfra.Banner)
+	pty.Want("Invite code accepted: 1 month free trial")
+	pty.Want("Please enter your email")
 	email := t.Name() + testinfra.FakeEmailSuffix
-	pty.sendLine(email)
-	pty.wantRe("Verification email sent to.*" + email)
+	pty.SendLine(email)
+	pty.WantRE("Verification email sent to.*" + email)
 	waitForEmailAndVerify(t, email)
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.Want("Email verified successfully")
+	pty.Want("Registration complete")
+	pty.WantPrompt()
+	pty.Disconnect()
 }
 
 // TestWebInviteCodeSignup tests that using an invite code via the web auth flow
@@ -160,27 +160,27 @@ func TestInvalidInviteCodeIgnored(t *testing.T) {
 	// Connect with an invalid invite code as username
 	invalidCode := "INVALIDCODE123"
 	pty := makePty(t, "ssh localhost with invalid invite code")
-	cmd, err := Env.servers.SSHWithUserName(Env.context(t), pty.pty, invalidCode, keyFile)
+	cmd, err := Env.servers.SSHWithUserName(Env.context(t), pty.PTY(), invalidCode, keyFile)
 	if err != nil {
 		t.Fatalf("failed to start SSH: %v", err)
 	}
 	t.Cleanup(func() { _ = cmd.Wait() })
-	pty.pty.SetPrompt(testinfra.ExeDevPrompt)
+	pty.SetPrompt(testinfra.ExeDevPrompt)
 
 	// Registration should still work, but no invite code message
-	pty.want(testinfra.Banner)
-	pty.reject("Invite code accepted")
-	pty.want("Please enter your email")
+	pty.Want(testinfra.Banner)
+	pty.Reject("Invite code accepted")
+	pty.Want("Please enter your email")
 	email := t.Name() + testinfra.FakeEmailSuffix
-	pty.sendLine(email)
-	pty.wantRe("Verification email sent to.*" + email)
+	pty.SendLine(email)
+	pty.WantRE("Verification email sent to.*" + email)
 	waitForEmailAndVerify(t, email)
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.Want("Email verified successfully")
+	pty.Want("Registration complete")
+	pty.WantPrompt()
+	pty.Disconnect()
 
-	// The SSH output confirms the invite code was NOT accepted (pty.reject).
+	// The SSH output confirms the invite code was NOT accepted (pty.Reject).
 	// User signed up normally without any billing exemption.
 }
 

@@ -17,7 +17,7 @@ func TestIOThrottle(t *testing.T) {
 
 	// Register a support user (throttle-vm requires exe-sudo).
 	pty, _, keyFile, email := registerForExeDev(t)
-	defer pty.disconnect()
+	defer pty.Disconnect()
 	enableRootSupport(t, email)
 
 	// Create a box and wait for SSH to be ready.
@@ -32,17 +32,17 @@ func TestIOThrottle(t *testing.T) {
 
 	// Apply symmetric IO throttle: 10 MB/s read and write.
 	// 10M = 10 * 1024 * 1024 = 10485760 bytes/s
-	pty.sendLine(fmt.Sprintf("throttle-vm %s --io=10M", bn))
-	pty.want("Updated cgroup overrides")
-	pty.want("io.max")
-	pty.wantPrompt()
+	pty.SendLine(fmt.Sprintf("throttle-vm %s --io=10M", bn))
+	pty.Want("Updated cgroup overrides")
+	pty.Want("io.max")
+	pty.WantPrompt()
 
 	// Verify --show reports the override with the ~ placeholder.
-	pty.sendLine(fmt.Sprintf("throttle-vm %s --show", bn))
-	pty.want("io.max")
-	pty.want("rbps=10485760")
-	pty.want("wbps=10485760")
-	pty.wantPrompt()
+	pty.SendLine(fmt.Sprintf("throttle-vm %s --show", bn))
+	pty.Want("io.max")
+	pty.Want("rbps=10485760")
+	pty.Want("wbps=10485760")
+	pty.WantPrompt()
 
 	// Wait for the desired-state syncer to reconcile the io.max cgroup file.
 	// The syncer replaces the ~ placeholder with the actual MAJ:MIN device.
@@ -83,7 +83,7 @@ func TestIOThrottleAsymmetric(t *testing.T) {
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, email := registerForExeDev(t)
-	defer pty.disconnect()
+	defer pty.Disconnect()
 	enableRootSupport(t, email)
 
 	bn := newBox(t, pty)
@@ -96,17 +96,17 @@ func TestIOThrottleAsymmetric(t *testing.T) {
 
 	// Apply asymmetric IO throttle: 50M read, 20M write.
 	// 50M = 52428800, 20M = 20971520
-	pty.sendLine(fmt.Sprintf("throttle-vm %s --io-read=50M --io-write=20M", bn))
-	pty.want("Updated cgroup overrides")
-	pty.want("io.max")
-	pty.wantPrompt()
+	pty.SendLine(fmt.Sprintf("throttle-vm %s --io-read=50M --io-write=20M", bn))
+	pty.Want("Updated cgroup overrides")
+	pty.Want("io.max")
+	pty.WantPrompt()
 
 	// Verify --show reports correct asymmetric values.
-	pty.sendLine(fmt.Sprintf("throttle-vm %s --show", bn))
-	pty.want("io.max")
-	pty.want("rbps=52428800")
-	pty.want("wbps=20971520")
-	pty.wantPrompt()
+	pty.SendLine(fmt.Sprintf("throttle-vm %s --show", bn))
+	pty.Want("io.max")
+	pty.Want("rbps=52428800")
+	pty.Want("wbps=20971520")
+	pty.WantPrompt()
 
 	// Wait for the syncer to write io.max with resolved device.
 	exelet := Env.servers.Exelets[0]
@@ -144,7 +144,7 @@ func TestIOThrottleClear(t *testing.T) {
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, email := registerForExeDev(t)
-	defer pty.disconnect()
+	defer pty.Disconnect()
 	enableRootSupport(t, email)
 
 	bn := newBox(t, pty)
@@ -152,21 +152,21 @@ func TestIOThrottleClear(t *testing.T) {
 	waitForSSH(t, bn, keyFile)
 
 	// First set a throttle.
-	pty.sendLine(fmt.Sprintf("throttle-vm %s --io=10M", bn))
-	pty.want("Updated cgroup overrides")
-	pty.wantPrompt()
+	pty.SendLine(fmt.Sprintf("throttle-vm %s --io=10M", bn))
+	pty.Want("Updated cgroup overrides")
+	pty.WantPrompt()
 
 	// Clear the IO throttle.
-	pty.sendLine(fmt.Sprintf("throttle-vm %s --io=clear", bn))
-	pty.want("Updated cgroup overrides")
-	pty.want("rbps=max")
-	pty.want("wbps=max")
-	pty.wantPrompt()
+	pty.SendLine(fmt.Sprintf("throttle-vm %s --io=clear", bn))
+	pty.Want("Updated cgroup overrides")
+	pty.Want("rbps=max")
+	pty.Want("wbps=max")
+	pty.WantPrompt()
 
 	// Verify --show shows the max values.
-	pty.sendLine(fmt.Sprintf("throttle-vm %s --show", bn))
-	pty.want("io.max")
-	pty.want("rbps=max")
-	pty.want("wbps=max")
-	pty.wantPrompt()
+	pty.SendLine(fmt.Sprintf("throttle-vm %s --show", bn))
+	pty.Want("io.max")
+	pty.Want("rbps=max")
+	pty.Want("wbps=max")
+	pty.WantPrompt()
 }

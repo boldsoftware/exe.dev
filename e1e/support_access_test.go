@@ -29,8 +29,8 @@ func TestSupportAccess(t *testing.T) {
 
 	// Owner creates a box
 	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
-	ownerPTY.wantPrompt()
-	ownerPTY.disconnect()
+	ownerPTY.WantPrompt()
+	ownerPTY.Disconnect()
 
 	// Wait for SSH to be ready
 	waitForSSH(t, box, ownerKeyFile)
@@ -94,10 +94,10 @@ func TestSupportAccess(t *testing.T) {
 	// Owner enables support access on their box
 	t.Run("enable_support_access_on_box", func(t *testing.T) {
 		ownerPTY = sshToExeDev(t, ownerKeyFile)
-		ownerPTY.sendLine(fmt.Sprintf("grant-support-root %s on", box))
-		ownerPTY.want("exe.dev support now has root access")
-		ownerPTY.wantPrompt()
-		ownerPTY.disconnect()
+		ownerPTY.SendLine(fmt.Sprintf("grant-support-root %s on", box))
+		ownerPTY.Want("exe.dev support now has root access")
+		ownerPTY.WantPrompt()
+		ownerPTY.Disconnect()
 	})
 
 	// Test that share show --json returns support_has_root when enabled
@@ -164,11 +164,11 @@ func TestSupportAccess(t *testing.T) {
 	// Owner revokes support access
 	t.Run("revoke_support_access", func(t *testing.T) {
 		ownerPTY = sshToExeDev(t, ownerKeyFile)
-		ownerPTY.sendLine(fmt.Sprintf("grant-support-root %s off", box))
-		ownerPTY.want("support root access")
-		ownerPTY.want("revoked")
-		ownerPTY.wantPrompt()
-		ownerPTY.disconnect()
+		ownerPTY.SendLine(fmt.Sprintf("grant-support-root %s off", box))
+		ownerPTY.Want("support root access")
+		ownerPTY.Want("revoked")
+		ownerPTY.WantPrompt()
+		ownerPTY.Disconnect()
 	})
 
 	// Test that support user can no longer SSH to the box
@@ -206,7 +206,7 @@ func TestSupportAccess(t *testing.T) {
 	})
 
 	// Cleanup
-	supportPTY.disconnect()
+	supportPTY.Disconnect()
 	cleanupBox(t, ownerKeyFile, box)
 }
 

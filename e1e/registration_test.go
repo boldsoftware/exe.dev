@@ -24,21 +24,21 @@ func TestNewKeyRegistration(t *testing.T) {
 
 	keyFile, publicKey := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
-	pty.want(testinfra.Banner)
-	pty.want("Please enter your email")
+	pty.Want(testinfra.Banner)
+	pty.Want("Please enter your email")
 	email := t.Name() + testinfra.FakeEmailSuffix
-	pty.sendLine(email)
-	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	pty.SendLine(email)
+	pty.WantRE("Verification email sent to.*" + regexp.QuoteMeta(email))
+	// pty.WantRE("Pairing code: .*[0-9]{6}.*")
 	waitForEmailAndVerify(t, email)
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
-	pty.want("Welcome to EXE.DEV!") // check that we show welcome message for users who haven't created boxes
-	pty.wantPrompt()
-	pty.sendLine("whoami")
-	pty.want(email)
-	pty.want(publicKey)
-	pty.disconnect()
+	pty.Want("Email verified successfully")
+	pty.Want("Registration complete")
+	pty.Want("Welcome to EXE.DEV!") // check that we show welcome message for users who haven't created boxes
+	pty.WantPrompt()
+	pty.SendLine("whoami")
+	pty.Want(email)
+	pty.Want(publicKey)
+	pty.Disconnect()
 }
 
 func TestRegistrationHappensOnce(t *testing.T) {
@@ -49,39 +49,39 @@ func TestRegistrationHappensOnce(t *testing.T) {
 
 	// initial registration
 	pty := sshToExeDev(t, keyFile)
-	pty.want("Please enter your email")
+	pty.Want("Please enter your email")
 	email := t.Name() + testinfra.FakeEmailSuffix
-	pty.sendLine(email)
-	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	pty.SendLine(email)
+	pty.WantRE("Verification email sent to.*" + regexp.QuoteMeta(email))
+	// pty.WantRE("Pairing code: .*[0-9]{6}.*")
 	waitForEmailAndVerify(t, email)
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
+	pty.Want("Email verified successfully")
+	pty.Want("Registration complete")
 	// Check that we show welcome message for first login.
-	pty.want("Welcome to EXE.DEV!")
-	pty.want("create your first VM")
-	pty.wantPrompt()
-	pty.sendLine("whoami")
-	pty.want(email)
-	pty.want(publicKey)
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.Want("Welcome to EXE.DEV!")
+	pty.Want("create your first VM")
+	pty.WantPrompt()
+	pty.SendLine("whoami")
+	pty.Want(email)
+	pty.Want(publicKey)
+	pty.WantPrompt()
+	pty.Disconnect()
 
 	// second login: no re-registration, but should still show welcome since user hasn't created boxes
 	pty = sshToExeDev(t, keyFile)
-	pty.reject(testinfra.Banner)
-	pty.reject("Please enter your email")
+	pty.Reject(testinfra.Banner)
+	pty.Reject("Please enter your email")
 	// No registration flow, no welcome message
 	// but should still hint about how to create boxes,
 	// because they haven't yet.
-	pty.want("create your first VM")
-	pty.wantPrompt()
-	pty.sendLine("whoami")
-	pty.want(email)
-	pty.want(publicKey)
-	pty.wantPrompt()
+	pty.Want("create your first VM")
+	pty.WantPrompt()
+	pty.SendLine("whoami")
+	pty.Want(email)
+	pty.Want(publicKey)
+	pty.WantPrompt()
 
-	pty.disconnect()
+	pty.Disconnect()
 }
 
 func TestRegisterMultipleKeys(t *testing.T) {
@@ -91,28 +91,28 @@ func TestRegisterMultipleKeys(t *testing.T) {
 	for i := range 3 {
 		keyFile, publicKey := genSSHKey(t)
 		pty := sshToExeDev(t, keyFile)
-		pty.want(testinfra.Banner)
-		pty.want("Please enter your email")
+		pty.Want(testinfra.Banner)
+		pty.Want("Please enter your email")
 		email := t.Name() + testinfra.FakeEmailSuffix
-		pty.sendLine(email)
-		pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-		// pty.wantRe("Pairing code: .*[0-9]{6}.*")
+		pty.SendLine(email)
+		pty.WantRE("Verification email sent to.*" + regexp.QuoteMeta(email))
+		// pty.WantRE("Pairing code: .*[0-9]{6}.*")
 		waitForEmailAndVerify(t, email)
-		pty.want("Email verified successfully")
-		pty.want("Registration complete")
+		pty.Want("Email verified successfully")
+		pty.Want("Registration complete")
 		if i == 0 {
-			pty.wantRe("account.*created")
+			pty.WantRE("account.*created")
 		} else {
-			pty.wantRe("key.*added")
+			pty.WantRE("key.*added")
 		}
 		if i == 0 {
-			pty.want("Welcome to EXE.DEV!") // welcome message only on first time
+			pty.Want("Welcome to EXE.DEV!") // welcome message only on first time
 		}
-		pty.wantPrompt()
-		pty.sendLine("whoami")
-		pty.want(email)
-		pty.want(publicKey)
-		pty.disconnect()
+		pty.WantPrompt()
+		pty.SendLine("whoami")
+		pty.Want(email)
+		pty.Want(publicKey)
+		pty.Disconnect()
 	}
 }
 
@@ -138,25 +138,25 @@ func TestRegisterWebThenKey(t *testing.T) {
 
 	keyFile, publicKey := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
-	pty.want(testinfra.Banner)
-	pty.want("Please enter your email")
-	pty.sendLine(email)
-	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	pty.Want(testinfra.Banner)
+	pty.Want("Please enter your email")
+	pty.SendLine(email)
+	pty.WantRE("Verification email sent to.*" + regexp.QuoteMeta(email))
+	// pty.WantRE("Pairing code: .*[0-9]{6}.*")
 
 	waitForEmailAndVerify(t, email)
 
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
-	pty.want("Your new ssh key has been added to your existing account.")
-	pty.want("Welcome to EXE.DEV!")
-	pty.want("create your first VM")
-	pty.wantPrompt()
-	pty.sendLine("whoami")
-	pty.want(email)
-	pty.want(publicKey)
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.Want("Email verified successfully")
+	pty.Want("Registration complete")
+	pty.Want("Your new ssh key has been added to your existing account.")
+	pty.Want("Welcome to EXE.DEV!")
+	pty.Want("create your first VM")
+	pty.WantPrompt()
+	pty.SendLine("whoami")
+	pty.Want(email)
+	pty.Want(publicKey)
+	pty.WantPrompt()
+	pty.Disconnect()
 }
 
 func TestRegisterGitHubKey(t *testing.T) {
@@ -170,18 +170,18 @@ func TestRegisterGitHubKey(t *testing.T) {
 	}
 
 	pty := sshToExeDev(t, keyFile)
-	pty.want(testinfra.Banner)
-	pty.want("Email:")
-	pty.want("fake-for-tests@example.com")
-	pty.sendLine("")
+	pty.Want(testinfra.Banner)
+	pty.Want("Email:")
+	pty.Want("fake-for-tests@example.com")
+	pty.SendLine("")
 
-	pty.want("Welcome to EXE.DEV!")
-	pty.wantPrompt()
-	pty.sendLine("whoami")
-	pty.want("fake-for-tests@example.com")
-	pty.want(ghuser.FakePublicKey0)
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.Want("Welcome to EXE.DEV!")
+	pty.WantPrompt()
+	pty.SendLine("whoami")
+	pty.Want("fake-for-tests@example.com")
+	pty.Want(ghuser.FakePublicKey0)
+	pty.WantPrompt()
+	pty.Disconnect()
 }
 
 func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
@@ -195,29 +195,29 @@ func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
 	}
 
 	pty := sshToExeDev(t, keyFile)
-	pty.want(testinfra.Banner)
-	pty.want("Email:")
-	pty.want(ghuser.FakeEmail1)
+	pty.Want(testinfra.Banner)
+	pty.Want("Email:")
+	pty.Want(ghuser.FakeEmail1)
 	// change email from "fake-for-tests@example.com" to "fake-for-tests@example.combinatorics"
 	suffix := "binatorics"
 	// This triggers a verification email, despite the known SSH key.
-	pty.sendLine(suffix)
+	pty.SendLine(suffix)
 	newEmail := ghuser.FakeEmail1 + suffix
 
-	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(newEmail))
-	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	pty.WantRE("Verification email sent to.*" + regexp.QuoteMeta(newEmail))
+	// pty.WantRE("Pairing code: .*[0-9]{6}.*")
 
 	waitForEmailAndVerify(t, newEmail)
 
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
-	pty.want("Welcome to EXE.DEV!")
-	pty.wantPrompt()
-	pty.sendLine("whoami")
-	pty.want("fake-for-tests@example.com")
-	pty.want(ghuser.FakePublicKey1)
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.Want("Email verified successfully")
+	pty.Want("Registration complete")
+	pty.Want("Welcome to EXE.DEV!")
+	pty.WantPrompt()
+	pty.SendLine("whoami")
+	pty.Want("fake-for-tests@example.com")
+	pty.Want(ghuser.FakePublicKey1)
+	pty.WantPrompt()
+	pty.Disconnect()
 }
 
 // TestSSHTerminalInputDuringRegistration verifies that terminal input works
@@ -230,33 +230,33 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 
 	keyFile, publicKey := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
-	pty.want(testinfra.Banner)
-	pty.want("Please enter your email")
+	pty.Want(testinfra.Banner)
+	pty.Want("Please enter your email")
 
 	email := t.Name() + testinfra.FakeEmailSuffix
 
 	// Type the email one character at a time to simulate interactive typing.
 	for _, ch := range email {
-		pty.send(string(ch))
+		pty.Send(string(ch))
 	}
-	pty.send("\n")
+	pty.Send("\n")
 
-	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	pty.WantRE("Verification email sent to.*" + regexp.QuoteMeta(email))
+	// pty.WantRE("Pairing code: .*[0-9]{6}.*")
 
 	waitForEmailAndVerify(t, email)
 
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
+	pty.Want("Email verified successfully")
+	pty.Want("Registration complete")
 
 	// After first-time registration, we show a welcome message and a prompt.
-	pty.want("Welcome to EXE.DEV!")
-	pty.want("create your first VM")
-	pty.wantPrompt()
-	pty.sendLine("whoami")
-	pty.want(email)
-	pty.want(publicKey)
-	pty.disconnect()
+	pty.Want("Welcome to EXE.DEV!")
+	pty.Want("create your first VM")
+	pty.WantPrompt()
+	pty.SendLine("whoami")
+	pty.Want(email)
+	pty.Want(publicKey)
+	pty.Disconnect()
 }
 
 // TestRegistrationWithLatency tests that registration works correctly
@@ -289,29 +289,29 @@ func TestRegistrationWithLatency(t *testing.T) {
 	)
 	sshCmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
 	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=")
-	pty.attachAndStart(sshCmd)
-	pty.pty.SetPrompt(testinfra.ExeDevPrompt)
+	pty.AttachAndStart(sshCmd)
+	pty.SetPrompt(testinfra.ExeDevPrompt)
 
-	pty.want("███") // part of the banner
-	pty.want("Please enter your email")
+	pty.Want("███") // part of the banner
+	pty.Want("Please enter your email")
 
 	// Reject OSC 11 responses, which look like: ]11;rgb:0000/0000/0000
-	pty.reject("]11")
-	pty.reject("rgb:")
+	pty.Reject("]11")
+	pty.Reject("rgb:")
 
 	email := t.Name() + testinfra.FakeEmailSuffix
-	pty.sendLine(email)
-	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-	// pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	pty.SendLine(email)
+	pty.WantRE("Verification email sent to.*" + regexp.QuoteMeta(email))
+	// pty.WantRE("Pairing code: .*[0-9]{6}.*")
 	waitForEmailAndVerify(t, email)
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
-	pty.want("Welcome to EXE.DEV!")
-	pty.wantPrompt()
-	pty.sendLine("whoami")
-	pty.want(email)
-	pty.want(publicKey)
-	pty.disconnect()
+	pty.Want("Email verified successfully")
+	pty.Want("Registration complete")
+	pty.Want("Welcome to EXE.DEV!")
+	pty.WantPrompt()
+	pty.SendLine("whoami")
+	pty.Want(email)
+	pty.Want(publicKey)
+	pty.Disconnect()
 }
 
 // TestWarpTerminalBootstrap tests that Warp terminal's shell bootstrap script
@@ -334,35 +334,35 @@ func TestWarpTerminalBootstrap(t *testing.T) {
 		sshArgs = append(sshArgs, "-t", warpBootstrapCmd)
 		sshCmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
 		sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=")
-		pty.attachAndStart(sshCmd)
-		pty.pty.SetPrompt(testinfra.ExeDevPrompt)
+		pty.AttachAndStart(sshCmd)
+		pty.SetPrompt(testinfra.ExeDevPrompt)
 		return pty
 	}
 
 	// First connection: should get registration flow, not "Please complete registration"
 	pty := sshWarp()
-	pty.reject("Please complete registration")
-	pty.want(testinfra.Banner)
-	pty.want("Please enter your email")
+	pty.Reject("Please complete registration")
+	pty.Want(testinfra.Banner)
+	pty.Want("Please enter your email")
 	email := t.Name() + testinfra.FakeEmailSuffix
-	pty.sendLine(email)
-	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty.SendLine(email)
+	pty.WantRE("Verification email sent to.*" + regexp.QuoteMeta(email))
 	waitForEmailAndVerify(t, email)
-	pty.want("Registration complete")
-	pty.wantPrompt()
-	pty.sendLine("whoami")
-	pty.want(email)
-	pty.want(publicKey)
-	pty.disconnect()
+	pty.Want("Registration complete")
+	pty.WantPrompt()
+	pty.SendLine("whoami")
+	pty.Want(email)
+	pty.Want(publicKey)
+	pty.Disconnect()
 
 	// Second connection: should get main menu directly
 	pty = sshWarp()
-	pty.reject(testinfra.Banner)
-	pty.reject("Please enter your email")
-	pty.wantPrompt()
-	pty.sendLine("whoami")
-	pty.want(email)
-	pty.disconnect()
+	pty.Reject(testinfra.Banner)
+	pty.Reject("Please enter your email")
+	pty.WantPrompt()
+	pty.SendLine("whoami")
+	pty.Want(email)
+	pty.Disconnect()
 }
 
 // TestBogusEmailDomainBlocked verifies that emails to bogus domains
@@ -380,15 +380,15 @@ func TestBogusEmailDomainBlocked(t *testing.T) {
 
 	keyFile, _ := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
-	pty.want(testinfra.Banner)
-	pty.want("Please enter your email")
+	pty.Want(testinfra.Banner)
+	pty.Want("Please enter your email")
 
-	pty.sendLine(email)
+	pty.SendLine(email)
 
 	// The server should still say it sent the email (anti-fraud measure)
-	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty.WantRE("Verification email sent to.*" + regexp.QuoteMeta(email))
 
 	// If we reach here, no email was sent (otherwise the poison would have panicked).
 	// Close the connection without waiting for EOF (server is waiting for verification).
-	pty.close()
+	pty.Close()
 }

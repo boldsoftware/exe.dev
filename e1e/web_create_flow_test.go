@@ -193,23 +193,23 @@ func TestWebCreateFlow_EndToEnd(t *testing.T) {
 	// Now that the account exists via email, add an SSH key
 	keyFile, _ := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
-	pty.want(testinfra.Banner)
-	pty.want("Please enter your email")
-	pty.sendLine(email)
-	pty.wantRe("Verification email sent to")
-	// pty.wantRe("Pairing code:")
+	pty.Want(testinfra.Banner)
+	pty.Want("Please enter your email")
+	pty.SendLine(email)
+	pty.WantRE("Verification email sent to")
+	// pty.WantRE("Pairing code:")
 
 	// Click verification link from email
 	waitForEmailAndVerify(t, email)
 
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
-	pty.wantRe("key.*added")
-	pty.wantPrompt()
+	pty.Want("Email verified successfully")
+	pty.Want("Registration complete")
+	pty.WantRE("key.*added")
+	pty.WantPrompt()
 
 	// Cleanup
 	pty.deleteBox(host)
-	pty.disconnect()
+	pty.Disconnect()
 }
 
 // TestNewPageRendersLoggedInAndOut verifies that the /new page renders correctly
@@ -247,7 +247,7 @@ func TestNewPageRendersLoggedInAndOut(t *testing.T) {
 	// In production (SkipBilling=false), users without billing would see the billing required page.
 	t.Run("logged_in_no_billing", func(t *testing.T) {
 		pty, cookies, _, _ := registerForExeDevWithoutBilling(t)
-		pty.disconnect()
+		pty.Disconnect()
 
 		client := newClientWithCookies(t, cookies)
 		resp, err := client.Get(base + "/new")
@@ -269,7 +269,7 @@ func TestNewPageRendersLoggedInAndOut(t *testing.T) {
 	// Test 3: Logged in with billing - GET /new should show create form
 	t.Run("logged_in_with_billing", func(t *testing.T) {
 		pty, cookies, _, _ := registerForExeDev(t)
-		pty.disconnect()
+		pty.Disconnect()
 
 		// Billing is added automatically by registerForExeDev
 

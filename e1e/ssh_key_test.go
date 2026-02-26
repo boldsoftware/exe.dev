@@ -41,28 +41,28 @@ func TestSSHKeyCommand(t *testing.T) {
 	t.Run("help", func(t *testing.T) {
 		noGolden(t)
 		pty := sshToExeDev(t, keyFile)
-		defer pty.disconnect()
+		defer pty.Disconnect()
 
 		// Running ssh-key with no subcommand should show help
-		pty.sendLine("ssh-key")
-		pty.want("ssh-key")
-		pty.want("list")
-		pty.want("add")
-		pty.want("remove")
-		pty.wantPrompt()
+		pty.SendLine("ssh-key")
+		pty.Want("ssh-key")
+		pty.Want("list")
+		pty.Want("add")
+		pty.Want("remove")
+		pty.WantPrompt()
 	})
 
 	t.Run("list", func(t *testing.T) {
 		noGolden(t)
 		pty := sshToExeDev(t, keyFile)
-		defer pty.disconnect()
+		defer pty.Disconnect()
 
 		// List should show the current key
-		pty.sendLine("ssh-key list")
-		pty.want("SSH Keys:")
-		pty.want("ssh-ed25519")
-		pty.want("current")
-		pty.wantPrompt()
+		pty.SendLine("ssh-key list")
+		pty.Want("SSH Keys:")
+		pty.Want("ssh-ed25519")
+		pty.Want("current")
+		pty.WantPrompt()
 	})
 
 	t.Run("list_json", func(t *testing.T) {
@@ -99,76 +99,76 @@ func TestSSHKeyCommand(t *testing.T) {
 	t.Run("add_and_remove", func(t *testing.T) {
 		noGolden(t)
 		pty := sshToExeDev(t, keyFile)
-		defer pty.disconnect()
+		defer pty.Disconnect()
 
 		// Add a new SSH key
-		pty.sendLine("ssh-key add '" + testPubKey + "'")
-		pty.want("Added SSH key")
-		pty.wantPrompt()
+		pty.SendLine("ssh-key add '" + testPubKey + "'")
+		pty.Want("Added SSH key")
+		pty.WantPrompt()
 
 		// Verify the key appears in list
-		pty.sendLine("ssh-key list")
-		pty.want("SSH Keys:")
-		pty.want("current") // original key
-		pty.wantPrompt()
+		pty.SendLine("ssh-key list")
+		pty.Want("SSH Keys:")
+		pty.Want("current") // original key
+		pty.WantPrompt()
 
 		// Try adding the same key again - should fail
-		pty.sendLine("ssh-key add '" + testPubKey + "'")
-		pty.want("already associated")
-		pty.wantPrompt()
+		pty.SendLine("ssh-key add '" + testPubKey + "'")
+		pty.Want("already associated")
+		pty.WantPrompt()
 
 		// Remove the key
-		pty.sendLine("ssh-key remove '" + testPubKey + "'")
-		pty.want("Deleted SSH key")
-		pty.wantPrompt()
+		pty.SendLine("ssh-key remove '" + testPubKey + "'")
+		pty.Want("Deleted SSH key")
+		pty.WantPrompt()
 
 		// Try to remove it again - should fail
-		pty.sendLine("ssh-key remove '" + testPubKey + "'")
-		pty.want("no matching SSH key found")
-		pty.wantPrompt()
+		pty.SendLine("ssh-key remove '" + testPubKey + "'")
+		pty.Want("no matching SSH key found")
+		pty.WantPrompt()
 	})
 
 	t.Run("add_invalid_key", func(t *testing.T) {
 		noGolden(t)
 		pty := sshToExeDev(t, keyFile)
-		defer pty.disconnect()
+		defer pty.Disconnect()
 
 		// Try to add an invalid key
-		pty.sendLine("ssh-key add 'not-a-valid-key'")
-		pty.want("invalid SSH public key")
-		pty.wantPrompt()
+		pty.SendLine("ssh-key add 'not-a-valid-key'")
+		pty.Want("invalid SSH public key")
+		pty.WantPrompt()
 	})
 
 	t.Run("add_private_key_error", func(t *testing.T) {
 		noGolden(t)
 		pty := sshToExeDev(t, keyFile)
-		defer pty.disconnect()
+		defer pty.Disconnect()
 
 		// Try to add what looks like a private key - should get a helpful error
 		// explaining to use the public key instead
-		pty.sendLine("ssh-key add '-----BEGIN OPENSSH PRIVATE KEY-----'")
-		pty.want("private key")
-		pty.want("public key")
-		pty.wantPrompt()
+		pty.SendLine("ssh-key add '-----BEGIN OPENSSH PRIVATE KEY-----'")
+		pty.Want("private key")
+		pty.Want("public key")
+		pty.WantPrompt()
 	})
 
 	t.Run("help_add", func(t *testing.T) {
 		noGolden(t)
 		pty := sshToExeDev(t, keyFile)
-		defer pty.disconnect()
+		defer pty.Disconnect()
 
 		// Check help for add subcommand shows key generation instructions
-		pty.sendLine("help ssh-key add")
-		pty.want("ssh-keygen")
-		pty.want("ed25519")
-		pty.want("id_exe")
-		pty.wantPrompt()
+		pty.SendLine("help ssh-key add")
+		pty.Want("ssh-keygen")
+		pty.Want("ed25519")
+		pty.Want("id_exe")
+		pty.WantPrompt()
 	})
 
 	t.Run("json_add_remove", func(t *testing.T) {
 		noGolden(t)
 		pty := sshToExeDev(t, keyFile)
-		defer pty.disconnect()
+		defer pty.Disconnect()
 
 		// Generate another key for JSON testing
 		_, jsonTestPubKey, err := testinfra.GenSSHKey(t.TempDir())
@@ -177,19 +177,19 @@ func TestSSHKeyCommand(t *testing.T) {
 		}
 
 		// Add with --json
-		pty.sendLine("ssh-key add --json '" + jsonTestPubKey + "'")
-		pty.want(`"status":`)
-		pty.want(`"added"`)
-		pty.wantPrompt()
+		pty.SendLine("ssh-key add --json '" + jsonTestPubKey + "'")
+		pty.Want(`"status":`)
+		pty.Want(`"added"`)
+		pty.WantPrompt()
 
 		// Remove with --json
-		pty.sendLine("ssh-key remove --json '" + jsonTestPubKey + "'")
-		pty.want(`"status":`)
-		pty.want(`"deleted"`)
-		pty.wantPrompt()
+		pty.SendLine("ssh-key remove --json '" + jsonTestPubKey + "'")
+		pty.Want(`"status":`)
+		pty.Want(`"deleted"`)
+		pty.WantPrompt()
 	})
 
-	pty.disconnect()
+	pty.Disconnect()
 }
 
 // TestSSHKeyCommandWithSecondKey tests that a second SSH key can be used to authenticate
@@ -208,35 +208,35 @@ func TestSSHKeyCommandWithSecondKey(t *testing.T) {
 	}
 
 	// Add the second key
-	pty.sendLine("ssh-key add '" + testPubKey + "'")
-	pty.want("Added SSH key")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.SendLine("ssh-key add '" + testPubKey + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
+	pty.Disconnect()
 
 	// Now try to connect using the second key
 	pty2 := sshToExeDev(t, testKeyPath)
-	pty2.wantPrompt()
+	pty2.WantPrompt()
 
 	// Verify we're the same user
-	pty2.sendLine("whoami")
-	pty2.want("Email Address:")
-	pty2.wantPrompt()
+	pty2.SendLine("whoami")
+	pty2.Want("Email Address:")
+	pty2.WantPrompt()
 
 	// List should show both keys
-	pty2.sendLine("ssh-key list")
-	pty2.want("SSH Keys:")
+	pty2.SendLine("ssh-key list")
+	pty2.Want("SSH Keys:")
 	// The second key should show as current since we're using it
-	pty2.want("current")
-	pty2.wantPrompt()
+	pty2.Want("current")
+	pty2.WantPrompt()
 
-	pty2.disconnect()
+	pty2.Disconnect()
 
 	// Clean up: remove the second key using the original key
 	pty3 := sshToExeDev(t, keyFile)
-	pty3.sendLine("ssh-key remove '" + testPubKey + "'")
-	pty3.want("Deleted SSH key")
-	pty3.wantPrompt()
-	pty3.disconnect()
+	pty3.SendLine("ssh-key remove '" + testPubKey + "'")
+	pty3.Want("Deleted SSH key")
+	pty3.WantPrompt()
+	pty3.Disconnect()
 
 	// Verify the second key no longer works (this should fail to authenticate)
 	// We can't easily test this without more infrastructure, but the remove was successful
@@ -264,25 +264,25 @@ func TestSSHKeyRemoveCurrentKey(t *testing.T) {
 	}
 	_ = testKeyPath
 
-	pty.sendLine("ssh-key add '" + testPubKey + "'")
-	pty.want("Added SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key add '" + testPubKey + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
 
 	// Now we can get the original key from the list and confirm both are there
-	pty.sendLine("ssh-key list")
-	pty.want("SSH Keys:")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key list")
+	pty.Want("SSH Keys:")
+	pty.WantPrompt()
 
 	// The test passes if we got here without errors
 	// We don't want to actually remove the current key as it would break the session
-	pty.disconnect()
+	pty.Disconnect()
 
 	// Clean up
 	cleanup := sshToExeDev(t, keyFile)
-	cleanup.sendLine("ssh-key remove '" + strings.TrimSpace(testPubKey) + "'")
-	cleanup.want("Deleted SSH key")
-	cleanup.wantPrompt()
-	cleanup.disconnect()
+	cleanup.SendLine("ssh-key remove '" + strings.TrimSpace(testPubKey) + "'")
+	cleanup.Want("Deleted SSH key")
+	cleanup.WantPrompt()
+	cleanup.Disconnect()
 }
 
 // TestSSHKeyAddFromStdin tests that ssh-key add can read from stdin
@@ -297,10 +297,10 @@ func TestSSHKeyAddFromStdin(t *testing.T) {
 	// Helper to remove a key (used by subtests that add keys)
 	removeKey := func(t *testing.T, pubKey string) {
 		pty := sshToExeDev(t, keyFile)
-		pty.sendLine("ssh-key remove '" + strings.TrimSpace(pubKey) + "'")
-		pty.want("Deleted SSH key")
-		pty.wantPrompt()
-		pty.disconnect()
+		pty.SendLine("ssh-key remove '" + strings.TrimSpace(pubKey) + "'")
+		pty.Want("Deleted SSH key")
+		pty.WantPrompt()
+		pty.Disconnect()
 	}
 
 	t.Run("basic", func(t *testing.T) {
@@ -578,14 +578,14 @@ aGVsbG8gaSBhbSBub3QgYWN0dWFsbHkgYSBwcml2YXRlIGtleQ==
 
 		// Now authenticate with the new key
 		pty2 := sshToExeDev(t, newKeyPath)
-		pty2.wantPrompt()
+		pty2.WantPrompt()
 
 		// Verify we're logged in as the same user by checking ssh-key list shows the key as current
-		pty2.sendLine("ssh-key list")
-		pty2.want("SSH Keys:")
-		pty2.want("current") // the new key should show as current
-		pty2.wantPrompt()
-		pty2.disconnect()
+		pty2.SendLine("ssh-key list")
+		pty2.Want("SSH Keys:")
+		pty2.Want("current") // the new key should show as current
+		pty2.WantPrompt()
+		pty2.Disconnect()
 
 		removeKey(t, testPubKey)
 	})
@@ -603,10 +603,10 @@ aGVsbG8gaSBhbSBub3QgYWN0dWFsbHkgYSBwcml2YXRlIGtleQ==
 		}
 
 		// User1 adds the shared key
-		pty1.sendLine("ssh-key add '" + sharedPubKey + "'")
-		pty1.want("Added SSH key")
-		pty1.wantPrompt()
-		pty1.disconnect()
+		pty1.SendLine("ssh-key add '" + sharedPubKey + "'")
+		pty1.Want("Added SSH key")
+		pty1.WantPrompt()
+		pty1.Disconnect()
 
 		// Original user (from parent test) tries to add the same key via stdin - should fail
 		out, err := Env.servers.RunExeDevSSHCommandWithStdin(
@@ -624,10 +624,10 @@ aGVsbG8gaSBhbSBub3QgYWN0dWFsbHkgYSBwcml2YXRlIGtleQ==
 
 		// Clean up: user1 removes the shared key
 		cleanup := sshToExeDev(t, keyFile1)
-		cleanup.sendLine("ssh-key remove '" + strings.TrimSpace(sharedPubKey) + "'")
-		cleanup.want("Deleted SSH key")
-		cleanup.wantPrompt()
-		cleanup.disconnect()
+		cleanup.SendLine("ssh-key remove '" + strings.TrimSpace(sharedPubKey) + "'")
+		cleanup.Want("Deleted SSH key")
+		cleanup.WantPrompt()
+		cleanup.Disconnect()
 	})
 }
 
@@ -648,26 +648,26 @@ func TestSSHKeyCannotAddKeyFromAnotherUser(t *testing.T) {
 	}
 
 	// User1 adds the shared key
-	pty1.sendLine("ssh-key add '" + sharedPubKey + "'")
-	pty1.want("Added SSH key")
-	pty1.wantPrompt()
-	pty1.disconnect()
+	pty1.SendLine("ssh-key add '" + sharedPubKey + "'")
+	pty1.Want("Added SSH key")
+	pty1.WantPrompt()
+	pty1.Disconnect()
 
 	// Register second user (different email, different key)
 	pty2, _, _, _ := registerForExeDevWithEmail(t, "user2@ssh-key-cross-user.example")
 
 	// User2 tries to add the same key - should fail
-	pty2.sendLine("ssh-key add '" + sharedPubKey + "'")
-	pty2.want("already associated with another account")
-	pty2.wantPrompt()
-	pty2.disconnect()
+	pty2.SendLine("ssh-key add '" + sharedPubKey + "'")
+	pty2.Want("already associated with another account")
+	pty2.WantPrompt()
+	pty2.Disconnect()
 
 	// Clean up: user1 removes the shared key
 	cleanup := sshToExeDev(t, keyFile1)
-	cleanup.sendLine("ssh-key remove '" + strings.TrimSpace(sharedPubKey) + "'")
-	cleanup.want("Deleted SSH key")
-	cleanup.wantPrompt()
-	cleanup.disconnect()
+	cleanup.SendLine("ssh-key remove '" + strings.TrimSpace(sharedPubKey) + "'")
+	cleanup.Want("Deleted SSH key")
+	cleanup.WantPrompt()
+	cleanup.Disconnect()
 }
 
 // TestSSHKeyCommentGeneration tests that SSH keys get auto-generated comments
@@ -696,9 +696,9 @@ func TestSSHKeyCommentGeneration(t *testing.T) {
 	}
 
 	// Add the key (comment should be sanitized)
-	pty.sendLine("ssh-key add '" + testPubKeyWithComment + "'")
-	pty.want("Added SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key add '" + testPubKeyWithComment + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
 
 	// Verify the comment was sanitized
 	out = runParseExeDevJSON[sshKeyListOutput](t, keyFile, "ssh-key", "list", "--json")
@@ -720,10 +720,10 @@ func TestSSHKeyCommentGeneration(t *testing.T) {
 	}
 
 	// Clean up
-	pty.sendLine("ssh-key remove '" + testPubKeyWithComment + "'")
-	pty.want("Deleted SSH key")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.SendLine("ssh-key remove '" + testPubKeyWithComment + "'")
+	pty.Want("Deleted SSH key")
+	pty.WantPrompt()
+	pty.Disconnect()
 }
 
 // TestSSHKeyRemoveByName tests removing an SSH key by its name (comment).
@@ -740,9 +740,9 @@ func TestSSHKeyRemoveByName(t *testing.T) {
 		t.Fatalf("failed to generate test SSH key: %v", err)
 	}
 
-	pty.sendLine("ssh-key add '" + testPubKey + "'")
-	pty.want("Added SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key add '" + testPubKey + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
 
 	// Verify the key exists with the expected name
 	out := runParseExeDevJSON[sshKeyListOutput](t, keyFile, "ssh-key", "list", "--json")
@@ -758,9 +758,9 @@ func TestSSHKeyRemoveByName(t *testing.T) {
 	}
 
 	// Remove by name
-	pty.sendLine("ssh-key remove test-laptop")
-	pty.want("Deleted SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key remove test-laptop")
+	pty.Want("Deleted SSH key")
+	pty.WantPrompt()
 
 	// Verify the key is gone
 	out = runParseExeDevJSON[sshKeyListOutput](t, keyFile, "ssh-key", "list", "--json")
@@ -770,7 +770,7 @@ func TestSSHKeyRemoveByName(t *testing.T) {
 		}
 	}
 
-	pty.disconnect()
+	pty.Disconnect()
 }
 
 // TestSSHKeyRemoveByFingerprint tests removing an SSH key by its fingerprint.
@@ -787,9 +787,9 @@ func TestSSHKeyRemoveByFingerprint(t *testing.T) {
 		t.Fatalf("failed to generate test SSH key: %v", err)
 	}
 
-	pty.sendLine("ssh-key add '" + testPubKey + "'")
-	pty.want("Added SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key add '" + testPubKey + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
 
 	// Get the fingerprint from the list
 	out := runParseExeDevJSON[sshKeyListOutput](t, keyFile, "ssh-key", "list", "--json")
@@ -810,9 +810,9 @@ func TestSSHKeyRemoveByFingerprint(t *testing.T) {
 	}
 
 	// Remove by fingerprint WITH SHA256: prefix
-	pty.sendLine("ssh-key remove " + fingerprint)
-	pty.want("Deleted SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key remove " + fingerprint)
+	pty.Want("Deleted SSH key")
+	pty.WantPrompt()
 
 	// Add another key to test without prefix
 	_, testPubKey2, err := testinfra.GenSSHKeyWithComment(t.TempDir(), "fp-test-key2")
@@ -820,9 +820,9 @@ func TestSSHKeyRemoveByFingerprint(t *testing.T) {
 		t.Fatalf("failed to generate test SSH key: %v", err)
 	}
 
-	pty.sendLine("ssh-key add '" + testPubKey2 + "'")
-	pty.want("Added SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key add '" + testPubKey2 + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
 
 	// Get the fingerprint
 	out = runParseExeDevJSON[sshKeyListOutput](t, keyFile, "ssh-key", "list", "--json")
@@ -836,11 +836,11 @@ func TestSSHKeyRemoveByFingerprint(t *testing.T) {
 
 	// Remove by fingerprint WITHOUT SHA256: prefix
 	fpWithoutPrefix := strings.TrimPrefix(fingerprint2, "SHA256:")
-	pty.sendLine("ssh-key remove " + fpWithoutPrefix)
-	pty.want("Deleted SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key remove " + fpWithoutPrefix)
+	pty.Want("Deleted SSH key")
+	pty.WantPrompt()
 
-	pty.disconnect()
+	pty.Disconnect()
 }
 
 // TestSSHKeyRemoveByPublicKey tests removing an SSH key by its full public key.
@@ -858,9 +858,9 @@ func TestSSHKeyRemoveByPublicKey(t *testing.T) {
 		t.Fatalf("failed to generate test SSH key: %v", err)
 	}
 
-	pty.sendLine("ssh-key add '" + testPubKey + "'")
-	pty.want("Added SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key add '" + testPubKey + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
 
 	// Verify the key exists
 	out := runParseExeDevJSON[sshKeyListOutput](t, keyFile, "ssh-key", "list", "--json")
@@ -877,9 +877,9 @@ func TestSSHKeyRemoveByPublicKey(t *testing.T) {
 
 	// Remove by full public key (the canonical form stored in the DB)
 	// This tests the fingerprint-based resolution path
-	pty.sendLine("ssh-key remove '" + foundKey.PublicKey + "'")
-	pty.want("Deleted SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key remove '" + foundKey.PublicKey + "'")
+	pty.Want("Deleted SSH key")
+	pty.WantPrompt()
 
 	// Verify the key is gone
 	out = runParseExeDevJSON[sshKeyListOutput](t, keyFile, "ssh-key", "list", "--json")
@@ -895,17 +895,17 @@ func TestSSHKeyRemoveByPublicKey(t *testing.T) {
 		t.Fatalf("failed to generate test SSH key: %v", err)
 	}
 
-	pty.sendLine("ssh-key add '" + testPubKey2 + "'")
-	pty.want("Added SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key add '" + testPubKey2 + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
 
 	// Remove using the full public key string including the comment
 	// (ssh.ParseAuthorizedKey will parse and extract the key, ignoring the comment)
-	pty.sendLine("ssh-key remove '" + testPubKey2 + "'")
-	pty.want("Deleted SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key remove '" + testPubKey2 + "'")
+	pty.Want("Deleted SSH key")
+	pty.WantPrompt()
 
-	pty.disconnect()
+	pty.Disconnect()
 }
 
 // TestSSHKeyRemoveAmbiguity tests that removing a key fails with helpful message when multiple keys match.
@@ -923,14 +923,14 @@ func TestSSHKeyRemoveAmbiguity(t *testing.T) {
 	// and test that empty name doesn't match.
 
 	// Test that empty string doesn't remove anything
-	pty.sendLine("ssh-key remove ''")
-	pty.want("please specify a key to remove")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key remove ''")
+	pty.Want("please specify a key to remove")
+	pty.WantPrompt()
 
 	// Test that a non-existent name returns proper error
-	pty.sendLine("ssh-key remove nonexistent-key-name")
-	pty.want("no matching SSH key found")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key remove nonexistent-key-name")
+	pty.Want("no matching SSH key found")
+	pty.WantPrompt()
 
 	// Test JSON output when removing by name
 	_, testPubKey, err := testinfra.GenSSHKeyWithComment(t.TempDir(), "json-remove-test")
@@ -938,9 +938,9 @@ func TestSSHKeyRemoveAmbiguity(t *testing.T) {
 		t.Fatalf("failed to generate test SSH key: %v", err)
 	}
 
-	pty.sendLine("ssh-key add '" + testPubKey + "'")
-	pty.want("Added SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key add '" + testPubKey + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
 
 	// Remove with --json
 	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "ssh-key", "remove", "--json", "json-remove-test")
@@ -967,7 +967,7 @@ func TestSSHKeyRemoveAmbiguity(t *testing.T) {
 		t.Error("expected fingerprint to be non-empty")
 	}
 
-	pty.disconnect()
+	pty.Disconnect()
 }
 
 // TestSSHKeyRename tests renaming an SSH key.
@@ -984,15 +984,15 @@ func TestSSHKeyRename(t *testing.T) {
 		t.Fatalf("failed to generate test SSH key: %v", err)
 	}
 
-	pty.sendLine("ssh-key add '" + testPubKey + "'")
-	pty.want("Added SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key add '" + testPubKey + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
 
 	// Rename the key
-	pty.sendLine("ssh-key rename old-name new-name")
-	pty.want("Renamed key")
-	pty.want("new-name")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key rename old-name new-name")
+	pty.Want("Renamed key")
+	pty.Want("new-name")
+	pty.WantPrompt()
 
 	// Verify the name changed
 	out := runParseExeDevJSON[sshKeyListOutput](t, keyFile, "ssh-key", "list", "--json")
@@ -1013,10 +1013,10 @@ func TestSSHKeyRename(t *testing.T) {
 	}
 
 	// Clean up
-	pty.sendLine("ssh-key remove new-name")
-	pty.want("Deleted SSH key")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.SendLine("ssh-key remove new-name")
+	pty.Want("Deleted SSH key")
+	pty.WantPrompt()
+	pty.Disconnect()
 }
 
 // TestSSHKeyRenameByFingerprint tests renaming an SSH key by SHA256:-prefixed fingerprint.
@@ -1047,10 +1047,10 @@ func TestSSHKeyRenameByFingerprint(t *testing.T) {
 	}
 
 	// Rename by fingerprint
-	pty.sendLine("ssh-key rename " + fingerprint + " my-main-key")
-	pty.want("Renamed")
-	pty.want("my-main-key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key rename " + fingerprint + " my-main-key")
+	pty.Want("Renamed")
+	pty.Want("my-main-key")
+	pty.WantPrompt()
 
 	// Verify the name changed
 	out = runParseExeDevJSON[sshKeyListOutput](t, keyFile, "ssh-key", "list", "--json")
@@ -1071,10 +1071,10 @@ func TestSSHKeyRenameByFingerprint(t *testing.T) {
 	}
 
 	// Rename it back for cleanup
-	pty.sendLine("ssh-key rename my-main-key key-1")
-	pty.want("Renamed")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.SendLine("ssh-key rename my-main-key key-1")
+	pty.Want("Renamed")
+	pty.WantPrompt()
+	pty.Disconnect()
 }
 
 // TestSSHKeyRenameValidation tests validation for ssh-key rename.
@@ -1095,39 +1095,39 @@ func TestSSHKeyRenameValidation(t *testing.T) {
 		t.Fatalf("failed to generate test SSH key: %v", err)
 	}
 
-	pty.sendLine("ssh-key add '" + testPubKey1 + "'")
-	pty.want("Added SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key add '" + testPubKey1 + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
 
-	pty.sendLine("ssh-key add '" + testPubKey2 + "'")
-	pty.want("Added SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key add '" + testPubKey2 + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
 
 	// Test: renaming to existing name should fail
-	pty.sendLine("ssh-key rename key-a key-b")
-	pty.want("already exists")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key rename key-a key-b")
+	pty.Want("already exists")
+	pty.WantPrompt()
 
 	// Test: renaming with special characters sanitizes them
-	pty.sendLine("ssh-key rename key-a 'bad;name'")
-	pty.want("Renamed")
-	pty.want("badname") // semicolon removed by sanitization
-	pty.wantPrompt()
+	pty.SendLine("ssh-key rename key-a 'bad;name'")
+	pty.Want("Renamed")
+	pty.Want("badname") // semicolon removed by sanitization
+	pty.WantPrompt()
 
 	// Rename back so subsequent tests work
-	pty.sendLine("ssh-key rename badname key-a")
-	pty.want("Renamed")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key rename badname key-a")
+	pty.Want("Renamed")
+	pty.WantPrompt()
 
 	// Test: renaming to all-invalid characters should fail (name is empty after removing special chars)
-	pty.sendLine("ssh-key rename key-a ';|$'")
-	pty.want("new name is empty")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key rename key-a ';|$'")
+	pty.Want("new name is empty")
+	pty.WantPrompt()
 
 	// Test: renaming non-existent key should fail
-	pty.sendLine("ssh-key rename nonexistent-key new-name")
-	pty.want("no matching SSH key found")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key rename nonexistent-key new-name")
+	pty.Want("no matching SSH key found")
+	pty.WantPrompt()
 
 	// Test JSON output for rename
 	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "ssh-key", "rename", "--json", "key-a", "key-renamed")
@@ -1162,13 +1162,13 @@ func TestSSHKeyRenameValidation(t *testing.T) {
 	}
 
 	// Clean up
-	pty.sendLine("ssh-key remove key-renamed")
-	pty.want("Deleted")
-	pty.wantPrompt()
-	pty.sendLine("ssh-key remove key-b")
-	pty.want("Deleted")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.SendLine("ssh-key remove key-renamed")
+	pty.Want("Deleted")
+	pty.WantPrompt()
+	pty.SendLine("ssh-key remove key-b")
+	pty.Want("Deleted")
+	pty.WantPrompt()
+	pty.Disconnect()
 }
 
 // TestWhoamiShowsKeyNames tests that whoami shows key names.
@@ -1185,14 +1185,14 @@ func TestWhoamiShowsKeyNames(t *testing.T) {
 		t.Fatalf("failed to generate test SSH key: %v", err)
 	}
 
-	pty.sendLine("ssh-key add '" + testPubKey + "'")
-	pty.want("Added SSH key")
-	pty.wantPrompt()
+	pty.SendLine("ssh-key add '" + testPubKey + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
 
 	// Check whoami text output shows the name
-	pty.sendLine("whoami")
-	pty.want("whoami-test-key")
-	pty.wantPrompt()
+	pty.SendLine("whoami")
+	pty.Want("whoami-test-key")
+	pty.WantPrompt()
 
 	// Check whoami JSON output includes the name
 	type whoamiOutput struct {
@@ -1218,8 +1218,8 @@ func TestWhoamiShowsKeyNames(t *testing.T) {
 	}
 
 	// Clean up
-	pty.sendLine("ssh-key remove whoami-test-key")
-	pty.want("Deleted")
-	pty.wantPrompt()
-	pty.disconnect()
+	pty.SendLine("ssh-key remove whoami-test-key")
+	pty.Want("Deleted")
+	pty.WantPrompt()
+	pty.Disconnect()
 }

@@ -13,7 +13,7 @@ func TestMachineUsage(t *testing.T) {
 	// This messes with exelet availability, so not marked parallel.
 
 	pty, _, keyFile, _ := registerForExeDev(t)
-	defer pty.disconnect()
+	defer pty.Disconnect()
 
 	boxName := newBox(t, pty)
 	defer pty.deleteBox(boxName)

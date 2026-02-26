@@ -22,7 +22,7 @@ func TestReceiveEmail(t *testing.T) {
 
 	pty, _, keyFile, _ := registerForExeDev(t)
 	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
-	pty.disconnect()
+	pty.Disconnect()
 	waitForSSH(t, box, keyFile)
 
 	t.Run("show_status_disabled_by_default", func(t *testing.T) {

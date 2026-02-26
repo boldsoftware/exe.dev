@@ -17,7 +17,7 @@ func TestVMEmail(t *testing.T) {
 
 	pty, _, keyFile, userEmail := registerForExeDev(t)
 	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash", NoEmail: true})
-	pty.disconnect()
+	pty.Disconnect()
 	waitForSSH(t, box, keyFile)
 
 	t.Run("send_to_owner_success", func(t *testing.T) {

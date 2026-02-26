@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"testing"
 	"time"
 
 	expect "github.com/Netflix/go-expect"
@@ -416,4 +417,139 @@ func canonicalizeString(s string) string {
 	// Canonicalize REPL prompt (host varies by environment).
 	s = regexp.MustCompile(`(?m)^[a-z0-9.-]+ ▶`).ReplaceAllString(s, `PROMPT ▶`)
 	return s
+}
+
+// TestPTY is a wrapper around PTY for testing.
+// It has more or less the same methods,
+// but errors cause fatal test failures rather than being returned.
+type TestPTY struct {
+	pty *PTY
+	t   *testing.T
+}
+
+// MakeTestPTY makes a TestPTY.
+func MakeTestPTY(t *testing.T, cinemaName, name string, verbose bool) (*TestPTY, bool) {
+	pty, seen, err := MakePTY(cinemaName, name, verbose)
+	if err != nil {
+		t.Helper()
+		t.Fatal(err)
+	}
+	ret := &TestPTY{
+		pty: pty,
+		t:   t,
+	}
+	return ret, seen
+}
+
+// PTY returns the PTY stored in the TestPTY.
+func (tp *TestPTY) PTY() *PTY {
+	return tp.pty
+}
+
+// T returns the testing.T stored in the TestPTY.
+func (tp *TestPTY) T() *testing.T {
+	return tp.t
+}
+
+// Close closes the TestPTY.
+func (tp *TestPTY) Close() {
+	if err := tp.pty.Close(); err != nil {
+		tp.t.Helper()
+		tp.t.Fatal(err)
+	}
+}
+
+// TTY returns the terminal associated with the TestPTY.
+func (tp *TestPTY) TTY() *os.File {
+	return tp.pty.TTY()
+}
+
+// Want looks for a string in the TestPTY output,
+// and fails the test if not found.
+func (tp *TestPTY) Want(s string) {
+	if err := tp.pty.Want(s); err != nil {
+		tp.t.Helper()
+		tp.t.Fatal(err)
+	}
+}
+
+// Wantf is like Want, but with formatting.
+func (tp *TestPTY) Wantf(msg string, args ...any) {
+	if err := tp.pty.Wantf(msg, args...); err != nil {
+		tp.t.Helper()
+		tp.t.Fatal(err)
+	}
+}
+
+// WantRE is like Want, but with a regular expression.
+func (tp *TestPTY) WantRE(re string) {
+	if err := tp.pty.WantRE(re); err != nil {
+		tp.t.Helper()
+		tp.t.Fatal(err)
+	}
+}
+
+// SetPrompt sets a prompt for WantPrompt.
+func (tp *TestPTY) SetPrompt(prompt string) {
+	tp.pty.SetPrompt(prompt)
+}
+
+// SetPromptRE sets a prompt regular expression for WantPrompt.
+func (tp *TestPTY) SetPromptRE(promptRE string) {
+	tp.pty.SetPromptRE(promptRE)
+}
+
+// WantPrompt expects to see a prompt in the PTY output.
+// Either SetPrompt or SetPromptRE must be called first.
+func (tp *TestPTY) WantPrompt() {
+	if err := tp.pty.WantPrompt(); err != nil {
+		tp.t.Helper()
+		tp.t.Fatal(err)
+	}
+}
+
+// Send writes a string to the PTY.
+func (tp *TestPTY) Send(s string) {
+	if err := tp.pty.Send(s); err != nil {
+		tp.t.Helper()
+		tp.t.Fatal(err)
+	}
+}
+
+// SendLine writes a string followed by a newline to the PTY.
+func (tp *TestPTY) SendLine(s string) {
+	if err := tp.pty.SendLine(s); err != nil {
+		tp.t.Helper()
+		tp.t.Fatal(err)
+	}
+}
+
+// Disconnect disconnects the PTY.
+func (tp *TestPTY) Disconnect() {
+	if err := tp.pty.Disconnect(); err != nil {
+		tp.t.Helper()
+		tp.t.Fatal(err)
+	}
+}
+
+// WantEOF expects EOF from the PTY.
+func (tp *TestPTY) WantEOF() {
+	if err := tp.pty.WantEOF(); err != nil {
+		tp.t.Helper()
+		tp.t.Fatal(err)
+	}
+}
+
+// Reject adds a reject string to the PTY.
+// If the string is seen, other PTY operations will return an error.
+func (tp *TestPTY) Reject(s string) {
+	tp.pty.Reject(s)
+}
+
+// AttachAndStart attaches the PTY to the given command and starts it.
+func (tp *TestPTY) AttachAndStart(cmd *exec.Cmd) {
+	if err := tp.pty.AttachAndStart(cmd); err != nil {
+		tp.t.Helper()
+		tp.t.Fatal(err)
+	}
 }

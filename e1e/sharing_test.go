@@ -24,7 +24,7 @@ func TestBoxSharing(t *testing.T) {
 
 	ownerPTY, ownerCookies, ownerKeyFile, ownerEmail := registerForExeDevWithEmail(t, "owner@test-box-sharing.example")
 	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
-	ownerPTY.disconnect()
+	ownerPTY.Disconnect()
 	waitForSSH(t, box, ownerKeyFile)
 
 	const boxInternalPort = 8080
@@ -151,7 +151,7 @@ func TestBoxSharing(t *testing.T) {
 			httpCode: http.StatusUnauthorized,
 		})
 
-		guestPTY.disconnect()
+		guestPTY.Disconnect()
 	})
 
 	t.Run("share_link", func(t *testing.T) {
@@ -220,69 +220,69 @@ func TestShareCommands(t *testing.T) {
 	// User 1: Create a box
 	pty1, _, keyFile1, email1 := registerForExeDev(t)
 	box := newBox(t, pty1, testinfra.BoxOpts{Command: "/bin/bash"})
-	pty1.wantPrompt()
+	pty1.WantPrompt()
 
 	// Show initial share status (should be empty)
-	pty1.sendLine(fmt.Sprintf("share show %s", box))
-	pty1.want("Sharing for VM")
-	pty1.want(box)
-	pty1.want("No shares configured")
-	pty1.wantPrompt()
+	pty1.SendLine(fmt.Sprintf("share show %s", box))
+	pty1.Want("Sharing for VM")
+	pty1.Want(box)
+	pty1.Want("No shares configured")
+	pty1.WantPrompt()
 
 	// User 1: Share the box with a user (will be pending since they're not registered)
 	email2 := "friend" + testinfra.FakeEmailSuffix
-	pty1.sendLine(fmt.Sprintf("share add %s %s --message='Welcome to my box'", box, email2))
-	pty1.want("Invitation sent to " + email2)
-	pty1.want("will receive an email")
-	pty1.wantPrompt()
+	pty1.SendLine(fmt.Sprintf("share add %s %s --message='Welcome to my box'", box, email2))
+	pty1.Want("Invitation sent to " + email2)
+	pty1.Want("will receive an email")
+	pty1.WantPrompt()
 
 	// Show updated share status (should show pending share)
-	pty1.sendLine(fmt.Sprintf("share show %s", box))
-	pty1.want("Sharing for VM")
-	pty1.want(box)
-	pty1.want(email2)
-	pty1.wantPrompt()
+	pty1.SendLine(fmt.Sprintf("share show %s", box))
+	pty1.Want("Sharing for VM")
+	pty1.Want(box)
+	pty1.Want(email2)
+	pty1.WantPrompt()
 
 	// Create a share link
-	pty1.sendLine(fmt.Sprintf("share add-share-link %s", box))
-	pty1.want("Share link created")
-	pty1.want("http://")
-	pty1.want("share=")
-	pty1.wantPrompt()
+	pty1.SendLine(fmt.Sprintf("share add-share-link %s", box))
+	pty1.Want("Share link created")
+	pty1.Want("http://")
+	pty1.Want("share=")
+	pty1.WantPrompt()
 
 	// Show status with share link
-	pty1.sendLine(fmt.Sprintf("share show %s", box))
-	pty1.want("Sharing for VM")
-	pty1.want(box)
-	pty1.want(email2)
-	pty1.want("Share links:") // Share link section
-	pty1.wantPrompt()
+	pty1.SendLine(fmt.Sprintf("share show %s", box))
+	pty1.Want("Sharing for VM")
+	pty1.Want(box)
+	pty1.Want(email2)
+	pty1.Want("Share links:") // Share link section
+	pty1.WantPrompt()
 
 	// Remove the email share
-	pty1.sendLine(fmt.Sprintf("share remove %s %s", box, email2))
-	pty1.want("Removed " + email2 + "'s access")
-	pty1.wantPrompt()
+	pty1.SendLine(fmt.Sprintf("share remove %s %s", box, email2))
+	pty1.Want("Removed " + email2 + "'s access")
+	pty1.WantPrompt()
 
 	// Show status after removal
-	pty1.sendLine(fmt.Sprintf("share show %s", box))
-	pty1.want("Sharing for VM")
-	pty1.want("Share links:") // Still has share link
-	pty1.wantPrompt()
+	pty1.SendLine(fmt.Sprintf("share show %s", box))
+	pty1.Want("Sharing for VM")
+	pty1.Want("Share links:") // Still has share link
+	pty1.WantPrompt()
 
 	// Test help command
-	pty1.sendLine("help share")
-	pty1.want("Command: share")
-	pty1.want("Subcommands:")
-	pty1.want("show")
-	pty1.want("add")
-	pty1.want("remove")
-	pty1.want("add-link")
-	pty1.want("remove-link")
-	pty1.wantPrompt()
+	pty1.SendLine("help share")
+	pty1.Want("Command: share")
+	pty1.Want("Subcommands:")
+	pty1.Want("show")
+	pty1.Want("add")
+	pty1.Want("remove")
+	pty1.Want("add-link")
+	pty1.Want("remove-link")
+	pty1.WantPrompt()
 
 	// Cleanup
 	pty1.deleteBox(box)
-	pty1.disconnect()
+	pty1.Disconnect()
 
 	// Don't need to clean up - test tracks keyFile and email for canonicalization
 	_ = keyFile1
@@ -307,7 +307,7 @@ func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
 	// Owner creates a box
 	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, "owner@test-public-box.example")
 	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
-	ownerPTY.disconnect()
+	ownerPTY.Disconnect()
 	waitForSSH(t, box, ownerKeyFile)
 
 	const boxInternalPort = 8080
@@ -398,7 +398,7 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 	ownerEmail := fmt.Sprintf("owner-%d@test-pending-share-ssh.example", testID)
 	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, ownerEmail)
 	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
-	ownerPTY.disconnect()
+	ownerPTY.Disconnect()
 	waitForSSH(t, box, ownerKeyFile)
 
 	const boxInternalPort = 8080
@@ -452,7 +452,7 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 	// KEY STEP: Guest registers with the same email
 	// This should convert the pending share to an active share
 	guestPTY, guestCookies, _, _ := registerForExeDevWithEmail(t, guestEmail)
-	guestPTY.disconnect()
+	guestPTY.Disconnect()
 
 	// Verify the share is now active
 	shareOut, err = Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "show", box, "--json")
@@ -503,7 +503,7 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 	ownerEmail := fmt.Sprintf("owner-%d@test-pending-share-web.example", testID)
 	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, ownerEmail)
 	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
-	ownerPTY.disconnect()
+	ownerPTY.Disconnect()
 	waitForSSH(t, box, ownerKeyFile)
 
 	const boxInternalPort = 8080
@@ -586,12 +586,12 @@ func TestProxyCookieIsolation(t *testing.T) {
 	// Create two users, each with their own box
 	user1PTY, user1Cookies, user1KeyFile, _ := registerForExeDevWithEmail(t, "user1@test-cookie-isolation.example")
 	box1 := newBox(t, user1PTY, testinfra.BoxOpts{Command: "/bin/bash"})
-	user1PTY.disconnect()
+	user1PTY.Disconnect()
 	waitForSSH(t, box1, user1KeyFile)
 
 	user2PTY, _, user2KeyFile, _ := registerForExeDevWithEmail(t, "user2@test-cookie-isolation.example")
 	box2 := newBox(t, user2PTY, testinfra.BoxOpts{Command: "/bin/bash"})
-	user2PTY.disconnect()
+	user2PTY.Disconnect()
 	// No waitForSSH for box2: the test only checks that box1's proxy cookie
 	// is rejected for box2 at the proxy layer, so box2's SSH doesn't need to be up.
 
@@ -730,7 +730,7 @@ func TestLoginWithExeFlow(t *testing.T) {
 	// === Setup: Owner creates a box with an HTTP server ===
 	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, "owner@test-login-with-exe.example")
 	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
-	ownerPTY.disconnect()
+	ownerPTY.Disconnect()
 	waitForSSH(t, box, ownerKeyFile)
 
 	const boxInternalPort = 8080
@@ -1222,7 +1222,7 @@ func TestShareOnlyGrantsStandardPortAccess(t *testing.T) {
 
 	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, "owner@test-share-access.example")
 	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
-	ownerPTY.disconnect()
+	ownerPTY.Disconnect()
 	waitForSSH(t, box, ownerKeyFile)
 
 	const boxInternalPort = 8080

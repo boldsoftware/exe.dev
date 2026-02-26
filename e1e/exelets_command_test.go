@@ -16,10 +16,10 @@ func TestExeletsCommand(t *testing.T) {
 
 	// Test that regular user without root_support gets the sudoers joke error
 	t.Run("denied_without_root_support", func(t *testing.T) {
-		regularPTY.sendLine("exelets")
-		regularPTY.want("is not in the sudoers file")
-		regularPTY.want("This incident will be reported")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine("exelets")
+		regularPTY.Want("is not in the sudoers file")
+		regularPTY.Want("This incident will be reported")
+		regularPTY.WantPrompt()
 	})
 
 	// Enable root_support for the support user
@@ -29,10 +29,10 @@ func TestExeletsCommand(t *testing.T) {
 
 	// Test that support user with root_support can use the exelets command
 	t.Run("allowed_with_root_support", func(t *testing.T) {
-		supportPTY.sendLine("exelets")
-		supportPTY.reject("is not in the sudoers file")
-		supportPTY.want("healthy")
-		supportPTY.wantPrompt()
+		supportPTY.SendLine("exelets")
+		supportPTY.Reject("is not in the sudoers file")
+		supportPTY.Want("healthy")
+		supportPTY.WantPrompt()
 	})
 
 	// Test JSON output via SSH command (non-PTY)
@@ -75,11 +75,11 @@ func TestExeletsCommand(t *testing.T) {
 
 	// Test that the command doesn't appear in help for regular users
 	t.Run("hidden_from_help", func(t *testing.T) {
-		regularPTY.sendLine("help")
-		regularPTY.reject("exelets")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine("help")
+		regularPTY.Reject("exelets")
+		regularPTY.WantPrompt()
 	})
 
-	regularPTY.disconnect()
-	supportPTY.disconnect()
+	regularPTY.Disconnect()
+	supportPTY.Disconnect()
 }

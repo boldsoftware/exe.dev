@@ -23,14 +23,14 @@ func TestCp(t *testing.T) {
 
 	// Test usage error first (doesn't need a VM)
 	t.Run("Usage", func(t *testing.T) {
-		pty.sendLine("cp")
-		pty.want("usage")
-		pty.wantPrompt()
+		pty.SendLine("cp")
+		pty.Want("usage")
+		pty.WantPrompt()
 	})
 
 	// Create source VM
 	sourceBox := newBox(t, pty)
-	pty.disconnect()
+	pty.Disconnect()
 	waitForSSH(t, sourceBox, keyFile)
 
 	// Write marker file on source box to verify data copying
@@ -64,28 +64,28 @@ func TestCp(t *testing.T) {
 	t.Run("InvalidCopyName", func(t *testing.T) {
 		// Try to copy with an invalid name (too short)
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine("cp " + sourceBox + " abc")
-		repl.want("invalid")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine("cp " + sourceBox + " abc")
+		repl.Want("invalid")
+		repl.WantPrompt()
+		repl.Disconnect()
 	})
 
 	t.Run("SourceNotFound", func(t *testing.T) {
 		// Try to copy a non-existent VM
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine("cp nonexistent-vm-xyz copied-box")
-		repl.want("not found")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine("cp nonexistent-vm-xyz copied-box")
+		repl.Want("not found")
+		repl.WantPrompt()
+		repl.Disconnect()
 	})
 
 	t.Run("NameConflict", func(t *testing.T) {
 		// Try to copy to a name that already exists (the source box itself)
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine("cp " + sourceBox + " " + sourceBox)
-		repl.want("already exists")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine("cp " + sourceBox + " " + sourceBox)
+		repl.Want("already exists")
+		repl.WantPrompt()
+		repl.Disconnect()
 	})
 
 	// Test cp with --json flag (creates and cleans up a copy)
@@ -115,10 +115,10 @@ func TestCp(t *testing.T) {
 	// Test cp without specifying name (random name generated)
 	t.Run("RandomName", func(t *testing.T) {
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine("cp " + sourceBox)
-		repl.want("Copying")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine("cp " + sourceBox)
+		repl.Want("Copying")
+		repl.WantPrompt()
+		repl.Disconnect()
 
 		// Get box list via JSON to find the copied box
 		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "ls", "--json")
@@ -160,10 +160,10 @@ func TestCp(t *testing.T) {
 		copiedBox = "copied-from-source"
 
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine("cp " + sourceBox + " " + copiedBox)
-		repl.want("Copying")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine("cp " + sourceBox + " " + copiedBox)
+		repl.Want("Copying")
+		repl.WantPrompt()
+		repl.Disconnect()
 
 		// Wait for copied box SSH to be ready
 		waitForSSH(t, copiedBox, keyFile)

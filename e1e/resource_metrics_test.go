@@ -26,7 +26,7 @@ func TestMetricsClearedOnDelete(t *testing.T) {
 	}
 
 	pty, _, _, _ := registerForExeDev(t)
-	defer pty.disconnect()
+	defer pty.Disconnect()
 
 	boxName := newBox(t, pty)
 

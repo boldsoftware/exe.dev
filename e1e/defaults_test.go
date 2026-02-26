@@ -17,28 +17,28 @@ func TestDefaultsCommand(t *testing.T) {
 	pty, _, keyFile, email := registerForExeDev(t)
 
 	// Test defaults write/read/delete cycle
-	pty.sendLine("defaults write dev.exe new-vm-email false")
-	pty.wantPrompt()
+	pty.SendLine("defaults write dev.exe new-vm-email false")
+	pty.WantPrompt()
 
-	pty.sendLine("defaults read dev.exe new-vm-email")
-	pty.want("false")
-	pty.wantPrompt()
+	pty.SendLine("defaults read dev.exe new-vm-email")
+	pty.Want("false")
+	pty.WantPrompt()
 
-	pty.sendLine("defaults read dev.exe")
-	pty.want("new-vm-email: false")
-	pty.wantPrompt()
+	pty.SendLine("defaults read dev.exe")
+	pty.Want("new-vm-email: false")
+	pty.WantPrompt()
 
-	pty.sendLine("defaults delete dev.exe new-vm-email")
-	pty.wantPrompt()
+	pty.SendLine("defaults delete dev.exe new-vm-email")
+	pty.WantPrompt()
 
-	pty.sendLine("defaults read dev.exe new-vm-email")
-	pty.want("(not set)")
-	pty.wantPrompt()
+	pty.SendLine("defaults read dev.exe new-vm-email")
+	pty.Want("(not set)")
+	pty.WantPrompt()
 
 	// Now test that the default actually suppresses email.
 	// Set new-vm-email to false, then create a VM and verify no email is sent.
-	pty.sendLine("defaults write dev.exe new-vm-email off")
-	pty.wantPrompt()
+	pty.SendLine("defaults write dev.exe new-vm-email off")
+	pty.WantPrompt()
 
 	// Poison the inbox - email server will panic if email arrives.
 	Env.servers.Email.PoisonInbox(email)
@@ -48,10 +48,10 @@ func TestDefaultsCommand(t *testing.T) {
 		boxName += strings.Repeat("b", 52-len(boxName))
 		testinfra.AddCanonicalization(boxName, "BOX_NAME")
 	}
-	pty.sendLine(fmt.Sprintf("new --name=%s", boxName))
-	pty.wantRe("Creating .*" + boxName)
-	pty.want("Ready")
-	pty.wantPrompt()
+	pty.SendLine(fmt.Sprintf("new --name=%s", boxName))
+	pty.WantRE("Creating .*" + boxName)
+	pty.Want("Ready")
+	pty.WantPrompt()
 
 	// If we got here without the email server panicking, the default worked.
 

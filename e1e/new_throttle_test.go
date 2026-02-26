@@ -18,7 +18,7 @@ func TestNewThrottleGlobalBlock(t *testing.T) {
 	noGolden(t)
 
 	pty, _, _, _ := registerForExeDev(t)
-	defer pty.disconnect()
+	defer pty.Disconnect()
 
 	// Enable global throttle via debug page
 	throttleURL := fmt.Sprintf("http://localhost:%d/debug/new-throttle", Env.servers.Exed.HTTPPort)
@@ -37,9 +37,9 @@ func TestNewThrottleGlobalBlock(t *testing.T) {
 
 	// Try to create a box - should be blocked
 	bn := boxName(t)
-	pty.sendLine("new --name=" + bn)
-	pty.want("VM creation is temporarily disabled for testing.")
-	pty.wantPrompt()
+	pty.SendLine("new --name=" + bn)
+	pty.Want("VM creation is temporarily disabled for testing.")
+	pty.WantPrompt()
 
 	// Disable throttle
 	resp, err = http.PostForm(throttleURL, url.Values{
@@ -54,11 +54,11 @@ func TestNewThrottleGlobalBlock(t *testing.T) {
 
 	// Now creation should work
 	boxName2 := boxName(t)
-	pty.sendLine("new --name=" + boxName2)
-	pty.reject("disabled")
-	pty.wantRe("Creating .*" + boxName2)
-	pty.want("Ready")
-	pty.wantPrompt()
+	pty.SendLine("new --name=" + boxName2)
+	pty.Reject("disabled")
+	pty.WantRE("Creating .*" + boxName2)
+	pty.Want("Ready")
+	pty.WantPrompt()
 
 	// Cleanup
 	pty.deleteBox(boxName2)
@@ -71,7 +71,7 @@ func TestNewThrottleEmailPattern(t *testing.T) {
 	noGolden(t)
 
 	pty, _, keyFile, email := registerForExeDev(t)
-	defer pty.disconnect()
+	defer pty.Disconnect()
 
 	// Extract domain from email for pattern matching
 	parts := strings.Split(email, "@")
@@ -94,9 +94,9 @@ func TestNewThrottleEmailPattern(t *testing.T) {
 
 	// Try to create a box - should be blocked due to email pattern
 	bn := boxName(t)
-	pty.sendLine("new --name=" + bn)
-	pty.want("Your domain is blocked from creating VMs.")
-	pty.wantPrompt()
+	pty.SendLine("new --name=" + bn)
+	pty.Want("Your domain is blocked from creating VMs.")
+	pty.WantPrompt()
 
 	// Clear the throttle pattern
 	resp, err = http.PostForm(throttleURL, url.Values{
@@ -111,11 +111,11 @@ func TestNewThrottleEmailPattern(t *testing.T) {
 
 	// Now creation should work
 	boxName2 := boxName(t)
-	pty.sendLine("new --name=" + boxName2)
-	pty.reject("blocked")
-	pty.wantRe("Creating .*" + boxName2)
-	pty.want("Ready")
-	pty.wantPrompt()
+	pty.SendLine("new --name=" + boxName2)
+	pty.Reject("blocked")
+	pty.WantRE("Creating .*" + boxName2)
+	pty.Want("Ready")
+	pty.WantPrompt()
 
 	// Cleanup
 	pty.deleteBox(boxName2)
@@ -167,7 +167,7 @@ func TestNewThrottleDefaultMessage(t *testing.T) {
 	noGolden(t)
 
 	pty, _, _, _ := registerForExeDev(t)
-	defer pty.disconnect()
+	defer pty.Disconnect()
 
 	// Enable global throttle with no custom message
 	throttleURL := fmt.Sprintf("http://localhost:%d/debug/new-throttle", Env.servers.Exed.HTTPPort)
@@ -183,9 +183,9 @@ func TestNewThrottleDefaultMessage(t *testing.T) {
 
 	// Try to create a box - should see default message
 	bn := boxName(t)
-	pty.sendLine("new --name=" + bn)
-	pty.want("VM creation is temporarily disabled.")
-	pty.wantPrompt()
+	pty.SendLine("new --name=" + bn)
+	pty.Want("VM creation is temporarily disabled.")
+	pty.WantPrompt()
 
 	// Cleanup - disable throttle
 	resp, err = http.PostForm(throttleURL, url.Values{

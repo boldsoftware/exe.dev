@@ -21,48 +21,48 @@ func TestCpResources(t *testing.T) {
 
 	// Create a source box
 	sourceBox := newBox(t, pty)
-	pty.disconnect()
+	pty.Disconnect()
 	waitForSSH(t, sourceBox, keyFile)
 
 	// Test validation errors
 	t.Run("bad-mem", func(t *testing.T) {
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine(fmt.Sprintf("cp %s inv-mem --memory=abc", sourceBox))
-		repl.want("invalid --memory value")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine(fmt.Sprintf("cp %s inv-mem --memory=abc", sourceBox))
+		repl.Want("invalid --memory value")
+		repl.WantPrompt()
+		repl.Disconnect()
 	})
 
 	t.Run("lo-mem", func(t *testing.T) {
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine(fmt.Sprintf("cp %s lo-mem --memory=1GB", sourceBox))
-		repl.want("--memory must be at least")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine(fmt.Sprintf("cp %s lo-mem --memory=1GB", sourceBox))
+		repl.Want("--memory must be at least")
+		repl.WantPrompt()
+		repl.Disconnect()
 	})
 
 	t.Run("bad-disk", func(t *testing.T) {
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine(fmt.Sprintf("cp %s inv-disk --disk=xyz", sourceBox))
-		repl.want("invalid --disk value")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine(fmt.Sprintf("cp %s inv-disk --disk=xyz", sourceBox))
+		repl.Want("invalid --disk value")
+		repl.WantPrompt()
+		repl.Disconnect()
 	})
 
 	t.Run("lo-disk", func(t *testing.T) {
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine(fmt.Sprintf("cp %s lo-disk --disk=2GB", sourceBox))
-		repl.want("--disk must be at least")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine(fmt.Sprintf("cp %s lo-disk --disk=2GB", sourceBox))
+		repl.Want("--disk must be at least")
+		repl.WantPrompt()
+		repl.Disconnect()
 	})
 
 	t.Run("hi-cpu", func(t *testing.T) {
 		repl := sshToExeDev(t, keyFile)
-		repl.sendLine(fmt.Sprintf("cp %s hi-cpu --cpu=99", sourceBox))
-		repl.want("--cpu cannot exceed")
-		repl.wantPrompt()
-		repl.disconnect()
+		repl.SendLine(fmt.Sprintf("cp %s hi-cpu --cpu=99", sourceBox))
+		repl.Want("--cpu cannot exceed")
+		repl.WantPrompt()
+		repl.Disconnect()
 	})
 
 	// Test successful copy with memory override

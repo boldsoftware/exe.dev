@@ -25,10 +25,10 @@ func TestHostOverride(t *testing.T) {
 	// Test that regular user without root_support gets the sudoers joke error
 	t.Run("denied_without_root_support", func(t *testing.T) {
 		bn := boxName(t)
-		regularPTY.sendLine(fmt.Sprintf("new --name=%s --exelet=%s", bn, exeletAddr))
-		regularPTY.want("is not in the sudoers file")
-		regularPTY.want("This incident will be reported")
-		regularPTY.wantPrompt()
+		regularPTY.SendLine(fmt.Sprintf("new --name=%s --exelet=%s", bn, exeletAddr))
+		regularPTY.Want("is not in the sudoers file")
+		regularPTY.Want("This incident will be reported")
+		regularPTY.WantPrompt()
 	})
 
 	// Enable root_support for the support user
@@ -41,23 +41,23 @@ func TestHostOverride(t *testing.T) {
 		// TODO: enable this test when e1e supports multiple exelets
 		t.Skip("no point in this test yet, because e1e always uses a single exelet")
 		bn := boxName(t)
-		supportPTY.sendLine(fmt.Sprintf("new --name=%s --exelet=%s", bn, exeletAddr))
-		supportPTY.reject("is not in the sudoers file")
-		supportPTY.wantRe("Creating .*" + bn)
-		supportPTY.want("Ready")
-		supportPTY.wantPrompt()
+		supportPTY.SendLine(fmt.Sprintf("new --name=%s --exelet=%s", bn, exeletAddr))
+		supportPTY.Reject("is not in the sudoers file")
+		supportPTY.WantRE("Creating .*" + bn)
+		supportPTY.Want("Ready")
+		supportPTY.WantPrompt()
 		supportPTY.deleteBox(bn)
 	})
 
 	// Test that invalid exelet shows the list of valid exelets
 	t.Run("invalid_exelet_shows_list", func(t *testing.T) {
 		bn := boxName(t)
-		supportPTY.sendLine(fmt.Sprintf("new --name=%s --exelet=tcp://invalid:9999", bn))
-		supportPTY.want("not found")
-		supportPTY.want("Available exelets")
-		supportPTY.wantPrompt()
+		supportPTY.SendLine(fmt.Sprintf("new --name=%s --exelet=tcp://invalid:9999", bn))
+		supportPTY.Want("not found")
+		supportPTY.Want("Available exelets")
+		supportPTY.WantPrompt()
 	})
 
-	regularPTY.disconnect()
-	supportPTY.disconnect()
+	regularPTY.Disconnect()
+	supportPTY.Disconnect()
 }

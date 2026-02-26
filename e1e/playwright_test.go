@@ -42,7 +42,7 @@ func TestProxyLoginFlow_Playwright(t *testing.T) {
 	// Step 1: Register user via SSH, create VM, start httpd, configure private proxy route.
 	pty, _, keyFile, email := registerForExeDev(t)
 	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash", NoEmail: true})
-	pty.disconnect()
+	pty.Disconnect()
 	waitForSSH(t, box, keyFile)
 
 	makeIndex := boxSSHCommand(t, box, keyFile, "sh", "-c", "'echo alive > /home/exedev/index.html'")
