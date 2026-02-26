@@ -279,12 +279,12 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, b := range dbBoxes {
 			info := boxInfo{
-				Host:             b.Ctrhost,
-				Name:             b.Name,
-				Status:           b.Status,
-				OwnerUserID:      b.OwnerUserID,
-				OwnerEmail:       b.OwnerEmail,
-				Region:           b.Region,
+				Host:                 b.Ctrhost,
+				Name:                 b.Name,
+				Status:               b.Status,
+				OwnerUserID:          b.OwnerUserID,
+				OwnerEmail:           b.OwnerEmail,
+				Region:               b.Region,
 				SupportAccessAllowed: b.SupportAccessAllowed == 1,
 			}
 			if b.ContainerID != nil {
