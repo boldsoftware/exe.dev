@@ -1,0 +1,15 @@
+#!/bin/bash
+# Push a commit to edric for e1e tests. Defaults to HEAD.
+#
+# This only tests committed code. If you're changing e1ed infra itself
+# (cmd/e1ed, cmd/e1ed-hook, exelet, execore, etc.), you need to redeploy
+# first: ./ops/deploy/deploy-e1ed.sh and/or ./ops/deploy/deploy-e1ed-hook.sh
+#
+# Usage:
+#   bin/e1e              # test HEAD
+#   bin/e1e my-branch    # test tip of my-branch
+#   bin/e1e abc123       # test a specific commit
+set -euo pipefail
+
+ref="${1:-HEAD}"
+git push --force -q root@edric:/data/e1ed/push.git "$ref":refs/e1e/test

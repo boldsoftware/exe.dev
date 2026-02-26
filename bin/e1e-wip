@@ -1,0 +1,16 @@
+#!/bin/bash
+# Snapshot the working tree (including unstaged/untracked files) and push
+# to edric for e1e tests. Does not modify HEAD, the index, or any branch.
+#
+# This only tests your exe code. If you're changing e1ed infra itself
+# (cmd/e1ed, cmd/e1ed-hook, exelet, execore, etc.), you need to redeploy
+# first: ./ops/deploy/deploy-e1ed.sh and/or ./ops/deploy/deploy-e1ed-hook.sh
+set -euo pipefail
+
+idx=$(mktemp)
+trap "rm -f $idx" EXIT
+cp "$(git rev-parse --git-dir)/index" "$idx"
+GIT_INDEX_FILE="$idx" git add -A
+tree=$(GIT_INDEX_FILE="$idx" git write-tree)
+sha=$(git commit-tree "$tree" -m wip)
+git push --force -q root@edric:/data/e1ed/push.git "$sha":refs/e1e/wip
