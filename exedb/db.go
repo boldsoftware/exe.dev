@@ -465,6 +465,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTeamStmt, err = db.PrepareContext(ctx, getTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTeam: %w", err)
 	}
+	if q.getTeamAuthProviderStmt, err = db.PrepareContext(ctx, getTeamAuthProvider); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTeamAuthProvider: %w", err)
+	}
 	if q.getTeamForUserStmt, err = db.PrepareContext(ctx, getTeamForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTeamForUser: %w", err)
 	}
@@ -761,6 +764,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setSignupPOWEnabledStmt, err = db.PrepareContext(ctx, setSignupPOWEnabled); err != nil {
 		return nil, fmt.Errorf("error preparing query SetSignupPOWEnabled: %w", err)
+	}
+	if q.setTeamAuthProviderStmt, err = db.PrepareContext(ctx, setTeamAuthProvider); err != nil {
+		return nil, fmt.Errorf("error preparing query SetTeamAuthProvider: %w", err)
 	}
 	if q.setUserAuthProviderStmt, err = db.PrepareContext(ctx, setUserAuthProvider); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserAuthProvider: %w", err)
@@ -1640,6 +1646,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTeamStmt: %w", cerr)
 		}
 	}
+	if q.getTeamAuthProviderStmt != nil {
+		if cerr := q.getTeamAuthProviderStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTeamAuthProviderStmt: %w", cerr)
+		}
+	}
 	if q.getTeamForUserStmt != nil {
 		if cerr := q.getTeamForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getTeamForUserStmt: %w", cerr)
@@ -2135,6 +2146,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setSignupPOWEnabledStmt: %w", cerr)
 		}
 	}
+	if q.setTeamAuthProviderStmt != nil {
+		if cerr := q.setTeamAuthProviderStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setTeamAuthProviderStmt: %w", cerr)
+		}
+	}
 	if q.setUserAuthProviderStmt != nil {
 		if cerr := q.setUserAuthProviderStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setUserAuthProviderStmt: %w", cerr)
@@ -2551,6 +2567,7 @@ type Queries struct {
 	getTagResolutionStmt                       *sql.Stmt
 	getTagsNeedingRefreshStmt                  *sql.Stmt
 	getTeamStmt                                *sql.Stmt
+	getTeamAuthProviderStmt                    *sql.Stmt
 	getTeamForUserStmt                         *sql.Stmt
 	getTeamMemberByEmailStmt                   *sql.Stmt
 	getTeamMembersStmt                         *sql.Stmt
@@ -2650,6 +2667,7 @@ type Queries struct {
 	setNewThrottleMessageStmt                  *sql.Stmt
 	setPreferredExeletStmt                     *sql.Stmt
 	setSignupPOWEnabledStmt                    *sql.Stmt
+	setTeamAuthProviderStmt                    *sql.Stmt
 	setUserAuthProviderStmt                    *sql.Stmt
 	setUserBillingExemptionStmt                *sql.Stmt
 	setUserCgroupOverridesStmt                 *sql.Stmt
@@ -2849,6 +2867,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTagResolutionStmt:                       q.getTagResolutionStmt,
 		getTagsNeedingRefreshStmt:                  q.getTagsNeedingRefreshStmt,
 		getTeamStmt:                                q.getTeamStmt,
+		getTeamAuthProviderStmt:                    q.getTeamAuthProviderStmt,
 		getTeamForUserStmt:                         q.getTeamForUserStmt,
 		getTeamMemberByEmailStmt:                   q.getTeamMemberByEmailStmt,
 		getTeamMembersStmt:                         q.getTeamMembersStmt,
@@ -2948,6 +2967,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setNewThrottleMessageStmt:                  q.setNewThrottleMessageStmt,
 		setPreferredExeletStmt:                     q.setPreferredExeletStmt,
 		setSignupPOWEnabledStmt:                    q.setSignupPOWEnabledStmt,
+		setTeamAuthProviderStmt:                    q.setTeamAuthProviderStmt,
 		setUserAuthProviderStmt:                    q.setUserAuthProviderStmt,
 		setUserBillingExemptionStmt:                q.setUserBillingExemptionStmt,
 		setUserCgroupOverridesStmt:                 q.setUserCgroupOverridesStmt,

@@ -20,3 +20,6 @@ CREATE INDEX idx_team_sso_providers_issuer ON team_sso_providers(issuer_url);
 
 -- Add sso_provider_id to oauth_states so the OIDC callback knows which provider to use.
 ALTER TABLE oauth_states ADD COLUMN sso_provider_id INTEGER;
+
+-- Team-level auth provider: NULL = email/passkey, 'google' = global Google OAuth, 'oidc' = use team_sso_providers.
+ALTER TABLE teams ADD COLUMN auth_provider TEXT;

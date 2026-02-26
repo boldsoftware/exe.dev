@@ -102,6 +102,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/teams/remove-member", s.handleDebugTeamRemoveMember)
 	mux.HandleFunc("POST /debug/teams/update-role", s.handleDebugTeamUpdateRole)
 	mux.HandleFunc("POST /debug/teams/set-limits", s.handleDebugTeamSetLimits)
+	mux.HandleFunc("POST /debug/teams/set-auth-provider", s.handleDebugTeamSetAuthProvider)
 	mux.HandleFunc("POST /debug/teams/set-sso", s.handleDebugTeamSetSSO)
 	mux.HandleFunc("POST /debug/teams/delete-sso", s.handleDebugTeamDeleteSSO)
 	mux.HandleFunc("POST /debug/teams/test-sso", s.handleDebugTeamTestSSO)
@@ -4466,13 +4467,14 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 			DisplayName string `json:"display_name,omitempty"`
 		}
 		type teamInfo struct {
-			TeamID      string       `json:"team_id"`
-			DisplayName string       `json:"display_name"`
-			CreatedAt   string       `json:"created_at"`
-			MemberCount int64        `json:"member_count"`
-			Limits      string       `json:"limits,omitempty"`
-			Members     []memberInfo `json:"members"`
-			SSO         *ssoInfo     `json:"sso,omitempty"`
+			TeamID       string       `json:"team_id"`
+			DisplayName  string       `json:"display_name"`
+			CreatedAt    string       `json:"created_at"`
+			MemberCount  int64        `json:"member_count"`
+			Limits       string       `json:"limits,omitempty"`
+			AuthProvider string       `json:"auth_provider,omitempty"`
+			Members      []memberInfo `json:"members"`
+			SSO          *ssoInfo     `json:"sso,omitempty"`
 		}
 		var teamsJSON []teamInfo
 		for _, t := range teams {
@@ -4483,9 +4485,10 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 				MemberCount: t.MemberCount,
 				Members:     []memberInfo{},
 			}
-			// Fetch limits from full team record
+			// Fetch limits and auth_provider from full team record
 			if team, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeam, t.TeamID); err == nil {
 				ti.Limits = ptrStr(team.Limits)
+				ti.AuthProvider = ptrStr(team.AuthProvider)
 			}
 			// Fetch SSO provider if configured
 			if ssoProvider, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamSSOProvider, t.TeamID); err == nil {
@@ -4642,6 +4645,46 @@ func (s *Server) handleDebugTeamSetLimits(w http.ResponseWriter, r *http.Request
 	s.slog().InfoContext(ctx, "updated team limits via debug", "team_id", teamID, "limits", limits)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "updated limits for team %s", teamID)
+}
+
+// handleDebugTeamSetAuthProvider sets the team-level auth_provider.
+// POST /debug/teams/set-auth-provider with team_id, auth_provider (empty, "google", or "oidc")
+func (s *Server) handleDebugTeamSetAuthProvider(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	teamID := r.FormValue("team_id")
+	authProvider := r.FormValue("auth_provider")
+
+	if teamID == "" {
+		http.Error(w, "team_id is required", http.StatusBadRequest)
+		return
+	}
+
+	switch authProvider {
+	case "", "google", "oidc":
+		// valid
+	default:
+		http.Error(w, "auth_provider must be empty, 'google', or 'oidc'", http.StatusBadRequest)
+		return
+	}
+
+	var apPtr *string
+	if authProvider != "" {
+		apPtr = &authProvider
+	}
+
+	err := withTx1(s, ctx, (*exedb.Queries).SetTeamAuthProvider, exedb.SetTeamAuthProviderParams{
+		AuthProvider: apPtr,
+		TeamID:       teamID,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to set auth provider: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "set team auth_provider via debug", "team_id", teamID, "auth_provider", authProvider)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "set auth_provider=%q for team %s", authProvider, teamID)
 }
 
 // handleDebugTeamSetSSO configures an OIDC SSO provider for a team.

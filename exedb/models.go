@@ -384,10 +384,11 @@ type TagResolutionHistory struct {
 }
 
 type Team struct {
-	TeamID      string  `db:"team_id" json:"team_id"`
-	DisplayName string  `db:"display_name" json:"display_name"`
-	Limits      *string `db:"limits" json:"limits"`
-	CreatedAt   string  `db:"created_at" json:"created_at"`
+	TeamID       string  `db:"team_id" json:"team_id"`
+	DisplayName  string  `db:"display_name" json:"display_name"`
+	Limits       *string `db:"limits" json:"limits"`
+	CreatedAt    string  `db:"created_at" json:"created_at"`
+	AuthProvider *string `db:"auth_provider" json:"auth_provider"`
 }
 
 type TeamMember struct {

@@ -7,6 +7,12 @@ SELECT * FROM teams WHERE team_id = ?;
 -- name: UpdateTeamLimits :exec
 UPDATE teams SET limits = ? WHERE team_id = ?;
 
+-- name: SetTeamAuthProvider :exec
+UPDATE teams SET auth_provider = ? WHERE team_id = ?;
+
+-- name: GetTeamAuthProvider :one
+SELECT auth_provider FROM teams WHERE team_id = ?;
+
 -- name: InsertTeamMember :exec
 INSERT INTO team_members (team_id, user_id, role) VALUES (?, ?, ?);
 

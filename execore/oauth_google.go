@@ -16,7 +16,8 @@ import (
 
 // shouldUseGoogleOAuth determines if the given auth context requires Google OAuth.
 // It fetches the necessary auth_provider data from the DB, then delegates the
-// decision to googleoauth.Client.ShouldUse.
+// decision to googleoauth.Client.ShouldUse. Also checks for team-level
+// auth_provider='google' (teams that use Google as their SSO).
 func (s *Server) shouldUseGoogleOAuth(ctx context.Context, email, userID string, isNewUser bool, teamInviteToken string) bool {
 	var userAuthProvider, inviteAuthProvider string
 
@@ -24,6 +25,16 @@ func (s *Server) shouldUseGoogleOAuth(ctx context.Context, email, userID string,
 		if ap, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserAuthProvider, userID); err == nil {
 			if ap.AuthProvider != nil {
 				userAuthProvider = *ap.AuthProvider
+			}
+		}
+		// Check team-level auth_provider
+		if userAuthProvider == "" {
+			if team, err := s.GetTeamForUser(ctx, userID); err == nil && team != nil {
+				if tap, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamAuthProvider, team.TeamID); err == nil {
+					if tap != nil && *tap == googleoauth.ProviderName {
+						userAuthProvider = googleoauth.ProviderName
+					}
+				}
 			}
 		}
 	}

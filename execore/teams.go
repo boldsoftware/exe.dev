@@ -168,9 +168,12 @@ func (s *Server) createPendingTeamInvite(ctx context.Context, teamID, teamName, 
 	ce := canonicalizeEmail(invitedEmail)
 	token := generateRegistrationToken()
 
-	// Inherit auth_provider: prefer team SSO config, fall back to inviter's auth_provider.
+	// Inherit auth_provider: prefer team-level setting, then team SSO provider,
+	// then fall back to inviter's auth_provider.
 	var authProvider *string
-	if _, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamSSOProvider, teamID); err == nil {
+	if tap, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamAuthProvider, teamID); err == nil && tap != nil {
+		authProvider = tap
+	} else if _, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamSSOProvider, teamID); err == nil {
 		op := oidcauth.ProviderName
 		authProvider = &op
 	} else if ap, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserAuthProvider, invitedByUserID); err == nil {

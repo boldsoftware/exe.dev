@@ -49,12 +49,20 @@ func (s *Server) getTeamSSOProviderForInvite(ctx context.Context, teamInviteToke
 // shouldUseTeamOIDC determines if the given auth context requires team OIDC.
 // Returns the SSO provider if OIDC should be used, nil otherwise.
 func (s *Server) shouldUseTeamOIDC(ctx context.Context, email, userID string, isNewUser bool, teamInviteToken string) *exedb.TeamSsoProvider {
-	// Existing user with auth_provider='oidc'
 	if userID != "" && !isNewUser {
+		// Check user's personal auth_provider='oidc'
 		ap, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserAuthProvider, userID)
 		if err == nil && ap.AuthProvider != nil && *ap.AuthProvider == oidcauth.ProviderName {
 			if provider := s.getTeamSSOProviderForUser(ctx, userID); provider != nil {
 				return provider
+			}
+		}
+		// Check team-level auth_provider='oidc'
+		if team, err := s.GetTeamForUser(ctx, userID); err == nil && team != nil {
+			if tap, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamAuthProvider, team.TeamID); err == nil && tap != nil && *tap == oidcauth.ProviderName {
+				if provider := s.getTeamSSOProviderForUser(ctx, userID); provider != nil {
+					return provider
+				}
 			}
 		}
 	}

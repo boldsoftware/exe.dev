@@ -361,7 +361,7 @@ func (q *Queries) GetPendingTeamInvitesByTeam(ctx context.Context, teamID string
 }
 
 const getTeam = `-- name: GetTeam :one
-SELECT team_id, display_name, limits, created_at FROM teams WHERE team_id = ?
+SELECT team_id, display_name, limits, created_at, auth_provider FROM teams WHERE team_id = ?
 `
 
 func (q *Queries) GetTeam(ctx context.Context, teamID string) (Team, error) {
@@ -372,8 +372,20 @@ func (q *Queries) GetTeam(ctx context.Context, teamID string) (Team, error) {
 		&i.DisplayName,
 		&i.Limits,
 		&i.CreatedAt,
+		&i.AuthProvider,
 	)
 	return i, err
+}
+
+const getTeamAuthProvider = `-- name: GetTeamAuthProvider :one
+SELECT auth_provider FROM teams WHERE team_id = ?
+`
+
+func (q *Queries) GetTeamAuthProvider(ctx context.Context, teamID string) (*string, error) {
+	row := q.queryRow(ctx, q.getTeamAuthProviderStmt, getTeamAuthProvider, teamID)
+	var auth_provider *string
+	err := row.Scan(&auth_provider)
+	return auth_provider, err
 }
 
 const getTeamForUser = `-- name: GetTeamForUser :one
@@ -760,6 +772,20 @@ type MarkPendingTeamInviteAcceptedParams struct {
 
 func (q *Queries) MarkPendingTeamInviteAccepted(ctx context.Context, arg MarkPendingTeamInviteAcceptedParams) error {
 	_, err := q.exec(ctx, q.markPendingTeamInviteAcceptedStmt, markPendingTeamInviteAccepted, arg.AcceptedByUserID, arg.ID)
+	return err
+}
+
+const setTeamAuthProvider = `-- name: SetTeamAuthProvider :exec
+UPDATE teams SET auth_provider = ? WHERE team_id = ?
+`
+
+type SetTeamAuthProviderParams struct {
+	AuthProvider *string `db:"auth_provider" json:"auth_provider"`
+	TeamID       string  `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) SetTeamAuthProvider(ctx context.Context, arg SetTeamAuthProviderParams) error {
+	_, err := q.exec(ctx, q.setTeamAuthProviderStmt, setTeamAuthProvider, arg.AuthProvider, arg.TeamID)
 	return err
 }
 

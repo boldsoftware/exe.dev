@@ -40,7 +40,8 @@ tr.shown td.details-control::before { content: '-'; }
 <th>Created At</th>
 <th>Members</th>
 <th>Limits</th>
-<th>SSO</th>
+<th>Auth</th>
+<th>SSO Config</th>
 <th>Actions</th>
 </tr>
 </thead>
@@ -190,11 +191,21 @@ $(document).ready(function() {
                     'data-limits="' + (d.limits ? encodeURIComponent(d.limits) : '') + '">Edit</button>';
             }},
             { data: null, render: function(d) {
+                var ap = d.auth_provider || 'email';
+                var color = ap === 'google' ? '#4285f4' : ap === 'oidc' ? '#28a745' : '#666';
+                return '<select class="auth-provider-select" data-teamid="' + d.team_id + '" style="font-size:11px;color:' + color + ';">' +
+                    '<option value=""' + (ap === 'email' ? ' selected' : '') + '>email/passkey</option>' +
+                    '<option value="google"' + (ap === 'google' ? ' selected' : '') + '>google</option>' +
+                    '<option value="oidc"' + (ap === 'oidc' ? ' selected' : '') + '>oidc</option>' +
+                    '</select>';
+            }},
+            { data: null, render: function(d) {
+                if (!d.auth_provider || d.auth_provider !== 'oidc') return '<span style="color:#999;font-size:11px;">n/a</span>';
                 var ssoLabel = d.sso ? '<span style="color:#28a745;font-size:11px;">✓ ' + (d.sso.display_name || d.sso.issuer_url) + '</span> ' : '';
                 return ssoLabel + '<button class="toggle-btn sso-btn" ' +
                     'data-teamid="' + d.team_id + '" data-teamname="' + d.display_name + '" ' +
                     'data-sso="' + (d.sso ? encodeURIComponent(JSON.stringify(d.sso)) : '') + '">' +
-                    (d.sso ? 'Edit SSO' : 'Add SSO') + '</button>';
+                    (d.sso ? 'Edit' : 'Configure') + '</button>';
             }},
             { data: null, render: function(d) {
                 return '<button class="toggle-btn primary add-member-btn" ' +
@@ -426,6 +437,28 @@ document.getElementById('removeForm').addEventListener('submit', function(e) {
         alert('Failed to remove member: ' + err.message);
     });
 });
+// Auth provider dropdown
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('auth-provider-select')) {
+        var teamId = e.target.dataset.teamid;
+        var val = e.target.value;
+        var body = new URLSearchParams();
+        body.append('team_id', teamId);
+        body.append('auth_provider', val);
+        fetch('/debug/teams/set-auth-provider', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString()
+        }).then(function(resp) {
+            if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
+            teamsTable.ajax.reload(null, false);
+        }).catch(function(err) {
+            alert('Failed to set auth provider: ' + err.message);
+            teamsTable.ajax.reload(null, false);
+        });
+    }
+});
+
 // SSO configuration
 document.addEventListener('click', function(e) {
     if (e.target.classList.contains('sso-btn')) {
