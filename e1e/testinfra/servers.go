@@ -9,14 +9,14 @@ import (
 
 // ServerEnv describes the various servers running for an end-to-end test.
 type ServerEnv struct {
-	Exed          *ExedInstance
-	Exelets       []*ExeletInstance
-	Exeprox       *ExeproxInstance
-	SSHProxy      *TCPProxy
-	TCPProxies    []*TCPProxy
-	SSHPiperd     *SSHPiperdInstance
-	Email         *EmailServer
-	Metricsd      *MetricsdInstance
+	Exed       *ExedInstance
+	Exelets    []*ExeletInstance
+	Exeprox    *ExeproxInstance
+	SSHProxy   *TCPProxy
+	TCPProxies []*TCPProxy
+	SSHPiperd  *SSHPiperdInstance
+	Email      *EmailServer
+	Metricsd   *MetricsdInstance
 }
 
 // StartServers takes a list of exelets that have already been started,
