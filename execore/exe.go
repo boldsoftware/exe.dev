@@ -209,6 +209,10 @@ type EmailVerification struct {
 	// GoogleOAuthURL is set when the verification uses Google OAuth instead of email.
 	// The SSH session should print this URL for the user to visit.
 	GoogleOAuthURL string
+
+	// OAuthURL and OAuthLabel are set for generic OIDC verification (Okta, etc.).
+	OAuthURL   string
+	OAuthLabel string
 }
 
 // Close signals completion to the waiting SSH session.

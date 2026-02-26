@@ -1367,7 +1367,9 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// Google OAuth users skip billing at signup — Google login is sufficient anti-abuse friction.
 	// They hit billing when they try to create a VM.
 	willUseGoogleOAuth := s.shouldUseGoogleOAuth(r.Context(), addr, userID, isNewUser, r.FormValue("team_invite"))
-	if isNewUser && !s.env.SkipBilling && invite == nil && !hasValidTeamInvite && !isLoginWithExe && hostname == "" && !willUseGoogleOAuth {
+	oidcProvider := s.shouldUseTeamOIDC(r.Context(), addr, userID, isNewUser, r.FormValue("team_invite"))
+	willUseOIDC := oidcProvider != nil
+	if isNewUser && !s.env.SkipBilling && invite == nil && !hasValidTeamInvite && !isLoginWithExe && hostname == "" && !willUseGoogleOAuth && !willUseOIDC {
 		// Create pending registration to track email through Stripe
 		token := generateRegistrationToken()
 		err = withTx1(s, r.Context(), (*exedb.Queries).InsertPendingRegistration, exedb.InsertPendingRegistrationParams{
@@ -1432,6 +1434,25 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 			image:           image,
 		}
 		s.startGoogleOAuth(w, r, params)
+		return
+	}
+
+	// Check if we should use team OIDC (Okta, etc.) instead of email verification.
+	if willUseOIDC {
+		params := oauthStartParams{
+			email:           addr,
+			userID:          userID,
+			isNewUser:       isNewUser,
+			inviteCodeID:    inviteCodeID,
+			teamInviteToken: r.FormValue("team_invite"),
+			redirectURL:     r.FormValue("redirect"),
+			returnHost:      r.FormValue("return_host"),
+			loginWithExe:    isLoginWithExe,
+			hostname:        hostname,
+			prompt:          prompt,
+			image:           image,
+		}
+		s.startTeamOIDC(w, r, params, oidcProvider)
 		return
 	}
 

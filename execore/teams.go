@@ -12,6 +12,7 @@ import (
 	"exe.dev/domz"
 	"exe.dev/email"
 	"exe.dev/exedb"
+	"exe.dev/oidcauth"
 )
 
 // TeamBoxAccessType represents how a user has access to a box.
@@ -167,9 +168,12 @@ func (s *Server) createPendingTeamInvite(ctx context.Context, teamID, teamName, 
 	ce := canonicalizeEmail(invitedEmail)
 	token := generateRegistrationToken()
 
-	// Inherit auth_provider from the inviting user (team owner).
+	// Inherit auth_provider: prefer team SSO config, fall back to inviter's auth_provider.
 	var authProvider *string
-	if ap, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserAuthProvider, invitedByUserID); err == nil {
+	if _, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamSSOProvider, teamID); err == nil {
+		op := oidcauth.ProviderName
+		authProvider = &op
+	} else if ap, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserAuthProvider, invitedByUserID); err == nil {
 		authProvider = ap.AuthProvider
 	}
 

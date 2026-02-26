@@ -948,9 +948,12 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 		return nil, err
 	}
 
-	if verification.GoogleOAuthURL != "" {
+	switch {
+	case verification.GoogleOAuthURL != "":
 		fmt.Fprintf(s, "\r\nVerify with Google: \033[1;36m%s\033[0m\r\n", verification.GoogleOAuthURL)
-	} else {
+	case verification.OAuthURL != "":
+		fmt.Fprintf(s, "\r\nVerify with %s: \033[1;36m%s\033[0m\r\n", verification.OAuthLabel, verification.OAuthURL)
+	default:
 		fmt.Fprintf(s, "\r\nVerification email sent to: \033[1;32m%s\033[0m\r\n", email)
 	}
 	fmt.Fprintf(s, "\033[2mWaiting for verification...\033[0m\r\n")
@@ -1180,6 +1183,9 @@ func (ss *SSHServer) startEmailVerification(s *shellSession, publicKey, email st
 	}
 	if ss.server.shouldUseGoogleOAuth(s.Context(), email, userID, isNewAccount, "") {
 		return ss.startGoogleOAuthVerification(s, publicKey, email, isNewAccount, inviteCode, userID)
+	}
+	if oidcProvider := ss.server.shouldUseTeamOIDC(s.Context(), email, userID, isNewAccount, ""); oidcProvider != nil {
+		return ss.startOIDCVerification(s, publicKey, email, isNewAccount, inviteCode, userID, oidcProvider)
 	}
 
 	if !isNewAccount {

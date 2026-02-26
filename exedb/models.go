@@ -243,6 +243,7 @@ type OauthState struct {
 	Image                *string    `db:"image" json:"image"`
 	CreatedAt            *time.Time `db:"created_at" json:"created_at"`
 	ExpiresAt            time.Time  `db:"expires_at" json:"expires_at"`
+	SsoProviderID        *int64     `db:"sso_provider_id" json:"sso_provider_id"`
 }
 
 type Passkey struct {
@@ -394,6 +395,22 @@ type TeamMember struct {
 	UserID    string `db:"user_id" json:"user_id"`
 	Role      string `db:"role" json:"role"`
 	CreatedAt string `db:"created_at" json:"created_at"`
+}
+
+type TeamSsoProvider struct {
+	ID              int64      `db:"id" json:"id"`
+	TeamID          string     `db:"team_id" json:"team_id"`
+	ProviderType    string     `db:"provider_type" json:"provider_type"`
+	IssuerUrl       string     `db:"issuer_url" json:"issuer_url"`
+	ClientID        string     `db:"client_id" json:"client_id"`
+	ClientSecret    string     `db:"client_secret" json:"client_secret"`
+	DisplayName     *string    `db:"display_name" json:"display_name"`
+	AuthUrl         *string    `db:"auth_url" json:"auth_url"`
+	TokenUrl        *string    `db:"token_url" json:"token_url"`
+	UserinfoUrl     *string    `db:"userinfo_url" json:"userinfo_url"`
+	LastDiscoveryAt *time.Time `db:"last_discovery_at" json:"last_discovery_at"`
+	CreatedAt       *time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt       *time.Time `db:"updated_at" json:"updated_at"`
 }
 
 type TemplateRating struct {

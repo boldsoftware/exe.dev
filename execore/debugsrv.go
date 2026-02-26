@@ -30,6 +30,7 @@ import (
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
 	"exe.dev/logging"
+	"exe.dev/oidcauth"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 	"exe.dev/publicips"
@@ -101,6 +102,9 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/teams/remove-member", s.handleDebugTeamRemoveMember)
 	mux.HandleFunc("POST /debug/teams/update-role", s.handleDebugTeamUpdateRole)
 	mux.HandleFunc("POST /debug/teams/set-limits", s.handleDebugTeamSetLimits)
+	mux.HandleFunc("POST /debug/teams/set-sso", s.handleDebugTeamSetSSO)
+	mux.HandleFunc("POST /debug/teams/delete-sso", s.handleDebugTeamDeleteSSO)
+	mux.HandleFunc("POST /debug/teams/test-sso", s.handleDebugTeamTestSSO)
 	mux.HandleFunc("GET /debug/ideas", s.handleDebugTemplateReview)
 	mux.HandleFunc("POST /debug/ideas", s.handleDebugTemplateReviewPost)
 
@@ -4455,6 +4459,12 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 			Role     string `json:"role"`
 			JoinedAt string `json:"joined_at"`
 		}
+		type ssoInfo struct {
+			ProviderID  int64  `json:"provider_id"`
+			IssuerURL   string `json:"issuer_url"`
+			ClientID    string `json:"client_id"`
+			DisplayName string `json:"display_name,omitempty"`
+		}
 		type teamInfo struct {
 			TeamID      string       `json:"team_id"`
 			DisplayName string       `json:"display_name"`
@@ -4462,6 +4472,7 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 			MemberCount int64        `json:"member_count"`
 			Limits      string       `json:"limits,omitempty"`
 			Members     []memberInfo `json:"members"`
+			SSO         *ssoInfo     `json:"sso,omitempty"`
 		}
 		var teamsJSON []teamInfo
 		for _, t := range teams {
@@ -4475,6 +4486,18 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 			// Fetch limits from full team record
 			if team, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeam, t.TeamID); err == nil {
 				ti.Limits = ptrStr(team.Limits)
+			}
+			// Fetch SSO provider if configured
+			if ssoProvider, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamSSOProvider, t.TeamID); err == nil {
+				si := ssoInfo{
+					ProviderID: ssoProvider.ID,
+					IssuerURL:  ssoProvider.IssuerUrl,
+					ClientID:   ssoProvider.ClientID,
+				}
+				if ssoProvider.DisplayName != nil {
+					si.DisplayName = *ssoProvider.DisplayName
+				}
+				ti.SSO = &si
 			}
 			// Fetch members
 			if members, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamMembers, t.TeamID); err == nil {
@@ -4619,6 +4642,132 @@ func (s *Server) handleDebugTeamSetLimits(w http.ResponseWriter, r *http.Request
 	s.slog().InfoContext(ctx, "updated team limits via debug", "team_id", teamID, "limits", limits)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "updated limits for team %s", teamID)
+}
+
+// handleDebugTeamSetSSO configures an OIDC SSO provider for a team.
+// POST /debug/teams/set-sso with team_id, issuer_url, client_id, client_secret, display_name
+func (s *Server) handleDebugTeamSetSSO(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	teamID := r.FormValue("team_id")
+	issuerURL := strings.TrimRight(r.FormValue("issuer_url"), "/")
+	clientID := r.FormValue("client_id")
+	clientSecret := r.FormValue("client_secret")
+	displayName := r.FormValue("display_name")
+
+	if teamID == "" || issuerURL == "" || clientID == "" || clientSecret == "" {
+		http.Error(w, "team_id, issuer_url, client_id, and client_secret are required", http.StatusBadRequest)
+		return
+	}
+
+	// Run OIDC discovery to validate and cache endpoints
+	doc, err := oidcauth.TestConnectivity(ctx, issuerURL)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("OIDC discovery failed: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	var dnPtr *string
+	if displayName != "" {
+		dnPtr = &displayName
+	}
+
+	// Check if SSO already exists for this team
+	existing, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamSSOProvider, teamID)
+	if err == nil {
+		// Update existing
+		// If client_secret is "***" (masked), keep the existing secret
+		if clientSecret == "***" {
+			clientSecret = existing.ClientSecret
+		}
+		err = withTx1(s, ctx, (*exedb.Queries).UpdateTeamSSOProvider, exedb.UpdateTeamSSOProviderParams{
+			IssuerUrl:    issuerURL,
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			DisplayName:  dnPtr,
+			AuthUrl:      &doc.AuthorizationEndpoint,
+			TokenUrl:     &doc.TokenEndpoint,
+			UserinfoUrl:  &doc.UserinfoEndpoint,
+			TeamID:       teamID,
+		})
+	} else {
+		// Insert new
+		err = withTx1(s, ctx, (*exedb.Queries).InsertTeamSSOProvider, exedb.InsertTeamSSOProviderParams{
+			TeamID:       teamID,
+			IssuerUrl:    issuerURL,
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			DisplayName:  dnPtr,
+			AuthUrl:      &doc.AuthorizationEndpoint,
+			TokenUrl:     &doc.TokenEndpoint,
+			UserinfoUrl:  &doc.UserinfoEndpoint,
+		})
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to save SSO config: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	callbackURL := s.webBaseURLNoRequest() + "/oauth/oidc/callback"
+	spLoginURL := fmt.Sprintf("%s/oauth/oidc/login?issuer=%s", s.webBaseURLNoRequest(), issuerURL)
+
+	s.slog().InfoContext(ctx, "configured team SSO via debug",
+		"team_id", teamID, "issuer", issuerURL)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":       "ok",
+		"callback_url": callbackURL,
+		"sp_login_url": spLoginURL,
+	})
+}
+
+// handleDebugTeamDeleteSSO removes the SSO provider from a team.
+// POST /debug/teams/delete-sso with team_id
+func (s *Server) handleDebugTeamDeleteSSO(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	teamID := r.FormValue("team_id")
+	if teamID == "" {
+		http.Error(w, "team_id is required", http.StatusBadRequest)
+		return
+	}
+
+	err := withTx1(s, ctx, (*exedb.Queries).DeleteTeamSSOProvider, teamID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to delete SSO config: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "deleted team SSO via debug", "team_id", teamID)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "deleted SSO for team %s", teamID)
+}
+
+// handleDebugTeamTestSSO tests OIDC discovery for the given issuer URL.
+// POST /debug/teams/test-sso with issuer_url
+func (s *Server) handleDebugTeamTestSSO(w http.ResponseWriter, r *http.Request) {
+	issuerURL := strings.TrimRight(r.FormValue("issuer_url"), "/")
+	if issuerURL == "" {
+		http.Error(w, "issuer_url is required", http.StatusBadRequest)
+		return
+	}
+
+	doc, err := oidcauth.TestConnectivity(r.Context(), issuerURL)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":                 "ok",
+		"issuer":                 doc.Issuer,
+		"authorization_endpoint": doc.AuthorizationEndpoint,
+		"token_endpoint":         doc.TokenEndpoint,
+		"userinfo_endpoint":      doc.UserinfoEndpoint,
+	})
 }
 
 // handleDebugDeleteUser deletes a user and all associated data.

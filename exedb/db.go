@@ -207,6 +207,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteTeamMemberStmt, err = db.PrepareContext(ctx, deleteTeamMember); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTeamMember: %w", err)
 	}
+	if q.deleteTeamSSOProviderStmt, err = db.PrepareContext(ctx, deleteTeamSSOProvider); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTeamSSOProvider: %w", err)
+	}
 	if q.deleteTemplateStmt, err = db.PrepareContext(ctx, deleteTemplate); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTemplate: %w", err)
 	}
@@ -471,6 +474,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTeamMembersStmt, err = db.PrepareContext(ctx, getTeamMembers); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTeamMembers: %w", err)
 	}
+	if q.getTeamSSOProviderStmt, err = db.PrepareContext(ctx, getTeamSSOProvider); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTeamSSOProvider: %w", err)
+	}
+	if q.getTeamSSOProviderByIDStmt, err = db.PrepareContext(ctx, getTeamSSOProviderByID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTeamSSOProviderByID: %w", err)
+	}
+	if q.getTeamSSOProviderByIssuerStmt, err = db.PrepareContext(ctx, getTeamSSOProviderByIssuer); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTeamSSOProviderByIssuer: %w", err)
+	}
 	if q.getTemplateByIDStmt, err = db.PrepareContext(ctx, getTemplateByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTemplateByID: %w", err)
 	}
@@ -629,6 +641,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertTeamMemberStmt, err = db.PrepareContext(ctx, insertTeamMember); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTeamMember: %w", err)
+	}
+	if q.insertTeamSSOProviderStmt, err = db.PrepareContext(ctx, insertTeamSSOProvider); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertTeamSSOProvider: %w", err)
 	}
 	if q.insertTemplateStmt, err = db.PrepareContext(ctx, insertTemplate); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTemplate: %w", err)
@@ -833,6 +848,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateTeamMemberRoleStmt, err = db.PrepareContext(ctx, updateTeamMemberRole); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTeamMemberRole: %w", err)
+	}
+	if q.updateTeamSSOProviderStmt, err = db.PrepareContext(ctx, updateTeamSSOProvider); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateTeamSSOProvider: %w", err)
 	}
 	if q.updateTemplateStmt, err = db.PrepareContext(ctx, updateTemplate); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTemplate: %w", err)
@@ -1190,6 +1208,11 @@ func (q *Queries) Close() error {
 	if q.deleteTeamMemberStmt != nil {
 		if cerr := q.deleteTeamMemberStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteTeamMemberStmt: %w", cerr)
+		}
+	}
+	if q.deleteTeamSSOProviderStmt != nil {
+		if cerr := q.deleteTeamSSOProviderStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTeamSSOProviderStmt: %w", cerr)
 		}
 	}
 	if q.deleteTemplateStmt != nil {
@@ -1632,6 +1655,21 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTeamMembersStmt: %w", cerr)
 		}
 	}
+	if q.getTeamSSOProviderStmt != nil {
+		if cerr := q.getTeamSSOProviderStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTeamSSOProviderStmt: %w", cerr)
+		}
+	}
+	if q.getTeamSSOProviderByIDStmt != nil {
+		if cerr := q.getTeamSSOProviderByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTeamSSOProviderByIDStmt: %w", cerr)
+		}
+	}
+	if q.getTeamSSOProviderByIssuerStmt != nil {
+		if cerr := q.getTeamSSOProviderByIssuerStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTeamSSOProviderByIssuerStmt: %w", cerr)
+		}
+	}
 	if q.getTemplateByIDStmt != nil {
 		if cerr := q.getTemplateByIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getTemplateByIDStmt: %w", cerr)
@@ -1895,6 +1933,11 @@ func (q *Queries) Close() error {
 	if q.insertTeamMemberStmt != nil {
 		if cerr := q.insertTeamMemberStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertTeamMemberStmt: %w", cerr)
+		}
+	}
+	if q.insertTeamSSOProviderStmt != nil {
+		if cerr := q.insertTeamSSOProviderStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertTeamSSOProviderStmt: %w", cerr)
 		}
 	}
 	if q.insertTemplateStmt != nil {
@@ -2237,6 +2280,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateTeamMemberRoleStmt: %w", cerr)
 		}
 	}
+	if q.updateTeamSSOProviderStmt != nil {
+		if cerr := q.updateTeamSSOProviderStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateTeamSSOProviderStmt: %w", cerr)
+		}
+	}
 	if q.updateTemplateStmt != nil {
 		if cerr := q.updateTemplateStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateTemplateStmt: %w", cerr)
@@ -2417,6 +2465,7 @@ type Queries struct {
 	deleteSSHKeyForUserStmt                    *sql.Stmt
 	deleteTagResolutionStmt                    *sql.Stmt
 	deleteTeamMemberStmt                       *sql.Stmt
+	deleteTeamSSOProviderStmt                  *sql.Stmt
 	deleteTemplateStmt                         *sql.Stmt
 	deleteUserStmt                             *sql.Stmt
 	deleteUserDefaultGlobalLoadBalancerStmt    *sql.Stmt
@@ -2505,6 +2554,9 @@ type Queries struct {
 	getTeamForUserStmt                         *sql.Stmt
 	getTeamMemberByEmailStmt                   *sql.Stmt
 	getTeamMembersStmt                         *sql.Stmt
+	getTeamSSOProviderStmt                     *sql.Stmt
+	getTeamSSOProviderByIDStmt                 *sql.Stmt
+	getTeamSSOProviderByIssuerStmt             *sql.Stmt
 	getTemplateByIDStmt                        *sql.Stmt
 	getTemplateBySlugStmt                      *sql.Stmt
 	getTemplateBySlugAnyStmt                   *sql.Stmt
@@ -2558,6 +2610,7 @@ type Queries struct {
 	insertTagResolutionHistoryStmt             *sql.Stmt
 	insertTeamStmt                             *sql.Stmt
 	insertTeamMemberStmt                       *sql.Stmt
+	insertTeamSSOProviderStmt                  *sql.Stmt
 	insertTemplateStmt                         *sql.Stmt
 	insertUserStmt                             *sql.Stmt
 	isBoxSharedWithUserTeamStmt                *sql.Stmt
@@ -2626,6 +2679,7 @@ type Queries struct {
 	updateTagResolutionDigestStmt              *sql.Stmt
 	updateTeamLimitsStmt                       *sql.Stmt
 	updateTeamMemberRoleStmt                   *sql.Stmt
+	updateTeamSSOProviderStmt                  *sql.Stmt
 	updateTemplateStmt                         *sql.Stmt
 	updateTemplateStatusStmt                   *sql.Stmt
 	updateUserLLMAvailableCreditStmt           *sql.Stmt
@@ -2709,6 +2763,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteSSHKeyForUserStmt:                    q.deleteSSHKeyForUserStmt,
 		deleteTagResolutionStmt:                    q.deleteTagResolutionStmt,
 		deleteTeamMemberStmt:                       q.deleteTeamMemberStmt,
+		deleteTeamSSOProviderStmt:                  q.deleteTeamSSOProviderStmt,
 		deleteTemplateStmt:                         q.deleteTemplateStmt,
 		deleteUserStmt:                             q.deleteUserStmt,
 		deleteUserDefaultGlobalLoadBalancerStmt:    q.deleteUserDefaultGlobalLoadBalancerStmt,
@@ -2797,6 +2852,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTeamForUserStmt:                         q.getTeamForUserStmt,
 		getTeamMemberByEmailStmt:                   q.getTeamMemberByEmailStmt,
 		getTeamMembersStmt:                         q.getTeamMembersStmt,
+		getTeamSSOProviderStmt:                     q.getTeamSSOProviderStmt,
+		getTeamSSOProviderByIDStmt:                 q.getTeamSSOProviderByIDStmt,
+		getTeamSSOProviderByIssuerStmt:             q.getTeamSSOProviderByIssuerStmt,
 		getTemplateByIDStmt:                        q.getTemplateByIDStmt,
 		getTemplateBySlugStmt:                      q.getTemplateBySlugStmt,
 		getTemplateBySlugAnyStmt:                   q.getTemplateBySlugAnyStmt,
@@ -2850,6 +2908,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertTagResolutionHistoryStmt:             q.insertTagResolutionHistoryStmt,
 		insertTeamStmt:                             q.insertTeamStmt,
 		insertTeamMemberStmt:                       q.insertTeamMemberStmt,
+		insertTeamSSOProviderStmt:                  q.insertTeamSSOProviderStmt,
 		insertTemplateStmt:                         q.insertTemplateStmt,
 		insertUserStmt:                             q.insertUserStmt,
 		isBoxSharedWithUserTeamStmt:                q.isBoxSharedWithUserTeamStmt,
@@ -2918,6 +2977,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateTagResolutionDigestStmt:              q.updateTagResolutionDigestStmt,
 		updateTeamLimitsStmt:                       q.updateTeamLimitsStmt,
 		updateTeamMemberRoleStmt:                   q.updateTeamMemberRoleStmt,
+		updateTeamSSOProviderStmt:                  q.updateTeamSSOProviderStmt,
 		updateTemplateStmt:                         q.updateTemplateStmt,
 		updateTemplateStatusStmt:                   q.updateTemplateStatusStmt,
 		updateUserLLMAvailableCreditStmt:           q.updateUserLLMAvailableCreditStmt,

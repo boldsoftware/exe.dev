@@ -40,6 +40,7 @@ tr.shown td.details-control::before { content: '-'; }
 <th>Created At</th>
 <th>Members</th>
 <th>Limits</th>
+<th>SSO</th>
 <th>Actions</th>
 </tr>
 </thead>
@@ -107,6 +108,26 @@ tr.shown td.details-control::before { content: '-'; }
 </form>
 </dialog>
 
+<dialog id="ssoDialog">
+<form id="ssoForm">
+<h3>SSO Provider</h3>
+<p>Team: <strong id="ssoTeamDisplay"></strong></p>
+<input type="hidden" name="team_id" id="ssoTeamId">
+<p>Issuer URL: <input type="text" name="issuer_url" id="ssoIssuerUrl" placeholder="https://acme.okta.com"></p>
+<p>Client ID: <input type="text" name="client_id" id="ssoClientId" placeholder="0oa..."></p>
+<p>Client Secret: <input type="text" name="client_secret" id="ssoClientSecret" placeholder="client secret"></p>
+<p>Display Name: <input type="text" name="display_name" id="ssoDisplayName" placeholder="e.g., Acme Okta (shown in SSH)"></p>
+<p id="ssoCallbackInfo" style="font-size: 11px; color: #666; display: none;">Callback URL: <code id="ssoCallbackUrl"></code><br>SP Login URL: <code id="ssoSpLoginUrl"></code></p>
+<p id="ssoTestResult" style="font-size: 11px;"></p>
+<p>
+<button type="button" class="toggle-btn primary" id="ssoTestBtn">Test Discovery</button>
+<button type="submit" class="confirm-btn">Save</button>
+<button type="button" class="danger-btn" id="ssoDeleteBtn" style="display:none;">Remove SSO</button>
+<button type="button" class="cancel-btn" id="ssoCancelBtn">Cancel</button>
+</p>
+</form>
+</dialog>
+
 <script>
 var teamsTable;
 
@@ -167,6 +188,13 @@ $(document).ready(function() {
                 return summary + ' <button class="toggle-btn limits-btn" ' +
                     'data-teamid="' + d.team_id + '" data-teamname="' + d.display_name + '" ' +
                     'data-limits="' + (d.limits ? encodeURIComponent(d.limits) : '') + '">Edit</button>';
+            }},
+            { data: null, render: function(d) {
+                var ssoLabel = d.sso ? '<span style="color:#28a745;font-size:11px;">✓ ' + (d.sso.display_name || d.sso.issuer_url) + '</span> ' : '';
+                return ssoLabel + '<button class="toggle-btn sso-btn" ' +
+                    'data-teamid="' + d.team_id + '" data-teamname="' + d.display_name + '" ' +
+                    'data-sso="' + (d.sso ? encodeURIComponent(JSON.stringify(d.sso)) : '') + '">' +
+                    (d.sso ? 'Edit SSO' : 'Add SSO') + '</button>';
             }},
             { data: null, render: function(d) {
                 return '<button class="toggle-btn primary add-member-btn" ' +
@@ -396,6 +424,112 @@ document.getElementById('removeForm').addEventListener('submit', function(e) {
         teamsTable.ajax.reload(null, false);
     }).catch(function(err) {
         alert('Failed to remove member: ' + err.message);
+    });
+});
+// SSO configuration
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('sso-btn')) {
+        var teamId = e.target.dataset.teamid;
+        var teamName = e.target.dataset.teamname;
+        var ssoData = e.target.dataset.sso ? JSON.parse(decodeURIComponent(e.target.dataset.sso)) : null;
+
+        document.getElementById('ssoTeamId').value = teamId;
+        document.getElementById('ssoTeamDisplay').textContent = teamName;
+        document.getElementById('ssoTestResult').textContent = '';
+        document.getElementById('ssoCallbackInfo').style.display = 'none';
+
+        if (ssoData) {
+            document.getElementById('ssoIssuerUrl').value = ssoData.issuer_url;
+            document.getElementById('ssoClientId').value = ssoData.client_id;
+            document.getElementById('ssoClientSecret').value = '***';
+            document.getElementById('ssoDisplayName').value = ssoData.display_name || '';
+            document.getElementById('ssoDeleteBtn').style.display = '';
+        } else {
+            document.getElementById('ssoIssuerUrl').value = '';
+            document.getElementById('ssoClientId').value = '';
+            document.getElementById('ssoClientSecret').value = '';
+            document.getElementById('ssoDisplayName').value = '';
+            document.getElementById('ssoDeleteBtn').style.display = 'none';
+        }
+        document.getElementById('ssoDialog').showModal();
+    }
+});
+document.getElementById('ssoCancelBtn').addEventListener('click', function() {
+    document.getElementById('ssoDialog').close();
+});
+document.getElementById('ssoTestBtn').addEventListener('click', function() {
+    var issuerUrl = document.getElementById('ssoIssuerUrl').value;
+    if (!issuerUrl) { alert('Issuer URL is required'); return; }
+    document.getElementById('ssoTestResult').textContent = 'Testing...';
+    document.getElementById('ssoTestResult').style.color = '#666';
+    var body = new URLSearchParams();
+    body.append('issuer_url', issuerUrl);
+    fetch('/debug/teams/test-sso', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    }).then(function(resp) {
+        return resp.json().then(function(data) {
+            if (resp.ok) {
+                document.getElementById('ssoTestResult').textContent = '\u2713 Discovery OK: ' + data.authorization_endpoint;
+                document.getElementById('ssoTestResult').style.color = '#28a745';
+            } else {
+                document.getElementById('ssoTestResult').textContent = '\u2717 ' + data.error;
+                document.getElementById('ssoTestResult').style.color = '#dc3545';
+            }
+        });
+    }).catch(function(err) {
+        document.getElementById('ssoTestResult').textContent = '\u2717 ' + err.message;
+        document.getElementById('ssoTestResult').style.color = '#dc3545';
+    });
+});
+document.getElementById('ssoForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var teamId = document.getElementById('ssoTeamId').value;
+    var issuerUrl = document.getElementById('ssoIssuerUrl').value;
+    var clientId = document.getElementById('ssoClientId').value;
+    var clientSecret = document.getElementById('ssoClientSecret').value;
+    if (!issuerUrl || !clientId || !clientSecret) {
+        alert('Issuer URL, Client ID, and Client Secret are required');
+        return;
+    }
+    var body = new URLSearchParams();
+    body.append('team_id', teamId);
+    body.append('issuer_url', issuerUrl);
+    body.append('client_id', clientId);
+    body.append('client_secret', clientSecret);
+    body.append('display_name', document.getElementById('ssoDisplayName').value);
+    fetch('/debug/teams/set-sso', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    }).then(function(resp) {
+        return resp.json().then(function(data) {
+            if (!resp.ok) throw new Error(data.error || resp.statusText);
+            document.getElementById('ssoCallbackUrl').textContent = data.callback_url;
+            document.getElementById('ssoSpLoginUrl').textContent = data.sp_login_url;
+            document.getElementById('ssoCallbackInfo').style.display = '';
+            teamsTable.ajax.reload(null, false);
+        });
+    }).catch(function(err) {
+        alert('Failed to save SSO: ' + err.message);
+    });
+});
+document.getElementById('ssoDeleteBtn').addEventListener('click', function() {
+    if (!confirm('Remove SSO provider from this team?')) return;
+    var teamId = document.getElementById('ssoTeamId').value;
+    var body = new URLSearchParams();
+    body.append('team_id', teamId);
+    fetch('/debug/teams/delete-sso', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    }).then(function(resp) {
+        if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
+        document.getElementById('ssoDialog').close();
+        teamsTable.ajax.reload(null, false);
+    }).catch(function(err) {
+        alert('Failed to delete SSO: ' + err.message);
     });
 });
 </script>

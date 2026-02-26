@@ -20,7 +20,7 @@ func (q *Queries) CleanupExpiredOAuthStates(ctx context.Context, expiresAt time.
 }
 
 const consumeOAuthState = `-- name: ConsumeOAuthState :one
-DELETE FROM oauth_states WHERE state = ? AND expires_at > CURRENT_TIMESTAMP RETURNING state, provider, email, user_id, is_new_user, invite_code_id, team_invite_token, redirect_url, return_host, login_with_exe, ssh_verification_token, hostname, prompt, image, created_at, expires_at
+DELETE FROM oauth_states WHERE state = ? AND expires_at > CURRENT_TIMESTAMP RETURNING state, provider, email, user_id, is_new_user, invite_code_id, team_invite_token, redirect_url, return_host, login_with_exe, ssh_verification_token, hostname, prompt, image, created_at, expires_at, sso_provider_id
 `
 
 func (q *Queries) ConsumeOAuthState(ctx context.Context, state string) (OauthState, error) {
@@ -43,13 +43,14 @@ func (q *Queries) ConsumeOAuthState(ctx context.Context, state string) (OauthSta
 		&i.Image,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.SsoProviderID,
 	)
 	return i, err
 }
 
 const insertOAuthState = `-- name: InsertOAuthState :exec
-INSERT INTO oauth_states (state, provider, email, user_id, is_new_user, invite_code_id, team_invite_token, redirect_url, return_host, login_with_exe, ssh_verification_token, hostname, prompt, image, expires_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO oauth_states (state, provider, email, user_id, is_new_user, invite_code_id, team_invite_token, redirect_url, return_host, login_with_exe, ssh_verification_token, hostname, prompt, image, expires_at, sso_provider_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertOAuthStateParams struct {
@@ -68,6 +69,7 @@ type InsertOAuthStateParams struct {
 	Prompt               *string   `db:"prompt" json:"prompt"`
 	Image                *string   `db:"image" json:"image"`
 	ExpiresAt            time.Time `db:"expires_at" json:"expires_at"`
+	SsoProviderID        *int64    `db:"sso_provider_id" json:"sso_provider_id"`
 }
 
 func (q *Queries) InsertOAuthState(ctx context.Context, arg InsertOAuthStateParams) error {
@@ -87,6 +89,7 @@ func (q *Queries) InsertOAuthState(ctx context.Context, arg InsertOAuthStatePara
 		arg.Prompt,
 		arg.Image,
 		arg.ExpiresAt,
+		arg.SsoProviderID,
 	)
 	return err
 }

@@ -65,9 +65,13 @@ func (s *Server) startGoogleOAuth(w http.ResponseWriter, r *http.Request, params
 
 // insertOAuthState stores an OAuth state in the database.
 func (s *Server) insertOAuthState(ctx context.Context, state string, params oauthStartParams) error {
+	provider := params.providerName
+	if provider == "" {
+		provider = googleoauth.ProviderName
+	}
 	insertParams := exedb.InsertOAuthStateParams{
 		State:     state,
-		Provider:  googleoauth.ProviderName,
+		Provider:  provider,
 		Email:     params.email,
 		IsNewUser: params.isNewUser,
 		ExpiresAt: time.Now().Add(googleoauth.StateExpiry),
@@ -100,6 +104,7 @@ func (s *Server) insertOAuthState(ctx context.Context, state string, params oaut
 	if params.image != "" {
 		insertParams.Image = &params.image
 	}
+	insertParams.SsoProviderID = params.ssoProviderID
 	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		_ = queries.CleanupExpiredOAuthStates(ctx, time.Now())
 		return queries.InsertOAuthState(ctx, insertParams)
@@ -480,8 +485,9 @@ func (s *Server) verifyAndSetGoogleGAIAID(ctx context.Context, userID, gaiaID st
 	return nil
 }
 
-// oauthStartParams holds the parameters for starting a Google OAuth flow.
+// oauthStartParams holds the parameters for starting an OAuth flow (Google or OIDC).
 type oauthStartParams struct {
+	providerName         string // "google" or "oidc"
 	email                string
 	userID               string
 	isNewUser            bool
@@ -494,6 +500,7 @@ type oauthStartParams struct {
 	hostname             string
 	prompt               string
 	image                string
+	ssoProviderID        *int64
 }
 
 // addSSHKeyForUser adds an SSH key for an existing user (used during Google OAuth SSH flow).
