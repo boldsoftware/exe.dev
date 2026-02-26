@@ -58,6 +58,7 @@ type Env struct {
 	ShowDocsPreview   bool // whether to load and display preview docs; true for all stages except prod
 	AutoStartSSHPiper bool // whether to auto-start sshpiper for local workflows
 	SSHCommandUsesAt  bool // whether ssh command logins use "box@host" format instead of "box.host" format
+	AllowDeleteUser   bool // whether the debug delete-user endpoint is enabled; disabled in prod
 	PostSlackFeed     bool // whether to post feed events to Slack; when false, logs them instead
 
 	LogCmdAttr           bool   // whether to include "cmd" attribute in log entries; useful in dev/test, where multiple logs are interwoven, noise in prod
@@ -108,6 +109,7 @@ func Invalid() Env {
 		ShowDocsPreview:   false,
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  false,
+		AllowDeleteUser:   false,
 		PostSlackFeed:     false,
 
 		LogCmdAttr:           false,
@@ -167,6 +169,7 @@ func Local() Env {
 		ShowDocsPreview:   true,
 		AutoStartSSHPiper: !onExeBox,
 		SSHCommandUsesAt:  true,
+		AllowDeleteUser:   true,
 		PostSlackFeed:     false,
 
 		LogCmdAttr:           true,
@@ -219,6 +222,7 @@ func Test() Env {
 		ShowDocsPreview:   true,
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  true,
+		AllowDeleteUser:   true,
 		PostSlackFeed:     false,
 
 		LogCmdAttr:           true,
@@ -269,6 +273,7 @@ func Staging() Env {
 		ShowDocsPreview:   true,
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  false,
+		AllowDeleteUser:   true,
 		PostSlackFeed:     false,
 
 		LogCmdAttr:           false,
@@ -318,6 +323,7 @@ func Prod() Env {
 		ShowDocsPreview:   false,
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  false,
+		AllowDeleteUser:   false,
 		PostSlackFeed:     true,
 
 		LogCmdAttr:           false,

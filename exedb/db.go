@@ -117,6 +117,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.debitUserLLMCreditStmt, err = db.PrepareContext(ctx, debitUserLLMCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query DebitUserLLMCredit: %w", err)
 	}
+	if q.deleteAccountsByUserIDStmt, err = db.PrepareContext(ctx, deleteAccountsByUserID); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteAccountsByUserID: %w", err)
+	}
 	if q.deleteAuthCookieStmt, err = db.PrepareContext(ctx, deleteAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAuthCookie: %w", err)
 	}
@@ -180,6 +183,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deletePendingSSHKeyByTokenStmt, err = db.PrepareContext(ctx, deletePendingSSHKeyByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingSSHKeyByToken: %w", err)
 	}
+	if q.deletePendingTeamInvitesByUserStmt, err = db.PrepareContext(ctx, deletePendingTeamInvitesByUser); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePendingTeamInvitesByUser: %w", err)
+	}
 	if q.deleteSSHKeyByIDStmt, err = db.PrepareContext(ctx, deleteSSHKeyByID); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteSSHKeyByID: %w", err)
 	}
@@ -194,6 +200,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteTemplateStmt, err = db.PrepareContext(ctx, deleteTemplate); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTemplate: %w", err)
+	}
+	if q.deleteUserStmt, err = db.PrepareContext(ctx, deleteUser); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteUser: %w", err)
 	}
 	if q.deleteUserDefaultGlobalLoadBalancerStmt, err = db.PrepareContext(ctx, deleteUserDefaultGlobalLoadBalancer); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteUserDefaultGlobalLoadBalancer: %w", err)
@@ -1009,6 +1018,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing debitUserLLMCreditStmt: %w", cerr)
 		}
 	}
+	if q.deleteAccountsByUserIDStmt != nil {
+		if cerr := q.deleteAccountsByUserIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteAccountsByUserIDStmt: %w", cerr)
+		}
+	}
 	if q.deleteAuthCookieStmt != nil {
 		if cerr := q.deleteAuthCookieStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteAuthCookieStmt: %w", cerr)
@@ -1114,6 +1128,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deletePendingSSHKeyByTokenStmt: %w", cerr)
 		}
 	}
+	if q.deletePendingTeamInvitesByUserStmt != nil {
+		if cerr := q.deletePendingTeamInvitesByUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePendingTeamInvitesByUserStmt: %w", cerr)
+		}
+	}
 	if q.deleteSSHKeyByIDStmt != nil {
 		if cerr := q.deleteSSHKeyByIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteSSHKeyByIDStmt: %w", cerr)
@@ -1137,6 +1156,11 @@ func (q *Queries) Close() error {
 	if q.deleteTemplateStmt != nil {
 		if cerr := q.deleteTemplateStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteTemplateStmt: %w", cerr)
+		}
+	}
+	if q.deleteUserStmt != nil {
+		if cerr := q.deleteUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteUserStmt: %w", cerr)
 		}
 	}
 	if q.deleteUserDefaultGlobalLoadBalancerStmt != nil {
@@ -2299,6 +2323,7 @@ type Queries struct {
 	createPendingBoxShareStmt                  *sql.Stmt
 	createUserLLMCreditWithInitialStmt         *sql.Stmt
 	debitUserLLMCreditStmt                     *sql.Stmt
+	deleteAccountsByUserIDStmt                 *sql.Stmt
 	deleteAuthCookieStmt                       *sql.Stmt
 	deleteAuthCookiesByDomainStmt              *sql.Stmt
 	deleteAuthCookiesByUserIDStmt              *sql.Stmt
@@ -2320,11 +2345,13 @@ type Queries struct {
 	deletePendingBoxShareByBoxAndEmailStmt     *sql.Stmt
 	deletePendingRegistrationByTokenStmt       *sql.Stmt
 	deletePendingSSHKeyByTokenStmt             *sql.Stmt
+	deletePendingTeamInvitesByUserStmt         *sql.Stmt
 	deleteSSHKeyByIDStmt                       *sql.Stmt
 	deleteSSHKeyForUserStmt                    *sql.Stmt
 	deleteTagResolutionStmt                    *sql.Stmt
 	deleteTeamMemberStmt                       *sql.Stmt
 	deleteTemplateStmt                         *sql.Stmt
+	deleteUserStmt                             *sql.Stmt
 	deleteUserDefaultGlobalLoadBalancerStmt    *sql.Stmt
 	deleteUserDefaultNewVMEmailStmt            *sql.Stmt
 	drawInviteCodeFromPoolStmt                 *sql.Stmt
@@ -2580,6 +2607,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createPendingBoxShareStmt:                  q.createPendingBoxShareStmt,
 		createUserLLMCreditWithInitialStmt:         q.createUserLLMCreditWithInitialStmt,
 		debitUserLLMCreditStmt:                     q.debitUserLLMCreditStmt,
+		deleteAccountsByUserIDStmt:                 q.deleteAccountsByUserIDStmt,
 		deleteAuthCookieStmt:                       q.deleteAuthCookieStmt,
 		deleteAuthCookiesByDomainStmt:              q.deleteAuthCookiesByDomainStmt,
 		deleteAuthCookiesByUserIDStmt:              q.deleteAuthCookiesByUserIDStmt,
@@ -2601,11 +2629,13 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deletePendingBoxShareByBoxAndEmailStmt:     q.deletePendingBoxShareByBoxAndEmailStmt,
 		deletePendingRegistrationByTokenStmt:       q.deletePendingRegistrationByTokenStmt,
 		deletePendingSSHKeyByTokenStmt:             q.deletePendingSSHKeyByTokenStmt,
+		deletePendingTeamInvitesByUserStmt:         q.deletePendingTeamInvitesByUserStmt,
 		deleteSSHKeyByIDStmt:                       q.deleteSSHKeyByIDStmt,
 		deleteSSHKeyForUserStmt:                    q.deleteSSHKeyForUserStmt,
 		deleteTagResolutionStmt:                    q.deleteTagResolutionStmt,
 		deleteTeamMemberStmt:                       q.deleteTeamMemberStmt,
 		deleteTemplateStmt:                         q.deleteTemplateStmt,
+		deleteUserStmt:                             q.deleteUserStmt,
 		deleteUserDefaultGlobalLoadBalancerStmt:    q.deleteUserDefaultGlobalLoadBalancerStmt,
 		deleteUserDefaultNewVMEmailStmt:            q.deleteUserDefaultNewVMEmailStmt,
 		drawInviteCodeFromPoolStmt:                 q.drawInviteCodeFromPoolStmt,

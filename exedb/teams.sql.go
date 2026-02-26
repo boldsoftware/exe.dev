@@ -48,6 +48,15 @@ func (q *Queries) DeleteExpiredPendingTeamInvites(ctx context.Context) error {
 	return err
 }
 
+const deletePendingTeamInvitesByUser = `-- name: DeletePendingTeamInvitesByUser :exec
+DELETE FROM pending_team_invites WHERE invited_by_user_id = ?
+`
+
+func (q *Queries) DeletePendingTeamInvitesByUser(ctx context.Context, invitedByUserID string) error {
+	_, err := q.exec(ctx, q.deletePendingTeamInvitesByUserStmt, deletePendingTeamInvitesByUser, invitedByUserID)
+	return err
+}
+
 const deleteTeamMember = `-- name: DeleteTeamMember :exec
 DELETE FROM team_members WHERE team_id = ? AND user_id = ?
 `

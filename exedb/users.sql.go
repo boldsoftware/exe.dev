@@ -31,6 +31,15 @@ func (q *Queries) CountLoginUsers(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const deleteUser = `-- name: DeleteUser :exec
+DELETE FROM users WHERE user_id = ?
+`
+
+func (q *Queries) DeleteUser(ctx context.Context, userID string) error {
+	_, err := q.exec(ctx, q.deleteUserStmt, deleteUser, userID)
+	return err
+}
+
 const getAndIncrementNextSSHKeyNumber = `-- name: GetAndIncrementNextSSHKeyNumber :one
 UPDATE users SET next_ssh_key_number = next_ssh_key_number + 1
 WHERE user_id = ?

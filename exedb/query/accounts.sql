@@ -90,6 +90,9 @@ WHERE (
     )
 );
 
+-- name: DeleteAccountsByUserID :exec
+DELETE FROM accounts WHERE created_by = ?;
+
 -- name: GetUserPlanCategory :one
 -- GetUserPlanCategory determines the user's plan category for LLM gateway credit limits.
 -- Returns 'friend' if user has billing_exemption='free'

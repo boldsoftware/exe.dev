@@ -115,6 +115,9 @@ SELECT t.team_id, t.display_name, t.created_at,
 FROM teams t
 ORDER BY t.created_at DESC;
 
+-- name: DeletePendingTeamInvitesByUser :exec
+DELETE FROM pending_team_invites WHERE invited_by_user_id = ?;
+
 -- name: InsertPendingTeamInvite :exec
 INSERT INTO pending_team_invites (team_id, email, canonical_email, invited_by_user_id, token, expires_at)
 VALUES (?, ?, ?, ?, ?, ?)

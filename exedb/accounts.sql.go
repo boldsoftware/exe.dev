@@ -57,6 +57,15 @@ func (q *Queries) CountAccountsByBillingStatus(ctx context.Context, dollar_1 int
 	return count, err
 }
 
+const deleteAccountsByUserID = `-- name: DeleteAccountsByUserID :exec
+DELETE FROM accounts WHERE created_by = ?
+`
+
+func (q *Queries) DeleteAccountsByUserID(ctx context.Context, createdBy string) error {
+	_, err := q.exec(ctx, q.deleteAccountsByUserIDStmt, deleteAccountsByUserID, createdBy)
+	return err
+}
+
 const getAccount = `-- name: GetAccount :one
 SELECT id, created_by, created_at FROM accounts WHERE id = ?
 `

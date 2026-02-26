@@ -66,6 +66,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/toggle-lockout", s.handleDebugToggleLockout)
 	mux.HandleFunc("POST /debug/users/update-credit", s.handleDebugUpdateUserCredit)
 	mux.HandleFunc("POST /debug/users/set-limits", s.handleDebugSetUserLimits)
+	mux.HandleFunc("POST /debug/users/delete", s.handleDebugDeleteUser)
 	mux.HandleFunc("/debug/exelets", s.handleDebugExelets)
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
 	mux.HandleFunc("POST /debug/exelets/recover", s.handleDebugExeletRecover)
@@ -4217,4 +4218,88 @@ func (s *Server) handleDebugTeamSetLimits(w http.ResponseWriter, r *http.Request
 	s.slog().InfoContext(ctx, "updated team limits via debug", "team_id", teamID, "limits", limits)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "updated limits for team %s", teamID)
+}
+
+// handleDebugDeleteUser deletes a user and all associated data.
+// POST /debug/users/delete with user_id
+func (s *Server) handleDebugDeleteUser(w http.ResponseWriter, r *http.Request) {
+	if !s.env.AllowDeleteUser {
+		http.Error(w, "user deletion is not allowed in this environment", http.StatusForbidden)
+		return
+	}
+	ctx := r.Context()
+
+	lc := new(local.Client)
+	who, err := lc.WhoIs(ctx, r.RemoteAddr)
+	if err != nil || who.UserProfile == nil || who.UserProfile.LoginName == "" {
+		http.Error(w, "user deletion requires a Tailscale user (not a tagged node)", http.StatusForbidden)
+		return
+	}
+	deletedBy := who.UserProfile.LoginName
+
+	userID := r.FormValue("user_id")
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("user %q not found", userID), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to look up user: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete all user's boxes (handles exelet teardown, IP shards, proxy notify).
+	boxIDs, err := withRxRes1(s, ctx, (*exedb.Queries).ListBoxIDsForUser, userID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to list boxes for user deletion", "error", err)
+	}
+	for _, boxID := range boxIDs {
+		box, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxByID, boxID)
+		if err != nil {
+			continue
+		}
+		if err := s.deleteBox(ctx, box); err != nil {
+			s.slog().ErrorContext(ctx, "failed to delete box for user deletion",
+				"box_id", boxID, "user_id", userID, "error", err)
+		}
+	}
+
+	// Remove from team if member of one.
+	teamRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamForUser, userID)
+	if err == nil {
+		if err := s.deleteTeamMember(ctx, teamRow.TeamID, userID); err != nil {
+			s.slog().ErrorContext(ctx, "failed to delete team membership for user deletion",
+				"team_id", teamRow.TeamID, "user_id", userID, "error", err)
+		}
+	}
+
+	// Delete pending team invites created by this user.
+	if err := withTx1(s, ctx, (*exedb.Queries).DeletePendingTeamInvitesByUser, userID); err != nil {
+		s.slog().ErrorContext(ctx, "failed to delete pending team invites for user deletion", "user_id", userID, "error", err)
+	}
+
+	// Delete accounts (cascades to billing_events).
+	if err := withTx1(s, ctx, (*exedb.Queries).DeleteAccountsByUserID, userID); err != nil {
+		s.slog().ErrorContext(ctx, "failed to delete accounts for user deletion", "user_id", userID, "error", err)
+	}
+
+	// Delete user (cascades to auth_cookies, auth_tokens, ssh_keys, passkeys, box_shares, etc.)
+	if err := withTx1(s, ctx, (*exedb.Queries).DeleteUser, userID); err != nil {
+		http.Error(w, fmt.Sprintf("failed to delete user: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Notify proxy so it cleans up any cached state for this user.
+	s.sendProxyUserChange(ctx, userID)
+
+	s.slog().InfoContext(ctx, "deleted user via debug",
+		"user_id", userID, "email", user.Email, "boxes_deleted", len(boxIDs),
+		"deleted_by", deletedBy, "remote_addr", r.RemoteAddr)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "deleted user %s (%s), %d boxes deleted", userID, user.Email, len(boxIDs))
 }
