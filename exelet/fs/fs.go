@@ -19,6 +19,11 @@ func init() {
 	if err != nil {
 		panic("exelet/fs: failed to create sub-filesystem: " + err.Error())
 	}
+	f, err := Content.Open("rovol/bin/exe-init")
+	if err != nil {
+		panic("exelet/fs: exe-init missing from embedded filesystem (run 'make exe-init')")
+	}
+	f.Close()
 }
 
 // Get returns the specified file from the fs
