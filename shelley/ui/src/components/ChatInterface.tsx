@@ -47,6 +47,7 @@ interface ContextUsageBarProps {
   conversationId?: string | null;
   modelName?: string;
   onDistillConversation?: () => void;
+  agentWorking?: boolean;
 }
 
 function ContextUsageBar({
@@ -55,6 +56,7 @@ function ContextUsageBar({
   conversationId,
   modelName,
   onDistillConversation,
+  agentWorking,
 }: ContextUsageBarProps) {
   const [showPopup, setShowPopup] = useState(false);
   const [distilling, setDistilling] = useState(false);
@@ -81,17 +83,20 @@ function ContextUsageBar({
     setShowPopup(!showPopup);
   };
 
-  // Auto-open popup when hitting 100k tokens (once per conversation)
+  // Auto-open popup when hitting 100k tokens (once per conversation).
+  // Only auto-open at end of turn (when agent is not working) so we don't
+  // interrupt the user while the agent is plugging away.
   useEffect(() => {
     if (
       showLongConversationWarning &&
+      !agentWorking &&
       conversationId &&
       hasAutoOpenedRef.current !== conversationId
     ) {
       hasAutoOpenedRef.current = conversationId;
       setShowPopup(true);
     }
-  }, [showLongConversationWarning, conversationId]);
+  }, [showLongConversationWarning, agentWorking, conversationId]);
 
   // Close popup when clicking outside
   useEffect(() => {
@@ -2109,6 +2114,7 @@ function ChatInterface({
                 onDistillConversation={
                   onDistillConversation ? handleDistillConversation : undefined
                 }
+                agentWorking={agentWorking}
               />
             </div>
           ) : // Idle state - show ready message, or configuration for empty conversation
@@ -2159,6 +2165,7 @@ function ChatInterface({
                 onDistillConversation={
                   onDistillConversation ? handleDistillConversation : undefined
                 }
+                agentWorking={agentWorking}
               />
             </div>
           )}
