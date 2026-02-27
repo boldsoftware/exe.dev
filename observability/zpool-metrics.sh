@@ -8,11 +8,22 @@ mkdir -p "$OUTPUT_DIR"
 # Get zpool capacity (0-100 integer)
 CAPACITY=$(zpool list -H -o capacity tank 2>/dev/null | tr -d '%')
 
+# Get zpool health (ONLINE, DEGRADED, FAULTED, etc.)
+HEALTH=$(zpool list -H -o health tank 2>/dev/null)
+if [ "$HEALTH" = "ONLINE" ]; then
+    HEALTH_DEGRADED=0
+else
+    HEALTH_DEGRADED=1
+fi
+
 if [ -n "$CAPACITY" ]; then
     cat >"$OUTPUT_FILE.tmp" <<EOF
 # HELP zpool_capacity_percent ZFS pool capacity percentage used
 # TYPE zpool_capacity_percent gauge
 zpool_capacity_percent{pool="tank"} $CAPACITY
+# HELP zpool_health_degraded Whether the ZFS pool health is not ONLINE (0=healthy, 1=degraded/faulted)
+# TYPE zpool_health_degraded gauge
+zpool_health_degraded{pool="tank",health="$HEALTH"} $HEALTH_DEGRADED
 EOF
     mv "$OUTPUT_FILE.tmp" "$OUTPUT_FILE"
 fi

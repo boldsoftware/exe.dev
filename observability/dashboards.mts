@@ -4503,6 +4503,25 @@ function makeZFSDashboard() {
     }
   );
 
+  // ZFS Pool Health (from textfile collector)
+  addTimeseriesChart(
+    "Tank Pool Health Degraded",
+    `zpool_health_degraded{pool="tank",${HOST_FILTER}}`,
+    {
+      panelCustomization: (x) => x.min(0).max(1),
+      gridPos: { w: 12, h: 8 },
+      alert: {
+        threshold: 0,
+        condition: "gt",
+        forDuration: "5m",
+        summary: "ZFS pool tank is not ONLINE",
+        description: "ZFS pool 'tank' health is {{$labels.health}} on {{$labels.instance}}. Run 'zpool status tank' to investigate.",
+        labels: { signal: "strong" },
+      },
+      alertQueryOverride: `zpool_health_degraded{pool="tank",role="exelet"}`,
+    }
+  );
+
   // ========== ARC (Adaptive Replacement Cache) ==========
   dash.withRow(new RowBuilder("ARC (Adaptive Replacement Cache)"));
 
