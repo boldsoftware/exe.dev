@@ -1,0 +1,28 @@
+[Unit]
+Description=exe.dev exeprox (staging)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu
+EnvironmentFile=/etc/default/exeprox
+
+# Use the latest timestamp version
+ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/exeprox.* | head -n1)" -exed-grpc-addr=tcp://exed-staging-01:2225 -http= -https=:443 -stage staging'
+
+Restart=always
+RestartSec=5
+
+# Use journald for logging (remove file redirection)
+StandardOutput=journal
+StandardError=journal
+
+# Allow binding to privileged ports
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
