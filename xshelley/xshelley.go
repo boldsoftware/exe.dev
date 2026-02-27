@@ -24,6 +24,7 @@ const (
 var (
 	cacheDirOnce sync.Once
 	cacheDir     string
+	cacheDirErr  error
 )
 
 type cacheMetadata struct {
@@ -42,21 +43,25 @@ type ghAsset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
-// getCacheDir returns the cache directory, initializing it once with a secure random path
+// getCacheDir returns the cache directory, using a stable path under the user's
+// cache directory. This avoids /tmp which gets cleaned by systemd-tmpfiles on
+// long-running processes.
 func getCacheDir() (string, error) {
-	var initErr error
 	cacheDirOnce.Do(func() {
-		var err error
-		cacheDir, err = os.MkdirTemp("", "xshelley-cache-")
+		dir, err := os.UserCacheDir()
 		if err != nil {
-			initErr = fmt.Errorf("failed to create cache directory: %w", err)
+			// Fall back to home dir
+			home, err2 := os.UserHomeDir()
+			if err2 != nil {
+				cacheDirErr = fmt.Errorf("failed to find cache directory: %w", err)
+				return
+			}
+			dir = filepath.Join(home, ".cache")
 		}
+		cacheDir = filepath.Join(dir, "xshelley")
 	})
-	if initErr != nil {
-		return "", initErr
-	}
-	if cacheDir == "" {
-		return "", fmt.Errorf("cache directory not initialized")
+	if cacheDirErr != nil {
+		return "", cacheDirErr
 	}
 	return cacheDir, nil
 }
@@ -178,6 +183,12 @@ func downloadFile(ctx context.Context, url, dest string) error {
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download returned status %d", resp.StatusCode)
+	}
+
+	// Ensure the destination directory exists. It may have been removed
+	// (e.g., by systemd-tmpfiles) since it was originally created.
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
 	}
 
 	tmp := dest + ".tmp"
