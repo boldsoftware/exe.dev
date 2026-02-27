@@ -369,13 +369,18 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 
 	// Use billing package to determine correct redirect URL
 	// This automatically returns portal URL for active subscribers, checkout URL otherwise
-	redirectURL, err := s.billing.Subscribe(r.Context(), accountID, &billing.SubscribeParams{
+	subParams := &billing.SubscribeParams{
 		Email:            user.Email,
 		SuccessURL:       successURL,
 		CancelURL:        cancelURL,
 		RedirectToPortal: true,
 		PortalReturnURL:  returnURL,
-	})
+	}
+	// Gmail users who signed in via Google get a 1-month trial instead of paying upfront.
+	if strings.HasSuffix(strings.ToLower(user.Email), "@gmail.com") {
+		subParams.TrialEnd = time.Now().Add(31 * 24 * time.Hour)
+	}
+	redirectURL, err := s.billing.Subscribe(r.Context(), accountID, subParams)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "failed to create billing session", "error", err)
 		http.Error(w, "failed to manage subscription", http.StatusInternalServerError)
