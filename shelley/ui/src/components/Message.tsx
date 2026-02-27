@@ -22,6 +22,7 @@ import KeywordSearchTool from "./KeywordSearchTool";
 import ReadImageTool from "./ReadImageTool";
 import ChangeDirTool from "./ChangeDirTool";
 import SubagentTool from "./SubagentTool";
+import LLMOneShotTool from "./LLMOneShotTool";
 import OutputIframeTool from "./OutputIframeTool";
 import ThinkingContent from "./ThinkingContent";
 import UsageDetailModal from "./UsageDetailModal";
@@ -584,6 +585,9 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
         if (content.ToolName === "subagent") {
           return <SubagentTool toolInput={content.ToolInput} isRunning={true} />;
         }
+        if (content.ToolName === "llm_one_shot") {
+          return <LLMOneShotTool toolInput={content.ToolInput} isRunning={true} />;
+        }
         if (content.ToolName === "output_iframe") {
           return <OutputIframeTool toolInput={content.ToolInput} isRunning={true} />;
         }
@@ -765,6 +769,18 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
               hasError={hasError}
               executionTime={executionTime}
               displayData={content.Display as { slug?: string; conversation_id?: string }}
+            />
+          );
+        }
+
+        if (toolName === "llm_one_shot") {
+          return (
+            <LLMOneShotTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
             />
           );
         }

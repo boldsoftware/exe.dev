@@ -149,17 +149,18 @@ func NewToolSet(ctx context.Context, cfg ToolSetConfig) *ToolSet {
 		outputIframeTool.Tool(),
 	}
 
+	// Build the available models list (shared by subagent and llm_one_shot tools).
+	availableModels := cfg.AvailableModels
+	if availableModels == nil && cfg.LLMProvider != nil {
+		for _, id := range cfg.LLMProvider.GetAvailableModels() {
+			availableModels = append(availableModels, AvailableModel{ID: id})
+		}
+	}
+
 	// Add subagent tool if configured and depth limit not reached.
 	// MaxSubagentDepth of 0 means no limit; otherwise, only add if depth < max.
 	canSpawnSubagents := cfg.SubagentRunner != nil && cfg.SubagentDB != nil && cfg.ParentConversationID != ""
 	if canSpawnSubagents && (cfg.MaxSubagentDepth == 0 || cfg.SubagentDepth < cfg.MaxSubagentDepth) {
-		availableModels := cfg.AvailableModels
-		if availableModels == nil && cfg.LLMProvider != nil {
-			for _, id := range cfg.LLMProvider.GetAvailableModels() {
-				availableModels = append(availableModels, AvailableModel{ID: id})
-			}
-		}
-
 		subagentTool := &SubagentTool{
 			DB:                   cfg.SubagentDB,
 			ParentConversationID: cfg.ParentConversationID,
@@ -169,6 +170,17 @@ func NewToolSet(ctx context.Context, cfg ToolSetConfig) *ToolSet {
 			AvailableModels:      availableModels,
 		}
 		tools = append(tools, subagentTool.Tool())
+	}
+
+	// Add LLM one-shot tool if LLM provider is configured
+	if cfg.LLMProvider != nil {
+		llmOneShotTool := &LLMOneShotTool{
+			LLMProvider:     cfg.LLMProvider,
+			ModelID:         cfg.ModelID,
+			WorkingDir:      wd,
+			AvailableModels: availableModels,
+		}
+		tools = append(tools, llmOneShotTool.Tool())
 	}
 
 	var cleanup func()

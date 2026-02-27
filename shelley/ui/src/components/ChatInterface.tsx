@@ -33,6 +33,7 @@ import KeywordSearchTool from "./KeywordSearchTool";
 import ReadImageTool from "./ReadImageTool";
 import ChangeDirTool from "./ChangeDirTool";
 import SubagentTool from "./SubagentTool";
+import LLMOneShotTool from "./LLMOneShotTool";
 import OutputIframeTool from "./OutputIframeTool";
 import DirectoryPickerModal from "./DirectoryPickerModal";
 import { useVersionChecker } from "./VersionChecker";
@@ -240,6 +241,7 @@ const TOOL_COMPONENTS: Record<string, React.ComponentType<any>> = {
   change_dir: ChangeDirTool,
   subagent: SubagentTool,
   output_iframe: OutputIframeTool,
+  llm_one_shot: LLMOneShotTool,
   // Backwards compat: old per-action tool names stored in existing databases.
   browser_take_screenshot: ScreenshotTool,
   browser_navigate: BrowserNavigateTool,
