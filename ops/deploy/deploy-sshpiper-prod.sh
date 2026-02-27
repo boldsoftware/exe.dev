@@ -17,6 +17,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Check deploy safety (dirty worktree, not on origin/main)
 "$REPO_ROOT/scripts/check-deploy-safety.sh" "$@"
 
+# Check whether production is locked
+"$REPO_ROOT/scripts/check-prodlock.sh" prod
+
 # Slack notification
 DEPLOY_TS=$("$REPO_ROOT/scripts/deploy-notify.sh" start sshpiper)
 cleanup_notify() {

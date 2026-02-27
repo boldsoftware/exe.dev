@@ -17,6 +17,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Check deploy safety (dirty worktree, not on origin/main)
 "$REPO_ROOT/scripts/check-deploy-safety.sh" "$@"
 
+# Check whether production is locked
+"$REPO_ROOT/scripts/check-prodlock.sh" prod
+
 INSTANCE_NAME="exed-02"
 
 # Check that deployed SHA exists locally (prevents rolling back someone else's code)

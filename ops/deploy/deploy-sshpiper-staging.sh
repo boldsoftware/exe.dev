@@ -13,6 +13,9 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Check whether staging is locked
+"$REPO_ROOT/scripts/check-prodlock.sh" staging
+
 # Slack notification
 DEPLOY_TS=$("$REPO_ROOT/scripts/deploy-notify.sh" start sshpiper-staging)
 cleanup_notify() {
