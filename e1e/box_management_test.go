@@ -1309,7 +1309,10 @@ func TestNewBoxVariants(t *testing.T) {
 	cleanupBox(t, keyFile, boxName)
 }
 
-func TestRestartCommand(t *testing.T) {
+// TestRestart tests restarting a VM from both running and stopped states
+// using a single VM. It verifies disk persistence, network connectivity,
+// and proxy SSH pool connection handling across restarts.
+func TestRestart(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
@@ -1320,17 +1323,9 @@ func TestRestartCommand(t *testing.T) {
 	pty.Disconnect()
 	waitForSSH(t, boxName, keyFile)
 
-	// Write marker file to verify disk persistence across restart
-	if err := boxSSHCommand(t, boxName, keyFile, "echo restart-test > /home/exedev/restart-marker.txt && sync").Run(); err != nil {
-		t.Fatalf("failed to write marker file: %v", err)
-	}
-
-	// Start HTTP server and set up proxy route to test SSH pool handling across restart
 	httpPort := Env.servers.Exed.HTTPPort
-	serveIndex(t, boxName, keyFile, "proxy-restart-test")
 	configureProxyRoute(t, keyFile, boxName, 8080, "public")
 
-	// Helper to make proxy request
 	makeProxyRequest := func() (*http.Response, error) {
 		proxyReq, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/", httpPort), nil)
 		if err != nil {
@@ -1341,206 +1336,179 @@ func TestRestartCommand(t *testing.T) {
 		return client.Do(proxyReq)
 	}
 
-	// Make proxy request BEFORE restart to establish SSH pool connection
-	var proxyResp *http.Response
-	var err error
-	for range 30 {
-		proxyResp, err = makeProxyRequest()
-		if err == nil && proxyResp.StatusCode == http.StatusOK {
-			break
+	// Test restarting a running VM via the REPL restart command.
+	t.Run("running_vm", func(t *testing.T) {
+		if err := boxSSHCommand(t, boxName, keyFile, "echo restart-test > /home/exedev/restart-marker.txt && sync").Run(); err != nil {
+			t.Fatalf("failed to write marker file: %v", err)
 		}
-		if proxyResp != nil {
-			proxyResp.Body.Close()
+
+		serveIndex(t, boxName, keyFile, "proxy-restart-test")
+
+		// Verify proxy before restart
+		var proxyResp *http.Response
+		var err error
+		for range 30 {
+			proxyResp, err = makeProxyRequest()
+			if err == nil && proxyResp.StatusCode == http.StatusOK {
+				break
+			}
+			if proxyResp != nil {
+				proxyResp.Body.Close()
+			}
+			time.Sleep(100 * time.Millisecond)
 		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if err != nil || proxyResp == nil || proxyResp.StatusCode != http.StatusOK {
-		t.Fatalf("proxy request before restart failed: err=%v", err)
-	}
-	body, _ := io.ReadAll(proxyResp.Body)
-	proxyResp.Body.Close()
-	if !strings.Contains(string(body), "proxy-restart-test") {
-		t.Fatalf("unexpected proxy response before restart: %s", body)
-	}
-
-	// Run restart command from REPL
-	repl := sshToExeDev(t, keyFile)
-	repl.SendLine("restart " + boxName)
-	repl.Want("Restarting")
-	repl.Want("restarted successfully")
-	repl.WantPrompt()
-	repl.Disconnect()
-
-	// Wait for SSH to come back up
-	waitForSSH(t, boxName, keyFile)
-
-	// Verify disk persisted
-	out, err := boxSSHCommand(t, boxName, keyFile, "cat", "/home/exedev/restart-marker.txt").CombinedOutput()
-	if err != nil {
-		t.Fatalf("failed to read marker file after restart: %v\noutput: %s", err, out)
-	}
-	if !strings.Contains(string(out), "restart-test") {
-		t.Fatalf("expected marker file to contain 'restart-test', got: %s", out)
-	}
-
-	// Verify network works by checking metadata service.
-	// After restart, the VM's network route to 169.254.169.254 may take time
-	// to be fully re-established, so retry instead of a single attempt.
-	for range 10 {
-		out, err = boxSSHCommand(t, boxName, keyFile, "curl", "-s", "--max-time", "1", "http://169.254.169.254/").CombinedOutput()
-		if err == nil && strings.Contains(string(out), boxName) {
-			break
+		if err != nil || proxyResp == nil || proxyResp.StatusCode != http.StatusOK {
+			t.Fatalf("proxy request before restart failed: err=%v", err)
 		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if err != nil || !strings.Contains(string(out), boxName) {
-		t.Fatalf("failed to reach metadata service after restart: err=%v, output=%s", err, out)
-	}
-
-	// Restart HTTP server and verify proxy works after restart (tests SSH pool stale connection handling)
-	serveIndex(t, boxName, keyFile, "proxy-restart-test-after")
-
-	// Make proxy request AFTER restart to verify SSH pool handles stale connections
-	for range 30 {
-		proxyResp, err = makeProxyRequest()
-		if err == nil && proxyResp.StatusCode == http.StatusOK {
-			break
+		body, _ := io.ReadAll(proxyResp.Body)
+		proxyResp.Body.Close()
+		if !strings.Contains(string(body), "proxy-restart-test") {
+			t.Fatalf("unexpected proxy response before restart: %s", body)
 		}
-		if proxyResp != nil {
-			proxyResp.Body.Close()
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if err != nil || proxyResp == nil || proxyResp.StatusCode != http.StatusOK {
-		t.Fatalf("proxy request after restart failed: err=%v", err)
-	}
-	body, _ = io.ReadAll(proxyResp.Body)
-	proxyResp.Body.Close()
-	if !strings.Contains(string(body), "proxy-restart-test-after") {
-		t.Fatalf("unexpected proxy response after restart: %s", body)
-	}
 
-	// Cleanup
-	cleanupBox(t, keyFile, boxName)
-}
+		// Restart from REPL
+		repl := sshToExeDev(t, keyFile)
+		repl.SendLine("restart " + boxName)
+		repl.Want("Restarting")
+		repl.Want("restarted successfully")
+		repl.WantPrompt()
+		repl.Disconnect()
 
-func TestRestartStoppedVM(t *testing.T) {
-	t.Parallel()
-	reserveVMs(t, 1)
-	e1eTestsOnlyRunOnce(t)
-	noGolden(t)
+		waitForSSH(t, boxName, keyFile)
 
-	pty, _, keyFile, _ := registerForExeDev(t)
-	boxName := newBox(t, pty)
-	pty.Disconnect()
-	waitForSSH(t, boxName, keyFile)
-
-	// Write marker file to verify disk persistence
-	if err := boxSSHCommand(t, boxName, keyFile, "echo stopped-restart-test > /home/exedev/stopped-marker.txt && sync").Run(); err != nil {
-		t.Fatalf("failed to write marker file: %v", err)
-	}
-
-	// Start HTTP server and set up proxy route to test SSH pool handling across shutdown+restart.
-	// This specifically tests the scenario where pool connections become stale when the VM
-	// is stopped from inside (not via restart command) and then restarted.
-	httpPort := Env.servers.Exed.HTTPPort
-	serveIndex(t, boxName, keyFile, "proxy-stopped-test")
-	configureProxyRoute(t, keyFile, boxName, 8080, "public")
-
-	// Helper to make proxy request
-	makeProxyRequest := func() (*http.Response, error) {
-		proxyReq, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/", httpPort), nil)
+		// Verify disk persisted
+		out, err := boxSSHCommand(t, boxName, keyFile, "cat", "/home/exedev/restart-marker.txt").CombinedOutput()
 		if err != nil {
-			return nil, err
+			t.Fatalf("failed to read marker file after restart: %v\noutput: %s", err, out)
 		}
-		proxyReq.Host = fmt.Sprintf("%s.exe.cloud:%d", boxName, httpPort)
-		client := &http.Client{Timeout: 10 * time.Second}
-		return client.Do(proxyReq)
-	}
-
-	// Make proxy request BEFORE shutdown to establish SSH pool connection
-	var proxyResp *http.Response
-	var err error
-	for range 30 {
-		proxyResp, err = makeProxyRequest()
-		if err == nil && proxyResp.StatusCode == http.StatusOK {
-			break
+		if !strings.Contains(string(out), "restart-test") {
+			t.Fatalf("expected marker file to contain 'restart-test', got: %s", out)
 		}
-		if proxyResp != nil {
-			proxyResp.Body.Close()
+
+		// Verify network via metadata service
+		for range 10 {
+			out, err = boxSSHCommand(t, boxName, keyFile, "curl", "-s", "--max-time", "1", "http://169.254.169.254/").CombinedOutput()
+			if err == nil && strings.Contains(string(out), boxName) {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
 		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if err != nil || proxyResp == nil || proxyResp.StatusCode != http.StatusOK {
-		t.Fatalf("proxy request before shutdown failed: err=%v", err)
-	}
-	body, _ := io.ReadAll(proxyResp.Body)
-	proxyResp.Body.Close()
-	if !strings.Contains(string(body), "proxy-stopped-test") {
-		t.Fatalf("unexpected proxy response before shutdown: %s", body)
-	}
+		if err != nil || !strings.Contains(string(out), boxName) {
+			t.Fatalf("failed to reach metadata service after restart: err=%v, output=%s", err, out)
+		}
 
-	// Stop the VM by running shutdown from within
-	box := sshToBox(t, boxName, keyFile)
-	box.WantPrompt()
-	box.SendLine("sudo shutdown now") // Broken pipe warning comes from here and is to be expected. TODO find a way to supress the warning.
-	box.WantEOF()
+		// Verify proxy after restart (tests SSH pool stale connection handling)
+		serveIndex(t, boxName, keyFile, "proxy-restart-test-after")
 
-	// Wait for SSH to become unavailable (VM is stopped)
-	for range 50 {
-		err := boxSSHCommand(t, boxName, keyFile, "true").Run()
+		for range 30 {
+			proxyResp, err = makeProxyRequest()
+			if err == nil && proxyResp.StatusCode == http.StatusOK {
+				break
+			}
+			if proxyResp != nil {
+				proxyResp.Body.Close()
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if err != nil || proxyResp == nil || proxyResp.StatusCode != http.StatusOK {
+			t.Fatalf("proxy request after restart failed: err=%v", err)
+		}
+		body, _ = io.ReadAll(proxyResp.Body)
+		proxyResp.Body.Close()
+		if !strings.Contains(string(body), "proxy-restart-test-after") {
+			t.Fatalf("unexpected proxy response after restart: %s", body)
+		}
+	})
+
+	// Test restarting a VM that was shut down from inside.
+	// This specifically tests the scenario where SSH pool connections become stale
+	// when the VM is stopped from inside (not via restart command) and then restarted.
+	t.Run("stopped_vm", func(t *testing.T) {
+		if err := boxSSHCommand(t, boxName, keyFile, "echo stopped-restart-test > /home/exedev/stopped-marker.txt && sync").Run(); err != nil {
+			t.Fatalf("failed to write marker file: %v", err)
+		}
+
+		serveIndex(t, boxName, keyFile, "proxy-stopped-test")
+
+		// Verify proxy before shutdown
+		var proxyResp *http.Response
+		var err error
+		for range 30 {
+			proxyResp, err = makeProxyRequest()
+			if err == nil && proxyResp.StatusCode == http.StatusOK {
+				break
+			}
+			if proxyResp != nil {
+				proxyResp.Body.Close()
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if err != nil || proxyResp == nil || proxyResp.StatusCode != http.StatusOK {
+			t.Fatalf("proxy request before shutdown failed: err=%v", err)
+		}
+		body, _ := io.ReadAll(proxyResp.Body)
+		proxyResp.Body.Close()
+		if !strings.Contains(string(body), "proxy-stopped-test") {
+			t.Fatalf("unexpected proxy response before shutdown: %s", body)
+		}
+
+		// Stop the VM from inside
+		box := sshToBox(t, boxName, keyFile)
+		box.WantPrompt()
+		box.SendLine("sudo shutdown now") // Broken pipe warning is expected.
+		box.WantEOF()
+
+		// Wait for SSH to become unavailable
+		for range 50 {
+			err := boxSSHCommand(t, boxName, keyFile, "true").Run()
+			if err != nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// Restart the stopped VM
+		repl := sshToExeDev(t, keyFile)
+		repl.SendLine("restart " + boxName)
+		repl.Want("Restarting")
+		repl.Want("restarted successfully")
+		repl.WantPrompt()
+		repl.Disconnect()
+
+		waitForSSH(t, boxName, keyFile)
+
+		// Verify disk persisted
+		out, err := boxSSHCommand(t, boxName, keyFile, "cat", "/home/exedev/stopped-marker.txt").CombinedOutput()
 		if err != nil {
-			break
+			t.Fatalf("failed to read marker file after restart: %v\noutput: %s", err, out)
 		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	// Now restart the stopped VM using the restart command
-	repl := sshToExeDev(t, keyFile)
-	repl.SendLine("restart " + boxName)
-	repl.Want("Restarting")
-	repl.Want("restarted successfully")
-	repl.WantPrompt()
-	repl.Disconnect()
-
-	// Wait for SSH to come back up
-	waitForSSH(t, boxName, keyFile)
-
-	// Verify disk persisted across stop+restart
-	out, err := boxSSHCommand(t, boxName, keyFile, "cat", "/home/exedev/stopped-marker.txt").CombinedOutput()
-	if err != nil {
-		t.Fatalf("failed to read marker file after restart: %v\noutput: %s", err, out)
-	}
-	if !strings.Contains(string(out), "stopped-restart-test") {
-		t.Fatalf("expected marker file to contain 'stopped-restart-test', got: %s", out)
-	}
-
-	// Restart HTTP server and verify proxy works after restart from stopped state.
-	// This tests that stale SSH pool connections are properly dropped when restarting
-	// from STOPPED state (not just RUNNING state).
-	serveIndex(t, boxName, keyFile, "proxy-stopped-test-after")
-
-	// Make proxy request AFTER restart to verify SSH pool handles stale connections
-	for range 30 {
-		proxyResp, err = makeProxyRequest()
-		if err == nil && proxyResp.StatusCode == http.StatusOK {
-			break
+		if !strings.Contains(string(out), "stopped-restart-test") {
+			t.Fatalf("expected marker file to contain 'stopped-restart-test', got: %s", out)
 		}
-		if proxyResp != nil {
-			proxyResp.Body.Close()
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if err != nil || proxyResp == nil || proxyResp.StatusCode != http.StatusOK {
-		t.Fatalf("proxy request after restart from stopped failed: err=%v", err)
-	}
-	body, _ = io.ReadAll(proxyResp.Body)
-	proxyResp.Body.Close()
-	if !strings.Contains(string(body), "proxy-stopped-test-after") {
-		t.Fatalf("unexpected proxy response after restart from stopped: %s", body)
-	}
 
-	// Cleanup
+		// Verify proxy after restart from stopped state
+		serveIndex(t, boxName, keyFile, "proxy-stopped-test-after")
+
+		for range 30 {
+			proxyResp, err = makeProxyRequest()
+			if err == nil && proxyResp.StatusCode == http.StatusOK {
+				break
+			}
+			if proxyResp != nil {
+				proxyResp.Body.Close()
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if err != nil || proxyResp == nil || proxyResp.StatusCode != http.StatusOK {
+			t.Fatalf("proxy request after restart from stopped failed: err=%v", err)
+		}
+		body, _ = io.ReadAll(proxyResp.Body)
+		proxyResp.Body.Close()
+		if !strings.Contains(string(body), "proxy-stopped-test-after") {
+			t.Fatalf("unexpected proxy response after restart from stopped: %s", body)
+		}
+	})
+
 	cleanupBox(t, keyFile, boxName)
 }
 
