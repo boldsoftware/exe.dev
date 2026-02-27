@@ -47,7 +47,7 @@ def main() -> None:
 
     if before_sha and before_sha != after_sha:
         # Claude made a fix commit — push it.
-        subprocess.check_call(["git", "push", "origin", f"HEAD:refs/queue-ralph/{branch}"])
+        subprocess.check_call(["git", "push", "--force", "origin", f"HEAD:refs/queue-ralph/{branch}"])
 
         commit_msg = git("log", "-1", "--format=%B")
         commit_url = f"{repo_url}/commit/{after_sha}"
