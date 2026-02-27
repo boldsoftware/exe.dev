@@ -3,11 +3,12 @@
 package main
 
 import (
+	"exe.dev/reservevms"
 	"exe.dev/tracing/linter"
 	"github.com/boldsoftware/exe.dev/completeinit"
 	"golang.org/x/tools/go/analysis/multichecker"
 )
 
 func main() {
-	multichecker.Main(linter.Analyzer, completeinit.Analyzer)
+	multichecker.Main(linter.Analyzer, completeinit.Analyzer, reservevms.Analyzer)
 }
