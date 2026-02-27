@@ -64,6 +64,8 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 	if rs := s.context.ReplicationSuspender; rs != nil {
 		rs.SuspendVolume(instanceID)
 		defer rs.ResumeVolume(instanceID)
+		s.log.InfoContext(ctx, "waiting on VM storage replication", "instance", instanceID)
+		rs.WaitVolumeIdle(ctx, instanceID)
 	}
 
 	// Pre-flight: for live migration, verify the target host has enough memory

@@ -628,6 +628,13 @@ func (s *Service) SuspendVolume(volumeID string) {
 	s.log.Info("suspended replication for volume", "volume_id", volumeID)
 }
 
+// WaitVolumeIdle blocks until the given volume has no active replication job.
+func (s *Service) WaitVolumeIdle(ctx context.Context, volumeID string) {
+	if s.workerPool != nil {
+		s.workerPool.WaitVolumeIdle(ctx, volumeID)
+	}
+}
+
 // ResumeVolume re-enables replication for a previously suspended volume.
 func (s *Service) ResumeVolume(volumeID string) {
 	s.mu.Lock()

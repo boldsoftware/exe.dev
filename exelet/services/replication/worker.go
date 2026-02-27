@@ -505,6 +505,25 @@ func (wp *WorkerPool) WaitIdle(ctx context.Context) {
 	}
 }
 
+// WaitVolumeIdle blocks until the given volume has no active replication job,
+// or until ctx is cancelled. This is used during migration to wait for an
+// in-progress replication to finish before proceeding with ZFS operations.
+func (wp *WorkerPool) WaitVolumeIdle(ctx context.Context, volumeID string) {
+	for {
+		wp.mu.Lock()
+		_, active := wp.activeJobs[volumeID]
+		wp.mu.Unlock()
+		if !active {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
 // Stop stops the worker pool
 func (wp *WorkerPool) Stop() {
 	wp.cancel()
