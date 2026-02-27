@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -37,6 +38,12 @@ func (s *Service) ReceiveVM(stream api.ComputeService_ReceiveVMServer) error {
 
 func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 	ctx := stream.Context()
+
+	zstdDec, err := zstd.NewReader(nil, zstd.WithDecoderMaxMemory(2*4*1024*1024))
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to create zstd decoder: %v", err)
+	}
+	defer zstdDec.Close()
 
 	// Receive start request
 	req, err := stream.Recv()
@@ -316,13 +323,29 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 			}
 			rb.snapshotDirCreated = true
 
+			data := v.SnapshotData.Data
+			if v.SnapshotData.Compressed {
+				var err error
+				data, err = zstdDec.DecodeAll(data, nil)
+				if err != nil {
+					receiveErr = status.Errorf(codes.Internal, "failed to decompress snapshot chunk %s: %v", v.SnapshotData.Filename, err)
+					return receiveErr
+				}
+				if len(data) > sendVMChunkSize {
+					receiveErr = status.Errorf(codes.InvalidArgument,
+						"decompressed snapshot chunk %s too large: %d bytes (max %d)",
+						v.SnapshotData.Filename, len(data), sendVMChunkSize)
+					return receiveErr
+				}
+			}
+
 			filePath := filepath.Join(snapshotDir, v.SnapshotData.Filename)
 			f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 			if err != nil {
 				receiveErr = status.Errorf(codes.Internal, "failed to open snapshot file %s: %v", v.SnapshotData.Filename, err)
 				return receiveErr
 			}
-			if _, err := f.Write(v.SnapshotData.Data); err != nil {
+			if _, err := f.Write(data); err != nil {
 				f.Close()
 				receiveErr = status.Errorf(codes.Internal, "failed to write snapshot file %s: %v", v.SnapshotData.Filename, err)
 				return receiveErr

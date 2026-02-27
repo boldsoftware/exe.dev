@@ -1199,6 +1199,7 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 						Filename:    v.SnapshotData.Filename,
 						Data:        v.SnapshotData.Data,
 						IsLastChunk: v.SnapshotData.IsLastChunk,
+						Compressed:  v.SnapshotData.Compressed,
 					},
 				},
 			}); err != nil {

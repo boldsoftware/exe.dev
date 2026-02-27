@@ -47,6 +47,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3
 	github.com/hiddeco/sshsig v0.2.0
+	github.com/klauspost/compress v1.18.3
 	github.com/lmittmann/tint v1.1.2
 	github.com/mailgun/mailgun-go/v4 v4.23.0
 	github.com/mdp/qrterminal/v3 v3.2.1
@@ -186,7 +187,6 @@ require (
 	github.com/jsimonetti/rtnetlink v1.4.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kamstrup/intmap v0.5.2 // indirect
-	github.com/klauspost/compress v1.18.3 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/letsencrypt/pebble v1.0.1 // indirect

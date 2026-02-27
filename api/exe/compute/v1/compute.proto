@@ -317,6 +317,7 @@ message SendVMSnapshotChunk {
   string filename = 1;
   bytes data = 2;
   bool is_last_chunk = 3;
+  bool compressed = 4;
 }
 
 message SendVMAwaitControl {
@@ -376,6 +377,7 @@ message ReceiveVMSnapshotChunk {
   string filename = 1;
   bytes data = 2;
   bool is_last_chunk = 3;
+  bool compressed = 4;
 }
 
 message ReceiveVMDataChunk {

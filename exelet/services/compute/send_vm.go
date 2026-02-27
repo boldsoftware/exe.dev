@@ -13,6 +13,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/klauspost/compress/zstd"
+
 	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
@@ -526,6 +528,8 @@ func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_Send
 }
 
 // streamSnapshotFile streams a single snapshot file as SendVMSnapshotChunk messages.
+// Each chunk is independently compressed with zstd. If compression doesn't reduce
+// the size (incompressible data), the chunk is sent uncompressed.
 func (s *Service) streamSnapshotFile(stream api.ComputeService_SendVMServer, dir, filename string) error {
 	f, err := os.Open(dir + "/" + filename)
 	if err != nil {
@@ -533,27 +537,44 @@ func (s *Service) streamSnapshotFile(stream api.ComputeService_SendVMServer, dir
 	}
 	defer f.Close()
 
+	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedFastest), zstd.WithWindowSize(4*1024*1024))
+	if err != nil {
+		return fmt.Errorf("failed to create zstd encoder: %w", err)
+	}
+	defer enc.Close()
+
 	buf := make([]byte, sendVMChunkSize)
 	for {
-		n, err := f.Read(buf)
+		n, readErr := f.Read(buf)
 		if n > 0 {
+			raw := buf[:n]
+			compressed := enc.EncodeAll(raw, make([]byte, 0, n))
+
+			chunk := &api.SendVMSnapshotChunk{
+				Filename:    filename,
+				IsLastChunk: readErr == io.EOF,
+			}
+			if len(compressed) < n {
+				chunk.Data = compressed
+				chunk.Compressed = true
+			} else {
+				chunk.Data = raw
+				chunk.Compressed = false
+			}
+
 			if sendErr := stream.Send(&api.SendVMResponse{
 				Type: &api.SendVMResponse_SnapshotData{
-					SnapshotData: &api.SendVMSnapshotChunk{
-						Filename:    filename,
-						Data:        buf[:n],
-						IsLastChunk: err == io.EOF,
-					},
+					SnapshotData: chunk,
 				},
 			}); sendErr != nil {
 				return fmt.Errorf("failed to send chunk: %w", sendErr)
 			}
 		}
-		if err == io.EOF {
+		if readErr == io.EOF {
 			break
 		}
-		if err != nil {
-			return fmt.Errorf("failed to read %s: %w", filename, err)
+		if readErr != nil {
+			return fmt.Errorf("failed to read %s: %w", filename, readErr)
 		}
 	}
 	return nil
