@@ -70,6 +70,9 @@ chmod +x /home/exedev/cgi-bin/headers
 		}
 		startHTTPServer(t, box, keyFile, port)
 		startedServers[port] = true
+		t.Cleanup(func() {
+			delete(startedServers, port)
+		})
 	}
 
 	t.Run("default_port", func(t *testing.T) {
