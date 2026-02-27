@@ -159,6 +159,62 @@ var SeedTemplates = []exedb.InsertTemplateParams{
 		VMShortname:      "huly",
 	},
 	{
+		Slug:             "miniflux",
+		Title:            "Miniflux",
+		ShortDescription: "Minimalist, opinionated RSS reader",
+		Category:         "self-hosted",
+		Prompt: `Install Miniflux (https://miniflux.app). Use Docker Compose with PostgreSQL.
+
+Create /opt/miniflux/docker-compose.yml with:
+- miniflux/miniflux:latest listening on port 8000 (the exe.dev proxy port)
+- postgres:17 with healthcheck (pg_isready) and a named volume for data persistence
+
+Generate a random admin password with: openssl rand -hex 16
+
+Miniflux environment variables:
+  DATABASE_URL=postgres://miniflux:miniflux@db/miniflux?sslmode=disable
+  RUN_MIGRATIONS=1
+  CREATE_ADMIN=1
+  ADMIN_USERNAME=admin
+  ADMIN_PASSWORD=<the generated password>
+  BASE_URL=https://<vm-name>.exe.xyz
+  AUTH_PROXY_HEADER=X-ExeDev-Email
+  AUTH_PROXY_USER_CREATION=1
+  TRUSTED_REVERSE_PROXY_NETWORKS=0.0.0.0/0
+  LISTEN_ADDR=0.0.0.0:8000
+
+Do NOT set DISABLE_LOCAL_AUTH. It conflicts with toggling AUTH_PROXY_USER_CREATION off later.
+
+TRUSTED_REVERSE_PROXY_NETWORKS must be 0.0.0.0/0 — Docker bridge subnets are unpredictable. This is safe because exe.dev always strips client-supplied X-ExeDev headers.
+
+Create a systemd service (miniflux.service) that runs "docker compose -f /opt/miniflux/docker-compose.yml up" (foreground, not -d) so it starts on boot.
+
+Retry the healthcheck in a loop — postgres init and image pulls can take 60s:
+  for i in $(seq 1 30); do curl -sf http://localhost:8000/healthcheck && break; sleep 2; done
+
+After setup, append the following to /home/exedev/.config/shelley/AGENTS.md, substituting in vm-name and generated password:
+
+## Miniflux
+
+Miniflux is at https://<vm-name>.exe.xyz. The compose file is at /opt/miniflux/docker-compose.yml.
+
+The exe.dev auth proxy logs the VM owner in automatically in the browser. There is also an admin account (username: admin, password: <the generated password>). The admin password is random hex; do not share it. Miniflux shows a username/password login form even with proxy auth enabled, so anyone with the admin password could log in.
+
+### Connecting mobile apps or API clients
+
+To use RSS apps (Reeder, NetNewsWire, etc.) or other API clients, follow these steps in order — the VM stays secure at every step.
+
+1. In the browser, go to Settings → API Keys (https://<vm-name>.exe.xyz/keys) and create a new API key.
+2. Shelley: edit docker-compose.yml to set AUTH_PROXY_USER_CREATION=0, then run: ` + "`" + `cd /opt/miniflux && docker compose down && docker compose up -d` + "`" + `. This prevents new accounts from being created when the VM goes public.
+3. User: make the VM public by running ` + "`" + `ssh exe.dev share set-public <vm-name>` + "`" + ` or via https://exe.dev/?filter=<vm-name>. Safe because proxy-created accounts have no passwords (only the proxy can authenticate them), unauthenticated visitors see a login form they cannot pass, and the admin password is random hex-32.
+4. Configure the mobile app with server URL https://<vm-name>.exe.xyz and the API key from step 1.
+`,
+		IconURL:     "📚",
+		Status:      "approved",
+		Featured:    false,
+		VMShortname: "miniflux",
+	},
+	{
 		Slug:             "gh-actions-runner",
 		Title:            "GitHub Actions Runner",
 		ShortDescription: "Self-hosted GitHub Actions runner with persistent disk",
