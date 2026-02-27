@@ -92,6 +92,7 @@ func (wp *WebProxy) prepareHandler() http.Handler {
 	llmg := wp.prepareLLMGateway()
 	servMux := http.NewServeMux()
 	servMux.Handle("/_/gateway/", llmg)
+	servMux.HandleFunc("POST /_/gateway/email/send", wp.handleVMEmailSend)
 	servMux.Handle("/", wp)
 
 	h := wp.httpMetrics.Wrap(servMux)
@@ -521,4 +522,9 @@ func (wp *WebProxy) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 	handler := promhttp.HandlerFor(wp.proxy.metricsRegistry, promhttp.HandlerOpts{})
 	handler.ServeHTTP(w, r)
+}
+
+// handleVMEmailSend handles a VM sending email to the owner.
+func (wp *WebProxy) handleVMEmailSend(w http.ResponseWriter, r *http.Request) {
+	wp.proxyServer().HandleVMEmailSend(w, r)
 }

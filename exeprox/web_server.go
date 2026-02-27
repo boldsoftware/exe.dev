@@ -40,20 +40,7 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		sloghttp.AddCustomAttributes(r, slog.Bool("terminal", true))
 	}
 
-	ps := &exeweb.ProxyServer{
-		Data:          &exewebProxyData{wp: wp},
-		Lg:            wp.lg(),
-		Env:           wp.env,
-		ExedHTTPPort:  wp.exedHTTPPort,
-		ExedHTTPSPort: wp.exedHTTPSPort,
-		PiperdPort:    0,
-		SSHPool:       wp.proxy.sshPool,
-		Transports:    wp.transportCache,
-		HTTPMetrics:   wp.httpMetrics,
-		Templates:     wp.templates,
-		LobbyIP:       wp.lobbyIP,
-		PublicIPs:     wp.publicIPs,
-	}
+	ps := wp.proxyServer()
 	if wp.httpServer != nil {
 		ps.ProxyHTTPPort = wp.httpLn.port()
 	}
@@ -117,6 +104,24 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	target := fmt.Sprintf("%s://%s%s%s", scheme, wp.env.WebHost, port, r.URL.RequestURI())
 	http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 	return
+}
+
+// proxyServer returns an [exeweb.ProxyServer] for wp.
+func (wp *WebProxy) proxyServer() *exeweb.ProxyServer {
+	return &exeweb.ProxyServer{
+		Data:          &exewebProxyData{wp: wp},
+		Lg:            wp.lg(),
+		Env:           wp.env,
+		ExedHTTPPort:  wp.exedHTTPPort,
+		ExedHTTPSPort: wp.exedHTTPSPort,
+		PiperdPort:    0,
+		SSHPool:       wp.proxy.sshPool,
+		Transports:    wp.transportCache,
+		HTTPMetrics:   wp.httpMetrics,
+		Templates:     wp.templates,
+		LobbyIP:       wp.lobbyIP,
+		PublicIPs:     wp.publicIPs,
+	}
 }
 
 // getScheme returns the request scheme
