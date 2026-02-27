@@ -29,7 +29,7 @@ JOIN team_members tm ON t.team_id = tm.team_id
 WHERE tm.user_id = ?;
 
 -- name: GetTeamMembers :many
-SELECT tm.role, tm.created_at as joined_at, u.user_id, u.email
+SELECT tm.role, tm.created_at as joined_at, u.user_id, u.email, u.auth_provider
 FROM team_members tm
 JOIN users u ON tm.user_id = u.user_id
 WHERE tm.team_id = ?

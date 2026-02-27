@@ -4336,6 +4336,26 @@ func (s *Server) handleDebugTeamCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set auth_provider if specified
+	if authProvider := r.FormValue("auth_provider"); authProvider != "" {
+		err = withTx1(s, ctx, (*exedb.Queries).SetTeamAuthProvider, exedb.SetTeamAuthProviderParams{
+			AuthProvider: &authProvider,
+			TeamID:       teamID,
+		})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to set auth provider: %v", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// If the team requires an auth provider, set it on the owner.
+	if team, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeam, teamID); err == nil && team.AuthProvider != nil {
+		_ = withTx1(s, ctx, (*exedb.Queries).SetUserAuthProvider, exedb.SetUserAuthProviderParams{
+			AuthProvider: team.AuthProvider,
+			UserID:       ownerUserID,
+		})
+	}
+
 	s.slog().InfoContext(ctx, "created team via debug", "team_id", teamID, "owner", ownerUserID)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "created team %s with owner %s", teamID, ownerUserID)
@@ -4413,6 +4433,14 @@ func (s *Server) handleDebugTeamAddMember(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// If the team requires an auth provider, set it on the user.
+	if team, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeam, teamID); err == nil && team.AuthProvider != nil {
+		_ = withTx1(s, ctx, (*exedb.Queries).SetUserAuthProvider, exedb.SetUserAuthProviderParams{
+			AuthProvider: team.AuthProvider,
+			UserID:       userID,
+		})
+	}
+
 	s.slog().InfoContext(ctx, "added team member via debug", "team_id", teamID, "user_id", userID, "role", role)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "added %s to team %s as %s", userID, teamID, role)
@@ -4455,10 +4483,11 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 
 	if r.URL.Query().Get("format") == "json" {
 		type memberInfo struct {
-			UserID   string `json:"user_id"`
-			Email    string `json:"email"`
-			Role     string `json:"role"`
-			JoinedAt string `json:"joined_at"`
+			UserID       string `json:"user_id"`
+			Email        string `json:"email"`
+			Role         string `json:"role"`
+			JoinedAt     string `json:"joined_at"`
+			AuthProvider string `json:"auth_provider,omitempty"`
 		}
 		type ssoInfo struct {
 			ProviderID  int64  `json:"provider_id"`
@@ -4506,10 +4535,11 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 			if members, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamMembers, t.TeamID); err == nil {
 				for _, m := range members {
 					ti.Members = append(ti.Members, memberInfo{
-						UserID:   m.UserID,
-						Email:    m.Email,
-						Role:     m.Role,
-						JoinedAt: m.JoinedAt,
+						UserID:       m.UserID,
+						Email:        m.Email,
+						Role:         m.Role,
+						JoinedAt:     m.JoinedAt,
+						AuthProvider: ptrStr(m.AuthProvider),
 					})
 				}
 			}

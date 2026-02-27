@@ -450,7 +450,7 @@ func (q *Queries) GetTeamMemberByEmail(ctx context.Context, arg GetTeamMemberByE
 }
 
 const getTeamMembers = `-- name: GetTeamMembers :many
-SELECT tm.role, tm.created_at as joined_at, u.user_id, u.email
+SELECT tm.role, tm.created_at as joined_at, u.user_id, u.email, u.auth_provider
 FROM team_members tm
 JOIN users u ON tm.user_id = u.user_id
 WHERE tm.team_id = ?
@@ -458,10 +458,11 @@ ORDER BY tm.role DESC, tm.created_at ASC
 `
 
 type GetTeamMembersRow struct {
-	Role     string `db:"role" json:"role"`
-	JoinedAt string `db:"joined_at" json:"joined_at"`
-	UserID   string `db:"user_id" json:"user_id"`
-	Email    string `db:"email" json:"email"`
+	Role         string  `db:"role" json:"role"`
+	JoinedAt     string  `db:"joined_at" json:"joined_at"`
+	UserID       string  `db:"user_id" json:"user_id"`
+	Email        string  `db:"email" json:"email"`
+	AuthProvider *string `db:"auth_provider" json:"auth_provider"`
 }
 
 func (q *Queries) GetTeamMembers(ctx context.Context, teamID string) ([]GetTeamMembersRow, error) {
@@ -478,6 +479,7 @@ func (q *Queries) GetTeamMembers(ctx context.Context, teamID string) ([]GetTeamM
 			&i.JoinedAt,
 			&i.UserID,
 			&i.Email,
+			&i.AuthProvider,
 		); err != nil {
 			return nil, err
 		}
