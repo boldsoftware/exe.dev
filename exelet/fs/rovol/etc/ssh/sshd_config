@@ -32,6 +32,7 @@ AllowAgentForwarding yes
 AllowTcpForwarding yes
 X11Forwarding yes
 X11UseLocalhost no
+XAuthLocation /usr/bin/xauth
 
 # Keepalive
 ClientAliveInterval 60
