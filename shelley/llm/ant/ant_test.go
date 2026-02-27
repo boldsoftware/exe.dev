@@ -1436,6 +1436,22 @@ func TestParseSSEStreamNoMessageStart(t *testing.T) {
 	}
 }
 
+func TestParseSSEStreamIncomplete(t *testing.T) {
+	// Stream has message_start and content but no message_stop
+	var b strings.Builder
+	b.WriteString("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_inc\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n")
+	b.WriteString("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\n")
+	b.WriteString("event: ping\ndata: {\"type\":\"ping\"}\n\n")
+
+	_, err := parseSSEStream(strings.NewReader(b.String()))
+	if err == nil {
+		t.Fatal("expected error for incomplete stream (no message_stop)")
+	}
+	if !strings.Contains(err.Error(), "incomplete SSE stream") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "incomplete SSE stream")
+	}
+}
+
 func TestParseSSEStreamError(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_err\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n")

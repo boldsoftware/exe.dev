@@ -574,8 +574,9 @@ type streamDelta struct {
 // parseSSEStream reads an SSE stream and assembles the complete response.
 func parseSSEStream(r io.Reader) (*response, error) {
 	var (
-		resp     *response
-		contents []content // indexed by content block index
+		resp        *response
+		contents    []content // indexed by content block index
+		messageDone bool
 	)
 
 	scanner := bufio.NewScanner(r)
@@ -667,7 +668,7 @@ func parseSSEStream(r io.Reader) (*response, error) {
 			}
 
 		case "message_stop":
-			// stream complete
+			messageDone = true
 
 		case "ping":
 			// keepalive, ignore
@@ -683,6 +684,10 @@ func parseSSEStream(r io.Reader) (*response, error) {
 
 	if resp == nil {
 		return nil, fmt.Errorf("no message_start event in stream")
+	}
+
+	if !messageDone {
+		return nil, fmt.Errorf("incomplete SSE stream: no message_stop event received")
 	}
 
 	// Ensure tool_use blocks always have a non-nil ToolInput.

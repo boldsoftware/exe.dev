@@ -188,6 +188,8 @@ func (s *Server) runDistillation(ctx context.Context, conversationID, sourceSlug
 	distillCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
+	// TODO: consider disabling thinking for distillation requests to reduce
+	// cost and latency — it's a simple summarization task.
 	resp, err := svc.Do(distillCtx, &llm.Request{
 		System: []llm.SystemContent{
 			{Text: distillSystemPrompt, Type: "text"},
