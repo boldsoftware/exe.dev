@@ -59,6 +59,18 @@ scrape_configs:
           stage: 'production'
           role: 'exelet'
       - targets:
+        - 'exeprox-lax2-prod-01'
+        - 'exeprox-dal-prod-01'
+        - 'exeprox-fra2-prod-01'
+        - 'exeprox-lon2-prod-01'
+        - 'exeprox-nyc-prod-01'
+        - 'exeprox-sjc2-prod-01'
+        - 'exeprox-syd2-prod-01'
+        - 'exeprox-tyo4-prod-01'
+        labels:
+          stage: 'production'
+          role: 'exeprox'
+      - targets:
         - 'exed-staging-01:19100'  # exed listens on most ports for proxy, so use 10000+9100
         labels:
           stage: 'staging'
