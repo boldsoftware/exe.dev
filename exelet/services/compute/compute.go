@@ -183,7 +183,10 @@ func (s *Service) Start(ctx context.Context) error {
 
 // Stop stops the service.
 func (s *Service) Stop(ctx context.Context) error {
-	s.proxyManager.StopAll()
+	// NOTE: We intentionally do NOT stop SSH proxies here.
+	// Socat processes run in their own process group and survive exelet restarts.
+	// On next startup, RecoverProxies will adopt still-running proxies seamlessly,
+	// avoiding any SSH connectivity gap during restarts.
 
 	if s.stopLogRotation != nil {
 		s.stopLogRotation()

@@ -89,7 +89,7 @@ func (m *Manager) GetPort(instanceID string) (int, bool) {
 	return port, exists
 }
 
-// StopAll stops all proxies (called on exelet shutdown)
+// StopAll stops all proxies
 func (m *Manager) StopAll() {
 	m.mu.Lock()
 	proxies := make([]*SSHProxy, 0, len(m.proxies))
