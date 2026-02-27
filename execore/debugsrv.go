@@ -1290,39 +1290,64 @@ func (s *Server) reconfigureVMIP(ctx context.Context, box *exedb.Box, sourceNetw
 
 	logFile := "/var/log/exe-migrate.log"
 
+	// Discover the guest network interface that holds the source IP.
+	// The guest interface name varies by kernel/distro (eth0, ens3, etc.).
+	sourceIPAddr := sourceIP
+	if idx := strings.Index(sourceIPAddr, "/"); idx > 0 {
+		sourceIPAddr = sourceIPAddr[:idx]
+	}
+	if _, err := netip.ParseAddr(sourceIPAddr); err != nil {
+		return fmt.Errorf("invalid source IP %q: %w", sourceIPAddr, err)
+	}
+	detectCmd := fmt.Sprintf("ip -o addr show to %s | awk '{print $2}'", sourceIPAddr)
+	devOutput, err := runCommandOnBox(ctx, s.sshPool, box, detectCmd)
+	if err != nil {
+		return fmt.Errorf("failed to detect guest interface: %w (output: %s)", err, string(devOutput))
+	}
+	devFields := strings.Fields(string(devOutput))
+	if len(devFields) == 0 {
+		return fmt.Errorf("no guest interface found for IP %s", sourceIPAddr)
+	}
+	guestDev := devFields[0]
+	if strings.ContainsAny(guestDev, "/'\"\\; \t\n") {
+		return fmt.Errorf("invalid guest interface name %q for IP %s", guestDev, sourceIPAddr)
+	}
+	progress("Detected guest interface: %s", guestDev)
+
 	// Step 1: Enable promote_secondaries and add the new IP. This runs
 	// synchronously — the old IP still exists so SSH stays alive.
 	// promote_secondaries ensures that when we delete the primary (old) IP,
 	// the secondary (new) IP is promoted to primary instead of being removed.
 	addCmd := fmt.Sprintf("sudo /exe.dev/bin/sh -c '"+
 		"echo \"=== Migration IP reconfig $(date -Iseconds) ===\" >> %s; "+
-		"echo \"before:\" >> %s; ip addr show dev eth0 >> %s 2>&1; ip route >> %s 2>&1; "+
-		"echo 1 > /proc/sys/net/ipv4/conf/eth0/promote_secondaries; "+
-		"ip addr add %s dev eth0 2>> %s; "+
-		"echo \"after add:\" >> %s; ip addr show dev eth0 >> %s 2>&1"+
+		"echo \"before:\" >> %s; ip addr show dev %s >> %s 2>&1; ip route >> %s 2>&1; "+
+		"echo 1 > /proc/sys/net/ipv4/conf/%s/promote_secondaries; "+
+		"ip addr add %s dev %s 2>> %s; "+
+		"echo \"after add:\" >> %s; ip addr show dev %s >> %s 2>&1"+
 		"'",
 		logFile,
-		logFile, logFile, logFile,
-		targetIP, logFile,
-		logFile, logFile)
+		logFile, guestDev, logFile, logFile,
+		guestDev,
+		targetIP, guestDev, logFile,
+		logFile, guestDev, logFile)
 	output, err := runCommandOnBox(ctx, s.sshPool, box, addCmd)
 	if err != nil {
 		return fmt.Errorf("failed to add target IP: %w (output: %s)", err, string(output))
 	}
-	progress("Added target IP %s to eth0.", targetIP)
+	progress("Added target IP %s to %s.", targetIP, guestDev)
 
 	// Step 2: Delete the old IP and fix the route in the background.
 	// Deleting the old IP kills the SSH connection, so we use nohup.
 	// With promote_secondaries, the new IP is promoted to primary automatically.
 	delCmd := fmt.Sprintf("nohup sudo /exe.dev/bin/sh -c '"+
 		"trap \"\" HUP; "+
-		"ip addr del %s dev eth0 2>> %s; "+
+		"ip addr del %s dev %s 2>> %s; "+
 		"ip route replace default via %s 2>> %s; "+
-		"echo \"after del:\" >> %s; ip addr show dev eth0 >> %s 2>&1; ip route >> %s 2>&1"+
+		"echo \"after del:\" >> %s; ip addr show dev %s >> %s 2>&1; ip route >> %s 2>&1"+
 		"' >/dev/null 2>&1 &",
-		sourceIP, logFile,
+		sourceIP, guestDev, logFile,
 		targetGW, logFile,
-		logFile, logFile, logFile)
+		logFile, guestDev, logFile, logFile)
 
 	sshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
