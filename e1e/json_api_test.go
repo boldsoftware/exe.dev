@@ -211,9 +211,9 @@ func TestExeDevAPI(t *testing.T) {
 		t.Fatalf("failed to fetch magic_link %q: %v", browser.MagicLink, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusTemporaryRedirect {
+	if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusTemporaryRedirect {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("expected HTTP 307 from magic_link, got %d\n%s", resp.StatusCode, body)
+		t.Fatalf("expected redirect from magic_link, got %d\n%s", resp.StatusCode, body)
 	}
 	foundAuthCookie := false
 	for _, cookie := range resp.Cookies() {

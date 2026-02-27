@@ -899,10 +899,12 @@ func (s *Server) redirectAfterAuthWithParams(w http.ResponseWriter, r *http.Requ
 				return
 			}
 
-			// Redirect to terminal subdomain with magic secret
+			// Redirect to terminal subdomain with magic secret.
+			// Use 303 See Other so POST-after-auth becomes GET
+			// (avoids CrossOriginProtection blocking cross-origin POST redirects).
 			magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
 				getScheme(r), returnHost, secret, url.QueryEscape(redirectURL))
-			http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
+			http.Redirect(w, r, magicURL, http.StatusSeeOther)
 			return
 		} else if s.isProxyRequest(returnHost) {
 			s.slog().DebugContext(r.Context(), "[REDIRECT] redirectAfterAuth: detected proxy request", "returnHost", returnHost)
@@ -930,19 +932,21 @@ func (s *Server) redirectAfterAuthWithParams(w http.ResponseWriter, r *http.Requ
 				return
 			}
 
-			// Redirect to confirmation page with magic secret
+			// Redirect to confirmation page with magic secret.
+			// Use 303 See Other so POST-after-auth becomes GET.
 			confirmURL := fmt.Sprintf("/auth/confirm?secret=%s&return_host=%s", secret, url.QueryEscape(returnHost))
 			s.slog().DebugContext(r.Context(), "[REDIRECT] redirectAfterAuth creating confirmation URL", "confirmURL", confirmURL)
-			http.Redirect(w, r, confirmURL, http.StatusTemporaryRedirect)
+			http.Redirect(w, r, confirmURL, http.StatusSeeOther)
 			return
 		}
 	}
 
-	// Default redirect - validate to prevent open redirect attacks
+	// Default redirect - validate to prevent open redirect attacks.
+	// Use 303 See Other so POST-after-auth becomes GET.
 	if exeweb.IsValidRedirectURL(redirectURL) {
-		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 	} else {
-		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}
 }
 
@@ -1061,9 +1065,11 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
 		getScheme(r), returnHost, secret, url.QueryEscape(magicSecret.RedirectURL))
 
-	// If user is the box owner, redirect directly without confirmation
+	// If user is the box owner, redirect directly without confirmation.
+	// Use 303 See Other so POST-after-auth becomes GET
+	// (avoids CrossOriginProtection blocking cross-origin POST redirects).
 	if box.CreatedByUserID == magicSecret.UserID {
-		http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
+		http.Redirect(w, r, magicURL, http.StatusSeeOther)
 		return
 	}
 

@@ -356,7 +356,7 @@ func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
 		resp.Body.Close()
 		t.Fatalf("BUG: got 404 when accessing public box through auth dance. Body: %s", body)
 	}
-	if resp.StatusCode != http.StatusTemporaryRedirect {
+	if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusTemporaryRedirect {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		t.Fatalf("expected redirect from /auth, got status %d. Body: %s", resp.StatusCode, body)
@@ -1079,7 +1079,7 @@ func (f *loginWithExeFlow) completeEmailVerification() {
 	}
 
 	// The response should be a redirect to /auth/confirm
-	if postResp.StatusCode != http.StatusTemporaryRedirect {
+	if postResp.StatusCode != http.StatusSeeOther && postResp.StatusCode != http.StatusTemporaryRedirect {
 		body, _ := io.ReadAll(postResp.Body)
 		postResp.Body.Close()
 		f.t.Fatalf("expected redirect after verification, got %d: %s", postResp.StatusCode, body)

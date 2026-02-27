@@ -89,7 +89,7 @@ func terminalRequestWithAuth(t *testing.T, boxName string, cookies []*http.Cooki
 			t.Fatalf("failed to do http request: %v", err)
 		}
 
-		if resp.StatusCode != http.StatusTemporaryRedirect {
+		if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusTemporaryRedirect {
 			defer resp.Body.Close()
 			body, _ := io.ReadAll(resp.Body)
 			t.Fatalf("expected redirect during auth dance, got status %d: %s", resp.StatusCode, string(body))
@@ -113,7 +113,7 @@ func terminalRequestWithAuth(t *testing.T, boxName string, cookies []*http.Cooki
 			t.Fatalf("failed to do http request: %v", err)
 		}
 
-		if resp.StatusCode != http.StatusTemporaryRedirect {
+		if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusTemporaryRedirect {
 			defer resp.Body.Close()
 			body, _ := io.ReadAll(resp.Body)
 			t.Fatalf("expected redirect after confirm, got status %d: %s", resp.StatusCode, string(body))

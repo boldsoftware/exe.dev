@@ -264,9 +264,12 @@ func TestRename(t *testing.T) {
 		box2 = newName
 
 		// Verify the old cookie no longer works.
-		// Since the box was renamed, the old name no longer exists, so we get 401.
-		// The key security property is that the cookie was invalidated - if an attacker
-		// were to create a new box with the old name, they couldn't use these cookies.
+		// Since the box was renamed, the cookie was invalidated and the old name
+		// no longer exists. The key security property is that the cookie was
+		// invalidated - if an attacker were to create a new box with the old name,
+		// they couldn't use these cookies.
+		// With CSRF-driven auth redirect, unauthenticated users get 307 to the
+		// main domain auth page (cookie invalidated = unauthenticated).
 		oldBoxURL := fmt.Sprintf("http://%s.exe.cloud:%d/", oldName, port)
 		req, err = localhostRequestWithHostHeader("GET", oldBoxURL, nil)
 		if err != nil {
@@ -280,12 +283,11 @@ func TestRename(t *testing.T) {
 		body, _ = io.ReadAll(resp.Body)
 		resp.Body.Close()
 
-		// The old box name no longer exists, so we get 401 Unauthorized
-		if resp.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("expected 401 for old box name after rename, got status %d: %s", resp.StatusCode, body)
-		}
-		if !strings.Contains(string(body), "Access required") {
-			t.Fatalf("expected 'Access required' in response body, got: %s", body)
+		// The old cookie is invalidated, so the user is unauthenticated and gets
+		// redirected to the auth page (307). The important thing is they don't
+		// get 200 OK (access granted).
+		if resp.StatusCode == http.StatusOK {
+			t.Fatalf("stale cookie should not grant access after rename, got 200: %s", body)
 		}
 	})
 

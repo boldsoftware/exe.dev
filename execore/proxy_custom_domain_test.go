@@ -233,8 +233,8 @@ func TestCustomDomainReturnHostValidation(t *testing.T) {
 		server.ServeHTTP(recorder, req)
 
 		// Should redirect to /auth/confirm with the valid return_host
-		if recorder.Code != http.StatusTemporaryRedirect {
-			t.Fatalf("Expected 307 redirect, got %d. Body: %s", recorder.Code, recorder.Body.String())
+		if recorder.Code != http.StatusSeeOther {
+			t.Fatalf("Expected 303 redirect, got %d. Body: %s", recorder.Code, recorder.Body.String())
 		}
 
 		location := recorder.Header().Get("Location")
@@ -284,8 +284,8 @@ func TestCustomDomainReturnHostValidation(t *testing.T) {
 		server.ServeHTTP(recorder, req)
 
 		// Should redirect to /auth/confirm
-		if recorder.Code != http.StatusTemporaryRedirect {
-			t.Fatalf("Expected 307 redirect for box subdomain, got %d. Body: %s", recorder.Code, recorder.Body.String())
+		if recorder.Code != http.StatusSeeOther {
+			t.Fatalf("Expected 303 redirect for box subdomain, got %d. Body: %s", recorder.Code, recorder.Body.String())
 		}
 
 		location := recorder.Header().Get("Location")
