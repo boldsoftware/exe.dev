@@ -38,7 +38,7 @@ func (m *mockExecutor) StartVM(ctx context.Context, name, opsDir string) (*VMInf
 	// Write a temporary env file so DestroyVM has something to read.
 	dir, _ := os.MkdirTemp("", "mock-vm-")
 	envFile := filepath.Join(dir, name+".env")
-	os.WriteFile(envFile, []byte(fmt.Sprintf("VM_NAME=%s\nVM_IP=192.168.122.%d\nVM_USER=ubuntu\n", name, m.startCount.Load())), 0644)
+	os.WriteFile(envFile, []byte(fmt.Sprintf("VM_NAME=%s\nVM_IP=192.168.122.%d\nVM_USER=ubuntu\n", name, m.startCount.Load())), 0o644)
 
 	return &VMInfo{
 		Name:    name,
@@ -311,7 +311,7 @@ func TestPoolStatus(t *testing.T) {
 func TestParseEnvFile(t *testing.T) {
 	dir := t.TempDir()
 	envFile := filepath.Join(dir, "test.env")
-	os.WriteFile(envFile, []byte("VM_NAME=test-vm\nVM_IP=10.0.0.1\nVM_USER=ubuntu\nVM_DISK=/tmp/disk.qcow2\nVM_DATA_DISK=/tmp/data.qcow2\nVM_SEED=/tmp/seed.iso\n"), 0644)
+	os.WriteFile(envFile, []byte("VM_NAME=test-vm\nVM_IP=10.0.0.1\nVM_USER=ubuntu\nVM_DISK=/tmp/disk.qcow2\nVM_DATA_DISK=/tmp/data.qcow2\nVM_SEED=/tmp/seed.iso\n"), 0o644)
 
 	vm, err := parseEnvFile(envFile)
 	if err != nil {
@@ -331,7 +331,7 @@ func TestParseEnvFile(t *testing.T) {
 func TestParseEnvFileMissingFields(t *testing.T) {
 	dir := t.TempDir()
 	envFile := filepath.Join(dir, "test.env")
-	os.WriteFile(envFile, []byte("VM_NAME=test-vm\n"), 0644)
+	os.WriteFile(envFile, []byte("VM_NAME=test-vm\n"), 0o644)
 
 	_, err := parseEnvFile(envFile)
 	if err == nil {

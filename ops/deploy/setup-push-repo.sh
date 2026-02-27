@@ -8,7 +8,7 @@ echo "Setting up /data/e1ed/push.git..."
 git init --bare /data/e1ed/push.git
 
 # Make pushed objects visible to the e1ed repo via alternates.
-echo "/data/e1ed/push.git/objects" >> /data/e1ed/repo.git/objects/info/alternates
+echo "/data/e1ed/push.git/objects" >>/data/e1ed/repo.git/objects/info/alternates
 
 # Disable GC on push.git to prevent object pruning.
 git -C /data/e1ed/push.git config gc.auto 0
@@ -16,7 +16,7 @@ git -C /data/e1ed/push.git config gc.auto 0
 mkdir -p /data/e1ed/runs
 
 # Install post-receive hook.
-cat > /data/e1ed/push.git/hooks/post-receive <<'EOF'
+cat >/data/e1ed/push.git/hooks/post-receive <<'EOF'
 #!/bin/bash
 exec /usr/local/bin/e1ed-hook
 EOF

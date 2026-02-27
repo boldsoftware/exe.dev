@@ -37,10 +37,10 @@ func setupTestServer(t *testing.T) (*Server, *mockExecutor) {
 		}
 	}
 
-	os.MkdirAll(srcRepo, 0755)
+	os.MkdirAll(srcRepo, 0o755)
 	run(srcRepo, "git", "init")
 	// Create a Makefile with a no-op exelet-fs target.
-	os.WriteFile(filepath.Join(srcRepo, "Makefile"), []byte("exelet-fs:\n\t@echo done\n"), 0644)
+	os.WriteFile(filepath.Join(srcRepo, "Makefile"), []byte("exelet-fs:\n\t@echo done\n"), 0o644)
 	run(srcRepo, "git", "add", ".")
 	run(srcRepo, "git", "commit", "-m", "init")
 	run(repoDir, "git", "clone", "--bare", srcRepo, bareRepo)
