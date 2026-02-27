@@ -94,12 +94,12 @@ func TestSystemPromptDetectsGitInWorkingDir(t *testing.T) {
 		t.Fatalf("GenerateSystemPrompt failed: %v", err)
 	}
 
-	// The prompt should say "Git repository root:" not "Not in a git repository"
+	// The prompt should say "Git root:" not "Not in a git repository"
 	if strings.Contains(prompt, "Not in a git repository") {
 		t.Errorf("system prompt incorrectly says 'Not in a git repository' for a directory that is a git repo")
 	}
-	if !strings.Contains(prompt, "Git repository root:") {
-		t.Errorf("system prompt should contain 'Git repository root:' for a git repo directory")
+	if !strings.Contains(prompt, "Git root:") {
+		t.Errorf("system prompt should contain 'Git root:' for a git repo directory")
 	}
 	if !strings.Contains(prompt, tmpDir) {
 		t.Errorf("system prompt should reference the git root directory %s", tmpDir)

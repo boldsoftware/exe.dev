@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -101,7 +102,17 @@ func GenerateSystemPrompt(workingDir string, opts ...SystemPromptOption) (string
 		return "", fmt.Errorf("failed to execute template: %w", err)
 	}
 
-	return buf.String(), nil
+	return collapseBlankLines(buf.String()), nil
+}
+
+// collapseBlankLines reduces runs of 3+ newlines to 2 (one blank line)
+// and trims leading/trailing whitespace.
+var reBlankRun = regexp.MustCompile(`\n{3,}`)
+
+func collapseBlankLines(s string) string {
+	s = strings.TrimSpace(s)
+	s = reBlankRun.ReplaceAllString(s, "\n\n")
+	return s + "\n"
 }
 
 func collectSystemData(workingDir string) (*SystemPromptData, error) {
@@ -410,5 +421,5 @@ func GenerateSubagentSystemPrompt(workingDir string) (string, error) {
 		return "", fmt.Errorf("failed to execute subagent template: %w", err)
 	}
 
-	return buf.String(), nil
+	return collapseBlankLines(buf.String()), nil
 }
