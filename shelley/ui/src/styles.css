@@ -5334,7 +5334,9 @@ kbd {
 .markdown-content table {
   border-collapse: collapse;
   margin: 0.75em 0;
-  width: 100%;
+  word-break: normal;
+  display: block;
+  overflow-x: auto;
 }
 
 .markdown-content th,
@@ -5347,6 +5349,7 @@ kbd {
 .markdown-content th {
   background: var(--bg-tertiary);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .markdown-content a {
