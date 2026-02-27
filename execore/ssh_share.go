@@ -1055,7 +1055,7 @@ func (ss *SSHServer) handleShareReceiveEmailCmd(ctx context.Context, cc *exemenu
 	// If enabling, set up maildir and test delivery before updating DB.
 	var maildirPath string
 	if enabling {
-		setupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		setupCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 
 		// Resolve $HOME to get the absolute path - this ensures consistency
