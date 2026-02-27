@@ -1,9 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # This Dockerfile builds our "read only volume" (rovol) binaries.
-# They happen to be checked in, but once we move to "make" from "go build",
-# we can just do this build step there. "make container/rovol/arm64" is
-# roughly the build step.
+# The output is cached in Backblaze and downloaded at build time.
+# "make exelet-rovol" is the build step.
 #
 # The rovol binaries aren't quite statically linked, but they come with their
 # own musl, so they should run anywhere we care for them to run.
@@ -90,14 +89,9 @@ RUN strip --strip-all --remove-section=.comment --remove-section=.note \
 RUN mkdir -p /out/exe.dev/bin /out/exe.dev/lib
 
 # Copy the built binaries (they already have correct interpreter and rpath)
-COPY exelet/rovol/etc/ssh/sshd_config /out/exe.dev/etc/ssh/sshd_config
 RUN cp -v sshd /out/exe.dev/bin/
 RUN cp -v sshd-session /out/exe.dev/bin/
 RUN cp -v sftp-server /out/exe.dev/bin/
-
-# var/empty for priv separation
-RUN mkdir -p /out/exe.dev/var/empty
-RUN touch /out/exe.dev/var/empty/placeholder
 
 # Build BusyBox from source for a capable shell and install as /exe.dev/bin/sh
 WORKDIR /src

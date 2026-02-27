@@ -1,6 +1,7 @@
 package exelet
 
 import (
+	"embed"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -12,6 +13,9 @@ import (
 // Content is initialized from arch-specific embed in fs_amd64.go or fs_arm64.go.
 // The fs.Sub strips the architecture prefix so paths remain "kernel/kernel", "rovol/bin/...", etc.
 var Content fs.FS
+
+//go:embed rovol
+var sharedContent embed.FS
 
 func init() {
 	var err error
@@ -36,9 +40,17 @@ func Kernel() (fs.File, error) {
 	return Content.Open("kernel/kernel")
 }
 
-// CopyRovol copies the exe.dev rovol to the destination
+// CopyRovol copies the exe.dev rovol to the destination.
+// It first copies the arch-specific binaries, then overlays the shared configs.
 func CopyRovol(target string) error {
-	return fs.WalkDir(Content, "rovol", func(path string, d fs.DirEntry, err error) error {
+	if err := copyTree(Content, "rovol", target); err != nil {
+		return err
+	}
+	return copyTree(sharedContent, "rovol", target)
+}
+
+func copyTree(fsys fs.FS, root, target string) error {
+	return fs.WalkDir(fsys, root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -47,24 +59,24 @@ func CopyRovol(target string) error {
 			return nil
 		}
 
-		destPath := filepath.Join(target, strings.TrimPrefix(path, "rovol"))
+		destPath := filepath.Join(target, strings.TrimPrefix(path, root))
 		if d.IsDir() {
 			slog.Info("making rovol path", "dest", destPath)
 			return os.MkdirAll(destPath, 0o755)
 		}
 
-		return copyFile(path, destPath)
+		return copyFile(fsys, path, destPath)
 	})
 }
 
-func copyFile(src, dest string) error {
+func copyFile(fsys fs.FS, src, dest string) error {
 	// info to match perms
-	info, err := fs.Stat(Content, src)
+	info, err := fs.Stat(fsys, src)
 	if err != nil {
 		return err
 	}
 
-	srcFile, err := Content.Open(src)
+	srcFile, err := fsys.Open(src)
 	if err != nil {
 		return err
 	}

@@ -4,7 +4,7 @@
 # where target_arch is arm64 or amd64
 #
 # Once this is built via the various Makefiles,
-#   docker run -v $(pwd)/container/rovol/arm64:/exe.dev -it ubuntu:24.04 /exe.dev/bin/dtach --help
+#   docker run -v $(pwd)/exelet/fs/arm64/rovol:/exe.dev -it ubuntu:24.04 /exe.dev/bin/dtach --help
 # can test whether it's built successfully.
 
 set -e
