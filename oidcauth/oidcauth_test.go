@@ -19,7 +19,7 @@ func TestIsEmailVerified(t *testing.T) {
 		{"string true", "true", true},
 		{"string True", "True", true},
 		{"string false", "false", false},
-		{"nil", nil, false},
+		{"nil", nil, true},
 		{"int", 1, false},
 	}
 	for _, tt := range tests {

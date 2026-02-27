@@ -56,6 +56,8 @@ type IDTokenClaims struct {
 
 // IsEmailVerified returns whether the email_verified claim is truthy.
 // Some providers return a bool, others return a string "true".
+// A nil value (claim absent from the token) is treated as verified,
+// because providers like Okta omit the claim rather than setting it.
 func (c *IDTokenClaims) IsEmailVerified() bool {
 	switch v := c.EmailVerified.(type) {
 	case bool:
@@ -63,7 +65,7 @@ func (c *IDTokenClaims) IsEmailVerified() bool {
 	case string:
 		return strings.EqualFold(v, "true")
 	}
-	return false
+	return c.EmailVerified == nil
 }
 
 // Discover fetches the OIDC discovery document from the given issuer URL.
