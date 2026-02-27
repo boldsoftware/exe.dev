@@ -1111,6 +1111,8 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 	// Pipe data from source to target
 	var totalBytes uint64
 	lastReportedMB := uint64(0)
+	var snapshotBytes uint64
+	lastSnapshotReportedMB := uint64(0)
 	for {
 		resp, err := sendStream.Recv()
 		if err == io.EOF {
@@ -1183,6 +1185,14 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 
 		case *computeapi.SendVMResponse_SnapshotData:
 			// Forward snapshot file chunks to target
+			snapshotBytes += uint64(len(v.SnapshotData.Data))
+			currentMB := snapshotBytes / (1024 * 1024)
+			if snapshotBytes == uint64(len(v.SnapshotData.Data)) {
+				progress("Transferring VM snapshot...")
+			} else if currentMB >= lastSnapshotReportedMB+10 {
+				progress("VM snapshot: %d MB...", currentMB)
+				lastSnapshotReportedMB = currentMB
+			}
 			if err := recvStream.Send(&computeapi.ReceiveVMRequest{
 				Type: &computeapi.ReceiveVMRequest_SnapshotData{
 					SnapshotData: &computeapi.ReceiveVMSnapshotChunk{
