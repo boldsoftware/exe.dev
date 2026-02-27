@@ -305,6 +305,12 @@ type PendingTeamInvite struct {
 	AuthProvider     *string    `db:"auth_provider" json:"auth_provider"`
 }
 
+type Redirect struct {
+	Key       string    `db:"key" json:"key"`
+	Target    string    `db:"target" json:"target"`
+	ExpiresAt time.Time `db:"expires_at" json:"expires_at"`
+}
+
 type SSHKey struct {
 	ID          int64      `db:"id" json:"id"`
 	UserID      string     `db:"user_id" json:"user_id"`

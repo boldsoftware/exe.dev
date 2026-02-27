@@ -54,6 +54,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.cleanupExpiredPasskeyChallengesStmt, err = db.PrepareContext(ctx, cleanupExpiredPasskeyChallenges); err != nil {
 		return nil, fmt.Errorf("error preparing query CleanupExpiredPasskeyChallenges: %w", err)
 	}
+	if q.cleanupExpiredRedirectsStmt, err = db.PrepareContext(ctx, cleanupExpiredRedirects); err != nil {
+		return nil, fmt.Errorf("error preparing query CleanupExpiredRedirects: %w", err)
+	}
 	if q.clearPreferredExeletStmt, err = db.PrepareContext(ctx, clearPreferredExelet); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearPreferredExelet: %w", err)
 	}
@@ -420,6 +423,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getRecentSignupRejectionsStmt, err = db.PrepareContext(ctx, getRecentSignupRejections); err != nil {
 		return nil, fmt.Errorf("error preparing query GetRecentSignupRejections: %w", err)
 	}
+	if q.getRedirectStmt, err = db.PrepareContext(ctx, getRedirect); err != nil {
+		return nil, fmt.Errorf("error preparing query GetRedirect: %w", err)
+	}
 	if q.getSSHHostKeyStmt, err = db.PrepareContext(ctx, getSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHHostKey: %w", err)
 	}
@@ -596,6 +602,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertPendingTeamInviteStmt, err = db.PrepareContext(ctx, insertPendingTeamInvite); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPendingTeamInvite: %w", err)
+	}
+	if q.insertRedirectStmt, err = db.PrepareContext(ctx, insertRedirect); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertRedirect: %w", err)
 	}
 	if q.insertSSHKeyStmt, err = db.PrepareContext(ctx, insertSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSSHKey: %w", err)
@@ -926,6 +935,11 @@ func (q *Queries) Close() error {
 	if q.cleanupExpiredPasskeyChallengesStmt != nil {
 		if cerr := q.cleanupExpiredPasskeyChallengesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing cleanupExpiredPasskeyChallengesStmt: %w", cerr)
+		}
+	}
+	if q.cleanupExpiredRedirectsStmt != nil {
+		if cerr := q.cleanupExpiredRedirectsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing cleanupExpiredRedirectsStmt: %w", cerr)
 		}
 	}
 	if q.clearPreferredExeletStmt != nil {
@@ -1538,6 +1552,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getRecentSignupRejectionsStmt: %w", cerr)
 		}
 	}
+	if q.getRedirectStmt != nil {
+		if cerr := q.getRedirectStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getRedirectStmt: %w", cerr)
+		}
+	}
 	if q.getSSHHostKeyStmt != nil {
 		if cerr := q.getSSHHostKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSSHHostKeyStmt: %w", cerr)
@@ -1831,6 +1850,11 @@ func (q *Queries) Close() error {
 	if q.insertPendingTeamInviteStmt != nil {
 		if cerr := q.insertPendingTeamInviteStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertPendingTeamInviteStmt: %w", cerr)
+		}
+	}
+	if q.insertRedirectStmt != nil {
+		if cerr := q.insertRedirectStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertRedirectStmt: %w", cerr)
 		}
 	}
 	if q.insertSSHKeyStmt != nil {
@@ -2342,6 +2366,7 @@ type Queries struct {
 	boxesForUserStmt                           *sql.Stmt
 	cleanupExpiredOAuthStatesStmt              *sql.Stmt
 	cleanupExpiredPasskeyChallengesStmt        *sql.Stmt
+	cleanupExpiredRedirectsStmt                *sql.Stmt
 	clearPreferredExeletStmt                   *sql.Stmt
 	consumeCheckoutParamsStmt                  *sql.Stmt
 	consumeOAuthStateStmt                      *sql.Stmt
@@ -2464,6 +2489,7 @@ type Queries struct {
 	getPendingTeamInvitesByTeamStmt            *sql.Stmt
 	getPreferredExeletStmt                     *sql.Stmt
 	getRecentSignupRejectionsStmt              *sql.Stmt
+	getRedirectStmt                            *sql.Stmt
 	getSSHHostKeyStmt                          *sql.Stmt
 	getSSHKeyByFingerprintStmt                 *sql.Stmt
 	getSSHKeysForUserStmt                      *sql.Stmt
@@ -2523,6 +2549,7 @@ type Queries struct {
 	insertPendingRegistrationStmt              *sql.Stmt
 	insertPendingSSHKeyStmt                    *sql.Stmt
 	insertPendingTeamInviteStmt                *sql.Stmt
+	insertRedirectStmt                         *sql.Stmt
 	insertSSHKeyStmt                           *sql.Stmt
 	insertSSHKeyForEmailUserStmt               *sql.Stmt
 	insertSSHKeyForEmailUserIfNotExistsStmt    *sql.Stmt
@@ -2631,6 +2658,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		boxesForUserStmt:                           q.boxesForUserStmt,
 		cleanupExpiredOAuthStatesStmt:              q.cleanupExpiredOAuthStatesStmt,
 		cleanupExpiredPasskeyChallengesStmt:        q.cleanupExpiredPasskeyChallengesStmt,
+		cleanupExpiredRedirectsStmt:                q.cleanupExpiredRedirectsStmt,
 		clearPreferredExeletStmt:                   q.clearPreferredExeletStmt,
 		consumeCheckoutParamsStmt:                  q.consumeCheckoutParamsStmt,
 		consumeOAuthStateStmt:                      q.consumeOAuthStateStmt,
@@ -2753,6 +2781,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPendingTeamInvitesByTeamStmt:            q.getPendingTeamInvitesByTeamStmt,
 		getPreferredExeletStmt:                     q.getPreferredExeletStmt,
 		getRecentSignupRejectionsStmt:              q.getRecentSignupRejectionsStmt,
+		getRedirectStmt:                            q.getRedirectStmt,
 		getSSHHostKeyStmt:                          q.getSSHHostKeyStmt,
 		getSSHKeyByFingerprintStmt:                 q.getSSHKeyByFingerprintStmt,
 		getSSHKeysForUserStmt:                      q.getSSHKeysForUserStmt,
@@ -2812,6 +2841,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertPendingRegistrationStmt:              q.insertPendingRegistrationStmt,
 		insertPendingSSHKeyStmt:                    q.insertPendingSSHKeyStmt,
 		insertPendingTeamInviteStmt:                q.insertPendingTeamInviteStmt,
+		insertRedirectStmt:                         q.insertRedirectStmt,
 		insertSSHKeyStmt:                           q.insertSSHKeyStmt,
 		insertSSHKeyForEmailUserStmt:               q.insertSSHKeyForEmailUserStmt,
 		insertSSHKeyForEmailUserIfNotExistsStmt:    q.insertSSHKeyForEmailUserIfNotExistsStmt,

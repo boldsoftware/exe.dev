@@ -158,6 +158,10 @@ func TestSanitizePath(t *testing.T) {
 		{"trailing slash", "/health/", "/health"},
 		{"nested", "/foo/bar/baz", "/foo/bar/baz"},
 
+		// Redirect paths collapsed to /r/...
+		{"redirect key", "/r/a7Bx3kQm9pLnR2Wf", "/r/..."},
+		{"redirect trailing slash", "/r/", "/r/..."},
+
 		// Invalid UTF-8 (should return empty string)
 		{"invalid utf8", "/\xc0", ""},
 		{"invalid utf8 mid", "/foo\xc0bar", ""},

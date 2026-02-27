@@ -1285,7 +1285,14 @@ func (ss *SSHServer) startGoogleOAuthVerification(s *shellSession, publicKey, em
 		return nil, fmt.Errorf("failed to store oauth state: %w", err)
 	}
 
-	verif.GoogleOAuthURL = ss.server.googleOAuth.AuthURL(state, email)
+	longURL := ss.server.googleOAuth.AuthURL(state, email)
+	key, err := ss.server.createRedirect(s.Context(), longURL)
+	if err != nil {
+		ss.server.slog().WarnContext(s.Context(), "failed to create redirect, using long URL", "error", err)
+		verif.GoogleOAuthURL = longURL
+	} else {
+		verif.GoogleOAuthURL = ss.server.redirectURL(key)
+	}
 
 	return verif, nil
 }

@@ -507,6 +507,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if s.security != nil && s.security.Handle(w, r) {
 			return
 		}
+	} else if key, ok := isRedirectRequest(path); ok {
+		s.handleRedirect(w, r, key)
+		return
 	}
 
 	switch path {

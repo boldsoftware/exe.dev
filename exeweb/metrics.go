@@ -111,6 +111,10 @@ func SanitizePath(path string) string {
 	if !utf8.ValidString(path) {
 		return ""
 	}
+	// Collapse /r/<key> to /r to avoid unbounded metrics cardinality.
+	if strings.HasPrefix(path, "/r/") {
+		return "/r/..."
+	}
 	return normalizePath(path)
 }
 
