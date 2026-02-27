@@ -301,3 +301,62 @@ func TestNewToolSet_SubagentDepthLimit(t *testing.T) {
 		}
 	})
 }
+
+func TestToolDescriptions(t *testing.T) {
+	// Full config: browser + subagent enabled
+	provider := &mockLLMProvider{}
+	cfg := ToolSetConfig{
+		LLMProvider:          provider,
+		ModelID:              "claude-3-sonnet",
+		WorkingDir:           "/test",
+		EnableBrowser:        true,
+		SubagentRunner:       &mockSubagentRunner{},
+		SubagentDB:           &mockSubagentDB{},
+		ParentConversationID: "parent-123",
+	}
+	ts := NewToolSet(context.Background(), cfg)
+	if len(ts.Tools()) == 0 {
+		t.Fatal("NewToolSet returned no tools")
+	}
+
+	// Verify all tools have names and descriptions
+	for _, tool := range ts.Tools() {
+		if tool.Name == "" {
+			t.Error("tool has empty name")
+		}
+		if tool.Description == "" {
+			t.Errorf("tool %q has empty description", tool.Name)
+		}
+	}
+
+	// Without browser: should not include browser/read_image
+	noBrowserCfg := ToolSetConfig{
+		LLMProvider:          provider,
+		ModelID:              "claude-3-sonnet",
+		WorkingDir:           "/test",
+		EnableBrowser:        false,
+		SubagentRunner:       &mockSubagentRunner{},
+		SubagentDB:           &mockSubagentDB{},
+		ParentConversationID: "parent-123",
+	}
+	noBrowserTS := NewToolSet(context.Background(), noBrowserCfg)
+	for _, tool := range noBrowserTS.Tools() {
+		if tool.Name == "browser" || tool.Name == "read_image" {
+			t.Errorf("browser-disabled config should not include tool %q", tool.Name)
+		}
+	}
+
+	// Without subagent: should not include subagent
+	noSubagentCfg := ToolSetConfig{
+		LLMProvider:   provider,
+		ModelID:       "claude-3-sonnet",
+		WorkingDir:    "/test",
+		EnableBrowser: true,
+	}
+	noSubagentTS := NewToolSet(context.Background(), noSubagentCfg)
+	for _, tool := range noSubagentTS.Tools() {
+		if tool.Name == "subagent" {
+			t.Error("subagent-disabled config should not include subagent tool")
+		}
+	}
+}

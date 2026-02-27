@@ -1,6 +1,15 @@
 import React, { useState } from "react";
 import { Message, LLMContent } from "../types";
 
+interface ToolDescription {
+  name: string;
+  description: string;
+}
+
+interface SystemPromptDisplayData {
+  tools?: ToolDescription[];
+}
+
 interface SystemPromptViewProps {
   message: Message;
 }
@@ -25,6 +34,22 @@ function SystemPromptView({ message }: SystemPromptViewProps) {
     }
   }
 
+  // Extract tool descriptions from display_data
+  let tools: ToolDescription[] = [];
+  if (message.display_data) {
+    try {
+      const displayData: SystemPromptDisplayData =
+        typeof message.display_data === "string"
+          ? JSON.parse(message.display_data)
+          : message.display_data;
+      if (displayData && displayData.tools) {
+        tools = displayData.tools;
+      }
+    } catch (err) {
+      console.error("Failed to parse system prompt display data:", err);
+    }
+  }
+
   if (!systemPromptText) {
     return null;
   }
@@ -41,7 +66,7 @@ function SystemPromptView({ message }: SystemPromptViewProps) {
           <span className="system-prompt-icon">📋</span>
           <span className="system-prompt-label">System Prompt</span>
           <span className="system-prompt-meta">
-            {lineCount} lines, {sizeKb} KB
+            {lineCount} lines, {sizeKb} KB{tools.length > 0 && ` · ${tools.length} tools`}
           </span>
         </div>
         <button
@@ -73,6 +98,21 @@ function SystemPromptView({ message }: SystemPromptViewProps) {
 
       {isExpanded && (
         <div className="system-prompt-content">
+          {tools.length > 0 && (
+            <div className="system-prompt-tools">
+              <div className="system-prompt-tools-label">🔧 Tools ({tools.length})</div>
+              <div className="system-prompt-tools-list">
+                {tools.map((tool) => (
+                  <div key={tool.name} className="system-prompt-tool-item">
+                    <code className="system-prompt-tool-name">{tool.name}</code>
+                    <span className="system-prompt-tool-desc">
+                      {tool.description.trim().split("\n")[0]}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <pre className="system-prompt-text">{systemPromptText}</pre>
         </div>
       )}

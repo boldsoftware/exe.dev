@@ -276,6 +276,7 @@ func (cm *ConversationManager) createSystemPrompt(ctx context.Context) (*generat
 		Type:           db.MessageTypeSystem,
 		LLMData:        systemMessage,
 		UsageData:      llm.Usage{},
+		DisplayData:    systemPromptDisplayData(cm.toolSetConfig),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to store system prompt: %w", err)
@@ -289,6 +290,25 @@ func (cm *ConversationManager) createSystemPrompt(ctx context.Context) (*generat
 
 	cm.logger.Info("Stored system prompt", "length", len(systemPrompt))
 	return created, nil
+}
+
+// systemPromptDisplayData returns display data for system prompt messages,
+// including tool descriptions for the UI.
+func systemPromptDisplayData(cfg claudetool.ToolSetConfig) map[string]any {
+	ts := claudetool.NewToolSet(context.Background(), cfg)
+	defer ts.Cleanup()
+
+	type toolDesc struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	var descs []toolDesc
+	for _, t := range ts.Tools() {
+		descs = append(descs, toolDesc{Name: t.Name, Description: t.Description})
+	}
+	return map[string]any{
+		"tools": descs,
+	}
 }
 
 func (cm *ConversationManager) createSubagentSystemPrompt(ctx context.Context) (*generated.Message, error) {
@@ -312,6 +332,7 @@ func (cm *ConversationManager) createSubagentSystemPrompt(ctx context.Context) (
 		Type:           db.MessageTypeSystem,
 		LLMData:        systemMessage,
 		UsageData:      llm.Usage{},
+		DisplayData:    systemPromptDisplayData(cm.toolSetConfig),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to store subagent system prompt: %w", err)
