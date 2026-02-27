@@ -131,8 +131,8 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 		zfsPool:          zfsPool,
 		usageState:       make(map[string]*vmUsageState),
 		priorityOverride: make(map[string]api.VMPriority),
-		cgroupRoot:   "/sys/fs/cgroup",
-		pollInterval: pollInterval,
+		cgroupRoot:       "/sys/fs/cgroup",
+		pollInterval:     pollInterval,
 	}, nil
 }
 

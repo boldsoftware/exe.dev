@@ -31,11 +31,11 @@ func waitForFile(t *testing.T, path string, deadline time.Duration) []byte {
 
 func TestReclaimTargetsSortOrder(t *testing.T) {
 	targets := []reclaimTarget{
-		{id: "normal-small", priority: api.VMPriority_PRIORITY_NORMAL, memoryBytes: 1 << 30},   // 1 GB
-		{id: "low-small", priority: api.VMPriority_PRIORITY_LOW, memoryBytes: 512 << 20},       // 512 MB
-		{id: "normal-large", priority: api.VMPriority_PRIORITY_NORMAL, memoryBytes: 8 << 30},    // 8 GB
-		{id: "low-large", priority: api.VMPriority_PRIORITY_LOW, memoryBytes: 4 << 30},          // 4 GB
-		{id: "normal-medium", priority: api.VMPriority_PRIORITY_NORMAL, memoryBytes: 4 << 30},   // 4 GB
+		{id: "normal-small", priority: api.VMPriority_PRIORITY_NORMAL, memoryBytes: 1 << 30},  // 1 GB
+		{id: "low-small", priority: api.VMPriority_PRIORITY_LOW, memoryBytes: 512 << 20},      // 512 MB
+		{id: "normal-large", priority: api.VMPriority_PRIORITY_NORMAL, memoryBytes: 8 << 30},  // 8 GB
+		{id: "low-large", priority: api.VMPriority_PRIORITY_LOW, memoryBytes: 4 << 30},        // 4 GB
+		{id: "normal-medium", priority: api.VMPriority_PRIORITY_NORMAL, memoryBytes: 4 << 30}, // 4 GB
 	}
 
 	sort.Slice(targets, func(i, j int) bool {
