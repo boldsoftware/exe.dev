@@ -25,6 +25,10 @@ var (
 	cacheDirOnce sync.Once
 	cacheDir     string
 	cacheDirErr  error
+
+	// downloadMu serializes downloads per architecture to prevent concurrent
+	// goroutines from racing on the same .tmp file.
+	downloadMu sync.Map // goarch -> *sync.Mutex
 )
 
 type cacheMetadata struct {
@@ -92,12 +96,30 @@ func GetShelley(ctx context.Context, goarch string) (path string, cached bool, e
 	metadataPath := filepath.Join(platformDir, metadataFileName)
 	shelleyBinaryPath := filepath.Join(platformDir, shelleyFileName)
 
-	// Check if we have a valid cached version
+	// Check if we have a valid cached version (fast path, no lock needed)
 	needsRefresh, currentTag, err := shouldRefresh(metadataPath, platform)
 	if err != nil {
 		return "", false, err
 	}
 
+	if !needsRefresh {
+		if _, err := os.Stat(shelleyBinaryPath); err == nil {
+			return shelleyBinaryPath, true, nil
+		}
+	}
+
+	// Serialize downloads per architecture to prevent concurrent goroutines
+	// from racing on the same .tmp file.
+	muI, _ := downloadMu.LoadOrStore(goarch, &sync.Mutex{})
+	mu := muI.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Re-check cache under the lock — another goroutine may have just finished.
+	needsRefresh, currentTag, err = shouldRefresh(metadataPath, platform)
+	if err != nil {
+		return "", false, err
+	}
 	if !needsRefresh {
 		if _, err := os.Stat(shelleyBinaryPath); err == nil {
 			return shelleyBinaryPath, true, nil

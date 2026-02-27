@@ -238,3 +238,54 @@ func TestInvalidMetadata(t *testing.T) {
 		t.Error("metadata was not fixed")
 	}
 }
+
+func TestConcurrentGetShelley(t *testing.T) {
+	ctx := context.Background()
+
+	// Clean cache
+	cacheDirPath, err := getCacheDir()
+	if err != nil {
+		t.Fatalf("failed to get cache dir: %v", err)
+	}
+	if err := os.RemoveAll(cacheDirPath); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("failed to clean cache: %v", err)
+	}
+
+	const n = 10
+	type result struct {
+		path string
+		err  error
+	}
+	results := make(chan result, n)
+
+	for i := 0; i < n; i++ {
+		go func() {
+			path, _, err := GetShelley(ctx, runtime.GOARCH)
+			results <- result{path, err}
+		}()
+	}
+
+	var paths []string
+	for i := 0; i < n; i++ {
+		r := <-results
+		if r.err != nil {
+			t.Errorf("concurrent GetShelley failed: %v", r.err)
+			continue
+		}
+		paths = append(paths, r.path)
+	}
+
+	// All should return the same path
+	for i := 1; i < len(paths); i++ {
+		if paths[i] != paths[0] {
+			t.Errorf("got different paths: %s vs %s", paths[0], paths[i])
+		}
+	}
+
+	// Binary should exist
+	if len(paths) > 0 {
+		if _, err := os.Stat(paths[0]); err != nil {
+			t.Errorf("binary not found at %s: %v", paths[0], err)
+		}
+	}
+}
