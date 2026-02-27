@@ -112,6 +112,7 @@ type Service struct {
 	Model         string            // defaults to DefaultModel if empty
 	MaxTokens     int               // 0 means use model-specific limit from modelMaxOutputTokens
 	ThinkingLevel llm.ThinkingLevel // thinking level (ThinkingLevelOff disables, default is ThinkingLevelMedium)
+	Backoff       []time.Duration   // retry backoff durations; defaults to {15s, 30s, 60s} if nil
 }
 
 var _ llm.Service = (*Service)(nil)
@@ -687,7 +688,7 @@ func parseSSEStream(r io.Reader) (*response, error) {
 	}
 
 	if !messageDone {
-		return nil, fmt.Errorf("incomplete SSE stream: no message_stop event received")
+		return nil, fmt.Errorf("incomplete stream: no stop_reason received (stream may have been truncated)")
 	}
 
 	// Ensure tool_use blocks always have a non-nil ToolInput.
@@ -716,7 +717,10 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 	}
 	payload = append(payload, '\n')
 
-	backoff := []time.Duration{15 * time.Second, 30 * time.Second, time.Minute}
+	backoff := s.Backoff
+	if backoff == nil {
+		backoff = []time.Duration{15 * time.Second, 30 * time.Second, time.Minute}
+	}
 
 	url := cmp.Or(s.URL, DefaultURL)
 	httpc := cmp.Or(s.HTTPC, http.DefaultClient)
@@ -728,7 +732,7 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			return nil, fmt.Errorf("anthropic request failed after %d attempts: %w", attempts, errs)
 		}
 		if attempts > 0 {
-			sleep := backoff[min(attempts, len(backoff)-1)] + time.Duration(rand.Int64N(int64(time.Second)))
+			sleep := backoff[min(attempts-1, len(backoff)-1)] + time.Duration(rand.Int64N(int64(time.Second)))
 			slog.WarnContext(ctx, "anthropic request sleep before retry", "sleep", sleep, "attempts", attempts)
 			time.Sleep(sleep)
 		}

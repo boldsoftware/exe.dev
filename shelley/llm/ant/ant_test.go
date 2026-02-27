@@ -1447,8 +1447,8 @@ func TestParseSSEStreamIncomplete(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for incomplete stream (no message_stop)")
 	}
-	if !strings.Contains(err.Error(), "incomplete SSE stream") {
-		t.Errorf("error = %q, want to contain %q", err.Error(), "incomplete SSE stream")
+	if !strings.Contains(err.Error(), "incomplete stream") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "incomplete stream")
 	}
 }
 
@@ -1682,3 +1682,227 @@ func TestLiveAnthropicModels(t *testing.T) {
 }
 
 func strp(s string) *string { return &s }
+
+func TestParseSSEStreamRecordedResponse(t *testing.T) {
+	// Test with a real recorded SSE response from Anthropic's API.
+	// This ensures our parser handles the exact format the API sends,
+	// including extra whitespace in data fields.
+	recorded := `event: message_start
+data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01PU4SWJR43AoiPx2RA7hfcf","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":16,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1,"service_tier":"standard","inference_geo":"not_available"}} }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}       }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" to"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" you."}      }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0    }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":16,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":7}  }
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+	resp, err := parseSSEStream(strings.NewReader(recorded))
+	if err != nil {
+		t.Fatalf("parseSSEStream() error = %v", err)
+	}
+	if resp.ID != "msg_01PU4SWJR43AoiPx2RA7hfcf" {
+		t.Errorf("ID = %q, want %q", resp.ID, "msg_01PU4SWJR43AoiPx2RA7hfcf")
+	}
+	if resp.StopReason != "end_turn" {
+		t.Errorf("StopReason = %q, want %q", resp.StopReason, "end_turn")
+	}
+	if len(resp.Content) != 1 {
+		t.Fatalf("Content length = %d, want 1", len(resp.Content))
+	}
+	if resp.Content[0].Text == nil || *resp.Content[0].Text != "Hello to you." {
+		t.Errorf("Text = %v, want %q", resp.Content[0].Text, "Hello to you.")
+	}
+	if resp.Usage.OutputTokens != 7 {
+		t.Errorf("OutputTokens = %d, want 7", resp.Usage.OutputTokens)
+	}
+}
+
+func TestParseSSEStreamConnectionReset(t *testing.T) {
+	// Simulate a connection reset mid-read by using an io.Reader that returns
+	// some valid data followed by an error.
+	partial := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_reset\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n\n" +
+		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n" +
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}\n\n"
+
+	r := &errorAfterReader{data: []byte(partial), err: fmt.Errorf("connection reset by peer")}
+	_, err := parseSSEStream(r)
+	if err == nil {
+		t.Fatal("expected error for connection reset")
+	}
+	// Should get either the read error or the incomplete stream error
+	if !strings.Contains(err.Error(), "connection reset") && !strings.Contains(err.Error(), "incomplete stream") {
+		t.Errorf("error = %q, want to contain 'connection reset' or 'incomplete stream'", err.Error())
+	}
+}
+
+// errorAfterReader returns data, then an error.
+type errorAfterReader struct {
+	data []byte
+	err  error
+	pos  int
+}
+
+func (r *errorAfterReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.data) {
+		return 0, r.err
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
+	return n, nil
+}
+
+// mockTruncatedSSEResponse builds an SSE stream that cuts off before message_delta/message_stop.
+// This simulates a connection drop mid-stream.
+func mockTruncatedSSEResponse(id, model, text string, inputTokens uint64) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"%s\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"%s\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":%d,\"output_tokens\":0}}}\n\n", id, model, inputTokens)
+	fmt.Fprintf(&b, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+	textJSON, _ := json.Marshal(text)
+	fmt.Fprintf(&b, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":%s}}\n\n", textJSON)
+	fmt.Fprintf(&b, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+	// No message_delta or message_stop — stream was truncated!
+	return b.String()
+}
+
+func TestParseSSEStreamTruncated(t *testing.T) {
+	// A stream that cuts off before message_delta (no stop_reason) should be an error.
+	stream := mockTruncatedSSEResponse("msg_trunc", Claude45Sonnet, "partial response", 100)
+	_, err := parseSSEStream(strings.NewReader(stream))
+	if err == nil {
+		t.Fatal("expected error for truncated stream, got nil")
+	}
+	if !strings.Contains(err.Error(), "incomplete stream") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "incomplete stream")
+	}
+}
+
+func TestParseSSEStreamTruncatedMidContentBlock(t *testing.T) {
+	// Stream that cuts off in the middle of a content block (no content_block_stop, no message_delta).
+	var b strings.Builder
+	b.WriteString("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_mid\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n\n")
+	b.WriteString("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+	b.WriteString("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}\n\n")
+	// Cut off here — no content_block_stop, no message_delta, no message_stop
+
+	_, err := parseSSEStream(strings.NewReader(b.String()))
+	if err == nil {
+		t.Fatal("expected error for truncated stream, got nil")
+	}
+	if !strings.Contains(err.Error(), "incomplete stream") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "incomplete stream")
+	}
+}
+
+// retryCountTransport tracks how many requests are made and can return truncated
+// responses for the first N attempts, then a complete response.
+type retryCountTransport struct {
+	truncatedCount int // how many truncated responses to return first
+	completeBody   string
+	truncatedBody  string
+	calls          int
+}
+
+func (m *retryCountTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	m.calls++
+	body := m.truncatedBody
+	if m.calls > m.truncatedCount {
+		body = m.completeBody
+	}
+	return &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+	}, nil
+}
+
+func TestDoRetriesOnTruncatedStream(t *testing.T) {
+	truncated := mockTruncatedSSEResponse("msg_trunc", Claude45Sonnet, "partial", 100)
+	complete := mockSSEResponse("msg_ok", Claude45Sonnet, "Hello, world!", 100, 50)
+
+	transport := &retryCountTransport{
+		truncatedCount: 2, // first 2 attempts return truncated stream
+		completeBody:   complete,
+		truncatedBody:  truncated,
+	}
+
+	s := &Service{
+		APIKey:  "test-key",
+		HTTPC:   &http.Client{Transport: transport},
+		Backoff: []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond},
+	}
+
+	req := &llm.Request{
+		Messages: []llm.Message{{
+			Role:    llm.MessageRoleUser,
+			Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Hello"}},
+		}},
+	}
+
+	resp, err := s.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Do() error = %v, want nil (expected retry to succeed)", err)
+	}
+	if resp.Content[0].Text != "Hello, world!" {
+		t.Errorf("resp text = %q, want %q", resp.Content[0].Text, "Hello, world!")
+	}
+	if transport.calls != 3 {
+		t.Errorf("expected 3 attempts (2 truncated + 1 success), got %d", transport.calls)
+	}
+}
+
+func TestDoFailsAfterMaxRetriesOnTruncatedStream(t *testing.T) {
+	// All attempts return truncated stream — should fail after max retries
+	truncated := mockTruncatedSSEResponse("msg_trunc", Claude45Sonnet, "partial", 100)
+
+	transport := &retryCountTransport{
+		truncatedCount: 999, // always truncated
+		truncatedBody:  truncated,
+		completeBody:   truncated, // doesn't matter
+	}
+
+	s := &Service{
+		APIKey:  "test-key",
+		HTTPC:   &http.Client{Transport: transport},
+		Backoff: []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond},
+	}
+
+	req := &llm.Request{
+		Messages: []llm.Message{{
+			Role:    llm.MessageRoleUser,
+			Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Hello"}},
+		}},
+	}
+
+	_, err := s.Do(context.Background(), req)
+	if err == nil {
+		t.Fatal("Do() expected error after max retries on truncated stream")
+	}
+	if !strings.Contains(err.Error(), "incomplete stream") {
+		t.Errorf("error = %q, want to contain 'incomplete stream'", err.Error())
+	}
+	if !strings.Contains(err.Error(), "failed after") {
+		t.Errorf("error = %q, want to contain 'failed after'", err.Error())
+	}
+	// Should have made 11 attempts (0-10, then fails at attempts > 10)
+	if transport.calls != 11 {
+		t.Errorf("expected 11 attempts, got %d", transport.calls)
+	}
+}
