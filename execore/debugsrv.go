@@ -10,6 +10,7 @@ import (
 	"html"
 	"html/template"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/pprof"
 	"net/netip"
@@ -3676,7 +3677,7 @@ https://%s/
 %s
 `, count, inviteWord, planDesc, s.env.WebHost, s.env.WebHost)
 
-	if err := s.sendEmail(ctx, email.TypeInvitesAllocated, user.Email, subject, body); err != nil {
+	if err := s.sendEmail(ctx, email.TypeInvitesAllocated, user.Email, subject, body, slog.String("user_id", user.UserID)); err != nil {
 		s.slog().WarnContext(ctx, "failed to send invites allocated email", "to", user.Email, "error", err)
 	}
 

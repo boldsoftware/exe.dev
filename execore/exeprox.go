@@ -441,7 +441,11 @@ func (es *exeproxServer) CheckAndIncrementEmailQuota(ctx context.Context, req *p
 
 // SendEmail sends an email message.
 func (es *exeproxServer) SendEmail(ctx context.Context, req *proxyapi.SendEmailRequest) (*proxyapi.SendEmailResponse, error) {
-	err := es.s.sendEmail(ctx, email.Type(req.EmailType), req.To, req.Subject, req.Body)
+	var attrs []slog.Attr
+	if req.UserID != "" {
+		attrs = append(attrs, slog.String("user_id", req.UserID))
+	}
+	err := es.s.sendEmail(ctx, email.Type(req.EmailType), req.To, req.Subject, req.Body, attrs...)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

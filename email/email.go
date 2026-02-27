@@ -77,7 +77,8 @@ type Sender interface {
 	// Send sends an email with the given parameters.
 	// emailType identifies the type of email being sent.
 	// from should be in the format "Name <email@example.com>"
-	Send(ctx context.Context, emailType Type, from, to, subject, body string) error
+	// Extra slog attributes are included in the "email sent" log line.
+	Send(ctx context.Context, emailType Type, from, to, subject, body string, attrs ...slog.Attr) error
 }
 
 // Senders holds multiple email provider implementations.
@@ -142,7 +143,7 @@ func NewPostmarkSender(apiKey string) *PostmarkSender {
 }
 
 // Send sends an email via Postmark.
-func (s *PostmarkSender) Send(ctx context.Context, emailType Type, from, to, subject, body string) error {
+func (s *PostmarkSender) Send(ctx context.Context, emailType Type, from, to, subject, body string, attrs ...slog.Attr) error {
 	email := postmark.Email{
 		From:          from,
 		To:            to,
@@ -153,7 +154,11 @@ func (s *PostmarkSender) Send(ctx context.Context, emailType Type, from, to, sub
 	_, err := s.client.SendEmail(context.WithoutCancel(ctx), email)
 	if err == nil {
 		emailsSentTotal.WithLabelValues("postmark", string(emailType)).Inc()
-		slog.InfoContext(ctx, "email sent", "provider", "postmark", "type", emailType, "to", to, "subject", subject)
+		logAttrs := []any{"provider", "postmark", "type", emailType, "to", to, "subject", subject}
+		for _, a := range attrs {
+			logAttrs = append(logAttrs, a)
+		}
+		slog.InfoContext(ctx, "email sent", logAttrs...)
 	}
 	return err
 }
@@ -173,7 +178,7 @@ func NewMailgunSender(domain, apiKey string) *MailgunSender {
 }
 
 // Send sends an email via Mailgun.
-func (s *MailgunSender) Send(ctx context.Context, emailType Type, from, to, subject, body string) error {
+func (s *MailgunSender) Send(ctx context.Context, emailType Type, from, to, subject, body string, attrs ...slog.Attr) error {
 	msg := s.mg.NewMessage(from, subject, body, to)
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -184,7 +189,11 @@ func (s *MailgunSender) Send(ctx context.Context, emailType Type, from, to, subj
 		return fmt.Errorf("mailgun send failed: %w", err)
 	}
 	emailsSentTotal.WithLabelValues("mailgun", string(emailType)).Inc()
-	slog.InfoContext(ctx, "email sent", "provider", "mailgun", "type", emailType, "to", to, "subject", subject)
+	logAttrs := []any{"provider", "mailgun", "type", emailType, "to", to, "subject", subject}
+	for _, a := range attrs {
+		logAttrs = append(logAttrs, a)
+	}
+	slog.InfoContext(ctx, "email sent", logAttrs...)
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -424,8 +425,12 @@ func (pd *proxyData) CheckAndIncrementEmailQuota(ctx context.Context, userID str
 }
 
 // SendEmail implements [exeweb.ProxyData.SendEmail].
-func (pd *proxyData) SendEmail(ctx context.Context, emailType email.Type, to, subject, body string) error {
-	return pd.s.sendEmail(ctx, emailType, to, subject, body)
+func (pd *proxyData) SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID string) error {
+	var attrs []slog.Attr
+	if userID != "" {
+		attrs = append(attrs, slog.String("user_id", userID))
+	}
+	return pd.s.sendEmail(ctx, emailType, to, subject, body, attrs...)
 }
 
 // CheckAndDebitVMEmailCredit implements [exeweb.ProxyData.CheckAndDebitVMEmailCredit].

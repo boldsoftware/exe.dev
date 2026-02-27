@@ -703,7 +703,7 @@ This link will expire in 24 hours.
 
 Best regards,
 The %s team`, verifyURL, s.env.WebHost)
-		if err := s.sendEmail(ctx, email.TypeWebAuthVerification, pending.Email, subject, body); err != nil {
+		if err := s.sendEmail(ctx, email.TypeWebAuthVerification, pending.Email, subject, body, slog.String("user_id", userID)); err != nil {
 			s.slog().ErrorContext(ctx, "failed to send verification email", "error", err, "email", pending.Email)
 		}
 	}

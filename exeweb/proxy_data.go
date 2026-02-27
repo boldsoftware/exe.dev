@@ -73,7 +73,8 @@ type ProxyData interface {
 	CheckAndIncrementEmailQuota(ctx context.Context, userID string) error
 
 	// SendEmail sends an email message.
-	SendEmail(ctx context.Context, emailType email.Type, to, subject, body string) error
+	// userID is included in the "email sent" log line when non-empty.
+	SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID string) error
 
 	// CheckAndDebitVMEMailCredit checks if a box has email
 	// credit available, and debits 1 email.

@@ -1558,7 +1558,8 @@ func isBogusEmailDomain(email string) bool {
 
 // sendEmail sends an email using the configured email service.
 // emailType identifies the type of email being sent for logging and metrics.
-func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subject, body string) error {
+// Extra slog attributes are forwarded to the email provider's "email sent" log line.
+func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subject, body string, attrs ...slog.Attr) error {
 	// Do not attempt to send to bogus domains (reserved or common typos).
 	if isBogusEmailDomain(to) {
 		s.slog().InfoContext(ctx, "silently dropping email to bogus domain", "to", to, "subject", subject, "type", emailType)
@@ -1594,7 +1595,7 @@ func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subjec
 	}
 
 	from := fmt.Sprintf("%s <support@%s>", s.env.WebHost, s.env.WebHost)
-	err := sender.Send(ctx, emailType, from, to, subject, body)
+	err := sender.Send(ctx, emailType, from, to, subject, body, attrs...)
 	if err != nil {
 		s.slog().WarnContext(ctx, "failed to send email", "to", to, "subject", subject, "type", emailType, "error", err)
 		// Record bounce/inactive recipient errors
@@ -1672,7 +1673,7 @@ To prevent emails like this, pass the -no-email flag to new.
 `))
 
 // sendBoxCreatedEmail sends a confirmation email when a new box is created
-func (s *Server) sendBoxCreatedEmail(ctx context.Context, to string, details newBoxDetails) {
+func (s *Server) sendBoxCreatedEmail(ctx context.Context, to, userID string, details newBoxDetails) {
 	subject := fmt.Sprintf("exe.dev: created %s.exe.xyz", details.VMName)
 
 	body := new(strings.Builder)
@@ -1681,7 +1682,7 @@ func (s *Server) sendBoxCreatedEmail(ctx context.Context, to string, details new
 		return
 	}
 
-	if err := s.sendEmail(ctx, email.TypeBoxCreated, to, subject, body.String()); err != nil {
+	if err := s.sendEmail(ctx, email.TypeBoxCreated, to, subject, body.String(), slog.String("user_id", userID)); err != nil {
 		s.slog().WarnContext(ctx, "failed to send box created email", "to", to, "box", details.VMName, "error", err)
 	}
 }
@@ -1700,7 +1701,7 @@ func (s *Server) sendBoxMaintenanceEmail(ctx context.Context, boxName string) {
 	subject := fmt.Sprintf("exe.dev: system maintenance on %s", boxName)
 	body := fmt.Sprintf("Your VM %s was rebooted as part of routine system maintenance. No action is required.\n\nIf you run into any issues please contact support@exe.dev.\n\nThanks!\n\nexe.dev support", boxName)
 
-	if err := s.sendEmail(ctx, email.TypeBoxMaintenance, boxInfo.OwnerEmail, subject, body); err != nil {
+	if err := s.sendEmail(ctx, email.TypeBoxMaintenance, boxInfo.OwnerEmail, subject, body, slog.String("user_id", boxInfo.CreatedByUserID)); err != nil {
 		s.slog().WarnContext(ctx, "failed to send box maintenance email", "to", boxInfo.OwnerEmail, "box", boxName, "error", err)
 	}
 }

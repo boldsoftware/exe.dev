@@ -615,7 +615,7 @@ done:
 	}
 
 	if !noEmail {
-		go ss.server.sendBoxCreatedEmail(context.Background(), user.Email, details)
+		go ss.server.sendBoxCreatedEmail(context.Background(), user.Email, user.ID, details)
 	}
 
 	if cc.WantJSON() {
