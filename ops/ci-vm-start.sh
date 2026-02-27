@@ -504,7 +504,7 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
     EXELETCTL_BIN="$HOME/.cache/exedops/exelet-ctl-${VM_ARCH}"
 
     # Build from repository root
-    (cd "${SCRIPT_DIR}/.." && GOOS=linux GOARCH=${VM_ARCH} go build -o "${EXELETD_BIN}" ./cmd/exelet)
+    (cd "${SCRIPT_DIR}/.." && make GOARCH=${VM_ARCH} exe-init && GOOS=linux GOARCH=${VM_ARCH} go build -o "${EXELETD_BIN}" ./cmd/exelet)
     (cd "${SCRIPT_DIR}/.." && GOOS=linux GOARCH=${VM_ARCH} go build -o "${EXELETCTL_BIN}" ./cmd/exelet-ctl)
     echo "Built exeletd and exelet-ctl binaries"
 

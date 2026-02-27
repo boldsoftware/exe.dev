@@ -214,13 +214,21 @@ To deploy exelet to production or staging:
 
 ### Building exelet-fs
 
-The exelet requires kernel and rovol filesystem images. These are stored in Backblaze and downloaded automatically by `make exelet-fs`. To build and package new images:
+The exelet requires kernel and rovol filesystem images. These are stored in Backblaze and downloaded automatically by `make exelet-fs` (used in CI). To rebuild them:
 
 ```
-make package-exelet-fs
+# 1. Trigger the GitHub Actions workflow (builds on native amd64 + arm64 runners)
+gh workflow run build-exelet-fs.yml
+
+# 2. Wait for it to complete, then download artifacts locally
+make download-exelet-fs-gh
+
+# 3. (Optional) Upload to Backblaze for CI
+# Requires B2_APPLICATION_KEY_ID and B2_APPLICATION_KEY env vars with write access
+make upload-exelet-fs
 ```
 
-This builds the kernel, rovol, and exe-init, then packages them into `exelet-fs-$(GOARCH).tar.gz`. Upload the resulting tarball to Backblaze (`bold-exe` bucket) to update the cached images.
+See `.github/workflows/build-exelet-fs.yml` for details.
 
 ## Production Container Host Configuration
 

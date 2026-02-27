@@ -285,7 +285,7 @@ exelet: exelet-fs exe-init
 	@GOOS=linux CGO_ENABLED=0 go build -ldflags="-s -w" -o exeletd ./cmd/exelet
 
 .PHONY: exelet-coverage
-exelet-coverage: exelet-fs
+exelet-coverage: exelet-fs exe-init
 	@>&2 echo " -> building exelet with coverage ${COMMIT}${BUILD}"
 	@# exelet only runs in linux
 	@GOOS=linux CGO_ENABLED=0 go build -cover -covermode=atomic -coverpkg=exe.dev/... -ldflags="-s -w" -o exeletd ./cmd/exelet
@@ -320,34 +320,29 @@ exelet/fs/$(GOARCH)/rovol:
 	@mkdir -p exelet/fs/$(GOARCH)/rovol
 	@$(DOCKER) buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=./exelet/fs/$(GOARCH)/rovol -f ./exelet/rovol/Dockerfile .
 
-.PHONY: package-exelet-fs
-package-exelet-fs:
-	@>&2 echo " -> starting kernel builders"
-	@./ops/setup-kernel-builders.sh start
-	@rm -rf /tmp/exelet-fs
-	@mkdir -p /tmp/exelet-fs
-	@>&2 echo " -> building exelet kernel (amd64 + arm64)"
-	@$(DOCKER) buildx build --builder exe --platform linux/amd64,linux/arm64 $(BUILD_ARGS) --output type=local,dest=/tmp/exelet-fs/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
-	@>&2 echo " -> building exelet rovol (amd64 + arm64)"
-	@$(DOCKER) buildx build --builder exe --platform linux/amd64,linux/arm64 $(BUILD_ARGS) --output type=local,dest=/tmp/exelet-fs/rovol/ -f ./exelet/rovol/Dockerfile .
-	@>&2 echo " -> packaging exelet-fs tarballs"
-	@for arch in amd64 arm64; do \
-		mkdir -p /tmp/exelet-fs/$$arch/kernel /tmp/exelet-fs/$$arch/rovol; \
-		cp -r /tmp/exelet-fs/kernel/linux_$$arch/* /tmp/exelet-fs/$$arch/kernel/; \
-		cp -r /tmp/exelet-fs/rovol/linux_$$arch/* /tmp/exelet-fs/$$arch/rovol/; \
-		(cd /tmp/exelet-fs/$$arch && tar czvf $(ROOT_DIR)/exelet-fs-$$arch-$(EXELET_FS_HASH).tar.gz ./); \
-	done
-	@>&2 echo " -> created exelet-fs-amd64-$(EXELET_FS_HASH).tar.gz"
-	@>&2 echo " -> created exelet-fs-arm64-$(EXELET_FS_HASH).tar.gz"
-	@if [ -z "$(KERNEL_BUILDERS_KEEP_RUNNING)" ]; then \
-		>&2 echo " -> stopping kernel builders"; \
-		./ops/setup-kernel-builders.sh stop -y; \
-	else \
-		>&2 echo " -> keeping kernel builders running (KERNEL_BUILDERS_KEEP_RUNNING set)"; \
+.PHONY: download-exelet-fs-gh
+download-exelet-fs-gh: ## Download exelet-fs artifacts from the latest GitHub Actions build
+	@if ! command -v gh >/dev/null 2>&1; then \
+		echo "${RED}Error: gh command not found${NC}"; \
+		echo "Please install gh: brew install gh"; \
+		exit 1; \
 	fi
+	@CURRENT_HASH="$(EXELET_FS_HASH)"; \
+	echo "Downloading exelet-fs from GitHub Actions (hash: $$CURRENT_HASH)..."; \
+	TMPDIR=$$(mktemp -d); \
+	for arch in amd64 arm64; do \
+		gh run download --name "exelet-fs-$$arch-$$CURRENT_HASH" --dir "$$TMPDIR/$$arch" \
+			|| { echo "${RED}Failed to download exelet-fs-$$arch-$$CURRENT_HASH. Run 'gh workflow run build-exelet-fs.yml' first.${NC}"; rm -rf "$$TMPDIR"; exit 1; }; \
+		rm -rf exelet/fs/$$arch/*; \
+		mkdir -p exelet/fs/$$arch; \
+		tar zxf "$$TMPDIR/$$arch/exelet-fs-$$arch.tar.gz" -C exelet/fs/$$arch --exclude='._*'; \
+		echo "$$CURRENT_HASH" > exelet/fs/.hash-$$arch; \
+		echo "✓ Extracted exelet-fs ($$arch)"; \
+	done; \
+	rm -rf "$$TMPDIR"
 
 .PHONY: upload-exelet-fs
-upload-exelet-fs: package-exelet-fs ## Build and upload exelet-fs to Backblaze
+upload-exelet-fs: ## Upload local exelet-fs tarballs to Backblaze
 	@if ! command -v uv >/dev/null 2>&1; then \
 		echo "${RED}Error: uv command not found${NC}"; \
 		if [ "$$(uname)" = "Darwin" ]; then \
@@ -357,12 +352,29 @@ upload-exelet-fs: package-exelet-fs ## Build and upload exelet-fs to Backblaze
 		fi; \
 		exit 1; \
 	fi
-	@echo " !! Be sure to have B2 write keys !!"
-	@for arch in amd64 arm64; do \
-		>&2 echo " -> uploading exelet-fs-$$arch-$(EXELET_FS_HASH).tar.gz to Backblaze"; \
-		$(B2) file upload bold-exe exelet-fs-$$arch-$(EXELET_FS_HASH).tar.gz exelet-fs-$$arch-$(EXELET_FS_HASH).tar.gz \
-			|| { echo "${RED}Failed to upload exelet-fs-$$arch-$(EXELET_FS_HASH).tar.gz${NC}" && exit 1; }; \
-		echo "✓ Uploaded exelet-fs-$$arch-$(EXELET_FS_HASH).tar.gz"; \
-	done
+	@if [ -z "$${B2_APPLICATION_KEY_ID}" ] || [ -z "$${B2_APPLICATION_KEY}" ]; then \
+		echo "${RED}Error: B2_APPLICATION_KEY_ID and B2_APPLICATION_KEY must be set${NC}"; \
+		exit 1; \
+	fi
+	@CURRENT_HASH="$(EXELET_FS_HASH)"; \
+	TMPDIR=$$(mktemp -d); \
+	echo "Packaging exelet-fs tarballs..."; \
+	for arch in amd64 arm64; do \
+		if [ ! -d exelet/fs/$$arch/kernel ] || [ ! -d exelet/fs/$$arch/rovol ]; then \
+			echo "${RED}Error: exelet/fs/$$arch not found. Run 'make download-exelet-fs-gh' first.${NC}"; \
+			rm -rf "$$TMPDIR"; \
+			exit 1; \
+		fi; \
+		(cd exelet/fs/$$arch && tar czvf "$$TMPDIR/exelet-fs-$$arch-$$CURRENT_HASH.tar.gz" ./); \
+	done; \
+	echo "Uploading to Backblaze..."; \
+	$(B2) account authorize >/dev/null; \
+	for arch in amd64 arm64; do \
+		>&2 echo " -> uploading exelet-fs-$$arch-$$CURRENT_HASH.tar.gz to Backblaze"; \
+		$(B2) file upload bold-exe "$$TMPDIR/exelet-fs-$$arch-$$CURRENT_HASH.tar.gz" "exelet-fs-$$arch-$$CURRENT_HASH.tar.gz" \
+			|| { echo "${RED}Failed to upload exelet-fs-$$arch-$$CURRENT_HASH.tar.gz${NC}"; rm -rf "$$TMPDIR"; exit 1; }; \
+		echo "✓ Uploaded exelet-fs-$$arch-$$CURRENT_HASH.tar.gz"; \
+	done; \
+	rm -rf "$$TMPDIR"
 
 .DEFAULT_GOAL := help

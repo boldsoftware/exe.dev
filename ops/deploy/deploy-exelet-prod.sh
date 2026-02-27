@@ -83,6 +83,9 @@ echo "Binary name: $BINARY_NAME"
 # Fetch exelet-fs for target platform (cached per-architecture)
 make GOARCH=${ARCH} exelet-fs
 
+# Build exe-init (pure Go, cross-compiles trivially)
+make GOARCH=${ARCH} exe-init
+
 # Build the binary
 GOOS=linux GOARCH=${ARCH} CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$BINARY_NAME" ./cmd/exelet
 

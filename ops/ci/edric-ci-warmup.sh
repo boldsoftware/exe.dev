@@ -97,6 +97,7 @@ for i in $(seq 0 7); do
         # Download exelet-fs BEFORE go build, since go build needs the
         # embedded files that make exelet-fs provides.
         su - "$USER" -c "cd ${WORKDIR} && make exelet-fs" || true
+        su - "$USER" -c "cd ${WORKDIR} && make exe-init" || true
         su - "$USER" -c "cd ${WORKDIR} && go build ./..." || true
 
         # 2b. Shelley Go module download + build cache

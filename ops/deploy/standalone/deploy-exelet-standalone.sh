@@ -66,6 +66,9 @@ echo "Binary name: $BINARY_NAME"
 cd "$REPO_ROOT"
 make GOARCH=${GOARCH} exelet-fs
 
+# Build exe-init (pure Go, cross-compiles trivially)
+make GOARCH=${GOARCH} exe-init
+
 # Build the binary
 GOOS=linux GOARCH=${GOARCH} CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$BINARY_NAME" ./cmd/exelet
 

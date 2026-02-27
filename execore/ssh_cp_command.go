@@ -246,7 +246,7 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 			},
 			{
 				Destination: "/exe.dev/etc/ssh/authorized_keys",
-				Mode:        uint64(0o600),
+				Mode:        uint64(0o644),
 				Source: &api.Config_File{
 					File: &api.FileConfig{
 						Data: []byte("# This file is managed by exe.dev - do not modify\n" + sshKeys.AuthorizedKeys + cc.PublicKey),

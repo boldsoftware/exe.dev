@@ -1,0 +1,72 @@
+name: Build Exelet FS
+run-name: Build exelet-fs (${{ github.sha }})
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: linux-x64-ubuntu-latest-32-core
+          - arch: arm64
+            runner: linux-arm64-ubuntu-latest-32-core
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Docker and build tools (ARM64 runner)
+        if: matrix.arch == 'arm64'
+        run: |
+          ./bin/retry.sh sudo apt-get update
+          ./bin/retry.sh sudo apt-get install -y ca-certificates curl make
+          sudo install -m 0755 -d /etc/apt/keyrings
+          sudo curl -fsSL --retry 5 --retry-all-errors https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          sudo chmod a+r /etc/apt/keyrings/docker.asc
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          ./bin/retry.sh sudo apt-get update
+          ./bin/retry.sh sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+          sudo systemctl start docker
+          sudo chmod 666 /var/run/docker.sock
+
+      - name: Build kernel
+        run: |
+          mkdir -p out/kernel
+          docker buildx build --platform linux/${{ matrix.arch }} --output type=local,dest=./out/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
+
+      - name: Build rovol
+        run: |
+          mkdir -p out/rovol
+          docker buildx build --platform linux/${{ matrix.arch }} --output type=local,dest=./out/rovol/ -f ./exelet/rovol/Dockerfile .
+
+      - name: Compute exelet-fs hash
+        id: hash
+        run: |
+          HASH="$(git rev-parse HEAD:exelet/kernel)$(git rev-parse HEAD:exelet/rovol)"
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+          echo "EXELET_FS_HASH: $HASH"
+
+      - name: Package tarball
+        run: |
+          cd out && tar czvf ../exelet-fs-${{ matrix.arch }}.tar.gz ./
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: exelet-fs-${{ matrix.arch }}-${{ steps.hash.outputs.hash }}
+          path: exelet-fs-${{ matrix.arch }}.tar.gz
+          retention-days: 90
+
+      - name: Print summary
+        run: |
+          echo "## Exelet FS Build (${{ matrix.arch }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Hash:** \`${{ steps.hash.outputs.hash }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Artifact:** \`exelet-fs-${{ matrix.arch }}-${{ steps.hash.outputs.hash }}\`" >> $GITHUB_STEP_SUMMARY
