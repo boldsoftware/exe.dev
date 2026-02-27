@@ -92,6 +92,12 @@ type ExeproxData interface {
 
 	// SendEmail sends an email message.
 	SendEmail(ctx context.Context, emailType email.Type, to, subject, body string) error
+
+	// CheckAndDebitVMEMailCredit checks if a box has email
+	// credit available, and debits 1 email.
+	// If there is no credit available, the error is
+	// [ErrVMEmailRateLimited].
+	CheckAndDebitVMEmailCredit(ctx context.Context, boxID int) error
 }
 
 // grpcExeproxData is an implementation of Exeproxdata that uses a gRPC
@@ -403,4 +409,21 @@ func (ged *grpcExeproxData) SendEmail(ctx context.Context, emailType email.Type,
 		Body:      body,
 	})
 	return err
+}
+
+// CheckAndDebitVMEmailCredit debits an email credit for a box.
+func (ged *grpcExeproxData) CheckAndDebitVMEmailCredit(ctx context.Context, boxID int) error {
+	resp, err := ged.client.CheckAndDebitVMEmailCredit(ctx, &proxyapi.CheckAndDebitVMEmailCreditRequest{
+		BoxID: int64(boxID),
+	})
+	if err != nil {
+		return err
+	}
+	if !resp.Ok {
+		if resp.RateLimitExceeded {
+			return exeweb.ErrVMEmailRateLimited
+		}
+		return errors.New("CheckAndDebitVMEmailCredit failed for an unknown reason")
+	}
+	return nil
 }

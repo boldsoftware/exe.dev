@@ -347,6 +347,11 @@ func (epd *exewebProxyData) SendEmail(ctx context.Context, emailType email.Type,
 	return epd.exeproxData().SendEmail(ctx, emailType, to, subject, body)
 }
 
+// CheckAndDebitVMEmailCredit implements [exeweb.ProxyData.CheckAndDebitVMEmailCredit].
+func (epd *exewebProxyData) CheckAndDebitVMEmailCredit(ctx context.Context, boxID int) error {
+	return epd.exeproxData().CheckAndDebitVMEmailCredit(ctx, boxID)
+}
+
 // exeproxData is a helper method to return the exexproxData to use.
 func (epd *exewebProxyData) exeproxData() ExeproxData {
 	return epd.wp.proxy.exeproxData

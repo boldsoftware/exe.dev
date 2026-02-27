@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	"exe.dev/sqlite"
 )
 
@@ -43,7 +44,7 @@ func TestVMEmailSend_Success(t *testing.T) {
 	}
 
 	// Send email request
-	reqBody := vmEmailRequest{
+	reqBody := exeweb.VMEmailRequest{
 		To:      email,
 		Subject: "Test Subject",
 		Body:    "Test body content",
@@ -61,7 +62,7 @@ func TestVMEmailSend_Success(t *testing.T) {
 		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp vmEmailResponse
+	var resp exeweb.VMEmailResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -75,7 +76,7 @@ func TestVMEmailSend_MissingBoxHeader(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 
-	reqBody := vmEmailRequest{
+	reqBody := exeweb.VMEmailRequest{
 		To:      "test@example.com",
 		Subject: "Test",
 		Body:    "Test body",
@@ -99,7 +100,7 @@ func TestVMEmailSend_RejectNonTailscaleIP(t *testing.T) {
 	server := newTestServer(t)
 	server.env.GatewayDev = false // Production mode - requires Tailscale IP
 
-	reqBody := vmEmailRequest{
+	reqBody := exeweb.VMEmailRequest{
 		To:      "test@example.com",
 		Subject: "Test",
 		Body:    "Test body",
@@ -118,7 +119,7 @@ func TestVMEmailSend_RejectNonTailscaleIP(t *testing.T) {
 		t.Errorf("Expected status 401 for non-Tailscale IP, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp vmEmailResponse
+	var resp exeweb.VMEmailResponse
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Error != "unauthorized" {
 		t.Errorf("Expected error 'unauthorized', got %q", resp.Error)
@@ -129,7 +130,7 @@ func TestVMEmailSend_BoxNotFound(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 
-	reqBody := vmEmailRequest{
+	reqBody := exeweb.VMEmailRequest{
 		To:      "test@example.com",
 		Subject: "Test",
 		Body:    "Test body",
@@ -177,7 +178,7 @@ func TestVMEmailSend_NonOwnerRecipient(t *testing.T) {
 	}
 
 	// Try to send to a different email address
-	reqBody := vmEmailRequest{
+	reqBody := exeweb.VMEmailRequest{
 		To:      "other@example.com",
 		Subject: "Test",
 		Body:    "Test body",
@@ -195,7 +196,7 @@ func TestVMEmailSend_NonOwnerRecipient(t *testing.T) {
 		t.Errorf("Expected status 403, got %d", w.Code)
 	}
 
-	var resp vmEmailResponse
+	var resp exeweb.VMEmailResponse
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Error != "can only send email to VM owner" {
 		t.Errorf("Expected 'can only send email to VM owner' error, got: %s", resp.Error)
@@ -208,22 +209,22 @@ func TestVMEmailSend_MissingFields(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		req       vmEmailRequest
+		req       exeweb.VMEmailRequest
 		wantError string
 	}{
 		{
 			name:      "missing to",
-			req:       vmEmailRequest{Subject: "Test", Body: "Test"},
+			req:       exeweb.VMEmailRequest{Subject: "Test", Body: "Test"},
 			wantError: "missing required field: to",
 		},
 		{
 			name:      "missing subject",
-			req:       vmEmailRequest{To: "test@example.com", Body: "Test"},
+			req:       exeweb.VMEmailRequest{To: "test@example.com", Body: "Test"},
 			wantError: "missing required field: subject",
 		},
 		{
 			name:      "missing body",
-			req:       vmEmailRequest{To: "test@example.com", Subject: "Test"},
+			req:       exeweb.VMEmailRequest{To: "test@example.com", Subject: "Test"},
 			wantError: "missing required field: body",
 		},
 	}
@@ -242,7 +243,7 @@ func TestVMEmailSend_MissingFields(t *testing.T) {
 				t.Errorf("Expected status 400, got %d", w.Code)
 			}
 
-			var resp vmEmailResponse
+			var resp exeweb.VMEmailResponse
 			json.Unmarshal(w.Body.Bytes(), &resp)
 			if resp.Error != tt.wantError {
 				t.Errorf("Expected error %q, got %q", tt.wantError, resp.Error)
@@ -256,12 +257,12 @@ func TestVMEmailSend_SubjectTooLong(t *testing.T) {
 	server := newTestServer(t)
 
 	// Create a subject that's too long
-	longSubject := make([]byte, VMEmailMaxSubjectLen+1)
+	longSubject := make([]byte, exeweb.VMEmailMaxSubjectLen+1)
 	for i := range longSubject {
 		longSubject[i] = 'a'
 	}
 
-	reqBody := vmEmailRequest{
+	reqBody := exeweb.VMEmailRequest{
 		To:      "test@example.com",
 		Subject: string(longSubject),
 		Body:    "Test body",
@@ -279,7 +280,7 @@ func TestVMEmailSend_SubjectTooLong(t *testing.T) {
 		t.Errorf("Expected status 400, got %d", w.Code)
 	}
 
-	var resp vmEmailResponse
+	var resp exeweb.VMEmailResponse
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	wantError := "subject exceeds maximum length of 200 characters"
 	if resp.Error != wantError {
@@ -302,7 +303,7 @@ func TestVMEmailSend_SubjectWithCRLF(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reqBody := vmEmailRequest{
+			reqBody := exeweb.VMEmailRequest{
 				To:      "test@example.com",
 				Subject: tt.subject,
 				Body:    "Test body",
@@ -320,7 +321,7 @@ func TestVMEmailSend_SubjectWithCRLF(t *testing.T) {
 				t.Errorf("Expected status 400, got %d", w.Code)
 			}
 
-			var resp vmEmailResponse
+			var resp exeweb.VMEmailResponse
 			json.Unmarshal(w.Body.Bytes(), &resp)
 			if resp.Error != "subject contains invalid characters" {
 				t.Errorf("Expected error %q, got %q", "subject contains invalid characters", resp.Error)
@@ -334,12 +335,12 @@ func TestVMEmailSend_BodyTooLong(t *testing.T) {
 	server := newTestServer(t)
 
 	// Create a body that's too long
-	longBody := make([]byte, VMEmailMaxBodyLen+1)
+	longBody := make([]byte, exeweb.VMEmailMaxBodyLen+1)
 	for i := range longBody {
 		longBody[i] = 'a'
 	}
 
-	reqBody := vmEmailRequest{
+	reqBody := exeweb.VMEmailRequest{
 		To:      "test@example.com",
 		Subject: "Test",
 		Body:    string(longBody),
@@ -357,7 +358,7 @@ func TestVMEmailSend_BodyTooLong(t *testing.T) {
 		t.Errorf("Expected status 400, got %d", w.Code)
 	}
 
-	var resp vmEmailResponse
+	var resp exeweb.VMEmailResponse
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	wantError := "body exceeds maximum length of 65536 bytes"
 	if resp.Error != wantError {
@@ -369,14 +370,14 @@ func TestVMEmailSend_RequestBodyTooLarge(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 
-	// Create a request body that exceeds VMEmailMaxRequestSize (128KB)
+	// Create a request body that exceeds exeweb.VMEmailMaxRequestSize (128KB)
 	// We need to create valid JSON that's larger than 128KB
-	longBody := make([]byte, VMEmailMaxRequestSize+1000)
+	longBody := make([]byte, exeweb.VMEmailMaxRequestSize+1000)
 	for i := range longBody {
 		longBody[i] = 'a'
 	}
 
-	reqBody := vmEmailRequest{
+	reqBody := exeweb.VMEmailRequest{
 		To:      "test@example.com",
 		Subject: "Test",
 		Body:    string(longBody),
@@ -394,7 +395,7 @@ func TestVMEmailSend_RequestBodyTooLarge(t *testing.T) {
 		t.Errorf("Expected status 413, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp vmEmailResponse
+	var resp exeweb.VMEmailResponse
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Error != "request body too large" {
 		t.Errorf("Expected error %q, got %q", "request body too large", resp.Error)
@@ -430,12 +431,12 @@ func TestVMEmailSend_SubjectAtLimit(t *testing.T) {
 	}
 
 	// Create a subject that's exactly at the limit
-	maxSubject := make([]byte, VMEmailMaxSubjectLen)
+	maxSubject := make([]byte, exeweb.VMEmailMaxSubjectLen)
 	for i := range maxSubject {
 		maxSubject[i] = 'a'
 	}
 
-	reqBody := vmEmailRequest{
+	reqBody := exeweb.VMEmailRequest{
 		To:      email,
 		Subject: string(maxSubject),
 		Body:    "Test body",
@@ -483,12 +484,12 @@ func TestVMEmailSend_BodyAtLimit(t *testing.T) {
 	}
 
 	// Create a body that's exactly at the limit
-	maxBody := make([]byte, VMEmailMaxBodyLen)
+	maxBody := make([]byte, exeweb.VMEmailMaxBodyLen)
 	for i := range maxBody {
 		maxBody[i] = 'a'
 	}
 
-	reqBody := vmEmailRequest{
+	reqBody := exeweb.VMEmailRequest{
 		To:      email,
 		Subject: "Test",
 		Body:    string(maxBody),
@@ -522,7 +523,7 @@ func TestVMEmailSend_InvalidJSON(t *testing.T) {
 		t.Errorf("Expected status 400, got %d", w.Code)
 	}
 
-	var resp vmEmailResponse
+	var resp exeweb.VMEmailResponse
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Error != "invalid JSON" {
 		t.Errorf("Expected 'invalid JSON' error, got: %s", resp.Error)
@@ -572,7 +573,7 @@ func TestVMEmailSend_RateLimiting(t *testing.T) {
 		t.Fatalf("Failed to set up email credit: %v", err)
 	}
 
-	reqBody := vmEmailRequest{
+	reqBody := exeweb.VMEmailRequest{
 		To:      email,
 		Subject: "Test",
 		Body:    "Test body",
@@ -590,7 +591,7 @@ func TestVMEmailSend_RateLimiting(t *testing.T) {
 		t.Errorf("Expected status 429, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp vmEmailResponse
+	var resp exeweb.VMEmailResponse
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	wantError := "rate limit exceeded; emails refill at 10/day"
 	if resp.Error != wantError {
@@ -691,7 +692,7 @@ func TestVMEmailSend_CaseInsensitiveEmailMatch(t *testing.T) {
 	}
 
 	// Try to send with uppercase email - should work
-	reqBody := vmEmailRequest{
+	reqBody := exeweb.VMEmailRequest{
 		To:      "OWNER@EXAMPLE.COM",
 		Subject: "Test Subject",
 		Body:    "Test body content",

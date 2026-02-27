@@ -427,3 +427,8 @@ func (pd *proxyData) CheckAndIncrementEmailQuota(ctx context.Context, userID str
 func (pd *proxyData) SendEmail(ctx context.Context, emailType email.Type, to, subject, body string) error {
 	return pd.s.sendEmail(ctx, emailType, to, subject, body)
 }
+
+// CheckAndDebitVMEmailCredit implements [exeweb.ProxyData.CheckAndDebitVMEmailCredit].
+func (pd *proxyData) CheckAndDebitVMEmailCredit(ctx context.Context, boxID int) error {
+	return pd.s.checkAndDebitVMEmailCredit(ctx, int64(boxID))
+}

@@ -43,6 +43,7 @@ const (
 	ProxyInfoService_HLLNoteEvents_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/HLLNoteEvents"
 	ProxyInfoService_CheckAndIncrementEmailQuota_FullMethodName = "/exe.proxy.v1.ProxyInfoService/CheckAndIncrementEmailQuota"
 	ProxyInfoService_SendEmail_FullMethodName                   = "/exe.proxy.v1.ProxyInfoService/SendEmail"
+	ProxyInfoService_CheckAndDebitVMEmailCredit_FullMethodName  = "/exe.proxy.v1.ProxyInfoService/CheckAndDebitVMEmailCredit"
 	ProxyInfoService_Changes_FullMethodName                     = "/exe.proxy.v1.ProxyInfoService/Changes"
 )
 
@@ -109,6 +110,9 @@ type ProxyInfoServiceClient interface {
 	CheckAndIncrementEmailQuota(ctx context.Context, in *CheckAndIncrementEmailQuotaRequest, opts ...grpc.CallOption) (*CheckAndIncrementEmailQuotaResponse, error)
 	// SendEmail sends an email message.
 	SendEmail(ctx context.Context, in *SendEmailRequest, opts ...grpc.CallOption) (*SendEmailResponse, error)
+	// CheckAndDebitVMEmailCredit checks if a box has email credit available,
+	// and debits 1 email.
+	CheckAndDebitVMEmailCredit(ctx context.Context, in *CheckAndDebitVMEmailCreditRequest, opts ...grpc.CallOption) (*CheckAndDebitVMEmailCreditResponse, error)
 	// Changes returns a stream of changes that exeprox cares about.
 	//
 	// The guideline here is that the first time exeprox need to know
@@ -360,6 +364,16 @@ func (c *proxyInfoServiceClient) SendEmail(ctx context.Context, in *SendEmailReq
 	return out, nil
 }
 
+func (c *proxyInfoServiceClient) CheckAndDebitVMEmailCredit(ctx context.Context, in *CheckAndDebitVMEmailCreditRequest, opts ...grpc.CallOption) (*CheckAndDebitVMEmailCreditResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CheckAndDebitVMEmailCreditResponse)
+	err := c.cc.Invoke(ctx, ProxyInfoService_CheckAndDebitVMEmailCredit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *proxyInfoServiceClient) Changes(ctx context.Context, in *ChangesRequest, opts ...grpc.CallOption) (ProxyInfoService_ChangesClient, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ProxyInfoService_ServiceDesc.Streams[1], ProxyInfoService_Changes_FullMethodName, cOpts...)
@@ -456,6 +470,9 @@ type ProxyInfoServiceServer interface {
 	CheckAndIncrementEmailQuota(context.Context, *CheckAndIncrementEmailQuotaRequest) (*CheckAndIncrementEmailQuotaResponse, error)
 	// SendEmail sends an email message.
 	SendEmail(context.Context, *SendEmailRequest) (*SendEmailResponse, error)
+	// CheckAndDebitVMEmailCredit checks if a box has email credit available,
+	// and debits 1 email.
+	CheckAndDebitVMEmailCredit(context.Context, *CheckAndDebitVMEmailCreditRequest) (*CheckAndDebitVMEmailCreditResponse, error)
 	// Changes returns a stream of changes that exeprox cares about.
 	//
 	// The guideline here is that the first time exeprox need to know
@@ -533,6 +550,9 @@ func (UnimplementedProxyInfoServiceServer) CheckAndIncrementEmailQuota(context.C
 }
 func (UnimplementedProxyInfoServiceServer) SendEmail(context.Context, *SendEmailRequest) (*SendEmailResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendEmail not implemented")
+}
+func (UnimplementedProxyInfoServiceServer) CheckAndDebitVMEmailCredit(context.Context, *CheckAndDebitVMEmailCreditRequest) (*CheckAndDebitVMEmailCreditResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CheckAndDebitVMEmailCredit not implemented")
 }
 func (UnimplementedProxyInfoServiceServer) Changes(*ChangesRequest, ProxyInfoService_ChangesServer) error {
 	return status.Errorf(codes.Unimplemented, "method Changes not implemented")
@@ -931,6 +951,24 @@ func _ProxyInfoService_SendEmail_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProxyInfoService_CheckAndDebitVMEmailCredit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CheckAndDebitVMEmailCreditRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyInfoServiceServer).CheckAndDebitVMEmailCredit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyInfoService_CheckAndDebitVMEmailCredit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyInfoServiceServer).CheckAndDebitVMEmailCredit(ctx, req.(*CheckAndDebitVMEmailCreditRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProxyInfoService_Changes_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ChangesRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1038,6 +1076,10 @@ var ProxyInfoService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SendEmail",
 			Handler:    _ProxyInfoService_SendEmail_Handler,
+		},
+		{
+			MethodName: "CheckAndDebitVMEmailCredit",
+			Handler:    _ProxyInfoService_CheckAndDebitVMEmailCredit_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

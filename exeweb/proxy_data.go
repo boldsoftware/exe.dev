@@ -74,6 +74,12 @@ type ProxyData interface {
 
 	// SendEmail sends an email message.
 	SendEmail(ctx context.Context, emailType email.Type, to, subject, body string) error
+
+	// CheckAndDebitVMEMailCredit checks if a box has email
+	// credit available, and debits 1 email.
+	// If there is no credit available, the error is
+	// [ErrVMEmailRateLimited].
+	CheckAndDebitVMEmailCredit(ctx context.Context, boxID int) error
 }
 
 // BoxData is the information we need for a box.

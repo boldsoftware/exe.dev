@@ -90,6 +90,10 @@ service ProxyInfoService {
   // SendEmail sends an email message.
   rpc SendEmail(SendEmailRequest) returns (SendEmailResponse);
 
+  // CheckAndDebitVMEmailCredit checks if a box has email credit available,
+  // and debits 1 email.
+  rpc CheckAndDebitVMEmailCredit(CheckAndDebitVMEmailCreditRequest) returns (CheckAndDebitVMEmailCreditResponse);
+
   // Changes returns a stream of changes that exeprox cares about.
   //
   // The guideline here is that the first time exeprox need to know
@@ -334,6 +338,15 @@ message SendEmailRequest {
 }
 
 message SendEmailResponse {}
+
+message CheckAndDebitVMEmailCreditRequest {
+  int64 box_id = 1;
+}
+
+message CheckAndDebitVMEmailCreditResponse {
+  bool ok = 1;
+  bool rate_limit_exceeded = 2;
+}
 
 message ChangesRequest {}
 

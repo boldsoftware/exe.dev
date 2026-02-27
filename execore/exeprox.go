@@ -14,6 +14,7 @@ import (
 	"exe.dev/billing/tender"
 	"exe.dev/email"
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
 	proxyapi "exe.dev/pkg/api/exe/proxy/v1"
 	"exe.dev/tracing"
@@ -445,6 +446,26 @@ func (es *exeproxServer) SendEmail(ctx context.Context, req *proxyapi.SendEmailR
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &proxyapi.SendEmailResponse{}, nil
+}
+
+// CheckAndDebitVMEMailCredit debits an email from a box quota.
+func (es *exeproxServer) CheckAndDebitVMEmailCredit(ctx context.Context, req *proxyapi.CheckAndDebitVMEmailCreditRequest) (*proxyapi.CheckAndDebitVMEmailCreditResponse, error) {
+	err := es.s.checkAndDebitVMEmailCredit(ctx, req.BoxID)
+	if err != nil {
+		if errors.Is(err, exeweb.ErrVMEmailRateLimited) {
+			resp := &proxyapi.CheckAndDebitVMEmailCreditResponse{
+				Ok:                false,
+				RateLimitExceeded: true,
+			}
+			return resp, nil
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	resp := &proxyapi.CheckAndDebitVMEmailCreditResponse{
+		Ok:                true,
+		RateLimitExceeded: false,
+	}
+	return resp, nil
 }
 
 // Changes returns a stream of changes that exeprox cares about:
