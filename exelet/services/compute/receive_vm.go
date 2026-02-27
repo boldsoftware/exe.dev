@@ -72,9 +72,45 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 	// before we begin. Failing early avoids the messy rollback path (IP reconfig
 	// has already happened, source VM is paused, needs cold restart).
 	if startReq.Live && startReq.SourceInstance != nil && startReq.SourceInstance.VMConfig != nil {
-		if err := checkAvailableMemory(startReq.SourceInstance.VMConfig.Memory); err != nil {
-			return status.Errorf(codes.ResourceExhausted,
-				"target host does not have enough memory for live restore: %v", err)
+		requiredBytes := startReq.SourceInstance.VMConfig.Memory
+		if err := checkAvailableMemory(requiredBytes); err != nil {
+			// Not enough free memory. Try to reclaim by pushing idle VMs to swap.
+			mr := s.context.MemoryReclaimer
+			if mr == nil {
+				return status.Errorf(codes.ResourceExhausted,
+					"target host does not have enough memory for live restore: %v", err)
+			}
+
+			s.log.InfoContext(ctx, "insufficient memory for live migration, attempting reclaim",
+				"instance", instanceID,
+				"error", err)
+
+			// Retry up to 3 times. The kernel continues reclaiming in the
+			// background after memory.reclaim writes, so subsequent attempts
+			// often succeed when the first falls just short.
+			const maxAttempts = 3
+			for attempt := 1; attempt <= maxAttempts; attempt++ {
+				if reclaimErr := mr.ReclaimMemory(ctx, requiredBytes); reclaimErr != nil {
+					s.log.WarnContext(ctx, "memory reclaim did not free enough",
+						"instance", instanceID,
+						"attempt", attempt,
+						"error", reclaimErr)
+				}
+				if err := checkAvailableMemory(requiredBytes); err == nil {
+					s.log.InfoContext(ctx, "memory reclaim succeeded",
+						"instance", instanceID,
+						"attempt", attempt)
+					break
+				} else if attempt == maxAttempts {
+					return status.Errorf(codes.ResourceExhausted,
+						"target host does not have enough memory for live restore (even after reclaim): %v", err)
+				} else {
+					s.log.InfoContext(ctx, "memory still insufficient after reclaim, retrying",
+						"instance", instanceID,
+						"attempt", attempt,
+						"error", err)
+				}
+			}
 		}
 	}
 

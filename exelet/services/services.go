@@ -53,6 +53,13 @@ type ReplicationSuspender interface {
 	WaitVolumeIdle(ctx context.Context, volumeID string)
 }
 
+// MemoryReclaimer allows services to request proactive memory reclamation.
+// This is used during live migration to free physical memory on the target host
+// by pushing idle VM pages to swap before restoring the migrating VM.
+type MemoryReclaimer interface {
+	ReclaimMemory(ctx context.Context, bytes uint64) error
+}
+
 type ServiceContext struct {
 	StorageManager       storage.StorageManager
 	NetworkManager       network.NetworkManager
@@ -61,6 +68,7 @@ type ServiceContext struct {
 	ImageLoader          ImageLoader
 	MetricsRegistry      *prometheus.Registry
 	ReplicationSuspender ReplicationSuspender
+	MemoryReclaimer      MemoryReclaimer
 }
 
 // Service is the interface that all services must implement

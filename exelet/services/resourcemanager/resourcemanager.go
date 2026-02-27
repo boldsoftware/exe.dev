@@ -53,6 +53,10 @@ type ResourceManager struct {
 	priorityOverride map[string]api.VMPriority // manual overrides (cleared when set to auto)
 	cgroupRoot       string
 
+	// Memory reclaim
+	reclaimInflight    sync.Map      // tracks in-flight memory.reclaim writes by path
+	readMemAvailableFn func() uint64 // overridden in tests; nil uses /proc/meminfo
+
 	// Polling
 	pollInterval time.Duration
 
@@ -127,8 +131,8 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 		zfsPool:          zfsPool,
 		usageState:       make(map[string]*vmUsageState),
 		priorityOverride: make(map[string]api.VMPriority),
-		cgroupRoot:       "/sys/fs/cgroup",
-		pollInterval:     pollInterval,
+		cgroupRoot:   "/sys/fs/cgroup",
+		pollInterval: pollInterval,
 	}, nil
 }
 
@@ -153,6 +157,10 @@ func (m *ResourceManager) Register(ctx *services.ServiceContext, server *grpc.Se
 	m.context = ctx
 	m.metrics = newPrometheusMetrics(ctx.MetricsRegistry)
 	api.RegisterResourceManagerServiceServer(server, m)
+
+	// Register as the memory reclaimer so other services (compute)
+	// can request proactive memory reclamation during live migration.
+	ctx.MemoryReclaimer = m
 
 	// Initialize metrics daemon reporter if configured
 	if m.config.MetricsDaemonURL != "" {

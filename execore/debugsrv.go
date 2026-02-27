@@ -918,6 +918,8 @@ func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Cli
 		return fmt.Errorf("failed to send receive start: %w", err)
 	}
 
+	progress("Waiting for target to prepare (replication sync)...")
+
 	// Wait for ready from target - tells us if target has base image
 	recvResp, err := recvStream.Recv()
 	if err != nil {
@@ -1095,6 +1097,8 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 	}); err != nil {
 		return 0, fmt.Errorf("failed to send receive start: %w", err)
 	}
+
+	progress("Waiting for target to prepare (replication sync, memory check)...")
 
 	// Wait for ready from target — includes allocated network interface
 	recvResp, err := recvStream.Recv()
