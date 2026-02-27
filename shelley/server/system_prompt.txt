@@ -46,12 +46,7 @@ This provides a complete Go web server with HTTP handlers, SQLite database, migr
 {{end}}
 {{if .Codebase}}
 <customization>
-Guidance files (dear_llm.md, agent.md, claude.md) contain project information and direct user instructions.
-Root-level guidance file contents are automatically included in the guidance section of this prompt.
-Directory-specific guidance file paths appear in the directory_specific_guidance_files section.
-Before modifying any file, you MUST proactively read and follow all guidance files in its directory and all parent directories.
-When guidance files conflict, more-deeply-nested files take precedence.
-Direct user instructions from the current conversation always take highest precedence.
+AGENTS.md and CLAUDE.md files contain project conventions. Root-level contents are included below. Before modifying files in a subdirectory, read any guidance files there first. More-deeply-nested files take precedence; direct user instructions override all.
 </customization>
 {{if .Codebase.InjectFiles}}
 <guidance>
@@ -60,11 +55,7 @@ Direct user instructions from the current conversation always take highest prece
 </root_guidance>
 {{end}}</guidance>
 {{end}}
-{{if .Codebase.GuidanceFiles}}
-<directory_specific_guidance_files>
-{{range .Codebase.GuidanceFiles}}{{.}}
-{{end}}</directory_specific_guidance_files>
-{{end}}
+{{.Codebase.SubdirGuidanceSummary}}
 {{end}}
 {{if .SkillsXML}}
 <skills>

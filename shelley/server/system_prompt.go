@@ -41,9 +41,31 @@ type GitInfo struct {
 }
 
 type CodebaseInfo struct {
-	InjectFiles        []string
-	InjectFileContents map[string]string
-	GuidanceFiles      []string
+	InjectFiles         []string
+	InjectFileContents  map[string]string
+	SubdirGuidanceFiles []string
+}
+
+// SubdirGuidanceSummary returns a prompt-friendly summary of subdirectory guidance files.
+// If ≤10, lists them explicitly. If >10, lists the first 10 and notes how many more exist.
+func (c *CodebaseInfo) SubdirGuidanceSummary() string {
+	if len(c.SubdirGuidanceFiles) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\nSubdirectory guidance files (read before editing files in these directories):\n")
+	show := c.SubdirGuidanceFiles
+	if len(show) > 10 {
+		show = show[:10]
+	}
+	for _, f := range show {
+		b.WriteString(f)
+		b.WriteByte('\n')
+	}
+	if len(c.SubdirGuidanceFiles) > 10 {
+		fmt.Fprintf(&b, "...and %d more. Use `find` to discover others.\n", len(c.SubdirGuidanceFiles)-10)
+	}
+	return b.String()
 }
 
 // SystemPromptOption configures optional fields on the system prompt.
@@ -170,7 +192,6 @@ func collectCodebaseInfo(wd string, gitInfo *GitInfo) (*CodebaseInfo, error) {
 	info := &CodebaseInfo{
 		InjectFiles:        []string{},
 		InjectFileContents: make(map[string]string),
-		GuidanceFiles:      []string{},
 	}
 
 	// Track seen files to avoid duplicates on case-insensitive file systems
@@ -236,9 +257,8 @@ func collectCodebaseInfo(wd string, gitInfo *GitInfo) (*CodebaseInfo, error) {
 		}
 	}
 
-	// Find all guidance files recursively for the directory listing
-	allGuidanceFiles := findAllGuidanceFiles(searchRoot)
-	info.GuidanceFiles = allGuidanceFiles
+	// Find subdirectory guidance files for the system prompt listing
+	info.SubdirGuidanceFiles = findSubdirGuidanceFiles(searchRoot)
 
 	return info, nil
 }
@@ -250,14 +270,6 @@ func findGuidanceFilesInDir(dir string) []string {
 		return nil
 	}
 
-	guidanceNames := map[string]bool{
-		"agent.md":    true,
-		"agents.md":   true,
-		"claude.md":   true,
-		"dear_llm.md": true,
-		"readme.md":   true,
-	}
-
 	var found []string
 	seen := make(map[string]bool)
 
@@ -266,7 +278,7 @@ func findGuidanceFilesInDir(dir string) []string {
 			continue
 		}
 		lowerName := strings.ToLower(entry.Name())
-		if guidanceNames[lowerName] && !seen[lowerName] {
+		if isGuidanceFile(lowerName) && lowerName != "readme.md" && !seen[lowerName] {
 			seen[lowerName] = true
 			found = append(found, filepath.Join(dir, entry.Name()))
 		}
@@ -274,16 +286,19 @@ func findGuidanceFilesInDir(dir string) []string {
 	return found
 }
 
-func findAllGuidanceFiles(root string) []string {
+// isGuidanceFile returns true if the lowercased filename is a recognized guidance file.
+func isGuidanceFile(lowerName string) bool {
+	switch lowerName {
+	case "agents.md", "agent.md", "claude.md", "dear_llm.md", "readme.md":
+		return true
+	}
+	return false
+}
+
+// findSubdirGuidanceFiles returns guidance files in subdirectories of root (not root itself).
+func findSubdirGuidanceFiles(root string) []string {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
-	guidanceNames := map[string]bool{
-		"agent.md":    true,
-		"agents.md":   true,
-		"claude.md":   true,
-		"dear_llm.md": true,
-	}
 
 	var found []string
 	seen := make(map[string]bool)
@@ -302,8 +317,8 @@ func findAllGuidanceFiles(root string) []string {
 			}
 			return nil
 		}
-		lowerName := strings.ToLower(info.Name())
-		if guidanceNames[lowerName] {
+		// Only count files in subdirectories, not root
+		if filepath.Dir(path) != root && isGuidanceFile(strings.ToLower(info.Name())) {
 			lowerPath := strings.ToLower(path)
 			if !seen[lowerPath] {
 				seen[lowerPath] = true
