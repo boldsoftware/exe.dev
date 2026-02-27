@@ -16,6 +16,7 @@ import (
 // The subtests are ordered so non-destructive tests run first, then the actual rename.
 func TestRename(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 2)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

@@ -12,6 +12,7 @@ import (
 // device placeholder to a real MAJ:MIN and writes the io.max cgroup file.
 func TestIOThrottle(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	noGolden(t)
 	e1eTestsOnlyRunOnce(t)
 
@@ -79,6 +80,7 @@ func TestIOThrottle(t *testing.T) {
 // different read/write bandwidth limits.
 func TestIOThrottleAsymmetric(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	noGolden(t)
 	e1eTestsOnlyRunOnce(t)
 
@@ -140,6 +142,7 @@ func TestIOThrottleAsymmetric(t *testing.T) {
 // and the syncer writes "max" values (effectively unlimited).
 func TestIOThrottleClear(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	noGolden(t)
 	e1eTestsOnlyRunOnce(t)
 

@@ -7,6 +7,7 @@ import (
 )
 
 func TestMachineUsage(t *testing.T) {
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

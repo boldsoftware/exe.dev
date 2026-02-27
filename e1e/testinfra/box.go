@@ -171,7 +171,7 @@ func (se *ServerEnv) WaitForBoxSSHServer(ctx context.Context, boxName, keyFile s
 	start := time.Now()
 	var err error
 	for {
-		attemptCtx, attemptCancel := context.WithTimeout(ctx, 5*time.Second)
+		attemptCtx, attemptCancel := context.WithTimeout(ctx, 15*time.Second)
 		err = se.BoxSSHCommand(attemptCtx, boxName, keyFile, "true").Run()
 		attemptCancel()
 		if err == nil {

@@ -18,6 +18,7 @@ import (
 // TestExeDevAPI tests a variety of exe.dev commands/repls.
 func TestExeDevAPI(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)

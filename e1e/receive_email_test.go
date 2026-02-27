@@ -17,6 +17,7 @@ import (
 // LMTP protocol tests are in execore/lmtp_test.go.
 func TestReceiveEmail(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

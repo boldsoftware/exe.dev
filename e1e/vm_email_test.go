@@ -12,6 +12,7 @@ import (
 // TestVMEmail tests the VM email sending feature via the metadata service.
 func TestVMEmail(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t) // Email content varies
 

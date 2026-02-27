@@ -8,6 +8,7 @@ import (
 
 func TestHelpCommandShowsNewOptions(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)

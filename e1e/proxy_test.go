@@ -30,6 +30,7 @@ func TestHTTPProxyExeprox(t *testing.T) {
 
 func testHTTPProxy(t *testing.T, httpPort int, extraPorts []int) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -1177,6 +1178,7 @@ func TestProxyTokenIsolationExeprox(t *testing.T) {
 
 func testProxyTokenNamespaceIsolation(t *testing.T, httpPort int) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -1517,6 +1519,7 @@ func TestProxyPrivateRouteTokenAuthExeprox(t *testing.T) {
 
 func testProxyPrivateRouteTokenAuth(t *testing.T, httpPort int) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -1694,6 +1697,7 @@ func TestProxyPublicRouteTokenCtxExeprox(t *testing.T) {
 
 func testProxyPublicRouteTokenCtx(t *testing.T, httpPort int) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -1826,6 +1830,7 @@ func TestProxyConcurrentRequestsExeprox(t *testing.T) {
 
 func testProxyConcurrentRequests(t *testing.T, httpPort int) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

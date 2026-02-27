@@ -27,6 +27,7 @@ import (
 // Unifying these in a single test reduces box creation overhead.
 func TestVanillaBox(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 
 	pty, cookies, keyFile, email := registerForExeDev(t)
@@ -916,6 +917,7 @@ func TestVanillaBox(t *testing.T) {
 
 func TestStandardAlpineBox(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
@@ -939,6 +941,7 @@ func TestStandardAlpineBox(t *testing.T) {
 
 func TestBadBoxName(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, _, _ := registerForExeDev(t)
@@ -953,6 +956,7 @@ func TestBadBoxName(t *testing.T) {
 
 func TestNewWithNonexistentImage(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, _, _ := registerForExeDev(t)
@@ -971,6 +975,7 @@ func TestNewWithNonexistentImage(t *testing.T) {
 
 func TestNewWithNonexistentTag(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, _, _ := registerForExeDev(t)
@@ -990,6 +995,7 @@ func TestNewWithNonexistentTag(t *testing.T) {
 
 func TestNewWithPrivateImage(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, _, _ := registerForExeDev(t)
@@ -1010,6 +1016,7 @@ func TestNewWithPrivateImage(t *testing.T) {
 
 func TestNewWithPrompt(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, _, _ := registerForExeDev(t)
@@ -1050,6 +1057,7 @@ func TestNewWithPrompt(t *testing.T) {
 
 func TestNewWithPromptStdin(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	noGolden(t)
 	e1eTestsOnlyRunOnce(t)
 
@@ -1088,6 +1096,7 @@ func TestNewWithPromptDefaultModel(t *testing.T) {
 	}
 
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t) // LLM responses are unpredictable
 
@@ -1130,6 +1139,7 @@ func TestNewWithPromptDefaultModel(t *testing.T) {
 func TestBoxRestartShutdown(t *testing.T) {
 	t.Skip("this is flaky in CI, to be investigated")
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
@@ -1191,6 +1201,7 @@ func TestBoxRestartShutdown(t *testing.T) {
 // This one was picked by virtue of being pretty simple and short.
 // (The longer that test, the more we want it to be parallel, because Amdahl.)
 func TestNewWithEnvVars(t *testing.T) {
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
@@ -1240,6 +1251,7 @@ func TestNewWithEnvVars(t *testing.T) {
 
 func TestNewWithInvalidEnvVarFormat(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
@@ -1263,6 +1275,7 @@ func TestNewWithInvalidEnvVarFormat(t *testing.T) {
 // TestNewBoxVariants tests various box creation flags that don't require deep verification.
 func TestNewBoxVariants(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -1288,6 +1301,7 @@ func TestNewBoxVariants(t *testing.T) {
 
 func TestRestartCommand(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -1402,6 +1416,7 @@ func TestRestartCommand(t *testing.T) {
 
 func TestRestartStoppedVM(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

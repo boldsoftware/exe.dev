@@ -22,6 +22,7 @@ import (
 // concurrent requests tried to insert the same key.
 func TestDeviceVerificationDoubleClick(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -146,6 +147,7 @@ func TestDeviceVerificationDoubleClick(t *testing.T) {
 // potentially claim another user's pending key by racing the verification.
 func TestDeviceVerificationKeyTheft(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

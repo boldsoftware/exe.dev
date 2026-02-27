@@ -11,6 +11,7 @@ import (
 
 func TestRequiresSSHKey(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	// CI intermittently is missing a newline in this test.
 	// Failures look like golden file diffs like:
 	//   -Press Enter to close this connection.
@@ -44,6 +45,7 @@ func TestRequiresSSHKey(t *testing.T) {
 
 func TestExeDevRejectsSCP(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 
 	// The exact error varies depending on the local scp program.
 	noGolden(t)

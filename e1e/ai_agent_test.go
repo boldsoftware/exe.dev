@@ -18,6 +18,7 @@ import (
 // TestAIAgent runs an AI agent (sketch) to test exe.dev functionality.
 // The test is skipped unless RUN_AI_AGENT_TEST=1 is set.
 func TestAIAgent(t *testing.T) {
+	reserveVMs(t, 0)
 	if os.Getenv("RUN_AI_AGENT_TEST") != "1" {
 		t.Skip("Skipping AI agent test (set RUN_AI_AGENT_TEST=1 to enable)")
 	}

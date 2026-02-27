@@ -27,6 +27,7 @@ type sshKeyEntry struct {
 // TestSSHKeyCommand tests the ssh-key command with list, add, and remove subcommands.
 func TestSSHKeyCommand(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
@@ -196,6 +197,7 @@ func TestSSHKeyCommand(t *testing.T) {
 // after being added via ssh-key add.
 func TestSSHKeyCommandWithSecondKey(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -246,6 +248,7 @@ func TestSSHKeyCommandWithSecondKey(t *testing.T) {
 // (the user would need to re-register, but that's their choice)
 func TestSSHKeyRemoveCurrentKey(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -289,6 +292,7 @@ func TestSSHKeyRemoveCurrentKey(t *testing.T) {
 // (e.g., cat id_exe.pub | ssh exe.dev ssh-key add)
 func TestSSHKeyAddFromStdin(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -635,6 +639,7 @@ aGVsbG8gaSBhbSBub3QgYWN0dWFsbHkgYSBwcml2YXRlIGtleQ==
 // that is already associated with another user's account.
 func TestSSHKeyCannotAddKeyFromAnotherUser(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -674,6 +679,7 @@ func TestSSHKeyCannotAddKeyFromAnotherUser(t *testing.T) {
 // and that user-provided comments are sanitized.
 func TestSSHKeyCommentGeneration(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -729,6 +735,7 @@ func TestSSHKeyCommentGeneration(t *testing.T) {
 // TestSSHKeyRemoveByName tests removing an SSH key by its name (comment).
 func TestSSHKeyRemoveByName(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -776,6 +783,7 @@ func TestSSHKeyRemoveByName(t *testing.T) {
 // TestSSHKeyRemoveByFingerprint tests removing an SSH key by its fingerprint.
 func TestSSHKeyRemoveByFingerprint(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -847,6 +855,7 @@ func TestSSHKeyRemoveByFingerprint(t *testing.T) {
 // This exercises the fingerprint-based lookup used internally when a full public key is provided.
 func TestSSHKeyRemoveByPublicKey(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -911,6 +920,7 @@ func TestSSHKeyRemoveByPublicKey(t *testing.T) {
 // TestSSHKeyRemoveAmbiguity tests that removing a key fails with helpful message when multiple keys match.
 func TestSSHKeyRemoveAmbiguity(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -973,6 +983,7 @@ func TestSSHKeyRemoveAmbiguity(t *testing.T) {
 // TestSSHKeyRename tests renaming an SSH key.
 func TestSSHKeyRename(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -1023,6 +1034,7 @@ func TestSSHKeyRename(t *testing.T) {
 // This is an undocumented escape hatch for renaming keys with empty names (e.g., via the web UI).
 func TestSSHKeyRenameByFingerprint(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -1080,6 +1092,7 @@ func TestSSHKeyRenameByFingerprint(t *testing.T) {
 // TestSSHKeyRenameValidation tests validation for ssh-key rename.
 func TestSSHKeyRenameValidation(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -1174,6 +1187,7 @@ func TestSSHKeyRenameValidation(t *testing.T) {
 // TestWhoamiShowsKeyNames tests that whoami shows key names.
 func TestWhoamiShowsKeyNames(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

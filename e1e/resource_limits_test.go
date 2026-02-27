@@ -13,6 +13,7 @@ import (
 // These tests only check error messages and don't require exelet to work.
 func TestResVal(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	noGolden(t)
 
 	// Create two users: a regular user and one that will get elevated limits
@@ -112,6 +113,7 @@ func TestResVal(t *testing.T) {
 // These tests require a working exelet to actually create VMs.
 func TestResCreate(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	noGolden(t)
 
 	regularPTY, _, _, _ := registerForExeDevWithEmail(t, "regular@test-rescreate.example")

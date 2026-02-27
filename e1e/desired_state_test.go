@@ -11,6 +11,7 @@ import (
 // cgroup files (e.g., cpu.max) for running VMs.
 func TestDesiredStateSync(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	noGolden(t)
 	e1eTestsOnlyRunOnce(t)
 

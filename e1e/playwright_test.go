@@ -34,6 +34,7 @@ func skipIfNoPlaywright(t *testing.T) {
 func TestProxyLoginFlow_Playwright(t *testing.T) {
 	skipIfNoPlaywright(t)
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

@@ -20,6 +20,7 @@ import (
 
 func TestBoxSharing(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	noGolden(t)
 
 	ownerPTY, ownerCookies, ownerKeyFile, ownerEmail := registerForExeDevWithEmail(t, "owner@test-box-sharing.example")
@@ -215,6 +216,7 @@ func TestBoxSharing(t *testing.T) {
 // TestShareCommands tests the share command SSH interface and captures output for golden files
 func TestShareCommands(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 
 	// User 1: Create a box
@@ -302,6 +304,7 @@ func TestShareCommands(t *testing.T) {
 // even though the user has no explicit share.
 func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	noGolden(t)
 
 	// Owner creates a box
@@ -388,6 +391,7 @@ func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
 // This is a regression test for the bug where pending shares were only resolved in createUser()
 // but not when an existing user logged in via email verification.
 func TestPendingShareResolvedOnRegistration(t *testing.T) {
+	reserveVMs(t, 1)
 	// Not running in parallel to avoid interference with other pending share tests
 	noGolden(t)
 
@@ -493,6 +497,7 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 // This is a regression test for the bug where pending shares were not resolved during
 // web-only login (handleEmailVerificationHTTP for HTTP auth tokens).
 func TestPendingShareResolvedOnWebLogin(t *testing.T) {
+	reserveVMs(t, 1)
 	// Not running in parallel to avoid interference with other pending share tests
 	noGolden(t)
 
@@ -581,6 +586,7 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 // their specific subdomain (e.g., box1.exe.xyz cookie can't access box2.exe.xyz).
 func TestProxyCookieIsolation(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 2)
 	noGolden(t)
 
 	// Create two users, each with their own box
@@ -660,6 +666,7 @@ func TestProxyCookieIsolation(t *testing.T) {
 // (simulating proxy auth) sees only the profile tab and the "What is exe?" section.
 func TestBasicUserDashboard(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	noGolden(t)
 
 	testID := time.Now().UnixNano()
@@ -725,6 +732,7 @@ func TestBasicUserDashboard(t *testing.T) {
 // - Passkey support in the 401 page (template renders correctly)
 func TestLoginWithExeFlow(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	noGolden(t)
 
 	// === Setup: Owner creates a box with an HTTP server ===
@@ -1218,6 +1226,7 @@ func (f *loginWithExeFlow) verifyCookiesOnBothDomains() {
 // non-standard ports (vm.exe.xyz:altport) must remain owner-only.
 func TestShareOnlyGrantsStandardPortAccess(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	noGolden(t)
 
 	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, "owner@test-share-access.example")

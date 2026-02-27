@@ -11,6 +11,7 @@ import (
 // TestCpResources tests the cp command with resource override flags.
 func TestCpResources(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 2)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

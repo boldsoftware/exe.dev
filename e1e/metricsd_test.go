@@ -10,6 +10,7 @@ import (
 // and generated metrics data.
 func TestMetricsDaemonE2E(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

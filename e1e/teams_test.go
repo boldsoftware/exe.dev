@@ -32,6 +32,7 @@ func addTeamMember(t *testing.T, ownerKeyFile, memberEmail string) {
 // It creates a team with an owner and a member, then tests various operations.
 func TestTeams(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 2)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -198,6 +199,7 @@ func TestTeams(t *testing.T) {
 // various operations on team member VMs (rename, cp, ssh).
 func TestTeamOwnerCanManageMemberVMs(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 2)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -262,6 +264,7 @@ func TestTeamOwnerCanManageMemberVMs(t *testing.T) {
 // TestTeamSharing tests the "share add team" and "share remove team" commands.
 func TestTeamSharing(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 2)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

@@ -20,6 +20,7 @@ import (
 
 func TestNewKeyRegistration(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	keyFile, publicKey := genSSHKey(t)
@@ -43,6 +44,7 @@ func TestNewKeyRegistration(t *testing.T) {
 
 func TestRegistrationHappensOnce(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	keyFile, publicKey := genSSHKey(t)
@@ -86,6 +88,7 @@ func TestRegistrationHappensOnce(t *testing.T) {
 
 func TestRegisterMultipleKeys(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	for i := range 3 {
@@ -118,6 +121,7 @@ func TestRegisterMultipleKeys(t *testing.T) {
 
 func TestRegisterWebThenKey(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	email := t.Name() + testinfra.FakeEmailSuffix
@@ -161,6 +165,7 @@ func TestRegisterWebThenKey(t *testing.T) {
 
 func TestRegisterGitHubKey(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	keyDir := t.TempDir()
@@ -186,6 +191,7 @@ func TestRegisterGitHubKey(t *testing.T) {
 
 func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	keyDir := t.TempDir()
@@ -225,6 +231,7 @@ func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
 // (We had early issues with ssh input buffers.)
 func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -263,6 +270,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 // even when there is significant network latency.
 func TestRegistrationWithLatency(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t) // real banner makes for ugly golden files
 
@@ -322,6 +330,7 @@ func TestRegistrationWithLatency(t *testing.T) {
 // See https://github.com/boldsoftware/exe.dev/issues/39
 func TestWarpTerminalBootstrap(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -369,6 +378,7 @@ func TestWarpTerminalBootstrap(t *testing.T) {
 // (like example.com) are silently dropped and never delivered.
 func TestBogusEmailDomainBlocked(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

@@ -10,6 +10,7 @@ import (
 
 func TestHostOverride(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	noGolden(t)
 
 	// Get the first exelet address for testing

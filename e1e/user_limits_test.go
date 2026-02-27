@@ -15,6 +15,7 @@ import (
 // TestUserLimits tests that per-user resource limit overrides work correctly.
 func TestUserLimits(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	noGolden(t)
 
 	// Create a regular user
@@ -73,6 +74,7 @@ func TestUserLimits(t *testing.T) {
 // TestUserLimitsCp tests that cp command also respects user limits.
 func TestUserLimitsCp(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 2)
 	noGolden(t)
 
 	// Create a user

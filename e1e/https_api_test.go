@@ -62,6 +62,7 @@ func (c *execAPIClient) exec(token, command string) (*http.Response, error) {
 // TestExecAPI tests the /exec endpoint end-to-end.
 func TestExecAPI(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -169,6 +170,7 @@ func TestExecAPI(t *testing.T) {
 // TestExecAPIExpNbf tests the exp and nbf token claims.
 func TestExecAPIExpNbf(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -227,6 +229,7 @@ func TestExecAPIExpNbf(t *testing.T) {
 // TestExecAPIInvalidTokens tests various invalid token scenarios.
 func TestExecAPIInvalidTokens(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -428,6 +431,7 @@ func TestExecAPIInvalidTokens(t *testing.T) {
 // can also be used to authenticate to the /exec endpoint.
 func TestExecAPIWithSecondKey(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -503,6 +507,7 @@ func TestExecAPIWithSecondKey(t *testing.T) {
 // TestExecAPIUnregisteredKey tests that an unregistered key cannot access /exec.
 func TestExecAPIUnregisteredKey(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -530,6 +535,7 @@ func TestExecAPIUnregisteredKey(t *testing.T) {
 // TestExecAPISigBlobErrors tests various signature blob format errors.
 func TestExecAPISigBlobErrors(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -613,6 +619,7 @@ func TestExecAPISigBlobErrors(t *testing.T) {
 // - A token for VM1 must NOT work for VM2
 func TestExecAPINamespaceIsolation(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -703,6 +710,7 @@ func TestExecAPINamespaceIsolation(t *testing.T) {
 // TestExecAPISignatureBitFlip tests that any bit flip in the signature is detected.
 func TestExecAPISignatureBitFlip(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -758,6 +766,7 @@ func TestExecAPISignatureBitFlip(t *testing.T) {
 // token payload JSON according to the strict parsing rules.
 func TestExecAPIStrictJSONValidation(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -820,6 +829,7 @@ func TestExecAPIStrictJSONValidation(t *testing.T) {
 // can be executed via the /exec endpoint.
 func TestExecAPICmds(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -935,6 +945,7 @@ func TestExecAPICmds(t *testing.T) {
 // TestExecAPILargeTokenRejected tests that tokens exceeding MaxTokenSize (8KB) are rejected.
 func TestExecAPILargeTokenRejected(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

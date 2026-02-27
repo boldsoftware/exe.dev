@@ -16,6 +16,7 @@ import (
 // during signup applies the invite code to the user.
 func TestInviteCodeSignup(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	inviteCode, err := Env.servers.CreateInviteCode("free")
@@ -52,6 +53,7 @@ func TestInviteCodeSignup(t *testing.T) {
 // TestInviteCodeTrial tests that trial invite codes are accepted during signup.
 func TestInviteCodeTrial(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	inviteCode, err := Env.servers.CreateInviteCode("trial")
@@ -87,6 +89,7 @@ func TestInviteCodeTrial(t *testing.T) {
 // (https://exe.dev/auth?invite=invitecode) applies the invite code to the user.
 func TestWebInviteCodeSignup(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	inviteCode, err := Env.servers.CreateInviteCode("free")
@@ -110,6 +113,7 @@ func TestWebInviteCodeSignup(t *testing.T) {
 // without the invite code benefit).
 func TestWebInviteCodeAlreadyUsed(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	inviteCode, err := Env.servers.CreateInviteCode("free")
@@ -152,6 +156,7 @@ func TestWebInviteCodeAlreadyUsed(t *testing.T) {
 // and registration proceeds normally.
 func TestInvalidInviteCodeIgnored(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	// Generate a new SSH key
@@ -188,6 +193,7 @@ func TestInvalidInviteCodeIgnored(t *testing.T) {
 // and each invite is only shown once.
 func TestInviteAllocation(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	// Sign up a user first
@@ -287,6 +293,7 @@ func TestInviteAllocation(t *testing.T) {
 // and appropriate links.
 func TestDashboardShowsInviteCount(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	// Sign up a user
@@ -362,6 +369,7 @@ func TestDashboardShowsInviteCount(t *testing.T) {
 // the /new and /create-vm forms correctly.
 func TestInviteCodePassthrough(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

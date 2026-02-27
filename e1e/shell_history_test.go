@@ -6,6 +6,7 @@ import (
 
 func TestShellHistoryPersistence(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

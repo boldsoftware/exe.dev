@@ -15,6 +15,7 @@ import (
 // TestResizeDisk tests the resize --disk command end-to-end.
 func TestResizeDisk(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	noGolden(t)
 
 	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, "owner@test-resize-disk.example")
@@ -185,6 +186,7 @@ func TestResizeDisk(t *testing.T) {
 // This verifies that support users can resize the memory and CPU of a VM.
 func TestResizeVM(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	noGolden(t) // Output contains variable values
 
 	// Create an owner user and a support user

@@ -11,6 +11,7 @@ import (
 // TestDefaultsCommand tests the hidden defaults command.
 func TestDefaultsCommand(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

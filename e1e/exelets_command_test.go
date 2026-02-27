@@ -8,6 +8,7 @@ import (
 
 func TestExeletsCommand(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	noGolden(t)
 
 	// Create two users: a regular user and a support user

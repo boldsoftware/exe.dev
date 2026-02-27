@@ -16,6 +16,7 @@ import (
 // All subtests share the same source VM to minimize VM creation overhead.
 func TestCp(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 2)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 

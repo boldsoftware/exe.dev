@@ -21,6 +21,7 @@ import (
 // The test uses a single box to exercise all permutations for both SSH and HTTP proxy access.
 func TestSupportAccess(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	noGolden(t)
 
 	// Create two users: an owner and a support user

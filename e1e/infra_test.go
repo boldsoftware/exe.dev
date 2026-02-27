@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"exe.dev/e1e/testinfra"
+	"golang.org/x/sync/semaphore"
 )
 
 var (
@@ -45,6 +46,11 @@ var (
 	// A single container host is often shared across test and dev runs.
 	// We use this ID to understand which boxes were created specifically by this test run.
 	testRunID string
+
+	// pool limits concurrent VM creation across parallel tests.
+	// Without this, all parallel tests stampede into VM creation
+	// simultaneously, overwhelming the host and causing timeouts.
+	pool *vmPool
 )
 
 func TestMain(m *testing.M) {
@@ -87,6 +93,8 @@ func TestMain(m *testing.M) {
 	}
 
 	// We are going to actually run some tests.
+
+	initVMSem()
 
 	defer testinfra.RunCleanups()
 	exit := func(status int) {
@@ -787,6 +795,70 @@ func e1eTestsOnlyRunOnce(t *testing.T) {
 	if didRun, ok := prev.(bool); ok && didRun {
 		t.Fatal("e1e tests don't work with -count > 1. use a bash loop. if this makes you sad, talk to josh.")
 	}
+}
+
+func initVMSem() {
+	n := int64(2)
+	if s := os.Getenv("E1_VM_CONCURRENCY"); s != "" {
+		parsed, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || parsed <= 0 {
+			fmt.Fprintf(os.Stderr, "invalid E1_VM_CONCURRENCY=%q: must be a positive integer\n", s)
+			os.Exit(1)
+		}
+		n = parsed
+	}
+	pool = newVMPool(n)
+	slog.Info("VM concurrency limit", "limit", n)
+}
+
+// reserveVMs declares that t will create n VMs.
+// Call with 0 to document that the test creates none;
+// call with n>0 to acquire that many slots from the shared concurrency pool.
+// Slots are held for t's lifetime and released via t.Cleanup.
+//
+// Every test that creates VMs must call reserveVMs with the correct count.
+// Nothing in the VM creation path enforces this.
+// Enforcement is at the call site rather than in newBox
+// because atomic multi-slot acquisition prevents deadlocks (two tests
+// each holding one slot and needing another).
+func reserveVMs(t *testing.T, n int) {
+	pool.reserve(t, n)
+}
+
+// vmPool is a weighted semaphore that manages concurrent VM slots.
+type vmPool struct {
+	sem *semaphore.Weighted
+	cap int64
+}
+
+func newVMPool(n int64) *vmPool {
+	return &vmPool{sem: semaphore.NewWeighted(n), cap: n}
+}
+
+// reserve acquires n VM slots, blocking until they're all available.
+// Slots are released when t finishes via t.Cleanup.
+//
+// Acquisition is atomic: the caller either gets all n slots at once
+// or blocks without holding any. This prevents deadlocks where two
+// tests each grab one slot and then wait for the other's.
+func (p *vmPool) reserve(t *testing.T, n int) {
+	t.Helper()
+	if n == 0 {
+		return
+	}
+	if int64(n) > p.cap {
+		panic(fmt.Sprintf("test %s wants %d VMs but capacity=%d; increase E1_VM_CONCURRENCY or reduce VMs needed",
+			t.Name(), n, p.cap))
+	}
+	start := time.Now()
+	if err := p.sem.Acquire(t.Context(), int64(n)); err != nil {
+		panic(fmt.Sprintf("test %s: context done waiting for %d VM slots (capacity=%d): %v",
+			t.Name(), n, p.cap, err))
+	}
+	t.Logf("reserved %d VM slot(s) (%v)", n, time.Since(start).Round(time.Millisecond))
+	t.Cleanup(func() {
+		p.sem.Release(int64(n))
+	})
 }
 
 // noGolden marks the test as not wanting golden file updates.

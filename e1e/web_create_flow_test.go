@@ -35,6 +35,7 @@ func TestWebCreateFlow_EndToEnd(t *testing.T) {
 	// Unique hostname for this test
 	host := boxName(t)
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 
 	// Build client with cookie jar
@@ -217,6 +218,7 @@ func TestWebCreateFlow_EndToEnd(t *testing.T) {
 // has access to all required fields (like BasicUser) in both cases.
 func TestNewPageRendersLoggedInAndOut(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	base := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)

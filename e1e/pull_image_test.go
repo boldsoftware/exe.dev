@@ -10,6 +10,7 @@ import (
 
 func TestPullExeuntuEverywhere(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
 	url := fmt.Sprintf("http://localhost:%d/pull-exeuntu-everywhere-517c8a904?tag=latest", Env.servers.Exed.HTTPPort)

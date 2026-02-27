@@ -18,6 +18,7 @@ import (
 // Network and disk metrics tests are in TestVanillaBox.
 func TestMetricsClearedOnDelete(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
