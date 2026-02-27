@@ -249,7 +249,6 @@ func main() {
 			Name:    "pktflow-enabled",
 			Usage:   "enable pktflow collector",
 			EnvVars: []string{"EXELET_PKTFLOW_ENABLED"},
-			Value:   true,
 		},
 		&cli.DurationFlag{
 			Name:    "pktflow-interval",

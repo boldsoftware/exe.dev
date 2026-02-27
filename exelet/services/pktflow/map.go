@@ -54,7 +54,7 @@ func LoadInstanceMap(dataDir string) (map[string]VMInfo, error) {
 		}
 		userID := inst.GetGroupID()
 		if userID == "" {
-			return nil, fmt.Errorf("instance %s missing group_id (required for pktflow)", vmID)
+			continue
 		}
 
 		tap := utils.GetTapName(vmID)
