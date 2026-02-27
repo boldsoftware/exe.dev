@@ -2,7 +2,6 @@
 title: HTTPS API
 description: Programmatic access via HTTPS
 subheading: "2. Features"
-preview: true
 ---
 
 The HTTPS API enables programmatic HTTPS access both to exe.dev and to individual VMs.
