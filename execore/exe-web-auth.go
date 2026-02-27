@@ -208,7 +208,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 				billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, verifiedUserID)
 				if err == nil && userNeedsBilling(&billingStatus) {
 					// Preserve hostname/prompt/image through billing flow
-					billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
+					billingURL := billingDest(&billingStatus) + "?name=" + url.QueryEscape(hostname)
 					if prompt != "" {
 						billingURL += "&prompt=" + url.QueryEscape(prompt)
 					}
@@ -261,6 +261,48 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		IsWelcome:    isWelcome,
 	}
 	s.renderTemplate(r.Context(), w, "email-verified.html", data)
+}
+
+// billingQueryAllowlist is the set of query parameters forwarded through the
+// billing flow (select-plan → auth → billing/update). "token" is added
+// separately where needed (e.g., pending registration token).
+var billingQueryAllowlist = []string{"source", "name", "prompt", "image"}
+
+// handleSelectPlan shows the plan selection interstitial before redirecting to Stripe.
+// Allowed query parameters are forwarded to /billing/update when the user selects a plan.
+func (s *Server) handleSelectPlan(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	// Forward known-safe query params to /billing/update (same allowlist as handleAuthEmailSubmission).
+	q := make(url.Values)
+	for _, k := range append([]string{"token"}, billingQueryAllowlist...) {
+		if vs, ok := r.URL.Query()[k]; ok {
+			q[k] = vs
+		}
+	}
+	billingURL := "/billing/update"
+	if encoded := q.Encode(); encoded != "" {
+		billingURL += "?" + encoded
+	}
+
+	s.slog().InfoContext(r.Context(), "plan selection page viewed",
+		"has_token", r.URL.Query().Get("token") != "",
+		"source", r.URL.Query().Get("source"),
+		"name", r.URL.Query().Get("name"),
+	)
+
+	data := struct {
+		stage.Env
+		BillingURL string
+		Source     string
+	}{
+		Env:        s.env,
+		BillingURL: billingURL,
+		Source:     r.URL.Query().Get("source"),
+	}
+	s.renderTemplate(r.Context(), w, "select-plan.html", data)
 }
 
 // handleBillingUpdate manages billing for authenticated users.
@@ -392,6 +434,14 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.slog().InfoContext(r.Context(), "redirecting existing user to Stripe",
+		"user_id", userID,
+		"email", user.Email,
+		"source", source,
+		"has_active_billing", hasActiveBilling,
+		"name", vmName,
+	)
+
 	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
@@ -417,6 +467,11 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/auth?redirect="+url.QueryEscape(r.URL.String()), http.StatusSeeOther)
 		return
 	}
+
+	s.slog().InfoContext(r.Context(), "existing user returned from Stripe",
+		"user_id", userID,
+		"has_session_id", sessionID != "",
+	)
 
 	// VM params may come from the checkout_params table (referenced by cp token)
 	// or directly as query parameters.
@@ -563,12 +618,22 @@ func (s *Server) handleNewUserBillingSubscribe(w http.ResponseWriter, r *http.Re
 	// Create account ID for this registration
 	accountID := "exe_" + crand.Text()[:16]
 
+	// Read VM creation params to preserve through checkout.
+	vmName := strings.TrimSpace(r.URL.Query().Get("name"))
+	vmPrompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
+	vmImage := strings.TrimSpace(r.URL.Query().Get("image"))
+
 	// Build callback URLs.
-	// This flow doesn't use checkout_params because we don't have a user_id yet
-	// (the user is registering). The URLs here are short (just a token and email),
-	// well within Stripe's 5000-character limit.
+	// VM params are passed as query parameters rather than using checkout_params
+	// because we don't have a user_id yet (the user is registering).
+	// The URLs are well within Stripe's 5000-character limit.
 	baseURL := s.webBaseURLNoRequest()
 	successURL := baseURL + "/billing/success?session_id={CHECKOUT_SESSION_ID}&token=" + url.QueryEscape(token)
+	for _, p := range []struct{ k, v string }{{"name", vmName}, {"prompt", vmPrompt}, {"image", vmImage}} {
+		if p.v != "" {
+			successURL += "&" + p.k + "=" + url.QueryEscape(p.v)
+		}
+	}
 	cancelURL := baseURL + "/auth?email=" + url.QueryEscape(pending.Email) + "&cancel=billing"
 
 	checkoutURL, err := s.billing.Subscribe(r.Context(), accountID, &billing.SubscribeParams{
@@ -582,6 +647,11 @@ func (s *Server) handleNewUserBillingSubscribe(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	s.slog().InfoContext(r.Context(), "redirecting new user to Stripe",
+		"email", pending.Email,
+		"name", vmName,
+	)
+
 	http.Redirect(w, r, checkoutURL, http.StatusSeeOther)
 }
 
@@ -589,6 +659,10 @@ func (s *Server) handleNewUserBillingSubscribe(w http.ResponseWriter, r *http.Re
 // Creates the user record, activates the account, and sends the verification email.
 func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Request, sessionID, token string) {
 	ctx := r.Context()
+
+	s.slog().InfoContext(ctx, "new user returned from Stripe",
+		"has_session_id", sessionID != "",
+	)
 
 	// Verify Stripe checkout
 	billingID, err := s.billing.VerifyCheckout(ctx, sessionID)
@@ -715,6 +789,31 @@ Best regards,
 The %s team`, verifyURL, s.env.WebHost)
 		if err := s.sendEmail(ctx, email.TypeWebAuthVerification, pending.Email, subject, body, slog.String("user_id", userID)); err != nil {
 			s.slog().ErrorContext(ctx, "failed to send verification email", "error", err, "email", pending.Email)
+		}
+	}
+
+	// Preserve VM creation params through email verification.
+	// The email verification handler checks mobile_pending_vm by token
+	// and auto-creates the VM after verification succeeds.
+	vmName := strings.TrimSpace(r.URL.Query().Get("name"))
+	vmPrompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
+	vmImage := strings.TrimSpace(r.URL.Query().Get("image"))
+	if vmName != "" {
+		var promptPtr, imagePtr *string
+		if vmPrompt != "" {
+			promptPtr = &vmPrompt
+		}
+		if vmImage != "" {
+			imagePtr = &vmImage
+		}
+		if err := withTx1(s, ctx, (*exedb.Queries).UpsertMobilePendingVM, exedb.UpsertMobilePendingVMParams{
+			Token:    verifyToken,
+			UserID:   userID,
+			Hostname: vmName,
+			Prompt:   promptPtr,
+			VMImage:  imagePtr,
+		}); err != nil {
+			s.slog().ErrorContext(ctx, "failed to save pending VM for new user", "error", err)
 		}
 	}
 
@@ -1206,6 +1305,13 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 
 	q := r.URL.Query()
 
+	// Detect users returning from Stripe after canceling checkout.
+	if q.Get("cancel") == "billing" {
+		s.slog().InfoContext(r.Context(), "user canceled Stripe checkout",
+			"email", q.Get("email"),
+		)
+	}
+
 	// If this is a proxy auth flow (return_host is set), show 401 page
 	// instead of the generic "Request a link" form
 	returnHost := q.Get("return_host")
@@ -1243,11 +1349,20 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Show authentication form with query parameters
+	// Show authentication form with query parameters.
+	// When the user arrives from the plan selection page (/select-plan →
+	// /billing/update → /auth), they've already decided to sign up, so
+	// "Enter your email" is clearer than "Login (or create an account)".
+	redirect := q.Get("redirect")
+	var heading string
+	if u, err := url.Parse(redirect); err == nil && u.Path == "/billing/update" {
+		heading = "Enter your email"
+	}
 	data := authFormData{
 		Env:               s.env,
+		Heading:           heading,
 		SSHCommand:        s.replSSHConnectionCommand(),
-		RedirectURL:       q.Get("redirect"),
+		RedirectURL:       redirect,
 		ReturnHost:        returnHost,
 		InviteCode:        inviteCodeStr,
 		InviteCodeValid:   inviteCodeValid,
@@ -1430,7 +1545,28 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 			s.showAuthError(w, r, "Failed to start registration. Please try again.", "")
 			return
 		}
-		http.Redirect(w, r, "/billing/update?token="+url.QueryEscape(token), http.StatusSeeOther)
+		// If the user arrived here via /billing/update (i.e. they clicked
+		// "Get started" on the plan page, were unauthenticated, and got
+		// bounced through /auth), skip /select-plan and go straight to
+		// /billing/update. Without this check the user would see the plan
+		// selection page twice:
+		//   /select-plan → /billing/update → /auth → /select-plan (again!)
+		dest := "/select-plan"
+		redirect := r.FormValue("redirect")
+		redirectURL, _ := url.Parse(redirect)
+		if redirectURL != nil && redirectURL.Path == "/billing/update" {
+			dest = "/billing/update"
+		}
+		// Forward known-safe query params from the original redirect URL.
+		q := url.Values{"token": {token}}
+		if redirectURL != nil {
+			for _, k := range billingQueryAllowlist {
+				if vs, ok := redirectURL.Query()[k]; ok {
+					q[k] = vs
+				}
+			}
+		}
+		http.Redirect(w, r, dest+"?"+q.Encode(), http.StatusSeeOther)
 		return
 	}
 

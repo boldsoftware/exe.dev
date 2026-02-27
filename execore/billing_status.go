@@ -45,6 +45,16 @@ func userNeedsBilling(status *exedb.GetUserBillingStatusRow) bool {
 	return true
 }
 
+// billingDest returns the billing destination path for a user who needs billing.
+// Canceled users go directly to /billing/update (they already know the product);
+// everyone else sees /select-plan first.
+func billingDest(status *exedb.GetUserBillingStatusRow) string {
+	if status.BillingStatus == "canceled" {
+		return "/billing/update"
+	}
+	return "/select-plan"
+}
+
 // checkCanCreateVM validates that a user is allowed to create a new VM.
 // Returns an error message if blocked, or empty string if allowed.
 // The allowOverride parameter bypasses throttle and disabled checks (used for exelet override).

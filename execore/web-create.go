@@ -450,9 +450,9 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		if !s.env.SkipBilling {
 			billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
 			if err == nil && userNeedsBilling(&billingStatus) {
-				// User is logged in but needs to add billing info
+				// User is logged in but needs to add billing info.
 				// Preserve the name and prompt so they can be passed to Stripe and restored after checkout
-				billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
+				billingURL := billingDest(&billingStatus) + "?name=" + url.QueryEscape(hostname)
 				if prompt != "" {
 					billingURL += "&prompt=" + url.QueryEscape(prompt)
 				}
@@ -518,6 +518,7 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 
 type authFormData struct {
 	stage.Env
+	Heading           string // page heading; empty defaults to "Login (or create an account)"
 	RedirectURL       string
 	ReturnHost        string
 	LoginWithExe      bool
