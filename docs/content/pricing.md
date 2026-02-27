@@ -39,13 +39,8 @@ published: true
         </ul>
       </td>
       <td style="border: 1px solid #000; padding: 12px; vertical-align: top;">
-        <strong>$30/month/user</strong>
+        <strong>Usage-based pricing</strong>
         <ul>
-          <li><b>30 VMs</b></li>
-          <li>2 CPUs</li>
-          <li>16GB RAM</li>
-          <li>25GB disk<sup>+</sup></li>
-          <li>100GB data transfer<sup>+</sup></li>
           <li>Admin and user management for shared environments</li>
           <li>SSO</li>
           <li>AWS VPC integration</li>
