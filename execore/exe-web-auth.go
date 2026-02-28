@@ -376,8 +376,7 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 		RedirectToPortal: true,
 		PortalReturnURL:  returnURL,
 	}
-	// Gmail users who signed in via Google get a 14-day trial instead of paying upfront.
-	if strings.HasSuffix(strings.ToLower(user.Email), "@gmail.com") {
+	if s.qualifiesForTrial(r.Context(), userID, user.Email, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr)) {
 		subParams.TrialEnd = time.Now().Add(15 * 24 * time.Hour)
 	}
 	redirectURL, err := s.billing.Subscribe(r.Context(), accountID, subParams)

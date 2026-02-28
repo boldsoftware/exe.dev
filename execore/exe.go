@@ -3060,19 +3060,14 @@ func (s *Server) recordSignupRejection(ctx context.Context, p signupValidationPa
 	}
 }
 
-// ipFlaggedForAbuse reports whether ip has recent abuse according to IPQS.
-// Returns the flagged status and the raw JSON response (if available).
-// Fails open: returns false on errors.
-func (s *Server) ipFlaggedForAbuse(ctx context.Context, ip string) (flagged bool, ipqsResponseJSON string) {
-	// Check if IP abuse filter is disabled via debug page
-	if s.IsIPAbuseFilterDisabled(ctx) {
-		return false, ""
-	}
+// ipqsLookupIP performs an IPQS IP lookup, using the cache when available.
+// Returns the result and raw JSON response body (empty string for cached results).
+func (s *Server) ipqsLookupIP(ctx context.Context, ip string) (ipqsIPResult, string, error) {
 	if s.ipqsAPIKey == "" {
-		return false, ""
+		return ipqsIPResult{}, "", fmt.Errorf("IPQS API key not configured")
 	}
 	if result, ok := s.cachedIPLookup(ip); ok {
-		return result.isFlagged(), "" // no JSON available for cached results
+		return result, "", nil
 	}
 
 	// Call IPQS IP API with a timeout
@@ -3082,21 +3077,18 @@ func (s *Server) ipFlaggedForAbuse(ctx context.Context, ip string) (flagged bool
 	url := fmt.Sprintf("https://www.ipqualityscore.com/api/json/ip/%s/%s", s.ipqsAPIKey, ip)
 	req, err := http.NewRequestWithContext(reqCtx, "GET", url, nil)
 	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to create IPQS IP request", "error", err, "ip", ip)
-		return false, ""
+		return ipqsIPResult{}, "", fmt.Errorf("create IPQS IP request: %w", err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		s.slog().WarnContext(ctx, "IPQS IP request failed", "error", err, "ip", ip)
-		return false, ""
+		return ipqsIPResult{}, "", fmt.Errorf("IPQS IP request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		s.slog().WarnContext(ctx, "failed to read IPQS IP response", "error", err, "ip", ip)
-		return false, ""
+		return ipqsIPResult{}, "", fmt.Errorf("read IPQS IP response: %w", err)
 	}
 
 	var apiResp struct {
@@ -3104,17 +3096,78 @@ func (s *Server) ipFlaggedForAbuse(ctx context.Context, ip string) (flagged bool
 		ipqsIPResult
 	}
 	if err := json.Unmarshal(body, &apiResp); err != nil {
-		s.slog().ErrorContext(ctx, "failed to parse IPQS IP response", "error", err, "ip", ip)
-		return false, ""
+		return ipqsIPResult{}, "", fmt.Errorf("parse IPQS IP response: %w", err)
 	}
 
 	if !apiResp.Success {
-		s.slog().WarnContext(ctx, "IPQS IP returned unsuccessful response", "ip", ip)
-		return false, ""
+		return ipqsIPResult{}, "", fmt.Errorf("IPQS IP returned unsuccessful response")
 	}
 
 	s.cacheIPLookup(ip, apiResp.ipqsIPResult)
-	return apiResp.ipqsIPResult.isFlagged(), string(body)
+	return apiResp.ipqsIPResult, string(body), nil
+}
+
+// ipFlaggedForAbuse reports whether ip has recent abuse according to IPQS.
+// Returns the flagged status and the raw JSON response (if available).
+// Fails open: returns false on errors.
+func (s *Server) ipFlaggedForAbuse(ctx context.Context, ip string) (flagged bool, ipqsResponseJSON string) {
+	// Check if IP abuse filter is disabled via debug page
+	if s.IsIPAbuseFilterDisabled(ctx) {
+		return false, ""
+	}
+	result, body, err := s.ipqsLookupIP(ctx, ip)
+	if err != nil {
+		s.slog().WarnContext(ctx, "IPQS IP lookup failed", "error", err, "ip", ip)
+		return false, ""
+	}
+	return result.isFlagged(), body
+}
+
+// trialAllowedCountries is the set of countries eligible for a billing trial.
+var trialAllowedCountries = map[string]bool{
+	"US": true, "GB": true, "CA": true, "AU": true, "NZ": true,
+	"JP": true, "SG": true, "NL": true, "NO": true, "SE": true,
+	"FI": true, "CH": true, "KR": true, "IL": true,
+}
+
+// qualifiesForTrial reports whether a user qualifies for a billing trial.
+// The user must be in an allowed country (by IP), and then either have a
+// gmail.com email or a high-quality GitHub account. Fails closed.
+func (s *Server) qualifiesForTrial(ctx context.Context, userID, email, ip string) bool {
+	result, _, err := s.ipqsLookupIP(ctx, ip)
+	if err != nil || !trialAllowedCountries[result.CountryCode] {
+		return false
+	}
+	if strings.HasSuffix(strings.ToLower(email), "@gmail.com") {
+		return true
+	}
+	return s.hasGitHubCreditOK(ctx, userID)
+}
+
+// hasGitHubCreditOK reports whether any of the user's SSH keys belongs to
+// a high-quality GitHub account (per ghuser.Info.CreditOK).
+// Hard-limited to 1s; fails closed.
+func (s *Server) hasGitHubCreditOK(ctx context.Context, userID string) bool {
+	if s.githubUser == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+
+	keys, err := withRxRes1(s, ctx, (*exedb.Queries).GetSSHKeysForUser, userID)
+	if err != nil {
+		return false
+	}
+	for _, key := range keys {
+		info, err := s.githubUser.InfoString(ctx, key.PublicKey)
+		if err != nil {
+			continue
+		}
+		if info.CreditOK {
+			return true
+		}
+	}
+	return false
 }
 
 // isFlagged reports whether this IP should be blocked from signup.
