@@ -94,12 +94,12 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_TOKEN: ${{ github.token }}
+          COMMIT_SUBJECT: ${{ inputs.commit_subject }}
         run: |
           set -euo pipefail
 
           RUN_ID="${{ inputs.run_id }}"
           BRANCH="${{ inputs.branch }}"
-          COMMIT_SUBJECT="${{ inputs.commit_subject }}"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${RUN_ID}"
 
           PROMPT="$(cat <<PROMPT_EOF
@@ -153,10 +153,11 @@ jobs:
         if: always()
         env:
           NTFY_SLACK_WEBHOOK_URL: ${{ secrets.NTFY_SLACK_WEBHOOK_URL }}
+          COMMIT_SUBJECT: ${{ inputs.commit_subject }}
         run: |
           python3 bin/ralph-notify.py \
             "${{ inputs.branch }}" \
-            "${{ inputs.commit_subject }}" \
+            "$COMMIT_SUBJECT" \
             "${{ steps.slack.outputs.slack_id }}" \
             "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.run_id }}" \
             "${{ steps.before.outputs.sha }}" \
