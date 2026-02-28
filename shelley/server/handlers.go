@@ -492,14 +492,23 @@ func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
 	// Get working states for all active conversations
 	workingStates := s.getWorkingConversations()
 
+	// Get subagent counts
+	subagentCounts, err := s.db.GetSubagentCounts(ctx)
+	if err != nil {
+		s.logger.Error("Failed to get subagent counts", "error", err)
+		// Non-fatal, continue with zero counts
+		subagentCounts = make(map[string]int64)
+	}
+
 	// Build response with working state included
 	// Cache git info by cwd to avoid redundant git subprocess calls
 	gitStates := make(map[string]*gitstate.GitState)
 	result := make([]ConversationWithState, len(conversations))
 	for i, conv := range conversations {
 		cws := ConversationWithState{
-			Conversation: conv,
-			Working:      workingStates[conv.ConversationID],
+			Conversation:  conv,
+			Working:       workingStates[conv.ConversationID],
+			SubagentCount: subagentCounts[conv.ConversationID],
 		}
 		if conv.Cwd != nil {
 			gs, ok := gitStates[*conv.Cwd]

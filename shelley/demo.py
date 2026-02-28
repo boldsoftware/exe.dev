@@ -5,9 +5,11 @@ Port is deterministic: derived from a hash of the worktree path (3000-3999).
 The tmux session is named 'shelley-demo-<port>'.
 
 Each demo gets its own empty database at /tmp/shelley-demo/<port>.db.
+Use --db to point at a different database (e.g. the main Shelley db for real data).
 
 Usage:
-    shelley/demo.py              # build + (re)start
+    shelley/demo.py              # build + (re)start (empty demo db)
+    shelley/demo.py --db ~/.config/shelley/shelley.db   # use main db
     shelley/demo.py stop         # kill the tmux session
     shelley/demo.py status       # show whether it's running + URL
     shelley/demo.py port         # just print the port
@@ -64,10 +66,10 @@ def health_check(port: int, timeout: float = 5.0) -> bool:
     return False
 
 
-def cmd_start(port: int):
+def cmd_start(port: int, custom_db: Path | None = None):
     sess = session_name(port)
     binary = SHELLEY_DIR / "bin" / "shelley"
-    db = db_path(port)
+    db = custom_db or db_path(port)
 
     # Build
     print(f"Building shelley in {SHELLEY_DIR} ...")
@@ -116,19 +118,38 @@ def cmd_status(port: int):
         print(f"Not running (port {port})")
 
 
+def parse_args():
+    """Parse --db flag and positional action from argv."""
+    custom_db = None
+    action = "start"
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        if args[i] == "--db" and i + 1 < len(args):
+            custom_db = Path(args[i + 1])
+            i += 2
+        elif not args[i].startswith("-"):
+            action = args[i]
+            i += 1
+        else:
+            print(f"Unknown flag: {args[i]}", file=sys.stderr)
+            sys.exit(1)
+    return action, custom_db
+
+
 def main():
     port = port_for_dir()
-    action = sys.argv[1] if len(sys.argv) > 1 else "start"
+    action, custom_db = parse_args()
 
     actions = {
-        "start": lambda: cmd_start(port),
+        "start": lambda: cmd_start(port, custom_db),
         "stop": lambda: cmd_stop(port),
         "status": lambda: cmd_status(port),
         "port": lambda: print(port),
     }
 
     if action not in actions:
-        print(f"Usage: {sys.argv[0]} [{'/'.join(actions)}]", file=sys.stderr)
+        print(f"Usage: {sys.argv[0]} [--db PATH] [{'/'.join(actions)}]", file=sys.stderr)
         sys.exit(1)
 
     actions[action]()

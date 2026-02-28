@@ -76,6 +76,7 @@ export interface ConversationWithStateForTS {
   git_worktree_root?: string;
   git_commit?: string;
   git_subject?: string;
+  subagent_count: number;
 }
 
 export type MessageType = "user" | "agent" | "tool" | "error" | "system" | "gitinfo";

@@ -208,6 +208,41 @@ func (q *Queries) GetConversationBySlugAndParent(ctx context.Context, arg GetCon
 	return i, err
 }
 
+const getSubagentCounts = `-- name: GetSubagentCounts :many
+SELECT parent_conversation_id, COUNT(*) AS count
+FROM conversations
+WHERE parent_conversation_id IS NOT NULL
+GROUP BY parent_conversation_id
+`
+
+type GetSubagentCountsRow struct {
+	ParentConversationID *string `json:"parent_conversation_id"`
+	Count                int64   `json:"count"`
+}
+
+func (q *Queries) GetSubagentCounts(ctx context.Context) ([]GetSubagentCountsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getSubagentCounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetSubagentCountsRow{}
+	for rows.Next() {
+		var i GetSubagentCountsRow
+		if err := rows.Scan(&i.ParentConversationID, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSubagents = `-- name: GetSubagents :many
 SELECT conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived, parent_conversation_id, model FROM conversations
 WHERE parent_conversation_id = ?

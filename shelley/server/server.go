@@ -60,6 +60,7 @@ type ConversationWithState struct {
 	GitWorktreeRoot string `json:"git_worktree_root,omitempty"`
 	GitCommit       string `json:"git_commit,omitempty"`
 	GitSubject      string `json:"git_subject,omitempty"`
+	SubagentCount   int64  `json:"subagent_count"`
 }
 
 // StreamResponse represents the response format for conversation streaming

@@ -103,6 +103,12 @@ ORDER BY created_at ASC;
 SELECT * FROM conversations
 WHERE slug = ? AND parent_conversation_id = ?;
 
+-- name: GetSubagentCounts :many
+SELECT parent_conversation_id, COUNT(*) AS count
+FROM conversations
+WHERE parent_conversation_id IS NOT NULL
+GROUP BY parent_conversation_id;
+
 -- name: UpdateConversationModel :exec
 UPDATE conversations
 SET model = ?

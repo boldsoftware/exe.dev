@@ -83,16 +83,16 @@ function ConversationDrawer({
   }, [showActiveTrigger]);
 
   // Load subagents for the current conversation (or parent if viewing a subagent)
+  // but don't auto-expand — expansion is explicit or triggered by real-time subagent creation.
   useEffect(() => {
     if (!showArchived && currentConversationId) {
-      // If viewing a subagent, also load and expand the parent's subagents
       const parentId = viewedConversation?.parent_conversation_id;
       if (parentId) {
         loadSubagents(parentId);
+        // Auto-expand parent when viewing one of its subagents
         setExpandedSubagents((prev) => new Set([...prev, parentId]));
       } else {
         loadSubagents(currentConversationId);
-        setExpandedSubagents((prev) => new Set([...prev, currentConversationId]));
       }
     }
   }, [currentConversationId, viewedConversation, showArchived]);
@@ -110,11 +110,18 @@ function ConversationDrawer({
         if (existingIndex >= 0) {
           // Update existing, preserving working state
           const updated = [...existing];
-          updated[existingIndex] = { ...subagentUpdate, working: existing[existingIndex].working };
+          updated[existingIndex] = {
+            ...subagentUpdate,
+            working: existing[existingIndex].working,
+            subagent_count: 0,
+          };
           return { ...prev, [parentId]: updated };
         } else {
           // Add new subagent (not working by default)
-          return { ...prev, [parentId]: [...existing, { ...subagentUpdate, working: false }] };
+          return {
+            ...prev,
+            [parentId]: [...existing, { ...subagentUpdate, working: false, subagent_count: 0 }],
+          };
         }
       });
       // Auto-expand parent only if it's the currently selected conversation
@@ -151,7 +158,7 @@ function ConversationDrawer({
       const subs = await api.getSubagents(conversationId);
       if (subs && subs.length > 0) {
         // Add working: false to each subagent
-        const subsWithState = subs.map((s) => ({ ...s, working: false }));
+        const subsWithState = subs.map((s) => ({ ...s, working: false, subagent_count: 0 }));
         setSubagents((prev) => ({ ...prev, [conversationId]: subsWithState }));
       }
     } catch (err) {
@@ -406,9 +413,13 @@ function ConversationDrawer({
   const renderConversationItem = (conversation: Conversation | ConversationWithState) => {
     const convState = conversation as ConversationWithState;
     const isActive = conversation.conversation_id === currentConversationId;
-    const hasSubagents = subagents[conversation.conversation_id]?.length > 0;
-    const isExpanded = expandedSubagents.has(conversation.conversation_id);
     const conversationSubagents = subagents[conversation.conversation_id] || [];
+    const subagentsLoaded = conversation.conversation_id in subagents;
+    const subagentCount = subagentsLoaded
+      ? conversationSubagents.length
+      : convState.subagent_count || 0;
+    const hasSubagents = subagentCount > 0;
+    const isExpanded = expandedSubagents.has(conversation.conversation_id);
     return (
       <React.Fragment key={conversation.conversation_id}>
         <div
@@ -471,6 +482,34 @@ function ConversationDrawer({
                   {formatCwdForDisplay(conversation.cwd)}
                 </span>
               )}
+              {!showArchived && hasSubagents && (
+                <button
+                  onClick={(e) => toggleSubagents(e, conversation.conversation_id)}
+                  className="subagent-count-badge"
+                  title={isExpanded ? "Hide subagents" : "Show subagents"}
+                  aria-label={isExpanded ? "Collapse subagents" : "Expand subagents"}
+                >
+                  <span style={{ fontWeight: 500 }}>{subagentCount}</span>
+                  <svg
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    style={{
+                      width: "0.625rem",
+                      height: "0.625rem",
+                      transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+                      transition: "transform 0.15s ease",
+                    }}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
+                </button>
+              )}
               {!showArchived && (
                 <div
                   className="conversation-actions"
@@ -516,42 +555,6 @@ function ConversationDrawer({
                       />
                     </svg>
                   </button>
-                  {hasSubagents && (
-                    <button
-                      onClick={(e) => toggleSubagents(e, conversation.conversation_id)}
-                      className="btn-icon-sm"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.125rem",
-                        fontSize: "0.75rem",
-                        minWidth: "auto",
-                        padding: "0.125rem 0.25rem",
-                      }}
-                      title={isExpanded ? "Hide subagents" : "Show subagents"}
-                      aria-label={isExpanded ? "Collapse subagents" : "Expand subagents"}
-                    >
-                      <span style={{ fontWeight: 500 }}>{conversationSubagents.length}</span>
-                      <svg
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        style={{
-                          width: "0.625rem",
-                          height: "0.625rem",
-                          transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
-                          transition: "transform 0.15s ease",
-                        }}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 5l7 7-7 7"
-                        />
-                      </svg>
-                    </button>
-                  )}
                 </div>
               )}
             </div>

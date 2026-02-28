@@ -648,6 +648,42 @@ button {
   min-width: 0;
 }
 
+.subagent-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  font-size: 0.75rem;
+  padding: 0 0.25rem;
+  border-radius: 0.25rem;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: none;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: background-color 0.15s;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.subagent-count-badge:hover {
+  background: var(--gray-200);
+  color: var(--text-primary);
+}
+
+.dark .subagent-count-badge:hover {
+  background: var(--gray-600);
+}
+
+.conversation-item.active .subagent-count-badge {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.conversation-item.active .subagent-count-badge:hover {
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
+}
+
 /* Messages */
 .messages-container {
   flex: 1 1 auto;

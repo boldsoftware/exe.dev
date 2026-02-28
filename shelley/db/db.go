@@ -684,6 +684,27 @@ func (db *DB) CreateSubagentConversation(ctx context.Context, slug, parentID str
 	return &conversation, err
 }
 
+// GetSubagentCounts returns a map of parent_conversation_id -> subagent count.
+func (db *DB) GetSubagentCounts(ctx context.Context) (map[string]int64, error) {
+	var rows []generated.GetSubagentCountsRow
+	err := db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		q := generated.New(rx.Conn())
+		var err error
+		rows, err = q.GetSubagentCounts(ctx)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	counts := make(map[string]int64, len(rows))
+	for _, r := range rows {
+		if r.ParentConversationID != nil {
+			counts[*r.ParentConversationID] = r.Count
+		}
+	}
+	return counts, nil
+}
+
 // GetSubagents retrieves all subagent conversations for a parent conversation
 func (db *DB) GetSubagents(ctx context.Context, parentID string) ([]generated.Conversation, error) {
 	var conversations []generated.Conversation

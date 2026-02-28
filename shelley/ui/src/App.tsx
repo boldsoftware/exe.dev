@@ -339,11 +339,15 @@ function App() {
             working: prev[existingIndex].working,
             git_commit: prev[existingIndex].git_commit,
             git_subject: prev[existingIndex].git_subject,
+            subagent_count: prev[existingIndex].subagent_count,
           };
           return updated;
         } else {
           // Add new conversation at the top (not working by default)
-          return [{ ...update.conversation!, ...gitFields, working: false }, ...prev];
+          return [
+            { ...update.conversation!, ...gitFields, working: false, subagent_count: 0 },
+            ...prev,
+          ];
         }
       });
     } else if (update.type === "delete" && update.conversation_id) {
@@ -466,6 +470,7 @@ function App() {
               working: conv.working,
               git_commit: conv.git_commit,
               git_subject: conv.git_subject,
+              subagent_count: conv.subagent_count,
             }
           : conv,
       ),
@@ -489,7 +494,7 @@ function App() {
     setConversations((prev) =>
       prev.some((c) => c.conversation_id === conversation.conversation_id)
         ? prev
-        : [{ ...conversation, working: false }, ...prev],
+        : [{ ...conversation, working: false, subagent_count: 0 }, ...prev],
     );
     // Update viewedConversation so archived state reflects immediately
     if (conversation.conversation_id === currentConversationId) {
@@ -509,6 +514,7 @@ function App() {
               working: c.working,
               git_commit: c.git_commit,
               git_subject: c.git_subject,
+              subagent_count: c.subagent_count,
             }
           : c,
       ),
@@ -544,7 +550,7 @@ function App() {
   const currentConversation =
     conversations.find((conv) => conv.conversation_id === currentConversationId) ||
     (viewedConversation?.conversation_id === currentConversationId
-      ? { ...viewedConversation, working: false }
+      ? { ...viewedConversation, working: false, subagent_count: 0 }
       : undefined);
 
   // Get the CWD from the current conversation, or fall back to the most recent conversation
