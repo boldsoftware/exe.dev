@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
 	"exe.dev/pow"
+	"tailscale.com/util/limiter"
 )
 
 // TestXSSInEmailVerificationForm tests that template variables in the
@@ -249,6 +251,16 @@ func TestProxyLoginOpenRedirect(t *testing.T) {
 // TestSignupRateLimiting tests that signup endpoints are rate limited.
 func TestSignupRateLimiting(t *testing.T) {
 	server := newTestServer(t)
+
+	// Use a very long refill interval so no tokens are refilled during
+	// the test. The default 12s interval can cause flakes when the 21
+	// requests straddle a refill boundary.
+	server.signupLimiter = &limiter.Limiter[netip.Addr]{
+		Size:           10,
+		Max:            20,
+		RefillInterval: time.Hour,
+	}
+	server.signupLimiter.Allow(netip.Addr{}) // initialize internal state
 
 	// Send 20 requests (the limit) - all should succeed
 	for i := range 20 {
