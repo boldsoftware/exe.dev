@@ -4,12 +4,13 @@
 Port is deterministic: derived from a hash of the worktree path (3000-3999).
 The tmux session is named 'shelley-demo-<port>'.
 
+Each demo gets its own empty database at /tmp/shelley-demo/<port>.db.
+
 Usage:
     shelley/demo.py              # build + (re)start
     shelley/demo.py stop         # kill the tmux session
     shelley/demo.py status       # show whether it's running + URL
     shelley/demo.py port         # just print the port
-    shelley/demo.py logs         # attach to the tmux session (ctrl-b d to detach)
 """
 import hashlib
 import os
@@ -23,7 +24,6 @@ from urllib.error import URLError
 SCRIPT_DIR = Path(__file__).resolve().parent
 SHELLEY_DIR = SCRIPT_DIR
 CONFIG = "/exe.dev/shelley.json"
-DB = Path.home() / ".config/shelley/shelley.db"
 HOSTNAME = os.environ.get("EXE_HOSTNAME", f"{os.uname().nodename}.exe.xyz")
 
 
@@ -34,6 +34,12 @@ def port_for_dir() -> int:
 
 def session_name(port: int) -> str:
     return f"shelley-demo-{port}"
+
+
+def db_path(port: int) -> Path:
+    d = Path(f"/tmp/shelley-demo")
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{port}.db"
 
 
 def tmux_has_session(name: str) -> bool:
@@ -61,6 +67,7 @@ def health_check(port: int, timeout: float = 5.0) -> bool:
 def cmd_start(port: int):
     sess = session_name(port)
     binary = SHELLEY_DIR / "bin" / "shelley"
+    db = db_path(port)
 
     # Build
     print(f"Building shelley in {SHELLEY_DIR} ...")
@@ -73,11 +80,11 @@ def cmd_start(port: int):
         tmux_kill_session(sess)
         time.sleep(0.3)
 
-    # Start in tmux
-    cmd = f"{binary} --config {CONFIG} --db {DB} serve --port {port}"
+    # Start bash in tmux, then run shelley inside it
+    cmd = f"{binary} --config {CONFIG} --db {db} serve --port {port}"
     print(f"Starting demo server on port {port} (tmux session '{sess}') ...")
     subprocess.run(
-        ["tmux", "new-session", "-d", "-s", sess, cmd],
+        ["tmux", "new-session", "-d", "-s", sess, "bash", "-c", cmd],
         check=True,
     )
 
@@ -85,8 +92,9 @@ def cmd_start(port: int):
     if health_check(port):
         print(f"Demo server running on port {port}")
     else:
-        print(f"Warning: port {port} not responding yet. Check: tmux attach -t {sess}")
+        print(f"Warning: port {port} not responding yet.")
     print(f"URL: https://{HOSTNAME}:{port}/")
+    print(f"Logs: tmux capture-pane -t {sess} -p | tail -50")
 
 
 def cmd_stop(port: int):
@@ -103,17 +111,9 @@ def cmd_status(port: int):
     if tmux_has_session(sess):
         print(f"Running (tmux session '{sess}') on port {port}")
         print(f"URL: https://{HOSTNAME}:{port}/")
-        print(f"Logs: tmux attach -t {sess}")
+        print(f"Logs: tmux capture-pane -t {sess} -p | tail -50")
     else:
         print(f"Not running (port {port})")
-
-
-def cmd_logs(port: int):
-    sess = session_name(port)
-    if not tmux_has_session(sess):
-        print(f"Not running (no tmux session '{sess}').")
-        sys.exit(1)
-    os.execvp("tmux", ["tmux", "attach", "-t", sess])
 
 
 def main():
@@ -125,7 +125,6 @@ def main():
         "stop": lambda: cmd_stop(port),
         "status": lambda: cmd_status(port),
         "port": lambda: print(port),
-        "logs": lambda: cmd_logs(port),
     }
 
     if action not in actions:
