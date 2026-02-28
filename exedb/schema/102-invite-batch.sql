@@ -1,0 +1,1 @@
+ALTER TABLE invite_codes ADD COLUMN is_batch INTEGER NOT NULL DEFAULT 0;

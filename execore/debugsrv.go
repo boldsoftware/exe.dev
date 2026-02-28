@@ -92,6 +92,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/email", s.handleDebugEmailSend)
 	mux.HandleFunc("/debug/invite", s.handleDebugInvite)
 	mux.HandleFunc("POST /debug/invite", s.handleDebugInvitePost)
+	mux.HandleFunc("GET /debug/invite/bulk", s.handleDebugInviteBulk)
+	mux.HandleFunc("POST /debug/invite/bulk", s.handleDebugInviteBulkPost)
 	mux.HandleFunc("/debug/all-invite-codes", s.handleDebugAllInviteCodes)
 	mux.HandleFunc("/debug/invite-tree", s.handleDebugInviteTree)
 	mux.HandleFunc("/debug/bounces", s.handleDebugBounces)
@@ -3686,6 +3688,115 @@ https://%s/
 	}
 
 	return nil
+}
+
+func (s *Server) handleDebugInviteBulk(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Codes       []string
+		PlanType    string
+		AssignedFor string
+	}{}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, "invite-bulk.html", data); err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to execute invite-bulk template", "error", err)
+	}
+}
+
+func (s *Server) handleDebugInviteBulkPost(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	planType := r.FormValue("plan_type")
+	if planType != "trial" && planType != "free" {
+		http.Error(w, "invalid plan_type", http.StatusBadRequest)
+		return
+	}
+
+	assignedFor := r.FormValue("assigned_for")
+	if assignedFor == "" {
+		http.Error(w, "assigned_for is required", http.StatusBadRequest)
+		return
+	}
+
+	countStr := r.FormValue("count")
+	count, err := strconv.Atoi(countStr)
+	if err != nil || count < 1 || count > 1000 {
+		http.Error(w, "count must be between 1 and 1000", http.StatusBadRequest)
+		return
+	}
+
+	// Get admin identity from Tailscale
+	assignedBy := "debug"
+	lc := new(local.Client)
+	if who, err := lc.WhoIs(ctx, r.RemoteAddr); err == nil && who.UserProfile != nil && who.UserProfile.LoginName != "" {
+		assignedBy = who.UserProfile.LoginName
+	}
+
+	codes := make([]string, 0, count)
+	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		for range count {
+			code, err := queries.GenerateUniqueInviteCode(ctx)
+			if err != nil {
+				return fmt.Errorf("generate invite code: %w", err)
+			}
+
+			_, err = queries.CreateInviteCode(ctx, exedb.CreateInviteCodeParams{
+				Code:        code,
+				PlanType:    planType,
+				AssignedBy:  assignedBy,
+				AssignedFor: &assignedFor,
+				IsBatch:     true,
+			})
+			if err != nil {
+				return fmt.Errorf("create invite code: %w", err)
+			}
+
+			codes = append(codes, code)
+		}
+		return nil
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create bulk invite codes: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "bulk invite codes created via debug page",
+		"count", len(codes), "plan_type", planType,
+		"assigned_by", assignedBy, "assigned_for", assignedFor)
+
+	// Return JSON if requested (for programmatic access)
+	if r.Header.Get("Accept") == "application/json" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"codes": codes, "count": len(codes)})
+		return
+	}
+
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Codes       []string
+		PlanType    string
+		AssignedFor string
+	}{
+		Codes:       codes,
+		PlanType:    planType,
+		AssignedFor: assignedFor,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, "invite-bulk.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute invite-bulk template", "error", err)
+	}
 }
 
 // handleDebugAllInviteCodes displays all invite codes with giver and recipient emails.

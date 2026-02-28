@@ -82,9 +82,9 @@ func (q *Queries) CountUnusedInviteCodesForUser(ctx context.Context, assignedToU
 
 const createInviteCode = `-- name: CreateInviteCode :one
 
-INSERT INTO invite_codes (code, plan_type, assigned_to_user_id, assigned_by, assigned_for)
-VALUES (?, ?, ?, ?, ?)
-RETURNING id, code, plan_type, assigned_to_user_id, assigned_at, assigned_by, assigned_for, used_by_user_id, used_at, allocated_at
+INSERT INTO invite_codes (code, plan_type, assigned_to_user_id, assigned_by, assigned_for, is_batch)
+VALUES (?, ?, ?, ?, ?, ?)
+RETURNING id, code, plan_type, assigned_to_user_id, assigned_at, assigned_by, assigned_for, used_by_user_id, used_at, allocated_at, is_batch
 `
 
 type CreateInviteCodeParams struct {
@@ -93,6 +93,7 @@ type CreateInviteCodeParams struct {
 	AssignedToUserID *string `db:"assigned_to_user_id" json:"assigned_to_user_id"`
 	AssignedBy       string  `db:"assigned_by" json:"assigned_by"`
 	AssignedFor      *string `db:"assigned_for" json:"assigned_for"`
+	IsBatch          bool    `db:"is_batch" json:"is_batch"`
 }
 
 // Invite code management
@@ -104,6 +105,7 @@ func (q *Queries) CreateInviteCode(ctx context.Context, arg CreateInviteCodePara
 		arg.AssignedToUserID,
 		arg.AssignedBy,
 		arg.AssignedFor,
+		arg.IsBatch,
 	)
 	var i InviteCode
 	err := row.Scan(
@@ -117,6 +119,7 @@ func (q *Queries) CreateInviteCode(ctx context.Context, arg CreateInviteCodePara
 		&i.UsedByUserID,
 		&i.UsedAt,
 		&i.AllocatedAt,
+		&i.IsBatch,
 	)
 	return i, err
 }
@@ -136,7 +139,7 @@ func (q *Queries) DrawInviteCodeFromPool(ctx context.Context) (string, error) {
 }
 
 const getInviteCodeByCode = `-- name: GetInviteCodeByCode :one
-SELECT id, code, plan_type, assigned_to_user_id, assigned_at, assigned_by, assigned_for, used_by_user_id, used_at, allocated_at FROM invite_codes WHERE code = ?
+SELECT id, code, plan_type, assigned_to_user_id, assigned_at, assigned_by, assigned_for, used_by_user_id, used_at, allocated_at, is_batch FROM invite_codes WHERE code = ?
 `
 
 func (q *Queries) GetInviteCodeByCode(ctx context.Context, code string) (InviteCode, error) {
@@ -153,12 +156,13 @@ func (q *Queries) GetInviteCodeByCode(ctx context.Context, code string) (InviteC
 		&i.UsedByUserID,
 		&i.UsedAt,
 		&i.AllocatedAt,
+		&i.IsBatch,
 	)
 	return i, err
 }
 
 const getInviteCodeByID = `-- name: GetInviteCodeByID :one
-SELECT id, code, plan_type, assigned_to_user_id, assigned_at, assigned_by, assigned_for, used_by_user_id, used_at, allocated_at FROM invite_codes WHERE id = ?
+SELECT id, code, plan_type, assigned_to_user_id, assigned_at, assigned_by, assigned_for, used_by_user_id, used_at, allocated_at, is_batch FROM invite_codes WHERE id = ?
 `
 
 func (q *Queries) GetInviteCodeByID(ctx context.Context, id int64) (InviteCode, error) {
@@ -175,6 +179,7 @@ func (q *Queries) GetInviteCodeByID(ctx context.Context, id int64) (InviteCode, 
 		&i.UsedByUserID,
 		&i.UsedAt,
 		&i.AllocatedAt,
+		&i.IsBatch,
 	)
 	return i, err
 }
@@ -203,7 +208,7 @@ func (q *Queries) GetInviteCodeStatsForUser(ctx context.Context, assignedToUserI
 }
 
 const getNextUnallocatedInviteForUser = `-- name: GetNextUnallocatedInviteForUser :one
-SELECT id, code, plan_type, assigned_to_user_id, assigned_at, assigned_by, assigned_for, used_by_user_id, used_at, allocated_at FROM invite_codes
+SELECT id, code, plan_type, assigned_to_user_id, assigned_at, assigned_by, assigned_for, used_by_user_id, used_at, allocated_at, is_batch FROM invite_codes
 WHERE assigned_to_user_id = ? AND used_by_user_id IS NULL AND allocated_at IS NULL
 ORDER BY assigned_at ASC
 LIMIT 1
@@ -224,6 +229,7 @@ func (q *Queries) GetNextUnallocatedInviteForUser(ctx context.Context, assignedT
 		&i.UsedByUserID,
 		&i.UsedAt,
 		&i.AllocatedAt,
+		&i.IsBatch,
 	)
 	return i, err
 }
@@ -319,7 +325,7 @@ func (q *Queries) ListAllInviteCodesWithEmails(ctx context.Context) ([]ListAllIn
 }
 
 const listUnusedInviteCodesForUser = `-- name: ListUnusedInviteCodesForUser :many
-SELECT id, code, plan_type, assigned_to_user_id, assigned_at, assigned_by, assigned_for, used_by_user_id, used_at, allocated_at FROM invite_codes
+SELECT id, code, plan_type, assigned_to_user_id, assigned_at, assigned_by, assigned_for, used_by_user_id, used_at, allocated_at, is_batch FROM invite_codes
 WHERE assigned_to_user_id = ? AND used_by_user_id IS NULL
 ORDER BY assigned_at DESC
 `
@@ -345,6 +351,7 @@ func (q *Queries) ListUnusedInviteCodesForUser(ctx context.Context, assignedToUs
 			&i.UsedByUserID,
 			&i.UsedAt,
 			&i.AllocatedAt,
+			&i.IsBatch,
 		); err != nil {
 			return nil, err
 		}
@@ -360,12 +367,12 @@ func (q *Queries) ListUnusedInviteCodesForUser(ctx context.Context, assignedToUs
 }
 
 const listUnusedSystemInviteCodes = `-- name: ListUnusedSystemInviteCodes :many
-SELECT id, code, plan_type, assigned_to_user_id, assigned_at, assigned_by, assigned_for, used_by_user_id, used_at, allocated_at FROM invite_codes
-WHERE assigned_to_user_id IS NULL AND used_by_user_id IS NULL
+SELECT id, code, plan_type, assigned_to_user_id, assigned_at, assigned_by, assigned_for, used_by_user_id, used_at, allocated_at, is_batch FROM invite_codes
+WHERE assigned_to_user_id IS NULL AND used_by_user_id IS NULL AND is_batch = 0
 ORDER BY assigned_at DESC
 `
 
-// Lists all unused system invite codes (not assigned to any user)
+// Lists all unused system invite codes (not assigned to any user), excluding batch codes
 func (q *Queries) ListUnusedSystemInviteCodes(ctx context.Context) ([]InviteCode, error) {
 	rows, err := q.query(ctx, q.listUnusedSystemInviteCodesStmt, listUnusedSystemInviteCodes)
 	if err != nil {
@@ -386,6 +393,7 @@ func (q *Queries) ListUnusedSystemInviteCodes(ctx context.Context) ([]InviteCode
 			&i.UsedByUserID,
 			&i.UsedAt,
 			&i.AllocatedAt,
+			&i.IsBatch,
 		); err != nil {
 			return nil, err
 		}

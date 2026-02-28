@@ -3,7 +3,9 @@ package exedb
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 )
 
@@ -163,9 +165,11 @@ func (q *Queries) GenerateUniqueInviteCode(ctx context.Context) (string, error) 
 
 		// Check if code already exists
 		_, err := q.GetInviteCodeByCode(ctx, code)
-		if err != nil {
-			// sql.ErrNoRows means code doesn't exist, which is what we want
+		if errors.Is(err, sql.ErrNoRows) {
 			return code, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("checking invite code uniqueness: %w", err)
 		}
 		// Code exists, retry
 	}

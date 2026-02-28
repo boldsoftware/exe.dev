@@ -13,8 +13,8 @@ DELETE FROM invite_code_pool WHERE code = (
 
 -- name: CreateInviteCode :one
 -- Creates an invite code (drawn from pool beforehand)
-INSERT INTO invite_codes (code, plan_type, assigned_to_user_id, assigned_by, assigned_for)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO invite_codes (code, plan_type, assigned_to_user_id, assigned_by, assigned_for, is_batch)
+VALUES (?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetInviteCodeByCode :one
@@ -52,9 +52,9 @@ UPDATE invite_codes SET allocated_at = CURRENT_TIMESTAMP
 WHERE id = ? AND allocated_at IS NULL;
 
 -- name: ListUnusedSystemInviteCodes :many
--- Lists all unused system invite codes (not assigned to any user)
+-- Lists all unused system invite codes (not assigned to any user), excluding batch codes
 SELECT * FROM invite_codes
-WHERE assigned_to_user_id IS NULL AND used_by_user_id IS NULL
+WHERE assigned_to_user_id IS NULL AND used_by_user_id IS NULL AND is_batch = 0
 ORDER BY assigned_at DESC;
 
 -- name: CountUnallocatedInviteCodesByUser :many
