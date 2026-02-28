@@ -30,7 +30,7 @@ type Copy struct {
 
 	metrics *metrics
 
-	lg       *slog.Logger
+	lg *slog.Logger
 }
 
 // NewCopy creates a new execopy instance.
