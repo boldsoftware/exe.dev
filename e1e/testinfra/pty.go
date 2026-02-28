@@ -118,6 +118,17 @@ func (p *PTY) WantRE(re string) error {
 	return nil
 }
 
+// WantREMatch is like WantRE, but returns the raw output up to and including the match.
+func (p *PTY) WantREMatch(re string) (string, error) {
+	out, err := p.console.Expect(
+		expect.RegexpPattern(re),
+	)
+	if err != nil {
+		return "", fmt.Errorf("want %q match in output (%v), actual output\n%s", re, err, out)
+	}
+	return out, nil
+}
+
 // SetPrompt sets a prompt for WantPrompt.
 func (p *PTY) SetPrompt(prompt string) {
 	if p.promptRE != "" {
@@ -497,6 +508,16 @@ func (tp *TestPTY) WantRE(re string) {
 		tp.t.Helper()
 		tp.t.Fatal(err)
 	}
+}
+
+// WantREMatch is like WantRE, but returns the raw output up to and including the match.
+func (tp *TestPTY) WantREMatch(re string) string {
+	out, err := tp.pty.WantREMatch(re)
+	if err != nil {
+		tp.t.Helper()
+		tp.t.Fatal(err)
+	}
+	return out
 }
 
 // SetPrompt sets a prompt for WantPrompt.

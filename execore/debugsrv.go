@@ -4724,6 +4724,7 @@ func (s *Server) handleDebugTeamSetAuthProvider(w http.ResponseWriter, r *http.R
 
 // handleDebugTeamSetSSO configures an OIDC SSO provider for a team.
 // POST /debug/teams/set-sso with team_id, issuer_url, client_id, client_secret, display_name
+// Optional: auth_url, token_url, userinfo_url to skip OIDC discovery (for testing).
 func (s *Server) handleDebugTeamSetSSO(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -4738,11 +4739,23 @@ func (s *Server) handleDebugTeamSetSSO(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Run OIDC discovery to validate and cache endpoints
-	doc, err := oidcauth.TestConnectivity(ctx, issuerURL)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("OIDC discovery failed: %v", err), http.StatusBadRequest)
-		return
+	// If auth_url and token_url are provided directly, skip OIDC discovery.
+	authURL := r.FormValue("auth_url")
+	tokenURL := r.FormValue("token_url")
+	userinfoURL := r.FormValue("userinfo_url")
+	if authURL != "" && tokenURL != "" {
+		s.slog().InfoContext(ctx, "skipping OIDC discovery, using provided endpoints",
+			"auth_url", authURL, "token_url", tokenURL)
+	} else {
+		// Run OIDC discovery to validate and cache endpoints
+		doc, err := oidcauth.TestConnectivity(ctx, issuerURL)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("OIDC discovery failed: %v", err), http.StatusBadRequest)
+			return
+		}
+		authURL = doc.AuthorizationEndpoint
+		tokenURL = doc.TokenEndpoint
+		userinfoURL = doc.UserinfoEndpoint
 	}
 
 	var dnPtr *string
@@ -4763,9 +4776,9 @@ func (s *Server) handleDebugTeamSetSSO(w http.ResponseWriter, r *http.Request) {
 			ClientID:     clientID,
 			ClientSecret: clientSecret,
 			DisplayName:  dnPtr,
-			AuthUrl:      &doc.AuthorizationEndpoint,
-			TokenUrl:     &doc.TokenEndpoint,
-			UserinfoUrl:  &doc.UserinfoEndpoint,
+			AuthUrl:      &authURL,
+			TokenUrl:     &tokenURL,
+			UserinfoUrl:  &userinfoURL,
 			TeamID:       teamID,
 		})
 	} else {
@@ -4776,9 +4789,9 @@ func (s *Server) handleDebugTeamSetSSO(w http.ResponseWriter, r *http.Request) {
 			ClientID:     clientID,
 			ClientSecret: clientSecret,
 			DisplayName:  dnPtr,
-			AuthUrl:      &doc.AuthorizationEndpoint,
-			TokenUrl:     &doc.TokenEndpoint,
-			UserinfoUrl:  &doc.UserinfoEndpoint,
+			AuthUrl:      &authURL,
+			TokenUrl:     &tokenURL,
+			UserinfoUrl:  &userinfoURL,
 		})
 	}
 	if err != nil {

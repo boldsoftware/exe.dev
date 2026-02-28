@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -219,6 +220,15 @@ func GenerateState() (string, error) {
 	return base64.URLEncoding.EncodeToString(stateBytes), nil
 }
 
+// isLoopback returns whether the given hostname is a loopback address.
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // TestConnectivity verifies that the OIDC provider is reachable and properly configured.
 // It runs discovery and validates the required endpoints are present.
 func TestConnectivity(ctx context.Context, issuerURL string) (*DiscoveryDoc, error) {
@@ -234,7 +244,7 @@ func TestConnectivity(ctx context.Context, issuerURL string) (*DiscoveryDoc, err
 		return nil, fmt.Errorf("issuer mismatch: expected %q, got %q", normalizedIssuer, doc.Issuer)
 	}
 
-	// Validate URLs are HTTPS
+	// Validate URLs are HTTPS (exempt loopback addresses per RFC 8252 §8.3).
 	for _, u := range []struct{ name, val string }{
 		{"authorization_endpoint", doc.AuthorizationEndpoint},
 		{"token_endpoint", doc.TokenEndpoint},
@@ -243,7 +253,7 @@ func TestConnectivity(ctx context.Context, issuerURL string) (*DiscoveryDoc, err
 		if err != nil {
 			return nil, fmt.Errorf("invalid %s URL: %w", u.name, err)
 		}
-		if parsed.Scheme != "https" {
+		if parsed.Scheme != "https" && !isLoopback(parsed.Hostname()) {
 			return nil, fmt.Errorf("%s must use HTTPS, got %q", u.name, u.val)
 		}
 	}

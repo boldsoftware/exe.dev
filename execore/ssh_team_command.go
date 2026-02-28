@@ -47,6 +47,15 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 				HasPositionalArgs: true,
 				Available:         ss.isTeamOwner,
 			},
+			{
+				Name:        "auth",
+				Description: "View and manage team auth settings",
+				Usage:       "team auth",
+				Handler:     ss.handleTeamAuthCommand,
+				FlagSetFunc: jsonOnlyFlags("team-auth"),
+				Available:   ss.isTeamOwner,
+				Subcommands: ss.teamAuthSubcommands(),
+			},
 			// Root-only commands below
 			{
 				Name:              "create",
