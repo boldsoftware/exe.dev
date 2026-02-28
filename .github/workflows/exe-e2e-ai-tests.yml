@@ -27,6 +27,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
       - name: Download exelet-fs
         run: make exelet-fs
 
@@ -71,9 +74,6 @@ jobs:
         run: |
           docker run --rm --entrypoint "bash" chromedp/headless-shell -c "tar -cvf - /headless-shell/" | tar -xf-
           echo "$PWD/headless-shell" >> $GITHUB_PATH
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
 
       - name: Run e2e AI tests via e1e framework
         id: run-e2e

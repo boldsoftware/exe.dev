@@ -49,18 +49,18 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      - name: Download exelet-fs
-        run: make exelet-fs
-
-      - name: Build exe-init
-        run: make exe-init
-
       - name: Install uv
         run: |
           if ! command -v uv >/dev/null 2>&1; then
             ./bin/retry.sh bash -c 'set -o pipefail; curl -LsSf https://astral.sh/uv/install.sh | sh'
             echo "$HOME/.local/bin" >> $GITHUB_PATH
           fi
+
+      - name: Download exelet-fs
+        run: make exelet-fs
+
+      - name: Build exe-init
+        run: make exe-init
 
       - name: Install Claude Code
         run: |
