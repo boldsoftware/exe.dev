@@ -53,6 +53,7 @@ receivers:
             - targets: ["exed-staging-01:30303"]
               labels:
                 stage: 'staging'
+		rold: 'exed'
           metrics_path: '/metrics'
 
         - job_name: 'metricsd-staging'
@@ -175,6 +176,19 @@ receivers:
             - targets: ["exed-02:30303"]
               labels:
                 stage: 'production'
+                rold: 'exed'
+	    - targets:
+	      - 'exeprox-lax2-prod-01:30303'
+	      - 'exeprox-dal-prod-01:30303'
+	      - 'exeprox-fra2-prod-01:30303'
+	      - 'exeprox-lon2-prod-01:30303'
+	      - 'exeprox-nyc-prod-01:30303'
+	      - 'exeprox-sjc2-prod-01:30303'
+	      - 'exeprox-syd2-prod-01:30303'
+	      - 'exeprox-tyo4-prod-01:30303'
+	      labels:
+		stage: 'production'
+		role: 'exeprox'
           metrics_path: '/metrics'
 
         - job_name: 'exelet-production'
