@@ -1,8 +1,8 @@
 [Unit]
 Description=SSH Piper Proxy Server
 Documentation=https://github.com/tg123/sshpiper
-After=network.target
-Wants=network-online.target
+After=network.target tailscaled.service
+Wants=network-online.target tailscaled.service
 
 [Service]
 Type=exec

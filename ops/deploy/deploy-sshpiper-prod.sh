@@ -5,6 +5,17 @@
 
 set -e
 
+# Check for machine name parameter
+if [ $# -lt 1 ] || [ -z "$1" ] || [[ "$1" == -* ]]; then
+    echo "ERROR: Machine name must be specified" >&2
+    echo "Usage: $0 <machine-name> [-f]" >&2
+    echo "Example: $0 exe-ctr-03" >&2
+    exit 1
+fi
+
+INSTANCE_NAME="$1"
+shift
+
 # Require Slack bot token for production deployments
 if [ -z "$EXE_SLACK_BOT_TOKEN" ]; then
     echo "ERROR: EXE_SLACK_BOT_TOKEN is not set. Production deployments require Slack notifications." >&2
@@ -28,8 +39,6 @@ cleanup_notify() {
     fi
 }
 trap cleanup_notify EXIT
-
-INSTANCE_NAME="exed-02"
 
 # Colors for output
 RED='\033[0;31m'
