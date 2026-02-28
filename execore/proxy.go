@@ -437,3 +437,8 @@ func (pd *proxyData) SendEmail(ctx context.Context, emailType email.Type, to, su
 func (pd *proxyData) CheckAndDebitVMEmailCredit(ctx context.Context, boxID int) error {
 	return pd.s.checkAndDebitVMEmailCredit(ctx, int64(boxID))
 }
+
+// ValidateAppToken implements [exeweb.ProxyData.ValidateAppToken].
+func (pd *proxyData) ValidateAppToken(ctx context.Context, token string) (string, error) {
+	return pd.s.validateAppToken(ctx, token)
+}

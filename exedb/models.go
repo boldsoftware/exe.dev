@@ -21,6 +21,15 @@ type Account struct {
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 }
 
+type AppToken struct {
+	Token      string     `db:"token" json:"token"`
+	UserID     string     `db:"user_id" json:"user_id"`
+	Name       string     `db:"name" json:"name"`
+	ExpiresAt  time.Time  `db:"expires_at" json:"expires_at"`
+	CreatedAt  *time.Time `db:"created_at" json:"created_at"`
+	LastUsedAt *time.Time `db:"last_used_at" json:"last_used_at"`
+}
+
 type AuthCookie struct {
 	CookieValue string     `db:"cookie_value" json:"cookie_value"`
 	UserID      string     `db:"user_id" json:"user_id"`
@@ -171,6 +180,8 @@ type EmailVerification struct {
 	IsNewUser        bool       `db:"is_new_user" json:"is_new_user"`
 	RedirectUrl      *string    `db:"redirect_url" json:"redirect_url"`
 	ReturnHost       *string    `db:"return_host" json:"return_host"`
+	ResponseMode     *string    `db:"response_mode" json:"response_mode"`
+	CallbackUri      *string    `db:"callback_uri" json:"callback_uri"`
 }
 
 type HllSketch struct {
@@ -245,6 +256,8 @@ type OauthState struct {
 	CreatedAt            *time.Time `db:"created_at" json:"created_at"`
 	ExpiresAt            time.Time  `db:"expires_at" json:"expires_at"`
 	SsoProviderID        *int64     `db:"sso_provider_id" json:"sso_provider_id"`
+	ResponseMode         *string    `db:"response_mode" json:"response_mode"`
+	CallbackUri          *string    `db:"callback_uri" json:"callback_uri"`
 }
 
 type Passkey struct {

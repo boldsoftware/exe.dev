@@ -505,6 +505,8 @@ type authFormData struct {
 	TeamInvite        string // team invite token (passed as hidden field)
 	TeamInviteName    string // team display name (shown in UI)
 	TeamInviteEmail   string // email from the invite (pre-fills input)
+	ResponseMode      string // app_token for iOS auth flow
+	CallbackURI       string // custom scheme callback URI for app_token flow
 }
 
 // sseEvent writes a named SSE event with data

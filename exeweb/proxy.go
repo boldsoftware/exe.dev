@@ -570,8 +570,13 @@ func (ps *ProxyServer) GetProxyAuth(r *http.Request, boxName string) *ProxyAuthR
 	// 1. Try Bearer token auth.
 	// RFC 7235: auth scheme is case-insensitive.
 	if auth := r.Header.Get("Authorization"); len(auth) >= len("Bearer ") && strings.EqualFold(auth[:len("Bearer ")], "Bearer ") {
-		token := auth[len("Bearer "):]
-		if result := ps.ValidateVMToken(r.Context(), token, boxName); result != nil {
+		token := strings.TrimSpace(auth[len("Bearer "):])
+		// Try app token first (exeapp_ prefix), then SSH-signed token.
+		if strings.HasPrefix(token, AppTokenPrefix) {
+			if result := ps.ValidateAppTokenForProxy(r.Context(), token); result != nil {
+				return result
+			}
+		} else if result := ps.ValidateVMToken(r.Context(), token, boxName); result != nil {
 			return result
 		}
 	}
@@ -579,7 +584,11 @@ func (ps *ProxyServer) GetProxyAuth(r *http.Request, boxName string) *ProxyAuthR
 	// 2. Try Basic auth (password is the token, username is ignored).
 	// This supports git HTTPS and other tools that use basic auth.
 	if _, password, ok := r.BasicAuth(); ok {
-		if result := ps.ValidateVMToken(r.Context(), password, boxName); result != nil {
+		if strings.HasPrefix(password, AppTokenPrefix) {
+			if result := ps.ValidateAppTokenForProxy(r.Context(), password); result != nil {
+				return result
+			}
+		} else if result := ps.ValidateVMToken(r.Context(), password, boxName); result != nil {
 			return result
 		}
 	}
@@ -590,6 +599,21 @@ func (ps *ProxyServer) GetProxyAuth(r *http.Request, boxName string) *ProxyAuthR
 	}
 
 	return nil
+}
+
+// ValidateAppTokenForProxy validates an app token for proxy access.
+// Returns the auth result if valid, nil otherwise.
+func (ps *ProxyServer) ValidateAppTokenForProxy(ctx context.Context, token string) *ProxyAuthResult {
+	validator, ok := ps.Data.(AppTokenValidator)
+	if !ok {
+		return nil
+	}
+	userID, err := validator.ValidateAppToken(ctx, token)
+	if err != nil {
+		ps.Lg.DebugContext(ctx, "app token validation failed", "error", err)
+		return nil
+	}
+	return &ProxyAuthResult{UserID: userID}
 }
 
 // ValidateVMToken validates a token for VM access.

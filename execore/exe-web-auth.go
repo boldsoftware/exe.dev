@@ -158,6 +158,12 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			}
 		}
 
+		// Check for app token flow (iOS/native app authentication).
+		appFlow := appTokenFlowFromEmailVerification(emailVerif)
+		if s.completeAuthWithAppToken(w, r, verifiedUserID, appFlow, isNewUser) {
+			return
+		}
+
 		// Create HTTP auth cookie for this user
 		cookieValue, err := s.createAuthCookie(context.WithoutCancel(r.Context()), verifiedUserID, r.Host)
 		if err != nil {
@@ -785,9 +791,21 @@ func (s *Server) createAuthCookie(ctx context.Context, userID, domain string) (s
 	return cookieValue, nil
 }
 
-// validateAuthCookie validates the primary authentication cookie and returns the user_id
+// validateAuthCookie validates the primary authentication cookie and returns the user_id.
+// It also accepts app tokens via the Authorization: Bearer header.
 func (s *Server) validateAuthCookie(r *http.Request) (string, error) {
-	return s.proxyServer().ValidateAuthCookie(r)
+	// Try cookie first.
+	if userID, err := s.proxyServer().ValidateAuthCookie(r); err == nil {
+		return userID, nil
+	}
+	// Fall back to app token in Authorization header.
+	if auth := r.Header.Get("Authorization"); len(auth) > len("Bearer ") && strings.EqualFold(auth[:len("Bearer ")], "Bearer ") {
+		token := strings.TrimSpace(auth[len("Bearer "):])
+		if strings.HasPrefix(token, AppTokenPrefix) {
+			return s.validateAppToken(r.Context(), token)
+		}
+	}
+	return "", http.ErrNoCookie
 }
 
 // validateProxyAuthCookie validates the proxy authentication cookie and returns the user_id.
@@ -1160,8 +1178,21 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 
 // handleAuth handles the main domain authentication flow
 func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
+	// Validate app token flow params early, before any auth happens.
+	flow := parseAppTokenFlowParams(r)
+	if flow.isAppTokenFlow() {
+		if err := validateCallbackURI(flow.CallbackURI); err != nil {
+			s.showAuthError(w, r, err.Error(), "")
+			return
+		}
+	}
+
 	// Check if user already has a valid exe.dev auth cookie
 	if userID, err := s.validateAuthCookie(r); err == nil {
+		// If this is an app token flow and user is already authed, issue token directly.
+		if s.completeAuthWithAppToken(w, r, userID, flow, false) {
+			return
+		}
 		// User is already authenticated, handle redirect
 		s.redirectAfterAuth(w, r, userID)
 		return
@@ -1225,6 +1256,8 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		TeamInvite:        teamInviteToken,
 		TeamInviteName:    teamInviteName,
 		TeamInviteEmail:   teamInviteEmail,
+		ResponseMode:      flow.ResponseMode,
+		CallbackURI:       flow.CallbackURI,
 	}
 	s.renderTemplate(r.Context(), w, "auth-form.html", data)
 }
@@ -1276,6 +1309,8 @@ func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, ema
 		Prompt        string
 		Image         string
 		TeamInvite    string
+		ResponseMode  string
+		CallbackURI   string
 	}{
 		Env:           s.env,
 		Email:         email,
@@ -1289,6 +1324,8 @@ func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, ema
 		Prompt:        r.FormValue("prompt"),
 		Image:         r.FormValue("image"),
 		TeamInvite:    r.FormValue("team_invite"),
+		ResponseMode:  r.FormValue("response_mode"),
+		CallbackURI:   r.FormValue("callback_uri"),
 	}
 	s.renderTemplate(r.Context(), w, "auth-pow.html", data)
 }
@@ -1442,6 +1479,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 			hostname:        hostname,
 			prompt:          prompt,
 			image:           image,
+			appTokenFlow:    parseAppTokenFlowParams(r),
 		}
 		s.startGoogleOAuth(w, r, params)
 		return
@@ -1461,6 +1499,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 			hostname:        hostname,
 			prompt:          prompt,
 			image:           image,
+			appTokenFlow:    parseAppTokenFlowParams(r),
 		}
 		s.startTeamOIDC(w, r, params, oidcProvider)
 		return
@@ -1510,6 +1549,14 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 	if returnHost != "" {
 		insertParams.ReturnHost = &returnHost
+	}
+	// Thread app token flow params through the email verification.
+	appFlow := parseAppTokenFlowParams(r)
+	if appFlow.ResponseMode != "" {
+		insertParams.ResponseMode = &appFlow.ResponseMode
+	}
+	if appFlow.CallbackURI != "" {
+		insertParams.CallbackUri = &appFlow.CallbackURI
 	}
 	err = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).InsertEmailVerification, insertParams)
 	if err != nil {

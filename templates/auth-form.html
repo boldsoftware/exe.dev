@@ -50,6 +50,12 @@
       {{if .TeamInvite}}
       <input type="hidden" name="team_invite" value="{{.TeamInvite}}">
       {{end}}
+      {{if .ResponseMode}}
+      <input type="hidden" name="response_mode" value="{{.ResponseMode}}">
+      {{end}}
+      {{if .CallbackURI}}
+      <input type="hidden" name="callback_uri" value="{{.CallbackURI}}">
+      {{end}}
       <input type="email" name="email" placeholder="you@example.com" required autofocus
         {{if .TeamInviteEmail}}value="{{.TeamInviteEmail}}"{{end}}
         autocomplete="username webauthn" autocorrect="on" autocapitalize="none" spellcheck="true"
@@ -70,10 +76,15 @@
   <script src="/static/passkey.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', async function() {
+      // Extra params for app token flow (iOS native app authentication).
+      const passkeyExtra = {};
+      {{if .ResponseMode}}passkeyExtra.response_mode = "{{.ResponseMode}}";{{end}}
+      {{if .CallbackURI}}passkeyExtra.callback_uri = "{{.CallbackURI}}";{{end}}
+
       if (passkey.isSupported()) {
         if (await passkey.isConditionalUISupported()) {
           // Browser has native passkey autofill UI, use that instead of showing our button
-          passkey.startConditionalAuth().catch(function(err) {
+          passkey.startConditionalAuth(null, passkeyExtra).catch(function(err) {
             // NotAllowedError happens if user dismisses the autofill or clicks the button instead
             if (err.name !== 'NotAllowedError') {
               // Some browsers report conditional UI support but don't actually support resident credentials
@@ -103,7 +114,7 @@
       btn.textContent = 'Authenticating...';
 
       try {
-        await passkey.authenticate();
+        await passkey.authenticate(null, null, passkeyExtra);
       } catch (err) {
         errorEl.textContent = err.message;
         errorEl.style.display = 'block';

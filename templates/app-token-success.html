@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{if .IsWelcome}}Welcome{{else}}Signed in{{end}} - {{.WebHost}}</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style type="text/tailwindcss">
+    @theme {
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    }
+  </style>
+</head>
+<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
+  <main class="w-full max-w-2xl">
+    <p class="text-zinc-500 mb-4">{{.Email}}</p>
+    <p class="text-6xl font-semibold tracking-widest">{{if .IsWelcome}}WELCOME{{else}}SIGNED IN{{end}}</p>
+    <p id="passkey-status" class="text-zinc-500 text-sm mt-8"></p>
+    <p id="skip" class="mt-4" style="display: none;">
+      <a href="#" onclick="finish(); return false;" class="text-zinc-400 hover:text-zinc-900 text-sm underline underline-offset-2">Continue to app</a>
+    </p>
+  </main>
+  <script src="/static/passkey.js"></script>
+  <script>
+    const callbackURL = "{{.CallbackURL}}";
+    let done = false;
+
+    function finish() {
+      if (done) return;
+      done = true;
+      document.getElementById('passkey-status').textContent = 'Returning to app...';
+      document.getElementById('skip').style.display = 'none';
+      window.location.href = callbackURL;
+    }
+
+    // Safety net: if nothing has happened after 15s, show the skip link
+    // and redirect after 20s. Handles cases where WebAuthn never resolves.
+    setTimeout(function() {
+      if (!done) document.getElementById('skip').style.display = 'block';
+    }, 15000);
+    setTimeout(function() {
+      if (!done) finish();
+    }, 20000);
+
+    document.addEventListener('DOMContentLoaded', async function() {
+      const status = document.getElementById('passkey-status');
+
+      if (!passkey.isSupported()) {
+        finish();
+        return;
+      }
+
+      try {
+        const name = passkey.getDefaultName();
+        status.textContent = 'Setting up passkey...';
+        await passkey.register(name);
+        status.textContent = 'Passkey added!';
+        status.classList.replace('text-zinc-500', 'text-green-600');
+        setTimeout(finish, 800);
+      } catch (err) {
+        // User cancelled or passkey creation failed — either way, move on.
+        finish();
+      }
+    });
+  </script>
+</body>
+</html>

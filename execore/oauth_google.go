@@ -116,6 +116,12 @@ func (s *Server) insertOAuthState(ctx context.Context, state string, params oaut
 		insertParams.Image = &params.image
 	}
 	insertParams.SsoProviderID = params.ssoProviderID
+	if params.appTokenFlow.ResponseMode != "" {
+		insertParams.ResponseMode = &params.appTokenFlow.ResponseMode
+	}
+	if params.appTokenFlow.CallbackURI != "" {
+		insertParams.CallbackUri = &params.appTokenFlow.CallbackURI
+	}
 	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		_ = queries.CleanupExpiredOAuthStates(ctx, time.Now())
 		return queries.InsertOAuthState(ctx, insertParams)
@@ -259,6 +265,12 @@ func (s *Server) handleGoogleOAuthNewUser(w http.ResponseWriter, r *http.Request
 		s.slog().ErrorContext(ctx, "failed to resolve pending team invites", "error", err)
 	}
 
+	// Check for app token flow (iOS/native app authentication).
+	appFlow := appTokenFlowFromOAuthState(oauthState)
+	if s.completeAuthWithAppToken(w, r, userID, appFlow, true) {
+		return
+	}
+
 	// Set auth cookie and show welcome page with passkey prompt.
 	cookieValue, err := s.createAuthCookie(context.WithoutCancel(ctx), userID, r.Host)
 	if err != nil {
@@ -331,6 +343,12 @@ func (s *Server) handleGoogleOAuthExistingUser(w http.ResponseWriter, r *http.Re
 // finishOAuthWebLogin creates an auth cookie and handles post-login redirect.
 func (s *Server) finishOAuthWebLogin(w http.ResponseWriter, r *http.Request, userID string, oauthState exedb.OauthState) {
 	ctx := r.Context()
+
+	// Check for app token flow (iOS/native app authentication).
+	appFlow := appTokenFlowFromOAuthState(oauthState)
+	if s.completeAuthWithAppToken(w, r, userID, appFlow, false) {
+		return
+	}
 
 	cookieValue, err := s.createAuthCookie(context.WithoutCancel(ctx), userID, r.Host)
 	if err != nil {
@@ -512,6 +530,7 @@ type oauthStartParams struct {
 	prompt               string
 	image                string
 	ssoProviderID        *int64
+	appTokenFlow         appTokenFlowParams
 }
 
 // addSSHKeyForUser adds an SSH key for an existing user (used during Google OAuth SSH flow).

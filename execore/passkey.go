@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -475,6 +476,37 @@ func (s *Server) handlePasskeyLoginFinish(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		s.slog().ErrorContext(ctx, "Failed to update passkey", "error", err)
 		// Don't fail the login for this
+	}
+
+	// Check for app token flow (iOS/native app authentication).
+	// For passkey login, the flow params come from query parameters set by the login page JS.
+	flow := parseAppTokenFlowParams(r)
+	if flow.isAppTokenFlow() {
+		if err := validateCallbackURI(flow.CallbackURI); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		tokenValue, err := s.createAppToken(context.WithoutCancel(ctx), passkey.UserID)
+		if err != nil {
+			s.slog().ErrorContext(ctx, "failed to create app token during passkey login", "error", err)
+			http.Error(w, "Failed to create app token", http.StatusInternalServerError)
+			return
+		}
+		callbackURL, err := url.Parse(flow.CallbackURI)
+		if err != nil {
+			s.slog().ErrorContext(ctx, "failed to parse callback_uri in passkey login", "error", err, "callback_uri", flow.CallbackURI)
+			http.Error(w, "Invalid callback_uri", http.StatusBadRequest)
+			return
+		}
+		q := callbackURL.Query()
+		q.Set("token", tokenValue)
+		callbackURL.RawQuery = q.Encode()
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok", "redirect": callbackURL.String()}); err != nil {
+			s.slog().ErrorContext(ctx, "failed to encode passkey app token response", "error", err)
+		}
+		return
 	}
 
 	// Create an auth cookie for the user

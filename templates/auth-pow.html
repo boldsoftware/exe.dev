@@ -47,6 +47,12 @@
       {{if .TeamInvite}}
       <input type="hidden" name="team_invite" value="{{.TeamInvite}}">
       {{end}}
+      {{if .ResponseMode}}
+      <input type="hidden" name="response_mode" value="{{.ResponseMode}}">
+      {{end}}
+      {{if .CallbackURI}}
+      <input type="hidden" name="callback_uri" value="{{.CallbackURI}}">
+      {{end}}
     </form>
     <p id="status" class="text-zinc-400 text-sm">Please wait...</p>
   </main>

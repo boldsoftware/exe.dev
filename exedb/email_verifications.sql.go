@@ -34,7 +34,7 @@ func (q *Queries) GetEmailVerificationByPartialToken(ctx context.Context, token 
 }
 
 const getEmailVerificationByToken = `-- name: GetEmailVerificationByToken :one
-SELECT token, email, user_id, expires_at, created_at, verification_code, invite_code_id, is_new_user, redirect_url, return_host FROM email_verifications
+SELECT token, email, user_id, expires_at, created_at, verification_code, invite_code_id, is_new_user, redirect_url, return_host, response_mode, callback_uri FROM email_verifications
 WHERE token = ?
 `
 
@@ -52,13 +52,15 @@ func (q *Queries) GetEmailVerificationByToken(ctx context.Context, token string)
 		&i.IsNewUser,
 		&i.RedirectUrl,
 		&i.ReturnHost,
+		&i.ResponseMode,
+		&i.CallbackUri,
 	)
 	return i, err
 }
 
 const insertEmailVerification = `-- name: InsertEmailVerification :exec
-INSERT INTO email_verifications (token, email, user_id, expires_at, verification_code, invite_code_id, is_new_user, redirect_url, return_host)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO email_verifications (token, email, user_id, expires_at, verification_code, invite_code_id, is_new_user, redirect_url, return_host, response_mode, callback_uri)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertEmailVerificationParams struct {
@@ -71,6 +73,8 @@ type InsertEmailVerificationParams struct {
 	IsNewUser        bool      `db:"is_new_user" json:"is_new_user"`
 	RedirectUrl      *string   `db:"redirect_url" json:"redirect_url"`
 	ReturnHost       *string   `db:"return_host" json:"return_host"`
+	ResponseMode     *string   `db:"response_mode" json:"response_mode"`
+	CallbackUri      *string   `db:"callback_uri" json:"callback_uri"`
 }
 
 func (q *Queries) InsertEmailVerification(ctx context.Context, arg InsertEmailVerificationParams) error {
@@ -84,13 +88,15 @@ func (q *Queries) InsertEmailVerification(ctx context.Context, arg InsertEmailVe
 		arg.IsNewUser,
 		arg.RedirectUrl,
 		arg.ReturnHost,
+		arg.ResponseMode,
+		arg.CallbackUri,
 	)
 	return err
 }
 
 const insertOrReplaceEmailVerification = `-- name: InsertOrReplaceEmailVerification :exec
-INSERT OR REPLACE INTO email_verifications (token, user_id, email, expires_at, verification_code, invite_code_id, redirect_url, return_host)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT OR REPLACE INTO email_verifications (token, user_id, email, expires_at, verification_code, invite_code_id, redirect_url, return_host, response_mode, callback_uri)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertOrReplaceEmailVerificationParams struct {
@@ -102,6 +108,8 @@ type InsertOrReplaceEmailVerificationParams struct {
 	InviteCodeID     *int64    `db:"invite_code_id" json:"invite_code_id"`
 	RedirectUrl      *string   `db:"redirect_url" json:"redirect_url"`
 	ReturnHost       *string   `db:"return_host" json:"return_host"`
+	ResponseMode     *string   `db:"response_mode" json:"response_mode"`
+	CallbackUri      *string   `db:"callback_uri" json:"callback_uri"`
 }
 
 func (q *Queries) InsertOrReplaceEmailVerification(ctx context.Context, arg InsertOrReplaceEmailVerificationParams) error {
@@ -114,6 +122,8 @@ func (q *Queries) InsertOrReplaceEmailVerification(ctx context.Context, arg Inse
 		arg.InviteCodeID,
 		arg.RedirectUrl,
 		arg.ReturnHost,
+		arg.ResponseMode,
+		arg.CallbackUri,
 	)
 	return err
 }

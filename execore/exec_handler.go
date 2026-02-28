@@ -68,28 +68,56 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		execJSONError(w, "missing or invalid Authorization header", http.StatusUnauthorized)
 		return
 	}
-	token := auth[len(bearerPrefix):]
+	token := strings.TrimSpace(auth[len(bearerPrefix):])
 
-	// Validate the token.
 	ctx := r.Context()
-	result, err := s.validateToken(ctx, token, "v0@"+s.env.WebHost)
-	if err != nil {
-		w.Header().Set("WWW-Authenticate", "Bearer")
-		execJSONError(w, err.Error(), http.StatusUnauthorized)
-		return
+
+	// Authenticate: try app token first, then SSH-signed token.
+	var userID, userEmail, rateLimitKey string
+	var tokenCmds []string
+	var skipCmdCheck bool
+
+	if strings.HasPrefix(token, AppTokenPrefix) {
+		// App token authentication.
+		appUserID, err := s.validateAppToken(ctx, token)
+		if err != nil {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			execJSONError(w, "invalid token", http.StatusUnauthorized)
+			return
+		}
+		user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, appUserID)
+		if err != nil {
+			s.slog().ErrorContext(ctx, "failed to get user details", "error", err, "user_id", appUserID)
+			execJSONError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		userID = appUserID
+		userEmail = user.Email
+		rateLimitKey = "apptoken:" + appUserID
+		skipCmdCheck = true // app tokens have no cmd restrictions
+	} else {
+		// SSH-signed token authentication.
+		result, err := s.validateToken(ctx, token, "v0@"+s.env.WebHost)
+		if err != nil {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			execJSONError(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+		user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, result.UserID)
+		if err != nil {
+			s.slog().ErrorContext(ctx, "failed to get user details", "error", err, "user_id", result.UserID)
+			execJSONError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		userID = result.UserID
+		userEmail = user.Email
+		rateLimitKey = result.Fingerprint
+		tokenCmds = result.Cmds
 	}
 
-	// Rate limit by SSH key fingerprint.
-	if !s.execLimiter.Allow(result.Fingerprint) {
+	// Rate limit.
+	if !s.execLimiter.Allow(rateLimitKey) {
 		execJSONError(w, "rate limit exceeded", http.StatusTooManyRequests)
-		return
-	}
-
-	// Get user details for CommandContext.
-	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, result.UserID)
-	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to get user details", "error", err, "user_id", result.UserID)
-		execJSONError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
@@ -135,14 +163,14 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		execJSONError(w, "unknown command", http.StatusNotFound)
 		return
 	}
-	if !tokenCmdsAllow(result.Cmds, resolvedCmd) {
+	if !skipCmdCheck && !tokenCmdsAllow(tokenCmds, resolvedCmd) {
 		execJSONError(w, "command not allowed by token permissions", http.StatusForbidden)
 		return
 	}
 
 	var outputBuf bytes.Buffer
 	cc := &exemenu.CommandContext{
-		User:      &exemenu.UserInfo{ID: result.UserID, Email: user.Email},
+		User:      &exemenu.UserInfo{ID: userID, Email: userEmail},
 		Output:    exemenu.NewANSIFilterWriter(&outputBuf),
 		Logger:    s.slog(),
 		ForceJSON: true,

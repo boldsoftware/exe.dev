@@ -48,6 +48,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.boxesForUserStmt, err = db.PrepareContext(ctx, boxesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query BoxesForUser: %w", err)
 	}
+	if q.cleanupExpiredAppTokensStmt, err = db.PrepareContext(ctx, cleanupExpiredAppTokens); err != nil {
+		return nil, fmt.Errorf("error preparing query CleanupExpiredAppTokens: %w", err)
+	}
 	if q.cleanupExpiredOAuthStatesStmt, err = db.PrepareContext(ctx, cleanupExpiredOAuthStates); err != nil {
 		return nil, fmt.Errorf("error preparing query CleanupExpiredOAuthStates: %w", err)
 	}
@@ -128,6 +131,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteAccountsByUserIDStmt, err = db.PrepareContext(ctx, deleteAccountsByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAccountsByUserID: %w", err)
+	}
+	if q.deleteAppTokenStmt, err = db.PrepareContext(ctx, deleteAppToken); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteAppToken: %w", err)
+	}
+	if q.deleteAppTokensByUserIDStmt, err = db.PrepareContext(ctx, deleteAppTokensByUserID); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteAppTokensByUserID: %w", err)
 	}
 	if q.deleteAuthCookieStmt, err = db.PrepareContext(ctx, deleteAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAuthCookie: %w", err)
@@ -242,6 +251,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getAndIncrementNextSSHKeyNumberStmt, err = db.PrepareContext(ctx, getAndIncrementNextSSHKeyNumber); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAndIncrementNextSSHKeyNumber: %w", err)
+	}
+	if q.getAppTokenInfoStmt, err = db.PrepareContext(ctx, getAppTokenInfo); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAppTokenInfo: %w", err)
+	}
+	if q.getAppTokensByUserIDStmt, err = db.PrepareContext(ctx, getAppTokensByUserID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAppTokensByUserID: %w", err)
 	}
 	if q.getApprovedTemplateByShortnameStmt, err = db.PrepareContext(ctx, getApprovedTemplateByShortname); err != nil {
 		return nil, fmt.Errorf("error preparing query GetApprovedTemplateByShortname: %w", err)
@@ -564,6 +579,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertAccountStmt, err = db.PrepareContext(ctx, insertAccount); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAccount: %w", err)
 	}
+	if q.insertAppTokenStmt, err = db.PrepareContext(ctx, insertAppToken); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertAppToken: %w", err)
+	}
 	if q.insertAuthCookieStmt, err = db.PrepareContext(ctx, insertAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAuthCookie: %w", err)
 	}
@@ -798,6 +816,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.syncCreditLedgerStmt, err = db.PrepareContext(ctx, syncCreditLedger); err != nil {
 		return nil, fmt.Errorf("error preparing query SyncCreditLedger: %w", err)
 	}
+	if q.updateAppTokenLastUsedStmt, err = db.PrepareContext(ctx, updateAppTokenLastUsed); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateAppTokenLastUsed: %w", err)
+	}
 	if q.updateAuthCookieLastUsedStmt, err = db.PrepareContext(ctx, updateAuthCookieLastUsed); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateAuthCookieLastUsed: %w", err)
 	}
@@ -951,6 +972,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing boxesForUserStmt: %w", cerr)
 		}
 	}
+	if q.cleanupExpiredAppTokensStmt != nil {
+		if cerr := q.cleanupExpiredAppTokensStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing cleanupExpiredAppTokensStmt: %w", cerr)
+		}
+	}
 	if q.cleanupExpiredOAuthStatesStmt != nil {
 		if cerr := q.cleanupExpiredOAuthStatesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing cleanupExpiredOAuthStatesStmt: %w", cerr)
@@ -1084,6 +1110,16 @@ func (q *Queries) Close() error {
 	if q.deleteAccountsByUserIDStmt != nil {
 		if cerr := q.deleteAccountsByUserIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteAccountsByUserIDStmt: %w", cerr)
+		}
+	}
+	if q.deleteAppTokenStmt != nil {
+		if cerr := q.deleteAppTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteAppTokenStmt: %w", cerr)
+		}
+	}
+	if q.deleteAppTokensByUserIDStmt != nil {
+		if cerr := q.deleteAppTokensByUserIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteAppTokensByUserIDStmt: %w", cerr)
 		}
 	}
 	if q.deleteAuthCookieStmt != nil {
@@ -1274,6 +1310,16 @@ func (q *Queries) Close() error {
 	if q.getAndIncrementNextSSHKeyNumberStmt != nil {
 		if cerr := q.getAndIncrementNextSSHKeyNumberStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAndIncrementNextSSHKeyNumberStmt: %w", cerr)
+		}
+	}
+	if q.getAppTokenInfoStmt != nil {
+		if cerr := q.getAppTokenInfoStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAppTokenInfoStmt: %w", cerr)
+		}
+	}
+	if q.getAppTokensByUserIDStmt != nil {
+		if cerr := q.getAppTokensByUserIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAppTokensByUserIDStmt: %w", cerr)
 		}
 	}
 	if q.getApprovedTemplateByShortnameStmt != nil {
@@ -1811,6 +1857,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertAccountStmt: %w", cerr)
 		}
 	}
+	if q.insertAppTokenStmt != nil {
+		if cerr := q.insertAppTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertAppTokenStmt: %w", cerr)
+		}
+	}
 	if q.insertAuthCookieStmt != nil {
 		if cerr := q.insertAuthCookieStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertAuthCookieStmt: %w", cerr)
@@ -2201,6 +2252,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing syncCreditLedgerStmt: %w", cerr)
 		}
 	}
+	if q.updateAppTokenLastUsedStmt != nil {
+		if cerr := q.updateAppTokenLastUsedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateAppTokenLastUsedStmt: %w", cerr)
+		}
+	}
 	if q.updateAuthCookieLastUsedStmt != nil {
 		if cerr := q.updateAuthCookieLastUsedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateAuthCookieLastUsedStmt: %w", cerr)
@@ -2428,6 +2484,7 @@ type Queries struct {
 	boxWithNameExistsStmt                      *sql.Stmt
 	boxWithOwnerNamedStmt                      *sql.Stmt
 	boxesForUserStmt                           *sql.Stmt
+	cleanupExpiredAppTokensStmt                *sql.Stmt
 	cleanupExpiredOAuthStatesStmt              *sql.Stmt
 	cleanupExpiredPasskeyChallengesStmt        *sql.Stmt
 	cleanupExpiredRedirectsStmt                *sql.Stmt
@@ -2455,6 +2512,8 @@ type Queries struct {
 	createUserLLMCreditWithInitialStmt         *sql.Stmt
 	debitUserLLMCreditStmt                     *sql.Stmt
 	deleteAccountsByUserIDStmt                 *sql.Stmt
+	deleteAppTokenStmt                         *sql.Stmt
+	deleteAppTokensByUserIDStmt                *sql.Stmt
 	deleteAuthCookieStmt                       *sql.Stmt
 	deleteAuthCookiesByDomainStmt              *sql.Stmt
 	deleteAuthCookiesByUserIDStmt              *sql.Stmt
@@ -2493,6 +2552,8 @@ type Queries struct {
 	getAllBoxShareLinksByBoxIDStmt             *sql.Stmt
 	getAllUserEventsStmt                       *sql.Stmt
 	getAndIncrementNextSSHKeyNumberStmt        *sql.Stmt
+	getAppTokenInfoStmt                        *sql.Stmt
+	getAppTokensByUserIDStmt                   *sql.Stmt
 	getApprovedTemplateByShortnameStmt         *sql.Stmt
 	getAuthCookieInfoStmt                      *sql.Stmt
 	getAuthTokenInfoStmt                       *sql.Stmt
@@ -2600,6 +2661,7 @@ type Queries struct {
 	incrementShareLinkUsageStmt                *sql.Stmt
 	incrementUserEmailCountStmt                *sql.Stmt
 	insertAccountStmt                          *sql.Stmt
+	insertAppTokenStmt                         *sql.Stmt
 	insertAuthCookieStmt                       *sql.Stmt
 	insertBillingEventStmt                     *sql.Stmt
 	insertBoxStmt                              *sql.Stmt
@@ -2678,6 +2740,7 @@ type Queries struct {
 	setUserNewsletterSubscribedStmt            *sql.Stmt
 	setUserRootSupportStmt                     *sql.Stmt
 	syncCreditLedgerStmt                       *sql.Stmt
+	updateAppTokenLastUsedStmt                 *sql.Stmt
 	updateAuthCookieLastUsedStmt               *sql.Stmt
 	updateAuthTokenUsedAtStmt                  *sql.Stmt
 	updateBoxAllocatedCPUsStmt                 *sql.Stmt
@@ -2728,6 +2791,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		boxWithNameExistsStmt:                      q.boxWithNameExistsStmt,
 		boxWithOwnerNamedStmt:                      q.boxWithOwnerNamedStmt,
 		boxesForUserStmt:                           q.boxesForUserStmt,
+		cleanupExpiredAppTokensStmt:                q.cleanupExpiredAppTokensStmt,
 		cleanupExpiredOAuthStatesStmt:              q.cleanupExpiredOAuthStatesStmt,
 		cleanupExpiredPasskeyChallengesStmt:        q.cleanupExpiredPasskeyChallengesStmt,
 		cleanupExpiredRedirectsStmt:                q.cleanupExpiredRedirectsStmt,
@@ -2755,6 +2819,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createUserLLMCreditWithInitialStmt:         q.createUserLLMCreditWithInitialStmt,
 		debitUserLLMCreditStmt:                     q.debitUserLLMCreditStmt,
 		deleteAccountsByUserIDStmt:                 q.deleteAccountsByUserIDStmt,
+		deleteAppTokenStmt:                         q.deleteAppTokenStmt,
+		deleteAppTokensByUserIDStmt:                q.deleteAppTokensByUserIDStmt,
 		deleteAuthCookieStmt:                       q.deleteAuthCookieStmt,
 		deleteAuthCookiesByDomainStmt:              q.deleteAuthCookiesByDomainStmt,
 		deleteAuthCookiesByUserIDStmt:              q.deleteAuthCookiesByUserIDStmt,
@@ -2793,6 +2859,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAllBoxShareLinksByBoxIDStmt:             q.getAllBoxShareLinksByBoxIDStmt,
 		getAllUserEventsStmt:                       q.getAllUserEventsStmt,
 		getAndIncrementNextSSHKeyNumberStmt:        q.getAndIncrementNextSSHKeyNumberStmt,
+		getAppTokenInfoStmt:                        q.getAppTokenInfoStmt,
+		getAppTokensByUserIDStmt:                   q.getAppTokensByUserIDStmt,
 		getApprovedTemplateByShortnameStmt:         q.getApprovedTemplateByShortnameStmt,
 		getAuthCookieInfoStmt:                      q.getAuthCookieInfoStmt,
 		getAuthTokenInfoStmt:                       q.getAuthTokenInfoStmt,
@@ -2900,6 +2968,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		incrementShareLinkUsageStmt:                q.incrementShareLinkUsageStmt,
 		incrementUserEmailCountStmt:                q.incrementUserEmailCountStmt,
 		insertAccountStmt:                          q.insertAccountStmt,
+		insertAppTokenStmt:                         q.insertAppTokenStmt,
 		insertAuthCookieStmt:                       q.insertAuthCookieStmt,
 		insertBillingEventStmt:                     q.insertBillingEventStmt,
 		insertBoxStmt:                              q.insertBoxStmt,
@@ -2978,6 +3047,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setUserNewsletterSubscribedStmt:            q.setUserNewsletterSubscribedStmt,
 		setUserRootSupportStmt:                     q.setUserRootSupportStmt,
 		syncCreditLedgerStmt:                       q.syncCreditLedgerStmt,
+		updateAppTokenLastUsedStmt:                 q.updateAppTokenLastUsedStmt,
 		updateAuthCookieLastUsedStmt:               q.updateAuthCookieLastUsedStmt,
 		updateAuthTokenUsedAtStmt:                  q.updateAuthTokenUsedAtStmt,
 		updateBoxAllocatedCPUsStmt:                 q.updateBoxAllocatedCPUsStmt,
