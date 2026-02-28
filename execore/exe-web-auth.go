@@ -376,9 +376,9 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 		RedirectToPortal: true,
 		PortalReturnURL:  returnURL,
 	}
-	// Gmail users who signed in via Google get a 1-month trial instead of paying upfront.
+	// Gmail users who signed in via Google get a 14-day trial instead of paying upfront.
 	if strings.HasSuffix(strings.ToLower(user.Email), "@gmail.com") {
-		subParams.TrialEnd = time.Now().Add(31 * 24 * time.Hour)
+		subParams.TrialEnd = time.Now().Add(15 * 24 * time.Hour)
 	}
 	redirectURL, err := s.billing.Subscribe(r.Context(), accountID, subParams)
 	if err != nil {
