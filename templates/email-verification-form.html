@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>CONFIRM EMAIL - {{.WebHost}}</title>
   <script>
     (function() {
@@ -37,7 +38,7 @@
     }
   </style>
 </head>
-<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
+<body class="font-mono text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-950 min-h-screen flex items-center justify-center p-12">
   <main class="w-full max-w-2xl">
     <p class="text-zinc-500 text-lg mb-3">{{.Email}}</p>
     <h1 class="text-4xl font-semibold mb-8">CONFIRM LOGIN</h1>
@@ -58,7 +59,7 @@
       <input type="hidden" name="source" value="{{.Source}}">
       {{end}}
       <input type="hidden" name="token" value="{{.Token}}">
-      <button type="submit" class="bg-zinc-900 text-white px-6 py-3 text-sm hover:bg-black transition-colors rounded">Confirm</button>
+      <button type="submit" class="bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 px-6 py-3 text-sm hover:bg-black dark:hover:bg-zinc-300 transition-colors rounded">Confirm</button>
     </form>
   </main>
 </body>

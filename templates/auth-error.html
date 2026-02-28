@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>{{.WebHost}} - Error</title>
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,14 +15,14 @@
     }
   </style>
 </head>
-<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
+<body class="font-mono text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-950 min-h-screen flex items-center justify-center p-12">
   <main class="w-full max-w-2xl">
-    <h1 class="text-4xl font-semibold mb-6 text-red-600">Error</h1>
-    <p class="text-xl text-zinc-700 mb-6">{{.Message}}</p>
+    <h1 class="text-4xl font-semibold mb-6 text-red-600 dark:text-red-400">Error</h1>
+    <p class="text-xl text-zinc-700 dark:text-zinc-300 mb-6">{{.Message}}</p>
     {{if .Command}}
-    <p class="text-zinc-500 mb-6">Command: <code class="bg-zinc-100 px-2 py-1">{{.Command}}</code></p>
+    <p class="text-zinc-500 mb-6">Command: <code class="bg-zinc-100 dark:bg-zinc-800 px-2 py-1">{{.Command}}</code></p>
     {{end}}
-    <a href="/auth{{if .QueryString}}?{{.QueryString}}{{end}}" class="text-zinc-500 hover:text-zinc-900 underline underline-offset-2 transition-colors">
+    <a href="/auth{{if .QueryString}}?{{.QueryString}}{{end}}" class="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 underline underline-offset-2 transition-colors">
       Try again
     </a>
     {{if .TraceID}}

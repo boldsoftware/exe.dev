@@ -155,7 +155,7 @@ header .btn .btn-text {
 /* Dark mode */
 @media (prefers-color-scheme: dark) {
   header {
-    background: #1a1a1a;
+    background: #09090b;
     border-bottom-color: #333;
   }
 

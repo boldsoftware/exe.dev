@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>Access required</title>
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -19,14 +20,14 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
 </head>
-<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
+<body class="font-mono text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-950 min-h-screen flex items-center justify-center p-12">
   <main class="w-full max-w-2xl">
     <p class="text-zinc-500 text-lg mb-3">{{.Email}}</p>
     <h1 class="text-4xl font-semibold mb-8">You need access</h1>
     <form method="POST" action="/__exe.dev/request-access">
       <textarea name="message" placeholder="Message (optional)" rows="3"
-        class="w-full text-lg border-2 border-zinc-300 p-3 bg-transparent focus:outline-none focus:border-zinc-900 placeholder:text-zinc-400 resize-none"></textarea>
-      <button type="submit" class="mt-6 px-6 py-3 bg-zinc-900 text-white text-lg hover:bg-zinc-700 transition-colors">Request access</button>
+        class="w-full text-lg border-2 border-zinc-300 dark:border-zinc-600 p-3 bg-transparent focus:outline-none focus:border-zinc-900 dark:focus:border-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 resize-none"></textarea>
+      <button type="submit" class="mt-6 px-6 py-3 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-lg hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors">Request access</button>
     </form>
   </main>
 </body>

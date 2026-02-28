@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>{{if .IsWelcome}}Welcome{{else}}Email Verified{{end}} - {{.WebHost}}</title>
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,43 +15,43 @@
     }
   </style>
 </head>
-<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
+<body class="font-mono text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-950 min-h-screen flex items-center justify-center p-12">
   <main class="w-full max-w-2xl">
     <p class="text-zinc-500 mb-4">{{.Email}}</p>
     <p class="text-6xl font-semibold tracking-widest">{{if .IsWelcome}}WELCOME{{else}}VERIFIED{{end}}</p>
     {{if .NeedsBilling}}
     <div class="mt-8 space-y-4">
-      <p class="text-zinc-600">One last step: add a payment method to start launching VMs.</p>
-      <a href="/billing/checkout/start?token={{.BillingToken}}" class="inline-block px-6 py-3 bg-zinc-900 text-white rounded hover:bg-zinc-700">Setup Future Payment Details</a>
+      <p class="text-zinc-600 dark:text-zinc-400">One last step: add a payment method to start launching VMs.</p>
+      <a href="/billing/checkout/start?token={{.BillingToken}}" class="inline-block px-6 py-3 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded hover:bg-zinc-700 dark:hover:bg-zinc-300">Setup Future Payment Details</a>
     </div>
     {{else if eq .Source "exemenu"}}
     <p class="text-zinc-500 mt-8">Return to your terminal to continue.</p>
     {{else}}
     <div class="mt-8">
-      <a href="/" class="inline-block px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700">Continue to Dashboard</a>
+      <a href="/" class="inline-block px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400">Continue to Dashboard</a>
     </div>
     {{end}}
     {{if .IsWelcome}}
     <div class="mt-8">
       <label class="flex items-center gap-2 text-sm text-zinc-500 cursor-pointer select-none">
-        <input type="checkbox" id="newsletter-checkbox" class="accent-zinc-900 w-4 h-4">
+        <input type="checkbox" id="newsletter-checkbox" class="accent-zinc-900 dark:accent-zinc-100 w-4 h-4">
         Subscribe to the newsletter
       </label>
-      <p id="newsletter-status" class="text-green-600 text-sm mt-1" style="display: none;">Subscribed!</p>
+      <p id="newsletter-status" class="text-green-600 dark:text-green-400 text-sm mt-1" style="display: none;">Subscribed!</p>
     </div>
     {{end}}
     {{if and (not .HasPasskeys) (not .NeedsBilling)}}
-    <div id="passkey-section" class="mt-12 border-t border-zinc-200 pt-8" style="display: none;">
+    <div id="passkey-section" class="mt-12 border-t border-zinc-200 dark:border-zinc-700 pt-8" style="display: none;">
       <p class="text-zinc-500 text-sm mb-4">Optional: Add a passkey for passwordless sign-in from this browser. You can also do this later on your user profile page.</p>
       <div class="flex flex-col gap-2">
-        <label for="passkey-name" class="text-zinc-600 text-sm">Passkey name</label>
+        <label for="passkey-name" class="text-zinc-600 dark:text-zinc-400 text-sm">Passkey name</label>
         <div class="flex gap-3 items-center">
-          <input type="text" id="passkey-name" placeholder="e.g. MacBook Pro, Work Laptop" class="px-3 py-2 border border-zinc-300 rounded text-sm focus:outline-none focus:border-zinc-500 w-64">
-          <button onclick="addPasskey()" class="px-4 py-2 border border-zinc-300 text-zinc-700 rounded text-sm hover:bg-zinc-100">Add Passkey</button>
+          <input type="text" id="passkey-name" placeholder="e.g. MacBook Pro, Work Laptop" class="px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded text-sm focus:outline-none focus:border-zinc-500 dark:focus:border-zinc-400 bg-transparent w-64">
+          <button onclick="addPasskey()" class="px-4 py-2 border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300 rounded text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">Add Passkey</button>
         </div>
       </div>
-      <p id="passkey-error" class="text-red-600 text-sm mt-2" style="display: none;"></p>
-      <p id="passkey-success" class="text-green-600 text-sm mt-2" style="display: none;">Passkey added!</p>
+      <p id="passkey-error" class="text-red-600 dark:text-red-400 text-sm mt-2" style="display: none;"></p>
+      <p id="passkey-success" class="text-green-600 dark:text-green-400 text-sm mt-2" style="display: none;">Passkey added!</p>
     </div>
     {{end}}
   </main>
@@ -101,10 +102,11 @@
       try {
         await passkey.register(name);
         successDiv.style.display = 'block';
-        document.querySelector('#passkey-section button').disabled = true;
-        document.querySelector('#passkey-section button').textContent = 'Added';
-        document.querySelector('#passkey-section button').classList.remove('bg-zinc-900', 'hover:bg-zinc-700');
-        document.querySelector('#passkey-section button').classList.add('bg-zinc-400');
+        const btn = document.querySelector('#passkey-section button');
+        btn.disabled = true;
+        btn.textContent = 'Added';
+        btn.classList.remove('hover:bg-zinc-100', 'dark:hover:bg-zinc-800', 'text-zinc-700', 'dark:text-zinc-300');
+        btn.classList.add('bg-zinc-200', 'dark:bg-zinc-700', 'text-zinc-400', 'dark:text-zinc-500', 'cursor-default');
       } catch (err) {
         if (err.name === 'NotAllowedError') {
           // User cancelled the passkey prompt, that's fine

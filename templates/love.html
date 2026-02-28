@@ -40,19 +40,24 @@
       .source-link:hover {
         color: #4b5563;
       }
+      @media (prefers-color-scheme: dark) {
+        .attribution { color: #9ca3af; }
+        .source-link { color: #6b7280; }
+        .source-link:hover { color: #d1d5db; }
+      }
       .source-link svg {
         width: 0.875rem;
         height: 0.875rem;
       }
     </style>
   </head>
-  <body class="min-h-dvh grid grid-rows-[auto_1fr_auto] bg-white text-gray-900">
+  <body class="min-h-dvh grid grid-rows-[auto_1fr_auto] bg-white dark:bg-zinc-950 text-gray-900 dark:text-gray-100">
     <nav class="flex justify-between px-6 py-4">
-      <a href="/" class="text-gray-400 hover:text-gray-600">exe.dev</a>
+      <a href="/" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">exe.dev</a>
     </nav>
     <main class="flex flex-col justify-center items-center px-4 py-8">
       <div class="max-w-2xl mx-auto px-4 text-center">
-        <div id="testimonial-container" class="testimonial text-sm sm:text-base text-gray-700 leading-relaxed">
+        <div id="testimonial-container" class="testimonial text-sm sm:text-base text-gray-700 dark:text-gray-300 leading-relaxed">
           {{if .Testimonials}}
           <p class="text-gray-500">Loading...</p>
           {{else}}
@@ -62,7 +67,7 @@
         {{if gt (len .Testimonials) 1}}
         <div class="mt-8 flex justify-center gap-2">
           {{range $i, $t := .Testimonials}}
-          <button class="testimonial-dot w-2 h-2 rounded-full bg-gray-300 hover:bg-gray-400 transition-colors{{if eq $i 0}} !bg-gray-600{{end}}" data-index="{{$i}}"></button>
+          <button class="testimonial-dot w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors{{if eq $i 0}} !bg-gray-600 dark:!bg-gray-300{{end}}" data-index="{{$i}}"></button>
           {{end}}
         </div>
         {{end}}
@@ -116,7 +121,9 @@
           container.classList.remove('fading');
           dots.forEach((dot, i) => {
             dot.classList.toggle('!bg-gray-600', i === currentIndex);
+            dot.classList.toggle('dark:!bg-gray-300', i === currentIndex);
             dot.classList.toggle('bg-gray-300', i !== currentIndex);
+            dot.classList.toggle('dark:bg-gray-600', i !== currentIndex);
           });
         }, 500);
       }
